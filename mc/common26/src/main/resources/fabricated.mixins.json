@@ -8,7 +8,10 @@
     "ServerCommonPacketListenerImplMixin",
     "ServerPlayerMixin",
     "ServerLoginPacketListenerImplMixin",
-    "ServerConfigurationPacketListenerImplMixin"
+    "ServerConfigurationPacketListenerImplMixin",
+    "MinecraftServerMixin",
+    "ReloadableServerResourcesMixin",
+    "ResourceMixin"
   ],
   "injectors": {
     "defaultRequire": 1

@@ -127,7 +127,9 @@
       "plan": "passthrough"
     },
     "fabric-resource-loader-v1": {
-      "plan": "passthrough"
+      "plan": "native",
+      "version": "2.0.10",
+      "reason": "Shipped by Fabricated on NeoForge's reload-listener and pack-finder events (upstream's mixins conflict with NeoForge's patches)."
     },
     "fabric-screen-api-v1": {
       "plan": "passthrough"
