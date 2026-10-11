@@ -69,7 +69,7 @@ public final class PayloadTypeRegistryImpl<B extends FriendlyByteBuf> implements
 		return register(type, codec);
 	}
 
-	public @Nullable CustomPacketPayload.TypeAndCodec<? super B, ? extends CustomPacketPayload> get(Identifier id) {
+	public CustomPacketPayload.@Nullable TypeAndCodec<? super B, ? extends CustomPacketPayload> get(Identifier id) {
 		synchronized (this.types) {
 			return this.types.get(id);
 		}

@@ -83,6 +83,13 @@ dependencies {
 
 neoForge {
     version = project.neoforge_version
+    // Compile-time view of the interfaces Fabricated's mixins add at runtime (Fabric API's injected
+    // interfaces), so the vendored Fabric API sources compile as they do with Loom.
+    if (mcVersion.startsWith('26.')) {
+        interfaceInjectionData {
+            from(rootProject.file('mc/common26/interfaces.json'))
+        }
+    }
 }
 neoForge.addModdingDependenciesTo(sourceSets.loader)
 neoForge.addModdingDependenciesTo(sourceSets.testmod)
