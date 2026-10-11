@@ -331,4 +331,40 @@ class MixinPreflightTest {
 		assertEquals(1, clash.size(), clash.toString());
 		assertTrue(clash.getFirst().message().contains("already exists"), clash.getFirst().message());
 	}
+
+	/** An @Inject at HEAD of helper(I)V whose handler has the given descriptor; {@code sugarIndex} marks a @Local parameter. */
+	private static byte[] headInjector(String name, String handlerDesc, int sugarIndex) {
+		return mixin(name, false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "h", handlerDesc, null, null);
+			if (sugarIndex >= 0) mv.visitParameterAnnotation(sugarIndex, "Lcom/llamalad7/mixinextras/sugar/Local;", false).visitEnd();
+			AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "helper");
+			methods.visitEnd();
+			AnnotationVisitor ats = ann.visitArray("at");
+			ats.visitAnnotation(null, "Lorg/spongepowered/asm/mixin/injection/At;").visit("value", "HEAD");
+			ats.visitEnd();
+			ann.visitEnd();
+			mv.visitEnd();
+		});
+	}
+
+	@Test
+	void injectHandlerParametersMustMatchTheTarget() throws Exception {
+		String ci = "Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;";
+		java.util.function.BiFunction<String, Integer, List<PreflightFinding>> run = (desc, sugar) -> {
+			try {
+				return MixinPreflightTest.run(config(true, "Sig"), null, Map.of("com/example/mixin/Sig", headInjector("com/example/mixin/Sig", desc, sugar)), false);
+			} catch (Exception e) {
+				throw new RuntimeException(e);
+			}
+		};
+		assertTrue(run.apply("(I" + ci + ")V", -1).isEmpty(), "target parameters then callback info");
+		assertTrue(run.apply("(" + ci + ")V", -1).isEmpty(), "callback info only");
+		assertTrue(run.apply("(I" + ci + "Ljava/lang/String;)V", 2).isEmpty(), "MixinExtras @Local parameters are not counted");
+		List<PreflightFinding> wrong = run.apply("(J" + ci + ")V", -1);
+		assertEquals(1, wrong.size(), wrong.toString());
+		assertEquals(Severity.FAIL, wrong.getFirst().severity());
+		assertTrue(wrong.getFirst().message().contains("does not match the parameters"), wrong.getFirst().message());
+	}
 }
