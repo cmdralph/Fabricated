@@ -56,7 +56,7 @@ public final class ResourceLoaderTest implements ModInitializer {
 			protected void apply(Map<Identifier, Resource> files, SharedState state) {
 				state.get(DataResourceLoader.DATA_RESOURCE_STORE_KEY).put(FILES, files.size());
 				TestMod.LOGGER.info("FABRICATED-TEST resource reload listener OK ({} data file(s), pack source {})",
-						files.size(), files.values().stream().findFirst().map(r -> r.getFabricPackSource().getClass().getSimpleName()).orElse("none"));
+						files.size(), files.values().stream().findFirst().map(r -> r.getFabricPackSource().getClass().getName()).orElse("none"));
 			}
 		});
 

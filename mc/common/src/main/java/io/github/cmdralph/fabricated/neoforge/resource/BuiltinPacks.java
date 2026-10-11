@@ -7,8 +7,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import net.fabricmc.fabric.api.resource.v1.pack.PackActivationType;
-import net.fabricmc.fabric.impl.resource.ResourceLoaderImpl;
-import net.fabricmc.fabric.impl.resource.pack.BuiltinModPackSource;
 import net.minecraft.server.packs.PackLocationInfo;
 import net.minecraft.server.packs.PackSelectionConfig;
 import net.minecraft.server.packs.PackType;
@@ -35,14 +33,14 @@ final class BuiltinPacks {
 		PackType type = event.getPackType();
 		String directory = type == PackType.SERVER_DATA ? "data" : "assets";
 		event.addRepositorySource(consumer -> {
-			for (ResourceLoaderImpl.BuiltinPack pack : ResourceLoaderImpl.builtinPacks()) {
+			for (ResourceRegistry.BuiltinPack pack : ResourceRegistry.builtinPacks()) {
 				// Like upstream: only offer the pack for a type it has content for.
 				if (!Files.isDirectory(pack.root().resolve(directory))) continue;
 				boolean required = pack.activationType() == PackActivationType.ALWAYS_ENABLED;
 				PackLocationInfo info = new PackLocationInfo(
 						pack.id().toString(),
 						pack.displayName(),
-						new BuiltinModPackSource(pack.modName(), pack.activationType().isEnabledByDefault()),
+						BuiltinPackSources.create(pack.modName(), pack.activationType().isEnabledByDefault()),
 						Optional.empty());
 				Pack created = Pack.readMetaAndCreate(info, new PathPackResources.PathResourcesSupplier(pack.root()), type,
 						new PackSelectionConfig(required, Pack.Position.TOP, false));

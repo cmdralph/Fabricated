@@ -98,17 +98,13 @@ check "FABRICATED-TEST lifecycle server tick OK" server.out "native lifecycle: E
 check "FABRICATED-TEST lifecycle server stopping OK" server.out "native lifecycle: SERVER_STOPPING"
 check "FABRICATED-TEST networking registration OK" server.out "native networking: receiver registered"
 check "Registered [0-9]* Fabric payload type" server.out "native networking: payloads handed to NeoForge"
-case "$mc" in
-	26.*)
-		check "FABRICATED-TEST resource reload listener OK (2 data file" server.out "native resource loader: listener, shared state and built-in pack data"
-		check "resource loader state: order=true, store=2, builtinPackEnabled=true" server.out "native resource loader: ordering, data store and built-in pack"
-		if [ "$(grep -c 'FABRICATED-TEST resource reload listener OK' server.out)" -ge 2 ]; then
-			echo "PASS: native resource loader: listener runs again on /reload"
-		else
-			echo "FAIL: native resource loader: listener runs again on /reload"; fail=1
-		fi
-		;;
-esac
+check "FABRICATED-TEST resource reload listener OK (2 data file" server.out "native resource loader: listener, shared state and built-in pack data"
+check "resource loader state: order=true, store=2, builtinPackEnabled=true" server.out "native resource loader: ordering, data store and built-in pack"
+if [ "$(grep -c 'FABRICATED-TEST resource reload listener OK' server.out)" -ge 2 ]; then
+	echo "PASS: native resource loader: listener runs again on /reload"
+else
+	echo "FAIL: native resource loader: listener runs again on /reload"; fail=1
+fi
 check "fabricated-testmod-missing" logs/fabric-bridge-report.txt "missing dependency reported"
 check "fabricated-library-that-does-not-exist" logs/fabric-bridge-report.txt "missing dependency named"
 check "fabricatedMethodThatDoesNotExist" logs/fabric-bridge-report.txt "impossible mixin caught by pre-flight"

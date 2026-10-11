@@ -1,7 +1,7 @@
 {
   "pack": {
     "description": "Fabricated test mod built-in pack",
-    "min_format": 71,
+    "min_format": 82,
     "max_format": 2048
   }
 }

@@ -103,10 +103,8 @@ def expandProps = [
         minecraft_version_range: project.minecraft_version_range,
         aw_header              : project.aw_header,
         // Native Fabric API tests (version-specific source: mc/common26 or mc/<version>/src/testmod).
-        testmod_extra_main     : ', "io.github.cmdralph.fabricated.testmod.NetworkingTest"'
-                + (mcVersion.startsWith('26.') ? ', "io.github.cmdralph.fabricated.testmod.ResourceLoaderTest"' : ''),
-        testmod_extra_depends  : ',\n    "fabric-networking-api-v1": "*"'
-                + (mcVersion.startsWith('26.') ? ',\n    "fabric-resource-loader-v1": "*"' : ''),
+        testmod_extra_main     : ', "io.github.cmdralph.fabricated.testmod.NetworkingTest", "io.github.cmdralph.fabricated.testmod.ResourceLoaderTest"',
+        testmod_extra_depends  : ',\n    "fabric-networking-api-v1": "*",\n    "fabric-resource-loader-v1": "*"',
 ]
 
 tasks.named('processResources', ProcessResources) {

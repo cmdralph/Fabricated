@@ -14,7 +14,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import net.fabricmc.fabric.api.resource.v1.reloader.ResourceReloaderKeys;
-import net.fabricmc.fabric.impl.resource.ResourceLoaderImpl;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.packs.resources.PreparableReloadListener;
 import net.minecraft.server.packs.resources.ResourceManager;
@@ -49,7 +48,7 @@ final class ReloadListeners {
 	 * @param problems  receives each distinct problem once (for the report)
 	 */
 	static void apply(SortedReloadListenerEvent event, @Nullable PreparableReloadListener setup, Map<Identifier, PreparableReloadListener> listeners,
-			List<ResourceLoaderImpl.Ordering> orderings, Map<Identifier, Identifier> aliases, Consumer<String> problems) {
+			List<ResourceRegistry.Ordering> orderings, Map<Identifier, Identifier> aliases, Consumer<String> problems) {
 		Identifier firstVanilla = null;
 		for (Identifier key : event.getRegistry().keySet()) {
 			if ("minecraft".equals(key.getNamespace())) {
@@ -73,7 +72,7 @@ final class ReloadListeners {
 
 		Graph<PreparableReloadListener> graph = event.getGraph();
 		Map<Identifier, PreparableReloadListener> registry = event.getRegistry();
-		for (ResourceLoaderImpl.Ordering ordering : orderings) {
+		for (ResourceRegistry.Ordering ordering : orderings) {
 			Identifier first = resolve(registry, aliases, ordering.first());
 			Identifier second = resolve(registry, aliases, ordering.second());
 			if (first == null || second == null) {
