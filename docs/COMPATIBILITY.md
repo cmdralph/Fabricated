@@ -5,11 +5,11 @@ from expectations. CI boots each version twice:
 
 1. **Test mods only**: Fabricated plus the Fabric test mods in `mc/common/src/testmod*`. This is a pass/fail
    gate.
-2. **With the official Fabric API jar** added: informational. The resulting `fabric-bridge-report.txt` is
-   kept as a CI artifact (`smoke-fabric-api-<version>`), and the tables below are taken from it.
+2. **With the official Fabric API jar** added: the server must start (a gate); the other checks are
+   informational. The resulting `fabric-bridge-report.txt` is kept as a CI artifact
+   (`smoke-fabric-api-<version>`), and the tables below are taken from it.
 
-Last updated from CI runs [38153137134](https://github.com/cmdralph/Fabricated/actions/runs/38153137134) and
-[38154023949](https://github.com/cmdralph/Fabricated/actions/runs/38154023949) (1.21.11 networking)
+Last updated from CI run [38171595789](https://github.com/cmdralph/Fabricated/actions/runs/38171595789)
 (Fabricated 0.1.0 development build, dedicated server).
 
 ## Minecraft versions
