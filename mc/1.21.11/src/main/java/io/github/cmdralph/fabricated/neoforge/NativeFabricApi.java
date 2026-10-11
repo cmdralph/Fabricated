@@ -2,6 +2,7 @@ package io.github.cmdralph.fabricated.neoforge;
 
 import io.github.cmdralph.fabricated.loader.FabricatedState;
 import io.github.cmdralph.fabricated.neoforge.lifecycle.LifecycleBridge;
+import io.github.cmdralph.fabricated.neoforge.networking.NetworkingBridge;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
 
@@ -15,5 +16,9 @@ public final class NativeFabricApi {
 
 	public static void register(IEventBus modBus, Dist dist, FabricatedState state) {
 		LifecycleBridge.register(dist);
+		NetworkingBridge.register(modBus, dist, problem -> {
+			state.report().line("Networking", problem);
+			state.writeReport();
+		});
 	}
 }
