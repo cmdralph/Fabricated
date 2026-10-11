@@ -8,7 +8,8 @@ from expectations. CI boots each version twice:
 2. **With the official Fabric API jar** added: informational. The resulting `fabric-bridge-report.txt` is
    kept as a CI artifact (`smoke-fabric-api-<version>`), and the tables below are taken from it.
 
-Last updated from CI run [38153137134](https://github.com/cmdralph/Fabricated/actions/runs/38153137134)
+Last updated from CI runs [38153137134](https://github.com/cmdralph/Fabricated/actions/runs/38153137134) and
+[38154023949](https://github.com/cmdralph/Fabricated/actions/runs/38154023949) (1.21.11 networking)
 (Fabricated 0.1.0 development build, dedicated server).
 
 ## Minecraft versions
@@ -55,7 +56,7 @@ How to read the table:
 | fabric-game-rule-api-v1 | disabled | loads | loads | loads |
 | fabric-permission-api-v1 | — | loads | loads | loads |
 | fabric-lifecycle-events-v1 | native | native | native | native |
-| fabric-networking-api-v1 | not yet native (disabled) | native | native | native |
+| fabric-networking-api-v1 | native | native | native | native |
 | fabric-registry-sync-v0 | disabled | disabled | disabled | disabled |
 | fabric-resource-loader-v1 (and v0) | disabled | disabled | disabled | disabled |
 | fabric-item-api-v1 | disabled | disabled | disabled | disabled |
@@ -137,7 +138,7 @@ real server for every version.
 | After client level change | `ClientPlayerNetworkEvent.LoggingIn` and `.Clone` | fires on login and on respawn into another level |
 | **Not fired**: start/end data pack reload, before/after save | none | NeoForge has no matching hook |
 
-### Native `fabric-networking-api-v1` (26.x)
+### Native `fabric-networking-api-v1`
 
 Fabric payload types are registered with NeoForge as optional payloads when NeoForge locks its network registry
 (after every mod initialiser), so they travel through NeoForge's own networking, including its large-payload
@@ -175,7 +176,7 @@ modules that cascade from it.
 1. ✅ `fabric-lifecycle-events-v1` (done; unblocked `fabric-api-lookup-api-v1` and, with a linkage-check fix
    for injected interfaces, `fabric-convention-tags-v2`/`v1`).
 2. ✅ `fabric-networking-api-v1` on 26.x (done). Its dependants now load or fail on their own mixins
-   (particles, recipe-api); the 1.21.11 port is next.
+   (particles, recipe-api). Ported to 1.21.11 as well.
 3. `fabric-resource-loader-v1`: NeoForge's reload-listener and pack events. Unblocks tag-api, creative-tab
    and the v0 API.
 4. `fabric-registry-sync-v0`: NeoForge already syncs registries, so this module only needs to provide its
