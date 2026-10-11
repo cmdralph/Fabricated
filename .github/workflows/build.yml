@@ -46,18 +46,22 @@ jobs:
       matrix:
         include:
           - minecraft: "1.21.11"
+            fabric_api: "0.141.6+1.21.11"
             neoforge: "21.11.45"
             java: 21
             experimental: false
           - minecraft: "26.1.2"
+            fabric_api: "0.155.3+26.1.2"
             neoforge: "26.1.2.116"
             java: 25
             experimental: false
           - minecraft: "26.2"
+            fabric_api: "0.161.0+26.2"
             neoforge: "26.2.0.90"
             java: 25
             experimental: false
           - minecraft: "26.3"
+            fabric_api: "0.162.0+26.3"
             neoforge: "26.3.0.69-beta"
             java: 25
             experimental: true
@@ -87,6 +91,25 @@ jobs:
             ${{ runner.temp }}/server/logs
             ${{ runner.temp }}/server/server.out
             ${{ runner.temp }}/server/.fabricated/cache/v1/index.json
+          if-no-files-found: ignore
+      # Evidence gathering, not a gate: boot again with the official Fabric API jar (downloaded here in CI,
+      # never by Fabricated) and keep the report, which lists every pass-through module and mixin pre-flight result.
+      - name: Server smoke test with Fabric API (informational)
+        if: always()
+        continue-on-error: true
+        run: |
+          mkdir -p "$RUNNER_TEMP/extra"
+          curl -fsSL --retry 4 -o "$RUNNER_TEMP/extra/fabric-api.jar" \
+            "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api/${{ matrix.fabric_api }}/fabric-api-${{ matrix.fabric_api }}.jar"
+          ci/smoke-server.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/server-fapi" "$RUNNER_TEMP/extra"
+      - name: Upload Fabric API run logs and report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-fabric-api-${{ matrix.minecraft }}
+          path: |
+            ${{ runner.temp }}/server-fapi/logs
+            ${{ runner.temp }}/server-fapi/server.out
           if-no-files-found: ignore
       - name: Upload Fabricated jar
         uses: actions/upload-artifact@v4
