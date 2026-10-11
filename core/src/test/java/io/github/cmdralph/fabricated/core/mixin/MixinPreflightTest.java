@@ -259,4 +259,46 @@ class MixinPreflightTest {
 				"Lnet/minecraft/world/Thing;count:I", "Lnet/minecraft/world/Thing;absent()V"));
 		assertTrue(run(config(true, "Fallback"), null, Map.of("com/example/mixin/Fallback", fallback), false).isEmpty());
 	}
+
+	@Test
+	void newPointWithConstructorDescriptorMatchesThatConstructorOnly() throws Exception {
+		// Target method make() does: new net/minecraft/world/Thing(I) — a one-argument constructor.
+		ClassWriter target = new ClassWriter(0);
+		target.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, "net/minecraft/world/Maker", null, "java/lang/Object", null);
+		MethodVisitor make = target.visitMethod(Opcodes.ACC_PUBLIC, "make", "()Ljava/lang/Object;", null, null);
+		make.visitCode();
+		make.visitTypeInsn(Opcodes.NEW, "net/minecraft/world/Thing");
+		make.visitInsn(Opcodes.DUP);
+		make.visitInsn(Opcodes.ICONST_1);
+		make.visitMethodInsn(Opcodes.INVOKESPECIAL, "net/minecraft/world/Thing", "<init>", "(I)V", false);
+		make.visitInsn(Opcodes.ARETURN);
+		make.visitMaxs(3, 1);
+		make.visitEnd();
+		target.visitEnd();
+		ClassIndex game = new ClassIndex(Map.of("net/minecraft/world/Maker", target.toByteArray())::get);
+
+		java.util.function.Function<String, byte[]> mixinFor = desc -> {
+			ClassWriter cw = new ClassWriter(0);
+			cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, "com/example/mixin/M", null, "java/lang/Object", null);
+			AnnotationVisitor m = cw.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false);
+			AnnotationVisitor values = m.visitArray("value");
+			values.visit(null, Type.getObjectType("net/minecraft/world/Maker"));
+			values.visitEnd();
+			m.visitEnd();
+			inject(cw, "h", "make", "NEW", desc, 1, null);
+			cw.visitEnd();
+			return cw.toByteArray();
+		};
+		java.util.function.Function<String, List<PreflightFinding>> run = desc -> {
+			Map<String, byte[]> mod = Map.of("com/example/mixin/M", mixinFor.apply(desc));
+			try {
+				return new MixinPreflight(game, mod::get, false).check("test.mixins.json", MixinConfigFile.parse(config(true, "M")), Refmap.EMPTY, Set.of());
+			} catch (Exception e) {
+				throw new RuntimeException(e);
+			}
+		};
+		assertTrue(run.apply("(I)Lnet/minecraft/world/Thing;").isEmpty(), "matching constructor");
+		assertEquals(1, run.apply("(II)Lnet/minecraft/world/Thing;").size(), "two-argument constructor is never called");
+		assertTrue(run.apply("Lnet/minecraft/world/Thing;").isEmpty(), "class-only NEW still matches any constructor");
+	}
 }

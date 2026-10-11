@@ -509,8 +509,15 @@ public final class MixinPreflight {
 						&& (ref.desc() == null || ref.desc().equals(f.desc));
 			}
 			case "NEW" -> {
-				if (!(insn instanceof TypeInsnNode t) || t.getOpcode() != org.objectweb.asm.Opcodes.NEW) return false;
 				String cls = newTarget(ref);
+				if (ref.desc() != null && ref.desc().startsWith("(")) {
+					// A constructor descriptor selects one constructor, as Mixin's BeforeNew does: count the
+					// INVOKESPECIAL <init> with those arguments rather than any NEW of the class.
+					String initDesc = ref.desc().substring(0, ref.desc().indexOf(')') + 1) + "V";
+					return insn instanceof MethodInsnNode m && m.getOpcode() == org.objectweb.asm.Opcodes.INVOKESPECIAL
+							&& m.name.equals("<init>") && m.desc.equals(initDesc) && (cls == null || cls.equals(m.owner));
+				}
+				if (!(insn instanceof TypeInsnNode t) || t.getOpcode() != org.objectweb.asm.Opcodes.NEW) return false;
 				return cls == null || cls.equals(t.desc);
 			}
 			default -> {
