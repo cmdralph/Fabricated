@@ -8,9 +8,8 @@ from expectations. CI boots each version twice:
 2. **With the official Fabric API jar** added: informational. The resulting `fabric-bridge-report.txt` is
    kept as a CI artifact (`smoke-fabric-api-<version>`), and the tables below are taken from it.
 
-Last updated from CI runs [38101258203](https://github.com/cmdralph/Fabricated/actions/runs/38101258203) (module
-tables) and [38101839603](https://github.com/cmdralph/Fabricated/actions/runs/38101839603) (boot results).
-Fabricated 0.1.0, dedicated server.
+Last updated from CI run [38153137134](https://github.com/cmdralph/Fabricated/actions/runs/38153137134)
+(Fabricated 0.1.0 development build, dedicated server).
 
 ## Minecraft versions
 
@@ -56,10 +55,9 @@ How to read the table:
 | fabric-game-rule-api-v1 | disabled | loads | loads | loads |
 | fabric-permission-api-v1 | — | loads | loads | loads |
 | fabric-lifecycle-events-v1 | native | native | native | native |
-| fabric-networking-api-v1 | disabled | disabled | disabled | disabled |
+| fabric-networking-api-v1 | not yet native (disabled) | native | native | native |
 | fabric-registry-sync-v0 | disabled | disabled | disabled | disabled |
 | fabric-resource-loader-v1 (and v0) | disabled | disabled | disabled | disabled |
-| fabric-command-api-v2 | disabled | disabled | disabled | disabled |
 | fabric-item-api-v1 | disabled | disabled | disabled | disabled |
 | fabric-block-api-v1 | disabled | disabled | disabled | disabled |
 | fabric-transfer-api-v1 | disabled | disabled | disabled | disabled |
@@ -74,6 +72,7 @@ How to read the table:
 | fabric-advancement-api-v1 | — | — | disabled | disabled |
 | fabric-menu-api-v1 / screen-handler-api-v1 | disabled | disabled | disabled | disabled |
 | fabric-api-lookup-api-v1 | loads | loads | loads | loads |
+| fabric-command-api-v2 | loads | loads | loads | loads |
 | fabric-convention-tags-v2 (and v1) | loads | loads | loads | loads |
 | fabric-data-attachment-api-v1 | disabled | disabled | disabled | disabled |
 | fabric-particles-v1 | disabled | disabled | disabled | disabled |
@@ -100,14 +99,18 @@ failures fall into a few groups:
   `lambda$loadResources$1` and captured fields such as `val$tags` have different names in NeoForge's build.
 - **The mixin targets a library class**: `fabric-dimensions-v1` patches DataFixerUpper's `TaggedChoice`,
   which NeoForge loads without mixin support.
-- **Missing Minecraft code**: `fabric-command-api-v2` calls `EntitySelectorParser.getCustomFlag`, which
-  only exists in Fabric's patched game.
+- **A mixin adds a method NeoForge already added**: `fabric-recipe-api-v1` generates an accessor
+  `getConnection()` on `ServerCommonPacketListenerImpl` (NeoForge adds a public one), and on 26.1.2 its
+  `IngredientMixin` merges a `hashCode()` that NeoForge's `Ingredient` already has. Mixin rejects both.
+- **NeoForge calls a different constructor**: `fabric-particles-v1` modifies `new BlockParticleOption(type,
+  state)` in `Entity.spawnSprintParticle`; NeoForge passes the block position as a third argument.
 - **Dependency cascade**: about a third of the disabled modules only fail because they require one of the
   above. For example, `fabric-particles-v1` and `fabric-recipe-api-v1` need networking, and
   `fabric-tag-api-v1` and `fabric-creative-tab-api-v1` need resource-loader.
 
-Each of these used to crash the server before this check existed. Now each is a clear line in the report
-and the server starts.
+Each of these crashed the server at some point during development: they are the reason the pre-flight checks
+exist. Now each is a clear line in the report, and the server starts with the complete Fabric API jar on all
+four versions.
 
 ### Native `fabric-lifecycle-events-v1`
 
@@ -134,10 +137,35 @@ real server for every version.
 | After client level change | `ClientPlayerNetworkEvent.LoggingIn` and `.Clone` | fires on login and on respawn into another level |
 | **Not fired**: start/end data pack reload, before/after save | none | NeoForge has no matching hook |
 
+### Native `fabric-networking-api-v1` (26.x)
+
+Fabric payload types are registered with NeoForge as optional payloads when NeoForge locks its network registry
+(after every mod initialiser), so they travel through NeoForge's own networking, including its large-payload
+splitting. Play handlers run on the main thread and configuration handlers on the network thread, as in Fabric.
+
+| Fabric | NeoForge |
+|---|---|
+| `PayloadTypeRegistry` (play and configuration, both directions) | `RegisterPayloadHandlersEvent` registrar (`optional()`) |
+| Global and per-connection receivers, `PacketContext` | payload handlers, dispatched by connection |
+| `canSend` / `getSendable` | NeoForge's channel negotiation (`hasChannel`) |
+| `ServerPlayConnectionEvents`, channel `REGISTER` events | `PlayerLoggedIn/OutEvent` |
+| `ServerConfigurationConnectionEvents.BEFORE_CONFIGURE/CONFIGURE`, `addTask`, `completeTask` | `RegisterConfigurationTasksEvent`, `finishCurrentTask` |
+| `EntityTrackingEvents` | `PlayerEvent.StartTracking/StopTracking` |
+| `ServerPlayNetworking.reconfigure` | vanilla `switchToConfig()` |
+| Client play/configuration connection events | `ClientPlayerNetworkEvent`, configuration listener creation |
+
+Not supported: **login queries** (`ServerLoginNetworking`, `ClientLoginNetworking`): NeoForge exposes no
+login-phase hooks. The API links, so mods load, but login receivers are never called; mods should use the
+configuration phase instead (Fabric's own recommendation since 1.20.2). Configuration-phase
+`DISCONNECT` events do not fire. A payload id registered with different codecs per direction uses the
+serverbound codec for both (NeoForge keeps one codec per id); the report says so when it happens.
+CI checks that a Fabric payload and receiver register and reach NeoForge; a client round trip is not yet
+tested in CI.
+
 ### What this means for Fabric mods
 
 A Fabric mod works today if it needs only the Fabric Loader API and the **native** or **loads** modules
-above. Most content mods also need networking, registry sync, resource loading or commands, so they are disabled with a message naming the missing module.
+above. Most content mods also need registry sync or resource loading, so they are disabled with a message naming the missing module.
 
 ### Planned work, in order of impact
 
@@ -146,12 +174,13 @@ modules that cascade from it.
 
 1. ✅ `fabric-lifecycle-events-v1` (done; unblocked `fabric-api-lookup-api-v1` and, with a linkage-check fix
    for injected interfaces, `fabric-convention-tags-v2`/`v1`).
-2. `fabric-networking-api-v1`: NeoForge's payload registrar. Unblocks particles and recipe-api.
+2. ✅ `fabric-networking-api-v1` on 26.x (done). Its dependants now load or fail on their own mixins
+   (particles, recipe-api); the 1.21.11 port is next.
 3. `fabric-resource-loader-v1`: NeoForge's reload-listener and pack events. Unblocks tag-api, creative-tab
    and the v0 API.
 4. `fabric-registry-sync-v0`: NeoForge already syncs registries, so this module only needs to provide its
    API. Unblocks object-builder.
-5. `fabric-command-api-v2`: NeoForge's command registration events.
+5. `fabric-entity-events-v1`: NeoForge's entity events. Unblocks data-attachment.
 
 ## Fabric mods tested
 
