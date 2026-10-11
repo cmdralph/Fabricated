@@ -75,6 +75,7 @@ jobs:
             21
       - uses: gradle/actions/setup-gradle@v4
       - name: Build Fabricated and test mods
+        id: build
         run: >
           ./gradlew :mc:${{ matrix.minecraft }}:fabricatedJar :mc:${{ matrix.minecraft }}:testmods --stacktrace
           -Porg.gradle.java.installations.fromEnv=JAVA_HOME_21_X64,JAVA_HOME_25_X64
@@ -95,7 +96,7 @@ jobs:
       # Evidence gathering, not a gate: boot again with the official Fabric API jar (downloaded here in CI,
       # never by Fabricated) and keep the report, which lists every pass-through module and mixin pre-flight result.
       - name: Server smoke test with Fabric API (informational)
-        if: always()
+        if: always() && steps.build.outcome == 'success'
         continue-on-error: true
         run: |
           mkdir -p "$RUNNER_TEMP/extra"
