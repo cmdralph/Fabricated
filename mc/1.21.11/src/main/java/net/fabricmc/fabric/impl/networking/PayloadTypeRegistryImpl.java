@@ -5,7 +5,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.function.IntSupplier;
 
 import org.jspecify.annotations.Nullable;
 
@@ -61,11 +60,6 @@ public final class PayloadTypeRegistryImpl<B extends FriendlyByteBuf> implements
 
 	@Override
 	public <T extends CustomPacketPayload> CustomPacketPayload.TypeAndCodec<? super B, T> registerLarge(CustomPacketPayload.Type<T> type, StreamCodec<? super B, T> codec, int maxPacketSize) {
-		return register(type, codec);
-	}
-
-	@Override
-	public <T extends CustomPacketPayload> CustomPacketPayload.TypeAndCodec<? super B, T> registerLarge(CustomPacketPayload.Type<T> type, StreamCodec<? super B, T> codec, IntSupplier maxPacketSizeSupplier) {
 		return register(type, codec);
 	}
 
