@@ -183,14 +183,25 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 			pipeline.addPath(gameModJar, attributes, IncompatibleFileReporting.ERROR);
 		}
 
+		int quietFabricApi = 0;
 		for (Report.ModRow row : result.report().mods()) {
 			if (row.status() == Report.Status.DISABLED || row.status() == Report.Status.REJECTED) {
+				// A disabled Fabric API module is expected (see COMPATIBILITY.md) and isn't the player's mod: any mod
+				// that needs it is disabled too, with its own warning naming the module. Reporting each module to
+				// NeoForge would show a warnings screen on every client launch, so they go to the report only.
+				if (plan.isFabricApiModule(row.id())) {
+					quietFabricApi++;
+					continue;
+				}
 				String text = "Fabric mod " + row.id() + (row.version().isEmpty() ? "" : " " + row.version()) + " was not loaded: "
 						+ row.detail() + (row.suggestion().isEmpty() ? "" : " Fix: " + row.suggestion());
 				// strictDependencies: unmet dependencies stop the game on NeoForge's error screen instead of being skipped.
 				boolean hardStop = result.config().strictDependencies() && result.dependencyFailures().contains(row.id());
 				pipeline.addIssue(hardStop ? ModLoadingIssue.error(MESSAGE, text) : ModLoadingIssue.warning(MESSAGE, text));
 			}
+		}
+		if (quietFabricApi > 0) {
+			LOGGER.info("{} Fabric API module(s) can't run on NeoForge yet and were skipped; see logs/fabric-bridge-report.txt", quietFabricApi);
 		}
 		state.writeReport();
 		result.cache().finish(result.config().maxUnusedLaunches());

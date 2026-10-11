@@ -112,6 +112,24 @@ jobs:
             ${{ runner.temp }}/server-fapi/logs
             ${{ runner.temp }}/server-fapi/server.out
           if-no-files-found: ignore
+      # Client: a real NeoForge client started headlessly (Xvfb), which joins a singleplayer world. Not yet a gate
+      # while it proves stable on hosted runners; the result and logs are kept either way.
+      - name: Client smoke test (test mods, singleplayer world)
+        if: always() && steps.build.outcome == 'success'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ci/smoke-client.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/client"
+      - name: Upload client logs and report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-client-${{ matrix.minecraft }}
+          path: |
+            ${{ runner.temp }}/client/run/logs
+            ${{ runner.temp }}/client/run/crash-reports
+            ${{ runner.temp }}/client/client.out
+          if-no-files-found: ignore
       - name: Upload Fabricated jar
         uses: actions/upload-artifact@v4
         with:
