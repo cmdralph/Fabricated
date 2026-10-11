@@ -155,6 +155,7 @@ class PipelineTest {
 		Pipeline.LoadedMod resB = result.mods().stream().filter(m -> m.translated().candidate().id().equals("res-b")).findFirst().orElseThrow();
 		assertEquals(Set.of("licenses"), resB.excludedPackages(), "clashing resource-only directory is hidden, not fatal");
 		assertEquals(Report.Status.DISABLED, status.get("needs-missing"));
+		assertTrue(result.dependencyFailures().contains("needs-missing"), result.dependencyFailures().toString());
 		assertEquals(Report.Status.DISABLED, status.get("bad-mixin"));
 		assertEquals(Report.Status.DISABLED, status.get("dup-c"));
 		assertEquals(Report.Status.REJECTED, status.get("broken.jar"));

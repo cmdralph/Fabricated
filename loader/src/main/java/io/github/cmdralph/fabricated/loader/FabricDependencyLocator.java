@@ -174,9 +174,11 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 
 		for (Report.ModRow row : result.report().mods()) {
 			if (row.status() == Report.Status.DISABLED || row.status() == Report.Status.REJECTED) {
-				pipeline.addIssue(ModLoadingIssue.warning(MESSAGE, "Fabric mod " + row.id()
-						+ (row.version().isEmpty() ? "" : " " + row.version()) + " was not loaded: " + row.detail()
-						+ (row.suggestion().isEmpty() ? "" : " Fix: " + row.suggestion())));
+				String text = "Fabric mod " + row.id() + (row.version().isEmpty() ? "" : " " + row.version()) + " was not loaded: "
+						+ row.detail() + (row.suggestion().isEmpty() ? "" : " Fix: " + row.suggestion());
+				// strictDependencies: unmet dependencies stop the game on NeoForge's error screen instead of being skipped.
+				boolean hardStop = result.config().strictDependencies() && result.dependencyFailures().contains(row.id());
+				pipeline.addIssue(hardStop ? ModLoadingIssue.error(MESSAGE, text) : ModLoadingIssue.warning(MESSAGE, text));
 			}
 		}
 		state.writeReport();

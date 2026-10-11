@@ -115,7 +115,8 @@ public final class Pipeline {
 			Map<String, ModContainerImpl> containers,
 			Report report,
 			TranslationCache cache,
-			MappingTable mappings) {
+			MappingTable mappings,
+			Set<String> dependencyFailures) {
 	}
 
 	private Pipeline() {
@@ -148,7 +149,7 @@ public final class Pipeline {
 						"Fabricated could not create its cache directory: " + e.getMessage(),
 						"Make sure the game directory is writable and does not contain symbolic links under .fabricated/."));
 			}
-			return new Result(config, List.of(), Map.of(), runtime, Map.of(), report, null, null);
+			return new Result(config, List.of(), Map.of(), runtime, Map.of(), report, null, null, Set.of());
 		}
 
 		CandidateScanner.Result scan = new CandidateScanner(cache, config.limits()).scan(in.fabricJars());
@@ -257,12 +258,15 @@ public final class Pipeline {
 		Map<String, List<PreflightFinding>> failedFindings = new HashMap<>();
 		// Later resolution rounds hit the cache for mods translated earlier in this launch; remember the real work.
 		Map<String, Long> translatedThisLaunch = new ConcurrentHashMap<>();
+		// Mods the resolver disabled for unmet dependencies (strictDependencies turns these into errors).
+		Set<String> dependencyFailures = new java.util.TreeSet<>();
 		// Every round either removes at least one mod or finishes, so this bound is never the limiting factor.
 		for (int round = 0; round <= eligible.size() + 1 && env != null; round++) {
 			List<Candidate> active = eligible.stream().filter(c -> !dropped.containsKey(c.id())).toList();
 			resolution = resolver.resolve(active, aliases, hints);
 			for (DependencyResolver.Disabled d : resolution.disabled()) {
 				dropped.put(d.candidate().id(), d.reason());
+				dependencyFailures.add(d.candidate().id());
 				droppedSuggestions.put(d.candidate().id(), d.suggestion());
 				droppedCandidates.put(d.candidate().id(), d.candidate());
 			}
@@ -410,7 +414,8 @@ public final class Pipeline {
 		for (NeoForgeMod m : in.neoForgeMods()) addBuiltin(runtime, m.id(), m.version(), m.displayName());
 
 		cache.notes().forEach(n -> report.line("Cache", n));
-		return new Result(config, List.copyOf(loaded), injections, runtime, containers, report, cache, mappingTable);
+		return new Result(config, List.copyOf(loaded), injections, runtime, containers, report, cache, mappingTable,
+				Set.copyOf(dependencyFailures));
 	}
 
 	/** User overrides, plus the plan's known-conflicting mixins for pass-through Fabric API modules. */
