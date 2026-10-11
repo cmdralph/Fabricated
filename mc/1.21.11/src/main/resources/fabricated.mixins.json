@@ -3,7 +3,11 @@
   "package": "io.github.cmdralph.fabricated.neoforge.mixin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
-    "ServerConfigurationPacketListenerImplMixin"
+    "ServerConfigurationPacketListenerImplMixin",
+    "MinecraftServerMixin",
+    "ReloadableServerResourcesMixin",
+    "ResourceMixin",
+    "MappedRegistryMixin"
   ],
   "injectors": {
     "defaultRequire": 1

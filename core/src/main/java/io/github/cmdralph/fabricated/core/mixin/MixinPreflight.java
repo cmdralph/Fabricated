@@ -42,6 +42,8 @@ public final class MixinPreflight {
 	private static final String ACCESSOR = "Lorg/spongepowered/asm/mixin/gen/Accessor;";
 	private static final String INVOKER = "Lorg/spongepowered/asm/mixin/gen/Invoker;";
 	private static final String AT = "Lorg/spongepowered/asm/mixin/injection/At;";
+	private static final String INJECT = "Lorg/spongepowered/asm/mixin/injection/Inject;";
+	private static final String COERCE = "Lorg/spongepowered/asm/mixin/injection/Coerce;";
 	private static final String UNIQUE = "Lorg/spongepowered/asm/mixin/Unique;";
 	private static final String INTRINSIC = "Lorg/spongepowered/asm/mixin/Intrinsic;";
 	private static final Set<String> GAME_PREFIXES = Set.of("net/minecraft/", "com/mojang/blaze3d/");
@@ -264,7 +266,7 @@ public final class MixinPreflight {
 			for (AnnotationNode ann : allAnnotations(method)) {
 				if (isInjector(ann.desc)) {
 					injector = true;
-					checkInjector(ann, target, ctx);
+					checkInjector(method, ann, target, ctx);
 				}
 			}
 			if (!injector) checkMerged(method, target, ctx);
@@ -310,12 +312,30 @@ public final class MixinPreflight {
 		if (name == null) return;
 		MemberRef ref = MemberRef.parse(ctx.resolve(name));
 		String fieldName = ref.name() != null ? ref.name() : name;
-		// Mixin matches accessor targets by name and accepts erased/compatible types, so match by name.
+		String desc = ref.desc() != null && !ref.desc().startsWith("(") ? ref.desc() : accessorFieldDesc(method);
+		// As Mixin's AccessorInfo: the field type must match exactly; the name must match, or match ignoring case
+		// with no other such field. Without a known type, fall back to the name alone.
+		int caseInsensitive = 0;
 		for (FieldNode f : target.fields) {
+			if (desc != null && !f.desc.equals(desc)) continue;
 			if (f.name.equals(fieldName)) return;
+			if (f.name.equalsIgnoreCase(fieldName)) caseInsensitive++;
 		}
-		ctx.classLevel("@Accessor target field " + fieldName + " does not exist in " + target.name.replace('/', '.'),
-				"The field was renamed or removed by NeoForge or this Minecraft version.");
+		if (caseInsensitive == 1) return;
+		boolean nameExists = target.fields.stream().anyMatch(f -> f.name.equals(fieldName));
+		ctx.classLevel(nameExists
+						? "@Accessor target field " + fieldName + " in " + target.name.replace('/', '.') + " has a different type than " + desc
+						: "@Accessor target field " + fieldName + " does not exist in " + target.name.replace('/', '.'),
+				nameExists ? "NeoForge or this Minecraft version changed the field's type." : "The field was renamed or removed by NeoForge or this Minecraft version.");
+	}
+
+	/** The field type an accessor reads or writes: a getter's return type or a setter's only parameter. */
+	private static String accessorFieldDesc(MethodNode method) {
+		Type[] args = Type.getArgumentTypes(method.desc);
+		Type ret = Type.getReturnType(method.desc);
+		if (args.length == 0 && ret.getSort() != Type.VOID) return ret.getDescriptor();
+		if (args.length == 1 && ret.getSort() == Type.VOID) return args[0].getDescriptor();
+		return null;
 	}
 
 	private void checkInvoker(MethodNode method, AnnotationNode ann, ClassNode target, Context ctx) {
@@ -364,7 +384,7 @@ public final class MixinPreflight {
 				|| desc.startsWith("Lcom/llamalad7/mixinextras/injector/");
 	}
 
-	private void checkInjector(AnnotationNode ann, ClassNode target, Context ctx) {
+	private void checkInjector(MethodNode handler, AnnotationNode ann, ClassNode target, Context ctx) {
 		if (!(attr(ann, "method") instanceof List<?> selectors) || selectors.isEmpty()) return;
 		int require = attr(ann, "require") instanceof Integer r && r >= 0 ? r : ctx.config.defaultRequire();
 		List<AnnotationNode> slices = annotationList(attr(ann, "slice"));
@@ -393,6 +413,12 @@ public final class MixinPreflight {
 			}
 			return;
 		}
+		if (ann.desc.equals(INJECT) && !anyFuzzy && !acceptsCallbackSignature(handler, ann, matched)) {
+			ctx.classLevel(injectorName + " handler " + handler.name + Type.getMethodDescriptor(Type.getReturnType(handler.desc), handlerArgs(handler).toArray(Type[]::new))
+							+ " does not match the parameters of " + matched.getFirst().name + matched.getFirst().desc + " in " + target.name.replace('/', '.'),
+					"NeoForge's build of Minecraft declares this method with different parameters (often a lambda whose captured values are ordered differently); the mod needs an update or this mixin must be skipped.");
+			return;
+		}
 
 		for (AnnotationNode at : atAnnotations(ann)) {
 			String point = attr(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
@@ -418,6 +444,54 @@ public final class MixinPreflight {
 				return;
 			}
 		}
+	}
+
+	/**
+	 * Mixin accepts an {@code @Inject} handler whose parameters, after MixinExtras sugar parameters are removed,
+	 * are either just the callback info or the target's parameters followed by the callback info; anything else
+	 * is an {@code InvalidInjectionException} when the mixin applies. Handlers that capture locals or use
+	 * {@code @Coerce} are not judged.
+	 */
+	private static boolean acceptsCallbackSignature(MethodNode handler, AnnotationNode inject, List<MethodNode> targets) {
+		if (attr(inject, "locals") != null) return true;
+		List<Type> args = handlerArgs(handler);
+		if (args == null) return true;
+		if (args.isEmpty() || !isCallbackInfo(args.getLast())) return true; // unusual shape: leave it to Mixin
+		if (args.size() == 1) return true;
+		List<Type> wanted = args.subList(0, args.size() - 1);
+		for (MethodNode target : targets) {
+			if (List.of(Type.getArgumentTypes(target.desc)).equals(wanted)) return true;
+		}
+		return false;
+	}
+
+	/** The handler's parameter types without MixinExtras sugar parameters; null if a parameter uses {@code @Coerce}. */
+	private static List<Type> handlerArgs(MethodNode handler) {
+		Type[] types = Type.getArgumentTypes(handler.desc);
+		List<Type> args = new ArrayList<>();
+		for (int i = 0; i < types.length; i++) {
+			boolean sugar = false;
+			for (AnnotationNode a : parameterAnnotations(handler, i)) {
+				if (a.desc.equals(COERCE)) return null;
+				if (a.desc.startsWith("Lcom/llamalad7/mixinextras/sugar/")) sugar = true;
+			}
+			if (!sugar) args.add(types[i]);
+		}
+		return args;
+	}
+
+	private static List<AnnotationNode> parameterAnnotations(MethodNode method, int index) {
+		List<AnnotationNode> all = new ArrayList<>();
+		if (method.visibleParameterAnnotations != null && index < method.visibleParameterAnnotations.length
+				&& method.visibleParameterAnnotations[index] != null) all.addAll(method.visibleParameterAnnotations[index]);
+		if (method.invisibleParameterAnnotations != null && index < method.invisibleParameterAnnotations.length
+				&& method.invisibleParameterAnnotations[index] != null) all.addAll(method.invisibleParameterAnnotations[index]);
+		return all;
+	}
+
+	private static boolean isCallbackInfo(Type type) {
+		return type.getDescriptor().equals("Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;")
+				|| type.getDescriptor().equals("Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;");
 	}
 
 	private enum Verdict {

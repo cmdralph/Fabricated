@@ -331,4 +331,60 @@ class MixinPreflightTest {
 		assertEquals(1, clash.size(), clash.toString());
 		assertTrue(clash.getFirst().message().contains("already exists"), clash.getFirst().message());
 	}
+
+	/** An @Inject at HEAD of helper(I)V whose handler has the given descriptor; {@code sugarIndex} marks a @Local parameter. */
+	private static byte[] headInjector(String name, String handlerDesc, int sugarIndex) {
+		return mixin(name, false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "h", handlerDesc, null, null);
+			if (sugarIndex >= 0) mv.visitParameterAnnotation(sugarIndex, "Lcom/llamalad7/mixinextras/sugar/Local;", false).visitEnd();
+			AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "helper");
+			methods.visitEnd();
+			AnnotationVisitor ats = ann.visitArray("at");
+			ats.visitAnnotation(null, "Lorg/spongepowered/asm/mixin/injection/At;").visit("value", "HEAD");
+			ats.visitEnd();
+			ann.visitEnd();
+			mv.visitEnd();
+		});
+	}
+
+	@Test
+	void injectHandlerParametersMustMatchTheTarget() throws Exception {
+		String ci = "Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;";
+		java.util.function.BiFunction<String, Integer, List<PreflightFinding>> run = (desc, sugar) -> {
+			try {
+				return MixinPreflightTest.run(config(true, "Sig"), null, Map.of("com/example/mixin/Sig", headInjector("com/example/mixin/Sig", desc, sugar)), false);
+			} catch (Exception e) {
+				throw new RuntimeException(e);
+			}
+		};
+		assertTrue(run.apply("(I" + ci + ")V", -1).isEmpty(), "target parameters then callback info");
+		assertTrue(run.apply("(" + ci + ")V", -1).isEmpty(), "callback info only");
+		assertTrue(run.apply("(I" + ci + "Ljava/lang/String;)V", 2).isEmpty(), "MixinExtras @Local parameters are not counted");
+		List<PreflightFinding> wrong = run.apply("(J" + ci + ")V", -1);
+		assertEquals(1, wrong.size(), wrong.toString());
+		assertEquals(Severity.FAIL, wrong.getFirst().severity());
+		assertTrue(wrong.getFirst().message().contains("does not match the parameters"), wrong.getFirst().message());
+	}
+
+	private static byte[] accessorMixin(String name, String method, String desc) {
+		return mixin(name, false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, method, desc, null, null);
+			mv.visitAnnotation("Lorg/spongepowered/asm/mixin/gen/Accessor;", false).visitEnd();
+			mv.visitEnd();
+		});
+	}
+
+	@Test
+	void accessorFieldTypeMustMatch() throws Exception {
+		// TARGET has a private int field "count".
+		assertTrue(run(config(true, "Get"), null, Map.of("com/example/mixin/Get", accessorMixin("com/example/mixin/Get", "getCount", "()I")), false).isEmpty());
+		assertTrue(run(config(true, "Set"), null, Map.of("com/example/mixin/Set", accessorMixin("com/example/mixin/Set", "setCount", "(I)V")), false).isEmpty());
+		List<PreflightFinding> wrongType = run(config(true, "Long"), null, Map.of("com/example/mixin/Long", accessorMixin("com/example/mixin/Long", "getCount", "()J")), false);
+		assertEquals(1, wrongType.size(), wrongType.toString());
+		assertTrue(wrongType.getFirst().message().contains("different type"), wrongType.getFirst().message());
+		List<PreflightFinding> missing = run(config(true, "Gone"), null, Map.of("com/example/mixin/Gone", accessorMixin("com/example/mixin/Gone", "getTotal", "()I")), false);
+		assertTrue(missing.getFirst().message().contains("does not exist"), missing.getFirst().message());
+	}
 }

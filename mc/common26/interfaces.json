@@ -22,5 +22,11 @@
   ],
   "net/minecraft/world/entity/Entity": [
     "net/fabricmc/fabric/api/event/lifecycle/v1/EntityLoadData"
+  ],
+  "net/minecraft/server/MinecraftServer": [
+    "net/fabricmc/fabric/api/resource/v1/DataResourceStore"
+  ],
+  "net/minecraft/server/packs/resources/Resource": [
+    "net/fabricmc/fabric/api/resource/v1/FabricResource"
   ]
 }

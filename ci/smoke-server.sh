@@ -3,6 +3,7 @@
 # boots it, and checks that Fabric mods load and that broken Fabric mods are isolated.
 #
 # Usage: ci/smoke-server.sh <minecraft-version> <neoforge-version> <work-dir> [extra-mods-dir]
+# Exit status: every check must pass; with extra-mods-dir, only the server start must succeed.
 # Expects: build/libs/fabricated-*+mc<minecraft-version>.jar and mc/<minecraft-version>/build/testmods/*.jar
 set -euo pipefail
 
@@ -60,7 +61,10 @@ while kill -0 "$pid" 2>/dev/null; do
 	sleep 5
 done
 if [ "$status" = "started" ]; then
-	# Let a few ticks run so tick-based checks (mixins) can fire.
+	# Let a few ticks run so tick-based checks (mixins) can fire, then reload data packs once so reload
+	# listeners run a second time.
+	sleep 10
+	echo "reload" >&3
 	sleep 10
 	echo "stop" >&3
 	for _ in $(seq 1 60); do kill -0 "$pid" 2>/dev/null || break; sleep 2; done
@@ -77,11 +81,14 @@ echo "::group::fabric-bridge-report.txt"
 cat logs/fabric-bridge-report.txt || echo "(report missing)"
 echo "::endgroup::"
 
+# With extra mods (the official Fabric API jar), only "the server starts" is required: the other checks are
+# evidence for the report, since Fabric API's pass-through modules may legitimately change what loads.
 fail=0
+required_fail=0
 check() {
 	if grep -q -- "$1" "$2"; then echo "PASS: $3"; else echo "FAIL: $3 (missing '$1' in $2)"; fail=1; fi
 }
-[ "$status" = "started" ] && echo "PASS: server started" || { echo "FAIL: server did not start ($status)"; fail=1; }
+[ "$status" = "started" ] && echo "PASS: server started" || { echo "FAIL: server did not start ($status)"; fail=1; required_fail=1; }
 check "FABRICATED-TEST main entrypoint OK" server.out "main entrypoint ran"
 check "FABRICATED-TEST loader api OK" server.out "Fabric Loader API works"
 check "FABRICATED-TEST custom entrypoint OK" server.out "custom entrypoint resolved"
@@ -95,8 +102,21 @@ check "FABRICATED-TEST lifecycle server tick OK" server.out "native lifecycle: E
 check "FABRICATED-TEST lifecycle server stopping OK" server.out "native lifecycle: SERVER_STOPPING"
 check "FABRICATED-TEST networking registration OK" server.out "native networking: receiver registered"
 check "Registered [0-9]* Fabric payload type" server.out "native networking: payloads handed to NeoForge"
+check "FABRICATED-TEST resource reload listener OK (2 data file" server.out "native resource loader: listener, shared state and built-in pack data"
+check "resource loader state: order=true, store=2, builtinPackEnabled=true" server.out "native resource loader: ordering, data store and built-in pack"
+if [ "$(grep -c 'FABRICATED-TEST resource reload listener OK' server.out)" -ge 2 ]; then
+	echo "PASS: native resource loader: listener runs again on /reload"
+else
+	echo "FAIL: native resource loader: listener runs again on /reload"; fail=1
+fi
+check "FABRICATED-TEST registry sync: custom registry OK" server.out "native registry sync: custom registry, entry callback, attributes, NeoForge sync flag"
+check "registry sync state: alias=true, dynamic=1, setupCallback=1" server.out "native registry sync: alias, synced dynamic registry, setup callback"
 check "fabricated-testmod-missing" logs/fabric-bridge-report.txt "missing dependency reported"
 check "fabricated-library-that-does-not-exist" logs/fabric-bridge-report.txt "missing dependency named"
 check "fabricatedMethodThatDoesNotExist" logs/fabric-bridge-report.txt "impossible mixin caught by pre-flight"
 check "intentional failure for Fabricated CI" logs/fabric-bridge-report.txt "throwing entrypoint isolated"
+if [ -n "$extra" ]; then
+	[ "$fail" -ne 0 ] && echo "NOTE: failures other than the server start are informational in this run."
+	exit "$required_fail"
+fi
 exit "$fail"

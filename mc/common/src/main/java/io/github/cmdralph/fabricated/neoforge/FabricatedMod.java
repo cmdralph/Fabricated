@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.github.cmdralph.fabricated.loader.FabricatedState;
+import io.github.cmdralph.fabricated.neoforge.registry.RegistrySyncBridge;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.IEventBus;
@@ -30,6 +31,11 @@ public final class FabricatedMod {
 			return;
 		}
 		EntrypointBridge entrypoints = new EntrypointBridge(state, dist);
+		// Native fabric-registry-sync-v0, first: it tracks the RegisterEvent window the initializers below run in.
+		RegistrySyncBridge.register(modBus, dist, problem -> {
+			state.report().line("Registries", problem);
+			state.writeReport();
+		});
 		// Vanilla registries are frozen during mod construction and opened for the RegisterEvent loop. Fabric
 		// mods register content directly from their initializers, so they run on the first RegisterEvent.
 		modBus.addListener(EventPriority.HIGHEST, RegisterEvent.class, event -> entrypoints.runOnce());

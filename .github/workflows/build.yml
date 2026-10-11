@@ -93,11 +93,11 @@ jobs:
             ${{ runner.temp }}/server/server.out
             ${{ runner.temp }}/server/.fabricated/cache/v1/index.json
           if-no-files-found: ignore
-      # Evidence gathering, not a gate: boot again with the official Fabric API jar (downloaded here in CI,
-      # never by Fabricated) and keep the report, which lists every pass-through module and mixin pre-flight result.
-      - name: Server smoke test with Fabric API (informational)
+      # Boot again with the official Fabric API jar (downloaded here in CI, never by Fabricated) and keep the
+      # report, which lists every pass-through module and mixin pre-flight result. The server must start;
+      # the other checks in this run are informational.
+      - name: Server smoke test with Fabric API (server must start)
         if: always() && steps.build.outcome == 'success'
-        continue-on-error: true
         run: |
           mkdir -p "$RUNNER_TEMP/extra"
           curl -fsSL --retry 4 -o "$RUNNER_TEMP/extra/fabric-api.jar" \
