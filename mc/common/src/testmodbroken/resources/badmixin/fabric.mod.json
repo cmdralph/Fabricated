@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "id": "fabricated-testmod-badmixin",
+  "version": "${version}",
+  "name": "Fabricated Test: impossible mixin",
+  "mixins": ["fabricated-testmod-badmixin.mixins.json"],
+  "depends": {"minecraft": "${minecraft_version}"}
+}

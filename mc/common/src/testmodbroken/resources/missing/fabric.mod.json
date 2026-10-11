@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "id": "fabricated-testmod-missing",
+  "version": "${version}",
+  "name": "Fabricated Test: missing dependency",
+  "depends": {"fabricated-library-that-does-not-exist": ">=1.0"}
+}

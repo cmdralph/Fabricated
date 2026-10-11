@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+# CI smoke test: installs a real NeoForge dedicated server, adds Fabricated and Fabric test mods,
+# boots it, and checks that Fabric mods load and that broken Fabric mods are isolated.
+#
+# Usage: ci/smoke-server.sh <minecraft-version> <neoforge-version> <work-dir> [extra-mods-dir]
+# Expects: build/libs/fabricated-*+mc<minecraft-version>.jar and mc/<minecraft-version>/build/testmods/*.jar
+set -euo pipefail
+
+mc="$1"
+neo="$2"
+work="$3"
+extra="${4:-}"
+root="$(cd "$(dirname "$0")/.." && pwd)"
+timeout_seconds="${SMOKE_TIMEOUT:-900}"
+
+rm -rf "$work"
+mkdir -p "$work"
+cd "$work"
+
+echo "::group::Install NeoForge $neo"
+curl -fsSL --retry 4 -o installer.jar "https://maven.neoforged.net/releases/net/neoforged/neoforge/${neo}/neoforge-${neo}-installer.jar"
+java -jar installer.jar --installServer . > installer.log 2>&1 || { cat installer.log; exit 1; }
+echo "::endgroup::"
+
+mkdir -p mods config
+cp "$root"/build/libs/fabricated-*+mc"$mc".jar mods/
+cp "$root"/mc/"$mc"/build/testmods/*.jar mods/
+if [ -n "$extra" ] && [ -d "$extra" ]; then
+	cp "$extra"/*.jar mods/ 2>/dev/null || true
+fi
+ls -1 mods
+
+# Keep loading after an entrypoint failure so the test can verify isolation.
+cat > config/fabricated.json <<'JSON'
+{ "schema": 1, "onEntrypointFailure": "disable", "logLevel": "DEBUG" }
+JSON
+echo "eula=true" > eula.txt
+cat > server.properties <<'PROPS'
+online-mode=false
+level-type=minecraft\:flat
+view-distance=3
+simulation-distance=3
+spawn-protection=0
+max-tick-time=-1
+sync-chunk-writes=false
+PROPS
+
+echo "::group::Run server"
+mkfifo console
+# Keep the FIFO open for writing so the server does not see EOF on stdin.
+exec 3<>console
+chmod +x run.sh
+./run.sh nogui < console > server.out 2>&1 &
+pid=$!
+start=$(date +%s)
+status="timeout"
+while kill -0 "$pid" 2>/dev/null; do
+	if grep -q 'Done (' server.out 2>/dev/null; then status="started"; break; fi
+	if [ $(( $(date +%s) - start )) -gt "$timeout_seconds" ]; then break; fi
+	sleep 5
+done
+if [ "$status" = "started" ]; then
+	# Let a few ticks run so tick-based checks (mixins) can fire.
+	sleep 10
+	echo "stop" >&3
+	for _ in $(seq 1 60); do kill -0 "$pid" 2>/dev/null || break; sleep 2; done
+fi
+kill "$pid" 2>/dev/null || true
+wait "$pid" 2>/dev/null || true
+exec 3>&-
+echo "::endgroup::"
+
+echo "::group::Server output (tail)"
+tail -n 200 server.out || true
+echo "::endgroup::"
+echo "::group::fabric-bridge-report.txt"
+cat logs/fabric-bridge-report.txt || echo "(report missing)"
+echo "::endgroup::"
+
+fail=0
+check() {
+	if grep -q -- "$1" "$2"; then echo "PASS: $3"; else echo "FAIL: $3 (missing '$1' in $2)"; fail=1; fi
+}
+[ "$status" = "started" ] && echo "PASS: server started" || { echo "FAIL: server did not start ($status)"; fail=1; }
+check "FABRICATED-TEST main entrypoint OK" server.out "main entrypoint ran"
+check "FABRICATED-TEST loader api OK" server.out "Fabric Loader API works"
+check "FABRICATED-TEST custom entrypoint OK" server.out "custom entrypoint resolved"
+check "FABRICATED-TEST registry OK" server.out "direct registry registration works"
+check "FABRICATED-TEST fabric api base event OK" server.out "fabric-api-base events work"
+check "FABRICATED-TEST access widener OK" server.out "access widener applied"
+check "FABRICATED-TEST server entrypoint OK" server.out "server entrypoint ran"
+check "FABRICATED-TEST mixin OK" server.out "mixin applied"
+check "fabricated-testmod-missing" logs/fabric-bridge-report.txt "missing dependency reported"
+check "fabricated-library-that-does-not-exist" logs/fabric-bridge-report.txt "missing dependency named"
+check "fabricatedMethodThatDoesNotExist" logs/fabric-bridge-report.txt "impossible mixin caught by pre-flight"
+check "intentional failure for Fabricated CI" logs/fabric-bridge-report.txt "throwing entrypoint isolated"
+exit "$fail"

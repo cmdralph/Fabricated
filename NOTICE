@@ -1,0 +1,27 @@
+Fabricated
+Copyright (c) 2026 Ralph Turner and Fabricated contributors
+Licensed under the MIT License (see LICENSE).
+
+This product includes third-party material:
+
+1. Fabric Loader public API (net.fabricmc.api.*, net.fabricmc.loader.api.*, and the deprecated
+   net.fabricmc.loader.util.version.VersionParsingException), in fabric-loader-api/.
+   Copyright 2016 FabricMC. Licensed under the Apache License, Version 2.0:
+   https://www.apache.org/licenses/LICENSE-2.0
+   Source: https://github.com/FabricMC/fabric-loader (commit c75cac153757b1a75e63e901bed5bc97eff630d3).
+   Modified: imports of net.fabricmc.loader.impl.* were redirected to Fabricated's own
+   implementations; each modified file carries a notice.
+
+2. Fabric API modules shipped natively by Fabricated (net.fabricmc.fabric.*), in
+   mc/<version>/src/fabricapi/. Copyright FabricMC. Licensed under the Apache License, Version 2.0.
+   Source: https://github.com/FabricMC/fabric at the tag and commit recorded in each
+   mc/<version>/src/fabricapi/UPSTREAM.properties.
+
+3. Fabric Intermediary mappings for Minecraft 1.21.11, bundled in the 1.21.11 build.
+   By FabricMC, dedicated to the public domain under CC0 1.0 Universal:
+   https://creativecommons.org/publicdomain/zero/1.0/
+   Source: https://github.com/FabricMC/intermediary (commit 916868752f6935dda70c4490404641a701335d81).
+
+Fabricated does not include or redistribute Minecraft, NeoForge, Mojang's official mappings,
+Fabric API release jars, Sinytra Connector, Forgified Fabric API, Launchpad or Adapter.
+Mojang's mappings are read at runtime from the file the NeoForge installer already downloaded.

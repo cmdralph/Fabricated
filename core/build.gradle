@@ -1,0 +1,32 @@
+// Minecraft- and NeoForge-independent logic: archive safety, metadata translation, dependency
+// resolution, remapping, access-widener conversion, mixin pre-flight, caching, config, reports.
+plugins {
+    id 'java-library'
+}
+
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(21)
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.release = 21
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    api project(':fabric-loader-api')
+    // Provided at runtime by NeoForge on every supported version.
+    compileOnly "org.ow2.asm:asm:${asm_version}"
+    compileOnly "org.ow2.asm:asm-tree:${asm_version}"
+    compileOnly "org.ow2.asm:asm-commons:${asm_version}"
+
+    testImplementation "org.ow2.asm:asm:${asm_version}"
+    testImplementation "org.ow2.asm:asm-tree:${asm_version}"
+    testImplementation "org.ow2.asm:asm-commons:${asm_version}"
+    testImplementation platform("org.junit:junit-bom:${junit_version}")
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}

@@ -1,0 +1,213 @@
+// Shared build logic for every Minecraft version project (mc/<version>/build.gradle applies this).
+//
+// Each version project produces build/libs/fabricated-<version>+mc<minecraft>.jar in the root project:
+//   - the "loader" source set (NeoForge discovery services) plus :core and :fabric-loader-api, which run
+//     in NeoForge's early-services class loader, and
+//   - META-INF/fabricated/game-mod.jar, Fabricated's in-game NeoForge mod (main source set: common code,
+//     version-specific code and the native Fabric API modules).
+// It also builds the Fabric test mods used by the CI smoke test (build/testmods).
+
+import java.security.MessageDigest
+
+def mcVersion = project.minecraft_version as String
+def javaVersion = (project.java_version as String).toInteger()
+def releaseName = "${rootProject.fabricated_version}+mc${mcVersion}"
+version = releaseName
+
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(javaVersion)
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.release = javaVersion
+    // Vendored Fabric API sources use deprecated Minecraft APIs we must not change.
+    options.compilerArgs.removeAll(['-Werror'])
+    options.compilerArgs.add('-Xlint:-deprecation,-removal,-unchecked,-rawtypes')
+}
+
+repositories {
+    mavenCentral()
+}
+
+sourceSets {
+    loader {
+        java.srcDir rootProject.file('loader/src/main/java')
+        resources.srcDir rootProject.file('loader/src/main/resources')
+        resources.srcDir 'src/fabricated/resources'
+    }
+    main {
+        java.srcDirs = ['src/main/java', rootProject.file('mc/common/src/main/java'), 'src/fabricapi/java']
+        resources.srcDirs = ['src/main/resources', rootProject.file('mc/common/src/main/resources')]
+    }
+    testmod {
+        java.srcDir rootProject.file('mc/common/src/testmod/java')
+        resources.srcDir rootProject.file('mc/common/src/testmod/resources')
+    }
+    testmodbroken {
+        java.srcDir rootProject.file('mc/common/src/testmodbroken/java')
+    }
+}
+
+configurations {
+    // Library jars merged into the Fabricated jar (core and the Fabric Loader API layer).
+    bundled {
+        canBeConsumed = false
+        canBeResolved = true
+        attributes {
+            attribute(Usage.USAGE_ATTRIBUTE, objects.named(Usage, Usage.JAVA_RUNTIME))
+            attribute(Category.CATEGORY_ATTRIBUTE, objects.named(Category, Category.LIBRARY))
+            attribute(LibraryElements.LIBRARY_ELEMENTS_ATTRIBUTE, objects.named(LibraryElements, LibraryElements.JAR))
+            attribute(Bundling.BUNDLING_ATTRIBUTE, objects.named(Bundling, Bundling.EXTERNAL))
+        }
+    }
+}
+
+dependencies {
+    loaderImplementation project(':core')
+    bundled project(':core')
+
+    // The in-game mod reaches the loader classes through NeoForge's parent class loader at runtime.
+    compileOnly sourceSets.loader.output
+    compileOnly project(':core')
+
+    testmodCompileOnly project(':fabric-loader-api')
+    testmodCompileOnly sourceSets.main.output
+    testmodbrokenCompileOnly project(':fabric-loader-api')
+}
+
+neoForge {
+    version = project.neoforge_version
+}
+neoForge.addModdingDependenciesTo(sourceSets.loader)
+neoForge.addModdingDependenciesTo(sourceSets.testmod)
+neoForge.addModdingDependenciesTo(sourceSets.testmodbroken)
+
+def expandProps = [
+        version                : releaseName,
+        minecraft_version      : mcVersion,
+        neoforge_version_range : project.neoforge_version_range,
+        minecraft_version_range: project.minecraft_version_range,
+        aw_header              : project.aw_header,
+]
+
+tasks.named('processResources', ProcessResources) {
+    inputs.properties(expandProps)
+    filesMatching('META-INF/neoforge.mods.toml') { expand(expandProps) }
+}
+
+tasks.named('processTestmodResources', ProcessResources) {
+    inputs.properties(expandProps)
+    filesMatching(['fabric.mod.json', '*.accesswidener']) { expand(expandProps) }
+}
+
+// --- Generated build facts ---------------------------------------------------------------------------
+def versionProperties = tasks.register('fabricatedVersionProperties', WriteProperties) {
+    destinationFile = layout.buildDirectory.file('generated/fabricated/version.properties')
+    property 'fabricated.version', releaseName
+    property 'minecraft.version', mcVersion
+    property 'namespace', project.namespace
+    property 'mixin.fallback', project.mixin_fallback
+    property 'mixin.lowest', project.mixin_lowest
+}
+
+// --- Intermediary (obfuscated Minecraft versions only) ------------------------------------------------
+def intermediaryFile = layout.buildDirectory.file('intermediary/intermediary.tiny')
+def downloadIntermediary = tasks.register('downloadIntermediary') {
+    def commit = project.findProperty('intermediary_commit')
+    def expected = project.findProperty('intermediary_sha256')
+    enabled = commit != null
+    inputs.property('commit', commit ?: 'none')
+    inputs.property('sha256', expected ?: 'none')
+    outputs.file(intermediaryFile)
+    doLast {
+        def target = intermediaryFile.get().asFile
+        target.parentFile.mkdirs()
+        // Build-time download (Fabricated itself never touches the network), pinned to a commit and hash.
+        def url = new URI("https://raw.githubusercontent.com/FabricMC/intermediary/${commit}/mappings/${mcVersion}.tiny").toURL()
+        def bytes = url.openStream().withCloseable { it.readAllBytes() }
+        def actual = MessageDigest.getInstance('SHA-256').digest(bytes).encodeHex().toString()
+        if (actual != expected) {
+            throw new GradleException("Intermediary checksum mismatch for ${mcVersion}: expected ${expected}, got ${actual}")
+        }
+        target.bytes = bytes
+    }
+}
+
+// --- The in-game mod ----------------------------------------------------------------------------------
+def gameModJar = tasks.register('gameModJar', Jar) {
+    archiveFileName = 'game-mod.jar'
+    destinationDirectory = layout.buildDirectory.dir('gamemod')
+    from sourceSets.main.output
+    from(rootProject.file('LICENSE'))
+    from(rootProject.file('NOTICE'))
+    manifest.attributes(
+            'Implementation-Title': 'Fabricated (in-game mod)',
+            'Implementation-Version': releaseName)
+}
+
+// --- The Fabricated jar players install -----------------------------------------------------------------
+def fabricatedJar = tasks.register('fabricatedJar', Jar) {
+    group = 'build'
+    description = 'Builds the Fabricated jar for Minecraft ' + mcVersion
+    archiveBaseName = 'fabricated'
+    archiveVersion = releaseName
+    destinationDirectory = rootProject.layout.buildDirectory.dir('libs')
+    duplicatesStrategy = DuplicatesStrategy.FAIL
+
+    from sourceSets.loader.output
+    // The closure defers resolution; dependsOn makes Gradle build :core and :fabric-loader-api jars first.
+    dependsOn configurations.bundled
+    from({ configurations.bundled.collect { zipTree(it) } }) {
+        exclude 'META-INF/MANIFEST.MF'
+    }
+    from(gameModJar) { into 'META-INF/fabricated' }
+    from(versionProperties) { into 'META-INF/fabricated' }
+    if (project.findProperty('intermediary_commit') != null) {
+        from(downloadIntermediary) { into 'META-INF/fabricated' }
+    }
+    from(rootProject.file('LICENSE'))
+    from(rootProject.file('NOTICE'))
+    manifest.attributes(
+            'FMLModType': 'LIBRARY',
+            'Automatic-Module-Name': 'io.github.cmdralph.fabricated',
+            'Implementation-Title': 'Fabricated',
+            'Implementation-Version': releaseName,
+            'Implementation-Vendor': 'Fabricated contributors')
+}
+
+tasks.named('assemble') { dependsOn fabricatedJar }
+
+// --- CI test mods -----------------------------------------------------------------------------------------
+def testmodsDir = layout.buildDirectory.dir('testmods')
+def testmodJar = tasks.register('testmodJar', Jar) {
+    archiveFileName = 'fabricated-testmod.jar'
+    destinationDirectory = testmodsDir
+    from sourceSets.testmod.output
+}
+
+def brokenMods = [
+        'throws'  : ['io/github/cmdralph/fabricated/testmod/broken/ThrowingMod.class'],
+        'missing' : [],
+        'badmixin': ['io/github/cmdralph/fabricated/testmod/broken/mixin/ImpossibleMixin.class'],
+]
+def brokenJars = brokenMods.collect { name, classes ->
+    tasks.register("testmod${name.capitalize()}Jar", Jar) {
+        archiveFileName = "fabricated-testmod-${name}.jar"
+        destinationDirectory = testmodsDir
+        inputs.properties(expandProps)
+        if (!classes.isEmpty()) {
+            from(sourceSets.testmodbroken.output.classesDirs) { include(classes) }
+            dependsOn tasks.named('compileTestmodbrokenJava')
+        }
+        from(rootProject.file("mc/common/src/testmodbroken/resources/${name}")) {
+            filesMatching('fabric.mod.json') { expand(expandProps) }
+        }
+    }
+}
+
+tasks.register('testmods') {
+    group = 'verification'
+    description = 'Builds the Fabric test mods used by the CI smoke test'
+    dependsOn testmodJar
+    dependsOn brokenJars
+}

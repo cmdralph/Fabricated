@@ -1,0 +1,33 @@
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        maven {
+            name = 'NeoForged'
+            url = 'https://maven.neoforged.net/releases'
+        }
+    }
+    plugins {
+        id 'net.neoforged.moddev' version providers.gradleProperty('moddevgradle_version').get()
+    }
+}
+
+plugins {
+    // Provisions the Java 25 toolchain for the 26.x projects when it is not installed locally.
+    id 'org.gradle.toolchains.foojay-resolver-convention' version '1.0.0'
+}
+
+rootProject.name = 'fabricated'
+
+include 'fabric-loader-api'
+include 'core'
+
+// The Minecraft projects need maven.neoforged.net and Mojang's servers. Pass
+// -Pfabricated.coreOnly=true to build and test only the Minecraft-independent modules.
+def coreOnly = providers.gradleProperty('fabricated.coreOnly').map { it.toBoolean() }.getOrElse(false)
+if (!coreOnly) {
+    file('mc').eachDir { dir ->
+        if (new File(dir, 'build.gradle').isFile()) {
+            include "mc:${dir.name}"
+        }
+    }
+}
