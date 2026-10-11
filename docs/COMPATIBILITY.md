@@ -147,7 +147,7 @@ splitting. Play handlers run on the main thread and configuration handlers on th
 | Fabric | NeoForge |
 |---|---|
 | `PayloadTypeRegistry` (play and configuration, both directions) | `RegisterPayloadHandlersEvent` registrar (`optional()`) |
-| Global and per-connection receivers, `PacketContext` | payload handlers, dispatched by connection |
+| Global and per-connection receivers, `PacketContext` (26.x API) | payload handlers, dispatched by connection |
 | `canSend` / `getSendable` | NeoForge's channel negotiation (`hasChannel`) |
 | `ServerPlayConnectionEvents`, channel `REGISTER` events | `PlayerLoggedIn/OutEvent` |
 | `ServerConfigurationConnectionEvents.BEFORE_CONFIGURE/CONFIGURE`, `addTask`, `completeTask` | `RegisterConfigurationTasksEvent`, `finishCurrentTask` |
