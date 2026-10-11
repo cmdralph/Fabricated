@@ -1,0 +1,202 @@
+package io.github.cmdralph.fabricated.core.remap;
+
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.io.StringReader;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import org.objectweb.asm.AnnotationVisitor;
+import org.objectweb.asm.ClassReader;
+import org.objectweb.asm.ClassWriter;
+import org.objectweb.asm.MethodVisitor;
+import org.objectweb.asm.Opcodes;
+import org.objectweb.asm.tree.AbstractInsnNode;
+import org.objectweb.asm.tree.ClassNode;
+import org.objectweb.asm.tree.FieldInsnNode;
+import org.objectweb.asm.tree.LdcInsnNode;
+import org.objectweb.asm.tree.MethodInsnNode;
+import org.objectweb.asm.tree.MethodNode;
+
+import io.github.cmdralph.fabricated.core.archive.ArchiveLimits;
+import io.github.cmdralph.fabricated.core.archive.SafeArchive;
+import io.github.cmdralph.fabricated.core.testutil.TestJars;
+
+class RemapTest {
+	/** official -> intermediary, as Fabric publishes it. */
+	static final String TINY = String.join("\n",
+			"v1\tofficial\tintermediary",
+			"CLASS\ta\tnet/minecraft/class_1",
+			"CLASS\tb\tnet/minecraft/class_2",
+			"CLASS\tb$a\tnet/minecraft/class_2$class_3",
+			"FIELD\ta\tLb;\tc\tfield_10",
+			"FIELD\ta\tI\tc\tfield_11",
+			"METHOD\ta\t(Lb;)V\td\tmethod_20",
+			"METHOD\ta\t(I)Lb;\td\tmethod_21",
+			"METHOD\tb\t()V\te\tmethod_22",
+			"") ;
+
+	/** mojang -> official (ProGuard), including overloaded obfuscated names and inlining suffixes. */
+	static final String PROGUARD = String.join("\n",
+			"# a comment",
+			"net.minecraft.world.Level -> a:",
+			"    net.minecraft.world.Entity owner -> c",
+			"    int count -> c",
+			"    1:5:void addEntity(net.minecraft.world.Entity) -> d",
+			"    6:7:net.minecraft.world.Entity entityAt(int):12:13 -> d",
+			"net.minecraft.world.Entity -> b:",
+			"    void tick() -> e",
+			"net.minecraft.world.Entity$Removal -> b$a:",
+			"");
+
+	static MappingTable table() throws Exception {
+		return MappingComposer.compose(new StringReader(TINY), new StringReader(PROGUARD));
+	}
+
+	@Test
+	void composesIntermediaryWithMojangMappings() throws Exception {
+		MappingTable t = table();
+		assertEquals("net/minecraft/world/Level", t.mapClass("net/minecraft/class_1"));
+		assertEquals("net/minecraft/world/Entity$Removal", t.mapClass("net/minecraft/class_2$class_3"));
+		assertEquals("owner", t.mapMemberFlat("field_10"));
+		assertEquals("count", t.mapMemberFlat("field_11"), "overloaded obfuscated field names are joined by descriptor");
+		assertEquals("addEntity", t.mapMemberFlat("method_20"));
+		assertEquals("entityAt", t.mapMemberFlat("method_21"), "inlining suffix is stripped");
+		assertEquals("tick", t.mapMemberFlat("method_22"));
+		assertEquals("net/minecraft/class_1", t.unmapClass("net/minecraft/world/Level"));
+		assertEquals("unknown/Name", t.mapClass("unknown/Name"));
+	}
+
+	@Test
+	void ambiguousNamesFallBackToQualifiedLookup() {
+		MappingTable t = MappingTable.fromMembers(Map.of(), Map.of("method_5", Map.of(
+				"net/minecraft/class_1.method_5()V", "first",
+				"net/minecraft/class_9.method_5()V", "second")));
+		assertNull(t.mapMemberFlat("method_5"));
+		assertEquals("first", t.mapMember("net/minecraft/class_1", "method_5", "()V"));
+		assertEquals("second", t.mapMember("net/minecraft/class_9", "method_5", "()V"));
+		assertEquals("method_5", t.mapMember(null, "method_5", null));
+	}
+
+	@Test
+	void serializationRoundTripsDeterministically() throws Exception {
+		MappingTable t = table();
+		byte[] a = t.serialize();
+		MappingTable back = MappingTable.deserialize(a);
+		assertArrayEquals(a, back.serialize());
+		assertEquals(t.mapClass("net/minecraft/class_1"), back.mapClass("net/minecraft/class_1"));
+	}
+
+	@Test
+	void tokenRemapperTouchesOnlyIntermediaryTokens() throws Exception {
+		TokenRemapper r = new TokenRemapper(table());
+		assertEquals("Lnet/minecraft/world/Level;addEntity(Lnet/minecraft/world/Entity;)V",
+				r.remap("Lnet/minecraft/class_1;method_20(Lnet/minecraft/class_2;)V"));
+		assertEquals("net.minecraft.world.Entity$Removal", r.remap("net.minecraft.class_2$class_3"));
+		assertEquals("my_method_20_helper", r.remap("my_method_20_helper"), "embedded tokens are not touched");
+		assertEquals("field_99999", r.remap("field_99999"), "unknown tokens stay");
+		assertEquals("plain text", r.remap("plain text"));
+	}
+
+	@Test
+	void remapsBytecodeAnnotationsAndStrings() throws Exception {
+		byte[] input = sampleModClass();
+		byte[] out = new JarRemapper(table()).remapClass(input, "test");
+		ClassNode node = new ClassNode();
+		new ClassReader(out).accept(node, 0);
+
+		assertEquals("net/minecraft/world/Entity", node.superName, "superclass remapped");
+		MethodNode tick = node.methods.stream().filter(m -> m.name.equals("tick")).findFirst().orElse(null);
+		assertTrue(tick != null, "override of method_22 renamed to tick so it still overrides");
+		assertTrue(node.fields.stream().anyMatch(f -> f.name.equals("owner") && f.desc.equals("Lnet/minecraft/world/Entity;")),
+				"shadow-style field declaration renamed");
+
+		MethodNode run = node.methods.stream().filter(m -> m.name.equals("run")).findFirst().orElseThrow();
+		List<String> calls = new ArrayList<>();
+		List<String> strings = new ArrayList<>();
+		for (AbstractInsnNode insn : run.instructions) {
+			if (insn instanceof MethodInsnNode m) calls.add(m.owner + "." + m.name + m.desc);
+			if (insn instanceof FieldInsnNode f) calls.add(f.owner + "." + f.name + ":" + f.desc);
+			if (insn instanceof LdcInsnNode l && l.cst instanceof String s) strings.add(s);
+		}
+		assertTrue(calls.contains("net/minecraft/world/Level.addEntity(Lnet/minecraft/world/Entity;)V"), calls.toString());
+		assertTrue(calls.contains("net/minecraft/world/Level.count:I"), calls.toString());
+		assertEquals(List.of("net.minecraft.world.Level", "user text"), strings);
+
+		String annotationValue = (String) node.invisibleAnnotations.getFirst().values.get(1);
+		assertEquals("Lnet/minecraft/world/Level;addEntity(Lnet/minecraft/world/Entity;)V", annotationValue);
+	}
+
+	@Test
+	void remapIsDeterministic() throws Exception {
+		JarRemapper remapper = new JarRemapper(table());
+		assertArrayEquals(remapper.remapClass(sampleModClass(), "a"), remapper.remapClass(sampleModClass(), "a"));
+	}
+
+	@Test
+	void remapsWholeJarIncludingRefmapsAndStripsSignatures(@TempDir Path tmp) throws Exception {
+		Path jar = TestJars.create()
+				.text("META-INF/MANIFEST.MF", "Manifest-Version: 1.0\r\nMain-Class: x.Y\r\n\r\nName: a/B.class\r\nSHA-256-Digest: abc\r\n\r\n")
+				.text("META-INF/SIGNER.SF", "sig")
+				.text("META-INF/SIGNER.RSA", "sig")
+				.bytes("com/example/ModClass.class", sampleModClass())
+				.text("example.refmap.json", "{\"mappings\":{\"com/example/Mixin\":{\"addEntity\":\"Lnet/minecraft/class_1;method_20(Lnet/minecraft/class_2;)V\"}}}")
+				.text("META-INF/services/net.minecraft.class_1", "net.minecraft.class_2\n")
+				.write(tmp.resolve("mod.jar"));
+		try (SafeArchive archive = SafeArchive.open(jar, ArchiveLimits.DEFAULTS)) {
+			JarRemapper.Result result = new JarRemapper(table()).remap(archive, Set.of("example.refmap.json"));
+			assertEquals(List.of("META-INF/SIGNER.SF", "META-INF/SIGNER.RSA"), result.strippedSignatureFiles());
+			String manifest = new String(result.files().get("META-INF/MANIFEST.MF"), StandardCharsets.UTF_8);
+			assertTrue(manifest.contains("Main-Class: x.Y"));
+			assertFalse(manifest.contains("Digest"));
+			String refmap = new String(result.files().get("example.refmap.json"), StandardCharsets.UTF_8);
+			assertTrue(refmap.contains("Lnet/minecraft/world/Level;addEntity(Lnet/minecraft/world/Entity;)V"), refmap);
+			assertEquals("net.minecraft.world.Entity\n",
+					new String(result.files().get("META-INF/services/net.minecraft.world.Level"), StandardCharsets.UTF_8));
+		}
+	}
+
+	/** A class shaped like a production Fabric mod class compiled against intermediary. */
+	static byte[] sampleModClass() {
+		ClassWriter cw = new ClassWriter(0);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, "com/example/ModClass", null, "net/minecraft/class_2", null);
+		AnnotationVisitor av = cw.visitAnnotation("Lcom/example/Target;", false);
+		av.visit("value", "Lnet/minecraft/class_1;method_20(Lnet/minecraft/class_2;)V");
+		av.visitEnd();
+		cw.visitField(Opcodes.ACC_PRIVATE, "field_10", "Lnet/minecraft/class_2;", null, null).visitEnd();
+
+		MethodVisitor tick = cw.visitMethod(Opcodes.ACC_PUBLIC, "method_22", "()V", null, null);
+		tick.visitCode();
+		tick.visitInsn(Opcodes.RETURN);
+		tick.visitMaxs(0, 1);
+		tick.visitEnd();
+
+		MethodVisitor run = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "run", "(Lnet/minecraft/class_1;Lnet/minecraft/class_2;)V", null, null);
+		run.visitCode();
+		run.visitVarInsn(Opcodes.ALOAD, 0);
+		run.visitVarInsn(Opcodes.ALOAD, 1);
+		run.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "net/minecraft/class_1", "method_20", "(Lnet/minecraft/class_2;)V", false);
+		run.visitVarInsn(Opcodes.ALOAD, 0);
+		run.visitFieldInsn(Opcodes.GETFIELD, "net/minecraft/class_1", "field_11", "I");
+		run.visitInsn(Opcodes.POP);
+		run.visitLdcInsn("net.minecraft.class_1");
+		run.visitInsn(Opcodes.POP);
+		run.visitLdcInsn("user text");
+		run.visitInsn(Opcodes.POP);
+		run.visitInsn(Opcodes.RETURN);
+		run.visitMaxs(2, 2);
+		run.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+}

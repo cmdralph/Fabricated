@@ -1,0 +1,29 @@
+// Root build: conventions shared by every project.
+allprojects {
+    group = rootProject.group
+    version = rootProject.fabricated_version
+}
+
+subprojects {
+    plugins.withType(JavaPlugin).configureEach {
+        java {
+            withSourcesJar()
+        }
+        tasks.withType(JavaCompile).configureEach {
+            options.encoding = 'UTF-8'
+            options.compilerArgs.addAll(['-Xlint:all,-processing,-serial,-classfile,-options', '-Werror'])
+        }
+        tasks.withType(AbstractArchiveTask).configureEach {
+            // Deterministic archives: stable order, no timestamps.
+            preserveFileTimestamps = false
+            reproducibleFileOrder = true
+        }
+        tasks.withType(Test).configureEach {
+            useJUnitPlatform()
+            testLogging {
+                events 'failed', 'skipped'
+                exceptionFormat 'full'
+            }
+        }
+    }
+}
