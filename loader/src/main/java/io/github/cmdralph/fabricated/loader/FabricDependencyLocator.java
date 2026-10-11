@@ -141,7 +141,7 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 
 		FabricApiPlan plan = FabricApiPlan.parse(new String(FabricatedInfo.readOptional("fabric-api-plan.json"), StandardCharsets.UTF_8));
 		Pipeline.Input input = new Pipeline.Input(gameDir, FMLPaths.CONFIGDIR.get(), logsDir, fabricJars, mcVersion, neoVersion,
-				client, info.namespace(), runtimeMixinVersion(info), info.fabricatedVersion(), !fml.isProduction(), gameClasses, untransformable,
+				client, info.namespace(), runtimeMixinVersion(info), info.mixinLowest(), info.fabricatedVersion(), !fml.isProduction(), gameClasses, untransformable,
 				platformPackages, plan, nativeApi, neoForgeMods,
 				cache -> IntermediaryMappings.load(cache, mcVersion, client, null),
 				fml.getProgramArgs().getArguments());

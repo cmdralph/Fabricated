@@ -175,7 +175,8 @@ public final class ModTranslator {
 	private List<ModsTomlWriter.MixinConfigSpec> processMixins(Candidate candidate, ModOverride override, FileView files,
 			Map<String, byte[]> overlay, List<PreflightFinding> findings) throws ArchiveException, TranslationException {
 		FabricModMetadata md = candidate.metadata();
-		String behavior = MixinCompat.clampForNeoForge(MixinCompat.fabricBehaviorVersion(md.getDependencies()), env.runtimeMixinVersion());
+		String behavior = MixinCompat.clampForNeoForge(MixinCompat.fabricBehaviorVersion(md.getDependencies()), env.runtimeMixinVersion(),
+				env.lowestMixinBehavior());
 		EnvType side = env.clientSide() ? EnvType.CLIENT : EnvType.SERVER;
 		List<ModsTomlWriter.MixinConfigSpec> specs = new ArrayList<>();
 		MixinPreflight preflight = new MixinPreflight(env.game(), classSource(files), env.untransformable(), env.clientSide());

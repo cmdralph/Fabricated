@@ -107,6 +107,7 @@ def versionProperties = tasks.register('fabricatedVersionProperties', WritePrope
     property 'minecraft.version', mcVersion
     property 'namespace', project.namespace
     property 'mixin.fallback', project.mixin_fallback
+    property 'mixin.lowest', project.mixin_lowest
 }
 
 // --- Intermediary (obfuscated Minecraft versions only) ------------------------------------------------

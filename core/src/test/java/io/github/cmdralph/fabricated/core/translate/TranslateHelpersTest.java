@@ -50,9 +50,10 @@ class TranslateHelpersTest {
 		var noDep = FabricModJsonParser.parse("{\"schemaVersion\":1,\"id\":\"aaa\",\"version\":\"1\"}");
 		assertEquals("0.9.2", MixinCompat.fabricBehaviorVersion(noDep.getDependencies()));
 
-		assertEquals("0.16.5", MixinCompat.clampForNeoForge("0.10.0", "0.17.4+mixin.0.8.7"), "raised to NeoForge's minimum");
-		assertEquals("0.16.5", MixinCompat.clampForNeoForge("0.17.4", "0.16.5+mixin.0.8.7"), "lowered to the running Mixin on 1.21.11");
-		assertEquals("0.17.1", MixinCompat.clampForNeoForge("0.17.1", "0.17.4+mixin.0.8.7"));
+		assertEquals("0.16.5", MixinCompat.clampForNeoForge("0.10.0", "0.16.5+mixin.0.8.7", "0.16.5"), "raised to FML 10's minimum");
+		assertEquals("0.17.1", MixinCompat.clampForNeoForge("0.17.0", "0.17.4+mixin.0.8.7", "0.17.1"), "raised to FML 11/12's minimum");
+		assertEquals("0.16.5", MixinCompat.clampForNeoForge("0.17.4", "0.16.5+mixin.0.8.7", "0.16.5"), "lowered to the running Mixin on 1.21.11");
+		assertEquals("0.17.1", MixinCompat.clampForNeoForge("0.17.1", "0.17.4+mixin.0.8.7", "0.17.1"));
 	}
 
 	@Test

@@ -1,6 +1,9 @@
 # Fabricated — Architecture (Phase 1 proposal)
 
-> Status: **proposal, awaiting approval.** Facts referenced here are verified in [`RESEARCH.md`](RESEARCH.md).
+> Status: **approved and implemented in 0.1.0**, with one exception: the Fabric API plan in §6.2. Of the
+> modules marked Native there, only `fabric-api-base` and `fabric-crash-report-info-v1` are native so far;
+> the rest are pass-through until implemented. The measured state for each version is in
+> [`COMPATIBILITY.md`](COMPATIBILITY.md). Facts referenced here are verified in [`RESEARCH.md`](RESEARCH.md).
 > Items marked **[verify-in-build]** were confirmed in loader source code. They still get an automated test in Phase 2 before being relied on.
 
 ## 0. Goals and non-goals

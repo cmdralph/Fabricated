@@ -23,6 +23,7 @@ public record TranslationEnvironment(
 		boolean clientSide,
 		Namespace namespace,
 		String runtimeMixinVersion,
+		String lowestMixinBehavior,
 		String fabricatedVersion,
 		MappingTable mappings,
 		String mappingsHash,
@@ -30,7 +31,7 @@ public record TranslationEnvironment(
 		ClassBytesSource untransformable) {
 
 	/** Bumped whenever translation output changes for the same inputs. */
-	public static final int TRANSLATION_SCHEMA = 2;
+	public static final int TRANSLATION_SCHEMA = 3;
 
 	/** Namespace Fabric mods are distributed in. */
 	public enum Namespace {

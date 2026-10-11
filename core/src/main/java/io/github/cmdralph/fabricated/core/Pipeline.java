@@ -90,6 +90,7 @@ public final class Pipeline {
 			boolean clientSide,
 			Namespace namespace,
 			String runtimeMixinVersion,
+			String lowestMixinBehavior,
 			String fabricatedVersion,
 			boolean development,
 			ClassBytesSource gameClasses,
@@ -225,7 +226,7 @@ public final class Pipeline {
 				Mappings m = in.mappings().get(cache);
 				mappingTable = m.table();
 				env = new TranslationEnvironment(in.minecraftVersion(), in.neoForgeVersion(), in.clientSide(), in.namespace(),
-						in.runtimeMixinVersion(), in.fabricatedVersion(), mappingTable, m.hash(), new ClassIndex(in.gameClasses()),
+						in.runtimeMixinVersion(), in.lowestMixinBehavior(), in.fabricatedVersion(), mappingTable, m.hash(), new ClassIndex(in.gameClasses()),
 						in.untransformableClasses());
 				report.environment("Mappings", mappingTable.classCount() + " classes, " + mappingTable.memberCount() + " members");
 			} catch (MappingException | IOException e) {
@@ -239,7 +240,7 @@ public final class Pipeline {
 			}
 		} else {
 			env = new TranslationEnvironment(in.minecraftVersion(), in.neoForgeVersion(), in.clientSide(), in.namespace(),
-					in.runtimeMixinVersion(), in.fabricatedVersion(), null, "none", new ClassIndex(in.gameClasses()),
+					in.runtimeMixinVersion(), in.lowestMixinBehavior(), in.fabricatedVersion(), null, "none", new ClassIndex(in.gameClasses()),
 					in.untransformableClasses());
 		}
 		if (mappingTable != null) {
