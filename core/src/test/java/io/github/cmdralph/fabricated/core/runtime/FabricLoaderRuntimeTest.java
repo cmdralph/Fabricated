@@ -127,4 +127,20 @@ class FabricLoaderRuntimeTest {
 		assertEquals("official", id.getCurrentRuntimeNamespace());
 		assertEquals("a.B", id.mapClassName("intermediary", "a.B"));
 	}
+
+	@Test
+	void sanitizedLaunchArgumentsDropEverySensitiveValue() {
+		FabricLoaderRuntime rt = new FabricLoaderRuntime(EnvType.CLIENT, Path.of("game"), Path.of("game/config"), "26.2", false,
+				MappingResolvers.identity(), () -> new String[] {"--username", "Steve", "--proxyPass", "hunter2", "--UUID", "abc",
+						"--userProperties", "{}", "--accessToken=secret", "--gameDir", "game"});
+		assertEquals(List.of("--gameDir", "game"), List.of(rt.getLaunchArguments(true)));
+	}
+
+	@Test
+	void hyphenatedFabricIdsFindTheirNeoForgeBuild() throws Exception {
+		FabricLoaderRuntime rt = runtime();
+		mod(rt, "cloth_config", "missing.Main");
+		org.junit.jupiter.api.Assertions.assertTrue(rt.isModLoaded("cloth-config"));
+		org.junit.jupiter.api.Assertions.assertTrue(rt.getModContainer("cloth-config").isPresent());
+	}
 }

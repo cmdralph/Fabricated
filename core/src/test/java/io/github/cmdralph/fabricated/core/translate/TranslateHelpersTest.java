@@ -65,4 +65,14 @@ class TranslateHelpersTest {
 		assertEquals(List.of("B"), reparsed.mixinsFor(false));
 		assertEquals("com/example/mixin/B", reparsed.internalName("B"));
 	}
+
+	@Test
+	void contactUrlsNeoForgeWouldRejectAreLeftOut() {
+		java.util.List<String> notes = new java.util.ArrayList<>();
+		org.junit.jupiter.api.Assertions.assertEquals("https://github.com/x/y/issues", ModTranslator.url("https://github.com/x/y/issues", "issues", notes));
+		org.junit.jupiter.api.Assertions.assertNull(ModTranslator.url("github.com/x/y/issues", "issues", notes));
+		org.junit.jupiter.api.Assertions.assertNull(ModTranslator.url("discord.gg/abc def", "homepage", notes));
+		org.junit.jupiter.api.Assertions.assertNull(ModTranslator.url("  ", "homepage", notes));
+		org.junit.jupiter.api.Assertions.assertEquals(2, notes.size());
+	}
 }

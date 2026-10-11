@@ -42,16 +42,50 @@ public final class CandidateScanner {
 	}
 
 	public Result scan(List<Path> topLevelJars) {
-		Map<String, Candidate> byId = new LinkedHashMap<>();
+		List<Candidate> all = new ArrayList<>();
 		List<Rejected> rejected = new ArrayList<>();
 		List<String> notes = new ArrayList<>();
 		for (Path jar : topLevelJars) {
-			scanJar(jar, jar.getFileName().toString(), null, 0, byId, rejected, notes);
+			scanJar(jar, jar.getFileName().toString(), null, 0, all, rejected, notes);
 		}
-		return new Result(List.copyOf(byId.values()), List.copyOf(rejected), List.copyOf(notes));
+		return new Result(List.copyOf(select(all, notes).values()), List.copyOf(rejected), List.copyOf(notes));
 	}
 
-	private void scanJar(Path jar, String origin, String parentId, int depth, Map<String, Candidate> byId,
+	/**
+	 * Picks one candidate per mod id, the highest version, as Fabric Loader does. A nested jar only competes when the
+	 * jar containing it was picked: the libraries an older, unused copy of a mod bundles are not loaded.
+	 */
+	private static Map<String, Candidate> select(List<Candidate> all, List<String> notes) {
+		Map<String, Candidate> chosen = Map.of();
+		// Choosing a nested copy of a mod can make that copy's own nested jars eligible, so repeat until stable.
+		for (int round = 0; round < 8; round++) {
+			Map<String, Candidate> next = new LinkedHashMap<>();
+			for (Candidate c : all) {
+				if (c.parentId() != null && !containedInChosen(c, chosen)) continue;
+				Candidate existing = next.get(c.id());
+				if (existing == null || c.metadata().getVersion().compareTo(existing.metadata().getVersion()) > 0) next.put(c.id(), c);
+			}
+			if (next.equals(chosen)) break;
+			chosen = next;
+		}
+		for (Candidate c : all) {
+			Candidate winner = chosen.get(c.id());
+			if (winner == null || winner == c || winner.sha256().equals(c.sha256())) continue;
+			if (c.parentId() != null && !containedInChosen(c, chosen)) continue;
+			notes.add(c.metadata().getVersion().compareTo(winner.metadata().getVersion()) < 0
+					? "Using " + winner + " instead of older " + c
+					: "Ignoring " + c + "; " + winner + " is the same or newer");
+		}
+		return chosen;
+	}
+
+	private static boolean containedInChosen(Candidate nested, Map<String, Candidate> chosen) {
+		Candidate parent = chosen.get(nested.parentId());
+		return parent != null && nested.origin().startsWith(parent.origin() + "!/") && nested.depth() == parent.depth() + 1;
+	}
+
+	/** @return the candidate for this jar (added to {@code all} with its nested jars), or null if unusable */
+	private Candidate scanJar(Path jar, String origin, String parentId, int depth, List<Candidate> all,
 			List<Rejected> rejected, List<String> notes) {
 		FabricModMetadata metadata;
 		List<byte[]> nestedData = new ArrayList<>();
@@ -61,7 +95,7 @@ public final class CandidateScanner {
 			String json = archive.readText(FABRIC_MOD_JSON);
 			if (json == null) {
 				rejected.add(new Rejected(origin, "no fabric.mod.json"));
-				return;
+				return null;
 			}
 			metadata = FabricModJsonParser.parse(json);
 			if (depth < limits.maxNestingDepth()) {
@@ -80,19 +114,19 @@ public final class CandidateScanner {
 			sha = cache.sha256(jar);
 		} catch (ArchiveException e) {
 			rejected.add(new Rejected(origin, "unsafe or corrupt archive: " + e.getMessage()));
-			return;
+			return null;
 		} catch (MetadataException e) {
 			rejected.add(new Rejected(origin, e.getMessage()));
-			return;
+			return null;
 		} catch (IOException e) {
 			rejected.add(new Rejected(origin, "could not read: " + e.getMessage()));
-			return;
+			return null;
 		}
 
 		String id = metadata.getId();
 		if (PlatformLibraries.PROVIDED_IDS.contains(id)) {
 			notes.add(origin + " bundles " + id + ", which NeoForge already provides; the bundled copy is not loaded");
-			return;
+			return null;
 		}
 
 		List<String> children = new ArrayList<>();
@@ -100,8 +134,7 @@ public final class CandidateScanner {
 			try {
 				Path extracted = cache.storeNested(nestedData.get(i));
 				String childOrigin = origin + "!/" + nestedNames.get(i);
-				scanJar(extracted, childOrigin, id, depth + 1, byId, rejected, notes);
-				Candidate child = findByPath(byId, extracted);
+				Candidate child = scanJar(extracted, childOrigin, id, depth + 1, all, rejected, notes);
 				if (child != null) children.add(child.id());
 			} catch (IOException e) {
 				rejected.add(new Rejected(origin + "!/" + nestedNames.get(i), "could not extract: " + e.getMessage()));
@@ -111,22 +144,8 @@ public final class CandidateScanner {
 		CustomValue generated = metadata.getCustomValue("fabric-loom:generated");
 		boolean generatedLibrary = generated != null && generated.getType() == CustomValue.CvType.BOOLEAN && generated.getAsBoolean();
 		Candidate candidate = new Candidate(jar, sha, metadata, origin, parentId, depth, generatedLibrary, List.copyOf(children));
-
-		Candidate existing = byId.get(id);
-		if (existing == null) {
-			byId.put(id, candidate);
-		} else if (metadata.getVersion().compareTo(existing.metadata().getVersion()) > 0) {
-			notes.add("Using " + candidate + " instead of older " + existing);
-			byId.put(id, candidate);
-		} else if (!existing.sha256().equals(sha)) {
-			notes.add("Ignoring " + candidate + "; " + existing + " is the same or newer");
-		}
+		all.add(candidate);
+		return candidate;
 	}
 
-	private static Candidate findByPath(Map<String, Candidate> byId, Path path) {
-		for (Candidate c : byId.values()) {
-			if (c.path().equals(path)) return c;
-		}
-		return null;
-	}
 }

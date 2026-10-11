@@ -66,8 +66,11 @@ public final class Pipeline {
 	/** Supplies the intermediary mapping table on demand (only for obfuscated versions). */
 	@FunctionalInterface
 	public interface MappingSupplier {
-		/** @return the table and a hash identifying it */
-		Mappings get(TranslationCache cache) throws MappingException, IOException;
+		/**
+		 * @param mojangMappingsPath the {@code mojangMappingsPath} setting (null to find the file NeoForge's installer left)
+		 * @return the table and a hash identifying it
+		 */
+		Mappings get(TranslationCache cache, String mojangMappingsPath) throws MappingException, IOException;
 	}
 
 	/** A mapping table and its identity hash. */
@@ -222,9 +225,10 @@ public final class Pipeline {
 
 		// Mappings (obfuscated versions only).
 		TranslationEnvironment env;
-		if (in.namespace() == Namespace.INTERMEDIARY) {
+		// Without Fabric mods to translate the table isn't needed; skip building it (it takes a few seconds).
+		if (in.namespace() == Namespace.INTERMEDIARY && !eligible.isEmpty()) {
 			try {
-				Mappings m = in.mappings().get(cache);
+				Mappings m = in.mappings().get(cache, config.mojangMappingsPath());
 				mappingTable = m.table();
 				env = new TranslationEnvironment(in.minecraftVersion(), in.neoForgeVersion(), in.clientSide(), in.namespace(),
 						in.runtimeMixinVersion(), in.lowestMixinBehavior(), in.fabricatedVersion(), mappingTable, m.hash(), new ClassIndex(in.gameClasses()),
@@ -395,7 +399,7 @@ public final class Pipeline {
 
 			ModOrigin origin = c.parentId() == null
 					? new ModContainerImpl.Origin(ModOrigin.Kind.PATH, List.of(c.path()), null, null)
-					: new ModContainerImpl.Origin(ModOrigin.Kind.NESTED, List.of(), c.parentId(), c.origin().substring(c.origin().indexOf("!/") + 2));
+					: new ModContainerImpl.Origin(ModOrigin.Kind.NESTED, List.of(), c.parentId(), c.origin().substring(c.origin().lastIndexOf("!/") + 2));
 			ModContainerImpl container = new ModContainerImpl(c.metadata(), List.of(t.jar()), origin,
 					finalIds.contains(c.parentId()) ? c.parentId() : null,
 					c.nestedChildren().stream().filter(finalIds::contains).toList(), runtime);
@@ -481,7 +485,7 @@ public final class Pipeline {
 					if (o == null) {
 						Map<String, Path> built = new HashMap<>();
 						for (TranslatedMod t : mods) {
-							try (SafeArchive archive = SafeArchive.open(t.jar(), limits)) {
+							try (SafeArchive archive = SafeArchive.open(t.jar(), limits.forTranslatedJars())) {
 								for (String name : archive.entryNames()) {
 									if (name.endsWith(".class") && !name.startsWith("META-INF/")) built.putIfAbsent(name, t.jar());
 								}
@@ -507,7 +511,7 @@ public final class Pipeline {
 					synchronized (this) {
 						archive = open.get(jar);
 						if (archive == null) {
-							archive = SafeArchive.open(jar, limits);
+							archive = SafeArchive.open(jar, limits.forTranslatedJars());
 							open.put(jar, archive);
 						}
 					}

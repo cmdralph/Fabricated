@@ -45,4 +45,9 @@ class JsonTest {
 		assertEquals(json, written);
 		assertEquals(written, Json.write(Json.parse(Json.write(parsed, true)), false));
 	}
+
+	@Test
+	void acceptsRawLineBreaksInStringsLikeGson() throws Exception {
+		assertEquals(Map.of("description", "line one\nline two"), Json.parseObject("{\"description\": \"line one\nline two\"}"));
+	}
 }

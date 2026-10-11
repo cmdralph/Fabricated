@@ -167,7 +167,7 @@ public final class TranslationCache {
 		String sha = Hashing.sha256(data);
 		Path target = root.resolve("nested").resolve(sha + ".jar");
 		if (Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS) && (!verify || Hashing.sha256(target).equals(sha))) {
-			lastUsed.put("nested/" + sha, launch);
+			lastUsed.put("nested/" + sha + ".jar", launch);
 			return target;
 		}
 		Path tmp = Files.createTempFile(root.resolve("tmp"), "nested", ".jar");
@@ -177,8 +177,18 @@ public final class TranslationCache {
 		} finally {
 			Files.deleteIfExists(tmp);
 		}
-		lastUsed.put("nested/" + sha, launch);
+		lastUsed.put("nested/" + sha + ".jar", launch);
 		return target;
+	}
+
+	/**
+	 * Records that a nested jar stored by another cache object on the same directory (Fabricated's own in-game mod,
+	 * extracted before the pipeline's cache exists) was used this launch, so this cache's cleanup keeps it. Only one
+	 * cache object per launch may call {@link #finish}: it owns the index.
+	 */
+	public void markNestedUsed(Path nestedJar) {
+		String file = nestedJar.getFileName().toString();
+		if (file.endsWith(".jar") && SAFE_NAME.matcher(file).matches()) lastUsed.put("nested/" + file, launch);
 	}
 
 	/** Stores an arbitrary content-addressed blob (e.g. a mapping table) under {@code blobs/}. */
@@ -306,8 +316,13 @@ public final class TranslationCache {
 	}
 
 	private void cleanTmp() {
+		// Leftovers from a crashed launch. Recent files may belong to another game instance using the same game
+		// directory right now (a client and a server started from one folder), so they are left alone.
+		long cutoff = System.currentTimeMillis() - 60 * 60 * 1000L;
 		try (DirectoryStream<Path> stream = Files.newDirectoryStream(root.resolve("tmp"))) {
-			for (Path p : stream) deleteQuietly(p);
+			for (Path p : stream) {
+				if (Files.getLastModifiedTime(p, LinkOption.NOFOLLOW_LINKS).toMillis() < cutoff) deleteQuietly(p);
+			}
 		} catch (IOException e) {
 			notes.add("Could not clean temporary cache files: " + e.getMessage());
 		}

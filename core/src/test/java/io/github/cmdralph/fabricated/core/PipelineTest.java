@@ -221,7 +221,7 @@ class PipelineTest {
 				.write(game.resolve("mods/old.jar"));
 
 		Pipeline.Result result = Pipeline.run(input(game, List.of(jar), Namespace.INTERMEDIARY, Map.of(TARGET, targetClass()),
-				cache -> new Pipeline.Mappings(table, "test-hash")));
+				(cache, path) -> new Pipeline.Mappings(table, "test-hash")));
 		assertEquals(1, result.mods().size(), result.report().render());
 		Path remapped = result.mods().getFirst().translated().jar();
 		assertTrue(remapped.toString().endsWith("remapped.jar"));
@@ -249,7 +249,7 @@ class PipelineTest {
 	void missingMappingsDisableModsWithAClearMessage(@TempDir Path game) throws Exception {
 		Path jar = TestJars.create().fabricModJson(TestJars.modJson("old-mod", "1.0", "")).write(game.resolve("mods/old.jar"));
 		Pipeline.Result result = Pipeline.run(input(game, List.of(jar), Namespace.INTERMEDIARY, Map.of(),
-				cache -> {
+				(cache, path) -> {
 					throw new io.github.cmdralph.fabricated.core.remap.MappingException("client-1.21.11-mappings.txt not found");
 				}));
 		assertTrue(result.mods().isEmpty());
