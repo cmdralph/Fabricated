@@ -42,7 +42,8 @@ that NeoForge has already changed. Fabricated handles this per module:
   apply are disabled, along with every mod that requires them, with an explanation.
 - **Unsupported**: development-only modules (game tests, data generation).
 
-So a Fabric mod that needs only the Fabric Loader API, `fabric-api-base` or pass-through modules that
+With the official Fabric API jar installed, the server boots on all four versions. The modules that can't
+work are disabled, and the rest load. So a Fabric mod that needs only the Fabric Loader API, `fabric-api-base` or pass-through modules that
 survive pre-flight works today. A mod that needs Fabric networking, registry sync, items, transfer and
 similar modules does not work yet. The per-module details are in [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md).
 

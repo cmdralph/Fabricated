@@ -8,23 +8,22 @@ from expectations. CI boots each version twice:
 2. **With the official Fabric API jar** added: informational. The resulting `fabric-bridge-report.txt` is
    kept as a CI artifact (`smoke-fabric-api-<version>`), and the tables below are taken from it.
 
-Last updated from CI run [38101258203](https://github.com/cmdralph/Fabricated/actions/runs/38101258203)
-(Fabricated 0.1.0, dedicated server).
+Last updated from CI runs [38101258203](https://github.com/cmdralph/Fabricated/actions/runs/38101258203) (module
+tables) and [38101839603](https://github.com/cmdralph/Fabricated/actions/runs/38101839603) (boot results).
+Fabricated 0.1.0, dedicated server.
 
 ## Minecraft versions
 
 | Minecraft | NeoForge | Fabric API tested | Test mods | Server boots with Fabric API |
 |---|---|---|---|---|
 | 1.21.11 | 21.11.45 | 0.141.6+1.21.11 | ✅ all 13 checks | ✅ boots, all test-mod checks still pass |
-| 26.1.2 | 26.1.2.116 | 0.155.3+26.1.2 | ✅ all 13 checks | ⏳ failed in run 38101258203 (see note) |
-| 26.2 | 26.2.0.90 | 0.161.0+26.2 | ✅ all 13 checks | ⏳ failed in run 38101258203 (see note) |
+| 26.1.2 | 26.1.2.116 | 0.155.3+26.1.2 | ✅ all 13 checks | ✅ boots, all test-mod checks still pass |
+| 26.2 | 26.2.0.90 | 0.161.0+26.2 | ✅ all 13 checks | ✅ boots, all test-mod checks still pass |
 | 26.3 (beta) | 26.3.0.69-beta | 0.162.0+26.3 | ✅ all 13 checks | ✅ boots, all test-mod checks still pass |
 
-**Note on 26.1.2 and 26.2:** NeoForge stopped with "requests Mixin behavior version 0.17.0, which is older
-than the lowest supported version 0.17.1". FML 11 and 12 reject Mixin behaviour versions below 0.17.1, while
-FML 10 (1.21.11) accepts 0.16.5. Fabricated used a single minimum for every version. The minimum is now set
-per version (`mixin_lowest` in `mc/<version>/gradle.properties`). This row will be updated after the next
-CI run.
+"Boots with Fabric API" means the server starts with the full official Fabric API jar installed. Modules
+that can't work on NeoForge are disabled before any code runs (see below), and the rest load alongside
+Fabricated's test mods.
 
 The 13 test-mod checks: the server starts; a `main` entrypoint runs; the Fabric Loader API works; a custom
 entrypoint resolves; content registers directly into vanilla registries; `fabric-api-base` events fire; an
@@ -43,8 +42,6 @@ How to read the table:
 - **client**: client-only module, so not loaded on a dedicated server (the client isn't tested in CI yet).
 - **unsupported**: deliberately not loaded.
 - **—**: the module doesn't exist in that Fabric API version.
-
-For 26.1.2 and 26.2 the table shows Fabricated's decision before the Mixin issue noted above.
 
 | Module | 1.21.11 | 26.1.2 | 26.2 | 26.3 |
 |---|---|---|---|---|
