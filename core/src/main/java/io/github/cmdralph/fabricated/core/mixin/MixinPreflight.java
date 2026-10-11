@@ -26,9 +26,11 @@ import org.objectweb.asm.tree.TypeInsnNode;
  * mixin would make Mixin throw during class loading: a missing target class (non-{@code @Pseudo}) or
  * missing {@code @Shadow}/{@code @Overwrite}/{@code @Accessor}/{@code @Invoker} target in a
  * {@code required} config, or an injector whose effective {@code require} is at least 1 and whose
- * target method or injection point does not exist. Selectors and injection points it cannot evaluate
- * (wildcards, slices with ordinals, custom points, targets in other mods) are never reported as
- * failures. When the config declares a plugin, which may disable mixins at runtime, failures are
+ * target method or injection point does not exist (inside its {@code @Slice}, computed as Mixin does), or a
+ * target class that NeoForge loads without mixin support (the JDK, libraries such as DataFixerUpper), where
+ * the mixin would silently never apply. Selectors and injection points it cannot evaluate (wildcards,
+ * slice bounds other than member references or {@code HEAD}, custom points, targets in other mods) are
+ * never reported as failures. When the config declares a plugin, which may disable mixins at runtime, failures are
  * downgraded to warnings.
  */
 public final class MixinPreflight {
@@ -43,6 +45,7 @@ public final class MixinPreflight {
 
 	private final ClassIndex game;
 	private final ClassBytesSource modClasses;
+	private final ClassBytesSource untransformable;
 	private final boolean clientSide;
 	private final java.util.Map<String, java.util.Optional<ClassNode>> targetCache = new java.util.HashMap<>();
 
@@ -52,8 +55,17 @@ public final class MixinPreflight {
 	 * @param clientSide whether the physical side is the client
 	 */
 	public MixinPreflight(ClassIndex game, ClassBytesSource modClasses, boolean clientSide) {
+		this(game, modClasses, ClassBytesSource.EMPTY, clientSide);
+	}
+
+	/**
+	 * @param untransformable classes that exist at runtime but are loaded outside NeoForge's transforming class
+	 *                        loader (the JDK and libraries such as DataFixerUpper); mixins into them never apply
+	 */
+	public MixinPreflight(ClassIndex game, ClassBytesSource modClasses, ClassBytesSource untransformable, boolean clientSide) {
 		this.game = game;
 		this.modClasses = modClasses;
+		this.untransformable = untransformable;
 		this.clientSide = clientSide;
 	}
 
@@ -165,12 +177,23 @@ public final class MixinPreflight {
 				if (isGame) {
 					ctx.classLevel("Target class " + target.replace('/', '.') + " does not exist in this Minecraft/NeoForge version",
 							"The mod was likely built for a different Minecraft version, or NeoForge removed this class.");
+				} else if (isUntransformable(target)) {
+					ctx.classLevel("Target class " + target.replace('/', '.') + " is a library class that NeoForge loads without mixin support, so this mixin would silently never apply",
+							"Ask the mod author for a NeoForge version, or skip this mixin in config/fabricated.json if the feature is optional.");
 				} else {
 					ctx.info("Target " + target.replace('/', '.') + " is not a Minecraft class and was not verified");
 				}
 				continue;
 			}
 			checkMembers(mixin, targetNode, ctx);
+		}
+	}
+
+	private boolean isUntransformable(String target) {
+		try {
+			return untransformable.read(target) != null;
+		} catch (java.io.IOException e) {
+			return false;
 		}
 	}
 
@@ -309,7 +332,7 @@ public final class MixinPreflight {
 	private void checkInjector(AnnotationNode ann, ClassNode target, Context ctx) {
 		if (!(attr(ann, "method") instanceof List<?> selectors) || selectors.isEmpty()) return;
 		int require = attr(ann, "require") instanceof Integer r && r >= 0 ? r : ctx.config.defaultRequire();
-		boolean sliced = attr(ann, "slice") != null;
+		List<AnnotationNode> slices = annotationList(attr(ann, "slice"));
 		String injectorName = "@" + simpleName(ann.desc);
 
 		List<MethodNode> matched = new ArrayList<>();
@@ -341,9 +364,11 @@ public final class MixinPreflight {
 			String rawTarget = attr(at, "target") instanceof String t ? t : null;
 			int ordinal = attr(at, "ordinal") instanceof Integer i ? i : -1;
 			int opcode = attr(at, "opcode") instanceof Integer i ? i : -1;
+			AnnotationNode slice = sliceFor(at, slices);
 			Verdict verdict = Verdict.UNKNOWN;
 			for (MethodNode m : matched) {
-				Verdict v = evaluate(point, rawTarget == null ? null : ctx.resolve(rawTarget), ordinal, opcode, sliced, m);
+				Range range = slice == null ? Range.ALL : sliceRange(slice, m, ctx);
+				Verdict v = evaluate(point, rawTarget == null ? null : ctx.resolve(rawTarget), ordinal, opcode, range, m);
 				if (v == Verdict.FOUND) {
 					verdict = Verdict.FOUND;
 					break;
@@ -364,7 +389,82 @@ public final class MixinPreflight {
 		FOUND, MISSING, UNKNOWN
 	}
 
-	private Verdict evaluate(String point, String target, int ordinal, int opcode, boolean sliced, MethodNode method) {
+	/**
+	 * Instruction index range an injection point is searched in (inclusive). {@link #ALL} is the whole method;
+	 * {@link #UNEVALUATED} means a slice exists that pre-flight cannot compute, so only "the instruction occurs
+	 * nowhere in the method" can be concluded.
+	 */
+	private record Range(int start, int end) {
+		static final Range ALL = new Range(0, Integer.MAX_VALUE);
+		static final Range UNEVALUATED = new Range(-1, -1);
+	}
+
+	private static List<AnnotationNode> annotationList(Object value) {
+		List<AnnotationNode> ret = new ArrayList<>();
+		if (value instanceof AnnotationNode a) ret.add(a);
+		if (value instanceof List<?> list) {
+			for (Object o : list) {
+				if (o instanceof AnnotationNode a) ret.add(a);
+			}
+		}
+		return ret;
+	}
+
+	/** The {@code @Slice} an {@code @At} uses (matched by id, as Mixin does), or {@code null} for none. */
+	private static AnnotationNode sliceFor(AnnotationNode at, List<AnnotationNode> slices) {
+		if (slices.isEmpty()) return null;
+		String id = attr(at, "slice") instanceof String s ? s : "";
+		for (AnnotationNode slice : slices) {
+			String sliceId = attr(slice, "id") instanceof String s ? s : "";
+			if (sliceId.equals(id)) return slice;
+		}
+		return null;
+	}
+
+	/**
+	 * Mirrors Mixin's {@code MethodSlice.getSlice}: {@code from} defaults to the first instruction and falls back
+	 * to it when its point is not found; {@code to} defaults to the last instruction and falls back to the
+	 * start. Points select their first match (or the {@code ordinal}-th). Only member-reference points
+	 * ({@code INVOKE}, {@code FIELD}, {@code NEW}) and {@code HEAD} are evaluated.
+	 */
+	private Range sliceRange(AnnotationNode slice, MethodNode method, Context ctx) {
+		int max = method.instructions.size() - 1;
+		int start = slicePoint(annotationOrNull(attr(slice, "from")), method, ctx, 0, 0);
+		if (start == UNEVALUATED_INDEX) return Range.UNEVALUATED;
+		int end = slicePoint(annotationOrNull(attr(slice, "to")), method, ctx, max, start);
+		if (end == UNEVALUATED_INDEX || start > end) return Range.UNEVALUATED;
+		return new Range(start, end);
+	}
+
+	private static final int UNEVALUATED_INDEX = Integer.MIN_VALUE;
+
+	private static AnnotationNode annotationOrNull(Object value) {
+		return value instanceof AnnotationNode a ? a : null;
+	}
+
+	private int slicePoint(AnnotationNode at, MethodNode method, Context ctx, int defaultValue, int failValue) {
+		if (at == null) return defaultValue;
+		String point = attr(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
+		if (point.equals("HEAD")) return 0;
+		if (!point.equals("INVOKE") && !point.equals("INVOKE_ASSIGN") && !point.equals("FIELD") && !point.equals("NEW")) return UNEVALUATED_INDEX;
+		String rawTarget = attr(at, "target") instanceof String t ? t : null;
+		if (rawTarget == null || rawTarget.contains(":LAST") || rawTarget.contains(":ONE") || rawTarget.contains(":FIRST")) return UNEVALUATED_INDEX;
+		MemberRef ref = MemberRef.parse(ctx.resolve(rawTarget));
+		if (ref.fuzzy()) return UNEVALUATED_INDEX;
+		int ordinal = attr(at, "ordinal") instanceof Integer i ? i : -1;
+		int opcode = attr(at, "opcode") instanceof Integer i ? i : -1;
+		int seen = 0;
+		for (int i = 0; i < method.instructions.size(); i++) {
+			AbstractInsnNode insn = method.instructions.get(i);
+			if (opcode >= 0 && insn.getOpcode() != opcode) continue;
+			if (!matchesInsn(point, ref, insn)) continue;
+			if (ordinal < 0 || seen == ordinal) return i;
+			seen++;
+		}
+		return failValue;
+	}
+
+	private Verdict evaluate(String point, String target, int ordinal, int opcode, Range range, MethodNode method) {
 		switch (point) {
 			case "HEAD", "RETURN", "TAIL" -> {
 				return method.instructions == null || method.instructions.size() == 0 ? Verdict.MISSING : Verdict.FOUND;
@@ -373,13 +473,19 @@ public final class MixinPreflight {
 				if (target == null) return Verdict.UNKNOWN;
 				MemberRef ref = MemberRef.parse(target);
 				if (ref.fuzzy()) return Verdict.UNKNOWN;
-				int count = 0;
-				for (AbstractInsnNode insn : method.instructions) {
+				int countInMethod = 0;
+				int countInRange = 0;
+				for (int i = 0; i < method.instructions.size(); i++) {
+					AbstractInsnNode insn = method.instructions.get(i);
 					if (opcode >= 0 && insn.getOpcode() != opcode) continue;
-					if (matchesInsn(point, ref, insn)) count++;
+					if (!matchesInsn(point, ref, insn)) continue;
+					countInMethod++;
+					if (i >= range.start() && i <= range.end()) countInRange++;
 				}
-				if (count == 0) return Verdict.MISSING;
-				if (ordinal >= 0 && !sliced && count <= ordinal) return Verdict.MISSING;
+				if (countInMethod == 0) return Verdict.MISSING;
+				if (range == Range.UNEVALUATED) return Verdict.FOUND;
+				if (countInRange == 0) return Verdict.MISSING;
+				if (ordinal >= 0 && countInRange <= ordinal) return Verdict.MISSING;
 				return Verdict.FOUND;
 			}
 			default -> {
@@ -425,15 +531,7 @@ public final class MixinPreflight {
 	}
 
 	private static List<AnnotationNode> atAnnotations(AnnotationNode injector) {
-		List<AnnotationNode> ret = new ArrayList<>();
-		Object at = attr(injector, "at");
-		if (at instanceof AnnotationNode a) ret.add(a);
-		if (at instanceof List<?> list) {
-			for (Object o : list) {
-				if (o instanceof AnnotationNode a) ret.add(a);
-			}
-		}
-		return ret;
+		return annotationList(attr(injector, "at"));
 	}
 
 	private static boolean declares(ClassNode target, String name, String desc) {

@@ -178,7 +178,7 @@ public final class ModTranslator {
 		String behavior = MixinCompat.clampForNeoForge(MixinCompat.fabricBehaviorVersion(md.getDependencies()), env.runtimeMixinVersion());
 		EnvType side = env.clientSide() ? EnvType.CLIENT : EnvType.SERVER;
 		List<ModsTomlWriter.MixinConfigSpec> specs = new ArrayList<>();
-		MixinPreflight preflight = new MixinPreflight(env.game(), classSource(files), env.clientSide());
+		MixinPreflight preflight = new MixinPreflight(env.game(), classSource(files), env.untransformable(), env.clientSide());
 
 		for (MixinEntry entry : md.mixins()) {
 			if (!entry.environment().matches(side)) continue;

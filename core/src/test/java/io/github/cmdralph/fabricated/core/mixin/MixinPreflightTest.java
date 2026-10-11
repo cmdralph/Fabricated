@@ -189,4 +189,74 @@ class MixinPreflightTest {
 		assertEquals("doThing", MixinPreflight.inferInvokerName("callDoThing"));
 		assertEquals("<init>", MixinPreflight.inferInvokerName("newThing"));
 	}
+
+	@Test
+	void failsWhenTargetIsAnUntransformableLibraryClass() throws Exception {
+		ClassWriter cw = new ClassWriter(0);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, "com/example/mixin/LibMixin", null, "java/lang/Object", null);
+		AnnotationVisitor m = cw.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false);
+		AnnotationVisitor values = m.visitArray("value");
+		values.visit(null, Type.getObjectType("com/mojang/datafixers/Lib"));
+		values.visitEnd();
+		m.visitEnd();
+		cw.visitEnd();
+		ClassIndex game = new ClassIndex(Map.of(TARGET, targetClass())::get);
+		Map<String, byte[]> mod = Map.of("com/example/mixin/LibMixin", cw.toByteArray());
+		Map<String, byte[]> libraries = Map.of("com/mojang/datafixers/Lib", new byte[] {1});
+
+		List<PreflightFinding> withLibraries = new MixinPreflight(game, mod::get, libraries::get, false)
+				.check("test.mixins.json", MixinConfigFile.parse(config(true, "LibMixin")), Refmap.EMPTY, Set.of());
+		assertEquals(1, withLibraries.size(), withLibraries.toString());
+		assertEquals(PreflightFinding.Severity.FAIL, withLibraries.getFirst().severity());
+		assertTrue(withLibraries.getFirst().message().contains("without mixin support"));
+
+		// Unknown non-Minecraft targets (another mod's classes) are still only noted.
+		List<PreflightFinding> unknown = new MixinPreflight(game, mod::get, false)
+				.check("test.mixins.json", MixinConfigFile.parse(config(true, "LibMixin")), Refmap.EMPTY, Set.of());
+		assertEquals(PreflightFinding.Severity.INFO, unknown.getFirst().severity());
+	}
+
+	private static void injectSliced(ClassWriter cw, String handler, String atValue, String atTarget, String fromTarget) {
+		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, handler, "()V", null, null);
+		AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
+		AnnotationVisitor methods = ann.visitArray("method");
+		methods.visit(null, "tick");
+		methods.visitEnd();
+		AnnotationVisitor ats = ann.visitArray("at");
+		AnnotationVisitor at = ats.visitAnnotation(null, "Lorg/spongepowered/asm/mixin/injection/At;");
+		at.visit("value", atValue);
+		at.visit("target", atTarget);
+		at.visitEnd();
+		ats.visitEnd();
+		AnnotationVisitor slices = ann.visitArray("slice");
+		AnnotationVisitor slice = slices.visitAnnotation(null, "Lorg/spongepowered/asm/mixin/injection/Slice;");
+		AnnotationVisitor from = slice.visitAnnotation("from", "Lorg/spongepowered/asm/mixin/injection/At;");
+		from.visit("value", "INVOKE");
+		from.visit("target", fromTarget);
+		from.visitEnd();
+		slice.visitEnd();
+		slices.visitEnd();
+		ann.visit("require", 1);
+		ann.visitEnd();
+		mv.visitEnd();
+	}
+
+	@Test
+	void evaluatesSlices() throws Exception {
+		// tick() reads count, then calls helper(I)V. A slice starting at helper excludes the field read.
+		byte[] outside = mixin("com/example/mixin/Outside", false, cw -> injectSliced(cw, "h", "FIELD",
+				"Lnet/minecraft/world/Thing;count:I", "Lnet/minecraft/world/Thing;helper(I)V"));
+		List<PreflightFinding> fail = run(config(true, "Outside"), null, Map.of("com/example/mixin/Outside", outside), false);
+		assertEquals(1, fail.size(), fail.toString());
+		assertEquals(PreflightFinding.Severity.FAIL, fail.getFirst().severity());
+
+		byte[] inside = mixin("com/example/mixin/Inside", false, cw -> injectSliced(cw, "h", "INVOKE",
+				"Lnet/minecraft/world/Thing;helper(I)V", "Lnet/minecraft/world/Thing;helper(I)V"));
+		assertTrue(run(config(true, "Inside"), null, Map.of("com/example/mixin/Inside", inside), false).isEmpty());
+
+		// A slice start that is not found falls back to the method start, as in Mixin.
+		byte[] fallback = mixin("com/example/mixin/Fallback", false, cw -> injectSliced(cw, "h", "FIELD",
+				"Lnet/minecraft/world/Thing;count:I", "Lnet/minecraft/world/Thing;absent()V"));
+		assertTrue(run(config(true, "Fallback"), null, Map.of("com/example/mixin/Fallback", fallback), false).isEmpty());
+	}
 }

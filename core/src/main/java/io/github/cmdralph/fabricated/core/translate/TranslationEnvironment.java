@@ -1,5 +1,6 @@
 package io.github.cmdralph.fabricated.core.translate;
 
+import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
 import io.github.cmdralph.fabricated.core.bytecode.ClassIndex;
 import io.github.cmdralph.fabricated.core.remap.MappingTable;
 
@@ -25,10 +26,11 @@ public record TranslationEnvironment(
 		String fabricatedVersion,
 		MappingTable mappings,
 		String mappingsHash,
-		ClassIndex game) {
+		ClassIndex game,
+		ClassBytesSource untransformable) {
 
 	/** Bumped whenever translation output changes for the same inputs. */
-	public static final int TRANSLATION_SCHEMA = 1;
+	public static final int TRANSLATION_SCHEMA = 2;
 
 	/** Namespace Fabric mods are distributed in. */
 	public enum Namespace {

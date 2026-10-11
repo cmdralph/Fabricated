@@ -90,6 +90,17 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 		boolean devGameMod = find(loadedMods, GAME_MOD_ID).isPresent();
 		Path gameModJar = devGameMod ? null : extractGameMod(bootstrapCache);
 
+		// Classes visible to NeoForge's non-transforming loaders (JDK and libraries such as DataFixerUpper or
+		// Brigadier). Mixins targeting them never apply, so pre-flight reports them instead of letting the mod
+		// fail later with a ClassCastException or a missing behaviour.
+		ClassLoader platformLoader = FabricDependencyLocator.class.getClassLoader();
+		ClassBytesSource untransformable = name -> {
+			if (mcContents.containsFile(name + ".class")) return null;
+			try (var stream = platformLoader.getResourceAsStream(name + ".class")) {
+				return stream == null ? null : stream.readAllBytes();
+			}
+		};
+
 		Set<String> platformPackages = new HashSet<>();
 		for (IModFile file : loadedMods) {
 			for (String pkg : JarModuleInfo.scanModulePackages(file.getContents())) platformPackages.add(pkg.replace('.', '/'));
@@ -130,7 +141,7 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 
 		FabricApiPlan plan = FabricApiPlan.parse(new String(FabricatedInfo.readOptional("fabric-api-plan.json"), StandardCharsets.UTF_8));
 		Pipeline.Input input = new Pipeline.Input(gameDir, FMLPaths.CONFIGDIR.get(), logsDir, fabricJars, mcVersion, neoVersion,
-				client, info.namespace(), runtimeMixinVersion(info), info.fabricatedVersion(), !fml.isProduction(), gameClasses,
+				client, info.namespace(), runtimeMixinVersion(info), info.fabricatedVersion(), !fml.isProduction(), gameClasses, untransformable,
 				platformPackages, plan, nativeApi, neoForgeMods,
 				cache -> IntermediaryMappings.load(cache, mcVersion, client, null),
 				fml.getProgramArgs().getArguments());

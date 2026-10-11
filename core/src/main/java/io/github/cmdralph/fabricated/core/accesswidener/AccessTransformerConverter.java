@@ -3,6 +3,7 @@ package io.github.cmdralph.fabricated.core.accesswidener;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 
 import io.github.cmdralph.fabricated.core.accesswidener.AccessWidenerFile.Access;
@@ -26,6 +27,18 @@ import org.objectweb.asm.Opcodes;
 public final class AccessTransformerConverter {
 	private AccessTransformerConverter() {
 	}
+
+	/**
+	 * Fields NeoForge's {@code ReplaceFieldWithGetterAccess} coremod requires to stay private (it throws while
+	 * loading the class otherwise, which crashes the game). Union of NeoForge 21.11 and 26.x
+	 * ({@code NeoForgeCoreMod}); entries that do not exist on a version are simply never matched.
+	 */
+	static final Set<String> PLATFORM_PRIVATE_FIELDS = Set.of(
+			"net/minecraft/world/level/biome/Biome climateSettings",
+			"net/minecraft/world/level/biome/Biome specialEffects",
+			"net/minecraft/world/level/biome/Biome attributes",
+			"net/minecraft/world/level/levelgen/structure/Structure settings",
+			"net/minecraft/world/level/block/FlowerPotBlock potted");
 
 	/** Conversion output. */
 	public record Result(String accessTransformer, List<InjectedInterface> injectedInterfaces, List<String> warnings, int lineCount) {
@@ -114,6 +127,12 @@ public final class AccessTransformerConverter {
 					Integer access = owner != null ? owner.fieldAccess(e.name() + ":" + e.descriptor()) : null;
 					if (game != null && access == null) {
 						warnings.add("line " + e.line() + ": field " + e.owner() + "." + e.name() + " does not exist; ignored");
+						continue;
+					}
+					if (e.access() == Access.ACCESSIBLE && PLATFORM_PRIVATE_FIELDS.contains(e.owner() + " " + e.name())) {
+						warnings.add("line " + e.line() + ": field " + e.owner() + "." + e.name()
+								+ " must stay private on NeoForge (a NeoForge coremod replaces it with a getter); not widened. "
+								+ "Code reading it directly fails when it runs.");
 						continue;
 					}
 					Target t = targets.computeIfAbsent(ownerDotted + " " + e.name(), k -> new Target());

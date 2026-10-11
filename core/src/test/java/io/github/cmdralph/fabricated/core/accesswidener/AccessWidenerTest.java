@@ -107,4 +107,18 @@ class AccessWidenerTest {
 		cw.visitEnd();
 		return cw.toByteArray();
 	}
+
+	@Test
+	void keepsFieldsNeoForgeCoremodsNeedPrivate() throws Exception {
+		AccessWidenerFile file = AccessWidenerParser.parse("""
+				accessWidener v2 named
+				accessible field net/minecraft/world/level/biome/Biome climateSettings Lnet/minecraft/world/level/biome/Biome$ClimateSettings;
+				mutable field net/minecraft/world/level/biome/Biome specialEffects Lnet/minecraft/world/level/biome/BiomeSpecialEffects;
+				""");
+		AccessTransformerConverter.Result result = AccessTransformerConverter.convert(file, null);
+		assertTrue(!result.accessTransformer().contains("climateSettings"), result.accessTransformer());
+		assertTrue(result.accessTransformer().contains("private-f net.minecraft.world.level.biome.Biome specialEffects"), result.accessTransformer());
+		assertEquals(1, result.warnings().size());
+		assertTrue(result.warnings().getFirst().contains("must stay private"));
+	}
 }

@@ -93,6 +93,7 @@ public final class Pipeline {
 			String fabricatedVersion,
 			boolean development,
 			ClassBytesSource gameClasses,
+			ClassBytesSource untransformableClasses,
 			Set<String> platformPackages,
 			FabricApiPlan fabricApiPlan,
 			ClassBytesSource nativeApiClasses,
@@ -223,7 +224,8 @@ public final class Pipeline {
 				Mappings m = in.mappings().get(cache);
 				mappingTable = m.table();
 				env = new TranslationEnvironment(in.minecraftVersion(), in.neoForgeVersion(), in.clientSide(), in.namespace(),
-						in.runtimeMixinVersion(), in.fabricatedVersion(), mappingTable, m.hash(), new ClassIndex(in.gameClasses()));
+						in.runtimeMixinVersion(), in.fabricatedVersion(), mappingTable, m.hash(), new ClassIndex(in.gameClasses()),
+						in.untransformableClasses());
 				report.environment("Mappings", mappingTable.classCount() + " classes, " + mappingTable.memberCount() + " members");
 			} catch (MappingException | IOException e) {
 				for (Candidate c : eligible) {
@@ -236,7 +238,8 @@ public final class Pipeline {
 			}
 		} else {
 			env = new TranslationEnvironment(in.minecraftVersion(), in.neoForgeVersion(), in.clientSide(), in.namespace(),
-					in.runtimeMixinVersion(), in.fabricatedVersion(), null, "none", new ClassIndex(in.gameClasses()));
+					in.runtimeMixinVersion(), in.fabricatedVersion(), null, "none", new ClassIndex(in.gameClasses()),
+					in.untransformableClasses());
 		}
 		if (mappingTable != null) {
 			runtime = new FabricLoaderRuntime(side, in.gameDir(), in.configDir(), in.minecraftVersion(), in.development(),
