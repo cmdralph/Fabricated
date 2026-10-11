@@ -35,8 +35,8 @@ entrypoint that throws).
 **Fabric API** is the big caveat. Most Fabric mods need it, and many of its modules patch Minecraft code
 that NeoForge has already changed. Fabricated handles this per module:
 
-- **Native**: Fabricated ships the module itself. Today that is `fabric-api-base` and
-  `fabric-crash-report-info-v1`.
+- **Native**: Fabricated ships the module itself. Today that is `fabric-api-base`,
+  `fabric-lifecycle-events-v1` and `fabric-crash-report-info-v1`.
 - **Pass-through**: the module is loaded from the official Fabric API jar you install. Fabricated checks
   every mixin against NeoForge's code before loading it ("mixin pre-flight"). Modules whose mixins can't
   apply are disabled, along with every mod that requires them, with an explanation.

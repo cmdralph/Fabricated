@@ -72,4 +72,24 @@ class LinkageCheckerTest {
 		assertTrue(check(caller("m/A", "net/minecraft/client/Minecraft", "getInstance", "()V", false), false).isEmpty());
 		assertEquals(1, check(caller("m/A", "net/minecraft/Util", "removed", "()V", true), true).size());
 	}
+
+	@Test
+	void resolvesMethodsOfInjectedInterfaces() {
+		// A mod injects m/Ext (with default method ext()V) into net/minecraft/Util and calls it on Util.
+		ClassWriter iface = new ClassWriter(0);
+		iface.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_INTERFACE | Opcodes.ACC_ABSTRACT, "m/Ext", null, "java/lang/Object", null);
+		iface.visitMethod(Opcodes.ACC_PUBLIC, "ext", "()V", null, null).visitEnd();
+		iface.visitEnd();
+		Map<String, byte[]> classes = Map.of("net/minecraft/Util", game(), "m/Ext", iface.toByteArray());
+		byte[] call = caller("m/A", "net/minecraft/Util", "ext", "()V", false);
+
+		List<LinkageChecker.Issue> without = new ArrayList<>();
+		new LinkageChecker(new ClassIndex(classes::get), LinkageAnalysis.CHECKED, false).check(call, without);
+		assertEquals(1, without.size(), "without the injection the method is missing");
+
+		List<LinkageChecker.Issue> with = new ArrayList<>();
+		new LinkageChecker(new ClassIndex(classes::get, Map.of("net/minecraft/Util", List.of("m/Ext"))), LinkageAnalysis.CHECKED, false)
+				.check(call, with);
+		assertTrue(with.isEmpty(), with.toString());
+	}
 }

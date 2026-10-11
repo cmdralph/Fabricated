@@ -47,11 +47,16 @@ public final class LinkageAnalysis {
 	 * @return issues per NeoForge id (only mods with issues are present)
 	 */
 	public Map<String, List<String>> analyse(List<TranslatedMod> mods, ClassBytesSource runtime, String setFingerprint) {
-		ClassIndex index = new ClassIndex(runtime);
+		// Interfaces the mods inject into game classes exist at runtime, so their (default) methods resolve.
+		Map<String, List<String>> injected = new java.util.HashMap<>();
+		for (TranslatedMod mod : mods) {
+			for (var ii : mod.injectedInterfaces()) injected.computeIfAbsent(ii.target(), k -> new ArrayList<>()).add(ii.interfaceName());
+		}
+		ClassIndex index = new ClassIndex(runtime, injected);
 		LinkageChecker checker = new LinkageChecker(index, CHECKED, clientSide);
 		Map<String, List<String>> result = new LinkedHashMap<>();
 		for (TranslatedMod mod : mods) {
-			String blob = "linkage-" + Hashing.sha256(mod.candidate().sha256() + "|" + setFingerprint + "|" + (clientSide ? "c" : "s")).substring(0, 40) + ".json";
+			String blob = "linkage-" + Hashing.sha256("v2|" + mod.candidate().sha256() + "|" + setFingerprint + "|" + (clientSide ? "c" : "s")).substring(0, 40) + ".json";
 			List<String> issues = readCached(blob);
 			if (issues == null) {
 				issues = check(mod, checker);

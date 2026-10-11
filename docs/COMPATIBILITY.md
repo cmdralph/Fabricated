@@ -55,7 +55,7 @@ How to read the table:
 | fabric-transitive-access-wideners-v1 | loads | loads | loads | loads |
 | fabric-game-rule-api-v1 | disabled | loads | loads | loads |
 | fabric-permission-api-v1 | — | loads | loads | loads |
-| fabric-lifecycle-events-v1 | disabled | disabled | disabled | disabled |
+| fabric-lifecycle-events-v1 | native | native | native | native |
 | fabric-networking-api-v1 | disabled | disabled | disabled | disabled |
 | fabric-registry-sync-v0 | disabled | disabled | disabled | disabled |
 | fabric-resource-loader-v1 (and v0) | disabled | disabled | disabled | disabled |
@@ -73,7 +73,7 @@ How to read the table:
 | fabric-tag-api-v1 | disabled | disabled | disabled | disabled |
 | fabric-advancement-api-v1 | — | — | disabled | disabled |
 | fabric-menu-api-v1 / screen-handler-api-v1 | disabled | disabled | disabled | disabled |
-| fabric-api-lookup-api-v1 | disabled | disabled | disabled | disabled |
+| fabric-api-lookup-api-v1 | loads | loads | loads | loads |
 | fabric-convention-tags-v2 (and v1) | disabled | disabled | disabled | disabled |
 | fabric-data-attachment-api-v1 | disabled | disabled | disabled | disabled |
 | fabric-particles-v1 | disabled | disabled | disabled | disabled |
@@ -96,8 +96,6 @@ failures fall into a few groups:
   - `fabric-networking-api-v1`: NeoForge replaces the custom-payload codec setup in
     `ClientboundCustomPayloadPacket`/`ServerboundCustomPayloadPacket`, because NeoForge has its own payload
     system.
-  - `fabric-lifecycle-events-v1`: NeoForge moved the `blockEntities.remove` call in
-    `LevelChunk.getBlockEntity`.
 - **NeoForge recompiles Minecraft, so names of synthetic members differ** (1.21.11): lambda methods such as
   `lambda$loadResources$1` and captured fields such as `val$tags` have different names in NeoForge's build.
 - **The mixin targets a library class**: `fabric-dimensions-v1` patches DataFixerUpper's `TaggedChoice`,
@@ -111,19 +109,42 @@ failures fall into a few groups:
 Each of these used to crash the server before this check existed. Now each is a clear line in the report
 and the server starts.
 
+### Native `fabric-lifecycle-events-v1`
+
+Upstream's mixins don't apply on NeoForge (for example, NeoForge moved the `blockEntities.remove` call in
+`LevelChunk.getBlockEntity`). Fabricated therefore ships the module's unchanged public API and fires its
+events from NeoForge's events. CI checks `SERVER_STARTED`, `END_SERVER_TICK` and `SERVER_STOPPING` on a
+real server for every version.
+
+| Fabric events | Fired from (NeoForge) | Notes |
+|---|---|---|
+| Server starting/started/stopping/stopped | `ServerStartingEvent` … `ServerStoppedEvent` | |
+| Server and level ticks (start/end) | `ServerTickEvent`, `LevelTickEvent` | |
+| Level load/unload | `LevelEvent.Load/Unload` | |
+| Chunk load/generate/unload | `ChunkEvent.Load/Unload` | `CHUNK_GENERATE` fires for newly generated chunks |
+| Full chunk status / chunk level type change | `ChunkTicketLevelUpdatedEvent` | fired when a loaded chunk's ticket level changes |
+| Entity load/unload, `ALLOW_LOAD` (26.x) | `EntityJoinLevelEvent`, `EntityLeaveLevelEvent` | `ALLOW_LOAD` cancels the join |
+| `EntityLoadData` (26.x) | `EntityJoinLevelEvent`, `FinalizeSpawnEvent` | spawn reason is known for mobs and null for other entities, which the API allows |
+| Equipment change | `LivingEquipmentChangeEvent` | |
+| Block entity load/unload | `ChunkEvent.Load/Unload` | only for block entities of chunks that load or unload, not ones placed or removed in a loaded chunk |
+| Sync data pack contents | `OnDatapackSyncEvent` | |
+| Tags loaded | `TagsUpdatedEvent` | |
+| Client: ticks, chunks, entities, block entities | `ClientTickEvent`, `LevelTickEvent`, `ChunkEvent`, `EntityJoin/LeaveLevelEvent` | client isn't tested in CI yet |
+| Client started / stopping | first client tick / `GameShuttingDownEvent` | |
+| After client level change | `ClientPlayerNetworkEvent.LoggingIn` and `.Clone` | fires on login and on respawn into another level |
+| **Not fired**: start/end data pack reload, before/after save | none | NeoForge has no matching hook |
+
 ### What this means for Fabric mods
 
 A Fabric mod works today if it needs only the Fabric Loader API and the **native** or **loads** modules
-above. Most content mods also need lifecycle events, networking, registry sync, resource loading or
-commands, so they are disabled with a message naming the missing module.
+above. Most content mods also need networking, registry sync, resource loading or commands, so they are disabled with a message naming the missing module.
 
 ### Planned work, in order of impact
 
 These modules are to be implemented natively on NeoForge's own events and APIs. Each one also unblocks the
 modules that cascade from it.
 
-1. `fabric-lifecycle-events-v1`: NeoForge server, level and chunk events. Unblocks api-lookup and
-   convention-tags.
+1. ✅ `fabric-lifecycle-events-v1` (done; unblocked `fabric-api-lookup-api-v1`).
 2. `fabric-networking-api-v1`: NeoForge's payload registrar. Unblocks particles and recipe-api.
 3. `fabric-resource-loader-v1`: NeoForge's reload-listener and pack events. Unblocks tag-api, creative-tab
    and the v0 API.
