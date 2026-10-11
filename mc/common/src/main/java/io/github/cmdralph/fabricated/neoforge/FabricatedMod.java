@@ -4,7 +4,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.github.cmdralph.fabricated.loader.FabricatedState;
-import io.github.cmdralph.fabricated.neoforge.lifecycle.LifecycleBridge;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.IEventBus;
@@ -39,8 +38,8 @@ public final class FabricatedMod {
 		NeoForge.EVENT_BUS.addListener(ServerAboutToStartEvent.class, event -> {
 			if (dist.isDedicatedServer()) state.runtime().setGameInstance(event.getServer());
 		});
-		// Native fabric-lifecycle-events-v1 (version-specific: mc/common26 or mc/1.21.11).
-		LifecycleBridge.register(dist);
+		// Native Fabric API modules (version-specific: mc/common26 or mc/<version>).
+		NativeFabricApi.register(modBus, dist, state);
 		if (dist.isClient()) ClientSupport.init(state);
 	}
 }

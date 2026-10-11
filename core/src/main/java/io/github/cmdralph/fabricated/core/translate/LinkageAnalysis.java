@@ -53,6 +53,15 @@ public final class LinkageAnalysis {
 	 * @return issues per NeoForge id (only mods with issues are present)
 	 */
 	public Map<String, List<String>> analyse(List<TranslatedMod> mods, ClassBytesSource runtime, String setFingerprint) {
+		return analyse(mods, runtime, Map.of(), setFingerprint);
+	}
+
+	/**
+	 * @param platformInterfaces interfaces Fabricated's own (native Fabric API) mixins add to game classes, by
+	 *                           target; see {@link #mixinInterfaces(byte[], Map)}
+	 */
+	public Map<String, List<String>> analyse(List<TranslatedMod> mods, ClassBytesSource runtime,
+			Map<String, List<String>> platformInterfaces, String setFingerprint) {
 		Map<String, List<String>> result = new LinkedHashMap<>();
 		LinkageChecker checker = null;
 		for (TranslatedMod mod : mods) {
@@ -60,7 +69,11 @@ public final class LinkageAnalysis {
 			List<String> issues = readCached(blob);
 			if (issues == null) {
 				// Built only when some result is not cached: it reads every mod's classes once.
-				if (checker == null) checker = new LinkageChecker(new ClassIndex(runtime, addedInterfaces(mods)), CHECKED, clientSide);
+				if (checker == null) {
+					Map<String, List<String>> added = addedInterfaces(mods);
+					platformInterfaces.forEach((target, ifaces) -> added.computeIfAbsent(target, k -> new ArrayList<>()).addAll(ifaces));
+					checker = new LinkageChecker(new ClassIndex(runtime, added), CHECKED, clientSide);
+				}
 				issues = check(mod, checker);
 				try {
 					cache.storeBlob(blob, Json.write(issues, false).getBytes(StandardCharsets.UTF_8));
@@ -95,7 +108,8 @@ public final class LinkageAnalysis {
 		return added;
 	}
 
-	private static void mixinInterfaces(byte[] data, Map<String, List<String>> added) {
+	/** Adds the interfaces a mixin class implements to each of its targets; ignores non-mixin classes. */
+	public static void mixinInterfaces(byte[] data, Map<String, List<String>> added) {
 		ClassNode node = new ClassNode();
 		new ClassReader(data).accept(node, ClassReader.SKIP_CODE | ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
 		if (node.interfaces == null || node.interfaces.isEmpty() || node.invisibleAnnotations == null) return;

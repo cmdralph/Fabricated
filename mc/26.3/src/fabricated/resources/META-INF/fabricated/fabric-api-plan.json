@@ -92,7 +92,9 @@
       "plan": "passthrough"
     },
     "fabric-networking-api-v1": {
-      "plan": "passthrough"
+      "plan": "native",
+      "version": "6.3.9",
+      "reason": "Shipped by Fabricated on NeoForge's payload system (login queries are not supported)."
     },
     "fabric-object-builder-api-v1": {
       "plan": "passthrough"

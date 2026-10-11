@@ -2,6 +2,20 @@
   "required": true,
   "package": "io.github.cmdralph.fabricated.neoforge.mixin",
   "compatibilityLevel": "JAVA_21",
-  "mixins": ["EntityMixin"],
-  "injectors": { "defaultRequire": 1 }
+  "mixins": [
+    "EntityMixin",
+    "ConnectionMixin",
+    "ServerCommonPacketListenerImplMixin",
+    "ServerPlayerMixin",
+    "ServerLoginPacketListenerImplMixin",
+    "ServerConfigurationPacketListenerImplMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  },
+  "client": [
+    "client.ClientCommonPacketListenerImplMixin",
+    "client.LocalPlayerMixin",
+    "client.ClientConfigurationPacketListenerImplMixin"
+  ]
 }

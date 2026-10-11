@@ -93,6 +93,12 @@ check "FABRICATED-TEST mixin OK" server.out "mixin applied"
 check "FABRICATED-TEST lifecycle server started OK" server.out "native lifecycle: SERVER_STARTED"
 check "FABRICATED-TEST lifecycle server tick OK" server.out "native lifecycle: END_SERVER_TICK"
 check "FABRICATED-TEST lifecycle server stopping OK" server.out "native lifecycle: SERVER_STOPPING"
+case "$mc" in
+	26.*)
+		check "FABRICATED-TEST networking registration OK" server.out "native networking: receiver registered"
+		check "Registered [0-9]* Fabric payload type" server.out "native networking: payloads handed to NeoForge"
+		;;
+esac
 check "fabricated-testmod-missing" logs/fabric-bridge-report.txt "missing dependency reported"
 check "fabricated-library-that-does-not-exist" logs/fabric-bridge-report.txt "missing dependency named"
 check "fabricatedMethodThatDoesNotExist" logs/fabric-bridge-report.txt "impossible mixin caught by pre-flight"
