@@ -1,6 +1,7 @@
 package io.github.cmdralph.fabricated.core.translate;
 
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -17,14 +18,21 @@ import io.github.cmdralph.fabricated.core.archive.SafeArchive;
 import io.github.cmdralph.fabricated.core.resolve.PlatformLibraries;
 
 /**
- * Prevents JPMS split packages, which are fatal in NeoForge's module layer.
+ * Prevents JPMS split packages, which are fatal in NeoForge's single-class-loader module layer.
+ *
+ * <p>Packages are derived the way NeoForge derives them for a mod's automatic module: every directory
+ * containing files whose path is a valid Java package name, excluding {@code assets/}, {@code data/}
+ * and {@code META-INF/}. Resource-only directories count, so two mods shipping {@code licenses/LICENSE}
+ * would collide.
  *
  * <ol>
- *   <li>Classes in packages owned by the platform (NeoForge, Minecraft, libraries, Fabricated) are
- *       filtered out of Fabric jars: the platform's copy is used.</li>
- *   <li>When two Fabric mods contain the same package, the later mod (in load order) has the package
- *       filtered out if every class it contains there is byte-identical to the earlier mod's copy.</li>
- *   <li>Otherwise the later mod is disabled with an explanation.</li>
+ *   <li>Packages owned by the platform (NeoForge, Minecraft, libraries, Fabricated) are filtered out of
+ *       Fabric jars: the platform's copy is used.</li>
+ *   <li>When a package already belongs to an earlier Fabric mod (load order), the later mod's copy is
+ *       filtered out if every file it has there is byte-identical to the earlier copy.</li>
+ *   <li>If the copies differ but the later mod has only resources there, its resources are hidden with a
+ *       warning (they are almost never loaded through the class loader).</li>
+ *   <li>If they differ and the later mod has classes there, it is disabled with an explanation.</li>
  * </ol>
  */
 public final class PackageGuard {
@@ -40,6 +48,13 @@ public final class PackageGuard {
 	public record Result(Map<String, Decision> decisions, List<Conflict> conflicts) {
 	}
 
+	/** Files of one package in one jar: file name → whether it is a class. */
+	private record PackageContents(Path jar, Map<String, Boolean> files) {
+		boolean hasClasses() {
+			return files.containsValue(Boolean.TRUE);
+		}
+	}
+
 	private final ArchiveLimits limits;
 
 	public PackageGuard(ArchiveLimits limits) {
@@ -53,44 +68,39 @@ public final class PackageGuard {
 	public Result check(List<TranslatedMod> mods, Set<String> platformPackages) {
 		Map<String, Decision> decisions = new LinkedHashMap<>();
 		List<Conflict> conflicts = new ArrayList<>();
-		// package -> owning mod, its class names, and its jar (hashes are computed only on overlap)
 		Map<String, String> owner = new HashMap<>();
-		Map<String, Map<String, String>> ownerClasses = new HashMap<>();
-		Map<String, java.nio.file.Path> ownerJar = new HashMap<>();
+		Map<String, PackageContents> ownerContents = new HashMap<>();
 
 		for (TranslatedMod mod : mods) {
-			Map<String, Map<String, String>> packages;
+			Map<String, PackageContents> packages;
 			try {
-				packages = classesByPackage(mod);
+				packages = packagesOf(mod.jar());
 			} catch (ArchiveException | IOException e) {
-				conflicts.add(new Conflict(mod, "could not inspect its classes: " + e.getMessage(), "Re-download the mod."));
+				conflicts.add(new Conflict(mod, "could not inspect its contents: " + e.getMessage(), "Re-download the mod."));
 				continue;
 			}
 			Set<String> excluded = new TreeSet<>();
 			List<String> notes = new ArrayList<>();
 			String conflict = null;
-			for (Map.Entry<String, Map<String, String>> pkg : packages.entrySet()) {
+			for (Map.Entry<String, PackageContents> pkg : packages.entrySet()) {
 				String name = pkg.getKey();
+				String dotted = name.replace('/', '.');
 				if (platformPackages.contains(name) || PlatformLibraries.isProvided(name + "/")) {
 					excluded.add(name);
-					notes.add("bundles package " + name.replace('/', '.') + ", which the platform already provides; using the platform's copy");
+					notes.add("bundles package " + dotted + ", which the platform already provides; using the platform's copy");
 					continue;
 				}
 				String existing = owner.get(name);
 				if (existing == null) continue;
-				boolean identicalSubset;
-				try {
-					Map<String, String> theirs = hashes(ownerJar.get(name), ownerClasses.get(name).keySet());
-					Map<String, String> ours = hashes(mod.jar(), pkg.getValue().keySet());
-					identicalSubset = theirs.entrySet().containsAll(ours.entrySet());
-				} catch (ArchiveException | IOException e) {
-					identicalSubset = false;
-				}
-				if (identicalSubset) {
+				PackageContents ours = pkg.getValue();
+				if (identicalSubset(ownerContents.get(name), ours)) {
 					excluded.add(name);
-					notes.add("shares identical classes in package " + name.replace('/', '.') + " with " + existing + "; using " + existing + "'s copy");
+					notes.add("shares identical files in package " + dotted + " with " + existing + "; using " + existing + "'s copy");
+				} else if (!ours.hasClasses()) {
+					excluded.add(name);
+					notes.add("has resources in " + dotted + " that clash with " + existing + "; this mod's copies are hidden");
 				} else {
-					conflict = "contains package " + name.replace('/', '.') + ", which " + existing + " also contains with different classes";
+					conflict = "contains package " + dotted + ", which " + existing + " also contains with different classes";
 					break;
 				}
 			}
@@ -98,33 +108,58 @@ public final class PackageGuard {
 				conflicts.add(new Conflict(mod, conflict, "Java modules cannot share packages. Remove one of the two mods, or ask the authors to relocate (shade) the shared library."));
 				continue;
 			}
-			for (Map.Entry<String, Map<String, String>> pkg : packages.entrySet()) {
+			for (Map.Entry<String, PackageContents> pkg : packages.entrySet()) {
 				if (excluded.contains(pkg.getKey())) continue;
 				owner.putIfAbsent(pkg.getKey(), mod.neoForgeId());
-				ownerClasses.putIfAbsent(pkg.getKey(), pkg.getValue());
-				ownerJar.putIfAbsent(pkg.getKey(), mod.jar());
+				ownerContents.putIfAbsent(pkg.getKey(), pkg.getValue());
 			}
 			decisions.put(mod.neoForgeId(), new Decision(Set.copyOf(excluded), List.copyOf(notes)));
 		}
 		return new Result(decisions, conflicts);
 	}
 
-	private Map<String, Map<String, String>> classesByPackage(TranslatedMod mod) throws ArchiveException, IOException {
-		Map<String, Map<String, String>> packages = new TreeMap<>();
-		try (SafeArchive archive = SafeArchive.open(mod.jar(), limits)) {
+	private Map<String, PackageContents> packagesOf(Path jar) throws ArchiveException, IOException {
+		Map<String, Map<String, Boolean>> packages = new TreeMap<>();
+		try (SafeArchive archive = SafeArchive.open(jar, limits)) {
 			for (String name : archive.entryNames()) {
-				if (!name.endsWith(".class") || name.startsWith("META-INF/") || name.endsWith("module-info.class")) continue;
+				if (name.endsWith("/") || name.startsWith("META-INF/") || name.startsWith("assets/") || name.startsWith("data/")) continue;
+				if (name.endsWith("module-info.class")) continue;
 				int slash = name.lastIndexOf('/');
-				if (slash < 0) continue; // default package: not part of any named package
+				if (slash < 1) continue; // default package
 				String pkg = name.substring(0, slash);
-				packages.computeIfAbsent(pkg, k -> new TreeMap<>()).put(name, "");
+				if (!isPackageName(pkg)) continue;
+				packages.computeIfAbsent(pkg, k -> new TreeMap<>()).put(name, name.endsWith(".class"));
 			}
 		}
-		return packages;
+		Map<String, PackageContents> ret = new TreeMap<>();
+		packages.forEach((k, v) -> ret.put(k, new PackageContents(jar, v)));
+		return ret;
 	}
 
-	/** SHA-256 of the given class files; only computed for packages that actually overlap. */
-	private Map<String, String> hashes(java.nio.file.Path jar, Set<String> names) throws ArchiveException, IOException {
+	/** Mirrors the JLS check NeoForge uses: every segment must be a Java identifier. */
+	static boolean isPackageName(String internal) {
+		for (String segment : internal.split("/", -1)) {
+			if (segment.isEmpty() || !Character.isJavaIdentifierStart(segment.charAt(0))) return false;
+			for (int i = 1; i < segment.length(); i++) {
+				if (!Character.isJavaIdentifierPart(segment.charAt(i))) return false;
+			}
+		}
+		return true;
+	}
+
+	/** Whether every file in {@code ours} exists in {@code theirs} with identical bytes (hashed lazily). */
+	private boolean identicalSubset(PackageContents theirs, PackageContents ours) {
+		if (!theirs.files().keySet().containsAll(ours.files().keySet())) return false;
+		try {
+			Map<String, String> a = hashes(theirs.jar(), ours.files().keySet());
+			Map<String, String> b = hashes(ours.jar(), ours.files().keySet());
+			return a.equals(b);
+		} catch (ArchiveException | IOException e) {
+			return false;
+		}
+	}
+
+	private Map<String, String> hashes(Path jar, Set<String> names) throws ArchiveException, IOException {
 		Map<String, String> ret = new TreeMap<>();
 		try (SafeArchive archive = SafeArchive.open(jar, limits)) {
 			for (String name : names) {
@@ -135,9 +170,9 @@ public final class PackageGuard {
 		return ret;
 	}
 
-	/** Whether {@code relativePath} lies directly in one of {@code excluded} packages and is a class file. */
+	/** Whether {@code relativePath} is a file directly inside one of the {@code excluded} packages. */
 	public static boolean isExcluded(String relativePath, Set<String> excluded) {
-		if (excluded.isEmpty() || !relativePath.endsWith(".class")) return false;
+		if (excluded.isEmpty() || relativePath.endsWith("/")) return false;
 		int slash = relativePath.lastIndexOf('/');
 		return slash > 0 && excluded.contains(relativePath.substring(0, slash));
 	}

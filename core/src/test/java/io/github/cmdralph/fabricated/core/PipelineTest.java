@@ -41,7 +41,7 @@ class PipelineTest {
 			{"fabricApiVersion": "0.161.0+26.2", "modules": {
 			  "fabric-api-base": {"plan": "native", "version": "1.0.0"},
 			  "fabric-renderer-indigo": {"plan": "unsupported", "reason": "replaces NeoForge's model pipeline"},
-			  "fabric-item-api-v1": {"plan": "passthrough"}
+			  "fabric-item-api-v1": {"plan": "passthrough", "skipMixins": ["item.mixins.json:Conflicting"], "reason": "test"}
 			}}""";
 
 	private static byte[] targetClass() {
@@ -117,6 +117,8 @@ class PipelineTest {
 		TestJars.create().fabricModJson(TestJars.modJson("dup-b", "1.0", ""))
 				.bytes("com/shared/Same.class", TestJars.emptyClass("com/shared/Same", "java/lang/Object"))
 				.write(mods.resolve("dup-b.jar"));
+		TestJars.create().fabricModJson(TestJars.modJson("res-a", "1.0", "")).text("licenses/LICENSE", "MIT").write(mods.resolve("res-a.jar"));
+		TestJars.create().fabricModJson(TestJars.modJson("res-b", "1.0", "")).text("licenses/LICENSE", "Apache").write(mods.resolve("res-b.jar"));
 		TestJars.create().fabricModJson(TestJars.modJson("dup-c", "1.0", ""))
 				.bytes("com/conflict/Thing.class", TestJars.emptyClass("com/conflict/Thing", "java/lang/Number"))
 				.write(mods.resolve("dup-c.jar"));
@@ -148,7 +150,9 @@ class PipelineTest {
 		for (Report.ModRow row : result.report().mods()) status.putIfAbsent(row.id(), row.status());
 
 		Set<String> loaded = result.mods().stream().map(m -> m.translated().candidate().id()).collect(Collectors.toSet());
-		assertEquals(Set.of("good-mod", "holder", "inner-lib", "dup-a", "dup-b"), loaded, result.report().render());
+		assertEquals(Set.of("good-mod", "holder", "inner-lib", "dup-a", "dup-b", "res-a", "res-b"), loaded, result.report().render());
+		Pipeline.LoadedMod resB = result.mods().stream().filter(m -> m.translated().candidate().id().equals("res-b")).findFirst().orElseThrow();
+		assertEquals(Set.of("licenses"), resB.excludedPackages(), "clashing resource-only directory is hidden, not fatal");
 		assertEquals(Report.Status.DISABLED, status.get("needs-missing"));
 		assertEquals(Report.Status.DISABLED, status.get("bad-mixin"));
 		assertEquals(Report.Status.DISABLED, status.get("dup-c"));
@@ -226,6 +230,17 @@ class PipelineTest {
 			assertNotNull(node.methods.stream().filter(m -> m.name.equals("tick")).findFirst().orElse(null));
 		}
 		assertEquals("net.minecraft.world.Thing", result.runtime().getMappingResolver().mapClassName("intermediary", "net.minecraft.class_1"));
+	}
+
+	@Test
+	void planSkipListsMergeWithUserOverrides() throws Exception {
+		FabricApiPlan plan = FabricApiPlan.parse(PLAN);
+		var config = io.github.cmdralph.fabricated.core.config.FabricatedConfig.parse(
+				"{\"mods\":{\"fabric-item-api-v1\":{\"skipMixins\":[\"Other\"]}}}");
+		assertEquals(Set.of("item.mixins.json:Conflicting", "Other"), Pipeline.effectiveOverride(config, plan, "fabric-item-api-v1").skipMixins());
+		assertEquals(Set.of(), Pipeline.effectiveOverride(config, plan, "unrelated").skipMixins());
+		org.junit.jupiter.api.Assertions.assertThrows(io.github.cmdralph.fabricated.core.json.JsonException.class, () -> FabricApiPlan.parse(
+				"{\"fabricApiVersion\":\"1\",\"modules\":{\"x\":{\"plan\":\"native\",\"version\":\"1\",\"skipMixins\":[\"A\"]}}}"));
 	}
 
 	@Test

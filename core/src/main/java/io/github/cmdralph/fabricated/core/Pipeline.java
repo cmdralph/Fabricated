@@ -272,7 +272,7 @@ public final class Pipeline {
 			resolution.ordered().parallelStream().forEach(c -> {
 				try {
 					List<String> after = loadAfter(c, activeIds, neoModsFinal);
-					results.put(c.id(), translator.translate(c, config.override(c.id()), after));
+					results.put(c.id(), translator.translate(c, effectiveOverride(config, plan, c.id()), after));
 				} catch (TranslationException e) {
 					failures.put(c.id(), e);
 				} catch (RuntimeException e) {
@@ -374,6 +374,11 @@ public final class Pipeline {
 			for (PreflightFinding f : t.findings()) report.line("Mixin pre-flight warnings", c.id() + ": " + f
 					+ (f.suggestion().isEmpty() ? "" : " - " + f.suggestion()));
 			for (String n : t.notes()) report.line("Translation notes", c.id() + ": " + n);
+			FabricApiPlan.Module planned = plan.module(c.id());
+			if (planned != null && !planned.skipMixins().isEmpty()) {
+				report.line("Fabric API mixins skipped (conflict with NeoForge)", c.id() + ": " + planned.skipMixins()
+						+ (planned.reason().isEmpty() ? "" : " - " + planned.reason()));
+			}
 			if (decision != null) decision.notes().forEach(n -> report.line("Package guard", c.id() + " " + n));
 			List<String> issues = linkage.get(t.neoForgeId());
 			if (issues != null) issues.forEach(i -> report.line("Linkage warnings (code that will fail if it runs)", c.id() + ": " + i));
@@ -403,6 +408,17 @@ public final class Pipeline {
 
 		cache.notes().forEach(n -> report.line("Cache", n));
 		return new Result(config, List.copyOf(loaded), injections, runtime, containers, report, cache, mappingTable);
+	}
+
+	/** User overrides, plus the plan's known-conflicting mixins for pass-through Fabric API modules. */
+	static FabricatedConfig.ModOverride effectiveOverride(FabricatedConfig config, FabricApiPlan plan, String id) {
+		FabricatedConfig.ModOverride user = config.override(id);
+		FabricApiPlan.Module module = plan.module(id);
+		if (module == null || module.skipMixins().isEmpty()) return user;
+		Set<String> skip = new java.util.TreeSet<>(user.skipMixins());
+		skip.addAll(module.skipMixins());
+		return new FabricatedConfig.ModOverride(user.disabled(), java.util.Collections.unmodifiableSet(skip), user.skipEntrypoints(),
+				user.aliases(), user.preferFabric(), user.ignorePreflight());
 	}
 
 	private static List<String> loadAfter(Candidate c, Set<String> activeIds, Map<String, NeoForgeMod> neoMods) {

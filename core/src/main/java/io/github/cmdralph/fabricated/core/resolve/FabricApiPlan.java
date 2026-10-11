@@ -1,6 +1,8 @@
 package io.github.cmdralph.fabricated.core.resolve;
 
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
@@ -32,8 +34,13 @@ public final class FabricApiPlan {
 		UNSUPPORTED
 	}
 
-	/** One module decision. {@code version} is set for native modules (the API version provided). */
-	public record Module(String id, Plan plan, String version, String reason) {
+	/**
+	 * One module decision. {@code version} is set for native modules (the API version provided).
+	 * {@code skipMixins} lists pass-through mixins known to conflict with NeoForge
+	 * ({@code "config.json:Name"} or {@code "Name"}); they are dropped instead of failing the module, and
+	 * {@code reason} documents the behaviour that is lost.
+	 */
+	public record Module(String id, Plan plan, String version, String reason, List<String> skipMixins) {
 	}
 
 	private final String fabricApiVersion;
@@ -63,7 +70,15 @@ public final class FabricApiPlan {
 			String moduleVersion = m.get("version") instanceof String v ? v : null;
 			if (p == Plan.NATIVE && moduleVersion == null) throw new JsonException("Native module " + id + " needs a \"version\"");
 			String reason = m.get("reason") instanceof String r ? r : "";
-			modules.put(id, new Module(id, p, moduleVersion, reason));
+			List<String> skip = new ArrayList<>();
+			if (m.get("skipMixins") instanceof List<?> list) {
+				for (Object o : list) {
+					if (!(o instanceof String str)) throw new JsonException("skipMixins of " + id + " must contain strings");
+					skip.add(str);
+				}
+			}
+			if (!skip.isEmpty() && p != Plan.PASSTHROUGH) throw new JsonException("skipMixins only applies to passthrough modules (" + id + ")");
+			modules.put(id, new Module(id, p, moduleVersion, reason, List.copyOf(skip)));
 		}
 		return new FabricApiPlan(version, modules);
 	}

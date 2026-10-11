@@ -6,6 +6,9 @@ pluginManagement {
             url = 'https://maven.neoforged.net/releases'
         }
     }
+    plugins {
+        id 'net.neoforged.moddev' version providers.gradleProperty('moddevgradle_version').get()
+    }
 }
 
 plugins {

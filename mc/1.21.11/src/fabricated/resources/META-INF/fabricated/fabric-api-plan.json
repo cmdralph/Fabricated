@@ -1,0 +1,147 @@
+{
+  "fabricApiVersion": "0.141.6+1.21.11",
+  "modules": {
+    "fabric-api-base": {
+      "plan": "native",
+      "version": "1.0.5",
+      "reason": "Shipped by Fabricated (vendored from upstream); every Fabric API module builds on it."
+    },
+    "fabric-api-lookup-api-v1": {
+      "plan": "passthrough"
+    },
+    "fabric-biome-api-v1": {
+      "plan": "passthrough"
+    },
+    "fabric-block-api-v1": {
+      "plan": "passthrough"
+    },
+    "fabric-block-view-api-v2": {
+      "plan": "passthrough"
+    },
+    "fabric-client-gametest-api-v1": {
+      "plan": "unsupported",
+      "reason": "development-time test framework, not needed to play"
+    },
+    "fabric-command-api-v2": {
+      "plan": "passthrough"
+    },
+    "fabric-content-registries-v0": {
+      "plan": "passthrough"
+    },
+    "fabric-convention-tags-v1": {
+      "plan": "passthrough"
+    },
+    "fabric-convention-tags-v2": {
+      "plan": "passthrough"
+    },
+    "fabric-crash-report-info-v1": {
+      "plan": "native",
+      "version": "0.3.23",
+      "reason": "NeoForge already lists every mod in crash reports; nothing else to provide."
+    },
+    "fabric-data-attachment-api-v1": {
+      "plan": "passthrough"
+    },
+    "fabric-data-generation-api-v1": {
+      "plan": "unsupported",
+      "reason": "development-time data generator, not needed to play"
+    },
+    "fabric-dimensions-v1": {
+      "plan": "passthrough"
+    },
+    "fabric-entity-events-v1": {
+      "plan": "passthrough"
+    },
+    "fabric-events-interaction-v0": {
+      "plan": "passthrough"
+    },
+    "fabric-game-rule-api-v1": {
+      "plan": "passthrough"
+    },
+    "fabric-gametest-api-v1": {
+      "plan": "unsupported",
+      "reason": "development-time test framework, not needed to play"
+    },
+    "fabric-item-api-v1": {
+      "plan": "passthrough"
+    },
+    "fabric-item-group-api-v1": {
+      "plan": "passthrough"
+    },
+    "fabric-key-binding-api-v1": {
+      "plan": "passthrough"
+    },
+    "fabric-lifecycle-events-v1": {
+      "plan": "passthrough"
+    },
+    "fabric-loot-api-v2": {
+      "plan": "passthrough"
+    },
+    "fabric-loot-api-v3": {
+      "plan": "passthrough"
+    },
+    "fabric-message-api-v1": {
+      "plan": "passthrough"
+    },
+    "fabric-model-loading-api-v1": {
+      "plan": "passthrough"
+    },
+    "fabric-networking-api-v1": {
+      "plan": "passthrough"
+    },
+    "fabric-object-builder-api-v1": {
+      "plan": "passthrough"
+    },
+    "fabric-particles-v1": {
+      "plan": "passthrough"
+    },
+    "fabric-recipe-api-v1": {
+      "plan": "passthrough"
+    },
+    "fabric-registry-sync-v0": {
+      "plan": "passthrough"
+    },
+    "fabric-renderer-api-v1": {
+      "plan": "passthrough"
+    },
+    "fabric-renderer-indigo": {
+      "plan": "passthrough"
+    },
+    "fabric-rendering-fluids-v1": {
+      "plan": "passthrough"
+    },
+    "fabric-rendering-v1": {
+      "plan": "passthrough"
+    },
+    "fabric-resource-conditions-api-v1": {
+      "plan": "passthrough"
+    },
+    "fabric-resource-loader-v0": {
+      "plan": "passthrough"
+    },
+    "fabric-resource-loader-v1": {
+      "plan": "passthrough"
+    },
+    "fabric-screen-api-v1": {
+      "plan": "passthrough"
+    },
+    "fabric-screen-handler-api-v1": {
+      "plan": "passthrough"
+    },
+    "fabric-serialization-api-v1": {
+      "plan": "passthrough"
+    },
+    "fabric-sound-api-v1": {
+      "plan": "passthrough"
+    },
+    "fabric-tag-api-v1": {
+      "plan": "passthrough"
+    },
+    "fabric-transfer-api-v1": {
+      "plan": "passthrough"
+    },
+    "fabric-transitive-access-wideners-v1": {
+      "plan": "passthrough"
+    }
+  }
+}

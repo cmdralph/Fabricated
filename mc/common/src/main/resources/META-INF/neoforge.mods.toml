@@ -1,0 +1,30 @@
+# Fabricated's in-game mod. Its sibling library (the jar you install) loads Fabric mods during discovery.
+modLoader="javafml"
+loaderVersion="*"
+license="MIT"
+issueTrackerURL="https://github.com/cmdralph/Fabricated/issues"
+
+[[mods]]
+modId="fabricated"
+version="${version}"
+displayName="Fabricated"
+authors="Ralph Turner and Fabricated contributors"
+displayURL="https://github.com/cmdralph/Fabricated"
+description='''
+Loads Fabric mods and libraries on NeoForge. Native Fabric API modules and NeoForge bridges live here.
+Diagnostics: logs/fabric-bridge-report.txt and the /fabricated command.
+'''
+
+[[dependencies.fabricated]]
+modId="neoforge"
+type="required"
+versionRange="${neoforge_version_range}"
+ordering="NONE"
+side="BOTH"
+
+[[dependencies.fabricated]]
+modId="minecraft"
+type="required"
+versionRange="${minecraft_version_range}"
+ordering="NONE"
+side="BOTH"
