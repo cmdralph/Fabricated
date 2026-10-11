@@ -154,6 +154,8 @@ def fabricatedJar = tasks.register('fabricatedJar', Jar) {
     duplicatesStrategy = DuplicatesStrategy.FAIL
 
     from sourceSets.loader.output
+    // The closure defers resolution; dependsOn makes Gradle build :core and :fabric-loader-api jars first.
+    dependsOn configurations.bundled
     from({ configurations.bundled.collect { zipTree(it) } }) {
         exclude 'META-INF/MANIFEST.MF'
     }
