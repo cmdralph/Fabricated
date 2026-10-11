@@ -74,7 +74,7 @@ How to read the table:
 | fabric-advancement-api-v1 | — | — | disabled | disabled |
 | fabric-menu-api-v1 / screen-handler-api-v1 | disabled | disabled | disabled | disabled |
 | fabric-api-lookup-api-v1 | loads | loads | loads | loads |
-| fabric-convention-tags-v2 (and v1) | disabled | disabled | disabled | disabled |
+| fabric-convention-tags-v2 (and v1) | loads | loads | loads | loads |
 | fabric-data-attachment-api-v1 | disabled | disabled | disabled | disabled |
 | fabric-particles-v1 | disabled | disabled | disabled | disabled |
 | fabric-recipe-api-v1 | disabled | disabled | disabled | disabled |
@@ -144,7 +144,8 @@ above. Most content mods also need networking, registry sync, resource loading o
 These modules are to be implemented natively on NeoForge's own events and APIs. Each one also unblocks the
 modules that cascade from it.
 
-1. ✅ `fabric-lifecycle-events-v1` (done; unblocked `fabric-api-lookup-api-v1`).
+1. ✅ `fabric-lifecycle-events-v1` (done; unblocked `fabric-api-lookup-api-v1` and, with a linkage-check fix
+   for injected interfaces, `fabric-convention-tags-v2`/`v1`).
 2. `fabric-networking-api-v1`: NeoForge's payload registrar. Unblocks particles and recipe-api.
 3. `fabric-resource-loader-v1`: NeoForge's reload-listener and pack events. Unblocks tag-api, creative-tab
    and the v0 API.
