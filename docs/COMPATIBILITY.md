@@ -58,7 +58,8 @@ How to read the table:
 | fabric-lifecycle-events-v1 | native | native | native | native |
 | fabric-networking-api-v1 | native | native | native | native |
 | fabric-registry-sync-v0 | disabled | disabled | disabled | disabled |
-| fabric-resource-loader-v1 (and v0) | disabled | disabled | disabled | disabled |
+| fabric-resource-loader-v1 | native | native | native | native |
+| fabric-resource-loader-v0 | loads | loads | loads | loads |
 | fabric-item-api-v1 | disabled | disabled | disabled | disabled |
 | fabric-block-api-v1 | disabled | disabled | disabled | disabled |
 | fabric-transfer-api-v1 | disabled | disabled | disabled | disabled |
@@ -70,7 +71,7 @@ How to read the table:
 | fabric-loot-api-v3 (and v2) | disabled | disabled | disabled | disabled |
 | fabric-resource-conditions-api-v1 | disabled | disabled | disabled | disabled |
 | fabric-tag-api-v1 | disabled | disabled | disabled | disabled |
-| fabric-advancement-api-v1 | — | — | disabled | disabled |
+| fabric-advancement-api-v1 | — | — | loads | disabled |
 | fabric-menu-api-v1 / screen-handler-api-v1 | disabled | disabled | disabled | disabled |
 | fabric-api-lookup-api-v1 | loads | loads | loads | loads |
 | fabric-command-api-v2 | loads | loads | loads | loads |
@@ -78,7 +79,7 @@ How to read the table:
 | fabric-data-attachment-api-v1 | disabled | disabled | disabled | disabled |
 | fabric-particles-v1 | disabled | disabled | disabled | disabled |
 | fabric-recipe-api-v1 | disabled | disabled | disabled | disabled |
-| fabric-creative-tab-api-v1 / item-group-api-v1 | disabled | disabled | disabled | disabled |
+| fabric-creative-tab-api-v1 / item-group-api-v1 | loads | loads | loads | loads |
 | fabric-debug-api-v1 | — | disabled | disabled | disabled |
 | fabric-key-mapping-api-v1 / key-binding-api-v1, screen-api-v1, rendering-v1, sound-api-v1, model-loading-api-v1 | client | client | client | client |
 | fabric-renderer-api-v1, fabric-renderer-indigo | unsupported | unsupported | unsupported | unsupported |
@@ -100,14 +101,18 @@ failures fall into a few groups:
   `lambda$loadResources$1` and captured fields such as `val$tags` have different names in NeoForge's build.
 - **The mixin targets a library class**: `fabric-dimensions-v1` patches DataFixerUpper's `TaggedChoice`,
   which NeoForge loads without mixin support.
+- **NeoForge's build gives a lambda different parameters**: an `@Inject` handler must take the target
+  method's parameters in order. `fabric-loot-api-v3` (26.1.2, 26.2) and `fabric-resource-conditions-api-v1`
+  inject into synthetic lambdas whose captured values NeoForge's build passes in another order or not at all.
 - **A mixin adds a method NeoForge already added**: `fabric-recipe-api-v1` generates an accessor
   `getConnection()` on `ServerCommonPacketListenerImpl` (NeoForge adds a public one), and on 26.1.2 its
-  `IngredientMixin` merges a `hashCode()` that NeoForge's `Ingredient` already has. Mixin rejects both.
+  `IngredientMixin` merges a `hashCode()` that NeoForge's `Ingredient` already has, and `fabric-tag-api-v1`
+  merges a `remove()` into `TagFile`, which NeoForge already declares. Mixin rejects all three.
 - **NeoForge calls a different constructor**: `fabric-particles-v1` modifies `new BlockParticleOption(type,
   state)` in `Entity.spawnSprintParticle`; NeoForge passes the block position as a third argument.
 - **Dependency cascade**: about a third of the disabled modules only fail because they require one of the
-  above. For example, `fabric-particles-v1` and `fabric-recipe-api-v1` need networking, and
-  `fabric-tag-api-v1` and `fabric-creative-tab-api-v1` need resource-loader.
+  above. For example, `fabric-object-builder-api-v1` and `fabric-debug-api-v1` need registry sync, and
+  `fabric-data-attachment-api-v1` needs entity-events.
 
 Each of these crashed the server at some point during development: they are the reason the pre-flight checks
 exist. Now each is a clear line in the report, and the server starts with the complete Fabric API jar on all
@@ -163,10 +168,42 @@ serverbound codec for both (NeoForge keeps one codec per id); the report says so
 CI checks that a Fabric payload and receiver register and reach NeoForge; a client round trip is not yet
 tested in CI.
 
+### Native `fabric-resource-loader-v1`
+
+Upstream patches the reload-listener and pack-repository code that NeoForge has already replaced with its own
+sorted reload-listener events. Fabricated ships the module's unchanged public API on top of those events:
+
+| Fabric | NeoForge |
+|---|---|
+| Server data listeners, listener factories (`DataResourceLoader`) | `AddServerReloadListenersEvent` |
+| Client resource listeners | `AddClientReloadListenersEvent` |
+| `addListenerOrdering` / `addReloaderOrdering` | `addDependency`; Fabric's vanilla ids (`minecraft:recipes`, `minecraft:languages`, …) are translated to NeoForge's (`minecraft:recipe_manager`, `minecraft:language_manager`, …) |
+| `fabric:before_vanilla`, `fabric:after_vanilla` phases | empty listeners before the first and after the last vanilla listener |
+| Shared reload state: registries, feature flags, data store (and on 1.21.11, 26.1.2 and 26.2 the recipe and advancement managers) | a setup listener that runs before all others |
+| `MinecraftServer` as `DataResourceStore`, `Resource#getFabricPackSource` | interfaces added by mixins that only add methods |
+| `registerBuiltinPack` | `AddPackFindersEvent` |
+
+Mod resources themselves need nothing: NeoForge already loads the `assets/` and `data/` of every mod, Fabric mods
+included. Resources from those mod packs report Fabric's mod pack source, as on Fabric.
+
+Differences from upstream:
+
+- An ordering that names a listener nobody registered is skipped (logged at debug level). An ordering that would
+  create a cycle is skipped with a warning in the report, where NeoForge would otherwise stop the game.
+- `DEFAULT_ENABLED` built-in **data** packs are enabled in new worlds. `DEFAULT_ENABLED` built-in **resource**
+  packs are not switched on automatically (upstream patches the options for this); players enable them in the
+  pack screen. `ALWAYS_ENABLED` packs are required on both sides.
+- Fabric's `/datapack` protections for its internal packs don't apply; NeoForge's own rules do.
+
+CI checks, on all four versions: listener ordering (including an ordering against a vanilla listener), the
+shared reload state, a listener factory, the data store read back through `MinecraftServer`, a `DEFAULT_ENABLED`
+built-in data pack being enabled and loaded, and the listener running again after `/reload`. Client listeners
+compile against NeoForge's client event but aren't run in CI yet.
+
 ### What this means for Fabric mods
 
 A Fabric mod works today if it needs only the Fabric Loader API and the **native** or **loads** modules
-above. Most content mods also need registry sync or resource loading, so they are disabled with a message naming the missing module.
+above. Most content mods also need registry sync, so they are disabled with a message naming the missing module.
 
 ### Planned work, in order of impact
 
@@ -177,8 +214,9 @@ modules that cascade from it.
    for injected interfaces, `fabric-convention-tags-v2`/`v1`).
 2. ✅ `fabric-networking-api-v1` on 26.x (done). Its dependants now load or fail on their own mixins
    (particles, recipe-api). Ported to 1.21.11 as well.
-3. `fabric-resource-loader-v1`: NeoForge's reload-listener and pack events. Unblocks tag-api, creative-tab
-   and the v0 API.
+3. ✅ `fabric-resource-loader-v1` on all four versions (done). Unblocked the v0 API, creative-tab /
+   item-group and, on 26.2, advancement-api. tag-api, loot-api and resource-conditions now fail on their own
+   mixins (see above).
 4. `fabric-registry-sync-v0`: NeoForge already syncs registries, so this module only needs to provide its
    API. Unblocks object-builder.
 5. `fabric-entity-events-v1`: NeoForge's entity events. Unblocks data-attachment.
