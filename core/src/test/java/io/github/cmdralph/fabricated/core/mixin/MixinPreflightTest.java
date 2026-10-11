@@ -367,4 +367,24 @@ class MixinPreflightTest {
 		assertEquals(Severity.FAIL, wrong.getFirst().severity());
 		assertTrue(wrong.getFirst().message().contains("does not match the parameters"), wrong.getFirst().message());
 	}
+
+	private static byte[] accessorMixin(String name, String method, String desc) {
+		return mixin(name, false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, method, desc, null, null);
+			mv.visitAnnotation("Lorg/spongepowered/asm/mixin/gen/Accessor;", false).visitEnd();
+			mv.visitEnd();
+		});
+	}
+
+	@Test
+	void accessorFieldTypeMustMatch() throws Exception {
+		// TARGET has a private int field "count".
+		assertTrue(run(config(true, "Get"), null, Map.of("com/example/mixin/Get", accessorMixin("com/example/mixin/Get", "getCount", "()I")), false).isEmpty());
+		assertTrue(run(config(true, "Set"), null, Map.of("com/example/mixin/Set", accessorMixin("com/example/mixin/Set", "setCount", "(I)V")), false).isEmpty());
+		List<PreflightFinding> wrongType = run(config(true, "Long"), null, Map.of("com/example/mixin/Long", accessorMixin("com/example/mixin/Long", "getCount", "()J")), false);
+		assertEquals(1, wrongType.size(), wrongType.toString());
+		assertTrue(wrongType.getFirst().message().contains("different type"), wrongType.getFirst().message());
+		List<PreflightFinding> missing = run(config(true, "Gone"), null, Map.of("com/example/mixin/Gone", accessorMixin("com/example/mixin/Gone", "getTotal", "()I")), false);
+		assertTrue(missing.getFirst().message().contains("does not exist"), missing.getFirst().message());
+	}
 }

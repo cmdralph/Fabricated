@@ -312,12 +312,30 @@ public final class MixinPreflight {
 		if (name == null) return;
 		MemberRef ref = MemberRef.parse(ctx.resolve(name));
 		String fieldName = ref.name() != null ? ref.name() : name;
-		// Mixin matches accessor targets by name and accepts erased/compatible types, so match by name.
+		String desc = ref.desc() != null && !ref.desc().startsWith("(") ? ref.desc() : accessorFieldDesc(method);
+		// As Mixin's AccessorInfo: the field type must match exactly; the name must match, or match ignoring case
+		// with no other such field. Without a known type, fall back to the name alone.
+		int caseInsensitive = 0;
 		for (FieldNode f : target.fields) {
+			if (desc != null && !f.desc.equals(desc)) continue;
 			if (f.name.equals(fieldName)) return;
+			if (f.name.equalsIgnoreCase(fieldName)) caseInsensitive++;
 		}
-		ctx.classLevel("@Accessor target field " + fieldName + " does not exist in " + target.name.replace('/', '.'),
-				"The field was renamed or removed by NeoForge or this Minecraft version.");
+		if (caseInsensitive == 1) return;
+		boolean nameExists = target.fields.stream().anyMatch(f -> f.name.equals(fieldName));
+		ctx.classLevel(nameExists
+						? "@Accessor target field " + fieldName + " in " + target.name.replace('/', '.') + " has a different type than " + desc
+						: "@Accessor target field " + fieldName + " does not exist in " + target.name.replace('/', '.'),
+				nameExists ? "NeoForge or this Minecraft version changed the field's type." : "The field was renamed or removed by NeoForge or this Minecraft version.");
+	}
+
+	/** The field type an accessor reads or writes: a getter's return type or a setter's only parameter. */
+	private static String accessorFieldDesc(MethodNode method) {
+		Type[] args = Type.getArgumentTypes(method.desc);
+		Type ret = Type.getReturnType(method.desc);
+		if (args.length == 0 && ret.getSort() != Type.VOID) return ret.getDescriptor();
+		if (args.length == 1 && ret.getSort() == Type.VOID) return args[0].getDescriptor();
+		return null;
 	}
 
 	private void checkInvoker(MethodNode method, AnnotationNode ann, ClassNode target, Context ctx) {
