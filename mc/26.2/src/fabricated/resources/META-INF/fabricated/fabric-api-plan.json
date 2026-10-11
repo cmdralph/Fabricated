@@ -75,7 +75,9 @@
       "plan": "passthrough"
     },
     "fabric-lifecycle-events-v1": {
-      "plan": "passthrough"
+      "plan": "native",
+      "version": "4.1.4",
+      "reason": "Shipped by Fabricated on NeoForge's events (upstream's mixins conflict with NeoForge's patches)."
     },
     "fabric-loot-api-v3": {
       "plan": "passthrough"

@@ -15,6 +15,10 @@ Loads Fabric mods and libraries on NeoForge. Native Fabric API modules and NeoFo
 Diagnostics: logs/fabric-bridge-report.txt and the /fabricated command.
 '''
 
+# Adds Fabric's EntityLoadData to entities on 26.x (fields and methods only); empty on 1.21.11.
+[[mixins]]
+config="fabricated.mixins.json"
+
 [[dependencies.fabricated]]
 modId="neoforge"
 type="required"

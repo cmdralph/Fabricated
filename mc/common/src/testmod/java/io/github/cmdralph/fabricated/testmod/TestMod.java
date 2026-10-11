@@ -10,6 +10,8 @@ import net.fabricmc.api.DedicatedServerModInitializer;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.Event;
 import net.fabricmc.fabric.api.event.EventFactory;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.loader.api.ModContainer;
 import net.minecraft.core.Registry;
@@ -51,6 +53,21 @@ public final class TestMod implements ModInitializer, DedicatedServerModInitiali
 		});
 		event.register(() -> LOGGER.info("FABRICATED-TEST fabric api base event OK"));
 		event.invoker().run();
+
+		// Native fabric-lifecycle-events-v1: these fire from NeoForge's server events.
+		ServerLifecycleEvents.SERVER_STARTED.register(server -> LOGGER.info("FABRICATED-TEST lifecycle server started OK"));
+		ServerTickEvents.END_SERVER_TICK.register(new ServerTickEvents.EndTick() {
+			private boolean logged;
+
+			@Override
+			public void onEndTick(net.minecraft.server.MinecraftServer server) {
+				if (!logged) {
+					logged = true;
+					LOGGER.info("FABRICATED-TEST lifecycle server tick OK");
+				}
+			}
+		});
+		ServerLifecycleEvents.SERVER_STOPPING.register(server -> LOGGER.info("FABRICATED-TEST lifecycle server stopping OK"));
 
 		try {
 			Class<?> widened = Class.forName("net.minecraft.server.MinecraftServer$ReloadableResources");

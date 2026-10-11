@@ -3,8 +3,10 @@
 # directory. Used for the modules Fabricated ships natively (see fabric-api-plan.json). Re-run it when
 # moving a Minecraft version to a newer Fabric API release; review the diff before committing.
 #
-# Usage: scripts/import-fabric-api.sh <fabric-api-tag> <destination-dir> <module> [module...]
-# Example: scripts/import-fabric-api.sh 0.162.0+26.3 mc/26.3/src/fabricapi fabric-api-base
+# Usage: scripts/import-fabric-api.sh <fabric-api-tag> <destination-dir> <module>[:api] [module[:api]...]
+# A ":api" suffix imports only the module's public API (net/fabricmc/fabric/api/**); Fabricated then
+# provides the implementation itself on NeoForge events instead of upstream's mixins.
+# Example: scripts/import-fabric-api.sh 0.162.0+26.3 mc/26.3/src/fabricapi fabric-api-base fabric-lifecycle-events-v1:api
 set -euo pipefail
 
 if [ "$#" -lt 3 ]; then
@@ -21,18 +23,27 @@ trap 'rm -rf "$work"' EXIT
 
 git clone --quiet --depth 1 --filter=blob:none --no-checkout --branch "$tag" https://github.com/FabricMC/fabric "$work/fabric"
 patterns=()
-for module in "$@"; do
+for spec in "$@"; do
+	module="${spec%%:api}"
 	patterns+=("/$module/src/main/java/" "/$module/src/client/java/")
 done
 git -C "$work/fabric" sparse-checkout set --no-cone "${patterns[@]}"
 git -C "$work/fabric" checkout --quiet
 
 mkdir -p "$dest/java"
-for module in "$@"; do
+for spec in "$@"; do
+	module="${spec%%:api}"
 	found=0
 	for part in main client; do
 		src="$work/fabric/$module/src/$part/java"
-		if [ -d "$src" ]; then
+		[ -d "$src" ] || continue
+		if [ "$spec" != "$module" ]; then
+			if [ -d "$src/net/fabricmc/fabric/api" ]; then
+				mkdir -p "$dest/java/net/fabricmc/fabric/api"
+				cp -R "$src/net/fabricmc/fabric/api/." "$dest/java/net/fabricmc/fabric/api/"
+				found=1
+			fi
+		else
 			cp -R "$src/." "$dest/java/"
 			found=1
 		fi
