@@ -9,7 +9,7 @@ from expectations. CI boots each version twice:
    informational. The resulting `fabric-bridge-report.txt` is kept as a CI artifact
    (`smoke-fabric-api-<version>`), and the tables below are taken from it.
 
-Last updated from CI run [38171595789](https://github.com/cmdralph/Fabricated/actions/runs/38171595789)
+Last updated from CI run [38175331354](https://github.com/cmdralph/Fabricated/actions/runs/38175331354)
 (Fabricated 0.1.0 development build, dedicated server).
 
 ## Minecraft versions
@@ -57,7 +57,7 @@ How to read the table:
 | fabric-permission-api-v1 | — | loads | loads | loads |
 | fabric-lifecycle-events-v1 | native | native | native | native |
 | fabric-networking-api-v1 | native | native | native | native |
-| fabric-registry-sync-v0 | disabled | disabled | disabled | disabled |
+| fabric-registry-sync-v0 | native | native | native | native |
 | fabric-resource-loader-v1 | native | native | native | native |
 | fabric-resource-loader-v0 | loads | loads | loads | loads |
 | fabric-item-api-v1 | disabled | disabled | disabled | disabled |
@@ -80,7 +80,7 @@ How to read the table:
 | fabric-particles-v1 | disabled | disabled | disabled | disabled |
 | fabric-recipe-api-v1 | disabled | disabled | disabled | disabled |
 | fabric-creative-tab-api-v1 / item-group-api-v1 | loads | loads | loads | loads |
-| fabric-debug-api-v1 | — | disabled | disabled | disabled |
+| fabric-debug-api-v1 | — | loads | loads | loads |
 | fabric-key-mapping-api-v1 / key-binding-api-v1, screen-api-v1, rendering-v1, sound-api-v1, model-loading-api-v1 | client | client | client | client |
 | fabric-renderer-api-v1, fabric-renderer-indigo | unsupported | unsupported | unsupported | unsupported |
 | fabric-data-generation-api-v1, gametest, client-gametest | unsupported | unsupported | unsupported | unsupported |
@@ -93,7 +93,7 @@ failures fall into a few groups:
 - **NeoForge changed the code the mixin targets.** This is the most common cause. Examples from the
   reports:
   - `fabric-block-api-v1`: NeoForge replaces `BlockState.isAir()` calls in chunk sections.
-  - `fabric-registry-sync-v0`: `Bootstrap.bootStrap` no longer calls `wrapStreams()`.
+  - `fabric-object-builder-api-v1` (1.21.11): NeoForge changed the villager-trade constructor it redirects.
   - `fabric-networking-api-v1`: NeoForge replaces the custom-payload codec setup in
     `ClientboundCustomPayloadPacket`/`ServerboundCustomPayloadPacket`, because NeoForge has its own payload
     system.
@@ -101,6 +101,9 @@ failures fall into a few groups:
   `lambda$loadResources$1` and captured fields such as `val$tags` have different names in NeoForge's build.
 - **The mixin targets a library class**: `fabric-dimensions-v1` patches DataFixerUpper's `TaggedChoice`,
   which NeoForge loads without mixin support.
+- **NeoForge changed a field's type**: an `@Accessor` must read a field of exactly its type.
+  `fabric-object-builder-api-v1` (26.x) reads `AttributeSupplier.Builder.builder` as an `ImmutableMap.Builder`,
+  which NeoForge replaced.
 - **NeoForge's build gives a lambda different parameters**: an `@Inject` handler must take the target
   method's parameters in order. `fabric-loot-api-v3` (26.1.2, 26.2) and `fabric-resource-conditions-api-v1`
   inject into synthetic lambdas whose captured values NeoForge's build passes in another order or not at all.
@@ -111,8 +114,7 @@ failures fall into a few groups:
 - **NeoForge calls a different constructor**: `fabric-particles-v1` modifies `new BlockParticleOption(type,
   state)` in `Entity.spawnSprintParticle`; NeoForge passes the block position as a third argument.
 - **Dependency cascade**: about a third of the disabled modules only fail because they require one of the
-  above. For example, `fabric-object-builder-api-v1` and `fabric-debug-api-v1` need registry sync, and
-  `fabric-data-attachment-api-v1` needs entity-events.
+  above. For example, `fabric-data-attachment-api-v1` needs entity-events.
 
 Each of these crashed the server at some point during development: they are the reason the pre-flight checks
 exist. Now each is a clear line in the report, and the server starts with the complete Fabric API jar on all
@@ -200,10 +202,43 @@ shared reload state, a listener factory, the data store read back through `Minec
 built-in data pack being enabled and loaded, and the listener running again after `/reload`. Client listeners
 compile against NeoForge's client event but aren't run in CI yet.
 
+### Native `fabric-registry-sync-v0`
+
+NeoForge already syncs registry ids to clients and checks that both sides have the same entries, so Fabric's own
+sync protocol isn't needed (and isn't sent). Fabricated provides the module's unchanged public API on NeoForge's
+registries:
+
+| Fabric | NeoForge |
+|---|---|
+| `FabricRegistryBuilder` (new static registries) | registered into the root registry while NeoForge's registration events run, when Fabric initializers run; NeoForge freezes, syncs and snapshots them with the rest |
+| `RegistryAttribute.SYNCED` | NeoForge's sync flag; registries NeoForge syncs also report `SYNCED` |
+| `RegistryEntryAddedCallback` | NeoForge's registry add callback |
+| `RegistryIdRemapCallback` | NeoForge's clear and bake callbacks around applying a registry snapshot (for example the server's ids on joining it) |
+| `DynamicRegistries.register` / `registerSynced` (and `registerReloadable` on 26.3) | NeoForge's data-pack registry lists |
+| `FabricRegistry#addAlias` | NeoForge's registry aliases |
+
+Differences from upstream:
+
+- `DynamicRegistrySetupCallback` fires once the dynamic registries are loaded (on the server before it starts,
+  on the client when joining a server), not before they are filled. Entry-added callbacks registered on its view
+  are called once for every entry already present. Entries can't be added to the registries from the callback.
+- A registry must be created while registration is open, which is when Fabric initializers run. Creating one
+  later fails, as it does on NeoForge.
+- `SKIP_WHEN_EMPTY` has no effect; NeoForge decides how to sync an empty registry. The `MODDED`, `OPTIONAL` and
+  `SAVE_DATA_VALIDATED` attributes are recorded for mods that read them but change nothing.
+- NeoForge has no public API for the sync flag and the data-pack registry lists, so Fabricated reaches them by
+  reflection. If a NeoForge build lacks them, the affected call fails with a clear message instead of the game
+  failing to start.
+
+CI checks, on all four versions: a new synced registry created and filled from a Fabric initializer (with the
+entry-added callback and an alias), and a synced data-pack registry loaded from a data pack and seen by a
+`DynamicRegistrySetupCallback`. Id remapping on joining a server needs a client and isn't tested in CI yet.
+
 ### What this means for Fabric mods
 
 A Fabric mod works today if it needs only the Fabric Loader API and the **native** or **loads** modules
-above. Most content mods also need registry sync, so they are disabled with a message naming the missing module.
+above. Many content mods also need item, block, entity or loot modules that still fail pre-flight, so they are
+disabled with a message naming the missing module.
 
 ### Planned work, in order of impact
 
@@ -217,8 +252,8 @@ modules that cascade from it.
 3. ✅ `fabric-resource-loader-v1` on all four versions (done). Unblocked the v0 API, creative-tab /
    item-group and, on 26.2, advancement-api. tag-api, loot-api and resource-conditions now fail on their own
    mixins (see above).
-4. `fabric-registry-sync-v0`: NeoForge already syncs registries, so this module only needs to provide its
-   API. Unblocks object-builder.
+4. ✅ `fabric-registry-sync-v0` on all four versions (done). Unblocked debug-api on 26.x. object-builder
+   now fails on its own mixins (see above) and is a candidate for a native implementation.
 5. `fabric-entity-events-v1`: NeoForge's entity events. Unblocks data-attachment.
 
 ## Fabric mods tested
