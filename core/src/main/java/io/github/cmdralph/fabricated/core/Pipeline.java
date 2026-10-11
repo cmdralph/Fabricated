@@ -98,6 +98,7 @@ public final class Pipeline {
 			Set<String> platformPackages,
 			FabricApiPlan fabricApiPlan,
 			ClassBytesSource nativeApiClasses,
+			Map<String, List<String>> nativeApiInterfaces,
 			List<NeoForgeMod> neoForgeMods,
 			MappingSupplier mappings,
 			String[] launchArguments) {
@@ -317,9 +318,10 @@ public final class Pipeline {
 				// Linkage analysis on the final set.
 				LinkageAnalysis analysis = new LinkageAnalysis(cache, config.limits(), in.clientSide());
 				String fingerprint = Hashing.sha256(ordered.stream().map(t -> t.candidate().id() + "@" + t.candidate().sha256())
-						.sorted().collect(Collectors.joining(",")) + "|" + in.minecraftVersion() + "|" + in.neoForgeVersion() + "|" + plan.fabricApiVersion());
+						.sorted().collect(Collectors.joining(",")) + "|" + in.minecraftVersion() + "|" + in.neoForgeVersion() + "|" + plan.fabricApiVersion()
+						+ "|" + in.fabricatedVersion());
 				try (JarClassSource jars = new JarClassSource(ordered, config.limits())) {
-					linkage = analysis.analyse(ordered, in.gameClasses().or(in.nativeApiClasses()).or(jars), fingerprint);
+					linkage = analysis.analyse(ordered, in.gameClasses().or(in.nativeApiClasses()).or(jars), in.nativeApiInterfaces(), fingerprint);
 				}
 				boolean linkageDropped = false;
 				for (TranslatedMod t : ordered) {

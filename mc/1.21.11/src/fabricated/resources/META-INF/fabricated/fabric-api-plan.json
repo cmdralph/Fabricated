@@ -72,7 +72,9 @@
       "plan": "passthrough"
     },
     "fabric-lifecycle-events-v1": {
-      "plan": "passthrough"
+      "plan": "native",
+      "version": "2.6.15",
+      "reason": "Shipped by Fabricated on NeoForge's events (upstream's mixins conflict with NeoForge's patches)."
     },
     "fabric-loot-api-v2": {
       "plan": "passthrough"
@@ -87,7 +89,9 @@
       "plan": "passthrough"
     },
     "fabric-networking-api-v1": {
-      "plan": "passthrough"
+      "plan": "native",
+      "version": "5.1.6",
+      "reason": "Shipped by Fabricated on NeoForge's payload system (login queries are not supported)."
     },
     "fabric-object-builder-api-v1": {
       "plan": "passthrough"

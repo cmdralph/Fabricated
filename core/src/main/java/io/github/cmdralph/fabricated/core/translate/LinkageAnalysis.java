@@ -3,6 +3,7 @@ package io.github.cmdralph.fabricated.core.translate;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -19,6 +20,11 @@ import io.github.cmdralph.fabricated.core.bytecode.LinkageChecker;
 import io.github.cmdralph.fabricated.core.cache.TranslationCache;
 import io.github.cmdralph.fabricated.core.json.Json;
 import io.github.cmdralph.fabricated.core.json.JsonException;
+
+import org.objectweb.asm.ClassReader;
+import org.objectweb.asm.Type;
+import org.objectweb.asm.tree.AnnotationNode;
+import org.objectweb.asm.tree.ClassNode;
 
 /**
  * Runs the {@link LinkageChecker} over every translated mod against an index of everything that will
@@ -47,13 +53,27 @@ public final class LinkageAnalysis {
 	 * @return issues per NeoForge id (only mods with issues are present)
 	 */
 	public Map<String, List<String>> analyse(List<TranslatedMod> mods, ClassBytesSource runtime, String setFingerprint) {
-		ClassIndex index = new ClassIndex(runtime);
-		LinkageChecker checker = new LinkageChecker(index, CHECKED, clientSide);
+		return analyse(mods, runtime, Map.of(), setFingerprint);
+	}
+
+	/**
+	 * @param platformInterfaces interfaces Fabricated's own (native Fabric API) mixins add to game classes, by
+	 *                           target; see {@link #mixinInterfaces(byte[], Map)}
+	 */
+	public Map<String, List<String>> analyse(List<TranslatedMod> mods, ClassBytesSource runtime,
+			Map<String, List<String>> platformInterfaces, String setFingerprint) {
 		Map<String, List<String>> result = new LinkedHashMap<>();
+		LinkageChecker checker = null;
 		for (TranslatedMod mod : mods) {
-			String blob = "linkage-" + Hashing.sha256(mod.candidate().sha256() + "|" + setFingerprint + "|" + (clientSide ? "c" : "s")).substring(0, 40) + ".json";
+			String blob = "linkage-" + Hashing.sha256("v3|" + mod.candidate().sha256() + "|" + setFingerprint + "|" + (clientSide ? "c" : "s")).substring(0, 40) + ".json";
 			List<String> issues = readCached(blob);
 			if (issues == null) {
+				// Built only when some result is not cached: it reads every mod's classes once.
+				if (checker == null) {
+					Map<String, List<String>> added = addedInterfaces(mods);
+					platformInterfaces.forEach((target, ifaces) -> added.computeIfAbsent(target, k -> new ArrayList<>()).addAll(ifaces));
+					checker = new LinkageChecker(new ClassIndex(runtime, added), CHECKED, clientSide);
+				}
 				issues = check(mod, checker);
 				try {
 					cache.storeBlob(blob, Json.write(issues, false).getBytes(StandardCharsets.UTF_8));
@@ -64,6 +84,47 @@ public final class LinkageAnalysis {
 			if (!issues.isEmpty()) result.put(mod.neoForgeId(), issues);
 		}
 		return result;
+	}
+
+	/**
+	 * Interfaces that exist on game classes at runtime without being declared there: Fabric's
+	 * {@code inject-interface} directives, and interfaces implemented by mixin classes (Mixin adds them to
+	 * every target), which is how older Fabric API modules add their extension interfaces.
+	 */
+	private Map<String, List<String>> addedInterfaces(List<TranslatedMod> mods) {
+		Map<String, List<String>> added = new HashMap<>();
+		for (TranslatedMod mod : mods) {
+			for (var ii : mod.injectedInterfaces()) added.computeIfAbsent(ii.target(), k -> new ArrayList<>()).add(ii.interfaceName());
+			try (SafeArchive archive = SafeArchive.open(mod.jar(), limits)) {
+				for (String name : archive.entryNames()) {
+					if (!name.endsWith(".class") || name.startsWith("META-INF/") || name.endsWith("module-info.class")) continue;
+					byte[] data = archive.read(name);
+					if (data != null) mixinInterfaces(data, added);
+				}
+			} catch (ArchiveException | IOException | RuntimeException e) {
+				// The mod is reported by check() if it cannot be read; nothing to add here.
+			}
+		}
+		return added;
+	}
+
+	/** Adds the interfaces a mixin class implements to each of its targets; ignores non-mixin classes. */
+	public static void mixinInterfaces(byte[] data, Map<String, List<String>> added) {
+		ClassNode node = new ClassNode();
+		new ClassReader(data).accept(node, ClassReader.SKIP_CODE | ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
+		if (node.interfaces == null || node.interfaces.isEmpty() || node.invisibleAnnotations == null) return;
+		for (AnnotationNode ann : node.invisibleAnnotations) {
+			if (!ann.desc.equals("Lorg/spongepowered/asm/mixin/Mixin;") || ann.values == null) continue;
+			for (int i = 0; i + 1 < ann.values.size(); i += 2) {
+				Object value = ann.values.get(i + 1);
+				if (!(value instanceof List<?> list)) continue;
+				for (Object target : list) {
+					String internal = target instanceof Type type ? type.getInternalName()
+							: target instanceof String str ? str.replace('.', '/') : null;
+					if (internal != null) added.computeIfAbsent(internal, k -> new ArrayList<>()).addAll(node.interfaces);
+				}
+			}
+		}
 	}
 
 	private List<String> readCached(String blob) {

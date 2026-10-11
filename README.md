@@ -35,7 +35,8 @@ entrypoint that throws).
 **Fabric API** is the big caveat. Most Fabric mods need it, and many of its modules patch Minecraft code
 that NeoForge has already changed. Fabricated handles this per module:
 
-- **Native**: Fabricated ships the module itself. Today that is `fabric-api-base` and
+- **Native**: Fabricated ships the module itself. Today that is `fabric-api-base`,
+  `fabric-lifecycle-events-v1`, `fabric-networking-api-v1` (login queries excepted) and
   `fabric-crash-report-info-v1`.
 - **Pass-through**: the module is loaded from the official Fabric API jar you install. Fabricated checks
   every mixin against NeoForge's code before loading it ("mixin pre-flight"). Modules whose mixins can't
@@ -44,7 +45,7 @@ that NeoForge has already changed. Fabricated handles this per module:
 
 With the official Fabric API jar installed, the server boots on all four versions. The modules that can't
 work are disabled, and the rest load. So a Fabric mod that needs only the Fabric Loader API, `fabric-api-base` or pass-through modules that
-survive pre-flight works today. A mod that needs Fabric networking, registry sync, items, transfer and
+survive pre-flight works today. A mod that needs registry sync, resource loading, items, transfer and
 similar modules does not work yet. The per-module details are in [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md).
 
 ## What it does not support
@@ -143,8 +144,8 @@ warning in the report, so a bad config never crashes the game.
 ## Known limitations
 
 - **Fabric API coverage** is the main limit. See [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) for the
-  per-module status on each Minecraft version. Native networking, registry sync and command modules are
-  the next planned work.
+  per-module status on each Minecraft version. Next planned: native resource loading and registry
+  sync.
 - **Mixin pre-flight is conservative.** It only reports what it can prove from bytecode. A mixin it can't
   evaluate (wildcard selectors, unusual injection points) loads normally. If that mixin later fails,
   Mixin's own crash report names the Fabric mod.

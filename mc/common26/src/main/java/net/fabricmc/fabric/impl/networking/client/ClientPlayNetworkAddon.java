@@ -1,0 +1,55 @@
+package net.fabricmc.fabric.impl.networking.client;
+
+import java.util.HashSet;
+import java.util.Set;
+
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ClientPacketListener;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.network.protocol.Packet;
+import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.resources.Identifier;
+
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
+import net.fabricmc.fabric.api.networking.v1.PacketSender;
+import net.fabricmc.fabric.api.networking.v1.context.PacketContext;
+import net.fabricmc.fabric.api.networking.v1.context.PacketContextProvider;
+import net.fabricmc.fabric.impl.networking.ChanneledNetworkAddon;
+import net.fabricmc.fabric.impl.networking.PayloadTypeRegistryImpl;
+
+/** Client play-phase networking state. */
+public final class ClientPlayNetworkAddon extends ChanneledNetworkAddon<ClientPlayNetworking.PlayPayloadHandler<?>> {
+	private final ClientPacketListener listener;
+
+	ClientPlayNetworkAddon(ClientPacketListener listener) {
+		super(ClientNetworkingImpl.PLAY, listener.getConnection());
+		this.listener = listener;
+	}
+
+	@Override
+	public Set<Identifier> getSendableChannels() {
+		Set<Identifier> channels = new HashSet<>();
+		for (Identifier id : PayloadTypeRegistryImpl.SERVERBOUND_PLAY.ids()) {
+			if (this.listener.hasChannel(id)) channels.add(id);
+		}
+		return channels;
+	}
+
+	@Override
+	public Packet<?> createPacket(CustomPacketPayload payload) {
+		return ClientNetworkingImpl.createServerboundPacket(payload);
+	}
+
+	/** Dispatches a payload NeoForge decoded on the render thread. */
+	@SuppressWarnings({"unchecked", "rawtypes"})
+	public void handle(CustomPacketPayload payload) {
+		ClientPlayNetworking.PlayPayloadHandler handler = getHandler(payload.type().id());
+		if (handler == null) return;
+		Minecraft client = Minecraft.getInstance();
+		Context context = new Context(client, client.player, this);
+		PacketContext.runWithContext((PacketContextProvider) this.connection, () -> handler.receive(payload, context));
+	}
+
+	private record Context(Minecraft client, LocalPlayer player, PacketSender responseSender) implements ClientPlayNetworking.Context {
+	}
+}

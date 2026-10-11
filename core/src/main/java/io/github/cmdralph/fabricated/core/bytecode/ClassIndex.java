@@ -45,6 +45,7 @@ public final class ClassIndex {
 	}
 
 	private final ClassBytesSource source;
+	private final Map<String, List<String>> extraInterfaces;
 	private final Map<String, ClassInfo> cache = new ConcurrentHashMap<>();
 
 	/**
@@ -60,7 +61,16 @@ public final class ClassIndex {
 
 	/** @param source the classes to index; JDK classes are added automatically */
 	public ClassIndex(ClassBytesSource source) {
+		this(source, Map.of());
+	}
+
+	/**
+	 * @param extraInterfaces interfaces added to classes at load time (Fabric's {@code inject-interface}),
+	 *                        by target class; they take part in member resolution like declared interfaces
+	 */
+	public ClassIndex(ClassBytesSource source, Map<String, List<String>> extraInterfaces) {
 		this.source = source.or(JDK);
+		this.extraInterfaces = Map.copyOf(extraInterfaces);
 	}
 
 	/** @return class info, or {@code null} if the class is not in the source */
@@ -97,8 +107,9 @@ public final class ClassIndex {
 		try {
 			Collector collector = new Collector();
 			new ClassReader(data).accept(collector, ClassReader.SKIP_CODE | ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
-			return new ClassInfo(collector.name, collector.access, collector.superName,
-					collector.interfaces == null ? List.of() : List.of(collector.interfaces),
+			List<String> interfaces = new java.util.ArrayList<>(collector.interfaces == null ? List.of() : List.of(collector.interfaces));
+			interfaces.addAll(extraInterfaces.getOrDefault(internalName, List.of()));
+			return new ClassInfo(collector.name, collector.access, collector.superName, List.copyOf(interfaces),
 					Collections.unmodifiableMap(collector.methods), Collections.unmodifiableMap(collector.fields));
 		} catch (RuntimeException e) {
 			// Corrupt class files are treated as absent; callers report the consequence.

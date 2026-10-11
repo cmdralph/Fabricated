@@ -38,6 +38,8 @@ public final class FabricatedMod {
 		NeoForge.EVENT_BUS.addListener(ServerAboutToStartEvent.class, event -> {
 			if (dist.isDedicatedServer()) state.runtime().setGameInstance(event.getServer());
 		});
+		// Native Fabric API modules (version-specific: mc/common26 or mc/<version>).
+		NativeFabricApi.register(modBus, dist, state);
 		if (dist.isClient()) ClientSupport.init(state);
 	}
 }

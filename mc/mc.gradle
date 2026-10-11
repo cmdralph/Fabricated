@@ -38,10 +38,17 @@ sourceSets {
     main {
         java.srcDirs = ['src/main/java', rootProject.file('mc/common/src/main/java'), 'src/fabricapi/java']
         resources.srcDirs = ['src/main/resources', rootProject.file('mc/common/src/main/resources')]
+        // Code shared by the unobfuscated 26.x versions, whose Fabric API surface is identical.
+        if (mcVersion.startsWith('26.')) {
+            java.srcDir rootProject.file('mc/common26/src/main/java')
+            resources.srcDir rootProject.file('mc/common26/src/main/resources')
+        }
     }
     testmod {
         java.srcDir rootProject.file('mc/common/src/testmod/java')
         resources.srcDir rootProject.file('mc/common/src/testmod/resources')
+        if (mcVersion.startsWith('26.')) java.srcDir rootProject.file('mc/common26/src/testmod/java')
+        java.srcDir 'src/testmod/java'
     }
     testmodbroken {
         java.srcDir rootProject.file('mc/common/src/testmodbroken/java')
@@ -77,6 +84,13 @@ dependencies {
 
 neoForge {
     version = project.neoforge_version
+    // Compile-time view of the interfaces Fabricated's mixins add at runtime (Fabric API's injected
+    // interfaces), so the vendored Fabric API sources compile as they do with Loom.
+    if (mcVersion.startsWith('26.')) {
+        interfaceInjectionData {
+            from(rootProject.file('mc/common26/interfaces.json'))
+        }
+    }
 }
 neoForge.addModdingDependenciesTo(sourceSets.loader)
 neoForge.addModdingDependenciesTo(sourceSets.testmod)
@@ -88,6 +102,9 @@ def expandProps = [
         neoforge_version_range : project.neoforge_version_range,
         minecraft_version_range: project.minecraft_version_range,
         aw_header              : project.aw_header,
+        // Native networking test (version-specific source: mc/common26 or mc/<version>/src/testmod).
+        testmod_extra_main     : ', "io.github.cmdralph.fabricated.testmod.NetworkingTest"',
+        testmod_extra_depends  : ',\n    "fabric-networking-api-v1": "*"',
 ]
 
 tasks.named('processResources', ProcessResources) {

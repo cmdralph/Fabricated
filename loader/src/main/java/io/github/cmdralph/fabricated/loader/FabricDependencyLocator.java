@@ -6,8 +6,10 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -23,6 +25,7 @@ import io.github.cmdralph.fabricated.core.cache.TranslationCache;
 import io.github.cmdralph.fabricated.core.json.JsonException;
 import io.github.cmdralph.fabricated.core.report.Report;
 import io.github.cmdralph.fabricated.core.resolve.FabricApiPlan;
+import io.github.cmdralph.fabricated.core.translate.LinkageAnalysis;
 import io.github.cmdralph.fabricated.core.translate.PackageGuard;
 import net.neoforged.fml.ModLoadingIssue;
 import net.neoforged.fml.jarcontents.JarContents;
@@ -110,13 +113,21 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 			if (d != null) d.packages().forEach(p -> platformPackages.add(p.replace('.', '/')));
 		}
 		ClassBytesSource nativeApi = ClassBytesSource.EMPTY;
+		// Interfaces the in-game mod's mixins add to game classes (Fabric API's injected interfaces).
+		Map<String, List<String>> nativeApiInterfaces = new HashMap<>();
 		SafeArchive gameModArchive = null;
 		if (gameModJar != null) {
 			gameModArchive = SafeArchive.open(gameModJar, ArchiveLimits.DEFAULTS);
 			SafeArchive archive = gameModArchive;
 			for (String name : archive.entryNames()) {
 				int slash = name.lastIndexOf('/');
-				if (name.endsWith(".class") && slash > 0) platformPackages.add(name.substring(0, slash));
+				if (name.endsWith(".class") && slash > 0) {
+					platformPackages.add(name.substring(0, slash));
+					if (name.contains("/mixin/")) {
+						byte[] data = archive.read(name);
+						if (data != null) LinkageAnalysis.mixinInterfaces(data, nativeApiInterfaces);
+					}
+				}
 			}
 			nativeApi = name -> {
 				try {
@@ -142,7 +153,7 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 		FabricApiPlan plan = FabricApiPlan.parse(new String(FabricatedInfo.readOptional("fabric-api-plan.json"), StandardCharsets.UTF_8));
 		Pipeline.Input input = new Pipeline.Input(gameDir, FMLPaths.CONFIGDIR.get(), logsDir, fabricJars, mcVersion, neoVersion,
 				client, info.namespace(), runtimeMixinVersion(info), info.mixinLowest(), info.fabricatedVersion(), !fml.isProduction(), gameClasses, untransformable,
-				platformPackages, plan, nativeApi, neoForgeMods,
+				platformPackages, plan, nativeApi, nativeApiInterfaces, neoForgeMods,
 				cache -> IntermediaryMappings.load(cache, mcVersion, client, null),
 				fml.getProgramArgs().getArguments());
 

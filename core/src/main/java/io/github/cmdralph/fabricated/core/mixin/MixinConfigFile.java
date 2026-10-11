@@ -23,6 +23,7 @@ public final class MixinConfigFile {
 	private final boolean required;
 	private final String plugin;
 	private final int defaultRequire;
+	private final boolean overwritesRequireAnnotations;
 
 	private MixinConfigFile(Map<String, Object> tree) throws JsonException {
 		this.tree = tree;
@@ -38,6 +39,8 @@ public final class MixinConfigFile {
 			dr = n.intValue();
 		}
 		this.defaultRequire = dr;
+		this.overwritesRequireAnnotations = tree.get("overwrites") instanceof Map<?, ?> overwrites
+				&& Boolean.TRUE.equals(overwrites.get("requireAnnotations"));
 	}
 
 	public static MixinConfigFile parse(String json) throws JsonException {
@@ -81,6 +84,11 @@ public final class MixinConfigFile {
 
 	public int defaultRequire() {
 		return defaultRequire;
+	}
+
+	/** {@code overwrites.requireAnnotations}: a mixin method that replaces a target method must be @Overwrite. */
+	public boolean overwritesRequireAnnotations() {
+		return overwritesRequireAnnotations;
 	}
 
 	/** Mixin names (relative to the package) that apply on the given side. */
