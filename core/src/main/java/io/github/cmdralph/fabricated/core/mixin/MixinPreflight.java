@@ -9,6 +9,7 @@ import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
 import io.github.cmdralph.fabricated.core.bytecode.ClassIndex;
 import io.github.cmdralph.fabricated.core.mixin.PreflightFinding.Severity;
 
+import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.AnnotationNode;
@@ -41,6 +42,8 @@ public final class MixinPreflight {
 	private static final String ACCESSOR = "Lorg/spongepowered/asm/mixin/gen/Accessor;";
 	private static final String INVOKER = "Lorg/spongepowered/asm/mixin/gen/Invoker;";
 	private static final String AT = "Lorg/spongepowered/asm/mixin/injection/At;";
+	private static final String UNIQUE = "Lorg/spongepowered/asm/mixin/Unique;";
+	private static final String INTRINSIC = "Lorg/spongepowered/asm/mixin/Intrinsic;";
 	private static final Set<String> GAME_PREFIXES = Set.of("net/minecraft/", "com/mojang/blaze3d/");
 
 	private final ClassIndex game;
@@ -241,19 +244,51 @@ public final class MixinPreflight {
 			}
 
 			AnnotationNode accessor = annotation(method.visibleAnnotations, method.invisibleAnnotations, ACCESSOR);
-			if (accessor != null) {
-				checkAccessor(method, accessor, target, ctx);
-				continue;
-			}
-			AnnotationNode invoker = annotation(method.visibleAnnotations, method.invisibleAnnotations, INVOKER);
-			if (invoker != null) {
-				checkInvoker(method, invoker, target, ctx);
+			AnnotationNode invoker = accessor == null ? annotation(method.visibleAnnotations, method.invisibleAnnotations, INVOKER) : null;
+			if (accessor != null || invoker != null) {
+				// Mixin generates the accessor method in the target; one that already exists there (for example
+				// one NeoForge added) makes Mixin throw when the target class loads.
+				if (declares(target, method.name, method.desc)) {
+					ctx.classLevel((accessor != null ? "@Accessor " : "@Invoker ") + method.name + method.desc + " already exists in "
+									+ targetDotted + " (added by NeoForge or this Minecraft version), so Mixin cannot generate it",
+							"The mod needs an update for NeoForge; until then it cannot load.");
+				} else if (accessor != null) {
+					checkAccessor(method, accessor, target, ctx);
+				} else {
+					checkInvoker(method, invoker, target, ctx);
+				}
 				continue;
 			}
 
+			boolean injector = false;
 			for (AnnotationNode ann : allAnnotations(method)) {
-				if (isInjector(ann.desc)) checkInjector(ann, target, ctx);
+				if (isInjector(ann.desc)) {
+					injector = true;
+					checkInjector(ann, target, ctx);
+				}
 			}
+			if (!injector) checkMerged(method, target, ctx);
+		}
+	}
+
+	/**
+	 * A plain mixin method is merged into the target. If the target already declares it, Mixin replaces the
+	 * target method only when overwrites are allowed without {@code @Overwrite}; with
+	 * {@code overwrites.requireAnnotations} it throws instead. Typical cause: NeoForge added the method
+	 * (for example {@code hashCode}) to a class that has none in vanilla.
+	 */
+	private void checkMerged(MethodNode method, ClassNode target, Context ctx) {
+		if ((method.access & (Opcodes.ACC_SYNTHETIC | Opcodes.ACC_ABSTRACT)) != 0 || method.name.startsWith("<")) return;
+		if (annotation(method.visibleAnnotations, method.invisibleAnnotations, UNIQUE) != null
+				|| annotation(method.visibleAnnotations, method.invisibleAnnotations, INTRINSIC) != null) return;
+		if (!declares(target, method.name, method.desc)) return;
+		String where = method.name + method.desc + " already exists in " + target.name.replace('/', '.');
+		if (ctx.config.overwritesRequireAnnotations()) {
+			ctx.classLevel(where + " and the config requires @Overwrite to replace it, so Mixin rejects this mixin",
+					"NeoForge added this method; the mod needs an update for NeoForge.");
+		} else {
+			ctx.out.add(new PreflightFinding(PreflightFinding.Severity.WARN, ctx.configName, ctx.mixinDotted,
+					where + "; the mixin silently replaces it, which may change NeoForge's behaviour", ""));
 		}
 	}
 

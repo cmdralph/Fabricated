@@ -301,4 +301,34 @@ class MixinPreflightTest {
 		assertEquals(1, run.apply("(II)Lnet/minecraft/world/Thing;").size(), "two-argument constructor is never called");
 		assertTrue(run.apply("Lnet/minecraft/world/Thing;").isEmpty(), "class-only NEW still matches any constructor");
 	}
+
+	@Test
+	void methodsThatAlreadyExistInTheTargetAreReported() throws Exception {
+		// TARGET declares tick()V and helper(I)V. A plain mixin method tick()V collides with it, and so does an
+		// @Invoker named helper(I)V, which Mixin would have to generate.
+		byte[] merged = mixin("com/example/mixin/Merged", false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC, "tick", "()V", null, null);
+			mv.visitCode();
+			mv.visitInsn(Opcodes.RETURN);
+			mv.visitMaxs(0, 1);
+			mv.visitEnd();
+		});
+		String strict = "{\"required\":true,\"package\":\"com.example.mixin\",\"mixins\":[\"Merged\"],\"overwrites\":{\"requireAnnotations\":true}}";
+		List<PreflightFinding> fail = run(strict, null, Map.of("com/example/mixin/Merged", merged), false);
+		assertEquals(1, fail.size(), fail.toString());
+		assertEquals(PreflightFinding.Severity.FAIL, fail.getFirst().severity());
+
+		List<PreflightFinding> warn = run(config(true, "Merged"), null, Map.of("com/example/mixin/Merged", merged), false);
+		assertEquals(1, warn.size(), warn.toString());
+		assertEquals(PreflightFinding.Severity.WARN, warn.getFirst().severity());
+
+		byte[] invoker = mixin("com/example/mixin/Inv", false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, "helper", "(I)V", null, null);
+			mv.visitAnnotation("Lorg/spongepowered/asm/mixin/gen/Invoker;", false).visitEnd();
+			mv.visitEnd();
+		});
+		List<PreflightFinding> clash = run(config(true, "Inv"), null, Map.of("com/example/mixin/Inv", invoker), false);
+		assertEquals(1, clash.size(), clash.toString());
+		assertTrue(clash.getFirst().message().contains("already exists"), clash.getFirst().message());
+	}
 }
