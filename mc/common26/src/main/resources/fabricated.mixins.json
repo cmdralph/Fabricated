@@ -11,7 +11,8 @@
     "ServerConfigurationPacketListenerImplMixin",
     "MinecraftServerMixin",
     "ReloadableServerResourcesMixin",
-    "ResourceMixin"
+    "ResourceMixin",
+    "MappedRegistryMixin"
   ],
   "injectors": {
     "defaultRequire": 1
