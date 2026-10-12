@@ -15,7 +15,16 @@
     "MappedRegistryMixin",
     "MobEffectMixin",
     "EntityTypeBuilderMixin",
-    "BlockEntityTypeMixin"
+    "BlockEntityTypeMixin",
+    "BlockMixin",
+    "BlockStateMixin",
+    "BlockBehaviourPropertiesMixin",
+    "ItemMixin",
+    "ItemDamageMixin",
+    "ItemPropertiesMixin",
+    "ItemStackMixin",
+    "TooltipFlagMixin",
+    "DataComponentMapBuilderMixin"
   ],
   "injectors": {
     "defaultRequire": 1

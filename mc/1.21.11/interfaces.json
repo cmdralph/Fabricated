@@ -7,5 +7,26 @@
   ],
   "net/minecraft/world/level/block/entity/BlockEntityType": [
     "net/fabricmc/fabric/api/object/builder/v1/block/entity/FabricBlockEntityType"
+  ],
+  "net/minecraft/world/level/block/Block": [
+    "net/fabricmc/fabric/api/block/v1/FabricBlock"
+  ],
+  "net/minecraft/world/level/block/state/BlockState": [
+    "net/fabricmc/fabric/api/block/v1/FabricBlockState"
+  ],
+  "net/minecraft/world/item/Item": [
+    "net/fabricmc/fabric/api/item/v1/FabricItem"
+  ],
+  "net/minecraft/world/item/ItemStack": [
+    "net/fabricmc/fabric/api/item/v1/FabricItemStack"
+  ],
+  "net/minecraft/core/component/DataComponentMap$Builder": [
+    "net/fabricmc/fabric/api/item/v1/FabricComponentMapBuilder"
+  ],
+  "net/minecraft/world/item/TooltipFlag": [
+    "net/fabricmc/fabric/api/item/v1/FabricTooltipFlag"
+  ],
+  "net/minecraft/world/item/Item$Properties": [
+    "net/fabricmc/fabric/api/item/v1/FabricItem$Settings"
   ]
 }
