@@ -10,12 +10,10 @@ import net.fabricmc.fabric.api.entity.event.v1.ServerEntityCombatEvents;
 import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
 import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents;
 import net.fabricmc.fabric.api.entity.event.v1.effect.EffectEventContext;
-import net.fabricmc.fabric.api.entity.event.v1.effect.FabricMobEffect;
 import net.fabricmc.fabric.api.entity.event.v1.effect.ServerMobEffectEvents;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.effect.MobEffect;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.entity.ConversionParams;
 import net.minecraft.world.entity.Entity;
@@ -204,12 +202,8 @@ public final class EntityEventsBridge {
 		bus.addListener(MobEffectEvent.Added.class, e -> {
 			LivingEntity entity = e.getEntity();
 			if (!(entity.level() instanceof ServerLevel)) return;
-			MobEffectInstance instance = e.getEffectInstance();
-			if (instance.getEffect().value() instanceof FabricMobEffect effect) {
-				effect.onEffectAdded(instance, entity);
-				if (e.getOldEffectInstance() == null) effect.onEffectStarted(instance, entity);
-			}
-			ServerMobEffectEvents.AFTER_ADD.invoker().afterAdd(instance, entity, CONTEXT);
+			// The API's own AFTER_ADD/BEFORE_ADD/BEFORE_REMOVE listeners call the effect's FabricMobEffect hooks.
+			ServerMobEffectEvents.AFTER_ADD.invoker().afterAdd(e.getEffectInstance(), entity, CONTEXT);
 		});
 		// Removal before the effect ends (milk, commands, mods): ALLOW_EARLY_REMOVE can keep it.
 		bus.addListener(EventPriority.HIGH, MobEffectEvent.Remove.class, e -> {
@@ -228,14 +222,10 @@ public final class EntityEventsBridge {
 		});
 	}
 
-	/** BEFORE_REMOVE now; AFTER_REMOVE (and the effect's own removal hook) once the server has removed the effect. */
+	/** BEFORE_REMOVE now; AFTER_REMOVE once the server has removed the effect (its next queued task). */
 	private static void removing(MobEffectInstance instance, LivingEntity entity) {
 		if (!(entity.level() instanceof ServerLevel level)) return;
 		ServerMobEffectEvents.BEFORE_REMOVE.invoker().beforeRemove(instance, entity, CONTEXT);
-		level.getServer().execute(() -> {
-			MobEffect effect = instance.getEffect().value();
-			if (effect instanceof FabricMobEffect fabric) fabric.onEffectRemoved(instance, entity);
-			ServerMobEffectEvents.AFTER_REMOVE.invoker().afterRemove(instance, entity, CONTEXT);
-		});
+		level.getServer().execute(() -> ServerMobEffectEvents.AFTER_REMOVE.invoker().afterRemove(instance, entity, CONTEXT));
 	}
 }

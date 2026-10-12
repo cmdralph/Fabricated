@@ -7,6 +7,8 @@ import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
 import net.fabricmc.fabric.api.entity.event.v1.effect.ServerMobEffectEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
@@ -47,8 +49,9 @@ public final class EntityEventsTest implements ModInitializer {
 
 		ServerLifecycleEvents.SERVER_STARTED.register(server -> {
 			ServerLevel level = server.overworld();
-			LivingEntity pig = EntityType.PIG.create(level, EntitySpawnReason.TRIGGERED);
-			if (pig == null) {
+			// Looked up by id: the EntityType constants moved to EntityTypes in 26.x.
+			EntityType<?> type = BuiltInRegistries.ENTITY_TYPE.getValue(Identifier.withDefaultNamespace("pig"));
+			if (!(type.create(level, EntitySpawnReason.TRIGGERED) instanceof LivingEntity pig)) {
 				TestMod.LOGGER.error("FABRICATED-TEST entity events: could not create a pig");
 				return;
 			}

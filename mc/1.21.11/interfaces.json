@@ -1,0 +1,5 @@
+{
+  "net/minecraft/world/effect/MobEffect": [
+    "net/fabricmc/fabric/api/entity/event/v1/effect/FabricMobEffect"
+  ]
+}

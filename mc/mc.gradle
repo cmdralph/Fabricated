@@ -86,9 +86,10 @@ neoForge {
     version = project.neoforge_version
     // Compile-time view of the interfaces Fabricated's mixins add at runtime (Fabric API's injected
     // interfaces), so the vendored Fabric API sources compile as they do with Loom.
-    if (mcVersion.startsWith('26.')) {
+    def injected = mcVersion.startsWith('26.') ? rootProject.file('mc/common26/interfaces.json') : file('interfaces.json')
+    if (injected.exists()) {
         interfaceInjectionData {
-            from(rootProject.file('mc/common26/interfaces.json'))
+            from(injected)
         }
     }
 }
