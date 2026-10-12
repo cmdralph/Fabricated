@@ -120,7 +120,7 @@ public final class PackageGuard {
 
 	private Map<String, PackageContents> packagesOf(Path jar) throws ArchiveException, IOException {
 		Map<String, Map<String, Boolean>> packages = new TreeMap<>();
-		try (SafeArchive archive = SafeArchive.open(jar, limits)) {
+		try (SafeArchive archive = SafeArchive.open(jar, limits.forTranslatedJars())) {
 			for (String name : archive.entryNames()) {
 				if (name.endsWith("/") || name.startsWith("META-INF/") || name.startsWith("assets/") || name.startsWith("data/")) continue;
 				if (name.endsWith("module-info.class")) continue;
@@ -161,7 +161,7 @@ public final class PackageGuard {
 
 	private Map<String, String> hashes(Path jar, Set<String> names) throws ArchiveException, IOException {
 		Map<String, String> ret = new TreeMap<>();
-		try (SafeArchive archive = SafeArchive.open(jar, limits)) {
+		try (SafeArchive archive = SafeArchive.open(jar, limits.forTranslatedJars())) {
 			for (String name : names) {
 				byte[] data = archive.read(name);
 				ret.put(name, data == null ? "" : Hashing.sha256(data));

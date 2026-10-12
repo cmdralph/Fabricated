@@ -1,9 +1,9 @@
 # Fabricated — Architecture (Phase 1 proposal)
 
-> Status: **approved and implemented in 0.1.0**, with one exception: the Fabric API plan in §6.2. Of the
-> modules marked Native there, only `fabric-api-base` and `fabric-crash-report-info-v1` are native so far;
-> the rest are pass-through until implemented. The measured state for each version is in
-> [`COMPATIBILITY.md`](COMPATIBILITY.md). Facts referenced here are verified in [`RESEARCH.md`](RESEARCH.md).
+> Status: **approved and implemented in 0.1.0**, with one exception: the Fabric API plan in §6.2. Only some
+> of the modules marked Native there are native so far (the current list is in
+> [`COMPATIBILITY.md`](COMPATIBILITY.md), with the measured state for each version); the rest are
+> pass-through until implemented. Facts referenced here are verified in [`RESEARCH.md`](RESEARCH.md).
 > Items marked **[verify-in-build]** were confirmed in loader source code. They still get an automated test in Phase 2 before being relied on.
 
 ## 0. Goals and non-goals
@@ -147,7 +147,7 @@ NeoForge's sequence is: mod construction, then `unfreezeData()`, then a `Registe
 | Fabric entrypoint | When Fabricated runs it | Ordering |
 |---|---|---|
 | `preLaunch` | **Not run as Fabric does** (Fabric runs it before game classes load). Fabricated runs it at language-loader init, before any MC class is touched by Fabricated, and documents the difference. Mods doing classloader tricks there are unsupported. | Dependency order |
-| `main` (`ModInitializer`) | Once, on the **first `RegisterEvent`** delivered to any Fabric container: registries are unfrozen and NeoForge mods constructed before it are visible | Fabric dependency order (topological, ties broken by id, so it's deterministic) |
+| `main` (`ModInitializer`) | Once, on the **first `RegisterEvent` after the attribute registry's** (which NeoForge posts first): registries are unfrozen, NeoForge's own attributes (part of every living entity's attribute builder) are registered, and NeoForge mods constructed before it are visible | Fabric dependency order (topological, ties broken by id, so it's deterministic) |
 | `client` (`ClientModInitializer`) | Immediately after *all* `main` entrypoints, on the client dist (same as Fabric: all main, then all client) | Same |
 | `server` (`DedicatedServerModInitializer`) | Immediately after all `main`, on a dedicated server | Same |
 | Custom keys (`modmenu`, `rei_client`, `fabric-datagen`, `cardinal-components`, …) | **Never auto-run.** Instantiated lazily when another mod calls `FabricLoader.getEntrypoints(key, type)` / `getEntrypointContainers`, exactly like Fabric | Declaration order |

@@ -20,8 +20,9 @@ It is built to be:
 
 ## What works today
 
-Every version below is tested in CI on a real NeoForge dedicated server with Fabric test mods. The tests
-cover Fabric entrypoints, the Fabric Loader API, registering content, `fabric-api-base` events, access
+Every version below is tested in CI on a real NeoForge dedicated server and a real NeoForge client (started
+headlessly, joining a singleplayer world) with Fabric test mods. The tests cover Fabric entrypoints (main,
+server and client), the Fabric Loader API, registering content, the native Fabric API modules, access
 wideners, mixins, and the isolation of broken mods (a missing dependency, an impossible mixin, and an
 entrypoint that throws).
 
@@ -37,7 +38,8 @@ that NeoForge has already changed. Fabricated handles this per module:
 
 - **Native**: Fabricated ships the module itself. Today that is `fabric-api-base`,
   `fabric-lifecycle-events-v1`, `fabric-networking-api-v1` (login queries excepted),
-  `fabric-resource-loader-v1`, `fabric-registry-sync-v0` and `fabric-crash-report-info-v1`.
+  `fabric-resource-loader-v1`, `fabric-registry-sync-v0`, `fabric-entity-events-v1`,
+  `fabric-object-builder-api-v1` and `fabric-crash-report-info-v1`.
 - **Pass-through**: the module is loaded from the official Fabric API jar you install. Fabricated checks
   every mixin against NeoForge's code before loading it ("mixin pre-flight"). Modules whose mixins can't
   apply are disabled, along with every mod that requires them, with an explanation.
@@ -45,9 +47,9 @@ that NeoForge has already changed. Fabricated handles this per module:
 
 With the official Fabric API jar installed, the server boots on all four versions. The modules that can't
 work are disabled, and the rest load. So a Fabric mod that needs only the Fabric Loader API, `fabric-api-base` or pass-through modules that
-survive pre-flight works today, including mods that add reload listeners, built-in packs or their own
-registries. A mod that needs items, blocks, transfer, entity events, loot events or object-builder does not work
-yet. The per-module details are in [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md).
+survive pre-flight works today, including mods that add reload listeners, built-in packs, their own
+registries, entities with default attributes, block entity types or data attachments. A mod that needs the item,
+block, transfer, interaction-event or loot modules does not work yet. The per-module details are in [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md).
 
 ## What it does not support
 
@@ -60,8 +62,8 @@ yet. The per-module details are in [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md
   versa, just as on Fabric.
 - **Mixins into library classes** (DataFixerUpper, Brigadier, the JDK). NeoForge loads those without mixin
   support. Pre-flight detects this and disables the mod instead of letting it misbehave.
-- **Client-side testing.** CI covers the dedicated server only. The client code paths (client entrypoints,
-  `/fabricated` as a client command) compile against NeoForge's APIs but aren't yet exercised in CI.
+- **Multiplayer client testing.** CI starts a client into a singleplayer world, which covers the client and the
+  integrated server, but not a client joining a separate dedicated server.
 
 ## Installing
 
@@ -145,8 +147,8 @@ warning in the report, so a bad config never crashes the game.
 ## Known limitations
 
 - **Fabric API coverage** is the main limit. See [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) for the
-  per-module status on each Minecraft version. Next planned: native entity events, then
-  object-builder.
+  per-module status on each Minecraft version. Next planned: native item and block
+  modules, which most content mods need.
 - **Mixin pre-flight is conservative.** It only reports what it can prove from bytecode. A mixin it can't
   evaluate (wildcard selectors, unusual injection points) loads normally. If that mixin later fails,
   Mixin's own crash report names the Fabric mod.

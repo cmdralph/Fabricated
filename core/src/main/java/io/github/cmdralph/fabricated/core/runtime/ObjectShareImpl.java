@@ -54,11 +54,16 @@ public final class ObjectShareImpl implements ObjectShare {
 	public Object putIfAbsent(String key, Object value) {
 		validate(key);
 		Objects.requireNonNull(value, "value");
+		List<BiConsumer<String, Object>> waiting;
 		synchronized (this) {
-			Object existing = values.get(key);
+			// Check and insert under one lock, so two callers can't both see the key absent.
+			Object existing = values.putIfAbsent(key, value);
 			if (existing != null) return existing;
+			waiting = pending.remove(key);
 		}
-		put(key, value);
+		if (waiting != null) {
+			for (BiConsumer<String, Object> c : waiting) c.accept(key, value);
+		}
 		return null;
 	}
 

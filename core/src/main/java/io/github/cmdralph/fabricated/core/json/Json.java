@@ -305,9 +305,9 @@ public final class Json {
 						}
 						default -> throw error("Invalid escape '\\" + e + "'");
 					}
-				} else if (c < 0x20 && c != '\t') {
-					throw error("Control character in string");
 				} else {
+					// Raw control characters (a literal line break in a description) are accepted, as Gson, which
+					// Fabric Loader and Mixin read these files with, accepts them.
 					sb.append(c);
 				}
 			}

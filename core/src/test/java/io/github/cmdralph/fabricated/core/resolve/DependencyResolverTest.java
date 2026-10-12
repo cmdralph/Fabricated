@@ -78,4 +78,14 @@ class DependencyResolverTest {
 		assertEquals(2, r.ordered().size());
 		assertEquals(2, r.warnings().size());
 	}
+
+	@Test
+	void aDependencyThatWasDisabledIsNotReportedAsMissing() throws Exception {
+		Candidate user = mod("user", "1.0", "\"depends\":{\"object-builder\":\"*\"}");
+		DependencyResolver.Result r = resolver().resolve(List.of(user), Map.of(), Map.of("object-builder", "Install Fabric API."),
+				Map.of("object-builder", "Mixin pre-flight failed"));
+		DependencyResolver.Disabled d = r.disabled().getFirst();
+		assertTrue(d.reason().contains("installed but was not loaded: Mixin pre-flight failed"), d.reason());
+		assertTrue(d.suggestion().startsWith("See object-builder"), d.suggestion());
+	}
 }

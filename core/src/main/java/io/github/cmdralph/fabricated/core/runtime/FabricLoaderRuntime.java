@@ -7,6 +7,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -223,7 +224,17 @@ public final class FabricLoaderRuntime implements FabricLoader {
 
 	@Override
 	public synchronized Optional<ModContainer> getModContainer(String id) {
-		return Optional.ofNullable(modsById.get(Objects.requireNonNull(id, "id")));
+		return Optional.ofNullable(lookup(Objects.requireNonNull(id, "id")));
+	}
+
+	/**
+	 * A mod by Fabric id. NeoForge mod ids can't contain '-', so a NeoForge build of a mod that is {@code cloth-config}
+	 * on Fabric is {@code cloth_config}; dependency resolution already accepts it for the Fabric id, and so does this.
+	 */
+	private ModContainer lookup(String id) {
+		ModContainer mod = modsById.get(id);
+		if (mod == null && id.indexOf('-') >= 0) mod = modsById.get(id.replace('-', '_'));
+		return mod;
 	}
 
 	@Override
@@ -233,7 +244,7 @@ public final class FabricLoaderRuntime implements FabricLoader {
 
 	@Override
 	public synchronized boolean isModLoaded(String id) {
-		return modsById.containsKey(id);
+		return lookup(Objects.requireNonNull(id, "id")) != null;
 	}
 
 	@Override
@@ -286,12 +297,20 @@ public final class FabricLoaderRuntime implements FabricLoader {
 		List<String> ret = new ArrayList<>();
 		for (int i = 0; i < args.length; i++) {
 			String a = args[i];
-			if (a.equals("--accessToken") || a.equals("--uuid") || a.equals("--xuid") || a.equals("--clientId")) {
-				i++; // skip the value too
-				continue;
+			if (a.startsWith("--")) {
+				int eq = a.indexOf('=');
+				String name = (eq < 0 ? a.substring(2) : a.substring(2, eq)).toLowerCase(Locale.ROOT);
+				if (SENSITIVE_ARGUMENTS.contains(name)) {
+					if (eq < 0) i++; // skip the value too
+					continue;
+				}
 			}
 			ret.add(a);
 		}
 		return ret.toArray(String[]::new);
 	}
+
+	/** Arguments Fabric Loader removes when asked for sanitized launch arguments (compared ignoring case). */
+	private static final java.util.Set<String> SENSITIVE_ARGUMENTS = java.util.Set.of(
+			"accesstoken", "clientid", "profileproperties", "proxypass", "proxyuser", "username", "userproperties", "uuid", "xuid");
 }

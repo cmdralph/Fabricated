@@ -95,7 +95,7 @@ public final class LinkageAnalysis {
 		Map<String, List<String>> added = new HashMap<>();
 		for (TranslatedMod mod : mods) {
 			for (var ii : mod.injectedInterfaces()) added.computeIfAbsent(ii.target(), k -> new ArrayList<>()).add(ii.interfaceName());
-			try (SafeArchive archive = SafeArchive.open(mod.jar(), limits)) {
+			try (SafeArchive archive = SafeArchive.open(mod.jar(), limits.forTranslatedJars())) {
 				for (String name : archive.entryNames()) {
 					if (!name.endsWith(".class") || name.startsWith("META-INF/") || name.endsWith("module-info.class")) continue;
 					byte[] data = archive.read(name);
@@ -143,7 +143,7 @@ public final class LinkageAnalysis {
 
 	private List<String> check(TranslatedMod mod, LinkageChecker checker) {
 		List<LinkageChecker.Issue> issues = new ArrayList<>();
-		try (SafeArchive archive = SafeArchive.open(mod.jar(), limits)) {
+		try (SafeArchive archive = SafeArchive.open(mod.jar(), limits.forTranslatedJars())) {
 			for (String name : archive.entryNames()) {
 				if (!name.endsWith(".class") || name.startsWith("META-INF/") || name.endsWith("module-info.class")) continue;
 				byte[] data = archive.read(name);

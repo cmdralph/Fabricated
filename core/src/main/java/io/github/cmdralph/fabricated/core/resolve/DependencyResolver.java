@@ -65,6 +65,15 @@ public final class DependencyResolver {
 	 * @param missingHints optional install hints for ids that no provider offers (e.g. Fabric API)
 	 */
 	public Result resolve(List<Candidate> candidates, Map<String, List<String>> aliases, Map<String, String> missingHints) {
+		return resolve(candidates, aliases, missingHints, Map.of());
+	}
+
+	/**
+	 * @param unavailable mods that are installed but were disabled earlier (pre-flight, linkage...), by id, with the
+	 *                    reason: a mod requiring one is told so, instead of being told to install it
+	 */
+	public Result resolve(List<Candidate> candidates, Map<String, List<String>> aliases, Map<String, String> missingHints,
+			Map<String, String> unavailable) {
 		Map<String, Candidate> active = new LinkedHashMap<>();
 		for (Candidate c : candidates) active.put(c.id(), c);
 		List<Disabled> disabled = new ArrayList<>();
@@ -82,9 +91,16 @@ public final class DependencyResolver {
 					if (dep.getKind() == ModDependency.Kind.DEPENDS) {
 						Provider p = find(providers, dep.getModId());
 						if (p == null) {
-							problem = "requires " + describe(dep) + ", which is not installed";
-							suggestion = missingHints.getOrDefault(dep.getModId(),
-									"Install " + dep.getModId() + " (a Fabric or NeoForge build) or remove " + c.id() + ".");
+							String why = unavailable.get(dep.getModId());
+							if (why != null) {
+								if (why.length() > 200) why = why.substring(0, 197) + "...";
+								problem = "requires " + describe(dep) + ", which is installed but was not loaded: " + why;
+								suggestion = "See " + dep.getModId() + " in this report; " + c.id() + " can load once it does.";
+							} else {
+								problem = "requires " + describe(dep) + ", which is not installed";
+								suggestion = missingHints.getOrDefault(dep.getModId(),
+										"Install " + dep.getModId() + " (a Fabric or NeoForge build) or remove " + c.id() + ".");
+							}
 							break;
 						}
 						if (!dep.matches(p.version())) {

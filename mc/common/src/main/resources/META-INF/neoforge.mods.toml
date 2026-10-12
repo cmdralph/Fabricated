@@ -15,14 +15,19 @@ Loads Fabric mods and libraries on NeoForge. Native Fabric API modules and NeoFo
 Diagnostics: logs/fabric-bridge-report.txt and the /fabricated command.
 '''
 
-# Adds Fabric API's injected interfaces (EntityLoadData, PacketContextProvider, configuration tasks) on 26.x;
-# fields, methods and one constructor-end hook only. Empty on 1.21.11.
+# Adds Fabric API's injected interfaces (networking contexts, resources, registries, mob effects, entity and block
+# entity type builders) and Fabricated's hooks for its native modules: fields, methods and a few hooks that only
+# observe (a constructor end, EntityType.Builder.build's result). No Minecraft code is replaced.
 [[mixins]]
 config="fabricated.mixins.json"
 
 # Fabric API's own accessor interfaces, under their upstream names (used by its networking API).
 [[mixins]]
 config="fabricated-fabric-api.mixins.json"
+
+# Access for the vendored Fabric API sources (see the file).
+[[accessTransformers]]
+file="META-INF/accesstransformer.cfg"
 
 [[dependencies.fabricated]]
 modId="neoforge"

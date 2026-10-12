@@ -10,6 +10,7 @@
   "entrypoints": {
     "main": ["io.github.cmdralph.fabricated.testmod.TestMod"${testmod_extra_main}],
     "server": ["io.github.cmdralph.fabricated.testmod.TestMod"],
+    "client": ["io.github.cmdralph.fabricated.testmod.ClientTestMod"],
     "fabricated-test": ["io.github.cmdralph.fabricated.testmod.TestMod${'$'}CustomEntrypoint"]
   },
   "mixins": ["fabricated-testmod.mixins.json"],

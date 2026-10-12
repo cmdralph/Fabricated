@@ -29,6 +29,17 @@ public record ArchiveLimits(
 	/** Entries smaller than this are exempt from the ratio check (tiny files compress extremely well). */
 	public static final long RATIO_CHECK_THRESHOLD = 1L << 20;
 
+	/**
+	 * Limits for re-reading a mod after translation. On 1.21.11 the remapped jar is written uncompressed (byte-for-byte
+	 * reproducible output), so its file size is about the mod's total uncompressed size; the other limits still apply
+	 * to its contents.
+	 */
+	public ArchiveLimits forTranslatedJars() {
+		long uncompressedJar = maxTotalUncompressedBytes + (long) maxEntries * 512L;
+		return maxJarBytes >= uncompressedJar ? this
+				: new ArchiveLimits(uncompressedJar, maxEntryBytes, maxTotalUncompressedBytes, maxEntries, maxCompressionRatio, maxNestingDepth);
+	}
+
 	public ArchiveLimits {
 		if (maxJarBytes <= 0 || maxEntryBytes <= 0 || maxTotalUncompressedBytes <= 0 || maxEntries <= 0
 				|| maxCompressionRatio <= 0 || maxNestingDepth < 0) {

@@ -49,8 +49,11 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar;
  */
 public final class NetworkingBridge {
 	private static final Logger LOGGER = LoggerFactory.getLogger("Fabricated");
-	/** The NeoForge configuration-task event being dispatched, so Fabric's {@code addTask} can join it. */
-	private static volatile @Nullable RegisterConfigurationTasksEvent currentTasks;
+	/**
+	 * The NeoForge configuration-task events being dispatched, by connection, so Fabric's {@code addTask} can join the
+	 * right one. Keyed by listener because several players can be configured at the same time.
+	 */
+	private static final Map<ServerConfigurationPacketListenerImpl, RegisterConfigurationTasksEvent> CURRENT_TASKS = new java.util.concurrent.ConcurrentHashMap<>();
 
 	private NetworkingBridge() {
 	}
@@ -88,8 +91,8 @@ public final class NetworkingBridge {
 
 	/** Fabric's {@code ServerConfigurationPacketListenerImpl.addTask}; only valid while configuration tasks are collected. */
 	public static void addConfigurationTask(ServerConfigurationPacketListenerImpl listener, ConfigurationTask task) {
-		RegisterConfigurationTasksEvent event = currentTasks;
-		if (event == null || event.getListener() != listener) {
+		RegisterConfigurationTasksEvent event = CURRENT_TASKS.get(listener);
+		if (event == null) {
 			throw new IllegalStateException("On NeoForge, Fabric configuration tasks can only be added from "
 					+ "ServerConfigurationConnectionEvents.BEFORE_CONFIGURE or CONFIGURE (task " + task.type().id() + ")");
 		}
@@ -99,12 +102,12 @@ public final class NetworkingBridge {
 	private static void configure(RegisterConfigurationTasksEvent event) {
 		if (!(event.getListener() instanceof ServerConfigurationPacketListenerImpl listener)) return;
 		MinecraftServer server = ((ServerCommonPacketListenerImplAccessor) listener).getServer();
-		currentTasks = event;
+		CURRENT_TASKS.put(listener, event);
 		try {
 			ServerConfigurationConnectionEvents.BEFORE_CONFIGURE.invoker().onSendConfiguration(listener, server);
 			ServerConfigurationConnectionEvents.CONFIGURE.invoker().onSendConfiguration(listener, server);
 		} finally {
-			currentTasks = null;
+			CURRENT_TASKS.remove(listener);
 		}
 	}
 

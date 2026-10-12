@@ -36,8 +36,10 @@ automatically if it is not installed.
 ci/smoke-server.sh 26.2 26.2.0.90 /tmp/fabricated-server
 ```
 
-CI (`.github/workflows/build.yml`) runs the unit tests, then builds every version and boots a real NeoForge
-dedicated server with the test mods. 26.3 is best-effort while NeoForge 26.3 is in beta.
+CI (`.github/workflows/build.yml`) runs the unit tests, then builds every version, boots a real NeoForge
+dedicated server with the test mods (and again with the official Fabric API jar), and starts a real NeoForge
+client headlessly into a singleplayer world (`ci/smoke-client.sh`; needs Xvfb, and `gh` to fetch
+mc-runtime-test). 26.3 is best-effort while NeoForge 26.3 is in beta.
 
 ## Code rules
 
@@ -75,9 +77,11 @@ Example: adding `26.4` once NeoForge supports it.
 4. **Vendor the native Fabric API modules** from the new Fabric API tag:
    ```bash
    rm -rf mc/26.4/src/fabricapi
-   scripts/import-fabric-api.sh 0.170.0+26.4 mc/26.4/src/fabricapi fabric-api-base
+   scripts/import-fabric-api.sh 0.170.0+26.4 mc/26.4/src/fabricapi \
+       $(sed -n 's/^modules=//p' mc/26.3/src/fabricapi/UPSTREAM.properties)
    ```
-   Repeat for every module marked `native` in the plan. Review the diff.
+   Pass every module in one call: `UPSTREAM.properties` records the list of the last import, and the next
+   update reads it from there. Review the diff.
 5. **Update the Fabric API plan** in `mc/26.4/src/fabricated/resources/META-INF/fabricated/fabric-api-plan.json`:
    set `fabricApiVersion` and every module version from Fabric API's `gradle.properties` at that tag. Add new
    modules, defaulting to `passthrough`.

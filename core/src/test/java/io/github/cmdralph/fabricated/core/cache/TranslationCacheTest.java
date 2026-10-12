@@ -81,4 +81,25 @@ class TranslationCacheTest {
 		}
 		assertFalse(Files.exists(new TranslationCache(game, true, true).root().resolve("entries").resolve(name)));
 	}
+
+	@Test
+	void keepsNestedJarsAndEntriesUsedEveryLaunch(@TempDir Path game) throws Exception {
+		// As in a real launch: a bootstrap cache extracts Fabricated's game mod, the pipeline's cache uses a mod entry
+		// and a nested library, and only the pipeline's cache finishes (owns the index).
+		String name = TranslationCache.entryName("my_mod", "ef".repeat(32));
+		for (int launch = 0; launch < 12; launch++) {
+			TranslationCache bootstrap = new TranslationCache(game, true, true);
+			Path gameMod = bootstrap.storeNested(new byte[] {7, 7, 7});
+			TranslationCache cache = new TranslationCache(game, true, true);
+			if (cache.lookup(name).isEmpty()) {
+				assertEquals(0, launch, "entry rebuilt on launch " + launch);
+				cache.store(name, Map.of("overlay.jar", new byte[] {1}), Map.of());
+			}
+			Path library = cache.storeNested(new byte[] {4, 2});
+			cache.markNestedUsed(gameMod);
+			cache.finish(2);
+			assertTrue(Files.isRegularFile(gameMod), "game mod kept on launch " + launch);
+			assertTrue(Files.isRegularFile(library), "nested library kept on launch " + launch);
+		}
+	}
 }

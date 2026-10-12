@@ -1,9 +1,16 @@
 package io.github.cmdralph.fabricated.neoforge;
 
+import java.util.function.Predicate;
+
 import io.github.cmdralph.fabricated.loader.FabricatedState;
+import io.github.cmdralph.fabricated.neoforge.entity.EntityEventsBridge;
 import io.github.cmdralph.fabricated.neoforge.lifecycle.LifecycleBridge;
 import io.github.cmdralph.fabricated.neoforge.networking.NetworkingBridge;
+import io.github.cmdralph.fabricated.neoforge.objectbuilder.ObjectBuilderBridge;
 import io.github.cmdralph.fabricated.neoforge.resource.ResourceLoaderBridge;
+import net.fabricmc.fabric.api.object.builder.v1.entity.FabricDefaultAttributeRegistry;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.LivingEntity;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
 
@@ -17,6 +24,13 @@ public final class NativeFabricApi {
 
 	public static void register(IEventBus modBus, Dist dist, FabricatedState state) {
 		LifecycleBridge.register(dist);
+		EntityEventsBridge.register();
+		ObjectBuilderBridge.register(modBus, modifier -> FabricDefaultAttributeRegistry.MODIFY.invoker().modify(new FabricDefaultAttributeRegistry.ModifyContext() {
+			@Override
+			public void modify(Predicate<EntityType<? extends LivingEntity>> types, FabricDefaultAttributeRegistry.ModifyConsumer consumer) {
+				modifier.modify(types, consumer::accept);
+			}
+		}));
 		NetworkingBridge.register(modBus, dist, problem -> {
 			state.report().line("Networking", problem);
 			state.writeReport();

@@ -56,7 +56,9 @@
       "plan": "passthrough"
     },
     "fabric-entity-events-v1": {
-      "plan": "passthrough"
+      "plan": "native",
+      "version": "5.0.5",
+      "reason": "Shipped by Fabricated on NeoForge's entity events (upstream's mixins conflict with NeoForge's patches); elytra and most sleep events are not fired."
     },
     "fabric-events-interaction-v0": {
       "plan": "passthrough"
@@ -97,7 +99,9 @@
       "reason": "Shipped by Fabricated on NeoForge's payload system (login queries are not supported)."
     },
     "fabric-object-builder-api-v1": {
-      "plan": "passthrough"
+      "plan": "native",
+      "version": "24.1.1",
+      "reason": "Shipped by Fabricated on NeoForge's registration events (upstream's mixins conflict with NeoForge's patches); custom minecart comparator logic is not used by detector rails."
     },
     "fabric-particles-v1": {
       "plan": "passthrough"

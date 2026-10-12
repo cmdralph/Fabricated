@@ -127,8 +127,8 @@ public final class ModTranslator {
 			FabricModMetadata md = candidate.metadata();
 			ModsTomlWriter.Spec spec = new ModsTomlWriter.Spec(neoId, md.getVersion().getFriendlyString(), md.getName(),
 					md.getDescription(), List.copyOf(md.getAuthors()), List.copyOf(md.getContributors()),
-					List.copyOf(md.getLicense()), md.getContact().get("homepage").orElse(null),
-					md.getContact().get("issues").orElse(null), md.getIconPath(256).orElse(null), mixinSpecs,
+					List.copyOf(md.getLicense()), url(md.getContact().get("homepage").orElse(null), "homepage", notes),
+					url(md.getContact().get("issues").orElse(null), "issues", notes), md.getIconPath(256).orElse(null), mixinSpecs,
 					overlay.containsKey(AT_PATH), after);
 			overlay.put(CandidateScanner.NEOFORGE_MODS_TOML, ModsTomlWriter.write(spec, "[0,)").getBytes(StandardCharsets.UTF_8));
 			overlay.put("META-INF/MANIFEST.MF", overlayManifest(neoId));
@@ -369,4 +369,23 @@ public final class ModTranslator {
 				m.get("line") instanceof Number n ? n.intValue() : 0);
 	}
 
+
+	/**
+	 * A contact URL NeoForge can take. FML parses {@code displayURL} and {@code issueTrackerURL} with
+	 * {@code new URL(...)} when it reads the mod file, and a malformed one makes the whole file invalid (an error that
+	 * stops the game). Fabric doesn't validate contact URLs, so "github.com/x/y" without a scheme is common; it is left
+	 * out instead.
+	 */
+	static String url(String value, String what, List<String> notes) {
+		if (value == null || value.isBlank()) return null;
+		try {
+			java.net.URI uri = new java.net.URI(value.strip());
+			if (uri.getScheme() == null) throw new java.net.URISyntaxException(value, "no scheme");
+			uri.toURL();
+			return uri.toString();
+		} catch (java.net.URISyntaxException | java.net.MalformedURLException | IllegalArgumentException e) {
+			notes.add("Left out the contact " + what + " URL \"" + value + "\": NeoForge only accepts complete URLs");
+			return null;
+		}
+	}
 }

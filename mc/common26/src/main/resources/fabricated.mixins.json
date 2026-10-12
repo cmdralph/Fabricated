@@ -12,7 +12,10 @@
     "MinecraftServerMixin",
     "ReloadableServerResourcesMixin",
     "ResourceMixin",
-    "MappedRegistryMixin"
+    "MappedRegistryMixin",
+    "MobEffectMixin",
+    "EntityTypeBuilderMixin",
+    "BlockEntityTypeMixin"
   ],
   "injectors": {
     "defaultRequire": 1

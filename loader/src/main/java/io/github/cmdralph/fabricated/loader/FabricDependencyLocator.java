@@ -88,7 +88,8 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 		JarContents mcContents = minecraft.getContents();
 		ClassBytesSource gameClasses = name -> mcContents.readFile(name + ".class");
 
-		// Fabricated's own in-game mod (native Fabric API implementation and NeoForge event bridges).
+		// Fabricated's own in-game mod (native Fabric API implementation and NeoForge event bridges). Extracted before
+		// the pipeline's cache exists; that cache owns the index (see markNestedUsed), so this one is never finished.
 		TranslationCache bootstrapCache = new TranslationCache(gameDir, true, true);
 		boolean devGameMod = find(loadedMods, GAME_MOD_ID).isPresent();
 		Path gameModJar = devGameMod ? null : extractGameMod(bootstrapCache);
@@ -154,7 +155,7 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 		Pipeline.Input input = new Pipeline.Input(gameDir, FMLPaths.CONFIGDIR.get(), logsDir, fabricJars, mcVersion, neoVersion,
 				client, info.namespace(), runtimeMixinVersion(info), info.mixinLowest(), info.fabricatedVersion(), !fml.isProduction(), gameClasses, untransformable,
 				platformPackages, plan, nativeApi, nativeApiInterfaces, neoForgeMods,
-				cache -> IntermediaryMappings.load(cache, mcVersion, client, null),
+				(cache, mojangPath) -> IntermediaryMappings.load(cache, mcVersion, client, mojangPath),
 				fml.getProgramArgs().getArguments());
 
 		Pipeline.Result result;
@@ -183,8 +184,16 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 			pipeline.addPath(gameModJar, attributes, IncompatibleFileReporting.ERROR);
 		}
 
+		int quietFabricApi = 0;
 		for (Report.ModRow row : result.report().mods()) {
 			if (row.status() == Report.Status.DISABLED || row.status() == Report.Status.REJECTED) {
+				// A disabled Fabric API module is expected (see COMPATIBILITY.md) and isn't the player's mod: any mod
+				// that needs it is disabled too, with its own warning naming the module. Reporting each module to
+				// NeoForge would show a warnings screen on every client launch, so they go to the report only.
+				if (plan.isFabricApiModule(row.id())) {
+					quietFabricApi++;
+					continue;
+				}
 				String text = "Fabric mod " + row.id() + (row.version().isEmpty() ? "" : " " + row.version()) + " was not loaded: "
 						+ row.detail() + (row.suggestion().isEmpty() ? "" : " Fix: " + row.suggestion());
 				// strictDependencies: unmet dependencies stop the game on NeoForge's error screen instead of being skipped.
@@ -192,9 +201,12 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 				pipeline.addIssue(hardStop ? ModLoadingIssue.error(MESSAGE, text) : ModLoadingIssue.warning(MESSAGE, text));
 			}
 		}
+		if (quietFabricApi > 0) {
+			LOGGER.info("{} Fabric API module(s) can't run on NeoForge yet and were skipped; see logs/fabric-bridge-report.txt", quietFabricApi);
+		}
 		state.writeReport();
+		if (gameModJar != null) result.cache().markNestedUsed(gameModJar);
 		result.cache().finish(result.config().maxUnusedLaunches());
-		bootstrapCache.finish(result.config().maxUnusedLaunches());
 	}
 
 	private static Optional<IModFile> find(List<IModFile> files, String modId) {
