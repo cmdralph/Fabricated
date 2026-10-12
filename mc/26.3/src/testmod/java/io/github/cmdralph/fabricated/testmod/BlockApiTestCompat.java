@@ -1,13 +1,17 @@
 package io.github.cmdralph.fabricated.testmod;
 
+import org.jspecify.annotations.Nullable;
+
 import net.fabricmc.fabric.api.block.v1.FluidFlowEvents;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.BlockAndLightGetter;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockBehaviour;
@@ -31,6 +35,13 @@ final class BlockApiTestCompat {
 		@Override
 		public float getProvidedEnchantmentPower(BlockState state, BlockGetter level, BlockPos pos) {
 			return 2.5f;
+		}
+
+		// Compile-time only: javac sees Fabric's and NeoForge's getAppearance defaults on Block and needs a subclass
+		// written against them to pick one (at runtime Block declares its own, so compiled Fabric mods don't need this).
+		@Override
+		public BlockState getAppearance(BlockState state, BlockAndLightGetter level, BlockPos pos, Direction side, @Nullable BlockState sourceState, @Nullable BlockPos sourcePos) {
+			return state;
 		}
 	}
 
