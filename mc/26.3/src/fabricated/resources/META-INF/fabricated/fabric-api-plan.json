@@ -56,7 +56,9 @@
       "plan": "passthrough"
     },
     "fabric-entity-events-v1": {
-      "plan": "passthrough"
+      "plan": "native",
+      "version": "6.0.4",
+      "reason": "Shipped by Fabricated on NeoForge's entity events (upstream's mixins conflict with NeoForge's patches); elytra and most sleep events are not fired."
     },
     "fabric-events-interaction-v0": {
       "plan": "passthrough"

@@ -28,5 +28,8 @@
   ],
   "net/minecraft/server/packs/resources/Resource": [
     "net/fabricmc/fabric/api/resource/v1/FabricResource"
+  ],
+  "net/minecraft/world/effect/MobEffect": [
+    "net/fabricmc/fabric/api/entity/event/v1/effect/FabricMobEffect"
   ]
 }
