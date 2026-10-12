@@ -72,7 +72,7 @@ How to read the table:
 | fabric-item-api-v1 | native | native | native | native |
 | fabric-block-api-v1 | native | native | native | native |
 | fabric-transfer-api-v1 | disabled | disabled | disabled | disabled |
-| fabric-content-registries-v0 | disabled | disabled | disabled | disabled |
+| fabric-content-registries-v0 | native | native | native | native |
 | fabric-object-builder-api-v1 | native | native | native | native |
 | fabric-entity-events-v1 | native | native | native | native |
 | fabric-events-interaction-v0 | native | native | native | native |
@@ -386,6 +386,25 @@ events receive there can get entries and tags (loot tables included) but lists n
 CI checks, on all four versions: dirt's table is modified with source `VANILLA`, `REPLACE` and `ALL_LOADED` run, and
 dirt's drops contain the added pool's diamond and the drop listener's emerald.
 
+### Native `fabric-content-registries-v0`
+
+Most of upstream's registries and mixins apply on NeoForge as they are and ship unchanged. Where NeoForge rewrote the
+code they rely on, Fabricated bridges the gap:
+
+| Fabric API | On NeoForge | Notes |
+|---|---|---|
+| `CompostableRegistry` (`CompostingChanceRegistry` on 1.21.11), up to 26.2 | NeoForge's composter asks its data map; an item the data map leaves out gets the chance Fabric's registry stored | data packs win; villagers only compost data-map items |
+| `VibrationFrequencyRegistry` (`SculkSensorFrequencyRegistry` on 1.21.11) | NeoForge's frequency lookup falls back to the table Fabric's registry writes | data packs win |
+| `FuelValueEvents` (`FuelRegistryEvents` on 1.21.11), up to 26.2 | run on NeoForge's fuel builder, after its furnace fuel data map | `BUILD`, then `EXCLUSIONS`; vanilla's non-flammable wood exclusion is already in the data map |
+| Flammable, strippable, tillable, flattenable, oxidizable and waxable blocks, path types, villager interactions, pot patterns, brewing | upstream's mixins | NeoForge falls back to the vanilla tables these write |
+| `EntityFluidInteractionRegistry` (26.x) | upstream's mixins, without three injectors | entering, leaving, pushing and moving through a Fabric fluid work; swimming, drowning and boats floating in it don't (NeoForge rewrote that code around its fluid types) |
+| Oxidation and wax scraping (26.3) | not applied | 26.3's block transformers have no NeoForge counterpart yet (a warning is logged once) |
+
+On 26.3, composting, stripping and fuel are data-driven in vanilla, and Fabric API has no registries for them.
+
+CI checks, on all four versions: a flammable block, a waxable pair and a custom game event's vibration frequency take
+effect; up to 26.2 also a compostable item, a strippable block and a fuel value.
+
 ### What this means for Fabric mods
 
 A Fabric mod works today if it needs only the Fabric Loader API and the **native** or **loads** modules
@@ -412,7 +431,8 @@ modules that cascade from it.
    (transfer, content registries) still fail on their own mixins.
 8. ✅ `fabric-events-interaction-v0` on all four versions (done).
 9. ✅ `fabric-loot-api-v3` on all four versions (done).
-10. Next: `fabric-content-registries-v0` and `fabric-transfer-api-v1`.
+10. ✅ `fabric-content-registries-v0` on all four versions (done).
+11. Next: `fabric-transfer-api-v1`.
 
 ## Fabric mods tested
 
