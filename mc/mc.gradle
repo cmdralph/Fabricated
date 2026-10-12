@@ -92,12 +92,10 @@ neoForge {
         from(file('src/main/resources/META-INF/accesstransformer-version.cfg'))
     }
     // Compile-time view of the interfaces Fabricated's mixins add at runtime (Fabric API's injected
-    // interfaces), so the vendored Fabric API sources compile as they do with Loom.
-    def injected = mcVersion.startsWith('26.') ? rootProject.file('mc/common26/interfaces.json') : file('interfaces.json')
-    if (injected.exists()) {
-        interfaceInjectionData {
-            from(injected)
-        }
+    // interfaces), so the vendored Fabric API sources compile as they do with Loom: the 26.x file plus the version's own.
+    interfaceInjectionData {
+        if (mcVersion.startsWith('26.')) from(rootProject.file('mc/common26/interfaces.json'))
+        if (file('interfaces.json').exists()) from(file('interfaces.json'))
     }
 }
 neoForge.addModdingDependenciesTo(sourceSets.loader)
@@ -111,8 +109,8 @@ def expandProps = [
         minecraft_version_range: project.minecraft_version_range,
         aw_header              : project.aw_header,
         // Native Fabric API tests (version-specific source: mc/common26 or mc/<version>/src/testmod).
-        testmod_extra_main     : ', "io.github.cmdralph.fabricated.testmod.NetworkingTest", "io.github.cmdralph.fabricated.testmod.ResourceLoaderTest", "io.github.cmdralph.fabricated.testmod.RegistrySyncTest", "io.github.cmdralph.fabricated.testmod.EntityEventsTest", "io.github.cmdralph.fabricated.testmod.ObjectBuilderTest", "io.github.cmdralph.fabricated.testmod.BlockApiTest", "io.github.cmdralph.fabricated.testmod.ItemApiTest", "io.github.cmdralph.fabricated.testmod.InteractionTest", "io.github.cmdralph.fabricated.testmod.LootTest"',
-        testmod_extra_depends  : ',\n    "fabric-networking-api-v1": "*",\n    "fabric-resource-loader-v1": "*",\n    "fabric-registry-sync-v0": "*",\n    "fabric-entity-events-v1": "*",\n    "fabric-object-builder-api-v1": "*",\n    "fabric-block-api-v1": "*",\n    "fabric-item-api-v1": "*",\n    "fabric-events-interaction-v0": "*",\n    "fabric-loot-api-v3": "*"',
+        testmod_extra_main     : ', "io.github.cmdralph.fabricated.testmod.NetworkingTest", "io.github.cmdralph.fabricated.testmod.ResourceLoaderTest", "io.github.cmdralph.fabricated.testmod.RegistrySyncTest", "io.github.cmdralph.fabricated.testmod.EntityEventsTest", "io.github.cmdralph.fabricated.testmod.ObjectBuilderTest", "io.github.cmdralph.fabricated.testmod.BlockApiTest", "io.github.cmdralph.fabricated.testmod.ItemApiTest", "io.github.cmdralph.fabricated.testmod.InteractionTest", "io.github.cmdralph.fabricated.testmod.LootTest", "io.github.cmdralph.fabricated.testmod.ContentRegistriesTest"',
+        testmod_extra_depends  : ',\n    "fabric-networking-api-v1": "*",\n    "fabric-resource-loader-v1": "*",\n    "fabric-registry-sync-v0": "*",\n    "fabric-entity-events-v1": "*",\n    "fabric-object-builder-api-v1": "*",\n    "fabric-block-api-v1": "*",\n    "fabric-item-api-v1": "*",\n    "fabric-events-interaction-v0": "*",\n    "fabric-loot-api-v3": "*",\n    "fabric-content-registries-v0": "*"',
 ]
 
 tasks.named('processResources', ProcessResources) {

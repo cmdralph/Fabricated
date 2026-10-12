@@ -24,7 +24,8 @@
     "PickItemMixin",
     "FakePlayerMixin",
     "PlayerAdvancementsMixin",
-    "ReloadableServerRegistriesMixin"
+    "ReloadableServerRegistriesMixin",
+    "VibrationSystemMixin"
   ],
   "injectors": {
     "defaultRequire": 1

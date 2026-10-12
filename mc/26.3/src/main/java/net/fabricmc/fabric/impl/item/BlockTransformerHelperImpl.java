@@ -62,4 +62,12 @@ public final class BlockTransformerHelperImpl {
 	public static void registerFlattening(BlockPredicate fromBlockPredicate, BlockStateProvider toBlockState) {
 		notApplied("flattening");
 	}
+
+	public static void registerOxidationScraping(BlockPredicate fromBlockPredicate, BlockStateProvider toBlockState) {
+		notApplied("oxidation scraping");
+	}
+
+	public static void registerWaxScraping(BlockPredicate fromBlockPredicate, BlockStateProvider toBlockState) {
+		notApplied("wax scraping");
+	}
 }

@@ -21,7 +21,7 @@
     "net/fabricmc/fabric/api/networking/v1/context/PacketContextProvider"
   ],
   "net/minecraft/world/entity/Entity": [
-    "net/fabricmc/fabric/api/event/lifecycle/v1/EntityLoadData"
+    "net/fabricmc/fabric/api/registry/fluid/EntityFluidExtension"
   ],
   "net/minecraft/server/MinecraftServer": [
     "net/fabricmc/fabric/api/resource/v1/DataResourceStore"
