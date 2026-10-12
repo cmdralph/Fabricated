@@ -84,6 +84,10 @@ dependencies {
 
 neoForge {
     version = project.neoforge_version
+    // The in-game mod's access transformer (shipped in game-mod.jar and applied by NeoForge at runtime).
+    accessTransformers {
+        from(rootProject.file('mc/common/src/main/resources/META-INF/accesstransformer.cfg'))
+    }
     // Compile-time view of the interfaces Fabricated's mixins add at runtime (Fabric API's injected
     // interfaces), so the vendored Fabric API sources compile as they do with Loom.
     def injected = mcVersion.startsWith('26.') ? rootProject.file('mc/common26/interfaces.json') : file('interfaces.json')
@@ -104,8 +108,8 @@ def expandProps = [
         minecraft_version_range: project.minecraft_version_range,
         aw_header              : project.aw_header,
         // Native Fabric API tests (version-specific source: mc/common26 or mc/<version>/src/testmod).
-        testmod_extra_main     : ', "io.github.cmdralph.fabricated.testmod.NetworkingTest", "io.github.cmdralph.fabricated.testmod.ResourceLoaderTest", "io.github.cmdralph.fabricated.testmod.RegistrySyncTest", "io.github.cmdralph.fabricated.testmod.EntityEventsTest"',
-        testmod_extra_depends  : ',\n    "fabric-networking-api-v1": "*",\n    "fabric-resource-loader-v1": "*",\n    "fabric-registry-sync-v0": "*",\n    "fabric-entity-events-v1": "*"',
+        testmod_extra_main     : ', "io.github.cmdralph.fabricated.testmod.NetworkingTest", "io.github.cmdralph.fabricated.testmod.ResourceLoaderTest", "io.github.cmdralph.fabricated.testmod.RegistrySyncTest", "io.github.cmdralph.fabricated.testmod.EntityEventsTest", "io.github.cmdralph.fabricated.testmod.ObjectBuilderTest"',
+        testmod_extra_depends  : ',\n    "fabric-networking-api-v1": "*",\n    "fabric-resource-loader-v1": "*",\n    "fabric-registry-sync-v0": "*",\n    "fabric-entity-events-v1": "*",\n    "fabric-object-builder-api-v1": "*"',
 ]
 
 tasks.named('processResources', ProcessResources) {

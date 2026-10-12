@@ -91,4 +91,5 @@ check "FABRICATED-TEST client resource reload listener OK" "native client resour
 check "FABRICATED-TEST client join event OK" "native client networking: join event"
 check "FABRICATED-TEST client networking round trip OK" "native networking: client to integrated server and back"
 check "FABRICATED-TEST registry sync: custom registry OK" "registry sync on the client"
+check "FABRICATED-TEST object builder OK" "native object builder in the integrated server"
 exit "$fail"

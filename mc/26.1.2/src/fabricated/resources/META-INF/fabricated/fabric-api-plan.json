@@ -96,7 +96,9 @@
       "reason": "Shipped by Fabricated on NeoForge's payload system (login queries are not supported)."
     },
     "fabric-object-builder-api-v1": {
-      "plan": "passthrough"
+      "plan": "native",
+      "version": "23.1.1",
+      "reason": "Shipped by Fabricated on NeoForge's registration events (upstream's mixins conflict with NeoForge's patches); custom minecart comparator logic is not used by detector rails."
     },
     "fabric-particles-v1": {
       "plan": "passthrough"

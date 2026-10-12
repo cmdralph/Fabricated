@@ -13,7 +13,9 @@
     "ReloadableServerResourcesMixin",
     "ResourceMixin",
     "MappedRegistryMixin",
-    "MobEffectMixin"
+    "MobEffectMixin",
+    "EntityTypeBuilderMixin",
+    "BlockEntityTypeMixin"
   ],
   "injectors": {
     "defaultRequire": 1

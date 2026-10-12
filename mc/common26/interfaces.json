@@ -31,5 +31,11 @@
   ],
   "net/minecraft/world/effect/MobEffect": [
     "net/fabricmc/fabric/api/entity/event/v1/effect/FabricMobEffect"
+  ],
+  "net/minecraft/world/entity/EntityType$Builder": [
+    "net/fabricmc/fabric/api/object/builder/v1/entity/FabricEntityType$Builder<T>"
+  ],
+  "net/minecraft/world/level/block/entity/BlockEntityType": [
+    "net/fabricmc/fabric/api/object/builder/v1/block/entity/FabricBlockEntityType"
   ]
 }
