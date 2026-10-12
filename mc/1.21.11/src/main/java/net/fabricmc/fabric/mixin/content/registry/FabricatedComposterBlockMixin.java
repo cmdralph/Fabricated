@@ -10,7 +10,7 @@ import net.minecraft.world.level.block.ComposterBlock;
 
 /**
  * NeoForge (up to 26.2) reads composting chances from its data map only; Fabric's compostable registry writes vanilla's
- * table. An item the data map leaves out gets its chance from that table, so data packs still win. Not listed on 26.3,
+ * table. An item the data map leaves out gets its chance from that table, so data packs still win. Not on 26.3,
  * where composting is data-driven in vanilla and Fabric API has no such registry.
  */
 @Mixin(ComposterBlock.class)
