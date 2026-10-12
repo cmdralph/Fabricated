@@ -8,6 +8,7 @@ import io.github.cmdralph.fabricated.neoforge.entity.EntityEventsBridge;
 import io.github.cmdralph.fabricated.neoforge.interaction.ClientHotbarScroll;
 import io.github.cmdralph.fabricated.neoforge.interaction.InteractionBridge;
 import io.github.cmdralph.fabricated.neoforge.item.ItemApiBridge;
+import io.github.cmdralph.fabricated.neoforge.loot.LootBridge;
 import io.github.cmdralph.fabricated.neoforge.lifecycle.LifecycleBridge;
 import io.github.cmdralph.fabricated.neoforge.networking.NetworkingBridge;
 import io.github.cmdralph.fabricated.neoforge.objectbuilder.ObjectBuilderBridge;
@@ -30,6 +31,7 @@ public final class NativeFabricApi {
 		LifecycleBridge.register(dist);
 		EntityEventsBridge.register();
 		InteractionBridge.register(dist);
+		LootBridge.register();
 		if (dist.isClient()) ClientHotbarScroll.register();
 		ItemApiBridge.register(modBus, dist);
 		BlockApiCompat.register(modBus);
