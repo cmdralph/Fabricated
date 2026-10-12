@@ -397,7 +397,7 @@ code they rely on, Fabricated bridges the gap:
 | `VibrationFrequencyRegistry` (`SculkSensorFrequencyRegistry` on 1.21.11) | NeoForge's frequency lookup falls back to the table Fabric's registry writes | data packs win |
 | `FuelValueEvents` (`FuelRegistryEvents` on 1.21.11), up to 26.2 | run on NeoForge's fuel builder, after its furnace fuel data map | `BUILD`, then `EXCLUSIONS`; vanilla's non-flammable wood exclusion is already in the data map |
 | Flammable, strippable, tillable, flattenable, oxidizable and waxable blocks, path types, villager interactions, pot patterns, brewing | upstream's mixins | NeoForge falls back to the vanilla tables these write |
-| `EntityFluidInteractionRegistry` (26.x) | upstream's mixins, without three injectors | entering, leaving, pushing and moving through a Fabric fluid work; swimming, drowning and boats floating in it don't (NeoForge rewrote that code around its fluid types) |
+| `EntityFluidInteractionRegistry` (26.x) | upstream's mixins, without three injectors | entering, leaving, pushing and moving through a Fabric fluid work; swimming, jumping out of it, drowning and boats floating in it don't (NeoForge rewrote that code around its fluid types) |
 | Oxidation and wax scraping (26.3) | not applied | 26.3's block transformers have no NeoForge counterpart yet (a warning is logged once) |
 
 On 26.3, composting, stripping and fuel are data-driven in vanilla, and Fabric API has no registries for them.

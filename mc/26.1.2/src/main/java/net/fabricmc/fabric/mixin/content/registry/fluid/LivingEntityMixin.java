@@ -16,17 +16,11 @@
 
 package net.fabricmc.fabric.mixin.content.registry.fluid;
 
-import com.llamalad7.mixinextras.expression.Definition;
-import com.llamalad7.mixinextras.expression.Expression;
 import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
 import com.llamalad7.mixinextras.injector.v2.WrapWithCondition;
-import com.llamalad7.mixinextras.sugar.Share;
-import com.llamalad7.mixinextras.sugar.ref.LocalRef;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.ModifyArg;
-import org.spongepowered.asm.mixin.injection.Slice;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import net.minecraft.tags.TagKey;
@@ -40,7 +34,8 @@ import net.minecraft.world.phys.Vec3;
 import net.fabricmc.fabric.impl.content.registry.fluid.EntityFluidInteractionRegistryImpl;
 import net.fabricmc.fabric.impl.content.registry.fluid.InternalEntityFluidExtension;
 
-// Fabricated: the drowning check in baseTick is left out; NeoForge rewrote it around its fluid types.
+// Fabricated: the drowning check in baseTick and the fluid jumping in aiStep are left out; NeoForge rewrote both
+// around its fluid types.
 @Mixin(LivingEntity.class)
 public abstract class LivingEntityMixin extends Entity {
 	public LivingEntityMixin(EntityType<?> type, Level level) {
@@ -74,23 +69,6 @@ public abstract class LivingEntityMixin extends Entity {
 		}
 	}
 
-	@Definition(id = "WATER", field = "Lnet/minecraft/tags/FluidTags;WATER:Lnet/minecraft/tags/TagKey;")
-	@Definition(id = "getFluidHeight", method = "Lnet/minecraft/world/entity/LivingEntity;getFluidHeight(Lnet/minecraft/tags/TagKey;)D")
-	@Expression("this.getFluidHeight(WATER)")
-	@ModifyExpressionValue(method = "aiStep", at = @At("MIXINEXTRAS:EXPRESSION"))
-	private double tryOtherFluidsForFluidJumping(double original, @Share("fluid") LocalRef<TagKey<Fluid>> fluid) {
-		if (original != 0) {
-			return original;
-		}
-
-		for (TagKey<Fluid> tagKey : ((InternalEntityFluidExtension) this).fabric_api$getTouchedCustomFluids()) {
-			fluid.set(tagKey);
-			return this.getFluidHeight(tagKey);
-		}
-
-		return 0;
-	}
-
 	// This looks to be a vanilla bug or some sort of leftover?
 	// Causes fluids to apply their push twice if they aren't water (so in case of vanilla, lava only).
 	// This is not desired effect for mods through, as it will cause push value to functionally double (and fluid update stuff applying twice).
@@ -104,19 +82,4 @@ public abstract class LivingEntityMixin extends Entity {
 		return !((InternalEntityFluidExtension) this).fabric_api$getTouchedCustomFluids().isEmpty();
 	}
 
-	@ModifyExpressionValue(method = "aiStep", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/LivingEntity;isInLava()Z"),
-			slice = @Slice(from = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/LivingEntity;getFluidJumpThreshold()D"))
-	)
-	private boolean jumpInCustomFluid(boolean original, @Share("fluid") LocalRef<TagKey<Fluid>> fluid) {
-		return original || fluid.get() != null;
-	}
-
-	@Definition(id = "LAVA", field = "Lnet/minecraft/tags/FluidTags;LAVA:Lnet/minecraft/tags/TagKey;")
-	@Definition(id = "jumpInLiquid", method = "Lnet/minecraft/world/entity/LivingEntity;jumpInLiquid(Lnet/minecraft/tags/TagKey;)V")
-	@Expression("this.jumpInLiquid(LAVA)")
-	@ModifyArg(method = "aiStep", at = @At("MIXINEXTRAS:EXPRESSION"))
-	private TagKey<Fluid> swapFluidTag(TagKey<Fluid> fluidTagKey, @Share("fluid") LocalRef<TagKey<Fluid>> fluid) {
-		TagKey<Fluid> custom = fluid.get();
-		return custom != null ? custom : fluidTagKey;
-	}
 }

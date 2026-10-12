@@ -30,7 +30,7 @@
     "fabric-content-registries-v0": {
       "plan": "native",
       "version": "11.3.1",
-      "reason": "Shipped by Fabricated: upstream's registries and mixins, with NeoForge's data maps backed by them where an entry is missing; entity swimming, drowning and boat floating in Fabric-registered fluids are not applied (NeoForge rewrote that code)."
+      "reason": "Shipped by Fabricated: upstream's registries and mixins, with NeoForge's data maps backed by them where an entry is missing; entity swimming, jumping, drowning and boat floating in Fabric-registered fluids are not applied (NeoForge rewrote that code)."
     },
     "fabric-convention-tags-v2": {
       "plan": "passthrough"
