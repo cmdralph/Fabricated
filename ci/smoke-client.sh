@@ -14,7 +14,7 @@ neo="$2"
 work="$3"
 extra="${4:-}"
 root="$(cd "$(dirname "$0")/.." && pwd)"
-timeout_seconds="${SMOKE_TIMEOUT:-1200}"
+timeout_seconds="${SMOKE_TIMEOUT:-900}"
 hmc_version="2.10.0"
 mcrt_version="4.5.2"
 
@@ -61,7 +61,8 @@ OPTS
 
 echo "::group::Run client"
 status=0
-timeout "$timeout_seconds" xvfb-run -a java -Dhmc.check.xvfb=true -jar hmc.jar \
+# A 24-bit screen with GLX: xvfb-run's default 8-bit screen has no OpenGL visual (26.3's renderer needs one).
+timeout "$timeout_seconds" xvfb-run -a -s "-screen 0 1280x720x24 +extension GLX +render -noreset" java -Dhmc.check.xvfb=true -jar hmc.jar \
 	--command launch "neoforge-${neo}" -regex --jvm "-Djava.awt.headless=true -DMcRuntimeGameTest=false" \
 	> client.out 2>&1 || status=$?
 echo "::endgroup::"
