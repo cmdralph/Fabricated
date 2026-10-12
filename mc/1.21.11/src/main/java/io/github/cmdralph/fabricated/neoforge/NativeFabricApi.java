@@ -2,6 +2,7 @@ package io.github.cmdralph.fabricated.neoforge;
 
 import io.github.cmdralph.fabricated.loader.FabricatedState;
 import io.github.cmdralph.fabricated.neoforge.entity.EntityEventsBridge;
+import io.github.cmdralph.fabricated.neoforge.interaction.InteractionBridge;
 import io.github.cmdralph.fabricated.neoforge.item.ItemApiBridge;
 import io.github.cmdralph.fabricated.neoforge.lifecycle.LifecycleBridge;
 import io.github.cmdralph.fabricated.neoforge.networking.NetworkingBridge;
@@ -22,6 +23,7 @@ public final class NativeFabricApi {
 	public static void register(IEventBus modBus, Dist dist, FabricatedState state) {
 		LifecycleBridge.register(dist);
 		EntityEventsBridge.register();
+		InteractionBridge.register(dist);
 		ItemApiBridge.register(modBus, dist);
 		// The 1.21.11 API has no FabricDefaultAttributeRegistry.MODIFY.
 		ObjectBuilderBridge.register(modBus, modifier -> {

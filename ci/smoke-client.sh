@@ -107,4 +107,5 @@ check "FABRICATED-TEST registry sync: custom registry OK" "registry sync on the 
 check "FABRICATED-TEST object builder OK" "native object builder in the integrated server"
 check "FABRICATED-TEST block api OK" "native block api in the integrated server"
 check "FABRICATED-TEST item api OK" "native item api in the integrated server"
+check "FABRICATED-TEST interaction events OK" "native interaction events in the integrated server"
 exit "$fail"
