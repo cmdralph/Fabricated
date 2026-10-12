@@ -14,7 +14,6 @@ import io.github.cmdralph.fabricated.core.cache.TranslationCache;
 import io.github.cmdralph.fabricated.core.metadata.FabricModJsonParser;
 import io.github.cmdralph.fabricated.core.metadata.FabricModMetadata;
 import io.github.cmdralph.fabricated.core.metadata.MetadataException;
-import net.fabricmc.loader.api.metadata.CustomValue;
 
 /**
  * Turns jar files into {@link Candidate}s: validates each archive, parses {@code fabric.mod.json},
@@ -141,9 +140,7 @@ public final class CandidateScanner {
 			}
 		}
 
-		CustomValue generated = metadata.getCustomValue("fabric-loom:generated");
-		boolean generatedLibrary = generated != null && generated.getType() == CustomValue.CvType.BOOLEAN && generated.getAsBoolean();
-		Candidate candidate = new Candidate(jar, sha, metadata, origin, parentId, depth, generatedLibrary, List.copyOf(children));
+		Candidate candidate = new Candidate(jar, sha, metadata, origin, parentId, depth, List.copyOf(children));
 		all.add(candidate);
 		return candidate;
 	}

@@ -36,7 +36,6 @@ class FabricatedConfigTest {
 				  "unknownKey": true
 				}
 				""");
-		assertEquals("DEBUG", c.logLevel());
 		assertEquals(FabricatedConfig.EntrypointFailure.DISABLE, c.onEntrypointFailure());
 		assertFalse(c.strictLinkage(), "invalid type falls back to default");
 		assertEquals(5, c.maxUnusedLaunches(), "out of range falls back to default");
@@ -44,6 +43,7 @@ class FabricatedConfigTest {
 		assertTrue(c.override("some-mod").disabled());
 		assertEquals(Set.of("a.mixins.json:Foo"), c.override("some-mod").skipMixins());
 		assertFalse(c.override("other").disabled());
+		// The retired "logLevel" key is accepted silently.
 		assertEquals(4, c.warnings().size(), c.warnings().toString());
 	}
 
@@ -51,6 +51,6 @@ class FabricatedConfigTest {
 	void brokenJsonFallsBackToDefaults() {
 		FabricatedConfig c = FabricatedConfig.parse("{ not json");
 		assertEquals(1, c.warnings().size());
-		assertEquals("INFO", c.logLevel());
+		assertEquals(FabricatedConfig.EntrypointFailure.ERROR, c.onEntrypointFailure());
 	}
 }

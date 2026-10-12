@@ -102,4 +102,36 @@ class VersionSemanticsTest {
 		assertEquals(v("1.0"), not.getFirst().getMax());
 		assertFalse(not.getFirst().isMaxInclusive());
 	}
+
+	private static VersionInterval interval(String min, boolean minInclusive, String max, boolean maxInclusive) throws VersionParsingException {
+		return new VersionIntervalImpl(min == null ? null : v(min), minInclusive, max == null ? null : v(max), maxInclusive);
+	}
+
+	@Test
+	void intersectionPicksTighterBounds() throws Exception {
+		// Unbounded sides take the other interval's bound.
+		assertEquals(interval("1", true, "2", false), VersionInterval.and(interval("1", true, null, false), interval(null, false, "2", false)));
+		// Equal bounds are inclusive only if both are.
+		assertEquals(interval("1", false, "2", false), VersionInterval.and(interval("1", true, "2", true), interval("1", false, "2", false)));
+		assertEquals(interval("1", true, "2", true), VersionInterval.and(interval("1", true, "2", true), interval("1", true, "3", false)));
+		// Lower min / higher max lose.
+		assertEquals(interval("1.5", false, "2", true), VersionInterval.and(interval("1", true, "3", true), interval("1.5", false, "2", true)));
+		// A single shared point survives only if both include it.
+		assertEquals(interval("1", true, "1", true), VersionInterval.and(interval(null, false, "1", true), interval("1", true, null, false)));
+		assertNull(VersionInterval.and(interval(null, false, "1", false), interval("1", true, null, false)));
+	}
+
+	@Test
+	void unionKeepsLooserUpperBound() throws Exception {
+		assertEquals(List.of(interval("1", true, "3", false)),
+				VersionInterval.or(List.of(interval("1", true, "2", true)), interval("1.5", true, "3", false)));
+		assertEquals(List.of(interval("1", true, "2", true)),
+				VersionInterval.or(List.of(interval("1", true, "2", false)), interval("1.5", true, "2", true)));
+		assertEquals(List.of(interval("1", true, "2", false)),
+				VersionInterval.or(List.of(interval("1", true, "2", false)), interval("1.5", true, "1.8", true)));
+		assertEquals(List.of(interval("1", true, null, false)),
+				VersionInterval.or(List.of(interval("1", true, "2", false)), interval("1.5", true, null, false)));
+		assertEquals(2, VersionInterval.or(List.of(interval("1", true, "2", false)), interval("2", false, "3", false)).size(),
+				"intervals that only meet at an excluded point stay separate");
+	}
 }

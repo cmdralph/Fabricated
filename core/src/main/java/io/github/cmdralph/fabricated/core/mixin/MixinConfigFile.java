@@ -12,39 +12,37 @@ import io.github.cmdralph.fabricated.core.json.JsonException;
 /**
  * A parsed mixin configuration JSON. The original tree is retained so a filtered copy can be produced
  * without losing options this class does not model.
+ *
+ * @param mixinPackage                 package of the mixin classes, dotted (may be {@code null} for an empty config)
+ * @param overwritesRequireAnnotations {@code overwrites.requireAnnotations}: a mixin method that replaces a target
+ *                                     method must be @Overwrite
  */
-public final class MixinConfigFile {
-	private final Map<String, Object> tree;
-	private final String mixinPackage;
-	private final List<String> common;
-	private final List<String> client;
-	private final List<String> server;
-	private final String refmap;
-	private final boolean required;
-	private final String plugin;
-	private final int defaultRequire;
-	private final boolean overwritesRequireAnnotations;
-
-	private MixinConfigFile(Map<String, Object> tree) throws JsonException {
-		this.tree = tree;
-		this.mixinPackage = optString(tree, "package");
-		this.common = strings(tree.get("mixins"), "mixins");
-		this.client = strings(tree.get("client"), "client");
-		this.server = strings(tree.get("server"), "server");
-		this.refmap = optString(tree, "refmap");
-		this.required = Boolean.TRUE.equals(tree.get("required"));
-		this.plugin = optString(tree, "plugin");
-		int dr = 0;
-		if (tree.get("injectors") instanceof Map<?, ?> injectors && injectors.get("defaultRequire") instanceof Number n) {
-			dr = n.intValue();
-		}
-		this.defaultRequire = dr;
-		this.overwritesRequireAnnotations = tree.get("overwrites") instanceof Map<?, ?> overwrites
-				&& Boolean.TRUE.equals(overwrites.get("requireAnnotations"));
-	}
+public record MixinConfigFile(
+		Map<String, Object> tree,
+		String mixinPackage,
+		List<String> common,
+		List<String> client,
+		List<String> server,
+		String refmap,
+		boolean required,
+		String plugin,
+		int defaultRequire,
+		boolean overwritesRequireAnnotations) {
 
 	public static MixinConfigFile parse(String json) throws JsonException {
-		return new MixinConfigFile(Json.parseObject(json));
+		Map<String, Object> tree = Json.parseObject(json);
+		int defaultRequire = tree.get("injectors") instanceof Map<?, ?> injectors && injectors.get("defaultRequire") instanceof Number n
+				? n.intValue() : 0;
+		return new MixinConfigFile(tree,
+				optString(tree, "package"),
+				strings(tree.get("mixins"), "mixins"),
+				strings(tree.get("client"), "client"),
+				strings(tree.get("server"), "server"),
+				optString(tree, "refmap"),
+				Boolean.TRUE.equals(tree.get("required")),
+				optString(tree, "plugin"),
+				defaultRequire,
+				tree.get("overwrites") instanceof Map<?, ?> overwrites && Boolean.TRUE.equals(overwrites.get("requireAnnotations")));
 	}
 
 	private static String optString(Map<String, Object> tree, String key) throws JsonException {
@@ -56,39 +54,13 @@ public final class MixinConfigFile {
 
 	private static List<String> strings(Object value, String key) throws JsonException {
 		List<String> ret = new ArrayList<>();
-		if (value == null) return ret;
+		if (value == null) return List.of();
 		if (!(value instanceof List<?> list)) throw new JsonException("\"" + key + "\" must be an array");
 		for (Object o : list) {
 			if (!(o instanceof String s)) throw new JsonException("\"" + key + "\" must contain strings");
 			ret.add(s);
 		}
-		return ret;
-	}
-
-	/** Package of the mixin classes, dotted (may be {@code null} for an empty config). */
-	public String mixinPackage() {
-		return mixinPackage;
-	}
-
-	public String refmap() {
-		return refmap;
-	}
-
-	public boolean required() {
-		return required;
-	}
-
-	public String plugin() {
-		return plugin;
-	}
-
-	public int defaultRequire() {
-		return defaultRequire;
-	}
-
-	/** {@code overwrites.requireAnnotations}: a mixin method that replaces a target method must be @Overwrite. */
-	public boolean overwritesRequireAnnotations() {
-		return overwritesRequireAnnotations;
+		return List.copyOf(ret);
 	}
 
 	/** Mixin names (relative to the package) that apply on the given side. */

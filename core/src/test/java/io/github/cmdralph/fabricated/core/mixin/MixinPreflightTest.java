@@ -16,6 +16,7 @@ import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 
+import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
 import io.github.cmdralph.fabricated.core.bytecode.ClassIndex;
 import io.github.cmdralph.fabricated.core.mixin.PreflightFinding.Severity;
 
@@ -82,7 +83,7 @@ class MixinPreflightTest {
 	private static List<PreflightFinding> run(String configJson, String refmapJson, Map<String, byte[]> mixins, boolean client) throws Exception {
 		ClassIndex game = new ClassIndex(Map.of(TARGET, targetClass())::get);
 		Map<String, byte[]> mod = new HashMap<>(mixins);
-		MixinPreflight preflight = new MixinPreflight(game, mod::get, client);
+		MixinPreflight preflight = new MixinPreflight(game, mod::get, ClassBytesSource.EMPTY, client);
 		Refmap refmap = refmapJson == null ? Refmap.EMPTY : Refmap.parse(refmapJson);
 		return preflight.check("test.mixins.json", MixinConfigFile.parse(configJson), refmap, Set.of());
 	}
@@ -211,7 +212,7 @@ class MixinPreflightTest {
 		assertTrue(withLibraries.getFirst().message().contains("without mixin support"));
 
 		// Unknown non-Minecraft targets (another mod's classes) are still only noted.
-		List<PreflightFinding> unknown = new MixinPreflight(game, mod::get, false)
+		List<PreflightFinding> unknown = new MixinPreflight(game, mod::get, ClassBytesSource.EMPTY, false)
 				.check("test.mixins.json", MixinConfigFile.parse(config(true, "LibMixin")), Refmap.EMPTY, Set.of());
 		assertEquals(PreflightFinding.Severity.INFO, unknown.getFirst().severity());
 	}
@@ -292,7 +293,7 @@ class MixinPreflightTest {
 		java.util.function.Function<String, List<PreflightFinding>> run = desc -> {
 			Map<String, byte[]> mod = Map.of("com/example/mixin/M", mixinFor.apply(desc));
 			try {
-				return new MixinPreflight(game, mod::get, false).check("test.mixins.json", MixinConfigFile.parse(config(true, "M")), Refmap.EMPTY, Set.of());
+				return new MixinPreflight(game, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", MixinConfigFile.parse(config(true, "M")), Refmap.EMPTY, Set.of());
 			} catch (Exception e) {
 				throw new RuntimeException(e);
 			}

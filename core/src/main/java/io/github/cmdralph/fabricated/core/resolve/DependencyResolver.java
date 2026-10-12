@@ -1,9 +1,7 @@
 package io.github.cmdralph.fabricated.core.resolve;
 
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.Deque;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -59,14 +57,8 @@ public final class DependencyResolver {
 	 * @param candidates   candidates that survived config, environment and Fabric API filtering
 	 * @param aliases      extra ids each candidate provides (from config), keyed by candidate id
 	 * @param missingHints optional install hints for ids that no provider offers (e.g. Fabric API)
-	 */
-	public Result resolve(List<Candidate> candidates, Map<String, List<String>> aliases, Map<String, String> missingHints) {
-		return resolve(candidates, aliases, missingHints, Map.of());
-	}
-
-	/**
-	 * @param unavailable mods that are installed but were disabled earlier (pre-flight, linkage...), by id, with the
-	 *                    reason: a mod requiring one is told so, instead of being told to install it
+	 * @param unavailable  mods that are installed but were disabled earlier (pre-flight, linkage...), by id, with the
+	 *                     reason: a mod requiring one is told so, instead of being told to install it
 	 */
 	public Result resolve(List<Candidate> candidates, Map<String, List<String>> aliases, Map<String, String> missingHints,
 			Map<String, String> unavailable) {
@@ -169,7 +161,6 @@ public final class DependencyResolver {
 
 	/** Dependencies first; ties broken by id so the order is deterministic. Cycles are appended by id. */
 	static List<Candidate> order(Map<String, Candidate> active) {
-		Map<String, Set<String>> deps = new HashMap<>();
 		Map<String, Integer> indegree = new HashMap<>();
 		Map<String, List<String>> dependents = new HashMap<>();
 		Map<String, String> providerOf = new HashMap<>();
@@ -185,7 +176,6 @@ public final class DependencyResolver {
 				String target = providerOf.get(dep.getModId());
 				if (target != null && !target.equals(c.id())) d.add(target);
 			}
-			deps.put(c.id(), d);
 			indegree.put(c.id(), d.size());
 			for (String t : d) dependents.computeIfAbsent(t, k -> new ArrayList<>()).add(c.id());
 		}
@@ -194,11 +184,9 @@ public final class DependencyResolver {
 			if (n == 0) ready.add(id);
 		});
 		List<Candidate> ordered = new ArrayList<>();
-		Deque<String> processed = new ArrayDeque<>();
 		while (!ready.isEmpty()) {
 			String id = ready.poll();
 			ordered.add(active.get(id));
-			processed.add(id);
 			for (String dependent : dependents.getOrDefault(id, List.of())) {
 				int n = indegree.merge(dependent, -1, Integer::sum);
 				if (n == 0) ready.add(dependent);
@@ -206,7 +194,7 @@ public final class DependencyResolver {
 		}
 		if (ordered.size() < active.size()) {
 			Set<String> remaining = new TreeSet<>(active.keySet());
-			remaining.removeAll(processed);
+			for (Candidate c : ordered) remaining.remove(c.id());
 			for (String id : remaining) ordered.add(active.get(id));
 		}
 		return ordered;

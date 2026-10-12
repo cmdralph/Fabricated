@@ -14,6 +14,7 @@ import io.github.cmdralph.fabricated.core.archive.ArchiveException;
 import io.github.cmdralph.fabricated.core.archive.ArchiveLimits;
 import io.github.cmdralph.fabricated.core.archive.Hashing;
 import io.github.cmdralph.fabricated.core.archive.SafeArchive;
+import io.github.cmdralph.fabricated.core.bytecode.Annotations;
 import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
 import io.github.cmdralph.fabricated.core.bytecode.ClassIndex;
 import io.github.cmdralph.fabricated.core.bytecode.LinkageChecker;
@@ -47,18 +48,12 @@ public final class LinkageAnalysis {
 	}
 
 	/**
-	 * @param mods         translated mods
-	 * @param runtime      classes available at runtime (game + native Fabric API + all Fabric jars)
-	 * @param setFingerprint identifies the mod set and game version for cache keys
-	 * @return issues per NeoForge id (only mods with issues are present)
-	 */
-	public Map<String, List<String>> analyse(List<TranslatedMod> mods, ClassBytesSource runtime, String setFingerprint) {
-		return analyse(mods, runtime, Map.of(), setFingerprint);
-	}
-
-	/**
+	 * @param mods               translated mods
+	 * @param runtime            classes available at runtime (game + native Fabric API + all Fabric jars)
 	 * @param platformInterfaces interfaces Fabricated's own (native Fabric API) mixins add to game classes, by
 	 *                           target; see {@link #mixinInterfaces(byte[], Map)}
+	 * @param setFingerprint     identifies the mod set and game version for cache keys
+	 * @return issues per NeoForge id (only mods with issues are present)
 	 */
 	public Map<String, List<String>> analyse(List<TranslatedMod> mods, ClassBytesSource runtime,
 			Map<String, List<String>> platformInterfaces, String setFingerprint) {
@@ -96,8 +91,7 @@ public final class LinkageAnalysis {
 		for (TranslatedMod mod : mods) {
 			for (var ii : mod.injectedInterfaces()) added.computeIfAbsent(ii.target(), k -> new ArrayList<>()).add(ii.interfaceName());
 			try (SafeArchive archive = SafeArchive.open(mod.jar(), limits.forTranslatedJars())) {
-				for (String name : archive.entryNames()) {
-					if (!name.endsWith(".class") || name.startsWith("META-INF/") || name.endsWith("module-info.class")) continue;
+				for (String name : archive.classEntryNames()) {
 					byte[] data = archive.read(name);
 					if (data != null) mixinInterfaces(data, added);
 				}
@@ -112,17 +106,15 @@ public final class LinkageAnalysis {
 	public static void mixinInterfaces(byte[] data, Map<String, List<String>> added) {
 		ClassNode node = new ClassNode();
 		new ClassReader(data).accept(node, ClassReader.SKIP_CODE | ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
-		if (node.interfaces == null || node.interfaces.isEmpty() || node.invisibleAnnotations == null) return;
-		for (AnnotationNode ann : node.invisibleAnnotations) {
-			if (!ann.desc.equals("Lorg/spongepowered/asm/mixin/Mixin;") || ann.values == null) continue;
-			for (int i = 0; i + 1 < ann.values.size(); i += 2) {
-				Object value = ann.values.get(i + 1);
-				if (!(value instanceof List<?> list)) continue;
-				for (Object target : list) {
-					String internal = target instanceof Type type ? type.getInternalName()
-							: target instanceof String str ? str.replace('.', '/') : null;
-					if (internal != null) added.computeIfAbsent(internal, k -> new ArrayList<>()).addAll(node.interfaces);
-				}
+		if (node.interfaces == null || node.interfaces.isEmpty()) return;
+		AnnotationNode mixin = Annotations.find(node.invisibleAnnotations, "Lorg/spongepowered/asm/mixin/Mixin;");
+		if (mixin == null) return;
+		for (String key : List.of("value", "targets")) {
+			if (!(Annotations.value(mixin, key) instanceof List<?> list)) continue;
+			for (Object target : list) {
+				String internal = target instanceof Type type ? type.getInternalName()
+						: target instanceof String str ? str.replace('.', '/') : null;
+				if (internal != null) added.computeIfAbsent(internal, k -> new ArrayList<>()).addAll(node.interfaces);
 			}
 		}
 	}
@@ -144,8 +136,7 @@ public final class LinkageAnalysis {
 	private List<String> check(TranslatedMod mod, LinkageChecker checker) {
 		List<LinkageChecker.Issue> issues = new ArrayList<>();
 		try (SafeArchive archive = SafeArchive.open(mod.jar(), limits.forTranslatedJars())) {
-			for (String name : archive.entryNames()) {
-				if (!name.endsWith(".class") || name.startsWith("META-INF/") || name.endsWith("module-info.class")) continue;
+			for (String name : archive.classEntryNames()) {
 				byte[] data = archive.read(name);
 				if (data != null) checker.check(data, issues);
 			}

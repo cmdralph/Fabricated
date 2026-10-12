@@ -23,7 +23,7 @@ import io.github.cmdralph.fabricated.core.json.JsonException;
  * }
  * }</pre>
  */
-public final class FabricApiPlan {
+public record FabricApiPlan(String fabricApiVersion, Map<String, Module> modules) {
 	/** How a module is provided. */
 	public enum Plan {
 		/** Fabricated implements the module on NeoForge; the upstream jar is not loaded. */
@@ -43,12 +43,8 @@ public final class FabricApiPlan {
 	public record Module(String id, Plan plan, String version, String reason, List<String> skipMixins) {
 	}
 
-	private final String fabricApiVersion;
-	private final Map<String, Module> modules;
-
-	public FabricApiPlan(String fabricApiVersion, Map<String, Module> modules) {
-		this.fabricApiVersion = fabricApiVersion;
-		this.modules = Collections.unmodifiableMap(new LinkedHashMap<>(modules));
+	public FabricApiPlan {
+		modules = Collections.unmodifiableMap(new LinkedHashMap<>(modules));
 	}
 
 	public static FabricApiPlan parse(String json) throws JsonException {
@@ -81,14 +77,6 @@ public final class FabricApiPlan {
 			modules.put(id, new Module(id, p, moduleVersion, reason, List.copyOf(skip)));
 		}
 		return new FabricApiPlan(version, modules);
-	}
-
-	public String fabricApiVersion() {
-		return fabricApiVersion;
-	}
-
-	public Map<String, Module> modules() {
-		return modules;
 	}
 
 	/** @return the decision for a module id, or {@code null} if the id is not a Fabric API module */

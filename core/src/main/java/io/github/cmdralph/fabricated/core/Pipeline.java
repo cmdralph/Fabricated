@@ -1,6 +1,7 @@
 package io.github.cmdralph.fabricated.core;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -14,6 +15,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 import io.github.cmdralph.fabricated.core.accesswidener.AccessWidenerFile.InjectedInterface;
+import io.github.cmdralph.fabricated.core.archive.ArchiveException;
 import io.github.cmdralph.fabricated.core.archive.Hashing;
 import io.github.cmdralph.fabricated.core.archive.SafeArchive;
 import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
@@ -86,7 +88,6 @@ public final class Pipeline {
 	public record Input(
 			Path gameDir,
 			Path configDir,
-			Path logsDir,
 			List<Path> fabricJars,
 			String minecraftVersion,
 			String neoForgeVersion,
@@ -120,7 +121,6 @@ public final class Pipeline {
 			Map<String, ModContainerImpl> containers,
 			Report report,
 			TranslationCache cache,
-			MappingTable mappings,
 			Set<String> dependencyFailures) {
 	}
 
@@ -140,11 +140,7 @@ public final class Pipeline {
 				.environment("Fabric Loader API", FABRIC_LOADER_COMPAT_VERSION);
 		config.warnings().forEach(w -> report.line("Configuration warnings", w));
 
-		MappingTable mappingTable = null;
-		FabricLoaderRuntime runtime = new FabricLoaderRuntime(in.clientSide() ? EnvType.CLIENT : EnvType.SERVER,
-				in.gameDir(), in.configDir(), in.minecraftVersion(), in.development(),
-				MappingResolvers.identity(), () -> in.launchArguments());
-
+		EnvType side = in.clientSide() ? EnvType.CLIENT : EnvType.SERVER;
 		TranslationCache cache;
 		try {
 			cache = new TranslationCache(in.gameDir(), config.cacheEnabled(), config.verifyIntegrity());
@@ -154,7 +150,7 @@ public final class Pipeline {
 						"Fabricated could not create its cache directory: " + e.getMessage(),
 						"Make sure the game directory is writable and does not contain symbolic links under .fabricated/."));
 			}
-			return new Result(config, List.of(), Map.of(), runtime, Map.of(), report, null, null, Set.of());
+			return new Result(config, List.of(), Map.of(), newRuntime(in, side, null), Map.of(), report, null, Set.of());
 		}
 
 		CandidateScanner.Result scan = new CandidateScanner(cache, config.limits()).scan(in.fabricJars());
@@ -165,7 +161,6 @@ public final class Pipeline {
 		Map<String, Pipeline.NeoForgeMod> neoMods = new HashMap<>();
 		for (NeoForgeMod m : in.neoForgeMods()) neoMods.put(m.id(), m);
 		FabricApiPlan plan = in.fabricApiPlan();
-		EnvType side = in.clientSide() ? EnvType.CLIENT : EnvType.SERVER;
 		List<Candidate> eligible = new ArrayList<>();
 		for (Candidate c : scan.candidates()) {
 			FabricatedConfig.ModOverride override = config.override(c.id());
@@ -224,16 +219,15 @@ public final class Pipeline {
 		config.overrides().forEach((id, o) -> aliases.put(id, o.aliases()));
 
 		// Mappings (obfuscated versions only).
-		TranslationEnvironment env;
+		MappingTable mappingTable = null;
+		String mappingsHash = "none";
+		boolean mappingsAvailable = true;
 		// Without Fabric mods to translate the table isn't needed; skip building it (it takes a few seconds).
 		if (in.namespace() == Namespace.INTERMEDIARY && !eligible.isEmpty()) {
 			try {
 				Mappings m = in.mappings().get(cache, config.mojangMappingsPath());
 				mappingTable = m.table();
-				env = new TranslationEnvironment(in.minecraftVersion(), in.neoForgeVersion(), in.clientSide(), in.namespace(),
-						in.runtimeMixinVersion(), in.lowestMixinBehavior(), in.fabricatedVersion(), mappingTable, m.hash(), new ClassIndex(in.gameClasses()),
-						in.untransformableClasses());
-				report.environment("Mappings", mappingTable.classCount() + " classes, " + mappingTable.memberCount() + " members");
+				mappingsHash = m.hash();
 			} catch (MappingException | IOException e) {
 				for (Candidate c : eligible) {
 					report.mod(new ModRow(c.id(), c.metadata().getVersion().getFriendlyString(), c.origin(), Status.DISABLED,
@@ -241,22 +235,23 @@ public final class Pipeline {
 							"Reinstall NeoForge with its installer (it downloads the mapping file), or set \"mojangMappingsPath\" in config/fabricated.json."));
 				}
 				eligible.clear();
-				env = null;
+				mappingsAvailable = false;
 			}
-		} else {
-			env = new TranslationEnvironment(in.minecraftVersion(), in.neoForgeVersion(), in.clientSide(), in.namespace(),
-					in.runtimeMixinVersion(), in.lowestMixinBehavior(), in.fabricatedVersion(), null, "none", new ClassIndex(in.gameClasses()),
-					in.untransformableClasses());
 		}
+		// Nothing to translate without a mapping table on an obfuscated version (no Fabric mods, or the mappings failed).
+		boolean canTranslate = in.namespace() != Namespace.INTERMEDIARY ? mappingsAvailable : mappingTable != null;
+		TranslationEnvironment env = canTranslate
+				? new TranslationEnvironment(in.minecraftVersion(), in.neoForgeVersion(), in.clientSide(), in.namespace(),
+						in.runtimeMixinVersion(), in.lowestMixinBehavior(), in.fabricatedVersion(), mappingTable, mappingsHash,
+						new ClassIndex(in.gameClasses()), in.untransformableClasses())
+				: null;
 		if (mappingTable != null) {
-			runtime = new FabricLoaderRuntime(side, in.gameDir(), in.configDir(), in.minecraftVersion(), in.development(),
-					MappingResolvers.intermediary(mappingTable), () -> in.launchArguments());
+			report.environment("Mappings", mappingTable.classCount() + " classes, " + mappingTable.memberCount() + " members");
 		}
+		FabricLoaderRuntime runtime = newRuntime(in, side, mappingTable);
 
 		// Resolve → translate → guard, repeated until no further mods drop out.
-		Map<String, String> dropped = new LinkedHashMap<>();
-		Map<String, String> droppedSuggestions = new HashMap<>();
-		Map<String, Candidate> droppedCandidates = new HashMap<>();
+		Map<String, Drop> dropped = new LinkedHashMap<>();
 		List<TranslatedMod> translated = List.of();
 		Map<String, PackageGuard.Decision> decisions = Map.of();
 		Map<String, List<String>> linkage = Map.of();
@@ -269,22 +264,21 @@ public final class Pipeline {
 		// Every round either removes at least one mod or finishes, so this bound is never the limiting factor.
 		for (int round = 0; round <= eligible.size() + 1 && env != null; round++) {
 			List<Candidate> active = eligible.stream().filter(c -> !dropped.containsKey(c.id())).toList();
-			resolution = resolver.resolve(active, aliases, hints, dropped);
+			Map<String, String> unavailable = new HashMap<>();
+			dropped.forEach((id, d) -> unavailable.put(id, d.reason()));
+			resolution = resolver.resolve(active, aliases, hints, unavailable);
 			for (DependencyResolver.Disabled d : resolution.disabled()) {
-				dropped.put(d.candidate().id(), d.reason());
+				dropped.put(d.candidate().id(), new Drop(d.reason(), d.suggestion(), d.candidate()));
 				dependencyFailures.add(d.candidate().id());
-				droppedSuggestions.put(d.candidate().id(), d.suggestion());
-				droppedCandidates.put(d.candidate().id(), d.candidate());
 			}
 
 			Set<String> activeIds = resolution.ordered().stream().map(Candidate::id).collect(Collectors.toSet());
 			ModTranslator translator = new ModTranslator(env, cache, config.limits());
 			Map<String, TranslatedMod> results = new ConcurrentHashMap<>();
 			Map<String, TranslationException> failures = new ConcurrentHashMap<>();
-			Map<String, NeoForgeMod> neoModsFinal = neoMods;
 			resolution.ordered().parallelStream().forEach(c -> {
 				try {
-					List<String> after = loadAfter(c, activeIds, neoModsFinal);
+					List<String> after = loadAfter(c, activeIds, neoMods);
 					results.put(c.id(), translator.translate(c, effectiveOverride(config, plan, c.id()), after));
 				} catch (TranslationException e) {
 					failures.put(c.id(), e);
@@ -297,10 +291,9 @@ public final class Pipeline {
 			});
 			boolean changed = !resolution.disabled().isEmpty();
 			for (Map.Entry<String, TranslationException> f : failures.entrySet()) {
-				dropped.put(f.getKey(), f.getValue().getMessage());
-				droppedSuggestions.put(f.getKey(), f.getValue().suggestion());
+				Candidate failed = resolution.ordered().stream().filter(c -> c.id().equals(f.getKey())).findFirst().orElse(null);
+				dropped.put(f.getKey(), new Drop(f.getValue().getMessage(), f.getValue().suggestion(), failed));
 				failedFindings.put(f.getKey(), f.getValue().findings());
-				resolution.ordered().stream().filter(c -> c.id().equals(f.getKey())).findFirst().ifPresent(c -> droppedCandidates.put(c.id(), c));
 				changed = true;
 			}
 			List<TranslatedMod> ordered = new ArrayList<>();
@@ -311,10 +304,7 @@ public final class Pipeline {
 
 			PackageGuard.Result guard = new PackageGuard(config.limits()).check(ordered, in.platformPackages());
 			for (PackageGuard.Conflict conflict : guard.conflicts()) {
-				String id = conflict.mod().candidate().id();
-				dropped.put(id, conflict.reason());
-				droppedSuggestions.put(id, conflict.suggestion());
-				droppedCandidates.put(id, conflict.mod().candidate());
+				dropped.put(conflict.mod().candidate().id(), new Drop(conflict.reason(), conflict.suggestion(), conflict.mod().candidate()));
 				changed = true;
 			}
 
@@ -334,11 +324,9 @@ public final class Pipeline {
 					boolean fapiModule = plan.module(t.candidate().id()) != null;
 					boolean fabricApiReference = issues.stream().anyMatch(i -> i.contains("net.fabricmc.fabric."));
 					if (config.strictLinkage() || fapiModule && fabricApiReference) {
-						dropped.put(t.candidate().id(), "references code that does not exist at runtime: " + issues.getFirst());
-						droppedSuggestions.put(t.candidate().id(), fapiModule
+						dropped.put(t.candidate().id(), new Drop("references code that does not exist at runtime: " + issues.getFirst(), fapiModule
 								? "This Fabric API module depends on internals that Fabricated implements differently; mods needing it cannot run yet."
-								: "Update the mod, or set \"strictLinkage\": false to load it anyway.");
-						droppedCandidates.put(t.candidate().id(), t.candidate());
+								: "Update the mod, or set \"strictLinkage\": false to load it anyway.", t.candidate()));
 						linkageDropped = true;
 					}
 				}
@@ -349,10 +337,10 @@ public final class Pipeline {
 		}
 
 		// Report disabled mods.
-		for (Map.Entry<String, String> d : dropped.entrySet()) {
-			Candidate c = droppedCandidates.get(d.getKey());
+		for (Map.Entry<String, Drop> d : dropped.entrySet()) {
+			Candidate c = d.getValue().candidate();
 			report.mod(new ModRow(d.getKey(), c != null ? c.metadata().getVersion().getFriendlyString() : "", c != null ? c.origin() : "",
-					Status.DISABLED, d.getValue(), droppedSuggestions.getOrDefault(d.getKey(), "")));
+					Status.DISABLED, d.getValue().reason(), d.getValue().suggestion()));
 			for (PreflightFinding f : failedFindings.getOrDefault(d.getKey(), List.of())) {
 				report.line("Mixin pre-flight failures", d.getKey() + ": " + f);
 			}
@@ -421,8 +409,17 @@ public final class Pipeline {
 		for (NeoForgeMod m : in.neoForgeMods()) addBuiltin(runtime, m.id(), m.version(), m.displayName());
 
 		cache.notes().forEach(n -> report.line("Cache", n));
-		return new Result(config, List.copyOf(loaded), injections, runtime, containers, report, cache, mappingTable,
+		return new Result(config, List.copyOf(loaded), injections, runtime, containers, report, cache,
 				Set.copyOf(dependencyFailures));
+	}
+
+	/** Why a mod was disabled; {@code candidate} is null when it is unknown. */
+	private record Drop(String reason, String suggestion, Candidate candidate) {
+	}
+
+	private static FabricLoaderRuntime newRuntime(Input in, EnvType side, MappingTable mappings) {
+		return new FabricLoaderRuntime(side, in.gameDir(), in.configDir(), in.minecraftVersion(), in.development(),
+				mappings != null ? MappingResolvers.intermediary(mappings) : MappingResolvers.identity(), () -> in.launchArguments());
 	}
 
 	/** User overrides, plus the plan's known-conflicting mixins for pass-through Fabric API modules. */
@@ -470,35 +467,25 @@ public final class Pipeline {
 		private final List<TranslatedMod> mods;
 		private final io.github.cmdralph.fabricated.core.archive.ArchiveLimits limits;
 		private final Map<Path, SafeArchive> open = new ConcurrentHashMap<>();
-		private volatile Map<String, Path> owners;
+		private Map<String, Path> owners;
 
 		JarClassSource(List<TranslatedMod> mods, io.github.cmdralph.fabricated.core.archive.ArchiveLimits limits) {
 			this.mods = mods;
 			this.limits = limits;
 		}
 
-		private Map<String, Path> owners() {
-			Map<String, Path> o = owners;
-			if (o == null) {
-				synchronized (this) {
-					o = owners;
-					if (o == null) {
-						Map<String, Path> built = new HashMap<>();
-						for (TranslatedMod t : mods) {
-							try (SafeArchive archive = SafeArchive.open(t.jar(), limits.forTranslatedJars())) {
-								for (String name : archive.entryNames()) {
-									if (name.endsWith(".class") && !name.startsWith("META-INF/")) built.putIfAbsent(name, t.jar());
-								}
-							} catch (Exception e) {
-								// Mods that cannot be opened were already reported during translation.
-							}
-						}
-						o = built;
-						owners = o;
+		private synchronized Map<String, Path> owners() {
+			if (owners == null) {
+				owners = new HashMap<>();
+				for (TranslatedMod t : mods) {
+					try (SafeArchive archive = SafeArchive.open(t.jar(), limits.forTranslatedJars())) {
+						for (String name : archive.classEntryNames()) owners.putIfAbsent(name, t.jar());
+					} catch (Exception e) {
+						// Mods that cannot be opened were already reported during translation.
 					}
 				}
 			}
-			return o;
+			return owners;
 		}
 
 		@Override
@@ -506,20 +493,23 @@ public final class Pipeline {
 			Path jar = owners().get(internalName + ".class");
 			if (jar == null) return null;
 			try {
-				SafeArchive archive = open.get(jar);
-				if (archive == null) {
-					synchronized (this) {
-						archive = open.get(jar);
-						if (archive == null) {
-							archive = SafeArchive.open(jar, limits.forTranslatedJars());
-							open.put(jar, archive);
-						}
+				SafeArchive archive = open.computeIfAbsent(jar, j -> {
+					try {
+						return SafeArchive.open(j, limits.forTranslatedJars());
+					} catch (ArchiveException e) {
+						throw new UncheckedIOException(readFailure(internalName, j, e));
 					}
-				}
+				});
 				return archive.read(internalName + ".class");
-			} catch (io.github.cmdralph.fabricated.core.archive.ArchiveException e) {
-				throw new IOException("Could not read " + internalName + " from " + jar + ": " + e.getMessage(), e);
+			} catch (UncheckedIOException e) {
+				throw e.getCause();
+			} catch (ArchiveException e) {
+				throw readFailure(internalName, jar, e);
 			}
+		}
+
+		private static IOException readFailure(String internalName, Path jar, ArchiveException e) {
+			return new IOException("Could not read " + internalName + " from " + jar + ": " + e.getMessage(), e);
 		}
 
 		@Override

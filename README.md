@@ -106,7 +106,6 @@ warning in the report, so a bad config never crashes the game.
 ```json
 {
   "schema": 1,
-  "logLevel": "INFO",
   "onEntrypointFailure": "error",
   "strictDependencies": false,
   "strictLinkage": false,
@@ -130,7 +129,6 @@ warning in the report, so a bad config never crashes the game.
 
 | Setting | Effect |
 |---|---|
-| `logLevel` | `ERROR`, `WARN`, `INFO`, `DEBUG` or `TRACE` for Fabricated's log output. |
 | `onEntrypointFailure` | `error` (default): an exception in a Fabric initializer stops on NeoForge's error screen. `disable`: the mod is marked failed, its other entrypoints are skipped, and loading continues. Content it registered before failing stays registered. |
 | `strictDependencies` | `true`: a Fabric mod with unmet dependencies stops the game on the error screen instead of being skipped. |
 | `strictLinkage` | `true`: also disable mods (not only Fabric API modules) that reference Minecraft code missing at runtime. |

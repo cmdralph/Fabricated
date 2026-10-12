@@ -29,19 +29,15 @@ public final class FabricatedState {
 
 	private final Pipeline.Result result;
 	private final Path logsDir;
-	private final Map<String, Pipeline.LoadedMod> byNeoForgeId;
 	private final Map<String, String> fabricIdByNeoForgeId;
 
 	FabricatedState(Pipeline.Result result, Path logsDir) {
 		this.result = result;
 		this.logsDir = logsDir;
-		Map<String, Pipeline.LoadedMod> map = new LinkedHashMap<>();
 		Map<String, String> ids = new LinkedHashMap<>();
 		for (Pipeline.LoadedMod mod : result.mods()) {
-			map.put(mod.translated().neoForgeId(), mod);
 			ids.put(mod.translated().neoForgeId(), mod.translated().candidate().id());
 		}
-		this.byNeoForgeId = Collections.unmodifiableMap(map);
 		this.fabricIdByNeoForgeId = Collections.unmodifiableMap(ids);
 	}
 
@@ -72,12 +68,7 @@ public final class FabricatedState {
 	}
 
 	public boolean isFabricMod(String neoForgeId) {
-		return byNeoForgeId.containsKey(neoForgeId);
-	}
-
-	/** Fabric id for a translated mod's NeoForge id. */
-	public Optional<String> fabricId(String neoForgeId) {
-		return Optional.ofNullable(fabricIdByNeoForgeId.get(neoForgeId));
+		return fabricIdByNeoForgeId.containsKey(neoForgeId);
 	}
 
 	public Optional<ModContainerImpl> fabricContainer(String neoForgeId) {

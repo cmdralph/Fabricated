@@ -2,9 +2,11 @@ package io.github.cmdralph.fabricated.core.archive;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.DigestOutputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
@@ -33,12 +35,8 @@ public final class Hashing {
 	/** Streams a file through SHA-256 without loading it fully into memory. */
 	public static String sha256(Path file) throws IOException {
 		MessageDigest digest = sha256Digest();
-		byte[] buffer = new byte[64 * 1024];
 		try (InputStream in = Files.newInputStream(file)) {
-			int n;
-			while ((n = in.read(buffer)) > 0) {
-				digest.update(buffer, 0, n);
-			}
+			in.transferTo(new DigestOutputStream(OutputStream.nullOutputStream(), digest));
 		}
 		return HexFormat.of().formatHex(digest.digest());
 	}

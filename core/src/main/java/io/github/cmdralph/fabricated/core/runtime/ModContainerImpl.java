@@ -25,7 +25,7 @@ public final class ModContainerImpl implements ModContainer {
 	private final String parentId;
 	private final List<String> childIds;
 	private final FabricLoaderRuntime runtime;
-	private volatile List<Path> roots;
+	private List<Path> roots;
 
 	/**
 	 * @param sources  jar files or directories holding the mod's files (first = primary)
@@ -47,31 +47,24 @@ public final class ModContainerImpl implements ModContainer {
 	}
 
 	@Override
-	public List<Path> getRootPaths() {
-		List<Path> r = roots;
-		if (r == null) {
-			synchronized (this) {
-				r = roots;
-				if (r == null) {
-					List<Path> opened = new ArrayList<>();
-					for (Path source : sources) {
-						if (Files.isDirectory(source)) {
-							opened.add(source);
-						} else if (Files.isRegularFile(source)) {
-							try {
-								FileSystem fs = FileSystems.newFileSystem(source, (ClassLoader) null);
-								opened.add(fs.getRootDirectories().iterator().next());
-							} catch (IOException | RuntimeException e) {
-								// A mod whose jar cannot be opened simply has no browsable roots.
-							}
-						}
+	public synchronized List<Path> getRootPaths() {
+		if (roots == null) {
+			List<Path> opened = new ArrayList<>();
+			for (Path source : sources) {
+				if (Files.isDirectory(source)) {
+					opened.add(source);
+				} else if (Files.isRegularFile(source)) {
+					try {
+						FileSystem fs = FileSystems.newFileSystem(source, (ClassLoader) null);
+						opened.add(fs.getRootDirectories().iterator().next());
+					} catch (IOException | RuntimeException e) {
+						// A mod whose jar cannot be opened simply has no browsable roots.
 					}
-					r = List.copyOf(opened);
-					roots = r;
 				}
 			}
+			roots = List.copyOf(opened);
 		}
-		return r;
+		return roots;
 	}
 
 	@Override

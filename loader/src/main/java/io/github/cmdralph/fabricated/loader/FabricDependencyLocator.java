@@ -120,14 +120,13 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 		if (gameModJar != null) {
 			gameModArchive = SafeArchive.open(gameModJar, ArchiveLimits.DEFAULTS);
 			SafeArchive archive = gameModArchive;
-			for (String name : archive.entryNames()) {
+			for (String name : archive.classEntryNames()) {
 				int slash = name.lastIndexOf('/');
-				if (name.endsWith(".class") && slash > 0) {
-					platformPackages.add(name.substring(0, slash));
-					if (name.contains("/mixin/")) {
-						byte[] data = archive.read(name);
-						if (data != null) LinkageAnalysis.mixinInterfaces(data, nativeApiInterfaces);
-					}
+				if (slash <= 0) continue;
+				platformPackages.add(name.substring(0, slash));
+				if (name.contains("/mixin/")) {
+					byte[] data = archive.read(name);
+					if (data != null) LinkageAnalysis.mixinInterfaces(data, nativeApiInterfaces);
 				}
 			}
 			nativeApi = name -> {
@@ -152,7 +151,7 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 		}
 
 		FabricApiPlan plan = FabricApiPlan.parse(new String(FabricatedInfo.readOptional("fabric-api-plan.json"), StandardCharsets.UTF_8));
-		Pipeline.Input input = new Pipeline.Input(gameDir, FMLPaths.CONFIGDIR.get(), logsDir, fabricJars, mcVersion, neoVersion,
+		Pipeline.Input input = new Pipeline.Input(gameDir, FMLPaths.CONFIGDIR.get(), fabricJars, mcVersion, neoVersion,
 				client, info.namespace(), runtimeMixinVersion(info), info.mixinLowest(), info.fabricatedVersion(), !fml.isProduction(), gameClasses, untransformable,
 				platformPackages, plan, nativeApi, nativeApiInterfaces, neoForgeMods,
 				(cache, mojangPath) -> IntermediaryMappings.load(cache, mcVersion, client, mojangPath),

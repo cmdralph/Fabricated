@@ -129,26 +129,12 @@ public final class LinkageChecker {
 
 	/** Mixin classes reference shadowed members that Mixin, not the JVM, resolves. */
 	private static boolean isMixin(ClassNode node) {
-		for (List<AnnotationNode> list : java.util.Arrays.asList(node.visibleAnnotations, node.invisibleAnnotations)) {
-			if (list == null) continue;
-			for (AnnotationNode a : list) {
-				if (a.desc.equals("Lorg/spongepowered/asm/mixin/Mixin;")) return true;
-			}
-		}
-		return false;
+		return Annotations.find(node.visibleAnnotations, node.invisibleAnnotations, "Lorg/spongepowered/asm/mixin/Mixin;") != null;
 	}
 
 	private static boolean isClientOnly(ClassNode node) {
-		for (List<AnnotationNode> list : java.util.Arrays.asList(node.visibleAnnotations, node.invisibleAnnotations)) {
-			if (list == null) continue;
-			for (AnnotationNode a : list) {
-				if (!a.desc.equals(ENVIRONMENT) || a.values == null) continue;
-				for (int i = 0; i + 1 < a.values.size(); i += 2) {
-					if (a.values.get(i + 1) instanceof String[] e && e.length == 2 && e[1].equals("CLIENT")) return true;
-				}
-			}
-		}
-		return false;
+		AnnotationNode env = Annotations.find(node.visibleAnnotations, node.invisibleAnnotations, ENVIRONMENT);
+		return env != null && Annotations.value(env, "value") instanceof String[] e && e.length == 2 && e[1].equals("CLIENT");
 	}
 
 	private static boolean referencesClientCode(ClassNode node) {

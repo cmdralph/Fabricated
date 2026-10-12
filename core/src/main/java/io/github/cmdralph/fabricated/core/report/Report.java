@@ -4,13 +4,14 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+
+import io.github.cmdralph.fabricated.core.archive.AtomicFiles;
 
 /**
  * Human-readable diagnostic report written to {@code logs/fabric-bridge-report.txt}.
@@ -107,14 +108,7 @@ public final class Report {
 	/** Writes the report atomically into {@code logsDir}. */
 	public void write(Path logsDir) throws IOException {
 		Files.createDirectories(logsDir);
-		Path target = logsDir.resolve(FILE_NAME);
-		Path tmp = Files.createTempFile(logsDir, ".fabric-bridge-report", ".tmp");
-		try {
-			Files.writeString(tmp, render(), StandardCharsets.UTF_8);
-			Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-		} finally {
-			Files.deleteIfExists(tmp);
-		}
+		AtomicFiles.writeAtomically(logsDir.resolve(FILE_NAME), render().getBytes(StandardCharsets.UTF_8), logsDir);
 	}
 
 	private static String title(Status status) {

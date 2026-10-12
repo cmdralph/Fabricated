@@ -48,11 +48,6 @@ public final class IntermediaryRemapper extends Remapper {
 		return flat != null ? flat : name;
 	}
 
-	@Override
-	public String mapAnnotationAttributeName(String descriptor, String name) {
-		return name;
-	}
-
 	/** String constants and annotation strings: rewrite intermediary tokens only. */
 	@Override
 	public Object mapValue(Object value) {

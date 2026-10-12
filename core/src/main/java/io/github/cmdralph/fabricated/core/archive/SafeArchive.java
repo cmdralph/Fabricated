@@ -1,6 +1,5 @@
 package io.github.cmdralph.fabricated.core.archive;
 
-import java.io.ByteArrayOutputStream;
 import java.io.Closeable;
 import java.io.IOException;
 import java.io.InputStream;
@@ -10,11 +9,9 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Enumeration;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipException;
@@ -71,7 +68,6 @@ public final class SafeArchive implements Closeable {
 
 		try {
 			Map<String, ZipEntry> entries = new LinkedHashMap<>();
-			Set<String> seen = new HashSet<>();
 			long declaredTotal = 0;
 			Enumeration<? extends ZipEntry> en = zip.entries();
 			while (en.hasMoreElements()) {
@@ -81,7 +77,7 @@ public final class SafeArchive implements Closeable {
 				}
 				String name = entry.getName();
 				validateName(name);
-				if (!seen.add(name)) {
+				if (entries.putIfAbsent(name, entry) != null) {
 					throw new ArchiveException("Duplicate entry '" + name + "'");
 				}
 				long declared = entry.getSize();
@@ -99,7 +95,6 @@ public final class SafeArchive implements Closeable {
 						&& declared / compressed > limits.maxCompressionRatio()) {
 					throw new ArchiveException("Entry '" + name + "' has a suspicious compression ratio of " + declared / compressed + ":1");
 				}
-				entries.put(name, entry);
 			}
 			return new SafeArchive(path, limits, zip, entries);
 		} catch (ArchiveException e) {
@@ -149,6 +144,13 @@ public final class SafeArchive implements Closeable {
 		return Collections.unmodifiableList(new ArrayList<>(entries.keySet()));
 	}
 
+	/** Names of the {@code .class} entries outside {@code META-INF/}, excluding module descriptors, in archive order. */
+	public List<String> classEntryNames() {
+		return entries.keySet().stream()
+				.filter(n -> n.endsWith(".class") && !n.startsWith("META-INF/") && !n.endsWith("module-info.class"))
+				.toList();
+	}
+
 	public boolean contains(String name) {
 		return entries.containsKey(name);
 	}
@@ -169,19 +171,14 @@ public final class SafeArchive implements Closeable {
 		if (entry == null || entry.isDirectory()) return null;
 		long budget = Math.min(limits.maxEntryBytes(), limits.maxTotalUncompressedBytes() - totalRead);
 		try (InputStream in = zip.getInputStream(entry)) {
-			ByteArrayOutputStream out = new ByteArrayOutputStream((int) Math.min(Math.max(entry.getSize(), 32), 1 << 20));
-			byte[] buffer = new byte[16 * 1024];
-			long count = 0;
-			int n;
-			while ((n = in.read(buffer)) > 0) {
-				count += n;
-				if (count > budget) {
-					throw new ArchiveException("Entry '" + name + "' exceeds the decompression limit");
-				}
-				out.write(buffer, 0, n);
+			// Reading one byte past the budget detects oversized entries whatever their headers claim; the trailing
+			// read() also rejects entries too large for a Java array when the budget is above that.
+			byte[] data = in.readNBytes((int) Math.min(budget + 1, Integer.MAX_VALUE - 8));
+			if (data.length > budget || in.read() >= 0) {
+				throw new ArchiveException("Entry '" + name + "' exceeds the decompression limit");
 			}
-			totalRead += count;
-			return out.toByteArray();
+			totalRead += data.length;
+			return data;
 		} catch (IOException e) {
 			throw new ArchiveException("Failed to read entry '" + name + "': " + e.getMessage(), e);
 		}

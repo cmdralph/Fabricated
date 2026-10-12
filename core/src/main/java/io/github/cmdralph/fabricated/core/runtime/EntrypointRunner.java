@@ -12,7 +12,7 @@ import java.util.function.Consumer;
 /**
  * Runs the {@code main}, {@code client} and {@code server} entrypoints once, in mod load order, with a
  * per-entrypoint guard. A failing mod is recorded and its later entrypoints are skipped; what happens
- * next (error screen or continue) is decided by the caller from {@link #failures()}.
+ * next (error screen or continue) is decided by the caller from the failures {@link #run} returns.
  */
 public final class EntrypointRunner {
 	/** Lets the platform glue attribute work to the right mod (e.g. NeoForge's ModLoadingContext). */
@@ -35,7 +35,6 @@ public final class EntrypointRunner {
 	private final FabricLoaderRuntime runtime;
 	private final ContextHook hook;
 	private final Set<String> failedMods = ConcurrentHashMap.newKeySet();
-	private final List<Failure> failures = Collections.synchronizedList(new ArrayList<>());
 	private final Map<String, Long> timings = Collections.synchronizedMap(new LinkedHashMap<>());
 
 	public EntrypointRunner(FabricLoaderRuntime runtime, ContextHook hook) {
@@ -60,9 +59,7 @@ public final class EntrypointRunner {
 				invoker.accept(instance);
 			} catch (Throwable t) {
 				if (t instanceof VirtualMachineError vme && !(t instanceof StackOverflowError)) throw vme;
-				Failure f = new Failure(modId, key, d.spec().value(), t);
-				phase.add(f);
-				failures.add(f);
+				phase.add(new Failure(modId, key, d.spec().value(), t));
 				failedMods.add(modId);
 			} finally {
 				hook.exit();
@@ -70,16 +67,6 @@ public final class EntrypointRunner {
 			}
 		}
 		return phase;
-	}
-
-	public List<Failure> failures() {
-		synchronized (failures) {
-			return List.copyOf(failures);
-		}
-	}
-
-	public boolean hasFailed(String modId) {
-		return failedMods.contains(modId);
 	}
 
 	/** Milliseconds spent per mod and entrypoint key. */
