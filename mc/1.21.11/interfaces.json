@@ -37,5 +37,8 @@
   ],
   "net/minecraft/server/packs/resources/Resource": [
     "net/fabricmc/fabric/api/resource/v1/FabricResource"
+  ],
+  "net/minecraft/world/item/alchemy/PotionBrewing$Builder": [
+    "net/fabricmc/fabric/api/registry/FabricBrewingRecipeRegistryBuilder"
   ]
 }
