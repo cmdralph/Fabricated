@@ -28,9 +28,9 @@ public final class BlockApiCompat {
 
 	/**
 	 * Fabric's {@code FluidFlowEvents.ALLOW}, asked where NeoForge lets fluids interact with their surroundings: when a
-	 * liquid block is placed or a neighbour changes (where vanilla makes obsidian or basalt). Returning false there
-	 * stops the liquid spreading from that update, as upstream. NeoForge has no hook where a fluid flows into a new
-	 * position, so the event isn't asked there.
+	 * neighbour of a liquid block changes (where vanilla makes obsidian or basalt). Returning false there stops the
+	 * liquid spreading from that update, as upstream. NeoForge has no hook where a liquid block is placed or a fluid
+	 * flows into a new position, so the event isn't asked there.
 	 */
 	public static void register(IEventBus modBus) {
 		modBus.addListener(FMLCommonSetupEvent.class, event -> event.enqueueWork(() -> {

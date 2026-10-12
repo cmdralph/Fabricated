@@ -69,8 +69,8 @@ How to read the table:
 | fabric-registry-sync-v0 | native | native | native | native |
 | fabric-resource-loader-v1 | native | native | native | native |
 | fabric-resource-loader-v0 | loads | loads | loads | loads |
-| fabric-item-api-v1 | disabled | disabled | disabled | disabled |
-| fabric-block-api-v1 | disabled | disabled | disabled | disabled |
+| fabric-item-api-v1 | native | native | native | native |
+| fabric-block-api-v1 | native | native | native | native |
 | fabric-transfer-api-v1 | disabled | disabled | disabled | disabled |
 | fabric-content-registries-v0 | disabled | disabled | disabled | disabled |
 | fabric-object-builder-api-v1 | native | native | native | native |
@@ -101,7 +101,7 @@ failures fall into a few groups:
 
 - **NeoForge changed the code the mixin targets.** This is the most common cause. Examples from the
   reports:
-  - `fabric-block-api-v1`: NeoForge replaces `BlockState.isAir()` calls in chunk sections.
+  - `fabric-block-api-v1` (native now): NeoForge replaces `BlockState.isAir()` calls in chunk sections.
   - `fabric-networking-api-v1`: NeoForge replaces the custom-payload codec setup in
     `ClientboundCustomPayloadPacket`/`ServerboundCustomPayloadPacket`, because NeoForge has its own payload
     system.
@@ -290,6 +290,51 @@ types.
 CI checks, on all four versions: a mob type built with `createMob` gets its default attributes, the `MODIFY`
 change (26.x), its spawn placement and the velocity flag; an entity data serializer gets an id; a block entity type
 gets the op-only flag and an added block. On 1.21.11, also a villager trade added through `TradeOfferHelper`.
+
+### Native `fabric-block-api-v1`
+
+Upstream's mixins redirect code NeoForge patched, so Fabricated ships the unchanged public API and answers it from
+NeoForge's block hooks.
+
+| Fabric API | On NeoForge | Notes |
+|---|---|---|
+| `FabricBlock.getAppearance`, `FabricBlockState.getAppearance` | NeoForge's `getAppearance` | the two have the same signature; Fabricated gives `Block` and `BlockState` their own, so a block overriding it overrides both |
+| `FabricBlock.getProvidedEnchantmentPower` (26.2+) | `getEnchantPowerBonus` | for blocks in `minecraft:enchantment_power_provider`, as upstream |
+| `BlockFunctionalityTags.CAN_CLIMB_TRAPDOOR_ABOVE` | `makesOpenTrapdoorAboveClimbable` | ladders keep NeoForge's facing rule |
+| `FabricBlock.FabricProperties.blockId` (26.x) | the properties' id | |
+| `FluidFlowEvents.ALLOW` (26.2+) | NeoForge's fluid interaction registry | asked when a neighbour of a liquid block changes, where vanilla makes obsidian or basalt; **not** when a liquid is placed or flows into a new position (NeoForge has no hook there) |
+| **Not provided**: upstream's chunk-section air fix (MC-232360) | none | a modded block that reports itself as air may still be treated as air there, as on NeoForge |
+
+A Fabric block class compiled against Fabricated's development setup (as Fabricated's own test mod is) must override
+`getAppearance` itself, because the compiler sees both defaults; already-compiled Fabric mods are unaffected.
+
+CI checks, on all four versions: the trapdoor tag, appearance through Fabric's interface, and on 26.x the properties
+id; on 26.2 and 26.3 also enchanting power and the fluid flow event.
+
+### Native `fabric-item-api-v1`
+
+Upstream's mixins redirect furnace, brewing, crafting, enchanting, damage and tooltip code that NeoForge patched, so
+Fabricated ships the unchanged public API and answers it from NeoForge's item hooks and events. A Fabric item's
+overrides of `FabricItem` take effect wherever NeoForge asks.
+
+| Fabric API | On NeoForge | Notes |
+|---|---|---|
+| `FabricItem.getCraftingRemainder` (`getRecipeRemainder` on 1.21.11) | `getCraftingRemainder` | furnaces, brewing stands, crafting |
+| `canBeEnchantedWith`, `EnchantmentEvents.ALLOW_ENCHANTING` | `supportsEnchantment` (anvil, command, loot), `isPrimaryItemFor` (enchanting table) | enchanted books and books keep NeoForge's rule |
+| `Properties.equipmentSlot` | `getEquipmentSlot` | NeoForge's hook doesn't say which entity asks, so the provider gets `null` for it |
+| `Properties.customDamage` | `damageItem` | not asked for creative players, as upstream; the slot is the one holding the stack |
+| `allowComponentsUpdateAnimation`, `allowContinuingBlockBreaking` (client) | `shouldCauseReequipAnimation`, `shouldCauseBlockBreakReset` | |
+| `getCreatorNamespace` | `getCreatorModId` | when the item overrides it |
+| `DefaultItemComponentEvents.MODIFY` | `ModifyDefaultComponentsEvent` | as a component patch on 1.21.11 |
+| `ItemComponentTooltipProviderRegistry` (26.x) | `RegisterTooltipAppendersEvent` | same placements (first, last, before, after) |
+| `ComponentTooltipAppenderRegistry` (1.21.11) | `ItemTooltipEvent` | NeoForge 1.21.11 can't place component tooltips, so they come after the other lines; anchors aren't honoured |
+| `ItemClickBehaviorCallback` (26.2+) | `ItemStackedOnOtherEvent` | |
+| `ItemTooltipCallback` (client) | `ItemTooltipEvent` | |
+| `FabricComponentMapBuilder`, `FabricTooltipFlag`, `Properties.itemId`/`modelId` | added by Fabricated's mixins | NeoForge already gives the builder `get` |
+| **Not fired**: `EnchantmentEvents.MODIFY`/`MODIFY_WITH_LOOKUP`, 26.3's `BlockTransformerEvents` and `BlockTransformerHelper` registrations | none | they change data-pack entries while they load; NeoForge has no hook for that yet |
+
+CI checks, on all four versions: equipment slot, crafting remainder, the allow-enchanting event, custom damage
+(through a player), a default component change and the creator mod; on 26.x also the item id.
 
 ### What this means for Fabric mods
 

@@ -58,7 +58,11 @@ final class BlockApiTestCompat {
 		if (powerBlock.defaultBlockState().getEnchantPowerBonus(level, BlockPos.ZERO) != 2.5f) return "enchant_power";
 		BlockState water = BuiltInRegistries.BLOCK.getValue(Identifier.withDefaultNamespace("water")).defaultBlockState();
 		BlockState air = BuiltInRegistries.BLOCK.getValue(Identifier.withDefaultNamespace("air")).defaultBlockState();
+		BlockState stone = BuiltInRegistries.BLOCK.getValue(Identifier.withDefaultNamespace("stone")).defaultBlockState();
+		// NeoForge asks its fluid interactions when a liquid's neighbour changes.
 		level.setBlockAndUpdate(FLUID_POS, water);
+		level.setBlockAndUpdate(FLUID_POS.east(), stone);
+		level.setBlockAndUpdate(FLUID_POS.east(), air);
 		level.setBlockAndUpdate(FLUID_POS, air);
 		return fluidEventSeen ? null : "fluid_flow_event";
 	}
