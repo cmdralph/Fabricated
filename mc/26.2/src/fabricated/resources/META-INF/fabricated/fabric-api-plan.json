@@ -88,7 +88,9 @@
       "reason": "Shipped by Fabricated on NeoForge's events (upstream's mixins conflict with NeoForge's patches)."
     },
     "fabric-loot-api-v3": {
-      "plan": "passthrough"
+      "plan": "native",
+      "version": "3.0.17",
+      "reason": "Shipped by Fabricated: upstream's builder and drop mixins as they are, its loading hook replaced by NeoForge's LootTableLoadEvent (upstream's conflicts with NeoForge's loot loading)."
     },
     "fabric-menu-api-v1": {
       "plan": "passthrough"

@@ -30,7 +30,8 @@
     "ItemStackUseMixin",
     "PickItemMixin",
     "FakePlayerMixin",
-    "PlayerAdvancementsMixin"
+    "PlayerAdvancementsMixin",
+    "ReloadableServerRegistriesMixin"
   ],
   "injectors": {
     "defaultRequire": 1

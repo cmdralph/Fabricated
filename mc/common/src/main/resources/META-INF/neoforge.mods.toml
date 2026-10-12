@@ -16,14 +16,19 @@ Diagnostics: logs/fabric-bridge-report.txt and the /fabricated command.
 '''
 
 # Adds Fabric API's injected interfaces (networking contexts, resources, registries, mob effects, entity and block
-# entity type builders) and Fabricated's hooks for its native modules: fields, methods and a few hooks that only
-# observe (a constructor end, EntityType.Builder.build's result). No Minecraft code is replaced.
+# entity type builders) and Fabricated's hooks for its native modules: fields, methods, hooks that only observe (a
+# constructor end, EntityType.Builder.build's result, a block's removal), and, where NeoForge has no event, the few
+# interaction hooks upstream has (they change nothing unless a Fabric listener answers).
 [[mixins]]
 config="fabricated.mixins.json"
 
 # Fabric API's own accessor interfaces, under their upstream names (used by its networking API).
 [[mixins]]
 config="fabricated-fabric-api.mixins.json"
+
+# Fabric API's loot builder, accessor and drop mixins, unchanged from upstream (fabric-loot-api-v3).
+[[mixins]]
+config="fabricated-loot.mixins.json"
 
 # Access for the vendored Fabric API sources (see the file).
 [[accessTransformers]]
