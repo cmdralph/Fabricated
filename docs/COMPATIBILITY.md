@@ -267,7 +267,7 @@ what Fabric initializers registered.
 | Fabric API | On NeoForge | Notes |
 |---|---|---|
 | `FabricDefaultAttributeRegistry.register` | `EntityAttributeCreationEvent` | for a type that already has attributes (vanilla's or a NeoForge mod's), applied as a modification instead |
-| `FabricDefaultAttributeRegistry.MODIFY` | `EntityAttributeModificationEvent` | runs once, after registration, as upstream; registrations made later are ignored with a warning |
+| `FabricDefaultAttributeRegistry.MODIFY` (26.x; not in the 1.21.11 API) | `EntityAttributeModificationEvent` | runs once, after registration, as upstream; attribute registrations made later are ignored with a warning |
 | `FabricEntityType.Builder` (`createLiving`, `createMob`, `alwaysUpdateVelocity`, `canPotentiallyExecuteCommands`) | NeoForge's own `EntityType.Builder` methods | default attributes and spawn placements are taken when the type is built |
 | Spawn placements | `RegisterSpawnPlacementsEvent` (replace) | |
 | `FabricEntityDataRegistry` (`FabricTrackedDataRegistry` on 1.21.11) | NeoForge's `ENTITY_DATA_SERIALIZERS` registry | NeoForge keeps the ids in step between server and client; register from an initializer |
@@ -282,7 +282,7 @@ itself, except on 1.21.11, where the plain (not hanging) sign screen shows a mis
 types.
 
 CI checks, on all four versions: a mob type built with `createMob` gets its default attributes, the `MODIFY`
-change, its spawn placement and the velocity flag; an entity data serializer gets an id; a block entity type
+change (26.x), its spawn placement and the velocity flag; an entity data serializer gets an id; a block entity type
 gets the op-only flag and an added block. On 1.21.11, also a villager trade added through `TradeOfferHelper`.
 
 ### What this means for Fabric mods

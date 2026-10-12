@@ -21,7 +21,9 @@ public final class NativeFabricApi {
 	public static void register(IEventBus modBus, Dist dist, FabricatedState state) {
 		LifecycleBridge.register(dist);
 		EntityEventsBridge.register();
-		ObjectBuilderBridge.register(modBus);
+		// The 1.21.11 API has no FabricDefaultAttributeRegistry.MODIFY.
+		ObjectBuilderBridge.register(modBus, modifier -> {
+		});
 		TradeOfferInternals.register();
 		NetworkingBridge.register(modBus, dist, problem -> {
 			state.report().line("Networking", problem);

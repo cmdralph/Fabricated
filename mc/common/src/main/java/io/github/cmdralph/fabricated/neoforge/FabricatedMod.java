@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory;
 
 import io.github.cmdralph.fabricated.loader.FabricatedState;
 import io.github.cmdralph.fabricated.neoforge.registry.RegistrySyncBridge;
+import net.minecraft.core.registries.Registries;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.IEventBus;
@@ -37,8 +38,14 @@ public final class FabricatedMod {
 			state.writeReport();
 		});
 		// Vanilla registries are frozen during mod construction and opened for the RegisterEvent loop. Fabric
-		// mods register content directly from their initializers, so they run on the first RegisterEvent.
-		modBus.addListener(EventPriority.HIGHEST, RegisterEvent.class, event -> entrypoints.runOnce());
+		// mods register content directly from their initializers, so they run inside that loop: on the first
+		// RegisterEvent after the attribute registry's, which NeoForge posts first. NeoForge registers its own
+		// attributes there, and every living entity's attribute builder includes them, so a Fabric initializer
+		// that builds attributes (a very common thing to do) needs them registered. All registries stay open
+		// until the loop ends, so Fabric mods can still register attributes.
+		modBus.addListener(EventPriority.HIGHEST, RegisterEvent.class, event -> {
+			if (!event.getRegistryKey().equals(Registries.ATTRIBUTE)) entrypoints.runOnce();
+		});
 		modBus.addListener(FMLLoadCompleteEvent.class, event -> entrypoints.complete());
 		NeoForge.EVENT_BUS.addListener(RegisterCommandsEvent.class, event -> FabricatedCommands.register(event.getDispatcher(), state, false));
 		NeoForge.EVENT_BUS.addListener(ServerAboutToStartEvent.class, event -> {

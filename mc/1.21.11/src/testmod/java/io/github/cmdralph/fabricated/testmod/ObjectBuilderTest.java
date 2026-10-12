@@ -7,7 +7,6 @@ import java.util.List;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.object.builder.v1.block.entity.FabricBlockEntityTypeBuilder;
-import net.fabricmc.fabric.api.object.builder.v1.entity.FabricDefaultAttributeRegistry;
 import net.fabricmc.fabric.api.object.builder.v1.entity.FabricTrackedDataRegistry;
 import net.fabricmc.fabric.api.object.builder.v1.entity.FabricEntityType;
 import net.fabricmc.fabric.api.object.builder.v1.trade.TradeOfferHelper;
@@ -53,7 +52,6 @@ public final class ObjectBuilderTest implements ModInitializer {
 						.spawnRestriction(SpawnPlacementTypes.ON_GROUND, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, (type, level, reason, pos, random) -> true))
 						.alwaysUpdateVelocity(false)
 						.build(mobKey));
-		FabricDefaultAttributeRegistry.MODIFY.register(context -> context.modify(mob, (type, builder) -> builder.add(Attributes.ARMOR, 7)));
 
 		EntityDataSerializer<Integer> serializer = EntityDataSerializer.forValueType(ByteBufCodecs.VAR_INT);
 		FabricTrackedDataRegistry.register(id("test_serializer"), serializer);
@@ -72,7 +70,6 @@ public final class ObjectBuilderTest implements ModInitializer {
 			List<String> failed = new ArrayList<>();
 			AttributeSupplier attributes = DefaultAttributes.hasSupplier(mob) ? DefaultAttributes.getSupplier(mob) : null;
 			if (attributes == null || attributes.getBaseValue(Attributes.MAX_HEALTH) != 42) failed.add("attributes");
-			if (attributes == null || !attributes.hasAttribute(Attributes.ARMOR) || attributes.getBaseValue(Attributes.ARMOR) != 7) failed.add("modify");
 			if (SpawnPlacements.getPlacementType(mob) != SpawnPlacementTypes.ON_GROUND
 					|| SpawnPlacements.getHeightmapType(mob) != Heightmap.Types.MOTION_BLOCKING_NO_LEAVES) failed.add("spawn_placement");
 			if (mob.trackDeltas()) failed.add("velocity");

@@ -7,7 +7,6 @@ import java.util.function.UnaryOperator;
 import org.jspecify.annotations.Nullable;
 
 import io.github.cmdralph.fabricated.neoforge.objectbuilder.ObjectBuilderBridge;
-import net.fabricmc.fabric.api.object.builder.v1.entity.FabricDefaultAttributeRegistry;
 import net.fabricmc.fabric.api.object.builder.v1.entity.FabricEntityType;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
@@ -55,7 +54,9 @@ public interface FabricEntityTypeImpl {
 
 			public void onBuild(EntityType<T> type) {
 				if (this.defaultAttributeBuilder != null) {
-					FabricDefaultAttributeRegistry.register(type, this.defaultAttributeBuilder.get());
+					// Built when NeoForge builds the attribute tables, as the builder can include attributes that
+					// aren't registered yet while entity types are being built.
+					ObjectBuilderBridge.addDefaultAttributes(type, this.defaultAttributeBuilder);
 				}
 			}
 		}

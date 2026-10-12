@@ -5,12 +5,14 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 import java.util.function.Predicate;
+import java.util.function.Supplier;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import net.fabricmc.fabric.api.object.builder.v1.entity.FabricDefaultAttributeRegistry;
 import net.minecraft.core.Holder;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.entity.Entity;
@@ -35,7 +37,7 @@ import net.neoforged.neoforge.event.entity.RegisterSpawnPlacementsEvent;
  *
  * <p>Order on NeoForge, after every {@code RegisterEvent} (and so after Fabric initializers):
  * {@link EntityAttributeCreationEvent}, {@link EntityAttributeModificationEvent} (where Fabric's
- * {@code FabricDefaultAttributeRegistry.MODIFY} runs, as upstream runs it just before registries freeze), then
+ * {@code FabricDefaultAttributeRegistry.MODIFY} runs on 26.x, as upstream runs it just before registries freeze), then
  * {@link RegisterSpawnPlacementsEvent}.
  */
 public final class ObjectBuilderBridge {
@@ -46,6 +48,8 @@ public final class ObjectBuilderBridge {
 	/** Registrations for entity types that already have attributes (vanilla's or a NeoForge mod's). */
 	private static final Map<EntityType<? extends LivingEntity>, AttributeSupplier> OVERRIDES = new LinkedHashMap<>();
 	private static final List<Placement<?>> PLACEMENTS = new ArrayList<>();
+	/** Default attributes from entity type builders, built when NeoForge builds the attribute tables. */
+	private static final Map<EntityType<? extends LivingEntity>, Supplier<AttributeSupplier.Builder>> BUILDER_ATTRIBUTES = new LinkedHashMap<>();
 
 	private record Placement<T extends Entity>(EntityType<T> type, SpawnPlacementType placementType, Heightmap.Types heightmap,
 			SpawnPlacements.SpawnPredicate<T> predicate) {
@@ -54,10 +58,24 @@ public final class ObjectBuilderBridge {
 		}
 	}
 
+	/** Changes the default attributes of the matching entity types, each through a builder holding the current ones. */
+	@FunctionalInterface
+	public interface AttributeModifier {
+		void modify(Predicate<EntityType<? extends LivingEntity>> types, BiConsumer<EntityType<? extends LivingEntity>, AttributeSupplier.Builder> consumer);
+	}
+
+	private static Consumer<AttributeModifier> fabricModify = modifier -> {
+	};
+
 	private ObjectBuilderBridge() {
 	}
 
-	public static void register(IEventBus modBus) {
+	/**
+	 * @param fabricModify runs Fabric's attribute modification event with the given modifier (26.x; the 1.21.11 API
+	 *                     has no such event)
+	 */
+	public static void register(IEventBus modBus, Consumer<AttributeModifier> fabricModify) {
+		ObjectBuilderBridge.fabricModify = fabricModify;
 		modBus.addListener(EventPriority.LOW, EntityAttributeCreationEvent.class, ObjectBuilderBridge::createAttributes);
 		modBus.addListener(EventPriority.LOW, EntityAttributeModificationEvent.class, ObjectBuilderBridge::modifyAttributes);
 		modBus.addListener(EventPriority.LOW, RegisterSpawnPlacementsEvent.class, e -> {
@@ -72,6 +90,13 @@ public final class ObjectBuilderBridge {
 		return DEFAULT_ATTRIBUTES;
 	}
 
+	/** Fabric's {@code defaultAttributes} on an entity type builder. */
+	public static void addDefaultAttributes(EntityType<? extends LivingEntity> type, Supplier<AttributeSupplier.Builder> attributes) {
+		synchronized (DEFAULT_ATTRIBUTES) {
+			BUILDER_ATTRIBUTES.put(type, attributes);
+		}
+	}
+
 	/** Fabric's {@code spawnPlacement}/{@code spawnRestriction} on an entity type builder. */
 	public static <T extends Entity> void addSpawnPlacement(EntityType<T> type, SpawnPlacementType placementType, Heightmap.Types heightmap,
 			SpawnPlacements.SpawnPredicate<T> predicate) {
@@ -82,6 +107,10 @@ public final class ObjectBuilderBridge {
 
 	private static void createAttributes(EntityAttributeCreationEvent event) {
 		synchronized (DEFAULT_ATTRIBUTES) {
+			// As upstream, the builder's attributes come first and a direct registration for the same type replaces them.
+			BUILDER_ATTRIBUTES.forEach((type, attributes) -> {
+				if (!DEFAULT_ATTRIBUTES.containsKey(type)) DEFAULT_ATTRIBUTES.put(type, attributes.get().build());
+			});
 			DEFAULT_ATTRIBUTES.forEach((type, supplier) -> {
 				if (DefaultAttributes.hasSupplier(type)) {
 					// NeoForge refuses a second creation; applied as a modification below instead.
@@ -104,18 +133,15 @@ public final class ObjectBuilderBridge {
 			DEFAULT_ATTRIBUTES.closed = true;
 		}
 
-		FabricDefaultAttributeRegistry.MODIFY.invoker().modify(new FabricDefaultAttributeRegistry.ModifyContext() {
-			@Override
-			public void modify(Predicate<EntityType<? extends LivingEntity>> entityTypePredicate, FabricDefaultAttributeRegistry.ModifyConsumer consumer) {
-				for (EntityType<? extends LivingEntity> type : event.getTypes()) {
-					if (!entityTypePredicate.test(type)) continue;
-					AttributeSupplier before = current.computeIfAbsent(type, DefaultAttributes::getSupplier);
-					AttributeSupplier.Builder builder = new AttributeSupplier.Builder(before);
-					consumer.accept(type, builder);
-					AttributeSupplier after = builder.build();
-					apply(event, type, before, after);
-					current.put(type, after);
-				}
+		fabricModify.accept((entityTypePredicate, consumer) -> {
+			for (EntityType<? extends LivingEntity> type : event.getTypes()) {
+				if (!entityTypePredicate.test(type)) continue;
+				AttributeSupplier before = current.computeIfAbsent(type, DefaultAttributes::getSupplier);
+				AttributeSupplier.Builder builder = new AttributeSupplier.Builder(before);
+				consumer.accept(type, builder);
+				AttributeSupplier after = builder.build();
+				apply(event, type, before, after);
+				current.put(type, after);
 			}
 		});
 	}
