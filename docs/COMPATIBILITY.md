@@ -12,17 +12,17 @@ real NeoForge client (`ci/smoke-client.sh`), not from expectations. CI starts ea
    mod (client entrypoint, client lifecycle, a client resource listener, a networking round trip with the
    integrated server). This is a pass/fail gate.
 
-Last updated from CI run [38275647143](https://github.com/cmdralph/Fabricated/actions/runs/38275647143)
+Last updated from CI run [38280975468](https://github.com/cmdralph/Fabricated/actions/runs/38280975468)
 (Fabricated 0.1.0 development build).
 
 ## Minecraft versions
 
 | Minecraft | NeoForge | Fabric API tested | Test mods | Server boots with Fabric API |
 |---|---|---|---|---|
-| 1.21.11 | 21.11.45 | 0.141.6+1.21.11 | ✅ all 29 server and 12 client checks | ✅ boots, all test-mod checks still pass |
-| 26.1.2 | 26.1.2.116 | 0.155.3+26.1.2 | ✅ all 29 server and 12 client checks | ✅ boots, all test-mod checks still pass |
-| 26.2 | 26.2.0.90 | 0.161.0+26.2 | ✅ all 29 server and 12 client checks | ✅ boots, all test-mod checks still pass |
-| 26.3 (beta) | 26.3.0.69-beta | 0.162.0+26.3 | ✅ all 29 server and 12 client checks | ✅ boots, all test-mod checks still pass |
+| 1.21.11 | 21.11.45 | 0.141.6+1.21.11 | ✅ all 30 server and 13 client checks | ✅ boots, all test-mod checks still pass |
+| 26.1.2 | 26.1.2.116 | 0.155.3+26.1.2 | ✅ all 30 server and 13 client checks | ✅ boots, all test-mod checks still pass |
+| 26.2 | 26.2.0.90 | 0.161.0+26.2 | ✅ all 30 server and 13 client checks | ✅ boots, all test-mod checks still pass |
+| 26.3 (beta) | 26.3.0.69-beta | 0.162.0+26.3 | ✅ all 30 server and 13 client checks | ✅ boots, all test-mod checks still pass |
 
 "Boots with Fabric API" means the server starts with the full official Fabric API jar installed. Modules
 that can't work on NeoForge are disabled before any code runs (see below), and the rest load alongside
@@ -75,7 +75,7 @@ How to read the table:
 | fabric-content-registries-v0 | disabled | disabled | disabled | disabled |
 | fabric-object-builder-api-v1 | native | native | native | native |
 | fabric-entity-events-v1 | native | native | native | native |
-| fabric-events-interaction-v0 | disabled | disabled | disabled | disabled |
+| fabric-events-interaction-v0 | native | native | native | native |
 | fabric-dimensions-v1 | disabled | disabled | disabled | disabled |
 | fabric-loot-api-v3 (and v2) | disabled | disabled | disabled | disabled |
 | fabric-resource-conditions-api-v1 | disabled | disabled | disabled | disabled |
@@ -336,6 +336,37 @@ overrides of `FabricItem` take effect wherever NeoForge asks.
 CI checks, on all four versions: equipment slot, crafting remainder, the allow-enchanting event, custom damage
 (through a player), a default component change and the creator mod; on 26.x also the item id.
 
+### Native `fabric-events-interaction-v0`
+
+Upstream hooks the server's and client's interaction code with mixins at the same places NeoForge fires its
+interaction events, and NeoForge's patches change that code. Fabricated ships the unchanged public API and runs the
+callbacks from NeoForge's events, at the highest priority (upstream's hooks come first too). A result other than
+`PASS` (or a non-null one for the `BlockEvents`/`ItemEvents` callbacks) cancels NeoForge's event with that result.
+
+| Fabric API | On NeoForge | Notes |
+|---|---|---|
+| `UseBlockCallback` | `PlayerInteractEvent.RightClickBlock` | both sides; skipped for spectators on the client, as upstream |
+| `UseItemCallback` | `PlayerInteractEvent.RightClickItem` | both sides |
+| `UseEntityCallback` | `EntityInteract` (26.2+), `EntityInteractSpecific` (26.1.2, 1.21.11), plus `EntityInteract` without a hit result on the 1.21.11 server | as upstream, the hit result carries the clicked point |
+| `AttackBlockCallback` | `PlayerInteractEvent.LeftClickBlock` when breaking starts | a cancelled attack resends the block (and its block entity) to the client, as upstream; `BlockAttackInteractionAware` is honoured |
+| `AttackEntityCallback` | `AttackEntityEvent` | the hit result is always `null` |
+| `BlockEvents.USE_ITEM_ON`, `ItemEvents.USE_ON` | `UseItemOnBlockEvent` (block and item phases) | at the head of `BlockState.useItemOn` and `ItemStack.useOn` |
+| `BlockEvents.USE_WITHOUT_ITEM`, `ItemEvents.USE`, `PlayerPickItemEvents` | Fabricated's mixins, as upstream's | NeoForge has no event for these |
+| `PlayerBlockBreakEvents.BEFORE`/`CANCELED` | `BreakBlockEvent` (26.x), `BlockEvent.BreakEvent` (1.21.11) | server side, as upstream; `CANCELED` resends the 3x3 area around the block |
+| `PlayerBlockBreakEvents.AFTER`, `ClientPlayerBlockBreakEvents.AFTER` | a hook observing the block's removal | |
+| `ClientPreAttackCallback` | asked once per client tick; cancels `InputEvent.InteractionKeyMappingTriggered` for attacks | no swing, and block breaking stops, as upstream |
+| `ClientHotbarScrollEvents` (26.x) | a mixin around the hotbar slot change, as upstream's | scroll amounts from `InputEvent.MouseScrollingEvent` |
+| `FakePlayer` | Fabricated's packet listener; the player reports `isFakePlayer()` | NeoForge then defaults it to survival and (26.2+) gives it a no-op advancement tracker; on 1.21.11 and 26.1.2 upstream's advancement guards apply |
+
+On the client, NeoForge fires these events while it builds the interaction packet, so a client-side cancelled
+interaction is still sent to the server, where the callbacks run again. Upstream sends it only when the client
+result consumes the action.
+
+CI checks, on all four versions, with a Fabric fake player on the server: every server-side callback above is
+called and its result honoured (use item, use block, block use-item-on and use-without-item, item use and use-on,
+attack block, attack entity, use entity, break before/canceled/after, pick item), and the fake player is a NeoForge
+fake player. The client mixins are applied when the client starts.
+
 ### What this means for Fabric mods
 
 A Fabric mod works today if it needs only the Fabric Loader API and the **native** or **loads** modules
@@ -360,8 +391,8 @@ modules that cascade from it.
 6. ✅ `fabric-object-builder-api-v1` on all four versions (done). Unblocked `fabric-data-attachment-api-v1`.
 7. ✅ `fabric-item-api-v1` and `fabric-block-api-v1` on all four versions (done). The modules that build on them
    (transfer, content registries) still fail on their own mixins.
-8. Next: `fabric-events-interaction-v0`, `fabric-loot-api-v3`, `fabric-content-registries-v0` and
-   `fabric-transfer-api-v1`.
+8. ✅ `fabric-events-interaction-v0` on all four versions (done).
+9. Next: `fabric-loot-api-v3`, `fabric-content-registries-v0` and `fabric-transfer-api-v1`.
 
 ## Fabric mods tested
 

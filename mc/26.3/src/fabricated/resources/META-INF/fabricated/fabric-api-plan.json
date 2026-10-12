@@ -63,7 +63,9 @@
       "reason": "Shipped by Fabricated on NeoForge's entity events (upstream's mixins conflict with NeoForge's patches); elytra and most sleep events are not fired."
     },
     "fabric-events-interaction-v0": {
-      "plan": "passthrough"
+      "plan": "native",
+      "version": "5.3.7",
+      "reason": "Shipped by Fabricated on NeoForge's interaction events (upstream's mixins conflict with NeoForge's patches); attack entity callbacks get no hit result, and client-side cancelled interactions still reach the server."
     },
     "fabric-game-rule-api-v1": {
       "plan": "passthrough"

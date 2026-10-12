@@ -5,6 +5,8 @@ import java.util.function.Predicate;
 import io.github.cmdralph.fabricated.loader.FabricatedState;
 import io.github.cmdralph.fabricated.neoforge.block.BlockApiCompat;
 import io.github.cmdralph.fabricated.neoforge.entity.EntityEventsBridge;
+import io.github.cmdralph.fabricated.neoforge.interaction.ClientHotbarScroll;
+import io.github.cmdralph.fabricated.neoforge.interaction.InteractionBridge;
 import io.github.cmdralph.fabricated.neoforge.item.ItemApiBridge;
 import io.github.cmdralph.fabricated.neoforge.lifecycle.LifecycleBridge;
 import io.github.cmdralph.fabricated.neoforge.networking.NetworkingBridge;
@@ -27,6 +29,8 @@ public final class NativeFabricApi {
 	public static void register(IEventBus modBus, Dist dist, FabricatedState state) {
 		LifecycleBridge.register(dist);
 		EntityEventsBridge.register();
+		InteractionBridge.register(dist);
+		if (dist.isClient()) ClientHotbarScroll.register();
 		ItemApiBridge.register(modBus, dist);
 		BlockApiCompat.register(modBus);
 		ObjectBuilderBridge.register(modBus, modifier -> FabricDefaultAttributeRegistry.MODIFY.invoker().modify(new FabricDefaultAttributeRegistry.ModifyContext() {

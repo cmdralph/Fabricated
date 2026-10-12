@@ -24,7 +24,13 @@
     "ItemPropertiesMixin",
     "ItemStackMixin",
     "TooltipFlagMixin",
-    "DataComponentMapBuilderMixin"
+    "DataComponentMapBuilderMixin",
+    "ServerPlayerGameModeMixin",
+    "BlockStateBaseMixin",
+    "ItemStackUseMixin",
+    "PickItemMixin",
+    "FakePlayerMixin",
+    "PlayerAdvancementsMixin"
   ],
   "injectors": {
     "defaultRequire": 1
@@ -32,6 +38,9 @@
   "client": [
     "client.ClientCommonPacketListenerImplMixin",
     "client.LocalPlayerMixin",
-    "client.ClientConfigurationPacketListenerImplMixin"
+    "client.ClientConfigurationPacketListenerImplMixin",
+    "client.KeyMappingAccessor",
+    "client.MultiPlayerGameModeMixin",
+    "client.MouseHandlerMixin"
   ]
 }
