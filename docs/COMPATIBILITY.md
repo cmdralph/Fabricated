@@ -12,17 +12,17 @@ real NeoForge client (`ci/smoke-client.sh`), not from expectations. CI starts ea
    mod (client entrypoint, client lifecycle, a client resource listener, a networking round trip with the
    integrated server). This is a pass/fail gate.
 
-Last updated from CI run [38275647143](https://github.com/cmdralph/Fabricated/actions/runs/38275647143)
+Last updated from CI run [38280975468](https://github.com/cmdralph/Fabricated/actions/runs/38280975468)
 (Fabricated 0.1.0 development build).
 
 ## Minecraft versions
 
 | Minecraft | NeoForge | Fabric API tested | Test mods | Server boots with Fabric API |
 |---|---|---|---|---|
-| 1.21.11 | 21.11.45 | 0.141.6+1.21.11 | ✅ all 29 server and 12 client checks | ✅ boots, all test-mod checks still pass |
-| 26.1.2 | 26.1.2.116 | 0.155.3+26.1.2 | ✅ all 29 server and 12 client checks | ✅ boots, all test-mod checks still pass |
-| 26.2 | 26.2.0.90 | 0.161.0+26.2 | ✅ all 29 server and 12 client checks | ✅ boots, all test-mod checks still pass |
-| 26.3 (beta) | 26.3.0.69-beta | 0.162.0+26.3 | ✅ all 29 server and 12 client checks | ✅ boots, all test-mod checks still pass |
+| 1.21.11 | 21.11.45 | 0.141.6+1.21.11 | ✅ all 30 server and 13 client checks | ✅ boots, all test-mod checks still pass |
+| 26.1.2 | 26.1.2.116 | 0.155.3+26.1.2 | ✅ all 30 server and 13 client checks | ✅ boots, all test-mod checks still pass |
+| 26.2 | 26.2.0.90 | 0.161.0+26.2 | ✅ all 30 server and 13 client checks | ✅ boots, all test-mod checks still pass |
+| 26.3 (beta) | 26.3.0.69-beta | 0.162.0+26.3 | ✅ all 30 server and 13 client checks | ✅ boots, all test-mod checks still pass |
 
 "Boots with Fabric API" means the server starts with the full official Fabric API jar installed. Modules
 that can't work on NeoForge are disabled before any code runs (see below), and the rest load alongside
