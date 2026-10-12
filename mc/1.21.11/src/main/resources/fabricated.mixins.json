@@ -10,7 +10,9 @@
     "MappedRegistryMixin",
     "MobEffectMixin",
     "EntityTypeBuilderMixin",
-    "BlockEntityTypeMixin"
+    "BlockEntityTypeMixin",
+    "BlockMixin",
+    "BlockStateMixin"
   ],
   "injectors": {
     "defaultRequire": 1

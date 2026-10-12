@@ -37,5 +37,14 @@
   ],
   "net/minecraft/world/level/block/entity/BlockEntityType": [
     "net/fabricmc/fabric/api/object/builder/v1/block/entity/FabricBlockEntityType"
+  ],
+  "net/minecraft/world/level/block/Block": [
+    "net/fabricmc/fabric/api/block/v1/FabricBlock"
+  ],
+  "net/minecraft/world/level/block/state/BlockState": [
+    "net/fabricmc/fabric/api/block/v1/FabricBlockState"
+  ],
+  "net/minecraft/world/level/block/state/BlockBehaviour$Properties": [
+    "net/fabricmc/fabric/api/block/v1/FabricBlock$FabricProperties"
   ]
 }

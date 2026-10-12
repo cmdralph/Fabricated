@@ -115,6 +115,7 @@ check "entity events seen:.*allow_add,after_add,before_remove" server.out "nativ
 check "entity events seen:.*allow_damage,after_damage" server.out "native entity events: damage"
 check "entity events seen:.*allow_death,after_death$" server.out "native entity events: death (no AFTER_DAMAGE for the killing hit)"
 check "FABRICATED-TEST object builder OK" server.out "native object builder: attributes, attribute modification, spawn placement, entity data serializer, block entity types"
+check "FABRICATED-TEST block api OK" server.out "native block api: properties id, trapdoor tag, appearance (26.2+: enchanting power, fluid flow event)"
 check "fabricated-testmod-missing" logs/fabric-bridge-report.txt "missing dependency reported"
 check "fabricated-library-that-does-not-exist" logs/fabric-bridge-report.txt "missing dependency named"
 check "fabricatedMethodThatDoesNotExist" logs/fabric-bridge-report.txt "impossible mixin caught by pre-flight"

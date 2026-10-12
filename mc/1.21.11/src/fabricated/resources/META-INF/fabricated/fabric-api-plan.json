@@ -13,7 +13,9 @@
       "plan": "passthrough"
     },
     "fabric-block-api-v1": {
-      "plan": "passthrough"
+      "plan": "native",
+      "version": "1.1.10",
+      "reason": "Shipped by Fabricated on NeoForge's block hooks (upstream's mixins conflict with NeoForge's patches); NeoForge's own chunk-section air check is kept."
     },
     "fabric-block-view-api-v2": {
       "plan": "passthrough"
