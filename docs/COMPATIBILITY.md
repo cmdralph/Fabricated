@@ -12,17 +12,17 @@ real NeoForge client (`ci/smoke-client.sh`), not from expectations. CI starts ea
    mod (client entrypoint, client lifecycle, a client resource listener, a networking round trip with the
    integrated server). This is a pass/fail gate.
 
-Last updated from CI run [38194978447](https://github.com/cmdralph/Fabricated/actions/runs/38194978447)
+Last updated from CI run [38275647143](https://github.com/cmdralph/Fabricated/actions/runs/38275647143)
 (Fabricated 0.1.0 development build).
 
 ## Minecraft versions
 
 | Minecraft | NeoForge | Fabric API tested | Test mods | Server boots with Fabric API |
 |---|---|---|---|---|
-| 1.21.11 | 21.11.45 | 0.141.6+1.21.11 | ✅ all 27 server and 10 client checks | ✅ boots, all test-mod checks still pass |
-| 26.1.2 | 26.1.2.116 | 0.155.3+26.1.2 | ✅ all 27 server and 10 client checks | ✅ boots, all test-mod checks still pass |
-| 26.2 | 26.2.0.90 | 0.161.0+26.2 | ✅ all 27 server and 10 client checks | ✅ boots, all test-mod checks still pass |
-| 26.3 (beta) | 26.3.0.69-beta | 0.162.0+26.3 | ✅ all 27 server and 10 client checks | ✅ boots, all test-mod checks still pass |
+| 1.21.11 | 21.11.45 | 0.141.6+1.21.11 | ✅ all 29 server and 12 client checks | ✅ boots, all test-mod checks still pass |
+| 26.1.2 | 26.1.2.116 | 0.155.3+26.1.2 | ✅ all 29 server and 12 client checks | ✅ boots, all test-mod checks still pass |
+| 26.2 | 26.2.0.90 | 0.161.0+26.2 | ✅ all 29 server and 12 client checks | ✅ boots, all test-mod checks still pass |
+| 26.3 (beta) | 26.3.0.69-beta | 0.162.0+26.3 | ✅ all 29 server and 12 client checks | ✅ boots, all test-mod checks still pass |
 
 "Boots with Fabric API" means the server starts with the full official Fabric API jar installed. Modules
 that can't work on NeoForge are disabled before any code runs (see below), and the rest load alongside
@@ -32,7 +32,7 @@ The server checks: the server starts; a `main` entrypoint runs; the Fabric Loade
 entrypoint resolves; content registers directly into vanilla registries; `fabric-api-base` events fire; an
 access widener applies; a `server` entrypoint runs; a mixin applies; a mod with a missing dependency is
 reported, naming the dependency; a mod with an impossible mixin is caught by pre-flight; and a mod whose
-entrypoint throws is isolated while the server keeps running. The other 14 cover the native Fabric API modules
+entrypoint throws is isolated while the server keeps running. The other 16 cover the native Fabric API modules
 (described in their sections below). The client checks: the client starts and joins a singleplayer world, the
 `main` and `client` entrypoints run, and the client-side native modules work, including a networking round
 trip with the integrated server.
@@ -358,8 +358,10 @@ modules that cascade from it.
    now fails on its own mixins (see above) and is a candidate for a native implementation.
 5. ✅ `fabric-entity-events-v1` on all four versions (done).
 6. ✅ `fabric-object-builder-api-v1` on all four versions (done). Unblocked `fabric-data-attachment-api-v1`.
-7. Next: `fabric-item-api-v1` and `fabric-block-api-v1`, which most content mods need, then
-   `fabric-events-interaction-v0`, `fabric-loot-api-v3` and `fabric-content-registries-v0`.
+7. ✅ `fabric-item-api-v1` and `fabric-block-api-v1` on all four versions (done). The modules that build on them
+   (transfer, content registries) still fail on their own mixins.
+8. Next: `fabric-events-interaction-v0`, `fabric-loot-api-v3`, `fabric-content-registries-v0` and
+   `fabric-transfer-api-v1`.
 
 ## Fabric mods tested
 
