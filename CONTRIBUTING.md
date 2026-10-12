@@ -36,8 +36,10 @@ automatically if it is not installed.
 ci/smoke-server.sh 26.2 26.2.0.90 /tmp/fabricated-server
 ```
 
-CI (`.github/workflows/build.yml`) runs the unit tests, then builds every version and boots a real NeoForge
-dedicated server with the test mods. 26.3 is best-effort while NeoForge 26.3 is in beta.
+CI (`.github/workflows/build.yml`) runs the unit tests, then builds every version, boots a real NeoForge
+dedicated server with the test mods (and again with the official Fabric API jar), and starts a real NeoForge
+client headlessly into a singleplayer world (`ci/smoke-client.sh`; needs Xvfb, and `gh` to fetch
+mc-runtime-test). 26.3 is best-effort while NeoForge 26.3 is in beta.
 
 ## Code rules
 

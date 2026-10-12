@@ -113,7 +113,7 @@ check "FABRICATED-TEST registry sync: custom registry OK" server.out "native reg
 check "registry sync state: alias=true, dynamic=1, setupCallback=1" server.out "native registry sync: alias, synced dynamic registry, setup callback"
 check "entity events seen:.*allow_add,after_add,before_remove" server.out "native entity events: mob effects"
 check "entity events seen:.*allow_damage,after_damage" server.out "native entity events: damage"
-check "entity events seen:.*allow_death,after_death" server.out "native entity events: death"
+check "entity events seen:.*allow_death,after_death$" server.out "native entity events: death (no AFTER_DAMAGE for the killing hit)"
 check "fabricated-testmod-missing" logs/fabric-bridge-report.txt "missing dependency reported"
 check "fabricated-library-that-does-not-exist" logs/fabric-bridge-report.txt "missing dependency named"
 check "fabricatedMethodThatDoesNotExist" logs/fabric-bridge-report.txt "impossible mixin caught by pre-flight"

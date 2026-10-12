@@ -81,9 +81,13 @@ public final class EntityEventsBridge {
 			LivingEntity entity = e.getEntity();
 			if (!(entity.level() instanceof ServerLevel)) return;
 			synchronized (LAST_DAMAGE) {
-				LAST_DAMAGE.put(entity, EntityEventsCompat.damageTaken(e));
+				LAST_DAMAGE.put(entity, e.getOriginalDamage());
 			}
-			ServerLivingEntityEvents.AFTER_DAMAGE.invoker().afterDamage(entity, e.getSource(), e.getOriginalDamage(), EntityEventsCompat.damageTaken(e), e.getBlockedDamage() > 0);
+			// As upstream: not fired for the hit that kills, and "damage taken" is after shields but before armor.
+			if (entity.isDeadOrDying()) return;
+			float blocked = e.getBlockedDamage();
+			ServerLivingEntityEvents.AFTER_DAMAGE.invoker().afterDamage(entity, e.getSource(), e.getOriginalDamage(),
+					Math.max(0f, e.getOriginalDamage() - blocked), blocked > 0);
 		});
 
 		// Death: ALLOW_DEATH first (HIGHEST, so a veto stops NeoForge mods from seeing the death); AFTER_DEATH and

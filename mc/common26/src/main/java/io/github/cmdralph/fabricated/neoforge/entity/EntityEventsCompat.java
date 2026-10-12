@@ -4,9 +4,8 @@ import net.fabricmc.fabric.api.entity.event.v1.ServerEntityLevelChangeEvents;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
-import net.neoforged.neoforge.event.entity.living.LivingDamageEvent;
 
-/** The parts of the entity-event bridge whose names differ by version: Fabric's level-change events ({@code ServerEntityLevelChangeEvents}). */
+/** Fabric's level-change events under this version's API names ({@code ServerEntityLevelChangeEvents}). */
 final class EntityEventsCompat {
 	private EntityEventsCompat() {
 	}
@@ -17,10 +16,5 @@ final class EntityEventsCompat {
 
 	static void afterPlayerChange(ServerPlayer player, ServerLevel origin, ServerLevel destination) {
 		ServerEntityLevelChangeEvents.AFTER_PLAYER_CHANGE_LEVEL.invoker().afterChangeLevel(player, origin, destination);
-	}
-
-	/** The damage the entity took after armor and other reductions. */
-	static float damageTaken(LivingDamageEvent.Post event) {
-		return event.getInflictedDamage();
 	}
 }

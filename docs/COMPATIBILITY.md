@@ -1,16 +1,19 @@
 # Compatibility
 
-Everything in this file comes from CI runs on a real NeoForge dedicated server (`ci/smoke-server.sh`), not
-from expectations. CI boots each version twice:
+Everything in this file comes from CI runs on a real NeoForge dedicated server (`ci/smoke-server.sh`) and a
+real NeoForge client (`ci/smoke-client.sh`), not from expectations. CI starts each version three times:
 
 1. **Test mods only**: Fabricated plus the Fabric test mods in `mc/common/src/testmod*`. This is a pass/fail
    gate.
 2. **With the official Fabric API jar** added: the server must start (a gate); the other checks are
    informational. The resulting `fabric-bridge-report.txt` is kept as a CI artifact
    (`smoke-fabric-api-<version>`), and the tables below are taken from it.
+3. **Client**: a real NeoForge client, started headlessly, joins a singleplayer world with Fabricated and the test
+   mod (client entrypoint, client lifecycle, a client resource listener, a networking round trip with the
+   integrated server). This is a pass/fail gate.
 
-Last updated from CI run [38175331354](https://github.com/cmdralph/Fabricated/actions/runs/38175331354)
-(Fabricated 0.1.0 development build, dedicated server).
+Last updated from CI run [38190559807](https://github.com/cmdralph/Fabricated/actions/runs/38190559807)
+(Fabricated 0.1.0 development build).
 
 ## Minecraft versions
 
@@ -39,7 +42,7 @@ How to read the table:
 - **loads**: the module from the official jar passes mixin pre-flight and loads.
 - **disabled**: the module can't load on NeoForge yet (reason below), and mods that require it are
   disabled with a message.
-- **client**: client-only module, so not loaded on a dedicated server (the client isn't tested in CI yet).
+- **client**: client-only module, so not loaded on a dedicated server (the client CI run uses only Fabricated's test mod).
 - **unsupported**: deliberately not loaded.
 - **—**: the module doesn't exist in that Fabric API version.
 
@@ -65,7 +68,7 @@ How to read the table:
 | fabric-transfer-api-v1 | disabled | disabled | disabled | disabled |
 | fabric-content-registries-v0 | disabled | disabled | disabled | disabled |
 | fabric-object-builder-api-v1 | disabled | disabled | disabled | disabled |
-| fabric-entity-events-v1 | disabled | disabled | disabled | disabled |
+| fabric-entity-events-v1 | native | native | native | native |
 | fabric-events-interaction-v0 | disabled | disabled | disabled | disabled |
 | fabric-dimensions-v1 | disabled | disabled | disabled | disabled |
 | fabric-loot-api-v3 (and v2) | disabled | disabled | disabled | disabled |
@@ -114,7 +117,7 @@ failures fall into a few groups:
 - **NeoForge calls a different constructor**: `fabric-particles-v1` modifies `new BlockParticleOption(type,
   state)` in `Entity.spawnSprintParticle`; NeoForge passes the block position as a third argument.
 - **Dependency cascade**: about a third of the disabled modules only fail because they require one of the
-  above. For example, `fabric-data-attachment-api-v1` needs entity-events.
+  above. For example, `fabric-data-attachment-api-v1` needs object-builder.
 
 Each of these crashed the server at some point during development: they are the reason the pre-flight checks
 exist. Now each is a clear line in the report, and the server starts with the complete Fabric API jar on all
@@ -140,7 +143,7 @@ real server for every version.
 | Block entity load/unload | `ChunkEvent.Load/Unload` | only for block entities of chunks that load or unload, not ones placed or removed in a loaded chunk |
 | Sync data pack contents | `OnDatapackSyncEvent` | |
 | Tags loaded | `TagsUpdatedEvent` | |
-| Client: ticks, chunks, entities, block entities | `ClientTickEvent`, `LevelTickEvent`, `ChunkEvent`, `EntityJoin/LeaveLevelEvent` | client isn't tested in CI yet |
+| Client: ticks, chunks, entities, block entities | `ClientTickEvent`, `LevelTickEvent`, `ChunkEvent`, `EntityJoin/LeaveLevelEvent` | |
 | Client started / stopping | first client tick / `GameShuttingDownEvent` | |
 | After client level change | `ClientPlayerNetworkEvent.LoggingIn` and `.Clone` | fires on login and on respawn into another level |
 | **Not fired**: start/end data pack reload, before/after save | none | NeoForge has no matching hook |
@@ -200,7 +203,7 @@ Differences from upstream:
 CI checks, on all four versions: listener ordering (including an ordering against a vanilla listener), the
 shared reload state, a listener factory, the data store read back through `MinecraftServer`, a `DEFAULT_ENABLED`
 built-in data pack being enabled and loaded, and the listener running again after `/reload`. Client listeners
-compile against NeoForge's client event but aren't run in CI yet.
+are checked by the client CI run (a client resource listener runs while the client starts).
 
 ### Native `fabric-registry-sync-v0`
 
@@ -234,6 +237,26 @@ CI checks, on all four versions: a new synced registry created and filled from a
 entry-added callback and an alias), and a synced data-pack registry loaded from a data pack and seen by a
 `DynamicRegistrySetupCallback`. Id remapping on joining a server needs a client and isn't tested in CI yet.
 
+### Native `fabric-entity-events-v1`
+
+Upstream's mixins don't apply on NeoForge, so Fabricated ships the module's unchanged public API and fires its
+events from NeoForge's entity events. All of them are server-side, as upstream.
+
+| Fabric events | Fired from (NeoForge) | Notes |
+|---|---|---|
+| `ServerLivingEntityEvents.ALLOW_DAMAGE` | `LivingIncomingDamageEvent` | returning false cancels the hit |
+| `AFTER_DAMAGE` | `LivingDamageEvent.Post` | not fired for the hit that kills, as upstream; "damage taken" is after shields, before armor |
+| `ALLOW_DEATH` (living and `ServerPlayerEvents`) | `LivingDeathEvent` (highest priority) | returning false cancels the death; the amount is the killing hit's damage |
+| `AFTER_DEATH`, `ServerEntityCombatEvents.AFTER_KILLED_OTHER_ENTITY` | `LivingDeathEvent` (lowest priority, not cancelled) | |
+| `MOB_CONVERSION` | `LivingConversionEvent.Post` | NeoForge doesn't pass the conversion parameters; vanilla's usual ones are given |
+| `ServerPlayerEvents.COPY_FROM`, `AFTER_RESPAWN`, `JOIN`, `LEAVE` | `PlayerEvent.Clone`, `PlayerRespawnEvent`, `PlayerLoggedIn/OutEvent` | |
+| Level change (player and other entities) | `PlayerChangedDimensionEvent`; `EntityTravelToDimensionEvent` then the copy joining the destination | |
+| `ServerMobEffectEvents` and `FabricMobEffect` hooks | `MobEffectEvent.Applicable`, `Added`, `Remove`, `Expired` | `AFTER_REMOVE` runs as the server's next task, once the effect is gone; `isFromCommand()` is always false |
+| `EntitySleepEvents.ALLOW_SLEEPING`, `STOP_SLEEPING` (players), `ALLOW_SETTING_SPAWN` | `CanPlayerSleepEvent`, `PlayerWakeUpEvent`, `PlayerSetSpawnEvent` | |
+| **Not fired**: `EntityElytraEvents`, the other sleep events | none | NeoForge has no matching hook |
+
+CI checks, on all four versions: mob effect add and remove, damage, and death events for a mob, in order.
+
 ### What this means for Fabric mods
 
 A Fabric mod works today if it needs only the Fabric Loader API and the **native** or **loads** modules
@@ -254,7 +277,9 @@ modules that cascade from it.
    mixins (see above).
 4. ✅ `fabric-registry-sync-v0` on all four versions (done). Unblocked debug-api on 26.x. object-builder
    now fails on its own mixins (see above) and is a candidate for a native implementation.
-5. `fabric-entity-events-v1`: NeoForge's entity events. Unblocks data-attachment.
+5. ✅ `fabric-entity-events-v1` on all four versions (done). data-attachment now waits only on object-builder.
+6. `fabric-object-builder-api-v1`: its mixins don't fit NeoForge (field types, villager trades); a native
+   implementation would unblock data-attachment.
 
 ## Fabric mods tested
 

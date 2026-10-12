@@ -269,7 +269,7 @@ public final class Pipeline {
 		// Every round either removes at least one mod or finishes, so this bound is never the limiting factor.
 		for (int round = 0; round <= eligible.size() + 1 && env != null; round++) {
 			List<Candidate> active = eligible.stream().filter(c -> !dropped.containsKey(c.id())).toList();
-			resolution = resolver.resolve(active, aliases, hints);
+			resolution = resolver.resolve(active, aliases, hints, dropped);
 			for (DependencyResolver.Disabled d : resolution.disabled()) {
 				dropped.put(d.candidate().id(), d.reason());
 				dependencyFailures.add(d.candidate().id());
