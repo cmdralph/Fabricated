@@ -11,11 +11,11 @@ import java.util.Map;
 import net.fabricmc.loader.api.metadata.CustomValue;
 
 /** {@link CustomValue} backed by a parsed JSON tree. */
-public abstract sealed class CustomValueImpl implements CustomValue {
-	public static final CustomValue NULL = new NullImpl();
+public sealed interface CustomValueImpl extends CustomValue {
+	CustomValue NULL = NullImpl.INSTANCE;
 
 	/** Converts a value produced by {@link io.github.cmdralph.fabricated.core.json.Json}. */
-	public static CustomValue fromJson(Object value) {
+	static CustomValue fromJson(Object value) {
 		if (value == null) return NULL;
 		if (value instanceof String s) return new StringImpl(s);
 		if (value instanceof Boolean b) return new BooleanImpl(b);
@@ -52,35 +52,33 @@ public abstract sealed class CustomValueImpl implements CustomValue {
 	}
 
 	@Override
-	public CvObject getAsObject() {
+	default CvObject getAsObject() {
 		throw new ClassCastException("Can't convert " + getType().name() + " to Object");
 	}
 
 	@Override
-	public CvArray getAsArray() {
+	default CvArray getAsArray() {
 		throw new ClassCastException("Can't convert " + getType().name() + " to Array");
 	}
 
 	@Override
-	public String getAsString() {
+	default String getAsString() {
 		throw new ClassCastException("Can't convert " + getType().name() + " to String");
 	}
 
 	@Override
-	public Number getAsNumber() {
+	default Number getAsNumber() {
 		throw new ClassCastException("Can't convert " + getType().name() + " to Number");
 	}
 
 	@Override
-	public boolean getAsBoolean() {
+	default boolean getAsBoolean() {
 		throw new ClassCastException("Can't convert " + getType().name() + " to Boolean");
 	}
 
-	static final class ObjectImpl extends CustomValueImpl implements CvObject {
-		private final Map<String, CustomValue> entries;
-
-		ObjectImpl(Map<String, CustomValue> entries) {
-			this.entries = Collections.unmodifiableMap(entries);
+	record ObjectImpl(Map<String, CustomValue> entries) implements CustomValueImpl, CvObject {
+		public ObjectImpl {
+			entries = Collections.unmodifiableMap(entries);
 		}
 
 		@Override
@@ -114,11 +112,9 @@ public abstract sealed class CustomValueImpl implements CustomValue {
 		}
 	}
 
-	static final class ArrayImpl extends CustomValueImpl implements CvArray {
-		private final List<CustomValue> entries;
-
-		ArrayImpl(List<CustomValue> entries) {
-			this.entries = Collections.unmodifiableList(entries);
+	record ArrayImpl(List<CustomValue> entries) implements CustomValueImpl, CvArray {
+		public ArrayImpl {
+			entries = Collections.unmodifiableList(entries);
 		}
 
 		@Override
@@ -147,13 +143,7 @@ public abstract sealed class CustomValueImpl implements CustomValue {
 		}
 	}
 
-	static final class StringImpl extends CustomValueImpl {
-		private final String value;
-
-		StringImpl(String value) {
-			this.value = value;
-		}
-
+	record StringImpl(String value) implements CustomValueImpl {
 		@Override
 		public CvType getType() {
 			return CvType.STRING;
@@ -165,13 +155,7 @@ public abstract sealed class CustomValueImpl implements CustomValue {
 		}
 	}
 
-	static final class NumberImpl extends CustomValueImpl {
-		private final Number value;
-
-		NumberImpl(Number value) {
-			this.value = value;
-		}
-
+	record NumberImpl(Number value) implements CustomValueImpl {
 		@Override
 		public CvType getType() {
 			return CvType.NUMBER;
@@ -183,13 +167,7 @@ public abstract sealed class CustomValueImpl implements CustomValue {
 		}
 	}
 
-	static final class BooleanImpl extends CustomValueImpl {
-		private final boolean value;
-
-		BooleanImpl(boolean value) {
-			this.value = value;
-		}
-
+	record BooleanImpl(boolean value) implements CustomValueImpl {
 		@Override
 		public CvType getType() {
 			return CvType.BOOLEAN;
@@ -201,7 +179,9 @@ public abstract sealed class CustomValueImpl implements CustomValue {
 		}
 	}
 
-	static final class NullImpl extends CustomValueImpl {
+	enum NullImpl implements CustomValueImpl {
+		INSTANCE;
+
 		@Override
 		public CvType getType() {
 			return CvType.NULL;

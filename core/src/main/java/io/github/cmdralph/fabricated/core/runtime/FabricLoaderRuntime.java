@@ -38,6 +38,27 @@ public final class FabricLoaderRuntime implements FabricLoader {
 	public record Declared(ModContainerImpl mod, String key, EntrypointSpec spec) {
 	}
 
+	/** A language adapter class declared by a mod. */
+	private record AdapterDeclaration(String className, ModContainerImpl owner) {
+	}
+
+	private record Entrypoint<T>(T instance, ModContainer provider, String definition) implements EntrypointContainer<T> {
+		@Override
+		public T getEntrypoint() {
+			return instance;
+		}
+
+		@Override
+		public ModContainer getProvider() {
+			return provider;
+		}
+
+		@Override
+		public String getDefinition() {
+			return definition;
+		}
+	}
+
 	private final EnvType envType;
 	private final Path gameDir;
 	private final Path configDir;
@@ -50,8 +71,7 @@ public final class FabricLoaderRuntime implements FabricLoader {
 	private final Map<String, ModContainerImpl> modsById = new LinkedHashMap<>();
 	private final Map<ModContainerImpl, ClassLoader> classLoaders = new ConcurrentHashMap<>();
 	private final Map<String, List<Declared>> entrypoints = new LinkedHashMap<>();
-	private final Map<String, String> adapterClasses = new LinkedHashMap<>();
-	private final Map<String, ModContainerImpl> adapterOwners = new LinkedHashMap<>();
+	private final Map<String, AdapterDeclaration> adapterDeclarations = new LinkedHashMap<>();
 	private final Map<String, LanguageAdapter> adapters = new ConcurrentHashMap<>();
 	private final Map<String, Object> instances = new ConcurrentHashMap<>();
 	private volatile Object gameInstance;
@@ -105,8 +125,7 @@ public final class FabricLoaderRuntime implements FabricLoader {
 	/** Registers language adapters declared by a mod ({@code languageAdapters} in fabric.mod.json). */
 	public synchronized void addLanguageAdapters(ModContainerImpl mod, Map<String, String> declared) {
 		for (Map.Entry<String, String> e : declared.entrySet()) {
-			adapterClasses.putIfAbsent(e.getKey(), e.getValue());
-			adapterOwners.putIfAbsent(e.getKey(), mod);
+			adapterDeclarations.putIfAbsent(e.getKey(), new AdapterDeclaration(e.getValue(), mod));
 		}
 	}
 
@@ -136,15 +155,14 @@ public final class FabricLoaderRuntime implements FabricLoader {
 	private LanguageAdapter adapter(String id) throws LanguageAdapterException {
 		LanguageAdapter existing = adapters.get(id);
 		if (existing != null) return existing;
-		String className;
-		ModContainerImpl owner;
+		AdapterDeclaration declaration;
 		synchronized (this) {
-			className = adapterClasses.get(id);
-			owner = adapterOwners.get(id);
+			declaration = adapterDeclarations.get(id);
 		}
-		if (className == null) throw new LanguageAdapterException("Unknown language adapter '" + id + "'");
+		if (declaration == null) throw new LanguageAdapterException("Unknown language adapter '" + id + "'");
+		String className = declaration.className();
 		try {
-			Class<?> cls = Class.forName(className, true, FabricLoaderImpl.classLoaderFor(owner));
+			Class<?> cls = Class.forName(className, true, FabricLoaderImpl.classLoaderFor(declaration.owner()));
 			LanguageAdapter created = (LanguageAdapter) cls.getDeclaredConstructor().newInstance();
 			LanguageAdapter raced = adapters.putIfAbsent(id, created);
 			return raced != null ? raced : created;
@@ -167,25 +185,7 @@ public final class FabricLoaderRuntime implements FabricLoader {
 		EntrypointException failure = null;
 		for (Declared d : declared(key)) {
 			try {
-				T instance = instantiate(d, type);
-				String definition = d.spec().value();
-				ModContainer provider = d.mod();
-				ret.add(new EntrypointContainer<>() {
-					@Override
-					public T getEntrypoint() {
-						return instance;
-					}
-
-					@Override
-					public ModContainer getProvider() {
-						return provider;
-					}
-
-					@Override
-					public String getDefinition() {
-						return definition;
-					}
-				});
+				ret.add(new Entrypoint<>(instantiate(d, type), d.mod(), d.spec().value()));
 			} catch (Throwable t) {
 				EntrypointException e = new EntrypointException(key, d.mod().getMetadata().getId(), t);
 				if (failure == null) failure = e;

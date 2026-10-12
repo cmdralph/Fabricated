@@ -11,7 +11,6 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
-import java.util.regex.Pattern;
 
 /**
  * Intermediary → runtime (Mojang) names.
@@ -23,8 +22,6 @@ import java.util.regex.Pattern;
  * from {@link #flatMembers}.
  */
 public final class MappingTable {
-	/** Matches intermediary member tokens. */
-	public static final Pattern MEMBER_TOKEN = Pattern.compile("(?:method|field|comp)_\\d+");
 	private static final int MAGIC = 0x46424D54; // "FBMT"
 	private static final int FORMAT = 1;
 
@@ -83,14 +80,6 @@ public final class MappingTable {
 
 	public int memberCount() {
 		return flatMembers.size() + qualifiedMembers.size();
-	}
-
-	public boolean isEmpty() {
-		return classes.isEmpty() && flatMembers.isEmpty() && qualifiedMembers.isEmpty();
-	}
-
-	public Map<String, String> classes() {
-		return classes;
 	}
 
 	/** Builds a table from per-member mappings, separating ambiguous names. */

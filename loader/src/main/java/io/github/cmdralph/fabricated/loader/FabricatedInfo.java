@@ -20,25 +20,17 @@ import io.github.cmdralph.fabricated.core.translate.TranslationEnvironment.Names
 public record FabricatedInfo(String fabricatedVersion, String minecraftVersion, Namespace namespace, String mixinFallback, String mixinLowest) {
 	public static final String RESOURCE_ROOT = "/META-INF/fabricated/";
 
-	private static volatile FabricatedInfo instance;
+	private static FabricatedInfo instance;
 
-	public static FabricatedInfo get() {
-		FabricatedInfo info = instance;
-		if (info == null) {
-			synchronized (FabricatedInfo.class) {
-				info = instance;
-				if (info == null) {
-					info = load();
-					instance = info;
-				}
-			}
-		}
-		return info;
+	public static synchronized FabricatedInfo get() {
+		if (instance == null) instance = load();
+		return instance;
 	}
 
 	private static FabricatedInfo load() {
 		Properties p = new Properties();
-		try (InputStream in = open("version.properties")) {
+		try (InputStream in = FabricatedInfo.class.getResourceAsStream(RESOURCE_ROOT + "version.properties")) {
+			if (in == null) throw new IOException("Missing bundled resource " + RESOURCE_ROOT + "version.properties");
 			p.load(in);
 		} catch (IOException e) {
 			throw new UncheckedIOException("Fabricated jar is missing version.properties", e);
@@ -54,13 +46,6 @@ public record FabricatedInfo(String fabricatedVersion, String minecraftVersion, 
 		String v = p.getProperty(key);
 		if (v == null || v.isBlank()) throw new IllegalStateException("version.properties is missing " + key);
 		return v.trim();
-	}
-
-	/** Opens a bundled resource; throws if it is absent. */
-	public static InputStream open(String name) throws IOException {
-		InputStream in = FabricatedInfo.class.getResourceAsStream(RESOURCE_ROOT + name);
-		if (in == null) throw new IOException("Missing bundled resource " + RESOURCE_ROOT + name);
-		return in;
 	}
 
 	/** Reads a bundled resource fully, or returns {@code null} if absent. */

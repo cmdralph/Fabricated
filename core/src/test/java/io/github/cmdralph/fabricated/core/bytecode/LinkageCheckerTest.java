@@ -106,7 +106,7 @@ class LinkageCheckerTest {
 	private static TranslatedMod mod(Path dir, String id, TestJars jar) throws Exception {
 		Path file = jar.fabricModJson(TestJars.modJson(id, "1.0", "")).write(dir.resolve(id + ".jar"));
 		Candidate c = new Candidate(file, id + "-hash", FabricModJsonParser.parse(TestJars.modJson(id, "1.0", "")), id + ".jar", null, 0,
-				false, List.of());
+				List.of());
 		return new TranslatedMod(c, id.replace('-', '_'), file, file, List.of(), 0, List.of(), List.of(), false, 0);
 	}
 
@@ -134,7 +134,7 @@ class LinkageCheckerTest {
 		ClassBytesSource runtime = name -> gameClasses.containsKey(name) ? gameClasses.get(name) : modClasses.get(name);
 
 		LinkageAnalysis analysis = new LinkageAnalysis(new TranslationCache(dir.resolve("game"), true, true), ArchiveLimits.DEFAULTS, false);
-		assertTrue(analysis.analyse(List.of(ext, user), runtime, "with-mixin").isEmpty());
-		assertEquals(1, analysis.analyse(List.of(user), runtime, "without-mixin").size(), "without the mixin the call is unresolved");
+		assertTrue(analysis.analyse(List.of(ext, user), runtime, Map.of(), "with-mixin").isEmpty());
+		assertEquals(1, analysis.analyse(List.of(user), runtime, Map.of(), "without-mixin").size(), "without the mixin the call is unresolved");
 	}
 }

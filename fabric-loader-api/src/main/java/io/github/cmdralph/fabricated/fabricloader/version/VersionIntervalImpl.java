@@ -55,74 +55,24 @@ public final class VersionIntervalImpl implements VersionInterval {
 		return maxInclusive;
 	}
 
-	/** Returns whether {@code version} lies within this interval. */
-	public boolean contains(Version version) {
-		if (min != null) {
-			int cmp = version.compareTo(min);
-			if (cmp < 0 || cmp == 0 && !minInclusive) return false;
-		}
-		if (max != null) {
-			int cmp = version.compareTo(max);
-			if (cmp > 0 || cmp == 0 && !maxInclusive) return false;
-		}
-		return true;
-	}
-
 	public static VersionInterval and(VersionInterval a, VersionInterval b) {
 		if (a == null || b == null) return null;
 		if (!a.isSemantic() || !b.isSemantic()) {
 			return andPlain(a, b);
 		}
 
-		Version lo;
-		boolean loInc;
-		if (a.getMin() == null) {
-			lo = b.getMin();
-			loInc = b.isMinInclusive();
-		} else if (b.getMin() == null) {
-			lo = a.getMin();
-			loInc = a.isMinInclusive();
-		} else {
-			int cmp = a.getMin().compareTo(b.getMin());
-			if (cmp > 0) {
-				lo = a.getMin();
-				loInc = a.isMinInclusive();
-			} else if (cmp < 0) {
-				lo = b.getMin();
-				loInc = b.isMinInclusive();
-			} else {
-				lo = a.getMin();
-				loInc = a.isMinInclusive() && b.isMinInclusive();
-			}
-		}
+		Bound lo = a.getMin() == null ? new Bound(b.getMin(), b.isMinInclusive())
+				: b.getMin() == null ? new Bound(a.getMin(), a.isMinInclusive())
+				: pick(a.getMin(), a.isMinInclusive(), b.getMin(), b.isMinInclusive(), true, true);
+		Bound hi = a.getMax() == null ? new Bound(b.getMax(), b.isMaxInclusive())
+				: b.getMax() == null ? new Bound(a.getMax(), a.isMaxInclusive())
+				: pick(a.getMax(), a.isMaxInclusive(), b.getMax(), b.isMaxInclusive(), false, true);
 
-		Version hi;
-		boolean hiInc;
-		if (a.getMax() == null) {
-			hi = b.getMax();
-			hiInc = b.isMaxInclusive();
-		} else if (b.getMax() == null) {
-			hi = a.getMax();
-			hiInc = a.isMaxInclusive();
-		} else {
-			int cmp = a.getMax().compareTo(b.getMax());
-			if (cmp < 0) {
-				hi = a.getMax();
-				hiInc = a.isMaxInclusive();
-			} else if (cmp > 0) {
-				hi = b.getMax();
-				hiInc = b.isMaxInclusive();
-			} else {
-				hi = a.getMax();
-				hiInc = a.isMaxInclusive() && b.isMaxInclusive();
-			}
+		if (lo.version() != null && hi.version() != null) {
+			int cmp = lo.version().compareTo(hi.version());
+			if (cmp > 0 || cmp == 0 && (!lo.inclusive() || !hi.inclusive())) return null;
 		}
-
-		if (lo != null && hi != null) {
-			int cmp = lo.compareTo(hi);
-			if (cmp > 0 || cmp == 0 && (!loInc || !hiInc)) return null;
-		}
-		return new VersionIntervalImpl(lo, loInc, hi, hiInc);
+		return new VersionIntervalImpl(lo.version(), lo.inclusive(), hi.version(), hi.inclusive());
 	}
 
 	private static VersionInterval andPlain(VersionInterval a, VersionInterval b) {
@@ -218,25 +168,23 @@ public final class VersionIntervalImpl implements VersionInterval {
 	}
 
 	private static VersionInterval union(VersionInterval a, VersionInterval b) {
-		Version hi;
-		boolean hiInc;
-		if (a.getMax() == null || b.getMax() == null) {
-			hi = null;
-			hiInc = false;
-		} else {
-			int cmp = a.getMax().compareTo(b.getMax());
-			if (cmp > 0) {
-				hi = a.getMax();
-				hiInc = a.isMaxInclusive();
-			} else if (cmp < 0) {
-				hi = b.getMax();
-				hiInc = b.isMaxInclusive();
-			} else {
-				hi = a.getMax();
-				hiInc = a.isMaxInclusive() || b.isMaxInclusive();
-			}
-		}
-		return new VersionIntervalImpl(a.getMin(), a.isMinInclusive(), hi, hiInc);
+		Bound hi = a.getMax() == null || b.getMax() == null ? new Bound(null, false)
+				: pick(a.getMax(), a.isMaxInclusive(), b.getMax(), b.isMaxInclusive(), true, false);
+		return new VersionIntervalImpl(a.getMin(), a.isMinInclusive(), hi.version(), hi.inclusive());
+	}
+
+	/** One end of an interval; {@code version} is {@code null} when unbounded. */
+	private record Bound(Version version, boolean inclusive) {
+	}
+
+	/**
+	 * Picks the greater ({@code greater}) or lesser of two bounds. When they are equal the bound is inclusive if
+	 * both are ({@code tieRequiresBoth}) or if either is.
+	 */
+	private static Bound pick(Version a, boolean aInclusive, Version b, boolean bInclusive, boolean greater, boolean tieRequiresBoth) {
+		int cmp = a.compareTo(b);
+		if (cmp == 0) return new Bound(a, tieRequiresBoth ? aInclusive && bInclusive : aInclusive || bInclusive);
+		return cmp > 0 == greater ? new Bound(a, aInclusive) : new Bound(b, bInclusive);
 	}
 
 	@Override

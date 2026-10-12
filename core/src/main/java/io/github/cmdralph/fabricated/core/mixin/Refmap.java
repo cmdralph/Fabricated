@@ -36,14 +36,6 @@ public final class Refmap {
 		return new Refmap(mappings);
 	}
 
-	/** Combines several refmaps (a mod may declare different refmaps per config). */
-	public Refmap merge(Refmap other) {
-		Map<String, Map<String, String>> merged = new HashMap<>();
-		mappings.forEach((k, v) -> merged.put(k, new HashMap<>(v)));
-		other.mappings.forEach((k, v) -> merged.computeIfAbsent(k, x -> new HashMap<>()).putAll(v));
-		return new Refmap(merged);
-	}
-
 	/** Resolves {@code selector} for {@code mixinClass} (internal name), or returns it unchanged. */
 	public String resolve(String mixinClass, String selector) {
 		Map<String, String> entries = mappings.get(mixinClass);

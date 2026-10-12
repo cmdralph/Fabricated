@@ -91,7 +91,7 @@ Fabricated/
 ```
 
 * **Output:** one jar per MC version, `fabricated-<version>+mc<mc>.jar`. `core`, `loader` and `bridge-common` are shaded in, all under the Fabricated-owned package `dev.fabricated.*`, so they can't clash with anything. The `fabric-loader-api` types keep their original `net.fabricmc.*` package names because Fabric mods link against them.
-* **No preprocessor** (no Stonecutter/Manifold). Version differences live in each `mc/<ver>` directory; code identical across 26.x lives once in `mc/shared-26`.
+* **No preprocessor** (no Stonecutter/Manifold). Version differences live in each `mc/<ver>` directory; code shared by every version lives once in `mc/common`, by all 26.x versions in `mc/common26`, and by 26.1.2 and 26.2 in `mc/common26early`.
 * `core` targets Java 21 bytecode so the *same* compiled classes run on every line.
 
 ---
@@ -322,7 +322,6 @@ Read during discovery, before NeoForge's config system exists, so it's plain JSO
 ```json
 {
   "schema": 1,
-  "logLevel": "INFO",
   "onEntrypointFailure": "error",
   "strictDependencies": false,
   "preferNativeNeoForgeMods": true,
@@ -343,7 +342,7 @@ Unknown keys produce a warning. Invalid values fall back to defaults with a warn
 
 * `logs/fabric-bridge-report.txt`, written on every launch and on demand. It contains: environment (MC, NeoForge, FML, Java, Fabricated); per-mod status (loaded/disabled + reason) with source jar, hash, cache hit/miss and timings; the Fabric API module plan; mixin pre-flight results; AW→AT conversions; split-package decisions; config overrides applied; and warnings.
 * `/fabricated report` regenerates the report and prints a summary. It's a server command that needs permission level 2. A client-side command with the same name works for any player on their own client.
-* Logging uses SLF4J with the marker `FABRICATED`. Verbosity comes from config `logLevel` or `-Dfabricated.logLevel=DEBUG`.
+* Logging uses SLF4J with the marker `FABRICATED`.
 
 ## 14. Security model
 

@@ -4,7 +4,6 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -16,6 +15,7 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 
 import io.github.cmdralph.fabricated.core.archive.ArchiveLimits;
+import io.github.cmdralph.fabricated.core.archive.AtomicFiles;
 import io.github.cmdralph.fabricated.core.json.Json;
 import io.github.cmdralph.fabricated.core.json.JsonException;
 
@@ -25,7 +25,18 @@ import io.github.cmdralph.fabricated.core.json.JsonException;
  * <p>Read during NeoForge mod discovery, before NeoForge's own config system exists. Invalid values
  * never stop the game: they fall back to defaults and are reported as warnings.
  */
-public final class FabricatedConfig {
+public record FabricatedConfig(
+		EntrypointFailure onEntrypointFailure,
+		boolean strictDependencies,
+		boolean strictLinkage,
+		boolean preferNativeNeoForgeMods,
+		boolean cacheEnabled,
+		boolean verifyIntegrity,
+		int maxUnusedLaunches,
+		ArchiveLimits limits,
+		Map<String, ModOverride> overrides,
+		String mojangMappingsPath,
+		List<String> warnings) {
 	public static final int SCHEMA = 1;
 	public static final String FILE_NAME = "fabricated.json";
 
@@ -48,40 +59,14 @@ public final class FabricatedConfig {
 		}
 	}
 
-	private final String logLevel;
-	private final EntrypointFailure onEntrypointFailure;
-	private final boolean strictDependencies;
-	private final boolean strictLinkage;
-	private final boolean preferNativeNeoForgeMods;
-	private final boolean cacheEnabled;
-	private final boolean verifyIntegrity;
-	private final int maxUnusedLaunches;
-	private final ArchiveLimits limits;
-	private final Map<String, ModOverride> mods;
-	private final String mojangMappingsPath;
-	private final List<String> warnings;
-
-	private FabricatedConfig(String logLevel, EntrypointFailure onEntrypointFailure, boolean strictDependencies,
-			boolean strictLinkage, boolean preferNativeNeoForgeMods, boolean cacheEnabled, boolean verifyIntegrity,
-			int maxUnusedLaunches, ArchiveLimits limits, Map<String, ModOverride> mods, String mojangMappingsPath,
-			List<String> warnings) {
-		this.logLevel = logLevel;
-		this.onEntrypointFailure = onEntrypointFailure;
-		this.strictDependencies = strictDependencies;
-		this.strictLinkage = strictLinkage;
-		this.preferNativeNeoForgeMods = preferNativeNeoForgeMods;
-		this.cacheEnabled = cacheEnabled;
-		this.verifyIntegrity = verifyIntegrity;
-		this.maxUnusedLaunches = maxUnusedLaunches;
-		this.limits = limits;
-		this.mods = Collections.unmodifiableMap(mods);
-		this.mojangMappingsPath = mojangMappingsPath;
-		this.warnings = List.copyOf(warnings);
+	public FabricatedConfig {
+		overrides = Collections.unmodifiableMap(new TreeMap<>(overrides));
+		warnings = List.copyOf(warnings);
 	}
 
 	public static FabricatedConfig defaults() {
-		return new FabricatedConfig("INFO", EntrypointFailure.ERROR, false, false, true, true, true, 5,
-				ArchiveLimits.DEFAULTS, new TreeMap<>(), null, List.of());
+		return new FabricatedConfig(EntrypointFailure.ERROR, false, false, true, true, true, 5,
+				ArchiveLimits.DEFAULTS, Map.of(), null, List.of());
 	}
 
 	/**
@@ -93,7 +78,9 @@ public final class FabricatedConfig {
 		if (!Files.exists(file)) {
 			FabricatedConfig defaults = defaults();
 			try {
-				writeAtomically(file, defaults.toJson());
+				Path parent = file.toAbsolutePath().getParent();
+				Files.createDirectories(parent);
+				AtomicFiles.writeAtomically(file, defaults.toJson().getBytes(StandardCharsets.UTF_8), parent);
 			} catch (IOException e) {
 				return defaults.withWarning("Could not create " + file + ": " + e.getMessage());
 			}
@@ -119,7 +106,8 @@ public final class FabricatedConfig {
 		int schema = r.integer("schema", SCHEMA, 1, 1);
 		if (schema != SCHEMA) warnings.add("Unknown schema " + schema);
 
-		String logLevel = r.choice("logLevel", "INFO", List.of("ERROR", "WARN", "INFO", "DEBUG", "TRACE"));
+		// Accepted (and ignored) so configs written by older versions don't produce a warning.
+		r.get("logLevel");
 		EntrypointFailure failure = EntrypointFailure.valueOf(r.choice("onEntrypointFailure", "error", List.of("error", "disable")).toUpperCase(Locale.ROOT));
 		boolean strictDeps = r.bool("strictDependencies", false);
 		boolean strictLinkage = r.bool("strictLinkage", false);
@@ -157,22 +145,21 @@ public final class FabricatedConfig {
 		cache.reportUnknown();
 		lim.reportUnknown();
 		r.reportUnknown();
-		return new FabricatedConfig(logLevel, failure, strictDeps, strictLinkage, preferNative, cacheEnabled, verify,
+		return new FabricatedConfig(failure, strictDeps, strictLinkage, preferNative, cacheEnabled, verify,
 				unused, limits, mods, mappings, warnings);
 	}
 
 	private FabricatedConfig withWarning(String warning) {
 		List<String> w = new ArrayList<>(warnings);
 		w.add(warning);
-		return new FabricatedConfig(logLevel, onEntrypointFailure, strictDependencies, strictLinkage, preferNativeNeoForgeMods,
-				cacheEnabled, verifyIntegrity, maxUnusedLaunches, limits, mods, mojangMappingsPath, w);
+		return new FabricatedConfig(onEntrypointFailure, strictDependencies, strictLinkage, preferNativeNeoForgeMods,
+				cacheEnabled, verifyIntegrity, maxUnusedLaunches, limits, overrides, mojangMappingsPath, w);
 	}
 
 	/** Serialises this config (used to create the default file). */
 	public String toJson() {
 		Map<String, Object> root = new LinkedHashMap<>();
 		root.put("schema", SCHEMA);
-		root.put("logLevel", logLevel);
 		root.put("onEntrypointFailure", onEntrypointFailure.name().toLowerCase(Locale.ROOT));
 		root.put("strictDependencies", strictDependencies);
 		root.put("strictLinkage", strictLinkage);
@@ -191,7 +178,7 @@ public final class FabricatedConfig {
 		lim.put("maxNestingDepth", limits.maxNestingDepth());
 		root.put("limits", lim);
 		Map<String, Object> modsJson = new LinkedHashMap<>();
-		for (Map.Entry<String, ModOverride> e : mods.entrySet()) {
+		for (Map.Entry<String, ModOverride> e : overrides.entrySet()) {
 			ModOverride o = e.getValue();
 			Map<String, Object> m = new LinkedHashMap<>();
 			m.put("disabled", o.disabled());
@@ -207,68 +194,8 @@ public final class FabricatedConfig {
 		return Json.write(root, true);
 	}
 
-	static void writeAtomically(Path file, String content) throws IOException {
-		Path parent = file.toAbsolutePath().getParent();
-		Files.createDirectories(parent);
-		Path tmp = Files.createTempFile(parent, ".fabricated", ".tmp");
-		try {
-			Files.writeString(tmp, content, StandardCharsets.UTF_8);
-			Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-		} finally {
-			Files.deleteIfExists(tmp);
-		}
-	}
-
-	public String logLevel() {
-		return logLevel;
-	}
-
-	public EntrypointFailure onEntrypointFailure() {
-		return onEntrypointFailure;
-	}
-
-	public boolean strictDependencies() {
-		return strictDependencies;
-	}
-
-	public boolean strictLinkage() {
-		return strictLinkage;
-	}
-
-	public boolean preferNativeNeoForgeMods() {
-		return preferNativeNeoForgeMods;
-	}
-
-	public boolean cacheEnabled() {
-		return cacheEnabled;
-	}
-
-	public boolean verifyIntegrity() {
-		return verifyIntegrity;
-	}
-
-	public int maxUnusedLaunches() {
-		return maxUnusedLaunches;
-	}
-
-	public ArchiveLimits limits() {
-		return limits;
-	}
-
-	public String mojangMappingsPath() {
-		return mojangMappingsPath;
-	}
-
-	public List<String> warnings() {
-		return warnings;
-	}
-
 	public ModOverride override(String fabricId) {
-		return mods.getOrDefault(fabricId, ModOverride.NONE);
-	}
-
-	public Map<String, ModOverride> overrides() {
-		return mods;
+		return overrides.getOrDefault(fabricId, ModOverride.NONE);
 	}
 
 	/** Typed, validating view of one JSON object. */

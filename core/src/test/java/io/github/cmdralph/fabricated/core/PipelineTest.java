@@ -130,7 +130,7 @@ class PipelineTest {
 	}
 
 	private static Pipeline.Input input(Path game, List<Path> jars, Namespace ns, Map<String, byte[]> gameClasses, Pipeline.MappingSupplier mappings) throws Exception {
-		return new Pipeline.Input(game, game.resolve("config"), game.resolve("logs"), jars, ns == Namespace.OFFICIAL ? "26.2" : "1.21.11",
+		return new Pipeline.Input(game, game.resolve("config"), jars, ns == Namespace.OFFICIAL ? "26.2" : "1.21.11",
 				"26.2.0.90", false, ns, "0.17.4+mixin.0.8.7", "0.17.1", "0.1.0-test", false, gameClasses::get, ClassBytesSource.EMPTY, Set.of("net/neoforged/neoforge"),
 				FabricApiPlan.parse(PLAN), name -> null, Map.of(), List.of(new Pipeline.NeoForgeMod("cloth_config", "15.0.0", "Cloth Config")),
 				mappings, new String[0]);
@@ -254,5 +254,14 @@ class PipelineTest {
 				}));
 		assertTrue(result.mods().isEmpty());
 		assertTrue(result.report().render().contains("mapping file is unavailable"));
+	}
+
+	@Test
+	void obfuscatedVersionWithoutFabricModsStartsCleanly(@TempDir Path game) throws Exception {
+		Pipeline.Result result = Pipeline.run(input(game, List.of(), Namespace.INTERMEDIARY, Map.of(),
+				(cache, path) -> {
+					throw new AssertionError("mappings are not needed without Fabric mods");
+				}));
+		assertTrue(result.mods().isEmpty());
 	}
 }

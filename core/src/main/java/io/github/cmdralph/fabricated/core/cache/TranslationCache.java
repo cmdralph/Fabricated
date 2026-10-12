@@ -1,17 +1,17 @@
 package io.github.cmdralph.fabricated.core.cache;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
-import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
-import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -20,7 +20,9 @@ import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
+import io.github.cmdralph.fabricated.core.archive.AtomicFiles;
 import io.github.cmdralph.fabricated.core.archive.Hashing;
 import io.github.cmdralph.fabricated.core.json.Json;
 import io.github.cmdralph.fabricated.core.json.JsonException;
@@ -170,13 +172,7 @@ public final class TranslationCache {
 			lastUsed.put("nested/" + sha + ".jar", launch);
 			return target;
 		}
-		Path tmp = Files.createTempFile(root.resolve("tmp"), "nested", ".jar");
-		try {
-			Files.write(tmp, data);
-			Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-		} finally {
-			Files.deleteIfExists(tmp);
-		}
+		AtomicFiles.writeAtomically(target, data, root.resolve("tmp"));
 		lastUsed.put("nested/" + sha + ".jar", launch);
 		return target;
 	}
@@ -196,13 +192,7 @@ public final class TranslationCache {
 		if (!SAFE_NAME.matcher(fileName).matches()) throw new IllegalArgumentException("Unsafe blob name " + fileName);
 		Path dir = Files.createDirectories(root.resolve("blobs"));
 		Path target = dir.resolve(fileName);
-		Path tmp = Files.createTempFile(root.resolve("tmp"), "blob", ".bin");
-		try {
-			Files.write(tmp, data);
-			Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-		} finally {
-			Files.deleteIfExists(tmp);
-		}
+		AtomicFiles.writeAtomically(target, data, root.resolve("tmp"));
 		lastUsed.put("blobs/" + fileName, launch);
 		return target;
 	}
@@ -247,9 +237,9 @@ public final class TranslationCache {
 	 * launches, then persists the index. Call once per launch after all lookups.
 	 */
 	public void finish(int maxUnusedLaunches) {
-		gcDirectory(root.resolve("entries"), "", maxUnusedLaunches, true);
-		gcDirectory(root.resolve("nested"), "nested/", maxUnusedLaunches, false);
-		gcDirectory(root.resolve("blobs"), "blobs/", maxUnusedLaunches, false);
+		gcDirectory(root.resolve("entries"), "", maxUnusedLaunches);
+		gcDirectory(root.resolve("nested"), "nested/", maxUnusedLaunches);
+		gcDirectory(root.resolve("blobs"), "blobs/", maxUnusedLaunches);
 		hashMemo.values().removeIf(m -> !(m.get("launch") instanceof Number n) || launch - n.longValue() > maxUnusedLaunches);
 		try {
 			Map<String, Object> index = new LinkedHashMap<>();
@@ -258,15 +248,13 @@ public final class TranslationCache {
 			Map<String, Object> hashes = new TreeMap<>();
 			hashMemo.forEach((k, v) -> hashes.put(k, new TreeMap<>(v)));
 			index.put("hashes", hashes);
-			Path tmp = Files.createTempFile(root.resolve("tmp"), "index", ".json");
-			Files.writeString(tmp, Json.write(index, true), StandardCharsets.UTF_8);
-			Files.move(tmp, root.resolve(INDEX_FILE), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+			AtomicFiles.writeAtomically(root.resolve(INDEX_FILE), Json.write(index, true).getBytes(StandardCharsets.UTF_8), root.resolve("tmp"));
 		} catch (IOException e) {
 			notes.add("Could not save cache index: " + e.getMessage());
 		}
 	}
 
-	private void gcDirectory(Path dir, String prefix, int maxUnused, boolean directories) {
+	private void gcDirectory(Path dir, String prefix, int maxUnused) {
 		if (!Files.isDirectory(dir)) return;
 		try (DirectoryStream<Path> stream = Files.newDirectoryStream(dir)) {
 			for (Path p : stream) {
@@ -278,8 +266,7 @@ public final class TranslationCache {
 					continue;
 				}
 				if (launch - used > maxUnused) {
-					if (directories) deleteQuietly(p);
-					else Files.deleteIfExists(p);
+					deleteQuietly(p);
 					lastUsed.remove(name);
 					notes.add("Removed unused cache item " + name);
 				}
@@ -330,21 +317,10 @@ public final class TranslationCache {
 
 	static void deleteQuietly(Path path) {
 		if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS)) return;
-		try {
-			Files.walkFileTree(path, new SimpleFileVisitor<>() {
-				@Override
-				public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
-					Files.delete(file);
-					return FileVisitResult.CONTINUE;
-				}
-
-				@Override
-				public FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
-					Files.delete(dir);
-					return FileVisitResult.CONTINUE;
-				}
-			});
-		} catch (IOException ignored) {
+		// Files.walk does not follow symbolic links; reverse order deletes children before their directory.
+		try (Stream<Path> walk = Files.walk(path)) {
+			for (Path p : (Iterable<Path>) walk.sorted(Comparator.reverseOrder())::iterator) Files.delete(p);
+		} catch (IOException | UncheckedIOException ignored) {
 			// Best effort; a leftover temporary file is harmless and is cleaned next launch.
 		}
 	}

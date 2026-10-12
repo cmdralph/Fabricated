@@ -80,8 +80,8 @@ class FabricLoaderRuntimeTest {
 		assertEquals("bad_mod", failures.getFirst().modId());
 		assertTrue(failures.getFirst().describe().contains("boom"));
 		assertEquals(List.of("good_mod", "bad_mod"), contexts);
-		assertTrue(runner.hasFailed("bad_mod"));
 		assertEquals(null, context.get());
+		assertTrue(runner.run("main", ModInitializer.class, ModInitializer::onInitialize).isEmpty(), "a failed mod's entrypoints are skipped");
 	}
 
 	@Test

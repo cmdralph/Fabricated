@@ -2,6 +2,7 @@ package io.github.cmdralph.fabricated.core.accesswidener;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
@@ -9,7 +10,6 @@ import java.util.TreeMap;
 import io.github.cmdralph.fabricated.core.accesswidener.AccessWidenerFile.Access;
 import io.github.cmdralph.fabricated.core.accesswidener.AccessWidenerFile.Entry;
 import io.github.cmdralph.fabricated.core.accesswidener.AccessWidenerFile.InjectedInterface;
-import io.github.cmdralph.fabricated.core.accesswidener.AccessWidenerFile.Kind;
 import io.github.cmdralph.fabricated.core.bytecode.ClassIndex;
 
 import org.objectweb.asm.Opcodes;
@@ -47,24 +47,9 @@ public final class AccessTransformerConverter {
 		}
 	}
 
+	/** In widening order: a lower ordinal is more accessible. */
 	private enum Modifier {
-		PUBLIC("public"), PROTECTED("protected"), DEFAULT("default"), PRIVATE("private");
-
-		final String token;
-
-		Modifier(String token) {
-			this.token = token;
-		}
-	}
-
-	private enum Final {
-		LEAVE(""), REMOVE("-f"), ADD("+f");
-
-		final String suffix;
-
-		Final(String suffix) {
-			this.suffix = suffix;
-		}
+		PUBLIC, PROTECTED, DEFAULT, PRIVATE
 	}
 
 	private static final class Target {
@@ -77,8 +62,7 @@ public final class AccessTransformerConverter {
 		}
 
 		String render(String target) {
-			Final f = removeFinal ? Final.REMOVE : addFinal ? Final.ADD : Final.LEAVE;
-			return modifier.token + f.suffix + " " + target;
+			return modifier.name().toLowerCase(Locale.ROOT) + (removeFinal ? "-f" : addFinal ? "+f" : "") + " " + target;
 		}
 	}
 

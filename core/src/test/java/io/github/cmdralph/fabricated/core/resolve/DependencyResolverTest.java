@@ -15,7 +15,7 @@ import net.fabricmc.loader.api.Version;
 
 class DependencyResolverTest {
 	private static Candidate mod(String id, String version, String extra) throws Exception {
-		return new Candidate(Path.of(id + ".jar"), id, FabricModJsonParser.parse(TestJars.modJson(id, version, extra)), id + ".jar", null, 0, false, List.of());
+		return new Candidate(Path.of(id + ".jar"), id, FabricModJsonParser.parse(TestJars.modJson(id, version, extra)), id + ".jar", null, 0, List.of());
 	}
 
 	private static DependencyResolver resolver() throws Exception {
@@ -31,7 +31,7 @@ class DependencyResolverTest {
 		Candidate lib = mod("needs-missing", "1.0", "\"depends\":{\"not-installed\":\"*\"}");
 		Candidate user = mod("uses-lib", "1.0", "\"depends\":{\"needs-missing\":\">=1\"}");
 		Candidate fine = mod("fine", "1.0", "\"depends\":{\"minecraft\":\"~1.21.11\",\"fabricloader\":\">=0.18\",\"fabric-api-base\":\"*\"}");
-		DependencyResolver.Result r = resolver().resolve(List.of(user, lib, fine), Map.of(), Map.of("not-installed", "Install it."));
+		DependencyResolver.Result r = resolver().resolve(List.of(user, lib, fine), Map.of(), Map.of("not-installed", "Install it."), Map.of());
 		assertEquals(List.of("fine"), r.ordered().stream().map(Candidate::id).toList());
 		assertEquals(2, r.disabled().size());
 		DependencyResolver.Disabled missing = r.disabled().stream().filter(d -> d.candidate().id().equals("needs-missing")).findFirst().orElseThrow();
@@ -44,7 +44,7 @@ class DependencyResolverTest {
 		Candidate tooNew = mod("wants-new-mc", "1.0", "\"depends\":{\"minecraft\":\">=26.1\"}");
 		Candidate breaker = mod("breaker", "1.0", "\"breaks\":{\"fine\":\"*\"}");
 		Candidate fine = mod("fine", "1.0", "");
-		DependencyResolver.Result r = resolver().resolve(List.of(tooNew, breaker, fine), Map.of(), Map.of());
+		DependencyResolver.Result r = resolver().resolve(List.of(tooNew, breaker, fine), Map.of(), Map.of(), Map.of());
 		assertEquals(List.of("fine"), r.ordered().stream().map(Candidate::id).toList());
 		assertTrue(r.disabled().stream().anyMatch(d -> d.reason().contains("1.21.11 is installed")));
 		assertTrue(r.disabled().stream().anyMatch(d -> d.reason().contains("incompatible")));
@@ -55,7 +55,7 @@ class DependencyResolverTest {
 		Candidate api = mod("real-api", "2.0", "\"provides\":[\"api-alias\"]");
 		Candidate user = mod("user", "1.0", "\"depends\":{\"api-alias\":\">=2\",\"cloth-config\":\">=15\",\"config-alias\":\"*\"}");
 		Candidate aliased = mod("aliased", "1.0", "");
-		DependencyResolver.Result r = resolver().resolve(List.of(user, api, aliased), Map.of("aliased", List.of("config-alias")), Map.of());
+		DependencyResolver.Result r = resolver().resolve(List.of(user, api, aliased), Map.of("aliased", List.of("config-alias")), Map.of(), Map.of());
 		assertTrue(r.disabled().isEmpty(), r.disabled().toString());
 		assertEquals(List.of("cloth_config"), r.crossLoaderLinks().get("user"));
 	}
@@ -66,7 +66,7 @@ class DependencyResolverTest {
 		Candidate b = mod("bbb", "1", "\"depends\":{\"aaa\":\"*\"}");
 		Candidate a = mod("aaa", "1", "");
 		Candidate z = mod("zzz", "1", "");
-		DependencyResolver.Result r = resolver().resolve(List.of(z, c, b, a), Map.of(), Map.of());
+		DependencyResolver.Result r = resolver().resolve(List.of(z, c, b, a), Map.of(), Map.of(), Map.of());
 		assertEquals(List.of("aaa", "bbb", "ccc", "zzz"), r.ordered().stream().map(Candidate::id).toList());
 	}
 
@@ -74,7 +74,7 @@ class DependencyResolverTest {
 	void warnsAboutRecommendationsAndConflicts() throws Exception {
 		Candidate x = mod("xxx", "1", "\"recommends\":{\"absent\":\"*\"},\"conflicts\":{\"yyy\":\"*\"}");
 		Candidate y = mod("yyy", "1", "");
-		DependencyResolver.Result r = resolver().resolve(List.of(x, y), Map.of(), Map.of());
+		DependencyResolver.Result r = resolver().resolve(List.of(x, y), Map.of(), Map.of(), Map.of());
 		assertEquals(2, r.ordered().size());
 		assertEquals(2, r.warnings().size());
 	}

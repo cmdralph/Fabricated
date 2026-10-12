@@ -19,8 +19,29 @@ import net.fabricmc.loader.api.metadata.Person;
 /**
  * Parsed {@code fabric.mod.json} (schema 1), exposed through Fabric's own {@link ModMetadata} API so
  * mods querying other mods' metadata see the familiar types.
+ *
+ * @param classTweaker the access widener / class tweaker path inside the jar, or {@code null}
  */
-public final class FabricModMetadata implements ModMetadata {
+public record FabricModMetadata(
+		String type,
+		String id,
+		Version version,
+		List<String> provides,
+		ModEnvironment environment,
+		Map<String, List<EntrypointSpec>> entrypoints,
+		List<String> nestedJars,
+		List<MixinEntry> mixins,
+		String classTweaker,
+		List<ModDependency> dependencies,
+		String name,
+		String description,
+		List<Person> authors,
+		List<Person> contributors,
+		ContactInformation contact,
+		List<String> license,
+		SortedMap<Integer, String> icons,
+		Map<String, String> languageAdapters,
+		Map<String, CustomValue> customValues) implements ModMetadata {
 	/** One entrypoint declaration. */
 	public record EntrypointSpec(String adapter, String value) {
 	}
@@ -29,51 +50,18 @@ public final class FabricModMetadata implements ModMetadata {
 	public record MixinEntry(String config, ModEnvironment environment) {
 	}
 
-	private final String type;
-	private final String id;
-	private final Version version;
-	private final List<String> provides;
-	private final ModEnvironment environment;
-	private final Map<String, List<EntrypointSpec>> entrypoints;
-	private final List<String> nestedJars;
-	private final List<MixinEntry> mixins;
-	private final String classTweaker;
-	private final List<ModDependency> dependencies;
-	private final String name;
-	private final String description;
-	private final List<Person> authors;
-	private final List<Person> contributors;
-	private final ContactInformation contact;
-	private final List<String> license;
-	private final SortedMap<Integer, String> icons;
-	private final Map<String, String> languageAdapters;
-	private final Map<String, CustomValue> customValues;
-
-	FabricModMetadata(String type, String id, Version version, List<String> provides, ModEnvironment environment,
-			Map<String, List<EntrypointSpec>> entrypoints, List<String> nestedJars, List<MixinEntry> mixins,
-			String classTweaker, List<ModDependency> dependencies, String name, String description,
-			List<Person> authors, List<Person> contributors, ContactInformation contact, List<String> license,
-			SortedMap<Integer, String> icons, Map<String, String> languageAdapters,
-			Map<String, CustomValue> customValues) {
-		this.type = type;
-		this.id = id;
-		this.version = version;
-		this.provides = List.copyOf(provides);
-		this.environment = environment;
-		this.entrypoints = Collections.unmodifiableMap(entrypoints);
-		this.nestedJars = List.copyOf(nestedJars);
-		this.mixins = List.copyOf(mixins);
-		this.classTweaker = classTweaker;
-		this.dependencies = List.copyOf(dependencies);
-		this.name = name;
-		this.description = description;
-		this.authors = List.copyOf(authors);
-		this.contributors = List.copyOf(contributors);
-		this.contact = contact;
-		this.license = List.copyOf(license);
-		this.icons = Collections.unmodifiableSortedMap(new TreeMap<>(icons));
-		this.languageAdapters = Collections.unmodifiableMap(languageAdapters);
-		this.customValues = Collections.unmodifiableMap(customValues);
+	public FabricModMetadata {
+		provides = List.copyOf(provides);
+		entrypoints = Collections.unmodifiableMap(entrypoints);
+		nestedJars = List.copyOf(nestedJars);
+		mixins = List.copyOf(mixins);
+		dependencies = List.copyOf(dependencies);
+		authors = List.copyOf(authors);
+		contributors = List.copyOf(contributors);
+		license = List.copyOf(license);
+		icons = Collections.unmodifiableSortedMap(new TreeMap<>(icons));
+		languageAdapters = Collections.unmodifiableMap(languageAdapters);
+		customValues = Collections.unmodifiableMap(customValues);
 	}
 
 	/**
@@ -173,31 +161,6 @@ public final class FabricModMetadata implements ModMetadata {
 	@Deprecated
 	public boolean containsCustomElement(String key) {
 		return containsCustomValue(key);
-	}
-
-	public Map<String, List<EntrypointSpec>> entrypoints() {
-		return entrypoints;
-	}
-
-	public List<String> nestedJars() {
-		return nestedJars;
-	}
-
-	public List<MixinEntry> mixins() {
-		return mixins;
-	}
-
-	/** The access widener / class tweaker path inside the jar, or {@code null}. */
-	public String classTweaker() {
-		return classTweaker;
-	}
-
-	public Map<String, String> languageAdapters() {
-		return languageAdapters;
-	}
-
-	public SortedMap<Integer, String> icons() {
-		return icons;
 	}
 
 	@Override
