@@ -18,7 +18,13 @@
     "BlockEntityTypeMixin",
     "BlockMixin",
     "BlockStateMixin",
-    "BlockBehaviourPropertiesMixin"
+    "BlockBehaviourPropertiesMixin",
+    "ItemMixin",
+    "ItemDamageMixin",
+    "ItemPropertiesMixin",
+    "ItemStackMixin",
+    "TooltipFlagMixin",
+    "DataComponentMapBuilderMixin"
   ],
   "injectors": {
     "defaultRequire": 1

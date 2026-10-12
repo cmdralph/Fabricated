@@ -12,7 +12,12 @@
     "EntityTypeBuilderMixin",
     "BlockEntityTypeMixin",
     "BlockMixin",
-    "BlockStateMixin"
+    "BlockStateMixin",
+    "ItemMixin",
+    "ItemPropertiesMixin",
+    "ItemStackMixin",
+    "TooltipFlagMixin",
+    "DataComponentMapBuilderMixin"
   ],
   "injectors": {
     "defaultRequire": 1

@@ -46,5 +46,20 @@
   ],
   "net/minecraft/world/level/block/state/BlockBehaviour$Properties": [
     "net/fabricmc/fabric/api/block/v1/FabricBlock$FabricProperties"
+  ],
+  "net/minecraft/world/item/Item": [
+    "net/fabricmc/fabric/api/item/v1/FabricItem"
+  ],
+  "net/minecraft/world/item/ItemStack": [
+    "net/fabricmc/fabric/api/item/v1/FabricItemStack"
+  ],
+  "net/minecraft/core/component/DataComponentMap$Builder": [
+    "net/fabricmc/fabric/api/item/v1/FabricComponentMapBuilder"
+  ],
+  "net/minecraft/world/item/TooltipFlag": [
+    "net/fabricmc/fabric/api/item/v1/FabricTooltipFlag"
+  ],
+  "net/minecraft/world/item/Item$Properties": [
+    "net/fabricmc/fabric/api/item/v1/FabricItem$Properties"
   ]
 }

@@ -29,6 +29,10 @@ config="fabricated-fabric-api.mixins.json"
 [[accessTransformers]]
 file="META-INF/accesstransformer.cfg"
 
+# Access needed only on this Minecraft version (from mc/<version>/src/main/resources).
+[[accessTransformers]]
+file="META-INF/accesstransformer-version.cfg"
+
 [[dependencies.fabricated]]
 modId="neoforge"
 type="required"
