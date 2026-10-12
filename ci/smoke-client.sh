@@ -66,7 +66,20 @@ status=0
 export SDL_VIDEO_FORCE_EGL=1 SDL_VIDEO_X11_FORCE_EGL=1
 timeout "$timeout_seconds" xvfb-run -a -s "-screen 0 1280x720x24 +extension GLX +render -noreset" java -Dhmc.check.xvfb=true -jar hmc.jar \
 	--command launch "neoforge-${neo}" -regex --jvm "-Djava.awt.headless=true -DMcRuntimeGameTest=false" \
-	> client.out 2>&1 || status=$?
+	> client.out 2>&1 &
+client_pid=$!
+# The game doesn't exit when no renderer can be created; stop it then instead of waiting for the timeout.
+while kill -0 "$client_pid" 2>/dev/null; do
+	if grep -q "Failed to create backend OpenGL" client.out && grep -q "Failed to create backend Vulkan" client.out; then
+		echo "No render backend could be created; stopping the client."
+		sleep 5
+		pkill -P "$client_pid" 2>/dev/null || true
+		kill "$client_pid" 2>/dev/null || true
+		break
+	fi
+	sleep 2
+done
+wait "$client_pid" || status=$?
 echo "::endgroup::"
 
 log=run/logs/latest.log

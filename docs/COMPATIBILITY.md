@@ -257,6 +257,34 @@ events from NeoForge's entity events. All of them are server-side, as upstream.
 
 CI checks, on all four versions: mob effect add and remove, damage, and death events for a mob, in order.
 
+### Native `fabric-object-builder-api-v1`
+
+Upstream's mixins don't fit NeoForge: NeoForge changed the attribute builder's field type, the villager-trade
+constructor and the entity data serializer table. Fabricated therefore ships the unchanged public API and
+implements it on NeoForge's registration hooks. Those hooks run after every registry is filled, so they also see
+what Fabric initializers registered.
+
+| Fabric API | On NeoForge | Notes |
+|---|---|---|
+| `FabricDefaultAttributeRegistry.register` | `EntityAttributeCreationEvent` | for a type that already has attributes (vanilla's or a NeoForge mod's), applied as a modification instead |
+| `FabricDefaultAttributeRegistry.MODIFY` | `EntityAttributeModificationEvent` | runs once, after registration, as upstream; registrations made later are ignored with a warning |
+| `FabricEntityType.Builder` (`createLiving`, `createMob`, `alwaysUpdateVelocity`, `canPotentiallyExecuteCommands`) | NeoForge's own `EntityType.Builder` methods | default attributes and spawn placements are taken when the type is built |
+| Spawn placements | `RegisterSpawnPlacementsEvent` (replace) | |
+| `FabricEntityDataRegistry` (`FabricTrackedDataRegistry` on 1.21.11) | NeoForge's `ENTITY_DATA_SERIALIZERS` registry | NeoForge keeps the ids in step between server and client; register from an initializer |
+| `FabricBlockEntityTypeBuilder`, `FabricBlockEntityType.addValidBlock` (`addSupportedBlock` on 1.21.11) | NeoForge's op-only constructor; a larger copy of the valid-block set | |
+| `WoodTypeBuilder`, `BlockSetTypeBuilder`, `PoiHelper` / `PointOfInterestHelper` | vanilla, unchanged | Fabricated's access transformer opens `PoiTypes.register` and `SpawnPlacements.register`, which the API calls |
+| `TradeOfferHelper` (1.21.11) | `VillagerTradesEvent`, `WandererTradesEvent` | NeoForge rebuilds the tables on every data load, so registrations are replayed each time. In rebalanced-trade worlds, additions for professions without their own rebalanced table use the normal ones |
+| **Not used**: `MinecartComparatorLogicRegistry` | none | registrations are kept, but detector rails ignore them (NeoForge has no hook) |
+
+Data saved with a null data-fix type, which upstream also handles, already works on NeoForge. The client-side
+sign-editing mixins are not shipped: NeoForge resolves modded wood types' textures in the sign-editing screens
+itself, except on 1.21.11, where the plain (not hanging) sign screen shows a missing texture for modded wood
+types.
+
+CI checks, on all four versions: a mob type built with `createMob` gets its default attributes, the `MODIFY`
+change, its spawn placement and the velocity flag; an entity data serializer gets an id; a block entity type
+gets the op-only flag and an added block. On 1.21.11, also a villager trade added through `TradeOfferHelper`.
+
 ### What this means for Fabric mods
 
 A Fabric mod works today if it needs only the Fabric Loader API and the **native** or **loads** modules
