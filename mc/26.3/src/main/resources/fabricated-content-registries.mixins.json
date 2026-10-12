@@ -22,7 +22,8 @@
     "fluid.FloatGoalMixin",
     "fluid.LivingEntityAccessor",
     "fluid.LivingEntityMixin",
-    "fluid.SwimMixin"
+    "fluid.SwimMixin",
+    "FabricatedDataMapHooksMixin"
   ],
   "injectors": {
     "defaultRequire": 1
