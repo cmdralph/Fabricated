@@ -52,7 +52,7 @@ public final class ItemApiTest implements ModInitializer {
 
 	@Override
 	public void onInitialize() {
-		ResourceKey<Item> key = ResourceKey.create(Registries.ITEM, Identifier.fromNamespaceAndPath("fabricated_testmod", "test_item"));
+		ResourceKey<Item> key = ResourceKey.create(Registries.ITEM, Identifier.fromNamespaceAndPath("fabricated_testmod", "item_api_item"));
 		Item.Properties properties = new Item.Properties().setId(key).durability(100)
 				.equipmentSlot((entity, stack) -> EquipmentSlot.HEAD)
 				.customDamage((stack, amount, entity, slot, onBroken) -> {
