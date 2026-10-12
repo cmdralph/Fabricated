@@ -12,17 +12,17 @@ real NeoForge client (`ci/smoke-client.sh`), not from expectations. CI starts ea
    mod (client entrypoint, client lifecycle, a client resource listener, a networking round trip with the
    integrated server). This is a pass/fail gate.
 
-Last updated from CI run [38280975468](https://github.com/cmdralph/Fabricated/actions/runs/38280975468)
+Last updated from CI run [38284701287](https://github.com/cmdralph/Fabricated/actions/runs/38284701287)
 (Fabricated 0.1.0 development build).
 
 ## Minecraft versions
 
 | Minecraft | NeoForge | Fabric API tested | Test mods | Server boots with Fabric API |
 |---|---|---|---|---|
-| 1.21.11 | 21.11.45 | 0.141.6+1.21.11 | ✅ all 30 server and 13 client checks | ✅ boots, all test-mod checks still pass |
-| 26.1.2 | 26.1.2.116 | 0.155.3+26.1.2 | ✅ all 30 server and 13 client checks | ✅ boots, all test-mod checks still pass |
-| 26.2 | 26.2.0.90 | 0.161.0+26.2 | ✅ all 30 server and 13 client checks | ✅ boots, all test-mod checks still pass |
-| 26.3 (beta) | 26.3.0.69-beta | 0.162.0+26.3 | ✅ all 30 server and 13 client checks | ✅ boots, all test-mod checks still pass |
+| 1.21.11 | 21.11.45 | 0.141.6+1.21.11 | ✅ all 31 server and 14 client checks | ✅ boots, all test-mod checks still pass |
+| 26.1.2 | 26.1.2.116 | 0.155.3+26.1.2 | ✅ all 31 server and 14 client checks | ✅ boots, all test-mod checks still pass |
+| 26.2 | 26.2.0.90 | 0.161.0+26.2 | ✅ all 31 server and 14 client checks | ✅ boots, all test-mod checks still pass |
+| 26.3 (beta) | 26.3.0.69-beta | 0.162.0+26.3 | ✅ all 31 server and 14 client checks | ✅ boots, all test-mod checks still pass |
 
 "Boots with Fabric API" means the server starts with the full official Fabric API jar installed. Modules
 that can't work on NeoForge are disabled before any code runs (see below), and the rest load alongside
@@ -77,7 +77,7 @@ How to read the table:
 | fabric-entity-events-v1 | native | native | native | native |
 | fabric-events-interaction-v0 | native | native | native | native |
 | fabric-dimensions-v1 | disabled | disabled | disabled | disabled |
-| fabric-loot-api-v3 (and v2) | disabled | disabled | disabled | disabled |
+| fabric-loot-api-v3 | native | native | native | native |
 | fabric-resource-conditions-api-v1 | disabled | disabled | disabled | disabled |
 | fabric-tag-api-v1 | disabled | disabled | disabled | disabled |
 | fabric-advancement-api-v1 | — | — | loads | disabled |
@@ -113,7 +113,7 @@ failures fall into a few groups:
   `fabric-object-builder-api-v1` (26.x) read `AttributeSupplier.Builder.builder` as an `ImmutableMap.Builder`,
   which NeoForge replaced; it is native now (see below).
 - **NeoForge's build gives a lambda different parameters**: an `@Inject` handler must take the target
-  method's parameters in order. `fabric-loot-api-v3` (26.1.2, 26.2) and `fabric-resource-conditions-api-v1`
+  method's parameters in order. `fabric-loot-api-v3` (26.1.2, 26.2; native now) and `fabric-resource-conditions-api-v1`
   inject into synthetic lambdas whose captured values NeoForge's build passes in another order or not at all.
 - **A mixin adds a method NeoForge already added**: `fabric-recipe-api-v1` generates an accessor
   `getConnection()` on `ServerCommonPacketListenerImpl` (NeoForge adds a public one), and on 26.1.2 its
@@ -367,6 +367,25 @@ called and its result honoured (use item, use block, block use-item-on and use-w
 attack block, attack entity, use entity, break before/canceled/after, pick item), and the fake player is a NeoForge
 fake player. The client mixins are applied when the client starts.
 
+### Native `fabric-loot-api-v3`
+
+Upstream's loot builder, accessor and drop mixins pass pre-flight on all four versions, so Fabricated ships them
+unchanged (with the public API). Only its hook into loot table loading conflicts with NeoForge, which rewrote that
+code; Fabricated replaces it:
+
+| Fabric API | On NeoForge | Notes |
+|---|---|---|
+| `LootTableEvents.REPLACE`, `MODIFY` | `LootTableLoadEvent` (high priority) | once per table, with the source (vanilla, mod or data pack) of the file in use; the table is rebuilt from Fabric's builder, as upstream |
+| `LootTableEvents.ALL_LOADED` | a hook on `ReloadableServerRegistries.reload` | once the reload's loot table registry is complete; the reload's result is passed on unchanged |
+| `LootTableEvents.MODIFY_DROPS` | upstream's mixin | NeoForge's global loot modifiers run after it |
+| `FabricLootTableBuilder`, `FabricLootPoolBuilder` | upstream's mixins | |
+
+On 26.3, NeoForge's event offers the loading context only as a `HolderGetter.Provider`: the registry lookup Fabric's
+events receive there can get entries and tags (loot tables included) but lists none.
+
+CI checks, on all four versions: dirt's table is modified with source `VANILLA`, `REPLACE` and `ALL_LOADED` run, and
+dirt's drops contain the added pool's diamond and the drop listener's emerald.
+
 ### What this means for Fabric mods
 
 A Fabric mod works today if it needs only the Fabric Loader API and the **native** or **loads** modules
@@ -392,7 +411,8 @@ modules that cascade from it.
 7. ✅ `fabric-item-api-v1` and `fabric-block-api-v1` on all four versions (done). The modules that build on them
    (transfer, content registries) still fail on their own mixins.
 8. ✅ `fabric-events-interaction-v0` on all four versions (done).
-9. Next: `fabric-loot-api-v3`, `fabric-content-registries-v0` and `fabric-transfer-api-v1`.
+9. ✅ `fabric-loot-api-v3` on all four versions (done).
+10. Next: `fabric-content-registries-v0` and `fabric-transfer-api-v1`.
 
 ## Fabric mods tested
 
