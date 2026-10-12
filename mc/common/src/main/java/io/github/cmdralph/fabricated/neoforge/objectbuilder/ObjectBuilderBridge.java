@@ -1,5 +1,6 @@
 package io.github.cmdralph.fabricated.neoforge.objectbuilder;
 
+import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -88,6 +89,38 @@ public final class ObjectBuilderBridge {
 	/** Backs {@code DefaultAttributesAccessor.getRegistry()}, which Fabric's {@code FabricDefaultAttributeRegistry} writes to. */
 	public static Map<EntityType<? extends LivingEntity>, AttributeSupplier> defaultAttributes() {
 		return DEFAULT_ATTRIBUTES;
+	}
+
+	/**
+	 * Vanilla's own velocity flag on the entity type builder (Minecraft 26.3+), which {@code EntityType.trackDeltas()}
+	 * reads there; null before 26.3. The builder is unobfuscated on 26.x, so the field keeps its name.
+	 */
+	private static final Field VANILLA_TRACK_DELTAS = trackDeltasField();
+
+	private static Field trackDeltasField() {
+		try {
+			Field field = EntityType.Builder.class.getDeclaredField("trackDeltas");
+			if (field.getType() != boolean.class) return null;
+			field.setAccessible(true);
+			return field;
+		} catch (ReflectiveOperationException | RuntimeException e) {
+			return null;
+		}
+	}
+
+	/**
+	 * Fabric's {@code alwaysUpdateVelocity}. Up to 26.2, NeoForge's {@code setShouldReceiveVelocityUpdates} backs
+	 * {@code trackDeltas()}; from 26.3 vanilla has its own flag, and NeoForge's method backs {@code hasUpdateInterval()}
+	 * instead, so only the vanilla flag is set there.
+	 */
+	public static <T extends Entity> EntityType.Builder<T> setAlwaysUpdateVelocity(EntityType.Builder<T> builder, boolean alwaysUpdateVelocity) {
+		if (VANILLA_TRACK_DELTAS == null) return builder.setShouldReceiveVelocityUpdates(alwaysUpdateVelocity);
+		try {
+			VANILLA_TRACK_DELTAS.setBoolean(builder, alwaysUpdateVelocity);
+		} catch (IllegalAccessException e) {
+			throw new IllegalStateException("Can't set the entity type builder's velocity flag", e);
+		}
+		return builder;
 	}
 
 	/** Fabric's {@code defaultAttributes} on an entity type builder. */

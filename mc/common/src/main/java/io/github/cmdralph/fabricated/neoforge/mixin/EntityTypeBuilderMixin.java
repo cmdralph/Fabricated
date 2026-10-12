@@ -8,6 +8,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
+import io.github.cmdralph.fabricated.neoforge.objectbuilder.ObjectBuilderBridge;
 import net.fabricmc.fabric.api.object.builder.v1.entity.FabricEntityType;
 import net.fabricmc.fabric.impl.object.builder.FabricEntityTypeImpl;
 import net.minecraft.resources.ResourceKey;
@@ -17,8 +18,9 @@ import net.minecraft.world.entity.LivingEntity;
 
 /**
  * Makes {@link EntityType.Builder} Fabric's {@link FabricEntityType.Builder}. Fabric's two flags map onto the
- * builder methods NeoForge already adds; the living and mob settings (default attributes, spawn placement) are handed
- * on when the type is built, as upstream does. Only observes {@code build}'s result; no Minecraft code is changed.
+ * builder's existing settings (see {@link ObjectBuilderBridge#setAlwaysUpdateVelocity}); the living and mob settings
+ * (default attributes, spawn placement) are handed on when the type is built, as upstream does. Only observes
+ * {@code build}'s result; no Minecraft code is changed.
  */
 @Mixin(EntityType.Builder.class)
 abstract class EntityTypeBuilderMixin<T extends Entity> implements FabricEntityType.Builder<T>, FabricEntityTypeImpl.Builder {
@@ -35,7 +37,7 @@ abstract class EntityTypeBuilderMixin<T extends Entity> implements FabricEntityT
 
 	@Override
 	public EntityType.Builder<T> alwaysUpdateVelocity(boolean alwaysUpdateVelocity) {
-		return fabricated$self().setShouldReceiveVelocityUpdates(alwaysUpdateVelocity);
+		return ObjectBuilderBridge.setAlwaysUpdateVelocity(fabricated$self(), alwaysUpdateVelocity);
 	}
 
 	@Override
