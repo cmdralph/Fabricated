@@ -97,8 +97,4 @@ public final class FabricatedState {
 			LOGGER.warn("Could not write {}: {}", Report.FILE_NAME, e.toString());
 		}
 	}
-
-	public Path reportPath() {
-		return logsDir.resolve(Report.FILE_NAME);
-	}
 }

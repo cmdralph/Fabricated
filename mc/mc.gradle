@@ -43,6 +43,8 @@ sourceSets {
             java.srcDir rootProject.file('mc/common26/src/main/java')
             resources.srcDir rootProject.file('mc/common26/src/main/resources')
         }
+        // Code shared by 26.1.2 and 26.2 only (26.3 changed the APIs it uses).
+        if (mcVersion in ['26.1.2', '26.2']) java.srcDir rootProject.file('mc/common26early/src/main/java')
     }
     testmod {
         java.srcDir rootProject.file('mc/common/src/testmod/java')

@@ -55,10 +55,6 @@ public final class DependencyResolver {
 		return this;
 	}
 
-	public boolean hasNeoForgeMod(String id) {
-		return neoForgeMods.containsKey(id);
-	}
-
 	/**
 	 * @param candidates   candidates that survived config, environment and Fabric API filtering
 	 * @param aliases      extra ids each candidate provides (from config), keyed by candidate id

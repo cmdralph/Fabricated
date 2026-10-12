@@ -91,7 +91,7 @@ Fabricated/
 ```
 
 * **Output:** one jar per MC version, `fabricated-<version>+mc<mc>.jar`. `core`, `loader` and `bridge-common` are shaded in, all under the Fabricated-owned package `dev.fabricated.*`, so they can't clash with anything. The `fabric-loader-api` types keep their original `net.fabricmc.*` package names because Fabric mods link against them.
-* **No preprocessor** (no Stonecutter/Manifold). Version differences live in each `mc/<ver>` directory; code identical across 26.x lives once in `mc/shared-26`.
+* **No preprocessor** (no Stonecutter/Manifold). Version differences live in each `mc/<ver>` directory; code shared by every version lives once in `mc/common`, by all 26.x versions in `mc/common26`, and by 26.1.2 and 26.2 in `mc/common26early`.
 * `core` targets Java 21 bytecode so the *same* compiled classes run on every line.
 
 ---

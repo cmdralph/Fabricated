@@ -51,10 +51,4 @@ public final class RegistryAttributeImpl implements RegistryAttributeHolder {
 	public boolean hasAttribute(RegistryAttribute attribute) {
 		return has(attribute) || attribute == RegistryAttribute.SYNCED && RegistrySyncBridge.syncedByNeoForge(this.key);
 	}
-
-	public synchronized EnumSet<RegistryAttribute> getAttributes() {
-		EnumSet<RegistryAttribute> copy = EnumSet.copyOf(this.attributes);
-		if (RegistrySyncBridge.syncedByNeoForge(this.key)) copy.add(RegistryAttribute.SYNCED);
-		return copy;
-	}
 }
