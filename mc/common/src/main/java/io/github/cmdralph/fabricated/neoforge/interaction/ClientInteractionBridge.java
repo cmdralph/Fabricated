@@ -40,7 +40,7 @@ public final class ClientInteractionBridge {
 
 	private static void preAttack(Minecraft minecraft) {
 		LocalPlayer player = minecraft.player;
-		if (player == null || minecraft.getOverlay() != null) {
+		if (player == null) {
 			attackCancelled = false;
 			return;
 		}
