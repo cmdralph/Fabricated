@@ -29,7 +29,8 @@
     "NetworkAddonHolderMixin",
     "ServerPayloadSendMixin",
     "BlockApiCacheInvalidationMixin",
-    "LivingEntityEffectsMixin"
+    "LivingEntityEffectsMixin",
+    "NetworkRegistryMixin"
   ],
   "injectors": {
     "defaultRequire": 1
