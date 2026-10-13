@@ -7,11 +7,13 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import org.slf4j.LoggerFactory;
 import org.slf4j.Logger;
 
 import io.github.cmdralph.fabricated.core.Pipeline;
+import io.github.cmdralph.fabricated.core.api.FabricatedApiImpl;
 import io.github.cmdralph.fabricated.core.accesswidener.AccessWidenerFile.InjectedInterface;
 import io.github.cmdralph.fabricated.core.config.FabricatedConfig;
 import io.github.cmdralph.fabricated.core.report.Report;
@@ -30,10 +32,12 @@ public final class FabricatedState {
 	private final Pipeline.Result result;
 	private final Path logsDir;
 	private final Map<String, String> fabricIdByNeoForgeId;
+	private final FabricatedApiImpl api;
 
-	FabricatedState(Pipeline.Result result, Path logsDir) {
+	FabricatedState(Pipeline.Result result, Path logsDir, FabricatedApiImpl api) {
 		this.result = result;
 		this.logsDir = logsDir;
+		this.api = api;
 		Map<String, String> ids = new LinkedHashMap<>();
 		for (Pipeline.LoadedMod mod : result.mods()) {
 			ids.put(mod.translated().neoForgeId(), mod.translated().candidate().id());
@@ -48,6 +52,11 @@ public final class FabricatedState {
 
 	static void set(FabricatedState state) {
 		instance = state;
+	}
+
+	/** Fabricated's public API (also published through {@code Fabricated.get()}). */
+	public FabricatedApiImpl api() {
+		return api;
 	}
 
 	public FabricLoaderRuntime runtime() {
@@ -74,6 +83,11 @@ public final class FabricatedState {
 	public Optional<ModContainerImpl> fabricContainer(String neoForgeId) {
 		String fabricId = fabricIdByNeoForgeId.get(neoForgeId);
 		return fabricId == null ? Optional.empty() : Optional.ofNullable(result.containers().get(fabricId));
+	}
+
+	/** Classes of loaded Fabric mods with {@code @Environment} annotations (see {@code EnvironmentStrippingProcessor}). */
+	public Set<String> environmentClasses() {
+		return result.environmentClasses();
 	}
 
 	public Map<String, List<InjectedInterface>> injectedInterfaces() {

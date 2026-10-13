@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.io.StringReader;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -25,6 +26,9 @@ import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.ClassNode;
 
+import io.github.cmdralph.fabricated.api.FabricApiModule;
+import io.github.cmdralph.fabricated.api.FabricMod;
+import io.github.cmdralph.fabricated.core.api.FabricatedApiImpl;
 import io.github.cmdralph.fabricated.core.archive.ArchiveLimits;
 import io.github.cmdralph.fabricated.core.archive.SafeArchive;
 import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
@@ -281,5 +285,43 @@ class PipelineTest {
 		String report = result.report().render();
 		assertTrue(report.contains("NeoForge cannot load both"), report);
 		assertTrue(report.contains("a NeoForge build of this mod is installed"), report);
+	}
+
+	@Test
+	void apiReflectsTheLaunch(@TempDir Path game) throws Exception {
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		writeMods(mods);
+		List<Path> jars;
+		try (var s = Files.list(mods)) {
+			jars = s.sorted().toList();
+		}
+		Pipeline.Input in = input(game, jars, Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null);
+		Pipeline.Result result = Pipeline.run(in);
+		FabricatedApiImpl api = new FabricatedApiImpl(in.fabricatedVersion(), in.fabricApiPlan(), result.report(), result.runtime(), true);
+
+		assertTrue(result.runtime().isModLoaded("fabricated"), "mods can detect Fabricated");
+		assertEquals(FabricMod.Status.LOADED, api.fabricMod("good_mod").orElseThrow().status(), "found by NeoForge id");
+		assertEquals("Good Mod", api.fabricMod("good-mod").orElseThrow().name());
+		assertEquals(FabricMod.Status.DISABLED, api.fabricMod("bad-mixin").orElseThrow().status());
+		assertEquals(FabricMod.Status.SKIPPED, api.fabricMod("client-only").orElseThrow().status());
+		assertTrue(api.fabricMod("broken.jar").isEmpty(), "rejected jars are not mods");
+		assertEquals(FabricApiModule.Status.NATIVE, api.fabricApiModule("fabric-api-base").orElseThrow().status());
+		assertEquals(FabricApiModule.Status.UNSUPPORTED, api.fabricApiModule("fabric-renderer-indigo").orElseThrow().status());
+		assertEquals(FabricApiModule.Status.NOT_INSTALLED, api.fabricApiModule("fabric-item-api-v1").orElseThrow().status());
+
+		List<String> ran = new ArrayList<>();
+		api.afterEntrypoints(() -> ran.add("first"));
+		api.afterEntrypoints(() -> {
+			throw new IllegalStateException("broken action");
+		});
+		api.afterEntrypoints(() -> ran.add("third"));
+		assertTrue(ran.isEmpty(), "waits for the entrypoints");
+		List<Throwable> errors = new ArrayList<>();
+		api.markEntrypointsComplete(Set.of("good-mod"), (action, error) -> errors.add(error));
+		assertEquals(List.of("first", "third"), ran, "a throwing action does not stop the others");
+		assertEquals(1, errors.size());
+		assertEquals(FabricMod.Status.FAILED, api.fabricMod("good-mod").orElseThrow().status());
+		api.afterEntrypoints(() -> ran.add("late"));
+		assertEquals("late", ran.getLast(), "runs right away once the entrypoints ran");
 	}
 }

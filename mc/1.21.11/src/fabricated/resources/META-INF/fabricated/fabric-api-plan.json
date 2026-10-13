@@ -53,7 +53,12 @@
       "reason": "development-time data generator, not needed to play"
     },
     "fabric-dimensions-v1": {
-      "plan": "passthrough"
+      "plan": "passthrough",
+      "skipMixins": [
+        "fabric-dimensions-v1.mixins.json:TaggedChoiceMixin",
+        "fabric-dimensions-v1.mixins.json:TaggedChoiceTaggedChoiceTypeMixin"
+      ],
+      "reason": "DataFixerUpper is a library NeoForge loads without mixin support, so the safety net for worlds that reference a removed modded dimension is not available."
     },
     "fabric-entity-events-v1": {
       "plan": "native",
@@ -66,7 +71,11 @@
       "reason": "Shipped by Fabricated on NeoForge's interaction events (upstream's mixins conflict with NeoForge's patches); attack entity callbacks get no hit result, and client-side cancelled interactions still reach the server."
     },
     "fabric-game-rule-api-v1": {
-      "plan": "passthrough"
+      "plan": "passthrough",
+      "skipMixins": [
+        "fabric-game-rule-api-v1.mixins.json:GameRuleCommandVisitorMixin"
+      ],
+      "reason": "/gamerule does not list Fabric's custom rule types on 1.21.11 (the mixin targets a synthetic field NeoForge's build does not have); the rules themselves work."
     },
     "fabric-gametest-api-v1": {
       "plan": "unsupported",
@@ -113,7 +122,12 @@
       "reason": "Shipped by Fabricated on NeoForge's registration events (upstream's mixins conflict with NeoForge's patches); custom minecart comparator logic is not used by detector rails; trades are replayed through NeoForge's trade events."
     },
     "fabric-particles-v1": {
-      "plan": "passthrough"
+      "plan": "passthrough",
+      "skipMixins": [
+        "fabric-particles-v1.mixins.json:EntityMixin",
+        "fabric-particles-v1.mixins.json:LivingEntityMixin"
+      ],
+      "reason": "NeoForge builds sprint and fall particles with their block position already; upstream's mixins add it to the vanilla constructor NeoForge no longer calls."
     },
     "fabric-recipe-api-v1": {
       "plan": "passthrough"
@@ -124,10 +138,12 @@
       "reason": "Shipped by Fabricated on NeoForge's registries, which already sync ids to clients (upstream's mixins conflict with NeoForge's patches)."
     },
     "fabric-renderer-api-v1": {
-      "plan": "passthrough"
+      "plan": "unsupported",
+      "reason": "Fabric's renderer API replaces the block model pipeline that NeoForge owns; mods that require it need their NeoForge build."
     },
     "fabric-renderer-indigo": {
-      "plan": "passthrough"
+      "plan": "unsupported",
+      "reason": "Fabric's renderer API replaces the block model pipeline that NeoForge owns; mods that require it need their NeoForge build."
     },
     "fabric-rendering-fluids-v1": {
       "plan": "passthrough"

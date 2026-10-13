@@ -32,8 +32,9 @@ The server checks: the server starts; a `main` entrypoint runs; the Fabric Loade
 entrypoint resolves; content registers directly into vanilla registries; `fabric-api-base` events fire; an
 access widener applies; a `server` entrypoint runs; a mixin applies; a mod with a missing dependency is
 reported, naming the dependency; a mod with an impossible mixin is caught by pre-flight; and a mod whose
-entrypoint throws is isolated while the server keeps running. The other 16 cover the native Fabric API modules
-(described in their sections below). The client checks: the client starts and joins a singleplayer world, the
+entrypoint throws is isolated while the server keeps running; Fabricated's public API answers and its
+after-initializers callback runs; a client-only interface listed in `@EnvironmentInterface` is stripped on the server.
+The other 16 cover the native Fabric API modules (described in their sections below). The client checks: the client starts and joins a singleplayer world, the
 `main` and `client` entrypoints run, and the client-side native modules work, including a networking round
 trip with the integrated server.
 
@@ -440,6 +441,20 @@ CI checks, on all four versions: a chest found through `ItemStorage.SIDED` keeps
 aborted and changes when one commits; a full water cauldron empties when a bucket of water is extracted; a Fabric
 storage used through NeoForge's capability and a NeoForge handler used through `ItemStorage.SIDED` follow aborts,
 nested commits and commits; fluids move in whole millibuckets only.
+
+### Fabric Loader
+
+The public `net.fabricmc.loader.api` is complete: entrypoints (including custom ones and language adapters such as
+Kotlin's), mod containers and metadata, versions and predicates, the object share, and the mapping resolver
+(intermediary to Mojang names on 1.21.11).
+
+- `@Environment` and `@EnvironmentInterface` are applied as Fabric Loader applies them: members and interfaces for
+  the other side are stripped when the class loads, so a common class implementing a client-only interface loads on
+  a dedicated server.
+- Of Fabric Loader's internals, `FabricLoaderImpl.INSTANCE` (its public API methods) and
+  `FabricLauncherBase.getLauncher()` (environment, development flag, runtime namespace) are provided for the mods that
+  use them; other internal classes are not.
+- Mods detect Fabricated with `FabricLoader.getInstance().isModLoaded("fabricated")`; see [API.md](API.md).
 
 ### What this means for Fabric mods
 

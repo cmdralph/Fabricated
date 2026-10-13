@@ -17,7 +17,9 @@ import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.github.cmdralph.fabricated.api.internal.ApiHolder;
 import io.github.cmdralph.fabricated.core.Pipeline;
+import io.github.cmdralph.fabricated.core.api.FabricatedApiImpl;
 import io.github.cmdralph.fabricated.core.archive.ArchiveLimits;
 import io.github.cmdralph.fabricated.core.archive.SafeArchive;
 import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
@@ -170,8 +172,12 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 			if (archive != null) archive.close();
 		}
 		result.runtime().install();
-		FabricatedState state = new FabricatedState(result, logsDir);
+		// Fabric entrypoints run when Fabricated's in-game mod loads: always in development, else when there is anything Fabric.
+		boolean addGameMod = gameModJar != null && (!result.mods().isEmpty() || !fabricJars.isEmpty());
+		FabricatedApiImpl api = new FabricatedApiImpl(info.fabricatedVersion(), plan, result.report(), result.runtime(), devGameMod || addGameMod);
+		FabricatedState state = new FabricatedState(result, logsDir, api);
 		FabricatedState.set(state);
+		ApiHolder.install(api);
 
 		ModFileDiscoveryAttributes attributes = ModFileDiscoveryAttributes.DEFAULT.withDependencyLocator(this);
 		for (Pipeline.LoadedMod mod : result.mods()) {
@@ -185,7 +191,7 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 				result.report().line("NeoForge handoff", mod.translated().candidate().id() + " was not accepted by NeoForge; see logs/latest.log");
 			}
 		}
-		if (gameModJar != null && (!result.mods().isEmpty() || !fabricJars.isEmpty())) {
+		if (addGameMod) {
 			pipeline.addPath(gameModJar, attributes, IncompatibleFileReporting.ERROR);
 		}
 

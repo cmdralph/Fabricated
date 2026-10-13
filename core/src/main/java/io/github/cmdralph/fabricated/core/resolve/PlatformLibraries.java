@@ -19,6 +19,8 @@ public final class PlatformLibraries {
 			"org/spongepowered/asm/",
 			"org/objectweb/asm/",
 			"net/fabricmc/loader/",
+			// Fabricated's API: a mod that shaded a copy must use the real one.
+			"io/github/cmdralph/fabricated/api/",
 			"net/fabricmc/api/",
 			"com/google/gson/",
 			"com/google/common/",

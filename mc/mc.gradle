@@ -80,6 +80,7 @@ dependencies {
     compileOnly project(':core')
 
     testmodCompileOnly project(':fabric-loader-api')
+    testmodCompileOnly project(':api')
     testmodCompileOnly sourceSets.main.output
     testmodbrokenCompileOnly project(':fabric-loader-api')
 }

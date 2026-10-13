@@ -19,6 +19,7 @@ plugins {
 rootProject.name = 'fabricated'
 
 include 'fabric-loader-api'
+include 'api'
 include 'core'
 
 // The Minecraft projects need maven.neoforged.net and Mojang's servers. Pass

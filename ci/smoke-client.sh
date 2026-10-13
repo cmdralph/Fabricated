@@ -111,4 +111,6 @@ check "FABRICATED-TEST interaction events OK" "native interaction events in the 
 check "FABRICATED-TEST loot OK" "native loot in the integrated server"
 check "FABRICATED-TEST content registries OK" "native content registries in the integrated server"
 check "FABRICATED-TEST transfer OK" "native transfer in the integrated server"
+check "FABRICATED-TEST api OK" "public API on the client"
+check "FABRICATED-TEST environment stripping OK" "@EnvironmentInterface kept on the client"
 exit "$fail"

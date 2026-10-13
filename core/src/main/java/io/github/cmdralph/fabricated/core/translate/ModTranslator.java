@@ -6,6 +6,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -29,6 +30,7 @@ import io.github.cmdralph.fabricated.core.archive.DeterministicJarWriter;
 import io.github.cmdralph.fabricated.core.archive.Hashing;
 import io.github.cmdralph.fabricated.core.archive.SafeArchive;
 import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
+import io.github.cmdralph.fabricated.core.bytecode.EnvironmentStripper;
 import io.github.cmdralph.fabricated.core.cache.TranslationCache;
 import io.github.cmdralph.fabricated.core.config.FabricatedConfig.ModOverride;
 import io.github.cmdralph.fabricated.core.json.JsonException;
@@ -136,6 +138,8 @@ public final class ModTranslator {
 					}
 				}
 
+				Set<String> environmentClasses = environmentClasses(remapped != null ? remapped.keySet() : archive.classEntryNames(), files);
+
 				FabricModMetadata md = candidate.metadata();
 				ModsTomlWriter.Spec spec = new ModsTomlWriter.Spec(neoId, md.getVersion().getFriendlyString(), md.getName(),
 						md.getDescription(), List.copyOf(md.getAuthors()), List.copyOf(md.getContributors()),
@@ -163,10 +167,11 @@ public final class ModTranslator {
 				meta.put("notes", notes);
 				meta.put("findings", findings.stream().map(ModTranslator::findingToJson).toList());
 				meta.put("injectedInterfaces", injections.stream().map(ModTranslator::injectionToJson).toList());
+				meta.put("environmentClasses", List.copyOf(environmentClasses));
 				TranslationCache.Entry entry = cache.store(entryName, outputs, meta);
 				Path jar = remapped != null ? entry.file(REMAPPED) : candidate.path();
 				return new TranslatedMod(candidate, neoId, jar, entry.file(OVERLAY), List.copyOf(findings), atLines,
-						List.copyOf(notes), injections, false, millis);
+						List.copyOf(notes), injections, environmentClasses, false, millis);
 			} catch (ArchiveException e) {
 				throw new TranslationException("The jar is unsafe or corrupt: " + e.getMessage(), "Re-download the mod from its official page.");
 			} catch (MappingException e) {
@@ -190,6 +195,17 @@ public final class ModTranslator {
 			size = 0;
 		}
 		return (int) Math.max(1, Math.min(MEMORY_MIB, size * 10 / (1 << 20)));
+	}
+
+	/** Classes whose bytes mention Fabric's {@code @Environment} annotations, to strip for the other side at class load. */
+	private static Set<String> environmentClasses(Collection<String> entries, FileView files) throws ArchiveException {
+		Set<String> classes = new TreeSet<>();
+		for (String name : entries) {
+			if (!name.endsWith(".class") || name.startsWith("META-INF/")) continue;
+			byte[] data = files.read(name);
+			if (data != null && EnvironmentStripper.mayNeedStripping(data)) classes.add(name.substring(0, name.length() - ".class".length()));
+		}
+		return Set.copyOf(classes);
 	}
 
 	/** Reads an entry of the mod being translated (remapped when applicable). */
@@ -346,10 +362,12 @@ public final class ModTranslator {
 				if (o instanceof Map<?, ?> m) injections.add(injectionFromJson(m));
 			}
 		}
+		Set<String> environmentClasses = new TreeSet<>();
+		if (meta.get("environmentClasses") instanceof List<?> list) list.forEach(o -> environmentClasses.add(String.valueOf(o)));
 		int at = meta.get("accessTransformers") instanceof Number n ? n.intValue() : 0;
 		Path jar = env.namespace() == Namespace.INTERMEDIARY ? entry.file(REMAPPED) : candidate.path();
 		return new TranslatedMod(candidate, neoId, jar, entry.file(OVERLAY), List.copyOf(findings), at, List.copyOf(notes),
-				List.copyOf(injections), true, 0);
+				List.copyOf(injections), Set.copyOf(environmentClasses), true, 0);
 	}
 
 	private static Map<String, Object> findingToJson(PreflightFinding f) {

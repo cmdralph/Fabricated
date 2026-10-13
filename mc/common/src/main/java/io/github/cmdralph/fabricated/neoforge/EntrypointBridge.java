@@ -1,9 +1,11 @@
 package io.github.cmdralph.fabricated.neoforge;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -89,6 +91,13 @@ final class EntrypointBridge {
 		}
 		LOGGER.info("Fabricated ran Fabric entrypoints for {} mod(s) in {} ms ({} failure(s))",
 				state.mods().size(), (System.nanoTime() - start) / 1_000_000, failures.size());
+		Set<String> failed = new HashSet<>();
+		for (EntrypointRunner.Failure failure : failures) failed.add(failure.modId());
+		state.api().markEntrypointsComplete(failed, (action, error) -> {
+			String text = "An action waiting for Fabric mods' initializers (" + action.getClass().getName() + ") threw " + error;
+			LOGGER.error("{}", text, error);
+			ModLoader.addLoadingIssue(ModLoadingIssue.warning(MESSAGE, text).withCause(error));
+		});
 	}
 
 	/** Records timings and writes the final report once loading has completed. */

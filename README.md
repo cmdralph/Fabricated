@@ -156,6 +156,11 @@ warning in the report, so a bad config never crashes the game.
 - **JPMS packages.** NeoForge requires every Java package to belong to exactly one mod. Fabric allows
   sharing, so clashing mods are de-duplicated (identical files) or one is disabled.
 
+## For mod developers
+
+NeoForge mods can see which Fabric mods are loaded and run code once their initializers have run. Fabric mods can
+detect Fabricated with `FabricLoader.getInstance().isModLoaded("fabricated")`. See [docs/API.md](docs/API.md).
+
 ## Building
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). In short:

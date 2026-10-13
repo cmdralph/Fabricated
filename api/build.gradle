@@ -1,0 +1,45 @@
+// Fabricated's public API: what NeoForge and Fabric mods may compile against. No dependencies, so one jar serves
+// every Minecraft version; bundled into the Fabricated jar through :core.
+plugins {
+    id 'java-library'
+    id 'maven-publish'
+}
+
+version = rootProject.fabricated_api_version
+
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(21)
+    withJavadocJar()
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.release = 21
+}
+
+tasks.named('jar', Jar) {
+    manifest.attributes('Automatic-Module-Name': 'io.github.cmdralph.fabricated.api')
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    testImplementation platform("org.junit:junit-bom:${junit_version}")
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+publishing {
+    publications {
+        maven(MavenPublication) {
+            artifactId = 'fabricated-api'
+            from components.java
+        }
+    }
+}
+
+tasks.named('javadoc', Javadoc) {
+    // The API documents behaviour in prose; don't require a tag for every parameter and return value.
+    options.addStringOption('Xdoclint:all,-missing', '-quiet')
+}

@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -121,6 +122,7 @@ public final class Pipeline {
 			FabricatedConfig config,
 			List<LoadedMod> mods,
 			Map<String, List<InjectedInterface>> injectedInterfaces,
+			Set<String> environmentClasses,
 			FabricLoaderRuntime runtime,
 			Map<String, ModContainerImpl> containers,
 			Report report,
@@ -435,6 +437,7 @@ public final class Pipeline {
 
 		List<LoadedMod> loaded = new ArrayList<>();
 		Map<String, List<InjectedInterface>> injections = new TreeMap<>();
+		Set<String> environmentClasses = new HashSet<>();
 		Map<String, ModContainerImpl> containers = new LinkedHashMap<>();
 		Set<String> finalIds = rounds.translated.stream().map(t -> t.candidate().id()).filter(id -> !rounds.dropped.containsKey(id))
 				.collect(Collectors.toSet());
@@ -444,6 +447,7 @@ public final class Pipeline {
 			PackageGuard.Decision decision = rounds.decisions.get(t.neoForgeId());
 			loaded.add(new LoadedMod(t, decision != null ? decision.excludedPackages() : Set.of()));
 			for (InjectedInterface ii : t.injectedInterfaces()) injections.computeIfAbsent(ii.target(), k -> new ArrayList<>()).add(ii);
+			environmentClasses.addAll(t.environmentClasses());
 			reportLoaded(t, rounds.translatedThisLaunch.get(c.id()), decision, rounds.linkage.get(t.neoForgeId()));
 
 			ModOrigin origin = c.parentId() == null
@@ -464,7 +468,7 @@ public final class Pipeline {
 		for (NeoForgeMod m : in.neoForgeMods()) addBuiltin(runtime, m.id(), m.version(), m.displayName(), List.of());
 
 		in.cache().notes().forEach(n -> report.line("Cache", n));
-		return new Result(config, List.copyOf(loaded), injections, runtime, containers, report, dependencyFailures);
+		return new Result(config, List.copyOf(loaded), injections, Set.copyOf(environmentClasses), runtime, containers, report, dependencyFailures);
 	}
 
 	private void reportLoaded(TranslatedMod t, Long millis, PackageGuard.Decision decision, List<String> linkageIssues) {
