@@ -162,7 +162,7 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 			Pipeline.Input input = new Pipeline.Input(gameDir, FMLPaths.CONFIGDIR.get(), config, cache, fabricJars, mcVersion, neoVersion,
 					client, info.namespace(), runtimeMixinVersion(info), info.mixinLowest(), info.fabricatedVersion(), !fml.isProduction(), gameClasses, untransformable,
 					platformPackages, plan, nativeApi, nativeApiInterfaces, neoForgeMods,
-					(cache, mojangPath) -> IntermediaryMappings.load(cache, mcVersion, client, mojangPath),
+					(mappingsCache, mojangPath) -> IntermediaryMappings.load(mappingsCache, mcVersion, client, mojangPath),
 					fml.getProgramArgs().getArguments());
 
 			result = Pipeline.run(input);

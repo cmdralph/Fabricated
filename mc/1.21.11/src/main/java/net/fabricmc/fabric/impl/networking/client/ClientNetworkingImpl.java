@@ -1,11 +1,8 @@
 package net.fabricmc.fabric.impl.networking.client;
 
-import java.util.Collections;
-import java.util.Map;
-import java.util.WeakHashMap;
-
 import org.jspecify.annotations.Nullable;
 
+import io.github.cmdralph.fabricated.neoforge.networking.NetworkAddons;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientConfigurationPacketListenerImpl;
 import net.minecraft.client.multiplayer.ClientHandshakePacketListenerImpl;
@@ -27,24 +24,21 @@ public final class ClientNetworkingImpl {
 	public static final GlobalReceiverRegistry<ClientConfigurationNetworking.ConfigurationPayloadHandler<?>> CONFIGURATION = new GlobalReceiverRegistry<>();
 	public static final GlobalReceiverRegistry<ClientPlayNetworking.PlayPayloadHandler<?>> PLAY = new GlobalReceiverRegistry<>();
 
-	private static final Map<ClientPacketListener, ClientPlayNetworkAddon> PLAY_ADDONS = Collections.synchronizedMap(new WeakHashMap<>());
-	private static final Map<ClientConfigurationPacketListenerImpl, ClientConfigurationNetworkAddon> CONFIGURATION_ADDONS = Collections.synchronizedMap(new WeakHashMap<>());
-	private static final Map<ClientHandshakePacketListenerImpl, ClientLoginNetworkAddon> LOGIN_ADDONS = Collections.synchronizedMap(new WeakHashMap<>());
 	private static volatile @Nullable ClientConfigurationPacketListenerImpl currentConfiguration;
 
 	private ClientNetworkingImpl() {
 	}
 
 	public static ClientPlayNetworkAddon getAddon(ClientPacketListener listener) {
-		return PLAY_ADDONS.computeIfAbsent(listener, ClientPlayNetworkAddon::new);
+		return NetworkAddons.get(listener, ClientPlayNetworkAddon.class, ClientPlayNetworkAddon::new);
 	}
 
 	public static ClientConfigurationNetworkAddon getAddon(ClientConfigurationPacketListenerImpl listener) {
-		return CONFIGURATION_ADDONS.computeIfAbsent(listener, ClientConfigurationNetworkAddon::new);
+		return NetworkAddons.get(listener, ClientConfigurationNetworkAddon.class, ClientConfigurationNetworkAddon::new);
 	}
 
 	public static ClientLoginNetworkAddon getAddon(ClientHandshakePacketListenerImpl listener) {
-		return LOGIN_ADDONS.computeIfAbsent(listener, l -> new ClientLoginNetworkAddon());
+		return NetworkAddons.get(listener, ClientLoginNetworkAddon.class, l -> new ClientLoginNetworkAddon());
 	}
 
 	public static @Nullable ClientPlayNetworkAddon getClientPlayAddon() {

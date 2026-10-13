@@ -49,6 +49,8 @@ final class EntrypointBridge {
 		long start = System.nanoTime();
 		if (dist.isClient()) state.runtime().setGameInstance(ClientSupport.gameInstance());
 
+		// Fabricated's own, as this runs inside its RegisterEvent listener: restored after each entrypoint.
+		ModContainer previous = ModLoadingContext.get().getActiveContainer();
 		runner = new EntrypointRunner(state.runtime(), new EntrypointRunner.ContextHook() {
 			@Override
 			public void enter(String modId) {
@@ -57,7 +59,7 @@ final class EntrypointBridge {
 
 			@Override
 			public void exit() {
-				ModLoadingContext.get().setActiveContainer(null);
+				ModLoadingContext.get().setActiveContainer(previous);
 			}
 		});
 

@@ -32,7 +32,11 @@
     "FakePlayerMixin",
     "PlayerAdvancementsMixin",
     "ReloadableServerRegistriesMixin",
-    "VibrationSystemMixin"
+    "VibrationSystemMixin",
+    "NetworkAddonHolderMixin",
+    "ServerCommonPacketListenerImplMixin",
+    "BlockApiCacheInvalidationMixin",
+    "LivingEntityEffectsMixin"
   ],
   "injectors": {
     "defaultRequire": 1
@@ -43,6 +47,8 @@
     "client.ClientConfigurationPacketListenerImplMixin",
     "client.KeyMappingAccessor",
     "client.MultiPlayerGameModeMixin",
-    "client.MouseHandlerMixin"
+    "client.MouseHandlerMixin",
+    "client.ClientNetworkAddonHolderMixin",
+    "client.ClientCommonPacketListenerImplSendMixin"
   ]
 }

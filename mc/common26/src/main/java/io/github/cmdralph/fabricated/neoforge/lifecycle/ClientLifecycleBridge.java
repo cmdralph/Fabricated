@@ -8,6 +8,7 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
@@ -17,6 +18,7 @@ import net.neoforged.neoforge.event.GameShuttingDownEvent;
 import net.neoforged.neoforge.event.entity.EntityJoinLevelEvent;
 import net.neoforged.neoforge.event.entity.EntityLeaveLevelEvent;
 import net.neoforged.neoforge.event.level.ChunkEvent;
+import net.neoforged.neoforge.event.level.LevelEvent;
 import net.neoforged.neoforge.event.tick.LevelTickEvent;
 
 /**
@@ -85,6 +87,12 @@ final class ClientLifecycleBridge {
 		});
 		bus.addListener(EntityLeaveLevelEvent.class, e -> {
 			if (e.getLevel() instanceof ClientLevel level) ClientEntityEvents.ENTITY_UNLOAD.invoker().onUnload(e.getEntity(), level);
+		});
+		// NeoForge sends no leave event for the entities of a level the client drops (disconnect, dimension change);
+		// a mod tracking entities would keep that level alive.
+		bus.addListener(LevelEvent.Unload.class, e -> {
+			if (!(e.getLevel() instanceof ClientLevel level)) return;
+			for (Entity entity : level.entitiesForRendering()) ClientEntityEvents.ENTITY_UNLOAD.invoker().onUnload(entity, level);
 		});
 	}
 }
