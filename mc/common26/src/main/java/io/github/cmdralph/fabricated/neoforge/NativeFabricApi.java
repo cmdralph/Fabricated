@@ -13,6 +13,7 @@ import io.github.cmdralph.fabricated.neoforge.lifecycle.LifecycleBridge;
 import io.github.cmdralph.fabricated.neoforge.networking.NetworkingBridge;
 import io.github.cmdralph.fabricated.neoforge.objectbuilder.ObjectBuilderBridge;
 import io.github.cmdralph.fabricated.neoforge.resource.ResourceLoaderBridge;
+import io.github.cmdralph.fabricated.neoforge.transfer.TransferBridge;
 import net.fabricmc.fabric.api.object.builder.v1.entity.FabricDefaultAttributeRegistry;
 import net.fabricmc.fabric.impl.lookup.ApiLookupImpl;
 import net.minecraft.world.entity.EntityType;
@@ -35,6 +36,7 @@ public final class NativeFabricApi {
 		LootBridge.register();
 		// fabric-api-lookup-api-v1's own initializer (it only registers a check at server start).
 		new ApiLookupImpl().onInitialize();
+		TransferBridge.register(modBus);
 		if (dist.isClient()) ClientHotbarScroll.register();
 		ItemApiBridge.register(modBus, dist);
 		BlockApiCompat.register(modBus);

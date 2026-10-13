@@ -418,15 +418,28 @@ mixins needed changes:
 `ItemStorage.SIDED` and `FluidStorage.SIDED` find vanilla containers, cauldrons, composters, jukeboxes, shelves and
 bundles as upstream does, and transactions behave as upstream's.
 
-**Limit:** Fabric's storages and NeoForge's capabilities don't see each other yet. A NeoForge hopper or pipe doesn't
-reach a Fabric-only storage, and a Fabric mod doesn't reach a NeoForge-only one. Vanilla blocks work from both sides,
-since each side wraps them itself.
+**Bridge to NeoForge's capabilities.** Fabric storages and NeoForge's item and fluid handlers on blocks see each
+other: a NeoForge hopper or pipe moves items and fluids in and out of a Fabric mod's machine, and a Fabric mod's
+pipe reaches a NeoForge mod's block.
+
+- Transactions are mirrored both ways: a simulation (an aborted transaction) on one side is aborted on the other, and
+  nested transactions keep their meaning.
+- Fluids convert at 81 droplets per millibucket. Only whole millibuckets move between the two: if a Fabric storage
+  would take part of one, it is asked again for whole millibuckets.
+- A NeoForge mod's own capability for its block wins over a Fabric storage, and for a NeoForge mod's block Fabric mods
+  get its NeoForge handler before Fabric's generic `Container` wrapper, so the block's access rules hold.
+- Vanilla blocks keep each side's own wrappers.
+- Item storages inside items (`ItemStorage.ITEM`, `FluidStorage.ITEM`) and entity storages are not bridged yet.
+- A Fabric storage that hands work to a NeoForge handler that in turn uses another Fabric storage, all in one
+  transaction, is not supported (each side would wait for the other to close first).
 
 On 1.21.11, `FluidVariantRendering`'s default sprites and colours come from NeoForge's fluid client extensions instead
 of `fabric-rendering-fluids-v1`'s registry.
 
 CI checks, on all four versions: a chest found through `ItemStorage.SIDED` keeps its items when a transaction is
-aborted and changes when one commits; a full water cauldron empties when a bucket of water is extracted.
+aborted and changes when one commits; a full water cauldron empties when a bucket of water is extracted; a Fabric
+storage used through NeoForge's capability and a NeoForge handler used through `ItemStorage.SIDED` follow aborts,
+nested commits and commits; fluids move in whole millibuckets only.
 
 ### What this means for Fabric mods
 
@@ -456,8 +469,7 @@ modules that cascade from it.
 9. ✅ `fabric-loot-api-v3` on all four versions (done).
 10. ✅ `fabric-content-registries-v0` on all four versions (done).
 11. ✅ `fabric-transfer-api-v1` and `fabric-api-lookup-api-v1` on all four versions (done).
-12. Next: a bridge between Fabric storages and NeoForge's item and fluid capabilities, so NeoForge hoppers and pipes
-    reach Fabric storages and the other way round.
+12. ✅ The bridge between Fabric storages and NeoForge's item and fluid capabilities (done).
 
 ## Fabric mods tested
 
