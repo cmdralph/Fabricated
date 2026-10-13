@@ -2,7 +2,8 @@
 # CI client smoke test: installs a real NeoForge client with the official installer, adds Fabricated and the Fabric
 # test mod, and starts it headlessly (Xvfb) with HeadlessMC. mc-runtime-test's client mod creates a singleplayer
 # world, waits until the player's chunk is loaded and quits; the test then checks the client-side test markers
-# (client entrypoint, client lifecycle, client resource listener, a networking round trip with the integrated server).
+# (client entrypoint, client lifecycle, client resource listener, a configuration task and a networking round trip with
+# the integrated server).
 #
 # Usage: ci/smoke-client.sh <minecraft-version> <neoforge-version> <work-dir> [extra-mods-dir]
 # Expects: build/libs/fabricated-*+mc<minecraft-version>.jar and mc/<minecraft-version>/build/testmods/*.jar,
@@ -68,8 +69,16 @@ timeout "$timeout_seconds" xvfb-run -a -s "-screen 0 1280x720x24 +extension GLX 
 	--command launch "neoforge-${neo}" -regex --jvm "-Djava.awt.headless=true -DMcRuntimeGameTest=false" \
 	> client.out 2>&1 &
 client_pid=$!
+dumped=0
 # The game doesn't exit when no renderer can be created; stop it then instead of waiting for the timeout.
 while kill -0 "$client_pid" 2>/dev/null; do
+	# Shortly before the timeout, record what every game thread is doing, so a hang can be diagnosed from the log.
+	if [ "$dumped" -eq 0 ] && [ "$SECONDS" -ge $((timeout_seconds - 45)) ]; then
+		dumped=1
+		for pid in $(pgrep -f -- "-DMcRuntimeGameTest=false" || true); do
+			"$JAVA_HOME/bin/jstack" "$pid" >> thread-dump.txt 2>&1 || true
+		done
+	fi
 	if grep -q "Failed to create backend OpenGL" client.out && grep -q "Failed to create backend Vulkan" client.out; then
 		echo "No render backend could be created; stopping the client."
 		sleep 5
@@ -87,6 +96,17 @@ log=run/logs/latest.log
 echo "::group::Client output (tail)"
 tail -n 300 client.out || true
 echo "::endgroup::"
+if [ "$status" -ne 0 ]; then
+	echo "::group::Game log without the loading-screen spam (last 250 lines)"
+	grep -v "Waiting for player to load" "$log" | tail -n 250 || true
+	echo "::endgroup::"
+fi
+if [ -f thread-dump.txt ]; then
+	echo "::group::Thread dump before the timeout (game threads)"
+	# Paragraphs (one per thread) for the threads that matter for a stuck world join.
+	awk 'BEGIN { RS = ""; ORS = "\n\n" } /^"(Render thread|Server thread|Netty|Local|IO-Worker|Worker-Main)/' thread-dump.txt || true
+	echo "::endgroup::"
+fi
 echo "::group::fabric-bridge-report.txt"
 cat run/logs/fabric-bridge-report.txt || echo "(report missing)"
 echo "::endgroup::"
@@ -101,6 +121,7 @@ check "FABRICATED-TEST main entrypoint OK" "main entrypoint ran on the client"
 check "FABRICATED-TEST client entrypoint OK" "client entrypoint ran"
 check "FABRICATED-TEST client started OK" "native client lifecycle: CLIENT_STARTED"
 check "FABRICATED-TEST client resource reload listener OK" "native client resource reload listener"
+check "FABRICATED-TEST configuration task OK" "Fabric configuration task with the integrated server"
 check "FABRICATED-TEST client join event OK" "native client networking: join event"
 check "FABRICATED-TEST client networking round trip OK" "native networking: client to integrated server and back"
 check "FABRICATED-TEST registry sync: custom registry OK" "registry sync on the client"

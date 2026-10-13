@@ -131,6 +131,7 @@ jobs:
             ${{ runner.temp }}/client/run/logs
             ${{ runner.temp }}/client/run/crash-reports
             ${{ runner.temp }}/client/client.out
+            ${{ runner.temp }}/client/thread-dump.txt
           if-no-files-found: ignore
       # The same client with the official Fabric API jar: shows which client-side modules load and whether the game
       # still reaches a world. Informational until every client module is accounted for.
@@ -140,7 +141,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          ci/smoke-client.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/client-fapi" "$RUNNER_TEMP/extra" || true
+          SMOKE_TIMEOUT=480 ci/smoke-client.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/client-fapi" "$RUNNER_TEMP/extra" || true
           grep -A200 "== " "$RUNNER_TEMP/client-fapi/run/logs/fabric-bridge-report.txt" || true
       - name: Upload Fabric API client run logs and report
         if: always()
@@ -151,6 +152,7 @@ jobs:
             ${{ runner.temp }}/client-fapi/run/logs
             ${{ runner.temp }}/client-fapi/run/crash-reports
             ${{ runner.temp }}/client-fapi/client.out
+            ${{ runner.temp }}/client-fapi/thread-dump.txt
           if-no-files-found: ignore
       - name: Upload Fabricated jar
         uses: actions/upload-artifact@v4
