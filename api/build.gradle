@@ -35,6 +35,17 @@ publishing {
         maven(MavenPublication) {
             artifactId = 'fabricated-api'
             from components.java
+            pom {
+                name = 'Fabricated API'
+                description = "Public API of Fabricated, which loads Fabric mods on NeoForge."
+                url = 'https://github.com/cmdralph/Fabricated'
+                licenses {
+                    license {
+                        name = 'GNU General Public License, version 3'
+                        url = 'https://www.gnu.org/licenses/gpl-3.0.txt'
+                    }
+                }
+            }
         }
     }
 }

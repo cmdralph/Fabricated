@@ -5,7 +5,7 @@
   "name": "Fabricated Test Mod",
   "description": "Exercises Fabricated in CI. Not meant for players.",
   "authors": ["Fabricated contributors"],
-  "license": "MIT",
+  "license": "GPL-3.0",
   "environment": "*",
   "entrypoints": {
     "main": ["io.github.cmdralph.fabricated.testmod.TestMod"${testmod_extra_main}],

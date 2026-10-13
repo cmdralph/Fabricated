@@ -6,7 +6,7 @@ Fabricated has a small public API for mods that want to work with the Fabric mod
 - Fabric mods that want to detect Fabricated;
 - how to depend on the API.
 
-The API has no dependencies: no Minecraft, NeoForge or Fabric types. The same jar works on every Minecraft version Fabricated supports. The API version, currently **1.0.0**, follows semantic versioning on its own, separate from Fabricated's release version.
+The API is part of Fabricated and licensed under GPL-3.0, like the rest of the project. The API has no dependencies: no Minecraft, NeoForge or Fabric types. The same jar works on every Minecraft version Fabricated supports. The API version, currently **1.0.0**, follows semantic versioning on its own, separate from Fabricated's release version.
 
 ## Depending on it
 

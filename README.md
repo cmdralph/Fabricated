@@ -181,6 +181,6 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). In short:
 
 ## License
 
-MIT, see [LICENSE](LICENSE). Third-party material (the Fabric Loader API and vendored Fabric API modules
-under Apache-2.0, and Intermediary mappings under CC0) is listed in [NOTICE](NOTICE). Fabricated contains
+GPL-3.0, see [LICENSE](LICENSE). Third-party material (the Fabric Loader API and vendored Fabric API modules
+under Apache-2.0, which GPL-3.0 can include, and Intermediary mappings under CC0) is listed in [NOTICE](NOTICE). Fabricated contains
 no code from Sinytra Connector, Forgified Fabric API or Launchpad.

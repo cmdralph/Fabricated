@@ -137,7 +137,7 @@ Other loader facts:
 | Intermediary mappings | **CC0-1.0** | Safe to bundle `1.21.11.tiny`. |
 | tiny-remapper | LGPL-3.0 and not on Maven Central | **Not used.** Fabricated uses its own small ASM-based remapper. |
 | mapping-io | Apache-2.0 (Maven Central 0.9.1) | Not needed. The two formats involved (Tiny v1, ProGuard txt) are trivial to parse in-house, which saves a dependency. |
-| Launchpad | **GPL-3.0** | **Never copied or linked**, to keep Fabricated MIT-clean. |
+| Launchpad | **GPL-3.0** | **Never copied or linked**: Fabricated is a clean-room design. |
 
 ---
 
@@ -187,7 +187,7 @@ Other loader facts:
 
 ## 6. Licensing decision
 
-* Keep **MIT** (existing `LICENSE`, © 2026 Ralph Turner).
+* Originally MIT; the project has since moved to **GPL-3.0** (`LICENSE`). Apache-2.0 and CC0 inputs remain compatible.
 * Add `NOTICE` for: Fabric Loader API types (Apache-2.0, FabricMC) and Intermediary 1.21.11 (CC0, FabricMC, attribution given as a courtesy).
 * **No** code from Connector, Launchpad, Adapter, FFAPI or Forgified Fabric Loader. Their designs were studied; the implementation is clean-room.
 

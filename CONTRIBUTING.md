@@ -108,6 +108,7 @@ Run the game with the Fabric mod, then open an issue with:
 
 ## Licensing
 
-Fabricated is MIT-licensed. Contributions are accepted under the same license. Do not copy code from
-projects with incompatible licenses (for example GPL code such as Sinytra Launchpad). Third-party code under
-permissive licenses must keep its headers, and it must be listed in `NOTICE`.
+Fabricated is licensed under GPL-3.0. Contributions are accepted under the same license. Only copy code whose
+license is compatible with GPL-3.0 (for example Apache-2.0, MIT or CC0); it must keep its headers and be listed in
+`NOTICE`. Fabricated remains a clean-room design: do not copy code from Sinytra Connector, Launchpad, Adapter,
+Forgified Fabric API or Forgified Fabric Loader, whatever their license.
