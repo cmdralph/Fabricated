@@ -134,7 +134,7 @@ class LinkageCheckerTest {
 		ClassBytesSource runtime = name -> gameClasses.containsKey(name) ? gameClasses.get(name) : modClasses.get(name);
 
 		LinkageAnalysis analysis = new LinkageAnalysis(new TranslationCache(dir.resolve("game"), true, true), ArchiveLimits.DEFAULTS, false);
-		assertTrue(analysis.analyse(List.of(ext, user), runtime, Map.of(), "with-mixin").isEmpty());
-		assertEquals(1, analysis.analyse(List.of(user), runtime, Map.of(), "without-mixin").size(), "without the mixin the call is unresolved");
+		assertTrue(analysis.analyse(List.of(ext, user), runtime, Map::of, "with-mixin").isEmpty());
+		assertEquals(1, analysis.analyse(List.of(user), runtime, Map::of, "without-mixin").size(), "without the mixin the call is unresolved");
 	}
 }

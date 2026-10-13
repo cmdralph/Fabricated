@@ -1,4 +1,4 @@
-package io.github.cmdralph.fabricated.core.translate;
+package io.github.cmdralph.fabricated.core.metadata;
 
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -9,7 +9,9 @@ public final class ModIds {
 	public static final Pattern NEOFORGE_ID = Pattern.compile("^[a-z][a-z0-9_]{1,63}$");
 
 	/** Ids owned by the platform that a Fabric mod may not take. */
-	public static final Set<String> RESERVED = Set.of("minecraft", "neoforge", "java", "fabricloader", "fabric_loader", "fabricated", "mcp", "forge");
+	/** Fabricated's own mod id, on NeoForge and in Fabric's API. */
+	public static final String FABRICATED = "fabricated";
+	public static final Set<String> RESERVED = Set.of("minecraft", "neoforge", "java", "fabricloader", "fabric_loader", FABRICATED, "mcp", "forge");
 
 	private ModIds() {
 	}

@@ -102,8 +102,7 @@ public record FabricatedConfig(
 			return defaults().withWarning(FILE_NAME + " is not valid JSON (" + e.getMessage() + "); using defaults");
 		}
 		Reader r = new Reader(root, "", warnings);
-		int schema = r.integer("schema", SCHEMA, 1, 1);
-		if (schema != SCHEMA) warnings.add("Unknown schema " + schema);
+		r.integer("schema", SCHEMA, SCHEMA, SCHEMA);
 
 		// Accepted (and ignored) so configs written by older versions don't produce a warning. A NeoForge mod now
 		// always wins over a Fabric mod with the same id: NeoForge refuses to load two mods with one id.

@@ -11,7 +11,7 @@ import java.util.Set;
 import java.util.TreeSet;
 
 import io.github.cmdralph.fabricated.core.metadata.ModDependencyImpl;
-import io.github.cmdralph.fabricated.core.translate.ModIds;
+import io.github.cmdralph.fabricated.core.metadata.ModIds;
 import net.fabricmc.loader.api.Version;
 import net.fabricmc.loader.api.metadata.ModDependency;
 

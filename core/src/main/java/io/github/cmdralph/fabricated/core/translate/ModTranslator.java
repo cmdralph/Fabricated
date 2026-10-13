@@ -32,6 +32,7 @@ import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
 import io.github.cmdralph.fabricated.core.cache.TranslationCache;
 import io.github.cmdralph.fabricated.core.config.FabricatedConfig.ModOverride;
 import io.github.cmdralph.fabricated.core.json.JsonException;
+import io.github.cmdralph.fabricated.core.metadata.ModIds;
 import io.github.cmdralph.fabricated.core.metadata.FabricModMetadata;
 import io.github.cmdralph.fabricated.core.metadata.FabricModMetadata.MixinEntry;
 import io.github.cmdralph.fabricated.core.mixin.MixinConfigFile;
@@ -43,7 +44,6 @@ import io.github.cmdralph.fabricated.core.remap.JarRemapper;
 import io.github.cmdralph.fabricated.core.remap.MappingException;
 import io.github.cmdralph.fabricated.core.remap.TokenRemapper;
 import io.github.cmdralph.fabricated.core.resolve.Candidate;
-import io.github.cmdralph.fabricated.core.resolve.CandidateScanner;
 import io.github.cmdralph.fabricated.core.translate.TranslationEnvironment.Namespace;
 import net.fabricmc.api.EnvType;
 
@@ -142,7 +142,7 @@ public final class ModTranslator {
 						List.copyOf(md.getLicense()), url(md.getContact().get("homepage").orElse(null), "homepage", notes),
 						url(md.getContact().get("issues").orElse(null), "issues", notes), md.getIconPath(256).filter(archive::contains).orElse(null), mixinSpecs,
 						overlay.containsKey(AT_PATH), after);
-				overlay.put(CandidateScanner.NEOFORGE_MODS_TOML, ModsTomlWriter.write(spec, "[0,)").getBytes(StandardCharsets.UTF_8));
+				overlay.put(ModsTomlWriter.PATH, ModsTomlWriter.write(spec, "[0,)").getBytes(StandardCharsets.UTF_8));
 				overlay.put("META-INF/MANIFEST.MF", overlayManifest(neoId));
 
 				Map<String, byte[]> outputs = new LinkedHashMap<>();
@@ -281,13 +281,7 @@ public final class ModTranslator {
 	}
 
 	private static ClassBytesSource classSource(FileView files) {
-		return internalName -> {
-			try {
-				return files.read(internalName + ".class");
-			} catch (ArchiveException e) {
-				throw new IOException(e.getMessage(), e);
-			}
-		};
+		return internalName -> files.read(internalName + ".class");
 	}
 
 	private void checkNamespace(String namespace, Candidate candidate) throws TranslationException {

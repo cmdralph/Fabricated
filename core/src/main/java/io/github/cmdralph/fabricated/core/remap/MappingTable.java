@@ -5,7 +5,6 @@ import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -31,9 +30,10 @@ public final class MappingTable {
 	private volatile Map<String, String> inverseClasses;
 
 	public MappingTable(Map<String, String> classes, Map<String, String> flatMembers, Map<String, String> qualifiedMembers) {
-		this.classes = Collections.unmodifiableMap(new TreeMap<>(classes));
-		this.flatMembers = Collections.unmodifiableMap(new TreeMap<>(flatMembers));
-		this.qualifiedMembers = Collections.unmodifiableMap(new TreeMap<>(qualifiedMembers));
+		// Hash maps for lookups; serialize() sorts, so the cached form stays deterministic.
+		this.classes = Map.copyOf(classes);
+		this.flatMembers = Map.copyOf(flatMembers);
+		this.qualifiedMembers = Map.copyOf(qualifiedMembers);
 	}
 
 	/** Maps an internal class name ({@code a/b/C}); unknown names are returned unchanged. */
@@ -84,8 +84,8 @@ public final class MappingTable {
 
 	/** Builds a table from per-member mappings, separating ambiguous names. */
 	public static MappingTable fromMembers(Map<String, String> classes, Map<String, Map<String, String>> membersByName) {
-		Map<String, String> flat = new TreeMap<>();
-		Map<String, String> qualified = new TreeMap<>();
+		Map<String, String> flat = new HashMap<>();
+		Map<String, String> qualified = new HashMap<>();
 		for (Map.Entry<String, Map<String, String>> e : membersByName.entrySet()) {
 			Set<String> targets = new HashSet<>(e.getValue().values());
 			if (targets.size() == 1) {
@@ -128,7 +128,7 @@ public final class MappingTable {
 
 	private static void writeMap(DataOutputStream out, Map<String, String> map) throws IOException {
 		out.writeInt(map.size());
-		for (Map.Entry<String, String> e : map.entrySet()) {
+		for (Map.Entry<String, String> e : new TreeMap<>(map).entrySet()) {
 			out.writeUTF(e.getKey());
 			out.writeUTF(e.getValue());
 		}

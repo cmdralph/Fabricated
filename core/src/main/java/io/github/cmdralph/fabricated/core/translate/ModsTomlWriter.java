@@ -14,6 +14,7 @@ import net.fabricmc.loader.api.metadata.Person;
  */
 public final class ModsTomlWriter {
 	/** Name of Fabricated's NeoForge language loader. */
+	public static final String PATH = "META-INF/neoforge.mods.toml";
 	public static final String LANGUAGE_LOADER = "fabricated";
 
 	/** Everything needed to describe one translated mod. */
@@ -70,7 +71,7 @@ public final class ModsTomlWriter {
 
 		if (spec.hasAccessTransformer()) {
 			sb.append("[[accessTransformers]]\n");
-			kv(sb, "file", "META-INF/accesstransformer.cfg");
+			kv(sb, "file", ModTranslator.AT_PATH);
 			sb.append('\n');
 		}
 

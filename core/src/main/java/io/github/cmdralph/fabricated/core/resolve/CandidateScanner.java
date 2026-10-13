@@ -1,6 +1,7 @@
 package io.github.cmdralph.fabricated.core.resolve;
 
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -22,7 +23,6 @@ import io.github.cmdralph.fabricated.core.metadata.MetadataException;
  */
 public final class CandidateScanner {
 	public static final String FABRIC_MOD_JSON = "fabric.mod.json";
-	public static final String NEOFORGE_MODS_TOML = "META-INF/neoforge.mods.toml";
 
 	private final TranslationCache cache;
 	private final ArchiveLimits limits;
@@ -45,7 +45,7 @@ public final class CandidateScanner {
 		List<Rejected> rejected = new ArrayList<>();
 		List<String> notes = new ArrayList<>();
 		for (Path jar : topLevelJars) {
-			scanJar(jar, jar.getFileName().toString(), null, 0, new NestedBudget(), all, rejected, notes);
+			scanJar(jar, null, jar.getFileName().toString(), null, 0, new NestedBudget(), all, rejected, notes);
 		}
 		return new Result(List.copyOf(select(all, notes).values()), List.copyOf(rejected), List.copyOf(notes));
 	}
@@ -93,8 +93,11 @@ public final class CandidateScanner {
 		int jars;
 	}
 
-	/** @return the candidate for this jar (added to {@code all} with its nested jars), or null if unusable */
-	private Candidate scanJar(Path jar, String origin, String parentId, int depth, NestedBudget budget, List<Candidate> all,
+	/**
+	 * @param knownSha the jar's SHA-256 when already known (a nested jar's file name), else null
+	 * @return the candidate for this jar (added to {@code all} with its nested jars), or null if unusable
+	 */
+	private Candidate scanJar(Path jar, String knownSha, String origin, String parentId, int depth, NestedBudget budget, List<Candidate> all,
 			List<Rejected> rejected, List<String> notes) {
 		FabricModMetadata metadata;
 		// Each nested jar is stored as soon as it is read and scanned after this archive is closed, so only one is in
@@ -103,6 +106,7 @@ public final class CandidateScanner {
 		List<String> nestedNames = new ArrayList<>();
 		String sha;
 		try (SafeArchive archive = SafeArchive.open(jar, limits)) {
+			sha = knownSha != null ? knownSha : cache.sha256(jar);
 			String json = archive.readText(FABRIC_MOD_JSON);
 			if (json == null) {
 				rejected.add(new Rejected(origin, "no fabric.mod.json"));
@@ -116,19 +120,21 @@ public final class CandidateScanner {
 			if (depth < limits.maxNestingDepth()) {
 				for (String nested : metadata.nestedJars()) {
 					String nestedOrigin = origin + "!/" + nested;
-					byte[] data = archive.read(nested);
-					if (data == null) {
-						notes.add(metadata.getId() + " declares nested jar " + nested + " which is missing; ignored");
-						continue;
-					}
-					budget.bytes += data.length;
-					if (++budget.jars > NestedBudget.MAX_JARS || budget.bytes > limits.maxTotalUncompressedBytes()) {
-						rejected.add(new Rejected(nestedOrigin, "nested jars of " + origin.split("!/", 2)[0] + " exceed the limit of "
-								+ NestedBudget.MAX_JARS + " jars or " + (limits.maxTotalUncompressedBytes() >> 20) + " MiB in all"));
-						continue;
-					}
 					try {
-						nestedPaths.add(cache.storeNested(data));
+						// Extracted on an earlier launch from this very jar: no need to decompress it again.
+						Path known = cache.nested(sha, nested).orElse(null);
+						byte[] data = known == null ? archive.read(nested) : null;
+						if (known == null && data == null) {
+							notes.add(metadata.getId() + " declares nested jar " + nested + " which is missing; ignored");
+							continue;
+						}
+						budget.bytes += known != null ? Files.size(known) : data.length;
+						if (++budget.jars > NestedBudget.MAX_JARS || budget.bytes > limits.maxTotalUncompressedBytes()) {
+							rejected.add(new Rejected(nestedOrigin, "nested jars of " + origin.split("!/", 2)[0] + " exceed the limit of "
+									+ NestedBudget.MAX_JARS + " jars or " + (limits.maxTotalUncompressedBytes() >> 20) + " MiB in all"));
+							continue;
+						}
+						nestedPaths.add(known != null ? known : cache.storeNested(data, sha, nested));
 						nestedNames.add(nested);
 					} catch (IOException e) {
 						rejected.add(new Rejected(nestedOrigin, "could not extract: " + e.getMessage()));
@@ -137,7 +143,6 @@ public final class CandidateScanner {
 			} else if (!metadata.nestedJars().isEmpty()) {
 				notes.add(metadata.getId() + " nests jars deeper than the limit of " + limits.maxNestingDepth() + "; they were ignored");
 			}
-			sha = cache.sha256(jar);
 		} catch (ArchiveException e) {
 			rejected.add(new Rejected(origin, "unsafe or corrupt archive: " + e.getMessage()));
 			return null;
@@ -152,7 +157,9 @@ public final class CandidateScanner {
 		String id = metadata.getId();
 		List<String> children = new ArrayList<>();
 		for (int i = 0; i < nestedPaths.size(); i++) {
-			Candidate child = scanJar(nestedPaths.get(i), origin + "!/" + nestedNames.get(i), id, depth + 1, budget, all, rejected, notes);
+			Path nestedJar = nestedPaths.get(i);
+			Candidate child = scanJar(nestedJar, TranslationCache.nestedSha(nestedJar), origin + "!/" + nestedNames.get(i), id, depth + 1, budget, all,
+					rejected, notes);
 			if (child != null) children.add(child.id());
 		}
 

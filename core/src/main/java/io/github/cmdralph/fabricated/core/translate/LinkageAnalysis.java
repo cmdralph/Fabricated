@@ -9,8 +9,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Predicate;
+import java.util.function.Supplier;
 
-import io.github.cmdralph.fabricated.core.archive.ArchiveException;
 import io.github.cmdralph.fabricated.core.archive.ArchiveLimits;
 import io.github.cmdralph.fabricated.core.archive.Hashing;
 import io.github.cmdralph.fabricated.core.archive.SafeArchive;
@@ -56,7 +56,7 @@ public final class LinkageAnalysis {
 	 * @return issues per NeoForge id (only mods with issues are present)
 	 */
 	public Map<String, List<String>> analyse(List<TranslatedMod> mods, ClassBytesSource runtime,
-			Map<String, List<String>> platformInterfaces, String setFingerprint) {
+			Supplier<Map<String, List<String>>> platformInterfaces, String setFingerprint) {
 		Map<String, List<String>> result = new LinkedHashMap<>();
 		LinkageChecker checker = null;
 		for (TranslatedMod mod : mods) {
@@ -66,7 +66,7 @@ public final class LinkageAnalysis {
 				// Built only when some result is not cached: it reads every mod's classes once.
 				if (checker == null) {
 					Map<String, List<String>> added = addedInterfaces(mods);
-					platformInterfaces.forEach((target, ifaces) -> added.computeIfAbsent(target, k -> new ArrayList<>()).addAll(ifaces));
+					platformInterfaces.get().forEach((target, ifaces) -> added.computeIfAbsent(target, k -> new ArrayList<>()).addAll(ifaces));
 					checker = new LinkageChecker(new ClassIndex(runtime, added), CHECKED, clientSide);
 				}
 				issues = check(mod, checker);
@@ -95,7 +95,7 @@ public final class LinkageAnalysis {
 					byte[] data = archive.read(name);
 					if (data != null) mixinInterfaces(data, added);
 				}
-			} catch (ArchiveException | IOException | RuntimeException e) {
+			} catch (IOException | RuntimeException e) {
 				// The mod is reported by check() if it cannot be read; nothing to add here.
 			}
 		}
@@ -140,7 +140,7 @@ public final class LinkageAnalysis {
 				byte[] data = archive.read(name);
 				if (data != null) checker.check(data, issues);
 			}
-		} catch (ArchiveException | IOException e) {
+		} catch (IOException e) {
 			return List.of("could not be analysed: " + e.getMessage());
 		}
 		return issues.stream().map(LinkageChecker.Issue::toString).toList();

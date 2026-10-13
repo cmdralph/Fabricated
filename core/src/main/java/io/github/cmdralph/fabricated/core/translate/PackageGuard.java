@@ -11,7 +11,6 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 
-import io.github.cmdralph.fabricated.core.archive.ArchiveException;
 import io.github.cmdralph.fabricated.core.archive.ArchiveLimits;
 import io.github.cmdralph.fabricated.core.archive.Hashing;
 import io.github.cmdralph.fabricated.core.archive.SafeArchive;
@@ -75,7 +74,7 @@ public final class PackageGuard {
 			Map<String, PackageContents> packages;
 			try {
 				packages = packagesOf(mod.jar());
-			} catch (ArchiveException | IOException e) {
+			} catch (IOException e) {
 				conflicts.add(new Conflict(mod, "could not inspect its contents: " + e.getMessage(), "Re-download the mod."));
 				continue;
 			}
@@ -118,7 +117,7 @@ public final class PackageGuard {
 		return new Result(decisions, conflicts);
 	}
 
-	private Map<String, PackageContents> packagesOf(Path jar) throws ArchiveException, IOException {
+	private Map<String, PackageContents> packagesOf(Path jar) throws IOException {
 		Map<String, Map<String, Boolean>> packages = new TreeMap<>();
 		try (SafeArchive archive = SafeArchive.open(jar, limits.forTranslatedJars())) {
 			for (String name : archive.entryNames()) {
@@ -154,12 +153,12 @@ public final class PackageGuard {
 			Map<String, String> a = hashes(theirs.jar(), ours.files().keySet());
 			Map<String, String> b = hashes(ours.jar(), ours.files().keySet());
 			return a.equals(b);
-		} catch (ArchiveException | IOException e) {
+		} catch (IOException e) {
 			return false;
 		}
 	}
 
-	private Map<String, String> hashes(Path jar, Set<String> names) throws ArchiveException, IOException {
+	private Map<String, String> hashes(Path jar, Set<String> names) throws IOException {
 		Map<String, String> ret = new TreeMap<>();
 		try (SafeArchive archive = SafeArchive.open(jar, limits.forTranslatedJars())) {
 			for (String name : names) {

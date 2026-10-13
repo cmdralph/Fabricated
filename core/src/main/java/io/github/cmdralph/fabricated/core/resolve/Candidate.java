@@ -24,8 +24,12 @@ public record Candidate(Path path, String sha256, FabricModMetadata metadata, St
 		return metadata.getId();
 	}
 
+	public String version() {
+		return metadata.getVersion().getFriendlyString();
+	}
+
 	@Override
 	public String toString() {
-		return metadata.getId() + " " + metadata.getVersion().getFriendlyString() + " (" + origin + ")";
+		return id() + " " + version() + " (" + origin + ")";
 	}
 }

@@ -10,7 +10,7 @@ import org.slf4j.LoggerFactory;
 
 import io.github.cmdralph.fabricated.core.config.FabricatedConfig;
 import io.github.cmdralph.fabricated.core.runtime.EntrypointRunner;
-import io.github.cmdralph.fabricated.core.translate.ModIds;
+import io.github.cmdralph.fabricated.core.metadata.ModIds;
 import io.github.cmdralph.fabricated.loader.FabricatedState;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.api.DedicatedServerModInitializer;

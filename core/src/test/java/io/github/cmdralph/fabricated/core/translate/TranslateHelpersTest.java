@@ -9,6 +9,7 @@ import java.util.Set;
 
 import org.junit.jupiter.api.Test;
 
+import io.github.cmdralph.fabricated.core.metadata.ModIds;
 import io.github.cmdralph.fabricated.core.metadata.ContactInformationImpl.PersonImpl;
 import io.github.cmdralph.fabricated.core.metadata.FabricModJsonParser;
 import io.github.cmdralph.fabricated.core.mixin.MixinConfigFile;
