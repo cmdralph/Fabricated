@@ -44,6 +44,21 @@ public record MemberRef(String owner, String name, String desc, boolean fuzzy) {
 		return new MemberRef(owner, s, null, false);
 	}
 
+	/** This selector's name, or {@code fallback} when it has none. */
+	public String nameOr(String fallback) {
+		return name != null ? name : fallback;
+	}
+
+	/** This selector's descriptor if it is a method descriptor, otherwise {@code fallback}. */
+	public String methodDescOr(String fallback) {
+		return desc != null && desc.startsWith("(") ? desc : fallback;
+	}
+
+	/** This selector's descriptor if it is a field descriptor, otherwise {@code fallback}. */
+	public String fieldDescOr(String fallback) {
+		return desc != null && !desc.startsWith("(") ? desc : fallback;
+	}
+
 	/** Matches a method declaration; a descriptor without return type matches any return type. */
 	public boolean matchesMethod(String methodName, String methodDesc) {
 		if (name == null || !name.equals(methodName)) return false;

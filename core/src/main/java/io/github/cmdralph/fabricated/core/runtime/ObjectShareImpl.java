@@ -44,9 +44,7 @@ public final class ObjectShareImpl implements ObjectShare {
 			previous = values.put(key, value);
 			waiting = pending.remove(key);
 		}
-		if (waiting != null) {
-			for (BiConsumer<String, Object> c : waiting) c.accept(key, value);
-		}
+		notifyWaiting(waiting, key, value);
 		return previous;
 	}
 
@@ -61,9 +59,7 @@ public final class ObjectShareImpl implements ObjectShare {
 			if (existing != null) return existing;
 			waiting = pending.remove(key);
 		}
-		if (waiting != null) {
-			for (BiConsumer<String, Object> c : waiting) c.accept(key, value);
-		}
+		notifyWaiting(waiting, key, value);
 		return null;
 	}
 
@@ -71,6 +67,13 @@ public final class ObjectShareImpl implements ObjectShare {
 	public synchronized Object remove(String key) {
 		validate(key);
 		return values.remove(key);
+	}
+
+	/** Runs the consumers that were waiting for {@code key}, outside the lock; {@code waiting} may be null. */
+	private static void notifyWaiting(List<BiConsumer<String, Object>> waiting, String key, Object value) {
+		if (waiting != null) {
+			for (BiConsumer<String, Object> c : waiting) c.accept(key, value);
+		}
 	}
 
 	private static void validate(String key) {

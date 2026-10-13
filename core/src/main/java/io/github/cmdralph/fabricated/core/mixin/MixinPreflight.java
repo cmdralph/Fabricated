@@ -1,8 +1,12 @@
 package io.github.cmdralph.fabricated.core.mixin;
 
+import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 import io.github.cmdralph.fabricated.core.bytecode.Annotations;
@@ -10,6 +14,7 @@ import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
 import io.github.cmdralph.fabricated.core.bytecode.ClassIndex;
 import io.github.cmdralph.fabricated.core.mixin.PreflightFinding.Severity;
 
+import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.AbstractInsnNode;
@@ -53,7 +58,7 @@ public final class MixinPreflight {
 	private final ClassBytesSource modClasses;
 	private final ClassBytesSource untransformable;
 	private final boolean clientSide;
-	private final java.util.Map<String, java.util.Optional<ClassNode>> targetCache = new java.util.HashMap<>();
+	private final Map<String, Optional<ClassNode>> targetCache = new HashMap<>();
 
 	/**
 	 * @param game            runtime game classes (Minecraft as patched by NeoForge)
@@ -100,9 +105,9 @@ public final class MixinPreflight {
 			byte[] data = modClasses.read(internal);
 			if (data == null) return null;
 			ClassNode node = new ClassNode();
-			new org.objectweb.asm.ClassReader(data).accept(node, org.objectweb.asm.ClassReader.SKIP_CODE | org.objectweb.asm.ClassReader.SKIP_FRAMES);
+			new ClassReader(data).accept(node, ClassReader.SKIP_CODE | ClassReader.SKIP_FRAMES);
 			return node;
-		} catch (java.io.IOException | RuntimeException e) {
+		} catch (IOException | RuntimeException e) {
 			return null;
 		}
 	}
@@ -153,7 +158,7 @@ public final class MixinPreflight {
 
 		for (String target : targets) {
 			boolean isGame = GAME_PREFIXES.stream().anyMatch(target::startsWith);
-			ClassNode targetNode = isGame ? targetCache.computeIfAbsent(target, t -> java.util.Optional.ofNullable(game.readNode(t))).orElse(null) : null;
+			ClassNode targetNode = isGame ? targetCache.computeIfAbsent(target, t -> Optional.ofNullable(game.readNode(t))).orElse(null) : null;
 			if (targetNode == null) {
 				if (pseudo) continue;
 				if (isGame) {
@@ -174,7 +179,7 @@ public final class MixinPreflight {
 	private boolean isUntransformable(String target) {
 		try {
 			return untransformable.read(target) != null;
-		} catch (java.io.IOException e) {
+		} catch (IOException e) {
 			return false;
 		}
 	}
@@ -182,12 +187,12 @@ public final class MixinPreflight {
 	private void checkMembers(ClassNode mixin, ClassNode target, Context ctx) {
 		String targetDotted = target.name.replace('/', '.');
 		for (FieldNode field : mixin.fields) {
-			AnnotationNode shadow = Annotations.find(field.visibleAnnotations, field.invisibleAnnotations, SHADOW);
+			AnnotationNode shadow = Annotations.find(field, SHADOW);
 			if (shadow == null) continue;
 			String name = ctx.resolve(field.name);
 			MemberRef ref = MemberRef.parse(name);
-			String fieldName = ref.name() != null ? ref.name() : field.name;
-			String desc = ref.desc() != null && !ref.desc().startsWith("(") ? ref.desc() : field.desc;
+			String fieldName = ref.nameOr(field.name);
+			String desc = ref.fieldDescOr(field.desc);
 			if (game.resolveField(target.name, fieldName + ":" + desc) == ClassIndex.Resolution.MISSING
 					&& !aliasExists(shadow, target, desc, true)) {
 				ctx.classLevel("@Shadow field " + fieldName + " (" + desc + ") does not exist in " + targetDotted,
@@ -196,13 +201,13 @@ public final class MixinPreflight {
 		}
 
 		for (MethodNode method : mixin.methods) {
-			AnnotationNode shadow = Annotations.find(method.visibleAnnotations, method.invisibleAnnotations, SHADOW);
+			AnnotationNode shadow = Annotations.find(method, SHADOW);
 			if (shadow != null) {
 				String prefix = Annotations.value(shadow, "prefix") instanceof String p ? p : "shadow$";
 				String name = method.name.startsWith(prefix) ? method.name.substring(prefix.length()) : method.name;
 				MemberRef ref = MemberRef.parse(ctx.resolve(name));
-				String methodName = ref.name() != null ? ref.name() : name;
-				String desc = ref.desc() != null && ref.desc().startsWith("(") ? ref.desc() : method.desc;
+				String methodName = ref.nameOr(name);
+				String desc = ref.methodDescOr(method.desc);
 				if (game.resolveMethod(target.name, methodName + desc) == ClassIndex.Resolution.MISSING
 						&& !aliasExists(shadow, target, desc, false)) {
 					ctx.classLevel("@Shadow method " + methodName + desc + " does not exist in " + targetDotted,
@@ -211,10 +216,10 @@ public final class MixinPreflight {
 				continue;
 			}
 
-			if (Annotations.find(method.visibleAnnotations, method.invisibleAnnotations, OVERWRITE) != null) {
+			if (Annotations.find(method, OVERWRITE) != null) {
 				MemberRef ref = MemberRef.parse(ctx.resolve(method.name));
-				String name = ref.name() != null ? ref.name() : method.name;
-				String desc = ref.desc() != null && ref.desc().startsWith("(") ? ref.desc() : method.desc;
+				String name = ref.nameOr(method.name);
+				String desc = ref.methodDescOr(method.desc);
 				if (!declares(target, name, desc)) {
 					ctx.classLevel("@Overwrite target " + name + desc + " does not exist in " + targetDotted,
 							"The overwritten method was changed by NeoForge or this Minecraft version.");
@@ -222,8 +227,8 @@ public final class MixinPreflight {
 				continue;
 			}
 
-			AnnotationNode accessor = Annotations.find(method.visibleAnnotations, method.invisibleAnnotations, ACCESSOR);
-			AnnotationNode invoker = accessor == null ? Annotations.find(method.visibleAnnotations, method.invisibleAnnotations, INVOKER) : null;
+			AnnotationNode accessor = Annotations.find(method, ACCESSOR);
+			AnnotationNode invoker = accessor == null ? Annotations.find(method, INVOKER) : null;
 			if (accessor != null || invoker != null) {
 				// Mixin generates an instance accessor method in the target; one that already exists there (for
 				// example one NeoForge added) makes Mixin throw when the target class loads. A static accessor or
@@ -258,17 +263,17 @@ public final class MixinPreflight {
 	 * {@code overwrites.requireAnnotations} it throws instead. Typical cause: NeoForge added the method
 	 * (for example {@code hashCode}) to a class that has none in vanilla.
 	 */
-	private void checkMerged(MethodNode method, ClassNode target, Context ctx) {
+	private static void checkMerged(MethodNode method, ClassNode target, Context ctx) {
 		if ((method.access & (Opcodes.ACC_SYNTHETIC | Opcodes.ACC_ABSTRACT)) != 0 || method.name.startsWith("<")) return;
-		if (Annotations.find(method.visibleAnnotations, method.invisibleAnnotations, UNIQUE) != null
-				|| Annotations.find(method.visibleAnnotations, method.invisibleAnnotations, INTRINSIC) != null) return;
+		if (Annotations.find(method, UNIQUE) != null
+				|| Annotations.find(method, INTRINSIC) != null) return;
 		if (!declares(target, method.name, method.desc)) return;
 		String where = method.name + method.desc + " already exists in " + target.name.replace('/', '.');
 		if (ctx.config().overwritesRequireAnnotations()) {
 			ctx.classLevel(where + " and the config requires @Overwrite to replace it, so Mixin rejects this mixin",
 					"NeoForge added this method; the mod needs an update for NeoForge.");
 		} else {
-			ctx.out().add(new PreflightFinding(PreflightFinding.Severity.WARN, ctx.configName(), ctx.mixinDotted(),
+			ctx.out().add(new PreflightFinding(Severity.WARN, ctx.configName(), ctx.mixinDotted(),
 					where + "; the mixin silently replaces it, which may change NeoForge's behaviour", ""));
 		}
 	}
@@ -285,13 +290,13 @@ public final class MixinPreflight {
 		return false;
 	}
 
-	private void checkAccessor(MethodNode method, AnnotationNode ann, ClassNode target, Context ctx) {
+	private static void checkAccessor(MethodNode method, AnnotationNode ann, ClassNode target, Context ctx) {
 		String explicit = Annotations.value(ann, "value") instanceof String s && !s.isEmpty() ? s : null;
 		String name = explicit != null ? explicit : inferAccessorName(method.name);
 		if (name == null) return;
 		MemberRef ref = MemberRef.parse(ctx.resolve(name));
-		String fieldName = ref.name() != null ? ref.name() : name;
-		String desc = ref.desc() != null && !ref.desc().startsWith("(") ? ref.desc() : accessorFieldDesc(method);
+		String fieldName = ref.nameOr(name);
+		String desc = ref.fieldDescOr(accessorFieldDesc(method));
 		// As Mixin's AccessorInfo: the field type must match exactly; the name must match, or match ignoring case
 		// with no other such field. Without a known type, fall back to the name alone.
 		int caseInsensitive = 0;
@@ -317,13 +322,13 @@ public final class MixinPreflight {
 		return null;
 	}
 
-	private void checkInvoker(MethodNode method, AnnotationNode ann, ClassNode target, Context ctx) {
+	private static void checkInvoker(MethodNode method, AnnotationNode ann, ClassNode target, Context ctx) {
 		String explicit = Annotations.value(ann, "value") instanceof String s && !s.isEmpty() ? s : null;
 		String name = explicit != null ? explicit : inferInvokerName(method.name);
 		if (name == null || name.equals("<init>")) return;
 		MemberRef ref = MemberRef.parse(ctx.resolve(name));
-		String methodName = ref.name() != null ? ref.name() : name;
-		String desc = ref.desc() != null && ref.desc().startsWith("(") ? ref.desc() : method.desc;
+		String methodName = ref.nameOr(name);
+		String desc = ref.methodDescOr(method.desc);
 		if (declares(target, methodName, desc)) return;
 		ctx.classLevel("@Invoker target method " + methodName + desc + " does not exist in " + target.name.replace('/', '.'),
 				"The method was renamed or removed by NeoForge or this Minecraft version.");
@@ -363,7 +368,7 @@ public final class MixinPreflight {
 				|| desc.startsWith("Lcom/llamalad7/mixinextras/injector/");
 	}
 
-	private void checkInjector(MethodNode handler, AnnotationNode ann, ClassNode target, Context ctx) {
+	private static void checkInjector(MethodNode handler, AnnotationNode ann, ClassNode target, Context ctx) {
 		if (!(Annotations.value(ann, "method") instanceof List<?> selectors) || selectors.isEmpty()) return;
 		int require = Annotations.value(ann, "require") instanceof Integer r && r >= 0 ? r : ctx.config().defaultRequire();
 		List<AnnotationNode> slices = annotationList(Annotations.value(ann, "slice"));
@@ -515,7 +520,7 @@ public final class MixinPreflight {
 	 * start. Points select their first match (or the {@code ordinal}-th). Only member-reference points
 	 * ({@code INVOKE}, {@code FIELD}, {@code NEW}) and {@code HEAD} are evaluated.
 	 */
-	private Range sliceRange(AnnotationNode slice, MethodNode method, Context ctx) {
+	private static Range sliceRange(AnnotationNode slice, MethodNode method, Context ctx) {
 		int max = method.instructions.size() - 1;
 		int start = slicePoint(annotationOrNull(Annotations.value(slice, "from")), method, ctx, 0, 0);
 		if (start == UNEVALUATED_INDEX) return Range.UNEVALUATED;
@@ -530,7 +535,7 @@ public final class MixinPreflight {
 		return value instanceof AnnotationNode a ? a : null;
 	}
 
-	private int slicePoint(AnnotationNode at, MethodNode method, Context ctx, int defaultValue, int failValue) {
+	private static int slicePoint(AnnotationNode at, MethodNode method, Context ctx, int defaultValue, int failValue) {
 		if (at == null) return defaultValue;
 		String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
 		if (point.equals("HEAD")) return 0;
@@ -552,7 +557,7 @@ public final class MixinPreflight {
 		return failValue;
 	}
 
-	private Verdict evaluate(String point, String target, int ordinal, int opcode, Range range, MethodNode method) {
+	private static Verdict evaluate(String point, String target, int ordinal, int opcode, Range range, MethodNode method) {
 		switch (point) {
 			case "HEAD", "RETURN", "TAIL" -> {
 				return method.instructions == null || method.instructions.size() == 0 ? Verdict.MISSING : Verdict.FOUND;
@@ -586,9 +591,7 @@ public final class MixinPreflight {
 		switch (point) {
 			case "INVOKE", "INVOKE_ASSIGN", "INVOKE_STRING" -> {
 				if (!(insn instanceof MethodInsnNode m)) return false;
-				return (ref.owner() == null || ref.owner().equals(m.owner))
-						&& ref.name() != null && ref.name().equals(m.name)
-						&& (ref.desc() == null || ref.desc().equals(m.desc) || ref.desc().endsWith(")") && m.desc.startsWith(ref.desc()));
+				return (ref.owner() == null || ref.owner().equals(m.owner)) && ref.matchesMethod(m.name, m.desc);
 			}
 			case "FIELD" -> {
 				if (!(insn instanceof FieldInsnNode f)) return false;
@@ -598,14 +601,15 @@ public final class MixinPreflight {
 			}
 			case "NEW" -> {
 				String cls = newTarget(ref);
-				if (ref.desc() != null && ref.desc().startsWith("(")) {
+				String ctorDesc = ref.methodDescOr(null);
+				if (ctorDesc != null) {
 					// A constructor descriptor selects one constructor, as Mixin's BeforeNew does: count the
 					// INVOKESPECIAL <init> with those arguments rather than any NEW of the class.
-					String initDesc = ref.desc().substring(0, ref.desc().indexOf(')') + 1) + "V";
-					return insn instanceof MethodInsnNode m && m.getOpcode() == org.objectweb.asm.Opcodes.INVOKESPECIAL
+					String initDesc = ctorDesc.substring(0, ctorDesc.indexOf(')') + 1) + "V";
+					return insn instanceof MethodInsnNode m && m.getOpcode() == Opcodes.INVOKESPECIAL
 							&& m.name.equals("<init>") && m.desc.equals(initDesc) && (cls == null || cls.equals(m.owner));
 				}
-				if (!(insn instanceof TypeInsnNode t) || t.getOpcode() != org.objectweb.asm.Opcodes.NEW) return false;
+				if (!(insn instanceof TypeInsnNode t) || t.getOpcode() != Opcodes.NEW) return false;
 				return cls == null || cls.equals(t.desc);
 			}
 			default -> {
@@ -617,8 +621,9 @@ public final class MixinPreflight {
 	/** Class created by a NEW selector: {@code Lpkg/C;}, {@code pkg/C} or a constructor descriptor. */
 	private static String newTarget(MemberRef ref) {
 		if (ref.owner() != null && ref.name() == null) return ref.owner();
-		if (ref.desc() != null && ref.desc().startsWith("(")) {
-			Type ret = Type.getReturnType(ref.desc());
+		String ctorDesc = ref.methodDescOr(null);
+		if (ctorDesc != null) {
+			Type ret = Type.getReturnType(ctorDesc);
 			return ret.getSort() == Type.OBJECT ? ret.getInternalName() : null;
 		}
 		if (ref.name() != null && ref.owner() == null) return ref.name();

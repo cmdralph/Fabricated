@@ -317,6 +317,6 @@ public final class FabricLoaderRuntime implements FabricLoader {
 	}
 
 	/** Arguments Fabric Loader removes when asked for sanitized launch arguments (compared ignoring case). */
-	private static final java.util.Set<String> SENSITIVE_ARGUMENTS = java.util.Set.of(
+	private static final Set<String> SENSITIVE_ARGUMENTS = Set.of(
 			"accesstoken", "clientid", "profileproperties", "proxypass", "proxyuser", "username", "userproperties", "uuid", "xuid");
 }
