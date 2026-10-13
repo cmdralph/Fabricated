@@ -152,7 +152,14 @@
       "plan": "passthrough"
     },
     "fabric-rendering-v1": {
-      "plan": "passthrough"
+      "plan": "passthrough",
+      "skipMixins": [
+        "fabric-rendering-v1.mixins.json:HudMixin",
+        "fabric-rendering-v1.mixins.json:GuiRendererMixin",
+        "fabric-rendering-v1.mixins.json:GameRendererMixin#guiRendererReady",
+        "fabric-rendering-v1.mixins.json:DebugOptionsScreenOptionListMixin"
+      ],
+      "reason": "NeoForge draws the HUD in layers: Fabricated runs Fabric's HUD elements from NeoForge's vanilla layers instead of upstream's HUD mixin. Picture-in-picture renderers registered with Fabric are not used (NeoForge rebuilt that renderer), and the debug options screen keeps vanilla's sorting and search."
     },
     "fabric-resource-conditions-api-v1": {
       "plan": "passthrough"

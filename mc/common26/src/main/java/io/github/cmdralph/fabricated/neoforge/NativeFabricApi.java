@@ -12,6 +12,7 @@ import io.github.cmdralph.fabricated.neoforge.loot.LootBridge;
 import io.github.cmdralph.fabricated.neoforge.lifecycle.LifecycleBridge;
 import io.github.cmdralph.fabricated.neoforge.networking.NetworkingBridge;
 import io.github.cmdralph.fabricated.neoforge.objectbuilder.ObjectBuilderBridge;
+import io.github.cmdralph.fabricated.neoforge.rendering.HudBridge;
 import io.github.cmdralph.fabricated.neoforge.resource.ResourceLoaderBridge;
 import io.github.cmdralph.fabricated.neoforge.transfer.TransferBridge;
 import net.fabricmc.fabric.api.object.builder.v1.entity.FabricDefaultAttributeRegistry;
@@ -37,7 +38,10 @@ public final class NativeFabricApi {
 		// fabric-api-lookup-api-v1's own initializer (it only registers a check at server start).
 		new ApiLookupImpl().onInitialize();
 		TransferBridge.register(modBus);
-		if (dist.isClient()) ClientHotbarScroll.register();
+		if (dist.isClient()) {
+			ClientHotbarScroll.register();
+			HudBridge.register(modBus);
+		}
 		ItemApiBridge.register(modBus, dist);
 		BlockApiCompat.register(modBus);
 		ObjectBuilderBridge.register(modBus, modifier -> FabricDefaultAttributeRegistry.MODIFY.invoker().modify(new FabricDefaultAttributeRegistry.ModifyContext() {

@@ -178,6 +178,8 @@ Each mod's entrypoints run inside a guard that records mod id, entrypoint key, c
    * `required` or default-require mixins that **would fail** cause the **whole mod to be disabled before launch**, with a report like *"`examplemod`: mixin `ExampleMixin` targets `ItemStack#getTooltipLines` → `INVOKE List.add`, which NeoForge removed. Ask the author for a NeoForge build, or set `skipMixins` if this mixin is cosmetic."*
    * Non-required mixins that would fail produce a warning only.
 5. **User overrides:** `skipMixins` drops entries from the cached copy of the mixin config JSON, never the original.
+   An entry `"config.json:Name#handler"` instead writes a copy of that mixin class without the handler method
+   into the overlay jar; pre-flight checks the copy.
 6. **Runtime attribution:** a mixin failure that slips past pre-flight is enriched through `ICrashReportHeader`/`CrashReportCallables` with the owning Fabric mod id and a suggested fix.
 7. **No heuristic rewriting.** An optional, *data-driven* retarget table (`mc/<ver>/retargets.json`: exact `from` → `to` member pairs) is supported, so known NeoForge-patched methods can be redirected explicitly and reviewably. It starts empty and grows from compatibility testing.
 

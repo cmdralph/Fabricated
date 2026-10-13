@@ -100,6 +100,7 @@ How to read the table:
 | fabric-creative-tab-api-v1 / item-group-api-v1 | loads | loads | loads | loads |
 | fabric-debug-api-v1 | — | loads | loads | loads |
 | fabric-key-mapping-api-v1 / key-binding-api-v1, screen-api-v1, rendering-v1, sound-api-v1, model-loading-api-v1 | client | client | client | client |
+| fabric-rendering-v1 on the client | disabled | loads (see below) | loads (see below) | loads (see below) |
 | fabric-renderer-api-v1, fabric-renderer-indigo | unsupported | unsupported | unsupported | unsupported |
 | fabric-data-generation-api-v1, gametest, client-gametest | unsupported | unsupported | unsupported | unsupported |
 
@@ -455,6 +456,22 @@ CI checks, on all four versions: a chest found through `ItemStorage.SIDED` keeps
 aborted and changes when one commits; a full water cauldron empties when a bucket of water is extracted; a Fabric
 storage used through NeoForge's capability and a NeoForge handler used through `ItemStorage.SIDED` follow aborts,
 nested commits and commits; fluids move in whole millibuckets only.
+
+### `fabric-rendering-v1` on 26.x
+
+Upstream's module loads, without the mixins that target code NeoForge rewrote:
+
+- **HUD** (`HudElementRegistry`): NeoForge draws the HUD as layers, so upstream's HUD mixin can't apply.
+  Fabricated wraps each of NeoForge's vanilla layers with the Fabric element list of the same vanilla element, so
+  elements attached before or after a vanilla element, replaced or removed, behave as on Fabric. Its wrappers
+  run after NeoForge mods registered their layers, so the Fabric elements surround whatever those mods did to the
+  vanilla layers.
+- **Picture-in-picture renderers** (`PictureInPictureRendererRegistry`): NeoForge rebuilt the GUI renderer around
+  its own renderer pools; renderers registered with Fabric are not used yet.
+- **Debug options screen**: keeps vanilla's sorting and search instead of upstream's namespace-aware ones.
+
+The rest of the module (world rendering events, block and item colors, entity and block entity renderers, model
+layers, tooltip components, render pipelines and so on) is upstream's code, unchanged.
 
 ### Fabric Loader
 

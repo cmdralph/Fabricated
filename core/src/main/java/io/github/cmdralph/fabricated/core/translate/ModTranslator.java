@@ -22,6 +22,10 @@ import java.util.jar.Manifest;
 import java.util.stream.Collectors;
 
 import org.objectweb.asm.ClassReader;
+import org.objectweb.asm.ClassVisitor;
+import org.objectweb.asm.ClassWriter;
+import org.objectweb.asm.MethodVisitor;
+import org.objectweb.asm.Opcodes;
 
 import io.github.cmdralph.fabricated.core.accesswidener.AccessTransformerConverter;
 import io.github.cmdralph.fabricated.core.accesswidener.AccessWidenerException;
@@ -224,7 +228,9 @@ public final class ModTranslator {
 				env.lowestMixinBehavior());
 		EnvType side = env.clientSide() ? EnvType.CLIENT : EnvType.SERVER;
 		List<ModsTomlWriter.MixinConfigSpec> specs = new ArrayList<>();
-		MixinPreflight preflight = new MixinPreflight(env.game(), classSource(files), env.untransformable(), env.clientSide());
+		// Pre-flight sees the mod as it will load: with the handler methods left out below.
+		FileView translated = name -> overlay.containsKey(name) ? overlay.get(name) : files.read(name);
+		MixinPreflight preflight = new MixinPreflight(env.game(), classSource(translated), env.untransformable(), env.clientSide());
 
 		for (MixinEntry entry : md.compatHints().mixinsOr(md.mixins())) {
 			if (!entry.environment().matches(side)) continue;
@@ -245,7 +251,20 @@ public final class ModTranslator {
 				throw new TranslationException("Mixin config " + entry.config() + " is invalid: " + e.getMessage(), "Report this to the mod author.");
 			}
 
-			Set<String> skip = withDependents(entry.config(), config, skipsFor(entry.config(), config, override.skipMixins()), files, findings);
+			Set<String> wholeSkips = skipsFor(entry.config(), config, override.skipMixins());
+			for (Map.Entry<String, Set<String>> handlers : handlerSkipsFor(entry.config(), config, override.skipMixins()).entrySet()) {
+				if (wholeSkips.contains(handlers.getKey())) continue;
+				String path = config.internalName(handlers.getKey()) + ".class";
+				byte[] mixin = files.read(path);
+				if (mixin == null) continue;
+				Set<String> missing = new TreeSet<>(handlers.getValue());
+				overlay.put(path, withoutMethods(mixin, handlers.getValue(), missing));
+				for (String method : missing) {
+					findings.add(new PreflightFinding(Severity.WARN, entry.config(), config.internalName(handlers.getKey()).replace('/', '.'),
+							"has no method " + method + " to leave out", ""));
+				}
+			}
+			Set<String> skip = withDependents(entry.config(), config, wholeSkips, translated, findings);
 			if (!override.ignorePreflight()) {
 				findings.addAll(preflight.check(entry.config(), config, refmap, skip));
 			}
@@ -285,7 +304,6 @@ public final class ModTranslator {
 		return mixinDotted;
 	}
 
-	/** Skips apply as {@code "config.json:Name"} (one config) or {@code "Name"} (every config). */
 	/**
 	 * {@code skip} plus the kept mixins that use an interface only a skipped mixin adds to its target (one of the mod's
 	 * own interfaces): with the adding mixin gone, their casts to it would fail at runtime. Repeated until stable.
@@ -328,17 +346,58 @@ public final class ModTranslator {
 		return all;
 	}
 
+	/**
+	 * Whole mixins to leave out of {@code configName}. Skips apply as {@code "config.json:Name"} (one config) or
+	 * {@code "Name"} (every config); {@code "Name#handler"} leaves out one handler method instead (see
+	 * {@link #handlerSkipsFor}).
+	 */
 	static Set<String> skipsFor(String configName, MixinConfigFile config, Set<String> configured) {
 		Set<String> declared = new HashSet<>(config.allMixins());
 		Set<String> ret = new TreeSet<>();
 		for (String s : configured) {
-			int colon = s.indexOf(':');
-			String cfg = colon >= 0 ? s.substring(0, colon) : null;
-			String name = colon >= 0 ? s.substring(colon + 1) : s;
-			if (cfg != null && !cfg.equals(configName)) continue;
-			if (declared.contains(name)) ret.add(name);
+			String name = skipTarget(configName, s);
+			if (name != null && name.indexOf('#') < 0 && declared.contains(name)) ret.add(name);
 		}
 		return ret;
+	}
+
+	/**
+	 * Handler methods to remove from kept mixins, by mixin: {@code "config.json:Name#handler"}. For a mixin whose
+	 * other injections still work on NeoForge, so only the conflicting one is lost.
+	 */
+	static Map<String, Set<String>> handlerSkipsFor(String configName, MixinConfigFile config, Set<String> configured) {
+		Set<String> declared = new HashSet<>(config.allMixins());
+		Map<String, Set<String>> ret = new TreeMap<>();
+		for (String s : configured) {
+			String name = skipTarget(configName, s);
+			int hash = name == null ? -1 : name.indexOf('#');
+			if (hash < 0 || !declared.contains(name.substring(0, hash))) continue;
+			ret.computeIfAbsent(name.substring(0, hash), k -> new TreeSet<>()).add(name.substring(hash + 1));
+		}
+		return ret;
+	}
+
+	/** The mixin part of a skip entry when it applies to {@code configName}, else null. */
+	private static String skipTarget(String configName, String skip) {
+		int colon = skip.indexOf(':');
+		if (colon >= 0 && !skip.substring(0, colon).equals(configName)) return null;
+		return colon >= 0 ? skip.substring(colon + 1) : skip;
+	}
+
+	/** {@code data} without the methods named in {@code names}; the names found are removed from {@code missing}. */
+	static byte[] withoutMethods(byte[] data, Set<String> names, Set<String> missing) {
+		ClassReader reader = new ClassReader(data);
+		// A fresh constant pool, so nothing the removed methods referred to is left behind (see withDependents).
+		ClassWriter writer = new ClassWriter(0);
+		reader.accept(new ClassVisitor(Opcodes.ASM9, writer) {
+			@Override
+			public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
+				if (!names.contains(name)) return super.visitMethod(access, name, descriptor, signature, exceptions);
+				missing.remove(name);
+				return null;
+			}
+		}, 0);
+		return writer.toByteArray();
 	}
 
 	private static ClassBytesSource classSource(FileView files) {

@@ -51,7 +51,7 @@ public final class ConfigurationTest implements ModInitializer {
 
 		@Override
 		public void start(Consumer<Packet<?>> sender) {
-			sender.accept(ServerConfigurationNetworking.createClientboundPacket(new Request()));
+			sender.accept(ServerConfigurationNetworking.createS2CPacket(new Request()));
 		}
 
 		@Override
