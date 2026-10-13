@@ -309,6 +309,8 @@ public final class Pipeline {
 		List<TranslatedMod> translated = List.of();
 		Map<String, PackageGuard.Decision> decisions = Map.of();
 		Map<String, List<String>> linkage = Map.of();
+		/** Compat patches that applied in the last round, by target mod id. */
+		Map<String, List<AppliedPatch>> patches = Map.of();
 		DependencyResolver.Result resolution;
 
 		void run(List<Candidate> eligible, DependencyResolver resolver, ModTranslator translator) {
@@ -345,11 +347,14 @@ public final class Pipeline {
 		/** Translates in parallel; failures are dropped. Returns the translated mods in resolution order. */
 		private List<TranslatedMod> translate(List<Candidate> mods, ModTranslator translator, Map<String, List<String>> aliases) {
 			Map<String, String> providerOf = providerOf(mods, aliases);
+			patches = patchesFor(mods);
+			Map<String, List<AppliedPatch>> applied = patches;
 			Map<String, TranslatedMod> results = new ConcurrentHashMap<>();
 			Map<Candidate, TranslationException> failures = new ConcurrentHashMap<>();
 			mods.parallelStream().forEach(c -> {
 				try {
-					results.put(c.id(), translator.translate(c, effectiveOverride(config, plan, c), loadAfter(c, providerOf)));
+					results.put(c.id(), translator.translate(c, effectiveOverride(config, plan, c, applied.getOrDefault(c.id(), List.of())),
+							loadAfter(c, providerOf)));
 				} catch (TranslationException e) {
 					failures.put(c, e);
 				} catch (RuntimeException e) {
@@ -394,6 +399,34 @@ public final class Pipeline {
 			}
 			return dropped;
 		}
+	}
+
+	/** A compat patch from mod {@code patchId} that applies to its target this round. */
+	private record AppliedPatch(String patchId, CompatHints.Patch patch) {
+	}
+
+	/**
+	 * Compat patches among {@code mods}, by target: a patch applies while its mod depends on the target and both are
+	 * loading (and the player didn't turn the target's hints off). Recomputed every round, so a patch whose own mod
+	 * drops out stops applying.
+	 */
+	private Map<String, List<AppliedPatch>> patchesFor(List<Candidate> mods) {
+		Set<String> ids = mods.stream().map(Candidate::id).collect(Collectors.toSet());
+		Map<String, List<AppliedPatch>> byTarget = new HashMap<>();
+		for (Candidate c : mods) {
+			for (CompatHints.Patch patch : c.metadata().compatHints().patches()) {
+				String target = patch.target();
+				boolean depends = c.metadata().getDependencies().stream()
+						.anyMatch(d -> d.getKind() == ModDependency.Kind.DEPENDS && d.getModId().equals(target));
+				if (target.equals(c.id()) || !ids.contains(target) || config.override(target).ignoreHints()) continue;
+				if (!depends) {
+					report.line("Compatibility hint warnings", c.id() + ": the patch for " + target + " is ignored, as " + c.id() + " does not depend on it");
+					continue;
+				}
+				byTarget.computeIfAbsent(target, k -> new ArrayList<>()).add(new AppliedPatch(c.id(), patch));
+			}
+		}
+		return byTarget;
 	}
 
 	/** Every id a candidate answers to (its own, {@code provides}, config aliases) → that candidate's id. */
@@ -468,7 +501,13 @@ public final class Pipeline {
 			List<String> extraIds = new ArrayList<>(c.metadata().getProvides());
 			extraIds.addAll(override.aliases());
 			runtime.addMod(container, extraIds);
-			runtime.addEntrypoints(container, c.metadata().compatHints().entrypointsOf(c.metadata().entrypoints()), override.skipEntrypoints());
+			Set<String> skipEntrypoints = new HashSet<>(override.skipEntrypoints());
+			for (AppliedPatch p : rounds.patches.getOrDefault(c.id(), List.of())) {
+				skipEntrypoints.addAll(p.patch().skipEntrypoints());
+				report.line("Compatibility patches", c.id() + " <- " + p.patchId() + ": skips mixins " + p.patch().skipMixins()
+						+ ", entrypoints " + p.patch().skipEntrypoints());
+			}
+			runtime.addEntrypoints(container, c.metadata().compatHints().entrypointsOf(c.metadata().entrypoints()), skipEntrypoints);
 			runtime.addLanguageAdapters(container, c.metadata().languageAdapters());
 			containers.put(c.id(), container);
 		}
@@ -499,12 +538,13 @@ public final class Pipeline {
 	}
 
 	/** User overrides, plus the mod's own hints and the plan's known-conflicting mixins for pass-through Fabric API modules. */
-	static FabricatedConfig.ModOverride effectiveOverride(FabricatedConfig config, FabricApiPlan plan, Candidate c) {
+	static FabricatedConfig.ModOverride effectiveOverride(FabricatedConfig config, FabricApiPlan plan, Candidate c, List<AppliedPatch> patches) {
 		FabricatedConfig.ModOverride user = config.override(c.id());
 		FabricApiPlan.Module module = plan.module(c.id());
 		Set<String> skip = new TreeSet<>(user.skipMixins());
 		if (module != null) skip.addAll(module.skipMixins());
 		skip.addAll(c.metadata().compatHints().skipMixins());
+		for (AppliedPatch p : patches) skip.addAll(p.patch().skipMixins());
 		if (skip.equals(user.skipMixins())) return user;
 		return new FabricatedConfig.ModOverride(user.disabled(), Set.copyOf(skip), user.skipEntrypoints(), user.aliases(), user.ignorePreflight(),
 				user.ignoreHints());

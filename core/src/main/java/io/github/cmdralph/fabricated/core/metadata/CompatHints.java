@@ -21,7 +21,8 @@ import io.github.cmdralph.fabricated.core.metadata.FabricModMetadata.MixinEntry;
  *   "skipMixins": ["examplemod.mixins.json:client.TooltipMixin"],
  *   "mixins": ["examplemod.mixins.json", "examplemod.neoforge.mixins.json"],
  *   "entrypoints": { "main": ["com.example.NeoForgeCompat"] },
- *   "skipEntrypoints": ["modmenu"]
+ *   "skipEntrypoints": ["modmenu"],
+ *   "patches": [{ "target": "othermod", "skipMixins": ["othermod.mixins.json:Broken"] }]
  * }}
  * }</pre>
  *
@@ -29,13 +30,25 @@ import io.github.cmdralph.fabricated.core.metadata.FabricModMetadata.MixinEntry;
  * @param mixins          mixin configs to use instead of the top-level {@code mixins}, or null to keep those
  * @param entrypoints     entrypoints added after the mod's own, by key
  * @param skipEntrypoints keys of the mod's own entrypoints to leave out
+ * @param patches         changes this mod (a compat patch) makes to other mods; see {@link Patch}
  * @param warnings        problems with the block; a key with a problem is ignored, the rest still applies
  */
 public record CompatHints(Set<String> skipMixins, List<MixinEntry> mixins, Map<String, List<EntrypointSpec>> entrypoints,
-		Set<String> skipEntrypoints, List<String> warnings) {
+		Set<String> skipEntrypoints, List<Patch> patches, List<String> warnings) {
+	/**
+	 * What a compat patch leaves out of another mod. It only applies while the patch mod declares a dependency on the
+	 * target and both load, so the dependency's version range says which versions of the target it fixes.
+	 */
+	public record Patch(String target, Set<String> skipMixins, Set<String> skipEntrypoints) {
+		public Patch {
+			skipMixins = Set.copyOf(skipMixins);
+			skipEntrypoints = Set.copyOf(skipEntrypoints);
+		}
+	}
+
 	public static final String KEY = "fabricated";
 	public static final int SCHEMA = 1;
-	public static final CompatHints NONE = new CompatHints(Set.of(), null, Map.of(), Set.of(), List.of());
+	public static final CompatHints NONE = new CompatHints(Set.of(), null, Map.of(), Set.of(), List.of(), List.of());
 
 	private static final int MAX_ENTRIES = 64;
 	private static final Pattern SKIP_MIXIN = Pattern.compile("([A-Za-z0-9_./-]{1,128}\\.json:)?[A-Za-z_$][A-Za-z0-9_$.]{0,255}");
@@ -47,11 +60,12 @@ public record CompatHints(Set<String> skipMixins, List<MixinEntry> mixins, Map<S
 		mixins = mixins == null ? null : List.copyOf(mixins);
 		entrypoints = Map.copyOf(entrypoints);
 		skipEntrypoints = Set.copyOf(skipEntrypoints);
+		patches = List.copyOf(patches);
 		warnings = List.copyOf(warnings);
 	}
 
 	public boolean isEmpty() {
-		return skipMixins.isEmpty() && mixins == null && entrypoints.isEmpty() && skipEntrypoints.isEmpty();
+		return skipMixins.isEmpty() && mixins == null && entrypoints.isEmpty() && skipEntrypoints.isEmpty() && patches.isEmpty();
 	}
 
 	/** The mod's mixin configs under Fabricated. */
@@ -81,6 +95,7 @@ public record CompatHints(Set<String> skipMixins, List<MixinEntry> mixins, Map<S
 		if (!skipMixins.isEmpty()) parts.add("skips mixins " + skipMixins);
 		if (!entrypoints.isEmpty()) parts.add("adds entrypoints " + entrypoints.keySet());
 		if (!skipEntrypoints.isEmpty()) parts.add("skips entrypoints " + skipEntrypoints);
+		if (!patches.isEmpty()) parts.add("patches " + patches.stream().map(Patch::target).toList());
 		return String.join(", ", parts);
 	}
 
@@ -88,17 +103,18 @@ public record CompatHints(Set<String> skipMixins, List<MixinEntry> mixins, Map<S
 	static CompatHints parse(Object block) {
 		List<String> warnings = new ArrayList<>();
 		if (!(block instanceof Map<?, ?> map)) {
-			return new CompatHints(Set.of(), null, Map.of(), Set.of(), List.of("custom.fabricated must be an object; ignored"));
+			return new CompatHints(Set.of(), null, Map.of(), Set.of(), List.of(), List.of("custom.fabricated must be an object; ignored"));
 		}
 		Object schema = map.get("schema");
 		if (schema != null && !(schema instanceof Number n && n.intValue() >= 1 && n.intValue() <= SCHEMA)) {
-			return new CompatHints(Set.of(), null, Map.of(), Set.of(),
+			return new CompatHints(Set.of(), null, Map.of(), Set.of(), List.of(),
 					List.of("custom.fabricated uses schema " + schema + ", which needs a newer Fabricated; ignored"));
 		}
 		Set<String> skipMixins = Set.of();
 		List<MixinEntry> mixins = null;
 		Map<String, List<EntrypointSpec>> entrypoints = Map.of();
 		Set<String> skipEntrypoints = Set.of();
+		List<Patch> patches = List.of();
 		for (Map.Entry<?, ?> e : map.entrySet()) {
 			String key = String.valueOf(e.getKey());
 			try {
@@ -125,13 +141,32 @@ public record CompatHints(Set<String> skipMixins, List<MixinEntry> mixins, Map<S
 						}
 						entrypoints = parsed;
 					}
+					case "patches" -> patches = patches(e.getValue());
 					default -> warnings.add("custom.fabricated: unknown key \"" + key + "\" ignored");
 				}
 			} catch (MetadataException ex) {
 				warnings.add("custom.fabricated." + key + " ignored: " + ex.getMessage());
 			}
 		}
-		return new CompatHints(skipMixins, mixins, entrypoints, skipEntrypoints, warnings);
+		return new CompatHints(skipMixins, mixins, entrypoints, skipEntrypoints, patches, warnings);
+	}
+
+	private static List<Patch> patches(Object value) throws MetadataException {
+		if (!(value instanceof List<?> list)) throw new MetadataException("must be a list of objects");
+		if (list.size() > 16) throw new MetadataException("more than 16 entries");
+		List<Patch> patches = new ArrayList<>();
+		for (Object o : list) {
+			if (!(o instanceof Map<?, ?> entry) || !(entry.get("target") instanceof String target) || !FabricModJsonParser.FABRIC_ID.matcher(target).matches()) {
+				throw new MetadataException("each entry needs a \"target\" mod id");
+			}
+			for (Object k : entry.keySet()) {
+				if (!Set.of("target", "skipMixins", "skipEntrypoints").contains(k)) throw new MetadataException("unknown key \"" + k + "\" in a patch");
+			}
+			Set<String> mixins = entry.containsKey("skipMixins") ? strings(entry.get("skipMixins"), "skipMixins", SKIP_MIXIN) : Set.of();
+			Set<String> entrypoints = entry.containsKey("skipEntrypoints") ? strings(entry.get("skipEntrypoints"), "skipEntrypoints", ENTRYPOINT_KEY) : Set.of();
+			patches.add(new Patch(target, mixins, entrypoints));
+		}
+		return patches;
 	}
 
 	private static Set<String> strings(Object value, String key, Pattern pattern) throws MetadataException {

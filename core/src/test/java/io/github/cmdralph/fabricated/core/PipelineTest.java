@@ -254,11 +254,11 @@ class PipelineTest {
 		FabricApiPlan plan = FabricApiPlan.parse(PLAN);
 		var config = io.github.cmdralph.fabricated.core.config.FabricatedConfig.parse(
 				"{\"mods\":{\"fabric-item-api-v1\":{\"skipMixins\":[\"Other\"]}}}");
-		assertEquals(Set.of("item.mixins.json:Conflicting", "Other"), Pipeline.effectiveOverride(config, plan, candidate("fabric-item-api-v1", "")).skipMixins());
-		assertEquals(Set.of(), Pipeline.effectiveOverride(config, plan, candidate("unrelated", "")).skipMixins());
+		assertEquals(Set.of("item.mixins.json:Conflicting", "Other"), Pipeline.effectiveOverride(config, plan, candidate("fabric-item-api-v1", ""), List.of()).skipMixins());
+		assertEquals(Set.of(), Pipeline.effectiveOverride(config, plan, candidate("unrelated", ""), List.of()).skipMixins());
 		// The mod's own hints add to them.
 		Candidate hinted = candidate("unrelated", "\"custom\":{\"fabricated\":{\"skipMixins\":[\"a.mixins.json:Broken\"]}}");
-		assertEquals(Set.of("a.mixins.json:Broken"), Pipeline.effectiveOverride(config, plan, hinted).skipMixins());
+		assertEquals(Set.of("a.mixins.json:Broken"), Pipeline.effectiveOverride(config, plan, hinted, List.of()).skipMixins());
 		org.junit.jupiter.api.Assertions.assertThrows(io.github.cmdralph.fabricated.core.json.JsonException.class, () -> FabricApiPlan.parse(
 				"{\"fabricApiVersion\":\"1\",\"modules\":{\"x\":{\"plan\":\"native\",\"version\":\"1\",\"skipMixins\":[\"A\"]}}}"));
 	}
@@ -348,5 +348,33 @@ class PipelineTest {
 		assertEquals(List.of("com.hinted.NeoForge"), result.runtime().declared("main").stream().map(d -> d.spec().value()).toList());
 		assertTrue(result.runtime().declared("server").isEmpty());
 		assertTrue(result.report().render().contains("Compatibility hints"));
+	}
+
+	private static Path patchTarget(Path game) throws Exception {
+		return TestJars.create().fabricModJson(TestJars.modJson("target-mod", "2.0", "\"mixins\":[\"target.mixins.json\"]"))
+				.text("target.mixins.json", "{\"required\":true,\"package\":\"com.target.mixin\",\"mixins\":[\"BadMixin\"]}")
+				.bytes("com/target/mixin/BadMixin.class", mixinClass("com/target/mixin/BadMixin", "removedByNeoForge"))
+				.write(game.resolve("mods/target.jar"));
+	}
+
+	private static Path patch(Path game, String depends) throws Exception {
+		return TestJars.create().fabricModJson(TestJars.modJson("target-fix", "1.0", depends
+						+ "\"custom\":{\"fabricated\":{\"patches\":[{\"target\":\"target-mod\",\"skipMixins\":[\"target.mixins.json:BadMixin\"]}]}}"))
+				.write(game.resolve("mods/fix.jar"));
+	}
+
+	@Test
+	void compatPatchesFixOtherModsTheyDependOn(@TempDir Path game) throws Exception {
+		Pipeline.Result result = Pipeline.run(input(game, List.of(patchTarget(game), patch(game, "\"depends\":{\"target-mod\":\">=2\"},")),
+				Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
+		assertTrue(result.runtime().isModLoaded("target-mod"), result.report().render());
+		assertTrue(result.report().render().contains("target-mod <- target-fix"));
+	}
+
+	@Test
+	void compatPatchesNeedADependencyOnTheirTarget(@TempDir Path game) throws Exception {
+		Pipeline.Result result = Pipeline.run(input(game, List.of(patchTarget(game), patch(game, "")), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
+		assertFalse(result.runtime().isModLoaded("target-mod"), "the patch does not apply");
+		assertTrue(result.report().render().contains("does not depend on it"));
 	}
 }

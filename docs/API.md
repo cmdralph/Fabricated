@@ -125,8 +125,35 @@ The rules:
 - Players can turn a mod's hints off with `"ignoreHints": true` for that mod in `config/fabricated.json`.
 - Settings that are the player's choice (`ignorePreflight`, `disabled`, `aliases`) are not accepted in the block.
 
+## Compat patches (for modpack makers and third parties)
+
+A compat patch is an ordinary Fabric mod jar that fixes another mod under Fabricated. Its `custom.fabricated` block
+lists `patches`, each naming a `target` mod and what to leave out of it:
+
+```json
+{
+  "schemaVersion": 1, "id": "examplemod-neoforge-fix", "version": "1.0.0",
+  "depends": { "examplemod": ">=2.1.0 <2.3.0" },
+  "mixins": ["examplemod_fix.mixins.json"],
+  "custom": { "fabricated": { "patches": [
+    { "target": "examplemod", "skipMixins": ["examplemod.mixins.json:client.TooltipMixin"], "skipEntrypoints": ["modmenu"] }
+  ]}}
+}
+```
+
+How patches behave:
+
+- **They only subtract.** A patch skips the target's mixins and entrypoints. Anything it adds comes from its own mixins
+  and entrypoints, which go through the same checks as any other mod.
+- **They need a dependency on the target.** A patch applies only while the patch mod `depends` on its target and both
+  load. The dependency's version range says which versions of the target the patch fixes; outside it, the patch mod is
+  disabled with a clear message.
+- **They combine.** Several patches for one mod add up.
+- **They are visible.** Applied patches are listed under "Compatibility patches" in the report.
+- **Players stay in control.** `"ignoreHints": true` for the target in `config/fabricated.json` turns off the target's
+  own hints and every patch for it.
+
 ## Planned
 
-- **Compat patches:** small Fabric-format jars that fix a specific mod under Fabricated. They can skip that mod's
-  mixins and entrypoints, and add their own.
-- **NeoForge id mappings:** in the hints, mapping a Fabric dependency id to the id of the NeoForge mod that provides it.
+- **NeoForge id mappings:** in the hints, mapping a Fabric dependency id to the id of the NeoForge mod that provides
+  it.
