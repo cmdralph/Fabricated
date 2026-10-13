@@ -162,6 +162,8 @@ public final class Pipeline {
 		for (NeoForgeMod m : in.neoForgeMods()) neoMods.put(m.id(), m);
 		FabricApiPlan plan = in.fabricApiPlan();
 		List<Candidate> eligible = new ArrayList<>();
+		// NeoForge refuses two mods with one id, and distinct Fabric ids can share one ("a-b", "a_b").
+		Map<String, Candidate> byNeoId = new HashMap<>();
 		for (Candidate c : scan.candidates()) {
 			FabricatedConfig.ModOverride override = config.override(c.id());
 			String version = c.metadata().getVersion().getFriendlyString();
@@ -183,10 +185,17 @@ public final class Pipeline {
 				continue;
 			}
 			String neoId = ModIds.toNeoForgeId(c.id());
-			if (neoMods.containsKey(neoId) && config.preferNativeNeoForgeMods() && !override.preferFabric()) {
+			if (neoMods.containsKey(neoId)) {
 				report.mod(new ModRow(c.id(), version, c.origin(), Status.SKIPPED,
 						"a NeoForge build of this mod is installed (" + neoMods.get(neoId).displayName() + " " + neoMods.get(neoId).version() + "); using it instead",
-						"Set \"preferFabric\": true for " + c.id() + " in config/fabricated.json to use the Fabric build instead."));
+						"Remove the NeoForge build to use the Fabric one."));
+				continue;
+			}
+			Candidate clash = byNeoId.putIfAbsent(neoId, c);
+			if (clash != null) {
+				report.mod(new ModRow(c.id(), version, c.origin(), Status.DISABLED,
+						"its NeoForge mod id '" + neoId + "' is also the id of Fabric mod " + clash.id() + " (" + clash.origin() + "), and NeoForge cannot load both",
+						"Remove one of the two mods."));
 				continue;
 			}
 			eligible.add(c);
@@ -430,7 +439,7 @@ public final class Pipeline {
 		Set<String> skip = new java.util.TreeSet<>(user.skipMixins());
 		skip.addAll(module.skipMixins());
 		return new FabricatedConfig.ModOverride(user.disabled(), java.util.Collections.unmodifiableSet(skip), user.skipEntrypoints(),
-				user.aliases(), user.preferFabric(), user.ignorePreflight());
+				user.aliases(), user.ignorePreflight());
 	}
 
 	private static List<String> loadAfter(Candidate c, Set<String> activeIds, Map<String, NeoForgeMod> neoMods) {

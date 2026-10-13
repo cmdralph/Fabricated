@@ -116,52 +116,54 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 		ClassBytesSource nativeApi = ClassBytesSource.EMPTY;
 		// Interfaces the in-game mod's mixins add to game classes (Fabric API's injected interfaces).
 		Map<String, List<String>> nativeApiInterfaces = new HashMap<>();
-		SafeArchive gameModArchive = null;
-		if (gameModJar != null) {
-			gameModArchive = SafeArchive.open(gameModJar, ArchiveLimits.DEFAULTS);
-			SafeArchive archive = gameModArchive;
-			for (String name : archive.classEntryNames()) {
-				int slash = name.lastIndexOf('/');
-				if (slash <= 0) continue;
-				platformPackages.add(name.substring(0, slash));
-				if (name.contains("/mixin/")) {
-					byte[] data = archive.read(name);
-					if (data != null) LinkageAnalysis.mixinInterfaces(data, nativeApiInterfaces);
-				}
-			}
-			nativeApi = name -> {
-				try {
-					return archive.read(name + ".class");
-				} catch (ArchiveException e) {
-					throw new IOException(e.getMessage(), e);
-				}
-			};
-		} else {
-			IModFile dev = find(loadedMods, GAME_MOD_ID).orElseThrow();
-			JarContents devContents = dev.getContents();
-			nativeApi = name -> devContents.readFile(name + ".class");
-		}
-
-		List<Pipeline.NeoForgeMod> neoForgeMods = new ArrayList<>();
-		for (IModFile file : loadedMods) {
-			for (IModInfo mod : file.getModInfos()) {
-				if (mod.getModId().equals("minecraft")) continue;
-				neoForgeMods.add(new Pipeline.NeoForgeMod(mod.getModId(), mod.getVersion().toString(), mod.getDisplayName()));
-			}
-		}
-
-		FabricApiPlan plan = FabricApiPlan.parse(new String(FabricatedInfo.readOptional("fabric-api-plan.json"), StandardCharsets.UTF_8));
-		Pipeline.Input input = new Pipeline.Input(gameDir, FMLPaths.CONFIGDIR.get(), fabricJars, mcVersion, neoVersion,
-				client, info.namespace(), runtimeMixinVersion(info), info.mixinLowest(), info.fabricatedVersion(), !fml.isProduction(), gameClasses, untransformable,
-				platformPackages, plan, nativeApi, nativeApiInterfaces, neoForgeMods,
-				(cache, mojangPath) -> IntermediaryMappings.load(cache, mcVersion, client, mojangPath),
-				fml.getProgramArgs().getArguments());
-
+		// Closed once the pipeline is done with it, however it ends.
+		SafeArchive archive = gameModJar == null ? null : SafeArchive.open(gameModJar, ArchiveLimits.DEFAULTS);
+		FabricApiPlan plan;
 		Pipeline.Result result;
 		try {
+			if (archive != null) {
+				for (String name : archive.classEntryNames()) {
+					int slash = name.lastIndexOf('/');
+					if (slash <= 0) continue;
+					platformPackages.add(name.substring(0, slash));
+					if (name.contains("/mixin/")) {
+						byte[] data = archive.read(name);
+						if (data != null) LinkageAnalysis.mixinInterfaces(data, nativeApiInterfaces);
+					}
+				}
+				nativeApi = name -> {
+					try {
+						return archive.read(name + ".class");
+					} catch (ArchiveException e) {
+						throw new IOException(e.getMessage(), e);
+					}
+				};
+			} else {
+				IModFile dev = find(loadedMods, GAME_MOD_ID).orElseThrow();
+				JarContents devContents = dev.getContents();
+				nativeApi = name -> devContents.readFile(name + ".class");
+			}
+
+			List<Pipeline.NeoForgeMod> neoForgeMods = new ArrayList<>();
+			for (IModFile file : loadedMods) {
+				for (IModInfo mod : file.getModInfos()) {
+					if (mod.getModId().equals("minecraft")) continue;
+					neoForgeMods.add(new Pipeline.NeoForgeMod(mod.getModId(), mod.getVersion().toString(), mod.getDisplayName()));
+				}
+			}
+
+			byte[] planJson = FabricatedInfo.readOptional("fabric-api-plan.json");
+			if (planJson == null) throw new IllegalStateException("This Fabricated build is missing its fabric-api-plan.json");
+			plan = FabricApiPlan.parse(new String(planJson, StandardCharsets.UTF_8));
+			Pipeline.Input input = new Pipeline.Input(gameDir, FMLPaths.CONFIGDIR.get(), fabricJars, mcVersion, neoVersion,
+					client, info.namespace(), runtimeMixinVersion(info), info.mixinLowest(), info.fabricatedVersion(), !fml.isProduction(), gameClasses, untransformable,
+					platformPackages, plan, nativeApi, nativeApiInterfaces, neoForgeMods,
+					(cache, mojangPath) -> IntermediaryMappings.load(cache, mcVersion, client, mojangPath),
+					fml.getProgramArgs().getArguments());
+
 			result = Pipeline.run(input);
 		} finally {
-			if (gameModArchive != null) gameModArchive.close();
+			if (archive != null) archive.close();
 		}
 		result.runtime().install();
 		FabricatedState state = new FabricatedState(result, logsDir);
@@ -204,8 +206,11 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 			LOGGER.info("{} Fabric API module(s) can't run on NeoForge yet and were skipped; see logs/fabric-bridge-report.txt", quietFabricApi);
 		}
 		state.writeReport();
-		if (gameModJar != null) result.cache().markNestedUsed(gameModJar);
-		result.cache().finish(result.config().maxUnusedLaunches());
+		// No cache when it could not be created; the pipeline then reported that and translated without one.
+		if (result.cache() != null) {
+			if (gameModJar != null) result.cache().markNestedUsed(gameModJar);
+			result.cache().finish(result.config().maxUnusedLaunches());
+		}
 	}
 
 	private static Optional<IModFile> find(List<IModFile> files, String modId) {

@@ -51,4 +51,26 @@ class CandidateScannerTest {
 		assertEquals("2.0", lib.metadata().getVersion().getFriendlyString());
 		assertTrue(result.notes().stream().anyMatch(n -> n.contains("instead of older")), result.notes().toString());
 	}
+
+	@Test
+	void nestedJarsShareOneBudgetPerTopLevelJar(@TempDir Path game) throws Exception {
+		java.util.Random random = new java.util.Random(1);
+		byte[] payload = new byte[3000];
+		random.nextBytes(payload);
+		byte[] libA = TestJars.create().fabricModJson(TestJars.modJson("lib-a", "1.0", "")).bytes("a.bin", payload).toBytes();
+		random.nextBytes(payload);
+		byte[] libB = TestJars.create().fabricModJson(TestJars.modJson("lib-b", "1.0", "")).bytes("b.bin", payload).toBytes();
+		byte[] mid = TestJars.create()
+				.fabricModJson(TestJars.modJson("mid", "1.0", "\"jars\":[{\"file\":\"a.jar\"},{\"file\":\"b.jar\"}]"))
+				.bytes("a.jar", libA).bytes("b.jar", libB).toBytes();
+		Path top = TestJars.create().fabricModJson(TestJars.modJson("top", "1.0", "\"jars\":[{\"file\":\"mid.jar\"}]"))
+				.bytes("mid.jar", mid).write(game.resolve("top.jar"));
+		// Each archive fits on its own; the tree does not.
+		long perArchive = mid.length + libA.length + 512;
+		ArchiveLimits limits = new ArchiveLimits(1 << 20, 1 << 20, perArchive, 100, 100, 3);
+		CandidateScanner.Result result = new CandidateScanner(new TranslationCache(game, true, true), limits).scan(List.of(top));
+		List<String> ids = result.candidates().stream().map(Candidate::id).sorted().toList();
+		assertEquals(List.of("lib-a", "mid", "top"), ids);
+		assertTrue(result.rejected().stream().anyMatch(r -> r.origin().endsWith("!/b.jar") && r.reason().contains("in all")), result.rejected().toString());
+	}
 }

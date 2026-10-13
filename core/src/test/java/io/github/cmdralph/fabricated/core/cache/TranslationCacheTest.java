@@ -52,6 +52,34 @@ class TranslationCacheTest {
 	}
 
 	@Test
+	void refusesSymlinkedCacheSubdirectories(@TempDir Path game, @TempDir Path elsewhere) throws Exception {
+		Path root = new TranslationCache(game, true, true).root();
+		Files.delete(root.resolve("tmp"));
+		Files.createSymbolicLink(root.resolve("tmp"), elsewhere);
+		assertThrows(IOException.class, () -> new TranslationCache(game, true, true));
+	}
+
+	@Test
+	void verifiesBlobs(@TempDir Path game) throws Exception {
+		TranslationCache cache = new TranslationCache(game, true, true);
+		Path blob = cache.storeBlob("table.bin", new byte[] {1, 2, 3});
+		assertArrayEquals(new byte[] {1, 2, 3}, cache.readBlob("table.bin").orElseThrow());
+		byte[] damaged = Files.readAllBytes(blob);
+		damaged[damaged.length - 1] = 9;
+		Files.write(blob, damaged);
+		assertTrue(cache.readBlob("table.bin").isEmpty(), "damaged blob is rejected");
+		assertFalse(Files.exists(blob), "and deleted");
+	}
+
+	@Test
+	void requiresExpectedFiles(@TempDir Path game) throws Exception {
+		TranslationCache cache = new TranslationCache(game, true, true);
+		String name = TranslationCache.entryName("my_mod", "12".repeat(32));
+		cache.store(name, Map.of("overlay.jar", new byte[] {1}), Map.of());
+		assertTrue(cache.lookup(name, "overlay.jar", "remapped.jar").isEmpty());
+	}
+
+	@Test
 	void rejectsUnsafeNames(@TempDir Path game) throws Exception {
 		TranslationCache cache = new TranslationCache(game, true, true);
 		assertThrows(IllegalArgumentException.class, () -> TranslationCache.entryName("../x", "00".repeat(32)));

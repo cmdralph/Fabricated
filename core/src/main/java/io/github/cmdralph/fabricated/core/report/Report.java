@@ -27,8 +27,15 @@ public final class Report {
 		LOADED, DISABLED, REJECTED, PROVIDED_NATIVELY, SKIPPED
 	}
 
-	/** One row in the mod table. */
+	/** One row in the mod table. Line breaks and other control characters (mod-supplied text) become spaces. */
 	public record ModRow(String id, String version, String source, Status status, String detail, String suggestion) {
+		public ModRow {
+			id = oneLine(id);
+			version = oneLine(version);
+			source = oneLine(source);
+			detail = oneLine(detail);
+			suggestion = oneLine(suggestion);
+		}
 	}
 
 	private final String fabricatedVersion;
@@ -52,8 +59,21 @@ public final class Report {
 
 	/** Adds a line to a named section (created on first use, in insertion order). */
 	public synchronized Report line(String section, String line) {
-		sections.computeIfAbsent(section, k -> new ArrayList<>()).add(line);
+		sections.computeIfAbsent(section, k -> new ArrayList<>()).add(oneLine(line));
 		return this;
+	}
+
+	/** Keeps mod-supplied text from starting lines of its own (spoofed sections) in the report or NeoForge's warnings. */
+	static String oneLine(String text) {
+		if (text == null) return null;
+		StringBuilder sb = null;
+		for (int i = 0; i < text.length(); i++) {
+			if (Character.isISOControl(text.charAt(i)) || text.charAt(i) == '\u2028' || text.charAt(i) == '\u2029') {
+				if (sb == null) sb = new StringBuilder(text);
+				sb.setCharAt(i, ' ');
+			}
+		}
+		return sb == null ? text : sb.toString();
 	}
 
 	public synchronized List<ModRow> mods() {

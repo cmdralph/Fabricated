@@ -10,6 +10,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -44,6 +45,7 @@ public final class TranslationCache {
 	private static final Pattern SAFE_NAME = Pattern.compile("[a-z0-9_.-]{1,160}");
 	private static final String ENTRY_FILE = "entry.json";
 	private static final String INDEX_FILE = "index.json";
+	private static final int BLOB_HASH_LENGTH = 32;
 
 	private final Path root;
 	private final boolean reuse;
@@ -68,20 +70,23 @@ public final class TranslationCache {
 		Path p = realGame;
 		for (Path part : realGame.relativize(candidate)) {
 			p = p.resolve(part);
-			if (Files.isSymbolicLink(p)) throw new IOException("Refusing to use a cache path containing a symbolic link: " + p);
-			if (Files.exists(p, LinkOption.NOFOLLOW_LINKS) && !Files.isDirectory(p, LinkOption.NOFOLLOW_LINKS)) {
-				throw new IOException("Cache path component is not a directory: " + p);
-			}
-			Files.createDirectories(p);
+			createRealDirectory(p);
 		}
 		this.root = candidate;
 		this.reuse = reuse;
 		this.verify = verify;
-		Files.createDirectories(root.resolve("entries"));
-		Files.createDirectories(root.resolve("nested"));
-		Files.createDirectories(root.resolve("tmp"));
+		// Cleanup deletes inside these, so they must not lead out of the game directory either.
+		for (String dir : new String[] {"entries", "nested", "tmp", "blobs"}) createRealDirectory(root.resolve(dir));
 		this.launch = loadIndex() + 1;
 		cleanTmp();
+	}
+
+	private static void createRealDirectory(Path p) throws IOException {
+		if (Files.isSymbolicLink(p)) throw new IOException("Refusing to use a cache path containing a symbolic link: " + p);
+		if (Files.exists(p, LinkOption.NOFOLLOW_LINKS) && !Files.isDirectory(p, LinkOption.NOFOLLOW_LINKS)) {
+			throw new IOException("Cache path component is not a directory: " + p);
+		}
+		Files.createDirectories(p);
 	}
 
 	public Path root() {
@@ -109,16 +114,23 @@ public final class TranslationCache {
 		return name;
 	}
 
-	/** Returns a verified entry, or empty when absent, disabled, or failing verification (then deleted). */
-	public Optional<Entry> lookup(String name) {
+	/**
+	 * Returns a verified entry, or empty when absent, disabled, or failing verification (then deleted).
+	 *
+	 * @param requiredFiles files the entry must hold (and list in its {@code entry.json})
+	 */
+	public Optional<Entry> lookup(String name, String... requiredFiles) {
 		lastUsed.put(name, launch);
 		if (!reuse) return Optional.empty();
 		Path dir = root.resolve("entries").resolve(name);
 		Path entryJson = dir.resolve(ENTRY_FILE);
-		if (!Files.isRegularFile(entryJson, LinkOption.NOFOLLOW_LINKS)) return Optional.empty();
+		if (Files.isSymbolicLink(dir) || !Files.isRegularFile(entryJson, LinkOption.NOFOLLOW_LINKS)) return Optional.empty();
 		try {
 			Map<String, Object> meta = Json.parseObject(Files.readString(entryJson, StandardCharsets.UTF_8));
 			if (!(meta.get("files") instanceof Map<?, ?> files)) throw new JsonException("missing files");
+			for (String required : requiredFiles) {
+				if (!files.containsKey(required)) throw new JsonException("missing " + required);
+			}
 			for (Map.Entry<?, ?> f : files.entrySet()) {
 				String fileName = String.valueOf(f.getKey());
 				if (!SAFE_NAME.matcher(fileName).matches()) throw new JsonException("unsafe file name " + fileName);
@@ -187,49 +199,67 @@ public final class TranslationCache {
 		if (file.endsWith(".jar") && SAFE_NAME.matcher(file).matches()) lastUsed.put("nested/" + file, launch);
 	}
 
-	/** Stores an arbitrary content-addressed blob (e.g. a mapping table) under {@code blobs/}. */
+	/**
+	 * Stores a blob derived from known inputs (e.g. a mapping table) under {@code blobs/}. Its name says which inputs
+	 * it came from, not what it holds, so the file starts with the SHA-256 of its content for {@link #readBlob}.
+	 */
 	public Path storeBlob(String fileName, byte[] data) throws IOException {
 		if (!SAFE_NAME.matcher(fileName).matches()) throw new IllegalArgumentException("Unsafe blob name " + fileName);
-		Path dir = Files.createDirectories(root.resolve("blobs"));
-		Path target = dir.resolve(fileName);
-		AtomicFiles.writeAtomically(target, data, root.resolve("tmp"));
+		Path target = root.resolve("blobs").resolve(fileName);
+		byte[] file = new byte[BLOB_HASH_LENGTH + data.length];
+		System.arraycopy(Hashing.sha256Digest().digest(data), 0, file, 0, BLOB_HASH_LENGTH);
+		System.arraycopy(data, 0, file, BLOB_HASH_LENGTH, data.length);
+		AtomicFiles.writeAtomically(target, file, root.resolve("tmp"));
 		lastUsed.put("blobs/" + fileName, launch);
 		return target;
 	}
 
-	/** Reads a blob stored with {@link #storeBlob}, or empty if absent or reuse is disabled. */
+	/** Reads a blob stored with {@link #storeBlob}, or empty if absent, damaged (then deleted) or reuse is disabled. */
 	public Optional<byte[]> readBlob(String fileName) throws IOException {
 		if (!SAFE_NAME.matcher(fileName).matches()) throw new IllegalArgumentException("Unsafe blob name " + fileName);
 		lastUsed.put("blobs/" + fileName, launch);
 		if (!reuse) return Optional.empty();
 		Path file = root.resolve("blobs").resolve(fileName);
 		if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) return Optional.empty();
-		return Optional.of(Files.readAllBytes(file));
+		byte[] bytes = Files.readAllBytes(file);
+		byte[] data = bytes.length < BLOB_HASH_LENGTH ? null : Arrays.copyOfRange(bytes, BLOB_HASH_LENGTH, bytes.length);
+		if (data == null || !Arrays.equals(Hashing.sha256Digest().digest(data), Arrays.copyOf(bytes, BLOB_HASH_LENGTH))) {
+			notes.add("Cache item blobs/" + fileName + " failed verification and will be rebuilt");
+			deleteQuietly(file);
+			return Optional.empty();
+		}
+		return Optional.of(data);
 	}
 
 	/**
-	 * SHA-256 of a file, memoised by (path, size, modification time) across launches so unchanged
-	 * mods are not re-hashed.
+	 * SHA-256 of a file, memoised across launches so unchanged mods are not re-hashed. The memo is keyed by path,
+	 * size, modification time and, where the file system has them, change time and file key (inode): copying a jar
+	 * over another with its old timestamp kept ({@code cp -p}, a restored backup) still changes the change time.
 	 */
 	public String sha256(Path file) throws IOException {
 		BasicFileAttributes attrs = Files.readAttributes(file, BasicFileAttributes.class);
 		String key = file.toAbsolutePath().normalize().toString();
+		String stamp = attrs.size() + "|" + attrs.lastModifiedTime().toMillis() + "|" + changeTime(file) + "|" + attrs.fileKey();
 		Map<String, Object> memo = hashMemo.get(key);
-		long size = attrs.size();
-		long mtime = attrs.lastModifiedTime().toMillis();
-		if (memo != null && memo.get("size") instanceof Number s && s.longValue() == size
-				&& memo.get("mtime") instanceof Number m && m.longValue() == mtime && memo.get("sha256") instanceof String sha) {
+		if (memo != null && stamp.equals(memo.get("stamp")) && memo.get("sha256") instanceof String sha) {
 			memo.put("launch", launch);
 			return sha;
 		}
 		String sha = Hashing.sha256(file);
 		Map<String, Object> entry = new ConcurrentHashMap<>();
-		entry.put("size", size);
-		entry.put("mtime", mtime);
+		entry.put("stamp", stamp);
 		entry.put("sha256", sha);
 		entry.put("launch", launch);
 		hashMemo.put(key, entry);
 		return sha;
+	}
+
+	private static Object changeTime(Path file) {
+		try {
+			return Files.getAttribute(file, "unix:ctime");
+		} catch (UnsupportedOperationException | IllegalArgumentException | IOException e) {
+			return "";
+		}
 	}
 
 	/**

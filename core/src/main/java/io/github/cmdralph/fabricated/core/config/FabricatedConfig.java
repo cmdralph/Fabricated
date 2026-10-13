@@ -29,7 +29,6 @@ public record FabricatedConfig(
 		EntrypointFailure onEntrypointFailure,
 		boolean strictDependencies,
 		boolean strictLinkage,
-		boolean preferNativeNeoForgeMods,
 		boolean cacheEnabled,
 		boolean verifyIntegrity,
 		int maxUnusedLaunches,
@@ -50,8 +49,8 @@ public record FabricatedConfig(
 
 	/** Per-mod overrides, keyed by Fabric mod id. */
 	public record ModOverride(boolean disabled, Set<String> skipMixins, Set<String> skipEntrypoints, List<String> aliases,
-			boolean preferFabric, boolean ignorePreflight) {
-		public static final ModOverride NONE = new ModOverride(false, Set.of(), Set.of(), List.of(), false, false);
+			boolean ignorePreflight) {
+		public static final ModOverride NONE = new ModOverride(false, Set.of(), Set.of(), List.of(), false);
 
 		/** Stable text describing the overrides that affect translation output, for cache keys. */
 		public String fingerprint() {
@@ -65,7 +64,7 @@ public record FabricatedConfig(
 	}
 
 	public static FabricatedConfig defaults() {
-		return new FabricatedConfig(EntrypointFailure.ERROR, false, false, true, true, true, 5,
+		return new FabricatedConfig(EntrypointFailure.ERROR, false, false, true, true, 5,
 				ArchiveLimits.DEFAULTS, Map.of(), null, List.of());
 	}
 
@@ -106,12 +105,13 @@ public record FabricatedConfig(
 		int schema = r.integer("schema", SCHEMA, 1, 1);
 		if (schema != SCHEMA) warnings.add("Unknown schema " + schema);
 
-		// Accepted (and ignored) so configs written by older versions don't produce a warning.
+		// Accepted (and ignored) so configs written by older versions don't produce a warning. A NeoForge mod now
+		// always wins over a Fabric mod with the same id: NeoForge refuses to load two mods with one id.
 		r.get("logLevel");
+		r.get("preferNativeNeoForgeMods");
 		EntrypointFailure failure = EntrypointFailure.valueOf(r.choice("onEntrypointFailure", "error", List.of("error", "disable")).toUpperCase(Locale.ROOT));
 		boolean strictDeps = r.bool("strictDependencies", false);
 		boolean strictLinkage = r.bool("strictLinkage", false);
-		boolean preferNative = r.bool("preferNativeNeoForgeMods", true);
 		String mappings = r.string("mojangMappingsPath", null);
 
 		Reader cache = r.object("cache");
@@ -138,21 +138,21 @@ public record FabricatedConfig(
 					Collections.unmodifiableSet(new TreeSet<>(m.strings("skipMixins"))),
 					Collections.unmodifiableSet(new TreeSet<>(m.strings("skipEntrypoints"))),
 					List.copyOf(m.strings("aliases")),
-					m.bool("preferFabric", false),
 					m.bool("ignorePreflight", false)));
+			m.get("preferFabric");
 			m.reportUnknown();
 		}
 		cache.reportUnknown();
 		lim.reportUnknown();
 		r.reportUnknown();
-		return new FabricatedConfig(failure, strictDeps, strictLinkage, preferNative, cacheEnabled, verify,
+		return new FabricatedConfig(failure, strictDeps, strictLinkage, cacheEnabled, verify,
 				unused, limits, mods, mappings, warnings);
 	}
 
 	private FabricatedConfig withWarning(String warning) {
 		List<String> w = new ArrayList<>(warnings);
 		w.add(warning);
-		return new FabricatedConfig(onEntrypointFailure, strictDependencies, strictLinkage, preferNativeNeoForgeMods,
+		return new FabricatedConfig(onEntrypointFailure, strictDependencies, strictLinkage,
 				cacheEnabled, verifyIntegrity, maxUnusedLaunches, limits, overrides, mojangMappingsPath, w);
 	}
 
@@ -163,7 +163,6 @@ public record FabricatedConfig(
 		root.put("onEntrypointFailure", onEntrypointFailure.name().toLowerCase(Locale.ROOT));
 		root.put("strictDependencies", strictDependencies);
 		root.put("strictLinkage", strictLinkage);
-		root.put("preferNativeNeoForgeMods", preferNativeNeoForgeMods);
 		Map<String, Object> cache = new LinkedHashMap<>();
 		cache.put("enabled", cacheEnabled);
 		cache.put("verifyIntegrity", verifyIntegrity);
@@ -185,7 +184,6 @@ public record FabricatedConfig(
 			m.put("skipMixins", new ArrayList<>(o.skipMixins()));
 			m.put("skipEntrypoints", new ArrayList<>(o.skipEntrypoints()));
 			m.put("aliases", o.aliases());
-			m.put("preferFabric", o.preferFabric());
 			m.put("ignorePreflight", o.ignorePreflight());
 			modsJson.put(e.getKey(), m);
 		}

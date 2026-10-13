@@ -324,13 +324,12 @@ Read during discovery, before NeoForge's config system exists, so it's plain JSO
   "schema": 1,
   "onEntrypointFailure": "error",
   "strictDependencies": false,
-  "preferNativeNeoForgeMods": true,
   "cache": { "enabled": true, "verifyIntegrity": true, "maxUnusedLaunches": 5 },
   "limits": { "maxJarBytes": 268435456, "maxEntryBytes": 67108864, "maxTotalUncompressedBytes": 536870912,
               "maxEntries": 65536, "maxCompressionRatio": 100, "maxNestingDepth": 3 },
   "mods": {
     "examplemod": { "disabled": false, "skipMixins": ["examplemod.mixins.json:client.FooMixin"],
-                    "skipEntrypoints": ["client"], "aliases": ["example"], "preferFabric": false }
+                    "skipEntrypoints": ["client"], "aliases": ["example"] }
   },
   "mojangMappingsPath": null
 }

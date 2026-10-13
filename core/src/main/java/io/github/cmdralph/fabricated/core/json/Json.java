@@ -313,6 +313,8 @@ public final class Json {
 			}
 		}
 
+		private static final int MAX_SCALE = 1000;
+
 		private BigDecimal readNumber() throws JsonException {
 			int start = pos;
 			if (s.charAt(pos) == '-') pos++;
@@ -326,11 +328,15 @@ public final class Json {
 			}
 			String number = s.substring(start, pos);
 			if (number.length() > 64) throw error("Number literal too long");
+			BigDecimal value;
 			try {
-				return new BigDecimal(number);
+				value = new BigDecimal(number);
 			} catch (NumberFormatException e) {
 				throw error("Invalid number '" + number + "'");
 			}
+			// A huge exponent (1e999999999) is a few bytes here but gigabytes once written back in plain notation.
+			if (Math.abs((long) value.scale()) > MAX_SCALE) throw error("Number '" + number + "' out of range");
+			return value;
 		}
 	}
 

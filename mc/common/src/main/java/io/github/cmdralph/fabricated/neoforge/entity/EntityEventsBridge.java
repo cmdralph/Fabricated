@@ -33,6 +33,7 @@ import net.neoforged.neoforge.event.entity.player.CanPlayerSleepEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerSetSpawnEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerWakeUpEvent;
+import net.neoforged.neoforge.event.tick.ServerTickEvent;
 
 /**
  * Native {@code fabric-entity-events-v1}: fires the vendored Fabric API events from NeoForge's entity events instead
@@ -164,6 +165,11 @@ public final class EntityEventsBridge {
 			if (travel == null || travel.original() == entity || travel.origin() == destination) return;
 			TRAVELLING.remove(entity.getUUID());
 			EntityEventsCompat.afterEntityChange(travel.original(), entity, travel.origin(), destination);
+		});
+		// A teleport fires both events within one call; anything still here (the copy was never created) would otherwise
+		// keep its entity and level alive, across integrated-server sessions too.
+		bus.addListener(ServerTickEvent.Post.class, e -> {
+			if (!TRAVELLING.isEmpty()) TRAVELLING.clear();
 		});
 
 		// Sleeping (the parts NeoForge has events for).
