@@ -16,6 +16,7 @@ import io.github.cmdralph.fabricated.core.archive.ArchiveException;
 import io.github.cmdralph.fabricated.core.archive.SafeArchive;
 import io.github.cmdralph.fabricated.core.json.Json;
 import io.github.cmdralph.fabricated.core.json.JsonException;
+import io.github.cmdralph.fabricated.core.mixin.Refmap;
 
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassWriter;
@@ -36,10 +37,12 @@ import org.objectweb.asm.commons.ClassRemapper;
 public final class JarRemapper {
 	private final MappingTable table;
 	private final TokenRemapper tokens;
+	private final IntermediaryRemapper remapper;
 
 	public JarRemapper(MappingTable table) {
 		this.table = table;
 		this.tokens = new TokenRemapper(table);
+		this.remapper = new IntermediaryRemapper(table);
 	}
 
 	/** Result of remapping one jar. */
@@ -82,7 +85,7 @@ public final class JarRemapper {
 		try {
 			ClassReader reader = new ClassReader(data);
 			ClassWriter writer = new ClassWriter(0);
-			reader.accept(new ClassRemapper(writer, new IntermediaryRemapper(table)), 0);
+			reader.accept(new ClassRemapper(writer, remapper), 0);
 			return writer.toByteArray();
 		} catch (RuntimeException e) {
 			throw new MappingException("Failed to remap " + nameForErrors + ": " + e, e);
@@ -97,7 +100,7 @@ public final class JarRemapper {
 	/** Rewrites every string value of a refmap (keys are mod-side names and stay as they are). */
 	public byte[] remapRefmap(byte[] data, String nameForErrors) throws MappingException {
 		try {
-			Object tree = Json.parse(new String(data, StandardCharsets.UTF_8));
+			Object tree = Json.parse(new String(data, StandardCharsets.UTF_8), Refmap.MAX_LENGTH, Json.DEFAULT_MAX_DEPTH);
 			return Json.write(remapJsonValues(tree), true).getBytes(StandardCharsets.UTF_8);
 		} catch (JsonException e) {
 			throw new MappingException("Refmap " + nameForErrors + " is not valid JSON: " + e.getMessage(), e);

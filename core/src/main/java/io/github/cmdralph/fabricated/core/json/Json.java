@@ -46,9 +46,14 @@ public final class Json {
 	}
 
 	/** Parses a document that must be a JSON object. */
-	@SuppressWarnings("unchecked")
 	public static Map<String, Object> parseObject(String text) throws JsonException {
-		Object value = parse(text);
+		return parseObject(text, DEFAULT_MAX_LENGTH);
+	}
+
+	/** Parses a document that must be a JSON object, of up to {@code maxLength} characters. */
+	@SuppressWarnings("unchecked")
+	public static Map<String, Object> parseObject(String text, int maxLength) throws JsonException {
+		Object value = parse(text, maxLength, DEFAULT_MAX_DEPTH);
 		if (!(value instanceof Map)) {
 			throw new JsonException("Expected a JSON object at the top level");
 		}

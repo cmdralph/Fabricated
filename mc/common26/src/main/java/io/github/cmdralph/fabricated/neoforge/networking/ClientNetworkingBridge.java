@@ -39,6 +39,8 @@ public final class ClientNetworkingBridge {
 			if (!channels.isEmpty()) ServerboundPlayChannelEvents.REGISTER.invoker().onChannelRegister(listener, addon, client, channels);
 		});
 		bus.addListener(ClientPlayerNetworkEvent.LoggingOut.class, e -> {
+			// Also ends a configuration phase that failed (a kick, a mod mismatch) before play started.
+			ClientNetworkingImpl.setCurrentConfiguration(null);
 			if (e.getPlayer() != null) ClientPlayConnectionEvents.DISCONNECT.invoker().onPlayDisconnect(e.getPlayer().connection, Minecraft.getInstance());
 		});
 	}

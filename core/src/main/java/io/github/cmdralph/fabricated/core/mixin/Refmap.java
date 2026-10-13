@@ -13,6 +13,8 @@ import io.github.cmdralph.fabricated.core.json.JsonException;
  */
 public final class Refmap {
 	public static final Refmap EMPTY = new Refmap(Map.of());
+	/** Refmaps of large mods exceed the 1 MiB default; the archive limits still cap the entry itself. */
+	public static final int MAX_LENGTH = 16 << 20;
 
 	private final Map<String, Map<String, String>> mappings;
 
@@ -21,7 +23,7 @@ public final class Refmap {
 	}
 
 	public static Refmap parse(String json) throws JsonException {
-		Map<String, Object> root = Json.parseObject(json);
+		Map<String, Object> root = Json.parseObject(json, MAX_LENGTH);
 		Map<String, Map<String, String>> mappings = new HashMap<>();
 		if (root.get("mappings") instanceof Map<?, ?> m) {
 			for (Map.Entry<?, ?> cls : m.entrySet()) {

@@ -32,13 +32,10 @@ final class IntermediaryMappings {
 
 	static Pipeline.Mappings load(TranslationCache cache, String minecraftVersion, boolean client, String configuredPath)
 			throws MappingException, IOException {
-		byte[] intermediary = FabricatedInfo.readOptional("intermediary.tiny");
-		if (intermediary == null) {
-			throw new MappingException("this Fabricated build does not include Intermediary mappings for " + minecraftVersion);
-		}
 		Path mojang = locateMojangMappings(minecraftVersion, client, configuredPath);
-		byte[] mojangBytes = Files.readAllBytes(mojang);
-		String hash = Hashing.sha256(Hashing.sha256(intermediary) + "|" + Hashing.sha256(mojangBytes) + "|" + client).substring(0, 40);
+		// Intermediary is fixed per Minecraft version, and the Mojang file's hash is memoised: a warm launch reads
+		// neither mapping file.
+		String hash = Hashing.sha256("intermediary-" + minecraftVersion + "|" + cache.sha256(mojang) + "|" + client).substring(0, 40);
 		String blob = "mappings-" + minecraftVersion.replace('.', '_') + "-" + hash + ".bin";
 
 		Optional<byte[]> cached = cache.readBlob(blob);
@@ -49,6 +46,11 @@ final class IntermediaryMappings {
 				// Corrupt cache file: rebuild below.
 			}
 		}
+		byte[] intermediary = FabricatedInfo.readOptional("intermediary.tiny");
+		if (intermediary == null) {
+			throw new MappingException("this Fabricated build does not include Intermediary mappings for " + minecraftVersion);
+		}
+		byte[] mojangBytes = Files.readAllBytes(mojang);
 		MappingTable table;
 		try (Reader tiny = new InputStreamReader(new java.io.ByteArrayInputStream(intermediary), StandardCharsets.UTF_8);
 				Reader proguard = new InputStreamReader(new java.io.ByteArrayInputStream(mojangBytes), StandardCharsets.UTF_8)) {

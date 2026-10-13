@@ -21,7 +21,7 @@
 ## 1. The pipeline at a glance
 
 ```
- mods/*.jar ──► [1] FabricJarReader (IModFileReader)
+ mods/*.jar ──► [1] FabricCandidateLocator (IModFileCandidateLocator)
                    │  claims jars that contain fabric.mod.json, before FML rejects them
                    ▼
               [2] SafeArchive: validate zip (zip-slip, bombs, limits), SHA-256
@@ -77,7 +77,7 @@ Fabricated/
 ├── fabric-loader-api/       Binary-compatible `net.fabricmc.loader.api.*` and `net.fabricmc.api.*`
 │                            types (Apache-2.0, from Fabric Loader; NOTICE attribution)
 ├── loader/                  FML-facing glue, compiled once against FML 10.0.36 SPI (identical through 12.x)
-│                            FabricJarReader, FabricDependencyLocator, FabricLanguageLoader,
+│                            FabricCandidateLocator, FabricDependencyLocator, FabricLanguageLoader,
 │                            FabricModContainer, FabricLoaderImpl, ClassProcessors (interface injection)
 ├── bridge-common/           MC-independent parts of Fabric API bridges (Event<T> impl, buffers)
 ├── mc/
@@ -90,7 +90,7 @@ Fabricated/
 └── docs/                    RESEARCH, ARCHITECTURE, COMPATIBILITY, CONTRIBUTING
 ```
 
-* **Output:** one jar per MC version, `fabricated-<version>+mc<mc>.jar`. `core`, `loader` and `bridge-common` are shaded in, all under the Fabricated-owned package `dev.fabricated.*`, so they can't clash with anything. The `fabric-loader-api` types keep their original `net.fabricmc.*` package names because Fabric mods link against them.
+* **Output:** one jar per MC version, `fabricated-<version>+mc<mc>.jar`. `core`, `loader` and `bridge-common` are shaded in, all under the Fabricated-owned package `io.github.cmdralph.fabricated.*`, so they can't clash with anything. The `fabric-loader-api` types keep their original `net.fabricmc.*` package names because Fabric mods link against them.
 * **No preprocessor** (no Stonecutter/Manifold). Version differences live in each `mc/<ver>` directory; code shared by every version lives once in `mc/common`, by all 26.x versions in `mc/common26`, and by 26.1.2 and 26.2 in `mc/common26early`.
 * `core` targets Java 21 bytecode so the *same* compiled classes run on every line.
 
@@ -99,7 +99,7 @@ Fabricated/
 ## 3. Mod discovery and metadata translation
 
 ### 3.1 Claiming Fabric jars
-`FabricJarReader implements IModFileReader` (ServiceLoader-registered) claims any `JarContents` containing `fabric.mod.json` and **no** `META-INF/neoforge.mods.toml`, which leaves multi-loader jars to NeoForge. It returns a lightweight *candidate* mod file. Because FML runs readers before its `IncompatibleModReason.FABRIC` check, the jar is no longer "broken". `FabricDependencyLocator implements IDependencyLocator` then processes all candidates together, since resolution needs the global view. The same discovery pattern is used by prior art; this implementation is clean-room.
+`FabricCandidateLocator implements IModFileCandidateLocator` (ServiceLoader-registered) claims any jar in the mods folder containing `fabric.mod.json` and **no** `META-INF/neoforge.mods.toml`, which leaves multi-loader jars to NeoForge. It returns a lightweight *candidate* mod file. Because FML runs readers before its `IncompatibleModReason.FABRIC` check, the jar is no longer "broken". `FabricDependencyLocator implements IDependencyLocator` then processes all candidates together, since resolution needs the global view. The same discovery pattern is used by prior art; this implementation is clean-room.
 
 ### 3.2 `fabric.mod.json` → descriptor
 * `schemaVersion` 1 is fully supported. Schema 0 (pre-2019) is rejected with a clear message.

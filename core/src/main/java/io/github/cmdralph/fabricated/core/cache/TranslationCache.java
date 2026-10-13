@@ -18,7 +18,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.TreeMap;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
@@ -51,7 +50,9 @@ public final class TranslationCache {
 	private final boolean reuse;
 	private final boolean verify;
 	private final Map<String, Long> lastUsed = new ConcurrentSkipListMap<>();
-	private final Map<String, Map<String, Object>> hashMemo = new ConcurrentSkipListMap<>();
+	private final Map<String, Memo> hashMemo = new ConcurrentSkipListMap<>();
+	/** {@code <parent jar sha>!/<entry>} → the nested jar extracted from it, so unchanged parents aren't re-read. */
+	private final Map<String, NestedRef> nestedIndex = new ConcurrentSkipListMap<>();
 	private final List<String> notes = Collections.synchronizedList(new ArrayList<>());
 	private final long launch;
 
@@ -114,6 +115,13 @@ public final class TranslationCache {
 		return name;
 	}
 
+	/** A file's SHA-256, valid while its {@code stamp} (size, times, file key) is unchanged. */
+	private record Memo(String stamp, String sha256, long launch) {
+	}
+
+	private record NestedRef(String sha256, long launch) {
+	}
+
 	/**
 	 * Returns a verified entry, or empty when absent, disabled, or failing verification (then deleted).
 	 *
@@ -136,7 +144,7 @@ public final class TranslationCache {
 				if (!SAFE_NAME.matcher(fileName).matches()) throw new JsonException("unsafe file name " + fileName);
 				Path file = dir.resolve(fileName);
 				if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) throw new JsonException("missing " + fileName);
-				if (verify && !Hashing.sha256(file).equals(f.getValue())) throw new JsonException("hash mismatch for " + fileName);
+				if (verify && !sha256(file).equals(f.getValue())) throw new JsonException("hash mismatch for " + fileName);
 			}
 			return Optional.of(new Entry(name, dir, meta));
 		} catch (IOException | JsonException | RuntimeException e) {
@@ -180,23 +188,39 @@ public final class TranslationCache {
 	public Path storeNested(byte[] data) throws IOException {
 		String sha = Hashing.sha256(data);
 		Path target = root.resolve("nested").resolve(sha + ".jar");
-		if (Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS) && (!verify || Hashing.sha256(target).equals(sha))) {
-			lastUsed.put("nested/" + sha + ".jar", launch);
-			return target;
+		if (!Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS) || (verify && !sha256(target).equals(sha))) {
+			AtomicFiles.writeAtomically(target, data, root.resolve("tmp"));
 		}
-		AtomicFiles.writeAtomically(target, data, root.resolve("tmp"));
 		lastUsed.put("nested/" + sha + ".jar", launch);
 		return target;
 	}
 
+	/** {@link #storeNested(byte[])}, remembering that {@code entry} of the jar hashed {@code parentSha} holds it. */
+	public Path storeNested(byte[] data, String parentSha, String entry) throws IOException {
+		Path target = storeNested(data);
+		nestedIndex.put(parentSha + "!/" + entry, new NestedRef(nestedSha(target), launch));
+		return target;
+	}
+
 	/**
-	 * Records that a nested jar stored by another cache object on the same directory (Fabricated's own in-game mod,
-	 * extracted before the pipeline's cache exists) was used this launch, so this cache's cleanup keeps it. Only one
-	 * cache object per launch may call {@link #finish}: it owns the index.
+	 * The nested jar a previous launch extracted from {@code entry} of the jar hashed {@code parentSha}, if it is still
+	 * in the cache (and intact, when verifying): the parent's content decides the nested jar's, so it needn't be read.
 	 */
-	public void markNestedUsed(Path nestedJar) {
-		String file = nestedJar.getFileName().toString();
-		if (file.endsWith(".jar") && SAFE_NAME.matcher(file).matches()) lastUsed.put("nested/" + file, launch);
+	public Optional<Path> nested(String parentSha, String entry) throws IOException {
+		if (!reuse) return Optional.empty();
+		NestedRef ref = nestedIndex.get(parentSha + "!/" + entry);
+		if (ref == null) return Optional.empty();
+		Path target = root.resolve("nested").resolve(ref.sha256() + ".jar");
+		if (!Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS) || (verify && !sha256(target).equals(ref.sha256()))) return Optional.empty();
+		nestedIndex.put(parentSha + "!/" + entry, new NestedRef(ref.sha256(), launch));
+		lastUsed.put("nested/" + target.getFileName(), launch);
+		return Optional.of(target);
+	}
+
+	/** The SHA-256 of a jar stored by {@link #storeNested}, which is its file name. */
+	public static String nestedSha(Path nestedJar) {
+		String name = nestedJar.getFileName().toString();
+		return name.substring(0, name.length() - ".jar".length());
 	}
 
 	/**
@@ -240,17 +264,9 @@ public final class TranslationCache {
 		BasicFileAttributes attrs = Files.readAttributes(file, BasicFileAttributes.class);
 		String key = file.toAbsolutePath().normalize().toString();
 		String stamp = attrs.size() + "|" + attrs.lastModifiedTime().toMillis() + "|" + changeTime(file) + "|" + attrs.fileKey();
-		Map<String, Object> memo = hashMemo.get(key);
-		if (memo != null && stamp.equals(memo.get("stamp")) && memo.get("sha256") instanceof String sha) {
-			memo.put("launch", launch);
-			return sha;
-		}
-		String sha = Hashing.sha256(file);
-		Map<String, Object> entry = new ConcurrentHashMap<>();
-		entry.put("stamp", stamp);
-		entry.put("sha256", sha);
-		entry.put("launch", launch);
-		hashMemo.put(key, entry);
+		Memo memo = hashMemo.get(key);
+		String sha = memo != null && memo.stamp().equals(stamp) ? memo.sha256() : Hashing.sha256(file);
+		hashMemo.put(key, new Memo(stamp, sha, launch));
 		return sha;
 	}
 
@@ -270,14 +286,18 @@ public final class TranslationCache {
 		gcDirectory(root.resolve("entries"), "", maxUnusedLaunches);
 		gcDirectory(root.resolve("nested"), "nested/", maxUnusedLaunches);
 		gcDirectory(root.resolve("blobs"), "blobs/", maxUnusedLaunches);
-		hashMemo.values().removeIf(m -> !(m.get("launch") instanceof Number n) || launch - n.longValue() > maxUnusedLaunches);
+		hashMemo.values().removeIf(m -> launch - m.launch() > maxUnusedLaunches);
+		nestedIndex.values().removeIf(n -> launch - n.launch() > maxUnusedLaunches);
 		try {
 			Map<String, Object> index = new LinkedHashMap<>();
 			index.put("launch", launch);
 			index.put("lastUsed", new TreeMap<>(lastUsed));
 			Map<String, Object> hashes = new TreeMap<>();
-			hashMemo.forEach((k, v) -> hashes.put(k, new TreeMap<>(v)));
+			hashMemo.forEach((k, m) -> hashes.put(k, List.of(m.stamp(), m.sha256(), m.launch())));
 			index.put("hashes", hashes);
+			Map<String, Object> nested = new TreeMap<>();
+			nestedIndex.forEach((k, n) -> nested.put(k, List.of(n.sha256(), n.launch())));
+			index.put("nested", nested);
 			AtomicFiles.writeAtomically(root.resolve(INDEX_FILE), Json.write(index, true).getBytes(StandardCharsets.UTF_8), root.resolve("tmp"));
 		} catch (IOException e) {
 			notes.add("Could not save cache index: " + e.getMessage());
@@ -310,20 +330,28 @@ public final class TranslationCache {
 		Path index = root.resolve(INDEX_FILE);
 		if (!Files.isRegularFile(index, LinkOption.NOFOLLOW_LINKS)) return 0;
 		try {
-			Map<String, Object> json = Json.parseObject(Files.readString(index, StandardCharsets.UTF_8));
+			// Fabricated's own file, which grows with the number of mods: not held to the cap for mod-supplied JSON.
+			Map<String, Object> json = Json.parseObject(Files.readString(index, StandardCharsets.UTF_8), 64 << 20);
 			if (json.get("lastUsed") instanceof Map<?, ?> m) {
 				for (Map.Entry<?, ?> e : m.entrySet()) {
 					if (e.getValue() instanceof Number n) lastUsed.put(String.valueOf(e.getKey()), n.longValue());
 				}
 			}
 			if (json.get("hashes") instanceof Map<?, ?> h) {
-				for (Map.Entry<?, ?> e : h.entrySet()) {
-					if (e.getValue() instanceof Map<?, ?> v) {
-						Map<String, Object> copy = new ConcurrentHashMap<>();
-						v.forEach((k, val) -> copy.put(String.valueOf(k), val));
-						hashMemo.put(String.valueOf(e.getKey()), copy);
+				h.forEach((k, v) -> {
+					if (v instanceof List<?> l && l.size() == 3 && l.get(0) instanceof String stamp && l.get(1) instanceof String sha
+							&& l.get(2) instanceof Number used) {
+						hashMemo.put(String.valueOf(k), new Memo(stamp, sha, used.longValue()));
 					}
-				}
+				});
+			}
+			if (json.get("nested") instanceof Map<?, ?> n) {
+				n.forEach((k, v) -> {
+					if (v instanceof List<?> l && l.size() == 2 && l.get(0) instanceof String sha && SAFE_NAME.matcher(sha + ".jar").matches()
+							&& l.get(1) instanceof Number used) {
+						nestedIndex.put(String.valueOf(k), new NestedRef(sha, used.longValue()));
+					}
+				});
 			}
 			return json.get("launch") instanceof Number n ? n.longValue() : 0;
 		} catch (IOException | JsonException e) {

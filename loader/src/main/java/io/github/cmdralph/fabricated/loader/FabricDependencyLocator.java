@@ -12,16 +12,17 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Supplier;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.github.cmdralph.fabricated.core.Pipeline;
-import io.github.cmdralph.fabricated.core.archive.ArchiveException;
 import io.github.cmdralph.fabricated.core.archive.ArchiveLimits;
 import io.github.cmdralph.fabricated.core.archive.SafeArchive;
 import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
 import io.github.cmdralph.fabricated.core.cache.TranslationCache;
+import io.github.cmdralph.fabricated.core.config.FabricatedConfig;
 import io.github.cmdralph.fabricated.core.json.JsonException;
 import io.github.cmdralph.fabricated.core.report.Report;
 import io.github.cmdralph.fabricated.core.resolve.FabricApiPlan;
@@ -66,7 +67,7 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 		}
 	}
 
-	private void run(List<IModFile> loadedMods, IDiscoveryPipeline pipeline) throws IOException, JsonException, ArchiveException {
+	private void run(List<IModFile> loadedMods, IDiscoveryPipeline pipeline) throws IOException, JsonException {
 		FabricatedInfo info = FabricatedInfo.get();
 		FMLLoader fml = FMLLoader.getCurrent();
 		String mcVersion = fml.getVersionInfo().mcVersion();
@@ -88,11 +89,11 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 		JarContents mcContents = minecraft.getContents();
 		ClassBytesSource gameClasses = name -> mcContents.readFile(name + ".class");
 
-		// Fabricated's own in-game mod (native Fabric API implementation and NeoForge event bridges). Extracted before
-		// the pipeline's cache exists; that cache owns the index (see markNestedUsed), so this one is never finished.
-		TranslationCache bootstrapCache = new TranslationCache(gameDir, true, true);
+		FabricatedConfig config = FabricatedConfig.load(FMLPaths.CONFIGDIR.get());
+		TranslationCache cache = new TranslationCache(gameDir, config.cacheEnabled(), config.verifyIntegrity());
+		// Fabricated's own in-game mod (native Fabric API implementation and NeoForge event bridges).
 		boolean devGameMod = find(loadedMods, GAME_MOD_ID).isPresent();
-		Path gameModJar = devGameMod ? null : extractGameMod(bootstrapCache);
+		Path gameModJar = devGameMod ? null : extractGameMod(cache);
 
 		// Classes visible to NeoForge's non-transforming loaders (JDK and libraries such as DataFixerUpper or
 		// Brigadier). Mixins targeting them never apply, so pre-flight reports them instead of letting the mod
@@ -115,7 +116,7 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 		}
 		ClassBytesSource nativeApi = ClassBytesSource.EMPTY;
 		// Interfaces the in-game mod's mixins add to game classes (Fabric API's injected interfaces).
-		Map<String, List<String>> nativeApiInterfaces = new HashMap<>();
+		Supplier<Map<String, List<String>>> nativeApiInterfaces = Map::of;
 		// Closed once the pipeline is done with it, however it ends.
 		SafeArchive archive = gameModJar == null ? null : SafeArchive.open(gameModJar, ArchiveLimits.DEFAULTS);
 		FabricApiPlan plan;
@@ -124,20 +125,23 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 			if (archive != null) {
 				for (String name : archive.classEntryNames()) {
 					int slash = name.lastIndexOf('/');
-					if (slash <= 0) continue;
-					platformPackages.add(name.substring(0, slash));
-					if (name.contains("/mixin/")) {
-						byte[] data = archive.read(name);
-						if (data != null) LinkageAnalysis.mixinInterfaces(data, nativeApiInterfaces);
-					}
+					if (slash > 0) platformPackages.add(name.substring(0, slash));
 				}
-				nativeApi = name -> {
+				// Only needed when some linkage result isn't cached.
+				nativeApiInterfaces = () -> {
+					Map<String, List<String>> interfaces = new HashMap<>();
 					try {
-						return archive.read(name + ".class");
-					} catch (ArchiveException e) {
-						throw new IOException(e.getMessage(), e);
+						for (String name : archive.classEntryNames()) {
+							if (!name.contains("/mixin/")) continue;
+							byte[] data = archive.read(name);
+							if (data != null) LinkageAnalysis.mixinInterfaces(data, interfaces);
+						}
+					} catch (IOException e) {
+						LOGGER.warn("Could not read Fabricated's own mixins: {}", e.getMessage());
 					}
+					return interfaces;
 				};
+				nativeApi = name -> archive.read(name + ".class");
 			} else {
 				IModFile dev = find(loadedMods, GAME_MOD_ID).orElseThrow();
 				JarContents devContents = dev.getContents();
@@ -155,10 +159,10 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 			byte[] planJson = FabricatedInfo.readOptional("fabric-api-plan.json");
 			if (planJson == null) throw new IllegalStateException("This Fabricated build is missing its fabric-api-plan.json");
 			plan = FabricApiPlan.parse(new String(planJson, StandardCharsets.UTF_8));
-			Pipeline.Input input = new Pipeline.Input(gameDir, FMLPaths.CONFIGDIR.get(), fabricJars, mcVersion, neoVersion,
+			Pipeline.Input input = new Pipeline.Input(gameDir, FMLPaths.CONFIGDIR.get(), config, cache, fabricJars, mcVersion, neoVersion,
 					client, info.namespace(), runtimeMixinVersion(info), info.mixinLowest(), info.fabricatedVersion(), !fml.isProduction(), gameClasses, untransformable,
 					platformPackages, plan, nativeApi, nativeApiInterfaces, neoForgeMods,
-					(cache, mojangPath) -> IntermediaryMappings.load(cache, mcVersion, client, mojangPath),
+					(mappingsCache, mojangPath) -> IntermediaryMappings.load(mappingsCache, mcVersion, client, mojangPath),
 					fml.getProgramArgs().getArguments());
 
 			result = Pipeline.run(input);
@@ -206,11 +210,7 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 			LOGGER.info("{} Fabric API module(s) can't run on NeoForge yet and were skipped; see logs/fabric-bridge-report.txt", quietFabricApi);
 		}
 		state.writeReport();
-		// No cache when it could not be created; the pipeline then reported that and translated without one.
-		if (result.cache() != null) {
-			if (gameModJar != null) result.cache().markNestedUsed(gameModJar);
-			result.cache().finish(result.config().maxUnusedLaunches());
-		}
+		cache.finish(config.maxUnusedLaunches());
 	}
 
 	private static Optional<IModFile> find(List<IModFile> files, String modId) {

@@ -1,5 +1,6 @@
 package io.github.cmdralph.fabricated.neoforge.entity;
 
+import java.util.Collection;
 import java.util.Map;
 import java.util.UUID;
 import java.util.WeakHashMap;
@@ -33,6 +34,7 @@ import net.neoforged.neoforge.event.entity.player.CanPlayerSleepEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerSetSpawnEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerWakeUpEvent;
+import net.neoforged.neoforge.event.server.ServerStoppedEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 
 /**
@@ -100,9 +102,8 @@ public final class EntityEventsBridge {
 			synchronized (LAST_DAMAGE) {
 				amount = LAST_DAMAGE.getOrDefault(entity, 0f);
 			}
-			boolean allow = !(entity instanceof ServerPlayer player) || ServerPlayerEvents.ALLOW_DEATH.invoker().allowDeath(player, e.getSource(), amount);
-			if (allow) allow = ServerLivingEntityEvents.ALLOW_DEATH.invoker().allowDeath(entity, e.getSource(), amount);
-			if (!allow) e.setCanceled(true);
+			// Players' ALLOW_DEATH listeners run too: Fabric API forwards this event to them.
+			if (!ServerLivingEntityEvents.ALLOW_DEATH.invoker().allowDeath(entity, e.getSource(), amount)) e.setCanceled(true);
 		});
 		bus.addListener(EventPriority.LOWEST, LivingDeathEvent.class, e -> {
 			LivingEntity entity = e.getEntity();
@@ -159,7 +160,7 @@ public final class EntityEventsBridge {
 			}
 		});
 		bus.addListener(EventPriority.LOWEST, EntityJoinLevelEvent.class, e -> {
-			if (e.isCanceled() || !(e.getLevel() instanceof ServerLevel destination)) return;
+			if (TRAVELLING.isEmpty() || !(e.getLevel() instanceof ServerLevel destination)) return;
 			Entity entity = e.getEntity();
 			Travel travel = TRAVELLING.get(entity.getUUID());
 			if (travel == null || travel.original() == entity || travel.origin() == destination) return;
@@ -171,6 +172,7 @@ public final class EntityEventsBridge {
 		bus.addListener(ServerTickEvent.Post.class, e -> {
 			if (!TRAVELLING.isEmpty()) TRAVELLING.clear();
 		});
+		bus.addListener(ServerStoppedEvent.class, e -> TRAVELLING.clear());
 
 		// Sleeping (the parts NeoForge has events for).
 		bus.addListener(CanPlayerSleepEvent.class, e -> {
@@ -209,12 +211,6 @@ public final class EntityEventsBridge {
 				ServerMobEffectEvents.BEFORE_ADD.invoker().beforeAdd(e.getEffectInstance(), e.getEntity(), CONTEXT);
 			}
 		});
-		bus.addListener(MobEffectEvent.Added.class, e -> {
-			LivingEntity entity = e.getEntity();
-			if (!(entity.level() instanceof ServerLevel)) return;
-			// The API's own AFTER_ADD/BEFORE_ADD/BEFORE_REMOVE listeners call the effect's FabricMobEffect hooks.
-			ServerMobEffectEvents.AFTER_ADD.invoker().afterAdd(e.getEffectInstance(), entity, CONTEXT);
-		});
 		// Removal before the effect ends (milk, commands, mods): ALLOW_EARLY_REMOVE can keep it.
 		bus.addListener(EventPriority.HIGH, MobEffectEvent.Remove.class, e -> {
 			LivingEntity entity = e.getEntity();
@@ -232,10 +228,23 @@ public final class EntityEventsBridge {
 		});
 	}
 
-	/** BEFORE_REMOVE now; AFTER_REMOVE once the server has removed the effect (its next queued task). */
+	/** BEFORE_REMOVE; AFTER_REMOVE comes from {@link #afterEffectsRemoved} once the effect is gone. */
 	private static void removing(MobEffectInstance instance, LivingEntity entity) {
-		if (!(entity.level() instanceof ServerLevel level)) return;
-		ServerMobEffectEvents.BEFORE_REMOVE.invoker().beforeRemove(instance, entity, CONTEXT);
-		level.getServer().execute(() -> ServerMobEffectEvents.AFTER_REMOVE.invoker().afterRemove(instance, entity, CONTEXT));
+		if (entity.level() instanceof ServerLevel) ServerMobEffectEvents.BEFORE_REMOVE.invoker().beforeRemove(instance, entity, CONTEXT);
+	}
+
+	/**
+	 * Fabric's {@code AFTER_ADD}, from {@code LivingEntity.onEffectAdded} as upstream: once a new effect is in place, also
+	 * when force-added. NeoForge's added event comes before that, and for refreshed effects too. The API's own
+	 * listeners call the effect's {@code FabricMobEffect} hooks.
+	 */
+	public static void afterEffectAdded(LivingEntity entity, MobEffectInstance instance) {
+		if (entity.level() instanceof ServerLevel) ServerMobEffectEvents.AFTER_ADD.invoker().afterAdd(instance, entity, CONTEXT);
+	}
+
+	/** Fabric's {@code AFTER_REMOVE}, from {@code LivingEntity.onEffectsRemoved} as upstream: once the effects are gone. */
+	public static void afterEffectsRemoved(LivingEntity entity, Collection<MobEffectInstance> instances) {
+		if (!(entity.level() instanceof ServerLevel)) return;
+		for (MobEffectInstance instance : instances) ServerMobEffectEvents.AFTER_REMOVE.invoker().afterRemove(instance, entity, CONTEXT);
 	}
 }

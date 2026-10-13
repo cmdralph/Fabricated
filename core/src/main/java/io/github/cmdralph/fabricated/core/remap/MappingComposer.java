@@ -5,7 +5,6 @@ import java.io.IOException;
 import java.io.Reader;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.TreeMap;
 
 /**
  * Builds the intermediary → Mojang table for an obfuscated Minecraft version from
@@ -40,8 +39,8 @@ public final class MappingComposer {
 
 	public static MappingTable compose(Reader intermediaryTiny, Reader mojangProguard) throws IOException, MappingException {
 		Proguard pg = readProguard(mojangProguard);
-		Map<String, String> classes = new TreeMap<>();
-		Map<String, Map<String, String>> members = new TreeMap<>();
+		Map<String, String> classes = new HashMap<>();
+		Map<String, Map<String, String>> members = new HashMap<>();
 		// official class → intermediary class, to translate descriptors for qualified keys
 		Map<String, String> officialToIntermediary = new HashMap<>();
 		java.util.List<String[]> memberLines = new java.util.ArrayList<>();
@@ -87,7 +86,7 @@ public final class MappingComposer {
 			if (mojang == null || mojang.equals(intermediaryName)) continue;
 			String intermediaryOwner = officialToIntermediary.getOrDefault(owner, owner);
 			String intermediaryDesc = remapDescriptor(desc, officialToIntermediary);
-			members.computeIfAbsent(intermediaryName, k -> new TreeMap<>())
+			members.computeIfAbsent(intermediaryName, k -> new HashMap<>())
 					.put(intermediaryOwner + "." + intermediaryName + intermediaryDesc, mojang);
 		}
 		return MappingTable.fromMembers(classes, members);

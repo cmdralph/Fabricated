@@ -4,8 +4,8 @@ import java.io.File;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -69,6 +69,9 @@ public final class FabricLoaderRuntime implements FabricLoader {
 	private final ObjectShare objectShare = new ObjectShareImpl();
 
 	private final Map<String, ModContainerImpl> modsById = new LinkedHashMap<>();
+	// Immutable copies for the lookups mods make from any thread (render, workers), so they never lock.
+	private volatile Map<String, ModContainerImpl> modsSnapshot = Map.of();
+	private volatile List<ModContainer> allMods = List.of();
 	private final Map<ModContainerImpl, ClassLoader> classLoaders = new ConcurrentHashMap<>();
 	private final Map<String, List<Declared>> entrypoints = new LinkedHashMap<>();
 	private final Map<String, AdapterDeclaration> adapterDeclarations = new LinkedHashMap<>();
@@ -105,6 +108,8 @@ public final class FabricLoaderRuntime implements FabricLoader {
 	public synchronized void addMod(ModContainerImpl container, Collection<String> extraIds) {
 		modsById.putIfAbsent(container.getMetadata().getId(), container);
 		for (String id : extraIds) modsById.putIfAbsent(id, container);
+		modsSnapshot = Map.copyOf(modsById);
+		allMods = List.copyOf(new LinkedHashSet<>(modsById.values()));
 	}
 
 	/** Records which class loader can load a mod's classes (set once the game layer exists). */
@@ -223,7 +228,7 @@ public final class FabricLoaderRuntime implements FabricLoader {
 	}
 
 	@Override
-	public synchronized Optional<ModContainer> getModContainer(String id) {
+	public Optional<ModContainer> getModContainer(String id) {
 		return Optional.ofNullable(lookup(Objects.requireNonNull(id, "id")));
 	}
 
@@ -232,18 +237,19 @@ public final class FabricLoaderRuntime implements FabricLoader {
 	 * on Fabric is {@code cloth_config}; dependency resolution already accepts it for the Fabric id, and so does this.
 	 */
 	private ModContainer lookup(String id) {
-		ModContainer mod = modsById.get(id);
-		if (mod == null && id.indexOf('-') >= 0) mod = modsById.get(id.replace('-', '_'));
+		Map<String, ModContainerImpl> mods = modsSnapshot;
+		ModContainer mod = mods.get(id);
+		if (mod == null && id.indexOf('-') >= 0) mod = mods.get(id.replace('-', '_'));
 		return mod;
 	}
 
 	@Override
-	public synchronized Collection<ModContainer> getAllMods() {
-		return Collections.unmodifiableCollection(new ArrayList<>(new java.util.LinkedHashSet<>(modsById.values())));
+	public Collection<ModContainer> getAllMods() {
+		return allMods;
 	}
 
 	@Override
-	public synchronized boolean isModLoaded(String id) {
+	public boolean isModLoaded(String id) {
 		return lookup(Objects.requireNonNull(id, "id")) != null;
 	}
 

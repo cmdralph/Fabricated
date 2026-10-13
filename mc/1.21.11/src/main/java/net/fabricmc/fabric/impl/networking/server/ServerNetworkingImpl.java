@@ -1,10 +1,10 @@
 package net.fabricmc.fabric.impl.networking.server;
 
 import java.util.Collections;
-import java.util.Map;
 import java.util.Set;
 import java.util.WeakHashMap;
 
+import io.github.cmdralph.fabricated.neoforge.networking.NetworkAddons;
 import net.minecraft.network.Connection;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.common.ClientCommonPacketListener;
@@ -25,10 +25,6 @@ public final class ServerNetworkingImpl {
 	public static final GlobalReceiverRegistry<ServerConfigurationNetworking.ConfigurationPacketHandler<?>> CONFIGURATION = new GlobalReceiverRegistry<>();
 	public static final GlobalReceiverRegistry<ServerPlayNetworking.PlayPayloadHandler<?>> PLAY = new GlobalReceiverRegistry<>();
 
-	// Addons live as long as their packet listener; weak keys let finished connections be collected.
-	private static final Map<ServerGamePacketListenerImpl, ServerPlayNetworkAddon> PLAY_ADDONS = Collections.synchronizedMap(new WeakHashMap<>());
-	private static final Map<ServerConfigurationPacketListenerImpl, ServerConfigurationNetworkAddon> CONFIGURATION_ADDONS = Collections.synchronizedMap(new WeakHashMap<>());
-	private static final Map<ServerLoginPacketListenerImpl, ServerLoginNetworkAddon> LOGIN_ADDONS = Collections.synchronizedMap(new WeakHashMap<>());
 	/** Connections sent back to the configuration phase by {@code ServerPlayNetworking.reconfigure}. */
 	static final Set<Connection> RECONFIGURING = Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
 
@@ -36,15 +32,15 @@ public final class ServerNetworkingImpl {
 	}
 
 	public static ServerPlayNetworkAddon getAddon(ServerGamePacketListenerImpl listener) {
-		return PLAY_ADDONS.computeIfAbsent(listener, ServerPlayNetworkAddon::new);
+		return NetworkAddons.get(listener, ServerPlayNetworkAddon.class, ServerPlayNetworkAddon::new);
 	}
 
 	public static ServerConfigurationNetworkAddon getAddon(ServerConfigurationPacketListenerImpl listener) {
-		return CONFIGURATION_ADDONS.computeIfAbsent(listener, ServerConfigurationNetworkAddon::new);
+		return NetworkAddons.get(listener, ServerConfigurationNetworkAddon.class, ServerConfigurationNetworkAddon::new);
 	}
 
 	public static ServerLoginNetworkAddon getAddon(ServerLoginPacketListenerImpl listener) {
-		return LOGIN_ADDONS.computeIfAbsent(listener, ServerLoginNetworkAddon::new);
+		return NetworkAddons.get(listener, ServerLoginNetworkAddon.class, ServerLoginNetworkAddon::new);
 	}
 
 	public static Packet<ClientCommonPacketListener> createS2CPacket(CustomPacketPayload payload) {

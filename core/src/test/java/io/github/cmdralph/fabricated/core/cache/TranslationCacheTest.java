@@ -80,6 +80,18 @@ class TranslationCacheTest {
 	}
 
 	@Test
+	void remembersNestedJarsAcrossLaunches(@TempDir Path game) throws Exception {
+		TranslationCache first = new TranslationCache(game, true, true);
+		Path stored = first.storeNested(new byte[] {7, 8, 9}, "parent", "META-INF/jars/lib.jar");
+		first.finish(5);
+		TranslationCache next = new TranslationCache(game, true, true);
+		assertEquals(stored, next.nested("parent", "META-INF/jars/lib.jar").orElseThrow());
+		assertTrue(next.nested("other", "META-INF/jars/lib.jar").isEmpty());
+		Files.write(stored, new byte[] {1});
+		assertTrue(next.nested("parent", "META-INF/jars/lib.jar").isEmpty(), "a damaged copy is not reused");
+	}
+
+	@Test
 	void rejectsUnsafeNames(@TempDir Path game) throws Exception {
 		TranslationCache cache = new TranslationCache(game, true, true);
 		assertThrows(IllegalArgumentException.class, () -> TranslationCache.entryName("../x", "00".repeat(32)));
@@ -112,19 +124,16 @@ class TranslationCacheTest {
 
 	@Test
 	void keepsNestedJarsAndEntriesUsedEveryLaunch(@TempDir Path game) throws Exception {
-		// As in a real launch: a bootstrap cache extracts Fabricated's game mod, the pipeline's cache uses a mod entry
-		// and a nested library, and only the pipeline's cache finishes (owns the index).
+		// As in a real launch: Fabricated's game mod is extracted, then a mod entry and a nested library are used.
 		String name = TranslationCache.entryName("my_mod", "ef".repeat(32));
 		for (int launch = 0; launch < 12; launch++) {
-			TranslationCache bootstrap = new TranslationCache(game, true, true);
-			Path gameMod = bootstrap.storeNested(new byte[] {7, 7, 7});
 			TranslationCache cache = new TranslationCache(game, true, true);
+			Path gameMod = cache.storeNested(new byte[] {7, 7, 7});
 			if (cache.lookup(name).isEmpty()) {
 				assertEquals(0, launch, "entry rebuilt on launch " + launch);
 				cache.store(name, Map.of("overlay.jar", new byte[] {1}), Map.of());
 			}
 			Path library = cache.storeNested(new byte[] {4, 2});
-			cache.markNestedUsed(gameMod);
 			cache.finish(2);
 			assertTrue(Files.isRegularFile(gameMod), "game mod kept on launch " + launch);
 			assertTrue(Files.isRegularFile(library), "nested library kept on launch " + launch);

@@ -27,8 +27,8 @@ import net.neoforged.neoforge.event.entity.living.LivingEquipmentChangeEvent;
 import net.neoforged.neoforge.event.level.ChunkEvent;
 import net.neoforged.neoforge.event.level.ChunkTicketLevelUpdatedEvent;
 import net.neoforged.neoforge.event.level.LevelEvent;
+import net.neoforged.neoforge.event.server.ServerAboutToStartEvent;
 import net.neoforged.neoforge.event.server.ServerStartedEvent;
-import net.neoforged.neoforge.event.server.ServerStartingEvent;
 import net.neoforged.neoforge.event.server.ServerStoppedEvent;
 import net.neoforged.neoforge.event.server.ServerStoppingEvent;
 import net.neoforged.neoforge.event.tick.LevelTickEvent;
@@ -52,7 +52,9 @@ public final class LifecycleBridge {
 
 	public static void register(Dist dist) {
 		var bus = NeoForge.EVENT_BUS;
-		bus.addListener(ServerStartingEvent.class, e -> ServerLifecycleEvents.SERVER_STARTING.invoker().onServerStarting(e.getServer()));
+		// Before the levels load, as upstream (NeoForge's ServerStartingEvent comes after); after the dynamic registry
+		// setup callback, which runs in the same event.
+		bus.addListener(EventPriority.LOW, ServerAboutToStartEvent.class, e -> ServerLifecycleEvents.SERVER_STARTING.invoker().onServerStarting(e.getServer()));
 		bus.addListener(ServerStartedEvent.class, e -> ServerLifecycleEvents.SERVER_STARTED.invoker().onServerStarted(e.getServer()));
 		bus.addListener(ServerStoppingEvent.class, e -> ServerLifecycleEvents.SERVER_STOPPING.invoker().onServerStopping(e.getServer()));
 		bus.addListener(ServerStoppedEvent.class, e -> ServerLifecycleEvents.SERVER_STOPPED.invoker().onServerStopped(e.getServer()));
@@ -81,6 +83,7 @@ public final class LifecycleBridge {
 			for (BlockEntity blockEntity : chunk.getBlockEntities().values()) {
 				ServerBlockEntityEvents.BLOCK_ENTITY_LOAD.invoker().onLoad(blockEntity, level);
 			}
+			onChunkLoaded(level, chunk);
 		});
 		bus.addListener(ChunkEvent.Unload.class, e -> {
 			if (!(e.getLevel() instanceof ServerLevel level)) return;
@@ -133,14 +136,25 @@ public final class LifecycleBridge {
 
 	/** Fires one Fabric event per full-chunk-status step between the old and new ticket levels. */
 	private static void onTicketLevel(ChunkTicketLevelUpdatedEvent e) {
-		long pos = e.getChunkPos();
-		LevelChunk chunk = e.getLevel().getChunkSource().getChunkNow(ChunkPos.getX(pos), ChunkPos.getZ(pos));
-		if (chunk == null) return;
 		FullChunkStatus from = ChunkLevel.fullStatus(e.getOldTicketLevel());
 		FullChunkStatus to = ChunkLevel.fullStatus(e.getNewTicketLevel());
+		// Most ticket changes stay within one status (chunks being generated); check that before looking the chunk up.
+		if (from == to) return;
+		long pos = e.getChunkPos();
+		// A chunk that isn't loaded yet gets its promotions when it loads (see onChunkLoaded).
+		LevelChunk chunk = e.getLevel().getChunkSource().getChunkNow(ChunkPos.getX(pos), ChunkPos.getZ(pos));
+		if (chunk != null) statusChange(e.getLevel(), chunk, from, to);
+	}
+
+	/** Promotions up to the status a chunk has when it loads: NeoForge's ticket event came before the chunk existed. */
+	private static void onChunkLoaded(ServerLevel level, LevelChunk chunk) {
+		statusChange(level, chunk, FullChunkStatus.INACCESSIBLE, chunk.getFullStatus());
+	}
+
+	private static void statusChange(ServerLevel level, LevelChunk chunk, FullChunkStatus from, FullChunkStatus to) {
 		int step = Integer.signum(to.ordinal() - from.ordinal());
 		for (int i = from.ordinal(); i != to.ordinal(); i += step) {
-			ServerChunkEvents.FULL_CHUNK_STATUS_CHANGE.invoker().onFullChunkStatusChange(e.getLevel(), chunk, STATUSES[i], STATUSES[i + step]);
+			ServerChunkEvents.FULL_CHUNK_STATUS_CHANGE.invoker().onFullChunkStatusChange(level, chunk, STATUSES[i], STATUSES[i + step]);
 		}
 	}
 }

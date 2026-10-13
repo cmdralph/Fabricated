@@ -26,8 +26,10 @@ import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.ClassNode;
 
 import io.github.cmdralph.fabricated.core.archive.ArchiveLimits;
-import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
 import io.github.cmdralph.fabricated.core.archive.SafeArchive;
+import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
+import io.github.cmdralph.fabricated.core.cache.TranslationCache;
+import io.github.cmdralph.fabricated.core.config.FabricatedConfig;
 import io.github.cmdralph.fabricated.core.remap.MappingComposer;
 import io.github.cmdralph.fabricated.core.remap.MappingTable;
 import io.github.cmdralph.fabricated.core.report.Report;
@@ -130,9 +132,11 @@ class PipelineTest {
 	}
 
 	private static Pipeline.Input input(Path game, List<Path> jars, Namespace ns, Map<String, byte[]> gameClasses, Pipeline.MappingSupplier mappings) throws Exception {
-		return new Pipeline.Input(game, game.resolve("config"), jars, ns == Namespace.OFFICIAL ? "26.2" : "1.21.11",
+		FabricatedConfig config = FabricatedConfig.load(game.resolve("config"));
+		TranslationCache cache = new TranslationCache(game, config.cacheEnabled(), config.verifyIntegrity());
+		return new Pipeline.Input(game, game.resolve("config"), config, cache, jars, ns == Namespace.OFFICIAL ? "26.2" : "1.21.11",
 				"26.2.0.90", false, ns, "0.17.4+mixin.0.8.7", "0.17.1", "0.1.0-test", false, gameClasses::get, ClassBytesSource.EMPTY, Set.of("net/neoforged/neoforge"),
-				FabricApiPlan.parse(PLAN), name -> null, Map.of(), List.of(new Pipeline.NeoForgeMod("cloth_config", "15.0.0", "Cloth Config")),
+				FabricApiPlan.parse(PLAN), name -> null, Map::of, List.of(new Pipeline.NeoForgeMod("cloth_config", "15.0.0", "Cloth Config")),
 				mappings, new String[0]);
 	}
 
@@ -146,7 +150,8 @@ class PipelineTest {
 		}
 		Map<String, byte[]> gameClasses = Map.of(TARGET, targetClass());
 
-		Pipeline.Result result = Pipeline.run(input(game, jars, Namespace.OFFICIAL, gameClasses, null));
+		Pipeline.Input first = input(game, jars, Namespace.OFFICIAL, gameClasses, null);
+		Pipeline.Result result = Pipeline.run(first);
 		Map<String, Report.Status> status = new HashMap<>();
 		for (Report.ModRow row : result.report().mods()) status.putIfAbsent(row.id(), row.status());
 
@@ -192,7 +197,7 @@ class PipelineTest {
 		assertTrue(report.contains("absent-lib"));
 		result.report().write(game.resolve("logs"));
 		assertTrue(Files.exists(game.resolve("logs").resolve(Report.FILE_NAME)));
-		result.cache().finish(5);
+		first.cache().finish(5);
 
 		// Second launch: everything comes from the cache and outputs are byte-identical.
 		byte[] firstOverlay = Files.readAllBytes(good.translated().overlay());
