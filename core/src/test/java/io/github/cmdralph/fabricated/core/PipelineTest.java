@@ -377,4 +377,35 @@ class PipelineTest {
 		assertFalse(result.runtime().isModLoaded("target-mod"), "the patch does not apply");
 		assertTrue(result.report().render().contains("does not depend on it"));
 	}
+
+	@Test
+	void mixinsUsingAnInterfaceOfASkippedMixinAreSkippedToo(@TempDir Path game) throws Exception {
+		ClassNode adder = new ClassNode();
+		new ClassReader(mixinClass("com/dep/mixin/AddsExt", "tick")).accept(adder, 0);
+		adder.interfaces.add("com/dep/Ext");
+		ClassNode user = new ClassNode();
+		new ClassReader(mixinClass("com/dep/mixin/UsesExt", "tick")).accept(user, 0);
+		user.fields.add(new org.objectweb.asm.tree.FieldNode(Opcodes.ACC_PRIVATE, "ext", "Lcom/dep/Ext;", null, null));
+		Path jar = TestJars.create().fabricModJson(TestJars.modJson("dep-mod", "1.0", """
+						"mixins":["dep.mixins.json"],"custom":{"fabricated":{"skipMixins":["dep.mixins.json:AddsExt"]}}"""))
+				.text("dep.mixins.json", "{\"required\":true,\"package\":\"com.dep.mixin\",\"mixins\":[\"AddsExt\",\"UsesExt\"]}")
+				.bytes("com/dep/mixin/AddsExt.class", write(adder))
+				.bytes("com/dep/mixin/UsesExt.class", write(user))
+				.bytes("com/dep/Ext.class", TestJars.emptyClass("com/dep/Ext", "java/lang/Object"))
+				.write(game.resolve("mods/dep.jar"));
+		Pipeline.Result result = Pipeline.run(input(game, List.of(jar), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
+		String report = result.report().render();
+		assertTrue(result.runtime().isModLoaded("dep-mod"), report);
+		assertTrue(report.contains("also left out"), report);
+		try (SafeArchive overlay = SafeArchive.open(result.mods().getFirst().translated().overlay(), ArchiveLimits.DEFAULTS)) {
+			String config = new String(overlay.read("dep.mixins.json"), java.nio.charset.StandardCharsets.UTF_8);
+			assertFalse(config.contains("UsesExt"), config);
+		}
+	}
+
+	private static byte[] write(ClassNode node) {
+		ClassWriter writer = new ClassWriter(0);
+		node.accept(writer);
+		return writer.toByteArray();
+	}
 }

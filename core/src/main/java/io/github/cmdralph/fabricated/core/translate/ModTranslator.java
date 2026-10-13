@@ -7,6 +7,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -19,6 +20,8 @@ import java.util.concurrent.Semaphore;
 import java.util.jar.Attributes;
 import java.util.jar.Manifest;
 import java.util.stream.Collectors;
+
+import org.objectweb.asm.ClassReader;
 
 import io.github.cmdralph.fabricated.core.accesswidener.AccessTransformerConverter;
 import io.github.cmdralph.fabricated.core.accesswidener.AccessWidenerException;
@@ -242,7 +245,7 @@ public final class ModTranslator {
 				throw new TranslationException("Mixin config " + entry.config() + " is invalid: " + e.getMessage(), "Report this to the mod author.");
 			}
 
-			Set<String> skip = skipsFor(entry.config(), config, override.skipMixins());
+			Set<String> skip = withDependents(entry.config(), config, skipsFor(entry.config(), config, override.skipMixins()), files, findings);
 			if (!override.ignorePreflight()) {
 				findings.addAll(preflight.check(entry.config(), config, refmap, skip));
 			}
@@ -283,6 +286,48 @@ public final class ModTranslator {
 	}
 
 	/** Skips apply as {@code "config.json:Name"} (one config) or {@code "Name"} (every config). */
+	/**
+	 * {@code skip} plus the kept mixins that use an interface only a skipped mixin adds to its target (one of the mod's
+	 * own interfaces): with the adding mixin gone, their casts to it would fail at runtime. Repeated until stable.
+	 */
+	private static Set<String> withDependents(String configName, MixinConfigFile config, Set<String> skip, FileView files,
+			List<PreflightFinding> findings) throws ArchiveException {
+		if (skip.isEmpty()) return skip;
+		Set<String> all = new TreeSet<>(skip);
+		Map<String, String> addedBy = new HashMap<>();
+		for (boolean grew = true; grew; ) {
+			grew = false;
+			for (String mixin : all) {
+				byte[] data = files.read(config.internalName(mixin) + ".class");
+				if (data == null) continue;
+				for (String itf : new ClassReader(data).getInterfaces()) {
+					if (files.read(itf + ".class") != null) addedBy.putIfAbsent(itf, mixin);
+				}
+			}
+			// Still added when a kept mixin implements it too.
+			for (String mixin : config.allMixins()) {
+				byte[] data = all.contains(mixin) ? null : files.read(config.internalName(mixin) + ".class");
+				if (data != null) addedBy.keySet().removeAll(List.of(new ClassReader(data).getInterfaces()));
+			}
+			for (String mixin : config.allMixins()) {
+				if (all.contains(mixin)) continue;
+				byte[] data = files.read(config.internalName(mixin) + ".class");
+				if (data == null) continue;
+				String text = new String(data, StandardCharsets.ISO_8859_1);
+				for (Map.Entry<String, String> e : addedBy.entrySet()) {
+					if (!text.contains(e.getKey())) continue;
+					all.add(mixin);
+					findings.add(new PreflightFinding(Severity.WARN, configName, config.internalName(mixin).replace('/', '.'),
+							"also left out: it uses " + e.getKey().replace('/', '.') + ", which only the skipped mixin " + e.getValue() + " adds", ""));
+					grew = true;
+					break;
+				}
+				if (grew) break;
+			}
+		}
+		return all;
+	}
+
 	static Set<String> skipsFor(String configName, MixinConfigFile config, Set<String> configured) {
 		Set<String> declared = new HashSet<>(config.allMixins());
 		Set<String> ret = new TreeSet<>();

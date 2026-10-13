@@ -59,7 +59,8 @@
       "plan": "passthrough",
       "skipMixins": [
         "fabric-dimensions-v1.mixins.json:TaggedChoiceMixin",
-        "fabric-dimensions-v1.mixins.json:TaggedChoiceTaggedChoiceTypeMixin"
+        "fabric-dimensions-v1.mixins.json:TaggedChoiceTaggedChoiceTypeMixin",
+        "fabric-dimensions-v1.mixins.json:V2832Mixin"
       ],
       "reason": "DataFixerUpper is a library NeoForge loads without mixin support, so the safety net for worlds that reference a removed modded dimension is not available."
     },
