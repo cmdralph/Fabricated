@@ -22,6 +22,8 @@ import org.objectweb.asm.tree.AnnotationNode;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.FieldInsnNode;
 import org.objectweb.asm.tree.FieldNode;
+import org.objectweb.asm.tree.InvokeDynamicInsnNode;
+import org.objectweb.asm.tree.LdcInsnNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
 import org.objectweb.asm.tree.TypeInsnNode;
@@ -52,6 +54,8 @@ public final class MixinPreflight {
 	private static final String COERCE = "Lorg/spongepowered/asm/mixin/injection/Coerce;";
 	private static final String UNIQUE = "Lorg/spongepowered/asm/mixin/Unique;";
 	private static final String INTRINSIC = "Lorg/spongepowered/asm/mixin/Intrinsic;";
+	private static final String DEFINITION = "Lcom/llamalad7/mixinextras/expression/Definition;";
+	private static final String DEFINITIONS = "Lcom/llamalad7/mixinextras/expression/Definitions;";
 	private static final Set<String> GAME_PREFIXES = Set.of("net/minecraft/", "com/mojang/blaze3d/");
 
 	private final ClassIndex game;
@@ -413,7 +417,8 @@ public final class MixinPreflight {
 			Verdict verdict = Verdict.UNKNOWN;
 			for (MethodNode m : matched) {
 				Range range = slice == null ? Range.ALL : sliceRange(slice, m, ctx);
-				Verdict v = evaluate(point, rawTarget == null ? null : ctx.resolve(rawTarget), ordinal, opcode, range, m);
+				Verdict v = point.equals("MIXINEXTRAS:EXPRESSION") ? evaluateExpression(handler, m, ctx)
+						: evaluate(point, rawTarget == null ? null : ctx.resolve(rawTarget), ordinal, opcode, range, m);
 				if (v == Verdict.FOUND) {
 					verdict = Verdict.FOUND;
 					break;
@@ -585,6 +590,61 @@ public final class MixinPreflight {
 				return Verdict.UNKNOWN;
 			}
 		}
+	}
+
+	/**
+	 * A MixinExtras expression can only match when what each of the handler's {@code @Definition}s names (a type, a
+	 * method or a field) occurs in the target method. The expression itself is not evaluated.
+	 */
+	private static Verdict evaluateExpression(MethodNode handler, MethodNode method, Context ctx) {
+		List<AnnotationNode> definitions = new ArrayList<>();
+		for (AnnotationNode ann : allAnnotations(handler)) {
+			if (ann.desc.equals(DEFINITION)) definitions.add(ann);
+			else if (ann.desc.equals(DEFINITIONS)) definitions.addAll(annotationList(Annotations.value(ann, "value")));
+		}
+		if (definitions.isEmpty() || method.instructions == null) return Verdict.UNKNOWN;
+		for (AnnotationNode definition : definitions) {
+			if (!definitionOccurs(definition, method, ctx)) return Verdict.MISSING;
+		}
+		return Verdict.FOUND;
+	}
+
+	private static boolean definitionOccurs(AnnotationNode definition, MethodNode method, Context ctx) {
+		List<AbstractInsnNode> insns = List.of(method.instructions.toArray());
+		boolean judged = false;
+		if (Annotations.value(definition, "type") instanceof List<?> types) {
+			for (Object o : types) {
+				if (!(o instanceof Type type) || (type.getSort() != Type.OBJECT && type.getSort() != Type.ARRAY)) return true;
+				judged = true;
+				if (insns.stream().anyMatch(insn -> references(insn, type))) return true;
+			}
+		}
+		for (String kind : List.of("method", "field")) {
+			if (!(Annotations.value(definition, kind) instanceof List<?> refs)) continue;
+			for (Object o : refs) {
+				if (!(o instanceof String raw)) continue;
+				MemberRef ref = MemberRef.parse(ctx.resolve(raw));
+				if (ref.fuzzy() || ref.name() == null) return true;
+				judged = true;
+				String point = kind.equals("method") ? "INVOKE" : "FIELD";
+				if (insns.stream().anyMatch(insn -> matchesInsn(point, ref, insn))) return true;
+			}
+		}
+		return !judged;
+	}
+
+	/** Whether {@code insn} uses {@code type}: creates, casts or checks it, calls or reads a member of it, or passes it. */
+	private static boolean references(AbstractInsnNode insn, Type type) {
+		String internal = type.getInternalName();
+		String desc = type.getDescriptor();
+		return switch (insn) {
+			case TypeInsnNode t -> t.desc.equals(internal);
+			case MethodInsnNode m -> m.owner.equals(internal) || m.desc.contains(desc);
+			case FieldInsnNode f -> f.owner.equals(internal) || f.desc.contains(desc);
+			case InvokeDynamicInsnNode d -> d.desc.contains(desc);
+			case LdcInsnNode l -> type.equals(l.cst);
+			default -> false;
+		};
 	}
 
 	private static boolean matchesInsn(String point, MemberRef ref, AbstractInsnNode insn) {

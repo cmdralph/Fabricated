@@ -479,6 +479,10 @@ posts around the same call. They run right around the screen (after NeoForge mod
 one of them cancels drawing the screen; before their `Post` listeners). The module's other hooks (screen init,
 removal, ticks, mouse and keyboard events) are upstream's.
 
+`fabric-rendering-fluids-v1` loads without the handler that changes which neighbouring blocks show a fluid's
+overlay texture: NeoForge asks the block (`shouldDisplayFluidOverlay`) instead, so blocks marked transparent
+through `FluidRenderingRegistry.setBlockTransparency` keep NeoForge's behavior. Custom fluid renderers work.
+
 `fabric-sound-api-v1` loads without upstream's redirect of the audio stream lookup, which NeoForge replaced with
 its own `SoundInstance.getStream`. A sound instance whose class overrides `FabricSoundInstance.getAudioStream`
 gets its stream from it there; other sounds keep NeoForge's path.
