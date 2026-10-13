@@ -21,6 +21,7 @@ import net.fabricmc.loader.api.metadata.Person;
  * mods querying other mods' metadata see the familiar types.
  *
  * @param classTweaker the access widener / class tweaker path inside the jar, or {@code null}
+ * @param compatHints  the mod's own instructions for Fabricated ({@code custom.fabricated})
  */
 public record FabricModMetadata(
 		String type,
@@ -41,7 +42,8 @@ public record FabricModMetadata(
 		List<String> license,
 		SortedMap<Integer, String> icons,
 		Map<String, String> languageAdapters,
-		Map<String, CustomValue> customValues) implements ModMetadata {
+		Map<String, CustomValue> customValues,
+		CompatHints compatHints) implements ModMetadata {
 	/** One entrypoint declaration. */
 	public record EntrypointSpec(String adapter, String value) {
 	}
@@ -71,7 +73,13 @@ public record FabricModMetadata(
 	public static FabricModMetadata builtin(String id, Version version, String name, String description) {
 		return new FabricModMetadata("builtin", id, version, List.of(), ModEnvironment.UNIVERSAL, Map.of(), List.of(),
 				List.of(), null, List.of(), name, description, List.of(), List.of(), ContactInformation.EMPTY,
-				List.of(), new TreeMap<>(), Map.of(), Map.of());
+				List.of(), new TreeMap<>(), Map.of(), Map.of(), CompatHints.NONE);
+	}
+
+	/** This metadata with other compatibility hints (none, when the player turned the mod's off). */
+	public FabricModMetadata withCompatHints(CompatHints hints) {
+		return new FabricModMetadata(type, id, version, provides, environment, entrypoints, nestedJars, mixins, classTweaker, dependencies,
+				name, description, authors, contributors, contact, license, icons, languageAdapters, customValues, hints);
 	}
 
 	@Override

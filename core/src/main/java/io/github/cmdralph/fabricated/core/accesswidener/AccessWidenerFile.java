@@ -6,12 +6,11 @@ import java.util.List;
  * Parsed access widener ({@code accessWidener v1|v2}) or class tweaker ({@code classTweaker v1}).
  *
  * @param format             {@code accessWidener} or {@code classTweaker}
- * @param version            {@code v1} or {@code v2}
  * @param namespace          header namespace ({@code intermediary}, {@code named} or {@code official})
  * @param entries            access changes in file order
  * @param injectedInterfaces interface injections (class tweaker only)
  */
-public record AccessWidenerFile(String format, String version, String namespace, List<Entry> entries,
+public record AccessWidenerFile(String format, String namespace, List<Entry> entries,
 		List<InjectedInterface> injectedInterfaces) {
 
 	/** What the directive changes. */

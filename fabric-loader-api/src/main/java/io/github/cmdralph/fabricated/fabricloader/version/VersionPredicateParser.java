@@ -105,15 +105,8 @@ public final class VersionPredicateParser {
 	}
 
 	/** One operator applied to one reference version. */
-	public static final class SingleVersionPredicate implements VersionPredicate, VersionPredicate.PredicateTerm {
-		private final VersionComparisonOperator operator;
-		private final Version refVersion;
-
-		public SingleVersionPredicate(VersionComparisonOperator operator, Version refVersion) {
-			this.operator = operator;
-			this.refVersion = refVersion;
-		}
-
+	public record SingleVersionPredicate(VersionComparisonOperator operator, Version refVersion)
+			implements VersionPredicate, VersionPredicate.PredicateTerm {
 		@Override
 		public boolean test(Version version) {
 			Objects.requireNonNull(version, "version");
@@ -145,27 +138,15 @@ public final class VersionPredicateParser {
 		}
 
 		@Override
-		public boolean equals(Object obj) {
-			return obj instanceof SingleVersionPredicate o && operator == o.operator && refVersion.equals(o.refVersion);
-		}
-
-		@Override
-		public int hashCode() {
-			return operator.ordinal() * 31 + refVersion.hashCode();
-		}
-
-		@Override
 		public String toString() {
 			return operator.getSerialized() + refVersion;
 		}
 	}
 
 	/** Conjunction of several single predicates. */
-	public static final class MultiVersionPredicate implements VersionPredicate {
-		private final List<SingleVersionPredicate> predicates;
-
-		public MultiVersionPredicate(List<SingleVersionPredicate> predicates) {
-			this.predicates = List.copyOf(predicates);
+	public record MultiVersionPredicate(List<SingleVersionPredicate> predicates) implements VersionPredicate {
+		public MultiVersionPredicate {
+			predicates = List.copyOf(predicates);
 		}
 
 		@Override
@@ -190,16 +171,6 @@ public final class VersionPredicateParser {
 				if (ret == null) return null;
 			}
 			return ret;
-		}
-
-		@Override
-		public boolean equals(Object obj) {
-			return obj instanceof MultiVersionPredicate o && predicates.equals(o.predicates);
-		}
-
-		@Override
-		public int hashCode() {
-			return predicates.hashCode();
 		}
 
 		@Override

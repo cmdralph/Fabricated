@@ -3,6 +3,8 @@ package io.github.cmdralph.fabricated.core.bytecode;
 import java.util.List;
 
 import org.objectweb.asm.tree.AnnotationNode;
+import org.objectweb.asm.tree.FieldNode;
+import org.objectweb.asm.tree.MethodNode;
 
 /** Lookups on ASM tree annotations. */
 public final class Annotations {
@@ -22,6 +24,16 @@ public final class Annotations {
 			if (a.desc.equals(desc)) return a;
 		}
 		return null;
+	}
+
+	/** The first annotation with {@code desc} on {@code method}, visible before invisible, or {@code null}. */
+	public static AnnotationNode find(MethodNode method, String desc) {
+		return find(method.visibleAnnotations, method.invisibleAnnotations, desc);
+	}
+
+	/** The first annotation with {@code desc} on {@code field}, visible before invisible, or {@code null}. */
+	public static AnnotationNode find(FieldNode field, String desc) {
+		return find(field.visibleAnnotations, field.invisibleAnnotations, desc);
 	}
 
 	/** The value of attribute {@code key} as ASM stores it, or {@code null} when not set. */

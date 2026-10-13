@@ -12,6 +12,8 @@ final class ClientSupport {
 
 	static void init(FabricatedState state) {
 		NeoForge.EVENT_BUS.addListener(RegisterClientCommandsEvent.class, event -> FabricatedCommands.register(event.getDispatcher(), state, true));
+		// Fabric mods' config screens, once their initializers ran (a modmenu entrypoint may use what they set up).
+		state.api().afterEntrypoints(() -> ModMenuBridge.register(state));
 	}
 
 	/** Fabric's {@code getGameInstance()} on the client is the {@link Minecraft} instance. */

@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import java.nio.file.Path;
 
@@ -107,7 +108,7 @@ class LinkageCheckerTest {
 		Path file = jar.fabricModJson(TestJars.modJson(id, "1.0", "")).write(dir.resolve(id + ".jar"));
 		Candidate c = new Candidate(file, id + "-hash", FabricModJsonParser.parse(TestJars.modJson(id, "1.0", "")), id + ".jar", null, 0,
 				List.of());
-		return new TranslatedMod(c, id.replace('-', '_'), file, file, List.of(), 0, List.of(), List.of(), false, 0);
+		return new TranslatedMod(c, id.replace('-', '_'), file, file, List.of(), 0, List.of(), List.of(), Set.of(), false, 0);
 	}
 
 	@Test

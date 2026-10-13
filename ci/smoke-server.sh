@@ -121,6 +121,8 @@ check "FABRICATED-TEST interaction events OK" server.out "native interaction eve
 check "FABRICATED-TEST loot OK" server.out "native loot: replace/modify with source, all loaded, modified drops"
 check "FABRICATED-TEST content registries OK" server.out "native content registries: flammable, waxable, vibration frequency (up to 26.2: compostable, strippable, fuel)"
 check "FABRICATED-TEST transfer OK" server.out "native transfer: item and fluid storages over vanilla blocks, transaction abort and commit"
+check "FABRICATED-TEST api OK" server.out "public API: Fabricated detected, mod and module status, after-entrypoints callback"
+check "FABRICATED-TEST environment stripping OK" server.out "@EnvironmentInterface: a client-only interface is stripped on the dedicated server"
 check "fabricated-testmod-missing" logs/fabric-bridge-report.txt "missing dependency reported"
 check "fabricated-library-that-does-not-exist" logs/fabric-bridge-report.txt "missing dependency named"
 check "fabricatedMethodThatDoesNotExist" logs/fabric-bridge-report.txt "impossible mixin caught by pre-flight"

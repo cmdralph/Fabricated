@@ -4,6 +4,7 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -54,7 +55,7 @@ public final class JarRemapper {
 	 */
 	public Result remap(SafeArchive archive, Set<String> refmaps) throws ArchiveException, MappingException {
 		Map<String, byte[]> out = new LinkedHashMap<>();
-		List<String> stripped = new java.util.ArrayList<>();
+		List<String> stripped = new ArrayList<>();
 		for (String name : archive.entryNames()) {
 			if (archive.isDirectory(name)) continue;
 			if (isSignatureFile(name)) {
@@ -115,7 +116,7 @@ public final class JarRemapper {
 			return copy;
 		}
 		if (node instanceof List<?> list) {
-			List<Object> copy = new java.util.ArrayList<>(list.size());
+			List<Object> copy = new ArrayList<>(list.size());
 			for (Object o : list) copy.add(remapJsonValues(o));
 			return copy;
 		}

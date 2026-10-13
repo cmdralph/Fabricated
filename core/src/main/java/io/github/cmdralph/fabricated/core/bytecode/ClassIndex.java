@@ -1,7 +1,9 @@
 package io.github.cmdralph.fabricated.core.bytecode;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Deque;
 import java.util.HashSet;
@@ -10,6 +12,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Predicate;
 
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassVisitor;
@@ -50,7 +53,7 @@ public final class ClassIndex {
 	 */
 	public static final ClassBytesSource JDK = name -> {
 		if (!(name.startsWith("java/") || name.startsWith("javax/") || name.startsWith("jdk/") || name.startsWith("sun/"))) return null;
-		try (java.io.InputStream in = ClassLoader.getSystemResourceAsStream(name + ".class")) {
+		try (InputStream in = ClassLoader.getSystemResourceAsStream(name + ".class")) {
 			return in == null ? null : in.readAllBytes();
 		}
 	};
@@ -103,7 +106,7 @@ public final class ClassIndex {
 		try {
 			Collector collector = new Collector();
 			new ClassReader(data).accept(collector, ClassReader.SKIP_CODE | ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
-			List<String> interfaces = new java.util.ArrayList<>(collector.interfaces == null ? List.of() : List.of(collector.interfaces));
+			List<String> interfaces = new ArrayList<>(collector.interfaces == null ? List.of() : List.of(collector.interfaces));
 			interfaces.addAll(extraInterfaces.getOrDefault(internalName, List.of()));
 			return new ClassInfo(collector.name, collector.superName, List.copyOf(interfaces),
 					Collections.unmodifiableMap(collector.methods), Collections.unmodifiableMap(collector.fields));
@@ -133,7 +136,7 @@ public final class ClassIndex {
 		return resolve(owner, info -> info.fields().containsKey(nameAndDesc));
 	}
 
-	private Resolution resolve(String owner, java.util.function.Predicate<ClassInfo> has) {
+	private Resolution resolve(String owner, Predicate<ClassInfo> has) {
 		Deque<String> queue = new ArrayDeque<>();
 		Set<String> seen = new HashSet<>();
 		queue.add(owner);

@@ -1,1 +1,2 @@
 io.github.cmdralph.fabricated.loader.InterfaceInjectionProcessor
+io.github.cmdralph.fabricated.loader.EnvironmentStrippingProcessor

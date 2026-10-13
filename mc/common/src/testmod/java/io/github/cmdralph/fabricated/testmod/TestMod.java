@@ -6,7 +6,10 @@ import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.github.cmdralph.fabricated.api.FabricApiModule;
+import io.github.cmdralph.fabricated.api.Fabricated;
 import net.fabricmc.api.DedicatedServerModInitializer;
+import net.fabricmc.api.EnvType;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.Event;
 import net.fabricmc.fabric.api.event.EventFactory;
@@ -33,6 +36,26 @@ public final class TestMod implements ModInitializer, DedicatedServerModInitiali
 	@Override
 	public void onInitialize() {
 		LOGGER.info("FABRICATED-TEST main entrypoint OK");
+		// Environment stripping: the client-only interface is removed on a dedicated server, kept on a client.
+		try {
+			Class<?> sided = Class.forName("io.github.cmdralph.fabricated.testmod.SidedThing");
+			boolean client = FabricLoader.getInstance().getEnvironmentType() == EnvType.CLIENT;
+			if ((sided.getInterfaces().length == 1) == client) LOGGER.info("FABRICATED-TEST environment stripping OK");
+			else LOGGER.error("FABRICATED-TEST environment stripping FAILED: interfaces {}", List.of(sided.getInterfaces()));
+		} catch (ClassNotFoundException | LinkageError e) {
+			LOGGER.error("FABRICATED-TEST environment stripping FAILED", e);
+		}
+		// Fabricated's public API, and detecting Fabricated through Fabric's API.
+		Fabricated.get().ifPresent(api -> api.afterEntrypoints(() -> {
+			boolean ok = FabricLoader.getInstance().isModLoaded(Fabricated.MOD_ID) && api.entrypointsComplete()
+					&& api.isFabricModLoaded("fabricated-testmod")
+					&& api.fabricApiModule("fabric-api-base").map(m -> m.status() == FabricApiModule.Status.NATIVE).orElse(false);
+			if (ok) LOGGER.info("FABRICATED-TEST api OK");
+			if (FabricLoader.getInstance().getEnvironmentType() == EnvType.CLIENT && ModMenuEntry.registered()) {
+				LOGGER.info("FABRICATED-TEST modmenu config screen OK");
+			}
+			else LOGGER.error("FABRICATED-TEST api FAILED: {}", api.fabricMod("fabricated-testmod"));
+		}));
 
 		FabricLoader loader = FabricLoader.getInstance();
 		ModContainer self = loader.getModContainer(MOD_ID).orElseThrow();

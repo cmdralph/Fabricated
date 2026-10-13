@@ -6,8 +6,6 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Enumeration;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -135,13 +133,9 @@ public final class SafeArchive implements Closeable {
 		}
 	}
 
-	public Path path() {
-		return path;
-	}
-
 	/** All entry names (including directories) in archive order. */
 	public List<String> entryNames() {
-		return Collections.unmodifiableList(new ArrayList<>(entries.keySet()));
+		return List.copyOf(entries.keySet());
 	}
 
 	/** Names of the {@code .class} entries outside {@code META-INF/}, excluding module descriptors, in archive order. */

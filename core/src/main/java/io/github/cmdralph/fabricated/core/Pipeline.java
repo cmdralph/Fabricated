@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -21,6 +22,7 @@ import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
 import io.github.cmdralph.fabricated.core.bytecode.ClassIndex;
 import io.github.cmdralph.fabricated.core.cache.TranslationCache;
 import io.github.cmdralph.fabricated.core.config.FabricatedConfig;
+import io.github.cmdralph.fabricated.core.metadata.CompatHints;
 import io.github.cmdralph.fabricated.core.metadata.FabricModMetadata;
 import io.github.cmdralph.fabricated.core.mixin.PreflightFinding;
 import io.github.cmdralph.fabricated.core.remap.MappingException;
@@ -121,6 +123,7 @@ public final class Pipeline {
 			FabricatedConfig config,
 			List<LoadedMod> mods,
 			Map<String, List<InjectedInterface>> injectedInterfaces,
+			Set<String> environmentClasses,
 			FabricLoaderRuntime runtime,
 			Map<String, ModContainerImpl> containers,
 			Report report,
@@ -238,6 +241,13 @@ public final class Pipeline {
 						"Remove the NeoForge build to use the Fabric one."));
 				continue;
 			}
+			FabricatedConfig.ModOverride override = config.override(c.id());
+			if (override.ignoreHints() && !c.metadata().compatHints().isEmpty()) {
+				c = new Candidate(c.path(), c.sha256(), c.metadata().withCompatHints(CompatHints.NONE), c.origin(), c.parentId(), c.depth(), c.nestedChildren());
+			}
+			CompatHints hints = c.metadata().compatHints();
+			for (String w : hints.warnings()) report.line("Compatibility hint warnings", c.id() + ": " + w);
+			if (!hints.isEmpty()) report.line("Compatibility hints (from the mod's fabric.mod.json)", c.id() + " " + hints.describe());
 			Candidate clash = byNeoId.putIfAbsent(neoId, c);
 			if (clash != null) {
 				report.mod(new ModRow(c.id(), c.version(), c.origin(), Status.DISABLED,
@@ -299,6 +309,8 @@ public final class Pipeline {
 		List<TranslatedMod> translated = List.of();
 		Map<String, PackageGuard.Decision> decisions = Map.of();
 		Map<String, List<String>> linkage = Map.of();
+		/** Compat patches that applied in the last round, by target mod id. */
+		Map<String, List<AppliedPatch>> patches = Map.of();
 		DependencyResolver.Result resolution;
 
 		void run(List<Candidate> eligible, DependencyResolver resolver, ModTranslator translator) {
@@ -335,11 +347,14 @@ public final class Pipeline {
 		/** Translates in parallel; failures are dropped. Returns the translated mods in resolution order. */
 		private List<TranslatedMod> translate(List<Candidate> mods, ModTranslator translator, Map<String, List<String>> aliases) {
 			Map<String, String> providerOf = providerOf(mods, aliases);
+			patches = patchesFor(mods);
+			Map<String, List<AppliedPatch>> applied = patches;
 			Map<String, TranslatedMod> results = new ConcurrentHashMap<>();
 			Map<Candidate, TranslationException> failures = new ConcurrentHashMap<>();
 			mods.parallelStream().forEach(c -> {
 				try {
-					results.put(c.id(), translator.translate(c, effectiveOverride(config, plan, c.id()), loadAfter(c, providerOf)));
+					results.put(c.id(), translator.translate(c, effectiveOverride(config, plan, c, applied.getOrDefault(c.id(), List.of())),
+							loadAfter(c, providerOf)));
 				} catch (TranslationException e) {
 					failures.put(c, e);
 				} catch (RuntimeException e) {
@@ -384,6 +399,34 @@ public final class Pipeline {
 			}
 			return dropped;
 		}
+	}
+
+	/** A compat patch from mod {@code patchId} that applies to its target this round. */
+	private record AppliedPatch(String patchId, CompatHints.Patch patch) {
+	}
+
+	/**
+	 * Compat patches among {@code mods}, by target: a patch applies while its mod depends on the target and both are
+	 * loading (and the player didn't turn the target's hints off). Recomputed every round, so a patch whose own mod
+	 * drops out stops applying.
+	 */
+	private Map<String, List<AppliedPatch>> patchesFor(List<Candidate> mods) {
+		Set<String> ids = mods.stream().map(Candidate::id).collect(Collectors.toSet());
+		Map<String, List<AppliedPatch>> byTarget = new HashMap<>();
+		for (Candidate c : mods) {
+			for (CompatHints.Patch patch : c.metadata().compatHints().patches()) {
+				String target = patch.target();
+				boolean depends = c.metadata().getDependencies().stream()
+						.anyMatch(d -> d.getKind() == ModDependency.Kind.DEPENDS && d.getModId().equals(target));
+				if (target.equals(c.id()) || !ids.contains(target) || config.override(target).ignoreHints()) continue;
+				if (!depends) {
+					report.line("Compatibility hint warnings", c.id() + ": the patch for " + target + " is ignored, as " + c.id() + " does not depend on it");
+					continue;
+				}
+				byTarget.computeIfAbsent(target, k -> new ArrayList<>()).add(new AppliedPatch(c.id(), patch));
+			}
+		}
+		return byTarget;
 	}
 
 	/** Every id a candidate answers to (its own, {@code provides}, config aliases) → that candidate's id. */
@@ -435,6 +478,7 @@ public final class Pipeline {
 
 		List<LoadedMod> loaded = new ArrayList<>();
 		Map<String, List<InjectedInterface>> injections = new TreeMap<>();
+		Set<String> environmentClasses = new HashSet<>();
 		Map<String, ModContainerImpl> containers = new LinkedHashMap<>();
 		Set<String> finalIds = rounds.translated.stream().map(t -> t.candidate().id()).filter(id -> !rounds.dropped.containsKey(id))
 				.collect(Collectors.toSet());
@@ -444,6 +488,7 @@ public final class Pipeline {
 			PackageGuard.Decision decision = rounds.decisions.get(t.neoForgeId());
 			loaded.add(new LoadedMod(t, decision != null ? decision.excludedPackages() : Set.of()));
 			for (InjectedInterface ii : t.injectedInterfaces()) injections.computeIfAbsent(ii.target(), k -> new ArrayList<>()).add(ii);
+			environmentClasses.addAll(t.environmentClasses());
 			reportLoaded(t, rounds.translatedThisLaunch.get(c.id()), decision, rounds.linkage.get(t.neoForgeId()));
 
 			ModOrigin origin = c.parentId() == null
@@ -456,7 +501,13 @@ public final class Pipeline {
 			List<String> extraIds = new ArrayList<>(c.metadata().getProvides());
 			extraIds.addAll(override.aliases());
 			runtime.addMod(container, extraIds);
-			runtime.addEntrypoints(container, c.metadata().entrypoints(), override.skipEntrypoints());
+			Set<String> skipEntrypoints = new HashSet<>(override.skipEntrypoints());
+			for (AppliedPatch p : rounds.patches.getOrDefault(c.id(), List.of())) {
+				skipEntrypoints.addAll(p.patch().skipEntrypoints());
+				report.line("Compatibility patches", c.id() + " <- " + p.patchId() + ": skips mixins " + p.patch().skipMixins()
+						+ ", entrypoints " + p.patch().skipEntrypoints());
+			}
+			runtime.addEntrypoints(container, c.metadata().compatHints().entrypointsOf(c.metadata().entrypoints()), skipEntrypoints);
 			runtime.addLanguageAdapters(container, c.metadata().languageAdapters());
 			containers.put(c.id(), container);
 		}
@@ -464,7 +515,7 @@ public final class Pipeline {
 		for (NeoForgeMod m : in.neoForgeMods()) addBuiltin(runtime, m.id(), m.version(), m.displayName(), List.of());
 
 		in.cache().notes().forEach(n -> report.line("Cache", n));
-		return new Result(config, List.copyOf(loaded), injections, runtime, containers, report, dependencyFailures);
+		return new Result(config, List.copyOf(loaded), injections, Set.copyOf(environmentClasses), runtime, containers, report, dependencyFailures);
 	}
 
 	private void reportLoaded(TranslatedMod t, Long millis, PackageGuard.Decision decision, List<String> linkageIssues) {
@@ -486,14 +537,17 @@ public final class Pipeline {
 		if (linkageIssues != null) linkageIssues.forEach(i -> report.line("Linkage warnings (code that will fail if it runs)", c.id() + ": " + i));
 	}
 
-	/** User overrides, plus the plan's known-conflicting mixins for pass-through Fabric API modules. */
-	static FabricatedConfig.ModOverride effectiveOverride(FabricatedConfig config, FabricApiPlan plan, String id) {
-		FabricatedConfig.ModOverride user = config.override(id);
-		FabricApiPlan.Module module = plan.module(id);
-		if (module == null || module.skipMixins().isEmpty()) return user;
+	/** User overrides, plus the mod's own hints and the plan's known-conflicting mixins for pass-through Fabric API modules. */
+	static FabricatedConfig.ModOverride effectiveOverride(FabricatedConfig config, FabricApiPlan plan, Candidate c, List<AppliedPatch> patches) {
+		FabricatedConfig.ModOverride user = config.override(c.id());
+		FabricApiPlan.Module module = plan.module(c.id());
 		Set<String> skip = new TreeSet<>(user.skipMixins());
-		skip.addAll(module.skipMixins());
-		return new FabricatedConfig.ModOverride(user.disabled(), Set.copyOf(skip), user.skipEntrypoints(), user.aliases(), user.ignorePreflight());
+		if (module != null) skip.addAll(module.skipMixins());
+		skip.addAll(c.metadata().compatHints().skipMixins());
+		for (AppliedPatch p : patches) skip.addAll(p.patch().skipMixins());
+		if (skip.equals(user.skipMixins())) return user;
+		return new FabricatedConfig.ModOverride(user.disabled(), Set.copyOf(skip), user.skipEntrypoints(), user.aliases(), user.ignorePreflight(),
+				user.ignoreHints());
 	}
 
 	private static void addBuiltin(FabricLoaderRuntime runtime, String id, String version, String name, List<String> aliases) {

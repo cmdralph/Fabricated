@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.io.StringReader;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -25,14 +26,19 @@ import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.ClassNode;
 
+import io.github.cmdralph.fabricated.api.FabricApiModule;
+import io.github.cmdralph.fabricated.api.FabricMod;
+import io.github.cmdralph.fabricated.core.api.FabricatedApiImpl;
 import io.github.cmdralph.fabricated.core.archive.ArchiveLimits;
 import io.github.cmdralph.fabricated.core.archive.SafeArchive;
 import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
 import io.github.cmdralph.fabricated.core.cache.TranslationCache;
 import io.github.cmdralph.fabricated.core.config.FabricatedConfig;
+import io.github.cmdralph.fabricated.core.metadata.FabricModJsonParser;
 import io.github.cmdralph.fabricated.core.remap.MappingComposer;
 import io.github.cmdralph.fabricated.core.remap.MappingTable;
 import io.github.cmdralph.fabricated.core.report.Report;
+import io.github.cmdralph.fabricated.core.resolve.Candidate;
 import io.github.cmdralph.fabricated.core.resolve.FabricApiPlan;
 import io.github.cmdralph.fabricated.core.testutil.TestJars;
 import io.github.cmdralph.fabricated.core.translate.TranslationEnvironment.Namespace;
@@ -239,13 +245,20 @@ class PipelineTest {
 		assertEquals("net.minecraft.world.Thing", result.runtime().getMappingResolver().mapClassName("intermediary", "net.minecraft.class_1"));
 	}
 
+	private static Candidate candidate(String id, String extraJson) throws Exception {
+		return new Candidate(Path.of(id + ".jar"), "00", FabricModJsonParser.parse(TestJars.modJson(id, "1.0", extraJson)), id + ".jar", null, 0, List.of());
+	}
+
 	@Test
 	void planSkipListsMergeWithUserOverrides() throws Exception {
 		FabricApiPlan plan = FabricApiPlan.parse(PLAN);
 		var config = io.github.cmdralph.fabricated.core.config.FabricatedConfig.parse(
 				"{\"mods\":{\"fabric-item-api-v1\":{\"skipMixins\":[\"Other\"]}}}");
-		assertEquals(Set.of("item.mixins.json:Conflicting", "Other"), Pipeline.effectiveOverride(config, plan, "fabric-item-api-v1").skipMixins());
-		assertEquals(Set.of(), Pipeline.effectiveOverride(config, plan, "unrelated").skipMixins());
+		assertEquals(Set.of("item.mixins.json:Conflicting", "Other"), Pipeline.effectiveOverride(config, plan, candidate("fabric-item-api-v1", ""), List.of()).skipMixins());
+		assertEquals(Set.of(), Pipeline.effectiveOverride(config, plan, candidate("unrelated", ""), List.of()).skipMixins());
+		// The mod's own hints add to them.
+		Candidate hinted = candidate("unrelated", "\"custom\":{\"fabricated\":{\"skipMixins\":[\"a.mixins.json:Broken\"]}}");
+		assertEquals(Set.of("a.mixins.json:Broken"), Pipeline.effectiveOverride(config, plan, hinted, List.of()).skipMixins());
 		org.junit.jupiter.api.Assertions.assertThrows(io.github.cmdralph.fabricated.core.json.JsonException.class, () -> FabricApiPlan.parse(
 				"{\"fabricApiVersion\":\"1\",\"modules\":{\"x\":{\"plan\":\"native\",\"version\":\"1\",\"skipMixins\":[\"A\"]}}}"));
 	}
@@ -281,5 +294,118 @@ class PipelineTest {
 		String report = result.report().render();
 		assertTrue(report.contains("NeoForge cannot load both"), report);
 		assertTrue(report.contains("a NeoForge build of this mod is installed"), report);
+	}
+
+	@Test
+	void apiReflectsTheLaunch(@TempDir Path game) throws Exception {
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		writeMods(mods);
+		List<Path> jars;
+		try (var s = Files.list(mods)) {
+			jars = s.sorted().toList();
+		}
+		Pipeline.Input in = input(game, jars, Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null);
+		Pipeline.Result result = Pipeline.run(in);
+		FabricatedApiImpl api = new FabricatedApiImpl(in.fabricatedVersion(), in.fabricApiPlan(), result.report(), result.runtime(), true);
+
+		assertTrue(result.runtime().isModLoaded("fabricated"), "mods can detect Fabricated");
+		assertEquals(FabricMod.Status.LOADED, api.fabricMod("good_mod").orElseThrow().status(), "found by NeoForge id");
+		assertEquals("Good Mod", api.fabricMod("good-mod").orElseThrow().name());
+		assertEquals(FabricMod.Status.DISABLED, api.fabricMod("bad-mixin").orElseThrow().status());
+		assertEquals(FabricMod.Status.SKIPPED, api.fabricMod("client-only").orElseThrow().status());
+		assertTrue(api.fabricMod("broken.jar").isEmpty(), "rejected jars are not mods");
+		assertEquals(FabricApiModule.Status.NATIVE, api.fabricApiModule("fabric-api-base").orElseThrow().status());
+		assertEquals(FabricApiModule.Status.UNSUPPORTED, api.fabricApiModule("fabric-renderer-indigo").orElseThrow().status());
+		assertEquals(FabricApiModule.Status.NOT_INSTALLED, api.fabricApiModule("fabric-item-api-v1").orElseThrow().status());
+
+		List<String> ran = new ArrayList<>();
+		api.afterEntrypoints(() -> ran.add("first"));
+		api.afterEntrypoints(() -> {
+			throw new IllegalStateException("broken action");
+		});
+		api.afterEntrypoints(() -> ran.add("third"));
+		assertTrue(ran.isEmpty(), "waits for the entrypoints");
+		List<Throwable> errors = new ArrayList<>();
+		api.markEntrypointsComplete(Set.of("good-mod"), (action, error) -> errors.add(error));
+		assertEquals(List.of("first", "third"), ran, "a throwing action does not stop the others");
+		assertEquals(1, errors.size());
+		assertEquals(FabricMod.Status.FAILED, api.fabricMod("good-mod").orElseThrow().status());
+		api.afterEntrypoints(() -> ran.add("late"));
+		assertEquals("late", ran.getLast(), "runs right away once the entrypoints ran");
+	}
+
+	@Test
+	void modsCanSkipTheirOwnMixinsAndEntrypoints(@TempDir Path game) throws Exception {
+		Path jar = TestJars.create().fabricModJson(TestJars.modJson("hinted", "1.0", """
+						"mixins":["hinted.mixins.json"],"entrypoints":{"server":["com.hinted.Server"]},
+						"custom":{"fabricated":{"skipMixins":["hinted.mixins.json:BadMixin"],"entrypoints":{"main":["com.hinted.NeoForge"]},
+						"skipEntrypoints":["server"]}}"""))
+				.text("hinted.mixins.json", "{\"required\":true,\"package\":\"com.hinted.mixin\",\"mixins\":[\"BadMixin\"]}")
+				.bytes("com/hinted/mixin/BadMixin.class", mixinClass("com/hinted/mixin/BadMixin", "removedByNeoForge"))
+				.write(game.resolve("mods/hinted.jar"));
+		Pipeline.Result result = Pipeline.run(input(game, List.of(jar), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
+		assertTrue(result.runtime().isModLoaded("hinted"), result.report().render());
+		assertEquals(List.of("com.hinted.NeoForge"), result.runtime().declared("main").stream().map(d -> d.spec().value()).toList());
+		assertTrue(result.runtime().declared("server").isEmpty());
+		assertTrue(result.report().render().contains("Compatibility hints"));
+	}
+
+	private static Path patchTarget(Path game) throws Exception {
+		return TestJars.create().fabricModJson(TestJars.modJson("target-mod", "2.0", "\"mixins\":[\"target.mixins.json\"]"))
+				.text("target.mixins.json", "{\"required\":true,\"package\":\"com.target.mixin\",\"mixins\":[\"BadMixin\"]}")
+				.bytes("com/target/mixin/BadMixin.class", mixinClass("com/target/mixin/BadMixin", "removedByNeoForge"))
+				.write(game.resolve("mods/target.jar"));
+	}
+
+	private static Path patch(Path game, String depends) throws Exception {
+		return TestJars.create().fabricModJson(TestJars.modJson("target-fix", "1.0", depends
+						+ "\"custom\":{\"fabricated\":{\"patches\":[{\"target\":\"target-mod\",\"skipMixins\":[\"target.mixins.json:BadMixin\"]}]}}"))
+				.write(game.resolve("mods/fix.jar"));
+	}
+
+	@Test
+	void compatPatchesFixOtherModsTheyDependOn(@TempDir Path game) throws Exception {
+		Pipeline.Result result = Pipeline.run(input(game, List.of(patchTarget(game), patch(game, "\"depends\":{\"target-mod\":\">=2\"},")),
+				Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
+		assertTrue(result.runtime().isModLoaded("target-mod"), result.report().render());
+		assertTrue(result.report().render().contains("target-mod <- target-fix"));
+	}
+
+	@Test
+	void compatPatchesNeedADependencyOnTheirTarget(@TempDir Path game) throws Exception {
+		Pipeline.Result result = Pipeline.run(input(game, List.of(patchTarget(game), patch(game, "")), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
+		assertFalse(result.runtime().isModLoaded("target-mod"), "the patch does not apply");
+		assertTrue(result.report().render().contains("does not depend on it"));
+	}
+
+	@Test
+	void mixinsUsingAnInterfaceOfASkippedMixinAreSkippedToo(@TempDir Path game) throws Exception {
+		ClassNode adder = new ClassNode();
+		new ClassReader(mixinClass("com/dep/mixin/AddsExt", "tick")).accept(adder, 0);
+		adder.interfaces.add("com/dep/Ext");
+		ClassNode user = new ClassNode();
+		new ClassReader(mixinClass("com/dep/mixin/UsesExt", "tick")).accept(user, 0);
+		user.fields.add(new org.objectweb.asm.tree.FieldNode(Opcodes.ACC_PRIVATE, "ext", "Lcom/dep/Ext;", null, null));
+		Path jar = TestJars.create().fabricModJson(TestJars.modJson("dep-mod", "1.0", """
+						"mixins":["dep.mixins.json"],"custom":{"fabricated":{"skipMixins":["dep.mixins.json:AddsExt"]}}"""))
+				.text("dep.mixins.json", "{\"required\":true,\"package\":\"com.dep.mixin\",\"mixins\":[\"AddsExt\",\"UsesExt\"]}")
+				.bytes("com/dep/mixin/AddsExt.class", write(adder))
+				.bytes("com/dep/mixin/UsesExt.class", write(user))
+				.bytes("com/dep/Ext.class", TestJars.emptyClass("com/dep/Ext", "java/lang/Object"))
+				.write(game.resolve("mods/dep.jar"));
+		Pipeline.Result result = Pipeline.run(input(game, List.of(jar), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
+		String report = result.report().render();
+		assertTrue(result.runtime().isModLoaded("dep-mod"), report);
+		assertTrue(report.contains("also left out"), report);
+		try (SafeArchive overlay = SafeArchive.open(result.mods().getFirst().translated().overlay(), ArchiveLimits.DEFAULTS)) {
+			String config = new String(overlay.read("dep.mixins.json"), java.nio.charset.StandardCharsets.UTF_8);
+			assertFalse(config.contains("UsesExt"), config);
+		}
+	}
+
+	private static byte[] write(ClassNode node) {
+		ClassWriter writer = new ClassWriter(0);
+		node.accept(writer);
+		return writer.toByteArray();
 	}
 }

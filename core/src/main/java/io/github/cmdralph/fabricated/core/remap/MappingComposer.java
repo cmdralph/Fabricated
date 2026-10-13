@@ -3,8 +3,11 @@ package io.github.cmdralph.fabricated.core.remap;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.Reader;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 /**
  * Builds the intermediary → Mojang table for an obfuscated Minecraft version from
@@ -16,8 +19,8 @@ import java.util.Map;
  * overloaded obfuscated names are handled correctly.
  */
 public final class MappingComposer {
-	private static final java.util.regex.Pattern LINE_PREFIX = java.util.regex.Pattern.compile("^\\d+:\\d+:");
-	private static final java.util.regex.Pattern LINE_SUFFIX = java.util.regex.Pattern.compile("\\):\\d+(?::\\d+)?$");
+	private static final Pattern LINE_PREFIX = Pattern.compile("^\\d+:\\d+:");
+	private static final Pattern LINE_SUFFIX = Pattern.compile("\\):\\d+(?::\\d+)?$");
 
 	private MappingComposer() {
 	}
@@ -31,7 +34,7 @@ public final class MappingComposer {
 		/** "officialOwner.officialName:mojangDesc" for fields, before descriptor conversion. */
 		final Map<String, Map<String, String>> rawFields = new HashMap<>();
 		/** officialOwner → list of (officialName, mojangDesc, mojangName). */
-		final Map<String, java.util.List<String[]>> rawMethods = new HashMap<>();
+		final Map<String, List<String[]>> rawMethods = new HashMap<>();
 		/** officialOwner + "." + officialName + officialDesc → mojang name. */
 		final Map<String, String> fields = new HashMap<>();
 		final Map<String, String> methods = new HashMap<>();
@@ -43,7 +46,7 @@ public final class MappingComposer {
 		Map<String, Map<String, String>> members = new HashMap<>();
 		// official class → intermediary class, to translate descriptors for qualified keys
 		Map<String, String> officialToIntermediary = new HashMap<>();
-		java.util.List<String[]> memberLines = new java.util.ArrayList<>();
+		List<String[]> memberLines = new ArrayList<>();
 
 		try (BufferedReader br = new BufferedReader(intermediaryTiny)) {
 			String header = br.readLine();
@@ -139,7 +142,7 @@ public final class MappingComposer {
 					int p = rest.indexOf('(');
 					String mojangName = rest.substring(0, p);
 					String args = rest.substring(p + 1, rest.lastIndexOf(')'));
-					pg.rawMethods.computeIfAbsent(currentOfficial, k -> new java.util.ArrayList<>())
+					pg.rawMethods.computeIfAbsent(currentOfficial, k -> new ArrayList<>())
 							.add(new String[] {officialName, args, ret, mojangName});
 				}
 			}
@@ -155,7 +158,7 @@ public final class MappingComposer {
 				pg.fields.put(e.getKey() + "." + officialName + desc, f.getValue());
 			}
 		}
-		for (Map.Entry<String, java.util.List<String[]>> e : pg.rawMethods.entrySet()) {
+		for (Map.Entry<String, List<String[]>> e : pg.rawMethods.entrySet()) {
 			for (String[] m : e.getValue()) {
 				StringBuilder desc = new StringBuilder("(");
 				if (!m[1].isEmpty()) {

@@ -119,7 +119,8 @@ warning in the report, so a bad config never crashes the game.
       "skipMixins": ["examplemod.mixins.json:client.FooMixin"],
       "skipEntrypoints": ["client"],
       "aliases": ["example"],
-      "ignorePreflight": false
+      "ignorePreflight": false,
+      "ignoreHints": false
     }
   },
   "mojangMappingsPath": null
@@ -138,6 +139,7 @@ warning in the report, so a bad config never crashes the game.
 | `mods.<id>.skipEntrypoints` | Don't run these entrypoint types (`main`, `client`, `server`, `preLaunch`, or custom ones). |
 | `mods.<id>.aliases` | Extra ids this mod satisfies as a dependency. |
 | `mods.<id>.ignorePreflight` | Load the mod even if mixin pre-flight fails. It may crash. Use for testing only. |
+| `mods.<id>.ignoreHints` | Ignore the mod's own `custom.fabricated` hints (see [docs/API.md](docs/API.md)). |
 | `mojangMappingsPath` | 1.21.11 only: path to Mojang's mapping file if NeoForge's installer didn't leave one. |
 
 ## Known limitations
@@ -155,6 +157,11 @@ warning in the report, so a bad config never crashes the game.
   lists every such case.
 - **JPMS packages.** NeoForge requires every Java package to belong to exactly one mod. Fabric allows
   sharing, so clashing mods are de-duplicated (identical files) or one is disabled.
+
+## For mod developers
+
+NeoForge mods can see which Fabric mods are loaded and run code once their initializers have run. Fabric mods can
+detect Fabricated with `FabricLoader.getInstance().isModLoaded("fabricated")`. See [docs/API.md](docs/API.md).
 
 ## Building
 
@@ -174,6 +181,6 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). In short:
 
 ## License
 
-MIT, see [LICENSE](LICENSE). Third-party material (the Fabric Loader API and vendored Fabric API modules
-under Apache-2.0, and Intermediary mappings under CC0) is listed in [NOTICE](NOTICE). Fabricated contains
+GPL-3.0, see [LICENSE](LICENSE). Third-party material (the Fabric Loader API and vendored Fabric API modules
+under Apache-2.0, which GPL-3.0 can include, and Intermediary mappings under CC0) is listed in [NOTICE](NOTICE). Fabricated contains
 no code from Sinytra Connector, Forgified Fabric API or Launchpad.

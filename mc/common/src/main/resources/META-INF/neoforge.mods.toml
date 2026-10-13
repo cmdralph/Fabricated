@@ -1,7 +1,7 @@
 # Fabricated's in-game mod. Its sibling library (the jar you install) loads Fabric mods during discovery.
 modLoader="javafml"
 loaderVersion="*"
-license="MIT"
+license="GPL-3.0"
 issueTrackerURL="https://github.com/cmdralph/Fabricated/issues"
 
 [[mods]]

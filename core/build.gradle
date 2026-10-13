@@ -18,6 +18,7 @@ repositories {
 
 dependencies {
     api project(':fabric-loader-api')
+    api project(':api')
     // Provided at runtime by NeoForge on every supported version.
     compileOnly "org.ow2.asm:asm:${asm_version}"
     compileOnly "org.ow2.asm:asm-tree:${asm_version}"

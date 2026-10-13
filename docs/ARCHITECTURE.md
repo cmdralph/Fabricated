@@ -371,4 +371,4 @@ Unknown keys produce a warning. Invalid values fall back to defaults with a warn
 
 ## 17. Licensing
 
-MIT for Fabricated. `NOTICE` covers the Fabric Loader API types (Apache-2.0) and Intermediary 1.21.11 (CC0). No code from Connector, Launchpad (GPL-3.0), Adapter, FFAPI or Forgified Fabric Loader.
+GPL-3.0 for Fabricated. `NOTICE` covers the Fabric Loader API types and vendored Fabric API modules (Apache-2.0, which GPL-3.0 can include) and Intermediary 1.21.11 (CC0). No code from Connector, Launchpad (GPL-3.0), Adapter, FFAPI or Forgified Fabric Loader.

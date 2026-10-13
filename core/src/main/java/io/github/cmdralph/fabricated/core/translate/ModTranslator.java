@@ -6,6 +6,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -19,6 +21,8 @@ import java.util.jar.Attributes;
 import java.util.jar.Manifest;
 import java.util.stream.Collectors;
 
+import org.objectweb.asm.ClassReader;
+
 import io.github.cmdralph.fabricated.core.accesswidener.AccessTransformerConverter;
 import io.github.cmdralph.fabricated.core.accesswidener.AccessWidenerException;
 import io.github.cmdralph.fabricated.core.accesswidener.AccessWidenerFile;
@@ -29,6 +33,7 @@ import io.github.cmdralph.fabricated.core.archive.DeterministicJarWriter;
 import io.github.cmdralph.fabricated.core.archive.Hashing;
 import io.github.cmdralph.fabricated.core.archive.SafeArchive;
 import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
+import io.github.cmdralph.fabricated.core.bytecode.EnvironmentStripper;
 import io.github.cmdralph.fabricated.core.cache.TranslationCache;
 import io.github.cmdralph.fabricated.core.config.FabricatedConfig.ModOverride;
 import io.github.cmdralph.fabricated.core.json.JsonException;
@@ -136,6 +141,8 @@ public final class ModTranslator {
 					}
 				}
 
+				Set<String> environmentClasses = environmentClasses(remapped != null ? remapped.keySet() : archive.classEntryNames(), files);
+
 				FabricModMetadata md = candidate.metadata();
 				ModsTomlWriter.Spec spec = new ModsTomlWriter.Spec(neoId, md.getVersion().getFriendlyString(), md.getName(),
 						md.getDescription(), List.copyOf(md.getAuthors()), List.copyOf(md.getContributors()),
@@ -163,10 +170,11 @@ public final class ModTranslator {
 				meta.put("notes", notes);
 				meta.put("findings", findings.stream().map(ModTranslator::findingToJson).toList());
 				meta.put("injectedInterfaces", injections.stream().map(ModTranslator::injectionToJson).toList());
+				meta.put("environmentClasses", List.copyOf(environmentClasses));
 				TranslationCache.Entry entry = cache.store(entryName, outputs, meta);
 				Path jar = remapped != null ? entry.file(REMAPPED) : candidate.path();
 				return new TranslatedMod(candidate, neoId, jar, entry.file(OVERLAY), List.copyOf(findings), atLines,
-						List.copyOf(notes), injections, false, millis);
+						List.copyOf(notes), injections, environmentClasses, false, millis);
 			} catch (ArchiveException e) {
 				throw new TranslationException("The jar is unsafe or corrupt: " + e.getMessage(), "Re-download the mod from its official page.");
 			} catch (MappingException e) {
@@ -192,6 +200,17 @@ public final class ModTranslator {
 		return (int) Math.max(1, Math.min(MEMORY_MIB, size * 10 / (1 << 20)));
 	}
 
+	/** Classes whose bytes mention Fabric's {@code @Environment} annotations, to strip for the other side at class load. */
+	private static Set<String> environmentClasses(Collection<String> entries, FileView files) throws ArchiveException {
+		Set<String> classes = new TreeSet<>();
+		for (String name : entries) {
+			if (!name.endsWith(".class") || name.startsWith("META-INF/")) continue;
+			byte[] data = files.read(name);
+			if (data != null && EnvironmentStripper.mayNeedStripping(data)) classes.add(name.substring(0, name.length() - ".class".length()));
+		}
+		return Set.copyOf(classes);
+	}
+
 	/** Reads an entry of the mod being translated (remapped when applicable). */
 	@FunctionalInterface
 	private interface FileView {
@@ -207,7 +226,7 @@ public final class ModTranslator {
 		List<ModsTomlWriter.MixinConfigSpec> specs = new ArrayList<>();
 		MixinPreflight preflight = new MixinPreflight(env.game(), classSource(files), env.untransformable(), env.clientSide());
 
-		for (MixinEntry entry : md.mixins()) {
+		for (MixinEntry entry : md.compatHints().mixinsOr(md.mixins())) {
 			if (!entry.environment().matches(side)) continue;
 			byte[] data = files.read(entry.config());
 			if (data == null) {
@@ -226,7 +245,7 @@ public final class ModTranslator {
 				throw new TranslationException("Mixin config " + entry.config() + " is invalid: " + e.getMessage(), "Report this to the mod author.");
 			}
 
-			Set<String> skip = skipsFor(entry.config(), config, override.skipMixins());
+			Set<String> skip = withDependents(entry.config(), config, skipsFor(entry.config(), config, override.skipMixins()), files, findings);
 			if (!override.ignorePreflight()) {
 				findings.addAll(preflight.check(entry.config(), config, refmap, skip));
 			}
@@ -267,6 +286,48 @@ public final class ModTranslator {
 	}
 
 	/** Skips apply as {@code "config.json:Name"} (one config) or {@code "Name"} (every config). */
+	/**
+	 * {@code skip} plus the kept mixins that use an interface only a skipped mixin adds to its target (one of the mod's
+	 * own interfaces): with the adding mixin gone, their casts to it would fail at runtime. Repeated until stable.
+	 */
+	private static Set<String> withDependents(String configName, MixinConfigFile config, Set<String> skip, FileView files,
+			List<PreflightFinding> findings) throws ArchiveException {
+		if (skip.isEmpty()) return skip;
+		Set<String> all = new TreeSet<>(skip);
+		Map<String, String> addedBy = new HashMap<>();
+		for (boolean grew = true; grew; ) {
+			grew = false;
+			for (String mixin : all) {
+				byte[] data = files.read(config.internalName(mixin) + ".class");
+				if (data == null) continue;
+				for (String itf : new ClassReader(data).getInterfaces()) {
+					if (files.read(itf + ".class") != null) addedBy.putIfAbsent(itf, mixin);
+				}
+			}
+			// Still added when a kept mixin implements it too.
+			for (String mixin : config.allMixins()) {
+				byte[] data = all.contains(mixin) ? null : files.read(config.internalName(mixin) + ".class");
+				if (data != null) addedBy.keySet().removeAll(List.of(new ClassReader(data).getInterfaces()));
+			}
+			for (String mixin : config.allMixins()) {
+				if (all.contains(mixin)) continue;
+				byte[] data = files.read(config.internalName(mixin) + ".class");
+				if (data == null) continue;
+				String text = new String(data, StandardCharsets.ISO_8859_1);
+				for (Map.Entry<String, String> e : addedBy.entrySet()) {
+					if (!text.contains(e.getKey())) continue;
+					all.add(mixin);
+					findings.add(new PreflightFinding(Severity.WARN, configName, config.internalName(mixin).replace('/', '.'),
+							"also left out: it uses " + e.getKey().replace('/', '.') + ", which only the skipped mixin " + e.getValue() + " adds", ""));
+					grew = true;
+					break;
+				}
+				if (grew) break;
+			}
+		}
+		return all;
+	}
+
 	static Set<String> skipsFor(String configName, MixinConfigFile config, Set<String> configured) {
 		Set<String> declared = new HashSet<>(config.allMixins());
 		Set<String> ret = new TreeSet<>();
@@ -298,7 +359,7 @@ public final class ModTranslator {
 
 	private static Set<String> collectRefmapPaths(FabricModMetadata md, SafeArchive archive) throws ArchiveException {
 		Set<String> refmaps = new TreeSet<>();
-		for (MixinEntry entry : md.mixins()) {
+		for (MixinEntry entry : md.compatHints().mixinsOr(md.mixins())) {
 			String json = archive.readText(entry.config());
 			if (json == null) continue;
 			try {
@@ -346,10 +407,12 @@ public final class ModTranslator {
 				if (o instanceof Map<?, ?> m) injections.add(injectionFromJson(m));
 			}
 		}
+		Set<String> environmentClasses = new TreeSet<>();
+		if (meta.get("environmentClasses") instanceof List<?> list) list.forEach(o -> environmentClasses.add(String.valueOf(o)));
 		int at = meta.get("accessTransformers") instanceof Number n ? n.intValue() : 0;
 		Path jar = env.namespace() == Namespace.INTERMEDIARY ? entry.file(REMAPPED) : candidate.path();
 		return new TranslatedMod(candidate, neoId, jar, entry.file(OVERLAY), List.copyOf(findings), at, List.copyOf(notes),
-				List.copyOf(injections), true, 0);
+				List.copyOf(injections), Set.copyOf(environmentClasses), true, 0);
 	}
 
 	private static Map<String, Object> findingToJson(PreflightFinding f) {
