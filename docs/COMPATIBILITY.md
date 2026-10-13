@@ -39,12 +39,12 @@ checks: the client starts and joins a singleplayer world, the `main` and `client
 client-side native modules work, including a networking round trip with the integrated server, and a Mod Menu
 config screen factory is registered with NeoForge.
 
-CI also starts the client with the full Fabric API jar, for information only (it doesn't fail the build). The
-client-only modules that load there are key-mapping / key-binding, creative-tab / item-group, block-getter
-and, on 26.x, rendering-fluids. rendering-v1, screen-api, sound-api, model-loading (which needs the
-unsupported renderer-api) and particles are disabled on the client by pre-flight, because NeoForge rewrote the
-HUD, screen and sound code they wrap. With the Fabric API jar installed the client doesn't finish joining its
-world yet; this is being investigated.
+CI also starts the client with the full Fabric API jar, for information only (it doesn't fail the build). It
+joins its world and passes every client check on 1.21.11 and 26.3 (26.1.2 and 26.2 are expected to follow
+with the render pipeline fix below). On 26.x, rendering-v1, screen-api, sound-api and rendering-fluids load
+(see their section below), alongside key-mapping / key-binding, creative-tab / item-group and block-getter.
+model-loading (which needs the unsupported renderer-api) and particles (a field NeoForge removed) are still
+disabled on the client, as are rendering-v1, screen-api, sound-api and rendering-fluids on 1.21.11.
 
 The 26.3 job is marked experimental in CI because NeoForge 26.3 is a beta; it passes every check. Its client
 opens its window with SDL3 over EGL, so CI installs Mesa's EGL library for it.
@@ -469,6 +469,8 @@ Upstream's module loads, without the mixins that target code NeoForge rewrote:
 - **Picture-in-picture renderers** (`PictureInPictureRendererRegistry`): NeoForge rebuilt the GUI renderer around
   its own renderer pools; renderers registered with Fabric are not used yet.
 - **Debug options screen**: keeps vanilla's sorting and search instead of upstream's namespace-aware ones.
+- **Render pipeline snippets** (26.1.2, 26.2): NeoForge added a field to them, so they don't carry Fabric's
+  "use the pipeline's draw mode in GUIs" flag; pipelines still do.
 
 The rest of the module (world rendering events, block and item colors, entity and block entity renderers, model
 layers, tooltip components, render pipelines and so on) is upstream's code, unchanged.

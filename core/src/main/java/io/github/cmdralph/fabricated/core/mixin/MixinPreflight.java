@@ -54,6 +54,8 @@ public final class MixinPreflight {
 	private static final String COERCE = "Lorg/spongepowered/asm/mixin/injection/Coerce;";
 	private static final String UNIQUE = "Lorg/spongepowered/asm/mixin/Unique;";
 	private static final String INTRINSIC = "Lorg/spongepowered/asm/mixin/Intrinsic;";
+	private static final String WRAP_OPERATION = "Lcom/llamalad7/mixinextras/injector/wrapoperation/WrapOperation;";
+	private static final String OPERATION = "Lcom/llamalad7/mixinextras/injector/wrapoperation/Operation;";
 	private static final String DEFINITION = "Lcom/llamalad7/mixinextras/expression/Definition;";
 	private static final String DEFINITIONS = "Lcom/llamalad7/mixinextras/expression/Definitions;";
 	private static final Set<String> GAME_PREFIXES = Set.of("net/minecraft/", "com/mojang/blaze3d/");
@@ -432,6 +434,14 @@ public final class MixinPreflight {
 						"NeoForge or this Minecraft version changed the method body; the mod needs an update or this mixin must be skipped.");
 				return;
 			}
+			if (verdict == Verdict.FOUND && ann.desc.equals(WRAP_OPERATION) && rawTarget != null) {
+				String mismatch = wrappedArityMismatch(handler, point, ctx.resolve(rawTarget), matched);
+				if (mismatch != null) {
+					ctx.classLevel(injectorName + " handler " + handler.name + " " + mismatch + " in " + matched.getFirst().name,
+							"NeoForge's build of Minecraft calls this with different arguments; the mod needs an update or this handler must be skipped.");
+					return;
+				}
+			}
 		}
 	}
 
@@ -590,6 +600,49 @@ public final class MixinPreflight {
 				return Verdict.UNKNOWN;
 			}
 		}
+	}
+
+	/**
+	 * A {@code @WrapOperation} handler takes the wrapped call's receiver (unless static) and arguments, then the
+	 * {@code Operation}. Returns why that does not fit any matching call or constructor, or null when it does (or
+	 * cannot be judged).
+	 */
+	private static String wrappedArityMismatch(MethodNode handler, String point, String target, List<MethodNode> methods) {
+		Type[] args = Type.getArgumentTypes(handler.desc);
+		int taken = -1;
+		for (int i = 0; i < args.length; i++) {
+			if (args[i].getDescriptor().equals(OPERATION)) {
+				taken = i;
+				break;
+			}
+		}
+		MemberRef ref = MemberRef.parse(target);
+		if (taken < 0 || ref.fuzzy()) return null;
+		Set<Integer> passed = new java.util.TreeSet<>();
+		for (MethodNode method : methods) {
+			for (AbstractInsnNode insn : method.instructions) {
+				if (!(insn instanceof MethodInsnNode call)) continue;
+				switch (point) {
+					case "INVOKE", "INVOKE_ASSIGN" -> {
+						if (matchesInsn(point, ref, insn)) {
+							passed.add(Type.getArgumentTypes(call.desc).length + (call.getOpcode() == Opcodes.INVOKESTATIC ? 0 : 1));
+						}
+					}
+					case "NEW" -> {
+						String cls = newTarget(ref);
+						if (call.getOpcode() == Opcodes.INVOKESPECIAL && call.name.equals("<init>") && cls != null && cls.equals(call.owner)
+								&& (ref.methodDescOr(null) == null || matchesInsn(point, ref, insn))) {
+							passed.add(Type.getArgumentTypes(call.desc).length);
+						}
+					}
+					default -> {
+						return null;
+					}
+				}
+			}
+		}
+		if (passed.isEmpty() || passed.contains(taken)) return null;
+		return "takes " + taken + " value(s) before its Operation, but the wrapped " + (point.equals("NEW") ? "constructor" : "call") + " passes " + passed;
 	}
 
 	/**
