@@ -119,7 +119,8 @@ warning in the report, so a bad config never crashes the game.
       "skipMixins": ["examplemod.mixins.json:client.FooMixin"],
       "skipEntrypoints": ["client"],
       "aliases": ["example"],
-      "ignorePreflight": false
+      "ignorePreflight": false,
+      "ignoreHints": false
     }
   },
   "mojangMappingsPath": null
@@ -138,6 +139,7 @@ warning in the report, so a bad config never crashes the game.
 | `mods.<id>.skipEntrypoints` | Don't run these entrypoint types (`main`, `client`, `server`, `preLaunch`, or custom ones). |
 | `mods.<id>.aliases` | Extra ids this mod satisfies as a dependency. |
 | `mods.<id>.ignorePreflight` | Load the mod even if mixin pre-flight fails. It may crash. Use for testing only. |
+| `mods.<id>.ignoreHints` | Ignore the mod's own `custom.fabricated` hints (see [docs/API.md](docs/API.md)). |
 | `mojangMappingsPath` | 1.21.11 only: path to Mojang's mapping file if NeoForge's installer didn't leave one. |
 
 ## Known limitations

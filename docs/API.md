@@ -93,7 +93,40 @@ Stability rules:
 
 All methods are thread-safe.
 
+## Hints in `fabric.mod.json` (for Fabric mod authors)
+
+A Fabric mod can tell Fabricated how to run it on NeoForge, without a NeoForge port. Add a `fabricated` block under
+`custom`. Fabric Loader ignores it.
+
+```json
+"custom": {
+  "fabricated": {
+    "schema": 1,
+    "skipMixins": ["examplemod.mixins.json:client.TooltipMixin"],
+    "mixins": ["examplemod.mixins.json", "examplemod.neoforge.mixins.json"],
+    "entrypoints": { "main": ["com.example.neoforge.NeoForgeCompat"] },
+    "skipEntrypoints": ["modmenu"]
+  }
+}
+```
+
+| Key | Effect under Fabricated |
+|---|---|
+| `skipMixins` | Leave these mixins out, written `"config.json:Name"` or `"Name"`. Use it for mixins whose target NeoForge changed and whose feature NeoForge already provides. |
+| `mixins` | Use these mixin configs instead of the top-level `mixins` list (same format). The configs must be in the jar. A config owns its whole package, so give a NeoForge-specific config its own package. |
+| `entrypoints` | Entrypoints added after the mod's own, same format as Fabric's `entrypoints`. Use them for a NeoForge-specific initializer. They run with the other entrypoints, never during translation. |
+| `skipEntrypoints` | Keys of the mod's own entrypoints to leave out. Combine with `entrypoints` to replace one. |
+
+The rules:
+
+- The block is data only. It is checked when the mod's metadata is read and can only change how this mod loads.
+- A key with an invalid value is ignored, with a warning in the report. The rest of the block still applies.
+- A block with a newer `schema` than Fabricated supports is ignored as a whole.
+- Players can turn a mod's hints off with `"ignoreHints": true` for that mod in `config/fabricated.json`.
+- Settings that are the player's choice (`ignorePreflight`, `disabled`, `aliases`) are not accepted in the block.
+
 ## Planned
 
-- **Hints in `fabric.mod.json`:** a `custom.fabricated` block where a Fabric mod's author can skip mixins that can't apply on NeoForge, swap in a NeoForge-specific mixin config or initializer, and map dependency ids to NeoForge mod ids. It is data only, read when the mod's metadata is read.
-- **Compat patches:** small Fabric-format jars that fix a specific mod under Fabricated. They can skip that mod's mixins and initializers, and add their own.
+- **Compat patches:** small Fabric-format jars that fix a specific mod under Fabricated. They can skip that mod's
+  mixins and entrypoints, and add their own.
+- **NeoForge id mappings:** in the hints, mapping a Fabric dependency id to the id of the NeoForge mod that provides it.

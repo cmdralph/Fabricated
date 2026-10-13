@@ -223,7 +223,7 @@ public final class ModTranslator {
 		List<ModsTomlWriter.MixinConfigSpec> specs = new ArrayList<>();
 		MixinPreflight preflight = new MixinPreflight(env.game(), classSource(files), env.untransformable(), env.clientSide());
 
-		for (MixinEntry entry : md.mixins()) {
+		for (MixinEntry entry : md.compatHints().mixinsOr(md.mixins())) {
 			if (!entry.environment().matches(side)) continue;
 			byte[] data = files.read(entry.config());
 			if (data == null) {
@@ -314,7 +314,7 @@ public final class ModTranslator {
 
 	private static Set<String> collectRefmapPaths(FabricModMetadata md, SafeArchive archive) throws ArchiveException {
 		Set<String> refmaps = new TreeSet<>();
-		for (MixinEntry entry : md.mixins()) {
+		for (MixinEntry entry : md.compatHints().mixinsOr(md.mixins())) {
 			String json = archive.readText(entry.config());
 			if (json == null) continue;
 			try {

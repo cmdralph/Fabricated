@@ -96,9 +96,11 @@ public final class FabricModJsonParser {
 			}
 		}
 
+		CompatHints hints = customObj instanceof Map<?, ?> map && map.containsKey(CompatHints.KEY) ? CompatHints.parse(map.get(CompatHints.KEY)) : CompatHints.NONE;
+
 		return new FabricModMetadata("fabric", id, version, provides, environment, entrypoints, jars, mixins,
 				classTweaker, dependencies, name != null ? name : id, description != null ? description : "",
-				authors, contributors, contact, license, icons, languageAdapters, custom);
+				authors, contributors, contact, license, icons, languageAdapters, custom, hints);
 	}
 
 	private static String requireString(Map<String, Object> obj, String key) throws MetadataException {
@@ -142,7 +144,7 @@ public final class FabricModJsonParser {
 		};
 	}
 
-	private static Map<String, List<EntrypointSpec>> parseEntrypoints(Object value) throws MetadataException {
+	static Map<String, List<EntrypointSpec>> parseEntrypoints(Object value) throws MetadataException {
 		Map<String, List<EntrypointSpec>> ret = new LinkedHashMap<>();
 		if (value == null) return ret;
 		if (!(value instanceof Map<?, ?> map)) throw new MetadataException("\"entrypoints\" must be an object");
@@ -180,7 +182,7 @@ public final class FabricModJsonParser {
 		return ret;
 	}
 
-	private static List<MixinEntry> parseMixins(Object value) throws MetadataException {
+	static List<MixinEntry> parseMixins(Object value) throws MetadataException {
 		List<MixinEntry> ret = new ArrayList<>();
 		if (value == null) return ret;
 		if (!(value instanceof List<?> list)) throw new MetadataException("\"mixins\" must be an array");

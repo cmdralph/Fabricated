@@ -49,12 +49,12 @@ public record FabricatedConfig(
 
 	/** Per-mod overrides, keyed by Fabric mod id. */
 	public record ModOverride(boolean disabled, Set<String> skipMixins, Set<String> skipEntrypoints, List<String> aliases,
-			boolean ignorePreflight) {
-		public static final ModOverride NONE = new ModOverride(false, Set.of(), Set.of(), List.of(), false);
+			boolean ignorePreflight, boolean ignoreHints) {
+		public static final ModOverride NONE = new ModOverride(false, Set.of(), Set.of(), List.of(), false, false);
 
 		/** Stable text describing the overrides that affect translation output, for cache keys. */
 		public String fingerprint() {
-			return "skipMixins=" + new TreeSet<>(skipMixins) + ";ignorePreflight=" + ignorePreflight;
+			return "skipMixins=" + new TreeSet<>(skipMixins) + ";ignorePreflight=" + ignorePreflight + (ignoreHints ? ";ignoreHints" : "");
 		}
 	}
 
@@ -137,7 +137,8 @@ public record FabricatedConfig(
 					Collections.unmodifiableSet(new TreeSet<>(m.strings("skipMixins"))),
 					Collections.unmodifiableSet(new TreeSet<>(m.strings("skipEntrypoints"))),
 					List.copyOf(m.strings("aliases")),
-					m.bool("ignorePreflight", false)));
+					m.bool("ignorePreflight", false),
+					m.bool("ignoreHints", false)));
 			m.get("preferFabric");
 			m.reportUnknown();
 		}
@@ -184,6 +185,7 @@ public record FabricatedConfig(
 			m.put("skipEntrypoints", new ArrayList<>(o.skipEntrypoints()));
 			m.put("aliases", o.aliases());
 			m.put("ignorePreflight", o.ignorePreflight());
+			m.put("ignoreHints", o.ignoreHints());
 			modsJson.put(e.getKey(), m);
 		}
 		root.put("mods", modsJson);

@@ -22,6 +22,7 @@ import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
 import io.github.cmdralph.fabricated.core.bytecode.ClassIndex;
 import io.github.cmdralph.fabricated.core.cache.TranslationCache;
 import io.github.cmdralph.fabricated.core.config.FabricatedConfig;
+import io.github.cmdralph.fabricated.core.metadata.CompatHints;
 import io.github.cmdralph.fabricated.core.metadata.FabricModMetadata;
 import io.github.cmdralph.fabricated.core.mixin.PreflightFinding;
 import io.github.cmdralph.fabricated.core.remap.MappingException;
@@ -240,6 +241,13 @@ public final class Pipeline {
 						"Remove the NeoForge build to use the Fabric one."));
 				continue;
 			}
+			FabricatedConfig.ModOverride override = config.override(c.id());
+			if (override.ignoreHints() && !c.metadata().compatHints().isEmpty()) {
+				c = new Candidate(c.path(), c.sha256(), c.metadata().withCompatHints(CompatHints.NONE), c.origin(), c.parentId(), c.depth(), c.nestedChildren());
+			}
+			CompatHints hints = c.metadata().compatHints();
+			for (String w : hints.warnings()) report.line("Compatibility hint warnings", c.id() + ": " + w);
+			if (!hints.isEmpty()) report.line("Compatibility hints (from the mod's fabric.mod.json)", c.id() + " " + hints.describe());
 			Candidate clash = byNeoId.putIfAbsent(neoId, c);
 			if (clash != null) {
 				report.mod(new ModRow(c.id(), c.version(), c.origin(), Status.DISABLED,
@@ -341,7 +349,7 @@ public final class Pipeline {
 			Map<Candidate, TranslationException> failures = new ConcurrentHashMap<>();
 			mods.parallelStream().forEach(c -> {
 				try {
-					results.put(c.id(), translator.translate(c, effectiveOverride(config, plan, c.id()), loadAfter(c, providerOf)));
+					results.put(c.id(), translator.translate(c, effectiveOverride(config, plan, c), loadAfter(c, providerOf)));
 				} catch (TranslationException e) {
 					failures.put(c, e);
 				} catch (RuntimeException e) {
@@ -460,7 +468,7 @@ public final class Pipeline {
 			List<String> extraIds = new ArrayList<>(c.metadata().getProvides());
 			extraIds.addAll(override.aliases());
 			runtime.addMod(container, extraIds);
-			runtime.addEntrypoints(container, c.metadata().entrypoints(), override.skipEntrypoints());
+			runtime.addEntrypoints(container, c.metadata().compatHints().entrypointsOf(c.metadata().entrypoints()), override.skipEntrypoints());
 			runtime.addLanguageAdapters(container, c.metadata().languageAdapters());
 			containers.put(c.id(), container);
 		}
@@ -490,14 +498,16 @@ public final class Pipeline {
 		if (linkageIssues != null) linkageIssues.forEach(i -> report.line("Linkage warnings (code that will fail if it runs)", c.id() + ": " + i));
 	}
 
-	/** User overrides, plus the plan's known-conflicting mixins for pass-through Fabric API modules. */
-	static FabricatedConfig.ModOverride effectiveOverride(FabricatedConfig config, FabricApiPlan plan, String id) {
-		FabricatedConfig.ModOverride user = config.override(id);
-		FabricApiPlan.Module module = plan.module(id);
-		if (module == null || module.skipMixins().isEmpty()) return user;
+	/** User overrides, plus the mod's own hints and the plan's known-conflicting mixins for pass-through Fabric API modules. */
+	static FabricatedConfig.ModOverride effectiveOverride(FabricatedConfig config, FabricApiPlan plan, Candidate c) {
+		FabricatedConfig.ModOverride user = config.override(c.id());
+		FabricApiPlan.Module module = plan.module(c.id());
 		Set<String> skip = new TreeSet<>(user.skipMixins());
-		skip.addAll(module.skipMixins());
-		return new FabricatedConfig.ModOverride(user.disabled(), Set.copyOf(skip), user.skipEntrypoints(), user.aliases(), user.ignorePreflight());
+		if (module != null) skip.addAll(module.skipMixins());
+		skip.addAll(c.metadata().compatHints().skipMixins());
+		if (skip.equals(user.skipMixins())) return user;
+		return new FabricatedConfig.ModOverride(user.disabled(), Set.copyOf(skip), user.skipEntrypoints(), user.aliases(), user.ignorePreflight(),
+				user.ignoreHints());
 	}
 
 	private static void addBuiltin(FabricLoaderRuntime runtime, String id, String version, String name, List<String> aliases) {

@@ -34,9 +34,11 @@ import io.github.cmdralph.fabricated.core.archive.SafeArchive;
 import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
 import io.github.cmdralph.fabricated.core.cache.TranslationCache;
 import io.github.cmdralph.fabricated.core.config.FabricatedConfig;
+import io.github.cmdralph.fabricated.core.metadata.FabricModJsonParser;
 import io.github.cmdralph.fabricated.core.remap.MappingComposer;
 import io.github.cmdralph.fabricated.core.remap.MappingTable;
 import io.github.cmdralph.fabricated.core.report.Report;
+import io.github.cmdralph.fabricated.core.resolve.Candidate;
 import io.github.cmdralph.fabricated.core.resolve.FabricApiPlan;
 import io.github.cmdralph.fabricated.core.testutil.TestJars;
 import io.github.cmdralph.fabricated.core.translate.TranslationEnvironment.Namespace;
@@ -243,13 +245,20 @@ class PipelineTest {
 		assertEquals("net.minecraft.world.Thing", result.runtime().getMappingResolver().mapClassName("intermediary", "net.minecraft.class_1"));
 	}
 
+	private static Candidate candidate(String id, String extraJson) throws Exception {
+		return new Candidate(Path.of(id + ".jar"), "00", FabricModJsonParser.parse(TestJars.modJson(id, "1.0", extraJson)), id + ".jar", null, 0, List.of());
+	}
+
 	@Test
 	void planSkipListsMergeWithUserOverrides() throws Exception {
 		FabricApiPlan plan = FabricApiPlan.parse(PLAN);
 		var config = io.github.cmdralph.fabricated.core.config.FabricatedConfig.parse(
 				"{\"mods\":{\"fabric-item-api-v1\":{\"skipMixins\":[\"Other\"]}}}");
-		assertEquals(Set.of("item.mixins.json:Conflicting", "Other"), Pipeline.effectiveOverride(config, plan, "fabric-item-api-v1").skipMixins());
-		assertEquals(Set.of(), Pipeline.effectiveOverride(config, plan, "unrelated").skipMixins());
+		assertEquals(Set.of("item.mixins.json:Conflicting", "Other"), Pipeline.effectiveOverride(config, plan, candidate("fabric-item-api-v1", "")).skipMixins());
+		assertEquals(Set.of(), Pipeline.effectiveOverride(config, plan, candidate("unrelated", "")).skipMixins());
+		// The mod's own hints add to them.
+		Candidate hinted = candidate("unrelated", "\"custom\":{\"fabricated\":{\"skipMixins\":[\"a.mixins.json:Broken\"]}}");
+		assertEquals(Set.of("a.mixins.json:Broken"), Pipeline.effectiveOverride(config, plan, hinted).skipMixins());
 		org.junit.jupiter.api.Assertions.assertThrows(io.github.cmdralph.fabricated.core.json.JsonException.class, () -> FabricApiPlan.parse(
 				"{\"fabricApiVersion\":\"1\",\"modules\":{\"x\":{\"plan\":\"native\",\"version\":\"1\",\"skipMixins\":[\"A\"]}}}"));
 	}
@@ -323,5 +332,21 @@ class PipelineTest {
 		assertEquals(FabricMod.Status.FAILED, api.fabricMod("good-mod").orElseThrow().status());
 		api.afterEntrypoints(() -> ran.add("late"));
 		assertEquals("late", ran.getLast(), "runs right away once the entrypoints ran");
+	}
+
+	@Test
+	void modsCanSkipTheirOwnMixinsAndEntrypoints(@TempDir Path game) throws Exception {
+		Path jar = TestJars.create().fabricModJson(TestJars.modJson("hinted", "1.0", """
+						"mixins":["hinted.mixins.json"],"entrypoints":{"server":["com.hinted.Server"]},
+						"custom":{"fabricated":{"skipMixins":["hinted.mixins.json:BadMixin"],"entrypoints":{"main":["com.hinted.NeoForge"]},
+						"skipEntrypoints":["server"]}}"""))
+				.text("hinted.mixins.json", "{\"required\":true,\"package\":\"com.hinted.mixin\",\"mixins\":[\"BadMixin\"]}")
+				.bytes("com/hinted/mixin/BadMixin.class", mixinClass("com/hinted/mixin/BadMixin", "removedByNeoForge"))
+				.write(game.resolve("mods/hinted.jar"));
+		Pipeline.Result result = Pipeline.run(input(game, List.of(jar), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
+		assertTrue(result.runtime().isModLoaded("hinted"), result.report().render());
+		assertEquals(List.of("com.hinted.NeoForge"), result.runtime().declared("main").stream().map(d -> d.spec().value()).toList());
+		assertTrue(result.runtime().declared("server").isEmpty());
+		assertTrue(result.report().render().contains("Compatibility hints"));
 	}
 }
