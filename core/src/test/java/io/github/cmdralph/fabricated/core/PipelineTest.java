@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.StringReader;
@@ -350,6 +351,28 @@ class PipelineTest {
 		assertTrue(result.report().render().contains("Compatibility hints"));
 	}
 
+	@Test
+	void aSingleHandlerMethodCanBeLeftOut(@TempDir Path game) throws Exception {
+		ClassNode mixin = new ClassNode();
+		new ClassReader(mixinClass("com/part/mixin/PartlyBad", "removedByNeoForge")).accept(mixin, 0);
+		mixin.methods.add(new org.objectweb.asm.tree.MethodNode(Opcodes.ACC_PRIVATE, "helper", "()V", null, null));
+		Path jar = TestJars.create().fabricModJson(TestJars.modJson("part-mod", "1.0", """
+						"mixins":["part.mixins.json"],"custom":{"fabricated":{"skipMixins":["part.mixins.json:PartlyBad#handler","part.mixins.json:PartlyBad#gone"]}}"""))
+				.text("part.mixins.json", "{\"required\":true,\"package\":\"com.part.mixin\",\"mixins\":[\"PartlyBad\"]}")
+				.bytes("com/part/mixin/PartlyBad.class", write(mixin))
+				.write(game.resolve("mods/part.jar"));
+		Pipeline.Result result = Pipeline.run(input(game, List.of(jar), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
+		String report = result.report().render();
+		assertTrue(result.runtime().isModLoaded("part-mod"), "pre-flight checks the mixin without the handler: " + report);
+		assertTrue(report.contains("has no method gone to leave out"), report);
+		try (SafeArchive overlay = SafeArchive.open(result.mods().getFirst().translated().overlay(), ArchiveLimits.DEFAULTS)) {
+			assertNull(overlay.read("part.mixins.json"), "the mixin itself stays in its config");
+			ClassNode stripped = new ClassNode();
+			new ClassReader(overlay.read("com/part/mixin/PartlyBad.class")).accept(stripped, 0);
+			assertEquals(List.of("helper"), stripped.methods.stream().map(m -> m.name).toList());
+		}
+	}
+
 	private static Path patchTarget(Path game) throws Exception {
 		return TestJars.create().fabricModJson(TestJars.modJson("target-mod", "2.0", "\"mixins\":[\"target.mixins.json\"]"))
 				.text("target.mixins.json", "{\"required\":true,\"package\":\"com.target.mixin\",\"mixins\":[\"BadMixin\"]}")
@@ -386,11 +409,23 @@ class PipelineTest {
 		ClassNode user = new ClassNode();
 		new ClassReader(mixinClass("com/dep/mixin/UsesExt", "tick")).accept(user, 0);
 		user.fields.add(new org.objectweb.asm.tree.FieldNode(Opcodes.ACC_PRIVATE, "ext", "Lcom/dep/Ext;", null, null));
+		// Uses the interface only in a handler that is left out, so it stays.
+		ClassNode handlerUser = new ClassNode();
+		new ClassReader(mixinClass("com/dep/mixin/UsesExtInHandler", "tick")).accept(handlerUser, 0);
+		org.objectweb.asm.tree.MethodNode cast = new org.objectweb.asm.tree.MethodNode(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "useExt", "(Ljava/lang/Object;)V", null, null);
+		cast.instructions.add(new org.objectweb.asm.tree.VarInsnNode(Opcodes.ALOAD, 0));
+		cast.instructions.add(new org.objectweb.asm.tree.TypeInsnNode(Opcodes.CHECKCAST, "com/dep/Ext"));
+		cast.instructions.add(new org.objectweb.asm.tree.InsnNode(Opcodes.POP));
+		cast.instructions.add(new org.objectweb.asm.tree.InsnNode(Opcodes.RETURN));
+		cast.maxStack = 1;
+		cast.maxLocals = 1;
+		handlerUser.methods.add(cast);
 		Path jar = TestJars.create().fabricModJson(TestJars.modJson("dep-mod", "1.0", """
-						"mixins":["dep.mixins.json"],"custom":{"fabricated":{"skipMixins":["dep.mixins.json:AddsExt"]}}"""))
-				.text("dep.mixins.json", "{\"required\":true,\"package\":\"com.dep.mixin\",\"mixins\":[\"AddsExt\",\"UsesExt\"]}")
+						"mixins":["dep.mixins.json"],"custom":{"fabricated":{"skipMixins":["dep.mixins.json:AddsExt","dep.mixins.json:UsesExtInHandler#useExt"]}}"""))
+				.text("dep.mixins.json", "{\"required\":true,\"package\":\"com.dep.mixin\",\"mixins\":[\"AddsExt\",\"UsesExt\",\"UsesExtInHandler\"]}")
 				.bytes("com/dep/mixin/AddsExt.class", write(adder))
 				.bytes("com/dep/mixin/UsesExt.class", write(user))
+				.bytes("com/dep/mixin/UsesExtInHandler.class", write(handlerUser))
 				.bytes("com/dep/Ext.class", TestJars.emptyClass("com/dep/Ext", "java/lang/Object"))
 				.write(game.resolve("mods/dep.jar"));
 		Pipeline.Result result = Pipeline.run(input(game, List.of(jar), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
@@ -399,7 +434,8 @@ class PipelineTest {
 		assertTrue(report.contains("also left out"), report);
 		try (SafeArchive overlay = SafeArchive.open(result.mods().getFirst().translated().overlay(), ArchiveLimits.DEFAULTS)) {
 			String config = new String(overlay.read("dep.mixins.json"), java.nio.charset.StandardCharsets.UTF_8);
-			assertFalse(config.contains("UsesExt"), config);
+			assertFalse(config.contains("\"UsesExt\""), config);
+			assertTrue(config.contains("UsesExtInHandler"), config);
 		}
 	}
 

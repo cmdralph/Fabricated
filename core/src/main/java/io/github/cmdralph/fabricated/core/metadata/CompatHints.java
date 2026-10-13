@@ -26,7 +26,8 @@ import io.github.cmdralph.fabricated.core.metadata.FabricModMetadata.MixinEntry;
  * }}
  * }</pre>
  *
- * @param skipMixins      mixins to leave out ({@code "config.json:Name"} or {@code "Name"}), as the config's setting
+ * @param skipMixins      mixins to leave out ({@code "config.json:Name"} or {@code "Name"}), or one handler method of a
+ *                        mixin ({@code "config.json:Name#handler"}), as the config's setting
  * @param mixins          mixin configs to use instead of the top-level {@code mixins}, or null to keep those
  * @param entrypoints     entrypoints added after the mod's own, by key
  * @param skipEntrypoints keys of the mod's own entrypoints to leave out
@@ -51,7 +52,7 @@ public record CompatHints(Set<String> skipMixins, List<MixinEntry> mixins, Map<S
 	public static final CompatHints NONE = new CompatHints(Set.of(), null, Map.of(), Set.of(), List.of(), List.of());
 
 	private static final int MAX_ENTRIES = 64;
-	private static final Pattern SKIP_MIXIN = Pattern.compile("([A-Za-z0-9_./-]{1,128}\\.json:)?[A-Za-z_$][A-Za-z0-9_$.]{0,255}");
+	private static final Pattern SKIP_MIXIN = Pattern.compile("([A-Za-z0-9_./-]{1,128}\\.json:)?[A-Za-z_$][A-Za-z0-9_$.]{0,255}(#[A-Za-z_$][A-Za-z0-9_$]{0,255})?");
 	private static final Pattern ENTRYPOINT_KEY = Pattern.compile("[A-Za-z0-9_:-]{1,64}");
 	private static final Pattern CONFIG_PATH = Pattern.compile("([A-Za-z0-9_-][A-Za-z0-9_.-]*/)*[A-Za-z0-9_-][A-Za-z0-9_.-]*\\.json");
 

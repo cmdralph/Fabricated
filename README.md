@@ -135,7 +135,7 @@ warning in the report, so a bad config never crashes the game.
 | `cache.*` | Translation cache in `.fabricated/cache` in the game directory. Entries are hash-checked before use and deleted after `maxUnusedLaunches` launches without use. |
 | `limits.*` | Safety caps applied to every jar (size, entry count, compression ratio, nesting). |
 | `mods.<id>.disabled` | Don't load this Fabric mod. |
-| `mods.<id>.skipMixins` | Drop specific mixins (`"config.json:Name"` or `"Name"`). |
+| `mods.<id>.skipMixins` | Drop specific mixins (`"config.json:Name"` or `"Name"`), or one handler method of a mixin (`"config.json:Name#handler"`) so its other injections still apply. |
 | `mods.<id>.skipEntrypoints` | Don't run these entrypoint types (`main`, `client`, `server`, `preLaunch`, or custom ones). |
 | `mods.<id>.aliases` | Extra ids this mod satisfies as a dependency. |
 | `mods.<id>.ignorePreflight` | Load the mod even if mixin pre-flight fails. It may crash. Use for testing only. |

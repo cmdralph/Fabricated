@@ -146,10 +146,22 @@
       "reason": "Fabric's renderer API replaces the block model pipeline that NeoForge owns; mods that require it need their NeoForge build."
     },
     "fabric-rendering-fluids-v1": {
-      "plan": "passthrough"
+      "plan": "passthrough",
+      "skipMixins": [
+        "fabric-rendering-fluids-v1.mixins.json:FluidRendererMixin#modifyNonOverlayCheck"
+      ],
+      "reason": "NeoForge decides where fluids show their overlay texture with BlockState.shouldDisplayFluidOverlay instead of the check upstream modifies, so blocks marked transparent through FluidRenderingRegistry.setBlockTransparency keep NeoForge's behavior. Custom fluid renderers work."
     },
     "fabric-rendering-v1": {
-      "plan": "passthrough"
+      "plan": "passthrough",
+      "skipMixins": [
+        "fabric-rendering-v1.mixins.json:GuiMixin",
+        "fabric-rendering-v1.mixins.json:GuiRendererMixin",
+        "fabric-rendering-v1.mixins.json:GameRendererMixin#guiRendererReady",
+        "fabric-rendering-v1.mixins.json:DebugOptionsScreenOptionListMixin",
+        "fabric-rendering-v1.mixins.json:RenderPipelineBuilderMixin#copyUsePipelineDrawModeForGuiToSnippet"
+      ],
+      "reason": "NeoForge draws the HUD in layers: Fabricated runs Fabric's HUD elements from NeoForge's vanilla layers instead of upstream's HUD mixin. Picture-in-picture renderers registered with Fabric are not used (NeoForge rebuilt that renderer), and the debug options screen keeps vanilla's sorting and search. Render pipeline snippets don't carry Fabric's GUI draw mode flag (NeoForge added a field to them); pipelines do."
     },
     "fabric-resource-conditions-api-v1": {
       "plan": "passthrough"
@@ -163,13 +175,21 @@
       "reason": "Shipped by Fabricated on NeoForge's reload-listener and pack-finder events (upstream's mixins conflict with NeoForge's patches)."
     },
     "fabric-screen-api-v1": {
-      "plan": "passthrough"
+      "plan": "passthrough",
+      "skipMixins": [
+        "fabric-screen-api-v1.mixins.json:GameRendererMixin#onExtractGui"
+      ],
+      "reason": "NeoForge draws screens through its own hook: Fabricated fires the before/after extract events from NeoForge's screen render events instead of upstream's wrapper."
     },
     "fabric-serialization-api-v1": {
       "plan": "passthrough"
     },
     "fabric-sound-api-v1": {
-      "plan": "passthrough"
+      "plan": "passthrough",
+      "skipMixins": [
+        "fabric-sound-api-v1.mixins.json:SoundEngineMixin"
+      ],
+      "reason": "NeoForge asks each sound instance for its audio stream: Fabricated uses a Fabric sound instance's own stream there instead of upstream's redirect."
     },
     "fabric-tag-api-v1": {
       "plan": "passthrough"

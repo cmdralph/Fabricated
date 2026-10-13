@@ -2,6 +2,7 @@ package io.github.cmdralph.fabricated.testmod;
 
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
+import net.fabricmc.fabric.api.client.networking.v1.ClientConfigurationNetworking;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.resource.v1.ResourceLoader;
@@ -11,8 +12,8 @@ import net.minecraft.server.packs.resources.ResourceManagerReloadListener;
 
 /**
  * Client part of the CI test mod (run by the client smoke test, which joins a singleplayer world): client
- * entrypoint, client lifecycle, a client resource reload listener and a networking round trip with the integrated
- * server (the server side answers in {@link NetworkingTest}).
+ * entrypoint, client lifecycle, a client resource reload listener, a configuration task and a networking round trip
+ * with the integrated server (the server sides are {@link ConfigurationTest} and {@link NetworkingTest}).
  */
 public final class ClientTestMod implements ClientModInitializer {
 	@Override
@@ -22,6 +23,8 @@ public final class ClientTestMod implements ClientModInitializer {
 		ResourceLoader.get(PackType.CLIENT_RESOURCES).registerReloadListener(Identifier.fromNamespaceAndPath("fabricated_testmod", "client_listener"),
 				(ResourceManagerReloadListener) manager -> TestMod.LOGGER.info("FABRICATED-TEST client resource reload listener OK"));
 
+		ClientConfigurationNetworking.registerGlobalReceiver(ConfigurationTest.Request.TYPE,
+				(payload, context) -> context.responseSender().sendPacket(new ConfigurationTest.Reply(7)));
 		ClientPlayNetworking.registerGlobalReceiver(NetworkingTest.Ping.TYPE, (payload, context) -> {
 			if (payload.value() == 42) TestMod.LOGGER.info("FABRICATED-TEST client networking round trip OK");
 		});

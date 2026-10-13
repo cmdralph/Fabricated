@@ -12,17 +12,17 @@ real NeoForge client (`ci/smoke-client.sh`), not from expectations. CI starts ea
    mod (client entrypoint, client lifecycle, a client resource listener, a networking round trip with the
    integrated server). This is a pass/fail gate.
 
-Last updated from CI run [38450392637](https://github.com/cmdralph/Fabricated/actions/runs/38450392637)
+Last updated from CI run [38462902633](https://github.com/cmdralph/Fabricated/actions/runs/38462902633)
 (Fabricated 0.1.0 development build).
 
 ## Minecraft versions
 
 | Minecraft | NeoForge | Fabric API tested | Test mods | Server boots with Fabric API |
 |---|---|---|---|---|
-| 1.21.11 | 21.11.45 | 0.141.6+1.21.11 | ✅ all 33 server and 16 client checks | ✅ boots, all test-mod checks still pass |
-| 26.1.2 | 26.1.2.116 | 0.155.3+26.1.2 | ✅ all 33 server and 16 client checks | ✅ boots, all test-mod checks still pass |
-| 26.2 | 26.2.0.90 | 0.161.0+26.2 | ✅ all 33 server and 16 client checks | ✅ boots, all test-mod checks still pass |
-| 26.3 (beta) | 26.3.0.69-beta | 0.162.0+26.3 | ✅ all 33 server and 16 client checks | ✅ boots, all test-mod checks still pass |
+| 1.21.11 | 21.11.45 | 0.141.6+1.21.11 | ✅ all 35 server and 19 client checks | ✅ boots, all test-mod checks still pass |
+| 26.1.2 | 26.1.2.116 | 0.155.3+26.1.2 | ✅ all 35 server and 19 client checks | ✅ boots, all test-mod checks still pass |
+| 26.2 | 26.2.0.90 | 0.161.0+26.2 | ✅ all 35 server and 19 client checks | ✅ boots, all test-mod checks still pass |
+| 26.3 (beta) | 26.3.0.69-beta | 0.162.0+26.3 | ✅ all 35 server and 19 client checks | ✅ boots, all test-mod checks still pass |
 
 "Boots with Fabric API" means the server starts with the full official Fabric API jar installed. Modules
 that can't work on NeoForge are disabled before any code runs (see below), and the rest load alongside
@@ -31,12 +31,20 @@ Fabricated's test mods.
 The server checks: the server starts; a `main` entrypoint runs; the Fabric Loader API works; a custom
 entrypoint resolves; content registers directly into vanilla registries; `fabric-api-base` events fire; an
 access widener applies; a `server` entrypoint runs; a mixin applies; a mod with a missing dependency is
-reported, naming the dependency; a mod with an impossible mixin is caught by pre-flight; and a mod whose
+reported, naming the dependency; a mod with an impossible mixin is caught by pre-flight; a mod whose
 entrypoint throws is isolated while the server keeps running; Fabricated's public API answers and its
-after-initializers callback runs; a client-only interface listed in `@EnvironmentInterface` is stripped on the server.
-The other 16 cover the native Fabric API modules (described in their sections below). The client checks: the client starts and joins a singleplayer world, the
-`main` and `client` entrypoints run, and the client-side native modules work, including a networking round
-trip with the integrated server.
+after-initializers callback runs; and a client-only interface listed in `@EnvironmentInterface` is stripped on
+the server. The other 21 cover the native Fabric API modules (described in their sections below). The client
+checks: the client starts and joins a singleplayer world, the `main` and `client` entrypoints run, the
+client-side native modules work, including a networking round trip with the integrated server, and a Mod Menu
+config screen factory is registered with NeoForge.
+
+CI also starts the client with the full Fabric API jar, for information only (it doesn't fail the build). It
+joins its world and passes every client check on 1.21.11 and 26.3 (26.1.2 and 26.2 are expected to follow
+with the render pipeline fix below). On 26.x, rendering-v1, screen-api, sound-api and rendering-fluids load
+(see their section below), alongside key-mapping / key-binding, creative-tab / item-group and block-getter.
+model-loading (which needs the unsupported renderer-api) and particles (a field NeoForge removed) are still
+disabled on the client, as are rendering-v1, screen-api, sound-api and rendering-fluids on 1.21.11.
 
 The 26.3 job is marked experimental in CI because NeoForge 26.3 is a beta; it passes every check. Its client
 opens its window with SDL3 over EGL, so CI installs Mesa's EGL library for it.
@@ -63,7 +71,7 @@ How to read the table:
 | fabric-rendering-fluids-v1 | loads | loads | loads | loads |
 | fabric-serialization-api-v1 | loads | loads | loads | loads |
 | fabric-transitive-access-wideners-v1 | loads | loads | loads | loads |
-| fabric-game-rule-api-v1 | disabled | loads | loads | loads |
+| fabric-game-rule-api-v1 | loads | loads | loads | loads |
 | fabric-permission-api-v1 | — | loads | loads | loads |
 | fabric-lifecycle-events-v1 | native | native | native | native |
 | fabric-networking-api-v1 | native | native | native | native |
@@ -77,7 +85,7 @@ How to read the table:
 | fabric-object-builder-api-v1 | native | native | native | native |
 | fabric-entity-events-v1 | native | native | native | native |
 | fabric-events-interaction-v0 | native | native | native | native |
-| fabric-dimensions-v1 | disabled | disabled | disabled | disabled |
+| fabric-dimensions-v1 | loads | loads | loads | loads |
 | fabric-loot-api-v3 | native | native | native | native |
 | fabric-resource-conditions-api-v1 | disabled | disabled | disabled | disabled |
 | fabric-tag-api-v1 | disabled | disabled | disabled | disabled |
@@ -87,11 +95,12 @@ How to read the table:
 | fabric-command-api-v2 | loads | loads | loads | loads |
 | fabric-convention-tags-v2 (and v1) | loads | loads | loads | loads |
 | fabric-data-attachment-api-v1 | loads | loads | loads | loads |
-| fabric-particles-v1 | disabled | disabled | disabled | disabled |
+| fabric-particles-v1 | disabled | loads | loads | loads |
 | fabric-recipe-api-v1 | disabled | disabled | disabled | disabled |
 | fabric-creative-tab-api-v1 / item-group-api-v1 | loads | loads | loads | loads |
 | fabric-debug-api-v1 | — | loads | loads | loads |
 | fabric-key-mapping-api-v1 / key-binding-api-v1, screen-api-v1, rendering-v1, sound-api-v1, model-loading-api-v1 | client | client | client | client |
+| fabric-rendering-v1, screen-api-v1, sound-api-v1 on the client | disabled | loads (see below) | loads (see below) | loads (see below) |
 | fabric-renderer-api-v1, fabric-renderer-indigo | unsupported | unsupported | unsupported | unsupported |
 | fabric-data-generation-api-v1, gametest, client-gametest | unsupported | unsupported | unsupported | unsupported |
 
@@ -109,7 +118,9 @@ failures fall into a few groups:
 - **NeoForge recompiles Minecraft, so names of synthetic members differ** (1.21.11): lambda methods such as
   `lambda$loadResources$1` and captured fields such as `val$tags` have different names in NeoForge's build.
 - **The mixin targets a library class**: `fabric-dimensions-v1` patches DataFixerUpper's `TaggedChoice`,
-  which NeoForge loads without mixin support.
+  which NeoForge loads without mixin support. Fabricated's Fabric API plan
+  (`fabric-api-plan.json`) leaves out those mixins and the mixin that depends on them, so the rest of the
+  module loads; only the safety net for worlds that reference a removed modded dimension is missing.
 - **NeoForge changed a field's type**: an `@Accessor` must read a field of exactly its type. Upstream's
   `fabric-object-builder-api-v1` (26.x) read `AttributeSupplier.Builder.builder` as an `ImmutableMap.Builder`,
   which NeoForge replaced; it is native now (see below).
@@ -121,7 +132,11 @@ failures fall into a few groups:
   `IngredientMixin` merges a `hashCode()` that NeoForge's `Ingredient` already has, and `fabric-tag-api-v1`
   merges a `remove()` into `TagFile`, which NeoForge already declares. Mixin rejects all three.
 - **NeoForge calls a different constructor**: `fabric-particles-v1` modifies `new BlockParticleOption(type,
-  state)` in `Entity.spawnSprintParticle`; NeoForge passes the block position as a third argument.
+  state)` in `Entity.spawnSprintParticle`; NeoForge passes the block position as a third argument. The plan
+  leaves out that mixin and the entity one next to it (they only make sprint and fall particles block-aware),
+  so the module loads on 26.x. On
+  1.21.11 it still fails the linkage check: it needs a networking class that only exists in upstream's
+  networking module.
 - **Dependency cascade**: a module that requires a disabled module is disabled too. In the current CI runs no
   Fabric API module is disabled only for that reason; `fabric-data-attachment-api-v1`, which needed
   object-builder, loads now.
@@ -175,10 +190,10 @@ splitting. Play handlers run on the main thread and configuration handlers on th
 Not supported: **login queries** (`ServerLoginNetworking`, `ClientLoginNetworking`): NeoForge exposes no
 login-phase hooks. The API links, so mods load, but login receivers are never called; mods should use the
 configuration phase instead (Fabric's own recommendation since 1.20.2). Configuration-phase
-`DISCONNECT` events do not fire. A payload id registered with different codecs per direction uses the
-serverbound codec for both (NeoForge keeps one codec per id); the report says so when it happens.
-CI checks that a Fabric payload and receiver register and reach NeoForge; a client round trip is not yet
-tested in CI.
+`DISCONNECT` events do not fire. A payload id can use a different codec in each direction, as on Fabric
+(NeoForge keeps one codec per id, so Fabricated supplies the clientbound one when NeoForge looks it up).
+CI checks that a Fabric payload and receiver register and reach NeoForge on a dedicated server, and, on the
+client, a play-phase round trip and a configuration task with the integrated server.
 
 ### Native `fabric-resource-loader-v1`
 
@@ -441,6 +456,38 @@ CI checks, on all four versions: a chest found through `ItemStorage.SIDED` keeps
 aborted and changes when one commits; a full water cauldron empties when a bucket of water is extracted; a Fabric
 storage used through NeoForge's capability and a NeoForge handler used through `ItemStorage.SIDED` follow aborts,
 nested commits and commits; fluids move in whole millibuckets only.
+
+### `fabric-rendering-v1`, `fabric-screen-api-v1` and `fabric-sound-api-v1` on 26.x
+
+Upstream's module loads, without the mixins that target code NeoForge rewrote:
+
+- **HUD** (`HudElementRegistry`): NeoForge draws the HUD as layers, so upstream's HUD mixin can't apply.
+  Fabricated wraps each of NeoForge's vanilla layers with the Fabric element list of the same vanilla element, so
+  elements attached before or after a vanilla element, replaced or removed, behave as on Fabric. Its wrappers
+  run after NeoForge mods registered their layers, so the Fabric elements surround whatever those mods did to the
+  vanilla layers.
+- **Picture-in-picture renderers** (`PictureInPictureRendererRegistry`): NeoForge rebuilt the GUI renderer around
+  its own renderer pools; renderers registered with Fabric are not used yet.
+- **Debug options screen**: keeps vanilla's sorting and search instead of upstream's namespace-aware ones.
+- **Render pipeline snippets** (26.1.2, 26.2): NeoForge added a field to them, so they don't carry Fabric's
+  "use the pipeline's draw mode in GUIs" flag; pipelines still do.
+
+The rest of the module (world rendering events, block and item colors, entity and block entity renderers, model
+layers, tooltip components, render pipelines and so on) is upstream's code, unchanged.
+
+`fabric-screen-api-v1` loads without upstream's wrapper around drawing a screen: Fabricated fires
+`ScreenEvents.beforeExtract` and `afterExtract` from NeoForge's `ScreenEvent.Render.Pre` and `Post`, which NeoForge
+posts around the same call. They run right around the screen (after NeoForge mods' `Pre` listeners, and not when
+one of them cancels drawing the screen; before their `Post` listeners). The module's other hooks (screen init,
+removal, ticks, mouse and keyboard events) are upstream's.
+
+`fabric-rendering-fluids-v1` loads without the handler that changes which neighbouring blocks show a fluid's
+overlay texture: NeoForge asks the block (`shouldDisplayFluidOverlay`) instead, so blocks marked transparent
+through `FluidRenderingRegistry.setBlockTransparency` keep NeoForge's behavior. Custom fluid renderers work.
+
+`fabric-sound-api-v1` loads without upstream's redirect of the audio stream lookup, which NeoForge replaced with
+its own `SoundInstance.getStream`. A sound instance whose class overrides `FabricSoundInstance.getAudioStream`
+gets its stream from it there; other sounds keep NeoForge's path.
 
 ### Fabric Loader
 

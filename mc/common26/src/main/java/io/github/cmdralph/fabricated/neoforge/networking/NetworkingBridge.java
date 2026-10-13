@@ -19,8 +19,8 @@ import net.fabricmc.fabric.impl.networking.PayloadTypeRegistryImpl;
 import net.fabricmc.fabric.impl.networking.server.ServerNetworkingImpl;
 import net.fabricmc.fabric.impl.networking.server.ServerPlayNetworkAddon;
 import net.fabricmc.fabric.mixin.networking.accessor.ServerCommonPacketListenerImplAccessor;
+import net.minecraft.network.ConnectionProtocol;
 import net.minecraft.network.FriendlyByteBuf;
-import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
@@ -142,13 +142,10 @@ public final class NetworkingBridge {
 			CustomPacketPayload.TypeAndCodec c = toClient.get(id);
 			try {
 				if (s != null && c != null) {
-					if (s.codec() != c.codec()) {
-						// NeoForge keeps one codec per payload id; Fabric allows one per direction.
-						problems.accept(id + ": registered with different codecs per direction; NeoForge uses the serverbound one for both");
-					}
-					StreamCodec codec = s.codec();
-					if (play) registrar.playBidirectional(s.type(), codec, serverHandler, clientHandler);
-					else registrar.configurationBidirectional(s.type(), codec, serverHandler, clientHandler);
+					// NeoForge keeps one codec per payload id; Fabric allows one per direction (see ClientboundCodecs).
+					if (s.codec() != c.codec()) ClientboundCodecs.put(play ? ConnectionProtocol.PLAY : ConnectionProtocol.CONFIGURATION, id, c.codec());
+					if (play) registrar.playBidirectional(s.type(), s.codec(), serverHandler, clientHandler);
+					else registrar.configurationBidirectional(s.type(), s.codec(), serverHandler, clientHandler);
 				} else if (s != null) {
 					if (play) registrar.playToServer(s.type(), s.codec(), serverHandler);
 					else registrar.configurationToServer(s.type(), s.codec(), serverHandler);

@@ -105,6 +105,73 @@ class MixinPreflightTest {
 		assertTrue(findings.isEmpty(), findings.toString());
 	}
 
+	/** A MixinExtras expression handler on tick() whose @Definition names {@code type} or {@code method}. */
+	private static void expression(ClassWriter cw, String handler, Type type, String method) {
+		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, handler, "(Z)Z", null, null);
+		AnnotationVisitor def = mv.visitAnnotation("Lcom/llamalad7/mixinextras/expression/Definition;", false);
+		def.visit("id", "x");
+		AnnotationVisitor values = def.visitArray(type != null ? "type" : "method");
+		values.visit(null, type != null ? type : method);
+		values.visitEnd();
+		def.visitEnd();
+		AnnotationVisitor ann = mv.visitAnnotation("Lcom/llamalad7/mixinextras/injector/ModifyExpressionValue;", false);
+		AnnotationVisitor methods = ann.visitArray("method");
+		methods.visit(null, "tick");
+		methods.visitEnd();
+		AnnotationVisitor ats = ann.visitArray("at");
+		AnnotationVisitor at = ats.visitAnnotation(null, "Lorg/spongepowered/asm/mixin/injection/At;");
+		at.visit("value", "MIXINEXTRAS:EXPRESSION");
+		at.visitEnd();
+		ats.visitEnd();
+		ann.visit("require", 1);
+		ann.visitEnd();
+		mv.visitEnd();
+	}
+
+	@Test
+	void expressionsNeedWhatTheirDefinitionsName() throws Exception {
+		byte[] ok = mixin("com/example/mixin/Expr", false, cw -> {
+			expression(cw, "owner", Type.getObjectType(TARGET), null);
+			expression(cw, "call", null, "Lnet/minecraft/world/Thing;helper(I)V");
+		});
+		assertTrue(run(config(true, "Expr"), null, Map.of("com/example/mixin/Expr", ok), false).isEmpty());
+
+		byte[] gone = mixin("com/example/mixin/Gone", false, cw -> expression(cw, "h", Type.getObjectType("net/minecraft/world/HalfTransparent"), null));
+		List<PreflightFinding> findings = run(config(true, "Gone"), null, Map.of("com/example/mixin/Gone", gone), false);
+		assertEquals(1, findings.size(), findings.toString());
+		assertEquals(Severity.FAIL, findings.getFirst().severity());
+		assertTrue(findings.getFirst().message().contains("MIXINEXTRAS:EXPRESSION"), findings.toString());
+	}
+
+	private static void wrapHelper(ClassWriter cw, String handler, String desc) {
+		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, handler, desc, null, null);
+		AnnotationVisitor ann = mv.visitAnnotation("Lcom/llamalad7/mixinextras/injector/wrapoperation/WrapOperation;", false);
+		AnnotationVisitor methods = ann.visitArray("method");
+		methods.visit(null, "tick");
+		methods.visitEnd();
+		AnnotationVisitor ats = ann.visitArray("at");
+		AnnotationVisitor at = ats.visitAnnotation(null, "Lorg/spongepowered/asm/mixin/injection/At;");
+		at.visit("value", "INVOKE");
+		at.visit("target", "Lnet/minecraft/world/Thing;helper(I)V");
+		at.visitEnd();
+		ats.visitEnd();
+		ann.visitEnd();
+		mv.visitEnd();
+	}
+
+	@Test
+	void wrapOperationHandlersMustTakeWhatTheCallPasses() throws Exception {
+		String operation = "Lcom/llamalad7/mixinextras/injector/wrapoperation/Operation;";
+		byte[] ok = mixin("com/example/mixin/Wrap", false, cw -> wrapHelper(cw, "wrap", "(Lnet/minecraft/world/Thing;I" + operation + ")V"));
+		assertTrue(run(config(true, "Wrap"), null, Map.of("com/example/mixin/Wrap", ok), false).isEmpty());
+
+		byte[] bad = mixin("com/example/mixin/WrapBad", false, cw -> wrapHelper(cw, "wrap", "(I" + operation + ")V"));
+		List<PreflightFinding> findings = run(config(true, "WrapBad"), null, Map.of("com/example/mixin/WrapBad", bad), false);
+		assertEquals(1, findings.size(), findings.toString());
+		assertEquals(Severity.FAIL, findings.getFirst().severity());
+		assertTrue(findings.getFirst().message().contains("passes [2]"), findings.toString());
+	}
+
 	@Test
 	void failsWhenRequiredInjectionTargetIsMissing() throws Exception {
 		byte[] bad = mixin("com/example/mixin/Bad", false, cw -> inject(cw, "h", "removedMethod", "HEAD", null, 1, null));
