@@ -27,7 +27,10 @@ public final class NetworkingTest implements ModInitializer {
 	public void onInitialize() {
 		PayloadTypeRegistry.serverboundPlay().register(Ping.TYPE, Ping.CODEC);
 		PayloadTypeRegistry.clientboundPlay().register(Ping.TYPE, Ping.CODEC);
-		ServerPlayNetworking.registerGlobalReceiver(Ping.TYPE, (payload, context) -> context.responseSender().sendPacket(new Ping(payload.value() + 1)));
+		ServerPlayNetworking.registerGlobalReceiver(Ping.TYPE, (payload, context) -> {
+			if (payload.value() == MenuTest.OPEN_REQUEST) MenuTest.open(context.player());
+			else context.responseSender().sendPacket(new Ping(payload.value() + 1));
+		});
 		ServerPlayConnectionEvents.JOIN.register((listener, sender, server) -> TestMod.LOGGER.info("FABRICATED-TEST networking join event"));
 		if (ServerPlayNetworking.getGlobalReceivers().contains(Ping.TYPE.id())) {
 			TestMod.LOGGER.info("FABRICATED-TEST networking registration OK");

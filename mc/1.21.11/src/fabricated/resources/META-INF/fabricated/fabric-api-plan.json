@@ -167,7 +167,9 @@
       "plan": "passthrough"
     },
     "fabric-screen-handler-api-v1": {
-      "plan": "passthrough"
+      "plan": "native",
+      "version": "1.3.162",
+      "reason": "Shipped by Fabricated on NeoForge's menu opening data: extended menus send their opening data the way NeoForge mods' menus do (upstream's mixins target the openMenu NeoForge replaced)."
     },
     "fabric-serialization-api-v1": {
       "plan": "passthrough"

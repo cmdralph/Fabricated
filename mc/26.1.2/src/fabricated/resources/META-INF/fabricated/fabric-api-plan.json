@@ -100,7 +100,9 @@
       "reason": "Shipped by Fabricated: upstream's builder and drop mixins as they are, its loading hook replaced by NeoForge's LootTableLoadEvent (upstream's conflicts with NeoForge's loot loading)."
     },
     "fabric-menu-api-v1": {
-      "plan": "passthrough"
+      "plan": "native",
+      "version": "2.0.15",
+      "reason": "Shipped by Fabricated on NeoForge's menu opening data: extended menus send their opening data the way NeoForge mods' menus do (upstream's mixins target the openMenu NeoForge replaced)."
     },
     "fabric-message-api-v1": {
       "plan": "passthrough"

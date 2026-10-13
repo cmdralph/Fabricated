@@ -1,14 +1,21 @@
 package io.github.cmdralph.fabricated.testmod;
 
+import java.lang.reflect.Method;
+
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientConfigurationNetworking;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.resource.v1.ResourceLoader;
+import net.minecraft.client.gui.screens.MenuScreens;
+import net.minecraft.client.gui.screens.inventory.ContainerScreen;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.packs.PackType;
 import net.minecraft.server.packs.resources.ResourceManagerReloadListener;
+import net.minecraft.world.inventory.ChestMenu;
+import net.minecraft.world.inventory.MenuType;
 
 /**
  * Client part of the CI test mod (run by the client smoke test, which joins a singleplayer world): client
@@ -16,6 +23,8 @@ import net.minecraft.server.packs.resources.ResourceManagerReloadListener;
  * with the integrated server (the server sides are {@link ConfigurationTest} and {@link NetworkingTest}).
  */
 public final class ClientTestMod implements ClientModInitializer {
+	private boolean menuRequested;
+
 	@Override
 	public void onInitializeClient() {
 		TestMod.LOGGER.info("FABRICATED-TEST client entrypoint OK");
@@ -27,6 +36,20 @@ public final class ClientTestMod implements ClientModInitializer {
 				(payload, context) -> context.responseSender().sendPacket(new ConfigurationTest.Reply(7)));
 		ClientPlayNetworking.registerGlobalReceiver(NetworkingTest.Ping.TYPE, (payload, context) -> {
 			if (payload.value() == 42) TestMod.LOGGER.info("FABRICATED-TEST client networking round trip OK");
+		});
+		// The extended menu (MenuTest): a screen for it, made public by the test mod's access widener, and a request
+		// to open it once the player has been in the world for a moment.
+		try {
+			Method register = MenuScreens.class.getMethod("register", MenuType.class, MenuScreens.ScreenConstructor.class);
+			register.invoke(null, MenuTest.TYPE, (MenuScreens.ScreenConstructor<ChestMenu, ContainerScreen>) ContainerScreen::new);
+		} catch (ReflectiveOperationException e) {
+			TestMod.LOGGER.error("FABRICATED-TEST could not register the test menu's screen", e);
+		}
+		ClientTickEvents.END_CLIENT_TICK.register(client -> {
+			if (!menuRequested && client.player != null && client.player.tickCount > 40 && ClientPlayNetworking.canSend(NetworkingTest.Ping.TYPE)) {
+				menuRequested = true;
+				ClientPlayNetworking.send(new NetworkingTest.Ping(MenuTest.OPEN_REQUEST));
+			}
 		});
 		ClientPlayConnectionEvents.JOIN.register((listener, sender, client) -> {
 			TestMod.LOGGER.info("FABRICATED-TEST client join event OK");

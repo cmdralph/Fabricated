@@ -37,7 +37,10 @@
     "BlockApiCacheInvalidationMixin",
     "LivingEntityEffectsMixin",
     "ServerPayloadSendMixin",
-    "NetworkRegistryMixin"
+    "NetworkRegistryMixin",
+    "MenuProviderMixin",
+    "ServerPlayerMenuMixin",
+    "SimpleMenuProviderMixin"
   ],
   "injectors": {
     "defaultRequire": 1
