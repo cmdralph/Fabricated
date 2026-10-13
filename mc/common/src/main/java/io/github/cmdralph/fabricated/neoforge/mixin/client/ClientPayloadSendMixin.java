@@ -11,9 +11,9 @@ import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.common.ClientCommonPacketListener;
 import net.minecraft.network.protocol.common.ServerboundCustomPayloadPacket;
 
-/** The client side of {@code ServerCommonPacketListenerImplMixin}: a server without the channel ignores the payload. */
+/** The client side of {@code ServerPayloadSendMixin}: a server without the channel ignores the payload. */
 @Mixin(ClientCommonPacketListenerImpl.class)
-public abstract class ClientCommonPacketListenerImplSendMixin {
+public abstract class ClientPayloadSendMixin {
 	@Inject(method = "send(Lnet/minecraft/network/protocol/Packet;)V", at = @At("HEAD"), cancellable = true)
 	private void fabricated$dropUnsendableFabricPayload(Packet<?> packet, CallbackInfo ci) {
 		if (packet instanceof ServerboundCustomPayloadPacket custom

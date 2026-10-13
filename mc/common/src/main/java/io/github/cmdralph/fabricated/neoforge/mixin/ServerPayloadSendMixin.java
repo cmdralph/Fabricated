@@ -17,7 +17,7 @@ import net.minecraft.server.network.ServerCommonPacketListenerImpl;
  * would throw: Fabric mods often send without checking {@code canSend} first.
  */
 @Mixin(ServerCommonPacketListenerImpl.class)
-public abstract class ServerCommonPacketListenerImplMixin {
+public abstract class ServerPayloadSendMixin {
 	@Inject(method = "send(Lnet/minecraft/network/protocol/Packet;Lio/netty/channel/ChannelFutureListener;)V", at = @At("HEAD"), cancellable = true)
 	private void fabricated$dropUnsendableFabricPayload(Packet<?> packet, ChannelFutureListener listener, CallbackInfo ci) {
 		if (packet instanceof ClientboundCustomPayloadPacket custom

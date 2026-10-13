@@ -27,7 +27,7 @@
     "ReloadableServerRegistriesMixin",
     "VibrationSystemMixin",
     "NetworkAddonHolderMixin",
-    "ServerCommonPacketListenerImplMixin",
+    "ServerPayloadSendMixin",
     "BlockApiCacheInvalidationMixin",
     "LivingEntityEffectsMixin"
   ],
@@ -39,6 +39,6 @@
     "client.KeyMappingAccessor",
     "client.MultiPlayerGameModeMixin",
     "client.ClientNetworkAddonHolderMixin",
-    "client.ClientCommonPacketListenerImplSendMixin"
+    "client.ClientPayloadSendMixin"
   ]
 }

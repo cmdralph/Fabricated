@@ -34,9 +34,9 @@
     "ReloadableServerRegistriesMixin",
     "VibrationSystemMixin",
     "NetworkAddonHolderMixin",
-    "ServerCommonPacketListenerImplMixin",
     "BlockApiCacheInvalidationMixin",
-    "LivingEntityEffectsMixin"
+    "LivingEntityEffectsMixin",
+    "ServerPayloadSendMixin"
   ],
   "injectors": {
     "defaultRequire": 1
@@ -49,6 +49,6 @@
     "client.MultiPlayerGameModeMixin",
     "client.MouseHandlerMixin",
     "client.ClientNetworkAddonHolderMixin",
-    "client.ClientCommonPacketListenerImplSendMixin"
+    "client.ClientPayloadSendMixin"
   ]
 }
