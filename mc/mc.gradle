@@ -116,6 +116,22 @@ def expandProps = [
 tasks.named('processResources', ProcessResources) {
     inputs.properties(expandProps)
     filesMatching('META-INF/neoforge.mods.toml') { expand(expandProps) }
+    // A mixin config owns its whole package, subpackages included: Mixin refuses to load any other class there, so
+    // one config's package inside another's makes the inner config's classes unloadable at runtime.
+    doLast {
+        def packages = [:]
+        destinationDir.listFiles().findAll { it.name.endsWith('.mixins.json') }.each { f ->
+            def pkg = new groovy.json.JsonSlurper().parse(f).package
+            if (pkg) packages[f.name] = pkg
+        }
+        packages.each { a, pa ->
+            packages.each { b, pb ->
+                if (a != b && (pb == pa || pb.startsWith(pa + '.'))) {
+                    throw new GradleException("Mixin config ${a} (package ${pa}) contains the package of ${b} (${pb})")
+                }
+            }
+        }
+    }
 }
 
 tasks.named('processTestmodResources', ProcessResources) {

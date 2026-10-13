@@ -36,7 +36,11 @@ config="fabricated-loot.mixins.json"
 config="fabricated-content-registries.mixins.json"
 
 # Fabric API's lookup and transfer mixins, unchanged from upstream except the container ones NeoForge's patches
-# required rewriting (fabric-api-lookup-api-v1, fabric-transfer-api-v1).
+# required rewriting (fabric-api-lookup-api-v1, fabric-transfer-api-v1). One config per package: a config owns
+# its whole package, so a shared parent package would make every other Fabric API mixin class unloadable.
+[[mixins]]
+config="fabricated-lookup.mixins.json"
+
 [[mixins]]
 config="fabricated-transfer.mixins.json"
 

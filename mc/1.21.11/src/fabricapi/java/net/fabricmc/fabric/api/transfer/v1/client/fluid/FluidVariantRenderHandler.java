@@ -25,9 +25,10 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.TooltipFlag;
 import net.minecraft.world.level.BlockAndTintGetter;
+import net.minecraft.world.level.material.FluidState;
+import net.neoforged.neoforge.client.extensions.common.IClientFluidTypeExtensions;
+import net.neoforged.neoforge.client.textures.FluidSpriteCache;
 
-import net.fabricmc.fabric.api.client.render.fluid.v1.FluidRenderHandler;
-import net.fabricmc.fabric.api.client.render.fluid.v1.FluidRenderHandlerRegistry;
 import net.fabricmc.fabric.api.transfer.v1.fluid.FluidVariant;
 
 /**
@@ -54,14 +55,9 @@ public interface FluidVariantRenderHandler {
 	 */
 	@Nullable
 	default TextureAtlasSprite[] getSprites(FluidVariant fluidVariant) {
-		// Use the fluid render handler by default.
-		FluidRenderHandler fluidRenderHandler = FluidRenderHandlerRegistry.INSTANCE.get(fluidVariant.getFluid());
-
-		if (fluidRenderHandler != null) {
-			return fluidRenderHandler.getFluidSprites(null, null, fluidVariant.getFluid().defaultFluidState());
-		} else {
-			return null;
-		}
+		// Fabricated: NeoForge's fluid textures instead of fabric-rendering-fluids-v1's registry, which isn't provided.
+		TextureAtlasSprite[] sprites = FluidSpriteCache.getFluidSprites(null, null, fluidVariant.getFluid().defaultFluidState());
+		return sprites[0] == null || sprites[1] == null ? null : new TextureAtlasSprite[] {sprites[0], sprites[1]};
 	}
 
 	/**
@@ -74,13 +70,9 @@ public interface FluidVariantRenderHandler {
 	 * For example, water returns the biome-dependent color if the context parameters are specified, or its default color if one of them is null.
 	 */
 	default int getColor(FluidVariant fluidVariant, @Nullable BlockAndTintGetter view, @Nullable BlockPos pos) {
-		// Use the fluid render handler by default.
-		FluidRenderHandler fluidRenderHandler = FluidRenderHandlerRegistry.INSTANCE.get(fluidVariant.getFluid());
-
-		if (fluidRenderHandler != null) {
-			return fluidRenderHandler.getFluidColor(view, pos, fluidVariant.getFluid().defaultFluidState()) | 255 << 24;
-		} else {
-			return -1;
-		}
+		// Fabricated: NeoForge's fluid tint instead of fabric-rendering-fluids-v1's registry, which isn't provided.
+		FluidState state = fluidVariant.getFluid().defaultFluidState();
+		IClientFluidTypeExtensions extensions = IClientFluidTypeExtensions.of(state);
+		return view != null && pos != null ? extensions.getTintColor(state, view, pos) : extensions.getTintColor();
 	}
 }
