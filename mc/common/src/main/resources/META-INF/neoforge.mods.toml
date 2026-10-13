@@ -35,6 +35,11 @@ config="fabricated-loot.mixins.json"
 [[mixins]]
 config="fabricated-content-registries.mixins.json"
 
+# Fabric API's lookup and transfer mixins, unchanged from upstream except the container ones NeoForge's patches
+# required rewriting (fabric-api-lookup-api-v1, fabric-transfer-api-v1).
+[[mixins]]
+config="fabricated-transfer.mixins.json"
+
 # Access for the vendored Fabric API sources (see the file).
 [[accessTransformers]]
 file="META-INF/accesstransformer.cfg"

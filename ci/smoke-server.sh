@@ -120,6 +120,7 @@ check "FABRICATED-TEST item api OK" server.out "native item api: equipment slot,
 check "FABRICATED-TEST interaction events OK" server.out "native interaction events: use/attack block, item and entity callbacks, block and item events, block break events, pick item, fake player"
 check "FABRICATED-TEST loot OK" server.out "native loot: replace/modify with source, all loaded, modified drops"
 check "FABRICATED-TEST content registries OK" server.out "native content registries: flammable, waxable, vibration frequency (up to 26.2: compostable, strippable, fuel)"
+check "FABRICATED-TEST transfer OK" server.out "native transfer: item and fluid storages over vanilla blocks, transaction abort and commit"
 check "fabricated-testmod-missing" logs/fabric-bridge-report.txt "missing dependency reported"
 check "fabricated-library-that-does-not-exist" logs/fabric-bridge-report.txt "missing dependency named"
 check "fabricatedMethodThatDoesNotExist" logs/fabric-bridge-report.txt "impossible mixin caught by pre-flight"

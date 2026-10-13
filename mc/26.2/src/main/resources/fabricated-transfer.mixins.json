@@ -1,0 +1,32 @@
+{
+  "required": true,
+  "package": "net.fabricmc.fabric.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "lookup.BlockEntityTypeAccessor",
+    "lookup.ServerLevelMixin",
+    "transfer.AbstractFurnaceBlockEntityMixin",
+    "transfer.BaseContainerBlockEntityMixin",
+    "transfer.BucketItemAccessor",
+    "transfer.BucketItemMixin",
+    "transfer.BundleContentsAccessor",
+    "transfer.ChiseledBookShelfBlockEntityMixin",
+    "transfer.CompoundContainerAccessor",
+    "transfer.CrafterBlockMixin",
+    "transfer.DropperBlockMixin",
+    "transfer.FluidMixin",
+    "transfer.ItemContainerContentsAccessor",
+    "transfer.ItemMixin",
+    "transfer.ItemStackAccessor",
+    "transfer.JukeboxBlockEntityMixin",
+    "transfer.ListBackedContainerMixin",
+    "transfer.ShelfBlockEntityMixin",
+    "transfer.SimpleContainerMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  },
+  "overwrites": {
+    "requireAnnotations": true
+  }
+}

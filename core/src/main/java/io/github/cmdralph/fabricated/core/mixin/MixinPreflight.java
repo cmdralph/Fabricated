@@ -225,9 +225,11 @@ public final class MixinPreflight {
 			AnnotationNode accessor = Annotations.find(method.visibleAnnotations, method.invisibleAnnotations, ACCESSOR);
 			AnnotationNode invoker = accessor == null ? Annotations.find(method.visibleAnnotations, method.invisibleAnnotations, INVOKER) : null;
 			if (accessor != null || invoker != null) {
-				// Mixin generates the accessor method in the target; one that already exists there (for example
-				// one NeoForge added) makes Mixin throw when the target class loads.
-				if (declares(target, method.name, method.desc)) {
+				// Mixin generates an instance accessor method in the target; one that already exists there (for
+				// example one NeoForge added) makes Mixin throw when the target class loads. A static accessor or
+				// invoker adds nothing to the target (Mixin rewrites the interface's own method), so a same-named
+				// method there is harmless: typically the very method the invoker calls.
+				if ((method.access & Opcodes.ACC_STATIC) == 0 && declares(target, method.name, method.desc)) {
 					ctx.classLevel((accessor != null ? "@Accessor " : "@Invoker ") + method.name + method.desc + " already exists in "
 									+ targetDotted + " (added by NeoForge or this Minecraft version), so Mixin cannot generate it",
 							"The mod needs an update for NeoForge; until then it cannot load.");
