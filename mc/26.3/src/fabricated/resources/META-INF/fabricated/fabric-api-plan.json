@@ -10,7 +10,9 @@
       "reason": "Shipped by Fabricated (vendored from upstream); every Fabric API module builds on it."
     },
     "fabric-api-lookup-api-v1": {
-      "plan": "passthrough"
+      "plan": "native",
+      "version": "2.0.24",
+      "reason": "Shipped by Fabricated (unchanged from upstream) because its transfer API builds on it."
     },
     "fabric-biome-api-v1": {
       "plan": "passthrough"
@@ -163,7 +165,9 @@
       "plan": "passthrough"
     },
     "fabric-transfer-api-v1": {
-      "plan": "passthrough"
+      "plan": "native",
+      "version": "8.0.25",
+      "reason": "Shipped by Fabricated: upstream's API and mixins, with the container mixins reworked onto NeoForge's transaction-aware setItem; NeoForge hoppers don't see Fabric-only storages yet."
     },
     "fabric-transitive-access-wideners-v1": {
       "plan": "passthrough"

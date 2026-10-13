@@ -12,17 +12,17 @@ real NeoForge client (`ci/smoke-client.sh`), not from expectations. CI starts ea
    mod (client entrypoint, client lifecycle, a client resource listener, a networking round trip with the
    integrated server). This is a pass/fail gate.
 
-Last updated from CI run [38318460207](https://github.com/cmdralph/Fabricated/actions/runs/38318460207)
+Last updated from CI run [38450392637](https://github.com/cmdralph/Fabricated/actions/runs/38450392637)
 (Fabricated 0.1.0 development build).
 
 ## Minecraft versions
 
 | Minecraft | NeoForge | Fabric API tested | Test mods | Server boots with Fabric API |
 |---|---|---|---|---|
-| 1.21.11 | 21.11.45 | 0.141.6+1.21.11 | ✅ all 32 server and 15 client checks | ✅ boots, all test-mod checks still pass |
-| 26.1.2 | 26.1.2.116 | 0.155.3+26.1.2 | ✅ all 32 server and 15 client checks | ✅ boots, all test-mod checks still pass |
-| 26.2 | 26.2.0.90 | 0.161.0+26.2 | ✅ all 32 server and 15 client checks | ✅ boots, all test-mod checks still pass |
-| 26.3 (beta) | 26.3.0.69-beta | 0.162.0+26.3 | ✅ all 32 server and 15 client checks | ✅ boots, all test-mod checks still pass |
+| 1.21.11 | 21.11.45 | 0.141.6+1.21.11 | ✅ all 33 server and 16 client checks | ✅ boots, all test-mod checks still pass |
+| 26.1.2 | 26.1.2.116 | 0.155.3+26.1.2 | ✅ all 33 server and 16 client checks | ✅ boots, all test-mod checks still pass |
+| 26.2 | 26.2.0.90 | 0.161.0+26.2 | ✅ all 33 server and 16 client checks | ✅ boots, all test-mod checks still pass |
+| 26.3 (beta) | 26.3.0.69-beta | 0.162.0+26.3 | ✅ all 33 server and 16 client checks | ✅ boots, all test-mod checks still pass |
 
 "Boots with Fabric API" means the server starts with the full official Fabric API jar installed. Modules
 that can't work on NeoForge are disabled before any code runs (see below), and the rest load alongside
@@ -71,7 +71,7 @@ How to read the table:
 | fabric-resource-loader-v0 | loads | loads | loads | loads |
 | fabric-item-api-v1 | native | native | native | native |
 | fabric-block-api-v1 | native | native | native | native |
-| fabric-transfer-api-v1 | disabled | disabled | disabled | disabled |
+| fabric-transfer-api-v1 | native | native | native | native |
 | fabric-content-registries-v0 | native | native | native | native |
 | fabric-object-builder-api-v1 | native | native | native | native |
 | fabric-entity-events-v1 | native | native | native | native |
@@ -82,7 +82,7 @@ How to read the table:
 | fabric-tag-api-v1 | disabled | disabled | disabled | disabled |
 | fabric-advancement-api-v1 | — | — | loads | disabled |
 | fabric-menu-api-v1 / screen-handler-api-v1 | disabled | disabled | disabled | disabled |
-| fabric-api-lookup-api-v1 | loads | loads | loads | loads |
+| fabric-api-lookup-api-v1 | native | native | native | native |
 | fabric-command-api-v2 | loads | loads | loads | loads |
 | fabric-convention-tags-v2 (and v1) | loads | loads | loads | loads |
 | fabric-data-attachment-api-v1 | loads | loads | loads | loads |
@@ -405,6 +405,29 @@ On 26.3, composting, stripping and fuel are data-driven in vanilla, and Fabric A
 CI checks, on all four versions: a flammable block, a waxable pair and a custom game event's vibration frequency take
 effect; up to 26.2 also a compostable item, a strippable block and a fuel value.
 
+### Native `fabric-api-lookup-api-v1` and `fabric-transfer-api-v1`
+
+Both modules are upstream's code. The lookup module and most of transfer's mixins apply on NeoForge unchanged. Three
+mixins needed changes:
+
+| Upstream mixin | On NeoForge | Why |
+|---|---|---|
+| `HopperBlockEntityMixin` | not used | NeoForge's hoppers already move items through its capabilities |
+| `SimpleContainerMixin`, `BaseContainerBlockEntityMixin` | rewritten | they defer `setChanged()` until a transaction commits by redirecting a call NeoForge's patches moved; Fabricated uses the `setItem(slot, stack, insideTransaction)` overload NeoForge added for the same purpose |
+
+`ItemStorage.SIDED` and `FluidStorage.SIDED` find vanilla containers, cauldrons, composters, jukeboxes, shelves and
+bundles as upstream does, and transactions behave as upstream's.
+
+**Limit:** Fabric's storages and NeoForge's capabilities don't see each other yet. A NeoForge hopper or pipe doesn't
+reach a Fabric-only storage, and a Fabric mod doesn't reach a NeoForge-only one. Vanilla blocks work from both sides,
+since each side wraps them itself.
+
+On 1.21.11, `FluidVariantRendering`'s default sprites and colours come from NeoForge's fluid client extensions instead
+of `fabric-rendering-fluids-v1`'s registry.
+
+CI checks, on all four versions: a chest found through `ItemStorage.SIDED` keeps its items when a transaction is
+aborted and changes when one commits; a full water cauldron empties when a bucket of water is extracted.
+
 ### What this means for Fabric mods
 
 A Fabric mod works today if it needs only the Fabric Loader API and the **native** or **loads** modules
@@ -432,7 +455,9 @@ modules that cascade from it.
 8. ✅ `fabric-events-interaction-v0` on all four versions (done).
 9. ✅ `fabric-loot-api-v3` on all four versions (done).
 10. ✅ `fabric-content-registries-v0` on all four versions (done).
-11. Next: `fabric-transfer-api-v1`.
+11. ✅ `fabric-transfer-api-v1` and `fabric-api-lookup-api-v1` on all four versions (done).
+12. Next: a bridge between Fabric storages and NeoForge's item and fluid capabilities, so NeoForge hoppers and pipes
+    reach Fabric storages and the other way round.
 
 ## Fabric mods tested
 

@@ -35,6 +35,8 @@ class JsonTest {
 		assertThrows(JsonException.class, () -> Json.parse("\"unterminated"));
 		assertThrows(JsonException.class, () -> Json.parse("[".repeat(100) + "]".repeat(100)), "depth limit");
 		assertThrows(JsonException.class, () -> Json.parse("\"" + "x".repeat(100) + "\"", 50, 10), "length limit");
+		assertThrows(JsonException.class, () -> Json.parse("{\"x\": 1e2147483647}"), "exponent limit");
+		assertThrows(JsonException.class, () -> Json.parse("[1e-999999999]"), "exponent limit");
 	}
 
 	@Test

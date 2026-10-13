@@ -51,7 +51,7 @@ With the official Fabric API jar installed, the server boots on all four version
 work are disabled, and the rest load. So a Fabric mod that needs only the Fabric Loader API, `fabric-api-base` or pass-through modules that
 survive pre-flight works today, including mods that add reload listeners, built-in packs, their own
 registries, items and blocks using Fabric's item and block APIs, entities with default attributes, block entity
-types, data attachments or Fabric's interaction events. Loot table events and content registries work too. A mod that needs the transfer API does not work yet. The per-module details are in [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md).
+types, data attachments or Fabric's interaction events. Loot table events, content registries and Fabric's transfer API (item and fluid storages) work too; Fabric storages and NeoForge's capabilities don't see each other yet. The per-module details are in [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md).
 
 ## What it does not support
 
@@ -81,8 +81,8 @@ On **1.21.11**, Fabric mods use Fabric's Intermediary names, so Fabricated remap
 first load. It needs Mojang's mapping file, which the NeoForge installer already downloads. Nothing is
 fetched at runtime.
 
-If a mod exists for both loaders, Fabricated uses the NeoForge version by default
-(`preferNativeNeoForgeMods`).
+If a mod exists for both loaders, Fabricated uses the NeoForge version: NeoForge cannot load two mods
+with the same id. Remove the NeoForge jar to use the Fabric one.
 
 ## Troubleshooting
 
@@ -110,7 +110,6 @@ warning in the report, so a bad config never crashes the game.
   "onEntrypointFailure": "error",
   "strictDependencies": false,
   "strictLinkage": false,
-  "preferNativeNeoForgeMods": true,
   "cache": { "enabled": true, "verifyIntegrity": true, "maxUnusedLaunches": 5 },
   "limits": { "maxJarBytes": 268435456, "maxEntryBytes": 67108864, "maxTotalUncompressedBytes": 536870912,
               "maxEntries": 65536, "maxCompressionRatio": 100, "maxNestingDepth": 3 },
@@ -120,7 +119,6 @@ warning in the report, so a bad config never crashes the game.
       "skipMixins": ["examplemod.mixins.json:client.FooMixin"],
       "skipEntrypoints": ["client"],
       "aliases": ["example"],
-      "preferFabric": false,
       "ignorePreflight": false
     }
   },
@@ -133,22 +131,20 @@ warning in the report, so a bad config never crashes the game.
 | `onEntrypointFailure` | `error` (default): an exception in a Fabric initializer stops on NeoForge's error screen. `disable`: the mod is marked failed, its other entrypoints are skipped, and loading continues. Content it registered before failing stays registered. |
 | `strictDependencies` | `true`: a Fabric mod with unmet dependencies stops the game on the error screen instead of being skipped. |
 | `strictLinkage` | `true`: also disable mods (not only Fabric API modules) that reference Minecraft code missing at runtime. |
-| `preferNativeNeoForgeMods` | Skip a Fabric mod when a NeoForge mod with the same id is installed. |
 | `cache.*` | Translation cache in `.fabricated/cache` in the game directory. Entries are hash-checked before use and deleted after `maxUnusedLaunches` launches without use. |
 | `limits.*` | Safety caps applied to every jar (size, entry count, compression ratio, nesting). |
 | `mods.<id>.disabled` | Don't load this Fabric mod. |
 | `mods.<id>.skipMixins` | Drop specific mixins (`"config.json:Name"` or `"Name"`). |
 | `mods.<id>.skipEntrypoints` | Don't run these entrypoint types (`main`, `client`, `server`, `preLaunch`, or custom ones). |
 | `mods.<id>.aliases` | Extra ids this mod satisfies as a dependency. |
-| `mods.<id>.preferFabric` | Load the Fabric version even if a NeoForge mod with the same id is installed. |
 | `mods.<id>.ignorePreflight` | Load the mod even if mixin pre-flight fails. It may crash. Use for testing only. |
 | `mojangMappingsPath` | 1.21.11 only: path to Mojang's mapping file if NeoForge's installer didn't leave one. |
 
 ## Known limitations
 
 - **Fabric API coverage** is the main limit. See [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) for the
-  per-module status on each Minecraft version. Next planned: native transfer API,
-  which storage and machine mods need.
+  per-module status on each Minecraft version. Next planned: a bridge between Fabric
+  storages and NeoForge's item and fluid capabilities, so NeoForge hoppers and pipes reach Fabric machines.
 - **Mixin pre-flight is conservative.** It only reports what it can prove from bytecode. A mixin it can't
   evaluate (wildcard selectors, unusual injection points) loads normally. If that mixin later fails,
   Mixin's own crash report names the Fabric mod.

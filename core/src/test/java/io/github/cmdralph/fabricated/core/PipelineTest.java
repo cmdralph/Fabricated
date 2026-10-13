@@ -264,4 +264,17 @@ class PipelineTest {
 				}));
 		assertTrue(result.mods().isEmpty());
 	}
+
+	@Test
+	void fabricIdsSharingANeoForgeIdLoadOnce(@TempDir Path game) throws Exception {
+		Path a = TestJars.create().fabricModJson(TestJars.modJson("same-id", "1.0", "")).write(game.resolve("mods/a.jar"));
+		Path b = TestJars.create().fabricModJson(TestJars.modJson("same_id", "1.0", "")).write(game.resolve("mods/b.jar"));
+		Path c = TestJars.create().fabricModJson(TestJars.modJson("cloth-config", "15.0.0", "")).write(game.resolve("mods/c.jar"));
+		Pipeline.Result result = Pipeline.run(input(game, List.of(a, b, c), Namespace.OFFICIAL, Map.of(), null));
+		assertEquals(1, result.mods().size());
+		assertEquals("same_id", result.mods().get(0).translated().neoForgeId());
+		String report = result.report().render();
+		assertTrue(report.contains("NeoForge cannot load both"), report);
+		assertTrue(report.contains("a NeoForge build of this mod is installed"), report);
+	}
 }

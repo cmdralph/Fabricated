@@ -45,7 +45,7 @@ public final class CandidateScanner {
 		List<Rejected> rejected = new ArrayList<>();
 		List<String> notes = new ArrayList<>();
 		for (Path jar : topLevelJars) {
-			scanJar(jar, jar.getFileName().toString(), null, 0, all, rejected, notes);
+			scanJar(jar, jar.getFileName().toString(), null, 0, new NestedBudget(), all, rejected, notes);
 		}
 		return new Result(List.copyOf(select(all, notes).values()), List.copyOf(rejected), List.copyOf(notes));
 	}
@@ -83,11 +83,23 @@ public final class CandidateScanner {
 		return parent != null && nested.origin().startsWith(parent.origin() + "!/") && nested.depth() == parent.depth() + 1;
 	}
 
+	/**
+	 * What a top-level jar and everything nested in it may extract to the cache together: the archive limits cap each
+	 * jar on its own, so without this a jar nesting jars that nest jars could fill the disk.
+	 */
+	private static final class NestedBudget {
+		static final int MAX_JARS = 1024;
+		long bytes;
+		int jars;
+	}
+
 	/** @return the candidate for this jar (added to {@code all} with its nested jars), or null if unusable */
-	private Candidate scanJar(Path jar, String origin, String parentId, int depth, List<Candidate> all,
+	private Candidate scanJar(Path jar, String origin, String parentId, int depth, NestedBudget budget, List<Candidate> all,
 			List<Rejected> rejected, List<String> notes) {
 		FabricModMetadata metadata;
-		List<byte[]> nestedData = new ArrayList<>();
+		// Each nested jar is stored as soon as it is read and scanned after this archive is closed, so only one is in
+		// memory at a time.
+		List<Path> nestedPaths = new ArrayList<>();
 		List<String> nestedNames = new ArrayList<>();
 		String sha;
 		try (SafeArchive archive = SafeArchive.open(jar, limits)) {
@@ -97,15 +109,30 @@ public final class CandidateScanner {
 				return null;
 			}
 			metadata = FabricModJsonParser.parse(json);
+			if (PlatformLibraries.PROVIDED_IDS.contains(metadata.getId())) {
+				notes.add(origin + " bundles " + metadata.getId() + ", which NeoForge already provides; the bundled copy is not loaded");
+				return null;
+			}
 			if (depth < limits.maxNestingDepth()) {
 				for (String nested : metadata.nestedJars()) {
+					String nestedOrigin = origin + "!/" + nested;
 					byte[] data = archive.read(nested);
 					if (data == null) {
 						notes.add(metadata.getId() + " declares nested jar " + nested + " which is missing; ignored");
 						continue;
 					}
-					nestedData.add(data);
-					nestedNames.add(nested);
+					budget.bytes += data.length;
+					if (++budget.jars > NestedBudget.MAX_JARS || budget.bytes > limits.maxTotalUncompressedBytes()) {
+						rejected.add(new Rejected(nestedOrigin, "nested jars of " + origin.split("!/", 2)[0] + " exceed the limit of "
+								+ NestedBudget.MAX_JARS + " jars or " + (limits.maxTotalUncompressedBytes() >> 20) + " MiB in all"));
+						continue;
+					}
+					try {
+						nestedPaths.add(cache.storeNested(data));
+						nestedNames.add(nested);
+					} catch (IOException e) {
+						rejected.add(new Rejected(nestedOrigin, "could not extract: " + e.getMessage()));
+					}
 				}
 			} else if (!metadata.nestedJars().isEmpty()) {
 				notes.add(metadata.getId() + " nests jars deeper than the limit of " + limits.maxNestingDepth() + "; they were ignored");
@@ -123,21 +150,10 @@ public final class CandidateScanner {
 		}
 
 		String id = metadata.getId();
-		if (PlatformLibraries.PROVIDED_IDS.contains(id)) {
-			notes.add(origin + " bundles " + id + ", which NeoForge already provides; the bundled copy is not loaded");
-			return null;
-		}
-
 		List<String> children = new ArrayList<>();
-		for (int i = 0; i < nestedData.size(); i++) {
-			try {
-				Path extracted = cache.storeNested(nestedData.get(i));
-				String childOrigin = origin + "!/" + nestedNames.get(i);
-				Candidate child = scanJar(extracted, childOrigin, id, depth + 1, all, rejected, notes);
-				if (child != null) children.add(child.id());
-			} catch (IOException e) {
-				rejected.add(new Rejected(origin + "!/" + nestedNames.get(i), "could not extract: " + e.getMessage()));
-			}
+		for (int i = 0; i < nestedPaths.size(); i++) {
+			Candidate child = scanJar(nestedPaths.get(i), origin + "!/" + nestedNames.get(i), id, depth + 1, budget, all, rejected, notes);
+			if (child != null) children.add(child.id());
 		}
 
 		Candidate candidate = new Candidate(jar, sha, metadata, origin, parentId, depth, List.copyOf(children));

@@ -3,6 +3,7 @@ package io.github.cmdralph.fabricated.core.translate;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -13,6 +14,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.concurrent.Semaphore;
 import java.util.jar.Attributes;
 import java.util.jar.Manifest;
 import java.util.stream.Collectors;
@@ -54,6 +56,10 @@ public final class ModTranslator {
 	public static final String REMAPPED = "remapped.jar";
 	public static final String AT_PATH = "META-INF/accesstransformer.cfg";
 
+	/** Heap a translation may count on, in MiB: a quarter of the maximum, shared by all translations at once. */
+	private static final int MEMORY_MIB = (int) Math.max(64, Math.min(Integer.MAX_VALUE, Runtime.getRuntime().maxMemory() / 4 / (1 << 20)));
+	private static final Semaphore MEMORY = new Semaphore(MEMORY_MIB);
+
 	private final TranslationEnvironment env;
 	private final TranslationCache cache;
 	private final io.github.cmdralph.fabricated.core.archive.ArchiveLimits limits;
@@ -78,92 +84,112 @@ public final class ModTranslator {
 				env.mappingsHash(), env.runtimeMixinVersion(), override.fingerprint(), String.join(",", after)));
 		String entryName = TranslationCache.entryName(neoId, key);
 
-		Optional<TranslationCache.Entry> hit = cache.lookup(entryName);
+		Optional<TranslationCache.Entry> hit = env.namespace() == Namespace.INTERMEDIARY
+				? cache.lookup(entryName, OVERLAY, REMAPPED) : cache.lookup(entryName, OVERLAY);
 		if (hit.isPresent()) {
 			return fromCache(candidate, neoId, hit.get());
 		}
 
-		long start = System.nanoTime();
-		try (SafeArchive archive = SafeArchive.open(candidate.path(), limits)) {
-			Map<String, byte[]> remapped = null;
-			List<String> notes = new ArrayList<>();
-			TokenRemapper tokens = null;
-			if (env.namespace() == Namespace.INTERMEDIARY) {
-				tokens = new TokenRemapper(env.mappings());
-				Set<String> refmaps = collectRefmapPaths(candidate.metadata(), archive);
-				JarRemapper.Result result = new JarRemapper(env.mappings()).remap(archive, refmaps);
-				remapped = result.files();
-				if (!result.strippedSignatureFiles().isEmpty()) {
-					notes.add("Removed jar signature files (signatures cannot survive remapping): " + result.strippedSignatureFiles());
+		// Translating holds a mod's files several times over (entries, remapped jar, cache copy); mods are translated in
+		// parallel, so large ones take turns instead of exhausting the heap together.
+		int permits = memoryPermits(candidate.path());
+		MEMORY.acquireUninterruptibly(permits);
+		try {
+			long start = System.nanoTime();
+			try (SafeArchive archive = SafeArchive.open(candidate.path(), limits)) {
+				Map<String, byte[]> remapped = null;
+				List<String> notes = new ArrayList<>();
+				TokenRemapper tokens = null;
+				if (env.namespace() == Namespace.INTERMEDIARY) {
+					tokens = new TokenRemapper(env.mappings());
+					Set<String> refmaps = collectRefmapPaths(candidate.metadata(), archive);
+					JarRemapper.Result result = new JarRemapper(env.mappings()).remap(archive, refmaps);
+					remapped = result.files();
+					if (!result.strippedSignatureFiles().isEmpty()) {
+						notes.add("Removed jar signature files (signatures cannot survive remapping): " + result.strippedSignatureFiles());
+					}
 				}
-			}
-			Map<String, byte[]> view = remapped;
-			FileView files = name -> view != null ? view.get(name) : archive.read(name);
+				Map<String, byte[]> view = remapped;
+				FileView files = name -> view != null ? view.get(name) : archive.read(name);
 
-			Map<String, byte[]> overlay = new TreeMap<>();
-			List<PreflightFinding> findings = new ArrayList<>();
-			List<ModsTomlWriter.MixinConfigSpec> mixinSpecs = processMixins(candidate, override, files, overlay, findings);
+				Map<String, byte[]> overlay = new TreeMap<>();
+				List<PreflightFinding> findings = new ArrayList<>();
+				List<ModsTomlWriter.MixinConfigSpec> mixinSpecs = processMixins(candidate, override, files, overlay, findings);
 
-			List<InjectedInterface> injections = List.of();
-			int atLines = 0;
-			String tweakerPath = candidate.metadata().classTweaker();
-			if (tweakerPath != null) {
-				byte[] data = files.read(tweakerPath);
-				if (data == null) {
-					notes.add("Access widener " + tweakerPath + " declared in fabric.mod.json is missing; ignored");
-				} else {
-					String text = new String(data, StandardCharsets.UTF_8);
-					if (tokens != null) text = tokens.remap(text);
-					AccessWidenerFile parsed = AccessWidenerParser.parse(text);
-					checkNamespace(parsed.namespace(), candidate);
-					AccessTransformerConverter.Result at = AccessTransformerConverter.convert(parsed, env.game());
-					notes.addAll(at.warnings());
-					injections = at.injectedInterfaces();
-					atLines = at.lineCount();
-					if (!at.isEmpty()) overlay.put(AT_PATH, at.accessTransformer().getBytes(StandardCharsets.UTF_8));
+				List<InjectedInterface> injections = List.of();
+				int atLines = 0;
+				String tweakerPath = candidate.metadata().classTweaker();
+				if (tweakerPath != null) {
+					byte[] data = files.read(tweakerPath);
+					if (data == null) {
+						notes.add("Access widener " + tweakerPath + " declared in fabric.mod.json is missing; ignored");
+					} else {
+						String text = new String(data, StandardCharsets.UTF_8);
+						if (tokens != null) text = tokens.remap(text);
+						AccessWidenerFile parsed = AccessWidenerParser.parse(text);
+						checkNamespace(parsed.namespace(), candidate);
+						AccessTransformerConverter.Result at = AccessTransformerConverter.convert(parsed, env.game());
+						notes.addAll(at.warnings());
+						injections = at.injectedInterfaces();
+						atLines = at.lineCount();
+						if (!at.isEmpty()) overlay.put(AT_PATH, at.accessTransformer().getBytes(StandardCharsets.UTF_8));
+					}
 				}
+
+				FabricModMetadata md = candidate.metadata();
+				ModsTomlWriter.Spec spec = new ModsTomlWriter.Spec(neoId, md.getVersion().getFriendlyString(), md.getName(),
+						md.getDescription(), List.copyOf(md.getAuthors()), List.copyOf(md.getContributors()),
+						List.copyOf(md.getLicense()), url(md.getContact().get("homepage").orElse(null), "homepage", notes),
+						url(md.getContact().get("issues").orElse(null), "issues", notes), md.getIconPath(256).filter(archive::contains).orElse(null), mixinSpecs,
+						overlay.containsKey(AT_PATH), after);
+				overlay.put(CandidateScanner.NEOFORGE_MODS_TOML, ModsTomlWriter.write(spec, "[0,)").getBytes(StandardCharsets.UTF_8));
+				overlay.put("META-INF/MANIFEST.MF", overlayManifest(neoId));
+
+				Map<String, byte[]> outputs = new LinkedHashMap<>();
+				outputs.put(OVERLAY, jarBytes(overlay));
+				if (remapped != null) outputs.put(REMAPPED, jarBytes(remapped));
+
+				long millis = (System.nanoTime() - start) / 1_000_000;
+				Map<String, Object> meta = new LinkedHashMap<>();
+				meta.put("modId", candidate.id());
+				meta.put("version", md.getVersion().getFriendlyString());
+				meta.put("source", candidate.origin());
+				meta.put("sourceSha256", candidate.sha256());
+				meta.put("minecraft", env.minecraftVersion());
+				meta.put("neoforge", env.neoForgeVersion());
+				meta.put("side", env.side());
+				meta.put("millis", millis);
+				meta.put("accessTransformers", atLines);
+				meta.put("notes", notes);
+				meta.put("findings", findings.stream().map(ModTranslator::findingToJson).toList());
+				meta.put("injectedInterfaces", injections.stream().map(ModTranslator::injectionToJson).toList());
+				TranslationCache.Entry entry = cache.store(entryName, outputs, meta);
+				Path jar = remapped != null ? entry.file(REMAPPED) : candidate.path();
+				return new TranslatedMod(candidate, neoId, jar, entry.file(OVERLAY), List.copyOf(findings), atLines,
+						List.copyOf(notes), injections, false, millis);
+			} catch (ArchiveException e) {
+				throw new TranslationException("The jar is unsafe or corrupt: " + e.getMessage(), "Re-download the mod from its official page.");
+			} catch (MappingException e) {
+				throw new TranslationException("Remapping failed: " + e.getMessage(), "The mod may use bytecode Fabricated cannot process; report it.", List.of(), e);
+			} catch (AccessWidenerException e) {
+				throw new TranslationException("Invalid access widener: " + e.getMessage(), "Report this to the mod author.");
+			} catch (IOException e) {
+				throw new TranslationException("I/O error while translating: " + e.getMessage(), "Check disk space and permissions of the game directory.", List.of(), e);
 			}
-
-			FabricModMetadata md = candidate.metadata();
-			ModsTomlWriter.Spec spec = new ModsTomlWriter.Spec(neoId, md.getVersion().getFriendlyString(), md.getName(),
-					md.getDescription(), List.copyOf(md.getAuthors()), List.copyOf(md.getContributors()),
-					List.copyOf(md.getLicense()), url(md.getContact().get("homepage").orElse(null), "homepage", notes),
-					url(md.getContact().get("issues").orElse(null), "issues", notes), md.getIconPath(256).orElse(null), mixinSpecs,
-					overlay.containsKey(AT_PATH), after);
-			overlay.put(CandidateScanner.NEOFORGE_MODS_TOML, ModsTomlWriter.write(spec, "[0,)").getBytes(StandardCharsets.UTF_8));
-			overlay.put("META-INF/MANIFEST.MF", overlayManifest(neoId));
-
-			Map<String, byte[]> outputs = new LinkedHashMap<>();
-			outputs.put(OVERLAY, jarBytes(overlay));
-			if (remapped != null) outputs.put(REMAPPED, jarBytes(remapped));
-
-			long millis = (System.nanoTime() - start) / 1_000_000;
-			Map<String, Object> meta = new LinkedHashMap<>();
-			meta.put("modId", candidate.id());
-			meta.put("version", md.getVersion().getFriendlyString());
-			meta.put("source", candidate.origin());
-			meta.put("sourceSha256", candidate.sha256());
-			meta.put("minecraft", env.minecraftVersion());
-			meta.put("neoforge", env.neoForgeVersion());
-			meta.put("side", env.side());
-			meta.put("millis", millis);
-			meta.put("accessTransformers", atLines);
-			meta.put("notes", notes);
-			meta.put("findings", findings.stream().map(ModTranslator::findingToJson).toList());
-			meta.put("injectedInterfaces", injections.stream().map(ModTranslator::injectionToJson).toList());
-			TranslationCache.Entry entry = cache.store(entryName, outputs, meta);
-			Path jar = remapped != null ? entry.file(REMAPPED) : candidate.path();
-			return new TranslatedMod(candidate, neoId, jar, entry.file(OVERLAY), List.copyOf(findings), atLines,
-					List.copyOf(notes), injections, false, millis);
-		} catch (ArchiveException e) {
-			throw new TranslationException("The jar is unsafe or corrupt: " + e.getMessage(), "Re-download the mod from its official page.");
-		} catch (MappingException e) {
-			throw new TranslationException("Remapping failed: " + e.getMessage(), "The mod may use bytecode Fabricated cannot process; report it.", List.of(), e);
-		} catch (AccessWidenerException e) {
-			throw new TranslationException("Invalid access widener: " + e.getMessage(), "Report this to the mod author.");
-		} catch (IOException e) {
-			throw new TranslationException("I/O error while translating: " + e.getMessage(), "Check disk space and permissions of the game directory.", List.of(), e);
+		} finally {
+			MEMORY.release(permits);
 		}
+	}
+
+	/** A translation's share of {@link #MEMORY}: about ten times the compressed jar, never more than all of it. */
+	private static int memoryPermits(Path jar) {
+		long size;
+		try {
+			size = Files.size(jar);
+		} catch (IOException e) {
+			size = 0;
+		}
+		return (int) Math.max(1, Math.min(MEMORY_MIB, size * 10 / (1 << 20)));
 	}
 
 	/** Reads an entry of the mod being translated (remapped when applicable). */

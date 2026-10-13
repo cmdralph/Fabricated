@@ -331,6 +331,18 @@ class MixinPreflightTest {
 		List<PreflightFinding> clash = run(config(true, "Inv"), null, Map.of("com/example/mixin/Inv", invoker), false);
 		assertEquals(1, clash.size(), clash.toString());
 		assertTrue(clash.getFirst().message().contains("already exists"), clash.getFirst().message());
+
+		// A static invoker is rewritten inside the accessor interface; nothing is generated in the target.
+		byte[] staticInvoker = mixin("com/example/mixin/StaticInv", false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "helper", "(I)V", null, null);
+			mv.visitAnnotation("Lorg/spongepowered/asm/mixin/gen/Invoker;", false).visitEnd();
+			mv.visitCode();
+			mv.visitInsn(Opcodes.RETURN);
+			mv.visitMaxs(0, 1);
+			mv.visitEnd();
+		});
+		List<PreflightFinding> none = run(config(true, "StaticInv"), null, Map.of("com/example/mixin/StaticInv", staticInvoker), false);
+		assertTrue(none.stream().noneMatch(f -> f.message().contains("already exists")), none.toString());
 	}
 
 	/** An @Inject at HEAD of helper(I)V whose handler has the given descriptor; {@code sugarIndex} marks a @Local parameter. */
