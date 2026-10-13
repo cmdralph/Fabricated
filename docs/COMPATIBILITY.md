@@ -40,8 +40,8 @@ client-side native modules work, including a networking round trip with the inte
 config screen factory is registered with NeoForge.
 
 CI also starts the client with the full Fabric API jar, for information only (it doesn't fail the build). It
-joins its world and passes every client check on 1.21.11 and 26.3 (26.1.2 and 26.2 are expected to follow
-with the render pipeline fix below). On 26.x, rendering-v1, screen-api, sound-api and rendering-fluids load
+joins its world and passes every client check on all four versions (CI run
+[38472350496](https://github.com/cmdralph/Fabricated/actions/runs/38472350496)). On 26.x, rendering-v1, screen-api, sound-api and rendering-fluids load
 (see their section below), alongside key-mapping / key-binding, creative-tab / item-group and block-getter.
 model-loading (which needs the unsupported renderer-api) and particles (a field NeoForge removed) are still
 disabled on the client, as are rendering-v1, screen-api, sound-api and rendering-fluids on 1.21.11.
