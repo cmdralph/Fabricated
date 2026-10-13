@@ -455,6 +455,9 @@ Kotlin's), mod containers and metadata, versions and predicates, the object shar
   `FabricLauncherBase.getLauncher()` (environment, development flag, runtime namespace) are provided for the mods that
   use them; other internal classes are not.
 - Mods detect Fabricated with `FabricLoader.getInstance().isModLoaded("fabricated")`; see [API.md](API.md).
+- Config screens a Fabric mod offers to Mod Menu (its `modmenu` entrypoint) open from the Config button of NeoForge's
+  mod list. Mod Menu's API interfaces are provided, so such mods load without Mod Menu, which itself can't run on
+  NeoForge (it would duplicate NeoForge's mod list).
 
 ### What this means for Fabric mods
 

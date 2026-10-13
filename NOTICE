@@ -12,15 +12,21 @@ This product includes third-party material:
    Modified: imports of net.fabricmc.loader.impl.* were redirected to Fabricated's own
    implementations; each modified file carries a notice.
 
-2. Fabric API modules shipped natively by Fabricated (net.fabricmc.fabric.*), in
-   mc/<version>/src/fabricapi/. Copyright FabricMC. Licensed under the Apache License, Version 2.0.
+2. Fabric API modules shipped natively by Fabricated (net.fabricmc.fabric.*): their public API in
+   mc/<version>/src/fabricapi/, and parts of their implementation and mixins in mc/*/src/main/java/net/fabricmc/.
+   Copyright FabricMC. Licensed under the Apache License, Version 2.0.
    Source: https://github.com/FabricMC/fabric at the tag and commit recorded in each
-   mc/<version>/src/fabricapi/UPSTREAM.properties.
+   mc/<version>/src/fabricapi/UPSTREAM.properties. Files Fabricated changed are marked in a comment, or live in
+   mc/<version>/src/fabricapi-overrides/.
 
 3. Fabric Intermediary mappings for Minecraft 1.21.11, bundled in the 1.21.11 build.
    By FabricMC, dedicated to the public domain under CC0 1.0 Universal:
    https://creativecommons.org/publicdomain/zero/1.0/
    Source: https://github.com/FabricMC/intermediary (commit 916868752f6935dda70c4490404641a701335d81).
+
+For interoperability, com.terraformersmc.modmenu.api.ModMenuApi and ConfigScreenFactory are clean-room interfaces
+with the names and method signatures of Mod Menu's API (https://github.com/TerraformersMC/ModMenu, MIT); no Mod Menu
+code is included.
 
 Fabricated does not include or redistribute Minecraft, NeoForge, Mojang's official mappings,
 Fabric API release jars, Sinytra Connector, Forgified Fabric API, Launchpad or Adapter.
