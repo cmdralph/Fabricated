@@ -50,6 +50,7 @@
     "client.MultiPlayerGameModeMixin",
     "client.MouseHandlerMixin",
     "client.ClientNetworkAddonHolderMixin",
-    "client.ClientPayloadSendMixin"
+    "client.ClientPayloadSendMixin",
+    "client.SoundEngineStreamMixin"
   ]
 }

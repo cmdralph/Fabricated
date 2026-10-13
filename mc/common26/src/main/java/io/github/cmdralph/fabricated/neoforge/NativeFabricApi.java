@@ -13,6 +13,7 @@ import io.github.cmdralph.fabricated.neoforge.lifecycle.LifecycleBridge;
 import io.github.cmdralph.fabricated.neoforge.networking.NetworkingBridge;
 import io.github.cmdralph.fabricated.neoforge.objectbuilder.ObjectBuilderBridge;
 import io.github.cmdralph.fabricated.neoforge.rendering.HudBridge;
+import io.github.cmdralph.fabricated.neoforge.rendering.ScreenRenderBridge;
 import io.github.cmdralph.fabricated.neoforge.resource.ResourceLoaderBridge;
 import io.github.cmdralph.fabricated.neoforge.transfer.TransferBridge;
 import net.fabricmc.fabric.api.object.builder.v1.entity.FabricDefaultAttributeRegistry;
@@ -41,6 +42,7 @@ public final class NativeFabricApi {
 		if (dist.isClient()) {
 			ClientHotbarScroll.register();
 			HudBridge.register(modBus);
+			ScreenRenderBridge.register();
 		}
 		ItemApiBridge.register(modBus, dist);
 		BlockApiCompat.register(modBus);

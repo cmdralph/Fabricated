@@ -100,7 +100,7 @@ How to read the table:
 | fabric-creative-tab-api-v1 / item-group-api-v1 | loads | loads | loads | loads |
 | fabric-debug-api-v1 | — | loads | loads | loads |
 | fabric-key-mapping-api-v1 / key-binding-api-v1, screen-api-v1, rendering-v1, sound-api-v1, model-loading-api-v1 | client | client | client | client |
-| fabric-rendering-v1 on the client | disabled | loads (see below) | loads (see below) | loads (see below) |
+| fabric-rendering-v1, screen-api-v1, sound-api-v1 on the client | disabled | loads (see below) | loads (see below) | loads (see below) |
 | fabric-renderer-api-v1, fabric-renderer-indigo | unsupported | unsupported | unsupported | unsupported |
 | fabric-data-generation-api-v1, gametest, client-gametest | unsupported | unsupported | unsupported | unsupported |
 
@@ -457,7 +457,7 @@ aborted and changes when one commits; a full water cauldron empties when a bucke
 storage used through NeoForge's capability and a NeoForge handler used through `ItemStorage.SIDED` follow aborts,
 nested commits and commits; fluids move in whole millibuckets only.
 
-### `fabric-rendering-v1` on 26.x
+### `fabric-rendering-v1`, `fabric-screen-api-v1` and `fabric-sound-api-v1` on 26.x
 
 Upstream's module loads, without the mixins that target code NeoForge rewrote:
 
@@ -472,6 +472,16 @@ Upstream's module loads, without the mixins that target code NeoForge rewrote:
 
 The rest of the module (world rendering events, block and item colors, entity and block entity renderers, model
 layers, tooltip components, render pipelines and so on) is upstream's code, unchanged.
+
+`fabric-screen-api-v1` loads without upstream's wrapper around drawing a screen: Fabricated fires
+`ScreenEvents.beforeExtract` and `afterExtract` from NeoForge's `ScreenEvent.Render.Pre` and `Post`, which NeoForge
+posts around the same call. They run right around the screen (after NeoForge mods' `Pre` listeners, and not when
+one of them cancels drawing the screen; before their `Post` listeners). The module's other hooks (screen init,
+removal, ticks, mouse and keyboard events) are upstream's.
+
+`fabric-sound-api-v1` loads without upstream's redirect of the audio stream lookup, which NeoForge replaced with
+its own `SoundInstance.getStream`. A sound instance whose class overrides `FabricSoundInstance.getAudioStream`
+gets its stream from it there; other sounds keep NeoForge's path.
 
 ### Fabric Loader
 
