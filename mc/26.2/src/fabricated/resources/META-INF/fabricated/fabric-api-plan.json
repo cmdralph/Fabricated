@@ -169,7 +169,12 @@
       "reason": "NeoForge draws the HUD in layers: Fabricated runs Fabric's HUD elements from NeoForge's vanilla layers instead of upstream's HUD mixin. Picture-in-picture renderers registered with Fabric are not used (NeoForge rebuilt that renderer), and the debug options screen keeps vanilla's sorting and search. Render pipeline snippets don't carry Fabric's GUI draw mode flag (NeoForge added a field to them); pipelines do."
     },
     "fabric-resource-conditions-api-v1": {
-      "plan": "passthrough"
+      "plan": "passthrough",
+      "skipMixins": [
+        "fabric-resource-conditions-api-v1.mixins.json:SimpleJsonResourceReloadListenerMixin",
+        "fabric-resource-conditions-api-v1.mixins.json:RegistryLoadTaskPendingRegistrationMixin"
+      ],
+      "reason": "NeoForge decides whether data files and registry entries load with its own conditions: Fabricated evaluates fabric:load_conditions there, with upstream's conditions, instead of upstream's mixins on the code NeoForge rewrote."
     },
     "fabric-resource-loader-v0": {
       "plan": "passthrough"

@@ -157,7 +157,11 @@
       "plan": "passthrough"
     },
     "fabric-resource-conditions-api-v1": {
-      "plan": "passthrough"
+      "plan": "passthrough",
+      "skipMixins": [
+        "fabric-resource-conditions-api-v1.mixins.json:SimpleJsonResourceReloadListenerMixin"
+      ],
+      "reason": "NeoForge decides whether data files and registry entries load with its own conditions: Fabricated evaluates fabric:load_conditions there, with upstream's conditions, instead of upstream's mixins on the code NeoForge rewrote."
     },
     "fabric-resource-loader-v0": {
       "plan": "passthrough"
