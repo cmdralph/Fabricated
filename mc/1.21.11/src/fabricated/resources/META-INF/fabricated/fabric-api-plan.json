@@ -126,9 +126,10 @@
       "plan": "passthrough",
       "skipMixins": [
         "fabric-particles-v1.mixins.json:EntityMixin",
-        "fabric-particles-v1.mixins.json:LivingEntityMixin"
+        "fabric-particles-v1.mixins.json:LivingEntityMixin",
+        "fabric-particles-v1.client.mixins.json:TerrainParticleMixin#removeUntintableParticles"
       ],
-      "reason": "NeoForge builds sprint and fall particles with their block position already; upstream's mixins add it to the vanilla constructor NeoForge no longer calls."
+      "reason": "NeoForge builds sprint and fall particles with their block position already; upstream's mixins add it to the vanilla constructor NeoForge no longer calls. On 1.21.11 NeoForge decides whether block breaking particles are tinted (IClientBlockExtensions.areBreakingParticlesTinted), so ParticleRenderEvents.ALLOW_BLOCK_DUST_TINT does not fire."
     },
     "fabric-recipe-api-v1": {
       "plan": "passthrough",
