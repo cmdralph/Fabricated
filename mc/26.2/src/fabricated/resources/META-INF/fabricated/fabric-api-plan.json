@@ -197,7 +197,18 @@
       "reason": "NeoForge asks each sound instance for its audio stream: Fabricated uses a Fabric sound instance's own stream there instead of upstream's redirect."
     },
     "fabric-tag-api-v1": {
-      "plan": "passthrough"
+      "plan": "passthrough",
+      "skipMixins": [
+        "fabric-tag-api-v1.mixins.json:TagFileMixin#remove",
+        "fabric-tag-api-v1.mixins.json:TagFileMixin#modifyCodec",
+        "fabric-tag-api-v1.mixins.json:TagLoaderMixin#removeTagRemovalReferenceOnReplace",
+        "fabric-tag-api-v1.mixins.json:TagLoaderMixin#loadRemoveEntries",
+        "fabric-tag-api-v1.mixins.json:TagLoaderMixin#scopeIdToTryBuildTag",
+        "fabric-tag-api-v1.mixins.json:TagLoaderMixin#addTagRemovalReferencesToDependencySorter",
+        "fabric-tag-api-v1.mixins.json:TagLoaderMixin#removeEntriesFromTags",
+        "fabric-tag-api-v1.mixins.json:TagLoaderMixin#removeTagRemovalReferencesWhenFinished"
+      ],
+      "reason": "NeoForge tag files already have a remove list, which NeoForge applies: Fabricated adds fabric:remove entries to it instead of upstream's own removal handling."
     },
     "fabric-transfer-api-v1": {
       "plan": "native",

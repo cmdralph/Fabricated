@@ -131,7 +131,11 @@
       "reason": "NeoForge builds sprint and fall particles with their block position already; upstream's mixins add it to the vanilla constructor NeoForge no longer calls."
     },
     "fabric-recipe-api-v1": {
-      "plan": "passthrough"
+      "plan": "passthrough",
+      "skipMixins": [
+        "fabric-recipe-api-v1.mixins.json:ingredient.IngredientMixin#hashCode"
+      ],
+      "reason": "NeoForge already gives Ingredient a hashCode, which upstream's mixin would replace."
     },
     "fabric-registry-sync-v0": {
       "plan": "native",

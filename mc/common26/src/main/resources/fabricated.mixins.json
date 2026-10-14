@@ -40,7 +40,8 @@
     "NetworkRegistryMixin",
     "MenuProviderMixin",
     "ServerPlayerMenuMixin",
-    "SimpleMenuProviderMixin"
+    "SimpleMenuProviderMixin",
+    "TagFileRemoveMixin"
   ],
   "injectors": {
     "defaultRequire": 1
