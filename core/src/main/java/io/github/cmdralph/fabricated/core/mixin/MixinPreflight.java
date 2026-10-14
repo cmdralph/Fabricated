@@ -670,6 +670,18 @@ public final class MixinPreflight {
 				if (ordinal >= 0 && countInRange <= ordinal) return Verdict.MISSING;
 				return Verdict.FOUND;
 			}
+			case "LOAD", "STORE" -> {
+				// Not judged precisely (the local's type and index), but a slice without any local variable load or
+				// store (as when its end point is gone and Mixin cuts it down to one instruction) can't match.
+				if (range == Range.UNEVALUATED || method.instructions == null) return Verdict.UNKNOWN;
+				boolean load = point.equals("LOAD");
+				int last = Math.min(range.end(), method.instructions.size() - 1);
+				for (int i = Math.max(range.start(), 0); i <= last; i++) {
+					int op = method.instructions.get(i).getOpcode();
+					if (load ? op >= Opcodes.ILOAD && op <= Opcodes.ALOAD : op >= Opcodes.ISTORE && op <= Opcodes.ASTORE) return Verdict.UNKNOWN;
+				}
+				return Verdict.MISSING;
+			}
 			default -> {
 				return Verdict.UNKNOWN;
 			}

@@ -35,7 +35,8 @@
     "ServerPlayerMenuMixin",
     "SimpleMenuProviderMixin",
     "TagFileRemoveMixin",
-    "ConditionalOpsMixin"
+    "ConditionalOpsMixin",
+    "RegistryFriendlyByteBufMixin"
   ],
   "injectors": {
     "defaultRequire": 1
@@ -46,6 +47,7 @@
     "client.MultiPlayerGameModeMixin",
     "client.ClientNetworkAddonHolderMixin",
     "client.ClientPayloadSendMixin",
-    "client.ParticleResourcesMixin"
+    "client.ParticleResourcesMixin",
+    "client.SoundEngineStreamMixin"
   ]
 }
