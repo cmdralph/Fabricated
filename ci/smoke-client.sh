@@ -124,6 +124,7 @@ check "FABRICATED-TEST client resource reload listener OK" "native client resour
 check "FABRICATED-TEST configuration task OK" "Fabric configuration task with the integrated server"
 check "FABRICATED-TEST client join event OK" "native client networking: join event"
 check "FABRICATED-TEST client networking round trip OK" "native networking: client to integrated server and back"
+check "FABRICATED-TEST extended menu opened with its data OK" "extended menu (menu api): opening data reaches the client"
 check "FABRICATED-TEST registry sync: custom registry OK" "registry sync on the client"
 check "FABRICATED-TEST object builder OK" "native object builder in the integrated server"
 check "FABRICATED-TEST block api OK" "native block api in the integrated server"

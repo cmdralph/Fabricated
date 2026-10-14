@@ -100,7 +100,9 @@
       "reason": "Shipped by Fabricated: upstream's builder and drop mixins as they are, its loading hook replaced by NeoForge's LootTableLoadEvent (upstream's conflicts with NeoForge's loot loading)."
     },
     "fabric-menu-api-v1": {
-      "plan": "passthrough"
+      "plan": "native",
+      "version": "2.0.15",
+      "reason": "Shipped by Fabricated on NeoForge's menu opening data: extended menus send their opening data the way NeoForge mods' menus do (upstream's mixins target the openMenu NeoForge replaced)."
     },
     "fabric-message-api-v1": {
       "plan": "passthrough"
@@ -130,7 +132,11 @@
       "plan": "passthrough"
     },
     "fabric-recipe-api-v1": {
-      "plan": "passthrough"
+      "plan": "passthrough",
+      "skipMixins": [
+        "fabric-recipe-api-v1.mixins.json:ingredient.IngredientMixin#hashCode"
+      ],
+      "reason": "NeoForge already gives Ingredient a hashCode, which upstream's mixin would replace."
     },
     "fabric-registry-sync-v0": {
       "plan": "native",
@@ -164,7 +170,12 @@
       "reason": "NeoForge draws the HUD in layers: Fabricated runs Fabric's HUD elements from NeoForge's vanilla layers instead of upstream's HUD mixin. Picture-in-picture renderers registered with Fabric are not used (NeoForge rebuilt that renderer), and the debug options screen keeps vanilla's sorting and search. Render pipeline snippets don't carry Fabric's GUI draw mode flag (NeoForge added a field to them); pipelines do."
     },
     "fabric-resource-conditions-api-v1": {
-      "plan": "passthrough"
+      "plan": "passthrough",
+      "skipMixins": [
+        "fabric-resource-conditions-api-v1.mixins.json:SimpleJsonResourceReloadListenerMixin",
+        "fabric-resource-conditions-api-v1.mixins.json:RegistryLoadTaskPendingRegistrationMixin"
+      ],
+      "reason": "NeoForge decides whether data files and registry entries load with its own conditions: Fabricated evaluates fabric:load_conditions there, with upstream's conditions, instead of upstream's mixins on the code NeoForge rewrote."
     },
     "fabric-resource-loader-v0": {
       "plan": "passthrough"
@@ -192,7 +203,18 @@
       "reason": "NeoForge asks each sound instance for its audio stream: Fabricated uses a Fabric sound instance's own stream there instead of upstream's redirect."
     },
     "fabric-tag-api-v1": {
-      "plan": "passthrough"
+      "plan": "passthrough",
+      "skipMixins": [
+        "fabric-tag-api-v1.mixins.json:TagFileMixin#remove",
+        "fabric-tag-api-v1.mixins.json:TagFileMixin#modifyCodec",
+        "fabric-tag-api-v1.mixins.json:TagLoaderMixin#removeTagRemovalReferenceOnReplace",
+        "fabric-tag-api-v1.mixins.json:TagLoaderMixin#loadRemoveEntries",
+        "fabric-tag-api-v1.mixins.json:TagLoaderMixin#scopeIdToTryBuildTag",
+        "fabric-tag-api-v1.mixins.json:TagLoaderMixin#addTagRemovalReferencesToDependencySorter",
+        "fabric-tag-api-v1.mixins.json:TagLoaderMixin#removeEntriesFromTags",
+        "fabric-tag-api-v1.mixins.json:TagLoaderMixin#removeTagRemovalReferencesWhenFinished"
+      ],
+      "reason": "NeoForge tag files already have a remove list, which NeoForge applies: Fabricated adds fabric:remove entries to it instead of upstream's own removal handling."
     },
     "fabric-transfer-api-v1": {
       "plan": "native",

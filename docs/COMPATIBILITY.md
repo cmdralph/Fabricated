@@ -19,10 +19,10 @@ Last updated from CI run [38462902633](https://github.com/cmdralph/Fabricated/ac
 
 | Minecraft | NeoForge | Fabric API tested | Test mods | Server boots with Fabric API |
 |---|---|---|---|---|
-| 1.21.11 | 21.11.45 | 0.141.6+1.21.11 | ✅ all 35 server and 19 client checks | ✅ boots, all test-mod checks still pass |
-| 26.1.2 | 26.1.2.116 | 0.155.3+26.1.2 | ✅ all 35 server and 19 client checks | ✅ boots, all test-mod checks still pass |
-| 26.2 | 26.2.0.90 | 0.161.0+26.2 | ✅ all 35 server and 19 client checks | ✅ boots, all test-mod checks still pass |
-| 26.3 (beta) | 26.3.0.69-beta | 0.162.0+26.3 | ✅ all 35 server and 19 client checks | ✅ boots, all test-mod checks still pass |
+| 1.21.11 | 21.11.45 | 0.141.6+1.21.11 | ✅ all 35 server and 21 client checks | ✅ boots, all test-mod checks still pass |
+| 26.1.2 | 26.1.2.116 | 0.155.3+26.1.2 | ✅ all 35 server and 21 client checks | ✅ boots, all test-mod checks still pass |
+| 26.2 | 26.2.0.90 | 0.161.0+26.2 | ✅ all 35 server and 21 client checks | ✅ boots, all test-mod checks still pass |
+| 26.3 (beta) | 26.3.0.69-beta | 0.162.0+26.3 | ✅ all 35 server and 21 client checks | ✅ boots, all test-mod checks still pass |
 
 "Boots with Fabric API" means the server starts with the full official Fabric API jar installed. Modules
 that can't work on NeoForge are disabled before any code runs (see below), and the rest load alongside
@@ -36,12 +36,12 @@ entrypoint throws is isolated while the server keeps running; Fabricated's publi
 after-initializers callback runs; and a client-only interface listed in `@EnvironmentInterface` is stripped on
 the server. The other 21 cover the native Fabric API modules (described in their sections below). The client
 checks: the client starts and joins a singleplayer world, the `main` and `client` entrypoints run, the
-client-side native modules work, including a networking round trip with the integrated server, and a Mod Menu
-config screen factory is registered with NeoForge.
+client-side native modules work, including a networking round trip and a configuration task with the integrated
+server, an extended menu opens with its data, and a Mod Menu config screen factory is registered with NeoForge.
 
 CI also starts the client with the full Fabric API jar, for information only (it doesn't fail the build). It
-joins its world and passes every client check on 1.21.11 and 26.3 (26.1.2 and 26.2 are expected to follow
-with the render pipeline fix below). On 26.x, rendering-v1, screen-api, sound-api and rendering-fluids load
+joins its world and passes every client check on all four versions (CI run
+[38472350496](https://github.com/cmdralph/Fabricated/actions/runs/38472350496)). On 26.x, rendering-v1, screen-api, sound-api and rendering-fluids load
 (see their section below), alongside key-mapping / key-binding, creative-tab / item-group and block-getter.
 model-loading (which needs the unsupported renderer-api) and particles (a field NeoForge removed) are still
 disabled on the client, as are rendering-v1, screen-api, sound-api and rendering-fluids on 1.21.11.
@@ -90,7 +90,7 @@ How to read the table:
 | fabric-resource-conditions-api-v1 | disabled | disabled | disabled | disabled |
 | fabric-tag-api-v1 | disabled | disabled | disabled | disabled |
 | fabric-advancement-api-v1 | — | — | loads | disabled |
-| fabric-menu-api-v1 / screen-handler-api-v1 | disabled | disabled | disabled | disabled |
+| fabric-menu-api-v1 / screen-handler-api-v1 | native | native | native | native |
 | fabric-api-lookup-api-v1 | native | native | native | native |
 | fabric-command-api-v2 | loads | loads | loads | loads |
 | fabric-convention-tags-v2 (and v1) | loads | loads | loads | loads |
@@ -457,6 +457,21 @@ aborted and changes when one commits; a full water cauldron empties when a bucke
 storage used through NeoForge's capability and a NeoForge handler used through `ItemStorage.SIDED` follow aborts,
 nested commits and commits; fluids move in whole millibuckets only.
 
+### Native `fabric-menu-api-v1` (`fabric-screen-handler-api-v1` on 1.21.11)
+
+NeoForge replaced the `openMenu` upstream's mixins target with its own, which already lets a menu provider send
+extra data to the client. Fabricated ships upstream's API and maps it onto that:
+
+| Fabric API | NeoForge |
+|---|---|
+| `ExtendedMenuProvider.getScreenOpeningData` | written where NeoForge asks the provider for its client data (`writeClientSideData`), so the menu opens through NeoForge's extra-data packet |
+| `ExtendedMenuType` creating the client menu from that data | NeoForge's `MenuType.create(id, inventory, data)` on the client |
+| `FabricMenuProvider.shouldCloseCurrentScreen` | combined with NeoForge's `shouldTriggerClientSideContainerClosingOnOpen` |
+| a `SimpleMenuProvider` around an `ExtendedMenuProvider` | opens the extended menu, as upstream |
+
+Fabric mods' menus therefore open the same way NeoForge mods' menus do. The client CI run opens an extended
+menu with opening data from the integrated server.
+
 ### `fabric-rendering-v1`, `fabric-screen-api-v1` and `fabric-sound-api-v1` on 26.x
 
 Upstream's module loads, without the mixins that target code NeoForge rewrote:
@@ -535,6 +550,7 @@ modules that cascade from it.
 10. ✅ `fabric-content-registries-v0` on all four versions (done).
 11. ✅ `fabric-transfer-api-v1` and `fabric-api-lookup-api-v1` on all four versions (done).
 12. ✅ The bridge between Fabric storages and NeoForge's item and fluid capabilities (done).
+13. ✅ `fabric-menu-api-v1` / `fabric-screen-handler-api-v1` on all four versions (done).
 
 ## Fabric mods tested
 

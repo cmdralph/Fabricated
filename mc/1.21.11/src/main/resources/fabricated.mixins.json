@@ -30,7 +30,12 @@
     "ServerPayloadSendMixin",
     "BlockApiCacheInvalidationMixin",
     "LivingEntityEffectsMixin",
-    "NetworkRegistryMixin"
+    "NetworkRegistryMixin",
+    "MenuProviderMixin",
+    "ServerPlayerMenuMixin",
+    "SimpleMenuProviderMixin",
+    "TagFileRemoveMixin",
+    "ConditionalOpsMixin"
   ],
   "injectors": {
     "defaultRequire": 1
@@ -40,6 +45,7 @@
     "client.KeyMappingAccessor",
     "client.MultiPlayerGameModeMixin",
     "client.ClientNetworkAddonHolderMixin",
-    "client.ClientPayloadSendMixin"
+    "client.ClientPayloadSendMixin",
+    "client.ParticleResourcesMixin"
   ]
 }

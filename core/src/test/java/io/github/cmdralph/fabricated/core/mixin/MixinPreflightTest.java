@@ -172,6 +172,47 @@ class MixinPreflightTest {
 		assertTrue(findings.getFirst().message().contains("passes [2]"), findings.toString());
 	}
 
+	/** An accessor interface on {@link #TARGET} with one non-static {@code @Invoker} method. */
+	private static byte[] invokerInterface(String name, String method, String desc) {
+		ClassWriter cw = new ClassWriter(0);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT | Opcodes.ACC_INTERFACE, name, null, "java/lang/Object", null);
+		AnnotationVisitor m = cw.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false);
+		AnnotationVisitor values = m.visitArray("value");
+		values.visit(null, Type.getObjectType(TARGET));
+		values.visitEnd();
+		m.visitEnd();
+		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, method, desc, null, null);
+		mv.visitAnnotation("Lorg/spongepowered/asm/mixin/gen/Invoker;", false).visitEnd();
+		mv.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	@Test
+	void accessorsDuplicatingAPublicMethodUseItInstead() throws Exception {
+		Map<String, byte[]> mod = new HashMap<>(Map.of(
+				"com/example/mixin/Public", invokerInterface("com/example/mixin/Public", "tick", "()V"),
+				"com/example/mixin/Private", invokerInterface("com/example/mixin/Private", "helper", "(I)V")));
+		ClassIndex game = new ClassIndex(Map.of(TARGET, targetClass())::get);
+		MixinPreflight preflight = new MixinPreflight(game, mod::get, ClassBytesSource.EMPTY, false);
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Public", "Private"));
+		List<PreflightFinding> repairs = new java.util.ArrayList<>();
+		Map<String, byte[]> repaired = preflight.duplicateAccessorRepairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), repairs);
+		assertEquals(Set.of("com/example/mixin/Public.class"), repaired.keySet(), "only a public method of the target is used instead");
+		assertEquals(1, repairs.size(), repairs.toString());
+		assertEquals(Severity.WARN, repairs.getFirst().severity());
+
+		org.objectweb.asm.tree.ClassNode node = new org.objectweb.asm.tree.ClassNode();
+		new org.objectweb.asm.ClassReader(repaired.get("com/example/mixin/Public.class")).accept(node, 0);
+		org.objectweb.asm.tree.MethodNode tick = node.methods.getFirst();
+		assertTrue((tick.access & Opcodes.ACC_SYNTHETIC) != 0, "synthetic, so Mixin still treats the interface as an accessor mixin");
+		assertEquals(List.of("Lorg/spongepowered/asm/mixin/Shadow;"), tick.visibleAnnotations.stream().map(a -> a.desc).toList());
+		mod.put("com/example/mixin/Public", repaired.get("com/example/mixin/Public.class"));
+		List<PreflightFinding> findings = preflight.check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertEquals(1, findings.size(), findings.toString());
+		assertTrue(findings.getFirst().mixin().endsWith("Private"), "the private duplicate still fails: " + findings);
+	}
+
 	@Test
 	void failsWhenRequiredInjectionTargetIsMissing() throws Exception {
 		byte[] bad = mixin("com/example/mixin/Bad", false, cw -> inject(cw, "h", "removedMethod", "HEAD", null, 1, null));

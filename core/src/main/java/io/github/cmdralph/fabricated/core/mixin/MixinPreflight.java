@@ -8,6 +8,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeMap;
 
 import io.github.cmdralph.fabricated.core.bytecode.Annotations;
 import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
@@ -15,6 +16,7 @@ import io.github.cmdralph.fabricated.core.bytecode.ClassIndex;
 import io.github.cmdralph.fabricated.core.mixin.PreflightFinding.Severity;
 
 import org.objectweb.asm.ClassReader;
+import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.AbstractInsnNode;
@@ -106,6 +108,74 @@ public final class MixinPreflight {
 		return out;
 	}
 
+	/**
+	 * Accessor and invoker methods of mixin interfaces that every target already declares publicly, with the same
+	 * descriptor (typically a method NeoForge added): Mixin cannot generate them and rejects the mixin, but the
+	 * existing method does the job. Returns the mixin classes rewritten with those methods as synthetic {@code @Shadow}s
+	 * of the existing ones, by class file name; each repair is reported as a warning. (Synthetic, because Mixin treats an
+	 * interface with any other non-accessor method as an interface mixin, which may only target interfaces.)
+	 */
+	public Map<String, byte[]> duplicateAccessorRepairs(String configName, MixinConfigFile config, Refmap refmap, Set<String> skip,
+			List<PreflightFinding> out) {
+		Map<String, byte[]> repaired = new TreeMap<>();
+		for (String mixin : config.mixinsFor(clientSide)) {
+			if (skip.contains(mixin)) continue;
+			String internal = config.internalName(mixin);
+			ClassNode node = new ClassNode();
+			try {
+				byte[] data = modClasses.read(internal);
+				if (data == null) continue;
+				new ClassReader(data).accept(node, 0);
+			} catch (IOException | RuntimeException e) {
+				continue;
+			}
+			if ((node.access & Opcodes.ACC_INTERFACE) == 0) continue;
+			Context ctx = new Context(configName, internal.replace('/', '.'), config, refmap, false, out);
+			List<ClassNode> targets = new ArrayList<>();
+			for (String target : targetsOf(node, ctx)) {
+				ClassNode targetNode = GAME_PREFIXES.stream().anyMatch(target::startsWith)
+						? targetCache.computeIfAbsent(target, t -> Optional.ofNullable(game.readNode(t))).orElse(null) : null;
+				if (targetNode == null) {
+					targets = List.of();
+					break;
+				}
+				targets.add(targetNode);
+			}
+			if (targets.isEmpty()) continue;
+			boolean changed = false;
+			for (MethodNode method : node.methods) {
+				if ((method.access & Opcodes.ACC_STATIC) != 0) continue;
+				String kind = Annotations.find(method, ACCESSOR) != null ? "@Accessor" : Annotations.find(method, INVOKER) != null ? "@Invoker" : null;
+				if (kind == null || !targets.stream().allMatch(t -> declaresPublicInstance(t, method.name, method.desc))) continue;
+				if (method.visibleAnnotations != null) method.visibleAnnotations.removeIf(MixinPreflight::isAccessorAnnotation);
+				if (method.invisibleAnnotations != null) method.invisibleAnnotations.removeIf(MixinPreflight::isAccessorAnnotation);
+				if (method.visibleAnnotations == null) method.visibleAnnotations = new ArrayList<>();
+				method.visibleAnnotations.add(new AnnotationNode(SHADOW));
+				method.access |= Opcodes.ACC_SYNTHETIC;
+				changed = true;
+				out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), kind + " " + method.name + method.desc
+						+ " already exists publicly in " + targets.getFirst().name.replace('/', '.')
+						+ " (added by NeoForge or this Minecraft version); the mixin uses that method instead of generating one", ""));
+			}
+			if (!changed) continue;
+			ClassWriter writer = new ClassWriter(0);
+			node.accept(writer);
+			repaired.put(internal + ".class", writer.toByteArray());
+		}
+		return repaired;
+	}
+
+	private static boolean isAccessorAnnotation(AnnotationNode annotation) {
+		return annotation.desc.equals(ACCESSOR) || annotation.desc.equals(INVOKER);
+	}
+
+	private static boolean declaresPublicInstance(ClassNode target, String name, String desc) {
+		for (MethodNode m : target.methods) {
+			if (m.name.equals(name) && m.desc.equals(desc)) return (m.access & Opcodes.ACC_PUBLIC) != 0 && (m.access & Opcodes.ACC_STATIC) == 0;
+		}
+		return false;
+	}
+
 	private ClassNode readMixin(String internal) {
 		try {
 			byte[] data = modClasses.read(internal);
@@ -148,21 +218,7 @@ public final class MixinPreflight {
 		}
 		boolean pseudo = Annotations.find(mixin.invisibleAnnotations, mixin.visibleAnnotations, PSEUDO) != null;
 
-		List<String> targets = new ArrayList<>();
-		Object value = Annotations.value(mixinAnn, "value");
-		if (value instanceof List<?> types) {
-			for (Object t : types) {
-				if (t instanceof Type type) targets.add(type.getInternalName());
-			}
-		}
-		Object targetStrings = Annotations.value(mixinAnn, "targets");
-		if (targetStrings instanceof List<?> names) {
-			for (Object n : names) {
-				if (n instanceof String s) targets.add(ctx.resolve(s).replace('.', '/'));
-			}
-		}
-
-		for (String target : targets) {
+		for (String target : targetsOf(mixin, ctx)) {
 			boolean isGame = GAME_PREFIXES.stream().anyMatch(target::startsWith);
 			ClassNode targetNode = isGame ? targetCache.computeIfAbsent(target, t -> Optional.ofNullable(game.readNode(t))).orElse(null) : null;
 			if (targetNode == null) {
@@ -180,6 +236,24 @@ public final class MixinPreflight {
 			}
 			checkMembers(mixin, targetNode, ctx);
 		}
+	}
+
+	/** The classes a mixin's {@code @Mixin} names, as internal names (none when it has no {@code @Mixin}). */
+	private static List<String> targetsOf(ClassNode mixin, Context ctx) {
+		AnnotationNode mixinAnn = Annotations.find(mixin.invisibleAnnotations, mixin.visibleAnnotations, MIXIN);
+		List<String> targets = new ArrayList<>();
+		if (mixinAnn == null) return targets;
+		if (Annotations.value(mixinAnn, "value") instanceof List<?> types) {
+			for (Object t : types) {
+				if (t instanceof Type type) targets.add(type.getInternalName());
+			}
+		}
+		if (Annotations.value(mixinAnn, "targets") instanceof List<?> names) {
+			for (Object n : names) {
+				if (n instanceof String s) targets.add(ctx.resolve(s).replace('.', '/'));
+			}
+		}
+		return targets;
 	}
 
 	private boolean isUntransformable(String target) {

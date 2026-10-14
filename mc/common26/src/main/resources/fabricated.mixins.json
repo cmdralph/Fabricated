@@ -37,7 +37,13 @@
     "BlockApiCacheInvalidationMixin",
     "LivingEntityEffectsMixin",
     "ServerPayloadSendMixin",
-    "NetworkRegistryMixin"
+    "NetworkRegistryMixin",
+    "MenuProviderMixin",
+    "ServerPlayerMenuMixin",
+    "SimpleMenuProviderMixin",
+    "TagFileRemoveMixin",
+    "ConditionalOpsMixin",
+    "AdvancementReloadMixin"
   ],
   "injectors": {
     "defaultRequire": 1
@@ -51,6 +57,7 @@
     "client.MouseHandlerMixin",
     "client.ClientNetworkAddonHolderMixin",
     "client.ClientPayloadSendMixin",
-    "client.SoundEngineStreamMixin"
+    "client.SoundEngineStreamMixin",
+    "client.ParticleResourcesMixin"
   ]
 }
