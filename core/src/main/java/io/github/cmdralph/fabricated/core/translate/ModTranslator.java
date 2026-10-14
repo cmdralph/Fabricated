@@ -265,7 +265,7 @@ public final class ModTranslator {
 				}
 			}
 			Set<String> skip = withDependents(entry.config(), config, wholeSkips, translated, findings);
-			overlay.putAll(preflight.duplicateAccessorRepairs(entry.config(), config, refmap, skip, findings));
+			overlay.putAll(preflight.accessorRepairs(entry.config(), config, refmap, skip, findings));
 			if (!override.ignorePreflight()) {
 				findings.addAll(preflight.check(entry.config(), config, refmap, skip));
 			}

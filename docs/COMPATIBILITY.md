@@ -43,8 +43,7 @@ factory is registered with NeoForge, and no test mod check reports a failure.
 CI also starts the client with the full Fabric API jar, for information only (it doesn't fail the build). It
 joins its world and passes every client check on all four versions. On 26.x every Fabric API module loads
 on the client except model-loading, which needs the unsupported renderer-api; on the dedicated server no Fabric
-API module is disabled. On 1.21.11, tag-api is still disabled on both sides, and rendering-v1 and
-rendering-fluids on the client.
+API module is disabled. On 1.21.11, rendering-v1 and rendering-fluids are still disabled on the client.
 
 The 26.3 job is marked experimental in CI because NeoForge 26.3 is a beta; it passes every check. Its client
 opens its window with SDL3 over EGL, so CI installs Mesa's EGL library for it.
@@ -88,7 +87,7 @@ How to read the table:
 | fabric-dimensions-v1 | loads | loads | loads | loads |
 | fabric-loot-api-v3 | native | native | native | native |
 | fabric-resource-conditions-api-v1 | loads | loads | loads | loads |
-| fabric-tag-api-v1 | disabled | loads | loads | loads |
+| fabric-tag-api-v1 | loads | loads | loads | loads |
 | fabric-advancement-api-v1 | — | — | loads | loads |
 | fabric-menu-api-v1 / screen-handler-api-v1 | native | native | native | native |
 | fabric-api-lookup-api-v1 | native | native | native | native |
@@ -138,8 +137,13 @@ failures fall into a few groups:
   turns an accessor whose method the target already declares publicly into a shadow of that method (for any
   mod, reported as a warning), and the plans leave out the other two methods: NeoForge's `hashCode` stays, and
   NeoForge's own tag `remove` list, which NeoForge applies, also receives `fabric:remove` entries. recipe-api
-  loads on all versions, tag-api on 26.x (on 1.21.11 it also reads a synthetic field NeoForge's build names
-  differently).
+  and tag-api load on all versions.
+- **NeoForge's build names a captured variable differently**: an anonymous class keeps each local variable it
+  captures in a synthetic field named after it (`val$tags`). NeoForge's 1.21.11 build is recompiled from
+  decompiled code, so the variable, and with it the field, has another name. `fabric-tag-api-v1` reads and writes
+  `val$tags` in `MappedRegistry$TagSet$2` with an accessor. When an `@Accessor` names a missing `val$` field and
+  the target has exactly one captured field of the same type, Fabricated points the accessor at that field (for
+  any mod, reported as a warning).
 - **NeoForge calls a different constructor**: `fabric-particles-v1` modifies `new BlockParticleOption(type,
   state)` in `Entity.spawnSprintParticle`; NeoForge passes the block position as a third argument. The plan
   leaves out that mixin and the entity one next to it (they only make sprint and fall particles block-aware),

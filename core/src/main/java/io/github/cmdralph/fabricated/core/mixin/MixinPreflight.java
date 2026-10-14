@@ -60,6 +60,8 @@ public final class MixinPreflight {
 	private static final String OPERATION = "Lcom/llamalad7/mixinextras/injector/wrapoperation/Operation;";
 	private static final String DEFINITION = "Lcom/llamalad7/mixinextras/expression/Definition;";
 	private static final String DEFINITIONS = "Lcom/llamalad7/mixinextras/expression/Definitions;";
+	/** The name prefix javac gives the fields holding the local variables an anonymous or local class captures. */
+	private static final String CAPTURED_PREFIX = "val$";
 	private static final Set<String> GAME_PREFIXES = Set.of("net/minecraft/", "com/mojang/blaze3d/");
 
 	private final ClassIndex game;
@@ -109,13 +111,19 @@ public final class MixinPreflight {
 	}
 
 	/**
-	 * Accessor and invoker methods of mixin interfaces that every target already declares publicly, with the same
-	 * descriptor (typically a method NeoForge added): Mixin cannot generate them and rejects the mixin, but the
-	 * existing method does the job. Returns the mixin classes rewritten with those methods as synthetic {@code @Shadow}s
-	 * of the existing ones, by class file name; each repair is reported as a warning. (Synthetic, because Mixin treats an
-	 * interface with any other non-accessor method as an interface mixin, which may only target interfaces.)
+	 * Accessor mixins that Mixin would reject but that can be pointed at what the game really has, before pre-flight
+	 * checks them. Returns the mixin classes rewritten, by class file name; each repair is reported as a warning.
+	 * <ul>
+	 * <li>An accessor or invoker that every target already declares publicly, with the same descriptor (typically a
+	 * method NeoForge added): Mixin cannot generate it, but the existing method does the job, so it becomes a
+	 * synthetic {@code @Shadow} of it. (Synthetic, because Mixin treats an interface with any other non-accessor
+	 * method as an interface mixin, which may only target interfaces.)</li>
+	 * <li>An {@code @Accessor} of a local variable an anonymous class captured ({@code val$name}), where the game names
+	 * that field after the decompiled variable instead (NeoForge's 1.21.11 build, for example): it is pointed at the
+	 * one captured field of the same type in each target.</li>
+	 * </ul>
 	 */
-	public Map<String, byte[]> duplicateAccessorRepairs(String configName, MixinConfigFile config, Refmap refmap, Set<String> skip,
+	public Map<String, byte[]> accessorRepairs(String configName, MixinConfigFile config, Refmap refmap, Set<String> skip,
 			List<PreflightFinding> out) {
 		Map<String, byte[]> repaired = new TreeMap<>();
 		for (String mixin : config.mixinsFor(clientSide)) {
@@ -145,17 +153,27 @@ public final class MixinPreflight {
 			boolean changed = false;
 			for (MethodNode method : node.methods) {
 				if ((method.access & Opcodes.ACC_STATIC) != 0) continue;
-				String kind = Annotations.find(method, ACCESSOR) != null ? "@Accessor" : Annotations.find(method, INVOKER) != null ? "@Invoker" : null;
-				if (kind == null || !targets.stream().allMatch(t -> declaresPublicInstance(t, method.name, method.desc))) continue;
-				if (method.visibleAnnotations != null) method.visibleAnnotations.removeIf(MixinPreflight::isAccessorAnnotation);
-				if (method.invisibleAnnotations != null) method.invisibleAnnotations.removeIf(MixinPreflight::isAccessorAnnotation);
-				if (method.visibleAnnotations == null) method.visibleAnnotations = new ArrayList<>();
-				method.visibleAnnotations.add(new AnnotationNode(SHADOW));
-				method.access |= Opcodes.ACC_SYNTHETIC;
-				changed = true;
-				out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), kind + " " + method.name + method.desc
-						+ " already exists publicly in " + targets.getFirst().name.replace('/', '.')
-						+ " (added by NeoForge or this Minecraft version); the mixin uses that method instead of generating one", ""));
+				AnnotationNode accessor = Annotations.find(method, ACCESSOR);
+				String kind = accessor != null ? "@Accessor" : Annotations.find(method, INVOKER) != null ? "@Invoker" : null;
+				if (kind == null) continue;
+				if (targets.stream().allMatch(t -> declaresPublicInstance(t, method.name, method.desc))) {
+					if (method.visibleAnnotations != null) method.visibleAnnotations.removeIf(MixinPreflight::isAccessorAnnotation);
+					if (method.invisibleAnnotations != null) method.invisibleAnnotations.removeIf(MixinPreflight::isAccessorAnnotation);
+					if (method.visibleAnnotations == null) method.visibleAnnotations = new ArrayList<>();
+					method.visibleAnnotations.add(new AnnotationNode(SHADOW));
+					method.access |= Opcodes.ACC_SYNTHETIC;
+					changed = true;
+					out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), kind + " " + method.name + method.desc
+							+ " already exists publicly in " + targets.getFirst().name.replace('/', '.')
+							+ " (added by NeoForge or this Minecraft version); the mixin uses that method instead of generating one", ""));
+				} else if (accessor != null) {
+					String field = capturedFieldRepair(method, accessor, targets, ctx);
+					if (field == null) continue;
+					changed = true;
+					out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@Accessor " + method.name + method.desc
+							+ " targets the captured variable field " + field + " in " + targets.getFirst().name.replace('/', '.')
+							+ ", which this game build names differently", ""));
+				}
 			}
 			if (!changed) continue;
 			ClassWriter writer = new ClassWriter(0);
@@ -163,6 +181,38 @@ public final class MixinPreflight {
 			repaired.put(internal + ".class", writer.toByteArray());
 		}
 		return repaired;
+	}
+
+	/**
+	 * Points an {@code @Accessor} of a missing captured variable field ({@code val$name}) at the only captured field of
+	 * the same type that every target has under one other name, and returns the original field name; or returns
+	 * {@code null} and changes nothing.
+	 */
+	private static String capturedFieldRepair(MethodNode method, AnnotationNode accessor, List<ClassNode> targets, Context ctx) {
+		String explicit = Annotations.value(accessor, "value") instanceof String s && !s.isEmpty() ? s : null;
+		if (explicit == null) return null;
+		MemberRef ref = MemberRef.parse(ctx.resolve(explicit));
+		String name = ref.nameOr(explicit);
+		String desc = ref.fieldDescOr(accessorFieldDesc(method));
+		if (!name.startsWith(CAPTURED_PREFIX) || desc == null) return null;
+		String renamed = null;
+		for (ClassNode target : targets) {
+			String only = null;
+			for (FieldNode f : target.fields) {
+				if (f.name.equals(name)) return null; // present: nothing to repair
+				if ((f.access & Opcodes.ACC_STATIC) != 0 || !f.desc.equals(desc)) continue;
+				if (!f.name.startsWith(CAPTURED_PREFIX) && (f.access & Opcodes.ACC_SYNTHETIC) == 0) continue;
+				if (only != null) return null; // ambiguous
+				only = f.name;
+			}
+			if (only == null || (renamed != null && !renamed.equals(only))) return null;
+			renamed = only;
+		}
+		if (renamed == null) return null;
+		for (int i = 0; i + 1 < accessor.values.size(); i += 2) {
+			if ("value".equals(accessor.values.get(i))) accessor.values.set(i + 1, renamed);
+		}
+		return name;
 	}
 
 	private static boolean isAccessorAnnotation(AnnotationNode annotation) {
