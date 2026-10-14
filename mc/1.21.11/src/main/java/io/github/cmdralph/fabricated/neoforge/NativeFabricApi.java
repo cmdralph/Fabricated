@@ -8,6 +8,7 @@ import io.github.cmdralph.fabricated.neoforge.loot.LootBridge;
 import io.github.cmdralph.fabricated.neoforge.lifecycle.LifecycleBridge;
 import io.github.cmdralph.fabricated.neoforge.networking.NetworkingBridge;
 import io.github.cmdralph.fabricated.neoforge.objectbuilder.ObjectBuilderBridge;
+import io.github.cmdralph.fabricated.neoforge.rendering.ScreenRenderBridge;
 import io.github.cmdralph.fabricated.neoforge.resource.ResourceLoaderBridge;
 import io.github.cmdralph.fabricated.neoforge.transfer.TransferBridge;
 import net.fabricmc.fabric.impl.lookup.ApiLookupImpl;
@@ -32,6 +33,7 @@ public final class NativeFabricApi {
 		new ApiLookupImpl().onInitialize();
 		TransferBridge.register(modBus);
 		ItemApiBridge.register(modBus, dist);
+		if (dist.isClient()) ScreenRenderBridge.register();
 		// The 1.21.11 API has no FabricDefaultAttributeRegistry.MODIFY.
 		ObjectBuilderBridge.register(modBus, modifier -> {
 		});
