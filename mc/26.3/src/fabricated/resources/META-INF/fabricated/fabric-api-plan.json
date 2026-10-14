@@ -2,7 +2,11 @@
   "fabricApiVersion": "0.162.0+26.3",
   "modules": {
     "fabric-advancement-api-v1": {
-      "plan": "passthrough"
+      "plan": "passthrough",
+      "skipMixins": [
+        "fabric-advancement-api-v1.mixins.json:ReloadableServerRegistriesMixin"
+      ],
+      "reason": "NeoForge 26.3 loads the reloadable registries through its own overload: Fabricated runs upstream's reload hooks around that call instead of upstream's mixin."
     },
     "fabric-api-base": {
       "plan": "native",

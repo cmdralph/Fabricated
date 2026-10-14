@@ -42,7 +42,8 @@
     "ServerPlayerMenuMixin",
     "SimpleMenuProviderMixin",
     "TagFileRemoveMixin",
-    "ConditionalOpsMixin"
+    "ConditionalOpsMixin",
+    "AdvancementReloadMixin"
   ],
   "injectors": {
     "defaultRequire": 1
