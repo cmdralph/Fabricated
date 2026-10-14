@@ -111,8 +111,9 @@ public final class MixinPreflight {
 	/**
 	 * Accessor and invoker methods of mixin interfaces that every target already declares publicly, with the same
 	 * descriptor (typically a method NeoForge added): Mixin cannot generate them and rejects the mixin, but the
-	 * existing method does the job. Returns the mixin classes rewritten with those methods as plain abstract methods,
-	 * which Mixin treats as shadows of the existing ones, by class file name; each repair is reported as a warning.
+	 * existing method does the job. Returns the mixin classes rewritten with those methods as synthetic {@code @Shadow}s
+	 * of the existing ones, by class file name; each repair is reported as a warning. (Synthetic, because Mixin treats an
+	 * interface with any other non-accessor method as an interface mixin, which may only target interfaces.)
 	 */
 	public Map<String, byte[]> duplicateAccessorRepairs(String configName, MixinConfigFile config, Refmap refmap, Set<String> skip,
 			List<PreflightFinding> out) {
@@ -148,6 +149,9 @@ public final class MixinPreflight {
 				if (kind == null || !targets.stream().allMatch(t -> declaresPublicInstance(t, method.name, method.desc))) continue;
 				if (method.visibleAnnotations != null) method.visibleAnnotations.removeIf(MixinPreflight::isAccessorAnnotation);
 				if (method.invisibleAnnotations != null) method.invisibleAnnotations.removeIf(MixinPreflight::isAccessorAnnotation);
+				if (method.visibleAnnotations == null) method.visibleAnnotations = new ArrayList<>();
+				method.visibleAnnotations.add(new AnnotationNode(SHADOW));
+				method.access |= Opcodes.ACC_SYNTHETIC;
 				changed = true;
 				out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), kind + " " + method.name + method.desc
 						+ " already exists publicly in " + targets.getFirst().name.replace('/', '.')

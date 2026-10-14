@@ -202,6 +202,11 @@ class MixinPreflightTest {
 		assertEquals(1, repairs.size(), repairs.toString());
 		assertEquals(Severity.WARN, repairs.getFirst().severity());
 
+		org.objectweb.asm.tree.ClassNode node = new org.objectweb.asm.tree.ClassNode();
+		new org.objectweb.asm.ClassReader(repaired.get("com/example/mixin/Public.class")).accept(node, 0);
+		org.objectweb.asm.tree.MethodNode tick = node.methods.getFirst();
+		assertTrue((tick.access & Opcodes.ACC_SYNTHETIC) != 0, "synthetic, so Mixin still treats the interface as an accessor mixin");
+		assertEquals(List.of("Lorg/spongepowered/asm/mixin/Shadow;"), tick.visibleAnnotations.stream().map(a -> a.desc).toList());
 		mod.put("com/example/mixin/Public", repaired.get("com/example/mixin/Public.class"));
 		List<PreflightFinding> findings = preflight.check("test.mixins.json", config, Refmap.EMPTY, Set.of());
 		assertEquals(1, findings.size(), findings.toString());
