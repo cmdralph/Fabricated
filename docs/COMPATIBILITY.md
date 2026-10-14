@@ -485,7 +485,7 @@ extra data to the client. Fabricated ships upstream's API and maps it onto that:
 Fabric mods' menus therefore open the same way NeoForge mods' menus do. The client CI run opens an extended
 menu with opening data from the integrated server.
 
-### `fabric-rendering-v1`, `fabric-screen-api-v1` and `fabric-sound-api-v1` on 26.x
+### `fabric-rendering-v1` (26.x), `fabric-screen-api-v1` and `fabric-sound-api-v1`
 
 Upstream's module loads, without the mixins that target code NeoForge rewrote:
 
