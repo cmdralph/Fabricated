@@ -127,6 +127,12 @@ check "fabricated-testmod-missing" logs/fabric-bridge-report.txt "missing depend
 check "fabricated-library-that-does-not-exist" logs/fabric-bridge-report.txt "missing dependency named"
 check "fabricatedMethodThatDoesNotExist" logs/fabric-bridge-report.txt "impossible mixin caught by pre-flight"
 check "intentional failure for Fabricated CI" logs/fabric-bridge-report.txt "throwing entrypoint isolated"
+# The test mods log "FABRICATED-TEST ... FAILED" when one of their own checks fails.
+if grep -q "FABRICATED-TEST .*FAILED" server.out; then
+	echo "FAIL: a test mod check reported a failure:"; grep "FABRICATED-TEST .*FAILED" server.out | head -n 5; fail=1
+else
+	echo "PASS: no test mod check reported a failure"
+fi
 if [ -n "$extra" ]; then
 	[ "$fail" -ne 0 ] && echo "NOTE: failures other than the server start are informational in this run."
 	exit "$required_fail"
