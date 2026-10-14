@@ -35,7 +35,8 @@
     "ServerPlayerMenuMixin",
     "SimpleMenuProviderMixin",
     "TagFileRemoveMixin",
-    "ConditionalOpsMixin"
+    "ConditionalOpsMixin",
+    "RegistryFriendlyByteBufMixin"
   ],
   "injectors": {
     "defaultRequire": 1
