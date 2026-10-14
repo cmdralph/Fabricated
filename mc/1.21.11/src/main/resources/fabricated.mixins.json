@@ -45,6 +45,7 @@
     "client.KeyMappingAccessor",
     "client.MultiPlayerGameModeMixin",
     "client.ClientNetworkAddonHolderMixin",
-    "client.ClientPayloadSendMixin"
+    "client.ClientPayloadSendMixin",
+    "client.ParticleResourcesMixin"
   ]
 }

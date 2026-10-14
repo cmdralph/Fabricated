@@ -64,8 +64,10 @@ public final class ClassIndex {
 	}
 
 	/**
-	 * @param extraInterfaces interfaces added to classes at load time (Fabric's {@code inject-interface}),
-	 *                        by target class; they take part in member resolution like declared interfaces
+	 * @param extraInterfaces what is added to classes at load time, by target class: interfaces (Fabric's
+	 *                        {@code inject-interface}, mixins' interfaces), which take part in member resolution like
+	 *                        declared ones, and members mixins add, written {@code name:desc} for fields and
+	 *                        {@code name(args)ret} for methods (treated as public)
 	 */
 	public ClassIndex(ClassBytesSource source, Map<String, List<String>> extraInterfaces) {
 		this.source = source.or(JDK);
@@ -107,7 +109,11 @@ public final class ClassIndex {
 			Collector collector = new Collector();
 			new ClassReader(data).accept(collector, ClassReader.SKIP_CODE | ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
 			List<String> interfaces = new ArrayList<>(collector.interfaces == null ? List.of() : List.of(collector.interfaces));
-			interfaces.addAll(extraInterfaces.getOrDefault(internalName, List.of()));
+			for (String extra : extraInterfaces.getOrDefault(internalName, List.of())) {
+				if (extra.indexOf('(') >= 0) collector.methods.putIfAbsent(extra, Opcodes.ACC_PUBLIC);
+				else if (extra.indexOf(':') >= 0) collector.fields.putIfAbsent(extra, Opcodes.ACC_PUBLIC);
+				else interfaces.add(extra);
+			}
 			return new ClassInfo(collector.name, collector.superName, List.copyOf(interfaces),
 					Collections.unmodifiableMap(collector.methods), Collections.unmodifiableMap(collector.fields));
 		} catch (RuntimeException e) {

@@ -104,6 +104,33 @@ class LinkageCheckerTest {
 		assertTrue(with.isEmpty(), with.toString());
 	}
 
+	@Test
+	void membersMixinsAddCountAsPresent() {
+		// A mixin into net/minecraft/Util adds field "added" and method extra()V, and shadows "count".
+		ClassWriter mixin = new ClassWriter(0);
+		mixin.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, "m/UtilMixin", null, "java/lang/Object", null);
+		AnnotationVisitor ann = mixin.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false);
+		AnnotationVisitor values = ann.visitArray("value");
+		values.visit(null, Type.getObjectType("net/minecraft/Util"));
+		values.visitEnd();
+		ann.visitEnd();
+		mixin.visitField(Opcodes.ACC_PUBLIC, "added", "Ljava/util/Map;", null, null).visitEnd();
+		var shadow = mixin.visitField(Opcodes.ACC_PRIVATE, "count", "I", null, null);
+		shadow.visitAnnotation("Lorg/spongepowered/asm/mixin/Shadow;", true).visitEnd();
+		shadow.visitEnd();
+		mixin.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, "extra", "()V", null, null).visitEnd();
+		mixin.visitEnd();
+
+		Map<String, List<String>> added = new java.util.HashMap<>();
+		LinkageAnalysis.mixinAdditions(mixin.toByteArray(), added);
+		assertEquals(List.of("added:Ljava/util/Map;", "extra()V"), added.get("net/minecraft/Util"));
+
+		ClassIndex index = new ClassIndex(Map.of("net/minecraft/Util", game())::get, added);
+		assertEquals(ClassIndex.Resolution.FOUND, index.resolveField("net/minecraft/Util", "added:Ljava/util/Map;"));
+		assertEquals(ClassIndex.Resolution.FOUND, index.resolveMethod("net/minecraft/Util", "extra()V"));
+		assertEquals(ClassIndex.Resolution.MISSING, index.resolveField("net/minecraft/Util", "added:I"), "fields resolve by name and type");
+	}
+
 	private static TranslatedMod mod(Path dir, String id, TestJars jar) throws Exception {
 		Path file = jar.fabricModJson(TestJars.modJson(id, "1.0", "")).write(dir.resolve(id + ".jar"));
 		Candidate c = new Candidate(file, id + "-hash", FabricModJsonParser.parse(TestJars.modJson(id, "1.0", "")), id + ".jar", null, 0,

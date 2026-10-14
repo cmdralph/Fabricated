@@ -136,7 +136,7 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 						for (String name : archive.classEntryNames()) {
 							if (!name.contains("/mixin/")) continue;
 							byte[] data = archive.read(name);
-							if (data != null) LinkageAnalysis.mixinInterfaces(data, interfaces);
+							if (data != null) LinkageAnalysis.mixinAdditions(data, interfaces);
 						}
 					} catch (IOException e) {
 						LOGGER.warn("Could not read Fabricated's own mixins: {}", e.getMessage());
