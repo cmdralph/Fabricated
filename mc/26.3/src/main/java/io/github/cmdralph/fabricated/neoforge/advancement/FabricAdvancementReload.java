@@ -58,7 +58,10 @@ public final class FabricAdvancementReload {
 			Supplier<CompletableFuture<RegistryAccess.Frozen>> load) {
 		Handles handles = HANDLES;
 		if (handles == null) return load.get();
-		invoke(() -> handles.start().invokeExact(manager, provider));
+		// Block bodies: an expression lambda would make each invokeExact call site return Object instead of void.
+		invoke(() -> {
+			handles.start().invokeExact(manager, provider);
+		});
 		return load.get()
 				.thenApply(registries -> {
 					invoke(() -> {
@@ -68,7 +71,9 @@ public final class FabricAdvancementReload {
 					});
 					return registries;
 				})
-				.whenComplete((registries, error) -> invoke(() -> handles.end().invokeExact(manager)));
+				.whenComplete((registries, error) -> invoke(() -> {
+					handles.end().invokeExact(manager);
+				}));
 	}
 
 	@FunctionalInterface
