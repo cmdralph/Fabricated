@@ -26,8 +26,8 @@ import io.github.cmdralph.fabricated.core.metadata.FabricModMetadata.MixinEntry;
  * }}
  * }</pre>
  *
- * @param skipMixins      mixins to leave out ({@code "config.json:Name"} or {@code "Name"}), or one handler method of a
- *                        mixin ({@code "config.json:Name#handler"}), as the config's setting
+ * @param skipMixins      mixins to leave out ({@code "config.json:Name"} or {@code "Name"}), or the methods and
+ *                        fields of one name in a mixin ({@code "config.json:Name#member"}), as the config's setting
  * @param mixins          mixin configs to use instead of the top-level {@code mixins}, or null to keep those
  * @param entrypoints     entrypoints added after the mod's own, by key
  * @param skipEntrypoints keys of the mod's own entrypoints to leave out
