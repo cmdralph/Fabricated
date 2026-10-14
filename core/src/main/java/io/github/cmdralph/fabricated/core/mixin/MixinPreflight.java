@@ -9,6 +9,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import io.github.cmdralph.fabricated.core.bytecode.Annotations;
 import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
@@ -60,6 +62,10 @@ public final class MixinPreflight {
 	private static final String OPERATION = "Lcom/llamalad7/mixinextras/injector/wrapoperation/Operation;";
 	private static final String DEFINITION = "Lcom/llamalad7/mixinextras/expression/Definition;";
 	private static final String DEFINITIONS = "Lcom/llamalad7/mixinextras/expression/Definitions;";
+	/** The name prefix javac gives the fields holding the local variables an anonymous or local class captures. */
+	private static final String CAPTURED_PREFIX = "val$";
+	/** javac's name for a lambda body: the enclosing method's name and the lambda's index in the class. */
+	private static final Pattern LAMBDA = Pattern.compile("lambda\\$(.+)\\$\\d+");
 	private static final Set<String> GAME_PREFIXES = Set.of("net/minecraft/", "com/mojang/blaze3d/");
 
 	private final ClassIndex game;
@@ -109,13 +115,22 @@ public final class MixinPreflight {
 	}
 
 	/**
-	 * Accessor and invoker methods of mixin interfaces that every target already declares publicly, with the same
-	 * descriptor (typically a method NeoForge added): Mixin cannot generate them and rejects the mixin, but the
-	 * existing method does the job. Returns the mixin classes rewritten with those methods as synthetic {@code @Shadow}s
-	 * of the existing ones, by class file name; each repair is reported as a warning. (Synthetic, because Mixin treats an
-	 * interface with any other non-accessor method as an interface mixin, which may only target interfaces.)
+	 * Mixins that Mixin would reject but that can be pointed at what the game really has, before pre-flight checks them.
+	 * Returns the mixin classes rewritten, by class file name; each repair is reported as a warning.
+	 * <ul>
+	 * <li>An accessor or invoker that every target already declares publicly, with the same descriptor (typically a
+	 * method NeoForge added): Mixin cannot generate it, but the existing method does the job, so it becomes a
+	 * synthetic {@code @Shadow} of it. (Synthetic, because Mixin treats an interface with any other non-accessor
+	 * method as an interface mixin, which may only target interfaces.)</li>
+	 * <li>An {@code @Accessor} of a local variable an anonymous class captured ({@code val$name}), where the game names
+	 * that field after the decompiled variable instead (NeoForge's 1.21.11 build, for example): it is pointed at the
+	 * one captured field of the same type in each target.</li>
+	 * <li>An injector targeting a lambda ({@code lambda$enclosing$3}) that the game numbers differently (NeoForge's
+	 * 1.21.11 build is compiled from decompiled code, and NeoForge's patches add lambdas): it is pointed at the one
+	 * lambda of the same enclosing method with the same descriptor.</li>
+	 * </ul>
 	 */
-	public Map<String, byte[]> duplicateAccessorRepairs(String configName, MixinConfigFile config, Refmap refmap, Set<String> skip,
+	public Map<String, byte[]> repairs(String configName, MixinConfigFile config, Refmap refmap, Set<String> skip,
 			List<PreflightFinding> out) {
 		Map<String, byte[]> repaired = new TreeMap<>();
 		for (String mixin : config.mixinsFor(clientSide)) {
@@ -129,7 +144,6 @@ public final class MixinPreflight {
 			} catch (IOException | RuntimeException e) {
 				continue;
 			}
-			if ((node.access & Opcodes.ACC_INTERFACE) == 0) continue;
 			Context ctx = new Context(configName, internal.replace('/', '.'), config, refmap, false, out);
 			List<ClassNode> targets = new ArrayList<>();
 			for (String target : targetsOf(node, ctx)) {
@@ -144,18 +158,36 @@ public final class MixinPreflight {
 			if (targets.isEmpty()) continue;
 			boolean changed = false;
 			for (MethodNode method : node.methods) {
-				if ((method.access & Opcodes.ACC_STATIC) != 0) continue;
-				String kind = Annotations.find(method, ACCESSOR) != null ? "@Accessor" : Annotations.find(method, INVOKER) != null ? "@Invoker" : null;
-				if (kind == null || !targets.stream().allMatch(t -> declaresPublicInstance(t, method.name, method.desc))) continue;
-				if (method.visibleAnnotations != null) method.visibleAnnotations.removeIf(MixinPreflight::isAccessorAnnotation);
-				if (method.invisibleAnnotations != null) method.invisibleAnnotations.removeIf(MixinPreflight::isAccessorAnnotation);
-				if (method.visibleAnnotations == null) method.visibleAnnotations = new ArrayList<>();
-				method.visibleAnnotations.add(new AnnotationNode(SHADOW));
-				method.access |= Opcodes.ACC_SYNTHETIC;
-				changed = true;
-				out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), kind + " " + method.name + method.desc
-						+ " already exists publicly in " + targets.getFirst().name.replace('/', '.')
-						+ " (added by NeoForge or this Minecraft version); the mixin uses that method instead of generating one", ""));
+				for (AnnotationNode ann : allAnnotations(method)) {
+					if (!isInjector(ann.desc)) continue;
+					for (String lambda : lambdaRepairs(ann, targets, ctx)) {
+						changed = true;
+						out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@" + simpleName(ann.desc) + " " + method.name
+								+ " targets " + lambda + ", which this game build numbers differently", ""));
+					}
+				}
+				if ((node.access & Opcodes.ACC_INTERFACE) == 0 || (method.access & Opcodes.ACC_STATIC) != 0) continue;
+				AnnotationNode accessor = Annotations.find(method, ACCESSOR);
+				String kind = accessor != null ? "@Accessor" : Annotations.find(method, INVOKER) != null ? "@Invoker" : null;
+				if (kind == null) continue;
+				if (targets.stream().allMatch(t -> declaresPublicInstance(t, method.name, method.desc))) {
+					if (method.visibleAnnotations != null) method.visibleAnnotations.removeIf(MixinPreflight::isAccessorAnnotation);
+					if (method.invisibleAnnotations != null) method.invisibleAnnotations.removeIf(MixinPreflight::isAccessorAnnotation);
+					if (method.visibleAnnotations == null) method.visibleAnnotations = new ArrayList<>();
+					method.visibleAnnotations.add(new AnnotationNode(SHADOW));
+					method.access |= Opcodes.ACC_SYNTHETIC;
+					changed = true;
+					out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), kind + " " + method.name + method.desc
+							+ " already exists publicly in " + targets.getFirst().name.replace('/', '.')
+							+ " (added by NeoForge or this Minecraft version); the mixin uses that method instead of generating one", ""));
+				} else if (accessor != null) {
+					String field = capturedFieldRepair(method, accessor, targets, ctx);
+					if (field == null) continue;
+					changed = true;
+					out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@Accessor " + method.name + method.desc
+							+ " targets the captured variable field " + field + " in " + targets.getFirst().name.replace('/', '.')
+							+ ", which this game build names differently", ""));
+				}
 			}
 			if (!changed) continue;
 			ClassWriter writer = new ClassWriter(0);
@@ -163,6 +195,81 @@ public final class MixinPreflight {
 			repaired.put(internal + ".class", writer.toByteArray());
 		}
 		return repaired;
+	}
+
+	/**
+	 * Points the selectors of an injector that name a missing lambda ({@code lambda$enclosing$N} with a descriptor) at
+	 * the only lambda of the same enclosing method and descriptor that every target has under one other name, and
+	 * returns the selectors' original names.
+	 */
+	private static List<String> lambdaRepairs(AnnotationNode injector, List<ClassNode> targets, Context ctx) {
+		if (!(Annotations.value(injector, "method") instanceof List<?> selectors)) return List.of();
+		List<String> repaired = new ArrayList<>();
+		next:
+		for (int i = 0; i < selectors.size(); i++) {
+			if (!(selectors.get(i) instanceof String raw)) continue;
+			MemberRef ref = MemberRef.parse(ctx.resolve(raw));
+			Matcher lambda = ref.fuzzy() || ref.name() == null || ref.desc() == null ? null : LAMBDA.matcher(ref.name());
+			if (lambda == null || !lambda.matches()) continue;
+			String prefix = "lambda$" + lambda.group(1) + "$";
+			String renamed = null;
+			for (ClassNode target : targets) {
+				String only = null;
+				for (MethodNode m : target.methods) {
+					if (!m.desc.equals(ref.desc())) continue;
+					if (m.name.equals(ref.name())) continue next; // present: nothing to repair
+					if (!m.name.startsWith(prefix) || !LAMBDA.matcher(m.name).matches()) continue;
+					if (only != null) {
+						only = null;
+						break; // ambiguous
+					}
+					only = m.name;
+				}
+				if (only == null || (renamed != null && !renamed.equals(only))) {
+					renamed = null;
+					break;
+				}
+				renamed = only;
+			}
+			if (renamed == null) continue;
+			@SuppressWarnings("unchecked")
+			List<Object> values = (List<Object>) selectors;
+			values.set(i, renamed + ref.desc());
+			repaired.add(ref.name() + ref.desc());
+		}
+		return repaired;
+	}
+
+	/**
+	 * Points an {@code @Accessor} of a missing captured variable field ({@code val$name}) at the only captured field of
+	 * the same type that every target has under one other name, and returns the original field name; or returns
+	 * {@code null} and changes nothing.
+	 */
+	private static String capturedFieldRepair(MethodNode method, AnnotationNode accessor, List<ClassNode> targets, Context ctx) {
+		String explicit = Annotations.value(accessor, "value") instanceof String s && !s.isEmpty() ? s : null;
+		if (explicit == null) return null;
+		MemberRef ref = MemberRef.parse(ctx.resolve(explicit));
+		String name = ref.nameOr(explicit);
+		String desc = ref.fieldDescOr(accessorFieldDesc(method));
+		if (!name.startsWith(CAPTURED_PREFIX) || desc == null) return null;
+		String renamed = null;
+		for (ClassNode target : targets) {
+			String only = null;
+			for (FieldNode f : target.fields) {
+				if (f.name.equals(name)) return null; // present: nothing to repair
+				if ((f.access & Opcodes.ACC_STATIC) != 0 || !f.desc.equals(desc)) continue;
+				if (!f.name.startsWith(CAPTURED_PREFIX) && (f.access & Opcodes.ACC_SYNTHETIC) == 0) continue;
+				if (only != null) return null; // ambiguous
+				only = f.name;
+			}
+			if (only == null || (renamed != null && !renamed.equals(only))) return null;
+			renamed = only;
+		}
+		if (renamed == null) return null;
+		for (int i = 0; i + 1 < accessor.values.size(); i += 2) {
+			if ("value".equals(accessor.values.get(i))) accessor.values.set(i + 1, renamed);
+		}
+		return name;
 	}
 
 	private static boolean isAccessorAnnotation(AnnotationNode annotation) {

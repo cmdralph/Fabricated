@@ -152,10 +152,25 @@
       "reason": "Fabric's renderer API replaces the block model pipeline that NeoForge owns; mods that require it need their NeoForge build."
     },
     "fabric-rendering-fluids-v1": {
-      "plan": "passthrough"
+      "plan": "passthrough",
+      "skipMixins": [
+        "fabric-rendering-fluids-v1.mixins.json:LiquidBlockRendererMixin#modTintColor",
+        "fabric-rendering-fluids-v1.mixins.json:LiquidBlockRendererMixin#modifyNonOverlayCheck"
+      ],
+      "reason": "NeoForge tints fluids through their fluid type and decides where they show their overlay texture with BlockState.shouldDisplayFluidOverlay, instead of the code upstream modifies: a Fabric fluid render handler's color and FluidRenderingRegistry.setBlockTransparency keep NeoForge's behavior. Custom fluid renderers and sprites work."
     },
     "fabric-rendering-v1": {
-      "plan": "passthrough"
+      "plan": "passthrough",
+      "skipMixins": [
+        "fabric-rendering-v1.mixins.json:GuiMixin",
+        "fabric-rendering-v1.mixins.json:GuiRendererMixin",
+        "fabric-rendering-v1.mixins.json:GameRendererMixin#guiRendererReady",
+        "fabric-rendering-v1.mixins.json:DebugOptionsScreenListWidgetMixin",
+        "fabric-rendering-v1.mixins.json:RenderPipelineBuilderMixin#copyUsePipelineDrawModeForGuiToSnippet",
+        "fabric-rendering-v1.mixins.json:BlockColorsMixin#get",
+        "fabric-rendering-v1.mixins.json:BlockColorsMixin#blockColors"
+      ],
+      "reason": "NeoForge draws the HUD in layers: Fabricated runs Fabric's HUD elements from NeoForge's vanilla layers and fires HudRenderCallback after them instead of upstream's HUD mixin. NeoForge keeps block colors in a map by block: Fabricated looks colors up there instead of upstream's method. Picture-in-picture renderers registered with Fabric are not used (NeoForge rebuilt that renderer), the debug options screen keeps vanilla's sorting and search, and render pipeline snippets don't carry Fabric's GUI draw mode flag (NeoForge added a field to them); pipelines do."
     },
     "fabric-resource-conditions-api-v1": {
       "plan": "passthrough",
@@ -195,7 +210,17 @@
       "reason": "NeoForge asks each sound instance for its audio stream: Fabricated uses a Fabric sound instance's own stream there instead of upstream's redirect."
     },
     "fabric-tag-api-v1": {
-      "plan": "passthrough"
+      "plan": "passthrough",
+      "skipMixins": [
+        "fabric-tag-api-v1.mixins.json:TagFileMixin#remove",
+        "fabric-tag-api-v1.mixins.json:TagFileMixin#modifyCodec",
+        "fabric-tag-api-v1.mixins.json:TagLoaderMixin#loadRemoveEntries",
+        "fabric-tag-api-v1.mixins.json:TagLoaderMixin#scopeIdAroundOrderByDependencies",
+        "fabric-tag-api-v1.mixins.json:TagLoaderMixin#addTagRemovalReferencesToDependencySorter",
+        "fabric-tag-api-v1.mixins.json:TagLoaderMixin#removeEntriesFromTags",
+        "fabric-tag-api-v1.mixins.json:TagLoaderMixin#removeTagRemovalReferencesWhenFinished"
+      ],
+      "reason": "NeoForge tag files already have a remove list, which NeoForge applies: Fabricated adds fabric:remove entries to it instead of upstream's own removal handling."
     },
     "fabric-transfer-api-v1": {
       "plan": "native",

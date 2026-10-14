@@ -364,7 +364,7 @@ class PipelineTest {
 		Pipeline.Result result = Pipeline.run(input(game, List.of(jar), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
 		String report = result.report().render();
 		assertTrue(result.runtime().isModLoaded("part-mod"), "pre-flight checks the mixin without the handler: " + report);
-		assertTrue(report.contains("has no method gone to leave out"), report);
+		assertTrue(report.contains("has no method or field gone to leave out"), report);
 		try (SafeArchive overlay = SafeArchive.open(result.mods().getFirst().translated().overlay(), ArchiveLimits.DEFAULTS)) {
 			assertNull(overlay.read("part.mixins.json"), "the mixin itself stays in its config");
 			ClassNode stripped = new ClassNode();

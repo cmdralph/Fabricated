@@ -172,6 +172,103 @@ class MixinPreflightTest {
 		assertTrue(findings.getFirst().message().contains("passes [2]"), findings.toString());
 	}
 
+	/** An anonymous game class holding captured fields of type Map, named as given. */
+	private static byte[] capturingClass(String name, String... capturedFields) {
+		ClassWriter cw = new ClassWriter(0);
+		cw.visit(Opcodes.V21, Opcodes.ACC_FINAL | Opcodes.ACC_SUPER, name, null, "java/lang/Object", null);
+		for (String field : capturedFields) {
+			cw.visitField(Opcodes.ACC_FINAL | Opcodes.ACC_SYNTHETIC, field, "Ljava/util/Map;", null, null).visitEnd();
+		}
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	/** An accessor interface on {@code target} with a getter and a setter for field {@code field} of type Map. */
+	private static byte[] capturedFieldAccessor(String name, String target, String field) {
+		ClassWriter cw = new ClassWriter(0);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT | Opcodes.ACC_INTERFACE, name, null, "java/lang/Object", null);
+		AnnotationVisitor m = cw.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false);
+		AnnotationVisitor targets = m.visitArray("targets");
+		targets.visit(null, target.replace('/', '.'));
+		targets.visitEnd();
+		m.visitEnd();
+		for (String desc : List.of("()Ljava/util/Map;", "(Ljava/util/Map;)V")) {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, desc.startsWith("()") ? "getTags" : "setTags", desc, null, null);
+			AnnotationVisitor accessor = mv.visitAnnotation("Lorg/spongepowered/asm/mixin/gen/Accessor;", true);
+			accessor.visit("value", field);
+			accessor.visitEnd();
+			mv.visitEnd();
+		}
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	@Test
+	void accessorsOfACapturedVariableFollowTheGamesFieldName() throws Exception {
+		String anonymous = "net/minecraft/core/Registry$Tags$2";
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Captured", capturedFieldAccessor("com/example/mixin/Captured", anonymous, "val$tags")));
+		ClassIndex game = new ClassIndex(Map.of(anonymous, capturingClass(anonymous, "val$p_363771_"))::get);
+		MixinPreflight preflight = new MixinPreflight(game, mod::get, ClassBytesSource.EMPTY, false);
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Captured"));
+		assertEquals(Severity.FAIL, preflight.check("test.mixins.json", config, Refmap.EMPTY, Set.of()).getFirst().severity(),
+				"without the repair, Mixin would not find the field");
+
+		List<PreflightFinding> repairs = new java.util.ArrayList<>();
+		Map<String, byte[]> repaired = preflight.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), repairs);
+		assertEquals(Set.of("com/example/mixin/Captured.class"), repaired.keySet());
+		assertEquals(2, repairs.size(), repairs.toString());
+		mod.put("com/example/mixin/Captured", repaired.get("com/example/mixin/Captured.class"));
+		assertTrue(preflight.check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty(), "both accessors now find val$p_363771_");
+
+		// Two captured fields of the type: which one was meant can't be known, so nothing is repaired.
+		ClassIndex ambiguous = new ClassIndex(Map.of(anonymous, capturingClass(anonymous, "val$p_1_", "val$p_2_"))::get);
+		Map<String, byte[]> original = Map.of("com/example/mixin/Captured", capturedFieldAccessor("com/example/mixin/Captured", anonymous, "val$tags"));
+		assertTrue(new MixinPreflight(ambiguous, original::get, ClassBytesSource.EMPTY, false)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new java.util.ArrayList<>()).isEmpty());
+	}
+
+	/** {@link #TARGET} with synthetic lambda bodies of the given names, all {@code (I)V}. */
+	private static byte[] lambdaTarget(String... lambdas) {
+		ClassWriter cw = new ClassWriter(0);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		for (String lambda : lambdas) {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, lambda, "(I)V", null, null);
+			mv.visitCode();
+			mv.visitInsn(Opcodes.RETURN);
+			mv.visitMaxs(0, 1);
+			mv.visitEnd();
+		}
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	@Test
+	void injectorsIntoALambdaFollowTheGamesNumbering() throws Exception {
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Lambda",
+				mixin("com/example/mixin/Lambda", false, cw -> inject(cw, "h", "lambda$tick$41(I)V", "HEAD", null, 1, null))));
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Lambda"));
+		ClassIndex game = new ClassIndex(Map.of(TARGET, lambdaTarget("lambda$tick$3", "lambda$other$4"))::get);
+		MixinPreflight preflight = new MixinPreflight(game, mod::get, ClassBytesSource.EMPTY, false);
+		assertTrue(preflight.check("test.mixins.json", config, Refmap.EMPTY, Set.of()).stream().anyMatch(f -> f.message().contains("does not exist")));
+
+		List<PreflightFinding> repairs = new java.util.ArrayList<>();
+		Map<String, byte[]> repaired = preflight.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), repairs);
+		assertEquals(1, repairs.size(), repairs.toString());
+		org.objectweb.asm.tree.ClassNode node = new org.objectweb.asm.tree.ClassNode();
+		new org.objectweb.asm.ClassReader(repaired.get("com/example/mixin/Lambda.class")).accept(node, 0);
+		assertEquals(List.of("lambda$tick$3(I)V"), io.github.cmdralph.fabricated.core.bytecode.Annotations.value(
+				io.github.cmdralph.fabricated.core.bytecode.Annotations.find(node.methods.getFirst(), INJECT), "method"));
+		mod.put("com/example/mixin/Lambda", repaired.get("com/example/mixin/Lambda.class"));
+		assertTrue(preflight.check("test.mixins.json", config, Refmap.EMPTY, Set.of()).stream().noneMatch(f -> f.message().contains("does not exist")));
+
+		// Two lambdas of tick with that descriptor: which one was meant can't be known.
+		ClassIndex ambiguous = new ClassIndex(Map.of(TARGET, lambdaTarget("lambda$tick$3", "lambda$tick$5"))::get);
+		Map<String, byte[]> original = Map.of("com/example/mixin/Lambda",
+				mixin("com/example/mixin/Lambda", false, cw -> inject(cw, "h", "lambda$tick$41(I)V", "HEAD", null, 1, null)));
+		assertTrue(new MixinPreflight(ambiguous, original::get, ClassBytesSource.EMPTY, false)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new java.util.ArrayList<>()).isEmpty());
+	}
+
 	/** An accessor interface on {@link #TARGET} with one non-static {@code @Invoker} method. */
 	private static byte[] invokerInterface(String name, String method, String desc) {
 		ClassWriter cw = new ClassWriter(0);
@@ -197,7 +294,7 @@ class MixinPreflightTest {
 		MixinPreflight preflight = new MixinPreflight(game, mod::get, ClassBytesSource.EMPTY, false);
 		MixinConfigFile config = MixinConfigFile.parse(config(true, "Public", "Private"));
 		List<PreflightFinding> repairs = new java.util.ArrayList<>();
-		Map<String, byte[]> repaired = preflight.duplicateAccessorRepairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), repairs);
+		Map<String, byte[]> repaired = preflight.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), repairs);
 		assertEquals(Set.of("com/example/mixin/Public.class"), repaired.keySet(), "only a public method of the target is used instead");
 		assertEquals(1, repairs.size(), repairs.toString());
 		assertEquals(Severity.WARN, repairs.getFirst().severity());

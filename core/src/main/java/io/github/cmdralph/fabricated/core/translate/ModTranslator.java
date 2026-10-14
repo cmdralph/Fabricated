@@ -24,6 +24,7 @@ import java.util.stream.Collectors;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.ClassWriter;
+import org.objectweb.asm.FieldVisitor;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 
@@ -258,14 +259,14 @@ public final class ModTranslator {
 				byte[] mixin = files.read(path);
 				if (mixin == null) continue;
 				Set<String> missing = new TreeSet<>(handlers.getValue());
-				overlay.put(path, withoutMethods(mixin, handlers.getValue(), missing));
+				overlay.put(path, withoutMembers(mixin, handlers.getValue(), missing));
 				for (String method : missing) {
 					findings.add(new PreflightFinding(Severity.WARN, entry.config(), config.internalName(handlers.getKey()).replace('/', '.'),
-							"has no method " + method + " to leave out", ""));
+							"has no method or field " + method + " to leave out", ""));
 				}
 			}
 			Set<String> skip = withDependents(entry.config(), config, wholeSkips, translated, findings);
-			overlay.putAll(preflight.duplicateAccessorRepairs(entry.config(), config, refmap, skip, findings));
+			overlay.putAll(preflight.repairs(entry.config(), config, refmap, skip, findings));
 			if (!override.ignorePreflight()) {
 				findings.addAll(preflight.check(entry.config(), config, refmap, skip));
 			}
@@ -349,7 +350,7 @@ public final class ModTranslator {
 
 	/**
 	 * Whole mixins to leave out of {@code configName}. Skips apply as {@code "config.json:Name"} (one config) or
-	 * {@code "Name"} (every config); {@code "Name#handler"} leaves out one handler method instead (see
+	 * {@code "Name"} (every config); {@code "Name#member"} leaves out the methods and fields of that name instead (see
 	 * {@link #handlerSkipsFor}).
 	 */
 	static Set<String> skipsFor(String configName, MixinConfigFile config, Set<String> configured) {
@@ -385,15 +386,22 @@ public final class ModTranslator {
 		return colon >= 0 ? skip.substring(colon + 1) : skip;
 	}
 
-	/** {@code data} without the methods named in {@code names}; the names found are removed from {@code missing}. */
-	static byte[] withoutMethods(byte[] data, Set<String> names, Set<String> missing) {
+	/** {@code data} without the methods and fields named in {@code names}; the names found are removed from {@code missing}. */
+	static byte[] withoutMembers(byte[] data, Set<String> names, Set<String> missing) {
 		ClassReader reader = new ClassReader(data);
-		// A fresh constant pool, so nothing the removed methods referred to is left behind (see withDependents).
+		// A fresh constant pool, so nothing the removed members referred to is left behind (see withDependents).
 		ClassWriter writer = new ClassWriter(0);
 		reader.accept(new ClassVisitor(Opcodes.ASM9, writer) {
 			@Override
 			public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
 				if (!names.contains(name)) return super.visitMethod(access, name, descriptor, signature, exceptions);
+				missing.remove(name);
+				return null;
+			}
+
+			@Override
+			public FieldVisitor visitField(int access, String name, String descriptor, String signature, Object value) {
+				if (!names.contains(name)) return super.visitField(access, name, descriptor, signature, value);
 				missing.remove(name);
 				return null;
 			}

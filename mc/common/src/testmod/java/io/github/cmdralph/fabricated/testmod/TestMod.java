@@ -51,10 +51,10 @@ public final class TestMod implements ModInitializer, DedicatedServerModInitiali
 					&& api.isFabricModLoaded("fabricated-testmod")
 					&& api.fabricApiModule("fabric-api-base").map(m -> m.status() == FabricApiModule.Status.NATIVE).orElse(false);
 			if (ok) LOGGER.info("FABRICATED-TEST api OK");
+			else LOGGER.error("FABRICATED-TEST api FAILED: {}", api.fabricMod("fabricated-testmod"));
 			if (FabricLoader.getInstance().getEnvironmentType() == EnvType.CLIENT && ModMenuEntry.registered()) {
 				LOGGER.info("FABRICATED-TEST modmenu config screen OK");
 			}
-			else LOGGER.error("FABRICATED-TEST api FAILED: {}", api.fabricMod("fabricated-testmod"));
 		}));
 
 		FabricLoader loader = FabricLoader.getInstance();

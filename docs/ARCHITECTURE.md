@@ -178,10 +178,15 @@ Each mod's entrypoints run inside a guard that records mod id, entrypoint key, c
    * `required` or default-require mixins that **would fail** cause the **whole mod to be disabled before launch**, with a report like *"`examplemod`: mixin `ExampleMixin` targets `ItemStack#getTooltipLines` → `INVOKE List.add`, which NeoForge removed. Ask the author for a NeoForge build, or set `skipMixins` if this mixin is cosmetic."*
    * Non-required mixins that would fail produce a warning only.
 5. **User overrides:** `skipMixins` drops entries from the cached copy of the mixin config JSON, never the original.
-   An entry `"config.json:Name#handler"` instead writes a copy of that mixin class without the handler method
-   into the overlay jar; pre-flight checks the copy.
+   An entry `"config.json:Name#member"` instead writes a copy of that mixin class without the methods or fields of
+   that name (a handler, or a `@Shadow` of a field NeoForge replaced) into the overlay jar; pre-flight checks the copy.
 6. **Runtime attribution:** a mixin failure that slips past pre-flight is enriched through `ICrashReportHeader`/`CrashReportCallables` with the owning Fabric mod id and a suggested fix.
-7. **No heuristic rewriting.** An optional, *data-driven* retarget table (`mc/<ver>/retargets.json`: exact `from` → `to` member pairs) is supported, so known NeoForge-patched methods can be redirected explicitly and reviewably. It starts empty and grows from compatibility testing.
+7. **No guessing.** Mixins are rewritten only where the right member is certain: javac's names for synthetic
+   members differ in NeoForge's recompiled build while the member is the same, so pre-flight points an
+   `@Accessor("val$name")` at the target's only captured field of that type, an injector into `lambda$method$N` at
+   the target's only lambda of that enclosing method with the exact descriptor, and an accessor duplicating a
+   public method the target already has at that method. Each repair is a warning in the report; anything ambiguous
+   is left to fail.
 
 ---
 

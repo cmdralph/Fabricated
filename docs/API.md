@@ -112,7 +112,7 @@ A Fabric mod can tell Fabricated how to run it on NeoForge, without a NeoForge p
 
 | Key | Effect under Fabricated |
 |---|---|
-| `skipMixins` | Leave these mixins out, written `"config.json:Name"` or `"Name"`. Use it for mixins whose target NeoForge changed and whose feature NeoForge already provides. `"config.json:Name#handler"` leaves out only that handler method, keeping the mixin's other injections. |
+| `skipMixins` | Leave these mixins out, written `"config.json:Name"` or `"Name"`. Use it for mixins whose target NeoForge changed and whose feature NeoForge already provides. `"config.json:Name#member"` leaves out only the methods or fields of that name (a handler, or a `@Shadow` of a field NeoForge replaced), keeping the mixin's other injections. |
 | `mixins` | Use these mixin configs instead of the top-level `mixins` list (same format). The configs must be in the jar. A config owns its whole package, so give a NeoForge-specific config its own package. |
 | `entrypoints` | Entrypoints added after the mod's own, same format as Fabric's `entrypoints`. Use them for a NeoForge-specific initializer. They run with the other entrypoints, never during translation. |
 | `skipEntrypoints` | Keys of the mod's own entrypoints to leave out. Combine with `entrypoints` to replace one. |
