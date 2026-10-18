@@ -3,6 +3,8 @@ package net.fabricmc.fabric.impl.networking.client;
 import java.util.HashSet;
 import java.util.Set;
 
+import org.jspecify.annotations.Nullable;
+
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.client.player.LocalPlayer;
@@ -19,6 +21,7 @@ import net.fabricmc.fabric.impl.networking.PayloadTypeRegistryImpl;
 
 /** Client play-phase networking state. */
 public final class ClientPlayNetworkAddon extends ChanneledNetworkAddon<ClientPlayNetworking.PlayPayloadHandler<?>> {
+	private volatile @Nullable Set<Identifier> sendable;
 	private final ClientPacketListener listener;
 
 	ClientPlayNetworkAddon(ClientPacketListener listener) {
@@ -28,9 +31,14 @@ public final class ClientPlayNetworkAddon extends ChanneledNetworkAddon<ClientPl
 
 	@Override
 	public Set<Identifier> getSendableChannels() {
-		Set<Identifier> channels = new HashSet<>();
-		for (Identifier id : PayloadTypeRegistryImpl.SERVERBOUND_PLAY.ids()) {
-			if (this.listener.hasChannel(id)) channels.add(id);
+		// Channels are negotiated before the play phase, so this is worked out once.
+		Set<Identifier> channels = this.sendable;
+		if (channels == null) {
+			Set<Identifier> found = new HashSet<>();
+			for (Identifier id : PayloadTypeRegistryImpl.SERVERBOUND_PLAY.ids()) {
+				if (this.listener.hasChannel(id)) found.add(id);
+			}
+			this.sendable = channels = Set.copyOf(found);
 		}
 		return channels;
 	}

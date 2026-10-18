@@ -33,6 +33,8 @@ public final class PayloadTypeRegistryImpl<B extends FriendlyByteBuf> implements
 	private final String description;
 	private final Map<Identifier, CustomPacketPayload.TypeAndCodec<? super B, ? extends CustomPacketPayload>> types = new LinkedHashMap<>();
 	private volatile boolean locked;
+	/** Everything registered, once locked: lookups (on every payload sent) then take no lock. */
+	private volatile @Nullable Map<Identifier, CustomPacketPayload.TypeAndCodec<? super B, ? extends CustomPacketPayload>> frozen;
 
 	private PayloadTypeRegistryImpl(String description) {
 		this.description = description;
@@ -64,6 +66,8 @@ public final class PayloadTypeRegistryImpl<B extends FriendlyByteBuf> implements
 	}
 
 	public CustomPacketPayload.@Nullable TypeAndCodec<? super B, ? extends CustomPacketPayload> get(Identifier id) {
+		Map<Identifier, CustomPacketPayload.TypeAndCodec<? super B, ? extends CustomPacketPayload>> registered = this.frozen;
+		if (registered != null) return registered.get(id);
 		synchronized (this.types) {
 			return this.types.get(id);
 		}
@@ -73,12 +77,15 @@ public final class PayloadTypeRegistryImpl<B extends FriendlyByteBuf> implements
 	public Collection<CustomPacketPayload.TypeAndCodec<? super B, ? extends CustomPacketPayload>> lock() {
 		synchronized (this.types) {
 			this.locked = true;
+			this.frozen = Map.copyOf(this.types);
 			return List.copyOf(this.types.values());
 		}
 	}
 
 	/** Ids registered so far. */
 	public java.util.Set<Identifier> ids() {
+		Map<Identifier, CustomPacketPayload.TypeAndCodec<? super B, ? extends CustomPacketPayload>> registered = this.frozen;
+		if (registered != null) return registered.keySet();
 		synchronized (this.types) {
 			return java.util.Set.copyOf(this.types.keySet());
 		}
