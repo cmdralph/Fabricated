@@ -27,6 +27,8 @@ import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.FieldVisitor;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
+import org.objectweb.asm.commons.ClassRemapper;
+import org.objectweb.asm.commons.Remapper;
 
 import io.github.cmdralph.fabricated.core.accesswidener.AccessTransformerConverter;
 import io.github.cmdralph.fabricated.core.accesswidener.AccessWidenerException;
@@ -120,7 +122,14 @@ public final class ModTranslator {
 					}
 				}
 				Map<String, byte[]> view = remapped;
-				FileView files = name -> view != null ? view.get(name) : archive.read(name);
+				// Mixin classes and configs are read several times; reading an entry again would count against the
+				// archive's decompression limit again.
+				Map<String, byte[]> read = new HashMap<>();
+				FileView files = view != null ? view::get : name -> {
+					byte[] data = read.get(name);
+					if (data == null && !read.containsKey(name)) read.put(name, data = archive.read(name));
+					return data;
+				};
 
 				Map<String, byte[]> overlay = new TreeMap<>();
 				List<PreflightFinding> findings = new ArrayList<>();
@@ -146,7 +155,8 @@ public final class ModTranslator {
 					}
 				}
 
-				Set<String> environmentClasses = environmentClasses(remapped != null ? remapped.keySet() : archive.classEntryNames(), files);
+				Set<String> environmentClasses = remapped != null ? environmentClasses(remapped.keySet(), files)
+						: environmentClasses(archive.classEntryNames(), archive::read);
 
 				FabricModMetadata md = candidate.metadata();
 				ModsTomlWriter.Spec spec = new ModsTomlWriter.Spec(neoId, md.getVersion().getFriendlyString(), md.getName(),
@@ -333,9 +343,9 @@ public final class ModTranslator {
 				if (all.contains(mixin)) continue;
 				byte[] data = files.read(config.internalName(mixin) + ".class");
 				if (data == null) continue;
-				String text = new String(data, StandardCharsets.ISO_8859_1);
+				Set<String> uses = referencedClasses(data);
 				for (Map.Entry<String, String> e : addedBy.entrySet()) {
-					if (!text.contains(e.getKey())) continue;
+					if (!uses.contains(e.getKey())) continue;
 					all.add(mixin);
 					findings.add(new PreflightFinding(Severity.WARN, configName, config.internalName(mixin).replace('/', '.'),
 							"also left out: it uses " + e.getKey().replace('/', '.') + ", which only the skipped mixin " + e.getValue() + " adds", ""));
@@ -346,6 +356,20 @@ public final class ModTranslator {
 			}
 		}
 		return all;
+	}
+
+	/** Every class a class file refers to: in its signature, members, instructions and annotations. */
+	private static Set<String> referencedClasses(byte[] data) {
+		Set<String> refs = new HashSet<>();
+		new ClassReader(data).accept(new ClassRemapper(new ClassVisitor(Opcodes.ASM9) {
+		}, new Remapper() {
+			@Override
+			public String map(String internalName) {
+				refs.add(internalName);
+				return internalName;
+			}
+		}), ClassReader.SKIP_FRAMES);
+		return refs;
 	}
 
 	/**
