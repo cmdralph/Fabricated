@@ -30,6 +30,8 @@ public final class FabricTableEntries {
 			Map<Block, Block> nextStages, Map<Block, Block> previousStages, Map<Block, Block> waxed, Map<Block, Block> unwaxed) {
 	}
 
+	/** Vanilla's composting chances; up to 26.2 only (26.3's are data-driven, with no table). */
+	private static final Map<ItemLike, Float> COMPOSTABLES = compostables();
 	private static volatile @Nullable Vanilla vanilla;
 
 	private FabricTableEntries() {
@@ -37,7 +39,7 @@ public final class FabricTableEntries {
 
 	/** Records vanilla's tables; called once, before Fabric mods' initializers. */
 	public static void recordVanilla() {
-		vanilla = new Vanilla(new HashMap<>(vibrationTable()), new HashMap<>(ComposterBlock.COMPOSTABLES),
+		vanilla = new Vanilla(new HashMap<>(vibrationTable()), new HashMap<>(COMPOSTABLES),
 				new HashMap<>(WeatheringCopper.NEXT_BY_BLOCK.get()), new HashMap<>(WeatheringCopper.PREVIOUS_BY_BLOCK.get()),
 				new HashMap<>(HoneycombItem.WAXABLES.get()), new HashMap<>(HoneycombItem.WAX_OFF_BY_BLOCK.get()));
 	}
@@ -54,7 +56,7 @@ public final class FabricTableEntries {
 	public static float compostChance(ItemStack stack) {
 		Vanilla v = vanilla;
 		if (v == null) return -1f;
-		Float chance = added(ComposterBlock.COMPOSTABLES, v.compostables(), stack.getItem());
+		Float chance = added(COMPOSTABLES, v.compostables(), stack.getItem());
 		return chance != null ? chance : -1f;
 	}
 
@@ -82,6 +84,17 @@ public final class FabricTableEntries {
 	private static <K, V> @Nullable V added(Map<? super K, ? extends V> table, Map<? super K, ? extends V> vanilla, K key) {
 		V value = table.get(key);
 		return value != null && !value.equals(vanilla.get(key)) ? value : null;
+	}
+
+	@SuppressWarnings("unchecked")
+	private static Map<ItemLike, Float> compostables() {
+		try {
+			return (Map<ItemLike, Float>) ComposterBlock.class.getField("COMPOSTABLES").get(null);
+		} catch (NoSuchFieldException e) {
+			return Map.of();
+		} catch (IllegalAccessException e) {
+			throw new IllegalStateException(e);
+		}
 	}
 
 	/** Vanilla's frequency table, a {@code Reference2IntOpenHashMap} behind a {@code ToIntFunction} (as upstream relies on). */
