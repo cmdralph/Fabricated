@@ -24,6 +24,9 @@ import net.neoforged.neoforge.client.event.RegisterPictureInPictureRenderersEven
  *
  * <p>NeoForge needs each renderer's render state class up front, which only a renderer knows: each Fabric factory is
  * called once while NeoForge gathers the renderers, and that renderer is the first one NeoForge gets.
+ *
+ * <p>On 26.2 and later only: on 26.1.2, Fabric's factories need the game renderer's submit queue, which doesn't exist
+ * yet while NeoForge gathers the renderers (NeoForge's event there also takes renderers by buffer source).
  */
 public final class PictureInPictureBridge {
 	private static final Logger LOGGER = LoggerFactory.getLogger("Fabricated");
@@ -47,7 +50,15 @@ public final class PictureInPictureBridge {
 		}
 		List<?> factories;
 		MethodHandle create;
+		MethodHandle register;
 		Object context;
+		try {
+			register = MethodHandles.publicLookup().findVirtual(RegisterPictureInPictureRenderersEvent.class, "register",
+					MethodType.methodType(void.class, Class.class, Supplier.class));
+		} catch (NoSuchMethodException | IllegalAccessException e) {
+			LOGGER.debug("Fabric picture-in-picture renderers are not bridged on this version");
+			return;
+		}
 		try {
 			Field registered = impl.getDeclaredField("FACTORIES");
 			registered.setAccessible(true);
@@ -79,22 +90,19 @@ public final class PictureInPictureBridge {
 				}
 			};
 			try {
-				registerRenderer(event, make.get(), make);
-			} catch (RuntimeException e) {
-				LOGGER.error("Fabric picture-in-picture renderer factory {} failed; its renderer is not used", factory, e);
+				PictureInPictureRenderer<?> first = make.get();
+				AtomicReference<PictureInPictureRenderer<?>> unused = new AtomicReference<>(first);
+				Supplier<PictureInPictureRenderer<?>> renderers = () -> {
+					PictureInPictureRenderer<?> renderer = unused.getAndSet(null);
+					return renderer != null ? renderer : make.get();
+				};
+				register.invoke(event, first.getRenderStateClass(), renderers);
+			} catch (VirtualMachineError e) {
+				throw e;
+			} catch (Throwable t) {
+				LOGGER.error("Fabric picture-in-picture renderer factory {} failed; its renderer is not used", factory, t);
 			}
 		}
 		if (!factories.isEmpty()) LOGGER.debug("{} Fabric picture-in-picture renderer(s) registered with NeoForge", factories.size());
-	}
-
-	/** Raw types: the render state's package differs between 26.x versions. */
-	@SuppressWarnings({"unchecked", "rawtypes"})
-	private static void registerRenderer(RegisterPictureInPictureRenderersEvent event, PictureInPictureRenderer first,
-			Supplier<PictureInPictureRenderer<?>> make) {
-		AtomicReference<PictureInPictureRenderer> unused = new AtomicReference<>(first);
-		event.register(first.getRenderStateClass(), () -> {
-			PictureInPictureRenderer renderer = unused.getAndSet(null);
-			return renderer != null ? renderer : make.get();
-		});
 	}
 }

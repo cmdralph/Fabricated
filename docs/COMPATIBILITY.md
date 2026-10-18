@@ -502,9 +502,10 @@ Upstream's module loads, without the mixins that target code NeoForge rewrote:
   end of the HUD as upstream does.
 - **Block colors** (1.21.11): NeoForge keeps block color providers in a map by block instead of vanilla's
   id-indexed one; `ColorProviderRegistry.BLOCK.get` reads NeoForge's map.
-- **Picture-in-picture renderers** (`PictureInPictureRendererRegistry`, 26.x): NeoForge rebuilt the GUI renderer
-  around its own renderer pools. Fabricated registers the renderers Fabric mods registered with NeoForge, which
-  creates and pools them as it does its own. 1.21.11's `SpecialGuiElementRegistry` is not bridged yet.
+- **Picture-in-picture renderers** (`PictureInPictureRendererRegistry`): NeoForge rebuilt the GUI renderer around
+  its own renderer pools. On 26.2 and 26.3, Fabricated registers the renderers Fabric mods registered with NeoForge,
+  which creates and pools them as it does its own. On 1.21.11 and 26.1.2, Fabric's renderers need the game
+  renderer's submit queue, which doesn't exist yet when NeoForge gathers its renderers, so they are not used.
 - **Debug options screen**: keeps vanilla's sorting and search instead of upstream's namespace-aware ones.
 - **Render pipeline snippets** (1.21.11, 26.1.2, 26.2): NeoForge added a field to them, so they don't carry Fabric's
   "use the pipeline's draw mode in GUIs" flag; pipelines still do.
