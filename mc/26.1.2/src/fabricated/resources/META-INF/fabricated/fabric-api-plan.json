@@ -144,12 +144,10 @@
       "reason": "Shipped by Fabricated on NeoForge's registries, which already sync ids to clients (upstream's mixins conflict with NeoForge's patches)."
     },
     "fabric-renderer-api-v1": {
-      "plan": "unsupported",
-      "reason": "Fabric's renderer API replaces the block model pipeline that NeoForge owns; mods that require it need their NeoForge build."
+      "plan": "passthrough"
     },
     "fabric-renderer-indigo": {
-      "plan": "unsupported",
-      "reason": "Fabric's renderer API replaces the block model pipeline that NeoForge owns; mods that require it need their NeoForge build."
+      "plan": "passthrough"
     },
     "fabric-rendering-fluids-v1": {
       "plan": "passthrough",
