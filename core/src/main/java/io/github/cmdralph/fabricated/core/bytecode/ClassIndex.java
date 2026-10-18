@@ -92,7 +92,7 @@ public final class ClassIndex {
 			ClassNode node = new ClassNode();
 			new ClassReader(data).accept(node, ClassReader.SKIP_FRAMES);
 			return node;
-		} catch (IOException | RuntimeException e) {
+		} catch (IOException | RuntimeException | StackOverflowError e) {
 			return null;
 		}
 	}
@@ -116,7 +116,7 @@ public final class ClassIndex {
 			}
 			return new ClassInfo(collector.name, collector.superName, List.copyOf(interfaces),
 					Collections.unmodifiableMap(collector.methods), Collections.unmodifiableMap(collector.fields));
-		} catch (RuntimeException e) {
+		} catch (RuntimeException | StackOverflowError e) {
 			// Corrupt class files are treated as absent; callers report the consequence.
 			return MISSING;
 		}

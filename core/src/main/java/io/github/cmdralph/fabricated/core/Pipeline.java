@@ -145,6 +145,8 @@ public final class Pipeline {
 	private final EnvType side;
 	private final Map<String, NeoForgeMod> neoMods = new HashMap<>();
 	private final List<Builtin> builtins;
+	/** Compat patches already reported as ignored ("mod target"): patches are worked out again every round. */
+	private final Set<String> ignoredPatches = new HashSet<>();
 
 	private Pipeline(Input in) {
 		this.in = in;
@@ -357,6 +359,10 @@ public final class Pipeline {
 							loadAfter(c, providerOf)));
 				} catch (TranslationException e) {
 					failures.put(c, e);
+				} catch (StackOverflowError e) {
+					// ASM parses nested annotation values recursively: a hostile class can nest them without end.
+					failures.put(c, new TranslationException("The jar is unsafe or corrupt: a class is nested too deeply to read",
+							"Remove " + c.id() + " or get it from a trusted source.", List.of(), e));
 				} catch (RuntimeException e) {
 					failures.put(c, new TranslationException("Unexpected error: " + e, "Report this to Fabricated with the log file.", List.of(), e));
 				}
@@ -420,7 +426,9 @@ public final class Pipeline {
 						.anyMatch(d -> d.getKind() == ModDependency.Kind.DEPENDS && d.getModId().equals(target));
 				if (target.equals(c.id()) || !ids.contains(target) || config.override(target).ignoreHints()) continue;
 				if (!depends) {
-					report.line("Compatibility hint warnings", c.id() + ": the patch for " + target + " is ignored, as " + c.id() + " does not depend on it");
+					if (ignoredPatches.add(c.id() + " " + target)) {
+						report.line("Compatibility hint warnings", c.id() + ": the patch for " + target + " is ignored, as " + c.id() + " does not depend on it");
+					}
 					continue;
 				}
 				byTarget.computeIfAbsent(target, k -> new ArrayList<>()).add(new AppliedPatch(c.id(), patch));

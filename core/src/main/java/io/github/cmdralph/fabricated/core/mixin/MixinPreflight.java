@@ -141,7 +141,7 @@ public final class MixinPreflight {
 				byte[] data = modClasses.read(internal);
 				if (data == null) continue;
 				new ClassReader(data).accept(node, 0);
-			} catch (IOException | RuntimeException e) {
+			} catch (IOException | RuntimeException | StackOverflowError e) {
 				continue;
 			}
 			Context ctx = new Context(configName, internal.replace('/', '.'), config, refmap, false, out);
@@ -290,7 +290,7 @@ public final class MixinPreflight {
 			ClassNode node = new ClassNode();
 			new ClassReader(data).accept(node, ClassReader.SKIP_CODE | ClassReader.SKIP_FRAMES);
 			return node;
-		} catch (IOException | RuntimeException e) {
+		} catch (IOException | RuntimeException | StackOverflowError e) {
 			return null;
 		}
 	}

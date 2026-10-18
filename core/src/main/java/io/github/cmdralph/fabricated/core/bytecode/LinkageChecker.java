@@ -60,7 +60,7 @@ public final class LinkageChecker {
 		ClassNode node = new ClassNode();
 		try {
 			new ClassReader(classFile).accept(node, ClassReader.SKIP_FRAMES | ClassReader.SKIP_DEBUG);
-		} catch (RuntimeException e) {
+		} catch (RuntimeException | StackOverflowError e) {
 			out.add(new Issue("?", "unreadable class file", "class"));
 			return;
 		}
