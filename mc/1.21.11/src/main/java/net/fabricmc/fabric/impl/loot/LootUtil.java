@@ -16,14 +16,11 @@
 
 package net.fabricmc.fabric.impl.loot;
 
-import java.util.HashMap;
-import java.util.Map;
 import java.util.function.Function;
 
 import net.minecraft.core.Holder;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.Registries;
-import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.packs.repository.PackSource;
 import net.minecraft.server.packs.resources.Resource;
@@ -34,8 +31,6 @@ import net.fabricmc.fabric.impl.resource.pack.BuiltinModResourcePackSource;
 import net.fabricmc.fabric.impl.resource.pack.ModResourcePackCreator;
 
 public final class LootUtil {
-	public static final ThreadLocal<Map<Identifier, LootTableSource>> SOURCES = ThreadLocal.withInitial(HashMap::new);
-
 	public static LootTableSource determineSource(Resource resource) {
 		if (resource != null) {
 			PackSource packSource = resource.getFabricPackSource();

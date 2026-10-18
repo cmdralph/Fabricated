@@ -7,9 +7,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import com.llamalad7.mixinextras.injector.ModifyReturnValue;
 
 import io.github.cmdralph.fabricated.neoforge.registry.FabricTableEntries;
-import net.minecraft.world.item.HoneycombItem;
 import net.minecraft.world.level.block.Block;
-import net.minecraft.world.level.block.WeatheringCopper;
 import net.neoforged.neoforge.common.DataMapHooks;
 
 /**

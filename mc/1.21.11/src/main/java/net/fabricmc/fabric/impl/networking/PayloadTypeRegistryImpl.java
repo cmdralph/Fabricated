@@ -83,8 +83,4 @@ public final class PayloadTypeRegistryImpl<B extends FriendlyByteBuf> implements
 			return java.util.Set.copyOf(this.types.keySet());
 		}
 	}
-
-	public String description() {
-		return this.description;
-	}
 }

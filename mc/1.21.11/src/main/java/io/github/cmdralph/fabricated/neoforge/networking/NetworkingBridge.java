@@ -4,10 +4,8 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.function.Consumer;
 
-import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -171,10 +169,5 @@ public final class NetworkingBridge {
 
 	private static void handleServerConfiguration(CustomPacketPayload payload, IPayloadContext context) {
 		if (context.listener() instanceof ServerConfigurationPacketListenerImpl listener) ServerNetworkingImpl.getAddon(listener).handle(payload);
-	}
-
-	/** Channels a Fabric mod can currently send to {@code player} (for diagnostics). */
-	public static Set<Identifier> sendable(ServerPlayer player) {
-		return ServerNetworkingImpl.getAddon(player.connection).getSendableChannels();
 	}
 }

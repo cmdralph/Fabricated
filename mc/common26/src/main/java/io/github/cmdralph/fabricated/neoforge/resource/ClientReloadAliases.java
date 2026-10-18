@@ -11,14 +11,10 @@ import net.minecraft.resources.Identifier;
 final class ClientReloadAliases {
 	static final Map<Identifier, Identifier> ALIASES = Map.ofEntries(
 			alias("atlas", "atlas_manager"),
-			alias("block_entity_render_dispatcher", "block_entity_render_dispatcher"),
-			alias("cloud_renderer", "cloud_renderer"),
 			alias("dry_foliage_color", "dry_foliage_color_reload_listener"),
-			alias("entity_render_dispatcher", "entity_render_dispatcher"),
 			alias("equipment_assets", "equipment_asset_manager"),
 			alias("foliage_color", "foliage_color_reload_listener"),
 			alias("fonts", "font_manager"),
-			alias("game_renderer", "game_renderer"),
 			alias("grass_color", "grass_color_reload_listener"),
 			alias("languages", "language_manager"),
 			alias("models", "model_manager"),
