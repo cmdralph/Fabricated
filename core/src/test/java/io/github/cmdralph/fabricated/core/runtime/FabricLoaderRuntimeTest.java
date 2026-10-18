@@ -1,6 +1,7 @@
 package io.github.cmdralph.fabricated.core.runtime;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -106,6 +107,17 @@ class FabricLoaderRuntimeTest {
 		assertEquals(2, containers.size());
 		assertSame(main.getFirst(), containers.getFirst().getEntrypoint());
 		assertThrows(EntrypointException.class, () -> containers.get(1).getEntrypoint());
+	}
+
+	@Test
+	void aRemovedModIsGone() throws Exception {
+		FabricLoaderRuntime rt = runtime();
+		mod(rt, "good_mod", Good.class.getName());
+		rt.removeMod("good_mod");
+		assertFalse(rt.isModLoaded("good_mod"));
+		assertFalse(rt.isModLoaded("good_mod-provided"), "its other ids go too");
+		assertTrue(rt.getAllMods().isEmpty());
+		assertTrue(rt.getEntrypoints("main", ModInitializer.class).isEmpty());
 	}
 
 	@Test

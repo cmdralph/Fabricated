@@ -57,6 +57,13 @@ public final class Report {
 		return this;
 	}
 
+	/** Marks a loaded mod as disabled after all (for example when NeoForge rejects it). */
+	public synchronized Report disable(String id, String detail, String suggestion) {
+		mods.replaceAll(row -> row.id().equals(id) && row.status() == Status.LOADED
+				? new ModRow(row.id(), row.version(), row.source(), Status.DISABLED, detail, suggestion) : row);
+		return this;
+	}
+
 	/** Adds a line to a named section (created on first use, in insertion order). */
 	public synchronized Report line(String section, String line) {
 		sections.computeIfAbsent(section, k -> new ArrayList<>()).add(oneLine(line));

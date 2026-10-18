@@ -3,6 +3,8 @@ package net.fabricmc.loader.impl.launch;
 import java.nio.file.Path;
 import java.util.List;
 
+import io.github.cmdralph.fabricated.fabricloader.FabricLoaderImpl;
+
 import net.fabricmc.api.EnvType;
 import net.fabricmc.loader.api.FabricLoader;
 
@@ -35,8 +37,7 @@ public abstract class FabricLauncherBase implements FabricLauncher {
 
 	@Override
 	public ClassLoader getTargetClassLoader() {
-		ClassLoader context = Thread.currentThread().getContextClassLoader();
-		return context != null ? context : FabricLauncherBase.class.getClassLoader();
+		return FabricLoaderImpl.gameClassLoader();
 	}
 
 	@Override

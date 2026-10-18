@@ -93,9 +93,10 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 
 		FabricatedConfig config = FabricatedConfig.load(FMLPaths.CONFIGDIR.get());
 		TranslationCache cache = new TranslationCache(gameDir, config.cacheEnabled(), config.verifyIntegrity());
-		// Fabricated's own in-game mod (native Fabric API implementation and NeoForge event bridges).
-		boolean devGameMod = find(loadedMods, GAME_MOD_ID).isPresent();
-		Path gameModJar = devGameMod ? null : extractGameMod(cache);
+		// Fabricated's own in-game mod (native Fabric API implementation and NeoForge event bridges): loaded from the
+		// development workspace, or extracted from this jar when there is anything Fabric to load.
+		Optional<IModFile> devGameMod = find(loadedMods, GAME_MOD_ID);
+		Path gameModJar = devGameMod.isPresent() || fabricJars.isEmpty() ? null : extractGameMod(cache);
 
 		// Classes visible to NeoForge's non-transforming loaders (JDK and libraries such as DataFixerUpper or
 		// Brigadier). Mixins targeting them never apply, so pre-flight reports them instead of letting the mod
@@ -108,22 +109,24 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 			}
 		};
 
+		// Packages other mods own, which Fabric mods mustn't split (only needed when there are Fabric mods).
 		Set<String> platformPackages = new HashSet<>();
-		for (IModFile file : loadedMods) {
-			for (String pkg : JarModuleInfo.scanModulePackages(file.getContents())) platformPackages.add(pkg.replace('.', '/'));
-		}
-		for (Module module : ModuleLayer.boot().modules()) {
-			ModuleDescriptor d = module.getDescriptor();
-			if (d != null) d.packages().forEach(p -> platformPackages.add(p.replace('.', '/')));
+		if (!fabricJars.isEmpty()) {
+			for (IModFile file : loadedMods) {
+				for (String pkg : JarModuleInfo.scanModulePackages(file.getContents())) platformPackages.add(pkg.replace('.', '/'));
+			}
+			for (Module module : ModuleLayer.boot().modules()) {
+				ModuleDescriptor d = module.getDescriptor();
+				if (d != null) d.packages().forEach(p -> platformPackages.add(p.replace('.', '/')));
+			}
 		}
 		ClassBytesSource nativeApi = ClassBytesSource.EMPTY;
 		// Interfaces the in-game mod's mixins add to game classes (Fabric API's injected interfaces).
 		Supplier<Map<String, List<String>>> nativeApiInterfaces = Map::of;
-		// Closed once the pipeline is done with it, however it ends.
-		SafeArchive archive = gameModJar == null ? null : SafeArchive.open(gameModJar, ArchiveLimits.DEFAULTS);
 		FabricApiPlan plan;
 		Pipeline.Result result;
-		try {
+		// Closed once the pipeline is done with it, however it ends.
+		try (SafeArchive archive = gameModJar == null ? null : SafeArchive.open(gameModJar, ArchiveLimits.DEFAULTS)) {
 			if (archive != null) {
 				for (String name : archive.classEntryNames()) {
 					int slash = name.lastIndexOf('/');
@@ -144,9 +147,8 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 					return interfaces;
 				};
 				nativeApi = name -> archive.read(name + ".class");
-			} else {
-				IModFile dev = find(loadedMods, GAME_MOD_ID).orElseThrow();
-				JarContents devContents = dev.getContents();
+			} else if (devGameMod.isPresent()) {
+				JarContents devContents = devGameMod.get().getContents();
 				nativeApi = name -> devContents.readFile(name + ".class");
 			}
 
@@ -168,13 +170,11 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 					fml.getProgramArgs().getArguments());
 
 			result = Pipeline.run(input);
-		} finally {
-			if (archive != null) archive.close();
 		}
 		result.runtime().install();
 		// Fabric entrypoints run when Fabricated's in-game mod loads: always in development, else when there is anything Fabric.
 		boolean addGameMod = gameModJar != null && (!result.mods().isEmpty() || !fabricJars.isEmpty());
-		FabricatedApiImpl api = new FabricatedApiImpl(info.fabricatedVersion(), plan, result.report(), result.runtime(), devGameMod || addGameMod);
+		FabricatedApiImpl api = new FabricatedApiImpl(info.fabricatedVersion(), plan, result.report(), result.runtime(), devGameMod.isPresent() || addGameMod);
 		FabricatedState state = new FabricatedState(result, logsDir, api);
 		FabricatedState.set(state);
 		ApiHolder.install(api);
@@ -188,7 +188,10 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 					new JarContents.FilteredPath(mod.translated().overlay())));
 			Optional<IModFile> added = pipeline.addJarContent(contents, attributes, IncompatibleFileReporting.ERROR);
 			if (added.isEmpty()) {
-				result.report().line("NeoForge handoff", mod.translated().candidate().id() + " was not accepted by NeoForge; see logs/latest.log");
+				// Fabric code mustn't see it as loaded, or run its entrypoints, when NeoForge won't load its classes.
+				String id = mod.translated().candidate().id();
+				result.runtime().removeMod(id);
+				result.report().disable(id, "NeoForge did not accept the translated mod", "See logs/latest.log for NeoForge's reason.");
 			}
 		}
 		if (addGameMod) {
@@ -215,8 +218,11 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 		if (quietFabricApi > 0) {
 			LOGGER.info("{} Fabric API module(s) can't run on NeoForge yet and were skipped; see logs/fabric-bridge-report.txt", quietFabricApi);
 		}
-		state.writeReport();
+		// The pipeline reported the cache's notes so far; saving its index may add one.
+		int reported = cache.notes().size();
 		cache.finish(config.maxUnusedLaunches());
+		for (String note : cache.notes().subList(reported, cache.notes().size())) result.report().line("Cache", note);
+		state.writeReport();
 	}
 
 	private static Optional<IModFile> find(List<IModFile> files, String modId) {

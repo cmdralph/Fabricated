@@ -14,10 +14,9 @@ public final class FabricLoaderImpl {
 	/** The installed loader, or {@code null} before Fabricated has bootstrapped. */
 	public static volatile FabricLoader INSTANCE;
 
-	private static volatile Function<ModContainer, ClassLoader> classLoaderLookup = mod -> {
-		ClassLoader context = Thread.currentThread().getContextClassLoader();
-		return context != null ? context : FabricLoaderImpl.class.getClassLoader();
-	};
+	/** The class loader of the game and its mods (one for all of them on NeoForge), once known. */
+	private static volatile ClassLoader gameClassLoader;
+	private static volatile Function<ModContainer, ClassLoader> classLoaderLookup = mod -> gameClassLoader();
 
 	private FabricLoaderImpl() {
 	}
@@ -31,6 +30,21 @@ public final class FabricLoaderImpl {
 		}
 		INSTANCE = loader;
 		classLoaderLookup = classLoaders;
+	}
+
+	/** Records the class loader of the game and its mods; the first one recorded stays. */
+	public static void gameClassLoader(ClassLoader loader) {
+		if (gameClassLoader == null) gameClassLoader = Objects.requireNonNull(loader, "loader");
+	}
+
+	/**
+	 * The class loader of the game and its mods (Fabric's target class loader). Until it is known, the calling thread's
+	 * context class loader.
+	 */
+	public static ClassLoader gameClassLoader() {
+		ClassLoader loader = gameClassLoader;
+		if (loader == null) loader = Thread.currentThread().getContextClassLoader();
+		return loader != null ? loader : FabricLoaderImpl.class.getClassLoader();
 	}
 
 	/** Class loader that can see the classes of {@code mod}. */

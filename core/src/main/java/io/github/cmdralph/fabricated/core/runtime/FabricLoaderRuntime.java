@@ -111,9 +111,7 @@ public final class FabricLoaderRuntime implements FabricLoader {
 	public void install() {
 		FabricLoaderImpl.install(this, mod -> {
 			ClassLoader cl = mod instanceof ModContainerImpl impl ? classLoaders.get(impl) : null;
-			if (cl != null) return cl;
-			ClassLoader context = Thread.currentThread().getContextClassLoader();
-			return context != null ? context : FabricLoaderRuntime.class.getClassLoader();
+			return cl != null ? cl : FabricLoaderImpl.gameClassLoader();
 		});
 	}
 
@@ -128,9 +126,22 @@ public final class FabricLoaderRuntime implements FabricLoader {
 		allMods = List.copyOf(new LinkedHashSet<>(modsById.values()));
 	}
 
+	/** Forgets a mod that won't load after all: its ids, entrypoints and language adapters. */
+	public synchronized void removeMod(String id) {
+		ModContainerImpl container = modsById.get(id);
+		if (container == null) return;
+		modsById.values().removeIf(c -> c == container);
+		modsSnapshot = Map.copyOf(modsById);
+		allMods = List.copyOf(new LinkedHashSet<>(modsById.values()));
+		entrypoints.values().forEach(list -> list.removeIf(d -> d.mod() == container));
+		adapterDeclarations.values().removeIf(a -> a.owner() == container);
+		classLoaders.remove(container);
+	}
+
 	/** Records which class loader can load a mod's classes (set once the game layer exists). */
 	public void setClassLoader(ModContainerImpl container, ClassLoader loader) {
 		classLoaders.put(container, loader);
+		FabricLoaderImpl.gameClassLoader(loader);
 	}
 
 	/** Registers a mod's entrypoints, minus keys disabled in the config. */

@@ -1,5 +1,6 @@
 package io.github.cmdralph.fabricated.loader;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.Reader;
@@ -33,9 +34,10 @@ final class IntermediaryMappings {
 	static Pipeline.Mappings load(TranslationCache cache, String minecraftVersion, boolean client, String configuredPath)
 			throws MappingException, IOException {
 		Path mojang = locateMojangMappings(minecraftVersion, client, configuredPath);
-		// Intermediary is fixed per Minecraft version, and the Mojang file's hash is memoised: a warm launch reads
-		// neither mapping file.
-		String hash = Hashing.sha256("intermediary-" + minecraftVersion + "|" + cache.sha256(mojang) + "|" + client).substring(0, 40);
+		// Intermediary is fixed per Minecraft version and Fabricated build (which bundles it and composes the table), and
+		// the Mojang file's hash is memoised: a warm launch reads neither mapping file.
+		String hash = Hashing.sha256("intermediary-" + minecraftVersion + "|" + FabricatedInfo.get().fabricatedVersion() + "|"
+				+ cache.sha256(mojang) + "|" + client).substring(0, 40);
 		String blob = "mappings-" + minecraftVersion.replace('.', '_') + "-" + hash + ".bin";
 
 		Optional<byte[]> cached = cache.readBlob(blob);
@@ -50,10 +52,9 @@ final class IntermediaryMappings {
 		if (intermediary == null) {
 			throw new MappingException("this Fabricated build does not include Intermediary mappings for " + minecraftVersion);
 		}
-		byte[] mojangBytes = Files.readAllBytes(mojang);
 		MappingTable table;
-		try (Reader tiny = new InputStreamReader(new java.io.ByteArrayInputStream(intermediary), StandardCharsets.UTF_8);
-				Reader proguard = new InputStreamReader(new java.io.ByteArrayInputStream(mojangBytes), StandardCharsets.UTF_8)) {
+		try (Reader tiny = new InputStreamReader(new ByteArrayInputStream(intermediary), StandardCharsets.UTF_8);
+				Reader proguard = Files.newBufferedReader(mojang, StandardCharsets.UTF_8)) {
 			table = MappingComposer.compose(tiny, proguard);
 		}
 		if (table.classCount() == 0) {
