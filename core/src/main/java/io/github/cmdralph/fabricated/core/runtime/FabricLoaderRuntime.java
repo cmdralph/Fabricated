@@ -42,20 +42,36 @@ public final class FabricLoaderRuntime implements FabricLoader {
 	private record AdapterDeclaration(String className, ModContainerImpl owner) {
 	}
 
-	private record Entrypoint<T>(T instance, ModContainer provider, String definition) implements EntrypointContainer<T> {
+	/** As in Fabric Loader, the instance is created when first asked for, so one broken entrypoint doesn't hide the others. */
+	private final class LazyEntrypoint<T> implements EntrypointContainer<T> {
+		private final String key;
+		private final Declared declared;
+		private final Class<T> type;
+
+		LazyEntrypoint(String key, Declared declared, Class<T> type) {
+			this.key = key;
+			this.declared = declared;
+			this.type = type;
+		}
+
 		@Override
+		@SuppressWarnings("deprecation") // EntrypointException's constructors are reserved for loader implementations
 		public T getEntrypoint() {
-			return instance;
+			try {
+				return instantiate(declared, type);
+			} catch (Throwable t) {
+				throw new EntrypointException(key, declared.mod().getMetadata().getId(), t);
+			}
 		}
 
 		@Override
 		public ModContainer getProvider() {
-			return provider;
+			return declared.mod();
 		}
 
 		@Override
 		public String getDefinition() {
-			return definition;
+			return declared.spec().value();
 		}
 	}
 
@@ -145,16 +161,18 @@ public final class FabricLoaderRuntime implements FabricLoader {
 
 	/**
 	 * Creates (or returns the cached) instance of one entrypoint. The same declaration requested with the
-	 * same type yields the same object, as in Fabric Loader.
+	 * same type yields the same object, as in Fabric Loader; it is created once even when asked for from several
+	 * threads at the same time. A language adapter may return null, which is not cached.
 	 */
 	public <T> T instantiate(Declared declared, Class<T> type) throws LanguageAdapterException {
 		String cacheKey = declared.mod().getMetadata().getId() + "|" + declared.spec().adapter() + "|" + declared.spec().value() + "|" + type.getName();
-		Object existing = instances.get(cacheKey);
-		if (existing != null) return type.cast(existing);
-		LanguageAdapter adapter = adapter(declared.spec().adapter());
-		T created = adapter.create(declared.mod(), declared.spec().value(), type);
-		Object raced = instances.putIfAbsent(cacheKey, created);
-		return type.cast(raced != null ? raced : created);
+		synchronized (declared) {
+			Object existing = instances.get(cacheKey);
+			if (existing != null) return type.cast(existing);
+			T created = adapter(declared.spec().adapter()).create(declared.mod(), declared.spec().value(), type);
+			if (created != null) instances.put(cacheKey, created);
+			return created;
+		}
 	}
 
 	private LanguageAdapter adapter(String id) throws LanguageAdapterException {
@@ -177,20 +195,14 @@ public final class FabricLoaderRuntime implements FabricLoader {
 	}
 
 	@Override
+	@SuppressWarnings("deprecation") // EntrypointException's constructors are reserved for loader implementations
 	public <T> List<T> getEntrypoints(String key, Class<T> type) {
 		List<T> ret = new ArrayList<>();
-		for (EntrypointContainer<T> c : getEntrypointContainers(key, type)) ret.add(c.getEntrypoint());
-		return ret;
-	}
-
-	@Override
-	@SuppressWarnings("deprecation") // EntrypointException's constructors are reserved for loader implementations
-	public <T> List<EntrypointContainer<T>> getEntrypointContainers(String key, Class<T> type) {
-		List<EntrypointContainer<T>> ret = new ArrayList<>();
 		EntrypointException failure = null;
 		for (Declared d : declared(key)) {
 			try {
-				ret.add(new Entrypoint<>(instantiate(d, type), d.mod(), d.spec().value()));
+				T instance = instantiate(d, type);
+				if (instance != null) ret.add(instance);
 			} catch (Throwable t) {
 				EntrypointException e = new EntrypointException(key, d.mod().getMetadata().getId(), t);
 				if (failure == null) failure = e;
@@ -202,14 +214,22 @@ public final class FabricLoaderRuntime implements FabricLoader {
 	}
 
 	@Override
-	@SuppressWarnings("deprecation") // EntrypointException's constructors are reserved for loader implementations
+	public <T> List<EntrypointContainer<T>> getEntrypointContainers(String key, Class<T> type) {
+		List<EntrypointContainer<T>> ret = new ArrayList<>();
+		for (Declared d : declared(key)) ret.add(new LazyEntrypoint<>(key, d, type));
+		return ret;
+	}
+
+	@Override
 	public <T> void invokeEntrypoints(String key, Class<T> type, Consumer<? super T> invoker) {
 		RuntimeException failure = null;
 		for (EntrypointContainer<T> c : getEntrypointContainers(key, type)) {
 			try {
 				invoker.accept(c.getEntrypoint());
 			} catch (Throwable t) {
-				RuntimeException e = new EntrypointException(key, c.getProvider().getMetadata().getId(), t);
+				RuntimeException e = t instanceof EntrypointException ee ? ee
+						: new RuntimeException("Could not execute entrypoint stage '" + key + "' provided by '"
+								+ c.getProvider().getMetadata().getId() + "'", t);
 				if (failure == null) failure = e;
 				else failure.addSuppressed(e);
 			}

@@ -67,6 +67,8 @@ public final class DependencyResolver {
 		List<Disabled> disabled = new ArrayList<>();
 		List<String> warnings = new ArrayList<>();
 		Map<String, List<String>> crossLoader = new LinkedHashMap<>();
+		// Mods disabled here join those disabled earlier, so their dependents are told why, not to install them.
+		Map<String, String> notLoaded = new HashMap<>(unavailable);
 
 		boolean changed = true;
 		while (changed) {
@@ -79,7 +81,7 @@ public final class DependencyResolver {
 					if (dep.getKind() == ModDependency.Kind.DEPENDS) {
 						Provider p = find(providers, dep.getModId());
 						if (p == null) {
-							String why = unavailable.get(dep.getModId());
+							String why = notLoaded.get(dep.getModId());
 							if (why != null) {
 								if (why.length() > 200) why = why.substring(0, 197) + "...";
 								problem = "requires " + describe(dep) + ", which is installed but was not loaded: " + why;
@@ -111,6 +113,9 @@ public final class DependencyResolver {
 				if (problem != null) {
 					active.remove(c.id());
 					disabled.add(new Disabled(c, problem, suggestion));
+					String reason = c.id() + " " + problem;
+					notLoaded.putIfAbsent(c.id(), reason);
+					for (String provided : c.metadata().getProvides()) notLoaded.putIfAbsent(provided, reason);
 					changed = true;
 				}
 			}
@@ -120,7 +125,10 @@ public final class DependencyResolver {
 		for (Candidate c : active.values()) {
 			for (ModDependency dep : c.metadata().getDependencies()) {
 				Provider p = find(providers, dep.getModId());
-				if (dep.getKind() == ModDependency.Kind.RECOMMENDS && (p == null || !dep.matches(p.version()))) {
+				if (dep.getKind() == ModDependency.Kind.DEPENDS && p != null && p.crossLoader()) {
+					List<String> links = crossLoader.computeIfAbsent(c.id(), k -> new ArrayList<>());
+					if (!links.contains(p.id())) links.add(p.id());
+				} else if (dep.getKind() == ModDependency.Kind.RECOMMENDS && (p == null || !dep.matches(p.version()))) {
 					warnings.add(c.id() + " recommends " + describe(dep));
 				} else if (dep.getKind() == ModDependency.Kind.CONFLICTS && p != null && dep.matches(p.version())) {
 					warnings.add(c.id() + " conflicts with " + p.description() + "; it may not work correctly");
@@ -128,7 +136,7 @@ public final class DependencyResolver {
 			}
 		}
 
-		return new Result(order(active), disabled, warnings, crossLoader);
+		return new Result(order(active, aliases), disabled, warnings, crossLoader);
 	}
 
 	private Map<String, Provider> providersFor(Map<String, Candidate> active, Map<String, List<String>> aliases) {
@@ -160,13 +168,14 @@ public final class DependencyResolver {
 	}
 
 	/** Dependencies first; ties broken by id so the order is deterministic. Cycles are appended by id. */
-	static List<Candidate> order(Map<String, Candidate> active) {
+	static List<Candidate> order(Map<String, Candidate> active, Map<String, List<String>> aliases) {
 		Map<String, Integer> indegree = new HashMap<>();
 		Map<String, List<String>> dependents = new HashMap<>();
 		Map<String, String> providerOf = new HashMap<>();
+		for (Candidate c : active.values()) providerOf.put(c.id(), c.id());
 		for (Candidate c : active.values()) {
-			providerOf.put(c.id(), c.id());
 			for (String p : c.metadata().getProvides()) providerOf.putIfAbsent(p, c.id());
+			for (String alias : aliases.getOrDefault(c.id(), List.of())) providerOf.putIfAbsent(alias, c.id());
 		}
 		for (Candidate c : active.values()) {
 			Set<String> d = new TreeSet<>();

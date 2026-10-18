@@ -21,7 +21,9 @@ public record MemberRef(String owner, String name, String desc, boolean fuzzy) {
 		String owner = null;
 		int paren = s.indexOf('(');
 		int semicolon = s.indexOf(';');
-		if (s.startsWith("L") && semicolon > 0 && (paren < 0 || semicolon < paren)) {
+		int firstColon = s.indexOf(':');
+		// An owner (Lpkg/Owner;) ends before any descriptor: LOGGER:Lorg/slf4j/Logger; is a field named LOGGER.
+		if (s.startsWith("L") && semicolon > 0 && (paren < 0 || semicolon < paren) && (firstColon < 0 || semicolon < firstColon)) {
 			owner = s.substring(1, semicolon);
 			s = s.substring(semicolon + 1);
 		} else {

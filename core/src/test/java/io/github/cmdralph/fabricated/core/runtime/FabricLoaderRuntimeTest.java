@@ -20,6 +20,7 @@ import io.github.cmdralph.fabricated.core.remap.MappingTable;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.loader.api.EntrypointException;
+import net.fabricmc.loader.api.entrypoint.EntrypointContainer;
 import net.fabricmc.loader.api.MappingResolver;
 import net.fabricmc.loader.api.metadata.ModOrigin;
 
@@ -100,6 +101,11 @@ class FabricLoaderRuntimeTest {
 
 		mod(rt, "bad_mod", "does.not.Exist");
 		assertThrows(EntrypointException.class, () -> rt.getEntrypoints("main", ModInitializer.class));
+		// Containers create their instance when asked, so a broken one doesn't hide the others.
+		List<EntrypointContainer<ModInitializer>> containers = rt.getEntrypointContainers("main", ModInitializer.class);
+		assertEquals(2, containers.size());
+		assertSame(main.getFirst(), containers.getFirst().getEntrypoint());
+		assertThrows(EntrypointException.class, () -> containers.get(1).getEntrypoint());
 	}
 
 	@Test

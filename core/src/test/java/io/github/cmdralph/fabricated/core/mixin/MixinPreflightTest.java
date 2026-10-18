@@ -386,6 +386,7 @@ class MixinPreflightTest {
 		assertEquals(new MemberRef("a/B", "foo", "(I)V", false), MemberRef.parse("La/B;foo(I)V"));
 		assertEquals(new MemberRef(null, "foo", null, false), MemberRef.parse("foo"));
 		assertEquals(new MemberRef("a/B", "bar", "I", false), MemberRef.parse("La/B;bar:I"));
+		assertEquals(new MemberRef(null, "LOGGER", "Lorg/slf4j/Logger;", false), MemberRef.parse("LOGGER:Lorg/slf4j/Logger;"));
 		assertEquals(new MemberRef("a/b/C", "baz", "()V", false), MemberRef.parse("a.b.C.baz()V"));
 		assertTrue(MemberRef.parse("foo*").fuzzy());
 		assertTrue(MemberRef.parse("/regex/").fuzzy());
