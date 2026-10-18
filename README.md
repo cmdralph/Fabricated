@@ -13,8 +13,9 @@ It is built to be:
 - **Safe.** Mod jars are treated as untrusted input. Fabricated never runs mod code while translating, never
   modifies your mod jars, never touches the network, and has no telemetry.
 
-> **Status: early (0.1.0).** It loads simple Fabric mods reliably, but many Fabric API modules don't work yet
-> because NeoForge changes the code they patch. Read [What works today](#what-works-today) before relying on it.
+> **Status: alpha (0.4.0 in development).** Nearly every Fabric API module loads, but many Fabric mods still
+> patch code that NeoForge changed and are disabled before they run. Read [What works today](#what-works-today)
+> before relying on it.
 
 ---
 
@@ -40,8 +41,9 @@ that NeoForge has already changed. Fabricated handles this per module:
   `fabric-lifecycle-events-v1`, `fabric-networking-api-v1` (login queries excepted),
   `fabric-resource-loader-v1`, `fabric-registry-sync-v0`, `fabric-entity-events-v1`,
   `fabric-object-builder-api-v1`, `fabric-item-api-v1`, `fabric-block-api-v1`,
-  `fabric-events-interaction-v0`, `fabric-loot-api-v3`, `fabric-content-registries-v0` and
-  `fabric-crash-report-info-v1`.
+  `fabric-events-interaction-v0`, `fabric-loot-api-v3`, `fabric-content-registries-v0`,
+  `fabric-transfer-api-v1`, `fabric-api-lookup-api-v1`, `fabric-menu-api-v1` (`fabric-screen-handler-api-v1`
+  on 1.21.11) and `fabric-crash-report-info-v1`.
 - **Pass-through**: the module is loaded from the official Fabric API jar you install. Fabricated checks
   every mixin against NeoForge's code before loading it ("mixin pre-flight"). Modules whose mixins can't
   apply are disabled, along with every mod that requires them, with an explanation.
