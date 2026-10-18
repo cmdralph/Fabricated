@@ -1,20 +1,27 @@
 package io.github.cmdralph.fabricated.neoforge.networking;
 
-import net.fabricmc.fabric.impl.networking.PayloadTypeRegistryImpl;
-import net.minecraft.resources.Identifier;
-import net.neoforged.neoforge.common.extensions.ICommonPacketListener;
-import net.neoforged.neoforge.network.registration.NetworkRegistry;
+import java.util.List;
 
-/** Fabric's rule for payloads the other side can't receive: they are not sent (NeoForge's is to throw). */
+import net.fabricmc.fabric.api.networking.v1.S2CPlayChannelEvents;
+import net.fabricmc.fabric.impl.networking.PayloadTypeRegistryImpl;
+import net.fabricmc.fabric.impl.networking.server.ServerPlayNetworkAddon;
+import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.network.RegistryFriendlyByteBuf;
+import net.minecraft.resources.Identifier;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.network.ServerGamePacketListenerImpl;
+
+/** This version's names for Fabric's payload type registries and play channel event, for {@link NetworkingBridge}. */
 public final class FabricPayloads {
+	static final PayloadTypeRegistryImpl<RegistryFriendlyByteBuf> SERVERBOUND_PLAY = PayloadTypeRegistryImpl.PLAY_C2S;
+	static final PayloadTypeRegistryImpl<RegistryFriendlyByteBuf> CLIENTBOUND_PLAY = PayloadTypeRegistryImpl.PLAY_S2C;
+	static final PayloadTypeRegistryImpl<FriendlyByteBuf> SERVERBOUND_CONFIGURATION = PayloadTypeRegistryImpl.CONFIGURATION_C2S;
+	static final PayloadTypeRegistryImpl<FriendlyByteBuf> CLIENTBOUND_CONFIGURATION = PayloadTypeRegistryImpl.CONFIGURATION_S2C;
+
 	private FabricPayloads() {
 	}
 
-	/** Whether {@code id} is a Fabric mod's payload type that the connection behind {@code listener} has no channel for. */
-	public static boolean unsendable(Identifier id, ICommonPacketListener listener, boolean clientbound) {
-		boolean fabric = clientbound
-				? PayloadTypeRegistryImpl.PLAY_S2C.get(id) != null || PayloadTypeRegistryImpl.CONFIGURATION_S2C.get(id) != null
-				: PayloadTypeRegistryImpl.PLAY_C2S.get(id) != null || PayloadTypeRegistryImpl.CONFIGURATION_C2S.get(id) != null;
-		return fabric && !NetworkRegistry.hasChannel(listener, id);
+	static void announceChannels(ServerGamePacketListenerImpl listener, ServerPlayNetworkAddon addon, MinecraftServer server, List<Identifier> channels) {
+		S2CPlayChannelEvents.REGISTER.invoker().onChannelRegister(listener, addon, server, channels);
 	}
 }

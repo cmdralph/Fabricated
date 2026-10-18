@@ -9,7 +9,6 @@ import java.util.function.Consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import net.fabricmc.fabric.api.networking.v1.ClientboundPlayChannelEvents;
 import net.fabricmc.fabric.api.networking.v1.EntityTrackingEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerConfigurationConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
@@ -30,16 +29,18 @@ import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.neoforge.common.NeoForge;
+import net.neoforged.neoforge.common.extensions.ICommonPacketListener;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.network.event.RegisterConfigurationTasksEvent;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 import net.neoforged.neoforge.network.handling.IPayloadHandler;
 import net.neoforged.neoforge.network.registration.HandlerThread;
+import net.neoforged.neoforge.network.registration.NetworkRegistry;
 import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 
 /**
- * Native {@code fabric-networking-api-v1} (Minecraft 26.x): Fabric payload types become optional NeoForge
+ * Native {@code fabric-networking-api-v1}: Fabric payload types become optional NeoForge
  * payloads, incoming payloads are dispatched to Fabric's receivers, and Fabric's connection, channel and
  * entity-tracking events fire from NeoForge's events. NeoForge negotiates which channels each side accepts, so
  * Fabric's {@code canSend} reflects that negotiation.
@@ -72,7 +73,7 @@ public final class NetworkingBridge {
 			ServerPlayConnectionEvents.INIT.invoker().onPlayInit(listener, server);
 			ServerPlayConnectionEvents.JOIN.invoker().onPlayReady(listener, addon, server);
 			List<Identifier> channels = List.copyOf(addon.getSendableChannels());
-			if (!channels.isEmpty()) ClientboundPlayChannelEvents.REGISTER.invoker().onChannelRegister(listener, addon, server, channels);
+			if (!channels.isEmpty()) FabricPayloads.announceChannels(listener, addon, server, channels);
 		});
 		bus.addListener(PlayerEvent.PlayerLoggedOutEvent.class, e -> {
 			if (e.getEntity() instanceof ServerPlayer player && player.connection != null) {
@@ -115,8 +116,8 @@ public final class NetworkingBridge {
 		PayloadRegistrar play = event.registrar("1").optional();
 		// Fabric runs configuration handlers on the network thread and play handlers on the main thread.
 		PayloadRegistrar configuration = play.executesOn(HandlerThread.NETWORK);
-		int count = registerPhase(PayloadTypeRegistryImpl.SERVERBOUND_PLAY, PayloadTypeRegistryImpl.CLIENTBOUND_PLAY, true, play, problems)
-				+ registerPhase(PayloadTypeRegistryImpl.SERVERBOUND_CONFIGURATION, PayloadTypeRegistryImpl.CLIENTBOUND_CONFIGURATION, false, configuration, problems);
+		int count = registerPhase(FabricPayloads.SERVERBOUND_PLAY, FabricPayloads.CLIENTBOUND_PLAY, true, play, problems)
+				+ registerPhase(FabricPayloads.SERVERBOUND_CONFIGURATION, FabricPayloads.CLIENTBOUND_CONFIGURATION, false, configuration, problems);
 		if (count > 0) LOGGER.info("Registered {} Fabric payload type(s) with NeoForge", count);
 	}
 
@@ -161,6 +162,14 @@ public final class NetworkingBridge {
 			}
 		}
 		return count;
+	}
+
+	/** Whether {@code id} is a Fabric mod's payload type that the connection behind {@code listener} has no channel for: Fabric doesn't send those (NeoForge throws). */
+	public static boolean unsendable(Identifier id, ICommonPacketListener listener, boolean clientbound) {
+		boolean fabric = clientbound
+				? FabricPayloads.CLIENTBOUND_PLAY.get(id) != null || FabricPayloads.CLIENTBOUND_CONFIGURATION.get(id) != null
+				: FabricPayloads.SERVERBOUND_PLAY.get(id) != null || FabricPayloads.SERVERBOUND_CONFIGURATION.get(id) != null;
+		return fabric && !NetworkRegistry.hasChannel(listener, id);
 	}
 
 	private static void handleServerPlay(CustomPacketPayload payload, IPayloadContext context) {

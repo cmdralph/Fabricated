@@ -8,14 +8,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import net.fabricmc.fabric.api.event.Event;
-import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.neoforged.bus.api.EventPriority;
 import net.neoforged.neoforge.client.event.ScreenEvent;
 import net.neoforged.neoforge.common.NeoForge;
 
 /**
- * Fires {@code fabric-screen-api-v1}'s {@code ScreenEvents.beforeRender}/{@code afterRender} from NeoForge's
+ * Fires {@code fabric-screen-api-v1}'s {@code ScreenEvents.beforeExtract}/{@code afterExtract} ({@code beforeRender}/{@code
+ * afterRender} on 1.21.11, which draw with {@code GuiGraphics}) from NeoForge's
  * {@link ScreenEvent.Render} events, which NeoForge posts around the same call upstream's mixin wraps (that mixin
  * handler is left out by the Fabric API plan; the rest of the module is upstream's code).
  *
@@ -49,15 +49,17 @@ public final class ScreenRenderBridge {
 		ScreenRenderBridge bridge;
 		try {
 			MethodHandles.Lookup lookup = MethodHandles.publicLookup();
-			MethodType call = MethodType.methodType(void.class, Screen.class, GuiGraphics.class, int.class, int.class, float.class);
-			MethodType erased = call.insertParameterTypes(0, Object.class);
+			String stage = hasClass(EVENTS + "$BeforeExtract", loader) ? "Extract" : "Render";
+			Class<?> graphics = ScreenEvent.Render.class.getMethod("getGuiGraphics").getReturnType();
+			MethodType call = MethodType.methodType(void.class, Screen.class, graphics, int.class, int.class, float.class);
+			MethodType erased = call.changeParameterType(1, Object.class).insertParameterTypes(0, Object.class);
 			bridge = new ScreenRenderBridge(
-					lookup.findStatic(events, "beforeRender", MethodType.methodType(Event.class, Screen.class)),
-					lookup.findVirtual(Class.forName(EVENTS + "$BeforeRender", false, loader), "beforeRender", call).asType(erased),
-					lookup.findStatic(events, "afterRender", MethodType.methodType(Event.class, Screen.class)),
-					lookup.findVirtual(Class.forName(EVENTS + "$AfterRender", false, loader), "afterRender", call).asType(erased));
+					lookup.findStatic(events, "before" + stage, MethodType.methodType(Event.class, Screen.class)),
+					lookup.findVirtual(Class.forName(EVENTS + "$Before" + stage, false, loader), "before" + stage, call).asType(erased),
+					lookup.findStatic(events, "after" + stage, MethodType.methodType(Event.class, Screen.class)),
+					lookup.findVirtual(Class.forName(EVENTS + "$After" + stage, false, loader), "after" + stage, call).asType(erased));
 		} catch (ReflectiveOperationException | LinkageError e) {
-			LOGGER.error("fabric-screen-api-v1's ScreenEvents has an unexpected shape; its extract events will not fire", e);
+			LOGGER.error("fabric-screen-api-v1's ScreenEvents has an unexpected shape; its drawing events will not fire", e);
 			return;
 		}
 		// Fabric's events run right around the screen: after NeoForge mods' Pre listeners (and only when none cancelled
@@ -68,11 +70,20 @@ public final class ScreenRenderBridge {
 				event -> bridge.fire(bridge.afterEvent, bridge.after, event));
 	}
 
+	private static boolean hasClass(String name, ClassLoader loader) {
+		try {
+			Class.forName(name, false, loader);
+			return true;
+		} catch (ClassNotFoundException e) {
+			return false;
+		}
+	}
+
 	private void fire(MethodHandle eventOf, MethodHandle call, ScreenEvent.Render event) {
 		Screen screen = event.getScreen();
 		try {
 			Event<?> fabricEvent = (Event<?>) eventOf.invokeExact(screen);
-			call.invokeExact((Object) fabricEvent.invoker(), screen, event.getGuiGraphics(), event.getMouseX(), event.getMouseY(), event.getPartialTick());
+			call.invokeExact((Object) fabricEvent.invoker(), screen, (Object) event.getGuiGraphics(), event.getMouseX(), event.getMouseY(), event.getPartialTick());
 		} catch (RuntimeException | Error e) {
 			throw e;
 		} catch (Throwable t) {
