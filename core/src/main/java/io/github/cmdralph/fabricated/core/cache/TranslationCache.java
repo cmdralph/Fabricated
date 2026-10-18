@@ -102,7 +102,7 @@ public final class TranslationCache {
 	}
 
 	/** A complete cache entry. */
-	public record Entry(String name, Path dir, Map<String, Object> metadata) {
+	public record Entry(Path dir, Map<String, Object> metadata) {
 		public Path file(String fileName) {
 			return dir.resolve(fileName);
 		}
@@ -146,7 +146,7 @@ public final class TranslationCache {
 				if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) throw new JsonException("missing " + fileName);
 				if (verify && !sha256(file).equals(f.getValue())) throw new JsonException("hash mismatch for " + fileName);
 			}
-			return Optional.of(new Entry(name, dir, meta));
+			return Optional.of(new Entry(dir, meta));
 		} catch (IOException | JsonException | RuntimeException e) {
 			notes.add("Cache entry " + name + " failed verification (" + e.getMessage() + ") and will be rebuilt");
 			deleteQuietly(dir);
@@ -179,7 +179,7 @@ public final class TranslationCache {
 			Files.move(tmp, target, StandardCopyOption.ATOMIC_MOVE);
 			lastUsed.put(name, launch);
 			for (Map.Entry<String, Object> h : hashes.entrySet()) remember(target.resolve(h.getKey()), (String) h.getValue());
-			return new Entry(name, target, meta);
+			return new Entry(target, meta);
 		} finally {
 			deleteQuietly(tmp);
 		}

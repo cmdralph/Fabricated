@@ -27,10 +27,10 @@ import org.objectweb.asm.tree.ClassNode;
  * access widener converter.
  */
 public final class ClassIndex {
-	private static final ClassInfo MISSING = new ClassInfo("", null, List.of(), Map.of(), Map.of());
+	private static final ClassInfo MISSING = new ClassInfo(null, List.of(), Map.of(), Map.of());
 
 	/** Structural information about one class. */
-	public record ClassInfo(String name, String superName, List<String> interfaces,
+	public record ClassInfo(String superName, List<String> interfaces,
 			Map<String, Integer> methods, Map<String, Integer> fields) {
 		/** @param nameAndDesc e.g. {@code tick()V} */
 		public Integer methodAccess(String nameAndDesc) {
@@ -114,7 +114,7 @@ public final class ClassIndex {
 				else if (extra.indexOf(':') >= 0) collector.fields.putIfAbsent(extra, Opcodes.ACC_PUBLIC);
 				else interfaces.add(extra);
 			}
-			return new ClassInfo(collector.name, collector.superName, List.copyOf(interfaces),
+			return new ClassInfo(collector.superName, List.copyOf(interfaces),
 					Collections.unmodifiableMap(collector.methods), Collections.unmodifiableMap(collector.fields));
 		} catch (RuntimeException | StackOverflowError e) {
 			// Corrupt class files are treated as absent; callers report the consequence.
@@ -163,7 +163,6 @@ public final class ClassIndex {
 	}
 
 	private static final class Collector extends ClassVisitor {
-		String name;
 		String superName;
 		String[] interfaces;
 		final Map<String, Integer> methods = new LinkedHashMap<>();
@@ -175,7 +174,6 @@ public final class ClassIndex {
 
 		@Override
 		public void visit(int version, int access, String name, String signature, String superName, String[] interfaces) {
-			this.name = name;
 			this.superName = superName;
 			this.interfaces = interfaces;
 		}
