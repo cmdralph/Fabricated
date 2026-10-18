@@ -115,7 +115,12 @@
       "plan": "passthrough"
     },
     "fabric-model-loading-api-v1": {
-      "plan": "passthrough"
+      "plan": "passthrough",
+      "skipMixins": [
+        "fabric-model-loading-api-v1.mixins.json:ModelManagerMixin#cancelVanillaDeserialize",
+        "fabric-model-loading-api-v1.mixins.json:ModelManagerMixin#actuallyDeserializeModel"
+      ],
+      "reason": "Model loading plugins, extra models and model modifiers work; NeoForge parses model files itself (with its own custom loaders), so UnbakedModelDeserializer types registered with Fabric are not used."
     },
     "fabric-networking-api-v1": {
       "plan": "native",
@@ -147,7 +152,21 @@
       "reason": "Shipped by Fabricated on NeoForge's registries, which already sync ids to clients (upstream's mixins conflict with NeoForge's patches)."
     },
     "fabric-renderer-api-v1": {
-      "plan": "passthrough"
+      "plan": "passthrough",
+      "skipMixins": [
+        "fabric-renderer-api-v1.mixins.json:block.model.MultiPartModelMixin#createGeometryKey",
+        "fabric-renderer-api-v1.mixins.json:block.model.MultiPartModelMixin#particleMaterial",
+        "fabric-renderer-api-v1.mixins.json:block.model.SingleVariantMixin#createGeometryKey",
+        "fabric-renderer-api-v1.mixins.json:block.model.WeightedVariantsMixin#createGeometryKey",
+        "fabric-renderer-api-v1.mixins.json:block.model.WeightedVariantsMixin#particleMaterial",
+        "fabric-renderer-api-v1.mixins.json:block.render.SectionCompilerMixin",
+        "fabric-renderer-api-v1.mixins.json:block.render.MovingBlockFeatureRendererMixin",
+        "fabric-renderer-api-v1.mixins.json:block.render.LevelExtractorMixin",
+        "fabric-renderer-api-v1.mixins.json:block.render.LevelRendererMixin",
+        "fabric-renderer-api-v1.mixins.json:submit.SubmitNodeCollectionMixin#hasMaterialFlagProxy",
+        "fabric-renderer-api-v1.mixins.json:block.particle.LevelExtractorMixin"
+      ],
+      "reason": "Upstream loads with Indigo as the renderer, so meshes and quad emitters work, but NeoForge keeps drawing the world: the hooks that send every block in the world, moving blocks, block outlines and breaking animations through Fabric's renderer are left out, so a model's custom emitQuads geometry is drawn in item and block entity rendering only, not in the world. NeoForge already declares createGeometryKey and particleMaterial on vanilla's models with Fabric's signatures, so upstream's copies are left out (Fabricated declares the shared defaults on BlockStateModel)."
     },
     "fabric-renderer-indigo": {
       "plan": "passthrough"

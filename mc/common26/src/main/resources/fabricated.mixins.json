@@ -49,6 +49,7 @@
     "defaultRequire": 1
   },
   "client": [
+    "client.BlockStateModelDefaultsMixin",
     "client.ClientCommonPacketListenerImplMixin",
     "client.LocalPlayerMixin",
     "client.ClientConfigurationPacketListenerImplMixin",
