@@ -12,7 +12,7 @@ import net.minecraft.client.multiplayer.ClientHandshakePacketListenerImpl;
 @Mixin({ClientCommonPacketListenerImpl.class, ClientHandshakePacketListenerImpl.class})
 public abstract class ClientNetworkAddonHolderMixin implements NetworkAddons.Holder {
 	@Unique
-	private @Nullable Object fabricated$networkAddon;
+	private volatile @Nullable Object fabricated$networkAddon;
 
 	@Override
 	public @Nullable Object fabricated$networkAddon() {

@@ -16,7 +16,6 @@ import net.fabricmc.api.EnvType;
  * other side is left alone: Fabric Loader refuses to load it, and NeoForge fails just the same when it is used.)
  */
 public final class EnvironmentStripper {
-	private static final String ENVIRONMENT = "Lnet/fabricmc/api/Environment;";
 	private static final String ENVIRONMENT_INTERFACE = "Lnet/fabricmc/api/EnvironmentInterface;";
 	private static final String ENVIRONMENT_INTERFACES = "Lnet/fabricmc/api/EnvironmentInterfaces;";
 	private static final byte[] MARKER = "Lnet/fabricmc/api/Environment".getBytes(StandardCharsets.UTF_8);
@@ -47,8 +46,8 @@ public final class EnvironmentStripper {
 		}
 		AnnotationNode single = Annotations.find(node.invisibleAnnotations, node.visibleAnnotations, ENVIRONMENT_INTERFACE);
 		if (single != null) changed |= stripInterface(node, single, side);
-		changed |= node.methods.removeIf(m -> otherSide(Annotations.find(m.invisibleAnnotations, m.visibleAnnotations, ENVIRONMENT), side));
-		changed |= node.fields.removeIf(f -> otherSide(Annotations.find(f.invisibleAnnotations, f.visibleAnnotations, ENVIRONMENT), side));
+		changed |= node.methods.removeIf(m -> otherSide(Annotations.find(m.invisibleAnnotations, m.visibleAnnotations, Annotations.ENVIRONMENT), side));
+		changed |= node.fields.removeIf(f -> otherSide(Annotations.find(f.invisibleAnnotations, f.visibleAnnotations, Annotations.ENVIRONMENT), side));
 		return changed;
 	}
 
@@ -59,7 +58,7 @@ public final class EnvironmentStripper {
 
 	/** Whether an {@code @Environment}-style annotation ({@code value = EnvType.X}) names the other side. */
 	private static boolean otherSide(AnnotationNode annotation, EnvType side) {
-		return annotation != null && Annotations.value(annotation, "value") instanceof String[] env && env.length == 2
-				&& !env[1].equals(side.name());
+		String named = Annotations.side(annotation);
+		return named != null && !named.equals(side.name());
 	}
 }

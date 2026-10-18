@@ -115,7 +115,7 @@ public final class LinkageAnalysis {
 	public static void mixinAdditions(byte[] data, Map<String, List<String>> added) {
 		ClassNode node = new ClassNode();
 		new ClassReader(data).accept(node, ClassReader.SKIP_CODE | ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
-		AnnotationNode mixin = Annotations.find(node.invisibleAnnotations, "Lorg/spongepowered/asm/mixin/Mixin;");
+		AnnotationNode mixin = Annotations.find(node.invisibleAnnotations, Annotations.MIXIN);
 		if (mixin == null) return;
 		List<String> additions = new ArrayList<>(node.interfaces == null ? List.of() : node.interfaces);
 		for (FieldNode field : node.fields) {

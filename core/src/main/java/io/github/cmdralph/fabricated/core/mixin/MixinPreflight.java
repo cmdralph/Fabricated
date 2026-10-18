@@ -47,7 +47,6 @@ import org.objectweb.asm.tree.TypeInsnNode;
  * downgraded to warnings.
  */
 public final class MixinPreflight {
-	private static final String MIXIN = "Lorg/spongepowered/asm/mixin/Mixin;";
 	private static final String PSEUDO = "Lorg/spongepowered/asm/mixin/Pseudo;";
 	private static final String SHADOW = "Lorg/spongepowered/asm/mixin/Shadow;";
 	private static final String OVERWRITE = "Lorg/spongepowered/asm/mixin/Overwrite;";
@@ -324,7 +323,7 @@ public final class MixinPreflight {
 	}
 
 	private void checkMixin(ClassNode mixin, Context ctx) {
-		AnnotationNode mixinAnn = Annotations.find(mixin.invisibleAnnotations, mixin.visibleAnnotations, MIXIN);
+		AnnotationNode mixinAnn = Annotations.find(mixin.invisibleAnnotations, mixin.visibleAnnotations, Annotations.MIXIN);
 		if (mixinAnn == null) {
 			ctx.classLevel("Class " + ctx.mixinDotted() + " is listed as a mixin but has no @Mixin annotation", "Report this to the mod author.");
 			return;
@@ -353,7 +352,7 @@ public final class MixinPreflight {
 
 	/** The classes a mixin's {@code @Mixin} names, as internal names (none when it has no {@code @Mixin}). */
 	private static List<String> targetsOf(ClassNode mixin, Context ctx) {
-		AnnotationNode mixinAnn = Annotations.find(mixin.invisibleAnnotations, mixin.visibleAnnotations, MIXIN);
+		AnnotationNode mixinAnn = Annotations.find(mixin.invisibleAnnotations, mixin.visibleAnnotations, Annotations.MIXIN);
 		List<String> targets = new ArrayList<>();
 		if (mixinAnn == null) return targets;
 		if (Annotations.value(mixinAnn, "value") instanceof List<?> types) {

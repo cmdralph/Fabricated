@@ -242,6 +242,7 @@ public final class ModTranslator {
 		// Pre-flight sees the mod as it will load: with the handler methods left out below.
 		FileView translated = name -> overlay.containsKey(name) ? overlay.get(name) : files.read(name);
 		MixinPreflight preflight = new MixinPreflight(env.game(), classSource(translated), env.untransformable(), env.clientSide());
+		Map<String, MixinConfigFile> configs = new HashMap<>();
 
 		for (MixinEntry entry : md.compatHints().mixinsOr(md.mixins())) {
 			if (!entry.environment().matches(side)) continue;
@@ -261,6 +262,7 @@ public final class ModTranslator {
 			} catch (JsonException e) {
 				throw new TranslationException("Mixin config " + entry.config() + " is invalid: " + e.getMessage(), "Report this to the mod author.");
 			}
+			configs.put(entry.config(), config);
 
 			Skips skips = skipsFor(entry.config(), config, override.skipMixins());
 			Set<String> wholeSkips = skips.mixins();
@@ -292,7 +294,7 @@ public final class ModTranslator {
 					.collect(Collectors.joining("; "));
 			if (failures.size() > 3) summary += "; and " + (failures.size() - 3) + " more";
 			String skipHint = failures.stream().filter(f -> f.mixin() != null)
-					.map(f -> f.config() + ":" + relativeMixin(f.config(), f.mixin(), files)).distinct()
+					.map(f -> f.config() + ":" + relativeMixin(configs.get(f.config()), f.mixin())).distinct()
 					.collect(Collectors.joining("\", \""));
 			throw new TranslationException("Mixin pre-flight failed: " + summary,
 					"Update the mod or ask its author for a NeoForge build. If the affected mixins are cosmetic, add \"skipMixins\": [\""
@@ -302,18 +304,10 @@ public final class ModTranslator {
 		return specs;
 	}
 
-	private static String relativeMixin(String configName, String mixinDotted, FileView files) {
-		try {
-			byte[] data = files.read(configName);
-			if (data != null) {
-				MixinConfigFile cfg = MixinConfigFile.parse(new String(data, StandardCharsets.UTF_8));
-				String pkg = cfg.mixinPackage();
-				if (pkg != null && mixinDotted.startsWith(pkg + ".")) return mixinDotted.substring(pkg.length() + 1);
-			}
-		} catch (ArchiveException | JsonException ignored) {
-			// fall back to the full name
-		}
-		return mixinDotted;
+	/** The mixin's name as its config lists it. */
+	private static String relativeMixin(MixinConfigFile config, String mixinDotted) {
+		String pkg = config != null ? config.mixinPackage() : null;
+		return pkg != null && mixinDotted.startsWith(pkg + ".") ? mixinDotted.substring(pkg.length() + 1) : mixinDotted;
 	}
 
 	/**
