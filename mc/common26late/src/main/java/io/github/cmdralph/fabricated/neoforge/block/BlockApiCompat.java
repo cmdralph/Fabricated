@@ -14,7 +14,7 @@ import net.neoforged.neoforge.fluids.FluidInteractionRegistry;
 import net.neoforged.neoforge.fluids.FluidType;
 import net.neoforged.neoforge.registries.NeoForgeRegistries;
 
-/** Native {@code fabric-block-api-v1}, the parts of the API only 26.2 has: enchanting power and fluid flow events. */
+/** Native {@code fabric-block-api-v1}, the parts of the API only 26.2 and later have: enchanting power and fluid flow events. */
 public final class BlockApiCompat {
 	/** {@link FluidInteractionRegistry#canInteract} tries each direction in turn; Fabric's event is asked once, on the first. */
 	private static final Direction FIRST_SOURCE_SIDE = LiquidBlock.POSSIBLE_FLOW_DIRECTIONS.getFirst().getOpposite();

@@ -29,6 +29,13 @@ repositories {
     mavenCentral()
 }
 
+// Source shared between versions, in mc/<name>: every version, 26.x (unobfuscated, with one Fabric API surface),
+// 26.1.2 and 26.2 (26.3 changed the APIs that code uses), and 26.2 and 26.3.
+def sharedSources = ['common']
+if (mcVersion.startsWith('26.')) sharedSources << 'common26'
+if (mcVersion in ['26.1.2', '26.2']) sharedSources << 'common26early'
+if (mcVersion in ['26.2', '26.3']) sharedSources << 'common26late'
+
 sourceSets {
     loader {
         java.srcDir rootProject.file('loader/src/main/java')
@@ -36,21 +43,14 @@ sourceSets {
         resources.srcDir 'src/fabricated/resources'
     }
     main {
-        java.srcDirs = ['src/main/java', rootProject.file('mc/common/src/main/java'), 'src/fabricapi/java']
-        resources.srcDirs = ['src/main/resources', rootProject.file('mc/common/src/main/resources')]
-        // Code shared by the unobfuscated 26.x versions, whose Fabric API surface is identical.
-        if (mcVersion.startsWith('26.')) {
-            java.srcDir rootProject.file('mc/common26/src/main/java')
-            resources.srcDir rootProject.file('mc/common26/src/main/resources')
-        }
-        // Code shared by 26.1.2 and 26.2 only (26.3 changed the APIs it uses).
-        if (mcVersion in ['26.1.2', '26.2']) java.srcDir rootProject.file('mc/common26early/src/main/java')
+        java.srcDirs = ['src/main/java', 'src/fabricapi/java'] + sharedSources.collect { rootProject.file("mc/$it/src/main/java") }
+        resources.srcDirs = ['src/main/resources'] + sharedSources.collect { rootProject.file("mc/$it/src/main/resources") }
     }
     testmod {
-        java.srcDir rootProject.file('mc/common/src/testmod/java')
-        resources.srcDir rootProject.file('mc/common/src/testmod/resources')
-        if (mcVersion.startsWith('26.')) java.srcDir rootProject.file('mc/common26/src/testmod/java')
-        java.srcDir 'src/testmod/java'
+        sharedSources.each {
+            java.srcDir rootProject.file("mc/$it/src/testmod/java")
+            resources.srcDir rootProject.file("mc/$it/src/testmod/resources")
+        }
     }
     testmodbroken {
         java.srcDir rootProject.file('mc/common/src/testmodbroken/java')
@@ -93,9 +93,9 @@ neoForge {
         from(file('src/main/resources/META-INF/accesstransformer-version.cfg'))
     }
     // Compile-time view of the interfaces Fabricated's mixins add at runtime (Fabric API's injected
-    // interfaces), so the vendored Fabric API sources compile as they do with Loom: the 26.x file plus the version's own.
+    // interfaces), so the vendored Fabric API sources compile as they do with Loom: the shared files plus the version's own.
     interfaceInjectionData {
-        if (mcVersion.startsWith('26.')) from(rootProject.file('mc/common26/interfaces.json'))
+        sharedSources.collect { rootProject.file("mc/$it/interfaces.json") }.findAll { it.exists() }.each { from(it) }
         if (file('interfaces.json').exists()) from(file('interfaces.json'))
     }
 }
@@ -109,9 +109,6 @@ def expandProps = [
         neoforge_version_range : project.neoforge_version_range,
         minecraft_version_range: project.minecraft_version_range,
         aw_header              : project.aw_header,
-        // Native Fabric API tests (version-specific source: mc/common26 or mc/<version>/src/testmod).
-        testmod_extra_main     : ', "io.github.cmdralph.fabricated.testmod.NetworkingTest", "io.github.cmdralph.fabricated.testmod.ConfigurationTest", "io.github.cmdralph.fabricated.testmod.MenuTest", "io.github.cmdralph.fabricated.testmod.ResourceLoaderTest", "io.github.cmdralph.fabricated.testmod.RegistrySyncTest", "io.github.cmdralph.fabricated.testmod.EntityEventsTest", "io.github.cmdralph.fabricated.testmod.ObjectBuilderTest", "io.github.cmdralph.fabricated.testmod.BlockApiTest", "io.github.cmdralph.fabricated.testmod.ItemApiTest", "io.github.cmdralph.fabricated.testmod.InteractionTest", "io.github.cmdralph.fabricated.testmod.LootTest", "io.github.cmdralph.fabricated.testmod.ContentRegistriesTest", "io.github.cmdralph.fabricated.testmod.TransferTest"',
-        testmod_extra_depends  : ',\n    "fabric-networking-api-v1": "*",\n    "fabric-resource-loader-v1": "*",\n    "fabric-registry-sync-v0": "*",\n    "fabric-entity-events-v1": "*",\n    "fabric-object-builder-api-v1": "*",\n    "fabric-block-api-v1": "*",\n    "fabric-item-api-v1": "*",\n    "fabric-events-interaction-v0": "*",\n    "fabric-loot-api-v3": "*",\n    "fabric-content-registries-v0": "*",\n    "fabric-transfer-api-v1": "*"',
 ]
 
 tasks.named('processResources', ProcessResources) {
