@@ -29,6 +29,7 @@ import net.minecraft.server.network.ConfigurationTask;
 import net.minecraft.server.network.ServerConfigurationPacketListenerImpl;
 import net.minecraft.server.network.ServerGamePacketListenerImpl;
 import net.neoforged.api.distmarker.Dist;
+import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
@@ -64,7 +65,8 @@ public final class NetworkingBridge {
 		modBus.addListener(RegisterConfigurationTasksEvent.class, NetworkingBridge::configure);
 
 		var bus = NeoForge.EVENT_BUS;
-		bus.addListener(PlayerEvent.PlayerLoggedInEvent.class, e -> {
+		// Before ServerPlayerEvents.JOIN (fired from the same NeoForge event), as upstream's INIT comes first.
+		bus.addListener(EventPriority.HIGH, PlayerEvent.PlayerLoggedInEvent.class, e -> {
 			if (!(e.getEntity() instanceof ServerPlayer player)) return;
 			ServerGamePacketListenerImpl listener = player.connection;
 			MinecraftServer server = player.level().getServer();

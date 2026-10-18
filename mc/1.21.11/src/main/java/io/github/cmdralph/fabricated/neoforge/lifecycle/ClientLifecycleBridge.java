@@ -11,6 +11,7 @@ import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.chunk.LevelChunk;
+import net.neoforged.bus.api.EventPriority;
 import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.common.NeoForge;
@@ -82,8 +83,9 @@ final class ClientLifecycleBridge {
 			ClientChunkEvents.CHUNK_UNLOAD.invoker().onChunkUnload(level, chunk);
 		});
 
-		bus.addListener(EntityJoinLevelEvent.class, e -> {
-			if (e.getLevel() instanceof ClientLevel level) ClientEntityEvents.ENTITY_LOAD.invoker().onLoad(e.getEntity(), level);
+		// Last, and not for a join a NeoForge mod cancelled: that entity is never added, so never unloaded either.
+		bus.addListener(EventPriority.LOWEST, EntityJoinLevelEvent.class, e -> {
+			if (!e.isCanceled() && e.getLevel() instanceof ClientLevel level) ClientEntityEvents.ENTITY_LOAD.invoker().onLoad(e.getEntity(), level);
 		});
 		bus.addListener(EntityLeaveLevelEvent.class, e -> {
 			if (e.getLevel() instanceof ClientLevel level) ClientEntityEvents.ENTITY_UNLOAD.invoker().onUnload(e.getEntity(), level);

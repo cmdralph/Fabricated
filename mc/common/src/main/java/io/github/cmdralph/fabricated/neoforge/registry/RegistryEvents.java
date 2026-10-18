@@ -1,7 +1,8 @@
 package io.github.cmdralph.fabricated.neoforge.registry;
 
+import java.lang.ref.WeakReference;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.WeakHashMap;
 
 import org.jspecify.annotations.Nullable;
 
@@ -35,7 +36,11 @@ import net.neoforged.neoforge.registries.callback.ClearCallback;
  * The callbacks are attached the first time Fabric code asks for a registry's events.
  */
 public final class RegistryEvents<T> implements ListenableRegistry<T> {
-	private static final Map<Registry<?>, RegistryEvents<?>> EVENTS = new ConcurrentHashMap<>();
+	/**
+	 * By registry, both weakly: a world's dynamic registries go with the world. The registry's callbacks hold its events,
+	 * so they live exactly as long as it does.
+	 */
+	private static final Map<Registry<?>, WeakReference<RegistryEvents<?>>> EVENTS = new WeakHashMap<>();
 
 	private final Registry<T> registry;
 	private final Event<RegistryEntryAddedCallback<T>> addEvent;
@@ -58,7 +63,15 @@ public final class RegistryEvents<T> implements ListenableRegistry<T> {
 
 	@SuppressWarnings("unchecked")
 	public static <T> RegistryEvents<T> of(Registry<T> registry) {
-		return (RegistryEvents<T>) EVENTS.computeIfAbsent(registry, r -> new RegistryEvents<>((Registry<T>) r));
+		synchronized (EVENTS) {
+			WeakReference<RegistryEvents<?>> known = EVENTS.get(registry);
+			RegistryEvents<?> events = known != null ? known.get() : null;
+			if (events == null) {
+				events = new RegistryEvents<>(registry);
+				EVENTS.put(registry, new WeakReference<>(events));
+			}
+			return (RegistryEvents<T>) events;
+		}
 	}
 
 	@Override

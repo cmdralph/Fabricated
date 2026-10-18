@@ -3,7 +3,6 @@ package io.github.cmdralph.fabricated.neoforge.entity;
 import java.util.Collection;
 import java.util.Map;
 import java.util.UUID;
-import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
 
 import net.fabricmc.fabric.api.entity.event.v1.EntitySleepEvents;
@@ -12,6 +11,7 @@ import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
 import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents;
 import net.fabricmc.fabric.api.entity.event.v1.effect.EffectEventContext;
 import net.fabricmc.fabric.api.entity.event.v1.effect.ServerMobEffectEvents;
+import net.minecraft.core.BlockPos;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -21,6 +21,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.level.block.BedBlock;
 import net.neoforged.bus.api.EventPriority;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.entity.EntityJoinLevelEvent;
@@ -46,8 +47,13 @@ import net.neoforged.neoforge.event.tick.ServerTickEvent;
  * docs/COMPATIBILITY.md together with the smaller differences noted below.
  */
 public final class EntityEventsBridge {
-	/** The damage of the hit that is killing an entity, for Fabric's {@code ALLOW_DEATH} (NeoForge's death event has none). */
-	private static final Map<LivingEntity, Float> LAST_DAMAGE = new WeakHashMap<>();
+	/**
+	 * The entity being hit and the hit's damage, for Fabric's {@code ALLOW_DEATH}: NeoForge's death event has no amount
+	 * and fires during the hit, after {@link LivingDamageEvent.Pre} and before {@link LivingDamageEvent.Post}. Server
+	 * thread only; cleared when the hit ends, so no entity is held on to.
+	 */
+	private static LivingEntity damaged;
+	private static float damage;
 	/** Entities leaving for another level, by UUID: the copy that arrives is a new entity with the same UUID. */
 	private static final Map<UUID, Travel> TRAVELLING = new ConcurrentHashMap<>();
 
@@ -80,12 +86,16 @@ public final class EntityEventsBridge {
 				e.setCanceled(true);
 			}
 		});
+		bus.addListener(LivingDamageEvent.Pre.class, e -> {
+			if (e.getEntity().level() instanceof ServerLevel) {
+				damaged = e.getEntity();
+				damage = e.getOriginalDamage();
+			}
+		});
 		bus.addListener(LivingDamageEvent.Post.class, e -> {
 			LivingEntity entity = e.getEntity();
 			if (!(entity.level() instanceof ServerLevel)) return;
-			synchronized (LAST_DAMAGE) {
-				LAST_DAMAGE.put(entity, e.getOriginalDamage());
-			}
+			if (damaged == entity) damaged = null;
 			// As upstream: not fired for the hit that kills, and "damage taken" is after shields but before armor.
 			if (entity.isDeadOrDying()) return;
 			float blocked = e.getBlockedDamage();
@@ -98,10 +108,7 @@ public final class EntityEventsBridge {
 		bus.addListener(EventPriority.HIGHEST, LivingDeathEvent.class, e -> {
 			LivingEntity entity = e.getEntity();
 			if (!(entity.level() instanceof ServerLevel)) return;
-			float amount;
-			synchronized (LAST_DAMAGE) {
-				amount = LAST_DAMAGE.getOrDefault(entity, 0f);
-			}
+			float amount = damaged == entity ? damage : 0f;
 			// Players' ALLOW_DEATH listeners run too: Fabric API forwards this event to them.
 			if (!ServerLivingEntityEvents.ALLOW_DEATH.invoker().allowDeath(entity, e.getSource(), amount)) e.setCanceled(true);
 		});
@@ -185,10 +192,13 @@ public final class EntityEventsBridge {
 				player.getSleepingPos().ifPresent(pos -> EntitySleepEvents.STOP_SLEEPING.invoker().onStopSleeping(player, pos));
 			}
 		});
+		// Fabric's event is about sleeping in a bed; NeoForge's also fires for respawn anchors and /spawnpoint.
 		bus.addListener(PlayerSetSpawnEvent.class, e -> {
 			Player player = e.getEntity();
-			if (player.level() instanceof ServerLevel && e.getNewSpawn() != null
-					&& !EntitySleepEvents.ALLOW_SETTING_SPAWN.invoker().allowSettingSpawn(player, e.getNewSpawn())) {
+			BlockPos spawn = e.getNewSpawn();
+			if (player.level() instanceof ServerLevel level && spawn != null && !e.isForced()
+					&& level.getBlockState(spawn).getBlock() instanceof BedBlock
+					&& !EntitySleepEvents.ALLOW_SETTING_SPAWN.invoker().allowSettingSpawn(player, spawn)) {
 				e.setCanceled(true);
 			}
 		});
