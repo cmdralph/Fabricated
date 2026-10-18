@@ -573,7 +573,10 @@ public final class MixinPreflight {
 			}
 			lastSelector = ref.name() + (ref.desc() != null ? ref.desc() : "");
 			for (MethodNode m : target.methods) {
-				if (ref.matchesMethod(m.name, m.desc)) matched.add(m);
+				if (!ref.matchesMethod(m.name, m.desc)) continue;
+				matched.add(m);
+				// As Mixin: a selector without a descriptor (or quantifier) picks the first method of that name only.
+				if (ref.desc() == null) break;
 			}
 		}
 		if (matched.isEmpty()) {

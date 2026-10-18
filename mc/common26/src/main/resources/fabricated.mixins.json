@@ -54,6 +54,7 @@
     "client.LocalPlayerMixin",
     "client.ClientConfigurationPacketListenerImplMixin",
     "client.KeyMappingAccessor",
+    "client.ModelManagerExtraModelsMixin",
     "client.MultiPlayerGameModeMixin",
     "client.MouseHandlerMixin",
     "client.ClientNetworkAddonHolderMixin",

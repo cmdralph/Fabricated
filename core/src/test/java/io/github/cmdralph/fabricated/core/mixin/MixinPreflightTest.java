@@ -47,6 +47,42 @@ class MixinPreflightTest {
 		return cw.toByteArray();
 	}
 
+	/** {@link #TARGET} with tick() delegating to tick(I), which alone calls helper(I)V: NeoForge keeps old signatures so. */
+	private static byte[] overloadedTarget() {
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		MethodVisitor old = cw.visitMethod(Opcodes.ACC_PUBLIC, "tick", "()V", null, null);
+		old.visitCode();
+		old.visitVarInsn(Opcodes.ALOAD, 0);
+		old.visitInsn(Opcodes.ICONST_0);
+		old.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "tick", "(I)V", false);
+		old.visitInsn(Opcodes.RETURN);
+		old.visitMaxs(0, 0);
+		old.visitEnd();
+		MethodVisitor current = cw.visitMethod(Opcodes.ACC_PUBLIC, "tick", "(I)V", null, null);
+		current.visitCode();
+		current.visitVarInsn(Opcodes.ALOAD, 0);
+		current.visitVarInsn(Opcodes.ILOAD, 1);
+		current.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "helper", "(I)V", false);
+		current.visitInsn(Opcodes.RETURN);
+		current.visitMaxs(0, 0);
+		current.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	@Test
+	void aSelectorWithoutDescriptorTargetsTheFirstOverloadOnly() throws Exception {
+		ClassIndex game = new ClassIndex(Map.of(TARGET, overloadedTarget())::get);
+		Map<String, byte[]> mod = Map.of(
+				"com/example/mixin/ByName", mixin("com/example/mixin/ByName", false, cw -> inject(cw, "h", "tick", "INVOKE", "Lnet/minecraft/world/Thing;helper(I)V", 1, null)),
+				"com/example/mixin/ByDesc", mixin("com/example/mixin/ByDesc", false, cw -> inject(cw, "h", "tick(I)V", "INVOKE", "Lnet/minecraft/world/Thing;helper(I)V", 1, null)));
+		MixinPreflight preflight = new MixinPreflight(game, mod::get, ClassBytesSource.EMPTY, false);
+		List<PreflightFinding> byName = preflight.check("test.mixins.json", MixinConfigFile.parse(config(true, "ByName")), Refmap.EMPTY, Set.of());
+		assertEquals(1, byName.size(), "Mixin picks tick()V, which has no such call: " + byName);
+		assertTrue(preflight.check("test.mixins.json", MixinConfigFile.parse(config(true, "ByDesc")), Refmap.EMPTY, Set.of()).isEmpty());
+	}
+
 	/** Builds a mixin class targeting {@link #TARGET}; {@code body} adds members. */
 	private static byte[] mixin(String name, boolean pseudo, Consumer<ClassWriter> body) {
 		ClassWriter cw = new ClassWriter(0);

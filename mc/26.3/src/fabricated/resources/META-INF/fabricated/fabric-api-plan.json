@@ -118,9 +118,10 @@
       "plan": "passthrough",
       "skipMixins": [
         "fabric-model-loading-api-v1.mixins.json:ModelManagerMixin#cancelVanillaDeserialize",
-        "fabric-model-loading-api-v1.mixins.json:ModelManagerMixin#actuallyDeserializeModel"
+        "fabric-model-loading-api-v1.mixins.json:ModelManagerMixin#actuallyDeserializeModel",
+        "fabric-model-loading-api-v1.mixins.json:ModelManagerMixin#resolveExtraModels"
       ],
-      "reason": "Model loading plugins, extra models and model modifiers work; NeoForge parses model files itself (with its own custom loaders), so UnbakedModelDeserializer types registered with Fabric are not used."
+      "reason": "Model loading plugins, extra models (added to the models NeoForge's own overload of the discovery resolves) and model modifiers work; NeoForge parses model files itself (with its own custom loaders), so UnbakedModelDeserializer types registered with Fabric are not used."
     },
     "fabric-networking-api-v1": {
       "plan": "native",
