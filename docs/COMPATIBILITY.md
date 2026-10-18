@@ -502,8 +502,9 @@ Upstream's module loads, without the mixins that target code NeoForge rewrote:
   end of the HUD as upstream does.
 - **Block colors** (1.21.11): NeoForge keeps block color providers in a map by block instead of vanilla's
   id-indexed one; `ColorProviderRegistry.BLOCK.get` reads NeoForge's map.
-- **Picture-in-picture renderers** (`PictureInPictureRendererRegistry`): NeoForge rebuilt the GUI renderer around
-  its own renderer pools; renderers registered with Fabric are not used yet.
+- **Picture-in-picture renderers** (`PictureInPictureRendererRegistry`, 26.x): NeoForge rebuilt the GUI renderer
+  around its own renderer pools. Fabricated registers the renderers Fabric mods registered with NeoForge, which
+  creates and pools them as it does its own. 1.21.11's `SpecialGuiElementRegistry` is not bridged yet.
 - **Debug options screen**: keeps vanilla's sorting and search instead of upstream's namespace-aware ones.
 - **Render pipeline snippets** (1.21.11, 26.1.2, 26.2): NeoForge added a field to them, so they don't carry Fabric's
   "use the pipeline's draw mode in GUIs" flag; pipelines still do.
@@ -520,8 +521,8 @@ removal, ticks, mouse and keyboard events) are upstream's.
 `fabric-rendering-fluids-v1` loads without the handler that changes which neighbouring blocks show a fluid's
 overlay texture: NeoForge asks the block (`shouldDisplayFluidOverlay`) instead, so blocks marked transparent
 through `FluidRenderingRegistry.setBlockTransparency` keep NeoForge's behavior. On 1.21.11, NeoForge also tints
-fluids through their fluid type, so a Fabric fluid render handler's `getFluidColor` is not used when vanilla's
-renderer draws the fluid. Custom fluid renderers and sprites work.
+fluids through their fluid type; a Fabric fluid render handler's `getFluidColor` replaces that tint's color (its
+alpha stays NeoForge's). Custom fluid renderers and sprites work.
 
 `fabric-sound-api-v1` (all versions) loads without upstream's redirect of the audio stream lookup, which NeoForge replaced with
 its own `SoundInstance.getStream`. A sound instance whose class overrides `FabricSoundInstance.getAudioStream`

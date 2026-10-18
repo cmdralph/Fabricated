@@ -45,6 +45,7 @@
     "client.BlockColorsLookupMixin",
     "client.ClientConfigurationPacketListenerImplMixin",
     "client.KeyMappingAccessor",
+    "client.LiquidBlockTintMixin",
     "client.MultiPlayerGameModeMixin",
     "client.ClientNetworkAddonHolderMixin",
     "client.ClientPayloadSendMixin",

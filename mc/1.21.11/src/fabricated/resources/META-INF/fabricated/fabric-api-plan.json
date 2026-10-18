@@ -155,7 +155,7 @@
         "fabric-rendering-fluids-v1.mixins.json:LiquidBlockRendererMixin#modTintColor",
         "fabric-rendering-fluids-v1.mixins.json:LiquidBlockRendererMixin#modifyNonOverlayCheck"
       ],
-      "reason": "NeoForge tints fluids through their fluid type and decides where they show their overlay texture with BlockState.shouldDisplayFluidOverlay, instead of the code upstream modifies: a Fabric fluid render handler's color and FluidRenderingRegistry.setBlockTransparency keep NeoForge's behavior. Custom fluid renderers and sprites work."
+      "reason": "NeoForge tints fluids through their fluid type and decides where they show their overlay texture with BlockState.shouldDisplayFluidOverlay, instead of the code upstream modifies: Fabricated applies a Fabric fluid render handler's color to NeoForge's tint, and blocks marked transparent through FluidRenderingRegistry.setBlockTransparency keep NeoForge's behavior. Custom fluid renderers and sprites work."
     },
     "fabric-rendering-v1": {
       "plan": "passthrough",

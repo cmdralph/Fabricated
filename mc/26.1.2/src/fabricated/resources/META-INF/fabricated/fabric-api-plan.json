@@ -165,7 +165,7 @@
         "fabric-rendering-v1.mixins.json:DebugOptionsScreenOptionListMixin",
         "fabric-rendering-v1.mixins.json:RenderPipelineBuilderMixin#copyUsePipelineDrawModeForGuiToSnippet"
       ],
-      "reason": "NeoForge draws the HUD in layers: Fabricated runs Fabric's HUD elements from NeoForge's vanilla layers instead of upstream's HUD mixin. Picture-in-picture renderers registered with Fabric are not used (NeoForge rebuilt that renderer), and the debug options screen keeps vanilla's sorting and search. Render pipeline snippets don't carry Fabric's GUI draw mode flag (NeoForge added a field to them); pipelines do."
+      "reason": "NeoForge draws the HUD in layers: Fabricated runs Fabric's HUD elements from NeoForge's vanilla layers instead of upstream's HUD mixin. Picture-in-picture renderers registered with Fabric are handed to NeoForge's own (NeoForge rebuilt that renderer), and the debug options screen keeps vanilla's sorting and search. Render pipeline snippets don't carry Fabric's GUI draw mode flag (NeoForge added a field to them); pipelines do."
     },
     "fabric-resource-conditions-api-v1": {
       "plan": "passthrough",
