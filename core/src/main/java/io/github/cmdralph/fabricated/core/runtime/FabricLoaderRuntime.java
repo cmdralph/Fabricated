@@ -85,9 +85,11 @@ public final class FabricLoaderRuntime implements FabricLoader {
 	private final ObjectShare objectShare = new ObjectShareImpl();
 
 	private final Map<String, ModContainerImpl> modsById = new LinkedHashMap<>();
-	// Immutable copies for the lookups mods make from any thread (render, workers), so they never lock.
-	private volatile Map<String, ModContainerImpl> modsSnapshot = Map.of();
-	private volatile List<ModContainer> allMods = List.of();
+	/** Immutable copies for the lookups mods make from any thread (render, workers); rebuilt on the first lookup after a change. */
+	private record Snapshot(Map<String, ModContainerImpl> byId, List<ModContainer> all) {
+	}
+
+	private volatile Snapshot snapshot = new Snapshot(Map.of(), List.of());
 	private final Map<ModContainerImpl, ClassLoader> classLoaders = new ConcurrentHashMap<>();
 	private final Map<String, List<Declared>> entrypoints = new LinkedHashMap<>();
 	private final Map<String, AdapterDeclaration> adapterDeclarations = new LinkedHashMap<>();
@@ -122,8 +124,16 @@ public final class FabricLoaderRuntime implements FabricLoader {
 	public synchronized void addMod(ModContainerImpl container, Collection<String> extraIds) {
 		modsById.putIfAbsent(container.getMetadata().getId(), container);
 		for (String id : extraIds) modsById.putIfAbsent(id, container);
-		modsSnapshot = Map.copyOf(modsById);
-		allMods = List.copyOf(new LinkedHashSet<>(modsById.values()));
+		snapshot = null;
+	}
+
+	private Snapshot snapshot() {
+		Snapshot current = snapshot;
+		if (current != null) return current;
+		synchronized (this) {
+			if (snapshot == null) snapshot = new Snapshot(Map.copyOf(modsById), List.copyOf(new LinkedHashSet<>(modsById.values())));
+			return snapshot;
+		}
 	}
 
 	/** Forgets a mod that won't load after all: its ids, entrypoints and language adapters. */
@@ -131,8 +141,7 @@ public final class FabricLoaderRuntime implements FabricLoader {
 		ModContainerImpl container = modsById.get(id);
 		if (container == null) return;
 		modsById.values().removeIf(c -> c == container);
-		modsSnapshot = Map.copyOf(modsById);
-		allMods = List.copyOf(new LinkedHashSet<>(modsById.values()));
+		snapshot = null;
 		entrypoints.values().forEach(list -> list.removeIf(d -> d.mod() == container));
 		adapterDeclarations.values().removeIf(a -> a.owner() == container);
 		classLoaders.remove(container);
@@ -268,7 +277,7 @@ public final class FabricLoaderRuntime implements FabricLoader {
 	 * on Fabric is {@code cloth_config}; dependency resolution already accepts it for the Fabric id, and so does this.
 	 */
 	private ModContainer lookup(String id) {
-		Map<String, ModContainerImpl> mods = modsSnapshot;
+		Map<String, ModContainerImpl> mods = snapshot().byId();
 		ModContainer mod = mods.get(id);
 		if (mod == null && id.indexOf('-') >= 0) mod = mods.get(id.replace('-', '_'));
 		return mod;
@@ -276,7 +285,7 @@ public final class FabricLoaderRuntime implements FabricLoader {
 
 	@Override
 	public Collection<ModContainer> getAllMods() {
-		return allMods;
+		return snapshot().all();
 	}
 
 	@Override

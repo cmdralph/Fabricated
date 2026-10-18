@@ -58,7 +58,9 @@ class TranslateHelpersTest {
 	@Test
 	void parsesSkipMixinOverrides() throws Exception {
 		MixinConfigFile cfg = MixinConfigFile.parse("{\"package\":\"com.example.mixin\",\"mixins\":[\"A\",\"B\"],\"client\":[\"C\"]}");
-		assertEquals(Set.of("A", "C"), ModTranslator.skipsFor("x.mixins.json", cfg, Set.of("A", "x.mixins.json:C", "other.json:B", "Missing")));
+		ModTranslator.Skips skips = ModTranslator.skipsFor("x.mixins.json", cfg, Set.of("A", "x.mixins.json:C", "other.json:B", "Missing", "B#handler", "A#ignored"));
+		assertEquals(Set.of("A", "C"), skips.mixins());
+		assertEquals(java.util.Map.of("B", Set.of("handler")), skips.members(), "a member of a mixin left out whole adds nothing");
 		String filtered = cfg.withoutMixins(Set.of("A"));
 		MixinConfigFile reparsed = MixinConfigFile.parse(filtered);
 		assertEquals(List.of("B"), reparsed.mixinsFor(false));

@@ -19,6 +19,11 @@ public final class IntermediaryRemapper extends Remapper {
 		this.tokens = new TokenRemapper(table);
 	}
 
+	/** Rewrites intermediary names inside text (refmaps, service files, string constants) with the same table. */
+	public TokenRemapper tokens() {
+		return tokens;
+	}
+
 	@Override
 	public String map(String internalName) {
 		return table.mapClass(internalName);

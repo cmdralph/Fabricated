@@ -262,9 +262,9 @@ public final class ModTranslator {
 				throw new TranslationException("Mixin config " + entry.config() + " is invalid: " + e.getMessage(), "Report this to the mod author.");
 			}
 
-			Set<String> wholeSkips = skipsFor(entry.config(), config, override.skipMixins());
-			for (Map.Entry<String, Set<String>> handlers : handlerSkipsFor(entry.config(), config, override.skipMixins()).entrySet()) {
-				if (wholeSkips.contains(handlers.getKey())) continue;
+			Skips skips = skipsFor(entry.config(), config, override.skipMixins());
+			Set<String> wholeSkips = skips.mixins();
+			for (Map.Entry<String, Set<String>> handlers : skips.members().entrySet()) {
 				String path = config.internalName(handlers.getKey()) + ".class";
 				byte[] mixin = files.read(path);
 				if (mixin == null) continue;
@@ -373,34 +373,28 @@ public final class ModTranslator {
 	}
 
 	/**
-	 * Whole mixins to leave out of {@code configName}. Skips apply as {@code "config.json:Name"} (one config) or
-	 * {@code "Name"} (every config); {@code "Name#member"} leaves out the methods and fields of that name instead (see
-	 * {@link #handlerSkipsFor}).
+	 * The skip entries that apply to {@code configName}, for mixins it declares: {@code "config.json:Name"} (one config)
+	 * or {@code "Name"} (every config) leaves out the whole mixin; {@code "Name#member"} only the methods and fields of
+	 * that name in a mixin kept otherwise (when its other injections still work on NeoForge).
 	 */
-	static Set<String> skipsFor(String configName, MixinConfigFile config, Set<String> configured) {
-		Set<String> declared = new HashSet<>(config.allMixins());
-		Set<String> ret = new TreeSet<>();
-		for (String s : configured) {
-			String name = skipTarget(configName, s);
-			if (name != null && name.indexOf('#') < 0 && declared.contains(name)) ret.add(name);
-		}
-		return ret;
+	record Skips(Set<String> mixins, Map<String, Set<String>> members) {
 	}
 
-	/**
-	 * Handler methods to remove from kept mixins, by mixin: {@code "config.json:Name#handler"}. For a mixin whose
-	 * other injections still work on NeoForge, so only the conflicting one is lost.
-	 */
-	static Map<String, Set<String>> handlerSkipsFor(String configName, MixinConfigFile config, Set<String> configured) {
+	static Skips skipsFor(String configName, MixinConfigFile config, Set<String> configured) {
 		Set<String> declared = new HashSet<>(config.allMixins());
-		Map<String, Set<String>> ret = new TreeMap<>();
+		Set<String> mixins = new TreeSet<>();
+		Map<String, Set<String>> members = new TreeMap<>();
 		for (String s : configured) {
 			String name = skipTarget(configName, s);
-			int hash = name == null ? -1 : name.indexOf('#');
-			if (hash < 0 || !declared.contains(name.substring(0, hash))) continue;
-			ret.computeIfAbsent(name.substring(0, hash), k -> new TreeSet<>()).add(name.substring(hash + 1));
+			if (name == null) continue;
+			int hash = name.indexOf('#');
+			String mixin = hash < 0 ? name : name.substring(0, hash);
+			if (!declared.contains(mixin)) continue;
+			if (hash < 0) mixins.add(mixin);
+			else members.computeIfAbsent(mixin, k -> new TreeSet<>()).add(name.substring(hash + 1));
 		}
-		return ret;
+		members.keySet().removeAll(mixins);
+		return new Skips(mixins, members);
 	}
 
 	/** The mixin part of a skip entry when it applies to {@code configName}, else null. */

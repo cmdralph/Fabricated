@@ -178,6 +178,7 @@ public final class TranslationCache {
 			deleteQuietly(target);
 			Files.move(tmp, target, StandardCopyOption.ATOMIC_MOVE);
 			lastUsed.put(name, launch);
+			for (Map.Entry<String, Object> h : hashes.entrySet()) remember(target.resolve(h.getKey()), (String) h.getValue());
 			return new Entry(name, target, meta);
 		} finally {
 			deleteQuietly(tmp);
@@ -190,6 +191,7 @@ public final class TranslationCache {
 		Path target = root.resolve("nested").resolve(sha + ".jar");
 		if (!Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS) || (verify && !sha256(target).equals(sha))) {
 			AtomicFiles.writeAtomically(target, data, root.resolve("tmp"));
+			remember(target, sha);
 		}
 		lastUsed.put("nested/" + sha + ".jar", launch);
 		return target;
@@ -261,13 +263,26 @@ public final class TranslationCache {
 	 * over another with its old timestamp kept ({@code cp -p}, a restored backup) still changes the change time.
 	 */
 	public String sha256(Path file) throws IOException {
-		BasicFileAttributes attrs = Files.readAttributes(file, BasicFileAttributes.class);
-		String key = file.toAbsolutePath().normalize().toString();
-		String stamp = attrs.size() + "|" + attrs.lastModifiedTime().toMillis() + "|" + changeTime(file) + "|" + attrs.fileKey();
+		String key = memoKey(file);
+		String stamp = stamp(file);
 		Memo memo = hashMemo.get(key);
 		String sha = memo != null && memo.stamp().equals(stamp) ? memo.sha256() : Hashing.sha256(file);
 		hashMemo.put(key, new Memo(stamp, sha, launch));
 		return sha;
+	}
+
+	/** Records the hash of a file this cache just wrote, so the next launch doesn't hash it again. */
+	private void remember(Path file, String sha) throws IOException {
+		hashMemo.put(memoKey(file), new Memo(stamp(file), sha, launch));
+	}
+
+	private static String memoKey(Path file) {
+		return file.toAbsolutePath().normalize().toString();
+	}
+
+	private static String stamp(Path file) throws IOException {
+		BasicFileAttributes attrs = Files.readAttributes(file, BasicFileAttributes.class);
+		return attrs.size() + "|" + attrs.lastModifiedTime().toMillis() + "|" + changeTime(file) + "|" + attrs.fileKey();
 	}
 
 	private static Object changeTime(Path file) {

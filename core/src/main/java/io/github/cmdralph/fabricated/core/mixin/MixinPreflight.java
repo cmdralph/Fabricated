@@ -147,8 +147,7 @@ public final class MixinPreflight {
 			Context ctx = new Context(configName, internal.replace('/', '.'), config, refmap, false, out);
 			List<ClassNode> targets = new ArrayList<>();
 			for (String target : targetsOf(node, ctx)) {
-				ClassNode targetNode = GAME_PREFIXES.stream().anyMatch(target::startsWith)
-						? targetCache.computeIfAbsent(target, t -> Optional.ofNullable(game.readNode(t))).orElse(null) : null;
+				ClassNode targetNode = gameTarget(target);
 				if (targetNode == null) {
 					targets = List.of();
 					break;
@@ -277,10 +276,17 @@ public final class MixinPreflight {
 	}
 
 	private static boolean declaresPublicInstance(ClassNode target, String name, String desc) {
-		for (MethodNode m : target.methods) {
-			if (m.name.equals(name) && m.desc.equals(desc)) return (m.access & Opcodes.ACC_PUBLIC) != 0 && (m.access & Opcodes.ACC_STATIC) == 0;
-		}
-		return false;
+		MethodNode m = declared(target, name, desc);
+		return m != null && (m.access & Opcodes.ACC_PUBLIC) != 0 && (m.access & Opcodes.ACC_STATIC) == 0;
+	}
+
+	private static boolean isGameClass(String internalName) {
+		return GAME_PREFIXES.stream().anyMatch(internalName::startsWith);
+	}
+
+	/** A Minecraft class as the game has it (parsed once per pre-flight), or null when absent or not a game class. */
+	private ClassNode gameTarget(String internalName) {
+		return isGameClass(internalName) ? targetCache.computeIfAbsent(internalName, t -> Optional.ofNullable(game.readNode(t))).orElse(null) : null;
 	}
 
 	private ClassNode readMixin(String internal) {
@@ -326,8 +332,8 @@ public final class MixinPreflight {
 		boolean pseudo = Annotations.find(mixin.invisibleAnnotations, mixin.visibleAnnotations, PSEUDO) != null;
 
 		for (String target : targetsOf(mixin, ctx)) {
-			boolean isGame = GAME_PREFIXES.stream().anyMatch(target::startsWith);
-			ClassNode targetNode = isGame ? targetCache.computeIfAbsent(target, t -> Optional.ofNullable(game.readNode(t))).orElse(null) : null;
+			boolean isGame = isGameClass(target);
+			ClassNode targetNode = gameTarget(target);
 			if (targetNode == null) {
 				if (pseudo) continue;
 				if (isGame) {
@@ -594,7 +600,7 @@ public final class MixinPreflight {
 			return;
 		}
 
-		for (AnnotationNode at : atAnnotations(ann)) {
+		for (AnnotationNode at : annotationList(Annotations.value(ann, "at"))) {
 			String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
 			String rawTarget = Annotations.value(at, "target") instanceof String t ? t : null;
 			int ordinal = Annotations.value(at, "ordinal") instanceof Integer i ? i : -1;
@@ -939,15 +945,15 @@ public final class MixinPreflight {
 		return ref.owner();
 	}
 
-	private static List<AnnotationNode> atAnnotations(AnnotationNode injector) {
-		return annotationList(Annotations.value(injector, "at"));
+	private static boolean declares(ClassNode target, String name, String desc) {
+		return declared(target, name, desc) != null;
 	}
 
-	private static boolean declares(ClassNode target, String name, String desc) {
+	private static MethodNode declared(ClassNode target, String name, String desc) {
 		for (MethodNode m : target.methods) {
-			if (m.name.equals(name) && m.desc.equals(desc)) return true;
+			if (m.name.equals(name) && m.desc.equals(desc)) return m;
 		}
-		return false;
+		return null;
 	}
 
 	private static List<AnnotationNode> allAnnotations(MethodNode method) {
