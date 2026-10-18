@@ -23,6 +23,7 @@ import java.util.Map;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
+public class ImmutableCollectionUtils {
 	public static <T> List<T> getAsMutableList(Supplier<List<T>> getter, Consumer<List<T>> setter) {
 		List<T> set = getter.get();
 
