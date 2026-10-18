@@ -84,7 +84,7 @@
     "fabric-item-api-v1": {
       "plan": "native",
       "version": "14.3.0",
-      "reason": "Shipped by Fabricated on NeoForge's item hooks and events (upstream's mixins conflict with NeoForge's patches); equipment slot providers get no entity, enchantment modify events are not fired."
+      "reason": "Shipped by Fabricated on NeoForge's item hooks and events (upstream's mixins conflict with NeoForge's patches); equipment slot providers get no entity."
     },
     "fabric-key-mapping-api-v1": {
       "plan": "passthrough"

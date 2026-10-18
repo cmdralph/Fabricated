@@ -43,7 +43,9 @@
     "SimpleMenuProviderMixin",
     "TagFileRemoveMixin",
     "ConditionalOpsMixin",
-    "AdvancementReloadMixin"
+    "AdvancementReloadMixin",
+    "EnchantmentBuilderMixin",
+    "ResourceManagerRegistryLoadTaskMixin"
   ],
   "injectors": {
     "defaultRequire": 1

@@ -28,15 +28,18 @@ import net.minecraft.world.item.ItemStackTemplate;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.Rarity;
 import net.minecraft.world.item.enchantment.Enchantment;
+import net.minecraft.world.item.enchantment.EnchantmentEffectComponents;
 import net.minecraft.world.item.enchantment.Enchantments;
 import net.neoforged.neoforge.common.util.FakePlayerFactory;
 
 /**
  * 26.x part of the CI test mod: exercises Fabricated's native fabric-item-api-v1 through NeoForge's own item hooks
- * (equipment slot, crafting remainder, enchanting check, custom damage, default components, item id, creator mod).
+ * (equipment slot, crafting remainder, enchanting check, custom damage, default components, item id, creator mod), and
+ * its modify event for enchantments as the data pack loads them.
  */
 public final class ItemApiTest implements ModInitializer {
 	private static final List<EquipmentSlot> DAMAGED_IN = new ArrayList<>();
+	private static volatile @Nullable String sharpnessSource;
 
 	/** A Fabric item overriding FabricItem's methods. */
 	private static final class TestItem extends Item {
@@ -68,6 +71,11 @@ public final class ItemApiTest implements ModInitializer {
 		Item item = Registry.register(BuiltInRegistries.ITEM, key, new TestItem(properties));
 		DefaultItemComponentEvents.MODIFY.register(context -> context.modify(item, builder -> builder.set(DataComponents.RARITY, Rarity.EPIC)));
 		EnchantmentEvents.ALLOW_ENCHANTING.register((enchantment, stack, context) -> stack.is(item) ? TriState.TRUE : TriState.DEFAULT);
+		EnchantmentEvents.MODIFY_WITH_LOOKUP.register((enchantment, builder, source, registries) -> {
+			if (!enchantment.equals(Enchantments.SHARPNESS)) return;
+			sharpnessSource = source.name();
+			builder.withEffect(EnchantmentEffectComponents.PREVENT_ARMOR_CHANGE);
+		});
 
 		ServerLifecycleEvents.SERVER_STARTED.register(server -> {
 			ServerLevel level = server.overworld();
@@ -79,6 +87,7 @@ public final class ItemApiTest implements ModInitializer {
 			Holder<Enchantment> sharpness = server.registryAccess().lookupOrThrow(Registries.ENCHANTMENT).getOrThrow(Enchantments.SHARPNESS);
 			if (!stack.supportsEnchantment(sharpness) || new ItemStack(Items.STICK).supportsEnchantment(sharpness)) failed.add("allow_enchanting");
 			if (stack.get(DataComponents.RARITY) != Rarity.EPIC) failed.add("default_components");
+			if (!"VANILLA".equals(sharpnessSource) || !sharpness.value().effects().has(EnchantmentEffectComponents.PREVENT_ARMOR_CHANGE)) failed.add("enchantment_modify");
 			if (!"fabricated_creator".equals(item.getCreatorModId(server.registryAccess(), stack))) failed.add("creator_namespace");
 			// Vanilla hands the entity to the damage hook only for players.
 			Player player = FakePlayerFactory.getMinecraft(level);

@@ -365,10 +365,12 @@ overrides of `FabricItem` take effect wherever NeoForge asks.
 | `ItemClickBehaviorCallback` (26.2+) | `ItemStackedOnOtherEvent` | |
 | `ItemTooltipCallback` (client) | `ItemTooltipEvent` | |
 | `FabricComponentMapBuilder`, `FabricTooltipFlag`, `Properties.itemId`/`modelId` | added by Fabricated's mixins | NeoForge already gives the builder `get` |
-| **Not fired**: `EnchantmentEvents.MODIFY`/`MODIFY_WITH_LOOKUP`, 26.3's `BlockTransformerEvents` and `BlockTransformerHelper` registrations | none | they change data-pack entries while they load; NeoForge has no hook for that yet |
+| `EnchantmentEvents.MODIFY`/`MODIFY_WITH_LOOKUP` (26.x), 26.3's `BlockTransformerEvents.MODIFY` and `BlockTransformerHelper` | Fabricated's hook where vanilla reads each data pack registry entry, as upstream | a changed entry is sent to clients in full |
+| **Not fired** (1.21.11): `EnchantmentEvents.MODIFY`/`MODIFY_WITH_LOOKUP` | none | |
 
 CI checks, on all four versions: equipment slot, crafting remainder, the allow-enchanting event, custom damage
-(through a player), a default component change and the creator mod; on 26.x also the item id.
+(through a player), a default component change and the creator mod; on 26.x also the item id and an enchantment
+modified as it loads; on 26.3 also a registered block transform and one added by the modify event.
 
 ### Native `fabric-events-interaction-v0`
 
@@ -432,7 +434,7 @@ code they rely on, Fabricated bridges the gap:
 | `FuelValueEvents` (`FuelRegistryEvents` on 1.21.11), up to 26.2 | run on NeoForge's fuel builder, after its furnace fuel data map | `BUILD`, then `EXCLUSIONS`; vanilla's non-flammable wood exclusion is already in the data map |
 | Flammable, strippable, tillable, flattenable, oxidizable and waxable blocks, path types, villager interactions, pot patterns, brewing | upstream's mixins | NeoForge falls back to the vanilla tables these write; on 26.3, where NeoForge reads oxidation and waxing from its data maps only, Fabricated adds that fallback |
 | `EntityFluidInteractionRegistry` (26.x) | upstream's mixins, without three injectors | entering, leaving, pushing and moving through a Fabric fluid work; swimming, jumping out of it, drowning and boats floating in it don't (NeoForge rewrote that code around its fluid types) |
-| Oxidation and wax scraping (26.3) | not applied | 26.3's block transformers have no NeoForge counterpart yet (a warning is logged once) |
+| Oxidation and wax scraping (26.3) | added to the axe's block transformer, as upstream | see `BlockTransformerHelper` under `fabric-item-api-v1` |
 
 On 26.3, composting, stripping and fuel are data-driven in vanilla, and Fabric API has no registries for them.
 
