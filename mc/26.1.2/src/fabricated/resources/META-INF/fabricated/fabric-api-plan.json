@@ -162,12 +162,13 @@
         "fabric-renderer-api-v1.mixins.json:block.render.LevelExtractorMixin",
         "fabric-renderer-api-v1.mixins.json:block.render.LevelRendererMixin",
         "fabric-renderer-api-v1.mixins.json:submit.SubmitNodeCollectionMixin#hasMaterialFlagProxy",
+        "fabric-renderer-api-v1.mixins.json:block.model.SimpleModelWrapperMixin#analyzeMesh",
         "fabric-renderer-api-v1.mixins.json:block.render.BlockFeatureRendererMixin#beforeInitBlockRenderer",
         "fabric-renderer-api-v1.mixins.json:block.render.BlockFeatureRendererMixin#hasMaterialFlagProxy",
         "fabric-renderer-api-v1.mixins.json:block.render.BlockFeatureRendererMixin#tesselateBlockProxy",
         "fabric-renderer-api-v1.mixins.json:block.particle.ScreenEffectRendererMixin"
       ],
-      "reason": "Upstream loads with Indigo as the renderer, so meshes and quad emitters work, but NeoForge keeps drawing the world: the hooks that send every block in the world, moving blocks, block outlines and breaking animations through Fabric's renderer are left out, so a model's custom emitQuads geometry is drawn in item and block entity rendering only, not in the world. NeoForge already declares createGeometryKey and particleMaterial on vanilla's models with Fabric's signatures, so upstream's copies are left out (Fabricated declares the shared defaults on BlockStateModel)."
+      "reason": "Upstream loads with Indigo as the renderer, so meshes and quad emitters work, but NeoForge keeps drawing the world: the hooks that send every block in the world, moving blocks, block outlines and breaking animations through Fabric's renderer are left out, so a model's custom emitQuads geometry is drawn in item and block entity rendering only, not in the world. NeoForge already declares createGeometryKey and particleMaterial on vanilla's models with Fabric's signatures, so upstream's copies are left out (Fabricated declares the shared defaults on BlockStateModel). NeoForge moved block model baking into its own overload of SimpleModelWrapper.bake, which upstream's mesh check doesn't reach, so a mesh model using sprites from outside the block atlas is not rejected."
     },
     "fabric-renderer-indigo": {
       "plan": "passthrough"
