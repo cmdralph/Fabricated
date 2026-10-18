@@ -365,12 +365,11 @@ overrides of `FabricItem` take effect wherever NeoForge asks.
 | `ItemClickBehaviorCallback` (26.2+) | `ItemStackedOnOtherEvent` | |
 | `ItemTooltipCallback` (client) | `ItemTooltipEvent` | |
 | `FabricComponentMapBuilder`, `FabricTooltipFlag`, `Properties.itemId`/`modelId` | added by Fabricated's mixins | NeoForge already gives the builder `get` |
-| `EnchantmentEvents.MODIFY`/`MODIFY_WITH_LOOKUP` (26.x), 26.3's `BlockTransformerEvents.MODIFY` and `BlockTransformerHelper` | Fabricated's hook where vanilla reads each data pack registry entry, as upstream | a changed entry is sent to clients in full |
-| **Not fired** (1.21.11): `EnchantmentEvents.MODIFY`/`MODIFY_WITH_LOOKUP` | none | |
+| `EnchantmentEvents.MODIFY` (and `MODIFY_WITH_LOOKUP` on 26.x), 26.3's `BlockTransformerEvents.MODIFY` and `BlockTransformerHelper` | Fabricated's hook where vanilla reads each data pack registry entry, as upstream | a changed entry is sent to clients in full |
 
 CI checks, on all four versions: equipment slot, crafting remainder, the allow-enchanting event, custom damage
-(through a player), a default component change and the creator mod; on 26.x also the item id and an enchantment
-modified as it loads; on 26.3 also a registered block transform and one added by the modify event.
+(through a player), a default component change, the creator mod and an enchantment modified as it loads; on 26.x
+also the item id; on 26.3 also a registered block transform and one added by the modify event.
 
 ### Native `fabric-events-interaction-v0`
 

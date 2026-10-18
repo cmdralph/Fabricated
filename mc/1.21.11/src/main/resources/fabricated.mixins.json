@@ -36,7 +36,9 @@
     "SimpleMenuProviderMixin",
     "TagFileRemoveMixin",
     "ConditionalOpsMixin",
-    "RegistryFriendlyByteBufMixin"
+    "RegistryFriendlyByteBufMixin",
+    "EnchantmentBuilderMixin",
+    "RegistryDataLoaderEnchantmentMixin"
   ],
   "injectors": {
     "defaultRequire": 1
