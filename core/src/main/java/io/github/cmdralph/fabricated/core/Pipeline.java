@@ -212,14 +212,14 @@ public final class Pipeline {
 		}
 		FabricLoaderRuntime runtime = new FabricLoaderRuntime(side, in.gameDir(), in.configDir(), in.minecraftVersion(), in.development(),
 				mappingTable != null ? MappingResolvers.intermediary(mappingTable) : MappingResolvers.identity(), in::launchArguments);
-		if (eligible.isEmpty()) return assemble(runtime, new Rounds(), Set.of());
+		if (eligible.isEmpty()) return assemble(runtime, new Rounds());
 
 		TranslationEnvironment env = new TranslationEnvironment(in.minecraftVersion(), in.neoForgeVersion(), in.clientSide(), in.namespace(),
 				in.runtimeMixinVersion(), in.lowestMixinBehavior(), in.fabricatedVersion(), mappingTable, mappingsHash,
 				new ClassIndex(in.gameClasses()), in.untransformableClasses());
 		Rounds rounds = new Rounds();
 		rounds.run(eligible, resolver(), new ModTranslator(env, in.cache(), config.limits()));
-		return assemble(runtime, rounds, Set.copyOf(rounds.dependencyFailures));
+		return assemble(runtime, rounds);
 	}
 
 	/** Candidates that should load, reporting the others. */
@@ -467,7 +467,7 @@ public final class Pipeline {
 	}
 
 	/** Reports the outcome and builds the Fabric Loader runtime's view of every mod. */
-	private Result assemble(FabricLoaderRuntime runtime, Rounds rounds, Set<String> dependencyFailures) {
+	private Result assemble(FabricLoaderRuntime runtime, Rounds rounds) {
 		for (Map.Entry<String, Drop> d : rounds.dropped.entrySet()) {
 			Candidate c = d.getValue().candidate();
 			report.mod(new ModRow(d.getKey(), c.version(), c.origin(), Status.DISABLED, d.getValue().reason(), d.getValue().suggestion()));
@@ -523,7 +523,7 @@ public final class Pipeline {
 		for (NeoForgeMod m : in.neoForgeMods()) addBuiltin(runtime, m.id(), m.version(), m.displayName(), List.of());
 
 		in.cache().notes().forEach(n -> report.line("Cache", n));
-		return new Result(config, List.copyOf(loaded), injections, Set.copyOf(environmentClasses), runtime, containers, report, dependencyFailures);
+		return new Result(config, List.copyOf(loaded), injections, Set.copyOf(environmentClasses), runtime, containers, report, Set.copyOf(rounds.dependencyFailures));
 	}
 
 	private void reportLoaded(TranslatedMod t, Long millis, PackageGuard.Decision decision, List<String> linkageIssues) {

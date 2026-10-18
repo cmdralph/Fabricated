@@ -87,7 +87,7 @@ public final class ModTranslator {
 	 */
 	public TranslatedMod translate(Candidate candidate, ModOverride override, List<String> loadAfter) throws TranslationException {
 		String neoId = ModIds.toNeoForgeId(candidate.id());
-		if (!ModIds.isValidNeoForgeId(neoId) || ModIds.RESERVED.contains(neoId)) {
+		if (ModIds.RESERVED.contains(neoId)) {
 			throw new TranslationException("Mod id '" + candidate.id() + "' cannot be used on NeoForge", "Report this to the mod author.");
 		}
 		List<String> after = loadAfter.stream().sorted().distinct().toList();
@@ -164,7 +164,7 @@ public final class ModTranslator {
 						List.copyOf(md.getLicense()), url(md.getContact().get("homepage").orElse(null), "homepage", notes),
 						url(md.getContact().get("issues").orElse(null), "issues", notes), md.getIconPath(256).filter(archive::contains).orElse(null), mixinSpecs,
 						overlay.containsKey(AT_PATH), after);
-				overlay.put(ModsTomlWriter.PATH, ModsTomlWriter.write(spec, "[0,)").getBytes(StandardCharsets.UTF_8));
+				overlay.put(ModsTomlWriter.PATH, ModsTomlWriter.write(spec).getBytes(StandardCharsets.UTF_8));
 				overlay.put("META-INF/MANIFEST.MF", overlayManifest(neoId));
 
 				Map<String, byte[]> outputs = new LinkedHashMap<>();

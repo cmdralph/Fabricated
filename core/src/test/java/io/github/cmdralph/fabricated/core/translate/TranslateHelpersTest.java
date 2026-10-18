@@ -19,8 +19,6 @@ class TranslateHelpersTest {
 	@Test
 	void normalisesIds() {
 		assertEquals("cloth_config", ModIds.toNeoForgeId("cloth-config"));
-		assertTrue(ModIds.isValidNeoForgeId("cloth_config"));
-		assertFalse(ModIds.isValidNeoForgeId("x"));
 	}
 
 	@Test
@@ -28,7 +26,7 @@ class TranslateHelpersTest {
 		String toml = ModsTomlWriter.write(new ModsTomlWriter.Spec("my_mod", "1.0.0", "My \"Mod\"", "Line1\nLine2\\end",
 				List.of(new PersonImpl("Alice", ContactInformation.EMPTY), new PersonImpl("Bob", ContactInformation.EMPTY)),
 				List.of(), List.of("MIT"), "https://example.com", null, "icon.png",
-				List.of(new ModsTomlWriter.MixinConfigSpec("my.mixins.json", "0.17.4")), true, List.of("fabric_api", "other")), "[0,)");
+				List.of(new ModsTomlWriter.MixinConfigSpec("my.mixins.json", "0.17.4")), true, List.of("fabric_api", "other")));
 		assertTrue(toml.contains("modLoader=\"fabricated\""));
 		assertTrue(toml.contains("displayName=\"My \\\"Mod\\\"\""));
 		assertTrue(toml.contains("description=\"Line1\\nLine2\\\\end\""));
