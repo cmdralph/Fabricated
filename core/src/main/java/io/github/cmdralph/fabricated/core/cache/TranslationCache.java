@@ -9,6 +9,7 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -248,13 +249,19 @@ public final class TranslationCache {
 		Path file = root.resolve("blobs").resolve(fileName);
 		if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) return Optional.empty();
 		byte[] bytes = Files.readAllBytes(file);
-		byte[] data = bytes.length < BLOB_HASH_LENGTH ? null : Arrays.copyOfRange(bytes, BLOB_HASH_LENGTH, bytes.length);
-		if (data == null || !Arrays.equals(Hashing.sha256Digest().digest(data), Arrays.copyOf(bytes, BLOB_HASH_LENGTH))) {
+		if (bytes.length < BLOB_HASH_LENGTH || !blobIntact(bytes)) {
 			notes.add("Cache item blobs/" + fileName + " failed verification and will be rebuilt");
 			deleteQuietly(file);
 			return Optional.empty();
 		}
-		return Optional.of(data);
+		return Optional.of(Arrays.copyOfRange(bytes, BLOB_HASH_LENGTH, bytes.length));
+	}
+
+	/** Whether a blob file's content matches the hash it starts with. */
+	private static boolean blobIntact(byte[] file) {
+		MessageDigest digest = Hashing.sha256Digest();
+		digest.update(file, BLOB_HASH_LENGTH, file.length - BLOB_HASH_LENGTH);
+		return MessageDigest.isEqual(digest.digest(), Arrays.copyOf(file, BLOB_HASH_LENGTH));
 	}
 
 	/**
