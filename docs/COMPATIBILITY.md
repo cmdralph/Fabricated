@@ -41,9 +41,9 @@ configuration task with the integrated server, an extended menu opens with its d
 factory is registered with NeoForge, and no test mod check reports a failure.
 
 CI also starts the client with the full Fabric API jar, for information only (it doesn't fail the build). It
-joins its world and passes every client check on all four versions. On every version, every Fabric API module
-loads on the client except model-loading, which needs the unsupported renderer-api; on the dedicated server no
-Fabric API module is disabled.
+joins its world and passes every client check on all four versions. On 26.x every Fabric API module loads on the
+client, the renderer API, Indigo and model loading included; on 1.21.11 every module except model loading, which
+needs the renderer API, unsupported there. On the dedicated server no Fabric API module is disabled.
 
 The 26.3 job is marked experimental in CI because NeoForge 26.3 is a beta; it passes every check. Its client
 opens its window with SDL3 over EGL, so CI installs Mesa's EGL library for it.
@@ -101,8 +101,8 @@ How to read the table:
 | fabric-key-mapping-api-v1 / key-binding-api-v1, screen-api-v1, rendering-v1, sound-api-v1, model-loading-api-v1 | client | client | client | client |
 | fabric-rendering-v1 on the client | loads (see below) | loads (see below) | loads (see below) | loads (see below) |
 | fabric-screen-api-v1, sound-api-v1 on the client | loads (see below) | loads (see below) | loads (see below) | loads (see below) |
-| fabric-model-loading-api-v1 on the client | disabled (needs renderer-api) | disabled (needs renderer-api) | disabled (needs renderer-api) | disabled (needs renderer-api) |
-| fabric-renderer-api-v1, fabric-renderer-indigo | unsupported | unsupported | unsupported | unsupported |
+| fabric-model-loading-api-v1 on the client | disabled (needs renderer-api) | loads (see below) | loads (see below) | loads (see below) |
+| fabric-renderer-api-v1, fabric-renderer-indigo | unsupported | client (see below) | client (see below) | client (see below) |
 | fabric-data-generation-api-v1, gametest, client-gametest | unsupported | unsupported | unsupported | unsupported |
 
 ### Why modules are disabled
@@ -529,6 +529,24 @@ alpha stays NeoForge's). Custom fluid renderers and sprites work.
 `fabric-sound-api-v1` (all versions) loads without upstream's redirect of the audio stream lookup, which NeoForge replaced with
 its own `SoundInstance.getStream`. A sound instance whose class overrides `FabricSoundInstance.getAudioStream`
 gets its stream from it there; other sounds keep NeoForge's path.
+
+### `fabric-renderer-api-v1`, `fabric-renderer-indigo` and `fabric-model-loading-api-v1` (26.x)
+
+The renderer API loads with Indigo as its renderer, so meshes, quad emitters and Fabric's model types work, but
+NeoForge keeps drawing the world: upstream's hooks that send every block in the world, moving blocks, block
+outlines and breaking animations through Fabric's renderer are left out. A model's custom `emitQuads` geometry is
+drawn in item and block entity rendering, not in the world. NeoForge already gives vanilla's models
+`createGeometryKey` and `particleMaterial` with Fabric's signatures, so upstream's copies are left out and
+Fabricated declares the shared defaults on `BlockStateModel`. NeoForge also moved block model baking into its own
+overload of `SimpleModelWrapper.bake`, which upstream's check doesn't reach, so a mesh model using sprites from
+outside the block atlas is not rejected; and the block overlay seen from inside a block uses the block's plain
+particle sprite (26.1.2 and 26.2).
+
+Model loading loads too: its plugins, model modifiers and extra models work, with the extra models added to
+NeoForge's model discovery by Fabricated (NeoForge rewrote the code upstream hooks).
+
+On 1.21.11 the renderer API is unsupported (Fabric's renderer replaces the block model pipeline that NeoForge owns
+there), so model loading, which requires it, is disabled.
 
 ### Fabric Loader
 

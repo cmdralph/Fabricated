@@ -28,6 +28,7 @@ import org.objectweb.asm.tree.FieldInsnNode;
 import org.objectweb.asm.tree.FieldNode;
 import org.objectweb.asm.tree.InvokeDynamicInsnNode;
 import org.objectweb.asm.tree.LdcInsnNode;
+import org.objectweb.asm.tree.LocalVariableNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
 import org.objectweb.asm.tree.TypeInsnNode;
@@ -55,6 +56,7 @@ public final class MixinPreflight {
 	private static final String AT = "Lorg/spongepowered/asm/mixin/injection/At;";
 	private static final String INJECT = "Lorg/spongepowered/asm/mixin/injection/Inject;";
 	private static final String COERCE = "Lorg/spongepowered/asm/mixin/injection/Coerce;";
+	private static final String LOCAL = "Lcom/llamalad7/mixinextras/sugar/Local;";
 	private static final String UNIQUE = "Lorg/spongepowered/asm/mixin/Unique;";
 	private static final String INTRINSIC = "Lorg/spongepowered/asm/mixin/Intrinsic;";
 	private static final String WRAP_OPERATION = "Lcom/llamalad7/mixinextras/injector/wrapoperation/WrapOperation;";
@@ -599,6 +601,14 @@ public final class MixinPreflight {
 			return;
 		}
 
+		String missingLocal = missingLocal(handler, matched);
+		if (missingLocal != null) {
+			ctx.injector(require, injectorName + " handler " + handler.name + " captures the local variable " + missingLocal + ", which "
+							+ matched.getFirst().name + " in " + target.name.replace('/', '.') + " does not declare",
+					"NeoForge or this Minecraft version changed the method body; the mod needs an update or this mixin must be skipped.");
+			return;
+		}
+
 		for (AnnotationNode at : annotationList(Annotations.value(ann, "at"))) {
 			String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
 			String rawTarget = Annotations.value(at, "target") instanceof String t ? t : null;
@@ -651,6 +661,28 @@ public final class MixinPreflight {
 			if (List.of(Type.getArgumentTypes(target.desc)).equals(wanted)) return true;
 		}
 		return false;
+	}
+
+	/**
+	 * The first name a handler's {@code @Local(name = ...)} parameter asks for that no target method declares, or null.
+	 * Only targets that carry local variable names are judged.
+	 */
+	private static String missingLocal(MethodNode handler, List<MethodNode> targets) {
+		int count = Type.getArgumentTypes(handler.desc).length;
+		for (int i = 0; i < count; i++) {
+			for (AnnotationNode a : parameterAnnotations(handler, i)) {
+				if (!a.desc.equals(LOCAL) || !(Annotations.value(a, "name") instanceof List<?> names) || names.isEmpty()) continue;
+				boolean judged = false;
+				boolean found = false;
+				for (MethodNode m : targets) {
+					if (m.localVariables == null || m.localVariables.isEmpty()) continue;
+					judged = true;
+					for (LocalVariableNode local : m.localVariables) found |= names.contains(local.name);
+				}
+				if (judged && !found) return String.valueOf(names.getFirst());
+			}
+		}
+		return null;
 	}
 
 	/** The handler's parameter types without MixinExtras sugar parameters; null if a parameter uses {@code @Coerce}. */

@@ -12,6 +12,7 @@ import java.util.function.Consumer;
 import org.junit.jupiter.api.Test;
 import org.objectweb.asm.AnnotationVisitor;
 import org.objectweb.asm.ClassWriter;
+import org.objectweb.asm.Label;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
@@ -40,7 +41,13 @@ class MixinPreflightTest {
 		tick.visitEnd();
 		MethodVisitor helper = cw.visitMethod(Opcodes.ACC_PRIVATE, "helper", "(I)V", null, null);
 		helper.visitCode();
+		Label start = new Label();
+		Label end = new Label();
+		helper.visitLabel(start);
 		helper.visitInsn(Opcodes.RETURN);
+		helper.visitLabel(end);
+		helper.visitLocalVariable("this", "L" + TARGET + ";", null, start, end, 0);
+		helper.visitLocalVariable("amount", "I", null, start, end, 1);
 		helper.visitMaxs(0, 2);
 		helper.visitEnd();
 		cw.visitEnd();
@@ -598,9 +605,22 @@ class MixinPreflightTest {
 
 	/** An @Inject at HEAD of helper(I)V whose handler has the given descriptor; {@code sugarIndex} marks a @Local parameter. */
 	private static byte[] headInjector(String name, String handlerDesc, int sugarIndex) {
+		return headInjector(name, handlerDesc, sugarIndex, null);
+	}
+
+	/** As above, the @Local parameter capturing the local named {@code localName} when not null. */
+	private static byte[] headInjector(String name, String handlerDesc, int sugarIndex, String localName) {
 		return mixin(name, false, cw -> {
 			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "h", handlerDesc, null, null);
-			if (sugarIndex >= 0) mv.visitParameterAnnotation(sugarIndex, "Lcom/llamalad7/mixinextras/sugar/Local;", false).visitEnd();
+			if (sugarIndex >= 0) {
+				AnnotationVisitor local = mv.visitParameterAnnotation(sugarIndex, "Lcom/llamalad7/mixinextras/sugar/Local;", false);
+				if (localName != null) {
+					AnnotationVisitor names = local.visitArray("name");
+					names.visit(null, localName);
+					names.visitEnd();
+				}
+				local.visitEnd();
+			}
 			AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
 			AnnotationVisitor methods = ann.visitArray("method");
 			methods.visit(null, "helper");
@@ -630,6 +650,19 @@ class MixinPreflightTest {
 		assertEquals(1, wrong.size(), wrong.toString());
 		assertEquals(Severity.FAIL, wrong.getFirst().severity());
 		assertTrue(wrong.getFirst().message().contains("does not match the parameters"), wrong.getFirst().message());
+	}
+
+	@Test
+	void aCapturedLocalMustExistInTheTarget() throws Exception {
+		String handler = "(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;I)V";
+		List<PreflightFinding> present = run(config(true, "Present"), null,
+				Map.of("com/example/mixin/Present", headInjector("com/example/mixin/Present", handler, 1, "amount")), false);
+		assertTrue(present.isEmpty(), present.toString());
+		List<PreflightFinding> gone = run(config(true, "Gone"), null,
+				Map.of("com/example/mixin/Gone", headInjector("com/example/mixin/Gone", handler, 1, "testPos")), false);
+		// Reported as the injector's require says (none in this config: a warning).
+		assertEquals(1, gone.size(), gone.toString());
+		assertTrue(gone.getFirst().message().contains("local variable testPos"), gone.getFirst().message());
 	}
 
 	private static byte[] accessorMixin(String name, String method, String desc) {
