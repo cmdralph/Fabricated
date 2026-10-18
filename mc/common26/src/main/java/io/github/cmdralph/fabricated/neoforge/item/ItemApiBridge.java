@@ -3,11 +3,14 @@ package io.github.cmdralph.fabricated.neoforge.item;
 import java.util.function.Supplier;
 
 import org.jspecify.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import net.fabricmc.fabric.api.client.item.v1.ItemTooltipCallback;
 import net.fabricmc.fabric.api.item.v1.CustomDamageHandler;
 import net.fabricmc.fabric.api.item.v1.DefaultItemComponentEvents;
 import net.fabricmc.fabric.api.item.v1.FabricItem;
+import net.fabricmc.fabric.impl.item.ItemComponentTooltipProviderRegistryImpl;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
@@ -15,16 +18,19 @@ import net.minecraft.world.item.ItemStack;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.neoforge.common.NeoForge;
+import net.neoforged.neoforge.common.tooltip.TooltipAppender;
 import net.neoforged.neoforge.event.ModifyDefaultComponentsEvent;
+import net.neoforged.neoforge.event.RegisterTooltipAppendersEvent;
 import net.neoforged.neoforge.event.entity.player.ItemTooltipEvent;
 
 /**
  * Native {@code fabric-item-api-v1} (26.x): the events, and helpers for Fabricated's item mixins. Fabric's default
- * component changes go through NeoForge's {@link ModifyDefaultComponentsEvent}; tooltip providers and item click
- * behaviour through {@link ItemApiCompat} (they differ per version); Fabric's client tooltip callback is fired from
- * NeoForge's {@link ItemTooltipEvent}.
+ * component changes go through NeoForge's {@link ModifyDefaultComponentsEvent} and tooltip providers through its
+ * {@link RegisterTooltipAppendersEvent}; item click behaviour (26.2+) through {@link ItemApiCompat}; Fabric's client
+ * tooltip callback is fired from NeoForge's {@link ItemTooltipEvent}.
  */
 public final class ItemApiBridge {
+	private static final Logger LOGGER = LoggerFactory.getLogger("Fabricated");
 	private static volatile Supplier<@Nullable Player> clientPlayer = () -> null;
 
 	/** Whether an item class overrides Fabric's {@code getCreatorNamespace} (otherwise NeoForge's answer is kept). */
@@ -45,11 +51,29 @@ public final class ItemApiBridge {
 	public static void register(IEventBus modBus, Dist dist) {
 		modBus.addListener(ModifyDefaultComponentsEvent.class, event -> DefaultItemComponentEvents.MODIFY.invoker().modify(
 				(predicate, consumer) -> event.modifyMatching((item, components) -> predicate.test(item), consumer::modify)));
-		ItemApiCompat.register(modBus);
+		modBus.addListener(RegisterTooltipAppendersEvent.class, ItemApiBridge::registerTooltipProviders);
+		ItemApiCompat.register();
 		if (dist.isClient()) {
 			clientPlayer = ClientItemApi::player;
 			NeoForge.EVENT_BUS.addListener(ItemTooltipEvent.class, event -> ItemTooltipCallback.EVENT.invoker()
 					.getTooltip(event.getItemStack(), event.getContext(), event.getFlags(), event.getToolTip()));
+		}
+	}
+
+	/** Fabric's {@code ItemComponentTooltipProviderRegistry}, placed where NeoForge places component tooltips. */
+	private static void registerTooltipProviders(RegisterTooltipAppendersEvent event) {
+		for (var entry : ItemComponentTooltipProviderRegistryImpl.entries()) {
+			TooltipAppender appender = entry.appender();
+			try {
+				switch (entry.position()) {
+					case FIRST -> event.registerComponentAppenderBeforeAll(entry.type(), appender);
+					case LAST -> event.registerComponentAppenderAfterAll(entry.type(), appender);
+					case BEFORE -> event.registerComponentAppenderBefore(entry.type(), entry.anchor(), appender);
+					case AFTER -> event.registerComponentAppenderAfter(entry.type(), entry.anchor(), appender);
+				}
+			} catch (IllegalStateException e) {
+				LOGGER.warn("Tooltip provider for component {} is registered more than once; the first registration is kept", entry.type());
+			}
 		}
 	}
 
