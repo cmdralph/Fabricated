@@ -14,7 +14,7 @@ import net.fabricmc.loader.api.metadata.CustomValue;
 public sealed interface CustomValueImpl extends CustomValue {
 	CustomValue NULL = NullImpl.INSTANCE;
 
-	/** Converts a value produced by {@link io.github.cmdralph.fabricated.core.json.Json}. */
+	/** Converts a value produced by {@link io.github.cmdralph.fabricated.core.json.Json}, or a tree of the same plain types. */
 	static CustomValue fromJson(Object value) {
 		if (value == null) return NULL;
 		if (value instanceof String s) return new StringImpl(s);

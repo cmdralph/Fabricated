@@ -46,6 +46,7 @@ import io.github.cmdralph.fabricated.core.resolve.FabricApiPlan;
 import io.github.cmdralph.fabricated.core.testutil.TestJars;
 import io.github.cmdralph.fabricated.core.translate.TranslatedMod;
 import io.github.cmdralph.fabricated.core.translate.TranslationEnvironment.Namespace;
+import net.fabricmc.loader.api.metadata.ModMetadata;
 
 class PipelineTest {
 	private static final String TARGET = "net/minecraft/world/Thing";
@@ -142,12 +143,16 @@ class PipelineTest {
 	}
 
 	private static Pipeline.Input input(Path game, List<Path> jars, Namespace ns, Map<String, byte[]> gameClasses, Pipeline.MappingSupplier mappings) throws Exception {
+		return input(game, jars, ns, gameClasses, mappings, List.of(new Pipeline.NeoForgeMod("cloth_config", "15.0.0", "Cloth Config", Map.of())));
+	}
+
+	private static Pipeline.Input input(Path game, List<Path> jars, Namespace ns, Map<String, byte[]> gameClasses, Pipeline.MappingSupplier mappings,
+			List<Pipeline.NeoForgeMod> neoForgeMods) throws Exception {
 		FabricatedConfig config = FabricatedConfig.load(game.resolve("config"));
 		TranslationCache cache = new TranslationCache(game, config.cacheEnabled(), config.verifyIntegrity());
 		return new Pipeline.Input(game, game.resolve("config"), config, cache, jars, ns == Namespace.OFFICIAL ? "26.2" : "1.21.11",
 				"26.2.0.90", false, ns, "0.17.4+mixin.0.8.7", "0.5.3", "0.17.1", "0.1.0-test", false, gameClasses::get, ClassBytesSource.EMPTY, Set.of("net/neoforged/neoforge"),
-				FabricApiPlan.parse(PLAN), name -> null, Map::of, List.of(new Pipeline.NeoForgeMod("cloth_config", "15.0.0", "Cloth Config")),
-				mappings, new String[0]);
+				FabricApiPlan.parse(PLAN), name -> null, Map::of, neoForgeMods, mappings, new String[0]);
 	}
 
 	@Test
@@ -215,6 +220,41 @@ class PipelineTest {
 		assertTrue(second.mods().stream().allMatch(m -> m.translated().cacheHit()));
 		Pipeline.LoadedMod goodAgain = second.mods().stream().filter(m -> m.translated().candidate().id().equals("good-mod")).findFirst().orElseThrow();
 		assertArrayEquals(firstOverlay, Files.readAllBytes(goodAgain.translated().overlay()));
+	}
+
+	/**
+	 * A NeoForge mod's mod properties are its custom values to Fabric code, and the Fabric mods it says it provides are
+	 * present: Sodium for NeoForge makes Fabric API's default renderer stand down and provides Indium, whose Fabric jar
+	 * isn't loaded. Of two copies of a NeoForge mod (one nested in another mod file), the newest counts.
+	 */
+	@Test
+	void neoForgeModsSpeakToFabricModsThroughTheirProperties(@TempDir Path game) throws Exception {
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		Path indium = TestJars.create().fabricModJson(TestJars.modJson("indium", "1.0.0", "")).write(mods.resolve("indium.jar"));
+		Path addon = TestJars.create().fabricModJson(TestJars.modJson("sodium-addon", "1.0.0", "\"depends\":{\"indium\":\"*\",\"sodium\":\">=0.9\"}"))
+				.write(mods.resolve("addon.jar"));
+		Map<String, Object> sodiumProperties = Map.of("fabric-renderer-api-v1:contains_renderer", true, "fabric:provides", List.of("indium"));
+		List<Pipeline.NeoForgeMod> neoForgeMods = List.of(
+				new Pipeline.NeoForgeMod("sodium", "0.8.0", "Sodium", Map.of()),
+				new Pipeline.NeoForgeMod("sodium", "0.9.2+mc26.3", "Sodium", sodiumProperties),
+				new Pipeline.NeoForgeMod("sodium", "0.9.1", "Sodium", Map.of()));
+
+		Pipeline.Result result = Pipeline.run(input(game, List.of(indium, addon), Namespace.OFFICIAL, Map.of(), null, neoForgeMods));
+
+		Set<String> loaded = result.mods().stream().map(m -> m.translated().candidate().id()).collect(Collectors.toSet());
+		assertEquals(Set.of("sodium-addon"), loaded, result.report().render());
+		assertTrue(result.report().mods().stream().anyMatch(r -> r.id().equals("indium") && r.status() == Report.Status.SKIPPED
+				&& r.detail().contains("NeoForge mod Sodium 0.9.2+mc26.3 provides it")), result.report().render());
+		ModMetadata sodium = result.runtime().getModContainer("sodium").orElseThrow().getMetadata();
+		assertEquals("0.9.2+mc26.3", sodium.getVersion().getFriendlyString());
+		assertTrue(sodium.getCustomValue("fabric-renderer-api-v1:contains_renderer").getAsBoolean());
+		assertEquals("indium", sodium.getCustomValue("fabric:provides").getAsArray().get(0).getAsString());
+		assertEquals("sodium", result.runtime().getModContainer("indium").orElseThrow().getMetadata().getId());
+		try (SafeArchive overlay = SafeArchive.open(result.mods().getFirst().translated().overlay(), ArchiveLimits.DEFAULTS)) {
+			String toml = overlay.readText("META-INF/neoforge.mods.toml");
+			assertTrue(toml.contains("modId=\"sodium\""), "loads after the mod providing what it depends on: " + toml);
+			assertFalse(toml.contains("modId=\"indium\""), toml);
+		}
 	}
 
 	/**

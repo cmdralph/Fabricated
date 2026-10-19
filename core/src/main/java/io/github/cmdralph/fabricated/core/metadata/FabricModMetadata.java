@@ -70,10 +70,10 @@ public record FabricModMetadata(
 	 * Creates metadata for a mod that is not a Fabric mod (Minecraft, NeoForge, Java, or a NeoForge
 	 * mod) so it can be queried through Fabric's API.
 	 */
-	public static FabricModMetadata builtin(String id, Version version, String name, String description) {
+	public static FabricModMetadata builtin(String id, Version version, String name, String description, Map<String, CustomValue> customValues) {
 		return new FabricModMetadata("builtin", id, version, List.of(), ModEnvironment.UNIVERSAL, Map.of(), List.of(),
 				List.of(), null, List.of(), name, description, List.of(), List.of(), ContactInformation.EMPTY,
-				List.of(), new TreeMap<>(), Map.of(), Map.of(), CompatHints.NONE);
+				List.of(), new TreeMap<>(), Map.of(), customValues, CompatHints.NONE);
 	}
 
 	/** This metadata with other compatibility hints (none, when the player turned the mod's off). */
