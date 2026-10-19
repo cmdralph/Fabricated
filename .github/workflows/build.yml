@@ -150,23 +150,25 @@ jobs:
           grep -A200 "== " "$RUNNER_TEMP/client-fapi/run/logs/fabric-bridge-report.txt" || true
       # A Fabric model (its own emitQuads) must be drawn in the world: Fabricated sends it through Fabric's renderer when
       # its chunk section is meshed. This check is a gate, unlike the run above.
-      - name: Fabric renderer API in the world (26.x)
+      - name: Fabric renderer API and model formats (26.x)
         if: always() && steps.build.outcome == 'success' && startsWith(matrix.minecraft, '26.')
         run: |
           log="$RUNNER_TEMP/client-fapi/run/logs/latest.log"
           failed=0
           check() {
-            if grep -h "FABRICATED-TEST frapi $1" "$log"; then
+            if grep -h "FABRICATED-TEST $1" "$log"; then
               echo "PASS: $2"
             else
-              echo "::error::FAIL: $2 (no \"frapi $1\" line)"
+              echo "::error::FAIL: $2 (no \"$1\" line)"
               failed=1
             fi
           }
-          check "terrain OK" "a Fabric block model was meshed into a chunk section"
-          check "nested terrain OK" "a Fabric model inside a vanilla multipart model was meshed"
-          check "moving block OK" "a falling Fabric block model was drawn as a moving block"
-          check "breaking OK" "a Fabric block model got the breaking overlay"
+          check "frapi terrain OK" "a Fabric block model was meshed into a chunk section"
+          check "frapi nested terrain OK" "a Fabric model inside a vanilla multipart model was meshed"
+          check "frapi moving block OK" "a falling Fabric block model was drawn as a moving block"
+          check "frapi breaking OK" "a Fabric block model got the breaking overlay"
+          check "model deserializer OK" "a model file of a Fabric type was read by its Fabric deserializer"
+          check "neoforge blockstate type OK" "a blockstate of NeoForge's composite type still loads with Fabric's model loading"
           if [ "$failed" = 1 ]; then
             grep -n -m 40 -E "frapi|FabricBlockRendering|RenderMixin|SectionCompiler|/(ERROR|FATAL)\]" "$log" || true
             exit 1
