@@ -116,6 +116,73 @@ class MixinPreflightTest {
 		assertTrue(after.getFirst().mixin().endsWith("TakesArgs"), after.toString());
 	}
 
+	/**
+	 * {@link #TARGET} whose first constructor, {@code <init>()V}, only calls {@code this(0)}: as NeoForge keeps vanilla's
+	 * signature when it adds a parameter ({@code deprecated}), or as vanilla itself delegates (not deprecated).
+	 */
+	private static byte[] delegatingConstructors(boolean deprecated) {
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		MethodVisitor kept = cw.visitMethod(Opcodes.ACC_PUBLIC | (deprecated ? Opcodes.ACC_DEPRECATED : 0), "<init>", "()V", null, null);
+		if (deprecated) kept.visitAnnotation("Ljava/lang/Deprecated;", true).visitEnd();
+		kept.visitCode();
+		kept.visitVarInsn(Opcodes.ALOAD, 0);
+		kept.visitInsn(Opcodes.ICONST_0);
+		kept.visitMethodInsn(Opcodes.INVOKESPECIAL, TARGET, "<init>", "(I)V", false);
+		kept.visitInsn(Opcodes.RETURN);
+		kept.visitMaxs(0, 0);
+		kept.visitEnd();
+		MethodVisitor current = cw.visitMethod(Opcodes.ACC_PUBLIC, "<init>", "(I)V", null, null);
+		current.visitCode();
+		current.visitVarInsn(Opcodes.ALOAD, 0);
+		current.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false);
+		current.visitInsn(Opcodes.RETURN);
+		current.visitMaxs(0, 0);
+		current.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	/** An {@code @Inject} into {@code <init>} (no descriptor, so the first constructor) at {@code point}. */
+	private static void injectIntoConstructor(ClassWriter cw, String point) {
+		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "h", "(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V", null, null);
+		AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
+		AnnotationVisitor methods = ann.visitArray("method");
+		methods.visit(null, "<init>");
+		methods.visitEnd();
+		AnnotationVisitor ats = ann.visitArray("at");
+		AnnotationVisitor at = ats.visitAnnotation(null, "Lorg/spongepowered/asm/mixin/injection/At;");
+		at.visit("value", point);
+		at.visitEnd();
+		ats.visitEnd();
+		ann.visitEnd();
+		mv.visitEnd();
+	}
+
+	@Test
+	void anInjectionAtTheEndOfAConstructorNeoForgeKeptMovesToTheOneItCalls() throws Exception {
+		Map<String, byte[]> mod = Map.of(
+				"com/example/mixin/AtReturn", mixin("com/example/mixin/AtReturn", false, cw -> injectIntoConstructor(cw, "RETURN")),
+				"com/example/mixin/AtHead", mixin("com/example/mixin/AtHead", false, cw -> injectIntoConstructor(cw, "HEAD")));
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "AtReturn", "AtHead"));
+
+		ClassIndex neoForge = new ClassIndex(Map.of(TARGET, delegatingConstructors(true))::get);
+		List<PreflightFinding> notes = new ArrayList<>();
+		Map<String, byte[]> repaired = new MixinPreflight(neoForge, mod::get, ClassBytesSource.EMPTY, false)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
+		assertEquals(Set.of("com/example/mixin/AtReturn.class"), repaired.keySet(), "only the end of the constructor is the same moment: " + notes);
+		assertTrue(notes.getFirst().message().contains("which NeoForge keeps only to call <init>(I)V"), notes.toString());
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired.get("com/example/mixin/AtReturn.class")).accept(node, 0);
+		AnnotationNode inject = node.methods.stream().filter(m -> m.name.equals("h")).findFirst().orElseThrow().invisibleAnnotations.getFirst();
+		assertEquals(List.of("<init>(I)V"), Annotations.value(inject, "method"));
+
+		ClassIndex vanilla = new ClassIndex(Map.of(TARGET, delegatingConstructors(false))::get);
+		assertTrue(new MixinPreflight(vanilla, mod::get, ClassBytesSource.EMPTY, false)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty(),
+				"a constructor vanilla delegates itself is the one the mixin means");
+	}
+
 	@Test
 	void aHardLocalCaptureSkipsItselfInsteadOfCrashing() throws Exception {
 		ClassIndex game = new ClassIndex(Map.of(TARGET, targetClass())::get);

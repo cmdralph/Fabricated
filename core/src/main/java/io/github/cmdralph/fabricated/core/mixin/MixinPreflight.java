@@ -152,6 +152,9 @@ public final class MixinPreflight {
 	 * <li>An injector whose method NeoForge turned into a delegate to a new overload of the same name that now holds the
 	 * code (NeoForge keeps vanilla's signature that way): when the injection points occur only in that overload and the
 	 * handler doesn't depend on the method's parameters, the injector is pointed at the overload.</li>
+	 * <li>An injector at the end of a constructor NeoForge kept for vanilla's signature (deprecated, and only calling
+	 * {@code this(...)} with NeoForge's defaults), which the game no longer calls: it is pointed at the constructor that
+	 * one calls, which every caller now goes through.</li>
 	 * <li>An {@code @Inject} that captures local variables and would crash when they differ
 	 * ({@code CAPTURE_FAILHARD}, {@code CAPTURE_FAILEXCEPTION}): NeoForge's patches often add locals, so it is made to
 	 * skip itself with Mixin's warning instead ({@code CAPTURE_FAILSOFT}, {@code require = 0}). Where the locals
@@ -352,29 +355,76 @@ public final class MixinPreflight {
 					break;
 				}
 			}
-			if (chosen == null || pointsIn(ats, slices, chosen, ctx) != Verdict.MISSING) continue;
-			MethodNode overload = null;
-			for (AbstractInsnNode insn : chosen.instructions) {
-				if (!(insn instanceof MethodInsnNode call) || !call.owner.equals(target.name) || !call.name.equals(chosen.name)
-						|| call.desc.equals(chosen.desc)) continue;
-				MethodNode candidate = declared(target, call.name, call.desc);
-				if (candidate == null || candidate == overload) continue;
-				if (overload != null) {
-					overload = null;
-					break; // several overloads: ambiguous
-				}
-				overload = candidate;
+			if (chosen == null) continue;
+			MethodNode overload;
+			String how;
+			if (pointsIn(ats, slices, chosen, ctx) == Verdict.MISSING) {
+				overload = calledOverload(chosen, target);
+				if (overload == null || (overload.access & Opcodes.ACC_STATIC) != (chosen.access & Opcodes.ACC_STATIC)
+						|| !Type.getReturnType(overload.desc).equals(Type.getReturnType(chosen.desc))
+						|| !localsFit(handler, overload) || pointsIn(ats, slices, overload, ctx) != Verdict.FOUND) continue;
+				how = ", whose code NeoForge moved into ";
+			} else {
+				// The injection points exist, but in a constructor nothing calls any more: its end is the end of the one it calls.
+				overload = keptConstructorDelegate(chosen, target);
+				if (overload == null || !slices.isEmpty() || !atEndOnly(ats) || !localsFit(handler, overload)) continue;
+				how = ", which NeoForge keeps only to call ";
 			}
-			if (overload == null || (overload.access & Opcodes.ACC_STATIC) != (chosen.access & Opcodes.ACC_STATIC)
-					|| !Type.getReturnType(overload.desc).equals(Type.getReturnType(chosen.desc))
-					|| !localsFit(handler, overload) || pointsIn(ats, slices, overload, ctx) != Verdict.FOUND) continue;
 			@SuppressWarnings("unchecked")
 			List<Object> values = (List<Object>) selectors;
 			values.set(i, overload.name + overload.desc);
-			moved.add(chosen.name + chosen.desc + ", whose code NeoForge moved into " + overload.name + overload.desc
-					+ "; the injector is pointed there");
+			moved.add(chosen.name + chosen.desc + how + overload.name + overload.desc + "; the injector is pointed there");
 		}
 		return moved;
+	}
+
+	/** The one other overload of the same name {@code method} calls, or null (none, or several). */
+	private static MethodNode calledOverload(MethodNode method, ClassNode target) {
+		MethodNode overload = null;
+		for (AbstractInsnNode insn : method.instructions) {
+			if (!(insn instanceof MethodInsnNode call) || !call.owner.equals(target.name) || !call.name.equals(method.name)
+					|| call.desc.equals(method.desc)) continue;
+			MethodNode candidate = declared(target, call.name, call.desc);
+			if (candidate == null || candidate == overload) continue;
+			if (overload != null) return null; // several overloads: ambiguous
+			overload = candidate;
+		}
+		return overload;
+	}
+
+	/**
+	 * The constructor {@code constructor} hands everything to, when it is vanilla's signature as NeoForge keeps it: marked
+	 * deprecated, its body is {@code this(...)} (vanilla's arguments plus NeoForge's defaults) and nothing after it. The
+	 * game's own code calls the other constructor, so an injection at the end of this one would never run, while the end
+	 * of the other one is the same moment for both. Null for any other constructor: vanilla's own delegating
+	 * constructors (an injection there is meant for that one only) are never marked deprecated.
+	 */
+	private static MethodNode keptConstructorDelegate(MethodNode constructor, ClassNode target) {
+		if (!constructor.name.equals("<init>") || (constructor.access & Opcodes.ACC_DEPRECATED) == 0
+				&& Annotations.find(constructor, "Ljava/lang/Deprecated;") == null) return null;
+		MethodNode delegate = null;
+		for (AbstractInsnNode insn : constructor.instructions) {
+			if (insn.getOpcode() < 0) continue; // labels, line numbers, frames
+			if (delegate != null) {
+				if (insn.getOpcode() != Opcodes.RETURN) return null; // does more after this(...)
+			} else if (insn instanceof TypeInsnNode type && type.getOpcode() == Opcodes.NEW && type.desc.equals(target.name)) {
+				return null; // makes another instance: its constructor call is not this(...)
+			} else if (insn instanceof MethodInsnNode call && call.getOpcode() == Opcodes.INVOKESPECIAL && call.name.equals("<init>")
+					&& call.owner.equals(target.name)) {
+				delegate = declared(target, call.name, call.desc);
+				if (delegate == null) return null;
+			}
+		}
+		return delegate;
+	}
+
+	/** Whether every injection point is the method's end ({@code RETURN} or {@code TAIL}). */
+	private static boolean atEndOnly(List<AnnotationNode> ats) {
+		for (AnnotationNode at : ats) {
+			String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
+			if (!point.equals("RETURN") && !point.equals("TAIL")) return false;
+		}
+		return true;
 	}
 
 	/** Makes an {@code @Inject} whose local capture fails hard skip itself instead; returns whether it changed. */
