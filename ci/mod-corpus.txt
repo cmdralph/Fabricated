@@ -1,0 +1,47 @@
+# Popular Fabric mods CI loads together (informational), by Modrinth project slug. Each one's newest Fabric build
+# for the Minecraft version is used, with its required dependencies; a mod without such a build is left out.
+# Mods that replace the renderer (Sodium, Iris) are not listed: Fabricated doesn't support them.
+
+# Libraries
+architectury-api
+balm
+cloth-config
+collective
+fabric-language-kotlin
+forge-config-api-port
+geckolib
+moonlight
+owo-lib
+puzzles-lib
+trinkets
+yacl
+
+# Interface
+appleskin
+emi
+jade
+jei
+modmenu
+mouse-tweaks
+roughly-enough-items
+shulkerboxtooltip
+xaeros-minimap
+xaeros-world-map
+
+# Performance
+dynamic-fps
+entityculling
+ferrite-core
+immediatelyfast
+krypton
+lithium
+
+# Content
+comforts
+create-fabric
+farmers-delight-refabricated
+lootr
+supplementaries
+terralith
+travelersbackpack
+waystones

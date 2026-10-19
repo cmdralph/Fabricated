@@ -154,6 +154,39 @@ jobs:
             ${{ runner.temp }}/client-fapi/client.out
             ${{ runner.temp }}/client-fapi/thread-dump.txt
           if-no-files-found: ignore
+      # Popular Fabric mods from Modrinth (ci/mod-corpus.txt, downloaded here in CI and checked against Modrinth's
+      # SHA-512), loaded together with Fabric API: shows which load, which are disabled and why. Informational.
+      - name: Fetch the mod corpus
+        id: corpus
+        if: always() && steps.build.outcome == 'success'
+        continue-on-error: true
+        run: |
+          python3 ci/fetch-corpus.py "${{ matrix.minecraft }}" "$RUNNER_TEMP/corpus"
+          cp "$RUNNER_TEMP/extra/fabric-api.jar" "$RUNNER_TEMP/corpus/"
+      - name: Server with the mod corpus (informational)
+        if: always() && steps.corpus.outcome == 'success'
+        continue-on-error: true
+        run: ci/smoke-server.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/server-corpus" "$RUNNER_TEMP/corpus" || true
+      - name: Client with the mod corpus (informational)
+        if: always() && steps.corpus.outcome == 'success'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          SMOKE_TIMEOUT=600 ci/smoke-client.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/client-corpus" "$RUNNER_TEMP/corpus" || true
+          grep -A400 "== " "$RUNNER_TEMP/client-corpus/run/logs/fabric-bridge-report.txt" || true
+      - name: Upload mod corpus logs and reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: corpus-${{ matrix.minecraft }}
+          path: |
+            ${{ runner.temp }}/server-corpus/logs
+            ${{ runner.temp }}/server-corpus/server.out
+            ${{ runner.temp }}/client-corpus/run/logs
+            ${{ runner.temp }}/client-corpus/run/crash-reports
+            ${{ runner.temp }}/client-corpus/client.out
+          if-no-files-found: ignore
       - name: Upload Fabricated jar
         uses: actions/upload-artifact@v4
         with:
