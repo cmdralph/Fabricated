@@ -161,7 +161,6 @@
         "fabric-renderer-api-v1.mixins.json:block.render.MovingBlockFeatureRendererMixin",
         "fabric-renderer-api-v1.mixins.json:block.render.LevelExtractorMixin",
         "fabric-renderer-api-v1.mixins.json:block.render.LevelRendererMixin",
-        "fabric-renderer-api-v1.mixins.json:submit.SubmitNodeCollectionMixin#hasMaterialFlagProxy",
         "fabric-renderer-api-v1.mixins.json:block.model.SimpleModelWrapperMixin#analyzeMesh",
         "fabric-renderer-api-v1.mixins.json:block.render.BlockFeatureRendererMixin#beforeInitBlockRenderer",
         "fabric-renderer-api-v1.mixins.json:block.render.BlockFeatureRendererMixin#hasMaterialFlagProxy",
