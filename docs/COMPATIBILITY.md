@@ -569,6 +569,10 @@ Kotlin's), mod containers and metadata, versions and predicates, the object shar
   `FabricLauncherBase.getLauncher()` (environment, development flag, runtime namespace) are provided for the mods that
   use them; other internal classes are not.
 - Mods detect Fabricated with `FabricLoader.getInstance().isModLoaded("fabricated")`; see [API.md](API.md).
+- `mixinextras` is provided at the version NeoForge runs, as Fabric Loader provides its own, so mods requiring it
+  load (copies nested in mod jars are dropped for NeoForge's).
+- Class tweakers v2 load: their `extend-enum` lines only declare the constants a mod's enum mixins add, which Mixin
+  adds itself (0.17.1 or later, so on 26.x; not to NeoForge's own extensible enums).
 - Config screens a Fabric mod offers to Mod Menu (its `modmenu` entrypoint) open from the Config button of NeoForge's
   mod list. Mod Menu's API interfaces are provided, so such mods load without Mod Menu, which itself can't run on
   NeoForge (it would duplicate NeoForge's mod list).
