@@ -47,7 +47,8 @@
     "ConditionalOpsMixin",
     "AdvancementReloadMixin",
     "EnchantmentBuilderMixin",
-    "ResourceManagerRegistryLoadTaskMixin"
+    "ResourceManagerRegistryLoadTaskMixin",
+    "LevelChunkBlockEntityMixin"
   ],
   "injectors": {
     "defaultRequire": 1
@@ -67,6 +68,7 @@
     "client.ClientPayloadSendMixin",
     "client.SoundEngineStreamMixin",
     "client.ParticleResourcesMixin",
-    "client.SectionCompilerMixin"
+    "client.SectionCompilerMixin",
+    "client.ClientChunkCacheMixin"
   ]
 }

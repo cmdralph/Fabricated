@@ -2,7 +2,6 @@ package io.github.cmdralph.fabricated.neoforge.lifecycle;
 
 import net.fabricmc.fabric.api.event.lifecycle.v1.CommonLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.EntityLoadData;
-import net.fabricmc.fabric.api.event.lifecycle.v1.ServerBlockEntityEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerChunkEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLevelEvents;
@@ -15,7 +14,6 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.level.ChunkPos;
-import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.EventPriority;
@@ -41,10 +39,9 @@ import net.neoforged.neoforge.event.tick.ServerTickEvent;
  * NeoForge's events instead of upstream's mixins, which conflict with NeoForge's patches.
  *
  * <p>Not fired, because NeoForge has no matching hook: {@code START_DATA_PACK_RELOAD},
- * {@code END_DATA_PACK_RELOAD}, {@code BEFORE_SAVE} and {@code AFTER_SAVE}. Block entity load/unload fire for
- * the block entities of chunks as they load and unload, not for block entities placed or removed in an
- * already-loaded chunk. Full chunk status changes follow NeoForge's ticket level updates. All of this is
- * listed in docs/COMPATIBILITY.md.
+ * {@code END_DATA_PACK_RELOAD}, {@code BEFORE_SAVE} and {@code AFTER_SAVE}. Block entity load/unload fire as a
+ * block entity enters or leaves its chunk, as upstream ({@link BlockEntityLifecycle}). Full chunk status changes
+ * follow NeoForge's ticket level updates. All of this is listed in docs/COMPATIBILITY.md.
  */
 public final class LifecycleBridge {
 	private static final FullChunkStatus[] STATUSES = FullChunkStatus.values();
@@ -82,17 +79,12 @@ public final class LifecycleBridge {
 			LevelChunk chunk = e.getChunk();
 			ServerChunkEvents.CHUNK_LOAD.invoker().onChunkLoad(level, chunk, e.isNewChunk());
 			if (e.isNewChunk()) ServerChunkEvents.CHUNK_GENERATE.invoker().onChunkGenerate(level, chunk);
-			for (BlockEntity blockEntity : chunk.getBlockEntities().values()) {
-				ServerBlockEntityEvents.BLOCK_ENTITY_LOAD.invoker().onLoad(blockEntity, level);
-			}
 			onChunkLoaded(level, chunk);
 		});
 		bus.addListener(ChunkEvent.Unload.class, e -> {
 			if (!(e.getLevel() instanceof ServerLevel level)) return;
 			LevelChunk chunk = e.getChunk();
-			for (BlockEntity blockEntity : chunk.getBlockEntities().values()) {
-				ServerBlockEntityEvents.BLOCK_ENTITY_UNLOAD.invoker().onUnload(blockEntity, level);
-			}
+			BlockEntityLifecycle.unloadAll(chunk);
 			ServerChunkEvents.CHUNK_UNLOAD.invoker().onChunkUnload(level, chunk);
 		});
 		bus.addListener(ChunkTicketLevelUpdatedEvent.class, LifecycleBridge::onTicketLevel);

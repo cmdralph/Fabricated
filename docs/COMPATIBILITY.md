@@ -187,10 +187,10 @@ real server for every version.
 | Entity load/unload, `ALLOW_LOAD` (26.x) | `EntityJoinLevelEvent`, `EntityLeaveLevelEvent` | `ALLOW_LOAD` cancels the join |
 | `EntityLoadData` (26.x) | `EntityJoinLevelEvent`, `FinalizeSpawnEvent` | spawn reason is known for mobs and null for other entities, which the API allows |
 | Equipment change | `LivingEquipmentChangeEvent` | |
-| Block entity load/unload | `ChunkEvent.Load/Unload` | only for block entities of chunks that load or unload, not ones placed or removed in a loaded chunk |
+| Block entity load/unload | `LevelChunk` (Fabricated mixin, at upstream's points) and `ChunkEvent.Unload` | as on Fabric: when a block entity enters or leaves its chunk (loading with it, placed, broken or replaced later), and for those a chunk holds when it unloads. On the client also when the server resends a chunk, and when the client drops its level (disconnect, dimension change) |
 | Sync data pack contents | `OnDatapackSyncEvent` | |
 | Tags loaded | `TagsUpdatedEvent` | |
-| Client: ticks, chunks, entities, block entities | `ClientTickEvent`, `LevelTickEvent`, `ChunkEvent`, `EntityJoin/LeaveLevelEvent` | |
+| Client: ticks, chunks, entities, block entities | `ClientTickEvent`, `LevelTickEvent`, `ChunkEvent`, `EntityJoin/LeaveLevelEvent` | chunks the client drops without NeoForge's event (a smaller view distance, a reused slot) unload too, as upstream |
 | Client started / stopping | first client tick / `GameShuttingDownEvent` | |
 | After client level change | `ClientPlayerNetworkEvent.LoggingIn` and `.Clone` | fires on login and on respawn into another level |
 | **Not fired**: start/end data pack reload, before/after save | none | NeoForge has no matching hook |

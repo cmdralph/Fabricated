@@ -22,10 +22,11 @@
       "io.github.cmdralph.fabricated.testmod.InteractionTest",
       "io.github.cmdralph.fabricated.testmod.LootTest",
       "io.github.cmdralph.fabricated.testmod.ContentRegistriesTest",
-      "io.github.cmdralph.fabricated.testmod.TransferTest"
+      "io.github.cmdralph.fabricated.testmod.TransferTest",
+      "io.github.cmdralph.fabricated.testmod.BlockEntityEventsTest"
     ],
     "server": ["io.github.cmdralph.fabricated.testmod.TestMod"],
-    "client": ["io.github.cmdralph.fabricated.testmod.ClientTestMod"],
+    "client": ["io.github.cmdralph.fabricated.testmod.ClientTestMod", "io.github.cmdralph.fabricated.testmod.BlockEntityEventsClientTest"],
     "fabricated-test": ["io.github.cmdralph.fabricated.testmod.TestMod${'$'}CustomEntrypoint"],
     "modmenu": ["io.github.cmdralph.fabricated.testmod.ModMenuEntry"]
   },
