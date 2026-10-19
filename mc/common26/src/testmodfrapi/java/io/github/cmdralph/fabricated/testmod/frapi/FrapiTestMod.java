@@ -29,6 +29,8 @@ public final class FrapiTestMod implements ModInitializer {
 	static final Logger LOGGER = LoggerFactory.getLogger("fabricated-testmod-frapi");
 	static final Identifier TERRAIN_BLOCK_ID = Identifier.fromNamespaceAndPath("fabricated_testmod_frapi", "terrain_block");
 	static final Identifier NESTED_BLOCK_ID = Identifier.fromNamespaceAndPath("fabricated_testmod_frapi", "nested_block");
+	/** A block whose blockstate uses one of NeoForge's blockstate model types, which must still parse with Fabric's model loading. */
+	static final Identifier NEOFORGE_TYPE_BLOCK_ID = Identifier.fromNamespaceAndPath("fabricated_testmod_frapi", "neoforge_type_block");
 	/** Ticks between two falling blocks, and between two renewals of the breaking progress (which the client drops when stale). */
 	private static final int RENEW_TICKS = 20;
 	/** The id of the breaking entity: one no entity has, so every player is sent the progress. */
@@ -44,6 +46,7 @@ public final class FrapiTestMod implements ModInitializer {
 	public void onInitialize() {
 		Block terrainBlock = register(TERRAIN_BLOCK_ID);
 		Block nestedBlock = register(NESTED_BLOCK_ID);
+		register(NEOFORGE_TYPE_BLOCK_ID);
 		ServerPlayConnectionEvents.JOIN.register((listener, sender, server) -> server.execute(() -> {
 			Direction facing = listener.player.getDirection();
 			BlockPos front = listener.player.blockPosition().relative(facing, 2).above();

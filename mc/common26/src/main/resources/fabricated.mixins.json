@@ -76,6 +76,8 @@
     "client.BlockBreakingRenderMixin",
     "client.MultiPartModelMixin",
     "client.WeightedVariantsMixin",
+    "client.UnbakedModelParserMixin",
+    "client.BlockStateModelUnbakedMixin",
     "client.ClientChunkCacheMixin"
   ]
 }

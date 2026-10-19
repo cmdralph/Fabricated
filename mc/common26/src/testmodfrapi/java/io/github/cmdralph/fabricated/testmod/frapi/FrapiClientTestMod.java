@@ -10,6 +10,7 @@ import com.mojang.serialization.MapCodec;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.model.loading.v1.CustomUnbakedBlockStateModel;
 import net.fabricmc.fabric.api.client.model.loading.v1.ModelLoadingPlugin;
+import net.fabricmc.fabric.api.client.model.loading.v1.UnbakedModelDeserializer;
 import net.fabricmc.fabric.api.client.model.loading.v1.wrapper.WrapperBlockStateModel;
 import net.fabricmc.fabric.api.client.renderer.v1.mesh.QuadEmitter;
 import net.minecraft.client.renderer.block.BlockAndTintGetter;
@@ -17,12 +18,15 @@ import net.minecraft.client.renderer.block.MovingBlockRenderState;
 import net.minecraft.client.renderer.block.dispatch.BlockStateModel;
 import net.minecraft.client.renderer.chunk.RenderSectionRegion;
 import net.minecraft.client.resources.model.ModelBaker;
+import net.minecraft.client.resources.model.UnbakedModel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
+import net.minecraft.util.GsonHelper;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.block.state.BlockState;
+import net.neoforged.neoforge.client.model.block.CompositeBlockModel;
 
 /**
  * Fabric models (their own {@code emitQuads}), which NeoForge's block renderer can't draw:
@@ -32,18 +36,31 @@ import net.minecraft.world.level.block.state.BlockState;
  * <li>a custom model type ({@code fabric:type}) used as the part of the nested test block's multipart model: drawn in
  * a chunk section, inside a vanilla model.</li>
  * </ul>
- * Each logs once when it is drawn, after every quad went to the game.
+ * Each logs once when it is drawn, after every quad went to the game. Also checks Fabric's custom model formats
+ * next to NeoForge's: a model file read by a Fabric model deserializer, and a blockstate of NeoForge's composite type.
  */
 public final class FrapiClientTestMod implements ClientModInitializer {
 	@Override
 	public void onInitializeClient() {
 		AtomicBoolean wrapped = new AtomicBoolean();
+		AtomicBoolean neoForgeType = new AtomicBoolean();
 		ModelLoadingPlugin.register(plugin -> plugin.modifyBlockModelAfterBake().register((model, context) -> {
-			if (!BuiltInRegistries.BLOCK.getKey(context.state().getBlock()).equals(FrapiTestMod.TERRAIN_BLOCK_ID)) return model;
+			Identifier block = BuiltInRegistries.BLOCK.getKey(context.state().getBlock());
+			if (block.equals(FrapiTestMod.NEOFORGE_TYPE_BLOCK_ID) && !neoForgeType.getAndSet(true)) {
+				boolean composite = model instanceof CompositeBlockModel;
+				FrapiTestMod.LOGGER.info("FABRICATED-TEST neoforge blockstate type {} ({})", composite ? "OK" : "FAILED", model.getClass().getName());
+			}
+			if (!block.equals(FrapiTestMod.TERRAIN_BLOCK_ID)) return model;
 			if (!wrapped.getAndSet(true)) FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi model wrapped ({})", model.getClass().getName());
 			return new TerrainCheckModel(model);
 		}));
 		CustomUnbakedBlockStateModel.register(Identifier.fromNamespaceAndPath("fabricated_testmod_frapi", "nested_check"), NestedCheckModel.Unbaked.CODEC);
+		// {"fabric:type": "fabricated_testmod_frapi:delegate", "model": <a model>}: reads the inner model.
+		AtomicBoolean deserialized = new AtomicBoolean();
+		UnbakedModelDeserializer.register(Identifier.fromNamespaceAndPath("fabricated_testmod_frapi", "delegate"), (json, context) -> {
+			if (!deserialized.getAndSet(true)) FrapiTestMod.LOGGER.info("FABRICATED-TEST model deserializer OK");
+			return context.deserialize(GsonHelper.getAsJsonObject(json, "model"), UnbakedModel.class);
+		});
 	}
 
 	private static final class TerrainCheckModel extends WrapperBlockStateModel {

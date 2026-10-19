@@ -1,0 +1,10 @@
+{
+  "variants": {
+    "": {
+      "type": "neoforge:composite",
+      "models": [
+        { "model": "minecraft:block/stone" }
+      ]
+    }
+  }
+}

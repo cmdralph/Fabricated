@@ -22,6 +22,9 @@ version).
   `ci: ...`, with a body that explains why.
 - **No placeholders** in merged code (`CONTRIBUTING.md`): an unsupported feature is reported in
   `fabric-bridge-report.txt`, `COMPATIBILITY.md` and `progress.md`, not stubbed.
+- **Pull requests are merged once CI is green on their final commit** (the owner's standing decision, 2026-10-19):
+  open the PR, drive it to green, merge it with a merge commit, then continue on the same branch from the new
+  `main`.
 - **Lightweight and readable over clever.** No abstraction without a second user, no dead code, no duplicated
   utilities. A refactor must measurably reduce coupling or duplication.
 
@@ -45,7 +48,8 @@ applies them, which the CI server and client runs do on every push.
 2. A real dedicated server with the test mods (gate), then with the official Fabric API jar (must start).
 3. A real client, started headlessly with HeadlessMC, that joins a singleplayer world with the test mods (gate),
    then again with Fabric API. On 26.x that second run also loads the renderer API test mod, and a gate checks that
-   a Fabric block model was meshed into the world.
+   Fabric block models are drawn in chunk sections (also inside a vanilla multipart model), as moving blocks and with
+   the breaking overlay, and that Fabric's and NeoForge's custom model formats both load.
 4. A corpus of popular Fabric mods from Modrinth (informational).
 
 ## Architecture

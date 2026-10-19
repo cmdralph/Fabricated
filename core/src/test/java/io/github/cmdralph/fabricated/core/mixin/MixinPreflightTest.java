@@ -183,6 +183,71 @@ class MixinPreflightTest {
 				"a constructor vanilla delegates itself is the one the mixin means");
 	}
 
+	/** A library interface named {@code name}, extending {@code parent} (or none), declaring {@code parse(Object)}. */
+	private static byte[] libraryInterface(String name, String parent) {
+		ClassWriter cw = new ClassWriter(0);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_INTERFACE | Opcodes.ACC_ABSTRACT, name, null, "java/lang/Object",
+				parent == null ? null : new String[] {parent});
+		cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, "parse", "(Ljava/lang/Object;)Ljava/lang/Object;", null, null).visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	/** {@link #TARGET} whose {@code load} calls {@code parse} through {@code owner}. */
+	private static byte[] callingThrough(String owner) {
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		MethodVisitor load = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "load", "(L" + owner + ";)V", null, null);
+		load.visitCode();
+		load.visitVarInsn(Opcodes.ALOAD, 0);
+		load.visitInsn(Opcodes.ACONST_NULL);
+		load.visitMethodInsn(Opcodes.INVOKEINTERFACE, owner, "parse", "(Ljava/lang/Object;)Ljava/lang/Object;", true);
+		load.visitInsn(Opcodes.POP);
+		load.visitInsn(Opcodes.RETURN);
+		load.visitMaxs(0, 0);
+		load.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	@Test
+	void anInjectionAtACallMadeThroughASubtypeIsPointedThere() throws Exception {
+		String decoder = "com/example/lib/Decoder";
+		Map<String, byte[]> libraries = Map.of(decoder, libraryInterface(decoder, null),
+				"com/example/lib/Codec", libraryInterface("com/example/lib/Codec", decoder),
+				"com/example/lib/Unrelated", libraryInterface("com/example/lib/Unrelated", null));
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/AtParse", mixin("com/example/mixin/AtParse", false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "h", "(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V", null, null);
+			AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "load");
+			methods.visitEnd();
+			AnnotationVisitor ats = ann.visitArray("at");
+			AnnotationVisitor at = ats.visitAnnotation(null, "Lorg/spongepowered/asm/mixin/injection/At;");
+			at.visit("value", "INVOKE");
+			at.visit("target", "L" + decoder + ";parse(Ljava/lang/Object;)Ljava/lang/Object;");
+			at.visitEnd();
+			ats.visitEnd();
+			ann.visitEnd();
+			mv.visitEnd();
+		})));
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "AtParse"));
+
+		ClassIndex neoForge = new ClassIndex(Map.of(TARGET, callingThrough("com/example/lib/Codec"))::get);
+		assertEquals(1, new MixinPreflight(neoForge, mod::get, libraries::get, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).size(),
+				"Mixin matches the call's owner exactly");
+		List<PreflightFinding> notes = new ArrayList<>();
+		Map<String, byte[]> repaired = new MixinPreflight(neoForge, mod::get, libraries::get, false)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
+		assertTrue(notes.getFirst().message().contains("calls through com.example.lib.Codec"), notes.toString());
+		mod.put("com/example/mixin/AtParse", repaired.get("com/example/mixin/AtParse.class"));
+		assertTrue(new MixinPreflight(neoForge, mod::get, libraries::get, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty());
+
+		ClassIndex unrelated = new ClassIndex(Map.of(TARGET, callingThrough("com/example/lib/Unrelated"))::get);
+		assertTrue(new MixinPreflight(unrelated, mod::get, libraries::get, false)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty(), "a call on another type is another method");
+	}
+
 	@Test
 	void aHardLocalCaptureSkipsItselfInsteadOfCrashing() throws Exception {
 		ClassIndex game = new ClassIndex(Map.of(TARGET, targetClass())::get);
