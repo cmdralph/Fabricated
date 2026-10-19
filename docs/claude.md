@@ -72,6 +72,16 @@ module Fabricated vendors and bridges to NeoForge events ("native", `mc/<version
 `mc/common*`) or to the module's upstream code from the player's Fabric API jar ("pass-through"), whose mixins
 passed pre-flight. Calls to the Fabric Loader API go to core's `FabricLoaderRuntime`.
 
+Fabric code also sees NeoForge's own mods, as built-in mod containers (`NeoForgeMods`, loader): the ones NeoForge
+found, and the ones nested in their files (jar-in-jar). Every NeoForge dependency locator is handed the same root
+files, so the nested mods NeoForge's jar-in-jar locator adds are invisible to Fabricated's locator, however late it
+runs; their `mods.toml` are read in place by core's `NestedNeoForgeJars` instead (Sodium for NeoForge nests its mod
+in a service jar). A NeoForge mod's `modproperties` become its Fabric custom values, and the ids its `fabric:provides`
+property lists are present too. That is how NeoForge mods speak to Fabric code: Sodium's
+`fabric-renderer-api-v1:contains_renderer` makes Indigo stand down, and it provides `indium`. Of two copies of a
+NeoForge mod the newest counts. The Fabric builds of mods that only work as their NeoForge build (Sodium, Iris) are
+disabled with a message naming it (`Pipeline.NEOFORGE_BUILD_ONLY`).
+
 ### Modules and the dependency graph
 
 ```
@@ -157,7 +167,8 @@ and `altModelBlockRenderer(ao, cull, BlockColors)`.
 Indigo, the reference renderer, already loads on 26.x and already is an `int[]`-backed, stride-encoded quad
 emitter. Fabricated therefore doesn't duplicate it. A second renderer would add thousands of lines with no
 user-visible gain. What was missing is the seam between FRAPI and the places NeoForge draws blocks. All of it goes
-through `FabricBlockRendering` (`mc/common26/.../rendering`), the only class that names the renderer API's types:
+through `FabricBlockRendering` (`mc/common26/.../rendering`), which with `FrapiDefaults` and the mixins of
+`fabricated-renderer.mixins.json` is the only code that names the renderer API's types:
 
 - **The decision.** `FabricBlockRendering.draws(model)` is true when the model's class implements `emitQuads` itself:
   the declaring class of the resolved method is neither `FabricBlockStateModel` (whose default only draws the parts
@@ -177,6 +188,14 @@ through `FabricBlockRendering` (`mc/common26/.../rendering`), the only class tha
   `collectParts` call there (26.1.2: `BlockFeatureRenderer.renderBreakingBlockModelSubmits`; 26.2, 26.3:
   `LevelRenderer.submitBlockDestroyAnimation`) and adds a Fabric model's emitted quads, turned back into vanilla
   quads, as one part. The overlay itself is unchanged.
+
+- **NeoForge-aware defaults.** `FrapiDefaults`, declared on `BlockStateModel` and `BlockStateModelPart` by
+  `fabricated-renderer.mixins.json` (loaded only with `fabric_renderer_api_v1`, through FML's `requiredMods`):
+  a model without its own `emitQuads` collects its parts with NeoForge's level-aware `collectParts`, and a part's quads
+  keep NeoForge's part and quad ambient occlusion, as in Forgified Fabric API. Upstream's defaults drop both, which
+  breaks NeoForge models whenever Fabric's renderer draws them: inside a Fabric wrapper model, or every model when a
+  renderer such as Sodium meshes the world through the renderer API. Being declared on a `net.minecraft` interface,
+  the default still counts as "draws nothing of its own" for `draws(model)`.
 
 Upstream's own hooks for these places stay skipped because they send *every* block (every moving block, every
 breaking overlay) through Fabric's renderer. On NeoForge that would drop level-aware `collectParts`, dynamic tints,
@@ -204,7 +223,8 @@ breaking overlay) through Fabric's renderer. On NeoForge that would drop level-a
    resource reload.
 6. **Classes that name a pass-through module's types load only after that module is known to be loaded.** The check
    (`FabricLoader.isModLoaded`) lives in a class that names only Minecraft and Fabricated types, and the code using the
-   module sits in a nested holder class.
+   module sits in a nested holder class. Mixins that name them go in their own config, registered in the in-game mod's
+   `neoforge.mods.toml` with `requiredMods` set to the module's NeoForge id (`fabricated-renderer.mixins.json`).
 7. **New hot-path code needs an allocation assertion.** For Minecraft-independent code, a `core` unit test measures
    `com.sun.management.ThreadMXBean#getThreadAllocatedBytes` around a warmed-up loop and asserts zero. For code that
    only runs in the game, the CI client run is the test, and the allocation argument goes in the commit message

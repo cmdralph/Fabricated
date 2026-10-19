@@ -554,8 +554,17 @@ follows the code into NeoForge's overload. On 26.1.2 and 26.2 the block overlay 
 block's plain particle sprite.
 
 Model loading loads too: its plugins, model modifiers and extra models work, with the extra models added to
-NeoForge's model discovery by Fabricated (NeoForge rewrote the code upstream hooks). Model types registered with
-Fabric's `UnbakedModelDeserializer` are not used: NeoForge parses model files with its own loaders.
+NeoForge's model discovery by Fabricated (NeoForge rewrote the code upstream hooks). Fabric's custom model formats
+work next to NeoForge's: a model file with a `fabric:type` goes to the deserializer a Fabric mod registered with
+`UnbakedModelDeserializer`, and a blockstate model with a `fabric:type` to the codec registered with
+`CustomUnbakedBlockStateModel`, while NeoForge's own model loaders (`loader`) and blockstate model types (`type`, such as
+`neoforge:composite`) keep working. Upstream's mixin that replaces the blockstate model codec is left out; Fabricated
+adds Fabric's types to the codec NeoForge builds instead.
+
+When Fabric's renderer draws a model that has no `emitQuads` of its own (a NeoForge model a Fabric model wraps, or
+every model under a renderer that meshes the world through Fabric's renderer API), its parts come from NeoForge's
+level-aware `collectParts`, so connected textures and other model-data models keep working, and quads keep NeoForge's
+per-part and per-quad ambient occlusion (the defaults Forgified Fabric API has; upstream's ignore both).
 
 On 1.21.11 the renderer API is unsupported (Fabric's renderer replaces the block model pipeline that NeoForge owns
 there), so model loading, which requires it, is disabled.
