@@ -155,6 +155,13 @@ failures fall into a few groups:
   `RegistryDataLoader.load` overload (with the updated tags), so `fabric-advancement-api-v1`'s reload mixin finds
   nothing to wrap. Fabricated wraps NeoForge's call instead and runs upstream's reload hooks around it
   (advancement modifications see the registries being loaded; `AdvancementEvents.ALL_LOADED` fires).
+- **NeoForge moved a method's code into a new overload**: NeoForge often keeps vanilla's signature as a method that
+  calls a new overload of the same name holding the code (`SimpleModelWrapper.bake`, `ModelManager`'s model
+  discovery). A selector without a descriptor picks the first method of that name, as Mixin does, so an injection
+  point inside the code is missing there. When the points all occur in the one overload that method calls, and the
+  handler doesn't depend on the method's parameters (an `@Inject` taking only the callback info, a `@WrapOperation`,
+  `@ModifyExpressionValue`, `@Redirect` and so on), Fabricated points the injector at the overload (for any mod,
+  reported as a warning).
 - **Dependency cascade**: a module that requires a disabled module is disabled too. In the current CI runs no
   Fabric API module is disabled only for that reason; `fabric-data-attachment-api-v1`, which needed
   object-builder, loads now.

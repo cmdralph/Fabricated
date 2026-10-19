@@ -60,6 +60,7 @@ public final class MixinPreflight {
 	private static final String UNIQUE = "Lorg/spongepowered/asm/mixin/Unique;";
 	private static final String INTRINSIC = "Lorg/spongepowered/asm/mixin/Intrinsic;";
 	private static final String WRAP_OPERATION = "Lcom/llamalad7/mixinextras/injector/wrapoperation/WrapOperation;";
+	private static final String MODIFY_VARIABLE = "Lorg/spongepowered/asm/mixin/injection/ModifyVariable;";
 	private static final String OPERATION = "Lcom/llamalad7/mixinextras/injector/wrapoperation/Operation;";
 	private static final String DEFINITION = "Lcom/llamalad7/mixinextras/expression/Definition;";
 	private static final String DEFINITIONS = "Lcom/llamalad7/mixinextras/expression/Definitions;";
@@ -126,6 +127,9 @@ public final class MixinPreflight {
 	 * <li>An {@code @Accessor} of a local variable an anonymous class captured ({@code val$name}), where the game names
 	 * that field after the decompiled variable instead (NeoForge's 1.21.11 build, for example): it is pointed at the
 	 * one captured field of the same type in each target.</li>
+	 * <li>An injector whose method NeoForge turned into a delegate to a new overload of the same name that now holds the
+	 * code (NeoForge keeps vanilla's signature that way): when the injection points occur only in that overload and the
+	 * handler doesn't depend on the method's parameters, the injector is pointed at the overload.</li>
 	 * <li>An injector targeting a lambda ({@code lambda$enclosing$3}) that the game numbers differently (NeoForge's
 	 * 1.21.11 build is compiled from decompiled code, and NeoForge's patches add lambdas): it is pointed at the one
 	 * lambda of the same enclosing method with the same descriptor.</li>
@@ -164,6 +168,13 @@ public final class MixinPreflight {
 						changed = true;
 						out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@" + simpleName(ann.desc) + " " + method.name
 								+ " targets " + lambda + ", which this game build numbers differently", ""));
+					}
+					if (targets.size() == 1) {
+						for (String moved : overloadRepairs(method, ann, targets.getFirst(), ctx)) {
+							changed = true;
+							out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@" + simpleName(ann.desc) + " " + method.name
+									+ " targets " + moved, ""));
+						}
 					}
 				}
 				if ((node.access & Opcodes.ACC_INTERFACE) == 0 || (method.access & Opcodes.ACC_STATIC) != 0) continue;
@@ -238,6 +249,93 @@ public final class MixinPreflight {
 			repaired.add(ref.name() + ref.desc());
 		}
 		return repaired;
+	}
+
+	/**
+	 * Points the selectors of an injector whose injection points are missing from the method Mixin picks, but all occur in
+	 * the one overload of the same name that method calls (NeoForge's way of keeping vanilla's signature while moving the
+	 * code), at that overload; returns a description of each move. Only handlers that don't depend on the method's own
+	 * parameters are moved: not an {@code @Inject} taking them, nor a {@code @Local(argsOnly = true)} of a type the
+	 * overload doesn't take, nor captured locals or {@code @ModifyVariable}.
+	 */
+	private static List<String> overloadRepairs(MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx) {
+		if (!(Annotations.value(injector, "method") instanceof List<?> selectors)) return List.of();
+		List<AnnotationNode> ats = annotationList(Annotations.value(injector, "at"));
+		if (ats.isEmpty() || injector.desc.equals(MODIFY_VARIABLE) || Annotations.value(injector, "locals") != null) return List.of();
+		if (injector.desc.equals(INJECT)) {
+			List<Type> args = handlerArgs(handler);
+			if (args == null || args.size() != 1 || !isCallbackInfo(args.getFirst())) return List.of();
+		}
+		List<AnnotationNode> slices = annotationList(Annotations.value(injector, "slice"));
+		List<String> moved = new ArrayList<>();
+		for (int i = 0; i < selectors.size(); i++) {
+			if (!(selectors.get(i) instanceof String raw)) continue;
+			MemberRef ref = MemberRef.parse(ctx.resolve(raw));
+			if (ref.fuzzy() || ref.name() == null) continue;
+			MethodNode chosen = null;
+			for (MethodNode m : target.methods) {
+				if (ref.matchesMethod(m.name, m.desc)) {
+					chosen = m;
+					break;
+				}
+			}
+			if (chosen == null || pointsIn(ats, slices, chosen, ctx) != Verdict.MISSING) continue;
+			MethodNode overload = null;
+			for (AbstractInsnNode insn : chosen.instructions) {
+				if (!(insn instanceof MethodInsnNode call) || !call.owner.equals(target.name) || !call.name.equals(chosen.name)
+						|| call.desc.equals(chosen.desc)) continue;
+				MethodNode candidate = declared(target, call.name, call.desc);
+				if (candidate == null || candidate == overload) continue;
+				if (overload != null) {
+					overload = null;
+					break; // several overloads: ambiguous
+				}
+				overload = candidate;
+			}
+			if (overload == null || (overload.access & Opcodes.ACC_STATIC) != (chosen.access & Opcodes.ACC_STATIC)
+					|| !Type.getReturnType(overload.desc).equals(Type.getReturnType(chosen.desc))
+					|| !argsOnlyLocalsFit(handler, overload) || pointsIn(ats, slices, overload, ctx) != Verdict.FOUND) continue;
+			@SuppressWarnings("unchecked")
+			List<Object> values = (List<Object>) selectors;
+			values.set(i, overload.name + overload.desc);
+			moved.add(chosen.name + chosen.desc + ", whose code NeoForge moved into " + overload.name + overload.desc
+					+ "; the injector is pointed there");
+		}
+		return moved;
+	}
+
+	/** Whether every injection point occurs in {@code method} (FOUND), one surely doesn't (MISSING), or it can't be told. */
+	private static Verdict pointsIn(List<AnnotationNode> ats, List<AnnotationNode> slices, MethodNode method, Context ctx) {
+		Verdict result = Verdict.FOUND;
+		for (AnnotationNode at : ats) {
+			String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
+			if (point.equals("MIXINEXTRAS:EXPRESSION")) return Verdict.UNKNOWN;
+			String rawTarget = Annotations.value(at, "target") instanceof String t ? t : null;
+			int ordinal = Annotations.value(at, "ordinal") instanceof Integer n ? n : -1;
+			int opcode = Annotations.value(at, "opcode") instanceof Integer n ? n : -1;
+			AnnotationNode slice = sliceFor(at, slices);
+			Range range = slice == null ? Range.ALL : sliceRange(slice, method, ctx);
+			Verdict v = evaluate(point, rawTarget == null ? null : ctx.resolve(rawTarget), ordinal, opcode, range, method);
+			if (v == Verdict.MISSING) return Verdict.MISSING;
+			if (v == Verdict.UNKNOWN) result = Verdict.UNKNOWN;
+		}
+		return result;
+	}
+
+	/** Whether each of the handler's {@code @Local(argsOnly = true)} parameters has its type among {@code method}'s parameters. */
+	private static boolean argsOnlyLocalsFit(MethodNode handler, MethodNode method) {
+		Type[] types = Type.getArgumentTypes(handler.desc);
+		List<Type> params = List.of(Type.getArgumentTypes(method.desc));
+		for (int i = 0; i < types.length; i++) {
+			for (AnnotationNode a : parameterAnnotations(handler, i)) {
+				if (a.desc.equals(LOCAL) && Boolean.TRUE.equals(Annotations.value(a, "argsOnly"))) {
+					Type local = types[i];
+					if (local.getDescriptor().startsWith("Lcom/llamalad7/mixinextras/sugar/ref/")) return false; // a LocalRef: type unknown here
+					if (!params.contains(local)) return false;
+				}
+			}
+		}
+		return true;
 	}
 
 	/**

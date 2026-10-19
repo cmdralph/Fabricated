@@ -3,6 +3,7 @@ package io.github.cmdralph.fabricated.core.mixin;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -88,6 +89,44 @@ class MixinPreflightTest {
 		List<PreflightFinding> byName = preflight.check("test.mixins.json", MixinConfigFile.parse(config(true, "ByName")), Refmap.EMPTY, Set.of());
 		assertEquals(1, byName.size(), "Mixin picks tick()V, which has no such call: " + byName);
 		assertTrue(preflight.check("test.mixins.json", MixinConfigFile.parse(config(true, "ByDesc")), Refmap.EMPTY, Set.of()).isEmpty());
+	}
+
+	@Test
+	void anInjectorIsPointedAtTheOverloadNeoForgeMovedTheCodeInto() throws Exception {
+		ClassIndex game = new ClassIndex(Map.of(TARGET, overloadedTarget())::get);
+		String ci = "(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V";
+		Map<String, byte[]> mod = new HashMap<>(Map.of(
+				"com/example/mixin/Movable", mixin("com/example/mixin/Movable", false, cw -> injectWith(cw, ci)),
+				"com/example/mixin/TakesArgs", mixin("com/example/mixin/TakesArgs", false, cw -> injectWith(cw, "()V"))));
+		MixinPreflight preflight = new MixinPreflight(game, name -> mod.get(name), ClassBytesSource.EMPTY, false);
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Movable", "TakesArgs"));
+		List<PreflightFinding> notes = new ArrayList<>();
+		Map<String, byte[]> repaired = preflight.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
+		assertEquals(Set.of("com/example/mixin/Movable.class"), repaired.keySet(), "only a handler taking just the callback info moves");
+		assertTrue(notes.getFirst().message().contains("moved into tick(I)V"), notes.toString());
+		mod.put("com/example/mixin/Movable", repaired.get("com/example/mixin/Movable.class"));
+		List<PreflightFinding> after = new MixinPreflight(game, name -> mod.get(name), ClassBytesSource.EMPTY, false)
+				.check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertEquals(1, after.size(), "the moved injector applies; the other still fails: " + after);
+		assertTrue(after.getFirst().mixin().endsWith("TakesArgs"), after.toString());
+	}
+
+	/** An {@code @Inject} into tick (no descriptor) at its call to helper(I)V, whose handler has {@code desc}. */
+	private static void injectWith(ClassWriter cw, String desc) {
+		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "h", desc, null, null);
+		AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
+		AnnotationVisitor methods = ann.visitArray("method");
+		methods.visit(null, "tick");
+		methods.visitEnd();
+		AnnotationVisitor ats = ann.visitArray("at");
+		AnnotationVisitor at = ats.visitAnnotation(null, "Lorg/spongepowered/asm/mixin/injection/At;");
+		at.visit("value", "INVOKE");
+		at.visit("target", "Lnet/minecraft/world/Thing;helper(I)V");
+		at.visitEnd();
+		ats.visitEnd();
+		ann.visit("require", 1);
+		ann.visitEnd();
+		mv.visitEnd();
 	}
 
 	/** Builds a mixin class targeting {@link #TARGET}; {@code body} adds members. */
