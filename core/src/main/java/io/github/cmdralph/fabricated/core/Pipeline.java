@@ -133,6 +133,13 @@ public final class Pipeline {
 			Set<String> dependencyFailures) {
 	}
 
+	/**
+	 * Fabric mods whose API Fabricated provides itself, by id: their jar isn't loaded, and they are provided at its
+	 * version, so the mods requiring them resolve as they would on Fabric.
+	 */
+	private static final Map<String, String> REPLACED = Map.of("forgeconfigapiport",
+			"Fabricated provides Forge Config API Port's Fabric API on NeoForge's own config system, which the port copies");
+
 	/** A mod the platform provides (Minecraft, Java, Fabric Loader, Fabricated, native Fabric API modules). */
 	private record Builtin(String id, String version, String name, List<String> aliases) {
 	}
@@ -158,7 +165,7 @@ public final class Pipeline {
 		this.report = new Report(in.fabricatedVersion());
 		this.side = in.clientSide() ? EnvType.CLIENT : EnvType.SERVER;
 		for (NeoForgeMod m : in.neoForgeMods()) neoMods.put(m.id(), m);
-		this.builtins = builtins(in);
+		this.builtins = new ArrayList<>(builtins(in));
 	}
 
 	public static Result run(Input in) {
@@ -240,6 +247,12 @@ public final class Pipeline {
 			String skipped = skipReason(c, builtinNames);
 			if (skipped != null) {
 				report.mod(new ModRow(c.id(), c.version(), c.origin(), Status.SKIPPED, skipped, ""));
+				continue;
+			}
+			String replacement = REPLACED.get(c.id());
+			if (replacement != null) {
+				builtins.add(new Builtin(c.id(), c.version(), replacement, List.of()));
+				report.mod(new ModRow(c.id(), c.version(), c.origin(), Status.SKIPPED, replacement, ""));
 				continue;
 			}
 			String neoId = ModIds.toNeoForgeId(c.id());

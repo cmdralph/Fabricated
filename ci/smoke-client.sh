@@ -81,7 +81,7 @@ while kill -0 "$client_pid" 2>/dev/null; do
 	fi
 	# After a crash or a fatal loading error the game shows its error window until closed; stop it once the crash report
 	# is written.
-	if grep -qE "Preparing crash report|Game crashed!|Crash report saved to" client.out run/logs/latest.log 2>/dev/null; then
+	if grep -qE "Preparing crash report|Game crashed!|Crash report saved to|Failed to wait for future|Mixin prepare for mod .* failed" client.out run/logs/latest.log 2>/dev/null; then
 		echo "The game crashed; stopping the client."
 		sleep 15
 		pkill -P "$client_pid" 2>/dev/null || true
@@ -108,6 +108,11 @@ echo "::endgroup::"
 if [ "$status" -ne 0 ]; then
 	echo "::group::Game log without the loading-screen spam (last 250 lines)"
 	grep -v "Waiting for player to load" "$log" | tail -n 250 || true
+	echo "::endgroup::"
+fi
+if [ "$status" -ne 0 ]; then
+	echo "::group::First errors in the game log"
+	grep -n -m 80 -E "/(ERROR|FATAL)\]|Exception|Caused by" "$log" || true
 	echo "::endgroup::"
 fi
 for report in run/crash-reports/*.txt; do

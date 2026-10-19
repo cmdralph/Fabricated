@@ -78,6 +78,9 @@ echo "::endgroup::"
 echo "::group::Server output (tail)"
 tail -n 200 server.out || true
 echo "::endgroup::"
+echo "::group::First errors in the log"
+grep -n -m 80 -E "/(ERROR|FATAL)\]|Exception|Caused by" logs/latest.log 2>/dev/null || true
+echo "::endgroup::"
 for report in crash-reports/*.txt; do
 	[ -f "$report" ] || continue
 	echo "::group::Crash report $(basename "$report") (first 120 lines)"
