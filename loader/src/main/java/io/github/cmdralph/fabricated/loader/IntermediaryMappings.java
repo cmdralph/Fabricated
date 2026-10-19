@@ -6,6 +6,7 @@ import java.io.InputStreamReader;
 import java.io.Reader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -81,9 +82,13 @@ final class IntermediaryMappings {
 		List<String> tried = new ArrayList<>();
 		for (String candidate : new String[] {configuredPath, System.getProperty(SYSTEM_PROPERTY)}) {
 			if (candidate == null || candidate.isBlank()) continue;
-			Path p = Path.of(candidate);
-			if (Files.isRegularFile(p)) return p;
-			tried.add(p.toString());
+			try {
+				Path p = Path.of(candidate);
+				if (Files.isRegularFile(p)) return p;
+				tried.add(p.toString());
+			} catch (InvalidPathException e) {
+				tried.add(candidate + " (not a valid path)");
+			}
 		}
 		String side = client ? "client" : "server";
 		try {

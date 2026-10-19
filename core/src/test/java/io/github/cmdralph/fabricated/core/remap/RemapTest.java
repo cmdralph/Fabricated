@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.StringReader;
@@ -61,6 +62,14 @@ class RemapTest {
 
 	static MappingTable table() throws Exception {
 		return MappingComposer.compose(new StringReader(TINY), new StringReader(PROGUARD));
+	}
+
+	@Test
+	void aTruncatedMethodLineIsReportedAsMalformed() {
+		// A mapping file cut off mid-line (an interrupted download, a disk full) must give the targeted message.
+		String truncated = String.join("\n", "net.minecraft.world.Level -> a:", "    1:5:void addEntity(net.minecraft.world.Entity -> d", "");
+		MappingException e = assertThrows(MappingException.class, () -> MappingComposer.compose(new StringReader(TINY), new StringReader(truncated)));
+		assertTrue(e.getMessage().startsWith("Malformed method line 2"), e.getMessage());
 	}
 
 	@Test

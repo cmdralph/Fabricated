@@ -140,8 +140,10 @@ public final class MappingComposer {
 					String ret = sig.substring(0, space);
 					String rest = sig.substring(space + 1);
 					int p = rest.indexOf('(');
+					int close = rest.lastIndexOf(')');
+					if (p <= 0 || close < p) throw new MappingException("Malformed method line " + lineNo + ": " + line);
 					String mojangName = rest.substring(0, p);
-					String args = rest.substring(p + 1, rest.lastIndexOf(')'));
+					String args = rest.substring(p + 1, close);
 					pg.rawMethods.computeIfAbsent(currentOfficial, k -> new ArrayList<>())
 							.add(new String[] {officialName, args, ret, mojangName});
 				}
