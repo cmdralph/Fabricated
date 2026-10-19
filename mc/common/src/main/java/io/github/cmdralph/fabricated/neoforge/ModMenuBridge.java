@@ -32,7 +32,7 @@ final class ModMenuBridge {
 			} catch (VirtualMachineError e) {
 				throw e;
 			} catch (Throwable e) {
-				LOGGER.warn("Could not read the config screen of Fabric mod {} ({}): {}", modId, declared.spec().value(), e.toString());
+				LOGGER.warn("Could not read the config screen of Fabric mod {} ({})", modId, declared.spec().value(), e);
 			}
 		}
 	}

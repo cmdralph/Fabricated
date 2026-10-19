@@ -32,13 +32,15 @@ public final class SafeArchive implements Closeable {
 	private final ArchiveLimits limits;
 	private final ZipFile zip;
 	private final Map<String, ZipEntry> entries;
+	private final long declaredSize;
 	private long totalRead;
 
-	private SafeArchive(Path path, ArchiveLimits limits, ZipFile zip, Map<String, ZipEntry> entries) {
+	private SafeArchive(Path path, ArchiveLimits limits, ZipFile zip, Map<String, ZipEntry> entries, long declaredSize) {
 		this.path = path;
 		this.limits = limits;
 		this.zip = zip;
 		this.entries = entries;
+		this.declaredSize = declaredSize;
 	}
 
 	public static SafeArchive open(Path path, ArchiveLimits limits) throws ArchiveException {
@@ -94,7 +96,7 @@ public final class SafeArchive implements Closeable {
 					throw new ArchiveException("Entry '" + name + "' has a suspicious compression ratio of " + declared / compressed + ":1");
 				}
 			}
-			return new SafeArchive(path, limits, zip, entries);
+			return new SafeArchive(path, limits, zip, entries, declaredTotal);
 		} catch (ArchiveException e) {
 			closeQuietly(zip, e);
 			throw e;
@@ -134,6 +136,11 @@ public final class SafeArchive implements Closeable {
 	}
 
 	/** All entry names (including directories) in archive order. */
+	/** The uncompressed size the archive's entries declare (unchecked until read, but within the limits). */
+	public long declaredUncompressedSize() {
+		return declaredSize;
+	}
+
 	public List<String> entryNames() {
 		return List.copyOf(entries.keySet());
 	}

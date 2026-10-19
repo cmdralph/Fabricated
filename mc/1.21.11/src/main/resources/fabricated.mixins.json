@@ -39,10 +39,14 @@
     "ConditionalOpsMixin",
     "RegistryFriendlyByteBufMixin",
     "EnchantmentBuilderMixin",
-    "RegistryDataLoaderEnchantmentMixin"
+    "RegistryDataLoaderEnchantmentMixin",
+    "LevelChunkBlockEntityMixin"
   ],
   "injectors": {
     "defaultRequire": 1
+  },
+  "overwrites": {
+    "requireAnnotations": true
   },
   "client": [
     "client.BlockColorsLookupMixin",
@@ -55,6 +59,7 @@
     "client.ClientNetworkAddonHolderMixin",
     "client.ClientPayloadSendMixin",
     "client.ParticleResourcesMixin",
-    "client.SoundEngineStreamMixin"
+    "client.SoundEngineStreamMixin",
+    "client.ClientChunkCacheMixin"
   ]
 }

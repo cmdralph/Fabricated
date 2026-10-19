@@ -47,10 +47,14 @@
     "ConditionalOpsMixin",
     "AdvancementReloadMixin",
     "EnchantmentBuilderMixin",
-    "ResourceManagerRegistryLoadTaskMixin"
+    "ResourceManagerRegistryLoadTaskMixin",
+    "LevelChunkBlockEntityMixin"
   ],
   "injectors": {
     "defaultRequire": 1
+  },
+  "overwrites": {
+    "requireAnnotations": true
   },
   "client": [
     "client.BlockStateModelDefaultsMixin",
@@ -66,6 +70,8 @@
     "client.ClientNetworkAddonHolderMixin",
     "client.ClientPayloadSendMixin",
     "client.SoundEngineStreamMixin",
-    "client.ParticleResourcesMixin"
+    "client.ParticleResourcesMixin",
+    "client.SectionCompilerMixin",
+    "client.ClientChunkCacheMixin"
   ]
 }

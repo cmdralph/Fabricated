@@ -2,6 +2,7 @@ package io.github.cmdralph.fabricated.core.runtime;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -54,6 +55,17 @@ class FabricLoaderRuntimeTest {
 		rt.addMod(c, md.getProvides());
 		rt.addEntrypoints(c, md.entrypoints(), Set.of());
 		return c;
+	}
+
+	@Test
+	void aJvmFailureWrappedByReflectionIsNotOnlyTheModsFailure() {
+		OutOfMemoryError oom = new OutOfMemoryError();
+		assertSame(oom, EntrypointRunner.fatalCause(new RuntimeException("adapter", new java.lang.reflect.InvocationTargetException(oom))));
+		assertNull(EntrypointRunner.fatalCause(new RuntimeException(new StackOverflowError())), "a stack overflow is the mod's own failure");
+		RuntimeException a = new RuntimeException();
+		RuntimeException b = new RuntimeException(a);
+		a.initCause(b);
+		assertNull(EntrypointRunner.fatalCause(b), "a looping cause chain ends");
 	}
 
 	@Test

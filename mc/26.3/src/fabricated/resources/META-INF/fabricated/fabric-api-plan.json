@@ -167,7 +167,7 @@
         "fabric-renderer-api-v1.mixins.json:submit.SubmitNodeCollectionMixin#hasMaterialFlagProxy",
         "fabric-renderer-api-v1.mixins.json:block.particle.LevelExtractorMixin"
       ],
-      "reason": "Upstream loads with Indigo as the renderer, so meshes and quad emitters work, but NeoForge keeps drawing the world: the hooks that send every block in the world, moving blocks, block outlines and breaking animations through Fabric's renderer are left out, so a model's custom emitQuads geometry is drawn in item and block entity rendering only, not in the world. NeoForge already declares createGeometryKey and particleMaterial on vanilla's models with Fabric's signatures, so upstream's copies are left out (Fabricated declares the shared defaults on BlockStateModel)."
+      "reason": "Upstream loads with Indigo as the renderer, so meshes and quad emitters work, and NeoForge keeps drawing the world: upstream's hook that sends every block in the world through Fabric's renderer is left out, and Fabricated sends only the blocks whose model is a Fabric model (its own emitQuads) through it instead, so they are drawn in the world while every other block keeps NeoForge's renderer. Upstream's hooks for moving blocks, block outlines and breaking animations are left out: a Fabric model's custom geometry isn't drawn there. NeoForge already declares createGeometryKey and particleMaterial on vanilla's models with Fabric's signatures, so upstream's copies are left out (Fabricated declares the shared defaults on BlockStateModel)."
     },
     "fabric-renderer-indigo": {
       "plan": "passthrough"

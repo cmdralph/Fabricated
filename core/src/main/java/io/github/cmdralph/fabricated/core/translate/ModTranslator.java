@@ -211,15 +211,26 @@ public final class ModTranslator {
 		}
 	}
 
-	/** A translation's share of {@link #MEMORY}: about ten times the compressed jar, never more than all of it. */
-	private static int memoryPermits(Path jar) {
-		long size;
+	/**
+	 * A translation's share of {@link #MEMORY}, never more than all of it. Remapping (1.21.11) holds a jar's entries
+	 * uncompressed about four times over (the entries, the output buffer as it grows, and its copy), so it is sized
+	 * from the uncompressed total: a jar of data that compresses well (data packs' JSON, 10 to 20 times) would get a
+	 * fraction of what it uses from the compressed size. Otherwise about ten times the compressed jar.
+	 */
+	private int memoryPermits(Path jar) {
+		long bytes;
 		try {
-			size = Files.size(jar);
+			if (env.namespace() == Namespace.INTERMEDIARY) {
+				try (SafeArchive archive = SafeArchive.open(jar, limits)) {
+					bytes = 4 * Math.max(archive.declaredUncompressedSize(), Files.size(jar));
+				}
+			} else {
+				bytes = 10 * Files.size(jar);
+			}
 		} catch (IOException e) {
-			size = 0;
+			bytes = 0; // the translation reports it
 		}
-		return (int) Math.max(1, Math.min(MEMORY_MIB, size * 10 / (1 << 20)));
+		return (int) Math.max(1, Math.min(MEMORY_MIB, bytes / (1 << 20)));
 	}
 
 	/** Classes whose bytes mention Fabric's {@code @Environment} annotations, to strip for the other side at class load. */

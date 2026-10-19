@@ -248,3 +248,48 @@ tasks.register('testmods') {
     dependsOn testmodJar
     dependsOn brokenJars
 }
+
+// --- Pass-through Fabric API modules, at compile time only (26.x) ---------------------------------------------
+// The player's Fabric API jar provides these modules at runtime; Fabricated never ships them. Code that uses one
+// only runs when that module is loaded, and is compiled against the module's own jar from the Fabric API release
+// in this version's plan, so its calls are typed and checked. 26.x only: those jars use Mojang's names, as NeoForge does.
+if (mcVersion.startsWith('26.')) {
+    def fabricApiRelease = new groovy.json.JsonSlurper().parse(file('src/fabricated/resources/META-INF/fabricated/fabric-api-plan.json')).fabricApiVersion
+    def passThroughModules = { List<String> modules ->
+        configurations.detachedConfiguration(dependencies.create("net.fabricmc.fabric-api:fabric-api:${fabricApiRelease}"))
+                .incoming.artifactView {
+                    componentFilter { it instanceof org.gradle.api.artifacts.component.ModuleComponentIdentifier && it.module in modules }
+                }.files
+    }
+    repositories {
+        exclusiveContent {
+            forRepository { maven { name = 'Fabric'; url = 'https://maven.fabricmc.net' } }
+            filter { includeGroup 'net.fabricmc.fabric-api' }
+        }
+    }
+
+    // A Fabric mod using Fabric's renderer API, for the client smoke test with Fabric API (ci/smoke-client.sh).
+    sourceSets {
+        testmodfrapi {
+            java.srcDir rootProject.file('mc/common26/src/testmodfrapi/java')
+            resources.srcDir rootProject.file('mc/common26/src/testmodfrapi/resources')
+        }
+    }
+    neoForge.addModdingDependenciesTo(sourceSets.testmodfrapi)
+    dependencies {
+        compileOnly passThroughModules(['fabric-renderer-api-v1'])
+        testmodfrapiCompileOnly project(':fabric-loader-api')
+        testmodfrapiCompileOnly sourceSets.main.output
+        testmodfrapiCompileOnly passThroughModules(['fabric-renderer-api-v1', 'fabric-model-loading-api-v1'])
+    }
+    tasks.named('processTestmodfrapiResources', ProcessResources) {
+        inputs.properties(expandProps)
+        filesMatching('fabric.mod.json') { expand(expandProps) }
+    }
+    def frapiTestmodJar = tasks.register('testmodFrapiJar', Jar) {
+        archiveFileName = 'fabricated-testmod-frapi.jar'
+        destinationDirectory = testmodsDir
+        from sourceSets.testmodfrapi.output
+    }
+    tasks.named('testmods') { dependsOn frapiTestmodJar }
+}

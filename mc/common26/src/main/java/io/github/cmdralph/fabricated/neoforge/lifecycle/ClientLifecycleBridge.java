@@ -1,7 +1,5 @@
 package io.github.cmdralph.fabricated.neoforge.lifecycle;
 
-import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientBlockEntityEvents;
-import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientChunkEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientEntityEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLevelEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
@@ -9,8 +7,6 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.level.block.entity.BlockEntity;
-import net.minecraft.world.level.chunk.LevelChunk;
 import net.neoforged.bus.api.EventPriority;
 import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
@@ -71,21 +67,12 @@ public final class ClientLifecycleBridge {
 			}
 		});
 
+		// Block entities load as they enter their chunk (LevelChunkBlockEntityMixin), loading with it or later.
 		bus.addListener(ChunkEvent.Load.class, e -> {
-			if (!(e.getLevel() instanceof ClientLevel level)) return;
-			LevelChunk chunk = e.getChunk();
-			ClientChunkEvents.CHUNK_LOAD.invoker().onChunkLoad(level, chunk);
-			for (BlockEntity blockEntity : chunk.getBlockEntities().values()) {
-				ClientBlockEntityEvents.BLOCK_ENTITY_LOAD.invoker().onLoad(blockEntity, level);
-			}
+			if (e.getLevel() instanceof ClientLevel level) ClientChunkLifecycle.chunkLoaded(level, e.getChunk());
 		});
 		bus.addListener(ChunkEvent.Unload.class, e -> {
-			if (!(e.getLevel() instanceof ClientLevel level)) return;
-			LevelChunk chunk = e.getChunk();
-			for (BlockEntity blockEntity : chunk.getBlockEntities().values()) {
-				ClientBlockEntityEvents.BLOCK_ENTITY_UNLOAD.invoker().onUnload(blockEntity, level);
-			}
-			ClientChunkEvents.CHUNK_UNLOAD.invoker().onChunkUnload(level, chunk);
+			if (e.getLevel() instanceof ClientLevel level) ClientChunkLifecycle.chunkUnloaded(level, e.getChunk());
 		});
 
 		// Last, and not for a join a NeoForge mod cancelled: that entity is never added, so never unloaded either.
@@ -95,11 +82,12 @@ public final class ClientLifecycleBridge {
 		bus.addListener(EntityLeaveLevelEvent.class, e -> {
 			if (e.getLevel() instanceof ClientLevel level) ClientEntityEvents.ENTITY_UNLOAD.invoker().onUnload(e.getEntity(), level);
 		});
-		// NeoForge sends no leave event for the entities of a level the client drops (disconnect, dimension change);
-		// a mod tracking entities would keep that level alive.
+		// NeoForge sends no leave event for the entities and block entities of a level the client drops (disconnect,
+		// dimension change); a mod tracking them would keep that level alive.
 		bus.addListener(LevelEvent.Unload.class, e -> {
 			if (!(e.getLevel() instanceof ClientLevel level)) return;
 			for (Entity entity : level.entitiesForRendering()) ClientEntityEvents.ENTITY_UNLOAD.invoker().onUnload(entity, level);
+			ClientChunkLifecycle.levelUnloaded(level);
 		});
 	}
 }

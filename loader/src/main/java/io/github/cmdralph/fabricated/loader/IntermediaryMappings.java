@@ -6,10 +6,14 @@ import java.io.InputStreamReader;
 import java.io.Reader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import io.github.cmdralph.fabricated.core.Pipeline;
 import io.github.cmdralph.fabricated.core.archive.Hashing;
@@ -26,6 +30,7 @@ import net.neoforged.fml.loading.LibraryFinder;
  * never redistributed. The composed table is cached, keyed by the hashes of both inputs.
  */
 final class IntermediaryMappings {
+	private static final Logger LOGGER = LoggerFactory.getLogger("Fabricated");
 	static final String SYSTEM_PROPERTY = "fabricated.mojmapsPath";
 
 	private IntermediaryMappings() {
@@ -60,7 +65,12 @@ final class IntermediaryMappings {
 		if (table.classCount() == 0) {
 			throw new MappingException("the composed mapping table is empty; " + mojang + " does not match Minecraft " + minecraftVersion);
 		}
-		cache.storeBlob(blob, table.serialize());
+		try {
+			cache.storeBlob(blob, table.serialize());
+		} catch (IOException e) {
+			// Only the next launch's head start: this one has its table.
+			LOGGER.warn("Could not cache the composed mappings; they are composed again on the next launch", e);
+		}
 		return new Pipeline.Mappings(table, hash);
 	}
 
@@ -72,9 +82,13 @@ final class IntermediaryMappings {
 		List<String> tried = new ArrayList<>();
 		for (String candidate : new String[] {configuredPath, System.getProperty(SYSTEM_PROPERTY)}) {
 			if (candidate == null || candidate.isBlank()) continue;
-			Path p = Path.of(candidate);
-			if (Files.isRegularFile(p)) return p;
-			tried.add(p.toString());
+			try {
+				Path p = Path.of(candidate);
+				if (Files.isRegularFile(p)) return p;
+				tried.add(p.toString());
+			} catch (InvalidPathException e) {
+				tried.add(candidate + " (not a valid path)");
+			}
 		}
 		String side = client ? "client" : "server";
 		try {
