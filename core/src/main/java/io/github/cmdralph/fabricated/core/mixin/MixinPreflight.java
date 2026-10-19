@@ -26,6 +26,7 @@ import org.objectweb.asm.tree.AnnotationNode;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.FieldInsnNode;
 import org.objectweb.asm.tree.FieldNode;
+import org.objectweb.asm.tree.IntInsnNode;
 import org.objectweb.asm.tree.InvokeDynamicInsnNode;
 import org.objectweb.asm.tree.LdcInsnNode;
 import org.objectweb.asm.tree.LocalVariableNode;
@@ -61,6 +62,7 @@ public final class MixinPreflight {
 	private static final String INTRINSIC = "Lorg/spongepowered/asm/mixin/Intrinsic;";
 	private static final String WRAP_OPERATION = "Lcom/llamalad7/mixinextras/injector/wrapoperation/WrapOperation;";
 	private static final String MODIFY_VARIABLE = "Lorg/spongepowered/asm/mixin/injection/ModifyVariable;";
+	private static final String MODIFY_CONSTANT = "Lorg/spongepowered/asm/mixin/injection/ModifyConstant;";
 	private static final String OPERATION = "Lcom/llamalad7/mixinextras/injector/wrapoperation/Operation;";
 	private static final String DEFINITION = "Lcom/llamalad7/mixinextras/expression/Definition;";
 	private static final String DEFINITIONS = "Lcom/llamalad7/mixinextras/expression/Definitions;";
@@ -74,6 +76,7 @@ public final class MixinPreflight {
 	private final ClassBytesSource modClasses;
 	private final ClassBytesSource untransformable;
 	private final boolean clientSide;
+	private final boolean missingTargetsFatal;
 	private final Map<String, Optional<ClassNode>> targetCache = new HashMap<>();
 
 	/**
@@ -83,11 +86,22 @@ public final class MixinPreflight {
 	 *                        loader (the JDK and libraries such as DataFixerUpper); mixins into them never apply
 	 * @param clientSide      whether the physical side is the client
 	 */
+	/** As {@link #MixinPreflight(ClassIndex, ClassBytesSource, ClassBytesSource, boolean, boolean)}, with missing targets fatal. */
 	public MixinPreflight(ClassIndex game, ClassBytesSource modClasses, ClassBytesSource untransformable, boolean clientSide) {
+		this(game, modClasses, untransformable, clientSide, true);
+	}
+
+	/**
+	 * @param missingTargetsFatal whether Mixin rejects a mixin whose target class doesn't exist (in a required config),
+	 *                            as it does from compatibility level 0.17.4; before, it only skips that target
+	 */
+	public MixinPreflight(ClassIndex game, ClassBytesSource modClasses, ClassBytesSource untransformable, boolean clientSide,
+			boolean missingTargetsFatal) {
 		this.game = game;
 		this.modClasses = modClasses;
 		this.untransformable = untransformable;
 		this.clientSide = clientSide;
+		this.missingTargetsFatal = missingTargetsFatal;
 	}
 
 	/**
@@ -109,9 +123,9 @@ public final class MixinPreflight {
 			}
 			checkMixin(node, ctx);
 		}
-		if (hasPlugin && out.stream().anyMatch(f -> f.severity() == Severity.WARN)) {
-			out.add(new PreflightFinding(Severity.INFO, configName, null,
-					"This config uses a mixin plugin (" + config.plugin() + ") that may disable mixins at runtime, so problems are reported as warnings only.", ""));
+		if (out.stream().anyMatch(f -> f.severity() == Severity.LEFT_OUT)) {
+			out.add(new PreflightFinding(Severity.INFO, configName, null, "This config uses a mixin plugin (" + config.plugin()
+					+ ") that may disable mixins at runtime, so a mixin that would crash the game is left out instead of disabling the mod.", ""));
 		}
 		return out;
 	}
@@ -130,6 +144,10 @@ public final class MixinPreflight {
 	 * <li>An injector whose method NeoForge turned into a delegate to a new overload of the same name that now holds the
 	 * code (NeoForge keeps vanilla's signature that way): when the injection points occur only in that overload and the
 	 * handler doesn't depend on the method's parameters, the injector is pointed at the overload.</li>
+	 * <li>An {@code @Inject} that captures local variables and would crash when they differ
+	 * ({@code CAPTURE_FAILHARD}, {@code CAPTURE_FAILEXCEPTION}): NeoForge's patches often add locals, so it is made to
+	 * skip itself with Mixin's warning instead ({@code CAPTURE_FAILSOFT}, {@code require = 0}). Where the locals
+	 * match, nothing changes.</li>
 	 * <li>An injector targeting a lambda ({@code lambda$enclosing$3}) that the game numbers differently (NeoForge's
 	 * 1.21.11 build is compiled from decompiled code, and NeoForge's patches add lambdas): it is pointed at the one
 	 * lambda of the same enclosing method with the same descriptor.</li>
@@ -168,6 +186,11 @@ public final class MixinPreflight {
 						changed = true;
 						out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@" + simpleName(ann.desc) + " " + method.name
 								+ " targets " + lambda + ", which this game build numbers differently", ""));
+					}
+					if (softenLocalCapture(ann)) {
+						changed = true;
+						out.add(new PreflightFinding(Severity.INFO, configName, ctx.mixinDotted(), "@Inject " + method.name
+								+ " captures local variables; if NeoForge's code has other locals there, it is skipped instead of crashing", ""));
 					}
 					if (targets.size() == 1) {
 						for (String moved : overloadRepairs(method, ann, targets.getFirst(), ctx)) {
@@ -304,6 +327,63 @@ public final class MixinPreflight {
 		return moved;
 	}
 
+	/** Makes an {@code @Inject} whose local capture fails hard skip itself instead; returns whether it changed. */
+	private static boolean softenLocalCapture(AnnotationNode injector) {
+		if (!injector.desc.equals(INJECT) || !(Annotations.value(injector, "locals") instanceof String[] capture)
+				|| !capture[1].equals("CAPTURE_FAILHARD") && !capture[1].equals("CAPTURE_FAILEXCEPTION")) return false;
+		for (int i = 0; i + 1 < injector.values.size(); i += 2) {
+			if ("locals".equals(injector.values.get(i))) injector.values.set(i + 1, new String[] {capture[0], "CAPTURE_FAILSOFT"});
+			if ("require".equals(injector.values.get(i))) injector.values.set(i + 1, 0);
+		}
+		if (!(Annotations.value(injector, "require") instanceof Integer)) {
+			injector.values.add("require");
+			injector.values.add(0);
+		}
+		return true;
+	}
+
+	/** A {@code @Constant}'s value as the source would write it, or null when pre-flight can't judge it. */
+	private static String constantDescription(AnnotationNode constant) {
+		if (Annotations.value(constant, "expandZeroConditions") != null) return null;
+		for (String key : List.of("intValue", "floatValue", "longValue", "doubleValue", "stringValue", "classValue")) {
+			Object value = Annotations.value(constant, key);
+			if (value instanceof Type type) return type.getClassName() + ".class";
+			if (value instanceof String string) return "\"" + string + "\"";
+			if (value != null) return value.toString();
+		}
+		return Boolean.TRUE.equals(Annotations.value(constant, "nullValue")) ? "null" : null;
+	}
+
+	/** Whether a {@code @Constant} (with its ordinal) occurs in {@code method}, as Mixin matches constants. */
+	private static Verdict constantVerdict(AnnotationNode constant, MethodNode method) {
+		Object wanted = null;
+		for (String key : List.of("intValue", "floatValue", "longValue", "doubleValue", "stringValue", "classValue")) {
+			if (Annotations.value(constant, key) instanceof Object v) wanted = v;
+		}
+		boolean nullValue = Boolean.TRUE.equals(Annotations.value(constant, "nullValue"));
+		int count = 0;
+		for (AbstractInsnNode insn : method.instructions) {
+			Object value = constantOf(insn);
+			if (nullValue ? insn.getOpcode() == Opcodes.ACONST_NULL : value != null && value.equals(wanted)) count++;
+		}
+		int ordinal = Annotations.value(constant, "ordinal") instanceof Integer n ? n : -1;
+		if (count == 0) return Verdict.MISSING;
+		if (Annotations.value(constant, "slice") != null) return Verdict.UNKNOWN;
+		return ordinal >= count ? Verdict.MISSING : Verdict.FOUND;
+	}
+
+	/** The constant an instruction pushes (boxed as {@code @Constant} stores it), or null. */
+	private static Object constantOf(AbstractInsnNode insn) {
+		int op = insn.getOpcode();
+		if (op >= Opcodes.ICONST_M1 && op <= Opcodes.ICONST_5) return op - Opcodes.ICONST_0;
+		if (op == Opcodes.LCONST_0 || op == Opcodes.LCONST_1) return (long) (op - Opcodes.LCONST_0);
+		if (op >= Opcodes.FCONST_0 && op <= Opcodes.FCONST_2) return (float) (op - Opcodes.FCONST_0);
+		if (op == Opcodes.DCONST_0 || op == Opcodes.DCONST_1) return (double) (op - Opcodes.DCONST_0);
+		if (insn instanceof IntInsnNode push && (op == Opcodes.BIPUSH || op == Opcodes.SIPUSH)) return push.operand;
+		if (insn instanceof LdcInsnNode ldc) return ldc.cst;
+		return null;
+	}
+
 	/** Whether every injection point occurs in {@code method} (FOUND), one surely doesn't (MISSING), or it can't be told. */
 	private static Verdict pointsIn(List<AnnotationNode> ats, List<AnnotationNode> slices, MethodNode method, Context ctx) {
 		Verdict result = Verdict.FOUND;
@@ -408,13 +488,16 @@ public final class MixinPreflight {
 
 		/** A problem that makes Mixin reject the whole mixin; fatal when the config is required. */
 		void classLevel(String message, String suggestion) {
-			Severity s = config.required() && !hasPlugin ? Severity.FAIL : Severity.WARN;
-			out.add(new PreflightFinding(s, configName, mixinDotted, message, suggestion));
+			out.add(new PreflightFinding(config.required() ? fatal() : Severity.WARN, configName, mixinDotted, message, suggestion));
 		}
 
 		void injector(int require, String message, String suggestion) {
-			Severity s = require > 0 && !hasPlugin ? Severity.FAIL : Severity.WARN;
-			out.add(new PreflightFinding(s, configName, mixinDotted, message, suggestion));
+			out.add(new PreflightFinding(require > 0 ? fatal() : Severity.WARN, configName, mixinDotted, message, suggestion));
+		}
+
+		/** A config plugin may disable the mixin at runtime, so a crash only leaves the mixin out. */
+		private Severity fatal() {
+			return hasPlugin ? Severity.LEFT_OUT : Severity.FAIL;
 		}
 
 		void info(String message) {
@@ -435,9 +518,12 @@ public final class MixinPreflight {
 			ClassNode targetNode = gameTarget(target);
 			if (targetNode == null) {
 				if (pseudo) continue;
-				if (isGame) {
+				if (isGame && missingTargetsFatal) {
 					ctx.classLevel("Target class " + target.replace('/', '.') + " does not exist in this Minecraft/NeoForge version",
 							"The mod was likely built for a different Minecraft version, or NeoForge removed this class.");
+				} else if (isGame) {
+					ctx.out().add(new PreflightFinding(Severity.WARN, ctx.configName(), ctx.mixinDotted(), "Target class " + target.replace('/', '.')
+							+ " does not exist in this Minecraft/NeoForge version (or on this side); Mixin skips it", ""));
 				} else if (isUntransformable(target)) {
 					ctx.classLevel("Target class " + target.replace('/', '.') + " is a library class that NeoForge loads without mixin support, so this mixin would silently never apply",
 							"Ask the mod author for a NeoForge version, or skip this mixin in config/fabricated.json if the feature is optional.");
@@ -697,6 +783,19 @@ public final class MixinPreflight {
 							+ " does not match the parameters of " + matched.getFirst().name + matched.getFirst().desc + " in " + target.name.replace('/', '.'),
 					"NeoForge's build of Minecraft declares this method with different parameters (often a lambda whose captured values are ordered differently); the mod needs an update or this mixin must be skipped.");
 			return;
+		}
+
+		if (ann.desc.equals(MODIFY_CONSTANT)) {
+			for (AnnotationNode constant : annotationList(Annotations.value(ann, "constant"))) {
+				String expected = constantDescription(constant);
+				if (expected == null) continue;
+				if (matched.stream().allMatch(m -> constantVerdict(constant, m) == Verdict.MISSING)) {
+					ctx.injector(require, injectorName + " in " + matched.getFirst().name + " expects the constant " + expected
+									+ ", which does not occur in that method",
+							"NeoForge or this Minecraft version changed the method body; the mod needs an update or this mixin must be skipped.");
+					return;
+				}
+			}
 		}
 
 		String missingLocal = missingLocal(handler, matched);

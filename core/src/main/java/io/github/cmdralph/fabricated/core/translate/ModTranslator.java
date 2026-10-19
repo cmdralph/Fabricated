@@ -244,7 +244,8 @@ public final class ModTranslator {
 		List<ModsTomlWriter.MixinConfigSpec> specs = new ArrayList<>();
 		// Pre-flight sees the mod as it will load: with the handler methods left out below.
 		FileView translated = name -> overlay.containsKey(name) ? overlay.get(name) : files.read(name);
-		MixinPreflight preflight = new MixinPreflight(env.game(), classSource(translated), env.untransformable(), env.clientSide());
+		MixinPreflight preflight = new MixinPreflight(env.game(), classSource(translated), env.untransformable(), env.clientSide(),
+				MixinCompat.missingTargetsFatal(behavior));
 		Map<String, MixinConfigFile> configs = new HashMap<>();
 
 		for (MixinEntry entry : md.compatHints().mixinsOr(md.mixins())) {
@@ -283,7 +284,13 @@ public final class ModTranslator {
 			Set<String> skip = withDependents(entry.config(), config, wholeSkips, translated, findings);
 			overlay.putAll(preflight.repairs(entry.config(), config, refmap, skip, findings));
 			if (!override.ignorePreflight()) {
-				findings.addAll(preflight.check(entry.config(), config, refmap, skip));
+				List<PreflightFinding> checked = preflight.check(entry.config(), config, refmap, skip);
+				findings.addAll(checked);
+				Set<String> leftOut = new TreeSet<>(skip);
+				for (PreflightFinding f : checked) {
+					if (f.severity() == Severity.LEFT_OUT) leftOut.add(relativeMixin(config, f.mixin()));
+				}
+				if (leftOut.size() > skip.size()) skip = withDependents(entry.config(), config, leftOut, translated, findings);
 			}
 			if (!skip.isEmpty()) {
 				overlay.put(entry.config(), config.withoutMixins(skip).getBytes(StandardCharsets.UTF_8));

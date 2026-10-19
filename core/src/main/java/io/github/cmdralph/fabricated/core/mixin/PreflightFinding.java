@@ -14,6 +14,11 @@ public record PreflightFinding(Severity severity, String config, String mixin, S
 	public enum Severity {
 		/** The mixin would crash the game when applied; the mod must not load. */
 		FAIL,
+		/**
+		 * The mixin would crash the game when applied, but its config's plugin may disable it at runtime: only this
+		 * mixin is left out.
+		 */
+		LEFT_OUT,
 		/** The mixin would silently not apply (part of the mod's behaviour is missing). */
 		WARN,
 		/** Informational (e.g. a target could not be verified). */
