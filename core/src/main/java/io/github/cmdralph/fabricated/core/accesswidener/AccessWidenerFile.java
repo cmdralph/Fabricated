@@ -3,15 +3,16 @@ package io.github.cmdralph.fabricated.core.accesswidener;
 import java.util.List;
 
 /**
- * Parsed access widener ({@code accessWidener v1|v2}) or class tweaker ({@code classTweaker v1}).
+ * Parsed access widener ({@code accessWidener v1|v2}) or class tweaker ({@code classTweaker v1|v2}).
  *
  * @param format             {@code accessWidener} or {@code classTweaker}
  * @param namespace          header namespace ({@code intermediary}, {@code named} or {@code official})
  * @param entries            access changes in file order
  * @param injectedInterfaces interface injections (class tweaker only)
+ * @param enumExtensions     enum constants the mod adds with Mixin (class tweaker v2 only)
  */
 public record AccessWidenerFile(String format, String namespace, List<Entry> entries,
-		List<InjectedInterface> injectedInterfaces) {
+		List<InjectedInterface> injectedInterfaces, List<EnumExtension> enumExtensions) {
 
 	/** What the directive changes. */
 	public enum Access {
@@ -41,5 +42,12 @@ public record AccessWidenerFile(String format, String namespace, List<Entry> ent
 	 * @param genericSignature the full declaration including generics, as written
 	 */
 	public record InjectedInterface(String target, String interfaceName, String genericSignature, boolean transitive, int line) {
+	}
+
+	/**
+	 * An enum constant the mod's enum mixin adds to {@code target}. The line only declares it for compiling against;
+	 * Mixin adds the constant itself when the mixin applies.
+	 */
+	public record EnumExtension(String target, String constant, boolean transitive, int line) {
 	}
 }

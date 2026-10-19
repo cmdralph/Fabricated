@@ -13,6 +13,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Supplier;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,8 +30,11 @@ import io.github.cmdralph.fabricated.core.config.FabricatedConfig;
 import io.github.cmdralph.fabricated.core.json.JsonException;
 import io.github.cmdralph.fabricated.core.report.Report;
 import io.github.cmdralph.fabricated.core.resolve.FabricApiPlan;
+import io.github.cmdralph.fabricated.core.resolve.PlatformLibraries;
 import io.github.cmdralph.fabricated.core.translate.LinkageAnalysis;
 import io.github.cmdralph.fabricated.core.translate.PackageGuard;
+import io.github.cmdralph.fabricated.fabricloader.version.VersionParser;
+import net.fabricmc.loader.api.VersionParsingException;
 import net.neoforged.fml.ModLoadingIssue;
 import net.neoforged.fml.jarcontents.JarContents;
 import net.neoforged.fml.jarmoduleinfo.JarModuleInfo;
@@ -53,6 +58,7 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 	private static final String GAME_MOD_ID = "fabricated";
 	private static final String GAME_MOD_RESOURCE = "game-mod.jar";
 	private static final String MESSAGE = "§e[Fabricated]§r {0}";
+	private static final Pattern VERSION_IN_NAME = Pattern.compile("\\d+\\.\\d+\\.\\d+");
 
 	@Override
 	public void scanMods(List<IModFile> loadedMods, IDiscoveryPipeline pipeline) {
@@ -164,7 +170,7 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 			if (planJson == null) throw new IllegalStateException("This Fabricated build is missing its fabric-api-plan.json");
 			plan = FabricApiPlan.parse(new String(planJson, StandardCharsets.UTF_8));
 			Pipeline.Input input = new Pipeline.Input(gameDir, FMLPaths.CONFIGDIR.get(), config, cache, fabricJars, mcVersion, neoVersion,
-					client, info.namespace(), runtimeMixinVersion(info), info.mixinLowest(), info.fabricatedVersion(), !fml.isProduction(), gameClasses, untransformable,
+					client, info.namespace(), runtimeMixinVersion(info), mixinExtrasVersion(loadedMods), info.mixinLowest(), info.fabricatedVersion(), !fml.isProduction(), gameClasses, untransformable,
 					platformPackages, plan, nativeApi, nativeApiInterfaces, neoForgeMods,
 					(mappingsCache, mojangPath) -> IntermediaryMappings.load(mappingsCache, mcVersion, client, mojangPath),
 					fml.getProgramArgs().getArguments());
@@ -256,6 +262,56 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 			LOGGER.debug("Could not determine the running Mixin version", e);
 		}
 		return info.mixinFallback();
+	}
+
+	/**
+	 * The MixinExtras version NeoForge runs: the newest that a discovered file nests (NeoForge nests it in its own jar,
+	 * and loads the newest nested copy) or is (its mod metadata, else its manifest, else its file name); else from its
+	 * classes' module; null when not found.
+	 */
+	static String mixinExtrasVersion(List<IModFile> files) {
+		String newest = null;
+		for (IModFile file : files) {
+			JarContents contents = file.getContents();
+			String version = null;
+			try {
+				byte[] jarJar = contents.readFile("META-INF/jarjar/metadata.json");
+				if (jarJar != null) version = PlatformLibraries.nestedMixinExtras(new String(jarJar, StandardCharsets.UTF_8));
+			} catch (IOException | JsonException e) {
+				LOGGER.debug("Could not read the nested jars of {}", file.getFileName(), e);
+			}
+			if (version == null && contents.containsFile("com/llamalad7/mixinextras/MixinExtrasBootstrap.class")) version = ownVersion(file);
+			if (version != null && (newest == null || newer(version, newest))) newest = version;
+		}
+		if (newest != null) return newest;
+		// Not a discovered file: a library on NeoForge's own layers.
+		try {
+			Class<?> bootstrap = Class.forName("com.llamalad7.mixinextras.MixinExtrasBootstrap");
+			Optional<String> fromModule = Optional.ofNullable(bootstrap.getModule().getDescriptor())
+					.flatMap(ModuleDescriptor::version).map(ModuleDescriptor.Version::toString);
+			return fromModule.orElse(bootstrap.getPackage().getImplementationVersion());
+		} catch (ClassNotFoundException | LinkageError e) {
+			LOGGER.debug("Could not determine the running MixinExtras version", e);
+			return null;
+		}
+	}
+
+	private static String ownVersion(IModFile file) {
+		for (IModInfo mod : file.getModInfos()) {
+			if (mod.getModId().startsWith("mixinextras")) return mod.getVersion().toString();
+		}
+		String fromManifest = file.getContents().getManifest().getMainAttributes().getValue("Implementation-Version");
+		if (fromManifest != null) return fromManifest;
+		Matcher fromName = VERSION_IN_NAME.matcher(file.getFileName());
+		return fromName.find() ? fromName.group() : null;
+	}
+
+	private static boolean newer(String a, String b) {
+		try {
+			return VersionParser.parse(a, false).compareTo(VersionParser.parse(b, false)) > 0;
+		} catch (VersionParsingException e) {
+			return false;
+		}
 	}
 
 	@Override

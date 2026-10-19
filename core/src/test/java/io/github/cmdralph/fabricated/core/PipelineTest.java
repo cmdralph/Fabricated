@@ -142,7 +142,7 @@ class PipelineTest {
 		FabricatedConfig config = FabricatedConfig.load(game.resolve("config"));
 		TranslationCache cache = new TranslationCache(game, config.cacheEnabled(), config.verifyIntegrity());
 		return new Pipeline.Input(game, game.resolve("config"), config, cache, jars, ns == Namespace.OFFICIAL ? "26.2" : "1.21.11",
-				"26.2.0.90", false, ns, "0.17.4+mixin.0.8.7", "0.17.1", "0.1.0-test", false, gameClasses::get, ClassBytesSource.EMPTY, Set.of("net/neoforged/neoforge"),
+				"26.2.0.90", false, ns, "0.17.4+mixin.0.8.7", "0.5.3", "0.17.1", "0.1.0-test", false, gameClasses::get, ClassBytesSource.EMPTY, Set.of("net/neoforged/neoforge"),
 				FabricApiPlan.parse(PLAN), name -> null, Map::of, List.of(new Pipeline.NeoForgeMod("cloth_config", "15.0.0", "Cloth Config")),
 				mappings, new String[0]);
 	}
@@ -370,6 +370,35 @@ class PipelineTest {
 			ClassNode stripped = new ClassNode();
 			new ClassReader(overlay.read("com/part/mixin/PartlyBad.class")).accept(stripped, 0);
 			assertEquals(List.of("helper"), stripped.methods.stream().map(m -> m.name).toList());
+		}
+	}
+
+	@Test
+	void aPluginConfigLosesOnlyItsFailingInjectorsIncludingThoseOfMixinsItsPluginAdds(@TempDir Path game) throws Exception {
+		ClassNode listed = new ClassNode();
+		new ClassReader(mixinClass("com/plug/mixin/Listed", "removedByNeoForge")).accept(listed, 0);
+		// A helper of the same name as the failing handler, which other code of the mixin calls: it stays.
+		listed.methods.add(new org.objectweb.asm.tree.MethodNode(Opcodes.ACC_PRIVATE, "handler", "(I)V", null, null));
+		Path jar = TestJars.create().fabricModJson(TestJars.modJson("plug-mod", "1.0", "\"mixins\":[\"plug.mixins.json\"]"))
+				.text("plug.mixins.json", "{\"required\":true,\"package\":\"com.plug.mixin\",\"plugin\":\"com.plug.Plugin\",\"mixins\":[\"Listed\"]}")
+				.bytes("com/plug/mixin/Listed.class", write(listed))
+				// Not listed: the plugin's getMixins() adds it at runtime.
+				.bytes("com/plug/mixin/sub/Added.class", mixinClass("com/plug/mixin/sub/Added", "removedByNeoForge"))
+				.write(game.resolve("mods/plug.jar"));
+		Pipeline.Result result = Pipeline.run(input(game, List.of(jar), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
+		String report = result.report().render();
+		assertTrue(result.runtime().isModLoaded("plug-mod"), report);
+		assertTrue(report.contains("LEFT_OUT [plug.mixins.json com.plug.mixin.sub.Added]"), report);
+		try (SafeArchive overlay = SafeArchive.open(result.mods().getFirst().translated().overlay(), ArchiveLimits.DEFAULTS)) {
+			assertNull(overlay.read("plug.mixins.json"), "the mixins stay in their config");
+			for (String mixin : List.of("com/plug/mixin/Listed.class", "com/plug/mixin/sub/Added.class")) {
+				ClassNode stripped = new ClassNode();
+				new ClassReader(overlay.read(mixin)).accept(stripped, 0);
+				assertTrue(stripped.methods.stream().noneMatch(m -> m.name.equals("handler") && m.desc.equals("()V")), mixin + " loses its failing handler");
+			}
+			ClassNode kept = new ClassNode();
+			new ClassReader(overlay.read("com/plug/mixin/Listed.class")).accept(kept, 0);
+			assertTrue(kept.methods.stream().anyMatch(m -> m.name.equals("handler") && m.desc.equals("(I)V")), "its namesake helper stays");
 		}
 	}
 

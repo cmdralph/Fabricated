@@ -14,6 +14,8 @@ import io.github.cmdralph.fabricated.core.json.JsonException;
  * without losing options this class does not model.
  *
  * @param mixinPackage                 package of the mixin classes, dotted (may be {@code null} for an empty config)
+ * @param parent                       the config ({@code parent}) whose {@code required} and injector defaults this
+ *                                     one inherits where it sets none, or {@code null}
  * @param overwritesRequireAnnotations {@code overwrites.requireAnnotations}: a mixin method that replaces a target
  *                                     method must be @Overwrite
  */
@@ -27,6 +29,7 @@ public record MixinConfigFile(
 		boolean required,
 		String plugin,
 		int defaultRequire,
+		String parent,
 		boolean overwritesRequireAnnotations) {
 
 	public static MixinConfigFile parse(String json) throws JsonException {
@@ -42,7 +45,21 @@ public record MixinConfigFile(
 				Boolean.TRUE.equals(tree.get("required")),
 				optString(tree, "plugin"),
 				defaultRequire,
+				optString(tree, "parent"),
 				tree.get("overwrites") instanceof Map<?, ?> overwrites && Boolean.TRUE.equals(overwrites.get("requireAnnotations")));
+	}
+
+	/** This config with what Mixin takes from its parent: {@code required} when unset, a default require of 0 replaced. */
+	public MixinConfigFile inheriting(MixinConfigFile parentConfig) {
+		return new MixinConfigFile(tree, mixinPackage, common, client, server, refmap,
+				tree.containsKey("required") ? required : parentConfig.required(), plugin,
+				defaultRequire != 0 ? defaultRequire : parentConfig.defaultRequire(), parent, overwritesRequireAnnotations);
+	}
+
+	/** This config listing only {@code mixins} (names relative to the package), on both sides. */
+	public MixinConfigFile listing(List<String> mixins) {
+		return new MixinConfigFile(tree, mixinPackage, List.copyOf(mixins), List.of(), List.of(), refmap, required, plugin, defaultRequire,
+				parent, overwritesRequireAnnotations);
 	}
 
 	private static String optString(Map<String, Object> tree, String key) throws JsonException {

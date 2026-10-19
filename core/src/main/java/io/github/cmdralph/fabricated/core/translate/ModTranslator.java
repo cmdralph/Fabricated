@@ -75,11 +75,13 @@ public final class ModTranslator {
 	private final TranslationEnvironment env;
 	private final TranslationCache cache;
 	private final io.github.cmdralph.fabricated.core.archive.ArchiveLimits limits;
+	private final PlatformRenames renames;
 
 	public ModTranslator(TranslationEnvironment env, TranslationCache cache, io.github.cmdralph.fabricated.core.archive.ArchiveLimits limits) {
 		this.env = env;
 		this.cache = cache;
 		this.limits = limits;
+		this.renames = PlatformRenames.of(env.untransformable());
 	}
 
 	/**
@@ -133,7 +135,8 @@ public final class ModTranslator {
 
 				Map<String, byte[]> overlay = new TreeMap<>();
 				List<PreflightFinding> findings = new ArrayList<>();
-				List<ModsTomlWriter.MixinConfigSpec> mixinSpecs = processMixins(candidate, override, files, overlay, findings);
+				List<ModsTomlWriter.MixinConfigSpec> mixinSpecs = processMixins(candidate, override, files,
+						remapped != null ? remapped.keySet() : archive.classEntryNames(), overlay, findings);
 
 				List<InjectedInterface> injections = List.of();
 				int atLines = 0;
@@ -147,6 +150,7 @@ public final class ModTranslator {
 						if (tokens != null) text = tokens.remap(text);
 						AccessWidenerFile parsed = AccessWidenerParser.parse(text);
 						checkNamespace(parsed.namespace(), candidate);
+						checkEnumExtensions(parsed, candidate);
 						AccessTransformerConverter.Result at = AccessTransformerConverter.convert(parsed, env.game());
 						notes.addAll(at.warnings());
 						injections = at.injectedInterfaces();
@@ -157,6 +161,9 @@ public final class ModTranslator {
 
 				Set<String> environmentClasses = remapped != null ? environmentClasses(remapped.keySet(), files)
 						: environmentClasses(archive.classEntryNames(), archive::read);
+				int renamed = remapped != null ? applyRenames(remapped, remapped.keySet(), files)
+						: applyRenames(overlay, archive.classEntryNames(), archive::read);
+				if (renamed > 0) notes.add(renamed + " class(es) use NeoForge members as Forge Config API Port's copy of NeoForge declares them; the references are adapted to NeoForge's own");
 
 				FabricModMetadata md = candidate.metadata();
 				ModsTomlWriter.Spec spec = new ModsTomlWriter.Spec(neoId, md.getVersion().getFriendlyString(), md.getName(),
@@ -226,6 +233,24 @@ public final class ModTranslator {
 		return Set.copyOf(classes);
 	}
 
+	/**
+	 * Puts the mod's classes that use members NeoForge renamed (see {@link PlatformRenames}), with the references
+	 * renamed, into {@code target}; returns how many there were.
+	 */
+	private int applyRenames(Map<String, byte[]> target, Collection<String> entries, FileView files) throws ArchiveException {
+		int count = 0;
+		for (String name : List.copyOf(entries)) {
+			if (!name.endsWith(".class") || name.startsWith("META-INF/")) continue;
+			byte[] data = target.containsKey(name) ? target.get(name) : files.read(name);
+			byte[] renamed = data == null ? null : renames.apply(data);
+			if (renamed != null) {
+				target.put(name, renamed);
+				count++;
+			}
+		}
+		return count;
+	}
+
 	/** Reads an entry of the mod being translated (remapped when applicable). */
 	@FunctionalInterface
 	private interface FileView {
@@ -233,7 +258,7 @@ public final class ModTranslator {
 	}
 
 	private List<ModsTomlWriter.MixinConfigSpec> processMixins(Candidate candidate, ModOverride override, FileView files,
-			Map<String, byte[]> overlay, List<PreflightFinding> findings) throws ArchiveException, TranslationException {
+			Collection<String> entries, Map<String, byte[]> overlay, List<PreflightFinding> findings) throws ArchiveException, TranslationException {
 		FabricModMetadata md = candidate.metadata();
 		String behavior = MixinCompat.clampForNeoForge(MixinCompat.fabricBehaviorVersion(md.getDependencies()), env.runtimeMixinVersion(),
 				env.lowestMixinBehavior());
@@ -241,8 +266,10 @@ public final class ModTranslator {
 		List<ModsTomlWriter.MixinConfigSpec> specs = new ArrayList<>();
 		// Pre-flight sees the mod as it will load: with the handler methods left out below.
 		FileView translated = name -> overlay.containsKey(name) ? overlay.get(name) : files.read(name);
-		MixinPreflight preflight = new MixinPreflight(env.game(), classSource(translated), env.untransformable(), env.clientSide());
+		MixinPreflight preflight = new MixinPreflight(env.game(), classSource(translated), env.untransformable(), env.clientSide(),
+				MixinCompat.missingTargetsFatal(behavior));
 		Map<String, MixinConfigFile> configs = new HashMap<>();
+		Map<String, Refmap> refmaps = new HashMap<>();
 
 		for (MixinEntry entry : md.compatHints().mixinsOr(md.mixins())) {
 			if (!entry.environment().matches(side)) continue;
@@ -255,6 +282,8 @@ public final class ModTranslator {
 			Refmap refmap = Refmap.EMPTY;
 			try {
 				config = MixinConfigFile.parse(new String(data, StandardCharsets.UTF_8));
+				byte[] parentData = config.parent() != null ? files.read(config.parent()) : null;
+				if (parentData != null) config = config.inheriting(MixinConfigFile.parse(new String(parentData, StandardCharsets.UTF_8)));
 				if (config.refmap() != null) {
 					byte[] refmapData = files.read(config.refmap());
 					if (refmapData != null) refmap = Refmap.parse(new String(refmapData, StandardCharsets.UTF_8));
@@ -263,6 +292,7 @@ public final class ModTranslator {
 				throw new TranslationException("Mixin config " + entry.config() + " is invalid: " + e.getMessage(), "Report this to the mod author.");
 			}
 			configs.put(entry.config(), config);
+			refmaps.put(entry.config(), refmap);
 
 			Skips skips = skipsFor(entry.config(), config, override.skipMixins());
 			Set<String> wholeSkips = skips.mixins();
@@ -280,13 +310,26 @@ public final class ModTranslator {
 			Set<String> skip = withDependents(entry.config(), config, wholeSkips, translated, findings);
 			overlay.putAll(preflight.repairs(entry.config(), config, refmap, skip, findings));
 			if (!override.ignorePreflight()) {
-				findings.addAll(preflight.check(entry.config(), config, refmap, skip));
+				List<PreflightFinding> checked = preflight.check(entry.config(), config, refmap, skip);
+				findings.addAll(checked);
+				// As Mixin does with an injector that may fail: only the failing handler goes, the rest of the mixin
+				// (its interfaces, accessors and other injectors) still applies.
+				Set<String> leftOut = new TreeSet<>(skip);
+				Map<String, Set<String>> handlers = new TreeMap<>();
+				for (PreflightFinding f : checked) {
+					if (f.severity() != Severity.LEFT_OUT) continue;
+					if (f.handler() == null) leftOut.add(relativeMixin(config, f.mixin()));
+					else handlers.computeIfAbsent(f.mixin().replace('.', '/') + ".class", k -> new TreeSet<>()).add(f.handler());
+				}
+				leaveOutHandlers(handlers, translated, overlay);
+				if (leftOut.size() > skip.size()) skip = withDependents(entry.config(), config, leftOut, translated, findings);
 			}
 			if (!skip.isEmpty()) {
 				overlay.put(entry.config(), config.withoutMixins(skip).getBytes(StandardCharsets.UTF_8));
 			}
 			specs.add(new ModsTomlWriter.MixinConfigSpec(entry.config(), behavior));
 		}
+		if (!override.ignorePreflight()) checkPluginMixins(entries, configs, refmaps, preflight, translated, overlay, findings);
 
 		List<PreflightFinding> failures = findings.stream().filter(f -> f.severity() == Severity.FAIL).toList();
 		if (!failures.isEmpty()) {
@@ -302,6 +345,46 @@ public final class ModTranslator {
 					failures, null);
 		}
 		return specs;
+	}
+
+	private static void leaveOutHandlers(Map<String, Set<String>> handlers, FileView files, Map<String, byte[]> overlay) throws ArchiveException {
+		for (Map.Entry<String, Set<String>> h : handlers.entrySet()) {
+			byte[] mixin = files.read(h.getKey());
+			if (mixin != null) overlay.put(h.getKey(), withoutMembers(mixin, h.getValue(), new HashSet<>()));
+		}
+	}
+
+	/**
+	 * Mixins a config's plugin adds at runtime ({@code IMixinConfigPlugin.getMixins}) are listed in no config, so they
+	 * are found as the other classes in the config's package (Mixin requires them there). Pre-flight checks them as
+	 * listed; an injector that would crash is left out, while problems of the whole mixin (a target missing on this
+	 * side, say) are not reported: the plugin may well never add it.
+	 */
+	private static void checkPluginMixins(Collection<String> entries, Map<String, MixinConfigFile> configs, Map<String, Refmap> refmaps,
+			MixinPreflight preflight, FileView files, Map<String, byte[]> overlay, List<PreflightFinding> findings) throws ArchiveException {
+		Set<String> listed = new HashSet<>();
+		for (MixinConfigFile config : configs.values()) {
+			for (String mixin : config.allMixins()) listed.add(config.internalName(mixin) + ".class");
+		}
+		for (Map.Entry<String, MixinConfigFile> e : new TreeMap<>(configs).entrySet()) {
+			MixinConfigFile config = e.getValue();
+			if (config.plugin() == null || config.plugin().isBlank() || config.mixinPackage() == null || config.mixinPackage().isEmpty()) continue;
+			String prefix = config.internalName("");
+			List<String> unlisted = new ArrayList<>();
+			for (String entry : entries) {
+				if (entry.startsWith(prefix) && entry.endsWith(".class") && !entry.contains("$") && listed.add(entry)) {
+					unlisted.add(entry.substring(prefix.length(), entry.length() - ".class".length()).replace('/', '.'));
+				}
+			}
+			if (unlisted.isEmpty()) continue;
+			Map<String, Set<String>> handlers = new TreeMap<>();
+			for (PreflightFinding f : preflight.check(e.getKey(), config.listing(unlisted), refmaps.get(e.getKey()), Set.of())) {
+				if (f.severity() != Severity.LEFT_OUT || f.handler() == null) continue;
+				findings.add(f);
+				handlers.computeIfAbsent(f.mixin().replace('.', '/') + ".class", k -> new TreeSet<>()).add(f.handler());
+			}
+			leaveOutHandlers(handlers, files, overlay);
+		}
 	}
 
 	/** The mixin's name as its config lists it. */
@@ -398,7 +481,10 @@ public final class ModTranslator {
 		return colon >= 0 ? skip.substring(colon + 1) : skip;
 	}
 
-	/** {@code data} without the methods and fields named in {@code names}; the names found are removed from {@code missing}. */
+	/**
+	 * {@code data} without the methods and fields named in {@code names} (a method name with its descriptor removes only
+	 * that method); the names found are removed from {@code missing}.
+	 */
 	static byte[] withoutMembers(byte[] data, Set<String> names, Set<String> missing) {
 		ClassReader reader = new ClassReader(data);
 		// A fresh constant pool, so nothing the removed members referred to is left behind (see withDependents).
@@ -406,8 +492,10 @@ public final class ModTranslator {
 		reader.accept(new ClassVisitor(Opcodes.ASM9, writer) {
 			@Override
 			public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
-				if (!names.contains(name)) return super.visitMethod(access, name, descriptor, signature, exceptions);
+				String exact = name + descriptor;
+				if (!names.contains(name) && !names.contains(exact)) return super.visitMethod(access, name, descriptor, signature, exceptions);
 				missing.remove(name);
+				missing.remove(exact);
 				return null;
 			}
 
@@ -434,6 +522,17 @@ public final class ModTranslator {
 			throw new TranslationException("Access widener of " + candidate.id() + " uses the '" + namespace
 					+ "' namespace, so the mod was built for a different Minecraft version",
 					"Install the build of " + candidate.id() + " made for Minecraft " + env.minecraftVersion() + ".");
+		}
+	}
+
+	/**
+	 * A class tweaker's enum extensions only declare the constants the mod's enum mixins add: Mixin adds them, from
+	 * 0.17.1 (pre-flight checks the mixins themselves).
+	 */
+	private void checkEnumExtensions(AccessWidenerFile tweaker, Candidate candidate) throws TranslationException {
+		if (!tweaker.enumExtensions().isEmpty() && !MixinCompat.supportsEnumExtensions(env.runtimeMixinVersion())) {
+			throw new TranslationException(candidate.id() + " adds enum constants with Mixin's enum extensions, which need Mixin 0.17.1 or later;"
+					+ " this NeoForge runs Mixin " + env.runtimeMixinVersion(), "Update NeoForge, or use a build of " + candidate.id() + " made for it.");
 		}
 	}
 

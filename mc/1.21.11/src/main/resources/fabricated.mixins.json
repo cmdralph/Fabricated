@@ -5,6 +5,7 @@
   "mixins": [
     "ServerConfigurationPacketListenerImplMixin",
     "MinecraftServerMixin",
+    "ChunkGeneratorFeaturesMixin",
     "ReloadableServerResourcesMixin",
     "ResourceMixin",
     "MappedRegistryMixin",
@@ -47,6 +48,8 @@
     "client.BlockColorsLookupMixin",
     "client.ClientConfigurationPacketListenerImplMixin",
     "client.KeyMappingAccessor",
+    "client.MinecraftEntrypointsMixin",
+    "client.MinecraftStartedMixin",
     "client.LiquidBlockTintMixin",
     "client.MultiPlayerGameModeMixin",
     "client.ClientNetworkAddonHolderMixin",

@@ -166,9 +166,11 @@ public final class LinkageAnalysis {
 	/** The mod's linkage issues; an unsafe jar is one, as it is every time. Other read errors are thrown. */
 	private List<String> check(TranslatedMod mod, LinkageChecker checker) throws IOException {
 		List<LinkageChecker.Issue> issues = new ArrayList<>();
-		try (SafeArchive archive = SafeArchive.open(mod.jar(), limits.forTranslatedJars())) {
+		// The overlay's copy of a class (rewritten during translation) is the one that loads.
+		try (SafeArchive archive = SafeArchive.open(mod.jar(), limits.forTranslatedJars());
+				SafeArchive overlay = SafeArchive.open(mod.overlay(), limits.forTranslatedJars())) {
 			for (String name : archive.classEntryNames()) {
-				byte[] data = archive.read(name);
+				byte[] data = overlay.contains(name) ? overlay.read(name) : archive.read(name);
 				if (data != null) checker.check(data, issues);
 			}
 		} catch (ArchiveException e) {

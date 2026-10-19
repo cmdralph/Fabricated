@@ -69,7 +69,7 @@ Fabricated/
 │   ├── resolve/             dependency graph, nested-jar dedupe, Fabric API module plan
 │   ├── remap/               Tiny v1 + ProGuard parsers, mapping composition, ASM remapper,
 │   │                        refmap/string-constant remapping, compact mapping cache
-│   ├── accesswidener/       AW v1/v2 + classTweaker v1 parser, AT writer, interface-injection table
+│   ├── accesswidener/       AW v1/v2 + classTweaker v1/v2 parser, AT writer, interface-injection table
 │   ├── mixin/               mixin-config model, refmap model, pre-flight verifier
 │   ├── cache/               content-addressed, integrity-checked, sandboxed cache
 │   ├── config/              fabricated.json model + validation
@@ -142,13 +142,13 @@ FML treats an unmet *required* dependency as a fatal loading error, which would 
 ## 4. Entrypoint bridging
 
 ### 4.1 Lifecycle mapping (verified against NeoForge `CommonModLoader`)
-NeoForge's sequence is: mod construction, then `unfreezeData()`, then a `RegisterEvent` per registry in mod order, then `freezeData()`, then `FMLCommonSetupEvent`, then the sided setup event, then IMC, then `FMLLoadCompleteEvent`. Vanilla registries are **frozen during mod construction**. Fabric mods call `Registry.register(...)` directly in `onInitialize`, so they must run while the registries are unfrozen.
+NeoForge's sequence is: mod construction, then `unfreezeData()`, then a `RegisterEvent` per registry in mod order, then `freezeData()`, then `FMLCommonSetupEvent`, then the sided setup event, then IMC, then `FMLLoadCompleteEvent`. Vanilla registries are **frozen during mod construction**. Fabric mods call `Registry.register(...)` directly in `onInitialize`, so they must run while the registries are unfrozen. On the client NeoForge does all of this up to the freeze before it creates `Minecraft`.
 
 | Fabric entrypoint | When Fabricated runs it | Ordering |
 |---|---|---|
 | `preLaunch` | **Not run as Fabric does** (Fabric runs it before game classes load). Fabricated runs it at language-loader init, before any MC class is touched by Fabricated, and documents the difference. Mods doing classloader tricks there are unsupported. | Dependency order |
 | `main` (`ModInitializer`) | Once, on the **first `RegisterEvent` after the attribute registry's** (which NeoForge posts first): registries are unfrozen, NeoForge's own attributes (part of every living entity's attribute builder) are registered, and NeoForge mods constructed before it are visible | Fabric dependency order (topological, ties broken by id, so it's deterministic) |
-| `client` (`ClientModInitializer`) | Immediately after *all* `main` entrypoints, on the client dist (same as Fabric: all main, then all client) | Same |
+| `client` (`ClientModInitializer`) | After *all* `main` entrypoints, on the client dist, where Fabric runs it: in `Minecraft`'s constructor just before it records the game thread, once the instance, game directory and user are set (NeoForge registers mods before it creates `Minecraft`, and client initializers commonly use the instance) | Same |
 | `server` (`DedicatedServerModInitializer`) | Immediately after all `main`, on a dedicated server | Same |
 | Custom keys (`modmenu`, `rei_client`, `fabric-datagen`, `cardinal-components`, …) | **Never auto-run.** Instantiated lazily when another mod calls `FabricLoader.getEntrypoints(key, type)` / `getEntrypointContainers`, exactly like Fabric | Declaration order |
 
@@ -171,11 +171,14 @@ Each mod's entrypoints run inside a guard that records mod id, entrypoint key, c
    * the injector target methods exist (`method = "name(desc)"`, selector and wildcard forms, MixinExtras `@WrapOperation`/`@ModifyExpressionValue`/`@WrapWithCondition`/`@ModifyReturnValue` …);
    * the `@At` points can be found for `HEAD`, `RETURN`, `TAIL`, `INVOKE`, `INVOKE_ASSIGN`, `FIELD` and `NEW`, honouring `ordinal` and `opcode`. Other points (`JUMP`, `CONSTANT`, `LOAD`/`STORE`, slices) are checked conservatively: "unknown" never fails a mod, only "definitely absent" does.
    * `@Inject` handlers take either only the callback info or the target's parameters followed by it (MixinExtras sugar parameters such as `@Local` aside). NeoForge recompiles Minecraft, so a synthetic lambda can take its captured values in another order. Handlers that capture locals or use `@Coerce` are not judged;
+   * `@Local(name = …)` captures name a local variable the target declares (when the game class carries local names), and `@ModifyConstant` constants occur in the target;
    * merged methods, `@Accessor`s and `@Invoker`s don't collide with a method the target already declares (NeoForge adds some, such as `hashCode` or public getters);
    * a `NEW` point with a constructor descriptor matches that constructor only, and targets in library classes NeoForge loads without mixin support (DataFixerUpper, Brigadier, the JDK) fail.
 
    Outcome per mixin:
-   * `required` or default-require mixins that **would fail** cause the **whole mod to be disabled before launch**, with a report like *"`examplemod`: mixin `ExampleMixin` targets `ItemStack#getTooltipLines` → `INVOKE List.add`, which NeoForge removed. Ask the author for a NeoForge build, or set `skipMixins` if this mixin is cosmetic."*
+   * A missing target class fails only where Mixin rejects it: in a required config at compatibility level 0.17.4 or later (before that, Mixin skips the target).
+   * In a config with a plugin, which may disable mixins at runtime, an injector that would crash the game is **left out** instead: only its handler, as Mixin itself drops an injector that may fail. A problem with the whole mixin leaves out the mixin, with the mixins depending on its interfaces. Mixins the plugin adds at runtime (`getMixins()`, listed in no config) are found among the classes of the config's package and checked the same way; only their failing injectors are left out, since the plugin may never add them.
+   * Otherwise `required` or default-require mixins that **would fail** cause the **whole mod to be disabled before launch**, with a report like *"`examplemod`: mixin `ExampleMixin` targets `ItemStack#getTooltipLines` → `INVOKE List.add`, which NeoForge removed. Ask the author for a NeoForge build, or set `skipMixins` if this mixin is cosmetic."*
    * Non-required mixins that would fail produce a warning only.
 5. **User overrides:** `skipMixins` drops entries from the cached copy of the mixin config JSON, never the original.
    An entry `"config.json:Name#member"` instead writes a copy of that mixin class without the methods or fields of
@@ -185,8 +188,14 @@ Each mod's entrypoints run inside a guard that records mod id, entrypoint key, c
    members differ in NeoForge's recompiled build while the member is the same, so pre-flight points an
    `@Accessor("val$name")` at the target's only captured field of that type, an injector into `lambda$method$N` at
    the target's only lambda of that enclosing method with the exact descriptor, and an accessor duplicating a
-   public method the target already has at that method. Each repair is a warning in the report; anything ambiguous
-   is left to fail.
+   public method the target already has at that method. A descriptor-less `@Inject` is pinned to the one overload whose
+   parameters its handler takes when NeoForge's build declares another overload of that name first (Mixin picks the
+   first). An injector whose method NeoForge turned into a delegate to a
+   new overload holding the code is pointed at that overload when every injection point is there and the handler
+   doesn't depend on the method's parameters. Each repair is a warning in the report; anything ambiguous is left to
+   fail. Two changes only turn a crash into a missing effect, never the reverse: an `@Inject` whose local capture
+   fails hard skips itself instead when NeoForge's locals differ, and in a config with a plugin (which may disable
+   mixins at runtime) a mixin pre-flight proves would crash is left out instead of disabling the mod.
 
 ---
 
@@ -265,8 +274,9 @@ A unit test remaps the same input twice and compares SHA-256.
 | `mutable field C f d` | `<current access>-f C f`, with the current access read from game bytecode (AT has no "keep access" modifier) |
 | `transitive-*` | same as the non-transitive form (ATs are global) |
 | `inject-interface C I` (class tweaker) | **not expressible in AT.** Applied by Fabricated's `ClassProcessor` (FML SPI), which adds `I` to `C` at load time. Generic signatures are kept. |
+| `extend-enum C K` (class tweaker v2) | nothing: the line only declares a constant the mod's enum mixin adds, which Mixin (0.17.1 or later) does itself. The mod is disabled if the running Mixin is older, or if `C` is one of NeoForge's `IExtensibleEnum`s (NeoForge reserves those for its own enum extensions). |
 
-* Headers are validated: `accessWidener v1|v2 <ns>` and `classTweaker v1 <ns>`. The namespace must be `intermediary` (1.21.11) or `official` (26.x), otherwise the mod is rejected with an explanation.
+* Headers are validated: `accessWidener v1|v2 <ns>` and `classTweaker v1|v2 <ns>`. The namespace must be `intermediary` (1.21.11) or `official` (26.x), otherwise the mod is rejected with an explanation.
 * Entries targeting members that don't exist are dropped with a warning (Fabric Loader would crash).
 * The AT file is written into the overlay at `META-INF/accesstransformer.cfg`, which FML picks up by default.
 

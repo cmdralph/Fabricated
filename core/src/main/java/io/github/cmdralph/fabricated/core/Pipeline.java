@@ -85,6 +85,8 @@ public final class Pipeline {
 	 * Inputs from the platform.
 	 *
 	 * @param cache               the launch's cache, created from {@code config}
+	 * @param mixinExtrasVersion  the MixinExtras version NeoForge runs, provided to Fabric mods as {@code mixinextras}
+	 *                            (as Fabric Loader does), or null when unknown
 	 * @param platformPackages    packages owned by NeoForge, Minecraft, libraries and Fabricated's own jars
 	 * @param nativeApiClasses    classes of Fabricated's native Fabric API implementation
 	 * @param nativeApiInterfaces interfaces Fabricated's own mixins add to game classes, read only when needed
@@ -100,6 +102,7 @@ public final class Pipeline {
 			boolean clientSide,
 			Namespace namespace,
 			String runtimeMixinVersion,
+			String mixinExtrasVersion,
 			String lowestMixinBehavior,
 			String fabricatedVersion,
 			boolean development,
@@ -130,6 +133,14 @@ public final class Pipeline {
 			Set<String> dependencyFailures) {
 	}
 
+	/**
+	 * Fabric mods whose API Fabricated provides itself, by id: their jar isn't loaded, and they are provided at its
+	 * version, so the mods requiring them resolve as they would on Fabric.
+	 */
+	private static final Map<String, String> REPLACED = Map.of(
+			"forgeconfigapiport", "Fabricated provides Forge Config API Port's Fabric API on NeoForge's own config system, which the port copies",
+			"modmenu", "Fabricated shows the config screens Fabric mods offer through Mod Menu's API in NeoForge's mod list");
+
 	/** A mod the platform provides (Minecraft, Java, Fabric Loader, Fabricated, native Fabric API modules). */
 	private record Builtin(String id, String version, String name, List<String> aliases) {
 	}
@@ -155,7 +166,7 @@ public final class Pipeline {
 		this.report = new Report(in.fabricatedVersion());
 		this.side = in.clientSide() ? EnvType.CLIENT : EnvType.SERVER;
 		for (NeoForgeMod m : in.neoForgeMods()) neoMods.put(m.id(), m);
-		this.builtins = builtins(in);
+		this.builtins = new ArrayList<>(builtins(in));
 	}
 
 	public static Result run(Input in) {
@@ -168,6 +179,9 @@ public final class Pipeline {
 		list.add(new Builtin("java", Integer.toString(Runtime.version().feature()), "Java " + Runtime.version().feature(), List.of()));
 		list.add(new Builtin("fabricloader", FABRIC_LOADER_COMPAT_VERSION, "Fabric Loader (provided by Fabricated)", List.of("fabric-loader")));
 		list.add(new Builtin(ModIds.FABRICATED, in.fabricatedVersion(), "Fabricated", List.of()));
+		if (in.mixinExtrasVersion() != null) {
+			list.add(new Builtin("mixinextras", in.mixinExtrasVersion(), "MixinExtras (provided by NeoForge)", List.of("mixin_extras")));
+		}
 		for (FabricApiPlan.Module m : in.fabricApiPlan().modules().values()) {
 			if (m.plan() == FabricApiPlan.Plan.NATIVE) list.add(new Builtin(m.id(), m.version(), m.id() + " (provided by Fabricated)", List.of()));
 		}
@@ -180,6 +194,7 @@ public final class Pipeline {
 				.environment("Side", in.clientSide() ? "client" : "dedicated server")
 				.environment("Fabric mod namespace", in.namespace() == Namespace.INTERMEDIARY ? "intermediary (remapped to Mojang names)" : "Mojang names (no remapping)")
 				.environment("Mixin", in.runtimeMixinVersion())
+				.environment("MixinExtras", in.mixinExtrasVersion() != null ? in.mixinExtrasVersion() : "not found")
 				.environment("Java", Runtime.version().toString())
 				.environment("Fabric API plan", plan.fabricApiVersion())
 				.environment("Fabric Loader API", FABRIC_LOADER_COMPAT_VERSION);
@@ -233,6 +248,12 @@ public final class Pipeline {
 			String skipped = skipReason(c, builtinNames);
 			if (skipped != null) {
 				report.mod(new ModRow(c.id(), c.version(), c.origin(), Status.SKIPPED, skipped, ""));
+				continue;
+			}
+			String replacement = REPLACED.get(c.id());
+			if (replacement != null) {
+				builtins.add(new Builtin(c.id(), c.version(), replacement, List.of()));
+				report.mod(new ModRow(c.id(), c.version(), c.origin(), Status.SKIPPED, replacement, ""));
 				continue;
 			}
 			String neoId = ModIds.toNeoForgeId(c.id());

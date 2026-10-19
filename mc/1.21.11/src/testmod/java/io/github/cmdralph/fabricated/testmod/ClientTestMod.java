@@ -27,7 +27,9 @@ public final class ClientTestMod implements ClientModInitializer {
 
 	@Override
 	public void onInitializeClient() {
-		TestMod.LOGGER.info("FABRICATED-TEST client entrypoint OK");
+		// As on Fabric, client initializers run once the game instance exists.
+		if (net.minecraft.client.Minecraft.getInstance() != null) TestMod.LOGGER.info("FABRICATED-TEST client entrypoint OK");
+		else TestMod.LOGGER.error("FABRICATED-TEST client entrypoint FAILED: Minecraft.getInstance() is null");
 		ClientLifecycleEvents.CLIENT_STARTED.register(client -> TestMod.LOGGER.info("FABRICATED-TEST client started OK"));
 		ResourceLoader.get(PackType.CLIENT_RESOURCES).registerReloader(Identifier.fromNamespaceAndPath("fabricated_testmod", "client_listener"),
 				(ResourceManagerReloadListener) manager -> TestMod.LOGGER.info("FABRICATED-TEST client resource reload listener OK"));

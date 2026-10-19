@@ -24,23 +24,28 @@ import net.neoforged.neoforge.event.tick.LevelTickEvent;
 
 /**
  * Client half of the native {@code fabric-lifecycle-events-v1} (Minecraft 26.x). Only loaded on the physical
- * client. {@code CLIENT_STARTED} fires on the first client tick (the game is fully initialised by then);
+ * client. {@code CLIENT_STARTED} fires where Fabric API fires it, as {@code Minecraft.run()} starts (before the first
+ * frame; the first client tick if that hook is missing);
  * {@code AFTER_CLIENT_LEVEL_CHANGE} fires when the player logs in and when respawning into another level.
  */
-final class ClientLifecycleBridge {
+public final class ClientLifecycleBridge {
 	private static boolean started;
 
 	private ClientLifecycleBridge() {
+	}
+
+	/** Fires {@code CLIENT_STARTED} once; called as {@code Minecraft.run()} starts (see {@code MinecraftStartedMixin}). */
+	public static void clientStarted(Minecraft client) {
+		if (started) return;
+		started = true;
+		ClientLifecycleEvents.CLIENT_STARTED.invoker().onClientStarted(client);
 	}
 
 	static void register() {
 		var bus = NeoForge.EVENT_BUS;
 		bus.addListener(ClientTickEvent.Pre.class, e -> {
 			Minecraft client = Minecraft.getInstance();
-			if (!started) {
-				started = true;
-				ClientLifecycleEvents.CLIENT_STARTED.invoker().onClientStarted(client);
-			}
+			clientStarted(client);
 			ClientTickEvents.START_CLIENT_TICK.invoker().onStartTick(client);
 		});
 		bus.addListener(ClientTickEvent.Post.class, e -> ClientTickEvents.END_CLIENT_TICK.invoker().onEndTick(Minecraft.getInstance()));

@@ -1,12 +1,14 @@
 package io.github.cmdralph.fabricated.neoforge.lifecycle;
 
 import net.fabricmc.fabric.api.event.lifecycle.v1.CommonLifecycleEvents;
+import net.fabricmc.fabric.api.event.lifecycle.v1.EntityLoadData;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerBlockEntityEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerChunkEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLevelEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
+import net.fabricmc.fabric.impl.event.lifecycle.EntityLoadDataSetter;
 import net.minecraft.server.level.ChunkLevel;
 import net.minecraft.server.level.FullChunkStatus;
 import net.minecraft.server.level.ServerLevel;
@@ -97,13 +99,13 @@ public final class LifecycleBridge {
 
 		// Mobs report why they spawned before joining the level; other entities keep a null spawn reason,
 		// which Fabric's EntityLoadData allows.
-		bus.addListener(EventPriority.LOWEST, FinalizeSpawnEvent.class, e -> EntityLoadDataAccess.setSpawnReason(e.getEntity(), e.getSpawnType()));
+		bus.addListener(EventPriority.LOWEST, FinalizeSpawnEvent.class, e -> ((EntityLoadDataSetter) e.getEntity()).fabric_setSpawnReason(e.getSpawnType()));
 		// HIGHEST so that a Fabric veto (ALLOW_LOAD) cancels before NeoForge mods see the entity join.
 		bus.addListener(EventPriority.HIGHEST, EntityJoinLevelEvent.class, e -> {
 			if (!(e.getLevel() instanceof ServerLevel level)) return;
 			Entity entity = e.getEntity();
-			EntityLoadDataAccess.set(entity, e.loadedFromDisk());
-			if (!ServerEntityEvents.ALLOW_LOAD.invoker().onAllowLoad(entity, level, EntityLoadDataAccess.spawnReason(entity), e.loadedFromDisk())) {
+			((EntityLoadDataSetter) entity).fabric_setLoadedFromDisk(e.loadedFromDisk());
+			if (!ServerEntityEvents.ALLOW_LOAD.invoker().onAllowLoad(entity, level, ((EntityLoadData) entity).spawnReason(), e.loadedFromDisk())) {
 				e.setCanceled(true);
 			}
 		});

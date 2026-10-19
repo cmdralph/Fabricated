@@ -52,9 +52,12 @@ if [ -n "$extra" ] && [ -d "$extra" ]; then
 	cp "$extra"/*.jar run/mods/ 2>/dev/null || true
 fi
 ls -1 run/mods
-cat > run/config/fabricated.json <<'JSON'
-{ "schema": 1, "logLevel": "DEBUG" }
-JSON
+if [ -n "$extra" ]; then
+	# With extra mods, a mod's failing entrypoint is reported and the game goes on, as the server smoke test does.
+	echo '{ "schema": 1, "onEntrypointFailure": "disable", "logLevel": "DEBUG" }' > run/config/fabricated.json
+else
+	echo '{ "schema": 1, "logLevel": "DEBUG" }' > run/config/fabricated.json
+fi
 cat > run/options.txt <<'OPTS'
 onboardAccessibility:false
 pauseOnLostFocus:false
@@ -79,6 +82,15 @@ while kill -0 "$client_pid" 2>/dev/null; do
 			"$JAVA_HOME/bin/jstack" "$pid" >> thread-dump.txt 2>&1 || true
 		done
 	fi
+	# After a crash or a fatal loading error the game shows its error window until closed; stop it once the crash report
+	# is written.
+	if grep -qE "Preparing crash report|Game crashed!|Crash report saved to|Failed to wait for future|Mixin prepare for mod .* failed" client.out run/logs/latest.log 2>/dev/null; then
+		echo "The game crashed; stopping the client."
+		sleep 15
+		pkill -P "$client_pid" 2>/dev/null || true
+		kill "$client_pid" 2>/dev/null || true
+		break
+	fi
 	if grep -q "Failed to create backend OpenGL" client.out && grep -q "Failed to create backend Vulkan" client.out; then
 		echo "No render backend could be created; stopping the client."
 		sleep 5
@@ -101,6 +113,22 @@ if [ "$status" -ne 0 ]; then
 	grep -v "Waiting for player to load" "$log" | tail -n 250 || true
 	echo "::endgroup::"
 fi
+if [ "$status" -ne 0 ]; then
+	echo "::group::First errors in the game log"
+	grep -n -m 80 -E "/(ERROR|FATAL)\]|Exception|Caused by" "$log" || true
+	echo "::endgroup::"
+	if [ -n "$extra" ]; then
+		echo "::group::Where the Fabric API classes the game could not find come from"
+		python3 -I "$root/ci/find-classes.py" "$log" run/mods || true
+		echo "::endgroup::"
+	fi
+fi
+for report in run/crash-reports/*.txt; do
+	[ -f "$report" ] || continue
+	echo "::group::Crash report $(basename "$report") (first 120 lines)"
+	head -n 120 "$report"
+	echo "::endgroup::"
+done
 if [ -f thread-dump.txt ]; then
 	echo "::group::Thread dump before the timeout (game threads)"
 	# Paragraphs (one per thread) for the threads that matter for a stuck world join.

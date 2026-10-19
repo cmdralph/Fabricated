@@ -7,13 +7,15 @@ import java.util.regex.Pattern;
 
 import io.github.cmdralph.fabricated.core.accesswidener.AccessWidenerFile.Access;
 import io.github.cmdralph.fabricated.core.accesswidener.AccessWidenerFile.Entry;
+import io.github.cmdralph.fabricated.core.accesswidener.AccessWidenerFile.EnumExtension;
 import io.github.cmdralph.fabricated.core.accesswidener.AccessWidenerFile.InjectedInterface;
 import io.github.cmdralph.fabricated.core.accesswidener.AccessWidenerFile.Kind;
 
 /**
- * Parser for Fabric access wideners (v1, v2) and class tweakers (v1), following the grammar of
+ * Parser for Fabric access wideners (v1, v2) and class tweakers (v1, v2), following the grammar of
  * Fabric's class-tweaker library: whitespace-separated tokens, {@code #} comments, optional
- * {@code transitive-} prefix (v2 and class tweakers), and {@code inject-interface} (class tweakers).
+ * {@code transitive-} prefix (v2 and class tweakers), {@code inject-interface} (class tweakers) and
+ * {@code extend-enum} (class tweaker v2).
  */
 public final class AccessWidenerParser {
 	private static final Pattern V1_DELIMITER = Pattern.compile("\\s+");
@@ -29,17 +31,19 @@ public final class AccessWidenerParser {
 		String headerLine = lines.getFirst();
 		String[] header = headerLine.trim().split("\\s+");
 		if (header.length != 3 || !header[0].equals("accessWidener") && !header[0].equals("classTweaker")) {
-			throw new AccessWidenerException(1, "Invalid header '" + headerLine + "'; expected 'accessWidener <v1|v2> <namespace>' or 'classTweaker v1 <namespace>'");
+			throw new AccessWidenerException(1, "Invalid header '" + headerLine + "'; expected '<accessWidener|classTweaker> <v1|v2> <namespace>'");
 		}
 		boolean classTweaker = header[0].equals("classTweaker");
 		String version = header[1];
-		if (classTweaker ? !version.equals("v1") : !version.equals("v1") && !version.equals("v2")) {
+		if (!version.equals("v1") && !version.equals("v2")) {
 			throw new AccessWidenerException(1, "Unsupported " + header[0] + " version " + version);
 		}
 		boolean v2Grammar = classTweaker || version.equals("v2");
+		boolean enumExtensions = classTweaker && version.equals("v2");
 
 		List<Entry> entries = new ArrayList<>();
 		List<InjectedInterface> injections = new ArrayList<>();
+		List<EnumExtension> enums = new ArrayList<>();
 		for (int i = 1; i < lines.size(); i++) {
 			int lineNo = i + 1;
 			String line = lines.get(i);
@@ -62,6 +66,13 @@ public final class AccessWidenerParser {
 				String raw = generic >= 0 ? full.substring(0, generic) : full;
 				checkClassName(raw, lineNo);
 				injections.add(new InjectedInterface(tokens[1], raw, full, first.startsWith(TRANSITIVE), lineNo));
+				continue;
+			}
+
+			if (enumExtensions && (first.equals("extend-enum") || first.equals(TRANSITIVE + "extend-enum"))) {
+				if (tokens.length != 3) throw new AccessWidenerException(lineNo, "Expected 'extend-enum <class> <constant>'");
+				checkClassName(tokens[1], lineNo);
+				enums.add(new EnumExtension(tokens[1], tokens[2], first.startsWith(TRANSITIVE), lineNo));
 				continue;
 			}
 
@@ -100,7 +111,7 @@ public final class AccessWidenerParser {
 				default -> throw new AccessWidenerException(lineNo, "Unsupported target type '" + tokens[1] + "'");
 			}
 		}
-		return new AccessWidenerFile(header[0], header[2], List.copyOf(entries), List.copyOf(injections));
+		return new AccessWidenerFile(header[0], header[2], List.copyOf(entries), List.copyOf(injections), List.copyOf(enums));
 	}
 
 	private static void checkClassName(String name, int line) throws AccessWidenerException {

@@ -31,15 +31,25 @@ import net.neoforged.fml.ModLoadingIssue;
  * {@code main}, then all {@code client} (client) or {@code server} (dedicated server), matching Fabric
  * Loader's ordering. While a mod's entrypoint runs, NeoForge's mod loading context points at that mod
  * so NeoForge attributes registrations and errors correctly.
+ *
+ * <p>NeoForge builds and registers mods before it creates {@code Minecraft}, while Fabric Loader runs every
+ * initializer from {@code Minecraft}'s constructor, once {@code Minecraft.getInstance()} is set. Fabric content must
+ * be registered while the registries are open, so {@code preLaunch} and {@code main} run in the RegisterEvent loop;
+ * {@code client} runs where Fabric runs it ({@link #runClientEntrypoints()}), since client initializers commonly use
+ * the instance.
  */
-final class EntrypointBridge {
+public final class EntrypointBridge {
 	private static final Logger LOGGER = LoggerFactory.getLogger("Fabricated");
 	private static final String MESSAGE = "§e[Fabricated]§r {0}";
+	/** The bridge whose client entrypoints are still to run. */
+	private static volatile EntrypointBridge pendingClient;
 
 	private final FabricatedState state;
 	private final Dist dist;
 	private boolean ran;
 	private EntrypointRunner runner;
+	private final List<EntrypointRunner.Failure> failures = new ArrayList<>();
+	private long nanos;
 
 	EntrypointBridge(FabricatedState state, Dist dist) {
 		this.state = state;
@@ -50,13 +60,14 @@ final class EntrypointBridge {
 		if (ran) return;
 		ran = true;
 		long start = System.nanoTime();
-		if (dist.isClient()) state.runtime().setGameInstance(ClientSupport.gameInstance());
 
-		// Fabricated's own, as this runs inside its RegisterEvent listener: restored after each entrypoint.
-		ModContainer previous = ModLoadingContext.get().getActiveContainer();
 		runner = new EntrypointRunner(state.runtime(), new EntrypointRunner.ContextHook() {
+			// Restored after each entrypoint: Fabricated's own in the RegisterEvent loop, none in Minecraft's constructor.
+			private ModContainer previous;
+
 			@Override
 			public void enter(String modId) {
+				previous = ModLoadingContext.get().getActiveContainer();
 				container(modId).ifPresent(c -> ModLoadingContext.get().setActiveContainer(c));
 			}
 
@@ -67,15 +78,34 @@ final class EntrypointBridge {
 		});
 
 		FabricTableEntries.recordVanilla();
-		List<EntrypointRunner.Failure> failures = new ArrayList<>();
 		failures.addAll(runner.run("preLaunch", PreLaunchEntrypoint.class, PreLaunchEntrypoint::onPreLaunch));
 		failures.addAll(runner.run("main", ModInitializer.class, ModInitializer::onInitialize));
 		if (dist.isClient()) {
-			failures.addAll(runner.run("client", ClientModInitializer.class, ClientModInitializer::onInitializeClient));
-		} else {
-			failures.addAll(runner.run("server", DedicatedServerModInitializer.class, DedicatedServerModInitializer::onInitializeServer));
+			nanos = System.nanoTime() - start;
+			pendingClient = this;
+			return;
 		}
+		failures.addAll(runner.run("server", DedicatedServerModInitializer.class, DedicatedServerModInitializer::onInitializeServer));
+		nanos = System.nanoTime() - start;
+		finish();
+	}
 
+	/** Runs the client entrypoints (once); called from {@code Minecraft}'s constructor where Fabric Loader runs them. */
+	public static void runClientEntrypoints() {
+		EntrypointBridge bridge = pendingClient;
+		pendingClient = null;
+		if (bridge != null) bridge.runClient();
+	}
+
+	private synchronized void runClient() {
+		long start = System.nanoTime();
+		state.runtime().setGameInstance(ClientSupport.gameInstance());
+		failures.addAll(runner.run("client", ClientModInitializer.class, ClientModInitializer::onInitializeClient));
+		nanos += System.nanoTime() - start;
+		finish();
+	}
+
+	private void finish() {
 		FabricatedConfig.EntrypointFailure policy = state.config().onEntrypointFailure();
 		for (EntrypointRunner.Failure failure : failures) {
 			String text = "Fabric mod " + failure.describe() + ". "
@@ -92,7 +122,7 @@ final class EntrypointBridge {
 			ModLoader.addLoadingIssue(issue);
 		}
 		LOGGER.info("Fabricated ran Fabric entrypoints for {} mod(s) in {} ms ({} failure(s))",
-				state.mods().size(), (System.nanoTime() - start) / 1_000_000, failures.size());
+				state.mods().size(), nanos / 1_000_000, failures.size());
 		Set<String> failed = new HashSet<>();
 		for (EntrypointRunner.Failure failure : failures) failed.add(failure.modId());
 		state.api().markEntrypointsComplete(failed, (action, error) -> {
@@ -100,6 +130,8 @@ final class EntrypointBridge {
 			LOGGER.error("{}", text, error);
 			ModLoader.addLoadingIssue(ModLoadingIssue.warning(MESSAGE, text).withCause(error));
 		});
+		// Rewritten when loading completes; written now too, in case the game stops before that.
+		if (!failures.isEmpty()) state.writeReport();
 	}
 
 	/** Records timings and writes the final report once loading has completed. */

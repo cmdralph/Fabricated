@@ -55,11 +55,17 @@ chmod +x run.sh
 pid=$!
 start=$(date +%s)
 status="timeout"
+crashed() { grep -qE 'Preparing crash report|Game crashed!|Crash report saved to|FatalStartupException' server.out 2>/dev/null; }
 while kill -0 "$pid" 2>/dev/null; do
+	if crashed; then status="crashed"; sleep 10; break; fi
 	if grep -q 'Done (' server.out 2>/dev/null; then status="started"; break; fi
 	if [ $(( $(date +%s) - start )) -gt "$timeout_seconds" ]; then break; fi
 	sleep 5
 done
+# The server may have stopped between two checks: its output says how.
+if [ "$status" = "timeout" ] && ! kill -0 "$pid" 2>/dev/null; then
+	if crashed; then status="crashed"; else status="exited"; fi
+fi
 if [ "$status" = "started" ]; then
 	# Let a few ticks run so tick-based checks (mixins) can fire, then reload data packs once so reload
 	# listeners run a second time.
@@ -77,6 +83,20 @@ echo "::endgroup::"
 echo "::group::Server output (tail)"
 tail -n 200 server.out || true
 echo "::endgroup::"
+echo "::group::First errors in the log"
+grep -n -m 80 -E "/(ERROR|FATAL)\]|Exception|Caused by" logs/latest.log 2>/dev/null || true
+echo "::endgroup::"
+if [ -n "$extra" ]; then
+	echo "::group::Where the Fabric API classes the game could not find come from"
+	python3 -I "$root/ci/find-classes.py" logs/latest.log mods || true
+	echo "::endgroup::"
+fi
+for report in crash-reports/*.txt; do
+	[ -f "$report" ] || continue
+	echo "::group::Crash report $(basename "$report") (first 120 lines)"
+	head -n 120 "$report"
+	echo "::endgroup::"
+done
 echo "::group::fabric-bridge-report.txt"
 cat logs/fabric-bridge-report.txt || echo "(report missing)"
 echo "::endgroup::"

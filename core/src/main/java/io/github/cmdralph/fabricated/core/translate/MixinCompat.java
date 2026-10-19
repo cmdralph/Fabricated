@@ -34,6 +34,8 @@ public final class MixinCompat {
 			new Row("0.16.0", "0.14.0"),
 			new Row("0.12.0-", "0.10.0"));
 	private static final String FABRIC_FALLBACK = "0.9.2";
+	private static final Version ENUM_EXTENSIONS = parse("0.17.1");
+	private static final Version MISSING_TARGETS_FATAL = parse("0.17.4");
 
 	private MixinCompat() {
 	}
@@ -74,6 +76,17 @@ public final class MixinCompat {
 		if (requested.compareTo(lowest) < 0) return lowestBehavior;
 		if (requested.compareTo(highest) > 0) return runtimeCore;
 		return behaviorVersion;
+	}
+
+	/** Whether Mixin, at this behaviour version, rejects a mixin whose target class is missing (from 0.17.4; before, it skips it). */
+	public static boolean missingTargetsFatal(String behaviorVersion) {
+		return parse(behaviorVersion).compareTo(MISSING_TARGETS_FATAL) >= 0;
+	}
+
+	/** Whether the running Mixin (e.g. {@code 0.17.4+mixin.0.8.7}) applies enum extensions, which came with 0.17.1. */
+	public static boolean supportsEnumExtensions(String runtimeMixinVersion) {
+		int plus = runtimeMixinVersion.indexOf('+');
+		return parse(plus >= 0 ? runtimeMixinVersion.substring(0, plus) : runtimeMixinVersion).compareTo(ENUM_EXTENSIONS) >= 0;
 	}
 
 	private static Version parse(String s) {

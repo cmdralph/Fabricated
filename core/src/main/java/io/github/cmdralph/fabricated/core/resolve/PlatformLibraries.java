@@ -1,7 +1,11 @@
 package io.github.cmdralph.fabricated.core.resolve;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+
+import io.github.cmdralph.fabricated.core.json.Json;
+import io.github.cmdralph.fabricated.core.json.JsonException;
 
 /**
  * Libraries that NeoForge and Minecraft already provide. Fabric mods frequently nest or shade copies of
@@ -52,5 +56,21 @@ public final class PlatformLibraries {
 			if (path.startsWith(prefix)) return true;
 		}
 		return false;
+	}
+
+	/**
+	 * The version of MixinExtras a jar nests, from its jar-in-jar {@code META-INF/jarjar/metadata.json} (NeoForge nests
+	 * {@code mixinextras-neoforge} in its own jar), or {@code null} when it nests none.
+	 */
+	public static String nestedMixinExtras(String jarJarMetadata) throws JsonException {
+		for (Object jar : Json.asList(Json.parseObject(jarJarMetadata).get("jars"))) {
+			if (!(jar instanceof Map<?, ?> entry) || !(entry.get("identifier") instanceof Map<?, ?> id)
+					|| !(entry.get("version") instanceof Map<?, ?> version)) continue;
+			if ("io.github.llamalad7".equals(id.get("group")) && id.get("artifact") instanceof String artifact
+					&& artifact.startsWith("mixinextras") && version.get("artifactVersion") instanceof String v) {
+				return v;
+			}
+		}
+		return null;
 	}
 }

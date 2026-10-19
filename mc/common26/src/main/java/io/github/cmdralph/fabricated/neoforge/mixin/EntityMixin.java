@@ -4,17 +4,17 @@ import org.jspecify.annotations.Nullable;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 
-import io.github.cmdralph.fabricated.neoforge.lifecycle.EntityLoadDataAccess;
 import net.fabricmc.fabric.api.event.lifecycle.v1.EntityLoadData;
+import net.fabricmc.fabric.impl.event.lifecycle.EntityLoadDataSetter;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntitySpawnReason;
 
 /**
- * Makes every entity implement Fabric's {@link EntityLoadData}, as Fabric API's lifecycle module does with an
- * injected interface. Only adds fields and methods; no Minecraft code is changed.
+ * Makes every entity implement Fabric's {@link EntityLoadData} and its setter side, as Fabric API's lifecycle module
+ * does. Only adds fields and methods; no Minecraft code is changed.
  */
 @Mixin(Entity.class)
-abstract class EntityMixin implements EntityLoadData, EntityLoadDataAccess {
+abstract class EntityMixin implements EntityLoadData, EntityLoadDataSetter {
 	@Unique
 	private boolean fabricated$loadedFromDisk;
 	@Unique
@@ -31,12 +31,12 @@ abstract class EntityMixin implements EntityLoadData, EntityLoadDataAccess {
 	}
 
 	@Override
-	public void fabricated$setLoadedFromDisk(boolean loadedFromDisk) {
+	public void fabric_setLoadedFromDisk(boolean loadedFromDisk) {
 		this.fabricated$loadedFromDisk = loadedFromDisk;
 	}
 
 	@Override
-	public void fabricated$setSpawnReason(@Nullable EntitySpawnReason spawnReason) {
+	public void fabric_setSpawnReason(@Nullable EntitySpawnReason spawnReason) {
 		this.fabricated$spawnReason = spawnReason;
 	}
 }

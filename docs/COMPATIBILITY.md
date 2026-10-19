@@ -155,6 +155,13 @@ failures fall into a few groups:
   `RegistryDataLoader.load` overload (with the updated tags), so `fabric-advancement-api-v1`'s reload mixin finds
   nothing to wrap. Fabricated wraps NeoForge's call instead and runs upstream's reload hooks around it
   (advancement modifications see the registries being loaded; `AdvancementEvents.ALL_LOADED` fires).
+- **NeoForge moved a method's code into a new overload**: NeoForge often keeps vanilla's signature as a method that
+  calls a new overload of the same name holding the code (`SimpleModelWrapper.bake`, `ModelManager`'s model
+  discovery). A selector without a descriptor picks the first method of that name, as Mixin does, so an injection
+  point inside the code is missing there. When the points all occur in the one overload that method calls, and the
+  handler doesn't depend on the method's parameters (an `@Inject` taking only the callback info, a `@WrapOperation`,
+  `@ModifyExpressionValue`, `@Redirect` and so on), Fabricated points the injector at the overload (for any mod,
+  reported as a warning).
 - **Dependency cascade**: a module that requires a disabled module is disabled too. In the current CI runs no
   Fabric API module is disabled only for that reason; `fabric-data-attachment-api-v1`, which needed
   object-builder, loads now.
@@ -537,10 +544,11 @@ NeoForge keeps drawing the world: upstream's hooks that send every block in the 
 outlines and breaking animations through Fabric's renderer are left out. A model's custom `emitQuads` geometry is
 drawn in item and block entity rendering, not in the world. NeoForge already gives vanilla's models
 `createGeometryKey` and `particleMaterial` with Fabric's signatures, so upstream's copies are left out and
-Fabricated declares the shared defaults on `BlockStateModel`. NeoForge also moved block model baking into its own
-overload of `SimpleModelWrapper.bake`, which upstream's check doesn't reach, so a mesh model using sprites from
-outside the block atlas is not rejected; and the block overlay seen from inside a block uses the block's plain
-particle sprite (26.1.2 and 26.2).
+Fabricated declares the shared defaults on `BlockStateModel`. On 26.1.2, where upstream's check of a mesh
+model's sprites takes the parameters of vanilla's `SimpleModelWrapper.bake` (NeoForge moved the code into its own
+overload), a mesh model using sprites from outside the block atlas is not rejected; on 26.2 and 26.3 the check
+follows the code into NeoForge's overload. On 26.1.2 and 26.2 the block overlay seen from inside a block uses the
+block's plain particle sprite.
 
 Model loading loads too: its plugins, model modifiers and extra models work, with the extra models added to
 NeoForge's model discovery by Fabricated (NeoForge rewrote the code upstream hooks).
@@ -561,9 +569,20 @@ Kotlin's), mod containers and metadata, versions and predicates, the object shar
   `FabricLauncherBase.getLauncher()` (environment, development flag, runtime namespace) are provided for the mods that
   use them; other internal classes are not.
 - Mods detect Fabricated with `FabricLoader.getInstance().isModLoaded("fabricated")`; see [API.md](API.md).
+- `mixinextras` is provided at the version NeoForge runs, as Fabric Loader provides its own, so mods requiring it
+  load (copies nested in mod jars are dropped for NeoForge's).
+- Forge Config API Port (a copy of NeoForge's config system for Fabric, which many mods use) is replaced by its
+  Fabric API on NeoForge's own config system: `ConfigRegistry` registers with the mod's NeoForge container under the
+  port's file names, `ModConfigEvents` fire from NeoForge's config events, and `ConfigScreenFactoryRegistry` screens
+  open from NeoForge's config button. As on Fabric, a config other than the per-world one can be read as soon as it is
+  registered (from its file, before NeoForge loads it). The port's jar is skipped (and provided at its version); its
+  copy of Forge's own config API (`ForgeConfigSpec`) is not provided. On 26.3, whose FML renamed the config types `COMMON` and `SERVER` to
+  `LOCAL` and `SYNCED` (the port keeps the old names), a mod's references to the old names are renamed. The port's `ConfigurationScreen` takes a mod id where NeoForge's takes the mod's container, so a mod creating one passes its container instead.
+- Class tweakers v2 load: their `extend-enum` lines only declare the constants a mod's enum mixins add, which Mixin
+  adds itself (0.17.1 or later, so on 26.x; not to NeoForge's own extensible enums).
 - Config screens a Fabric mod offers to Mod Menu (its `modmenu` entrypoint) open from the Config button of NeoForge's
   mod list. Mod Menu's API interfaces are provided, so such mods load without Mod Menu, which itself can't run on
-  NeoForge (it would duplicate NeoForge's mod list).
+  NeoForge (it would duplicate NeoForge's mod list): an installed Mod Menu jar is skipped and provided at its version.
 
 ### What this means for Fabric mods
 
