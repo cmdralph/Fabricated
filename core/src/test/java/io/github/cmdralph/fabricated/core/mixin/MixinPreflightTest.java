@@ -215,7 +215,7 @@ class MixinPreflightTest {
 		MixinConfigFile config = MixinConfigFile.parse(config(true, "Wrap"));
 		List<PreflightFinding> before = new MixinPreflight(game, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
 		assertTrue(before.size() == 1 && before.getFirst().severity() == Severity.FAIL && before.getFirst().message().contains("abstract")
-				&& "h".equals(before.getFirst().handler()), before.toString());
+				&& before.getFirst().handler().equals("h(ILcom/llamalad7/mixinextras/injector/wrapoperation/Operation;)Ljava/lang/Object;"), before.toString());
 		List<PreflightFinding> notes = new ArrayList<>();
 		mod.put("com/example/mixin/Wrap", new MixinPreflight(game, mod::get, ClassBytesSource.EMPTY, false)
 				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes).get("com/example/mixin/Wrap.class"));
@@ -336,6 +336,16 @@ class MixinPreflightTest {
 		assertEquals(1, findings.size(), findings.toString());
 		assertEquals(Severity.FAIL, findings.getFirst().severity());
 		assertTrue(findings.getFirst().message().contains("MIXINEXTRAS:EXPRESSION"), findings.toString());
+	}
+
+	@Test
+	void anInjectorMayTargetAMethodItsMixinAdds() throws Exception {
+		byte[] own = mixin("com/example/mixin/Own", false, cw -> {
+			cw.visitMethod(Opcodes.ACC_PUBLIC, "added", "()V", null, null).visitEnd();
+			inject(cw, "h", "added", "HEAD", null, 1, null);
+		});
+		List<PreflightFinding> findings = run(config(true, "Own"), null, Map.of("com/example/mixin/Own", own), false);
+		assertTrue(findings.isEmpty(), findings.toString());
 	}
 
 	@Test
@@ -600,7 +610,7 @@ class MixinPreflightTest {
 		List<PreflightFinding> findings = run(cfg, null, Map.of("com/example/mixin/Bad", bad), false);
 		assertTrue(findings.stream().noneMatch(f -> f.severity() == Severity.FAIL), findings.toString());
 		assertTrue(findings.stream().anyMatch(f -> f.severity() == Severity.LEFT_OUT && "com.example.mixin.Bad".equals(f.mixin())
-				&& "h".equals(f.handler())), "only the failing handler is left out: " + findings);
+				&& f.handler().startsWith("h(")), "only the failing handler is left out: " + findings);
 	}
 
 	@Test

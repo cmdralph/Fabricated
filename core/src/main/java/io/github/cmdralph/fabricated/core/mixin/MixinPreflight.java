@@ -544,7 +544,8 @@ public final class MixinPreflight {
 		}
 
 		void injector(MethodNode handler, int require, String message, String suggestion) {
-			out.add(new PreflightFinding(require > 0 ? fatal() : Severity.WARN, configName, mixinDotted, message, suggestion, handler.name));
+			out.add(new PreflightFinding(require > 0 ? fatal() : Severity.WARN, configName, mixinDotted, message, suggestion,
+					handler.name + handler.desc));
 		}
 
 		/** A config plugin may disable the mixin at runtime, so a crash only leaves the mixin out. */
@@ -685,7 +686,7 @@ public final class MixinPreflight {
 			for (AnnotationNode ann : allAnnotations(method)) {
 				if (isInjector(ann.desc)) {
 					injector = true;
-					checkInjector(method, ann, target, ctx);
+					checkInjector(mixin, method, ann, target, ctx);
 				}
 			}
 			if (!injector) checkMerged(method, target, ctx);
@@ -803,7 +804,7 @@ public final class MixinPreflight {
 				|| desc.startsWith("Lcom/llamalad7/mixinextras/injector/");
 	}
 
-	private static void checkInjector(MethodNode handler, AnnotationNode ann, ClassNode target, Context ctx) {
+	private static void checkInjector(ClassNode mixin, MethodNode handler, AnnotationNode ann, ClassNode target, Context ctx) {
 		if (!(Annotations.value(ann, "method") instanceof List<?> selectors) || selectors.isEmpty()) return;
 		int require = Annotations.value(ann, "require") instanceof Integer r && r >= 0 ? r : ctx.config().defaultRequire();
 		List<AnnotationNode> slices = annotationList(Annotations.value(ann, "slice"));
@@ -820,6 +821,10 @@ public final class MixinPreflight {
 				continue;
 			}
 			lastSelector = ref.name() + (ref.desc() != null ? ref.desc() : "");
+			if (addsMethod(mixin, ref)) {
+				anyFuzzy = true; // a method the mixin itself merges into the target: not judged
+				continue;
+			}
 			for (MethodNode m : target.methods) {
 				if (!ref.matchesMethod(m.name, m.desc)) continue;
 				matched.add(m);
@@ -1198,6 +1203,15 @@ public final class MixinPreflight {
 			}
 		}
 		return !judged;
+	}
+
+	/** Whether the mixin declares a method {@code ref} selects that Mixin merges into the target (not a shadow or handler). */
+	private static boolean addsMethod(ClassNode mixin, MemberRef ref) {
+		for (MethodNode m : mixin.methods) {
+			if (!ref.matchesMethod(m.name, m.desc) || m.name.startsWith("<") || Annotations.find(m, SHADOW) != null) continue;
+			if (allAnnotations(m).stream().noneMatch(a -> isInjector(a.desc))) return true;
+		}
+		return false;
 	}
 
 	/**

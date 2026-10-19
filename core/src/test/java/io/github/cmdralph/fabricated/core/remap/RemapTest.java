@@ -86,6 +86,13 @@ class RemapTest {
 		assertEquals("first", t.mapMember("net/minecraft/class_1", "method_5", "()V"));
 		assertEquals("second", t.mapMember("net/minecraft/class_9", "method_5", "()V"));
 		assertEquals("method_5", t.mapMember(null, "method_5", null));
+		assertEquals("method_5", t.mapMember("com/mod/mixin/Shadowing", "method_5", "()V"), "the descriptor doesn't tell them apart");
+
+		// A mixin's @Shadow (owner: the mixin) of one of two fields sharing an intermediary name, of different types.
+		MappingTable fields = MappingTable.fromMembers(Map.of(), Map.of("field_7", Map.of(
+				"net/minecraft/class_1.field_7I", "sleepingPlayers",
+				"net/minecraft/class_9.field_7Lnet/minecraft/class_2;", "other")));
+		assertEquals("sleepingPlayers", fields.mapMember("com/mod/mixin/Shadowing", "field_7", "I"));
 	}
 
 	@Test

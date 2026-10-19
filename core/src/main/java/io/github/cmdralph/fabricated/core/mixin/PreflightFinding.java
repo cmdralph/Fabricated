@@ -8,7 +8,7 @@ package io.github.cmdralph.fabricated.core.mixin;
  * @param mixin       mixin class (dotted), or {@code null} for config-level findings
  * @param message     what is wrong, in plain language
  * @param suggestion  what the user can do
- * @param handler     the injector handler method at fault, or {@code null} when the whole mixin is
+ * @param handler     the injector handler method at fault (name and descriptor), or {@code null} when the whole mixin is
  */
 public record PreflightFinding(Severity severity, String config, String mixin, String message, String suggestion, String handler) {
 

@@ -375,9 +375,13 @@ class PipelineTest {
 
 	@Test
 	void aPluginConfigLosesOnlyItsFailingInjectorsIncludingThoseOfMixinsItsPluginAdds(@TempDir Path game) throws Exception {
+		ClassNode listed = new ClassNode();
+		new ClassReader(mixinClass("com/plug/mixin/Listed", "removedByNeoForge")).accept(listed, 0);
+		// A helper of the same name as the failing handler, which other code of the mixin calls: it stays.
+		listed.methods.add(new org.objectweb.asm.tree.MethodNode(Opcodes.ACC_PRIVATE, "handler", "(I)V", null, null));
 		Path jar = TestJars.create().fabricModJson(TestJars.modJson("plug-mod", "1.0", "\"mixins\":[\"plug.mixins.json\"]"))
 				.text("plug.mixins.json", "{\"required\":true,\"package\":\"com.plug.mixin\",\"plugin\":\"com.plug.Plugin\",\"mixins\":[\"Listed\"]}")
-				.bytes("com/plug/mixin/Listed.class", mixinClass("com/plug/mixin/Listed", "removedByNeoForge"))
+				.bytes("com/plug/mixin/Listed.class", write(listed))
 				// Not listed: the plugin's getMixins() adds it at runtime.
 				.bytes("com/plug/mixin/sub/Added.class", mixinClass("com/plug/mixin/sub/Added", "removedByNeoForge"))
 				.write(game.resolve("mods/plug.jar"));
@@ -390,8 +394,11 @@ class PipelineTest {
 			for (String mixin : List.of("com/plug/mixin/Listed.class", "com/plug/mixin/sub/Added.class")) {
 				ClassNode stripped = new ClassNode();
 				new ClassReader(overlay.read(mixin)).accept(stripped, 0);
-				assertTrue(stripped.methods.stream().noneMatch(m -> m.name.equals("handler")), mixin + " loses its failing handler");
+				assertTrue(stripped.methods.stream().noneMatch(m -> m.name.equals("handler") && m.desc.equals("()V")), mixin + " loses its failing handler");
 			}
+			ClassNode kept = new ClassNode();
+			new ClassReader(overlay.read("com/plug/mixin/Listed.class")).accept(kept, 0);
+			assertTrue(kept.methods.stream().anyMatch(m -> m.name.equals("handler") && m.desc.equals("(I)V")), "its namesake helper stays");
 		}
 	}
 

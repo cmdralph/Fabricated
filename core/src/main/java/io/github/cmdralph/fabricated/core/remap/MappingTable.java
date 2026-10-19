@@ -28,6 +28,8 @@ public final class MappingTable {
 	private final Map<String, String> flatMembers;
 	private final Map<String, String> qualifiedMembers;
 	private volatile Map<String, String> inverseClasses;
+	/** Qualified members by {@code name+desc}, to their runtime name when it is the same for every owner. */
+	private volatile Map<String, String> byNameAndDesc;
 
 	public MappingTable(Map<String, String> classes, Map<String, String> flatMembers, Map<String, String> qualifiedMembers) {
 		// Hash maps for lookups; serialize() sorts, so the cached form stays deterministic.
@@ -62,11 +64,30 @@ public final class MappingTable {
 	public String mapMember(String owner, String name, String desc) {
 		String flat = flatMembers.get(name);
 		if (flat != null) return flat;
-		if (owner != null && desc != null) {
-			String qualified = qualifiedMembers.get(owner + "." + name + desc);
+		if (desc != null) {
+			String qualified = owner != null ? qualifiedMembers.get(owner + "." + name + desc) : null;
 			if (qualified != null) return qualified;
+			// The owner a mixin names is the mixin itself (its @Shadow members and their uses): the descriptor
+			// alone tells the members sharing this intermediary name apart, when they map alike.
+			String byDesc = byNameAndDesc().get(name + desc);
+			if (byDesc != null && !byDesc.isEmpty()) return byDesc;
 		}
 		return name;
+	}
+
+	private Map<String, String> byNameAndDesc() {
+		Map<String, String> index = byNameAndDesc;
+		if (index == null) {
+			Map<String, String> built = new HashMap<>();
+			for (Map.Entry<String, String> e : qualifiedMembers.entrySet()) {
+				String member = e.getKey().substring(e.getKey().lastIndexOf('.') + 1);
+				// An empty value marks a name and descriptor that map differently for different owners.
+				built.merge(member, e.getValue(), (a, b) -> a.equals(b) ? a : "");
+			}
+			index = built;
+			byNameAndDesc = index;
+		}
+		return index;
 	}
 
 	/** Flat member lookup only; {@code null} if the name is unknown or ambiguous. */

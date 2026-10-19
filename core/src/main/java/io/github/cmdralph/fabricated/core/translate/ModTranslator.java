@@ -481,7 +481,10 @@ public final class ModTranslator {
 		return colon >= 0 ? skip.substring(colon + 1) : skip;
 	}
 
-	/** {@code data} without the methods and fields named in {@code names}; the names found are removed from {@code missing}. */
+	/**
+	 * {@code data} without the methods and fields named in {@code names} (a method name with its descriptor removes only
+	 * that method); the names found are removed from {@code missing}.
+	 */
 	static byte[] withoutMembers(byte[] data, Set<String> names, Set<String> missing) {
 		ClassReader reader = new ClassReader(data);
 		// A fresh constant pool, so nothing the removed members referred to is left behind (see withDependents).
@@ -489,8 +492,10 @@ public final class ModTranslator {
 		reader.accept(new ClassVisitor(Opcodes.ASM9, writer) {
 			@Override
 			public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
-				if (!names.contains(name)) return super.visitMethod(access, name, descriptor, signature, exceptions);
+				String exact = name + descriptor;
+				if (!names.contains(name) && !names.contains(exact)) return super.visitMethod(access, name, descriptor, signature, exceptions);
 				missing.remove(name);
+				missing.remove(exact);
 				return null;
 			}
 
