@@ -277,7 +277,7 @@ if (mcVersion.startsWith('26.')) {
     }
     neoForge.addModdingDependenciesTo(sourceSets.testmodfrapi)
     dependencies {
-        compileOnly passThroughModules(['fabric-renderer-api-v1'])
+        compileOnly passThroughModules(['fabric-renderer-api-v1', 'fabric-model-loading-api-v1'])
         testmodfrapiCompileOnly project(':fabric-loader-api')
         testmodfrapiCompileOnly sourceSets.main.output
         testmodfrapiCompileOnly passThroughModules(['fabric-renderer-api-v1', 'fabric-model-loading-api-v1'])
