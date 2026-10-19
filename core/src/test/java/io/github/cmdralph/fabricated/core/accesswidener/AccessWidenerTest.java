@@ -37,6 +37,16 @@ class AccessWidenerTest {
 		assertEquals(2, ct.injectedInterfaces().size());
 		assertEquals("com/example/Iface", ct.injectedInterfaces().getFirst().interfaceName());
 		assertEquals("com/example/Iface<Lnet/minecraft/B;>", ct.injectedInterfaces().getFirst().genericSignature());
+
+		AccessWidenerFile ct2 = AccessWidenerParser.parse("""
+				classTweaker	v2	official
+				accessible field net/minecraft/A bar I
+				extend-enum net/minecraft/E NEW_ONE
+				transitive-extend-enum net/minecraft/E NEW_TWO
+				""");
+		assertEquals(1, ct2.entries().size());
+		assertEquals(List.of("NEW_ONE", "NEW_TWO"), ct2.enumExtensions().stream().map(AccessWidenerFile.EnumExtension::constant).toList());
+		assertTrue(ct2.enumExtensions().getLast().transitive());
 	}
 
 	@Test
@@ -48,6 +58,8 @@ class AccessWidenerTest {
 		assertThrows(AccessWidenerException.class, () -> AccessWidenerParser.parse("accessWidener v1 named\naccessible method a/b/C foo\n"));
 		assertThrows(AccessWidenerException.class, () -> AccessWidenerParser.parse("accessWidener v2 named\n accessible class a/b/C\n"));
 		assertThrows(AccessWidenerException.class, () -> AccessWidenerParser.parse("accessWidener v1 named\ninject-interface a/B c/D\n"));
+		assertThrows(AccessWidenerException.class, () -> AccessWidenerParser.parse("classTweaker v3 official\n"));
+		assertThrows(AccessWidenerException.class, () -> AccessWidenerParser.parse("classTweaker v1 official\nextend-enum a/E X\n"));
 	}
 
 	@Test
