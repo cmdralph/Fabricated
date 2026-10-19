@@ -72,13 +72,16 @@ public final class Pipeline {
 	 *                   numbers, booleans, lists and maps): Fabric code sees them as the mod's custom values, which is how
 	 *                   NeoForge mods speak to Fabric code (Sodium's {@code fabric-renderer-api-v1:contains_renderer}
 	 *                   makes Fabric API's default renderer stand down)
+	 * @param files      its jar (or directory), the root of its container's files to Fabric code (multi-loader mods find
+	 *                   their own files through Fabric's API when it is present); empty for a mod nested in another file
 	 */
-	public record NeoForgeMod(String id, String version, String displayName, Map<String, Object> properties) {
+	public record NeoForgeMod(String id, String version, String displayName, Map<String, Object> properties, List<Path> files) {
 		/** The mod property listing the Fabric mod ids a NeoForge mod provides (Sodium provides Indium). */
 		static final String PROVIDES = "fabric:provides";
 
 		public NeoForgeMod {
 			properties = Collections.unmodifiableMap(new LinkedHashMap<>(properties));
+			files = List.copyOf(files);
 		}
 
 		/** The Fabric mod ids it provides. */
@@ -595,7 +598,7 @@ public final class Pipeline {
 		}
 
 		// Built-ins first: a Fabric mod's "provides" never shadows Minecraft, Fabricated or a native module.
-		for (Builtin b : builtins) addBuiltin(runtime, b.id(), b.version(), b.name(), b.aliases(), Map.of());
+		for (Builtin b : builtins) addBuiltin(runtime, b.id(), b.version(), b.name(), b.aliases(), Map.of(), List.of());
 
 		List<LoadedMod> loaded = new ArrayList<>();
 		Map<String, ModContainerImpl> containers = new LinkedHashMap<>();
@@ -632,7 +635,7 @@ public final class Pipeline {
 		for (NeoForgeMod m : neoForgeMods) {
 			Map<String, CustomValue> customValues = new LinkedHashMap<>();
 			m.properties().forEach((key, value) -> customValues.put(key, CustomValueImpl.fromJson(value)));
-			addBuiltin(runtime, m.id(), m.version(), m.displayName(), m.provides(), customValues);
+			addBuiltin(runtime, m.id(), m.version(), m.displayName(), m.provides(), customValues, m.files());
 		}
 
 		in.cache().notes().forEach(n -> report.line("Cache", n));
@@ -689,10 +692,10 @@ public final class Pipeline {
 	}
 
 	private static void addBuiltin(FabricLoaderRuntime runtime, String id, String version, String name, List<String> aliases,
-			Map<String, CustomValue> customValues) {
+			Map<String, CustomValue> customValues, List<Path> files) {
 		FabricModMetadata md = FabricModMetadata.builtin(id, parseVersion(version), name, "", customValues);
-		runtime.addMod(new ModContainerImpl(md, List.of(), new ModContainerImpl.Origin(ModOrigin.Kind.UNKNOWN, List.of(), null, null),
-				null, List.of(), runtime), aliases);
+		ModOrigin origin = new ModContainerImpl.Origin(files.isEmpty() ? ModOrigin.Kind.UNKNOWN : ModOrigin.Kind.PATH, files, null, null);
+		runtime.addMod(new ModContainerImpl(md, files, origin, null, List.of(), runtime), aliases);
 	}
 
 	private static Version parseVersion(String version) {
