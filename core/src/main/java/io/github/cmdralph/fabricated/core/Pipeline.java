@@ -85,6 +85,8 @@ public final class Pipeline {
 	 * Inputs from the platform.
 	 *
 	 * @param cache               the launch's cache, created from {@code config}
+	 * @param mixinExtrasVersion  the MixinExtras version NeoForge runs, provided to Fabric mods as {@code mixinextras}
+	 *                            (as Fabric Loader does), or null when unknown
 	 * @param platformPackages    packages owned by NeoForge, Minecraft, libraries and Fabricated's own jars
 	 * @param nativeApiClasses    classes of Fabricated's native Fabric API implementation
 	 * @param nativeApiInterfaces interfaces Fabricated's own mixins add to game classes, read only when needed
@@ -100,6 +102,7 @@ public final class Pipeline {
 			boolean clientSide,
 			Namespace namespace,
 			String runtimeMixinVersion,
+			String mixinExtrasVersion,
 			String lowestMixinBehavior,
 			String fabricatedVersion,
 			boolean development,
@@ -168,6 +171,9 @@ public final class Pipeline {
 		list.add(new Builtin("java", Integer.toString(Runtime.version().feature()), "Java " + Runtime.version().feature(), List.of()));
 		list.add(new Builtin("fabricloader", FABRIC_LOADER_COMPAT_VERSION, "Fabric Loader (provided by Fabricated)", List.of("fabric-loader")));
 		list.add(new Builtin(ModIds.FABRICATED, in.fabricatedVersion(), "Fabricated", List.of()));
+		if (in.mixinExtrasVersion() != null) {
+			list.add(new Builtin("mixinextras", in.mixinExtrasVersion(), "MixinExtras (provided by NeoForge)", List.of("mixin_extras")));
+		}
 		for (FabricApiPlan.Module m : in.fabricApiPlan().modules().values()) {
 			if (m.plan() == FabricApiPlan.Plan.NATIVE) list.add(new Builtin(m.id(), m.version(), m.id() + " (provided by Fabricated)", List.of()));
 		}

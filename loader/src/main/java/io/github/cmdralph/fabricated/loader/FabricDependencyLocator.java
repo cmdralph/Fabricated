@@ -164,7 +164,7 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 			if (planJson == null) throw new IllegalStateException("This Fabricated build is missing its fabric-api-plan.json");
 			plan = FabricApiPlan.parse(new String(planJson, StandardCharsets.UTF_8));
 			Pipeline.Input input = new Pipeline.Input(gameDir, FMLPaths.CONFIGDIR.get(), config, cache, fabricJars, mcVersion, neoVersion,
-					client, info.namespace(), runtimeMixinVersion(info), info.mixinLowest(), info.fabricatedVersion(), !fml.isProduction(), gameClasses, untransformable,
+					client, info.namespace(), runtimeMixinVersion(info), mixinExtrasVersion(), info.mixinLowest(), info.fabricatedVersion(), !fml.isProduction(), gameClasses, untransformable,
 					platformPackages, plan, nativeApi, nativeApiInterfaces, neoForgeMods,
 					(mappingsCache, mojangPath) -> IntermediaryMappings.load(mappingsCache, mcVersion, client, mojangPath),
 					fml.getProgramArgs().getArguments());
@@ -256,6 +256,22 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 			LOGGER.debug("Could not determine the running Mixin version", e);
 		}
 		return info.mixinFallback();
+	}
+
+	/** The MixinExtras version NeoForge runs, from its jar's metadata or its own report, or null when unknown. */
+	static String mixinExtrasVersion() {
+		try {
+			Class<?> bootstrap = Class.forName("com.llamalad7.mixinextras.MixinExtrasBootstrap");
+			Optional<String> fromModule = Optional.ofNullable(bootstrap.getModule().getDescriptor())
+					.flatMap(ModuleDescriptor::version).map(ModuleDescriptor.Version::toString);
+			if (fromModule.isPresent()) return fromModule.get();
+			String fromPackage = bootstrap.getPackage().getImplementationVersion();
+			if (fromPackage != null) return fromPackage;
+			return bootstrap.getMethod("getVersion").invoke(null) instanceof String version ? version : null;
+		} catch (ReflectiveOperationException | LinkageError e) {
+			LOGGER.debug("Could not determine the running MixinExtras version", e);
+			return null;
+		}
 	}
 
 	@Override
