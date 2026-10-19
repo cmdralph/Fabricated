@@ -1,8 +1,10 @@
 package io.github.cmdralph.fabricated.core.mixin;
 
 import java.io.IOException;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -64,6 +66,7 @@ public final class MixinPreflight {
 	private static final String INTRINSIC = "Lorg/spongepowered/asm/mixin/Intrinsic;";
 	private static final String WRAP_OPERATION = "Lcom/llamalad7/mixinextras/injector/wrapoperation/WrapOperation;";
 	private static final String WRAP_METHOD = "Lcom/llamalad7/mixinextras/injector/wrapmethod/WrapMethod;";
+	private static final String MODIFY_EXPRESSION_VALUE = "Lcom/llamalad7/mixinextras/injector/ModifyExpressionValue;";
 	/** NeoForge's marker for the enums only its own enum extension system may extend. */
 	private static final String EXTENSIBLE_ENUM = "net/neoforged/fml/common/asm/enumextension/IExtensibleEnum";
 	private static final String MODIFY_VARIABLE = "Lorg/spongepowered/asm/mixin/injection/ModifyVariable;";
@@ -83,6 +86,8 @@ public final class MixinPreflight {
 	private final boolean clientSide;
 	private final boolean missingTargetsFatal;
 	private final Map<String, Optional<ClassNode>> targetCache = new HashMap<>();
+	/** The libraries' classes (the JDK, DataFixerUpper, ...), for the supertypes of the classes a game method calls. */
+	private ClassIndex libraries;
 
 	/**
 	 * @param game            runtime game classes (Minecraft as patched by NeoForge)
@@ -155,6 +160,9 @@ public final class MixinPreflight {
 	 * <li>An injector at the end of a constructor NeoForge kept for vanilla's signature (deprecated, and only calling
 	 * {@code this(...)} with NeoForge's defaults), which the game no longer calls: it is pointed at the constructor that
 	 * one calls, which every caller now goes through.</li>
+	 * <li>An {@code @Inject} or {@code @ModifyExpressionValue} at a call this game build makes through a subtype of the
+	 * class named (the same inherited method, as NeoForge's conditional {@code Codec} for vanilla's {@code Decoder}):
+	 * the injection point is pointed at that call.</li>
 	 * <li>An {@code @Inject} that captures local variables and would crash when they differ
 	 * ({@code CAPTURE_FAILHARD}, {@code CAPTURE_FAILEXCEPTION}): NeoForge's patches often add locals, so it is made to
 	 * skip itself with Mixin's warning instead ({@code CAPTURE_FAILSOFT}, {@code require = 0}). Where the locals
@@ -213,6 +221,11 @@ public final class MixinPreflight {
 							changed = true;
 							out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@" + simpleName(ann.desc) + " " + method.name
 									+ " targets " + moved, ""));
+						}
+						for (String moved : subtypeCallRepairs(ann, targets.getFirst(), ctx)) {
+							changed = true;
+							out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@" + simpleName(ann.desc) + " " + method.name
+									+ " expects a call to " + moved, ""));
 						}
 					}
 				}
@@ -376,6 +389,76 @@ public final class MixinPreflight {
 			moved.add(chosen.name + chosen.desc + how + overload.name + overload.desc + "; the injector is pointed there");
 		}
 		return moved;
+	}
+
+	/**
+	 * Points the {@code INVOKE} points of an {@code @Inject} or {@code @ModifyExpressionValue} at a call this game build
+	 * makes through a subtype of the class they name, when the named call is in none of the methods the injector
+	 * targets: the same method, inherited. (NeoForge wraps vanilla's {@code Decoder} in a conditional {@code Codec} and
+	 * calls {@code parse} on that.) Mixin matches a call's owner exactly. Neither injector's handler takes the call's
+	 * receiver, so its type changing doesn't matter; the arguments and the result are the same. Only one subtype may
+	 * make the call. Returns a description of each move.
+	 */
+	private List<String> subtypeCallRepairs(AnnotationNode injector, ClassNode target, Context ctx) {
+		if (!injector.desc.equals(INJECT) && !injector.desc.equals(MODIFY_EXPRESSION_VALUE) || Annotations.value(injector, "slice") != null
+				|| !(Annotations.value(injector, "method") instanceof List<?> selectors)) return List.of();
+		List<MethodNode> methods = new ArrayList<>();
+		for (Object selector : selectors) {
+			if (!(selector instanceof String raw)) return List.of();
+			MemberRef ref = MemberRef.parse(ctx.resolve(raw));
+			if (ref.fuzzy() || ref.name() == null) return List.of();
+			// As Mixin: the first method the selector matches.
+			target.methods.stream().filter(m -> ref.matchesMethod(m.name, m.desc)).findFirst().ifPresent(methods::add);
+		}
+		List<String> moved = new ArrayList<>();
+		for (AnnotationNode at : annotationList(Annotations.value(injector, "at"))) {
+			String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
+			if (!point.equals("INVOKE") && !point.equals("INVOKE_ASSIGN") || !(Annotations.value(at, "target") instanceof String raw)) continue;
+			MemberRef ref = MemberRef.parse(ctx.resolve(raw));
+			if (ref.fuzzy() || ref.owner() == null || ref.name() == null || ref.desc() == null) continue;
+			String subtype = null;
+			int calls = 0;
+			boolean named = false;
+			boolean ambiguous = false;
+			for (MethodNode method : methods) {
+				for (AbstractInsnNode insn : method.instructions) {
+					if (!(insn instanceof MethodInsnNode call) || !ref.matchesMethod(call.name, call.desc)) continue;
+					if (call.owner.equals(ref.owner())) {
+						named = true;
+					} else if (isSubtype(call.owner, ref.owner())) {
+						ambiguous |= subtype != null && !subtype.equals(call.owner);
+						subtype = call.owner;
+						calls++;
+					}
+				}
+			}
+			int ordinal = Annotations.value(at, "ordinal") instanceof Integer n ? n : -1;
+			if (named || subtype == null || ambiguous || ordinal >= calls) continue;
+			String retargeted = "L" + subtype + ";" + ref.name() + ref.desc();
+			for (int i = 0; i + 1 < at.values.size(); i += 2) {
+				if ("target".equals(at.values.get(i))) at.values.set(i + 1, retargeted);
+			}
+			moved.add(ref.owner().replace('/', '.') + "." + ref.name() + ", which this game build calls through "
+					+ subtype.replace('/', '.') + " (the same method); the injection point is pointed there");
+		}
+		return moved;
+	}
+
+	/** Whether {@code type} is, extends or implements {@code supertype}, as far as the game's and the libraries' classes tell. */
+	private boolean isSubtype(String type, String supertype) {
+		if (libraries == null) libraries = new ClassIndex(untransformable);
+		Set<String> seen = new HashSet<>();
+		ArrayDeque<String> queue = new ArrayDeque<>(List.of(type));
+		while (!queue.isEmpty()) {
+			String name = queue.poll();
+			if (name.equals(supertype)) return true;
+			if (!seen.add(name)) continue;
+			ClassIndex.ClassInfo info = game.contains(name) ? game.get(name) : libraries.get(name);
+			if (info == null) continue;
+			if (info.superName() != null) queue.add(info.superName());
+			queue.addAll(info.interfaces());
+		}
+		return false;
 	}
 
 	/** The one other overload of the same name {@code method} calls, or null (none, or several). */
