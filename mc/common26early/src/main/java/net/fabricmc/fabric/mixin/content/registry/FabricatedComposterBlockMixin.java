@@ -5,6 +5,7 @@ import org.spongepowered.asm.mixin.injection.At;
 
 import com.llamalad7.mixinextras.injector.ModifyReturnValue;
 
+import io.github.cmdralph.fabricated.neoforge.registry.FabricTableEntries;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.ComposterBlock;
 
@@ -17,6 +18,6 @@ import net.minecraft.world.level.block.ComposterBlock;
 abstract class FabricatedComposterBlockMixin {
 	@ModifyReturnValue(method = "getValue(Lnet/minecraft/world/item/ItemStack;)F", at = @At("RETURN"))
 	private static float fabricated$tableChance(float chance, ItemStack stack) {
-		return chance >= 0 ? chance : ComposterBlock.COMPOSTABLES.getOrDefault(stack.getItem(), -1f);
+		return chance >= 0 ? chance : FabricTableEntries.compostChance(stack);
 	}
 }

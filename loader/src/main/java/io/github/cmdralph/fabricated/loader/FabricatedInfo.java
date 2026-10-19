@@ -55,9 +55,13 @@ public record FabricatedInfo(String fabricatedVersion, String minecraftVersion, 
 		}
 	}
 
-	/** Whether the running Minecraft version is one this build supports (same major.minor line). */
+	/**
+	 * Whether the running Minecraft version is one this build supports: the same major.minor line, or exactly this
+	 * version for an obfuscated one (its bundled Intermediary mappings fit that version only).
+	 */
 	public boolean supports(String runningMinecraftVersion) {
-		return family(minecraftVersion).equals(family(runningMinecraftVersion));
+		return namespace == Namespace.INTERMEDIARY ? minecraftVersion.equals(runningMinecraftVersion)
+				: family(minecraftVersion).equals(family(runningMinecraftVersion));
 	}
 
 	static String family(String version) {

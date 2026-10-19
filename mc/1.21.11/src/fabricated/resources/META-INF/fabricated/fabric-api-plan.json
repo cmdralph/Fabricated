@@ -85,7 +85,7 @@
     "fabric-item-api-v1": {
       "plan": "native",
       "version": "11.6.0",
-      "reason": "Shipped by Fabricated on NeoForge's item hooks and events (upstream's mixins conflict with NeoForge's patches); equipment slot providers get no entity, enchantment modify events are not fired, tooltip appenders are added after the other tooltip lines."
+      "reason": "Shipped by Fabricated on NeoForge's item hooks and events (upstream's mixins conflict with NeoForge's patches); equipment slot providers get no entity, tooltip appenders are added after the other tooltip lines."
     },
     "fabric-item-group-api-v1": {
       "plan": "passthrough"
@@ -157,7 +157,7 @@
         "fabric-rendering-fluids-v1.mixins.json:LiquidBlockRendererMixin#modTintColor",
         "fabric-rendering-fluids-v1.mixins.json:LiquidBlockRendererMixin#modifyNonOverlayCheck"
       ],
-      "reason": "NeoForge tints fluids through their fluid type and decides where they show their overlay texture with BlockState.shouldDisplayFluidOverlay, instead of the code upstream modifies: a Fabric fluid render handler's color and FluidRenderingRegistry.setBlockTransparency keep NeoForge's behavior. Custom fluid renderers and sprites work."
+      "reason": "NeoForge tints fluids through their fluid type and decides where they show their overlay texture with BlockState.shouldDisplayFluidOverlay, instead of the code upstream modifies: Fabricated applies a Fabric fluid render handler's color to NeoForge's tint, and blocks marked transparent through FluidRenderingRegistry.setBlockTransparency keep NeoForge's behavior. Custom fluid renderers and sprites work."
     },
     "fabric-rendering-v1": {
       "plan": "passthrough",

@@ -28,6 +28,7 @@ import org.objectweb.asm.tree.FieldInsnNode;
 import org.objectweb.asm.tree.FieldNode;
 import org.objectweb.asm.tree.InvokeDynamicInsnNode;
 import org.objectweb.asm.tree.LdcInsnNode;
+import org.objectweb.asm.tree.LocalVariableNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
 import org.objectweb.asm.tree.TypeInsnNode;
@@ -47,7 +48,6 @@ import org.objectweb.asm.tree.TypeInsnNode;
  * downgraded to warnings.
  */
 public final class MixinPreflight {
-	private static final String MIXIN = "Lorg/spongepowered/asm/mixin/Mixin;";
 	private static final String PSEUDO = "Lorg/spongepowered/asm/mixin/Pseudo;";
 	private static final String SHADOW = "Lorg/spongepowered/asm/mixin/Shadow;";
 	private static final String OVERWRITE = "Lorg/spongepowered/asm/mixin/Overwrite;";
@@ -56,6 +56,7 @@ public final class MixinPreflight {
 	private static final String AT = "Lorg/spongepowered/asm/mixin/injection/At;";
 	private static final String INJECT = "Lorg/spongepowered/asm/mixin/injection/Inject;";
 	private static final String COERCE = "Lorg/spongepowered/asm/mixin/injection/Coerce;";
+	private static final String LOCAL = "Lcom/llamalad7/mixinextras/sugar/Local;";
 	private static final String UNIQUE = "Lorg/spongepowered/asm/mixin/Unique;";
 	private static final String INTRINSIC = "Lorg/spongepowered/asm/mixin/Intrinsic;";
 	private static final String WRAP_OPERATION = "Lcom/llamalad7/mixinextras/injector/wrapoperation/WrapOperation;";
@@ -141,14 +142,13 @@ public final class MixinPreflight {
 				byte[] data = modClasses.read(internal);
 				if (data == null) continue;
 				new ClassReader(data).accept(node, 0);
-			} catch (IOException | RuntimeException e) {
+			} catch (IOException | RuntimeException | StackOverflowError e) {
 				continue;
 			}
 			Context ctx = new Context(configName, internal.replace('/', '.'), config, refmap, false, out);
 			List<ClassNode> targets = new ArrayList<>();
 			for (String target : targetsOf(node, ctx)) {
-				ClassNode targetNode = GAME_PREFIXES.stream().anyMatch(target::startsWith)
-						? targetCache.computeIfAbsent(target, t -> Optional.ofNullable(game.readNode(t))).orElse(null) : null;
+				ClassNode targetNode = gameTarget(target);
 				if (targetNode == null) {
 					targets = List.of();
 					break;
@@ -277,10 +277,17 @@ public final class MixinPreflight {
 	}
 
 	private static boolean declaresPublicInstance(ClassNode target, String name, String desc) {
-		for (MethodNode m : target.methods) {
-			if (m.name.equals(name) && m.desc.equals(desc)) return (m.access & Opcodes.ACC_PUBLIC) != 0 && (m.access & Opcodes.ACC_STATIC) == 0;
-		}
-		return false;
+		MethodNode m = declared(target, name, desc);
+		return m != null && (m.access & Opcodes.ACC_PUBLIC) != 0 && (m.access & Opcodes.ACC_STATIC) == 0;
+	}
+
+	private static boolean isGameClass(String internalName) {
+		return GAME_PREFIXES.stream().anyMatch(internalName::startsWith);
+	}
+
+	/** A Minecraft class as the game has it (parsed once per pre-flight), or null when absent or not a game class. */
+	private ClassNode gameTarget(String internalName) {
+		return isGameClass(internalName) ? targetCache.computeIfAbsent(internalName, t -> Optional.ofNullable(game.readNode(t))).orElse(null) : null;
 	}
 
 	private ClassNode readMixin(String internal) {
@@ -290,7 +297,7 @@ public final class MixinPreflight {
 			ClassNode node = new ClassNode();
 			new ClassReader(data).accept(node, ClassReader.SKIP_CODE | ClassReader.SKIP_FRAMES);
 			return node;
-		} catch (IOException | RuntimeException e) {
+		} catch (IOException | RuntimeException | StackOverflowError e) {
 			return null;
 		}
 	}
@@ -318,7 +325,7 @@ public final class MixinPreflight {
 	}
 
 	private void checkMixin(ClassNode mixin, Context ctx) {
-		AnnotationNode mixinAnn = Annotations.find(mixin.invisibleAnnotations, mixin.visibleAnnotations, MIXIN);
+		AnnotationNode mixinAnn = Annotations.find(mixin.invisibleAnnotations, mixin.visibleAnnotations, Annotations.MIXIN);
 		if (mixinAnn == null) {
 			ctx.classLevel("Class " + ctx.mixinDotted() + " is listed as a mixin but has no @Mixin annotation", "Report this to the mod author.");
 			return;
@@ -326,8 +333,8 @@ public final class MixinPreflight {
 		boolean pseudo = Annotations.find(mixin.invisibleAnnotations, mixin.visibleAnnotations, PSEUDO) != null;
 
 		for (String target : targetsOf(mixin, ctx)) {
-			boolean isGame = GAME_PREFIXES.stream().anyMatch(target::startsWith);
-			ClassNode targetNode = isGame ? targetCache.computeIfAbsent(target, t -> Optional.ofNullable(game.readNode(t))).orElse(null) : null;
+			boolean isGame = isGameClass(target);
+			ClassNode targetNode = gameTarget(target);
 			if (targetNode == null) {
 				if (pseudo) continue;
 				if (isGame) {
@@ -347,7 +354,7 @@ public final class MixinPreflight {
 
 	/** The classes a mixin's {@code @Mixin} names, as internal names (none when it has no {@code @Mixin}). */
 	private static List<String> targetsOf(ClassNode mixin, Context ctx) {
-		AnnotationNode mixinAnn = Annotations.find(mixin.invisibleAnnotations, mixin.visibleAnnotations, MIXIN);
+		AnnotationNode mixinAnn = Annotations.find(mixin.invisibleAnnotations, mixin.visibleAnnotations, Annotations.MIXIN);
 		List<String> targets = new ArrayList<>();
 		if (mixinAnn == null) return targets;
 		if (Annotations.value(mixinAnn, "value") instanceof List<?> types) {
@@ -573,7 +580,10 @@ public final class MixinPreflight {
 			}
 			lastSelector = ref.name() + (ref.desc() != null ? ref.desc() : "");
 			for (MethodNode m : target.methods) {
-				if (ref.matchesMethod(m.name, m.desc)) matched.add(m);
+				if (!ref.matchesMethod(m.name, m.desc)) continue;
+				matched.add(m);
+				// As Mixin: a selector without a descriptor (or quantifier) picks the first method of that name only.
+				if (ref.desc() == null) break;
 			}
 		}
 		if (matched.isEmpty()) {
@@ -591,7 +601,15 @@ public final class MixinPreflight {
 			return;
 		}
 
-		for (AnnotationNode at : atAnnotations(ann)) {
+		String missingLocal = missingLocal(handler, matched);
+		if (missingLocal != null) {
+			ctx.injector(require, injectorName + " handler " + handler.name + " captures the local variable " + missingLocal + ", which "
+							+ matched.getFirst().name + " in " + target.name.replace('/', '.') + " does not declare",
+					"NeoForge or this Minecraft version changed the method body; the mod needs an update or this mixin must be skipped.");
+			return;
+		}
+
+		for (AnnotationNode at : annotationList(Annotations.value(ann, "at"))) {
 			String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
 			String rawTarget = Annotations.value(at, "target") instanceof String t ? t : null;
 			int ordinal = Annotations.value(at, "ordinal") instanceof Integer i ? i : -1;
@@ -643,6 +661,28 @@ public final class MixinPreflight {
 			if (List.of(Type.getArgumentTypes(target.desc)).equals(wanted)) return true;
 		}
 		return false;
+	}
+
+	/**
+	 * The first name a handler's {@code @Local(name = ...)} parameter asks for that no target method declares, or null.
+	 * Only targets that carry local variable names are judged.
+	 */
+	private static String missingLocal(MethodNode handler, List<MethodNode> targets) {
+		int count = Type.getArgumentTypes(handler.desc).length;
+		for (int i = 0; i < count; i++) {
+			for (AnnotationNode a : parameterAnnotations(handler, i)) {
+				if (!a.desc.equals(LOCAL) || !(Annotations.value(a, "name") instanceof List<?> names) || names.isEmpty()) continue;
+				boolean judged = false;
+				boolean found = false;
+				for (MethodNode m : targets) {
+					if (m.localVariables == null || m.localVariables.isEmpty()) continue;
+					judged = true;
+					for (LocalVariableNode local : m.localVariables) found |= names.contains(local.name);
+				}
+				if (judged && !found) return String.valueOf(names.getFirst());
+			}
+		}
+		return null;
 	}
 
 	/** The handler's parameter types without MixinExtras sugar parameters; null if a parameter uses {@code @Coerce}. */
@@ -936,15 +976,15 @@ public final class MixinPreflight {
 		return ref.owner();
 	}
 
-	private static List<AnnotationNode> atAnnotations(AnnotationNode injector) {
-		return annotationList(Annotations.value(injector, "at"));
+	private static boolean declares(ClassNode target, String name, String desc) {
+		return declared(target, name, desc) != null;
 	}
 
-	private static boolean declares(ClassNode target, String name, String desc) {
+	private static MethodNode declared(ClassNode target, String name, String desc) {
 		for (MethodNode m : target.methods) {
-			if (m.name.equals(name) && m.desc.equals(desc)) return true;
+			if (m.name.equals(name) && m.desc.equals(desc)) return m;
 		}
-		return false;
+		return null;
 	}
 
 	private static List<AnnotationNode> allAnnotations(MethodNode method) {

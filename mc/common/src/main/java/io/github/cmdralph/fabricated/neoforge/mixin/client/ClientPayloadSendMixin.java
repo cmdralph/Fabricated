@@ -5,7 +5,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-import io.github.cmdralph.fabricated.neoforge.networking.FabricPayloads;
+import io.github.cmdralph.fabricated.neoforge.networking.NetworkingBridge;
 import net.minecraft.client.multiplayer.ClientCommonPacketListenerImpl;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.common.ClientCommonPacketListener;
@@ -17,7 +17,7 @@ public abstract class ClientPayloadSendMixin {
 	@Inject(method = "send(Lnet/minecraft/network/protocol/Packet;)V", at = @At("HEAD"), cancellable = true)
 	private void fabricated$dropUnsendableFabricPayload(Packet<?> packet, CallbackInfo ci) {
 		if (packet instanceof ServerboundCustomPayloadPacket custom
-				&& FabricPayloads.unsendable(custom.payload().type().id(), (ClientCommonPacketListener) this, false)) {
+				&& NetworkingBridge.unsendable(custom.payload().type().id(), (ClientCommonPacketListener) this, false)) {
 			ci.cancel();
 		}
 	}

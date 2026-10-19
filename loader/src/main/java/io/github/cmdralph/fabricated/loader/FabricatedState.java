@@ -85,7 +85,7 @@ public final class FabricatedState {
 		return fabricId == null ? Optional.empty() : Optional.ofNullable(result.containers().get(fabricId));
 	}
 
-	/** Classes of loaded Fabric mods with {@code @Environment} annotations (see {@code EnvironmentStrippingProcessor}). */
+	/** Classes of loaded Fabric mods with {@code @Environment} annotations (see {@link FabricClassProcessor}). */
 	public Set<String> environmentClasses() {
 		return result.environmentClasses();
 	}

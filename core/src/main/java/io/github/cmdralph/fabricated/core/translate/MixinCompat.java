@@ -19,15 +19,20 @@ import net.fabricmc.loader.api.metadata.version.VersionInterval;
  * (0.16.5) and the running Mixin version, so the result is clamped into that range.
  */
 public final class MixinCompat {
+	private record Row(Version minLoader, String behavior) {
+		Row(String minLoader, String behavior) {
+			this(parse(minLoader), behavior);
+		}
+	}
+
 	/** Minimum loader version → Mixin behaviour version, newest first (from Fabric Loader 0.19.5). */
-	private static final String[][] TABLE = {
-			{"0.19.4", "0.17.4"},
-			{"0.19.0", "0.17.1"},
-			{"0.18.4", "0.17.0"},
-			{"0.17.3", "0.16.5"},
-			{"0.16.0", "0.14.0"},
-			{"0.12.0-", "0.10.0"},
-	};
+	private static final List<Row> TABLE = List.of(
+			new Row("0.19.4", "0.17.4"),
+			new Row("0.19.0", "0.17.1"),
+			new Row("0.18.4", "0.17.0"),
+			new Row("0.17.3", "0.16.5"),
+			new Row("0.16.0", "0.14.0"),
+			new Row("0.12.0-", "0.10.0"));
 	private static final String FABRIC_FALLBACK = "0.9.2";
 
 	private MixinCompat() {
@@ -46,8 +51,8 @@ public final class MixinCompat {
 		}
 		if (required.isEmpty() || required.getFirst().getMin() == null) return FABRIC_FALLBACK;
 		Version min = required.getFirst().getMin();
-		for (String[] row : TABLE) {
-			if (min.compareTo(parse(row[0])) >= 0) return row[1];
+		for (Row row : TABLE) {
+			if (min.compareTo(row.minLoader()) >= 0) return row.behavior();
 		}
 		return FABRIC_FALLBACK;
 	}

@@ -3,6 +3,8 @@ package net.fabricmc.fabric.impl.networking.server;
 import java.util.HashSet;
 import java.util.Set;
 
+import org.jspecify.annotations.Nullable;
+
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.Identifier;
@@ -17,6 +19,7 @@ import net.fabricmc.fabric.impl.networking.PayloadTypeRegistryImpl;
 
 /** Play-phase networking state of one player connection. */
 public final class ServerPlayNetworkAddon extends ChanneledNetworkAddon<ServerPlayNetworking.PlayPayloadHandler<?>> {
+	private volatile @Nullable Set<Identifier> sendable;
 	private final ServerGamePacketListenerImpl listener;
 	private boolean requestedReconfigure;
 
@@ -28,9 +31,14 @@ public final class ServerPlayNetworkAddon extends ChanneledNetworkAddon<ServerPl
 	/** Channels the client accepts, as negotiated by NeoForge, among the payloads Fabric mods registered. */
 	@Override
 	public Set<Identifier> getSendableChannels() {
-		Set<Identifier> channels = new HashSet<>();
-		for (Identifier id : PayloadTypeRegistryImpl.PLAY_S2C.ids()) {
-			if (this.listener.hasChannel(id)) channels.add(id);
+		// Channels are negotiated before the play phase, so this is worked out once.
+		Set<Identifier> channels = this.sendable;
+		if (channels == null) {
+			Set<Identifier> found = new HashSet<>();
+			for (Identifier id : PayloadTypeRegistryImpl.PLAY_S2C.ids()) {
+				if (this.listener.hasChannel(id)) found.add(id);
+			}
+			this.sendable = channels = Set.copyOf(found);
 		}
 		return channels;
 	}

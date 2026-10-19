@@ -7,6 +7,7 @@ import org.jspecify.annotations.Nullable;
 
 import net.minecraft.core.component.DataComponentType;
 import net.minecraft.world.item.component.TooltipProvider;
+import net.neoforged.neoforge.common.tooltip.TooltipAppender;
 
 /**
  * Fabric's tooltip provider order, recorded for NeoForge's {@code RegisterTooltipAppendersEvent}, which accepts the
@@ -16,6 +17,9 @@ public final class ItemComponentTooltipProviderRegistryImpl {
 	public enum Position { FIRST, LAST, BEFORE, AFTER }
 
 	public record Entry(Position position, @Nullable DataComponentType<?> anchor, DataComponentType<? extends TooltipProvider> type) {
+		public TooltipAppender appender() {
+			return TooltipAppender.createComponentAppender(type);
+		}
 	}
 
 	private static final List<Entry> ENTRIES = new ArrayList<>();

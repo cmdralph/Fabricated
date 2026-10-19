@@ -64,8 +64,10 @@ public abstract class EntityMixin implements EntityFluidExtension, InternalEntit
 
 	@ModifyArg(method = "<init>", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/EntityFluidInteraction;<init>(Ljava/util/Set;)V"))
 	private Set<TagKey<Fluid>> addCustomTags(Set<TagKey<Fluid>> fluids) {
+		var tracked = EntityFluidInteractionRegistryImpl.getTrackedFluids();
+		if (tracked.isEmpty()) return fluids; // every entity is constructed through here
 		var result = new HashSet<>(fluids);
-		result.addAll(EntityFluidInteractionRegistryImpl.getTrackedFluids());
+		result.addAll(tracked);
 		return result;
 	}
 

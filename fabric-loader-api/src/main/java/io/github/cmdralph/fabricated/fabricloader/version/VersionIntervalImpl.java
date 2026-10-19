@@ -111,10 +111,6 @@ public final class VersionIntervalImpl implements VersionInterval {
 	public static List<VersionInterval> not(VersionInterval interval) {
 		if (interval == null) return Collections.singletonList(VersionInterval.INFINITE);
 		if (isInfinite(interval)) return Collections.emptyList();
-		if (!interval.isSemantic()) {
-			// Lexical complements are not representable; return the unconstrained interval.
-			return Collections.singletonList(VersionInterval.INFINITE);
-		}
 		List<VersionInterval> ret = new ArrayList<>(2);
 		if (interval.getMin() != null) {
 			ret.add(new VersionIntervalImpl(null, false, interval.getMin(), !interval.isMinInclusive()));

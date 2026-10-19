@@ -6,6 +6,8 @@ import org.slf4j.LoggerFactory;
 import net.neoforged.bus.api.BusBuilder;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
+import net.neoforged.fml.ModLoadingException;
+import net.neoforged.fml.ModLoadingIssue;
 import net.neoforged.fml.event.IModBusEvent;
 import net.neoforged.neoforgespi.language.IModInfo;
 
@@ -18,7 +20,7 @@ public final class FabricModContainer extends ModContainer {
 	private static final Logger LOGGER = LoggerFactory.getLogger("Fabricated");
 	private final IEventBus eventBus;
 
-	FabricModContainer(IModInfo info, ModuleLayer layer, FabricatedState state) {
+	FabricModContainer(IModInfo info, ModuleLayer layer, FabricatedState state) throws ModLoadingException {
 		super(info);
 		this.eventBus = BusBuilder.builder()
 				.setExceptionHandler((bus, event, listeners, index, throwable) ->
@@ -28,7 +30,8 @@ public final class FabricModContainer extends ModContainer {
 				.build();
 		String moduleName = info.getOwningFile().getFile().getId();
 		ClassLoader loader = layer.findModule(moduleName).map(Module::getClassLoader)
-				.orElseThrow(() -> new IllegalStateException("Module " + moduleName + " for Fabric mod " + info.getModId() + " is not in the game layer"));
+				.orElseThrow(() -> new ModLoadingException(ModLoadingIssue.error("§e[Fabricated]§r {0}",
+						"Module " + moduleName + " for Fabric mod " + info.getModId() + " is not in the game layer").withAffectedMod(info)));
 		state.fabricContainer(info.getModId()).ifPresent(container -> state.runtime().setClassLoader(container, loader));
 	}
 

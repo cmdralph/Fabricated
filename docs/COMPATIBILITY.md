@@ -41,9 +41,9 @@ configuration task with the integrated server, an extended menu opens with its d
 factory is registered with NeoForge, and no test mod check reports a failure.
 
 CI also starts the client with the full Fabric API jar, for information only (it doesn't fail the build). It
-joins its world and passes every client check on all four versions. On every version, every Fabric API module
-loads on the client except model-loading, which needs the unsupported renderer-api; on the dedicated server no
-Fabric API module is disabled.
+joins its world and passes every client check on all four versions. On 26.x every Fabric API module loads on the
+client, the renderer API, Indigo and model loading included; on 1.21.11 every module except model loading, which
+needs the renderer API, unsupported there. On the dedicated server no Fabric API module is disabled.
 
 The 26.3 job is marked experimental in CI because NeoForge 26.3 is a beta; it passes every check. Its client
 opens its window with SDL3 over EGL, so CI installs Mesa's EGL library for it.
@@ -101,8 +101,8 @@ How to read the table:
 | fabric-key-mapping-api-v1 / key-binding-api-v1, screen-api-v1, rendering-v1, sound-api-v1, model-loading-api-v1 | client | client | client | client |
 | fabric-rendering-v1 on the client | loads (see below) | loads (see below) | loads (see below) | loads (see below) |
 | fabric-screen-api-v1, sound-api-v1 on the client | loads (see below) | loads (see below) | loads (see below) | loads (see below) |
-| fabric-model-loading-api-v1 on the client | disabled (needs renderer-api) | disabled (needs renderer-api) | disabled (needs renderer-api) | disabled (needs renderer-api) |
-| fabric-renderer-api-v1, fabric-renderer-indigo | unsupported | unsupported | unsupported | unsupported |
+| fabric-model-loading-api-v1 on the client | disabled (needs renderer-api) | loads (see below) | loads (see below) | loads (see below) |
+| fabric-renderer-api-v1, fabric-renderer-indigo | unsupported | client (see below) | client (see below) | client (see below) |
 | fabric-data-generation-api-v1, gametest, client-gametest | unsupported | unsupported | unsupported | unsupported |
 
 ### Why modules are disabled
@@ -365,10 +365,11 @@ overrides of `FabricItem` take effect wherever NeoForge asks.
 | `ItemClickBehaviorCallback` (26.2+) | `ItemStackedOnOtherEvent` | |
 | `ItemTooltipCallback` (client) | `ItemTooltipEvent` | |
 | `FabricComponentMapBuilder`, `FabricTooltipFlag`, `Properties.itemId`/`modelId` | added by Fabricated's mixins | NeoForge already gives the builder `get` |
-| **Not fired**: `EnchantmentEvents.MODIFY`/`MODIFY_WITH_LOOKUP`, 26.3's `BlockTransformerEvents` and `BlockTransformerHelper` registrations | none | they change data-pack entries while they load; NeoForge has no hook for that yet |
+| `EnchantmentEvents.MODIFY` (and `MODIFY_WITH_LOOKUP` on 26.x), 26.3's `BlockTransformerEvents.MODIFY` and `BlockTransformerHelper` | Fabricated's hook where vanilla reads each data pack registry entry, as upstream | a changed entry is sent to clients in full |
 
 CI checks, on all four versions: equipment slot, crafting remainder, the allow-enchanting event, custom damage
-(through a player), a default component change and the creator mod; on 26.x also the item id.
+(through a player), a default component change, the creator mod and an enchantment modified as it loads; on 26.x
+also the item id; on 26.3 also a registered block transform and one added by the modify event.
 
 ### Native `fabric-events-interaction-v0`
 
@@ -432,7 +433,7 @@ code they rely on, Fabricated bridges the gap:
 | `FuelValueEvents` (`FuelRegistryEvents` on 1.21.11), up to 26.2 | run on NeoForge's fuel builder, after its furnace fuel data map | `BUILD`, then `EXCLUSIONS`; vanilla's non-flammable wood exclusion is already in the data map |
 | Flammable, strippable, tillable, flattenable, oxidizable and waxable blocks, path types, villager interactions, pot patterns, brewing | upstream's mixins | NeoForge falls back to the vanilla tables these write; on 26.3, where NeoForge reads oxidation and waxing from its data maps only, Fabricated adds that fallback |
 | `EntityFluidInteractionRegistry` (26.x) | upstream's mixins, without three injectors | entering, leaving, pushing and moving through a Fabric fluid work; swimming, jumping out of it, drowning and boats floating in it don't (NeoForge rewrote that code around its fluid types) |
-| Oxidation and wax scraping (26.3) | not applied | 26.3's block transformers have no NeoForge counterpart yet (a warning is logged once) |
+| Oxidation and wax scraping (26.3) | added to the axe's block transformer, as upstream | see `BlockTransformerHelper` under `fabric-item-api-v1` |
 
 On 26.3, composting, stripping and fuel are data-driven in vanilla, and Fabric API has no registries for them.
 
@@ -503,7 +504,9 @@ Upstream's module loads, without the mixins that target code NeoForge rewrote:
 - **Block colors** (1.21.11): NeoForge keeps block color providers in a map by block instead of vanilla's
   id-indexed one; `ColorProviderRegistry.BLOCK.get` reads NeoForge's map.
 - **Picture-in-picture renderers** (`PictureInPictureRendererRegistry`): NeoForge rebuilt the GUI renderer around
-  its own renderer pools; renderers registered with Fabric are not used yet.
+  its own renderer pools. On 26.2 and 26.3, Fabricated registers the renderers Fabric mods registered with NeoForge,
+  which creates and pools them as it does its own. On 1.21.11 and 26.1.2, Fabric's renderers need the game
+  renderer's submit queue, which doesn't exist yet when NeoForge gathers its renderers, so they are not used.
 - **Debug options screen**: keeps vanilla's sorting and search instead of upstream's namespace-aware ones.
 - **Render pipeline snippets** (1.21.11, 26.1.2, 26.2): NeoForge added a field to them, so they don't carry Fabric's
   "use the pipeline's draw mode in GUIs" flag; pipelines still do.
@@ -520,12 +523,30 @@ removal, ticks, mouse and keyboard events) are upstream's.
 `fabric-rendering-fluids-v1` loads without the handler that changes which neighbouring blocks show a fluid's
 overlay texture: NeoForge asks the block (`shouldDisplayFluidOverlay`) instead, so blocks marked transparent
 through `FluidRenderingRegistry.setBlockTransparency` keep NeoForge's behavior. On 1.21.11, NeoForge also tints
-fluids through their fluid type, so a Fabric fluid render handler's `getFluidColor` is not used when vanilla's
-renderer draws the fluid. Custom fluid renderers and sprites work.
+fluids through their fluid type; a Fabric fluid render handler's `getFluidColor` replaces that tint's color (its
+alpha stays NeoForge's). Custom fluid renderers and sprites work.
 
 `fabric-sound-api-v1` (all versions) loads without upstream's redirect of the audio stream lookup, which NeoForge replaced with
 its own `SoundInstance.getStream`. A sound instance whose class overrides `FabricSoundInstance.getAudioStream`
 gets its stream from it there; other sounds keep NeoForge's path.
+
+### `fabric-renderer-api-v1`, `fabric-renderer-indigo` and `fabric-model-loading-api-v1` (26.x)
+
+The renderer API loads with Indigo as its renderer, so meshes, quad emitters and Fabric's model types work, but
+NeoForge keeps drawing the world: upstream's hooks that send every block in the world, moving blocks, block
+outlines and breaking animations through Fabric's renderer are left out. A model's custom `emitQuads` geometry is
+drawn in item and block entity rendering, not in the world. NeoForge already gives vanilla's models
+`createGeometryKey` and `particleMaterial` with Fabric's signatures, so upstream's copies are left out and
+Fabricated declares the shared defaults on `BlockStateModel`. NeoForge also moved block model baking into its own
+overload of `SimpleModelWrapper.bake`, which upstream's check doesn't reach, so a mesh model using sprites from
+outside the block atlas is not rejected; and the block overlay seen from inside a block uses the block's plain
+particle sprite (26.1.2 and 26.2).
+
+Model loading loads too: its plugins, model modifiers and extra models work, with the extra models added to
+NeoForge's model discovery by Fabricated (NeoForge rewrote the code upstream hooks).
+
+On 1.21.11 the renderer API is unsupported (Fabric's renderer replaces the block model pipeline that NeoForge owns
+there), so model loading, which requires it, is disabled.
 
 ### Fabric Loader
 

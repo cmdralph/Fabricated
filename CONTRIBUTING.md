@@ -11,7 +11,7 @@ follows, and step-by-step instructions for adding a new Minecraft version.
 | `core/` | Everything that can be tested without a game: archive safety, `fabric.mod.json`, dependency resolution, remapping, access widener → access transformer, mixin pre-flight, linkage checks, package guard, cache, config, report, Fabric Loader runtime, and the discovery `Pipeline` | No |
 | `loader/` | NeoForge discovery services (compiled into each version's jar): candidate/dependency locators, language loader, mod container, interface injection | FML only |
 | `mc/common/` | The in-game NeoForge mod (entrypoints, `/fabricated`) and the CI test mods, shared by every version | Yes |
-| `mc/common26/`, `mc/common26early/` | Code shared by all 26.x versions, and by 26.1.2 and 26.2 only | Yes |
+| `mc/common26/`, `mc/common26early/`, `mc/common26late/` | Code shared by all 26.x versions, by 26.1.2 and 26.2 only, and by 26.2 and 26.3 only | Yes |
 | `mc/<version>/` | One Gradle project per Minecraft version: properties, vendored native Fabric API modules (`src/fabricapi`), the Fabric API plan (`src/fabricated/resources/META-INF/fabricated/fabric-api-plan.json`) and any version-specific code (`src/main/java`) | Yes |
 | `ci/` | CI scripts (the real NeoForge server smoke test) | - |
 | `scripts/` | Maintenance scripts (importing Fabric API modules) | - |

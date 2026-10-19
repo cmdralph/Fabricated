@@ -1,20 +1,27 @@
 package io.github.cmdralph.fabricated.neoforge.networking;
 
-import net.fabricmc.fabric.impl.networking.PayloadTypeRegistryImpl;
-import net.minecraft.resources.Identifier;
-import net.neoforged.neoforge.common.extensions.ICommonPacketListener;
-import net.neoforged.neoforge.network.registration.NetworkRegistry;
+import java.util.List;
 
-/** Fabric's rule for payloads the other side can't receive: they are not sent (NeoForge's is to throw). */
+import net.fabricmc.fabric.api.networking.v1.ClientboundPlayChannelEvents;
+import net.fabricmc.fabric.impl.networking.PayloadTypeRegistryImpl;
+import net.fabricmc.fabric.impl.networking.server.ServerPlayNetworkAddon;
+import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.network.RegistryFriendlyByteBuf;
+import net.minecraft.resources.Identifier;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.network.ServerGamePacketListenerImpl;
+
+/** This version's names for Fabric's payload type registries and play channel event, for {@link NetworkingBridge}. */
 public final class FabricPayloads {
+	static final PayloadTypeRegistryImpl<RegistryFriendlyByteBuf> SERVERBOUND_PLAY = PayloadTypeRegistryImpl.SERVERBOUND_PLAY;
+	static final PayloadTypeRegistryImpl<RegistryFriendlyByteBuf> CLIENTBOUND_PLAY = PayloadTypeRegistryImpl.CLIENTBOUND_PLAY;
+	static final PayloadTypeRegistryImpl<FriendlyByteBuf> SERVERBOUND_CONFIGURATION = PayloadTypeRegistryImpl.SERVERBOUND_CONFIGURATION;
+	static final PayloadTypeRegistryImpl<FriendlyByteBuf> CLIENTBOUND_CONFIGURATION = PayloadTypeRegistryImpl.CLIENTBOUND_CONFIGURATION;
+
 	private FabricPayloads() {
 	}
 
-	/** Whether {@code id} is a Fabric mod's payload type that the connection behind {@code listener} has no channel for. */
-	public static boolean unsendable(Identifier id, ICommonPacketListener listener, boolean clientbound) {
-		boolean fabric = clientbound
-				? PayloadTypeRegistryImpl.CLIENTBOUND_PLAY.get(id) != null || PayloadTypeRegistryImpl.CLIENTBOUND_CONFIGURATION.get(id) != null
-				: PayloadTypeRegistryImpl.SERVERBOUND_PLAY.get(id) != null || PayloadTypeRegistryImpl.SERVERBOUND_CONFIGURATION.get(id) != null;
-		return fabric && !NetworkRegistry.hasChannel(listener, id);
+	static void announceChannels(ServerGamePacketListenerImpl listener, ServerPlayNetworkAddon addon, MinecraftServer server, List<Identifier> channels) {
+		ClientboundPlayChannelEvents.REGISTER.invoker().onChannelRegister(listener, addon, server, channels);
 	}
 }

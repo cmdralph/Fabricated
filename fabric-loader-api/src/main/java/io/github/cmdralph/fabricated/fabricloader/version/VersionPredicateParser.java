@@ -52,7 +52,7 @@ public final class VersionPredicateParser {
 					for (int i = 0; i < count - 1; i++) {
 						newComponents[i] = semVer.getVersionComponent(i);
 					}
-					version = new SemanticVersionImpl(newComponents, "", null);
+					version = new SemanticVersionImpl(newComponents, "", semVer.getBuildKey().orElse(null));
 					operator = count == 2 ? VersionComparisonOperator.SAME_TO_NEXT_MAJOR : VersionComparisonOperator.SAME_TO_NEXT_MINOR;
 				}
 			} else if (!operator.isMinInclusive() && !operator.isMaxInclusive()) {

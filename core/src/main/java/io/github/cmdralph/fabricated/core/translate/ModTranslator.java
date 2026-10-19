@@ -27,6 +27,8 @@ import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.FieldVisitor;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
+import org.objectweb.asm.commons.ClassRemapper;
+import org.objectweb.asm.commons.Remapper;
 
 import io.github.cmdralph.fabricated.core.accesswidener.AccessTransformerConverter;
 import io.github.cmdralph.fabricated.core.accesswidener.AccessWidenerException;
@@ -85,7 +87,7 @@ public final class ModTranslator {
 	 */
 	public TranslatedMod translate(Candidate candidate, ModOverride override, List<String> loadAfter) throws TranslationException {
 		String neoId = ModIds.toNeoForgeId(candidate.id());
-		if (!ModIds.isValidNeoForgeId(neoId) || ModIds.RESERVED.contains(neoId)) {
+		if (ModIds.RESERVED.contains(neoId)) {
 			throw new TranslationException("Mod id '" + candidate.id() + "' cannot be used on NeoForge", "Report this to the mod author.");
 		}
 		List<String> after = loadAfter.stream().sorted().distinct().toList();
@@ -120,7 +122,14 @@ public final class ModTranslator {
 					}
 				}
 				Map<String, byte[]> view = remapped;
-				FileView files = name -> view != null ? view.get(name) : archive.read(name);
+				// Mixin classes and configs are read several times; reading an entry again would count against the
+				// archive's decompression limit again.
+				Map<String, byte[]> read = new HashMap<>();
+				FileView files = view != null ? view::get : name -> {
+					byte[] data = read.get(name);
+					if (data == null && !read.containsKey(name)) read.put(name, data = archive.read(name));
+					return data;
+				};
 
 				Map<String, byte[]> overlay = new TreeMap<>();
 				List<PreflightFinding> findings = new ArrayList<>();
@@ -146,7 +155,8 @@ public final class ModTranslator {
 					}
 				}
 
-				Set<String> environmentClasses = environmentClasses(remapped != null ? remapped.keySet() : archive.classEntryNames(), files);
+				Set<String> environmentClasses = remapped != null ? environmentClasses(remapped.keySet(), files)
+						: environmentClasses(archive.classEntryNames(), archive::read);
 
 				FabricModMetadata md = candidate.metadata();
 				ModsTomlWriter.Spec spec = new ModsTomlWriter.Spec(neoId, md.getVersion().getFriendlyString(), md.getName(),
@@ -154,7 +164,7 @@ public final class ModTranslator {
 						List.copyOf(md.getLicense()), url(md.getContact().get("homepage").orElse(null), "homepage", notes),
 						url(md.getContact().get("issues").orElse(null), "issues", notes), md.getIconPath(256).filter(archive::contains).orElse(null), mixinSpecs,
 						overlay.containsKey(AT_PATH), after);
-				overlay.put(ModsTomlWriter.PATH, ModsTomlWriter.write(spec, "[0,)").getBytes(StandardCharsets.UTF_8));
+				overlay.put(ModsTomlWriter.PATH, ModsTomlWriter.write(spec).getBytes(StandardCharsets.UTF_8));
 				overlay.put("META-INF/MANIFEST.MF", overlayManifest(neoId));
 
 				Map<String, byte[]> outputs = new LinkedHashMap<>();
@@ -232,6 +242,7 @@ public final class ModTranslator {
 		// Pre-flight sees the mod as it will load: with the handler methods left out below.
 		FileView translated = name -> overlay.containsKey(name) ? overlay.get(name) : files.read(name);
 		MixinPreflight preflight = new MixinPreflight(env.game(), classSource(translated), env.untransformable(), env.clientSide());
+		Map<String, MixinConfigFile> configs = new HashMap<>();
 
 		for (MixinEntry entry : md.compatHints().mixinsOr(md.mixins())) {
 			if (!entry.environment().matches(side)) continue;
@@ -251,10 +262,11 @@ public final class ModTranslator {
 			} catch (JsonException e) {
 				throw new TranslationException("Mixin config " + entry.config() + " is invalid: " + e.getMessage(), "Report this to the mod author.");
 			}
+			configs.put(entry.config(), config);
 
-			Set<String> wholeSkips = skipsFor(entry.config(), config, override.skipMixins());
-			for (Map.Entry<String, Set<String>> handlers : handlerSkipsFor(entry.config(), config, override.skipMixins()).entrySet()) {
-				if (wholeSkips.contains(handlers.getKey())) continue;
+			Skips skips = skipsFor(entry.config(), config, override.skipMixins());
+			Set<String> wholeSkips = skips.mixins();
+			for (Map.Entry<String, Set<String>> handlers : skips.members().entrySet()) {
 				String path = config.internalName(handlers.getKey()) + ".class";
 				byte[] mixin = files.read(path);
 				if (mixin == null) continue;
@@ -282,7 +294,7 @@ public final class ModTranslator {
 					.collect(Collectors.joining("; "));
 			if (failures.size() > 3) summary += "; and " + (failures.size() - 3) + " more";
 			String skipHint = failures.stream().filter(f -> f.mixin() != null)
-					.map(f -> f.config() + ":" + relativeMixin(f.config(), f.mixin(), files)).distinct()
+					.map(f -> f.config() + ":" + relativeMixin(configs.get(f.config()), f.mixin())).distinct()
 					.collect(Collectors.joining("\", \""));
 			throw new TranslationException("Mixin pre-flight failed: " + summary,
 					"Update the mod or ask its author for a NeoForge build. If the affected mixins are cosmetic, add \"skipMixins\": [\""
@@ -292,18 +304,10 @@ public final class ModTranslator {
 		return specs;
 	}
 
-	private static String relativeMixin(String configName, String mixinDotted, FileView files) {
-		try {
-			byte[] data = files.read(configName);
-			if (data != null) {
-				MixinConfigFile cfg = MixinConfigFile.parse(new String(data, StandardCharsets.UTF_8));
-				String pkg = cfg.mixinPackage();
-				if (pkg != null && mixinDotted.startsWith(pkg + ".")) return mixinDotted.substring(pkg.length() + 1);
-			}
-		} catch (ArchiveException | JsonException ignored) {
-			// fall back to the full name
-		}
-		return mixinDotted;
+	/** The mixin's name as its config lists it. */
+	private static String relativeMixin(MixinConfigFile config, String mixinDotted) {
+		String pkg = config != null ? config.mixinPackage() : null;
+		return pkg != null && mixinDotted.startsWith(pkg + ".") ? mixinDotted.substring(pkg.length() + 1) : mixinDotted;
 	}
 
 	/**
@@ -333,9 +337,9 @@ public final class ModTranslator {
 				if (all.contains(mixin)) continue;
 				byte[] data = files.read(config.internalName(mixin) + ".class");
 				if (data == null) continue;
-				String text = new String(data, StandardCharsets.ISO_8859_1);
+				Set<String> uses = referencedClasses(data);
 				for (Map.Entry<String, String> e : addedBy.entrySet()) {
-					if (!text.contains(e.getKey())) continue;
+					if (!uses.contains(e.getKey())) continue;
 					all.add(mixin);
 					findings.add(new PreflightFinding(Severity.WARN, configName, config.internalName(mixin).replace('/', '.'),
 							"also left out: it uses " + e.getKey().replace('/', '.') + ", which only the skipped mixin " + e.getValue() + " adds", ""));
@@ -348,35 +352,43 @@ public final class ModTranslator {
 		return all;
 	}
 
-	/**
-	 * Whole mixins to leave out of {@code configName}. Skips apply as {@code "config.json:Name"} (one config) or
-	 * {@code "Name"} (every config); {@code "Name#member"} leaves out the methods and fields of that name instead (see
-	 * {@link #handlerSkipsFor}).
-	 */
-	static Set<String> skipsFor(String configName, MixinConfigFile config, Set<String> configured) {
-		Set<String> declared = new HashSet<>(config.allMixins());
-		Set<String> ret = new TreeSet<>();
-		for (String s : configured) {
-			String name = skipTarget(configName, s);
-			if (name != null && name.indexOf('#') < 0 && declared.contains(name)) ret.add(name);
-		}
-		return ret;
+	/** Every class a class file refers to: in its signature, members, instructions and annotations. */
+	private static Set<String> referencedClasses(byte[] data) {
+		Set<String> refs = new HashSet<>();
+		new ClassReader(data).accept(new ClassRemapper(new ClassVisitor(Opcodes.ASM9) {
+		}, new Remapper() {
+			@Override
+			public String map(String internalName) {
+				refs.add(internalName);
+				return internalName;
+			}
+		}), ClassReader.SKIP_FRAMES);
+		return refs;
 	}
 
 	/**
-	 * Handler methods to remove from kept mixins, by mixin: {@code "config.json:Name#handler"}. For a mixin whose
-	 * other injections still work on NeoForge, so only the conflicting one is lost.
+	 * The skip entries that apply to {@code configName}, for mixins it declares: {@code "config.json:Name"} (one config)
+	 * or {@code "Name"} (every config) leaves out the whole mixin; {@code "Name#member"} only the methods and fields of
+	 * that name in a mixin kept otherwise (when its other injections still work on NeoForge).
 	 */
-	static Map<String, Set<String>> handlerSkipsFor(String configName, MixinConfigFile config, Set<String> configured) {
+	record Skips(Set<String> mixins, Map<String, Set<String>> members) {
+	}
+
+	static Skips skipsFor(String configName, MixinConfigFile config, Set<String> configured) {
 		Set<String> declared = new HashSet<>(config.allMixins());
-		Map<String, Set<String>> ret = new TreeMap<>();
+		Set<String> mixins = new TreeSet<>();
+		Map<String, Set<String>> members = new TreeMap<>();
 		for (String s : configured) {
 			String name = skipTarget(configName, s);
-			int hash = name == null ? -1 : name.indexOf('#');
-			if (hash < 0 || !declared.contains(name.substring(0, hash))) continue;
-			ret.computeIfAbsent(name.substring(0, hash), k -> new TreeSet<>()).add(name.substring(hash + 1));
+			if (name == null) continue;
+			int hash = name.indexOf('#');
+			String mixin = hash < 0 ? name : name.substring(0, hash);
+			if (!declared.contains(mixin)) continue;
+			if (hash < 0) mixins.add(mixin);
+			else members.computeIfAbsent(mixin, k -> new TreeSet<>()).add(name.substring(hash + 1));
 		}
-		return ret;
+		members.keySet().removeAll(mixins);
+		return new Skips(mixins, members);
 	}
 
 	/** The mixin part of a skip entry when it applies to {@code configName}, else null. */

@@ -3,6 +3,7 @@ package io.github.cmdralph.fabricated.fabricloader.version;
 import java.util.Arrays;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.StringTokenizer;
 import java.util.regex.Pattern;
 
 import net.fabricmc.loader.api.SemanticVersion;
@@ -19,6 +20,7 @@ import net.fabricmc.loader.api.VersionParsingException;
  */
 public final class SemanticVersionImpl implements SemanticVersion {
 	private static final Pattern DOT_SEPARATED_ID = Pattern.compile("|[-0-9A-Za-z]+(\\.[-0-9A-Za-z]+)*");
+	private static final Pattern UNSIGNED_INTEGER = Pattern.compile("0|[1-9][0-9]*");
 
 	private final int[] components;
 	private final String prerelease;
@@ -49,9 +51,6 @@ public final class SemanticVersionImpl implements SemanticVersion {
 		if (rest.isEmpty()) {
 			throw new VersionParsingException("Did not provide version numbers!");
 		}
-		if (rest.startsWith(".") || rest.endsWith(".")) {
-			throw new VersionParsingException("Version string must not start or end with a dot: '" + version + "'");
-		}
 		String[] parts = rest.split("\\.", -1);
 		int[] parsed = new int[parts.length];
 		for (int i = 0; i < parts.length; i++) {
@@ -81,6 +80,10 @@ public final class SemanticVersionImpl implements SemanticVersion {
 		if (storeX && parsed.length == 1 && parsed[0] == COMPONENT_WILDCARD) {
 			throw new VersionParsingException("Versions of form 'x' or 'X' not allowed!");
 		}
+		// As Fabric: extra trailing wildcards are dropped (1.x.x is 1.x).
+		int firstWildcard = parsed.length;
+		while (firstWildcard > 1 && parsed[firstWildcard - 1] == COMPONENT_WILDCARD) firstWildcard--;
+		if (firstWildcard + 1 < parsed.length) parsed = Arrays.copyOf(parsed, firstWildcard + 1);
 		this.components = parsed;
 		this.prerelease = prereleasePart;
 		this.build = buildPart;
@@ -175,37 +178,25 @@ public final class SemanticVersionImpl implements SemanticVersion {
 		return 0;
 	}
 
+	/**
+	 * As Fabric: dot-separated parts, compared numerically when both are unsigned integers without leading zeros
+	 * (shorter first), numbers before other parts, others in ASCII order; a key that runs out of parts first is lower.
+	 */
 	static int comparePrerelease(String a, String b) {
-		String[] partsA = a.split("\\.", -1);
-		String[] partsB = b.split("\\.", -1);
-		for (int i = 0; i < Math.min(partsA.length, partsB.length); i++) {
-			String pa = partsA[i];
-			String pb = partsB[i];
-			if (pa.equals(pb)) continue;
-			boolean numA = !pa.isEmpty() && pa.chars().allMatch(Character::isDigit);
-			boolean numB = !pb.isEmpty() && pb.chars().allMatch(Character::isDigit);
-			if (numA && numB) {
-				String ta = stripLeadingZeros(pa);
-				String tb = stripLeadingZeros(pb);
-				if (ta.length() != tb.length()) return Integer.compare(ta.length(), tb.length());
-				int cmp = ta.compareTo(tb);
-				if (cmp != 0) return cmp;
-			} else if (numA) {
-				return -1;
-			} else if (numB) {
-				return 1;
-			} else {
-				int cmp = pa.compareTo(pb);
-				if (cmp != 0) return cmp;
-			}
+		StringTokenizer partsA = new StringTokenizer(a, ".");
+		StringTokenizer partsB = new StringTokenizer(b, ".");
+		while (partsA.hasMoreTokens()) {
+			if (!partsB.hasMoreTokens()) return 1;
+			String pa = partsA.nextToken();
+			String pb = partsB.nextToken();
+			boolean numA = UNSIGNED_INTEGER.matcher(pa).matches();
+			boolean numB = UNSIGNED_INTEGER.matcher(pb).matches();
+			if (numA != numB) return numA ? -1 : 1;
+			if (numA && pa.length() != pb.length()) return Integer.compare(pa.length(), pb.length());
+			int cmp = pa.compareTo(pb);
+			if (cmp != 0) return cmp;
 		}
-		return Integer.compare(partsA.length, partsB.length);
-	}
-
-	private static String stripLeadingZeros(String s) {
-		int i = 0;
-		while (i < s.length() - 1 && s.charAt(i) == '0') i++;
-		return s.substring(i);
+		return partsB.hasMoreTokens() ? -1 : 0;
 	}
 
 	@Override

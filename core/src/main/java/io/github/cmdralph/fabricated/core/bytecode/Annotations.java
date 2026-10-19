@@ -8,6 +8,9 @@ import org.objectweb.asm.tree.MethodNode;
 
 /** Lookups on ASM tree annotations. */
 public final class Annotations {
+	public static final String MIXIN = "Lorg/spongepowered/asm/mixin/Mixin;";
+	public static final String ENVIRONMENT = "Lnet/fabricmc/api/Environment;";
+
 	private Annotations() {
 	}
 
@@ -43,5 +46,10 @@ public final class Annotations {
 			if (key.equals(ann.values.get(i))) return ann.values.get(i + 1);
 		}
 		return null;
+	}
+
+	/** The side ({@code CLIENT} or {@code SERVER}) an {@code @Environment}-style annotation names, or null. */
+	public static String side(AnnotationNode ann) {
+		return ann != null && value(ann, "value") instanceof String[] env && env.length == 2 ? env[1] : null;
 	}
 }

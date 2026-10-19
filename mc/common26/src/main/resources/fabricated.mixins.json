@@ -43,16 +43,20 @@
     "SimpleMenuProviderMixin",
     "TagFileRemoveMixin",
     "ConditionalOpsMixin",
-    "AdvancementReloadMixin"
+    "AdvancementReloadMixin",
+    "EnchantmentBuilderMixin",
+    "ResourceManagerRegistryLoadTaskMixin"
   ],
   "injectors": {
     "defaultRequire": 1
   },
   "client": [
+    "client.BlockStateModelDefaultsMixin",
     "client.ClientCommonPacketListenerImplMixin",
     "client.LocalPlayerMixin",
     "client.ClientConfigurationPacketListenerImplMixin",
     "client.KeyMappingAccessor",
+    "client.ModelManagerExtraModelsMixin",
     "client.MultiPlayerGameModeMixin",
     "client.MouseHandlerMixin",
     "client.ClientNetworkAddonHolderMixin",

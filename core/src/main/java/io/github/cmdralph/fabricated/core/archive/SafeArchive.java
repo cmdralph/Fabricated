@@ -173,6 +173,8 @@ public final class SafeArchive implements Closeable {
 			}
 			totalRead += data.length;
 			return data;
+		} catch (ArchiveException e) {
+			throw e;
 		} catch (IOException e) {
 			throw new ArchiveException("Failed to read entry '" + name + "': " + e.getMessage(), e);
 		}

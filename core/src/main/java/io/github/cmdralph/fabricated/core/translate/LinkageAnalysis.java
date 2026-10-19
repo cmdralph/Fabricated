@@ -11,6 +11,7 @@ import java.util.Optional;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
+import io.github.cmdralph.fabricated.core.archive.ArchiveException;
 import io.github.cmdralph.fabricated.core.archive.ArchiveLimits;
 import io.github.cmdralph.fabricated.core.archive.Hashing;
 import io.github.cmdralph.fabricated.core.archive.SafeArchive;
@@ -72,11 +73,12 @@ public final class LinkageAnalysis {
 					platformInterfaces.get().forEach((target, ifaces) -> added.computeIfAbsent(target, k -> new ArrayList<>()).addAll(ifaces));
 					checker = new LinkageChecker(new ClassIndex(runtime, added), CHECKED, clientSide);
 				}
-				issues = check(mod, checker);
 				try {
+					issues = check(mod, checker);
 					cache.storeBlob(blob, Json.write(issues, false).getBytes(StandardCharsets.UTF_8));
 				} catch (IOException e) {
-					// Caching is an optimisation only.
+					// Not cached: reading the jar may well work next launch (caching itself is an optimisation only).
+					if (issues == null) issues = List.of("could not be analysed: " + e.getMessage());
 				}
 			}
 			if (!issues.isEmpty()) result.put(mod.neoForgeId(), issues);
@@ -98,7 +100,7 @@ public final class LinkageAnalysis {
 					byte[] data = archive.read(name);
 					if (data != null) mixinAdditions(data, added);
 				}
-			} catch (IOException | RuntimeException e) {
+			} catch (IOException | RuntimeException | StackOverflowError e) {
 				// The mod is reported by check() if it cannot be read; nothing to add here.
 			}
 		}
@@ -113,7 +115,7 @@ public final class LinkageAnalysis {
 	public static void mixinAdditions(byte[] data, Map<String, List<String>> added) {
 		ClassNode node = new ClassNode();
 		new ClassReader(data).accept(node, ClassReader.SKIP_CODE | ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
-		AnnotationNode mixin = Annotations.find(node.invisibleAnnotations, "Lorg/spongepowered/asm/mixin/Mixin;");
+		AnnotationNode mixin = Annotations.find(node.invisibleAnnotations, Annotations.MIXIN);
 		if (mixin == null) return;
 		List<String> additions = new ArrayList<>(node.interfaces == null ? List.of() : node.interfaces);
 		for (FieldNode field : node.fields) {
@@ -161,14 +163,15 @@ public final class LinkageAnalysis {
 		}
 	}
 
-	private List<String> check(TranslatedMod mod, LinkageChecker checker) {
+	/** The mod's linkage issues; an unsafe jar is one, as it is every time. Other read errors are thrown. */
+	private List<String> check(TranslatedMod mod, LinkageChecker checker) throws IOException {
 		List<LinkageChecker.Issue> issues = new ArrayList<>();
 		try (SafeArchive archive = SafeArchive.open(mod.jar(), limits.forTranslatedJars())) {
 			for (String name : archive.classEntryNames()) {
 				byte[] data = archive.read(name);
 				if (data != null) checker.check(data, issues);
 			}
-		} catch (IOException e) {
+		} catch (ArchiveException e) {
 			return List.of("could not be analysed: " + e.getMessage());
 		}
 		return issues.stream().map(LinkageChecker.Issue::toString).toList();

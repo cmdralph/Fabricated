@@ -145,6 +145,8 @@ public final class Pipeline {
 	private final EnvType side;
 	private final Map<String, NeoForgeMod> neoMods = new HashMap<>();
 	private final List<Builtin> builtins;
+	/** Compat patches already reported as ignored ("mod target"): patches are worked out again every round. */
+	private final Set<String> ignoredPatches = new HashSet<>();
 
 	private Pipeline(Input in) {
 		this.in = in;
@@ -210,14 +212,14 @@ public final class Pipeline {
 		}
 		FabricLoaderRuntime runtime = new FabricLoaderRuntime(side, in.gameDir(), in.configDir(), in.minecraftVersion(), in.development(),
 				mappingTable != null ? MappingResolvers.intermediary(mappingTable) : MappingResolvers.identity(), in::launchArguments);
-		if (eligible.isEmpty()) return assemble(runtime, new Rounds(), Set.of());
+		if (eligible.isEmpty()) return assemble(runtime, new Rounds());
 
 		TranslationEnvironment env = new TranslationEnvironment(in.minecraftVersion(), in.neoForgeVersion(), in.clientSide(), in.namespace(),
 				in.runtimeMixinVersion(), in.lowestMixinBehavior(), in.fabricatedVersion(), mappingTable, mappingsHash,
 				new ClassIndex(in.gameClasses()), in.untransformableClasses());
 		Rounds rounds = new Rounds();
 		rounds.run(eligible, resolver(), new ModTranslator(env, in.cache(), config.limits()));
-		return assemble(runtime, rounds, Set.copyOf(rounds.dependencyFailures));
+		return assemble(runtime, rounds);
 	}
 
 	/** Candidates that should load, reporting the others. */
@@ -357,6 +359,10 @@ public final class Pipeline {
 							loadAfter(c, providerOf)));
 				} catch (TranslationException e) {
 					failures.put(c, e);
+				} catch (StackOverflowError e) {
+					// ASM parses nested annotation values recursively: a hostile class can nest them without end.
+					failures.put(c, new TranslationException("The jar is unsafe or corrupt: a class is nested too deeply to read",
+							"Remove " + c.id() + " or get it from a trusted source.", List.of(), e));
 				} catch (RuntimeException e) {
 					failures.put(c, new TranslationException("Unexpected error: " + e, "Report this to Fabricated with the log file.", List.of(), e));
 				}
@@ -420,7 +426,9 @@ public final class Pipeline {
 						.anyMatch(d -> d.getKind() == ModDependency.Kind.DEPENDS && d.getModId().equals(target));
 				if (target.equals(c.id()) || !ids.contains(target) || config.override(target).ignoreHints()) continue;
 				if (!depends) {
-					report.line("Compatibility hint warnings", c.id() + ": the patch for " + target + " is ignored, as " + c.id() + " does not depend on it");
+					if (ignoredPatches.add(c.id() + " " + target)) {
+						report.line("Compatibility hint warnings", c.id() + ": the patch for " + target + " is ignored, as " + c.id() + " does not depend on it");
+					}
 					continue;
 				}
 				byTarget.computeIfAbsent(target, k -> new ArrayList<>()).add(new AppliedPatch(c.id(), patch));
@@ -459,7 +467,7 @@ public final class Pipeline {
 	}
 
 	/** Reports the outcome and builds the Fabric Loader runtime's view of every mod. */
-	private Result assemble(FabricLoaderRuntime runtime, Rounds rounds, Set<String> dependencyFailures) {
+	private Result assemble(FabricLoaderRuntime runtime, Rounds rounds) {
 		for (Map.Entry<String, Drop> d : rounds.dropped.entrySet()) {
 			Candidate c = d.getValue().candidate();
 			report.mod(new ModRow(d.getKey(), c.version(), c.origin(), Status.DISABLED, d.getValue().reason(), d.getValue().suggestion()));
@@ -515,7 +523,7 @@ public final class Pipeline {
 		for (NeoForgeMod m : in.neoForgeMods()) addBuiltin(runtime, m.id(), m.version(), m.displayName(), List.of());
 
 		in.cache().notes().forEach(n -> report.line("Cache", n));
-		return new Result(config, List.copyOf(loaded), injections, Set.copyOf(environmentClasses), runtime, containers, report, dependencyFailures);
+		return new Result(config, List.copyOf(loaded), injections, Set.copyOf(environmentClasses), runtime, containers, report, Set.copyOf(rounds.dependencyFailures));
 	}
 
 	private void reportLoaded(TranslatedMod t, Long millis, PackageGuard.Decision decision, List<String> linkageIssues) {

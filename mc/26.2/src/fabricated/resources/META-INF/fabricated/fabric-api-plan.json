@@ -87,7 +87,7 @@
     "fabric-item-api-v1": {
       "plan": "native",
       "version": "14.5.0",
-      "reason": "Shipped by Fabricated on NeoForge's item hooks and events (upstream's mixins conflict with NeoForge's patches); equipment slot providers get no entity, enchantment modify events are not fired."
+      "reason": "Shipped by Fabricated on NeoForge's item hooks and events (upstream's mixins conflict with NeoForge's patches); equipment slot providers get no entity."
     },
     "fabric-key-mapping-api-v1": {
       "plan": "passthrough"
@@ -111,7 +111,13 @@
       "plan": "passthrough"
     },
     "fabric-model-loading-api-v1": {
-      "plan": "passthrough"
+      "plan": "passthrough",
+      "skipMixins": [
+        "fabric-model-loading-api-v1.mixins.json:ModelManagerMixin#cancelVanillaDeserialize",
+        "fabric-model-loading-api-v1.mixins.json:ModelManagerMixin#actuallyDeserializeModel",
+        "fabric-model-loading-api-v1.mixins.json:ModelManagerMixin#resolveExtraModels"
+      ],
+      "reason": "Model loading plugins, extra models (added to the models NeoForge's own overload of the discovery resolves) and model modifiers work; NeoForge parses model files itself (with its own custom loaders), so UnbakedModelDeserializer types registered with Fabric are not used."
     },
     "fabric-networking-api-v1": {
       "plan": "native",
@@ -143,12 +149,26 @@
       "reason": "Shipped by Fabricated on NeoForge's registries, which already sync ids to clients (upstream's mixins conflict with NeoForge's patches)."
     },
     "fabric-renderer-api-v1": {
-      "plan": "unsupported",
-      "reason": "Fabric's renderer API replaces the block model pipeline that NeoForge owns; mods that require it need their NeoForge build."
+      "plan": "passthrough",
+      "skipMixins": [
+        "fabric-renderer-api-v1.mixins.json:block.model.MultiPartModelMixin#createGeometryKey",
+        "fabric-renderer-api-v1.mixins.json:block.model.MultiPartModelMixin#particleMaterial",
+        "fabric-renderer-api-v1.mixins.json:block.model.SingleVariantMixin#createGeometryKey",
+        "fabric-renderer-api-v1.mixins.json:block.model.WeightedVariantsMixin#createGeometryKey",
+        "fabric-renderer-api-v1.mixins.json:block.model.WeightedVariantsMixin#particleMaterial",
+        "fabric-renderer-api-v1.mixins.json:block.render.SectionCompilerMixin",
+        "fabric-renderer-api-v1.mixins.json:block.render.MovingBlockFeatureRendererMixin",
+        "fabric-renderer-api-v1.mixins.json:block.render.LevelExtractorMixin",
+        "fabric-renderer-api-v1.mixins.json:block.render.LevelRendererMixin",
+        "fabric-renderer-api-v1.mixins.json:submit.SubmitNodeCollectionMixin#hasMaterialFlagProxy",
+        "fabric-renderer-api-v1.mixins.json:block.model.SimpleModelWrapperMixin#storeModelBakery",
+        "fabric-renderer-api-v1.mixins.json:block.model.SimpleModelWrapperMixin#analyzeMesh",
+        "fabric-renderer-api-v1.mixins.json:block.particle.ScreenEffectRendererMixin"
+      ],
+      "reason": "Upstream loads with Indigo as the renderer, so meshes and quad emitters work, but NeoForge keeps drawing the world: the hooks that send every block in the world, moving blocks, block outlines and breaking animations through Fabric's renderer are left out, so a model's custom emitQuads geometry is drawn in item and block entity rendering only, not in the world. NeoForge already declares createGeometryKey and particleMaterial on vanilla's models with Fabric's signatures, so upstream's copies are left out (Fabricated declares the shared defaults on BlockStateModel). NeoForge moved block model baking into its own overload of SimpleModelWrapper.bake, which upstream's mesh check doesn't reach, so a mesh model using sprites from outside the block atlas is not rejected."
     },
     "fabric-renderer-indigo": {
-      "plan": "unsupported",
-      "reason": "Fabric's renderer API replaces the block model pipeline that NeoForge owns; mods that require it need their NeoForge build."
+      "plan": "passthrough"
     },
     "fabric-rendering-fluids-v1": {
       "plan": "passthrough",
@@ -166,7 +186,7 @@
         "fabric-rendering-v1.mixins.json:DebugOptionsScreenOptionListMixin",
         "fabric-rendering-v1.mixins.json:RenderPipelineBuilderMixin#copyUsePipelineDrawModeForGuiToSnippet"
       ],
-      "reason": "NeoForge draws the HUD in layers: Fabricated runs Fabric's HUD elements from NeoForge's vanilla layers instead of upstream's HUD mixin. Picture-in-picture renderers registered with Fabric are not used (NeoForge rebuilt that renderer), and the debug options screen keeps vanilla's sorting and search. Render pipeline snippets don't carry Fabric's GUI draw mode flag (NeoForge added a field to them); pipelines do."
+      "reason": "NeoForge draws the HUD in layers: Fabricated runs Fabric's HUD elements from NeoForge's vanilla layers instead of upstream's HUD mixin. Picture-in-picture renderers registered with Fabric are handed to NeoForge's own (NeoForge rebuilt that renderer), and the debug options screen keeps vanilla's sorting and search. Render pipeline snippets don't carry Fabric's GUI draw mode flag (NeoForge added a field to them); pipelines do."
     },
     "fabric-resource-conditions-api-v1": {
       "plan": "passthrough",

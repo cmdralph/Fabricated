@@ -36,14 +36,12 @@ import org.objectweb.asm.commons.ClassRemapper;
  * </ul>
  */
 public final class JarRemapper {
-	private final MappingTable table;
-	private final TokenRemapper tokens;
 	private final IntermediaryRemapper remapper;
+	private final TokenRemapper tokens;
 
 	public JarRemapper(MappingTable table) {
-		this.table = table;
-		this.tokens = new TokenRemapper(table);
 		this.remapper = new IntermediaryRemapper(table);
+		this.tokens = remapper.tokens();
 	}
 
 	/** Result of remapping one jar. */
@@ -95,7 +93,7 @@ public final class JarRemapper {
 
 	private String remapClassPath(String name) {
 		String internal = name.substring(0, name.length() - ".class".length());
-		return table.mapClass(internal) + ".class";
+		return remapper.map(internal) + ".class";
 	}
 
 	/** Rewrites every string value of a refmap (keys are mod-side names and stay as they are). */

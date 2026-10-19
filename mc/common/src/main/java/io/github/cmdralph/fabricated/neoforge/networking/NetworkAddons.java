@@ -20,11 +20,13 @@ public final class NetworkAddons {
 		void fabricated$setNetworkAddon(Object addon);
 	}
 
-	/** The listener's addon of {@code type}, created on first use. */
+	/** The listener's addon of {@code type}, created on first use (the field is volatile: only creation locks). */
 	public static <L, A> A get(L listener, Class<A> type, Function<L, A> factory) {
 		Holder holder = (Holder) listener;
+		Object addon = holder.fabricated$networkAddon();
+		if (type.isInstance(addon)) return type.cast(addon);
 		synchronized (holder) {
-			Object addon = holder.fabricated$networkAddon();
+			addon = holder.fabricated$networkAddon();
 			if (type.isInstance(addon)) return type.cast(addon);
 			A created = factory.apply(listener);
 			holder.fabricated$setNetworkAddon(created);

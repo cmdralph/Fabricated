@@ -1,6 +1,7 @@
 package io.github.cmdralph.fabricated.core.runtime;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -20,6 +21,7 @@ import io.github.cmdralph.fabricated.core.remap.MappingTable;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.loader.api.EntrypointException;
+import net.fabricmc.loader.api.entrypoint.EntrypointContainer;
 import net.fabricmc.loader.api.MappingResolver;
 import net.fabricmc.loader.api.metadata.ModOrigin;
 
@@ -100,6 +102,22 @@ class FabricLoaderRuntimeTest {
 
 		mod(rt, "bad_mod", "does.not.Exist");
 		assertThrows(EntrypointException.class, () -> rt.getEntrypoints("main", ModInitializer.class));
+		// Containers create their instance when asked, so a broken one doesn't hide the others.
+		List<EntrypointContainer<ModInitializer>> containers = rt.getEntrypointContainers("main", ModInitializer.class);
+		assertEquals(2, containers.size());
+		assertSame(main.getFirst(), containers.getFirst().getEntrypoint());
+		assertThrows(EntrypointException.class, () -> containers.get(1).getEntrypoint());
+	}
+
+	@Test
+	void aRemovedModIsGone() throws Exception {
+		FabricLoaderRuntime rt = runtime();
+		mod(rt, "good_mod", Good.class.getName());
+		rt.removeMod("good_mod");
+		assertFalse(rt.isModLoaded("good_mod"));
+		assertFalse(rt.isModLoaded("good_mod-provided"), "its other ids go too");
+		assertTrue(rt.getAllMods().isEmpty());
+		assertTrue(rt.getEntrypoints("main", ModInitializer.class).isEmpty());
 	}
 
 	@Test

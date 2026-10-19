@@ -69,8 +69,4 @@ public abstract class ChanneledNetworkAddon<H> implements PacketSender {
 		Objects.requireNonNull(disconnectReason, "Disconnect reason cannot be null");
 		this.connection.disconnect(disconnectReason);
 	}
-
-	public Connection connection() {
-		return this.connection;
-	}
 }

@@ -12,6 +12,7 @@ import java.util.function.Consumer;
 import org.junit.jupiter.api.Test;
 import org.objectweb.asm.AnnotationVisitor;
 import org.objectweb.asm.ClassWriter;
+import org.objectweb.asm.Label;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
@@ -40,11 +41,53 @@ class MixinPreflightTest {
 		tick.visitEnd();
 		MethodVisitor helper = cw.visitMethod(Opcodes.ACC_PRIVATE, "helper", "(I)V", null, null);
 		helper.visitCode();
+		Label start = new Label();
+		Label end = new Label();
+		helper.visitLabel(start);
 		helper.visitInsn(Opcodes.RETURN);
+		helper.visitLabel(end);
+		helper.visitLocalVariable("this", "L" + TARGET + ";", null, start, end, 0);
+		helper.visitLocalVariable("amount", "I", null, start, end, 1);
 		helper.visitMaxs(0, 2);
 		helper.visitEnd();
 		cw.visitEnd();
 		return cw.toByteArray();
+	}
+
+	/** {@link #TARGET} with tick() delegating to tick(I), which alone calls helper(I)V: NeoForge keeps old signatures so. */
+	private static byte[] overloadedTarget() {
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		MethodVisitor old = cw.visitMethod(Opcodes.ACC_PUBLIC, "tick", "()V", null, null);
+		old.visitCode();
+		old.visitVarInsn(Opcodes.ALOAD, 0);
+		old.visitInsn(Opcodes.ICONST_0);
+		old.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "tick", "(I)V", false);
+		old.visitInsn(Opcodes.RETURN);
+		old.visitMaxs(0, 0);
+		old.visitEnd();
+		MethodVisitor current = cw.visitMethod(Opcodes.ACC_PUBLIC, "tick", "(I)V", null, null);
+		current.visitCode();
+		current.visitVarInsn(Opcodes.ALOAD, 0);
+		current.visitVarInsn(Opcodes.ILOAD, 1);
+		current.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "helper", "(I)V", false);
+		current.visitInsn(Opcodes.RETURN);
+		current.visitMaxs(0, 0);
+		current.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	@Test
+	void aSelectorWithoutDescriptorTargetsTheFirstOverloadOnly() throws Exception {
+		ClassIndex game = new ClassIndex(Map.of(TARGET, overloadedTarget())::get);
+		Map<String, byte[]> mod = Map.of(
+				"com/example/mixin/ByName", mixin("com/example/mixin/ByName", false, cw -> inject(cw, "h", "tick", "INVOKE", "Lnet/minecraft/world/Thing;helper(I)V", 1, null)),
+				"com/example/mixin/ByDesc", mixin("com/example/mixin/ByDesc", false, cw -> inject(cw, "h", "tick(I)V", "INVOKE", "Lnet/minecraft/world/Thing;helper(I)V", 1, null)));
+		MixinPreflight preflight = new MixinPreflight(game, mod::get, ClassBytesSource.EMPTY, false);
+		List<PreflightFinding> byName = preflight.check("test.mixins.json", MixinConfigFile.parse(config(true, "ByName")), Refmap.EMPTY, Set.of());
+		assertEquals(1, byName.size(), "Mixin picks tick()V, which has no such call: " + byName);
+		assertTrue(preflight.check("test.mixins.json", MixinConfigFile.parse(config(true, "ByDesc")), Refmap.EMPTY, Set.of()).isEmpty());
 	}
 
 	/** Builds a mixin class targeting {@link #TARGET}; {@code body} adds members. */
@@ -386,6 +429,7 @@ class MixinPreflightTest {
 		assertEquals(new MemberRef("a/B", "foo", "(I)V", false), MemberRef.parse("La/B;foo(I)V"));
 		assertEquals(new MemberRef(null, "foo", null, false), MemberRef.parse("foo"));
 		assertEquals(new MemberRef("a/B", "bar", "I", false), MemberRef.parse("La/B;bar:I"));
+		assertEquals(new MemberRef(null, "LOGGER", "Lorg/slf4j/Logger;", false), MemberRef.parse("LOGGER:Lorg/slf4j/Logger;"));
 		assertEquals(new MemberRef("a/b/C", "baz", "()V", false), MemberRef.parse("a.b.C.baz()V"));
 		assertTrue(MemberRef.parse("foo*").fuzzy());
 		assertTrue(MemberRef.parse("/regex/").fuzzy());
@@ -561,9 +605,22 @@ class MixinPreflightTest {
 
 	/** An @Inject at HEAD of helper(I)V whose handler has the given descriptor; {@code sugarIndex} marks a @Local parameter. */
 	private static byte[] headInjector(String name, String handlerDesc, int sugarIndex) {
+		return headInjector(name, handlerDesc, sugarIndex, null);
+	}
+
+	/** As above, the @Local parameter capturing the local named {@code localName} when not null. */
+	private static byte[] headInjector(String name, String handlerDesc, int sugarIndex, String localName) {
 		return mixin(name, false, cw -> {
 			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "h", handlerDesc, null, null);
-			if (sugarIndex >= 0) mv.visitParameterAnnotation(sugarIndex, "Lcom/llamalad7/mixinextras/sugar/Local;", false).visitEnd();
+			if (sugarIndex >= 0) {
+				AnnotationVisitor local = mv.visitParameterAnnotation(sugarIndex, "Lcom/llamalad7/mixinextras/sugar/Local;", false);
+				if (localName != null) {
+					AnnotationVisitor names = local.visitArray("name");
+					names.visit(null, localName);
+					names.visitEnd();
+				}
+				local.visitEnd();
+			}
 			AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
 			AnnotationVisitor methods = ann.visitArray("method");
 			methods.visit(null, "helper");
@@ -593,6 +650,19 @@ class MixinPreflightTest {
 		assertEquals(1, wrong.size(), wrong.toString());
 		assertEquals(Severity.FAIL, wrong.getFirst().severity());
 		assertTrue(wrong.getFirst().message().contains("does not match the parameters"), wrong.getFirst().message());
+	}
+
+	@Test
+	void aCapturedLocalMustExistInTheTarget() throws Exception {
+		String handler = "(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;I)V";
+		List<PreflightFinding> present = run(config(true, "Present"), null,
+				Map.of("com/example/mixin/Present", headInjector("com/example/mixin/Present", handler, 1, "amount")), false);
+		assertTrue(present.isEmpty(), present.toString());
+		List<PreflightFinding> gone = run(config(true, "Gone"), null,
+				Map.of("com/example/mixin/Gone", headInjector("com/example/mixin/Gone", handler, 1, "testPos")), false);
+		// Reported as the injector's require says (none in this config: a warning).
+		assertEquals(1, gone.size(), gone.toString());
+		assertTrue(gone.getFirst().message().contains("local variable testPos"), gone.getFirst().message());
 	}
 
 	private static byte[] accessorMixin(String name, String method, String desc) {

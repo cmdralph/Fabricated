@@ -12,7 +12,7 @@ import net.minecraft.server.network.ServerLoginPacketListenerImpl;
 @Mixin({ServerCommonPacketListenerImpl.class, ServerLoginPacketListenerImpl.class})
 public abstract class NetworkAddonHolderMixin implements NetworkAddons.Holder {
 	@Unique
-	private @Nullable Object fabricated$networkAddon;
+	private volatile @Nullable Object fabricated$networkAddon;
 
 	@Override
 	public @Nullable Object fabricated$networkAddon() {

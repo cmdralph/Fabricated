@@ -1,5 +1,6 @@
 package io.github.cmdralph.fabricated.neoforge;
 
+import io.github.cmdralph.fabricated.neoforge.registry.FabricTableEntries;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -65,6 +66,7 @@ final class EntrypointBridge {
 			}
 		});
 
+		FabricTableEntries.recordVanilla();
 		List<EntrypointRunner.Failure> failures = new ArrayList<>();
 		failures.addAll(runner.run("preLaunch", PreLaunchEntrypoint.class, PreLaunchEntrypoint::onPreLaunch));
 		failures.addAll(runner.run("main", ModInitializer.class, ModInitializer::onInitialize));

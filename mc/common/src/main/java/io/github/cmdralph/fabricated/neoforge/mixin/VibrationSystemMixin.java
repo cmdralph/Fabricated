@@ -5,6 +5,7 @@ import org.spongepowered.asm.mixin.injection.At;
 
 import com.llamalad7.mixinextras.injector.ModifyReturnValue;
 
+import io.github.cmdralph.fabricated.neoforge.registry.FabricTableEntries;
 import net.minecraft.core.Holder;
 import net.minecraft.world.level.gameevent.GameEvent;
 import net.minecraft.world.level.gameevent.vibrations.VibrationSystem;
@@ -17,6 +18,6 @@ import net.minecraft.world.level.gameevent.vibrations.VibrationSystem;
 interface VibrationSystemMixin {
 	@ModifyReturnValue(method = "getGameEventFrequency(Lnet/minecraft/core/Holder;)I", at = @At("RETURN"))
 	private static int fabricated$tableFrequency(int frequency, Holder<GameEvent> event) {
-		return frequency != 0 ? frequency : event.unwrapKey().map(VibrationSystem.VIBRATION_FREQUENCY_FOR_EVENT::applyAsInt).orElse(0);
+		return frequency != 0 ? frequency : FabricTableEntries.vibrationFrequency(event);
 	}
 }

@@ -31,13 +31,14 @@ public record ArchiveLimits(
 
 	/**
 	 * Limits for re-reading a mod after translation. On 1.21.11 the remapped jar is written uncompressed (byte-for-byte
-	 * reproducible output), so its file size is about the mod's total uncompressed size; the other limits still apply
-	 * to its contents.
+	 * reproducible output), so its file size is about the mod's total uncompressed size, and it has an entry for every
+	 * directory, which the original may leave out; the other limits still apply to its contents.
 	 */
 	public ArchiveLimits forTranslatedJars() {
 		long uncompressedJar = maxTotalUncompressedBytes + (long) maxEntries * 512L;
-		return maxJarBytes >= uncompressedJar ? this
-				: new ArchiveLimits(uncompressedJar, maxEntryBytes, maxTotalUncompressedBytes, maxEntries, maxCompressionRatio, maxNestingDepth);
+		int entries = (int) Math.min(Integer.MAX_VALUE, 2L * maxEntries);
+		return new ArchiveLimits(Math.max(maxJarBytes, uncompressedJar), maxEntryBytes, maxTotalUncompressedBytes, entries,
+				maxCompressionRatio, maxNestingDepth);
 	}
 
 	public ArchiveLimits {

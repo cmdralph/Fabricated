@@ -9,6 +9,7 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -102,7 +103,7 @@ public final class TranslationCache {
 	}
 
 	/** A complete cache entry. */
-	public record Entry(String name, Path dir, Map<String, Object> metadata) {
+	public record Entry(Path dir, Map<String, Object> metadata) {
 		public Path file(String fileName) {
 			return dir.resolve(fileName);
 		}
@@ -146,7 +147,7 @@ public final class TranslationCache {
 				if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) throw new JsonException("missing " + fileName);
 				if (verify && !sha256(file).equals(f.getValue())) throw new JsonException("hash mismatch for " + fileName);
 			}
-			return Optional.of(new Entry(name, dir, meta));
+			return Optional.of(new Entry(dir, meta));
 		} catch (IOException | JsonException | RuntimeException e) {
 			notes.add("Cache entry " + name + " failed verification (" + e.getMessage() + ") and will be rebuilt");
 			deleteQuietly(dir);
@@ -178,7 +179,8 @@ public final class TranslationCache {
 			deleteQuietly(target);
 			Files.move(tmp, target, StandardCopyOption.ATOMIC_MOVE);
 			lastUsed.put(name, launch);
-			return new Entry(name, target, meta);
+			for (Map.Entry<String, Object> h : hashes.entrySet()) remember(target.resolve(h.getKey()), (String) h.getValue());
+			return new Entry(target, meta);
 		} finally {
 			deleteQuietly(tmp);
 		}
@@ -190,6 +192,7 @@ public final class TranslationCache {
 		Path target = root.resolve("nested").resolve(sha + ".jar");
 		if (!Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS) || (verify && !sha256(target).equals(sha))) {
 			AtomicFiles.writeAtomically(target, data, root.resolve("tmp"));
+			remember(target, sha);
 		}
 		lastUsed.put("nested/" + sha + ".jar", launch);
 		return target;
@@ -246,13 +249,19 @@ public final class TranslationCache {
 		Path file = root.resolve("blobs").resolve(fileName);
 		if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) return Optional.empty();
 		byte[] bytes = Files.readAllBytes(file);
-		byte[] data = bytes.length < BLOB_HASH_LENGTH ? null : Arrays.copyOfRange(bytes, BLOB_HASH_LENGTH, bytes.length);
-		if (data == null || !Arrays.equals(Hashing.sha256Digest().digest(data), Arrays.copyOf(bytes, BLOB_HASH_LENGTH))) {
+		if (bytes.length < BLOB_HASH_LENGTH || !blobIntact(bytes)) {
 			notes.add("Cache item blobs/" + fileName + " failed verification and will be rebuilt");
 			deleteQuietly(file);
 			return Optional.empty();
 		}
-		return Optional.of(data);
+		return Optional.of(Arrays.copyOfRange(bytes, BLOB_HASH_LENGTH, bytes.length));
+	}
+
+	/** Whether a blob file's content matches the hash it starts with. */
+	private static boolean blobIntact(byte[] file) {
+		MessageDigest digest = Hashing.sha256Digest();
+		digest.update(file, BLOB_HASH_LENGTH, file.length - BLOB_HASH_LENGTH);
+		return MessageDigest.isEqual(digest.digest(), Arrays.copyOf(file, BLOB_HASH_LENGTH));
 	}
 
 	/**
@@ -261,13 +270,26 @@ public final class TranslationCache {
 	 * over another with its old timestamp kept ({@code cp -p}, a restored backup) still changes the change time.
 	 */
 	public String sha256(Path file) throws IOException {
-		BasicFileAttributes attrs = Files.readAttributes(file, BasicFileAttributes.class);
-		String key = file.toAbsolutePath().normalize().toString();
-		String stamp = attrs.size() + "|" + attrs.lastModifiedTime().toMillis() + "|" + changeTime(file) + "|" + attrs.fileKey();
+		String key = memoKey(file);
+		String stamp = stamp(file);
 		Memo memo = hashMemo.get(key);
 		String sha = memo != null && memo.stamp().equals(stamp) ? memo.sha256() : Hashing.sha256(file);
 		hashMemo.put(key, new Memo(stamp, sha, launch));
 		return sha;
+	}
+
+	/** Records the hash of a file this cache just wrote, so the next launch doesn't hash it again. */
+	private void remember(Path file, String sha) throws IOException {
+		hashMemo.put(memoKey(file), new Memo(stamp(file), sha, launch));
+	}
+
+	private static String memoKey(Path file) {
+		return file.toAbsolutePath().normalize().toString();
+	}
+
+	private static String stamp(Path file) throws IOException {
+		BasicFileAttributes attrs = Files.readAttributes(file, BasicFileAttributes.class);
+		return attrs.size() + "|" + attrs.lastModifiedTime().toMillis() + "|" + changeTime(file) + "|" + attrs.fileKey();
 	}
 
 	private static Object changeTime(Path file) {

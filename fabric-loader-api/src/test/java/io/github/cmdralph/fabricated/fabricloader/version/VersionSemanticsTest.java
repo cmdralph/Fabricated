@@ -76,6 +76,31 @@ class VersionSemanticsTest {
 	}
 
 	@Test
+	void repeatedTrailingWildcardsMeanOne() throws Exception {
+		assertTrue(matches("1.x.x", "1.5.0"));
+		assertFalse(matches("1.x.x", "2.0.0"));
+		assertEquals(VersionPredicate.parse("1.x").getInterval(), VersionPredicate.parse("1.x.x").getInterval());
+	}
+
+	@Test
+	void prereleasesCompareLikeFabric() throws Exception {
+		// Only 0 and numbers without leading zeros are numeric; numeric parts sort before others.
+		assertTrue(v("1.0.0-beta.01").compareTo(v("1.0.0-beta.1")) > 0);
+		assertTrue(v("1.0.0-beta.2").compareTo(v("1.0.0-beta.10")) < 0);
+		assertTrue(v("1.0.0-beta").compareTo(v("1.0.0-beta.1")) < 0);
+		assertFalse(matches("^1.0", "2.0.0-0"));
+	}
+
+	@Test
+	void complementOfAFreeFormVersionExcludesIt() throws Exception {
+		Version foo = v("foo_bar");
+		List<VersionInterval> rest = VersionInterval.not(VersionPredicate.parse("foo_bar").getInterval());
+		assertEquals(2, rest.size());
+		assertTrue(rest.stream().noneMatch(i -> i.getMin() == null && i.getMax() == null), rest.toString());
+		assertEquals(foo, rest.getFirst().getMax());
+	}
+
+	@Test
 	void wildcardUpperBoundExcludesNextPrereleases() throws Exception {
 		assertFalse(matches("1.2.x", "1.3.0-alpha"));
 	}

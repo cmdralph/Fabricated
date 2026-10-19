@@ -9,7 +9,6 @@ import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.Handle;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.AbstractInsnNode;
-import org.objectweb.asm.tree.AnnotationNode;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.FieldInsnNode;
 import org.objectweb.asm.tree.InvokeDynamicInsnNode;
@@ -29,7 +28,6 @@ import org.objectweb.asm.tree.TypeInsnNode;
  * annotated {@code @Environment(EnvType.CLIENT)} are skipped because they never load there.
  */
 public final class LinkageChecker {
-	private static final String ENVIRONMENT = "Lnet/fabricmc/api/Environment;";
 	private static final int MAX_ISSUES = 25;
 
 	private final ClassIndex available;
@@ -60,7 +58,7 @@ public final class LinkageChecker {
 		ClassNode node = new ClassNode();
 		try {
 			new ClassReader(classFile).accept(node, ClassReader.SKIP_FRAMES | ClassReader.SKIP_DEBUG);
-		} catch (RuntimeException e) {
+		} catch (RuntimeException | StackOverflowError e) {
 			out.add(new Issue("?", "unreadable class file", "class"));
 			return;
 		}
@@ -129,12 +127,11 @@ public final class LinkageChecker {
 
 	/** Mixin classes reference shadowed members that Mixin, not the JVM, resolves. */
 	private static boolean isMixin(ClassNode node) {
-		return Annotations.find(node.visibleAnnotations, node.invisibleAnnotations, "Lorg/spongepowered/asm/mixin/Mixin;") != null;
+		return Annotations.find(node.visibleAnnotations, node.invisibleAnnotations, Annotations.MIXIN) != null;
 	}
 
 	private static boolean isClientOnly(ClassNode node) {
-		AnnotationNode env = Annotations.find(node.visibleAnnotations, node.invisibleAnnotations, ENVIRONMENT);
-		return env != null && Annotations.value(env, "value") instanceof String[] e && e.length == 2 && e[1].equals("CLIENT");
+		return "CLIENT".equals(Annotations.side(Annotations.find(node.visibleAnnotations, node.invisibleAnnotations, Annotations.ENVIRONMENT)));
 	}
 
 	private static boolean referencesClientCode(ClassNode node) {
