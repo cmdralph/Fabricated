@@ -192,7 +192,7 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 			JarContents.PathFilter filter = excluded.isEmpty() ? null : path -> !PackageGuard.isExcluded(path, excluded);
 			JarContents contents = JarContents.ofFilteredPaths(List.of(
 					new JarContents.FilteredPath(mod.translated().jar(), filter),
-					new JarContents.FilteredPath(mod.translated().overlay())));
+					new JarContents.FilteredPath(mod.translated().overlay(), filter)));
 			Optional<IModFile> added = pipeline.addJarContent(contents, attributes, IncompatibleFileReporting.ERROR);
 			if (added.isEmpty()) {
 				// Fabric code mustn't see it as loaded, or run its entrypoints, when NeoForge won't load its classes.
