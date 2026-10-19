@@ -539,10 +539,13 @@ gets its stream from it there; other sounds keep NeoForge's path.
 
 ### `fabric-renderer-api-v1`, `fabric-renderer-indigo` and `fabric-model-loading-api-v1` (26.x)
 
-The renderer API loads with Indigo as its renderer, so meshes, quad emitters and Fabric's model types work, but
-NeoForge keeps drawing the world: upstream's hooks that send every block in the world, moving blocks, block
-outlines and breaking animations through Fabric's renderer are left out. A model's custom `emitQuads` geometry is
-drawn in item and block entity rendering, not in the world. NeoForge already gives vanilla's models
+The renderer API loads with Indigo as its renderer, so meshes, quad emitters and Fabric's model types work. In the
+world, a block whose model implements `emitQuads` itself (a Fabric model) is drawn by Fabric's renderer into the
+chunk's buffers; every other block keeps NeoForge's renderer, so NeoForge's model data, tints, face culling and
+ambient occlusion per part still apply to it. Upstream's hook that sends *every* block through Fabric's renderer is
+left out for that reason, and so are its hooks for moving blocks, block outlines and breaking animations: there a
+Fabric model's own geometry is not drawn yet. A Fabric model used as a part of a vanilla multipart or weighted model
+is not drawn in the world yet either. NeoForge already gives vanilla's models
 `createGeometryKey` and `particleMaterial` with Fabric's signatures, so upstream's copies are left out and
 Fabricated declares the shared defaults on `BlockStateModel`. On 26.1.2, where upstream's check of a mesh
 model's sprites takes the parameters of vanilla's `SimpleModelWrapper.bake` (NeoForge moved the code into its own
@@ -551,7 +554,8 @@ follows the code into NeoForge's overload. On 26.1.2 and 26.2 the block overlay 
 block's plain particle sprite.
 
 Model loading loads too: its plugins, model modifiers and extra models work, with the extra models added to
-NeoForge's model discovery by Fabricated (NeoForge rewrote the code upstream hooks).
+NeoForge's model discovery by Fabricated (NeoForge rewrote the code upstream hooks). Model types registered with
+Fabric's `UnbakedModelDeserializer` are not used: NeoForge parses model files with its own loaders.
 
 On 1.21.11 the renderer API is unsupported (Fabric's renderer replaces the block model pipeline that NeoForge owns
 there), so model loading, which requires it, is disabled.

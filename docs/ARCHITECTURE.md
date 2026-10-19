@@ -79,18 +79,23 @@ Fabricated/
 ├── loader/                  FML-facing glue, compiled once against FML 10.0.36 SPI (identical through 12.x)
 │                            FabricCandidateLocator, FabricDependencyLocator, FabricLanguageLoader,
 │                            FabricModContainer, FabricLoaderImpl, ClassProcessors (interface injection)
-├── bridge-common/           MC-independent parts of Fabric API bridges (Event<T> impl, buffers)
+├── api/                     Fabricated's own small public API for NeoForge mods (see API.md)
 ├── mc/
-│   ├── shared-26/           Source dir shared by all 26.x targets (added as extra srcDir)
-│   ├── 1.21.11/             MC-facing bridges + VersionAdapter for 1.21.11 (Java 21)
+│   ├── mc.gradle            Shared build logic: source sets, shared source folders, jars, test mods
+│   ├── common/              Code every version compiles: bridges, mixins, the test mods (src/testmod)
+│   ├── common26/            Code all 26.x versions compile (renderer API terrain bridge, 26.x mixins)
+│   ├── common26early/       Code 26.1.2 and 26.2 compile
+│   ├── common26late/        Code 26.2 and 26.3 compile
+│   ├── 1.21.11/             What only 1.21.11 has: vendored native Fabric API modules (src/fabricapi),
+│   │                        fabric-api-plan.json, version-specific bridges (Java 21)
 │   ├── 26.1.2/              ... for 26.1.2 (Java 25)
 │   ├── 26.2/                ... for 26.2   (Java 25)
 │   └── 26.3/                ... for 26.3   (Java 25, NeoForge beta)
-├── testmods/                Tiny Fabric test mods built in-repo (entrypoints, mixin, AW, networking)
-└── docs/                    RESEARCH, ARCHITECTURE, COMPATIBILITY, CONTRIBUTING
+├── ci/                      Server, client and mod-corpus smoke tests run by GitHub Actions
+└── docs/                    claude.md (start here), progress.md, RESEARCH, ARCHITECTURE, COMPATIBILITY, MIXINS, API
 ```
 
-* **Output:** one jar per MC version, `fabricated-<version>+mc<mc>.jar`. `core`, `loader` and `bridge-common` are shaded in, all under the Fabricated-owned package `io.github.cmdralph.fabricated.*`, so they can't clash with anything. The `fabric-loader-api` types keep their original `net.fabricmc.*` package names because Fabric mods link against them.
+* **Output:** one jar per MC version, `fabricated-<version>+mc<mc>.jar`. `core`, `loader`, `fabric-loader-api` and `api` are shaded in, all under the Fabricated-owned package `io.github.cmdralph.fabricated.*`, so they can't clash with anything. The `fabric-loader-api` types keep their original `net.fabricmc.*` package names because Fabric mods link against them.
 * **No preprocessor** (no Stonecutter/Manifold). Version differences live in each `mc/<ver>` directory; code shared by every version lives once in `mc/common`, by all 26.x versions in `mc/common26`, by 26.1.2 and 26.2 in `mc/common26early`, and by 26.2 and 26.3 in `mc/common26late` (see `sharedSources` in `mc/mc.gradle`).
 * `core` targets Java 21 bytecode so the *same* compiled classes run on every line.
 
@@ -284,21 +289,25 @@ A unit test remaps the same input twice and compares SHA-256.
 
 ## 9. Per-version abstraction
 
-`VersionAdapter` (ServiceLoader, exactly one per `mc/<ver>` jar):
+There is no adapter interface: each version is its own Gradle project (`mc/<ver>`), and what differs between
+versions is decided at compile time by which source folders it compiles, plus two data files.
 
-```java
-public interface VersionAdapter {
-    String minecraftVersion();                  // "1.21.11", "26.2", ...
-    MappingProvider mappings();                 // Identity or IntermediaryToMojang
-    String fabricMixinNamespace();              // "intermediary" | "official"
-    FabricApiPlan fabricApiPlan();              // loaded from fabric-api-plan.json
-    RetargetTable mixinRetargets();             // loaded from retargets.json
-    void registerNativeBridges(BridgeContext ctx); // subscribes NeoForge event bridges
-}
-```
-
-* Everything MC-agnostic stays in `core`/`loader`. Each `mc/<ver>` contains only the bridges, which reference MC/NeoForge classes, and the two data files.
-* **Adding a version** (summarised from `CONTRIBUTING.md`): copy the nearest `mc/<ver>` directory, set `minecraft_version`/`neo_version` in its `gradle.properties`, add it to `settings.gradle` and the CI matrix, fix compile errors (usually renamed MC/NeoForge classes), adjust `fabric-api-plan.json`, and run the test mods. No core changes are expected.
+* **Code.** `sharedSources` in `mc/mc.gradle` adds `mc/common` to every version, `mc/common26` to all 26.x
+  versions, and `mc/common26early` / `mc/common26late` to the pairs that share an API. A version's own folder holds
+  only what differs (renamed Minecraft or NeoForge classes). The vendored native Fabric API modules are per version
+  (`mc/<ver>/src/fabricapi`), because upstream's sources differ per version.
+* **Data.** `META-INF/fabricated/fabric-api-plan.json` (per version: which Fabric API modules are native,
+  pass-through or unsupported, and which upstream mixins to skip) and the generated `version.properties` (Minecraft
+  version, mapping namespace, Mixin versions). Core reads both and validates them when parsed.
+* **Mixin differences in Fabric mods** are repaired by core's pre-flight against the running game's bytecode
+  (`MixinPreflight.repairs`: overloads NeoForge reordered or moved code into, constructors NeoForge kept for
+  vanilla's signature, renumbered lambdas, hard local captures, accessors of members NeoForge added), not by
+  per-version tables.
+* Everything Minecraft-agnostic stays in `core`/`loader`. The full seam table is in [`claude.md`](claude.md).
+* **Adding a version** (summarised from `CONTRIBUTING.md`): copy the nearest `mc/<ver>` directory, set
+  `minecraft_version`/`neo_version` in its `gradle.properties`, add it to `settings.gradle` and the CI matrix, fix
+  compile errors (usually renamed MC/NeoForge classes), adjust `fabric-api-plan.json`, and run the test mods. No core
+  changes are expected.
 
 ---
 
