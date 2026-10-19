@@ -29,6 +29,12 @@ shulkerboxtooltip
 xaeros-minimap
 xaeros-world-map
 
+# Rendering (Continuity draws connected textures through Fabric's renderer API)
+continuity
+entity-model-features
+entitytexturefeatures
+lambdynamiclights
+
 # Performance
 dynamic-fps
 entityculling

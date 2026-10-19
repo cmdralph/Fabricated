@@ -569,6 +569,28 @@ per-part and per-quad ambient occlusion (the defaults Forgified Fabric API has; 
 On 1.21.11 the renderer API is unsupported (Fabric's renderer replaces the block model pipeline that NeoForge owns
 there), so model loading, which requires it, is disabled.
 
+### Renderer mods: Sodium and Iris (26.x)
+
+Use the NeoForge builds of Sodium and Iris. Their Fabric builds are disabled with a message: Sodium's would mesh
+NeoForge's models, fluids and lighting the Fabric way and drop the geometry NeoForge mods add to chunks, and Iris's
+needs Sodium's Fabric build. Sodium for NeoForge carries its own implementation of Fabric's renderer API and switches
+it on whenever Fabric API's renderer module is loaded, which Fabricated with the Fabric API jar provides. It then meshes
+every block through that renderer, so Fabric block models show in the world. Fabricated's part:
+
+- It sees Sodium, whose mod is nested inside a service jar, and reads its mod properties, so Fabric API's own renderer
+  (Indigo) stands down for Sodium's, and Fabric mods depending on `sodium` or on `indium` (which Sodium provides) load.
+- Its renderer API defaults keep NeoForge models' level, model data and ambient occlusion when Sodium draws them
+  through Fabric's renderer (connected textures and other model-data models keep working).
+- Moving blocks and the breaking overlay of Fabric models go through the registered renderer, Sodium's.
+- A Fabric mod's Sodium integration is given to Sodium for NeoForge in the form it reads: its page in Sodium's options
+  (the `sodium:config_api_user` entrypoint, a plain class) and its overrides of Sodium's mixin options
+  (`sodium:options`).
+
+CI runs Sodium and Iris for NeoForge (from Modrinth) with Fabric API and a Fabric model test mod on 26.1.2, 26.2 and
+26.3, and checks each of these. Shaders weren't enabled in that run. A Fabric addon that mixes into Sodium's
+Fabric-only platform classes can't work with Sodium for NeoForge, which doesn't have them. On 1.21.11 neither Sodium
+for NeoForge nor Fabricated has Fabric's renderer API, so Fabric block models stay invisible with or without Sodium.
+
 ### Fabric Loader
 
 The public `net.fabricmc.loader.api` is complete: entrypoints (including custom ones and language adapters such as
