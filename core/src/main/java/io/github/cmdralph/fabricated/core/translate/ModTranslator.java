@@ -67,8 +67,6 @@ public final class ModTranslator {
 	public static final String OVERLAY = "overlay.jar";
 	public static final String REMAPPED = "remapped.jar";
 	public static final String AT_PATH = "META-INF/accesstransformer.cfg";
-	/** NeoForge's marker for the enums only its own enum extension system may extend. */
-	private static final String EXTENSIBLE_ENUM = "net/neoforged/neoforge/common/IExtensibleEnum";
 
 	/** Heap a translation may count on, in MiB: a quarter of the maximum, shared by all translations at once. */
 	private static final int MEMORY_MIB = (int) Math.max(64, Math.min(Integer.MAX_VALUE, Runtime.getRuntime().maxMemory() / 4 / (1 << 20)));
@@ -259,6 +257,8 @@ public final class ModTranslator {
 			Refmap refmap = Refmap.EMPTY;
 			try {
 				config = MixinConfigFile.parse(new String(data, StandardCharsets.UTF_8));
+				byte[] parentData = config.parent() != null ? files.read(config.parent()) : null;
+				if (parentData != null) config = config.inheriting(MixinConfigFile.parse(new String(parentData, StandardCharsets.UTF_8)));
 				if (config.refmap() != null) {
 					byte[] refmapData = files.read(config.refmap());
 					if (refmapData != null) refmap = Refmap.parse(new String(refmapData, StandardCharsets.UTF_8));
@@ -448,20 +448,13 @@ public final class ModTranslator {
 	}
 
 	/**
-	 * A class tweaker's enum extensions only declare the constants the mod's enum mixins add: Mixin adds them (from
-	 * 0.17.1), except to NeoForge's own extensible enums, which NeoForge reserves for its enum extension system.
+	 * A class tweaker's enum extensions only declare the constants the mod's enum mixins add: Mixin adds them, from
+	 * 0.17.1 (pre-flight checks the mixins themselves).
 	 */
 	private void checkEnumExtensions(AccessWidenerFile tweaker, Candidate candidate) throws TranslationException {
-		if (tweaker.enumExtensions().isEmpty()) return;
-		if (!MixinCompat.supportsEnumExtensions(env.runtimeMixinVersion())) {
+		if (!tweaker.enumExtensions().isEmpty() && !MixinCompat.supportsEnumExtensions(env.runtimeMixinVersion())) {
 			throw new TranslationException(candidate.id() + " adds enum constants with Mixin's enum extensions, which need Mixin 0.17.1 or later;"
 					+ " this NeoForge runs Mixin " + env.runtimeMixinVersion(), "Update NeoForge, or use a build of " + candidate.id() + " made for it.");
-		}
-		for (AccessWidenerFile.EnumExtension extension : tweaker.enumExtensions()) {
-			if (env.game().get(extension.target()).interfaces().contains(EXTENSIBLE_ENUM)) {
-				throw new TranslationException(candidate.id() + " adds " + extension.constant() + " to " + extension.target().replace('/', '.')
-						+ ", which NeoForge lets only its own enum extensions change", "Install the NeoForge build of " + candidate.id() + ", if it has one.");
-			}
 		}
 	}
 

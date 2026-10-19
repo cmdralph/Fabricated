@@ -524,6 +524,16 @@ class MixinPreflightTest {
 	}
 
 	@Test
+	void aConfigInheritsRequireFromItsParent() throws Exception {
+		MixinConfigFile parent = MixinConfigFile.parse("{\"required\":true,\"injectors\":{\"defaultRequire\":1}}");
+		MixinConfigFile child = MixinConfigFile.parse("{\"parent\":\"p.json\",\"package\":\"a\",\"mixins\":[]}").inheriting(parent);
+		assertTrue(child.required());
+		assertEquals(1, child.defaultRequire());
+		MixinConfigFile own = MixinConfigFile.parse("{\"parent\":\"p.json\",\"required\":false,\"injectors\":{\"defaultRequire\":2}}").inheriting(parent);
+		assertTrue(!own.required() && own.defaultRequire() == 2, "a config's own settings win");
+	}
+
+	@Test
 	void aPluginConfigsCrashingMixinIsLeftOut() throws Exception {
 		byte[] bad = mixin("com/example/mixin/Bad", false, cw -> inject(cw, "h", "removedMethod", "HEAD", null, 1, null));
 		String cfg = "{\"required\":true,\"package\":\"com.example.mixin\",\"plugin\":\"com.example.Plugin\",\"mixins\":[\"Bad\"]}";

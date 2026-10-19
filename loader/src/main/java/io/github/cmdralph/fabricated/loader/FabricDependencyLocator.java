@@ -13,6 +13,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Supplier;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -53,6 +55,7 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 	private static final String GAME_MOD_ID = "fabricated";
 	private static final String GAME_MOD_RESOURCE = "game-mod.jar";
 	private static final String MESSAGE = "§e[Fabricated]§r {0}";
+	private static final Pattern VERSION_IN_NAME = Pattern.compile("\\d+\\.\\d+\\.\\d+");
 
 	@Override
 	public void scanMods(List<IModFile> loadedMods, IDiscoveryPipeline pipeline) {
@@ -164,7 +167,7 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 			if (planJson == null) throw new IllegalStateException("This Fabricated build is missing its fabric-api-plan.json");
 			plan = FabricApiPlan.parse(new String(planJson, StandardCharsets.UTF_8));
 			Pipeline.Input input = new Pipeline.Input(gameDir, FMLPaths.CONFIGDIR.get(), config, cache, fabricJars, mcVersion, neoVersion,
-					client, info.namespace(), runtimeMixinVersion(info), mixinExtrasVersion(), info.mixinLowest(), info.fabricatedVersion(), !fml.isProduction(), gameClasses, untransformable,
+					client, info.namespace(), runtimeMixinVersion(info), mixinExtrasVersion(loadedMods), info.mixinLowest(), info.fabricatedVersion(), !fml.isProduction(), gameClasses, untransformable,
 					platformPackages, plan, nativeApi, nativeApiInterfaces, neoForgeMods,
 					(mappingsCache, mojangPath) -> IntermediaryMappings.load(mappingsCache, mcVersion, client, mojangPath),
 					fml.getProgramArgs().getArguments());
@@ -258,17 +261,29 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 		return info.mixinFallback();
 	}
 
-	/** The MixinExtras version NeoForge runs, from its jar's metadata or its own report, or null when unknown. */
-	static String mixinExtrasVersion() {
+	/**
+	 * The MixinExtras version NeoForge runs, from its jar among the discovered files (NeoForge nests it in its own jar):
+	 * its mod metadata, else its manifest, else its file name; or from its classes' module; null when not found.
+	 */
+	static String mixinExtrasVersion(List<IModFile> files) {
+		for (IModFile file : files) {
+			JarContents contents = file.getContents();
+			if (!contents.containsFile("com/llamalad7/mixinextras/MixinExtrasBootstrap.class")) continue;
+			for (IModInfo mod : file.getModInfos()) {
+				if (mod.getModId().equals("mixinextras")) return mod.getVersion().toString();
+			}
+			String fromManifest = contents.getManifest().getMainAttributes().getValue("Implementation-Version");
+			if (fromManifest != null) return fromManifest;
+			Matcher fromName = VERSION_IN_NAME.matcher(file.getFileName());
+			if (fromName.find()) return fromName.group();
+		}
+		// Not a discovered file: a library on NeoForge's own layers.
 		try {
 			Class<?> bootstrap = Class.forName("com.llamalad7.mixinextras.MixinExtrasBootstrap");
 			Optional<String> fromModule = Optional.ofNullable(bootstrap.getModule().getDescriptor())
 					.flatMap(ModuleDescriptor::version).map(ModuleDescriptor.Version::toString);
-			if (fromModule.isPresent()) return fromModule.get();
-			String fromPackage = bootstrap.getPackage().getImplementationVersion();
-			if (fromPackage != null) return fromPackage;
-			return bootstrap.getMethod("getVersion").invoke(null) instanceof String version ? version : null;
-		} catch (ReflectiveOperationException | LinkageError e) {
+			return fromModule.orElse(bootstrap.getPackage().getImplementationVersion());
+		} catch (ClassNotFoundException | LinkageError e) {
 			LOGGER.debug("Could not determine the running MixinExtras version", e);
 			return null;
 		}

@@ -186,6 +186,7 @@ public final class Pipeline {
 				.environment("Side", in.clientSide() ? "client" : "dedicated server")
 				.environment("Fabric mod namespace", in.namespace() == Namespace.INTERMEDIARY ? "intermediary (remapped to Mojang names)" : "Mojang names (no remapping)")
 				.environment("Mixin", in.runtimeMixinVersion())
+				.environment("MixinExtras", in.mixinExtrasVersion() != null ? in.mixinExtrasVersion() : "not found")
 				.environment("Java", Runtime.version().toString())
 				.environment("Fabric API plan", plan.fabricApiVersion())
 				.environment("Fabric Loader API", FABRIC_LOADER_COMPAT_VERSION);

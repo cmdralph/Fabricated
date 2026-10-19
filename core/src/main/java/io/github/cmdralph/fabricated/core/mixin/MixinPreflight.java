@@ -61,6 +61,8 @@ public final class MixinPreflight {
 	private static final String UNIQUE = "Lorg/spongepowered/asm/mixin/Unique;";
 	private static final String INTRINSIC = "Lorg/spongepowered/asm/mixin/Intrinsic;";
 	private static final String WRAP_OPERATION = "Lcom/llamalad7/mixinextras/injector/wrapoperation/WrapOperation;";
+	/** NeoForge's marker for the enums only its own enum extension system may extend. */
+	private static final String EXTENSIBLE_ENUM = "net/neoforged/fml/common/asm/enumextension/IExtensibleEnum";
 	private static final String MODIFY_VARIABLE = "Lorg/spongepowered/asm/mixin/injection/ModifyVariable;";
 	private static final String MODIFY_CONSTANT = "Lorg/spongepowered/asm/mixin/injection/ModifyConstant;";
 	private static final String OPERATION = "Lcom/llamalad7/mixinextras/injector/wrapoperation/Operation;";
@@ -321,8 +323,8 @@ public final class MixinPreflight {
 	 * Points the selectors of an injector whose injection points are missing from the method Mixin picks, but all occur in
 	 * the one overload of the same name that method calls (NeoForge's way of keeping vanilla's signature while moving the
 	 * code), at that overload; returns a description of each move. Only handlers that don't depend on the method's own
-	 * parameters are moved: not an {@code @Inject} taking them, nor a {@code @Local(argsOnly = true)} of a type the
-	 * overload doesn't take, nor captured locals or {@code @ModifyVariable}.
+	 * parameters or locals are moved: not an {@code @Inject} taking them, nor one capturing locals (the overload's
+	 * differ), except a {@code @Local(argsOnly = true)} of a type exactly one of the overload's parameters has.
 	 */
 	private static List<String> overloadRepairs(MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx) {
 		if (!(Annotations.value(injector, "method") instanceof List<?> selectors)) return List.of();
@@ -360,7 +362,7 @@ public final class MixinPreflight {
 			}
 			if (overload == null || (overload.access & Opcodes.ACC_STATIC) != (chosen.access & Opcodes.ACC_STATIC)
 					|| !Type.getReturnType(overload.desc).equals(Type.getReturnType(chosen.desc))
-					|| !argsOnlyLocalsFit(handler, overload) || pointsIn(ats, slices, overload, ctx) != Verdict.FOUND) continue;
+					|| !localsFit(handler, overload) || pointsIn(ats, slices, overload, ctx) != Verdict.FOUND) continue;
 			@SuppressWarnings("unchecked")
 			List<Object> values = (List<Object>) selectors;
 			values.set(i, overload.name + overload.desc);
@@ -445,17 +447,19 @@ public final class MixinPreflight {
 		return result;
 	}
 
-	/** Whether each of the handler's {@code @Local(argsOnly = true)} parameters has its type among {@code method}'s parameters. */
-	private static boolean argsOnlyLocalsFit(MethodNode handler, MethodNode method) {
+	/**
+	 * Whether the handler's {@code @Local}s still find what they captured in {@code method}: each must be an
+	 * {@code @Local(argsOnly = true)} of a type exactly one of {@code method}'s parameters has (other locals differ).
+	 */
+	private static boolean localsFit(MethodNode handler, MethodNode method) {
 		Type[] types = Type.getArgumentTypes(handler.desc);
 		List<Type> params = List.of(Type.getArgumentTypes(method.desc));
 		for (int i = 0; i < types.length; i++) {
 			for (AnnotationNode a : parameterAnnotations(handler, i)) {
-				if (a.desc.equals(LOCAL) && Boolean.TRUE.equals(Annotations.value(a, "argsOnly"))) {
-					Type local = types[i];
-					if (local.getDescriptor().startsWith("Lcom/llamalad7/mixinextras/sugar/ref/")) return false; // a LocalRef: type unknown here
-					if (!params.contains(local)) return false;
-				}
+				if (!a.desc.equals(LOCAL)) continue;
+				Type local = types[i];
+				if (!Boolean.TRUE.equals(Annotations.value(a, "argsOnly")) || local.getDescriptor().startsWith("Lcom/llamalad7/mixinextras/sugar/ref/")
+						|| params.stream().filter(local::equals).count() != 1) return false;
 			}
 		}
 		return true;
@@ -573,6 +577,11 @@ public final class MixinPreflight {
 				} else {
 					ctx.info("Target " + target.replace('/', '.') + " is not a Minecraft class and was not verified");
 				}
+				continue;
+			}
+			if ((mixin.access & Opcodes.ACC_ENUM) != 0 && targetNode.interfaces.contains(EXTENSIBLE_ENUM)) {
+				ctx.classLevel("Enum mixin adds constants to " + target.replace('/', '.') + ", one of NeoForge's extensible enums, which"
+						+ " NeoForge lets only its own enum extensions change", "Install the NeoForge build of the mod, if it has one.");
 				continue;
 			}
 			checkMembers(mixin, targetNode, ctx);
