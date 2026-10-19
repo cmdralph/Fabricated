@@ -66,6 +66,7 @@
     "client.ClientNetworkAddonHolderMixin",
     "client.ClientPayloadSendMixin",
     "client.SoundEngineStreamMixin",
-    "client.ParticleResourcesMixin"
+    "client.ParticleResourcesMixin",
+    "client.SectionCompilerMixin"
   ]
 }

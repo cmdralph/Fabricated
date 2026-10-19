@@ -140,9 +140,26 @@ jobs:
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
+        # On 26.x the test mod for Fabric's renderer API joins this run (it needs the renderer API, which only the
+        # Fabric API jar provides).
         run: |
-          SMOKE_TIMEOUT=480 ci/smoke-client.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/client-fapi" "$RUNNER_TEMP/extra" || true
+          mkdir -p "$RUNNER_TEMP/extra-client"
+          cp "$RUNNER_TEMP/extra/fabric-api.jar" "$RUNNER_TEMP/extra-client/"
+          cp mc/${{ matrix.minecraft }}/build/testmods/fabricated-testmod-frapi.jar "$RUNNER_TEMP/extra-client/" 2>/dev/null || true
+          SMOKE_TIMEOUT=480 ci/smoke-client.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/client-fapi" "$RUNNER_TEMP/extra-client" || true
           grep -A200 "== " "$RUNNER_TEMP/client-fapi/run/logs/fabric-bridge-report.txt" || true
+      # A Fabric model (its own emitQuads) must be drawn in the world: Fabricated sends it through Fabric's renderer when
+      # its chunk section is meshed. This check is a gate, unlike the run above.
+      - name: Fabric renderer API in the world (26.x)
+        if: always() && steps.build.outcome == 'success' && startsWith(matrix.minecraft, '26.')
+        run: |
+          if grep -h "FABRICATED-TEST frapi terrain OK" "$RUNNER_TEMP/client-fapi/run/logs/latest.log"; then
+            echo "PASS: a Fabric block model was meshed into the world"
+          else
+            echo "::error::FAIL: the renderer API test block was never meshed through Fabric's renderer"
+            grep -n -m 40 -E "frapi|FabricTerrain|SectionCompiler|/(ERROR|FATAL)\]" "$RUNNER_TEMP/client-fapi/run/logs/latest.log" || true
+            exit 1
+          fi
       - name: Upload Fabric API client run logs and report
         if: always()
         uses: actions/upload-artifact@v4
