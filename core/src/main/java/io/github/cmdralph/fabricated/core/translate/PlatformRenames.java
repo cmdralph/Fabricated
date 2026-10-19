@@ -8,6 +8,7 @@ import java.util.Map;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.ClassWriter;
+import org.objectweb.asm.Handle;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.commons.ClassRemapper;
@@ -24,7 +25,8 @@ import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
  *
  * <p>The port's {@code ConfigurationScreen} also takes the mod's id where NeoForge's takes its container (in every
  * NeoForge version supported): a mod's {@code new ConfigurationScreen(modId, parent, ...)} passes the container that
- * Fabricated finds for that id instead.
+ * Fabricated finds for that id instead, and its constructor references ({@code ConfigurationScreen::new}) point at
+ * Fabricated's factories taking the id.
  */
 final class PlatformRenames {
 	private static final String CONFIGURATION_SCREEN = "net/neoforged/neoforge/client/gui/ConfigurationScreen";
@@ -32,6 +34,8 @@ final class PlatformRenames {
 	private static final String CONTAINER = "Lnet/neoforged/fml/ModContainer;";
 	/** Fabricated's (in its in-game mod): the container of a Fabric mod id. */
 	private static final String CONTAINER_OF_OWNER = "io/github/cmdralph/fabricated/neoforge/config/ForgeConfigApiPortBridge";
+	/** Fabricated's (client only): {@code configurationScreen(modId, parent, ...)} for each of the port's constructors. */
+	private static final String SCREEN_FACTORIES = "io/github/cmdralph/fabricated/neoforge/config/ForgeConfigApiPortScreens";
 
 	/** Owner, then old name to new name. */
 	private static final Map<String, Map<String, String>> KNOWN = Map.of(
@@ -80,6 +84,20 @@ final class PlatformRenames {
 							return;
 						}
 						super.visitMethodInsn(opcode, owner, method, desc, itf);
+					}
+
+					@Override
+					public void visitInvokeDynamicInsn(String name, String desc, Handle bootstrap, Object... args) {
+						Object[] adapted = args.clone();
+						for (int i = 0; i < adapted.length; i++) {
+							if (adapted[i] instanceof Handle h && h.getTag() == Opcodes.H_NEWINVOKESPECIAL && h.getOwner().equals(CONFIGURATION_SCREEN)
+									&& h.getDesc().startsWith(PORT_CONSTRUCTOR)) {
+								adapted[i] = new Handle(Opcodes.H_INVOKESTATIC, SCREEN_FACTORIES, "configurationScreen",
+										h.getDesc().substring(0, h.getDesc().length() - 1) + "L" + CONFIGURATION_SCREEN + ";", false);
+								changed[0] = true;
+							}
+						}
+						super.visitInvokeDynamicInsn(name, desc, bootstrap, adapted);
 					}
 
 					/** Calls NeoForge's constructor with the mod's container in place of its id (two or three arguments). */

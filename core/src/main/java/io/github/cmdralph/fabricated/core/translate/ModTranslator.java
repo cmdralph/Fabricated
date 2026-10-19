@@ -163,7 +163,7 @@ public final class ModTranslator {
 						: environmentClasses(archive.classEntryNames(), archive::read);
 				int renamed = remapped != null ? applyRenames(remapped, remapped.keySet(), files)
 						: applyRenames(overlay, archive.classEntryNames(), archive::read);
-				if (renamed > 0) notes.add(renamed + " class(es) use NeoForge members as Forge Config API Port's copy of NeoForge declares them; the references are adapted to NeoForge's");
+				if (renamed > 0) notes.add(renamed + " class(es) use NeoForge members as Forge Config API Port's copy of NeoForge declares them; the references are adapted to NeoForge's own");
 
 				FabricModMetadata md = candidate.metadata();
 				ModsTomlWriter.Spec spec = new ModsTomlWriter.Spec(neoId, md.getVersion().getFriendlyString(), md.getName(),

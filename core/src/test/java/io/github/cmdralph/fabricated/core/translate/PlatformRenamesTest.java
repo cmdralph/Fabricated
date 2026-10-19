@@ -115,8 +115,24 @@ class PlatformRenamesTest {
 			c.visitMaxs(0, 0);
 			c.visitEnd();
 		}
+		ClassWriter screens = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		screens.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, "io/github/cmdralph/fabricated/neoforge/config/ForgeConfigApiPortScreens", null, "java/lang/Object", null);
+		MethodVisitor factory = screens.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "configurationScreen",
+				"(Ljava/lang/String;L" + SCREEN + ";)L" + CONFIG_SCREEN + ";", null, null);
+		factory.visitCode();
+		factory.visitTypeInsn(Opcodes.NEW, CONFIG_SCREEN);
+		factory.visitInsn(Opcodes.DUP);
+		factory.visitVarInsn(Opcodes.ALOAD, 0);
+		factory.visitMethodInsn(Opcodes.INVOKESTATIC, "io/github/cmdralph/fabricated/neoforge/config/ForgeConfigApiPortBridge", "modContainer",
+				"(Ljava/lang/String;)L" + CONTAINER + ";", false);
+		factory.visitVarInsn(Opcodes.ALOAD, 1);
+		factory.visitMethodInsn(Opcodes.INVOKESPECIAL, CONFIG_SCREEN, "<init>", "(L" + CONTAINER + ";L" + SCREEN + ";)V", false);
+		factory.visitInsn(Opcodes.ARETURN);
+		factory.visitMaxs(0, 0);
+		factory.visitEnd();
 		return Map.of(SCREEN, screen.toByteArray(), FILTER, filter.toByteArray(), CONTAINER, container.toByteArray(),
-				"io/github/cmdralph/fabricated/neoforge/config/ForgeConfigApiPortBridge", bridge.toByteArray(), CONFIG_SCREEN, config.toByteArray());
+				"io/github/cmdralph/fabricated/neoforge/config/ForgeConfigApiPortBridge", bridge.toByteArray(), CONFIG_SCREEN, config.toByteArray(),
+				"io/github/cmdralph/fabricated/neoforge/config/ForgeConfigApiPortScreens", screens.toByteArray());
 	}
 
 	private static void constructor(ClassWriter cw, String superName, String desc) {
@@ -152,6 +168,23 @@ class PlatformRenamesTest {
 			mv.visitMaxs(0, 0);
 			mv.visitEnd();
 		}
+		// ConfigurationScreen::new as the port's (modId, parent) factory, applied
+		MethodVisitor ref = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "referenced",
+				"(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;", null, null);
+		ref.visitCode();
+		ref.visitInvokeDynamicInsn("apply", "()Ljava/util/function/BiFunction;", new org.objectweb.asm.Handle(Opcodes.H_INVOKESTATIC,
+				"java/lang/invoke/LambdaMetafactory", "metafactory",
+				"(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodHandle;Ljava/lang/invoke/MethodType;)Ljava/lang/invoke/CallSite;", false),
+				org.objectweb.asm.Type.getType("(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;"),
+				new org.objectweb.asm.Handle(Opcodes.H_NEWINVOKESPECIAL, CONFIG_SCREEN, "<init>", "(Ljava/lang/String;L" + SCREEN + ";)V", false),
+				org.objectweb.asm.Type.getType("(Ljava/lang/String;L" + SCREEN + ";)L" + SCREEN + ";"));
+		ref.visitLdcInsn("mod_id");
+		ref.visitVarInsn(Opcodes.ALOAD, 0);
+		ref.visitMethodInsn(Opcodes.INVOKEINTERFACE, "java/util/function/BiFunction", "apply",
+				"(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;", true);
+		ref.visitInsn(Opcodes.ARETURN);
+		ref.visitMaxs(0, 0);
+		ref.visitEnd();
 		cw.visitEnd();
 		return cw.toByteArray();
 	}
@@ -172,7 +205,7 @@ class PlatformRenamesTest {
 		Class<?> screens = loader.loadClass("com.example.Screens");
 		Object parent = loader.loadClass(SCREEN.replace('/', '.')).getConstructor().newInstance();
 		Object filter = java.lang.reflect.Proxy.newProxyInstance(loader, new Class<?>[] {loader.loadClass(FILTER.replace('/', '.'))}, (p, m, a) -> null);
-		for (String method : new String[] {"plain", "filtered"}) {
+		for (String method : new String[] {"plain", "filtered", "referenced"}) {
 			Object screen = screens.getMethod(method, Object.class, Object.class).invoke(null, parent, filter);
 			Object container = screen.getClass().getField("container").get(screen);
 			assertEquals("mod_id", container.getClass().getField("id").get(container));

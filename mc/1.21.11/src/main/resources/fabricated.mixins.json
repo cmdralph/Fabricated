@@ -48,6 +48,7 @@
     "client.ClientConfigurationPacketListenerImplMixin",
     "client.KeyMappingAccessor",
     "client.MinecraftEntrypointsMixin",
+    "client.MinecraftStartedMixin",
     "client.LiquidBlockTintMixin",
     "client.MultiPlayerGameModeMixin",
     "client.ClientNetworkAddonHolderMixin",

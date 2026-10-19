@@ -130,6 +130,8 @@ public final class EntrypointBridge {
 			LOGGER.error("{}", text, error);
 			ModLoader.addLoadingIssue(ModLoadingIssue.warning(MESSAGE, text).withCause(error));
 		});
+		// Rewritten when loading completes; written now too, in case the game stops before that.
+		if (!failures.isEmpty()) state.writeReport();
 	}
 
 	/** Records timings and writes the final report once loading has completed. */
