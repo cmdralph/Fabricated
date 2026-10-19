@@ -102,7 +102,7 @@ vendored modules in `mc/<version>/src/fabricapi` and the bridges in `mc/common*`
 | Discovery services → FML | `META-INF/services` in the `loader` source set: `IModFileCandidateLocator`, `IDependencyLocator`, `IModLanguageLoader`, `ClassProcessor` | compile-time against FML SPI |
 | Version facts → core | `META-INF/fabricated/version.properties` (generated: Minecraft version, namespace, Mixin versions) and `fabric-api-plan.json` (data, per version) | data, validated when parsed |
 | Discovery → in-game mod | `FabricatedState.get()` (a `volatile` static in `loader`, published once discovery ends) | compile-time |
-| In-game mod → pass-through Fabric API modules | 26.x renderer API: typed calls, compiled against the module's own jar, in classes loaded only when the module is (`FabricTerrain`). Other modules (HUD, picture-in-picture, sprite lookups): `Class.forName` + `MethodHandle`s (`HudBridge`, `PictureInPictureBridge`), because 1.21.11 shares that code and its Fabric API jars use intermediary names | typed / reflective |
+| In-game mod → pass-through Fabric API modules | 26.x renderer API: typed calls, compiled against the module's own jar, in classes loaded only when the module is (`FabricBlockRendering`). Other modules (HUD, picture-in-picture, sprite lookups): `Class.forName` + `MethodHandle`s (`HudBridge`, `PictureInPictureBridge`), because 1.21.11 shares that code and its Fabric API jars use intermediary names | typed / reflective |
 | Fabric mods → Fabricated | mixins and class tweakers, applied by FML; Fabric's injected interfaces added by `FabricClassProcessor` at class load | bytecode |
 
 ### Mixins
@@ -121,8 +121,8 @@ exists). The full inventory (target, injector, point and versions of every mixin
 | FML discovery (early services; may be a worker pool) | `FabricCandidateLocator`, `FabricDependencyLocator` → core `Pipeline` (translates mods with `parallelStream()`), `TranslationCache` |
 | Any class-loading thread | `FabricClassProcessor` (reads only the immutable `FabricatedState`) |
 | Mod construction / mod-bus events | `FabricatedMod`, native module registration, entrypoints (`main` on the first `RegisterEvent`) |
-| Render thread | client entrypoints (in `Minecraft`'s constructor), HUD/screen bridges, client networking handlers |
-| **Chunk-section compile workers (several at once)** | `SectionCompilerMixin` → `FabricTerrain` for every block: the decision is a `ClassValue`; the Fabric renderer and emitter are per thread (`ThreadLocal`); nothing shared is mutated |
+| Render thread | client entrypoints (in `Minecraft`'s constructor), HUD/screen bridges, client networking handlers, moving blocks and the breaking overlay (`MovingBlockRenderMixin`, `BlockBreakingRenderMixin` → `FabricBlockRendering`, with their own per-thread renderer and emitter) |
+| **Chunk-section compile workers (several at once)** | `SectionCompilerMixin` → `FabricBlockRendering` for every block: the decision is a `ClassValue` (and, for a vanilla multipart or weighted model, a field of the model, written once with the same answer by any thread); the Fabric renderer and emitter are per thread (`ThreadLocal`); nothing else shared is mutated |
 | Resource reload executors | reload listeners of native modules (`fabric-resource-loader-v1`), model discovery (`ModelManagerExtraModelsMixin`) |
 | Server thread | lifecycle, entity, interaction, loot, transfer and networking bridges |
 
@@ -134,9 +134,11 @@ exists). The full inventory (target, injector, point and versions of every mixin
 |---|---|---|---|---|
 | `fabric-renderer-api-v1` | unsupported (its own mixins fail pre-flight, see `COMPATIBILITY.md`) | pass-through | pass-through | pass-through |
 | `fabric-renderer-indigo` (the renderer) | unsupported | pass-through | pass-through | pass-through |
-| Fabric models in the **world** (chunk meshing) | no | **yes**, `FabricTerrain` | **yes** | **yes** |
+| Fabric models in the **world** (chunk meshing) | no | **yes**, `FabricBlockRendering` | **yes** | **yes** |
+| Fabric models as **parts** of a vanilla multipart or weighted model | no | **yes** (the whole block goes through Fabric's renderer) | **yes** | **yes** |
 | Fabric models in item / block entity rendering | no | upstream's mixins apply (not tested in CI) | same | same |
-| Moving blocks (pistons), block outlines, breaking animation | no | not through Fabric's renderer | same | same |
+| Moving blocks (pistons, falling blocks) and the breaking overlay | no | **yes** | **yes** | **yes** (moving blocks may be forced translucent) |
+| Block outlines, a moving block's glow outline | no | from the model's parts, as NeoForge sees them | same | same |
 
 The 26.x surface is **not** the 1.x API most documentation describes. There is no `RenderMaterial`,
 `MaterialFinder` or `BlendMode`. Material state is per quad, on `MutableQuadView`: `chunkLayer`,
@@ -150,33 +152,44 @@ and `altModelBlockRenderer(ao, cull, BlockColors)`.
 
 Indigo, the reference renderer, already loads on 26.x and already is an `int[]`-backed, stride-encoded quad
 emitter. Fabricated therefore doesn't duplicate it. A second renderer would add thousands of lines with no
-user-visible gain. What was missing is the seam between FRAPI and NeoForge's chunk meshing:
+user-visible gain. What was missing is the seam between FRAPI and the places NeoForge draws blocks. All of it goes
+through `FabricBlockRendering` (`mc/common26/.../rendering`), the only class that names the renderer API's types:
 
-- `SectionCompilerMixin` (26.x, `mc/common26`) wraps NeoForge's `ModelBlockRenderer.tesselateBlock` call in
+- **The decision.** `FabricBlockRendering.draws(model)` is true when the model's class implements `emitQuads` itself:
+  the declaring class of the resolved method is neither `FabricBlockStateModel` (whose default only draws the parts
+  NeoForge sees) nor a `net.minecraft` class (vanilla models get upstream's equivalents through its own mixins). It's
+  cached per class in a `ClassValue`. A vanilla multipart or weighted model (`MultiPartModelMixin`,
+  `WeightedVariantsMixin`) answers for its parts instead, once, in a field of the model; when one part is a Fabric
+  model, the whole block goes through Fabric's renderer, which draws the vanilla parts too.
+- **Chunk sections.** `SectionCompilerMixin` wraps NeoForge's `ModelBlockRenderer.tesselateBlock` call in
   `SectionCompiler.compile` (NeoForge's overload that also takes its additional section renderers) with a
-  `WrapWithCondition`. If `FabricTerrain.draws(model)` is false, NeoForge draws the block as before.
-- `FabricTerrain.draws` is true when the model's class implements `emitQuads` itself: the declaring class of the
-  resolved method is neither `FabricBlockStateModel` (whose default only draws the parts NeoForge sees) nor a
-  `net.minecraft` class (vanilla models get upstream's equivalents through its own mixins). It's cached per class in
-  a `ClassValue`.
-- Such blocks are drawn by `Renderer.get().altModelBlockRenderer(...)` into an emitter whose consumer writes each
-  finished quad into `getOrBeginLayer(startedLayers, builders, quad.chunkLayer())`, the section's own buffers, just
-  as upstream does on Fabric.
+  `WrapWithCondition`. A Fabric model is drawn by `Renderer.get().altModelBlockRenderer(...)` into an emitter whose
+  consumer writes each finished quad into `getOrBeginLayer(startedLayers, builders, quad.chunkLayer())`, the
+  section's own buffers, as upstream does on Fabric.
+- **Moving blocks** (pistons, falling blocks). `MovingBlockRenderMixin` does the same where moving blocks are drawn
+  (26.1.2: `BlockFeatureRenderer.renderMovingBlockSubmits`; 26.2, 26.3: `MovingBlockFeatureRenderer.buildGroup`),
+  into the moving block render type of each quad's layer. An outline submit (a glowing falling block) stays NeoForge's.
+- **The breaking overlay.** The overlay takes model parts. `BlockBreakingRenderMixin` wraps NeoForge's level-aware
+  `collectParts` call there (26.1.2: `BlockFeatureRenderer.renderBreakingBlockModelSubmits`; 26.2, 26.3:
+  `LevelRenderer.submitBlockDestroyAnimation`) and adds a Fabric model's emitted quads, turned back into vanilla
+  quads, as one part. The overlay itself is unchanged.
 
-Upstream's own `SectionCompilerMixin` stays skipped because it sends *every* block through Fabric's renderer. On
-NeoForge that would drop level-aware `collectParts`, dynamic tints, `Block.shouldRenderFace` with a position, per-part
-and per-quad ambient occlusion and NeoForge's enhanced lighter.
+Upstream's own hooks for these places stay skipped because they send *every* block (every moving block, every
+breaking overlay) through Fabric's renderer. On NeoForge that would drop level-aware `collectParts`, dynamic tints,
+`Block.shouldRenderFace` with a position, per-part and per-quad ambient occlusion and NeoForge's enhanced lighter.
 
 ### FRAPI architecture rules (enforceable)
 
 1. **No allocation and no boxing per block or per quad** in Fabricated's emission paths. Hooks on per-block calls
    use `@WrapWithCondition` or `@Inject`, never `@WrapOperation` (whose `Operation.call(Object...)` boxes primitives
-   and allocates an array). Decisions are `ClassValue`s or fields, not maps keyed by models.
+   and allocates an array). Decisions are `ClassValue`s or fields, not maps keyed by models. One exception, outside
+   meshing: the breaking overlay copies the broken block's quads once per frame, because the game draws them after
+   the call returns (vanilla copies its parts list there too).
 2. **Quad data has one owner, the active renderer.** Fabricated reads quads through `QuadView` and never keeps
-   them. If Fabricated ever gets its own encoder (see the roadmap in `progress.md`), its `int[]` stride, offsets and
+   them (vanilla quads made from them for the game, as for the breaking overlay, are the game's). If Fabricated ever gets its own encoder (see the roadmap in `progress.md`), its `int[]` stride, offsets and
    bit masks live in one constants class that every reader and writer uses.
-3. **Emitters and Fabric block renderers are thread-confined.** One per worker thread (`ThreadLocal`), bound to a
-   section only for the duration of one `tesselateBlock` call, never shared, never stored in a static field. Indigo's
+3. **Emitters and Fabric block renderers are thread-confined.** One per thread and use (`ThreadLocal`), bound to a
+   section or a frame's buffers only for the duration of one call, never shared, never stored in a static field. Indigo's
    block renderer captures its thread's light cache when it is made, so sharing one across threads is a bug.
 4. **Version-agnostic FRAPI code lives in `mc/common26`** behind the narrow seam above. Version-specific code goes in
    `mc/<version>` with a one-line comment naming the API difference that forces it. 1.21.11 needs its own work (see
