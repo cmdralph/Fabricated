@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.StringReader;
@@ -29,6 +30,7 @@ import org.objectweb.asm.tree.ClassNode;
 
 import io.github.cmdralph.fabricated.api.FabricApiModule;
 import io.github.cmdralph.fabricated.api.FabricMod;
+import io.github.cmdralph.fabricated.core.accesswidener.AccessWidenerFile.InjectedInterface;
 import io.github.cmdralph.fabricated.core.api.FabricatedApiImpl;
 import io.github.cmdralph.fabricated.core.archive.ArchiveLimits;
 import io.github.cmdralph.fabricated.core.archive.SafeArchive;
@@ -42,6 +44,7 @@ import io.github.cmdralph.fabricated.core.report.Report;
 import io.github.cmdralph.fabricated.core.resolve.Candidate;
 import io.github.cmdralph.fabricated.core.resolve.FabricApiPlan;
 import io.github.cmdralph.fabricated.core.testutil.TestJars;
+import io.github.cmdralph.fabricated.core.translate.TranslatedMod;
 import io.github.cmdralph.fabricated.core.translate.TranslationEnvironment.Namespace;
 
 class PipelineTest {
@@ -212,6 +215,42 @@ class PipelineTest {
 		assertTrue(second.mods().stream().allMatch(m -> m.translated().cacheHit()));
 		Pipeline.LoadedMod goodAgain = second.mods().stream().filter(m -> m.translated().candidate().id().equals("good-mod")).findFirst().orElseThrow();
 		assertArrayEquals(firstOverlay, Files.readAllBytes(goodAgain.translated().overlay()));
+	}
+
+	/**
+	 * A mod NeoForge refuses to load keeps no interface injections or environment classes: injecting its interface into a
+	 * game class would make that class fail to load (the interface is in no module layer), crashing the game.
+	 */
+	@Test
+	void resultWithoutRefusedModsInjectsNothingOfTheirs(@TempDir Path dir) throws Exception {
+		Pipeline.LoadedMod a = loadedMod(dir, "mod-a", "com/a/Iface", "com/a/ClientThing");
+		Pipeline.LoadedMod b = loadedMod(dir, "mod-b", "com/b/Iface", "com/b/ClientThing");
+		Pipeline.Result result = new Pipeline.Result(null, List.of(a, b), null, Map.of(), null, Set.of());
+		assertEquals(List.of("com/a/Iface", "com/b/Iface"), interfacesOf(result, "net/minecraft/world/Thing"));
+		assertEquals(Set.of("com/a/ClientThing", "com/b/ClientThing"), result.environmentClasses());
+
+		Pipeline.Result kept = result.without(Set.of("mod-b"));
+		assertEquals(List.of(a), kept.mods());
+		assertEquals(List.of("com/a/Iface"), interfacesOf(kept, "net/minecraft/world/Thing"));
+		assertEquals(Set.of("com/a/ClientThing"), kept.environmentClasses());
+		assertTrue(result.without(Set.of("mod-a", "mod-b")).injectedInterfaces().isEmpty());
+		// Read from any class-loading thread: never changed after it is published.
+		assertThrows(UnsupportedOperationException.class, () -> kept.injectedInterfaces().get("net/minecraft/world/Thing").clear());
+		assertThrows(UnsupportedOperationException.class, () -> kept.injectedInterfaces().clear());
+	}
+
+	private static Pipeline.LoadedMod loadedMod(Path dir, String id, String iface, String environmentClass) throws Exception {
+		String json = TestJars.modJson(id, "1.0", "");
+		Path file = TestJars.create().fabricModJson(json).write(dir.resolve(id + ".jar"));
+		Candidate c = new Candidate(file, id + "-hash", FabricModJsonParser.parse(json), id + ".jar", null, 0, List.of());
+		InjectedInterface injection = new InjectedInterface("net/minecraft/world/Thing", iface, iface, false, 1);
+		TranslatedMod mod = new TranslatedMod(c, id.replace('-', '_'), file, file, List.of(), 0, List.of(), List.of(injection),
+				Set.of(environmentClass), false, 0);
+		return new Pipeline.LoadedMod(mod, Set.of());
+	}
+
+	private static List<String> interfacesOf(Pipeline.Result result, String target) {
+		return result.injectedInterfaces().getOrDefault(target, List.of()).stream().map(InjectedInterface::interfaceName).toList();
 	}
 
 	@Test

@@ -186,6 +186,7 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 		ApiHolder.install(api);
 
 		ModFileDiscoveryAttributes attributes = ModFileDiscoveryAttributes.DEFAULT.withDependencyLocator(this);
+		Set<String> refused = new HashSet<>();
 		for (Pipeline.LoadedMod mod : result.mods()) {
 			Set<String> excluded = mod.excludedPackages();
 			JarContents.PathFilter filter = excluded.isEmpty() ? null : path -> !PackageGuard.isExcluded(path, excluded);
@@ -196,9 +197,15 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 			if (added.isEmpty()) {
 				// Fabric code mustn't see it as loaded, or run its entrypoints, when NeoForge won't load its classes.
 				String id = mod.translated().candidate().id();
+				refused.add(id);
 				result.runtime().removeMod(id);
 				result.report().disable(id, "NeoForge did not accept the translated mod", "See logs/latest.log for NeoForge's reason.");
 			}
+		}
+		if (!refused.isEmpty()) {
+			// Nor may its interfaces be injected into game classes: they would fail to load, with the class missing.
+			state = new FabricatedState(result.without(refused), logsDir, api);
+			FabricatedState.set(state);
 		}
 		if (addGameMod) {
 			pipeline.addPath(gameModJar, attributes, IncompatibleFileReporting.ERROR);

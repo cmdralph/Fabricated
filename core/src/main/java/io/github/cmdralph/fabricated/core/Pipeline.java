@@ -10,7 +10,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
@@ -121,7 +120,13 @@ public final class Pipeline {
 	public record LoadedMod(TranslatedMod translated, Set<String> excludedPackages) {
 	}
 
-	/** Pipeline output. */
+	/**
+	 * Pipeline output.
+	 *
+	 * @param injectedInterfaces the interface injections of {@code mods}, by target class (immutable: class loading reads
+	 *                           it from any thread)
+	 * @param environmentClasses the classes of {@code mods} with {@code @Environment} annotations (immutable)
+	 */
 	public record Result(
 			FabricatedConfig config,
 			List<LoadedMod> mods,
@@ -131,6 +136,37 @@ public final class Pipeline {
 			Map<String, ModContainerImpl> containers,
 			Report report,
 			Set<String> dependencyFailures) {
+
+		Result(FabricatedConfig config, List<LoadedMod> mods, FabricLoaderRuntime runtime, Map<String, ModContainerImpl> containers,
+				Report report, Set<String> dependencyFailures) {
+			this(config, List.copyOf(mods), injectedInterfacesOf(mods), environmentClassesOf(mods), runtime, containers, report, dependencyFailures);
+		}
+
+		/**
+		 * This result without the given mods (by Fabric id), which NeoForge refused to load: their classes will never
+		 * exist, so their interface injections and environment classes must not apply to anything.
+		 */
+		public Result without(Set<String> fabricIds) {
+			List<LoadedMod> kept = mods.stream().filter(m -> !fabricIds.contains(m.translated().candidate().id())).toList();
+			return new Result(config, kept, runtime, containers, report, dependencyFailures);
+		}
+
+		private static Map<String, List<InjectedInterface>> injectedInterfacesOf(List<LoadedMod> mods) {
+			Map<String, List<InjectedInterface>> injections = new HashMap<>();
+			for (LoadedMod mod : mods) {
+				for (InjectedInterface ii : mod.translated().injectedInterfaces()) {
+					injections.computeIfAbsent(ii.target(), k -> new ArrayList<>()).add(ii);
+				}
+			}
+			injections.replaceAll((target, list) -> List.copyOf(list));
+			return Map.copyOf(injections);
+		}
+
+		private static Set<String> environmentClassesOf(List<LoadedMod> mods) {
+			Set<String> classes = new HashSet<>();
+			for (LoadedMod mod : mods) classes.addAll(mod.translated().environmentClasses());
+			return Set.copyOf(classes);
+		}
 	}
 
 	/**
@@ -506,8 +542,6 @@ public final class Pipeline {
 		for (Builtin b : builtins) addBuiltin(runtime, b.id(), b.version(), b.name(), b.aliases());
 
 		List<LoadedMod> loaded = new ArrayList<>();
-		Map<String, List<InjectedInterface>> injections = new TreeMap<>();
-		Set<String> environmentClasses = new HashSet<>();
 		Map<String, ModContainerImpl> containers = new LinkedHashMap<>();
 		Set<String> finalIds = rounds.translated.stream().map(t -> t.candidate().id()).filter(id -> !rounds.dropped.containsKey(id))
 				.collect(Collectors.toSet());
@@ -516,8 +550,6 @@ public final class Pipeline {
 			if (!finalIds.contains(c.id())) continue;
 			PackageGuard.Decision decision = rounds.decisions.get(t.neoForgeId());
 			loaded.add(new LoadedMod(t, decision != null ? decision.excludedPackages() : Set.of()));
-			for (InjectedInterface ii : t.injectedInterfaces()) injections.computeIfAbsent(ii.target(), k -> new ArrayList<>()).add(ii);
-			environmentClasses.addAll(t.environmentClasses());
 			reportLoaded(t, rounds.translatedThisLaunch.get(c.id()), decision, rounds.linkage.get(t.neoForgeId()));
 
 			ModOrigin origin = c.parentId() == null
@@ -544,7 +576,7 @@ public final class Pipeline {
 		for (NeoForgeMod m : in.neoForgeMods()) addBuiltin(runtime, m.id(), m.version(), m.displayName(), List.of());
 
 		in.cache().notes().forEach(n -> report.line("Cache", n));
-		return new Result(config, List.copyOf(loaded), injections, Set.copyOf(environmentClasses), runtime, containers, report, Set.copyOf(rounds.dependencyFailures));
+		return new Result(config, loaded, runtime, containers, report, Set.copyOf(rounds.dependencyFailures));
 	}
 
 	private void reportLoaded(TranslatedMod t, Long millis, PackageGuard.Decision decision, List<String> linkageIssues) {
