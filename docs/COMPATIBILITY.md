@@ -539,13 +539,13 @@ gets its stream from it there; other sounds keep NeoForge's path.
 
 ### `fabric-renderer-api-v1`, `fabric-renderer-indigo` and `fabric-model-loading-api-v1` (26.x)
 
-The renderer API loads with Indigo as its renderer, so meshes, quad emitters and Fabric's model types work. In the
-world, a block whose model implements `emitQuads` itself (a Fabric model) is drawn by Fabric's renderer into the
-chunk's buffers; every other block keeps NeoForge's renderer, so NeoForge's model data, tints, face culling and
-ambient occlusion per part still apply to it. Upstream's hook that sends *every* block through Fabric's renderer is
-left out for that reason, and so are its hooks for moving blocks, block outlines and breaking animations: there a
-Fabric model's own geometry is not drawn yet. A Fabric model used as a part of a vanilla multipart or weighted model
-is not drawn in the world yet either. NeoForge already gives vanilla's models
+The renderer API loads with Indigo as its renderer, so meshes, quad emitters and Fabric's model types work. A block
+whose model implements `emitQuads` itself (a Fabric model), or whose vanilla multipart or weighted model has a Fabric
+model among its parts, is drawn by Fabric's renderer: in the world (into the chunk's buffers), as a moving block
+(pushed by a piston, falling) and with the breaking overlay. Every other block keeps NeoForge's renderer, so NeoForge's
+model data, tints, face culling and ambient occlusion per part still apply to it; upstream's hooks that send *every*
+block through Fabric's renderer in those places are left out for that reason. Block outlines, and the glow outline of a
+moving block, still come from a model's parts as NeoForge sees them. NeoForge already gives vanilla's models
 `createGeometryKey` and `particleMaterial` with Fabric's signatures, so upstream's copies are left out and
 Fabricated declares the shared defaults on `BlockStateModel`. On 26.1.2, where upstream's check of a mesh
 model's sprites takes the parameters of vanilla's `SimpleModelWrapper.bake` (NeoForge moved the code into its own

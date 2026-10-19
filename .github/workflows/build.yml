@@ -153,11 +153,22 @@ jobs:
       - name: Fabric renderer API in the world (26.x)
         if: always() && steps.build.outcome == 'success' && startsWith(matrix.minecraft, '26.')
         run: |
-          if grep -h "FABRICATED-TEST frapi terrain OK" "$RUNNER_TEMP/client-fapi/run/logs/latest.log"; then
-            echo "PASS: a Fabric block model was meshed into the world"
-          else
-            echo "::error::FAIL: the renderer API test block was never meshed through Fabric's renderer"
-            grep -n -m 40 -E "frapi|FabricTerrain|SectionCompiler|/(ERROR|FATAL)\]" "$RUNNER_TEMP/client-fapi/run/logs/latest.log" || true
+          log="$RUNNER_TEMP/client-fapi/run/logs/latest.log"
+          failed=0
+          check() {
+            if grep -h "FABRICATED-TEST frapi $1" "$log"; then
+              echo "PASS: $2"
+            else
+              echo "::error::FAIL: $2 (no \"frapi $1\" line)"
+              failed=1
+            fi
+          }
+          check "terrain OK" "a Fabric block model was meshed into a chunk section"
+          check "nested terrain OK" "a Fabric model inside a vanilla multipart model was meshed"
+          check "moving block OK" "a falling Fabric block model was drawn as a moving block"
+          check "breaking OK" "a Fabric block model got the breaking overlay"
+          if [ "$failed" = 1 ]; then
+            grep -n -m 40 -E "frapi|FabricBlockRendering|RenderMixin|SectionCompiler|/(ERROR|FATAL)\]" "$log" || true
             exit 1
           fi
       - name: Upload Fabric API client run logs and report

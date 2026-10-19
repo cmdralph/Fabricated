@@ -11,7 +11,7 @@ import com.llamalad7.mixinextras.injector.v2.WrapWithCondition;
 import com.llamalad7.mixinextras.sugar.Local;
 import com.mojang.blaze3d.vertex.BufferBuilder;
 
-import io.github.cmdralph.fabricated.neoforge.rendering.FabricTerrain;
+import io.github.cmdralph.fabricated.neoforge.rendering.FabricBlockRendering;
 import net.minecraft.client.color.block.BlockColors;
 import net.minecraft.client.renderer.SectionBufferBuilderPack;
 import net.minecraft.client.renderer.block.BlockAndTintGetter;
@@ -25,14 +25,14 @@ import net.minecraft.world.level.block.state.BlockState;
 
 /**
  * Sends blocks whose model is a Fabric model through Fabric's renderer when a chunk section is meshed (see
- * {@link FabricTerrain}). NeoForge moved vanilla's {@code compile} into an overload that also takes its additional
+ * {@link FabricBlockRendering}). NeoForge moved vanilla's {@code compile} into an overload that also takes its additional
  * section renderers; the old one only delegates, so this applies to the overload holding the code.
  *
  * <p>This runs for every block of every section: a condition (not a wrapped operation, whose call boxes its
  * arguments) keeps NeoForge's path free of allocations.
  */
 @Mixin(SectionCompiler.class)
-abstract class SectionCompilerMixin implements FabricTerrain.Layers {
+abstract class SectionCompilerMixin implements FabricBlockRendering.SectionLayers {
 	@Shadow
 	@Final
 	private boolean ambientOcclusion;
@@ -54,8 +54,8 @@ abstract class SectionCompilerMixin implements FabricTerrain.Layers {
 	private boolean fabricated$fabricModels(ModelBlockRenderer renderer, BlockQuadOutput output, float x, float y, float z,
 			BlockAndTintGetter level, BlockPos pos, BlockState state, BlockStateModel model, long seed,
 			@Local(argsOnly = true) SectionBufferBuilderPack builders, @Local(name = "startedLayers") Map<ChunkSectionLayer, BufferBuilder> startedLayers) {
-		if (!FabricTerrain.draws(model)) return true;
-		FabricTerrain.tesselate(this, startedLayers, builders, ambientOcclusion, blockColors, x, y, z, level, pos, state, model, seed);
+		if (!FabricBlockRendering.draws(model)) return true;
+		FabricBlockRendering.tesselate(this, startedLayers, builders, ambientOcclusion, blockColors, x, y, z, level, pos, state, model, seed);
 		return false;
 	}
 }
