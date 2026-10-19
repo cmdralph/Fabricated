@@ -23,6 +23,7 @@
     "ItemDamageMixin",
     "ItemPropertiesMixin",
     "ItemStackMixin",
+    "ItemStackRemainderMixin",
     "TooltipFlagMixin",
     "DataComponentMapBuilderMixin",
     "ServerPlayerGameModeMixin",

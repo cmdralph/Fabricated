@@ -84,6 +84,11 @@ public final class ItemApiTest implements ModInitializer {
 			if (!idOk) failed.add("item_id");
 			if (stack.getEquipmentSlot() != EquipmentSlot.HEAD) failed.add("equipment_slot");
 			if (!Objects.equals(item.getCraftingRemainder((ItemInstance) stack), Items.MILK_BUCKET.getCraftingRemainder())) failed.add("crafting_remainder");
+			// The stack's own, which both Fabric's FabricItemStack and NeoForge's ItemInstanceExtension declare.
+			if (!Objects.equals(stack.getCraftingRemainder(), Items.MILK_BUCKET.getCraftingRemainder())
+					|| !Objects.equals(((net.fabricmc.fabric.api.item.v1.FabricItemStack) stack).getCraftingRemainder(), Items.MILK_BUCKET.getCraftingRemainder())) {
+				failed.add("stack_crafting_remainder");
+			}
 			Holder<Enchantment> sharpness = server.registryAccess().lookupOrThrow(Registries.ENCHANTMENT).getOrThrow(Enchantments.SHARPNESS);
 			if (!stack.supportsEnchantment(sharpness) || new ItemStack(Items.STICK).supportsEnchantment(sharpness)) failed.add("allow_enchanting");
 			if (stack.get(DataComponents.RARITY) != Rarity.EPIC) failed.add("default_components");
