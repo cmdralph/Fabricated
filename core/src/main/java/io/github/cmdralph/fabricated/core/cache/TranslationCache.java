@@ -177,7 +177,7 @@ public final class TranslationCache {
 			Files.writeString(tmp.resolve(ENTRY_FILE), Json.write(meta, true), StandardCharsets.UTF_8);
 			Path target = root.resolve("entries").resolve(name);
 			deleteQuietly(target);
-			Files.move(tmp, target, StandardCopyOption.ATOMIC_MOVE);
+			AtomicFiles.move(tmp, target, StandardCopyOption.ATOMIC_MOVE);
 			lastUsed.put(name, launch);
 			for (Map.Entry<String, Object> h : hashes.entrySet()) remember(target.resolve(h.getKey()), (String) h.getValue());
 			return new Entry(target, meta);
