@@ -5,6 +5,7 @@
   "mixins": [
     "ServerConfigurationPacketListenerImplMixin",
     "MinecraftServerMixin",
+    "ChunkGeneratorFeaturesMixin",
     "ReloadableServerResourcesMixin",
     "ResourceMixin",
     "MappedRegistryMixin",
