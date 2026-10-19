@@ -61,7 +61,7 @@ jobs:
             java: 25
             experimental: false
           - minecraft: "26.3"
-            fabric_api: "0.162.0+26.3"
+            fabric_api: "0.164.0+26.3"
             neoforge: "26.3.0.69-beta"
             java: 25
             experimental: true

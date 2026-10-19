@@ -1,5 +1,5 @@
 {
-  "fabricApiVersion": "0.162.0+26.3",
+  "fabricApiVersion": "0.164.0+26.3",
   "modules": {
     "fabric-advancement-api-v1": {
       "plan": "passthrough",
@@ -38,7 +38,7 @@
     },
     "fabric-content-registries-v0": {
       "plan": "native",
-      "version": "15.0.4",
+      "version": "15.0.6",
       "reason": "Shipped by Fabricated: upstream's registries and mixins, with NeoForge's data maps backed by them where an entry is missing; entity swimming, jumping, drowning and boat floating in Fabric-registered fluids are not applied (NeoForge rewrote that code)."
     },
     "fabric-convention-tags-v2": {
@@ -78,7 +78,7 @@
     },
     "fabric-events-interaction-v0": {
       "plan": "native",
-      "version": "5.3.7",
+      "version": "5.3.8",
       "reason": "Shipped by Fabricated on NeoForge's interaction events (upstream's mixins conflict with NeoForge's patches); attack entity callbacks get no hit result, and client-side cancelled interactions still reach the server."
     },
     "fabric-game-rule-api-v1": {
@@ -90,7 +90,7 @@
     },
     "fabric-item-api-v1": {
       "plan": "native",
-      "version": "14.7.0",
+      "version": "14.8.0",
       "reason": "Shipped by Fabricated on NeoForge's item hooks and events (upstream's mixins conflict with NeoForge's patches); equipment slot providers get no entity."
     },
     "fabric-key-mapping-api-v1": {
@@ -103,12 +103,12 @@
     },
     "fabric-loot-api-v3": {
       "plan": "native",
-      "version": "4.0.8",
+      "version": "4.0.9",
       "reason": "Shipped by Fabricated: upstream's builder and drop mixins as they are, its loading hook replaced by NeoForge's LootTableLoadEvent (upstream's conflicts with NeoForge's loot loading)."
     },
     "fabric-menu-api-v1": {
       "plan": "native",
-      "version": "2.0.28",
+      "version": "2.0.29",
       "reason": "Shipped by Fabricated on NeoForge's menu opening data: extended menus send their opening data the way NeoForge mods' menus do (upstream's mixins target the openMenu NeoForge replaced)."
     },
     "fabric-message-api-v1": {
@@ -126,12 +126,12 @@
     },
     "fabric-networking-api-v1": {
       "plan": "native",
-      "version": "6.3.9",
+      "version": "6.3.10",
       "reason": "Shipped by Fabricated on NeoForge's payload system (login queries are not supported)."
     },
     "fabric-object-builder-api-v1": {
       "plan": "native",
-      "version": "24.1.10",
+      "version": "24.1.11",
       "reason": "Shipped by Fabricated on NeoForge's registration events (upstream's mixins conflict with NeoForge's patches); custom minecart comparator logic is not used by detector rails."
     },
     "fabric-particles-v1": {
@@ -150,7 +150,7 @@
     },
     "fabric-registry-sync-v0": {
       "plan": "native",
-      "version": "8.0.2",
+      "version": "8.0.3",
       "reason": "Shipped by Fabricated on NeoForge's registries, which already sync ids to clients (upstream's mixins conflict with NeoForge's patches)."
     },
     "fabric-renderer-api-v1": {
@@ -203,7 +203,7 @@
     },
     "fabric-resource-loader-v1": {
       "plan": "native",
-      "version": "3.0.4",
+      "version": "3.1.0",
       "reason": "Shipped by Fabricated on NeoForge's reload-listener and pack-finder events (upstream's mixins conflict with NeoForge's patches)."
     },
     "fabric-screen-api-v1": {

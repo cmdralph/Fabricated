@@ -144,7 +144,7 @@ exists). The full inventory (target, injector, point and versions of every mixin
 
 ### What exists, per version (verified against Fabric API sources)
 
-| | 1.21.11 (0.141.6) | 26.1.2 (0.155.3) | 26.2 (0.161.0) | 26.3 (0.162.0) |
+| | 1.21.11 (0.141.6) | 26.1.2 (0.155.3) | 26.2 (0.161.0) | 26.3 (0.164.0) |
 |---|---|---|---|---|
 | `fabric-renderer-api-v1` | unsupported (its own mixins fail pre-flight, see `COMPATIBILITY.md`) | pass-through | pass-through | pass-through |
 | `fabric-renderer-indigo` (the renderer) | unsupported | pass-through | pass-through | pass-through |
