@@ -575,7 +575,8 @@ Kotlin's), mod containers and metadata, versions and predicates, the object shar
   Fabric API on NeoForge's own config system: `ConfigRegistry` registers with the mod's NeoForge container under the
   port's file names, `ModConfigEvents` fire from NeoForge's config events, and `ConfigScreenFactoryRegistry` screens
   open from NeoForge's config button. The port's jar is skipped (and provided at its version); its copy of Forge's own
-  config API (`ForgeConfigSpec`) is not provided.
+  config API (`ForgeConfigSpec`) is not provided. On 26.3, whose FML renamed the config types `COMMON` and `SERVER` to
+  `LOCAL` and `SYNCED` (the port keeps the old names), a mod's references to the old names are renamed.
 - Class tweakers v2 load: their `extend-enum` lines only declare the constants a mod's enum mixins add, which Mixin
   adds itself (0.17.1 or later, so on 26.x; not to NeoForge's own extensible enums).
 - Config screens a Fabric mod offers to Mod Menu (its `modmenu` entrypoint) open from the Config button of NeoForge's

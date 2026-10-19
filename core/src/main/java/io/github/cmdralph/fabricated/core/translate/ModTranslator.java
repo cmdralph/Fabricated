@@ -75,11 +75,13 @@ public final class ModTranslator {
 	private final TranslationEnvironment env;
 	private final TranslationCache cache;
 	private final io.github.cmdralph.fabricated.core.archive.ArchiveLimits limits;
+	private final PlatformRenames renames;
 
 	public ModTranslator(TranslationEnvironment env, TranslationCache cache, io.github.cmdralph.fabricated.core.archive.ArchiveLimits limits) {
 		this.env = env;
 		this.cache = cache;
 		this.limits = limits;
+		this.renames = PlatformRenames.of(env.untransformable());
 	}
 
 	/**
@@ -158,6 +160,8 @@ public final class ModTranslator {
 
 				Set<String> environmentClasses = remapped != null ? environmentClasses(remapped.keySet(), files)
 						: environmentClasses(archive.classEntryNames(), archive::read);
+				int renamed = applyRenames(remapped != null ? remapped : overlay, remapped != null ? remapped.keySet() : archive.classEntryNames(), files);
+				if (renamed > 0) notes.add(renamed + " class(es) use NeoForge members by the names they had before NeoForge renamed them; the references are renamed");
 
 				FabricModMetadata md = candidate.metadata();
 				ModsTomlWriter.Spec spec = new ModsTomlWriter.Spec(neoId, md.getVersion().getFriendlyString(), md.getName(),
@@ -225,6 +229,25 @@ public final class ModTranslator {
 			if (data != null && EnvironmentStripper.mayNeedStripping(data)) classes.add(name.substring(0, name.length() - ".class".length()));
 		}
 		return Set.copyOf(classes);
+	}
+
+	/**
+	 * Puts the mod's classes that use members NeoForge renamed (see {@link PlatformRenames}), with the references
+	 * renamed, into {@code target}; returns how many there were.
+	 */
+	private int applyRenames(Map<String, byte[]> target, Collection<String> entries, FileView files) throws ArchiveException {
+		if (renames.isEmpty()) return 0;
+		int count = 0;
+		for (String name : List.copyOf(entries)) {
+			if (!name.endsWith(".class") || name.startsWith("META-INF/")) continue;
+			byte[] data = target.containsKey(name) ? target.get(name) : files.read(name);
+			byte[] renamed = data == null ? null : renames.apply(data);
+			if (renamed != null) {
+				target.put(name, renamed);
+				count++;
+			}
+		}
+		return count;
 	}
 
 	/** Reads an entry of the mod being translated (remapped when applicable). */
