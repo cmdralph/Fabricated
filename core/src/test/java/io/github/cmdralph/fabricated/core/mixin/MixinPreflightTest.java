@@ -172,6 +172,23 @@ class MixinPreflightTest {
 		assertTrue(missing.getFirst().message().contains("expects the constant 7"), missing.getFirst().message());
 	}
 
+	@Test
+	void anInjectIsPinnedToTheOverloadItsHandlerWasWrittenFor() throws Exception {
+		ClassIndex game = new ClassIndex(Map.of(TARGET, overloadedTarget())::get);
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Pinned", mixin("com/example/mixin/Pinned", false,
+				cw -> injectWith(cw, "(ILorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V"))));
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Pinned"));
+		assertEquals(1, new MixinPreflight(game, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).size(),
+				"Mixin picks tick()V, whose parameters the handler doesn't take");
+		List<PreflightFinding> notes = new ArrayList<>();
+		Map<String, byte[]> repaired = new MixinPreflight(game, mod::get, ClassBytesSource.EMPTY, false)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
+		assertTrue(notes.getFirst().message().contains("pinned"), notes.toString());
+		mod.put("com/example/mixin/Pinned", repaired.get("com/example/mixin/Pinned.class"));
+		List<PreflightFinding> after = new MixinPreflight(game, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(after.isEmpty(), after.toString());
+	}
+
 	/** An {@code @Inject} into tick (no descriptor) at its call to helper(I)V, whose handler has {@code desc}. */
 	private static void injectWith(ClassWriter cw, String desc) {
 		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "h", desc, null, null);

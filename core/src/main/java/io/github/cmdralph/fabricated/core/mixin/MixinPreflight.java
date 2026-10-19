@@ -141,6 +141,9 @@ public final class MixinPreflight {
 	 * <li>An {@code @Accessor} of a local variable an anonymous class captured ({@code val$name}), where the game names
 	 * that field after the decompiled variable instead (NeoForge's 1.21.11 build, for example): it is pointed at the
 	 * one captured field of the same type in each target.</li>
+	 * <li>An {@code @Inject} that names an overloaded method without a descriptor, whose handler takes the parameters of
+	 * exactly one of the overloads, while the first one (the one Mixin picks) has others: NeoForge's build orders methods
+	 * differently. The selector is pinned to the overload the handler was written for.</li>
 	 * <li>An injector whose method NeoForge turned into a delegate to a new overload of the same name that now holds the
 	 * code (NeoForge keeps vanilla's signature that way): when the injection points occur only in that overload and the
 	 * handler doesn't depend on the method's parameters, the injector is pointed at the overload.</li>
@@ -193,6 +196,11 @@ public final class MixinPreflight {
 								+ " captures local variables; if NeoForge's code has other locals there, it is skipped instead of crashing", ""));
 					}
 					if (targets.size() == 1) {
+						for (String pinned : overloadByParameters(method, ann, targets.getFirst(), ctx)) {
+							changed = true;
+							out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@Inject " + method.name + " targets "
+									+ pinned + ", which this game build declares after another overload; it is pinned to that one", ""));
+						}
 						for (String moved : overloadRepairs(method, ann, targets.getFirst(), ctx)) {
 							changed = true;
 							out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@" + simpleName(ann.desc) + " " + method.name
@@ -272,6 +280,41 @@ public final class MixinPreflight {
 			repaired.add(ref.name() + ref.desc());
 		}
 		return repaired;
+	}
+
+	/**
+	 * Pins a descriptor-less {@code @Inject} selector to the one overload whose parameters the handler takes, when
+	 * Mixin would pick another (the first of that name); returns the pinned methods.
+	 */
+	private static List<String> overloadByParameters(MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx) {
+		if (!injector.desc.equals(INJECT) || Annotations.value(injector, "locals") != null
+				|| !(Annotations.value(injector, "method") instanceof List<?> selectors)) return List.of();
+		List<Type> args = handlerArgs(handler);
+		if (args == null || args.size() < 2 || !isCallbackInfo(args.getLast())) return List.of();
+		List<Type> wanted = args.subList(0, args.size() - 1);
+		List<String> pinned = new ArrayList<>();
+		for (int i = 0; i < selectors.size(); i++) {
+			if (!(selectors.get(i) instanceof String raw)) continue;
+			MemberRef ref = MemberRef.parse(ctx.resolve(raw));
+			if (ref.fuzzy() || ref.name() == null || ref.desc() != null) continue;
+			MethodNode first = null;
+			MethodNode fitting = null;
+			int fits = 0;
+			for (MethodNode m : target.methods) {
+				if (!m.name.equals(ref.name())) continue;
+				if (first == null) first = m;
+				if (List.of(Type.getArgumentTypes(m.desc)).equals(wanted)) {
+					fitting = m;
+					fits++;
+				}
+			}
+			if (fits != 1 || fitting == first) continue;
+			@SuppressWarnings("unchecked")
+			List<Object> values = (List<Object>) selectors;
+			values.set(i, fitting.name + fitting.desc);
+			pinned.add(fitting.name + fitting.desc);
+		}
+		return pinned;
 	}
 
 	/**
