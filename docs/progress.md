@@ -19,7 +19,8 @@ in `claude.md`. The inventory of every mixin is in `MIXINS.md`.
 **Verification.** `./gradlew -Pfabricated.coreOnly=true build`: 150 tests, 0 failures (local). The
 Minecraft modules, server and client runs are verified by CI on every push (see `claude.md`, *Building and
 verifying*). Run 233 (`e0c5ffa`): every version green except the new renderer API gate on 26.x. Its cause is fixed in
-`08aff28`. The result for the final head is recorded under *Blockers and unverified* below.
+`08aff28`. Runs 236 and 237 (`3211d56`, every code change in this session): all four versions pass every gate,
+including the renderer API gate on 26.1.2, 26.2 and 26.3.
 
 ## Findings log
 
@@ -78,7 +79,8 @@ crash in run 229).
 
 Milestones, in order:
 
-- **M1, done:** the 26.x chunk meshing bridge (`8e80c6e`, `0dbdfda`), with the CI gate.
+- **M1, done:** the 26.x chunk meshing bridge (`8e80c6e`, `0dbdfda`) and the model-loading fix it needed
+  (`08aff28`), with a CI gate that passes on all three 26.x versions.
 - **M2:** moving blocks (`MovingBlockFeatureRenderer`) and the breaking animation for Fabric models on 26.x, the same
   way as M1 (only Fabric models go through Fabric's renderer).
 - **M3:** Fabric models inside vanilla composites. `FabricTerrain.draws` decides per top-level model class, so a
@@ -95,7 +97,7 @@ Milestones, in order:
 
 | Mod | What it uses | 1.21.11 | 26.x | Evidence |
 |---|---|---|---|---|
-| `fabricated-testmod-frapi` (this repo) | `ModelLoadingPlugin` after-bake modifier, its own `emitQuads` in the world | — | gate on 26.1.2, 26.2, 26.3 | CI "Fabric renderer API in the world" |
+| `fabricated-testmod-frapi` (this repo) | `ModelLoadingPlugin` after-bake modifier, its own `emitQuads` in the world | — | **passes** on 26.1.2, 26.2, 26.3 | CI "Fabric renderer API in the world", runs 236 and 237 |
 | Traveler's Backpack | Custom unbaked model deserializer | loads | loads, custom block models missing | corpus runs (run 233) |
 | Continuity | Renderer API (connected textures) | not in corpus | not in corpus | add once a Fabric build for these versions is confirmed (UNVERIFIED) |
 | Athena | Renderer API (connected textures library) | not in corpus | not in corpus | same (UNVERIFIED) |
@@ -123,8 +125,12 @@ open (see *Blockers*).
 
 - **The local sandbox can't build the Minecraft modules** (`maven.neoforged.net`, Mojang and `maven.fabricmc.net`
   are blocked), so everything game-facing is verified only in CI.
-- **Renderer API gate on the final head:** pending at the time of writing; the result goes here.
+- **Renderer API gate: passes** on 26.1.2, 26.2 and 26.3 (runs 236 and 237). On 26.3 the log shows the pre-flight
+  moving `ModelBakeryMixin#onReturnInit` to NeoForge's constructor, then `frapi emitQuads called (level
+  RenderSectionRegion, thread Worker-Main-2)` and `frapi terrain OK`: the Fabric model was drawn by a chunk-section
+  compile worker.
 - **Mixin's selection of the first match for a name-only selector** is the basis of `08aff28`. It is confirmed by
-  run 229's crash (`SectionCompilerMixin`, "Scanned 0 target(s)") and by the run 233 gate.
+  run 229's crash (`SectionCompilerMixin`, "Scanned 0 target(s)"), by run 233's gate failure and by its passing once
+  the selector was moved.
 - UNVERIFIED: FC-7 (junctions), P3-6 (configuration listener), PH2-13's likelihood, whether Continuity and Athena have
   Fabric builds for these versions, and an in-game allocation baseline for the meshing path.
