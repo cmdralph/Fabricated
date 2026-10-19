@@ -239,6 +239,23 @@ class PipelineTest {
 		assertThrows(UnsupportedOperationException.class, () -> kept.injectedInterfaces().clear());
 	}
 
+	/** A translation that fails unexpectedly leaves its stack trace in the report: core has no log of its own. */
+	@Test
+	void reportsTheCauseOfAnUnexpectedTranslationFailure() {
+		IllegalStateException root = new IllegalStateException("bad\nline");
+		RuntimeException cause = new RuntimeException("wrapped", root);
+		List<String> lines = Pipeline.causeLines("broken-mod", cause);
+		assertEquals("broken-mod:", lines.getFirst());
+		assertEquals("  java.lang.RuntimeException: wrapped", lines.get(1));
+		assertTrue(lines.get(2).startsWith("    at io.github.cmdralph.fabricated.core.PipelineTest."), lines.get(2));
+		assertTrue(lines.contains("  Caused by: java.lang.IllegalStateException: bad\nline"), lines.toString());
+		assertTrue(lines.stream().filter(l -> l.startsWith("    at ")).count() <= 24, "12 frames per exception at most");
+
+		Report report = new Report("test");
+		lines.forEach(l -> report.line("Translation errors", l));
+		assertFalse(report.render().contains("bad\nline"), "exception text can't start a line of its own in the report");
+	}
+
 	private static Pipeline.LoadedMod loadedMod(Path dir, String id, String iface, String environmentClass) throws Exception {
 		String json = TestJars.modJson(id, "1.0", "");
 		Path file = TestJars.create().fabricModJson(json).write(dir.resolve(id + ".jar"));

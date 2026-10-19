@@ -421,12 +421,16 @@ public final class Pipeline {
 					failures.put(c, new TranslationException("The jar is unsafe or corrupt: a class is nested too deeply to read",
 							"Remove " + c.id() + " or get it from a trusted source.", List.of(), e));
 				} catch (RuntimeException e) {
-					failures.put(c, new TranslationException("Unexpected error: " + e, "Report this to Fabricated with the log file.", List.of(), e));
+					failures.put(c, new TranslationException("Unexpected error: " + e,
+							"Report this to Fabricated with logs/fabric-bridge-report.txt (it has the stack trace).", List.of(), e));
 				}
 			});
 			failures.forEach((c, e) -> {
 				dropped.put(c.id(), new Drop(e.getMessage(), e.suggestion(), c));
 				failedFindings.put(c.id(), e.findings());
+				if (e.getCause() != null) {
+					for (String line : causeLines(c.id(), e.getCause())) report.line("Translation errors", line);
+				}
 			});
 			List<TranslatedMod> ordered = new ArrayList<>();
 			for (Candidate c : mods) {
@@ -577,6 +581,23 @@ public final class Pipeline {
 
 		in.cache().notes().forEach(n -> report.line("Cache", n));
 		return new Result(config, loaded, runtime, containers, report, Set.copyOf(rounds.dependencyFailures));
+	}
+
+	/**
+	 * Why translating a mod failed, for a bug report: each exception of the cause chain with its first frames (the
+	 * report has no other copy: core doesn't log).
+	 */
+	static List<String> causeLines(String modId, Throwable cause) {
+		List<String> lines = new ArrayList<>();
+		lines.add(modId + ":");
+		int depth = 0;
+		for (Throwable t = cause; t != null && depth < 5; t = t.getCause() == t ? null : t.getCause(), depth++) {
+			lines.add((depth == 0 ? "  " : "  Caused by: ") + t);
+			StackTraceElement[] frames = t.getStackTrace();
+			for (int i = 0; i < Math.min(frames.length, 12); i++) lines.add("    at " + frames[i]);
+			if (frames.length > 12) lines.add("    ... " + (frames.length - 12) + " more");
+		}
+		return lines;
 	}
 
 	private void reportLoaded(TranslatedMod t, Long millis, PackageGuard.Decision decision, List<String> linkageIssues) {
