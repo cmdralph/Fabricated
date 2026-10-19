@@ -23,7 +23,7 @@ jade
 jei
 modmenu
 mouse-tweaks
-roughly-enough-items
+rei
 shulkerboxtooltip
 xaeros-minimap
 xaeros-world-map

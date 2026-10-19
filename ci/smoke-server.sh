@@ -57,6 +57,7 @@ start=$(date +%s)
 status="timeout"
 while kill -0 "$pid" 2>/dev/null; do
 	if grep -q 'Done (' server.out 2>/dev/null; then status="started"; break; fi
+	if grep -qE 'Preparing crash report|Game crashed!|Crash report saved to|FatalStartupException' server.out 2>/dev/null; then status="crashed"; sleep 10; break; fi
 	if [ $(( $(date +%s) - start )) -gt "$timeout_seconds" ]; then break; fi
 	sleep 5
 done
@@ -77,6 +78,12 @@ echo "::endgroup::"
 echo "::group::Server output (tail)"
 tail -n 200 server.out || true
 echo "::endgroup::"
+for report in crash-reports/*.txt; do
+	[ -f "$report" ] || continue
+	echo "::group::Crash report $(basename "$report") (first 120 lines)"
+	head -n 120 "$report"
+	echo "::endgroup::"
+done
 echo "::group::fabric-bridge-report.txt"
 cat logs/fabric-bridge-report.txt || echo "(report missing)"
 echo "::endgroup::"
