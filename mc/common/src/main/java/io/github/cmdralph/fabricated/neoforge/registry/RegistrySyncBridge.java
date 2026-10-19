@@ -69,7 +69,8 @@ public final class RegistrySyncBridge {
 		modBus.addListener(EventPriority.LOWEST, RegisterEvent.class, e -> closeRoot());
 		modBus.addListener(FMLCommonSetupEvent.class, e -> {
 			registrationOpen = false;
-			closeRoot();
+			// A parallel event: freezing a vanilla registry belongs on the main thread.
+			e.enqueueWork(RegistrySyncBridge::closeRoot);
 		});
 		NeoForge.EVENT_BUS.addListener(ServerAboutToStartEvent.class, e -> DynamicRegistrySetup.fire(e.getServer().registryAccess(), "server", problems));
 		if (dist.isClient()) ClientRegistrySync.register(problems);

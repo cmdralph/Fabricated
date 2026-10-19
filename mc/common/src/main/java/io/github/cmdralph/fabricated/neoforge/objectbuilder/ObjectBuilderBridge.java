@@ -103,7 +103,10 @@ public final class ObjectBuilderBridge {
 			if (field.getType() != boolean.class) return null;
 			field.setAccessible(true);
 			return field;
+		} catch (NoSuchFieldException e) {
+			return null; // before 26.3
 		} catch (ReflectiveOperationException | RuntimeException e) {
+			LOGGER.warn("Vanilla's velocity flag on EntityType.Builder can't be set; Fabric's alwaysUpdateVelocity uses NeoForge's", e);
 			return null;
 		}
 	}

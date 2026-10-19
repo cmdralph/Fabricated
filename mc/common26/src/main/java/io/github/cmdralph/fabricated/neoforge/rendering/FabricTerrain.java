@@ -119,6 +119,8 @@ public final class FabricTerrain {
 			worker.builders = builders;
 			try {
 				worker.renderer.tesselateBlock(worker.emitter, x, y, z, level, pos, state, model, seed);
+			} catch (VirtualMachineError | ReportedException e) {
+				throw e;
 			} catch (Throwable t) {
 				CrashReport report = CrashReport.forThrowable(t, "Tesselating block model with Fabric's renderer");
 				CrashReportCategory category = report.addCategory("Block model being tesselated");
