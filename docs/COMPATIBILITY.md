@@ -22,7 +22,7 @@ Last updated from CI run [38491176425](https://github.com/cmdralph/Fabricated/ac
 | 1.21.11 | 21.11.45 | 0.141.6+1.21.11 | ✅ all 36 server and 22 client checks | ✅ boots, all test-mod checks still pass |
 | 26.1.2 | 26.1.2.116 | 0.155.3+26.1.2 | ✅ all 36 server and 22 client checks | ✅ boots, all test-mod checks still pass |
 | 26.2 | 26.2.0.90 | 0.161.0+26.2 | ✅ all 36 server and 22 client checks | ✅ boots, all test-mod checks still pass |
-| 26.3 (beta) | 26.3.0.69-beta | 0.162.0+26.3 | ✅ all 36 server and 22 client checks | ✅ boots, all test-mod checks still pass |
+| 26.3 (beta) | 26.3.0.69-beta | 0.164.0+26.3 | ✅ all 36 server and 22 client checks | ✅ boots, all test-mod checks still pass |
 
 "Boots with Fabric API" means the server starts with the full official Fabric API jar installed. Modules
 that can't work on NeoForge are disabled before any code runs (see below), and the rest load alongside
