@@ -72,6 +72,10 @@
     "client.SoundEngineStreamMixin",
     "client.ParticleResourcesMixin",
     "client.SectionCompilerMixin",
+    "client.MovingBlockRenderMixin",
+    "client.BlockBreakingRenderMixin",
+    "client.MultiPartModelMixin",
+    "client.WeightedVariantsMixin",
     "client.ClientChunkCacheMixin"
   ]
 }
