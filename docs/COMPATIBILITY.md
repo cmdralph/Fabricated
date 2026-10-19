@@ -571,6 +571,11 @@ Kotlin's), mod containers and metadata, versions and predicates, the object shar
 - Mods detect Fabricated with `FabricLoader.getInstance().isModLoaded("fabricated")`; see [API.md](API.md).
 - `mixinextras` is provided at the version NeoForge runs, as Fabric Loader provides its own, so mods requiring it
   load (copies nested in mod jars are dropped for NeoForge's).
+- Forge Config API Port (a copy of NeoForge's config system for Fabric, which many mods use) is replaced by its
+  Fabric API on NeoForge's own config system: `ConfigRegistry` registers with the mod's NeoForge container under the
+  port's file names, `ModConfigEvents` fire from NeoForge's config events, and `ConfigScreenFactoryRegistry` screens
+  open from NeoForge's config button. The port's jar is skipped (and provided at its version); its copy of Forge's own
+  config API (`ForgeConfigSpec`) is not provided.
 - Class tweakers v2 load: their `extend-enum` lines only declare the constants a mod's enum mixins add, which Mixin
   adds itself (0.17.1 or later, so on 26.x; not to NeoForge's own extensible enums).
 - Config screens a Fabric mod offers to Mod Menu (its `modmenu` entrypoint) open from the Config button of NeoForge's
