@@ -1,0 +1,15 @@
+{
+  "required": true,
+  "package": "io.github.cmdralph.fabricated.neoforge.rendering.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "client": [
+    "BlockStateModelMixin",
+    "BlockStateModelPartMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  },
+  "overwrites": {
+    "requireAnnotations": true
+  }
+}

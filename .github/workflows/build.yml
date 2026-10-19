@@ -167,6 +167,7 @@ jobs:
           check "frapi nested terrain OK" "a Fabric model inside a vanilla multipart model was meshed"
           check "frapi moving block OK" "a falling Fabric block model was drawn as a moving block"
           check "frapi breaking OK" "a Fabric block model got the breaking overlay"
+          check "frapi level-aware default OK" "a NeoForge model inside a Fabric model got the chunk section's level from Fabric's renderer"
           check "model deserializer OK" "a model file of a Fabric type was read by its Fabric deserializer"
           check "neoforge blockstate type OK" "a blockstate of NeoForge's composite type still loads with Fabric's model loading"
           if [ "$failed" = 1 ]; then

@@ -44,6 +44,12 @@ config="fabricated-lookup.mixins.json"
 [[mixins]]
 config="fabricated-transfer.mixins.json"
 
+# Fabric's renderer API defaults that keep NeoForge's model data and ambient occlusion (26.x; loaded only with the
+# renderer API, which 1.21.11 doesn't support, so that version has no such config).
+[[mixins]]
+config="fabricated-renderer.mixins.json"
+requiredMods=["fabric_renderer_api_v1"]
+
 # Access for the vendored Fabric API sources (see the file).
 [[accessTransformers]]
 file="META-INF/accesstransformer.cfg"
