@@ -39,6 +39,8 @@ public final class RegistrySyncBridge {
 	/** True while NeoForge's registration events run: the only time new registries may join the root registry. */
 	private static volatile boolean registrationOpen;
 	private static boolean rootOpened;
+	/** Whether the root registry's callback is added (only read and written where registration events are posted). */
+	private static boolean syncedCallbackAdded;
 
 	private RegistrySyncBridge() {
 	}
@@ -51,15 +53,23 @@ public final class RegistrySyncBridge {
 	 */
 	@SuppressWarnings({"unchecked", "rawtypes"})
 	public static void register(IEventBus modBus, Dist dist, Consumer<String> problems) {
-		modBus.addListener(EventPriority.HIGHEST, RegisterEvent.class, e -> registrationOpen = true);
+		modBus.addListener(EventPriority.HIGHEST, RegisterEvent.class, e -> {
+			if (!syncedCallbackAdded) {
+				syncedCallbackAdded = true;
+				// A registry Fabric code marked SYNCED before registering it (FabricRegistryBuilder does) gets NeoForge's
+				// flag. Added here and not in the constructor: FML constructs mods in parallel, and the root registry's
+				// callback list is a plain ArrayList. Registration events are posted one at a time, and this first one
+				// comes before any Fabric initializer.
+				((Registry) BuiltInRegistries.REGISTRY).addCallback((AddCallback<Registry<?>>) (root, id, key, registry) -> {
+					if (RegistryAttributeImpl.markedSynced(key)) markSynced(registry);
+				});
+			}
+			registrationOpen = true;
+		});
 		modBus.addListener(EventPriority.LOWEST, RegisterEvent.class, e -> closeRoot());
 		modBus.addListener(FMLCommonSetupEvent.class, e -> {
 			registrationOpen = false;
 			closeRoot();
-		});
-		// A registry Fabric code marked SYNCED before registering it (FabricRegistryBuilder does) gets NeoForge's flag.
-		((Registry) BuiltInRegistries.REGISTRY).addCallback((AddCallback<Registry<?>>) (root, id, key, registry) -> {
-			if (RegistryAttributeImpl.markedSynced(key)) markSynced(registry);
 		});
 		NeoForge.EVENT_BUS.addListener(ServerAboutToStartEvent.class, e -> DynamicRegistrySetup.fire(e.getServer().registryAccess(), "server", problems));
 		if (dist.isClient()) ClientRegistrySync.register(problems);
