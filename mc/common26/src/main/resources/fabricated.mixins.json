@@ -56,6 +56,7 @@
     "client.LocalPlayerMixin",
     "client.ClientConfigurationPacketListenerImplMixin",
     "client.KeyMappingAccessor",
+    "client.MinecraftEntrypointsMixin",
     "client.ModelManagerExtraModelsMixin",
     "client.MultiPlayerGameModeMixin",
     "client.MouseHandlerMixin",

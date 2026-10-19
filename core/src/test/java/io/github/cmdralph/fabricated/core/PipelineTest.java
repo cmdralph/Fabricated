@@ -373,6 +373,28 @@ class PipelineTest {
 		}
 	}
 
+	@Test
+	void aPluginConfigLosesOnlyItsFailingInjectorsIncludingThoseOfMixinsItsPluginAdds(@TempDir Path game) throws Exception {
+		Path jar = TestJars.create().fabricModJson(TestJars.modJson("plug-mod", "1.0", "\"mixins\":[\"plug.mixins.json\"]"))
+				.text("plug.mixins.json", "{\"required\":true,\"package\":\"com.plug.mixin\",\"plugin\":\"com.plug.Plugin\",\"mixins\":[\"Listed\"]}")
+				.bytes("com/plug/mixin/Listed.class", mixinClass("com/plug/mixin/Listed", "removedByNeoForge"))
+				// Not listed: the plugin's getMixins() adds it at runtime.
+				.bytes("com/plug/mixin/sub/Added.class", mixinClass("com/plug/mixin/sub/Added", "removedByNeoForge"))
+				.write(game.resolve("mods/plug.jar"));
+		Pipeline.Result result = Pipeline.run(input(game, List.of(jar), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
+		String report = result.report().render();
+		assertTrue(result.runtime().isModLoaded("plug-mod"), report);
+		assertTrue(report.contains("LEFT_OUT [plug.mixins.json com.plug.mixin.sub.Added]"), report);
+		try (SafeArchive overlay = SafeArchive.open(result.mods().getFirst().translated().overlay(), ArchiveLimits.DEFAULTS)) {
+			assertNull(overlay.read("plug.mixins.json"), "the mixins stay in their config");
+			for (String mixin : List.of("com/plug/mixin/Listed.class", "com/plug/mixin/sub/Added.class")) {
+				ClassNode stripped = new ClassNode();
+				new ClassReader(overlay.read(mixin)).accept(stripped, 0);
+				assertTrue(stripped.methods.stream().noneMatch(m -> m.name.equals("handler")), mixin + " loses its failing handler");
+			}
+		}
+	}
+
 	private static Path patchTarget(Path game) throws Exception {
 		return TestJars.create().fabricModJson(TestJars.modJson("target-mod", "2.0", "\"mixins\":[\"target.mixins.json\"]"))
 				.text("target.mixins.json", "{\"required\":true,\"package\":\"com.target.mixin\",\"mixins\":[\"BadMixin\"]}")

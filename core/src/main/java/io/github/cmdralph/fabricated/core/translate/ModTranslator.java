@@ -135,7 +135,8 @@ public final class ModTranslator {
 
 				Map<String, byte[]> overlay = new TreeMap<>();
 				List<PreflightFinding> findings = new ArrayList<>();
-				List<ModsTomlWriter.MixinConfigSpec> mixinSpecs = processMixins(candidate, override, files, overlay, findings);
+				List<ModsTomlWriter.MixinConfigSpec> mixinSpecs = processMixins(candidate, override, files,
+						remapped != null ? remapped.keySet() : archive.classEntryNames(), overlay, findings);
 
 				List<InjectedInterface> injections = List.of();
 				int atLines = 0;
@@ -257,7 +258,7 @@ public final class ModTranslator {
 	}
 
 	private List<ModsTomlWriter.MixinConfigSpec> processMixins(Candidate candidate, ModOverride override, FileView files,
-			Map<String, byte[]> overlay, List<PreflightFinding> findings) throws ArchiveException, TranslationException {
+			Collection<String> entries, Map<String, byte[]> overlay, List<PreflightFinding> findings) throws ArchiveException, TranslationException {
 		FabricModMetadata md = candidate.metadata();
 		String behavior = MixinCompat.clampForNeoForge(MixinCompat.fabricBehaviorVersion(md.getDependencies()), env.runtimeMixinVersion(),
 				env.lowestMixinBehavior());
@@ -268,6 +269,7 @@ public final class ModTranslator {
 		MixinPreflight preflight = new MixinPreflight(env.game(), classSource(translated), env.untransformable(), env.clientSide(),
 				MixinCompat.missingTargetsFatal(behavior));
 		Map<String, MixinConfigFile> configs = new HashMap<>();
+		Map<String, Refmap> refmaps = new HashMap<>();
 
 		for (MixinEntry entry : md.compatHints().mixinsOr(md.mixins())) {
 			if (!entry.environment().matches(side)) continue;
@@ -290,6 +292,7 @@ public final class ModTranslator {
 				throw new TranslationException("Mixin config " + entry.config() + " is invalid: " + e.getMessage(), "Report this to the mod author.");
 			}
 			configs.put(entry.config(), config);
+			refmaps.put(entry.config(), refmap);
 
 			Skips skips = skipsFor(entry.config(), config, override.skipMixins());
 			Set<String> wholeSkips = skips.mixins();
@@ -309,10 +312,16 @@ public final class ModTranslator {
 			if (!override.ignorePreflight()) {
 				List<PreflightFinding> checked = preflight.check(entry.config(), config, refmap, skip);
 				findings.addAll(checked);
+				// As Mixin does with an injector that may fail: only the failing handler goes, the rest of the mixin
+				// (its interfaces, accessors and other injectors) still applies.
 				Set<String> leftOut = new TreeSet<>(skip);
+				Map<String, Set<String>> handlers = new TreeMap<>();
 				for (PreflightFinding f : checked) {
-					if (f.severity() == Severity.LEFT_OUT) leftOut.add(relativeMixin(config, f.mixin()));
+					if (f.severity() != Severity.LEFT_OUT) continue;
+					if (f.handler() == null) leftOut.add(relativeMixin(config, f.mixin()));
+					else handlers.computeIfAbsent(f.mixin().replace('.', '/') + ".class", k -> new TreeSet<>()).add(f.handler());
 				}
+				leaveOutHandlers(handlers, translated, overlay);
 				if (leftOut.size() > skip.size()) skip = withDependents(entry.config(), config, leftOut, translated, findings);
 			}
 			if (!skip.isEmpty()) {
@@ -320,6 +329,7 @@ public final class ModTranslator {
 			}
 			specs.add(new ModsTomlWriter.MixinConfigSpec(entry.config(), behavior));
 		}
+		if (!override.ignorePreflight()) checkPluginMixins(entries, configs, refmaps, preflight, translated, overlay, findings);
 
 		List<PreflightFinding> failures = findings.stream().filter(f -> f.severity() == Severity.FAIL).toList();
 		if (!failures.isEmpty()) {
@@ -335,6 +345,46 @@ public final class ModTranslator {
 					failures, null);
 		}
 		return specs;
+	}
+
+	private static void leaveOutHandlers(Map<String, Set<String>> handlers, FileView files, Map<String, byte[]> overlay) throws ArchiveException {
+		for (Map.Entry<String, Set<String>> h : handlers.entrySet()) {
+			byte[] mixin = files.read(h.getKey());
+			if (mixin != null) overlay.put(h.getKey(), withoutMembers(mixin, h.getValue(), new HashSet<>()));
+		}
+	}
+
+	/**
+	 * Mixins a config's plugin adds at runtime ({@code IMixinConfigPlugin.getMixins}) are listed in no config, so they
+	 * are found as the other classes in the config's package (Mixin requires them there). Pre-flight checks them as
+	 * listed; an injector that would crash is left out, while problems of the whole mixin (a target missing on this
+	 * side, say) are not reported: the plugin may well never add it.
+	 */
+	private static void checkPluginMixins(Collection<String> entries, Map<String, MixinConfigFile> configs, Map<String, Refmap> refmaps,
+			MixinPreflight preflight, FileView files, Map<String, byte[]> overlay, List<PreflightFinding> findings) throws ArchiveException {
+		Set<String> listed = new HashSet<>();
+		for (MixinConfigFile config : configs.values()) {
+			for (String mixin : config.allMixins()) listed.add(config.internalName(mixin) + ".class");
+		}
+		for (Map.Entry<String, MixinConfigFile> e : new TreeMap<>(configs).entrySet()) {
+			MixinConfigFile config = e.getValue();
+			if (config.plugin() == null || config.plugin().isBlank() || config.mixinPackage() == null || config.mixinPackage().isEmpty()) continue;
+			String prefix = config.internalName("");
+			List<String> unlisted = new ArrayList<>();
+			for (String entry : entries) {
+				if (entry.startsWith(prefix) && entry.endsWith(".class") && !entry.contains("$") && listed.add(entry)) {
+					unlisted.add(entry.substring(prefix.length(), entry.length() - ".class".length()).replace('/', '.'));
+				}
+			}
+			if (unlisted.isEmpty()) continue;
+			Map<String, Set<String>> handlers = new TreeMap<>();
+			for (PreflightFinding f : preflight.check(e.getKey(), config.listing(unlisted), refmaps.get(e.getKey()), Set.of())) {
+				if (f.severity() != Severity.LEFT_OUT || f.handler() == null) continue;
+				findings.add(f);
+				handlers.computeIfAbsent(f.mixin().replace('.', '/') + ".class", k -> new TreeSet<>()).add(f.handler());
+			}
+			leaveOutHandlers(handlers, files, overlay);
+		}
 	}
 
 	/** The mixin's name as its config lists it. */

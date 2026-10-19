@@ -55,12 +55,17 @@ chmod +x run.sh
 pid=$!
 start=$(date +%s)
 status="timeout"
+crashed() { grep -qE 'Preparing crash report|Game crashed!|Crash report saved to|FatalStartupException' server.out 2>/dev/null; }
 while kill -0 "$pid" 2>/dev/null; do
+	if crashed; then status="crashed"; sleep 10; break; fi
 	if grep -q 'Done (' server.out 2>/dev/null; then status="started"; break; fi
-	if grep -qE 'Preparing crash report|Game crashed!|Crash report saved to|FatalStartupException' server.out 2>/dev/null; then status="crashed"; sleep 10; break; fi
 	if [ $(( $(date +%s) - start )) -gt "$timeout_seconds" ]; then break; fi
 	sleep 5
 done
+# The server may have stopped between two checks: its output says how.
+if [ "$status" = "timeout" ] && ! kill -0 "$pid" 2>/dev/null; then
+	if crashed; then status="crashed"; else status="exited"; fi
+fi
 if [ "$status" = "started" ]; then
 	# Let a few ticks run so tick-based checks (mixins) can fire, then reload data packs once so reload
 	# listeners run a second time.

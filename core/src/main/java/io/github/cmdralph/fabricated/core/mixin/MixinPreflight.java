@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -19,6 +20,7 @@ import io.github.cmdralph.fabricated.core.mixin.PreflightFinding.Severity;
 
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassWriter;
+import org.objectweb.asm.Handle;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.AbstractInsnNode;
@@ -61,6 +63,7 @@ public final class MixinPreflight {
 	private static final String UNIQUE = "Lorg/spongepowered/asm/mixin/Unique;";
 	private static final String INTRINSIC = "Lorg/spongepowered/asm/mixin/Intrinsic;";
 	private static final String WRAP_OPERATION = "Lcom/llamalad7/mixinextras/injector/wrapoperation/WrapOperation;";
+	private static final String WRAP_METHOD = "Lcom/llamalad7/mixinextras/injector/wrapmethod/WrapMethod;";
 	/** NeoForge's marker for the enums only its own enum extension system may extend. */
 	private static final String EXTENSIBLE_ENUM = "net/neoforged/fml/common/asm/enumextension/IExtensibleEnum";
 	private static final String MODIFY_VARIABLE = "Lorg/spongepowered/asm/mixin/injection/ModifyVariable;";
@@ -127,7 +130,7 @@ public final class MixinPreflight {
 		}
 		if (out.stream().anyMatch(f -> f.severity() == Severity.LEFT_OUT)) {
 			out.add(new PreflightFinding(Severity.INFO, configName, null, "This config uses a mixin plugin (" + config.plugin()
-					+ ") that may disable mixins at runtime, so a mixin that would crash the game is left out instead of disabling the mod.", ""));
+					+ ") that may disable mixins at runtime, so an injector that would crash the game is left out instead of disabling the mod.", ""));
 		}
 		return out;
 	}
@@ -200,8 +203,8 @@ public final class MixinPreflight {
 					if (targets.size() == 1) {
 						for (String pinned : overloadByParameters(method, ann, targets.getFirst(), ctx)) {
 							changed = true;
-							out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@Inject " + method.name + " targets "
-									+ pinned + ", which this game build declares after another overload; it is pinned to that one", ""));
+							out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@" + simpleName(ann.desc) + " " + method.name
+									+ " targets " + pinned + ", which this game build declares after another overload; it is pinned to that one", ""));
 						}
 						for (String moved : overloadRepairs(method, ann, targets.getFirst(), ctx)) {
 							changed = true;
@@ -285,14 +288,16 @@ public final class MixinPreflight {
 	}
 
 	/**
-	 * Pins a descriptor-less {@code @Inject} selector to the one overload whose parameters the handler takes, when
-	 * Mixin would pick another (the first of that name); returns the pinned methods.
+	 * Pins a descriptor-less {@code @Inject} or {@code @WrapMethod} selector to the one overload whose parameters the
+	 * handler takes, when Mixin would pick another (the first of that name); returns the pinned methods.
 	 */
 	private static List<String> overloadByParameters(MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx) {
-		if (!injector.desc.equals(INJECT) || Annotations.value(injector, "locals") != null
+		boolean inject = injector.desc.equals(INJECT);
+		if (!inject && !injector.desc.equals(WRAP_METHOD) || Annotations.value(injector, "locals") != null
 				|| !(Annotations.value(injector, "method") instanceof List<?> selectors)) return List.of();
 		List<Type> args = handlerArgs(handler);
-		if (args == null || args.size() < 2 || !isCallbackInfo(args.getLast())) return List.of();
+		if (args == null || args.size() < 2
+				|| !(inject ? isCallbackInfo(args.getLast()) : args.getLast().getDescriptor().equals(OPERATION))) return List.of();
 		List<Type> wanted = args.subList(0, args.size() - 1);
 		List<String> pinned = new ArrayList<>();
 		for (int i = 0; i < selectors.size(); i++) {
@@ -538,8 +543,8 @@ public final class MixinPreflight {
 			out.add(new PreflightFinding(config.required() ? fatal() : Severity.WARN, configName, mixinDotted, message, suggestion));
 		}
 
-		void injector(int require, String message, String suggestion) {
-			out.add(new PreflightFinding(require > 0 ? fatal() : Severity.WARN, configName, mixinDotted, message, suggestion));
+		void injector(MethodNode handler, int require, String message, String suggestion) {
+			out.add(new PreflightFinding(require > 0 ? fatal() : Severity.WARN, configName, mixinDotted, message, suggestion, handler.name));
 		}
 
 		/** A config plugin may disable the mixin at runtime, so a crash only leaves the mixin out. */
@@ -824,7 +829,7 @@ public final class MixinPreflight {
 		}
 		if (matched.isEmpty()) {
 			if (!anyFuzzy && lastSelector != null) {
-				ctx.injector(require, injectorName + " targets method " + lastSelector
+				ctx.injector(handler, require, injectorName + " targets method " + lastSelector
 								+ ", which does not exist in " + target.name.replace('/', '.'),
 						"The method was renamed or removed by NeoForge or this Minecraft version.");
 			}
@@ -837,12 +842,20 @@ public final class MixinPreflight {
 			return;
 		}
 
+		if (ann.desc.equals(WRAP_METHOD) && matched.stream().allMatch(m -> (m.access & Opcodes.ACC_ABSTRACT) != 0)) {
+			// MixinExtras throws while preparing the injector, which require doesn't cover (a config that isn't required survives it).
+			ctx.injector(handler, ctx.config().required() ? 1 : 0, injectorName + " targets " + matched.getFirst().name + matched.getFirst().desc
+							+ ", which is abstract in " + target.name.replace('/', '.'),
+					"Mixin picks the first method of that name; the mod needs an update or this mixin must be skipped.");
+			return;
+		}
+
 		if (ann.desc.equals(MODIFY_CONSTANT)) {
 			for (AnnotationNode constant : annotationList(Annotations.value(ann, "constant"))) {
 				String expected = constantDescription(constant);
 				if (expected == null) continue;
 				if (matched.stream().allMatch(m -> constantVerdict(constant, m) == Verdict.MISSING)) {
-					ctx.injector(require, injectorName + " in " + matched.getFirst().name + " expects the constant " + expected
+					ctx.injector(handler, require, injectorName + " in " + matched.getFirst().name + " expects the constant " + expected
 									+ ", which does not occur in that method",
 							"NeoForge or this Minecraft version changed the method body; the mod needs an update or this mixin must be skipped.");
 					return;
@@ -852,7 +865,7 @@ public final class MixinPreflight {
 
 		String missingLocal = missingLocal(handler, matched);
 		if (missingLocal != null) {
-			ctx.injector(require, injectorName + " handler " + handler.name + " captures the local variable " + missingLocal + ", which "
+			ctx.injector(handler, require, injectorName + " handler " + handler.name + " captures the local variable " + missingLocal + ", which "
 							+ matched.getFirst().name + " in " + target.name.replace('/', '.') + " does not declare",
 					"NeoForge or this Minecraft version changed the method body; the mod needs an update or this mixin must be skipped.");
 			return;
@@ -876,7 +889,7 @@ public final class MixinPreflight {
 				if (v == Verdict.MISSING && verdict == Verdict.UNKNOWN) verdict = Verdict.MISSING;
 			}
 			if (verdict == Verdict.MISSING) {
-				ctx.injector(require, injectorName + " in " + matched.getFirst().name + " expects @At(\"" + point + "\""
+				ctx.injector(handler, require, injectorName + " in " + matched.getFirst().name + " expects @At(\"" + point + "\""
 								+ (rawTarget != null ? ", target=\"" + ctx.resolve(rawTarget) + "\"" : "")
 								+ (ordinal >= 0 ? ", ordinal=" + ordinal : "") + "), which does not occur in that method",
 						"NeoForge or this Minecraft version changed the method body; the mod needs an update or this mixin must be skipped.");
@@ -917,21 +930,40 @@ public final class MixinPreflight {
 	 * Only targets that carry local variable names are judged.
 	 */
 	private static String missingLocal(MethodNode handler, List<MethodNode> targets) {
-		int count = Type.getArgumentTypes(handler.desc).length;
-		for (int i = 0; i < count; i++) {
+		Type[] params = Type.getArgumentTypes(handler.desc);
+		for (int i = 0; i < params.length; i++) {
 			for (AnnotationNode a : parameterAnnotations(handler, i)) {
-				if (!a.desc.equals(LOCAL) || !(Annotations.value(a, "name") instanceof List<?> names) || names.isEmpty()) continue;
-				boolean judged = false;
-				boolean found = false;
-				for (MethodNode m : targets) {
-					if (m.localVariables == null || m.localVariables.isEmpty()) continue;
-					judged = true;
-					for (LocalVariableNode local : m.localVariables) found |= names.contains(local.name);
+				if (!a.desc.equals(LOCAL)) continue;
+				if (Annotations.value(a, "name") instanceof List<?> names && !names.isEmpty()) {
+					if (!judgedMissing(targets, local -> names.contains(local.name))) continue;
+					return String.valueOf(names.getFirst());
 				}
-				if (judged && !found) return String.valueOf(names.getFirst());
+				// By type alone: the method must have a local of that type somewhere (or a parameter, with argsOnly).
+				Type type = params[i];
+				if (Annotations.value(a, "index") != null || type.getDescriptor().startsWith("Lcom/llamalad7/mixinextras/sugar/ref/")) continue;
+				if (Boolean.TRUE.equals(Annotations.value(a, "argsOnly"))) {
+					if (targets.stream().noneMatch(m -> List.of(Type.getArgumentTypes(m.desc)).contains(type))) {
+						return "of type " + type.getClassName() + " among its parameters";
+					}
+				} else if (judgedMissing(targets, local -> local.desc.equals(type.getDescriptor()))) {
+					return "of type " + type.getClassName();
+				}
 			}
 		}
 		return null;
+	}
+
+	/** Whether the targets' local variable tables (where they have one) show no local {@code wanted} accepts. */
+	private static boolean judgedMissing(List<MethodNode> targets, Predicate<LocalVariableNode> wanted) {
+		boolean judged = false;
+		for (MethodNode m : targets) {
+			if (m.localVariables == null || m.localVariables.isEmpty()) continue;
+			judged = true;
+			for (LocalVariableNode local : m.localVariables) {
+				if (wanted.test(local)) return false;
+			}
+		}
+		return judged;
 	}
 
 	/** The handler's parameter types without MixinExtras sugar parameters; null if a parameter uses {@code @Coerce}. */
@@ -1162,10 +1194,22 @@ public final class MixinPreflight {
 				if (ref.fuzzy() || ref.name() == null) return true;
 				judged = true;
 				String point = kind.equals("method") ? "INVOKE" : "FIELD";
-				if (insns.stream().anyMatch(insn -> matchesInsn(point, ref, insn))) return true;
+				if (insns.stream().anyMatch(insn -> matchesInsn(point, ref, insn) || point.equals("INVOKE") && referencesHandle(insn, ref))) return true;
 			}
 		}
 		return !judged;
+	}
+
+	/**
+	 * Whether {@code insn} is a method reference or lambda ({@code invokedynamic}) to a method named and typed as
+	 * {@code ref} selects; its owner may be a subclass (as {@code this::canHitEntity} names it), so it isn't compared.
+	 */
+	private static boolean referencesHandle(AbstractInsnNode insn, MemberRef ref) {
+		if (!(insn instanceof InvokeDynamicInsnNode indy)) return false;
+		for (Object arg : indy.bsmArgs) {
+			if (arg instanceof Handle h && ref.matchesMethod(h.getName(), h.getDesc())) return true;
+		}
+		return false;
 	}
 
 	/** Whether {@code insn} uses {@code type}: creates, casts or checks it, calls or reads a member of it, or passes it. */

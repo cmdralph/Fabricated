@@ -137,8 +137,9 @@ public final class Pipeline {
 	 * Fabric mods whose API Fabricated provides itself, by id: their jar isn't loaded, and they are provided at its
 	 * version, so the mods requiring them resolve as they would on Fabric.
 	 */
-	private static final Map<String, String> REPLACED = Map.of("forgeconfigapiport",
-			"Fabricated provides Forge Config API Port's Fabric API on NeoForge's own config system, which the port copies");
+	private static final Map<String, String> REPLACED = Map.of(
+			"forgeconfigapiport", "Fabricated provides Forge Config API Port's Fabric API on NeoForge's own config system, which the port copies",
+			"modmenu", "Fabricated shows the config screens Fabric mods offer through Mod Menu's API in NeoForge's mod list");
 
 	/** A mod the platform provides (Minecraft, Java, Fabric Loader, Fabricated, native Fabric API modules). */
 	private record Builtin(String id, String version, String name, List<String> aliases) {

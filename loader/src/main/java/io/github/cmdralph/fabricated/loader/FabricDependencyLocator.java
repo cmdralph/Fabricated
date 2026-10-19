@@ -30,8 +30,11 @@ import io.github.cmdralph.fabricated.core.config.FabricatedConfig;
 import io.github.cmdralph.fabricated.core.json.JsonException;
 import io.github.cmdralph.fabricated.core.report.Report;
 import io.github.cmdralph.fabricated.core.resolve.FabricApiPlan;
+import io.github.cmdralph.fabricated.core.resolve.PlatformLibraries;
 import io.github.cmdralph.fabricated.core.translate.LinkageAnalysis;
 import io.github.cmdralph.fabricated.core.translate.PackageGuard;
+import io.github.cmdralph.fabricated.fabricloader.version.VersionParser;
+import net.fabricmc.loader.api.VersionParsingException;
 import net.neoforged.fml.ModLoadingIssue;
 import net.neoforged.fml.jarcontents.JarContents;
 import net.neoforged.fml.jarmoduleinfo.JarModuleInfo;
@@ -262,21 +265,25 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 	}
 
 	/**
-	 * The MixinExtras version NeoForge runs, from its jar among the discovered files (NeoForge nests it in its own jar):
-	 * its mod metadata, else its manifest, else its file name; or from its classes' module; null when not found.
+	 * The MixinExtras version NeoForge runs: the newest that a discovered file nests (NeoForge nests it in its own jar,
+	 * and loads the newest nested copy) or is (its mod metadata, else its manifest, else its file name); else from its
+	 * classes' module; null when not found.
 	 */
 	static String mixinExtrasVersion(List<IModFile> files) {
+		String newest = null;
 		for (IModFile file : files) {
 			JarContents contents = file.getContents();
-			if (!contents.containsFile("com/llamalad7/mixinextras/MixinExtrasBootstrap.class")) continue;
-			for (IModInfo mod : file.getModInfos()) {
-				if (mod.getModId().equals("mixinextras")) return mod.getVersion().toString();
+			String version = null;
+			try {
+				byte[] jarJar = contents.readFile("META-INF/jarjar/metadata.json");
+				if (jarJar != null) version = PlatformLibraries.nestedMixinExtras(new String(jarJar, StandardCharsets.UTF_8));
+			} catch (IOException | JsonException e) {
+				LOGGER.debug("Could not read the nested jars of {}", file.getFileName(), e);
 			}
-			String fromManifest = contents.getManifest().getMainAttributes().getValue("Implementation-Version");
-			if (fromManifest != null) return fromManifest;
-			Matcher fromName = VERSION_IN_NAME.matcher(file.getFileName());
-			if (fromName.find()) return fromName.group();
+			if (version == null && contents.containsFile("com/llamalad7/mixinextras/MixinExtrasBootstrap.class")) version = ownVersion(file);
+			if (version != null && (newest == null || newer(version, newest))) newest = version;
 		}
+		if (newest != null) return newest;
 		// Not a discovered file: a library on NeoForge's own layers.
 		try {
 			Class<?> bootstrap = Class.forName("com.llamalad7.mixinextras.MixinExtrasBootstrap");
@@ -286,6 +293,24 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 		} catch (ClassNotFoundException | LinkageError e) {
 			LOGGER.debug("Could not determine the running MixinExtras version", e);
 			return null;
+		}
+	}
+
+	private static String ownVersion(IModFile file) {
+		for (IModInfo mod : file.getModInfos()) {
+			if (mod.getModId().startsWith("mixinextras")) return mod.getVersion().toString();
+		}
+		String fromManifest = file.getContents().getManifest().getMainAttributes().getValue("Implementation-Version");
+		if (fromManifest != null) return fromManifest;
+		Matcher fromName = VERSION_IN_NAME.matcher(file.getFileName());
+		return fromName.find() ? fromName.group() : null;
+	}
+
+	private static boolean newer(String a, String b) {
+		try {
+			return VersionParser.parse(a, false).compareTo(VersionParser.parse(b, false)) > 0;
+		} catch (VersionParsingException e) {
+			return false;
 		}
 	}
 

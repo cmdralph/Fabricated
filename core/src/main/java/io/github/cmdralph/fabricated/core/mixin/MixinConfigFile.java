@@ -56,6 +56,12 @@ public record MixinConfigFile(
 				defaultRequire != 0 ? defaultRequire : parentConfig.defaultRequire(), parent, overwritesRequireAnnotations);
 	}
 
+	/** This config listing only {@code mixins} (names relative to the package), on both sides. */
+	public MixinConfigFile listing(List<String> mixins) {
+		return new MixinConfigFile(tree, mixinPackage, List.copyOf(mixins), List.of(), List.of(), refmap, required, plugin, defaultRequire,
+				parent, overwritesRequireAnnotations);
+	}
+
 	private static String optString(Map<String, Object> tree, String key) throws JsonException {
 		Object v = tree.get(key);
 		if (v == null) return null;
