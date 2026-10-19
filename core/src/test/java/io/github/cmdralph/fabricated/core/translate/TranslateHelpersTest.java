@@ -4,7 +4,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import org.junit.jupiter.api.Test;
@@ -26,7 +29,7 @@ class TranslateHelpersTest {
 		String toml = ModsTomlWriter.write(new ModsTomlWriter.Spec("my_mod", "1.0.0", "My \"Mod\"", "Line1\nLine2\\end",
 				List.of(new PersonImpl("Alice", ContactInformation.EMPTY), new PersonImpl("Bob", ContactInformation.EMPTY)),
 				List.of(), List.of("MIT"), "https://example.com", null, "icon.png",
-				List.of(new ModsTomlWriter.MixinConfigSpec("my.mixins.json", "0.17.4")), true, List.of("fabric_api", "other")));
+				List.of(new ModsTomlWriter.MixinConfigSpec("my.mixins.json", "0.17.4")), true, List.of("fabric_api", "other"), Map.of(), Map.of()));
 		assertTrue(toml.contains("modLoader=\"fabricated\""));
 		assertTrue(toml.contains("displayName=\"My \\\"Mod\\\"\""));
 		assertTrue(toml.contains("description=\"Line1\\nLine2\\\\end\""));
@@ -36,6 +39,40 @@ class TranslateHelpersTest {
 		assertTrue(toml.contains("[[dependencies.my_mod]]\nmodId=\"fabric_api\"\ntype=\"optional\"\nordering=\"AFTER\""));
 		assertTrue(toml.contains("license=\"MIT\""));
 		assertFalse(toml.contains("issueTrackerURL"));
+		assertFalse(toml.contains("modproperties"));
+		assertFalse(toml.contains("sodium:options"));
+	}
+
+	/** A Fabric mod's Sodium integration, in the form Sodium for NeoForge reads. */
+	@Test
+	void translatesSodiumIntegration() throws Exception {
+		var md = FabricModJsonParser.parse("{\"schemaVersion\":1,\"id\":\"aaa\",\"version\":\"1\","
+				+ "\"entrypoints\":{\"sodium:config_api_user\":[\"com.example.Page\",\"com.example.Other\"]},"
+				+ "\"custom\":{\"sodium:options\":{\"mixin.features.render.world.sky\":false,\"mixin.bad\":\"no\"}}}");
+		List<String> notes = new ArrayList<>();
+		assertEquals(Map.of("sodium:config_api_user", "com.example.Page"), ModTranslator.sodiumProperties(md, notes));
+		assertEquals(Map.of("mixin.features.render.world.sky", false), ModTranslator.sodiumOptions(md, notes));
+		assertEquals(2, notes.size(), notes.toString());
+
+		var kotlin = FabricModJsonParser.parse("{\"schemaVersion\":1,\"id\":\"aaa\",\"version\":\"1\","
+				+ "\"entrypoints\":{\"sodium:config_api_user\":[{\"adapter\":\"kotlin\",\"value\":\"com.example.Page\"}]}}");
+		notes.clear();
+		assertEquals(Map.of(), ModTranslator.sodiumProperties(kotlin, notes));
+		assertEquals(Map.of(), ModTranslator.sodiumOptions(kotlin, notes));
+		assertEquals(1, notes.size(), notes.toString());
+	}
+
+	/** What Sodium for NeoForge reads from a mod: its options page (a mod property) and its overrides of Sodium's mixins. */
+	@Test
+	void writesWhatSodiumForNeoForgeReads() {
+		Map<String, Boolean> options = new LinkedHashMap<>();
+		options.put("mixin.features.render.world.sky", false);
+		options.put("mixin.core", true);
+		String toml = ModsTomlWriter.write(new ModsTomlWriter.Spec("my_mod", "1.0.0", "My Mod", "", List.of(), List.of(), List.of(), null, null, null,
+				List.of(), false, List.of(), Map.of("sodium:config_api_user", "com.example.SodiumPage"), options));
+		assertTrue(toml.contains("[[mods]]\nmodId=\"my_mod\"\nversion=\"1.0.0\"\ndisplayName=\"My Mod\"\ndescription=\"\"\n"
+				+ "\"sodium:options\"={\"mixin.features.render.world.sky\"=false, \"mixin.core\"=true}\n"), toml);
+		assertTrue(toml.contains("[modproperties.my_mod]\n\"sodium:config_api_user\"=\"com.example.SodiumPage\"\n"), toml);
 	}
 
 	@Test
