@@ -30,6 +30,7 @@ public final class FrapiTestMod implements ModInitializer {
 		ServerPlayConnectionEvents.JOIN.register((listener, sender, server) -> server.execute(() -> {
 			BlockPos pos = listener.player.blockPosition().relative(Direction.NORTH, 2).above();
 			listener.player.level().setBlockAndUpdate(pos, block.defaultBlockState());
+			LOGGER.info("FABRICATED-TEST frapi block placed at {}", pos);
 		}));
 	}
 }

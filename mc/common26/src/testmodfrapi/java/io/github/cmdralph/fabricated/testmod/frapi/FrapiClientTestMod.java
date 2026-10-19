@@ -26,11 +26,16 @@ import net.minecraft.world.level.block.state.BlockState;
 public final class FrapiClientTestMod implements ClientModInitializer {
 	@Override
 	public void onInitializeClient() {
-		ModelLoadingPlugin.register(plugin -> plugin.modifyBlockModelAfterBake().register((model, context) ->
-				BuiltInRegistries.BLOCK.getKey(context.state().getBlock()).equals(FrapiTestMod.TERRAIN_BLOCK_ID) ? new TerrainCheckModel(model) : model));
+		AtomicBoolean wrapped = new AtomicBoolean();
+		ModelLoadingPlugin.register(plugin -> plugin.modifyBlockModelAfterBake().register((model, context) -> {
+			if (!BuiltInRegistries.BLOCK.getKey(context.state().getBlock()).equals(FrapiTestMod.TERRAIN_BLOCK_ID)) return model;
+			if (!wrapped.getAndSet(true)) FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi model wrapped ({})", model.getClass().getName());
+			return new TerrainCheckModel(model);
+		}));
 	}
 
 	private static final class TerrainCheckModel extends WrapperBlockStateModel {
+		private static final AtomicBoolean CALLED = new AtomicBoolean();
 		private static final AtomicBoolean REPORTED = new AtomicBoolean();
 
 		TerrainCheckModel(BlockStateModel wrapped) {
@@ -39,6 +44,9 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 
 		@Override
 		public void emitQuads(QuadEmitter emitter, BlockAndTintGetter level, BlockPos pos, BlockState state, RandomSource random, Predicate<@Nullable Direction> cullTest) {
+			if (!CALLED.getAndSet(true)) {
+				FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi emitQuads called (level {}, thread {})", level.getClass().getName(), Thread.currentThread().getName());
+			}
 			super.emitQuads(emitter, level, pos, state, random, cullTest);
 			// Reached from a section being meshed, after every quad went to the section's buffers.
 			if (level instanceof RenderSectionRegion && !REPORTED.getAndSet(true)) {
