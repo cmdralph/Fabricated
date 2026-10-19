@@ -4,6 +4,24 @@ Read [`claude.md`](claude.md) first. This file records what was done, what was f
 still unverified. Add a dated section at the top for each working session; keep the findings log, roadmap and
 matrices current rather than appending copies.
 
+## 2026-10-19 (later): Fabric models as moving blocks, in the breaking overlay and inside vanilla models
+
+Pull request #22 (base `main` at `b7ff2a8`, after #21 merged). Roadmap items M2 and M3.
+
+**Summary.** Fabric block models are now drawn everywhere NeoForge draws blocks, except outlines: chunk sections
+(M1), moving blocks pushed by pistons or falling, and the breaking overlay (M2). A vanilla multipart or weighted model
+with a Fabric model among its parts goes through Fabric's renderer as a whole (M3). Only those blocks take Fabric's
+path; every other block keeps NeoForge's. `FabricTerrain` became `FabricBlockRendering`, still the only class naming
+the renderer API's types. On 26.1.2, upstream's `@Overwrite` of the breaking renderer (every model through Fabric's
+renderer) is left out in favour of the same hook as on 26.2 and 26.3.
+
+**Verification.** CI run 246 (`1596fff`): all four versions green. The 26.x gate now requires four lines, logged by
+the test models: `frapi terrain OK` and `frapi nested terrain OK` (section worker threads), `frapi moving block OK`
+(a falling copy of the test block) and `frapi breaking OK` (the server sends breaking progress), on 26.1.2, 26.2 and
+26.3. On 26.1.2 the breaking overlay hands the model the air block state, as NeoForge's own code there does (and as
+upstream's replacement did); 26.2 and 26.3 hand it the block's state. The same run shows `08aff28`'s constructor
+repair also applying to a corpus mod: Lithium's `EntityCollisionContextMixin#initVars`.
+
 ## 2026-10-19: audit, fixes, and Fabric's renderer API in the world
 
 Branch `claude/great-ramanujan-9lcl5m`, pull request #21 (base `main` at `6664f72`).
@@ -66,6 +84,7 @@ crash in run 229).
 | CFG-1 | P3 | `ModTranslator` | A `skipMixins` entry that matches no mixin is silently ignored, so a typo goes unnoticed. | Should become a report note. |
 | CFG-2 | P3 | `gradle.properties`, `Pipeline` | The Fabric Loader API version is written in two places. | Build-time duplication only. |
 | MODEL-1 | P2 | model loading (26.x) | NeoForge parses model files itself, so a Fabric `UnbakedModelDeserializer` is never used. Traveler's Backpack's custom block models are missing ("Missing model for variant" in the corpus run). | Roadmap M4. |
+| MODEL-2 | P2, impact UNVERIFIED | pass-through `fabric-model-loading-api-v1` (26.x) | Upstream's `BlockStateModelUnbakedMixin` redirects the first two `Codec.flatComapMap` calls in `BlockStateModel.Unbaked`'s static initializer to replace vanilla's blockstate model codecs with its own (which add `fabric:type`). On NeoForge those calls build NeoForge's codecs, which add NeoForge's custom blockstate model types (`type` key, `RegisterBlockStateModels`). With Fabric API installed, a NeoForge mod's custom blockstate model type likely no longer parses. Read from both sources; no CI case yet. | Fix: keep NeoForge's codec as the fallback of Fabric's (dispatch on `fabric:type` when present, NeoForge's codec otherwise). Next candidate after M4. |
 
 ## Fabric's renderer API: status and roadmap
 
@@ -73,19 +92,21 @@ crash in run 229).
 |---|---|---|---|---|
 | Renderer API and Indigo load | no (upstream's mixins fail pre-flight) | yes | yes | yes |
 | Model-loading modifiers and extra models | disabled (needs the renderer API) | yes since `08aff28` | yes | yes |
-| Fabric block models in the world | no | yes (`FabricTerrain`) | yes | yes |
-| Moving blocks, block outlines, breaking animation | no | not through Fabric's renderer | same | same |
-| Fabric models nested in a vanilla multipart or weighted model | no | not yet (M3) | same | same |
+| Fabric block models in the world | no | yes (`FabricBlockRendering`) | yes | yes |
+| Moving blocks (pistons, falling) and the breaking overlay | no | yes (M2) | yes | yes |
+| Fabric models nested in a vanilla multipart or weighted model | no | yes (M3) | yes | yes |
+| Block outlines, a moving block's glow outline | no | from the model's parts, as NeoForge sees them | same | same |
 
 Milestones, in order:
 
 - **M1, done:** the 26.x chunk meshing bridge (`8e80c6e`, `0dbdfda`) and the model-loading fix it needed
   (`08aff28`), with a CI gate that passes on all three 26.x versions.
-- **M2:** moving blocks (`MovingBlockFeatureRenderer`) and the breaking animation for Fabric models on 26.x, the same
-  way as M1 (only Fabric models go through Fabric's renderer).
-- **M3:** Fabric models inside vanilla composites. `FabricTerrain.draws` decides per top-level model class, so a
-  multipart whose part is a Fabric model takes NeoForge's path and the part is invisible. This needs a per-model check
-  of the composite's parts, cached on the baked model, not per block.
+- **M2, done:** moving blocks and the breaking overlay for Fabric models on 26.x (`4db3deb`), with CI checks
+  (`e0175f5`).
+- **M3, done:** Fabric models inside vanilla multipart and weighted models (`4db3deb`): the composite answers once,
+  in a field of the baked model.
+- **M2b (small):** block outlines and a moving block's glow outline for Fabric models: today they come from the
+  model's parts as NeoForge sees them, so a model with only `emitQuads` has no outline.
 - **M4:** Fabric's `UnbakedModelDeserializer` on NeoForge (route NeoForge's model parser to the deserializers Fabric
   mods registered). Fixes Traveler's Backpack's models.
 - **M5:** 1.21.11. The renderer API's own mixins don't apply on NeoForge 1.21.11. That needs a native module or
@@ -97,7 +118,7 @@ Milestones, in order:
 
 | Mod | What it uses | 1.21.11 | 26.x | Evidence |
 |---|---|---|---|---|
-| `fabricated-testmod-frapi` (this repo) | `ModelLoadingPlugin` after-bake modifier, its own `emitQuads` in the world | — | **passes** on 26.1.2, 26.2, 26.3 | CI "Fabric renderer API in the world", runs 236 and 237 |
+| `fabricated-testmod-frapi` (this repo) | `ModelLoadingPlugin` after-bake modifier, its own `emitQuads` in sections, as a falling block and with the breaking overlay; a `fabric:type` model as a multipart part | — | **passes** on 26.1.2, 26.2, 26.3 | CI "Fabric renderer API in the world", run 246 |
 | Traveler's Backpack | Custom unbaked model deserializer | loads | loads, custom block models missing | corpus runs (run 233) |
 | Continuity | Renderer API (connected textures) | not in corpus | not in corpus | add once a Fabric build for these versions is confirmed (UNVERIFIED) |
 | Athena | Renderer API (connected textures library) | not in corpus | not in corpus | same (UNVERIFIED) |
