@@ -34,6 +34,16 @@ class SafeArchiveTest {
 		}
 	}
 
+	/** What translating a jar may hold in memory is sized from this, not from the compressed file. */
+	@Test
+	void reportsTheDeclaredUncompressedSize(@TempDir Path tmp) throws Exception {
+		Path jar = TestJars.create().bytes("zeros.bin", new byte[300_000]).text("a.txt", "hello").write(tmp.resolve("big.jar"));
+		try (SafeArchive archive = SafeArchive.open(jar, ArchiveLimits.DEFAULTS)) {
+			assertEquals(300_005, archive.declaredUncompressedSize());
+			assertTrue(Files.size(jar) < 300_000 / 10, "zeros compress well: the file is a small fraction of the data");
+		}
+	}
+
 	@Test
 	void rejectsUnsafeEntryNames() {
 		for (String bad : new String[] {"../evil.txt", "/abs.txt", "a\\b.txt", "C:/x.txt", "a/../../b", "a//b", "./x", "a\u0000b"}) {
