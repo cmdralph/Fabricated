@@ -257,6 +257,26 @@ class PipelineTest {
 		}
 	}
 
+	/** The Fabric builds of Sodium and Iris can't run on NeoForge: the player is told to install their NeoForge builds. */
+	@Test
+	void fabricBuildsOfRendererReplacementsAskForTheirNeoForgeBuild(@TempDir Path game) throws Exception {
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		Path sodium = TestJars.create().fabricModJson(TestJars.modJson("sodium", "0.9.2", "\"name\":\"Sodium\"")).write(mods.resolve("sodium.jar"));
+		Path addon = TestJars.create().fabricModJson(TestJars.modJson("sodium-addon", "1.0.0", "\"depends\":{\"sodium\":\"*\"}"))
+				.write(mods.resolve("addon.jar"));
+
+		Pipeline.Result result = Pipeline.run(input(game, List.of(sodium, addon), Namespace.OFFICIAL, Map.of(), null, List.of()));
+
+		assertTrue(result.mods().isEmpty(), result.report().render());
+		Report.ModRow row = result.report().mods().stream().filter(r -> r.id().equals("sodium")).findFirst().orElseThrow();
+		assertEquals(Report.Status.DISABLED, row.status());
+		assertTrue(row.detail().startsWith("its Fabric build can't run on NeoForge: "), row.detail());
+		assertEquals("Install Sodium for NeoForge instead (from the same download page).", row.suggestion());
+		assertFalse(result.runtime().isModLoaded("sodium"));
+		assertTrue(result.report().mods().stream().anyMatch(r -> r.id().equals("sodium-addon") && r.status() == Report.Status.DISABLED),
+				result.report().render());
+	}
+
 	/**
 	 * A mod NeoForge refuses to load keeps no interface injections or environment classes: injecting its interface into a
 	 * game class would make that class fail to load (the interface is in no module layer), crashing the game.
