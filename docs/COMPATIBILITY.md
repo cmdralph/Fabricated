@@ -544,10 +544,11 @@ NeoForge keeps drawing the world: upstream's hooks that send every block in the 
 outlines and breaking animations through Fabric's renderer are left out. A model's custom `emitQuads` geometry is
 drawn in item and block entity rendering, not in the world. NeoForge already gives vanilla's models
 `createGeometryKey` and `particleMaterial` with Fabric's signatures, so upstream's copies are left out and
-Fabricated declares the shared defaults on `BlockStateModel`. NeoForge also moved block model baking into its own
-overload of `SimpleModelWrapper.bake`, which upstream's check doesn't reach, so a mesh model using sprites from
-outside the block atlas is not rejected; and the block overlay seen from inside a block uses the block's plain
-particle sprite (26.1.2 and 26.2).
+Fabricated declares the shared defaults on `BlockStateModel`. On 26.1.2, where upstream's check of a mesh
+model's sprites takes the parameters of vanilla's `SimpleModelWrapper.bake` (NeoForge moved the code into its own
+overload), a mesh model using sprites from outside the block atlas is not rejected; on 26.2 and 26.3 the check
+follows the code into NeoForge's overload. On 26.1.2 and 26.2 the block overlay seen from inside a block uses the
+block's plain particle sprite.
 
 Model loading loads too: its plugins, model modifiers and extra models work, with the extra models added to
 NeoForge's model discovery by Fabricated (NeoForge rewrote the code upstream hooks).
