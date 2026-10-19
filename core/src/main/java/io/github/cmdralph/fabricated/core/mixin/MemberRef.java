@@ -13,7 +13,8 @@ package io.github.cmdralph.fabricated.core.mixin;
 public record MemberRef(String owner, String name, String desc, boolean fuzzy) {
 
 	public static MemberRef parse(String selector) {
-		String s = selector.trim();
+		// As Mixin: whitespace anywhere is ignored ("Owner.name (Desc)" is written in some mods).
+		String s = selector.replaceAll("\\s+", "");
 		if (s.isEmpty()) return new MemberRef(null, null, null, true);
 		if (s.startsWith("/") || s.contains("*") || s.contains("{") || s.startsWith("@")) {
 			return new MemberRef(null, null, null, true);

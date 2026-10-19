@@ -86,6 +86,11 @@ echo "::endgroup::"
 echo "::group::First errors in the log"
 grep -n -m 80 -E "/(ERROR|FATAL)\]|Exception|Caused by" logs/latest.log 2>/dev/null || true
 echo "::endgroup::"
+if [ -n "$extra" ]; then
+	echo "::group::Where the Fabric API classes the game could not find come from"
+	python3 -I "$root/ci/find-classes.py" logs/latest.log mods || true
+	echo "::endgroup::"
+fi
 for report in crash-reports/*.txt; do
 	[ -f "$report" ] || continue
 	echo "::group::Crash report $(basename "$report") (first 120 lines)"

@@ -52,9 +52,12 @@ if [ -n "$extra" ] && [ -d "$extra" ]; then
 	cp "$extra"/*.jar run/mods/ 2>/dev/null || true
 fi
 ls -1 run/mods
-cat > run/config/fabricated.json <<'JSON'
-{ "schema": 1, "logLevel": "DEBUG" }
-JSON
+if [ -n "$extra" ]; then
+	# With extra mods, a mod's failing entrypoint is reported and the game goes on, as the server smoke test does.
+	echo '{ "schema": 1, "onEntrypointFailure": "disable", "logLevel": "DEBUG" }' > run/config/fabricated.json
+else
+	echo '{ "schema": 1, "logLevel": "DEBUG" }' > run/config/fabricated.json
+fi
 cat > run/options.txt <<'OPTS'
 onboardAccessibility:false
 pauseOnLostFocus:false
@@ -114,6 +117,11 @@ if [ "$status" -ne 0 ]; then
 	echo "::group::First errors in the game log"
 	grep -n -m 80 -E "/(ERROR|FATAL)\]|Exception|Caused by" "$log" || true
 	echo "::endgroup::"
+	if [ -n "$extra" ]; then
+		echo "::group::Where the Fabric API classes the game could not find come from"
+		python3 -I "$root/ci/find-classes.py" "$log" run/mods || true
+		echo "::endgroup::"
+	fi
 fi
 for report in run/crash-reports/*.txt; do
 	[ -f "$report" ] || continue

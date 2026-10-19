@@ -161,8 +161,9 @@ public final class ModTranslator {
 
 				Set<String> environmentClasses = remapped != null ? environmentClasses(remapped.keySet(), files)
 						: environmentClasses(archive.classEntryNames(), archive::read);
-				int renamed = applyRenames(remapped != null ? remapped : overlay, remapped != null ? remapped.keySet() : archive.classEntryNames(), files);
-				if (renamed > 0) notes.add(renamed + " class(es) use NeoForge members by the names they had before NeoForge renamed them; the references are renamed");
+				int renamed = remapped != null ? applyRenames(remapped, remapped.keySet(), files)
+						: applyRenames(overlay, archive.classEntryNames(), archive::read);
+				if (renamed > 0) notes.add(renamed + " class(es) use NeoForge members as Forge Config API Port's copy of NeoForge declares them; the references are adapted to NeoForge's");
 
 				FabricModMetadata md = candidate.metadata();
 				ModsTomlWriter.Spec spec = new ModsTomlWriter.Spec(neoId, md.getVersion().getFriendlyString(), md.getName(),
@@ -237,7 +238,6 @@ public final class ModTranslator {
 	 * renamed, into {@code target}; returns how many there were.
 	 */
 	private int applyRenames(Map<String, byte[]> target, Collection<String> entries, FileView files) throws ArchiveException {
-		if (renames.isEmpty()) return 0;
 		int count = 0;
 		for (String name : List.copyOf(entries)) {
 			if (!name.endsWith(".class") || name.startsWith("META-INF/")) continue;

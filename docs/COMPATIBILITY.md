@@ -577,7 +577,7 @@ Kotlin's), mod containers and metadata, versions and predicates, the object shar
   open from NeoForge's config button. As on Fabric, a config other than the per-world one can be read as soon as it is
   registered (from its file, before NeoForge loads it). The port's jar is skipped (and provided at its version); its
   copy of Forge's own config API (`ForgeConfigSpec`) is not provided. On 26.3, whose FML renamed the config types `COMMON` and `SERVER` to
-  `LOCAL` and `SYNCED` (the port keeps the old names), a mod's references to the old names are renamed.
+  `LOCAL` and `SYNCED` (the port keeps the old names), a mod's references to the old names are renamed. The port's `ConfigurationScreen` takes a mod id where NeoForge's takes the mod's container, so a mod creating one passes its container instead.
 - Class tweakers v2 load: their `extend-enum` lines only declare the constants a mod's enum mixins add, which Mixin
   adds itself (0.17.1 or later, so on 26.x; not to NeoForge's own extensible enums).
 - Config screens a Fabric mod offers to Mod Menu (its `modmenu` entrypoint) open from the Config button of NeoForge's

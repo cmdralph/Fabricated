@@ -90,7 +90,7 @@ public final class EntrypointBridge {
 		finish();
 	}
 
-	/** Runs the client entrypoints; called from {@code Minecraft}'s constructor once its instance is set. */
+	/** Runs the client entrypoints (once); called from {@code Minecraft}'s constructor where Fabric Loader runs them. */
 	public static void runClientEntrypoints() {
 		EntrypointBridge bridge = pendingClient;
 		pendingClient = null;

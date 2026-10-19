@@ -148,7 +148,7 @@ NeoForge's sequence is: mod construction, then `unfreezeData()`, then a `Registe
 |---|---|---|
 | `preLaunch` | **Not run as Fabric does** (Fabric runs it before game classes load). Fabricated runs it at language-loader init, before any MC class is touched by Fabricated, and documents the difference. Mods doing classloader tricks there are unsupported. | Dependency order |
 | `main` (`ModInitializer`) | Once, on the **first `RegisterEvent` after the attribute registry's** (which NeoForge posts first): registries are unfrozen, NeoForge's own attributes (part of every living entity's attribute builder) are registered, and NeoForge mods constructed before it are visible | Fabric dependency order (topological, ties broken by id, so it's deterministic) |
-| `client` (`ClientModInitializer`) | After *all* `main` entrypoints, on the client dist, where Fabric runs it: in `Minecraft`'s constructor once `Minecraft.getInstance()` is set (NeoForge registers mods before it creates `Minecraft`, and client initializers commonly use the instance) | Same |
+| `client` (`ClientModInitializer`) | After *all* `main` entrypoints, on the client dist, where Fabric runs it: in `Minecraft`'s constructor just before it records the game thread, once the instance, game directory and user are set (NeoForge registers mods before it creates `Minecraft`, and client initializers commonly use the instance) | Same |
 | `server` (`DedicatedServerModInitializer`) | Immediately after all `main`, on a dedicated server | Same |
 | Custom keys (`modmenu`, `rei_client`, `fabric-datagen`, `cardinal-components`, …) | **Never auto-run.** Instantiated lazily when another mod calls `FabricLoader.getEntrypoints(key, type)` / `getEntrypointContainers`, exactly like Fabric | Declaration order |
 

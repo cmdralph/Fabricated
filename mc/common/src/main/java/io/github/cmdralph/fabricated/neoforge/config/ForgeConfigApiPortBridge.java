@@ -131,6 +131,14 @@ public final class ForgeConfigApiPortBridge {
 		}
 	}
 
+	/**
+	 * The NeoForge container of a Fabric mod id, for Fabric mods that open the port's {@code ConfigurationScreen},
+	 * which takes the id where NeoForge's takes the container (translation passes the container instead).
+	 */
+	public static ModContainer modContainer(String fabricModId) {
+		return container(fabricModId).orElseThrow(() -> new IllegalArgumentException("No mod has the id " + fabricModId));
+	}
+
 	static Optional<? extends ModContainer> container(String fabricModId) {
 		return ModList.get().getModContainerById(ModIds.toNeoForgeId(fabricModId));
 	}

@@ -339,6 +339,60 @@ class MixinPreflightTest {
 	}
 
 	@Test
+	void aLocalCapturedByTypeMustBeTheOnlyOneOfThatType() throws Exception {
+		java.util.function.IntFunction<byte[]> target = locals -> {
+			ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+			cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+			MethodVisitor tick = cw.visitMethod(Opcodes.ACC_PUBLIC, "tick", "()V", null, null);
+			tick.visitCode();
+			org.objectweb.asm.Label start = new org.objectweb.asm.Label();
+			org.objectweb.asm.Label end = new org.objectweb.asm.Label();
+			for (int i = 1; i <= locals; i++) {
+				tick.visitInsn(Opcodes.ACONST_NULL);
+				tick.visitVarInsn(Opcodes.ASTORE, i);
+			}
+			tick.visitLabel(start);
+			tick.visitVarInsn(Opcodes.ALOAD, 0);
+			tick.visitInsn(Opcodes.ICONST_0);
+			tick.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "helper", "(I)V", false);
+			tick.visitLabel(end);
+			tick.visitInsn(Opcodes.RETURN);
+			for (int i = 1; i <= locals; i++) tick.visitLocalVariable("s" + i, "Ljava/lang/String;", null, start, end, i);
+			tick.visitMaxs(0, 0);
+			tick.visitEnd();
+			cw.visitEnd();
+			return cw.toByteArray();
+		};
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Typed"));
+		java.util.function.IntFunction<List<PreflightFinding>> run = locals -> {
+			ClassIndex game = new ClassIndex(Map.of(TARGET, target.apply(locals))::get);
+			Map<String, byte[]> mod = Map.of("com/example/mixin/Typed", mixin("com/example/mixin/Typed", false, cw -> {
+				MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "h", "(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;Ljava/lang/String;)V", null, null);
+				mv.visitParameterAnnotation(1, "Lcom/llamalad7/mixinextras/sugar/Local;", false).visitEnd();
+				AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
+				AnnotationVisitor methods = ann.visitArray("method");
+				methods.visit(null, "tick");
+				methods.visitEnd();
+				AnnotationVisitor ats = ann.visitArray("at");
+				AnnotationVisitor at = ats.visitAnnotation(null, "Lorg/spongepowered/asm/mixin/injection/At;");
+				at.visit("value", "INVOKE");
+				at.visit("target", "Lnet/minecraft/world/Thing;helper(I)V");
+				at.visitEnd();
+				ats.visitEnd();
+				ann.visit("require", 1);
+				ann.visitEnd();
+				mv.visitEnd();
+			}));
+			return new MixinPreflight(game, mod::get, ClassBytesSource.EMPTY, false)
+					.check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		};
+		assertTrue(run.apply(1).isEmpty(), run.apply(1).toString());
+		List<PreflightFinding> two = run.apply(2);
+		assertEquals(1, two.size(), two.toString());
+		assertTrue(two.getFirst().message().contains("more than one"), two.getFirst().message());
+	}
+
+	@Test
 	void anInjectorMayTargetAMethodItsMixinAdds() throws Exception {
 		byte[] own = mixin("com/example/mixin/Own", false, cw -> {
 			cw.visitMethod(Opcodes.ACC_PUBLIC, "added", "()V", null, null).visitEnd();
@@ -632,6 +686,8 @@ class MixinPreflightTest {
 		assertEquals(new MemberRef("a/B", "foo", "(I)V", false), MemberRef.parse("La/B;foo(I)V"));
 		assertEquals(new MemberRef(null, "foo", null, false), MemberRef.parse("foo"));
 		assertEquals(new MemberRef("a/B", "bar", "I", false), MemberRef.parse("La/B;bar:I"));
+		assertEquals(new MemberRef("net/minecraft/world/level/Level", "getBlockState", "(Lnet/minecraft/core/BlockPos;)V", false),
+				MemberRef.parse("net/minecraft/world/level/Level.getBlockState (Lnet/minecraft/core/BlockPos;)V"), "whitespace is ignored, as Mixin does");
 		assertEquals(new MemberRef(null, "LOGGER", "Lorg/slf4j/Logger;", false), MemberRef.parse("LOGGER:Lorg/slf4j/Logger;"));
 		assertEquals(new MemberRef("a/b/C", "baz", "()V", false), MemberRef.parse("a.b.C.baz()V"));
 		assertTrue(MemberRef.parse("foo*").fuzzy());

@@ -875,6 +875,13 @@ public final class MixinPreflight {
 					"NeoForge or this Minecraft version changed the method body; the mod needs an update or this mixin must be skipped.");
 			return;
 		}
+		String ambiguous = slices.isEmpty() ? ambiguousLocal(handler, ann, matched, ctx) : null;
+		if (ambiguous != null) {
+			ctx.injector(handler, require, injectorName + " handler " + handler.name + " captures the local variable " + ambiguous
+							+ " by its type, which " + matched.getFirst().name + " in " + target.name.replace('/', '.') + " has more than one of there",
+					"NeoForge or this Minecraft version added a local of that type; the mod needs an update or this mixin must be skipped.");
+			return;
+		}
 
 		for (AnnotationNode at : annotationList(Annotations.value(ann, "at"))) {
 			String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
@@ -953,6 +960,53 @@ public final class MixinPreflight {
 				} else if (judgedMissing(targets, local -> local.desc.equals(type.getDescriptor()))) {
 					return "of type " + type.getClassName();
 				}
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * The type of a local an {@code @Local} captures by its type alone (no name, index or ordinal) when, at every
+	 * instruction the injector's {@code @At} selects in every target, more than one local of that type is in scope:
+	 * MixinExtras then can't tell which one is meant. Null when that can't be shown (no local variable table, an
+	 * injection point other than a call, field access or object creation, ...).
+	 */
+	private static String ambiguousLocal(MethodNode handler, AnnotationNode injector, List<MethodNode> targets, Context ctx) {
+		List<AnnotationNode> ats = annotationList(Annotations.value(injector, "at"));
+		if (ats.size() != 1) return null;
+		AnnotationNode at = ats.getFirst();
+		String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
+		if (!point.equals("INVOKE") && !point.equals("FIELD") && !point.equals("NEW")
+				|| !(Annotations.value(at, "target") instanceof String raw)) return null;
+		MemberRef ref = MemberRef.parse(ctx.resolve(raw));
+		if (ref.fuzzy()) return null;
+		int ordinal = Annotations.value(at, "ordinal") instanceof Integer i ? i : -1;
+		int opcode = Annotations.value(at, "opcode") instanceof Integer i ? i : -1;
+		Type[] params = Type.getArgumentTypes(handler.desc);
+		for (int p = 0; p < params.length; p++) {
+			for (AnnotationNode local : parameterAnnotations(handler, p)) {
+				if (!local.desc.equals(LOCAL) || Annotations.value(local, "name") != null || Annotations.value(local, "index") != null
+						|| Annotations.value(local, "ordinal") != null || Boolean.TRUE.equals(Annotations.value(local, "argsOnly"))
+						|| params[p].getDescriptor().startsWith("Lcom/llamalad7/mixinextras/sugar/ref/")) continue;
+				String type = params[p].getDescriptor();
+				boolean judged = false;
+				boolean single = false;
+				for (MethodNode m : targets) {
+					if (m.localVariables == null || m.localVariables.isEmpty()) return null;
+					int seen = 0;
+					for (int i = 0; i < m.instructions.size(); i++) {
+						AbstractInsnNode insn = m.instructions.get(i);
+						if (opcode >= 0 && insn.getOpcode() != opcode || !matchesInsn(point, ref, insn)) continue;
+						if (ordinal >= 0 && seen++ != ordinal) continue;
+						judged = true;
+						int inScope = 0;
+						for (LocalVariableNode lv : m.localVariables) {
+							if (lv.desc.equals(type) && m.instructions.indexOf(lv.start) <= i && i < m.instructions.indexOf(lv.end)) inScope++;
+						}
+						single |= inScope <= 1;
+					}
+				}
+				if (judged && !single) return "of type " + params[p].getClassName();
 			}
 		}
 		return null;
