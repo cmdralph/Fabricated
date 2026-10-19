@@ -143,7 +143,7 @@ class PipelineTest {
 	}
 
 	private static Pipeline.Input input(Path game, List<Path> jars, Namespace ns, Map<String, byte[]> gameClasses, Pipeline.MappingSupplier mappings) throws Exception {
-		return input(game, jars, ns, gameClasses, mappings, List.of(new Pipeline.NeoForgeMod("cloth_config", "15.0.0", "Cloth Config", Map.of())));
+		return input(game, jars, ns, gameClasses, mappings, List.of(new Pipeline.NeoForgeMod("cloth_config", "15.0.0", "Cloth Config", Map.of(), List.of())));
 	}
 
 	private static Pipeline.Input input(Path game, List<Path> jars, Namespace ns, Map<String, byte[]> gameClasses, Pipeline.MappingSupplier mappings,
@@ -234,10 +234,12 @@ class PipelineTest {
 		Path addon = TestJars.create().fabricModJson(TestJars.modJson("sodium-addon", "1.0.0", "\"depends\":{\"indium\":\"*\",\"sodium\":\">=0.9\"}"))
 				.write(mods.resolve("addon.jar"));
 		Map<String, Object> sodiumProperties = Map.of("fabric-renderer-api-v1:contains_renderer", true, "fabric:provides", List.of("indium"));
+		// A multi-loader mod's NeoForge build finds its own files through Fabric's API when it is present.
+		Path sodiumJar = TestJars.create().text("sodium.toml", "defaults").write(game.resolve("sodium-neoforge.jar"));
 		List<Pipeline.NeoForgeMod> neoForgeMods = List.of(
-				new Pipeline.NeoForgeMod("sodium", "0.8.0", "Sodium", Map.of()),
-				new Pipeline.NeoForgeMod("sodium", "0.9.2+mc26.3", "Sodium", sodiumProperties),
-				new Pipeline.NeoForgeMod("sodium", "0.9.1", "Sodium", Map.of()));
+				new Pipeline.NeoForgeMod("sodium", "0.8.0", "Sodium", Map.of(), List.of()),
+				new Pipeline.NeoForgeMod("sodium", "0.9.2+mc26.3", "Sodium", sodiumProperties, List.of(sodiumJar)),
+				new Pipeline.NeoForgeMod("sodium", "0.9.1", "Sodium", Map.of(), List.of()));
 
 		Pipeline.Result result = Pipeline.run(input(game, List.of(indium, addon), Namespace.OFFICIAL, Map.of(), null, neoForgeMods));
 
@@ -250,6 +252,7 @@ class PipelineTest {
 		assertTrue(sodium.getCustomValue("fabric-renderer-api-v1:contains_renderer").getAsBoolean());
 		assertEquals("indium", sodium.getCustomValue("fabric:provides").getAsArray().get(0).getAsString());
 		assertEquals("sodium", result.runtime().getModContainer("indium").orElseThrow().getMetadata().getId());
+		assertEquals("defaults", Files.readString(result.runtime().getModContainer("sodium").orElseThrow().findPath("sodium.toml").orElseThrow()));
 		try (SafeArchive overlay = SafeArchive.open(result.mods().getFirst().translated().overlay(), ArchiveLimits.DEFAULTS)) {
 			String toml = overlay.readText("META-INF/neoforge.mods.toml");
 			assertTrue(toml.contains("modId=\"sodium\""), "loads after the mod providing what it depends on: " + toml);

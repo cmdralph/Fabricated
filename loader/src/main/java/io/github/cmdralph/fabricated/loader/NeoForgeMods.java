@@ -41,7 +41,8 @@ final class NeoForgeMods {
 		for (IModFile file : files) {
 			for (IModInfo mod : file.getModInfos()) {
 				if (mod.getModId().equals("minecraft")) continue;
-				mods.add(new Pipeline.NeoForgeMod(mod.getModId(), mod.getVersion().toString(), mod.getDisplayName(), plain(mod.getModProperties())));
+				mods.add(new Pipeline.NeoForgeMod(mod.getModId(), mod.getVersion().toString(), mod.getDisplayName(), plain(mod.getModProperties()),
+						List.of(file.getFilePath())));
 			}
 		}
 		if (!nested) return mods;
@@ -70,8 +71,9 @@ final class NeoForgeMods {
 			String version = mod.get("version") instanceof String v ? v : "1";
 			String name = mod.get("displayName") instanceof String n ? n : id;
 			Object properties = toml.get(List.of("modproperties", id));
+			// No files of its own to Fabric code: it is inside another jar (NeoForge extracts it later).
 			mods.add(new Pipeline.NeoForgeMod(id, version.equals(JAR_VERSION) ? jarVersion : version, name,
-					properties instanceof UnmodifiableConfig config ? plain(config.valueMap()) : Map.of()));
+					properties instanceof UnmodifiableConfig config ? plain(config.valueMap()) : Map.of(), List.of()));
 		}
 		return mods;
 	}
