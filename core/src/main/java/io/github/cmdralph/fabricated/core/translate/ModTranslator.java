@@ -58,6 +58,7 @@ import io.github.cmdralph.fabricated.core.remap.TokenRemapper;
 import io.github.cmdralph.fabricated.core.resolve.Candidate;
 import io.github.cmdralph.fabricated.core.translate.TranslationEnvironment.Namespace;
 import net.fabricmc.api.EnvType;
+import net.fabricmc.loader.api.metadata.CustomValue;
 
 /**
  * Translates one Fabric mod into the files NeoForge loads. Deterministic, cached, and bytes-only: no
@@ -67,6 +68,10 @@ public final class ModTranslator {
 	public static final String OVERLAY = "overlay.jar";
 	public static final String REMAPPED = "remapped.jar";
 	public static final String AT_PATH = "META-INF/accesstransformer.cfg";
+	/** The entrypoint of a mod's page in Sodium's options, also the mod property Sodium for NeoForge reads it from. */
+	private static final String SODIUM_CONFIG_ENTRYPOINT = "sodium:config_api_user";
+	/** A mod's overrides of Sodium's mixin options, as a custom value (Fabric) or a key of its mods.toml entry (NeoForge). */
+	private static final String SODIUM_OPTIONS = "sodium:options";
 
 	/** Heap a translation may count on, in MiB: a quarter of the maximum, shared by all translations at once. */
 	private static final int MEMORY_MIB = (int) Math.max(64, Math.min(Integer.MAX_VALUE, Runtime.getRuntime().maxMemory() / 4 / (1 << 20)));
@@ -170,7 +175,7 @@ public final class ModTranslator {
 						md.getDescription(), List.copyOf(md.getAuthors()), List.copyOf(md.getContributors()),
 						List.copyOf(md.getLicense()), url(md.getContact().get("homepage").orElse(null), "homepage", notes),
 						url(md.getContact().get("issues").orElse(null), "issues", notes), md.getIconPath(256).filter(archive::contains).orElse(null), mixinSpecs,
-						overlay.containsKey(AT_PATH), after);
+						overlay.containsKey(AT_PATH), after, sodiumProperties(md, notes), sodiumOptions(md, notes));
 				overlay.put(ModsTomlWriter.PATH, ModsTomlWriter.write(spec).getBytes(StandardCharsets.UTF_8));
 				overlay.put("META-INF/MANIFEST.MF", overlayManifest(neoId));
 
@@ -660,5 +665,40 @@ public final class ModTranslator {
 			notes.add("Left out the contact " + what + " URL \"" + value + "\": NeoForge only accepts complete URLs");
 			return null;
 		}
+	}
+
+	/**
+	 * The mod's page in Sodium's options: an entrypoint on Fabric, a mod property naming the class for Sodium for NeoForge,
+	 * which instantiates it itself (so only a plain class, one per mod).
+	 */
+	static Map<String, String> sodiumProperties(FabricModMetadata md, List<String> notes) {
+		List<FabricModMetadata.EntrypointSpec> pages = md.entrypoints().getOrDefault(SODIUM_CONFIG_ENTRYPOINT, List.of());
+		if (pages.isEmpty()) return Map.of();
+		FabricModMetadata.EntrypointSpec page = pages.getFirst();
+		if (!page.adapter().equals("default") || page.value().contains("::")) {
+			notes.add("Its page in Sodium's options (" + page.value() + ") is left out: Sodium for NeoForge only takes a class");
+			return Map.of();
+		}
+		if (pages.size() > 1) notes.add("Sodium for NeoForge takes one options page per mod: " + page.value() + " is used, the others are left out");
+		return Map.of(SODIUM_CONFIG_ENTRYPOINT, page.value());
+	}
+
+	/** The mod's overrides of Sodium's mixin options: a custom value on Fabric, a key of its {@code [[mods]]} entry for Sodium for NeoForge. */
+	static Map<String, Boolean> sodiumOptions(FabricModMetadata md, List<String> notes) {
+		CustomValue options = md.getCustomValue(SODIUM_OPTIONS);
+		if (options == null) return Map.of();
+		if (options.getType() != CustomValue.CvType.OBJECT) {
+			notes.add("Its " + SODIUM_OPTIONS + " is not an object; left out");
+			return Map.of();
+		}
+		Map<String, Boolean> overrides = new LinkedHashMap<>();
+		for (Map.Entry<String, CustomValue> option : options.getAsObject()) {
+			if (option.getValue().getType() == CustomValue.CvType.BOOLEAN) {
+				overrides.put(option.getKey(), option.getValue().getAsBoolean());
+			} else {
+				notes.add("Its " + SODIUM_OPTIONS + " entry " + option.getKey() + " is not true or false; left out");
+			}
+		}
+		return overrides;
 	}
 }

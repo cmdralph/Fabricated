@@ -162,7 +162,7 @@ Other loader facts:
 
 ### ❌ NO-GO: will not attempt, documented as unsupported
 
-* Rendering-engine replacements and their ecosystems: **Sodium, Iris**, Indigo-dependent renderers, and OptiFine-likes.
+* The Fabric builds of rendering-engine replacements: **Sodium, Iris**, and OptiFine-likes. (Revised 2026-10-19: their NeoForge builds work next to Fabric mods on 26.x, with Fabric block models meshed by Sodium's own Fabric renderer; see COMPATIBILITY.md.)
 * Mods that bring their own launch or bootstrap hacks: **Carpet** (deep server internals), **ReplayMod**, **ViaFabricPlus**, and mods using Fabric Loader *internals* (`net.fabricmc.loader.impl.*`), `preLaunch` classloader tricks, or Mixin plugins that reflect into Fabric Loader.
 * Fabric mods built for ≤1.21.11 running on 26.x. Fabric itself requires recompilation, and so does Fabricated.
 * Hybrid servers (Mohist/Arclight) and mobile launchers.

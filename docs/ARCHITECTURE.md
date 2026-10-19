@@ -14,7 +14,7 @@
 * Be robust: an isolatable failure never takes the game down, and every failure is attributed to a mod and explained.
 * Be safe: mod jars are untrusted input, nothing runs during translation, nothing touches the network, no telemetry, and original jars are never modified.
 
-**Non-goals** (see RESEARCH §4): rendering-engine replacements (Sodium/Iris), mods depending on Fabric Loader *internals*, heuristic auto-rewriting of mixins, MC versions outside the range, and running ≤1.21.11 Fabric builds on 26.x.
+**Non-goals** (see RESEARCH §4): the Fabric builds of rendering-engine replacements (Sodium/Iris; their NeoForge builds work next to Fabric mods on 26.x, see COMPATIBILITY.md), mods depending on Fabric Loader *internals*, heuristic auto-rewriting of mixins, MC versions outside the range, and running ≤1.21.11 Fabric builds on 26.x.
 
 ---
 

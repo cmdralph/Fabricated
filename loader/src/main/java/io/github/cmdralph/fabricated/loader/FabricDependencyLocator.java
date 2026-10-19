@@ -5,7 +5,6 @@ import java.lang.module.ModuleDescriptor;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -158,13 +157,7 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 				nativeApi = name -> devContents.readFile(name + ".class");
 			}
 
-			List<Pipeline.NeoForgeMod> neoForgeMods = new ArrayList<>();
-			for (IModFile file : loadedMods) {
-				for (IModInfo mod : file.getModInfos()) {
-					if (mod.getModId().equals("minecraft")) continue;
-					neoForgeMods.add(new Pipeline.NeoForgeMod(mod.getModId(), mod.getVersion().toString(), mod.getDisplayName()));
-				}
-			}
+			List<Pipeline.NeoForgeMod> neoForgeMods = NeoForgeMods.of(loadedMods, !fabricJars.isEmpty());
 
 			byte[] planJson = FabricatedInfo.readOptional("fabric-api-plan.json");
 			if (planJson == null) throw new IllegalStateException("This Fabricated build is missing its fabric-api-plan.json");
@@ -323,7 +316,8 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 
 	@Override
 	public int getPriority() {
-		// Run after NeoForge's own dependency locators so every NeoForge mod is known.
+		// After NeoForge's own dependency locators. Each is handed the same mod files, without the ones the others add:
+		// the mods nested in those files are read by NeoForgeMods.
 		return LOWEST_SYSTEM_PRIORITY;
 	}
 

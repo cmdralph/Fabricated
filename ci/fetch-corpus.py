@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Downloads ci/mod-corpus.txt's mods for one Minecraft version from Modrinth into a directory (CI only).
+"""Downloads mods for one Minecraft version from Modrinth into a directory (CI only): ci/mod-corpus.txt's Fabric
+mods, or the given projects' builds for the given loader.
 
-Each listed project's newest Fabric build for the version is fetched, then its required dependencies, recursively.
-Files come only from Modrinth's CDN and must match the SHA-512 Modrinth lists. Fabric API is left out (CI adds the
-official jar). Prints one line per mod; a mod without a build for the version is reported and skipped.
+Each project's newest build for the version is fetched, then its required dependencies, recursively. Files come only
+from Modrinth's CDN and must match the SHA-512 Modrinth lists. Fabric API is left out (CI adds the official jar).
+Prints one line per mod; a mod without a build for the version is reported and skipped.
 
-Usage: ci/fetch-corpus.py <minecraft-version> <out-dir>
+Usage: ci/fetch-corpus.py <minecraft-version> <out-dir> [<loader> <project>...]
 """
 import hashlib
 import json
@@ -26,8 +27,8 @@ def get(url):
         return response.read(MAX_BYTES + 1)
 
 
-def newest(project, mc):
-    query = urllib.parse.urlencode({"loaders": json.dumps(["fabric"]), "game_versions": json.dumps([mc])})
+def newest(project, mc, loader):
+    query = urllib.parse.urlencode({"loaders": json.dumps([loader]), "game_versions": json.dumps([mc])})
     versions = json.loads(get(f"{API}/project/{urllib.parse.quote(project)}/version?{query}"))
     return versions[0] if versions else None
 
@@ -52,16 +53,20 @@ def download(version, out):
 def main():
     mc, out = sys.argv[1], sys.argv[2]
     os.makedirs(out, exist_ok=True)
-    root = os.path.dirname(os.path.abspath(__file__))
-    with open(os.path.join(root, "mod-corpus.txt")) as f:
-        queue = [line.strip() for line in f if line.strip() and not line.startswith("#")]
+    if len(sys.argv) > 4:
+        loader, queue = sys.argv[3], sys.argv[4:]
+    else:
+        loader = "fabric"
+        root = os.path.dirname(os.path.abspath(__file__))
+        with open(os.path.join(root, "mod-corpus.txt")) as f:
+            queue = [line.strip() for line in f if line.strip() and not line.startswith("#")]
     seen = {FABRIC_API}
     while queue:
         project = queue.pop(0)
         try:
-            version = newest(project, mc)
+            version = newest(project, mc, loader)
             if version is None:
-                print(f"{project}: no Fabric build for {mc}")
+                print(f"{project}: no {loader} build for {mc}")
                 continue
             if version["project_id"] in seen:
                 continue

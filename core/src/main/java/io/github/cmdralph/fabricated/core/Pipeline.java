@@ -3,6 +3,7 @@ package io.github.cmdralph.fabricated.core;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -22,6 +23,7 @@ import io.github.cmdralph.fabricated.core.bytecode.ClassIndex;
 import io.github.cmdralph.fabricated.core.cache.TranslationCache;
 import io.github.cmdralph.fabricated.core.config.FabricatedConfig;
 import io.github.cmdralph.fabricated.core.metadata.CompatHints;
+import io.github.cmdralph.fabricated.core.metadata.CustomValueImpl;
 import io.github.cmdralph.fabricated.core.metadata.FabricModMetadata;
 import io.github.cmdralph.fabricated.core.mixin.PreflightFinding;
 import io.github.cmdralph.fabricated.core.remap.MappingException;
@@ -49,6 +51,7 @@ import io.github.cmdralph.fabricated.fabricloader.version.VersionParser;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.loader.api.Version;
 import net.fabricmc.loader.api.VersionParsingException;
+import net.fabricmc.loader.api.metadata.CustomValue;
 import net.fabricmc.loader.api.metadata.ModDependency;
 import net.fabricmc.loader.api.metadata.ModOrigin;
 
@@ -62,8 +65,27 @@ public final class Pipeline {
 	/** Fabric Loader version Fabricated reports for {@code fabricloader} dependencies. */
 	public static final String FABRIC_LOADER_COMPAT_VERSION = "0.19.5";
 
-	/** A NeoForge mod already found by NeoForge's own discovery. */
-	public record NeoForgeMod(String id, String version, String displayName) {
+	/**
+	 * A NeoForge mod NeoForge's own discovery found, or one nested in a mod file it found.
+	 *
+	 * @param properties its mod properties ({@code [modproperties.<id>]} in its mods.toml) as plain values (strings,
+	 *                   numbers, booleans, lists and maps): Fabric code sees them as the mod's custom values, which is how
+	 *                   NeoForge mods speak to Fabric code (Sodium's {@code fabric-renderer-api-v1:contains_renderer}
+	 *                   makes Fabric API's default renderer stand down)
+	 */
+	public record NeoForgeMod(String id, String version, String displayName, Map<String, Object> properties) {
+		/** The mod property listing the Fabric mod ids a NeoForge mod provides (Sodium provides Indium). */
+		static final String PROVIDES = "fabric:provides";
+
+		public NeoForgeMod {
+			properties = Collections.unmodifiableMap(new LinkedHashMap<>(properties));
+		}
+
+		/** The Fabric mod ids it provides. */
+		public List<String> provides() {
+			if (!(properties.get(PROVIDES) instanceof List<?> ids)) return List.of();
+			return ids.stream().filter(String.class::isInstance).map(String.class::cast).toList();
+		}
 	}
 
 	/** Supplies the intermediary mapping table on demand (only for obfuscated versions). */
@@ -177,6 +199,16 @@ public final class Pipeline {
 			"forgeconfigapiport", "Fabricated provides Forge Config API Port's Fabric API on NeoForge's own config system, which the port copies",
 			"modmenu", "Fabricated shows the config screens Fabric mods offer through Mod Menu's API in NeoForge's mod list");
 
+	/**
+	 * Fabric mods whose Fabric build can't work on NeoForge, by id, with why: they replace what NeoForge patches, and
+	 * have a NeoForge build of their own (which, when installed, is used instead before this is looked at).
+	 */
+	private static final Map<String, String> NEOFORGE_BUILD_ONLY = Map.of(
+			"sodium", "Sodium's Fabric build would mesh NeoForge's models, fluids and lighting the way Fabric has them, and drop the "
+					+ "geometry NeoForge mods add to chunks; Sodium for NeoForge draws them, and Fabric block models through its own "
+					+ "Fabric renderer",
+			"iris", "Iris's Fabric build needs Sodium's Fabric build and leaves out NeoForge's render pipelines");
+
 	/** A mod the platform provides (Minecraft, Java, Fabric Loader, Fabricated, native Fabric API modules). */
 	private record Builtin(String id, String version, String name, List<String> aliases) {
 	}
@@ -190,7 +222,10 @@ public final class Pipeline {
 	private final FabricApiPlan plan;
 	private final Report report;
 	private final EnvType side;
-	private final Map<String, NeoForgeMod> neoMods = new HashMap<>();
+	/** NeoForge mods, one per id (the newest). */
+	private final List<NeoForgeMod> neoForgeMods;
+	/** NeoForge mods by id, and by the NeoForge form of each id they provide. */
+	private final Map<String, NeoForgeMod> neoMods = new LinkedHashMap<>();
 	private final List<Builtin> builtins;
 	/** Compat patches already reported as ignored ("mod target"): patches are worked out again every round. */
 	private final Set<String> ignoredPatches = new HashSet<>();
@@ -201,7 +236,14 @@ public final class Pipeline {
 		this.plan = in.fabricApiPlan();
 		this.report = new Report(in.fabricatedVersion());
 		this.side = in.clientSide() ? EnvType.CLIENT : EnvType.SERVER;
-		for (NeoForgeMod m : in.neoForgeMods()) neoMods.put(m.id(), m);
+		// A mod file may nest a copy of a mod found elsewhere: NeoForge loads the newest.
+		Map<String, NeoForgeMod> byId = new LinkedHashMap<>();
+		for (NeoForgeMod m : in.neoForgeMods()) byId.merge(m.id(), m, (a, b) -> parseVersion(b.version()).compareTo(parseVersion(a.version())) > 0 ? b : a);
+		this.neoForgeMods = List.copyOf(byId.values());
+		neoMods.putAll(byId);
+		for (NeoForgeMod m : neoForgeMods) {
+			for (String alias : m.provides()) neoMods.putIfAbsent(ModIds.toNeoForgeId(alias), m);
+		}
 		this.builtins = new ArrayList<>(builtins(in));
 	}
 
@@ -294,10 +336,21 @@ public final class Pipeline {
 			}
 			String neoId = ModIds.toNeoForgeId(c.id());
 			NeoForgeMod neo = neoMods.get(neoId);
-			if (neo != null) {
+			if (neo != null && neo.id().equals(neoId)) {
 				report.mod(new ModRow(c.id(), c.version(), c.origin(), Status.SKIPPED,
 						"a NeoForge build of this mod is installed (" + neo.displayName() + " " + neo.version() + "); using it instead",
 						"Remove the NeoForge build to use the Fabric one."));
+				continue;
+			}
+			if (neo != null) {
+				report.mod(new ModRow(c.id(), c.version(), c.origin(), Status.SKIPPED,
+						"NeoForge mod " + neo.displayName() + " " + neo.version() + " provides it", ""));
+				continue;
+			}
+			String neoForgeBuildOnly = NEOFORGE_BUILD_ONLY.get(c.id());
+			if (neoForgeBuildOnly != null) {
+				report.mod(new ModRow(c.id(), c.version(), c.origin(), Status.DISABLED, "its Fabric build can't run on NeoForge: " + neoForgeBuildOnly,
+						"Install " + c.metadata().getName() + " for NeoForge instead (from the same download page)."));
 				continue;
 			}
 			FabricatedConfig.ModOverride override = config.override(c.id());
@@ -337,7 +390,7 @@ public final class Pipeline {
 			resolver.builtin(b.id(), parseVersion(b.version()), b.name());
 			for (String alias : b.aliases()) resolver.builtin(alias, parseVersion(b.version()), b.name());
 		}
-		for (NeoForgeMod m : in.neoForgeMods()) resolver.neoForgeMod(m.id(), parseVersion(m.version()), m.displayName());
+		neoMods.forEach((id, m) -> resolver.neoForgeMod(id, parseVersion(m.version()), m.displayName()));
 		return resolver;
 	}
 
@@ -518,10 +571,9 @@ public final class Pipeline {
 			String provider = providerOf.get(id);
 			if (provider != null) {
 				if (!provider.equals(c.id())) after.add(ModIds.toNeoForgeId(provider));
-			} else if (neoMods.containsKey(id)) {
-				after.add(id);
-			} else if (neoMods.containsKey(ModIds.toNeoForgeId(id))) {
-				after.add(ModIds.toNeoForgeId(id));
+			} else {
+				NeoForgeMod neo = neoMods.getOrDefault(id, neoMods.get(ModIds.toNeoForgeId(id)));
+				if (neo != null) after.add(neo.id());
 			}
 		}
 		return after;
@@ -543,7 +595,7 @@ public final class Pipeline {
 		}
 
 		// Built-ins first: a Fabric mod's "provides" never shadows Minecraft, Fabricated or a native module.
-		for (Builtin b : builtins) addBuiltin(runtime, b.id(), b.version(), b.name(), b.aliases());
+		for (Builtin b : builtins) addBuiltin(runtime, b.id(), b.version(), b.name(), b.aliases(), Map.of());
 
 		List<LoadedMod> loaded = new ArrayList<>();
 		Map<String, ModContainerImpl> containers = new LinkedHashMap<>();
@@ -577,7 +629,11 @@ public final class Pipeline {
 			containers.put(c.id(), container);
 		}
 		// NeoForge mods, visible through Fabric's API.
-		for (NeoForgeMod m : in.neoForgeMods()) addBuiltin(runtime, m.id(), m.version(), m.displayName(), List.of());
+		for (NeoForgeMod m : neoForgeMods) {
+			Map<String, CustomValue> customValues = new LinkedHashMap<>();
+			m.properties().forEach((key, value) -> customValues.put(key, CustomValueImpl.fromJson(value)));
+			addBuiltin(runtime, m.id(), m.version(), m.displayName(), m.provides(), customValues);
+		}
 
 		in.cache().notes().forEach(n -> report.line("Cache", n));
 		return new Result(config, loaded, runtime, containers, report, Set.copyOf(rounds.dependencyFailures));
@@ -632,8 +688,9 @@ public final class Pipeline {
 				user.ignoreHints());
 	}
 
-	private static void addBuiltin(FabricLoaderRuntime runtime, String id, String version, String name, List<String> aliases) {
-		FabricModMetadata md = FabricModMetadata.builtin(id, parseVersion(version), name, "");
+	private static void addBuiltin(FabricLoaderRuntime runtime, String id, String version, String name, List<String> aliases,
+			Map<String, CustomValue> customValues) {
+		FabricModMetadata md = FabricModMetadata.builtin(id, parseVersion(version), name, "", customValues);
 		runtime.addMod(new ModContainerImpl(md, List.of(), new ModContainerImpl.Origin(ModOrigin.Kind.UNKNOWN, List.of(), null, null),
 				null, List.of(), runtime), aliases);
 	}

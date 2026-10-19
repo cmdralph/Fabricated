@@ -4,6 +4,44 @@ Read [`claude.md`](claude.md) first. This file records what was done, what was f
 still unverified. Add a dated section at the top for each working session; keep the findings log, roadmap and
 matrices current rather than appending copies.
 
+## 2026-10-19 (night): Fabric model formats (M4), and renderer mods (Sodium, Iris)
+
+Pull request #23 (merged as `1ebfc5b`): M4. Pull request #24: renderer mods.
+
+**Summary.** Fabric's custom model formats now work next to NeoForge's (M4: MODEL-1 and MODEL-2 fixed), and a new
+pre-flight repair points an injection at a call NeoForge's code makes through a subtype (Lithostitched loads). For
+renderer mods, the research (Sodium `dev`/26.2/26.1.2/1.21.11, Iris, Forgified Fabric API, NeoForge, FML) found that
+Sodium for NeoForge already ships its own Fabric renderer API implementation and switches it on whenever
+`fabric_renderer_api_v1` is a loaded mod, which Fabricated plus Fabric API gives it. Fabric block models are then
+meshed by Sodium itself, so no Sodium-specific code is needed in Fabricated. What broke on that path is fixed:
+
+- **DISC-1**: NeoForge mods nested in jars (jar-in-jar) were invisible to Fabric code (Sodium's mod is nested in a
+  service jar). `NestedNeoForgeJars` and `NeoForgeMods` read them.
+- **IND-1**: NeoForge `modproperties` weren't visible to Fabric code, so Indigo didn't stand down for Sodium's
+  renderer. They are now Fabric custom values, and `fabric:provides` ids are present (Sodium provides Indium).
+- **FRAPI-1**: upstream's `emitQuads` defaults drop the level, the model data and NeoForge's ambient occlusion when
+  Fabric's renderer draws a NeoForge model, which under Sodium is every model. `FrapiDefaults` has the
+  NeoForge-aware defaults, as Forgified Fabric API does.
+
+Sodium's and Iris's Fabric builds are now refused with a message naming their NeoForge builds, and a Fabric mod's
+Sodium integration (its options page, its overrides of Sodium's mixin options) is written where Sodium for NeoForge
+reads it.
+
+**Verification.** Core: 144 tests, 0 failures (local). The loader's TOML reading was compiled against night-config
+3.8.0 and run on Sodium's real `neoforge.mods.toml`. CI on `08e9a5f` (#23's head): all four versions green. In the
+26.3 corpus run Lithostitched loads (the subtype repair applies to `PendingRegistrationMixin#loadFromResource`), and
+Traveler's Backpack's "Expected BackpackDynamicModel" errors are gone (four "Missing FluidModel" errors remain, see
+CORPUS-5). CI on `75e5867`: the renderer gate's new check, a NeoForge `DelegateBlockStateModel` inside a Fabric
+model getting the chunk section's level, passes on 26.1.2, 26.2 and 26.3.
+CI on `7fe52ed` ran Sodium and Iris for NeoForge from Modrinth with Fabric API and the renderer API test mod (26.1.2:
+Sodium 0.9.2, Iris 1.11.4; 26.2: Sodium 0.9.2, Iris 1.11.4; 26.3: Sodium 0.9.3-beta.1, Iris 1.11.7). On 26.1.2 and 26.3
+every check passes: Indigo stands down ("Different rendering plugin detected"), Sodium meshes the Fabric test model on
+its chunk builder thread (the level is Sodium's `LevelSlice`), the NeoForge model inside it gets that level, and the
+falling block and the breaking overlay are drawn through Sodium's renderer. On 26.2 every check but the falling block
+passed: the test dropped it from a fixed offset beside the player, and in that world (blocks placed at y=74) it likely
+never fell into view before the client quit, six seconds after the blocks were placed. The test now drops each copy
+down a cleared column beside the test block, onto a support at eye level, whatever the terrain.
+
 ## 2026-10-19 (later): Fabric models as moving blocks, in the breaking overlay and inside vanilla models
 
 Pull request #22 (base `main` at `b7ff2a8`, after #21 merged). Roadmap items M2 and M3.
@@ -49,6 +87,12 @@ Severity: **P0** crash or data loss on a normal launch · **P1** a supported fea
 
 | ID | Sev | Location | Failure mode and trigger | Why tests missed it | Fix |
 |---|---|---|---|---|---|
+| DISC-1 | P1 | `FabricDependencyLocator` | NeoForge hands every dependency locator the same root mod files, so mods nested in them (jar-in-jar, added by NeoForge's own locator) were never seen, however late Fabricated ran. A Fabric mod depending on such a mod (Sodium for NeoForge nests its mod) was disabled, and a Fabric build of it was loaded next to it. | Tests built the NeoForge mod list by hand; the code comment assumed the order of locators mattered. Found reading FML for the Sodium research. | `264b1b4`: `NestedNeoForgeJars` (core, bounded, in place) and `NeoForgeMods` (loader, NeoForge's TOML library). Unit tests. |
+| IND-1 | P1 | `Pipeline` built-in containers | NeoForge mods' `modproperties` weren't visible to Fabric code. With Sodium for NeoForge, Indigo didn't see Sodium's `fabric-renderer-api-v1:contains_renderer` and its client entrypoint failed ("second rendering plug-in"); Fabric mods depending on `indium`, which Sodium provides, were disabled. | No test had a NeoForge mod with properties. | `264b1b4`: properties become custom values, `fabric:provides` ids aliases. `PipelineTest`. |
+| FRAPI-1 | P2 | pass-through `fabric-renderer-api-v1` (26.x) | Upstream's `FabricBlockStateModel.emitQuads` default collects parts without the level, and its part default ignores NeoForge's ambient occlusion. NeoForge models drawn by Fabric's renderer (wrapped by a Fabric model, or every model under Sodium) lost their level and model data (connected textures). | Fabricated only sent Fabric models to Fabric's renderer, and the test model wrapped a vanilla one. | `75e5867`: `FrapiDefaults`, declared on `BlockStateModel` and `BlockStateModelPart` (as Forgified Fabric API does). CI check "frapi level-aware default OK". |
+| MODEL-1 | P2 | model loading (26.x) | NeoForge parses model files itself, so a Fabric `UnbakedModelDeserializer` was never used (Traveler's Backpack's models were missing). | — | `c02d85f` (M4): NeoForge's parser hands `fabric:type` model files to Fabric's deserializers. CI checks. |
+| MODEL-2 | P2 | pass-through `fabric-model-loading-api-v1` (26.x) | Upstream's codec replacement dropped NeoForge's blockstate model types (`type`, `neoforge:composite`). | — | `c02d85f`: upstream's mixin is left out; Fabric's types are added to the codec NeoForge builds. CI check. |
+| PRE-1 | P2 | core `MixinPreflight` | Lithostitched's `PendingRegistrationMixin` injects at `Decoder.parse`, which NeoForge's code calls through `Codec` (the same method): the injection found no target and the mod was disabled. | — | `08e9a5f`: pre-flight points `@Inject` and `@ModifyExpressionValue` at the call made through the one subtype. Unit test. |
 | PH2-12 | P1 | Pass-through `fabric-model-loading-api-v1` on NeoForge 26.x; core `MixinPreflight` | Upstream's `ModelBakeryMixin#onReturnInit` injects at `RETURN` of `<init>` by name only. Mixin picks the first constructor: NeoForge's deprecated one, kept for vanilla's signature, which only calls `this(...)`. NeoForge's code calls the new one, so the bakery never got the model loading dispatcher. Block and item model modifiers (before and after bake) and extra model baking did nothing, with no error. | No test used a model modifier. Found by the new renderer API CI gate: the test block was placed, but its model was never wrapped. | `08aff28`. Pre-flight points end-of-constructor injectors at the constructor the kept one calls. It acts only on deprecated pure `this(...)` delegates, so vanilla's own delegating constructors are untouched. Unit test included. |
 | PH2-01 | P2 | `FabricDependencyLocator`, `Pipeline.Result` | A mod NeoForge refuses (`addJarContent` empty) kept its `inject-interface` directives. Loading the target game class then threw `NoClassDefFoundError` for the mod's interface. | The tests never had NeoForge refuse a translated mod. | `dba8500`, with `PipelineTest` |
 | PH2-02 | P2 | `RegistrySyncBridge` | The root registry callback was added from the mod constructor. FML constructs mods in parallel, so this was an unsynchronised mutation of a vanilla list. | A race that needs another mod mutating the same list during construction. | `b360564` |
@@ -83,8 +127,11 @@ crash in run 229).
 | P3-8 | — | `BlockEntityTypeMixin` | Field replaced without `volatile`. | Won't fix: written only during mod initialization, before world threads start. |
 | CFG-1 | P3 | `ModTranslator` | A `skipMixins` entry that matches no mixin is silently ignored, so a typo goes unnoticed. | Should become a report note. |
 | CFG-2 | P3 | `gradle.properties`, `Pipeline` | The Fabric Loader API version is written in two places. | Build-time duplication only. |
-| MODEL-1 | P2 | model loading (26.x) | NeoForge parses model files itself, so a Fabric `UnbakedModelDeserializer` is never used. Traveler's Backpack's custom block models are missing ("Missing model for variant" in the corpus run). | Roadmap M4. |
-| MODEL-2 | P2, impact UNVERIFIED | pass-through `fabric-model-loading-api-v1` (26.x) | Upstream's `BlockStateModelUnbakedMixin` redirects the first two `Codec.flatComapMap` calls in `BlockStateModel.Unbaked`'s static initializer to replace vanilla's blockstate model codecs with its own (which add `fabric:type`). On NeoForge those calls build NeoForge's codecs, which add NeoForge's custom blockstate model types (`type` key, `RegisterBlockStateModels`). With Fabric API installed, a NeoForge mod's custom blockstate model type likely no longer parses. Read from both sources; no CI case yet. | Fix: keep NeoForge's codec as the fallback of Fabric's (dispatch on `fabric:type` when present, NeoForge's codec otherwise). Next candidate after M4. |
+| CORPUS-1 | P2, cause UNVERIFIED | Terralith, Apollib (26.3 corpus) | NeoForge fails to parse some of their data files: "Unknown registry key in neoforge:condition_codecs: terralith:config" (and `apollib:config`). The files likely carry `neoforge:conditions` of the mods' own types, shared between their Fabric and NeoForge builds, which only the NeoForge builds register (UNVERIFIED: the 26.3 sources aren't public; the public Terralith repository stops at 2.5.1). | A fix could register each Fabric resource condition type as a NeoForge condition of the same id, if the JSON shapes match. Needs the files first. Their NeoForge builds avoid it. |
+| CORPUS-2 | P2, cause unknown | Xaero's World Map (26.3 corpus) | The corpus client crashes: `WorldMap.events` is null in `onMinecraftRunTickStart`. The `CLIENT_STARTED` ordering was ruled out (the primary hook applies). | Closed source; its initialisation path needs a closer look. |
+| CORPUS-3 | — | Balm (Waystones), JEI, ShulkerBoxTooltip (26.3 corpus) | Their mixins target code NeoForge changed: Balm `CropBlock.getGrowthSpeed`'s signature and `LivingEntity.removeAllEffects`'s loop, JEI `KeyMapping.setKey`, ShulkerBoxTooltip a `setTooltipForNextFrame` overload. Pre-flight disables them with the reason. | Not repairable in general. Their NeoForge builds exist and are used when installed. |
+| CORPUS-4 | — | Puzzles Lib (26.3 corpus) | Requires Fabric API 0.163.0 or newer; CI tests 0.162.0. | R2 (Fabric API 0.164.0 for 26.3). |
+| CORPUS-5 | P3, cosmetic, UNVERIFIED | Traveler's Backpack (26.3 corpus) | NeoForge warns "Missing FluidModel" for its potion fluids. NeoForge's check runs inside `FluidStateModelSet.bake`, and upstream's `FluidStateModelSetMixin` wraps that method to add the models of Fabric-registered fluids after it returns, so the warning comes before those models are added. Whether the potion fluids have a model at all is UNVERIFIED. | Could register Fabric's fluid models through NeoForge's `RegisterFluidModelsEvent` instead. Low value. |
 
 ## Fabric's renderer API: status and roadmap
 
@@ -96,6 +143,7 @@ crash in run 229).
 | Moving blocks (pistons, falling) and the breaking overlay | no | yes (M2) | yes | yes |
 | Fabric models nested in a vanilla multipart or weighted model | no | yes (M3) | yes | yes |
 | Block outlines, a moving block's glow outline | no | from the model's parts, as NeoForge sees them | same | same |
+| Under Sodium for NeoForge: Fabric models meshed by Sodium's own Fabric renderer, Indigo stands down | no (neither Sodium for NeoForge nor Fabricated has the renderer API there) | yes (R1, CI) | yes (R1, CI) | yes (R1, CI) |
 
 Milestones, in order:
 
@@ -107,8 +155,14 @@ Milestones, in order:
   in a field of the baked model.
 - **M2b (small):** block outlines and a moving block's glow outline for Fabric models: today they come from the
   model's parts as NeoForge sees them, so a model with only `emitQuads` has no outline.
-- **M4:** Fabric's `UnbakedModelDeserializer` on NeoForge (route NeoForge's model parser to the deserializers Fabric
-  mods registered). Fixes Traveler's Backpack's models.
+- **M4, done:** Fabric's custom model formats through NeoForge's parsers (`c02d85f`): `fabric:type` model files and
+  blockstate models, next to NeoForge's own types. Traveler's Backpack's models load.
+- **R1:** renderer mods. Sodium for NeoForge meshes Fabric models through its own Fabric renderer; Fabricated makes
+  that path work (DISC-1, IND-1, FRAPI-1) and CI runs Sodium and Iris for NeoForge on 26.x.
+- **R2:** Fabric API 0.164.0 for 26.3 (Puzzles Lib needs 0.163.0 or newer).
+- **R3:** pre-flight of mixins that target another mod's classes (a Fabric-only Sodium addon mixing into Sodium's
+  Fabric platform classes, which Sodium for NeoForge doesn't have): today such a mixin is left to Mixin at run time,
+  which by default logs that the target was not found and skips it (UNVERIFIED in this setup).
 - **M5:** 1.21.11. The renderer API's own mixins don't apply on NeoForge 1.21.11. That needs a native module or
   targeted skips plus a bridge like 26.x's. The 1.21.11 API differs (`RenderMaterial`, `BlendMode`).
 - **Not planned:** a Fabricated-owned quad encoder. Indigo already is the `int[]` encoder. A second one would add code
@@ -119,7 +173,8 @@ Milestones, in order:
 | Mod | What it uses | 1.21.11 | 26.x | Evidence |
 |---|---|---|---|---|
 | `fabricated-testmod-frapi` (this repo) | `ModelLoadingPlugin` after-bake modifier, its own `emitQuads` in sections, as a falling block and with the breaking overlay; a `fabric:type` model as a multipart part | — | **passes** on 26.1.2, 26.2, 26.3 | CI "Fabric renderer API in the world", run 246 |
-| Traveler's Backpack | Custom unbaked model deserializer | loads | loads, custom block models missing | corpus runs (run 233) |
+| Traveler's Backpack | Custom unbaked model deserializer | loads | loads, its custom block models too (M4) | corpus run on `08e9a5f` |
+| Sodium and Iris for NeoForge | Sodium's own Fabric renderer meshes every block; Iris on Sodium | not tested | **passes** on 26.1.2 and 26.3, 26.2 see the session notes | CI "Fabric models under Sodium", run on `7fe52ed` |
 | Continuity | Renderer API (connected textures) | not in corpus | not in corpus | add once a Fabric build for these versions is confirmed (UNVERIFIED) |
 | Athena | Renderer API (connected textures library) | not in corpus | not in corpus | same (UNVERIFIED) |
 | Create Fabric | Renderer API, model loading | no Fabric build | no Fabric build for 26.3 | corpus fetch, run 233 |

@@ -58,8 +58,9 @@ types, data attachments or Fabric's interaction events. Loot table events, conte
 ## What it does not support
 
 - **Fabric API modules that NeoForge conflicts with**, until Fabricated implements them natively (see above).
-- **Mods that replace the renderer** (Sodium, Iris, Indigo-based renderers). NeoForge has its own model
-  pipeline.
+- **The Fabric builds of renderer mods** (Sodium, Iris). Use their NeoForge builds: on 26.x Sodium for NeoForge
+  draws Fabric block models through its own Fabric renderer, and Iris runs on top (see
+  [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md)).
 - **Mods that use Fabric Loader internals** (`net.fabricmc.loader.impl.*`). Only the public Fabric Loader
   API is provided.
 - **Fabric mods built for another Minecraft version.** A Fabric mod for 1.21.11 won't run on 26.x and vice

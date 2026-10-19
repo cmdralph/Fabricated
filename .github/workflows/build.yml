@@ -167,6 +167,7 @@ jobs:
           check "frapi nested terrain OK" "a Fabric model inside a vanilla multipart model was meshed"
           check "frapi moving block OK" "a falling Fabric block model was drawn as a moving block"
           check "frapi breaking OK" "a Fabric block model got the breaking overlay"
+          check "frapi level-aware default OK" "a NeoForge model inside a Fabric model got the chunk section's level from Fabric's renderer"
           check "model deserializer OK" "a model file of a Fabric type was read by its Fabric deserializer"
           check "neoforge blockstate type OK" "a blockstate of NeoForge's composite type still loads with Fabric's model loading"
           if [ "$failed" = 1 ]; then
@@ -183,6 +184,59 @@ jobs:
             ${{ runner.temp }}/client-fapi/run/crash-reports
             ${{ runner.temp }}/client-fapi/client.out
             ${{ runner.temp }}/client-fapi/thread-dump.txt
+          if-no-files-found: ignore
+      # Sodium and Iris for NeoForge (downloaded here from Modrinth, never redistributed) with Fabric API and the test
+      # mod for Fabric's renderer API: Sodium meshes the world through its own Fabric renderer, which must draw Fabric
+      # models, and Fabric API's default renderer must stand down for it.
+      - name: Client smoke test with Sodium and Iris for NeoForge (26.x)
+        if: always() && steps.build.outcome == 'success' && startsWith(matrix.minecraft, '26.')
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/extra-sodium"
+          python3 ci/fetch-corpus.py "${{ matrix.minecraft }}" "$RUNNER_TEMP/extra-sodium" neoforge sodium iris
+          cp "$RUNNER_TEMP/extra/fabric-api.jar" mc/${{ matrix.minecraft }}/build/testmods/fabricated-testmod-frapi.jar "$RUNNER_TEMP/extra-sodium/"
+          SMOKE_TIMEOUT=480 ci/smoke-client.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/client-sodium" "$RUNNER_TEMP/extra-sodium" || true
+          grep -A200 "== " "$RUNNER_TEMP/client-sodium/run/logs/fabric-bridge-report.txt" || true
+      - name: Fabric models under Sodium (26.x)
+        if: always() && steps.build.outcome == 'success' && startsWith(matrix.minecraft, '26.')
+        env:
+          MC: ${{ matrix.minecraft }}
+        run: |
+          if ! ls "$RUNNER_TEMP"/extra-sodium/sodium*.jar >/dev/null 2>&1; then
+            echo "::warning::Modrinth has no Sodium for NeoForge $MC build: nothing to check"
+            exit 0
+          fi
+          log="$RUNNER_TEMP/client-sodium/run/logs/latest.log"
+          failed=0
+          check() {
+            if grep -h "$1" "$log"; then
+              echo "PASS: $2"
+            else
+              echo "::error::FAIL: $2 (no \"$1\" line)"
+              failed=1
+            fi
+          }
+          check "Different rendering plugin detected; not applying Indigo" "Fabric API's default renderer stood down for Sodium's"
+          check "FABRICATED-TEST frapi terrain OK .*LevelSlice" "Sodium meshed a Fabric block model through its Fabric renderer"
+          check "FABRICATED-TEST frapi level-aware default OK" "a NeoForge model inside a Fabric model got Sodium's chunk section"
+          check "FABRICATED-TEST frapi moving block OK" "a falling Fabric block model was drawn with Sodium's renderer"
+          check "FABRICATED-TEST frapi breaking OK" "a Fabric block model got the breaking overlay with Sodium's renderer"
+          if [ "$failed" = 1 ]; then
+            grep -n -m 60 -E "frapi|Indigo|sodium|Sodium|iris|Iris|/(ERROR|FATAL)\]" "$log" || true
+            exit 1
+          fi
+      - name: Upload Sodium client run logs and report
+        if: always() && startsWith(matrix.minecraft, '26.')
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-client-sodium-${{ matrix.minecraft }}
+          path: |
+            ${{ runner.temp }}/client-sodium/run/logs
+            ${{ runner.temp }}/client-sodium/run/crash-reports
+            ${{ runner.temp }}/client-sodium/client.out
+            ${{ runner.temp }}/client-sodium/thread-dump.txt
           if-no-files-found: ignore
       # Popular Fabric mods from Modrinth (ci/mod-corpus.txt, downloaded here in CI and checked against Modrinth's
       # SHA-512), loaded together with Fabric API: shows which load, which are disabled and why. Informational.

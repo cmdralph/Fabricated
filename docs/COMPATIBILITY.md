@@ -554,11 +554,42 @@ follows the code into NeoForge's overload. On 26.1.2 and 26.2 the block overlay 
 block's plain particle sprite.
 
 Model loading loads too: its plugins, model modifiers and extra models work, with the extra models added to
-NeoForge's model discovery by Fabricated (NeoForge rewrote the code upstream hooks). Model types registered with
-Fabric's `UnbakedModelDeserializer` are not used: NeoForge parses model files with its own loaders.
+NeoForge's model discovery by Fabricated (NeoForge rewrote the code upstream hooks). Fabric's custom model formats
+work next to NeoForge's: a model file with a `fabric:type` goes to the deserializer a Fabric mod registered with
+`UnbakedModelDeserializer`, and a blockstate model with a `fabric:type` to the codec registered with
+`CustomUnbakedBlockStateModel`, while NeoForge's own model loaders (`loader`) and blockstate model types (`type`, such as
+`neoforge:composite`) keep working. Upstream's mixin that replaces the blockstate model codec is left out; Fabricated
+adds Fabric's types to the codec NeoForge builds instead.
+
+When Fabric's renderer draws a model that has no `emitQuads` of its own (a NeoForge model a Fabric model wraps, or
+every model under a renderer that meshes the world through Fabric's renderer API), its parts come from NeoForge's
+level-aware `collectParts`, so connected textures and other model-data models keep working, and quads keep NeoForge's
+per-part and per-quad ambient occlusion (the defaults Forgified Fabric API has; upstream's ignore both).
 
 On 1.21.11 the renderer API is unsupported (Fabric's renderer replaces the block model pipeline that NeoForge owns
 there), so model loading, which requires it, is disabled.
+
+### Renderer mods: Sodium and Iris (26.x)
+
+Use the NeoForge builds of Sodium and Iris. Their Fabric builds are disabled with a message: Sodium's would mesh
+NeoForge's models, fluids and lighting the Fabric way and drop the geometry NeoForge mods add to chunks, and Iris's
+needs Sodium's Fabric build. Sodium for NeoForge carries its own implementation of Fabric's renderer API and switches
+it on whenever Fabric API's renderer module is loaded, which Fabricated with the Fabric API jar provides. It then meshes
+every block through that renderer, so Fabric block models show in the world. Fabricated's part:
+
+- It sees Sodium, whose mod is nested inside a service jar, and reads its mod properties, so Fabric API's own renderer
+  (Indigo) stands down for Sodium's, and Fabric mods depending on `sodium` or on `indium` (which Sodium provides) load.
+- Its renderer API defaults keep NeoForge models' level, model data and ambient occlusion when Sodium draws them
+  through Fabric's renderer (connected textures and other model-data models keep working).
+- Moving blocks and the breaking overlay of Fabric models go through the registered renderer, Sodium's.
+- A Fabric mod's Sodium integration is given to Sodium for NeoForge in the form it reads: its page in Sodium's options
+  (the `sodium:config_api_user` entrypoint, a plain class) and its overrides of Sodium's mixin options
+  (`sodium:options`).
+
+CI runs Sodium and Iris for NeoForge (from Modrinth) with Fabric API and a Fabric model test mod on 26.1.2, 26.2 and
+26.3, and checks each of these. Shaders weren't enabled in that run. A Fabric addon that mixes into Sodium's
+Fabric-only platform classes can't work with Sodium for NeoForge, which doesn't have them. On 1.21.11 neither Sodium
+for NeoForge nor Fabricated has Fabric's renderer API, so Fabric block models stay invisible with or without Sodium.
 
 ### Fabric Loader
 

@@ -1,6 +1,7 @@
 package io.github.cmdralph.fabricated.core.translate;
 
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 import net.fabricmc.loader.api.metadata.Person;
@@ -17,7 +18,14 @@ public final class ModsTomlWriter {
 	public static final String PATH = "META-INF/neoforge.mods.toml";
 	public static final String LANGUAGE_LOADER = "fabricated";
 
-	/** Everything needed to describe one translated mod. */
+	/**
+	 * Everything needed to describe one translated mod.
+	 *
+	 * @param modProperties its {@code [modproperties.<id>]}, which NeoForge mods read where Fabric mods read entrypoints
+	 *                      or custom values
+	 * @param sodiumOptions its overrides of Sodium's mixin options, which Sodium for NeoForge reads from the mod's
+	 *                      {@code [[mods]]} entry
+	 */
 	public record Spec(
 			String neoForgeId,
 			String version,
@@ -31,7 +39,9 @@ public final class ModsTomlWriter {
 			String logoFile,
 			List<MixinConfigSpec> mixins,
 			boolean hasAccessTransformer,
-			List<String> loadAfter) {
+			List<String> loadAfter,
+			Map<String, String> modProperties,
+			Map<String, Boolean> sodiumOptions) {
 	}
 
 	/** One {@code [[mixins]]} block. */
@@ -60,7 +70,29 @@ public final class ModsTomlWriter {
 		if (!spec.contributors().isEmpty()) kv(sb, "credits", names(spec.contributors()));
 		if (spec.homepage() != null) kv(sb, "displayURL", spec.homepage());
 		if (spec.logoFile() != null) kv(sb, "logoFile", spec.logoFile());
+		if (!spec.sodiumOptions().isEmpty()) {
+			sb.append("\"sodium:options\"={");
+			String separator = "";
+			for (Map.Entry<String, Boolean> option : spec.sodiumOptions().entrySet()) {
+				sb.append(separator);
+				quote(sb, option.getKey());
+				sb.append('=').append(option.getValue());
+				separator = ", ";
+			}
+			sb.append("}\n");
+		}
 		sb.append('\n');
+
+		if (!spec.modProperties().isEmpty()) {
+			sb.append("[modproperties.").append(spec.neoForgeId()).append("]\n");
+			for (Map.Entry<String, String> property : spec.modProperties().entrySet()) {
+				quote(sb, property.getKey());
+				sb.append('=');
+				quote(sb, property.getValue());
+				sb.append('\n');
+			}
+			sb.append('\n');
+		}
 
 		for (MixinConfigSpec mixin : spec.mixins()) {
 			sb.append("[[mixins]]\n");
