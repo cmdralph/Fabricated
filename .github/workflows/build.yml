@@ -258,8 +258,9 @@ jobs:
             grep -n -m 30 -E "model.loading|ModelManager|frapi|FabricBlockRendering|SectionCompiler|/(ERROR|FATAL)\]" "$log" || true
             exit 1
           fi
-      # Sodium for NeoForge 1.21.11 meshes chunk sections itself and has no Fabric renderer: it draws a Fabric block model
-      # from the parts Fabricated makes from its quads. Informational until it has passed.
+      # Sodium for NeoForge 1.21.11 meshes chunk sections itself and has no Fabric renderer, though its metadata says it has
+      # one: Fabricated registers Indigo once the client initializers ran, and Sodium draws a Fabric block model from the
+      # parts Fabricated makes from its quads. Informational until it has passed.
       - name: Client with Sodium for NeoForge (informational, 1.21.11)
         if: ${{ !cancelled() && steps.build.outcome == 'success' && matrix.minecraft == '1.21.11' }}
         continue-on-error: true
@@ -275,8 +276,9 @@ jobs:
           cp "$RUNNER_TEMP/extra/fabric-api.jar" mc/${{ matrix.minecraft }}/build/testmods/fabricated-testmod-frapi.jar "$RUNNER_TEMP/extra-sodium/"
           SMOKE_TIMEOUT=480 ci/smoke-client.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/client-sodium" "$RUNNER_TEMP/extra-sodium" || true
           log="$RUNNER_TEMP/client-sodium/run/logs/latest.log"
-          for check in "frapi terrain OK .*LevelSlice" "frapi nested terrain OK .*LevelSlice" "frapi level-aware default OK"; do
-            if grep -h -m 1 "FABRICATED-TEST $check" "$log"; then echo "PASS: $check"; else echo "::warning::Sodium 1.21.11: no \"$check\" line"; fi
+          for check in "Fabric API's own renderer (Indigo) is used" "FABRICATED-TEST frapi NeoForge parts OK" "FABRICATED-TEST frapi terrain OK .*LevelSlice" \
+              "FABRICATED-TEST frapi nested terrain OK .*LevelSlice" "FABRICATED-TEST frapi level-aware default OK"; do
+            if grep -h -m 1 "$check" "$log"; then echo "PASS: $check"; else echo "::warning::Sodium 1.21.11: no \"$check\" line"; fi
           done
       - name: Upload Fabric API client run logs and report
         if: ${{ !cancelled() }}

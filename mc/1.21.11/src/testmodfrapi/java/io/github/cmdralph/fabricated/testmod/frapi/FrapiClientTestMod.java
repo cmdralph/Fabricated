@@ -30,7 +30,6 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.BlockAndTintGetter;
 import net.minecraft.world.level.EmptyBlockAndTintGetter;
-import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.neoforge.client.model.DelegateBlockStateModel;
 
@@ -95,9 +94,13 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 		}
 	}
 
-	/** Whether NeoForge's breaking overlay is being drawn: other callers (the block outline pass) pass the level too. */
+	/**
+	 * Whether the breaking overlay is being drawn ({@code renderBreakingTexture}, called from the level renderer's
+	 * {@code renderBlockDestroyAnimation}): the level it passes doesn't tell it apart from other callers.
+	 */
 	private static boolean drawingBreakingOverlay() {
-		return StackWalker.getInstance().walk(frames -> frames.anyMatch(frame -> frame.getMethodName().equals("renderBreakingTexture")));
+		return StackWalker.getInstance().walk(frames -> frames.anyMatch(frame -> frame.getMethodName().contains("Breaking")
+				|| frame.getMethodName().contains("DestroyAnimation")));
 	}
 
 	/**
@@ -135,12 +138,15 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 			} finally {
 				emitter.popTransform();
 			}
-			if (isSection(level) && !logged.getAndSet(true)) {
-				FrapiTestMod.LOGGER.info("FABRICATED-TEST {} ({} in {} on {})", check, state, level.getClass().getName(), Thread.currentThread().getName());
+			if (isSection(level)) {
+				if (!logged.getAndSet(true)) {
+					FrapiTestMod.LOGGER.info("FABRICATED-TEST {} ({} in {} on {})", check, state, level.getClass().getName(), Thread.currentThread().getName());
+				}
+			} else if (drawingBreakingOverlay()) {
+				// Before the moving block check: the overlay's level may be a moving block's render state too.
+				if (!BREAKING.getAndSet(true)) FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi breaking OK ({} in {})", state, level.getClass().getName());
 			} else if (level instanceof MovingBlockRenderState && !MOVING.getAndSet(true)) {
 				FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi moving block OK ({})", state);
-			} else if (level instanceof Level && !BREAKING.get() && drawingBreakingOverlay() && !BREAKING.getAndSet(true)) {
-				FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi breaking OK ({})", state);
 			}
 		}
 

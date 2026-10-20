@@ -18,6 +18,10 @@ public interface Renderer {
 		throw new AssertionError("stub");
 	}
 
+	static void register(Renderer renderer) {
+		throw new AssertionError("stub");
+	}
+
 	MutableMesh mutableMesh();
 
 	void render(ModelBlockRenderer modelRenderer, BlockAndTintGetter blockView, BlockStateModel model, BlockState state, BlockPos pos, PoseStack matrices,
