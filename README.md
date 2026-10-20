@@ -98,7 +98,9 @@ with the same id. Remove the NeoForge jar to use the Fabric one.
 report` regenerates it. It lists every Fabric mod with its status (loaded, disabled, rejected, provided
 natively, skipped), the reason, and a suggested fix. It also has the Fabric API plan, mixin pre-flight
 results, access-widener notes and timings. In game, `/fabricated` prints a one-line summary and `/fabricated disabled`
-lists the Fabric mods that didn't load, with why (on a server, from the console only).
+lists the Fabric mods that didn't load, with why. `/fabricated why <mod>` tells one mod's outcome and the suggested
+fix, and `/fabricated disable <mod>` (or `enable <mod>`) switches a mod off (or on) in `config/fabricated.json` from
+the next launch, without editing the file by hand (comments in the file aren't kept). On a server, all but the summary work from the console only.
 
 | You see | Meaning | What to do |
 |---|---|---|

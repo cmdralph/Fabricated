@@ -8,6 +8,7 @@ import io.github.cmdralph.fabricated.neoforge.loot.LootBridge;
 import io.github.cmdralph.fabricated.neoforge.lifecycle.LifecycleBridge;
 import io.github.cmdralph.fabricated.neoforge.networking.NetworkingBridge;
 import io.github.cmdralph.fabricated.neoforge.objectbuilder.ObjectBuilderBridge;
+import io.github.cmdralph.fabricated.neoforge.rendering.FabricFluidClientExtensions;
 import io.github.cmdralph.fabricated.neoforge.rendering.HudBridge;
 import io.github.cmdralph.fabricated.neoforge.rendering.HudRenderCallbackBridge;
 import io.github.cmdralph.fabricated.neoforge.rendering.ScreenRenderBridge;
@@ -39,6 +40,8 @@ public final class NativeFabricApi {
 			HudBridge.register(modBus);
 			HudRenderCallbackBridge.register();
 			ScreenRenderBridge.register();
+			// NeoForge draws fluids through their types' client extensions on this version.
+			FabricFluidClientExtensions.register(modBus);
 		}
 		// The 1.21.11 API has no FabricDefaultAttributeRegistry.MODIFY.
 		ObjectBuilderBridge.register(modBus, modifier -> {

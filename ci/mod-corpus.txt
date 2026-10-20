@@ -2,10 +2,14 @@
 # for the Minecraft version is used, with its required dependencies; a mod without such a build is left out.
 # Mods that replace the renderer (Sodium, Iris) are not listed: their Fabric builds can't run on NeoForge, and CI
 # runs their NeoForge builds next to Fabric API separately.
+# Nor are jars that are NeoForge mods too: NeoForge loads those itself (Zoomify's "universal" jar, which then needs
+# Kotlin for Forge). Nor mods that can't run on NeoForge by design (CORPUS-13): malilib, and with it Tweakeroo and
+# MiniHUD, reads a field NeoForge replaced while the game starts, and WTHIT's Fabric build refuses NeoForge.
 
 # Libraries
 architectury-api
 balm
+cardinal-components-api
 cloth-config
 collective
 fabric-language-kotlin
@@ -13,27 +17,39 @@ forge-config-api-port
 geckolib
 moonlight
 owo-lib
+playeranimator
 puzzles-lib
+resourceful-lib
 trinkets
 yacl
 
 # Interface
 appleskin
+betterf3
+chat-heads
+controlling
 emi
+inventory-profiles-next
 jade
 jei
 modmenu
 mouse-tweaks
+no-chat-reports
 rei
 shulkerboxtooltip
 xaeros-minimap
 xaeros-world-map
 
-# Rendering (Continuity draws connected textures through Fabric's renderer API)
+# Rendering (Continuity and Enhanced Block Entities draw through Fabric's renderer API)
+3dskinlayers
 continuity
+ebe
 entity-model-features
 entitytexturefeatures
+falling-leaves
 lambdynamiclights
+not-enough-animations
+wavey-capes
 
 # Performance
 dynamic-fps
@@ -42,13 +58,25 @@ ferrite-core
 immediatelyfast
 krypton
 lithium
+modernfix
+moreculling
+spark
 
 # Content
+artifacts
 comforts
 create-fabric
 farmers-delight-refabricated
+friends-and-foes
+handcrafted
 lootr
+simple-voice-chat
 supplementaries
 terralith
 travelersbackpack
 waystones
+yungs-better-dungeons
+
+# Tech (Team Reborn's energy API and Fabric's transfer API, which Fabricated bridges to NeoForge's capabilities)
+modern-industrialization
+techreborn

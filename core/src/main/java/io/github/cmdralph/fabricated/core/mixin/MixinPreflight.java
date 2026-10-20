@@ -34,6 +34,7 @@ import org.objectweb.asm.tree.AnnotationNode;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.FieldInsnNode;
 import org.objectweb.asm.tree.FieldNode;
+import org.objectweb.asm.tree.InsnList;
 import org.objectweb.asm.tree.InsnNode;
 import org.objectweb.asm.tree.IntInsnNode;
 import org.objectweb.asm.tree.InvokeDynamicInsnNode;
@@ -74,8 +75,12 @@ public final class MixinPreflight {
 	private static final String LOCAL = "Lcom/llamalad7/mixinextras/sugar/Local;";
 	private static final String UNIQUE = "Lorg/spongepowered/asm/mixin/Unique;";
 	private static final String INTRINSIC = "Lorg/spongepowered/asm/mixin/Intrinsic;";
+	private static final String REDIRECT = "Lorg/spongepowered/asm/mixin/injection/Redirect;";
+	private static final String GROUP = "Lorg/spongepowered/asm/mixin/injection/Group;";
 	private static final String WRAP_OPERATION = "Lcom/llamalad7/mixinextras/injector/wrapoperation/WrapOperation;";
 	private static final String WRAP_METHOD = "Lcom/llamalad7/mixinextras/injector/wrapmethod/WrapMethod;";
+	private static final Set<String> WRAP_WITH_CONDITION = Set.of("Lcom/llamalad7/mixinextras/injector/v2/WrapWithCondition;",
+			"Lcom/llamalad7/mixinextras/injector/WrapWithCondition;");
 	private static final String MODIFY_EXPRESSION_VALUE = "Lcom/llamalad7/mixinextras/injector/ModifyExpressionValue;";
 	/** NeoForge's marker for the enums only its own enum extension system may extend. */
 	private static final String EXTENSIBLE_ENUM = "net/neoforged/fml/common/asm/enumextension/IExtensibleEnum";
@@ -133,8 +138,8 @@ public final class MixinPreflight {
 		for (String mixin : config.mixinsFor(clientSide)) {
 			if (skip.contains(mixin)) continue;
 			String internal = config.internalName(mixin);
-			Context ctx = new Context(configName, internal.replace('/', '.'), config, refmap, hasPlugin, out, null);
 			ClassNode node = modClasses.readNode(internal, ClassReader.SKIP_CODE | ClassReader.SKIP_FRAMES);
+			Context ctx = new Context(configName, internal.replace('/', '.'), config, refmap, hasPlugin, out, null);
 			if (node == null) {
 				ctx.classLevel("Mixin class " + ctx.mixinDotted() + " listed in " + configName + " is missing from the mod jar",
 						"The mod jar is incomplete or corrupted; re-download it.");
@@ -142,7 +147,7 @@ public final class MixinPreflight {
 			}
 			checkMixin(node, ctx);
 		}
-		if (out.stream().anyMatch(f -> f.severity() == Severity.LEFT_OUT)) {
+		if (hasPlugin && out.stream().anyMatch(f -> f.severity() == Severity.LEFT_OUT)) {
 			out.add(new PreflightFinding(Severity.INFO, configName, null, "This config uses a mixin plugin (" + config.plugin()
 					+ ") that may disable mixins at runtime, so an injector that would crash the game is left out instead of disabling the mod.", ""));
 		}
@@ -182,6 +187,9 @@ public final class MixinPreflight {
 	 * <li>An {@code @Inject} or {@code @ModifyExpressionValue} at a call this game build makes through a subtype of the
 	 * class named (the same inherited method, as NeoForge's conditional {@code Codec} for vanilla's {@code Decoder}):
 	 * the injection point is pointed at that call.</li>
+	 * <li>An injector at a call this game build makes to an overload taking one more argument (NeoForge's patches pass an
+	 * item stack along that way): the injection point is pointed at that call, with a bridge for a handler that takes
+	 * the call's arguments.</li>
 	 * <li>An {@code @Inject} that captures local variables and would crash when they differ
 	 * ({@code CAPTURE_FAILHARD}, {@code CAPTURE_FAILEXCEPTION}): NeoForge's patches often add locals, so it is made to
 	 * skip itself with Mixin's warning instead ({@code CAPTURE_FAILSOFT}, {@code require = 0}). Where the locals
@@ -225,7 +233,9 @@ public final class MixinPreflight {
 						out.add(new PreflightFinding(Severity.INFO, configName, ctx.mixinDotted(), "@Inject " + method.name
 								+ " captures local variables; if NeoForge's code has other locals there, it is skipped instead of crashing", ""));
 					}
-					if (targets.size() == 1) {
+					// A grouped injector is one of the mod's alternatives for code that differs: pointing it elsewhere could make
+					// more of the group apply than the group allows.
+					if (targets.size() == 1 && !grouped(method)) {
 						for (String pinned : overloadByParameters(method, ann, targets.getFirst(), ctx)) {
 							changed = true;
 							out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@" + simpleName(ann.desc) + " " + method.name
@@ -237,6 +247,11 @@ public final class MixinPreflight {
 									+ " targets " + moved, ""));
 						}
 						for (String moved : subtypeCallRepairs(ann, targets.getFirst(), ctx)) {
+							changed = true;
+							out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@" + simpleName(ann.desc) + " " + method.name
+									+ " expects a call to " + moved, ""));
+						}
+						for (String moved : insertedArgumentRepairs(node, method, ann, targets.getFirst(), ctx, bridges)) {
 							changed = true;
 							out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@" + simpleName(ann.desc) + " " + method.name
 									+ " expects a call to " + moved, ""));
@@ -405,7 +420,7 @@ public final class MixinPreflight {
 					// The handler gets the constructor's own parameters from a bridge taking all of the other one's.
 					if (selectors.size() != 1 || (mixin.access & Opcodes.ACC_INTERFACE) != 0 || !forwardsItsParameters(chosen, overload)
 							|| !takesExactly(handler, chosen)) continue;
-					bridges.add(bridge(mixin.name, handler, injector, chosen, overload));
+					bridges.add(bridge(mixin.name, handler, injector, chosen, overload, freeName(mixin, bridges, handler.name + "$fabricated")));
 				}
 				how = ", which NeoForge keeps only to call ";
 			}
@@ -426,16 +441,8 @@ public final class MixinPreflight {
 	 * make the call. Returns a description of each move.
 	 */
 	private List<String> subtypeCallRepairs(AnnotationNode injector, ClassNode target, Context ctx) {
-		if (!injector.desc.equals(INJECT) && !injector.desc.equals(MODIFY_EXPRESSION_VALUE) || Annotations.value(injector, "slice") != null
-				|| !(Annotations.value(injector, "method") instanceof List<?> selectors)) return List.of();
-		List<MethodNode> methods = new ArrayList<>();
-		for (Object selector : selectors) {
-			if (!(selector instanceof String raw)) return List.of();
-			MemberRef ref = MemberRef.parse(ctx.resolve(raw));
-			if (ref.fuzzy() || ref.name() == null) return List.of();
-			// As Mixin: the first method the selector matches.
-			target.methods.stream().filter(m -> ref.matchesMethod(m.name, m.desc)).findFirst().ifPresent(methods::add);
-		}
+		if (!injector.desc.equals(INJECT) && !injector.desc.equals(MODIFY_EXPRESSION_VALUE) || Annotations.value(injector, "slice") != null) return List.of();
+		List<MethodNode> methods = selectedMethods(injector, target, ctx);
 		List<String> moved = new ArrayList<>();
 		for (AnnotationNode at : annotationList(Annotations.value(injector, "at"))) {
 			String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
@@ -485,6 +492,297 @@ public final class MixinPreflight {
 			queue.addAll(info.interfaces());
 		}
 		return false;
+	}
+
+	/** The methods an injector's selectors pick in {@code target}, as Mixin does (the first match of each); none when one is fuzzy. */
+	private static List<MethodNode> selectedMethods(AnnotationNode injector, ClassNode target, Context ctx) {
+		if (!(Annotations.value(injector, "method") instanceof List<?> selectors)) return List.of();
+		List<MethodNode> methods = new ArrayList<>();
+		for (Object selector : selectors) {
+			if (!(selector instanceof String raw)) return List.of();
+			MemberRef ref = MemberRef.parse(ctx.resolve(raw));
+			if (ref.fuzzy() || ref.name() == null) return List.of();
+			target.methods.stream().filter(m -> ref.matchesMethod(m.name, m.desc)).findFirst().ifPresent(methods::add);
+		}
+		return methods;
+	}
+
+	/**
+	 * Points the {@code INVOKE} points of an injector at the call this game build makes instead of the named one, an
+	 * overload of the same method taking one more argument (NeoForge's patches pass an item stack or a level along that
+	 * way), when the named call is in none of the methods the injector targets and that overload is the only one there.
+	 * The handler of an {@code @Inject} or {@code @ModifyExpressionValue} doesn't see the arguments. One of a
+	 * {@code @Redirect}, {@code @WrapWithCondition} or {@code @WrapOperation} that takes exactly the call's receiver and
+	 * arguments (and the {@code Operation}) gets a bridge taking the overload's, which calls it without the added
+	 * argument; for {@code @WrapOperation}, with an {@code Operation} that puts it back when the original call is made.
+	 * Returns a description of each move.
+	 */
+	private static List<String> insertedArgumentRepairs(ClassNode mixin, MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx,
+			List<MethodNode> bridges) {
+		// Only the point moves for these: their handlers don't see the call's arguments.
+		boolean pointOnly = injector.desc.equals(INJECT) || injector.desc.equals(MODIFY_EXPRESSION_VALUE);
+		boolean condition = WRAP_WITH_CONDITION.contains(injector.desc);
+		if (!pointOnly && !condition && !injector.desc.equals(REDIRECT) && !injector.desc.equals(WRAP_OPERATION) || Annotations.value(injector, "slice") != null
+				|| (mixin.access & Opcodes.ACC_INTERFACE) != 0) return List.of();
+		List<MethodNode> methods = selectedMethods(injector, target, ctx);
+		List<AnnotationNode> ats = annotationList(Annotations.value(injector, "at"));
+		if (methods.isEmpty() || !pointOnly && ats.size() != 1) return List.of();
+		List<String> moved = new ArrayList<>();
+		for (AnnotationNode at : ats) {
+			String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
+			if (!point.equals("INVOKE") || !(Annotations.value(at, "target") instanceof String raw)) continue;
+			MemberRef ref = MemberRef.parse(ctx.resolve(raw));
+			if (ref.fuzzy() || ref.owner() == null || ref.name() == null || ref.desc() == null) continue;
+			String overload = null;
+			boolean named = false;
+			boolean ambiguous = false;
+			boolean staticCall = false;
+			int calls = 0;
+			for (MethodNode method : methods) {
+				for (AbstractInsnNode insn : method.instructions) {
+					if (!(insn instanceof MethodInsnNode call) || !call.owner.equals(ref.owner()) || !call.name.equals(ref.name())) continue;
+					if (call.desc.equals(ref.desc())) {
+						named = true;
+					} else if (insertedArgument(ref.desc(), call.desc) >= 0) {
+						ambiguous |= overload != null && !overload.equals(call.desc);
+						overload = call.desc;
+						staticCall = call.getOpcode() == Opcodes.INVOKESTATIC;
+						calls++;
+					}
+				}
+			}
+			int ordinal = Annotations.value(at, "ordinal") instanceof Integer n ? n : -1;
+			if (named || overload == null || ambiguous || ordinal >= calls) continue;
+			int inserted = insertedArgument(ref.desc(), overload);
+			if (!pointOnly) {
+				Type owner = Type.getObjectType(ref.owner());
+				MethodNode bridge = injector.desc.equals(WRAP_OPERATION) ? wrapperBridge(mixin, handler, owner, ref.desc(), overload, inserted, staticCall, bridges)
+						: callBridge(mixin, handler, owner, ref.desc(), overload, inserted, staticCall, condition ? Type.BOOLEAN_TYPE : Type.getReturnType(ref.desc()),
+								bridges);
+				if (bridge == null) continue;
+				moveInjector(handler, injector, bridge);
+				bridges.add(bridge);
+			}
+			for (int i = 0; i + 1 < at.values.size(); i += 2) {
+				if ("target".equals(at.values.get(i))) at.values.set(i + 1, "L" + ref.owner() + ";" + ref.name() + overload);
+			}
+			moved.add(ref.owner().replace('/', '.') + "." + ref.name() + ref.desc() + ", which this game build makes through an overload with one more argument, "
+					+ ref.name() + overload + "; the injection point is pointed there" + (pointOnly ? "" : ", through a bridge handler"));
+		}
+		return moved;
+	}
+
+	/**
+	 * The index of the one parameter {@code overload} adds to {@code desc}'s, with the same result, or -1: when it adds
+	 * none or several, or when which one is the added can't be told (next to another of its type).
+	 */
+	static int insertedArgument(String desc, String overload) {
+		Type[] own = Type.getArgumentTypes(desc);
+		Type[] all = Type.getArgumentTypes(overload);
+		if (all.length != own.length + 1 || !Type.getReturnType(desc).equals(Type.getReturnType(overload))) return -1;
+		int found = -1;
+		for (int added = 0; added < all.length; added++) {
+			boolean fits = true;
+			for (int i = 0, j = 0; i < all.length && fits; i++) {
+				if (i != added) fits = all[i].equals(own[j++]);
+			}
+			if (!fits) continue;
+			if (found >= 0) return -1;
+			found = added;
+		}
+		return found;
+	}
+
+	/** The parameters of a handler that takes a call's receiver (unless static) and arguments. */
+	private static List<Type> callParameters(Type owner, String desc, boolean staticCall) {
+		List<Type> params = new ArrayList<>();
+		if (!staticCall) params.add(owner);
+		params.addAll(List.of(Type.getArgumentTypes(desc)));
+		return params;
+	}
+
+	/** {@code base}, numbered when the mixin already has a method of that name: two handlers may share theirs. */
+	private static String freeName(ClassNode mixin, List<MethodNode> added, String base) {
+		String name = base;
+		for (int i = 2; nameTaken(mixin, added, name); i++) name = base + i;
+		return name;
+	}
+
+	private static boolean nameTaken(ClassNode mixin, List<MethodNode> added, String name) {
+		for (MethodNode m : mixin.methods) {
+			if (m.name.equals(name)) return true;
+		}
+		for (MethodNode m : added) {
+			if (m.name.equals(name)) return true;
+		}
+		return false;
+	}
+
+	/**
+	 * A {@code @Redirect} or {@code @WrapWithCondition} handler for {@code overload}'s call: it calls {@code handler},
+	 * written for {@code desc}'s, without the added argument. Null when {@code handler} takes anything but that call's
+	 * receiver ({@code owner}) and arguments (a {@code @Coerce}d supertype included: the bridge wouldn't carry the
+	 * annotation), or doesn't return {@code result}.
+	 */
+	private static MethodNode callBridge(ClassNode mixin, MethodNode handler, Type owner, String desc, String overload, int inserted, boolean staticCall,
+			Type result, List<MethodNode> added) {
+		if (!List.of(Type.getArgumentTypes(handler.desc)).equals(callParameters(owner, desc, staticCall))
+				|| !Type.getReturnType(handler.desc).equals(result)) return null;
+		List<Type> params = callParameters(owner, overload, staticCall);
+		MethodNode bridge = bridgeMethod(handler, freeName(mixin, added, handler.name + "$fabricated"), params, Type.getReturnType(handler.desc));
+		int skip = inserted + (staticCall ? 0 : 1);
+		int stack = loadAllBut(bridge, handler, params, skip);
+		callHandler(bridge, mixin.name, handler, stack);
+		return bridge;
+	}
+
+	/**
+	 * A {@code @WrapOperation} handler for {@code overload}'s call: it calls {@code handler}, written for {@code desc}'s,
+	 * without the added argument, and with an {@code Operation} that puts it back before making the call (a lambda the
+	 * bridge adds to {@code extra}). Null when {@code handler} takes anything but that call's receiver ({@code owner})
+	 * and arguments and the {@code Operation}.
+	 */
+	private static MethodNode wrapperBridge(ClassNode mixin, MethodNode handler, Type owner, String desc, String overload, int inserted, boolean staticCall,
+			List<MethodNode> extra) {
+		Type operation = Type.getType(OPERATION);
+		List<Type> expected = callParameters(owner, desc, staticCall);
+		expected.add(operation);
+		if (!List.of(Type.getArgumentTypes(handler.desc)).equals(expected)) return null;
+		List<Type> params = callParameters(owner, overload, staticCall);
+		int skip = inserted + (staticCall ? 0 : 1);
+		Type added = params.get(skip);
+		params.add(operation);
+		MethodNode bridge = bridgeMethod(handler, freeName(mixin, extra, handler.name + "$fabricated"), params, Type.getReturnType(handler.desc));
+		int stack = loadAllBut(bridge, handler, params.subList(0, params.size() - 1), skip);
+		// The Operation the handler gets: the original one, with the added argument put back.
+		MethodNode lambda = argumentInserter(freeName(mixin, extra, "lambda$" + handler.name + "$fabricated"), added, skip);
+		bridge.instructions.add(new VarInsnNode(Opcodes.ALOAD, slotOf(handler, params, params.size() - 1)));
+		bridge.instructions.add(new VarInsnNode(added.getOpcode(Opcodes.ILOAD), slotOf(handler, params, skip)));
+		Type objects = Type.getType("([Ljava/lang/Object;)Ljava/lang/Object;");
+		bridge.instructions.add(new InvokeDynamicInsnNode("call", Type.getMethodDescriptor(operation, operation, added),
+				new Handle(Opcodes.H_INVOKESTATIC, "java/lang/invoke/LambdaMetafactory", "metafactory",
+						"(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodType;"
+								+ "Ljava/lang/invoke/MethodHandle;Ljava/lang/invoke/MethodType;)Ljava/lang/invoke/CallSite;", false),
+				objects, new Handle(Opcodes.H_INVOKESTATIC, mixin.name, lambda.name, lambda.desc, false), objects));
+		callHandler(bridge, mixin.name, handler, stack + 1 + added.getSize());
+		extra.add(lambda);
+		return bridge;
+	}
+
+	/** {@code (Operation original, T value, Object[] args) -> original.call(args with value inserted at index)}. */
+	private static MethodNode argumentInserter(String name, Type value, int index) {
+		Type operation = Type.getType(OPERATION);
+		MethodNode lambda = new MethodNode(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, name,
+				Type.getMethodDescriptor(Type.getType(Object.class), operation, value, Type.getType(Object[].class)), null, null);
+		int args = 1 + value.getSize();
+		int all = args + 1;
+		InsnList code = lambda.instructions;
+		code.add(new VarInsnNode(Opcodes.ALOAD, args));
+		code.add(new InsnNode(Opcodes.ARRAYLENGTH));
+		code.add(new InsnNode(Opcodes.ICONST_1));
+		code.add(new InsnNode(Opcodes.IADD));
+		code.add(new TypeInsnNode(Opcodes.ANEWARRAY, "java/lang/Object"));
+		code.add(new VarInsnNode(Opcodes.ASTORE, all));
+		// System.arraycopy(args, 0, all, 0, index)
+		code.add(new VarInsnNode(Opcodes.ALOAD, args));
+		code.add(new InsnNode(Opcodes.ICONST_0));
+		code.add(new VarInsnNode(Opcodes.ALOAD, all));
+		code.add(new InsnNode(Opcodes.ICONST_0));
+		code.add(new LdcInsnNode(index));
+		code.add(new MethodInsnNode(Opcodes.INVOKESTATIC, "java/lang/System", "arraycopy", "(Ljava/lang/Object;ILjava/lang/Object;II)V", false));
+		// all[index] = value
+		code.add(new VarInsnNode(Opcodes.ALOAD, all));
+		code.add(new LdcInsnNode(index));
+		code.add(new VarInsnNode(value.getOpcode(Opcodes.ILOAD), 1));
+		box(code, value);
+		code.add(new InsnNode(Opcodes.AASTORE));
+		// System.arraycopy(args, index, all, index + 1, args.length - index)
+		code.add(new VarInsnNode(Opcodes.ALOAD, args));
+		code.add(new LdcInsnNode(index));
+		code.add(new VarInsnNode(Opcodes.ALOAD, all));
+		code.add(new LdcInsnNode(index + 1));
+		code.add(new VarInsnNode(Opcodes.ALOAD, args));
+		code.add(new InsnNode(Opcodes.ARRAYLENGTH));
+		code.add(new LdcInsnNode(index));
+		code.add(new InsnNode(Opcodes.ISUB));
+		code.add(new MethodInsnNode(Opcodes.INVOKESTATIC, "java/lang/System", "arraycopy", "(Ljava/lang/Object;ILjava/lang/Object;II)V", false));
+		code.add(new VarInsnNode(Opcodes.ALOAD, 0));
+		code.add(new VarInsnNode(Opcodes.ALOAD, all));
+		code.add(new MethodInsnNode(Opcodes.INVOKEINTERFACE, operation.getInternalName(), "call", "([Ljava/lang/Object;)Ljava/lang/Object;", true));
+		code.add(new InsnNode(Opcodes.ARETURN));
+		lambda.maxStack = 6;
+		lambda.maxLocals = all + 1;
+		return lambda;
+	}
+
+	private static void box(InsnList code, Type type) {
+		String boxed = switch (type.getSort()) {
+			case Type.BOOLEAN -> "java/lang/Boolean";
+			case Type.CHAR -> "java/lang/Character";
+			case Type.BYTE -> "java/lang/Byte";
+			case Type.SHORT -> "java/lang/Short";
+			case Type.INT -> "java/lang/Integer";
+			case Type.FLOAT -> "java/lang/Float";
+			case Type.LONG -> "java/lang/Long";
+			case Type.DOUBLE -> "java/lang/Double";
+			default -> null;
+		};
+		if (boxed != null) code.add(new MethodInsnNode(Opcodes.INVOKESTATIC, boxed, "valueOf", "(" + type.getDescriptor() + ")L" + boxed + ";", false));
+	}
+
+	/** An empty bridge with {@code handler}'s access (static or not) and the given signature. */
+	private static MethodNode bridgeMethod(MethodNode handler, String name, List<Type> params, Type result) {
+		return new MethodNode(Opcodes.ACC_PRIVATE | (handler.access & Opcodes.ACC_STATIC), name,
+				Type.getMethodDescriptor(result, params.toArray(Type[]::new)), null, null);
+	}
+
+	/** The local variable slot of the bridge's parameter at {@code index}. */
+	private static int slotOf(MethodNode handler, List<Type> params, int index) {
+		int slot = (handler.access & Opcodes.ACC_STATIC) != 0 ? 0 : 1;
+		for (int i = 0; i < index; i++) slot += params.get(i).getSize();
+		return slot;
+	}
+
+	/** Loads {@code this} (unless static) and each of {@code params} but the one at {@code skip}; returns the stack size. */
+	private static int loadAllBut(MethodNode bridge, MethodNode handler, List<Type> params, int skip) {
+		int stack = 0;
+		if ((handler.access & Opcodes.ACC_STATIC) == 0) {
+			bridge.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+			stack++;
+		}
+		for (int i = 0; i < params.size(); i++) {
+			if (i == skip) continue;
+			bridge.instructions.add(new VarInsnNode(params.get(i).getOpcode(Opcodes.ILOAD), slotOf(handler, params, i)));
+			stack += params.get(i).getSize();
+		}
+		return stack;
+	}
+
+	/** Calls {@code handler} with what is on the stack and returns its result. */
+	private static void callHandler(MethodNode bridge, String mixin, MethodNode handler, int stack) {
+		boolean isStatic = (handler.access & Opcodes.ACC_STATIC) != 0;
+		bridge.instructions.add(new MethodInsnNode(isStatic ? Opcodes.INVOKESTATIC : Opcodes.INVOKESPECIAL, mixin, handler.name, handler.desc, false));
+		bridge.instructions.add(new InsnNode(Type.getReturnType(handler.desc).getOpcode(Opcodes.IRETURN)));
+		bridge.maxStack = Math.max(stack, Type.getReturnType(handler.desc).getSize());
+		bridge.maxLocals = slotOf(handler, List.of(Type.getArgumentTypes(bridge.desc)), Type.getArgumentTypes(bridge.desc).length);
+	}
+
+	/**
+	 * Moves the injector annotation from {@code handler} to {@code bridge}; {@code handler} stays a plain method of the
+	 * mixin, private (Mixin takes no other static methods) and {@code @Unique}, so that Mixin renames it rather than
+	 * merging it over a method of the same name another mixin added (as an injector, Mixin gave it a name of its own).
+	 */
+	private static void moveInjector(MethodNode handler, AnnotationNode injector, MethodNode bridge) {
+		handler.access = handler.access & ~(Opcodes.ACC_PUBLIC | Opcodes.ACC_PROTECTED) | Opcodes.ACC_PRIVATE;
+		if (Annotations.find(handler, UNIQUE) == null) {
+			if (handler.visibleAnnotations == null) handler.visibleAnnotations = new ArrayList<>();
+			handler.visibleAnnotations.add(new AnnotationNode(UNIQUE));
+		}
+		if (handler.visibleAnnotations != null && handler.visibleAnnotations.remove(injector)) {
+			bridge.visibleAnnotations = new ArrayList<>(List.of(injector));
+		} else if (handler.invisibleAnnotations != null && handler.invisibleAnnotations.remove(injector)) {
+			bridge.invisibleAnnotations = new ArrayList<>(List.of(injector));
+		}
 	}
 
 	/** The one other overload of the same name {@code method} calls, or null (none, or several). */
@@ -590,15 +888,15 @@ public final class MixinPreflight {
 	 * {@link #forwardsItsParameters}) and the callback info. The injector annotation moves to it; {@code handler} stays a
 	 * plain method of the mixin.
 	 */
-	private static MethodNode bridge(String mixin, MethodNode handler, AnnotationNode injector, MethodNode delegate, MethodNode canonical) {
+	private static MethodNode bridge(String mixin, MethodNode handler, AnnotationNode injector, MethodNode delegate, MethodNode canonical, String name) {
 		Type[] own = Type.getArgumentTypes(delegate.desc);
 		Type[] all = Type.getArgumentTypes(canonical.desc);
 		Type callbackInfo = Type.getArgumentTypes(handler.desc)[own.length];
 		Type[] params = Arrays.copyOf(all, all.length + 1);
 		params[all.length] = callbackInfo;
 		boolean isStatic = (handler.access & Opcodes.ACC_STATIC) != 0;
-		MethodNode bridge = new MethodNode(Opcodes.ACC_PRIVATE | (handler.access & Opcodes.ACC_STATIC), handler.name + "$fabricated",
-				Type.getMethodDescriptor(Type.VOID_TYPE, params), null, null);
+		MethodNode bridge = new MethodNode(Opcodes.ACC_PRIVATE | (handler.access & Opcodes.ACC_STATIC), name, Type.getMethodDescriptor(Type.VOID_TYPE, params),
+				null, null);
 		int slot = 0;
 		if (!isStatic) bridge.instructions.add(new VarInsnNode(Opcodes.ALOAD, slot++));
 		int[] slots = new int[params.length];
@@ -616,11 +914,7 @@ public final class MixinPreflight {
 		bridge.instructions.add(new InsnNode(Opcodes.RETURN));
 		bridge.maxStack = stack + 1;
 		bridge.maxLocals = slot;
-		if (handler.visibleAnnotations != null && handler.visibleAnnotations.remove(injector)) {
-			bridge.visibleAnnotations = new ArrayList<>(List.of(injector));
-		} else if (handler.invisibleAnnotations != null && handler.invisibleAnnotations.remove(injector)) {
-			bridge.invisibleAnnotations = new ArrayList<>(List.of(injector));
-		}
+		moveInjector(handler, injector, bridge);
 		return bridge;
 	}
 
@@ -822,6 +1116,16 @@ public final class MixinPreflight {
 		/** A problem that makes Mixin reject the whole mixin; fatal when the config is required. */
 		void classLevel(String message, String suggestion) {
 			out.add(new PreflightFinding(config.required() ? fatal() : Severity.WARN, configName, mixinDotted, message, suggestion));
+		}
+
+		/**
+		 * A broken accessor or invoker. Mixin would reject the whole interface, and the mod's code, which casts to it,
+		 * would then fail to load it; left out alone, the interface still applies and only a call to this method fails.
+		 * Fatal where the config is required and has no plugin, as Mixin would stop the game.
+		 */
+		void accessorMember(MethodNode method, String message, String suggestion) {
+			out.add(new PreflightFinding(config.required() && !hasPlugin ? Severity.FAIL : Severity.LEFT_OUT, configName, mixinDotted, message,
+					suggestion, method.name + method.desc));
 		}
 
 		/**
@@ -1056,7 +1360,7 @@ public final class MixinPreflight {
 		}
 		if (caseInsensitive == 1) return;
 		boolean nameExists = target.fields.stream().anyMatch(f -> f.name.equals(fieldName));
-		ctx.classLevel(nameExists
+		ctx.accessorMember(method, nameExists
 						? "@Accessor target field " + fieldName + " in " + target.name.replace('/', '.') + " has a different type than " + desc
 						: "@Accessor target field " + fieldName + " does not exist in " + target.name.replace('/', '.'),
 				nameExists ? ctx.changer(true) + " changed the field's type." : "The field was renamed or removed by " + ctx.changer(false) + ".");
@@ -1079,7 +1383,7 @@ public final class MixinPreflight {
 		String methodName = ref.nameOr(name);
 		String desc = ref.methodDescOr(method.desc);
 		if (declares(target, methodName, desc)) return;
-		ctx.classLevel("@Invoker target method " + methodName + desc + " does not exist in " + target.name.replace('/', '.'),
+		ctx.accessorMember(method, "@Invoker target method " + methodName + desc + " does not exist in " + target.name.replace('/', '.'),
 				"The method was renamed or removed by " + ctx.changer(false) + ".");
 	}
 
@@ -1110,8 +1414,13 @@ public final class MixinPreflight {
 		return Character.toLowerCase(s.charAt(0)) + s.substring(1);
 	}
 
+	/** Whether {@code handler} is in a named injector group ({@code @Group}), whose members Mixin checks together. */
+	private static boolean grouped(MethodNode handler) {
+		return Annotations.find(handler, GROUP) != null;
+	}
+
 	private static boolean isInjector(String desc) {
-		return desc.startsWith("Lorg/spongepowered/asm/mixin/injection/") && !desc.equals(AT)
+		return desc.startsWith("Lorg/spongepowered/asm/mixin/injection/") && !desc.equals(AT) && !desc.equals(GROUP)
 				&& !desc.startsWith("Lorg/spongepowered/asm/mixin/injection/Slice") && !desc.startsWith("Lorg/spongepowered/asm/mixin/injection/Desc")
 				&& !desc.startsWith("Lorg/spongepowered/asm/mixin/injection/Constant") && !desc.startsWith("Lorg/spongepowered/asm/mixin/injection/Coerce")
 				|| desc.startsWith("Lcom/llamalad7/mixinextras/injector/");
@@ -1119,7 +1428,8 @@ public final class MixinPreflight {
 
 	private static void checkInjector(ClassNode mixin, MethodNode handler, AnnotationNode ann, ClassNode target, Context ctx) {
 		if (!(Annotations.value(ann, "method") instanceof List<?> selectors) || selectors.isEmpty()) return;
-		int require = Annotations.value(ann, "require") instanceof Integer r && r >= 0 ? r : ctx.config().defaultRequire();
+		// As Mixin: a grouped injector requires nothing by default, its group's minimum being the check.
+		int require = Annotations.value(ann, "require") instanceof Integer r && r >= 0 ? r : grouped(handler) ? 0 : ctx.config().defaultRequire();
 		List<AnnotationNode> slices = annotationList(Annotations.value(ann, "slice"));
 		String injectorName = "@" + simpleName(ann.desc);
 
@@ -1171,6 +1481,13 @@ public final class MixinPreflight {
 			ctx.injector(handler, ctx.config().required() ? 1 : 0, injectorName + " targets " + matched.getFirst().name + matched.getFirst().desc
 							+ ", which is abstract in " + target.name.replace('/', '.'),
 					"Mixin picks the first method of that name; the mod needs an update or this mixin must be skipped.");
+			return;
+		}
+		if (ann.desc.equals(WRAP_METHOD) && !anyFuzzy && !acceptsWrapperSignature(handler, matched)) {
+			ctx.classLevel(injectorName + " handler " + handler.name + Type.getMethodDescriptor(Type.getReturnType(handler.desc), handlerArgs(handler).toArray(Type[]::new))
+							+ " does not match the parameters of " + matched.getFirst().name + matched.getFirst().desc + " in " + target.name.replace('/', '.'),
+					(ctx.owner() == null ? "NeoForge's build of Minecraft declares this method with different parameters"
+							: ctx.changer(true) + " declares this method with different parameters") + "; the mod needs an update or this mixin must be skipped.");
 			return;
 		}
 
@@ -1254,6 +1571,19 @@ public final class MixinPreflight {
 			if (List.of(Type.getArgumentTypes(target.desc)).equals(wanted)) return true;
 		}
 		return false;
+	}
+
+	/**
+	 * MixinExtras accepts a {@code @WrapMethod} handler whose parameters, after sugar parameters are removed, are the
+	 * target's parameters followed by the {@code Operation}, in each method it wraps; anything else is an
+	 * {@code InvalidInjectionException} when the mixin applies, whatever its {@code require}. Handlers that use
+	 * {@code @Coerce}, or whose shape is unusual, are left to Mixin.
+	 */
+	private static boolean acceptsWrapperSignature(MethodNode handler, List<MethodNode> targets) {
+		List<Type> args = handlerArgs(handler);
+		if (args == null || args.isEmpty() || !args.getLast().getDescriptor().equals(OPERATION)) return true;
+		List<Type> wanted = args.subList(0, args.size() - 1);
+		return targets.stream().allMatch(target -> List.of(Type.getArgumentTypes(target.desc)).equals(wanted));
 	}
 
 	/**

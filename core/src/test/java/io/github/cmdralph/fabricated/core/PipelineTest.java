@@ -191,6 +191,14 @@ class PipelineTest {
 				.text("META-INF/services/java.lang.Runnable", "com.conflict.Provider\n")
 				.write(mods.resolve("dup-g.jar"));
 
+		// A service file naming a class the jar doesn't have (a shaded library minimized), next to one it has: the module
+		// would be refused, and the game with it, so the file is left out.
+		TestJars.create().fabricModJson(TestJars.modJson("svc-missing", "1.0", ""))
+				.bytes("com/svc/Present.class", TestJars.emptyClass("com/svc/Present", "java/lang/Object"))
+				.text("META-INF/services/java.lang.Runnable", "com.svc.Present\ncom.svc.Dropped\n")
+				.text("META-INF/services/java.lang.AutoCloseable", "com.svc.Present\n")
+				.write(mods.resolve("svc-missing.jar"));
+
 		TestJars.create().fabricModJson(TestJars.modJson("fabric-api-base", "0.4.0", "")).write(mods.resolve("fapi-base.jar"));
 		TestJars.create().fabricModJson(TestJars.modJson("client-only", "1.0", "\"environment\":\"client\"")).write(mods.resolve("client-only.jar"));
 		Files.writeString(mods.resolve("broken.jar"), "not a zip");
@@ -231,7 +239,12 @@ class PipelineTest {
 		for (Report.ModRow row : result.report().mods()) status.putIfAbsent(row.id(), row.status());
 
 		Set<String> loaded = result.mods().stream().map(m -> m.translated().candidate().id()).collect(Collectors.toSet());
-		assertEquals(Set.of("good-mod", "holder", "inner-lib", "dup-a", "dup-b", "dup-c", "dup-d", "dup-e", "dup-g", "res-a", "res-b"), loaded, result.report().render());
+		assertEquals(Set.of("good-mod", "holder", "inner-lib", "dup-a", "dup-b", "dup-c", "dup-d", "dup-e", "dup-g", "res-a", "res-b", "svc-missing"), loaded,
+				result.report().render());
+		Pipeline.LoadedMod svc = result.mods().stream().filter(m -> m.translated().candidate().id().equals("svc-missing")).findFirst().orElseThrow();
+		assertTrue(svc.packages().hides("META-INF/services/java.lang.Runnable"), "a provider the module lacks: the service file is left out");
+		assertFalse(svc.packages().hides("META-INF/services/java.lang.AutoCloseable"), "one whose provider it has stays");
+		assertTrue(result.report().render().contains("with com.svc.Dropped, which its module doesn't have"), result.report().render());
 		Pipeline.LoadedMod resB = result.mods().stream().filter(m -> m.translated().candidate().id().equals("res-b")).findFirst().orElseThrow();
 		assertEquals(Set.of("licenses"), resB.packages().excludedPackages(), "clashing resource-only directory is hidden, not fatal");
 		assertEquals(Report.Status.DISABLED, status.get("needs-missing"));

@@ -24,6 +24,34 @@ class FabricatedConfigTest {
 	}
 
 	@Test
+	void disablingAModChangesOnlyItsEntry(@TempDir Path dir) throws Exception {
+		Path file = dir.resolve(FabricatedConfig.FILE_NAME);
+		Files.writeString(file, """
+				{ "strictLinkage": true, "mods": { "sodium": { "loadUnsupported": true }, "other": { "skipMixins": ["a.mixins.json:A"] } } }""");
+		FabricatedConfig.setModDisabled(dir, "sodium", true);
+		FabricatedConfig.setModDisabled(dir, "newmod", true);
+		FabricatedConfig config = FabricatedConfig.load(dir);
+		assertTrue(config.warnings().isEmpty(), config.warnings().toString());
+		assertTrue(config.strictLinkage());
+		assertTrue(config.override("sodium").disabled() && config.override("sodium").loadUnsupported());
+		assertTrue(config.override("newmod").disabled());
+		assertEquals(Set.of("a.mixins.json:A"), config.override("other").skipMixins());
+		assertFalse(config.override("other").disabled());
+
+		FabricatedConfig.setModDisabled(dir, "sodium", false);
+		assertFalse(FabricatedConfig.load(dir).override("sodium").disabled());
+		// Without a file, the defaults with the one change.
+		Path empty = dir.resolve("empty");
+		FabricatedConfig.setModDisabled(empty, "x", true);
+		assertTrue(FabricatedConfig.load(empty).override("x").disabled());
+		// A file that isn't a config object is left for the player to fix.
+		Files.writeString(file, "{ \"mods\": [] }");
+		org.junit.jupiter.api.Assertions.assertThrows(io.github.cmdralph.fabricated.core.json.JsonException.class,
+				() -> FabricatedConfig.setModDisabled(dir, "sodium", true));
+		assertEquals("{ \"mods\": [] }", Files.readString(file));
+	}
+
+	@Test
 	void parsesOverridesAndValidatesValues() {
 		FabricatedConfig c = FabricatedConfig.parse("""
 				{

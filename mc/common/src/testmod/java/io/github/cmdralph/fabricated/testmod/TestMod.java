@@ -34,6 +34,11 @@ public final class TestMod implements ModInitializer, DedicatedServerModInitiali
 	public static final String MOD_ID = "fabricated-testmod";
 	public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
 	public static final Identifier ITEM_ID = Identifier.fromNamespaceAndPath("fabricated_testmod", "test_item");
+	/**
+	 * A namespace no Fabric mod has: content registered under it stands for a NeoForge mod's, since Fabricated's bridges
+	 * tell the two apart by namespace.
+	 */
+	public static final String NEOFORGE_NAMESPACE = "fabricated_neoforge_test";
 
 	@Override
 	public void onInitialize() {

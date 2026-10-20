@@ -128,7 +128,32 @@ jobs:
           mkdir -p "$RUNNER_TEMP/extra"
           curl -fsSL --retry 4 -o "$RUNNER_TEMP/extra/fabric-api.jar" \
             "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api/${{ matrix.fabric_api }}/fabric-api-${{ matrix.fabric_api }}.jar"
+          # Team Reborn's energy library (Fabric tech mods' energy API), for the energy bridge's check below.
+          mkdir -p "$RUNNER_TEMP/energy"
+          python3 ci/fetch-corpus.py "${{ matrix.minecraft }}" "$RUNNER_TEMP/energy" fabric team-reborn-energy || true
+          # Without a build of its own, the one a Fabric tech mod ships inside its jar.
+          if ! ls "$RUNNER_TEMP"/energy/*.jar >/dev/null 2>&1; then
+            python3 ci/fetch-corpus.py "${{ matrix.minecraft }}" "$RUNNER_TEMP/energy-hosts" fabric techreborn modern-industrialization || true
+            python3 ci/nested-jar.py team_reborn_energy "$RUNNER_TEMP/energy" "$RUNNER_TEMP"/energy-hosts/*.jar > "$RUNNER_TEMP/energy-source.txt" || true
+          fi
+          cp "$RUNNER_TEMP"/energy/*.jar "$RUNNER_TEMP/extra/" 2>/dev/null || true
           ci/smoke-server.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/server-fapi" "$RUNNER_TEMP/extra"
+      - name: Energy bridge with Team Reborn's library
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: |
+          # Also recorded for the summary step at the end of the log.
+          if ! ls "$RUNNER_TEMP"/energy/*.jar >/dev/null 2>&1; then
+            echo "Energy: no Team Reborn Energy build for ${{ matrix.minecraft }} on Modrinth, of its own or in Tech Reborn or Modern Industrialization, nothing checked" | tee "$RUNNER_TEMP/summary-energy.txt"
+            exit 0
+          fi
+          { cat "$RUNNER_TEMP/energy-source.txt" 2>/dev/null || ls "$RUNNER_TEMP"/energy/; } | tee "$RUNNER_TEMP/summary-energy.txt"
+          if grep -h "FABRICATED-TEST energy OK" "$RUNNER_TEMP/server-fapi/server.out" | tee -a "$RUNNER_TEMP/summary-energy.txt"; then
+            echo "PASS: energy moves both ways between Team Reborn's API and NeoForge's capability"
+          else
+            grep -h -E "FABRICATED-TEST energy|team_reborn_energy" "$RUNNER_TEMP/server-fapi/server.out" | head -8 | tee -a "$RUNNER_TEMP/summary-energy.txt" || true
+            echo "::error::FAIL: the energy bridge check did not pass"
+            exit 1
+          fi
       - name: Upload Fabric API run logs and report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
@@ -436,6 +461,7 @@ jobs:
       - name: Summary of the informational runs
         if: ${{ !cancelled() }}
         run: |
+          [ -f "$RUNNER_TEMP/summary-energy.txt" ] && { echo "== summary-energy"; cut -c1-300 "$RUNNER_TEMP/summary-energy.txt"; }
           for f in summary-newest summary-viewers; do
             [ -f "$RUNNER_TEMP/$f.txt" ] && { echo "== $f"; grep -E "^(Newest|PASS|FAIL|WARN)|plugin|not in this run" "$RUNNER_TEMP/$f.txt" | head -60; }
           done
@@ -446,6 +472,10 @@ jobs:
             [ -f "$log" ] || continue
             echo "== $run"
             grep -h -m 20 -E "FABRICATED-TEST frapi|Caused by|Exception in|crash report" "$log" || true
+            # Whether Iris loaded the shader pack, and drew with it (Iris's own lines).
+            if [ "$run" = client-shaders ]; then
+              grep -h -m 8 -i -E "shaderpack|shaders are disabled|shader rendering pipeline" "$log" | cut -c1-300 || true
+            fi
             # NeoForge's loading warnings (the runs with extra mods don't show them on a screen).
             grep -h -m 1 -A 6 "Mods loaded with .* warning" "$log" | cut -c1-300 || true
             # A crash's description and errors, with the first stack frames.

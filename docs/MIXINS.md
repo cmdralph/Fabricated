@@ -14,8 +14,8 @@ Fabricated-owned (shipped in `game-mod.jar`, registered in `mc/common/src/main/r
 
 | Config file | Package | Versions | Sections | defaultRequire | overwrites.requireAnnotations | plugin |
 |---|---|---|---|---|---|---|
-| `mc/1.21.11/src/main/resources/fabricated.mixins.json` | `io.github.cmdralph.fabricated.neoforge.mixin` | 1.21.11 | mixins 38, client 12 | 1 | true | `FabricatedMixinPlugin` (creates Fabric language adapters in `onLoad`; filters nothing) |
-| `mc/common26/src/main/resources/fabricated.mixins.json` | same | 26.1.2, 26.2, 26.3 | mixins 46, client 22 | 1 | true | same |
+| `mc/1.21.11/src/main/resources/fabricated.mixins.json` | `io.github.cmdralph.fabricated.neoforge.mixin` | 1.21.11 | mixins 44, client 17 | 1 | true | `FabricatedMixinPlugin` (creates Fabric language adapters in `onLoad`; filters nothing) |
+| `mc/common26/src/main/resources/fabricated.mixins.json` | same | 26.1.2, 26.2, 26.3 | mixins 51, client 22 | 1 | true | same |
 | `mc/common/src/main/resources/fabricated-fabric-api.mixins.json` | `net.fabricmc.fabric.mixin.networking.accessor` | all | mixins 4 | 1 | true | none |
 | `mc/common/src/main/resources/fabricated-lookup.mixins.json` | `net.fabricmc.fabric.mixin.lookup` | all | mixins 2 (classes in `mc/<v>/src/fabricapi/java`) | 1 | true | none |
 | `mc/common/src/main/resources/fabricated-loot.mixins.json` | `net.fabricmc.fabric.mixin.loot` | all | mixins 5 | 1 | true | none |
@@ -172,9 +172,12 @@ Versions: 1.21.11 · package `io.github.cmdralph.fabricated.neoforge.mixin` · r
 | mixins | VibrationSystemMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.world.level.gameevent.vibrations.VibrationSystem | @ModifyReturnValue → fabricated$tableFrequency | "getGameEventFrequency(L…/Holder;)I" | RETURN | — | default |
 | mixins | NetworkAddonHolderMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.server.network.ServerCommonPacketListenerImpl<br>n.m.server.network.ServerLoginPacketListenerImpl | no injectors; implements NetworkAddons.Holder; adds methods fabricated$networkAddon, fabricated$setNetworkAddon; @Unique fields fabricated$networkAddon | | | | |
 | mixins | ServerPayloadSendMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.server.network.ServerCommonPacketListenerImpl | @Inject → fabricated$dropUnsendableFabricPayload | "send(L…/Packet;Lio/netty/channel/ChannelFutureListener;)V" | HEAD cancellable=true | — | default |
+| mixins | ServerCommonPacketListenerDisconnectMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.server.network.ServerCommonPacketListenerImpl | @Inject → fabricated$onDisconnect | "onDisconnect" | HEAD | — | default |
 | mixins | BlockApiCacheInvalidationMixin | 1.21.11 (1.21.11) | n.m.server.level.ServerLevel | @Inject → fabricated$invalidateBlockApiCaches | "invalidateCapabilities(L…/BlockPos;)V" | TAIL | — | default |
 | mixins | LivingEntityEffectsMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.world.entity.LivingEntity | @Inject → fabricated$afterEffectAdded | "onEffectAdded" | RETURN | — | default |
 | mixins | LivingEntityEffectsMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.world.entity.LivingEntity | @Inject → fabricated$afterEffectsRemoved | "onEffectsRemoved" | RETURN | — | default |
+| mixins | LivingEntityFluidTravelMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.world.entity.LivingEntity | @Inject → fabricated$throughFabricFluid (cancellable) | "shouldTravelInFluid" | RETURN | — | default |
+| mixins | FluidTypeMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.world.level.material.Fluid | @WrapOperation → fabricated$fabricFluidType | "getFluidType" (NeoForge's) | INVOKE `L…/CommonHooks;getVanillaFluidType(L…/Fluid;)L…/FluidType;` | — | default |
 | mixins | NetworkRegistryMixin | common (1.21.11,26.1.2,26.2,26.3) | neo.network.registration.NetworkRegistry | @Inject → fabricated$clientboundCodec | "getCodec" | HEAD cancellable=true | — | default |
 | mixins | MenuProviderMixin | 1.21.11 (1.21.11) | n.m.world.MenuProvider | no injectors; implements FabricScreenHandlerFactory | | | | |
 | mixins | ServerPlayerMenuMixin | 1.21.11 (1.21.11) | n.m.server.level.ServerPlayer | @WrapMethod → fabricated$trackOpener | OPEN_MENU |  | — | default |
@@ -191,6 +194,8 @@ Versions: 1.21.11 · package `io.github.cmdralph.fabricated.neoforge.mixin` · r
 | mixins | LevelChunkBlockEntityMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.world.level.chunk.LevelChunk | @Inject → fabricated$blockEntitiesReplaced | "replaceWithPacketData" | HEAD | — | default |
 | client | client.BlockColorsLookupMixin | 1.21.11 (1.21.11) | n.m.client.color.block.BlockColors | no injectors; adds methods get | | | | |
 | client | client.ClientConfigurationPacketListenerImplMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.client.multiplayer.ClientConfigurationPacketListenerImpl | @Inject → fabricated$onCreated | "<init>" | TAIL | — | default |
+| client | client.ClientConfigurationPacketListenerImplMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.client.multiplayer.ClientConfigurationPacketListenerImpl | @Inject → fabricated$onDisconnect | "onDisconnect" | HEAD | — | default |
+| client | client.ClientReloadListenerMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.server.packs.resources.ReloadableResourceManager | @Inject → fabricated$holdBackEarlyListener (cancellable) | "registerReloadListener" | HEAD | — | default |
 | client | client.KeyMappingAccessor | common (1.21.11,26.1.2,26.2,26.3) | n.m.client.KeyMapping | @Accessor → fabricated$getClickCount | "clickCount" |  | — | default |
 | client | client.MinecraftEntrypointsMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.client.Minecraft | @Inject → fabricated$runClientEntrypoints | "<init>" | INVOKE `L…/Thread;currentThread()L…/Thread;` | 0 | require=0 |
 | client | client.MinecraftEntrypointsMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.client.Minecraft | @Inject → fabricated$runClientEntrypointsLate | "<init>" | TAIL | — | default |
@@ -477,7 +482,10 @@ Versions: 26.1.2, 26.2, 26.3 · package `io.github.cmdralph.fabricated.neoforge.
 | mixins | BlockApiCacheInvalidationMixin | common26 (26.1.2,26.2,26.3) | n.m.server.level.ServerLevel | @Inject → fabricated$invalidateBlockApiCaches | "invalidateCapabilities(L…/BlockPos;)V" | TAIL | — | default |
 | mixins | LivingEntityEffectsMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.world.entity.LivingEntity | @Inject → fabricated$afterEffectAdded | "onEffectAdded" | RETURN | — | default |
 | mixins | LivingEntityEffectsMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.world.entity.LivingEntity | @Inject → fabricated$afterEffectsRemoved | "onEffectsRemoved" | RETURN | — | default |
+| mixins | LivingEntityFluidTravelMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.world.entity.LivingEntity | @Inject → fabricated$throughFabricFluid (cancellable) | "shouldTravelInFluid" | RETURN | — | default |
+| mixins | FluidTypeMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.world.level.material.Fluid | @WrapOperation → fabricated$fabricFluidType | "getFluidType" (NeoForge's) | INVOKE `L…/CommonHooks;getVanillaFluidType(L…/Fluid;)L…/FluidType;` | — | default |
 | mixins | ServerPayloadSendMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.server.network.ServerCommonPacketListenerImpl | @Inject → fabricated$dropUnsendableFabricPayload | "send(L…/Packet;Lio/netty/channel/ChannelFutureListener;)V" | HEAD cancellable=true | — | default |
+| mixins | ServerCommonPacketListenerDisconnectMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.server.network.ServerCommonPacketListenerImpl | @Inject → fabricated$onDisconnect | "onDisconnect" | HEAD | — | default |
 | mixins | NetworkRegistryMixin | common (1.21.11,26.1.2,26.2,26.3) | neo.network.registration.NetworkRegistry | @Inject → fabricated$clientboundCodec | "getCodec" | HEAD cancellable=true | — | default |
 | mixins | MenuProviderMixin | common26 (26.1.2,26.2,26.3) | n.m.world.MenuProvider | no injectors; implements FabricMenuProvider | | | | |
 | mixins | ServerPlayerMenuMixin | common26 (26.1.2,26.2,26.3) | n.m.server.level.ServerPlayer | @WrapMethod → fabricated$trackOpener | OPEN_MENU |  | — | default |
@@ -497,6 +505,8 @@ Versions: 26.1.2, 26.2, 26.3 · package `io.github.cmdralph.fabricated.neoforge.
 | client | client.ClientCommonPacketListenerImplMixin | common26 (26.1.2,26.2,26.3) | n.m.client.multiplayer.ClientCommonPacketListenerImpl | no injectors; implements PacketContextProvider; adds methods getPacketContext | | | | |
 | client | client.LocalPlayerMixin | common26 (26.1.2,26.2,26.3) | n.m.client.player.LocalPlayer | no injectors; implements PacketContextProvider; adds methods getPacketContext | | | | |
 | client | client.ClientConfigurationPacketListenerImplMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.client.multiplayer.ClientConfigurationPacketListenerImpl | @Inject → fabricated$onCreated | "<init>" | TAIL | — | default |
+| client | client.ClientConfigurationPacketListenerImplMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.client.multiplayer.ClientConfigurationPacketListenerImpl | @Inject → fabricated$onDisconnect | "onDisconnect" | HEAD | — | default |
+| client | client.ClientReloadListenerMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.server.packs.resources.ReloadableResourceManager | @Inject → fabricated$holdBackEarlyListener (cancellable) | "registerReloadListener" | HEAD | — | default |
 | client | client.KeyMappingAccessor | common (1.21.11,26.1.2,26.2,26.3) | n.m.client.KeyMapping | @Accessor → fabricated$getClickCount | "clickCount" |  | — | default |
 | client | client.MinecraftEntrypointsMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.client.Minecraft | @Inject → fabricated$runClientEntrypoints | "<init>" | INVOKE `L…/Thread;currentThread()L…/Thread;` | 0 | require=0 |
 | client | client.MinecraftEntrypointsMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.client.Minecraft | @Inject → fabricated$runClientEntrypointsLate | "<init>" | TAIL | — | default |

@@ -46,7 +46,7 @@ public record TranslationEnvironment(
 		Map<String, String> unsupportedPackages) {
 
 	/** Bumped whenever translation output changes for the same inputs. */
-	public static final int TRANSLATION_SCHEMA = 18;
+	public static final int TRANSLATION_SCHEMA = 22;
 
 	/** Namespace Fabric mods are distributed in. */
 	public enum Namespace {

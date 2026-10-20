@@ -219,11 +219,14 @@ splitting. Play handlers run on the main thread and configuration handlers on th
 
 Not supported: **login queries** (`ServerLoginNetworking`, `ClientLoginNetworking`): NeoForge exposes no
 login-phase hooks. The API links, so mods load, but login receivers are never called; mods should use the
-configuration phase instead (Fabric's own recommendation since 1.20.2). Configuration-phase
-`DISCONNECT` events do not fire. A payload id can use a different codec in each direction, as on Fabric
+configuration phase instead (Fabric's own recommendation since 1.20.2). Configuration-phase `DISCONNECT` events
+fire when a connection closes during configuration, from the configuration listener's `onDisconnect` on the server or
+client thread (Fabric API may fire them from the network thread instead, as the channel closes). A payload id can use a different codec in each direction, as on Fabric
 (NeoForge keeps one codec per id, so Fabricated supplies the clientbound one when NeoForge looks it up).
-CI checks that a Fabric payload and receiver register and reach NeoForge on a dedicated server, and, on the
-client, a play-phase round trip and a configuration task with the integrated server.
+CI checks that a Fabric payload and receiver register and reach NeoForge on a dedicated server, that a
+configuration listener closed there fires `DISCONNECT` once, and, on the client, a play-phase round trip and a
+configuration task with the integrated server. The client's `DISCONNECT` has no check: it would end the client's own
+connection.
 
 ### Native `fabric-resource-loader-v1`
 
@@ -234,6 +237,7 @@ sorted reload-listener events. Fabricated ships the module's unchanged public AP
 |---|---|
 | Server data listeners, listener factories (`DataResourceLoader`) | `AddServerReloadListenersEvent` |
 | Client resource listeners | `AddClientReloadListenersEvent` |
+| A listener registered the vanilla way on the client's resource manager before that event (from a mixin into `Minecraft`'s constructor) | held back and added through the event, after vanilla's: NeoForge's event refuses listeners it can't name |
 | `addListenerOrdering` / `addReloaderOrdering` | `addDependency`; Fabric's vanilla ids (`minecraft:recipes`, `minecraft:languages`, …) are translated to NeoForge's (`minecraft:recipe_manager`, `minecraft:language_manager`, …) |
 | `fabric:before_vanilla`, `fabric:after_vanilla` phases | empty listeners before the first and after the last vanilla listener |
 | Shared reload state: registries, feature flags, data store (and on 1.21.11, 26.1.2 and 26.2 the recipe and advancement managers) | a setup listener that runs before all others |
@@ -448,7 +452,7 @@ code they rely on, Fabricated bridges the gap:
 | `VibrationFrequencyRegistry` (`SculkSensorFrequencyRegistry` on 1.21.11) | NeoForge's frequency lookup falls back to the table Fabric's registry writes | data packs win |
 | `FuelValueEvents` (`FuelRegistryEvents` on 1.21.11), up to 26.2 | run on NeoForge's fuel builder, after its furnace fuel data map | `BUILD`, then `EXCLUSIONS`; vanilla's non-flammable wood exclusion is already in the data map |
 | Flammable, strippable, tillable, flattenable, oxidizable and waxable blocks, path types, villager interactions, pot patterns, brewing | upstream's mixins | NeoForge falls back to the vanilla tables these write; on 26.3, where NeoForge reads oxidation and waxing from its data maps only, Fabricated adds that fallback |
-| `EntityFluidInteractionRegistry` (26.x) | upstream's mixins, without three injectors | entering, leaving, pushing and moving through a Fabric fluid work; swimming, jumping out of it, drowning and boats floating in it don't (NeoForge rewrote that code around its fluid types) |
+| `EntityFluidInteractionRegistry` (26.x) | upstream's mixins, without three injectors | UNVERIFIED: what the interactions registered here do in a Fabric fluid is not tested. Until Fabric fluids had fluid types (see *Fabric mods' fluids* below), an entity touching one crashed the game; swimming, jumping out of it, drowning and boats floating follow those types now, which NeoForge's rewritten code asks |
 | Oxidation and wax scraping (26.3) | added to the axe's block transformer, as upstream | see `BlockTransformerHelper` under `fabric-item-api-v1` |
 
 On 26.3, composting, stripping and fuel are data-driven in vanilla, and Fabric API has no registries for them.
@@ -471,18 +475,34 @@ bundles as upstream does, and transactions behave as upstream's.
 
 **Bridge to NeoForge's capabilities.** Fabric storages and NeoForge's item and fluid handlers on blocks see each
 other: a NeoForge hopper or pipe moves items and fluids in and out of a Fabric mod's machine, and a Fabric mod's
-pipe reaches a NeoForge mod's block.
+pipe reaches a NeoForge mod's block. Storages in items do too (`ItemStorage.ITEM` and `FluidStorage.ITEM` with
+`Capabilities.Item.ITEM` and `Capabilities.Fluid.ITEM`): a NeoForge machine fills a Fabric mod's tank item, and a
+Fabric mod's machine a NeoForge mod's. The item's storage changes the item (an empty cell becomes a full one) through
+the other side's access to where it is: NeoForge's `ItemAccess` as a Fabric `ContainerItemContext`, and the other way.
 
 - Transactions are mirrored both ways: a simulation (an aborted transaction) on one side is aborted on the other, and
   nested transactions keep their meaning.
 - Fluids convert at 81 droplets per millibucket. Only whole millibuckets move between the two: if a Fabric storage
   would take part of one, it is asked again for whole millibuckets.
-- A NeoForge mod's own capability for its block wins over a Fabric storage, and for a NeoForge mod's block Fabric mods
-  get its NeoForge handler before Fabric's generic `Container` wrapper, so the block's access rules hold.
-- Vanilla blocks keep each side's own wrappers.
-- Item storages inside items (`ItemStorage.ITEM`, `FluidStorage.ITEM`) and entity storages are not bridged yet.
-- A Fabric storage that hands work to a NeoForge handler that in turn uses another Fabric storage, all in one
-  transaction, is not supported (each side would wait for the other to close first).
+- Each side answers for what its own mods add, told apart by namespace. NeoForge code asking about a Fabric mod's
+  block or item gets the answer of Fabric's whole lookup, fallbacks included: Tech Reborn offers its machines' tanks
+  and energy through one, and a Fabric mod's `Container` block entity gets Fabric's generic wrapper, as on Fabric.
+  Fabric code asking about a NeoForge mod's block or item gets its NeoForge capability, before Fabric's generic
+  `Container` wrapper, so the block's access rules hold. Neither side ever asks the other about the same thing.
+- A NeoForge mod's own capability for a Fabric mod's block or item wins over the Fabric storage for NeoForge code;
+  Fabric code doesn't see it. Content a Fabric mod registers under another mod's namespace counts as that mod's.
+- Vanilla blocks and items keep each side's own wrappers. Every bucket item gets Fabric's own bucket storage from
+  upstream's fallback, which comes before NeoForge's capability.
+- A storage on one side that uses one on the other in the same transaction (an item's handler changing the item
+  through the other side's access, a NeoForge handler passing items on to a Fabric storage) works: where a
+  transaction already stands for one of the other side's, it is used instead of a new one nested in it.
+- Entity storages are not bridged: Fabric API has no lookup for them.
+
+**Energy, with Team Reborn's library.** Fabric API has no energy API; Fabric tech mods share Team Reborn's
+(`team_reborn_energy`, nested in the mods that use it). When a Fabric mod brings it, its storages and NeoForge's
+energy handlers see each other the same way, on blocks (its `SIDED` lookup and `Capabilities.Energy.BLOCK`) and in
+items (its `ITEM` lookup and `Capabilities.Energy.ITEM`, batteries charged through either side). One unit is one
+unit: neither API fixes an exchange rate. Without the library nothing of this loads.
 
 On 1.21.11, `FluidVariantRendering`'s default sprites and colours come from NeoForge's fluid client extensions instead
 of `fabric-rendering-fluids-v1`'s registry.
@@ -490,7 +510,46 @@ of `fabric-rendering-fluids-v1`'s registry.
 CI checks, on all four versions: a chest found through `ItemStorage.SIDED` keeps its items when a transaction is
 aborted and changes when one commits; a full water cauldron empties when a bucket of water is extracted; a Fabric
 storage used through NeoForge's capability and a NeoForge handler used through `ItemStorage.SIDED` follow aborts,
-nested commits and commits; fluids move in whole millibuckets only.
+nested commits and commits; fluids move in whole millibuckets only; NeoForge code fills a Fabric mod's fluid cell
+in a slot, and Fabric code a NeoForge mod's, each item swapped only when the transaction commits. With Team Reborn's library
+(fetched for the server run with Fabric API where Modrinth has a build, of its own or nested in Tech Reborn's or
+Modern Industrialization's jar): NeoForge code charges a Fabric mod's energy block and Fabric code a NeoForge mod's,
+an aborted transaction leaving each unchanged; the Fabric block's energy comes from a lookup fallback, as Tech
+Reborn's machines' does.
+
+### Fabric mods' fluids
+
+NeoForge asks every fluid for its fluid type: to move entities in it, to let it meet lava, to name it in a tank, and
+on 1.21.11 to draw it. A mod's fluid without one throws (`Mod fluids must override getFluidType`), and no Fabric fluid
+has one, so the first entity touching it, neighbour changing next to it or NeoForge tank naming it crashed the game.
+Fabricated gives each Fabric fluid family (a source and its flowing fluid) one type, registered under the source's
+id, which answers from Fabric's side when asked:
+
+| NeoForge asks | Answer |
+|---|---|
+| name, light, temperature, viscosity, lighter than air, bucket sounds | Fabric's `FluidVariantAttributes` for the source (its handler, or Fabric's defaults: the fluid block's name and light) |
+| water-like, pushes entities, swimming, drowning, putting out fire, hydrating farmland, boats | yes for a fluid tagged `minecraft:water`, no for any other, as vanilla decides by that tag |
+| fall distance | reset in a water-tagged fluid, kept in any other |
+| path types | vanilla's, which go by the same tags |
+
+A fluid that isn't water to entities leaves them alone, as on Fabric: a living entity in it moves as through air
+(NeoForge would move it with the fluid's own movement, which a type leaves to its mod: none on 26.2 and later, so the
+entity would hang where it is, and lava's on 1.21.11), and an item falls through it.
+
+- Not like vanilla: a fluid tagged `minecraft:lava` isn't lava to entities (NeoForge keys burning and lava's movement
+  to its own lava type), and an entity jumping inside a fluid that isn't water rises a little, as NeoForge lets it in
+  any mod fluid.
+- On 1.21.11, NeoForge's renderer and `FluidVariantRendering` take a fluid's textures and tint from its type's client
+  extensions; for a Fabric fluid those are its `fabric-rendering-fluids-v1` render handler's, and water's without one
+  (as vanilla draws such a fluid). On 26.x vanilla draws fluids from fluid models, and the type plays no part.
+- Fabric's `FluidFlowEvents.ALLOW` (26.2+) is asked for Fabric fluids too, now that they have types to hook.
+- A fluid registered after the registry events (from a client initializer, say) gets an unregistered type when first
+  asked, without client extensions.
+
+CI checks, on all four versions: two test fluids, one tagged `minecraft:water`; a family's source and flowing fluid
+share one type, registered under the source's id, with the block's light and name, water-like only for the tagged
+one; a placed fluid block asks NeoForge's fluid interactions about itself without crashing; a pig falls through a
+column of the untagged fluid as through air.
 
 ### Native `fabric-menu-api-v1` (`fabric-screen-handler-api-v1` on 1.21.11)
 

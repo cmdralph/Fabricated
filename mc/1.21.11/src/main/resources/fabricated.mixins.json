@@ -5,6 +5,7 @@
   "compatibilityLevel": "JAVA_21",
   "mixins": [
     "ServerConfigurationPacketListenerImplMixin",
+    "ServerCommonPacketListenerDisconnectMixin",
     "MinecraftServerMixin",
     "PlayerListViewMixin",
     "ReloadableServerResourcesTagsLoadedMixin",
@@ -34,6 +35,8 @@
     "ServerPayloadSendMixin",
     "BlockApiCacheInvalidationMixin",
     "LivingEntityEffectsMixin",
+    "LivingEntityFluidTravelMixin",
+    "FluidTypeMixin",
     "NetworkRegistryMixin",
     "MenuProviderMixin",
     "ServerPlayerMenuMixin",
@@ -55,6 +58,7 @@
   "client": [
     "client.BlockColorsLookupMixin",
     "client.ClientConfigurationPacketListenerImplMixin",
+    "client.ClientReloadListenerMixin",
     "client.KeyMappingAccessor",
     "client.MinecraftEntrypointsMixin",
     "client.MinecraftStartedMixin",

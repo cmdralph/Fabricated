@@ -204,6 +204,40 @@ public record FabricatedConfig(
 		return overrides.getOrDefault(fabricId, ModOverride.NONE);
 	}
 
+	/**
+	 * Disables a Fabric mod in {@code configDir}'s config file (or enables it again), for the next launch: what
+	 * {@code /fabricated disable} and {@code enable} do. The other settings stay as they were; the file is written back
+	 * in Fabricated's own layout, without comments (its documentation lives beside it, in {@code fabricated.json.md}).
+	 *
+	 * @throws JsonException when the file isn't a config object to change; it is then left as it is
+	 */
+	public static void setModDisabled(Path configDir, String fabricId, boolean disabled) throws IOException, JsonException {
+		Path file = configDir.resolve(FILE_NAME);
+		String text = Files.exists(file) ? Files.readString(file, StandardCharsets.UTF_8) : defaults().toJson();
+		byte[] updated = withModDisabled(text, fabricId, disabled).getBytes(StandardCharsets.UTF_8);
+		Path parent = file.toAbsolutePath().getParent();
+		Files.createDirectories(parent);
+		AtomicFiles.writeAtomically(file, updated, parent);
+	}
+
+	/** The config file's text with {@code mods.<fabricId>.disabled} set, everything else kept. */
+	static String withModDisabled(String text, String fabricId, boolean disabled) throws JsonException {
+		Map<String, Object> root = Json.parseObject(text);
+		childObject(childObject(root, "mods"), fabricId).put("disabled", disabled);
+		return Json.write(root, true);
+	}
+
+	/** {@code parent}'s object at {@code key}, added when absent. */
+	@SuppressWarnings("unchecked") // JSON objects parse to string-keyed maps.
+	private static Map<String, Object> childObject(Map<String, Object> parent, String key) throws JsonException {
+		Object existing = parent.get(key);
+		if (existing instanceof Map<?, ?> map) return (Map<String, Object>) map;
+		if (existing != null) throw new JsonException("\"" + key + "\" in " + FILE_NAME + " is not an object");
+		Map<String, Object> created = new LinkedHashMap<>();
+		parent.put(key, created);
+		return created;
+	}
+
 	/** Typed, validating view of one JSON object. */
 	private static final class Reader {
 		private final Map<String, Object> obj;

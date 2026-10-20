@@ -247,6 +247,31 @@ Each mod's entrypoints run inside a guard that records mod id, entrypoint key, c
 
 This table is data (`mc/<ver>/fabric-api-plan.json`), not code, so it can change per MC version without code changes.
 
+### 6.3 Bridges between Fabric's systems and NeoForge's
+
+Where both loaders have a system for the same thing, a Fabric mod and a NeoForge mod meet through a bridge rather
+than one of them losing out (`neoforge/transfer`):
+
+* **Storages** (`TransferBridge`): Fabric storages and NeoForge resource handlers see each other on blocks
+  (`ItemStorage.SIDED`/`FluidStorage.SIDED` and `Capabilities.Item/Fluid.BLOCK`) and in items (`*.ITEM` and
+  `Capabilities.Item/Fluid.ITEM`). An item's storage changes the item through the other side's access to where it is
+  (`AccessItemContext`, `ContextItemAccess`). Each side answers for its own mods' content, told apart by namespace:
+  NeoForge's capabilities for Fabric mods' blocks and items come from Fabric's whole lookups, and Fabric's lookups fall
+  back to NeoForge's capabilities for NeoForge mods' blocks and items, so neither ever asks the other back. Vanilla
+  blocks and items keep each side's own wrappers.
+* **Transactions** (`FabricTransactions`, `NeoTransactions`): an operation from one side runs in a transaction the
+  other side mirrors, and its result follows the original's (abort, nested commit, commit). Where a transaction
+  already mirrors one of the other side's, as when an item's handler calls back into its access, it stands for that
+  one instead of nesting a new mirror, so every transaction closes inside its parent on both sides.
+* **Energy** (`EnergyBridge`): Team Reborn's energy API, the Fabric tech mods' shared library, and NeoForge's energy
+  capabilities, loaded only when a Fabric mod brings the library. Fabricated compiles against never-packaged
+  stand-ins of its API (`integrationstubs`) and finds its lookups by id.
+* **Fluid types** (`neoforge/fluid/FabricFluidType`): NeoForge asks every fluid for a fluid type and throws for a
+  mod's fluid without one. `FluidTypeMixin` answers for Fabric fluids where NeoForge would look up vanilla's types,
+  with one registered type per fluid family that reads Fabric's attributes and the fluid's tags when asked.
+  `LivingEntityFluidTravelMixin` keeps a fluid that isn't water to entities from moving them, as on Fabric. On
+  1.21.11 the type's client extensions come from the Fabric render handler (`FabricFluidClientExtensions`).
+
 **Scope honesty:** Phase 2 delivers the full core plus the native modules marked above. Their quality varies: lifecycle, commands, networking, resource loader, creative tabs, key mappings and screen events are complete. Rendering is a documented subset. Every gap ends up in `docs/COMPATIBILITY.md`.
 
 ---
@@ -310,8 +335,8 @@ versions is decided at compile time by which source folders it compiles, plus tw
   builds that can't run next to a NeoForge mod; a unit test parses the shipped file.
 * **Mixin differences in Fabric mods** are repaired by core's pre-flight against the running game's bytecode
   (`MixinPreflight.repairs`: overloads NeoForge reordered or moved code into, constructors NeoForge kept for
-  vanilla's signature, renumbered lambdas, hard local captures, accessors of members NeoForge added), not by
-  per-version tables.
+  vanilla's signature, calls made through a subtype or given one more argument, renumbered lambdas, hard local
+  captures, accessors of members NeoForge added), not by per-version tables.
 * Everything Minecraft-agnostic stays in `core`/`loader`. The full seam table is in [`claude.md`](claude.md).
 * **Adding a version** (summarised from `CONTRIBUTING.md`): copy the nearest `mc/<ver>` directory, set
   `minecraft_version`/`neo_version` in its `gradle.properties`, add it to `settings.gradle` and the CI matrix, fix
@@ -334,6 +359,7 @@ versions is decided at compile time by which source folders it compiles, plus tw
 | Mixin config elsewhere | a mod declares a config its nested jar holds (adventure-platform-fabric) | The nested jar applies it (`CandidateScanner`): its translation pre-flights it and its mod file declares it. A config no jar holds disables the mod. | ✅ |
 | Mixin pre-flight | required injection point absent | Mod disabled, names mixin, target and point | ✅ |
 | Split package | two mods share `com.foo` | Identical duplicate classes are filtered out. Classes only the later mod has are served by the earlier mod's module (`PackageGuard`, the package's other files added to that module as a filtered path), as Fabric's single class path allows: Kotlin, Compose and MixinSquared jars split packages this way. A service file whose providers go with the package goes too: hidden when that module declares the same service with the same providers, served by it otherwise. A class both have with different bytes (two versions of a library they bundle) is served from the earlier jar, as the first jar on Fabric's class path would be, with a warning in the report. A service that can't follow its providers disables the later mod. | ✅ |
+| Service file naming a missing provider | a shaded library's `META-INF/services` file lists a class its jar doesn't have (or one in a package the platform's copy serves) | Left out of the mod's module, with a report note: a module declares only providers it has, or no mod loads (FML refuses the module before the game starts). On Fabric's class path such a file fails only when the service is loaded. | ✅ |
 | Resources in another jar | a library's native libraries are in a jar without classes (Skiko) | `Class.getResource` in a module searches that module only. The root files of a nested jar without classes are also served by the modules of its parent and of the jars nested beside it, as Fabric's class path finds any jar's; a file a module has itself stays its own. | ✅ |
 | Entrypoint exception | `onInitialize` throws | Default `onEntrypointFailure="error"`: NeoForge's **error screen** lists mod, entrypoint, cause and fix (*"Disable `x` in config/fabricated.json or update it"*). With `"disable"`: the mod is marked failed, its remaining entrypoints are skipped, and loading continues with a warning. Partially registered content may remain, which the report states. | ⚠️ configurable |
 | Mixin apply at runtime | injector fails in a way pre-flight couldn't see | Crash report enriched with the Fabric mod id and fix | ❌ (JVM can't unload) |

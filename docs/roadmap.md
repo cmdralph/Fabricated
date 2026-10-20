@@ -19,7 +19,9 @@ handled safely, no network access, original jars never changed, and no code that
 
 - **Done:** discovery, metadata, dependency resolution, access wideners, the translation cache, mixin pre-flight with
   its repairs (overloads NeoForge moved, constructors NeoForge kept for vanilla's signature or appended components to,
-  with a bridge for handlers taking the parameters, calls made through a subtype), NeoForge mods visible to Fabric code
+  with a bridge for handlers taking the parameters, calls made through a subtype or given one more argument, with a
+  bridge for handlers taking the call's arguments), `@WrapMethod` handlers checked against the method they wrap,
+  NeoForge mods visible to Fabric code
   (nested ones too, with their properties as custom values and their files as container roots). Pre-flight of mixins
   into Fabricated's Fabric API and installed NeoForge mods, nested ones included, and into other Fabric mods
   (R3: Iris's ~20 mixins into Sodium were "not verified" before; on 1.21.11 against their classes remapped as read), cached with the fingerprints of the classes it read. Every declared language adapter created before any Fabric mod's mixin plugin loads, as on
@@ -159,6 +161,11 @@ NeoForge already cover those users.
 - **Done (this pass):** the hosts' builds are pinned per version (`plugin_hosts` in CI's matrix) and the run is a gate:
   each host must construct and call the test mod's plugin. On `b679b92` JEI, REI, Jade, WTHIT and Simple Voice Chat
   did on 1.21.11, 26.1.2 and 26.2, and all but WTHIT (no 26.3 build) on 26.3.
+- **Done (this pass):** storages in items bridged both ways (`ItemStorage.ITEM`/`FluidStorage.ITEM` with NeoForge's
+  item capabilities), and energy with Team Reborn's library when a Fabric mod brings it (blocks and items, both
+  ways), the first bridge to a Fabric library rather than Fabric API. CI: the transfer check fills each side's fluid
+  cell from the other; an energy check runs where Modrinth has the library, of its own or nested in Tech Reborn or
+  Modern Industrialization (on `9621e53` it had neither for any version).
 - **Next:** EMI once it has NeoForge builds for these versions.
 
 ### Quality: CI, corpus, performance
@@ -199,6 +206,9 @@ Severity: **P0** crash or data loss on a normal launch · **P1** a supported fea
 | REG-2 | P1 | `EntrypointBridge` | Registries were frozen when Fabric client initializers ran: NeoForge freezes them after its registration events, before `Minecraft` exists, while Fabric API freezes them only after the client initializers. Xaero's Minimap registers its mob effect from `onInitializeClient`, catches the failure and rethrows it on the first tick: "Registry is already frozen (trying to add key ... xaerominimap:no_minimap)" stopped the 26.x corpus clients (`b679b92`). | The test mods registered from `main` only. | This pass: the registries are opened for the client initializers and frozen again with NeoForge's own `GameData.unfreezeData`/`freezeData` (the sequence NeoForge runs around its registration events), which also renews the frozen snapshot NeoForge restores on leaving a server. Client check "client entrypoint registration OK": the test mod registers a mob effect from a client initializer. |
 | CORPUS-2 | P2 | Xaero's World Map | The corpus client crashed on its first tick: `WorldMap.events` was null in World Map's `Minecraft.runTick` hook, with no entrypoint failure reported. | The cause showed only through Xaero's Minimap in the same corpus (REG-2): Xaero's client initializers register content, and catch and defer the failure. | REG-2. On `72f5472` World Map alone reaches a world on 26.1.2 and 26.3. |
 | PLAT-1 | P1 | core `PlatformLibraries` | The platform's libraries were matched by package prefix, and `com/electronwill/nightconfig/` covered every night-config module, so a mod's JSON or YAML module was dropped as "provided by the platform", which ships only core and TOML. OneConfig's config manager then failed (`ClassNotFoundException: com.electronwill.nightconfig.json.JsonFormat`, 26.1.2 Polyfrost run on `72f5472`). | No test had a mod nesting a night-config module the platform lacks. | This pass: core and TOML only (NeoForge's and FML's build files list those two). Unit test. |
+| PRE-9 | P1 | `MixinPreflight` (malilib, OneConfig, Iris's Fabric build) | Past PKG-4, the 1.21.11 corpus client crashed at "Initializing game" (run 355): `IllegalClassLoadError` for malilib's accessor interface `IMixinGuiRenderer`. Its `@Accessor` reads `GuiRenderer.pictureInPictureRenderers`, which NeoForge replaced with renderer pools (every version), and pre-flight had left the whole interface out (its config has a plugin) while malilib's code casts to it; Mixin refuses to load an unapplied mixin's class. | A broken accessor left its whole interface out. | This pass: a broken accessor or invoker in a plugin's or an optional config is left out alone (the method), so the interface still applies; only a call to that method fails. A first try (run 356) failed the mod instead: that disabled OneConfig, Iris's Fabric build and adventure-platform-fabric, which ran with their broken accessors left out, and the Polyfrost client then crashed. Unit test. Run 357: OneConfig, Iris's Fabric build and adventure-platform-fabric ran again, and malilib's casts worked; malilib then calls the left-out accessor itself while the game starts (CORPUS-13). |
+| RELOAD-2 | P1 | `ClientResourceLoaderBridge`, `ClientReloadListenerMixin` | With the widened corpus, no 26.x or 1.21.11 corpus client started (run 356): a mod's mixin into `Minecraft`'s constructor registered a reload listener the vanilla way, before NeoForge's `AddClientReloadListenersEvent`, which refuses any listener it can't name ("A key for the reload listener ... was not provided in VanillaClientListeners"). Which mod is UNVERIFIED (the listener is a lambda merged into `Minecraft`). On Fabric that is how mods register early. | RELOAD-1 covered listeners registered after NeoForge's sort, not before its event. | This pass: such a listener is held back and added through the event, after vanilla's. CI: the test mod registers one from its own mixin into `Minecraft`'s constructor, and the client gate checks that it runs ("early reload listener OK"). |
+| PKG-4 | P0 for affected installs | core `PackageGuard` | With the widened corpus (run 353), no corpus client or server started on any version: FML refused a module whose service file `net.kyori.adventure.text.event.DataComponentValueConverterRegistry$Provider` names `net.kyori.adventure.text.serializer.gson.impl.GsonDataComponentValueConverterProvider`, a class that jar doesn't have (`InvalidModuleDescriptorException` in FML's module scan, before any mod loads). FML names the service, not the jar; the report of the next run names it: spark, whose jar declares two of adventure's services (Gson serializer providers) without the classes. | Service files were checked only against packages a jar gives up to another jar. | This pass: a service file naming a provider its module doesn't serve is left out of the module, with a report note. On Fabric's class path such a file fails only when the service is loaded. `PipelineTest` (`svc-missing`). |
 | PKG-3 | P1 | core `PackageGuard` | A jar with another version of a class an earlier jar has (two versions of a library both bundle, under different mod ids) was disabled, where Fabric's class path loads both and uses the first copy. PolyPlus nests MixinSquared's Fabric jar (0.3.7-beta.3, which carries the common classes) and OneConfig its common jar (0.3.7-beta.1): MixinSquared's Fabric jar, whose own mixin plugin registers the selector Polydium uses, was disabled (26.3 Polyfrost run on `32daa79`). | The guard chose safety over Fabric's behaviour. | This pass: the earlier jar's copies are used, the later jar keeps what only it has, and the report warns. Which jar comes first on Fabric's class path is UNVERIFIED; Fabricated uses its load order. `PipelineTest`. |
 | PKG-2 | P1 | core `PackageGuard` | PKG-1 still disabled a jar that declares a service provider in a package it gives up: its module would declare a provider it no longer has. MixinSquared's Fabric jar repeats its common jar's `javax.annotation.processing.Processor` file, so it stayed disabled and Polydium's MixinSquared selector still failed (26.3 Polyfrost run on `d0e59cc`, whose summary now prints the crash's cause). | PKG-1's rule was the conservative one. | This pass: the service file goes with its providers, hidden when their module declares the same service with the same providers, served by that module when it doesn't declare it; other cases still disable the jar. `PipelineTest`. |
 | PKG-1 | P1 | core `PackageGuard` | A package split between two jars (each with classes the other lacks) disabled the later jar. Fabric's single class path allows it, and Kotlin and Compose libraries, OneConfig's module jars and MixinSquared (its Fabric jar and its common jar) ship that way. In CI's Polyfrost run on 26.3 (`e88a2f9`) 15 jars were disabled, MixinSquared among them, and Polydium then crashed at mod construction: its `@MixinSquared:Handler` selector was never registered. | The guard predates nested library jars; found by the new Polyfrost CI run. | This pass: the earlier jar's module serves the later jar's files in the package (one more filtered path in its mod file), so the package stays one module's. A class both have with different bytes, or a service provider the later jar declares in the package, still disables it. `PipelineTest`, `PackageGuardTest`; CI's Polyfrost run is the in-game check. |
@@ -233,6 +243,12 @@ Severity: **P0** crash or data loss on a normal launch · **P1** a supported fea
 | PH2-07 | P2 | `ModTranslator.memoryPermits` | The parallel remap budget (1.21.11) was estimated from the compressed jar size. A jar with a high compression ratio could exhaust the heap. | No test jar compresses well. | `30e669e` (declared uncompressed size), with `SafeArchiveTest` |
 | PH2-08 | P3 | `Pipeline` report | An unexpected translation error showed only `e.toString()`, though `ARCHITECTURE.md` §10 promises the stack trace. | Tests checked that the mod was disabled, not the report. | `64471c3` |
 | PH2-09 | P3 | Fabricated's mixin configs | `overwrites.requireAnnotations` was missing, so an accidental overwrite (a method name matching the target's) went unnoticed. | Nothing collides today. | `5e76035` |
+| XFER-1 | P1 | `TransferBridge`, `EnergyBridge` (all versions) | NeoForge pipes and cables couldn't reach Tech Reborn's machines: RebornCore offers every machine's tank and energy through `FluidStorage.SIDED` and `EnergyStorage.SIDED` fallbacks (its source, branch 26.1), and NeoForge's capabilities asked only providers registered for the block, so a storage was never wrapped back into itself. | The test mod registered its storages for its blocks. | This pass: each side answers for its own mods' content (by namespace), from the whole lookup on the Fabric side, so no wrap-back is possible; the energy check's Fabric block offers its energy through a fallback. |
+| PRE-6 | P0 | `MixinPreflight` (26.2 Polyfrost client) | The client with OneConfig, PolyPlus and Polydium crashed at "Initializing game" (`9cb2813`): `InvalidInjectionException` from Polydium's `MixinDeferredSky`, a `@WrapMethod` on `LevelRenderer` whose handler takes a `GpuBufferSlice` where NeoForge's build of the method has another parameter. Pre-flight checked that the method exists, not the handler's signature, so the mixin applied and Mixin's own check took the game down. | Pre-flight judged `@Inject` handlers' parameters only. | This pass: a `@WrapMethod` handler must take the target's parameters (after sugar, without `@Coerce`) followed by the `Operation`, in every method it wraps; otherwise the mixin fails pre-flight with the reason, as Mixin would at apply time whatever its `require`. Unit test; `TRANSLATION_SCHEMA` 19. (`4846076` calls it PRE-3, an ID already taken.) |
+| PRE-7 | P2 | `MixinPreflight` (ShulkerBoxTooltip, every version) | ShulkerBoxTooltip's tooltip mixin was disabled: its `@WrapOperation` in `AbstractContainerScreen.extractTooltip` wraps a call to `GuiGraphicsExtractor.setTooltipForNextFrame(Font, List, Optional, int, int, Identifier)` (with a trailing `boolean` on some versions), and NeoForge's build of the method calls an overload that also takes an `ItemStack`. | Pre-flight repaired a call made through a subtype (PRE-1), not one with another argument. | This pass: an injector at a call the game build makes only through an overload with one more argument, whose position its type tells apart, is pointed at that overload. Handlers that see the call's arguments (`@Redirect`, `@WrapWithCondition`, `@WrapOperation`) get a bridge taking the overload's, which calls them without the added argument; a `@WrapOperation`'s `Operation` puts it back for the original call. The handler stays a private method. An injector in a named `@Group` is left alone, by this repair and every other that points an injector elsewhere: it is one of the mod's alternatives, and moving it made two of Iris's `@Group(max = 1)` pair apply on 26.2 (CI run 351, Iris's Fabric build). A bridge takes the call's exact types, so a handler whose receiver is a `@Coerce`d supertype isn't bridged (the bridge wouldn't carry the annotation, and Mixin would refuse it); generated methods get names the mixin doesn't use yet, as handlers may share a name; and the former handler is `@Unique`, so Mixin renames it rather than merging it over another mixin's method of the same name (all three found by this pass's review). Unit tests, one running a bridge; `TRANSLATION_SCHEMA` 22. CI (run 351): ShulkerBoxTooltip loads on all four versions. |
+| PRE-8 | P2 | `MixinPreflight` | A grouped injector (`@Group`) without its own `require` was checked against the config's `defaultRequire`, where Mixin requires nothing of it (its group's minimum is the check): one of a mod's alternatives missing from NeoForge's code could fail the mod. | Groups were never modelled. Found with PRE-7's regression. | This pass: such an injector requires nothing. Group minimums and maximums are not checked (Mixin checks them at apply time). Unit test. |
+| NET-1 | P3, feature | `NetworkingBridge`, `ClientNetworkingBridge` (all versions) | Fabric's configuration-phase `DISCONNECT` events never fired, on the server or the client: NeoForge has no event for a connection closing during configuration. The client also relied on `LoggingOut` to forget its configuration listener (P3-6, UNVERIFIED whether a disconnect could skip it). | — | This pass: both fire from the configuration listener's `onDisconnect` (the server's through the listeners' common one), and the client forgets its listener there. CI: on the dedicated server the test mod closes a configuration listener on a connection with no channel and checks that `DISCONNECT` fires once for it. The client's has no check (it would end the client's own connection). |
+| FLUID-1 | P0 | `FabricFluidType`, `FluidTypeMixin` (all versions) | The 26.2 corpus client crashed when a neighbour of a Fabric mod's fluid changed (`9621e53`; which mod's fluid is UNVERIFIED, the crash report doesn't name it): `RuntimeException: Mod fluids must override getFluidType` from NeoForge's `CommonHooks.getVanillaFluidType`, through its fluid interactions. NeoForge asks every fluid for a fluid type (to move entities in it, to let it meet lava, to name it in a tank, on 1.21.11 to draw it) and throws for a mod's fluid without one, which every Fabric fluid is. | No test mod had a fluid; the corpus gained Fabric tech mods (Tech Reborn, Modern Industrialization) in the same pass. | This pass: each Fabric fluid family gets a type registered under its source's id, answering from Fabric's attributes and the fluid's tags; living entities move through one that isn't water to them as through air (`LivingEntityFluidTravelMixin`; NeoForge's own movement for mod fluids is none on 26.2 and later); on 1.21.11 its client extensions give the Fabric render handler's textures. The test mod registers two fluids, checks their types, places one, and drops a pig through a column of it. |
 | PH2-10 | P3 | `ModMenuBridge`, `ObjectBuilderBridge`, `FabricTerrain`, `RegistrySyncBridge` | A stack trace was dropped, a reflective fallback was silent, `VirtualMachineError` was wrapped in a crash report, and the registry was frozen off the main thread. | Hygiene. | `2ab7e09` |
 | PH2-11 | P3 | Lifecycle bridges | The live block entity map was iterated around mod callbacks, so a listener creating a block entity would throw `ConcurrentModificationException`. | Hygiene. | `b974b0c` (copy first) |
 | PH2-13 | P3 | `FabricDependencyLocator` | Package-guard exclusions filtered the jar but not the overlay, which could re-create a split package. Likelihood UNVERIFIED. | — | `2a7c02b` |
@@ -252,11 +268,12 @@ crash in run 229).
 | FC-6 | P3 | `TranslationCache.store` | Two cold launches of the same side that share one game directory race on delete-then-move. | Needs a cross-process file lock. Rare. |
 | FC-7 | P3, UNVERIFIED | cache cleanup | `Files.walk` may follow Windows directory junctions. | Must be verified on Windows first. |
 | P3-2 | P3 | `LootBridge` | One global reload manager. Two overlapping reloads can label a loot table with the wrong source. | Low impact. Needs a per-reload key. |
-| P3-6 | P3, UNVERIFIED | `ClientNetworkingImpl.currentConfiguration` | May keep the last configuration-phase listener if a disconnect skips `LoggingOut`. | Bounded to one slot. Not confirmed. |
 | P3-8 | — | `BlockEntityTypeMixin` | Field replaced without `volatile`. | Won't fix: written only during mod initialization, before world threads start. |
 | CFG-2 | P3 | `gradle.properties`, `Pipeline` | The Fabric Loader API version is written in two places. | Build-time duplication only. |
 | COMPAT-2 | — | NeoForge's loading logs | NeoForge's dedicated server (every version) and its 1.21.11 client log each mod loading warning as its raw translation key and arguments (`"{} [{}]", translationKey, translationArgs`), for every mod: Fabricated's show as `[Fabricated] {0} [[Fabric mod ... was not loaded: ...]]`. 26.x clients log the text, and the warnings screen formats it everywhere. | Won't fix: NeoForge's logging, and the line carries the whole text. Putting the text in the key instead would need escaping for the formatter, which those logs would then print. |
-| CORPUS-3 | — | Balm (Waystones), JEI, ShulkerBoxTooltip (26.3 corpus) | Their mixins target code NeoForge changed: Balm `CropBlock.getGrowthSpeed`'s signature and `LivingEntity.removeAllEffects`'s loop, JEI `KeyMapping.setKey`, ShulkerBoxTooltip a `setTooltipForNextFrame` overload. Pre-flight disables them with the reason. | Not repairable in general. Their NeoForge builds exist and are used when installed. |
+| CORPUS-12 | — | Zoomify (26.x corpus) | Its "universal" jar, the build Modrinth lists for Fabric, is a NeoForge mod too: NeoForge loads it itself and stops at startup without Kotlin for Forge ("Missing language loader klf"). Not Fabricated's to handle: the NeoForge mod's dependency is missing. | Taken out of the corpus (run 355). |
+| CORPUS-13 | — | malilib (with Tweakeroo and MiniHUD), WTHIT (corpus, every version) | Past RELOAD-2, every corpus client crashed at "Initializing game" (run 357): `NoSuchMethodError` for malilib's `IMixinGuiRenderer.malilib_getSpecialGuiRenderers()`, which malilib calls from its own injector into `GameRenderer`'s constructor to add its picture-in-picture renderers. The accessor reads `GuiRenderer.pictureInPictureRenderers`, a map of renderers that NeoForge replaced with a map of renderer pools on every version, so it can't apply, and whether it is left out (PRE-9) or its interface is, malilib stops the game. WTHIT's Fabric build throws from its own entrypoint on NeoForge ("Fancy Mod Loader detected"); Fabricated logs it and goes on. | Not repairable in general: malilib would need to fill NeoForge's pools. Taken out of the corpus, so the corpus clients show what comes next; WTHIT's NeoForge build is used when installed. |
+| CORPUS-3 | — | Balm (Waystones), JEI (26.3 corpus) | Their mixins target code NeoForge changed: Balm `CropBlock.getGrowthSpeed`'s signature and `LivingEntity.removeAllEffects`'s loop, JEI `KeyMapping.setKey` (NeoForge calls `setKeyModifierAndCode` there instead). Pre-flight disables them with the reason. ShulkerBoxTooltip, listed here before, is PRE-7. | Not repairable in general. Their NeoForge builds exist and are used when installed. |
 | CORPUS-5 | P3, cosmetic, UNVERIFIED | Traveler's Backpack (26.3 corpus) | NeoForge warns "Missing FluidModel" for its potion fluids. NeoForge's check runs inside `FluidStateModelSet.bake`, and upstream's `FluidStateModelSetMixin` wraps that method to add the models of Fabric-registered fluids after it returns, so the warning comes before those models are added. Whether the potion fluids have a model at all is UNVERIFIED. | Could register Fabric's fluid models through NeoForge's `RegisterFluidModelsEvent` instead. Low value. |
 
 ## Compatibility test matrix (renderer and model APIs)
@@ -300,14 +317,105 @@ open (see *Unverified and blockers*).
 - **Mixin's selection of the first match for a name-only selector** is the basis of `08aff28`. It is confirmed by
   run 229's crash (`SectionCompilerMixin`, "Scanned 0 target(s)"), by run 233's gate failure and by its passing once
   the selector was moved.
-- UNVERIFIED: FC-7 (junctions), P3-6 (configuration listener), PH2-13's likelihood, whether Continuity and Athena have
+- UNVERIFIED: FC-7 (junctions), PH2-13's likelihood, whether Continuity and Athena have
   Fabric builds for these versions, and an in-game allocation baseline for the meshing path.
 
 ## Changelog
 
 Newest first. Each entry: what changed, and how it was verified.
 
-### 2026-10-21 (latest): one way to resolve conflicting defaults
+### 2026-10-21 (latest): item storages bridged, Fabric fluids get fluid types, shader pack evidence
+
+**Summary.**
+- Storages in items are bridged: a NeoForge machine fills a Fabric mod's tank item through
+  `Capabilities.Fluid.ITEM`, a Fabric machine a NeoForge mod's through `FluidStorage.ITEM`, each item changed through
+  the other side's access to where it is (`AccessItemContext`, `ContextItemAccess`). That crosses back in one
+  transaction (the handler calls the access), which the transaction mirrors couldn't do, so they now stand for each
+  other: a NeoForge transaction opened for a Fabric one takes a borrowed snapshot in `FabricTransactions`, and a
+  Fabric transaction opened for a NeoForge one gets no mirror in `NeoTransactions`. The documented limitation (a
+  storage using one on the other side in the same transaction) is gone with it.
+- Each side of the storage and energy bridges answers for its own mods' content, told apart by namespace (XFER-1):
+  NeoForge's capabilities for Fabric mods' blocks and items come from Fabric's whole lookups, fallbacks included, and
+  Fabric's lookups fall back to NeoForge's capabilities for NeoForge mods' blocks and items. Neither side asks the
+  other back, so the guard against it is gone, and NeoForge code no longer runs Fabric's item lookup for every
+  NeoForge mod's item it inspects. The test mod's NeoForge-side content moved to a namespace of its own, and its
+  Fabric energy block offers its energy through a fallback.
+- Energy with Team Reborn's library (`EnergyBridge`), loaded only when a Fabric mod brings it; compiled against
+  never-packaged stand-ins of its API (`integrationstubs`), its lookups found by id.
+- `/fabricated why <mod>` (one mod's outcome and suggested fix) and `/fabricated disable|enable <mod>` (its entry in
+  `config/fabricated.json`, for the next launch, its other settings kept; comments in the file are not). CI: the test mod runs them from the
+  server console and reads the config back.
+- The corpus gains Fabric tech mods (Modern Industrialization, Tech Reborn), for the transfer and energy bridges.
+- Fabric mods' fluids get NeoForge fluid types (FLUID-1, found by the corpus): one per family, registered, its
+  name, light, temperature, viscosity and bucket sounds read from Fabric's `FluidVariantAttributes`, how entities
+  behave in it from the fluid's tags as vanilla does (`minecraft:water` makes it water to them; any other leaves
+  them alone). Living entities move through a fluid that isn't water as through air, where NeoForge would leave them
+  hanging (26.2 and later) or move them as in lava (1.21.11). On 1.21.11, whose renderer and `FluidVariantRendering`
+  read textures from the type's client extensions, those come from the fluid's Fabric render handler, water's
+  without one. `FluidFlowEvents.ALLOW` (26.2+) now reaches Fabric fluids too, which have types to hook. CI: the test
+  mod registers a fluid of each kind, checks that both of a family's fluids share one registered type, its light and
+  name, and which is water-like, places one in the world, and checks that a pig falls through a column of it.
+- Pre-flight checks `@WrapMethod` handlers' parameters against the method they wrap (PRE-6, a crash of the 26.2
+  Polyfrost client): a mismatch disables the mod with the reason instead of crashing the game.
+- Pre-flight repairs an injector at a call NeoForge's patches give one more argument (PRE-7, ShulkerBoxTooltip):
+  the injection point moves to the overload, and a handler that takes the call's arguments gets a bridge leaving the
+  added one out (and, for `@WrapOperation`, putting it back for the original call). Injectors in a named `@Group`
+  are left to their group, by every repair (PRE-7's first version moved one of Iris's alternatives), and require
+  nothing on their own (PRE-8), as in Mixin.
+- Results of the dispatched run on `ae39988` (run 351): all versions green. ShulkerBoxTooltip loads on every version;
+  the corpus clients reach their worlds with 6 mods disabled on 1.21.11, 6 on 26.1.2, 5 on 26.2 and 3 on 26.3. The
+  26.2 Polyfrost client no longer crashes on Polydium (PRE-6). The informational 26.2 client with the Fabric builds of
+  Sodium and Iris crashed on Iris's `MixinLevelRenderer` group (fixed in the next commit, above).
+- Fabric's configuration-phase `DISCONNECT` events fire on the server and the client (NET-1).
+- A jar whose service file names a provider class it doesn't have no longer stops the game from starting (PKG-4,
+  found by the widened corpus: spark's): the file is left out of its module, with a report note.
+- A broken accessor or invoker is left out alone, so its interface still applies and the mod's casts to it work
+  (PRE-9; malilib's crashed the 1.21.11 corpus client with its whole interface left out). Failing the mod instead,
+  tried first, disabled OneConfig, Iris's Fabric build and adventure-platform-fabric.
+- A reload listener a mod registers from its mixin into `Minecraft`'s constructor, before NeoForge's event, is added
+  through that event instead of stopping the game (RELOAD-2, found by the widened corpus).
+- Results of the dispatched run on `ae2eee1` (run 355): every gate passed on all four versions. The corpus got past
+  FML's module scan with spark's two service files left out. The 1.21.11 corpus client then crashed on malilib's
+  accessor (PRE-9, fixed in the next commit), and the 26.x clients and servers stopped in FML's loader on Zoomify's
+  universal jar, a NeoForge mod too that needs Kotlin for Forge (CORPUS-12: taken out of the corpus).
+- Results of the dispatched run on `fbc4d06` (run 356): every gate passed on all four versions. The corpus servers
+  ran; the corpus clients stopped at "Initializing game" on a reload listener registered before NeoForge's event
+  (RELOAD-2). Failing a mod over a broken accessor (PRE-9's first form) disabled OneConfig (and with it PolyPlus and
+  Polydium), Iris's Fabric build and adventure-platform-fabric, and the Polyfrost client crashed starting its server
+  ("No platform-specific hooks found for adventure platform"); both are reworked in the next commit. Iris loaded the
+  shader pack on 26.1.2 and 26.3.
+- Results of the dispatched run on `fab3e29` (run 357): every gate passed on all four versions, the early reload
+  listener check included. The Polyfrost clients reached their worlds again, and Iris's Fabric build loaded and
+  meshed terrain on 26.x. Iris loaded the shader pack on 26.1.2 and 26.2; the 26.3 shader step ended after 7 seconds
+  without the line (why is UNVERIFIED). The corpus servers ran; every corpus client got past RELOAD-2 and then
+  crashed on malilib's accessor, which malilib calls while the game starts (CORPUS-13: malilib, Tweakeroo, MiniHUD
+  and WTHIT taken out of the corpus).
+- Results of the dispatched run on `61d0b0c` (run 353): every gate passed on all four versions, the configuration
+  disconnect check included. The informational corpus server and clients stopped at FML's module scan on every
+  version (PKG-4, fixed in the next commit).
+- The mod corpus gains 24 popular Fabric mods (libraries, interface, rendering, performance and content), so its
+  runs show more of what fails.
+- The energy check takes Team Reborn's library from Tech Reborn's or Modern Industrialization's jar
+  (`ci/nested-jar.py`) where the library has no build of its own on Modrinth.
+- Results of the dispatched run on `cbe5511` (run 350, XFER-1): all versions green. The energy check ran and passed
+  on 26.1.2, 26.2 and 26.3, with the library taken from Tech Reborn's jar (6.0.5, 6.1.1, 6.2.0); Modrinth has no build
+  of it for 1.21.11, of its own or nested. Every corpus client reached its world; pre-flight disabled 7 mods on
+  1.21.11 (owo, JEI, Farmer's Delight, Continuity, Balm, ShulkerBoxTooltip, and one the summary cuts off), 7 on
+  26.1.2 (Moonlight, CodecUI, ShulkerBoxTooltip, Balm, Comforts, owo, and one cut off), 6 on 26.2 (ShulkerBoxTooltip,
+  Balm and Waystones, owo, JEI, Comforts) and 4 on 26.3 (ShulkerBoxTooltip, JEI, Balm and Waystones). The 26.2 corpus client no longer
+  crashes on a Fabric fluid (FLUID-1). The 26.2 Polyfrost client crashed on Polydium's `@WrapMethod` (PRE-6, fixed in
+  the next commit).
+- Results of the dispatched run on `9621e53`: all versions green. Iris logged `Using shaderpack: fabricated-test` on
+  26.1.2, 26.2 and 26.3, with every Fabric renderer check passing under the pack. The transfer check (item and fluid
+  cells both ways) and the commands check pass on all four versions. The energy check ran nowhere: Modrinth has no
+  build of Team Reborn's library for any of them. The 26.2 corpus client crashed on a Fabric fluid (FLUID-1).
+- Results of pull request #47 on `4e9542e`: all versions green. With `BlockStateModelDefaultsMixin` gone, the renderer
+  API checks on 26.x pass (the bridges declare its two methods). On 1.21.11 the corpus disables the same 7 mods as
+  before, so checking mixins into other Fabric mods there disabled none that worked. The new run with Sodium, Iris
+  and a shader pack passes every Fabric renderer check on 26.3; whether Iris loaded the pack is UNVERIFIED (the job
+  log tool reaches only the log's last lines, which the summary step fills): the summary now prints Iris's lines.
+
+### 2026-10-21 (late, 7): one way to resolve conflicting defaults
 
 **Summary.**
 - Results of pull request #46 on `d3a8e49`: all versions green. On 1.21.11 the model loading API loads again, its
