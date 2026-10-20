@@ -149,6 +149,7 @@ exists). The full inventory (target, injector, point and versions of every mixin
 | Mod construction / mod-bus events | `FabricatedMod`, native module registration, entrypoints (`main` on the first `RegisterEvent`) |
 | Render thread | client entrypoints (in `Minecraft`'s constructor), HUD/screen bridges, client networking handlers, moving blocks and the breaking overlay (`MovingBlockRenderMixin`, `BlockBreakingRenderMixin` → `FabricBlockRendering`, with their own per-thread renderer and emitter) |
 | **Chunk-section compile workers (several at once)** | `SectionCompilerMixin` → `FabricBlockRendering` for every block: the decision is a `ClassValue` (and, for a vanilla multipart or weighted model, a field of the model, written once with the same answer by any thread); the Fabric renderer and emitter are per thread (`ThreadLocal`); nothing else shared is mutated |
+| Any thread that collects a block's parts (1.21.11: Sodium's chunk builders, the render thread) | NeoForge's level-aware `collectParts` → `FabricBlockRendering.collectParts` for a Fabric model: the decision is the same `ClassValue`; the mesh it emits into and the models being collected are per thread (`ThreadLocal`); the block atlas's sprite finder is Fabric API's, safely published |
 | Resource reload executors | reload listeners of native modules (`fabric-resource-loader-v1`), model discovery (`ModelManagerExtraModelsMixin`) |
 | Server thread | lifecycle, entity, interaction, loot, transfer and networking bridges |
 
@@ -200,6 +201,19 @@ through `FabricBlockRendering` (`mc/common26/.../rendering`), which with `FrapiD
   `collectParts` call there (26.1.2: `BlockFeatureRenderer.renderBreakingBlockModelSubmits`; 26.2, 26.3:
   `LevelRenderer.submitBlockDestroyAnimation`) and adds a Fabric model's emitted quads, turned back into vanilla
   quads, as one part. The overlay itself is unchanged.
+- **1.21.11: parts made from a Fabric model's quads.** `mc/1.21.11/.../rendering/FabricBlockRendering` draws Fabric
+  models through Fabric's renderer only in the chunk sections NeoForge compiles (`SectionCompilerMixin`, which also
+  skips collecting their parts there). Everywhere else, NeoForge's level-aware `collectParts` (declared on
+  `BlockStateModel` by `BlockStateModelMixin`, for a model that doesn't implement it) gives a Fabric model parts made
+  from the quads it emits into a per-thread mesh: one `SimpleModelWrapper` per render layer, each quad from
+  upstream's `toBakedQuad` plus NeoForge's colours, normals and ambient occlusion flag. That is what moving blocks,
+  blocks drawn as entities, NeoForge's translucent outline pass, other mods and a renderer mod meshing sections
+  itself (Sodium for NeoForge has no Fabric renderer there) draw. A model asked again while it emits, and a caller
+  passing air (NeoForge's deprecated overloads), get the vanilla parts.
+- **A renderer to bridge to.** Indigo stands down for any mod whose metadata says it contains a Fabric renderer,
+  including a NeoForge mod's `modproperties`. Once the client initializers ran, `registerFallbackRenderer` registers
+  Indigo's renderer if none registered (Sodium for NeoForge 1.21.11 says it has one but doesn't ship it); Indigo's own
+  hooks stay off then.
 
 - **NeoForge-aware defaults.** `FrapiDefaults`, declared on `BlockStateModel` and `BlockStateModelPart` by
   `fabricated-renderer.mixins.json` (loaded only with `fabric_renderer_api_v1`, through FML's `requiredMods`):
@@ -217,9 +231,11 @@ breaking overlay) through Fabric's renderer. On NeoForge that would drop level-a
 
 1. **No allocation and no boxing per block or per quad** in Fabricated's emission paths. Hooks on per-block calls
    use `@WrapWithCondition` or `@Inject`, never `@WrapOperation` (whose `Operation.call(Object...)` boxes primitives
-   and allocates an array). Decisions are `ClassValue`s or fields, not maps keyed by models. One exception, outside
-   meshing: the breaking overlay copies the broken block's quads once per frame, because the game draws them after
-   the call returns (vanilla copies its parts list there too).
+   and allocates an array). Decisions are `ClassValue`s or fields, not maps keyed by models. Two exceptions, where the
+   caller keeps the quads and draws them without Fabric's renderer: the breaking overlay (26.x) copies the broken
+   block's quads once per frame, because the game draws them after the call returns (vanilla copies its parts list
+   there too), and on 1.21.11 a Fabric model's parts for NeoForge's `collectParts` are made each time they're asked
+   for (moving blocks every frame, a renderer mod's meshing once per section build). Only Fabric models' blocks pay.
 2. **Quad data has one owner, the active renderer.** Fabricated reads quads through `QuadView` and never keeps
    them (vanilla quads made from them for the game, as for the breaking overlay, are the game's). If Fabricated ever gets its own encoder (see `roadmap.md`), its `int[]` stride, offsets and
    bit masks live in one constants class that every reader and writer uses.
