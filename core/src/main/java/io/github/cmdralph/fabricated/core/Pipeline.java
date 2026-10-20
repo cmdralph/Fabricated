@@ -712,7 +712,7 @@ public final class Pipeline {
 			runtime.addEntrypoints(container, entrypoints);
 			List<String> pluginNotes = new ArrayList<>();
 			List<PluginAnnotations.Annotation> plugins = PluginAnnotations.of(entrypoints, pluginNotes);
-			plugins.forEach(p -> report.line("Plugins for other mods", c.id() + ": " + p.viewer() + " plugin " + p.className()));
+			plugins.forEach(p -> report.line("Plugins for other mods", c.id() + ": " + p.host() + " plugin " + p.className()));
 			pluginNotes.forEach(n -> report.line("Plugins for other mods", c.id() + ": " + n));
 			loaded.add(new LoadedMod(t, decision != null ? decision.excludedPackages() : Set.of(), plugins));
 			runtime.addLanguageAdapters(container, c.metadata().languageAdapters());

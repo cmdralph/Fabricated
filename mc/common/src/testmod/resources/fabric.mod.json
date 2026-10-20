@@ -29,12 +29,13 @@
     "client": ["io.github.cmdralph.fabricated.testmod.ClientTestMod", "io.github.cmdralph.fabricated.testmod.BlockEntityEventsClientTest"],
     "fabricated-test": ["io.github.cmdralph.fabricated.testmod.TestMod${'$'}CustomEntrypoint"],
     "modmenu": ["io.github.cmdralph.fabricated.testmod.ModMenuEntry"],
-    "jei_mod_plugin": ["io.github.cmdralph.fabricated.testmod.plugin.ViewerPlugins${'$'}Jei"],
-    "rei_common": ["io.github.cmdralph.fabricated.testmod.plugin.ViewerPlugins${'$'}Rei"],
+    "jei_mod_plugin": ["io.github.cmdralph.fabricated.testmod.plugin.OtherModPlugins${'$'}Jei"],
+    "rei_common": ["io.github.cmdralph.fabricated.testmod.plugin.OtherModPlugins${'$'}Rei"],
     "jade": [
-      "io.github.cmdralph.fabricated.testmod.plugin.ViewerPlugins${'$'}Jade",
-      "io.github.cmdralph.fabricated.testmod.plugin.ViewerPlugins${'$'}Jade::INSTANCE"
-    ]
+      "io.github.cmdralph.fabricated.testmod.plugin.OtherModPlugins${'$'}Jade",
+      "io.github.cmdralph.fabricated.testmod.plugin.OtherModPlugins${'$'}Jade::INSTANCE"
+    ],
+    "voicechat": ["io.github.cmdralph.fabricated.testmod.plugin.OtherModPlugins${'$'}VoiceChat"]
   },
   "mixins": ["fabricated-testmod.mixins.json"],
   "languageAdapters": {

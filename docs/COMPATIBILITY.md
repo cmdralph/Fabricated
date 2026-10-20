@@ -595,10 +595,11 @@ Fabric-only classes, or members its NeoForge build lacks, is reported and the ad
 1.21.11 neither Sodium for NeoForge nor Fabricated has Fabric's renderer API, so Fabric block models stay invisible
 with or without Sodium.
 
-### Plugins for recipe viewers and tooltip mods
+### Plugins for recipe viewers, tooltip mods and Simple Voice Chat
 
-A Fabric mod's plugins for JEI, REI, Jade and EMI are its entrypoints (`jei_mod_plugin`, `rei_common`, `rei_client`,
-`rei_server`, `jade`, `emi`); their NeoForge builds look for an annotation on the plugin class instead. Fabricated adds
+A Fabric mod's plugins for JEI, REI, Jade, EMI and Simple Voice Chat are its entrypoints (`jei_mod_plugin`,
+`rei_common`, `rei_client`, `rei_server`, `jade`, `emi`, `voicechat`); their NeoForge builds look for an annotation on
+the plugin class instead. Fabricated adds
 that annotation to the mod's NeoForge scan data for each such entrypoint, so the NeoForge builds find the plugins.
 WTHIT needs nothing: on NeoForge it reads the jar's `waila_plugins.json` / `wthit_plugins.json`, which stay in the
 translated mod. Jade's per-mod settings (the `jade` custom value) become the mod properties Jade for NeoForge reads.
@@ -609,8 +610,8 @@ translated mod. Jade's per-mod settings (the `jade` custom value) become the mod
 - JEI and REI create plugins while NeoForge constructs mods, before Fabric `main` entrypoints run (on Fabric JEI does
   it after them); EMI and Jade create a plugin again on each reload.
 - A plugin that calls a viewer's Fabric-only API (`mezz.jei.api.fabric`, EMI's `FabricEmiStack`) fails at that call.
-- CI runs the NeoForge builds of JEI, REI, Jade and WTHIT (from Modrinth, where one exists for the version) with the
-  test mod's plugins (informational). EMI has no NeoForge build for these versions (UNVERIFIED), so only its mapping is
+- CI runs the NeoForge builds of JEI, REI, Jade, WTHIT and Simple Voice Chat (from Modrinth, where one exists for the
+  version) with the test mod's plugins (informational). EMI has no NeoForge build for these versions (UNVERIFIED), so only its mapping is
   unit-tested.
 
 ### Fabric Loader

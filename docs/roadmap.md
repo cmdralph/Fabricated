@@ -137,8 +137,8 @@ NeoForge already cover those users.
 - **Done:** Mod Menu's config screens in NeoForge's mod list, Forge Config API Port on NeoForge's own config system,
   a Fabric mod's Sodium options page and mixin overrides given to Sodium for NeoForge, NeoForge mod properties as
   Fabric custom values (`fabric:provides` included).
-- **Done:** plugins of recipe viewers and tooltip mods: a Fabric mod's JEI, EMI, REI and Jade entrypoints become the
-  annotations their NeoForge builds scan for (`PluginAnnotations`, `FabricLanguageLoader`); WTHIT reads the jar's
+- **Done:** plugins of recipe viewers, tooltip mods and Simple Voice Chat: a Fabric mod's JEI, EMI, REI, Jade and
+  `voicechat` entrypoints become the annotations their NeoForge builds scan for (`PluginAnnotations`, `FabricLanguageLoader`); WTHIT reads the jar's
   plugin file; Jade's per-mod settings become its mod properties. An informational CI client runs the viewers'
   NeoForge builds with the test mod's plugins: on `e68cb58` JEI, REI and Jade each constructed the test plugin once
   and called it on 26.1.2 and 26.3, and WTHIT did on 26.1.2 (Modrinth gave no WTHIT build for 26.3).

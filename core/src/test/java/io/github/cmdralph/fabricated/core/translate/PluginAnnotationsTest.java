@@ -22,6 +22,7 @@ class PluginAnnotationsTest {
 		entrypoints.put("rei_client", List.of(new EntrypointSpec("default", "a.Rei$Client")));
 		entrypoints.put("rei_plugins", List.of(new EntrypointSpec("default", "a.ReiLegacy")));
 		entrypoints.put("jade", List.of(new EntrypointSpec("default", "a.Jade::INSTANCE"), new EntrypointSpec("kotlin", "a.KotlinJade")));
+		entrypoints.put("voicechat", List.of(new EntrypointSpec("default", "a.VoicePlugin")));
 		List<String> notes = new ArrayList<>();
 
 		List<PluginAnnotations.Annotation> annotations = PluginAnnotations.of(entrypoints, notes);
@@ -30,7 +31,8 @@ class PluginAnnotationsTest {
 				new PluginAnnotations.Annotation("Lmezz/jei/api/JeiPlugin;", "a.JeiPlugin", "JEI"),
 				new PluginAnnotations.Annotation("Ldev/emi/emi/api/EmiEntrypoint;", "a.EmiPlugin", "EMI"),
 				new PluginAnnotations.Annotation("Lme/shedaniel/rei/forge/REIPluginLoaderClient;", "a.Rei$Client", "REI"),
-				new PluginAnnotations.Annotation("Lme/shedaniel/rei/forge/REIPluginLoaderCommon;", "a.ReiLegacy", "REI")), annotations);
+				new PluginAnnotations.Annotation("Lme/shedaniel/rei/forge/REIPluginLoaderCommon;", "a.ReiLegacy", "REI"),
+				new PluginAnnotations.Annotation("Lde/maxhenkel/voicechat/api/ForgeVoicechatPlugin;", "a.VoicePlugin", "Simple Voice Chat")), annotations);
 		// Jade for NeoForge can only construct a class: a field reference or another language adapter's value is reported.
 		assertEquals(2, notes.size(), notes.toString());
 		assertTrue(notes.get(0).startsWith("Its Jade plugin a.Jade::INSTANCE is left out"), notes.get(0));

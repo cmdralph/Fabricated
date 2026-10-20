@@ -297,8 +297,8 @@ jobs:
             ${{ runner.temp }}/client-polyfrost/run/crash-reports
             ${{ runner.temp }}/client-polyfrost/client.out
           if-no-files-found: ignore
-      # The NeoForge builds of recipe viewers and tooltip mods, with the test mod's plugins declared the Fabric way (as
-      # entrypoints, and WTHIT's plugin file). Informational until the viewers' builds are pinned.
+      # The NeoForge builds of recipe viewers, tooltip mods and Simple Voice Chat, with the test mod's plugins declared
+      # the Fabric way (as entrypoints, and WTHIT's plugin file). Informational until their builds are pinned.
       - name: Client with recipe viewers for NeoForge (informational)
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         continue-on-error: true
@@ -306,11 +306,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p "$RUNNER_TEMP/extra-viewers"
-          python3 ci/fetch-corpus.py "${{ matrix.minecraft }}" "$RUNNER_TEMP/extra-viewers" neoforge jei rei jade wthit | tee viewers.txt
+          python3 ci/fetch-corpus.py "${{ matrix.minecraft }}" "$RUNNER_TEMP/extra-viewers" neoforge jei rei jade wthit simple-voice-chat | tee viewers.txt
           SMOKE_TIMEOUT=480 ci/smoke-client.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/client-viewers" "$RUNNER_TEMP/extra-viewers" || true
           grep -A12 "== Plugins for other mods" "$RUNNER_TEMP/client-viewers/run/logs/fabric-bridge-report.txt" || true
           log="$RUNNER_TEMP/client-viewers/run/logs/latest.log"
-          for viewer in jei rei jade wthit; do
+          for viewer in jei rei jade wthit simple-voice-chat; do
             if ! grep -q "^$viewer: " viewers.txt || grep -qE "^$viewer: (no |not fetched)" viewers.txt; then echo "$viewer: not in this run"; continue; fi
             for what in constructed called; do
               echo "$viewer plugin $what: $(grep -c "FABRICATED-TEST $viewer plugin $what OK" "$log" || true) time(s)"
