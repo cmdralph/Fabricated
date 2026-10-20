@@ -49,7 +49,8 @@
     "AdvancementReloadMixin",
     "EnchantmentBuilderMixin",
     "ResourceManagerRegistryLoadTaskMixin",
-    "LevelChunkBlockEntityMixin"
+    "LevelChunkBlockEntityMixin",
+    "ReloadableResourceManagerMixin"
   ],
   "injectors": {
     "defaultRequire": 1
