@@ -191,6 +191,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). In short:
 - [docs/claude.md](docs/claude.md): start here when working on Fabricated. Architecture map, rules, Fabric's
   renderer API design, mixin conventions and the commands to run.
 - [docs/roadmap.md](docs/roadmap.md): the roadmap (tracks, what is next), findings log, test matrices and what is still unverified.
+- [docs/CHANGELOG.md](docs/CHANGELOG.md): what each working session changed, and how it was verified.
 - [docs/MIXINS.md](docs/MIXINS.md): every mixin Fabricated applies, with its target and injection point.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how the pipeline, isolation, caching and security work.
 - [docs/RESEARCH.md](docs/RESEARCH.md): verified facts about NeoForge, FML and Fabric that the design

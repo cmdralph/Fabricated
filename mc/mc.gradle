@@ -263,6 +263,31 @@ tasks.register('testmods') {
     dependsOn brokenJars
 }
 
+// --- A Fabric mod using Fabric's renderer API, for the client smoke test with Fabric API (ci/smoke-client.sh) ----------
+def frapiTestmodDir = mcVersion.startsWith('26.') ? rootProject.file('mc/common26/src/testmodfrapi') : file('src/testmodfrapi')
+sourceSets {
+    testmodfrapi {
+        // Set, not added to Gradle's default (src/testmodfrapi), which on 1.21.11 is the same folder.
+        java.srcDirs = [new File(frapiTestmodDir, 'java')]
+        resources.srcDirs = [new File(frapiTestmodDir, 'resources')]
+    }
+}
+neoForge.addModdingDependenciesTo(sourceSets.testmodfrapi)
+dependencies {
+    testmodfrapiCompileOnly project(':fabric-loader-api')
+    testmodfrapiCompileOnly sourceSets.main.output
+}
+tasks.named('processTestmodfrapiResources', ProcessResources) {
+    inputs.properties(expandProps)
+    filesMatching('fabric.mod.json') { expand(expandProps) }
+}
+def frapiTestmodJar = tasks.register('testmodFrapiJar', Jar) {
+    archiveFileName = 'fabricated-testmod-frapi.jar'
+    destinationDirectory = testmodsDir
+    from sourceSets.testmodfrapi.output
+}
+tasks.named('testmods') { dependsOn frapiTestmodJar }
+
 // --- Pass-through Fabric API modules, at compile time only -------------------------------------------------
 // The player's Fabric API jar provides these modules at runtime; Fabricated never ships them. Code that uses one
 // only runs when that module is loaded, and is compiled against the module's own jar from the Fabric API release
@@ -281,34 +306,14 @@ if (mcVersion.startsWith('26.')) {
             filter { includeGroup 'net.fabricmc.fabric-api' }
         }
     }
-
-    // A Fabric mod using Fabric's renderer API, for the client smoke test with Fabric API (ci/smoke-client.sh).
-    sourceSets {
-        testmodfrapi {
-            java.srcDir rootProject.file('mc/common26/src/testmodfrapi/java')
-            resources.srcDir rootProject.file('mc/common26/src/testmodfrapi/resources')
-        }
-    }
-    neoForge.addModdingDependenciesTo(sourceSets.testmodfrapi)
     dependencies {
         compileOnly passThroughModules(['fabric-renderer-api-v1', 'fabric-model-loading-api-v1'])
-        testmodfrapiCompileOnly project(':fabric-loader-api')
-        testmodfrapiCompileOnly sourceSets.main.output
         testmodfrapiCompileOnly passThroughModules(['fabric-renderer-api-v1', 'fabric-model-loading-api-v1'])
     }
-    tasks.named('processTestmodfrapiResources', ProcessResources) {
-        inputs.properties(expandProps)
-        filesMatching('fabric.mod.json') { expand(expandProps) }
-    }
-    def frapiTestmodJar = tasks.register('testmodFrapiJar', Jar) {
-        archiveFileName = 'fabricated-testmod-frapi.jar'
-        destinationDirectory = testmodsDir
-        from sourceSets.testmodfrapi.output
-    }
-    tasks.named('testmods') { dependsOn frapiTestmodJar }
 } else {
-    // 1.21.11's Fabric API jars use intermediary names, so the few pass-through members Fabricated calls are compiled
-    // against stand-ins that declare them in Mojang's names, as the remapped modules have them at runtime. Never packaged.
+    // 1.21.11's Fabric API jars use intermediary names, so the few pass-through members Fabricated and its test mods call
+    // are compiled against stand-ins that declare them in Mojang's names, as the remapped modules have them at runtime.
+    // Never packaged.
     sourceSets {
         fabricapistubs {
             java.srcDir 'src/fabricapistubs/java'
@@ -318,5 +323,6 @@ if (mcVersion.startsWith('26.')) {
     dependencies {
         compileOnly sourceSets.fabricapistubs.output
         testmodCompileOnly sourceSets.fabricapistubs.output
+        testmodfrapiCompileOnly sourceSets.fabricapistubs.output
     }
 }

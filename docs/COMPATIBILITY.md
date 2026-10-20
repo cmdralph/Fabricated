@@ -42,9 +42,9 @@ factory is registered with NeoForge, and no test mod check reports a failure.
 
 CI also starts the client with the full Fabric API jar, for information only (it doesn't fail the build). It
 joins its world and passes every client check on all four versions. On 26.x every Fabric API module loads on the
-client, the renderer API, Indigo and model loading included; on 1.21.11 every module but the renderer API and Indigo
-(unsupported there), with model loading loaded without them. That run checks on 1.21.11 that a model file of a Fabric
-type is read by its Fabric deserializer. On the dedicated server no Fabric API module is disabled.
+client, the renderer API, Indigo and model loading included, and on 1.21.11 too since this pass. That run checks on
+1.21.11 that a model file of a Fabric type is read by its Fabric deserializer and that Fabric block models are drawn in
+chunk sections. On the dedicated server no Fabric API module is disabled.
 
 The 26.3 job is marked experimental in CI because NeoForge 26.3 is a beta; it passes every check. Its client
 opens its window with SDL3 over EGL, so CI installs Mesa's EGL library for it.
@@ -635,13 +635,22 @@ every model under a renderer that meshes the world through Fabric's renderer API
 level-aware `collectParts`, so connected textures and other model-data models keep working, and quads keep NeoForge's
 per-part and per-quad ambient occlusion (the defaults Forgified Fabric API has; upstream's ignore both).
 
-On 1.21.11 the renderer API is unsupported (Fabric's renderer replaces the block model pipeline that NeoForge owns
-there). Model loading loads without it, as on 26.x otherwise: plugins, model modifiers, extra models and Fabric's model
-formats work. Upstream's hook that hands the baked extra models to the model manager can't apply to NeoForge's
-1.21.11 build (it looks for a local Mixin doesn't find there), so Fabricated hands them over from NeoForge's bake event
-call. Only the `emitQuads` of its wrapper and composite models needs the renderer API, and NeoForge never calls
-it; a Fabric model drawing through `emitQuads` itself (Continuity's connected textures, say) still needs the renderer
-API and doesn't work there.
+On 1.21.11 the renderer API loads with Indigo too (since this pass), and Fabric block models, alone or among the parts
+of a vanilla multipart or weighted model, are drawn by Fabric's renderer in chunk sections, as on 26.x; CI checks both.
+The rest is narrower there:
+
+- Moving blocks, the breaking overlay and blocks drawn as entities (`renderSingleBlock`: a minecart's contents, an
+  enderman's block) keep NeoForge's renderer, which draws a Fabric model's parts as NeoForge sees them.
+- The renderer API's `emitQuads` defaults are upstream's: a NeoForge model inside a Fabric model gets its parts without
+  the level, so model data that needs the level is lost there.
+- Upstream's mixins that NeoForge's 1.21.11 build conflicts with are left out (see the module's plan): vanilla models'
+  `createGeometryKey` is NeoForge's, a mesh model using sprites from outside the block atlas isn't rejected, and the
+  in-wall screen overlay uses NeoForge's level-aware particle icon. The model baker's sprite getter gets Fabric's sprite
+  finders from Fabricated, as upstream's mixin reads them from fields NeoForge's build names differently.
+
+Model loading works as on 26.x: plugins, model modifiers, extra models and Fabric's model formats. Upstream's hook that
+hands the baked extra models to the model manager can't apply to NeoForge's 1.21.11 build (it looks for a local Mixin
+doesn't find there), so Fabricated hands them over from NeoForge's bake event call.
 
 ### Renderer mods: Sodium and Iris (26.x)
 
@@ -660,14 +669,14 @@ every block through that renderer, so Fabric block models show in the world. Fab
 - Moving blocks and the breaking overlay of Fabric models go through the registered renderer, Sodium's.
 - A Fabric mod's Sodium integration is given to Sodium for NeoForge in the form it reads: its page in Sodium's options
   (the `sodium:config_api_user` entrypoint, a plain class) and its overrides of Sodium's mixin options
-  (`sodium:options`).
+  (`sodium:options`, see *Custom values* below).
 
 CI runs Sodium and Iris for NeoForge (from Modrinth) with Fabric API and a Fabric model test mod on 26.1.2, 26.2 and
 26.3, and checks each of these. Shaders weren't enabled in that run. A Fabric addon's mixins into Sodium are checked
 against the installed Sodium for NeoForge before the game starts, like mixins into the game: one that needs Sodium's
 Fabric-only classes, or members its NeoForge build lacks, is reported and the addon disabled instead of crashing. On
-1.21.11 neither Sodium for NeoForge nor Fabricated has Fabric's renderer API, so Fabric block models stay invisible
-with or without Sodium.
+1.21.11 Sodium for NeoForge has no Fabric renderer API of its own and meshes chunks itself, so with Sodium installed
+Fabric block models stay invisible there.
 
 ### Plugins for recipe viewers, tooltip mods and Simple Voice Chat
 
@@ -676,7 +685,9 @@ A Fabric mod's plugins for JEI, REI, Jade, EMI and Simple Voice Chat are its ent
 the plugin class instead. Fabricated adds
 that annotation to the mod's NeoForge scan data for each such entrypoint, so the NeoForge builds find the plugins.
 WTHIT needs nothing: on NeoForge it reads the jar's `waila_plugins.json` / `wthit_plugins.json`, which stay in the
-translated mod. Jade's per-mod settings (the `jade` custom value) become the mod properties Jade for NeoForge reads.
+translated mod. Jade's per-mod settings (the `jade` custom value) reach Jade for NeoForge as a mod property (see
+*Custom values* below). Which entrypoint becomes which annotation, or which mod property, is data: core's
+`interop.json`, one line per entrypoint key.
 
 - The NeoForge builds create a plugin from a class with a public no-argument constructor, as Fabric's default
   language adapter does with a class name. A plugin given as a field or method reference (`Class::member`) or through
@@ -687,6 +698,16 @@ translated mod. Jade's per-mod settings (the `jade` custom value) become the mod
 - CI runs the NeoForge builds of JEI, REI, Jade, WTHIT and Simple Voice Chat (from Modrinth, where one exists for the
   version) with the test mod's plugins (informational). EMI has no NeoForge build for these versions (UNVERIFIED), so only its mapping is
   unit-tested.
+
+### Custom values
+
+Libraries built for both loaders read a mod's settings from its `fabric.mod.json` custom values on Fabric, and from its
+`mods.toml` on NeoForge, under the same name. Every custom value of a Fabric mod becomes a mod property of the
+translated mod (`[modproperties.<id>]`, where Jade for NeoForge reads `jade`), and every namespaced one (`ns:key`) is
+also a key of the file and of the mod's `[[mods]]` entry: Sodium for NeoForge reads `sodium:options` from the entry,
+Lithium for NeoForge `lithium:options` from the file. No key of NeoForge's own has a colon, so these never clash with
+it. Nulls are left out, as TOML has none. Unit tests read the generated file with night-config, the parser NeoForge
+uses, and find each value where those mods look.
 
 ### Fabric Loader
 

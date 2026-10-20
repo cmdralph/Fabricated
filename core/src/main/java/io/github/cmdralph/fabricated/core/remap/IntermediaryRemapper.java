@@ -47,7 +47,9 @@ public final class IntermediaryRemapper extends Remapper {
 
 	private String mapMember(String owner, String name, String descriptor) {
 		if (isIntermediaryMember(name)) return table.mapMember(owner, name, descriptor);
-		if (!PREFIXED.matcher(name).matches()) return name;
+		// Called for every member a class names, most of them the mod's own or the JDK's: only a name with a '$' after its
+		// first character can be a prefixed intermediary name, so the pattern runs for those alone.
+		if (name.indexOf('$') <= 0 || !PREFIXED.matcher(name).matches()) return name;
 		int split = name.indexOf('$') + 1;
 		return name.substring(0, split) + table.mapMember(owner, name.substring(split), descriptor);
 	}

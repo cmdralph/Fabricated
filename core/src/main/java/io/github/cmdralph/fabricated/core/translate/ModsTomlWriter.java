@@ -22,14 +22,16 @@ public final class ModsTomlWriter {
 	public static final String LANGUAGE_LOADER = "fabricated";
 
 	/**
-	 * Everything needed to describe one translated mod.
+	 * Everything needed to describe one translated mod. Property and option values are strings, numbers, booleans, and
+	 * lists and maps of them.
 	 *
 	 * @param hasEnumExtensions whether the overlay has an enum extension file ({@link EnumExtensions}), which NeoForge's
 	 *                      loader reads from the mod's {@code [[mods]]} entry
 	 * @param modProperties its {@code [modproperties.<id>]}, which NeoForge mods read where Fabric mods read entrypoints
-	 *                      or custom values: each a string, or a table of booleans ({@code Map<String, Boolean>})
-	 * @param sodiumOptions its overrides of Sodium's mixin options, which Sodium for NeoForge reads from the mod's
-	 *                      {@code [[mods]]} entry
+	 *                      or custom values
+	 * @param options       keys written both at the file's top level and in the mod's {@code [[mods]]} entry, where
+	 *                      NeoForge mods read per-mod settings (Lithium's and Sodium's option overrides); none may be one
+	 *                      of NeoForge's own keys
 	 */
 	public record Spec(
 			String neoForgeId,
@@ -47,7 +49,7 @@ public final class ModsTomlWriter {
 			boolean hasEnumExtensions,
 			List<String> loadAfter,
 			Map<String, Object> modProperties,
-			Map<String, Boolean> sodiumOptions) {
+			Map<String, Object> options) {
 	}
 
 	/** One {@code [[mixins]]} block. */
@@ -65,6 +67,7 @@ public final class ModsTomlWriter {
 		String license = spec.license().isEmpty() ? "All Rights Reserved" : String.join(", ", spec.license());
 		kv(sb, "license", license);
 		if (spec.issues() != null) kv(sb, "issueTrackerURL", spec.issues());
+		entries(sb, spec.options());
 		sb.append('\n');
 
 		sb.append("[[mods]]\n");
@@ -77,22 +80,12 @@ public final class ModsTomlWriter {
 		if (spec.homepage() != null) kv(sb, "displayURL", spec.homepage());
 		if (spec.logoFile() != null) kv(sb, "logoFile", spec.logoFile());
 		if (spec.hasEnumExtensions()) kv(sb, "enumExtensions", EnumExtensions.PATH);
-		if (!spec.sodiumOptions().isEmpty()) {
-			sb.append("\"sodium:options\"=");
-			booleans(sb, spec.sodiumOptions());
-			sb.append('\n');
-		}
+		entries(sb, spec.options());
 		sb.append('\n');
 
 		if (!spec.modProperties().isEmpty()) {
 			sb.append("[modproperties.").append(spec.neoForgeId()).append("]\n");
-			for (Map.Entry<String, Object> property : spec.modProperties().entrySet()) {
-				quote(sb, property.getKey());
-				sb.append('=');
-				if (property.getValue() instanceof Map<?, ?> table) booleans(sb, table);
-				else quote(sb, String.valueOf(property.getValue()));
-				sb.append('\n');
-			}
+			entries(sb, spec.modProperties());
 			sb.append('\n');
 		}
 
@@ -134,17 +127,47 @@ public final class ModsTomlWriter {
 		sb.append('\n');
 	}
 
-	/** An inline table of booleans: {@code {"a"=true, "b"=false}}. */
-	private static void booleans(StringBuilder sb, Map<?, ?> table) {
-		sb.append('{');
-		String separator = "";
-		for (Map.Entry<?, ?> entry : table.entrySet()) {
-			sb.append(separator);
-			quote(sb, String.valueOf(entry.getKey()));
-			sb.append('=').append(Boolean.TRUE.equals(entry.getValue()));
-			separator = ", ";
+	/** One {@code "key"=value} line per entry. */
+	private static void entries(StringBuilder sb, Map<String, Object> entries) {
+		for (Map.Entry<String, Object> entry : entries.entrySet()) {
+			quote(sb, entry.getKey());
+			sb.append('=');
+			value(sb, entry.getValue());
+			sb.append('\n');
 		}
-		sb.append('}');
+	}
+
+	/** A string, number, boolean, array ({@code List}) or inline table ({@code Map}). */
+	private static void value(StringBuilder sb, Object value) {
+		if (value instanceof Map<?, ?> table) {
+			sb.append('{');
+			String separator = "";
+			for (Map.Entry<?, ?> entry : table.entrySet()) {
+				sb.append(separator);
+				quote(sb, String.valueOf(entry.getKey()));
+				sb.append('=');
+				value(sb, entry.getValue());
+				separator = ", ";
+			}
+			sb.append('}');
+		} else if (value instanceof List<?> list) {
+			sb.append('[');
+			String separator = "";
+			for (Object element : list) {
+				sb.append(separator);
+				value(sb, element);
+				separator = ", ";
+			}
+			sb.append(']');
+		} else if (value instanceof Double || value instanceof Float) {
+			// TOML spells the non-finite ones its own way (a JSON number too large for a double is infinite).
+			double d = ((Number) value).doubleValue();
+			sb.append(Double.isNaN(d) ? "nan" : d == Double.POSITIVE_INFINITY ? "inf" : d == Double.NEGATIVE_INFINITY ? "-inf" : value.toString());
+		} else if (value instanceof Number || value instanceof Boolean) {
+			sb.append(value);
+		} else {
+			quote(sb, String.valueOf(value));
+		}
 	}
 
 	/** Writes a TOML basic string with every special character escaped. */

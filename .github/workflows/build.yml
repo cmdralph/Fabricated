@@ -172,7 +172,9 @@ jobs:
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         env:
           GH_TOKEN: ${{ github.token }}
-        run: ci/smoke-client.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/client"
+        run: |
+          set -o pipefail
+          ci/smoke-client.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/client" | tee "$RUNNER_TEMP/summary-client.txt"
       - name: Upload client logs and report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
@@ -227,10 +229,10 @@ jobs:
             grep -n -m 40 -E "frapi|FabricBlockRendering|RenderMixin|SectionCompiler|/(ERROR|FATAL)\]" "$log" || true
             exit 1
           fi
-      # Fabric's model loading API on 1.21.11, where it loads without the renderer API (CORPUS-6): a model file of a
-      # Fabric type must be read by the test mod's Fabric deserializer, and the baked extra models reach the model
-      # manager. A gate.
-      - name: Fabric model loading API (1.21.11)
+      # Fabric's model loading and renderer APIs on 1.21.11: a model file of a Fabric type must be read by the test
+      # mod's Fabric deserializer, the baked extra models reach the model manager (CORPUS-6), and Fabric block models,
+      # alone and inside a vanilla multipart model, are meshed into chunk sections. A gate.
+      - name: Fabric model loading and renderer APIs (1.21.11)
         if: ${{ !cancelled() && steps.build.outcome == 'success' && matrix.minecraft == '1.21.11' }}
         run: |
           log="$RUNNER_TEMP/client-fapi/run/logs/latest.log"
@@ -245,8 +247,10 @@ jobs:
           }
           check "model deserializer OK" "a model file of a Fabric type was read by its Fabric deserializer"
           check "extra models handed to the model manager OK" "the baked extra models reached the model manager (upstream's hook can't apply)"
+          check "frapi terrain OK" "a Fabric block model was meshed into a chunk section"
+          check "frapi nested terrain OK" "a Fabric model inside a vanilla multipart model was meshed"
           if [ "$failed" = 1 ]; then
-            grep -n -m 30 -E "model.loading|ModelManager|/(ERROR|FATAL)\]" "$log" || true
+            grep -n -m 30 -E "model.loading|ModelManager|frapi|FabricBlockRendering|SectionCompiler|/(ERROR|FATAL)\]" "$log" || true
             exit 1
           fi
       - name: Upload Fabric API client run logs and report
@@ -462,12 +466,14 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
           [ -f "$RUNNER_TEMP/summary-energy.txt" ] && { echo "== summary-energy"; cut -c1-300 "$RUNNER_TEMP/summary-energy.txt"; }
+          # The gated client's failed checks, when it has any (the job log may no longer hold them).
+          grep -q "^FAIL" "$RUNNER_TEMP/summary-client.txt" 2>/dev/null && { echo "== summary-client"; grep "^FAIL" "$RUNNER_TEMP/summary-client.txt" | head -40 | cut -c1-300; }
           for f in summary-newest summary-viewers; do
             [ -f "$RUNNER_TEMP/$f.txt" ] && { echo "== $f"; grep -E "^(Newest|PASS|FAIL|WARN)|plugin|not in this run" "$RUNNER_TEMP/$f.txt" | head -60; }
           done
-          [ -f "$RUNNER_TEMP/summary-polyfrost.txt" ] && { echo "== summary-polyfrost"; head -60 "$RUNNER_TEMP/summary-polyfrost.txt"; }
+          [ -f "$RUNNER_TEMP/summary-polyfrost.txt" ] && { echo "== summary-polyfrost"; head -60 "$RUNNER_TEMP/summary-polyfrost.txt" | cut -c1-300; }
           [ -f viewers.txt ] && { echo "== viewers fetched"; cat viewers.txt; }
-          for run in client-shaders client-sodium-fabric client-viewers client-polyfrost client-corpus client-worldmap; do
+          for run in client client-fapi client-shaders client-sodium-fabric client-viewers client-polyfrost client-corpus client-worldmap; do
             log="$RUNNER_TEMP/$run/run/logs/latest.log"
             [ -f "$log" ] || continue
             echo "== $run"
@@ -478,6 +484,13 @@ jobs:
             fi
             # NeoForge's loading warnings (the runs with extra mods don't show them on a screen).
             grep -h -m 1 -A 6 "Mods loaded with .* warning" "$log" | cut -c1-300 || true
+            # Why pre-flight disabled mods, in full from Fabricated's report (the warnings above are cut short).
+            report="$RUNNER_TEMP/$run/run/logs/fabric-bridge-report.txt"
+            [ -f "$report" ] && awk '/^== Mixin pre-flight failures ==/ { show = 1; next } /^$/ { show = 0 } show' "$report" | head -24 | cut -c1-700
+            # Fabric API's own modules: what pre-flight left out of them (their configs with a plugin).
+            if [ "$run" = client-fapi ] && [ -f "$report" ]; then
+              awk '/^== Mixin pre-flight warnings ==/ { show = 1; next } /^$/ { show = 0 } show' "$report" | grep -E "^  fabric" | head -30 | cut -c1-500
+            fi
             # A crash's description and errors, with the first stack frames.
             for report in $(ls "$RUNNER_TEMP/$run/run/crash-reports"/*.txt 2>/dev/null | head -1); do
               echo "-- $(basename "$report")"

@@ -145,6 +145,11 @@ public final class FabricBlockRendering {
 							RandomSource.class, Predicate.class).getDeclaringClass();
 				} catch (NoSuchMethodException e) {
 					return false; // not a FabricBlockStateModel: Fabric's renderer API didn't apply to this class
+				} catch (LinkageError e) {
+					// getMethod resolves the types every public method names: one from a mod that isn't installed throws. Asked
+					// while a chunk section compiles, so it must not escape; the class keeps NeoForge's renderer.
+					LOGGER.warn("Block models of class {} are left to NeoForge's renderer: a type their methods name is missing ({})", type.getName(), e.toString());
+					return false;
 				}
 				boolean fabricModel = owner != FabricBlockStateModel.class && !owner.getName().startsWith("net.minecraft.");
 				if (fabricModel) LOGGER.debug("Block models of class {} are drawn with Fabric's renderer", type.getName());

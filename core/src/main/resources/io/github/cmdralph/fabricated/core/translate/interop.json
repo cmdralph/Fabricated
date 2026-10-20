@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "entrypoints": {
+    "jei_mod_plugin": { "host": "JEI", "annotation": "Lmezz/jei/api/JeiPlugin;" },
+    "emi": { "host": "EMI", "annotation": "Ldev/emi/emi/api/EmiEntrypoint;" },
+    "jade": { "host": "Jade", "annotation": "Lsnownee/jade/api/WailaPlugin;" },
+    "rei_common": { "host": "REI", "annotation": "Lme/shedaniel/rei/forge/REIPluginLoaderCommon;" },
+    "rei": { "host": "REI", "annotation": "Lme/shedaniel/rei/forge/REIPluginLoaderCommon;" },
+    "rei_plugins": { "host": "REI", "annotation": "Lme/shedaniel/rei/forge/REIPluginLoaderCommon;" },
+    "rei_plugins_v0": { "host": "REI", "annotation": "Lme/shedaniel/rei/forge/REIPluginLoaderCommon;" },
+    "rei_containers": { "host": "REI", "annotation": "Lme/shedaniel/rei/forge/REIPluginLoaderCommon;" },
+    "rei_client": { "host": "REI", "annotation": "Lme/shedaniel/rei/forge/REIPluginLoaderClient;" },
+    "rei_server": { "host": "REI", "annotation": "Lme/shedaniel/rei/forge/REIPluginLoaderDedicatedServer;" },
+    "voicechat": { "host": "Simple Voice Chat", "annotation": "Lde/maxhenkel/voicechat/api/ForgeVoicechatPlugin;" },
+    "sodium:config_api_user": { "host": "Sodium", "property": "sodium:config_api_user" }
+  }
+}

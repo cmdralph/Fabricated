@@ -72,6 +72,10 @@
     "client.ModelManagerExtraModelsMixin",
     "client.UnbakedModelParserMixin",
     "client.BlockStateModelUnbakedMixin",
-    "client.ModelManagerExtraModelsUploadMixin"
+    "client.ModelManagerExtraModelsUploadMixin",
+    "client.ModelManagerSpriteGetterMixin",
+    "client.MultiPartModelMixin",
+    "client.SectionCompilerMixin",
+    "client.WeightedVariantsMixin"
   ]
 }

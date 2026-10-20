@@ -36,11 +36,14 @@ import io.github.cmdralph.fabricated.core.mixin.PreflightFinding.Severity;
 
 class MixinPreflightTest {
 	private static final String TARGET = "net/minecraft/world/Thing";
+	/** A class the target constructs (a record of the game, say). */
+	private static final String THING = "net/minecraft/world/Outline";
 	private static final String INJECT = "Lorg/spongepowered/asm/mixin/injection/Inject;";
 	private static final String REDIRECT = "Lorg/spongepowered/asm/mixin/injection/Redirect;";
 	private static final String WRAP_OPERATION = "Lcom/llamalad7/mixinextras/injector/wrapoperation/WrapOperation;";
 	private static final String OPERATION = "Lcom/llamalad7/mixinextras/injector/wrapoperation/Operation;";
 	private static final String AT = "Lorg/spongepowered/asm/mixin/injection/At;";
+	private static final String LOCAL = "Lcom/llamalad7/mixinextras/sugar/Local;";
 
 	/** Game class: tick() calls helper(I)V once and reads field "count". */
 	private static byte[] targetClass() {
@@ -515,6 +518,221 @@ class MixinPreflightTest {
 					.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty(),
 					"the named call still made, an added argument that can't be told apart, or two added");
 		}
+	}
+
+	/** A game class whose {@code tick} constructs {@code THING} once with each of {@code initDescs}. */
+	private static byte[] constructingHelper(String... initDescs) {
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		MethodVisitor tick = cw.visitMethod(Opcodes.ACC_PUBLIC, "tick", "()V", null, null);
+		tick.visitCode();
+		for (String desc : initDescs) {
+			tick.visitTypeInsn(Opcodes.NEW, THING);
+			tick.visitInsn(Opcodes.DUP);
+			for (Type arg : Type.getArgumentTypes(desc)) tick.visitInsn(arg.getSort() == Type.INT ? Opcodes.ICONST_0 : Opcodes.ACONST_NULL);
+			tick.visitMethodInsn(Opcodes.INVOKESPECIAL, THING, "<init>", desc, false);
+			tick.visitInsn(Opcodes.POP);
+		}
+		tick.visitInsn(Opcodes.RETURN);
+		tick.visitMaxs(0, 0);
+		tick.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	/** A handler {@code name} of {@code injector} on {@code tick} at its construction of {@code THING} with {@code (I)}. */
+	private static void atNewThing(ClassWriter cw, String injector, String name, String desc, Consumer<MethodVisitor> body) {
+		atNewThing(cw, injector, name, desc, -1, body);
+	}
+
+	/** {@link #atNewThing}, with the parameter at {@code local} (unless -1) a MixinExtras {@code @Local(ordinal = 0)}. */
+	private static void atNewThing(ClassWriter cw, String injector, String name, String desc, int local, Consumer<MethodVisitor> body) {
+		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, name, desc, null, null);
+		if (local >= 0) {
+			AnnotationVisitor sugar = mv.visitParameterAnnotation(local, LOCAL, false);
+			sugar.visit("ordinal", 0);
+			sugar.visitEnd();
+		}
+		AnnotationVisitor ann = mv.visitAnnotation(injector, false);
+		AnnotationVisitor methods = ann.visitArray("method");
+		methods.visit(null, "tick");
+		methods.visitEnd();
+		boolean single = injector.equals(REDIRECT);
+		AnnotationVisitor ats = single ? null : ann.visitArray("at");
+		AnnotationVisitor at = single ? ann.visitAnnotation("at", AT) : ats.visitAnnotation(null, AT);
+		at.visit("value", "NEW");
+		at.visit("target", "(I)L" + THING + ";");
+		at.visitEnd();
+		if (ats != null) ats.visitEnd();
+		ann.visitEnd();
+		if (body != null) {
+			mv.visitCode();
+			body.accept(mv);
+		}
+		mv.visitEnd();
+	}
+
+	/**
+	 * A constructor NeoForge's build calls with one more argument (a record NeoForge gave a component, as
+	 * {@code BlockOutlineRenderState}): injectors at it are pointed at that constructor, with bridges as for a static call,
+	 * and a {@code @WrapOperation}'s puts the argument back for the original construction.
+	 */
+	@Test
+	void anInjectionAtAConstructorNeoForgeAddedAnArgumentToIsPointedThere() throws Exception {
+		String thing = "L" + THING + ";";
+		String name = "com/example/mixin/AtNew";
+		// wrap(amount, original) { return (Thing) original.call(amount); }
+		Consumer<ClassWriter> wrap = cw -> atNewThing(cw, WRAP_OPERATION, "wrap", "(I" + OPERATION + ")" + thing, mv -> {
+			mv.visitVarInsn(Opcodes.ALOAD, 2);
+			mv.visitInsn(Opcodes.ICONST_1);
+			mv.visitTypeInsn(Opcodes.ANEWARRAY, "java/lang/Object");
+			mv.visitInsn(Opcodes.DUP);
+			mv.visitInsn(Opcodes.ICONST_0);
+			mv.visitVarInsn(Opcodes.ILOAD, 1);
+			mv.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/Integer", "valueOf", "(I)Ljava/lang/Integer;", false);
+			mv.visitInsn(Opcodes.AASTORE);
+			mv.visitMethodInsn(Opcodes.INVOKEINTERFACE, OPERATION.substring(1, OPERATION.length() - 1), "call", "([Ljava/lang/Object;)Ljava/lang/Object;", true);
+			mv.visitTypeInsn(Opcodes.CHECKCAST, THING);
+			mv.visitInsn(Opcodes.ARETURN);
+			mv.visitMaxs(5, 3);
+		});
+		byte[] original = mixin(name, false, cw -> {
+			atNewThing(cw, INJECT, "inject", "(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V", null);
+			atNewThing(cw, REDIRECT, "redirect", "(I)" + thing, null);
+			wrap.accept(cw);
+		});
+		Map<String, byte[]> mod = new HashMap<>(Map.of(name, original));
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "AtNew"));
+		byte[] game = constructingHelper("(ILjava/lang/String;)V");
+		ClassIndex neoForge = new ClassIndex(Map.of(TARGET, game)::get);
+		assertEquals(3, preflight(neoForge, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).size());
+
+		List<PreflightFinding> notes = new ArrayList<>();
+		Map<String, byte[]> repaired = preflight(neoForge, mod::get, ClassBytesSource.EMPTY, false)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
+
+		assertEquals(3, notes.size(), notes.toString());
+		assertTrue(notes.stream().allMatch(n -> n.message().contains("a constructor taking one more argument")), notes.toString());
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired.get(name + ".class")).accept(node, 0);
+		Map<String, MethodNode> methods = new HashMap<>();
+		node.methods.forEach(m -> methods.put(m.name, m));
+		AnnotationNode inject = methods.get("inject").invisibleAnnotations.getFirst();
+		assertEquals("(ILjava/lang/String;)" + thing, Annotations.value((AnnotationNode) ((List<?>) Annotations.value(inject, "at")).getFirst(), "target"));
+		assertEquals("(ILjava/lang/String;)" + thing, methods.get("redirect$fabricated").desc);
+		assertEquals("(ILjava/lang/String;" + OPERATION + ")" + thing, methods.get("wrap$fabricated").desc);
+		mod.put(name, repaired.get(name + ".class"));
+		List<PreflightFinding> after = preflight(neoForge, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(after.isEmpty(), after.toString());
+
+		// The bridge's Operation constructs with the added argument put back (a mixin with only that handler, to load it).
+		String wrapName = "com/example/mixin/AtNewWrap";
+		ClassWriter wrapWriter = new ClassWriter(0);
+		wrapWriter.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, wrapName, null, "java/lang/Object", null);
+		AnnotationVisitor mixinAnnotation = wrapWriter.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false);
+		AnnotationVisitor mixinTargets = mixinAnnotation.visitArray("value");
+		mixinTargets.visit(null, Type.getObjectType(TARGET));
+		mixinTargets.visitEnd();
+		mixinAnnotation.visitEnd();
+		MethodVisitor init = wrapWriter.visitMethod(Opcodes.ACC_PUBLIC, "<init>", "()V", null, null);
+		init.visitCode();
+		init.visitVarInsn(Opcodes.ALOAD, 0);
+		init.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false);
+		init.visitInsn(Opcodes.RETURN);
+		init.visitMaxs(1, 1);
+		init.visitEnd();
+		wrap.accept(wrapWriter);
+		wrapWriter.visitEnd();
+		byte[] wrapOnly = wrapWriter.toByteArray();
+		Map<String, byte[]> wrapRepaired = preflight(neoForge, Map.of(wrapName, wrapOnly)::get, ClassBytesSource.EMPTY, false)
+				.repairs("test.mixins.json", MixinConfigFile.parse(config(true, "AtNewWrap")), Refmap.EMPTY, Set.of(), new ArrayList<>());
+		ClassWriter operation = new ClassWriter(0);
+		String operationName = OPERATION.substring(1, OPERATION.length() - 1);
+		operation.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_INTERFACE | Opcodes.ACC_ABSTRACT, operationName, null, "java/lang/Object", null);
+		operation.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT | Opcodes.ACC_VARARGS, "call", "([Ljava/lang/Object;)Ljava/lang/Object;", null, null).visitEnd();
+		operation.visitEnd();
+		ClassWriter thingClass = new ClassWriter(0);
+		thingClass.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, THING, null, "java/lang/Object", null);
+		thingClass.visitEnd();
+		ClassLoader loader = new BytesClassLoader(Map.of(wrapName, wrapRepaired.get(wrapName + ".class"), TARGET, game, operationName, operation.toByteArray(),
+				THING, thingClass.toByteArray()));
+		Class<?> mixin = loader.loadClass(wrapName.replace('/', '.'));
+		Class<?> operationType = loader.loadClass(operationName.replace('/', '.'));
+		List<Object> called = new ArrayList<>();
+		Object constructor = java.lang.reflect.Proxy.newProxyInstance(loader, new Class<?>[] {operationType}, (proxy, method, args) -> {
+			called.addAll(java.util.Arrays.asList((Object[]) args[0]));
+			return null;
+		});
+		java.lang.reflect.Method bridge = mixin.getDeclaredMethod("wrap$fabricated", int.class, String.class, operationType);
+		bridge.setAccessible(true);
+		bridge.invoke(mixin.getConstructor().newInstance(), 5, "renderers", constructor);
+		assertEquals(List.of(5, "renderers"), called);
+
+		for (byte[] other : List.of(constructingHelper("(I)V", "(ILjava/lang/String;)V"), constructingHelper("(II)V"))) {
+			assertTrue(preflight(new ClassIndex(Map.of(TARGET, other)::get), Map.of(name, original)::get, ClassBytesSource.EMPTY, false)
+					.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty(),
+					"the named constructor still called, or an added argument that can't be told apart");
+		}
+	}
+
+	/**
+	 * A handler that also takes MixinExtras sugar (resourcefullib's {@code @WrapOperation} at {@code BlockOutlineRenderState}'s
+	 * construction takes a {@code @Local BlockState}) gets a bridge that takes the sugar too, with its annotation, and passes
+	 * it on.
+	 */
+	@Test
+	void aBridgeTakesTheHandlersSugarAndPassesItOn() throws Exception {
+		String thing = "L" + THING + ";";
+		String name = "com/example/mixin/AtNewSugar";
+		Consumer<MethodVisitor> returnNull = mv -> {
+			mv.visitInsn(Opcodes.ACONST_NULL);
+			mv.visitInsn(Opcodes.ARETURN);
+			mv.visitMaxs(1, 4);
+		};
+		byte[] original = mixin(name, false, cw -> {
+			atNewThing(cw, WRAP_OPERATION, "wrap", "(I" + OPERATION + "Ljava/lang/String;)" + thing, 2, returnNull);
+			atNewThing(cw, REDIRECT, "redirect", "(ILjava/lang/String;)" + thing, 1, returnNull);
+		});
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "AtNewSugar"));
+		byte[] game = constructingHelper("(ILjava/lang/String;)V");
+		ClassIndex neoForge = new ClassIndex(Map.of(TARGET, game)::get);
+
+		List<PreflightFinding> notes = new ArrayList<>();
+		Map<String, byte[]> repaired = preflight(neoForge, Map.of(name, original)::get, ClassBytesSource.EMPTY, false)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
+
+		assertEquals(2, notes.size(), notes.toString());
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired.get(name + ".class")).accept(node, 0);
+		Map<String, MethodNode> methods = new HashMap<>();
+		node.methods.forEach(m -> methods.put(m.name, m));
+		MethodNode wrap = methods.get("wrap$fabricated");
+		assertEquals("(ILjava/lang/String;" + OPERATION + "Ljava/lang/String;)" + thing, wrap.desc);
+		assertEquals(LOCAL, wrap.invisibleParameterAnnotations[3].getFirst().desc);
+		assertTrue(Annotations.ofParameter(methods.get("wrap"), 2).isEmpty(), "the sugar moved off the handler");
+		MethodNode redirect = methods.get("redirect$fabricated");
+		assertEquals("(ILjava/lang/String;Ljava/lang/String;)" + thing, redirect.desc);
+		assertEquals(LOCAL, redirect.invisibleParameterAnnotations[2].getFirst().desc);
+		List<Integer> loads = new ArrayList<>();
+		for (AbstractInsnNode insn : redirect.instructions) {
+			if (insn instanceof VarInsnNode load) loads.add(load.var);
+		}
+		assertEquals(List.of(0, 1, 3), loads, "the redirect's bridge passes the amount and the local, not the added argument");
+		List<PreflightFinding> after = preflight(neoForge, Map.of(name, repaired.get(name + ".class"))::get, ClassBytesSource.EMPTY, false)
+				.check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(after.isEmpty(), after.toString());
+
+		// The bridges verify (their stack and locals sizes are right).
+		ClassWriter operation = new ClassWriter(0);
+		String operationName = OPERATION.substring(1, OPERATION.length() - 1);
+		operation.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_INTERFACE | Opcodes.ACC_ABSTRACT, operationName, null, "java/lang/Object", null);
+		operation.visitEnd();
+		ClassLoader loader = new BytesClassLoader(Map.of(name, repaired.get(name + ".class"), operationName, operation.toByteArray()));
+		assertEquals(name.replace('/', '.'), Class.forName(name.replace('/', '.'), true, loader).getName());
+
+		byte[] notSugar = mixin(name, false, cw -> atNewThing(cw, REDIRECT, "redirect", "(ILjava/lang/String;)" + thing, -1, returnNull));
+		assertTrue(preflight(neoForge, Map.of(name, notSugar)::get, ClassBytesSource.EMPTY, false)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty(), "a parameter after the call's that isn't sugar");
 	}
 
 	/**

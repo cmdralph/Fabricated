@@ -1,0 +1,10 @@
+{
+  "variants": {
+    "": {
+      "fabric:type": "fabricated_testmod_frapi:terrain_check",
+      "model": {
+        "model": "minecraft:block/stone"
+      }
+    }
+  }
+}

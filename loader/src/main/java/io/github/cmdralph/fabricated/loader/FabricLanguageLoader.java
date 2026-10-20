@@ -9,7 +9,7 @@ import org.objectweb.asm.Type;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import io.github.cmdralph.fabricated.core.translate.PluginAnnotations;
+import io.github.cmdralph.fabricated.core.translate.Interop;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.ModLoadingException;
 import net.neoforged.fml.ModLoadingIssue;
@@ -52,10 +52,10 @@ public final class FabricLanguageLoader implements IModLanguageLoader {
 	 * object they read later). A class that already carries the annotation (a multi-loader mod) was found by the scan,
 	 * and adding it again would load the plugin twice.
 	 */
-	private static void addPluginAnnotations(String modId, List<PluginAnnotations.Annotation> plugins, ModFileScanData scan) {
+	private static void addPluginAnnotations(String modId, List<Interop.Annotation> plugins, ModFileScanData scan) {
 		if (plugins.isEmpty()) return;
 		Set<ModFileScanData.AnnotationData> annotations = scan.getAnnotations();
-		for (PluginAnnotations.Annotation plugin : plugins) {
+		for (Interop.Annotation plugin : plugins) {
 			Type type = Type.getType(plugin.descriptor());
 			Type clazz = Type.getObjectType(plugin.className().replace('.', '/'));
 			if (annotations.stream().anyMatch(a -> a.annotationType().equals(type) && a.clazz().equals(clazz))) continue;

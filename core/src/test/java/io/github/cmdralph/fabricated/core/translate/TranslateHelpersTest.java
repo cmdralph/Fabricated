@@ -12,6 +12,11 @@ import java.util.Set;
 
 import org.junit.jupiter.api.Test;
 
+import com.electronwill.nightconfig.core.CommentedConfig;
+import com.electronwill.nightconfig.core.Config;
+import com.electronwill.nightconfig.core.UnmodifiableConfig;
+import com.electronwill.nightconfig.toml.TomlParser;
+
 import io.github.cmdralph.fabricated.core.metadata.ModIds;
 import io.github.cmdralph.fabricated.core.metadata.ContactInformationImpl.PersonImpl;
 import io.github.cmdralph.fabricated.core.metadata.FabricModJsonParser;
@@ -65,41 +70,68 @@ class TranslateHelpersTest {
 		assertEquals(null, ModTranslator.withoutNeoForgeSections("not json".getBytes(java.nio.charset.StandardCharsets.UTF_8)));
 	}
 
-	/** A Fabric mod's Sodium and Jade integration, in the form Sodium and Jade for NeoForge read. */
+	/**
+	 * A Fabric mod's custom values and Sodium options page, where NeoForge mods read them: mod properties, and the
+	 * namespaced values also as keys of the file (Lithium) and of the mod's entry (Sodium).
+	 */
 	@Test
-	void translatesSodiumAndJadeIntegration() throws Exception {
+	void givesCustomValuesAndPropertiesToNeoForgeMods() throws Exception {
 		var md = FabricModJsonParser.parse("{\"schemaVersion\":1,\"id\":\"aaa\",\"version\":\"1\","
 				+ "\"entrypoints\":{\"sodium:config_api_user\":[\"com.example.Page\",\"com.example.Other\"]},"
-				+ "\"custom\":{\"sodium:options\":{\"mixin.features.render.world.sky\":false,\"mixin.bad\":\"no\"},"
-				+ "\"jade\":{\"disableItemModNameTooltip\":true}}}");
+				+ "\"custom\":{\"sodium:options\":{\"mixin.features.render.world.sky\":false},"
+				+ "\"jade\":{\"disableItemModNameTooltip\":true},\"modmenu\":{\"links\":[\"a\",null],\"parent\":null},\"gone\":null}}");
 		List<String> notes = new ArrayList<>();
-		assertEquals(Map.of("sodium:config_api_user", "com.example.Page", "jade", Map.of("disableItemModNameTooltip", true)),
-				ModTranslator.modProperties(md, notes));
-		assertEquals(Map.of("mixin.features.render.world.sky", false), ModTranslator.booleans(md, "sodium:options", notes));
-		assertEquals(2, notes.size(), notes.toString());
+		Map<String, Object> properties = ModTranslator.modProperties(md, notes);
+		assertEquals(Map.of("sodium:options", Map.of("mixin.features.render.world.sky", false), "jade", Map.of("disableItemModNameTooltip", true),
+				"modmenu", Map.of("links", List.of("a")), "sodium:config_api_user", "com.example.Page"), properties, "nulls left out");
+		assertEquals(List.of("Sodium for NeoForge takes one sodium:config_api_user class per mod: com.example.Page is used, the others are left out"), notes);
+		assertEquals(Map.of("sodium:options", Map.of("mixin.features.render.world.sky", false)), ModTranslator.options(md));
 
 		var kotlin = FabricModJsonParser.parse("{\"schemaVersion\":1,\"id\":\"aaa\",\"version\":\"1\","
 				+ "\"entrypoints\":{\"sodium:config_api_user\":[{\"adapter\":\"kotlin\",\"value\":\"com.example.Page\"}]}}");
 		notes.clear();
 		assertEquals(Map.of(), ModTranslator.modProperties(kotlin, notes));
-		assertEquals(Map.of(), ModTranslator.booleans(kotlin, "sodium:options", notes));
 		assertEquals(1, notes.size(), notes.toString());
 	}
 
-	/** What Sodium for NeoForge reads from a mod: its options page (a mod property) and its overrides of Sodium's mixins. */
+	/** The overlay's mods.toml, read by the parser NeoForge uses, has each value where its NeoForge mod reads it. */
 	@Test
-	void writesWhatSodiumForNeoForgeReads() {
-		Map<String, Boolean> options = new LinkedHashMap<>();
-		options.put("mixin.features.render.world.sky", false);
-		options.put("mixin.core", true);
+	void writesValuesWhereNeoForgeModsReadThem() {
+		Map<String, Object> sodium = new LinkedHashMap<>();
+		sodium.put("mixin.features.render.world.sky", false);
+		sodium.put("mixin.core", true);
+		Map<String, Object> options = new LinkedHashMap<>();
+		options.put("sodium:options", sodium);
+		options.put("lithium:options", Map.of("mixin.ai", false));
+		options.put("a:huge", Double.POSITIVE_INFINITY); // "1e400" in fabric.mod.json
+		Map<String, Object> properties = new LinkedHashMap<>(options);
+		properties.put("sodium:config_api_user", "com.example.SodiumPage");
+		properties.put("jade", Map.of("fastScroll", true));
+		properties.put("mixed", List.of(1, 2.5, "three \"quoted\"\n", List.of(true), Map.of("k.with.dots", 9_000_000_000L)));
+		properties.put("tiny", List.of(Double.NEGATIVE_INFINITY, Double.NaN, 1.5e300));
 		String toml = ModsTomlWriter.write(new ModsTomlWriter.Spec("my_mod", "1.0.0", "My Mod", "", List.of(), List.of(), List.of(), null, null, null,
-				List.of(), false, false, List.of(), Map.of("sodium:config_api_user", "com.example.SodiumPage"), options));
-		String jade = ModsTomlWriter.write(new ModsTomlWriter.Spec("my_mod", "1.0.0", "My Mod", "", List.of(), List.of(), List.of(), null, null, null,
-				List.of(), false, false, List.of(), Map.of("jade", Map.of("fastScroll", true)), Map.of()));
-		assertTrue(jade.contains("[modproperties.my_mod]\n\"jade\"={\"fastScroll\"=true}\n"), jade);
-		assertTrue(toml.contains("[[mods]]\nmodId=\"my_mod\"\nversion=\"1.0.0\"\ndisplayName=\"My Mod\"\ndescription=\"\"\n"
-				+ "\"sodium:options\"={\"mixin.features.render.world.sky\"=false, \"mixin.core\"=true}\n"), toml);
-		assertTrue(toml.contains("[modproperties.my_mod]\n\"sodium:config_api_user\"=\"com.example.SodiumPage\"\n"), toml);
+				List.of(), false, false, List.of(), properties, options));
+
+		CommentedConfig file = new TomlParser().parse(toml);
+		assertEquals("fabricated", file.get("modLoader"));
+		assertEquals(Map.of("mixin.ai", false), table(file.get(List.of("lithium:options"))), "Lithium reads the file's top level");
+		Config mod = file.<List<Config>>get("mods").getFirst();
+		assertEquals("my_mod", mod.get("modId"));
+		assertEquals(sodium, table(mod.get(List.of("sodium:options"))), "Sodium reads the mod's entry");
+		Config modProperties = file.get(List.of("modproperties", "my_mod"));
+		assertEquals("com.example.SodiumPage", modProperties.get(List.of("sodium:config_api_user")));
+		assertEquals(Map.of("fastScroll", true), table(modProperties.get(List.of("jade"))));
+		List<?> mixed = modProperties.get(List.of("mixed"));
+		assertEquals(List.of(1, 2.5, "three \"quoted\"\n", List.of(true)), mixed.subList(0, 4));
+		assertEquals(Map.of("k.with.dots", 9_000_000_000L), table(mixed.get(4)));
+		assertEquals(Double.POSITIVE_INFINITY, file.<Double>get(List.of("a:huge")), "a number past a double's range still parses");
+		assertEquals(List.of(Double.NEGATIVE_INFINITY, Double.NaN, 1.5e300), modProperties.get(List.of("tiny")));
+	}
+
+	private static Map<String, Object> table(Object config) {
+		Map<String, Object> table = new LinkedHashMap<>();
+		for (UnmodifiableConfig.Entry entry : ((UnmodifiableConfig) config).entrySet()) table.put(entry.getKey(), entry.getValue());
+		return table;
 	}
 
 	@Test
