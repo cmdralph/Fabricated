@@ -6,34 +6,52 @@
 # Libraries
 architectury-api
 balm
+cardinal-components-api
 cloth-config
 collective
 fabric-language-kotlin
 forge-config-api-port
 geckolib
+malilib
 moonlight
 owo-lib
+playeranimator
 puzzles-lib
+resourceful-lib
 trinkets
 yacl
 
 # Interface
 appleskin
+betterf3
+chat-heads
+controlling
 emi
+inventory-profiles-next
 jade
 jei
+minihud
 modmenu
 mouse-tweaks
+no-chat-reports
 rei
 shulkerboxtooltip
+tweakeroo
+wthit
 xaeros-minimap
 xaeros-world-map
+zoomify
 
-# Rendering (Continuity draws connected textures through Fabric's renderer API)
+# Rendering (Continuity and Enhanced Block Entities draw through Fabric's renderer API)
+3dskinlayers
 continuity
+ebe
 entity-model-features
 entitytexturefeatures
+falling-leaves
 lambdynamiclights
+not-enough-animations
+wavey-capes
 
 # Performance
 dynamic-fps
@@ -42,16 +60,24 @@ ferrite-core
 immediatelyfast
 krypton
 lithium
+modernfix
+moreculling
+spark
 
 # Content
+artifacts
 comforts
 create-fabric
 farmers-delight-refabricated
+friends-and-foes
+handcrafted
 lootr
+simple-voice-chat
 supplementaries
 terralith
 travelersbackpack
 waystones
+yungs-better-dungeons
 
 # Tech (Team Reborn's energy API and Fabric's transfer API, which Fabricated bridges to NeoForge's capabilities)
 modern-industrialization
