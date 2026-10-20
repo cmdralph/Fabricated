@@ -136,14 +136,16 @@ jobs:
       - name: Energy bridge with Team Reborn's library
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
+          # Also recorded for the summary step at the end of the log.
           if ! ls "$RUNNER_TEMP"/energy/*.jar >/dev/null 2>&1; then
-            echo "::warning::Modrinth has no Team Reborn Energy build for ${{ matrix.minecraft }}: nothing to check"
+            echo "Energy: Modrinth has no Team Reborn Energy build for ${{ matrix.minecraft }}, nothing checked" | tee "$RUNNER_TEMP/summary-energy.txt"
             exit 0
           fi
-          if grep -h "FABRICATED-TEST energy OK" "$RUNNER_TEMP/server-fapi/server.out"; then
+          ls "$RUNNER_TEMP"/energy/ | tee "$RUNNER_TEMP/summary-energy.txt"
+          if grep -h "FABRICATED-TEST energy OK" "$RUNNER_TEMP/server-fapi/server.out" | tee -a "$RUNNER_TEMP/summary-energy.txt"; then
             echo "PASS: energy moves both ways between Team Reborn's API and NeoForge's capability"
           else
-            grep -h -E "FABRICATED-TEST energy|team_reborn_energy" "$RUNNER_TEMP/server-fapi/server.out" | head -8 || true
+            grep -h -E "FABRICATED-TEST energy|team_reborn_energy" "$RUNNER_TEMP/server-fapi/server.out" | head -8 | tee -a "$RUNNER_TEMP/summary-energy.txt" || true
             echo "::error::FAIL: the energy bridge check did not pass"
             exit 1
           fi
@@ -454,6 +456,7 @@ jobs:
       - name: Summary of the informational runs
         if: ${{ !cancelled() }}
         run: |
+          [ -f "$RUNNER_TEMP/summary-energy.txt" ] && { echo "== summary-energy"; cut -c1-300 "$RUNNER_TEMP/summary-energy.txt"; }
           for f in summary-newest summary-viewers; do
             [ -f "$RUNNER_TEMP/$f.txt" ] && { echo "== $f"; grep -E "^(Newest|PASS|FAIL|WARN)|plugin|not in this run" "$RUNNER_TEMP/$f.txt" | head -60; }
           done
