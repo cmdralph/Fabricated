@@ -388,6 +388,47 @@ class PipelineTest {
 	}
 
 	/**
+	 * On 1.21.11 too, against the other mod's classes remapped as they will load: the good addon's selector names
+	 * Minecraft's class by its intermediary name, which only matches the remapped target.
+	 */
+	@Test
+	void mixinsIntoAnotherFabricModAreCheckedOnObfuscatedVersions(@TempDir Path game) throws Exception {
+		String tiny = "v1\tofficial\tintermediary\nCLASS\ta\tnet/minecraft/class_1\n";
+		String proguard = "net.minecraft.world.Thing -> a:\n";
+		MappingTable table = MappingComposer.compose(new StringReader(tiny), new StringReader(proguard));
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		String renderer = "com/base/Renderer";
+		ClassWriter cw = new ClassWriter(0);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, renderer, null, "java/lang/Object", null);
+		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC, "render", "(Lnet/minecraft/class_1;)V", null, null);
+		mv.visitCode();
+		mv.visitInsn(Opcodes.RETURN);
+		mv.visitMaxs(0, 2);
+		mv.visitEnd();
+		cw.visitEnd();
+		Path base = TestJars.create().fabricModJson(TestJars.modJson("base", "2.0", "\"name\":\"Base\""))
+				.bytes(renderer + ".class", cw.toByteArray())
+				.write(mods.resolve("base.jar"));
+		Path good = TestJars.create().fabricModJson(TestJars.modJson("good-addon", "1.0", "\"mixins\":[\"good.mixins.json\"],\"depends\":{\"base\":\"*\"}"))
+				.text("good.mixins.json", "{\"required\":true,\"package\":\"com.good.mixin\",\"refmap\":\"good-refmap.json\",\"mixins\":[\"RendererMixin\"]}")
+				.text("good-refmap.json", "{\"mappings\":{\"com/good/mixin/RendererMixin\":{\"render\":\"Lcom/base/Renderer;render(Lnet/minecraft/class_1;)V\"}}}")
+				.bytes("com/good/mixin/RendererMixin.class", mixinClass("com/good/mixin/RendererMixin", renderer, "render"))
+				.write(mods.resolve("good-addon.jar"));
+		Path stale = TestJars.create().fabricModJson(TestJars.modJson("stale-addon", "1.0", "\"mixins\":[\"stale.mixins.json\"],\"depends\":{\"base\":\"*\"}"))
+				.text("stale.mixins.json", "{\"required\":true,\"package\":\"com.stale.mixin\",\"mixins\":[\"RendererMixin\"]}")
+				.bytes("com/stale/mixin/RendererMixin.class", mixinClass("com/stale/mixin/RendererMixin", renderer, "drawSections"))
+				.write(mods.resolve("stale-addon.jar"));
+
+		Pipeline.Result result = Pipeline.run(input(game, List.of(base, good, stale), Namespace.INTERMEDIARY, Map.of(TARGET, targetClass()),
+				(cache, path) -> new Pipeline.Mappings(table, "test-hash"), List.of()));
+
+		Set<String> loaded = result.mods().stream().map(m -> m.translated().candidate().id()).collect(Collectors.toSet());
+		assertEquals(Set.of("base", "good-addon"), loaded, result.report().render());
+		Report.ModRow row = result.report().mods().stream().filter(r -> r.id().equals("stale-addon")).findFirst().orElseThrow();
+		assertTrue(row.detail().contains("drawSections, which does not exist in com.base.Renderer"), row.detail());
+	}
+
+	/**
 	 * A NeoForge mod's mod properties are its custom values to Fabric code, and the Fabric mods it says it provides are
 	 * present: Sodium for NeoForge makes Fabric API's default renderer stand down and provides Indium, whose Fabric jar
 	 * isn't loaded. Of two copies of a NeoForge mod (one nested in another mod file), the newest counts.

@@ -277,6 +277,18 @@ jobs:
             grep -n -m 60 -E "frapi|Indigo|sodium|Sodium|iris|Iris|/(ERROR|FATAL)\]" "$log" || true
             exit 1
           fi
+      # The same mods with a shader pack (ci/smoke-client.sh writes a minimal one): Iris's pipeline, with its extended
+      # vertex format, under the Fabric models Sodium's Fabric renderer meshes. Informational until it has passed.
+      - name: Client with Sodium, Iris and a shader pack (informational, 26.x)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && startsWith(matrix.minecraft, '26.') }}
+        continue-on-error: true
+        run: |
+          if ! ls "$RUNNER_TEMP"/extra-sodium/iris*.jar >/dev/null 2>&1; then
+            echo "Modrinth has no Iris for NeoForge ${{ matrix.minecraft }} build: nothing to run"
+            exit 0
+          fi
+          SMOKE_SHADERS=1 SMOKE_TIMEOUT=480 ci/smoke-client.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/client-shaders" "$RUNNER_TEMP/extra-sodium" || true
+          grep -n -m 80 -E "FABRICATED-TEST frapi|[Ss]haderpack|shader pack|Iris|/(ERROR|FATAL)\]" "$RUNNER_TEMP/client-shaders/run/logs/latest.log" || true
       # The Fabric builds of Sodium and Iris, loaded on request (loadUnsupported) with Fabric API and the renderer API
       # test mod: informational, it records what breaks for the rendering-pipeline track (docs/roadmap.md).
       - name: Client with the Fabric builds of Sodium and Iris (informational, 26.x)
@@ -305,6 +317,9 @@ jobs:
             ${{ runner.temp }}/client-sodium-fabric/run/logs
             ${{ runner.temp }}/client-sodium-fabric/run/crash-reports
             ${{ runner.temp }}/client-sodium-fabric/client.out
+            ${{ runner.temp }}/client-shaders/run/logs
+            ${{ runner.temp }}/client-shaders/run/crash-reports
+            ${{ runner.temp }}/client-shaders/client.out
           if-no-files-found: ignore
       # The Fabric-only Polyfrost stack (OneConfig, PolyPlus): no NeoForge build exists, so Fabricated is its only way
       # to NeoForge. Modrinth slugs and builds per version are UNVERIFIED; a missing one is reported and skipped.
@@ -426,7 +441,7 @@ jobs:
           done
           [ -f "$RUNNER_TEMP/summary-polyfrost.txt" ] && { echo "== summary-polyfrost"; head -60 "$RUNNER_TEMP/summary-polyfrost.txt"; }
           [ -f viewers.txt ] && { echo "== viewers fetched"; cat viewers.txt; }
-          for run in client-sodium-fabric client-viewers client-polyfrost client-corpus client-worldmap; do
+          for run in client-shaders client-sodium-fabric client-viewers client-polyfrost client-corpus client-worldmap; do
             log="$RUNNER_TEMP/$run/run/logs/latest.log"
             [ -f "$log" ] || continue
             echo "== $run"

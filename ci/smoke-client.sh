@@ -68,6 +68,33 @@ cat > run/options.txt <<'OPTS'
 onboardAccessibility:false
 pauseOnLostFocus:false
 OPTS
+# SMOKE_SHADERS: a minimal shader pack for Iris, enabled from the start. Its terrain program reads block ids, so Iris
+# uses its extended vertex format for the world, which Sodium's chunk meshes (Fabric models included) are written in.
+if [ -n "${SMOKE_SHADERS:-}" ]; then
+	pack=run/shaderpacks/fabricated-test/shaders
+	mkdir -p "$pack"
+	cat > "$pack/gbuffers_terrain.vsh" <<'GLSL'
+#version 120
+attribute vec4 mc_Entity;
+varying vec2 texcoord;
+varying vec4 color;
+void main() {
+	gl_Position = ftransform();
+	texcoord = (gl_TextureMatrix[0] * gl_MultiTexCoord0).xy;
+	color = gl_Color * (mc_Entity.x > 0.0 ? 1.0 : 0.95);
+}
+GLSL
+	cat > "$pack/gbuffers_terrain.fsh" <<'GLSL'
+#version 120
+uniform sampler2D texture;
+varying vec2 texcoord;
+varying vec4 color;
+void main() {
+	gl_FragData[0] = texture2D(texture, texcoord) * color;
+}
+GLSL
+	printf 'shaderPack=fabricated-test\nenableShaders=true\n' > run/config/iris.properties
+fi
 
 echo "::group::Run client"
 status=0

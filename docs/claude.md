@@ -23,8 +23,10 @@ version).
 - **No placeholders** in merged code (`CONTRIBUTING.md`): an unsupported feature is reported in
   `fabric-bridge-report.txt`, `COMPATIBILITY.md` and `roadmap.md`, not stubbed.
 - **Pull requests are merged once CI is green on their final commit** (the owner's standing decision, 2026-10-19):
-  open the PR, drive it to green, merge it with a merge commit, then continue on the same branch from the new
-  `main`.
+  drive the PR to green, merge it with a merge commit, then continue on the same branch from the new `main`.
+- **One pull request per pass, not per change** (the owner's decision, 2026-10-20): commit and push to the working
+  branch as work goes; while no pull request is open, a push builds nothing, so run CI on the branch by hand
+  (`workflow_dispatch`) whenever game-facing work needs it. Open the pull request when the whole pass is done.
 - **Lightweight and readable over clever.** No abstraction without a second user, no dead code, no duplicated
   utilities. A refactor must measurably reduce coupling or duplication.
 

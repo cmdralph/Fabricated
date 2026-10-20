@@ -30,6 +30,7 @@ import io.github.cmdralph.fabricated.core.metadata.CustomValueImpl;
 import io.github.cmdralph.fabricated.core.metadata.FabricModMetadata;
 import io.github.cmdralph.fabricated.core.metadata.FabricModMetadata.EntrypointSpec;
 import io.github.cmdralph.fabricated.core.mixin.PreflightFinding;
+import io.github.cmdralph.fabricated.core.remap.JarRemapper;
 import io.github.cmdralph.fabricated.core.remap.MappingException;
 import io.github.cmdralph.fabricated.core.remap.MappingTable;
 import io.github.cmdralph.fabricated.core.report.Report;
@@ -339,10 +340,10 @@ public final class Pipeline {
 		if (eligible.isEmpty()) return assemble(runtime, new Rounds());
 
 		ClassIndex game = new ClassIndex(in.gameClasses());
-		// On 26.x the Fabric mods' classes load as they are in their jars, so mixins into them are checked too (on
-		// 1.21.11 their classes have intermediary names until each is translated).
+		// Mixins into the Fabric mods' classes are checked too, against those classes as they will load: on 1.21.11
+		// remapped from intermediary names, as translating each mod remaps it.
 		List<SafeArchive> opened = new ArrayList<>();
-		InstalledClasses installed = in.namespace() == Namespace.OFFICIAL ? in.installedClasses().with(fabricJars(eligible, opened)) : in.installedClasses();
+		InstalledClasses installed = in.installedClasses().with(fabricJars(eligible, opened, mappingTable == null ? null : new JarRemapper(mappingTable)));
 		TranslationEnvironment env = new TranslationEnvironment(in.minecraftVersion(), in.neoForgeVersion(), in.clientSide(), in.namespace(),
 				in.runtimeMixinVersion(), in.lowestMixinBehavior(), in.fabricatedVersion(), mappingTable, mappingsHash, game, in.untransformableClasses(),
 				installed, installed.isEmpty() ? game : new ClassIndex(in.gameClasses().or(installed)), unsupportedPackages(scan.candidates()));
@@ -366,8 +367,10 @@ public final class Pipeline {
 	/**
 	 * The classes of the Fabric mods about to load, for pre-flight. A jar is opened only when a lookup names a class in
 	 * one of its packages, then kept open until translation ends ({@code opened}).
+	 *
+	 * @param remapper remaps each class read to runtime names (1.21.11), or null where the jars have them (26.x)
 	 */
-	private List<InstalledClasses.Jar> fabricJars(List<Candidate> candidates, List<SafeArchive> opened) {
+	private List<InstalledClasses.Jar> fabricJars(List<Candidate> candidates, List<SafeArchive> opened, JarRemapper remapper) {
 		List<InstalledClasses.Jar> jars = new ArrayList<>();
 		for (Candidate c : candidates) {
 			Supplier<SafeArchive> archive = new Supplier<>() {
@@ -397,7 +400,13 @@ public final class Pipeline {
 				return a != null && a.contains(name + ".class");
 			}, name -> {
 				SafeArchive a = archive.get();
-				return a == null ? null : a.read(name + ".class");
+				byte[] data = a == null ? null : a.read(name + ".class");
+				if (data == null || remapper == null) return data;
+				try {
+					return remapper.remapClass(data, name);
+				} catch (MappingException e) {
+					return null; // not verified then; translating the mod reports it
+				}
 			}));
 		}
 		return jars;
