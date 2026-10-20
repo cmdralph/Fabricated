@@ -97,7 +97,8 @@ with the same id. Remove the NeoForge jar to use the Fabric one.
 **Where do I look first?** `logs/fabric-bridge-report.txt`. It is rewritten on every launch, and `/fabricated
 report` regenerates it. It lists every Fabric mod with its status (loaded, disabled, rejected, provided
 natively, skipped), the reason, and a suggested fix. It also has the Fabric API plan, mixin pre-flight
-results, access-widener notes and timings.
+results, access-widener notes and timings. In game, `/fabricated` prints a one-line summary and `/fabricated disabled`
+lists the Fabric mods that didn't load, with why (on a server, from the console only).
 
 | You see | Meaning | What to do |
 |---|---|---|
