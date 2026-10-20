@@ -202,6 +202,18 @@ public final class PackageGuard {
 				conflicts.add(new Conflict(mod, conflict, SUGGESTION));
 				continue;
 			}
+			// A module declares only providers it has, or the game doesn't start. Fabric's class path finds a provider in
+			// any jar, or fails when the service is loaded: a shaded library's service file naming a class the jar
+			// dropped, or one the platform's copy of the package has, costs nothing there.
+			for (Map.Entry<String, Service> service : contents.services().entrySet()) {
+				if (hidden.contains(service.getKey())) continue;
+				List<String> missing = service.getValue().providers().stream().filter(p -> !serves(contents, excluded, p)).toList();
+				if (missing.isEmpty()) continue;
+				hidden.add(service.getKey());
+				notes.add("declares the service " + service.getKey().substring(SERVICES.length()) + " with " + missing.getFirst()
+						+ (missing.size() > 1 ? " and " + (missing.size() - 1) + " more provider(s)" : "")
+						+ ", which its module doesn't have; the service file is left out, as a module can only declare its own providers");
+			}
 			lent.forEach((pkg, files) -> {
 				String lender = owner.get(pkg);
 				files.forEach((file, jar) -> borrowedById.computeIfAbsent(lender, k -> new LinkedHashMap<>()).computeIfAbsent(jar, k -> new TreeSet<>()).add(file));
@@ -308,6 +320,13 @@ public final class PackageGuard {
 			if (!provider.isEmpty()) providers.add(provider);
 		}
 		return providers;
+	}
+
+	/** Whether the mod's module has the class {@code className} (binary name): in one of its packages it keeps. */
+	private static boolean serves(Contents contents, Set<String> excluded, String className) {
+		String pkg = packageOf(className);
+		Map<String, Path> files = contents.packages().get(pkg);
+		return files != null && !excluded.contains(pkg) && files.containsKey(className.replace('.', '/') + ".class");
 	}
 
 	/** The package (internal form) of a binary class name. */
