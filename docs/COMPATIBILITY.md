@@ -615,7 +615,9 @@ translated mod. Jade's per-mod settings (the `jade` custom value) become the mod
 
 The public `net.fabricmc.loader.api` is complete: entrypoints (including custom ones and language adapters such as
 Kotlin's), mod containers and metadata, versions and predicates, the object share, and the mapping resolver
-(intermediary to Mojang names on 1.21.11).
+(intermediary to Mojang names on 1.21.11). As on Fabric, every declared language adapter is created before any Fabric
+mod's mixin plugin loads (some mods declare one only to run code that early). `preLaunch` entrypoints still run later
+than on Fabric: right before `main`.
 
 - `@Environment` and `@EnvironmentInterface` are applied as Fabric Loader applies them: members and interfaces for
   the other side are stripped when the class loads, so a common class implementing a client-only interface loads on

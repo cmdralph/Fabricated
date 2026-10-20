@@ -170,6 +170,27 @@ public final class FabricLoaderRuntime implements FabricLoader {
 		}
 	}
 
+	/**
+	 * Creates every declared language adapter, as Fabric Loader does before Mixin starts: some mods use an adapter only
+	 * to run code that early. Returns why each one that couldn't be created failed (it fails again, with that cause,
+	 * when an entrypoint asks for it).
+	 */
+	public List<String> createLanguageAdapters() {
+		List<String> ids;
+		synchronized (this) {
+			ids = List.copyOf(adapterDeclarations.keySet());
+		}
+		List<String> failures = new ArrayList<>();
+		for (String id : ids) {
+			try {
+				adapter(id);
+			} catch (LanguageAdapterException e) {
+				failures.add(e.getMessage() + (e.getCause() != null ? ": " + e.getCause() : ""));
+			}
+		}
+		return failures;
+	}
+
 	public void setGameInstance(Object instance) {
 		this.gameInstance = instance;
 	}

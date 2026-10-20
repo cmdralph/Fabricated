@@ -1,6 +1,7 @@
 {
   "required": true,
   "package": "io.github.cmdralph.fabricated.neoforge.mixin",
+  "plugin": "io.github.cmdralph.fabricated.neoforge.FabricatedMixinPlugin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
     "EntityMixin",

@@ -14,8 +14,8 @@ Fabricated-owned (shipped in `game-mod.jar`, registered in `mc/common/src/main/r
 
 | Config file | Package | Versions | Sections | defaultRequire | overwrites.requireAnnotations | plugin |
 |---|---|---|---|---|---|---|
-| `mc/1.21.11/src/main/resources/fabricated.mixins.json` | `io.github.cmdralph.fabricated.neoforge.mixin` | 1.21.11 | mixins 38, client 12 | 1 | true | none |
-| `mc/common26/src/main/resources/fabricated.mixins.json` | same | 26.1.2, 26.2, 26.3 | mixins 46, client 22 | 1 | true | none |
+| `mc/1.21.11/src/main/resources/fabricated.mixins.json` | `io.github.cmdralph.fabricated.neoforge.mixin` | 1.21.11 | mixins 38, client 12 | 1 | true | `FabricatedMixinPlugin` (creates Fabric language adapters in `onLoad`; filters nothing) |
+| `mc/common26/src/main/resources/fabricated.mixins.json` | same | 26.1.2, 26.2, 26.3 | mixins 46, client 22 | 1 | true | same |
 | `mc/common/src/main/resources/fabricated-fabric-api.mixins.json` | `net.fabricmc.fabric.mixin.networking.accessor` | all | mixins 4 | 1 | true | none |
 | `mc/common/src/main/resources/fabricated-lookup.mixins.json` | `net.fabricmc.fabric.mixin.lookup` | all | mixins 2 (classes in `mc/<v>/src/fabricapi/java`) | 1 | true | none |
 | `mc/common/src/main/resources/fabricated-loot.mixins.json` | `net.fabricmc.fabric.mixin.loot` | all | mixins 5 | 1 | true | none |
@@ -138,7 +138,7 @@ Versions: 1.21.11 · package `net.fabricmc.fabric.mixin.transfer` · required=tr
 
 ### `mc/1.21.11/src/main/resources/fabricated.mixins.json`
 
-Versions: 1.21.11 · package `io.github.cmdralph.fabricated.neoforge.mixin` · required=true · defaultRequire=1 · plugin=none · overwrites.requireAnnotations=true
+Versions: 1.21.11 · package `io.github.cmdralph.fabricated.neoforge.mixin` · required=true · defaultRequire=1 · plugin=`FabricatedMixinPlugin` · overwrites.requireAnnotations=true
 
 | Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
 |---|---|---|---|---|---|---|---|---|
@@ -432,7 +432,7 @@ Versions: 26.1.2, 26.2, 26.3 · package `net.fabricmc.fabric.mixin.transfer` · 
 
 ### `mc/common26/src/main/resources/fabricated.mixins.json`
 
-Versions: 26.1.2, 26.2, 26.3 · package `io.github.cmdralph.fabricated.neoforge.mixin` · required=true · defaultRequire=1 · plugin=none · overwrites.requireAnnotations=true
+Versions: 26.1.2, 26.2, 26.3 · package `io.github.cmdralph.fabricated.neoforge.mixin` · required=true · defaultRequire=1 · plugin=`FabricatedMixinPlugin` · overwrites.requireAnnotations=true
 
 | Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
 |---|---|---|---|---|---|---|---|---|
@@ -535,7 +535,7 @@ Versions: 26.1.2, 26.2, 26.3 · package `io.github.cmdralph.fabricated.neoforge.
 
 ### `mc/common/src/testmod/resources/fabricated-testmod.mixins.json`
 
-Versions: 1.21.11, 26.1.2, 26.2, 26.3 · package `io.github.cmdralph.fabricated.testmod.mixin` · required=true · defaultRequire=1 · plugin=none · overwrites.requireAnnotations=true
+Versions: 1.21.11, 26.1.2, 26.2, 26.3 · package `io.github.cmdralph.fabricated.testmod.mixin` · required=true · defaultRequire=1 · plugin=`TestMixinPlugin` (checks the test mod's language adapter ran first) · overwrites.requireAnnotations=true
 
 | Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
 |---|---|---|---|---|---|---|---|---|

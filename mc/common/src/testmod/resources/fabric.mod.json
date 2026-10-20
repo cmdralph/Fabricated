@@ -37,6 +37,9 @@
     ]
   },
   "mixins": ["fabricated-testmod.mixins.json"],
+  "languageAdapters": {
+    "fabricated-test-early": "io.github.cmdralph.fabricated.testmod.EarlyAdapter"
+  },
   "accessWidener": "fabricated-testmod.accesswidener",
   "depends": {
     "fabricloader": ">=0.19.0",

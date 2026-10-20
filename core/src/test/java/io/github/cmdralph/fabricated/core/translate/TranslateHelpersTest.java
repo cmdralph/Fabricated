@@ -40,6 +40,8 @@ class TranslateHelpersTest {
 		assertTrue(toml.contains("[[mixins]]\nconfig=\"my.mixins.json\"\nbehaviorVersion=\"0.17.4\""));
 		assertTrue(toml.contains("[[accessTransformers]]\nfile=\"META-INF/accesstransformer.cfg\""));
 		assertTrue(toml.contains("[[dependencies.my_mod]]\nmodId=\"fabric_api\"\ntype=\"optional\"\nordering=\"AFTER\""));
+		int afterFabricated = toml.indexOf("modId=\"fabricated\"\ntype=\"optional\"\nordering=\"AFTER\"");
+		assertTrue(afterFabricated >= 0 && afterFabricated < toml.indexOf("modId=\"fabric_api\""), "every translated mod loads after Fabricated's own mod: " + toml);
 		assertTrue(toml.contains("license=\"MIT\""));
 		assertFalse(toml.contains("issueTrackerURL"));
 		assertFalse(toml.contains("modproperties"));
