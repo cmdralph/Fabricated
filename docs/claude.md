@@ -5,8 +5,8 @@ This file is the starting point for anyone (human or agent) working on Fabricate
 before committing. The longer design documents remain the reference for details:
 [`ARCHITECTURE.md`](ARCHITECTURE.md) (pipeline, isolation, caching, security), [`RESEARCH.md`](RESEARCH.md) (verified
 facts about NeoForge, FML and Fabric), [`COMPATIBILITY.md`](COMPATIBILITY.md) (what works, per version and module),
-[`API.md`](API.md) (Fabricated's public API) and [`../CONTRIBUTING.md`](../CONTRIBUTING.md) (layout, build, adding a
-version).
+[`API.md`](API.md) (Fabricated's public API), [`CHANGELOG.md`](CHANGELOG.md) (each session's changes and how they were
+verified) and [`../CONTRIBUTING.md`](../CONTRIBUTING.md) (layout, build, adding a version).
 
 ## Working rules
 
