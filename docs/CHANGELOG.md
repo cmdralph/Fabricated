@@ -38,8 +38,11 @@ says why and what to install instead.
   Sodium). Once the client initializers ran, Fabricated now registers Indigo's renderer when none registered. Run
   374: under Sodium for NeoForge 1.21.11, the test block and the multipart part with it were meshed in Sodium's own
   section level.
-- The 1.21.11 breaking overlay check first counted any call with the client level, then (run 374) matched its own
-  method name on the stack; it now ignores the test mod's frames.
+- The 1.21.11 checks for the breaking overlay and the moving block now tell what is drawn by the game's frames on
+  the stack, as the level a caller passes doesn't: 1.21.11 hands the overlay a `BlockBreakingRenderState` (run 376),
+  a moving block's render state, and collects a moving block's parts with the client level. So the moving block line
+  of runs 371 and 372 came from the breaking overlay, and the falling block itself went unchecked until now. A first
+  stack check also matched its own method name (run 374).
 
 ## 2026-10-20 (pass after PR #48): generalizing
 

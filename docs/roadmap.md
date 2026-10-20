@@ -53,7 +53,7 @@ The Fabric renderer API on NeoForge:
 | Renderer API and Indigo load | yes (this pass; upstream's conflicting mixins left out) | yes | yes | yes |
 | Model-loading modifiers and extra models | yes (CORPUS-6) | yes since `08aff28` | yes | yes |
 | Fabric block models in the world | yes (this pass, CI) | yes (`FabricBlockRendering`) | yes | yes |
-| Moving blocks (pistons, falling) and the breaking overlay | yes, from parts made from the model's quads (this pass; CI checks a falling block) | yes (M2) | yes | yes |
+| Moving blocks (pistons, falling) and the breaking overlay | yes, from parts made from the model's quads (this pass; CI checks a falling block and the overlay) | yes (M2) | yes | yes |
 | Blocks drawn as entities, other mods drawing blocks from their parts | yes, from parts made from the model's quads (this pass) | not checked | not checked | not checked |
 | Fabric models nested in a vanilla multipart or weighted model | yes (this pass, CI) | yes (M3) | yes | yes |
 | Block outlines, a moving block's glow outline | the translucent outline pass from the parts made from the quads | from the model's parts, as NeoForge sees them | same | same |

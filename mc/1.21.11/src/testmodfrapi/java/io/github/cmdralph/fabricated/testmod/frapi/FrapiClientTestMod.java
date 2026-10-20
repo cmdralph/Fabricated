@@ -2,6 +2,7 @@ package io.github.cmdralph.fabricated.testmod.frapi;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Predicate;
 
@@ -16,7 +17,6 @@ import net.fabricmc.fabric.api.renderer.v1.mesh.QuadEmitter;
 import net.fabricmc.fabric.api.renderer.v1.mesh.QuadTransform;
 import net.fabricmc.fabric.api.renderer.v1.model.FabricBlockStateModel;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.block.MovingBlockRenderState;
 import net.minecraft.client.renderer.block.model.BakedQuad;
 import net.minecraft.client.renderer.block.model.BlockModelPart;
 import net.minecraft.client.renderer.block.model.BlockStateModel;
@@ -95,14 +95,17 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 	}
 
 	/**
-	 * Whether the breaking overlay is being drawn: a game method drawing it (its name says so) is on the stack. The level
-	 * the overlay passes doesn't tell it apart from other callers. This class's own frames don't count (this method's
-	 * name says "breaking" too).
+	 * What the game is drawing, by the innermost of its frames on the stack that says: {@code "breaking"} for the breaking
+	 * overlay (a method whose name says so), {@code "moving"} for a moving block (the block feature renderer), or null.
+	 * The level a caller passes doesn't tell: the overlay's is a moving block's render state, and a moving block's parts
+	 * are collected with the client level. This class's own frames don't count.
 	 */
-	private static boolean drawingBreakingOverlay() {
+	private static @Nullable String drawing() {
 		String self = FrapiClientTestMod.class.getName();
-		return StackWalker.getInstance().walk(frames -> frames.anyMatch(frame -> !frame.getClassName().startsWith(self)
-				&& (frame.getMethodName().contains("Breaking") || frame.getMethodName().contains("DestroyAnimation"))));
+		return StackWalker.getInstance().walk(frames -> frames.filter(frame -> !frame.getClassName().startsWith(self))
+				.map(frame -> frame.getMethodName().contains("Breaking") || frame.getMethodName().contains("DestroyAnimation") ? "breaking"
+						: frame.getClassName().endsWith(".BlockFeatureRenderer") ? "moving" : null)
+				.filter(Objects::nonNull).findFirst().orElse(null));
 	}
 
 	/**
@@ -144,11 +147,13 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 				if (!logged.getAndSet(true)) {
 					FrapiTestMod.LOGGER.info("FABRICATED-TEST {} ({} in {} on {})", check, state, level.getClass().getName(), Thread.currentThread().getName());
 				}
-			} else if (drawingBreakingOverlay()) {
-				// Before the moving block check: the overlay's level may be a moving block's render state too.
-				if (!BREAKING.getAndSet(true)) FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi breaking OK ({} in {})", state, level.getClass().getName());
-			} else if (level instanceof MovingBlockRenderState && !MOVING.getAndSet(true)) {
-				FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi moving block OK ({})", state);
+			} else if (!BREAKING.get() || !MOVING.get()) {
+				String drawing = drawing();
+				if ("breaking".equals(drawing) && !BREAKING.getAndSet(true)) {
+					FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi breaking OK ({} in {})", state, level.getClass().getName());
+				} else if ("moving".equals(drawing) && !MOVING.getAndSet(true)) {
+					FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi moving block OK ({} in {})", state, level.getClass().getName());
+				}
 			}
 		}
 

@@ -646,7 +646,7 @@ light emission and ambient occlusion flag NeoForge's quads carry. So these see F
 - NeoForge's translucent block outline pass, and other mods that draw blocks from their parts;
 - renderer mods that mesh chunk sections themselves: Sodium for NeoForge (see *Renderer mods* below).
 
-CI checks the parts (a NeoForge quad's baked colour kept through them) and a falling block. A
+CI checks the parts (a NeoForge quad's baked colour kept through them), a falling block and the breaking overlay. A
 model asked for its parts while it emits keeps the parts of its vanilla method, as does a caller passing air
 (NeoForge's deprecated overloads). Also on 1.21.11:
 
