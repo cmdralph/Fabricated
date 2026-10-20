@@ -639,8 +639,9 @@ On 1.21.11 the renderer API loads with Indigo too (since this pass), and Fabric 
 of a vanilla multipart or weighted model, are drawn by Fabric's renderer in chunk sections, as on 26.x; CI checks both.
 The rest is narrower there:
 
-- Moving blocks, the breaking overlay and blocks drawn as entities (`renderSingleBlock`: a minecart's contents, an
-  enderman's block) keep NeoForge's renderer, which draws a Fabric model's parts as NeoForge sees them.
+- Moving blocks (pushed by a piston, falling) whose model is a Fabric model are drawn by Fabric's renderer too (CI
+  checks a falling one). The breaking overlay and blocks drawn as entities (`renderSingleBlock`: a minecart's contents,
+  an enderman's block) keep NeoForge's renderer, which draws a Fabric model's parts as NeoForge sees them.
 - The renderer API's `emitQuads` defaults are NeoForge-aware, as on 26.x (since this pass): a NeoForge model inside a
   Fabric model gets its parts from NeoForge's level-aware `collectParts`, with NeoForge's ambient occlusion and its
   quads' baked colours and normals. CI checks the level and the colours.

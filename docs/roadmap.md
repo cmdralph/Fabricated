@@ -53,7 +53,7 @@ The Fabric renderer API on NeoForge:
 | Renderer API and Indigo load | yes (this pass; upstream's conflicting mixins left out) | yes | yes | yes |
 | Model-loading modifiers and extra models | yes (CORPUS-6) | yes since `08aff28` | yes | yes |
 | Fabric block models in the world | yes (this pass, CI) | yes (`FabricBlockRendering`) | yes | yes |
-| Moving blocks (pistons, falling) and the breaking overlay | no | yes (M2) | yes | yes |
+| Moving blocks (pistons, falling) and the breaking overlay | moving blocks yes (this pass, CI); breaking overlay no | yes (M2) | yes | yes |
 | Fabric models nested in a vanilla multipart or weighted model | yes (this pass, CI) | yes (M3) | yes | yes |
 | Block outlines, a moving block's glow outline | no | from the model's parts, as NeoForge sees them | same | same |
 | Under Sodium for NeoForge: Fabric models meshed by Sodium's own Fabric renderer, Indigo stands down | no (Sodium for NeoForge has no Fabric renderer API there) | yes (R1, CI) | yes (R1, CI) | yes (R1, CI) |
@@ -65,7 +65,8 @@ The Fabric renderer API on NeoForge:
   parts as NeoForge sees them, so a model with only `emitQuads` has none).
 - **Done (this pass):** M5, the renderer API on 1.21.11 in chunk sections, alone and nested (its conflicting mixins
   left out, the sprite getter's finders from Fabricated), with NeoForge-aware `emitQuads` defaults (CI checks the level
-  and baked colours). **Later:** moving blocks and the breaking overlay there.
+  and baked colours), and moving blocks. **Later:** the breaking overlay there (it needs Fabric's meshes turned into
+  NeoForge's quads, as on 26.x).
 - **Not planned:** a Fabricated-owned quad encoder. Indigo already is the `int[]` encoder; a second one would add code
   without a user-visible gain (`claude.md`).
 

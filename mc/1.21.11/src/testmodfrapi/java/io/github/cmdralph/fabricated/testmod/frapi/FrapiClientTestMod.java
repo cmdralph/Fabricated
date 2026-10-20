@@ -13,6 +13,7 @@ import net.fabricmc.fabric.api.client.model.loading.v1.CustomUnbakedBlockStateMo
 import net.fabricmc.fabric.api.renderer.v1.mesh.QuadEmitter;
 import net.fabricmc.fabric.api.renderer.v1.mesh.QuadTransform;
 import net.fabricmc.fabric.api.renderer.v1.model.FabricBlockStateModel;
+import net.minecraft.client.renderer.block.MovingBlockRenderState;
 import net.minecraft.client.renderer.block.model.BlockModelPart;
 import net.minecraft.client.renderer.block.model.BlockStateModel;
 import net.minecraft.client.renderer.chunk.RenderSectionRegion;
@@ -29,7 +30,7 @@ import net.neoforged.neoforge.client.model.DelegateBlockStateModel;
  * Fabric models (their own {@code emitQuads}), which NeoForge's block renderer can't draw: custom blockstate model types
  * ({@code fabric:type}), one the test block's model, the other the part of the nested test block's vanilla multipart
  * model. Each wraps a NeoForge model with no {@code emitQuads} of its own, drawn through Fabricated's NeoForge-aware
- * default, and logs once when a chunk section draws it (1.21.11).
+ * default, and logs once when a chunk section draws it, and once when it is drawn as a moving block (1.21.11).
  */
 public final class FrapiClientTestMod implements ClientModInitializer {
 	/**
@@ -52,6 +53,7 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 
 	/** Draws the model it wraps through that model's Fabric {@code emitQuads}, and logs {@code check} the first time a chunk section draws it. */
 	private static final class CheckModel extends DelegateBlockStateModel implements FabricBlockStateModel {
+		private static final AtomicBoolean MOVING = new AtomicBoolean();
 		private final String check;
 		private final AtomicBoolean logged = new AtomicBoolean();
 
@@ -71,6 +73,8 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 			}
 			if (level instanceof RenderSectionRegion && !logged.getAndSet(true)) {
 				FrapiTestMod.LOGGER.info("FABRICATED-TEST {} ({} in {} on {})", check, state, level.getClass().getName(), Thread.currentThread().getName());
+			} else if (level instanceof MovingBlockRenderState && !MOVING.getAndSet(true)) {
+				FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi moving block OK ({})", state);
 			}
 		}
 

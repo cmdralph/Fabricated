@@ -35,7 +35,8 @@ import net.minecraft.world.level.block.state.BlockState;
  * NeoForge adds to block rendering (level-aware model parts, per-part render layers). So only a block whose model is a
  * Fabric model, or a vanilla multipart or weighted model with a Fabric model among its parts, goes through Fabric's
  * renderer (Indigo, or whichever renderer is registered), into NeoForge's buffer for each quad's layer; every other block
- * keeps NeoForge's path. The 26.x counterpart also covers moving blocks and the breaking overlay.
+ * keeps NeoForge's path. The same goes for moving blocks (pushed by a piston, falling); the 26.x counterpart also covers
+ * the breaking overlay.
  *
  * <p>Sections compile on several worker threads at once: the state here is immutable, and the renderer keeps its own
  * per-thread state.
@@ -71,7 +72,16 @@ public final class FabricBlockRendering {
 	/** Draws one block of a chunk section, as NeoForge's block renderer would have with the same arguments. */
 	public static void tesselate(BlockRenderDispatcher dispatcher, BlockAndTintGetter level, BlockStateModel model, BlockState state, BlockPos pos,
 			PoseStack poseStack, Function<ChunkSectionLayer, VertexConsumer> buffers, boolean cull) {
-		Frapi.tesselate(dispatcher, level, model, state, pos, poseStack, buffers, cull);
+		tesselate(dispatcher, level, model, state, pos, poseStack, buffers, cull, state.getSeed(pos));
+	}
+
+	/**
+	 * Draws one block with the given random seed: a moving block's comes from where it started moving, as NeoForge's
+	 * renderer has it.
+	 */
+	public static void tesselate(BlockRenderDispatcher dispatcher, BlockAndTintGetter level, BlockStateModel model, BlockState state, BlockPos pos,
+			PoseStack poseStack, Function<ChunkSectionLayer, VertexConsumer> buffers, boolean cull, long seed) {
+		Frapi.tesselate(dispatcher, level, model, state, pos, poseStack, buffers, cull, seed);
 	}
 
 	/** Everything that names Fabric's renderer API: loaded only once {@link #ENABLED} is known to be true. */
@@ -125,10 +135,9 @@ public final class FabricBlockRendering {
 		}
 
 		static void tesselate(BlockRenderDispatcher dispatcher, BlockAndTintGetter level, BlockStateModel model, BlockState state, BlockPos pos,
-				PoseStack poseStack, Function<ChunkSectionLayer, VertexConsumer> buffers, boolean cull) {
+				PoseStack poseStack, Function<ChunkSectionLayer, VertexConsumer> buffers, boolean cull, long seed) {
 			try {
-				RENDERER.render(dispatcher.getModelRenderer(), level, model, state, pos, poseStack, buffers::apply, cull, state.getSeed(pos),
-						OverlayTexture.NO_OVERLAY);
+				RENDERER.render(dispatcher.getModelRenderer(), level, model, state, pos, poseStack, buffers::apply, cull, seed, OverlayTexture.NO_OVERLAY);
 			} catch (VirtualMachineError | ReportedException e) {
 				throw e;
 			} catch (Throwable t) {
