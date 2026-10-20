@@ -1,6 +1,7 @@
 package io.github.cmdralph.fabricated.core.translate;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -22,13 +23,21 @@ import io.github.cmdralph.fabricated.core.bytecode.LinkageChecker;
 import io.github.cmdralph.fabricated.core.cache.TranslationCache;
 import io.github.cmdralph.fabricated.core.json.Json;
 import io.github.cmdralph.fabricated.core.json.JsonException;
+import io.github.cmdralph.fabricated.core.metadata.FabricModMetadata;
+import io.github.cmdralph.fabricated.core.metadata.FabricModMetadata.MixinEntry;
+import io.github.cmdralph.fabricated.core.mixin.MixinConfigFile;
+import net.fabricmc.api.EnvType;
+import net.fabricmc.loader.api.FabricLoader;
 
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
+import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.AnnotationNode;
 import org.objectweb.asm.tree.ClassNode;
+import org.objectweb.asm.tree.FieldInsnNode;
 import org.objectweb.asm.tree.FieldNode;
+import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
 
 /**
@@ -37,9 +46,52 @@ import org.objectweb.asm.tree.MethodNode;
  * cached per mod, keyed by the mod and a fingerprint of the whole mod set.
  */
 public final class LinkageAnalysis {
-	/** Owners verified: Minecraft, Blaze3D and the Fabric API namespace. */
-	public static final Predicate<String> CHECKED = name -> name.startsWith("net/minecraft/")
-			|| name.startsWith("com/mojang/blaze3d/") || name.startsWith("net/fabricmc/fabric/");
+	/**
+	 * Owners verified: Minecraft, Blaze3D, the Fabric API namespace and Fabric Loader's, whose classes Fabricated
+	 * provides itself (its public API and the internals mods commonly use), so a mod reaching for any other loader
+	 * internal is reported before it fails.
+	 */
+	public static final Predicate<String> CHECKED = name -> name.startsWith("net/minecraft/") || name.startsWith("com/mojang/blaze3d/")
+			|| name.startsWith("net/fabricmc/fabric/") || isLoaderClass(name) && LoaderClasses.READABLE;
+
+	/** Fabricated's own Fabric Loader classes, which load next to core (from its jar). */
+	static final ClassBytesSource LOADER_CLASSES = name -> {
+		if (!isLoaderClass(name)) return null;
+		try (InputStream in = FabricLoader.class.getClassLoader().getResourceAsStream(name + ".class")) {
+			return in == null ? null : in.readAllBytes();
+		}
+	};
+
+	/** Whether Fabricated's loader classes can be read here; if not, loader references aren't checked at all. */
+	private static final class LoaderClasses {
+		static final boolean READABLE = readable();
+
+		private static boolean readable() {
+			try {
+				return LOADER_CLASSES.read(Type.getInternalName(FabricLoader.class)) != null;
+			} catch (IOException e) {
+				return false;
+			}
+		}
+	}
+
+	/** Ends an issue of a required mixin that calls into a Fabric mod that isn't loading (see {@link #isUnloadedUse}). */
+	private static final String UNLOADED = ", which isn't loading";
+
+	/**
+	 * Whether a linkage issue is a required mixin calling into a class only a Fabric mod that isn't loading has: Mixin
+	 * can't find that class while it applies the mixin, which stops the game.
+	 */
+	public static boolean isUnloadedUse(String issue) {
+		return issue.endsWith(UNLOADED) && issue.contains(" -> needs class ");
+	}
+
+	/** Whether a linkage issue is a missing piece of Fabric Loader (as reported by {@link LinkageChecker.Issue}). */
+	public static boolean isLoaderIssue(String issue) {
+		int missing = issue.indexOf(" -> missing ");
+		String reference = missing < 0 ? issue : issue.substring(missing);
+		return reference.contains(" net.fabricmc.loader.") || reference.contains(" net.fabricmc.api.");
+	}
 
 	private final TranslationCache cache;
 	private final ArchiveLimits limits;
@@ -61,20 +113,37 @@ public final class LinkageAnalysis {
 	 */
 	public Map<String, List<String>> analyse(List<TranslatedMod> mods, ClassBytesSource runtime,
 			Supplier<Map<String, List<String>>> platformInterfaces, String setFingerprint) {
+		return analyse(mods, runtime, platformInterfaces, setFingerprint, Map.of(), name -> false);
+	}
+
+	/**
+	 * {@link #analyse(List, ClassBytesSource, Supplier, String)}, also finding the required mixins that call into a
+	 * Fabric mod that isn't loading ({@link #isUnloadedUse}).
+	 *
+	 * @param unloaded       packages that only Fabric mods that aren't loading have, each with one such mod's id
+	 *                       ({@code setFingerprint} must cover them)
+	 * @param installedClass whether an installed NeoForge mod has a class, which then exists after all
+	 */
+	public Map<String, List<String>> analyse(List<TranslatedMod> mods, ClassBytesSource runtime,
+			Supplier<Map<String, List<String>>> platformInterfaces, String setFingerprint, Map<String, String> unloaded,
+			Predicate<String> installedClass) {
 		Map<String, List<String>> result = new LinkedHashMap<>();
 		LinkageChecker checker = null;
+		ClassIndex index = null;
 		for (TranslatedMod mod : mods) {
-			String blob = "linkage-" + Hashing.sha256("v5|" + mod.candidate().sha256() + "|" + setFingerprint + "|" + (clientSide ? "c" : "s")).substring(0, 40) + ".json";
+			String blob = "linkage-" + Hashing.sha256("v6|" + mod.candidate().sha256() + "|" + setFingerprint + "|" + (clientSide ? "c" : "s")).substring(0, 40) + ".json";
 			List<String> issues = readCached(blob);
 			if (issues == null) {
 				// Built only when some result is not cached: it reads every mod's classes once.
 				if (checker == null) {
 					Map<String, List<String>> added = addedInterfaces(mods);
 					platformInterfaces.get().forEach((target, ifaces) -> added.computeIfAbsent(target, k -> new ArrayList<>()).addAll(ifaces));
-					checker = new LinkageChecker(new ClassIndex(runtime, added), CHECKED, clientSide);
+					index = new ClassIndex(runtime.or(LOADER_CLASSES), added);
+					checker = new LinkageChecker(index, CHECKED, clientSide);
 				}
 				try {
-					issues = check(mod, checker);
+					ClassIndex present = index;
+					issues = check(mod, checker, unloaded, name -> present.contains(name) || installedClass.test(name));
 					cache.storeBlob(blob, Json.write(issues, false).getBytes(StandardCharsets.UTF_8));
 				} catch (IOException e) {
 					// Not cached: reading the jar may well work next launch (caching itself is an optimisation only).
@@ -164,8 +233,9 @@ public final class LinkageAnalysis {
 	}
 
 	/** The mod's linkage issues; an unsafe jar is one, as it is every time. Other read errors are thrown. */
-	private List<String> check(TranslatedMod mod, LinkageChecker checker) throws IOException {
+	private List<String> check(TranslatedMod mod, LinkageChecker checker, Map<String, String> unloaded, Predicate<String> exists) throws IOException {
 		List<LinkageChecker.Issue> issues = new ArrayList<>();
+		List<String> unloadedUses = new ArrayList<>();
 		// The overlay's copy of a class (rewritten during translation) is the one that loads.
 		try (SafeArchive archive = SafeArchive.open(mod.jar(), limits.forTranslatedJars());
 				SafeArchive overlay = SafeArchive.open(mod.overlay(), limits.forTranslatedJars())) {
@@ -173,9 +243,73 @@ public final class LinkageAnalysis {
 				byte[] data = overlay.contains(name) ? overlay.read(name) : archive.read(name);
 				if (data != null) checker.check(data, issues);
 			}
+			if (!unloaded.isEmpty()) unloadedUses(mod, archive, overlay, unloaded, exists, unloadedUses);
 		} catch (ArchiveException e) {
 			return List.of("could not be analysed: " + e.getMessage());
 		}
-		return issues.stream().map(LinkageChecker.Issue::toString).toList();
+		List<String> all = new ArrayList<>(unloadedUses);
+		issues.forEach(i -> all.add(i.toString()));
+		return all;
+	}
+
+	/**
+	 * The required mixins (their config required, without a plugin that could skip them) that call a method of, or use
+	 * a field of, a class only a Fabric mod that isn't loading has: Mixin looks that class up while it applies the
+	 * mixin, and stops the game when it can't find it (Continuity's mixin into the renderer API, run 362).
+	 */
+	private void unloadedUses(TranslatedMod mod, SafeArchive archive, SafeArchive overlay, Map<String, String> unloaded, Predicate<String> exists,
+			List<String> out) throws ArchiveException {
+		FabricModMetadata md = mod.candidate().metadata();
+		EnvType side = clientSide ? EnvType.CLIENT : EnvType.SERVER;
+		for (MixinEntry entry : md.compatHints().mixinsOr(md.mixins())) {
+			if (!entry.environment().matches(side)) continue;
+			byte[] json = overlay.contains(entry.config()) ? overlay.read(entry.config()) : archive.read(entry.config());
+			if (json == null) continue;
+			MixinConfigFile config;
+			try {
+				config = MixinConfigFile.parse(new String(json, StandardCharsets.UTF_8));
+			} catch (JsonException e) {
+				continue; // translation reported it
+			}
+			if (!config.required() || config.plugin() != null) continue;
+			for (String mixin : config.mixinsFor(clientSide)) {
+				String name = config.internalName(mixin);
+				byte[] data = overlay.contains(name + ".class") ? overlay.read(name + ".class") : archive.read(name + ".class");
+				String owner = data == null ? null : unloadedOwner(data, unloaded, exists);
+				if (owner != null) {
+					out.add(name.replace('/', '.') + " -> needs class " + owner.replace('/', '.') + " of " + unloaded.get(packageOf(owner)) + UNLOADED);
+				}
+			}
+		}
+	}
+
+	/** The first class a mixin's code calls into or reads from that only a mod that isn't loading has, or null. */
+	private static String unloadedOwner(byte[] data, Map<String, String> unloaded, Predicate<String> exists) {
+		ClassNode node = new ClassNode();
+		try {
+			new ClassReader(data).accept(node, ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
+		} catch (RuntimeException | StackOverflowError e) {
+			return null; // translation reported an unreadable class
+		}
+		for (MethodNode method : node.methods) {
+			for (AbstractInsnNode insn : method.instructions) {
+				String owner = switch (insn) {
+					case MethodInsnNode m -> m.owner;
+					case FieldInsnNode f -> f.owner;
+					default -> null;
+				};
+				if (owner != null && !owner.startsWith("[") && unloaded.containsKey(packageOf(owner)) && !exists.test(owner)) return owner;
+			}
+		}
+		return null;
+	}
+
+	private static String packageOf(String internalName) {
+		int slash = internalName.lastIndexOf('/');
+		return slash < 0 ? "" : internalName.substring(0, slash);
+	}
+
+	private static boolean isLoaderClass(String name) {
+		return name.startsWith("net/fabricmc/loader/") || name.startsWith("net/fabricmc/api/");
 	}
 }

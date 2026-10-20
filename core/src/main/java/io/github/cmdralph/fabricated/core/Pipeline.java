@@ -349,7 +349,7 @@ public final class Pipeline {
 				installed, installed.isEmpty() ? game : new ClassIndex(in.gameClasses().or(installed)), unsupportedPackages(scan.candidates()));
 		Rounds rounds = new Rounds();
 		try {
-			rounds.run(eligible, resolver(), new ModTranslator(env, in.cache(), config.limits()));
+			rounds.run(scan.candidates(), eligible, resolver(), new ModTranslator(env, in.cache(), config.limits()));
 		} finally {
 			synchronized (opened) {
 				for (SafeArchive archive : opened) {
@@ -464,7 +464,7 @@ public final class Pipeline {
 			String neoForgeBuildOnly = known.neoForgeBuildOnly();
 			if (neoForgeBuildOnly != null && !config.override(c.id()).loadUnsupported()) {
 				report.mod(new ModRow(c.id(), c.version(), c.origin(), Status.DISABLED, "its Fabric build can't run on NeoForge: " + neoForgeBuildOnly,
-						"Install " + c.metadata().getName() + " for NeoForge instead (from the same download page)."));
+						known.suggestion() != null ? known.suggestion() : "Install " + c.metadata().getName() + " for NeoForge instead (from the same download page)."));
 				continue;
 			}
 			// Even on request: the pair is broken whatever the player accepts.
@@ -562,7 +562,11 @@ public final class Pipeline {
 		Map<String, List<AppliedPatch>> patches = Map.of();
 		DependencyResolver.Result resolution;
 
-		void run(List<Candidate> eligible, DependencyResolver resolver, ModTranslator translator) {
+		/** Every Fabric jar found, loading or not: what a mod that isn't loading would have provided. */
+		private List<Candidate> scanned = List.of();
+
+		void run(List<Candidate> scanned, List<Candidate> eligible, DependencyResolver resolver, ModTranslator translator) {
+			this.scanned = scanned;
 			Map<String, List<String>> aliases = new HashMap<>();
 			config.overrides().forEach((id, o) -> aliases.put(id, o.aliases()));
 			Map<String, String> hints = missingHints();
@@ -637,19 +641,30 @@ public final class Pipeline {
 		/** Linkage analysis on the final set; returns whether it disabled a mod (then another round runs). */
 		private boolean analyseLinkage(List<TranslatedMod> ordered) {
 			LinkageAnalysis analysis = new LinkageAnalysis(in.cache(), config.limits(), in.clientSide());
+			Map<String, String> unloaded = unloadedPackages(ordered);
 			String fingerprint = Hashing.sha256(ordered.stream().map(t -> t.candidate().id() + "@" + t.candidate().sha256())
 					.sorted().collect(Collectors.joining(",")) + "|" + in.minecraftVersion() + "|" + in.neoForgeVersion() + "|" + plan.fabricApiVersion()
-					+ "|" + in.fabricatedVersion());
+					+ "|" + in.fabricatedVersion() + "|" + String.join(",", new TreeSet<>(unloaded.keySet())));
 			try (JarClassSource jars = new JarClassSource(ordered, config.limits())) {
-				linkage = analysis.analyse(ordered, in.gameClasses().or(in.nativeApiClasses()).or(jars), in.nativeApiInterfaces(), fingerprint);
+				linkage = analysis.analyse(ordered, in.gameClasses().or(in.nativeApiClasses()).or(jars), in.nativeApiInterfaces(), fingerprint,
+						unloaded, name -> in.installedClasses().owner(name) != null);
 			}
 			boolean dropped = false;
 			for (TranslatedMod t : ordered) {
 				List<String> issues = linkage.get(t.neoForgeId());
 				if (issues == null) continue;
+				String unloadedUse = issues.stream().filter(LinkageAnalysis::isUnloadedUse).findFirst().orElse(null);
+				if (unloadedUse != null) {
+					// Mixin would stop the game applying it, whatever strictLinkage says.
+					this.dropped.put(t.candidate().id(), new Drop("a required mixin uses a mod that isn't loading: " + unloadedUse,
+							"See why that mod isn't loading in this report; this one can load once it does.", t.candidate()));
+					dropped = true;
+					continue;
+				}
 				FabricApiPlan.Module module = plan.module(t.candidate().id());
 				boolean fapiModule = module != null;
-				boolean fabricApiReference = issues.stream().anyMatch(i -> i.contains("net.fabricmc.fabric."));
+				// What a module misses of Fabric Loader is Fabricated's to provide, not a reason to drop the module.
+				boolean fabricApiReference = issues.stream().anyMatch(i -> i.contains("net.fabricmc.fabric.") && !LinkageAnalysis.isLoaderIssue(i));
 				// A module planned without some of its dependencies refers to what they would add, where its code never
 				// runs (on 1.21.11 the model loading API's wrapper models call the renderer API's emitQuads, which NeoForge
 				// never calls): those stay warnings, and its plan's CI check covers the rest.
@@ -662,6 +677,26 @@ public final class Pipeline {
 				}
 			}
 			return dropped;
+		}
+
+		/**
+		 * The packages only Fabric jars that aren't loading have (disabled, refused or dropped), each with one such
+		 * mod's id, outside the platform's. Classes there exist nowhere else unless an installed NeoForge mod or
+		 * Fabricated has them, which the linkage analysis checks per class.
+		 */
+		private Map<String, String> unloadedPackages(List<TranslatedMod> ordered) {
+			Set<String> loading = new HashSet<>();
+			for (TranslatedMod t : ordered) loading.addAll(t.candidate().packages());
+			Map<String, String> unloaded = new HashMap<>();
+			Set<String> loadingIds = ordered.stream().map(t -> t.candidate().id()).collect(Collectors.toSet());
+			for (Candidate c : scanned) {
+				if (loadingIds.contains(c.id())) continue;
+				for (String p : c.packages()) {
+					// A library jar the platform already provides isn't loading, but its classes exist.
+					if (!loading.contains(p) && !in.platformPackages().contains(p)) unloaded.putIfAbsent(p, c.id());
+				}
+			}
+			return unloaded;
 		}
 	}
 

@@ -17,17 +17,28 @@ import net.minecraft.client.renderer.block.model.BlockStateModel;
 import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
 import net.minecraft.client.renderer.chunk.SectionCompiler;
 import net.minecraft.core.BlockPos;
+import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.BlockAndTintGetter;
 import net.minecraft.world.level.block.state.BlockState;
 
 /**
- * Draws Fabric block models in chunk sections (1.21.11): NeoForge draws the block unless its model is a Fabric model,
- * which Fabric's renderer draws instead, into NeoForge's buffer for each quad's layer (see {@link FabricBlockRendering}).
+ * Draws Fabric block models in the chunk sections NeoForge compiles (1.21.11): NeoForge draws the block unless its model
+ * is a Fabric model, which Fabric's renderer draws instead, into NeoForge's buffer for each quad's layer (see
+ * {@link FabricBlockRendering}).
  */
 @Mixin(SectionCompiler.class)
 abstract class SectionCompilerMixin {
 	// With the name alone Mixin would pick the first compile, the delegate.
-	@WrapWithCondition(method = "compile(Lnet/minecraft/core/SectionPos;Lnet/minecraft/client/renderer/chunk/RenderSectionRegion;Lcom/mojang/blaze3d/vertex/VertexSorting;Lnet/minecraft/client/renderer/SectionBufferBuilderPack;Ljava/util/List;)Lnet/minecraft/client/renderer/chunk/SectionCompiler$Results;",
+	private static final String COMPILE = "compile(Lnet/minecraft/core/SectionPos;Lnet/minecraft/client/renderer/chunk/RenderSectionRegion;Lcom/mojang/blaze3d/vertex/VertexSorting;Lnet/minecraft/client/renderer/SectionBufferBuilderPack;Ljava/util/List;)Lnet/minecraft/client/renderer/chunk/SectionCompiler$Results;";
+
+	/** NeoForge collects a block's parts before drawing them; a Fabric model's would be made from its quads for nothing. */
+	@WrapWithCondition(method = COMPILE, at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/block/model/BlockStateModel;collectParts(Lnet/minecraft/world/level/BlockAndTintGetter;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/util/RandomSource;Ljava/util/List;)V"))
+	private boolean fabricated$skipFabricParts(BlockStateModel model, BlockAndTintGetter level, BlockPos pos, BlockState state, RandomSource random,
+			List<BlockModelPart> parts) {
+		return !FabricBlockRendering.draws(model); // draws is false without the API, before any lookup
+	}
+
+	@WrapWithCondition(method = COMPILE,
 			at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/block/BlockRenderDispatcher;renderBatched(Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/BlockAndTintGetter;Lcom/mojang/blaze3d/vertex/PoseStack;Ljava/util/function/Function;ZLjava/util/List;)V"))
 	private boolean fabricated$fabricModels(BlockRenderDispatcher dispatcher, BlockState state, BlockPos pos, BlockAndTintGetter level, PoseStack poseStack,
 			Function<ChunkSectionLayer, VertexConsumer> buffers, boolean cull, List<BlockModelPart> parts) {

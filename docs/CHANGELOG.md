@@ -3,7 +3,48 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
-## 2026-10-20 (current pass, after PR #48): generalizing
+## 2026-10-20 (pass after PR #49): renderer and deep-hook mods
+
+**Plan.** Find out why CI failed on `main` after PR #49, then broaden which mods load, renderer-changing and
+deep-hook mods first, keeping facts about other people's mods in data. Where a mod can't run on NeoForge, the report
+says why and what to install instead.
+
+- `main`'s failure (run 368, the plain 26.1.2 client): the client launcher stopped with status 255 before the game
+  wrote a log, on code whose other clients passed. Run 365's plain 1.21.11 client failure left no readable log
+  either. The smoke script now launches once more when the launcher stops before the game starts, and the CI
+  summary prints the launcher's last lines whenever a run has no game log.
+- Compatibility-plan entries can say what to do instead (`suggestion`). Essential's Fabric builds are refused with
+  the reason: its loader is a stub that downloads Essential and injects it through Fabric Loader internals. malilib
+  and WTHIT entries name their NeoForge builds.
+- The linkage check covers mods' references to Fabric Loader, against the classes Fabricated provides. A missing
+  one is a warning, and never drops a Fabric API module.
+- CORPUS-15 is fixed: a mod is disabled when a required mixin without a plugin calls code of a Fabric mod that
+  isn't loading. The report names that mod, instead of Mixin crashing at class load. Core's unit tests cover it.
+- CI: corpus runs list every disabled mod with its reason, and any Fabric Loader internals a mod reaches for. A
+  new informational run puts Fabric addons of Sodium (Sodium Extra, Reese's Sodium Options) next to Sodium for
+  NeoForge on 26.x.
+- Fabric's renderer API on 1.21.11 has the NeoForge-aware defaults 26.x has: level-aware parts, NeoForge's
+  ambient occlusion, and the colours and normals of NeoForge's quads. Run 370 stopped at the 1.21.11 build (the
+  vendored `TriState` stub also needed its `BooleanFunction`); run 371 passed on all four versions, the new 1.21.11 checks included.
+- On 1.21.11, everywhere NeoForge collects a model's parts outside the chunk sections it compiles, a Fabric model's
+  parts are now made from the quads it emits, one part per render layer, keeping what NeoForge's quads carry. Moving
+  blocks, the breaking overlay, blocks drawn as entities, NeoForge's translucent outline pass, other mods and Sodium
+  for NeoForge see Fabric models (CI checks the parts, a falling block and Sodium; the other callers are where
+  NeoForge's code collects parts). That replaces this pass's earlier moving-block mixin. The test mod's Fabric models
+  are now plain models with no parts of their own, as Fabric mods write them, so the check that NeoForge's parts of
+  one hold its quads (baked colour kept) can only pass through the conversion (run 372: 1 part, 6 quads).
+- Sodium for NeoForge 1.21.11 says in its metadata that it contains a Fabric renderer its NeoForge build doesn't
+  ship (read in its 1.21.11 source), so Indigo stood down and Fabric's renderer API had none (run 372: no parts under
+  Sodium). Once the client initializers ran, Fabricated now registers Indigo's renderer when none registered. Run
+  374: under Sodium for NeoForge 1.21.11, the test block and the multipart part with it were meshed in Sodium's own
+  section level.
+- The 1.21.11 checks for the breaking overlay and the moving block now tell what is drawn by the game's frames on
+  the stack, as the level a caller passes doesn't: 1.21.11 hands the overlay a `BlockBreakingRenderState` (run 376),
+  a moving block's render state, and collects a moving block's parts with the client level. So the moving block line
+  of runs 371 and 372 came from the breaking overlay, and the falling block itself went unchecked until now. A first
+  stack check also matched its own method name (run 374).
+
+## 2026-10-20 (pass after PR #48): generalizing
 
 **Plan.** First features and fixes, generalized wherever a rule can replace a case: what a mod declares, its
 mixins and its custom values decide what Fabricated does, and the facts about other people's mods that can't be

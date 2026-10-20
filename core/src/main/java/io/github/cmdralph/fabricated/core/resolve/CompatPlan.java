@@ -21,6 +21,7 @@ import io.github.cmdralph.fabricated.core.metadata.FabricModJsonParser;
  *   "mods": {
  *     "iris": {
  *       "neoForgeBuildOnly": "why its Fabric build can't run on NeoForge",
+ *       "suggestion": "what to do instead, when it isn't installing its NeoForge build",
  *       "notWithNeoForge": { "sodium": "why it can't run next to Sodium for NeoForge" }
  *     }
  *   }
@@ -33,11 +34,12 @@ public record CompatPlan(Map<String, Entry> mods) {
 	 *
 	 * @param neoForgeBuildOnly why it can't run on NeoForge, or {@code null}; it loads only on request
 	 *                          ({@code loadUnsupported})
+	 * @param suggestion        what the player should do instead, or {@code null} for installing its NeoForge build
 	 * @param notWithNeoForge   NeoForge mods (by id) next to which it can't run, with why; refused even on request, as
 	 *                          the pair is broken whatever the player accepts
 	 */
-	public record Entry(String neoForgeBuildOnly, Map<String, String> notWithNeoForge) {
-		static final Entry NONE = new Entry(null, Map.of());
+	public record Entry(String neoForgeBuildOnly, String suggestion, Map<String, String> notWithNeoForge) {
+		static final Entry NONE = new Entry(null, null, Map.of());
 
 		public Entry {
 			notWithNeoForge = Map.copyOf(notWithNeoForge);
@@ -69,10 +71,12 @@ public record CompatPlan(Map<String, Entry> mods) {
 			String id = id(e.getKey());
 			if (!(e.getValue() instanceof Map<?, ?> m)) throw new JsonException("The entry of " + id + " must be an object");
 			String neoForgeBuildOnly = null;
+			String suggestion = null;
 			Map<String, String> notWithNeoForge = new LinkedHashMap<>();
 			for (Map.Entry<?, ?> field : m.entrySet()) {
 				switch (String.valueOf(field.getKey())) {
 					case "neoForgeBuildOnly" -> neoForgeBuildOnly = reason(field.getValue(), id);
+					case "suggestion" -> suggestion = reason(field.getValue(), id);
 					case "notWithNeoForge" -> {
 						if (!(field.getValue() instanceof Map<?, ?> pairs)) throw new JsonException("notWithNeoForge of " + id + " must be an object");
 						for (Map.Entry<?, ?> pair : pairs.entrySet()) notWithNeoForge.put(id(pair.getKey()), reason(pair.getValue(), id));
@@ -80,7 +84,8 @@ public record CompatPlan(Map<String, Entry> mods) {
 					default -> throw new JsonException("Unknown key " + field.getKey() + " in the entry of " + id);
 				}
 			}
-			entries.put(id, new Entry(neoForgeBuildOnly, notWithNeoForge));
+			if (suggestion != null && neoForgeBuildOnly == null) throw new JsonException("The suggestion of " + id + " needs a neoForgeBuildOnly reason");
+			entries.put(id, new Entry(neoForgeBuildOnly, suggestion, notWithNeoForge));
 		}
 		return new CompatPlan(entries);
 	}

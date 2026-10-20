@@ -635,14 +635,24 @@ every model under a renderer that meshes the world through Fabric's renderer API
 level-aware `collectParts`, so connected textures and other model-data models keep working, and quads keep NeoForge's
 per-part and per-quad ambient occlusion (the defaults Forgified Fabric API has; upstream's ignore both).
 
-On 1.21.11 the renderer API loads with Indigo too (since this pass), and Fabric block models, alone or among the parts
-of a vanilla multipart or weighted model, are drawn by Fabric's renderer in chunk sections, as on 26.x; CI checks both.
-The rest is narrower there:
+On 1.21.11 the renderer API loads with Indigo too, and Fabric block models, alone or among the parts of a vanilla
+multipart or weighted model, are drawn by Fabric's renderer in the chunk sections NeoForge compiles, as on 26.x; CI
+checks both. Everywhere else NeoForge asks a model for its parts (its level-aware `collectParts`), a Fabric model gives
+parts made from the quads it emits (since this pass): one part per render layer, each quad with the colours, normals,
+light emission and ambient occlusion flag NeoForge's quads carry. So these see Fabric models:
 
-- Moving blocks, the breaking overlay and blocks drawn as entities (`renderSingleBlock`: a minecart's contents, an
-  enderman's block) keep NeoForge's renderer, which draws a Fabric model's parts as NeoForge sees them.
-- The renderer API's `emitQuads` defaults are upstream's: a NeoForge model inside a Fabric model gets its parts without
-  the level, so model data that needs the level is lost there.
+- moving blocks (pushed by a piston, falling), the breaking overlay and blocks drawn as entities (`renderSingleBlock`:
+  a minecart's contents, an enderman's block);
+- NeoForge's translucent block outline pass, and other mods that draw blocks from their parts;
+- renderer mods that mesh chunk sections themselves: Sodium for NeoForge (see *Renderer mods* below).
+
+CI checks the parts (a NeoForge quad's baked colour kept through them), a falling block and the breaking overlay. A
+model asked for its parts while it emits keeps the parts of its vanilla method, as does a caller passing air
+(NeoForge's deprecated overloads). Also on 1.21.11:
+
+- The renderer API's `emitQuads` defaults are NeoForge-aware, as on 26.x (since this pass): a NeoForge model inside a
+  Fabric model gets its parts from NeoForge's level-aware `collectParts`, with NeoForge's ambient occlusion and its
+  quads' baked colours and normals. CI checks the level and the colours.
 - Upstream's mixins that NeoForge's 1.21.11 build conflicts with are left out (see the module's plan): vanilla models'
   `createGeometryKey` is NeoForge's, a mesh model using sprites from outside the block atlas isn't rejected, and the
   in-wall screen overlay uses NeoForge's level-aware particle icon. The model baker's sprite getter gets Fabric's sprite
@@ -674,9 +684,15 @@ every block through that renderer, so Fabric block models show in the world. Fab
 CI runs Sodium and Iris for NeoForge (from Modrinth) with Fabric API and a Fabric model test mod on 26.1.2, 26.2 and
 26.3, and checks each of these. Shaders weren't enabled in that run. A Fabric addon's mixins into Sodium are checked
 against the installed Sodium for NeoForge before the game starts, like mixins into the game: one that needs Sodium's
-Fabric-only classes, or members its NeoForge build lacks, is reported and the addon disabled instead of crashing. On
-1.21.11 Sodium for NeoForge has no Fabric renderer API of its own and meshes chunks itself, so with Sodium installed
-Fabric block models stay invisible there.
+Fabric-only classes, or members its NeoForge build lacks, is reported and the addon disabled instead of crashing.
+
+On 1.21.11 Sodium for NeoForge meshes chunks itself and has no Fabric renderer, though its metadata says it contains
+one (`fabric-renderer-api-v1:contains_renderer`, read in its 1.21.11 source), so Indigo stood down and Fabric's
+renderer API had no renderer: Fabric block models stayed invisible and a Fabric mod building a mesh would fail. Once
+the client initializers ran, Fabricated registers Indigo's renderer when none registered (on every version; Indigo's
+own hooks stay off then), and Sodium draws a Fabric block model from the parts Fabricated makes from its quads.
+CI's informational 1.21.11 run with Sodium for NeoForge saw the test model and the multipart part with it meshed in
+Sodium's own section level (run 374; run 372, without the fallback, had no parts).
 
 ### Plugins for recipe viewers, tooltip mods and Simple Voice Chat
 
@@ -709,6 +725,21 @@ Lithium for NeoForge `lithium:options` from the file. No key of NeoForge's own h
 it. Nulls are left out, as TOML has none. Unit tests read the generated file with night-config, the parser NeoForge
 uses, and find each value where those mods look.
 
+### Fabric builds that can't run on NeoForge
+
+A few mods' Fabric builds can't work on NeoForge whatever Fabricated does; these facts are data (core's
+`compat-plan.json`). Such a build is disabled with the reason and what to do instead, and the mods that need it with
+it; `loadUnsupported` loads it anyway, for testing.
+
+- **Sodium and Iris**: their NeoForge builds are used (see *Renderer mods* above).
+- **Essential** (`essential-container`, and `essential-loader`, which partner mods nest): its Fabric build is a loader
+  that downloads Essential when the game starts and adds it to Fabric Loader's internal mod list, class loader and
+  Mixin's processor (read in Essential Loader's source), none of which exist on NeoForge. Essential has NeoForge
+  builds for some versions.
+- **malilib** (and with it Tweakeroo, MiniHUD and Litematica): it adds its picture-in-picture renderers through a map
+  NeoForge replaced with renderer pools on every version, and calls that accessor while the game starts (CORPUS-13).
+- **WTHIT**: its Fabric build refuses NeoForge itself; its NeoForge build is the one to use.
+
 ### Fabric Loader
 
 The public `net.fabricmc.loader.api` is complete: entrypoints (including custom ones and language adapters such as
@@ -726,7 +757,10 @@ MixinExtras has NeoForge's jar, and a NeoForge mod nested in another jar has tha
   a dedicated server.
 - Of Fabric Loader's internals, `FabricLoaderImpl.INSTANCE` (its public API methods) and
   `FabricLauncherBase.getLauncher()` (environment, development flag, runtime namespace) are provided for the mods that
-  use them; other internal classes are not.
+  use them; other internal classes are not. A mod's code that reaches for another one, or for a member of Fabric
+  Loader's API that Fabricated lacks, is listed among the report's linkage warnings before the game starts.
+- A mod whose required mixin (in a required config without a plugin) calls into a Fabric mod that isn't loading is
+  disabled, with the reason: Mixin would stop the game looking for that mod's class while applying it.
 - Mods detect Fabricated with `FabricLoader.getInstance().isModLoaded("fabricated")`; see [API.md](API.md).
 - `mixinextras` is provided at the version NeoForge runs, as Fabric Loader provides its own, so mods requiring it
   load (copies nested in mod jars are dropped for NeoForge's).

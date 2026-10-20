@@ -117,6 +117,17 @@ public final class FabricBlockRendering {
 		Frapi.collectBreakingParts(model, level, pos, state, random, parts);
 	}
 
+	/**
+	 * Registers Fabric API's own renderer (Indigo) when none registered while the client initializers ran (called once
+	 * they ran), so Fabric mods' meshes and emitters, and Fabric block models, work. Indigo stands down for any mod saying
+	 * it contains a Fabric renderer ({@code fabric-renderer-api-v1:contains_renderer}), and a NeoForge mod can say so of
+	 * a build without one (Sodium for NeoForge on 1.21.11, read in its source), which left Fabric's renderer API with
+	 * none. Indigo's own hooks stay off; Fabricated's don't need them. Does nothing without the renderer API.
+	 */
+	public static void registerFallbackRenderer() {
+		if (ENABLED) RendererFallback.register();
+	}
+
 	private static ReportedException crash(Throwable t, String what, BlockState state, BlockPos pos, BlockStateModel model) {
 		CrashReport report = CrashReport.forThrowable(t, what);
 		CrashReportCategory category = report.addCategory("Block model being drawn");
@@ -124,6 +135,30 @@ public final class FabricBlockRendering {
 		category.setDetail("Position", pos);
 		category.setDetail("Model class", model.getClass().getName());
 		return new ReportedException(report);
+	}
+
+	/** Names Fabric's renderer API, so loaded only when called; apart from {@link Frapi}, which keeps the renderer it first finds. */
+	private static final class RendererFallback {
+		private static final String INDIGO = "net.fabricmc.fabric.impl.client.indigo.renderer.IndigoRenderer";
+
+		static void register() {
+			try {
+				Renderer.get();
+				return;
+			} catch (UnsupportedOperationException e) {
+				// None registered: Indigo's, if Fabric API's renderer module is installed.
+			}
+			Logger logger = LoggerFactory.getLogger("Fabricated");
+			Renderer indigo;
+			try {
+				indigo = (Renderer) Class.forName(INDIGO, true, FabricBlockRendering.class.getClassLoader()).getField("INSTANCE").get(null);
+			} catch (ReflectiveOperationException | LinkageError | ClassCastException e) {
+				logger.warn("Fabric's renderer API has no renderer, and Fabric API's own renderer isn't installed: Fabric block models stay invisible ({})", e.toString());
+				return;
+			}
+			Renderer.register(indigo);
+			logger.warn("No Fabric renderer registered although a mod says it contains one: Fabric API's own renderer (Indigo) is used, without its own hooks");
+		}
 	}
 
 	/** Everything that names Fabric's renderer API: loaded only once {@link #ENABLED} is known to be true. */

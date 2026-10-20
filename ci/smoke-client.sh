@@ -97,58 +97,71 @@ GLSL
 fi
 
 echo "::group::Run client"
-status=0
-# A 24-bit screen with GLX: xvfb-run's default 8-bit screen has no OpenGL visual. 26.3 opens its window with SDL3,
-# whose GLX visual request Xvfb can't match; EGL (Mesa's software renderer) works there, so SDL is told to use it.
-export SDL_VIDEO_FORCE_EGL=1 SDL_VIDEO_X11_FORCE_EGL=1
-timeout "$timeout_seconds" xvfb-run -a -s "-screen 0 1280x720x24 +extension GLX +render -noreset" java -Dhmc.check.xvfb=true -jar hmc.jar \
-	--command launch "neoforge-${neo}" -regex --jvm "-Djava.awt.headless=true -DMcRuntimeGameTest=false" \
-	> client.out 2>&1 &
-client_pid=$!
-descendants() {
-	for child in $(pgrep -P "$1" || true); do
-		echo "$child"
-		descendants "$child"
-	done
-}
-dumped=0
-# The game doesn't exit when no renderer can be created; stop it then instead of waiting for the timeout.
-while kill -0 "$client_pid" 2>/dev/null; do
-	# Shortly before the timeout, record what every game thread is doing, so a hang can be diagnosed from the log.
-	if [ "$dumped" -eq 0 ] && [ "$SECONDS" -ge $((timeout_seconds - 45)) ]; then
-		dumped=1
-		# SIGQUIT makes a JVM print every thread's stack to its output (client.out) and carry on; jstack can't attach to
-		# the game here ("non existent JVM pid"). Every Java process the launcher started, the game's included (its
-		# command line doesn't carry the launcher's JVM options); a shell would quit on it.
-		for pid in $(descendants "$client_pid"); do
-			if [ "$(cat "/proc/$pid/comm" 2>/dev/null)" = java ]; then kill -QUIT "$pid" 2>/dev/null || true; fi
+# The launcher downloads the game's libraries and assets first. When it fails before the game starts (no game log at
+# all), nothing of Fabricated's has run yet, so that one step is tried again once; a game that started is never retried.
+for attempt in 1 2; do
+	status=0
+	started=$SECONDS
+	rm -rf run/logs run/crash-reports client.out stop-reason.txt thread-dump.txt
+	# A 24-bit screen with GLX: xvfb-run's default 8-bit screen has no OpenGL visual. 26.3 opens its window with SDL3,
+	# whose GLX visual request Xvfb can't match; EGL (Mesa's software renderer) works there, so SDL is told to use it.
+	export SDL_VIDEO_FORCE_EGL=1 SDL_VIDEO_X11_FORCE_EGL=1
+	timeout "$timeout_seconds" xvfb-run -a -s "-screen 0 1280x720x24 +extension GLX +render -noreset" java -Dhmc.check.xvfb=true -jar hmc.jar \
+		--command launch "neoforge-${neo}" -regex --jvm "-Djava.awt.headless=true -DMcRuntimeGameTest=false" \
+		> client.out 2>&1 &
+	client_pid=$!
+	descendants() {
+		for child in $(pgrep -P "$1" || true); do
+			echo "$child"
+			descendants "$child"
 		done
-		sleep 3
-		awk '/^Full thread dump/ { dump = 1 } dump' client.out > thread-dump.txt || true
+	}
+	dumped=0
+	# The game doesn't exit when no renderer can be created; stop it then instead of waiting for the timeout.
+	while kill -0 "$client_pid" 2>/dev/null; do
+		# Shortly before the timeout, record what every game thread is doing, so a hang can be diagnosed from the log.
+		if [ "$dumped" -eq 0 ] && [ $((SECONDS - started)) -ge $((timeout_seconds - 45)) ]; then
+			dumped=1
+			# SIGQUIT makes a JVM print every thread's stack to its output (client.out) and carry on; jstack can't attach to
+			# the game here ("non existent JVM pid"). Every Java process the launcher started, the game's included (its
+			# command line doesn't carry the launcher's JVM options); a shell would quit on it.
+			for pid in $(descendants "$client_pid"); do
+				if [ "$(cat "/proc/$pid/comm" 2>/dev/null)" = java ]; then kill -QUIT "$pid" 2>/dev/null || true; fi
+			done
+			sleep 3
+			awk '/^Full thread dump/ { dump = 1 } dump' client.out > thread-dump.txt || true
+		fi
+		# After a crash or a fatal loading error the game shows its error window until closed; stop it once the crash report
+		# is written.
+		stop="Preparing crash report|Game crashed!|Crash report saved to|Failed to wait for future|Mixin prepare for mod .* failed"
+		if grep -qE "$stop" client.out run/logs/latest.log 2>/dev/null; then
+			echo "The game crashed; stopping the client."
+			# The line that stopped it, for the summary: a pattern can match an error the game survives.
+			grep -m 1 -hE "$stop" client.out run/logs/latest.log 2>/dev/null | head -n 1 > stop-reason.txt || true
+			sleep 15
+			pkill -P "$client_pid" 2>/dev/null || true
+			kill "$client_pid" 2>/dev/null || true
+			break
+		fi
+		if grep -q "Failed to create backend OpenGL" client.out && grep -q "Failed to create backend Vulkan" client.out; then
+			echo "No render backend could be created; stopping the client."
+			echo "No render backend could be created" > stop-reason.txt
+			sleep 5
+			pkill -P "$client_pid" 2>/dev/null || true
+			kill "$client_pid" 2>/dev/null || true
+			break
+		fi
+		sleep 2
+	done
+	wait "$client_pid" || status=$?
+	if [ "$status" -ne 0 ] && [ ! -f run/logs/latest.log ] && [ "$attempt" -eq 1 ]; then
+		echo "The launcher stopped (status $status) before the game started; its output:"
+		tail -n 40 client.out || true
+		echo "Launching once more."
+		continue
 	fi
-	# After a crash or a fatal loading error the game shows its error window until closed; stop it once the crash report
-	# is written.
-	stop="Preparing crash report|Game crashed!|Crash report saved to|Failed to wait for future|Mixin prepare for mod .* failed"
-	if grep -qE "$stop" client.out run/logs/latest.log 2>/dev/null; then
-		echo "The game crashed; stopping the client."
-		# The line that stopped it, for the summary: a pattern can match an error the game survives.
-		grep -m 1 -hE "$stop" client.out run/logs/latest.log 2>/dev/null | head -n 1 > stop-reason.txt || true
-		sleep 15
-		pkill -P "$client_pid" 2>/dev/null || true
-		kill "$client_pid" 2>/dev/null || true
-		break
-	fi
-	if grep -q "Failed to create backend OpenGL" client.out && grep -q "Failed to create backend Vulkan" client.out; then
-		echo "No render backend could be created; stopping the client."
-		echo "No render backend could be created" > stop-reason.txt
-		sleep 5
-		pkill -P "$client_pid" 2>/dev/null || true
-		kill "$client_pid" 2>/dev/null || true
-		break
-	fi
-	sleep 2
+	break
 done
-wait "$client_pid" || status=$?
 echo "::endgroup::"
 
 log=run/logs/latest.log

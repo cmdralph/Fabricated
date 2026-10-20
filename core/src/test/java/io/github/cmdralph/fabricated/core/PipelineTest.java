@@ -104,6 +104,24 @@ class PipelineTest {
 		return cw.toByteArray();
 	}
 
+	/** A mixin as {@link #mixinClass(String, String)} with a method that calls a static method of {@code owner}. */
+	private static byte[] mixinCalling(String name, String owner) {
+		ClassWriter cw = new ClassWriter(0);
+		new ClassReader(mixinClass(name, "tick")).accept(new org.objectweb.asm.ClassVisitor(Opcodes.ASM9, cw) {
+			@Override
+			public void visitEnd() {
+				MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "calls", "()V", null, null);
+				mv.visitCode();
+				mv.visitMethodInsn(Opcodes.INVOKESTATIC, owner, "call", "()V", false);
+				mv.visitInsn(Opcodes.RETURN);
+				mv.visitMaxs(0, 0);
+				mv.visitEnd();
+				super.visitEnd();
+			}
+		}, 0);
+		return cw.toByteArray();
+	}
+
 	/** A mixin into {@code target} whose required {@code @Inject} goes at the head of {@code targetMethod}. */
 	private static byte[] mixinClass(String name, String target, String targetMethod) {
 		ClassWriter cw = new ClassWriter(0);
@@ -728,6 +746,39 @@ class PipelineTest {
 		assertEquals(Report.Status.DISABLED, ctm.status());
 		assertTrue(ctm.detail().contains("uses " + helper.replace('/', '.') + " from fabric-renderer-api-v1"), ctm.detail());
 		assertTrue(result.report().render().contains("com.opt.mixin.LayersMixin"), result.report().render());
+	}
+
+	/**
+	 * CORPUS-15: a mod's required mixin (its config required, without a plugin) calling into a Fabric mod that isn't
+	 * loading would stop the game as Mixin applies it (Continuity's into the renderer API, run 362): the mod is disabled
+	 * with the reason. With a plugin, which can skip it, the mod loads.
+	 */
+	@Test
+	void aRequiredMixinUsingAModThatIsNotLoadingDisablesItsMod(@TempDir Path game) throws Exception {
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		String api = "com/lib/Api";
+		// The library fails pre-flight (its mixin injects into a method the game doesn't have), so it isn't loading.
+		Path lib = TestJars.create().fabricModJson(TestJars.modJson("lib-mod", "1.0", "\"mixins\":[\"lib.mixins.json\"]"))
+				.text("lib.mixins.json", "{\"required\":true,\"package\":\"com.lib.mixin\",\"mixins\":[\"BrokenMixin\"]}")
+				.bytes("com/lib/mixin/BrokenMixin.class", mixinClass("com/lib/mixin/BrokenMixin", "methodTheGameDoesNotHave"))
+				.bytes(api + ".class", TestJars.emptyClass(api, "java/lang/Object"))
+				.write(mods.resolve("lib.jar"));
+		Path user = TestJars.create().fabricModJson(TestJars.modJson("user-mod", "1.0", "\"mixins\":[\"user.mixins.json\"]"))
+				.text("user.mixins.json", "{\"required\":true,\"package\":\"com.user.mixin\",\"mixins\":[\"UsesMixin\"]}")
+				.bytes("com/user/mixin/UsesMixin.class", mixinCalling("com/user/mixin/UsesMixin", api))
+				.write(mods.resolve("user.jar"));
+		Path guarded = TestJars.create().fabricModJson(TestJars.modJson("guarded-mod", "1.0", "\"mixins\":[\"guarded.mixins.json\"]"))
+				.text("guarded.mixins.json", "{\"required\":true,\"package\":\"com.guarded.mixin\",\"plugin\":\"com.guarded.Plugin\",\"mixins\":[\"UsesMixin\"]}")
+				.bytes("com/guarded/mixin/UsesMixin.class", mixinCalling("com/guarded/mixin/UsesMixin", api))
+				.bytes("com/guarded/Plugin.class", TestJars.emptyClass("com/guarded/Plugin", "java/lang/Object"))
+				.write(mods.resolve("guarded.jar"));
+		Pipeline.Result result = Pipeline.run(input(game, List.of(lib, user, guarded), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
+
+		Set<String> loaded = result.mods().stream().map(m -> m.translated().candidate().id()).collect(Collectors.toSet());
+		assertEquals(Set.of("guarded-mod"), loaded, result.report().render());
+		Report.ModRow row = result.report().mods().stream().filter(r -> r.id().equals("user-mod")).findFirst().orElseThrow();
+		assertEquals(Report.Status.DISABLED, row.status());
+		assertTrue(row.detail().contains("com.user.mixin.UsesMixin -> needs class com.lib.Api of lib-mod, which isn't loading"), row.detail());
 	}
 
 	@Test
