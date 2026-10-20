@@ -291,6 +291,7 @@ public final class ModTranslator {
 		MixinPreflight preflight = new MixinPreflight(env.installedIndex(), env.installed(), classSource(translated), env.untransformable(),
 				env.clientSide(), MixinCompat.missingTargetsFatal(behavior));
 		Map<String, MixinConfigFile> configs = new HashMap<>();
+		Set<String> matchedSkips = new HashSet<>();
 		Map<String, Refmap> refmaps = new HashMap<>();
 
 		for (MixinEntry entry : md.compatHints().mixinsOr(md.mixins())) {
@@ -317,6 +318,7 @@ public final class ModTranslator {
 			refmaps.put(entry.config(), refmap);
 
 			Skips skips = skipsFor(entry.config(), config, override.skipMixins());
+			matchedSkips.addAll(skips.matched());
 			Set<String> wholeSkips = skips.mixins();
 			for (Map.Entry<String, Set<String>> handlers : skips.members().entrySet()) {
 				String path = config.internalName(handlers.getKey()) + ".class";
@@ -353,6 +355,7 @@ public final class ModTranslator {
 		}
 		if (!override.ignorePreflight()) checkPluginMixins(entries, configs, refmaps, preflight, translated, overlay, findings);
 		installedClasses.putAll(preflight.installedClasses());
+		unmatchedSkips(override.skipMixins(), matchedSkips, md.compatHints().mixinsOr(md.mixins()), configs.keySet(), findings);
 
 		List<PreflightFinding> failures = findings.stream().filter(f -> f.severity() == Severity.FAIL).toList();
 		if (!failures.isEmpty()) {
@@ -477,24 +480,49 @@ public final class ModTranslator {
 	 * or {@code "Name"} (every config) leaves out the whole mixin; {@code "Name#member"} only the methods and fields of
 	 * that name in a mixin kept otherwise (when its other injections still work on NeoForge).
 	 */
-	record Skips(Set<String> mixins, Map<String, Set<String>> members) {
+	/** @param matched the configured entries that name a mixin of the config */
+	record Skips(Set<String> mixins, Map<String, Set<String>> members, Set<String> matched) {
 	}
 
 	static Skips skipsFor(String configName, MixinConfigFile config, Set<String> configured) {
 		Set<String> declared = new HashSet<>(config.allMixins());
 		Set<String> mixins = new TreeSet<>();
 		Map<String, Set<String>> members = new TreeMap<>();
+		Set<String> matched = new HashSet<>();
 		for (String s : configured) {
 			String name = skipTarget(configName, s);
 			if (name == null) continue;
 			int hash = name.indexOf('#');
 			String mixin = hash < 0 ? name : name.substring(0, hash);
 			if (!declared.contains(mixin)) continue;
+			matched.add(s);
 			if (hash < 0) mixins.add(mixin);
 			else members.computeIfAbsent(mixin, k -> new TreeSet<>()).add(name.substring(hash + 1));
 		}
 		members.keySet().removeAll(mixins);
-		return new Skips(mixins, members);
+		return new Skips(mixins, members, matched);
+	}
+
+	/**
+	 * Notes each {@code skipMixins} entry that names no mixin of the mod, a likely typo. Only where every config the
+	 * entry could apply to was read on this side: a client config's mixins aren't read on a dedicated server.
+	 *
+	 * @param checked the configs read on this side
+	 */
+	static void unmatchedSkips(Set<String> configured, Set<String> matched, List<MixinEntry> declared, Set<String> checked,
+			List<PreflightFinding> findings) {
+		Set<String> declaredConfigs = new HashSet<>();
+		for (MixinEntry entry : declared) declaredConfigs.add(entry.config());
+		for (String skip : new TreeSet<>(configured)) {
+			if (matched.contains(skip)) continue;
+			int colon = skip.indexOf(':');
+			String configName = colon >= 0 ? skip.substring(0, colon) : null;
+			boolean everywhere = configName != null ? checked.contains(configName) || !declaredConfigs.contains(configName)
+					: checked.containsAll(declaredConfigs);
+			if (!everywhere) continue;
+			findings.add(new PreflightFinding(Severity.INFO, configName != null ? configName : "", null,
+					"The skipMixins entry \"" + skip + "\" names no mixin of this mod; check its spelling", ""));
+		}
 	}
 
 	/** The mixin part of a skip entry when it applies to {@code configName}, else null. */

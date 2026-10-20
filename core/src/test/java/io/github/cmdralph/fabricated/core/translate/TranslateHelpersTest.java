@@ -15,8 +15,11 @@ import org.junit.jupiter.api.Test;
 import io.github.cmdralph.fabricated.core.metadata.ModIds;
 import io.github.cmdralph.fabricated.core.metadata.ContactInformationImpl.PersonImpl;
 import io.github.cmdralph.fabricated.core.metadata.FabricModJsonParser;
+import io.github.cmdralph.fabricated.core.metadata.FabricModMetadata;
 import io.github.cmdralph.fabricated.core.mixin.MixinConfigFile;
+import io.github.cmdralph.fabricated.core.mixin.PreflightFinding;
 import net.fabricmc.loader.api.metadata.ContactInformation;
+import net.fabricmc.loader.api.metadata.ModEnvironment;
 
 class TranslateHelpersTest {
 	@Test
@@ -103,6 +106,17 @@ class TranslateHelpersTest {
 		ModTranslator.Skips skips = ModTranslator.skipsFor("x.mixins.json", cfg, Set.of("A", "x.mixins.json:C", "other.json:B", "Missing", "B#handler", "A#ignored"));
 		assertEquals(Set.of("A", "C"), skips.mixins());
 		assertEquals(java.util.Map.of("B", Set.of("handler")), skips.members(), "a member of a mixin left out whole adds nothing");
+		assertEquals(Set.of("A", "x.mixins.json:C", "B#handler", "A#ignored"), skips.matched());
+
+		// The entries naming no mixin are noted, where every config they could apply to was read (CFG-1).
+		List<PreflightFinding> findings = new ArrayList<>();
+		List<FabricModMetadata.MixinEntry> declared = List.of(new FabricModMetadata.MixinEntry("x.mixins.json", ModEnvironment.UNIVERSAL),
+				new FabricModMetadata.MixinEntry("client.mixins.json", ModEnvironment.CLIENT));
+		ModTranslator.unmatchedSkips(Set.of("A", "Missing", "other.json:B", "client.mixins.json:Gone", "x.mixins.json:Typo"), Set.of("A"), declared,
+				Set.of("x.mixins.json"), findings);
+		assertEquals(List.of("The skipMixins entry \"other.json:B\" names no mixin of this mod; check its spelling",
+				"The skipMixins entry \"x.mixins.json:Typo\" names no mixin of this mod; check its spelling"),
+				findings.stream().map(PreflightFinding::message).toList(), "the client config wasn't read on this side");
 		String filtered = cfg.withoutMixins(Set.of("A"));
 		MixinConfigFile reparsed = MixinConfigFile.parse(filtered);
 		assertEquals(List.of("B"), reparsed.mixinsFor(false));
