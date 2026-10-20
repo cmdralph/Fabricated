@@ -118,8 +118,8 @@ research sandbox).
   for a mixin config in its nested jar, ADV-1); the 26.1.2 client gets to the render thread and fails in OneConfig's
   config manager on night-config's JSON module, which Fabricated took for NeoForge's (PLAT-1, fixed since); the 26.3
   client still stops at mod construction (the next run's summary prints the crash's cause). On `b2b91e8`, with PKG-2,
-  PKG-3 and PLAT-1 fixed, 1 jar is disabled (ADV-1) and both clients reach "Initializing game", where Skiko finds no
-  native library (NATIVE-1, fixed since).
+  PKG-3 and PLAT-1 fixed, 1 jar is disabled (ADV-1, fixed since) and both clients reach "Initializing game", where
+  Skiko finds no native library (NATIVE-1, fixed since).
 
 **Plan, by coverage per effort** (each with its CI check):
 
@@ -175,6 +175,7 @@ Severity: **P0** crash or data loss on a normal launch · **P1** a supported fea
 
 | ID | Sev | Location | Failure mode and trigger | Why tests missed it | Fix |
 |---|---|---|---|---|---|
+| ADV-1 | P2 | core `CandidateScanner` | adventure-platform-fabric (nested in OneConfig) was disabled on 26.1.2 and 26.3: "Mixin config adventure-platform-mod-shared.accessor.mixins.json declared in fabric.mod.json is missing from the jar" (Polyfrost runs on `72f5472` to `b2b91e8`). On Fabric, Mixin finds a config in any jar on the class path; the config is presumably in its nested shared jar (UNVERIFIED: the jars were not read). | No test declared a config another jar holds. | This pass: a mixin config a mod declares but a jar nested directly in it holds is applied by that jar: its translation pre-flights it and its mod file declares it, as FML expects (FML 11+ would also find it in another mod file, with a warning). A config no jar holds still disables the mod. The translation cache key includes the mod's mixin configs. `CandidateScannerTest`, `PipelineTest`. |
 | NATIVE-1 | P1 | core `PackageGuard` | Skiko, nested in compose-bundle, found no native library: "Cannot find libskiko-linux-x64.so.sha256, proper native dependency missing" stopped the 26.1.2 and 26.3 Polyfrost clients at "Initializing game" (run on `b2b91e8`). Skiko looks its natives up with `Class.getResourceAsStream("/libskiko-...")`, which in a module searches that module only; the natives are in a jar of their own, without classes. Fabric's class path finds any jar's. | Each jar was its own module, and no test had a library whose resources are in another jar. | This pass: the root files of a nested jar without classes are also served by the modules of its parent and of the jars nested beside it (a file a module has itself stays its own), with a note in the report. That the natives jar is a sibling of Skiko's classes, or nested in them, is UNVERIFIED (Modrinth is unreachable from the dev container); the CI summary prints the note. `PipelineTest`. |
 | REG-2 | P1 | `EntrypointBridge` | Registries were frozen when Fabric client initializers ran: NeoForge freezes them after its registration events, before `Minecraft` exists, while Fabric API freezes them only after the client initializers. Xaero's Minimap registers its mob effect from `onInitializeClient`, catches the failure and rethrows it on the first tick: "Registry is already frozen (trying to add key ... xaerominimap:no_minimap)" stopped the 26.x corpus clients (`b679b92`). | The test mods registered from `main` only. | This pass: the registries are opened for the client initializers and frozen again with NeoForge's own `GameData.unfreezeData`/`freezeData` (the sequence NeoForge runs around its registration events), which also renews the frozen snapshot NeoForge restores on leaving a server. Client check "client entrypoint registration OK": the test mod registers a mob effect from a client initializer. |
 | CORPUS-2 | P2 | Xaero's World Map | The corpus client crashed on its first tick: `WorldMap.events` was null in World Map's `Minecraft.runTick` hook, with no entrypoint failure reported. | The cause showed only through Xaero's Minimap in the same corpus (REG-2): Xaero's client initializers register content, and catch and defer the failure. | REG-2. On `72f5472` World Map alone reaches a world on 26.1.2 and 26.3. |
@@ -227,7 +228,6 @@ crash in run 229).
 
 | ID | Sev | Location | Issue | Status |
 |---|---|---|---|---|
-| ADV-1 | P2, cause UNVERIFIED | `ModTranslator` mixin configs | adventure-platform-fabric 7.2.0 (nested in PolyPlus) is disabled: "Mixin config adventure-platform-mod-shared.accessor.mixins.json declared in fabric.mod.json is missing from the jar". The config is presumably in its nested `adventure-platform-mod-shared` jar, which Fabric's Mixin finds on the class path. | Needs the jars read: whether the nested jar declares the config itself, and how FML finds a config in another mod file. |
 | PLAT-2 | P3, UNVERIFIED | core `PlatformLibraries` | Other prefixes also cover whole library families (`org/lwjgl/`, `io/netty/`), of which the platform may ship some modules only: a mod nesting another module (LWJGL's NanoVG, say) would lose it, as PLAT-1 did. No case seen yet. | Check each prefix against the packages the platform really has (the loader computes them), and keep a prefix only where the family is complete. |
 | FC-5 | P3 | `TranslationCache.verifyIntegrity` | Hashes are memoised by file metadata. On Windows the key is size and mtime only, and `entry.json` itself isn't hashed. | Needs a decision on cost: re-hashing every launch versus trusting metadata. |
 | FC-6 | P3 | `TranslationCache.store` | Two cold launches of the same side that share one game directory race on delete-then-move. | Needs a cross-process file lock. Rare. |
@@ -288,15 +288,16 @@ open (see *Unverified and blockers*).
 
 Newest first. Each entry: what changed, and how it was verified.
 
-### 2026-10-20 (night): native libraries of jars without classes
+### 2026-10-20 (night): native libraries of jars without classes, mixin configs of nested jars
 
 **Summary.**
 - PKG-2 (pull request #31) and PKG-3 (#32): MixinSquared's Fabric jar loads beside OneConfig's copy of its common
   classes. On `b2b91e8` the Polyfrost run disables 1 jar (ADV-1) and both clients get to "Initializing game".
 - NATIVE-1: the root files of a nested jar without classes are served by the modules beside it too, as Skiko needs
   for its native library. The Polyfrost summary prints which modules serve them.
+- ADV-1: a mixin config a mod declares but its nested jar holds is applied by that jar (adventure-platform-fabric).
 
-**Verification.** Core: `./gradlew -Pfabricated.coreOnly=true build` green locally, with a new `PipelineTest` case. CI:
+**Verification.** Core: `./gradlew -Pfabricated.coreOnly=true build` green locally, with new `PipelineTest` and `CandidateScannerTest` cases. CI:
 see the pull request.
 
 ### 2026-10-20 (later): split packages, registries for client initializers, review fixes
