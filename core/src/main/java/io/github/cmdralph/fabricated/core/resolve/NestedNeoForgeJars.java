@@ -89,9 +89,7 @@ public final class NestedNeoForgeJars {
 			}
 		}
 		Path path = jar.getPath(entry);
-		if (!Files.isRegularFile(path)) return null;
-		if (Files.size(path) > limits.maxEntryBytes()) throw new IOException(entry + " is larger than " + limits.maxEntryBytes() + " bytes");
-		return Files.readAllBytes(path);
+		return Files.isRegularFile(path) ? read(path, entry, limits.maxEntryBytes()) : null;
 	}
 
 	private void readNested(FileSystem jar, String origin, List<String> chain) throws IOException, JsonException {
@@ -149,11 +147,15 @@ public final class NestedNeoForgeJars {
 
 	private static String text(FileSystem jar, String name) throws IOException {
 		Path path = jar.getPath(name);
-		if (!Files.isRegularFile(path)) return null;
+		return Files.isRegularFile(path) ? new String(read(path, name, MAX_TEXT_BYTES), StandardCharsets.UTF_8) : null;
+	}
+
+	/** A file of a jar, read up to {@code max} bytes whatever its header says (headers can lie). */
+	private static byte[] read(Path path, String name, long max) throws IOException {
 		try (InputStream in = Files.newInputStream(path)) {
-			byte[] data = in.readNBytes(MAX_TEXT_BYTES + 1);
-			if (data.length > MAX_TEXT_BYTES) throw new IOException(name + " is larger than " + MAX_TEXT_BYTES + " bytes");
-			return new String(data, StandardCharsets.UTF_8);
+			byte[] data = in.readNBytes((int) Math.min(max + 1, Integer.MAX_VALUE - 8));
+			if (data.length > max) throw new IOException(name + " is larger than " + max + " bytes");
+			return data;
 		}
 	}
 }
