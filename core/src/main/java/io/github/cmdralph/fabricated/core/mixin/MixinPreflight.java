@@ -76,6 +76,7 @@ public final class MixinPreflight {
 	private static final String UNIQUE = "Lorg/spongepowered/asm/mixin/Unique;";
 	private static final String INTRINSIC = "Lorg/spongepowered/asm/mixin/Intrinsic;";
 	private static final String REDIRECT = "Lorg/spongepowered/asm/mixin/injection/Redirect;";
+	private static final String GROUP = "Lorg/spongepowered/asm/mixin/injection/Group;";
 	private static final String WRAP_OPERATION = "Lcom/llamalad7/mixinextras/injector/wrapoperation/WrapOperation;";
 	private static final String WRAP_METHOD = "Lcom/llamalad7/mixinextras/injector/wrapmethod/WrapMethod;";
 	private static final Set<String> WRAP_WITH_CONDITION = Set.of("Lcom/llamalad7/mixinextras/injector/v2/WrapWithCondition;",
@@ -232,7 +233,9 @@ public final class MixinPreflight {
 						out.add(new PreflightFinding(Severity.INFO, configName, ctx.mixinDotted(), "@Inject " + method.name
 								+ " captures local variables; if NeoForge's code has other locals there, it is skipped instead of crashing", ""));
 					}
-					if (targets.size() == 1) {
+					// A grouped injector is one of the mod's alternatives for code that differs: pointing it elsewhere could make
+					// more of the group apply than the group allows.
+					if (targets.size() == 1 && !grouped(method)) {
 						for (String pinned : overloadByParameters(method, ann, targets.getFirst(), ctx)) {
 							changed = true;
 							out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@" + simpleName(ann.desc) + " " + method.name
@@ -1375,8 +1378,13 @@ public final class MixinPreflight {
 		return Character.toLowerCase(s.charAt(0)) + s.substring(1);
 	}
 
+	/** Whether {@code handler} is in a named injector group ({@code @Group}), whose members Mixin checks together. */
+	private static boolean grouped(MethodNode handler) {
+		return Annotations.find(handler, GROUP) != null;
+	}
+
 	private static boolean isInjector(String desc) {
-		return desc.startsWith("Lorg/spongepowered/asm/mixin/injection/") && !desc.equals(AT)
+		return desc.startsWith("Lorg/spongepowered/asm/mixin/injection/") && !desc.equals(AT) && !desc.equals(GROUP)
 				&& !desc.startsWith("Lorg/spongepowered/asm/mixin/injection/Slice") && !desc.startsWith("Lorg/spongepowered/asm/mixin/injection/Desc")
 				&& !desc.startsWith("Lorg/spongepowered/asm/mixin/injection/Constant") && !desc.startsWith("Lorg/spongepowered/asm/mixin/injection/Coerce")
 				|| desc.startsWith("Lcom/llamalad7/mixinextras/injector/");
@@ -1384,7 +1392,8 @@ public final class MixinPreflight {
 
 	private static void checkInjector(ClassNode mixin, MethodNode handler, AnnotationNode ann, ClassNode target, Context ctx) {
 		if (!(Annotations.value(ann, "method") instanceof List<?> selectors) || selectors.isEmpty()) return;
-		int require = Annotations.value(ann, "require") instanceof Integer r && r >= 0 ? r : ctx.config().defaultRequire();
+		// As Mixin: a grouped injector requires nothing by default, its group's minimum being the check.
+		int require = Annotations.value(ann, "require") instanceof Integer r && r >= 0 ? r : grouped(handler) ? 0 : ctx.config().defaultRequire();
 		List<AnnotationNode> slices = annotationList(Annotations.value(ann, "slice"));
 		String injectorName = "@" + simpleName(ann.desc);
 
