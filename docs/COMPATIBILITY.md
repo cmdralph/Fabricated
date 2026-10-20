@@ -665,6 +665,11 @@ MixinExtras has NeoForge's jar, and a NeoForge mod nested in another jar has tha
 - Config screens a Fabric mod offers to Mod Menu (its `modmenu` entrypoint) open from the Config button of NeoForge's
   mod list. Mod Menu's API interfaces are provided, so such mods load without Mod Menu, which itself can't run on
   NeoForge (it would duplicate NeoForge's mod list): an installed Mod Menu jar is skipped and provided at its version.
+- Where an interface a Fabric mod adds to a game class (with a mixin or a class tweaker) brings a default method the
+  class already has from one of NeoForge's interfaces, with the same name and descriptor, the class declares that
+  method, calling NeoForge's default, unless a mixin declares it (Fabricated's own do for some of Fabric API's). The JVM can't choose between two such defaults and throws
+  (`IncompatibleClassChangeError: Conflicting default methods`); Entity Culling 1.11's `getRenderBoundingBox` on block
+  entity renderers was one.
 - `PlayerList.getPlayers()` follows the list in the field, as in vanilla. NeoForge returns an unmodifiable view made
   when the player list is constructed, so a mod whose mixin replaces the list (written for vanilla, where both are one
   object) would leave it on the old, empty list, and an integrated server finding no player stays paused. The view is

@@ -10,6 +10,7 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -17,6 +18,7 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.Semaphore;
+import java.util.function.Function;
 import java.util.jar.Attributes;
 import java.util.jar.Manifest;
 import java.util.stream.Collectors;
@@ -27,8 +29,10 @@ import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.FieldVisitor;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
+import org.objectweb.asm.Type;
 import org.objectweb.asm.commons.ClassRemapper;
 import org.objectweb.asm.commons.Remapper;
+import org.objectweb.asm.tree.AnnotationNode;
 import org.objectweb.asm.tree.ClassNode;
 
 import io.github.cmdralph.fabricated.core.accesswidener.AccessTransformerConverter;
@@ -40,6 +44,7 @@ import io.github.cmdralph.fabricated.core.archive.ArchiveException;
 import io.github.cmdralph.fabricated.core.archive.DeterministicJarWriter;
 import io.github.cmdralph.fabricated.core.archive.Hashing;
 import io.github.cmdralph.fabricated.core.archive.SafeArchive;
+import io.github.cmdralph.fabricated.core.bytecode.Annotations;
 import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
 import io.github.cmdralph.fabricated.core.bytecode.EnvironmentStripper;
 import io.github.cmdralph.fabricated.core.cache.TranslationCache;
@@ -151,8 +156,11 @@ public final class ModTranslator {
 				List<PreflightFinding> findings = new ArrayList<>();
 				Map<String, String> installedClasses = new TreeMap<>();
 				List<EnumExtensions.Entry> enumEntries = new ArrayList<>();
+				Set<DefaultBridge> bridges = new LinkedHashSet<>();
+				Function<String, ClassNode> classes = classLookup(name -> overlay.containsKey(name) ? overlay.get(name) : files.read(name));
 				List<ModsTomlWriter.MixinConfigSpec> mixinSpecs = processMixins(candidate, override, plannedSkips, files,
-						remapped != null ? remapped.keySet() : archive.classEntryNames(), overlay, findings, installedClasses, enumEntries);
+						remapped != null ? remapped.keySet() : archive.classEntryNames(), overlay, findings, installedClasses, enumEntries,
+						classes, bridges, notes);
 				if (!enumEntries.isEmpty()) overlay.put(EnumExtensions.PATH, EnumExtensions.json(enumEntries).getBytes(StandardCharsets.UTF_8));
 
 				byte[] packMetadata = files.read(PACK_METADATA);
@@ -181,6 +189,10 @@ public final class ModTranslator {
 						atLines = at.lineCount();
 						if (!at.isEmpty()) overlay.put(AT_PATH, at.accessTransformer().getBytes(StandardCharsets.UTF_8));
 					}
+				}
+
+				for (InjectedInterface ii : injections) {
+					addBridges(DefaultBridge.of(ii.target(), List.of(ii.interfaceName()), classes), List.of(ii.interfaceName()), bridges, notes);
 				}
 
 				Set<String> environmentClasses = remapped != null ? environmentClasses(remapped.keySet(), files)
@@ -217,12 +229,13 @@ public final class ModTranslator {
 				meta.put("notes", notes);
 				meta.put("findings", findings.stream().map(ModTranslator::findingToJson).toList());
 				meta.put("injectedInterfaces", injections.stream().map(ModTranslator::injectionToJson).toList());
+				meta.put("defaultBridges", bridges.stream().map(ModTranslator::bridgeToJson).toList());
 				meta.put("environmentClasses", List.copyOf(environmentClasses));
 				meta.put("installedClasses", installedClasses);
 				TranslationCache.Entry entry = cache.store(entryName, outputs, meta);
 				Path jar = remapped != null ? entry.file(REMAPPED) : candidate.path();
 				return new TranslatedMod(candidate, neoId, jar, entry.file(OVERLAY), List.copyOf(findings), atLines,
-						List.copyOf(notes), injections, environmentClasses, false, millis);
+						List.copyOf(notes), injections, List.copyOf(bridges), environmentClasses, false, millis);
 			} catch (ArchiveException e) {
 				throw new TranslationException("The jar is unsafe or corrupt: " + e.getMessage(), "Re-download the mod from its official page.");
 			} catch (MappingException e) {
@@ -297,7 +310,8 @@ public final class ModTranslator {
 	/** @param installedClasses receives the installed classes pre-flight read, with their fingerprints */
 	private List<ModsTomlWriter.MixinConfigSpec> processMixins(Candidate candidate, ModOverride override, Set<String> plannedSkips, FileView files,
 			Collection<String> entries, Map<String, byte[]> overlay, List<PreflightFinding> findings, Map<String, String> installedClasses,
-			List<EnumExtensions.Entry> enumEntries) throws ArchiveException, TranslationException {
+			List<EnumExtensions.Entry> enumEntries, Function<String, ClassNode> classes, Set<DefaultBridge> bridges, List<String> notes)
+			throws ArchiveException, TranslationException {
 		FabricModMetadata md = candidate.metadata();
 		String behavior = MixinCompat.clampForNeoForge(MixinCompat.fabricBehaviorVersion(md.getDependencies()), env.runtimeMixinVersion(),
 				env.lowestMixinBehavior());
@@ -369,6 +383,12 @@ public final class ModTranslator {
 			}
 			if (!skip.isEmpty()) {
 				overlay.put(entry.config(), config.withoutMixins(skip).getBytes(StandardCharsets.UTF_8));
+			}
+			// The interfaces the kept mixins add to their targets.
+			for (String mixin : config.mixinsFor(env.clientSide())) {
+				ClassNode node = skip.contains(mixin) ? null : classes.apply(config.internalName(mixin));
+				if (node == null || node.interfaces.isEmpty()) continue;
+				for (String target : mixinTargets(node)) addBridges(DefaultBridge.of(target, node.interfaces, classes), node.interfaces, bridges, notes);
 			}
 			specs.add(new ModsTomlWriter.MixinConfigSpec(entry.config(), behavior));
 		}
@@ -725,12 +745,18 @@ public final class ModTranslator {
 				if (o instanceof Map<?, ?> m) injections.add(injectionFromJson(m));
 			}
 		}
+		List<DefaultBridge> bridges = new ArrayList<>();
+		if (meta.get("defaultBridges") instanceof List<?> list) {
+			for (Object o : list) {
+				if (o instanceof Map<?, ?> m) bridges.add(bridgeFromJson(m));
+			}
+		}
 		Set<String> environmentClasses = new TreeSet<>();
 		if (meta.get("environmentClasses") instanceof List<?> list) list.forEach(o -> environmentClasses.add(String.valueOf(o)));
 		int at = meta.get("accessTransformers") instanceof Number n ? n.intValue() : 0;
 		Path jar = env.namespace() == Namespace.INTERMEDIARY ? entry.file(REMAPPED) : candidate.path();
 		return new TranslatedMod(candidate, neoId, jar, entry.file(OVERLAY), List.copyOf(findings), at, List.copyOf(notes),
-				List.copyOf(injections), Set.copyOf(environmentClasses), true, 0);
+				List.copyOf(injections), List.copyOf(bridges), Set.copyOf(environmentClasses), true, 0);
 	}
 
 	private static Map<String, Object> findingToJson(PreflightFinding f) {
@@ -752,6 +778,62 @@ public final class ModTranslator {
 		}
 		return new PreflightFinding(severity, String.valueOf(m.get("config")), m.get("mixin") instanceof String s ? s : null,
 				String.valueOf(m.get("message")), String.valueOf(m.get("suggestion")));
+	}
+
+	/** Reads classes as the mod will load: the game's and installed jars' first, then the mod's; memoised, null when absent. */
+	private Function<String, ClassNode> classLookup(FileView mod) {
+		Map<String, Optional<ClassNode>> read = new HashMap<>();
+		return name -> read.computeIfAbsent(name, n -> {
+			ClassNode node = env.installedIndex().readNode(n);
+			if (node != null) return Optional.of(node);
+			try {
+				byte[] data = mod.read(n + ".class");
+				if (data == null) return Optional.empty();
+				node = new ClassNode();
+				new ClassReader(data).accept(node, ClassReader.SKIP_CODE | ClassReader.SKIP_FRAMES);
+				return Optional.of(node);
+			} catch (ArchiveException | RuntimeException e) {
+				// An unreadable class only goes unchecked here; reading the jar reports it.
+				return Optional.empty();
+			}
+		}).orElse(null);
+	}
+
+	/** The classes a mixin's {@code @Mixin} names, as internal names. */
+	private static List<String> mixinTargets(ClassNode mixin) {
+		AnnotationNode ann = Annotations.find(mixin.invisibleAnnotations, mixin.visibleAnnotations, Annotations.MIXIN);
+		List<String> targets = new ArrayList<>();
+		if (ann == null) return targets;
+		if (Annotations.value(ann, "value") instanceof List<?> types) {
+			for (Object t : types) if (t instanceof Type type) targets.add(type.getInternalName());
+		}
+		if (Annotations.value(ann, "targets") instanceof List<?> names) {
+			for (Object n : names) if (n instanceof String name) targets.add(name.replace('.', '/'));
+		}
+		return targets;
+	}
+
+	private static void addBridges(List<DefaultBridge> found, List<String> added, Set<DefaultBridge> bridges, List<String> notes) {
+		for (DefaultBridge bridge : found) {
+			if (!bridges.add(bridge)) continue;
+			notes.add(bridge.target().replace('/', '.') + " gets " + bridge.name() + bridge.descriptor() + ", calling "
+					+ bridge.owner().replace('/', '.') + "'s default, unless a mixin declares it: an interface the mod adds to it ("
+					+ String.join(", ", added).replace('/', '.') + ") brings another default of that method, and the JVM can't choose between two");
+		}
+	}
+
+	private static Map<String, Object> bridgeToJson(DefaultBridge b) {
+		Map<String, Object> m = new LinkedHashMap<>();
+		m.put("target", b.target());
+		m.put("owner", b.owner());
+		m.put("name", b.name());
+		m.put("descriptor", b.descriptor());
+		return m;
+	}
+
+	private static DefaultBridge bridgeFromJson(Map<?, ?> m) {
+		return new DefaultBridge(String.valueOf(m.get("target")), String.valueOf(m.get("owner")), String.valueOf(m.get("name")),
+				String.valueOf(m.get("descriptor")));
 	}
 
 	private static Map<String, Object> injectionToJson(InjectedInterface i) {

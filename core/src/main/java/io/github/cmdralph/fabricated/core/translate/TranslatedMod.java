@@ -19,6 +19,8 @@ import io.github.cmdralph.fabricated.core.resolve.Candidate;
  * @param accessTransformers number of access transformer lines generated
  * @param notes              conversion notes and warnings (access widener, signatures)
  * @param injectedInterfaces interface injections to apply at class load
+ * @param defaultBridges     methods to declare on game classes at class load, where an interface the mod adds brings a
+ *                           default method the class already has from another interface
  * @param environmentClasses classes (internal names) with Fabric's {@code @Environment} annotations, stripped at class load
  * @param cacheHit           whether the outputs came from the cache
  * @param millis             translation time (0 on cache hit)
@@ -32,6 +34,7 @@ public record TranslatedMod(
 		int accessTransformers,
 		List<String> notes,
 		List<InjectedInterface> injectedInterfaces,
+		List<DefaultBridge> defaultBridges,
 		Set<String> environmentClasses,
 		boolean cacheHit,
 		long millis) {

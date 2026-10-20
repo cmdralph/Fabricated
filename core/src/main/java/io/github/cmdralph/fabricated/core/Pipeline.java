@@ -43,6 +43,7 @@ import io.github.cmdralph.fabricated.core.resolve.FabricApiPlan;
 import io.github.cmdralph.fabricated.core.runtime.FabricLoaderRuntime;
 import io.github.cmdralph.fabricated.core.runtime.MappingResolvers;
 import io.github.cmdralph.fabricated.core.runtime.ModContainerImpl;
+import io.github.cmdralph.fabricated.core.translate.DefaultBridge;
 import io.github.cmdralph.fabricated.core.translate.JarClassSource;
 import io.github.cmdralph.fabricated.core.translate.LinkageAnalysis;
 import io.github.cmdralph.fabricated.core.metadata.ModIds;
@@ -169,12 +170,14 @@ public final class Pipeline {
 	 *
 	 * @param injectedInterfaces the interface injections of {@code mods}, by target class (immutable: class loading reads
 	 *                           it from any thread)
+	 * @param defaultBridges     the default method bridges of {@code mods}, by target class (immutable)
 	 * @param environmentClasses the classes of {@code mods} with {@code @Environment} annotations (immutable)
 	 */
 	public record Result(
 			FabricatedConfig config,
 			List<LoadedMod> mods,
 			Map<String, List<InjectedInterface>> injectedInterfaces,
+			Map<String, List<DefaultBridge>> defaultBridges,
 			Set<String> environmentClasses,
 			FabricLoaderRuntime runtime,
 			Map<String, ModContainerImpl> containers,
@@ -183,7 +186,8 @@ public final class Pipeline {
 
 		Result(FabricatedConfig config, List<LoadedMod> mods, FabricLoaderRuntime runtime, Map<String, ModContainerImpl> containers,
 				Report report, Set<String> dependencyFailures) {
-			this(config, List.copyOf(mods), injectedInterfacesOf(mods), environmentClassesOf(mods), runtime, containers, report, dependencyFailures);
+			this(config, List.copyOf(mods), injectedInterfacesOf(mods), defaultBridgesOf(mods), environmentClassesOf(mods), runtime, containers,
+					report, dependencyFailures);
 		}
 
 		/**
@@ -204,6 +208,18 @@ public final class Pipeline {
 			}
 			injections.replaceAll((target, list) -> List.copyOf(list));
 			return Map.copyOf(injections);
+		}
+
+		private static Map<String, List<DefaultBridge>> defaultBridgesOf(List<LoadedMod> mods) {
+			Map<String, List<DefaultBridge>> bridges = new HashMap<>();
+			for (LoadedMod mod : mods) {
+				for (DefaultBridge bridge : mod.translated().defaultBridges()) {
+					List<DefaultBridge> list = bridges.computeIfAbsent(bridge.target(), k -> new ArrayList<>());
+					if (!list.contains(bridge)) list.add(bridge);
+				}
+			}
+			bridges.replaceAll((target, list) -> List.copyOf(list));
+			return Map.copyOf(bridges);
 		}
 
 		private static Set<String> environmentClassesOf(List<LoadedMod> mods) {
@@ -622,9 +638,14 @@ public final class Pipeline {
 			for (TranslatedMod t : ordered) {
 				List<String> issues = linkage.get(t.neoForgeId());
 				if (issues == null) continue;
-				boolean fapiModule = plan.module(t.candidate().id()) != null;
+				FabricApiPlan.Module module = plan.module(t.candidate().id());
+				boolean fapiModule = module != null;
 				boolean fabricApiReference = issues.stream().anyMatch(i -> i.contains("net.fabricmc.fabric."));
-				if (config.strictLinkage() || fapiModule && fabricApiReference) {
+				// A module planned without some of its dependencies refers to what they would add, where its code never
+				// runs (on 1.21.11 the model loading API's wrapper models call the renderer API's emitQuads, which NeoForge
+				// never calls): those stay warnings, and its plan's CI check covers the rest.
+				boolean plannedWithout = fapiModule && !module.dropDependencies().isEmpty();
+				if (config.strictLinkage() || fapiModule && fabricApiReference && !plannedWithout) {
 					this.dropped.put(t.candidate().id(), new Drop("references code that does not exist at runtime: " + issues.getFirst(), fapiModule
 							? "This Fabric API module depends on internals that Fabricated implements differently; mods needing it cannot run yet."
 							: "Update the mod, or set \"strictLinkage\": false to load it anyway.", t.candidate()));

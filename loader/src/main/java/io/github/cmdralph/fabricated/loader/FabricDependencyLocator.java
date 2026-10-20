@@ -105,7 +105,13 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 		IModFile minecraft = find(loadedMods, "minecraft")
 				.orElseThrow(() -> new IllegalStateException("NeoForge did not provide the minecraft mod file"));
 		JarContents mcContents = minecraft.getContents();
-		ClassBytesSource gameClasses = name -> mcContents.readFile(name + ".class");
+		// NeoForge's own classes are the platform's too: the extension interfaces it gives game classes (whose default
+		// methods an interface a Fabric mod adds may collide with, CORPUS-11) are in its jar, not the game's.
+		JarContents neoForgeContents = find(loadedMods, "neoforge").map(IModFile::getContents).orElse(null);
+		ClassBytesSource gameClasses = name -> {
+			byte[] data = mcContents.readFile(name + ".class");
+			return data != null || neoForgeContents == null ? data : neoForgeContents.readFile(name + ".class");
+		};
 
 		FabricatedConfig config = FabricatedConfig.load(FMLPaths.CONFIGDIR.get());
 		TranslationCache cache = new TranslationCache(gameDir, config.cacheEnabled(), config.verifyIntegrity());

@@ -19,6 +19,7 @@ import net.neoforged.neoforgespi.transformation.ProcessorName;
  *       its generic signature so reflection sees the parameterised type. Mods implement the interface's methods
  *       through their own mixins, as on Fabric.</li>
  * </ul>
+ * Default method bridges come after Mixin ({@link DefaultBridgeProcessor}).
  */
 public final class FabricClassProcessor implements ClassProcessor {
 	private static final ProcessorName NAME = new ProcessorName("fabricated", "fabric_classes");
