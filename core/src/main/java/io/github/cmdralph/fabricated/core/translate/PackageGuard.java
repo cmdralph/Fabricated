@@ -6,7 +6,6 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -37,20 +36,30 @@ import io.github.cmdralph.fabricated.core.resolve.PlatformLibraries;
  *   <li>If the later mod has classes there that the earlier one doesn't (a package split between jars, as
  *       Kotlin and Compose libraries and MixinSquared ship theirs, which Fabric's single class path allows),
  *       the earlier mod's module serves them too: the package stays one module's.</li>
- *   <li>If both have a class of the same name with different bytes, or the later mod declares a service
- *       provider in the package (its module would no longer have the provider), it is disabled with an
- *       explanation.</li>
+ *   <li>If both have a class of the same name with different bytes, it is disabled with an explanation.</li>
  * </ol>
+ *
+ * <p>A module may only declare service providers it has, so a service file of the later mod whose providers are in
+ * packages it gave up goes with them: hidden when the module that has them declares the same service with the same
+ * providers, served by that module when it doesn't declare it. Any other case (providers in more than one module,
+ * or the same service with other providers there) disables the later mod.
  */
 public final class PackageGuard {
 	/**
 	 * Decision for one mod.
 	 *
 	 * @param excludedPackages packages filtered out of its jar and overlay
+	 * @param hiddenFiles      other files filtered out of them: service files whose providers another module has
 	 * @param borrowed         files of later mods its module serves too, by the jar they are read from: their part of a
-	 *                         package split with this mod
+	 *                         package split with this mod, and the service files that go with it
 	 */
-	public record Decision(Set<String> excludedPackages, Map<Path, Set<String>> borrowed, List<String> notes) {
+	public record Decision(Set<String> excludedPackages, Set<String> hiddenFiles, Map<Path, Set<String>> borrowed, List<String> notes) {
+		public static final Decision NONE = new Decision(Set.of(), Set.of(), Map.of(), List.of());
+
+		/** Whether a file (a path relative to the jar's root) is left out of this mod's module. */
+		public boolean hides(String relativePath) {
+			return hiddenFiles.contains(relativePath) || isExcluded(relativePath, excludedPackages);
+		}
 	}
 
 	/** A mod that cannot load because of a conflicting package. */
@@ -61,13 +70,17 @@ public final class PackageGuard {
 	public record Result(Map<String, Decision> decisions, List<Conflict> conflicts) {
 	}
 
+	/** A service file: the providers it lists, and the jar it is read from. */
+	private record Service(Set<String> providers, Path jar) {
+	}
+
 	/**
-	 * What a mod has in its packages.
+	 * What a mod has.
 	 *
-	 * @param packages         package → its files, each with the jar it is read from (the overlay, or the mod's jar)
-	 * @param providerPackages the packages of the service providers it declares in {@code META-INF/services}
+	 * @param packages package → its files, each with the jar it is read from (the overlay, or the mod's jar)
+	 * @param services its service files ({@code META-INF/services/...}), by path
 	 */
-	private record Contents(Map<String, Map<String, Path>> packages, Set<String> providerPackages) {
+	private record Contents(Map<String, Map<String, Path>> packages, Map<String, Service> services) {
 	}
 
 	private static final String SERVICES = "META-INF/services/";
@@ -88,7 +101,10 @@ public final class PackageGuard {
 		// Package → the NeoForge id of the mod whose module has it, and every file that module serves there.
 		Map<String, String> owner = new HashMap<>();
 		Map<String, Map<String, Path>> served = new HashMap<>();
+		// NeoForge id → the services its module declares (service file → providers).
+		Map<String, Map<String, Set<String>>> declared = new HashMap<>();
 		Map<String, Set<String>> excludedById = new LinkedHashMap<>();
+		Map<String, Set<String>> hiddenById = new HashMap<>();
 		Map<String, List<String>> notesById = new HashMap<>();
 		Map<String, Map<Path, Set<String>>> borrowedById = new HashMap<>();
 
@@ -101,6 +117,8 @@ public final class PackageGuard {
 				continue;
 			}
 			Set<String> excluded = new TreeSet<>();
+			// The packages this mod gives up to another Fabric mod's module.
+			Set<String> givenUp = new TreeSet<>();
 			List<String> notes = new ArrayList<>();
 			// Package → this mod's files there that the package's module will serve.
 			Map<String, Map<String, Path>> lent = new TreeMap<>();
@@ -126,26 +144,48 @@ public final class PackageGuard {
 					break;
 				}
 				boolean hasClasses = ours.keySet().stream().anyMatch(f -> f.endsWith(".class"));
-				if (hasClasses && contents.providerPackages().contains(name)) {
-					conflict = "contains package " + dotted + ", which " + existing + " also contains, and declares a service provider in it";
-					break;
-				}
 				if (extra.isEmpty() && differing.isEmpty()) {
-					excluded.add(name);
 					notes.add("shares identical files in package " + dotted + " with " + existing + "; using " + existing + "'s copy");
 				} else if (!hasClasses) {
-					excluded.add(name);
 					notes.add("has resources in " + dotted + " that clash with " + existing + "; this mod's copies are hidden");
 				} else if (differing.stream().anyMatch(f -> f.endsWith(".class"))) {
 					String clash = differing.stream().filter(f -> f.endsWith(".class")).findFirst().orElseThrow();
 					conflict = "contains package " + dotted + ", which " + existing + " also contains with a different " + clash;
 					break;
 				} else {
-					excluded.add(name);
 					lent.put(name, extra);
 					notes.add("shares package " + dotted + " with " + existing + ", whose module also serves this mod's " + extra.size() + " file(s) there"
 							+ (differing.isEmpty() ? "" : "; " + differing.size() + " clashing resource(s) use " + existing + "'s copies"));
 				}
+				excluded.add(name);
+				givenUp.add(name);
+			}
+			// Service files whose providers went with the packages given up.
+			Set<String> hidden = new TreeSet<>();
+			// Module → the service files it will serve for this mod.
+			Map<String, Map<String, Service>> moved = new TreeMap<>();
+			for (Map.Entry<String, Service> service : conflict == null ? contents.services().entrySet() : Set.<Map.Entry<String, Service>>of()) {
+				Set<String> providerPackages = new TreeSet<>();
+				for (String provider : service.getValue().providers()) providerPackages.add(packageOf(provider));
+				if (Collections.disjoint(providerPackages, givenUp)) continue;
+				Set<String> modules = new TreeSet<>();
+				for (String pkg : providerPackages) modules.add(givenUp.contains(pkg) ? owner.get(pkg) : mod.neoForgeId());
+				String file = service.getKey();
+				if (modules.size() > 1) {
+					conflict = "declares the service " + file.substring(SERVICES.length()) + " with providers in packages of " + String.join(" and ", modules)
+							+ ", and a module can only declare its own";
+					break;
+				}
+				String module = modules.iterator().next();
+				Set<String> theirs = declared.getOrDefault(module, Map.of()).get(file);
+				if (theirs == null) {
+					moved.computeIfAbsent(module, k -> new TreeMap<>()).put(file, service.getValue());
+				} else if (!theirs.equals(service.getValue().providers())) {
+					conflict = "declares the service " + file.substring(SERVICES.length()) + " with other providers than " + module
+							+ ", whose module has them";
+					break;
+				}
+				hidden.add(file);
 			}
 			if (conflict != null) {
 				conflicts.add(new Conflict(mod, conflict, SUGGESTION));
@@ -158,32 +198,42 @@ public final class PackageGuard {
 				notesById.get(lender).add("also serves the " + files.size() + " file(s) " + mod.neoForgeId() + " has in package " + pkg.replace('/', '.')
 						+ " (a package split between them)");
 			});
+			moved.forEach((module, files) -> files.forEach((file, service) -> {
+				borrowedById.computeIfAbsent(module, k -> new LinkedHashMap<>()).computeIfAbsent(service.jar(), k -> new TreeSet<>()).add(file);
+				declared.computeIfAbsent(module, k -> new HashMap<>()).put(file, service.providers());
+				notesById.get(module).add("also declares " + mod.neoForgeId() + "'s service " + file.substring(SERVICES.length()) + ", whose providers it has");
+			}));
 			for (Map.Entry<String, Map<String, Path>> pkg : contents.packages().entrySet()) {
 				if (excluded.contains(pkg.getKey())) continue;
 				owner.putIfAbsent(pkg.getKey(), mod.neoForgeId());
 				served.putIfAbsent(pkg.getKey(), new HashMap<>(pkg.getValue()));
 			}
+			contents.services().forEach((file, service) -> {
+				if (!hidden.contains(file)) declared.computeIfAbsent(mod.neoForgeId(), k -> new HashMap<>()).put(file, service.providers());
+			});
 			excludedById.put(mod.neoForgeId(), excluded);
+			hiddenById.put(mod.neoForgeId(), hidden);
 			notesById.put(mod.neoForgeId(), notes);
 		}
 		Map<String, Decision> decisions = new LinkedHashMap<>();
 		excludedById.forEach((id, excluded) -> {
 			Map<Path, Set<String>> borrowed = new LinkedHashMap<>();
 			borrowedById.getOrDefault(id, Map.of()).forEach((jar, files) -> borrowed.put(jar, Set.copyOf(files)));
-			decisions.put(id, new Decision(Set.copyOf(excluded), Collections.unmodifiableMap(borrowed), List.copyOf(notesById.get(id))));
+			decisions.put(id, new Decision(Set.copyOf(excluded), Set.copyOf(hiddenById.get(id)), Collections.unmodifiableMap(borrowed),
+					List.copyOf(notesById.get(id))));
 		});
 		return new Result(decisions, conflicts);
 	}
 
-	/** The mod's files by package (its overlay's copies over its jar's), and the packages of its service providers. */
+	/** The mod's files by package (its overlay's copies over its jar's), and its service files. */
 	private Contents contentsOf(TranslatedMod mod) throws IOException {
 		Map<String, Map<String, Path>> packages = new TreeMap<>();
-		Set<String> providerPackages = new HashSet<>();
+		Map<String, Service> services = new TreeMap<>();
 		for (Path jar : mod.overlay() != null && Files.exists(mod.overlay()) ? List.of(mod.jar(), mod.overlay()) : List.of(mod.jar())) {
 			try (SafeArchive archive = SafeArchive.open(jar, limits.forTranslatedJars())) {
 				for (String name : archive.entryNames()) {
 					if (name.startsWith(SERVICES) && !name.endsWith("/")) {
-						providerPackages.addAll(providerPackages(archive.readText(name)));
+						services.put(name, new Service(providers(archive.readText(name)), jar));
 						continue;
 					}
 					if (name.endsWith("/") || name.startsWith("META-INF/") || name.startsWith("assets/") || name.startsWith("data/")) continue;
@@ -196,19 +246,24 @@ public final class PackageGuard {
 				}
 			}
 		}
-		return new Contents(packages, providerPackages);
+		return new Contents(packages, services);
 	}
 
-	/** The packages (internal form) of the providers a service file lists, as NeoForge reads it. */
-	static Set<String> providerPackages(String serviceFile) {
-		Set<String> packages = new HashSet<>();
+	/** The providers a service file lists (binary class names), as NeoForge reads it: comments and blank lines ignored. */
+	static Set<String> providers(String serviceFile) {
+		Set<String> providers = new TreeSet<>();
 		for (String line : serviceFile.split("\\R")) {
 			int comment = line.indexOf('#');
 			String provider = (comment >= 0 ? line.substring(0, comment) : line).trim();
-			int dot = provider.lastIndexOf('.');
-			if (dot > 0) packages.add(provider.substring(0, dot).replace('.', '/'));
+			if (!provider.isEmpty()) providers.add(provider);
 		}
-		return packages;
+		return providers;
+	}
+
+	/** The package (internal form) of a binary class name. */
+	private static String packageOf(String className) {
+		int dot = className.lastIndexOf('.');
+		return dot < 0 ? "" : className.substring(0, dot).replace('.', '/');
 	}
 
 	/** Mirrors the JLS check NeoForge uses: every segment must be a Java identifier. */
