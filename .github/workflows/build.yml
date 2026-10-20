@@ -333,6 +333,24 @@ jobs:
           SMOKE_TIMEOUT=480 ci/smoke-client.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/client-sodium-fabric" "$RUNNER_TEMP/extra-sodium-fabric" || true
           grep -A300 "== " "$RUNNER_TEMP/client-sodium-fabric/run/logs/fabric-bridge-report.txt" || true
           grep -n -m 80 -E "FABRICATED-TEST frapi|Sodium|Iris|/(ERROR|FATAL)\]" "$RUNNER_TEMP/client-sodium-fabric/run/logs/latest.log" || true
+      # Fabric addons of Sodium (Sodium Extra, Reese's Sodium Options) next to Sodium for NeoForge, with Fabric API: their
+      # mixins into Sodium are checked against Sodium for NeoForge's classes (R3), and they use Sodium's API from its
+      # NeoForge build. The Fabric build of Sodium they depend on is skipped for the NeoForge one. Informational.
+      - name: Client with Sodium for NeoForge and Fabric Sodium addons (informational, 26.x)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && startsWith(matrix.minecraft, '26.') }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! ls "$RUNNER_TEMP"/extra-sodium/sodium*.jar >/dev/null 2>&1; then
+            echo "Modrinth has no Sodium for NeoForge ${{ matrix.minecraft }} build: nothing to run"
+            exit 0
+          fi
+          mkdir -p "$RUNNER_TEMP/extra-sodium-addons"
+          python3 ci/fetch-corpus.py "${{ matrix.minecraft }}" "$RUNNER_TEMP/extra-sodium-addons" fabric sodium-extra reeses-sodium-options || true
+          cp "$RUNNER_TEMP"/extra-sodium/sodium*.jar "$RUNNER_TEMP/extra/fabric-api.jar" "$RUNNER_TEMP/extra-sodium-addons/"
+          ls -1 "$RUNNER_TEMP/extra-sodium-addons"
+          SMOKE_TIMEOUT=480 ci/smoke-client.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/client-sodium-addons" "$RUNNER_TEMP/extra-sodium-addons" || true
       - name: Upload Sodium client run logs and report
         if: ${{ !cancelled() && startsWith(matrix.minecraft, '26.') }}
         uses: actions/upload-artifact@v4
@@ -346,6 +364,9 @@ jobs:
             ${{ runner.temp }}/client-sodium-fabric/run/logs
             ${{ runner.temp }}/client-sodium-fabric/run/crash-reports
             ${{ runner.temp }}/client-sodium-fabric/client.out
+            ${{ runner.temp }}/client-sodium-addons/run/logs
+            ${{ runner.temp }}/client-sodium-addons/run/crash-reports
+            ${{ runner.temp }}/client-sodium-addons/client.out
             ${{ runner.temp }}/client-shaders/run/logs
             ${{ runner.temp }}/client-shaders/run/crash-reports
             ${{ runner.temp }}/client-shaders/client.out
@@ -473,7 +494,7 @@ jobs:
           done
           [ -f "$RUNNER_TEMP/summary-polyfrost.txt" ] && { echo "== summary-polyfrost"; head -60 "$RUNNER_TEMP/summary-polyfrost.txt" | cut -c1-300; }
           [ -f viewers.txt ] && { echo "== viewers fetched"; cat viewers.txt; }
-          for run in client client-fapi client-shaders client-sodium-fabric client-viewers client-polyfrost client-corpus client-worldmap; do
+          for run in client client-fapi client-shaders client-sodium-fabric client-sodium-addons client-viewers client-polyfrost client-corpus client-worldmap; do
             log="$RUNNER_TEMP/$run/run/logs/latest.log"
             if [ ! -f "$log" ]; then
               # The game never started (the launcher stopped first): what the launcher said last.
@@ -493,7 +514,7 @@ jobs:
             [ -f "$report" ] && awk '/^== Mixin pre-flight failures ==/ { show = 1; next } /^$/ { show = 0 } show' "$report" | head -24 | cut -c1-700
             # The corpus: every disabled mod with its reason (one line each), and code that reaches for Fabric Loader
             # internals Fabricated doesn't provide (deep hooks that would fail when they run).
-            if [ "$run" = client-corpus ] && [ -f "$report" ]; then
+            if { [ "$run" = client-corpus ] || [ "$run" = client-sodium-addons ]; } && [ -f "$report" ]; then
               echo "-- disabled mods:"
               awk '/^== Disabled Fabric mods/ { show = 1; next } /^$/ { show = 0 } show && /^  [^ ]/ { id = $1 } show && /^      / && !/^      Fix:/ && id { print "  " id ": " substr($0, 7); id = "" }' "$report" | cut -c1-260
               echo "-- Fabric Loader references Fabricated doesn't provide:"
