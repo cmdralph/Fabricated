@@ -1,34 +1,21 @@
 package io.github.cmdralph.fabricated.neoforge.transfer;
 
-import java.util.Collections;
-import java.util.IdentityHashMap;
-import java.util.Set;
-import java.util.function.BiFunction;
-import java.util.function.Supplier;
-
 import org.jspecify.annotations.Nullable;
 
 import io.github.cmdralph.fabricated.core.metadata.ModIds;
 import io.github.cmdralph.fabricated.loader.FabricatedState;
 import net.fabricmc.fabric.api.lookup.v1.block.BlockApiLookup;
-import net.fabricmc.fabric.api.lookup.v1.block.BlockApiLookup.BlockApiProvider;
 import net.fabricmc.fabric.api.lookup.v1.item.ItemApiLookup;
 import net.fabricmc.fabric.api.transfer.v1.context.ContainerItemContext;
 import net.fabricmc.fabric.api.transfer.v1.fluid.FluidStorage;
 import net.fabricmc.fabric.api.transfer.v1.item.ItemStorage;
 import net.fabricmc.fabric.api.transfer.v1.storage.Storage;
 import net.fabricmc.fabric.api.transfer.v1.storage.TransferVariant;
-import net.fabricmc.fabric.api.transfer.v1.storage.base.SidedStorageBlockEntity;
 import net.fabricmc.fabric.impl.lookup.block.BlockApiLookupImpl;
-import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.item.Item;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
-import net.minecraft.world.level.block.entity.BlockEntity;
-import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModList;
@@ -49,21 +36,18 @@ import net.neoforged.neoforge.transfer.resource.Resource;
  * {@link ContextItemAccess}). Transactions are mirrored both ways ({@link FabricTransactions}, {@link NeoTransactions});
  * fluid amounts convert at 81 droplets per millibucket.
  *
- * <p>Vanilla blocks and items are left to each side's own wrappers, and NeoForge's item capabilities are offered for
- * Fabric mods' items only (NeoForge code asks them of every stack it sees, often every tick). For a block, neither
- * direction asks the other side's fallbacks, so a storage is never wrapped back into itself; for an item, each asks
- * the other side's whole lookup (a Fabric mod's tank may come from a fallback, as Team Reborn's batteries do), and the
- * other side's fallback doesn't ask back about the same stack meanwhile ({@link #askOtherSide}).
+ * <p>Each side answers for what its own mods add, told apart by namespace: NeoForge's capabilities for Fabric mods'
+ * blocks and items come from Fabric's whole lookup, fallbacks included (Tech Reborn offers its machines' tanks through
+ * one), and Fabric's lookups fall back to NeoForge's capabilities for NeoForge mods' blocks and items. So neither side
+ * ever asks the other about the same thing, and nothing is wrapped back into itself. Vanilla's are left to each side's
+ * own wrappers.
  */
 public final class TransferBridge {
-	/** The stacks this thread is asking one side's item lookup about on behalf of the other. */
-	private static final ThreadLocal<Set<ItemStack>> ASKING = ThreadLocal.withInitial(() -> Collections.newSetFromMap(new IdentityHashMap<>()));
-
 	private TransferBridge() {
 	}
 
 	public static void register(IEventBus modBus) {
-		// Last, so NeoForge mods' own capabilities for their blocks come first.
+		// Last, so a NeoForge mod's own capability for a Fabric mod's block or item comes first.
 		modBus.addListener(EventPriority.LOWEST, RegisterCapabilitiesEvent.class, TransferBridge::registerCapabilities);
 		addFabricFallback(ItemStorage.SIDED, Capabilities.Item.BLOCK, ResourceKind.ITEMS);
 		addFabricFallback(FluidStorage.SIDED, Capabilities.Fluid.BLOCK, ResourceKind.FLUIDS);
@@ -77,69 +61,43 @@ public final class TransferBridge {
 		return ModList.get().isLoaded(ModIds.toNeoForgeId("team_reborn_energy"));
 	}
 
-	static boolean isVanilla(Block block) {
-		return BuiltInRegistries.BLOCK.getKey(block).getNamespace().equals("minecraft");
+	/** Whether a NeoForge mod added the block: neither vanilla nor a Fabric mod (by namespace). */
+	static boolean isNeoForge(Block block) {
+		return isNeoForge(BuiltInRegistries.BLOCK.getKey(block).getNamespace());
 	}
 
-	static boolean isVanilla(Item item) {
-		return BuiltInRegistries.ITEM.getKey(item).getNamespace().equals("minecraft");
+	static boolean isNeoForge(Item item) {
+		return isNeoForge(BuiltInRegistries.ITEM.getKey(item).getNamespace());
 	}
 
-	/** Whether a Fabric mod added the item (it has a Fabric mod's namespace). */
-	private static boolean isFabric(Item item) {
-		return FabricatedState.get().isFabricMod(ModIds.toNeoForgeId(BuiltInRegistries.ITEM.getKey(item).getNamespace()));
+	private static boolean isNeoForge(String namespace) {
+		return !namespace.equals("minecraft") && !isFabric(namespace);
+	}
+
+	private static boolean isFabric(String namespace) {
+		return FabricatedState.get().isFabricMod(ModIds.toNeoForgeId(namespace));
 	}
 
 	private static void registerCapabilities(RegisterCapabilitiesEvent event) {
-		// The blocks every mod adds, and the items Fabric mods add: the ones the bridges register capabilities for.
-		Block[] blocks = BuiltInRegistries.BLOCK.stream().filter(block -> !isVanilla(block)).toArray(Block[]::new);
-		Item[] items = BuiltInRegistries.ITEM.stream().filter(TransferBridge::isFabric).toArray(Item[]::new);
+		Block[] blocks = BuiltInRegistries.BLOCK.stream().filter(block -> isFabric(BuiltInRegistries.BLOCK.getKey(block).getNamespace())).toArray(Block[]::new);
+		Item[] items = BuiltInRegistries.ITEM.stream().filter(item -> isFabric(BuiltInRegistries.ITEM.getKey(item).getNamespace())).toArray(Item[]::new);
 		if (blocks.length > 0) {
 			event.registerBlock(Capabilities.Item.BLOCK, (level, pos, state, blockEntity, side) ->
-					neoHandler(ItemStorage.SIDED, ResourceKind.ITEMS, SidedStorageBlockEntity::getItemStorage, level, pos, state, blockEntity, side), blocks);
+					neoHandler(ItemStorage.SIDED.find(level, pos, state, blockEntity, side), ResourceKind.ITEMS), blocks);
 			event.registerBlock(Capabilities.Fluid.BLOCK, (level, pos, state, blockEntity, side) ->
-					neoHandler(FluidStorage.SIDED, ResourceKind.FLUIDS, SidedStorageBlockEntity::getFluidStorage, level, pos, state, blockEntity, side), blocks);
+					neoHandler(FluidStorage.SIDED.find(level, pos, state, blockEntity, side), ResourceKind.FLUIDS), blocks);
 		}
 		if (items.length > 0) {
-			event.registerItem(Capabilities.Item.ITEM, (stack, access) -> neoItemHandler(ItemStorage.ITEM, ResourceKind.ITEMS, stack, access), items);
-			event.registerItem(Capabilities.Fluid.ITEM, (stack, access) -> neoItemHandler(FluidStorage.ITEM, ResourceKind.FLUIDS, stack, access), items);
+			event.registerItem(Capabilities.Item.ITEM, (stack, access) ->
+					neoHandler(ItemStorage.ITEM.find(stack, AccessItemContext.of(access)), ResourceKind.ITEMS), items);
+			event.registerItem(Capabilities.Fluid.ITEM, (stack, access) ->
+					neoHandler(FluidStorage.ITEM.find(stack, AccessItemContext.of(access)), ResourceKind.FLUIDS), items);
 		}
 		if (energy()) EnergyBridge.registerCapabilities(event, blocks, items);
 	}
 
-	/** A Fabric storage registered for the block (or offered by a Fabric block entity), as a NeoForge handler. */
-	private static <F extends TransferVariant<?>, N extends Resource> @Nullable ResourceHandler<N> neoHandler(
-			BlockApiLookup<Storage<F>, @Nullable Direction> lookup, ResourceKind<F, N> kind,
-			BiFunction<SidedStorageBlockEntity, @Nullable Direction, @Nullable Storage<F>> sided,
-			Level level, BlockPos pos, BlockState state, @Nullable BlockEntity blockEntity, @Nullable Direction side) {
-		BlockApiProvider<Storage<F>, @Nullable Direction> provider = lookup.getProvider(state.getBlock());
-		Storage<F> storage = provider != null ? provider.find(level, pos, state, blockEntity, side)
-				: blockEntity instanceof SidedStorageBlockEntity sidedEntity ? sided.apply(sidedEntity, side) : null;
-		if (storage == null) return null;
-		if (storage instanceof NeoHandlerStorage<?, ?> bridged) return unwrap(bridged);
-		return new FabricStorageHandler<>(storage, kind);
-	}
-
-	/**
-	 * Asks the other side's item lookup about {@code stack}, unless this thread is already asking about it on the other
-	 * side's behalf: then the question comes from there, and is answered with nothing rather than asked back. Lookups for
-	 * other stacks inside it (a backpack's contents, say) are asked as usual.
-	 */
-	static <T> @Nullable T askOtherSide(ItemStack stack, Supplier<@Nullable T> question) {
-		Set<ItemStack> asking = ASKING.get();
-		if (!asking.add(stack)) return null;
-		try {
-			return question.get();
-		} finally {
-			asking.remove(stack);
-		}
-	}
-
-	/** The item's Fabric storage, as a NeoForge handler changing the item through {@code access}. */
-	private static <F extends TransferVariant<?>, N extends Resource> @Nullable ResourceHandler<N> neoItemHandler(
-			ItemApiLookup<Storage<F>, ContainerItemContext> lookup, ResourceKind<F, N> kind, ItemStack stack, ItemAccess access) {
-		ContainerItemContext context = AccessItemContext.of(access);
-		Storage<F> storage = askOtherSide(stack, () -> lookup.find(stack, context));
+	/** A Fabric mod's storage as a NeoForge handler (the handler itself, when the storage stands for one). */
+	private static <F extends TransferVariant<?>, N extends Resource> @Nullable ResourceHandler<N> neoHandler(@Nullable Storage<F> storage, ResourceKind<F, N> kind) {
 		if (storage == null) return null;
 		if (storage instanceof NeoHandlerStorage<?, ?> bridged) return unwrap(bridged);
 		return new FabricStorageHandler<>(storage, kind);
@@ -151,35 +109,30 @@ public final class TransferBridge {
 	}
 
 	/**
-	 * Fabric's fallback for blocks without a Fabric storage: NeoForge's capability. It goes before upstream's fallback
-	 * that wraps any {@code Container}, so a NeoForge mod's block keeps the access rules of its own handler.
+	 * Fabric's fallback for NeoForge mods' blocks: NeoForge's capability. It goes before upstream's fallback that wraps
+	 * any {@code Container}, so a NeoForge mod's block keeps the access rules of its own handler.
 	 */
 	private static <F extends TransferVariant<?>, N extends Resource> void addFabricFallback(BlockApiLookup<Storage<F>, @Nullable Direction> lookup,
 			BlockCapability<ResourceHandler<N>, @Nullable Direction> capability, ResourceKind<F, N> kind) {
-		((BlockApiLookupImpl<Storage<F>, @Nullable Direction>) lookup).getFallbackProviders().add(0, (level, pos, state, blockEntity, side) -> {
-			if (isVanilla(state.getBlock()) || blockEntity instanceof SidedStorageBlockEntity) return null;
-			ResourceHandler<N> handler = level.getCapability(capability, pos, state, blockEntity, side);
-			if (handler == null) return null;
-			if (handler instanceof FabricStorageHandler<?, ?> bridged) return unwrapStorage(bridged);
-			return new NeoHandlerStorage<>(handler, kind);
-		});
+		((BlockApiLookupImpl<Storage<F>, @Nullable Direction>) lookup).getFallbackProviders().add(0, (level, pos, state, blockEntity, side) ->
+				isNeoForge(state.getBlock()) ? storage(level.getCapability(capability, pos, state, blockEntity, side), kind) : null);
 	}
 
 	/**
-	 * Fabric's fallback for items without a Fabric storage: NeoForge's capability, changing the item through the
-	 * context. It comes after upstream's fallback, which gives every bucket item Fabric's own bucket storage, and before
-	 * the fallbacks of Fabric mods' initializers.
+	 * Fabric's fallback for NeoForge mods' items: NeoForge's capability, changing the item through the context. It
+	 * comes after upstream's fallback, which gives every bucket item Fabric's own bucket storage.
 	 */
 	private static <F extends TransferVariant<?>, N extends Resource> void addFabricItemFallback(ItemApiLookup<Storage<F>, ContainerItemContext> lookup,
 			ItemCapability<ResourceHandler<N>, ItemAccess> capability, ResourceKind<F, N> kind) {
-		lookup.registerFallback((stack, context) -> {
-			if (isVanilla(stack.getItem())) return null;
-			ItemAccess access = ContextItemAccess.of(context);
-			ResourceHandler<N> handler = askOtherSide(stack, () -> stack.getCapability(capability, access));
-			if (handler == null) return null;
-			if (handler instanceof FabricStorageHandler<?, ?> bridged) return unwrapStorage(bridged);
-			return new NeoHandlerStorage<>(handler, kind);
-		});
+		lookup.registerFallback((stack, context) ->
+				isNeoForge(stack.getItem()) ? storage(stack.getCapability(capability, ContextItemAccess.of(context)), kind) : null);
+	}
+
+	/** A NeoForge mod's handler as a Fabric storage (the storage itself, when the handler stands for one). */
+	private static <F extends TransferVariant<?>, N extends Resource> @Nullable Storage<F> storage(@Nullable ResourceHandler<N> handler, ResourceKind<F, N> kind) {
+		if (handler == null) return null;
+		if (handler instanceof FabricStorageHandler<?, ?> bridged) return unwrapStorage(bridged);
+		return new NeoHandlerStorage<>(handler, kind);
 	}
 
 	@SuppressWarnings("unchecked") // Only ever built with matching kinds.

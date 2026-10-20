@@ -57,25 +57,25 @@ public final class TransferTest implements ModInitializer {
 	/** Holds whole buckets plus 40 droplets, so a millibucket-sized insert can't fill it exactly. */
 	private static final long ODD_CAPACITY = FluidConstants.BUCKET + 40;
 
-	private static Block block(String name) {
-		ResourceKey<Block> key = ResourceKey.create(Registries.BLOCK, Identifier.fromNamespaceAndPath("fabricated_testmod", name));
+	private static Block block(String namespace, String name) {
+		ResourceKey<Block> key = ResourceKey.create(Registries.BLOCK, Identifier.fromNamespaceAndPath(namespace, name));
 		return Registry.register(BuiltInRegistries.BLOCK, key, new Block(BlockBehaviour.Properties.of().setId(key)));
 	}
 
-	private static Item item(String name) {
-		ResourceKey<Item> key = ResourceKey.create(Registries.ITEM, Identifier.fromNamespaceAndPath("fabricated_testmod", name));
+	private static Item item(String namespace, String name) {
+		ResourceKey<Item> key = ResourceKey.create(Registries.ITEM, Identifier.fromNamespaceAndPath(namespace, name));
 		return Registry.register(BuiltInRegistries.ITEM, key, new Item(new Item.Properties().setId(key)));
 	}
 
 	@Override
 	public void onInitialize() {
-		Block fabricBlock = block("fabric_storage_block");
-		Block neoBlock = block("neo_handler_block");
-		// Fluid cells as a Fabric mod registers them, and as a NeoForge mod does (below).
-		Item fabricCell = item("fabric_cell");
-		Item fabricWaterCell = item("fabric_water_cell");
-		Item neoCell = item("neo_cell");
-		Item neoWaterCell = item("neo_water_cell");
+		// A Fabric mod's block and fluid cells, and a NeoForge mod's (their capabilities registered below).
+		Block fabricBlock = block("fabricated_testmod", "fabric_storage_block");
+		Block neoBlock = block(TestMod.NEOFORGE_NAMESPACE, "neo_handler_block");
+		Item fabricCell = item("fabricated_testmod", "fabric_cell");
+		Item fabricWaterCell = item("fabricated_testmod", "fabric_water_cell");
+		Item neoCell = item(TestMod.NEOFORGE_NAMESPACE, "neo_cell");
+		Item neoWaterCell = item(TestMod.NEOFORGE_NAMESPACE, "neo_water_cell");
 		FluidStorage.combinedItemApiProvider(fabricCell).register(context ->
 				new EmptyItemFluidStorage(context, fabricWaterCell, Fluids.WATER, FluidConstants.BUCKET));
 		FluidStorage.combinedItemApiProvider(fabricWaterCell).register(context ->

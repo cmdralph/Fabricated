@@ -3,7 +3,6 @@ package io.github.cmdralph.fabricated.neoforge.transfer;
 import org.jspecify.annotations.Nullable;
 
 import net.fabricmc.fabric.api.lookup.v1.block.BlockApiLookup;
-import net.fabricmc.fabric.api.lookup.v1.block.BlockApiLookup.BlockApiProvider;
 import net.fabricmc.fabric.api.lookup.v1.item.ItemApiLookup;
 import net.fabricmc.fabric.api.transfer.v1.context.ContainerItemContext;
 import net.fabricmc.fabric.impl.lookup.block.BlockApiLookupImpl;
@@ -13,7 +12,6 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.level.block.Block;
 import net.neoforged.neoforge.capabilities.Capabilities;
 import net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent;
-import net.neoforged.neoforge.transfer.access.ItemAccess;
 import net.neoforged.neoforge.transfer.energy.EnergyHandler;
 import net.neoforged.neoforge.transfer.transaction.TransactionContext;
 import team.reborn.energy.api.EnergyStorage;
@@ -35,42 +33,31 @@ final class EnergyBridge {
 	}
 
 	static void register() {
-		((BlockApiLookupImpl<EnergyStorage, @Nullable Direction>) SIDED).getFallbackProviders().add(0, (level, pos, state, blockEntity, side) -> {
-			if (TransferBridge.isVanilla(state.getBlock())) return null;
-			EnergyHandler handler = level.getCapability(Capabilities.Energy.BLOCK, pos, state, blockEntity, side);
-			return handler == null ? null : storage(handler);
-		});
-		ITEM.registerFallback((stack, context) -> {
-			if (TransferBridge.isVanilla(stack.getItem())) return null;
-			ItemAccess access = ContextItemAccess.of(context);
-			EnergyHandler handler = TransferBridge.askOtherSide(stack, () -> stack.getCapability(Capabilities.Energy.ITEM, access));
-			return handler == null ? null : storage(handler);
-		});
+		// Fabric's fallbacks for NeoForge mods' blocks and items: NeoForge's capabilities.
+		((BlockApiLookupImpl<EnergyStorage, @Nullable Direction>) SIDED).getFallbackProviders().add(0, (level, pos, state, blockEntity, side) ->
+				TransferBridge.isNeoForge(state.getBlock()) ? storage(level.getCapability(Capabilities.Energy.BLOCK, pos, state, blockEntity, side)) : null);
+		ITEM.registerFallback((stack, context) ->
+				TransferBridge.isNeoForge(stack.getItem()) ? storage(stack.getCapability(Capabilities.Energy.ITEM, ContextItemAccess.of(context))) : null);
 	}
 
-	/** NeoForge's energy capabilities for {@link TransferBridge}'s blocks and items. */
+	/** NeoForge's energy capabilities for Fabric mods' blocks and items, from the library's whole lookups. */
 	static void registerCapabilities(RegisterCapabilitiesEvent event, Block[] blocks, Item[] items) {
 		if (blocks.length > 0) {
-			event.registerBlock(Capabilities.Energy.BLOCK, (level, pos, state, blockEntity, side) -> {
-				BlockApiProvider<EnergyStorage, @Nullable Direction> provider = SIDED.getProvider(state.getBlock());
-				EnergyStorage storage = provider == null ? null : provider.find(level, pos, state, blockEntity, side);
-				return storage == null ? null : handler(storage);
-			}, blocks);
+			event.registerBlock(Capabilities.Energy.BLOCK, (level, pos, state, blockEntity, side) ->
+					handler(SIDED.find(level, pos, state, blockEntity, side)), blocks);
 		}
 		if (items.length > 0) {
-			event.registerItem(Capabilities.Energy.ITEM, (stack, access) -> {
-				ContainerItemContext context = AccessItemContext.of(access);
-				EnergyStorage storage = TransferBridge.askOtherSide(stack, () -> ITEM.find(stack, context));
-				return storage == null ? null : handler(storage);
-			}, items);
+			event.registerItem(Capabilities.Energy.ITEM, (stack, access) -> handler(ITEM.find(stack, AccessItemContext.of(access))), items);
 		}
 	}
 
-	private static EnergyHandler handler(EnergyStorage storage) {
+	private static @Nullable EnergyHandler handler(@Nullable EnergyStorage storage) {
+		if (storage == null) return null;
 		return storage instanceof NeoEnergyStorage bridged ? bridged.handler() : new FabricEnergyHandler(storage);
 	}
 
-	private static EnergyStorage storage(EnergyHandler handler) {
+	private static @Nullable EnergyStorage storage(@Nullable EnergyHandler handler) {
+		if (handler == null) return null;
 		return handler instanceof FabricEnergyHandler bridged ? bridged.storage() : new NeoEnergyStorage(handler);
 	}
 

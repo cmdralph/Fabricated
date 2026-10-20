@@ -480,20 +480,18 @@ the other side's access to where it is: NeoForge's `ItemAccess` as a Fabric `Con
   nested transactions keep their meaning.
 - Fluids convert at 81 droplets per millibucket. Only whole millibuckets move between the two: if a Fabric storage
   would take part of one, it is asked again for whole millibuckets.
-- A NeoForge mod's own capability for its block wins over a Fabric storage, and for a NeoForge mod's block Fabric mods
-  get its NeoForge handler before Fabric's generic `Container` wrapper, so the block's access rules hold.
+- Each side answers for what its own mods add, told apart by namespace. NeoForge code asking about a Fabric mod's
+  block or item gets the answer of Fabric's whole lookup, fallbacks included: Tech Reborn offers its machines' tanks
+  and energy through one, and a Fabric mod's `Container` block entity gets Fabric's generic wrapper, as on Fabric.
+  Fabric code asking about a NeoForge mod's block or item gets its NeoForge capability, before Fabric's generic
+  `Container` wrapper, so the block's access rules hold. Neither side ever asks the other about the same thing.
+- A NeoForge mod's own capability for a Fabric mod's block or item wins over the Fabric storage for NeoForge code;
+  Fabric code doesn't see it. Content a Fabric mod registers under another mod's namespace counts as that mod's.
 - Vanilla blocks and items keep each side's own wrappers. Every bucket item gets Fabric's own bucket storage from
   upstream's fallback, which comes before NeoForge's capability.
-- NeoForge's item capabilities are offered for items Fabric mods add (by namespace), not for NeoForge mods' items,
-  which NeoForge code asks about constantly and Fabric storages practically never serve.
-- On blocks, neither side asks the other's fallbacks (so a storage is never wrapped back into itself): a Fabric
-  storage offered only through a lookup fallback, rather than registered for its blocks or block entities, isn't seen
-  by NeoForge code. Fabric mods' storages are almost always registered for their blocks or block entities.
 - A storage on one side that uses one on the other in the same transaction (an item's handler changing the item
   through the other side's access, a NeoForge handler passing items on to a Fabric storage) works: where a
-  transaction already stands for one of the other side's, it is used instead of a new one nested in it. Likewise an
-  item storage that looks up other items' storages (a backpack's contents) gets the other side's answers; only a
-  question about the same stack, asked back from the other side, is answered with nothing.
+  transaction already stands for one of the other side's, it is used instead of a new one nested in it.
 - Entity storages are not bridged: Fabric API has no lookup for them.
 
 **Energy, with Team Reborn's library.** Fabric API has no energy API; Fabric tech mods share Team Reborn's
@@ -512,7 +510,8 @@ nested commits and commits; fluids move in whole millibuckets only; NeoForge cod
 in a slot, and Fabric code a NeoForge mod's, each item swapped only when the transaction commits. With Team Reborn's library
 (fetched for the server run with Fabric API where Modrinth has a build, of its own or nested in Tech Reborn's or
 Modern Industrialization's jar): NeoForge code charges a Fabric mod's energy block and Fabric code a NeoForge mod's,
-an aborted transaction leaving each unchanged.
+an aborted transaction leaving each unchanged; the Fabric block's energy comes from a lookup fallback, as Tech
+Reborn's machines' does.
 
 ### Fabric mods' fluids
 

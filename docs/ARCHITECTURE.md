@@ -255,8 +255,10 @@ than one of them losing out (`neoforge/transfer`):
 * **Storages** (`TransferBridge`): Fabric storages and NeoForge resource handlers see each other on blocks
   (`ItemStorage.SIDED`/`FluidStorage.SIDED` and `Capabilities.Item/Fluid.BLOCK`) and in items (`*.ITEM` and
   `Capabilities.Item/Fluid.ITEM`). An item's storage changes the item through the other side's access to where it is
-  (`AccessItemContext`, `ContextItemAccess`). Vanilla blocks and items keep each side's own wrappers. For items, each
-  side asks the other's whole lookup, guarded so the other side's fallback doesn't ask back.
+  (`AccessItemContext`, `ContextItemAccess`). Each side answers for its own mods' content, told apart by namespace:
+  NeoForge's capabilities for Fabric mods' blocks and items come from Fabric's whole lookups, and Fabric's lookups fall
+  back to NeoForge's capabilities for NeoForge mods' blocks and items, so neither ever asks the other back. Vanilla
+  blocks and items keep each side's own wrappers.
 * **Transactions** (`FabricTransactions`, `NeoTransactions`): an operation from one side runs in a transaction the
   other side mirrors, and its result follows the original's (abort, nested commit, commit). Where a transaction
   already mirrors one of the other side's, as when an item's handler calls back into its access, it stands for that

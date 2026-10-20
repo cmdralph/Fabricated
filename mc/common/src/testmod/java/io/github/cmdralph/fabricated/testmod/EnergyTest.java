@@ -46,18 +46,19 @@ public final class EnergyTest implements ModInitializer {
 		private static final BlockPos FABRIC_BLOCK = new BlockPos(8, 250, 14);
 		private static final BlockPos NEO_BLOCK = FABRIC_BLOCK.east(2);
 
-		private static Block block(String name) {
-			ResourceKey<Block> key = ResourceKey.create(Registries.BLOCK, Identifier.fromNamespaceAndPath("fabricated_testmod", name));
+		private static Block block(String namespace, String name) {
+			ResourceKey<Block> key = ResourceKey.create(Registries.BLOCK, Identifier.fromNamespaceAndPath(namespace, name));
 			return Registry.register(BuiltInRegistries.BLOCK, key, new Block(BlockBehaviour.Properties.of().setId(key)));
 		}
 
 		static void init() {
 			BlockApiLookup<EnergyStorage, @Nullable Direction> sided =
 					BlockApiLookup.get(Identifier.fromNamespaceAndPath("teamreborn", "sided_energy"), EnergyStorage.class, Direction.class);
-			Block fabricBlock = block("fabric_energy_block");
-			Block neoBlock = block("neo_energy_block");
+			Block fabricBlock = block("fabricated_testmod", "fabric_energy_block");
+			Block neoBlock = block(TestMod.NEOFORGE_NAMESPACE, "neo_energy_block");
 			FabricEnergy fabricEnergy = new FabricEnergy();
-			sided.registerForBlocks((level, pos, state, blockEntity, side) -> fabricEnergy, fabricBlock);
+			// Through a fallback, as Team Reborn offers its machines' energy.
+			sided.registerFallback((level, pos, state, blockEntity, side) -> state.is(fabricBlock) ? fabricEnergy : null);
 			SimpleEnergyHandler neoEnergy = new SimpleEnergyHandler(1000);
 			// A NeoForge capability, as a NeoForge mod would register it (on Fabricated's mod bus: this mod has none).
 			ModList.get().getModContainerById("fabricated").map(container -> container.getEventBus()).ifPresent(bus ->
