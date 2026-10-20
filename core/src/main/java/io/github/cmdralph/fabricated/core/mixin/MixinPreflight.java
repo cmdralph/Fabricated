@@ -505,7 +505,7 @@ public final class MixinPreflight {
 	 * way), when the named call is in none of the methods the injector targets and that overload is the only one there.
 	 * The handler of an {@code @Inject} or {@code @ModifyExpressionValue} doesn't see the arguments. One of a
 	 * {@code @Redirect}, {@code @WrapWithCondition} or {@code @WrapOperation} that takes exactly the call's receiver and
-	 * arguments (and the {@code Operation}) gets a bridge taking the overload's, which calls it without the added
+	 * arguments (and the {@code Operation}), and then any MixinExtras sugar, gets a bridge taking the overload's, which calls it without the added
 	 * argument; for {@code @WrapOperation}, with an {@code Operation} that puts it back when the original call is made.
 	 * A {@code NEW} point selecting a constructor by its descriptor is moved the same way, to a constructor taking one
 	 * more argument (NeoForge's patches give records components): its handlers take the arguments, as a static call's.
@@ -699,7 +699,7 @@ public final class MixinPreflight {
 		Type[] params = Type.getArgumentTypes(method.desc);
 		if (handlerTypes.length != params.length + 1 || !isCallbackInfo(handlerTypes[params.length])) return false;
 		for (int i = 0; i < params.length; i++) {
-			if (!handlerTypes[i].equals(params[i]) || !parameterAnnotations(handler, i).isEmpty()) return false;
+			if (!handlerTypes[i].equals(params[i]) || !Annotations.ofParameter(handler, i).isEmpty()) return false;
 		}
 		return true;
 	}
@@ -736,7 +736,7 @@ public final class MixinPreflight {
 		Type[] types = Type.getArgumentTypes(handler.desc);
 		List<Type> params = List.of(Type.getArgumentTypes(method.desc));
 		for (int i = 0; i < types.length; i++) {
-			for (AnnotationNode a : parameterAnnotations(handler, i)) {
+			for (AnnotationNode a : Annotations.ofParameter(handler, i)) {
 				if (!a.desc.equals(LOCAL)) continue;
 				Type local = types[i];
 				if (!Boolean.TRUE.equals(Annotations.value(a, "argsOnly")) || local.getDescriptor().startsWith("Lcom/llamalad7/mixinextras/sugar/ref/")
@@ -1319,7 +1319,7 @@ public final class MixinPreflight {
 	private static String missingLocal(MethodNode handler, List<MethodNode> targets) {
 		Type[] params = Type.getArgumentTypes(handler.desc);
 		for (int i = 0; i < params.length; i++) {
-			for (AnnotationNode a : parameterAnnotations(handler, i)) {
+			for (AnnotationNode a : Annotations.ofParameter(handler, i)) {
 				if (!a.desc.equals(LOCAL)) continue;
 				if (Annotations.value(a, "name") instanceof List<?> names && !names.isEmpty()) {
 					if (!judgedMissing(targets, local -> names.contains(local.name))) continue;
@@ -1359,7 +1359,7 @@ public final class MixinPreflight {
 		int opcode = Annotations.value(at, "opcode") instanceof Integer i ? i : -1;
 		Type[] params = Type.getArgumentTypes(handler.desc);
 		for (int p = 0; p < params.length; p++) {
-			for (AnnotationNode local : parameterAnnotations(handler, p)) {
+			for (AnnotationNode local : Annotations.ofParameter(handler, p)) {
 				if (!local.desc.equals(LOCAL) || Annotations.value(local, "name") != null || Annotations.value(local, "index") != null
 						|| Annotations.value(local, "ordinal") != null || Boolean.TRUE.equals(Annotations.value(local, "argsOnly"))
 						|| params[p].getDescriptor().startsWith("Lcom/llamalad7/mixinextras/sugar/ref/")) continue;
@@ -1406,22 +1406,13 @@ public final class MixinPreflight {
 		List<Type> args = new ArrayList<>();
 		for (int i = 0; i < types.length; i++) {
 			boolean sugar = false;
-			for (AnnotationNode a : parameterAnnotations(handler, i)) {
+			for (AnnotationNode a : Annotations.ofParameter(handler, i)) {
 				if (a.desc.equals(COERCE)) return null;
 				if (a.desc.startsWith("Lcom/llamalad7/mixinextras/sugar/")) sugar = true;
 			}
 			if (!sugar) args.add(types[i]);
 		}
 		return args;
-	}
-
-	private static List<AnnotationNode> parameterAnnotations(MethodNode method, int index) {
-		List<AnnotationNode> all = new ArrayList<>();
-		if (method.visibleParameterAnnotations != null && index < method.visibleParameterAnnotations.length
-				&& method.visibleParameterAnnotations[index] != null) all.addAll(method.visibleParameterAnnotations[index]);
-		if (method.invisibleParameterAnnotations != null && index < method.invisibleParameterAnnotations.length
-				&& method.invisibleParameterAnnotations[index] != null) all.addAll(method.invisibleParameterAnnotations[index]);
-		return all;
 	}
 
 	private static boolean isCallbackInfo(Type type) {

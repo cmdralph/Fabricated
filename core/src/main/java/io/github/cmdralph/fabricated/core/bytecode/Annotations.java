@@ -69,6 +69,16 @@ public final class Annotations {
 		return ret;
 	}
 
+	/** The annotations of a method's parameter at {@code index}, visible and invisible. */
+	public static List<AnnotationNode> ofParameter(MethodNode method, int index) {
+		List<AnnotationNode> ret = new ArrayList<>();
+		if (method.visibleParameterAnnotations != null && index < method.visibleParameterAnnotations.length
+				&& method.visibleParameterAnnotations[index] != null) ret.addAll(method.visibleParameterAnnotations[index]);
+		if (method.invisibleParameterAnnotations != null && index < method.invisibleParameterAnnotations.length
+				&& method.invisibleParameterAnnotations[index] != null) ret.addAll(method.invisibleParameterAnnotations[index]);
+		return ret;
+	}
+
 	/** The side ({@code CLIENT} or {@code SERVER}) an {@code @Environment}-style annotation names, or null. */
 	public static String side(AnnotationNode ann) {
 		return ann != null && value(ann, "value") instanceof String[] env && env.length == 2 ? env[1] : null;

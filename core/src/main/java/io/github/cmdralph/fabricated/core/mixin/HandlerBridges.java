@@ -28,6 +28,10 @@ import io.github.cmdralph.fabricated.core.bytecode.Annotations;
  * {@code @Unique}, so Mixin merges it as the mod's own method.
  */
 final class HandlerBridges {
+	/** The package of MixinExtras' sugar annotations ({@code @Local}, {@code @Share}, {@code @Cancellable}). */
+	private static final String SUGAR = "Lcom/llamalad7/mixinextras/sugar/";
+	private static final String COERCE = "Lorg/spongepowered/asm/mixin/injection/Coerce;";
+
 	private HandlerBridges() {
 	}
 
@@ -60,16 +64,20 @@ final class HandlerBridges {
 	 * A {@code @Redirect} or {@code @WrapWithCondition} handler for {@code overload}'s call: it calls {@code handler},
 	 * written for {@code desc}'s, without the added argument. Null when {@code handler} takes anything but that call's
 	 * receiver ({@code owner}) and arguments (a {@code @Coerce}d supertype included: the bridge wouldn't carry the
-	 * annotation), or doesn't return {@code result}.
+	 * annotation) and then MixinExtras sugar, or doesn't return {@code result}.
 	 */
 	static MethodNode callBridge(ClassNode mixin, MethodNode handler, Type owner, String desc, String overload, int inserted, boolean staticCall,
 			Type result, List<MethodNode> added) {
-		if (!List.of(Type.getArgumentTypes(handler.desc)).equals(callParameters(owner, desc, staticCall))
-				|| !Type.getReturnType(handler.desc).equals(result)) return null;
+		List<Type> call = callParameters(owner, desc, staticCall);
+		List<Type> sugar = sugarAfter(handler, call);
+		if (sugar == null || !Type.getReturnType(handler.desc).equals(result)) return null;
 		List<Type> params = callParameters(owner, overload, staticCall);
-		MethodNode bridge = bridgeMethod(handler, freeName(mixin, added, handler.name + "$fabricated"), params, Type.getReturnType(handler.desc));
 		int skip = inserted + (staticCall ? 0 : 1);
+		int sugarFrom = params.size();
+		params.addAll(sugar);
+		MethodNode bridge = bridgeMethod(handler, freeName(mixin, added, handler.name + "$fabricated"), params, Type.getReturnType(handler.desc));
 		int stack = loadAllBut(bridge, handler, params, skip);
+		moveSugar(handler, call.size(), bridge, sugarFrom, sugar.size());
 		callHandler(bridge, mixin.name, handler, stack);
 		return bridge;
 	}
@@ -78,23 +86,26 @@ final class HandlerBridges {
 	 * A {@code @WrapOperation} handler for {@code overload}'s call: it calls {@code handler}, written for {@code desc}'s,
 	 * without the added argument, and with an {@code Operation} that puts it back before making the call (a lambda the
 	 * bridge adds to {@code extra}). Null when {@code handler} takes anything but that call's receiver ({@code owner})
-	 * and arguments and the {@code Operation}.
+	 * and arguments, the {@code Operation}, and then MixinExtras sugar.
 	 */
 	static MethodNode wrapperBridge(ClassNode mixin, MethodNode handler, Type owner, String desc, String overload, int inserted, boolean staticCall,
 			List<MethodNode> extra) {
 		Type operation = Type.getType(MixinPreflight.OPERATION);
 		List<Type> expected = callParameters(owner, desc, staticCall);
 		expected.add(operation);
-		if (!List.of(Type.getArgumentTypes(handler.desc)).equals(expected)) return null;
+		List<Type> sugar = sugarAfter(handler, expected);
+		if (sugar == null) return null;
 		List<Type> params = callParameters(owner, overload, staticCall);
 		int skip = inserted + (staticCall ? 0 : 1);
 		Type added = params.get(skip);
+		int operationAt = params.size();
 		params.add(operation);
+		params.addAll(sugar);
 		MethodNode bridge = bridgeMethod(handler, freeName(mixin, extra, handler.name + "$fabricated"), params, Type.getReturnType(handler.desc));
-		int stack = loadAllBut(bridge, handler, params.subList(0, params.size() - 1), skip);
+		int stack = loadAllBut(bridge, handler, params.subList(0, operationAt), skip);
 		// The Operation the handler gets: the original one, with the added argument put back.
 		MethodNode lambda = argumentInserter(freeName(mixin, extra, "lambda$" + handler.name + "$fabricated"), added, skip);
-		bridge.instructions.add(new VarInsnNode(Opcodes.ALOAD, slotOf(handler, params, params.size() - 1)));
+		bridge.instructions.add(new VarInsnNode(Opcodes.ALOAD, slotOf(handler, params, operationAt)));
 		bridge.instructions.add(new VarInsnNode(added.getOpcode(Opcodes.ILOAD), slotOf(handler, params, skip)));
 		Type objects = Type.getType("([Ljava/lang/Object;)Ljava/lang/Object;");
 		bridge.instructions.add(new InvokeDynamicInsnNode("call", Type.getMethodDescriptor(operation, operation, added),
@@ -102,9 +113,58 @@ final class HandlerBridges {
 						"(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodType;"
 								+ "Ljava/lang/invoke/MethodHandle;Ljava/lang/invoke/MethodType;)Ljava/lang/invoke/CallSite;", false),
 				objects, new Handle(Opcodes.H_INVOKESTATIC, mixin.name, lambda.name, lambda.desc, false), objects));
-		callHandler(bridge, mixin.name, handler, stack + 1 + added.getSize());
+		int sugarSize = 0;
+		for (int i = operationAt + 1; i < params.size(); i++) {
+			bridge.instructions.add(new VarInsnNode(params.get(i).getOpcode(Opcodes.ILOAD), slotOf(handler, params, i)));
+			sugarSize += params.get(i).getSize();
+		}
+		moveSugar(handler, expected.size(), bridge, operationAt + 1, sugar.size());
+		callHandler(bridge, mixin.name, handler, stack + 1 + Math.max(added.getSize(), sugarSize));
 		extra.add(lambda);
 		return bridge;
+	}
+
+	/**
+	 * The types of {@code handler}'s parameters after {@code leading}, which it must start with: MixinExtras sugar
+	 * ({@code @Local}, {@code @Share}, {@code @Cancellable}), which MixinExtras gives a bridge as it would the handler, so
+	 * a bridge takes them too and passes them on. Null when the handler doesn't start with {@code leading}, one of those
+	 * is {@code @Coerce}d or sugar (the bridge passes them as they are), or one after them isn't sugar.
+	 */
+	static List<Type> sugarAfter(MethodNode handler, List<Type> leading) {
+		List<Type> own = List.of(Type.getArgumentTypes(handler.desc));
+		if (own.size() < leading.size() || !own.subList(0, leading.size()).equals(leading)) return null;
+		for (int i = 0; i < own.size(); i++) {
+			boolean sugar = false;
+			for (AnnotationNode a : Annotations.ofParameter(handler, i)) {
+				if (a.desc.equals(COERCE)) return null;
+				sugar |= a.desc.startsWith(SUGAR);
+			}
+			if (sugar != i >= leading.size()) return null;
+		}
+		return own.subList(leading.size(), own.size());
+	}
+
+	/** Moves the annotations of {@code handler}'s {@code count} sugar parameters from {@code from} to {@code bridge}'s from {@code to}. */
+	static void moveSugar(MethodNode handler, int from, MethodNode bridge, int to, int count) {
+		if (count == 0) return;
+		int params = Type.getArgumentTypes(bridge.desc).length;
+		for (int i = 0; i < count; i++) {
+			if (handler.visibleParameterAnnotations != null && from + i < handler.visibleParameterAnnotations.length) {
+				if (bridge.visibleParameterAnnotations == null) bridge.visibleParameterAnnotations = newParameterAnnotations(params);
+				bridge.visibleParameterAnnotations[to + i] = handler.visibleParameterAnnotations[from + i];
+				handler.visibleParameterAnnotations[from + i] = null;
+			}
+			if (handler.invisibleParameterAnnotations != null && from + i < handler.invisibleParameterAnnotations.length) {
+				if (bridge.invisibleParameterAnnotations == null) bridge.invisibleParameterAnnotations = newParameterAnnotations(params);
+				bridge.invisibleParameterAnnotations[to + i] = handler.invisibleParameterAnnotations[from + i];
+				handler.invisibleParameterAnnotations[from + i] = null;
+			}
+		}
+	}
+
+	@SuppressWarnings("unchecked")
+	private static List<AnnotationNode>[] newParameterAnnotations(int count) {
+		return (List<AnnotationNode>[]) new List<?>[count];
 	}
 
 	/** {@code (Operation original, T value, Object[] args) -> original.call(args with value inserted at index)}. */
