@@ -251,11 +251,33 @@ jobs:
           check "frapi nested terrain OK" "a Fabric model inside a vanilla multipart model was meshed"
           check "frapi level-aware default OK" "a NeoForge model inside a Fabric model got the chunk section's level from Fabric's renderer"
           check "frapi baked colors OK" "a NeoForge quad's baked colour reached Fabric's renderer"
-          check "frapi moving block OK" "a falling Fabric block model was drawn as a moving block"
+          check "frapi NeoForge parts OK" "NeoForge's level-aware parts of a Fabric model are made from its quads, baked colour kept"
+          check "frapi moving block OK" "a falling Fabric block model was drawn as a moving block (from those parts)"
+          check "frapi breaking OK" "a Fabric block model got the breaking overlay"
           if [ "$failed" = 1 ]; then
             grep -n -m 30 -E "model.loading|ModelManager|frapi|FabricBlockRendering|SectionCompiler|/(ERROR|FATAL)\]" "$log" || true
             exit 1
           fi
+      # Sodium for NeoForge 1.21.11 meshes chunk sections itself and has no Fabric renderer: it draws a Fabric block model
+      # from the parts Fabricated makes from its quads. Informational until it has passed.
+      - name: Client with Sodium for NeoForge (informational, 1.21.11)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && matrix.minecraft == '1.21.11' }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/extra-sodium"
+          python3 ci/fetch-corpus.py "${{ matrix.minecraft }}" "$RUNNER_TEMP/extra-sodium" neoforge sodium || true
+          if ! ls "$RUNNER_TEMP"/extra-sodium/sodium*.jar >/dev/null 2>&1; then
+            echo "Modrinth has no Sodium for NeoForge ${{ matrix.minecraft }} build: nothing to run"
+            exit 0
+          fi
+          cp "$RUNNER_TEMP/extra/fabric-api.jar" mc/${{ matrix.minecraft }}/build/testmods/fabricated-testmod-frapi.jar "$RUNNER_TEMP/extra-sodium/"
+          SMOKE_TIMEOUT=480 ci/smoke-client.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/client-sodium" "$RUNNER_TEMP/extra-sodium" || true
+          log="$RUNNER_TEMP/client-sodium/run/logs/latest.log"
+          for check in "frapi terrain OK .*LevelSlice" "frapi nested terrain OK .*LevelSlice" "frapi level-aware default OK"; do
+            if grep -h -m 1 "FABRICATED-TEST $check" "$log"; then echo "PASS: $check"; else echo "::warning::Sodium 1.21.11: no \"$check\" line"; fi
+          done
       - name: Upload Fabric API client run logs and report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
@@ -355,7 +377,7 @@ jobs:
           ls -1 "$RUNNER_TEMP/extra-sodium-addons"
           SMOKE_TIMEOUT=480 ci/smoke-client.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/client-sodium-addons" "$RUNNER_TEMP/extra-sodium-addons" || true
       - name: Upload Sodium client run logs and report
-        if: ${{ !cancelled() && startsWith(matrix.minecraft, '26.') }}
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
           name: smoke-client-sodium-${{ matrix.minecraft }}
@@ -497,7 +519,7 @@ jobs:
           done
           [ -f "$RUNNER_TEMP/summary-polyfrost.txt" ] && { echo "== summary-polyfrost"; head -60 "$RUNNER_TEMP/summary-polyfrost.txt" | cut -c1-300; }
           [ -f viewers.txt ] && { echo "== viewers fetched"; cat viewers.txt; }
-          for run in client client-fapi client-shaders client-sodium-fabric client-sodium-addons client-viewers client-polyfrost client-corpus client-worldmap; do
+          for run in client client-fapi client-sodium client-shaders client-sodium-fabric client-sodium-addons client-viewers client-polyfrost client-corpus client-worldmap; do
             log="$RUNNER_TEMP/$run/run/logs/latest.log"
             if [ ! -f "$log" ]; then
               # The game never started (the launcher stopped first): what the launcher said last.
@@ -522,6 +544,11 @@ jobs:
               awk '/^== Disabled Fabric mods/ { show = 1; next } /^$/ { show = 0 } show && /^  [^ ]/ { id = $1 } show && /^      / && !/^      Fix:/ && id { print "  " id ": " substr($0, 7); id = "" }' "$report" | cut -c1-260
               echo "-- Fabric Loader references Fabricated doesn't provide:"
               awk '/^== Linkage warnings/ { show = 1; next } /^$/ { show = 0 } show' "$report" | grep -E "missing [a-z]+ net\.fabricmc\.(loader|api)\." | head -30 | cut -c1-300
+            fi
+            # The addons run: which Fabric mods loaded (the step's own listing of the jars is far up the log).
+            if [ "$run" = client-sodium-addons ] && [ -f "$report" ]; then
+              echo "-- loaded Fabric mods, without Fabric API's modules:"
+              awk '/^== Loaded Fabric mods/ { show = 1; next } /^(==|$)/ { show = 0 } show && /^  [^ ]/ && $1 !~ /^fabric/ { print "  " $1 " " $2 }' "$report" | head -20
             fi
             # Fabric API's own modules: what pre-flight left out of them (their configs with a plugin).
             if [ "$run" = client-fapi ] && [ -f "$report" ]; then

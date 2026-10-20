@@ -14,7 +14,7 @@ Fabricated-owned (shipped in `game-mod.jar`, registered in `mc/common/src/main/r
 
 | Config file | Package | Versions | Sections | defaultRequire | overwrites.requireAnnotations | plugin |
 |---|---|---|---|---|---|---|
-| `mc/1.21.11/src/main/resources/fabricated.mixins.json` | `io.github.cmdralph.fabricated.neoforge.mixin` | 1.21.11 | mixins 44, client 22 | 1 | true | `FabricatedMixinPlugin` (creates Fabric language adapters in `onLoad`; filters nothing) |
+| `mc/1.21.11/src/main/resources/fabricated.mixins.json` | `io.github.cmdralph.fabricated.neoforge.mixin` | 1.21.11 | mixins 44, client 21 | 1 | true | `FabricatedMixinPlugin` (creates Fabric language adapters in `onLoad`; filters nothing) |
 | `mc/common26/src/main/resources/fabricated.mixins.json` | same | 26.1.2, 26.2, 26.3 | mixins 51, client 22 | 1 | true | same |
 | `mc/common/src/main/resources/fabricated-fabric-api.mixins.json` | `net.fabricmc.fabric.mixin.networking.accessor` | all | mixins 4 | 1 | true | none |
 | `mc/common/src/main/resources/fabricated-lookup.mixins.json` | `net.fabricmc.fabric.mixin.lookup` | all | mixins 2 (classes in `mc/<v>/src/fabricapi/java`) | 1 | true | none |
@@ -26,7 +26,7 @@ Fabricated-owned (shipped in `game-mod.jar`, registered in `mc/common/src/main/r
 | `mc/1.21.11/src/main/resources/fabricated-transfer.mixins.json` | `net.fabricmc.fabric.mixin.transfer` | 1.21.11 | mixins 16 | 1 | true | none |
 | `mc/common26/src/main/resources/fabricated-transfer.mixins.json` | same | 26.x | mixins 17 | 1 | true | none |
 | `mc/common26/src/main/resources/fabricated-renderer.mixins.json` | `io.github.cmdralph.fabricated.neoforge.rendering.mixin` | 26.x, only with `fabric_renderer_api_v1` (FML `requiredMods`) | client 2 | 1 | true | none |
-| `mc/1.21.11/src/main/resources/fabricated-renderer.mixins.json` | same | 1.21.11, only with `fabric_renderer_api_v1` | client 2 (`BlockStateModelMixin`, `BlockModelPartMixin`: the NeoForge-aware `emitQuads` defaults, as on 26.x) | 1 | true | none |
+| `mc/1.21.11/src/main/resources/fabricated-renderer.mixins.json` | same | 1.21.11, only with `fabric_renderer_api_v1` | client 2 (`BlockStateModelMixin`, `BlockModelPartMixin`: the NeoForge-aware `emitQuads` defaults, as on 26.x, and NeoForge's level-aware `collectParts` for Fabric models, made from their quads) | 1 | true | none |
 
 All have `"required": true`, `compatibilityLevel JAVA_21`, no `minVersion`, no config-level `priority`, no `refmap`, no `server` section.
 Mixin classes per version (2026-10-19 scan, before this session added 3): 1.21.11 = 96, 26.1.2 = 116, 26.2 = 115, 26.3 = 107. Every listed class resolves to exactly one file for
@@ -215,8 +215,8 @@ Versions: 1.21.11 · package `io.github.cmdralph.fabricated.neoforge.mixin` · r
 | client | client.BlockStateModelUnbakedMixin | 1.21.11 (1.21.11) | n.m.client.renderer.block.model.BlockStateModel$Unbaked | @ModifyExpressionValue → fabricated$fabricTypes | "<clinit>" | INVOKE `L…/Codec;flatComapMap(…)L…/Codec;` slice from PUTSTATIC `HARDCODED_WEIGHTED_CODEC` | — | default |
 | client | client.ModelManagerExtraModelsUploadMixin | 1.21.11 (1.21.11) | n.m.client.resources.model.ModelManager | @WrapOperation → fabricated$fabricExtraModels | "apply" | INVOKE `L…/ClientHooks;onModelBake(…)V` | — | default |
 | client | client.ModelManagerSpriteGetterMixin | 1.21.11 (1.21.11) | n.m.client.resources.model.ModelManager$1 | @Inject → fabricated$keepAtlases; adds method spriteFinder (Fabric's sprite getter API); @Shadow blockMissing; @Unique fabricated$atlases | "<init>" | RETURN sugar:@Local(argsOnly = true, ordinal = 0),@Local(argsOnly = true, ordinal = 1) | — | default |
-| client | client.MovingBlockRenderMixin | 1.21.11 (1.21.11) | n.m.client.renderer.feature.BlockFeatureRenderer | @WrapWithCondition → fabricated$fabricModels | "render" | INVOKE `L…/ModelBlockRenderer;tesselateBlock(…;L…/Function;ZI)V` (NeoForge's overload) sugar:@Local(argsOnly = true) BlockRenderDispatcher | — | default |
 | client | client.MultiPartModelMixin | 1.21.11 (1.21.11) | n.m.client.renderer.block.model.multipart.MultiPartModel | no injectors; implements FabricBlockRendering.Composite; @Shadow shared, blockState; @Unique fabricated$fabricPart | | | | |
+| client | client.SectionCompilerMixin | 1.21.11 (1.21.11) | n.m.client.renderer.chunk.SectionCompiler | @WrapWithCondition → fabricated$skipFabricParts | "compile(L…/SectionPos;L…/RenderSectionRegion;L…/VertexSorting;L…/SectionBufferBuilderPack;L…/List;)L…/SectionCompiler$Results;" | INVOKE `L…/BlockStateModel;collectParts(L…/BlockAndTintGetter;L…/BlockPos;L…/BlockState;L…/RandomSource;L…/List;)V` (NeoForge's level-aware overload) | — | default |
 | client | client.SectionCompilerMixin | 1.21.11 (1.21.11) | n.m.client.renderer.chunk.SectionCompiler | @WrapWithCondition → fabricated$fabricModels | "compile(L…/SectionPos;L…/RenderSectionRegion;L…/VertexSorting;L…/SectionBufferBuilderPack;L…/List;)L…/SectionCompiler$Results;" | INVOKE `L…/BlockRenderDispatcher;renderBatched(…;L…/Function;ZL…/List;)V` | — | default |
 | client | client.WeightedVariantsMixin | 1.21.11 (1.21.11) | n.m.client.resources.model.WeightedVariants | no injectors; implements FabricBlockRendering.Composite; @Shadow list; @Unique fabricated$fabricPart | | | | |
 
