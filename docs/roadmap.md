@@ -112,6 +112,10 @@ research sandbox).
 - Iris's Fabric build needs Sodium's Fabric build (its fluid hook targets `sodium.fabric` classes); Iris for NeoForge
   needs Sodium for NeoForge. The compatibility plan refuses either mixed pair with a message, `loadUnsupported` or not.
 - Indium has no build for these versions and isn't needed: Sodium provides `indium`.
+- OneConfig and PolyPlus (Fabric only; CI's informational run, 26.3 on `e88a2f9`): translated and pre-flighted, then the
+  client stopped at mod construction. 15 of their nested library jars were disabled for split packages (PKG-1, fixed
+  since), MixinSquared among them, so Polydium's MixinSquared selector failed. adventure-platform-fabric is disabled
+  for a mixin config in its nested jar (ADV-1).
 
 **Plan, by coverage per effort** (each with its CI check):
 
@@ -164,6 +168,7 @@ Severity: **P0** crash or data loss on a normal launch · **P1** a supported fea
 
 | ID | Sev | Location | Failure mode and trigger | Why tests missed it | Fix |
 |---|---|---|---|---|---|
+| PKG-1 | P1 | core `PackageGuard` | A package split between two jars (each with classes the other lacks) disabled the later jar. Fabric's single class path allows it, and Kotlin and Compose libraries, OneConfig's module jars and MixinSquared (its Fabric jar and its common jar) ship that way. In CI's Polyfrost run on 26.3 (`e88a2f9`) 15 jars were disabled, MixinSquared among them, and Polydium then crashed at mod construction: its `@MixinSquared:Handler` selector was never registered. | The guard predates nested library jars; found by the new Polyfrost CI run. | This pass: the earlier jar's module serves the later jar's files in the package (one more filtered path in its mod file), so the package stays one module's. A class both have with different bytes, or a service provider the later jar declares in the package, still disables it. `PipelineTest`, `PackageGuardTest`; CI's Polyfrost run is the in-game check. |
 | REG-1 | P0 on newer 26.3 builds | `NeoForgeRegistryInternals` | NeoForge's 26.3.x branch keeps each list of data-pack registries with its key set in a private record. The reflection accepted only a `List` field and found nothing, so `DynamicRegistries.register` threw and the game stopped on NeoForge's error screen. | CI pins NeoForge 26.3.0.69-beta, which predates the change; Fabricated's range accepts the newer builds. Found by the code audit. | `05f3a9c`: reads the record's components too, logs an unknown shape. A CI server run on the newest NeoForge build of each version; on `e68cb58` every server check passes on NeoForge 26.3.0.94, the synced dynamic registry included. |
 | SODIUM-1 | P0 for Sodium's Fabric build | core `MixinPreflight` | NeoForge keeps `BakedQuad`'s vanilla constructor only as a delegate adding NeoForge components, and builds block quads with the full one, so Sodium's Fabric `BakedQuadMixin` never ran for them; Sodium's renderer threw on the first block quad. | Seen in CI's first run of Sodium's Fabric build (`loadUnsupported`). | `bee1fe4`: the constructor repair covers delegates appending NeoForge-typed arguments, with a bridge for handlers taking the parameters. Unit tests; verified on 26.3 (`e68cb58`): Sodium's Fabric build meshes the world without the crash. Gate "frapi baked quad constructor hook OK" (`6a842e5`). |
 | FRAPI-2 | P2 | `FrapiDefaults` (26.x) | Upstream's `fromBakedQuad` sets vertex colours to white and no normals, so NeoForge quads drawn by Fabric's renderer lost their baked colours and normals. | Not yet seen in game; found reading Forgified Fabric API. | `ce52fb2`. |
@@ -204,6 +209,7 @@ crash in run 229).
 
 | ID | Sev | Location | Issue | Status |
 |---|---|---|---|---|
+| ADV-1 | P2, cause UNVERIFIED | `ModTranslator` mixin configs | adventure-platform-fabric 7.2.0 (nested in PolyPlus) is disabled: "Mixin config adventure-platform-mod-shared.accessor.mixins.json declared in fabric.mod.json is missing from the jar". The config is presumably in its nested `adventure-platform-mod-shared` jar, which Fabric's Mixin finds on the class path. | Needs the jars read: whether the nested jar declares the config itself, and how FML finds a config in another mod file. |
 | FC-5 | P3 | `TranslationCache.verifyIntegrity` | Hashes are memoised by file metadata. On Windows the key is size and mtime only, and `entry.json` itself isn't hashed. | Needs a decision on cost: re-hashing every launch versus trusting metadata. |
 | FC-6 | P3 | `TranslationCache.store` | Two cold launches of the same side that share one game directory race on delete-then-move. | Needs a cross-process file lock. Rare. |
 | FC-7 | P3, UNVERIFIED | cache cleanup | `Files.walk` may follow Windows directory junctions. | Must be verified on Windows first. |

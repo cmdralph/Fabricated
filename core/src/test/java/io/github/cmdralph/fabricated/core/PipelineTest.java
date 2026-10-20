@@ -143,6 +143,15 @@ class PipelineTest {
 		TestJars.create().fabricModJson(TestJars.modJson("dup-c", "1.0", ""))
 				.bytes("com/conflict/Thing.class", TestJars.emptyClass("com/conflict/Thing", "java/lang/Number"))
 				.write(mods.resolve("dup-c.jar"));
+		// The rest of a package dup-a has (split between jars, as Kotlin libraries ship theirs): dup-a's module serves it.
+		TestJars.create().fabricModJson(TestJars.modJson("dup-d", "1.0", ""))
+				.bytes("com/conflict/Other.class", TestJars.emptyClass("com/conflict/Other", "java/lang/Object"))
+				.write(mods.resolve("dup-d.jar"));
+		// The same, but its module would declare a service provider in the package it no longer has.
+		TestJars.create().fabricModJson(TestJars.modJson("dup-e", "1.0", ""))
+				.bytes("com/conflict/Provider.class", TestJars.emptyClass("com/conflict/Provider", "java/lang/Object"))
+				.text("META-INF/services/java.lang.Runnable", "# a comment\ncom.conflict.Provider\n")
+				.write(mods.resolve("dup-e.jar"));
 
 		TestJars.create().fabricModJson(TestJars.modJson("fabric-api-base", "0.4.0", "")).write(mods.resolve("fapi-base.jar"));
 		TestJars.create().fabricModJson(TestJars.modJson("client-only", "1.0", "\"environment\":\"client\"")).write(mods.resolve("client-only.jar"));
@@ -183,7 +192,7 @@ class PipelineTest {
 		for (Report.ModRow row : result.report().mods()) status.putIfAbsent(row.id(), row.status());
 
 		Set<String> loaded = result.mods().stream().map(m -> m.translated().candidate().id()).collect(Collectors.toSet());
-		assertEquals(Set.of("good-mod", "holder", "inner-lib", "dup-a", "dup-b", "res-a", "res-b"), loaded, result.report().render());
+		assertEquals(Set.of("good-mod", "holder", "inner-lib", "dup-a", "dup-b", "dup-d", "res-a", "res-b"), loaded, result.report().render());
 		Pipeline.LoadedMod resB = result.mods().stream().filter(m -> m.translated().candidate().id().equals("res-b")).findFirst().orElseThrow();
 		assertEquals(Set.of("licenses"), resB.excludedPackages(), "clashing resource-only directory is hidden, not fatal");
 		assertEquals(Report.Status.DISABLED, status.get("needs-missing"));
@@ -200,6 +209,13 @@ class PipelineTest {
 		assertEquals(Set.of("com/google/gson"), good.excludedPackages(), "bundled platform library is filtered");
 		Pipeline.LoadedMod dupB = result.mods().stream().filter(m -> m.translated().candidate().id().equals("dup-b")).findFirst().orElseThrow();
 		assertEquals(Set.of("com/shared"), dupB.excludedPackages(), "identical shared package uses the first copy");
+		Pipeline.LoadedMod dupA = result.mods().stream().filter(m -> m.translated().candidate().id().equals("dup-a")).findFirst().orElseThrow();
+		Pipeline.LoadedMod dupD = result.mods().stream().filter(m -> m.translated().candidate().id().equals("dup-d")).findFirst().orElseThrow();
+		assertEquals(Set.of("com/conflict"), dupD.excludedPackages());
+		assertEquals(Map.of(dupD.translated().jar(), Set.of("com/conflict/Other.class")), dupA.borrowed(), "a split package is served by one module");
+		assertEquals(Report.Status.DISABLED, status.get("dup-e"));
+		assertTrue(result.report().mods().stream().anyMatch(r -> r.id().equals("dup-e") && r.detail().contains("declares a service provider in it")),
+				result.report().render());
 
 		try (SafeArchive overlay = SafeArchive.open(good.translated().overlay(), ArchiveLimits.DEFAULTS)) {
 			String toml = overlay.readText("META-INF/neoforge.mods.toml");
@@ -444,7 +460,7 @@ class PipelineTest {
 		InjectedInterface injection = new InjectedInterface("net/minecraft/world/Thing", iface, iface, false, 1);
 		TranslatedMod mod = new TranslatedMod(c, id.replace('-', '_'), file, file, List.of(), 0, List.of(), List.of(injection),
 				Set.of(environmentClass), false, 0);
-		return new Pipeline.LoadedMod(mod, Set.of(), List.of());
+		return new Pipeline.LoadedMod(mod, Set.of(), Map.of(), List.of());
 	}
 
 	private static List<String> interfacesOf(Pipeline.Result result, String target) {

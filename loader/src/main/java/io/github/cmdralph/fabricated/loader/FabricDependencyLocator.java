@@ -5,6 +5,7 @@ import java.lang.module.ModuleDescriptor;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -197,9 +198,12 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 		for (Pipeline.LoadedMod mod : result.mods()) {
 			Set<String> excluded = mod.excludedPackages();
 			JarContents.PathFilter filter = excluded.isEmpty() ? null : path -> !PackageGuard.isExcluded(path, excluded);
-			JarContents contents = JarContents.ofFilteredPaths(List.of(
+			List<JarContents.FilteredPath> paths = new ArrayList<>(List.of(
 					new JarContents.FilteredPath(mod.translated().jar(), filter),
 					new JarContents.FilteredPath(mod.translated().overlay(), filter)));
+			// Other mods' part of a package split with this one: one module has the whole package.
+			mod.borrowed().forEach((jar, files) -> paths.add(new JarContents.FilteredPath(jar, files::contains)));
+			JarContents contents = JarContents.ofFilteredPaths(paths);
 			Optional<IModFile> added = pipeline.addJarContent(contents, attributes, IncompatibleFileReporting.ERROR);
 			if (added.isEmpty()) {
 				// Fabric code mustn't see it as loaded, or run its entrypoints, when NeoForge won't load its classes.
