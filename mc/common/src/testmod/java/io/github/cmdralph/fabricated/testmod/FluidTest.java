@@ -93,8 +93,7 @@ public final class FluidTest implements ModInitializer {
 			source = Registry.register(BuiltInRegistries.FLUID, id, new TestFluid.Source(this));
 			flowing = Registry.register(BuiltInRegistries.FLUID, Identifier.fromNamespaceAndPath("fabricated_testmod", name + "_flowing"), new TestFluid.Flowing(this));
 			ResourceKey<Block> key = ResourceKey.create(Registries.BLOCK, id);
-			block = Registry.register(BuiltInRegistries.BLOCK, key, new LiquidBlock(source, BlockBehaviour.Properties.ofFullCopy(properties).setId(key)) {
-			});
+			block = Registry.register(BuiltInRegistries.BLOCK, key, FluidTestCompat.liquidBlock(source, BlockBehaviour.Properties.ofFullCopy(properties).setId(key)));
 		}
 	}
 }
