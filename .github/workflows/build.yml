@@ -411,6 +411,15 @@ jobs:
               echo "-- $(basename "$report")"
               sed -n '/^Description:/,/^A detailed walkthrough/p' "$report" | grep -v -E "^\s+at |^A detailed" | head -30
             done
+            # A client that didn't reach a world: the log's last lines, and where its render thread was near the timeout.
+            if ! grep -q "Successfully finished." "$log"; then
+              echo "-- no world reached; last lines of the log:"
+              grep -v "Waiting for player to load" "$log" | tail -n 6 | cut -c1-300
+            fi
+            if [ -f "$RUNNER_TEMP/$run/thread-dump.txt" ]; then
+              echo "-- render thread shortly before the timeout:"
+              awk 'BEGIN { RS = "" } /^"Render thread/' "$RUNNER_TEMP/$run/thread-dump.txt" | grep -E "^\s+at " | head -25
+            fi
           done
       - name: Upload Fabricated jar
         uses: actions/upload-artifact@v4
