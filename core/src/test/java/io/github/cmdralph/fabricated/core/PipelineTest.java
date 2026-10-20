@@ -278,6 +278,14 @@ class PipelineTest {
 		assertFalse(result.runtime().isModLoaded("sodium"));
 		assertTrue(result.report().mods().stream().anyMatch(r -> r.id().equals("sodium-addon") && r.status() == Report.Status.DISABLED),
 				result.report().render());
+
+		// A player testing support for it can load it anyway.
+		Files.createDirectories(game.resolve("config"));
+		Files.writeString(game.resolve("config").resolve(FabricatedConfig.FILE_NAME), "{\"schema\": 1, \"mods\": {\"sodium\": {\"loadUnsupported\": true}}}");
+		Pipeline.Result forced = Pipeline.run(input(game, List.of(sodium, addon), Namespace.OFFICIAL, Map.of(), null, List.of()));
+		Set<String> loaded = forced.mods().stream().map(m -> m.translated().candidate().id()).collect(Collectors.toSet());
+		assertEquals(Set.of("sodium", "sodium-addon"), loaded, forced.report().render());
+		assertTrue(forced.report().render().contains("Unsupported mods loaded on request (loadUnsupported)"), forced.report().render());
 	}
 
 	/**

@@ -227,6 +227,21 @@ jobs:
             grep -n -m 60 -E "frapi|Indigo|sodium|Sodium|iris|Iris|/(ERROR|FATAL)\]" "$log" || true
             exit 1
           fi
+      # The Fabric builds of Sodium and Iris, loaded on request (loadUnsupported) with Fabric API and the renderer API
+      # test mod: informational, it records what breaks for the rendering-pipeline track (docs/roadmap.md).
+      - name: Client with the Fabric builds of Sodium and Iris (informational, 26.x)
+        if: always() && steps.build.outcome == 'success' && startsWith(matrix.minecraft, '26.')
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FABRICATED_MODS: '{"sodium": {"loadUnsupported": true}, "iris": {"loadUnsupported": true}}'
+        run: |
+          mkdir -p "$RUNNER_TEMP/extra-sodium-fabric"
+          python3 ci/fetch-corpus.py "${{ matrix.minecraft }}" "$RUNNER_TEMP/extra-sodium-fabric" fabric sodium iris
+          cp "$RUNNER_TEMP/extra/fabric-api.jar" mc/${{ matrix.minecraft }}/build/testmods/fabricated-testmod-frapi.jar "$RUNNER_TEMP/extra-sodium-fabric/"
+          SMOKE_TIMEOUT=480 ci/smoke-client.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/client-sodium-fabric" "$RUNNER_TEMP/extra-sodium-fabric" || true
+          grep -A300 "== " "$RUNNER_TEMP/client-sodium-fabric/run/logs/fabric-bridge-report.txt" || true
+          grep -n -m 80 -E "FABRICATED-TEST frapi|Sodium|Iris|/(ERROR|FATAL)\]" "$RUNNER_TEMP/client-sodium-fabric/run/logs/latest.log" || true
       - name: Upload Sodium client run logs and report
         if: always() && startsWith(matrix.minecraft, '26.')
         uses: actions/upload-artifact@v4
@@ -237,6 +252,9 @@ jobs:
             ${{ runner.temp }}/client-sodium/run/crash-reports
             ${{ runner.temp }}/client-sodium/client.out
             ${{ runner.temp }}/client-sodium/thread-dump.txt
+            ${{ runner.temp }}/client-sodium-fabric/run/logs
+            ${{ runner.temp }}/client-sodium-fabric/run/crash-reports
+            ${{ runner.temp }}/client-sodium-fabric/client.out
           if-no-files-found: ignore
       # Popular Fabric mods from Modrinth (ci/mod-corpus.txt, downloaded here in CI and checked against Modrinth's
       # SHA-512), loaded together with Fabric API: shows which load, which are disabled and why. Informational.

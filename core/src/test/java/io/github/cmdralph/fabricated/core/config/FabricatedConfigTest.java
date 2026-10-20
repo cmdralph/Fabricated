@@ -32,7 +32,7 @@ class FabricatedConfigTest {
 				  "strictLinkage": "yes",
 				  "cache": {"maxUnusedLaunches": 0},
 				  "limits": {"maxEntries": 500},
-				  "mods": {"some-mod": {"disabled": true, "skipMixins": ["a.mixins.json:Foo"], "aliases": ["alias"], "bogus": 1}},
+				  "mods": {"some-mod": {"disabled": true, "skipMixins": ["a.mixins.json:Foo"], "aliases": ["alias"], "bogus": 1, "loadUnsupported": true}},
 				  "unknownKey": true
 				}
 				""");
@@ -43,6 +43,8 @@ class FabricatedConfigTest {
 		assertTrue(c.override("some-mod").disabled());
 		assertEquals(Set.of("a.mixins.json:Foo"), c.override("some-mod").skipMixins());
 		assertFalse(c.override("other").disabled());
+		assertTrue(c.override("some-mod").loadUnsupported());
+		assertFalse(c.override("other").loadUnsupported());
 		// The retired "logLevel" key is accepted silently.
 		assertEquals(4, c.warnings().size(), c.warnings().toString());
 	}

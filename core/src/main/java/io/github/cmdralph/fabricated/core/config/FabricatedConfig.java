@@ -47,10 +47,15 @@ public record FabricatedConfig(
 		DISABLE
 	}
 
-	/** Per-mod overrides, keyed by Fabric mod id. */
+	/**
+	 * Per-mod overrides, keyed by Fabric mod id.
+	 *
+	 * @param loadUnsupported load the mod although Fabricated knows its Fabric build can't work on NeoForge (Sodium,
+	 *                        Iris): for testing support for it, never needed otherwise
+	 */
 	public record ModOverride(boolean disabled, Set<String> skipMixins, Set<String> skipEntrypoints, List<String> aliases,
-			boolean ignorePreflight, boolean ignoreHints) {
-		public static final ModOverride NONE = new ModOverride(false, Set.of(), Set.of(), List.of(), false, false);
+			boolean ignorePreflight, boolean ignoreHints, boolean loadUnsupported) {
+		public static final ModOverride NONE = new ModOverride(false, Set.of(), Set.of(), List.of(), false, false, false);
 
 		/** Stable text describing the overrides that affect translation output, for cache keys. */
 		public String fingerprint() {
@@ -138,7 +143,8 @@ public record FabricatedConfig(
 					Collections.unmodifiableSet(new TreeSet<>(m.strings("skipEntrypoints"))),
 					List.copyOf(m.strings("aliases")),
 					m.bool("ignorePreflight", false),
-					m.bool("ignoreHints", false)));
+					m.bool("ignoreHints", false),
+					m.bool("loadUnsupported", false)));
 			m.get("preferFabric");
 			m.reportUnknown();
 		}
@@ -186,6 +192,7 @@ public record FabricatedConfig(
 			m.put("aliases", o.aliases());
 			m.put("ignorePreflight", o.ignorePreflight());
 			m.put("ignoreHints", o.ignoreHints());
+			m.put("loadUnsupported", o.loadUnsupported());
 			modsJson.put(e.getKey(), m);
 		}
 		root.put("mods", modsJson);

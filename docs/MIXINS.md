@@ -1,7 +1,7 @@
 # Mixin inventory
 
 Every mixin Fabricated ships, by config: target, injector, injection point, `require` and the versions that compile
-it. Snapshot taken 2026-10-19 by scanning the sources (see `progress.md`), then updated by hand for that session's
+it. Snapshot taken 2026-10-19 by scanning the sources (see `roadmap.md`), then updated by hand for that session's
 changes. A commit that adds, removes or retargets a mixin updates its row here. Source line numbers are left out on
 purpose; open the class.
 

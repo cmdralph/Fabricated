@@ -123,7 +123,8 @@ warning in the report, so a bad config never crashes the game.
       "skipEntrypoints": ["client"],
       "aliases": ["example"],
       "ignorePreflight": false,
-      "ignoreHints": false
+      "ignoreHints": false,
+      "loadUnsupported": false
     }
   },
   "mojangMappingsPath": null
@@ -143,6 +144,7 @@ warning in the report, so a bad config never crashes the game.
 | `mods.<id>.aliases` | Extra ids this mod satisfies as a dependency. |
 | `mods.<id>.ignorePreflight` | Load the mod even if mixin pre-flight fails. It may crash. Use for testing only. |
 | `mods.<id>.ignoreHints` | Ignore the mod's own `custom.fabricated` hints (see [docs/API.md](docs/API.md)). |
+| `mods.<id>.loadUnsupported` | Load a mod whose Fabric build Fabricated refuses (the Fabric builds of Sodium and Iris) anyway. Expect it to misbehave; this exists for testing support for it. |
 | `mojangMappingsPath` | 1.21.11 only: path to Mojang's mapping file if NeoForge's installer didn't leave one. |
 
 ## Known limitations
@@ -179,7 +181,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). In short:
 
 - [docs/claude.md](docs/claude.md): start here when working on Fabricated. Architecture map, rules, Fabric's
   renderer API design, mixin conventions and the commands to run.
-- [docs/progress.md](docs/progress.md): findings log, roadmap, test matrices and what is still unverified.
+- [docs/roadmap.md](docs/roadmap.md): the roadmap (tracks, what is next), findings log, test matrices and what is still unverified.
 - [docs/MIXINS.md](docs/MIXINS.md): every mixin Fabricated applies, with its target and injection point.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how the pipeline, isolation, caching and security work.
 - [docs/RESEARCH.md](docs/RESEARCH.md): verified facts about NeoForge, FML and Fabric that the design

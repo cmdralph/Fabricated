@@ -1,7 +1,7 @@
 # Fabricated: engineering memory
 
 This file is the starting point for anyone (human or agent) working on Fabricated. **Read it first, then
-[`progress.md`](progress.md).** It holds the architecture map, the rules the code follows and the commands to run
+[`roadmap.md`](roadmap.md).** It holds the architecture map, the rules the code follows and the commands to run
 before committing. The longer design documents remain the reference for details:
 [`ARCHITECTURE.md`](ARCHITECTURE.md) (pipeline, isolation, caching, security), [`RESEARCH.md`](RESEARCH.md) (verified
 facts about NeoForge, FML and Fabric), [`COMPATIBILITY.md`](COMPATIBILITY.md) (what works, per version and module),
@@ -15,13 +15,13 @@ version).
   `26.1.x`, `26.2.x`, `26.3.x`; the Minecraft code NeoForge changes is in `patches/`), or in the Fabric API sources
   at the tag this version's plan names (`fabricApiVersion` in `mc/<version>/src/fabricated/resources/META-INF/fabricated/fabric-api-plan.json`).
   Signatures differ between versions (Fabric's renderer API changed between 26.2 and 26.3, for example). Anything
-  that can't be checked is marked `UNVERIFIED` in `progress.md`.
+  that can't be checked is marked `UNVERIFIED` in `roadmap.md`.
 - **Behaviour changes only fix a proven defect.** The commit message names the file, the failure and why tests
   missed it.
 - **Commits** are small and atomic: `fix(core): ...`, `feat(frapi): ...`, `refactor(mc/26.x): ...`, `docs: ...`,
   `ci: ...`, with a body that explains why.
 - **No placeholders** in merged code (`CONTRIBUTING.md`): an unsupported feature is reported in
-  `fabric-bridge-report.txt`, `COMPATIBILITY.md` and `progress.md`, not stubbed.
+  `fabric-bridge-report.txt`, `COMPATIBILITY.md` and `roadmap.md`, not stubbed.
 - **Pull requests are merged once CI is green on their final commit** (the owner's standing decision, 2026-10-19):
   open the PR, drive it to green, merge it with a merge commit, then continue on the same branch from the new
   `main`.
@@ -209,14 +209,14 @@ breaking overlay) through Fabric's renderer. On NeoForge that would drop level-a
    meshing: the breaking overlay copies the broken block's quads once per frame, because the game draws them after
    the call returns (vanilla copies its parts list there too).
 2. **Quad data has one owner, the active renderer.** Fabricated reads quads through `QuadView` and never keeps
-   them (vanilla quads made from them for the game, as for the breaking overlay, are the game's). If Fabricated ever gets its own encoder (see the roadmap in `progress.md`), its `int[]` stride, offsets and
+   them (vanilla quads made from them for the game, as for the breaking overlay, are the game's). If Fabricated ever gets its own encoder (see `roadmap.md`), its `int[]` stride, offsets and
    bit masks live in one constants class that every reader and writer uses.
 3. **Emitters and Fabric block renderers are thread-confined.** One per thread and use (`ThreadLocal`), bound to a
    section or a frame's buffers only for the duration of one call, never shared, never stored in a static field. Indigo's
    block renderer captures its thread's light cache when it is made, so sharing one across threads is a bug.
 4. **Version-agnostic FRAPI code lives in `mc/common26`** behind the narrow seam above. Version-specific code goes in
    `mc/<version>` with a one-line comment naming the API difference that forces it. 1.21.11 needs its own work (see
-   `progress.md`).
+   `roadmap.md`).
 5. **Every cache has an explicit lifecycle tied to what it caches.** A cache keyed by a `Class` is a `ClassValue`
    (class lifetime, no pinning). A cache of baked models, sprites or atlases is cleared in a reload listener, or it
    lives in a field of the reloaded object itself. No static map keyed by models, states or identifiers outlives a

@@ -52,12 +52,15 @@ if [ -n "$extra" ] && [ -d "$extra" ]; then
 	cp "$extra"/*.jar run/mods/ 2>/dev/null || true
 fi
 ls -1 run/mods
+# FABRICATED_MODS: optional per-mod overrides, the "mods" object of config/fabricated.json.
+mods_json="${FABRICATED_MODS:-{\}}"
 if [ -n "$extra" ]; then
 	# With extra mods, a mod's failing entrypoint is reported and the game goes on, as the server smoke test does.
-	echo '{ "schema": 1, "onEntrypointFailure": "disable", "logLevel": "DEBUG" }' > run/config/fabricated.json
+	echo "{ \"schema\": 1, \"onEntrypointFailure\": \"disable\", \"logLevel\": \"DEBUG\", \"mods\": $mods_json }" > run/config/fabricated.json
 else
-	echo '{ "schema": 1, "logLevel": "DEBUG" }' > run/config/fabricated.json
+	echo "{ \"schema\": 1, \"logLevel\": \"DEBUG\", \"mods\": $mods_json }" > run/config/fabricated.json
 fi
+cat run/config/fabricated.json
 cat > run/options.txt <<'OPTS'
 onboardAccessibility:false
 pauseOnLostFocus:false

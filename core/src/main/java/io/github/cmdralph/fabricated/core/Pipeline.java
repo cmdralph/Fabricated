@@ -351,7 +351,9 @@ public final class Pipeline {
 				continue;
 			}
 			String neoForgeBuildOnly = NEOFORGE_BUILD_ONLY.get(c.id());
-			if (neoForgeBuildOnly != null) {
+			if (neoForgeBuildOnly != null && config.override(c.id()).loadUnsupported()) {
+				report.line("Unsupported mods loaded on request (loadUnsupported)", c.id() + ": " + neoForgeBuildOnly);
+			} else if (neoForgeBuildOnly != null) {
 				report.mod(new ModRow(c.id(), c.version(), c.origin(), Status.DISABLED, "its Fabric build can't run on NeoForge: " + neoForgeBuildOnly,
 						"Install " + c.metadata().getName() + " for NeoForge instead (from the same download page)."));
 				continue;
@@ -688,7 +690,7 @@ public final class Pipeline {
 		for (AppliedPatch p : patches) skip.addAll(p.patch().skipMixins());
 		if (skip.equals(user.skipMixins())) return user;
 		return new FabricatedConfig.ModOverride(user.disabled(), Set.copyOf(skip), user.skipEntrypoints(), user.aliases(), user.ignorePreflight(),
-				user.ignoreHints());
+				user.ignoreHints(), user.loadUnsupported());
 	}
 
 	private static void addBuiltin(FabricLoaderRuntime runtime, String id, String version, String name, List<String> aliases,

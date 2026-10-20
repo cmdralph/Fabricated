@@ -92,7 +92,7 @@ Fabricated/
 │   ├── 26.2/                ... for 26.2   (Java 25)
 │   └── 26.3/                ... for 26.3   (Java 25, NeoForge beta)
 ├── ci/                      Server, client and mod-corpus smoke tests run by GitHub Actions
-└── docs/                    claude.md (start here), progress.md, RESEARCH, ARCHITECTURE, COMPATIBILITY, MIXINS, API
+└── docs/                    claude.md (start here), roadmap.md, RESEARCH, ARCHITECTURE, COMPATIBILITY, MIXINS, API
 ```
 
 * **Output:** one jar per MC version, `fabricated-<version>+mc<mc>.jar`. `core`, `loader`, `fabric-loader-api` and `api` are shaded in, all under the Fabricated-owned package `io.github.cmdralph.fabricated.*`, so they can't clash with anything. The `fabric-loader-api` types keep their original `net.fabricmc.*` package names because Fabric mods link against them.
