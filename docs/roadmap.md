@@ -159,6 +159,10 @@ NeoForge already cover those users.
 - **Done (this pass):** the hosts' builds are pinned per version (`plugin_hosts` in CI's matrix) and the run is a gate:
   each host must construct and call the test mod's plugin. On `b679b92` JEI, REI, Jade, WTHIT and Simple Voice Chat
   did on 1.21.11, 26.1.2 and 26.2, and all but WTHIT (no 26.3 build) on 26.3.
+- **Done (this pass):** storages in items bridged both ways (`ItemStorage.ITEM`/`FluidStorage.ITEM` with NeoForge's
+  item capabilities), and energy with Team Reborn's library when a Fabric mod brings it (blocks and items, both
+  ways), the first bridge to a Fabric library rather than Fabric API. CI: the transfer check fills each side's fluid
+  cell from the other; an energy check runs where Modrinth has the library.
 - **Next:** EMI once it has NeoForge builds for these versions.
 
 ### Quality: CI, corpus, performance
@@ -310,6 +314,16 @@ Newest first. Each entry: what changed, and how it was verified.
 ### 2026-10-21 (latest): item storages bridged, shader pack evidence
 
 **Summary.**
+- Storages in items are bridged: a NeoForge machine fills a Fabric mod's tank item through
+  `Capabilities.Fluid.ITEM`, a Fabric machine a NeoForge mod's through `FluidStorage.ITEM`, each item changed through
+  the other side's access to where it is (`AccessItemContext`, `ContextItemAccess`). That crosses back in one
+  transaction (the handler calls the access), which the transaction mirrors couldn't do, so they now stand for each
+  other: a NeoForge transaction opened for a Fabric one takes a borrowed snapshot in `FabricTransactions`, and a
+  Fabric transaction opened for a NeoForge one gets no mirror in `NeoTransactions`. The documented limitation (a
+  storage using one on the other side in the same transaction) is gone with it. Each side's item lookup asks the
+  other's whole lookup, with a guard against asking back (Team Reborn's batteries come from a fallback).
+- Energy with Team Reborn's library (`EnergyBridge`), loaded only when a Fabric mod brings it; compiled against
+  never-packaged stand-ins of its API (`integrationstubs`), its lookups found by id.
 - Results of pull request #47 on `4e9542e`: all versions green. With `BlockStateModelDefaultsMixin` gone, the renderer
   API checks on 26.x pass (the bridges declare its two methods). On 1.21.11 the corpus disables the same 7 mods as
   before, so checking mixins into other Fabric mods there disabled none that worked. The new run with Sodium, Iris

@@ -489,6 +489,12 @@ the other side's access to where it is: NeoForge's `ItemAccess` as a Fabric `Con
   transaction already stands for one of the other side's, it is used instead of a new one nested in it.
 - Entity storages are not bridged: Fabric API has no lookup for them.
 
+**Energy, with Team Reborn's library.** Fabric API has no energy API; Fabric tech mods share Team Reborn's
+(`team_reborn_energy`, nested in the mods that use it). When a Fabric mod brings it, its storages and NeoForge's
+energy handlers see each other the same way, on blocks (its `SIDED` lookup and `Capabilities.Energy.BLOCK`) and in
+items (its `ITEM` lookup and `Capabilities.Energy.ITEM`, batteries charged through either side). One unit is one
+unit: neither API fixes an exchange rate. Without the library nothing of this loads.
+
 On 1.21.11, `FluidVariantRendering`'s default sprites and colours come from NeoForge's fluid client extensions instead
 of `fabric-rendering-fluids-v1`'s registry.
 
@@ -496,7 +502,9 @@ CI checks, on all four versions: a chest found through `ItemStorage.SIDED` keeps
 aborted and changes when one commits; a full water cauldron empties when a bucket of water is extracted; a Fabric
 storage used through NeoForge's capability and a NeoForge handler used through `ItemStorage.SIDED` follow aborts,
 nested commits and commits; fluids move in whole millibuckets only; NeoForge code fills a Fabric mod's fluid cell
-in a slot, and Fabric code a NeoForge mod's, each item swapped only when the transaction commits.
+in a slot, and Fabric code a NeoForge mod's, each item swapped only when the transaction commits. With Team Reborn's library
+(fetched for the server run with Fabric API, where Modrinth has a build): NeoForge code charges a Fabric mod's energy
+block and Fabric code a NeoForge mod's, an aborted transaction leaving each unchanged.
 
 ### Native `fabric-menu-api-v1` (`fabric-screen-handler-api-v1` on 1.21.11)
 

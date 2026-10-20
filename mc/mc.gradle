@@ -59,6 +59,11 @@ sourceSets {
     testmodstubs {
         java.srcDir rootProject.file('mc/common/src/testmodstubs/java')
     }
+    // Stand-ins for the APIs of Fabric libraries Fabricated bridges when a mod brings them (Team Reborn's energy API);
+    // never packaged: the bridge loads only when the library is present.
+    integrationstubs {
+        java.srcDir rootProject.file('mc/common/src/integrationstubs/java')
+    }
 }
 
 configurations {
@@ -82,11 +87,14 @@ dependencies {
     // The in-game mod reaches the loader classes through NeoForge's parent class loader at runtime.
     compileOnly sourceSets.loader.output
     compileOnly project(':core')
+    compileOnly sourceSets.integrationstubs.output
 
     testmodCompileOnly project(':fabric-loader-api')
     testmodCompileOnly project(':api')
     testmodCompileOnly sourceSets.main.output
     testmodCompileOnly sourceSets.testmodstubs.output
+    // After Fabricated's own classes, whose real Fabric API types win over the stubs' stand-ins.
+    testmodCompileOnly sourceSets.integrationstubs.output
     testmodbrokenCompileOnly project(':fabric-loader-api')
 }
 

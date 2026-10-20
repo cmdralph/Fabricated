@@ -128,7 +128,25 @@ jobs:
           mkdir -p "$RUNNER_TEMP/extra"
           curl -fsSL --retry 4 -o "$RUNNER_TEMP/extra/fabric-api.jar" \
             "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api/${{ matrix.fabric_api }}/fabric-api-${{ matrix.fabric_api }}.jar"
+          # Team Reborn's energy library (Fabric tech mods' energy API), for the energy bridge's check below.
+          mkdir -p "$RUNNER_TEMP/energy"
+          python3 ci/fetch-corpus.py "${{ matrix.minecraft }}" "$RUNNER_TEMP/energy" fabric team-reborn-energy || true
+          cp "$RUNNER_TEMP"/energy/*.jar "$RUNNER_TEMP/extra/" 2>/dev/null || true
           ci/smoke-server.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/server-fapi" "$RUNNER_TEMP/extra"
+      - name: Energy bridge with Team Reborn's library
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: |
+          if ! ls "$RUNNER_TEMP"/energy/*.jar >/dev/null 2>&1; then
+            echo "::warning::Modrinth has no Team Reborn Energy build for ${{ matrix.minecraft }}: nothing to check"
+            exit 0
+          fi
+          if grep -h "FABRICATED-TEST energy OK" "$RUNNER_TEMP/server-fapi/server.out"; then
+            echo "PASS: energy moves both ways between Team Reborn's API and NeoForge's capability"
+          else
+            grep -h -E "FABRICATED-TEST energy|team_reborn_energy" "$RUNNER_TEMP/server-fapi/server.out" | head -8 || true
+            echo "::error::FAIL: the energy bridge check did not pass"
+            exit 1
+          fi
       - name: Upload Fabric API run logs and report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
