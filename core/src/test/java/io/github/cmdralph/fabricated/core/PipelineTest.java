@@ -294,6 +294,29 @@ class PipelineTest {
 		assertTrue(row.detail().contains("drawSections, which does not exist in net.example.sodium.Renderer"), row.detail());
 	}
 
+	/** A mixin into a mod that isn't installed isn't verified, and is checked once that mod is installed. */
+	@Test
+	void mixinsIntoAModInstalledLaterAreCheckedThen(@TempDir Path game) throws Exception {
+		String renderer = "net/example/sodium/Renderer";
+		Path addon = TestJars.create().fabricModJson(TestJars.modJson("addon", "1.0", "\"mixins\":[\"addon.mixins.json\"]"))
+				.text("addon.mixins.json", "{\"required\":true,\"package\":\"com.addon.mixin\",\"mixins\":[\"RendererMixin\"]}")
+				.bytes("com/addon/mixin/RendererMixin.class", mixinClass("com/addon/mixin/RendererMixin", renderer, "drawSections"))
+				.write(Files.createDirectories(game.resolve("mods")).resolve("addon.jar"));
+		Map<String, byte[]> sodium = new HashMap<>();
+		Supplier<InstalledClasses> installed = () -> new InstalledClasses(List.of(new InstalledClasses.Jar("Sodium", sodium::containsKey, sodium::get)));
+
+		Pipeline.Input without = input(game, List.of(addon), Namespace.OFFICIAL, Map.of(), null, List.of(), installed.get());
+		Pipeline.Result first = Pipeline.run(without);
+		assertEquals(List.of("addon"), first.mods().stream().map(m -> m.translated().candidate().id()).toList(), first.report().render());
+		without.cache().finish(5);
+
+		sodium.put(renderer, installedClass(renderer, "renderSections"));
+		Pipeline.Result installedNow = Pipeline.run(input(game, List.of(addon), Namespace.OFFICIAL, Map.of(), null, List.of(), installed.get()));
+		assertTrue(installedNow.mods().isEmpty(), installedNow.report().render());
+		Report.ModRow row = installedNow.report().mods().stream().filter(r -> r.id().equals("addon")).findFirst().orElseThrow();
+		assertTrue(row.detail().contains("drawSections, which does not exist in net.example.sodium.Renderer"), row.detail());
+	}
+
 	/** On 26.x an addon's mixins into another Fabric mod's classes are checked against that mod's jar. */
 	@Test
 	void mixinsIntoAnotherFabricModAreChecked(@TempDir Path game) throws Exception {
