@@ -80,6 +80,23 @@ class EnumExtensionsTest {
 		ClassNode named = kind(true);
 		named.visibleAnnotations = List.of(new AnnotationNode("Lnet/neoforged/fml/common/asm/enumextension/NamedEnum;"));
 		assertNull(EnumExtensions.of(node(TestEnums.mixin(MIXIN, KIND, List.of(Constant.plain("MYMOD_PLAIN")), cw -> {
-		})), named, "mymod"), "a named enum, whose name argument NeoForge checks");
+		})), named, "mymod"), "a named enum's constant without a name argument");
+		assertNull(EnumExtensions.of(node(TestEnums.mixin(MIXIN, KIND, List.of(WITH_ARGUMENTS), cw -> {
+		})), named, "mymod"), "a named enum's name not starting with the mod's id and a colon, which NeoForge refuses");
+	}
+
+	/** A named enum ({@code MobCategory}): its name argument carries over when it already starts with the mod's id. */
+	@Test
+	void aNamedEnumsConstantNamedForTheModBecomesAnEntry() {
+		ClassNode named = kind(true);
+		named.visibleAnnotations = List.of(new AnnotationNode("Lnet/neoforged/fml/common/asm/enumextension/NamedEnum;"));
+		Constant glares = new Constant("MYMOD_GLARES", "(Ljava/lang/String;IZ)V", mv -> {
+			mv.visitLdcInsn("mymod:glares");
+			mv.visitIntInsn(Opcodes.BIPUSH, 15);
+			mv.visitInsn(Opcodes.ICONST_1);
+		});
+		assertEquals(List.of(new EnumExtensions.Entry(KIND, "MYMOD_GLARES", "(Ljava/lang/String;IZ)V", List.of("mymod:glares", 15, true))),
+				EnumExtensions.of(node(TestEnums.mixin(MIXIN, KIND, List.of(glares), cw -> {
+				})), named, "mymod"));
 	}
 }

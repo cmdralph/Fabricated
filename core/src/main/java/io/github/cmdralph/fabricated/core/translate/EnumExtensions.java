@@ -29,8 +29,9 @@ import io.github.cmdralph.fabricated.core.json.Json;
  * enum extension file (ENUM-1). NeoForge's loader adds the constants of such an enum itself, from the files mods name,
  * and lets nothing else change it, so the mixin's constants would never exist. Only a mixin with nothing but constants
  * (no other members, no interfaces), each named after the mod (as NeoForge requires) and built by a constructor the
- * enum allows from constant arguments, into an enum whose arguments NeoForge doesn't rewrite (not indexed or named), is
- * translated; any other stays a pre-flight failure (CORPUS-10).
+ * enum allows from constant arguments, is translated: into an enum NeoForge doesn't give ids (not indexed), and into a
+ * named enum only with names already starting with the mod's id and a colon, which NeoForge checks when the enum is
+ * made. Any other stays a pre-flight failure (CORPUS-10).
  */
 final class EnumExtensions {
 	/** The file in the overlay, which the generated mods.toml names. */
@@ -75,12 +76,11 @@ final class EnumExtensions {
 		if ((mixin.access & Opcodes.ACC_ENUM) == 0 || !mixin.interfaces.isEmpty() || target == null || !target.interfaces.contains(EXTENSIBLE_ENUM)) {
 			return null;
 		}
-		// NeoForge gives an indexed enum's new constants their id and requires a named enum's names to start with the mod's
-		// id, so the mixin's own values for those arguments wouldn't carry over.
-		if (Annotations.find(target.invisibleAnnotations, target.visibleAnnotations, INDEXED_ENUM) != null
-				|| Annotations.find(target.invisibleAnnotations, target.visibleAnnotations, NAMED_ENUM) != null) {
-			return null;
-		}
+		// NeoForge gives an indexed enum's new constants their id, so the mixin's own values for it wouldn't carry over.
+		if (Annotations.find(target.invisibleAnnotations, target.visibleAnnotations, INDEXED_ENUM) != null) return null;
+		// A named enum's name argument (the first, unless the annotation says) must start with the mod's id and a colon.
+		AnnotationNode named = Annotations.find(target.invisibleAnnotations, target.visibleAnnotations, NAMED_ENUM);
+		int nameIndex = named == null ? -1 : Annotations.value(named, "value") instanceof Integer index ? index : 0;
 		String self = "L" + mixin.name + ";";
 		String enumDescriptor = "L" + target.name + ";";
 		Set<String> constants = new HashSet<>();
@@ -127,7 +127,8 @@ final class EnumExtensions {
 			if (!full.startsWith(NAME_AND_ORDINAL) || !allowed.contains(full) || !name.toLowerCase(Locale.ROOT).startsWith(modId)) return null;
 			String constructor = "(" + full.substring(NAME_AND_ORDINAL.length());
 			List<Object> arguments = arguments(Type.getArgumentTypes(constructor), values);
-			if (arguments == null) return null;
+			if (arguments == null || nameIndex >= 0 && !(nameIndex < arguments.size() && arguments.get(nameIndex) instanceof String value
+					&& value.startsWith(modId + ":"))) return null;
 			entries.add(new Entry(target.name, name, constructor, arguments));
 			insn = real(insn.getNext());
 		}
