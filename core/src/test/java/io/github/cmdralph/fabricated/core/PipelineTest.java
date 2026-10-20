@@ -83,6 +83,24 @@ class PipelineTest {
 		return mixinClass(name, TARGET, targetMethod);
 	}
 
+	/** A mixin as {@link #mixinClass(String, String)} with a method that refers to {@code used}. */
+	private static byte[] mixinUsing(String name, String used) {
+		ClassWriter cw = new ClassWriter(0);
+		new ClassReader(mixinClass(name, "tick")).accept(new org.objectweb.asm.ClassVisitor(Opcodes.ASM9, cw) {
+			@Override
+			public void visitEnd() {
+				MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "uses", "()Ljava/lang/Object;", null, null);
+				mv.visitCode();
+				mv.visitLdcInsn(Type.getObjectType(used));
+				mv.visitInsn(Opcodes.ARETURN);
+				mv.visitMaxs(1, 0);
+				mv.visitEnd();
+				super.visitEnd();
+			}
+		}, 0);
+		return cw.toByteArray();
+	}
+
 	/** A mixin into {@code target} whose required {@code @Inject} goes at the head of {@code targetMethod}. */
 	private static byte[] mixinClass(String name, String target, String targetMethod) {
 		ClassWriter cw = new ClassWriter(0);
@@ -579,6 +597,35 @@ class PipelineTest {
 				result.report().render());
 		org.junit.jupiter.api.Assertions.assertThrows(io.github.cmdralph.fabricated.core.json.JsonException.class, () -> FabricApiPlan.parse(
 				"{\"fabricApiVersion\":\"1\",\"modules\":{\"x\":{\"plan\":\"unsupported\",\"dropDependencies\":[\"y\"]}}}"));
+	}
+
+	/** Continuity on 1.21.11: its mixins use the renderer API, which can't run there; Mixin would crash the game. */
+	@Test
+	void aMixinUsingAnUnsupportedModuleFailsItsMod(@TempDir Path game) throws Exception {
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		String helper = "net/fabricmc/fabric/api/renderer/v1/render/RenderLayerHelper";
+		Path renderer = TestJars.create().fabricModJson(TestJars.modJson("fabric-renderer-api-v1", "1.0", ""))
+				.bytes(helper + ".class", TestJars.emptyClass(helper, "java/lang/Object"))
+				.write(mods.resolve("renderer.jar"));
+		Path needsIt = TestJars.create().fabricModJson(TestJars.modJson("ctm-mod", "1.0", "\"mixins\":[\"ctm.mixins.json\"]"))
+				.text("ctm.mixins.json", "{\"required\":true,\"package\":\"com.ctm.mixin\",\"mixins\":[\"LayersMixin\",\"ThingMixin\"]}")
+				.bytes("com/ctm/mixin/LayersMixin.class", mixinUsing("com/ctm/mixin/LayersMixin", helper))
+				.bytes("com/ctm/mixin/ThingMixin.class", mixinClass("com/ctm/mixin/ThingMixin", "tick"))
+				.write(mods.resolve("ctm.jar"));
+		// The same with a plugin, which may skip the mixin at runtime: only the mixin goes.
+		Path optional = TestJars.create().fabricModJson(TestJars.modJson("optional-ctm", "1.0", "\"mixins\":[\"opt.mixins.json\"]"))
+				.text("opt.mixins.json", "{\"required\":true,\"package\":\"com.opt.mixin\",\"plugin\":\"com.opt.Plugin\",\"mixins\":[\"LayersMixin\"]}")
+				.bytes("com/opt/mixin/LayersMixin.class", mixinUsing("com/opt/mixin/LayersMixin", helper))
+				.bytes("com/opt/Plugin.class", TestJars.emptyClass("com/opt/Plugin", "java/lang/Object"))
+				.write(mods.resolve("opt.jar"));
+		Pipeline.Result result = Pipeline.run(input(game, List.of(renderer, needsIt, optional), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
+
+		Set<String> loaded = result.mods().stream().map(m -> m.translated().candidate().id()).collect(Collectors.toSet());
+		assertEquals(Set.of("optional-ctm"), loaded, result.report().render());
+		Report.ModRow ctm = result.report().mods().stream().filter(r -> r.id().equals("ctm-mod")).findFirst().orElseThrow();
+		assertEquals(Report.Status.DISABLED, ctm.status());
+		assertTrue(ctm.detail().contains("uses " + helper.replace('/', '.') + " from fabric-renderer-api-v1"), ctm.detail());
+		assertTrue(result.report().render().contains("com.opt.mixin.LayersMixin"), result.report().render());
 	}
 
 	@Test

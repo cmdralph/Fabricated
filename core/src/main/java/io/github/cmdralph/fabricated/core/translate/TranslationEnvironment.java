@@ -1,5 +1,9 @@
 package io.github.cmdralph.fabricated.core.translate;
 
+import java.util.Collections;
+import java.util.Map;
+import java.util.TreeMap;
+
 import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
 import io.github.cmdralph.fabricated.core.bytecode.ClassIndex;
 import io.github.cmdralph.fabricated.core.bytecode.InstalledClasses;
@@ -22,6 +26,8 @@ import io.github.cmdralph.fabricated.core.remap.MappingTable;
  *                            mods, and on 26.x the Fabric mods), which Fabric mixins may target; the pre-flight
  *                            results that depend on them are cached with their fingerprints
  * @param installedIndex      index of the game classes and {@code installed}
+ * @param unsupportedPackages the packages only unsupported Fabric API modules have (internal names), with the module:
+ *                            a mixin using a class there can't apply
  */
 public record TranslationEnvironment(
 		String minecraftVersion,
@@ -36,10 +42,11 @@ public record TranslationEnvironment(
 		ClassIndex game,
 		ClassBytesSource untransformable,
 		InstalledClasses installed,
-		ClassIndex installedIndex) {
+		ClassIndex installedIndex,
+		Map<String, String> unsupportedPackages) {
 
 	/** Bumped whenever translation output changes for the same inputs. */
-	public static final int TRANSLATION_SCHEMA = 14;
+	public static final int TRANSLATION_SCHEMA = 15;
 
 	/** Namespace Fabric mods are distributed in. */
 	public enum Namespace {
@@ -53,6 +60,7 @@ public record TranslationEnvironment(
 		if (namespace == Namespace.INTERMEDIARY && mappings == null) {
 			throw new IllegalArgumentException("Intermediary translation requires mappings");
 		}
+		unsupportedPackages = Collections.unmodifiableMap(new TreeMap<>(unsupportedPackages));
 	}
 
 	public String side() {

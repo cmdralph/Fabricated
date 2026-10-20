@@ -163,6 +163,10 @@ failures fall into a few groups:
   handler doesn't depend on the method's parameters (an `@Inject` taking only the callback info, a `@WrapOperation`,
   `@ModifyExpressionValue`, `@Redirect` and so on), Fabricated points the injector at the overload (for any mod,
   reported as a warning).
+- **A mixin uses an unsupported module**: Mixin fails on a class it can't find as it applies a mixin, so a mod
+  whose mixin uses a class only an unsupported Fabric API module has (Continuity's use the renderer API, which can't
+  run on NeoForge 1.21.11) is disabled before launch with the reason. When the mixin's config has a plugin, which may
+  skip it at runtime, or isn't required, only that mixin is left out.
 - **Dependency cascade**: a module that requires a disabled module is disabled too. In the current CI runs no
   Fabric API module is disabled only for that reason; `fabric-data-attachment-api-v1`, which needed
   object-builder, loads now.
