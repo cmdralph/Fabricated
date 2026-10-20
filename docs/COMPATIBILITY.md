@@ -687,8 +687,9 @@ Modrinth in CI (never redistributed):
 - **Sodium and Iris for NeoForge** with Fabric API and the renderer test mod on 26.x: gated (see *Renderer mods*).
   Their Fabric builds run with `loadUnsupported`, informational: since the constructor repair they reach a world and
   mesh Fabric models on 26.1.2 and 26.3.
-- **The NeoForge builds of JEI, REI, Jade and WTHIT** with the test mod's plugins declared the Fabric way:
-  informational. Each viewer created and called its plugin on 26.1.2 and 26.3 (WTHIT on 26.1.2; no 26.3 build).
-- **OneConfig and PolyPlus** (Fabric only), informational, where Modrinth has builds for the version.
+- **The NeoForge builds of JEI, REI, Jade, WTHIT and Simple Voice Chat**, pinned per version, with the test mod's
+  plugins declared the Fabric way: gated. Each creates and calls its plugin on every version (WTHIT has no 26.3 build).
+- **OneConfig and PolyPlus** (Fabric only), informational, where Modrinth has builds for the version. Their nested
+  Kotlin, Compose and MixinSquared jars split packages between jars, which Fabricated now serves from one module.
 
 To report a result for another mod, see [CONTRIBUTING.md](../CONTRIBUTING.md#reporting-a-compatibility-result).

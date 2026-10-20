@@ -146,7 +146,10 @@ NeoForge already cover those users.
   plugin file; Jade's per-mod settings become its mod properties. An informational CI client runs the viewers'
   NeoForge builds with the test mod's plugins: on `e68cb58` JEI, REI and Jade each constructed the test plugin once
   and called it on 26.1.2 and 26.3, and WTHIT did on 26.1.2 (Modrinth gave no WTHIT build for 26.3).
-- **Next:** pin the viewers' builds and make that run a gate; EMI once it has NeoForge builds for these versions.
+- **Done (this pass):** the hosts' builds are pinned per version (`plugin_hosts` in CI's matrix) and the run is a gate:
+  each host must construct and call the test mod's plugin. On `b679b92` JEI, REI, Jade, WTHIT and Simple Voice Chat
+  did on 1.21.11, 26.1.2 and 26.2, and all but WTHIT (no 26.3 build) on 26.3.
+- **Next:** EMI once it has NeoForge builds for these versions.
 
 ### Quality: CI, corpus, performance
 
@@ -168,6 +171,7 @@ Severity: **P0** crash or data loss on a normal launch · **P1** a supported fea
 
 | ID | Sev | Location | Failure mode and trigger | Why tests missed it | Fix |
 |---|---|---|---|---|---|
+| REG-2 | P1 | `EntrypointBridge` | Registries were frozen when Fabric client initializers ran: NeoForge freezes them after its registration events, before `Minecraft` exists, while Fabric API freezes them only after the client initializers. Xaero's Minimap registers its mob effect from `onInitializeClient`, catches the failure and rethrows it on the first tick: "Registry is already frozen (trying to add key ... xaerominimap:no_minimap)" stopped the 26.x corpus clients (`b679b92`). | The test mods registered from `main` only. | This pass: the registries are opened for the client initializers and frozen again with NeoForge's own `GameData.unfreezeData`/`freezeData` (the sequence NeoForge runs around its registration events), which also renews the frozen snapshot NeoForge restores on leaving a server. Client check "client entrypoint registration OK": the test mod registers a mob effect from a client initializer. |
 | PKG-1 | P1 | core `PackageGuard` | A package split between two jars (each with classes the other lacks) disabled the later jar. Fabric's single class path allows it, and Kotlin and Compose libraries, OneConfig's module jars and MixinSquared (its Fabric jar and its common jar) ship that way. In CI's Polyfrost run on 26.3 (`e88a2f9`) 15 jars were disabled, MixinSquared among them, and Polydium then crashed at mod construction: its `@MixinSquared:Handler` selector was never registered. | The guard predates nested library jars; found by the new Polyfrost CI run. | This pass: the earlier jar's module serves the later jar's files in the package (one more filtered path in its mod file), so the package stays one module's. A class both have with different bytes, or a service provider the later jar declares in the package, still disables it. `PipelineTest`, `PackageGuardTest`; CI's Polyfrost run is the in-game check. |
 | PRE-3 | P1 | core `MixinPreflight`, translation cache | A mixin target no installed jar had was not recorded among the classes a cached result depends on. Installing that mod later kept the cached "not verified" result, so a mixin that no longer fit it crashed the game at startup instead of disabling the addon (an Iris-style addon whose mod isn't a declared dependency). | Tests covered a target changing, not one appearing. Found by this pass's review of the PR. | This pass: an absent target is recorded with an empty fingerprint. `PipelineTest.mixinsIntoAModInstalledLaterAreCheckedThen`. |
 | PRE-4 | P2 | core `MixinPreflight.addedByAMixin` | javac's `this$0` and `val$x` were taken for members another mod's mixin adds, so a missing `@Shadow` of one (NeoForge 1.21.11 renames `val$` fields) became a note instead of a failure, and Mixin then threw at startup. | PRE-2's test listed `lambda$` and `access$` only. Found by the review. | This pass: javac's four prefixes are excluded. Unit test. |
@@ -223,7 +227,7 @@ crash in run 229).
 | P3-8 | — | `BlockEntityTypeMixin` | Field replaced without `volatile`. | Won't fix: written only during mod initialization, before world threads start. |
 | CFG-2 | P3 | `gradle.properties`, `Pipeline` | The Fabric Loader API version is written in two places. | Build-time duplication only. |
 | CORPUS-1 | P3, cosmetic | Terralith, Lithostitched (Apollib) (26.1.2 and 26.3 corpus) | NeoForge warns "Error reading NeoForge-added overlays for mod/terralith, falling back to empty overlays" ("Unknown registry key in neoforge:condition_codecs: terralith:config", and `apollib:config` for Lithostitched). Their Fabric jars' `pack.mcmeta` carries the overlays of their NeoForge builds, gated by those builds' own condition types, which the Fabric builds don't register. NeoForge then loads none of those overlays, which is what the Fabric builds expect. | Nothing to fix; the warning could be silenced by ignoring NeoForge overlay metadata in Fabric jars. |
-| CORPUS-2 | P2, cause unknown | Xaero's World Map (26.1.2 and 26.3 corpus) | The corpus client crashes on its first tick: `WorldMap.events` is null in World Map's `Minecraft.runTick` hook. Its client entrypoint ran without failure (0 entrypoint failures among 100 mods; XaeroLib's client stage 1/3 logged), its mixins passed pre-flight, and `CLIENT_STARTED` fired before the crash (the run()-start hook applies). What sets `events` before the first tick on Fabric is unknown: the mod is closed source and its jar isn't reachable from the development sandbox. | Needs the jar, or the mod author's help. |
+| CORPUS-2 | P2, cause likely REG-2 | Xaero's World Map (26.1.2 and 26.3 corpus) | The corpus client crashes on its first tick: `WorldMap.events` is null in World Map's `Minecraft.runTick` hook. Its client entrypoint ran without failure (0 entrypoint failures among 100 mods; XaeroLib's client stage 1/3 logged), its mixins passed pre-flight, and `CLIENT_STARTED` fired before the crash (the run()-start hook applies). What sets `events` before the first tick on Fabric is unknown: the mod is closed source and its jar isn't reachable from the development sandbox. Likely cause, from Xaero's Minimap in the same corpus (`b679b92`): Xaero's client initializers register content, catch the failure and defer it, so they don't count as failed (REG-2). | Fixed with REG-2 if that is the cause: CI's World Map client will show. |
 | CORPUS-3 | — | Balm (Waystones), JEI, ShulkerBoxTooltip (26.3 corpus) | Their mixins target code NeoForge changed: Balm `CropBlock.getGrowthSpeed`'s signature and `LivingEntity.removeAllEffects`'s loop, JEI `KeyMapping.setKey`, ShulkerBoxTooltip a `setTooltipForNextFrame` overload. Pre-flight disables them with the reason. | Not repairable in general. Their NeoForge builds exist and are used when installed. |
 | CORPUS-5 | P3, cosmetic, UNVERIFIED | Traveler's Backpack (26.3 corpus) | NeoForge warns "Missing FluidModel" for its potion fluids. NeoForge's check runs inside `FluidStateModelSet.bake`, and upstream's `FluidStateModelSetMixin` wraps that method to add the models of Fabric-registered fluids after it returns, so the warning comes before those models are added. Whether the potion fluids have a model at all is UNVERIFIED. | Could register Fabric's fluid models through NeoForge's `RegisterFluidModelsEvent` instead. Low value. |
 
@@ -274,6 +278,25 @@ open (see *Unverified and blockers*).
 ## Changelog
 
 Newest first. Each entry: what changed, and how it was verified.
+
+### 2026-10-20 (later): split packages, registries for client initializers, review fixes
+
+After pull request #28, from its last CI runs and an independent review of its diff.
+
+**Summary.**
+- PKG-1: a package split between Fabric jars (Kotlin and Compose libraries, OneConfig's modules, MixinSquared) is
+  served by one module instead of disabling the later jar. Found by the Polyfrost CI run, where Polydium then
+  crashed on its MixinSquared selector.
+- REG-2: the registries are open while Fabric client initializers run, as Fabric API leaves them; Xaero's Minimap
+  stopped the corpus clients. Likely CORPUS-2's cause too.
+- Review fixes: PRE-3 (a cached pre-flight result outlived the install of a mod it couldn't check), PRE-4, DISC-2,
+  CFG-3, and the baked colour gate (FRAPI-2b). One `MixinPreflight` constructor, one constant for Fabricated's mod id.
+- CI: the plugin hosts' builds are pinned per version and the run is a gate; the test mod's field-reference Jade
+  entry is now valid on Fabric (Jade's Fabric build in the corpus failed on it).
+
+**Verification.** Core: `./gradlew -Pfabricated.coreOnly=true build` green locally, with new tests (`PackageGuardTest`,
+split packages and a target installed later in `PipelineTest`, javac's names in `MixinPreflightTest`). CI: see the pull
+request.
 
 ### 2026-10-20: rendering-pipeline track, R3, plugins for recipe viewers, audit
 
