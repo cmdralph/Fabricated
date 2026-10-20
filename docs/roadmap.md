@@ -123,7 +123,10 @@ research sandbox).
   and 26.3, and neither client writes a crash report; whether they reach a world is UNVERIFIED (the summary now prints
   the log's last lines when a client doesn't). On 1.21.11 adventure's shared jar failed pre-flight on prefixed
   `@Shadow` names (REMAP-1, fixed since), and the client wrote no crash report and no error, and reached no world
-  (POLY-1).
+  (POLY-1). On `5b42545` (pull request #34) 1.21.11 disables only Fabric API's model loading module (its renderer API
+  doesn't run on NeoForge) and crashes at "Initializing game" with an `UnsupportedOperationException`; on 26.1.2 and
+  26.3 an exception reaches `Minecraft.run`, OneConfig logs "OneConfig UI warm-up failed: OneConfigUIScreen: setContent
+  did not take (poisoned=true)", and the game stops without a crash report (POLY-1).
 
 **Plan, by coverage per effort** (each with its CI check):
 
@@ -233,7 +236,7 @@ crash in run 229).
 
 | ID | Sev | Location | Issue | Status |
 |---|---|---|---|---|
-| POLY-1 | P2, cause UNVERIFIED | 1.21.11 Polyfrost client | On `cf41167` the client wrote no crash report and logged no error, and the step ended after about 7.5 minutes, so it most likely reached no world; REMAP-1 had disabled adventure's shared jar there. | The next run's summary prints the log's last lines, and the render thread's frames when it is still running near the timeout. |
+| POLY-1 | P2, cause UNVERIFIED | Polyfrost clients | No Polyfrost client reaches a world. On `5b42545` the 1.21.11 client crashes at "Initializing game" with `java.lang.UnsupportedOperationException: null`; the 26.1.2 and 26.3 clients log an exception that reaches `Minecraft.run`, then "OneConfig UI warm-up failed: OneConfigUIScreen: setContent did not take (poisoned=true)", and stop ("Stopping!") without a crash report. Whether CI's crash detection stopped them (it stops a client 15 seconds after "Failed to wait for future", among others) is UNVERIFIED. | The summary now prints the crash's first stack frames, the line on which CI stopped a client, and the first errors of a client that reached no world. |
 | PLAT-2 | P3, UNVERIFIED | core `PlatformLibraries` | Other prefixes also cover whole library families (`org/lwjgl/`, `io/netty/`), of which the platform may ship some modules only: a mod nesting another module (LWJGL's NanoVG, say) would lose it, as PLAT-1 did. No case seen yet. | Check each prefix against the packages the platform really has (the loader computes them), and keep a prefix only where the family is complete. |
 | FC-5 | P3 | `TranslationCache.verifyIntegrity` | Hashes are memoised by file metadata. On Windows the key is size and mtime only, and `entry.json` itself isn't hashed. | Needs a decision on cost: re-hashing every launch versus trusting metadata. |
 | FC-6 | P3 | `TranslationCache.store` | Two cold launches of the same side that share one game directory race on delete-then-move. | Needs a cross-process file lock. Rare. |
@@ -300,7 +303,11 @@ Newest first. Each entry: what changed, and how it was verified.
 - Results of pull request #33 on `cf41167`: on 26.1.2 and 26.3 the Polyfrost run disables no jar and no client crashes
   (NATIVE-1 and ADV-1 fixed). The report confirms Skiko's runtime jars sit beside `skiko-awt`.
 - REMAP-1: a `@Shadow` with a prefix (`shadow$comp_925`) is remapped on 1.21.11; adventure's shared jar failed
-  pre-flight on it.
+  pre-flight on it. On `5b42545` it loads, and the 1.21.11 Polyfrost run disables only Fabric API's model loading
+  module.
+- POLY-1 (open): no Polyfrost client reaches a world yet; the summary now prints what stopped each one. The 26.x
+  corpus clients reach no world either on `5b42545` (their logs end after model loading, without a crash report),
+  which the same output will explain.
 - CI: the summary prints the last log lines of a client that reached no world, and its render thread near the timeout
   (POLY-1).
 

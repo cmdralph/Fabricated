@@ -87,8 +87,11 @@ while kill -0 "$client_pid" 2>/dev/null; do
 	fi
 	# After a crash or a fatal loading error the game shows its error window until closed; stop it once the crash report
 	# is written.
-	if grep -qE "Preparing crash report|Game crashed!|Crash report saved to|Failed to wait for future|Mixin prepare for mod .* failed" client.out run/logs/latest.log 2>/dev/null; then
+	stop="Preparing crash report|Game crashed!|Crash report saved to|Failed to wait for future|Mixin prepare for mod .* failed"
+	if grep -qE "$stop" client.out run/logs/latest.log 2>/dev/null; then
 		echo "The game crashed; stopping the client."
+		# The line that stopped it, for the summary: a pattern can match an error the game survives.
+		grep -m 1 -hE "$stop" client.out run/logs/latest.log 2>/dev/null | head -n 1 > stop-reason.txt || true
 		sleep 15
 		pkill -P "$client_pid" 2>/dev/null || true
 		kill "$client_pid" 2>/dev/null || true
@@ -96,6 +99,7 @@ while kill -0 "$client_pid" 2>/dev/null; do
 	fi
 	if grep -q "Failed to create backend OpenGL" client.out && grep -q "Failed to create backend Vulkan" client.out; then
 		echo "No render backend could be created; stopping the client."
+		echo "No render backend could be created" > stop-reason.txt
 		sleep 5
 		pkill -P "$client_pid" 2>/dev/null || true
 		kill "$client_pid" 2>/dev/null || true

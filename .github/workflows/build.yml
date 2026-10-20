@@ -406,15 +406,24 @@ jobs:
             [ -f "$log" ] || continue
             echo "== $run"
             grep -h -m 20 -E "FABRICATED-TEST frapi|Caused by|Exception in|crash report" "$log" || true
-            # A crash's description and errors, without the stack frames.
+            # A crash's description and errors, with the first stack frames.
             for report in $(ls "$RUNNER_TEMP/$run/run/crash-reports"/*.txt 2>/dev/null | head -1); do
               echo "-- $(basename "$report")"
-              sed -n '/^Description:/,/^A detailed walkthrough/p' "$report" | grep -v -E "^\s+at |^A detailed" | head -30
+              sed -n '/^Description:/,/^A detailed walkthrough/p' "$report" | grep -v "^A detailed" \
+                | awk 'BEGIN { limit = 8 } /^Caused by:/ { frames = 0; limit = 4 } /^[ \t]+at / { if (++frames > limit) next } { print }' | head -40
             done
-            # A client that didn't reach a world: the log's last lines, and where its render thread was near the timeout.
+            [ -f "$RUNNER_TEMP/$run/stop-reason.txt" ] && { echo "-- stopped by CI on:"; cut -c1-300 "$RUNNER_TEMP/$run/stop-reason.txt"; }
+            # A client that didn't reach a world: its first errors (without the narrator's and the offline account's,
+            # which every run has), the log's last lines, and where its render thread was near the timeout.
             if ! grep -q "Successfully finished." "$log"; then
-              echo "-- no world reached; last lines of the log:"
-              grep -v "Waiting for player to load" "$log" | tail -n 6 | cut -c1-300
+              echo "-- no world reached; first errors:"
+              awk '/\/(ERROR|FATAL)\]/ && !/[Nn]arrator|flite|401|TargetDataLine/ {
+                print substr($0, 1, 300)
+                if ((getline next_line) > 0 && next_line !~ /^[ \t]+at /) print "    " substr(next_line, 1, 300)
+                if (++n == 6) exit
+              }' "$log"
+              echo "-- last lines of the log:"
+              grep -v "Waiting for player to load" "$log" | tail -n 4 | cut -c1-300
             fi
             if [ -f "$RUNNER_TEMP/$run/thread-dump.txt" ]; then
               echo "-- render thread shortly before the timeout:"
