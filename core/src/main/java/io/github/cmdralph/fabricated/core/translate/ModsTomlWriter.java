@@ -24,6 +24,8 @@ public final class ModsTomlWriter {
 	/**
 	 * Everything needed to describe one translated mod.
 	 *
+	 * @param hasEnumExtensions whether the overlay has an enum extension file ({@link EnumExtensions}), which NeoForge's
+	 *                      loader reads from the mod's {@code [[mods]]} entry
 	 * @param modProperties its {@code [modproperties.<id>]}, which NeoForge mods read where Fabric mods read entrypoints
 	 *                      or custom values: each a string, or a table of booleans ({@code Map<String, Boolean>})
 	 * @param sodiumOptions its overrides of Sodium's mixin options, which Sodium for NeoForge reads from the mod's
@@ -42,6 +44,7 @@ public final class ModsTomlWriter {
 			String logoFile,
 			List<MixinConfigSpec> mixins,
 			boolean hasAccessTransformer,
+			boolean hasEnumExtensions,
 			List<String> loadAfter,
 			Map<String, Object> modProperties,
 			Map<String, Boolean> sodiumOptions) {
@@ -73,6 +76,7 @@ public final class ModsTomlWriter {
 		if (!spec.contributors().isEmpty()) kv(sb, "credits", names(spec.contributors()));
 		if (spec.homepage() != null) kv(sb, "displayURL", spec.homepage());
 		if (spec.logoFile() != null) kv(sb, "logoFile", spec.logoFile());
+		if (spec.hasEnumExtensions()) kv(sb, "enumExtensions", EnumExtensions.PATH);
 		if (!spec.sodiumOptions().isEmpty()) {
 			sb.append("\"sodium:options\"=");
 			booleans(sb, spec.sodiumOptions());

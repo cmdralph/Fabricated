@@ -32,12 +32,13 @@ class TranslateHelpersTest {
 		String toml = ModsTomlWriter.write(new ModsTomlWriter.Spec("my_mod", "1.0.0", "My \"Mod\"", "Line1\nLine2\\end",
 				List.of(new PersonImpl("Alice", ContactInformation.EMPTY), new PersonImpl("Bob", ContactInformation.EMPTY)),
 				List.of(), List.of("MIT"), "https://example.com", null, "icon.png",
-				List.of(new ModsTomlWriter.MixinConfigSpec("my.mixins.json", "0.17.4")), true, List.of("fabric_api", "other"), Map.of(), Map.of()));
+				List.of(new ModsTomlWriter.MixinConfigSpec("my.mixins.json", "0.17.4")), true, true, List.of("fabric_api", "other"), Map.of(), Map.of()));
 		assertTrue(toml.contains("modLoader=\"fabricated\""));
 		assertTrue(toml.contains("displayName=\"My \\\"Mod\\\"\""));
 		assertTrue(toml.contains("description=\"Line1\\nLine2\\\\end\""));
 		assertTrue(toml.contains("authors=\"Alice, Bob\""));
 		assertTrue(toml.contains("[[mixins]]\nconfig=\"my.mixins.json\"\nbehaviorVersion=\"0.17.4\""));
+		assertTrue(toml.contains("enumExtensions=\"META-INF/fabricated/enum_extensions.json\""), toml);
 		assertTrue(toml.contains("[[accessTransformers]]\nfile=\"META-INF/accesstransformer.cfg\""));
 		assertTrue(toml.contains("[[dependencies.my_mod]]\nmodId=\"fabric_api\"\ntype=\"optional\"\nordering=\"AFTER\""));
 		int afterFabricated = toml.indexOf("modId=\"fabricated\"\ntype=\"optional\"\nordering=\"AFTER\"");
@@ -92,9 +93,9 @@ class TranslateHelpersTest {
 		options.put("mixin.features.render.world.sky", false);
 		options.put("mixin.core", true);
 		String toml = ModsTomlWriter.write(new ModsTomlWriter.Spec("my_mod", "1.0.0", "My Mod", "", List.of(), List.of(), List.of(), null, null, null,
-				List.of(), false, List.of(), Map.of("sodium:config_api_user", "com.example.SodiumPage"), options));
+				List.of(), false, false, List.of(), Map.of("sodium:config_api_user", "com.example.SodiumPage"), options));
 		String jade = ModsTomlWriter.write(new ModsTomlWriter.Spec("my_mod", "1.0.0", "My Mod", "", List.of(), List.of(), List.of(), null, null, null,
-				List.of(), false, List.of(), Map.of("jade", Map.of("fastScroll", true)), Map.of()));
+				List.of(), false, false, List.of(), Map.of("jade", Map.of("fastScroll", true)), Map.of()));
 		assertTrue(jade.contains("[modproperties.my_mod]\n\"jade\"={\"fastScroll\"=true}\n"), jade);
 		assertTrue(toml.contains("[[mods]]\nmodId=\"my_mod\"\nversion=\"1.0.0\"\ndisplayName=\"My Mod\"\ndescription=\"\"\n"
 				+ "\"sodium:options\"={\"mixin.features.render.world.sky\"=false, \"mixin.core\"=true}\n"), toml);

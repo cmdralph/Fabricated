@@ -150,8 +150,10 @@ public final class ModTranslator {
 				Map<String, byte[]> overlay = new TreeMap<>();
 				List<PreflightFinding> findings = new ArrayList<>();
 				Map<String, String> installedClasses = new TreeMap<>();
+				List<EnumExtensions.Entry> enumEntries = new ArrayList<>();
 				List<ModsTomlWriter.MixinConfigSpec> mixinSpecs = processMixins(candidate, override, plannedSkips, files,
-						remapped != null ? remapped.keySet() : archive.classEntryNames(), overlay, findings, installedClasses);
+						remapped != null ? remapped.keySet() : archive.classEntryNames(), overlay, findings, installedClasses, enumEntries);
+				if (!enumEntries.isEmpty()) overlay.put(EnumExtensions.PATH, EnumExtensions.json(enumEntries).getBytes(StandardCharsets.UTF_8));
 
 				byte[] packMetadata = files.read(PACK_METADATA);
 				byte[] fabricPackMetadata = packMetadata == null ? null : withoutNeoForgeSections(packMetadata);
@@ -192,7 +194,8 @@ public final class ModTranslator {
 						md.getDescription(), List.copyOf(md.getAuthors()), List.copyOf(md.getContributors()),
 						List.copyOf(md.getLicense()), url(md.getContact().get("homepage").orElse(null), "homepage", notes),
 						url(md.getContact().get("issues").orElse(null), "issues", notes), md.getIconPath(256).filter(archive::contains).orElse(null), mixinSpecs,
-						overlay.containsKey(AT_PATH), after, modProperties(md, notes), booleans(md, SODIUM_OPTIONS, notes));
+						overlay.containsKey(AT_PATH), overlay.containsKey(EnumExtensions.PATH), after, modProperties(md, notes),
+						booleans(md, SODIUM_OPTIONS, notes));
 				overlay.put(ModsTomlWriter.PATH, ModsTomlWriter.write(spec).getBytes(StandardCharsets.UTF_8));
 				overlay.put("META-INF/MANIFEST.MF", overlayManifest(neoId));
 
@@ -293,8 +296,8 @@ public final class ModTranslator {
 
 	/** @param installedClasses receives the installed classes pre-flight read, with their fingerprints */
 	private List<ModsTomlWriter.MixinConfigSpec> processMixins(Candidate candidate, ModOverride override, Set<String> plannedSkips, FileView files,
-			Collection<String> entries, Map<String, byte[]> overlay, List<PreflightFinding> findings, Map<String, String> installedClasses)
-			throws ArchiveException, TranslationException {
+			Collection<String> entries, Map<String, byte[]> overlay, List<PreflightFinding> findings, Map<String, String> installedClasses,
+			List<EnumExtensions.Entry> enumEntries) throws ArchiveException, TranslationException {
 		FabricModMetadata md = candidate.metadata();
 		String behavior = MixinCompat.clampForNeoForge(MixinCompat.fabricBehaviorVersion(md.getDependencies()), env.runtimeMixinVersion(),
 				env.lowestMixinBehavior());
@@ -346,6 +349,7 @@ public final class ModTranslator {
 				}
 			}
 			Set<String> skip = withDependents(entry.config(), config, wholeSkips, translated, findings);
+			skip = withEnumExtensions(entry.config(), config, skip, ModIds.toNeoForgeId(candidate.id()), translated, findings, enumEntries);
 			overlay.putAll(preflight.repairs(entry.config(), config, refmap, skip, findings));
 			if (!override.ignorePreflight()) {
 				List<PreflightFinding> checked = new ArrayList<>(preflight.check(entry.config(), config, refmap, skip));
@@ -434,6 +438,32 @@ public final class ModTranslator {
 	private static String relativeMixin(MixinConfigFile config, String mixinDotted) {
 		String pkg = config != null ? config.mixinPackage() : null;
 		return pkg != null && mixinDotted.startsWith(pkg + ".") ? mixinDotted.substring(pkg.length() + 1) : mixinDotted;
+	}
+
+	/**
+	 * {@code skip} plus the enum mixins whose constants NeoForge's loader adds instead, from the mod's enum extension
+	 * file ({@link EnumExtensions}); their entries go to {@code enumEntries}.
+	 */
+	private Set<String> withEnumExtensions(String configName, MixinConfigFile config, Set<String> skip, String modId, FileView files,
+			List<PreflightFinding> findings, List<EnumExtensions.Entry> enumEntries) throws ArchiveException {
+		Set<String> all = skip;
+		for (String mixin : config.mixinsFor(env.clientSide())) {
+			if (skip.contains(mixin)) continue;
+			byte[] data = files.read(config.internalName(mixin) + ".class");
+			if (data == null || (new ClassReader(data).getAccess() & Opcodes.ACC_ENUM) == 0) continue;
+			ClassNode node = new ClassNode();
+			new ClassReader(data).accept(node, ClassReader.SKIP_FRAMES);
+			String target = EnumExtensions.target(node);
+			List<EnumExtensions.Entry> entries = target == null ? null : EnumExtensions.of(node, env.installedIndex().readNode(target), modId);
+			if (entries == null) continue;
+			if (all == skip) all = new TreeSet<>(skip);
+			all.add(mixin);
+			enumEntries.addAll(entries);
+			findings.add(new PreflightFinding(Severity.INFO, configName, node.name.replace('/', '.'), "Its constants ("
+					+ entries.stream().map(EnumExtensions.Entry::name).collect(Collectors.joining(", ")) + ") go to one of NeoForge's"
+					+ " extensible enums, " + target.replace('/', '.') + ": NeoForge's loader adds them, from the mod's enum extension file", ""));
+		}
+		return all;
 	}
 
 	/**

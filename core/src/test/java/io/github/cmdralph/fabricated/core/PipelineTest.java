@@ -39,12 +39,14 @@ import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
 import io.github.cmdralph.fabricated.core.bytecode.InstalledClasses;
 import io.github.cmdralph.fabricated.core.cache.TranslationCache;
 import io.github.cmdralph.fabricated.core.config.FabricatedConfig;
+import io.github.cmdralph.fabricated.core.json.Json;
 import io.github.cmdralph.fabricated.core.metadata.FabricModJsonParser;
 import io.github.cmdralph.fabricated.core.remap.MappingComposer;
 import io.github.cmdralph.fabricated.core.remap.MappingTable;
 import io.github.cmdralph.fabricated.core.report.Report;
 import io.github.cmdralph.fabricated.core.resolve.Candidate;
 import io.github.cmdralph.fabricated.core.resolve.FabricApiPlan;
+import io.github.cmdralph.fabricated.core.testutil.TestEnums;
 import io.github.cmdralph.fabricated.core.testutil.TestJars;
 import io.github.cmdralph.fabricated.core.translate.PackageGuard;
 import io.github.cmdralph.fabricated.core.translate.TranslatedMod;
@@ -626,6 +628,41 @@ class PipelineTest {
 		assertEquals(Report.Status.DISABLED, ctm.status());
 		assertTrue(ctm.detail().contains("uses " + helper.replace('/', '.') + " from fabric-renderer-api-v1"), ctm.detail());
 		assertTrue(result.report().render().contains("com.opt.mixin.LayersMixin"), result.report().render());
+	}
+
+	@Test
+	void anEnumMixinIntoAnExtensibleEnumBecomesAnEnumExtension(@TempDir Path game) throws Exception {
+		// ENUM-1: NeoForge's loader adds the constants, from the mod's enum extension file; an enum mixin it can't take
+		// (a constant built from a value computed when the class loads) still disables its mod (CORPUS-10).
+		String kind = "net/minecraft/world/Kind";
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		Path cooking = TestJars.create().fabricModJson(TestJars.modJson("cooking", "1.0", "\"mixins\":[\"cooking.mixins.json\"]"))
+				.text("cooking.mixins.json", "{\"required\":true,\"package\":\"com.cooking.mixin\",\"mixins\":[\"KindMixin\",\"ThingMixin\"]}")
+				.bytes("com/cooking/mixin/KindMixin.class", TestEnums.mixin("com/cooking/mixin/KindMixin", kind, List.of(TestEnums.Constant.plain("COOKING_POT")), cw -> {
+				}))
+				.bytes("com/cooking/mixin/ThingMixin.class", mixinClass("com/cooking/mixin/ThingMixin", "tick"))
+				.write(mods.resolve("cooking.jar"));
+		Path stew = TestJars.create().fabricModJson(TestJars.modJson("stew", "1.0", "\"mixins\":[\"stew.mixins.json\"]"))
+				.text("stew.mixins.json", "{\"required\":true,\"package\":\"com.stew.mixin\",\"mixins\":[\"KindMixin\"]}")
+				.bytes("com/stew/mixin/KindMixin.class", TestEnums.mixin("com/stew/mixin/KindMixin", kind, List.of(new TestEnums.Constant("STEW_BOWL",
+						"(Ljava/lang/String;)V", mv -> mv.visitFieldInsn(Opcodes.GETSTATIC, "com/stew/Names", "BOWL", "Ljava/lang/String;"))), cw -> {
+				}))
+				.write(mods.resolve("stew.jar"));
+		Map<String, byte[]> gameClasses = Map.of(TARGET, targetClass(), kind, TestEnums.target(kind, true, List.of("()V", "(Ljava/lang/String;)V"), List.of()));
+		Pipeline.Result result = Pipeline.run(input(game, List.of(cooking, stew), Namespace.OFFICIAL, gameClasses, null));
+
+		Map<String, Pipeline.LoadedMod> loaded = result.mods().stream().collect(Collectors.toMap(m -> m.translated().candidate().id(), m -> m));
+		assertEquals(Set.of("cooking"), loaded.keySet(), result.report().render());
+		try (SafeArchive overlay = SafeArchive.open(loaded.get("cooking").translated().overlay(), ArchiveLimits.DEFAULTS)) {
+			assertTrue(overlay.readText("META-INF/neoforge.mods.toml").contains("enumExtensions=\"META-INF/fabricated/enum_extensions.json\""));
+			Map<?, ?> entry = (Map<?, ?>) Json.asList(Json.parseObject(overlay.readText("META-INF/fabricated/enum_extensions.json")).get("entries")).getFirst();
+			assertEquals(Map.of("enum", "net/minecraft/world/Kind", "name", "COOKING_POT", "constructor", "()V", "parameters", List.of()), entry);
+			String config = overlay.readText("cooking.mixins.json");
+			assertTrue(!config.contains("KindMixin") && config.contains("ThingMixin"), "only the enum mixin is left out: " + config);
+		}
+		Report.ModRow row = result.report().mods().stream().filter(r -> r.id().equals("stew")).findFirst().orElseThrow();
+		assertEquals(Report.Status.DISABLED, row.status());
+		assertTrue(row.detail().contains("extensible enums"), row.detail());
 	}
 
 	@Test

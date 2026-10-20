@@ -4,7 +4,7 @@
   "plugin": "io.github.cmdralph.fabricated.testmod.TestMixinPlugin",
   "compatibilityLevel": "JAVA_21",
   "mixins": ["MinecraftServerMixin", "PlayerListMixin"],
-  "client": ["client.MinecraftStopMixin", "client.IntegratedServerMixin"],
+  "client": ["client.MinecraftStopMixin"],
   "injectors": {
     "defaultRequire": 1
   },

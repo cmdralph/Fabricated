@@ -658,6 +658,10 @@ MixinExtras has NeoForge's jar, and a NeoForge mod nested in another jar has tha
   `LOCAL` and `SYNCED` (the port keeps the old names), a mod's references to the old names are renamed. The port's `ConfigurationScreen` takes a mod id where NeoForge's takes the mod's container, so a mod creating one passes its container instead.
 - Class tweakers v2 load: their `extend-enum` lines only declare the constants a mod's enum mixins add, which Mixin
   adds itself (0.17.1 or later, so on 26.x; not to NeoForge's own extensible enums).
+- An enum mixin that only adds constants to one of NeoForge's extensible enums (which NeoForge lets only its own enum
+  extensions change) becomes an enum extension NeoForge's loader applies, when each constant's name starts with the
+  mod's id and its constructor's arguments are constants (Farmer's Delight's recipe book type). Other enum mixins into
+  those enums disable their mod, with the reason.
 - Config screens a Fabric mod offers to Mod Menu (its `modmenu` entrypoint) open from the Config button of NeoForge's
   mod list. Mod Menu's API interfaces are provided, so such mods load without Mod Menu, which itself can't run on
   NeoForge (it would duplicate NeoForge's mod list): an installed Mod Menu jar is skipped and provided at its version.
