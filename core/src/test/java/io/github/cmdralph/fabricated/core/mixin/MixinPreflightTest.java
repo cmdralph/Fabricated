@@ -957,6 +957,33 @@ class MixinPreflightTest {
 	}
 
 	@Test
+	void anEnumMixinIntoAnExtensibleEnumFailsItsModEvenWithAPlugin() throws Exception {
+		// The mod's own classes read the constants such a mixin adds: leaving it out, as a plugin config's crashing
+		// injectors are, would only move the crash into the mod (Farmer's Delight, CORPUS-10).
+		ClassWriter target = new ClassWriter(0);
+		target.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_FINAL | Opcodes.ACC_ENUM, TARGET, null, "java/lang/Enum",
+				new String[] {"net/neoforged/fml/common/asm/enumextension/IExtensibleEnum"});
+		target.visitEnd();
+		ClassIndex game = new ClassIndex(Map.of(TARGET, target.toByteArray())::get);
+		ClassWriter cw = new ClassWriter(0);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_FINAL | Opcodes.ACC_ENUM, "com/example/mixin/Constants", null, "java/lang/Enum", null);
+		AnnotationVisitor m = cw.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false);
+		AnnotationVisitor values = m.visitArray("value");
+		values.visit(null, Type.getObjectType(TARGET));
+		values.visitEnd();
+		m.visitEnd();
+		cw.visitEnd();
+		Map<String, byte[]> mod = Map.of("com/example/mixin/Constants", cw.toByteArray());
+		for (String plugin : List.of("", ",\"plugin\":\"com.example.Plugin\"")) {
+			String cfg = "{\"required\":true,\"package\":\"com.example.mixin\"" + plugin + ",\"mixins\":[\"Constants\"]}";
+			List<PreflightFinding> findings = preflight(game, mod::get, ClassBytesSource.EMPTY, false)
+					.check("test.mixins.json", MixinConfigFile.parse(cfg), Refmap.EMPTY, Set.of());
+			assertEquals(Severity.FAIL, findings.getFirst().severity(), findings.toString());
+			assertTrue(findings.getFirst().message().contains("extensible enums"), findings.toString());
+		}
+	}
+
+	@Test
 	void clientMixinsAreSkippedOnServer() throws Exception {
 		byte[] bad = mixin("com/example/mixin/ClientBad", false, cw -> inject(cw, "h", "removedMethod", "HEAD", null, 1, null));
 		String cfg = "{\"required\":true,\"package\":\"com.example.mixin\",\"client\":[\"ClientBad\"]}";
