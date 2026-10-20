@@ -475,7 +475,11 @@ jobs:
           [ -f viewers.txt ] && { echo "== viewers fetched"; cat viewers.txt; }
           for run in client client-fapi client-shaders client-sodium-fabric client-viewers client-polyfrost client-corpus client-worldmap; do
             log="$RUNNER_TEMP/$run/run/logs/latest.log"
-            [ -f "$log" ] || continue
+            if [ ! -f "$log" ]; then
+              # The game never started (the launcher stopped first): what the launcher said last.
+              [ -f "$RUNNER_TEMP/$run/client.out" ] && { echo "== $run (no game log; the launcher's last lines)"; tail -n 30 "$RUNNER_TEMP/$run/client.out" | cut -c1-300; }
+              continue
+            fi
             echo "== $run"
             grep -h -m 20 -E "FABRICATED-TEST frapi|Caused by|Exception in|crash report" "$log" || true
             # Whether Iris loaded the shader pack, and drew with it (Iris's own lines).
