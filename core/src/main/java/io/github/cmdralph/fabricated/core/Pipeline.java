@@ -649,7 +649,8 @@ public final class Pipeline {
 				if (issues == null) continue;
 				FabricApiPlan.Module module = plan.module(t.candidate().id());
 				boolean fapiModule = module != null;
-				boolean fabricApiReference = issues.stream().anyMatch(i -> i.contains("net.fabricmc.fabric."));
+				// What a module misses of Fabric Loader is Fabricated's to provide, not a reason to drop the module.
+				boolean fabricApiReference = issues.stream().anyMatch(i -> i.contains("net.fabricmc.fabric.") && !LinkageAnalysis.isLoaderIssue(i));
 				// A module planned without some of its dependencies refers to what they would add, where its code never
 				// runs (on 1.21.11 the model loading API's wrapper models call the renderer API's emitQuads, which NeoForge
 				// never calls): those stay warnings, and its plan's CI check covers the rest.

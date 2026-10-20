@@ -165,4 +165,25 @@ class LinkageCheckerTest {
 		assertTrue(analysis.analyse(List.of(ext, user), runtime, Map::of, "with-mixin").isEmpty());
 		assertEquals(1, analysis.analyse(List.of(user), runtime, Map::of, "without-mixin").size(), "without the mixin the call is unresolved");
 	}
+
+	/**
+	 * Fabric Loader's classes are Fabricated's own: its public API and the internals mods commonly use resolve, and a
+	 * mod reaching for any other internal (Essential Loader's way of adding mods) is reported.
+	 */
+	@Test
+	void fabricLoaderReferencesAreCheckedAgainstFabricatedsOwn(@TempDir Path dir) throws Exception {
+		TranslatedMod api = mod(dir, "api-user", TestJars.create().bytes("u/A.class",
+				caller("u/A", "net/fabricmc/loader/api/FabricLoader", "getInstance", "()Lnet/fabricmc/loader/api/FabricLoader;", false)));
+		TranslatedMod internals = mod(dir, "internals-user", TestJars.create().bytes("u/B.class",
+				caller("u/B", "net/fabricmc/loader/impl/ModContainerImpl", "create", "()V", false)));
+		LinkageAnalysis analysis = new LinkageAnalysis(new TranslationCache(dir.resolve("game"), true, true), ArchiveLimits.DEFAULTS, false);
+
+		Map<String, List<String>> issues = analysis.analyse(List.of(api, internals), ClassBytesSource.EMPTY, Map::of, "loader");
+
+		assertEquals(Set.of("internals_user"), issues.keySet(), issues.toString());
+		assertTrue(issues.get("internals_user").getFirst().contains("net.fabricmc.loader.impl.ModContainerImpl"), issues.toString());
+		assertTrue(LinkageAnalysis.isLoaderIssue(issues.get("internals_user").getFirst()));
+		assertTrue(!LinkageAnalysis.isLoaderIssue("net.fabricmc.fabric.impl.X -> missing method net.minecraft.Util.removed()V"),
+				"a Fabric API module's class names Fabric API, not the loader");
+	}
 }

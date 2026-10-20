@@ -1,6 +1,7 @@
 package io.github.cmdralph.fabricated.core.translate;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -22,6 +23,7 @@ import io.github.cmdralph.fabricated.core.bytecode.LinkageChecker;
 import io.github.cmdralph.fabricated.core.cache.TranslationCache;
 import io.github.cmdralph.fabricated.core.json.Json;
 import io.github.cmdralph.fabricated.core.json.JsonException;
+import net.fabricmc.loader.api.FabricLoader;
 
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.Opcodes;
@@ -37,9 +39,41 @@ import org.objectweb.asm.tree.MethodNode;
  * cached per mod, keyed by the mod and a fingerprint of the whole mod set.
  */
 public final class LinkageAnalysis {
-	/** Owners verified: Minecraft, Blaze3D and the Fabric API namespace. */
-	public static final Predicate<String> CHECKED = name -> name.startsWith("net/minecraft/")
-			|| name.startsWith("com/mojang/blaze3d/") || name.startsWith("net/fabricmc/fabric/");
+	/**
+	 * Owners verified: Minecraft, Blaze3D, the Fabric API namespace and Fabric Loader's, whose classes Fabricated
+	 * provides itself (its public API and the internals mods commonly use), so a mod reaching for any other loader
+	 * internal is reported before it fails.
+	 */
+	public static final Predicate<String> CHECKED = name -> name.startsWith("net/minecraft/") || name.startsWith("com/mojang/blaze3d/")
+			|| name.startsWith("net/fabricmc/fabric/") || isLoaderClass(name) && LoaderClasses.READABLE;
+
+	/** Fabricated's own Fabric Loader classes, which load next to core (from its jar). */
+	static final ClassBytesSource LOADER_CLASSES = name -> {
+		if (!isLoaderClass(name)) return null;
+		try (InputStream in = FabricLoader.class.getClassLoader().getResourceAsStream(name + ".class")) {
+			return in == null ? null : in.readAllBytes();
+		}
+	};
+
+	/** Whether Fabricated's loader classes can be read here; if not, loader references aren't checked at all. */
+	private static final class LoaderClasses {
+		static final boolean READABLE = readable();
+
+		private static boolean readable() {
+			try {
+				return LOADER_CLASSES.read(Type.getInternalName(FabricLoader.class)) != null;
+			} catch (IOException e) {
+				return false;
+			}
+		}
+	}
+
+	/** Whether a linkage issue is a missing piece of Fabric Loader (as reported by {@link LinkageChecker.Issue}). */
+	public static boolean isLoaderIssue(String issue) {
+		int missing = issue.indexOf(" -> missing ");
+		String reference = missing < 0 ? issue : issue.substring(missing);
+		return reference.contains(" net.fabricmc.loader.") || reference.contains(" net.fabricmc.api.");
+	}
 
 	private final TranslationCache cache;
 	private final ArchiveLimits limits;
@@ -64,14 +98,14 @@ public final class LinkageAnalysis {
 		Map<String, List<String>> result = new LinkedHashMap<>();
 		LinkageChecker checker = null;
 		for (TranslatedMod mod : mods) {
-			String blob = "linkage-" + Hashing.sha256("v5|" + mod.candidate().sha256() + "|" + setFingerprint + "|" + (clientSide ? "c" : "s")).substring(0, 40) + ".json";
+			String blob = "linkage-" + Hashing.sha256("v6|" + mod.candidate().sha256() + "|" + setFingerprint + "|" + (clientSide ? "c" : "s")).substring(0, 40) + ".json";
 			List<String> issues = readCached(blob);
 			if (issues == null) {
 				// Built only when some result is not cached: it reads every mod's classes once.
 				if (checker == null) {
 					Map<String, List<String>> added = addedInterfaces(mods);
 					platformInterfaces.get().forEach((target, ifaces) -> added.computeIfAbsent(target, k -> new ArrayList<>()).addAll(ifaces));
-					checker = new LinkageChecker(new ClassIndex(runtime, added), CHECKED, clientSide);
+					checker = new LinkageChecker(new ClassIndex(runtime.or(LOADER_CLASSES), added), CHECKED, clientSide);
 				}
 				try {
 					issues = check(mod, checker);
@@ -177,5 +211,9 @@ public final class LinkageAnalysis {
 			return List.of("could not be analysed: " + e.getMessage());
 		}
 		return issues.stream().map(LinkageChecker.Issue::toString).toList();
+	}
+
+	private static boolean isLoaderClass(String name) {
+		return name.startsWith("net/fabricmc/loader/") || name.startsWith("net/fabricmc/api/");
 	}
 }
