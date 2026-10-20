@@ -21,7 +21,7 @@ import io.github.cmdralph.fabricated.core.report.Report;
 import io.github.cmdralph.fabricated.core.runtime.FabricLoaderRuntime;
 import io.github.cmdralph.fabricated.core.runtime.ModContainerImpl;
 import io.github.cmdralph.fabricated.core.translate.DefaultBridge;
-import io.github.cmdralph.fabricated.core.translate.PluginAnnotations;
+import io.github.cmdralph.fabricated.core.translate.Interop;
 
 /**
  * State shared between Fabricated's discovery services (which run in NeoForge's early-services class
@@ -35,7 +35,7 @@ public final class FabricatedState {
 	private final Pipeline.Result result;
 	private final Path logsDir;
 	private final Map<String, String> fabricIdByNeoForgeId;
-	private final Map<String, List<PluginAnnotations.Annotation>> pluginAnnotations;
+	private final Map<String, List<Interop.Annotation>> pluginAnnotations;
 	private final FabricatedApiImpl api;
 
 	FabricatedState(Pipeline.Result result, Path logsDir, FabricatedApiImpl api) {
@@ -43,7 +43,7 @@ public final class FabricatedState {
 		this.logsDir = logsDir;
 		this.api = api;
 		Map<String, String> ids = new LinkedHashMap<>();
-		Map<String, List<PluginAnnotations.Annotation>> plugins = new HashMap<>();
+		Map<String, List<Interop.Annotation>> plugins = new HashMap<>();
 		for (Pipeline.LoadedMod mod : result.mods()) {
 			ids.put(mod.translated().neoForgeId(), mod.translated().candidate().id());
 			if (!mod.pluginAnnotations().isEmpty()) plugins.put(mod.translated().neoForgeId(), mod.pluginAnnotations());
@@ -88,7 +88,7 @@ public final class FabricatedState {
 	}
 
 	/** What to add to a Fabric mod's scan data for other mods' NeoForge builds to find its plugins. */
-	public List<PluginAnnotations.Annotation> pluginAnnotations(String neoForgeId) {
+	public List<Interop.Annotation> pluginAnnotations(String neoForgeId) {
 		return pluginAnnotations.getOrDefault(neoForgeId, List.of());
 	}
 

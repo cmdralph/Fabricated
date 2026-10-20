@@ -76,12 +76,6 @@ public final class ModTranslator {
 	public static final String REMAPPED = "remapped.jar";
 	public static final String AT_PATH = "META-INF/accesstransformer.cfg";
 	static final String PACK_METADATA = "pack.mcmeta";
-	/** The entrypoint of a mod's page in Sodium's options, also the mod property Sodium for NeoForge reads it from. */
-	private static final String SODIUM_CONFIG_ENTRYPOINT = "sodium:config_api_user";
-	/** A mod's overrides of Sodium's mixin options, as a custom value (Fabric) or a key of its mods.toml entry (NeoForge). */
-	private static final String SODIUM_OPTIONS = "sodium:options";
-	/** Jade's custom value, which Jade for NeoForge reads from the mod properties of the same name. */
-	private static final String JADE = "jade";
 
 	/** Heap a translation may count on, in MiB: a quarter of the maximum, shared by all translations at once. */
 	private static final int MEMORY_MIB = (int) Math.max(64, Math.min(Integer.MAX_VALUE, Runtime.getRuntime().maxMemory() / 4 / (1 << 20)));
@@ -206,8 +200,7 @@ public final class ModTranslator {
 						md.getDescription(), List.copyOf(md.getAuthors()), List.copyOf(md.getContributors()),
 						List.copyOf(md.getLicense()), url(md.getContact().get("homepage").orElse(null), "homepage", notes),
 						url(md.getContact().get("issues").orElse(null), "issues", notes), md.getIconPath(256).filter(archive::contains).orElse(null), mixinSpecs,
-						overlay.containsKey(AT_PATH), overlay.containsKey(EnumExtensions.PATH), after, modProperties(md, notes),
-						booleans(md, SODIUM_OPTIONS, notes));
+						overlay.containsKey(AT_PATH), overlay.containsKey(EnumExtensions.PATH), after, modProperties(md, notes), options(md));
 				overlay.put(ModsTomlWriter.PATH, ModsTomlWriter.write(spec).getBytes(StandardCharsets.UTF_8));
 				overlay.put("META-INF/MANIFEST.MF", overlayManifest(neoId));
 
@@ -873,22 +866,6 @@ public final class ModTranslator {
 	}
 
 	/**
-	 * The mod's page in Sodium's options: an entrypoint on Fabric, a mod property naming the class for Sodium for NeoForge,
-	 * which instantiates it itself (so only a plain class, one per mod).
-	 */
-	static Map<String, String> sodiumProperties(FabricModMetadata md, List<String> notes) {
-		List<FabricModMetadata.EntrypointSpec> pages = md.entrypoints().getOrDefault(SODIUM_CONFIG_ENTRYPOINT, List.of());
-		if (pages.isEmpty()) return Map.of();
-		FabricModMetadata.EntrypointSpec page = pages.getFirst();
-		if (!page.adapter().equals("default") || page.value().contains("::")) {
-			notes.add("Its page in Sodium's options (" + page.value() + ") is left out: Sodium for NeoForge only takes a class");
-			return Map.of();
-		}
-		if (pages.size() > 1) notes.add("Sodium for NeoForge takes one options page per mod: " + page.value() + " is used, the others are left out");
-		return Map.of(SODIUM_CONFIG_ENTRYPOINT, page.value());
-	}
-
-	/**
 	 * A {@code pack.mcmeta} as Fabric reads it: without the top-level sections only NeoForge reads ({@code neoforge:...}).
 	 * Jars built for both loaders carry their NeoForge build's there, such as overlays gated by that build's own
 	 * condition types, which NeoForge then fails to read for the Fabric build. Null when there is none to leave out, or
@@ -906,32 +883,63 @@ public final class ModTranslator {
 	}
 
 	/**
-	 * What NeoForge mods read from a mod's {@code [modproperties]} where Fabric mods read an entrypoint or a custom
-	 * value: Sodium's options page, and Jade's settings ({@code jade}: accessibilityMod, fastScroll, ...).
+	 * What NeoForge mods read from a mod's {@code [modproperties]} where Fabric mods read a custom value or an
+	 * entrypoint: every custom value under its own name (Jade's settings), and the classes {@link Interop} has a
+	 * property for (Sodium's options page).
 	 */
 	static Map<String, Object> modProperties(FabricModMetadata md, List<String> notes) {
-		Map<String, Object> properties = new LinkedHashMap<>(sodiumProperties(md, notes));
-		Map<String, Boolean> jade = booleans(md, JADE, notes);
-		if (!jade.isEmpty()) properties.put(JADE, jade);
+		Map<String, Object> properties = customValues(md);
+		properties.putAll(Interop.properties(md.entrypoints(), notes));
 		return properties;
 	}
 
-	/** A custom value that is an object of booleans (Sodium's mixin option overrides, Jade's settings). */
-	static Map<String, Boolean> booleans(FabricModMetadata md, String key, List<String> notes) {
-		CustomValue options = md.getCustomValue(key);
-		if (options == null) return Map.of();
-		if (options.getType() != CustomValue.CvType.OBJECT) {
-			notes.add("Its " + key + " is not an object; left out");
-			return Map.of();
-		}
-		Map<String, Boolean> values = new LinkedHashMap<>();
-		for (Map.Entry<String, CustomValue> option : options.getAsObject()) {
-			if (option.getValue().getType() == CustomValue.CvType.BOOLEAN) {
-				values.put(option.getKey(), option.getValue().getAsBoolean());
-			} else {
-				notes.add("Its " + key + " entry " + option.getKey() + " is not true or false; left out");
-			}
-		}
+	/**
+	 * The custom values NeoForge mods read as keys of a mod's {@code mods.toml}: the namespaced ones, the form libraries
+	 * give per-mod settings in on both loaders. Sodium for NeoForge reads {@code sodium:options} from the mod's entry and
+	 * Lithium for NeoForge {@code lithium:options} from the file's top level, so they go in both; none of NeoForge's own
+	 * keys has a colon.
+	 */
+	static Map<String, Object> options(FabricModMetadata md) {
+		Map<String, Object> options = customValues(md);
+		options.keySet().removeIf(key -> key.indexOf(':') <= 0);
+		return options;
+	}
+
+	/**
+	 * A mod's custom values as values a {@code mods.toml} can hold: strings, numbers, booleans, arrays and tables. TOML has
+	 * no null, so a null is left out, in a table or an array too.
+	 */
+	static Map<String, Object> customValues(FabricModMetadata md) {
+		Map<String, Object> values = new LinkedHashMap<>();
+		md.customValues().forEach((key, value) -> {
+			Object plain = plain(value);
+			if (plain != null) values.put(key, plain);
+		});
 		return values;
+	}
+
+	private static Object plain(CustomValue value) {
+		return switch (value.getType()) {
+			case STRING -> value.getAsString();
+			case NUMBER -> value.getAsNumber();
+			case BOOLEAN -> value.getAsBoolean();
+			case NULL -> null;
+			case ARRAY -> {
+				List<Object> list = new ArrayList<>();
+				for (CustomValue element : value.getAsArray()) {
+					Object plain = plain(element);
+					if (plain != null) list.add(plain);
+				}
+				yield list;
+			}
+			case OBJECT -> {
+				Map<String, Object> table = new LinkedHashMap<>();
+				for (Map.Entry<String, CustomValue> entry : value.getAsObject()) {
+					Object plain = plain(entry.getValue());
+					if (plain != null) table.put(entry.getKey(), plain);
+				}
+				yield table;
+			}
+		};
 	}
 }

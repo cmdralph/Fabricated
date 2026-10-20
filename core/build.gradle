@@ -27,6 +27,8 @@ dependencies {
     testImplementation "org.ow2.asm:asm:${asm_version}"
     testImplementation "org.ow2.asm:asm-tree:${asm_version}"
     testImplementation "org.ow2.asm:asm-commons:${asm_version}"
+    // The TOML parser NeoForge reads mods.toml with (3.8.3 on 1.21.11 and 26.1.2, 3.9.0 on 26.2 and 26.3).
+    testImplementation 'com.electronwill.night-config:toml:3.8.3'
     testImplementation platform("org.junit:junit-bom:${junit_version}")
     testImplementation 'org.junit.jupiter:junit-jupiter'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'

@@ -50,7 +50,7 @@ import io.github.cmdralph.fabricated.core.translate.LinkageAnalysis;
 import io.github.cmdralph.fabricated.core.metadata.ModIds;
 import io.github.cmdralph.fabricated.core.translate.ModTranslator;
 import io.github.cmdralph.fabricated.core.translate.PackageGuard;
-import io.github.cmdralph.fabricated.core.translate.PluginAnnotations;
+import io.github.cmdralph.fabricated.core.translate.Interop;
 import io.github.cmdralph.fabricated.core.translate.TranslatedMod;
 import io.github.cmdralph.fabricated.core.translate.TranslationEnvironment;
 import io.github.cmdralph.fabricated.core.translate.TranslationEnvironment.Namespace;
@@ -163,7 +163,7 @@ public final class Pipeline {
 	 * @param packages          what its module leaves out of its jar and serves from other mods' jars ({@link PackageGuard})
 	 * @param pluginAnnotations what to add to its scan data for the NeoForge builds of other mods to find its plugins
 	 */
-	public record LoadedMod(TranslatedMod translated, PackageGuard.Decision packages, List<PluginAnnotations.Annotation> pluginAnnotations) {
+	public record LoadedMod(TranslatedMod translated, PackageGuard.Decision packages, List<Interop.Annotation> pluginAnnotations) {
 	}
 
 	/**
@@ -771,7 +771,7 @@ public final class Pipeline {
 			entrypoints.keySet().removeAll(skipEntrypoints);
 			runtime.addEntrypoints(container, entrypoints);
 			List<String> pluginNotes = new ArrayList<>();
-			List<PluginAnnotations.Annotation> plugins = PluginAnnotations.of(entrypoints, pluginNotes);
+			List<Interop.Annotation> plugins = Interop.annotations(entrypoints, pluginNotes);
 			plugins.forEach(p -> report.line("Plugins for other mods", c.id() + ": " + p.host() + " plugin " + p.className()));
 			pluginNotes.forEach(n -> report.line("Plugins for other mods", c.id() + ": " + n));
 			loaded.add(new LoadedMod(t, decision != null ? decision : PackageGuard.Decision.NONE, plugins));

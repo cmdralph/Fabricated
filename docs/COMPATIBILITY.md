@@ -660,7 +660,7 @@ every block through that renderer, so Fabric block models show in the world. Fab
 - Moving blocks and the breaking overlay of Fabric models go through the registered renderer, Sodium's.
 - A Fabric mod's Sodium integration is given to Sodium for NeoForge in the form it reads: its page in Sodium's options
   (the `sodium:config_api_user` entrypoint, a plain class) and its overrides of Sodium's mixin options
-  (`sodium:options`).
+  (`sodium:options`, see *Custom values* below).
 
 CI runs Sodium and Iris for NeoForge (from Modrinth) with Fabric API and a Fabric model test mod on 26.1.2, 26.2 and
 26.3, and checks each of these. Shaders weren't enabled in that run. A Fabric addon's mixins into Sodium are checked
@@ -676,7 +676,9 @@ A Fabric mod's plugins for JEI, REI, Jade, EMI and Simple Voice Chat are its ent
 the plugin class instead. Fabricated adds
 that annotation to the mod's NeoForge scan data for each such entrypoint, so the NeoForge builds find the plugins.
 WTHIT needs nothing: on NeoForge it reads the jar's `waila_plugins.json` / `wthit_plugins.json`, which stay in the
-translated mod. Jade's per-mod settings (the `jade` custom value) become the mod properties Jade for NeoForge reads.
+translated mod. Jade's per-mod settings (the `jade` custom value) reach Jade for NeoForge as a mod property (see
+*Custom values* below). Which entrypoint becomes which annotation, or which mod property, is data: core's
+`interop.json`, one line per entrypoint key.
 
 - The NeoForge builds create a plugin from a class with a public no-argument constructor, as Fabric's default
   language adapter does with a class name. A plugin given as a field or method reference (`Class::member`) or through
@@ -687,6 +689,16 @@ translated mod. Jade's per-mod settings (the `jade` custom value) become the mod
 - CI runs the NeoForge builds of JEI, REI, Jade, WTHIT and Simple Voice Chat (from Modrinth, where one exists for the
   version) with the test mod's plugins (informational). EMI has no NeoForge build for these versions (UNVERIFIED), so only its mapping is
   unit-tested.
+
+### Custom values
+
+Libraries built for both loaders read a mod's settings from its `fabric.mod.json` custom values on Fabric, and from its
+`mods.toml` on NeoForge, under the same name. Every custom value of a Fabric mod becomes a mod property of the
+translated mod (`[modproperties.<id>]`, where Jade for NeoForge reads `jade`), and every namespaced one (`ns:key`) is
+also a key of the file and of the mod's `[[mods]]` entry: Sodium for NeoForge reads `sodium:options` from the entry,
+Lithium for NeoForge `lithium:options` from the file. No key of NeoForge's own has a colon, so these never clash with
+it. Nulls are left out, as TOML has none. Unit tests read the generated file with night-config, the parser NeoForge
+uses, and find each value where those mods look.
 
 ### Fabric Loader
 
