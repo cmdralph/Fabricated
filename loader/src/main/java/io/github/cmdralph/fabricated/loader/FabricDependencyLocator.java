@@ -70,6 +70,14 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 			LOGGER.info("Fabricated discovery finished in {} ms", (System.nanoTime() - start) / 1_000_000);
 		} catch (Throwable t) {
 			if (t instanceof VirtualMachineError vme && !(t instanceof StackOverflowError)) throw vme;
+			// The state is published just before the first Fabric mod is handed to NeoForge.
+			if (FabricatedState.get() != null) {
+				LOGGER.error("Fabricated failed after handing Fabric mods to NeoForge; some may not work this launch", t);
+				pipeline.addIssue(ModLoadingIssue.warning(MESSAGE,
+						"Fabric mod support failed partway: Fabric mods may load without everything they need this launch: " + t
+								+ ". See logs/latest.log.").withCause(t));
+				return;
+			}
 			LOGGER.error("Fabricated failed during discovery; Fabric mods will not be loaded this launch", t);
 			pipeline.addIssue(ModLoadingIssue.warning(MESSAGE,
 					"Fabric mod support failed to start and is disabled for this launch: " + t + ". See logs/latest.log.").withCause(t));
