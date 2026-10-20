@@ -34,7 +34,7 @@
     "rei_common": ["io.github.cmdralph.fabricated.testmod.plugin.OtherModPlugins${'$'}Rei"],
     "jade": [
       "io.github.cmdralph.fabricated.testmod.plugin.OtherModPlugins${'$'}Jade",
-      "io.github.cmdralph.fabricated.testmod.plugin.OtherModPlugins${'$'}Jade::INSTANCE"
+      "io.github.cmdralph.fabricated.testmod.plugin.OtherModPlugins${'$'}JadeHolder::INSTANCE"
     ],
     "voicechat": ["io.github.cmdralph.fabricated.testmod.plugin.OtherModPlugins${'$'}VoiceChat"]
   },

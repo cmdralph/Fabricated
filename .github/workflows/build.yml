@@ -51,21 +51,29 @@ jobs:
           - minecraft: "1.21.11"
             fabric_api: "0.141.6+1.21.11"
             neoforge: "21.11.45"
+            # Modrinth version ids of the mods reading plugins (no WTHIT build for 26.3).
+            plugin_hosts: "jei@Sb3olMoE rei@p0bsGl2I jade@LDFqgwEA wthit@9kLa6aJn simple-voice-chat@q4sBpZd2"
             java: 21
             experimental: false
           - minecraft: "26.1.2"
             fabric_api: "0.155.3+26.1.2"
             neoforge: "26.1.2.116"
+            # Modrinth version ids of the mods reading plugins (no WTHIT build for 26.3).
+            plugin_hosts: "jei@NiYfNYIM rei@isd1MxO2 jade@Pr1h4azo wthit@86roxNra simple-voice-chat@ux2lghIT"
             java: 25
             experimental: false
           - minecraft: "26.2"
             fabric_api: "0.161.0+26.2"
             neoforge: "26.2.0.90"
+            # Modrinth version ids of the mods reading plugins (no WTHIT build for 26.3).
+            plugin_hosts: "jei@JMEYi0NN rei@BoY0Dky0 jade@GBES6etT wthit@nYkvtEUa simple-voice-chat@xNwwyLuz"
             java: 25
             experimental: false
           - minecraft: "26.3"
             fabric_api: "0.164.0+26.3"
             neoforge: "26.3.0.69-beta"
+            # Modrinth version ids of the mods reading plugins (no WTHIT build for 26.3).
+            plugin_hosts: "jei@3EynCW85 rei@uwE0PJmc jade@dVB8U7Td simple-voice-chat@3rpCvvMZ"
             java: 25
             experimental: true
     steps:
@@ -300,26 +308,28 @@ jobs:
             ${{ runner.temp }}/client-polyfrost/run/crash-reports
             ${{ runner.temp }}/client-polyfrost/client.out
           if-no-files-found: ignore
-      # The NeoForge builds of recipe viewers, tooltip mods and Simple Voice Chat, with the test mod's plugins declared
-      # the Fabric way (as entrypoints, and WTHIT's plugin file). Informational until their builds are pinned.
-      - name: Client with recipe viewers for NeoForge (informational)
+      # The NeoForge builds of recipe viewers, tooltip mods and Simple Voice Chat (pinned per version), with the test
+      # mod's plugins declared the Fabric way (as entrypoints, and WTHIT's plugin file): each must construct and call
+      # its plugin.
+      - name: Plugins for the NeoForge builds of other mods
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p "$RUNNER_TEMP/extra-viewers"
-          python3 ci/fetch-corpus.py "${{ matrix.minecraft }}" "$RUNNER_TEMP/extra-viewers" neoforge jei rei jade wthit simple-voice-chat | tee viewers.txt
+          python3 ci/fetch-corpus.py "${{ matrix.minecraft }}" "$RUNNER_TEMP/extra-viewers" neoforge ${{ matrix.plugin_hosts }} | tee viewers.txt
           SMOKE_TIMEOUT=480 ci/smoke-client.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/client-viewers" "$RUNNER_TEMP/extra-viewers" || true
           grep -A12 "== Plugins for other mods" "$RUNNER_TEMP/client-viewers/run/logs/fabric-bridge-report.txt" || true
           log="$RUNNER_TEMP/client-viewers/run/logs/latest.log"
-          for viewer in jei rei jade wthit simple-voice-chat; do
-            if ! grep -q "^$viewer: " viewers.txt || grep -qE "^$viewer: (no |not fetched)" viewers.txt; then echo "$viewer: not in this run"; continue; fi
+          for host in ${{ matrix.plugin_hosts }}; do
+            host="${host%@*}"
             for what in constructed called; do
-              echo "$viewer plugin $what: $(grep -c "FABRICATED-TEST $viewer plugin $what OK" "$log" || true) time(s)"
+              count=$(grep -c "FABRICATED-TEST $host plugin $what OK" "$log" 2>/dev/null || true)
+              echo "$host plugin $what: ${count:-0} time(s)"
             done
           done | tee "$RUNNER_TEMP/summary-viewers.txt"
           grep -n -m 40 -E "/(ERROR|FATAL)\]" "$log" || true
+          if grep -q ": 0 time(s)" "$RUNNER_TEMP/summary-viewers.txt"; then echo "FAIL: a mod did not construct or call the test mod's plugin"; exit 1; fi
       - name: Upload recipe viewer client logs and report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
