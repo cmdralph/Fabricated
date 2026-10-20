@@ -151,8 +151,9 @@ NeoForge already cover those users.
   mods from Modrinth (informational).
 - **Done (this pass):** an informational server run on the newest NeoForge build of each version, next to the pinned
   one (Fabricated accepts every build of a version, and NeoForge's internals move between builds: REG-1).
-- **Next:** CORPUS-2 (Xaero's World Map stops the corpus client), so the corpus mods can be exercised in a world. The
-  gates listed in the rendering-pipeline plan.
+- **Next:** CORPUS-2 (Xaero's World Map stops the corpus client). It now runs alone in its own informational client,
+  so the rest of the corpus reaches a world; that run shows whether it crashes by itself. The gates listed in the
+  rendering-pipeline plan.
 
 ## Findings log
 

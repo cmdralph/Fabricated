@@ -310,7 +310,7 @@ jobs:
         if: always() && steps.build.outcome == 'success'
         continue-on-error: true
         run: |
-          python3 ci/fetch-corpus.py "${{ matrix.minecraft }}" "$RUNNER_TEMP/corpus"
+          python3 ci/fetch-corpus.py "${{ matrix.minecraft }}" "$RUNNER_TEMP/corpus" | tee "$RUNNER_TEMP/corpus.txt"
           cp "$RUNNER_TEMP/extra/fabric-api.jar" "$RUNNER_TEMP/corpus/"
       - name: Server with the mod corpus (informational)
         if: always() && steps.corpus.outcome == 'success'
@@ -321,9 +321,25 @@ jobs:
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
+        # CORPUS-2: Xaero's World Map stops the client on its first tick, so it runs alone below and the other mods
+        # reach a world here.
         run: |
-          SMOKE_TIMEOUT=600 ci/smoke-client.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/client-corpus" "$RUNNER_TEMP/corpus" || true
+          mkdir -p "$RUNNER_TEMP/corpus-client"
+          cp "$RUNNER_TEMP/corpus/"*.jar "$RUNNER_TEMP/corpus-client/"
+          worldmap=$(sed -n 's/^xaeros-world-map: .* (\(.*\))$/\1/p' "$RUNNER_TEMP/corpus.txt")
+          if [ -n "$worldmap" ]; then rm -f "$RUNNER_TEMP/corpus-client/$worldmap"; fi
+          SMOKE_TIMEOUT=600 ci/smoke-client.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/client-corpus" "$RUNNER_TEMP/corpus-client" || true
           grep -A400 "== " "$RUNNER_TEMP/client-corpus/run/logs/fabric-bridge-report.txt" || true
+      - name: Client with Xaero's World Map alone (informational, CORPUS-2)
+        if: always() && steps.corpus.outcome == 'success'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/extra-worldmap"
+          python3 ci/fetch-corpus.py "${{ matrix.minecraft }}" "$RUNNER_TEMP/extra-worldmap" fabric xaeros-world-map
+          cp "$RUNNER_TEMP/extra/fabric-api.jar" "$RUNNER_TEMP/extra-worldmap/"
+          SMOKE_TIMEOUT=420 ci/smoke-client.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/client-worldmap" "$RUNNER_TEMP/extra-worldmap" || true
       - name: Upload mod corpus logs and reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -343,7 +359,8 @@ jobs:
           for f in summary-newest summary-viewers; do
             [ -f "$RUNNER_TEMP/$f.txt" ] && { echo "== $f"; grep -E "^(Newest|PASS|FAIL|WARN)|plugin|not in this run" "$RUNNER_TEMP/$f.txt" | head -60; }
           done
-          for run in client-sodium-fabric client-viewers; do
+          [ -f viewers.txt ] && { echo "== viewers fetched"; cat viewers.txt; }
+          for run in client-sodium-fabric client-viewers client-corpus client-worldmap; do
             log="$RUNNER_TEMP/$run/run/logs/latest.log"
             [ -f "$log" ] || continue
             echo "== $run"
