@@ -555,8 +555,9 @@ model among its parts, is drawn by Fabric's renderer: in the world (into the chu
 model data, tints, face culling and ambient occlusion per part still apply to it; upstream's hooks that send *every*
 block through Fabric's renderer in those places are left out for that reason. Block outlines, and the glow outline of a
 moving block, still come from a model's parts as NeoForge sees them. NeoForge already gives vanilla's models
-`createGeometryKey` and `particleMaterial` with Fabric's signatures, so upstream's copies are left out and
-Fabricated declares the shared defaults on `BlockStateModel`. On 26.1.2, where upstream's check of a mesh
+`createGeometryKey` and `particleMaterial` with Fabric's signatures, so upstream's copies are left out, and
+`BlockStateModel`, which then inherits both interfaces' defaults of each, declares NeoForge's (a default method
+bridge, as for any added interface). On 26.1.2, where upstream's check of a mesh
 model's sprites takes the parameters of vanilla's `SimpleModelWrapper.bake` (NeoForge moved the code into its own
 overload), a mesh model using sprites from outside the block atlas is not rejected; on 26.2 and 26.3 the check
 follows the code into NeoForge's overload. On 26.1.2 and 26.2 the block overlay seen from inside a block uses the

@@ -21,8 +21,7 @@ import net.neoforged.neoforgespi.transformation.ProcessorName;
 /**
  * Declares the methods of {@link DefaultBridge}s after Mixin applies: where an interface a Fabric mod adds brings a
  * default method the class already has from another interface (CORPUS-11), the class declares it, calling the default
- * it had, so the JVM has one to pick. A class whose mixins declare the method by then (Fabricated's own resolve some
- * such pairs) keeps theirs.
+ * it had, so the JVM has one to pick. A class whose mixins declare the method by then keeps theirs.
  */
 public final class DefaultBridgeProcessor implements ClassProcessor {
 	private static final ProcessorName NAME = new ProcessorName("fabricated", "default_bridges");

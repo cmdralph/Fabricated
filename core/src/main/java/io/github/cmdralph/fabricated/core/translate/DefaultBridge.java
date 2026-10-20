@@ -20,8 +20,9 @@ import org.objectweb.asm.tree.MethodNode;
  * {@code IBlockEntityRendererExtension}, both on {@code BlockEntityRenderer}). The JVM refuses to choose between two
  * such defaults ({@code IncompatibleClassChangeError}) when the method is called on a class that declares neither. The
  * declared method calls the default the class already had, NeoForge's, which NeoForge's own classes override where
- * they need to. It is declared after Mixin applies, where no mixin declares the method (Fabricated's own resolve some
- * such pairs, as Fabric API's {@code FabricBlockStateModel} and NeoForge's extension on {@code BlockStateModel}).
+ * they need to. It is declared after Mixin applies, where no mixin declares the method. Fabric API's renderer gives
+ * {@code BlockStateModel} two such pairs ({@code FabricBlockStateModel}'s and NeoForge's extension's
+ * {@code createGeometryKey} and {@code particleMaterial}).
  *
  * @param target     the class (internal name) that gets the method
  * @param owner      its direct superinterface whose default the method calls
