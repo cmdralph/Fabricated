@@ -243,7 +243,7 @@ crash in run 229).
 
 | ID | Sev | Location | Issue | Status |
 |---|---|---|---|---|
-| POLY-1 | P2, cause UNVERIFIED | Polyfrost clients in CI | On `7f3550f` (pull request #41), with Polydium's Vulkan prompt answered, the 26.3 and 1.21.11 clients are in their worlds but the integrated server has no player: from its own thread it reports tick 0 and 0 players, and its thread waits in `runServer`'s tick loop, so it is paused (it pauses with no player) and sends no chunk. The client has no overlay, isn't paused, receives under one packet per second and has 0 chunks; its render thread renders (Polydium's frame limiter, the clouds). No error is logged. Ruled out: a pausing overlay, PolyPlus's networking and integrated server mixins, Polydium's `ClientChunkCache` mixins. The test mods alone reach their world; this run adds OneConfig, PolyPlus, Polydium, compose-bundle and Fabric Language Kotlin. | Next CI run: the test mod logs when the server places a player, when that finishes, and who removes one (with the stack). |
+| POLY-1 | P2, cause UNVERIFIED | Polyfrost clients in CI | On `320123c` (pull request #42), on 26.3 and 1.21.11: the integrated server places the player (the test mod logs "placing", then vanilla's "Offline joined the game", then "placed" with 1 player in the list), but half a minute later it reports, from its own thread, tick 0 and 0 players, with no `PlayerList.remove` logged; its thread waits in `runServer`'s tick loop, so it never ran a tick (an integrated server that is paused skips them). The client is in its world, not paused, with no overlay, 0 chunks and few packets. No error is logged. Ruled out: a pausing overlay, PolyPlus's networking, host-world and integrated server mixins, Polydium's `ClientChunkCache` mixins. This run adds OneConfig, PolyPlus, Polydium, compose-bundle and Fabric Language Kotlin to the test mods (which reach their world alone). | Next CI run: which server and player list each line is about (identity), whether the server reports itself paused, what decides its pause at each tick (client pause, players, connection), and `respawn`/`removeAll` on the list. |
 | PLAT-2 | P3, UNVERIFIED | core `PlatformLibraries` | Other prefixes also cover whole library families (`org/lwjgl/`, `io/netty/`), of which the platform may ship some modules only: a mod nesting another module (LWJGL's NanoVG, say) would lose it, as PLAT-1 did. No case seen yet. | Check each prefix against the packages the platform really has (the loader computes them), and keep a prefix only where the family is complete. |
 | FC-5 | P3 | `TranslationCache.verifyIntegrity` | Hashes are memoised by file metadata. On Windows the key is size and mtime only, and `entry.json` itself isn't hashed. | Needs a decision on cost: re-hashing every launch versus trusting metadata. |
 | FC-6 | P3 | `TranslationCache.store` | Two cold launches of the same side that share one game directory race on delete-then-move. | Needs a cross-process file lock. Rare. |
@@ -252,6 +252,8 @@ crash in run 229).
 | P3-6 | P3, UNVERIFIED | `ClientNetworkingImpl.currentConfiguration` | May keep the last configuration-phase listener if a disconnect skips `LoggingOut`. | Bounded to one slot. Not confirmed. |
 | P3-8 | — | `BlockEntityTypeMixin` | Field replaced without `volatile`. | Won't fix: written only during mod initialization, before world threads start. |
 | CFG-2 | P3 | `gradle.properties`, `Pipeline` | The Fabric Loader API version is written in two places. | Build-time duplication only. |
+| CORPUS-9 | P2 | 26.3 corpus client | With NeoForge's warnings screen out of the way (CORPUS-8), the 26.3 corpus client crashes during an event at the end of loading: `NullPointerException: Components not bound yet` from `Holder$Reference.components` in `ItemStack.<init>` (`320123c`). Who builds that item stack is UNVERIFIED. | The summary now prints more frames of each `Caused by`. |
+| COMPAT-2 | P3, cosmetic | `FabricDependencyLocator` on 1.21.11 | NeoForge 1.21.11's FML doesn't format Fabricated's loading warnings: the log shows `[Fabricated] {0} [[Fabric mod ... was not loaded: ...]]` where 26.x shows the text. | A message without a placeholder, escaped for the 26.x formatter, or a translation key 1.21.11's FML knows. |
 | CORPUS-3 | — | Balm (Waystones), JEI, ShulkerBoxTooltip (26.3 corpus) | Their mixins target code NeoForge changed: Balm `CropBlock.getGrowthSpeed`'s signature and `LivingEntity.removeAllEffects`'s loop, JEI `KeyMapping.setKey`, ShulkerBoxTooltip a `setTooltipForNextFrame` overload. Pre-flight disables them with the reason. | Not repairable in general. Their NeoForge builds exist and are used when installed. |
 | CORPUS-5 | P3, cosmetic, UNVERIFIED | Traveler's Backpack (26.3 corpus) | NeoForge warns "Missing FluidModel" for its potion fluids. NeoForge's check runs inside `FluidStateModelSet.bake`, and upstream's `FluidStateModelSetMixin` wraps that method to add the models of Fabric-registered fluids after it returns, so the warning comes before those models are added. Whether the potion fluids have a model at all is UNVERIFIED. | Could register Fabric's fluid models through NeoForge's `RegisterFluidModelsEvent` instead. Low value. |
 
@@ -303,7 +305,21 @@ open (see *Unverified and blockers*).
 
 Newest first. Each entry: what changed, and how it was verified.
 
-### 2026-10-21 (latest): where the player goes missing, warnings that stop CI clients
+### 2026-10-21 (latest): the integrated server never ticks
+
+**Summary.**
+- Results of pull request #42 on `320123c`: CORPUS-8 holds. The 1.21.11 corpus client reaches its world with 7 Fabric
+  mods disabled (listed as warnings); the 26.3 corpus client gets past loading and crashes on an item stack built before
+  item components are bound (CORPUS-9). POLY-1: the integrated server places the player and still never ticks; half a
+  minute later its list is empty without a removal.
+- CI: which server and player list each POLY-1 line is about, the integrated server's pause inputs at each tick, and
+  more frames of each `Caused by` in crash reports.
+- COMPAT-2 (cosmetic, open): 1.21.11's FML shows Fabricated's warnings with their placeholder unformatted.
+
+**Verification.** The workflow YAML parses. The test mod's new mixins build only in CI; the diagnostics injectors not
+every version may have are optional (`require = 0`). CI: see the pull request.
+
+### 2026-10-21 (late, 2): where the player goes missing, warnings that stop CI clients
 
 **Summary.**
 - Results of pull request #41 on `7f3550f`: CORPUS-7 holds (the 1.21.11 corpus disables Continuity before launch,
