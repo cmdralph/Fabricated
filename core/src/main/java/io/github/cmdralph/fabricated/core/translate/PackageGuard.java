@@ -36,7 +36,8 @@ import io.github.cmdralph.fabricated.core.resolve.PlatformLibraries;
  *   <li>If the later mod has classes there that the earlier one doesn't (a package split between jars, as
  *       Kotlin and Compose libraries and MixinSquared ship theirs, which Fabric's single class path allows),
  *       the earlier mod's module serves them too: the package stays one module's.</li>
- *   <li>If both have a class of the same name with different bytes, it is disabled with an explanation.</li>
+ *   <li>If both have a class of the same name with different bytes (two versions of a library they bundle), the
+ *       earlier mod's copy is used, as the first jar on Fabric's class path would be, with a warning.</li>
  * </ol>
  *
  * <p>A module may only declare service providers it has, so a service file of the later mod whose providers are in
@@ -148,14 +149,13 @@ public final class PackageGuard {
 					notes.add("shares identical files in package " + dotted + " with " + existing + "; using " + existing + "'s copy");
 				} else if (!hasClasses) {
 					notes.add("has resources in " + dotted + " that clash with " + existing + "; this mod's copies are hidden");
-				} else if (differing.stream().anyMatch(f -> f.endsWith(".class"))) {
-					String clash = differing.stream().filter(f -> f.endsWith(".class")).findFirst().orElseThrow();
-					conflict = "contains package " + dotted + ", which " + existing + " also contains with a different " + clash;
-					break;
 				} else {
-					lent.put(name, extra);
-					notes.add("shares package " + dotted + " with " + existing + ", whose module also serves this mod's " + extra.size() + " file(s) there"
-							+ (differing.isEmpty() ? "" : "; " + differing.size() + " clashing resource(s) use " + existing + "'s copies"));
+					if (!extra.isEmpty()) lent.put(name, extra);
+					notes.add("shares package " + dotted + " with " + existing + (extra.isEmpty() ? "" : ", whose module also serves this mod's " + extra.size() + " file(s) there"));
+					differing.stream().filter(f -> f.endsWith(".class")).findFirst().ifPresent(clash -> notes.add("WARNING: has a different "
+							+ clash.substring(0, clash.length() - ".class".length()).replace('/', '.') + (differing.size() > 1 ? " (and " + (differing.size() - 1) + " more file(s))" : "")
+							+ " than " + existing + "; " + existing + "'s copies are used, as the first jar on Fabric's class path would be. Another version of a library both"
+							+ " bundle, most likely: if this mod fails, ask its authors to relocate (shade) it."));
 				}
 				excluded.add(name);
 				givenUp.add(name);
