@@ -239,7 +239,7 @@ crash in run 229).
 
 | ID | Sev | Location | Issue | Status |
 |---|---|---|---|---|
-| POLY-1 | P2, cause UNVERIFIED | Polyfrost clients in CI | On `039fd37` (pull request #38), with Polydium's Vulkan prompt answered, the 26.3 client is in its world (`LocalPlayer` at -2.5, 104, -8.5) and the integrated server runs, but the player's chunk never arrives on the client: mc-runtime-test logs "Players chunk not yet loaded" (it waits for `level.getChunk(...)` to be non-empty) until the timeout. The test mods alone reach their world; this run adds OneConfig, PolyPlus (whose networking mixins only redirect channels for its peer-to-peer hosting, read from its source), compose-bundle and Fabric Language Kotlin. | The summary now prints the render and server threads' frames near the timeout, or the start of the dump when jstack failed (the last summary's section was empty). |
+| POLY-1 | P2, cause UNVERIFIED | Polyfrost clients in CI | On `e1e19c9` (pull request #39), with Polydium's Vulkan prompt answered, the 26.3 and the 1.21.11 clients are in their worlds (`LocalPlayer` at -1.5, 72, 0.5 and -4.5, 80, -1.5) and the integrated server runs, but the player's chunk never arrives on the client: mc-runtime-test logs "Players chunk not yet loaded" (it waits for `level.getChunk(...)` to be non-empty) until the timeout. No error is logged. The test mods alone reach their world; this run adds OneConfig, PolyPlus (whose networking mixins only redirect channels for its peer-to-peer hosting, and whose integrated server mixin is empty on 26.3, read from its source), Polydium (whose `ClientChunkCache` mixins only clear its caches), compose-bundle and Fabric Language Kotlin. | The thread dump near the timeout was empty on #39: jstack could not attach to the game ("non existent JVM pid"). It is now taken with SIGQUIT, which the game prints to its output. |
 | PLAT-2 | P3, UNVERIFIED | core `PlatformLibraries` | Other prefixes also cover whole library families (`org/lwjgl/`, `io/netty/`), of which the platform may ship some modules only: a mod nesting another module (LWJGL's NanoVG, say) would lose it, as PLAT-1 did. No case seen yet. | Check each prefix against the packages the platform really has (the loader computes them), and keep a prefix only where the family is complete. |
 | FC-5 | P3 | `TranslationCache.verifyIntegrity` | Hashes are memoised by file metadata. On Windows the key is size and mtime only, and `entry.json` itself isn't hashed. | Needs a decision on cost: re-hashing every launch versus trusting metadata. |
 | FC-6 | P3 | `TranslationCache.store` | Two cold launches of the same side that share one game directory race on delete-then-move. | Needs a cross-process file lock. Rare. |
@@ -300,7 +300,24 @@ open (see *Unverified and blockers*).
 
 Newest first. Each entry: what changed, and how it was verified.
 
-### 2026-10-21 (latest): where the Polyfrost world stalls
+### 2026-10-21 (latest): model loading on 1.21.11, thread dumps by SIGQUIT
+
+**Summary.**
+- Results of pull request #39 on `e1e19c9`: the 1.21.11 Polyfrost client now reaches its world too, and waits there for
+  its chunk as the 26.3 one does (POLY-1). The thread dump section stayed empty: jstack can't attach to the game.
+- CORPUS-6: Fabric API's model loading module loads on 1.21.11, without the renderer API (`dropDependencies` in the
+  plan), with the bridge 26.x uses for its extra models and Fabric's model formats, now shared. On `e1e19c9` the 1.21.11
+  corpus showed exactly the failure this fixes: the client entrypoints of Continuity, Lootr and Traveler's Backpack
+  could not find model loading classes, and Continuity's `AtlasManager` mixin then crashed the client.
+- CI: the thread dump before the timeout is taken with SIGQUIT. For a client that ends without reaching a world, the
+  test mod's shutdown hook prints which thread ended the game and from where (the 26.x corpus clients close FML right
+  after model loading with no error).
+
+**Verification.** `:core:test` (165 tests) passes, with `PipelineTest.aModuleLoadsWithoutTheDependenciesItsPlanDrops`.
+The workflow YAML parses; the shell script passes `bash -n`; the summary's new awk was run on a sample. The Minecraft
+modules build in CI only: see the pull request, including the new 1.21.11 gate "Fabric model loading API".
+
+### 2026-10-21 (later still): where the Polyfrost world stalls
 
 **Summary.**
 - Results of pull request #38 on `039fd37`: with Polydium's marker, no prompt opens; the 26.3 client waits in its world
