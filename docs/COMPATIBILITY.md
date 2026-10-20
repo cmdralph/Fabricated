@@ -573,7 +573,9 @@ there), so model loading, which requires it, is disabled.
 
 Use the NeoForge builds of Sodium and Iris. Their Fabric builds are disabled with a message: Sodium's would mesh
 NeoForge's models, fluids and lighting the Fabric way and drop the geometry NeoForge mods add to chunks, and Iris's
-needs Sodium's Fabric build. Sodium for NeoForge carries its own implementation of Fabric's renderer API and switches
+needs Sodium's Fabric build. The mixed pairs are refused even with `loadUnsupported`: Iris's Fabric build next to
+Sodium for NeoForge, and Sodium's Fabric build next to Iris for NeoForge, as each hooks classes only its own partner
+build has (their fluid renderers). Sodium for NeoForge carries its own implementation of Fabric's renderer API and switches
 it on whenever Fabric API's renderer module is loaded, which Fabricated with the Fabric API jar provides. It then meshes
 every block through that renderer, so Fabric block models show in the world. Fabricated's part:
 

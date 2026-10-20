@@ -29,9 +29,9 @@ handled safely, no network access, original jars never changed, and no code that
 - **Next:**
   - `preLaunch` right after FML's mixin bootstrap instead of with `main`, closer to Fabric's order (it must run after
     every mixin config is registered, so a class it loads still gets its mixins).
-  - A built-in, data-driven compatibility plan for third-party mods per Minecraft version (mod id and version range to
-    `skipMixins`, `skipEntrypoints`, pairing rules, notes), like `fabric-api-plan.json`, replacing the hard-coded
-    `NEOFORGE_BUILD_ONLY` map and reusing `CompatHints.Patch`.
+  - The compatibility plan (`compat-plan.json`, done for refusals and pairings): `skipMixins` and `skipEntrypoints` per
+    mod and version range, through the `CompatHints.Patch` path, added with the first entry that needs them (a CI run
+    showing the mixin is the fault and the mod works without it).
   - Pre-flight of mixins into other Fabric mods' classes on 1.21.11 (their classes are only remapped as each is
     translated), and checking members other mods' mixins add against those mixins (PRE-2 only stops judging them).
 - **Later:** the deferred cache items (FC-5, FC-6, FC-7).
@@ -110,7 +110,7 @@ research sandbox).
   emission, no baked colours in immediate mode. Generic work fixes about half (below); the rest is what Sodium for
   NeoForge's own platform module does.
 - Iris's Fabric build needs Sodium's Fabric build (its fluid hook targets `sodium.fabric` classes); Iris for NeoForge
-  needs Sodium for NeoForge. A pairing rule in the compatibility plan should refuse the mixed pair with a message.
+  needs Sodium for NeoForge. The compatibility plan refuses either mixed pair with a message, `loadUnsupported` or not.
 - Indium has no build for these versions and isn't needed: Sodium provides `indium`.
 
 **Plan, by coverage per effort** (each with its CI check):
@@ -120,8 +120,8 @@ research sandbox).
 | 1 | FRAPI-2: NeoForge's baked colours and normals kept by `FrapiDefaults` | NeoForge models drawn by any Fabric renderer | Done (`ce52fb2`). Gate "frapi baked colors OK": the terrain test block's model has a `neoforge_data` colour, checked as Fabric's renderer emits it. Passes on 26.2 and 26.3 (`3d5d509`) |
 | 2 | Constructor repair for appended NeoForge components, with a handler bridge | Sodium's `BakedQuadMixin` (SODIUM-1); any mixin into NeoForge-extended records (`BakedQuad`, `MaterialInfo`, `FluidModel`) | Done (`bee1fe4`, unit tests). Gate "frapi baked quad constructor hook OK": the test mod's mixin at the end of `BakedQuad`'s vanilla constructor marks the quads NeoForge bakes. Passes on 26.2 and 26.3 (`3d5d509`) |
 | 3 | Fabric-order early hooks | PolyPlus, Polydium, OneConfig | Language adapters done (server check "early language adapter OK"); `preLaunch` next |
-| 4 | Pre-flight of mixins into other mods, pairing rules | Iris with Sodium, Polydium, OneConfig's compat mixins, Sodium addons | Done for installed NeoForge mods and, on 26.x, other Fabric mods (R3); pairing rules next |
-| 5 | Built-in compatibility plan (data) | Sodium's window mixin, its renderer API config on 1.21.11, pairings | Next |
+| 4 | Pre-flight of mixins into other mods, pairing rules | Iris with Sodium, Polydium, OneConfig's compat mixins, Sodium addons | Done: installed NeoForge mods and, on 26.x, other Fabric mods (R3); pairing rules (`notWithNeoForge`, unit and pipeline tests) |
+| 5 | Built-in compatibility plan (data) | Refusals and pairings; per-mod mixin skips | Done: core's `compat-plan.json` replaces the hard-coded map; skips wait for an entry with evidence (Sodium's window mixin S10 is UNVERIFIED) |
 | 6 | Fabric fluid rendering backed by NeoForge's (custom fluid renderers on 26.x, `IClientFluidTypeExtensions` on 1.21.11) | NeoForge fluids under a Fabric renderer | Planned |
 | 7 | Block-entity render data and NeoForge model data, bridged both ways | Fabric renderers reading NeoForge block entities' data | Planned |
 | 8 | Renderer contract: resolve a late-registered renderer, report the active one, optional every-block routing | Third-party renderer API implementations | Planned |

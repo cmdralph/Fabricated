@@ -370,6 +370,31 @@ class PipelineTest {
 	}
 
 	/**
+	 * Iris's Fabric build hooks Sodium's Fabric build: next to Sodium for NeoForge it would load with its hooks missing,
+	 * so it is refused, even when the player asked to load it.
+	 */
+	@Test
+	void aFabricBuildIsRefusedNextToTheNeoForgeBuildOfItsPartner(@TempDir Path game) throws Exception {
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		Path iris = TestJars.create().fabricModJson(TestJars.modJson("iris", "1.11.4", "\"name\":\"Iris\"")).write(mods.resolve("iris.jar"));
+		Files.createDirectories(game.resolve("config"));
+		Files.writeString(game.resolve("config").resolve(FabricatedConfig.FILE_NAME), "{\"schema\": 1, \"mods\": {\"iris\": {\"loadUnsupported\": true}}}");
+		List<Pipeline.NeoForgeMod> sodium = List.of(new Pipeline.NeoForgeMod("sodium", "0.9.2+mc26.3", "Sodium", Map.of(), List.of()));
+
+		Pipeline.Result result = Pipeline.run(input(game, List.of(iris), Namespace.OFFICIAL, Map.of(), null, sodium));
+
+		assertTrue(result.mods().isEmpty(), result.report().render());
+		Report.ModRow row = result.report().mods().stream().filter(r -> r.id().equals("iris")).findFirst().orElseThrow();
+		assertEquals(Report.Status.DISABLED, row.status());
+		assertTrue(row.detail().startsWith("its Fabric build can't run next to the NeoForge mod Sodium 0.9.2+mc26.3: "), row.detail());
+		assertEquals("Use the NeoForge builds of both, or the Fabric builds of both.", row.suggestion());
+
+		// Without Sodium for NeoForge, the request stands.
+		Pipeline.Result alone = Pipeline.run(input(game, List.of(iris), Namespace.OFFICIAL, Map.of(), null, List.of()));
+		assertEquals(List.of("iris"), alone.mods().stream().map(m -> m.translated().candidate().id()).toList(), alone.report().render());
+	}
+
+	/**
 	 * A mod NeoForge refuses to load keeps no interface injections or environment classes: injecting its interface into a
 	 * game class would make that class fail to load (the interface is in no module layer), crashing the game.
 	 */

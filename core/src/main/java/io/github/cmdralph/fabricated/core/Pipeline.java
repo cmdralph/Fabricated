@@ -37,6 +37,7 @@ import io.github.cmdralph.fabricated.core.report.Report.ModRow;
 import io.github.cmdralph.fabricated.core.report.Report.Status;
 import io.github.cmdralph.fabricated.core.resolve.Candidate;
 import io.github.cmdralph.fabricated.core.resolve.CandidateScanner;
+import io.github.cmdralph.fabricated.core.resolve.CompatPlan;
 import io.github.cmdralph.fabricated.core.resolve.DependencyResolver;
 import io.github.cmdralph.fabricated.core.resolve.FabricApiPlan;
 import io.github.cmdralph.fabricated.core.runtime.FabricLoaderRuntime;
@@ -213,15 +214,8 @@ public final class Pipeline {
 			"forgeconfigapiport", "Fabricated provides Forge Config API Port's Fabric API on NeoForge's own config system, which the port copies",
 			"modmenu", "Fabricated shows the config screens Fabric mods offer through Mod Menu's API in NeoForge's mod list");
 
-	/**
-	 * Fabric mods whose Fabric build can't work on NeoForge, by id, with why: they replace what NeoForge patches, and
-	 * have a NeoForge build of their own (which, when installed, is used instead before this is looked at).
-	 */
-	private static final Map<String, String> NEOFORGE_BUILD_ONLY = Map.of(
-			"sodium", "Sodium's Fabric build would mesh NeoForge's models, fluids and lighting the way Fabric has them, and drop the "
-					+ "geometry NeoForge mods add to chunks; Sodium for NeoForge draws them, and Fabric block models through its own "
-					+ "Fabric renderer",
-			"iris", "Iris's Fabric build needs Sodium's Fabric build and leaves out NeoForge's render pipelines");
+	/** What is known about other people's Fabric mods (a mod's NeoForge build, when installed, is used before this is looked at). */
+	private static final CompatPlan COMPAT = CompatPlan.builtin();
 
 	/** A mod the platform provides (Minecraft, Java, Fabric Loader, Fabricated, native Fabric API modules). */
 	private record Builtin(String id, String version, String name, List<String> aliases) {
@@ -418,7 +412,14 @@ public final class Pipeline {
 						"NeoForge mod " + neo.displayName() + " " + neo.version() + " provides it", ""));
 				continue;
 			}
-			String neoForgeBuildOnly = NEOFORGE_BUILD_ONLY.get(c.id());
+			CompatPlan.Entry known = COMPAT.entry(c.id());
+			String pairing = notWithNeoForge(known);
+			if (pairing != null) {
+				report.mod(new ModRow(c.id(), c.version(), c.origin(), Status.DISABLED, "its Fabric build can't run next to " + pairing,
+						"Use the NeoForge builds of both, or the Fabric builds of both."));
+				continue;
+			}
+			String neoForgeBuildOnly = known.neoForgeBuildOnly();
 			if (neoForgeBuildOnly != null && config.override(c.id()).loadUnsupported()) {
 				report.line("Unsupported mods loaded on request (loadUnsupported)", c.id() + ": " + neoForgeBuildOnly);
 			} else if (neoForgeBuildOnly != null) {
@@ -444,6 +445,15 @@ public final class Pipeline {
 			eligible.add(c);
 		}
 		return eligible;
+	}
+
+	/** The installed NeoForge mod next to which a Fabric build can't run, with why, or {@code null}. */
+	private String notWithNeoForge(CompatPlan.Entry known) {
+		for (Map.Entry<String, String> pair : known.notWithNeoForge().entrySet()) {
+			NeoForgeMod neo = neoMods.get(ModIds.toNeoForgeId(pair.getKey()));
+			if (neo != null) return "the NeoForge mod " + neo.displayName() + " " + neo.version() + ": " + pair.getValue();
+		}
+		return null;
 	}
 
 	private String skipReason(Candidate c, Map<String, String> builtinNames) {

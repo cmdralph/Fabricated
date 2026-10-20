@@ -82,7 +82,9 @@ in a service jar). A NeoForge mod's `modproperties` become its Fabric custom val
 property lists are present too. That is how NeoForge mods speak to Fabric code: Sodium's
 `fabric-renderer-api-v1:contains_renderer` makes Indigo stand down, and it provides `indium`. Of two copies of a
 NeoForge mod the newest counts. The Fabric builds of mods that only work as their NeoForge build (Sodium, Iris) are
-disabled with a message naming it (`Pipeline.NEOFORGE_BUILD_ONLY`). The classes of those jars (and of Fabricated's
+disabled with a message naming it, and a Fabric build that can't run next to a NeoForge mod (Iris's next to Sodium
+for NeoForge) is refused even on request: both are data, core's `compat-plan.json` (`CompatPlan`), never a branch on
+a mod id in code. The classes of those jars (and of Fabricated's
 own Fabric API, and on 26.x the other Fabric mods' jars) are core's `InstalledClasses`: pre-flight checks a Fabric
 mixin into one of them as it checks one into the game, and the cache entry keeps the SHA-256 of each installed class it read, so updating that NeoForge mod
 translates the Fabric mod again (`ModTranslator.installedUnchanged`). The game's own files (`minecraft`, `neoforge`)

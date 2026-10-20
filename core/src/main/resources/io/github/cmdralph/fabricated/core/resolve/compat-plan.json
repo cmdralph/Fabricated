@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "mods": {
+    "sodium": {
+      "neoForgeBuildOnly": "Sodium's Fabric build would mesh NeoForge's models, fluids and lighting the way Fabric has them, and drop the geometry NeoForge mods add to chunks; Sodium for NeoForge draws them, and Fabric block models through its own Fabric renderer",
+      "notWithNeoForge": {
+        "iris": "Iris for NeoForge hooks classes of Sodium for NeoForge (its fluid renderer) that Sodium's Fabric build doesn't have"
+      }
+    },
+    "iris": {
+      "neoForgeBuildOnly": "Iris's Fabric build needs Sodium's Fabric build and leaves out NeoForge's render pipelines",
+      "notWithNeoForge": {
+        "sodium": "Iris's Fabric build hooks classes of Sodium's Fabric build (its fluid renderer) that Sodium for NeoForge doesn't have"
+      }
+    }
+  }
+}
