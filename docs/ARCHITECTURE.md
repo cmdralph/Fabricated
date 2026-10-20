@@ -247,6 +247,24 @@ Each mod's entrypoints run inside a guard that records mod id, entrypoint key, c
 
 This table is data (`mc/<ver>/fabric-api-plan.json`), not code, so it can change per MC version without code changes.
 
+### 6.3 Bridges between Fabric's systems and NeoForge's
+
+Where both loaders have a system for the same thing, a Fabric mod and a NeoForge mod meet through a bridge rather
+than one of them losing out (`neoforge/transfer`):
+
+* **Storages** (`TransferBridge`): Fabric storages and NeoForge resource handlers see each other on blocks
+  (`ItemStorage.SIDED`/`FluidStorage.SIDED` and `Capabilities.Item/Fluid.BLOCK`) and in items (`*.ITEM` and
+  `Capabilities.Item/Fluid.ITEM`). An item's storage changes the item through the other side's access to where it is
+  (`AccessItemContext`, `ContextItemAccess`). Vanilla blocks and items keep each side's own wrappers. For items, each
+  side asks the other's whole lookup, guarded so the other side's fallback doesn't ask back.
+* **Transactions** (`FabricTransactions`, `NeoTransactions`): an operation from one side runs in a transaction the
+  other side mirrors, and its result follows the original's (abort, nested commit, commit). Where a transaction
+  already mirrors one of the other side's, as when an item's handler calls back into its access, it stands for that
+  one instead of nesting a new mirror, so every transaction closes inside its parent on both sides.
+* **Energy** (`EnergyBridge`): Team Reborn's energy API, the Fabric tech mods' shared library, and NeoForge's energy
+  capabilities, loaded only when a Fabric mod brings the library. Fabricated compiles against never-packaged
+  stand-ins of its API (`integrationstubs`) and finds its lookups by id.
+
 **Scope honesty:** Phase 2 delivers the full core plus the native modules marked above. Their quality varies: lifecycle, commands, networking, resource loader, creative tabs, key mappings and screen events are complete. Rendering is a documented subset. Every gap ends up in `docs/COMPATIBILITY.md`.
 
 ---
