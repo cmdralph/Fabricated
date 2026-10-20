@@ -471,7 +471,10 @@ bundles as upstream does, and transactions behave as upstream's.
 
 **Bridge to NeoForge's capabilities.** Fabric storages and NeoForge's item and fluid handlers on blocks see each
 other: a NeoForge hopper or pipe moves items and fluids in and out of a Fabric mod's machine, and a Fabric mod's
-pipe reaches a NeoForge mod's block.
+pipe reaches a NeoForge mod's block. Storages in items do too (`ItemStorage.ITEM` and `FluidStorage.ITEM` with
+`Capabilities.Item.ITEM` and `Capabilities.Fluid.ITEM`): a NeoForge machine fills a Fabric mod's tank item, and a
+Fabric mod's machine a NeoForge mod's. The item's storage changes the item (an empty cell becomes a full one) through
+the other side's access to where it is: NeoForge's `ItemAccess` as a Fabric `ContainerItemContext`, and the other way.
 
 - Transactions are mirrored both ways: a simulation (an aborted transaction) on one side is aborted on the other, and
   nested transactions keep their meaning.
@@ -479,10 +482,12 @@ pipe reaches a NeoForge mod's block.
   would take part of one, it is asked again for whole millibuckets.
 - A NeoForge mod's own capability for its block wins over a Fabric storage, and for a NeoForge mod's block Fabric mods
   get its NeoForge handler before Fabric's generic `Container` wrapper, so the block's access rules hold.
-- Vanilla blocks keep each side's own wrappers.
-- Item storages inside items (`ItemStorage.ITEM`, `FluidStorage.ITEM`) and entity storages are not bridged yet.
-- A Fabric storage that hands work to a NeoForge handler that in turn uses another Fabric storage, all in one
-  transaction, is not supported (each side would wait for the other to close first).
+- Vanilla blocks and items keep each side's own wrappers. Every bucket item gets Fabric's own bucket storage from
+  upstream's fallback, which comes before NeoForge's capability.
+- A storage on one side that uses one on the other in the same transaction (an item's handler changing the item
+  through the other side's access, a NeoForge handler passing items on to a Fabric storage) works: where a
+  transaction already stands for one of the other side's, it is used instead of a new one nested in it.
+- Entity storages are not bridged: Fabric API has no lookup for them.
 
 On 1.21.11, `FluidVariantRendering`'s default sprites and colours come from NeoForge's fluid client extensions instead
 of `fabric-rendering-fluids-v1`'s registry.
@@ -490,7 +495,8 @@ of `fabric-rendering-fluids-v1`'s registry.
 CI checks, on all four versions: a chest found through `ItemStorage.SIDED` keeps its items when a transaction is
 aborted and changes when one commits; a full water cauldron empties when a bucket of water is extracted; a Fabric
 storage used through NeoForge's capability and a NeoForge handler used through `ItemStorage.SIDED` follow aborts,
-nested commits and commits; fluids move in whole millibuckets only.
+nested commits and commits; fluids move in whole millibuckets only; NeoForge code fills a Fabric mod's fluid cell
+in a slot, and Fabric code a NeoForge mod's, each item swapped only when the transaction commits.
 
 ### Native `fabric-menu-api-v1` (`fabric-screen-handler-api-v1` on 1.21.11)
 

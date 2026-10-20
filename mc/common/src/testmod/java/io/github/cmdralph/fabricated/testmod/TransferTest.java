@@ -5,11 +5,15 @@ import java.util.List;
 
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
+import net.fabricmc.fabric.api.transfer.v1.context.ContainerItemContext;
 import net.fabricmc.fabric.api.transfer.v1.fluid.FluidConstants;
 import net.fabricmc.fabric.api.transfer.v1.fluid.FluidStorage;
 import net.fabricmc.fabric.api.transfer.v1.fluid.FluidVariant;
+import net.fabricmc.fabric.api.transfer.v1.fluid.base.EmptyItemFluidStorage;
+import net.fabricmc.fabric.api.transfer.v1.fluid.base.FullItemFluidStorage;
 import net.fabricmc.fabric.api.transfer.v1.item.ItemStorage;
 import net.fabricmc.fabric.api.transfer.v1.item.ItemVariant;
+import net.fabricmc.fabric.api.transfer.v1.item.base.SingleStackStorage;
 import net.fabricmc.fabric.api.transfer.v1.storage.Storage;
 import net.fabricmc.fabric.api.transfer.v1.storage.base.SingleVariantStorage;
 import net.fabricmc.fabric.api.transfer.v1.transaction.Transaction;
@@ -22,6 +26,7 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.Container;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Block;
@@ -32,14 +37,17 @@ import net.neoforged.fml.ModList;
 import net.neoforged.neoforge.capabilities.Capabilities;
 import net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent;
 import net.neoforged.neoforge.transfer.ResourceHandler;
+import net.neoforged.neoforge.transfer.access.ItemAccess;
 import net.neoforged.neoforge.transfer.fluid.FluidResource;
 import net.neoforged.neoforge.transfer.item.ItemResource;
 import net.neoforged.neoforge.transfer.item.ItemStacksResourceHandler;
+import net.neoforged.neoforge.transfer.transaction.TransactionContext;
 
 /**
  * CI test mod part for Fabricated's native fabric-transfer-api-v1 (and the lookup API under it): Fabric storages over a
  * vanilla chest and a water cauldron, with aborted transactions leaving them unchanged and committed ones applying; and
- * the bridge to NeoForge's capabilities, both ways.
+ * the bridge to NeoForge's capabilities, both ways, on blocks and in items (a Fabric mod's fluid cell filled by
+ * NeoForge code, a NeoForge mod's by Fabric code: each item's storage changes the item through the other side).
  */
 public final class TransferTest implements ModInitializer {
 	private static final BlockPos CHEST = new BlockPos(8, 250, 8);
@@ -54,10 +62,24 @@ public final class TransferTest implements ModInitializer {
 		return Registry.register(BuiltInRegistries.BLOCK, key, new Block(BlockBehaviour.Properties.of().setId(key)));
 	}
 
+	private static Item item(String name) {
+		ResourceKey<Item> key = ResourceKey.create(Registries.ITEM, Identifier.fromNamespaceAndPath("fabricated_testmod", name));
+		return Registry.register(BuiltInRegistries.ITEM, key, new Item(new Item.Properties().setId(key)));
+	}
+
 	@Override
 	public void onInitialize() {
 		Block fabricBlock = block("fabric_storage_block");
 		Block neoBlock = block("neo_handler_block");
+		// Fluid cells as a Fabric mod registers them, and as a NeoForge mod does (below).
+		Item fabricCell = item("fabric_cell");
+		Item fabricWaterCell = item("fabric_water_cell");
+		Item neoCell = item("neo_cell");
+		Item neoWaterCell = item("neo_water_cell");
+		FluidStorage.combinedItemApiProvider(fabricCell).register(context ->
+				new EmptyItemFluidStorage(context, fabricWaterCell, Fluids.WATER, FluidConstants.BUCKET));
+		FluidStorage.combinedItemApiProvider(fabricWaterCell).register(context ->
+				new FullItemFluidStorage(context, fabricCell, FluidVariant.of(Fluids.WATER), FluidConstants.BUCKET));
 		SingleVariantStorage<ItemVariant> fabricItems = new SingleVariantStorage<>() {
 			@Override
 			protected ItemVariant getBlankVariant() {
@@ -85,8 +107,10 @@ public final class TransferTest implements ModInitializer {
 		ItemStacksResourceHandler neoItems = new ItemStacksResourceHandler(1);
 		// A NeoForge capability, as a NeoForge mod would register it (on Fabricated's mod bus: this mod has none).
 		ModList.get().getModContainerById("fabricated").map(container -> container.getEventBus()).ifPresent(bus ->
-				bus.addListener(RegisterCapabilitiesEvent.class, event -> event.registerBlock(Capabilities.Item.BLOCK,
-						(level, pos, state, blockEntity, side) -> neoItems, neoBlock)));
+				bus.addListener(RegisterCapabilitiesEvent.class, event -> {
+					event.registerBlock(Capabilities.Item.BLOCK, (level, pos, state, blockEntity, side) -> neoItems, neoBlock);
+					event.registerItem(Capabilities.Fluid.ITEM, (stack, access) -> new NeoCell(access, neoCell, neoWaterCell), neoCell, neoWaterCell);
+				}));
 
 		ServerLifecycleEvents.SERVER_STARTED.register(server -> {
 			ServerLevel level = server.overworld();
@@ -148,6 +172,62 @@ public final class TransferTest implements ModInitializer {
 			level.setBlockAndUpdate(FABRIC_BLOCK, Blocks.AIR.defaultBlockState());
 			level.setBlockAndUpdate(NEO_BLOCK, Blocks.AIR.defaultBlockState());
 
+			// NeoForge code filling a Fabric mod's cell in a slot: the cell's Fabric storage swaps the item through
+			// NeoForge's access to the slot, inside NeoForge's transaction.
+			ItemStacksResourceHandler cellSlot = new ItemStacksResourceHandler(1);
+			try (var tx = net.neoforged.neoforge.transfer.transaction.Transaction.openRoot()) {
+				cellSlot.insert(ItemResource.of(fabricCell), 1, tx);
+				tx.commit();
+			}
+			ResourceHandler<FluidResource> fabricCellAsNeo = ItemAccess.forHandlerIndex(cellSlot, 0).getCapability(Capabilities.Fluid.ITEM);
+			if (fabricCellAsNeo == null) {
+				failed.add("neo_sees_fabric_item");
+			} else {
+				try (var tx = net.neoforged.neoforge.transfer.transaction.Transaction.openRoot()) {
+					if (fabricCellAsNeo.insert(FluidResource.of(Fluids.WATER), 1000, tx) != 1000) failed.add("neo_item_insert");
+				}
+				if (cellSlot.getResource(0).getItem() != fabricCell) failed.add("neo_item_abort");
+				try (var tx = net.neoforged.neoforge.transfer.transaction.Transaction.openRoot()) {
+					fabricCellAsNeo.insert(FluidResource.of(Fluids.WATER), 1000, tx);
+					tx.commit();
+				}
+				if (cellSlot.getResource(0).getItem() != fabricWaterCell) failed.add("neo_item_commit");
+			}
+
+			// Fabric code filling a NeoForge mod's cell in a slot: the cell's NeoForge handler swaps the item through
+			// the Fabric context, inside the Fabric transaction.
+			ItemStack[] neoCellStack = {new ItemStack(neoCell)};
+			SingleStackStorage neoCellSlot = new SingleStackStorage() {
+				@Override
+				protected ItemStack getStack() {
+					return neoCellStack[0];
+				}
+
+				@Override
+				protected void setStack(ItemStack stack) {
+					neoCellStack[0] = stack;
+				}
+			};
+			Storage<FluidVariant> neoCellAsFabric = ContainerItemContext.ofSingleSlot(neoCellSlot).find(FluidStorage.ITEM);
+			if (neoCellAsFabric == null) {
+				failed.add("fabric_sees_neo_item");
+			} else {
+				try (Transaction tx = Transaction.openOuter()) {
+					if (neoCellAsFabric.insert(FluidVariant.of(Fluids.WATER), FluidConstants.BUCKET, tx) != FluidConstants.BUCKET) {
+						failed.add("fabric_item_insert");
+					}
+				}
+				if (!neoCellStack[0].is(neoCell)) failed.add("fabric_item_abort");
+				try (Transaction tx = Transaction.openOuter()) {
+					try (Transaction inner = tx.openNested()) {
+						neoCellAsFabric.insert(FluidVariant.of(Fluids.WATER), FluidConstants.BUCKET, inner);
+						inner.commit();
+					}
+					tx.commit();
+				}
+				if (!neoCellStack[0].is(neoWaterCell)) failed.add("fabric_item_commit");
+			}
+
 			level.setBlockAndUpdate(CHEST, Blocks.CHEST.defaultBlockState());
 			level.setBlockAndUpdate(CAULDRON, Blocks.WATER_CAULDRON.defaultBlockState()
 					.setValue(net.minecraft.world.level.block.LayeredCauldronBlock.LEVEL, 3));
@@ -191,5 +271,45 @@ public final class TransferTest implements ModInitializer {
 				TestMod.LOGGER.error("FABRICATED-TEST transfer FAILED: {}", failed);
 			}
 		});
+	}
+
+	/** A NeoForge mod's fluid cell: empty, or holding a bucket of water, as its item says; filling swaps the item. */
+	private record NeoCell(ItemAccess access, Item empty, Item full) implements ResourceHandler<FluidResource> {
+		@Override
+		public int size() {
+			return 1;
+		}
+
+		@Override
+		public FluidResource getResource(int index) {
+			return access.getResource().getItem() == full ? FluidResource.of(Fluids.WATER) : FluidResource.EMPTY;
+		}
+
+		@Override
+		public long getAmountAsLong(int index) {
+			return access.getResource().getItem() == full ? 1000 : 0;
+		}
+
+		@Override
+		public long getCapacityAsLong(int index, FluidResource resource) {
+			return 1000;
+		}
+
+		@Override
+		public boolean isValid(int index, FluidResource resource) {
+			return resource.getFluid() == Fluids.WATER;
+		}
+
+		@Override
+		public int insert(int index, FluidResource resource, int amount, TransactionContext transaction) {
+			if (index != 0 || resource.getFluid() != Fluids.WATER || amount < 1000 || access.getResource().getItem() != empty) return 0;
+			return access.exchange(ItemResource.of(full), 1, transaction) == 1 ? 1000 : 0;
+		}
+
+		@Override
+		public int extract(int index, FluidResource resource, int amount, TransactionContext transaction) {
+			if (index != 0 || resource.getFluid() != Fluids.WATER || amount < 1000 || access.getResource().getItem() != full) return 0;
+			return access.exchange(ItemResource.of(empty), 1, transaction) == 1 ? 1000 : 0;
+		}
 	}
 }
