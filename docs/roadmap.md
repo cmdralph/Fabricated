@@ -277,6 +277,12 @@ Pull request #28. `docs/progress.md` became this roadmap.
 - Plugins for JEI, EMI, REI and Jade reach their NeoForge builds; Jade's per-mod settings too.
 - A code audit: REG-1 (P0 on current NeoForge 26.3 builds) fixed, with a CI run on the newest NeoForge build; JVM
   errors no longer swallowed in three places; duplication and stale docs removed. No dead code found in core.
+- Fabric's start-up order: language adapters are created before any Fabric mod's mixin plugin loads (PolyPlus and
+  Polydium rely on it). Pre-flight also checks mixins into other Fabric mods on 26.x, stops judging members another
+  mod's mixin may add (PRE-2), notes `skipMixins` entries that name nothing (CFG-1), and only looks up well-formed
+  class names.
+- CI: gates for FRAPI-2 and the constructor repair; informational runs with OneConfig and PolyPlus, and with Xaero's
+  World Map alone so the rest of the corpus reaches a world (CORPUS-2).
 
 **Verification.** Core: `./gradlew -Pfabricated.coreOnly=true build` green locally, with new unit tests
 (`InstalledClassesTest`, `PluginAnnotationsTest`, pre-flight of installed-mod targets, the bridge repair,
