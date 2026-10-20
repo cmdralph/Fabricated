@@ -641,8 +641,9 @@ The rest is narrower there:
 
 - Moving blocks, the breaking overlay and blocks drawn as entities (`renderSingleBlock`: a minecart's contents, an
   enderman's block) keep NeoForge's renderer, which draws a Fabric model's parts as NeoForge sees them.
-- The renderer API's `emitQuads` defaults are upstream's: a NeoForge model inside a Fabric model gets its parts without
-  the level, so model data that needs the level is lost there.
+- The renderer API's `emitQuads` defaults are NeoForge-aware, as on 26.x (since this pass): a NeoForge model inside a
+  Fabric model gets its parts from NeoForge's level-aware `collectParts`, with NeoForge's ambient occlusion and its
+  quads' baked colours and normals. CI checks the level and the colours.
 - Upstream's mixins that NeoForge's 1.21.11 build conflicts with are left out (see the module's plan): vanilla models'
   `createGeometryKey` is NeoForge's, a mesh model using sprites from outside the block atlas isn't rejected, and the
   in-wall screen overlay uses NeoForge's level-aware particle icon. The model baker's sprite getter gets Fabric's sprite

@@ -64,8 +64,8 @@ The Fabric renderer API on NeoForge:
 - **Next:** M2b, block outlines and a moving block's glow outline for Fabric models (today they come from the model's
   parts as NeoForge sees them, so a model with only `emitQuads` has none).
 - **Done (this pass):** M5, the renderer API on 1.21.11 in chunk sections, alone and nested (its conflicting mixins
-  left out, the sprite getter's finders from Fabricated). **Later:** moving blocks, the breaking overlay and
-  NeoForge-aware `emitQuads` defaults there.
+  left out, the sprite getter's finders from Fabricated), with NeoForge-aware `emitQuads` defaults (CI checks the level
+  and baked colours). **Later:** moving blocks and the breaking overlay there.
 - **Not planned:** a Fabricated-owned quad encoder. Indigo already is the `int[]` encoder; a second one would add code
   without a user-visible gain (`claude.md`).
 
@@ -93,7 +93,7 @@ research sandbox).
 | Kind | Examples | What NeoForge changes | Fabricated today |
 |---|---|---|---|
 | Mixins into world rendering and chunk meshing | Sodium, Polydium | Meshing takes NeoForge's extra inputs (model data snapshot, aux light, `AddSectionGeometryEvent` geometry, custom fluid renderers); render-stage events | Pre-flight and its repairs against NeoForge's bytecode |
-| Fabric renderer API implementations | Indigo, Sodium's renderer | Level-aware `collectParts`, per-part and per-quad ambient occlusion, baked colours and normals on quads | 26.x: `FabricBlockRendering` seam, `FrapiDefaults` (FRAPI-1, FRAPI-2). 1.21.11: M5 |
+| Fabric renderer API implementations | Indigo, Sodium's renderer | Level-aware `collectParts`, per-part and per-quad ambient occlusion, baked colours and normals on quads | `FabricBlockRendering` seam, `FrapiDefaults` (FRAPI-1, FRAPI-2), on every version since M5 |
 | Shader pipelines | Iris | Pipelines derived at run time (`toBuilder`, a pipeline modifier stack on 26.3), NeoForge's own pipelines | `fabric-rendering-v1` passed through; nothing specific yet |
 | Raw GL/LWJGL drawing | OneConfig (Compose and Skia) | NeoForge's early loading screen owns the first GL context; the Vulkan backend (26.2+) is patched | LWJGL is the platform's; nothing specific |
 | Vertex formats and fast writers | Iris, Sodium | NeoForge applies baked colours and normals in `VertexConsumer.putBakedQuad`, which fast writers bypass | — |

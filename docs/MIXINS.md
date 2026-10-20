@@ -26,6 +26,7 @@ Fabricated-owned (shipped in `game-mod.jar`, registered in `mc/common/src/main/r
 | `mc/1.21.11/src/main/resources/fabricated-transfer.mixins.json` | `net.fabricmc.fabric.mixin.transfer` | 1.21.11 | mixins 16 | 1 | true | none |
 | `mc/common26/src/main/resources/fabricated-transfer.mixins.json` | same | 26.x | mixins 17 | 1 | true | none |
 | `mc/common26/src/main/resources/fabricated-renderer.mixins.json` | `io.github.cmdralph.fabricated.neoforge.rendering.mixin` | 26.x, only with `fabric_renderer_api_v1` (FML `requiredMods`) | client 2 | 1 | true | none |
+| `mc/1.21.11/src/main/resources/fabricated-renderer.mixins.json` | same | 1.21.11, only with `fabric_renderer_api_v1` | client 2 (`BlockStateModelMixin`, `BlockModelPartMixin`: the NeoForge-aware `emitQuads` defaults, as on 26.x) | 1 | true | none |
 
 All have `"required": true`, `compatibilityLevel JAVA_21`, no `minVersion`, no config-level `priority`, no `refmap`, no `server` section.
 Mixin classes per version (2026-10-19 scan, before this session added 3): 1.21.11 = 96, 26.1.2 = 116, 26.2 = 115, 26.3 = 107. Every listed class resolves to exactly one file for

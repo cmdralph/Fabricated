@@ -319,6 +319,8 @@ if (mcVersion.startsWith('26.')) {
             java.srcDir 'src/fabricapistubs/java'
         }
     }
+    // The stand-ins name Fabric API's TriState, which Fabricated ships itself (fabric-api-base, in src/fabricapi).
+    tasks.named('compileFabricapistubsJava') { source file('src/fabricapi/java/net/fabricmc/fabric/api/util/TriState.java') }
     neoForge.addModdingDependenciesTo(sourceSets.fabricapistubs)
     dependencies {
         compileOnly sourceSets.fabricapistubs.output
