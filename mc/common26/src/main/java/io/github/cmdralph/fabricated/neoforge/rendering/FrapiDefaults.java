@@ -23,6 +23,8 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.block.state.BlockState;
+import net.neoforged.neoforge.client.model.quad.BakedColors;
+import net.neoforged.neoforge.client.model.quad.BakedNormals;
 
 /**
  * Fabric's renderer API's default {@code emitQuads}, as NeoForge's models need them (what Forgified Fabric API does).
@@ -65,7 +67,10 @@ public final class FrapiDefaults {
 		}
 	}
 
-	/** {@code FabricBlockStateModelPart.emitQuads}, with NeoForge's ambient occlusion: the part's, unless a quad turns it off. */
+	/**
+	 * {@code FabricBlockStateModelPart.emitQuads}, with NeoForge's ambient occlusion (the part's, unless a quad turns it
+	 * off) and the colours and normals NeoForge's quads carry, which upstream's {@code fromBakedQuad} doesn't know.
+	 */
 	public static void emitQuads(BlockStateModelPart part, QuadEmitter emitter, Predicate<@Nullable Direction> cullTest) {
 		TriState ambientOcclusion = switch (part.ambientOcclusion()) {
 			case TRUE -> TriState.TRUE;
@@ -80,6 +85,17 @@ public final class FrapiDefaults {
 				BakedQuad quad = quads.get(j);
 				emitter.cullFace(cullFace);
 				emitter.fromBakedQuad(quad);
+				BakedColors colors = quad.bakedColors();
+				if (colors != BakedColors.DEFAULT) {
+					for (int v = 0; v < 4; v++) emitter.color(v, colors.color(v));
+				}
+				BakedNormals normals = quad.bakedNormals();
+				if (normals != BakedNormals.UNSPECIFIED) {
+					for (int v = 0; v < 4; v++) {
+						int n = normals.normal(v);
+						if (!BakedNormals.isUnspecified(n)) emitter.normal(v, BakedNormals.unpackX(n), BakedNormals.unpackY(n), BakedNormals.unpackZ(n));
+					}
+				}
 				emitter.ambientOcclusion(quad.materialInfo().ambientOcclusion() ? ambientOcclusion : TriState.FALSE);
 				emitter.shadeMode(ShadeMode.VANILLA);
 				emitter.emit();
