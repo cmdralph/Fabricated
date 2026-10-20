@@ -420,7 +420,7 @@ public final class MixinPreflight {
 					// The handler gets the constructor's own parameters from a bridge taking all of the other one's.
 					if (selectors.size() != 1 || (mixin.access & Opcodes.ACC_INTERFACE) != 0 || !forwardsItsParameters(chosen, overload)
 							|| !takesExactly(handler, chosen)) continue;
-					bridges.add(bridge(mixin.name, handler, injector, chosen, overload));
+					bridges.add(bridge(mixin.name, handler, injector, chosen, overload, freeName(mixin, bridges, handler.name + "$fabricated")));
 				}
 				how = ", which NeoForge keeps only to call ";
 			}
@@ -555,8 +555,10 @@ public final class MixinPreflight {
 			if (named || overload == null || ambiguous || ordinal >= calls) continue;
 			int inserted = insertedArgument(ref.desc(), overload);
 			if (!pointOnly) {
-				MethodNode bridge = injector.desc.equals(WRAP_OPERATION) ? wrapperBridge(mixin.name, handler, ref.desc(), overload, inserted, staticCall, bridges)
-						: callBridge(mixin.name, handler, ref.desc(), overload, inserted, staticCall, condition ? Type.BOOLEAN_TYPE : Type.getReturnType(ref.desc()));
+				Type owner = Type.getObjectType(ref.owner());
+				MethodNode bridge = injector.desc.equals(WRAP_OPERATION) ? wrapperBridge(mixin, handler, owner, ref.desc(), overload, inserted, staticCall, bridges)
+						: callBridge(mixin, handler, owner, ref.desc(), overload, inserted, staticCall, condition ? Type.BOOLEAN_TYPE : Type.getReturnType(ref.desc()),
+								bridges);
 				if (bridge == null) continue;
 				moveInjector(handler, injector, bridge);
 				bridges.add(bridge);
@@ -592,51 +594,68 @@ public final class MixinPreflight {
 	}
 
 	/** The parameters of a handler that takes a call's receiver (unless static) and arguments. */
-	private static List<Type> callParameters(Type[] handlerArgs, String desc, boolean staticCall) {
+	private static List<Type> callParameters(Type owner, String desc, boolean staticCall) {
 		List<Type> params = new ArrayList<>();
-		if (!staticCall) params.add(handlerArgs[0]);
+		if (!staticCall) params.add(owner);
 		params.addAll(List.of(Type.getArgumentTypes(desc)));
 		return params;
+	}
+
+	/** {@code base}, numbered when the mixin already has a method of that name: two handlers may share theirs. */
+	private static String freeName(ClassNode mixin, List<MethodNode> added, String base) {
+		String name = base;
+		for (int i = 2; nameTaken(mixin, added, name); i++) name = base + i;
+		return name;
+	}
+
+	private static boolean nameTaken(ClassNode mixin, List<MethodNode> added, String name) {
+		for (MethodNode m : mixin.methods) {
+			if (m.name.equals(name)) return true;
+		}
+		for (MethodNode m : added) {
+			if (m.name.equals(name)) return true;
+		}
+		return false;
 	}
 
 	/**
 	 * A {@code @Redirect} or {@code @WrapWithCondition} handler for {@code overload}'s call: it calls {@code handler},
 	 * written for {@code desc}'s, without the added argument. Null when {@code handler} takes anything but that call's
-	 * receiver and arguments, or doesn't return {@code result}.
+	 * receiver ({@code owner}) and arguments (a {@code @Coerce}d supertype included: the bridge wouldn't carry the
+	 * annotation), or doesn't return {@code result}.
 	 */
-	private static MethodNode callBridge(String mixin, MethodNode handler, String desc, String overload, int inserted, boolean staticCall, Type result) {
-		Type[] args = Type.getArgumentTypes(handler.desc);
-		if (args.length != Type.getArgumentTypes(desc).length + (staticCall ? 0 : 1) || !List.of(args).equals(callParameters(args, desc, staticCall))
+	private static MethodNode callBridge(ClassNode mixin, MethodNode handler, Type owner, String desc, String overload, int inserted, boolean staticCall,
+			Type result, List<MethodNode> added) {
+		if (!List.of(Type.getArgumentTypes(handler.desc)).equals(callParameters(owner, desc, staticCall))
 				|| !Type.getReturnType(handler.desc).equals(result)) return null;
-		List<Type> params = callParameters(args, overload, staticCall);
-		MethodNode bridge = bridgeMethod(handler, handler.name + "$fabricated", params, Type.getReturnType(handler.desc));
+		List<Type> params = callParameters(owner, overload, staticCall);
+		MethodNode bridge = bridgeMethod(handler, freeName(mixin, added, handler.name + "$fabricated"), params, Type.getReturnType(handler.desc));
 		int skip = inserted + (staticCall ? 0 : 1);
 		int stack = loadAllBut(bridge, handler, params, skip);
-		callHandler(bridge, mixin, handler, stack);
+		callHandler(bridge, mixin.name, handler, stack);
 		return bridge;
 	}
 
 	/**
 	 * A {@code @WrapOperation} handler for {@code overload}'s call: it calls {@code handler}, written for {@code desc}'s,
 	 * without the added argument, and with an {@code Operation} that puts it back before making the call (a lambda the
-	 * bridge adds to {@code extra}). Null when {@code handler} takes anything but that call's receiver and arguments and
-	 * the {@code Operation}.
+	 * bridge adds to {@code extra}). Null when {@code handler} takes anything but that call's receiver ({@code owner})
+	 * and arguments and the {@code Operation}.
 	 */
-	private static MethodNode wrapperBridge(String mixin, MethodNode handler, String desc, String overload, int inserted, boolean staticCall,
+	private static MethodNode wrapperBridge(ClassNode mixin, MethodNode handler, Type owner, String desc, String overload, int inserted, boolean staticCall,
 			List<MethodNode> extra) {
-		Type[] args = Type.getArgumentTypes(handler.desc);
 		Type operation = Type.getType(OPERATION);
-		int count = Type.getArgumentTypes(desc).length + (staticCall ? 0 : 1);
-		if (args.length != count + 1 || !args[count].equals(operation)
-				|| !List.of(args).subList(0, count).equals(callParameters(args, desc, staticCall))) return null;
-		List<Type> params = callParameters(args, overload, staticCall);
+		List<Type> expected = callParameters(owner, desc, staticCall);
+		expected.add(operation);
+		if (!List.of(Type.getArgumentTypes(handler.desc)).equals(expected)) return null;
+		List<Type> params = callParameters(owner, overload, staticCall);
 		int skip = inserted + (staticCall ? 0 : 1);
 		Type added = params.get(skip);
 		params.add(operation);
-		MethodNode bridge = bridgeMethod(handler, handler.name + "$fabricated", params, Type.getReturnType(handler.desc));
+		MethodNode bridge = bridgeMethod(handler, freeName(mixin, extra, handler.name + "$fabricated"), params, Type.getReturnType(handler.desc));
 		int stack = loadAllBut(bridge, handler, params.subList(0, params.size() - 1), skip);
 		// The Operation the handler gets: the original one, with the added argument put back.
-		MethodNode lambda = argumentInserter("lambda$" + handler.name + "$fabricated", added, skip);
+		MethodNode lambda = argumentInserter(freeName(mixin, extra, "lambda$" + handler.name + "$fabricated"), added, skip);
 		bridge.instructions.add(new VarInsnNode(Opcodes.ALOAD, slotOf(handler, params, params.size() - 1)));
 		bridge.instructions.add(new VarInsnNode(added.getOpcode(Opcodes.ILOAD), slotOf(handler, params, skip)));
 		Type objects = Type.getType("([Ljava/lang/Object;)Ljava/lang/Object;");
@@ -644,8 +663,8 @@ public final class MixinPreflight {
 				new Handle(Opcodes.H_INVOKESTATIC, "java/lang/invoke/LambdaMetafactory", "metafactory",
 						"(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodType;"
 								+ "Ljava/lang/invoke/MethodHandle;Ljava/lang/invoke/MethodType;)Ljava/lang/invoke/CallSite;", false),
-				objects, new Handle(Opcodes.H_INVOKESTATIC, mixin, lambda.name, lambda.desc, false), objects));
-		callHandler(bridge, mixin, handler, stack + 1 + added.getSize());
+				objects, new Handle(Opcodes.H_INVOKESTATIC, mixin.name, lambda.name, lambda.desc, false), objects));
+		callHandler(bridge, mixin.name, handler, stack + 1 + added.getSize());
 		extra.add(lambda);
 		return bridge;
 	}
@@ -748,10 +767,17 @@ public final class MixinPreflight {
 		bridge.maxLocals = slotOf(handler, List.of(Type.getArgumentTypes(bridge.desc)), Type.getArgumentTypes(bridge.desc).length);
 	}
 
-	/** Moves the injector annotation from {@code handler} to {@code bridge}; {@code handler} stays a plain, private method of the mixin. */
+	/**
+	 * Moves the injector annotation from {@code handler} to {@code bridge}; {@code handler} stays a plain method of the
+	 * mixin, private (Mixin takes no other static methods) and {@code @Unique}, so that Mixin renames it rather than
+	 * merging it over a method of the same name another mixin added (as an injector, Mixin gave it a name of its own).
+	 */
 	private static void moveInjector(MethodNode handler, AnnotationNode injector, MethodNode bridge) {
-		// Mixin takes no other static methods but private ones.
 		handler.access = handler.access & ~(Opcodes.ACC_PUBLIC | Opcodes.ACC_PROTECTED) | Opcodes.ACC_PRIVATE;
+		if (Annotations.find(handler, UNIQUE) == null) {
+			if (handler.visibleAnnotations == null) handler.visibleAnnotations = new ArrayList<>();
+			handler.visibleAnnotations.add(new AnnotationNode(UNIQUE));
+		}
 		if (handler.visibleAnnotations != null && handler.visibleAnnotations.remove(injector)) {
 			bridge.visibleAnnotations = new ArrayList<>(List.of(injector));
 		} else if (handler.invisibleAnnotations != null && handler.invisibleAnnotations.remove(injector)) {
@@ -862,15 +888,15 @@ public final class MixinPreflight {
 	 * {@link #forwardsItsParameters}) and the callback info. The injector annotation moves to it; {@code handler} stays a
 	 * plain method of the mixin.
 	 */
-	private static MethodNode bridge(String mixin, MethodNode handler, AnnotationNode injector, MethodNode delegate, MethodNode canonical) {
+	private static MethodNode bridge(String mixin, MethodNode handler, AnnotationNode injector, MethodNode delegate, MethodNode canonical, String name) {
 		Type[] own = Type.getArgumentTypes(delegate.desc);
 		Type[] all = Type.getArgumentTypes(canonical.desc);
 		Type callbackInfo = Type.getArgumentTypes(handler.desc)[own.length];
 		Type[] params = Arrays.copyOf(all, all.length + 1);
 		params[all.length] = callbackInfo;
 		boolean isStatic = (handler.access & Opcodes.ACC_STATIC) != 0;
-		MethodNode bridge = new MethodNode(Opcodes.ACC_PRIVATE | (handler.access & Opcodes.ACC_STATIC), handler.name + "$fabricated",
-				Type.getMethodDescriptor(Type.VOID_TYPE, params), null, null);
+		MethodNode bridge = new MethodNode(Opcodes.ACC_PRIVATE | (handler.access & Opcodes.ACC_STATIC), name, Type.getMethodDescriptor(Type.VOID_TYPE, params),
+				null, null);
 		int slot = 0;
 		if (!isStatic) bridge.instructions.add(new VarInsnNode(Opcodes.ALOAD, slot++));
 		int[] slots = new int[params.length];

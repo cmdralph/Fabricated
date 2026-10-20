@@ -442,6 +442,11 @@ class MixinPreflightTest {
 
 	/** A handler {@code name} of {@code injector} on {@code tick} at its call to {@code helper(I)V}, with the code {@code body} writes. */
 	private static void atHelperCall(ClassWriter cw, String injector, String name, String desc, Consumer<MethodVisitor> body) {
+		atHelperCall(cw, injector, name, desc, "(I)V", body);
+	}
+
+	/** A handler {@code name} of {@code injector} on {@code tick} at its call to {@code helper} with {@code helperDesc}. */
+	private static void atHelperCall(ClassWriter cw, String injector, String name, String desc, String helperDesc, Consumer<MethodVisitor> body) {
 		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, name, desc, null, null);
 		AnnotationVisitor ann = mv.visitAnnotation(injector, false);
 		AnnotationVisitor methods = ann.visitArray("method");
@@ -451,7 +456,7 @@ class MixinPreflightTest {
 		AnnotationVisitor ats = single ? null : ann.visitArray("at");
 		AnnotationVisitor at = single ? ann.visitAnnotation("at", AT) : ats.visitAnnotation(null, AT);
 		at.visit("value", "INVOKE");
-		at.visit("target", "L" + TARGET + ";helper(I)V");
+		at.visit("target", "L" + TARGET + ";helper" + helperDesc);
 		at.visitEnd();
 		if (ats != null) ats.visitEnd();
 		ann.visitEnd();
@@ -544,6 +549,44 @@ class MixinPreflightTest {
 				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty());
 		List<PreflightFinding> findings = preflight(neoForge, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
 		assertTrue(findings.stream().noneMatch(f -> f.severity() == Severity.FAIL), findings.toString());
+	}
+
+	/**
+	 * A bridge takes the call's exact types, so a handler taking a supertype of the receiver (with {@code @Coerce}) isn't
+	 * bridged: the bridge wouldn't carry the annotation, and Mixin would refuse it at apply time, after pre-flight.
+	 */
+	@Test
+	void aHandlerCoercingTheReceiverIsNotBridged() throws Exception {
+		Map<String, byte[]> mod = Map.of("com/example/mixin/Coerced", mixin("com/example/mixin/Coerced", false,
+				cw -> atHelperCall(cw, REDIRECT, "coerced", "(Ljava/lang/Object;I)V", null)));
+		ClassIndex neoForge = new ClassIndex(Map.of(TARGET, callingHelper("(ILjava/lang/String;)V"))::get);
+
+		assertTrue(preflight(neoForge, mod::get, ClassBytesSource.EMPTY, false)
+				.repairs("test.mixins.json", MixinConfigFile.parse(config(true, "Coerced")), Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty());
+	}
+
+	/** Two handlers sharing a name get bridges and lambdas of distinct names; the former handlers become {@code @Unique}. */
+	@Test
+	void handlersSharingANameGetDistinctBridges() throws Exception {
+		String thing = "L" + TARGET + ";";
+		Map<String, byte[]> mod = Map.of("com/example/mixin/Shared", mixin("com/example/mixin/Shared", false, cw -> {
+			atHelperCall(cw, WRAP_OPERATION, "wrap", "(" + thing + "I" + OPERATION + ")V", "(I)V", null);
+			atHelperCall(cw, WRAP_OPERATION, "wrap", "(" + thing + "J" + OPERATION + ")V", "(J)V", null);
+		}));
+		ClassIndex neoForge = new ClassIndex(Map.of(TARGET, callingHelper("(ILjava/lang/String;)V", "(JLjava/lang/String;)V"))::get);
+		List<PreflightFinding> notes = new ArrayList<>();
+		Map<String, byte[]> repaired = preflight(neoForge, mod::get, ClassBytesSource.EMPTY, false)
+				.repairs("test.mixins.json", MixinConfigFile.parse(config(true, "Shared")), Refmap.EMPTY, Set.of(), notes);
+
+		assertEquals(2, notes.size(), notes.toString());
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired.get("com/example/mixin/Shared.class")).accept(node, 0);
+		Set<String> names = new java.util.HashSet<>();
+		for (MethodNode m : node.methods) {
+			if (m.name.contains("$fabricated")) assertTrue(names.add(m.name), "two generated methods named " + m.name);
+			if (m.name.equals("wrap")) assertTrue(Annotations.find(m, "Lorg/spongepowered/asm/mixin/Unique;") != null, m.desc);
+		}
+		assertEquals(4, names.size(), names.toString());
 	}
 
 	@Test
