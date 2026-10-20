@@ -296,6 +296,9 @@ jobs:
           python3 ci/fetch-corpus.py "${{ matrix.minecraft }}" "$RUNNER_TEMP/extra-polyfrost" fabric oneconfig polyplus | tee "$RUNNER_TEMP/summary-polyfrost.txt"
           if ! grep -qE "^(oneconfig|polyplus): [^n]" "$RUNNER_TEMP/summary-polyfrost.txt"; then exit 0; fi
           cp "$RUNNER_TEMP/extra/fabric-api.jar" "$RUNNER_TEMP/extra-polyfrost/"
+          # Polydium asks once, in the first world, whether to switch to Vulkan, and the world test waits for no screen to be
+          # open: its own marker says it has asked.
+          mkdir -p "${XDG_CONFIG_HOME:-$HOME/.config}/polydium" && touch "${XDG_CONFIG_HOME:-$HOME/.config}/polydium/vulkan-prompt"
           SMOKE_TIMEOUT=480 ci/smoke-client.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/client-polyfrost" "$RUNNER_TEMP/extra-polyfrost" || true
           # The counts and the disabled mods, not the long list of loaded ones.
           awk '/^== /{show = /^== (Summary|Disabled)/} show' "$RUNNER_TEMP/client-polyfrost/run/logs/fabric-bridge-report.txt" | head -80 | tee -a "$RUNNER_TEMP/summary-polyfrost.txt" || true
@@ -424,6 +427,8 @@ jobs:
                 { state = 0 }
                 /\/(ERROR|FATAL)\]/ && !/[Nn]arrator|flite|401|TargetDataLine/ { if (n == 6) exit; n++; print substr($0, 1, 300); state = 1 }
               ' "$log"
+              # An exception that left the game's main thread goes to the console only.
+              grep -h -m 2 -A 8 "^Exception in thread" "$RUNNER_TEMP/$run/client.out" 2>/dev/null | cut -c1-250 || true
               echo "-- last lines of the log:"
               grep -v "Waiting for player to load" "$log" | tail -n 4 | cut -c1-300
             fi
