@@ -1173,6 +1173,13 @@ public final class MixinPreflight {
 					"Mixin picks the first method of that name; the mod needs an update or this mixin must be skipped.");
 			return;
 		}
+		if (ann.desc.equals(WRAP_METHOD) && !anyFuzzy && !acceptsWrapperSignature(handler, matched)) {
+			ctx.classLevel(injectorName + " handler " + handler.name + Type.getMethodDescriptor(Type.getReturnType(handler.desc), handlerArgs(handler).toArray(Type[]::new))
+							+ " does not match the parameters of " + matched.getFirst().name + matched.getFirst().desc + " in " + target.name.replace('/', '.'),
+					(ctx.owner() == null ? "NeoForge's build of Minecraft declares this method with different parameters"
+							: ctx.changer(true) + " declares this method with different parameters") + "; the mod needs an update or this mixin must be skipped.");
+			return;
+		}
 
 		if (ann.desc.equals(MODIFY_CONSTANT)) {
 			for (AnnotationNode constant : annotationList(Annotations.value(ann, "constant"))) {
@@ -1254,6 +1261,19 @@ public final class MixinPreflight {
 			if (List.of(Type.getArgumentTypes(target.desc)).equals(wanted)) return true;
 		}
 		return false;
+	}
+
+	/**
+	 * MixinExtras accepts a {@code @WrapMethod} handler whose parameters, after sugar parameters are removed, are the
+	 * target's parameters followed by the {@code Operation}, in each method it wraps; anything else is an
+	 * {@code InvalidInjectionException} when the mixin applies, whatever its {@code require}. Handlers that use
+	 * {@code @Coerce}, or whose shape is unusual, are left to Mixin.
+	 */
+	private static boolean acceptsWrapperSignature(MethodNode handler, List<MethodNode> targets) {
+		List<Type> args = handlerArgs(handler);
+		if (args == null || args.isEmpty() || !args.getLast().getDescriptor().equals(OPERATION)) return true;
+		List<Type> wanted = args.subList(0, args.size() - 1);
+		return targets.stream().allMatch(target -> List.of(Type.getArgumentTypes(target.desc)).equals(wanted));
 	}
 
 	/**

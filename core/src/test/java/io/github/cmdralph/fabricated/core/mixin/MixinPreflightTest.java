@@ -513,6 +513,39 @@ class MixinPreflightTest {
 		assertTrue(after.isEmpty(), after.toString());
 	}
 
+	@Test
+	void aWrapMethodWhoseHandlerTakesOtherParametersFails() throws Exception {
+		// NeoForge's build declares the method with other parameters than the vanilla one the handler was written for.
+		ClassWriter target = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		target.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		MethodVisitor render = target.visitMethod(Opcodes.ACC_PUBLIC, "render", "(Ljava/lang/String;)V", null, null);
+		render.visitCode();
+		render.visitInsn(Opcodes.RETURN);
+		render.visitMaxs(0, 0);
+		render.visitEnd();
+		target.visitEnd();
+		ClassIndex game = new ClassIndex(Map.of(TARGET, target.toByteArray())::get);
+		java.util.function.Function<String, byte[]> wrapping = desc -> mixin("com/example/mixin/Wrap", false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "h", desc, null, null);
+			AnnotationVisitor ann = mv.visitAnnotation("Lcom/llamalad7/mixinextras/injector/wrapmethod/WrapMethod;", false);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "render");
+			methods.visitEnd();
+			ann.visitEnd();
+			mv.visitEnd();
+		});
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Wrap"));
+		String operation = "Lcom/llamalad7/mixinextras/injector/wrapoperation/Operation;";
+		List<PreflightFinding> wrong = preflight(game, Map.of("com/example/mixin/Wrap", wrapping.apply("(FL" + operation.substring(1) + ")V"))::get,
+				ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertEquals(1, wrong.size(), wrong.toString());
+		assertEquals(Severity.FAIL, wrong.getFirst().severity());
+		assertTrue(wrong.getFirst().message().contains("does not match the parameters of render(Ljava/lang/String;)V"), wrong.getFirst().message());
+		List<PreflightFinding> right = preflight(game, Map.of("com/example/mixin/Wrap", wrapping.apply("(Ljava/lang/String;" + operation + ")V"))::get,
+				ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(right.isEmpty(), right.toString());
+	}
+
 	/** An {@code @Inject} into tick (no descriptor) at its call to helper(I)V, whose handler has {@code desc}. */
 	private static void injectWith(ClassWriter cw, String desc) {
 		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "h", desc, null, null);
