@@ -100,6 +100,11 @@ public final class NetworkingBridge {
 		event.register(task);
 	}
 
+	/** Called when a connection closes during configuration (see {@code ServerCommonPacketListenerDisconnectMixin}). */
+	public static void onConfigurationDisconnect(ServerConfigurationPacketListenerImpl listener) {
+		ServerConfigurationConnectionEvents.DISCONNECT.invoker().onConfigureDisconnect(listener, ((ServerCommonPacketListenerImplAccessor) listener).getServer());
+	}
+
 	private static void configure(RegisterConfigurationTasksEvent event) {
 		if (!(event.getListener() instanceof ServerConfigurationPacketListenerImpl listener)) return;
 		MinecraftServer server = ((ServerCommonPacketListenerImplAccessor) listener).getServer();

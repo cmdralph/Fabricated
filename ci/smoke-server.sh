@@ -124,6 +124,7 @@ check "FABRICATED-TEST lifecycle server stopping OK" server.out "native lifecycl
 check "FABRICATED-TEST lifecycle tags loaded OK" server.out "native lifecycle: TAGS_LOADED after the items' default components are bound"
 check "FABRICATED-TEST block entity events OK" server.out "native lifecycle: a block entity loads when placed and unloads when broken"
 check "FABRICATED-TEST networking registration OK" server.out "native networking: receiver registered"
+check "FABRICATED-TEST configuration disconnect OK" server.out "native networking: DISCONNECT for a connection closed during configuration"
 check "Registered [0-9]* Fabric payload type" server.out "native networking: payloads handed to NeoForge"
 check "FABRICATED-TEST resource reload listener OK (2 data file" server.out "native resource loader: listener, shared state and built-in pack data"
 check "resource loader state: order=true, store=2, builtinPackEnabled=true" server.out "native resource loader: ordering, data store and built-in pack"

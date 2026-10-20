@@ -219,11 +219,14 @@ splitting. Play handlers run on the main thread and configuration handlers on th
 
 Not supported: **login queries** (`ServerLoginNetworking`, `ClientLoginNetworking`): NeoForge exposes no
 login-phase hooks. The API links, so mods load, but login receivers are never called; mods should use the
-configuration phase instead (Fabric's own recommendation since 1.20.2). Configuration-phase
-`DISCONNECT` events do not fire. A payload id can use a different codec in each direction, as on Fabric
+configuration phase instead (Fabric's own recommendation since 1.20.2). Configuration-phase `DISCONNECT` events
+fire when a connection closes during configuration, from the configuration listener's `onDisconnect` on the server or
+client thread (Fabric API may fire them from the network thread instead, as the channel closes). A payload id can use a different codec in each direction, as on Fabric
 (NeoForge keeps one codec per id, so Fabricated supplies the clientbound one when NeoForge looks it up).
-CI checks that a Fabric payload and receiver register and reach NeoForge on a dedicated server, and, on the
-client, a play-phase round trip and a configuration task with the integrated server.
+CI checks that a Fabric payload and receiver register and reach NeoForge on a dedicated server, that a
+configuration listener closed there fires `DISCONNECT` once, and, on the client, a play-phase round trip and a
+configuration task with the integrated server. The client's `DISCONNECT` has no check: it would end the client's own
+connection.
 
 ### Native `fabric-resource-loader-v1`
 

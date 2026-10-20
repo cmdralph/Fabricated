@@ -53,6 +53,12 @@ public final class ClientNetworkingBridge {
 		ClientConfigurationConnectionEvents.START.invoker().onConfigurationStart(listener, client);
 	}
 
+	/** Called when the connection closes during configuration (see {@code ClientConfigurationPacketListenerImplMixin}). */
+	public static void onConfigurationDisconnect(ClientConfigurationPacketListenerImpl listener) {
+		if (ClientNetworkingImpl.currentConfiguration() == listener) ClientNetworkingImpl.setCurrentConfiguration(null);
+		ClientConfigurationConnectionEvents.DISCONNECT.invoker().onConfigurationDisconnect(listener, Minecraft.getInstance());
+	}
+
 	static void handlePlay(CustomPacketPayload payload, IPayloadContext context) {
 		if (context.listener() instanceof ClientPacketListener listener) ClientNetworkingImpl.getAddon(listener).handle(payload);
 	}
