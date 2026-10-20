@@ -296,6 +296,9 @@ jobs:
           python3 ci/fetch-corpus.py "${{ matrix.minecraft }}" "$RUNNER_TEMP/extra-polyfrost" fabric oneconfig polyplus | tee "$RUNNER_TEMP/summary-polyfrost.txt"
           if ! grep -qE "^(oneconfig|polyplus): [^n]" "$RUNNER_TEMP/summary-polyfrost.txt"; then exit 0; fi
           cp "$RUNNER_TEMP/extra/fabric-api.jar" "$RUNNER_TEMP/extra-polyfrost/"
+          # Polydium asks once, in the first world, whether to switch to Vulkan, and the world test waits for no screen to be
+          # open: its own marker says it has asked.
+          mkdir -p "${XDG_CONFIG_HOME:-$HOME/.config}/polydium" && touch "${XDG_CONFIG_HOME:-$HOME/.config}/polydium/vulkan-prompt"
           SMOKE_TIMEOUT=480 ci/smoke-client.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/client-polyfrost" "$RUNNER_TEMP/extra-polyfrost" || true
           # The counts and the disabled mods, not the long list of loaded ones.
           awk '/^== /{show = /^== (Summary|Disabled)/} show' "$RUNNER_TEMP/client-polyfrost/run/logs/fabric-bridge-report.txt" | head -80 | tee -a "$RUNNER_TEMP/summary-polyfrost.txt" || true

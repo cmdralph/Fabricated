@@ -238,7 +238,7 @@ crash in run 229).
 
 | ID | Sev | Location | Issue | Status |
 |---|---|---|---|---|
-| POLY-1 | P2 | OneConfig | No Polyfrost client reaches a world yet. On `6c17ffa` (pull request #36) every version gets past RELOAD-1 and fails in OneConfig's list of mods: `List.getFirst` throws `NoSuchElementException` in `CompatibilityPlatformImpl.getMods` (line 54), from its client entrypoint and again from its Compose screen, after which the 26.x games stop by themselves. Cause: ROOT-1. | Fixed by ROOT-1 if CI confirms; the next blocker, if any, shows in the summary. |
+| POLY-1 | P2 | Polyfrost clients in CI | On `97bb819` (pull request #37) the 26.3 client gets past ROOT-1 and reaches a world: Polydium's Vulkan prompt, which it opens only once a player is in a world, stays open ("Screen not yet null: org.polyfrost.polydium.client.VulkanPrompt$1"), and mc-runtime-test waits for no screen until the timeout. The 26.1.2 and 1.21.11 runs took as long; that they stopped on the same prompt is UNVERIFIED. | CI creates Polydium's own marker (`$XDG_CONFIG_HOME/polydium/vulkan-prompt`, else `~/.config/polydium/vulkan-prompt`) before the run, as after a player answered the prompt. |
 | PLAT-2 | P3, UNVERIFIED | core `PlatformLibraries` | Other prefixes also cover whole library families (`org/lwjgl/`, `io/netty/`), of which the platform may ship some modules only: a mod nesting another module (LWJGL's NanoVG, say) would lose it, as PLAT-1 did. No case seen yet. | Check each prefix against the packages the platform really has (the loader computes them), and keep a prefix only where the family is complete. |
 | FC-5 | P3 | `TranslationCache.verifyIntegrity` | Hashes are memoised by file metadata. On Windows the key is size and mtime only, and `entry.json` itself isn't hashed. | Needs a decision on cost: re-hashing every launch versus trusting metadata. |
 | FC-6 | P3 | `TranslationCache.store` | Two cold launches of the same side that share one game directory race on delete-then-move. | Needs a cross-process file lock. Rare. |
@@ -299,6 +299,16 @@ open (see *Unverified and blockers*).
 ## Changelog
 
 Newest first. Each entry: what changed, and how it was verified.
+
+### 2026-10-21 (later): Polyfrost reaches a world
+
+**Summary.**
+- Results of pull request #37 on `97bb819`: with ROOT-1, OneConfig's client entrypoint runs, and the 26.3 Polyfrost
+  client reaches a world, where Polydium asks whether to switch to Vulkan. The world test waits for no screen to be open,
+  so the run ended at its timeout.
+- CI: Polydium's marker is created before the Polyfrost run, as after a player answered its prompt (POLY-1).
+
+**Verification.** The workflow YAML parses. CI: see the pull request.
 
 ### 2026-10-21: every mod has a root
 
