@@ -159,6 +159,10 @@ public final class ModsTomlWriter {
 				separator = ", ";
 			}
 			sb.append(']');
+		} else if (value instanceof Double || value instanceof Float) {
+			// TOML spells the non-finite ones its own way (a JSON number too large for a double is infinite).
+			double d = ((Number) value).doubleValue();
+			sb.append(Double.isNaN(d) ? "nan" : d == Double.POSITIVE_INFINITY ? "inf" : d == Double.NEGATIVE_INFINITY ? "-inf" : value.toString());
 		} else if (value instanceof Number || value instanceof Boolean) {
 			sb.append(value);
 		} else {

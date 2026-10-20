@@ -103,10 +103,12 @@ class TranslateHelpersTest {
 		Map<String, Object> options = new LinkedHashMap<>();
 		options.put("sodium:options", sodium);
 		options.put("lithium:options", Map.of("mixin.ai", false));
+		options.put("a:huge", Double.POSITIVE_INFINITY); // "1e400" in fabric.mod.json
 		Map<String, Object> properties = new LinkedHashMap<>(options);
 		properties.put("sodium:config_api_user", "com.example.SodiumPage");
 		properties.put("jade", Map.of("fastScroll", true));
 		properties.put("mixed", List.of(1, 2.5, "three \"quoted\"\n", List.of(true), Map.of("k.with.dots", 9_000_000_000L)));
+		properties.put("tiny", List.of(Double.NEGATIVE_INFINITY, Double.NaN, 1.5e300));
 		String toml = ModsTomlWriter.write(new ModsTomlWriter.Spec("my_mod", "1.0.0", "My Mod", "", List.of(), List.of(), List.of(), null, null, null,
 				List.of(), false, false, List.of(), properties, options));
 
@@ -122,6 +124,8 @@ class TranslateHelpersTest {
 		List<?> mixed = modProperties.get(List.of("mixed"));
 		assertEquals(List.of(1, 2.5, "three \"quoted\"\n", List.of(true)), mixed.subList(0, 4));
 		assertEquals(Map.of("k.with.dots", 9_000_000_000L), table(mixed.get(4)));
+		assertEquals(Double.POSITIVE_INFINITY, file.<Double>get(List.of("a:huge")), "a number past a double's range still parses");
+		assertEquals(List.of(Double.NEGATIVE_INFINITY, Double.NaN, 1.5e300), modProperties.get(List.of("tiny")));
 	}
 
 	private static Map<String, Object> table(Object config) {
