@@ -83,8 +83,8 @@ property lists are present too. That is how NeoForge mods speak to Fabric code: 
 `fabric-renderer-api-v1:contains_renderer` makes Indigo stand down, and it provides `indium`. Of two copies of a
 NeoForge mod the newest counts. The Fabric builds of mods that only work as their NeoForge build (Sodium, Iris) are
 disabled with a message naming it (`Pipeline.NEOFORGE_BUILD_ONLY`). The classes of those jars (and of Fabricated's
-own Fabric API) are core's `InstalledClasses`: pre-flight checks a Fabric mixin into one of them as it checks one into
-the game, and the cache entry keeps the SHA-256 of each installed class it read, so updating that NeoForge mod
+own Fabric API, and on 26.x the other Fabric mods' jars) are core's `InstalledClasses`: pre-flight checks a Fabric
+mixin into one of them as it checks one into the game, and the cache entry keeps the SHA-256 of each installed class it read, so updating that NeoForge mod
 translates the Fabric mod again (`ModTranslator.installedUnchanged`). The game's own files (`minecraft`, `neoforge`)
 are not among them, so pre-flight of mixins into the game is unchanged by what else is installed.
 

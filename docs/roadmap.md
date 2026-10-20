@@ -21,8 +21,8 @@ handled safely, no network access, original jars never changed, and no code that
   its repairs (overloads NeoForge moved, constructors NeoForge kept for vanilla's signature or appended components to,
   with a bridge for handlers taking the parameters, calls made through a subtype), NeoForge mods visible to Fabric code
   (nested ones too, with their properties as custom values and their files as container roots). Pre-flight of mixins
-  into Fabricated's Fabric API and installed NeoForge mods, nested ones included (R3), cached with the fingerprints of
-  the classes it read. Every declared language adapter created before any Fabric mod's mixin plugin loads, as on
+  into Fabricated's Fabric API and installed NeoForge mods, nested ones included, and on 26.x into other Fabric mods
+  (R3: Iris's ~20 mixins into Sodium were "not verified" before), cached with the fingerprints of the classes it read. Every declared language adapter created before any Fabric mod's mixin plugin loads, as on
   Fabric (PolyPlus and Polydium declare adapters only to run code that early): translated mods load after
   Fabricated's mod, whose first mixin config's plugin creates them. CI: the test mod's adapter sets a property its own
   mixin plugin checks ("early language adapter OK").
@@ -32,8 +32,8 @@ handled safely, no network access, original jars never changed, and no code that
   - A built-in, data-driven compatibility plan for third-party mods per Minecraft version (mod id and version range to
     `skipMixins`, `skipEntrypoints`, pairing rules, notes), like `fabric-api-plan.json`, replacing the hard-coded
     `NEOFORGE_BUILD_ONLY` map and reusing `CompatHints.Patch`.
-  - Pre-flight of mixins into other Fabric mods' classes (R3's other half: Iris's ~20 mixins into Sodium were "not
-    verified" in CI), and checking members other mods' mixins add against those mixins (PRE-2 only stops judging them).
+  - Pre-flight of mixins into other Fabric mods' classes on 1.21.11 (their classes are only remapped as each is
+    translated), and checking members other mods' mixins add against those mixins (PRE-2 only stops judging them).
 - **Later:** the deferred cache items (FC-5, FC-6, FC-7).
 
 ### Fabric API coverage
@@ -118,7 +118,7 @@ research sandbox).
 | 1 | FRAPI-2: NeoForge's baked colours and normals kept by `FrapiDefaults` | NeoForge models drawn by any Fabric renderer | Done (`ce52fb2`). Gate "frapi baked colors OK": the terrain test block's model has a `neoforge_data` colour, checked as Fabric's renderer emits it |
 | 2 | Constructor repair for appended NeoForge components, with a handler bridge | Sodium's `BakedQuadMixin` (SODIUM-1); any mixin into NeoForge-extended records (`BakedQuad`, `MaterialInfo`, `FluidModel`) | Done (`bee1fe4`, unit tests). Gate "frapi baked quad constructor hook OK": the test mod's mixin at the end of `BakedQuad`'s vanilla constructor marks the quads NeoForge bakes |
 | 3 | Fabric-order early hooks | PolyPlus, Polydium, OneConfig | Language adapters done (server check "early language adapter OK"); `preLaunch` next |
-| 4 | Pre-flight of mixins into other mods, pairing rules | Iris with Sodium, Polydium, OneConfig's compat mixins, Sodium addons | Installed NeoForge mods done (R3); other Fabric mods next |
+| 4 | Pre-flight of mixins into other mods, pairing rules | Iris with Sodium, Polydium, OneConfig's compat mixins, Sodium addons | Done for installed NeoForge mods and, on 26.x, other Fabric mods (R3); pairing rules next |
 | 5 | Built-in compatibility plan (data) | Sodium's window mixin, its renderer API config on 1.21.11, pairings | Next |
 | 6 | Fabric fluid rendering backed by NeoForge's (custom fluid renderers on 26.x, `IClientFluidTypeExtensions` on 1.21.11) | NeoForge fluids under a Fabric renderer | Planned |
 | 7 | Block-entity render data and NeoForge model data, bridged both ways | Fabric renderers reading NeoForge block entities' data | Planned |

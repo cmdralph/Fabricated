@@ -1,6 +1,7 @@
 package io.github.cmdralph.fabricated.core.bytecode;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -10,9 +11,10 @@ import java.util.function.Predicate;
 import io.github.cmdralph.fabricated.core.archive.Hashing;
 
 /**
- * The classes of the jars installed next to the Fabric mods (NeoForge mods, and Fabricated's own Fabric API), which
- * Fabric mixins may target: an addon's mixins into the mod it extends. Jars are searched in order; the first one with
- * a class owns it. A class is read once (only the few classes mixins target are), so this is safe to share.
+ * The classes of the jars installed next to a Fabric mod (NeoForge mods, Fabricated's own Fabric API, and on 26.x the
+ * other Fabric mods), which its mixins may target: an addon's mixins into the mod it extends. Jars are searched in
+ * order; the first one with a class owns it. A class is read once (only the few classes mixins target are), so this is
+ * safe to share.
  */
 public final class InstalledClasses implements ClassBytesSource {
 	/** No jars. */
@@ -37,6 +39,14 @@ public final class InstalledClasses implements ClassBytesSource {
 
 	public boolean isEmpty() {
 		return jars.isEmpty();
+	}
+
+	/** These jars, then {@code more}. */
+	public InstalledClasses with(List<Jar> more) {
+		if (more.isEmpty()) return this;
+		List<Jar> all = new ArrayList<>(jars);
+		all.addAll(more);
+		return new InstalledClasses(all);
 	}
 
 	/** The name of the mod whose jar has the class, or {@code null} when no installed jar has it. */

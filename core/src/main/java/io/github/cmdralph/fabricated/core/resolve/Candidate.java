@@ -2,6 +2,7 @@ package io.github.cmdralph.fabricated.core.resolve;
 
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Set;
 
 import io.github.cmdralph.fabricated.core.metadata.FabricModMetadata;
 
@@ -16,9 +17,10 @@ import io.github.cmdralph.fabricated.core.metadata.FabricModMetadata;
  * @param parentId       id of the containing mod, or {@code null} for top-level jars
  * @param depth          0 for top-level jars
  * @param nestedChildren ids of mods nested directly inside this one
+ * @param packages       the packages of its classes, by internal name ({@code com/example/mod})
  */
 public record Candidate(Path path, String sha256, FabricModMetadata metadata, String origin, String parentId, int depth,
-		List<String> nestedChildren) {
+		List<String> nestedChildren, Set<String> packages) {
 
 	public String id() {
 		return metadata.getId();

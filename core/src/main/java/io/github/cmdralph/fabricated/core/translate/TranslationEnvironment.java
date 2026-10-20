@@ -19,8 +19,8 @@ import io.github.cmdralph.fabricated.core.remap.MappingTable;
  * @param game                index of runtime game classes (Minecraft + NeoForge)
  * @param untransformable     classes loaded outside NeoForge's transforming class loader (the JDK, libraries)
  * @param installed           classes of the jars installed next to the Fabric mods (Fabricated's Fabric API, NeoForge
- *                            mods), which Fabric mixins may target; the pre-flight results that depend on them are
- *                            cached with their fingerprints
+ *                            mods, and on 26.x the Fabric mods), which Fabric mixins may target; the pre-flight
+ *                            results that depend on them are cached with their fingerprints
  * @param installedIndex      index of the game classes and {@code installed}
  */
 public record TranslationEnvironment(

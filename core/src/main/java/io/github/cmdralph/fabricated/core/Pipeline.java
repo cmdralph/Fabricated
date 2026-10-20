@@ -17,7 +17,9 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 import io.github.cmdralph.fabricated.core.accesswidener.AccessWidenerFile.InjectedInterface;
+import io.github.cmdralph.fabricated.core.archive.ArchiveException;
 import io.github.cmdralph.fabricated.core.archive.Hashing;
+import io.github.cmdralph.fabricated.core.archive.SafeArchive;
 import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
 import io.github.cmdralph.fabricated.core.bytecode.ClassIndex;
 import io.github.cmdralph.fabricated.core.bytecode.InstalledClasses;
@@ -320,13 +322,68 @@ public final class Pipeline {
 		if (eligible.isEmpty()) return assemble(runtime, new Rounds());
 
 		ClassIndex game = new ClassIndex(in.gameClasses());
-		InstalledClasses installed = in.installedClasses();
+		// On 26.x the Fabric mods' classes load as they are in their jars, so mixins into them are checked too (on
+		// 1.21.11 their classes have intermediary names until each is translated).
+		List<SafeArchive> opened = new ArrayList<>();
+		InstalledClasses installed = in.namespace() == Namespace.OFFICIAL ? in.installedClasses().with(fabricJars(eligible, opened)) : in.installedClasses();
 		TranslationEnvironment env = new TranslationEnvironment(in.minecraftVersion(), in.neoForgeVersion(), in.clientSide(), in.namespace(),
 				in.runtimeMixinVersion(), in.lowestMixinBehavior(), in.fabricatedVersion(), mappingTable, mappingsHash, game, in.untransformableClasses(),
 				installed, installed.isEmpty() ? game : new ClassIndex(in.gameClasses().or(installed)));
 		Rounds rounds = new Rounds();
-		rounds.run(eligible, resolver(), new ModTranslator(env, in.cache(), config.limits()));
+		try {
+			rounds.run(eligible, resolver(), new ModTranslator(env, in.cache(), config.limits()));
+		} finally {
+			synchronized (opened) {
+				for (SafeArchive archive : opened) {
+					try {
+						archive.close();
+					} catch (IOException e) {
+						// Read only; nothing to lose.
+					}
+				}
+			}
+		}
 		return assemble(runtime, rounds);
+	}
+
+	/**
+	 * The classes of the Fabric mods about to load, for pre-flight. A jar is opened only when a lookup names a class in
+	 * one of its packages, then kept open until translation ends ({@code opened}).
+	 */
+	private List<InstalledClasses.Jar> fabricJars(List<Candidate> candidates, List<SafeArchive> opened) {
+		List<InstalledClasses.Jar> jars = new ArrayList<>();
+		for (Candidate c : candidates) {
+			Supplier<SafeArchive> archive = new Supplier<>() {
+				private boolean tried;
+				private SafeArchive open;
+
+				@Override
+				public synchronized SafeArchive get() {
+					if (!tried) {
+						tried = true;
+						try {
+							open = SafeArchive.open(c.path(), config.limits());
+							synchronized (opened) {
+								opened.add(open);
+							}
+						} catch (ArchiveException e) {
+							open = null; // translating it reports the problem
+						}
+					}
+					return open;
+				}
+			};
+			jars.add(new InstalledClasses.Jar(c.metadata().getName(), name -> {
+				int slash = name.lastIndexOf('/');
+				if (!c.packages().contains(slash < 0 ? "" : name.substring(0, slash))) return false;
+				SafeArchive a = archive.get();
+				return a != null && a.contains(name + ".class");
+			}, name -> {
+				SafeArchive a = archive.get();
+				return a == null ? null : a.read(name + ".class");
+			}));
+		}
+		return jars;
 	}
 
 	/** Candidates that should load, reporting the others. */
@@ -371,7 +428,8 @@ public final class Pipeline {
 			}
 			FabricatedConfig.ModOverride override = config.override(c.id());
 			if (override.ignoreHints() && !c.metadata().compatHints().isEmpty()) {
-				c = new Candidate(c.path(), c.sha256(), c.metadata().withCompatHints(CompatHints.NONE), c.origin(), c.parentId(), c.depth(), c.nestedChildren());
+				c = new Candidate(c.path(), c.sha256(), c.metadata().withCompatHints(CompatHints.NONE), c.origin(), c.parentId(), c.depth(),
+						c.nestedChildren(), c.packages());
 			}
 			CompatHints hints = c.metadata().compatHints();
 			for (String w : hints.warnings()) report.line("Compatibility hint warnings", c.id() + ": " + w);

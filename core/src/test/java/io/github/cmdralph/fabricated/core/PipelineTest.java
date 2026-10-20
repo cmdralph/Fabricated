@@ -278,6 +278,31 @@ class PipelineTest {
 		assertTrue(row.detail().contains("drawSections, which does not exist in net.example.sodium.Renderer"), row.detail());
 	}
 
+	/** On 26.x an addon's mixins into another Fabric mod's classes are checked against that mod's jar. */
+	@Test
+	void mixinsIntoAnotherFabricModAreChecked(@TempDir Path game) throws Exception {
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		String renderer = "com/base/Renderer";
+		Path base = TestJars.create().fabricModJson(TestJars.modJson("base", "2.0", "\"name\":\"Base\""))
+				.bytes(renderer + ".class", installedClass(renderer, "renderSections"))
+				.write(mods.resolve("base.jar"));
+		Path good = TestJars.create().fabricModJson(TestJars.modJson("good-addon", "1.0", "\"mixins\":[\"good.mixins.json\"],\"depends\":{\"base\":\"*\"}"))
+				.text("good.mixins.json", "{\"required\":true,\"package\":\"com.good.mixin\",\"mixins\":[\"RendererMixin\"]}")
+				.bytes("com/good/mixin/RendererMixin.class", mixinClass("com/good/mixin/RendererMixin", renderer, "renderSections"))
+				.write(mods.resolve("good-addon.jar"));
+		Path stale = TestJars.create().fabricModJson(TestJars.modJson("stale-addon", "1.0", "\"mixins\":[\"stale.mixins.json\"],\"depends\":{\"base\":\"*\"}"))
+				.text("stale.mixins.json", "{\"required\":true,\"package\":\"com.stale.mixin\",\"mixins\":[\"RendererMixin\"]}")
+				.bytes("com/stale/mixin/RendererMixin.class", mixinClass("com/stale/mixin/RendererMixin", renderer, "drawSections"))
+				.write(mods.resolve("stale-addon.jar"));
+
+		Pipeline.Result result = Pipeline.run(input(game, List.of(base, good, stale), Namespace.OFFICIAL, Map.of(), null, List.of()));
+
+		Set<String> loaded = result.mods().stream().map(m -> m.translated().candidate().id()).collect(Collectors.toSet());
+		assertEquals(Set.of("base", "good-addon"), loaded, result.report().render());
+		Report.ModRow row = result.report().mods().stream().filter(r -> r.id().equals("stale-addon")).findFirst().orElseThrow();
+		assertTrue(row.detail().contains("drawSections, which does not exist in com.base.Renderer"), row.detail());
+	}
+
 	/**
 	 * A NeoForge mod's mod properties are its custom values to Fabric code, and the Fabric mods it says it provides are
 	 * present: Sodium for NeoForge makes Fabric API's default renderer stand down and provides Indium, whose Fabric jar
@@ -386,7 +411,7 @@ class PipelineTest {
 	private static Pipeline.LoadedMod loadedMod(Path dir, String id, String iface, String environmentClass) throws Exception {
 		String json = TestJars.modJson(id, "1.0", "");
 		Path file = TestJars.create().fabricModJson(json).write(dir.resolve(id + ".jar"));
-		Candidate c = new Candidate(file, id + "-hash", FabricModJsonParser.parse(json), id + ".jar", null, 0, List.of());
+		Candidate c = new Candidate(file, id + "-hash", FabricModJsonParser.parse(json), id + ".jar", null, 0, List.of(), Set.of());
 		InjectedInterface injection = new InjectedInterface("net/minecraft/world/Thing", iface, iface, false, 1);
 		TranslatedMod mod = new TranslatedMod(c, id.replace('-', '_'), file, file, List.of(), 0, List.of(), List.of(injection),
 				Set.of(environmentClass), false, 0);
@@ -430,7 +455,7 @@ class PipelineTest {
 	}
 
 	private static Candidate candidate(String id, String extraJson) throws Exception {
-		return new Candidate(Path.of(id + ".jar"), "00", FabricModJsonParser.parse(TestJars.modJson(id, "1.0", extraJson)), id + ".jar", null, 0, List.of());
+		return new Candidate(Path.of(id + ".jar"), "00", FabricModJsonParser.parse(TestJars.modJson(id, "1.0", extraJson)), id + ".jar", null, 0, List.of(), Set.of());
 	}
 
 	@Test

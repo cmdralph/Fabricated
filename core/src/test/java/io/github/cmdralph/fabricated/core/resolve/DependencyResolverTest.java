@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Set;
 import java.util.Map;
 
 import org.junit.jupiter.api.Test;
@@ -15,7 +16,7 @@ import net.fabricmc.loader.api.Version;
 
 class DependencyResolverTest {
 	private static Candidate mod(String id, String version, String extra) throws Exception {
-		return new Candidate(Path.of(id + ".jar"), id, FabricModJsonParser.parse(TestJars.modJson(id, version, extra)), id + ".jar", null, 0, List.of());
+		return new Candidate(Path.of(id + ".jar"), id, FabricModJsonParser.parse(TestJars.modJson(id, version, extra)), id + ".jar", null, 0, List.of(), Set.of());
 	}
 
 	private static DependencyResolver resolver() throws Exception {

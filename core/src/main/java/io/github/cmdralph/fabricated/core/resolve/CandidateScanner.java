@@ -7,6 +7,8 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
 
 import io.github.cmdralph.fabricated.core.archive.ArchiveException;
 import io.github.cmdralph.fabricated.core.archive.ArchiveLimits;
@@ -104,6 +106,7 @@ public final class CandidateScanner {
 		// memory at a time.
 		List<Path> nestedPaths = new ArrayList<>();
 		List<String> nestedNames = new ArrayList<>();
+		Set<String> packages = new TreeSet<>();
 		String sha;
 		try (SafeArchive archive = SafeArchive.open(jar, limits)) {
 			sha = knownSha != null ? knownSha : cache.sha256(jar);
@@ -113,6 +116,10 @@ public final class CandidateScanner {
 				return null;
 			}
 			metadata = FabricModJsonParser.parse(json);
+			for (String name : archive.classEntryNames()) {
+				int slash = name.lastIndexOf('/');
+				packages.add(slash < 0 ? "" : name.substring(0, slash));
+			}
 			if (PlatformLibraries.PROVIDED_IDS.contains(metadata.getId())) {
 				notes.add(origin + " bundles " + metadata.getId() + ", which NeoForge already provides; the bundled copy is not loaded");
 				return null;
@@ -163,7 +170,7 @@ public final class CandidateScanner {
 			if (child != null) children.add(child.id());
 		}
 
-		Candidate candidate = new Candidate(jar, sha, metadata, origin, parentId, depth, List.copyOf(children));
+		Candidate candidate = new Candidate(jar, sha, metadata, origin, parentId, depth, List.copyOf(children), Set.copyOf(packages));
 		all.add(candidate);
 		return candidate;
 	}

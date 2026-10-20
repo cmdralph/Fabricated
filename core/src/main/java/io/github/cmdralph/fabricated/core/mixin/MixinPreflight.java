@@ -876,7 +876,7 @@ public final class MixinPreflight {
 					ctx.classLevel("Target class " + target.replace('/', '.') + " is a library class that NeoForge loads without mixin support, so this mixin would silently never apply",
 							"Ask the mod author for a NeoForge version, or skip this mixin in config/fabricated.json if the feature is optional.");
 				} else {
-					ctx.info("Target " + target.replace('/', '.') + " is not a class of Minecraft or of an installed NeoForge mod, so it was not verified");
+					ctx.info("Target " + target.replace('/', '.') + " is not a class of Minecraft or of an installed mod, so it was not verified");
 				}
 				continue;
 			}
