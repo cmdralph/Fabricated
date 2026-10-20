@@ -335,8 +335,8 @@ versions is decided at compile time by which source folders it compiles, plus tw
   builds that can't run next to a NeoForge mod; a unit test parses the shipped file.
 * **Mixin differences in Fabric mods** are repaired by core's pre-flight against the running game's bytecode
   (`MixinPreflight.repairs`: overloads NeoForge reordered or moved code into, constructors NeoForge kept for
-  vanilla's signature, renumbered lambdas, hard local captures, accessors of members NeoForge added), not by
-  per-version tables.
+  vanilla's signature, calls made through a subtype or given one more argument, renumbered lambdas, hard local
+  captures, accessors of members NeoForge added), not by per-version tables.
 * Everything Minecraft-agnostic stays in `core`/`loader`. The full seam table is in [`claude.md`](claude.md).
 * **Adding a version** (summarised from `CONTRIBUTING.md`): copy the nearest `mc/<ver>` directory, set
   `minecraft_version`/`neo_version` in its `gradle.properties`, add it to `settings.gradle` and the CI matrix, fix
