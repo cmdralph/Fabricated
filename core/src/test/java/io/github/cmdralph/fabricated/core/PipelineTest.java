@@ -49,7 +49,9 @@ import io.github.cmdralph.fabricated.core.testutil.TestJars;
 import io.github.cmdralph.fabricated.core.translate.PackageGuard;
 import io.github.cmdralph.fabricated.core.translate.TranslatedMod;
 import io.github.cmdralph.fabricated.core.translate.TranslationEnvironment.Namespace;
+import net.fabricmc.loader.api.ModContainer;
 import net.fabricmc.loader.api.metadata.ModMetadata;
+import net.fabricmc.loader.api.metadata.ModOrigin;
 
 class PipelineTest {
 	private static final String TARGET = "net/minecraft/world/Thing";
@@ -184,7 +186,8 @@ class PipelineTest {
 		FabricatedConfig config = FabricatedConfig.load(game.resolve("config"));
 		TranslationCache cache = new TranslationCache(game, config.cacheEnabled(), config.verifyIntegrity());
 		return new Pipeline.Input(game, game.resolve("config"), config, cache, jars, ns == Namespace.OFFICIAL ? "26.2" : "1.21.11",
-				"26.2.0.90", false, ns, "0.17.4+mixin.0.8.7", "0.5.3", "0.17.1", "0.1.0-test", false, gameClasses::get, ClassBytesSource.EMPTY, Set.of("net/neoforged/neoforge"),
+				"26.2.0.90", false, ns, "0.17.4+mixin.0.8.7", "0.5.3", "0.17.1", "0.1.0-test", false, gameClasses::get, List.of(game.resolve("minecraft.jar")),
+				List.of(game.resolve("fabricated.jar")), ClassBytesSource.EMPTY, Set.of("net/neoforged/neoforge"),
 				FabricApiPlan.parse(PLAN), name -> null, Map::of, neoForgeMods, installed, mappings, new String[0]);
 	}
 
@@ -589,6 +592,22 @@ class PipelineTest {
 		String report = result.report().render();
 		assertTrue(report.contains("NeoForge cannot load both"), report);
 		assertTrue(report.contains("a NeoForge build of this mod is installed"), report);
+	}
+
+	/** Fabric Loader gives every mod a root, and mods take the first without checking (OneConfig's list of mods, POLY-1). */
+	@Test
+	void builtInModsHaveTheRootOfWhatProvidesThem(@TempDir Path game) throws Exception {
+		TestJars.create().text("game.txt", "").write(game.resolve("minecraft.jar"));
+		TestJars.create().text("in-game.txt", "").write(game.resolve("fabricated.jar"));
+		Pipeline.Result result = Pipeline.run(input(game, List.of(), Namespace.OFFICIAL, Map.of(), null));
+		Map<String, String> files = Map.of("minecraft", "game.txt", "fabricloader", "in-game.txt", "fabricated", "in-game.txt",
+				"fabric-api-base", "in-game.txt");
+		files.forEach((id, file) -> {
+			ModContainer mod = result.runtime().getModContainer(id).orElseThrow();
+			assertEquals(ModOrigin.Kind.PATH, mod.getOrigin().getKind(), id);
+			assertTrue(Files.exists(mod.getRootPaths().getFirst().resolve(file)), id);
+		});
+		assertEquals(Path.of(System.getProperty("java.home")), result.runtime().getModContainer("java").orElseThrow().getRootPaths().getFirst());
 	}
 
 	/** A mixin config a mod declares in its nested jar is that jar's, which NeoForge's mod file then declares (ADV-1). */

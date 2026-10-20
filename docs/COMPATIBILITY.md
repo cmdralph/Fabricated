@@ -626,6 +626,10 @@ Kotlin's), mod containers and metadata, versions and predicates, the object shar
 mod's mixin plugin loads (some mods declare one only to run code that early). `preLaunch` entrypoints still run later
 than on Fabric: right before `main`.
 
+Every mod has a root path, as on Fabric (mods take the first without checking): Minecraft's is the game's file, Java's
+its home, the mods Fabricated provides (Fabric Loader, the native Fabric API modules) have Fabricated's in-game mod,
+MixinExtras has NeoForge's jar, and a NeoForge mod nested in another jar has that jar.
+
 - `@Environment` and `@EnvironmentInterface` are applied as Fabric Loader applies them: members and interfaces for
   the other side are stripped when the class loads, so a common class implementing a client-only interface loads on
   a dedicated server.

@@ -182,6 +182,7 @@ Severity: **P0** crash or data loss on a normal launch · **P1** a supported fea
 
 | ID | Sev | Location | Failure mode and trigger | Why tests missed it | Fix |
 |---|---|---|---|---|---|
+| ROOT-1 | P1 | core `Pipeline`, loader | The built-in mods (Minecraft, Java, Fabric Loader, Fabricated, the native Fabric API modules, MixinExtras) and the NeoForge mods nested in other jars had no root path: `getRootPaths()` was empty, where Fabric Loader gives every mod one. OneConfig takes the first of each mod's roots, and its client entrypoint and UI failed on every version (`NoSuchElementException` from `List.getFirst` in `CompatibilityPlatformImpl.getMods`, `6c17ffa`). | Tests read roots of translated mods only. | This pass: Minecraft's root is the game's file as NeoForge loads it, Java's its home (as on Fabric), the mods Fabricated provides have its in-game mod's jar, MixinExtras NeoForge's, and a nested NeoForge mod the jar it is nested in. `PipelineTest`. |
 | RELOAD-1 | P1 | `ReloadableResourceManagerMixin` | Registering a reload listener the vanilla way threw once NeoForge had sorted the listeners: NeoForge replaces the list with an immutable one after its reload listener event (its patch documents the exception), while vanilla, and so Fabric, accepts one any time. OneConfig registers its font listener from a mixin into `Minecraft`'s constructor, and the 1.21.11 Polyfrost client crashed at "Initializing game" (`UnsupportedOperationException` in `Collections$UnmodifiableCollection.add`, `8ca959a`). | The test mod registered through Fabric API's resource loader only. | This pass: `registerReloadListener` reopens the list (a mutable copy in NeoForge's order), so a late listener is added last, as vanilla adds it, and runs in the next reload. Client check "late vanilla reload listener OK": the test mod registers one on `CLIENT_STARTED`. |
 | REMAP-1 | P1 | core `IntermediaryRemapper` | A `@Shadow` with a prefix kept its intermediary name on 1.21.11: adventure's shared jar, built with Loom's static mixin remapping (no refmap), names its shadows `shadow$comp_925`, and only names starting with `method_`, `field_` or `comp_` were remapped, so pre-flight disabled the jar ("@Shadow method comp_925()[B does not exist in MessageSignature", 1.21.11 Polyfrost run on `cf41167`, once ADV-1 had it apply its configs). | Every test shadow was unprefixed. | This pass: a name made of a prefix, `$` and an intermediary name is remapped behind its prefix, consistently for the declaration and every use; a lambda's `lambda$method_1$0` stays the mod's own. `RemapTest`. |
 | ADV-1 | P2 | core `CandidateScanner` | adventure-platform-fabric (nested in OneConfig) was disabled on 26.1.2 and 26.3: "Mixin config adventure-platform-mod-shared.accessor.mixins.json declared in fabric.mod.json is missing from the jar" (Polyfrost runs on `72f5472` to `b2b91e8`). On Fabric, Mixin finds a config in any jar on the class path; the config is in its nested `adventure-platform-mod-shared-fabric-repack`, which holds all four of its configs (read from Maven Central). | No test declared a config another jar holds. | This pass: a mixin config a mod declares but a jar nested directly in it holds is applied by that jar: its translation pre-flights it and its mod file declares it, as FML expects (FML 11+ would also find it in another mod file, with a warning). A config no jar holds still disables the mod. The translation cache key includes the mod's mixin configs. `CandidateScannerTest`, `PipelineTest`. |
@@ -237,7 +238,7 @@ crash in run 229).
 
 | ID | Sev | Location | Issue | Status |
 |---|---|---|---|---|
-| POLY-1 | P2, cause UNVERIFIED | OneConfig | No Polyfrost client reaches a world. On `8ca959a` (pull request #35) OneConfig's client entrypoint (`org.polyfrost.oneconfig.internal.OneConfig`) throws `java.util.NoSuchElementException` without a message on all three versions run, as an exhausted iterator does (a `ServiceLoader` with no provider, most likely); on 26.x its Compose scene then fails with the same exception, its UI warm-up fails, and the game stops by itself (CI didn't stop it). On 1.21.11 the client crashed before that on RELOAD-1. | The next summary prints each first error's exception with its first frames. |
+| POLY-1 | P2 | OneConfig | No Polyfrost client reaches a world yet. On `6c17ffa` (pull request #36) every version gets past RELOAD-1 and fails in OneConfig's list of mods: `List.getFirst` throws `NoSuchElementException` in `CompatibilityPlatformImpl.getMods` (line 54), from its client entrypoint and again from its Compose screen, after which the 26.x games stop by themselves. Cause: ROOT-1. | Fixed by ROOT-1 if CI confirms; the next blocker, if any, shows in the summary. |
 | PLAT-2 | P3, UNVERIFIED | core `PlatformLibraries` | Other prefixes also cover whole library families (`org/lwjgl/`, `io/netty/`), of which the platform may ship some modules only: a mod nesting another module (LWJGL's NanoVG, say) would lose it, as PLAT-1 did. No case seen yet. | Check each prefix against the packages the platform really has (the loader computes them), and keep a prefix only where the family is complete. |
 | FC-5 | P3 | `TranslationCache.verifyIntegrity` | Hashes are memoised by file metadata. On Windows the key is size and mtime only, and `entry.json` itself isn't hashed. | Needs a decision on cost: re-hashing every launch versus trusting metadata. |
 | FC-6 | P3 | `TranslationCache.store` | Two cold launches of the same side that share one game directory race on delete-then-move. | Needs a cross-process file lock. Rare. |
@@ -298,6 +299,17 @@ open (see *Unverified and blockers*).
 ## Changelog
 
 Newest first. Each entry: what changed, and how it was verified.
+
+### 2026-10-21: every mod has a root
+
+**Summary.**
+- Results of pull request #36 on `6c17ffa`: "late vanilla reload listener OK" passes on all four versions, and the
+  1.21.11 Polyfrost client no longer crashes on RELOAD-1. Every version then fails in OneConfig's list of mods, with
+  the frames that name it.
+- ROOT-1: built-in mods and nested NeoForge mods have a root path, as every mod has on Fabric.
+
+**Verification.** Core: `./gradlew -Pfabricated.coreOnly=true build` green locally, with a new `PipelineTest` case.
+CI: see the pull request.
 
 ### 2026-10-20 (night, latest): late reload listeners
 
