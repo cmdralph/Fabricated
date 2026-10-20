@@ -26,6 +26,7 @@ import io.github.cmdralph.fabricated.core.config.FabricatedConfig;
 import io.github.cmdralph.fabricated.core.metadata.CompatHints;
 import io.github.cmdralph.fabricated.core.metadata.CustomValueImpl;
 import io.github.cmdralph.fabricated.core.metadata.FabricModMetadata;
+import io.github.cmdralph.fabricated.core.metadata.FabricModMetadata.EntrypointSpec;
 import io.github.cmdralph.fabricated.core.mixin.PreflightFinding;
 import io.github.cmdralph.fabricated.core.remap.MappingException;
 import io.github.cmdralph.fabricated.core.remap.MappingTable;
@@ -44,6 +45,7 @@ import io.github.cmdralph.fabricated.core.translate.LinkageAnalysis;
 import io.github.cmdralph.fabricated.core.metadata.ModIds;
 import io.github.cmdralph.fabricated.core.translate.ModTranslator;
 import io.github.cmdralph.fabricated.core.translate.PackageGuard;
+import io.github.cmdralph.fabricated.core.translate.PluginAnnotations;
 import io.github.cmdralph.fabricated.core.translate.TranslatedMod;
 import io.github.cmdralph.fabricated.core.translate.TranslationEnvironment;
 import io.github.cmdralph.fabricated.core.translate.TranslationEnvironment.Namespace;
@@ -144,8 +146,12 @@ public final class Pipeline {
 			String[] launchArguments) {
 	}
 
-	/** A translated mod that will be handed to NeoForge. */
-	public record LoadedMod(TranslatedMod translated, Set<String> excludedPackages) {
+	/**
+	 * A translated mod that will be handed to NeoForge.
+	 *
+	 * @param pluginAnnotations what to add to its scan data for the NeoForge builds of other mods to find its plugins
+	 */
+	public record LoadedMod(TranslatedMod translated, Set<String> excludedPackages, List<PluginAnnotations.Annotation> pluginAnnotations) {
 	}
 
 	/**
@@ -615,7 +621,6 @@ public final class Pipeline {
 			Candidate c = t.candidate();
 			if (!finalIds.contains(c.id())) continue;
 			PackageGuard.Decision decision = rounds.decisions.get(t.neoForgeId());
-			loaded.add(new LoadedMod(t, decision != null ? decision.excludedPackages() : Set.of()));
 			reportLoaded(t, rounds.translatedThisLaunch.get(c.id()), decision, rounds.linkage.get(t.neoForgeId()));
 
 			ModOrigin origin = c.parentId() == null
@@ -634,7 +639,14 @@ public final class Pipeline {
 				report.line("Compatibility patches", c.id() + " <- " + p.patchId() + ": skips mixins " + p.patch().skipMixins()
 						+ ", entrypoints " + p.patch().skipEntrypoints());
 			}
-			runtime.addEntrypoints(container, c.metadata().compatHints().entrypointsOf(c.metadata().entrypoints()), skipEntrypoints);
+			Map<String, List<EntrypointSpec>> entrypoints = new LinkedHashMap<>(c.metadata().compatHints().entrypointsOf(c.metadata().entrypoints()));
+			entrypoints.keySet().removeAll(skipEntrypoints);
+			runtime.addEntrypoints(container, entrypoints);
+			List<String> pluginNotes = new ArrayList<>();
+			List<PluginAnnotations.Annotation> plugins = PluginAnnotations.of(entrypoints, pluginNotes);
+			plugins.forEach(p -> report.line("Plugins for other mods", c.id() + ": " + p.viewer() + " plugin " + p.className()));
+			pluginNotes.forEach(n -> report.line("Plugins for other mods", c.id() + ": " + n));
+			loaded.add(new LoadedMod(t, decision != null ? decision.excludedPackages() : Set.of(), plugins));
 			runtime.addLanguageAdapters(container, c.metadata().languageAdapters());
 			containers.put(c.id(), container);
 		}

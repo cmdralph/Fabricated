@@ -43,22 +43,24 @@ class TranslateHelpersTest {
 		assertFalse(toml.contains("sodium:options"));
 	}
 
-	/** A Fabric mod's Sodium integration, in the form Sodium for NeoForge reads. */
+	/** A Fabric mod's Sodium and Jade integration, in the form Sodium and Jade for NeoForge read. */
 	@Test
-	void translatesSodiumIntegration() throws Exception {
+	void translatesSodiumAndJadeIntegration() throws Exception {
 		var md = FabricModJsonParser.parse("{\"schemaVersion\":1,\"id\":\"aaa\",\"version\":\"1\","
 				+ "\"entrypoints\":{\"sodium:config_api_user\":[\"com.example.Page\",\"com.example.Other\"]},"
-				+ "\"custom\":{\"sodium:options\":{\"mixin.features.render.world.sky\":false,\"mixin.bad\":\"no\"}}}");
+				+ "\"custom\":{\"sodium:options\":{\"mixin.features.render.world.sky\":false,\"mixin.bad\":\"no\"},"
+				+ "\"jade\":{\"disableItemModNameTooltip\":true}}}");
 		List<String> notes = new ArrayList<>();
-		assertEquals(Map.of("sodium:config_api_user", "com.example.Page"), ModTranslator.sodiumProperties(md, notes));
-		assertEquals(Map.of("mixin.features.render.world.sky", false), ModTranslator.sodiumOptions(md, notes));
+		assertEquals(Map.of("sodium:config_api_user", "com.example.Page", "jade", Map.of("disableItemModNameTooltip", true)),
+				ModTranslator.modProperties(md, notes));
+		assertEquals(Map.of("mixin.features.render.world.sky", false), ModTranslator.booleans(md, "sodium:options", notes));
 		assertEquals(2, notes.size(), notes.toString());
 
 		var kotlin = FabricModJsonParser.parse("{\"schemaVersion\":1,\"id\":\"aaa\",\"version\":\"1\","
 				+ "\"entrypoints\":{\"sodium:config_api_user\":[{\"adapter\":\"kotlin\",\"value\":\"com.example.Page\"}]}}");
 		notes.clear();
-		assertEquals(Map.of(), ModTranslator.sodiumProperties(kotlin, notes));
-		assertEquals(Map.of(), ModTranslator.sodiumOptions(kotlin, notes));
+		assertEquals(Map.of(), ModTranslator.modProperties(kotlin, notes));
+		assertEquals(Map.of(), ModTranslator.booleans(kotlin, "sodium:options", notes));
 		assertEquals(1, notes.size(), notes.toString());
 	}
 
@@ -70,6 +72,9 @@ class TranslateHelpersTest {
 		options.put("mixin.core", true);
 		String toml = ModsTomlWriter.write(new ModsTomlWriter.Spec("my_mod", "1.0.0", "My Mod", "", List.of(), List.of(), List.of(), null, null, null,
 				List.of(), false, List.of(), Map.of("sodium:config_api_user", "com.example.SodiumPage"), options));
+		String jade = ModsTomlWriter.write(new ModsTomlWriter.Spec("my_mod", "1.0.0", "My Mod", "", List.of(), List.of(), List.of(), null, null, null,
+				List.of(), false, List.of(), Map.of("jade", Map.of("fastScroll", true)), Map.of()));
+		assertTrue(jade.contains("[modproperties.my_mod]\n\"jade\"={\"fastScroll\"=true}\n"), jade);
 		assertTrue(toml.contains("[[mods]]\nmodId=\"my_mod\"\nversion=\"1.0.0\"\ndisplayName=\"My Mod\"\ndescription=\"\"\n"
 				+ "\"sodium:options\"={\"mixin.features.render.world.sky\"=false, \"mixin.core\"=true}\n"), toml);
 		assertTrue(toml.contains("[modproperties.my_mod]\n\"sodium:config_api_user\"=\"com.example.SodiumPage\"\n"), toml);

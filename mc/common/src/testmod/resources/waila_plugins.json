@@ -1,0 +1,7 @@
+{
+  "fabricated_testmod:viewer_test": {
+    "entrypoints": {
+      "common": "io.github.cmdralph.fabricated.testmod.plugin.ViewerPlugins$Wthit"
+    }
+  }
+}

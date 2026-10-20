@@ -390,7 +390,7 @@ class PipelineTest {
 		InjectedInterface injection = new InjectedInterface("net/minecraft/world/Thing", iface, iface, false, 1);
 		TranslatedMod mod = new TranslatedMod(c, id.replace('-', '_'), file, file, List.of(), 0, List.of(), List.of(injection),
 				Set.of(environmentClass), false, 0);
-		return new Pipeline.LoadedMod(mod, Set.of());
+		return new Pipeline.LoadedMod(mod, Set.of(), List.of());
 	}
 
 	private static List<String> interfacesOf(Pipeline.Result result, String target) {

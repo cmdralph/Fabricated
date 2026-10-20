@@ -22,7 +22,7 @@ public final class ModsTomlWriter {
 	 * Everything needed to describe one translated mod.
 	 *
 	 * @param modProperties its {@code [modproperties.<id>]}, which NeoForge mods read where Fabric mods read entrypoints
-	 *                      or custom values
+	 *                      or custom values: each a string, or a table of booleans ({@code Map<String, Boolean>})
 	 * @param sodiumOptions its overrides of Sodium's mixin options, which Sodium for NeoForge reads from the mod's
 	 *                      {@code [[mods]]} entry
 	 */
@@ -40,7 +40,7 @@ public final class ModsTomlWriter {
 			List<MixinConfigSpec> mixins,
 			boolean hasAccessTransformer,
 			List<String> loadAfter,
-			Map<String, String> modProperties,
+			Map<String, Object> modProperties,
 			Map<String, Boolean> sodiumOptions) {
 	}
 
@@ -71,24 +71,19 @@ public final class ModsTomlWriter {
 		if (spec.homepage() != null) kv(sb, "displayURL", spec.homepage());
 		if (spec.logoFile() != null) kv(sb, "logoFile", spec.logoFile());
 		if (!spec.sodiumOptions().isEmpty()) {
-			sb.append("\"sodium:options\"={");
-			String separator = "";
-			for (Map.Entry<String, Boolean> option : spec.sodiumOptions().entrySet()) {
-				sb.append(separator);
-				quote(sb, option.getKey());
-				sb.append('=').append(option.getValue());
-				separator = ", ";
-			}
-			sb.append("}\n");
+			sb.append("\"sodium:options\"=");
+			booleans(sb, spec.sodiumOptions());
+			sb.append('\n');
 		}
 		sb.append('\n');
 
 		if (!spec.modProperties().isEmpty()) {
 			sb.append("[modproperties.").append(spec.neoForgeId()).append("]\n");
-			for (Map.Entry<String, String> property : spec.modProperties().entrySet()) {
+			for (Map.Entry<String, Object> property : spec.modProperties().entrySet()) {
 				quote(sb, property.getKey());
 				sb.append('=');
-				quote(sb, property.getValue());
+				if (property.getValue() instanceof Map<?, ?> table) booleans(sb, table);
+				else quote(sb, String.valueOf(property.getValue()));
 				sb.append('\n');
 			}
 			sb.append('\n');
@@ -126,6 +121,19 @@ public final class ModsTomlWriter {
 		sb.append(key).append('=');
 		quote(sb, value);
 		sb.append('\n');
+	}
+
+	/** An inline table of booleans: {@code {"a"=true, "b"=false}}. */
+	private static void booleans(StringBuilder sb, Map<?, ?> table) {
+		sb.append('{');
+		String separator = "";
+		for (Map.Entry<?, ?> entry : table.entrySet()) {
+			sb.append(separator);
+			quote(sb, String.valueOf(entry.getKey()));
+			sb.append('=').append(Boolean.TRUE.equals(entry.getValue()));
+			separator = ", ";
+		}
+		sb.append('}');
 	}
 
 	/** Writes a TOML basic string with every special character escaped. */

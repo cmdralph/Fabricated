@@ -270,6 +270,36 @@ jobs:
             ${{ runner.temp }}/client-sodium-fabric/run/crash-reports
             ${{ runner.temp }}/client-sodium-fabric/client.out
           if-no-files-found: ignore
+      # The NeoForge builds of recipe viewers and tooltip mods, with the test mod's plugins declared the Fabric way (as
+      # entrypoints, and WTHIT's plugin file). Informational until the viewers' builds are pinned.
+      - name: Client with recipe viewers for NeoForge (informational)
+        if: always() && steps.build.outcome == 'success'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/extra-viewers"
+          python3 ci/fetch-corpus.py "${{ matrix.minecraft }}" "$RUNNER_TEMP/extra-viewers" neoforge jei rei jade wthit | tee viewers.txt
+          SMOKE_TIMEOUT=480 ci/smoke-client.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/client-viewers" "$RUNNER_TEMP/extra-viewers" || true
+          grep -A12 "== Plugins for other mods" "$RUNNER_TEMP/client-viewers/run/logs/fabric-bridge-report.txt" || true
+          log="$RUNNER_TEMP/client-viewers/run/logs/latest.log"
+          for viewer in jei rei jade wthit; do
+            if ! grep -q "^$viewer: " viewers.txt || grep -qE "^$viewer: (no |not fetched)" viewers.txt; then echo "$viewer: not in this run"; continue; fi
+            for what in constructed called; do
+              echo "$viewer plugin $what: $(grep -c "FABRICATED-TEST $viewer plugin $what OK" "$log" || true) time(s)"
+            done
+          done
+          grep -n -m 40 -E "/(ERROR|FATAL)\]" "$log" || true
+      - name: Upload recipe viewer client logs and report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: client-viewers-${{ matrix.minecraft }}
+          path: |
+            ${{ runner.temp }}/client-viewers/run/logs
+            ${{ runner.temp }}/client-viewers/run/crash-reports
+            ${{ runner.temp }}/client-viewers/client.out
+          if-no-files-found: ignore
       # Popular Fabric mods from Modrinth (ci/mod-corpus.txt, downloaded here in CI and checked against Modrinth's
       # SHA-512), loaded together with Fabric API: shows which load, which are disabled and why. Informational.
       - name: Fetch the mod corpus

@@ -587,9 +587,29 @@ every block through that renderer, so Fabric block models show in the world. Fab
   (`sodium:options`).
 
 CI runs Sodium and Iris for NeoForge (from Modrinth) with Fabric API and a Fabric model test mod on 26.1.2, 26.2 and
-26.3, and checks each of these. Shaders weren't enabled in that run. A Fabric addon that mixes into Sodium's
-Fabric-only platform classes can't work with Sodium for NeoForge, which doesn't have them. On 1.21.11 neither Sodium
-for NeoForge nor Fabricated has Fabric's renderer API, so Fabric block models stay invisible with or without Sodium.
+26.3, and checks each of these. Shaders weren't enabled in that run. A Fabric addon's mixins into Sodium are checked
+against the installed Sodium for NeoForge before the game starts, like mixins into the game: one that needs Sodium's
+Fabric-only classes, or members its NeoForge build lacks, is reported and the addon disabled instead of crashing. On
+1.21.11 neither Sodium for NeoForge nor Fabricated has Fabric's renderer API, so Fabric block models stay invisible
+with or without Sodium.
+
+### Plugins for recipe viewers and tooltip mods
+
+A Fabric mod's plugins for JEI, REI, Jade and EMI are its entrypoints (`jei_mod_plugin`, `rei_common`, `rei_client`,
+`rei_server`, `jade`, `emi`); their NeoForge builds look for an annotation on the plugin class instead. Fabricated adds
+that annotation to the mod's NeoForge scan data for each such entrypoint, so the NeoForge builds find the plugins.
+WTHIT needs nothing: on NeoForge it reads the jar's `waila_plugins.json` / `wthit_plugins.json`, which stay in the
+translated mod. Jade's per-mod settings (the `jade` custom value) become the mod properties Jade for NeoForge reads.
+
+- The NeoForge builds create a plugin from a class with a public no-argument constructor, as Fabric's default
+  language adapter does with a class name. A plugin given as a field or method reference (`Class::member`) or through
+  another language adapter (Kotlin's `object`) is left out, with a line in the report.
+- JEI and REI create plugins while NeoForge constructs mods, before Fabric `main` entrypoints run (on Fabric JEI does
+  it after them); EMI and Jade create a plugin again on each reload.
+- A plugin that calls a viewer's Fabric-only API (`mezz.jei.api.fabric`, EMI's `FabricEmiStack`) fails at that call.
+- CI runs the NeoForge builds of JEI, REI, Jade and WTHIT (from Modrinth, where one exists for the version) with the
+  test mod's plugins (informational). EMI has no NeoForge build for these versions (UNVERIFIED), so only its mapping is
+  unit-tested.
 
 ### Fabric Loader
 

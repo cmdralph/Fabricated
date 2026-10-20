@@ -55,6 +55,10 @@ sourceSets {
     testmodbroken {
         java.srcDir rootProject.file('mc/common/src/testmodbroken/java')
     }
+    // Stand-ins for other mods' plugin interfaces, which the test mod compiles against; never packaged.
+    testmodstubs {
+        java.srcDir rootProject.file('mc/common/src/testmodstubs/java')
+    }
 }
 
 configurations {
@@ -82,6 +86,7 @@ dependencies {
     testmodCompileOnly project(':fabric-loader-api')
     testmodCompileOnly project(':api')
     testmodCompileOnly sourceSets.main.output
+    testmodCompileOnly sourceSets.testmodstubs.output
     testmodbrokenCompileOnly project(':fabric-loader-api')
 }
 
@@ -102,6 +107,7 @@ neoForge {
 neoForge.addModdingDependenciesTo(sourceSets.loader)
 neoForge.addModdingDependenciesTo(sourceSets.testmod)
 neoForge.addModdingDependenciesTo(sourceSets.testmodbroken)
+neoForge.addModdingDependenciesTo(sourceSets.testmodstubs)
 
 def expandProps = [
         version                : releaseName,

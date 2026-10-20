@@ -154,10 +154,9 @@ public final class FabricLoaderRuntime implements FabricLoader {
 		FabricLoaderImpl.gameClassLoader(loader);
 	}
 
-	/** Registers a mod's entrypoints, minus keys disabled in the config. */
-	public synchronized void addEntrypoints(ModContainerImpl mod, Map<String, List<EntrypointSpec>> declared, Set<String> skippedKeys) {
+	/** Registers a mod's entrypoints (as Fabricated runs them: hints applied, skipped keys left out). */
+	public synchronized void addEntrypoints(ModContainerImpl mod, Map<String, List<EntrypointSpec>> declared) {
 		for (Map.Entry<String, List<EntrypointSpec>> e : declared.entrySet()) {
-			if (skippedKeys.contains(e.getKey())) continue;
 			for (EntrypointSpec spec : e.getValue()) {
 				entrypoints.computeIfAbsent(e.getKey(), k -> new ArrayList<>()).add(new Declared(mod, e.getKey(), spec));
 			}

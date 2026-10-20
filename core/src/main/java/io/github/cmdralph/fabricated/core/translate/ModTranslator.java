@@ -72,6 +72,8 @@ public final class ModTranslator {
 	private static final String SODIUM_CONFIG_ENTRYPOINT = "sodium:config_api_user";
 	/** A mod's overrides of Sodium's mixin options, as a custom value (Fabric) or a key of its mods.toml entry (NeoForge). */
 	private static final String SODIUM_OPTIONS = "sodium:options";
+	/** Jade's custom value, which Jade for NeoForge reads from the mod properties of the same name. */
+	private static final String JADE = "jade";
 
 	/** Heap a translation may count on, in MiB: a quarter of the maximum, shared by all translations at once. */
 	private static final int MEMORY_MIB = (int) Math.max(64, Math.min(Integer.MAX_VALUE, Runtime.getRuntime().maxMemory() / 4 / (1 << 20)));
@@ -176,7 +178,7 @@ public final class ModTranslator {
 						md.getDescription(), List.copyOf(md.getAuthors()), List.copyOf(md.getContributors()),
 						List.copyOf(md.getLicense()), url(md.getContact().get("homepage").orElse(null), "homepage", notes),
 						url(md.getContact().get("issues").orElse(null), "issues", notes), md.getIconPath(256).filter(archive::contains).orElse(null), mixinSpecs,
-						overlay.containsKey(AT_PATH), after, sodiumProperties(md, notes), sodiumOptions(md, notes));
+						overlay.containsKey(AT_PATH), after, modProperties(md, notes), booleans(md, SODIUM_OPTIONS, notes));
 				overlay.put(ModsTomlWriter.PATH, ModsTomlWriter.write(spec).getBytes(StandardCharsets.UTF_8));
 				overlay.put("META-INF/MANIFEST.MF", overlayManifest(neoId));
 
@@ -702,21 +704,33 @@ public final class ModTranslator {
 	}
 
 	/** The mod's overrides of Sodium's mixin options: a custom value on Fabric, a key of its {@code [[mods]]} entry for Sodium for NeoForge. */
-	static Map<String, Boolean> sodiumOptions(FabricModMetadata md, List<String> notes) {
-		CustomValue options = md.getCustomValue(SODIUM_OPTIONS);
+	/**
+	 * What NeoForge mods read from a mod's {@code [modproperties]} where Fabric mods read an entrypoint or a custom
+	 * value: Sodium's options page, and Jade's settings ({@code jade}: accessibilityMod, fastScroll, ...).
+	 */
+	static Map<String, Object> modProperties(FabricModMetadata md, List<String> notes) {
+		Map<String, Object> properties = new LinkedHashMap<>(sodiumProperties(md, notes));
+		Map<String, Boolean> jade = booleans(md, JADE, notes);
+		if (!jade.isEmpty()) properties.put(JADE, jade);
+		return properties;
+	}
+
+	/** A custom value that is an object of booleans (Sodium's mixin option overrides, Jade's settings). */
+	static Map<String, Boolean> booleans(FabricModMetadata md, String key, List<String> notes) {
+		CustomValue options = md.getCustomValue(key);
 		if (options == null) return Map.of();
 		if (options.getType() != CustomValue.CvType.OBJECT) {
-			notes.add("Its " + SODIUM_OPTIONS + " is not an object; left out");
+			notes.add("Its " + key + " is not an object; left out");
 			return Map.of();
 		}
-		Map<String, Boolean> overrides = new LinkedHashMap<>();
+		Map<String, Boolean> values = new LinkedHashMap<>();
 		for (Map.Entry<String, CustomValue> option : options.getAsObject()) {
 			if (option.getValue().getType() == CustomValue.CvType.BOOLEAN) {
-				overrides.put(option.getKey(), option.getValue().getAsBoolean());
+				values.put(option.getKey(), option.getValue().getAsBoolean());
 			} else {
-				notes.add("Its " + SODIUM_OPTIONS + " entry " + option.getKey() + " is not true or false; left out");
+				notes.add("Its " + key + " entry " + option.getKey() + " is not true or false; left out");
 			}
 		}
-		return overrides;
+		return values;
 	}
 }
