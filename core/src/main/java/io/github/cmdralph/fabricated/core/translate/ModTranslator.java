@@ -479,8 +479,9 @@ public final class ModTranslator {
 	 * The skip entries that apply to {@code configName}, for mixins it declares: {@code "config.json:Name"} (one config)
 	 * or {@code "Name"} (every config) leaves out the whole mixin; {@code "Name#member"} only the methods and fields of
 	 * that name in a mixin kept otherwise (when its other injections still work on NeoForge).
+	 *
+	 * @param matched the configured entries that name a mixin of the config
 	 */
-	/** @param matched the configured entries that name a mixin of the config */
 	record Skips(Set<String> mixins, Map<String, Set<String>> members, Set<String> matched) {
 	}
 
