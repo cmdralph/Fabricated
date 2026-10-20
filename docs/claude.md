@@ -41,7 +41,8 @@ version).
 `maven.fabricmc.net`, so only the `coreOnly` build runs there. The Minecraft modules compile, and their mixins
 apply, only in GitHub Actions (`.github/workflows/build.yml`). The loop is: run the `coreOnly` build locally, push,
 and read the CI job logs. `compileJava` doesn't check mixin targets or injection points; those fail when the game
-applies them, which the CI server and client runs do on every push.
+applies them, which the CI server and client runs do for every commit of a pull request (built once, as the pull
+request; pushes to other branches build only on `main`).
 
 **What CI proves, per version** (`.github/workflows/build.yml`):
 1. Unit tests (core, fabric-loader-api, api).

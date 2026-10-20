@@ -1,7 +1,10 @@
 name: Build and test
 
+# A branch with a pull request is built once, as the pull request (merged with its base): a push event too would build
+# every commit twice.
 on:
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
