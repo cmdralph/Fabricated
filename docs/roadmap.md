@@ -376,7 +376,7 @@ Newest first. Each entry: what changed, and how it was verified.
 - Results of the dispatched run on `61d0b0c` (run 353): every gate passed on all four versions, the configuration
   disconnect check included. The informational corpus server and clients stopped at FML's module scan on every
   version (PKG-4, fixed in the next commit).
-- The mod corpus gains 25 popular Fabric mods (libraries, interface, rendering, performance and content), so its
+- The mod corpus gains 24 popular Fabric mods (libraries, interface, rendering, performance and content), so its
   runs show more of what fails.
 - The energy check takes Team Reborn's library from Tech Reborn's or Modern Industrialization's jar
   (`ci/nested-jar.py`) where the library has no build of its own on Modrinth.
