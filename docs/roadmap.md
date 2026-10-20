@@ -182,6 +182,7 @@ Severity: **P0** crash or data loss on a normal launch · **P1** a supported fea
 
 | ID | Sev | Location | Failure mode and trigger | Why tests missed it | Fix |
 |---|---|---|---|---|---|
+| CORPUS-8 | P2, CI | `ci/smoke-client.sh` (26.x corpus client) | The 26.x corpus clients stopped at the end of loading without an error: Fabricated reports each Fabric mod that didn't load to NeoForge as a loading warning (as players should see), NeoForge then shows its warnings screen, and mc-runtime-test takes that screen for a failure and calls `Minecraft.stop()` (the test mod's stop hook on `7f3550f`: `Gui.mcRuntime$stop` from mc-runtime-test's `setScreen` hook, from NeoForge's `ClientModLoader.completeModLoading`). The "zip file closed" errors on NeoForge's model files came after, as FML closed its jars. | The runs with extra mods were read as a world that never loads. | This pass: runs with extra mods set NeoForge's `showLoadWarnings = false` (the warnings are still logged, and the summary prints them). |
 | CORPUS-7 | P2 | core pre-flight (`ModTranslator`), Continuity on 1.21.11 | With model loading on 1.21.11 (CORPUS-6) the corpus client got past its entrypoints and crashed when Mixin applied Continuity's `BlockRenderLayersMixin`: the mixin uses the renderer API's `RenderLayerHelper`, unsupported there (`ClassNotFoundException` in an attach error, `d581ead`). | Pre-flight checked mixin targets, not the classes a mixin itself uses. | This pass: pre-flight fails a mixin that uses a class only an unsupported Fabric API module has (its packages, from the installed module jars), which disables the mod with the reason; with a config plugin, or a config that isn't required, only the mixin is left out. `PipelineTest.aMixinUsingAnUnsupportedModuleFailsItsMod`. |
 | PRE-5 | P2 | core `ModTranslator.referencedClasses` | The classes a mixin uses were collected through a visitor that dropped members, so the remapper never saw method bodies or annotations: a mixin using a class only a left-out mixin adds was still applied when the use was in code (a cast in a handler, say), and would fail at runtime. | Its test covered a use in a class signature. | This pass: the remapper writes into a `ClassNode`, so code and annotations are visited. Covered by the CORPUS-7 test (a use in code). |
 | CORPUS-1 | P3, cosmetic | `ModTranslator` (Terralith, Lithostitched in the corpus) | NeoForge logged errors reading the `neoforge:overlays` of Fabric jars built for both loaders ("Unknown registry key in neoforge:condition_codecs: terralith:config", `lithostitched:breaks_seed_parity`): their `pack.mcmeta` carries their NeoForge build's overlays, gated by that build's condition types. NeoForge then loaded none of them, which is what the Fabric build expects, but every 1.21.11 and 26.x corpus run showed the errors among its first. | Nothing checked the log for them. | This pass: a translated Fabric mod's overlay carries its `pack.mcmeta` without the top-level `neoforge:` sections, as Fabric reads it (the jar itself is unchanged). `TranslateHelpersTest.packMetadataLosesOnlyNeoForgeSections`. |
@@ -242,7 +243,7 @@ crash in run 229).
 
 | ID | Sev | Location | Issue | Status |
 |---|---|---|---|---|
-| POLY-1 | P2, cause UNVERIFIED | Polyfrost clients in CI | On `d581ead` (pull request #40), with Polydium's Vulkan prompt answered, the 26.3 and 1.21.11 clients are in their worlds and the integrated server runs, but no chunk ever reaches the client: half a minute in, the test mod reports no overlay, not paused, the player's chunk empty and 0 chunks loaded; mc-runtime-test logs "Players chunk not yet loaded" until the timeout. No error is logged. Ruled out: a pausing overlay (Polydium's hidden reload overlay), PolyPlus's networking mixins (peer-to-peer channels only) and its integrated server mixin (empty on 26.3), Polydium's `ClientChunkCache` mixins (cache clearing only). The test mods alone reach their world; this run adds OneConfig, PolyPlus, Polydium, compose-bundle and Fabric Language Kotlin. | Next CI run: the client's packet rate, and from the integrated server's thread its tick count, players and whether it has the player's chunk (no line: that thread is stuck); the thread dump now goes to the game's JVM (it was never signalled: its command line doesn't carry the launcher's options). |
+| POLY-1 | P2, cause UNVERIFIED | Polyfrost clients in CI | On `7f3550f` (pull request #41), with Polydium's Vulkan prompt answered, the 26.3 and 1.21.11 clients are in their worlds but the integrated server has no player: from its own thread it reports tick 0 and 0 players, and its thread waits in `runServer`'s tick loop, so it is paused (it pauses with no player) and sends no chunk. The client has no overlay, isn't paused, receives under one packet per second and has 0 chunks; its render thread renders (Polydium's frame limiter, the clouds). No error is logged. Ruled out: a pausing overlay, PolyPlus's networking and integrated server mixins, Polydium's `ClientChunkCache` mixins. The test mods alone reach their world; this run adds OneConfig, PolyPlus, Polydium, compose-bundle and Fabric Language Kotlin. | Next CI run: the test mod logs when the server places a player, when that finishes, and who removes one (with the stack). |
 | PLAT-2 | P3, UNVERIFIED | core `PlatformLibraries` | Other prefixes also cover whole library families (`org/lwjgl/`, `io/netty/`), of which the platform may ship some modules only: a mod nesting another module (LWJGL's NanoVG, say) would lose it, as PLAT-1 did. No case seen yet. | Check each prefix against the packages the platform really has (the loader computes them), and keep a prefix only where the family is complete. |
 | FC-5 | P3 | `TranslationCache.verifyIntegrity` | Hashes are memoised by file metadata. On Windows the key is size and mtime only, and `entry.json` itself isn't hashed. | Needs a decision on cost: re-hashing every launch versus trusting metadata. |
 | FC-6 | P3 | `TranslationCache.store` | Two cold launches of the same side that share one game directory race on delete-then-move. | Needs a cross-process file lock. Rare. |
@@ -302,7 +303,19 @@ open (see *Unverified and blockers*).
 
 Newest first. Each entry: what changed, and how it was verified.
 
-### 2026-10-21 (latest): mixins that need an unsupported module, POLY-1 narrowed
+### 2026-10-21 (latest): where the player goes missing, warnings that stop CI clients
+
+**Summary.**
+- Results of pull request #41 on `7f3550f`: CORPUS-7 holds (the 1.21.11 corpus disables Continuity before launch,
+  naming the renderer API class its mixin uses). The thread dumps now have the game's threads. POLY-1: the integrated
+  server never ticked and has no player while the client is in its world. The 26.x corpus clients are stopped by
+  mc-runtime-test at NeoForge's warnings screen (CORPUS-8).
+- CORPUS-8: CI runs with extra mods keep NeoForge's loading warnings off the screen; the summary prints them.
+- CI: the test mod logs the player's way into the integrated server and out of it.
+
+**Verification.** The workflow YAML parses and the shell script passes `bash -n`. CI: see the pull request.
+
+### 2026-10-21 (late): mixins that need an unsupported module, POLY-1 narrowed
 
 **Summary.**
 - Results of pull request #40 on `d581ead`: CORPUS-6 holds (the 1.21.11 gate passes: a Fabric-format model file is
