@@ -446,6 +446,10 @@ jobs:
             [ -f "$log" ] || continue
             echo "== $run"
             grep -h -m 20 -E "FABRICATED-TEST frapi|Caused by|Exception in|crash report" "$log" || true
+            # Whether Iris loaded the shader pack, and drew with it (Iris's own lines).
+            if [ "$run" = client-shaders ]; then
+              grep -h -m 8 -i -E "shaderpack|shaders are disabled|shader rendering pipeline" "$log" | cut -c1-300 || true
+            fi
             # NeoForge's loading warnings (the runs with extra mods don't show them on a screen).
             grep -h -m 1 -A 6 "Mods loaded with .* warning" "$log" | cut -c1-300 || true
             # A crash's description and errors, with the first stack frames.

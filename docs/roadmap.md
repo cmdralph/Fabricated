@@ -307,7 +307,16 @@ open (see *Unverified and blockers*).
 
 Newest first. Each entry: what changed, and how it was verified.
 
-### 2026-10-21 (latest): one way to resolve conflicting defaults
+### 2026-10-21 (latest): item storages bridged, shader pack evidence
+
+**Summary.**
+- Results of pull request #47 on `4e9542e`: all versions green. With `BlockStateModelDefaultsMixin` gone, the renderer
+  API checks on 26.x pass (the bridges declare its two methods). On 1.21.11 the corpus disables the same 7 mods as
+  before, so checking mixins into other Fabric mods there disabled none that worked. The new run with Sodium, Iris
+  and a shader pack passes every Fabric renderer check on 26.3; whether Iris loaded the pack is UNVERIFIED (the job
+  log tool reaches only the log's last lines, which the summary step fills): the summary now prints Iris's lines.
+
+### 2026-10-21 (late, 7): one way to resolve conflicting defaults
 
 **Summary.**
 - Results of pull request #46 on `d3a8e49`: all versions green. On 1.21.11 the model loading API loads again, its
