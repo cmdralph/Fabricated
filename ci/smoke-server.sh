@@ -144,6 +144,7 @@ check "FABRICATED-TEST interaction events OK" server.out "native interaction eve
 check "FABRICATED-TEST loot OK" server.out "native loot: replace/modify with source, all loaded, modified drops"
 check "FABRICATED-TEST content registries OK" server.out "native content registries: flammable, waxable, vibration frequency (up to 26.2: compostable, strippable, fuel)"
 check "FABRICATED-TEST transfer OK" server.out "native transfer: item and fluid storages over vanilla blocks and in items, transaction abort and commit"
+check "FABRICATED-TEST fluid types OK" server.out "Fabric fluids: a registered NeoForge fluid type per family, named and lit from Fabric's attributes, water-like by tag; placed in the world; entities move through an untagged one as through air"
 check "FABRICATED-TEST commands OK" server.out "/fabricated why, disable and enable from the console"
 check "FABRICATED-TEST api OK" server.out "public API: Fabricated detected, mod and module status, after-entrypoints callback"
 check "FABRICATED-TEST environment stripping OK" server.out "@EnvironmentInterface: a client-only interface is stripped on the dedicated server"

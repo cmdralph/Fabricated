@@ -264,6 +264,11 @@ than one of them losing out (`neoforge/transfer`):
 * **Energy** (`EnergyBridge`): Team Reborn's energy API, the Fabric tech mods' shared library, and NeoForge's energy
   capabilities, loaded only when a Fabric mod brings the library. Fabricated compiles against never-packaged
   stand-ins of its API (`integrationstubs`) and finds its lookups by id.
+* **Fluid types** (`neoforge/fluid/FabricFluidType`): NeoForge asks every fluid for a fluid type and throws for a
+  mod's fluid without one. `FluidTypeMixin` answers for Fabric fluids where NeoForge would look up vanilla's types,
+  with one registered type per fluid family that reads Fabric's attributes and the fluid's tags when asked.
+  `LivingEntityFluidTravelMixin` keeps a fluid that isn't water to entities from moving them, as on Fabric. On
+  1.21.11 the type's client extensions come from the Fabric render handler (`FabricFluidClientExtensions`).
 
 **Scope honesty:** Phase 2 delivers the full core plus the native modules marked above. Their quality varies: lifecycle, commands, networking, resource loader, creative tabs, key mappings and screen events are complete. Rendering is a documented subset. Every gap ends up in `docs/COMPATIBILITY.md`.
 

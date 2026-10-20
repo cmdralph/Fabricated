@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.github.cmdralph.fabricated.loader.FabricatedState;
+import io.github.cmdralph.fabricated.neoforge.fluid.FabricFluidType;
 import io.github.cmdralph.fabricated.neoforge.registry.RegistrySyncBridge;
 import net.minecraft.core.registries.Registries;
 import net.neoforged.api.distmarker.Dist;
@@ -51,6 +52,8 @@ public final class FabricatedMod {
 		NeoForge.EVENT_BUS.addListener(ServerAboutToStartEvent.class, event -> {
 			if (dist.isDedicatedServer()) state.runtime().setGameInstance(event.getServer());
 		});
+		// NeoForge asks every fluid for its fluid type, which Fabric mods' fluids don't have.
+		FabricFluidType.register(modBus);
 		// Native Fabric API modules (version-specific: mc/common26 or mc/<version>).
 		NativeFabricApi.register(modBus, dist, state);
 		if (dist.isClient()) ClientSupport.init(state);

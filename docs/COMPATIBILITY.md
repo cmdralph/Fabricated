@@ -448,7 +448,7 @@ code they rely on, Fabricated bridges the gap:
 | `VibrationFrequencyRegistry` (`SculkSensorFrequencyRegistry` on 1.21.11) | NeoForge's frequency lookup falls back to the table Fabric's registry writes | data packs win |
 | `FuelValueEvents` (`FuelRegistryEvents` on 1.21.11), up to 26.2 | run on NeoForge's fuel builder, after its furnace fuel data map | `BUILD`, then `EXCLUSIONS`; vanilla's non-flammable wood exclusion is already in the data map |
 | Flammable, strippable, tillable, flattenable, oxidizable and waxable blocks, path types, villager interactions, pot patterns, brewing | upstream's mixins | NeoForge falls back to the vanilla tables these write; on 26.3, where NeoForge reads oxidation and waxing from its data maps only, Fabricated adds that fallback |
-| `EntityFluidInteractionRegistry` (26.x) | upstream's mixins, without three injectors | entering, leaving, pushing and moving through a Fabric fluid work; swimming, jumping out of it, drowning and boats floating in it don't (NeoForge rewrote that code around its fluid types) |
+| `EntityFluidInteractionRegistry` (26.x) | upstream's mixins, without three injectors | UNVERIFIED: what the interactions registered here do in a Fabric fluid is not tested. Until Fabric fluids had fluid types (see *Fabric mods' fluids* below), an entity touching one crashed the game; swimming, jumping out of it, drowning and boats floating follow those types now, which NeoForge's rewritten code asks |
 | Oxidation and wax scraping (26.3) | added to the axe's block transformer, as upstream | see `BlockTransformerHelper` under `fabric-item-api-v1` |
 
 On 26.3, composting, stripping and fuel are data-driven in vanilla, and Fabric API has no registries for them.
@@ -503,8 +503,43 @@ aborted and changes when one commits; a full water cauldron empties when a bucke
 storage used through NeoForge's capability and a NeoForge handler used through `ItemStorage.SIDED` follow aborts,
 nested commits and commits; fluids move in whole millibuckets only; NeoForge code fills a Fabric mod's fluid cell
 in a slot, and Fabric code a NeoForge mod's, each item swapped only when the transaction commits. With Team Reborn's library
-(fetched for the server run with Fabric API, where Modrinth has a build): NeoForge code charges a Fabric mod's energy
-block and Fabric code a NeoForge mod's, an aborted transaction leaving each unchanged.
+(fetched for the server run with Fabric API where Modrinth has a build, of its own or nested in Tech Reborn's or
+Modern Industrialization's jar): NeoForge code charges a Fabric mod's energy block and Fabric code a NeoForge mod's,
+an aborted transaction leaving each unchanged.
+
+### Fabric mods' fluids
+
+NeoForge asks every fluid for its fluid type: to move entities in it, to let it meet lava, to name it in a tank, and
+on 1.21.11 to draw it. A mod's fluid without one throws (`Mod fluids must override getFluidType`), and no Fabric fluid
+has one, so the first entity touching it, neighbour changing next to it or NeoForge tank naming it crashed the game.
+Fabricated gives each Fabric fluid family (a source and its flowing fluid) one type, registered under the source's
+id, which answers from Fabric's side when asked:
+
+| NeoForge asks | Answer |
+|---|---|
+| name, light, temperature, viscosity, lighter than air, bucket sounds | Fabric's `FluidVariantAttributes` for the source (its handler, or Fabric's defaults: the fluid block's name and light) |
+| water-like, pushes entities, swimming, drowning, putting out fire, hydrating farmland, boats | yes for a fluid tagged `minecraft:water`, no for any other, as vanilla decides by that tag |
+| fall distance | reset in a water-tagged fluid, kept in any other |
+| path types | vanilla's, which go by the same tags |
+
+A fluid that isn't water to entities leaves them alone, as on Fabric: a living entity in it moves as through air
+(NeoForge would move it with the fluid's own movement, which a type leaves to its mod: none on 26.2 and later, so the
+entity would hang where it is, and lava's on 1.21.11), and an item falls through it.
+
+- Not like vanilla: a fluid tagged `minecraft:lava` isn't lava to entities (NeoForge keys burning and lava's movement
+  to its own lava type), and an entity jumping inside a fluid that isn't water rises a little, as NeoForge lets it in
+  any mod fluid.
+- On 1.21.11, NeoForge's renderer and `FluidVariantRendering` take a fluid's textures and tint from its type's client
+  extensions; for a Fabric fluid those are its `fabric-rendering-fluids-v1` render handler's, and water's without one
+  (as vanilla draws such a fluid). On 26.x vanilla draws fluids from fluid models, and the type plays no part.
+- Fabric's `FluidFlowEvents.ALLOW` (26.2+) is asked for Fabric fluids too, now that they have types to hook.
+- A fluid registered after the registry events (from a client initializer, say) gets an unregistered type when first
+  asked, without client extensions.
+
+CI checks, on all four versions: two test fluids, one tagged `minecraft:water`; a family's source and flowing fluid
+share one type, registered under the source's id, with the block's light and name, water-like only for the tagged
+one; a placed fluid block asks NeoForge's fluid interactions about itself without crashing; a pig falls through a
+column of the untagged fluid as through air.
 
 ### Native `fabric-menu-api-v1` (`fabric-screen-handler-api-v1` on 1.21.11)
 

@@ -40,6 +40,8 @@
     "NetworkAddonHolderMixin",
     "BlockApiCacheInvalidationMixin",
     "LivingEntityEffectsMixin",
+    "LivingEntityFluidTravelMixin",
+    "FluidTypeMixin",
     "ServerPayloadSendMixin",
     "NetworkRegistryMixin",
     "MenuProviderMixin",

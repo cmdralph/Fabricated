@@ -162,7 +162,8 @@ NeoForge already cover those users.
 - **Done (this pass):** storages in items bridged both ways (`ItemStorage.ITEM`/`FluidStorage.ITEM` with NeoForge's
   item capabilities), and energy with Team Reborn's library when a Fabric mod brings it (blocks and items, both
   ways), the first bridge to a Fabric library rather than Fabric API. CI: the transfer check fills each side's fluid
-  cell from the other; an energy check runs where Modrinth has the library.
+  cell from the other; an energy check runs where Modrinth has the library, of its own or nested in Tech Reborn or
+  Modern Industrialization (on `9621e53` it had neither for any version).
 - **Next:** EMI once it has NeoForge builds for these versions.
 
 ### Quality: CI, corpus, performance
@@ -237,6 +238,7 @@ Severity: **P0** crash or data loss on a normal launch · **P1** a supported fea
 | PH2-07 | P2 | `ModTranslator.memoryPermits` | The parallel remap budget (1.21.11) was estimated from the compressed jar size. A jar with a high compression ratio could exhaust the heap. | No test jar compresses well. | `30e669e` (declared uncompressed size), with `SafeArchiveTest` |
 | PH2-08 | P3 | `Pipeline` report | An unexpected translation error showed only `e.toString()`, though `ARCHITECTURE.md` §10 promises the stack trace. | Tests checked that the mod was disabled, not the report. | `64471c3` |
 | PH2-09 | P3 | Fabricated's mixin configs | `overwrites.requireAnnotations` was missing, so an accidental overwrite (a method name matching the target's) went unnoticed. | Nothing collides today. | `5e76035` |
+| FLUID-1 | P0 | `FabricFluidType`, `FluidTypeMixin` (all versions) | The 26.2 corpus client crashed when a neighbour of a Fabric mod's fluid changed (`9621e53`; which mod's fluid is UNVERIFIED, the crash report doesn't name it): `RuntimeException: Mod fluids must override getFluidType` from NeoForge's `CommonHooks.getVanillaFluidType`, through its fluid interactions. NeoForge asks every fluid for a fluid type (to move entities in it, to let it meet lava, to name it in a tank, on 1.21.11 to draw it) and throws for a mod's fluid without one, which every Fabric fluid is. | No test mod had a fluid; the corpus gained Fabric tech mods (Tech Reborn, Modern Industrialization) in the same pass. | This pass: each Fabric fluid family gets a type registered under its source's id, answering from Fabric's attributes and the fluid's tags; living entities move through one that isn't water to them as through air (`LivingEntityFluidTravelMixin`; NeoForge's own movement for mod fluids is none on 26.2 and later); on 1.21.11 its client extensions give the Fabric render handler's textures. The test mod registers two fluids, checks their types, places one, and drops a pig through a column of it. |
 | PH2-10 | P3 | `ModMenuBridge`, `ObjectBuilderBridge`, `FabricTerrain`, `RegistrySyncBridge` | A stack trace was dropped, a reflective fallback was silent, `VirtualMachineError` was wrapped in a crash report, and the registry was frozen off the main thread. | Hygiene. | `2ab7e09` |
 | PH2-11 | P3 | Lifecycle bridges | The live block entity map was iterated around mod callbacks, so a listener creating a block entity would throw `ConcurrentModificationException`. | Hygiene. | `b974b0c` (copy first) |
 | PH2-13 | P3 | `FabricDependencyLocator` | Package-guard exclusions filtered the jar but not the overlay, which could re-create a split package. Likelihood UNVERIFIED. | — | `2a7c02b` |
@@ -311,7 +313,7 @@ open (see *Unverified and blockers*).
 
 Newest first. Each entry: what changed, and how it was verified.
 
-### 2026-10-21 (latest): item storages bridged, shader pack evidence
+### 2026-10-21 (latest): item storages bridged, Fabric fluids get fluid types, shader pack evidence
 
 **Summary.**
 - Storages in items are bridged: a NeoForge machine fills a Fabric mod's tank item through
@@ -328,6 +330,21 @@ Newest first. Each entry: what changed, and how it was verified.
   `config/fabricated.json`, for the next launch, the rest of the file kept). CI: the test mod runs them from the
   server console and reads the config back.
 - The corpus gains Fabric tech mods (Modern Industrialization, Tech Reborn), for the transfer and energy bridges.
+- Fabric mods' fluids get NeoForge fluid types (FLUID-1, found by the corpus): one per family, registered, its
+  name, light, temperature, viscosity and bucket sounds read from Fabric's `FluidVariantAttributes`, how entities
+  behave in it from the fluid's tags as vanilla does (`minecraft:water` makes it water to them; any other leaves
+  them alone). Living entities move through a fluid that isn't water as through air, where NeoForge would leave them
+  hanging (26.2 and later) or move them as in lava (1.21.11). On 1.21.11, whose renderer and `FluidVariantRendering`
+  read textures from the type's client extensions, those come from the fluid's Fabric render handler, water's
+  without one. `FluidFlowEvents.ALLOW` (26.2+) now reaches Fabric fluids too, which have types to hook. CI: the test
+  mod registers a fluid of each kind, checks that both of a family's fluids share one registered type, its light and
+  name, and which is water-like, places one in the world, and checks that a pig falls through a column of it.
+- The energy check takes Team Reborn's library from Tech Reborn's or Modern Industrialization's jar
+  (`ci/nested-jar.py`) where the library has no build of its own on Modrinth.
+- Results of the dispatched run on `9621e53`: all versions green. Iris logged `Using shaderpack: fabricated-test` on
+  26.1.2, 26.2 and 26.3, with every Fabric renderer check passing under the pack. The transfer check (item and fluid
+  cells both ways) and the commands check pass on all four versions. The energy check ran nowhere: Modrinth has no
+  build of Team Reborn's library for any of them. The 26.2 corpus client crashed on a Fabric fluid (FLUID-1).
 - Results of pull request #47 on `4e9542e`: all versions green. With `BlockStateModelDefaultsMixin` gone, the renderer
   API checks on 26.x pass (the bridges declare its two methods). On 1.21.11 the corpus disables the same 7 mods as
   before, so checking mixins into other Fabric mods there disabled none that worked. The new run with Sodium, Iris
