@@ -119,7 +119,11 @@ research sandbox).
   config manager on night-config's JSON module, which Fabricated took for NeoForge's (PLAT-1, fixed since); the 26.3
   client still stops at mod construction (the next run's summary prints the crash's cause). On `b2b91e8`, with PKG-2,
   PKG-3 and PLAT-1 fixed, 1 jar is disabled (ADV-1, fixed since) and both clients reach "Initializing game", where
-  Skiko finds no native library (NATIVE-1, fixed since).
+  Skiko finds no native library (NATIVE-1, fixed since). On `cf41167` (pull request #33) no jar is disabled on 26.1.2
+  and 26.3, and neither client writes a crash report; whether they reach a world is UNVERIFIED (the summary now prints
+  the log's last lines when a client doesn't). On 1.21.11 adventure's shared jar failed pre-flight on prefixed
+  `@Shadow` names (REMAP-1, fixed since), and the client wrote no crash report and no error, and reached no world
+  (POLY-1).
 
 **Plan, by coverage per effort** (each with its CI check):
 
@@ -175,8 +179,9 @@ Severity: **P0** crash or data loss on a normal launch · **P1** a supported fea
 
 | ID | Sev | Location | Failure mode and trigger | Why tests missed it | Fix |
 |---|---|---|---|---|---|
-| ADV-1 | P2 | core `CandidateScanner` | adventure-platform-fabric (nested in OneConfig) was disabled on 26.1.2 and 26.3: "Mixin config adventure-platform-mod-shared.accessor.mixins.json declared in fabric.mod.json is missing from the jar" (Polyfrost runs on `72f5472` to `b2b91e8`). On Fabric, Mixin finds a config in any jar on the class path; the config is presumably in its nested shared jar (UNVERIFIED: the jars were not read). | No test declared a config another jar holds. | This pass: a mixin config a mod declares but a jar nested directly in it holds is applied by that jar: its translation pre-flights it and its mod file declares it, as FML expects (FML 11+ would also find it in another mod file, with a warning). A config no jar holds still disables the mod. The translation cache key includes the mod's mixin configs. `CandidateScannerTest`, `PipelineTest`. |
-| NATIVE-1 | P1 | core `PackageGuard` | Skiko, nested in compose-bundle, found no native library: "Cannot find libskiko-linux-x64.so.sha256, proper native dependency missing" stopped the 26.1.2 and 26.3 Polyfrost clients at "Initializing game" (run on `b2b91e8`). Skiko looks its natives up with `Class.getResourceAsStream("/libskiko-...")`, which in a module searches that module only; the natives are in a jar of their own, without classes. Fabric's class path finds any jar's. | Each jar was its own module, and no test had a library whose resources are in another jar. | This pass: the root files of a nested jar without classes are also served by the modules of its parent and of the jars nested beside it (a file a module has itself stays its own), with a note in the report. That the natives jar is a sibling of Skiko's classes, or nested in them, is UNVERIFIED (Modrinth is unreachable from the dev container); the CI summary prints the note. `PipelineTest`. |
+| REMAP-1 | P1 | core `IntermediaryRemapper` | A `@Shadow` with a prefix kept its intermediary name on 1.21.11: adventure's shared jar, built with Loom's static mixin remapping (no refmap), names its shadows `shadow$comp_925`, and only names starting with `method_`, `field_` or `comp_` were remapped, so pre-flight disabled the jar ("@Shadow method comp_925()[B does not exist in MessageSignature", 1.21.11 Polyfrost run on `cf41167`, once ADV-1 had it apply its configs). | Every test shadow was unprefixed. | This pass: a name made of a prefix, `$` and an intermediary name is remapped behind its prefix, consistently for the declaration and every use; a lambda's `lambda$method_1$0` stays the mod's own. `RemapTest`. |
+| ADV-1 | P2 | core `CandidateScanner` | adventure-platform-fabric (nested in OneConfig) was disabled on 26.1.2 and 26.3: "Mixin config adventure-platform-mod-shared.accessor.mixins.json declared in fabric.mod.json is missing from the jar" (Polyfrost runs on `72f5472` to `b2b91e8`). On Fabric, Mixin finds a config in any jar on the class path; the config is in its nested `adventure-platform-mod-shared-fabric-repack`, which holds all four of its configs (read from Maven Central). | No test declared a config another jar holds. | This pass: a mixin config a mod declares but a jar nested directly in it holds is applied by that jar: its translation pre-flights it and its mod file declares it, as FML expects (FML 11+ would also find it in another mod file, with a warning). A config no jar holds still disables the mod. The translation cache key includes the mod's mixin configs. `CandidateScannerTest`, `PipelineTest`. |
+| NATIVE-1 | P1 | core `PackageGuard` | Skiko, nested in compose-bundle, found no native library: "Cannot find libskiko-linux-x64.so.sha256, proper native dependency missing" stopped the 26.1.2 and 26.3 Polyfrost clients at "Initializing game" (run on `b2b91e8`). Skiko looks its natives up with `Class.getResourceAsStream("/libskiko-...")`, which in a module searches that module only; the natives are in a jar of their own, without classes. Fabric's class path finds any jar's. | Each jar was its own module, and no test had a library whose resources are in another jar. | This pass: the root files of a nested jar without classes are also served by the modules of its parent and of the jars nested beside it (a file a module has itself stays its own), with a note in the report. On `cf41167` the report shows Skiko's runtime jars (one per platform) nested beside `skiko-awt` in compose-bundle and served by the 39 jars with classes nested there, and neither 26.x Polyfrost client crashes. `PipelineTest`. |
 | REG-2 | P1 | `EntrypointBridge` | Registries were frozen when Fabric client initializers ran: NeoForge freezes them after its registration events, before `Minecraft` exists, while Fabric API freezes them only after the client initializers. Xaero's Minimap registers its mob effect from `onInitializeClient`, catches the failure and rethrows it on the first tick: "Registry is already frozen (trying to add key ... xaerominimap:no_minimap)" stopped the 26.x corpus clients (`b679b92`). | The test mods registered from `main` only. | This pass: the registries are opened for the client initializers and frozen again with NeoForge's own `GameData.unfreezeData`/`freezeData` (the sequence NeoForge runs around its registration events), which also renews the frozen snapshot NeoForge restores on leaving a server. Client check "client entrypoint registration OK": the test mod registers a mob effect from a client initializer. |
 | CORPUS-2 | P2 | Xaero's World Map | The corpus client crashed on its first tick: `WorldMap.events` was null in World Map's `Minecraft.runTick` hook, with no entrypoint failure reported. | The cause showed only through Xaero's Minimap in the same corpus (REG-2): Xaero's client initializers register content, and catch and defer the failure. | REG-2. On `72f5472` World Map alone reaches a world on 26.1.2 and 26.3. |
 | PLAT-1 | P1 | core `PlatformLibraries` | The platform's libraries were matched by package prefix, and `com/electronwill/nightconfig/` covered every night-config module, so a mod's JSON or YAML module was dropped as "provided by the platform", which ships only core and TOML. OneConfig's config manager then failed (`ClassNotFoundException: com.electronwill.nightconfig.json.JsonFormat`, 26.1.2 Polyfrost run on `72f5472`). | No test had a mod nesting a night-config module the platform lacks. | This pass: core and TOML only (NeoForge's and FML's build files list those two). Unit test. |
@@ -228,6 +233,7 @@ crash in run 229).
 
 | ID | Sev | Location | Issue | Status |
 |---|---|---|---|---|
+| POLY-1 | P2, cause UNVERIFIED | 1.21.11 Polyfrost client | On `cf41167` the client wrote no crash report and logged no error, and the step ended after about 7.5 minutes, so it most likely reached no world; REMAP-1 had disabled adventure's shared jar there. | The next run's summary prints the log's last lines, and the render thread's frames when it is still running near the timeout. |
 | PLAT-2 | P3, UNVERIFIED | core `PlatformLibraries` | Other prefixes also cover whole library families (`org/lwjgl/`, `io/netty/`), of which the platform may ship some modules only: a mod nesting another module (LWJGL's NanoVG, say) would lose it, as PLAT-1 did. No case seen yet. | Check each prefix against the packages the platform really has (the loader computes them), and keep a prefix only where the family is complete. |
 | FC-5 | P3 | `TranslationCache.verifyIntegrity` | Hashes are memoised by file metadata. On Windows the key is size and mtime only, and `entry.json` itself isn't hashed. | Needs a decision on cost: re-hashing every launch versus trusting metadata. |
 | FC-6 | P3 | `TranslationCache.store` | Two cold launches of the same side that share one game directory race on delete-then-move. | Needs a cross-process file lock. Rare. |
@@ -287,6 +293,19 @@ open (see *Unverified and blockers*).
 ## Changelog
 
 Newest first. Each entry: what changed, and how it was verified.
+
+### 2026-10-20 (night, later): prefixed shadows on obfuscated versions
+
+**Summary.**
+- Results of pull request #33 on `cf41167`: on 26.1.2 and 26.3 the Polyfrost run disables no jar and no client crashes
+  (NATIVE-1 and ADV-1 fixed). The report confirms Skiko's runtime jars sit beside `skiko-awt`.
+- REMAP-1: a `@Shadow` with a prefix (`shadow$comp_925`) is remapped on 1.21.11; adventure's shared jar failed
+  pre-flight on it.
+- CI: the summary prints the last log lines of a client that reached no world, and its render thread near the timeout
+  (POLY-1).
+
+**Verification.** Core: `./gradlew -Pfabricated.coreOnly=true build` green locally, with a new `RemapTest` case. CI:
+see the pull request.
 
 ### 2026-10-20 (night): native libraries of jars without classes, mixin configs of nested jars
 
