@@ -817,8 +817,8 @@ public final class ModTranslator {
 		for (DefaultBridge bridge : found) {
 			if (!bridges.add(bridge)) continue;
 			notes.add(bridge.target().replace('/', '.') + " gets " + bridge.name() + bridge.descriptor() + ", calling "
-					+ bridge.owner().replace('/', '.') + "'s default: an interface the mod adds to it (" + String.join(", ", added).replace('/', '.')
-					+ ") brings another default of that method, and the JVM can't choose between two");
+					+ bridge.owner().replace('/', '.') + "'s default, unless a mixin declares it: an interface the mod adds to it ("
+					+ String.join(", ", added).replace('/', '.') + ") brings another default of that method, and the JVM can't choose between two");
 		}
 	}
 
