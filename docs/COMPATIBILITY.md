@@ -235,6 +235,10 @@ sorted reload-listener events. Fabricated ships the module's unchanged public AP
 | `MinecraftServer` as `DataResourceStore`, `Resource#getFabricPackSource` | interfaces added by mixins that only add methods |
 | `registerBuiltinPack` | `AddPackFindersEvent` |
 
+A listener registered the vanilla way (`ReloadableResourceManager.registerReloadListener`, as OneConfig does from a
+mixin into `Minecraft`'s constructor) after NeoForge has sorted the client's listeners is added last, as vanilla adds
+it, and runs from the next reload; NeoForge itself would throw there.
+
 Mod resources themselves need nothing: NeoForge already loads the `assets/` and `data/` of every mod, Fabric mods
 included. Resources from those mod packs report Fabric's mod pack source, as on Fabric.
 
