@@ -181,8 +181,8 @@ Each mod's entrypoints run inside a guard that records mod id, entrypoint key, c
    * a `NEW` point with a constructor descriptor matches that constructor only, and targets in library classes NeoForge loads without mixin support (DataFixerUpper, Brigadier, the JDK) fail.
 
    Mixins into the classes of the jars installed next to the Fabric mods get the same checks (`InstalledClasses`:
-   Fabricated's Fabric API, then each NeoForge mod's jar, nested ones too, then on 26.x the Fabric mods' jars, whose
-   classes load unchanged there). That covers a Fabric addon of a mod whose NeoForge build is installed (Sodium's,
+   Fabricated's Fabric API, then each NeoForge mod's jar, nested ones too, then the Fabric mods' jars, whose classes
+   load unchanged on 26.x and are remapped as they are read on 1.21.11, as translating each mod remaps it). That covers a Fabric addon of a mod whose NeoForge build is installed (Sodium's,
    nested in a service jar) and of another Fabric mod. A Fabric jar is opened only when a target is in one of its
    packages (recorded at discovery). A target in none of them is not judged. The cache entry records each installed class pre-flight read with its SHA-256; when one
    differs at the next launch (the NeoForge mod was updated), the mod is translated again.

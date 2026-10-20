@@ -21,8 +21,8 @@ handled safely, no network access, original jars never changed, and no code that
   its repairs (overloads NeoForge moved, constructors NeoForge kept for vanilla's signature or appended components to,
   with a bridge for handlers taking the parameters, calls made through a subtype), NeoForge mods visible to Fabric code
   (nested ones too, with their properties as custom values and their files as container roots). Pre-flight of mixins
-  into Fabricated's Fabric API and installed NeoForge mods, nested ones included, and on 26.x into other Fabric mods
-  (R3: Iris's ~20 mixins into Sodium were "not verified" before), cached with the fingerprints of the classes it read. Every declared language adapter created before any Fabric mod's mixin plugin loads, as on
+  into Fabricated's Fabric API and installed NeoForge mods, nested ones included, and into other Fabric mods
+  (R3: Iris's ~20 mixins into Sodium were "not verified" before; on 1.21.11 against their classes remapped as read), cached with the fingerprints of the classes it read. Every declared language adapter created before any Fabric mod's mixin plugin loads, as on
   Fabric (PolyPlus and Polydium declare adapters only to run code that early): translated mods load after
   Fabricated's mod, whose first mixin config's plugin creates them. CI: the test mod's adapter sets a property its own
   mixin plugin checks ("early language adapter OK"); passes on all four versions (`3d5d509`).
@@ -32,8 +32,7 @@ handled safely, no network access, original jars never changed, and no code that
   - The compatibility plan (`compat-plan.json`, done for refusals and pairings): `skipMixins` and `skipEntrypoints` per
     mod and version range, through the `CompatHints.Patch` path, added with the first entry that needs them (a CI run
     showing the mixin is the fault and the mod works without it).
-  - Pre-flight of mixins into other Fabric mods' classes on 1.21.11 (their classes are only remapped as each is
-    translated), and checking members other mods' mixins add against those mixins (PRE-2 only stops judging them).
+  - Checking members other mods' mixins add against the mixins that use them (PRE-2 only stops judging them).
 - **Later:** the deferred cache items (FC-5, FC-6, FC-7).
 
 ### Fabric API coverage
