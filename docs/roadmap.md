@@ -126,7 +126,7 @@ research sandbox).
 | 7 | Block-entity render data and NeoForge model data, bridged both ways | Fabric renderers reading NeoForge block entities' data | Planned |
 | 8 | Renderer contract: resolve a late-registered renderer, report the active one, optional every-block routing | Third-party renderer API implementations | Planned |
 | 9 | Early-window opt-out for mods that need to act before the first GL context (driver workarounds) | Sodium's `preLaunch` workarounds | When a real report needs it |
-| 10 | Corpus runs for the Polyfrost stack and Fabric Sodium/Iris | Evidence for 3-8 | Fabric Sodium/Iris run exists (informational) |
+| 10 | Corpus runs for the Polyfrost stack and Fabric Sodium/Iris | Evidence for 3-8 | Both exist (informational): Fabric Sodium/Iris with `loadUnsupported`, and OneConfig with PolyPlus where Modrinth has builds |
 
 **Not planned:** a Sodium-specific NeoForge platform layer (the size of Sodium's own `neoforge` module, re-checked
 every Sodium release, and a licence question), and Iris pipeline fixes beyond its public API. Sodium and Iris for

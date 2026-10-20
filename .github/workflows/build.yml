@@ -273,6 +273,20 @@ jobs:
             ${{ runner.temp }}/client-sodium-fabric/run/crash-reports
             ${{ runner.temp }}/client-sodium-fabric/client.out
           if-no-files-found: ignore
+      # The Fabric-only Polyfrost stack (OneConfig, PolyPlus): no NeoForge build exists, so Fabricated is its only way
+      # to NeoForge. Modrinth slugs and builds per version are UNVERIFIED; a missing one is reported and skipped.
+      - name: Client with OneConfig and PolyPlus (informational)
+        if: always() && steps.build.outcome == 'success'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/extra-polyfrost"
+          python3 ci/fetch-corpus.py "${{ matrix.minecraft }}" "$RUNNER_TEMP/extra-polyfrost" fabric oneconfig polyplus | tee "$RUNNER_TEMP/summary-polyfrost.txt"
+          if ! grep -qE "^(oneconfig|polyplus): [^n]" "$RUNNER_TEMP/summary-polyfrost.txt"; then exit 0; fi
+          cp "$RUNNER_TEMP/extra/fabric-api.jar" "$RUNNER_TEMP/extra-polyfrost/"
+          SMOKE_TIMEOUT=480 ci/smoke-client.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/client-polyfrost" "$RUNNER_TEMP/extra-polyfrost" || true
+          grep -A80 "== Summary" "$RUNNER_TEMP/client-polyfrost/run/logs/fabric-bridge-report.txt" | tee -a "$RUNNER_TEMP/summary-polyfrost.txt" || true
       # The NeoForge builds of recipe viewers and tooltip mods, with the test mod's plugins declared the Fabric way (as
       # entrypoints, and WTHIT's plugin file). Informational until the viewers' builds are pinned.
       - name: Client with recipe viewers for NeoForge (informational)
@@ -359,8 +373,9 @@ jobs:
           for f in summary-newest summary-viewers; do
             [ -f "$RUNNER_TEMP/$f.txt" ] && { echo "== $f"; grep -E "^(Newest|PASS|FAIL|WARN)|plugin|not in this run" "$RUNNER_TEMP/$f.txt" | head -60; }
           done
+          [ -f "$RUNNER_TEMP/summary-polyfrost.txt" ] && { echo "== summary-polyfrost"; head -60 "$RUNNER_TEMP/summary-polyfrost.txt"; }
           [ -f viewers.txt ] && { echo "== viewers fetched"; cat viewers.txt; }
-          for run in client-sodium-fabric client-viewers client-corpus client-worldmap; do
+          for run in client-sodium-fabric client-viewers client-polyfrost client-corpus client-worldmap; do
             log="$RUNNER_TEMP/$run/run/logs/latest.log"
             [ -f "$log" ] || continue
             echo "== $run"
