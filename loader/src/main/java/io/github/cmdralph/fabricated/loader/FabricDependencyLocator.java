@@ -5,6 +5,7 @@ import java.lang.module.ModuleDescriptor;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -28,6 +29,7 @@ import io.github.cmdralph.fabricated.core.bytecode.InstalledClasses;
 import io.github.cmdralph.fabricated.core.cache.TranslationCache;
 import io.github.cmdralph.fabricated.core.config.FabricatedConfig;
 import io.github.cmdralph.fabricated.core.json.JsonException;
+import io.github.cmdralph.fabricated.core.metadata.ModIds;
 import io.github.cmdralph.fabricated.core.report.Report;
 import io.github.cmdralph.fabricated.core.resolve.FabricApiPlan;
 import io.github.cmdralph.fabricated.core.resolve.PlatformLibraries;
@@ -56,7 +58,6 @@ import net.neoforged.neoforgespi.locating.ModFileDiscoveryAttributes;
  */
 public final class FabricDependencyLocator implements IDependencyLocator {
 	private static final Logger LOGGER = LoggerFactory.getLogger("Fabricated");
-	private static final String GAME_MOD_ID = "fabricated";
 	private static final String GAME_MOD_RESOURCE = "game-mod.jar";
 	private static final String MESSAGE = "§e[Fabricated]§r {0}";
 	private static final Pattern VERSION_IN_NAME = Pattern.compile("\\d+\\.\\d+\\.\\d+");
@@ -110,7 +111,7 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 		TranslationCache cache = new TranslationCache(gameDir, config.cacheEnabled(), config.verifyIntegrity());
 		// Fabricated's own in-game mod (native Fabric API implementation and NeoForge event bridges): loaded from the
 		// development workspace, or extracted from this jar when there is anything Fabric to load.
-		Optional<IModFile> devGameMod = find(loadedMods, GAME_MOD_ID);
+		Optional<IModFile> devGameMod = find(loadedMods, ModIds.FABRICATED);
 		Path gameModJar = devGameMod.isPresent() || fabricJars.isEmpty() ? null : extractGameMod(cache);
 
 		// Classes visible to NeoForge's non-transforming loaders (JDK and libraries such as DataFixerUpper or
@@ -197,9 +198,12 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 		for (Pipeline.LoadedMod mod : result.mods()) {
 			Set<String> excluded = mod.excludedPackages();
 			JarContents.PathFilter filter = excluded.isEmpty() ? null : path -> !PackageGuard.isExcluded(path, excluded);
-			JarContents contents = JarContents.ofFilteredPaths(List.of(
+			List<JarContents.FilteredPath> paths = new ArrayList<>(List.of(
 					new JarContents.FilteredPath(mod.translated().jar(), filter),
 					new JarContents.FilteredPath(mod.translated().overlay(), filter)));
+			// Other mods' part of a package split with this one: one module has the whole package.
+			mod.borrowed().forEach((jar, files) -> paths.add(new JarContents.FilteredPath(jar, files::contains)));
+			JarContents contents = JarContents.ofFilteredPaths(paths);
 			Optional<IModFile> added = pipeline.addJarContent(contents, attributes, IncompatibleFileReporting.ERROR);
 			if (added.isEmpty()) {
 				// Fabric code mustn't see it as loaded, or run its entrypoints, when NeoForge won't load its classes.

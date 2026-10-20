@@ -62,6 +62,17 @@ public final class OtherModPlugins {
 		}
 	}
 
+	/**
+	 * A {@code jade} entrypoint naming a field, which Fabric's language adapter allows: Jade for NeoForge only creates
+	 * plugins from classes, so Fabricated leaves this one out there (with a note); Jade's Fabric build takes it.
+	 */
+	public static final class JadeHolder {
+		public static final IWailaPlugin INSTANCE = new Jade();
+
+		private JadeHolder() {
+		}
+	}
+
 	/** In {@code waila_plugins.json}. */
 	public static final class Wthit implements IWailaCommonPlugin {
 		public Wthit() {

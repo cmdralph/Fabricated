@@ -1,6 +1,7 @@
 package io.github.cmdralph.fabricated.core.mixin;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
@@ -134,7 +135,8 @@ class MixinPreflightTest {
 		assertEquals(Severity.FAIL, gone.severity());
 		assertTrue(gone.suggestion().startsWith("This version of Sodium changed net.example.sodium.Renderer"), gone.suggestion());
 		assertEquals(Severity.INFO, findings.stream().filter(f -> f.mixin().endsWith("Elsewhere")).findFirst().orElseThrow().severity());
-		assertEquals(Map.of(renderer, Hashing.sha256(rendererClass)), preflight.installedClasses());
+		// What the result depends on: the installed class it read, and the target no installed jar has (yet).
+		assertEquals(Map.of(renderer, Hashing.sha256(rendererClass), "net/example/other/Thing", ""), preflight.installedClasses());
 	}
 
 	@Test
@@ -143,7 +145,7 @@ class MixinPreflightTest {
 		Map<String, byte[]> mod = Map.of(
 				"com/example/mixin/ByName", mixin("com/example/mixin/ByName", false, cw -> inject(cw, "h", "tick", "INVOKE", "Lnet/minecraft/world/Thing;helper(I)V", 1, null)),
 				"com/example/mixin/ByDesc", mixin("com/example/mixin/ByDesc", false, cw -> inject(cw, "h", "tick(I)V", "INVOKE", "Lnet/minecraft/world/Thing;helper(I)V", 1, null)));
-		MixinPreflight preflight = new MixinPreflight(game, mod::get, ClassBytesSource.EMPTY, false);
+		MixinPreflight preflight = preflight(game, mod::get, ClassBytesSource.EMPTY, false);
 		List<PreflightFinding> byName = preflight.check("test.mixins.json", MixinConfigFile.parse(config(true, "ByName")), Refmap.EMPTY, Set.of());
 		assertEquals(1, byName.size(), "Mixin picks tick()V, which has no such call: " + byName);
 		assertTrue(preflight.check("test.mixins.json", MixinConfigFile.parse(config(true, "ByDesc")), Refmap.EMPTY, Set.of()).isEmpty());
@@ -156,14 +158,14 @@ class MixinPreflightTest {
 		Map<String, byte[]> mod = new HashMap<>(Map.of(
 				"com/example/mixin/Movable", mixin("com/example/mixin/Movable", false, cw -> injectWith(cw, ci)),
 				"com/example/mixin/TakesArgs", mixin("com/example/mixin/TakesArgs", false, cw -> injectWith(cw, "()V"))));
-		MixinPreflight preflight = new MixinPreflight(game, name -> mod.get(name), ClassBytesSource.EMPTY, false);
+		MixinPreflight preflight = preflight(game, name -> mod.get(name), ClassBytesSource.EMPTY, false);
 		MixinConfigFile config = MixinConfigFile.parse(config(true, "Movable", "TakesArgs"));
 		List<PreflightFinding> notes = new ArrayList<>();
 		Map<String, byte[]> repaired = preflight.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
 		assertEquals(Set.of("com/example/mixin/Movable.class"), repaired.keySet(), "only a handler taking just the callback info moves");
 		assertTrue(notes.getFirst().message().contains("moved into tick(I)V"), notes.toString());
 		mod.put("com/example/mixin/Movable", repaired.get("com/example/mixin/Movable.class"));
-		List<PreflightFinding> after = new MixinPreflight(game, name -> mod.get(name), ClassBytesSource.EMPTY, false)
+		List<PreflightFinding> after = preflight(game, name -> mod.get(name), ClassBytesSource.EMPTY, false)
 				.check("test.mixins.json", config, Refmap.EMPTY, Set.of());
 		assertEquals(1, after.size(), "the moved injector applies; the other still fails: " + after);
 		assertTrue(after.getFirst().mixin().endsWith("TakesArgs"), after.toString());
@@ -221,7 +223,7 @@ class MixinPreflightTest {
 
 		ClassIndex neoForge = new ClassIndex(Map.of(TARGET, delegatingConstructors(true))::get);
 		List<PreflightFinding> notes = new ArrayList<>();
-		Map<String, byte[]> repaired = new MixinPreflight(neoForge, mod::get, ClassBytesSource.EMPTY, false)
+		Map<String, byte[]> repaired = preflight(neoForge, mod::get, ClassBytesSource.EMPTY, false)
 				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
 		assertEquals(Set.of("com/example/mixin/AtReturn.class"), repaired.keySet(), "only the end of the constructor is the same moment: " + notes);
 		assertTrue(notes.getFirst().message().contains("which NeoForge keeps only to call <init>(I)V"), notes.toString());
@@ -231,7 +233,7 @@ class MixinPreflightTest {
 		assertEquals(List.of("<init>(I)V"), Annotations.value(inject, "method"));
 
 		ClassIndex vanilla = new ClassIndex(Map.of(TARGET, delegatingConstructors(false))::get);
-		assertTrue(new MixinPreflight(vanilla, mod::get, ClassBytesSource.EMPTY, false)
+		assertTrue(preflight(vanilla, mod::get, ClassBytesSource.EMPTY, false)
 				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty(),
 				"a constructor vanilla delegates itself is the one the mixin means");
 	}
@@ -292,7 +294,7 @@ class MixinPreflightTest {
 		ClassIndex neoForge = new ClassIndex(Map.of(TARGET, appendedComponent(true))::get);
 		List<PreflightFinding> notes = new ArrayList<>();
 
-		Map<String, byte[]> repaired = new MixinPreflight(neoForge, mod::get, ClassBytesSource.EMPTY, false)
+		Map<String, byte[]> repaired = preflight(neoForge, mod::get, ClassBytesSource.EMPTY, false)
 				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
 
 		assertEquals(Set.of("com/example/mixin/Quad.class"), repaired.keySet(), notes.toString());
@@ -311,10 +313,10 @@ class MixinPreflightTest {
 		}
 		assertEquals(List.of(0, 1, 2, 5), loads);
 		mod.put("com/example/mixin/Quad", repaired.get("com/example/mixin/Quad.class"));
-		assertTrue(new MixinPreflight(neoForge, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty());
+		assertTrue(preflight(neoForge, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty());
 
 		ClassIndex vanillaTypes = new ClassIndex(Map.of(TARGET, appendedComponent(false))::get);
-		assertTrue(new MixinPreflight(vanillaTypes, Map.of("com/example/mixin/Quad", mixin("com/example/mixin/Quad", false,
+		assertTrue(preflight(vanillaTypes, Map.of("com/example/mixin/Quad", mixin("com/example/mixin/Quad", false,
 						MixinPreflightTest::injectTakingConstructorParameters))::get, ClassBytesSource.EMPTY, false)
 				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty(),
 				"a delegate appending vanilla types may be vanilla's own");
@@ -327,13 +329,15 @@ class MixinPreflightTest {
 		Map<String, byte[]> mod = Map.of(
 				"com/example/mixin/Added", mixin("com/example/mixin/Added", false, cw -> inject(cw, "h", "sodium$setActive", "HEAD", null, 1, null)),
 				"com/example/mixin/Gone", mixin("com/example/mixin/Gone", false, cw -> inject(cw, "h", "setActive", "HEAD", null, 1, null)));
-		List<PreflightFinding> findings = new MixinPreflight(game, mod::get, ClassBytesSource.EMPTY, false)
+		List<PreflightFinding> findings = preflight(game, mod::get, ClassBytesSource.EMPTY, false)
 				.check("test.mixins.json", MixinConfigFile.parse(config(true, "Added", "Gone")), Refmap.EMPTY, Set.of());
 
 		assertEquals(Severity.INFO, findings.stream().filter(f -> f.mixin().endsWith("Added")).findFirst().orElseThrow().severity(), findings.toString());
 		assertEquals(Severity.FAIL, findings.stream().filter(f -> f.mixin().endsWith("Gone")).findFirst().orElseThrow().severity(), findings.toString());
 		assertTrue(MixinPreflight.addedByAMixin("iris$flag"));
-		assertTrue(!MixinPreflight.addedByAMixin("lambda$tick$0") && !MixinPreflight.addedByAMixin("access$000") && !MixinPreflight.addedByAMixin("tick"));
+		for (String javac : List.of("lambda$tick$0", "access$000", "this$0", "val$player", "tick")) {
+			assertFalse(MixinPreflight.addedByAMixin(javac), javac);
+		}
 	}
 
 	/** A library interface named {@code name}, extending {@code parent} (or none), declaring {@code parse(Object)}. */
@@ -387,17 +391,17 @@ class MixinPreflightTest {
 		MixinConfigFile config = MixinConfigFile.parse(config(true, "AtParse"));
 
 		ClassIndex neoForge = new ClassIndex(Map.of(TARGET, callingThrough("com/example/lib/Codec"))::get);
-		assertEquals(1, new MixinPreflight(neoForge, mod::get, libraries::get, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).size(),
+		assertEquals(1, preflight(neoForge, mod::get, libraries::get, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).size(),
 				"Mixin matches the call's owner exactly");
 		List<PreflightFinding> notes = new ArrayList<>();
-		Map<String, byte[]> repaired = new MixinPreflight(neoForge, mod::get, libraries::get, false)
+		Map<String, byte[]> repaired = preflight(neoForge, mod::get, libraries::get, false)
 				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
 		assertTrue(notes.getFirst().message().contains("calls through com.example.lib.Codec"), notes.toString());
 		mod.put("com/example/mixin/AtParse", repaired.get("com/example/mixin/AtParse.class"));
-		assertTrue(new MixinPreflight(neoForge, mod::get, libraries::get, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty());
+		assertTrue(preflight(neoForge, mod::get, libraries::get, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty());
 
 		ClassIndex unrelated = new ClassIndex(Map.of(TARGET, callingThrough("com/example/lib/Unrelated"))::get);
-		assertTrue(new MixinPreflight(unrelated, mod::get, libraries::get, false)
+		assertTrue(preflight(unrelated, mod::get, libraries::get, false)
 				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty(), "a call on another type is another method");
 	}
 
@@ -418,7 +422,7 @@ class MixinPreflightTest {
 			ann.visitEnd();
 			mv.visitEnd();
 		});
-		MixinPreflight preflight = new MixinPreflight(game, Map.of("com/example/mixin/Capturing", capturing)::get, ClassBytesSource.EMPTY, false);
+		MixinPreflight preflight = preflight(game, Map.of("com/example/mixin/Capturing", capturing)::get, ClassBytesSource.EMPTY, false);
 		List<PreflightFinding> notes = new ArrayList<>();
 		byte[] repaired = preflight.repairs("test.mixins.json", MixinConfigFile.parse(config(true, "Capturing")), Refmap.EMPTY, Set.of(), notes)
 				.get("com/example/mixin/Capturing.class");
@@ -449,9 +453,9 @@ class MixinPreflightTest {
 			mv.visitEnd();
 		});
 		MixinConfigFile config = MixinConfigFile.parse(config(true, "Constants"));
-		assertTrue(new MixinPreflight(game, Map.of("com/example/mixin/Constants", modifying.apply(0))::get, ClassBytesSource.EMPTY, false)
+		assertTrue(preflight(game, Map.of("com/example/mixin/Constants", modifying.apply(0))::get, ClassBytesSource.EMPTY, false)
 				.check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty(), "tick()V pushes 0");
-		List<PreflightFinding> missing = new MixinPreflight(game, Map.of("com/example/mixin/Constants", modifying.apply(7))::get, ClassBytesSource.EMPTY, false)
+		List<PreflightFinding> missing = preflight(game, Map.of("com/example/mixin/Constants", modifying.apply(7))::get, ClassBytesSource.EMPTY, false)
 				.check("test.mixins.json", config, Refmap.EMPTY, Set.of());
 		assertEquals(1, missing.size(), missing.toString());
 		assertEquals(Severity.FAIL, missing.getFirst().severity());
@@ -464,14 +468,14 @@ class MixinPreflightTest {
 		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Pinned", mixin("com/example/mixin/Pinned", false,
 				cw -> injectWith(cw, "(ILorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V"))));
 		MixinConfigFile config = MixinConfigFile.parse(config(true, "Pinned"));
-		assertEquals(1, new MixinPreflight(game, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).size(),
+		assertEquals(1, preflight(game, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).size(),
 				"Mixin picks tick()V, whose parameters the handler doesn't take");
 		List<PreflightFinding> notes = new ArrayList<>();
-		Map<String, byte[]> repaired = new MixinPreflight(game, mod::get, ClassBytesSource.EMPTY, false)
+		Map<String, byte[]> repaired = preflight(game, mod::get, ClassBytesSource.EMPTY, false)
 				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
 		assertTrue(notes.getFirst().message().contains("pinned"), notes.toString());
 		mod.put("com/example/mixin/Pinned", repaired.get("com/example/mixin/Pinned.class"));
-		List<PreflightFinding> after = new MixinPreflight(game, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		List<PreflightFinding> after = preflight(game, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
 		assertTrue(after.isEmpty(), after.toString());
 	}
 
@@ -498,14 +502,14 @@ class MixinPreflightTest {
 			mv.visitEnd();
 		})));
 		MixinConfigFile config = MixinConfigFile.parse(config(true, "Wrap"));
-		List<PreflightFinding> before = new MixinPreflight(game, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		List<PreflightFinding> before = preflight(game, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
 		assertTrue(before.size() == 1 && before.getFirst().severity() == Severity.FAIL && before.getFirst().message().contains("abstract")
 				&& before.getFirst().handler().equals("h(ILcom/llamalad7/mixinextras/injector/wrapoperation/Operation;)Ljava/lang/Object;"), before.toString());
 		List<PreflightFinding> notes = new ArrayList<>();
-		mod.put("com/example/mixin/Wrap", new MixinPreflight(game, mod::get, ClassBytesSource.EMPTY, false)
+		mod.put("com/example/mixin/Wrap", preflight(game, mod::get, ClassBytesSource.EMPTY, false)
 				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes).get("com/example/mixin/Wrap.class"));
 		assertTrue(notes.getFirst().message().contains("@WrapMethod h targets create(I)Ljava/lang/Object;"), notes.toString());
-		List<PreflightFinding> after = new MixinPreflight(game, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		List<PreflightFinding> after = preflight(game, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
 		assertTrue(after.isEmpty(), after.toString());
 	}
 
@@ -563,7 +567,7 @@ class MixinPreflightTest {
 	private static List<PreflightFinding> run(String configJson, String refmapJson, Map<String, byte[]> mixins, boolean client) throws Exception {
 		ClassIndex game = new ClassIndex(Map.of(TARGET, targetClass())::get);
 		Map<String, byte[]> mod = new HashMap<>(mixins);
-		MixinPreflight preflight = new MixinPreflight(game, mod::get, ClassBytesSource.EMPTY, client);
+		MixinPreflight preflight = preflight(game, mod::get, ClassBytesSource.EMPTY, client);
 		Refmap refmap = refmapJson == null ? Refmap.EMPTY : Refmap.parse(refmapJson);
 		return preflight.check("test.mixins.json", MixinConfigFile.parse(configJson), refmap, Set.of());
 	}
@@ -668,7 +672,7 @@ class MixinPreflightTest {
 				ann.visitEnd();
 				mv.visitEnd();
 			}));
-			return new MixinPreflight(game, mod::get, ClassBytesSource.EMPTY, false)
+			return preflight(game, mod::get, ClassBytesSource.EMPTY, false)
 					.check("test.mixins.json", config, Refmap.EMPTY, Set.of());
 		};
 		assertTrue(run.apply(1).isEmpty(), run.apply(1).toString());
@@ -707,7 +711,7 @@ class MixinPreflightTest {
 		ClassIndex game = new ClassIndex(Map.of(TARGET, target.toByteArray())::get);
 		Map<String, byte[]> mod = Map.of("com/example/mixin/Ref", mixin("com/example/mixin/Ref", false,
 				cw -> expression(cw, "ref", null, "Lnet/minecraft/world/Thing;helper(I)V")));
-		List<PreflightFinding> findings = new MixinPreflight(game, mod::get, ClassBytesSource.EMPTY, false)
+		List<PreflightFinding> findings = preflight(game, mod::get, ClassBytesSource.EMPTY, false)
 				.check("test.mixins.json", MixinConfigFile.parse(config(true, "Ref")), Refmap.EMPTY, Set.of());
 		assertTrue(findings.isEmpty(), findings.toString());
 	}
@@ -777,7 +781,7 @@ class MixinPreflightTest {
 		String anonymous = "net/minecraft/core/Registry$Tags$2";
 		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Captured", capturedFieldAccessor("com/example/mixin/Captured", anonymous, "val$tags")));
 		ClassIndex game = new ClassIndex(Map.of(anonymous, capturingClass(anonymous, "val$p_363771_"))::get);
-		MixinPreflight preflight = new MixinPreflight(game, mod::get, ClassBytesSource.EMPTY, false);
+		MixinPreflight preflight = preflight(game, mod::get, ClassBytesSource.EMPTY, false);
 		MixinConfigFile config = MixinConfigFile.parse(config(true, "Captured"));
 		assertEquals(Severity.FAIL, preflight.check("test.mixins.json", config, Refmap.EMPTY, Set.of()).getFirst().severity(),
 				"without the repair, Mixin would not find the field");
@@ -792,7 +796,7 @@ class MixinPreflightTest {
 		// Two captured fields of the type: which one was meant can't be known, so nothing is repaired.
 		ClassIndex ambiguous = new ClassIndex(Map.of(anonymous, capturingClass(anonymous, "val$p_1_", "val$p_2_"))::get);
 		Map<String, byte[]> original = Map.of("com/example/mixin/Captured", capturedFieldAccessor("com/example/mixin/Captured", anonymous, "val$tags"));
-		assertTrue(new MixinPreflight(ambiguous, original::get, ClassBytesSource.EMPTY, false)
+		assertTrue(preflight(ambiguous, original::get, ClassBytesSource.EMPTY, false)
 				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new java.util.ArrayList<>()).isEmpty());
 	}
 
@@ -817,7 +821,7 @@ class MixinPreflightTest {
 				mixin("com/example/mixin/Lambda", false, cw -> inject(cw, "h", "lambda$tick$41(I)V", "HEAD", null, 1, null))));
 		MixinConfigFile config = MixinConfigFile.parse(config(true, "Lambda"));
 		ClassIndex game = new ClassIndex(Map.of(TARGET, lambdaTarget("lambda$tick$3", "lambda$other$4"))::get);
-		MixinPreflight preflight = new MixinPreflight(game, mod::get, ClassBytesSource.EMPTY, false);
+		MixinPreflight preflight = preflight(game, mod::get, ClassBytesSource.EMPTY, false);
 		assertTrue(preflight.check("test.mixins.json", config, Refmap.EMPTY, Set.of()).stream().anyMatch(f -> f.message().contains("does not exist")));
 
 		List<PreflightFinding> repairs = new java.util.ArrayList<>();
@@ -834,7 +838,7 @@ class MixinPreflightTest {
 		ClassIndex ambiguous = new ClassIndex(Map.of(TARGET, lambdaTarget("lambda$tick$3", "lambda$tick$5"))::get);
 		Map<String, byte[]> original = Map.of("com/example/mixin/Lambda",
 				mixin("com/example/mixin/Lambda", false, cw -> inject(cw, "h", "lambda$tick$41(I)V", "HEAD", null, 1, null)));
-		assertTrue(new MixinPreflight(ambiguous, original::get, ClassBytesSource.EMPTY, false)
+		assertTrue(preflight(ambiguous, original::get, ClassBytesSource.EMPTY, false)
 				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new java.util.ArrayList<>()).isEmpty());
 	}
 
@@ -860,7 +864,7 @@ class MixinPreflightTest {
 				"com/example/mixin/Public", invokerInterface("com/example/mixin/Public", "tick", "()V"),
 				"com/example/mixin/Private", invokerInterface("com/example/mixin/Private", "helper", "(I)V")));
 		ClassIndex game = new ClassIndex(Map.of(TARGET, targetClass())::get);
-		MixinPreflight preflight = new MixinPreflight(game, mod::get, ClassBytesSource.EMPTY, false);
+		MixinPreflight preflight = preflight(game, mod::get, ClassBytesSource.EMPTY, false);
 		MixinConfigFile config = MixinConfigFile.parse(config(true, "Public", "Private"));
 		List<PreflightFinding> repairs = new java.util.ArrayList<>();
 		Map<String, byte[]> repaired = preflight.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), repairs);
@@ -916,7 +920,7 @@ class MixinPreflightTest {
 		assertEquals(Severity.FAIL, run(config(true, "Missing"), null, Map.of("com/example/mixin/Missing", missing), false).getFirst().severity());
 		assertEquals(Severity.WARN, run(config(false, "Missing"), null, Map.of("com/example/mixin/Missing", missing), false).getFirst().severity());
 		// Before compatibility level 0.17.4, Mixin skips a missing target instead of rejecting the mixin.
-		MixinPreflight lenient = new MixinPreflight(new ClassIndex(Map.of(TARGET, targetClass())::get), Map.of("com/example/mixin/Missing", missing)::get,
+		MixinPreflight lenient = preflight(new ClassIndex(Map.of(TARGET, targetClass())::get), Map.of("com/example/mixin/Missing", missing)::get,
 				ClassBytesSource.EMPTY, false, false);
 		assertEquals(Severity.WARN, lenient.check("test.mixins.json", MixinConfigFile.parse(config(true, "Missing")), Refmap.EMPTY, Set.of()).getFirst().severity());
 		byte[] pseudo = mixin("com/example/mixin/PseudoMissing", true, cw -> { });
@@ -998,14 +1002,14 @@ class MixinPreflightTest {
 		Map<String, byte[]> mod = Map.of("com/example/mixin/LibMixin", cw.toByteArray());
 		Map<String, byte[]> libraries = Map.of("com/mojang/datafixers/Lib", new byte[] {1});
 
-		List<PreflightFinding> withLibraries = new MixinPreflight(game, mod::get, libraries::get, false)
+		List<PreflightFinding> withLibraries = preflight(game, mod::get, libraries::get, false)
 				.check("test.mixins.json", MixinConfigFile.parse(config(true, "LibMixin")), Refmap.EMPTY, Set.of());
 		assertEquals(1, withLibraries.size(), withLibraries.toString());
 		assertEquals(PreflightFinding.Severity.FAIL, withLibraries.getFirst().severity());
 		assertTrue(withLibraries.getFirst().message().contains("without mixin support"));
 
 		// Unknown non-Minecraft targets (another mod's classes) are still only noted.
-		List<PreflightFinding> unknown = new MixinPreflight(game, mod::get, ClassBytesSource.EMPTY, false)
+		List<PreflightFinding> unknown = preflight(game, mod::get, ClassBytesSource.EMPTY, false)
 				.check("test.mixins.json", MixinConfigFile.parse(config(true, "LibMixin")), Refmap.EMPTY, Set.of());
 		assertEquals(PreflightFinding.Severity.INFO, unknown.getFirst().severity());
 	}
@@ -1095,7 +1099,7 @@ class MixinPreflightTest {
 		java.util.function.Function<String, List<PreflightFinding>> run = desc -> {
 			Map<String, byte[]> mod = Map.of("com/example/mixin/M", mixinFor.apply(desc));
 			try {
-				return new MixinPreflight(game, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", MixinConfigFile.parse(config(true, "M")), Refmap.EMPTY, Set.of());
+				return preflight(game, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", MixinConfigFile.parse(config(true, "M")), Refmap.EMPTY, Set.of());
 			} catch (Exception e) {
 				throw new RuntimeException(e);
 			}
@@ -1233,5 +1237,15 @@ class MixinPreflightTest {
 		assertTrue(wrongType.getFirst().message().contains("different type"), wrongType.getFirst().message());
 		List<PreflightFinding> missing = run(config(true, "Gone"), null, Map.of("com/example/mixin/Gone", accessorMixin("com/example/mixin/Gone", "getTotal", "()I")), false);
 		assertTrue(missing.getFirst().message().contains("does not exist"), missing.getFirst().message());
+	}
+
+	/** Pre-flight with no installed jars, and missing targets fatal unless said otherwise. */
+	private static MixinPreflight preflight(ClassIndex game, ClassBytesSource mod, ClassBytesSource untransformable, boolean clientSide) {
+		return preflight(game, mod, untransformable, clientSide, true);
+	}
+
+	private static MixinPreflight preflight(ClassIndex game, ClassBytesSource mod, ClassBytesSource untransformable, boolean clientSide,
+			boolean missingTargetsFatal) {
+		return new MixinPreflight(game, InstalledClasses.NONE, mod, untransformable, clientSide, missingTargetsFatal);
 	}
 }

@@ -102,30 +102,15 @@ public final class MixinPreflight {
 	private ClassIndex libraries;
 
 	/**
-	 * @param game            runtime game classes (Minecraft as patched by NeoForge)
-	 * @param modClasses      the mod's own classes (already remapped to runtime names)
-	 * @param untransformable classes that exist at runtime but are loaded outside NeoForge's transforming class
-	 *                        loader (the JDK and libraries such as DataFixerUpper); mixins into them never apply
-	 * @param clientSide      whether the physical side is the client
-	 */
-	/** As {@link #MixinPreflight(ClassIndex, ClassBytesSource, ClassBytesSource, boolean, boolean)}, with missing targets fatal. */
-	public MixinPreflight(ClassIndex game, ClassBytesSource modClasses, ClassBytesSource untransformable, boolean clientSide) {
-		this(game, modClasses, untransformable, clientSide, true);
-	}
-
-	/**
+	 * @param game                runtime game classes (Minecraft as patched by NeoForge), and {@code installed}'s classes
+	 * @param installed           the classes of the jars installed next to the Fabric mods (Fabricated's Fabric API,
+	 *                            NeoForge mods): mixins targeting them are checked as those into the game are
+	 * @param modClasses          the mod's own classes (already remapped to runtime names)
+	 * @param untransformable     classes that exist at runtime but are loaded outside NeoForge's transforming class
+	 *                            loader (the JDK and libraries such as DataFixerUpper); mixins into them never apply
+	 * @param clientSide          whether the physical side is the client
 	 * @param missingTargetsFatal whether Mixin rejects a mixin whose target class doesn't exist (in a required config),
 	 *                            as it does from compatibility level 0.17.4; before, it only skips that target
-	 */
-	public MixinPreflight(ClassIndex game, ClassBytesSource modClasses, ClassBytesSource untransformable, boolean clientSide,
-			boolean missingTargetsFatal) {
-		this(game, InstalledClasses.NONE, modClasses, untransformable, clientSide, missingTargetsFatal);
-	}
-
-	/**
-	 * @param game      as above, and {@code installed}'s classes
-	 * @param installed the classes of the jars installed next to the Fabric mods (Fabricated's Fabric API, NeoForge
-	 *                  mods): mixins targeting them are checked as those into the game are
 	 */
 	public MixinPreflight(ClassIndex game, InstalledClasses installed, ClassBytesSource modClasses, ClassBytesSource untransformable,
 			boolean clientSide, boolean missingTargetsFatal) {
@@ -164,8 +149,9 @@ public final class MixinPreflight {
 	}
 
 	/**
-	 * The installed classes {@link #check} read (the targets in installed jars, and their supertypes there), with their
-	 * {@link InstalledClasses#fingerprint}s: its results hold while those are the same.
+	 * The installed classes {@link #check} read (the targets in installed jars, and their supertypes there), and the
+	 * targets no installed jar has, with their {@link InstalledClasses#fingerprint}s (empty for an absent class): its
+	 * results hold while those are the same.
 	 */
 	public Map<String, String> installedClasses() {
 		return Collections.unmodifiableMap(new TreeMap<>(installedRead));
@@ -865,6 +851,8 @@ public final class MixinPreflight {
 			String owner = isGame ? null : installed.owner(target);
 			ClassNode targetNode = isGame ? gameTarget(target) : owner != null ? installedTarget(target) : null;
 			if (targetNode == null) {
+				// Absent now, it may be installed later: the result holds only while no installed jar has it.
+				if (!isGame && owner == null) installedRead.putIfAbsent(target, "");
 				if (pseudo) continue;
 				if (isGame && missingTargetsFatal) {
 					ctx.classLevel("Target class " + target.replace('/', '.') + " does not exist in this Minecraft/NeoForge version",
@@ -1018,14 +1006,16 @@ public final class MixinPreflight {
 		}
 	}
 
+	/** Prefixes of the members javac generates, which a target's own bytecode has: never a mixin's. */
+	private static final List<String> JAVAC_PREFIXES = List.of("lambda$", "access$", "this$", "val$");
+
 	/**
 	 * Whether a member of this name, missing from the target's bytecode, may be one another mod's mixin adds: mixins name
 	 * the members they add {@code modid$name} by convention, a form the game's own members don't take (bar javac's
-	 * {@code lambda$} and {@code access$}). Pre-flight sees only the target's bytecode, so it doesn't judge those.
+	 * {@link #JAVAC_PREFIXES}). Pre-flight sees only the target's bytecode, so it doesn't judge those.
 	 */
 	static boolean addedByAMixin(String member) {
-		int dollar = member.indexOf('$');
-		return dollar > 0 && !member.startsWith("lambda$") && !member.startsWith("access$");
+		return member.indexOf('$') > 0 && JAVAC_PREFIXES.stream().noneMatch(member::startsWith);
 	}
 
 	private boolean aliasExists(AnnotationNode shadow, ClassNode target, String desc, boolean field) {

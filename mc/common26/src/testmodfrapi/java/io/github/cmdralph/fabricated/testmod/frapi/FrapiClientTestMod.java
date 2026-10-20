@@ -86,8 +86,11 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 		private static final AtomicBoolean MOVING = new AtomicBoolean();
 		private static final AtomicBoolean BREAKING = new AtomicBoolean();
 		private static final AtomicBoolean COLORS = new AtomicBoolean();
-		/** The colour the terrain block's model gives its faces ({@code neoforge_data}), as NeoForge bakes it into its quads. */
-		private static final int BAKED_COLOR = 0xFF80FF80;
+		/**
+		 * The colour the terrain block's model gives its faces ({@code neoforge_data}), as NeoForge bakes it into its quads
+		 * (ARGB, as Fabric's quads have it): red and blue differ, so channels in the wrong order fail the check.
+		 */
+		private static final int BAKED_COLOR = 0xFF8040C0;
 		/** Logs once that a quad reached Fabric's renderer with NeoForge's baked colour (FRAPI-2). */
 		private static final QuadTransform CHECK_COLORS = quad -> {
 			if (quad.color(0) == BAKED_COLOR && !COLORS.getAndSet(true)) FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi baked colors OK");
