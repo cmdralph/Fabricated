@@ -3,7 +3,33 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
-## 2026-10-20 (current pass, after PR #48): generalizing
+## 2026-10-20 (pass after PR #49): renderer and deep-hook mods
+
+**Plan.** Find out why CI failed on `main` after PR #49, then broaden which mods load, renderer-changing and
+deep-hook mods first, keeping facts about other people's mods in data. Where a mod can't run on NeoForge, the report
+says why and what to install instead.
+
+- `main`'s failure (run 368, the plain 26.1.2 client): the client launcher stopped with status 255 before the game
+  wrote a log, on code whose other clients passed. Run 365's plain 1.21.11 client failure left no readable log
+  either. The smoke script now launches once more when the launcher stops before the game starts, and the CI
+  summary prints the launcher's last lines whenever a run has no game log.
+- Compatibility-plan entries can say what to do instead (`suggestion`). Essential's Fabric builds are refused with
+  the reason: its loader is a stub that downloads Essential and injects it through Fabric Loader internals. malilib
+  and WTHIT entries name their NeoForge builds.
+- The linkage check covers mods' references to Fabric Loader, against the classes Fabricated provides. A missing
+  one is a warning, and never drops a Fabric API module.
+- CORPUS-15 is fixed: a mod is disabled when a required mixin without a plugin calls code of a Fabric mod that
+  isn't loading. The report names that mod, instead of Mixin crashing at class load. Core's unit tests cover it.
+- CI: corpus runs list every disabled mod with its reason, and any Fabric Loader internals a mod reaches for. A
+  new informational run puts Fabric addons of Sodium (Sodium Extra, Reese's Sodium Options) next to Sodium for
+  NeoForge on 26.x.
+- Fabric's renderer API on 1.21.11 has the NeoForge-aware defaults 26.x has: level-aware parts, NeoForge's
+  ambient occlusion, and the colours and normals of NeoForge's quads. Moving blocks (falling, pushed by a piston)
+  with a Fabric model are drawn by Fabric's renderer. The 1.21.11 gate checks all three, and only the breaking
+  overlay still uses NeoForge's renderer there. Run 370 stopped at the 1.21.11 build: the vendored `TriState` stub
+  also needed its `BooleanFunction`.
+
+## 2026-10-20 (pass after PR #48): generalizing
 
 **Plan.** First features and fixes, generalized wherever a rule can replace a case: what a mod declares, its
 mixins and its custom values decide what Fabricated does, and the facts about other people's mods that can't be
