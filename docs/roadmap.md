@@ -101,8 +101,10 @@ research sandbox).
 
 **Where the Fabric builds stand** (CI's informational run, `loadUnsupported`, 26.x):
 - Sodium 0.9.2 and Iris 1.11.4 (Fabric) load through Fabricated on 26.2 (run on `dbdff1d`): pre-flight passes them, Iris
-  creates its pipeline, the client joins a world. It then crashed on the first block quad (SODIUM-1, below). The
-  constructor repair in `bee1fe4` addresses it; the next informational run shows how far it gets.
+  creates its pipeline, the client joins a world. It then crashed on the first block quad (SODIUM-1, below).
+- With the constructor repair (`bee1fe4`), the 26.3 run on `e68cb58` no longer crashes: Sodium's Fabric build meshes
+  the Fabric test model in its own `LevelSlice` on its chunk builder thread, and the moving block, breaking overlay,
+  nested model and level-aware default checks all pass. Shaders weren't enabled.
 - Beyond that, Sodium's Fabric platform services answer NeoForge's questions the Fabric way: no NeoForge model data,
   no `AddSectionGeometryEvent` geometry, no NeoForge fluid renderers, no `hidesNeighborFace`, no position-aware light
   emission, no baked colours in immediate mode. Generic work fixes about half (below); the rest is what Sodium for
@@ -138,7 +140,8 @@ NeoForge already cover those users.
 - **Done:** plugins of recipe viewers and tooltip mods: a Fabric mod's JEI, EMI, REI and Jade entrypoints become the
   annotations their NeoForge builds scan for (`PluginAnnotations`, `FabricLanguageLoader`); WTHIT reads the jar's
   plugin file; Jade's per-mod settings become its mod properties. An informational CI client runs the viewers'
-  NeoForge builds with the test mod's plugins.
+  NeoForge builds with the test mod's plugins: on 26.3 (`e68cb58`) JEI, REI and Jade each constructed the test plugin
+  once and called it; Modrinth gave no WTHIT build in that run.
 - **Next:** pin the viewers' builds and make that run a gate; EMI once it has NeoForge builds for these versions.
 
 ### Quality: CI, corpus, performance
@@ -160,8 +163,8 @@ Severity: **P0** crash or data loss on a normal launch · **P1** a supported fea
 
 | ID | Sev | Location | Failure mode and trigger | Why tests missed it | Fix |
 |---|---|---|---|---|---|
-| REG-1 | P0 on newer 26.3 builds | `NeoForgeRegistryInternals` | NeoForge's 26.3.x branch keeps each list of data-pack registries with its key set in a private record. The reflection accepted only a `List` field and found nothing, so `DynamicRegistries.register` threw and the game stopped on NeoForge's error screen. | CI pins NeoForge 26.3.0.69-beta, which predates the change; Fabricated's range accepts the newer builds. Found by the code audit. | `05f3a9c`: reads the record's components too, logs an unknown shape. A CI server run on the newest NeoForge build of each version. |
-| SODIUM-1 | P0 for Sodium's Fabric build | core `MixinPreflight` | NeoForge keeps `BakedQuad`'s vanilla constructor only as a delegate adding NeoForge components, and builds block quads with the full one, so Sodium's Fabric `BakedQuadMixin` never ran for them; Sodium's renderer threw on the first block quad. | Seen in CI's first run of Sodium's Fabric build (`loadUnsupported`). | `bee1fe4`: the constructor repair covers delegates appending NeoForge-typed arguments, with a bridge for handlers taking the parameters. Unit tests; in-game effect to be seen in the informational run. |
+| REG-1 | P0 on newer 26.3 builds | `NeoForgeRegistryInternals` | NeoForge's 26.3.x branch keeps each list of data-pack registries with its key set in a private record. The reflection accepted only a `List` field and found nothing, so `DynamicRegistries.register` threw and the game stopped on NeoForge's error screen. | CI pins NeoForge 26.3.0.69-beta, which predates the change; Fabricated's range accepts the newer builds. Found by the code audit. | `05f3a9c`: reads the record's components too, logs an unknown shape. A CI server run on the newest NeoForge build of each version; on `e68cb58` every server check passes on NeoForge 26.3.0.94, the synced dynamic registry included. |
+| SODIUM-1 | P0 for Sodium's Fabric build | core `MixinPreflight` | NeoForge keeps `BakedQuad`'s vanilla constructor only as a delegate adding NeoForge components, and builds block quads with the full one, so Sodium's Fabric `BakedQuadMixin` never ran for them; Sodium's renderer threw on the first block quad. | Seen in CI's first run of Sodium's Fabric build (`loadUnsupported`). | `bee1fe4`: the constructor repair covers delegates appending NeoForge-typed arguments, with a bridge for handlers taking the parameters. Unit tests; verified on 26.3 (`e68cb58`): Sodium's Fabric build meshes the world without the crash. Gate "frapi baked quad constructor hook OK" (`6a842e5`). |
 | FRAPI-2 | P2 | `FrapiDefaults` (26.x) | Upstream's `fromBakedQuad` sets vertex colours to white and no normals, so NeoForge quads drawn by Fabric's renderer lost their baked colours and normals. | Not yet seen in game; found reading Forgified Fabric API. | `ce52fb2`. |
 | PRE-2 | P3 | core `MixinPreflight` | A mixin into a member another mod's mixin adds (Iris's `MixinSpriteContents` into Sodium's `sodium$setActive`) was reported missing: pre-flight sees the target's bytecode only. A required one would have disabled the mod. | Seen as a warning in CI's Fabric Iris run. | This pass: a missing member named as mixins name what they add (`modid$name`; the game's own members never are, bar `lambda$` and `access$`) is noted as not verified instead. Unit test. Checking it against the other mods' mixins is still open. |
 | CFG-1 | P3 | `ModTranslator` | A `skipMixins` entry that named no mixin was silently ignored, so a typo went unnoticed. | — | This pass: a pre-flight note names it, where every config it could apply to was read on that side. Unit test. |
