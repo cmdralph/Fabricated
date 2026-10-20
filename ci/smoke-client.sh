@@ -57,6 +57,9 @@ mods_json="${FABRICATED_MODS:-{\}}"
 if [ -n "$extra" ]; then
 	# With extra mods, a mod's failing entrypoint is reported and the game goes on, as the server smoke test does.
 	echo "{ \"schema\": 1, \"onEntrypointFailure\": \"disable\", \"logLevel\": \"DEBUG\", \"mods\": $mods_json }" > run/config/fabricated.json
+	# And NeoForge doesn't put its loading warnings (a Fabric mod that didn't load, say) on a screen, which
+	# mc-runtime-test takes for a failure and stops the game at; they are still logged ("Mods loaded with N warning(s)").
+	echo "showLoadWarnings = false" > run/config/neoforge-client.toml
 else
 	echo "{ \"schema\": 1, \"logLevel\": \"DEBUG\", \"mods\": $mods_json }" > run/config/fabricated.json
 fi

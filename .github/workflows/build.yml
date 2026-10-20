@@ -431,6 +431,8 @@ jobs:
             [ -f "$log" ] || continue
             echo "== $run"
             grep -h -m 20 -E "FABRICATED-TEST frapi|Caused by|Exception in|crash report" "$log" || true
+            # NeoForge's loading warnings (the runs with extra mods don't show them on a screen).
+            grep -h -m 1 -A 6 "Mods loaded with .* warning" "$log" | cut -c1-300 || true
             # A crash's description and errors, with the first stack frames.
             for report in $(ls "$RUNNER_TEMP/$run/run/crash-reports"/*.txt 2>/dev/null | head -1); do
               echo "-- $(basename "$report")"
@@ -457,6 +459,9 @@ jobs:
               # What the client showed half a minute into its world, and whether chunks arrived (the test mod).
               grep -h -m 1 "FABRICATED-TEST world state" "$log" | cut -c1-400 || true
               grep -h -m 1 "FABRICATED-TEST server state" "$log" | cut -c1-400 || true
+              # The player's way into the integrated server, and out (the test mod's PlayerList mixin).
+              grep -h -E "FABRICATED-TEST server (placing|placed|removing)|joined the game|left the game|lost connection|Saving and pausing|Failed to handle packet" "$log" | head -8 | cut -c1-300 || true
+              grep -h -m 1 -A 14 "FABRICATED-TEST server removing" "$log" | grep -E "^[[:space:]]+at " | grep -v "java\.base/" | head -10 | cut -c1-250 || true
               # Who asked the game to stop, if anything did (the test mod).
               grep -h -m 1 -A 12 "FABRICATED-TEST game stop requested" "$log" | grep -v "java\.base/" | cut -c1-250 || true
               echo "-- last lines of the log:"
