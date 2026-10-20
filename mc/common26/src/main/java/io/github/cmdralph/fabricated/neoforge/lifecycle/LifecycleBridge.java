@@ -8,6 +8,7 @@ import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLevelEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.impl.event.lifecycle.EntityLoadDataSetter;
+import net.minecraft.core.RegistryAccess;
 import net.minecraft.server.level.ChunkLevel;
 import net.minecraft.server.level.FullChunkStatus;
 import net.minecraft.server.level.ServerLevel;
@@ -18,6 +19,7 @@ import net.minecraft.world.level.chunk.LevelChunk;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.EventPriority;
 import net.neoforged.neoforge.common.NeoForge;
+import net.neoforged.neoforge.event.DefaultDataComponentsBoundEvent;
 import net.neoforged.neoforge.event.OnDatapackSyncEvent;
 import net.neoforged.neoforge.event.TagsUpdatedEvent;
 import net.neoforged.neoforge.event.entity.EntityJoinLevelEvent;
@@ -45,6 +47,8 @@ import net.neoforged.neoforge.event.tick.ServerTickEvent;
  */
 public final class LifecycleBridge {
 	private static final FullChunkStatus[] STATUSES = FullChunkStatus.values();
+	/** The registries of a data load whose tags are bound and whose item components are not yet. */
+	private static final ThreadLocal<RegistryAccess> LOADED_TAGS = new ThreadLocal<>();
 
 	private LifecycleBridge() {
 	}
@@ -122,8 +126,22 @@ public final class LifecycleBridge {
 				e.getRelevantPlayers().forEach(player -> ServerLifecycleEvents.SYNC_DATA_PACK_CONTENTS.invoker().onSyncDataPackContents(player, false));
 			}
 		});
-		bus.addListener(TagsUpdatedEvent.class, e ->
-				CommonLifecycleEvents.TAGS_LOADED.invoker().onTagsLoaded(e.getRegistries(), e instanceof TagsUpdatedEvent.ClientPacketReceived));
+		// A data load reports its tags before it binds the items' default components, while upstream fires TAGS_LOADED
+		// once both are bound (Jade builds item stacks in it): that case waits for NeoForge's event after the binding,
+		// posted on the same thread.
+		bus.addListener(TagsUpdatedEvent.class, e -> {
+			if (e instanceof TagsUpdatedEvent.ClientPacketReceived) {
+				CommonLifecycleEvents.TAGS_LOADED.invoker().onTagsLoaded(e.getRegistries(), true);
+			} else {
+				LOADED_TAGS.set(e.getRegistries());
+			}
+		});
+		bus.addListener(DefaultDataComponentsBoundEvent.class, e -> {
+			RegistryAccess registries = LOADED_TAGS.get();
+			if (registries == null || e.getUpdateCause() != DefaultDataComponentsBoundEvent.UpdateCause.SERVER_DATA_LOAD) return;
+			LOADED_TAGS.remove();
+			CommonLifecycleEvents.TAGS_LOADED.invoker().onTagsLoaded(registries, false);
+		});
 
 		if (dist.isClient()) ClientLifecycleBridge.register();
 	}

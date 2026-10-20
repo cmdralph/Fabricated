@@ -121,6 +121,7 @@ check "FABRICATED-TEST early language adapter OK" server.out "Fabric's start-up 
 check "FABRICATED-TEST lifecycle server started OK" server.out "native lifecycle: SERVER_STARTED"
 check "FABRICATED-TEST lifecycle server tick OK" server.out "native lifecycle: END_SERVER_TICK"
 check "FABRICATED-TEST lifecycle server stopping OK" server.out "native lifecycle: SERVER_STOPPING"
+check "FABRICATED-TEST lifecycle tags loaded OK" server.out "native lifecycle: TAGS_LOADED after the items' default components are bound"
 check "FABRICATED-TEST block entity events OK" server.out "native lifecycle: a block entity loads when placed and unloads when broken"
 check "FABRICATED-TEST networking registration OK" server.out "native networking: receiver registered"
 check "Registered [0-9]* Fabric payload type" server.out "native networking: payloads handed to NeoForge"
