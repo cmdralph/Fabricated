@@ -92,9 +92,11 @@ public final class ModTranslator {
 	}
 
 	/**
-	 * @param loadAfter NeoForge ids this mod should load after (its dependencies that are present)
+	 * @param plannedSkips the entries of {@code override}'s {@code skipMixins} that come from Fabricated's Fabric API plan:
+	 *                     made for one Fabric API version, so one naming no mixin of another version isn't reported
+	 * @param loadAfter    NeoForge ids this mod should load after (its dependencies that are present)
 	 */
-	public TranslatedMod translate(Candidate candidate, ModOverride override, List<String> loadAfter) throws TranslationException {
+	public TranslatedMod translate(Candidate candidate, ModOverride override, Set<String> plannedSkips, List<String> loadAfter) throws TranslationException {
 		String neoId = ModIds.toNeoForgeId(candidate.id());
 		if (ModIds.RESERVED.contains(neoId)) {
 			throw new TranslationException("Mod id '" + candidate.id() + "' cannot be used on NeoForge", "Report this to the mod author.");
@@ -143,7 +145,7 @@ public final class ModTranslator {
 				Map<String, byte[]> overlay = new TreeMap<>();
 				List<PreflightFinding> findings = new ArrayList<>();
 				Map<String, String> installedClasses = new TreeMap<>();
-				List<ModsTomlWriter.MixinConfigSpec> mixinSpecs = processMixins(candidate, override, files,
+				List<ModsTomlWriter.MixinConfigSpec> mixinSpecs = processMixins(candidate, override, plannedSkips, files,
 						remapped != null ? remapped.keySet() : archive.classEntryNames(), overlay, findings, installedClasses);
 
 				List<InjectedInterface> injections = List.of();
@@ -278,7 +280,7 @@ public final class ModTranslator {
 	}
 
 	/** @param installedClasses receives the installed classes pre-flight read, with their fingerprints */
-	private List<ModsTomlWriter.MixinConfigSpec> processMixins(Candidate candidate, ModOverride override, FileView files,
+	private List<ModsTomlWriter.MixinConfigSpec> processMixins(Candidate candidate, ModOverride override, Set<String> plannedSkips, FileView files,
 			Collection<String> entries, Map<String, byte[]> overlay, List<PreflightFinding> findings, Map<String, String> installedClasses)
 			throws ArchiveException, TranslationException {
 		FabricModMetadata md = candidate.metadata();
@@ -355,7 +357,9 @@ public final class ModTranslator {
 		}
 		if (!override.ignorePreflight()) checkPluginMixins(entries, configs, refmaps, preflight, translated, overlay, findings);
 		installedClasses.putAll(preflight.installedClasses());
-		unmatchedSkips(override.skipMixins(), matchedSkips, md.compatHints().mixinsOr(md.mixins()), configs.keySet(), findings);
+		Set<String> written = new TreeSet<>(override.skipMixins());
+		written.removeAll(plannedSkips);
+		unmatchedSkips(written, matchedSkips, md.compatHints().mixinsOr(md.mixins()), configs.keySet(), findings);
 
 		List<PreflightFinding> failures = findings.stream().filter(f -> f.severity() == Severity.FAIL).toList();
 		if (!failures.isEmpty()) {
@@ -732,7 +736,6 @@ public final class ModTranslator {
 		return Map.of(SODIUM_CONFIG_ENTRYPOINT, page.value());
 	}
 
-	/** The mod's overrides of Sodium's mixin options: a custom value on Fabric, a key of its {@code [[mods]]} entry for Sodium for NeoForge. */
 	/**
 	 * What NeoForge mods read from a mod's {@code [modproperties]} where Fabric mods read an entrypoint or a custom
 	 * value: Sodium's options page, and Jade's settings ({@code jade}: accessibilityMod, fastScroll, ...).

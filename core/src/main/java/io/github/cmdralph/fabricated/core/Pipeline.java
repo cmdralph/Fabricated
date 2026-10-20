@@ -553,7 +553,9 @@ public final class Pipeline {
 			Map<Candidate, TranslationException> failures = new ConcurrentHashMap<>();
 			mods.parallelStream().forEach(c -> {
 				try {
+					FabricApiPlan.Module module = plan.module(c.id());
 					results.put(c.id(), translator.translate(c, effectiveOverride(config, plan, c, applied.getOrDefault(c.id(), List.of())),
+							module != null ? Set.copyOf(module.skipMixins()) : Set.of(),
 							loadAfter(c, providerOf)));
 				} catch (TranslationException e) {
 					failures.put(c, e);
