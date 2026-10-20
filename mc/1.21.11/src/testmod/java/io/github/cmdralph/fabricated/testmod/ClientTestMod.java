@@ -9,6 +9,7 @@ import net.fabricmc.fabric.api.client.networking.v1.ClientConfigurationNetworkin
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.resource.v1.ResourceLoader;
+import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.gui.screens.MenuScreens;
 import net.minecraft.client.gui.screens.inventory.ContainerScreen;
 import net.minecraft.resources.Identifier;
@@ -45,6 +46,7 @@ public final class ClientTestMod implements ClientModInitializer {
 		});
 		ResourceLoader.get(PackType.CLIENT_RESOURCES).registerReloader(Identifier.fromNamespaceAndPath("fabricated_testmod", "client_listener"),
 				(ResourceManagerReloadListener) manager -> TestMod.LOGGER.info("FABRICATED-TEST client resource reload listener OK"));
+		if (FabricLoader.getInstance().isModLoaded("fabric-model-loading-api-v1")) ModelLoadingTest.register();
 
 		ClientConfigurationNetworking.registerGlobalReceiver(ConfigurationTest.Request.TYPE,
 				(payload, context) -> context.responseSender().sendPacket(new ConfigurationTest.Reply(7)));

@@ -93,7 +93,8 @@ Example: adding `26.4` once NeoForge supports it.
 8. **Refine the plan from evidence.** Run the smoke test with the official Fabric API jar in the mods folder
    and read the "Mixin pre-flight" sections of `logs/fabric-bridge-report.txt`. For a module whose mixin
    fails, either add it to that module's `skipMixins` (and describe what is lost in `reason`) or implement
-   the module natively.
+   the module natively. A pass-through module that requires an unsupported one only for code NeoForge never runs
+   can load without it: list it in `dropDependencies` and say why in `reason`.
 9. **Update the docs**: the compatibility table in `README.md` and `docs/COMPATIBILITY.md`.
 
 No changes to `core` should be needed for a new version. If they are, keep them version-independent and

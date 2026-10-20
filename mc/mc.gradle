@@ -309,5 +309,6 @@ if (mcVersion.startsWith('26.')) {
     neoForge.addModdingDependenciesTo(sourceSets.fabricapistubs)
     dependencies {
         compileOnly sourceSets.fabricapistubs.output
+        testmodCompileOnly sourceSets.fabricapistubs.output
     }
 }

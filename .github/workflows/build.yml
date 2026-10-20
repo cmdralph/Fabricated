@@ -202,6 +202,19 @@ jobs:
             grep -n -m 40 -E "frapi|FabricBlockRendering|RenderMixin|SectionCompiler|/(ERROR|FATAL)\]" "$log" || true
             exit 1
           fi
+      # Fabric's model loading API on 1.21.11, where it loads without the renderer API (CORPUS-6): a model file of a
+      # Fabric type must be read by the test mod's Fabric deserializer. A gate.
+      - name: Fabric model loading API (1.21.11)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && matrix.minecraft == '1.21.11' }}
+        run: |
+          log="$RUNNER_TEMP/client-fapi/run/logs/latest.log"
+          if grep -h "FABRICATED-TEST model deserializer OK" "$log"; then
+            echo "PASS: a model file of a Fabric type was read by its Fabric deserializer"
+          else
+            echo "::error::FAIL: a model file of a Fabric type was read by its Fabric deserializer (no \"model deserializer OK\" line)"
+            grep -n -m 30 -E "model.loading|ModelManager|/(ERROR|FATAL)\]" "$log" || true
+            exit 1
+          fi
       - name: Upload Fabric API client run logs and report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
