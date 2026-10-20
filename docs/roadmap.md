@@ -117,7 +117,9 @@ research sandbox).
   Polydium's MixinSquared selector failed. On `72f5472`, with PKG-1 fixed, 3 jars are disabled (adventure-platform-fabric
   for a mixin config in its nested jar, ADV-1); the 26.1.2 client gets to the render thread and fails in OneConfig's
   config manager on night-config's JSON module, which Fabricated took for NeoForge's (PLAT-1, fixed since); the 26.3
-  client still stops at mod construction (the next run's summary prints the crash's cause).
+  client still stops at mod construction (the next run's summary prints the crash's cause). On `b2b91e8`, with PKG-2,
+  PKG-3 and PLAT-1 fixed, 1 jar is disabled (ADV-1) and both clients reach "Initializing game", where Skiko finds no
+  native library (NATIVE-1, fixed since).
 
 **Plan, by coverage per effort** (each with its CI check):
 
@@ -173,6 +175,7 @@ Severity: **P0** crash or data loss on a normal launch · **P1** a supported fea
 
 | ID | Sev | Location | Failure mode and trigger | Why tests missed it | Fix |
 |---|---|---|---|---|---|
+| NATIVE-1 | P1 | core `PackageGuard` | Skiko, nested in compose-bundle, found no native library: "Cannot find libskiko-linux-x64.so.sha256, proper native dependency missing" stopped the 26.1.2 and 26.3 Polyfrost clients at "Initializing game" (run on `b2b91e8`). Skiko looks its natives up with `Class.getResourceAsStream("/libskiko-...")`, which in a module searches that module only; the natives are in a jar of their own, without classes. Fabric's class path finds any jar's. | Each jar was its own module, and no test had a library whose resources are in another jar. | This pass: the root files of a nested jar without classes are also served by the modules of its parent and of the jars nested beside it (a file a module has itself stays its own), with a note in the report. That the natives jar is a sibling of Skiko's classes, or nested in them, is UNVERIFIED (Modrinth is unreachable from the dev container); the CI summary prints the note. `PipelineTest`. |
 | REG-2 | P1 | `EntrypointBridge` | Registries were frozen when Fabric client initializers ran: NeoForge freezes them after its registration events, before `Minecraft` exists, while Fabric API freezes them only after the client initializers. Xaero's Minimap registers its mob effect from `onInitializeClient`, catches the failure and rethrows it on the first tick: "Registry is already frozen (trying to add key ... xaerominimap:no_minimap)" stopped the 26.x corpus clients (`b679b92`). | The test mods registered from `main` only. | This pass: the registries are opened for the client initializers and frozen again with NeoForge's own `GameData.unfreezeData`/`freezeData` (the sequence NeoForge runs around its registration events), which also renews the frozen snapshot NeoForge restores on leaving a server. Client check "client entrypoint registration OK": the test mod registers a mob effect from a client initializer. |
 | CORPUS-2 | P2 | Xaero's World Map | The corpus client crashed on its first tick: `WorldMap.events` was null in World Map's `Minecraft.runTick` hook, with no entrypoint failure reported. | The cause showed only through Xaero's Minimap in the same corpus (REG-2): Xaero's client initializers register content, and catch and defer the failure. | REG-2. On `72f5472` World Map alone reaches a world on 26.1.2 and 26.3. |
 | PLAT-1 | P1 | core `PlatformLibraries` | The platform's libraries were matched by package prefix, and `com/electronwill/nightconfig/` covered every night-config module, so a mod's JSON or YAML module was dropped as "provided by the platform", which ships only core and TOML. OneConfig's config manager then failed (`ClassNotFoundException: com.electronwill.nightconfig.json.JsonFormat`, 26.1.2 Polyfrost run on `72f5472`). | No test had a mod nesting a night-config module the platform lacks. | This pass: core and TOML only (NeoForge's and FML's build files list those two). Unit test. |
@@ -284,6 +287,17 @@ open (see *Unverified and blockers*).
 ## Changelog
 
 Newest first. Each entry: what changed, and how it was verified.
+
+### 2026-10-20 (night): native libraries of jars without classes
+
+**Summary.**
+- PKG-2 (pull request #31) and PKG-3 (#32): MixinSquared's Fabric jar loads beside OneConfig's copy of its common
+  classes. On `b2b91e8` the Polyfrost run disables 1 jar (ADV-1) and both clients get to "Initializing game".
+- NATIVE-1: the root files of a nested jar without classes are served by the modules beside it too, as Skiko needs
+  for its native library. The Polyfrost summary prints which modules serve them.
+
+**Verification.** Core: `./gradlew -Pfabricated.coreOnly=true build` green locally, with a new `PipelineTest` case. CI:
+see the pull request.
 
 ### 2026-10-20 (later): split packages, registries for client initializers, review fixes
 
