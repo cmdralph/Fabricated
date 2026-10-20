@@ -25,7 +25,7 @@ handled safely, no network access, original jars never changed, and no code that
   (R3: Iris's ~20 mixins into Sodium were "not verified" before), cached with the fingerprints of the classes it read. Every declared language adapter created before any Fabric mod's mixin plugin loads, as on
   Fabric (PolyPlus and Polydium declare adapters only to run code that early): translated mods load after
   Fabricated's mod, whose first mixin config's plugin creates them. CI: the test mod's adapter sets a property its own
-  mixin plugin checks ("early language adapter OK").
+  mixin plugin checks ("early language adapter OK"); passes on all four versions (`3d5d509`).
 - **Next:**
   - `preLaunch` right after FML's mixin bootstrap instead of with `main`, closer to Fabric's order (it must run after
     every mixin config is registered, so a class it loads still gets its mixins).
@@ -117,8 +117,8 @@ research sandbox).
 
 | # | Capability | Covers | Status |
 |---|---|---|---|
-| 1 | FRAPI-2: NeoForge's baked colours and normals kept by `FrapiDefaults` | NeoForge models drawn by any Fabric renderer | Done (`ce52fb2`). Gate "frapi baked colors OK": the terrain test block's model has a `neoforge_data` colour, checked as Fabric's renderer emits it |
-| 2 | Constructor repair for appended NeoForge components, with a handler bridge | Sodium's `BakedQuadMixin` (SODIUM-1); any mixin into NeoForge-extended records (`BakedQuad`, `MaterialInfo`, `FluidModel`) | Done (`bee1fe4`, unit tests). Gate "frapi baked quad constructor hook OK": the test mod's mixin at the end of `BakedQuad`'s vanilla constructor marks the quads NeoForge bakes |
+| 1 | FRAPI-2: NeoForge's baked colours and normals kept by `FrapiDefaults` | NeoForge models drawn by any Fabric renderer | Done (`ce52fb2`). Gate "frapi baked colors OK": the terrain test block's model has a `neoforge_data` colour, checked as Fabric's renderer emits it. Passes on 26.2 and 26.3 (`3d5d509`) |
+| 2 | Constructor repair for appended NeoForge components, with a handler bridge | Sodium's `BakedQuadMixin` (SODIUM-1); any mixin into NeoForge-extended records (`BakedQuad`, `MaterialInfo`, `FluidModel`) | Done (`bee1fe4`, unit tests). Gate "frapi baked quad constructor hook OK": the test mod's mixin at the end of `BakedQuad`'s vanilla constructor marks the quads NeoForge bakes. Passes on 26.2 and 26.3 (`3d5d509`) |
 | 3 | Fabric-order early hooks | PolyPlus, Polydium, OneConfig | Language adapters done (server check "early language adapter OK"); `preLaunch` next |
 | 4 | Pre-flight of mixins into other mods, pairing rules | Iris with Sodium, Polydium, OneConfig's compat mixins, Sodium addons | Done for installed NeoForge mods and, on 26.x, other Fabric mods (R3); pairing rules next |
 | 5 | Built-in compatibility plan (data) | Sodium's window mixin, its renderer API config on 1.21.11, pairings | Next |
