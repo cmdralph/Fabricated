@@ -166,6 +166,7 @@ check() {
 }
 [ "$status" -eq 0 ] && echo "PASS: client exited normally" || { echo "FAIL: client exit status $status"; fail=1; }
 check "Successfully finished." "client joined a singleplayer world (mc-runtime-test)"
+check "player list was replaced after NeoForge made its view" "getPlayers() follows a player list a mod replaced (the test mod replaces it, as the Polyfrost stack does)"
 check "FABRICATED-TEST main entrypoint OK" "main entrypoint ran on the client"
 check "FABRICATED-TEST client entrypoint OK" "client entrypoint ran"
 check "FABRICATED-TEST client entrypoint registration OK" "a client initializer registers content (registries open, as Fabric API leaves them)"
