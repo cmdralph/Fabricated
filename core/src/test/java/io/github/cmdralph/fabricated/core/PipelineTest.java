@@ -48,6 +48,7 @@ import io.github.cmdralph.fabricated.core.resolve.Candidate;
 import io.github.cmdralph.fabricated.core.resolve.FabricApiPlan;
 import io.github.cmdralph.fabricated.core.testutil.TestEnums;
 import io.github.cmdralph.fabricated.core.testutil.TestJars;
+import io.github.cmdralph.fabricated.core.translate.DefaultBridge;
 import io.github.cmdralph.fabricated.core.translate.PackageGuard;
 import io.github.cmdralph.fabricated.core.translate.TranslatedMod;
 import io.github.cmdralph.fabricated.core.translate.TranslationEnvironment.Namespace;
@@ -498,6 +499,8 @@ class PipelineTest {
 		assertEquals(List.of("com/a/Iface"), interfacesOf(kept, "net/minecraft/world/Thing"));
 		assertEquals(Set.of("com/a/ClientThing"), kept.environmentClasses());
 		assertTrue(result.without(Set.of("mod-a", "mod-b")).injectedInterfaces().isEmpty());
+		assertEquals(1, result.defaultBridges().get("net/minecraft/world/Thing").size(), "a bridge two mods need is declared once");
+		assertTrue(result.without(Set.of("mod-a", "mod-b")).defaultBridges().isEmpty());
 		// Read from any class-loading thread: never changed after it is published.
 		assertThrows(UnsupportedOperationException.class, () -> kept.injectedInterfaces().get("net/minecraft/world/Thing").clear());
 		assertThrows(UnsupportedOperationException.class, () -> kept.injectedInterfaces().clear());
@@ -526,7 +529,7 @@ class PipelineTest {
 		Candidate c = new Candidate(file, id + "-hash", FabricModJsonParser.parse(json), id + ".jar", null, 0, List.of(), Set.of());
 		InjectedInterface injection = new InjectedInterface("net/minecraft/world/Thing", iface, iface, false, 1);
 		TranslatedMod mod = new TranslatedMod(c, id.replace('-', '_'), file, file, List.of(), 0, List.of(), List.of(injection),
-				Set.of(environmentClass), false, 0);
+				List.of(new DefaultBridge("net/minecraft/world/Thing", "net/minecraft/world/Extension", "size", "()I")), Set.of(environmentClass), false, 0);
 		return new Pipeline.LoadedMod(mod, PackageGuard.Decision.NONE, List.of());
 	}
 
@@ -663,6 +666,56 @@ class PipelineTest {
 		Report.ModRow row = result.report().mods().stream().filter(r -> r.id().equals("stew")).findFirst().orElseThrow();
 		assertEquals(Report.Status.DISABLED, row.status());
 		assertTrue(row.detail().contains("extensible enums"), row.detail());
+	}
+
+	@Test
+	void anInterfaceAMixinAddsGetsItsSecondDefaultBridged(@TempDir Path game) throws Exception {
+		// CORPUS-11: Entity Culling's interface mixin gives BlockEntityRenderer a second default of NeoForge's
+		// getRenderBoundingBox. The bridge is kept in the cache.
+		String box = "(Ljava/lang/Object;)Ljava/lang/String;";
+		String renderer = "net/minecraft/client/Renderer";
+		String extension = "net/neoforged/neoforge/client/Extension";
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		Path cull = TestJars.create().fabricModJson(TestJars.modJson("cull", "1.0", "\"mixins\":[\"cull.mixins.json\"]"))
+				.text("cull.mixins.json", "{\"required\":true,\"package\":\"com.cull.mixin\",\"mixins\":[\"RendererMixin\"]}")
+				.bytes("com/cull/FabricExtension.class", itf("com/cull/FabricExtension", List.of(), "box" + box, null))
+				.bytes("com/cull/mixin/RendererMixin.class", itf("com/cull/mixin/RendererMixin", List.of("com/cull/FabricExtension"), null, renderer))
+				.write(mods.resolve("cull.jar"));
+		Map<String, byte[]> gameClasses = Map.of(TARGET, targetClass(), extension, itf(extension, List.of(), "box" + box, null),
+				renderer, itf(renderer, List.of(extension), null, null));
+		DefaultBridge expected = new DefaultBridge(renderer, extension, "box", box);
+		for (boolean cached : new boolean[] {false, true}) {
+			Pipeline.Result result = Pipeline.run(input(game, List.of(cull), Namespace.OFFICIAL, gameClasses, null));
+			TranslatedMod translated = result.mods().getFirst().translated();
+			assertEquals(cached, translated.cacheHit());
+			assertEquals(List.of(expected), translated.defaultBridges(), result.report().render());
+			assertEquals(List.of(expected), result.defaultBridges().get(renderer));
+		}
+	}
+
+	/** An interface with these superinterfaces, a default method ({@code name + descriptor}) if any, and an {@code @Mixin} target if any. */
+	private static byte[] itf(String name, List<String> interfaces, String defaultMethod, String mixinTarget) {
+		ClassWriter cw = new ClassWriter(0);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_INTERFACE | Opcodes.ACC_ABSTRACT, name, null, "java/lang/Object",
+				interfaces.toArray(String[]::new));
+		if (mixinTarget != null) {
+			AnnotationVisitor mixin = cw.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false);
+			AnnotationVisitor values = mixin.visitArray("value");
+			values.visit(null, Type.getObjectType(mixinTarget));
+			values.visitEnd();
+			mixin.visitEnd();
+		}
+		if (defaultMethod != null) {
+			int paren = defaultMethod.indexOf('(');
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC, defaultMethod.substring(0, paren), defaultMethod.substring(paren), null, null);
+			mv.visitCode();
+			mv.visitInsn(Opcodes.ACONST_NULL);
+			mv.visitInsn(Opcodes.ARETURN);
+			mv.visitMaxs(1, 2);
+			mv.visitEnd();
+		}
+		cw.visitEnd();
+		return cw.toByteArray();
 	}
 
 	@Test

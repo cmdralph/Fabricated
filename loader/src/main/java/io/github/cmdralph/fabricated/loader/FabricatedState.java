@@ -20,6 +20,7 @@ import io.github.cmdralph.fabricated.core.config.FabricatedConfig;
 import io.github.cmdralph.fabricated.core.report.Report;
 import io.github.cmdralph.fabricated.core.runtime.FabricLoaderRuntime;
 import io.github.cmdralph.fabricated.core.runtime.ModContainerImpl;
+import io.github.cmdralph.fabricated.core.translate.DefaultBridge;
 import io.github.cmdralph.fabricated.core.translate.PluginAnnotations;
 
 /**
@@ -103,6 +104,11 @@ public final class FabricatedState {
 
 	public Map<String, List<InjectedInterface>> injectedInterfaces() {
 		return result.injectedInterfaces();
+	}
+
+	/** Methods to declare on game classes, by class (see {@link FabricClassProcessor}). */
+	public Map<String, List<DefaultBridge>> defaultBridges() {
+		return result.defaultBridges();
 	}
 
 	/** Writes {@code logs/fabric-bridge-report.txt}; failures are logged, never thrown. */
