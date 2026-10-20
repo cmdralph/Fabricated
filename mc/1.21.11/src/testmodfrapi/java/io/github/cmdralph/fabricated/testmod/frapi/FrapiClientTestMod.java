@@ -95,12 +95,14 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 	}
 
 	/**
-	 * Whether the breaking overlay is being drawn ({@code renderBreakingTexture}, called from the level renderer's
-	 * {@code renderBlockDestroyAnimation}): the level it passes doesn't tell it apart from other callers.
+	 * Whether the breaking overlay is being drawn: a game method drawing it (its name says so) is on the stack. The level
+	 * the overlay passes doesn't tell it apart from other callers. This class's own frames don't count (this method's
+	 * name says "breaking" too).
 	 */
 	private static boolean drawingBreakingOverlay() {
-		return StackWalker.getInstance().walk(frames -> frames.anyMatch(frame -> frame.getMethodName().contains("Breaking")
-				|| frame.getMethodName().contains("DestroyAnimation")));
+		String self = FrapiClientTestMod.class.getName();
+		return StackWalker.getInstance().walk(frames -> frames.anyMatch(frame -> !frame.getClassName().startsWith(self)
+				&& (frame.getMethodName().contains("Breaking") || frame.getMethodName().contains("DestroyAnimation"))));
 	}
 
 	/**
