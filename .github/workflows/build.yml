@@ -417,11 +417,13 @@ jobs:
             # which every run has), the log's last lines, and where its render thread was near the timeout.
             if ! grep -q "Successfully finished." "$log"; then
               echo "-- no world reached; first errors:"
-              awk '/\/(ERROR|FATAL)\]/ && !/[Nn]arrator|flite|401|TargetDataLine/ {
-                print substr($0, 1, 300)
-                if ((getline next_line) > 0 && next_line !~ /^[ \t]+at /) print "    " substr(next_line, 1, 300)
-                if (++n == 6) exit
-              }' "$log"
+              # Each with its exception and that exception's first frames.
+              awk '
+                state == 2 && /^[ \t]+at / { if (frames++ < 3) print "      " substr($0, 1, 200); next }
+                state == 1 && !/^[ \t]+at / && !/^\[/ { print "    " substr($0, 1, 300); state = 2; frames = 0; next }
+                { state = 0 }
+                /\/(ERROR|FATAL)\]/ && !/[Nn]arrator|flite|401|TargetDataLine/ { if (n == 6) exit; n++; print substr($0, 1, 300); state = 1 }
+              ' "$log"
               echo "-- last lines of the log:"
               grep -v "Waiting for player to load" "$log" | tail -n 4 | cut -c1-300
             fi

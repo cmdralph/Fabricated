@@ -13,6 +13,7 @@ import net.minecraft.client.gui.screens.MenuScreens;
 import net.minecraft.client.gui.screens.inventory.ContainerScreen;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.packs.PackType;
+import net.minecraft.server.packs.resources.ReloadableResourceManager;
 import net.minecraft.server.packs.resources.ResourceManagerReloadListener;
 import net.minecraft.world.inventory.ChestMenu;
 import net.minecraft.world.inventory.MenuType;
@@ -30,7 +31,18 @@ public final class ClientTestMod implements ClientModInitializer {
 		// As on Fabric, client initializers run once the game instance exists.
 		if (net.minecraft.client.Minecraft.getInstance() != null) TestMod.LOGGER.info("FABRICATED-TEST client entrypoint OK");
 		else TestMod.LOGGER.error("FABRICATED-TEST client entrypoint FAILED: Minecraft.getInstance() is null");
-		ClientLifecycleEvents.CLIENT_STARTED.register(client -> TestMod.LOGGER.info("FABRICATED-TEST client started OK"));
+		ClientLifecycleEvents.CLIENT_STARTED.register(client -> {
+			TestMod.LOGGER.info("FABRICATED-TEST client started OK");
+			// As OneConfig registers its font listener: the vanilla way, once NeoForge has sorted the listeners.
+			if (client.getResourceManager() instanceof ReloadableResourceManager manager) {
+				try {
+					manager.registerReloadListener((ResourceManagerReloadListener) resources -> { });
+					TestMod.LOGGER.info("FABRICATED-TEST late vanilla reload listener OK");
+				} catch (UnsupportedOperationException e) {
+					TestMod.LOGGER.error("FABRICATED-TEST late vanilla reload listener FAILED", e);
+				}
+			}
+		});
 		ResourceLoader.get(PackType.CLIENT_RESOURCES).registerReloader(Identifier.fromNamespaceAndPath("fabricated_testmod", "client_listener"),
 				(ResourceManagerReloadListener) manager -> TestMod.LOGGER.info("FABRICATED-TEST client resource reload listener OK"));
 

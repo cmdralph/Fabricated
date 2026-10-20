@@ -41,7 +41,8 @@
     "RegistryFriendlyByteBufMixin",
     "EnchantmentBuilderMixin",
     "RegistryDataLoaderEnchantmentMixin",
-    "LevelChunkBlockEntityMixin"
+    "LevelChunkBlockEntityMixin",
+    "ReloadableResourceManagerMixin"
   ],
   "injectors": {
     "defaultRequire": 1
