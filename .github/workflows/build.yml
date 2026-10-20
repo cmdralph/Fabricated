@@ -203,15 +203,24 @@ jobs:
             exit 1
           fi
       # Fabric's model loading API on 1.21.11, where it loads without the renderer API (CORPUS-6): a model file of a
-      # Fabric type must be read by the test mod's Fabric deserializer. A gate.
+      # Fabric type must be read by the test mod's Fabric deserializer, and the baked extra models reach the model
+      # manager. A gate.
       - name: Fabric model loading API (1.21.11)
         if: ${{ !cancelled() && steps.build.outcome == 'success' && matrix.minecraft == '1.21.11' }}
         run: |
           log="$RUNNER_TEMP/client-fapi/run/logs/latest.log"
-          if grep -h "FABRICATED-TEST model deserializer OK" "$log"; then
-            echo "PASS: a model file of a Fabric type was read by its Fabric deserializer"
-          else
-            echo "::error::FAIL: a model file of a Fabric type was read by its Fabric deserializer (no \"model deserializer OK\" line)"
+          failed=0
+          check() {
+            if grep -h "FABRICATED-TEST $1" "$log"; then
+              echo "PASS: $2"
+            else
+              echo "::error::FAIL: $2 (no \"$1\" line)"
+              failed=1
+            fi
+          }
+          check "model deserializer OK" "a model file of a Fabric type was read by its Fabric deserializer"
+          check "extra models handed to the model manager OK" "the baked extra models reached the model manager (upstream's hook can't apply)"
+          if [ "$failed" = 1 ]; then
             grep -n -m 30 -E "model.loading|ModelManager|/(ERROR|FATAL)\]" "$log" || true
             exit 1
           fi

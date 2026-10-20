@@ -573,7 +573,9 @@ per-part and per-quad ambient occlusion (the defaults Forgified Fabric API has; 
 
 On 1.21.11 the renderer API is unsupported (Fabric's renderer replaces the block model pipeline that NeoForge owns
 there). Model loading loads without it, as on 26.x otherwise: plugins, model modifiers, extra models and Fabric's model
-formats work. Only the `emitQuads` of its wrapper and composite models needs the renderer API, and NeoForge never calls
+formats work. Upstream's hook that hands the baked extra models to the model manager can't apply to NeoForge's
+1.21.11 build (it looks for a local Mixin doesn't find there), so Fabricated hands them over from NeoForge's bake event
+call. Only the `emitQuads` of its wrapper and composite models needs the renderer API, and NeoForge never calls
 it; a Fabric model drawing through `emitQuads` itself (Continuity's connected textures, say) still needs the renderer
 API and doesn't work there.
 
