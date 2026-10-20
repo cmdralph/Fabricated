@@ -55,12 +55,17 @@ survive pre-flight works today, including mods that add reload listeners, built-
 registries, items and blocks using Fabric's item and block APIs, entities with default attributes, block entity
 types, data attachments or Fabric's interaction events. Loot table events, content registries and Fabric's transfer API work too, and Fabric storages and NeoForge's item and fluid capabilities see each other (a NeoForge pipe reaches a Fabric machine). The per-module details are in [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md).
 
+Fabric mods also reach NeoForge mods: a Fabric mod's plugins for JEI, REI, Jade and EMI are found by those mods'
+NeoForge builds (WTHIT reads its plugin file as it is), its config screen opens from NeoForge's mod list, and its
+mixins into an installed NeoForge mod (a Fabric addon of a mod's NeoForge build) are checked before the game starts.
+
 ## What it does not support
 
 - **Fabric API modules that NeoForge conflicts with**, until Fabricated implements them natively (see above).
-- **The Fabric builds of renderer mods** (Sodium, Iris). Use their NeoForge builds: on 26.x Sodium for NeoForge
-  draws Fabric block models through its own Fabric renderer, and Iris runs on top (see
-  [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md)).
+- **The Fabric builds of renderer mods** (Sodium, Iris), by default. Use their NeoForge builds: on 26.x Sodium for
+  NeoForge draws Fabric block models through its own Fabric renderer, and Iris runs on top (see
+  [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md)). Running their Fabric builds is work in progress
+  ([docs/roadmap.md](docs/roadmap.md), rendering-pipeline track); `loadUnsupported` loads them for testing.
 - **Mods that use Fabric Loader internals** (`net.fabricmc.loader.impl.*`). Only the public Fabric Loader
   API is provided.
 - **Fabric mods built for another Minecraft version.** A Fabric mod for 1.21.11 won't run on 26.x and vice
