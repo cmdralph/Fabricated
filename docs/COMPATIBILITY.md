@@ -741,7 +741,10 @@ MixinExtras has NeoForge's jar, and a NeoForge mod nested in another jar has tha
   a dedicated server.
 - Of Fabric Loader's internals, `FabricLoaderImpl.INSTANCE` (its public API methods) and
   `FabricLauncherBase.getLauncher()` (environment, development flag, runtime namespace) are provided for the mods that
-  use them; other internal classes are not.
+  use them; other internal classes are not. A mod's code that reaches for another one, or for a member of Fabric
+  Loader's API that Fabricated lacks, is listed among the report's linkage warnings before the game starts.
+- A mod whose required mixin (in a required config without a plugin) calls into a Fabric mod that isn't loading is
+  disabled, with the reason: Mixin would stop the game looking for that mod's class while applying it.
 - Mods detect Fabricated with `FabricLoader.getInstance().isModLoaded("fabricated")`; see [API.md](API.md).
 - `mixinextras` is provided at the version NeoForge runs, as Fabric Loader provides its own, so mods requiring it
   load (copies nested in mod jars are dropped for NeoForge's).
