@@ -255,7 +255,7 @@ tasks.register('testmods') {
     dependsOn brokenJars
 }
 
-// --- Pass-through Fabric API modules, at compile time only (26.x) ---------------------------------------------
+// --- Pass-through Fabric API modules, at compile time only -------------------------------------------------
 // The player's Fabric API jar provides these modules at runtime; Fabricated never ships them. Code that uses one
 // only runs when that module is loaded, and is compiled against the module's own jar from the Fabric API release
 // in this version's plan, so its calls are typed and checked. 26.x only: those jars use Mojang's names, as NeoForge does.
@@ -298,4 +298,16 @@ if (mcVersion.startsWith('26.')) {
         from sourceSets.testmodfrapi.output
     }
     tasks.named('testmods') { dependsOn frapiTestmodJar }
+} else {
+    // 1.21.11's Fabric API jars use intermediary names, so the few pass-through members Fabricated calls are compiled
+    // against stand-ins that declare them in Mojang's names, as the remapped modules have them at runtime. Never packaged.
+    sourceSets {
+        fabricapistubs {
+            java.srcDir 'src/fabricapistubs/java'
+        }
+    }
+    neoForge.addModdingDependenciesTo(sourceSets.fabricapistubs)
+    dependencies {
+        compileOnly sourceSets.fabricapistubs.output
+    }
 }

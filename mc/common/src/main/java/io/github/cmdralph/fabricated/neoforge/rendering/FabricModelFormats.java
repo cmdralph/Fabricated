@@ -16,7 +16,6 @@ import com.mojang.serialization.MapLike;
 import net.fabricmc.fabric.api.client.model.loading.v1.UnbakedModelDeserializer;
 import net.fabricmc.fabric.impl.client.model.loading.CustomUnbakedBlockStateModelRegistry;
 import net.fabricmc.loader.api.FabricLoader;
-import net.minecraft.client.renderer.block.dispatch.BlockStateModel;
 import net.minecraft.client.resources.model.UnbakedModel;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.GsonHelper;
@@ -47,20 +46,23 @@ public final class FabricModelFormats {
 		return Fabric.deserialize(object, context);
 	}
 
-	/** NeoForge's blockstate model codec, also reading Fabric's custom blockstate models. */
-	public static Codec<BlockStateModel.Unbaked> withFabricTypes(Codec<BlockStateModel.Unbaked> neoForge) {
+	/**
+	 * NeoForge's blockstate model codec ({@code BlockStateModel.Unbaked}'s, whose package depends on the Minecraft
+	 * version), also reading Fabric's custom blockstate models.
+	 */
+	public static <U> Codec<U> withFabricTypes(Codec<U> neoForge) {
 		if (!ENABLED) return neoForge;
 		return new Codec<>() {
 			@Override
-			public <T> DataResult<Pair<BlockStateModel.Unbaked, T>> decode(DynamicOps<T> ops, T input) {
-				return (namesFabricType(ops, input) ? Fabric.blockStateCodec() : neoForge).decode(ops, input);
+			public <T> DataResult<Pair<U, T>> decode(DynamicOps<T> ops, T input) {
+				return (namesFabricType(ops, input) ? Fabric.<U>blockStateCodec() : neoForge).decode(ops, input);
 			}
 
 			@Override
-			public <T> DataResult<T> encode(BlockStateModel.Unbaked input, DynamicOps<T> ops, T prefix) {
+			public <T> DataResult<T> encode(U input, DynamicOps<T> ops, T prefix) {
 				// Only data generators encode; NeoForge's codec refuses Fabric's custom models.
 				DataResult<T> result = neoForge.encode(input, ops, prefix);
-				return result.isError() ? Fabric.blockStateCodec().encode(input, ops, prefix) : result;
+				return result.isError() ? Fabric.<U>blockStateCodec().encode(input, ops, prefix) : result;
 			}
 		};
 	}
@@ -98,8 +100,9 @@ public final class FabricModelFormats {
 		}
 
 		/** Upstream's blockstate model codec (its custom types, and vanilla's variants in the same list). */
-		static Codec<BlockStateModel.Unbaked> blockStateCodec() {
-			return CustomUnbakedBlockStateModelRegistry.MODEL_CODEC;
+		@SuppressWarnings("unchecked")
+		static <U> Codec<U> blockStateCodec() {
+			return (Codec<U>) (Codec<?>) CustomUnbakedBlockStateModelRegistry.MODEL_CODEC;
 		}
 	}
 }

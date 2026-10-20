@@ -18,7 +18,8 @@ import io.github.cmdralph.fabricated.core.json.JsonException;
  *   "fabricApiVersion": "0.141.6+1.21.11",
  *   "modules": {
  *     "fabric-api-base": { "plan": "native", "version": "1.0.5" },
- *     "fabric-renderer-indigo": { "plan": "unsupported", "reason": "replaces NeoForge's model pipeline" }
+ *     "fabric-renderer-indigo": { "plan": "unsupported", "reason": "replaces NeoForge's model pipeline" },
+ *     "fabric-model-loading-api-v1": { "plan": "passthrough", "dropDependencies": ["fabric-renderer-api-v1"] }
  *   }
  * }
  * }</pre>
@@ -38,9 +39,10 @@ public record FabricApiPlan(String fabricApiVersion, Map<String, Module> modules
 	 * One module decision. {@code version} is set for native modules (the API version provided).
 	 * {@code skipMixins} lists pass-through mixins known to conflict with NeoForge
 	 * ({@code "config.json:Name"} or {@code "Name"}); they are dropped instead of failing the module, and
-	 * {@code reason} documents the behaviour that is lost.
+	 * {@code reason} documents the behaviour that is lost. {@code dropDependencies} lists dependencies of a pass-through
+	 * module that it loads without (one that only some of its code needs, which then never runs).
 	 */
-	public record Module(String id, Plan plan, String version, String reason, List<String> skipMixins) {
+	public record Module(String id, Plan plan, String version, String reason, List<String> skipMixins, List<String> dropDependencies) {
 	}
 
 	public FabricApiPlan {
@@ -66,17 +68,23 @@ public record FabricApiPlan(String fabricApiVersion, Map<String, Module> modules
 			String moduleVersion = m.get("version") instanceof String v ? v : null;
 			if (p == Plan.NATIVE && moduleVersion == null) throw new JsonException("Native module " + id + " needs a \"version\"");
 			String reason = m.get("reason") instanceof String r ? r : "";
-			List<String> skip = new ArrayList<>();
-			if (m.get("skipMixins") instanceof List<?> list) {
-				for (Object o : list) {
-					if (!(o instanceof String str)) throw new JsonException("skipMixins of " + id + " must contain strings");
-					skip.add(str);
-				}
-			}
-			if (!skip.isEmpty() && p != Plan.PASSTHROUGH) throw new JsonException("skipMixins only applies to passthrough modules (" + id + ")");
-			modules.put(id, new Module(id, p, moduleVersion, reason, List.copyOf(skip)));
+			List<String> skip = strings(m, "skipMixins", id, p);
+			List<String> drop = strings(m, "dropDependencies", id, p);
+			modules.put(id, new Module(id, p, moduleVersion, reason, skip, drop));
 		}
 		return new FabricApiPlan(version, modules);
+	}
+
+	/** A list of strings that only a pass-through module may have. */
+	private static List<String> strings(Map<?, ?> module, String key, String id, Plan plan) throws JsonException {
+		if (!(module.get(key) instanceof List<?> list) || list.isEmpty()) return List.of();
+		if (plan != Plan.PASSTHROUGH) throw new JsonException(key + " only applies to passthrough modules (" + id + ")");
+		List<String> strings = new ArrayList<>();
+		for (Object o : list) {
+			if (!(o instanceof String str)) throw new JsonException(key + " of " + id + " must contain strings");
+			strings.add(str);
+		}
+		return List.copyOf(strings);
 	}
 
 	/** @return the decision for a module id, or {@code null} if the id is not a Fabric API module */

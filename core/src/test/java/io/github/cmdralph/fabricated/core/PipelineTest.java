@@ -60,7 +60,10 @@ class PipelineTest {
 			{"fabricApiVersion": "0.161.0+26.2", "modules": {
 			  "fabric-api-base": {"plan": "native", "version": "1.0.0"},
 			  "fabric-renderer-indigo": {"plan": "unsupported", "reason": "replaces NeoForge's model pipeline"},
-			  "fabric-item-api-v1": {"plan": "passthrough", "skipMixins": ["item.mixins.json:Conflicting"], "reason": "test"}
+			  "fabric-item-api-v1": {"plan": "passthrough", "skipMixins": ["item.mixins.json:Conflicting"], "reason": "test"},
+			  "fabric-renderer-api-v1": {"plan": "unsupported", "reason": "replaces NeoForge's model pipeline"},
+			  "fabric-model-loading-api-v1": {"plan": "passthrough", "dropDependencies": ["fabric-renderer-api-v1"], "reason": "only its renderer hooks need it"},
+			  "fabric-block-view-api-v2": {"plan": "passthrough"}
 			}}""";
 
 	private static byte[] targetClass() {
@@ -559,6 +562,23 @@ class PipelineTest {
 		assertEquals(Set.of("a.mixins.json:Broken"), Pipeline.effectiveOverride(config, plan, hinted, List.of()).skipMixins());
 		org.junit.jupiter.api.Assertions.assertThrows(io.github.cmdralph.fabricated.core.json.JsonException.class, () -> FabricApiPlan.parse(
 				"{\"fabricApiVersion\":\"1\",\"modules\":{\"x\":{\"plan\":\"native\",\"version\":\"1\",\"skipMixins\":[\"A\"]}}}"));
+	}
+
+	@Test
+	void aModuleLoadsWithoutTheDependenciesItsPlanDrops(@TempDir Path game) throws Exception {
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		String needsRenderer = "\"depends\":{\"fabric-renderer-api-v1\":\"*\"}";
+		Path loading = TestJars.create().fabricModJson(TestJars.modJson("fabric-model-loading-api-v1", "1.0", needsRenderer)).write(mods.resolve("loading.jar"));
+		Path other = TestJars.create().fabricModJson(TestJars.modJson("fabric-block-view-api-v2", "1.0", needsRenderer)).write(mods.resolve("view.jar"));
+		Pipeline.Result result = Pipeline.run(input(game, List.of(loading, other), Namespace.OFFICIAL, Map.of(), null));
+
+		Set<String> loaded = result.mods().stream().map(m -> m.translated().candidate().id()).collect(Collectors.toSet());
+		assertEquals(Set.of("fabric-model-loading-api-v1"), loaded, result.report().render());
+		assertTrue(result.dependencyFailures().contains("fabric-block-view-api-v2"), "a module whose plan keeps the dependency still needs it");
+		assertTrue(result.report().render().contains("fabric-model-loading-api-v1 without fabric-renderer-api-v1: only its renderer hooks need it"),
+				result.report().render());
+		org.junit.jupiter.api.Assertions.assertThrows(io.github.cmdralph.fabricated.core.json.JsonException.class, () -> FabricApiPlan.parse(
+				"{\"fabricApiVersion\":\"1\",\"modules\":{\"x\":{\"plan\":\"unsupported\",\"dropDependencies\":[\"y\"]}}}"));
 	}
 
 	@Test
