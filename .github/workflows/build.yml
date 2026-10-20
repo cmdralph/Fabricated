@@ -93,6 +93,20 @@ jobs:
             ${{ runner.temp }}/server/server.out
             ${{ runner.temp }}/server/.fabricated/cache/v1/index.json
           if-no-files-found: ignore
+      # NeoForge's internals change between builds of one Minecraft version, and Fabricated accepts every build of it,
+      # so the test mods also boot on the newest build (informational: it can break for reasons of its own).
+      - name: Server smoke test on the newest NeoForge build (informational)
+        if: always() && steps.build.outcome == 'success'
+        continue-on-error: true
+        run: |
+          pinned="${{ matrix.neoforge }}"
+          newest=$(curl -fsSL --retry 4 https://maven.neoforged.net/releases/net/neoforged/neoforge/maven-metadata.xml | python3 -c '
+          import re, sys
+          builds = [v for v in re.findall(r"<version>([^<]+)</version>", sys.stdin.read()) if v.startswith(sys.argv[1])]
+          print(builds[-1] if builds else "")' "${pinned%.*}.")
+          echo "Newest NeoForge build for ${{ matrix.minecraft }}: ${newest:-none} (pinned: $pinned)"
+          if [ -z "$newest" ] || [ "$newest" = "$pinned" ]; then exit 0; fi
+          ci/smoke-server.sh "${{ matrix.minecraft }}" "$newest" "$RUNNER_TEMP/server-newest"
       # Boot again with the official Fabric API jar (downloaded here in CI, never by Fabricated) and keep the
       # report, which lists every pass-through module and mixin pre-flight result. The server must start;
       # the other checks in this run are informational.
