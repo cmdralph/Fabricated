@@ -427,6 +427,8 @@ jobs:
                 { state = 0 }
                 /\/(ERROR|FATAL)\]/ && !/[Nn]arrator|flite|401|TargetDataLine/ { if (n == 6) exit; n++; print substr($0, 1, 300); state = 1 }
               ' "$log"
+              # An exception that left the game's main thread goes to the console only.
+              grep -h -m 2 -A 8 "^Exception in thread" "$RUNNER_TEMP/$run/client.out" 2>/dev/null | cut -c1-250 || true
               echo "-- last lines of the log:"
               grep -v "Waiting for player to load" "$log" | tail -n 4 | cut -c1-300
             fi
