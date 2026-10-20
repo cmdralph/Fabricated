@@ -1,6 +1,5 @@
 package io.github.cmdralph.fabricated.neoforge;
 
-import io.github.cmdralph.fabricated.neoforge.registry.FabricTableEntries;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -15,6 +14,7 @@ import io.github.cmdralph.fabricated.core.config.FabricatedConfig;
 import io.github.cmdralph.fabricated.core.runtime.EntrypointRunner;
 import io.github.cmdralph.fabricated.core.metadata.ModIds;
 import io.github.cmdralph.fabricated.loader.FabricatedState;
+import io.github.cmdralph.fabricated.neoforge.registry.FabricTableEntries;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.api.DedicatedServerModInitializer;
 import net.fabricmc.api.ModInitializer;
@@ -25,6 +25,7 @@ import net.neoforged.fml.ModList;
 import net.neoforged.fml.ModLoader;
 import net.neoforged.fml.ModLoadingContext;
 import net.neoforged.fml.ModLoadingIssue;
+import net.neoforged.neoforge.registries.GameData;
 
 /**
  * Runs Fabric's built-in entrypoints once, in Fabric dependency order: {@code preLaunch}, then all
@@ -36,7 +37,7 @@ import net.neoforged.fml.ModLoadingIssue;
  * initializer from {@code Minecraft}'s constructor, once {@code Minecraft.getInstance()} is set. Fabric content must
  * be registered while the registries are open, so {@code preLaunch} and {@code main} run in the RegisterEvent loop;
  * {@code client} runs where Fabric runs it ({@link #runClientEntrypoints()}), since client initializers commonly use
- * the instance.
+ * the instance, with the registries opened again for it (Fabric API freezes them only after it).
  */
 public final class EntrypointBridge {
 	private static final Logger LOGGER = LoggerFactory.getLogger("Fabricated");
@@ -100,7 +101,16 @@ public final class EntrypointBridge {
 	private synchronized void runClient() {
 		long start = System.nanoTime();
 		state.runtime().setGameInstance(ClientSupport.gameInstance());
-		failures.addAll(runner.run("client", ClientModInitializer.class, ClientModInitializer::onInitializeClient));
+		// Fabric API freezes the registries after the client initializers too, and some register content there
+		// (Xaero's Minimap its effect). NeoForge froze them before Minecraft existed: they are opened for these
+		// initializers and frozen again as NeoForge freezes them, which renews the snapshot it restores on leaving a
+		// server.
+		GameData.unfreezeData();
+		try {
+			failures.addAll(runner.run("client", ClientModInitializer.class, ClientModInitializer::onInitializeClient));
+		} finally {
+			GameData.freezeData();
+		}
 		nanos += System.nanoTime() - start;
 		finish();
 	}

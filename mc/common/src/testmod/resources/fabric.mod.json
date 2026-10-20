@@ -26,7 +26,8 @@
       "io.github.cmdralph.fabricated.testmod.BlockEntityEventsTest"
     ],
     "server": ["io.github.cmdralph.fabricated.testmod.TestMod"],
-    "client": ["io.github.cmdralph.fabricated.testmod.ClientTestMod", "io.github.cmdralph.fabricated.testmod.BlockEntityEventsClientTest"],
+    "client": ["io.github.cmdralph.fabricated.testmod.ClientTestMod", "io.github.cmdralph.fabricated.testmod.BlockEntityEventsClientTest",
+      "io.github.cmdralph.fabricated.testmod.ClientRegistrationTest"],
     "fabricated-test": ["io.github.cmdralph.fabricated.testmod.TestMod${'$'}CustomEntrypoint"],
     "modmenu": ["io.github.cmdralph.fabricated.testmod.ModMenuEntry"],
     "jei_mod_plugin": ["io.github.cmdralph.fabricated.testmod.plugin.OtherModPlugins${'$'}Jei"],

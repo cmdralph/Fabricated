@@ -150,6 +150,7 @@ check() {
 check "Successfully finished." "client joined a singleplayer world (mc-runtime-test)"
 check "FABRICATED-TEST main entrypoint OK" "main entrypoint ran on the client"
 check "FABRICATED-TEST client entrypoint OK" "client entrypoint ran"
+check "FABRICATED-TEST client entrypoint registration OK" "a client initializer registers content (registries open, as Fabric API leaves them)"
 check "FABRICATED-TEST client started OK" "native client lifecycle: CLIENT_STARTED"
 check "FABRICATED-TEST client block entity events OK" "native client lifecycle: block entities unload when the client leaves its world"
 check "FABRICATED-TEST block entity events OK" "native lifecycle in the integrated server: block entity load and unload"
