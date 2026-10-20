@@ -66,6 +66,7 @@
     "client.ClientCommonPacketListenerImplMixin",
     "client.LocalPlayerMixin",
     "client.ClientConfigurationPacketListenerImplMixin",
+    "client.ClientReloadListenerMixin",
     "client.KeyMappingAccessor",
     "client.MinecraftEntrypointsMixin",
     "client.MinecraftStartedMixin",

@@ -58,6 +58,7 @@
   "client": [
     "client.BlockColorsLookupMixin",
     "client.ClientConfigurationPacketListenerImplMixin",
+    "client.ClientReloadListenerMixin",
     "client.KeyMappingAccessor",
     "client.MinecraftEntrypointsMixin",
     "client.MinecraftStartedMixin",

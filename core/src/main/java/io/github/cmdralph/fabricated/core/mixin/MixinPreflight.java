@@ -139,7 +139,7 @@ public final class MixinPreflight {
 			if (skip.contains(mixin)) continue;
 			String internal = config.internalName(mixin);
 			ClassNode node = modClasses.readNode(internal, ClassReader.SKIP_CODE | ClassReader.SKIP_FRAMES);
-			Context ctx = new Context(configName, internal.replace('/', '.'), config, refmap, hasPlugin, node != null && accessorInterface(node), out, null);
+			Context ctx = new Context(configName, internal.replace('/', '.'), config, refmap, hasPlugin, out, null);
 			if (node == null) {
 				ctx.classLevel("Mixin class " + ctx.mixinDotted() + " listed in " + configName + " is missing from the mod jar",
 						"The mod jar is incomplete or corrupted; re-download it.");
@@ -147,7 +147,7 @@ public final class MixinPreflight {
 			}
 			checkMixin(node, ctx);
 		}
-		if (out.stream().anyMatch(f -> f.severity() == Severity.LEFT_OUT)) {
+		if (hasPlugin && out.stream().anyMatch(f -> f.severity() == Severity.LEFT_OUT)) {
 			out.add(new PreflightFinding(Severity.INFO, configName, null, "This config uses a mixin plugin (" + config.plugin()
 					+ ") that may disable mixins at runtime, so an injector that would crash the game is left out instead of disabling the mod.", ""));
 		}
@@ -207,7 +207,7 @@ public final class MixinPreflight {
 			String internal = config.internalName(mixin);
 			ClassNode node = modClasses.readNode(internal, 0);
 			if (node == null) continue;
-			Context ctx = new Context(configName, internal.replace('/', '.'), config, refmap, false, false, out, null);
+			Context ctx = new Context(configName, internal.replace('/', '.'), config, refmap, false, out, null);
 			List<ClassNode> targets = new ArrayList<>();
 			for (String target : targetsOf(node, ctx)) {
 				ClassNode targetNode = gameTarget(target);
@@ -1092,18 +1092,14 @@ public final class MixinPreflight {
 	}
 
 	/** @param owner the installed mod the target belongs to, or {@code null} for a game class */
-	/**
-	 * @param calledByMod whether the mod's own code calls the mixin (an accessor interface): left out, it would crash
-	 *                    the mod instead, as Mixin refuses to load an unapplied mixin's class
-	 */
-	private record Context(String configName, String mixinDotted, MixinConfigFile config, Refmap refmap, boolean hasPlugin, boolean calledByMod,
+	private record Context(String configName, String mixinDotted, MixinConfigFile config, Refmap refmap, boolean hasPlugin,
 			List<PreflightFinding> out, String owner) {
 		String resolve(String selector) {
 			return refmap.resolve(mixinDotted.replace('.', '/'), selector);
 		}
 
 		Context withOwner(String owner) {
-			return new Context(configName, mixinDotted, config, refmap, hasPlugin, calledByMod, out, owner);
+			return new Context(configName, mixinDotted, config, refmap, hasPlugin, out, owner);
 		}
 
 		/** What changed the target since the mod was built: NeoForge or this Minecraft version, or this version of the mod. */
@@ -1117,9 +1113,19 @@ public final class MixinPreflight {
 			return owner == null ? "NeoForge" : owner;
 		}
 
-		/** A problem that makes Mixin reject the whole mixin; fatal when the config is required or the mod calls the mixin. */
+		/** A problem that makes Mixin reject the whole mixin; fatal when the config is required. */
 		void classLevel(String message, String suggestion) {
-			out.add(new PreflightFinding(config.required() || calledByMod ? fatal() : Severity.WARN, configName, mixinDotted, message, suggestion));
+			out.add(new PreflightFinding(config.required() ? fatal() : Severity.WARN, configName, mixinDotted, message, suggestion));
+		}
+
+		/**
+		 * A broken accessor or invoker. Mixin would reject the whole interface, and the mod's code, which casts to it,
+		 * would then fail to load it; left out alone, the interface still applies and only a call to this method fails.
+		 * Fatal where the config is required and has no plugin, as Mixin would stop the game.
+		 */
+		void accessorMember(MethodNode method, String message, String suggestion) {
+			out.add(new PreflightFinding(config.required() && !hasPlugin ? Severity.FAIL : Severity.LEFT_OUT, configName, mixinDotted, message,
+					suggestion, method.name + method.desc));
 		}
 
 		/**
@@ -1135,9 +1141,9 @@ public final class MixinPreflight {
 					handler.name + handler.desc));
 		}
 
-		/** A config plugin may disable the mixin at runtime, so a crash only leaves the mixin out, unless the mod calls it. */
+		/** A config plugin may disable the mixin at runtime, so a crash only leaves the mixin out. */
 		private Severity fatal() {
-			return hasPlugin && !calledByMod ? Severity.LEFT_OUT : Severity.FAIL;
+			return hasPlugin ? Severity.LEFT_OUT : Severity.FAIL;
 		}
 
 		void info(String message) {
@@ -1183,15 +1189,6 @@ public final class MixinPreflight {
 			}
 			checkMembers(mixin, targetNode, targetCtx);
 		}
-	}
-
-	/** Whether a mixin is an interface of accessors or invokers, which the mod's code casts its targets to and calls. */
-	private static boolean accessorInterface(ClassNode mixin) {
-		if ((mixin.access & Opcodes.ACC_INTERFACE) == 0) return false;
-		for (MethodNode method : mixin.methods) {
-			if (Annotations.find(method, ACCESSOR) != null || Annotations.find(method, INVOKER) != null) return true;
-		}
-		return false;
 	}
 
 	/** The classes a mixin's {@code @Mixin} names, as internal names (none when it has no {@code @Mixin}). */
@@ -1363,7 +1360,7 @@ public final class MixinPreflight {
 		}
 		if (caseInsensitive == 1) return;
 		boolean nameExists = target.fields.stream().anyMatch(f -> f.name.equals(fieldName));
-		ctx.classLevel(nameExists
+		ctx.accessorMember(method, nameExists
 						? "@Accessor target field " + fieldName + " in " + target.name.replace('/', '.') + " has a different type than " + desc
 						: "@Accessor target field " + fieldName + " does not exist in " + target.name.replace('/', '.'),
 				nameExists ? ctx.changer(true) + " changed the field's type." : "The field was renamed or removed by " + ctx.changer(false) + ".");
@@ -1386,7 +1383,7 @@ public final class MixinPreflight {
 		String methodName = ref.nameOr(name);
 		String desc = ref.methodDescOr(method.desc);
 		if (declares(target, methodName, desc)) return;
-		ctx.classLevel("@Invoker target method " + methodName + desc + " does not exist in " + target.name.replace('/', '.'),
+		ctx.accessorMember(method, "@Invoker target method " + methodName + desc + " does not exist in " + target.name.replace('/', '.'),
 				"The method was renamed or removed by " + ctx.changer(false) + ".");
 	}
 

@@ -202,6 +202,7 @@ check "FABRICATED-TEST client block entity events OK" "native client lifecycle: 
 check "FABRICATED-TEST block entity events OK" "native lifecycle in the integrated server: block entity load and unload"
 check "FABRICATED-TEST client resource reload listener OK" "native client resource reload listener"
 check "FABRICATED-TEST late vanilla reload listener OK" "a reload listener registered the vanilla way after NeoForge sorted them (OneConfig)"
+check "FABRICATED-TEST early reload listener OK" "a reload listener registered the vanilla way from Minecraft's constructor, before NeoForge's event"
 check "FABRICATED-TEST configuration task OK" "Fabric configuration task with the integrated server"
 check "FABRICATED-TEST client join event OK" "native client networking: join event"
 check "FABRICATED-TEST client networking round trip OK" "native networking: client to integrated server and back"

@@ -237,6 +237,7 @@ sorted reload-listener events. Fabricated ships the module's unchanged public AP
 |---|---|
 | Server data listeners, listener factories (`DataResourceLoader`) | `AddServerReloadListenersEvent` |
 | Client resource listeners | `AddClientReloadListenersEvent` |
+| A listener registered the vanilla way on the client's resource manager before that event (from a mixin into `Minecraft`'s constructor) | held back and added through the event, after vanilla's: NeoForge's event refuses listeners it can't name |
 | `addListenerOrdering` / `addReloaderOrdering` | `addDependency`; Fabric's vanilla ids (`minecraft:recipes`, `minecraft:languages`, …) are translated to NeoForge's (`minecraft:recipe_manager`, `minecraft:language_manager`, …) |
 | `fabric:before_vanilla`, `fabric:after_vanilla` phases | empty listeners before the first and after the last vanilla listener |
 | Shared reload state: registries, feature flags, data store (and on 1.21.11, 26.1.2 and 26.2 the recipe and advancement managers) | a setup listener that runs before all others |

@@ -1268,12 +1268,12 @@ class MixinPreflightTest {
 	}
 
 	/**
-	 * An accessor interface the mod calls fails its mod even where a plugin or an optional config would only leave a
-	 * mixin out: Mixin refuses to load an unapplied mixin's class, so the mod's first call would crash the game
-	 * (malilib's {@code IMixinGuiRenderer} on 1.21.11).
+	 * A broken accessor in a plugin's or an optional config is left out alone: the interface still applies, so the mod's
+	 * casts to it and its other accessors work (OneConfig's {@code KeyMappingRegistryAccessor}, whose {@code MAP} field
+	 * NeoForge replaced). In a required config without a plugin it fails the mod, as Mixin would stop the game.
 	 */
 	@Test
-	void anAccessorTheModCallsFailsItsModEvenWithAPlugin() throws Exception {
+	void aBrokenAccessorIsLeftOutAloneUnlessTheConfigRequiresIt() throws Exception {
 		ClassWriter cw = new ClassWriter(0);
 		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT | Opcodes.ACC_INTERFACE, "com/example/mixin/Access", null, "java/lang/Object", null);
 		AnnotationVisitor m = cw.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false);
@@ -1281,18 +1281,24 @@ class MixinPreflightTest {
 		values.visit(null, Type.getObjectType(TARGET));
 		values.visitEnd();
 		m.visitEnd();
-		MethodVisitor getter = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, "getGone", "()I", null, null);
-		AnnotationVisitor accessor = getter.visitAnnotation("Lorg/spongepowered/asm/mixin/gen/Accessor;", false);
-		accessor.visit("value", "gone");
-		accessor.visitEnd();
-		getter.visitEnd();
+		for (String field : List.of("gone", "count")) {
+			MethodVisitor getter = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, "get" + field, "()I", null, null);
+			AnnotationVisitor accessor = getter.visitAnnotation("Lorg/spongepowered/asm/mixin/gen/Accessor;", false);
+			accessor.visit("value", field);
+			accessor.visitEnd();
+			getter.visitEnd();
+		}
 		cw.visitEnd();
 		Map<String, byte[]> mod = Map.of("com/example/mixin/Access", cw.toByteArray());
 		for (String cfg : List.of("{\"required\":true,\"package\":\"com.example.mixin\",\"plugin\":\"com.example.Plugin\",\"mixins\":[\"Access\"]}",
 				"{\"required\":false,\"package\":\"com.example.mixin\",\"mixins\":[\"Access\"]}")) {
 			List<PreflightFinding> findings = run(cfg, null, mod, false);
-			assertTrue(findings.stream().anyMatch(f -> f.severity() == Severity.FAIL && "com.example.mixin.Access".equals(f.mixin())), cfg + ": " + findings);
+			assertEquals(List.of("getgone()I"), findings.stream().filter(f -> f.severity() == Severity.LEFT_OUT).map(PreflightFinding::handler).toList(),
+					cfg + ": " + findings);
+			assertTrue(findings.stream().noneMatch(f -> f.severity() == Severity.FAIL), cfg + ": " + findings);
 		}
+		List<PreflightFinding> required = run(config(true, "Access"), null, mod, false);
+		assertTrue(required.stream().anyMatch(f -> f.severity() == Severity.FAIL && "getgone()I".equals(f.handler())), required.toString());
 	}
 
 	@Test
