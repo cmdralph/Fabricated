@@ -5,6 +5,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import io.github.cmdralph.fabricated.core.metadata.ModIds;
+
 import net.fabricmc.loader.api.metadata.Person;
 
 /**
@@ -15,11 +17,9 @@ import net.fabricmc.loader.api.metadata.Person;
  * whole game (see {@code DependencyResolver}).
  */
 public final class ModsTomlWriter {
-	/** Name of Fabricated's NeoForge language loader. */
 	public static final String PATH = "META-INF/neoforge.mods.toml";
+	/** Name of Fabricated's NeoForge language loader. */
 	public static final String LANGUAGE_LOADER = "fabricated";
-	/** Fabricated's in-game mod, which every translated mod loads after. */
-	public static final String GAME_MOD_ID = "fabricated";
 
 	/**
 	 * Everything needed to describe one translated mod.
@@ -108,7 +108,7 @@ public final class ModsTomlWriter {
 		// After Fabricated's own mod, whose mixin config plugin creates the Fabric mods' language adapters before any
 		// Fabric mod's mixin plugin loads (FML registers mixin configs in this order), as Fabric Loader does.
 		List<String> after = new ArrayList<>(spec.loadAfter());
-		if (!after.contains(GAME_MOD_ID)) after.addFirst(GAME_MOD_ID);
+		if (!after.contains(ModIds.FABRICATED)) after.addFirst(ModIds.FABRICATED);
 		for (String id : after) {
 			sb.append("[[dependencies.").append(spec.neoForgeId()).append("]]\n");
 			kv(sb, "modId", id);
