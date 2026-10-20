@@ -1,7 +1,9 @@
 package io.github.cmdralph.fabricated.core.resolve;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
 
@@ -17,5 +19,14 @@ class PlatformLibrariesTest {
 		assertEquals("0.5.5", PlatformLibraries.nestedMixinExtras(metadata));
 		assertNull(PlatformLibraries.nestedMixinExtras("{\"jars\": []}"));
 		assertNull(PlatformLibraries.nestedMixinExtras("{}"));
+	}
+
+	/** Only what the platform ships: OneConfig's night-config JSON module is not NeoForge's (which has core and TOML). */
+	@Test
+	void providesOnlyThePlatformsModulesOfALibrary() {
+		assertTrue(PlatformLibraries.isProvided("com/electronwill/nightconfig/core/file/FileConfig.class"));
+		assertTrue(PlatformLibraries.isProvided("com/electronwill/nightconfig/toml/TomlFormat.class"));
+		assertFalse(PlatformLibraries.isProvided("com/electronwill/nightconfig/json/JsonFormat.class"));
+		assertFalse(PlatformLibraries.isProvided("com/electronwill/nightconfig/yaml/YamlFormat.class"));
 	}
 }

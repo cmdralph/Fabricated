@@ -112,10 +112,12 @@ research sandbox).
 - Iris's Fabric build needs Sodium's Fabric build (its fluid hook targets `sodium.fabric` classes); Iris for NeoForge
   needs Sodium for NeoForge. The compatibility plan refuses either mixed pair with a message, `loadUnsupported` or not.
 - Indium has no build for these versions and isn't needed: Sodium provides `indium`.
-- OneConfig and PolyPlus (Fabric only; CI's informational run, 26.3 on `e88a2f9`): translated and pre-flighted, then the
-  client stopped at mod construction. 15 of their nested library jars were disabled for split packages (PKG-1, fixed
-  since), MixinSquared among them, so Polydium's MixinSquared selector failed. adventure-platform-fabric is disabled
-  for a mixin config in its nested jar (ADV-1).
+- OneConfig and PolyPlus (Fabric only; CI's informational run): on `e88a2f9` the 26.3 client stopped at mod
+  construction, with 15 of their nested library jars disabled for split packages (PKG-1), MixinSquared among them, so
+  Polydium's MixinSquared selector failed. On `72f5472`, with PKG-1 fixed, 3 jars are disabled (adventure-platform-fabric
+  for a mixin config in its nested jar, ADV-1); the 26.1.2 client gets to the render thread and fails in OneConfig's
+  config manager on night-config's JSON module, which Fabricated took for NeoForge's (PLAT-1, fixed since); the 26.3
+  client still stops at mod construction (the next run's summary prints the crash's cause).
 
 **Plan, by coverage per effort** (each with its CI check):
 
@@ -158,9 +160,9 @@ NeoForge already cover those users.
   mods from Modrinth (informational).
 - **Done (this pass):** an informational server run on the newest NeoForge build of each version, next to the pinned
   one (Fabricated accepts every build of a version, and NeoForge's internals move between builds: REG-1).
-- **Next:** CORPUS-2 (Xaero's World Map stops the corpus client). It now runs alone in its own informational client,
-  so the rest of the corpus reaches a world; that run shows whether it crashes by itself. The gates listed in the
-  rendering-pipeline plan.
+- **Done:** CORPUS-2 (fixed by REG-2): on `72f5472` the corpus clients run through and exit normally, and Xaero's
+  World Map alone reaches a world ("New world map session initialized!") on 26.1.2 and 26.3.
+- **Next:** the gates listed in the rendering-pipeline plan; checks for what the corpus mods do in the world.
 
 ## Findings log
 
@@ -172,6 +174,8 @@ Severity: **P0** crash or data loss on a normal launch · **P1** a supported fea
 | ID | Sev | Location | Failure mode and trigger | Why tests missed it | Fix |
 |---|---|---|---|---|---|
 | REG-2 | P1 | `EntrypointBridge` | Registries were frozen when Fabric client initializers ran: NeoForge freezes them after its registration events, before `Minecraft` exists, while Fabric API freezes them only after the client initializers. Xaero's Minimap registers its mob effect from `onInitializeClient`, catches the failure and rethrows it on the first tick: "Registry is already frozen (trying to add key ... xaerominimap:no_minimap)" stopped the 26.x corpus clients (`b679b92`). | The test mods registered from `main` only. | This pass: the registries are opened for the client initializers and frozen again with NeoForge's own `GameData.unfreezeData`/`freezeData` (the sequence NeoForge runs around its registration events), which also renews the frozen snapshot NeoForge restores on leaving a server. Client check "client entrypoint registration OK": the test mod registers a mob effect from a client initializer. |
+| CORPUS-2 | P2 | Xaero's World Map | The corpus client crashed on its first tick: `WorldMap.events` was null in World Map's `Minecraft.runTick` hook, with no entrypoint failure reported. | The cause showed only through Xaero's Minimap in the same corpus (REG-2): Xaero's client initializers register content, and catch and defer the failure. | REG-2. On `72f5472` World Map alone reaches a world on 26.1.2 and 26.3. |
+| PLAT-1 | P1 | core `PlatformLibraries` | The platform's libraries were matched by package prefix, and `com/electronwill/nightconfig/` covered every night-config module, so a mod's JSON or YAML module was dropped as "provided by the platform", which ships only core and TOML. OneConfig's config manager then failed (`ClassNotFoundException: com.electronwill.nightconfig.json.JsonFormat`, 26.1.2 Polyfrost run on `72f5472`). | No test had a mod nesting a night-config module the platform lacks. | This pass: core and TOML only (NeoForge's and FML's build files list those two). Unit test. |
 | PKG-1 | P1 | core `PackageGuard` | A package split between two jars (each with classes the other lacks) disabled the later jar. Fabric's single class path allows it, and Kotlin and Compose libraries, OneConfig's module jars and MixinSquared (its Fabric jar and its common jar) ship that way. In CI's Polyfrost run on 26.3 (`e88a2f9`) 15 jars were disabled, MixinSquared among them, and Polydium then crashed at mod construction: its `@MixinSquared:Handler` selector was never registered. | The guard predates nested library jars; found by the new Polyfrost CI run. | This pass: the earlier jar's module serves the later jar's files in the package (one more filtered path in its mod file), so the package stays one module's. A class both have with different bytes, or a service provider the later jar declares in the package, still disables it. `PipelineTest`, `PackageGuardTest`; CI's Polyfrost run is the in-game check. |
 | PRE-3 | P1 | core `MixinPreflight`, translation cache | A mixin target no installed jar had was not recorded among the classes a cached result depends on. Installing that mod later kept the cached "not verified" result, so a mixin that no longer fit it crashed the game at startup instead of disabling the addon (an Iris-style addon whose mod isn't a declared dependency). | Tests covered a target changing, not one appearing. Found by this pass's review of the PR. | This pass: an absent target is recorded with an empty fingerprint. `PipelineTest.mixinsIntoAModInstalledLaterAreCheckedThen`. |
 | PRE-4 | P2 | core `MixinPreflight.addedByAMixin` | javac's `this$0` and `val$x` were taken for members another mod's mixin adds, so a missing `@Shadow` of one (NeoForge 1.21.11 renames `val$` fields) became a note instead of a failure, and Mixin then threw at startup. | PRE-2's test listed `lambda$` and `access$` only. Found by the review. | This pass: javac's four prefixes are excluded. Unit test. |
@@ -219,6 +223,7 @@ crash in run 229).
 | ID | Sev | Location | Issue | Status |
 |---|---|---|---|---|
 | ADV-1 | P2, cause UNVERIFIED | `ModTranslator` mixin configs | adventure-platform-fabric 7.2.0 (nested in PolyPlus) is disabled: "Mixin config adventure-platform-mod-shared.accessor.mixins.json declared in fabric.mod.json is missing from the jar". The config is presumably in its nested `adventure-platform-mod-shared` jar, which Fabric's Mixin finds on the class path. | Needs the jars read: whether the nested jar declares the config itself, and how FML finds a config in another mod file. |
+| PLAT-2 | P3, UNVERIFIED | core `PlatformLibraries` | Other prefixes also cover whole library families (`org/lwjgl/`, `io/netty/`), of which the platform may ship some modules only: a mod nesting another module (LWJGL's NanoVG, say) would lose it, as PLAT-1 did. No case seen yet. | Check each prefix against the packages the platform really has (the loader computes them), and keep a prefix only where the family is complete. |
 | FC-5 | P3 | `TranslationCache.verifyIntegrity` | Hashes are memoised by file metadata. On Windows the key is size and mtime only, and `entry.json` itself isn't hashed. | Needs a decision on cost: re-hashing every launch versus trusting metadata. |
 | FC-6 | P3 | `TranslationCache.store` | Two cold launches of the same side that share one game directory race on delete-then-move. | Needs a cross-process file lock. Rare. |
 | FC-7 | P3, UNVERIFIED | cache cleanup | `Files.walk` may follow Windows directory junctions. | Must be verified on Windows first. |
@@ -227,7 +232,6 @@ crash in run 229).
 | P3-8 | — | `BlockEntityTypeMixin` | Field replaced without `volatile`. | Won't fix: written only during mod initialization, before world threads start. |
 | CFG-2 | P3 | `gradle.properties`, `Pipeline` | The Fabric Loader API version is written in two places. | Build-time duplication only. |
 | CORPUS-1 | P3, cosmetic | Terralith, Lithostitched (Apollib) (26.1.2 and 26.3 corpus) | NeoForge warns "Error reading NeoForge-added overlays for mod/terralith, falling back to empty overlays" ("Unknown registry key in neoforge:condition_codecs: terralith:config", and `apollib:config` for Lithostitched). Their Fabric jars' `pack.mcmeta` carries the overlays of their NeoForge builds, gated by those builds' own condition types, which the Fabric builds don't register. NeoForge then loads none of those overlays, which is what the Fabric builds expect. | Nothing to fix; the warning could be silenced by ignoring NeoForge overlay metadata in Fabric jars. |
-| CORPUS-2 | P2, cause likely REG-2 | Xaero's World Map (26.1.2 and 26.3 corpus) | The corpus client crashes on its first tick: `WorldMap.events` is null in World Map's `Minecraft.runTick` hook. Its client entrypoint ran without failure (0 entrypoint failures among 100 mods; XaeroLib's client stage 1/3 logged), its mixins passed pre-flight, and `CLIENT_STARTED` fired before the crash (the run()-start hook applies). What sets `events` before the first tick on Fabric is unknown: the mod is closed source and its jar isn't reachable from the development sandbox. Likely cause, from Xaero's Minimap in the same corpus (`b679b92`): Xaero's client initializers register content, catch the failure and defer it, so they don't count as failed (REG-2). | Fixed with REG-2 if that is the cause: CI's World Map client will show. |
 | CORPUS-3 | — | Balm (Waystones), JEI, ShulkerBoxTooltip (26.3 corpus) | Their mixins target code NeoForge changed: Balm `CropBlock.getGrowthSpeed`'s signature and `LivingEntity.removeAllEffects`'s loop, JEI `KeyMapping.setKey`, ShulkerBoxTooltip a `setTooltipForNextFrame` overload. Pre-flight disables them with the reason. | Not repairable in general. Their NeoForge builds exist and are used when installed. |
 | CORPUS-5 | P3, cosmetic, UNVERIFIED | Traveler's Backpack (26.3 corpus) | NeoForge warns "Missing FluidModel" for its potion fluids. NeoForge's check runs inside `FluidStateModelSet.bake`, and upstream's `FluidStateModelSetMixin` wraps that method to add the models of Fabric-registered fluids after it returns, so the warning comes before those models are added. Whether the potion fluids have a model at all is UNVERIFIED. | Could register Fabric's fluid models through NeoForge's `RegisterFluidModelsEvent` instead. Low value. |
 
@@ -238,7 +242,7 @@ crash in run 229).
 |---|---|---|---|---|
 | `fabricated-testmod-frapi` (this repo) | `ModelLoadingPlugin` after-bake modifier, its own `emitQuads` in sections, as a falling block and with the breaking overlay; a `fabric:type` model as a multipart part | — | **passes** on 26.1.2, 26.2, 26.3 | CI "Fabric renderer API in the world", run 246 |
 | Traveler's Backpack | Custom unbaked model deserializer | loads | loads, its custom block models too (M4) | corpus run on `08e9a5f` |
-| Continuity, Entity Model Features, Entity Texture Features | Renderer API (connected textures); entity rendering | not checked | 26.3: translated and in NeoForge's mod list; the corpus client still crashes on its first tick (CORPUS-2) before any world, so unexercised | corpus runs on `496d7a9`, `29dca60` |
+| Continuity, Entity Model Features, Entity Texture Features | Renderer API (connected textures); entity rendering | not checked | 26.3: translated and in NeoForge's mod list; the corpus client runs through since REG-2, but nothing checks their rendering | corpus runs on `496d7a9`, `29dca60`, `72f5472` |
 | Sodium and Iris for NeoForge | Sodium's own Fabric renderer meshes every block; Iris on Sodium | not tested | **passes** on 26.1.2 and 26.3, 26.2 see the session notes | CI "Fabric models under Sodium", run on `7fe52ed` |
 | Athena | Renderer API (connected textures library) | not in corpus | not in corpus | same (UNVERIFIED) |
 | Create Fabric | Renderer API, model loading | no Fabric build | no Fabric build for 26.3 | corpus fetch, run 233 |
@@ -293,6 +297,9 @@ After pull request #28, from its last CI runs and an independent review of its d
   CFG-3, and the baked colour gate (FRAPI-2b). One `MixinPreflight` constructor, one constant for Fabricated's mod id.
 - CI: the plugin hosts' builds are pinned per version and the run is a gate; the test mod's field-reference Jade
   entry is now valid on Fabric (Jade's Fabric build in the corpus failed on it).
+- Results on `72f5472` (pull request #29): the corpus clients run through and Xaero's World Map reaches a world
+  (CORPUS-2 fixed by REG-2); the Polyfrost run disables 3 jars instead of 18. Then PLAT-1: night-config's JSON
+  module was taken for the platform's. The CI summary now prints each crash's description and errors.
 
 **Verification.** Core: `./gradlew -Pfabricated.coreOnly=true build` green locally, with new tests (`PackageGuardTest`,
 split packages and a target installed later in `PipelineTest`, javac's names in `MixinPreflightTest`). CI: see the pull
