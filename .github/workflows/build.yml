@@ -458,10 +458,15 @@ jobs:
                 "$RUNNER_TEMP/$run/client.out" 2>/dev/null | head -14 | cut -c1-250 || true
               # What the client showed half a minute into its world, and whether chunks arrived (the test mod).
               grep -h -m 1 "FABRICATED-TEST world state" "$log" | cut -c1-400 || true
-              grep -h -m 1 "FABRICATED-TEST server state" "$log" | cut -c1-400 || true
+              grep -h -m 1 "FABRICATED-TEST server state" "$log" | cut -c1-500 || true
               # The player's way into the integrated server, and out (the test mod's PlayerList mixin).
-              grep -h -E "FABRICATED-TEST (server (placing|placed|removing|respawning)|integrated server tick)|joined the game|left the game|lost connection|Saving and pausing|Failed to handle packet" "$log" | head -12 | cut -c1-300 || true
+              grep -h -E "FABRICATED-TEST (server (placing|placed|removing|respawning)|integrated server tick)|joined the game|left the game|lost connection|Saving and pausing|Failed to handle packet" "$log" | head -16 | cut -c1-300 || true
               grep -h -m 1 -A 14 -E "FABRICATED-TEST server (removing|respawning)" "$log" | grep -E "^[[:space:]]+at " | grep -v "java\.base/" | head -10 | cut -c1-250 || true
+              # The mixins applied to the integrated server and the player list (named in the frames of the test mod's stacks).
+              for frame in "IntegratedServer.tickServer(" "PlayerList.placeNewPlayer("; do
+                echo "-- mixins on $frame"
+                grep -h -m 1 -F "$frame" "$log" | grep -oE "mixin\[[^]]*\]" | sed 's/^mixin\[//; s/\]$//' | tr ',' '\n' | sed 's/^/    /' | head -30 || true
+              done
               # Who asked the game to stop, if anything did (the test mod).
               grep -h -m 1 -A 12 "FABRICATED-TEST game stop requested" "$log" | grep -v "java\.base/" | cut -c1-250 || true
               echo "-- last lines of the log:"
