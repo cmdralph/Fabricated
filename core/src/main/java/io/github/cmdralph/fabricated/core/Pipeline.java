@@ -152,13 +152,10 @@ public final class Pipeline {
 	/**
 	 * A translated mod that will be handed to NeoForge.
 	 *
-	 * @param excludedPackages  packages filtered out of its jar and overlay ({@link PackageGuard})
-	 * @param borrowed          files of other mods' jars its module serves too, by jar: their part of a package split
-	 *                          with this mod
+	 * @param packages          what its module leaves out of its jar and serves from other mods' jars ({@link PackageGuard})
 	 * @param pluginAnnotations what to add to its scan data for the NeoForge builds of other mods to find its plugins
 	 */
-	public record LoadedMod(TranslatedMod translated, Set<String> excludedPackages, Map<Path, Set<String>> borrowed,
-			List<PluginAnnotations.Annotation> pluginAnnotations) {
+	public record LoadedMod(TranslatedMod translated, PackageGuard.Decision packages, List<PluginAnnotations.Annotation> pluginAnnotations) {
 	}
 
 	/**
@@ -720,7 +717,7 @@ public final class Pipeline {
 			List<PluginAnnotations.Annotation> plugins = PluginAnnotations.of(entrypoints, pluginNotes);
 			plugins.forEach(p -> report.line("Plugins for other mods", c.id() + ": " + p.host() + " plugin " + p.className()));
 			pluginNotes.forEach(n -> report.line("Plugins for other mods", c.id() + ": " + n));
-			loaded.add(new LoadedMod(t, decision != null ? decision.excludedPackages() : Set.of(), decision != null ? decision.borrowed() : Map.of(), plugins));
+			loaded.add(new LoadedMod(t, decision != null ? decision : PackageGuard.Decision.NONE, plugins));
 			runtime.addLanguageAdapters(container, c.metadata().languageAdapters());
 			containers.put(c.id(), container);
 		}

@@ -196,13 +196,13 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 		ModFileDiscoveryAttributes attributes = ModFileDiscoveryAttributes.DEFAULT.withDependencyLocator(this);
 		Set<String> refused = new HashSet<>();
 		for (Pipeline.LoadedMod mod : result.mods()) {
-			Set<String> excluded = mod.excludedPackages();
-			JarContents.PathFilter filter = excluded.isEmpty() ? null : path -> !PackageGuard.isExcluded(path, excluded);
+			PackageGuard.Decision packages = mod.packages();
+			JarContents.PathFilter filter = packages.excludedPackages().isEmpty() && packages.hiddenFiles().isEmpty() ? null : path -> !packages.hides(path);
 			List<JarContents.FilteredPath> paths = new ArrayList<>(List.of(
 					new JarContents.FilteredPath(mod.translated().jar(), filter),
 					new JarContents.FilteredPath(mod.translated().overlay(), filter)));
 			// Other mods' part of a package split with this one: one module has the whole package.
-			mod.borrowed().forEach((jar, files) -> paths.add(new JarContents.FilteredPath(jar, files::contains)));
+			packages.borrowed().forEach((jar, files) -> paths.add(new JarContents.FilteredPath(jar, files::contains)));
 			JarContents contents = JarContents.ofFilteredPaths(paths);
 			Optional<IModFile> added = pipeline.addJarContent(contents, attributes, IncompatibleFileReporting.ERROR);
 			if (added.isEmpty()) {

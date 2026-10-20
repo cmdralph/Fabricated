@@ -46,6 +46,7 @@ import io.github.cmdralph.fabricated.core.report.Report;
 import io.github.cmdralph.fabricated.core.resolve.Candidate;
 import io.github.cmdralph.fabricated.core.resolve.FabricApiPlan;
 import io.github.cmdralph.fabricated.core.testutil.TestJars;
+import io.github.cmdralph.fabricated.core.translate.PackageGuard;
 import io.github.cmdralph.fabricated.core.translate.TranslatedMod;
 import io.github.cmdralph.fabricated.core.translate.TranslationEnvironment.Namespace;
 import net.fabricmc.loader.api.metadata.ModMetadata;
@@ -147,11 +148,21 @@ class PipelineTest {
 		TestJars.create().fabricModJson(TestJars.modJson("dup-d", "1.0", ""))
 				.bytes("com/conflict/Other.class", TestJars.emptyClass("com/conflict/Other", "java/lang/Object"))
 				.write(mods.resolve("dup-d.jar"));
-		// The same, but its module would declare a service provider in the package it no longer has.
+		// The same, with a service provider there: the module that has the provider declares the service.
 		TestJars.create().fabricModJson(TestJars.modJson("dup-e", "1.0", ""))
 				.bytes("com/conflict/Provider.class", TestJars.emptyClass("com/conflict/Provider", "java/lang/Object"))
 				.text("META-INF/services/java.lang.Runnable", "# a comment\ncom.conflict.Provider\n")
 				.write(mods.resolve("dup-e.jar"));
+		// The same service with another provider, which that module would also have to declare: refused.
+		TestJars.create().fabricModJson(TestJars.modJson("dup-f", "1.0", ""))
+				.bytes("com/conflict/OtherProvider.class", TestJars.emptyClass("com/conflict/OtherProvider", "java/lang/Object"))
+				.text("META-INF/services/java.lang.Runnable", "com.conflict.OtherProvider\n")
+				.write(mods.resolve("dup-f.jar"));
+		// A copy of dup-e's provider and service (as a library's Fabric jar repeats its common jar's): hidden.
+		TestJars.create().fabricModJson(TestJars.modJson("dup-g", "1.0", ""))
+				.bytes("com/conflict/Provider.class", TestJars.emptyClass("com/conflict/Provider", "java/lang/Object"))
+				.text("META-INF/services/java.lang.Runnable", "com.conflict.Provider\n")
+				.write(mods.resolve("dup-g.jar"));
 
 		TestJars.create().fabricModJson(TestJars.modJson("fabric-api-base", "0.4.0", "")).write(mods.resolve("fapi-base.jar"));
 		TestJars.create().fabricModJson(TestJars.modJson("client-only", "1.0", "\"environment\":\"client\"")).write(mods.resolve("client-only.jar"));
@@ -192,9 +203,9 @@ class PipelineTest {
 		for (Report.ModRow row : result.report().mods()) status.putIfAbsent(row.id(), row.status());
 
 		Set<String> loaded = result.mods().stream().map(m -> m.translated().candidate().id()).collect(Collectors.toSet());
-		assertEquals(Set.of("good-mod", "holder", "inner-lib", "dup-a", "dup-b", "dup-d", "res-a", "res-b"), loaded, result.report().render());
+		assertEquals(Set.of("good-mod", "holder", "inner-lib", "dup-a", "dup-b", "dup-d", "dup-e", "dup-g", "res-a", "res-b"), loaded, result.report().render());
 		Pipeline.LoadedMod resB = result.mods().stream().filter(m -> m.translated().candidate().id().equals("res-b")).findFirst().orElseThrow();
-		assertEquals(Set.of("licenses"), resB.excludedPackages(), "clashing resource-only directory is hidden, not fatal");
+		assertEquals(Set.of("licenses"), resB.packages().excludedPackages(), "clashing resource-only directory is hidden, not fatal");
 		assertEquals(Report.Status.DISABLED, status.get("needs-missing"));
 		assertTrue(result.dependencyFailures().contains("needs-missing"), result.dependencyFailures().toString());
 		assertEquals(Report.Status.DISABLED, status.get("bad-mixin"));
@@ -206,15 +217,20 @@ class PipelineTest {
 				"the bundled upstream module jar is skipped in favour of the native one");
 
 		Pipeline.LoadedMod good = result.mods().stream().filter(m -> m.translated().candidate().id().equals("good-mod")).findFirst().orElseThrow();
-		assertEquals(Set.of("com/google/gson"), good.excludedPackages(), "bundled platform library is filtered");
+		assertEquals(Set.of("com/google/gson"), good.packages().excludedPackages(), "bundled platform library is filtered");
 		Pipeline.LoadedMod dupB = result.mods().stream().filter(m -> m.translated().candidate().id().equals("dup-b")).findFirst().orElseThrow();
-		assertEquals(Set.of("com/shared"), dupB.excludedPackages(), "identical shared package uses the first copy");
+		assertEquals(Set.of("com/shared"), dupB.packages().excludedPackages(), "identical shared package uses the first copy");
 		Pipeline.LoadedMod dupA = result.mods().stream().filter(m -> m.translated().candidate().id().equals("dup-a")).findFirst().orElseThrow();
 		Pipeline.LoadedMod dupD = result.mods().stream().filter(m -> m.translated().candidate().id().equals("dup-d")).findFirst().orElseThrow();
-		assertEquals(Set.of("com/conflict"), dupD.excludedPackages());
-		assertEquals(Map.of(dupD.translated().jar(), Set.of("com/conflict/Other.class")), dupA.borrowed(), "a split package is served by one module");
-		assertEquals(Report.Status.DISABLED, status.get("dup-e"));
-		assertTrue(result.report().mods().stream().anyMatch(r -> r.id().equals("dup-e") && r.detail().contains("declares a service provider in it")),
+		assertEquals(Set.of("com/conflict"), dupD.packages().excludedPackages());
+		Pipeline.LoadedMod dupE = result.mods().stream().filter(m -> m.translated().candidate().id().equals("dup-e")).findFirst().orElseThrow();
+		Pipeline.LoadedMod dupG = result.mods().stream().filter(m -> m.translated().candidate().id().equals("dup-g")).findFirst().orElseThrow();
+		String service = "META-INF/services/java.lang.Runnable";
+		assertEquals(Map.of(dupD.translated().jar(), Set.of("com/conflict/Other.class"), dupE.translated().jar(), Set.of("com/conflict/Provider.class", service)),
+				dupA.packages().borrowed(), "a split package is served by one module, with the service its provider is for");
+		assertTrue(dupE.packages().hides(service) && dupG.packages().hides(service), "the service is the providing module's");
+		assertEquals(Report.Status.DISABLED, status.get("dup-f"));
+		assertTrue(result.report().mods().stream().anyMatch(r -> r.id().equals("dup-f") && r.detail().contains("with other providers than dup_a")),
 				result.report().render());
 
 		try (SafeArchive overlay = SafeArchive.open(good.translated().overlay(), ArchiveLimits.DEFAULTS)) {
@@ -483,7 +499,7 @@ class PipelineTest {
 		InjectedInterface injection = new InjectedInterface("net/minecraft/world/Thing", iface, iface, false, 1);
 		TranslatedMod mod = new TranslatedMod(c, id.replace('-', '_'), file, file, List.of(), 0, List.of(), List.of(injection),
 				Set.of(environmentClass), false, 0);
-		return new Pipeline.LoadedMod(mod, Set.of(), Map.of(), List.of());
+		return new Pipeline.LoadedMod(mod, PackageGuard.Decision.NONE, List.of());
 	}
 
 	private static List<String> interfacesOf(Pipeline.Result result, String target) {

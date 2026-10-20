@@ -10,8 +10,8 @@ class PackageGuardTest {
 	/** As NeoForge reads a service file: a provider per line, comments and blank lines ignored. */
 	@Test
 	void readsTheProvidersOfAServiceFile() {
-		assertEquals(Set.of("com/example/impl", "org/other"),
-				PackageGuard.providerPackages("# providers\ncom.example.impl.First\r\n\n  org.other.Second # inline\ncom.example.impl.Third"));
-		assertEquals(Set.of(), PackageGuard.providerPackages("# none\n\n"));
+		assertEquals(Set.of("com.example.impl.First", "org.other.Second", "com.example.impl.Third"),
+				PackageGuard.providers("# providers\ncom.example.impl.First\r\n\n  org.other.Second # inline\ncom.example.impl.Third"));
+		assertEquals(Set.of(), PackageGuard.providers("# none\n\n"));
 	}
 }
