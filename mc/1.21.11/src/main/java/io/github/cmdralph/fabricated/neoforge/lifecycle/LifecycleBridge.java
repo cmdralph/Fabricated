@@ -107,11 +107,11 @@ public final class LifecycleBridge {
 				e.getRelevantPlayers().forEach(player -> ServerLifecycleEvents.SYNC_DATA_PACK_CONTENTS.invoker().onSyncDataPackContents(player, false));
 			}
 		});
+		// A data load's TAGS_LOADED comes from ReloadableServerResourcesTagsLoadedMixin: NeoForge's event for it carries a
+		// lookup provider only. The client's carries the registries.
 		bus.addListener(TagsUpdatedEvent.class, e -> {
-			// NeoForge 21.11 exposes the registries as a lookup provider; it is the RegistryAccess in practice.
-			if (e.getLookupProvider() instanceof RegistryAccess registries) {
-				CommonLifecycleEvents.TAGS_LOADED.invoker().onTagsLoaded(registries,
-						e.getUpdateCause() == TagsUpdatedEvent.UpdateCause.CLIENT_PACKET_RECEIVED);
+			if (e.getUpdateCause() == TagsUpdatedEvent.UpdateCause.CLIENT_PACKET_RECEIVED && e.getLookupProvider() instanceof RegistryAccess registries) {
+				CommonLifecycleEvents.TAGS_LOADED.invoker().onTagsLoaded(registries, true);
 			}
 		});
 
