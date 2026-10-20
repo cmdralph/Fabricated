@@ -465,7 +465,7 @@ jobs:
           for f in summary-newest summary-viewers; do
             [ -f "$RUNNER_TEMP/$f.txt" ] && { echo "== $f"; grep -E "^(Newest|PASS|FAIL|WARN)|plugin|not in this run" "$RUNNER_TEMP/$f.txt" | head -60; }
           done
-          [ -f "$RUNNER_TEMP/summary-polyfrost.txt" ] && { echo "== summary-polyfrost"; head -60 "$RUNNER_TEMP/summary-polyfrost.txt"; }
+          [ -f "$RUNNER_TEMP/summary-polyfrost.txt" ] && { echo "== summary-polyfrost"; head -60 "$RUNNER_TEMP/summary-polyfrost.txt" | cut -c1-300; }
           [ -f viewers.txt ] && { echo "== viewers fetched"; cat viewers.txt; }
           for run in client-shaders client-sodium-fabric client-viewers client-polyfrost client-corpus client-worldmap; do
             log="$RUNNER_TEMP/$run/run/logs/latest.log"
@@ -478,6 +478,9 @@ jobs:
             fi
             # NeoForge's loading warnings (the runs with extra mods don't show them on a screen).
             grep -h -m 1 -A 6 "Mods loaded with .* warning" "$log" | cut -c1-300 || true
+            # Why pre-flight disabled mods, in full from Fabricated's report (the warnings above are cut short).
+            report="$RUNNER_TEMP/$run/run/logs/fabric-bridge-report.txt"
+            [ -f "$report" ] && awk '/^== Mixin pre-flight failures ==/ { show = 1; next } /^$/ { show = 0 } show' "$report" | head -24 | cut -c1-700
             # A crash's description and errors, with the first stack frames.
             for report in $(ls "$RUNNER_TEMP/$run/run/crash-reports"/*.txt 2>/dev/null | head -1); do
               echo "-- $(basename "$report")"
