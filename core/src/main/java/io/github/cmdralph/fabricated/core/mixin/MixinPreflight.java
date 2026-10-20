@@ -3,6 +3,8 @@ package io.github.cmdralph.fabricated.core.mixin;
 import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -18,6 +20,7 @@ import java.util.regex.Pattern;
 import io.github.cmdralph.fabricated.core.bytecode.Annotations;
 import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
 import io.github.cmdralph.fabricated.core.bytecode.ClassIndex;
+import io.github.cmdralph.fabricated.core.bytecode.InstalledClasses;
 import io.github.cmdralph.fabricated.core.mixin.PreflightFinding.Severity;
 
 import org.objectweb.asm.ClassReader;
@@ -47,10 +50,12 @@ import org.objectweb.asm.tree.TypeInsnNode;
  * {@code required} config, or an injector whose effective {@code require} is at least 1 and whose
  * target method or injection point does not exist (inside its {@code @Slice}, computed as Mixin does), or a
  * target class that NeoForge loads without mixin support (the JDK, libraries such as DataFixerUpper), where
- * the mixin would silently never apply. Selectors and injection points it cannot evaluate (wildcards,
- * slice bounds other than member references or {@code HEAD}, custom points, targets in other mods) are
- * never reported as failures. When the config declares a plugin, which may disable mixins at runtime, failures are
- * downgraded to warnings.
+ * the mixin would silently never apply. Targets in the jars installed next to the Fabric mods (Fabricated's Fabric
+ * API, NeoForge mods: an addon's mixins into the NeoForge build of the mod it extends) are checked as game classes are,
+ * except that a missing one is not reported (it may be in another Fabric mod). Selectors and injection points it cannot
+ * evaluate (wildcards, slice bounds other than member references or {@code HEAD}, custom points, targets in other
+ * Fabric mods) are never reported as failures. When the config declares a plugin, which may disable mixins at runtime,
+ * failures are downgraded to warnings.
  */
 public final class MixinPreflight {
 	private static final String PSEUDO = "Lorg/spongepowered/asm/mixin/Pseudo;";
@@ -81,11 +86,14 @@ public final class MixinPreflight {
 	private static final Set<String> GAME_PREFIXES = Set.of("net/minecraft/", "com/mojang/blaze3d/");
 
 	private final ClassIndex game;
+	private final InstalledClasses installed;
 	private final ClassBytesSource modClasses;
 	private final ClassBytesSource untransformable;
 	private final boolean clientSide;
 	private final boolean missingTargetsFatal;
 	private final Map<String, Optional<ClassNode>> targetCache = new HashMap<>();
+	/** The installed classes the checks read, with their fingerprints. */
+	private final Map<String, String> installedRead = new TreeMap<>();
 	/** The libraries' classes (the JDK, DataFixerUpper, ...), for the supertypes of the classes a game method calls. */
 	private ClassIndex libraries;
 
@@ -107,7 +115,18 @@ public final class MixinPreflight {
 	 */
 	public MixinPreflight(ClassIndex game, ClassBytesSource modClasses, ClassBytesSource untransformable, boolean clientSide,
 			boolean missingTargetsFatal) {
+		this(game, InstalledClasses.NONE, modClasses, untransformable, clientSide, missingTargetsFatal);
+	}
+
+	/**
+	 * @param game      as above, and {@code installed}'s classes
+	 * @param installed the classes of the jars installed next to the Fabric mods (Fabricated's Fabric API, NeoForge
+	 *                  mods): mixins targeting them are checked as those into the game are
+	 */
+	public MixinPreflight(ClassIndex game, InstalledClasses installed, ClassBytesSource modClasses, ClassBytesSource untransformable,
+			boolean clientSide, boolean missingTargetsFatal) {
 		this.game = game;
+		this.installed = installed;
 		this.modClasses = modClasses;
 		this.untransformable = untransformable;
 		this.clientSide = clientSide;
@@ -124,7 +143,7 @@ public final class MixinPreflight {
 		for (String mixin : config.mixinsFor(clientSide)) {
 			if (skip.contains(mixin)) continue;
 			String internal = config.internalName(mixin);
-			Context ctx = new Context(configName, internal.replace('/', '.'), config, refmap, hasPlugin, out);
+			Context ctx = new Context(configName, internal.replace('/', '.'), config, refmap, hasPlugin, out, null);
 			ClassNode node = readMixin(internal);
 			if (node == null) {
 				ctx.classLevel("Mixin class " + ctx.mixinDotted() + " listed in " + configName + " is missing from the mod jar",
@@ -138,6 +157,14 @@ public final class MixinPreflight {
 					+ ") that may disable mixins at runtime, so an injector that would crash the game is left out instead of disabling the mod.", ""));
 		}
 		return out;
+	}
+
+	/**
+	 * The installed classes {@link #check} read (the targets in installed jars, and their supertypes there), with their
+	 * {@link InstalledClasses#fingerprint}s: its results hold while those are the same.
+	 */
+	public Map<String, String> installedClasses() {
+		return Collections.unmodifiableMap(new TreeMap<>(installedRead));
 	}
 
 	/**
@@ -186,7 +213,7 @@ public final class MixinPreflight {
 			} catch (IOException | RuntimeException | StackOverflowError e) {
 				continue;
 			}
-			Context ctx = new Context(configName, internal.replace('/', '.'), config, refmap, false, out);
+			Context ctx = new Context(configName, internal.replace('/', '.'), config, refmap, false, out, null);
 			List<ClassNode> targets = new ArrayList<>();
 			for (String target : targetsOf(node, ctx)) {
 				ClassNode targetNode = gameTarget(target);
@@ -653,6 +680,27 @@ public final class MixinPreflight {
 		return isGameClass(internalName) ? targetCache.computeIfAbsent(internalName, t -> Optional.ofNullable(game.readNode(t))).orElse(null) : null;
 	}
 
+	/** A class of an installed jar (parsed once per pre-flight), recorded with its supertypes there; null when unreadable. */
+	private ClassNode installedTarget(String internalName) {
+		Deque<String> queue = new ArrayDeque<>(List.of(internalName));
+		while (!queue.isEmpty()) {
+			String name = queue.poll();
+			if (installedRead.containsKey(name) || installed.owner(name) == null) continue;
+			String fingerprint;
+			try {
+				fingerprint = installed.fingerprint(name);
+			} catch (IOException e) {
+				fingerprint = "";
+			}
+			installedRead.put(name, fingerprint);
+			ClassIndex.ClassInfo info = game.get(name);
+			if (info == null) continue;
+			if (info.superName() != null) queue.add(info.superName());
+			queue.addAll(info.interfaces());
+		}
+		return targetCache.computeIfAbsent(internalName, t -> Optional.ofNullable(game.readNode(t))).orElse(null);
+	}
+
 	private ClassNode readMixin(String internal) {
 		try {
 			byte[] data = modClasses.read(internal);
@@ -665,10 +713,26 @@ public final class MixinPreflight {
 		}
 	}
 
+	/** @param owner the installed mod the target belongs to, or {@code null} for a game class */
 	private record Context(String configName, String mixinDotted, MixinConfigFile config, Refmap refmap, boolean hasPlugin,
-			List<PreflightFinding> out) {
+			List<PreflightFinding> out, String owner) {
 		String resolve(String selector) {
 			return refmap.resolve(mixinDotted.replace('.', '/'), selector);
+		}
+
+		Context withOwner(String owner) {
+			return new Context(configName, mixinDotted, config, refmap, hasPlugin, out, owner);
+		}
+
+		/** What changed the target since the mod was built: NeoForge or this Minecraft version, or this version of the mod. */
+		String changer(boolean sentenceStart) {
+			if (owner == null) return "NeoForge or this Minecraft version";
+			return (sentenceStart ? "This" : "this") + " version of " + owner;
+		}
+
+		/** Whose code the target is: NeoForge's (and Minecraft's), or the installed mod's. */
+		String platform() {
+			return owner == null ? "NeoForge" : owner;
 		}
 
 		/** A problem that makes Mixin reject the whole mixin; fatal when the config is required. */
@@ -701,7 +765,8 @@ public final class MixinPreflight {
 
 		for (String target : targetsOf(mixin, ctx)) {
 			boolean isGame = isGameClass(target);
-			ClassNode targetNode = gameTarget(target);
+			String owner = isGame ? null : installed.owner(target);
+			ClassNode targetNode = isGame ? gameTarget(target) : owner != null ? installedTarget(target) : null;
 			if (targetNode == null) {
 				if (pseudo) continue;
 				if (isGame && missingTargetsFatal) {
@@ -714,16 +779,17 @@ public final class MixinPreflight {
 					ctx.classLevel("Target class " + target.replace('/', '.') + " is a library class that NeoForge loads without mixin support, so this mixin would silently never apply",
 							"Ask the mod author for a NeoForge version, or skip this mixin in config/fabricated.json if the feature is optional.");
 				} else {
-					ctx.info("Target " + target.replace('/', '.') + " is not a Minecraft class and was not verified");
+					ctx.info("Target " + target.replace('/', '.') + " is not a class of Minecraft or of an installed NeoForge mod, so it was not verified");
 				}
 				continue;
 			}
+			Context targetCtx = owner == null ? ctx : ctx.withOwner(owner);
 			if ((mixin.access & Opcodes.ACC_ENUM) != 0 && targetNode.interfaces.contains(EXTENSIBLE_ENUM)) {
-				ctx.classLevel("Enum mixin adds constants to " + target.replace('/', '.') + ", one of NeoForge's extensible enums, which"
+				targetCtx.classLevel("Enum mixin adds constants to " + target.replace('/', '.') + ", one of NeoForge's extensible enums, which"
 						+ " NeoForge lets only its own enum extensions change", "Install the NeoForge build of the mod, if it has one.");
 				continue;
 			}
-			checkMembers(mixin, targetNode, ctx);
+			checkMembers(mixin, targetNode, targetCtx);
 		}
 	}
 
@@ -765,7 +831,7 @@ public final class MixinPreflight {
 			if (game.resolveField(target.name, fieldName + ":" + desc) == ClassIndex.Resolution.MISSING
 					&& !aliasExists(shadow, target, desc, true)) {
 				ctx.classLevel("@Shadow field " + fieldName + " (" + desc + ") does not exist in " + targetDotted,
-						"NeoForge or this Minecraft version changed " + targetDotted + "; the mod needs an update.");
+						ctx.changer(true) + " changed " + targetDotted + "; the mod needs an update.");
 			}
 		}
 
@@ -780,7 +846,7 @@ public final class MixinPreflight {
 				if (game.resolveMethod(target.name, methodName + desc) == ClassIndex.Resolution.MISSING
 						&& !aliasExists(shadow, target, desc, false)) {
 					ctx.classLevel("@Shadow method " + methodName + desc + " does not exist in " + targetDotted,
-							"NeoForge or this Minecraft version changed " + targetDotted + "; the mod needs an update.");
+							ctx.changer(true) + " changed " + targetDotted + "; the mod needs an update.");
 				}
 				continue;
 			}
@@ -791,7 +857,7 @@ public final class MixinPreflight {
 				String desc = ref.methodDescOr(method.desc);
 				if (!declares(target, name, desc)) {
 					ctx.classLevel("@Overwrite target " + name + desc + " does not exist in " + targetDotted,
-							"The overwritten method was changed by NeoForge or this Minecraft version.");
+							"The overwritten method was changed by " + ctx.changer(false) + ".");
 				}
 				continue;
 			}
@@ -805,8 +871,8 @@ public final class MixinPreflight {
 				// method there is harmless: typically the very method the invoker calls.
 				if ((method.access & Opcodes.ACC_STATIC) == 0 && declares(target, method.name, method.desc)) {
 					ctx.classLevel((accessor != null ? "@Accessor " : "@Invoker ") + method.name + method.desc + " already exists in "
-									+ targetDotted + " (added by NeoForge or this Minecraft version), so Mixin cannot generate it",
-							"The mod needs an update for NeoForge; until then it cannot load.");
+									+ targetDotted + " (added by " + ctx.changer(false) + "), so Mixin cannot generate it",
+							"The mod needs an update; until then it cannot load.");
 				} else if (accessor != null) {
 					checkAccessor(method, accessor, target, ctx);
 				} else {
@@ -840,10 +906,10 @@ public final class MixinPreflight {
 		String where = method.name + method.desc + " already exists in " + target.name.replace('/', '.');
 		if (ctx.config().overwritesRequireAnnotations()) {
 			ctx.classLevel(where + " and the config requires @Overwrite to replace it, so Mixin rejects this mixin",
-					"NeoForge added this method; the mod needs an update for NeoForge.");
+					ctx.changer(true) + " added this method; the mod needs an update.");
 		} else {
 			ctx.out().add(new PreflightFinding(Severity.WARN, ctx.configName(), ctx.mixinDotted(),
-					where + "; the mixin silently replaces it, which may change NeoForge's behaviour", ""));
+					where + "; the mixin silently replaces it, which may change " + ctx.platform() + "'s behaviour", ""));
 		}
 	}
 
@@ -879,7 +945,7 @@ public final class MixinPreflight {
 		ctx.classLevel(nameExists
 						? "@Accessor target field " + fieldName + " in " + target.name.replace('/', '.') + " has a different type than " + desc
 						: "@Accessor target field " + fieldName + " does not exist in " + target.name.replace('/', '.'),
-				nameExists ? "NeoForge or this Minecraft version changed the field's type." : "The field was renamed or removed by NeoForge or this Minecraft version.");
+				nameExists ? ctx.changer(true) + " changed the field's type." : "The field was renamed or removed by " + ctx.changer(false) + ".");
 	}
 
 	/** The field type an accessor reads or writes: a getter's return type or a setter's only parameter. */
@@ -900,7 +966,7 @@ public final class MixinPreflight {
 		String desc = ref.methodDescOr(method.desc);
 		if (declares(target, methodName, desc)) return;
 		ctx.classLevel("@Invoker target method " + methodName + desc + " does not exist in " + target.name.replace('/', '.'),
-				"The method was renamed or removed by NeoForge or this Minecraft version.");
+				"The method was renamed or removed by " + ctx.changer(false) + ".");
 	}
 
 	static String inferAccessorName(String method) {
@@ -969,14 +1035,15 @@ public final class MixinPreflight {
 			if (!anyFuzzy && lastSelector != null) {
 				ctx.injector(handler, require, injectorName + " targets method " + lastSelector
 								+ ", which does not exist in " + target.name.replace('/', '.'),
-						"The method was renamed or removed by NeoForge or this Minecraft version.");
+						"The method was renamed or removed by " + ctx.changer(false) + ".");
 			}
 			return;
 		}
 		if (ann.desc.equals(INJECT) && !anyFuzzy && !acceptsCallbackSignature(handler, ann, matched)) {
 			ctx.classLevel(injectorName + " handler " + handler.name + Type.getMethodDescriptor(Type.getReturnType(handler.desc), handlerArgs(handler).toArray(Type[]::new))
 							+ " does not match the parameters of " + matched.getFirst().name + matched.getFirst().desc + " in " + target.name.replace('/', '.'),
-					"NeoForge's build of Minecraft declares this method with different parameters (often a lambda whose captured values are ordered differently); the mod needs an update or this mixin must be skipped.");
+					(ctx.owner() == null ? "NeoForge's build of Minecraft declares this method with different parameters (often a lambda whose captured values are ordered differently)"
+							: ctx.changer(true) + " declares this method with different parameters") + "; the mod needs an update or this mixin must be skipped.");
 			return;
 		}
 
@@ -995,7 +1062,7 @@ public final class MixinPreflight {
 				if (matched.stream().allMatch(m -> constantVerdict(constant, m) == Verdict.MISSING)) {
 					ctx.injector(handler, require, injectorName + " in " + matched.getFirst().name + " expects the constant " + expected
 									+ ", which does not occur in that method",
-							"NeoForge or this Minecraft version changed the method body; the mod needs an update or this mixin must be skipped.");
+							ctx.changer(true) + " changed the method body; the mod needs an update or this mixin must be skipped.");
 					return;
 				}
 			}
@@ -1005,14 +1072,14 @@ public final class MixinPreflight {
 		if (missingLocal != null) {
 			ctx.injector(handler, require, injectorName + " handler " + handler.name + " captures the local variable " + missingLocal + ", which "
 							+ matched.getFirst().name + " in " + target.name.replace('/', '.') + " does not declare",
-					"NeoForge or this Minecraft version changed the method body; the mod needs an update or this mixin must be skipped.");
+					ctx.changer(true) + " changed the method body; the mod needs an update or this mixin must be skipped.");
 			return;
 		}
 		String ambiguous = slices.isEmpty() ? ambiguousLocal(handler, ann, matched, ctx) : null;
 		if (ambiguous != null) {
 			ctx.injector(handler, require, injectorName + " handler " + handler.name + " captures the local variable " + ambiguous
 							+ " by its type, which " + matched.getFirst().name + " in " + target.name.replace('/', '.') + " has more than one of there",
-					"NeoForge or this Minecraft version added a local of that type; the mod needs an update or this mixin must be skipped.");
+					ctx.changer(true) + " added a local of that type; the mod needs an update or this mixin must be skipped.");
 			return;
 		}
 
@@ -1037,14 +1104,14 @@ public final class MixinPreflight {
 				ctx.injector(handler, require, injectorName + " in " + matched.getFirst().name + " expects @At(\"" + point + "\""
 								+ (rawTarget != null ? ", target=\"" + ctx.resolve(rawTarget) + "\"" : "")
 								+ (ordinal >= 0 ? ", ordinal=" + ordinal : "") + "), which does not occur in that method",
-						"NeoForge or this Minecraft version changed the method body; the mod needs an update or this mixin must be skipped.");
+						ctx.changer(true) + " changed the method body; the mod needs an update or this mixin must be skipped.");
 				return;
 			}
 			if (verdict == Verdict.FOUND && ann.desc.equals(WRAP_OPERATION) && rawTarget != null) {
 				String mismatch = wrappedArityMismatch(handler, point, ctx.resolve(rawTarget), matched);
 				if (mismatch != null) {
 					ctx.classLevel(injectorName + " handler " + handler.name + " " + mismatch + " in " + matched.getFirst().name,
-							"NeoForge's build of Minecraft calls this with different arguments; the mod needs an update or this handler must be skipped.");
+							(ctx.owner() == null ? "NeoForge's build of Minecraft" : ctx.changer(true)) + " calls this with different arguments; the mod needs an update or this handler must be skipped.");
 					return;
 				}
 			}

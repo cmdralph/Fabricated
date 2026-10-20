@@ -105,7 +105,7 @@ public final class ModTranslator {
 
 		Optional<TranslationCache.Entry> hit = env.namespace() == Namespace.INTERMEDIARY
 				? cache.lookup(entryName, OVERLAY, REMAPPED) : cache.lookup(entryName, OVERLAY);
-		if (hit.isPresent()) {
+		if (hit.isPresent() && installedUnchanged(hit.get())) {
 			return fromCache(candidate, neoId, hit.get());
 		}
 
@@ -140,8 +140,9 @@ public final class ModTranslator {
 
 				Map<String, byte[]> overlay = new TreeMap<>();
 				List<PreflightFinding> findings = new ArrayList<>();
+				Map<String, String> installedClasses = new TreeMap<>();
 				List<ModsTomlWriter.MixinConfigSpec> mixinSpecs = processMixins(candidate, override, files,
-						remapped != null ? remapped.keySet() : archive.classEntryNames(), overlay, findings);
+						remapped != null ? remapped.keySet() : archive.classEntryNames(), overlay, findings, installedClasses);
 
 				List<InjectedInterface> injections = List.of();
 				int atLines = 0;
@@ -198,6 +199,7 @@ public final class ModTranslator {
 				meta.put("findings", findings.stream().map(ModTranslator::findingToJson).toList());
 				meta.put("injectedInterfaces", injections.stream().map(ModTranslator::injectionToJson).toList());
 				meta.put("environmentClasses", List.copyOf(environmentClasses));
+				meta.put("installedClasses", installedClasses);
 				TranslationCache.Entry entry = cache.store(entryName, outputs, meta);
 				Path jar = remapped != null ? entry.file(REMAPPED) : candidate.path();
 				return new TranslatedMod(candidate, neoId, jar, entry.file(OVERLAY), List.copyOf(findings), atLines,
@@ -273,8 +275,10 @@ public final class ModTranslator {
 		byte[] read(String name) throws ArchiveException;
 	}
 
+	/** @param installedClasses receives the installed classes pre-flight read, with their fingerprints */
 	private List<ModsTomlWriter.MixinConfigSpec> processMixins(Candidate candidate, ModOverride override, FileView files,
-			Collection<String> entries, Map<String, byte[]> overlay, List<PreflightFinding> findings) throws ArchiveException, TranslationException {
+			Collection<String> entries, Map<String, byte[]> overlay, List<PreflightFinding> findings, Map<String, String> installedClasses)
+			throws ArchiveException, TranslationException {
 		FabricModMetadata md = candidate.metadata();
 		String behavior = MixinCompat.clampForNeoForge(MixinCompat.fabricBehaviorVersion(md.getDependencies()), env.runtimeMixinVersion(),
 				env.lowestMixinBehavior());
@@ -282,8 +286,8 @@ public final class ModTranslator {
 		List<ModsTomlWriter.MixinConfigSpec> specs = new ArrayList<>();
 		// Pre-flight sees the mod as it will load: with the handler methods left out below.
 		FileView translated = name -> overlay.containsKey(name) ? overlay.get(name) : files.read(name);
-		MixinPreflight preflight = new MixinPreflight(env.game(), classSource(translated), env.untransformable(), env.clientSide(),
-				MixinCompat.missingTargetsFatal(behavior));
+		MixinPreflight preflight = new MixinPreflight(env.installedIndex(), env.installed(), classSource(translated), env.untransformable(),
+				env.clientSide(), MixinCompat.missingTargetsFatal(behavior));
 		Map<String, MixinConfigFile> configs = new HashMap<>();
 		Map<String, Refmap> refmaps = new HashMap<>();
 
@@ -346,6 +350,7 @@ public final class ModTranslator {
 			specs.add(new ModsTomlWriter.MixinConfigSpec(entry.config(), behavior));
 		}
 		if (!override.ignorePreflight()) checkPluginMixins(entries, configs, refmaps, preflight, translated, overlay, findings);
+		installedClasses.putAll(preflight.installedClasses());
 
 		List<PreflightFinding> failures = findings.stream().filter(f -> f.severity() == Severity.FAIL).toList();
 		if (!failures.isEmpty()) {
@@ -584,6 +589,19 @@ public final class ModTranslator {
 		ByteArrayOutputStream out = new ByteArrayOutputStream();
 		DeterministicJarWriter.write(out, files);
 		return out.toByteArray();
+	}
+
+	/** Whether the installed classes a cached translation's pre-flight read are as they were (an installed mod may have changed). */
+	private boolean installedUnchanged(TranslationCache.Entry entry) {
+		if (!(entry.metadata().get("installedClasses") instanceof Map<?, ?> classes)) return true;
+		try {
+			for (Map.Entry<?, ?> c : classes.entrySet()) {
+				if (!env.installed().fingerprint(String.valueOf(c.getKey())).equals(c.getValue())) return false;
+			}
+			return true;
+		} catch (IOException e) {
+			return false;
+		}
 	}
 
 	private TranslatedMod fromCache(Candidate candidate, String neoId, TranslationCache.Entry entry) {

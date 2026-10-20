@@ -20,6 +20,7 @@ import io.github.cmdralph.fabricated.core.accesswidener.AccessWidenerFile.Inject
 import io.github.cmdralph.fabricated.core.archive.Hashing;
 import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
 import io.github.cmdralph.fabricated.core.bytecode.ClassIndex;
+import io.github.cmdralph.fabricated.core.bytecode.InstalledClasses;
 import io.github.cmdralph.fabricated.core.cache.TranslationCache;
 import io.github.cmdralph.fabricated.core.config.FabricatedConfig;
 import io.github.cmdralph.fabricated.core.metadata.CompatHints;
@@ -114,6 +115,7 @@ public final class Pipeline {
 	 * @param platformPackages    packages owned by NeoForge, Minecraft, libraries and Fabricated's own jars
 	 * @param nativeApiClasses    classes of Fabricated's native Fabric API implementation
 	 * @param nativeApiInterfaces interfaces Fabricated's own mixins add to game classes, read only when needed
+	 * @param installedClasses    the classes of Fabricated's Fabric API and of the NeoForge mods, which Fabric mixins may target
 	 */
 	public record Input(
 			Path gameDir,
@@ -137,6 +139,7 @@ public final class Pipeline {
 			ClassBytesSource nativeApiClasses,
 			Supplier<Map<String, List<String>>> nativeApiInterfaces,
 			List<NeoForgeMod> neoForgeMods,
+			InstalledClasses installedClasses,
 			MappingSupplier mappings,
 			String[] launchArguments) {
 	}
@@ -310,9 +313,11 @@ public final class Pipeline {
 				mappingTable != null ? MappingResolvers.intermediary(mappingTable) : MappingResolvers.identity(), in::launchArguments);
 		if (eligible.isEmpty()) return assemble(runtime, new Rounds());
 
+		ClassIndex game = new ClassIndex(in.gameClasses());
+		InstalledClasses installed = in.installedClasses();
 		TranslationEnvironment env = new TranslationEnvironment(in.minecraftVersion(), in.neoForgeVersion(), in.clientSide(), in.namespace(),
-				in.runtimeMixinVersion(), in.lowestMixinBehavior(), in.fabricatedVersion(), mappingTable, mappingsHash,
-				new ClassIndex(in.gameClasses()), in.untransformableClasses());
+				in.runtimeMixinVersion(), in.lowestMixinBehavior(), in.fabricatedVersion(), mappingTable, mappingsHash, game, in.untransformableClasses(),
+				installed, installed.isEmpty() ? game : new ClassIndex(in.gameClasses().or(installed)));
 		Rounds rounds = new Rounds();
 		rounds.run(eligible, resolver(), new ModTranslator(env, in.cache(), config.limits()));
 		return assemble(runtime, rounds);

@@ -2,6 +2,7 @@ package io.github.cmdralph.fabricated.core.translate;
 
 import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
 import io.github.cmdralph.fabricated.core.bytecode.ClassIndex;
+import io.github.cmdralph.fabricated.core.bytecode.InstalledClasses;
 import io.github.cmdralph.fabricated.core.remap.MappingTable;
 
 /**
@@ -16,6 +17,11 @@ import io.github.cmdralph.fabricated.core.remap.MappingTable;
  * @param mappings            intermediary table, or {@code null} when {@code namespace} is official
  * @param mappingsHash        hash identifying {@code mappings}, or {@code "none"}
  * @param game                index of runtime game classes (Minecraft + NeoForge)
+ * @param untransformable     classes loaded outside NeoForge's transforming class loader (the JDK, libraries)
+ * @param installed           classes of the jars installed next to the Fabric mods (Fabricated's Fabric API, NeoForge
+ *                            mods), which Fabric mixins may target; the pre-flight results that depend on them are
+ *                            cached with their fingerprints
+ * @param installedIndex      index of the game classes and {@code installed}
  */
 public record TranslationEnvironment(
 		String minecraftVersion,
@@ -28,10 +34,12 @@ public record TranslationEnvironment(
 		MappingTable mappings,
 		String mappingsHash,
 		ClassIndex game,
-		ClassBytesSource untransformable) {
+		ClassBytesSource untransformable,
+		InstalledClasses installed,
+		ClassIndex installedIndex) {
 
 	/** Bumped whenever translation output changes for the same inputs. */
-	public static final int TRANSLATION_SCHEMA = 11;
+	public static final int TRANSLATION_SCHEMA = 12;
 
 	/** Namespace Fabric mods are distributed in. */
 	public enum Namespace {

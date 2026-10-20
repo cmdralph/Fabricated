@@ -24,6 +24,7 @@ import io.github.cmdralph.fabricated.core.api.FabricatedApiImpl;
 import io.github.cmdralph.fabricated.core.archive.ArchiveLimits;
 import io.github.cmdralph.fabricated.core.archive.SafeArchive;
 import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
+import io.github.cmdralph.fabricated.core.bytecode.InstalledClasses;
 import io.github.cmdralph.fabricated.core.cache.TranslationCache;
 import io.github.cmdralph.fabricated.core.config.FabricatedConfig;
 import io.github.cmdralph.fabricated.core.json.JsonException;
@@ -126,6 +127,7 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 			}
 		}
 		ClassBytesSource nativeApi = ClassBytesSource.EMPTY;
+		List<InstalledClasses.Jar> fabricApi = List.of();
 		// Interfaces the in-game mod's mixins add to game classes (Fabric API's injected interfaces).
 		Supplier<Map<String, List<String>>> nativeApiInterfaces = Map::of;
 		FabricApiPlan plan;
@@ -152,19 +154,22 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 					return interfaces;
 				};
 				nativeApi = name -> archive.read(name + ".class");
+				fabricApi = List.of(new InstalledClasses.Jar("Fabric API", name -> archive.contains(name + ".class"), nativeApi));
 			} else if (devGameMod.isPresent()) {
 				JarContents devContents = devGameMod.get().getContents();
 				nativeApi = name -> devContents.readFile(name + ".class");
+				fabricApi = List.of(new InstalledClasses.Jar("Fabric API", name -> devContents.containsFile(name + ".class"), nativeApi));
 			}
 
-			List<Pipeline.NeoForgeMod> neoForgeMods = NeoForgeMods.of(loadedMods, !fabricJars.isEmpty());
+			// Fabric mixins may target the classes of Fabricated's Fabric API and of the NeoForge mods (an addon's mod).
+			NeoForgeMods.Found neoForgeMods = NeoForgeMods.of(loadedMods, !fabricJars.isEmpty(), fabricApi);
 
 			byte[] planJson = FabricatedInfo.readOptional("fabric-api-plan.json");
 			if (planJson == null) throw new IllegalStateException("This Fabricated build is missing its fabric-api-plan.json");
 			plan = FabricApiPlan.parse(new String(planJson, StandardCharsets.UTF_8));
 			Pipeline.Input input = new Pipeline.Input(gameDir, FMLPaths.CONFIGDIR.get(), config, cache, fabricJars, mcVersion, neoVersion,
 					client, info.namespace(), runtimeMixinVersion(info), mixinExtrasVersion(loadedMods), info.mixinLowest(), info.fabricatedVersion(), !fml.isProduction(), gameClasses, untransformable,
-					platformPackages, plan, nativeApi, nativeApiInterfaces, neoForgeMods,
+					platformPackages, plan, nativeApi, nativeApiInterfaces, neoForgeMods.mods(), neoForgeMods.classes(),
 					(mappingsCache, mojangPath) -> IntermediaryMappings.load(mappingsCache, mcVersion, client, mojangPath),
 					fml.getProgramArgs().getArguments());
 

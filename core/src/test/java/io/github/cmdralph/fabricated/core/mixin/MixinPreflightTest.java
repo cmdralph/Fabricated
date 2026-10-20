@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import org.objectweb.asm.AnnotationVisitor;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassWriter;
+import org.objectweb.asm.FieldVisitor;
 import org.objectweb.asm.Label;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Handle;
@@ -22,9 +23,11 @@ import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.AnnotationNode;
 import org.objectweb.asm.tree.ClassNode;
 
+import io.github.cmdralph.fabricated.core.archive.Hashing;
 import io.github.cmdralph.fabricated.core.bytecode.Annotations;
 import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
 import io.github.cmdralph.fabricated.core.bytecode.ClassIndex;
+import io.github.cmdralph.fabricated.core.bytecode.InstalledClasses;
 import io.github.cmdralph.fabricated.core.mixin.PreflightFinding.Severity;
 
 class MixinPreflightTest {
@@ -82,6 +85,53 @@ class MixinPreflightTest {
 		current.visitEnd();
 		cw.visitEnd();
 		return cw.toByteArray();
+	}
+
+	/** A mixin into {@code target} shadowing its int field {@code field}. */
+	private static byte[] shadowMixin(String name, String target, String field) {
+		ClassWriter cw = new ClassWriter(0);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, name, null, "java/lang/Object", null);
+		AnnotationVisitor m = cw.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false);
+		AnnotationVisitor values = m.visitArray("value");
+		values.visit(null, Type.getObjectType(target));
+		values.visitEnd();
+		m.visitEnd();
+		FieldVisitor shadow = cw.visitField(Opcodes.ACC_PRIVATE, field, "I", null, null);
+		shadow.visitAnnotation("Lorg/spongepowered/asm/mixin/Shadow;", false).visitEnd();
+		shadow.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	/**
+	 * A Fabric addon's mixins into the NeoForge build of the mod it extends are checked against that build (and the
+	 * classes read are recorded for the cache); a target no installed jar has is not judged.
+	 */
+	@Test
+	void checksMixinsIntoTheClassesOfInstalledMods() throws Exception {
+		String renderer = "net/example/sodium/Renderer";
+		ClassWriter cw = new ClassWriter(0);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, renderer, null, "java/lang/Object", null);
+		cw.visitField(Opcodes.ACC_PRIVATE, "sections", "I", null, null).visitEnd();
+		cw.visitEnd();
+		byte[] rendererClass = cw.toByteArray();
+		InstalledClasses installed = new InstalledClasses(List.of(new InstalledClasses.Jar("Sodium", renderer::equals,
+				name -> name.equals(renderer) ? rendererClass : null)));
+		Map<String, byte[]> mod = Map.of(
+				"com/example/mixin/Present", shadowMixin("com/example/mixin/Present", renderer, "sections"),
+				"com/example/mixin/Gone", shadowMixin("com/example/mixin/Gone", renderer, "chunks"),
+				"com/example/mixin/Elsewhere", shadowMixin("com/example/mixin/Elsewhere", "net/example/other/Thing", "x"));
+		MixinPreflight preflight = new MixinPreflight(new ClassIndex(installed), installed, mod::get, ClassBytesSource.EMPTY, false, true);
+
+		List<PreflightFinding> findings = preflight.check("test.mixins.json", MixinConfigFile.parse(config(true, "Present", "Gone", "Elsewhere")),
+				Refmap.EMPTY, Set.of());
+
+		assertEquals(2, findings.size(), findings.toString());
+		PreflightFinding gone = findings.stream().filter(f -> f.mixin().endsWith("Gone")).findFirst().orElseThrow();
+		assertEquals(Severity.FAIL, gone.severity());
+		assertTrue(gone.suggestion().startsWith("This version of Sodium changed net.example.sodium.Renderer"), gone.suggestion());
+		assertEquals(Severity.INFO, findings.stream().filter(f -> f.mixin().endsWith("Elsewhere")).findFirst().orElseThrow().severity());
+		assertEquals(Map.of(renderer, Hashing.sha256(rendererClass)), preflight.installedClasses());
 	}
 
 	@Test
