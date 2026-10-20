@@ -188,8 +188,8 @@ public final class MixinPreflight {
 	 * class named (the same inherited method, as NeoForge's conditional {@code Codec} for vanilla's {@code Decoder}):
 	 * the injection point is pointed at that call.</li>
 	 * <li>An injector at a call this game build makes to an overload taking one more argument (NeoForge's patches pass an
-	 * item stack along that way): the injection point is pointed at that call, with a bridge for a handler that takes
-	 * the call's arguments.</li>
+	 * item stack along that way), or at a constructor call that takes one more (a record NeoForge gave a component):
+	 * the injection point is pointed at that call, with a bridge for a handler that takes the call's arguments.</li>
 	 * <li>An {@code @Inject} that captures local variables and would crash when they differ
 	 * ({@code CAPTURE_FAILHARD}, {@code CAPTURE_FAILEXCEPTION}): NeoForge's patches often add locals, so it is made to
 	 * skip itself with Mixin's warning instead ({@code CAPTURE_FAILSOFT}, {@code require = 0}). Where the locals
@@ -508,13 +508,15 @@ public final class MixinPreflight {
 	}
 
 	/**
-	 * Points the {@code INVOKE} points of an injector at the call this game build makes instead of the named one, an
+	 * Points the {@code INVOKE} and {@code NEW} points of an injector at the call this game build makes instead of the named one, an
 	 * overload of the same method taking one more argument (NeoForge's patches pass an item stack or a level along that
 	 * way), when the named call is in none of the methods the injector targets and that overload is the only one there.
 	 * The handler of an {@code @Inject} or {@code @ModifyExpressionValue} doesn't see the arguments. One of a
 	 * {@code @Redirect}, {@code @WrapWithCondition} or {@code @WrapOperation} that takes exactly the call's receiver and
 	 * arguments (and the {@code Operation}) gets a bridge taking the overload's, which calls it without the added
 	 * argument; for {@code @WrapOperation}, with an {@code Operation} that puts it back when the original call is made.
+	 * A {@code NEW} point selecting a constructor by its descriptor is moved the same way, to a constructor taking one
+	 * more argument (NeoForge's patches give records components): its handlers take the arguments, as a static call's.
 	 * Returns a description of each move.
 	 */
 	private static List<String> insertedArgumentRepairs(ClassNode mixin, MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx,
@@ -530,44 +532,64 @@ public final class MixinPreflight {
 		List<String> moved = new ArrayList<>();
 		for (AnnotationNode at : ats) {
 			String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
-			if (!point.equals("INVOKE") || !(Annotations.value(at, "target") instanceof String raw)) continue;
+			boolean constructor = point.equals("NEW");
+			if (!point.equals("INVOKE") && !constructor || !(Annotations.value(at, "target") instanceof String raw)) continue;
 			MemberRef ref = MemberRef.parse(ctx.resolve(raw));
-			if (ref.fuzzy() || ref.owner() == null || ref.name() == null || ref.desc() == null) continue;
+			// A call is owner.name(desc). A constructor is selected by a descriptor (args)Lowner; which its handlers are written
+			// for as for a static factory: compared, and bridged, in that form.
+			String owner;
+			String name;
+			String desc;
+			if (constructor) {
+				desc = ref.methodDescOr(null);
+				if (desc == null || Type.getReturnType(desc).getSort() != Type.OBJECT || condition) continue;
+				owner = Type.getReturnType(desc).getInternalName();
+				name = "<init>";
+			} else {
+				if (ref.fuzzy() || ref.owner() == null || ref.name() == null || ref.desc() == null) continue;
+				owner = ref.owner();
+				name = ref.name();
+				desc = ref.desc();
+			}
 			String overload = null;
 			boolean named = false;
 			boolean ambiguous = false;
-			boolean staticCall = false;
+			boolean staticCall = constructor;
 			int calls = 0;
 			for (MethodNode method : methods) {
 				for (AbstractInsnNode insn : method.instructions) {
-					if (!(insn instanceof MethodInsnNode call) || !call.owner.equals(ref.owner()) || !call.name.equals(ref.name())) continue;
-					if (call.desc.equals(ref.desc())) {
+					if (!(insn instanceof MethodInsnNode call) || !call.owner.equals(owner) || !call.name.equals(name)) continue;
+					String callDesc = constructor ? call.desc.substring(0, call.desc.indexOf(')') + 1) + "L" + owner + ";" : call.desc;
+					if (callDesc.equals(desc)) {
 						named = true;
-					} else if (insertedArgument(ref.desc(), call.desc) >= 0) {
-						ambiguous |= overload != null && !overload.equals(call.desc);
-						overload = call.desc;
-						staticCall = call.getOpcode() == Opcodes.INVOKESTATIC;
+					} else if (insertedArgument(desc, callDesc) >= 0) {
+						ambiguous |= overload != null && !overload.equals(callDesc);
+						overload = callDesc;
+						staticCall |= call.getOpcode() == Opcodes.INVOKESTATIC;
 						calls++;
 					}
 				}
 			}
 			int ordinal = Annotations.value(at, "ordinal") instanceof Integer n ? n : -1;
 			if (named || overload == null || ambiguous || ordinal >= calls) continue;
-			int inserted = insertedArgument(ref.desc(), overload);
+			int inserted = insertedArgument(desc, overload);
 			if (!pointOnly) {
-				Type owner = Type.getObjectType(ref.owner());
-				MethodNode bridge = injector.desc.equals(WRAP_OPERATION) ? wrapperBridge(mixin, handler, owner, ref.desc(), overload, inserted, staticCall, bridges)
-						: callBridge(mixin, handler, owner, ref.desc(), overload, inserted, staticCall, condition ? Type.BOOLEAN_TYPE : Type.getReturnType(ref.desc()),
-								bridges);
+				Type ownerType = Type.getObjectType(owner);
+				MethodNode bridge = injector.desc.equals(WRAP_OPERATION) ? wrapperBridge(mixin, handler, ownerType, desc, overload, inserted, staticCall, bridges)
+						: callBridge(mixin, handler, ownerType, desc, overload, inserted, staticCall, condition ? Type.BOOLEAN_TYPE : Type.getReturnType(desc), bridges);
 				if (bridge == null) continue;
 				moveInjector(handler, injector, bridge);
 				bridges.add(bridge);
 			}
 			for (int i = 0; i + 1 < at.values.size(); i += 2) {
-				if ("target".equals(at.values.get(i))) at.values.set(i + 1, "L" + ref.owner() + ";" + ref.name() + overload);
+				if ("target".equals(at.values.get(i))) at.values.set(i + 1, constructor ? overload : "L" + owner + ";" + name + overload);
 			}
-			moved.add(ref.owner().replace('/', '.') + "." + ref.name() + ref.desc() + ", which this game build makes through an overload with one more argument, "
-					+ ref.name() + overload + "; the injection point is pointed there" + (pointOnly ? "" : ", through a bridge handler"));
+			String via = pointOnly ? "" : ", through a bridge handler";
+			moved.add(constructor
+					? "new " + owner.replace('/', '.') + desc.substring(0, desc.indexOf(')') + 1) + ", which this game build makes with a constructor taking one more argument, "
+							+ overload + "; the injection point is pointed there" + via
+					: owner.replace('/', '.') + "." + name + desc + ", which this game build makes through an overload with one more argument, " + name + overload
+							+ "; the injection point is pointed there" + via);
 		}
 		return moved;
 	}
