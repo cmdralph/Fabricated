@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -151,6 +152,44 @@ class RemapTest {
 
 		String annotationValue = (String) node.invisibleAnnotations.getFirst().values.get(1);
 		assertEquals("Lnet/minecraft/world/Level;addEntity(Lnet/minecraft/world/Entity;)V", annotationValue);
+	}
+
+	/** As Loom's static mixin remapping leaves a {@code @Shadow} with a prefix (adventure-platform's {@code shadow$comp_925}). */
+	@Test
+	void remapsIntermediaryNamesBehindAPrefix() throws Exception {
+		String mixin = "com/example/LevelMixin";
+		ClassWriter cw = new ClassWriter(0);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, mixin, null, "java/lang/Object", null);
+		cw.visitField(Opcodes.ACC_PRIVATE, "shadow$field_11", "I", null, null).visitEnd();
+		cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, "shadow$method_22", "()V", null, null).visitEnd();
+		MethodVisitor lambda = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, "lambda$method_22$0", "()V", null, null);
+		lambda.visitCode();
+		lambda.visitInsn(Opcodes.RETURN);
+		lambda.visitMaxs(0, 0);
+		lambda.visitEnd();
+		MethodVisitor run = cw.visitMethod(Opcodes.ACC_PUBLIC, "run", "()V", null, null);
+		run.visitCode();
+		run.visitVarInsn(Opcodes.ALOAD, 0);
+		run.visitMethodInsn(Opcodes.INVOKEVIRTUAL, mixin, "shadow$method_22", "()V", false);
+		run.visitVarInsn(Opcodes.ALOAD, 0);
+		run.visitFieldInsn(Opcodes.GETFIELD, mixin, "shadow$field_11", "I");
+		run.visitInsn(Opcodes.POP);
+		run.visitInsn(Opcodes.RETURN);
+		run.visitMaxs(1, 1);
+		run.visitEnd();
+		cw.visitEnd();
+
+		ClassNode node = new ClassNode();
+		new ClassReader(new JarRemapper(table()).remapClass(cw.toByteArray(), "test")).accept(node, 0);
+		assertEquals(Set.of("shadow$tick", "lambda$method_22$0", "run"), node.methods.stream().map(m -> m.name).collect(Collectors.toSet()),
+				"a lambda's name is the mod's own");
+		assertEquals("shadow$count", node.fields.getFirst().name);
+		List<String> uses = new ArrayList<>();
+		for (AbstractInsnNode insn : node.methods.stream().filter(m -> m.name.equals("run")).findFirst().orElseThrow().instructions) {
+			if (insn instanceof MethodInsnNode m) uses.add(m.name);
+			if (insn instanceof FieldInsnNode f) uses.add(f.name);
+		}
+		assertEquals(List.of("shadow$tick", "shadow$count"), uses);
 	}
 
 	@Test
