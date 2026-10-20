@@ -19,6 +19,8 @@ import net.neoforged.neoforge.common.util.Lazy;
  * Fabric API's biome modification API rebuilds a generator's features per step as Guava's memoized supplier, as
  * vanilla does, where NeoForge keeps its own {@link Lazy} and casts to it when it refreshes them (after its biome
  * modifiers). The features are rebuilt as NeoForge's again first, from the generator's current biomes.
+ * {@code require = 0}: only needed while NeoForge declares {@code refreshFeaturesPerStep}; without it there is nothing
+ * to keep.
  */
 @Mixin(ChunkGenerator.class)
 abstract class ChunkGeneratorFeaturesMixin {

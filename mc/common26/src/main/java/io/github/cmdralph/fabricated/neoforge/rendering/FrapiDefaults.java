@@ -59,7 +59,8 @@ public final class FrapiDefaults {
 			// Fabric's renderer API makes every part a FabricBlockStateModelPart when the game runs.
 			for (int i = first; i < parts.size(); i++) ((FabricBlockStateModelPart) parts.get(i)).emitQuads(emitter, cullTest);
 		} finally {
-			parts.subList(first, parts.size()).clear();
+			// Not subList(first, size).clear(): that allocates, for every block Fabric's renderer draws.
+			while (parts.size() > first) parts.removeLast();
 			if (opaque) emitter.popTransform();
 		}
 	}

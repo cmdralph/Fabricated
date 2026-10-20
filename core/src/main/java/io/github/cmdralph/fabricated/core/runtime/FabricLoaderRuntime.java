@@ -59,8 +59,9 @@ public final class FabricLoaderRuntime implements FabricLoader {
 		public T getEntrypoint() {
 			try {
 				return instantiate(declared, type);
-			} catch (Throwable t) {
-				throw new EntrypointException(key, declared.mod().getMetadata().getId(), t);
+			} catch (Exception e) {
+				// As Fabric Loader: a JVM error is not the mod's failure, so it isn't wrapped.
+				throw new EntrypointException(key, declared.mod().getMetadata().getId(), e);
 			}
 		}
 

@@ -179,7 +179,10 @@ public final class EntityEventsBridge {
 		bus.addListener(ServerTickEvent.Post.class, e -> {
 			if (!TRAVELLING.isEmpty()) TRAVELLING.clear();
 		});
-		bus.addListener(ServerStoppedEvent.class, e -> TRAVELLING.clear());
+		bus.addListener(ServerStoppedEvent.class, e -> {
+			TRAVELLING.clear();
+			RESPAWNING.clear();
+		});
 
 		// Sleeping (the parts NeoForge has events for).
 		bus.addListener(CanPlayerSleepEvent.class, e -> {

@@ -6,6 +6,7 @@ import org.slf4j.LoggerFactory;
 import com.terraformersmc.modmenu.api.ConfigScreenFactory;
 import com.terraformersmc.modmenu.api.ModMenuApi;
 import io.github.cmdralph.fabricated.core.metadata.ModIds;
+import io.github.cmdralph.fabricated.core.runtime.EntrypointRunner;
 import io.github.cmdralph.fabricated.core.runtime.FabricLoaderRuntime;
 import io.github.cmdralph.fabricated.loader.FabricatedState;
 import net.neoforged.fml.ModList;
@@ -29,9 +30,10 @@ final class ModMenuBridge {
 				ModMenuApi api = runtime.instantiate(declared, ModMenuApi.class);
 				register(state, modId, api.getModConfigScreenFactory());
 				api.getProvidedConfigScreenFactories().forEach((id, factory) -> register(state, id, factory));
-			} catch (VirtualMachineError e) {
-				throw e;
 			} catch (Throwable e) {
+				// The constructor's own failure is wrapped; the JVM's is never the mod's.
+				VirtualMachineError fatal = EntrypointRunner.fatalCause(e);
+				if (fatal != null) throw fatal;
 				LOGGER.warn("Could not read the config screen of Fabric mod {} ({})", modId, declared.spec().value(), e);
 			}
 		}

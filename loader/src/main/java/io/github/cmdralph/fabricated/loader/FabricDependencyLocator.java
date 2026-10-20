@@ -48,10 +48,11 @@ import net.neoforged.neoforgespi.locating.IncompatibleFileReporting;
 import net.neoforged.neoforgespi.locating.ModFileDiscoveryAttributes;
 
 /**
- * Runs Fabricated's discovery pipeline once all NeoForge mods are known, then hands every translated
- * Fabric mod to NeoForge as an ordinary mod file: the (remapped) jar overlaid with the generated
- * metadata, with split-package conflicts filtered out. Anything that goes wrong here disables Fabric
- * support for this launch with a warning; it never stops the game.
+ * Runs Fabricated's discovery pipeline after NeoForge's own dependency locators (the mods those add, such as jar-in-jar
+ * ones, are read by {@link NeoForgeMods}), then hands every translated Fabric mod to NeoForge as an ordinary mod file:
+ * the (remapped) jar overlaid with the generated metadata, with split-package conflicts filtered out. Anything that
+ * goes wrong here disables Fabric support for this launch with a warning; apart from {@code strictDependencies}, it
+ * never stops the game.
  */
 public final class FabricDependencyLocator implements IDependencyLocator {
 	private static final Logger LOGGER = LoggerFactory.getLogger("Fabricated");
@@ -256,17 +257,20 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 
 	/** The running Mixin version, read the same way NeoForge reads it. */
 	static String runtimeMixinVersion(FabricatedInfo info) {
+		String version = classVersion("org.spongepowered.asm.mixin.FabricUtil");
+		return version != null ? version : info.mixinFallback();
+	}
+
+	/** The version of the module, else the package, a class on NeoForge's own layers is in; null when unknown. */
+	private static String classVersion(String className) {
 		try {
-			Class<?> fabricUtil = Class.forName("org.spongepowered.asm.mixin.FabricUtil");
-			Optional<String> fromModule = Optional.ofNullable(fabricUtil.getModule().getDescriptor())
-					.flatMap(ModuleDescriptor::version).map(ModuleDescriptor.Version::toString);
-			if (fromModule.isPresent()) return fromModule.get();
-			String fromPackage = fabricUtil.getPackage().getImplementationVersion();
-			if (fromPackage != null) return fromPackage;
+			Class<?> cls = Class.forName(className);
+			return Optional.ofNullable(cls.getModule().getDescriptor()).flatMap(ModuleDescriptor::version).map(ModuleDescriptor.Version::toString)
+					.orElse(cls.getPackage().getImplementationVersion());
 		} catch (ClassNotFoundException | LinkageError e) {
-			LOGGER.debug("Could not determine the running Mixin version", e);
+			LOGGER.debug("Could not determine the version of {}", className, e);
+			return null;
 		}
-		return info.mixinFallback();
 	}
 
 	/**
@@ -290,15 +294,7 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 		}
 		if (newest != null) return newest;
 		// Not a discovered file: a library on NeoForge's own layers.
-		try {
-			Class<?> bootstrap = Class.forName("com.llamalad7.mixinextras.MixinExtrasBootstrap");
-			Optional<String> fromModule = Optional.ofNullable(bootstrap.getModule().getDescriptor())
-					.flatMap(ModuleDescriptor::version).map(ModuleDescriptor.Version::toString);
-			return fromModule.orElse(bootstrap.getPackage().getImplementationVersion());
-		} catch (ClassNotFoundException | LinkageError e) {
-			LOGGER.debug("Could not determine the running MixinExtras version", e);
-			return null;
-		}
+		return classVersion("com.llamalad7.mixinextras.MixinExtrasBootstrap");
 	}
 
 	private static String ownVersion(IModFile file) {

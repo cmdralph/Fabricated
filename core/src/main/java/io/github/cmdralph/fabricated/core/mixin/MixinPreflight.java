@@ -55,7 +55,8 @@ import org.objectweb.asm.tree.TypeInsnNode;
  * except that a missing one is not reported (it may be in another Fabric mod). Selectors and injection points it cannot
  * evaluate (wildcards, slice bounds other than member references or {@code HEAD}, custom points, targets in other
  * Fabric mods) are never reported as failures. When the config declares a plugin, which may disable mixins at runtime,
- * failures are downgraded to warnings.
+ * a failure is {@link Severity#LEFT_OUT} instead: the failing injector (or the mixin) is left out rather than the mod
+ * disabled.
  */
 public final class MixinPreflight {
 	private static final String PSEUDO = "Lorg/spongepowered/asm/mixin/Pseudo;";
@@ -144,7 +145,7 @@ public final class MixinPreflight {
 			if (skip.contains(mixin)) continue;
 			String internal = config.internalName(mixin);
 			Context ctx = new Context(configName, internal.replace('/', '.'), config, refmap, hasPlugin, out, null);
-			ClassNode node = readMixin(internal);
+			ClassNode node = modClasses.readNode(internal, ClassReader.SKIP_CODE | ClassReader.SKIP_FRAMES);
 			if (node == null) {
 				ctx.classLevel("Mixin class " + ctx.mixinDotted() + " listed in " + configName + " is missing from the mod jar",
 						"The mod jar is incomplete or corrupted; re-download it.");
@@ -205,14 +206,8 @@ public final class MixinPreflight {
 		for (String mixin : config.mixinsFor(clientSide)) {
 			if (skip.contains(mixin)) continue;
 			String internal = config.internalName(mixin);
-			ClassNode node = new ClassNode();
-			try {
-				byte[] data = modClasses.read(internal);
-				if (data == null) continue;
-				new ClassReader(data).accept(node, 0);
-			} catch (IOException | RuntimeException | StackOverflowError e) {
-				continue;
-			}
+			ClassNode node = modClasses.readNode(internal, 0);
+			if (node == null) continue;
 			Context ctx = new Context(configName, internal.replace('/', '.'), config, refmap, false, out, null);
 			List<ClassNode> targets = new ArrayList<>();
 			for (String target : targetsOf(node, ctx)) {
@@ -699,18 +694,6 @@ public final class MixinPreflight {
 			queue.addAll(info.interfaces());
 		}
 		return targetCache.computeIfAbsent(internalName, t -> Optional.ofNullable(game.readNode(t))).orElse(null);
-	}
-
-	private ClassNode readMixin(String internal) {
-		try {
-			byte[] data = modClasses.read(internal);
-			if (data == null) return null;
-			ClassNode node = new ClassNode();
-			new ClassReader(data).accept(node, ClassReader.SKIP_CODE | ClassReader.SKIP_FRAMES);
-			return node;
-		} catch (IOException | RuntimeException | StackOverflowError e) {
-			return null;
-		}
 	}
 
 	/** @param owner the installed mod the target belongs to, or {@code null} for a game class */

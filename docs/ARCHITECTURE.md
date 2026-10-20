@@ -104,7 +104,7 @@ Fabricated/
 ## 3. Mod discovery and metadata translation
 
 ### 3.1 Claiming Fabric jars
-`FabricCandidateLocator implements IModFileCandidateLocator` (ServiceLoader-registered) claims any jar in the mods folder containing `fabric.mod.json` and **no** `META-INF/neoforge.mods.toml`, which leaves multi-loader jars to NeoForge. It returns a lightweight *candidate* mod file. Because FML runs readers before its `IncompatibleModReason.FABRIC` check, the jar is no longer "broken". `FabricDependencyLocator implements IDependencyLocator` then processes all candidates together, since resolution needs the global view. The same discovery pattern is used by prior art; this implementation is clean-room.
+`FabricCandidateLocator implements IModFileCandidateLocator` (ServiceLoader-registered) claims any jar in the mods folder containing `fabric.mod.json` and **no** `META-INF/neoforge.mods.toml`, which leaves multi-loader jars to NeoForge. It only marks the jar as located (`addLocated`), so NeoForge doesn't report it as an incompatible Fabric jar; it is not a NeoForge mod file. `FabricDependencyLocator implements IDependencyLocator` then processes all candidates together, since resolution needs the global view. The same discovery pattern is used by prior art; this implementation is clean-room.
 
 ### 3.2 `fabric.mod.json` → descriptor
 * `schemaVersion` 1 is fully supported. Schema 0 (pre-2019) is rejected with a clear message.
@@ -131,7 +131,7 @@ The generated overlay `neoforge.mods.toml` uses `modLoader="fabricated"`, so FML
 * Extracted **from the validated archive only**, to `<gameDir>/.fabricated/cache/nested/<sha256>.jar` (content-addressed, so it's written once).
 * Max nesting depth is 3. Every level gets the same archive checks.
 * Nested jars with `fabric.mod.json` become Fabric candidates. For duplicates by id, **highest version wins**, as in Fabric Loader. Fabric API modules nested inside mods are routed to the module plan (§6).
-* Nested plain libraries are added as FML libraries (`FMLModType: LIBRARY` in the overlay manifest).
+* A nested jar without `fabric.mod.json` is rejected and reported (Loom gives every nested library one).
 
 ### 3.4 Dependency resolution (why Fabricated, not FML, decides)
 FML treats an unmet *required* dependency as a fatal loading error, which would let one Fabric mod block the game. Fabricated therefore resolves the Fabric graph itself first:

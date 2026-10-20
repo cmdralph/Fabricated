@@ -86,15 +86,7 @@ public final class ClassIndex {
 
 	/** Full tree (with code) of a class, not cached; {@code null} if absent or unreadable. */
 	public ClassNode readNode(String internalName) {
-		try {
-			byte[] data = source.read(internalName);
-			if (data == null) return null;
-			ClassNode node = new ClassNode();
-			new ClassReader(data).accept(node, ClassReader.SKIP_FRAMES);
-			return node;
-		} catch (IOException | RuntimeException | StackOverflowError e) {
-			return null;
-		}
+		return source.readNode(internalName, ClassReader.SKIP_FRAMES);
 	}
 
 	private ClassInfo load(String internalName) {
