@@ -104,7 +104,7 @@ lists the Fabric mods that didn't load, with why (on a server, from the console 
 |---|---|---|
 | "requires X, which is not installed" | A dependency is missing | Install X for the same Minecraft version. If X is a Fabric API module, check the "Disabled" section: it may have been disabled itself. |
 | "Mixin pre-flight failures" | A mixin targets code NeoForge changed | Usually needs the mod (or Fabricated) to be updated. If the feature is optional, skip that mixin (see below). |
-| "references code that does not exist at runtime" | The mod calls a Minecraft method NeoForge changed or removed | Fabric API modules with this problem are disabled. Other mods still load, with a warning, and may crash when that code runs (`strictLinkage: true` disables them too). The mod needs an update. |
+| "references code that does not exist at runtime" | The mod calls a Minecraft method NeoForge changed or removed | Fabric API modules with this problem are disabled, unless Fabricated loads the module without the one the code needs (the code then never runs). Other mods still load, with a warning, and may crash when that code runs (`strictLinkage: true` disables them too). The mod needs an update. |
 | An error screen naming a Fabric entrypoint | A mod's initializer threw an exception | Update or remove the mod, or set `"onEntrypointFailure": "disable"` to keep loading without it. |
 | "packages … clash" | Two mods ship the same Java package (not allowed on NeoForge) | Remove one. Identical duplicate libraries are de-duplicated automatically. |
 
