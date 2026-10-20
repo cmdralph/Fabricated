@@ -30,6 +30,11 @@ public record Candidate(Path path, String sha256, FabricModMetadata metadata, St
 		return metadata.getVersion().getFriendlyString();
 	}
 
+	/** This jar with other metadata (what Fabricated changed of it). */
+	public Candidate withMetadata(FabricModMetadata metadata) {
+		return new Candidate(path, sha256, metadata, origin, parentId, depth, nestedChildren, packages);
+	}
+
 	@Override
 	public String toString() {
 		return id() + " " + version() + " (" + origin + ")";

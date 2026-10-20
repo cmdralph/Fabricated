@@ -81,9 +81,13 @@ while kill -0 "$client_pid" 2>/dev/null; do
 	# Shortly before the timeout, record what every game thread is doing, so a hang can be diagnosed from the log.
 	if [ "$dumped" -eq 0 ] && [ "$SECONDS" -ge $((timeout_seconds - 45)) ]; then
 		dumped=1
+		# SIGQUIT makes a JVM print every thread's stack to its output (client.out) and carry on; jstack can't attach to
+		# the game here ("non existent JVM pid"). Java processes only: a shell would quit on it.
 		for pid in $(pgrep -f -- "-DMcRuntimeGameTest=false" || true); do
-			"$JAVA_HOME/bin/jstack" "$pid" >> thread-dump.txt 2>&1 || true
+			if [ "$(cat "/proc/$pid/comm" 2>/dev/null)" = java ]; then kill -QUIT "$pid" 2>/dev/null || true; fi
 		done
+		sleep 3
+		awk '/^Full thread dump/ { dump = 1 } dump' client.out > thread-dump.txt || true
 	fi
 	# After a crash or a fatal loading error the game shows its error window until closed; stop it once the crash report
 	# is written.

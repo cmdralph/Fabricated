@@ -436,8 +436,13 @@ public final class Pipeline {
 			if (neoForgeBuildOnly != null) report.line("Unsupported mods loaded on request (loadUnsupported)", c.id() + ": " + neoForgeBuildOnly);
 			FabricatedConfig.ModOverride override = config.override(c.id());
 			if (override.ignoreHints() && !c.metadata().compatHints().isEmpty()) {
-				c = new Candidate(c.path(), c.sha256(), c.metadata().withCompatHints(CompatHints.NONE), c.origin(), c.parentId(), c.depth(),
-						c.nestedChildren(), c.packages());
+				c = c.withMetadata(c.metadata().withCompatHints(CompatHints.NONE));
+			}
+			FabricApiPlan.Module module = plan.module(c.id());
+			if (module != null && !module.dropDependencies().isEmpty()) {
+				c = c.withMetadata(c.metadata().withoutDependencies(module.dropDependencies()));
+				report.line("Fabric API modules loaded without a dependency",
+						c.id() + " without " + String.join(", ", module.dropDependencies()) + ": " + module.reason());
 			}
 			CompatHints hints = c.metadata().compatHints();
 			for (String w : hints.warnings()) report.line("Compatibility hint warnings", c.id() + ": " + w);

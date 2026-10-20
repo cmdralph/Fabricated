@@ -48,6 +48,22 @@ class TranslateHelpersTest {
 		assertFalse(toml.contains("sodium:options"));
 	}
 
+	/** A jar built for both loaders: its NeoForge build's pack metadata is left out, as Fabric ignores it (CORPUS-1). */
+	@Test
+	void packMetadataLosesOnlyNeoForgeSections() throws Exception {
+		String both = """
+				{"pack": {"description": "Terralith", "pack_format": 48},
+				 "overlays": {"entries": [{"formats": [48, 60], "directory": "overlay_48"}]},
+				 "neoforge:overlays": {"entries": [{"formats": [48, 60], "directory": "neoforge", "neoforge:conditions": [{"type": "terralith:config"}]}]}}""";
+		byte[] fabric = ModTranslator.withoutNeoForgeSections(both.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+		Map<String, Object> read = io.github.cmdralph.fabricated.core.json.Json.parseObject(new String(fabric, java.nio.charset.StandardCharsets.UTF_8));
+		assertEquals(Set.of("pack", "overlays"), read.keySet());
+		assertEquals(io.github.cmdralph.fabricated.core.json.Json.parseObject(both).get("overlays"), read.get("overlays"), "Fabric's own overlays stay");
+		assertEquals(null, ModTranslator.withoutNeoForgeSections("{\"pack\": {\"pack_format\": 48}}".getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+				"nothing to leave out: the jar's own file is used");
+		assertEquals(null, ModTranslator.withoutNeoForgeSections("not json".getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+	}
+
 	/** A Fabric mod's Sodium and Jade integration, in the form Sodium and Jade for NeoForge read. */
 	@Test
 	void translatesSodiumAndJadeIntegration() throws Exception {

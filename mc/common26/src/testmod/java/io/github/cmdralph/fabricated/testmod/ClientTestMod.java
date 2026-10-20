@@ -65,6 +65,7 @@ public final class ClientTestMod implements ClientModInitializer {
 				ClientPlayNetworking.send(new NetworkingTest.Ping(MenuTest.OPEN_REQUEST));
 			}
 		});
+		WorldStateReport.register();
 		ClientPlayConnectionEvents.JOIN.register((listener, sender, client) -> {
 			TestMod.LOGGER.info("FABRICATED-TEST client join event OK");
 			if (ClientPlayNetworking.canSend(NetworkingTest.Ping.TYPE)) {

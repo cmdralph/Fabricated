@@ -50,7 +50,7 @@ The Fabric renderer API on NeoForge:
 | | 1.21.11 | 26.1.2 | 26.2 | 26.3 |
 |---|---|---|---|---|
 | Renderer API and Indigo load | no (upstream's mixins fail pre-flight) | yes | yes | yes |
-| Model-loading modifiers and extra models | disabled (needs the renderer API) | yes since `08aff28` | yes | yes |
+| Model-loading modifiers and extra models | yes, without the renderer API (CORPUS-6) | yes since `08aff28` | yes | yes |
 | Fabric block models in the world | no | yes (`FabricBlockRendering`) | yes | yes |
 | Moving blocks (pistons, falling) and the breaking overlay | no | yes (M2) | yes | yes |
 | Fabric models nested in a vanilla multipart or weighted model | no | yes (M3) | yes | yes |
@@ -182,6 +182,8 @@ Severity: **P0** crash or data loss on a normal launch · **P1** a supported fea
 
 | ID | Sev | Location | Failure mode and trigger | Why tests missed it | Fix |
 |---|---|---|---|---|---|
+| CORPUS-1 | P3, cosmetic | `ModTranslator` (Terralith, Lithostitched in the corpus) | NeoForge logged errors reading the `neoforge:overlays` of Fabric jars built for both loaders ("Unknown registry key in neoforge:condition_codecs: terralith:config", `lithostitched:breaks_seed_parity`): their `pack.mcmeta` carries their NeoForge build's overlays, gated by that build's condition types. NeoForge then loaded none of them, which is what the Fabric build expects, but every 1.21.11 and 26.x corpus run showed the errors among its first. | Nothing checked the log for them. | This pass: a translated Fabric mod's overlay carries its `pack.mcmeta` without the top-level `neoforge:` sections, as Fabric reads it (the jar itself is unchanged). `TranslateHelpersTest.packMetadataLosesOnlyNeoForgeSections`. |
+| CORPUS-6 | P2 | Fabric API on 1.21.11 | Continuity, Lootr and Traveler's Backpack need Fabric API's model loading module, which was disabled on 1.21.11 because it requires the renderer API, unsupported there: their client entrypoints failed, and Continuity's `AtlasManager` mixin then crashed the 1.21.11 corpus client (`NullPointerException` in `PreparableReloadListener$SharedState.get`, `8ca959a`). | The Fabric API client run on 1.21.11 only showed the module as disabled; no check used the module there. | This pass: a pass-through module's plan can drop dependencies it loads without (`dropDependencies`); on 1.21.11 model loading drops the renderer API (only its wrapper and composite models' `emitQuads` use it) and leaves out the same mixins as on 26.x, whose replacements (extra models in NeoForge's discovery, Fabric's model formats in NeoForge's parsers) are now shared. Upstream's `ModelManagerMixin#onReturnUpload` is left out too: on `090d96d` it crashed every 1.21.11 client with Fabric API (MixinExtras found no `ModelBakery.BakingResult` local at the end of NeoForge's `apply`; 26.x's upstream names the local and applies), and Fabricated hands the baked extra models over from NeoForge's `ClientHooks.onModelBake` call instead. `PipelineTest`; 1.21.11 gate "Fabric model loading API": a model file of a Fabric type is read by the test mod's Fabric deserializer, and the model manager has the extra models after baking. Continuity still needs the renderer API there. |
 | ROOT-1 | P1 | core `Pipeline`, loader | The built-in mods (Minecraft, Java, Fabric Loader, Fabricated, the native Fabric API modules, MixinExtras) and the NeoForge mods nested in other jars had no root path: `getRootPaths()` was empty, where Fabric Loader gives every mod one. OneConfig takes the first of each mod's roots, and its client entrypoint and UI failed on every version (`NoSuchElementException` from `List.getFirst` in `CompatibilityPlatformImpl.getMods`, `6c17ffa`). | Tests read roots of translated mods only. | This pass: Minecraft's root is the game's file as NeoForge loads it, Java's its home (as on Fabric), the mods Fabricated provides have its in-game mod's jar, MixinExtras NeoForge's, and a nested NeoForge mod the jar it is nested in. `PipelineTest`. |
 | RELOAD-1 | P1 | `ReloadableResourceManagerMixin` | Registering a reload listener the vanilla way threw once NeoForge had sorted the listeners: NeoForge replaces the list with an immutable one after its reload listener event (its patch documents the exception), while vanilla, and so Fabric, accepts one any time. OneConfig registers its font listener from a mixin into `Minecraft`'s constructor, and the 1.21.11 Polyfrost client crashed at "Initializing game" (`UnsupportedOperationException` in `Collections$UnmodifiableCollection.add`, `8ca959a`). | The test mod registered through Fabric API's resource loader only. | This pass: `registerReloadListener` reopens the list (a mutable copy in NeoForge's order), so a late listener is added last, as vanilla adds it, and runs in the next reload. Client check "late vanilla reload listener OK": the test mod registers one on `CLIENT_STARTED`. |
 | REMAP-1 | P1 | core `IntermediaryRemapper` | A `@Shadow` with a prefix kept its intermediary name on 1.21.11: adventure's shared jar, built with Loom's static mixin remapping (no refmap), names its shadows `shadow$comp_925`, and only names starting with `method_`, `field_` or `comp_` were remapped, so pre-flight disabled the jar ("@Shadow method comp_925()[B does not exist in MessageSignature", 1.21.11 Polyfrost run on `cf41167`, once ADV-1 had it apply its configs). | Every test shadow was unprefixed. | This pass: a name made of a prefix, `$` and an intermediary name is remapped behind its prefix, consistently for the declaration and every use; a lambda's `lambda$method_1$0` stays the mod's own. `RemapTest`. |
@@ -238,7 +240,7 @@ crash in run 229).
 
 | ID | Sev | Location | Issue | Status |
 |---|---|---|---|---|
-| POLY-1 | P2, cause UNVERIFIED | Polyfrost clients in CI | On `039fd37` (pull request #38), with Polydium's Vulkan prompt answered, the 26.3 client is in its world (`LocalPlayer` at -2.5, 104, -8.5) and the integrated server runs, but the player's chunk never arrives on the client: mc-runtime-test logs "Players chunk not yet loaded" (it waits for `level.getChunk(...)` to be non-empty) until the timeout. The test mods alone reach their world; this run adds OneConfig, PolyPlus (whose networking mixins only redirect channels for its peer-to-peer hosting, read from its source), compose-bundle and Fabric Language Kotlin. | The summary now prints the render and server threads' frames near the timeout, or the start of the dump when jstack failed (the last summary's section was empty). |
+| POLY-1 | P2, cause UNVERIFIED | Polyfrost clients in CI | On `e1e19c9` (pull request #39), with Polydium's Vulkan prompt answered, the 26.3 and the 1.21.11 clients are in their worlds (`LocalPlayer` at -1.5, 72, 0.5 and -4.5, 80, -1.5) and the integrated server runs, but the player's chunk never arrives on the client: mc-runtime-test logs "Players chunk not yet loaded" (it waits for `level.getChunk(...)` to be non-empty) until the timeout. No error is logged. The test mods alone reach their world; this run adds OneConfig, PolyPlus (whose networking mixins only redirect channels for its peer-to-peer hosting, and whose integrated server mixin is empty on 26.3, read from its source), Polydium (whose `ClientChunkCache` mixins only clear its caches), compose-bundle and Fabric Language Kotlin. | The thread dump near the timeout was empty on #39: jstack could not attach to the game ("non existent JVM pid"). It is now taken with SIGQUIT, which the game prints to its output, and the test mod logs the client's overlay (with its reload's progress) and pause state half a minute into the world: Polydium keeps a reload's overlay, which pauses the game and so the integrated server, until the reload is done. |
 | PLAT-2 | P3, UNVERIFIED | core `PlatformLibraries` | Other prefixes also cover whole library families (`org/lwjgl/`, `io/netty/`), of which the platform may ship some modules only: a mod nesting another module (LWJGL's NanoVG, say) would lose it, as PLAT-1 did. No case seen yet. | Check each prefix against the packages the platform really has (the loader computes them), and keep a prefix only where the family is complete. |
 | FC-5 | P3 | `TranslationCache.verifyIntegrity` | Hashes are memoised by file metadata. On Windows the key is size and mtime only, and `entry.json` itself isn't hashed. | Needs a decision on cost: re-hashing every launch versus trusting metadata. |
 | FC-6 | P3 | `TranslationCache.store` | Two cold launches of the same side that share one game directory race on delete-then-move. | Needs a cross-process file lock. Rare. |
@@ -247,8 +249,6 @@ crash in run 229).
 | P3-6 | P3, UNVERIFIED | `ClientNetworkingImpl.currentConfiguration` | May keep the last configuration-phase listener if a disconnect skips `LoggingOut`. | Bounded to one slot. Not confirmed. |
 | P3-8 | — | `BlockEntityTypeMixin` | Field replaced without `volatile`. | Won't fix: written only during mod initialization, before world threads start. |
 | CFG-2 | P3 | `gradle.properties`, `Pipeline` | The Fabric Loader API version is written in two places. | Build-time duplication only. |
-| CORPUS-6 | P2 | Fabric API on 1.21.11 | Continuity, Lootr and Traveler's Backpack need Fabric API's model loading module, which Fabricated disables on 1.21.11 because it requires the renderer API (provided on 26.x only): their client entrypoints fail, and Continuity's `AtlasManager` mixin then crashes the 1.21.11 corpus client (`NullPointerException` in `PreparableReloadListener$SharedState.get`, `8ca959a`). | Provide the model loading API on 1.21.11 (with or without the renderer API), or disable a mod whose client entrypoint failed before its mixins run. |
-| CORPUS-1 | P3, cosmetic | Terralith, Lithostitched (Apollib) (26.1.2 and 26.3 corpus) | NeoForge warns "Error reading NeoForge-added overlays for mod/terralith, falling back to empty overlays" ("Unknown registry key in neoforge:condition_codecs: terralith:config", and `apollib:config` for Lithostitched). Their Fabric jars' `pack.mcmeta` carries the overlays of their NeoForge builds, gated by those builds' own condition types, which the Fabric builds don't register. NeoForge then loads none of those overlays, which is what the Fabric builds expect. | Nothing to fix; the warning could be silenced by ignoring NeoForge overlay metadata in Fabric jars. |
 | CORPUS-3 | — | Balm (Waystones), JEI, ShulkerBoxTooltip (26.3 corpus) | Their mixins target code NeoForge changed: Balm `CropBlock.getGrowthSpeed`'s signature and `LivingEntity.removeAllEffects`'s loop, JEI `KeyMapping.setKey`, ShulkerBoxTooltip a `setTooltipForNextFrame` overload. Pre-flight disables them with the reason. | Not repairable in general. Their NeoForge builds exist and are used when installed. |
 | CORPUS-5 | P3, cosmetic, UNVERIFIED | Traveler's Backpack (26.3 corpus) | NeoForge warns "Missing FluidModel" for its potion fluids. NeoForge's check runs inside `FluidStateModelSet.bake`, and upstream's `FluidStateModelSetMixin` wraps that method to add the models of Fabric-registered fluids after it returns, so the warning comes before those models are added. Whether the potion fluids have a model at all is UNVERIFIED. | Could register Fabric's fluid models through NeoForge's `RegisterFluidModelsEvent` instead. Low value. |
 
@@ -300,7 +300,35 @@ open (see *Unverified and blockers*).
 
 Newest first. Each entry: what changed, and how it was verified.
 
-### 2026-10-21 (latest): where the Polyfrost world stalls
+### 2026-10-21 (latest): model loading on 1.21.11, thread dumps by SIGQUIT
+
+**Summary.**
+- Results of pull request #39 on `e1e19c9`: the 1.21.11 Polyfrost client now reaches its world too, and waits there for
+  its chunk as the 26.3 one does (POLY-1). The thread dump section stayed empty: jstack can't attach to the game.
+- CORPUS-6: Fabric API's model loading module loads on 1.21.11, without the renderer API (`dropDependencies` in the
+  plan), with the bridge 26.x uses for its extra models and Fabric's model formats, now shared. On `e1e19c9` the 1.21.11
+  corpus showed exactly the failure this fixes: the client entrypoints of Continuity, Lootr and Traveler's Backpack
+  could not find model loading classes, and Continuity's `AtlasManager` mixin then crashed the client.
+  On the first CI run of this change every 1.21.11 client with Fabric API crashed: upstream's hook handing the baked
+  extra models to the model manager finds no local of their type at the end of NeoForge's `ModelManager.apply`. It is
+  left out on 1.21.11, and Fabricated hands them over from NeoForge's bake event call.
+- CI: the thread dump before the timeout is taken with SIGQUIT. For a client that ends without reaching a world, the
+  test mod's shutdown hook prints which thread ended the game and from where (the 26.x corpus clients close FML right
+  after model loading with no error).
+- CORPUS-1: a translated Fabric mod's `pack.mcmeta` loses the sections only NeoForge reads, as on Fabric, so the
+  corpus no longer logs errors for Terralith's and Lithostitched's NeoForge overlays.
+- CI: half a minute into its world, the test mod logs the client's overlay (with its reload's progress), whether it
+  is paused, and whether its chunk and any others arrived. Hypothesis for POLY-1 (UNVERIFIED): the integrated server
+  stops while the client is paused, and an overlay pauses it with no screen open. Polydium's `MixinHideReloadOverlay`
+  keeps a reload's `LoadingOverlay`, hidden, until the reload is done, so a reload that never finishes would leave the
+  player waiting for a chunk the server never sends.
+
+**Verification.** `:core:test` (166 tests) passes, with `PipelineTest.aModuleLoadsWithoutTheDependenciesItsPlanDrops` and
+`TranslateHelpersTest.packMetadataLosesOnlyNeoForgeSections`.
+The workflow YAML parses; the shell script passes `bash -n`; the summary's new awk was run on a sample. The Minecraft
+modules build in CI only: see the pull request, including the new 1.21.11 gate "Fabric model loading API".
+
+### 2026-10-21 (later still): where the Polyfrost world stalls
 
 **Summary.**
 - Results of pull request #38 on `039fd37`: with Polydium's marker, no prompt opens; the 26.3 client waits in its world

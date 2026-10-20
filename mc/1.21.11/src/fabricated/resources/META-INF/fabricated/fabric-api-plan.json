@@ -110,7 +110,18 @@
       "plan": "passthrough"
     },
     "fabric-model-loading-api-v1": {
-      "plan": "passthrough"
+      "plan": "passthrough",
+      "skipMixins": [
+        "fabric-model-loading-api-v1.mixins.json:ModelManagerMixin#cancelVanillaDeserialize",
+        "fabric-model-loading-api-v1.mixins.json:ModelManagerMixin#actuallyDeserializeModel",
+        "fabric-model-loading-api-v1.mixins.json:ModelManagerMixin#resolveExtraModels",
+        "fabric-model-loading-api-v1.mixins.json:ModelManagerMixin#onReturnUpload",
+        "fabric-model-loading-api-v1.mixins.json:BlockStateModelUnbakedMixin"
+      ],
+      "dropDependencies": [
+        "fabric-renderer-api-v1"
+      ],
+      "reason": "Model loading plugins, extra models (added to the models NeoForge's own overload of the discovery resolves) and model modifiers work. Fabric's custom model formats (fabric:type in model and blockstate files) work through NeoForge's parsers, next to NeoForge's own (loader, type): upstream's hooks into vanilla's parsers are left out, because NeoForge's model file deserializer takes precedence over upstream's and upstream's blockstate codec would replace NeoForge's. Upstream's hook that hands the baked extra models to the model manager takes them from a local at the end of ModelManager.apply that Mixin finds none of in NeoForge's build (the client crashed), so Fabricated hands them over from NeoForge's bake event call instead. It loads without the renderer API, which only its wrapper and composite models' emitQuads use; NeoForge never calls those."
     },
     "fabric-networking-api-v1": {
       "plan": "native",

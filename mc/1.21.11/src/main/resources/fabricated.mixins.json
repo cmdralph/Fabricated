@@ -62,6 +62,10 @@
     "client.ClientPayloadSendMixin",
     "client.ParticleResourcesMixin",
     "client.SoundEngineStreamMixin",
-    "client.ClientChunkCacheMixin"
+    "client.ClientChunkCacheMixin",
+    "client.ModelManagerExtraModelsMixin",
+    "client.UnbakedModelParserMixin",
+    "client.BlockStateModelUnbakedMixin",
+    "client.ModelManagerExtraModelsUploadMixin"
   ]
 }

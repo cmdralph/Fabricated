@@ -39,7 +39,7 @@ public record TranslationEnvironment(
 		ClassIndex installedIndex) {
 
 	/** Bumped whenever translation output changes for the same inputs. */
-	public static final int TRANSLATION_SCHEMA = 13;
+	public static final int TRANSLATION_SCHEMA = 14;
 
 	/** Namespace Fabric mods are distributed in. */
 	public enum Namespace {

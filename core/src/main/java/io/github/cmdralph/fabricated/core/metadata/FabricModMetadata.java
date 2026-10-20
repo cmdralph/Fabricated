@@ -82,6 +82,13 @@ public record FabricModMetadata(
 				name, description, authors, contributors, contact, license, icons, languageAdapters, customValues, compatHints);
 	}
 
+	/** This metadata without its dependencies on the given mods. */
+	public FabricModMetadata withoutDependencies(Collection<String> ids) {
+		List<ModDependency> kept = dependencies.stream().filter(d -> !ids.contains(d.getModId())).toList();
+		return new FabricModMetadata(type, id, version, provides, environment, entrypoints, nestedJars, mixins, classTweaker, kept,
+				name, description, authors, contributors, contact, license, icons, languageAdapters, customValues, compatHints);
+	}
+
 	/** This metadata with other compatibility hints (none, when the player turned the mod's off). */
 	public FabricModMetadata withCompatHints(CompatHints hints) {
 		return new FabricModMetadata(type, id, version, provides, environment, entrypoints, nestedJars, mixins, classTweaker, dependencies,

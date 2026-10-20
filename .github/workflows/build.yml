@@ -202,6 +202,28 @@ jobs:
             grep -n -m 40 -E "frapi|FabricBlockRendering|RenderMixin|SectionCompiler|/(ERROR|FATAL)\]" "$log" || true
             exit 1
           fi
+      # Fabric's model loading API on 1.21.11, where it loads without the renderer API (CORPUS-6): a model file of a
+      # Fabric type must be read by the test mod's Fabric deserializer, and the baked extra models reach the model
+      # manager. A gate.
+      - name: Fabric model loading API (1.21.11)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && matrix.minecraft == '1.21.11' }}
+        run: |
+          log="$RUNNER_TEMP/client-fapi/run/logs/latest.log"
+          failed=0
+          check() {
+            if grep -h "FABRICATED-TEST $1" "$log"; then
+              echo "PASS: $2"
+            else
+              echo "::error::FAIL: $2 (no \"$1\" line)"
+              failed=1
+            fi
+          }
+          check "model deserializer OK" "a model file of a Fabric type was read by its Fabric deserializer"
+          check "extra models handed to the model manager OK" "the baked extra models reached the model manager (upstream's hook can't apply)"
+          if [ "$failed" = 1 ]; then
+            grep -n -m 30 -E "model.loading|ModelManager|/(ERROR|FATAL)\]" "$log" || true
+            exit 1
+          fi
       - name: Upload Fabric API client run logs and report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
@@ -429,6 +451,11 @@ jobs:
               ' "$log"
               # An exception that left the game's main thread goes to the console only.
               grep -h -m 2 -A 8 "^Exception in thread" "$RUNNER_TEMP/$run/client.out" 2>/dev/null | cut -c1-250 || true
+              # Which thread ended the game, and from where (the test mod's shutdown hook), without the JDK's own frames.
+              awk '/^FABRICATED-TEST game ended/ { show = 1; print; next } show && /^\tat / { if ($0 !~ /java\.base\//) print; next } { show = 0 }' \
+                "$RUNNER_TEMP/$run/client.out" 2>/dev/null | head -14 | cut -c1-250 || true
+              # What the client showed half a minute into its world, and whether chunks arrived (the test mod).
+              grep -h -m 1 "FABRICATED-TEST world state" "$log" | cut -c1-400 || true
               echo "-- last lines of the log:"
               grep -v "Waiting for player to load" "$log" | tail -n 4 | cut -c1-300
             fi

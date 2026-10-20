@@ -40,7 +40,7 @@
                    │  b. Mixin prep    (refmap remap, config filtering, behaviorVersion)
                    │  c. Pre-flight    (mixin target/injection-point verification vs game bytecode)
                    │  d. AW/CT → AT    (+ interface-injection table)
-                   │  e. Overlay       (generated META-INF/neoforge.mods.toml, AT, manifest)
+                   │  e. Overlay       (generated META-INF/neoforge.mods.toml, AT, manifest; pack.mcmeta without NeoForge-only sections)
                    ▼
               [6] Package guard: JPMS split-package detection & resolution
                    ▼

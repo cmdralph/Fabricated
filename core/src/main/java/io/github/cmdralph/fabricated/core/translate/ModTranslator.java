@@ -43,6 +43,7 @@ import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
 import io.github.cmdralph.fabricated.core.bytecode.EnvironmentStripper;
 import io.github.cmdralph.fabricated.core.cache.TranslationCache;
 import io.github.cmdralph.fabricated.core.config.FabricatedConfig.ModOverride;
+import io.github.cmdralph.fabricated.core.json.Json;
 import io.github.cmdralph.fabricated.core.json.JsonException;
 import io.github.cmdralph.fabricated.core.metadata.ModIds;
 import io.github.cmdralph.fabricated.core.metadata.FabricModMetadata;
@@ -68,6 +69,7 @@ public final class ModTranslator {
 	public static final String OVERLAY = "overlay.jar";
 	public static final String REMAPPED = "remapped.jar";
 	public static final String AT_PATH = "META-INF/accesstransformer.cfg";
+	static final String PACK_METADATA = "pack.mcmeta";
 	/** The entrypoint of a mod's page in Sodium's options, also the mod property Sodium for NeoForge reads it from. */
 	private static final String SODIUM_CONFIG_ENTRYPOINT = "sodium:config_api_user";
 	/** A mod's overrides of Sodium's mixin options, as a custom value (Fabric) or a key of its mods.toml entry (NeoForge). */
@@ -149,6 +151,13 @@ public final class ModTranslator {
 				Map<String, String> installedClasses = new TreeMap<>();
 				List<ModsTomlWriter.MixinConfigSpec> mixinSpecs = processMixins(candidate, override, plannedSkips, files,
 						remapped != null ? remapped.keySet() : archive.classEntryNames(), overlay, findings, installedClasses);
+
+				byte[] packMetadata = files.read(PACK_METADATA);
+				byte[] fabricPackMetadata = packMetadata == null ? null : withoutNeoForgeSections(packMetadata);
+				if (fabricPackMetadata != null) {
+					overlay.put(PACK_METADATA, fabricPackMetadata);
+					notes.add("Its pack.mcmeta has sections for NeoForge (its NeoForge build's), which Fabric ignores; left out");
+				}
 
 				List<InjectedInterface> injections = List.of();
 				int atLines = 0;
@@ -736,6 +745,23 @@ public final class ModTranslator {
 		}
 		if (pages.size() > 1) notes.add("Sodium for NeoForge takes one options page per mod: " + page.value() + " is used, the others are left out");
 		return Map.of(SODIUM_CONFIG_ENTRYPOINT, page.value());
+	}
+
+	/**
+	 * A {@code pack.mcmeta} as Fabric reads it: without the top-level sections only NeoForge reads ({@code neoforge:...}).
+	 * Jars built for both loaders carry their NeoForge build's there, such as overlays gated by that build's own
+	 * condition types, which NeoForge then fails to read for the Fabric build. Null when there is none to leave out, or
+	 * the file isn't a JSON object (the game reports it as before).
+	 */
+	static byte[] withoutNeoForgeSections(byte[] packMetadata) {
+		Map<String, Object> root;
+		try {
+			root = Json.parseObject(new String(packMetadata, StandardCharsets.UTF_8));
+		} catch (JsonException e) {
+			return null;
+		}
+		if (!root.keySet().removeIf(key -> key.startsWith("neoforge:"))) return null;
+		return Json.write(root, true).getBytes(StandardCharsets.UTF_8);
 	}
 
 	/**
