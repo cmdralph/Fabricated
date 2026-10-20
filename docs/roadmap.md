@@ -244,7 +244,7 @@ crash in run 229).
 
 | ID | Sev | Location | Issue | Status |
 |---|---|---|---|---|
-| POLY-1 | P2, cause UNVERIFIED | Polyfrost clients in CI | On `6f6ae41` (pull request #43), on 26.3 and 1.21.11: the integrated server places the player in the same list of the same server that is reported later, the client is connected and not paused, and the server's tick count stays 0 while it reports itself paused. Its thread idles in the tick loop between ticks. The player list counts 1 player (`getPlayerCount`, read at each tick) where it returns none (`getPlayers`, read half a minute later), and no removal of any kind is logged; an integrated server pauses while its list returns no player. Hypothesis (UNVERIFIED): a mixin changes what the list returns, or removes the player without `PlayerList.remove`. Ruled out: a second server or list, a pausing overlay or client pause, PolyPlus's networking, host-world and integrated server mixins, Polydium's `ClientChunkCache` mixins. | Next CI run: both counts at each tick and in the report, whether each tick ended paused, and the mixins applied to `IntegratedServer` and `PlayerList` (from the frames of the test mod's stacks). |
+| POLY-1 | P2, cause UNVERIFIED | Polyfrost clients in CI | On `6f6ae41` (pull request #43), on 26.3 and 1.21.11: the integrated server places the player in the same list of the same server that is reported later, the client is connected and not paused, and the server's tick count stays 0 while it reports itself paused. Its thread idles in the tick loop between ticks. The player list counts 1 player (`getPlayerCount`, read at each tick) where it returns none (`getPlayers`, read half a minute later), and no removal of any kind is logged; an integrated server pauses while its list returns no player. NeoForge's `getPlayers()` returns a view made when the list is constructed (all four versions) while `getPlayerCount()` reads the field: a mixin replacing the list after that (which mod is UNVERIFIED) gives exactly this. Ruled out: a second server or list, a pausing overlay or client pause, PolyPlus's networking, host-world and integrated server mixins, Polydium's `ClientChunkCache` mixins, OneConfig (no server-side mixins). | This pass: `getPlayers()` follows the list in the field (`PlayerListViewMixin`), with a warning when it sees a replaced list. The next CI run shows the warning, the mixins applied to `PlayerList`, and whether the Polyfrost clients reach their world. |
 | PLAT-2 | P3, UNVERIFIED | core `PlatformLibraries` | Other prefixes also cover whole library families (`org/lwjgl/`, `io/netty/`), of which the platform may ship some modules only: a mod nesting another module (LWJGL's NanoVG, say) would lose it, as PLAT-1 did. No case seen yet. | Check each prefix against the packages the platform really has (the loader computes them), and keep a prefix only where the family is complete. |
 | FC-5 | P3 | `TranslationCache.verifyIntegrity` | Hashes are memoised by file metadata. On Windows the key is size and mtime only, and `entry.json` itself isn't hashed. | Needs a decision on cost: re-hashing every launch versus trusting metadata. |
 | FC-6 | P3 | `TranslationCache.store` | Two cold launches of the same side that share one game directory race on delete-then-move. | Needs a cross-process file lock. Rare. |
@@ -305,7 +305,7 @@ open (see *Unverified and blockers*).
 
 Newest first. Each entry: what changed, and how it was verified.
 
-### 2026-10-21 (latest): item components before tags loaded (CORPUS-9)
+### 2026-10-21 (latest): item components before tags loaded (CORPUS-9), the player list NeoForge views (POLY-1)
 
 **Summary.**
 - Results of pull request #43 on `6f6ae41`: the 26.3 corpus client's crash comes from Jade's Fabric build building an
@@ -314,15 +314,20 @@ Newest first. Each entry: what changed, and how it was verified.
   the server pauses with no player returned.
 - `TAGS_LOADED` after a data load fires once the items' default components are bound, as upstream (26.x). The dedicated
   server's smoke test builds an item stack in it.
+- POLY-1, probable cause: NeoForge's `PlayerList.getPlayers()` returns a view made when the list is constructed, and
+  `getPlayerCount()` reads the field, so a mixin that replaces the list leaves `getPlayers()` empty. `getPlayers()`
+  now follows the list in the field, with a warning when it sees a replaced list.
 - CI: both player counts, whether each integrated server tick ended paused, and the mixins applied to the integrated
-  server and the player list.
+  server and the player list (the latter, and the warning, whether or not the Polyfrost world loads).
 - COMPAT-2 (won't fix): the unformatted `[Fabricated] {0} [[...]]` lines are NeoForge's dedicated server, which logs
   every mod's loading warnings as key and arguments on every version; the client formats them.
 
 **Verification.** The workflow YAML parses and the server smoke script passes `bash -n`. NeoForge's 26.1, 26.2 and 26.3
 branches post `TagsUpdatedEvent.ServerDataLoad` and then `DefaultDataComponentsBoundEvent(false, false)` in that order,
 on the same thread, from `updateComponentsAndStaticRegistryTags`; the client posts its `TagsUpdatedEvent` after
-`RegistryDataCollector` has bound the components. The bridge and test mod build only in CI. CI: see the pull request.
+`RegistryDataCollector` has bound the components. NeoForge's 1.21.11, 26.1, 26.2 and 26.3 branches all patch
+`getPlayers()` to return `playersView`, an unmodifiable view initialised from `players` with the list. The bridge, the
+mixin and the test mod build only in CI. CI: see the pull request.
 
 ### 2026-10-21 (late, 3): the integrated server never ticks
 
