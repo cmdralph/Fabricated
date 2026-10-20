@@ -591,6 +591,27 @@ class PipelineTest {
 		assertTrue(report.contains("a NeoForge build of this mod is installed"), report);
 	}
 
+	/** A mixin config a mod declares in its nested jar is that jar's, which NeoForge's mod file then declares (ADV-1). */
+	@Test
+	void aMixinConfigInANestedJarLoadsWithThatJar(@TempDir Path game) throws Exception {
+		byte[] shared = TestJars.create().fabricModJson(TestJars.modJson("shared", "1.0", ""))
+				.text("shared.mixins.json", "{\"required\":true,\"package\":\"com.shared.mixin\",\"mixins\":[\"ThingMixin\"]}")
+				.bytes("com/shared/mixin/ThingMixin.class", mixinClass("com/shared/mixin/ThingMixin", "tick"))
+				.toBytes();
+		Path holder = TestJars.create()
+				.fabricModJson(TestJars.modJson("holder", "1.0", "\"jars\":[{\"file\":\"META-INF/jars/shared.jar\"}],\"mixins\":[\"shared.mixins.json\"]"))
+				.bytes("META-INF/jars/shared.jar", shared)
+				.write(game.resolve("mods/holder.jar"));
+		Pipeline.Result result = Pipeline.run(input(game, List.of(holder), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
+		Map<String, Pipeline.LoadedMod> byId = result.mods().stream().collect(Collectors.toMap(m -> m.translated().candidate().id(), m -> m));
+		assertEquals(Set.of("holder", "shared"), byId.keySet(), result.report().render());
+		try (SafeArchive holderOverlay = SafeArchive.open(byId.get("holder").translated().overlay(), ArchiveLimits.DEFAULTS);
+				SafeArchive sharedOverlay = SafeArchive.open(byId.get("shared").translated().overlay(), ArchiveLimits.DEFAULTS)) {
+			assertFalse(holderOverlay.readText("META-INF/neoforge.mods.toml").contains("shared.mixins.json"));
+			assertTrue(sharedOverlay.readText("META-INF/neoforge.mods.toml").contains("config=\"shared.mixins.json\""));
+		}
+	}
+
 	/** Classes find the native libraries of a jar without classes nested beside them, as on Fabric's class path (Skiko's). */
 	@Test
 	void rootFilesOfAJarWithoutClassesAreServedByTheModulesBesideIt(@TempDir Path game) throws Exception {
