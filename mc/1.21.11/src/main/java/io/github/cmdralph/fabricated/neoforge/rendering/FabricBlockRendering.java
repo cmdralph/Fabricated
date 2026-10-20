@@ -1,5 +1,6 @@
 package io.github.cmdralph.fabricated.neoforge.rendering;
 
+import java.util.List;
 import java.util.function.Function;
 import java.util.function.Predicate;
 
@@ -32,9 +33,9 @@ import net.minecraft.world.level.block.state.BlockState;
  * <p>A model a Fabric mod implements itself (its own {@code emitQuads}) has no geometry NeoForge's block renderer can
  * see, so it was invisible. Upstream sends every block through Fabric's renderer; on NeoForge that would lose what
  * NeoForge adds to block rendering (level-aware model parts, per-part render layers). So only a block whose model is a
- * Fabric model goes through Fabric's renderer (Indigo, or whichever renderer is registered), into NeoForge's buffer for
- * each quad's layer; every other block keeps NeoForge's path. The 26.x counterpart also covers moving blocks, the
- * breaking overlay and vanilla models with a Fabric model among their parts.
+ * Fabric model, or a vanilla multipart or weighted model with a Fabric model among its parts, goes through Fabric's
+ * renderer (Indigo, or whichever renderer is registered), into NeoForge's buffer for each quad's layer; every other block
+ * keeps NeoForge's path. The 26.x counterpart also covers moving blocks and the breaking overlay.
  *
  * <p>Sections compile on several worker threads at once: the state here is immutable, and the renderer keeps its own
  * per-thread state.
@@ -46,9 +47,25 @@ public final class FabricBlockRendering {
 	private FabricBlockRendering() {
 	}
 
+	/**
+	 * A vanilla model made of other models (multipart, weighted variants), which Fabricated's mixins let say whether one
+	 * of them is drawn by Fabric's renderer. The answer is kept in the model, which a resource reload replaces.
+	 */
+	public interface Composite {
+		boolean fabricated$hasFabricPart();
+	}
+
 	/** Whether this block model is drawn by Fabric's renderer instead of NeoForge's. */
 	public static boolean draws(BlockStateModel model) {
 		return ENABLED && Frapi.isFabricModel(model);
+	}
+
+	/** Whether any of a composite model's parts is drawn by Fabric's renderer. */
+	public static boolean anyDrawn(List<BlockStateModel> models) {
+		for (BlockStateModel model : models) {
+			if (draws(model)) return true;
+		}
+		return false;
 	}
 
 	/** Draws one block of a chunk section, as NeoForge's block renderer would have with the same arguments. */
@@ -99,7 +116,7 @@ public final class FabricBlockRendering {
 		}
 
 		static boolean isFabricModel(BlockStateModel model) {
-			return RENDERER != null && FABRIC_MODEL.get(model.getClass());
+			return RENDERER != null && (FABRIC_MODEL.get(model.getClass()) || model instanceof Composite composite && composite.fabricated$hasFabricPart());
 		}
 
 		static void tesselate(BlockRenderDispatcher dispatcher, BlockAndTintGetter level, BlockStateModel model, BlockState state, BlockPos pos,

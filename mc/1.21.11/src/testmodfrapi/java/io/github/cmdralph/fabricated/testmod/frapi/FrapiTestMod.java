@@ -15,21 +15,29 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 
 /**
- * Places a block whose model is a Fabric model (its own {@code emitQuads}) in front of the joining player, so the client
- * meshes it into a chunk section (1.21.11).
+ * Places a block whose model is a Fabric model (its own {@code emitQuads}), and one whose vanilla multipart model has a
+ * Fabric model as its part, in front of the joining player, so the client meshes them into a chunk section (1.21.11).
  */
 public final class FrapiTestMod implements ModInitializer {
 	static final Logger LOGGER = LoggerFactory.getLogger("fabricated-testmod-frapi");
 	static final Identifier TERRAIN_BLOCK_ID = Identifier.fromNamespaceAndPath("fabricated_testmod_frapi", "terrain_block");
+	static final Identifier NESTED_BLOCK_ID = Identifier.fromNamespaceAndPath("fabricated_testmod_frapi", "nested_block");
 
 	@Override
 	public void onInitialize() {
-		ResourceKey<Block> key = ResourceKey.create(Registries.BLOCK, TERRAIN_BLOCK_ID);
-		Block terrainBlock = Registry.register(BuiltInRegistries.BLOCK, key, new Block(BlockBehaviour.Properties.of().setId(key)));
+		Block terrainBlock = register(TERRAIN_BLOCK_ID);
+		Block nestedBlock = register(NESTED_BLOCK_ID);
 		ServerPlayConnectionEvents.JOIN.register((listener, sender, server) -> server.execute(() -> {
 			BlockPos front = listener.player.blockPosition().relative(listener.player.getDirection(), 2).above();
+			BlockPos nested = front.relative(listener.player.getDirection().getClockWise());
 			listener.player.level().setBlockAndUpdate(front, terrainBlock.defaultBlockState());
-			LOGGER.info("FABRICATED-TEST frapi block placed at {}", front);
+			listener.player.level().setBlockAndUpdate(nested, nestedBlock.defaultBlockState());
+			LOGGER.info("FABRICATED-TEST frapi block placed at {} (nested model block at {})", front, nested);
 		}));
+	}
+
+	private static Block register(Identifier id) {
+		ResourceKey<Block> key = ResourceKey.create(Registries.BLOCK, id);
+		return Registry.register(BuiltInRegistries.BLOCK, key, new Block(BlockBehaviour.Properties.of().setId(key)));
 	}
 }
