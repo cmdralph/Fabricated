@@ -429,6 +429,9 @@ jobs:
               ' "$log"
               # An exception that left the game's main thread goes to the console only.
               grep -h -m 2 -A 8 "^Exception in thread" "$RUNNER_TEMP/$run/client.out" 2>/dev/null | cut -c1-250 || true
+              # Which thread ended the game, and from where (the test mod's shutdown hook), without the JDK's own frames.
+              awk '/^FABRICATED-TEST game ended/ { show = 1; print; next } show && /^\tat / { if ($0 !~ /java\.base\//) print; next } { show = 0 }' \
+                "$RUNNER_TEMP/$run/client.out" 2>/dev/null | head -14 | cut -c1-250 || true
               echo "-- last lines of the log:"
               grep -v "Waiting for player to load" "$log" | tail -n 4 | cut -c1-300
             fi
