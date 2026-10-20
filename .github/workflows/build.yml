@@ -131,6 +131,11 @@ jobs:
           # Team Reborn's energy library (Fabric tech mods' energy API), for the energy bridge's check below.
           mkdir -p "$RUNNER_TEMP/energy"
           python3 ci/fetch-corpus.py "${{ matrix.minecraft }}" "$RUNNER_TEMP/energy" fabric team-reborn-energy || true
+          # Without a build of its own, the one a Fabric tech mod ships inside its jar.
+          if ! ls "$RUNNER_TEMP"/energy/*.jar >/dev/null 2>&1; then
+            python3 ci/fetch-corpus.py "${{ matrix.minecraft }}" "$RUNNER_TEMP/energy-hosts" fabric techreborn modern-industrialization || true
+            python3 ci/nested-jar.py team_reborn_energy "$RUNNER_TEMP/energy" "$RUNNER_TEMP"/energy-hosts/*.jar > "$RUNNER_TEMP/energy-source.txt" || true
+          fi
           cp "$RUNNER_TEMP"/energy/*.jar "$RUNNER_TEMP/extra/" 2>/dev/null || true
           ci/smoke-server.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/server-fapi" "$RUNNER_TEMP/extra"
       - name: Energy bridge with Team Reborn's library
@@ -138,10 +143,10 @@ jobs:
         run: |
           # Also recorded for the summary step at the end of the log.
           if ! ls "$RUNNER_TEMP"/energy/*.jar >/dev/null 2>&1; then
-            echo "Energy: Modrinth has no Team Reborn Energy build for ${{ matrix.minecraft }}, nothing checked" | tee "$RUNNER_TEMP/summary-energy.txt"
+            echo "Energy: no Team Reborn Energy build for ${{ matrix.minecraft }} on Modrinth, of its own or in Tech Reborn or Modern Industrialization, nothing checked" | tee "$RUNNER_TEMP/summary-energy.txt"
             exit 0
           fi
-          ls "$RUNNER_TEMP"/energy/ | tee "$RUNNER_TEMP/summary-energy.txt"
+          { cat "$RUNNER_TEMP/energy-source.txt" 2>/dev/null || ls "$RUNNER_TEMP"/energy/; } | tee "$RUNNER_TEMP/summary-energy.txt"
           if grep -h "FABRICATED-TEST energy OK" "$RUNNER_TEMP/server-fapi/server.out" | tee -a "$RUNNER_TEMP/summary-energy.txt"; then
             echo "PASS: energy moves both ways between Team Reborn's API and NeoForge's capability"
           else
