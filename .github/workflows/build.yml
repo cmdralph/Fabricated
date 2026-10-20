@@ -172,7 +172,9 @@ jobs:
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         env:
           GH_TOKEN: ${{ github.token }}
-        run: ci/smoke-client.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/client"
+        run: |
+          set -o pipefail
+          ci/smoke-client.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/client" | tee "$RUNNER_TEMP/summary-client.txt"
       - name: Upload client logs and report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
@@ -464,12 +466,14 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
           [ -f "$RUNNER_TEMP/summary-energy.txt" ] && { echo "== summary-energy"; cut -c1-300 "$RUNNER_TEMP/summary-energy.txt"; }
+          # The gated client's failed checks, when it has any (the job log may no longer hold them).
+          grep -q "^FAIL" "$RUNNER_TEMP/summary-client.txt" 2>/dev/null && { echo "== summary-client"; grep "^FAIL" "$RUNNER_TEMP/summary-client.txt" | head -40 | cut -c1-300; }
           for f in summary-newest summary-viewers; do
             [ -f "$RUNNER_TEMP/$f.txt" ] && { echo "== $f"; grep -E "^(Newest|PASS|FAIL|WARN)|plugin|not in this run" "$RUNNER_TEMP/$f.txt" | head -60; }
           done
           [ -f "$RUNNER_TEMP/summary-polyfrost.txt" ] && { echo "== summary-polyfrost"; head -60 "$RUNNER_TEMP/summary-polyfrost.txt" | cut -c1-300; }
           [ -f viewers.txt ] && { echo "== viewers fetched"; cat viewers.txt; }
-          for run in client-fapi client-shaders client-sodium-fabric client-viewers client-polyfrost client-corpus client-worldmap; do
+          for run in client client-fapi client-shaders client-sodium-fabric client-viewers client-polyfrost client-corpus client-worldmap; do
             log="$RUNNER_TEMP/$run/run/logs/latest.log"
             [ -f "$log" ] || continue
             echo "== $run"
