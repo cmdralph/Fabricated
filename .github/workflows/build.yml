@@ -299,6 +299,8 @@ jobs:
           SMOKE_TIMEOUT=480 ci/smoke-client.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/client-polyfrost" "$RUNNER_TEMP/extra-polyfrost" || true
           # The counts and the disabled mods, not the long list of loaded ones.
           awk '/^== /{show = /^== (Summary|Disabled)/} show' "$RUNNER_TEMP/client-polyfrost/run/logs/fabric-bridge-report.txt" | head -80 | tee -a "$RUNNER_TEMP/summary-polyfrost.txt" || true
+          # Which modules serve the native libraries of jars without classes (Skiko's).
+          grep -F "has no classes" "$RUNNER_TEMP/client-polyfrost/run/logs/fabric-bridge-report.txt" | head -10 | tee -a "$RUNNER_TEMP/summary-polyfrost.txt" || true
       - name: Upload Polyfrost client logs and report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4

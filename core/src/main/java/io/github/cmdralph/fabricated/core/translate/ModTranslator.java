@@ -104,7 +104,9 @@ public final class ModTranslator {
 		List<String> after = loadAfter.stream().sorted().distinct().toList();
 		String key = Hashing.sha256(String.join("|", candidate.sha256(), env.minecraftVersion(), env.neoForgeVersion(),
 				env.side(), env.fabricatedVersion(), Integer.toString(TranslationEnvironment.TRANSLATION_SCHEMA),
-				env.mappingsHash(), env.runtimeMixinVersion(), override.fingerprint(), String.join(",", after)));
+				env.mappingsHash(), env.runtimeMixinVersion(), override.fingerprint(), String.join(",", after),
+				// Not only the jar's: a config a containing mod declares may come with it.
+				candidate.metadata().mixins().toString()));
 		String entryName = TranslationCache.entryName(neoId, key);
 
 		Optional<TranslationCache.Entry> hit = env.namespace() == Namespace.INTERMEDIARY

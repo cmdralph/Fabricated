@@ -44,6 +44,9 @@ import io.github.cmdralph.fabricated.core.resolve.PlatformLibraries;
  * packages it gave up goes with them: hidden when the module that has them declares the same service with the same
  * providers, served by that module when it doesn't declare it. Any other case (providers in more than one module,
  * or the same service with other providers there) disables the later mod.
+ *
+ * <p>A nested jar without classes (native libraries, as Skiko's runtime jars hold) lends its root files to the modules
+ * of its parent and of the jars nested beside it, whose classes look them up.
  */
 public final class PackageGuard {
 	/**
@@ -51,8 +54,9 @@ public final class PackageGuard {
 	 *
 	 * @param excludedPackages packages filtered out of its jar and overlay
 	 * @param hiddenFiles      other files filtered out of them: service files whose providers another module has
-	 * @param borrowed         files of later mods its module serves too, by the jar they are read from: their part of a
-	 *                         package split with this mod, and the service files that go with it
+	 * @param borrowed         files of other mods its module serves too, by the jar they are read from: their part of a
+	 *                         package split with this mod, the service files that go with it, and the root files of a
+	 *                         jar without classes nested beside it
 	 */
 	public record Decision(Set<String> excludedPackages, Set<String> hiddenFiles, Map<Path, Set<String>> borrowed, List<String> notes) {
 		public static final Decision NONE = new Decision(Set.of(), Set.of(), Map.of(), List.of());
@@ -78,13 +82,17 @@ public final class PackageGuard {
 	/**
 	 * What a mod has.
 	 *
-	 * @param packages package → its files, each with the jar it is read from (the overlay, or the mod's jar)
-	 * @param services its service files ({@code META-INF/services/...}), by path
+	 * @param packages   package → its files, each with the jar it is read from (the overlay, or the mod's jar)
+	 * @param services   its service files ({@code META-INF/services/...}), by path
+	 * @param rootFiles  the files at its root other than mod metadata, with the jar they are read from
+	 * @param hasClasses whether it has any class
 	 */
-	private record Contents(Map<String, Map<String, Path>> packages, Map<String, Service> services) {
+	private record Contents(Map<String, Map<String, Path>> packages, Map<String, Service> services, Map<String, Path> rootFiles, boolean hasClasses) {
 	}
 
 	private static final String SERVICES = "META-INF/services/";
+	/** Root files that describe a jar rather than belong to its code. */
+	private static final Set<String> METADATA = Set.of("fabric.mod.json", "quilt.mod.json", "pack.mcmeta", "pack.png");
 	private static final String SUGGESTION = "Java modules cannot share packages. Remove one of the two mods, or ask the authors to relocate (shade) the shared library.";
 
 	private final ArchiveLimits limits;
@@ -108,6 +116,9 @@ public final class PackageGuard {
 		Map<String, Set<String>> hiddenById = new HashMap<>();
 		Map<String, List<String>> notesById = new HashMap<>();
 		Map<String, Map<Path, Set<String>>> borrowedById = new HashMap<>();
+		// The mods that load, by Fabric id, with what they have.
+		Map<String, TranslatedMod> loading = new LinkedHashMap<>();
+		Map<String, Contents> contentsById = new HashMap<>();
 
 		for (TranslatedMod mod : mods) {
 			Contents contents;
@@ -214,7 +225,10 @@ public final class PackageGuard {
 			excludedById.put(mod.neoForgeId(), excluded);
 			hiddenById.put(mod.neoForgeId(), hidden);
 			notesById.put(mod.neoForgeId(), notes);
+			loading.put(mod.candidate().id(), mod);
+			contentsById.put(mod.candidate().id(), contents);
 		}
+		shareRootFiles(loading, contentsById, borrowedById, notesById);
 		Map<String, Decision> decisions = new LinkedHashMap<>();
 		excludedById.forEach((id, excluded) -> {
 			Map<Path, Set<String>> borrowed = new LinkedHashMap<>();
@@ -225,10 +239,44 @@ public final class PackageGuard {
 		return new Result(decisions, conflicts);
 	}
 
-	/** The mod's files by package (its overlay's copies over its jar's), and its service files. */
+	/**
+	 * The root files of a nested jar without classes (native libraries, as Skiko's runtime jars hold) are served by the
+	 * modules of its parent and of the jars nested beside it too: the classes there look them up with
+	 * {@code Class.getResource}, which in a module searches that module only, where Fabric's class path finds any jar's.
+	 * Files of no package may be in several modules; one a module has itself stays its own.
+	 */
+	private static void shareRootFiles(Map<String, TranslatedMod> loading, Map<String, Contents> contentsById,
+			Map<String, Map<Path, Set<String>>> borrowedById, Map<String, List<String>> notesById) {
+		for (Map.Entry<String, TranslatedMod> e : loading.entrySet()) {
+			Contents contents = contentsById.get(e.getKey());
+			String parent = e.getValue().candidate().parentId();
+			if (contents.hasClasses() || contents.rootFiles().isEmpty() || parent == null) continue;
+			List<String> users = new ArrayList<>();
+			for (Map.Entry<String, TranslatedMod> other : loading.entrySet()) {
+				Contents theirs = contentsById.get(other.getKey());
+				boolean related = other.getKey().equals(parent) || parent.equals(other.getValue().candidate().parentId());
+				if (!related || !theirs.hasClasses()) continue;
+				String id = other.getValue().neoForgeId();
+				Map<Path, Set<String>> borrowed = borrowedById.computeIfAbsent(id, k -> new LinkedHashMap<>());
+				contents.rootFiles().forEach((file, jar) -> {
+					boolean taken = theirs.rootFiles().containsKey(file) || borrowed.values().stream().anyMatch(files -> files.contains(file));
+					if (!taken) borrowed.computeIfAbsent(jar, k -> new TreeSet<>()).add(file);
+				});
+				users.add(id);
+			}
+			if (!users.isEmpty()) {
+				notesById.get(e.getValue().neoForgeId()).add("has no classes: its " + contents.rootFiles().size() + " root file(s) are also served by the modules of "
+						+ String.join(", ", users) + ", whose classes look them up (as on Fabric's class path)");
+			}
+		}
+	}
+
+	/** The mod's files by package (its overlay's copies over its jar's), its service files and its other root files. */
 	private Contents contentsOf(TranslatedMod mod) throws IOException {
 		Map<String, Map<String, Path>> packages = new TreeMap<>();
 		Map<String, Service> services = new TreeMap<>();
+		Map<String, Path> rootFiles = new TreeMap<>();
+		boolean hasClasses = false;
 		for (Path jar : mod.overlay() != null && Files.exists(mod.overlay()) ? List.of(mod.jar(), mod.overlay()) : List.of(mod.jar())) {
 			try (SafeArchive archive = SafeArchive.open(jar, limits.forTranslatedJars())) {
 				for (String name : archive.entryNames()) {
@@ -238,7 +286,9 @@ public final class PackageGuard {
 					}
 					if (name.endsWith("/") || name.startsWith("META-INF/") || name.startsWith("assets/") || name.startsWith("data/")) continue;
 					if (name.endsWith("module-info.class")) continue;
+					hasClasses |= name.endsWith(".class");
 					int slash = name.lastIndexOf('/');
+					if (slash < 0 && !METADATA.contains(name)) rootFiles.put(name, jar);
 					if (slash < 1) continue; // default package
 					String pkg = name.substring(0, slash);
 					if (!isPackageName(pkg)) continue;
@@ -246,7 +296,7 @@ public final class PackageGuard {
 				}
 			}
 		}
-		return new Contents(packages, services);
+		return new Contents(packages, services, rootFiles, hasClasses);
 	}
 
 	/** The providers a service file lists (binary class names), as NeoForge reads it: comments and blank lines ignored. */

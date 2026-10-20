@@ -9,11 +9,14 @@ import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import net.fabricmc.loader.api.metadata.ModEnvironment;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import io.github.cmdralph.fabricated.core.archive.ArchiveLimits;
 import io.github.cmdralph.fabricated.core.cache.TranslationCache;
+import io.github.cmdralph.fabricated.core.metadata.FabricModMetadata.MixinEntry;
 import io.github.cmdralph.fabricated.core.testutil.TestJars;
 
 class CandidateScannerTest {
@@ -50,6 +53,26 @@ class CandidateScannerTest {
 		Candidate lib = result.candidates().stream().filter(c -> c.id().equals("lib")).findFirst().orElseThrow();
 		assertEquals("2.0", lib.metadata().getVersion().getFriendlyString());
 		assertTrue(result.notes().stream().anyMatch(n -> n.contains("instead of older")), result.notes().toString());
+	}
+
+	/** As adventure-platform-fabric declares its nested shared jar's config: on Fabric, Mixin finds it on the class path. */
+	@Test
+	void aMixinConfigInANestedJarIsAppliedByThatJar(@TempDir Path game) throws Exception {
+		byte[] shared = TestJars.create().fabricModJson(TestJars.modJson("shared", "1.0", ""))
+				.text("shared.mixins.json", "{\"package\":\"com.shared.mixin\",\"mixins\":[]}")
+				.toBytes();
+		Path holder = TestJars.create()
+				.fabricModJson(TestJars.modJson("holder", "1.0", "\"jars\":[{\"file\":\"META-INF/jars/shared.jar\"}],"
+						+ "\"mixins\":[\"own.mixins.json\",{\"config\":\"shared.mixins.json\",\"environment\":\"client\"},\"absent.mixins.json\"]"))
+				.text("own.mixins.json", "{\"package\":\"com.holder.mixin\",\"mixins\":[]}")
+				.bytes("META-INF/jars/shared.jar", shared)
+				.write(game.resolve("holder.jar"));
+		CandidateScanner.Result result = new CandidateScanner(new TranslationCache(game, true, true), ArchiveLimits.DEFAULTS).scan(List.of(holder));
+		Map<String, Candidate> byId = result.candidates().stream().collect(Collectors.toMap(Candidate::id, Function.identity()));
+		assertEquals(List.of(new MixinEntry("own.mixins.json", ModEnvironment.UNIVERSAL), new MixinEntry("absent.mixins.json", ModEnvironment.UNIVERSAL)),
+				byId.get("holder").metadata().mixins(), "a config no jar holds stays, for translation to report");
+		assertEquals(List.of(new MixinEntry("shared.mixins.json", ModEnvironment.CLIENT)), byId.get("shared").metadata().mixins());
+		assertTrue(result.notes().contains("holder's mixin config shared.mixins.json is in its nested jar shared, which applies it"), result.notes().toString());
 	}
 
 	@Test

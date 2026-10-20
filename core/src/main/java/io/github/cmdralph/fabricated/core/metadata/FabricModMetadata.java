@@ -76,6 +76,12 @@ public record FabricModMetadata(
 				List.of(), new TreeMap<>(), Map.of(), customValues, CompatHints.NONE);
 	}
 
+	/** This metadata with other mixin configs (one the mod declares that a jar nested in it holds goes to that jar). */
+	public FabricModMetadata withMixins(List<MixinEntry> mixins) {
+		return new FabricModMetadata(type, id, version, provides, environment, entrypoints, nestedJars, mixins, classTweaker, dependencies,
+				name, description, authors, contributors, contact, license, icons, languageAdapters, customValues, compatHints);
+	}
+
 	/** This metadata with other compatibility hints (none, when the player turned the mod's off). */
 	public FabricModMetadata withCompatHints(CompatHints hints) {
 		return new FabricModMetadata(type, id, version, provides, environment, entrypoints, nestedJars, mixins, classTweaker, dependencies,

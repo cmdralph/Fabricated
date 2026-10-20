@@ -16,12 +16,16 @@ import io.github.cmdralph.fabricated.core.archive.SafeArchive;
 import io.github.cmdralph.fabricated.core.cache.TranslationCache;
 import io.github.cmdralph.fabricated.core.metadata.FabricModJsonParser;
 import io.github.cmdralph.fabricated.core.metadata.FabricModMetadata;
+import io.github.cmdralph.fabricated.core.metadata.FabricModMetadata.MixinEntry;
 import io.github.cmdralph.fabricated.core.metadata.MetadataException;
 
 /**
  * Turns jar files into {@link Candidate}s: validates each archive, parses {@code fabric.mod.json},
  * and recursively extracts nested jars (Fabric jar-in-jar) into the content-addressed cache. When
  * several copies of the same mod id are found, the highest version wins, as in Fabric Loader.
+ *
+ * <p>A mixin config a mod declares but a jar nested in it holds is applied by that nested jar: Fabric's Mixin finds a
+ * config in any jar on the class path, while a NeoForge mod file declares its own.
  */
 public final class CandidateScanner {
 	public static final String FABRIC_MOD_JSON = "fabric.mod.json";
@@ -47,7 +51,7 @@ public final class CandidateScanner {
 		List<Rejected> rejected = new ArrayList<>();
 		List<String> notes = new ArrayList<>();
 		for (Path jar : topLevelJars) {
-			scanJar(jar, null, jar.getFileName().toString(), null, 0, new NestedBudget(), all, rejected, notes);
+			scanJar(jar, null, jar.getFileName().toString(), null, List.of(), 0, new NestedBudget(), all, rejected, notes);
 		}
 		return new Result(List.copyOf(select(all, notes).values()), List.copyOf(rejected), List.copyOf(notes));
 	}
@@ -96,17 +100,20 @@ public final class CandidateScanner {
 	}
 
 	/**
-	 * @param knownSha the jar's SHA-256 when already known (a nested jar's file name), else null
+	 * @param knownSha      the jar's SHA-256 when already known (a nested jar's file name), else null
+	 * @param parentsMixins the mixin configs the containing mod declares but doesn't hold: this jar applies those it has
 	 * @return the candidate for this jar (added to {@code all} with its nested jars), or null if unusable
 	 */
-	private Candidate scanJar(Path jar, String knownSha, String origin, String parentId, int depth, NestedBudget budget, List<Candidate> all,
-			List<Rejected> rejected, List<String> notes) {
+	private Candidate scanJar(Path jar, String knownSha, String origin, String parentId, List<MixinEntry> parentsMixins, int depth, NestedBudget budget,
+			List<Candidate> all, List<Rejected> rejected, List<String> notes) {
 		FabricModMetadata metadata;
 		// Each nested jar is stored as soon as it is read and scanned after this archive is closed, so only one is in
 		// memory at a time.
 		List<Path> nestedPaths = new ArrayList<>();
 		List<String> nestedNames = new ArrayList<>();
 		Set<String> packages = new TreeSet<>();
+		// The mixin configs it declares that it doesn't hold.
+		List<MixinEntry> elsewhere = new ArrayList<>();
 		String sha;
 		try (SafeArchive archive = SafeArchive.open(jar, limits)) {
 			sha = knownSha != null ? knownSha : cache.sha256(jar);
@@ -116,6 +123,19 @@ public final class CandidateScanner {
 				return null;
 			}
 			metadata = FabricModJsonParser.parse(json);
+			// The mixin configs it declares but doesn't hold, and those of its parent it holds (a list from its
+			// compatibility hints replaces the declared one, and is left as it is).
+			if (metadata.compatHints().mixins() == null) {
+				List<MixinEntry> mixins = new ArrayList<>(metadata.mixins());
+				for (MixinEntry entry : metadata.mixins()) {
+					if (!archive.contains(entry.config())) elsewhere.add(entry);
+				}
+				for (MixinEntry entry : parentsMixins) {
+					boolean declared = mixins.stream().anyMatch(m -> m.config().equals(entry.config()));
+					if (!declared && archive.contains(entry.config())) mixins.add(entry);
+				}
+				if (mixins.size() > metadata.mixins().size()) metadata = metadata.withMixins(mixins);
+			}
 			for (String name : archive.classEntryNames()) {
 				int slash = name.lastIndexOf('/');
 				packages.add(slash < 0 ? "" : name.substring(0, slash));
@@ -163,11 +183,21 @@ public final class CandidateScanner {
 
 		String id = metadata.getId();
 		List<String> children = new ArrayList<>();
+		Set<String> applied = new TreeSet<>();
 		for (int i = 0; i < nestedPaths.size(); i++) {
 			Path nestedJar = nestedPaths.get(i);
-			Candidate child = scanJar(nestedJar, TranslationCache.nestedSha(nestedJar), origin + "!/" + nestedNames.get(i), id, depth + 1, budget, all,
-					rejected, notes);
-			if (child != null) children.add(child.id());
+			Candidate child = scanJar(nestedJar, TranslationCache.nestedSha(nestedJar), origin + "!/" + nestedNames.get(i), id, elsewhere, depth + 1,
+					budget, all, rejected, notes);
+			if (child == null) continue;
+			children.add(child.id());
+			for (MixinEntry entry : elsewhere) {
+				boolean has = child.metadata().compatHints().mixinsOr(child.metadata().mixins()).stream().anyMatch(m -> m.config().equals(entry.config()));
+				if (!has || !applied.add(entry.config())) continue;
+				notes.add(id + "'s mixin config " + entry.config() + " is in its nested jar " + child.id() + ", which applies it");
+			}
+		}
+		if (!applied.isEmpty()) {
+			metadata = metadata.withMixins(metadata.mixins().stream().filter(m -> !applied.contains(m.config())).toList());
 		}
 
 		Candidate candidate = new Candidate(jar, sha, metadata, origin, parentId, depth, List.copyOf(children), Set.copyOf(packages));
