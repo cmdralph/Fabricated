@@ -674,5 +674,18 @@ modules that cascade from it.
 
 ## Fabric mods tested
 
-Only Fabricated's own test mods are tested in CI so far. Results for real Fabric mods will be added here as
-CI covers them. To report one, see [CONTRIBUTING.md](../CONTRIBUTING.md#reporting-a-compatibility-result).
+CI checks Fabricated's own test mods as gates on every version. Real mods run in these CI runs too, downloaded from
+Modrinth in CI (never redistributed):
+
+- **A corpus of popular Fabric mods** (`ci/mod-corpus.txt`: libraries, interface, rendering, performance and content
+  mods, with their dependencies), on a server and a client, on every version. Informational: each run's report lists
+  which load and why the others are disabled. Known problems are tracked as CORPUS-n in
+  [roadmap.md](roadmap.md#findings-log).
+- **Sodium and Iris for NeoForge** with Fabric API and the renderer test mod on 26.x: gated (see *Renderer mods*).
+  Their Fabric builds run with `loadUnsupported`, informational: since the constructor repair they reach a world and
+  mesh Fabric models on 26.1.2 and 26.3.
+- **The NeoForge builds of JEI, REI, Jade and WTHIT** with the test mod's plugins declared the Fabric way:
+  informational. Each viewer created and called its plugin on 26.1.2 and 26.3 (WTHIT on 26.1.2; no 26.3 build).
+- **OneConfig and PolyPlus** (Fabric only), informational, where Modrinth has builds for the version.
+
+To report a result for another mod, see [CONTRIBUTING.md](../CONTRIBUTING.md#reporting-a-compatibility-result).
