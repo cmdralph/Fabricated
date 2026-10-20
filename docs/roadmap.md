@@ -50,21 +50,22 @@ The Fabric renderer API on NeoForge:
 
 | | 1.21.11 | 26.1.2 | 26.2 | 26.3 |
 |---|---|---|---|---|
-| Renderer API and Indigo load | no (upstream's mixins fail pre-flight) | yes | yes | yes |
-| Model-loading modifiers and extra models | yes, without the renderer API (CORPUS-6) | yes since `08aff28` | yes | yes |
-| Fabric block models in the world | no | yes (`FabricBlockRendering`) | yes | yes |
+| Renderer API and Indigo load | yes (this pass; upstream's conflicting mixins left out) | yes | yes | yes |
+| Model-loading modifiers and extra models | yes (CORPUS-6) | yes since `08aff28` | yes | yes |
+| Fabric block models in the world | yes (this pass, CI) | yes (`FabricBlockRendering`) | yes | yes |
 | Moving blocks (pistons, falling) and the breaking overlay | no | yes (M2) | yes | yes |
-| Fabric models nested in a vanilla multipart or weighted model | no | yes (M3) | yes | yes |
+| Fabric models nested in a vanilla multipart or weighted model | yes (this pass, CI) | yes (M3) | yes | yes |
 | Block outlines, a moving block's glow outline | no | from the model's parts, as NeoForge sees them | same | same |
-| Under Sodium for NeoForge: Fabric models meshed by Sodium's own Fabric renderer, Indigo stands down | no (neither Sodium for NeoForge nor Fabricated has the renderer API there) | yes (R1, CI) | yes (R1, CI) | yes (R1, CI) |
+| Under Sodium for NeoForge: Fabric models meshed by Sodium's own Fabric renderer, Indigo stands down | no (Sodium for NeoForge has no Fabric renderer API there) | yes (R1, CI) | yes (R1, CI) | yes (R1, CI) |
 
 - **Done:** M1 (Fabric block models in chunk sections, `8e80c6e`, `0dbdfda`, `08aff28`), M2 (moving blocks and the
   breaking overlay, `4db3deb`), M3 (Fabric models inside vanilla multipart and weighted models, `4db3deb`), M4
   (Fabric's model formats through NeoForge's parsers, `c02d85f`), NeoForge-aware `emitQuads` defaults (`75e5867`).
 - **Next:** M2b, block outlines and a moving block's glow outline for Fabric models (today they come from the model's
   parts as NeoForge sees them, so a model with only `emitQuads` has none).
-- **Later:** M5, the renderer API on 1.21.11 (its own mixins don't apply on NeoForge 1.21.11; the API differs:
-  `RenderMaterial`, `BlendMode`).
+- **Done (this pass):** M5, the renderer API on 1.21.11 in chunk sections, alone and nested (its conflicting mixins
+  left out, the sprite getter's finders from Fabricated). **Later:** moving blocks, the breaking overlay and
+  NeoForge-aware `emitQuads` defaults there.
 - **Not planned:** a Fabricated-owned quad encoder. Indigo already is the `int[]` encoder; a second one would add code
   without a user-visible gain (`claude.md`).
 
@@ -354,6 +355,15 @@ security review in the same pass.
   `MobCategory` and `Raid$RaiderType`, extensible enums NeoForge doesn't let mixins change), No Chat Reports (a mixin
   into authlib, a library NeoForge loads without mixin support).
 - An enum mixin into a named enum translates when its names already start with the mod's id (ENUM-2).
+- Fabric's renderer API loads on 1.21.11 (M5): its plan leaves out the upstream mixins NeoForge's build conflicts with,
+  Fabricated gives the model baker's sprite getter its sprite finders (upstream's mixin reads captured-variable fields
+  NeoForge's recompiled game names differently: it takes them from the constructor's arguments instead, told apart by
+  atlas), and Fabric block models, alone and in vanilla composites, are drawn in chunk sections. Run 365 logged both
+  checks on 1.21.11 (now a gate); the corpus client there no longer crashes on Continuity's mixin. 1.21.11's renderer
+  mixin config is empty, as the shared `mods.toml` declares it for the renderer API (run 364 stopped in pre-loading).
+- Bridges pass a handler's MixinExtras sugar on (PRE-11), so resourcefullib's wrapper is repaired at last. A review of
+  this pass's changes found two defects, both fixed: non-finite custom numbers broke the generated `mods.toml`
+  (TOML-1), and a model class naming a missing type crashed chunk compilation (FRAPI-4). CORPUS-15 is recorded open.
 
 ### 2026-10-21: item storages bridged, Fabric fluids get fluid types, shader pack evidence
 
