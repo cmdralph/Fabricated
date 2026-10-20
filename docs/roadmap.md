@@ -364,6 +364,10 @@ security review in the same pass.
 - Bridges pass a handler's MixinExtras sugar on (PRE-11), so resourcefullib's wrapper is repaired at last. A review of
   this pass's changes found two defects, both fixed: non-finite custom numbers broke the generated `mods.toml`
   (TOML-1), and a model class naming a missing type crashed chunk compilation (FRAPI-4). CORPUS-15 is recorded open.
+- Run 366 on `1e8d1dd`: every gate passed on all four versions. resourcefullib loads on 26.3 (PRE-11), the 1.21.11
+  corpus client reaches its world, and Fabric models are meshed under Sodium and Iris on 26.x. Run 365's failure of the
+  plain 1.21.11 client didn't recur on the same code for that client; its log had scrolled out of reach, so the CI
+  summary now repeats that client's failed checks and errors.
 
 ### 2026-10-21: item storages bridged, Fabric fluids get fluid types, shader pack evidence
 
