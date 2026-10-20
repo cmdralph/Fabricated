@@ -591,6 +591,37 @@ class PipelineTest {
 		assertTrue(report.contains("a NeoForge build of this mod is installed"), report);
 	}
 
+	/** Classes find the native libraries of a jar without classes nested beside them, as on Fabric's class path (Skiko's). */
+	@Test
+	void rootFilesOfAJarWithoutClassesAreServedByTheModulesBesideIt(@TempDir Path game) throws Exception {
+		String generated = "\"custom\":{\"fabric-loom:generated\":true}";
+		byte[] lib = TestJars.create().fabricModJson(TestJars.modJson("native-user", "1.0", generated))
+				.bytes("com/lib/Loader.class", TestJars.emptyClass("com/lib/Loader", "java/lang/Object"))
+				.text("LICENSE", "lib's")
+				.toBytes();
+		byte[] natives = TestJars.create().fabricModJson(TestJars.modJson("natives", "1.0", generated))
+				.text("libfoo.so", "ELF").text("libfoo.so.sha256", "0123").text("LICENSE", "natives'")
+				.toBytes();
+		Path bundle = TestJars.create()
+				.fabricModJson(TestJars.modJson("bundle", "1.0", "\"jars\":[{\"file\":\"META-INF/jars/lib.jar\"},{\"file\":\"META-INF/jars/natives.jar\"}]"))
+				.bytes("com/bundle/Main.class", TestJars.emptyClass("com/bundle/Main", "java/lang/Object"))
+				.bytes("META-INF/jars/lib.jar", lib)
+				.bytes("META-INF/jars/natives.jar", natives)
+				.write(game.resolve("mods/bundle.jar"));
+		Path other = TestJars.create().fabricModJson(TestJars.modJson("other", "1.0", ""))
+				.bytes("com/other/Main.class", TestJars.emptyClass("com/other/Main", "java/lang/Object"))
+				.write(game.resolve("mods/other.jar"));
+		Pipeline.Result result = Pipeline.run(input(game, List.of(bundle, other), Namespace.OFFICIAL, Map.of(), null));
+		Map<String, Pipeline.LoadedMod> byId = result.mods().stream().collect(Collectors.toMap(m -> m.translated().candidate().id(), m -> m));
+		assertEquals(Set.of("bundle", "native-user", "natives", "other"), byId.keySet(), result.report().render());
+		Path nativesJar = byId.get("natives").translated().jar();
+		assertEquals(Map.of(nativesJar, Set.of("libfoo.so", "libfoo.so.sha256")), byId.get("native-user").packages().borrowed(),
+				"a sibling's module serves them, but its own LICENSE stays its own");
+		assertEquals(Map.of(nativesJar, Set.of("LICENSE", "libfoo.so", "libfoo.so.sha256")), byId.get("bundle").packages().borrowed(), "so does the parent's");
+		assertEquals(Map.of(), byId.get("other").packages().borrowed(), "an unrelated mod's module doesn't");
+		assertTrue(result.report().render().contains("its 3 root file(s) are also served by the modules of bundle, native_user"), result.report().render());
+	}
+
 	@Test
 	void apiReflectsTheLaunch(@TempDir Path game) throws Exception {
 		Path mods = Files.createDirectories(game.resolve("mods"));
