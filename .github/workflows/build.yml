@@ -456,6 +456,9 @@ jobs:
                 "$RUNNER_TEMP/$run/client.out" 2>/dev/null | head -14 | cut -c1-250 || true
               # What the client showed half a minute into its world, and whether chunks arrived (the test mod).
               grep -h -m 1 "FABRICATED-TEST world state" "$log" | cut -c1-400 || true
+              grep -h -m 1 "FABRICATED-TEST server state" "$log" | cut -c1-400 || true
+              # Who asked the game to stop, if anything did (the test mod).
+              grep -h -m 1 -A 12 "FABRICATED-TEST game stop requested" "$log" | grep -v "java\.base/" | cut -c1-250 || true
               echo "-- last lines of the log:"
               grep -v "Waiting for player to load" "$log" | tail -n 4 | cut -c1-300
             fi

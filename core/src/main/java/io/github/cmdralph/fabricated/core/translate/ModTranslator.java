@@ -29,6 +29,7 @@ import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.commons.ClassRemapper;
 import org.objectweb.asm.commons.Remapper;
+import org.objectweb.asm.tree.ClassNode;
 
 import io.github.cmdralph.fabricated.core.accesswidener.AccessTransformerConverter;
 import io.github.cmdralph.fabricated.core.accesswidener.AccessWidenerException;
@@ -108,7 +109,7 @@ public final class ModTranslator {
 				env.side(), env.fabricatedVersion(), Integer.toString(TranslationEnvironment.TRANSLATION_SCHEMA),
 				env.mappingsHash(), env.runtimeMixinVersion(), override.fingerprint(), String.join(",", after),
 				// Not only the jar's: a config a containing mod declares may come with it.
-				candidate.metadata().mixins().toString()));
+				candidate.metadata().mixins().toString(), env.unsupportedPackages().toString()));
 		String entryName = TranslationCache.entryName(neoId, key);
 
 		Optional<TranslationCache.Entry> hit = env.namespace() == Namespace.INTERMEDIARY
@@ -347,7 +348,8 @@ public final class ModTranslator {
 			Set<String> skip = withDependents(entry.config(), config, wholeSkips, translated, findings);
 			overlay.putAll(preflight.repairs(entry.config(), config, refmap, skip, findings));
 			if (!override.ignorePreflight()) {
-				List<PreflightFinding> checked = preflight.check(entry.config(), config, refmap, skip);
+				List<PreflightFinding> checked = new ArrayList<>(preflight.check(entry.config(), config, refmap, skip));
+				checked.addAll(unsupportedModuleUses(entry.config(), config, skip, translated));
 				findings.addAll(checked);
 				// As Mixin does with an injector that may fail: only the failing handler goes, the rest of the mixin
 				// (its interfaces, accessors and other injectors) still applies.
@@ -476,11 +478,38 @@ public final class ModTranslator {
 		return all;
 	}
 
+	/**
+	 * The mixins that use a class only an unsupported Fabric API module has (Continuity's on 1.21.11 use the renderer
+	 * API): Mixin fails on such a class as it applies the mixin, so the mixin fails the mod, or is left out when its
+	 * config's plugin may skip it at runtime or the config isn't required (Mixin goes on without it then).
+	 */
+	private List<PreflightFinding> unsupportedModuleUses(String configName, MixinConfigFile config, Set<String> skip, FileView files)
+			throws ArchiveException {
+		if (env.unsupportedPackages().isEmpty()) return List.of();
+		List<PreflightFinding> found = new ArrayList<>();
+		for (String mixin : config.mixinsFor(env.clientSide())) {
+			if (skip.contains(mixin)) continue;
+			byte[] data = files.read(config.internalName(mixin) + ".class");
+			if (data == null) continue;
+			for (String used : referencedClasses(data)) {
+				int slash = used.lastIndexOf('/');
+				String module = slash < 0 ? null : env.unsupportedPackages().get(used.substring(0, slash));
+				if (module == null) continue;
+				found.add(new PreflightFinding(config.plugin() == null && config.required() ? Severity.FAIL : Severity.LEFT_OUT, configName,
+						config.internalName(mixin).replace('/', '.'),
+						"uses " + used.replace('/', '.') + " from " + module + ", a Fabric API module that can't run on NeoForge here",
+						"Use the mod's NeoForge build if it has one."));
+				break;
+			}
+		}
+		return found;
+	}
+
 	/** Every class a class file refers to: in its signature, members, instructions and annotations. */
 	private static Set<String> referencedClasses(byte[] data) {
 		Set<String> refs = new HashSet<>();
-		new ClassReader(data).accept(new ClassRemapper(new ClassVisitor(Opcodes.ASM9) {
-		}, new Remapper() {
+		// Into a ClassNode: a visitor that drops members would keep the remapper from visiting their code and annotations.
+		new ClassReader(data).accept(new ClassRemapper(new ClassNode(), new Remapper() {
 			@Override
 			public String map(String internalName) {
 				refs.add(internalName);

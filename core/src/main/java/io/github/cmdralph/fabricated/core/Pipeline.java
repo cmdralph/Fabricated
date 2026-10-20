@@ -329,7 +329,7 @@ public final class Pipeline {
 		InstalledClasses installed = in.namespace() == Namespace.OFFICIAL ? in.installedClasses().with(fabricJars(eligible, opened)) : in.installedClasses();
 		TranslationEnvironment env = new TranslationEnvironment(in.minecraftVersion(), in.neoForgeVersion(), in.clientSide(), in.namespace(),
 				in.runtimeMixinVersion(), in.lowestMixinBehavior(), in.fabricatedVersion(), mappingTable, mappingsHash, game, in.untransformableClasses(),
-				installed, installed.isEmpty() ? game : new ClassIndex(in.gameClasses().or(installed)));
+				installed, installed.isEmpty() ? game : new ClassIndex(in.gameClasses().or(installed)), unsupportedPackages(scan.candidates()));
 		Rounds rounds = new Rounds();
 		try {
 			rounds.run(eligible, resolver(), new ModTranslator(env, in.cache(), config.limits()));
@@ -385,6 +385,22 @@ public final class Pipeline {
 			}));
 		}
 		return jars;
+	}
+
+	/**
+	 * The packages of the unsupported Fabric API modules installed (the renderer API on 1.21.11) that no other jar has,
+	 * with their module: a mixin using a class there fails as Mixin applies it.
+	 */
+	private Map<String, String> unsupportedPackages(List<Candidate> candidates) {
+		Map<String, String> unsupported = new HashMap<>();
+		Set<String> elsewhere = new HashSet<>();
+		for (Candidate c : candidates) {
+			FabricApiPlan.Module module = plan.module(c.id());
+			if (module != null && module.plan() == FabricApiPlan.Plan.UNSUPPORTED) c.packages().forEach(p -> unsupported.putIfAbsent(p, c.id()));
+			else elsewhere.addAll(c.packages());
+		}
+		unsupported.keySet().removeAll(elsewhere);
+		return unsupported;
 	}
 
 	/** Candidates that should load, reporting the others. */

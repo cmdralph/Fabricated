@@ -75,6 +75,12 @@ timeout "$timeout_seconds" xvfb-run -a -s "-screen 0 1280x720x24 +extension GLX 
 	--command launch "neoforge-${neo}" -regex --jvm "-Djava.awt.headless=true -DMcRuntimeGameTest=false" \
 	> client.out 2>&1 &
 client_pid=$!
+descendants() {
+	for child in $(pgrep -P "$1" || true); do
+		echo "$child"
+		descendants "$child"
+	done
+}
 dumped=0
 # The game doesn't exit when no renderer can be created; stop it then instead of waiting for the timeout.
 while kill -0 "$client_pid" 2>/dev/null; do
@@ -82,8 +88,9 @@ while kill -0 "$client_pid" 2>/dev/null; do
 	if [ "$dumped" -eq 0 ] && [ "$SECONDS" -ge $((timeout_seconds - 45)) ]; then
 		dumped=1
 		# SIGQUIT makes a JVM print every thread's stack to its output (client.out) and carry on; jstack can't attach to
-		# the game here ("non existent JVM pid"). Java processes only: a shell would quit on it.
-		for pid in $(pgrep -f -- "-DMcRuntimeGameTest=false" || true); do
+		# the game here ("non existent JVM pid"). Every Java process the launcher started, the game's included (its
+		# command line doesn't carry the launcher's JVM options); a shell would quit on it.
+		for pid in $(descendants "$client_pid"); do
 			if [ "$(cat "/proc/$pid/comm" 2>/dev/null)" = java ]; then kill -QUIT "$pid" 2>/dev/null || true; fi
 		done
 		sleep 3
