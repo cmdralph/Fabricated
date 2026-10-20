@@ -74,7 +74,7 @@ public final class EntrypointRunner {
 	 * The failure of the JVM itself (out of memory, an internal error) in {@code t} or its causes, or null. Reflection and
 	 * language adapters wrap what a mod's constructor or static initializer throws. A stack overflow is the mod's own.
 	 */
-	static VirtualMachineError fatalCause(Throwable t) {
+	public static VirtualMachineError fatalCause(Throwable t) {
 		// Bounded: a cause chain can loop.
 		for (int depth = 0; t != null && depth < 16; t = t.getCause(), depth++) {
 			if (t instanceof VirtualMachineError vme && !(t instanceof StackOverflowError)) return vme;

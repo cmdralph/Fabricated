@@ -150,6 +150,8 @@ public final class HudBridge {
 				root = (Object) getRoot.invokeExact(element);
 				if (root == null) return vanilla;
 				vanillaElement = (Object) this.element.invokeExact(vanilla);
+			} catch (RuntimeException | Error e) {
+				throw e;
 			} catch (Throwable t) {
 				throw new IllegalStateException("Could not set up Fabric HUD element " + element, t);
 			}

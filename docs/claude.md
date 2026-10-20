@@ -1,7 +1,7 @@
 # Fabricated: engineering memory
 
 This file is the starting point for anyone (human or agent) working on Fabricated. **Read it first, then
-[`progress.md`](progress.md).** It holds the architecture map, the rules the code follows and the commands to run
+[`roadmap.md`](roadmap.md).** It holds the architecture map, the rules the code follows and the commands to run
 before committing. The longer design documents remain the reference for details:
 [`ARCHITECTURE.md`](ARCHITECTURE.md) (pipeline, isolation, caching, security), [`RESEARCH.md`](RESEARCH.md) (verified
 facts about NeoForge, FML and Fabric), [`COMPATIBILITY.md`](COMPATIBILITY.md) (what works, per version and module),
@@ -15,13 +15,13 @@ version).
   `26.1.x`, `26.2.x`, `26.3.x`; the Minecraft code NeoForge changes is in `patches/`), or in the Fabric API sources
   at the tag this version's plan names (`fabricApiVersion` in `mc/<version>/src/fabricated/resources/META-INF/fabricated/fabric-api-plan.json`).
   Signatures differ between versions (Fabric's renderer API changed between 26.2 and 26.3, for example). Anything
-  that can't be checked is marked `UNVERIFIED` in `progress.md`.
+  that can't be checked is marked `UNVERIFIED` in `roadmap.md`.
 - **Behaviour changes only fix a proven defect.** The commit message names the file, the failure and why tests
   missed it.
 - **Commits** are small and atomic: `fix(core): ...`, `feat(frapi): ...`, `refactor(mc/26.x): ...`, `docs: ...`,
   `ci: ...`, with a body that explains why.
 - **No placeholders** in merged code (`CONTRIBUTING.md`): an unsupported feature is reported in
-  `fabric-bridge-report.txt`, `COMPATIBILITY.md` and `progress.md`, not stubbed.
+  `fabric-bridge-report.txt`, `COMPATIBILITY.md` and `roadmap.md`, not stubbed.
 - **Pull requests are merged once CI is green on their final commit** (the owner's standing decision, 2026-10-19):
   open the PR, drive it to green, merge it with a merge commit, then continue on the same branch from the new
   `main`.
@@ -41,7 +41,8 @@ version).
 `maven.fabricmc.net`, so only the `coreOnly` build runs there. The Minecraft modules compile, and their mixins
 apply, only in GitHub Actions (`.github/workflows/build.yml`). The loop is: run the `coreOnly` build locally, push,
 and read the CI job logs. `compileJava` doesn't check mixin targets or injection points; those fail when the game
-applies them, which the CI server and client runs do on every push.
+applies them, which the CI server and client runs do for every commit of a pull request (built once, as the pull
+request; pushes to other branches build only on `main`).
 
 **What CI proves, per version** (`.github/workflows/build.yml`):
 1. Unit tests (core, fabric-loader-api, api).
@@ -64,7 +65,9 @@ resolved. Each surviving mod is then translated: remapped from intermediary to M
 26.x), its mixins checked against NeoForge's patched game bytecode by pre-flight, and its access widener turned into
 an access transformer. A cached overlay is generated holding `neoforge.mods.toml` with `modLoader="fabricated"`.
 FML loads the jar plus overlay as an ordinary mod file, applies the access transformers and mixin configs itself,
-and hands each mod to `FabricLanguageLoader`, which makes a `FabricModContainer`. Fabricated's in-game mod
+and hands each mod to `FabricLanguageLoader`, which makes a `FabricModContainer` and adds to the mod's scan data the
+annotations other mods' NeoForge builds look for plugins by (JEI, EMI, REI, Jade: core's `PluginAnnotations`, from the
+mod's entrypoints). Fabricated's in-game mod
 (`FabricatedMod`) then runs the Fabric entrypoints. `main` runs on the first `RegisterEvent` after the attribute
 registry's (registries are open then). `client` runs in `Minecraft`'s constructor (`MinecraftEntrypointsMixin`), and
 `server` after `main` on a dedicated server. When a Fabric mod calls the Fabric API, the call goes either to a
@@ -80,7 +83,13 @@ in a service jar). A NeoForge mod's `modproperties` become its Fabric custom val
 property lists are present too. That is how NeoForge mods speak to Fabric code: Sodium's
 `fabric-renderer-api-v1:contains_renderer` makes Indigo stand down, and it provides `indium`. Of two copies of a
 NeoForge mod the newest counts. The Fabric builds of mods that only work as their NeoForge build (Sodium, Iris) are
-disabled with a message naming it (`Pipeline.NEOFORGE_BUILD_ONLY`).
+disabled with a message naming it, and a Fabric build that can't run next to a NeoForge mod (Iris's next to Sodium
+for NeoForge) is refused even on request: both are data, core's `compat-plan.json` (`CompatPlan`), never a branch on
+a mod id in code. The classes of those jars (and of Fabricated's
+own Fabric API, and on 26.x the other Fabric mods' jars) are core's `InstalledClasses`: pre-flight checks a Fabric
+mixin into one of them as it checks one into the game, and the cache entry keeps the SHA-256 of each installed class it read, so updating that NeoForge mod
+translates the Fabric mod again (`ModTranslator.installedUnchanged`). The game's own files (`minecraft`, `neoforge`)
+are not among them, so pre-flight of mixins into the game is unchanged by what else is installed.
 
 ### Modules and the dependency graph
 
@@ -116,7 +125,7 @@ vendored modules in `mc/<version>/src/fabricapi` and the bridges in `mc/common*`
 | Discovery services → FML | `META-INF/services` in the `loader` source set: `IModFileCandidateLocator`, `IDependencyLocator`, `IModLanguageLoader`, `ClassProcessor` | compile-time against FML SPI |
 | Version facts → core | `META-INF/fabricated/version.properties` (generated: Minecraft version, namespace, Mixin versions) and `fabric-api-plan.json` (data, per version) | data, validated when parsed |
 | Discovery → in-game mod | `FabricatedState.get()` (a `volatile` static in `loader`, published once discovery ends) | compile-time |
-| In-game mod → pass-through Fabric API modules | 26.x renderer API: typed calls, compiled against the module's own jar, in classes loaded only when the module is (`FabricBlockRendering`). Other modules (HUD, picture-in-picture, sprite lookups): `Class.forName` + `MethodHandle`s (`HudBridge`, `PictureInPictureBridge`), because 1.21.11 shares that code and its Fabric API jars use intermediary names | typed / reflective |
+| In-game mod → pass-through Fabric API modules | 26.x renderer API: typed calls, compiled against the module's own jar, in classes loaded only when the module is (`FabricBlockRendering`). Other modules: `Class.forName` + `MethodHandle`s, because their jars are not compile dependencies (and 1.21.11's use intermediary names): `HudBridge`, `ScreenRenderBridge`, `FabricSoundStreams`, `FabricResourceConditions` (shared), `PictureInPictureBridge`, `FabricExtraModels` (26.x), `HudRenderCallbackBridge`, `FabricFluidTint` (1.21.11), `FabricAdvancementReload` (26.3) | typed / reflective |
 | Fabric mods → Fabricated | mixins and class tweakers, applied by FML; Fabric's injected interfaces added by `FabricClassProcessor` at class load | bytecode |
 
 ### Mixins
@@ -209,14 +218,14 @@ breaking overlay) through Fabric's renderer. On NeoForge that would drop level-a
    meshing: the breaking overlay copies the broken block's quads once per frame, because the game draws them after
    the call returns (vanilla copies its parts list there too).
 2. **Quad data has one owner, the active renderer.** Fabricated reads quads through `QuadView` and never keeps
-   them (vanilla quads made from them for the game, as for the breaking overlay, are the game's). If Fabricated ever gets its own encoder (see the roadmap in `progress.md`), its `int[]` stride, offsets and
+   them (vanilla quads made from them for the game, as for the breaking overlay, are the game's). If Fabricated ever gets its own encoder (see `roadmap.md`), its `int[]` stride, offsets and
    bit masks live in one constants class that every reader and writer uses.
 3. **Emitters and Fabric block renderers are thread-confined.** One per thread and use (`ThreadLocal`), bound to a
    section or a frame's buffers only for the duration of one call, never shared, never stored in a static field. Indigo's
    block renderer captures its thread's light cache when it is made, so sharing one across threads is a bug.
 4. **Version-agnostic FRAPI code lives in `mc/common26`** behind the narrow seam above. Version-specific code goes in
    `mc/<version>` with a one-line comment naming the API difference that forces it. 1.21.11 needs its own work (see
-   `progress.md`).
+   `roadmap.md`).
 5. **Every cache has an explicit lifecycle tied to what it caches.** A cache keyed by a `Class` is a `ClassValue`
    (class lifetime, no pinning). A cache of baked models, sprites or atlases is cleared in a reload listener, or it
    lives in a field of the reloaded object itself. No static map keyed by models, states or identifiers outlives a

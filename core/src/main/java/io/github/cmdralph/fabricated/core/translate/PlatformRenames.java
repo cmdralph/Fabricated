@@ -1,6 +1,5 @@
 package io.github.cmdralph.fabricated.core.translate;
 
-import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
@@ -51,7 +50,7 @@ final class PlatformRenames {
 	static PlatformRenames of(ClassBytesSource platform) {
 		Map<String, Map<String, String>> active = new HashMap<>();
 		KNOWN.forEach((owner, renames) -> {
-			ClassNode node = read(platform, owner);
+			ClassNode node = platform.readNode(owner, ClassReader.SKIP_CODE);
 			if (node == null) return;
 			Map<String, String> applying = new HashMap<>();
 			renames.forEach((from, to) -> {
@@ -142,18 +141,6 @@ final class PlatformRenames {
 			}
 		}), 0);
 		return changed[0] ? writer.toByteArray() : null;
-	}
-
-	private static ClassNode read(ClassBytesSource platform, String owner) {
-		try {
-			byte[] data = platform.read(owner);
-			if (data == null) return null;
-			ClassNode node = new ClassNode();
-			new ClassReader(data).accept(node, ClassReader.SKIP_CODE);
-			return node;
-		} catch (IOException | RuntimeException e) {
-			return null;
-		}
 	}
 
 	private static boolean hasField(ClassNode node, String name) {

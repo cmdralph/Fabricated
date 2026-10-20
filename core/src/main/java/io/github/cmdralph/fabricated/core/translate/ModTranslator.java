@@ -72,6 +72,8 @@ public final class ModTranslator {
 	private static final String SODIUM_CONFIG_ENTRYPOINT = "sodium:config_api_user";
 	/** A mod's overrides of Sodium's mixin options, as a custom value (Fabric) or a key of its mods.toml entry (NeoForge). */
 	private static final String SODIUM_OPTIONS = "sodium:options";
+	/** Jade's custom value, which Jade for NeoForge reads from the mod properties of the same name. */
+	private static final String JADE = "jade";
 
 	/** Heap a translation may count on, in MiB: a quarter of the maximum, shared by all translations at once. */
 	private static final int MEMORY_MIB = (int) Math.max(64, Math.min(Integer.MAX_VALUE, Runtime.getRuntime().maxMemory() / 4 / (1 << 20)));
@@ -105,7 +107,7 @@ public final class ModTranslator {
 
 		Optional<TranslationCache.Entry> hit = env.namespace() == Namespace.INTERMEDIARY
 				? cache.lookup(entryName, OVERLAY, REMAPPED) : cache.lookup(entryName, OVERLAY);
-		if (hit.isPresent()) {
+		if (hit.isPresent() && installedUnchanged(hit.get())) {
 			return fromCache(candidate, neoId, hit.get());
 		}
 
@@ -140,8 +142,9 @@ public final class ModTranslator {
 
 				Map<String, byte[]> overlay = new TreeMap<>();
 				List<PreflightFinding> findings = new ArrayList<>();
+				Map<String, String> installedClasses = new TreeMap<>();
 				List<ModsTomlWriter.MixinConfigSpec> mixinSpecs = processMixins(candidate, override, files,
-						remapped != null ? remapped.keySet() : archive.classEntryNames(), overlay, findings);
+						remapped != null ? remapped.keySet() : archive.classEntryNames(), overlay, findings, installedClasses);
 
 				List<InjectedInterface> injections = List.of();
 				int atLines = 0;
@@ -175,7 +178,7 @@ public final class ModTranslator {
 						md.getDescription(), List.copyOf(md.getAuthors()), List.copyOf(md.getContributors()),
 						List.copyOf(md.getLicense()), url(md.getContact().get("homepage").orElse(null), "homepage", notes),
 						url(md.getContact().get("issues").orElse(null), "issues", notes), md.getIconPath(256).filter(archive::contains).orElse(null), mixinSpecs,
-						overlay.containsKey(AT_PATH), after, sodiumProperties(md, notes), sodiumOptions(md, notes));
+						overlay.containsKey(AT_PATH), after, modProperties(md, notes), booleans(md, SODIUM_OPTIONS, notes));
 				overlay.put(ModsTomlWriter.PATH, ModsTomlWriter.write(spec).getBytes(StandardCharsets.UTF_8));
 				overlay.put("META-INF/MANIFEST.MF", overlayManifest(neoId));
 
@@ -198,6 +201,7 @@ public final class ModTranslator {
 				meta.put("findings", findings.stream().map(ModTranslator::findingToJson).toList());
 				meta.put("injectedInterfaces", injections.stream().map(ModTranslator::injectionToJson).toList());
 				meta.put("environmentClasses", List.copyOf(environmentClasses));
+				meta.put("installedClasses", installedClasses);
 				TranslationCache.Entry entry = cache.store(entryName, outputs, meta);
 				Path jar = remapped != null ? entry.file(REMAPPED) : candidate.path();
 				return new TranslatedMod(candidate, neoId, jar, entry.file(OVERLAY), List.copyOf(findings), atLines,
@@ -273,8 +277,10 @@ public final class ModTranslator {
 		byte[] read(String name) throws ArchiveException;
 	}
 
+	/** @param installedClasses receives the installed classes pre-flight read, with their fingerprints */
 	private List<ModsTomlWriter.MixinConfigSpec> processMixins(Candidate candidate, ModOverride override, FileView files,
-			Collection<String> entries, Map<String, byte[]> overlay, List<PreflightFinding> findings) throws ArchiveException, TranslationException {
+			Collection<String> entries, Map<String, byte[]> overlay, List<PreflightFinding> findings, Map<String, String> installedClasses)
+			throws ArchiveException, TranslationException {
 		FabricModMetadata md = candidate.metadata();
 		String behavior = MixinCompat.clampForNeoForge(MixinCompat.fabricBehaviorVersion(md.getDependencies()), env.runtimeMixinVersion(),
 				env.lowestMixinBehavior());
@@ -282,9 +288,10 @@ public final class ModTranslator {
 		List<ModsTomlWriter.MixinConfigSpec> specs = new ArrayList<>();
 		// Pre-flight sees the mod as it will load: with the handler methods left out below.
 		FileView translated = name -> overlay.containsKey(name) ? overlay.get(name) : files.read(name);
-		MixinPreflight preflight = new MixinPreflight(env.game(), classSource(translated), env.untransformable(), env.clientSide(),
-				MixinCompat.missingTargetsFatal(behavior));
+		MixinPreflight preflight = new MixinPreflight(env.installedIndex(), env.installed(), classSource(translated), env.untransformable(),
+				env.clientSide(), MixinCompat.missingTargetsFatal(behavior));
 		Map<String, MixinConfigFile> configs = new HashMap<>();
+		Set<String> matchedSkips = new HashSet<>();
 		Map<String, Refmap> refmaps = new HashMap<>();
 
 		for (MixinEntry entry : md.compatHints().mixinsOr(md.mixins())) {
@@ -311,6 +318,7 @@ public final class ModTranslator {
 			refmaps.put(entry.config(), refmap);
 
 			Skips skips = skipsFor(entry.config(), config, override.skipMixins());
+			matchedSkips.addAll(skips.matched());
 			Set<String> wholeSkips = skips.mixins();
 			for (Map.Entry<String, Set<String>> handlers : skips.members().entrySet()) {
 				String path = config.internalName(handlers.getKey()) + ".class";
@@ -346,6 +354,8 @@ public final class ModTranslator {
 			specs.add(new ModsTomlWriter.MixinConfigSpec(entry.config(), behavior));
 		}
 		if (!override.ignorePreflight()) checkPluginMixins(entries, configs, refmaps, preflight, translated, overlay, findings);
+		installedClasses.putAll(preflight.installedClasses());
+		unmatchedSkips(override.skipMixins(), matchedSkips, md.compatHints().mixinsOr(md.mixins()), configs.keySet(), findings);
 
 		List<PreflightFinding> failures = findings.stream().filter(f -> f.severity() == Severity.FAIL).toList();
 		if (!failures.isEmpty()) {
@@ -469,25 +479,51 @@ public final class ModTranslator {
 	 * The skip entries that apply to {@code configName}, for mixins it declares: {@code "config.json:Name"} (one config)
 	 * or {@code "Name"} (every config) leaves out the whole mixin; {@code "Name#member"} only the methods and fields of
 	 * that name in a mixin kept otherwise (when its other injections still work on NeoForge).
+	 *
+	 * @param matched the configured entries that name a mixin of the config
 	 */
-	record Skips(Set<String> mixins, Map<String, Set<String>> members) {
+	record Skips(Set<String> mixins, Map<String, Set<String>> members, Set<String> matched) {
 	}
 
 	static Skips skipsFor(String configName, MixinConfigFile config, Set<String> configured) {
 		Set<String> declared = new HashSet<>(config.allMixins());
 		Set<String> mixins = new TreeSet<>();
 		Map<String, Set<String>> members = new TreeMap<>();
+		Set<String> matched = new HashSet<>();
 		for (String s : configured) {
 			String name = skipTarget(configName, s);
 			if (name == null) continue;
 			int hash = name.indexOf('#');
 			String mixin = hash < 0 ? name : name.substring(0, hash);
 			if (!declared.contains(mixin)) continue;
+			matched.add(s);
 			if (hash < 0) mixins.add(mixin);
 			else members.computeIfAbsent(mixin, k -> new TreeSet<>()).add(name.substring(hash + 1));
 		}
 		members.keySet().removeAll(mixins);
-		return new Skips(mixins, members);
+		return new Skips(mixins, members, matched);
+	}
+
+	/**
+	 * Notes each {@code skipMixins} entry that names no mixin of the mod, a likely typo. Only where every config the
+	 * entry could apply to was read on this side: a client config's mixins aren't read on a dedicated server.
+	 *
+	 * @param checked the configs read on this side
+	 */
+	static void unmatchedSkips(Set<String> configured, Set<String> matched, List<MixinEntry> declared, Set<String> checked,
+			List<PreflightFinding> findings) {
+		Set<String> declaredConfigs = new HashSet<>();
+		for (MixinEntry entry : declared) declaredConfigs.add(entry.config());
+		for (String skip : new TreeSet<>(configured)) {
+			if (matched.contains(skip)) continue;
+			int colon = skip.indexOf(':');
+			String configName = colon >= 0 ? skip.substring(0, colon) : null;
+			boolean everywhere = configName != null ? checked.contains(configName) || !declaredConfigs.contains(configName)
+					: checked.containsAll(declaredConfigs);
+			if (!everywhere) continue;
+			findings.add(new PreflightFinding(Severity.INFO, configName != null ? configName : "", null,
+					"The skipMixins entry \"" + skip + "\" names no mixin of this mod; check its spelling", ""));
+		}
 	}
 
 	/** The mixin part of a skip entry when it applies to {@code configName}, else null. */
@@ -584,6 +620,19 @@ public final class ModTranslator {
 		ByteArrayOutputStream out = new ByteArrayOutputStream();
 		DeterministicJarWriter.write(out, files);
 		return out.toByteArray();
+	}
+
+	/** Whether the installed classes a cached translation's pre-flight read are as they were (an installed mod may have changed). */
+	private boolean installedUnchanged(TranslationCache.Entry entry) {
+		if (!(entry.metadata().get("installedClasses") instanceof Map<?, ?> classes)) return true;
+		try {
+			for (Map.Entry<?, ?> c : classes.entrySet()) {
+				if (!env.installed().fingerprint(String.valueOf(c.getKey())).equals(c.getValue())) return false;
+			}
+			return true;
+		} catch (IOException e) {
+			return false;
+		}
 	}
 
 	private TranslatedMod fromCache(Candidate candidate, String neoId, TranslationCache.Entry entry) {
@@ -684,21 +733,33 @@ public final class ModTranslator {
 	}
 
 	/** The mod's overrides of Sodium's mixin options: a custom value on Fabric, a key of its {@code [[mods]]} entry for Sodium for NeoForge. */
-	static Map<String, Boolean> sodiumOptions(FabricModMetadata md, List<String> notes) {
-		CustomValue options = md.getCustomValue(SODIUM_OPTIONS);
+	/**
+	 * What NeoForge mods read from a mod's {@code [modproperties]} where Fabric mods read an entrypoint or a custom
+	 * value: Sodium's options page, and Jade's settings ({@code jade}: accessibilityMod, fastScroll, ...).
+	 */
+	static Map<String, Object> modProperties(FabricModMetadata md, List<String> notes) {
+		Map<String, Object> properties = new LinkedHashMap<>(sodiumProperties(md, notes));
+		Map<String, Boolean> jade = booleans(md, JADE, notes);
+		if (!jade.isEmpty()) properties.put(JADE, jade);
+		return properties;
+	}
+
+	/** A custom value that is an object of booleans (Sodium's mixin option overrides, Jade's settings). */
+	static Map<String, Boolean> booleans(FabricModMetadata md, String key, List<String> notes) {
+		CustomValue options = md.getCustomValue(key);
 		if (options == null) return Map.of();
 		if (options.getType() != CustomValue.CvType.OBJECT) {
-			notes.add("Its " + SODIUM_OPTIONS + " is not an object; left out");
+			notes.add("Its " + key + " is not an object; left out");
 			return Map.of();
 		}
-		Map<String, Boolean> overrides = new LinkedHashMap<>();
+		Map<String, Boolean> values = new LinkedHashMap<>();
 		for (Map.Entry<String, CustomValue> option : options.getAsObject()) {
 			if (option.getValue().getType() == CustomValue.CvType.BOOLEAN) {
-				overrides.put(option.getKey(), option.getValue().getAsBoolean());
+				values.put(option.getKey(), option.getValue().getAsBoolean());
 			} else {
-				notes.add("Its " + SODIUM_OPTIONS + " entry " + option.getKey() + " is not true or false; left out");
+				notes.add("Its " + key + " entry " + option.getKey() + " is not true or false; left out");
 			}
 		}
-		return overrides;
+		return values;
 	}
 }

@@ -11,7 +11,6 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.jupiter.api.Test;
@@ -53,7 +52,7 @@ class FabricLoaderRuntimeTest {
 				+ "\"provides\":[\"" + id + "-provided\"],\"entrypoints\":{\"main\":[\"" + mainClass + "\"],\"custom\":[\"" + mainClass + "\"]}}");
 		ModContainerImpl c = new ModContainerImpl(md, List.of(), new ModContainerImpl.Origin(ModOrigin.Kind.PATH, List.of(), null, null), null, List.of(), rt);
 		rt.addMod(c, md.getProvides());
-		rt.addEntrypoints(c, md.entrypoints(), Set.of());
+		rt.addEntrypoints(c, md.entrypoints());
 		return c;
 	}
 

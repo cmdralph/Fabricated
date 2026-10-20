@@ -1,6 +1,8 @@
 package io.github.cmdralph.fabricated.core.resolve;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -8,6 +10,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Random;
+import java.util.Set;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -35,6 +38,7 @@ class NestedNeoForgeJarsTest {
 		byte[] mod = TestJars.create()
 				.text("META-INF/MANIFEST.MF", "Manifest-Version: 1.0\nImplementation-Version: 0.9.2+mc26.3\n")
 				.text("META-INF/neoforge.mods.toml", TOML.formatted("sodium"))
+				.bytes("net/caffeinemc/Renderer.class", TestJars.emptyClass("net/caffeinemc/Renderer", "java/lang/Object"))
 				.text(NestedNeoForgeJars.METADATA, jarJar("META-INF/jarjar/deep.jar"))
 				.bytes("META-INF/jarjar/deep.jar", deepest)
 				.toBytes();
@@ -53,6 +57,13 @@ class NestedNeoForgeJarsTest {
 		assertTrue(found.get(0).text().contains("modId=\"sodium\""));
 		assertEquals("0.9.2+mc26.3", found.get(0).jarVersion(), "from the nested jar's manifest");
 		assertEquals("2.0.0", found.get(1).jarVersion(), "from the jar-in-jar list, without a manifest version");
+
+		// Fabric mixins may target the nested mod's classes: they are listed, and read in place.
+		assertEquals(Set.of("net/caffeinemc/Renderer"), found.get(0).classes());
+		assertEquals(List.of("META-INF/jarjar/sodium-mod.jar", "META-INF/jarjar/deep.jar"), found.get(1).chain());
+		assertArrayEquals(TestJars.emptyClass("net/caffeinemc/Renderer", "java/lang/Object"),
+				NestedNeoForgeJars.readClass(service, found.get(0).chain(), "net/caffeinemc/Renderer", ArchiveLimits.DEFAULTS));
+		assertNull(NestedNeoForgeJars.readClass(service, found.get(1).chain(), "net/caffeinemc/Renderer", ArchiveLimits.DEFAULTS));
 	}
 
 	@Test

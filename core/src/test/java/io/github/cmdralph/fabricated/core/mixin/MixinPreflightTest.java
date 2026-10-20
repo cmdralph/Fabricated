@@ -14,17 +14,23 @@ import org.junit.jupiter.api.Test;
 import org.objectweb.asm.AnnotationVisitor;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassWriter;
+import org.objectweb.asm.FieldVisitor;
 import org.objectweb.asm.Label;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Handle;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
+import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.AnnotationNode;
 import org.objectweb.asm.tree.ClassNode;
+import org.objectweb.asm.tree.MethodNode;
+import org.objectweb.asm.tree.VarInsnNode;
 
+import io.github.cmdralph.fabricated.core.archive.Hashing;
 import io.github.cmdralph.fabricated.core.bytecode.Annotations;
 import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
 import io.github.cmdralph.fabricated.core.bytecode.ClassIndex;
+import io.github.cmdralph.fabricated.core.bytecode.InstalledClasses;
 import io.github.cmdralph.fabricated.core.mixin.PreflightFinding.Severity;
 
 class MixinPreflightTest {
@@ -82,6 +88,53 @@ class MixinPreflightTest {
 		current.visitEnd();
 		cw.visitEnd();
 		return cw.toByteArray();
+	}
+
+	/** A mixin into {@code target} shadowing its int field {@code field}. */
+	private static byte[] shadowMixin(String name, String target, String field) {
+		ClassWriter cw = new ClassWriter(0);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, name, null, "java/lang/Object", null);
+		AnnotationVisitor m = cw.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false);
+		AnnotationVisitor values = m.visitArray("value");
+		values.visit(null, Type.getObjectType(target));
+		values.visitEnd();
+		m.visitEnd();
+		FieldVisitor shadow = cw.visitField(Opcodes.ACC_PRIVATE, field, "I", null, null);
+		shadow.visitAnnotation("Lorg/spongepowered/asm/mixin/Shadow;", false).visitEnd();
+		shadow.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	/**
+	 * A Fabric addon's mixins into the NeoForge build of the mod it extends are checked against that build (and the
+	 * classes read are recorded for the cache); a target no installed jar has is not judged.
+	 */
+	@Test
+	void checksMixinsIntoTheClassesOfInstalledMods() throws Exception {
+		String renderer = "net/example/sodium/Renderer";
+		ClassWriter cw = new ClassWriter(0);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, renderer, null, "java/lang/Object", null);
+		cw.visitField(Opcodes.ACC_PRIVATE, "sections", "I", null, null).visitEnd();
+		cw.visitEnd();
+		byte[] rendererClass = cw.toByteArray();
+		InstalledClasses installed = new InstalledClasses(List.of(new InstalledClasses.Jar("Sodium", renderer::equals,
+				name -> name.equals(renderer) ? rendererClass : null)));
+		Map<String, byte[]> mod = Map.of(
+				"com/example/mixin/Present", shadowMixin("com/example/mixin/Present", renderer, "sections"),
+				"com/example/mixin/Gone", shadowMixin("com/example/mixin/Gone", renderer, "chunks"),
+				"com/example/mixin/Elsewhere", shadowMixin("com/example/mixin/Elsewhere", "net/example/other/Thing", "x"));
+		MixinPreflight preflight = new MixinPreflight(new ClassIndex(installed), installed, mod::get, ClassBytesSource.EMPTY, false, true);
+
+		List<PreflightFinding> findings = preflight.check("test.mixins.json", MixinConfigFile.parse(config(true, "Present", "Gone", "Elsewhere")),
+				Refmap.EMPTY, Set.of());
+
+		assertEquals(2, findings.size(), findings.toString());
+		PreflightFinding gone = findings.stream().filter(f -> f.mixin().endsWith("Gone")).findFirst().orElseThrow();
+		assertEquals(Severity.FAIL, gone.severity());
+		assertTrue(gone.suggestion().startsWith("This version of Sodium changed net.example.sodium.Renderer"), gone.suggestion());
+		assertEquals(Severity.INFO, findings.stream().filter(f -> f.mixin().endsWith("Elsewhere")).findFirst().orElseThrow().severity());
+		assertEquals(Map.of(renderer, Hashing.sha256(rendererClass)), preflight.installedClasses());
 	}
 
 	@Test
@@ -181,6 +234,106 @@ class MixinPreflightTest {
 		assertTrue(new MixinPreflight(vanilla, mod::get, ClassBytesSource.EMPTY, false)
 				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty(),
 				"a constructor vanilla delegates itself is the one the mixin means");
+	}
+
+	/**
+	 * {@link #TARGET} as NeoForge makes {@code BakedQuad}: a record whose vanilla constructor {@code <init>(IJ)V} is kept,
+	 * not deprecated, as {@code this(i, j, Extra.DEFAULT)} with a component of a NeoForge type appended ({@code neoForge}),
+	 * or of a vanilla type (as vanilla's own delegating constructors pass).
+	 */
+	private static byte[] appendedComponent(boolean neoForge) {
+		String extra = neoForge ? "Lnet/neoforged/neoforge/client/model/quad/BakedColors;" : "Lnet/minecraft/world/Other;";
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_FINAL, TARGET, null, "java/lang/Record", null);
+		MethodVisitor kept = cw.visitMethod(Opcodes.ACC_PUBLIC, "<init>", "(IJ)V", null, null);
+		kept.visitCode();
+		kept.visitVarInsn(Opcodes.ALOAD, 0);
+		kept.visitVarInsn(Opcodes.ILOAD, 1);
+		kept.visitVarInsn(Opcodes.LLOAD, 2);
+		kept.visitFieldInsn(Opcodes.GETSTATIC, Type.getType(extra).getInternalName(), "DEFAULT", extra);
+		kept.visitMethodInsn(Opcodes.INVOKESPECIAL, TARGET, "<init>", "(IJ" + extra + ")V", false);
+		kept.visitInsn(Opcodes.RETURN);
+		kept.visitMaxs(0, 0);
+		kept.visitEnd();
+		MethodVisitor canonical = cw.visitMethod(Opcodes.ACC_PUBLIC, "<init>", "(IJ" + extra + ")V", null, null);
+		canonical.visitCode();
+		canonical.visitVarInsn(Opcodes.ALOAD, 0);
+		canonical.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/Record", "<init>", "()V", false);
+		canonical.visitInsn(Opcodes.RETURN);
+		canonical.visitMaxs(0, 0);
+		canonical.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	/** Sodium's {@code BakedQuadMixin}: an {@code @Inject} at the end of {@code <init>(IJ)V} whose handler takes its parameters. */
+	private static void injectTakingConstructorParameters(ClassWriter cw) {
+		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "init", "(IJLorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V", null, null);
+		AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
+		AnnotationVisitor methods = ann.visitArray("method");
+		methods.visit(null, "<init>(IJ)V");
+		methods.visitEnd();
+		AnnotationVisitor ats = ann.visitArray("at");
+		AnnotationVisitor at = ats.visitAnnotation(null, "Lorg/spongepowered/asm/mixin/injection/At;");
+		at.visit("value", "RETURN");
+		at.visitEnd();
+		ats.visitEnd();
+		ann.visitEnd();
+		mv.visitCode();
+		mv.visitInsn(Opcodes.RETURN);
+		mv.visitMaxs(0, 5);
+		mv.visitEnd();
+	}
+
+	@Test
+	void anInjectionAtTheEndOfAConstructorNeoForgeAppendedComponentsToMovesThroughABridge() throws Exception {
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Quad", mixin("com/example/mixin/Quad", false, MixinPreflightTest::injectTakingConstructorParameters)));
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Quad"));
+		ClassIndex neoForge = new ClassIndex(Map.of(TARGET, appendedComponent(true))::get);
+		List<PreflightFinding> notes = new ArrayList<>();
+
+		Map<String, byte[]> repaired = new MixinPreflight(neoForge, mod::get, ClassBytesSource.EMPTY, false)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
+
+		assertEquals(Set.of("com/example/mixin/Quad.class"), repaired.keySet(), notes.toString());
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired.get("com/example/mixin/Quad.class")).accept(node, 0);
+		MethodNode handler = node.methods.stream().filter(m -> m.name.equals("init")).findFirst().orElseThrow();
+		MethodNode bridge = node.methods.stream().filter(m -> m.name.equals("init$fabricated")).findFirst().orElseThrow();
+		assertTrue(handler.invisibleAnnotations == null || handler.invisibleAnnotations.isEmpty(), "the injector moved to the bridge");
+		assertEquals("(IJLnet/neoforged/neoforge/client/model/quad/BakedColors;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V", bridge.desc);
+		assertEquals(List.of("<init>(IJLnet/neoforged/neoforge/client/model/quad/BakedColors;)V"),
+				Annotations.value(bridge.invisibleAnnotations.getFirst(), "method"));
+		// The bridge passes its own first parameters and the callback info on, skipping the appended one.
+		List<Integer> loads = new ArrayList<>();
+		for (AbstractInsnNode insn : bridge.instructions) {
+			if (insn instanceof VarInsnNode load) loads.add(load.var);
+		}
+		assertEquals(List.of(0, 1, 2, 5), loads);
+		mod.put("com/example/mixin/Quad", repaired.get("com/example/mixin/Quad.class"));
+		assertTrue(new MixinPreflight(neoForge, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty());
+
+		ClassIndex vanillaTypes = new ClassIndex(Map.of(TARGET, appendedComponent(false))::get);
+		assertTrue(new MixinPreflight(vanillaTypes, Map.of("com/example/mixin/Quad", mixin("com/example/mixin/Quad", false,
+						MixinPreflightTest::injectTakingConstructorParameters))::get, ClassBytesSource.EMPTY, false)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty(),
+				"a delegate appending vanilla types may be vanilla's own");
+	}
+
+	/** A member named as mixins name what they add ({@code modid$name}) may come from another mod's mixin: not judged. */
+	@Test
+	void membersAnotherModsMixinMayAddAreNotJudged() throws Exception {
+		ClassIndex game = new ClassIndex(Map.of(TARGET, targetClass())::get);
+		Map<String, byte[]> mod = Map.of(
+				"com/example/mixin/Added", mixin("com/example/mixin/Added", false, cw -> inject(cw, "h", "sodium$setActive", "HEAD", null, 1, null)),
+				"com/example/mixin/Gone", mixin("com/example/mixin/Gone", false, cw -> inject(cw, "h", "setActive", "HEAD", null, 1, null)));
+		List<PreflightFinding> findings = new MixinPreflight(game, mod::get, ClassBytesSource.EMPTY, false)
+				.check("test.mixins.json", MixinConfigFile.parse(config(true, "Added", "Gone")), Refmap.EMPTY, Set.of());
+
+		assertEquals(Severity.INFO, findings.stream().filter(f -> f.mixin().endsWith("Added")).findFirst().orElseThrow().severity(), findings.toString());
+		assertEquals(Severity.FAIL, findings.stream().filter(f -> f.mixin().endsWith("Gone")).findFirst().orElseThrow().severity(), findings.toString());
+		assertTrue(MixinPreflight.addedByAMixin("iris$flag"));
+		assertTrue(!MixinPreflight.addedByAMixin("lambda$tick$0") && !MixinPreflight.addedByAMixin("access$000") && !MixinPreflight.addedByAMixin("tick"));
 	}
 
 	/** A library interface named {@code name}, extending {@code parent} (or none), declaring {@code parse(Object)}. */

@@ -92,7 +92,7 @@ Fabricated/
 │   ├── 26.2/                ... for 26.2   (Java 25)
 │   └── 26.3/                ... for 26.3   (Java 25, NeoForge beta)
 ├── ci/                      Server, client and mod-corpus smoke tests run by GitHub Actions
-└── docs/                    claude.md (start here), progress.md, RESEARCH, ARCHITECTURE, COMPATIBILITY, MIXINS, API
+└── docs/                    claude.md (start here), roadmap.md, RESEARCH, ARCHITECTURE, COMPATIBILITY, MIXINS, API
 ```
 
 * **Output:** one jar per MC version, `fabricated-<version>+mc<mc>.jar`. `core`, `loader`, `fabric-loader-api` and `api` are shaded in, all under the Fabricated-owned package `io.github.cmdralph.fabricated.*`, so they can't clash with anything. The `fabric-loader-api` types keep their original `net.fabricmc.*` package names because Fabric mods link against them.
@@ -104,7 +104,7 @@ Fabricated/
 ## 3. Mod discovery and metadata translation
 
 ### 3.1 Claiming Fabric jars
-`FabricCandidateLocator implements IModFileCandidateLocator` (ServiceLoader-registered) claims any jar in the mods folder containing `fabric.mod.json` and **no** `META-INF/neoforge.mods.toml`, which leaves multi-loader jars to NeoForge. It returns a lightweight *candidate* mod file. Because FML runs readers before its `IncompatibleModReason.FABRIC` check, the jar is no longer "broken". `FabricDependencyLocator implements IDependencyLocator` then processes all candidates together, since resolution needs the global view. The same discovery pattern is used by prior art; this implementation is clean-room.
+`FabricCandidateLocator implements IModFileCandidateLocator` (ServiceLoader-registered) claims any jar in the mods folder containing `fabric.mod.json` and **no** `META-INF/neoforge.mods.toml`, which leaves multi-loader jars to NeoForge. It only marks the jar as located (`addLocated`), so NeoForge doesn't report it as an incompatible Fabric jar; it is not a NeoForge mod file. `FabricDependencyLocator implements IDependencyLocator` then processes all candidates together, since resolution needs the global view. The same discovery pattern is used by prior art; this implementation is clean-room.
 
 ### 3.2 `fabric.mod.json` → descriptor
 * `schemaVersion` 1 is fully supported. Schema 0 (pre-2019) is rejected with a clear message.
@@ -131,7 +131,7 @@ The generated overlay `neoforge.mods.toml` uses `modLoader="fabricated"`, so FML
 * Extracted **from the validated archive only**, to `<gameDir>/.fabricated/cache/nested/<sha256>.jar` (content-addressed, so it's written once).
 * Max nesting depth is 3. Every level gets the same archive checks.
 * Nested jars with `fabric.mod.json` become Fabric candidates. For duplicates by id, **highest version wins**, as in Fabric Loader. Fabric API modules nested inside mods are routed to the module plan (§6).
-* Nested plain libraries are added as FML libraries (`FMLModType: LIBRARY` in the overlay manifest).
+* A nested jar without `fabric.mod.json` is rejected and reported (Loom gives every nested library one).
 
 ### 3.4 Dependency resolution (why Fabricated, not FML, decides)
 FML treats an unmet *required* dependency as a fatal loading error, which would let one Fabric mod block the game. Fabricated therefore resolves the Fabric graph itself first:
@@ -151,7 +151,7 @@ NeoForge's sequence is: mod construction, then `unfreezeData()`, then a `Registe
 
 | Fabric entrypoint | When Fabricated runs it | Ordering |
 |---|---|---|
-| `preLaunch` | **Not run as Fabric does** (Fabric runs it before game classes load). Fabricated runs it at language-loader init, before any MC class is touched by Fabricated, and documents the difference. Mods doing classloader tricks there are unsupported. | Dependency order |
+| `preLaunch` | **Not run as Fabric does** (Fabric runs it before game classes load). Fabricated runs it right before `main`, on the first `RegisterEvent` (`EntrypointBridge`). Mods doing classloader tricks there are unsupported; running it earlier is on the roadmap. | Dependency order |
 | `main` (`ModInitializer`) | Once, on the **first `RegisterEvent` after the attribute registry's** (which NeoForge posts first): registries are unfrozen, NeoForge's own attributes (part of every living entity's attribute builder) are registered, and NeoForge mods constructed before it are visible | Fabric dependency order (topological, ties broken by id, so it's deterministic) |
 | `client` (`ClientModInitializer`) | After *all* `main` entrypoints, on the client dist, where Fabric runs it: in `Minecraft`'s constructor just before it records the game thread, once the instance, game directory and user are set (NeoForge registers mods before it creates `Minecraft`, and client initializers commonly use the instance) | Same |
 | `server` (`DedicatedServerModInitializer`) | Immediately after all `main`, on a dedicated server | Same |
@@ -179,6 +179,13 @@ Each mod's entrypoints run inside a guard that records mod id, entrypoint key, c
    * `@Local(name = …)` captures name a local variable the target declares (when the game class carries local names), and `@ModifyConstant` constants occur in the target;
    * merged methods, `@Accessor`s and `@Invoker`s don't collide with a method the target already declares (NeoForge adds some, such as `hashCode` or public getters);
    * a `NEW` point with a constructor descriptor matches that constructor only, and targets in library classes NeoForge loads without mixin support (DataFixerUpper, Brigadier, the JDK) fail.
+
+   Mixins into the classes of the jars installed next to the Fabric mods get the same checks (`InstalledClasses`:
+   Fabricated's Fabric API, then each NeoForge mod's jar, nested ones too, then on 26.x the Fabric mods' jars, whose
+   classes load unchanged there). That covers a Fabric addon of a mod whose NeoForge build is installed (Sodium's,
+   nested in a service jar) and of another Fabric mod. A Fabric jar is opened only when a target is in one of its
+   packages (recorded at discovery). A target in none of them is not judged. The cache entry records each installed class pre-flight read with its SHA-256; when one
+   differs at the next launch (the NeoForge mod was updated), the mod is translated again.
 
    Outcome per mixin:
    * A missing target class fails only where Mixin rejects it: in a required config at compatibility level 0.17.4 or later (before that, Mixin skips the target).
@@ -298,7 +305,9 @@ versions is decided at compile time by which source folders it compiles, plus tw
   (`mc/<ver>/src/fabricapi`), because upstream's sources differ per version.
 * **Data.** `META-INF/fabricated/fabric-api-plan.json` (per version: which Fabric API modules are native,
   pass-through or unsupported, and which upstream mixins to skip) and the generated `version.properties` (Minecraft
-  version, mapping namespace, Mixin versions). Core reads both and validates them when parsed.
+  version, mapping namespace, Mixin versions). Core reads both and validates them when parsed. Facts about other
+  people's mods are core's `compat-plan.json` (`CompatPlan`): Fabric builds that can't run on NeoForge, and Fabric
+  builds that can't run next to a NeoForge mod; a unit test parses the shipped file.
 * **Mixin differences in Fabric mods** are repaired by core's pre-flight against the running game's bytecode
   (`MixinPreflight.repairs`: overloads NeoForge reordered or moved code into, constructors NeoForge kept for
   vanilla's signature, renumbered lambdas, hard local captures, accessors of members NeoForge added), not by

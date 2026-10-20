@@ -15,8 +15,11 @@ import org.junit.jupiter.api.Test;
 import io.github.cmdralph.fabricated.core.metadata.ModIds;
 import io.github.cmdralph.fabricated.core.metadata.ContactInformationImpl.PersonImpl;
 import io.github.cmdralph.fabricated.core.metadata.FabricModJsonParser;
+import io.github.cmdralph.fabricated.core.metadata.FabricModMetadata;
 import io.github.cmdralph.fabricated.core.mixin.MixinConfigFile;
+import io.github.cmdralph.fabricated.core.mixin.PreflightFinding;
 import net.fabricmc.loader.api.metadata.ContactInformation;
+import net.fabricmc.loader.api.metadata.ModEnvironment;
 
 class TranslateHelpersTest {
 	@Test
@@ -37,28 +40,32 @@ class TranslateHelpersTest {
 		assertTrue(toml.contains("[[mixins]]\nconfig=\"my.mixins.json\"\nbehaviorVersion=\"0.17.4\""));
 		assertTrue(toml.contains("[[accessTransformers]]\nfile=\"META-INF/accesstransformer.cfg\""));
 		assertTrue(toml.contains("[[dependencies.my_mod]]\nmodId=\"fabric_api\"\ntype=\"optional\"\nordering=\"AFTER\""));
+		int afterFabricated = toml.indexOf("modId=\"fabricated\"\ntype=\"optional\"\nordering=\"AFTER\"");
+		assertTrue(afterFabricated >= 0 && afterFabricated < toml.indexOf("modId=\"fabric_api\""), "every translated mod loads after Fabricated's own mod: " + toml);
 		assertTrue(toml.contains("license=\"MIT\""));
 		assertFalse(toml.contains("issueTrackerURL"));
 		assertFalse(toml.contains("modproperties"));
 		assertFalse(toml.contains("sodium:options"));
 	}
 
-	/** A Fabric mod's Sodium integration, in the form Sodium for NeoForge reads. */
+	/** A Fabric mod's Sodium and Jade integration, in the form Sodium and Jade for NeoForge read. */
 	@Test
-	void translatesSodiumIntegration() throws Exception {
+	void translatesSodiumAndJadeIntegration() throws Exception {
 		var md = FabricModJsonParser.parse("{\"schemaVersion\":1,\"id\":\"aaa\",\"version\":\"1\","
 				+ "\"entrypoints\":{\"sodium:config_api_user\":[\"com.example.Page\",\"com.example.Other\"]},"
-				+ "\"custom\":{\"sodium:options\":{\"mixin.features.render.world.sky\":false,\"mixin.bad\":\"no\"}}}");
+				+ "\"custom\":{\"sodium:options\":{\"mixin.features.render.world.sky\":false,\"mixin.bad\":\"no\"},"
+				+ "\"jade\":{\"disableItemModNameTooltip\":true}}}");
 		List<String> notes = new ArrayList<>();
-		assertEquals(Map.of("sodium:config_api_user", "com.example.Page"), ModTranslator.sodiumProperties(md, notes));
-		assertEquals(Map.of("mixin.features.render.world.sky", false), ModTranslator.sodiumOptions(md, notes));
+		assertEquals(Map.of("sodium:config_api_user", "com.example.Page", "jade", Map.of("disableItemModNameTooltip", true)),
+				ModTranslator.modProperties(md, notes));
+		assertEquals(Map.of("mixin.features.render.world.sky", false), ModTranslator.booleans(md, "sodium:options", notes));
 		assertEquals(2, notes.size(), notes.toString());
 
 		var kotlin = FabricModJsonParser.parse("{\"schemaVersion\":1,\"id\":\"aaa\",\"version\":\"1\","
 				+ "\"entrypoints\":{\"sodium:config_api_user\":[{\"adapter\":\"kotlin\",\"value\":\"com.example.Page\"}]}}");
 		notes.clear();
-		assertEquals(Map.of(), ModTranslator.sodiumProperties(kotlin, notes));
-		assertEquals(Map.of(), ModTranslator.sodiumOptions(kotlin, notes));
+		assertEquals(Map.of(), ModTranslator.modProperties(kotlin, notes));
+		assertEquals(Map.of(), ModTranslator.booleans(kotlin, "sodium:options", notes));
 		assertEquals(1, notes.size(), notes.toString());
 	}
 
@@ -70,6 +77,9 @@ class TranslateHelpersTest {
 		options.put("mixin.core", true);
 		String toml = ModsTomlWriter.write(new ModsTomlWriter.Spec("my_mod", "1.0.0", "My Mod", "", List.of(), List.of(), List.of(), null, null, null,
 				List.of(), false, List.of(), Map.of("sodium:config_api_user", "com.example.SodiumPage"), options));
+		String jade = ModsTomlWriter.write(new ModsTomlWriter.Spec("my_mod", "1.0.0", "My Mod", "", List.of(), List.of(), List.of(), null, null, null,
+				List.of(), false, List.of(), Map.of("jade", Map.of("fastScroll", true)), Map.of()));
+		assertTrue(jade.contains("[modproperties.my_mod]\n\"jade\"={\"fastScroll\"=true}\n"), jade);
 		assertTrue(toml.contains("[[mods]]\nmodId=\"my_mod\"\nversion=\"1.0.0\"\ndisplayName=\"My Mod\"\ndescription=\"\"\n"
 				+ "\"sodium:options\"={\"mixin.features.render.world.sky\"=false, \"mixin.core\"=true}\n"), toml);
 		assertTrue(toml.contains("[modproperties.my_mod]\n\"sodium:config_api_user\"=\"com.example.SodiumPage\"\n"), toml);
@@ -98,6 +108,17 @@ class TranslateHelpersTest {
 		ModTranslator.Skips skips = ModTranslator.skipsFor("x.mixins.json", cfg, Set.of("A", "x.mixins.json:C", "other.json:B", "Missing", "B#handler", "A#ignored"));
 		assertEquals(Set.of("A", "C"), skips.mixins());
 		assertEquals(java.util.Map.of("B", Set.of("handler")), skips.members(), "a member of a mixin left out whole adds nothing");
+		assertEquals(Set.of("A", "x.mixins.json:C", "B#handler", "A#ignored"), skips.matched());
+
+		// The entries naming no mixin are noted, where every config they could apply to was read (CFG-1).
+		List<PreflightFinding> findings = new ArrayList<>();
+		List<FabricModMetadata.MixinEntry> declared = List.of(new FabricModMetadata.MixinEntry("x.mixins.json", ModEnvironment.UNIVERSAL),
+				new FabricModMetadata.MixinEntry("client.mixins.json", ModEnvironment.CLIENT));
+		ModTranslator.unmatchedSkips(Set.of("A", "Missing", "other.json:B", "client.mixins.json:Gone", "x.mixins.json:Typo"), Set.of("A"), declared,
+				Set.of("x.mixins.json"), findings);
+		assertEquals(List.of("The skipMixins entry \"other.json:B\" names no mixin of this mod; check its spelling",
+				"The skipMixins entry \"x.mixins.json:Typo\" names no mixin of this mod; check its spelling"),
+				findings.stream().map(PreflightFinding::message).toList(), "the client config wasn't read on this side");
 		String filtered = cfg.withoutMixins(Set.of("A"));
 		MixinConfigFile reparsed = MixinConfigFile.parse(filtered);
 		assertEquals(List.of("B"), reparsed.mixinsFor(false));

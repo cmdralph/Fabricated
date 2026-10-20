@@ -1,5 +1,6 @@
 package io.github.cmdralph.fabricated.core.translate;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -17,12 +18,14 @@ public final class ModsTomlWriter {
 	/** Name of Fabricated's NeoForge language loader. */
 	public static final String PATH = "META-INF/neoforge.mods.toml";
 	public static final String LANGUAGE_LOADER = "fabricated";
+	/** Fabricated's in-game mod, which every translated mod loads after. */
+	public static final String GAME_MOD_ID = "fabricated";
 
 	/**
 	 * Everything needed to describe one translated mod.
 	 *
 	 * @param modProperties its {@code [modproperties.<id>]}, which NeoForge mods read where Fabric mods read entrypoints
-	 *                      or custom values
+	 *                      or custom values: each a string, or a table of booleans ({@code Map<String, Boolean>})
 	 * @param sodiumOptions its overrides of Sodium's mixin options, which Sodium for NeoForge reads from the mod's
 	 *                      {@code [[mods]]} entry
 	 */
@@ -40,7 +43,7 @@ public final class ModsTomlWriter {
 			List<MixinConfigSpec> mixins,
 			boolean hasAccessTransformer,
 			List<String> loadAfter,
-			Map<String, String> modProperties,
+			Map<String, Object> modProperties,
 			Map<String, Boolean> sodiumOptions) {
 	}
 
@@ -71,24 +74,19 @@ public final class ModsTomlWriter {
 		if (spec.homepage() != null) kv(sb, "displayURL", spec.homepage());
 		if (spec.logoFile() != null) kv(sb, "logoFile", spec.logoFile());
 		if (!spec.sodiumOptions().isEmpty()) {
-			sb.append("\"sodium:options\"={");
-			String separator = "";
-			for (Map.Entry<String, Boolean> option : spec.sodiumOptions().entrySet()) {
-				sb.append(separator);
-				quote(sb, option.getKey());
-				sb.append('=').append(option.getValue());
-				separator = ", ";
-			}
-			sb.append("}\n");
+			sb.append("\"sodium:options\"=");
+			booleans(sb, spec.sodiumOptions());
+			sb.append('\n');
 		}
 		sb.append('\n');
 
 		if (!spec.modProperties().isEmpty()) {
 			sb.append("[modproperties.").append(spec.neoForgeId()).append("]\n");
-			for (Map.Entry<String, String> property : spec.modProperties().entrySet()) {
+			for (Map.Entry<String, Object> property : spec.modProperties().entrySet()) {
 				quote(sb, property.getKey());
 				sb.append('=');
-				quote(sb, property.getValue());
+				if (property.getValue() instanceof Map<?, ?> table) booleans(sb, table);
+				else quote(sb, String.valueOf(property.getValue()));
 				sb.append('\n');
 			}
 			sb.append('\n');
@@ -107,9 +105,13 @@ public final class ModsTomlWriter {
 			sb.append('\n');
 		}
 
-		for (String after : spec.loadAfter()) {
+		// After Fabricated's own mod, whose mixin config plugin creates the Fabric mods' language adapters before any
+		// Fabric mod's mixin plugin loads (FML registers mixin configs in this order), as Fabric Loader does.
+		List<String> after = new ArrayList<>(spec.loadAfter());
+		if (!after.contains(GAME_MOD_ID)) after.addFirst(GAME_MOD_ID);
+		for (String id : after) {
 			sb.append("[[dependencies.").append(spec.neoForgeId()).append("]]\n");
-			kv(sb, "modId", after);
+			kv(sb, "modId", id);
 			kv(sb, "type", "optional");
 			kv(sb, "ordering", "AFTER");
 			kv(sb, "side", "BOTH");
@@ -126,6 +128,19 @@ public final class ModsTomlWriter {
 		sb.append(key).append('=');
 		quote(sb, value);
 		sb.append('\n');
+	}
+
+	/** An inline table of booleans: {@code {"a"=true, "b"=false}}. */
+	private static void booleans(StringBuilder sb, Map<?, ?> table) {
+		sb.append('{');
+		String separator = "";
+		for (Map.Entry<?, ?> entry : table.entrySet()) {
+			sb.append(separator);
+			quote(sb, String.valueOf(entry.getKey()));
+			sb.append('=').append(Boolean.TRUE.equals(entry.getValue()));
+			separator = ", ";
+		}
+		sb.append('}');
 	}
 
 	/** Writes a TOML basic string with every special character escaped. */

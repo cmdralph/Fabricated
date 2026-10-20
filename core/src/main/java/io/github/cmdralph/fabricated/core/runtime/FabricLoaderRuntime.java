@@ -59,8 +59,9 @@ public final class FabricLoaderRuntime implements FabricLoader {
 		public T getEntrypoint() {
 			try {
 				return instantiate(declared, type);
-			} catch (Throwable t) {
-				throw new EntrypointException(key, declared.mod().getMetadata().getId(), t);
+			} catch (Exception e) {
+				// As Fabric Loader: a JVM error is not the mod's failure, so it isn't wrapped.
+				throw new EntrypointException(key, declared.mod().getMetadata().getId(), e);
 			}
 		}
 
@@ -153,10 +154,9 @@ public final class FabricLoaderRuntime implements FabricLoader {
 		FabricLoaderImpl.gameClassLoader(loader);
 	}
 
-	/** Registers a mod's entrypoints, minus keys disabled in the config. */
-	public synchronized void addEntrypoints(ModContainerImpl mod, Map<String, List<EntrypointSpec>> declared, Set<String> skippedKeys) {
+	/** Registers a mod's entrypoints (as Fabricated runs them: hints applied, skipped keys left out). */
+	public synchronized void addEntrypoints(ModContainerImpl mod, Map<String, List<EntrypointSpec>> declared) {
 		for (Map.Entry<String, List<EntrypointSpec>> e : declared.entrySet()) {
-			if (skippedKeys.contains(e.getKey())) continue;
 			for (EntrypointSpec spec : e.getValue()) {
 				entrypoints.computeIfAbsent(e.getKey(), k -> new ArrayList<>()).add(new Declared(mod, e.getKey(), spec));
 			}
@@ -168,6 +168,27 @@ public final class FabricLoaderRuntime implements FabricLoader {
 		for (Map.Entry<String, String> e : declared.entrySet()) {
 			adapterDeclarations.putIfAbsent(e.getKey(), new AdapterDeclaration(e.getValue(), mod));
 		}
+	}
+
+	/**
+	 * Creates every declared language adapter, as Fabric Loader does before Mixin starts: some mods use an adapter only
+	 * to run code that early. Returns why each one that couldn't be created failed (it fails again, with that cause,
+	 * when an entrypoint asks for it).
+	 */
+	public List<String> createLanguageAdapters() {
+		List<String> ids;
+		synchronized (this) {
+			ids = List.copyOf(adapterDeclarations.keySet());
+		}
+		List<String> failures = new ArrayList<>();
+		for (String id : ids) {
+			try {
+				adapter(id);
+			} catch (LanguageAdapterException e) {
+				failures.add(e.getMessage() + (e.getCause() != null ? ": " + e.getCause() : ""));
+			}
+		}
+		return failures;
 	}
 
 	public void setGameInstance(Object instance) {

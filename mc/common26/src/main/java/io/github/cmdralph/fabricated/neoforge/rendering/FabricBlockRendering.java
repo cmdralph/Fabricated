@@ -158,9 +158,15 @@ public final class FabricBlockRendering {
 		private static final ThreadLocal<MovingState> MOVING = new ThreadLocal<>();
 		private static final ThreadLocal<BreakingState> BREAKING = new ThreadLocal<>();
 
+		/**
+		 * Resolved once, when the first block is drawn: renderers register during client initialization (Indigo in its
+		 * client entrypoint), before any world renders.
+		 */
 		private static @Nullable Renderer findRenderer() {
 			try {
-				return Renderer.get();
+				Renderer renderer = Renderer.get();
+				LOGGER.info("Fabric block models are drawn by the renderer {}", renderer.getClass().getName());
+				return renderer;
 			} catch (UnsupportedOperationException e) {
 				LOGGER.warn("Fabric's renderer API has no renderer registered: Fabric block models stay invisible in the world", e);
 				return null;

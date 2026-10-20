@@ -17,14 +17,18 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 import io.github.cmdralph.fabricated.core.accesswidener.AccessWidenerFile.InjectedInterface;
+import io.github.cmdralph.fabricated.core.archive.ArchiveException;
 import io.github.cmdralph.fabricated.core.archive.Hashing;
+import io.github.cmdralph.fabricated.core.archive.SafeArchive;
 import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
 import io.github.cmdralph.fabricated.core.bytecode.ClassIndex;
+import io.github.cmdralph.fabricated.core.bytecode.InstalledClasses;
 import io.github.cmdralph.fabricated.core.cache.TranslationCache;
 import io.github.cmdralph.fabricated.core.config.FabricatedConfig;
 import io.github.cmdralph.fabricated.core.metadata.CompatHints;
 import io.github.cmdralph.fabricated.core.metadata.CustomValueImpl;
 import io.github.cmdralph.fabricated.core.metadata.FabricModMetadata;
+import io.github.cmdralph.fabricated.core.metadata.FabricModMetadata.EntrypointSpec;
 import io.github.cmdralph.fabricated.core.mixin.PreflightFinding;
 import io.github.cmdralph.fabricated.core.remap.MappingException;
 import io.github.cmdralph.fabricated.core.remap.MappingTable;
@@ -33,6 +37,7 @@ import io.github.cmdralph.fabricated.core.report.Report.ModRow;
 import io.github.cmdralph.fabricated.core.report.Report.Status;
 import io.github.cmdralph.fabricated.core.resolve.Candidate;
 import io.github.cmdralph.fabricated.core.resolve.CandidateScanner;
+import io.github.cmdralph.fabricated.core.resolve.CompatPlan;
 import io.github.cmdralph.fabricated.core.resolve.DependencyResolver;
 import io.github.cmdralph.fabricated.core.resolve.FabricApiPlan;
 import io.github.cmdralph.fabricated.core.runtime.FabricLoaderRuntime;
@@ -43,6 +48,7 @@ import io.github.cmdralph.fabricated.core.translate.LinkageAnalysis;
 import io.github.cmdralph.fabricated.core.metadata.ModIds;
 import io.github.cmdralph.fabricated.core.translate.ModTranslator;
 import io.github.cmdralph.fabricated.core.translate.PackageGuard;
+import io.github.cmdralph.fabricated.core.translate.PluginAnnotations;
 import io.github.cmdralph.fabricated.core.translate.TranslatedMod;
 import io.github.cmdralph.fabricated.core.translate.TranslationEnvironment;
 import io.github.cmdralph.fabricated.core.translate.TranslationEnvironment.Namespace;
@@ -114,6 +120,7 @@ public final class Pipeline {
 	 * @param platformPackages    packages owned by NeoForge, Minecraft, libraries and Fabricated's own jars
 	 * @param nativeApiClasses    classes of Fabricated's native Fabric API implementation
 	 * @param nativeApiInterfaces interfaces Fabricated's own mixins add to game classes, read only when needed
+	 * @param installedClasses    the classes of Fabricated's Fabric API and of the NeoForge mods, which Fabric mixins may target
 	 */
 	public record Input(
 			Path gameDir,
@@ -137,12 +144,17 @@ public final class Pipeline {
 			ClassBytesSource nativeApiClasses,
 			Supplier<Map<String, List<String>>> nativeApiInterfaces,
 			List<NeoForgeMod> neoForgeMods,
+			InstalledClasses installedClasses,
 			MappingSupplier mappings,
 			String[] launchArguments) {
 	}
 
-	/** A translated mod that will be handed to NeoForge. */
-	public record LoadedMod(TranslatedMod translated, Set<String> excludedPackages) {
+	/**
+	 * A translated mod that will be handed to NeoForge.
+	 *
+	 * @param pluginAnnotations what to add to its scan data for the NeoForge builds of other mods to find its plugins
+	 */
+	public record LoadedMod(TranslatedMod translated, Set<String> excludedPackages, List<PluginAnnotations.Annotation> pluginAnnotations) {
 	}
 
 	/**
@@ -202,15 +214,8 @@ public final class Pipeline {
 			"forgeconfigapiport", "Fabricated provides Forge Config API Port's Fabric API on NeoForge's own config system, which the port copies",
 			"modmenu", "Fabricated shows the config screens Fabric mods offer through Mod Menu's API in NeoForge's mod list");
 
-	/**
-	 * Fabric mods whose Fabric build can't work on NeoForge, by id, with why: they replace what NeoForge patches, and
-	 * have a NeoForge build of their own (which, when installed, is used instead before this is looked at).
-	 */
-	private static final Map<String, String> NEOFORGE_BUILD_ONLY = Map.of(
-			"sodium", "Sodium's Fabric build would mesh NeoForge's models, fluids and lighting the way Fabric has them, and drop the "
-					+ "geometry NeoForge mods add to chunks; Sodium for NeoForge draws them, and Fabric block models through its own "
-					+ "Fabric renderer",
-			"iris", "Iris's Fabric build needs Sodium's Fabric build and leaves out NeoForge's render pipelines");
+	/** What is known about other people's Fabric mods (a mod's NeoForge build, when installed, is used before this is looked at). */
+	private static final CompatPlan COMPAT = CompatPlan.builtin();
 
 	/** A mod the platform provides (Minecraft, Java, Fabric Loader, Fabricated, native Fabric API modules). */
 	private record Builtin(String id, String version, String name, List<String> aliases) {
@@ -310,12 +315,69 @@ public final class Pipeline {
 				mappingTable != null ? MappingResolvers.intermediary(mappingTable) : MappingResolvers.identity(), in::launchArguments);
 		if (eligible.isEmpty()) return assemble(runtime, new Rounds());
 
+		ClassIndex game = new ClassIndex(in.gameClasses());
+		// On 26.x the Fabric mods' classes load as they are in their jars, so mixins into them are checked too (on
+		// 1.21.11 their classes have intermediary names until each is translated).
+		List<SafeArchive> opened = new ArrayList<>();
+		InstalledClasses installed = in.namespace() == Namespace.OFFICIAL ? in.installedClasses().with(fabricJars(eligible, opened)) : in.installedClasses();
 		TranslationEnvironment env = new TranslationEnvironment(in.minecraftVersion(), in.neoForgeVersion(), in.clientSide(), in.namespace(),
-				in.runtimeMixinVersion(), in.lowestMixinBehavior(), in.fabricatedVersion(), mappingTable, mappingsHash,
-				new ClassIndex(in.gameClasses()), in.untransformableClasses());
+				in.runtimeMixinVersion(), in.lowestMixinBehavior(), in.fabricatedVersion(), mappingTable, mappingsHash, game, in.untransformableClasses(),
+				installed, installed.isEmpty() ? game : new ClassIndex(in.gameClasses().or(installed)));
 		Rounds rounds = new Rounds();
-		rounds.run(eligible, resolver(), new ModTranslator(env, in.cache(), config.limits()));
+		try {
+			rounds.run(eligible, resolver(), new ModTranslator(env, in.cache(), config.limits()));
+		} finally {
+			synchronized (opened) {
+				for (SafeArchive archive : opened) {
+					try {
+						archive.close();
+					} catch (IOException e) {
+						// Read only; nothing to lose.
+					}
+				}
+			}
+		}
 		return assemble(runtime, rounds);
+	}
+
+	/**
+	 * The classes of the Fabric mods about to load, for pre-flight. A jar is opened only when a lookup names a class in
+	 * one of its packages, then kept open until translation ends ({@code opened}).
+	 */
+	private List<InstalledClasses.Jar> fabricJars(List<Candidate> candidates, List<SafeArchive> opened) {
+		List<InstalledClasses.Jar> jars = new ArrayList<>();
+		for (Candidate c : candidates) {
+			Supplier<SafeArchive> archive = new Supplier<>() {
+				private boolean tried;
+				private SafeArchive open;
+
+				@Override
+				public synchronized SafeArchive get() {
+					if (!tried) {
+						tried = true;
+						try {
+							open = SafeArchive.open(c.path(), config.limits());
+							synchronized (opened) {
+								opened.add(open);
+							}
+						} catch (ArchiveException e) {
+							open = null; // translating it reports the problem
+						}
+					}
+					return open;
+				}
+			};
+			jars.add(new InstalledClasses.Jar(c.metadata().getName(), name -> {
+				int slash = name.lastIndexOf('/');
+				if (!c.packages().contains(slash < 0 ? "" : name.substring(0, slash))) return false;
+				SafeArchive a = archive.get();
+				return a != null && a.contains(name + ".class");
+			}, name -> {
+				SafeArchive a = archive.get();
+				return a == null ? null : a.read(name + ".class");
+			}));
+		}
+		return jars;
 	}
 
 	/** Candidates that should load, reporting the others. */
@@ -350,15 +412,25 @@ public final class Pipeline {
 						"NeoForge mod " + neo.displayName() + " " + neo.version() + " provides it", ""));
 				continue;
 			}
-			String neoForgeBuildOnly = NEOFORGE_BUILD_ONLY.get(c.id());
-			if (neoForgeBuildOnly != null) {
+			CompatPlan.Entry known = COMPAT.entry(c.id());
+			String neoForgeBuildOnly = known.neoForgeBuildOnly();
+			if (neoForgeBuildOnly != null && !config.override(c.id()).loadUnsupported()) {
 				report.mod(new ModRow(c.id(), c.version(), c.origin(), Status.DISABLED, "its Fabric build can't run on NeoForge: " + neoForgeBuildOnly,
 						"Install " + c.metadata().getName() + " for NeoForge instead (from the same download page)."));
 				continue;
 			}
+			// Even on request: the pair is broken whatever the player accepts.
+			String pairing = notWithNeoForge(known);
+			if (pairing != null) {
+				report.mod(new ModRow(c.id(), c.version(), c.origin(), Status.DISABLED, "its Fabric build can't run next to " + pairing,
+						"Use the NeoForge builds of both, or the Fabric builds of both."));
+				continue;
+			}
+			if (neoForgeBuildOnly != null) report.line("Unsupported mods loaded on request (loadUnsupported)", c.id() + ": " + neoForgeBuildOnly);
 			FabricatedConfig.ModOverride override = config.override(c.id());
 			if (override.ignoreHints() && !c.metadata().compatHints().isEmpty()) {
-				c = new Candidate(c.path(), c.sha256(), c.metadata().withCompatHints(CompatHints.NONE), c.origin(), c.parentId(), c.depth(), c.nestedChildren());
+				c = new Candidate(c.path(), c.sha256(), c.metadata().withCompatHints(CompatHints.NONE), c.origin(), c.parentId(), c.depth(),
+						c.nestedChildren(), c.packages());
 			}
 			CompatHints hints = c.metadata().compatHints();
 			for (String w : hints.warnings()) report.line("Compatibility hint warnings", c.id() + ": " + w);
@@ -373,6 +445,15 @@ public final class Pipeline {
 			eligible.add(c);
 		}
 		return eligible;
+	}
+
+	/** The installed NeoForge mod next to which a Fabric build can't run, with why, or {@code null}. */
+	private String notWithNeoForge(CompatPlan.Entry known) {
+		for (Map.Entry<String, String> pair : known.notWithNeoForge().entrySet()) {
+			NeoForgeMod neo = neoMods.get(ModIds.toNeoForgeId(pair.getKey()));
+			if (neo != null) return "the NeoForge mod " + neo.displayName() + " " + neo.version() + ": " + pair.getValue();
+		}
+		return null;
 	}
 
 	private String skipReason(Candidate c, Map<String, String> builtinNames) {
@@ -608,7 +689,6 @@ public final class Pipeline {
 			Candidate c = t.candidate();
 			if (!finalIds.contains(c.id())) continue;
 			PackageGuard.Decision decision = rounds.decisions.get(t.neoForgeId());
-			loaded.add(new LoadedMod(t, decision != null ? decision.excludedPackages() : Set.of()));
 			reportLoaded(t, rounds.translatedThisLaunch.get(c.id()), decision, rounds.linkage.get(t.neoForgeId()));
 
 			ModOrigin origin = c.parentId() == null
@@ -627,7 +707,14 @@ public final class Pipeline {
 				report.line("Compatibility patches", c.id() + " <- " + p.patchId() + ": skips mixins " + p.patch().skipMixins()
 						+ ", entrypoints " + p.patch().skipEntrypoints());
 			}
-			runtime.addEntrypoints(container, c.metadata().compatHints().entrypointsOf(c.metadata().entrypoints()), skipEntrypoints);
+			Map<String, List<EntrypointSpec>> entrypoints = new LinkedHashMap<>(c.metadata().compatHints().entrypointsOf(c.metadata().entrypoints()));
+			entrypoints.keySet().removeAll(skipEntrypoints);
+			runtime.addEntrypoints(container, entrypoints);
+			List<String> pluginNotes = new ArrayList<>();
+			List<PluginAnnotations.Annotation> plugins = PluginAnnotations.of(entrypoints, pluginNotes);
+			plugins.forEach(p -> report.line("Plugins for other mods", c.id() + ": " + p.host() + " plugin " + p.className()));
+			pluginNotes.forEach(n -> report.line("Plugins for other mods", c.id() + ": " + n));
+			loaded.add(new LoadedMod(t, decision != null ? decision.excludedPackages() : Set.of(), plugins));
 			runtime.addLanguageAdapters(container, c.metadata().languageAdapters());
 			containers.put(c.id(), container);
 		}
@@ -688,7 +775,7 @@ public final class Pipeline {
 		for (AppliedPatch p : patches) skip.addAll(p.patch().skipMixins());
 		if (skip.equals(user.skipMixins())) return user;
 		return new FabricatedConfig.ModOverride(user.disabled(), Set.copyOf(skip), user.skipEntrypoints(), user.aliases(), user.ignorePreflight(),
-				user.ignoreHints());
+				user.ignoreHints(), user.loadUnsupported());
 	}
 
 	private static void addBuiltin(FabricLoaderRuntime runtime, String id, String version, String name, List<String> aliases,

@@ -1,5 +1,6 @@
 package io.github.cmdralph.fabricated.testmod.frapi;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Predicate;
@@ -14,6 +15,7 @@ import net.fabricmc.fabric.api.client.model.loading.v1.ModelLoadingPlugin;
 import net.fabricmc.fabric.api.client.model.loading.v1.UnbakedModelDeserializer;
 import net.fabricmc.fabric.api.client.model.loading.v1.wrapper.WrapperBlockStateModel;
 import net.fabricmc.fabric.api.client.renderer.v1.mesh.QuadEmitter;
+import net.fabricmc.fabric.api.client.renderer.v1.mesh.QuadTransform;
 import net.minecraft.client.renderer.block.BlockAndTintGetter;
 import net.minecraft.client.renderer.block.MovingBlockRenderState;
 import net.minecraft.client.renderer.block.dispatch.BlockStateModel;
@@ -21,6 +23,7 @@ import net.minecraft.client.renderer.block.dispatch.BlockStateModelPart;
 import net.minecraft.client.renderer.chunk.RenderSectionRegion;
 import net.minecraft.client.resources.model.ModelBaker;
 import net.minecraft.client.resources.model.UnbakedModel;
+import net.minecraft.client.resources.model.geometry.BakedQuad;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -68,6 +71,11 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 		});
 	}
 
+	/** A quad {@code BakedQuadMixin} marked at the end of {@code BakedQuad}'s vanilla constructor. */
+	public interface MarkedQuad {
+		boolean fabricatedTest$marked();
+	}
+
 	/** Whether a level is a chunk section's: vanilla's, or Sodium's when Sodium meshes the world. */
 	static boolean isSection(BlockAndTintGetter level) {
 		return level instanceof RenderSectionRegion || level.getClass().getName().equals("net.caffeinemc.mods.sodium.client.world.LevelSlice");
@@ -77,6 +85,14 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 		private static final AtomicBoolean TERRAIN = new AtomicBoolean();
 		private static final AtomicBoolean MOVING = new AtomicBoolean();
 		private static final AtomicBoolean BREAKING = new AtomicBoolean();
+		private static final AtomicBoolean COLORS = new AtomicBoolean();
+		/** The colour the terrain block's model gives its faces ({@code neoforge_data}), as NeoForge bakes it into its quads. */
+		private static final int BAKED_COLOR = 0xFF80FF80;
+		/** Logs once that a quad reached Fabric's renderer with NeoForge's baked colour (FRAPI-2). */
+		private static final QuadTransform CHECK_COLORS = quad -> {
+			if (quad.color(0) == BAKED_COLOR && !COLORS.getAndSet(true)) FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi baked colors OK");
+			return true;
+		};
 
 		TerrainCheckModel(BlockStateModel wrapped) {
 			super(wrapped);
@@ -84,14 +100,36 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 
 		@Override
 		public void emitQuads(QuadEmitter emitter, BlockAndTintGetter level, BlockPos pos, BlockState state, RandomSource random, Predicate<@Nullable Direction> cullTest) {
-			super.emitQuads(emitter, level, pos, state, random, cullTest);
+			emitter.pushTransform(CHECK_COLORS);
+			try {
+				super.emitQuads(emitter, level, pos, state, random, cullTest);
+			} finally {
+				emitter.popTransform();
+			}
 			if (isSection(level) && !TERRAIN.getAndSet(true)) {
 				FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi terrain OK ({} in {} on {})", state, level.getClass().getName(), Thread.currentThread().getName());
+				checkQuadMark(level, pos, state, random);
 			} else if (level instanceof MovingBlockRenderState && !MOVING.getAndSet(true)) {
 				FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi moving block OK ({})", state);
 			} else if (level == BlockAndTintGetter.EMPTY && !BREAKING.getAndSet(true)) {
 				FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi breaking OK ({})", state);
 			}
+		}
+
+		/** Whether the quads NeoForge baked for the wrapped model went through {@code BakedQuadMixin}'s hook. */
+		private void checkQuadMark(BlockAndTintGetter level, BlockPos pos, BlockState state, RandomSource random) {
+			List<BlockStateModelPart> parts = new ArrayList<>();
+			wrapped.collectParts(level, pos, state, random, parts);
+			for (BlockStateModelPart part : parts) {
+				for (Direction direction : Direction.values()) {
+					for (BakedQuad quad : part.getQuads(direction)) {
+						boolean marked = ((MarkedQuad) (Object) quad).fabricatedTest$marked();
+						FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi baked quad constructor hook {}", marked ? "OK" : "FAILED (the hook didn't run for NeoForge's quad)");
+						return;
+					}
+				}
+			}
+			FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi baked quad constructor hook FAILED (no quad found)");
 		}
 	}
 

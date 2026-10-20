@@ -1,7 +1,10 @@
 name: Build and test
 
+# A branch with a pull request is built once, as the pull request (merged with its base): a push event too would build
+# every commit twice.
 on:
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
@@ -26,7 +29,7 @@ jobs:
       - name: Build and test Minecraft-independent modules
         run: ./gradlew -Pfabricated.coreOnly=true build --stacktrace
       - name: Upload test reports
-        if: always()
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
           name: core-test-reports
@@ -84,7 +87,7 @@ jobs:
       - name: Server smoke test (test mods only)
         run: ci/smoke-server.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/server"
       - name: Upload server logs and report
-        if: always()
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
           name: smoke-${{ matrix.minecraft }}
@@ -93,18 +96,33 @@ jobs:
             ${{ runner.temp }}/server/server.out
             ${{ runner.temp }}/server/.fabricated/cache/v1/index.json
           if-no-files-found: ignore
+      # NeoForge's internals change between builds of one Minecraft version, and Fabricated accepts every build of it,
+      # so the test mods also boot on the newest build (informational: it can break for reasons of its own).
+      - name: Server smoke test on the newest NeoForge build (informational)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        continue-on-error: true
+        run: |
+          pinned="${{ matrix.neoforge }}"
+          newest=$(curl -fsSL --retry 4 https://maven.neoforged.net/releases/net/neoforged/neoforge/maven-metadata.xml | python3 -c '
+          import re, sys
+          builds = [v for v in re.findall(r"<version>([^<]+)</version>", sys.stdin.read()) if v.startswith(sys.argv[1])]
+          print(builds[-1] if builds else "")' "${pinned%.*}.")
+          echo "Newest NeoForge build for ${{ matrix.minecraft }}: ${newest:-none} (pinned: $pinned)" | tee "$RUNNER_TEMP/summary-newest.txt"
+          if [ -z "$newest" ] || [ "$newest" = "$pinned" ]; then exit 0; fi
+          set -o pipefail
+          ci/smoke-server.sh "${{ matrix.minecraft }}" "$newest" "$RUNNER_TEMP/server-newest" | tee -a "$RUNNER_TEMP/summary-newest.txt"
       # Boot again with the official Fabric API jar (downloaded here in CI, never by Fabricated) and keep the
       # report, which lists every pass-through module and mixin pre-flight result. The server must start;
       # the other checks in this run are informational.
       - name: Server smoke test with Fabric API (server must start)
-        if: always() && steps.build.outcome == 'success'
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
           mkdir -p "$RUNNER_TEMP/extra"
           curl -fsSL --retry 4 -o "$RUNNER_TEMP/extra/fabric-api.jar" \
             "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api/${{ matrix.fabric_api }}/fabric-api-${{ matrix.fabric_api }}.jar"
           ci/smoke-server.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/server-fapi" "$RUNNER_TEMP/extra"
       - name: Upload Fabric API run logs and report
-        if: always()
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
           name: smoke-fabric-api-${{ matrix.minecraft }}
@@ -115,15 +133,15 @@ jobs:
       # Client: a real NeoForge client started headlessly (Xvfb), which joins a singleplayer world.
       # 26.3+ open their window with SDL3 over EGL, which needs Mesa's EGL library (not on the runner image).
       - name: Install Mesa EGL for the client
-        if: always() && steps.build.outcome == 'success'
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends libegl1 libegl-mesa0 libgl1-mesa-dri
       - name: Client smoke test (test mods, singleplayer world)
-        if: always() && steps.build.outcome == 'success'
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: ci/smoke-client.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/client"
       - name: Upload client logs and report
-        if: always()
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
           name: smoke-client-${{ matrix.minecraft }}
@@ -136,7 +154,7 @@ jobs:
       # The same client with the official Fabric API jar: shows which client-side modules load and whether the game
       # still reaches a world. Informational until every client module is accounted for.
       - name: Client smoke test with Fabric API (informational)
-        if: always() && steps.build.outcome == 'success'
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
@@ -151,7 +169,7 @@ jobs:
       # A Fabric model (its own emitQuads) must be drawn in the world: Fabricated sends it through Fabric's renderer when
       # its chunk section is meshed. This check is a gate, unlike the run above.
       - name: Fabric renderer API and model formats (26.x)
-        if: always() && steps.build.outcome == 'success' && startsWith(matrix.minecraft, '26.')
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && startsWith(matrix.minecraft, '26.') }}
         run: |
           log="$RUNNER_TEMP/client-fapi/run/logs/latest.log"
           failed=0
@@ -166,6 +184,8 @@ jobs:
           check "frapi terrain OK" "a Fabric block model was meshed into a chunk section"
           check "frapi nested terrain OK" "a Fabric model inside a vanilla multipart model was meshed"
           check "frapi moving block OK" "a falling Fabric block model was drawn as a moving block"
+          check "frapi baked colors OK" "a NeoForge quad's baked colour reached Fabric's renderer (FRAPI-2)"
+          check "frapi baked quad constructor hook OK" "a mixin at the end of BakedQuad's vanilla constructor ran for NeoForge's block quads (pre-flight repair)"
           check "frapi breaking OK" "a Fabric block model got the breaking overlay"
           check "frapi level-aware default OK" "a NeoForge model inside a Fabric model got the chunk section's level from Fabric's renderer"
           check "model deserializer OK" "a model file of a Fabric type was read by its Fabric deserializer"
@@ -175,7 +195,7 @@ jobs:
             exit 1
           fi
       - name: Upload Fabric API client run logs and report
-        if: always()
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
           name: smoke-client-fabric-api-${{ matrix.minecraft }}
@@ -189,7 +209,7 @@ jobs:
       # mod for Fabric's renderer API: Sodium meshes the world through its own Fabric renderer, which must draw Fabric
       # models, and Fabric API's default renderer must stand down for it.
       - name: Client smoke test with Sodium and Iris for NeoForge (26.x)
-        if: always() && steps.build.outcome == 'success' && startsWith(matrix.minecraft, '26.')
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && startsWith(matrix.minecraft, '26.') }}
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
@@ -200,7 +220,7 @@ jobs:
           SMOKE_TIMEOUT=480 ci/smoke-client.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/client-sodium" "$RUNNER_TEMP/extra-sodium" || true
           grep -A200 "== " "$RUNNER_TEMP/client-sodium/run/logs/fabric-bridge-report.txt" || true
       - name: Fabric models under Sodium (26.x)
-        if: always() && steps.build.outcome == 'success' && startsWith(matrix.minecraft, '26.')
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && startsWith(matrix.minecraft, '26.') }}
         env:
           MC: ${{ matrix.minecraft }}
         run: |
@@ -227,8 +247,23 @@ jobs:
             grep -n -m 60 -E "frapi|Indigo|sodium|Sodium|iris|Iris|/(ERROR|FATAL)\]" "$log" || true
             exit 1
           fi
+      # The Fabric builds of Sodium and Iris, loaded on request (loadUnsupported) with Fabric API and the renderer API
+      # test mod: informational, it records what breaks for the rendering-pipeline track (docs/roadmap.md).
+      - name: Client with the Fabric builds of Sodium and Iris (informational, 26.x)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && startsWith(matrix.minecraft, '26.') }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FABRICATED_MODS: '{"sodium": {"loadUnsupported": true}, "iris": {"loadUnsupported": true}}'
+        run: |
+          mkdir -p "$RUNNER_TEMP/extra-sodium-fabric"
+          python3 ci/fetch-corpus.py "${{ matrix.minecraft }}" "$RUNNER_TEMP/extra-sodium-fabric" fabric sodium iris
+          cp "$RUNNER_TEMP/extra/fabric-api.jar" mc/${{ matrix.minecraft }}/build/testmods/fabricated-testmod-frapi.jar "$RUNNER_TEMP/extra-sodium-fabric/"
+          SMOKE_TIMEOUT=480 ci/smoke-client.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/client-sodium-fabric" "$RUNNER_TEMP/extra-sodium-fabric" || true
+          grep -A300 "== " "$RUNNER_TEMP/client-sodium-fabric/run/logs/fabric-bridge-report.txt" || true
+          grep -n -m 80 -E "FABRICATED-TEST frapi|Sodium|Iris|/(ERROR|FATAL)\]" "$RUNNER_TEMP/client-sodium-fabric/run/logs/latest.log" || true
       - name: Upload Sodium client run logs and report
-        if: always() && startsWith(matrix.minecraft, '26.')
+        if: ${{ !cancelled() && startsWith(matrix.minecraft, '26.') }}
         uses: actions/upload-artifact@v4
         with:
           name: smoke-client-sodium-${{ matrix.minecraft }}
@@ -237,30 +272,103 @@ jobs:
             ${{ runner.temp }}/client-sodium/run/crash-reports
             ${{ runner.temp }}/client-sodium/client.out
             ${{ runner.temp }}/client-sodium/thread-dump.txt
+            ${{ runner.temp }}/client-sodium-fabric/run/logs
+            ${{ runner.temp }}/client-sodium-fabric/run/crash-reports
+            ${{ runner.temp }}/client-sodium-fabric/client.out
+          if-no-files-found: ignore
+      # The Fabric-only Polyfrost stack (OneConfig, PolyPlus): no NeoForge build exists, so Fabricated is its only way
+      # to NeoForge. Modrinth slugs and builds per version are UNVERIFIED; a missing one is reported and skipped.
+      - name: Client with OneConfig and PolyPlus (informational)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/extra-polyfrost"
+          python3 ci/fetch-corpus.py "${{ matrix.minecraft }}" "$RUNNER_TEMP/extra-polyfrost" fabric oneconfig polyplus | tee "$RUNNER_TEMP/summary-polyfrost.txt"
+          if ! grep -qE "^(oneconfig|polyplus): [^n]" "$RUNNER_TEMP/summary-polyfrost.txt"; then exit 0; fi
+          cp "$RUNNER_TEMP/extra/fabric-api.jar" "$RUNNER_TEMP/extra-polyfrost/"
+          SMOKE_TIMEOUT=480 ci/smoke-client.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/client-polyfrost" "$RUNNER_TEMP/extra-polyfrost" || true
+          grep -A80 "== Summary" "$RUNNER_TEMP/client-polyfrost/run/logs/fabric-bridge-report.txt" | tee -a "$RUNNER_TEMP/summary-polyfrost.txt" || true
+      - name: Upload Polyfrost client logs and report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: client-polyfrost-${{ matrix.minecraft }}
+          path: |
+            ${{ runner.temp }}/client-polyfrost/run/logs
+            ${{ runner.temp }}/client-polyfrost/run/crash-reports
+            ${{ runner.temp }}/client-polyfrost/client.out
+          if-no-files-found: ignore
+      # The NeoForge builds of recipe viewers, tooltip mods and Simple Voice Chat, with the test mod's plugins declared
+      # the Fabric way (as entrypoints, and WTHIT's plugin file). Informational until their builds are pinned.
+      - name: Client with recipe viewers for NeoForge (informational)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/extra-viewers"
+          python3 ci/fetch-corpus.py "${{ matrix.minecraft }}" "$RUNNER_TEMP/extra-viewers" neoforge jei rei jade wthit simple-voice-chat | tee viewers.txt
+          SMOKE_TIMEOUT=480 ci/smoke-client.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/client-viewers" "$RUNNER_TEMP/extra-viewers" || true
+          grep -A12 "== Plugins for other mods" "$RUNNER_TEMP/client-viewers/run/logs/fabric-bridge-report.txt" || true
+          log="$RUNNER_TEMP/client-viewers/run/logs/latest.log"
+          for viewer in jei rei jade wthit simple-voice-chat; do
+            if ! grep -q "^$viewer: " viewers.txt || grep -qE "^$viewer: (no |not fetched)" viewers.txt; then echo "$viewer: not in this run"; continue; fi
+            for what in constructed called; do
+              echo "$viewer plugin $what: $(grep -c "FABRICATED-TEST $viewer plugin $what OK" "$log" || true) time(s)"
+            done
+          done | tee "$RUNNER_TEMP/summary-viewers.txt"
+          grep -n -m 40 -E "/(ERROR|FATAL)\]" "$log" || true
+      - name: Upload recipe viewer client logs and report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: client-viewers-${{ matrix.minecraft }}
+          path: |
+            ${{ runner.temp }}/client-viewers/run/logs
+            ${{ runner.temp }}/client-viewers/run/crash-reports
+            ${{ runner.temp }}/client-viewers/client.out
           if-no-files-found: ignore
       # Popular Fabric mods from Modrinth (ci/mod-corpus.txt, downloaded here in CI and checked against Modrinth's
       # SHA-512), loaded together with Fabric API: shows which load, which are disabled and why. Informational.
       - name: Fetch the mod corpus
         id: corpus
-        if: always() && steps.build.outcome == 'success'
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         continue-on-error: true
         run: |
-          python3 ci/fetch-corpus.py "${{ matrix.minecraft }}" "$RUNNER_TEMP/corpus"
+          python3 ci/fetch-corpus.py "${{ matrix.minecraft }}" "$RUNNER_TEMP/corpus" | tee "$RUNNER_TEMP/corpus.txt"
           cp "$RUNNER_TEMP/extra/fabric-api.jar" "$RUNNER_TEMP/corpus/"
       - name: Server with the mod corpus (informational)
-        if: always() && steps.corpus.outcome == 'success'
+        if: ${{ !cancelled() && steps.corpus.outcome == 'success' }}
         continue-on-error: true
         run: ci/smoke-server.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/server-corpus" "$RUNNER_TEMP/corpus" || true
       - name: Client with the mod corpus (informational)
-        if: always() && steps.corpus.outcome == 'success'
+        if: ${{ !cancelled() && steps.corpus.outcome == 'success' }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # CORPUS-2: Xaero's World Map stops the client on its first tick, so it runs alone below and the other mods
+        # reach a world here.
+        run: |
+          mkdir -p "$RUNNER_TEMP/corpus-client"
+          cp "$RUNNER_TEMP/corpus/"*.jar "$RUNNER_TEMP/corpus-client/"
+          worldmap=$(sed -n 's/^xaeros-world-map: .* (\(.*\))$/\1/p' "$RUNNER_TEMP/corpus.txt")
+          if [ -n "$worldmap" ]; then rm -f "$RUNNER_TEMP/corpus-client/$worldmap"; fi
+          SMOKE_TIMEOUT=600 ci/smoke-client.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/client-corpus" "$RUNNER_TEMP/corpus-client" || true
+          grep -A400 "== " "$RUNNER_TEMP/client-corpus/run/logs/fabric-bridge-report.txt" || true
+      - name: Client with Xaero's World Map alone (informational, CORPUS-2)
+        if: ${{ !cancelled() && steps.corpus.outcome == 'success' }}
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          SMOKE_TIMEOUT=600 ci/smoke-client.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/client-corpus" "$RUNNER_TEMP/corpus" || true
-          grep -A400 "== " "$RUNNER_TEMP/client-corpus/run/logs/fabric-bridge-report.txt" || true
+          mkdir -p "$RUNNER_TEMP/extra-worldmap"
+          python3 ci/fetch-corpus.py "${{ matrix.minecraft }}" "$RUNNER_TEMP/extra-worldmap" fabric xaeros-world-map
+          cp "$RUNNER_TEMP/extra/fabric-api.jar" "$RUNNER_TEMP/extra-worldmap/"
+          SMOKE_TIMEOUT=420 ci/smoke-client.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/client-worldmap" "$RUNNER_TEMP/extra-worldmap" || true
       - name: Upload mod corpus logs and reports
-        if: always()
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
           name: corpus-${{ matrix.minecraft }}
@@ -271,6 +379,22 @@ jobs:
             ${{ runner.temp }}/client-corpus/run/crash-reports
             ${{ runner.temp }}/client-corpus/client.out
           if-no-files-found: ignore
+      # The job log keeps only its end, so the informational runs' results are repeated here, last.
+      - name: Summary of the informational runs
+        if: ${{ !cancelled() }}
+        run: |
+          for f in summary-newest summary-viewers; do
+            [ -f "$RUNNER_TEMP/$f.txt" ] && { echo "== $f"; grep -E "^(Newest|PASS|FAIL|WARN)|plugin|not in this run" "$RUNNER_TEMP/$f.txt" | head -60; }
+          done
+          [ -f "$RUNNER_TEMP/summary-polyfrost.txt" ] && { echo "== summary-polyfrost"; head -60 "$RUNNER_TEMP/summary-polyfrost.txt"; }
+          [ -f viewers.txt ] && { echo "== viewers fetched"; cat viewers.txt; }
+          for run in client-sodium-fabric client-viewers client-polyfrost client-corpus client-worldmap; do
+            log="$RUNNER_TEMP/$run/run/logs/latest.log"
+            [ -f "$log" ] || continue
+            echo "== $run"
+            grep -h -m 20 -E "FABRICATED-TEST frapi|Caused by|Exception in|crash report" "$log" || true
+            ls "$RUNNER_TEMP/$run/run/crash-reports" 2>/dev/null | head -3
+          done
       - name: Upload Fabricated jar
         uses: actions/upload-artifact@v4
         with:

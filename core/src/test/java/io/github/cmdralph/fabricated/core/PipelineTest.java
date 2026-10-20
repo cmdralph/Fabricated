@@ -16,6 +16,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 import org.junit.jupiter.api.Test;
@@ -35,6 +36,7 @@ import io.github.cmdralph.fabricated.core.api.FabricatedApiImpl;
 import io.github.cmdralph.fabricated.core.archive.ArchiveLimits;
 import io.github.cmdralph.fabricated.core.archive.SafeArchive;
 import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
+import io.github.cmdralph.fabricated.core.bytecode.InstalledClasses;
 import io.github.cmdralph.fabricated.core.cache.TranslationCache;
 import io.github.cmdralph.fabricated.core.config.FabricatedConfig;
 import io.github.cmdralph.fabricated.core.metadata.FabricModJsonParser;
@@ -72,11 +74,16 @@ class PipelineTest {
 	}
 
 	private static byte[] mixinClass(String name, String targetMethod) {
+		return mixinClass(name, TARGET, targetMethod);
+	}
+
+	/** A mixin into {@code target} whose required {@code @Inject} goes at the head of {@code targetMethod}. */
+	private static byte[] mixinClass(String name, String target, String targetMethod) {
 		ClassWriter cw = new ClassWriter(0);
 		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, name, null, "java/lang/Object", null);
 		AnnotationVisitor m = cw.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false);
 		AnnotationVisitor arr = m.visitArray("value");
-		arr.visit(null, Type.getObjectType(TARGET));
+		arr.visit(null, Type.getObjectType(target));
 		arr.visitEnd();
 		m.visitEnd();
 		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "handler", "()V", null, null);
@@ -148,11 +155,16 @@ class PipelineTest {
 
 	private static Pipeline.Input input(Path game, List<Path> jars, Namespace ns, Map<String, byte[]> gameClasses, Pipeline.MappingSupplier mappings,
 			List<Pipeline.NeoForgeMod> neoForgeMods) throws Exception {
+		return input(game, jars, ns, gameClasses, mappings, neoForgeMods, InstalledClasses.NONE);
+	}
+
+	private static Pipeline.Input input(Path game, List<Path> jars, Namespace ns, Map<String, byte[]> gameClasses, Pipeline.MappingSupplier mappings,
+			List<Pipeline.NeoForgeMod> neoForgeMods, InstalledClasses installed) throws Exception {
 		FabricatedConfig config = FabricatedConfig.load(game.resolve("config"));
 		TranslationCache cache = new TranslationCache(game, config.cacheEnabled(), config.verifyIntegrity());
 		return new Pipeline.Input(game, game.resolve("config"), config, cache, jars, ns == Namespace.OFFICIAL ? "26.2" : "1.21.11",
 				"26.2.0.90", false, ns, "0.17.4+mixin.0.8.7", "0.5.3", "0.17.1", "0.1.0-test", false, gameClasses::get, ClassBytesSource.EMPTY, Set.of("net/neoforged/neoforge"),
-				FabricApiPlan.parse(PLAN), name -> null, Map::of, neoForgeMods, mappings, new String[0]);
+				FabricApiPlan.parse(PLAN), name -> null, Map::of, neoForgeMods, installed, mappings, new String[0]);
 	}
 
 	@Test
@@ -222,6 +234,75 @@ class PipelineTest {
 		assertArrayEquals(firstOverlay, Files.readAllBytes(goodAgain.translated().overlay()));
 	}
 
+	/** A class of an installed NeoForge mod with one method, {@code method()V}. */
+	private static byte[] installedClass(String name, String method) {
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, name, null, "java/lang/Object", null);
+		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC, method, "()V", null, null);
+		mv.visitCode();
+		mv.visitInsn(Opcodes.RETURN);
+		mv.visitMaxs(0, 1);
+		mv.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	/**
+	 * A Fabric addon's mixin into a class of the NeoForge build of the mod it extends is checked against the installed
+	 * build; its cached translation holds while that class is the same, and is checked again when the mod changes.
+	 */
+	@Test
+	void mixinsIntoAnInstalledModAreCheckedAgainWhenItChanges(@TempDir Path game) throws Exception {
+		String renderer = "net/example/sodium/Renderer";
+		Path addon = TestJars.create().fabricModJson(TestJars.modJson("addon", "1.0", "\"mixins\":[\"addon.mixins.json\"]"))
+				.text("addon.mixins.json", "{\"required\":true,\"package\":\"com.addon.mixin\",\"mixins\":[\"RendererMixin\"]}")
+				.bytes("com/addon/mixin/RendererMixin.class", mixinClass("com/addon/mixin/RendererMixin", renderer, "drawSections"))
+				.write(Files.createDirectories(game.resolve("mods")).resolve("addon.jar"));
+		Map<String, byte[]> sodium = new HashMap<>(Map.of(renderer, installedClass(renderer, "drawSections")));
+		Supplier<InstalledClasses> installed = () -> new InstalledClasses(List.of(new InstalledClasses.Jar("Sodium", sodium::containsKey, sodium::get)));
+
+		Pipeline.Input firstLaunch = input(game, List.of(addon), Namespace.OFFICIAL, Map.of(), null, List.of(), installed.get());
+		Pipeline.Result first = Pipeline.run(firstLaunch);
+		assertEquals(List.of("addon"), first.mods().stream().map(m -> m.translated().candidate().id()).toList(), first.report().render());
+		assertFalse(first.mods().getFirst().translated().cacheHit());
+		firstLaunch.cache().finish(5);
+		Pipeline.Input sameLaunch = input(game, List.of(addon), Namespace.OFFICIAL, Map.of(), null, List.of(), installed.get());
+		assertTrue(Pipeline.run(sameLaunch).mods().getFirst().translated().cacheHit());
+		sameLaunch.cache().finish(5);
+
+		sodium.put(renderer, installedClass(renderer, "renderSections"));
+		Pipeline.Result changed = Pipeline.run(input(game, List.of(addon), Namespace.OFFICIAL, Map.of(), null, List.of(), installed.get()));
+		assertTrue(changed.mods().isEmpty(), changed.report().render());
+		Report.ModRow row = changed.report().mods().stream().filter(r -> r.id().equals("addon")).findFirst().orElseThrow();
+		assertEquals(Report.Status.DISABLED, row.status());
+		assertTrue(row.detail().contains("drawSections, which does not exist in net.example.sodium.Renderer"), row.detail());
+	}
+
+	/** On 26.x an addon's mixins into another Fabric mod's classes are checked against that mod's jar. */
+	@Test
+	void mixinsIntoAnotherFabricModAreChecked(@TempDir Path game) throws Exception {
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		String renderer = "com/base/Renderer";
+		Path base = TestJars.create().fabricModJson(TestJars.modJson("base", "2.0", "\"name\":\"Base\""))
+				.bytes(renderer + ".class", installedClass(renderer, "renderSections"))
+				.write(mods.resolve("base.jar"));
+		Path good = TestJars.create().fabricModJson(TestJars.modJson("good-addon", "1.0", "\"mixins\":[\"good.mixins.json\"],\"depends\":{\"base\":\"*\"}"))
+				.text("good.mixins.json", "{\"required\":true,\"package\":\"com.good.mixin\",\"mixins\":[\"RendererMixin\"]}")
+				.bytes("com/good/mixin/RendererMixin.class", mixinClass("com/good/mixin/RendererMixin", renderer, "renderSections"))
+				.write(mods.resolve("good-addon.jar"));
+		Path stale = TestJars.create().fabricModJson(TestJars.modJson("stale-addon", "1.0", "\"mixins\":[\"stale.mixins.json\"],\"depends\":{\"base\":\"*\"}"))
+				.text("stale.mixins.json", "{\"required\":true,\"package\":\"com.stale.mixin\",\"mixins\":[\"RendererMixin\"]}")
+				.bytes("com/stale/mixin/RendererMixin.class", mixinClass("com/stale/mixin/RendererMixin", renderer, "drawSections"))
+				.write(mods.resolve("stale-addon.jar"));
+
+		Pipeline.Result result = Pipeline.run(input(game, List.of(base, good, stale), Namespace.OFFICIAL, Map.of(), null, List.of()));
+
+		Set<String> loaded = result.mods().stream().map(m -> m.translated().candidate().id()).collect(Collectors.toSet());
+		assertEquals(Set.of("base", "good-addon"), loaded, result.report().render());
+		Report.ModRow row = result.report().mods().stream().filter(r -> r.id().equals("stale-addon")).findFirst().orElseThrow();
+		assertTrue(row.detail().contains("drawSections, which does not exist in com.base.Renderer"), row.detail());
+	}
+
 	/**
 	 * A NeoForge mod's mod properties are its custom values to Fabric code, and the Fabric mods it says it provides are
 	 * present: Sodium for NeoForge makes Fabric API's default renderer stand down and provides Indium, whose Fabric jar
@@ -278,6 +359,43 @@ class PipelineTest {
 		assertFalse(result.runtime().isModLoaded("sodium"));
 		assertTrue(result.report().mods().stream().anyMatch(r -> r.id().equals("sodium-addon") && r.status() == Report.Status.DISABLED),
 				result.report().render());
+
+		// A player testing support for it can load it anyway.
+		Files.createDirectories(game.resolve("config"));
+		Files.writeString(game.resolve("config").resolve(FabricatedConfig.FILE_NAME), "{\"schema\": 1, \"mods\": {\"sodium\": {\"loadUnsupported\": true}}}");
+		Pipeline.Result forced = Pipeline.run(input(game, List.of(sodium, addon), Namespace.OFFICIAL, Map.of(), null, List.of()));
+		Set<String> loaded = forced.mods().stream().map(m -> m.translated().candidate().id()).collect(Collectors.toSet());
+		assertEquals(Set.of("sodium", "sodium-addon"), loaded, forced.report().render());
+		assertTrue(forced.report().render().contains("Unsupported mods loaded on request (loadUnsupported)"), forced.report().render());
+	}
+
+	/**
+	 * Iris's Fabric build hooks Sodium's Fabric build: next to Sodium for NeoForge it would load with its hooks missing,
+	 * so it is refused, even when the player asked to load it. Without that request, the player is told to install
+	 * Iris for NeoForge, as anywhere else.
+	 */
+	@Test
+	void aFabricBuildIsRefusedNextToTheNeoForgeBuildOfItsPartner(@TempDir Path game) throws Exception {
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		Path iris = TestJars.create().fabricModJson(TestJars.modJson("iris", "1.11.4", "\"name\":\"Iris\"")).write(mods.resolve("iris.jar"));
+		List<Pipeline.NeoForgeMod> sodium = List.of(new Pipeline.NeoForgeMod("sodium", "0.9.2+mc26.3", "Sodium", Map.of(), List.of()));
+		Pipeline.Result plain = Pipeline.run(input(game, List.of(iris), Namespace.OFFICIAL, Map.of(), null, sodium));
+		assertEquals("Install Iris for NeoForge instead (from the same download page).",
+				plain.report().mods().stream().filter(r -> r.id().equals("iris")).findFirst().orElseThrow().suggestion());
+
+		Files.createDirectories(game.resolve("config"));
+		Files.writeString(game.resolve("config").resolve(FabricatedConfig.FILE_NAME), "{\"schema\": 1, \"mods\": {\"iris\": {\"loadUnsupported\": true}}}");
+		Pipeline.Result result = Pipeline.run(input(game, List.of(iris), Namespace.OFFICIAL, Map.of(), null, sodium));
+
+		assertTrue(result.mods().isEmpty(), result.report().render());
+		Report.ModRow row = result.report().mods().stream().filter(r -> r.id().equals("iris")).findFirst().orElseThrow();
+		assertEquals(Report.Status.DISABLED, row.status());
+		assertTrue(row.detail().startsWith("its Fabric build can't run next to the NeoForge mod Sodium 0.9.2+mc26.3: "), row.detail());
+		assertEquals("Use the NeoForge builds of both, or the Fabric builds of both.", row.suggestion());
+
+		// Without Sodium for NeoForge, the request stands.
+		Pipeline.Result alone = Pipeline.run(input(game, List.of(iris), Namespace.OFFICIAL, Map.of(), null, List.of()));
+		assertEquals(List.of("iris"), alone.mods().stream().map(m -> m.translated().candidate().id()).toList(), alone.report().render());
 	}
 
 	/**
@@ -322,11 +440,11 @@ class PipelineTest {
 	private static Pipeline.LoadedMod loadedMod(Path dir, String id, String iface, String environmentClass) throws Exception {
 		String json = TestJars.modJson(id, "1.0", "");
 		Path file = TestJars.create().fabricModJson(json).write(dir.resolve(id + ".jar"));
-		Candidate c = new Candidate(file, id + "-hash", FabricModJsonParser.parse(json), id + ".jar", null, 0, List.of());
+		Candidate c = new Candidate(file, id + "-hash", FabricModJsonParser.parse(json), id + ".jar", null, 0, List.of(), Set.of());
 		InjectedInterface injection = new InjectedInterface("net/minecraft/world/Thing", iface, iface, false, 1);
 		TranslatedMod mod = new TranslatedMod(c, id.replace('-', '_'), file, file, List.of(), 0, List.of(), List.of(injection),
 				Set.of(environmentClass), false, 0);
-		return new Pipeline.LoadedMod(mod, Set.of());
+		return new Pipeline.LoadedMod(mod, Set.of(), List.of());
 	}
 
 	private static List<String> interfacesOf(Pipeline.Result result, String target) {
@@ -366,7 +484,7 @@ class PipelineTest {
 	}
 
 	private static Candidate candidate(String id, String extraJson) throws Exception {
-		return new Candidate(Path.of(id + ".jar"), "00", FabricModJsonParser.parse(TestJars.modJson(id, "1.0", extraJson)), id + ".jar", null, 0, List.of());
+		return new Candidate(Path.of(id + ".jar"), "00", FabricModJsonParser.parse(TestJars.modJson(id, "1.0", extraJson)), id + ".jar", null, 0, List.of(), Set.of());
 	}
 
 	@Test

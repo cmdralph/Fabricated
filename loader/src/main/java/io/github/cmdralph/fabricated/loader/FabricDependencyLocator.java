@@ -24,6 +24,7 @@ import io.github.cmdralph.fabricated.core.api.FabricatedApiImpl;
 import io.github.cmdralph.fabricated.core.archive.ArchiveLimits;
 import io.github.cmdralph.fabricated.core.archive.SafeArchive;
 import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
+import io.github.cmdralph.fabricated.core.bytecode.InstalledClasses;
 import io.github.cmdralph.fabricated.core.cache.TranslationCache;
 import io.github.cmdralph.fabricated.core.config.FabricatedConfig;
 import io.github.cmdralph.fabricated.core.json.JsonException;
@@ -47,10 +48,11 @@ import net.neoforged.neoforgespi.locating.IncompatibleFileReporting;
 import net.neoforged.neoforgespi.locating.ModFileDiscoveryAttributes;
 
 /**
- * Runs Fabricated's discovery pipeline once all NeoForge mods are known, then hands every translated
- * Fabric mod to NeoForge as an ordinary mod file: the (remapped) jar overlaid with the generated
- * metadata, with split-package conflicts filtered out. Anything that goes wrong here disables Fabric
- * support for this launch with a warning; it never stops the game.
+ * Runs Fabricated's discovery pipeline after NeoForge's own dependency locators (the mods those add, such as jar-in-jar
+ * ones, are read by {@link NeoForgeMods}), then hands every translated Fabric mod to NeoForge as an ordinary mod file:
+ * the (remapped) jar overlaid with the generated metadata, with split-package conflicts filtered out. Anything that
+ * goes wrong here disables Fabric support for this launch with a warning; apart from {@code strictDependencies}, it
+ * never stops the game.
  */
 public final class FabricDependencyLocator implements IDependencyLocator {
 	private static final Logger LOGGER = LoggerFactory.getLogger("Fabricated");
@@ -68,6 +70,14 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 			LOGGER.info("Fabricated discovery finished in {} ms", (System.nanoTime() - start) / 1_000_000);
 		} catch (Throwable t) {
 			if (t instanceof VirtualMachineError vme && !(t instanceof StackOverflowError)) throw vme;
+			// The state is published just before the first Fabric mod is handed to NeoForge.
+			if (FabricatedState.get() != null) {
+				LOGGER.error("Fabricated failed after handing Fabric mods to NeoForge; some may not work this launch", t);
+				pipeline.addIssue(ModLoadingIssue.warning(MESSAGE,
+						"Fabric mod support failed partway: Fabric mods may load without everything they need this launch: " + t
+								+ ". See logs/latest.log.").withCause(t));
+				return;
+			}
 			LOGGER.error("Fabricated failed during discovery; Fabric mods will not be loaded this launch", t);
 			pipeline.addIssue(ModLoadingIssue.warning(MESSAGE,
 					"Fabric mod support failed to start and is disabled for this launch: " + t + ". See logs/latest.log.").withCause(t));
@@ -126,6 +136,7 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 			}
 		}
 		ClassBytesSource nativeApi = ClassBytesSource.EMPTY;
+		List<InstalledClasses.Jar> fabricApi = List.of();
 		// Interfaces the in-game mod's mixins add to game classes (Fabric API's injected interfaces).
 		Supplier<Map<String, List<String>>> nativeApiInterfaces = Map::of;
 		FabricApiPlan plan;
@@ -152,19 +163,22 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 					return interfaces;
 				};
 				nativeApi = name -> archive.read(name + ".class");
+				fabricApi = List.of(new InstalledClasses.Jar("Fabric API", name -> archive.contains(name + ".class"), nativeApi));
 			} else if (devGameMod.isPresent()) {
 				JarContents devContents = devGameMod.get().getContents();
 				nativeApi = name -> devContents.readFile(name + ".class");
+				fabricApi = List.of(new InstalledClasses.Jar("Fabric API", name -> devContents.containsFile(name + ".class"), nativeApi));
 			}
 
-			List<Pipeline.NeoForgeMod> neoForgeMods = NeoForgeMods.of(loadedMods, !fabricJars.isEmpty());
+			// Fabric mixins may target the classes of Fabricated's Fabric API and of the NeoForge mods (an addon's mod).
+			NeoForgeMods.Found neoForgeMods = NeoForgeMods.of(loadedMods, !fabricJars.isEmpty(), fabricApi);
 
 			byte[] planJson = FabricatedInfo.readOptional("fabric-api-plan.json");
 			if (planJson == null) throw new IllegalStateException("This Fabricated build is missing its fabric-api-plan.json");
 			plan = FabricApiPlan.parse(new String(planJson, StandardCharsets.UTF_8));
 			Pipeline.Input input = new Pipeline.Input(gameDir, FMLPaths.CONFIGDIR.get(), config, cache, fabricJars, mcVersion, neoVersion,
 					client, info.namespace(), runtimeMixinVersion(info), mixinExtrasVersion(loadedMods), info.mixinLowest(), info.fabricatedVersion(), !fml.isProduction(), gameClasses, untransformable,
-					platformPackages, plan, nativeApi, nativeApiInterfaces, neoForgeMods,
+					platformPackages, plan, nativeApi, nativeApiInterfaces, neoForgeMods.mods(), neoForgeMods.classes(),
 					(mappingsCache, mojangPath) -> IntermediaryMappings.load(mappingsCache, mcVersion, client, mojangPath),
 					fml.getProgramArgs().getArguments());
 
@@ -251,17 +265,20 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 
 	/** The running Mixin version, read the same way NeoForge reads it. */
 	static String runtimeMixinVersion(FabricatedInfo info) {
+		String version = classVersion("org.spongepowered.asm.mixin.FabricUtil");
+		return version != null ? version : info.mixinFallback();
+	}
+
+	/** The version of the module, else the package, a class on NeoForge's own layers is in; null when unknown. */
+	private static String classVersion(String className) {
 		try {
-			Class<?> fabricUtil = Class.forName("org.spongepowered.asm.mixin.FabricUtil");
-			Optional<String> fromModule = Optional.ofNullable(fabricUtil.getModule().getDescriptor())
-					.flatMap(ModuleDescriptor::version).map(ModuleDescriptor.Version::toString);
-			if (fromModule.isPresent()) return fromModule.get();
-			String fromPackage = fabricUtil.getPackage().getImplementationVersion();
-			if (fromPackage != null) return fromPackage;
+			Class<?> cls = Class.forName(className);
+			return Optional.ofNullable(cls.getModule().getDescriptor()).flatMap(ModuleDescriptor::version).map(ModuleDescriptor.Version::toString)
+					.orElse(cls.getPackage().getImplementationVersion());
 		} catch (ClassNotFoundException | LinkageError e) {
-			LOGGER.debug("Could not determine the running Mixin version", e);
+			LOGGER.debug("Could not determine the version of {}", className, e);
+			return null;
 		}
-		return info.mixinFallback();
 	}
 
 	/**
@@ -285,15 +302,7 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 		}
 		if (newest != null) return newest;
 		// Not a discovered file: a library on NeoForge's own layers.
-		try {
-			Class<?> bootstrap = Class.forName("com.llamalad7.mixinextras.MixinExtrasBootstrap");
-			Optional<String> fromModule = Optional.ofNullable(bootstrap.getModule().getDescriptor())
-					.flatMap(ModuleDescriptor::version).map(ModuleDescriptor.Version::toString);
-			return fromModule.orElse(bootstrap.getPackage().getImplementationVersion());
-		} catch (ClassNotFoundException | LinkageError e) {
-			LOGGER.debug("Could not determine the running MixinExtras version", e);
-			return null;
-		}
+		return classVersion("com.llamalad7.mixinextras.MixinExtrasBootstrap");
 	}
 
 	private static String ownVersion(IModFile file) {

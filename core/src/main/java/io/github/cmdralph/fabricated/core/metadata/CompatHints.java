@@ -122,8 +122,8 @@ public record CompatHints(Set<String> skipMixins, List<MixinEntry> mixins, Map<S
 				switch (key) {
 					case "schema" -> {
 					}
-					case "skipMixins" -> skipMixins = strings(e.getValue(), key, SKIP_MIXIN);
-					case "skipEntrypoints" -> skipEntrypoints = strings(e.getValue(), key, ENTRYPOINT_KEY);
+					case "skipMixins" -> skipMixins = strings(e.getValue(), SKIP_MIXIN);
+					case "skipEntrypoints" -> skipEntrypoints = strings(e.getValue(), ENTRYPOINT_KEY);
 					case "mixins" -> {
 						List<MixinEntry> parsed = FabricModJsonParser.parseMixins(e.getValue());
 						if (parsed.size() > MAX_ENTRIES) throw new MetadataException("more than " + MAX_ENTRIES + " entries");
@@ -163,14 +163,14 @@ public record CompatHints(Set<String> skipMixins, List<MixinEntry> mixins, Map<S
 			for (Object k : entry.keySet()) {
 				if (!Set.of("target", "skipMixins", "skipEntrypoints").contains(k)) throw new MetadataException("unknown key \"" + k + "\" in a patch");
 			}
-			Set<String> mixins = entry.containsKey("skipMixins") ? strings(entry.get("skipMixins"), "skipMixins", SKIP_MIXIN) : Set.of();
-			Set<String> entrypoints = entry.containsKey("skipEntrypoints") ? strings(entry.get("skipEntrypoints"), "skipEntrypoints", ENTRYPOINT_KEY) : Set.of();
+			Set<String> mixins = entry.containsKey("skipMixins") ? strings(entry.get("skipMixins"), SKIP_MIXIN) : Set.of();
+			Set<String> entrypoints = entry.containsKey("skipEntrypoints") ? strings(entry.get("skipEntrypoints"), ENTRYPOINT_KEY) : Set.of();
 			patches.add(new Patch(target, mixins, entrypoints));
 		}
 		return patches;
 	}
 
-	private static Set<String> strings(Object value, String key, Pattern pattern) throws MetadataException {
+	private static Set<String> strings(Object value, Pattern pattern) throws MetadataException {
 		if (!(value instanceof List<?> list)) throw new MetadataException("must be a list of strings");
 		if (list.size() > MAX_ENTRIES) throw new MetadataException("more than " + MAX_ENTRIES + " entries");
 		Set<String> result = new LinkedHashSet<>();

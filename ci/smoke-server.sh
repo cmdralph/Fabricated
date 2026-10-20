@@ -117,6 +117,7 @@ check "FABRICATED-TEST fabric api base event OK" server.out "fabric-api-base eve
 check "FABRICATED-TEST access widener OK" server.out "access widener applied"
 check "FABRICATED-TEST server entrypoint OK" server.out "server entrypoint ran"
 check "FABRICATED-TEST mixin OK" server.out "mixin applied"
+check "FABRICATED-TEST early language adapter OK" server.out "Fabric's start-up order: language adapters created before the mods' mixin plugins load"
 check "FABRICATED-TEST lifecycle server started OK" server.out "native lifecycle: SERVER_STARTED"
 check "FABRICATED-TEST lifecycle server tick OK" server.out "native lifecycle: END_SERVER_TICK"
 check "FABRICATED-TEST lifecycle server stopping OK" server.out "native lifecycle: SERVER_STOPPING"

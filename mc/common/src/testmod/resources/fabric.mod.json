@@ -28,9 +28,19 @@
     "server": ["io.github.cmdralph.fabricated.testmod.TestMod"],
     "client": ["io.github.cmdralph.fabricated.testmod.ClientTestMod", "io.github.cmdralph.fabricated.testmod.BlockEntityEventsClientTest"],
     "fabricated-test": ["io.github.cmdralph.fabricated.testmod.TestMod${'$'}CustomEntrypoint"],
-    "modmenu": ["io.github.cmdralph.fabricated.testmod.ModMenuEntry"]
+    "modmenu": ["io.github.cmdralph.fabricated.testmod.ModMenuEntry"],
+    "jei_mod_plugin": ["io.github.cmdralph.fabricated.testmod.plugin.OtherModPlugins${'$'}Jei"],
+    "rei_common": ["io.github.cmdralph.fabricated.testmod.plugin.OtherModPlugins${'$'}Rei"],
+    "jade": [
+      "io.github.cmdralph.fabricated.testmod.plugin.OtherModPlugins${'$'}Jade",
+      "io.github.cmdralph.fabricated.testmod.plugin.OtherModPlugins${'$'}Jade::INSTANCE"
+    ],
+    "voicechat": ["io.github.cmdralph.fabricated.testmod.plugin.OtherModPlugins${'$'}VoiceChat"]
   },
   "mixins": ["fabricated-testmod.mixins.json"],
+  "languageAdapters": {
+    "fabricated-test-early": "io.github.cmdralph.fabricated.testmod.EarlyAdapter"
+  },
   "accessWidener": "fabricated-testmod.accesswidener",
   "depends": {
     "fabricloader": ">=0.19.0",

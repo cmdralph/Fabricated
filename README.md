@@ -55,12 +55,17 @@ survive pre-flight works today, including mods that add reload listeners, built-
 registries, items and blocks using Fabric's item and block APIs, entities with default attributes, block entity
 types, data attachments or Fabric's interaction events. Loot table events, content registries and Fabric's transfer API work too, and Fabric storages and NeoForge's item and fluid capabilities see each other (a NeoForge pipe reaches a Fabric machine). The per-module details are in [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md).
 
+Fabric mods also reach NeoForge mods: a Fabric mod's plugins for JEI, REI, Jade and EMI are found by those mods'
+NeoForge builds (WTHIT reads its plugin file as it is), its config screen opens from NeoForge's mod list, and its
+mixins into an installed NeoForge mod (a Fabric addon of a mod's NeoForge build) are checked before the game starts.
+
 ## What it does not support
 
 - **Fabric API modules that NeoForge conflicts with**, until Fabricated implements them natively (see above).
-- **The Fabric builds of renderer mods** (Sodium, Iris). Use their NeoForge builds: on 26.x Sodium for NeoForge
-  draws Fabric block models through its own Fabric renderer, and Iris runs on top (see
-  [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md)).
+- **The Fabric builds of renderer mods** (Sodium, Iris), by default. Use their NeoForge builds: on 26.x Sodium for
+  NeoForge draws Fabric block models through its own Fabric renderer, and Iris runs on top (see
+  [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md)). Running their Fabric builds is work in progress
+  ([docs/roadmap.md](docs/roadmap.md), rendering-pipeline track); `loadUnsupported` loads them for testing.
 - **Mods that use Fabric Loader internals** (`net.fabricmc.loader.impl.*`). Only the public Fabric Loader
   API is provided.
 - **Fabric mods built for another Minecraft version.** A Fabric mod for 1.21.11 won't run on 26.x and vice
@@ -92,7 +97,8 @@ with the same id. Remove the NeoForge jar to use the Fabric one.
 **Where do I look first?** `logs/fabric-bridge-report.txt`. It is rewritten on every launch, and `/fabricated
 report` regenerates it. It lists every Fabric mod with its status (loaded, disabled, rejected, provided
 natively, skipped), the reason, and a suggested fix. It also has the Fabric API plan, mixin pre-flight
-results, access-widener notes and timings.
+results, access-widener notes and timings. In game, `/fabricated` prints a one-line summary and `/fabricated disabled`
+lists the Fabric mods that didn't load, with why (on a server, from the console only).
 
 | You see | Meaning | What to do |
 |---|---|---|
@@ -123,7 +129,8 @@ warning in the report, so a bad config never crashes the game.
       "skipEntrypoints": ["client"],
       "aliases": ["example"],
       "ignorePreflight": false,
-      "ignoreHints": false
+      "ignoreHints": false,
+      "loadUnsupported": false
     }
   },
   "mojangMappingsPath": null
@@ -143,6 +150,7 @@ warning in the report, so a bad config never crashes the game.
 | `mods.<id>.aliases` | Extra ids this mod satisfies as a dependency. |
 | `mods.<id>.ignorePreflight` | Load the mod even if mixin pre-flight fails. It may crash. Use for testing only. |
 | `mods.<id>.ignoreHints` | Ignore the mod's own `custom.fabricated` hints (see [docs/API.md](docs/API.md)). |
+| `mods.<id>.loadUnsupported` | Load a mod whose Fabric build Fabricated refuses (the Fabric builds of Sodium and Iris) anyway. Expect it to misbehave; this exists for testing support for it. |
 | `mojangMappingsPath` | 1.21.11 only: path to Mojang's mapping file if NeoForge's installer didn't leave one. |
 
 ## Known limitations
@@ -151,8 +159,9 @@ warning in the report, so a bad config never crashes the game.
   per-module status on each Minecraft version. The roadmap is at the end of
   that file.
 - **Mixin pre-flight is conservative.** It only reports what it can prove from bytecode. A mixin it can't
-  evaluate (wildcard selectors, unusual injection points) loads normally. If that mixin later fails,
-  Mixin's own crash report names the Fabric mod.
+  evaluate (wildcard selectors, unusual injection points, a target in another Fabric mod) loads normally. If
+  that mixin later fails, Mixin's own crash report names the Fabric mod. Mixins into Minecraft, Fabric API and
+  installed NeoForge mods (a Fabric addon of a mod's NeoForge build) are all checked.
 - **No isolation after mod code runs.** Once a mod's code has run, Java can't unload it. Fabricated then
   explains failures instead of hiding them.
 - **Fields NeoForge requires to stay private** (for example, `Biome.climateSettings`) are never widened,
@@ -179,7 +188,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). In short:
 
 - [docs/claude.md](docs/claude.md): start here when working on Fabricated. Architecture map, rules, Fabric's
   renderer API design, mixin conventions and the commands to run.
-- [docs/progress.md](docs/progress.md): findings log, roadmap, test matrices and what is still unverified.
+- [docs/roadmap.md](docs/roadmap.md): the roadmap (tracks, what is next), findings log, test matrices and what is still unverified.
 - [docs/MIXINS.md](docs/MIXINS.md): every mixin Fabricated applies, with its target and injection point.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how the pipeline, isolation, caching and security work.
 - [docs/RESEARCH.md](docs/RESEARCH.md): verified facts about NeoForge, FML and Fabric that the design

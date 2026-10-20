@@ -1,7 +1,7 @@
 # Mixin inventory
 
 Every mixin Fabricated ships, by config: target, injector, injection point, `require` and the versions that compile
-it. Snapshot taken 2026-10-19 by scanning the sources (see `progress.md`), then updated by hand for that session's
+it. Snapshot taken 2026-10-19 by scanning the sources (see `roadmap.md`), then updated by hand for that session's
 changes. A commit that adds, removes or retargets a mixin updates its row here. Source line numbers are left out on
 purpose; open the class.
 
@@ -14,8 +14,8 @@ Fabricated-owned (shipped in `game-mod.jar`, registered in `mc/common/src/main/r
 
 | Config file | Package | Versions | Sections | defaultRequire | overwrites.requireAnnotations | plugin |
 |---|---|---|---|---|---|---|
-| `mc/1.21.11/src/main/resources/fabricated.mixins.json` | `io.github.cmdralph.fabricated.neoforge.mixin` | 1.21.11 | mixins 38, client 12 | 1 | true | none |
-| `mc/common26/src/main/resources/fabricated.mixins.json` | same | 26.1.2, 26.2, 26.3 | mixins 46, client 22 | 1 | true | none |
+| `mc/1.21.11/src/main/resources/fabricated.mixins.json` | `io.github.cmdralph.fabricated.neoforge.mixin` | 1.21.11 | mixins 38, client 12 | 1 | true | `FabricatedMixinPlugin` (creates Fabric language adapters in `onLoad`; filters nothing) |
+| `mc/common26/src/main/resources/fabricated.mixins.json` | same | 26.1.2, 26.2, 26.3 | mixins 46, client 22 | 1 | true | same |
 | `mc/common/src/main/resources/fabricated-fabric-api.mixins.json` | `net.fabricmc.fabric.mixin.networking.accessor` | all | mixins 4 | 1 | true | none |
 | `mc/common/src/main/resources/fabricated-lookup.mixins.json` | `net.fabricmc.fabric.mixin.lookup` | all | mixins 2 (classes in `mc/<v>/src/fabricapi/java`) | 1 | true | none |
 | `mc/common/src/main/resources/fabricated-loot.mixins.json` | `net.fabricmc.fabric.mixin.loot` | all | mixins 5 | 1 | true | none |
@@ -36,6 +36,7 @@ Test-mod configs (not shipped):
 | Config | Package | defaultRequire | Mixins |
 |---|---|---|---|
 | `mc/common/src/testmod/resources/fabricated-testmod.mixins.json` | `io.github.cmdralph.fabricated.testmod.mixin` | 1 | `MinecraftServerMixin` (`@Inject tickServer TAIL`, `mc/common/src/testmod/java/.../mixin/MinecraftServerMixin.java`) |
+| `mc/common26/src/testmodfrapi/resources/fabricated-testmod-frapi.mixins.json` | `io.github.cmdralph.fabricated.testmod.frapi.mixin` | 1 | `BakedQuadMixin` (`@Inject <init> RETURN` with vanilla's parameters, `mc/common26/src/testmodfrapi/java/.../mixin/BakedQuadMixin.java`). Exercises pre-flight's constructor repair and handler bridge (CI's renderer API gate) |
 | `mc/common/src/testmodbroken/resources/badmixin/fabricated-testmod-badmixin.mixins.json` | `io.github.cmdralph.fabricated.testmod.broken.mixin` | unset | `ImpossibleMixin` (`@Inject method="fabricatedMethodThatDoesNotExist" HEAD require=1`, `.../ImpossibleMixin.java`). Meant to fail pre-flight (`ci/smoke-server.sh`) |
 
 ## Fragility review
@@ -137,7 +138,7 @@ Versions: 1.21.11 · package `net.fabricmc.fabric.mixin.transfer` · required=tr
 
 ### `mc/1.21.11/src/main/resources/fabricated.mixins.json`
 
-Versions: 1.21.11 · package `io.github.cmdralph.fabricated.neoforge.mixin` · required=true · defaultRequire=1 · plugin=none · overwrites.requireAnnotations=true
+Versions: 1.21.11 · package `io.github.cmdralph.fabricated.neoforge.mixin` · required=true · defaultRequire=1 · plugin=`FabricatedMixinPlugin` · overwrites.requireAnnotations=true
 
 | Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
 |---|---|---|---|---|---|---|---|---|
@@ -431,7 +432,7 @@ Versions: 26.1.2, 26.2, 26.3 · package `net.fabricmc.fabric.mixin.transfer` · 
 
 ### `mc/common26/src/main/resources/fabricated.mixins.json`
 
-Versions: 26.1.2, 26.2, 26.3 · package `io.github.cmdralph.fabricated.neoforge.mixin` · required=true · defaultRequire=1 · plugin=none · overwrites.requireAnnotations=true
+Versions: 26.1.2, 26.2, 26.3 · package `io.github.cmdralph.fabricated.neoforge.mixin` · required=true · defaultRequire=1 · plugin=`FabricatedMixinPlugin` · overwrites.requireAnnotations=true
 
 | Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
 |---|---|---|---|---|---|---|---|---|
@@ -534,11 +535,19 @@ Versions: 26.1.2, 26.2, 26.3 · package `io.github.cmdralph.fabricated.neoforge.
 
 ### `mc/common/src/testmod/resources/fabricated-testmod.mixins.json`
 
-Versions: 1.21.11, 26.1.2, 26.2, 26.3 · package `io.github.cmdralph.fabricated.testmod.mixin` · required=true · defaultRequire=1 · plugin=none · overwrites.requireAnnotations=true
+Versions: 1.21.11, 26.1.2, 26.2, 26.3 · package `io.github.cmdralph.fabricated.testmod.mixin` · required=true · defaultRequire=1 · plugin=`TestMixinPlugin` (checks the test mod's language adapter ran first) · overwrites.requireAnnotations=true
 
 | Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
 |---|---|---|---|---|---|---|---|---|
 | mixins | MinecraftServerMixin | common/testmod (1.21.11,26.1.2,26.2,26.3) | n.m.server.MinecraftServer | @Inject → fabricatedTest$afterTick | "tickServer" | TAIL | — | default |
+
+### `mc/common26/src/testmodfrapi/resources/fabricated-testmod-frapi.mixins.json`
+
+Versions: 26.1.2, 26.2, 26.3 · package `io.github.cmdralph.fabricated.testmod.frapi.mixin` · required=true · defaultRequire=1 · plugin=none · overwrites.requireAnnotations=true
+
+| Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
+|---|---|---|---|---|---|---|---|---|
+| client | BakedQuadMixin | common26/testmodfrapi (26.1.2,26.2,26.3) | n.m.c.resources.model.geometry.BakedQuad | @Inject → fabricatedTest$mark (moved by pre-flight to NeoForge's constructor through a bridge) | "<init>" | RETURN | — | default |
 
 ### `mc/common/src/testmodbroken/resources/badmixin/fabricated-testmod-badmixin.mixins.json`
 

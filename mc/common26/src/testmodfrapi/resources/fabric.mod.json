@@ -11,6 +11,7 @@
     "main": ["io.github.cmdralph.fabricated.testmod.frapi.FrapiTestMod"],
     "client": ["io.github.cmdralph.fabricated.testmod.frapi.FrapiClientTestMod"]
   },
+  "mixins": ["fabricated-testmod-frapi.mixins.json"],
   "depends": {
     "fabricloader": ">=0.19.0",
     "minecraft": "${minecraft_version}",

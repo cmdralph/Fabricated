@@ -573,7 +573,9 @@ there), so model loading, which requires it, is disabled.
 
 Use the NeoForge builds of Sodium and Iris. Their Fabric builds are disabled with a message: Sodium's would mesh
 NeoForge's models, fluids and lighting the Fabric way and drop the geometry NeoForge mods add to chunks, and Iris's
-needs Sodium's Fabric build. Sodium for NeoForge carries its own implementation of Fabric's renderer API and switches
+needs Sodium's Fabric build. The mixed pairs are refused even with `loadUnsupported`: Iris's Fabric build next to
+Sodium for NeoForge, and Sodium's Fabric build next to Iris for NeoForge, as each hooks classes only its own partner
+build has (their fluid renderers). Sodium for NeoForge carries its own implementation of Fabric's renderer API and switches
 it on whenever Fabric API's renderer module is loaded, which Fabricated with the Fabric API jar provides. It then meshes
 every block through that renderer, so Fabric block models show in the world. Fabricated's part:
 
@@ -587,15 +589,38 @@ every block through that renderer, so Fabric block models show in the world. Fab
   (`sodium:options`).
 
 CI runs Sodium and Iris for NeoForge (from Modrinth) with Fabric API and a Fabric model test mod on 26.1.2, 26.2 and
-26.3, and checks each of these. Shaders weren't enabled in that run. A Fabric addon that mixes into Sodium's
-Fabric-only platform classes can't work with Sodium for NeoForge, which doesn't have them. On 1.21.11 neither Sodium
-for NeoForge nor Fabricated has Fabric's renderer API, so Fabric block models stay invisible with or without Sodium.
+26.3, and checks each of these. Shaders weren't enabled in that run. A Fabric addon's mixins into Sodium are checked
+against the installed Sodium for NeoForge before the game starts, like mixins into the game: one that needs Sodium's
+Fabric-only classes, or members its NeoForge build lacks, is reported and the addon disabled instead of crashing. On
+1.21.11 neither Sodium for NeoForge nor Fabricated has Fabric's renderer API, so Fabric block models stay invisible
+with or without Sodium.
+
+### Plugins for recipe viewers, tooltip mods and Simple Voice Chat
+
+A Fabric mod's plugins for JEI, REI, Jade, EMI and Simple Voice Chat are its entrypoints (`jei_mod_plugin`,
+`rei_common`, `rei_client`, `rei_server`, `jade`, `emi`, `voicechat`); their NeoForge builds look for an annotation on
+the plugin class instead. Fabricated adds
+that annotation to the mod's NeoForge scan data for each such entrypoint, so the NeoForge builds find the plugins.
+WTHIT needs nothing: on NeoForge it reads the jar's `waila_plugins.json` / `wthit_plugins.json`, which stay in the
+translated mod. Jade's per-mod settings (the `jade` custom value) become the mod properties Jade for NeoForge reads.
+
+- The NeoForge builds create a plugin from a class with a public no-argument constructor, as Fabric's default
+  language adapter does with a class name. A plugin given as a field or method reference (`Class::member`) or through
+  another language adapter (Kotlin's `object`) is left out, with a line in the report.
+- JEI and REI create plugins while NeoForge constructs mods, before Fabric `main` entrypoints run (on Fabric JEI does
+  it after them); EMI and Jade create a plugin again on each reload.
+- A plugin that calls a viewer's Fabric-only API (`mezz.jei.api.fabric`, EMI's `FabricEmiStack`) fails at that call.
+- CI runs the NeoForge builds of JEI, REI, Jade, WTHIT and Simple Voice Chat (from Modrinth, where one exists for the
+  version) with the test mod's plugins (informational). EMI has no NeoForge build for these versions (UNVERIFIED), so only its mapping is
+  unit-tested.
 
 ### Fabric Loader
 
 The public `net.fabricmc.loader.api` is complete: entrypoints (including custom ones and language adapters such as
 Kotlin's), mod containers and metadata, versions and predicates, the object share, and the mapping resolver
-(intermediary to Mojang names on 1.21.11).
+(intermediary to Mojang names on 1.21.11). As on Fabric, every declared language adapter is created before any Fabric
+mod's mixin plugin loads (some mods declare one only to run code that early). `preLaunch` entrypoints still run later
+than on Fabric: right before `main`.
 
 - `@Environment` and `@EnvironmentInterface` are applied as Fabric Loader applies them: members and interfaces for
   the other side are stripped when the class loads, so a common class implementing a client-only interface loads on
@@ -652,5 +677,18 @@ modules that cascade from it.
 
 ## Fabric mods tested
 
-Only Fabricated's own test mods are tested in CI so far. Results for real Fabric mods will be added here as
-CI covers them. To report one, see [CONTRIBUTING.md](../CONTRIBUTING.md#reporting-a-compatibility-result).
+CI checks Fabricated's own test mods as gates on every version. Real mods run in these CI runs too, downloaded from
+Modrinth in CI (never redistributed):
+
+- **A corpus of popular Fabric mods** (`ci/mod-corpus.txt`: libraries, interface, rendering, performance and content
+  mods, with their dependencies), on a server and a client, on every version. Informational: each run's report lists
+  which load and why the others are disabled. Known problems are tracked as CORPUS-n in
+  [roadmap.md](roadmap.md#findings-log).
+- **Sodium and Iris for NeoForge** with Fabric API and the renderer test mod on 26.x: gated (see *Renderer mods*).
+  Their Fabric builds run with `loadUnsupported`, informational: since the constructor repair they reach a world and
+  mesh Fabric models on 26.1.2 and 26.3.
+- **The NeoForge builds of JEI, REI, Jade and WTHIT** with the test mod's plugins declared the Fabric way:
+  informational. Each viewer created and called its plugin on 26.1.2 and 26.3 (WTHIT on 26.1.2; no 26.3 build).
+- **OneConfig and PolyPlus** (Fabric only), informational, where Modrinth has builds for the version.
+
+To report a result for another mod, see [CONTRIBUTING.md](../CONTRIBUTING.md#reporting-a-compatibility-result).

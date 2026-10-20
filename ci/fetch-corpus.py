@@ -2,11 +2,13 @@
 """Downloads mods for one Minecraft version from Modrinth into a directory (CI only): ci/mod-corpus.txt's Fabric
 mods, or the given projects' builds for the given loader.
 
-Each project's newest build for the version is fetched, then its required dependencies, recursively. Files come only
-from Modrinth's CDN and must match the SHA-512 Modrinth lists. Fabric API is left out (CI adds the official jar).
-Prints one line per mod; a mod without a build for the version is reported and skipped.
+Each project's newest build for the version is fetched, or the build named as <project>@<version-id>, then its
+required dependencies, recursively (the version a dependency names when it is a build for the version, else the
+newest). Files come only from Modrinth's CDN and must match the SHA-512 Modrinth lists. Fabric API is left out (CI
+adds the official jar). Prints one line per mod, with the version id for pinning; a mod without a build for the
+version is reported and skipped.
 
-Usage: ci/fetch-corpus.py <minecraft-version> <out-dir> [<loader> <project>...]
+Usage: ci/fetch-corpus.py <minecraft-version> <out-dir> [<loader> <project>[@<version-id>]...]
 """
 import hashlib
 import json
@@ -31,6 +33,14 @@ def newest(project, mc, loader):
     query = urllib.parse.urlencode({"loaders": json.dumps([loader]), "game_versions": json.dumps([mc])})
     versions = json.loads(get(f"{API}/project/{urllib.parse.quote(project)}/version?{query}"))
     return versions[0] if versions else None
+
+
+def pinned(project, mc, loader):
+    version_id = project.split("@", 1)[1]
+    version = json.loads(get(f"{API}/version/{urllib.parse.quote(version_id)}"))
+    if mc not in version.get("game_versions", []) or loader not in version.get("loaders", []):
+        raise ValueError(f"version {version_id} is not a {loader} build for {mc}")
+    return version
 
 
 def download(version, out):
@@ -64,19 +74,24 @@ def main():
     while queue:
         project = queue.pop(0)
         try:
-            version = newest(project, mc, loader)
+            version = pinned(project, mc, loader) if "@" in project else newest(project.split("~")[0], mc, loader)
+            if "~" in project:  # a dependency's named version, when it is a build for this version and loader
+                try:
+                    version = pinned(project.replace("~", "@"), mc, loader)
+                except Exception:
+                    pass
             if version is None:
-                print(f"{project}: no {loader} build for {mc}")
+                print(f"{project.split('@')[0].split('~')[0]}: no {loader} build for {mc}")
                 continue
             if version["project_id"] in seen:
                 continue
             seen.add(version["project_id"])
             name = download(version, out)
-            print(f"{project}: {version['version_number']} ({name})")
-            queue += [d["project_id"] for d in version.get("dependencies", [])
+            print(f"{project.split('@')[0].split('~')[0]}: {version['version_number']} [{version['id']}] ({name})")
+            queue += [d["project_id"] + (f"~{d['version_id']}" if d.get("version_id") else "") for d in version.get("dependencies", [])
                       if d.get("dependency_type") == "required" and d.get("project_id") and d["project_id"] not in seen]
         except Exception as e:  # one mod's problem doesn't stop the others
-            print(f"{project}: not fetched: {e}")
+            print(f"{project.split('@')[0].split('~')[0]}: not fetched: {e}")
 
 
 if __name__ == "__main__":

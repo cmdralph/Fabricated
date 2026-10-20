@@ -134,7 +134,7 @@ class LinkageCheckerTest {
 	private static TranslatedMod mod(Path dir, String id, TestJars jar) throws Exception {
 		Path file = jar.fabricModJson(TestJars.modJson(id, "1.0", "")).write(dir.resolve(id + ".jar"));
 		Candidate c = new Candidate(file, id + "-hash", FabricModJsonParser.parse(TestJars.modJson(id, "1.0", "")), id + ".jar", null, 0,
-				List.of());
+				List.of(), Set.of());
 		return new TranslatedMod(c, id.replace('-', '_'), file, file, List.of(), 0, List.of(), List.of(), Set.of(), false, 0);
 	}
 

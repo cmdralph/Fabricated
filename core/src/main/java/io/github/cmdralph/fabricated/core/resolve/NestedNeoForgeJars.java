@@ -10,18 +10,23 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.ProviderNotFoundException;
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.jar.Manifest;
+import java.util.stream.Stream;
 
 import io.github.cmdralph.fabricated.core.archive.ArchiveLimits;
 import io.github.cmdralph.fabricated.core.json.Json;
 import io.github.cmdralph.fabricated.core.json.JsonException;
 
 /**
- * The mods.toml of the jars a NeoForge mod file nests (jar-in-jar, listed in its {@code META-INF/jarjar/metadata.json}).
- * NeoForge's discovery finds those mods only after Fabricated's has run, yet Fabric mods may depend on them or be
- * replaced by them (Sodium for NeoForge nests its mod in a service jar). They are read in place, nothing is extracted.
+ * The mods.toml and classes of the jars a NeoForge mod file nests (jar-in-jar, listed in its
+ * {@code META-INF/jarjar/metadata.json}). NeoForge's discovery finds those mods only after Fabricated's has run, yet
+ * Fabric mods may depend on them, be replaced by them, or target their classes with mixins (Sodium for NeoForge nests its
+ * mod in a service jar). They are read in place, nothing is extracted.
  */
 public final class NestedNeoForgeJars {
 	/** The jar-in-jar list of a NeoForge mod file. */
@@ -39,8 +44,10 @@ public final class NestedNeoForgeJars {
 	 * @param origin     where the jar is, for messages ({@code outer.jar!/META-INF/jarjar/inner.jar})
 	 * @param jarVersion what the mods.toml's {@code ${file.jarVersion}} stands for: the jar's manifest
 	 *                   Implementation-Version, else the version the jar-in-jar list gives it, else {@code 0}
+	 * @param chain      the entries leading to the jar from the outer one, outermost first (for {@link #readClass})
+	 * @param classes    the jar's classes, by internal name
 	 */
-	public record ModsToml(String origin, String text, String jarVersion) {
+	public record ModsToml(String origin, String text, String jarVersion, List<String> chain, Set<String> classes) {
 	}
 
 	private final ArchiveLimits limits;
@@ -51,17 +58,43 @@ public final class NestedNeoForgeJars {
 		this.limits = limits;
 	}
 
-	/** The mods.toml of every jar nested in {@code jar}, down to the limits' nesting depth. */
+	/** The mods.toml and classes of every mod jar nested in {@code jar}, down to the limits' nesting depth. */
 	public static List<ModsToml> read(Path jar, ArchiveLimits limits) throws IOException, JsonException {
 		if (Files.size(jar) > limits.maxJarBytes()) throw new IOException(jar + " is larger than " + limits.maxJarBytes() + " bytes");
 		NestedNeoForgeJars reader = new NestedNeoForgeJars(limits);
 		try (FileSystem archive = open(jar)) {
-			reader.readNested(archive, String.valueOf(jar.getFileName()), 1);
+			reader.readNested(archive, String.valueOf(jar.getFileName()), List.of());
 		}
 		return List.copyOf(reader.found);
 	}
 
-	private void readNested(FileSystem jar, String origin, int depth) throws IOException, JsonException {
+	/**
+	 * A class of a nested jar {@link #read} found, or {@code null} when it has none.
+	 *
+	 * @param chain the jar's {@link ModsToml#chain()}
+	 */
+	public static byte[] readClass(Path jar, List<String> chain, String internalName, ArchiveLimits limits) throws IOException {
+		try (FileSystem outer = open(jar)) {
+			return readClass(outer, chain, 0, internalName + ".class", limits);
+		}
+	}
+
+	private static byte[] readClass(FileSystem jar, List<String> chain, int index, String entry, ArchiveLimits limits) throws IOException {
+		if (index < chain.size()) {
+			Path nested = jar.getPath(chain.get(index));
+			if (!Files.isRegularFile(nested)) return null;
+			if (Files.size(nested) > limits.maxEntryBytes()) throw new IOException(chain.get(index) + " is larger than " + limits.maxEntryBytes() + " bytes");
+			try (FileSystem inner = open(nested)) {
+				return readClass(inner, chain, index + 1, entry, limits);
+			}
+		}
+		Path path = jar.getPath(entry);
+		if (!Files.isRegularFile(path)) return null;
+		if (Files.size(path) > limits.maxEntryBytes()) throw new IOException(entry + " is larger than " + limits.maxEntryBytes() + " bytes");
+		return Files.readAllBytes(path);
+	}
+
+	private void readNested(FileSystem jar, String origin, List<String> chain) throws IOException, JsonException {
 		String metadata = text(jar, METADATA);
 		if (metadata == null) return;
 		for (Object entry : Json.asList(Json.parseObject(metadata).get("jars"))) {
@@ -73,12 +106,27 @@ public final class NestedNeoForgeJars {
 			if (++opened > MAX_JARS) throw new IOException(origin + " nests more than " + MAX_JARS + " jars");
 			// Opening it reads it whole into memory.
 			if (Files.size(nested) > limits.maxEntryBytes()) throw new IOException(nestedOrigin + " is larger than " + limits.maxEntryBytes() + " bytes");
+			List<String> nestedChain = new ArrayList<>(chain);
+			nestedChain.add(path);
 			try (FileSystem inner = open(nested)) {
 				String toml = text(inner, MODS_TOML);
-				if (toml != null) found.add(new ModsToml(nestedOrigin, toml, jarVersion(inner, listed)));
-				if (depth < limits.maxNestingDepth()) readNested(inner, nestedOrigin, depth + 1);
+				if (toml != null) found.add(new ModsToml(nestedOrigin, toml, jarVersion(inner, listed), List.copyOf(nestedChain), classes(inner, nestedOrigin)));
+				if (nestedChain.size() < limits.maxNestingDepth()) readNested(inner, nestedOrigin, nestedChain);
 			}
 		}
+	}
+
+	private Set<String> classes(FileSystem jar, String origin) throws IOException {
+		Set<String> classes = new HashSet<>();
+		try (Stream<Path> files = Files.walk(jar.getPath("/"))) {
+			for (Iterator<Path> it = files.iterator(); it.hasNext(); ) {
+				String name = it.next().toString();
+				if (!name.endsWith(".class") || name.startsWith("/META-INF/") || name.endsWith("-info.class")) continue;
+				if (classes.size() >= limits.maxEntries()) throw new IOException(origin + " has more than " + limits.maxEntries() + " classes");
+				classes.add(name.substring(1, name.length() - ".class".length()));
+			}
+		}
+		return Set.copyOf(classes);
 	}
 
 	private static FileSystem open(Path jar) throws IOException {
