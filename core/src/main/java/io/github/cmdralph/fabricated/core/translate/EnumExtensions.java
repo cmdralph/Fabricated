@@ -29,21 +29,27 @@ import io.github.cmdralph.fabricated.core.json.Json;
  * enum extension file (ENUM-1). NeoForge's loader adds the constants of such an enum itself, from the files mods name,
  * and lets nothing else change it, so the mixin's constants would never exist. Only a mixin with nothing but constants
  * (no other members, no interfaces), each named after the mod (as NeoForge requires) and built by a constructor the
- * enum allows from constant arguments, is translated; any other stays a pre-flight failure (CORPUS-10).
+ * enum allows from constant arguments, into an enum whose arguments NeoForge doesn't rewrite (not indexed or named), is
+ * translated; any other stays a pre-flight failure (CORPUS-10).
  */
 final class EnumExtensions {
 	/** The file in the overlay, which the generated mods.toml names. */
 	static final String PATH = "META-INF/fabricated/enum_extensions.json";
 	static final String EXTENSIBLE_ENUM = "net/neoforged/fml/common/asm/enumextension/IExtensibleEnum";
 	private static final String RESERVED_CONSTRUCTOR = "Lnet/neoforged/fml/common/asm/enumextension/ReservedConstructor;";
+	private static final String INDEXED_ENUM = "Lnet/neoforged/fml/common/asm/enumextension/IndexedEnum;";
+	private static final String NAMED_ENUM = "Lnet/neoforged/fml/common/asm/enumextension/NamedEnum;";
 	/** Every enum constructor starts with the constant's name and ordinal, which NeoForge's entries leave out. */
 	private static final String NAME_AND_ORDINAL = "(Ljava/lang/String;I";
 	/** What javac gives an enum besides its constants; an enum mixin with anything else is not translated. */
 	private static final Set<String> ENUM_METHODS = Set.of("<clinit>", "<init>", "values", "valueOf", "$values");
 	private static final Object NOT_CONSTANT = new Object();
 
-	/** One constant: its enum (a descriptor), its name, the constructor without the name and ordinal, its arguments. */
-	record Entry(String enumDescriptor, String name, String constructor, List<Object> arguments) {
+	/**
+	 * One constant: its enum (an internal name, as NeoForge's file takes it), its name, the constructor without the name
+	 * and ordinal, its arguments.
+	 */
+	record Entry(String enumName, String name, String constructor, List<Object> arguments) {
 	}
 
 	private EnumExtensions() {
@@ -67,6 +73,12 @@ final class EnumExtensions {
 	 */
 	static List<Entry> of(ClassNode mixin, ClassNode target, String modId) {
 		if ((mixin.access & Opcodes.ACC_ENUM) == 0 || !mixin.interfaces.isEmpty() || target == null || !target.interfaces.contains(EXTENSIBLE_ENUM)) {
+			return null;
+		}
+		// NeoForge gives an indexed enum's new constants their id and requires a named enum's names to start with the mod's
+		// id, so the mixin's own values for those arguments wouldn't carry over.
+		if (Annotations.find(target.invisibleAnnotations, target.visibleAnnotations, INDEXED_ENUM) != null
+				|| Annotations.find(target.invisibleAnnotations, target.visibleAnnotations, NAMED_ENUM) != null) {
 			return null;
 		}
 		String self = "L" + mixin.name + ";";
@@ -116,7 +128,7 @@ final class EnumExtensions {
 			String constructor = "(" + full.substring(NAME_AND_ORDINAL.length());
 			List<Object> arguments = arguments(Type.getArgumentTypes(constructor), values);
 			if (arguments == null) return null;
-			entries.add(new Entry(enumDescriptor, name, constructor, arguments));
+			entries.add(new Entry(target.name, name, constructor, arguments));
 			insn = real(insn.getNext());
 		}
 		// Then only the values array (javac's $values(), or ECJ's inline array of the constants) and the return.
@@ -131,7 +143,7 @@ final class EnumExtensions {
 		List<Object> list = new ArrayList<>();
 		for (Entry entry : entries) {
 			Map<String, Object> e = new LinkedHashMap<>();
-			e.put("enum", entry.enumDescriptor());
+			e.put("enum", entry.enumName());
 			e.put("name", entry.name());
 			e.put("constructor", entry.constructor());
 			e.put("parameters", entry.arguments());

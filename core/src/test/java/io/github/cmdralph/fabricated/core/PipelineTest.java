@@ -656,7 +656,7 @@ class PipelineTest {
 		try (SafeArchive overlay = SafeArchive.open(loaded.get("cooking").translated().overlay(), ArchiveLimits.DEFAULTS)) {
 			assertTrue(overlay.readText("META-INF/neoforge.mods.toml").contains("enumExtensions=\"META-INF/fabricated/enum_extensions.json\""));
 			Map<?, ?> entry = (Map<?, ?>) Json.asList(Json.parseObject(overlay.readText("META-INF/fabricated/enum_extensions.json")).get("entries")).getFirst();
-			assertEquals(Map.of("enum", "Lnet/minecraft/world/Kind;", "name", "COOKING_POT", "constructor", "()V", "parameters", List.of()), entry);
+			assertEquals(Map.of("enum", "net/minecraft/world/Kind", "name", "COOKING_POT", "constructor", "()V", "parameters", List.of()), entry);
 			String config = overlay.readText("cooking.mixins.json");
 			assertTrue(!config.contains("KindMixin") && config.contains("ThingMixin"), "only the enum mixin is left out: " + config);
 		}

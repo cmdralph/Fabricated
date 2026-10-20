@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.Opcodes;
+import org.objectweb.asm.tree.AnnotationNode;
 import org.objectweb.asm.tree.ClassNode;
 
 import io.github.cmdralph.fabricated.core.json.Json;
@@ -46,14 +47,15 @@ class EnumExtensionsTest {
 		}));
 		assertEquals(KIND, EnumExtensions.target(mixin));
 		List<EnumExtensions.Entry> entries = EnumExtensions.of(mixin, kind(true), "mymod");
-		assertEquals(List.of(new EnumExtensions.Entry("Lnet/minecraft/world/Kind;", "MYMOD_PLAIN", "()V", List.of()),
-				new EnumExtensions.Entry("Lnet/minecraft/world/Kind;", "MYMOD_ARGS", "(Ljava/lang/String;IZ)V", List.of("text", 7, true))), entries);
+		assertEquals(List.of(new EnumExtensions.Entry(KIND, "MYMOD_PLAIN", "()V", List.of()),
+				new EnumExtensions.Entry(KIND, "MYMOD_ARGS", "(Ljava/lang/String;IZ)V", List.of("text", 7, true))), entries);
 
-		// NeoForge's format: {"entries": [{"enum", "name", "constructor", "parameters"}]}.
+		// NeoForge's format: {"entries": [{"enum", "name", "constructor", "parameters"}]}, the enum by its internal name
+		// (FML refuses a descriptor).
 		List<Object> written = Json.asList(Json.parseObject(EnumExtensions.json(entries)).get("entries"));
 		assertEquals(2, written.size());
 		Map<?, ?> second = (Map<?, ?>) written.get(1);
-		assertEquals("Lnet/minecraft/world/Kind;", second.get("enum"));
+		assertEquals("net/minecraft/world/Kind", second.get("enum"));
 		assertEquals("MYMOD_ARGS", second.get("name"));
 		assertEquals("(Ljava/lang/String;IZ)V", second.get("constructor"));
 		assertEquals(List.of("text", "7", "true"), Json.asList(second.get("parameters")).stream().map(String::valueOf).toList());
@@ -75,5 +77,9 @@ class EnumExtensionsTest {
 				"()Ljava/lang/String;", null, null).visitEnd()), "a method the mixin adds, which NeoForge's file can't carry");
 		assertNull(EnumExtensions.of(node(TestEnums.mixin(MIXIN, KIND, List.of(Constant.plain("MYMOD_PLAIN")), cw -> {
 		})), kind(false), "mymod"), "an enum NeoForge doesn't make extensible (Mixin adds its constants)");
+		ClassNode named = kind(true);
+		named.visibleAnnotations = List.of(new AnnotationNode("Lnet/neoforged/fml/common/asm/enumextension/NamedEnum;"));
+		assertNull(EnumExtensions.of(node(TestEnums.mixin(MIXIN, KIND, List.of(Constant.plain("MYMOD_PLAIN")), cw -> {
+		})), named, "mymod"), "a named enum, whose name argument NeoForge checks");
 	}
 }
