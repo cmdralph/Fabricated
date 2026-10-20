@@ -661,6 +661,10 @@ MixinExtras has NeoForge's jar, and a NeoForge mod nested in another jar has tha
 - Config screens a Fabric mod offers to Mod Menu (its `modmenu` entrypoint) open from the Config button of NeoForge's
   mod list. Mod Menu's API interfaces are provided, so such mods load without Mod Menu, which itself can't run on
   NeoForge (it would duplicate NeoForge's mod list): an installed Mod Menu jar is skipped and provided at its version.
+- `PlayerList.getPlayers()` follows the list in the field, as in vanilla. NeoForge returns an unmodifiable view made
+  when the player list is constructed, so a mod whose mixin replaces the list (written for vanilla, where both are one
+  object) would leave it on the old, empty list, and an integrated server finding no player stays paused. The view is
+  still unmodifiable; Fabricated logs a warning once when it sees a replaced list.
 
 ### What this means for Fabric mods
 
