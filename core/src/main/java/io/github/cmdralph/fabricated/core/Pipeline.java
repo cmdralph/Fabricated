@@ -413,20 +413,20 @@ public final class Pipeline {
 				continue;
 			}
 			CompatPlan.Entry known = COMPAT.entry(c.id());
+			String neoForgeBuildOnly = known.neoForgeBuildOnly();
+			if (neoForgeBuildOnly != null && !config.override(c.id()).loadUnsupported()) {
+				report.mod(new ModRow(c.id(), c.version(), c.origin(), Status.DISABLED, "its Fabric build can't run on NeoForge: " + neoForgeBuildOnly,
+						"Install " + c.metadata().getName() + " for NeoForge instead (from the same download page)."));
+				continue;
+			}
+			// Even on request: the pair is broken whatever the player accepts.
 			String pairing = notWithNeoForge(known);
 			if (pairing != null) {
 				report.mod(new ModRow(c.id(), c.version(), c.origin(), Status.DISABLED, "its Fabric build can't run next to " + pairing,
 						"Use the NeoForge builds of both, or the Fabric builds of both."));
 				continue;
 			}
-			String neoForgeBuildOnly = known.neoForgeBuildOnly();
-			if (neoForgeBuildOnly != null && config.override(c.id()).loadUnsupported()) {
-				report.line("Unsupported mods loaded on request (loadUnsupported)", c.id() + ": " + neoForgeBuildOnly);
-			} else if (neoForgeBuildOnly != null) {
-				report.mod(new ModRow(c.id(), c.version(), c.origin(), Status.DISABLED, "its Fabric build can't run on NeoForge: " + neoForgeBuildOnly,
-						"Install " + c.metadata().getName() + " for NeoForge instead (from the same download page)."));
-				continue;
-			}
+			if (neoForgeBuildOnly != null) report.line("Unsupported mods loaded on request (loadUnsupported)", c.id() + ": " + neoForgeBuildOnly);
 			FabricatedConfig.ModOverride override = config.override(c.id());
 			if (override.ignoreHints() && !c.metadata().compatHints().isEmpty()) {
 				c = new Candidate(c.path(), c.sha256(), c.metadata().withCompatHints(CompatHints.NONE), c.origin(), c.parentId(), c.depth(),

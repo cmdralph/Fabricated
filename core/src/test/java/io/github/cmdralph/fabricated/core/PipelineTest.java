@@ -371,16 +371,20 @@ class PipelineTest {
 
 	/**
 	 * Iris's Fabric build hooks Sodium's Fabric build: next to Sodium for NeoForge it would load with its hooks missing,
-	 * so it is refused, even when the player asked to load it.
+	 * so it is refused, even when the player asked to load it. Without that request, the player is told to install
+	 * Iris for NeoForge, as anywhere else.
 	 */
 	@Test
 	void aFabricBuildIsRefusedNextToTheNeoForgeBuildOfItsPartner(@TempDir Path game) throws Exception {
 		Path mods = Files.createDirectories(game.resolve("mods"));
 		Path iris = TestJars.create().fabricModJson(TestJars.modJson("iris", "1.11.4", "\"name\":\"Iris\"")).write(mods.resolve("iris.jar"));
+		List<Pipeline.NeoForgeMod> sodium = List.of(new Pipeline.NeoForgeMod("sodium", "0.9.2+mc26.3", "Sodium", Map.of(), List.of()));
+		Pipeline.Result plain = Pipeline.run(input(game, List.of(iris), Namespace.OFFICIAL, Map.of(), null, sodium));
+		assertEquals("Install Iris for NeoForge instead (from the same download page).",
+				plain.report().mods().stream().filter(r -> r.id().equals("iris")).findFirst().orElseThrow().suggestion());
+
 		Files.createDirectories(game.resolve("config"));
 		Files.writeString(game.resolve("config").resolve(FabricatedConfig.FILE_NAME), "{\"schema\": 1, \"mods\": {\"iris\": {\"loadUnsupported\": true}}}");
-		List<Pipeline.NeoForgeMod> sodium = List.of(new Pipeline.NeoForgeMod("sodium", "0.9.2+mc26.3", "Sodium", Map.of(), List.of()));
-
 		Pipeline.Result result = Pipeline.run(input(game, List.of(iris), Namespace.OFFICIAL, Map.of(), null, sodium));
 
 		assertTrue(result.mods().isEmpty(), result.report().render());
