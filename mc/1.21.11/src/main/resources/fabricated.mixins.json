@@ -6,6 +6,8 @@
   "mixins": [
     "ServerConfigurationPacketListenerImplMixin",
     "MinecraftServerMixin",
+    "PlayerListViewMixin",
+    "ReloadableServerResourcesTagsLoadedMixin",
     "ChunkGeneratorFeaturesMixin",
     "ReloadableServerResourcesMixin",
     "ResourceMixin",

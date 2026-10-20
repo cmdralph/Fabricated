@@ -322,6 +322,12 @@ jobs:
           # open: its own marker says it has asked.
           mkdir -p "${XDG_CONFIG_HOME:-$HOME/.config}/polydium" && touch "${XDG_CONFIG_HOME:-$HOME/.config}/polydium/vulkan-prompt"
           SMOKE_TIMEOUT=480 ci/smoke-client.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/client-polyfrost" "$RUNNER_TEMP/extra-polyfrost" || true
+          # POLY-1: whether a mod replaced the server's player list (Fabricated's warning), and the mixins applied to the list
+          # (named in the frames of the test mod's stack), whether or not the world loads.
+          log="$RUNNER_TEMP/client-polyfrost/run/logs/latest.log"
+          grep -h -m 1 "player list was replaced" "$log" | cut -c1-300 | tee -a "$RUNNER_TEMP/summary-polyfrost.txt" || true
+          grep -h -m 1 -F "PlayerList.placeNewPlayer(" "$log" | grep -oE "mixin\[[^]]*\]" | sed 's/^mixin\[//; s/\]$//' | tr ',' '\n' \
+            | sed 's/^/  mixin on PlayerList: /' | head -20 | tee -a "$RUNNER_TEMP/summary-polyfrost.txt" || true
           # The counts and the disabled mods, not the long list of loaded ones.
           awk '/^== /{show = /^== (Summary|Disabled)/} show' "$RUNNER_TEMP/client-polyfrost/run/logs/fabric-bridge-report.txt" | head -80 | tee -a "$RUNNER_TEMP/summary-polyfrost.txt" || true
           # Which modules serve the native libraries of jars without classes (Skiko's).
@@ -458,10 +464,13 @@ jobs:
                 "$RUNNER_TEMP/$run/client.out" 2>/dev/null | head -14 | cut -c1-250 || true
               # What the client showed half a minute into its world, and whether chunks arrived (the test mod).
               grep -h -m 1 "FABRICATED-TEST world state" "$log" | cut -c1-400 || true
-              grep -h -m 1 "FABRICATED-TEST server state" "$log" | cut -c1-400 || true
+              grep -h -m 1 "FABRICATED-TEST server state" "$log" | cut -c1-500 || true
               # The player's way into the integrated server, and out (the test mod's PlayerList mixin).
-              grep -h -E "FABRICATED-TEST (server (placing|placed|removing|respawning)|integrated server tick)|joined the game|left the game|lost connection|Saving and pausing|Failed to handle packet" "$log" | head -12 | cut -c1-300 || true
+              grep -h -E "FABRICATED-TEST (server (placing|placed|removing|respawning)|integrated server tick)|joined the game|left the game|lost connection|Saving and pausing|Failed to handle packet" "$log" | head -16 | cut -c1-300 || true
               grep -h -m 1 -A 14 -E "FABRICATED-TEST server (removing|respawning)" "$log" | grep -E "^[[:space:]]+at " | grep -v "java\.base/" | head -10 | cut -c1-250 || true
+              # The mixins applied to the integrated server (named in the frames of the test mod's stack).
+              echo "-- mixins on IntegratedServer"
+              grep -h -m 1 -F "IntegratedServer.tickServer(" "$log" | grep -oE "mixin\[[^]]*\]" | sed 's/^mixin\[//; s/\]$//' | tr ',' '\n' | sed 's/^/    /' | head -30 || true
               # Who asked the game to stop, if anything did (the test mod).
               grep -h -m 1 -A 12 "FABRICATED-TEST game stop requested" "$log" | grep -v "java\.base/" | cut -c1-250 || true
               echo "-- last lines of the log:"

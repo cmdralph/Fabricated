@@ -13,6 +13,7 @@ import net.fabricmc.api.EnvType;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.Event;
 import net.fabricmc.fabric.api.event.EventFactory;
+import net.fabricmc.fabric.api.event.lifecycle.v1.CommonLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.loader.api.FabricLoader;
@@ -23,6 +24,7 @@ import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.Items;
 
 /**
  * Fabric test mod used by Fabricated's CI smoke test. Every check logs a {@code FABRICATED-TEST} marker
@@ -91,6 +93,11 @@ public final class TestMod implements ModInitializer, DedicatedServerModInitiali
 			}
 		});
 		ServerLifecycleEvents.SERVER_STOPPING.register(server -> LOGGER.info("FABRICATED-TEST lifecycle server stopping OK"));
+		// Upstream fires TAGS_LOADED once a data load bound the tags and the items' default components: mods build item
+		// stacks in it (Jade, CORPUS-9), which throws while the components aren't bound.
+		CommonLifecycleEvents.TAGS_LOADED.register((registries, client) -> {
+			if (!client && !Items.SHEARS.getDefaultInstance().isEmpty()) LOGGER.info("FABRICATED-TEST lifecycle tags loaded OK");
+		});
 
 		try {
 			Class<?> widened = Class.forName("net.minecraft.server.MinecraftServer$ReloadableResources");

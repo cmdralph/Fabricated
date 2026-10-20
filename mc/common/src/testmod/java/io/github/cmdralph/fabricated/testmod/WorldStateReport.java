@@ -51,8 +51,9 @@ final class WorldStateReport {
 		Object players = call(server.getPlayerList(), "getPlayers");
 		Object player = players instanceof List<?> list && !list.isEmpty() ? list.getFirst() : null;
 		Object chunks = call(call(player, "level"), "getChunkSource");
-		TestMod.LOGGER.info("FABRICATED-TEST server state: tick {}, paused {}, players {} in the list {} of server {}, player's chunk {} {} on the server {}, server chunks loaded {}",
+		TestMod.LOGGER.info("FABRICATED-TEST server state: tick {}, paused {}, players {} ({} counted, a {}) in the list {} of server {}, player's chunk {} {} on the server {}, server chunks loaded {}",
 				call(server, "getTickCount"), call(server, "isPaused"), players instanceof List<?> list ? list.size() : players,
+				call(server.getPlayerList(), "getPlayerCount"), players == null ? null : players.getClass().getName(),
 				System.identityHashCode(server.getPlayerList()), System.identityHashCode(server), chunkX, chunkZ,
 				call(chunks, "hasChunk", chunkX, chunkZ), call(chunks, "getLoadedChunksCount"));
 	}

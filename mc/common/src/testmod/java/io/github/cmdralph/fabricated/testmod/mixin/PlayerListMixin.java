@@ -24,8 +24,10 @@ public abstract class PlayerListMixin {
 	@Inject(method = "placeNewPlayer", at = @At("RETURN"))
 	private void fabricatedTest$placed(CallbackInfo ci) {
 		PlayerList list = (PlayerList) (Object) this;
+		// The stack's frames name the mixins applied to the player list.
 		TestMod.LOGGER.info("FABRICATED-TEST server placed a player ({} in the list {} of server {}, tick {})", list.getPlayerCount(),
-				System.identityHashCode(list), System.identityHashCode(list.getServer()), list.getServer().getTickCount());
+				System.identityHashCode(list), System.identityHashCode(list.getServer()), list.getServer().getTickCount(),
+				new Throwable("stack of placeNewPlayer"));
 	}
 
 	@Inject(method = "remove(Lnet/minecraft/server/level/ServerPlayer;)V", at = @At("HEAD"))

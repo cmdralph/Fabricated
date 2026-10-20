@@ -59,7 +59,8 @@ import org.objectweb.asm.tree.VarInsnNode;
  * evaluate (wildcards, slice bounds other than member references or {@code HEAD}, custom points, targets in other
  * Fabric mods) are never reported as failures. When the config declares a plugin, which may disable mixins at runtime,
  * a failure is {@link Severity#LEFT_OUT} instead: the failing injector (or the mixin) is left out rather than the mod
- * disabled.
+ * disabled. An enum mixin adding constants to one of NeoForge's extensible enums always fails: the mod's own classes
+ * read those constants.
  */
 public final class MixinPreflight {
 	private static final String PSEUDO = "Lorg/spongepowered/asm/mixin/Pseudo;";
@@ -823,6 +824,14 @@ public final class MixinPreflight {
 			out.add(new PreflightFinding(config.required() ? fatal() : Severity.WARN, configName, mixinDotted, message, suggestion));
 		}
 
+		/**
+		 * A mixin the mod's own code can't do without (the enum constants it adds, which the mod's classes read): fatal
+		 * even where a plugin or an optional config would only leave it out, which would move the crash into the mod.
+		 */
+		void essential(String message, String suggestion) {
+			out.add(new PreflightFinding(Severity.FAIL, configName, mixinDotted, message, suggestion));
+		}
+
 		void injector(MethodNode handler, int require, String message, String suggestion) {
 			out.add(new PreflightFinding(require > 0 ? fatal() : Severity.WARN, configName, mixinDotted, message, suggestion,
 					handler.name + handler.desc));
@@ -870,7 +879,7 @@ public final class MixinPreflight {
 			}
 			Context targetCtx = owner == null ? ctx : ctx.withOwner(owner);
 			if ((mixin.access & Opcodes.ACC_ENUM) != 0 && targetNode.interfaces.contains(EXTENSIBLE_ENUM)) {
-				targetCtx.classLevel("Enum mixin adds constants to " + target.replace('/', '.') + ", one of NeoForge's extensible enums, which"
+				targetCtx.essential("Enum mixin adds constants to " + target.replace('/', '.') + ", one of NeoForge's extensible enums, which"
 						+ " NeoForge lets only its own enum extensions change", "Install the NeoForge build of the mod, if it has one.");
 				continue;
 			}
