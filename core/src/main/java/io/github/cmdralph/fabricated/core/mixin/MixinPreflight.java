@@ -3,6 +3,7 @@ package io.github.cmdralph.fabricated.core.mixin;
 import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Deque;
 import java.util.HashMap;
@@ -33,6 +34,7 @@ import org.objectweb.asm.tree.AnnotationNode;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.FieldInsnNode;
 import org.objectweb.asm.tree.FieldNode;
+import org.objectweb.asm.tree.InsnNode;
 import org.objectweb.asm.tree.IntInsnNode;
 import org.objectweb.asm.tree.InvokeDynamicInsnNode;
 import org.objectweb.asm.tree.LdcInsnNode;
@@ -40,6 +42,7 @@ import org.objectweb.asm.tree.LocalVariableNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
 import org.objectweb.asm.tree.TypeInsnNode;
+import org.objectweb.asm.tree.VarInsnNode;
 
 /**
  * Static verification of a mixin config against the runtime game bytecode, before any mod code runs.
@@ -185,9 +188,10 @@ public final class MixinPreflight {
 	 * <li>An injector whose method NeoForge turned into a delegate to a new overload of the same name that now holds the
 	 * code (NeoForge keeps vanilla's signature that way): when the injection points occur only in that overload and the
 	 * handler doesn't depend on the method's parameters, the injector is pointed at the overload.</li>
-	 * <li>An injector at the end of a constructor NeoForge kept for vanilla's signature (deprecated, and only calling
-	 * {@code this(...)} with NeoForge's defaults), which the game no longer calls: it is pointed at the constructor that
-	 * one calls, which every caller now goes through.</li>
+	 * <li>An injector at the end of a constructor NeoForge kept for vanilla's signature (only calling {@code this(...)}
+	 * with NeoForge's defaults, and deprecated or appending arguments of NeoForge's types, as {@code BakedQuad}'s), which
+	 * the game no longer calls: it is pointed at the constructor that one calls, which every caller now goes through. An
+	 * {@code @Inject} handler taking the constructor's parameters gets them from a bridge taking the other one's.</li>
 	 * <li>An {@code @Inject} or {@code @ModifyExpressionValue} at a call this game build makes through a subtype of the
 	 * class named (the same inherited method, as NeoForge's conditional {@code Codec} for vanilla's {@code Decoder}):
 	 * the injection point is pointed at that call.</li>
@@ -220,6 +224,7 @@ public final class MixinPreflight {
 			}
 			if (targets.isEmpty()) continue;
 			boolean changed = false;
+			List<MethodNode> bridges = new ArrayList<>();
 			for (MethodNode method : node.methods) {
 				for (AnnotationNode ann : allAnnotations(method)) {
 					if (!isInjector(ann.desc)) continue;
@@ -239,7 +244,7 @@ public final class MixinPreflight {
 							out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@" + simpleName(ann.desc) + " " + method.name
 									+ " targets " + pinned + ", which this game build declares after another overload; it is pinned to that one", ""));
 						}
-						for (String moved : overloadRepairs(method, ann, targets.getFirst(), ctx)) {
+						for (String moved : overloadRepairs(node, method, ann, targets.getFirst(), ctx, bridges)) {
 							changed = true;
 							out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@" + simpleName(ann.desc) + " " + method.name
 									+ " targets " + moved, ""));
@@ -274,6 +279,7 @@ public final class MixinPreflight {
 							+ ", which this game build names differently", ""));
 				}
 			}
+			node.methods.addAll(bridges);
 			if (!changed) continue;
 			ClassWriter writer = new ClassWriter(0);
 			node.accept(writer);
@@ -369,13 +375,17 @@ public final class MixinPreflight {
 	 * parameters or locals are moved: not an {@code @Inject} taking them, nor one capturing locals (the overload's
 	 * differ), except a {@code @Local(argsOnly = true)} of a type exactly one of the overload's parameters has.
 	 */
-	private static List<String> overloadRepairs(MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx) {
+	private static List<String> overloadRepairs(ClassNode mixin, MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx,
+			List<MethodNode> bridges) {
 		if (!(Annotations.value(injector, "method") instanceof List<?> selectors)) return List.of();
 		List<AnnotationNode> ats = annotationList(Annotations.value(injector, "at"));
 		if (ats.isEmpty() || injector.desc.equals(MODIFY_VARIABLE) || Annotations.value(injector, "locals") != null) return List.of();
+		// An @Inject handler takes the callback info only, or (bridged below) the target's parameters before it.
+		boolean takesParameters = false;
 		if (injector.desc.equals(INJECT)) {
 			List<Type> args = handlerArgs(handler);
-			if (args == null || args.size() != 1 || !isCallbackInfo(args.getFirst())) return List.of();
+			if (args == null || args.isEmpty() || !isCallbackInfo(args.getLast())) return List.of();
+			takesParameters = args.size() > 1;
 		}
 		List<AnnotationNode> slices = annotationList(Annotations.value(injector, "slice"));
 		List<String> moved = new ArrayList<>();
@@ -394,6 +404,7 @@ public final class MixinPreflight {
 			MethodNode overload;
 			String how;
 			if (pointsIn(ats, slices, chosen, ctx) == Verdict.MISSING) {
+				if (takesParameters) continue;
 				overload = calledOverload(chosen, target);
 				if (overload == null || (overload.access & Opcodes.ACC_STATIC) != (chosen.access & Opcodes.ACC_STATIC)
 						|| !Type.getReturnType(overload.desc).equals(Type.getReturnType(chosen.desc))
@@ -403,6 +414,12 @@ public final class MixinPreflight {
 				// The injection points exist, but in a constructor nothing calls any more: its end is the end of the one it calls.
 				overload = keptConstructorDelegate(chosen, target);
 				if (overload == null || !slices.isEmpty() || !atEndOnly(ats) || !localsFit(handler, overload)) continue;
+				if (takesParameters) {
+					// The handler gets the constructor's own parameters from a bridge taking all of the other one's.
+					if (selectors.size() != 1 || (mixin.access & Opcodes.ACC_INTERFACE) != 0 || !forwardsItsParameters(chosen, overload)
+							|| !takesExactly(handler, chosen)) continue;
+					bridges.add(bridge(mixin.name, handler, injector, chosen, overload));
+				}
 				how = ", which NeoForge keeps only to call ";
 			}
 			@SuppressWarnings("unchecked")
@@ -498,15 +515,29 @@ public final class MixinPreflight {
 	}
 
 	/**
-	 * The constructor {@code constructor} hands everything to, when it is vanilla's signature as NeoForge keeps it: marked
-	 * deprecated, its body is {@code this(...)} (vanilla's arguments plus NeoForge's defaults) and nothing after it. The
-	 * game's own code calls the other constructor, so an injection at the end of this one would never run, while the end
-	 * of the other one is the same moment for both. Null for any other constructor: vanilla's own delegating
-	 * constructors (an injection there is meant for that one only) are never marked deprecated.
+	 * The constructor {@code constructor} hands everything to, when it is vanilla's signature as NeoForge keeps it: its
+	 * body is {@code this(...)} (vanilla's arguments plus NeoForge's defaults) and nothing after it, and it is marked
+	 * deprecated or passes its own parameters followed by constants for parameters of NeoForge's types (as
+	 * {@code BakedQuad}'s, a record NeoForge added components to). The game's own code calls the other constructor, so
+	 * an injection at the end of this one would never run, while the end of the other one is the same moment for both.
+	 * Null for any other constructor: vanilla's own delegating constructors (an injection there is meant for that one
+	 * only) are never deprecated and pass no NeoForge types.
 	 */
 	private static MethodNode keptConstructorDelegate(MethodNode constructor, ClassNode target) {
-		if (!constructor.name.equals("<init>") || (constructor.access & Opcodes.ACC_DEPRECATED) == 0
-				&& Annotations.find(constructor, "Ljava/lang/Deprecated;") == null) return null;
+		if (!constructor.name.equals("<init>")) return null;
+		MethodNode delegate = thisCall(constructor, target);
+		if (delegate == null) return null;
+		boolean deprecated = (constructor.access & Opcodes.ACC_DEPRECATED) != 0 || Annotations.find(constructor, "Ljava/lang/Deprecated;") != null;
+		if (deprecated) return delegate;
+		Type[] all = Type.getArgumentTypes(delegate.desc);
+		int own = Type.getArgumentTypes(constructor.desc).length;
+		boolean neoForgeAdded = false;
+		for (int i = own; i < all.length; i++) neoForgeAdded |= all[i].getSort() == Type.OBJECT && all[i].getInternalName().startsWith("net/neoforged/");
+		return neoForgeAdded && forwardsItsParameters(constructor, delegate) ? delegate : null;
+	}
+
+	/** The constructor of {@code target} that {@code constructor}'s body, {@code this(...)} and nothing after it, calls; or null. */
+	private static MethodNode thisCall(MethodNode constructor, ClassNode target) {
 		MethodNode delegate = null;
 		for (AbstractInsnNode insn : constructor.instructions) {
 			if (insn.getOpcode() < 0) continue; // labels, line numbers, frames
@@ -521,6 +552,89 @@ public final class MixinPreflight {
 			}
 		}
 		return delegate;
+	}
+
+	/**
+	 * Whether {@code constructor} is {@code this(its parameters in order, then constants)}: the other constructor gets
+	 * exactly what it got, plus defaults.
+	 */
+	private static boolean forwardsItsParameters(MethodNode constructor, MethodNode delegate) {
+		Type[] own = Type.getArgumentTypes(constructor.desc);
+		Type[] all = Type.getArgumentTypes(delegate.desc);
+		if (all.length <= own.length) return false;
+		for (int i = 0; i < own.length; i++) {
+			if (!own[i].equals(all[i])) return false;
+		}
+		List<AbstractInsnNode> code = new ArrayList<>();
+		for (AbstractInsnNode insn : constructor.instructions) {
+			if (insn.getOpcode() >= 0) code.add(insn); // not labels, line numbers or frames
+		}
+		if (code.size() != own.length + (all.length - own.length) + 3) return false;
+		if (!(code.getFirst() instanceof VarInsnNode self) || self.getOpcode() != Opcodes.ALOAD || self.var != 0) return false;
+		int slot = 1;
+		for (int i = 0; i < own.length; i++) {
+			if (!(code.get(1 + i) instanceof VarInsnNode load) || load.getOpcode() != own[i].getOpcode(Opcodes.ILOAD) || load.var != slot) return false;
+			slot += own[i].getSize();
+		}
+		for (int i = 1 + own.length; i < code.size() - 2; i++) {
+			int op = code.get(i).getOpcode();
+			boolean constant = op >= Opcodes.ACONST_NULL && op <= Opcodes.DCONST_1 || op == Opcodes.BIPUSH || op == Opcodes.SIPUSH
+					|| op == Opcodes.LDC || op == Opcodes.GETSTATIC;
+			if (!constant) return false;
+		}
+		return code.get(code.size() - 2) instanceof MethodInsnNode call && call.getOpcode() == Opcodes.INVOKESPECIAL && call.desc.equals(delegate.desc)
+				&& code.getLast().getOpcode() == Opcodes.RETURN;
+	}
+
+	/** Whether {@code handler} takes {@code method}'s parameters and a callback info, and nothing else (no captured locals or sugar). */
+	private static boolean takesExactly(MethodNode handler, MethodNode method) {
+		Type[] handlerTypes = Type.getArgumentTypes(handler.desc);
+		Type[] params = Type.getArgumentTypes(method.desc);
+		if (handlerTypes.length != params.length + 1 || !isCallbackInfo(handlerTypes[params.length])) return false;
+		for (int i = 0; i < params.length; i++) {
+			if (!handlerTypes[i].equals(params[i]) || !parameterAnnotations(handler, i).isEmpty()) return false;
+		}
+		return true;
+	}
+
+	/**
+	 * A handler for {@code injector} at {@code canonical} instead of {@code delegate}: it takes {@code canonical}'s
+	 * parameters and the callback info, and calls {@code handler} with {@code delegate}'s (the same values, see
+	 * {@link #forwardsItsParameters}) and the callback info. The injector annotation moves to it; {@code handler} stays a
+	 * plain method of the mixin.
+	 */
+	private static MethodNode bridge(String mixin, MethodNode handler, AnnotationNode injector, MethodNode delegate, MethodNode canonical) {
+		Type[] own = Type.getArgumentTypes(delegate.desc);
+		Type[] all = Type.getArgumentTypes(canonical.desc);
+		Type callbackInfo = Type.getArgumentTypes(handler.desc)[own.length];
+		Type[] params = Arrays.copyOf(all, all.length + 1);
+		params[all.length] = callbackInfo;
+		boolean isStatic = (handler.access & Opcodes.ACC_STATIC) != 0;
+		MethodNode bridge = new MethodNode(Opcodes.ACC_PRIVATE | (handler.access & Opcodes.ACC_STATIC), handler.name + "$fabricated",
+				Type.getMethodDescriptor(Type.VOID_TYPE, params), null, null);
+		int slot = 0;
+		if (!isStatic) bridge.instructions.add(new VarInsnNode(Opcodes.ALOAD, slot++));
+		int[] slots = new int[params.length];
+		for (int i = 0; i < params.length; i++) {
+			slots[i] = slot;
+			slot += params[i].getSize();
+		}
+		int stack = isStatic ? 0 : 1;
+		for (int i = 0; i < own.length; i++) {
+			bridge.instructions.add(new VarInsnNode(own[i].getOpcode(Opcodes.ILOAD), slots[i]));
+			stack += own[i].getSize();
+		}
+		bridge.instructions.add(new VarInsnNode(Opcodes.ALOAD, slots[params.length - 1]));
+		bridge.instructions.add(new MethodInsnNode(isStatic ? Opcodes.INVOKESTATIC : Opcodes.INVOKESPECIAL, mixin, handler.name, handler.desc, false));
+		bridge.instructions.add(new InsnNode(Opcodes.RETURN));
+		bridge.maxStack = stack + 1;
+		bridge.maxLocals = slot;
+		if (handler.visibleAnnotations != null && handler.visibleAnnotations.remove(injector)) {
+			bridge.visibleAnnotations = new ArrayList<>(List.of(injector));
+		} else if (handler.invisibleAnnotations != null && handler.invisibleAnnotations.remove(injector)) {
+			bridge.invisibleAnnotations = new ArrayList<>(List.of(injector));
+		}
+		return bridge;
 	}
 
 	/** Whether every injection point is the method's end ({@code RETURN} or {@code TAIL}). */
