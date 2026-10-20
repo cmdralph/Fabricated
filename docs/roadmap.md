@@ -102,7 +102,7 @@ research sandbox).
 **Where the Fabric builds stand** (CI's informational run, `loadUnsupported`, 26.x):
 - Sodium 0.9.2 and Iris 1.11.4 (Fabric) load through Fabricated on 26.2 (run on `dbdff1d`): pre-flight passes them, Iris
   creates its pipeline, the client joins a world. It then crashed on the first block quad (SODIUM-1, below).
-- With the constructor repair (`bee1fe4`), the 26.3 run on `e68cb58` no longer crashes: Sodium's Fabric build meshes
+- With the constructor repair (`bee1fe4`), the 26.1.2 and 26.3 runs on `e68cb58` no longer crash: Sodium's Fabric build meshes
   the Fabric test model in its own `LevelSlice` on its chunk builder thread, and the moving block, breaking overlay,
   nested model and level-aware default checks all pass. Shaders weren't enabled.
 - Beyond that, Sodium's Fabric platform services answer NeoForge's questions the Fabric way: no NeoForge model data,
@@ -140,8 +140,8 @@ NeoForge already cover those users.
 - **Done:** plugins of recipe viewers and tooltip mods: a Fabric mod's JEI, EMI, REI and Jade entrypoints become the
   annotations their NeoForge builds scan for (`PluginAnnotations`, `FabricLanguageLoader`); WTHIT reads the jar's
   plugin file; Jade's per-mod settings become its mod properties. An informational CI client runs the viewers'
-  NeoForge builds with the test mod's plugins: on 26.3 (`e68cb58`) JEI, REI and Jade each constructed the test plugin
-  once and called it; Modrinth gave no WTHIT build in that run.
+  NeoForge builds with the test mod's plugins: on `e68cb58` JEI, REI and Jade each constructed the test plugin once
+  and called it on 26.1.2 and 26.3, and WTHIT did on 26.1.2 (Modrinth gave no WTHIT build for 26.3).
 - **Next:** pin the viewers' builds and make that run a gate; EMI once it has NeoForge builds for these versions.
 
 ### Quality: CI, corpus, performance
