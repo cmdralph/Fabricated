@@ -1,5 +1,8 @@
 package io.github.cmdralph.fabricated.testmod;
 
+import java.io.FileDescriptor;
+import java.io.FileOutputStream;
+import java.io.PrintStream;
 import java.util.Map;
 
 import net.fabricmc.loader.api.LanguageAdapter;
@@ -12,10 +15,12 @@ import net.fabricmc.loader.api.ModContainer;
  *
  * <p>For CI diagnostics it also says, when the game ends, which thread ended it and from where: a shutdown hook runs in
  * its own thread while the thread that called {@code System.exit} (or {@code DestroyJavaVM}, after the last game thread
- * ended) waits in {@code java.lang.Shutdown}. Printed to stdout, because logging may already be shut down.
+ * ended) waits in {@code java.lang.Shutdown}. Printed to the process's own output: logging may already be shut down,
+ * and {@code System.out} goes to the log once the game has replaced it.
  */
 public final class EarlyAdapter implements LanguageAdapter {
 	static final String PROPERTY = "fabricated.test.earlyAdapter";
+	private static final PrintStream STDOUT = new PrintStream(new FileOutputStream(FileDescriptor.out), true);
 
 	public EarlyAdapter() {
 		System.setProperty(PROPERTY, "created");
@@ -30,7 +35,7 @@ public final class EarlyAdapter implements LanguageAdapter {
 			if (!ending) continue;
 			StringBuilder out = new StringBuilder("FABRICATED-TEST game ended from thread \"").append(thread.getKey().getName()).append("\":");
 			for (StackTraceElement frame : thread.getValue()) out.append("\n\tat ").append(frame);
-			System.out.println(out);
+			STDOUT.println(out);
 		}
 	}
 
