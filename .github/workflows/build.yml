@@ -529,7 +529,7 @@ jobs:
               continue
             fi
             echo "== $run"
-            grep -h -m 20 -E "FABRICATED-TEST frapi|Caused by|Exception in|crash report" "$log" || true
+            grep -h -m 20 -E "FABRICATED-TEST frapi|Caused by|Exception in|crash report|Fabric API's own renderer" "$log" || true
             # Whether Iris loaded the shader pack, and drew with it (Iris's own lines).
             if [ "$run" = client-shaders ]; then
               grep -h -m 8 -i -E "shaderpack|shaders are disabled|shader rendering pipeline" "$log" | cut -c1-300 || true

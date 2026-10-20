@@ -24,10 +24,22 @@ says why and what to install instead.
   new informational run puts Fabric addons of Sodium (Sodium Extra, Reese's Sodium Options) next to Sodium for
   NeoForge on 26.x.
 - Fabric's renderer API on 1.21.11 has the NeoForge-aware defaults 26.x has: level-aware parts, NeoForge's
-  ambient occlusion, and the colours and normals of NeoForge's quads. Moving blocks (falling, pushed by a piston)
-  with a Fabric model are drawn by Fabric's renderer. The 1.21.11 gate checks all three, and only the breaking
-  overlay still uses NeoForge's renderer there. Run 370 stopped at the 1.21.11 build: the vendored `TriState` stub
-  also needed its `BooleanFunction`.
+  ambient occlusion, and the colours and normals of NeoForge's quads. Run 370 stopped at the 1.21.11 build (the
+  vendored `TriState` stub also needed its `BooleanFunction`); run 371 passed on all four versions, the new 1.21.11 checks included.
+- On 1.21.11, everywhere NeoForge collects a model's parts outside the chunk sections it compiles, a Fabric model's
+  parts are now made from the quads it emits, one part per render layer, keeping what NeoForge's quads carry. Moving
+  blocks, the breaking overlay, blocks drawn as entities, NeoForge's translucent outline pass, other mods and Sodium
+  for NeoForge see Fabric models (CI checks the parts, a falling block and Sodium; the other callers are where
+  NeoForge's code collects parts). That replaces this pass's earlier moving-block mixin. The test mod's Fabric models
+  are now plain models with no parts of their own, as Fabric mods write them, so the check that NeoForge's parts of
+  one hold its quads (baked colour kept) can only pass through the conversion (run 372: 1 part, 6 quads).
+- Sodium for NeoForge 1.21.11 says in its metadata that it contains a Fabric renderer its NeoForge build doesn't
+  ship (read in its 1.21.11 source), so Indigo stood down and Fabric's renderer API had none (run 372: no parts under
+  Sodium). Once the client initializers ran, Fabricated now registers Indigo's renderer when none registered. Run
+  374: under Sodium for NeoForge 1.21.11, the test block and the multipart part with it were meshed in Sodium's own
+  section level.
+- The 1.21.11 breaking overlay check first counted any call with the client level, then (run 374) matched its own
+  method name on the stack; it now ignores the test mod's frames.
 
 ## 2026-10-20 (pass after PR #48): generalizing
 

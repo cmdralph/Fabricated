@@ -53,10 +53,11 @@ The Fabric renderer API on NeoForge:
 | Renderer API and Indigo load | yes (this pass; upstream's conflicting mixins left out) | yes | yes | yes |
 | Model-loading modifiers and extra models | yes (CORPUS-6) | yes since `08aff28` | yes | yes |
 | Fabric block models in the world | yes (this pass, CI) | yes (`FabricBlockRendering`) | yes | yes |
-| Moving blocks (pistons, falling) and the breaking overlay | moving blocks yes (this pass, CI); breaking overlay no | yes (M2) | yes | yes |
+| Moving blocks (pistons, falling) and the breaking overlay | yes, from parts made from the model's quads (this pass; CI checks a falling block) | yes (M2) | yes | yes |
+| Blocks drawn as entities, other mods drawing blocks from their parts | yes, from parts made from the model's quads (this pass) | not checked | not checked | not checked |
 | Fabric models nested in a vanilla multipart or weighted model | yes (this pass, CI) | yes (M3) | yes | yes |
-| Block outlines, a moving block's glow outline | no | from the model's parts, as NeoForge sees them | same | same |
-| Under Sodium for NeoForge: Fabric models meshed by Sodium's own Fabric renderer, Indigo stands down | no (Sodium for NeoForge has no Fabric renderer API there) | yes (R1, CI) | yes (R1, CI) | yes (R1, CI) |
+| Block outlines, a moving block's glow outline | the translucent outline pass from the parts made from the quads | from the model's parts, as NeoForge sees them | same | same |
+| Under Sodium for NeoForge | Sodium meshes the parts made from the quads, with Indigo registered as the renderer (this pass; informational CI, run 374) | Sodium's own Fabric renderer, Indigo stands down (R1, CI) | same | same |
 
 - **Done:** M1 (Fabric block models in chunk sections, `8e80c6e`, `0dbdfda`, `08aff28`), M2 (moving blocks and the
   breaking overlay, `4db3deb`), M3 (Fabric models inside vanilla multipart and weighted models, `4db3deb`), M4
@@ -65,8 +66,11 @@ The Fabric renderer API on NeoForge:
   parts as NeoForge sees them, so a model with only `emitQuads` has none).
 - **Done (this pass):** M5, the renderer API on 1.21.11 in chunk sections, alone and nested (its conflicting mixins
   left out, the sprite getter's finders from Fabricated), with NeoForge-aware `emitQuads` defaults (CI checks the level
-  and baked colours), and moving blocks. **Later:** the breaking overlay there (it needs Fabric's meshes turned into
-  NeoForge's quads, as on 26.x).
+  and baked colours). Then everywhere else NeoForge collects a model's parts: a Fabric model's parts are made from its
+  quads (moving blocks, the breaking overlay, entities, Sodium for NeoForge), and Indigo's renderer is registered when
+  a mod claims a renderer it doesn't register.
+- **Candidate:** the same parts for Fabric models on 26.x, for other mods drawing blocks from their parts there (Fabric's
+  and Sodium's renderers already cover the game's own paths).
 - **Not planned:** a Fabricated-owned quad encoder. Indigo already is the `int[]` encoder; a second one would add code
   without a user-visible gain (`claude.md`).
 

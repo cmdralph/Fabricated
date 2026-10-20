@@ -635,13 +635,21 @@ every model under a renderer that meshes the world through Fabric's renderer API
 level-aware `collectParts`, so connected textures and other model-data models keep working, and quads keep NeoForge's
 per-part and per-quad ambient occlusion (the defaults Forgified Fabric API has; upstream's ignore both).
 
-On 1.21.11 the renderer API loads with Indigo too (since this pass), and Fabric block models, alone or among the parts
-of a vanilla multipart or weighted model, are drawn by Fabric's renderer in chunk sections, as on 26.x; CI checks both.
-The rest is narrower there:
+On 1.21.11 the renderer API loads with Indigo too, and Fabric block models, alone or among the parts of a vanilla
+multipart or weighted model, are drawn by Fabric's renderer in the chunk sections NeoForge compiles, as on 26.x; CI
+checks both. Everywhere else NeoForge asks a model for its parts (its level-aware `collectParts`), a Fabric model gives
+parts made from the quads it emits (since this pass): one part per render layer, each quad with the colours, normals,
+light emission and ambient occlusion flag NeoForge's quads carry. So these see Fabric models:
 
-- Moving blocks (pushed by a piston, falling) whose model is a Fabric model are drawn by Fabric's renderer too (CI
-  checks a falling one). The breaking overlay and blocks drawn as entities (`renderSingleBlock`: a minecart's contents,
-  an enderman's block) keep NeoForge's renderer, which draws a Fabric model's parts as NeoForge sees them.
+- moving blocks (pushed by a piston, falling), the breaking overlay and blocks drawn as entities (`renderSingleBlock`:
+  a minecart's contents, an enderman's block);
+- NeoForge's translucent block outline pass, and other mods that draw blocks from their parts;
+- renderer mods that mesh chunk sections themselves: Sodium for NeoForge (see *Renderer mods* below).
+
+CI checks the parts (a NeoForge quad's baked colour kept through them) and a falling block. A
+model asked for its parts while it emits keeps the parts of its vanilla method, as does a caller passing air
+(NeoForge's deprecated overloads). Also on 1.21.11:
+
 - The renderer API's `emitQuads` defaults are NeoForge-aware, as on 26.x (since this pass): a NeoForge model inside a
   Fabric model gets its parts from NeoForge's level-aware `collectParts`, with NeoForge's ambient occlusion and its
   quads' baked colours and normals. CI checks the level and the colours.
@@ -676,9 +684,15 @@ every block through that renderer, so Fabric block models show in the world. Fab
 CI runs Sodium and Iris for NeoForge (from Modrinth) with Fabric API and a Fabric model test mod on 26.1.2, 26.2 and
 26.3, and checks each of these. Shaders weren't enabled in that run. A Fabric addon's mixins into Sodium are checked
 against the installed Sodium for NeoForge before the game starts, like mixins into the game: one that needs Sodium's
-Fabric-only classes, or members its NeoForge build lacks, is reported and the addon disabled instead of crashing. On
-1.21.11 Sodium for NeoForge has no Fabric renderer API of its own and meshes chunks itself, so with Sodium installed
-Fabric block models stay invisible there.
+Fabric-only classes, or members its NeoForge build lacks, is reported and the addon disabled instead of crashing.
+
+On 1.21.11 Sodium for NeoForge meshes chunks itself and has no Fabric renderer, though its metadata says it contains
+one (`fabric-renderer-api-v1:contains_renderer`, read in its 1.21.11 source), so Indigo stood down and Fabric's
+renderer API had no renderer: Fabric block models stayed invisible and a Fabric mod building a mesh would fail. Once
+the client initializers ran, Fabricated registers Indigo's renderer when none registered (on every version; Indigo's
+own hooks stay off then), and Sodium draws a Fabric block model from the parts Fabricated makes from its quads.
+CI's informational 1.21.11 run with Sodium for NeoForge saw the test model and the multipart part with it meshed in
+Sodium's own section level (run 374; run 372, without the fallback, had no parts).
 
 ### Plugins for recipe viewers, tooltip mods and Simple Voice Chat
 
