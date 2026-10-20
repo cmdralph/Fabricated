@@ -4,6 +4,7 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import io.github.cmdralph.fabricated.testmod.TestMod;
 import net.minecraft.server.players.PlayerList;
@@ -22,11 +23,24 @@ public abstract class PlayerListMixin {
 
 	@Inject(method = "placeNewPlayer", at = @At("RETURN"))
 	private void fabricatedTest$placed(CallbackInfo ci) {
-		TestMod.LOGGER.info("FABRICATED-TEST server placed a player ({} in the list)", ((PlayerList) (Object) this).getPlayerCount());
+		PlayerList list = (PlayerList) (Object) this;
+		TestMod.LOGGER.info("FABRICATED-TEST server placed a player ({} in the list {} of server {}, tick {})", list.getPlayerCount(),
+				System.identityHashCode(list), System.identityHashCode(list.getServer()), list.getServer().getTickCount());
 	}
 
 	@Inject(method = "remove(Lnet/minecraft/server/level/ServerPlayer;)V", at = @At("HEAD"))
 	private void fabricatedTest$removing(CallbackInfo ci) {
 		TestMod.LOGGER.info("FABRICATED-TEST server removing a player", new Throwable("stack of the removal"));
+	}
+
+	// Other ways a player leaves the list (not required: diagnostics only).
+	@Inject(method = "respawn", at = @At("HEAD"), require = 0)
+	private void fabricatedTest$respawning(CallbackInfoReturnable<?> cir) {
+		TestMod.LOGGER.info("FABRICATED-TEST server respawning a player", new Throwable("stack of the call"));
+	}
+
+	@Inject(method = "removeAll", at = @At("HEAD"), require = 0)
+	private void fabricatedTest$removingAll(CallbackInfo ci) {
+		TestMod.LOGGER.info("FABRICATED-TEST server removing all players", new Throwable("stack of the call"));
 	}
 }
