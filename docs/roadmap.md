@@ -19,7 +19,9 @@ handled safely, no network access, original jars never changed, and no code that
 
 - **Done:** discovery, metadata, dependency resolution, access wideners, the translation cache, mixin pre-flight with
   its repairs (overloads NeoForge moved, constructors NeoForge kept for vanilla's signature or appended components to,
-  with a bridge for handlers taking the parameters, calls made through a subtype), NeoForge mods visible to Fabric code
+  with a bridge for handlers taking the parameters, calls made through a subtype or given one more argument, with a
+  bridge for handlers taking the call's arguments), `@WrapMethod` handlers checked against the method they wrap,
+  NeoForge mods visible to Fabric code
   (nested ones too, with their properties as custom values and their files as container roots). Pre-flight of mixins
   into Fabricated's Fabric API and installed NeoForge mods, nested ones included, and into other Fabric mods
   (R3: Iris's ~20 mixins into Sodium were "not verified" before; on 1.21.11 against their classes remapped as read), cached with the fingerprints of the classes it read. Every declared language adapter created before any Fabric mod's mixin plugin loads, as on
