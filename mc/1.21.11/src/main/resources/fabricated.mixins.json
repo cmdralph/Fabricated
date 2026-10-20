@@ -72,6 +72,7 @@
     "client.ModelManagerExtraModelsMixin",
     "client.UnbakedModelParserMixin",
     "client.BlockStateModelUnbakedMixin",
-    "client.ModelManagerExtraModelsUploadMixin"
+    "client.ModelManagerExtraModelsUploadMixin",
+    "client.SectionCompilerMixin"
   ]
 }
