@@ -141,6 +141,7 @@ class PipelineTest {
 				.write(mods.resolve("dup-b.jar"));
 		TestJars.create().fabricModJson(TestJars.modJson("res-a", "1.0", "")).text("licenses/LICENSE", "MIT").write(mods.resolve("res-a.jar"));
 		TestJars.create().fabricModJson(TestJars.modJson("res-b", "1.0", "")).text("licenses/LICENSE", "Apache").write(mods.resolve("res-b.jar"));
+		// Another version of dup-a's class (as two versions of a bundled library): dup-a's copy is used, as on a class path.
 		TestJars.create().fabricModJson(TestJars.modJson("dup-c", "1.0", ""))
 				.bytes("com/conflict/Thing.class", TestJars.emptyClass("com/conflict/Thing", "java/lang/Number"))
 				.write(mods.resolve("dup-c.jar"));
@@ -203,13 +204,14 @@ class PipelineTest {
 		for (Report.ModRow row : result.report().mods()) status.putIfAbsent(row.id(), row.status());
 
 		Set<String> loaded = result.mods().stream().map(m -> m.translated().candidate().id()).collect(Collectors.toSet());
-		assertEquals(Set.of("good-mod", "holder", "inner-lib", "dup-a", "dup-b", "dup-d", "dup-e", "dup-g", "res-a", "res-b"), loaded, result.report().render());
+		assertEquals(Set.of("good-mod", "holder", "inner-lib", "dup-a", "dup-b", "dup-c", "dup-d", "dup-e", "dup-g", "res-a", "res-b"), loaded, result.report().render());
 		Pipeline.LoadedMod resB = result.mods().stream().filter(m -> m.translated().candidate().id().equals("res-b")).findFirst().orElseThrow();
 		assertEquals(Set.of("licenses"), resB.packages().excludedPackages(), "clashing resource-only directory is hidden, not fatal");
 		assertEquals(Report.Status.DISABLED, status.get("needs-missing"));
 		assertTrue(result.dependencyFailures().contains("needs-missing"), result.dependencyFailures().toString());
 		assertEquals(Report.Status.DISABLED, status.get("bad-mixin"));
-		assertEquals(Report.Status.DISABLED, status.get("dup-c"));
+		assertTrue(result.report().render().contains("dup-c WARNING: has a different com.conflict.Thing than dup_a; dup_a's copies are used"),
+				result.report().render());
 		assertEquals(Report.Status.REJECTED, status.get("broken.jar"));
 		assertEquals(Report.Status.SKIPPED, status.get("client-only"));
 		assertTrue(result.report().mods().stream().anyMatch(r -> r.id().equals("fabric-api-base") && r.status() == Report.Status.PROVIDED_NATIVELY));
