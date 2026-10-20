@@ -287,6 +287,16 @@ jobs:
           cp "$RUNNER_TEMP/extra/fabric-api.jar" "$RUNNER_TEMP/extra-polyfrost/"
           SMOKE_TIMEOUT=480 ci/smoke-client.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/client-polyfrost" "$RUNNER_TEMP/extra-polyfrost" || true
           grep -A80 "== Summary" "$RUNNER_TEMP/client-polyfrost/run/logs/fabric-bridge-report.txt" | tee -a "$RUNNER_TEMP/summary-polyfrost.txt" || true
+      - name: Upload Polyfrost client logs and report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: client-polyfrost-${{ matrix.minecraft }}
+          path: |
+            ${{ runner.temp }}/client-polyfrost/run/logs
+            ${{ runner.temp }}/client-polyfrost/run/crash-reports
+            ${{ runner.temp }}/client-polyfrost/client.out
+          if-no-files-found: ignore
       # The NeoForge builds of recipe viewers and tooltip mods, with the test mod's plugins declared the Fabric way (as
       # entrypoints, and WTHIT's plugin file). Informational until the viewers' builds are pinned.
       - name: Client with recipe viewers for NeoForge (informational)
