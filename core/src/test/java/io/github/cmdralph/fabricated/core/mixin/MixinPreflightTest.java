@@ -320,6 +320,22 @@ class MixinPreflightTest {
 				"a delegate appending vanilla types may be vanilla's own");
 	}
 
+	/** A member named as mixins name what they add ({@code modid$name}) may come from another mod's mixin: not judged. */
+	@Test
+	void membersAnotherModsMixinMayAddAreNotJudged() throws Exception {
+		ClassIndex game = new ClassIndex(Map.of(TARGET, targetClass())::get);
+		Map<String, byte[]> mod = Map.of(
+				"com/example/mixin/Added", mixin("com/example/mixin/Added", false, cw -> inject(cw, "h", "sodium$setActive", "HEAD", null, 1, null)),
+				"com/example/mixin/Gone", mixin("com/example/mixin/Gone", false, cw -> inject(cw, "h", "setActive", "HEAD", null, 1, null)));
+		List<PreflightFinding> findings = new MixinPreflight(game, mod::get, ClassBytesSource.EMPTY, false)
+				.check("test.mixins.json", MixinConfigFile.parse(config(true, "Added", "Gone")), Refmap.EMPTY, Set.of());
+
+		assertEquals(Severity.INFO, findings.stream().filter(f -> f.mixin().endsWith("Added")).findFirst().orElseThrow().severity(), findings.toString());
+		assertEquals(Severity.FAIL, findings.stream().filter(f -> f.mixin().endsWith("Gone")).findFirst().orElseThrow().severity(), findings.toString());
+		assertTrue(MixinPreflight.addedByAMixin("iris$flag"));
+		assertTrue(!MixinPreflight.addedByAMixin("lambda$tick$0") && !MixinPreflight.addedByAMixin("access$000") && !MixinPreflight.addedByAMixin("tick"));
+	}
+
 	/** A library interface named {@code name}, extending {@code parent} (or none), declaring {@code parse(Object)}. */
 	private static byte[] libraryInterface(String name, String parent) {
 		ClassWriter cw = new ClassWriter(0);

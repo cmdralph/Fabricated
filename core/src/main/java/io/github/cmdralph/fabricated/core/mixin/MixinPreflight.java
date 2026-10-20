@@ -927,8 +927,12 @@ public final class MixinPreflight {
 			String desc = ref.fieldDescOr(field.desc);
 			if (game.resolveField(target.name, fieldName + ":" + desc) == ClassIndex.Resolution.MISSING
 					&& !aliasExists(shadow, target, desc, true)) {
-				ctx.classLevel("@Shadow field " + fieldName + " (" + desc + ") does not exist in " + targetDotted,
-						ctx.changer(true) + " changed " + targetDotted + "; the mod needs an update.");
+				if (addedByAMixin(fieldName)) {
+					ctx.info("@Shadow field " + fieldName + " is not in " + targetDotted + "; another mod's mixin may add it, so it was not verified");
+				} else {
+					ctx.classLevel("@Shadow field " + fieldName + " (" + desc + ") does not exist in " + targetDotted,
+							ctx.changer(true) + " changed " + targetDotted + "; the mod needs an update.");
+				}
 			}
 		}
 
@@ -942,8 +946,12 @@ public final class MixinPreflight {
 				String desc = ref.methodDescOr(method.desc);
 				if (game.resolveMethod(target.name, methodName + desc) == ClassIndex.Resolution.MISSING
 						&& !aliasExists(shadow, target, desc, false)) {
-					ctx.classLevel("@Shadow method " + methodName + desc + " does not exist in " + targetDotted,
-							ctx.changer(true) + " changed " + targetDotted + "; the mod needs an update.");
+					if (addedByAMixin(methodName)) {
+						ctx.info("@Shadow method " + methodName + " is not in " + targetDotted + "; another mod's mixin may add it, so it was not verified");
+					} else {
+						ctx.classLevel("@Shadow method " + methodName + desc + " does not exist in " + targetDotted,
+								ctx.changer(true) + " changed " + targetDotted + "; the mod needs an update.");
+					}
 				}
 				continue;
 			}
@@ -1008,6 +1016,16 @@ public final class MixinPreflight {
 			ctx.out().add(new PreflightFinding(Severity.WARN, ctx.configName(), ctx.mixinDotted(),
 					where + "; the mixin silently replaces it, which may change " + ctx.platform() + "'s behaviour", ""));
 		}
+	}
+
+	/**
+	 * Whether a member of this name, missing from the target's bytecode, may be one another mod's mixin adds: mixins name
+	 * the members they add {@code modid$name} by convention, a form the game's own members don't take (bar javac's
+	 * {@code lambda$} and {@code access$}). Pre-flight sees only the target's bytecode, so it doesn't judge those.
+	 */
+	static boolean addedByAMixin(String member) {
+		int dollar = member.indexOf('$');
+		return dollar > 0 && !member.startsWith("lambda$") && !member.startsWith("access$");
 	}
 
 	private boolean aliasExists(AnnotationNode shadow, ClassNode target, String desc, boolean field) {
@@ -1109,6 +1127,7 @@ public final class MixinPreflight {
 		List<MethodNode> matched = new ArrayList<>();
 		boolean anyFuzzy = false;
 		String lastSelector = null;
+		String lastName = null;
 		for (Object o : selectors) {
 			if (!(o instanceof String raw)) continue;
 			MemberRef ref = MemberRef.parse(ctx.resolve(raw));
@@ -1117,6 +1136,7 @@ public final class MixinPreflight {
 				continue;
 			}
 			lastSelector = ref.name() + (ref.desc() != null ? ref.desc() : "");
+			lastName = ref.name();
 			if (addsMethod(mixin, ref)) {
 				anyFuzzy = true; // a method the mixin itself merges into the target: not judged
 				continue;
@@ -1129,7 +1149,10 @@ public final class MixinPreflight {
 			}
 		}
 		if (matched.isEmpty()) {
-			if (!anyFuzzy && lastSelector != null) {
+			if (!anyFuzzy && lastSelector != null && addedByAMixin(lastName)) {
+				ctx.info(injectorName + " " + handler.name + " targets method " + lastSelector + ", which is not in " + target.name.replace('/', '.')
+						+ "; another mod's mixin may add it, so it was not verified");
+			} else if (!anyFuzzy && lastSelector != null) {
 				ctx.injector(handler, require, injectorName + " targets method " + lastSelector
 								+ ", which does not exist in " + target.name.replace('/', '.'),
 						"The method was renamed or removed by " + ctx.changer(false) + ".");
