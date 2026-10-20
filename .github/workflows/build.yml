@@ -432,9 +432,14 @@ jobs:
               echo "-- last lines of the log:"
               grep -v "Waiting for player to load" "$log" | tail -n 4 | cut -c1-300
             fi
-            if [ -f "$RUNNER_TEMP/$run/thread-dump.txt" ]; then
-              echo "-- render thread shortly before the timeout:"
-              awk 'BEGIN { RS = "" } /^"Render thread/' "$RUNNER_TEMP/$run/thread-dump.txt" | grep -E "^\s+at " | head -25
+            dump="$RUNNER_TEMP/$run/thread-dump.txt"
+            if [ -f "$dump" ]; then
+              # The game's main threads, or the start of the dump when it has neither (jstack's own error, say).
+              for thread in "Render thread" "Server thread"; do
+                echo "-- $thread shortly before the timeout:"
+                awk -v name="\"$thread\"" 'BEGIN { RS = "" } index($0, name) == 1' "$dump" | grep -E "^[[:space:]]+at " | head -15
+              done
+              grep -q -E '^"(Render|Server) thread"' "$dump" || head -n 5 "$dump"
             fi
           done
       - name: Upload Fabricated jar

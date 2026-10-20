@@ -238,7 +238,7 @@ crash in run 229).
 
 | ID | Sev | Location | Issue | Status |
 |---|---|---|---|---|
-| POLY-1 | P2 | Polyfrost clients in CI | On `97bb819` (pull request #37) the 26.3 client gets past ROOT-1 and reaches a world: Polydium's Vulkan prompt, which it opens only once a player is in a world, stays open ("Screen not yet null: org.polyfrost.polydium.client.VulkanPrompt$1"), and mc-runtime-test waits for no screen until the timeout. The 26.1.2 and 1.21.11 runs took as long; that they stopped on the same prompt is UNVERIFIED. | CI creates Polydium's own marker (`$XDG_CONFIG_HOME/polydium/vulkan-prompt`, else `~/.config/polydium/vulkan-prompt`) before the run, as after a player answered the prompt. |
+| POLY-1 | P2, cause UNVERIFIED | Polyfrost clients in CI | On `039fd37` (pull request #38), with Polydium's Vulkan prompt answered, the 26.3 client is in its world (`LocalPlayer` at -2.5, 104, -8.5) and the integrated server runs, but the player's chunk never arrives on the client: mc-runtime-test logs "Players chunk not yet loaded" (it waits for `level.getChunk(...)` to be non-empty) until the timeout. The test mods alone reach their world; this run adds OneConfig, PolyPlus (whose networking mixins only redirect channels for its peer-to-peer hosting, read from its source), compose-bundle and Fabric Language Kotlin. | The summary now prints the render and server threads' frames near the timeout, or the start of the dump when jstack failed (the last summary's section was empty). |
 | PLAT-2 | P3, UNVERIFIED | core `PlatformLibraries` | Other prefixes also cover whole library families (`org/lwjgl/`, `io/netty/`), of which the platform may ship some modules only: a mod nesting another module (LWJGL's NanoVG, say) would lose it, as PLAT-1 did. No case seen yet. | Check each prefix against the packages the platform really has (the loader computes them), and keep a prefix only where the family is complete. |
 | FC-5 | P3 | `TranslationCache.verifyIntegrity` | Hashes are memoised by file metadata. On Windows the key is size and mtime only, and `entry.json` itself isn't hashed. | Needs a decision on cost: re-hashing every launch versus trusting metadata. |
 | FC-6 | P3 | `TranslationCache.store` | Two cold launches of the same side that share one game directory race on delete-then-move. | Needs a cross-process file lock. Rare. |
@@ -299,6 +299,17 @@ open (see *Unverified and blockers*).
 ## Changelog
 
 Newest first. Each entry: what changed, and how it was verified.
+
+### 2026-10-21 (latest): where the Polyfrost world stalls
+
+**Summary.**
+- Results of pull request #38 on `039fd37`: with Polydium's marker, no prompt opens; the 26.3 client waits in its world
+  for its chunk, which never arrives (POLY-1).
+- CI: the summary prints the render and server threads near the timeout, or the start of the thread dump when it has
+  neither.
+
+**Verification.** The workflow YAML parses, and the summary's new lines were run, as parsed, on sample dumps (with both
+threads, and with a jstack error only). CI: see the pull request.
 
 ### 2026-10-21 (later): Polyfrost reaches a world
 
