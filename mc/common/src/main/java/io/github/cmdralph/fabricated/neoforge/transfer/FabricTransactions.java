@@ -35,15 +35,18 @@ final class FabricTransactions extends SnapshotJournal<Object> {
 		// The mirroring depths get their (borrowed) snapshots first, so a Fabric transaction this journal opens deeper
 		// commits into its Fabric parent with its NeoForge transaction, rather than moving up to outlive it.
 		Transaction mirrored = null;
-		for (NeoTransactions.Mirror mirror : NeoTransactions.mirrors()) {
-			if (mirror.neo().depth() > transaction.depth()) break;
+		NeoTransactions mirrors = NeoTransactions.current();
+		for (int i = 0; i < mirrors.depths(); i++) {
+			net.neoforged.neoforge.transfer.transaction.Transaction mirror = mirrors.neo(i);
+			if (mirror == null) continue;
+			if (mirror.depth() > transaction.depth()) break;
 			journal.borrowing = true;
 			try {
-				journal.updateSnapshots(mirror.neo());
+				journal.updateSnapshots(mirror);
 			} finally {
 				journal.borrowing = false;
 			}
-			if (mirror.neo() == transaction) mirrored = mirror.fabric();
+			if (mirror == transaction) mirrored = mirrors.fabric(i);
 		}
 		if (mirrored != null) return mirrored;
 		journal.updateSnapshots(transaction);

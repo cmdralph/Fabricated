@@ -12,6 +12,11 @@ import net.neoforged.neoforge.transfer.transaction.TransactionContext;
  * may put an item elsewhere when its own slot can't take it.
  */
 record ContextItemAccess(ContainerItemContext context) implements ItemAccess {
+	/** The context as NeoForge's access: the access it stands for, when it is one of NeoForge's. */
+	static ItemAccess of(ContainerItemContext context) {
+		return context instanceof AccessItemContext neoAccess ? neoAccess.access : new ContextItemAccess(context);
+	}
+
 	@Override
 	public ItemResource getResource() {
 		return ResourceKind.ITEMS.neo(context.getItemVariant());

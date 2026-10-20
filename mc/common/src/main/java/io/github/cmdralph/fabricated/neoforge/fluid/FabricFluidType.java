@@ -10,7 +10,6 @@ import net.fabricmc.fabric.api.transfer.v1.fluid.FluidVariantAttributes;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.Identifier;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.tags.FluidTags;
 import net.minecraft.util.Util;
@@ -25,6 +24,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.material.FlowingFluid;
 import net.minecraft.world.level.material.Fluid;
 import net.minecraft.world.level.material.FluidState;
+import net.minecraft.world.level.material.Fluids;
 import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.neoforge.common.SoundAction;
@@ -90,10 +90,13 @@ public final class FabricFluidType extends FluidType {
 		return type;
 	}
 
-	/** A registered fluid outside vanilla and NeoForge whose class doesn't override {@code getFluidType}. */
+	/**
+	 * A fluid outside vanilla and NeoForge whose class doesn't override {@code getFluidType}. Vanilla's are told by
+	 * identity, as NeoForge does, so a Fabric fluid asked before it is registered (its key is still the default) gets one.
+	 */
 	private static boolean needsType(Fluid fluid) {
-		Identifier id = BuiltInRegistries.FLUID.getKey(fluid);
-		if (id.getNamespace().equals("minecraft") || id.getNamespace().equals("neoforge")) return false;
+		if (fluid == Fluids.EMPTY || fluid == Fluids.WATER || fluid == Fluids.FLOWING_WATER || fluid == Fluids.LAVA || fluid == Fluids.FLOWING_LAVA) return false;
+		if (BuiltInRegistries.FLUID.getKey(fluid).getNamespace().equals("neoforge")) return false; // its milk
 		try {
 			return fluid.getClass().getMethod("getFluidType").getDeclaringClass() == Fluid.class;
 		} catch (NoSuchMethodException e) {

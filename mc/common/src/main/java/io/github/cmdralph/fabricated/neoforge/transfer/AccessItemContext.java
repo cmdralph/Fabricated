@@ -51,8 +51,13 @@ final class AccessItemContext implements ContainerItemContext {
 		}
 	};
 
-	AccessItemContext(ItemAccess access) {
+	private AccessItemContext(ItemAccess access) {
 		this.access = access;
+	}
+
+	/** The access as a Fabric context: the context it stands for, when it is one of Fabric's. */
+	static ContainerItemContext of(ItemAccess access) {
+		return access instanceof ContextItemAccess fabricContext ? fabricContext.context() : new AccessItemContext(access);
 	}
 
 	@Override

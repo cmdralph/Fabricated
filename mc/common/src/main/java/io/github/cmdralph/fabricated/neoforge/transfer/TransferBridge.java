@@ -1,11 +1,15 @@
 package io.github.cmdralph.fabricated.neoforge.transfer;
 
+import java.util.Collections;
+import java.util.IdentityHashMap;
+import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
 import org.jspecify.annotations.Nullable;
 
 import io.github.cmdralph.fabricated.core.metadata.ModIds;
+import io.github.cmdralph.fabricated.loader.FabricatedState;
 import net.fabricmc.fabric.api.lookup.v1.block.BlockApiLookup;
 import net.fabricmc.fabric.api.lookup.v1.block.BlockApiLookup.BlockApiProvider;
 import net.fabricmc.fabric.api.lookup.v1.item.ItemApiLookup;
@@ -45,14 +49,15 @@ import net.neoforged.neoforge.transfer.resource.Resource;
  * {@link ContextItemAccess}). Transactions are mirrored both ways ({@link FabricTransactions}, {@link NeoTransactions});
  * fluid amounts convert at 81 droplets per millibucket.
  *
- * <p>Vanilla blocks and items are left to each side's own wrappers. For a block, neither direction asks the other side's
- * fallbacks, so a storage is never wrapped back into itself; for an item, each asks the other side's whole lookup
- * (a Fabric mod's tank may come from a fallback, as Team Reborn's batteries do), and the other side's fallback doesn't
- * ask back meanwhile ({@link #askOtherSide}).
+ * <p>Vanilla blocks and items are left to each side's own wrappers, and NeoForge's item capabilities are offered for
+ * Fabric mods' items only (NeoForge code asks them of every stack it sees, often every tick). For a block, neither
+ * direction asks the other side's fallbacks, so a storage is never wrapped back into itself; for an item, each asks
+ * the other side's whole lookup (a Fabric mod's tank may come from a fallback, as Team Reborn's batteries do), and the
+ * other side's fallback doesn't ask back about the same stack meanwhile ({@link #askOtherSide}).
  */
 public final class TransferBridge {
-	/** Whether this thread is in one side's item lookup on behalf of the other. */
-	private static final ThreadLocal<Boolean> ASKING = ThreadLocal.withInitial(() -> false);
+	/** The stacks this thread is asking one side's item lookup about on behalf of the other. */
+	private static final ThreadLocal<Set<ItemStack>> ASKING = ThreadLocal.withInitial(() -> Collections.newSetFromMap(new IdentityHashMap<>()));
 
 	private TransferBridge() {
 	}
@@ -64,7 +69,12 @@ public final class TransferBridge {
 		addFabricFallback(FluidStorage.SIDED, Capabilities.Fluid.BLOCK, ResourceKind.FLUIDS);
 		addFabricItemFallback(ItemStorage.ITEM, Capabilities.Item.ITEM, ResourceKind.ITEMS);
 		addFabricItemFallback(FluidStorage.ITEM, Capabilities.Fluid.ITEM, ResourceKind.FLUIDS);
-		if (ModList.get().isLoaded(ModIds.toNeoForgeId("team_reborn_energy"))) EnergyBridge.register(modBus);
+		if (energy()) EnergyBridge.register();
+	}
+
+	/** Whether a Fabric mod brought Team Reborn's energy library (see {@link EnergyBridge}). */
+	private static boolean energy() {
+		return ModList.get().isLoaded(ModIds.toNeoForgeId("team_reborn_energy"));
 	}
 
 	static boolean isVanilla(Block block) {
@@ -75,29 +85,26 @@ public final class TransferBridge {
 		return BuiltInRegistries.ITEM.getKey(item).getNamespace().equals("minecraft");
 	}
 
-	/** Every block a mod adds: the ones the bridges register NeoForge capabilities for. */
-	static Block[] moddedBlocks() {
-		return BuiltInRegistries.BLOCK.stream().filter(block -> !isVanilla(block)).toArray(Block[]::new);
-	}
-
-	/** Every item a mod adds. */
-	static Item[] moddedItems() {
-		return BuiltInRegistries.ITEM.stream().filter(item -> !isVanilla(item)).toArray(Item[]::new);
+	/** Whether a Fabric mod added the item (it has a Fabric mod's namespace). */
+	private static boolean isFabric(Item item) {
+		return FabricatedState.get().isFabricMod(ModIds.toNeoForgeId(BuiltInRegistries.ITEM.getKey(item).getNamespace()));
 	}
 
 	private static void registerCapabilities(RegisterCapabilitiesEvent event) {
-		Block[] blocks = moddedBlocks();
+		// The blocks every mod adds, and the items Fabric mods add: the ones the bridges register capabilities for.
+		Block[] blocks = BuiltInRegistries.BLOCK.stream().filter(block -> !isVanilla(block)).toArray(Block[]::new);
+		Item[] items = BuiltInRegistries.ITEM.stream().filter(TransferBridge::isFabric).toArray(Item[]::new);
 		if (blocks.length > 0) {
 			event.registerBlock(Capabilities.Item.BLOCK, (level, pos, state, blockEntity, side) ->
 					neoHandler(ItemStorage.SIDED, ResourceKind.ITEMS, SidedStorageBlockEntity::getItemStorage, level, pos, state, blockEntity, side), blocks);
 			event.registerBlock(Capabilities.Fluid.BLOCK, (level, pos, state, blockEntity, side) ->
 					neoHandler(FluidStorage.SIDED, ResourceKind.FLUIDS, SidedStorageBlockEntity::getFluidStorage, level, pos, state, blockEntity, side), blocks);
 		}
-		Item[] items = moddedItems();
 		if (items.length > 0) {
 			event.registerItem(Capabilities.Item.ITEM, (stack, access) -> neoItemHandler(ItemStorage.ITEM, ResourceKind.ITEMS, stack, access), items);
 			event.registerItem(Capabilities.Fluid.ITEM, (stack, access) -> neoItemHandler(FluidStorage.ITEM, ResourceKind.FLUIDS, stack, access), items);
 		}
+		if (energy()) EnergyBridge.registerCapabilities(event, blocks, items);
 	}
 
 	/** A Fabric storage registered for the block (or offered by a Fabric block entity), as a NeoForge handler. */
@@ -114,24 +121,25 @@ public final class TransferBridge {
 	}
 
 	/**
-	 * Asks the other side's item lookup, unless this thread is already in a lookup on the other side's behalf: then the
-	 * question comes from there, and is answered with nothing rather than asked back.
+	 * Asks the other side's item lookup about {@code stack}, unless this thread is already asking about it on the other
+	 * side's behalf: then the question comes from there, and is answered with nothing rather than asked back. Lookups for
+	 * other stacks inside it (a backpack's contents, say) are asked as usual.
 	 */
-	static <T> @Nullable T askOtherSide(Supplier<@Nullable T> question) {
-		if (ASKING.get()) return null;
-		ASKING.set(true);
+	static <T> @Nullable T askOtherSide(ItemStack stack, Supplier<@Nullable T> question) {
+		Set<ItemStack> asking = ASKING.get();
+		if (!asking.add(stack)) return null;
 		try {
 			return question.get();
 		} finally {
-			ASKING.set(false);
+			asking.remove(stack);
 		}
 	}
 
 	/** The item's Fabric storage, as a NeoForge handler changing the item through {@code access}. */
 	private static <F extends TransferVariant<?>, N extends Resource> @Nullable ResourceHandler<N> neoItemHandler(
 			ItemApiLookup<Storage<F>, ContainerItemContext> lookup, ResourceKind<F, N> kind, ItemStack stack, ItemAccess access) {
-		ContainerItemContext context = access instanceof ContextItemAccess fabricContext ? fabricContext.context() : new AccessItemContext(access);
-		Storage<F> storage = askOtherSide(() -> lookup.find(stack, context));
+		ContainerItemContext context = AccessItemContext.of(access);
+		Storage<F> storage = askOtherSide(stack, () -> lookup.find(stack, context));
 		if (storage == null) return null;
 		if (storage instanceof NeoHandlerStorage<?, ?> bridged) return unwrap(bridged);
 		return new FabricStorageHandler<>(storage, kind);
@@ -166,8 +174,8 @@ public final class TransferBridge {
 			ItemCapability<ResourceHandler<N>, ItemAccess> capability, ResourceKind<F, N> kind) {
 		lookup.registerFallback((stack, context) -> {
 			if (isVanilla(stack.getItem())) return null;
-			ItemAccess access = context instanceof AccessItemContext neoAccess ? neoAccess.access : new ContextItemAccess(context);
-			ResourceHandler<N> handler = askOtherSide(() -> stack.getCapability(capability, access));
+			ItemAccess access = ContextItemAccess.of(context);
+			ResourceHandler<N> handler = askOtherSide(stack, () -> stack.getCapability(capability, access));
 			if (handler == null) return null;
 			if (handler instanceof FabricStorageHandler<?, ?> bridged) return unwrapStorage(bridged);
 			return new NeoHandlerStorage<>(handler, kind);

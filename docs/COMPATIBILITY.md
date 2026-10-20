@@ -484,9 +484,16 @@ the other side's access to where it is: NeoForge's `ItemAccess` as a Fabric `Con
   get its NeoForge handler before Fabric's generic `Container` wrapper, so the block's access rules hold.
 - Vanilla blocks and items keep each side's own wrappers. Every bucket item gets Fabric's own bucket storage from
   upstream's fallback, which comes before NeoForge's capability.
+- NeoForge's item capabilities are offered for items Fabric mods add (by namespace), not for NeoForge mods' items,
+  which NeoForge code asks about constantly and Fabric storages practically never serve.
+- On blocks, neither side asks the other's fallbacks (so a storage is never wrapped back into itself): a Fabric
+  storage offered only through a lookup fallback, rather than registered for its blocks or block entities, isn't seen
+  by NeoForge code. Fabric mods' storages are almost always registered for their blocks or block entities.
 - A storage on one side that uses one on the other in the same transaction (an item's handler changing the item
   through the other side's access, a NeoForge handler passing items on to a Fabric storage) works: where a
-  transaction already stands for one of the other side's, it is used instead of a new one nested in it.
+  transaction already stands for one of the other side's, it is used instead of a new one nested in it. Likewise an
+  item storage that looks up other items' storages (a backpack's contents) gets the other side's answers; only a
+  question about the same stack, asked back from the other side, is answered with nothing.
 - Entity storages are not bridged: Fabric API has no lookup for them.
 
 **Energy, with Team Reborn's library.** Fabric API has no energy API; Fabric tech mods share Team Reborn's

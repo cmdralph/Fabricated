@@ -19,10 +19,6 @@ import net.neoforged.neoforge.transfer.transaction.Transaction;
 final class NeoTransactions {
 	private static final ThreadLocal<NeoTransactions> STATE = ThreadLocal.withInitial(NeoTransactions::new);
 
-	/** A NeoForge transaction opened for a Fabric one. */
-	record Mirror(net.fabricmc.fabric.api.transfer.v1.transaction.Transaction fabric, Transaction neo) {
-	}
-
 	/** Index = Fabric nesting depth; no mirror where the Fabric transaction stands for a NeoForge one. */
 	private final List<net.fabricmc.fabric.api.transfer.v1.transaction.Transaction> fabric = new ArrayList<>();
 	private final List<@Nullable Transaction> neo = new ArrayList<>();
@@ -58,15 +54,22 @@ final class NeoTransactions {
 		return mirror != null ? mirror : Transaction.getCurrentOpenedTransaction();
 	}
 
-	/** This thread's open mirrors, outermost first. */
-	static List<Mirror> mirrors() {
-		NeoTransactions state = STATE.get();
-		if (state.neo.isEmpty()) return List.of(); // the usual case: NeoForge code using a Fabric storage directly
-		List<Mirror> mirrors = new ArrayList<>(state.neo.size());
-		for (int i = 0; i < state.neo.size(); i++) {
-			Transaction mirror = state.neo.get(i);
-			if (mirror != null) mirrors.add(new Mirror(state.fabric.get(i), mirror));
-		}
-		return mirrors;
+	/** This thread's mirrors, read by Fabric nesting depth (outermost first) without copying. */
+	static NeoTransactions current() {
+		return STATE.get();
+	}
+
+	/** How many Fabric depths this thread has seen; none in the usual case (NeoForge code using a Fabric storage). */
+	int depths() {
+		return neo.size();
+	}
+
+	/** The NeoForge transaction opened for the Fabric one at {@code depth}, or null where that one stands for one. */
+	@Nullable Transaction neo(int depth) {
+		return neo.get(depth);
+	}
+
+	net.fabricmc.fabric.api.transfer.v1.transaction.Transaction fabric(int depth) {
+		return fabric.get(depth);
 	}
 }

@@ -327,7 +327,7 @@ Newest first. Each entry: what changed, and how it was verified.
 - Energy with Team Reborn's library (`EnergyBridge`), loaded only when a Fabric mod brings it; compiled against
   never-packaged stand-ins of its API (`integrationstubs`), its lookups found by id.
 - `/fabricated why <mod>` (one mod's outcome and suggested fix) and `/fabricated disable|enable <mod>` (its entry in
-  `config/fabricated.json`, for the next launch, the rest of the file kept). CI: the test mod runs them from the
+  `config/fabricated.json`, for the next launch, its other settings kept; comments in the file are not). CI: the test mod runs them from the
   server console and reads the config back.
 - The corpus gains Fabric tech mods (Modern Industrialization, Tech Reborn), for the transfer and energy bridges.
 - Fabric mods' fluids get NeoForge fluid types (FLUID-1, found by the corpus): one per family, registered, its

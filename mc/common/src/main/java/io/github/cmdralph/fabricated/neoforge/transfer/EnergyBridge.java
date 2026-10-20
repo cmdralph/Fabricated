@@ -11,8 +11,6 @@ import net.minecraft.core.Direction;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.level.block.Block;
-import net.neoforged.bus.api.EventPriority;
-import net.neoforged.bus.api.IEventBus;
 import net.neoforged.neoforge.capabilities.Capabilities;
 import net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent;
 import net.neoforged.neoforge.transfer.access.ItemAccess;
@@ -36,8 +34,7 @@ final class EnergyBridge {
 	private EnergyBridge() {
 	}
 
-	static void register(IEventBus modBus) {
-		modBus.addListener(EventPriority.LOWEST, RegisterCapabilitiesEvent.class, EnergyBridge::registerCapabilities);
+	static void register() {
 		((BlockApiLookupImpl<EnergyStorage, @Nullable Direction>) SIDED).getFallbackProviders().add(0, (level, pos, state, blockEntity, side) -> {
 			if (TransferBridge.isVanilla(state.getBlock())) return null;
 			EnergyHandler handler = level.getCapability(Capabilities.Energy.BLOCK, pos, state, blockEntity, side);
@@ -45,14 +42,14 @@ final class EnergyBridge {
 		});
 		ITEM.registerFallback((stack, context) -> {
 			if (TransferBridge.isVanilla(stack.getItem())) return null;
-			ItemAccess access = context instanceof AccessItemContext neoAccess ? neoAccess.access : new ContextItemAccess(context);
-			EnergyHandler handler = TransferBridge.askOtherSide(() -> stack.getCapability(Capabilities.Energy.ITEM, access));
+			ItemAccess access = ContextItemAccess.of(context);
+			EnergyHandler handler = TransferBridge.askOtherSide(stack, () -> stack.getCapability(Capabilities.Energy.ITEM, access));
 			return handler == null ? null : storage(handler);
 		});
 	}
 
-	private static void registerCapabilities(RegisterCapabilitiesEvent event) {
-		Block[] blocks = TransferBridge.moddedBlocks();
+	/** NeoForge's energy capabilities for {@link TransferBridge}'s blocks and items. */
+	static void registerCapabilities(RegisterCapabilitiesEvent event, Block[] blocks, Item[] items) {
 		if (blocks.length > 0) {
 			event.registerBlock(Capabilities.Energy.BLOCK, (level, pos, state, blockEntity, side) -> {
 				BlockApiProvider<EnergyStorage, @Nullable Direction> provider = SIDED.getProvider(state.getBlock());
@@ -60,11 +57,10 @@ final class EnergyBridge {
 				return storage == null ? null : handler(storage);
 			}, blocks);
 		}
-		Item[] items = TransferBridge.moddedItems();
 		if (items.length > 0) {
 			event.registerItem(Capabilities.Energy.ITEM, (stack, access) -> {
-				ContainerItemContext context = access instanceof ContextItemAccess fabricContext ? fabricContext.context() : new AccessItemContext(access);
-				EnergyStorage storage = TransferBridge.askOtherSide(() -> ITEM.find(stack, context));
+				ContainerItemContext context = AccessItemContext.of(access);
+				EnergyStorage storage = TransferBridge.askOtherSide(stack, () -> ITEM.find(stack, context));
 				return storage == null ? null : handler(storage);
 			}, items);
 		}
