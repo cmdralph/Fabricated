@@ -31,6 +31,7 @@ abstract class SectionCompilerMixin {
 			at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/block/BlockRenderDispatcher;renderBatched(Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/BlockAndTintGetter;Lcom/mojang/blaze3d/vertex/PoseStack;Ljava/util/function/Function;ZLjava/util/List;)V"))
 	private boolean fabricated$fabricModels(BlockRenderDispatcher dispatcher, BlockState state, BlockPos pos, BlockAndTintGetter level, PoseStack poseStack,
 			Function<ChunkSectionLayer, VertexConsumer> buffers, boolean cull, List<BlockModelPart> parts) {
+		if (!FabricBlockRendering.ENABLED) return true; // runs for every block of every section: no lookup without the API
 		BlockStateModel model = dispatcher.getBlockModel(state);
 		if (!FabricBlockRendering.draws(model)) return true;
 		FabricBlockRendering.tesselate(dispatcher, level, model, state, pos, poseStack, buffers, cull);

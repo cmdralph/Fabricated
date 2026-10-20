@@ -41,8 +41,8 @@ import net.minecraft.world.level.block.state.BlockState;
  * per-thread state.
  */
 public final class FabricBlockRendering {
-	/** Fabric's renderer API is installed. Its classes are only touched then. */
-	private static final boolean ENABLED = FabricLoader.getInstance().isModLoaded("fabric-renderer-api-v1");
+	/** Fabric's renderer API is installed. Its classes are only touched then; without it no block is looked at. */
+	public static final boolean ENABLED = FabricLoader.getInstance().isModLoaded("fabric-renderer-api-v1");
 
 	private FabricBlockRendering() {
 	}
