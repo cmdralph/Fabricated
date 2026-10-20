@@ -79,7 +79,8 @@ public final class Pipeline {
 	 *                   NeoForge mods speak to Fabric code (Sodium's {@code fabric-renderer-api-v1:contains_renderer}
 	 *                   makes Fabric API's default renderer stand down)
 	 * @param files      its jar (or directory), the root of its container's files to Fabric code (multi-loader mods find
-	 *                   their own files through Fabric's API when it is present); empty for a mod nested in another file
+	 *                   their own files through Fabric's API when it is present); for a mod nested in another file, that
+	 *                   file
 	 */
 	public record NeoForgeMod(String id, String version, String displayName, Map<String, Object> properties, List<Path> files) {
 		/** The mod property listing the Fabric mod ids a NeoForge mod provides (Sodium provides Indium). */
@@ -117,6 +118,9 @@ public final class Pipeline {
 	 * @param cache               the launch's cache, created from {@code config}
 	 * @param mixinExtrasVersion  the MixinExtras version NeoForge runs, provided to Fabric mods as {@code mixinextras}
 	 *                            (as Fabric Loader does), or null when unknown
+	 * @param gameFiles           Minecraft's files as NeoForge loads them: the root of the {@code minecraft} mod
+	 * @param fabricatedFiles     Fabricated's in-game mod: the root of the mods it provides (Fabric Loader, the native
+	 *                            Fabric API modules)
 	 * @param platformPackages    packages owned by NeoForge, Minecraft, libraries and Fabricated's own jars
 	 * @param nativeApiClasses    classes of Fabricated's native Fabric API implementation
 	 * @param nativeApiInterfaces interfaces Fabricated's own mixins add to game classes, read only when needed
@@ -138,6 +142,8 @@ public final class Pipeline {
 			String fabricatedVersion,
 			boolean development,
 			ClassBytesSource gameClasses,
+			List<Path> gameFiles,
+			List<Path> fabricatedFiles,
 			ClassBytesSource untransformableClasses,
 			Set<String> platformPackages,
 			FabricApiPlan fabricApiPlan,
@@ -682,7 +688,7 @@ public final class Pipeline {
 		}
 
 		// Built-ins first: a Fabric mod's "provides" never shadows Minecraft, Fabricated or a native module.
-		for (Builtin b : builtins) addBuiltin(runtime, b.id(), b.version(), b.name(), b.aliases(), Map.of(), List.of());
+		for (Builtin b : builtins) addBuiltin(runtime, b.id(), b.version(), b.name(), b.aliases(), Map.of(), builtinFiles(b.id()));
 
 		List<LoadedMod> loaded = new ArrayList<>();
 		Map<String, ModContainerImpl> containers = new LinkedHashMap<>();
@@ -779,6 +785,19 @@ public final class Pipeline {
 		if (skip.equals(user.skipMixins())) return user;
 		return new FabricatedConfig.ModOverride(user.disabled(), Set.copyOf(skip), user.skipEntrypoints(), user.aliases(), user.ignorePreflight(),
 				user.ignoreHints(), user.loadUnsupported());
+	}
+
+	/**
+	 * A built-in mod's files: Fabric Loader gives every mod a root, and mods take the first without checking (OneConfig).
+	 * Minecraft's are the game's, Java's its home, the others those of the mod that provides them on NeoForge.
+	 */
+	private List<Path> builtinFiles(String id) {
+		return switch (id) {
+			case "minecraft" -> in.gameFiles();
+			case "java" -> List.of(Path.of(System.getProperty("java.home")));
+			case "mixinextras" -> neoMods.containsKey("neoforge") ? neoMods.get("neoforge").files() : List.of();
+			default -> in.fabricatedFiles();
+		};
 	}
 
 	private static void addBuiltin(FabricLoaderRuntime runtime, String id, String version, String name, List<String> aliases,

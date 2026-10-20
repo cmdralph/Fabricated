@@ -113,6 +113,7 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 		// development workspace, or extracted from this jar when there is anything Fabric to load.
 		Optional<IModFile> devGameMod = find(loadedMods, ModIds.FABRICATED);
 		Path gameModJar = devGameMod.isPresent() || fabricJars.isEmpty() ? null : extractGameMod(cache);
+		List<Path> fabricatedFiles = gameModJar != null ? List.of(gameModJar) : devGameMod.map(file -> List.of(file.getFilePath())).orElse(List.of());
 
 		// Classes visible to NeoForge's non-transforming loaders (JDK and libraries such as DataFixerUpper or
 		// Brigadier). Mixins targeting them never apply, so pre-flight reports them instead of letting the mod
@@ -178,7 +179,7 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 			if (planJson == null) throw new IllegalStateException("This Fabricated build is missing its fabric-api-plan.json");
 			plan = FabricApiPlan.parse(new String(planJson, StandardCharsets.UTF_8));
 			Pipeline.Input input = new Pipeline.Input(gameDir, FMLPaths.CONFIGDIR.get(), config, cache, fabricJars, mcVersion, neoVersion,
-					client, info.namespace(), runtimeMixinVersion(info), mixinExtrasVersion(loadedMods), info.mixinLowest(), info.fabricatedVersion(), !fml.isProduction(), gameClasses, untransformable,
+					client, info.namespace(), runtimeMixinVersion(info), mixinExtrasVersion(loadedMods), info.mixinLowest(), info.fabricatedVersion(), !fml.isProduction(), gameClasses, List.of(minecraft.getFilePath()), fabricatedFiles, untransformable,
 					platformPackages, plan, nativeApi, nativeApiInterfaces, neoForgeMods.mods(), neoForgeMods.classes(),
 					(mappingsCache, mojangPath) -> IntermediaryMappings.load(mappingsCache, mcVersion, client, mojangPath),
 					fml.getProgramArgs().getArguments());

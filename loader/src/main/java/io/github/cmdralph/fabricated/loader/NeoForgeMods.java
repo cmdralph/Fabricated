@@ -74,7 +74,7 @@ final class NeoForgeMods {
 			if (!file.getContents().containsFile(NestedNeoForgeJars.METADATA) || !Files.isRegularFile(path)) continue;
 			try {
 				for (NestedNeoForgeJars.ModsToml toml : NestedNeoForgeJars.read(path, ArchiveLimits.DEFAULTS)) {
-					List<Pipeline.NeoForgeMod> declared = declared(parser.parse(toml.text()), toml.jarVersion());
+					List<Pipeline.NeoForgeMod> declared = declared(parser.parse(toml.text()), toml.jarVersion(), path);
 					mods.addAll(declared);
 					if (declared.isEmpty() || toml.classes().isEmpty()) continue;
 					Set<String> classes = toml.classes();
@@ -89,8 +89,12 @@ final class NeoForgeMods {
 		return new Found(mods, new InstalledClasses(jars));
 	}
 
-	/** The mods a mods.toml declares. */
-	private static List<Pipeline.NeoForgeMod> declared(UnmodifiableConfig toml, String jarVersion) {
+	/**
+	 * The mods a mods.toml declares.
+	 *
+	 * @param container the jar it is nested in
+	 */
+	private static List<Pipeline.NeoForgeMod> declared(UnmodifiableConfig toml, String jarVersion, Path container) {
 		List<Pipeline.NeoForgeMod> mods = new ArrayList<>();
 		if (!(toml.get("mods") instanceof List<?> declared)) return mods;
 		for (Object entry : declared) {
@@ -98,9 +102,9 @@ final class NeoForgeMods {
 			String version = mod.get("version") instanceof String v ? v : "1";
 			String name = mod.get("displayName") instanceof String n ? n : id;
 			Object properties = toml.get(List.of("modproperties", id));
-			// No files of its own to Fabric code: it is inside another jar (NeoForge extracts it later).
+			// Its jar is inside the container, which NeoForge extracts later: to Fabric code, the container is its root.
 			mods.add(new Pipeline.NeoForgeMod(id, version.equals(JAR_VERSION) ? jarVersion : version, name,
-					properties instanceof UnmodifiableConfig config ? plain(config.valueMap()) : Map.of(), List.of()));
+					properties instanceof UnmodifiableConfig config ? plain(config.valueMap()) : Map.of(), List.of(container)));
 		}
 		return mods;
 	}
