@@ -267,8 +267,9 @@ tasks.register('testmods') {
 def frapiTestmodDir = mcVersion.startsWith('26.') ? rootProject.file('mc/common26/src/testmodfrapi') : file('src/testmodfrapi')
 sourceSets {
     testmodfrapi {
-        java.srcDir new File(frapiTestmodDir, 'java')
-        resources.srcDir new File(frapiTestmodDir, 'resources')
+        // Set, not added to Gradle's default (src/testmodfrapi), which on 1.21.11 is the same folder.
+        java.srcDirs = [new File(frapiTestmodDir, 'java')]
+        resources.srcDirs = [new File(frapiTestmodDir, 'resources')]
     }
 }
 neoForge.addModdingDependenciesTo(sourceSets.testmodfrapi)
