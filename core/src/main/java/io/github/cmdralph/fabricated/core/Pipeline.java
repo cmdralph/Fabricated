@@ -638,9 +638,14 @@ public final class Pipeline {
 			for (TranslatedMod t : ordered) {
 				List<String> issues = linkage.get(t.neoForgeId());
 				if (issues == null) continue;
-				boolean fapiModule = plan.module(t.candidate().id()) != null;
+				FabricApiPlan.Module module = plan.module(t.candidate().id());
+				boolean fapiModule = module != null;
 				boolean fabricApiReference = issues.stream().anyMatch(i -> i.contains("net.fabricmc.fabric."));
-				if (config.strictLinkage() || fapiModule && fabricApiReference) {
+				// A module planned without some of its dependencies refers to what they would add, where its code never
+				// runs (on 1.21.11 the model loading API's wrapper models call the renderer API's emitQuads, which NeoForge
+				// never calls): those stay warnings, and its plan's CI check covers the rest.
+				boolean plannedWithout = fapiModule && !module.dropDependencies().isEmpty();
+				if (config.strictLinkage() || fapiModule && fabricApiReference && !plannedWithout) {
 					this.dropped.put(t.candidate().id(), new Drop("references code that does not exist at runtime: " + issues.getFirst(), fapiModule
 							? "This Fabric API module depends on internals that Fabricated implements differently; mods needing it cannot run yet."
 							: "Update the mod, or set \"strictLinkage\": false to load it anyway.", t.candidate()));

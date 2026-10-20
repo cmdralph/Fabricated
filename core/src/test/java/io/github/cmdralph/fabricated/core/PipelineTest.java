@@ -604,6 +604,49 @@ class PipelineTest {
 				"{\"fabricApiVersion\":\"1\",\"modules\":{\"x\":{\"plan\":\"unsupported\",\"dropDependencies\":[\"y\"]}}}"));
 	}
 
+	/**
+	 * On 1.21.11 the model loading API's wrapper models call the renderer API's {@code emitQuads}, which its plan loads it
+	 * without: that stays a warning. Another Fabric API module calling a missing method is disabled.
+	 */
+	@Test
+	void aModuleIsNotDisabledForCallsIntoTheDependenciesItsPlanDrops(@TempDir Path game) throws Exception {
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		String emitQuads = "emitQuads(Lnet/fabricmc/fabric/api/renderer/v1/mesh/QuadEmitter;)V";
+		String wrapper = "net/fabricmc/fabric/impl/client/model/loading/Wrapper";
+		Path loading = TestJars.create().fabricModJson(TestJars.modJson("fabric-model-loading-api-v1", "1.0", ""))
+				.bytes(wrapper + ".class", caller(wrapper, TARGET, emitQuads))
+				.write(mods.resolve("loading.jar"));
+		String itemCaller = "net/fabricmc/fabric/impl/item/Caller";
+		Path item = TestJars.create().fabricModJson(TestJars.modJson("fabric-item-api-v1", "1.0", ""))
+				.bytes(itemCaller + ".class", caller(itemCaller, TARGET, emitQuads))
+				.write(mods.resolve("item.jar"));
+		Pipeline.Result result = Pipeline.run(input(game, List.of(loading, item), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
+
+		String report = result.report().render();
+		Set<String> loaded = result.mods().stream().map(m -> m.translated().candidate().id()).collect(Collectors.toSet());
+		assertEquals(Set.of("fabric-model-loading-api-v1"), loaded, report);
+		assertTrue(report.contains("fabric-model-loading-api-v1: net.fabricmc.fabric.impl.client.model.loading.Wrapper -> missing method net.minecraft.world.Thing."
+				+ emitQuads), report);
+		assertTrue(report.contains("references code that does not exist at runtime: net.fabricmc.fabric.impl.item.Caller"), report);
+	}
+
+	/** A class whose static {@code run} calls {@code method} (name and descriptor, taking one object) of {@code owner}. */
+	private static byte[] caller(String name, String owner, String method) {
+		int paren = method.indexOf('(');
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, name, null, "java/lang/Object", null);
+		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "run", "(L" + owner + ";)V", null, null);
+		mv.visitCode();
+		mv.visitVarInsn(Opcodes.ALOAD, 0);
+		mv.visitInsn(Opcodes.ACONST_NULL);
+		mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, owner, method.substring(0, paren), method.substring(paren), false);
+		mv.visitInsn(Opcodes.RETURN);
+		mv.visitMaxs(0, 0);
+		mv.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
 	/** Continuity on 1.21.11: its mixins use the renderer API, which can't run there; Mixin would crash the game. */
 	@Test
 	void aMixinUsingAnUnsupportedModuleFailsItsMod(@TempDir Path game) throws Exception {
