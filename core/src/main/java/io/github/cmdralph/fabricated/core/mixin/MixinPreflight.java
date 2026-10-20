@@ -138,8 +138,8 @@ public final class MixinPreflight {
 		for (String mixin : config.mixinsFor(clientSide)) {
 			if (skip.contains(mixin)) continue;
 			String internal = config.internalName(mixin);
-			Context ctx = new Context(configName, internal.replace('/', '.'), config, refmap, hasPlugin, out, null);
 			ClassNode node = modClasses.readNode(internal, ClassReader.SKIP_CODE | ClassReader.SKIP_FRAMES);
+			Context ctx = new Context(configName, internal.replace('/', '.'), config, refmap, hasPlugin, node != null && accessorInterface(node), out, null);
 			if (node == null) {
 				ctx.classLevel("Mixin class " + ctx.mixinDotted() + " listed in " + configName + " is missing from the mod jar",
 						"The mod jar is incomplete or corrupted; re-download it.");
@@ -207,7 +207,7 @@ public final class MixinPreflight {
 			String internal = config.internalName(mixin);
 			ClassNode node = modClasses.readNode(internal, 0);
 			if (node == null) continue;
-			Context ctx = new Context(configName, internal.replace('/', '.'), config, refmap, false, out, null);
+			Context ctx = new Context(configName, internal.replace('/', '.'), config, refmap, false, false, out, null);
 			List<ClassNode> targets = new ArrayList<>();
 			for (String target : targetsOf(node, ctx)) {
 				ClassNode targetNode = gameTarget(target);
@@ -1092,14 +1092,18 @@ public final class MixinPreflight {
 	}
 
 	/** @param owner the installed mod the target belongs to, or {@code null} for a game class */
-	private record Context(String configName, String mixinDotted, MixinConfigFile config, Refmap refmap, boolean hasPlugin,
+	/**
+	 * @param calledByMod whether the mod's own code calls the mixin (an accessor interface): left out, it would crash
+	 *                    the mod instead, as Mixin refuses to load an unapplied mixin's class
+	 */
+	private record Context(String configName, String mixinDotted, MixinConfigFile config, Refmap refmap, boolean hasPlugin, boolean calledByMod,
 			List<PreflightFinding> out, String owner) {
 		String resolve(String selector) {
 			return refmap.resolve(mixinDotted.replace('.', '/'), selector);
 		}
 
 		Context withOwner(String owner) {
-			return new Context(configName, mixinDotted, config, refmap, hasPlugin, out, owner);
+			return new Context(configName, mixinDotted, config, refmap, hasPlugin, calledByMod, out, owner);
 		}
 
 		/** What changed the target since the mod was built: NeoForge or this Minecraft version, or this version of the mod. */
@@ -1113,9 +1117,9 @@ public final class MixinPreflight {
 			return owner == null ? "NeoForge" : owner;
 		}
 
-		/** A problem that makes Mixin reject the whole mixin; fatal when the config is required. */
+		/** A problem that makes Mixin reject the whole mixin; fatal when the config is required or the mod calls the mixin. */
 		void classLevel(String message, String suggestion) {
-			out.add(new PreflightFinding(config.required() ? fatal() : Severity.WARN, configName, mixinDotted, message, suggestion));
+			out.add(new PreflightFinding(config.required() || calledByMod ? fatal() : Severity.WARN, configName, mixinDotted, message, suggestion));
 		}
 
 		/**
@@ -1131,9 +1135,9 @@ public final class MixinPreflight {
 					handler.name + handler.desc));
 		}
 
-		/** A config plugin may disable the mixin at runtime, so a crash only leaves the mixin out. */
+		/** A config plugin may disable the mixin at runtime, so a crash only leaves the mixin out, unless the mod calls it. */
 		private Severity fatal() {
-			return hasPlugin ? Severity.LEFT_OUT : Severity.FAIL;
+			return hasPlugin && !calledByMod ? Severity.LEFT_OUT : Severity.FAIL;
 		}
 
 		void info(String message) {
@@ -1179,6 +1183,15 @@ public final class MixinPreflight {
 			}
 			checkMembers(mixin, targetNode, targetCtx);
 		}
+	}
+
+	/** Whether a mixin is an interface of accessors or invokers, which the mod's code casts its targets to and calls. */
+	private static boolean accessorInterface(ClassNode mixin) {
+		if ((mixin.access & Opcodes.ACC_INTERFACE) == 0) return false;
+		for (MethodNode method : mixin.methods) {
+			if (Annotations.find(method, ACCESSOR) != null || Annotations.find(method, INVOKER) != null) return true;
+		}
+		return false;
 	}
 
 	/** The classes a mixin's {@code @Mixin} names, as internal names (none when it has no {@code @Mixin}). */

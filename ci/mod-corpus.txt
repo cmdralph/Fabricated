@@ -2,6 +2,8 @@
 # for the Minecraft version is used, with its required dependencies; a mod without such a build is left out.
 # Mods that replace the renderer (Sodium, Iris) are not listed: their Fabric builds can't run on NeoForge, and CI
 # runs their NeoForge builds next to Fabric API separately.
+# Nor are jars that are NeoForge mods too: NeoForge loads those itself (Zoomify's "universal" jar, which then needs
+# Kotlin for Forge).
 
 # Libraries
 architectury-api
@@ -40,7 +42,6 @@ tweakeroo
 wthit
 xaeros-minimap
 xaeros-world-map
-zoomify
 
 # Rendering (Continuity and Enhanced Block Entities draw through Fabric's renderer API)
 3dskinlayers

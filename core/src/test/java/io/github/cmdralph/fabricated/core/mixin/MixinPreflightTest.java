@@ -1267,6 +1267,34 @@ class MixinPreflightTest {
 				&& f.handler().startsWith("h(")), "only the failing handler is left out: " + findings);
 	}
 
+	/**
+	 * An accessor interface the mod calls fails its mod even where a plugin or an optional config would only leave a
+	 * mixin out: Mixin refuses to load an unapplied mixin's class, so the mod's first call would crash the game
+	 * (malilib's {@code IMixinGuiRenderer} on 1.21.11).
+	 */
+	@Test
+	void anAccessorTheModCallsFailsItsModEvenWithAPlugin() throws Exception {
+		ClassWriter cw = new ClassWriter(0);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT | Opcodes.ACC_INTERFACE, "com/example/mixin/Access", null, "java/lang/Object", null);
+		AnnotationVisitor m = cw.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false);
+		AnnotationVisitor values = m.visitArray("value");
+		values.visit(null, Type.getObjectType(TARGET));
+		values.visitEnd();
+		m.visitEnd();
+		MethodVisitor getter = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, "getGone", "()I", null, null);
+		AnnotationVisitor accessor = getter.visitAnnotation("Lorg/spongepowered/asm/mixin/gen/Accessor;", false);
+		accessor.visit("value", "gone");
+		accessor.visitEnd();
+		getter.visitEnd();
+		cw.visitEnd();
+		Map<String, byte[]> mod = Map.of("com/example/mixin/Access", cw.toByteArray());
+		for (String cfg : List.of("{\"required\":true,\"package\":\"com.example.mixin\",\"plugin\":\"com.example.Plugin\",\"mixins\":[\"Access\"]}",
+				"{\"required\":false,\"package\":\"com.example.mixin\",\"mixins\":[\"Access\"]}")) {
+			List<PreflightFinding> findings = run(cfg, null, mod, false);
+			assertTrue(findings.stream().anyMatch(f -> f.severity() == Severity.FAIL && "com.example.mixin.Access".equals(f.mixin())), cfg + ": " + findings);
+		}
+	}
+
 	@Test
 	void anEnumMixinIntoAnExtensibleEnumFailsItsModEvenWithAPlugin() throws Exception {
 		// The mod's own classes read the constants such a mixin adds: leaving it out, as a plugin config's crashing
