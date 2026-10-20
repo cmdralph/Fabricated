@@ -324,6 +324,10 @@ Newest first. Each entry: what changed, and how it was verified.
   other's whole lookup, with a guard against asking back (Team Reborn's batteries come from a fallback).
 - Energy with Team Reborn's library (`EnergyBridge`), loaded only when a Fabric mod brings it; compiled against
   never-packaged stand-ins of its API (`integrationstubs`), its lookups found by id.
+- `/fabricated why <mod>` (one mod's outcome and suggested fix) and `/fabricated disable|enable <mod>` (its entry in
+  `config/fabricated.json`, for the next launch, the rest of the file kept). CI: the test mod runs them from the
+  server console and reads the config back.
+- The corpus gains Fabric tech mods (Modern Industrialization, Tech Reborn), for the transfer and energy bridges.
 - Results of pull request #47 on `4e9542e`: all versions green. With `BlockStateModelDefaultsMixin` gone, the renderer
   API checks on 26.x pass (the bridges declare its two methods). On 1.21.11 the corpus disables the same 7 mods as
   before, so checking mixins into other Fabric mods there disabled none that worked. The new run with Sodium, Iris

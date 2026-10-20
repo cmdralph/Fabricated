@@ -24,6 +24,7 @@
       "io.github.cmdralph.fabricated.testmod.ContentRegistriesTest",
       "io.github.cmdralph.fabricated.testmod.TransferTest",
       "io.github.cmdralph.fabricated.testmod.EnergyTest",
+      "io.github.cmdralph.fabricated.testmod.CommandsTest",
       "io.github.cmdralph.fabricated.testmod.BlockEntityEventsTest"
     ],
     "server": ["io.github.cmdralph.fabricated.testmod.TestMod"],

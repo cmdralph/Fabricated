@@ -52,3 +52,7 @@ supplementaries
 terralith
 travelersbackpack
 waystones
+
+# Tech (Team Reborn's energy API and Fabric's transfer API, which Fabricated bridges to NeoForge's capabilities)
+modern-industrialization
+techreborn
