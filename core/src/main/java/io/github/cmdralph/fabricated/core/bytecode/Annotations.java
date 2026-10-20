@@ -1,5 +1,6 @@
 package io.github.cmdralph.fabricated.core.bytecode;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import org.objectweb.asm.tree.AnnotationNode;
@@ -46,6 +47,26 @@ public final class Annotations {
 			if (key.equals(ann.values.get(i))) return ann.values.get(i + 1);
 		}
 		return null;
+	}
+
+	/** The annotations an attribute holds: one annotation, or an array of them; none for anything else. */
+	public static List<AnnotationNode> list(Object value) {
+		List<AnnotationNode> ret = new ArrayList<>();
+		if (value instanceof AnnotationNode a) ret.add(a);
+		if (value instanceof List<?> list) {
+			for (Object o : list) {
+				if (o instanceof AnnotationNode a) ret.add(a);
+			}
+		}
+		return ret;
+	}
+
+	/** Every annotation on {@code method}, visible before invisible. */
+	public static List<AnnotationNode> all(MethodNode method) {
+		List<AnnotationNode> ret = new ArrayList<>();
+		if (method.visibleAnnotations != null) ret.addAll(method.visibleAnnotations);
+		if (method.invisibleAnnotations != null) ret.addAll(method.invisibleAnnotations);
+		return ret;
 	}
 
 	/** The side ({@code CLIENT} or {@code SERVER}) an {@code @Environment}-style annotation names, or null. */
