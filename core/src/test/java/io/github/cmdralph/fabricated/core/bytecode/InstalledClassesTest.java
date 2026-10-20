@@ -37,4 +37,15 @@ class InstalledClassesTest {
 		assertNull(installed.read("a/Absent"));
 		assertEquals("", installed.fingerprint("a/Absent"));
 	}
+
+	/** Names come from untrusted mixins; only a class name reaches a jar (a NeoForge mod in development is a folder). */
+	@Test
+	void onlyClassNamesReachTheJars() throws Exception {
+		InstalledClasses installed = new InstalledClasses(List.of(new InstalledClasses.Jar("Any", name -> true, name -> new byte[] {1})));
+		for (String bad : List.of("../secret", "a/../../b", "/etc/x", "a\\b", "a//b", "C:/x", "a/./b", "")) {
+			assertNull(installed.owner(bad), bad);
+			assertNull(installed.read(bad), bad);
+		}
+		assertEquals("Any", installed.owner("net/caffeinemc/Renderer$Inner"));
+	}
 }

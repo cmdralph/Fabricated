@@ -73,6 +73,22 @@ public final class InstalledClasses implements ClassBytesSource {
 	}
 
 	private Jar jar(String internalName) {
+		// Names come from mixin annotations of untrusted jars: only a class name reaches a jar (no "..", no absolute path),
+		// as a NeoForge mod in development is a folder.
+		if (!isClassName(internalName)) return null;
 		return owners.computeIfAbsent(internalName, n -> jars.stream().filter(j -> j.contains().test(n)).findFirst()).orElse(null);
+	}
+
+	/** Whether {@code name} is a well-formed internal class name ({@code a/b/C$D}). */
+	static boolean isClassName(String name) {
+		if (name.isEmpty() || name.length() > 1024 || name.startsWith("/") || name.endsWith("/")) return false;
+		for (String part : name.split("/", -1)) {
+			if (part.isEmpty() || part.equals(".") || part.equals("..")) return false;
+		}
+		for (int i = 0; i < name.length(); i++) {
+			char c = name.charAt(i);
+			if (c == '\\' || c == ':' || c == '.' || c == ';' || c == '[' || c < 0x20) return false;
+		}
+		return true;
 	}
 }
