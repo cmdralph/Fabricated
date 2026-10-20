@@ -709,6 +709,21 @@ Lithium for NeoForge `lithium:options` from the file. No key of NeoForge's own h
 it. Nulls are left out, as TOML has none. Unit tests read the generated file with night-config, the parser NeoForge
 uses, and find each value where those mods look.
 
+### Fabric builds that can't run on NeoForge
+
+A few mods' Fabric builds can't work on NeoForge whatever Fabricated does; these facts are data (core's
+`compat-plan.json`). Such a build is disabled with the reason and what to do instead, and the mods that need it with
+it; `loadUnsupported` loads it anyway, for testing.
+
+- **Sodium and Iris**: their NeoForge builds are used (see *Renderer mods* above).
+- **Essential** (`essential-container`, and `essential-loader`, which partner mods nest): its Fabric build is a loader
+  that downloads Essential when the game starts and adds it to Fabric Loader's internal mod list, class loader and
+  Mixin's processor (read in Essential Loader's source), none of which exist on NeoForge. Essential has NeoForge
+  builds for some versions.
+- **malilib** (and with it Tweakeroo, MiniHUD and Litematica): it adds its picture-in-picture renderers through a map
+  NeoForge replaced with renderer pools on every version, and calls that accessor while the game starts (CORPUS-13).
+- **WTHIT**: its Fabric build refuses NeoForge itself; its NeoForge build is the one to use.
+
 ### Fabric Loader
 
 The public `net.fabricmc.loader.api` is complete: entrypoints (including custom ones and language adapters such as

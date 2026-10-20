@@ -16,9 +16,11 @@ class CompatPlanTest {
 	@Test
 	void parsesWhatIsKnownAboutAMod() throws Exception {
 		CompatPlan plan = CompatPlan.parse("{\"schema\":1,\"mods\":{\"shaders\":{\"neoForgeBuildOnly\":\"replaces the pipeline\","
-				+ "\"notWithNeoForge\":{\"renderer\":\"hooks the Fabric build's classes\"}}}}");
+				+ "\"notWithNeoForge\":{\"renderer\":\"hooks the Fabric build's classes\"}},"
+				+ "\"loader-stub\":{\"neoForgeBuildOnly\":\"downloads the mod at launch\",\"suggestion\":\"Remove it.\"}}}");
 
-		assertEquals(new CompatPlan.Entry("replaces the pipeline", Map.of("renderer", "hooks the Fabric build's classes")), plan.entry("shaders"));
+		assertEquals(new CompatPlan.Entry("replaces the pipeline", null, Map.of("renderer", "hooks the Fabric build's classes")), plan.entry("shaders"));
+		assertEquals(new CompatPlan.Entry("downloads the mod at launch", "Remove it.", Map.of()), plan.entry("loader-stub"));
 		assertNull(plan.entry("other").neoForgeBuildOnly());
 		assertEquals(Map.of(), plan.entry("other").notWithNeoForge());
 	}
@@ -29,6 +31,8 @@ class CompatPlanTest {
 		CompatPlan plan = CompatPlan.builtin();
 		assertNotNull(plan.entry("sodium").neoForgeBuildOnly());
 		assertEquals(List.of("sodium"), List.copyOf(plan.entry("iris").notWithNeoForge().keySet()));
+		for (String id : List.of("essential-container", "essential-loader", "malilib", "wthit")) assertNotNull(plan.entry(id).neoForgeBuildOnly(), id);
+		assertNotNull(plan.entry("essential-container").suggestion(), "Essential has no NeoForge build for every version");
 	}
 
 	@Test
@@ -37,6 +41,7 @@ class CompatPlanTest {
 				"{\"schema\":1,\"mods\":{\"Bad Id\":{}}}",
 				"{\"schema\":1,\"mods\":{\"a-mod\":{\"skipMixins\":[]}}}",
 				"{\"schema\":1,\"mods\":{\"a-mod\":{\"neoForgeBuildOnly\":\"\"}}}",
+				"{\"schema\":1,\"mods\":{\"a-mod\":{\"suggestion\":\"Remove it.\"}}}",
 				"{\"schema\":1,\"mods\":{\"a-mod\":{\"notWithNeoForge\":{\"other\":true}}}}")) {
 			assertThrows(JsonException.class, () -> CompatPlan.parse(bad), bad);
 		}

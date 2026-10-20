@@ -12,6 +12,21 @@
       "notWithNeoForge": {
         "sodium": "Iris's Fabric build hooks classes of Sodium's Fabric build (its fluid renderer) that Sodium for NeoForge doesn't have"
       }
+    },
+    "essential-container": {
+      "neoForgeBuildOnly": "Essential's Fabric build is a loader that downloads Essential when the game starts and adds it to Fabric Loader's internal mod list, class loader and Mixin's processor, none of which exist on NeoForge (read in Essential Loader's source)",
+      "suggestion": "Use Essential's NeoForge build if Essential offers one for this Minecraft version (essential.gg); its Fabric build can't run here."
+    },
+    "essential-loader": {
+      "neoForgeBuildOnly": "Essential's Fabric build is a loader that downloads Essential when the game starts and adds it to Fabric Loader's internal mod list, class loader and Mixin's processor, none of which exist on NeoForge (read in Essential Loader's source)",
+      "suggestion": "Use Essential's NeoForge build if Essential offers one for this Minecraft version (essential.gg); its Fabric build can't run here."
+    },
+    "malilib": {
+      "neoForgeBuildOnly": "malilib adds its picture-in-picture renderers through the GUI renderer's map of renderers, which NeoForge replaced with renderer pools on every version, and calls that accessor while the game starts, so the game stops (CI, run 357)",
+      "suggestion": "Remove malilib and the mods that need it (Tweakeroo, MiniHUD, Litematica), or use NeoForge builds of them where their authors offer some."
+    },
+    "wthit": {
+      "neoForgeBuildOnly": "WTHIT's Fabric build refuses to run on NeoForge: its own entrypoint throws when it finds Fancy Mod Loader (CI, run 357)"
     }
   }
 }

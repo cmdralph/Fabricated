@@ -464,7 +464,7 @@ public final class Pipeline {
 			String neoForgeBuildOnly = known.neoForgeBuildOnly();
 			if (neoForgeBuildOnly != null && !config.override(c.id()).loadUnsupported()) {
 				report.mod(new ModRow(c.id(), c.version(), c.origin(), Status.DISABLED, "its Fabric build can't run on NeoForge: " + neoForgeBuildOnly,
-						"Install " + c.metadata().getName() + " for NeoForge instead (from the same download page)."));
+						known.suggestion() != null ? known.suggestion() : "Install " + c.metadata().getName() + " for NeoForge instead (from the same download page)."));
 				continue;
 			}
 			// Even on request: the pair is broken whatever the player accepts.
