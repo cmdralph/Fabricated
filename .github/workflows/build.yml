@@ -104,9 +104,10 @@ jobs:
           import re, sys
           builds = [v for v in re.findall(r"<version>([^<]+)</version>", sys.stdin.read()) if v.startswith(sys.argv[1])]
           print(builds[-1] if builds else "")' "${pinned%.*}.")
-          echo "Newest NeoForge build for ${{ matrix.minecraft }}: ${newest:-none} (pinned: $pinned)"
+          echo "Newest NeoForge build for ${{ matrix.minecraft }}: ${newest:-none} (pinned: $pinned)" | tee "$RUNNER_TEMP/summary-newest.txt"
           if [ -z "$newest" ] || [ "$newest" = "$pinned" ]; then exit 0; fi
-          ci/smoke-server.sh "${{ matrix.minecraft }}" "$newest" "$RUNNER_TEMP/server-newest"
+          set -o pipefail
+          ci/smoke-server.sh "${{ matrix.minecraft }}" "$newest" "$RUNNER_TEMP/server-newest" | tee -a "$RUNNER_TEMP/summary-newest.txt"
       # Boot again with the official Fabric API jar (downloaded here in CI, never by Fabricated) and keep the
       # report, which lists every pass-through module and mixin pre-flight result. The server must start;
       # the other checks in this run are informational.
@@ -288,7 +289,7 @@ jobs:
             for what in constructed called; do
               echo "$viewer plugin $what: $(grep -c "FABRICATED-TEST $viewer plugin $what OK" "$log" || true) time(s)"
             done
-          done
+          done | tee "$RUNNER_TEMP/summary-viewers.txt"
           grep -n -m 40 -E "/(ERROR|FATAL)\]" "$log" || true
       - name: Upload recipe viewer client logs and report
         if: always()
@@ -333,6 +334,20 @@ jobs:
             ${{ runner.temp }}/client-corpus/run/crash-reports
             ${{ runner.temp }}/client-corpus/client.out
           if-no-files-found: ignore
+      # The job log keeps only its end, so the informational runs' results are repeated here, last.
+      - name: Summary of the informational runs
+        if: always()
+        run: |
+          for f in summary-newest summary-viewers; do
+            [ -f "$RUNNER_TEMP/$f.txt" ] && { echo "== $f"; grep -E "^(Newest|PASS|FAIL|WARN)|plugin|not in this run" "$RUNNER_TEMP/$f.txt" | head -60; }
+          done
+          for run in client-sodium-fabric client-viewers; do
+            log="$RUNNER_TEMP/$run/run/logs/latest.log"
+            [ -f "$log" ] || continue
+            echo "== $run"
+            grep -h -m 20 -E "FABRICATED-TEST frapi|Caused by|Exception in|crash report" "$log" || true
+            ls "$RUNNER_TEMP/$run/run/crash-reports" 2>/dev/null | head -3
+          done
       - name: Upload Fabricated jar
         uses: actions/upload-artifact@v4
         with:

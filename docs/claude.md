@@ -64,7 +64,9 @@ resolved. Each surviving mod is then translated: remapped from intermediary to M
 26.x), its mixins checked against NeoForge's patched game bytecode by pre-flight, and its access widener turned into
 an access transformer. A cached overlay is generated holding `neoforge.mods.toml` with `modLoader="fabricated"`.
 FML loads the jar plus overlay as an ordinary mod file, applies the access transformers and mixin configs itself,
-and hands each mod to `FabricLanguageLoader`, which makes a `FabricModContainer`. Fabricated's in-game mod
+and hands each mod to `FabricLanguageLoader`, which makes a `FabricModContainer` and adds to the mod's scan data the
+annotations other mods' NeoForge builds look for plugins by (JEI, EMI, REI, Jade: core's `PluginAnnotations`, from the
+mod's entrypoints). Fabricated's in-game mod
 (`FabricatedMod`) then runs the Fabric entrypoints. `main` runs on the first `RegisterEvent` after the attribute
 registry's (registries are open then). `client` runs in `Minecraft`'s constructor (`MinecraftEntrypointsMixin`), and
 `server` after `main` on a dedicated server. When a Fabric mod calls the Fabric API, the call goes either to a
