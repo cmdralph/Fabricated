@@ -181,6 +181,8 @@ jobs:
           check "frapi terrain OK" "a Fabric block model was meshed into a chunk section"
           check "frapi nested terrain OK" "a Fabric model inside a vanilla multipart model was meshed"
           check "frapi moving block OK" "a falling Fabric block model was drawn as a moving block"
+          check "frapi baked colors OK" "a NeoForge quad's baked colour reached Fabric's renderer (FRAPI-2)"
+          check "frapi baked quad constructor hook OK" "a mixin at the end of BakedQuad's vanilla constructor ran for NeoForge's block quads (pre-flight repair)"
           check "frapi breaking OK" "a Fabric block model got the breaking overlay"
           check "frapi level-aware default OK" "a NeoForge model inside a Fabric model got the chunk section's level from Fabric's renderer"
           check "model deserializer OK" "a model file of a Fabric type was read by its Fabric deserializer"
