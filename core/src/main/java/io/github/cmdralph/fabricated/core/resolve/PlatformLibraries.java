@@ -42,7 +42,9 @@ public final class PlatformLibraries {
 			"io/netty/",
 			"org/lwjgl/",
 			"org/joml/",
-			"com/electronwill/nightconfig/",
+			// NeoForge ships night-config's core and TOML modules only: a mod's JSON or YAML module is its own.
+			"com/electronwill/nightconfig/core/",
+			"com/electronwill/nightconfig/toml/",
 			"net/neoforged/",
 			"cpw/mods/",
 			"joptsimple/");

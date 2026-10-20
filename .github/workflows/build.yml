@@ -297,7 +297,8 @@ jobs:
           if ! grep -qE "^(oneconfig|polyplus): [^n]" "$RUNNER_TEMP/summary-polyfrost.txt"; then exit 0; fi
           cp "$RUNNER_TEMP/extra/fabric-api.jar" "$RUNNER_TEMP/extra-polyfrost/"
           SMOKE_TIMEOUT=480 ci/smoke-client.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/client-polyfrost" "$RUNNER_TEMP/extra-polyfrost" || true
-          grep -A80 "== Summary" "$RUNNER_TEMP/client-polyfrost/run/logs/fabric-bridge-report.txt" | tee -a "$RUNNER_TEMP/summary-polyfrost.txt" || true
+          # The counts and the disabled mods, not the long list of loaded ones.
+          awk '/^== /{show = /^== (Summary|Disabled)/} show' "$RUNNER_TEMP/client-polyfrost/run/logs/fabric-bridge-report.txt" | head -80 | tee -a "$RUNNER_TEMP/summary-polyfrost.txt" || true
       - name: Upload Polyfrost client logs and report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
@@ -403,7 +404,11 @@ jobs:
             [ -f "$log" ] || continue
             echo "== $run"
             grep -h -m 20 -E "FABRICATED-TEST frapi|Caused by|Exception in|crash report" "$log" || true
-            ls "$RUNNER_TEMP/$run/run/crash-reports" 2>/dev/null | head -3
+            # A crash's description and errors, without the stack frames.
+            for report in $(ls "$RUNNER_TEMP/$run/run/crash-reports"/*.txt 2>/dev/null | head -1); do
+              echo "-- $(basename "$report")"
+              sed -n '/^Description:/,/^A detailed walkthrough/p' "$report" | grep -v -E "^\s+at |^A detailed" | head -30
+            done
           done
       - name: Upload Fabricated jar
         uses: actions/upload-artifact@v4
