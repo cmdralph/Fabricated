@@ -491,6 +491,14 @@ jobs:
             # Why pre-flight disabled mods, in full from Fabricated's report (the warnings above are cut short).
             report="$RUNNER_TEMP/$run/run/logs/fabric-bridge-report.txt"
             [ -f "$report" ] && awk '/^== Mixin pre-flight failures ==/ { show = 1; next } /^$/ { show = 0 } show' "$report" | head -24 | cut -c1-700
+            # The corpus: every disabled mod with its reason (one line each), and code that reaches for Fabric Loader
+            # internals Fabricated doesn't provide (deep hooks that would fail when they run).
+            if [ "$run" = client-corpus ] && [ -f "$report" ]; then
+              echo "-- disabled mods:"
+              awk '/^== Disabled Fabric mods/ { show = 1; next } /^$/ { show = 0 } show && /^  [^ ]/ { id = $1 } show && /^      / && !/^      Fix:/ && id { print "  " id ": " substr($0, 7); id = "" }' "$report" | cut -c1-260
+              echo "-- Fabric Loader references Fabricated doesn't provide:"
+              awk '/^== Linkage warnings/ { show = 1; next } /^$/ { show = 0 } show' "$report" | grep -E "missing [a-z]+ net\.fabricmc\.(loader|api)\." | head -30 | cut -c1-300
+            fi
             # Fabric API's own modules: what pre-flight left out of them (their configs with a plugin).
             if [ "$run" = client-fapi ] && [ -f "$report" ]; then
               awk '/^== Mixin pre-flight warnings ==/ { show = 1; next } /^$/ { show = 0 } show' "$report" | grep -E "^  fabric" | head -30 | cut -c1-500
