@@ -359,6 +359,14 @@ Newest first. Each entry: what changed, and how it was verified.
   runs show more of what fails.
 - The energy check takes Team Reborn's library from Tech Reborn's or Modern Industrialization's jar
   (`ci/nested-jar.py`) where the library has no build of its own on Modrinth.
+- Results of the dispatched run on `cbe5511` (run 350, XFER-1): all versions green. The energy check ran and passed
+  on 26.1.2, 26.2 and 26.3, with the library taken from Tech Reborn's jar (6.0.5, 6.1.1, 6.2.0); Modrinth has no build
+  of it for 1.21.11, of its own or nested. Every corpus client reached its world; pre-flight disabled 7 mods on
+  1.21.11 (owo, JEI, Farmer's Delight, Continuity, Balm, ShulkerBoxTooltip, and one the summary cuts off), 7 on
+  26.1.2 (Moonlight, CodecUI, ShulkerBoxTooltip, Balm, Comforts, owo, and one cut off), 6 on 26.2 (ShulkerBoxTooltip,
+  Balm and Waystones, owo, JEI, Comforts) and 4 on 26.3 (ShulkerBoxTooltip, JEI, Balm and Waystones). The 26.2 corpus client no longer
+  crashes on a Fabric fluid (FLUID-1). The 26.2 Polyfrost client crashed on Polydium's `@WrapMethod` (PRE-6, fixed in
+  the next commit).
 - Results of the dispatched run on `9621e53`: all versions green. Iris logged `Using shaderpack: fabricated-test` on
   26.1.2, 26.2 and 26.3, with every Fabric renderer check passing under the pack. The transfer check (item and fluid
   cells both ways) and the commands check pass on all four versions. The energy check ran nowhere: Modrinth has no
