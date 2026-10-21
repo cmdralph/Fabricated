@@ -1819,6 +1819,20 @@ class MixinPreflightTest {
 		assertEquals("broken()V", withInterface.getFirst().handler());
 	}
 
+	/**
+	 * An interface mixin whose methods are its handlers, owo's into DataFixerUpper's {@code DataResult}, adds nothing the
+	 * mod's code calls; one with an abstract method (an accessor, an invoker, a shadow) may.
+	 */
+	@Test
+	void anInterfaceMixinWithOnlyHandlersIsSelfContained() {
+		ClassNode handlers = new ClassNode();
+		handlers.access = Opcodes.ACC_PUBLIC | Opcodes.ACC_INTERFACE | Opcodes.ACC_ABSTRACT;
+		handlers.methods.add(new MethodNode(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "wrap", "(Ljava/lang/Object;)V", null, null));
+		assertTrue(MixinPreflight.selfContained(handlers));
+		handlers.methods.add(new MethodNode(Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, "message", "()Ljava/lang/Object;", null, null));
+		assertFalse(MixinPreflight.selfContained(handlers));
+	}
+
 	@Test
 	void warnsWhenInjectorIsOptional() throws Exception {
 		byte[] soft = mixin("com/example/mixin/Soft", false, cw -> inject(cw, "h", "tick", "INVOKE", "Lnet/minecraft/world/Thing;gone()V", null, null));

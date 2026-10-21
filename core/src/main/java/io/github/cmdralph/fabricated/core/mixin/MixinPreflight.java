@@ -1155,13 +1155,16 @@ public final class MixinPreflight {
 
 	/**
 	 * Whether nothing outside a mixin can call into what it adds to its target, so the mod's own code doesn't depend on
-	 * it applying: it adds no interface (the mod's classes cast targets to those) and has no accessor or invoker. A mixin
-	 * that is itself an interface (accessors) or an enum (its constants) never is.
+	 * it applying: it adds no interface (the mod's classes cast targets to those) and has no accessor or invoker. An enum
+	 * mixin (its constants) never is; a mixin that is itself an interface only when it has no abstract method (its
+	 * accessors, invokers and shadows are), as owo's handlers into DataFixerUpper's {@code DataResult}.
 	 */
 	static boolean selfContained(ClassNode mixin) {
-		if ((mixin.access & (Opcodes.ACC_INTERFACE | Opcodes.ACC_ENUM)) != 0 || !mixin.interfaces.isEmpty()) return false;
+		if ((mixin.access & Opcodes.ACC_ENUM) != 0 || !mixin.interfaces.isEmpty()) return false;
+		boolean itf = (mixin.access & Opcodes.ACC_INTERFACE) != 0;
 		for (MethodNode method : mixin.methods) {
 			if (Annotations.find(method, ACCESSOR) != null || Annotations.find(method, INVOKER) != null) return false;
+			if (itf && (method.access & Opcodes.ACC_ABSTRACT) != 0) return false;
 		}
 		return true;
 	}

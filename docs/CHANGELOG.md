@@ -61,6 +61,8 @@ pre-flight couldn't repair (JourneyMap).
   NeoForge's 1.21.11 build moved it out of one, which stopped the 1.21.11 advanced corpus (run on `b0f3606`).
   Pre-flight now counts them. LAMBDA-2: an injector at a call NeoForge's build moved into a lambda of the method
   (here an `Optional` callback) gets the lambda added to its methods, so FrozenLib's hook applies there.
+- LEAVE-2: an interface mixin with only handlers (no accessor, invoker or shadow) counts as self-contained, so one that
+  can't apply is left out instead of disabling its mod (owo-lib's debug hooks into DataFixerUpper on 26.2).
 - OBF-1: on 26.x, a mod whose mixins name intermediary classes (a build for 1.21.11 or older) is disabled with the
   build to install: Modrinth lists Do a Barrel Roll's 1.21.11 build for 26.2, which crashed the 26.2 advanced corpus
   client (run on `b871cd5`).
