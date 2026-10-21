@@ -597,6 +597,18 @@ jobs:
                 sed -n '/^A detailed walkthrough/,$p' "$report" | grep -E -A4 "^Caused by:|^\s*Exception message:" | grep -v "^--$" | head -40 | cut -c1-300
               fi
             done
+            # A mixin that failed as Mixin applied it, though pre-flight passed it: what Fabricated's report says of it
+            # (its notes and repairs), and of the classes those name (other mods' repairs there).
+            failed=$(cat "$RUNNER_TEMP/$run/run/crash-reports"/*.txt 2>/dev/null | grep -o -m 1 -E "in [A-Za-z0-9_./-]+\.json:[A-Za-z0-9_.\$]+ from mod" | head -1 | sed -E 's/^in [^:]+:(.+) from mod$/\1/' || true)
+            bridge="$RUNNER_TEMP/$run/run/logs/fabric-bridge-report.txt"
+            if [ -n "$failed" ] && [ -f "$bridge" ]; then
+              echo "-- the report on $failed:"
+              grep -F "$failed" "$bridge" | head -12 | cut -c1-600 || true
+              for class in $(grep -F "$failed" "$bridge" | grep -o -E "net\.minecraft\.[A-Za-z0-9_.\$]+" | sort -u | head -3 || true); do
+                echo "-- the report on $class (other mixins):"
+                grep -F "$class" "$bridge" | grep -v -F "$failed" | head -12 | cut -c1-600 || true
+              done
+            fi
             [ -f "$RUNNER_TEMP/$run/stop-reason.txt" ] && { echo "-- stopped by CI on:"; cut -c1-300 "$RUNNER_TEMP/$run/stop-reason.txt"; }
             # A client that didn't reach a world: its first errors (without the narrator's and the offline account's,
             # which every run has), the log's last lines, and where its render thread was near the timeout.
