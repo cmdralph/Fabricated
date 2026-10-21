@@ -125,6 +125,9 @@ public final class Pipeline {
 	 * @param cache               the launch's cache, created from {@code config}
 	 * @param mixinExtrasVersion  the MixinExtras version NeoForge runs, provided to Fabric mods as {@code mixinextras}
 	 *                            (as Fabric Loader does), or null when unknown
+	 * @param fabricatedBuild     a digest of Fabricated's own code and data (empty when unknown): a cached translation
+	 *                            or linkage result is reused only by the build that made it, whether or not the release
+	 *                            version changed
 	 * @param gameFiles           Minecraft's files as NeoForge loads them: the root of the {@code minecraft} mod
 	 * @param fabricatedFiles     Fabricated's in-game mod: the root of the mods it provides (Fabric Loader, the native
 	 *                            Fabric API modules)
@@ -147,6 +150,7 @@ public final class Pipeline {
 			String mixinExtrasVersion,
 			String lowestMixinBehavior,
 			String fabricatedVersion,
+			String fabricatedBuild,
 			boolean development,
 			ClassBytesSource gameClasses,
 			List<Path> gameFiles,
@@ -325,6 +329,7 @@ public final class Pipeline {
 				.environment("Mixin", in.runtimeMixinVersion())
 				.environment("MixinExtras", in.mixinExtrasVersion() != null ? in.mixinExtrasVersion() : "not found")
 				.environment("Vanilla game code", in.vanillaGame().location())
+				.environment("Fabricated build", in.fabricatedBuild().isEmpty() ? "unknown" : in.fabricatedBuild())
 				.environment("Java", Runtime.version().toString())
 				.environment("Fabric API plan", plan.fabricApiVersion())
 				.environment("Fabric Loader API", FABRIC_LOADER_COMPAT_VERSION);
@@ -367,7 +372,7 @@ public final class Pipeline {
 		List<SafeArchive> opened = new ArrayList<>();
 		InstalledClasses installed = in.installedClasses().with(fabricJars(eligible, opened, mappingTable == null ? null : new JarRemapper(mappingTable)));
 		TranslationEnvironment env = new TranslationEnvironment(in.minecraftVersion(), in.neoForgeVersion(), in.clientSide(), in.namespace(),
-				in.runtimeMixinVersion(), in.mixinExtrasVersion(), in.lowestMixinBehavior(), in.fabricatedVersion(), mappingTable, mappingsHash, game, in.untransformableClasses(),
+				in.runtimeMixinVersion(), in.mixinExtrasVersion(), in.lowestMixinBehavior(), in.fabricatedVersion() + " " + in.fabricatedBuild(), mappingTable, mappingsHash, game, in.untransformableClasses(),
 				// Vanilla's code has the game's names only where Fabric mods use Mojang's (26.x).
 				in.namespace() == Namespace.OFFICIAL ? in.vanillaGame().classes() : ClassBytesSource.EMPTY, installed, installed.isEmpty() ? game : new ClassIndex(gameClasses.or(installed)), unsupportedPackages(scan.candidates()));
 		Rounds rounds = new Rounds();
@@ -683,13 +688,25 @@ public final class Pipeline {
 			return ordered;
 		}
 
+		/** A translated mod as linkage analysis reads it: the hashes of its jar and overlay (the input's when unreadable). */
+		private String translatedClasses(TranslatedMod t) {
+			try {
+				return t.candidate().id() + "@" + in.cache().sha256(t.jar()) + "+" + (t.overlay() == null ? "" : in.cache().sha256(t.overlay()));
+			} catch (IOException e) {
+				return t.candidate().id() + "@" + t.candidate().sha256();
+			}
+		}
+
 		/** Linkage analysis on the final set; returns whether it disabled a mod (then another round runs). */
 		private boolean analyseLinkage(List<TranslatedMod> ordered) {
 			LinkageAnalysis analysis = new LinkageAnalysis(in.cache(), config.limits(), in.clientSide());
 			Map<String, String> unloaded = unloadedPackages(ordered);
-			String fingerprint = Hashing.sha256(ordered.stream().map(t -> t.candidate().id() + "@" + t.candidate().sha256())
-					.sorted().collect(Collectors.joining(",")) + "|" + in.minecraftVersion() + "|" + in.neoForgeVersion() + "|" + plan.fabricApiVersion()
-					+ "|" + in.fabricatedVersion() + "|" + String.join(",", new TreeSet<>(unloaded.keySet())));
+			// What the analysis reads: every mod's translated classes (which an override or another Fabricated build
+			// changes, not the jar), and the NeoForge mods whose classes count as present.
+			String fingerprint = Hashing.sha256(ordered.stream().map(this::translatedClasses).sorted().collect(Collectors.joining(","))
+					+ "|" + in.minecraftVersion() + "|" + in.neoForgeVersion() + "|" + plan.fabricApiVersion() + "|" + in.fabricatedVersion()
+					+ "|" + in.fabricatedBuild() + "|" + String.join(",", new TreeSet<>(unloaded.keySet()))
+					+ "|" + in.neoForgeMods().stream().map(m -> m.id() + "@" + m.version()).sorted().collect(Collectors.joining(",")));
 			try (JarClassSource jars = new JarClassSource(ordered, config.limits())) {
 				linkage = analysis.analyse(ordered, in.gameClasses().or(in.nativeApiClasses()).or(jars), in.nativeApiInterfaces(), fingerprint,
 						unloaded, name -> in.installedClasses().owner(name) != null);

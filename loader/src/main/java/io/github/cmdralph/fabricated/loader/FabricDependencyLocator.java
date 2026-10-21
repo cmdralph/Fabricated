@@ -192,7 +192,7 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 			Pipeline.VanillaGame vanilla = info.namespace() == Namespace.OFFICIAL && !fabricJars.isEmpty()
 					? VanillaGameJar.find(minecraft.getFilePath(), mcVersion, client, cache, vanillaJars) : Pipeline.VanillaGame.NONE;
 			Pipeline.Input input = new Pipeline.Input(gameDir, FMLPaths.CONFIGDIR.get(), config, cache, fabricJars, mcVersion, neoVersion,
-					client, info.namespace(), runtimeMixinVersion(info), mixinExtrasVersion(loadedMods), info.mixinLowest(), info.fabricatedVersion(), !fml.isProduction(), gameClasses, List.of(minecraft.getFilePath()), vanilla, fabricatedFiles, untransformable,
+					client, info.namespace(), runtimeMixinVersion(info), mixinExtrasVersion(loadedMods), info.mixinLowest(), info.fabricatedVersion(), info.build(), !fml.isProduction(), gameClasses, List.of(minecraft.getFilePath()), vanilla, fabricatedFiles, untransformable,
 					platformPackages, plan, nativeApi, nativeApiInterfaces, neoForgeMods.mods(), neoForgeMods.classes(),
 					(mappingsCache, mojangPath) -> IntermediaryMappings.load(mappingsCache, mcVersion, client, mojangPath),
 					fml.getProgramArgs().getArguments());
