@@ -117,6 +117,7 @@ check "FABRICATED-TEST class resources OK" server.out "a mod's class finds anoth
 check "FABRICATED-TEST registry OK" server.out "direct registry registration works"
 check "FABRICATED-TEST late registry OK" server.out "a registry vanilla's code adds while mods start joins the root registry (REG-3)"
 check "FABRICATED-TEST early registry writes OK" server.out "vanilla's code writes to built-in registries before NeoForge's registration events, as Wover does (REG-3)"
+check "FABRICATED-TEST immutable pack sources OK" server.out "NeoForge adds its pack finders to sources a mod left immutable, as FrozenLib does (PACK-1)"
 check "FABRICATED-TEST fabric api base event OK" server.out "fabric-api-base events work"
 check "FABRICATED-TEST access widener OK" server.out "access widener applied"
 check "FABRICATED-TEST server entrypoint OK" server.out "server entrypoint ran"

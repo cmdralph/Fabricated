@@ -61,6 +61,9 @@ pre-flight couldn't repair (JourneyMap).
   NeoForge's 1.21.11 build moved it out of one, which stopped the 1.21.11 advanced corpus (run on `b0f3606`).
   Pre-flight now counts them. LAMBDA-2: an injector at a call NeoForge's build moved into a lambda of the method
   (here an `Optional` callback) gets the lambda added to its methods, so FrozenLib's hook applies there.
+- PACK-1: a pack repository's sources stay mutable for NeoForge's pack finders when a Fabric mod replaced them with
+  an immutable set, as vanilla has them: FrozenLib's resource pack API does, which crashed the 26.1.2 advanced corpus
+  client in `Minecraft`'s constructor (run on `b871cd5`). The test mod checks it on every version.
 - DATA-1: a Fabric jar's data files lose their `neoforge:conditions`, which Fabric never reads: Tectonic's name a
   condition type only its NeoForge build registers, which stopped the 1.21.11 advanced corpus server (run on `b871cd5`).
   The Fabric build's own `fabric:load_conditions` still decide.

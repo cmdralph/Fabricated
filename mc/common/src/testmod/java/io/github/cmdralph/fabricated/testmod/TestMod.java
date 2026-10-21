@@ -48,15 +48,9 @@ public final class TestMod implements ModInitializer, DedicatedServerModInitiali
 	 * tell the two apart by namespace.
 	 */
 	public static final String NEOFORGE_NAMESPACE = "fabricated_neoforge_test";
+	/** Set when a pack repository's sources were made immutable (PackRepositoryMixin), as FrozenLib leaves them (PACK-1). */
+	public static volatile boolean immutablePackSources;
 
-	/**
-	 * A classpath scan as Reflections starts one (YUNG's API finds what it registers that way): the directory of a package
-	 * from the context class loader, then the classes under it in the jar the URL names (SCAN-1).
-	 */
-	/**
-	 * RES-1: a file of another jar read through one of the mod's own classes, as Lattice reads Minecraft's version
-	 * information: on Fabric the class path has it, on NeoForge only the mod's module, unless Fabricated adapts the read.
-	 */
 	/** A registry vanilla's own code adds to the root while mods start, which works on Fabric (REG-3: Wover's). */
 	private static void lateRegistry() {
 		if (addRegistry("late")) LOGGER.info("FABRICATED-TEST late registry OK");
@@ -88,6 +82,10 @@ public final class TestMod implements ModInitializer, DedicatedServerModInitiali
 		}
 	}
 
+	/**
+	 * RES-1: a file of another jar read through one of the mod's own classes, as Lattice reads Minecraft's version
+	 * information: on Fabric the class path has it, on NeoForge only the mod's module, unless Fabricated adapts the read.
+	 */
 	private static void classResources() {
 		try (InputStream in = TestMod.class.getResourceAsStream("/version.json")) {
 			if (in != null) LOGGER.info("FABRICATED-TEST class resources OK");
@@ -97,6 +95,10 @@ public final class TestMod implements ModInitializer, DedicatedServerModInitiali
 		}
 	}
 
+	/**
+	 * A classpath scan as Reflections starts one (YUNG's API finds what it registers that way): the directory of a package
+	 * from the context class loader, then the classes under it in the jar the URL names (SCAN-1).
+	 */
 	private static void classpathScan() {
 		String pkg = "io/github/cmdralph/fabricated/testmod/mixin";
 		URL dir = Thread.currentThread().getContextClassLoader().getResource(pkg);
@@ -178,6 +180,11 @@ public final class TestMod implements ModInitializer, DedicatedServerModInitiali
 			}
 		});
 		ServerLifecycleEvents.SERVER_STOPPING.register(server -> LOGGER.info("FABRICATED-TEST lifecycle server stopping OK"));
+		// NeoForge adds its pack finders to the server's pack repository after it was made: it couldn't start had that
+		// failed on the immutable sources the test mod left there (PACK-1).
+		ServerLifecycleEvents.SERVER_STARTED.register(server -> {
+			if (immutablePackSources) LOGGER.info("FABRICATED-TEST immutable pack sources OK");
+		});
 		// Upstream fires TAGS_LOADED once a data load bound the tags and the items' default components: mods build item
 		// stacks in it (Jade, CORPUS-9), which throws while the components aren't bound.
 		CommonLifecycleEvents.TAGS_LOADED.register((registries, client) -> {
