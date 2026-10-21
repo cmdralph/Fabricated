@@ -497,6 +497,26 @@ jobs:
           python3 ci/fetch-corpus.py "${{ matrix.minecraft }}" "$RUNNER_TEMP/extra-worldmap" fabric xaeros-world-map
           cp "$RUNNER_TEMP/extra/fabric-api.jar" "$RUNNER_TEMP/extra-worldmap/"
           SMOKE_TIMEOUT=420 ci/smoke-client.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/client-worldmap" "$RUNNER_TEMP/extra-worldmap" || true
+      # Fabric mods with deep hooks (ci/mod-corpus-advanced.txt), on their own: one that stops the game can't hide how
+      # the main corpus did.
+      - name: Fetch the advanced mod corpus
+        id: advanced
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        run: |
+          python3 ci/fetch-corpus.py "${{ matrix.minecraft }}" "$RUNNER_TEMP/advanced" fabric $(sed -e '/^#/d' -e '/^$/d' ci/mod-corpus-advanced.txt) \
+            | tee "$RUNNER_TEMP/summary-advanced.txt"
+          cp "$RUNNER_TEMP/extra/fabric-api.jar" "$RUNNER_TEMP/advanced/"
+      - name: Server with the advanced mod corpus (informational)
+        if: ${{ !cancelled() && steps.advanced.outcome == 'success' }}
+        continue-on-error: true
+        run: ci/smoke-server.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/server-advanced" "$RUNNER_TEMP/advanced" || true
+      - name: Client with the advanced mod corpus (informational)
+        if: ${{ !cancelled() && steps.advanced.outcome == 'success' }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: SMOKE_TIMEOUT=600 ci/smoke-client.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/client-advanced" "$RUNNER_TEMP/advanced" || true
       - name: Upload mod corpus logs and reports
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
@@ -508,6 +528,11 @@ jobs:
             ${{ runner.temp }}/client-corpus/run/logs
             ${{ runner.temp }}/client-corpus/run/crash-reports
             ${{ runner.temp }}/client-corpus/client.out
+            ${{ runner.temp }}/server-advanced/logs
+            ${{ runner.temp }}/server-advanced/server.out
+            ${{ runner.temp }}/client-advanced/run/logs
+            ${{ runner.temp }}/client-advanced/run/crash-reports
+            ${{ runner.temp }}/client-advanced/client.out
           if-no-files-found: ignore
       # The job log keeps only its end, so the informational runs' results are repeated here, last.
       - name: Summary of the informational runs
@@ -532,7 +557,8 @@ jobs:
           done
           [ -f "$RUNNER_TEMP/summary-polyfrost.txt" ] && { echo "== summary-polyfrost"; head -60 "$RUNNER_TEMP/summary-polyfrost.txt" | cut -c1-300; }
           [ -f viewers.txt ] && { echo "== viewers fetched"; cat viewers.txt; }
-          for run in client client-fapi client-sodium client-shaders client-sodium-fabric client-sodium-addons client-viewers client-polyfrost client-corpus client-worldmap; do
+          [ -f "$RUNNER_TEMP/summary-advanced.txt" ] && { echo "== advanced corpus fetched"; cut -c1-200 "$RUNNER_TEMP/summary-advanced.txt"; }
+          for run in client client-fapi client-sodium client-shaders client-sodium-fabric client-sodium-addons client-viewers client-polyfrost client-corpus client-worldmap client-advanced; do
             log="$RUNNER_TEMP/$run/run/logs/latest.log"
             if [ ! -f "$log" ]; then
               # The game never started (the launcher stopped first): what the launcher said last.
@@ -552,7 +578,7 @@ jobs:
             [ -f "$report" ] && awk '/^== Mixin pre-flight failures ==/ { show = 1; next } /^$/ { show = 0 } show' "$report" | head -24 | cut -c1-700
             # The corpus: every disabled mod with its reason (one line each), and code that reaches for Fabric Loader
             # internals Fabricated doesn't provide (deep hooks that would fail when they run).
-            if { [ "$run" = client-corpus ] || [ "$run" = client-sodium-addons ]; } && [ -f "$report" ]; then
+            if { [ "$run" = client-corpus ] || [ "$run" = client-advanced ] || [ "$run" = client-sodium-addons ]; } && [ -f "$report" ]; then
               echo "-- disabled mods:"
               awk '/^== Disabled Fabric mods/ { show = 1; next } /^$/ { show = 0 } show && /^  [^ ]/ { id = $1 } show && /^      / && !/^      Fix:/ && id { print "  " id ": " substr($0, 7); id = "" }' "$report" | cut -c1-260
               echo "-- Fabric Loader references Fabricated doesn't provide:"
@@ -613,12 +639,22 @@ jobs:
               grep -q -E '^"(Render|Server) thread"' "$dump" || head -n 5 "$dump"
             fi
           done
-          # The corpus on a dedicated server: its errors as the game ran (the client's above include its integrated server's).
-          log="$RUNNER_TEMP/server-corpus/logs/latest.log"
-          if [ -f "$log" ]; then
-            echo "== server-corpus"
+          # The corpora on a dedicated server: their errors as the game ran (the clients' above include their integrated
+          # server's), and a server that didn't start: its crash and the log's last lines.
+          for run in server-corpus server-advanced; do
+            log="$RUNNER_TEMP/$run/logs/latest.log"
+            [ -f "$log" ] || continue
+            echo "== $run"
             digest "$log"
-          fi
+            if ! grep -q -E 'Done \([0-9.]+s\)!' "$log"; then
+              for report in $(ls "$RUNNER_TEMP/$run/crash-reports"/*.txt 2>/dev/null | head -1); do
+                echo "-- $(basename "$report")"
+                sed -n '/^Description:/,/^A detailed walkthrough/p' "$report" | grep -v "^A detailed" | head -40
+              done
+              echo "-- server didn't start; last lines of the log:"
+              tail -n 6 "$log" | cut -c1-300
+            fi
+          done
       - name: Upload Fabricated jar
         uses: actions/upload-artifact@v4
         with:
