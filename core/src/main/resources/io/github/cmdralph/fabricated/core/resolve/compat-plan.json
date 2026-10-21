@@ -27,6 +27,10 @@
     },
     "wthit": {
       "neoForgeBuildOnly": "WTHIT's Fabric build refuses to run on NeoForge: its own entrypoint throws when it finds Fancy Mod Loader (CI, run 357)"
+    },
+    "flashback": {
+      "neoForgeBuildOnly": "Flashback's mixin into MappedRegistry.freeze starts Flashback on the first registry freeze, and its start-up registers a key binding through the game's client. NeoForge freezes the registries at bootstrap and again before the client exists, while Fabric API delays that freeze until after the client initializers, so the game stops at bootstrap (CI, 1.21.11 advanced corpus, run on 1cee7cd)",
+      "suggestion": "Remove Flashback: its Fabric build can't start on NeoForge."
     }
   }
 }

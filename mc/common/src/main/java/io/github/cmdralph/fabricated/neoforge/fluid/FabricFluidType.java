@@ -8,6 +8,7 @@ import org.jspecify.annotations.Nullable;
 import net.fabricmc.fabric.api.transfer.v1.fluid.FluidVariant;
 import net.fabricmc.fabric.api.transfer.v1.fluid.FluidVariantAttributes;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.sounds.SoundEvent;
@@ -57,8 +58,8 @@ public final class FabricFluidType extends FluidType {
 	}
 
 	/**
-	 * Registers a type for each Fabric fluid, once Fabric mods have registered their content. A fluid registered later
-	 * still gets one (unregistered) when NeoForge first asks.
+	 * Registers a type for each Fabric fluid registered by then, as NeoForge's registration events end. A fluid
+	 * registered later still gets one when NeoForge first asks, registered with {@link #registerLate()}.
 	 */
 	public static void register(IEventBus modBus) {
 		modBus.addListener(EventPriority.LOWEST, RegisterEvent.class, event -> event.register(NeoForgeRegistries.Keys.FLUID_TYPES, helper -> {
@@ -66,6 +67,18 @@ public final class FabricFluidType extends FluidType {
 				if (needsType(fluid) && source(fluid) == fluid) helper.register(BuiltInRegistries.FLUID.getKey(fluid), of(fluid));
 			}
 		}));
+	}
+
+	/**
+	 * Registers the types of the Fabric fluids registered after NeoForge's registration events (on a client, main
+	 * initializers run in {@code Minecraft}'s constructor, CORPUS-16); called while the registries are open again.
+	 */
+	public static void registerLate() {
+		for (Fluid fluid : BuiltInRegistries.FLUID) {
+			if (!needsType(fluid) || source(fluid) != fluid) continue;
+			FabricFluidType type = of(fluid);
+			if (NeoForgeRegistries.FLUID_TYPES.getKey(type) == null) Registry.register(NeoForgeRegistries.FLUID_TYPES, BuiltInRegistries.FLUID.getKey(fluid), type);
+		}
 	}
 
 	/**

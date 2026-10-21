@@ -7,10 +7,12 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.BiConsumer;
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -27,19 +29,22 @@ import net.minecraft.world.entity.ai.attributes.DefaultAttributes;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.IEventBus;
+import net.neoforged.neoforge.common.CommonHooks;
 import net.neoforged.neoforge.event.entity.EntityAttributeCreationEvent;
 import net.neoforged.neoforge.event.entity.EntityAttributeModificationEvent;
 import net.neoforged.neoforge.event.entity.RegisterSpawnPlacementsEvent;
 
 /**
  * Native {@code fabric-object-builder-api-v1}, shared part: what upstream writes straight into Minecraft's tables
- * (default attributes, spawn placements) is collected here and handed to NeoForge's registration events, which run
- * once all registries are filled. Upstream's mixins make those tables mutable, which NeoForge's patches conflict with.
+ * (default attributes, spawn placements) is collected here and handed to NeoForge, once Fabric's initializers have
+ * registered their content. Upstream's mixins make those tables mutable, which NeoForge's patches conflict with.
  *
- * <p>Order on NeoForge, after every {@code RegisterEvent} (and so after Fabric initializers):
- * {@link EntityAttributeCreationEvent}, {@link EntityAttributeModificationEvent} (where Fabric's
- * {@code FabricDefaultAttributeRegistry.MODIFY} runs on 26.x, as upstream runs it just before registries freeze), then
- * {@link RegisterSpawnPlacementsEvent}.
+ * <p>On a dedicated server the initializers run in NeoForge's registration events, and everything goes through the
+ * events NeoForge posts after every {@code RegisterEvent}: {@link EntityAttributeCreationEvent},
+ * {@link EntityAttributeModificationEvent} (where Fabric's {@code FabricDefaultAttributeRegistry.MODIFY} runs on 26.x,
+ * as upstream runs it just before registries freeze), then {@link RegisterSpawnPlacementsEvent}. On a client they run
+ * later, in {@code Minecraft}'s constructor (CORPUS-16), and {@link #registerLate()} hands everything over there, as
+ * NeoForge applies those events.
  */
 public final class ObjectBuilderBridge {
 	private static final Logger LOGGER = LoggerFactory.getLogger("Fabricated");
@@ -57,6 +62,12 @@ public final class ObjectBuilderBridge {
 		void register(RegisterSpawnPlacementsEvent event) {
 			event.register(type, placementType, heightmap, predicate, RegisterSpawnPlacementsEvent.Operation.REPLACE);
 		}
+
+		/** Vanilla's registration, which refuses a type that has a placement already, as on Fabric. */
+		@SuppressWarnings({"unchecked", "rawtypes"})
+		void registerInVanilla() {
+			SpawnPlacements.register((EntityType) type, placementType, heightmap, (SpawnPlacements.SpawnPredicate) predicate);
+		}
 	}
 
 	/** Changes the default attributes of the matching entity types, each through a builder holding the current ones. */
@@ -72,18 +83,68 @@ public final class ObjectBuilderBridge {
 	}
 
 	/**
+	 * @param initialized  whether Fabric's initializers have run (when NeoForge's events come; on a client they
+	 *                     haven't, and {@link #registerLate()} hands everything over)
 	 * @param fabricModify runs Fabric's attribute modification event with the given modifier (26.x; the 1.21.11 API
 	 *                     has no such event)
 	 */
-	public static void register(IEventBus modBus, Consumer<AttributeModifier> fabricModify) {
+	public static void register(IEventBus modBus, BooleanSupplier initialized, Consumer<AttributeModifier> fabricModify) {
 		ObjectBuilderBridge.fabricModify = fabricModify;
-		modBus.addListener(EventPriority.LOW, EntityAttributeCreationEvent.class, ObjectBuilderBridge::createAttributes);
-		modBus.addListener(EventPriority.LOW, EntityAttributeModificationEvent.class, ObjectBuilderBridge::modifyAttributes);
+		modBus.addListener(EventPriority.LOW, EntityAttributeCreationEvent.class, e -> {
+			if (initialized.getAsBoolean()) createAttributes(e);
+		});
+		modBus.addListener(EventPriority.LOW, EntityAttributeModificationEvent.class, e -> {
+			if (initialized.getAsBoolean()) modifyAttributes(e);
+		});
 		modBus.addListener(EventPriority.LOW, RegisterSpawnPlacementsEvent.class, e -> {
+			if (!initialized.getAsBoolean()) return;
 			synchronized (PLACEMENTS) {
 				PLACEMENTS.forEach(p -> p.register(e));
 			}
 		});
+	}
+
+	/**
+	 * Hands NeoForge what Fabric's initializers registered after its registration events (on a client, where they run
+	 * in {@code Minecraft}'s constructor), as NeoForge applies those events: default attributes go into its attribute
+	 * table ({@code CommonHooks.modifyAttributes}, read in NeoForge's source), spawn placements into vanilla's, through
+	 * vanilla's own registration, which upstream calls.
+	 */
+	public static void registerLate() {
+		Map<EntityType<? extends LivingEntity>, AttributeSupplier> table = neoForgeAttributes();
+		if (table != null) {
+			createAttributes(new EntityAttributeCreationEvent(table));
+			Map<EntityType<? extends LivingEntity>, AttributeSupplier.Builder> changes = new HashMap<>();
+			modifyAttributes(new EntityAttributeModificationEvent(changes));
+			changes.forEach((type, change) -> {
+				AttributeSupplier current = DefaultAttributes.getSupplier(type);
+				AttributeSupplier.Builder builder = current != null ? new AttributeSupplier.Builder(current) : AttributeSupplier.builder();
+				builder.combine(change);
+				table.put(type, builder.build());
+			});
+		}
+		synchronized (PLACEMENTS) {
+			for (Placement<?> placement : PLACEMENTS) {
+				try {
+					placement.registerInVanilla();
+				} catch (IllegalStateException e) {
+					LOGGER.warn("Spawn placement for {} not registered: {}", BuiltInRegistries.ENTITY_TYPE.getKey(placement.type()), e.getMessage());
+				}
+			}
+		}
+	}
+
+	/** NeoForge's table of default attributes beyond vanilla's ({@code CommonHooks.FORGE_ATTRIBUTES}), or null. */
+	@SuppressWarnings("unchecked")
+	private static @Nullable Map<EntityType<? extends LivingEntity>, AttributeSupplier> neoForgeAttributes() {
+		try {
+			Field field = CommonHooks.class.getDeclaredField("FORGE_ATTRIBUTES");
+			field.setAccessible(true);
+			return (Map<EntityType<? extends LivingEntity>, AttributeSupplier>) field.get(null);
+		} catch (ReflectiveOperationException | RuntimeException e) {
+			LOGGER.warn("Default attributes Fabric mods registered can't be handed to NeoForge: its attribute table isn't accessible", e);
+			return null;
+		}
 	}
 
 	/** Backs {@code DefaultAttributesAccessor.getRegistry()}, which Fabric's {@code FabricDefaultAttributeRegistry} writes to. */

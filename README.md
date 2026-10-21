@@ -123,7 +123,7 @@ warning in the report, so a bad config never crashes the game.
   "strictDependencies": false,
   "strictLinkage": false,
   "cache": { "enabled": true, "verifyIntegrity": true, "maxUnusedLaunches": 5 },
-  "limits": { "maxJarBytes": 268435456, "maxEntryBytes": 67108864, "maxTotalUncompressedBytes": 536870912,
+  "limits": { "maxJarBytes": 268435456, "maxEntryBytes": 134217728, "maxTotalUncompressedBytes": 536870912,
               "maxEntries": 65536, "maxCompressionRatio": 100, "maxNestingDepth": 3 },
   "mods": {
     "examplemod": {

@@ -264,6 +264,8 @@ public final class Pipeline {
 	/** NeoForge mods by id, and by the NeoForge form of each id they provide. */
 	private final Map<String, NeoForgeMod> neoMods = new LinkedHashMap<>();
 	private final List<Builtin> builtins;
+	/** Fabric mods installed for the other side only: a dependency on one is no requirement here, as on Fabric. */
+	private final List<Candidate> otherSide = new ArrayList<>();
 	/** Compat patches already reported as ignored ("mod target"): patches are worked out again every round. */
 	private final Set<String> ignoredPatches = new HashSet<>();
 
@@ -463,6 +465,7 @@ public final class Pipeline {
 		Map<String, Candidate> byNeoId = new HashMap<>();
 		for (Candidate c : candidates) {
 			String skipped = skipReason(c, builtinNames);
+			if (!c.metadata().getEnvironment().matches(side)) otherSide.add(c);
 			if (skipped != null) {
 				report.mod(new ModRow(c.id(), c.version(), c.origin(), Status.SKIPPED, skipped, ""));
 				continue;
@@ -554,6 +557,7 @@ public final class Pipeline {
 			for (String alias : b.aliases()) resolver.builtin(alias, parseVersion(b.version()), b.name());
 		}
 		neoMods.forEach((id, m) -> resolver.neoForgeMod(id, parseVersion(m.version()), m.displayName()));
+		for (Candidate c : otherSide) resolver.otherSide(c.id(), c.metadata().getVersion());
 		return resolver;
 	}
 

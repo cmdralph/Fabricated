@@ -147,13 +147,13 @@ FML treats an unmet *required* dependency as a fatal loading error, which would 
 ## 4. Entrypoint bridging
 
 ### 4.1 Lifecycle mapping (verified against NeoForge `CommonModLoader`)
-NeoForge's sequence is: mod construction, then `unfreezeData()`, then a `RegisterEvent` per registry in mod order, then `freezeData()`, then `FMLCommonSetupEvent`, then the sided setup event, then IMC, then `FMLLoadCompleteEvent`. Vanilla registries are **frozen during mod construction**. Fabric mods call `Registry.register(...)` directly in `onInitialize`, so they must run while the registries are unfrozen. On the client NeoForge does all of this up to the freeze before it creates `Minecraft`.
+NeoForge's sequence is: mod construction, then `unfreezeData()`, then a `RegisterEvent` per registry in mod order, then `freezeData()`, then `FMLCommonSetupEvent`, then the sided setup event, then IMC, then `FMLLoadCompleteEvent`. Vanilla registries are **frozen during mod construction**. Fabric mods call `Registry.register(...)` directly in `onInitialize`, so they must run while the registries are unfrozen. On the client NeoForge does all of this up to the freeze (and its configs) before it creates `Minecraft`, and the rest from `Minecraft`'s constructor, after the point where Fabric Loader runs the initializers.
 
 | Fabric entrypoint | When Fabricated runs it | Ordering |
 |---|---|---|
 | `preLaunch` | **Not run as Fabric does** (Fabric runs it before game classes load). Fabricated runs it right before `main`, on the first `RegisterEvent` (`EntrypointBridge`). Mods doing classloader tricks there are unsupported; running it earlier is on the roadmap. | Dependency order |
-| `main` (`ModInitializer`) | Once, on the **first `RegisterEvent` after the attribute registry's** (which NeoForge posts first): registries are unfrozen, NeoForge's own attributes (part of every living entity's attribute builder) are registered, and NeoForge mods constructed before it are visible | Fabric dependency order (topological, ties broken by id, so it's deterministic) |
-| `client` (`ClientModInitializer`) | After *all* `main` entrypoints, on the client dist, where Fabric runs it: in `Minecraft`'s constructor just before it records the game thread, once the instance, game directory and user are set (NeoForge registers mods before it creates `Minecraft`, and client initializers commonly use the instance) | Same |
+| `main` (`ModInitializer`) | On a dedicated server (and in a data run), once, on the **first `RegisterEvent` after the attribute registry's** (which NeoForge posts first): registries are unfrozen, NeoForge's own attributes (part of every living entity's attribute builder) are registered, and NeoForge mods constructed before it are visible. On a client, where Fabric runs it: in `Minecraft`'s constructor, right before the `client` entrypoints, with the registries opened again (CORPUS-16); what NeoForge fills once its registration events end (attributes, spawn placements, fluid types, creative tab order) then takes what it registered | Fabric dependency order (topological, ties broken by id, so it's deterministic) |
+| `client` (`ClientModInitializer`) | After *all* `main` entrypoints, on the client dist, where Fabric runs it: in `Minecraft`'s constructor just before it records the game thread, once the instance, game directory and user are set (NeoForge registers mods before it creates `Minecraft`, and initializers commonly use the instance), with the registries open until it ends, as Fabric API leaves them | Same |
 | `server` (`DedicatedServerModInitializer`) | Immediately after all `main`, on a dedicated server | Same |
 | Custom keys (`modmenu`, `rei_client`, `fabric-datagen`, `cardinal-components`, …) | **Never auto-run.** Instantiated lazily when another mod calls `FabricLoader.getEntrypoints(key, type)` / `getEntrypointContainers`, exactly like Fabric | Declaration order |
 
@@ -401,7 +401,7 @@ Read during discovery, before NeoForge's config system exists, so it's plain JSO
   "onEntrypointFailure": "error",
   "strictDependencies": false,
   "cache": { "enabled": true, "verifyIntegrity": true, "maxUnusedLaunches": 5 },
-  "limits": { "maxJarBytes": 268435456, "maxEntryBytes": 67108864, "maxTotalUncompressedBytes": 536870912,
+  "limits": { "maxJarBytes": 268435456, "maxEntryBytes": 134217728, "maxTotalUncompressedBytes": 536870912,
               "maxEntries": 65536, "maxCompressionRatio": 100, "maxNestingDepth": 3 },
   "mods": {
     "examplemod": { "disabled": false, "skipMixins": ["examplemod.mixins.json:client.FooMixin"],

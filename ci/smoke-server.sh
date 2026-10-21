@@ -124,6 +124,8 @@ check "FABRICATED-TEST built-in pack data is stable OK" server.out "a built-in p
 check "FABRICATED-TEST fabric api base event OK" server.out "fabric-api-base events work"
 check "FABRICATED-TEST access widener OK" server.out "access widener applied"
 check "FABRICATED-TEST server entrypoint OK" server.out "server entrypoint ran"
+check "FABRICATED-TEST creative tab order OK" server.out "a creative tab registered by a main initializer is ordered after the vanilla tabs"
+check "FABRICATED-TEST resource bundle with a control OK" server.out "translations loaded with a ResourceBundle.Control from a named module (LuckPerms, LOADER-3)"
 check "FABRICATED-TEST mixin OK" server.out "mixin applied"
 check "FABRICATED-TEST early language adapter OK" server.out "Fabric's start-up order: language adapters created before the mods' mixin plugins load"
 check "FABRICATED-TEST lifecycle server started OK" server.out "native lifecycle: SERVER_STARTED"
@@ -134,6 +136,7 @@ check "FABRICATED-TEST block entity events OK" server.out "native lifecycle: a b
 check "FABRICATED-TEST networking registration OK" server.out "native networking: receiver registered"
 check "FABRICATED-TEST configuration disconnect OK" server.out "native networking: DISCONNECT for a connection closed during configuration"
 check "Registered [0-9]* Fabric payload type" server.out "native networking: payloads handed to NeoForge"
+check "FABRICATED-TEST late payload type registration OK" server.out "native networking: a payload type registered as the server starts (Ledger, NET-3)"
 check "FABRICATED-TEST resource reload listener OK (2 data file" server.out "native resource loader: listener, shared state and built-in pack data"
 check "resource loader state: order=true, store=2, builtinPackEnabled=true" server.out "native resource loader: ordering, data store and built-in pack"
 if [ "$(grep -c 'FABRICATED-TEST resource reload listener OK' server.out)" -ge 2 ]; then

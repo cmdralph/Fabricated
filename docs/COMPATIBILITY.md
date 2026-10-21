@@ -341,7 +341,7 @@ what Fabric initializers registered.
 | Spawn placements | `RegisterSpawnPlacementsEvent` (replace) | |
 | `FabricEntityDataRegistry` (`FabricTrackedDataRegistry` on 1.21.11) | NeoForge's `ENTITY_DATA_SERIALIZERS` registry | NeoForge keeps the ids in step between server and client; register from an initializer |
 | `FabricBlockEntityTypeBuilder`, `FabricBlockEntityType.addValidBlock` (`addSupportedBlock` on 1.21.11) | NeoForge's op-only constructor; a larger copy of the valid-block set | |
-| `WoodTypeBuilder`, `BlockSetTypeBuilder`, `PoiHelper` / `PointOfInterestHelper` | vanilla, unchanged | Fabricated's access transformer opens `PoiTypes.register` and `SpawnPlacements.register`, which the API calls |
+| `WoodTypeBuilder`, `BlockSetTypeBuilder`, `PoiHelper` / `PointOfInterestHelper` | vanilla, unchanged | Fabricated's access transformer opens `PoiTypes.register` and `SpawnPlacements.register`, which the API calls. A type registered through `PoiTypes.register` (this helper, WorldWeaver) has its states mapped once, though NeoForge maps them as the type is registered and vanilla then again (POI-1) |
 | `TradeOfferHelper` (1.21.11) | `VillagerTradesEvent`, `WandererTradesEvent` | NeoForge rebuilds the tables on every data load, so registrations are replayed each time. In rebalanced-trade worlds, additions for professions without their own rebalanced table use the normal ones |
 | **Not used**: `MinecartComparatorLogicRegistry` | none | registrations are kept, but detector rails ignore them (NeoForge has no hook) |
 
@@ -772,6 +772,10 @@ and older) run Fabric mods with, which 26.x doesn't have (OBF-1: Modrinth lists 
 - **malilib** (and with it Tweakeroo, MiniHUD and Litematica): it adds its picture-in-picture renderers through a map
   NeoForge replaced with renderer pools on every version, and calls that accessor while the game starts (CORPUS-13).
 - **WTHIT**: its Fabric build refuses NeoForge itself; its NeoForge build is the one to use.
+- **Flashback**: its mixin into `MappedRegistry.freeze` starts Flashback on the first registry freeze, and its start-up
+  registers a key binding through the client. NeoForge freezes the registries at bootstrap and again before the client
+  exists; Fabric API delays that freeze until after the client initializers. The 1.21.11 advanced corpus client stopped
+  at bootstrap (CORPUS-21).
 
 ### Fabric Loader
 
@@ -793,9 +797,19 @@ MixinExtras has NeoForge's jar, and a NeoForge mod nested in another jar has tha
   mod's own jar first and then, as Fabric's unnamed modules do, on the whole class path: NeoForge's module for the mod
   has only its own files, so a mod reading Minecraft's `/version.json` that way (Lattice, while Mixin prepares its
   config) stopped the game (RES-1). The mod's calls go through Fabricated's `ClassResources`.
-- `main` entrypoints run while NeoForge registers content, before `Minecraft` exists, where Fabric Loader runs them
-  from `Minecraft`'s constructor: a mod reading `Minecraft.getInstance()` in its `main` entrypoint fails there and is
-  marked as failed (Moonlight's 26.1.2 build, CORPUS-16). Client entrypoints run where Fabric runs them.
+- `ResourceBundle.getBundle` with a `ResourceBundle.Control`, which Java refuses from a named module, makes the same
+  lookup through Fabricated's `ResourceBundles` (LuckPerms' translations, LOADER-3). Bundles loaded so are not cached
+  between calls, as the JDK's are.
+- On a client, `main` and `client` entrypoints run where Fabric Loader runs them: in `Minecraft`'s constructor, once
+  the instance exists, with the registries open (CORPUS-16). NeoForge registers content before `Minecraft` exists, so
+  what it fills once its registration events end takes what Fabric mods registered there too: default attributes,
+  spawn placements, fluid types, the creative tabs' order, Forge Config API Port configs (loaded as they are
+  registered, as the port does on Fabric) and tooltip providers (placed before or after all component tooltips). A
+  NeoForge mod that reads the registries during NeoForge's own registration events doesn't see Fabric mods' content
+  on a client. On a dedicated server `main` and `server` entrypoints run while NeoForge registers content, as before.
+- A Fabric payload type registered after NeoForge's payload registration (MiniHUD's, from the end of `Minecraft`'s
+  constructor; Ledger's, as the server starts) is registered with NeoForge then, as upstream accepts it at any time
+  (NET-3). An id a NeoForge mod already registered stays the NeoForge mod's.
 - `@Environment` and `@EnvironmentInterface` are applied as Fabric Loader applies them: members and interfaces for
   the other side are stripped when the class loads, so a common class implementing a client-only interface loads on
   a dedicated server.

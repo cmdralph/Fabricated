@@ -40,6 +40,8 @@ public final class DependencyResolver {
 
 	private final Map<String, Provider> builtins = new HashMap<>();
 	private final Map<String, Provider> neoForgeMods = new HashMap<>();
+	/** Versions of the mods installed for the other side only, by id. */
+	private final Map<String, List<Version>> otherSide = new HashMap<>();
 
 	/** Registers a built-in provider (Minecraft, Java, Fabric Loader, native Fabric API modules). */
 	public DependencyResolver builtin(String id, Version version, String description) {
@@ -50,6 +52,16 @@ public final class DependencyResolver {
 	/** Registers a loaded NeoForge mod. */
 	public DependencyResolver neoForgeMod(String id, Version version, String displayName) {
 		neoForgeMods.put(id, new Provider(id, version, displayName + " (NeoForge mod)", true));
+		return this;
+	}
+
+	/**
+	 * Registers a mod installed for the other side only (its {@code environment}). As Fabric Loader resolves it, a
+	 * dependency on it that its version matches is only a suggestion on this side (read in its {@code ModResolver}):
+	 * Emotecraft requires the client-only key binding module, and loads on a server.
+	 */
+	public DependencyResolver otherSide(String id, Version version) {
+		otherSide.computeIfAbsent(id, k -> new ArrayList<>()).add(version);
 		return this;
 	}
 
@@ -80,6 +92,7 @@ public final class DependencyResolver {
 				for (ModDependency dep : c.metadata().getDependencies()) {
 					if (dep.getKind() == ModDependency.Kind.DEPENDS) {
 						Provider p = find(providers, dep.getModId());
+						if (p == null && otherSide.getOrDefault(dep.getModId(), List.of()).stream().anyMatch(dep::matches)) continue;
 						if (p == null) {
 							String why = notLoaded.get(dep.getModId());
 							if (why != null) {

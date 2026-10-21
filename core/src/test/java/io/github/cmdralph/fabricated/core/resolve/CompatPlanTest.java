@@ -31,7 +31,7 @@ class CompatPlanTest {
 		CompatPlan plan = CompatPlan.builtin();
 		assertNotNull(plan.entry("sodium").neoForgeBuildOnly());
 		assertEquals(List.of("sodium"), List.copyOf(plan.entry("iris").notWithNeoForge().keySet()));
-		for (String id : List.of("essential-container", "essential-loader", "malilib", "wthit")) assertNotNull(plan.entry(id).neoForgeBuildOnly(), id);
+		for (String id : List.of("essential-container", "essential-loader", "malilib", "wthit", "flashback")) assertNotNull(plan.entry(id).neoForgeBuildOnly(), id);
 		assertNotNull(plan.entry("essential-container").suggestion(), "Essential has no NeoForge build for every version");
 	}
 

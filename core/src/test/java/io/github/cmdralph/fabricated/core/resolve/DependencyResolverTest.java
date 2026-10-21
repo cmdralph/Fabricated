@@ -41,6 +41,18 @@ class DependencyResolverTest {
 	}
 
 	@Test
+	void aDependencyOnAModForTheOtherSideOnlyIsNoRequirement() throws Exception {
+		// SIDE-1: Emotecraft requires Fabric API's key binding module, which is for the client only; Fabric Loader makes
+		// that a suggestion on a server, when the installed module's version matches.
+		Candidate emotes = mod("emotecraft", "3.2", "\"depends\":{\"fabric-key-binding-api-v1\":\"*\"}");
+		Candidate tooNew = mod("wants-new-keys", "1.0", "\"depends\":{\"fabric-key-binding-api-v1\":\">=2\"}");
+		DependencyResolver.Result r = resolver().otherSide("fabric-key-binding-api-v1", Version.parse("1.1.0"))
+				.resolve(List.of(emotes, tooNew), Map.of(), Map.of(), Map.of());
+		assertEquals(List.of("emotecraft"), r.ordered().stream().map(Candidate::id).toList());
+		assertTrue(r.disabled().getFirst().reason().contains("not installed"), "a version it doesn't match is still missing: " + r.disabled());
+	}
+
+	@Test
 	void reportsVersionMismatchAndBreaks() throws Exception {
 		Candidate tooNew = mod("wants-new-mc", "1.0", "\"depends\":{\"minecraft\":\">=26.1\"}");
 		Candidate breaker = mod("breaker", "1.0", "\"breaks\":{\"fine\":\"*\"}");

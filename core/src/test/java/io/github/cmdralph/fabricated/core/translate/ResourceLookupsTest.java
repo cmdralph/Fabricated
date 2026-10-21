@@ -69,6 +69,64 @@ class ResourceLookupsTest {
 		Class.forName("com.example.Reader", true, loader);
 	}
 
+	/** A mod class loading its translations with a control (as LuckPerms does), once with its own class loader. */
+	private static byte[] bundleReader() {
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, "com/example/Translations", null, "java/lang/Object", null);
+		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_STATIC, "load", "()V", null, null);
+		mv.visitCode();
+		mv.visitLdcInsn("messages");
+		mv.visitFieldInsn(Opcodes.GETSTATIC, "java/util/Locale", "ROOT", "Ljava/util/Locale;");
+		mv.visitInsn(Opcodes.ACONST_NULL);
+		mv.visitTypeInsn(Opcodes.CHECKCAST, "java/util/ResourceBundle$Control");
+		mv.visitMethodInsn(Opcodes.INVOKESTATIC, "java/util/ResourceBundle", "getBundle",
+				"(Ljava/lang/String;Ljava/util/Locale;Ljava/util/ResourceBundle$Control;)Ljava/util/ResourceBundle;", false);
+		mv.visitInsn(Opcodes.POP);
+		mv.visitLdcInsn("messages");
+		mv.visitFieldInsn(Opcodes.GETSTATIC, "java/util/Locale", "ROOT", "Ljava/util/Locale;");
+		mv.visitInsn(Opcodes.ACONST_NULL);
+		mv.visitInsn(Opcodes.ACONST_NULL);
+		mv.visitTypeInsn(Opcodes.CHECKCAST, "java/util/ResourceBundle$Control");
+		mv.visitMethodInsn(Opcodes.INVOKESTATIC, "java/util/ResourceBundle", "getBundle",
+				"(Ljava/lang/String;Ljava/util/Locale;Ljava/lang/ClassLoader;Ljava/util/ResourceBundle$Control;)Ljava/util/ResourceBundle;", false);
+		mv.visitInsn(Opcodes.POP);
+		mv.visitLdcInsn("messages");
+		mv.visitMethodInsn(Opcodes.INVOKESTATIC, "java/util/ResourceBundle", "getBundle", "(Ljava/lang/String;)Ljava/util/ResourceBundle;", false);
+		mv.visitInsn(Opcodes.POP);
+		mv.visitInsn(Opcodes.RETURN);
+		mv.visitMaxs(0, 0);
+		mv.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	@Test
+	void resourceBundlesWithAControlGoThroughResourceBundles() throws Exception {
+		byte[] adapted = ResourceLookups.apply(bundleReader());
+		ClassNode node = new ClassNode();
+		new ClassReader(adapted).accept(node, 0);
+		List<String> calls = new ArrayList<>();
+		for (AbstractInsnNode insn : node.methods.getFirst().instructions) {
+			if (insn instanceof MethodInsnNode call) calls.add(call.getOpcode() + " " + call.owner + "." + call.name + call.desc);
+		}
+		assertEquals(List.of(
+				Opcodes.INVOKESTATIC + " " + ResourceLookups.RESOURCE_BUNDLES
+						+ ".getBundle(Ljava/lang/String;Ljava/util/Locale;Ljava/util/ResourceBundle$Control;Ljava/lang/Class;)Ljava/util/ResourceBundle;",
+				Opcodes.INVOKESTATIC + " " + ResourceLookups.RESOURCE_BUNDLES
+						+ ".getBundle(Ljava/lang/String;Ljava/util/Locale;Ljava/lang/ClassLoader;Ljava/util/ResourceBundle$Control;)Ljava/util/ResourceBundle;",
+				Opcodes.INVOKESTATIC + " java/util/ResourceBundle.getBundle(Ljava/lang/String;)Ljava/util/ResourceBundle;"), calls,
+				"a lookup without a control works from a named module");
+		// The calling class is pushed for the first call, one more stack slot: the class passes the JVM's verifier.
+		ClassLoader loader = new ClassLoader(getClass().getClassLoader()) {
+			@Override
+			protected Class<?> findClass(String name) throws ClassNotFoundException {
+				if (!name.equals("com.example.Translations")) throw new ClassNotFoundException(name);
+				return defineClass(name, adapted, 0, adapted.length);
+			}
+		};
+		Class.forName("com.example.Translations", true, loader);
+	}
+
 	@Test
 	void leavesClassesWithoutSuchReadsAlone() {
 		ClassWriter cw = new ClassWriter(0);

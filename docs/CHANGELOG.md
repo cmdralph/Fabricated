@@ -3,6 +3,51 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-10-21 (pass after PR #53): main entrypoints where Fabric runs them, and late payload types
+
+**Plan.** PR #53's runs showed the 26.x malilib clients and the 1.21.11 advanced server stopping on payload types
+registered after NeoForge's network registration (MiniHUD, Ledger), Axiom failing again for reading the client in its
+main entrypoint, and Flashback not loaded for one large native library.
+
+- NET-3: a Fabric payload type registered after NeoForge's payload registration event is registered with NeoForge
+  then, with its registry reopened for it; an id NeoForge has for the other direction is registered again for both.
+  The test mod registers one as the server starts, and the client sends it after joining.
+- CORPUS-16: on a client, main entrypoints run with the client ones, in `Minecraft`'s constructor, where Fabric Loader
+  runs them, with the registries opened again. What NeoForge fills once its registration events end takes what they
+  register: default attributes (Fabric's attribute modification event runs after the client initializers, as upstream
+  runs it), spawn placements, fluid types and the creative tabs' order; Forge Config API Port configs registered then
+  are loaded right away; late tooltip providers go before or after all component tooltips. A dedicated server keeps
+  the old order. Client checks: the game instance exists in main, and a tab registered there comes after the vanilla
+  tabs.
+- POI-1: a point-of-interest type registered through vanilla's `PoiTypes.register` (Fabric API's helper, WorldWeaver)
+  no longer fails as defined twice: NeoForge maps its states as it is registered, vanilla then again. BetterEnd's and
+  BetterNether's main entrypoints threw there on the 26.2 advanced client. The servers' missing BetterEnd content
+  (CORPUS-19) is still unexplained: they logged no such failure.
+- LOADER-3: `ResourceBundle.getBundle` with a `ResourceBundle.Control` in a Fabric mod's code makes the same lookup
+  through Fabricated's `ResourceBundles`: Java refuses a control from a named module, and LuckPerms loads its
+  translations so. The translation schema is bumped.
+- CORPUS-21: the compatibility plan refuses Flashback's Fabric build. Its registry freeze hook starts Flashback, whose
+  start-up needs the client, on the first freeze: NeoForge freezes at bootstrap, Fabric API only after the client
+  initializers. It stopped the 1.21.11 advanced corpus client at bootstrap.
+- LIMIT-1: one archive entry may be 128 MiB (was 64 MiB): Flashback ships a 71 MB native library. The limits on the
+  whole archive and the compression ratio check are unchanged.
+- HOLD-1: with CORPUS-16, every 26.x advanced client stopped at NeoForge's freeze before `Minecraft` exists on
+  BetterNether's entity types, made before its main entrypoint registers them. While the main entrypoints are still to
+  run, that freeze keeps such waiting holders for the registration; the freeze after them checks them as vanilla does.
+- HOOK-1: an `@Inject` after Fabric Loader's `Hooks.startServer` (owo-lib's registry freeze) is pointed at NeoForge's
+  `ServerModLoader.load`, where Fabricated runs the entrypoints that hook marks. owo's group stopped the 1.21.11,
+  26.1.2 and 26.2 corpus servers.
+- PACK-4: a Fabric jar's built-in packs lose the `neoforge:` sections of their `pack.mcmeta` too (Tectonic's pack was
+  skipped on the 26.x advanced servers).
+- SIDE-1: a dependency on a mod installed for the other side only is a suggestion there, as Fabric Loader resolves it:
+  Emotecraft, which requires the client-only key binding module, loads on a server again.
+- CI: when Mixin stops a client on an injector pre-flight passed, the summary prints the handler's annotations and its
+  target methods' code (CORPUS-18); the server summaries list entrypoint failures and slow entrypoints (CORPUS-19).
+- Roadmap: PR #53's results (PIP-1, BIOME-2 and LOADER-2 verified as far as the next failure), and what is still open:
+  FrozenLib's entrypoint injection (LOADER-4), BetterEnd's payload type in the `minecraft` namespace (NET-4), Freecam's
+  MixinExtras requirement on 1.21.11 (MIXEXT-1), and Wover's world state at world creation (CORPUS-19, whose data
+  pack errors are gone).
+
 ## 2026-10-21 (pass after PR #52): picture-in-picture renderers, and mixins into what other mods' mixins add
 
 **Plan.** PR #52's runs showed malilib (MiniHUD, Tweakeroo, Litematica) still refused for the picture-in-picture

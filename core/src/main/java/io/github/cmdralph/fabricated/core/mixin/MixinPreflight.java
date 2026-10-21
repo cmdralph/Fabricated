@@ -86,6 +86,14 @@ public final class MixinPreflight {
 	private static final Set<String> WRAP_WITH_CONDITION = Set.of("Lcom/llamalad7/mixinextras/injector/v2/WrapWithCondition;",
 			"Lcom/llamalad7/mixinextras/injector/WrapWithCondition;");
 	private static final String MODIFY_EXPRESSION_VALUE = "Lcom/llamalad7/mixinextras/injector/ModifyExpressionValue;";
+	/**
+	 * Fabric Loader's own calls, which its launcher adds to the game where it runs mods' entrypoints, to the call NeoForge's
+	 * build makes at that step, in the same method: Fabricated runs those entrypoints in NeoForge's mod loading. Mods inject
+	 * after them to run once every mod has initialized (owo-lib freezes its registries after the server's, HOOK-1).
+	 */
+	private static final Map<String, String> LOADER_HOOKS = Map.of(
+			"Lnet/fabricmc/loader/impl/game/minecraft/Hooks;startServer(Ljava/io/File;Ljava/lang/Object;)V",
+			"Lnet/neoforged/neoforge/server/loading/ServerModLoader;load(Z)V");
 	/** NeoForge's marker for the enums only its own enum extension system may extend. */
 	private static final String EXTENSIBLE_ENUM = "net/neoforged/fml/common/asm/enumextension/IExtensibleEnum";
 	private static final String MODIFY_VARIABLE = "Lorg/spongepowered/asm/mixin/injection/ModifyVariable;";
@@ -257,6 +265,14 @@ public final class MixinPreflight {
 						changed = true;
 						out.add(new PreflightFinding(Severity.INFO, configName, ctx.mixinDotted(), "@Inject " + method.name
 								+ " captures local variables; if NeoForge's code has other locals there, it is skipped instead of crashing", ""));
+					}
+					// A group's alternative for Fabric Loader's hook too: the other alternatives are for other loaders' hooks.
+					if (targets.size() == 1) {
+						for (String moved : loaderHookRepairs(ann, targets.getFirst(), ctx)) {
+							changed = true;
+							out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@" + simpleName(ann.desc) + " " + method.name
+									+ " expects a call to " + moved, ""));
+						}
 					}
 					// A grouped injector is one of the mod's alternatives for code that differs: pointing it elsewhere could make
 					// more of the group apply than the group allows.
@@ -513,6 +529,45 @@ public final class MixinPreflight {
 			moved.add(chosen.name + chosen.desc + how + overload.name + overload.desc + "; the injector is pointed there");
 		}
 		return moved;
+	}
+
+	/**
+	 * Points an {@code @Inject}'s {@code INVOKE} points at one of Fabric Loader's hooks ({@link #LOADER_HOOKS}) at the call
+	 * this game build makes at that step, when the methods it targets make that call once and not the hook's. Shifted as
+	 * the mod shifts it: after the hook is after every mod's entrypoints, on both. Returns a description of each move.
+	 */
+	private static List<String> loaderHookRepairs(AnnotationNode injector, ClassNode target, Context ctx) {
+		if (!injector.desc.equals(INJECT) || Annotations.value(injector, "slice") != null) return List.of();
+		List<MethodNode> methods = selectedMethods(injector, target, ctx);
+		List<String> moved = new ArrayList<>();
+		for (AnnotationNode at : Annotations.list(Annotations.value(injector, "at"))) {
+			String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
+			if (!point.equals("INVOKE") || !(Annotations.value(at, "target") instanceof String raw)
+					|| Annotations.value(at, "ordinal") instanceof Integer ordinal && ordinal > 0) continue;
+			String resolved = ctx.resolve(raw);
+			String step = LOADER_HOOKS.get(resolved);
+			if (step == null) continue;
+			MemberRef hook = MemberRef.parse(resolved);
+			MemberRef call = MemberRef.parse(step);
+			if (calls(methods, hook) != 0 || calls(methods, call) != 1) continue;
+			for (int i = 0; i + 1 < at.values.size(); i += 2) {
+				if ("target".equals(at.values.get(i))) at.values.set(i + 1, step);
+			}
+			moved.add(hook.owner().replace('/', '.') + "." + hook.name() + ", which Fabric Loader adds where it runs mods' entrypoints;"
+					+ " the injection point is pointed at " + call.owner().replace('/', '.') + "." + call.name() + ", where they run here");
+		}
+		return moved;
+	}
+
+	/** How many calls to {@code ref} (owner, name and descriptor) the methods make. */
+	private static int calls(List<MethodNode> methods, MemberRef ref) {
+		int n = 0;
+		for (MethodNode method : methods) {
+			for (AbstractInsnNode insn : method.instructions) {
+				if (insn instanceof MethodInsnNode call && call.owner.equals(ref.owner()) && call.name.equals(ref.name()) && call.desc.equals(ref.desc())) n++;
+			}
+		}
+		return n;
 	}
 
 	/**

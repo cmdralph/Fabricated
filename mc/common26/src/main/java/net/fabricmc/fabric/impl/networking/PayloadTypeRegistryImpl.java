@@ -5,6 +5,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.Consumer;
 import java.util.function.IntSupplier;
 
 import org.jspecify.annotations.Nullable;
@@ -18,10 +19,11 @@ import net.minecraft.resources.Identifier;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 
 /**
- * Fabricated implementation of Fabric's payload type registry. Fabric mods register their payload types here
- * during initialisation; Fabricated hands every registered type to NeoForge's payload registrar
- * ({@code RegisterPayloadHandlersEvent}), which runs after all mod initialisers. NeoForge splits large payloads
- * itself, so the {@code registerLarge} size limits need no extra handling.
+ * Fabricated implementation of Fabric's payload type registry. Fabric mods register their payload types here,
+ * mostly during initialisation; Fabricated hands every type registered by then to NeoForge's payload registrar
+ * ({@code RegisterPayloadHandlersEvent}), and each one registered later, which upstream accepts too, to whoever
+ * {@link #lock} names (NET-3). NeoForge splits large payloads itself, so the {@code registerLarge} size limits need no
+ * extra handling.
  *
  * @param <B> buffer type of the phase
  */
@@ -33,7 +35,8 @@ public final class PayloadTypeRegistryImpl<B extends FriendlyByteBuf> implements
 
 	private final String description;
 	private final Map<Identifier, CustomPacketPayload.TypeAndCodec<? super B, ? extends CustomPacketPayload>> types = new LinkedHashMap<>();
-	private volatile boolean locked;
+	/** Told the id of each type registered once locked. */
+	private @Nullable Consumer<Identifier> late;
 	/** Everything registered, once locked: lookups (on every payload sent) then take no lock. */
 	private volatile @Nullable Map<Identifier, CustomPacketPayload.TypeAndCodec<? super B, ? extends CustomPacketPayload>> frozen;
 
@@ -45,20 +48,21 @@ public final class PayloadTypeRegistryImpl<B extends FriendlyByteBuf> implements
 	public <T extends CustomPacketPayload> CustomPacketPayload.TypeAndCodec<? super B, T> register(CustomPacketPayload.Type<T> type, StreamCodec<? super B, T> codec) {
 		Objects.requireNonNull(type, "Type cannot be null");
 		Objects.requireNonNull(codec, "Codec cannot be null");
+		CustomPacketPayload.TypeAndCodec<B, T> typeAndCodec;
+		Consumer<Identifier> late;
 		synchronized (this.types) {
-			if (this.locked) {
-				throw new IllegalStateException("Cannot register " + this.description + " payload " + type.id()
-						+ " after NeoForge locked its network registry; register payload types during mod initialisation");
-			}
 			if (this.types.containsKey(type.id())) {
 				throw new IllegalArgumentException("Packet type " + type.id() + " is already registered (" + this.description + ")");
 			}
 			@SuppressWarnings("unchecked") // StreamCodec<? super B, T> reads and writes any B
 			StreamCodec<B, T> exact = (StreamCodec<B, T>) codec;
-			CustomPacketPayload.TypeAndCodec<B, T> typeAndCodec = new CustomPacketPayload.TypeAndCodec<>(type, exact);
+			typeAndCodec = new CustomPacketPayload.TypeAndCodec<>(type, exact);
 			this.types.put(type.id(), typeAndCodec);
-			return typeAndCodec;
+			if (this.frozen != null) this.frozen = Map.copyOf(this.types);
+			late = this.late;
 		}
+		if (late != null) late.accept(type.id());
+		return typeAndCodec;
 	}
 
 	@Override
@@ -79,10 +83,13 @@ public final class PayloadTypeRegistryImpl<B extends FriendlyByteBuf> implements
 		}
 	}
 
-	/** Locks the registry and returns everything registered, in registration order. */
-	public Collection<CustomPacketPayload.TypeAndCodec<? super B, ? extends CustomPacketPayload>> lock() {
+	/**
+	 * Returns everything registered, in registration order; {@code late} is told the id of each type registered from
+	 * then on.
+	 */
+	public Collection<CustomPacketPayload.TypeAndCodec<? super B, ? extends CustomPacketPayload>> lock(Consumer<Identifier> late) {
 		synchronized (this.types) {
-			this.locked = true;
+			this.late = late;
 			this.frozen = Map.copyOf(this.types);
 			return List.copyOf(this.types.values());
 		}

@@ -7,6 +7,8 @@ import java.net.JarURLConnection;
 import java.net.URI;
 import java.net.URL;
 import java.util.List;
+import java.util.Locale;
+import java.util.ResourceBundle;
 import java.util.jar.JarFile;
 
 import org.slf4j.Logger;
@@ -30,10 +32,14 @@ import net.minecraft.core.MappedRegistry;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
+import net.minecraft.world.item.CreativeModeTab;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.neoforged.neoforge.common.CreativeModeTabRegistry;
 
 /**
  * Fabric test mod used by Fabricated's CI smoke test. Every check logs a {@code FABRICATED-TEST} marker
@@ -121,6 +127,11 @@ public final class TestMod implements ModInitializer, DedicatedServerModInitiali
 	@Override
 	public void onInitialize() {
 		LOGGER.info("FABRICATED-TEST main entrypoint OK");
+		// As on Fabric, a client's main initializers run once the game instance exists (CORPUS-16).
+		if (FabricLoader.getInstance().getEnvironmentType() == EnvType.CLIENT) {
+			if (FabricLoader.getInstance().getGameInstance() != null) LOGGER.info("FABRICATED-TEST main entrypoint game instance OK");
+			else LOGGER.error("FABRICATED-TEST main entrypoint game instance FAILED: there is none yet");
+		}
 		// Environment stripping: the client-only interface is removed on a dedicated server, kept on a client.
 		try {
 			Class<?> sided = Class.forName("io.github.cmdralph.fabricated.testmod.SidedThing");
@@ -150,6 +161,7 @@ public final class TestMod implements ModInitializer, DedicatedServerModInitiali
 
 		classpathScan();
 		classResources();
+		resourceBundle();
 
 		List<Runnable> custom = loader.getEntrypoints("fabricated-test", Runnable.class);
 		custom.forEach(Runnable::run);
@@ -159,6 +171,7 @@ public final class TestMod implements ModInitializer, DedicatedServerModInitiali
 			LOGGER.info("FABRICATED-TEST registry OK");
 		}
 		lateRegistry();
+		creativeTab(item);
 
 		Event<Runnable> event = EventFactory.createArrayBacked(Runnable.class, listeners -> () -> {
 			for (Runnable listener : listeners) listener.run();
@@ -215,6 +228,38 @@ public final class TestMod implements ModInitializer, DedicatedServerModInitiali
 		} catch (ClassNotFoundException e) {
 			LOGGER.error("FABRICATED-TEST access widener target missing", e);
 		}
+	}
+
+	/** Translations loaded with a control, as LuckPerms loads its own: the JDK refuses that from a named module (LOADER-3). */
+	private static void resourceBundle() {
+		try {
+			ResourceBundle bundle = ResourceBundle.getBundle("fabricated_testmod_messages", Locale.ENGLISH,
+					ResourceBundle.Control.getControl(ResourceBundle.Control.FORMAT_PROPERTIES));
+			if ("hello".equals(bundle.getString("greeting"))) LOGGER.info("FABRICATED-TEST resource bundle with a control OK");
+			else LOGGER.error("FABRICATED-TEST resource bundle with a control FAILED: greeting is {}", bundle.getString("greeting"));
+		} catch (RuntimeException e) {
+			LOGGER.error("FABRICATED-TEST resource bundle with a control FAILED", e);
+		}
+	}
+
+	/**
+	 * A creative tab registered by a main initializer, which runs after NeoForge's registration events on a client
+	 * (CORPUS-16): it must still be ordered after the vanilla tabs. Its name would sort it first otherwise.
+	 */
+	private static void creativeTab(Item item) {
+		CreativeModeTab tab = CreativeModeTab.builder(CreativeModeTab.Row.TOP, 0)
+				.title(Component.literal("Fabricated test"))
+				.icon(() -> new ItemStack(item))
+				.displayItems((parameters, output) -> output.accept(item))
+				.build();
+		Registry.register(BuiltInRegistries.CREATIVE_MODE_TAB, Identifier.fromNamespaceAndPath("fabricated_testmod", "aaa_test_tab"), tab);
+		ServerLifecycleEvents.SERVER_STARTED.register(server -> {
+			List<CreativeModeTab> sorted = CreativeModeTabRegistry.getSortedCreativeModeTabs();
+			int index = sorted.indexOf(tab);
+			int spawnEggs = sorted.indexOf(BuiltInRegistries.CREATIVE_MODE_TAB.getValue(Identifier.withDefaultNamespace("spawn_eggs")));
+			if (spawnEggs >= 0 && index > spawnEggs) LOGGER.info("FABRICATED-TEST creative tab order OK");
+			else LOGGER.error("FABRICATED-TEST creative tab order FAILED: the test tab is at {}, the spawn eggs at {}", index, spawnEggs);
+		});
 	}
 
 	@Override
