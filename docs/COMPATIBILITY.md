@@ -19,10 +19,10 @@ Last updated from CI run [38491176425](https://github.com/cmdralph/Fabricated/ac
 
 | Minecraft | NeoForge | Fabric API tested | Test mods | Server boots with Fabric API |
 |---|---|---|---|---|
-| 1.21.11 | 21.11.45 | 0.141.6+1.21.11 | ✅ all 36 server and 22 client checks | ✅ boots, all test-mod checks still pass |
-| 26.1.2 | 26.1.2.116 | 0.155.3+26.1.2 | ✅ all 36 server and 22 client checks | ✅ boots, all test-mod checks still pass |
-| 26.2 | 26.2.0.90 | 0.161.0+26.2 | ✅ all 36 server and 22 client checks | ✅ boots, all test-mod checks still pass |
-| 26.3 (beta) | 26.3.0.69-beta | 0.164.0+26.3 | ✅ all 36 server and 22 client checks | ✅ boots, all test-mod checks still pass |
+| 1.21.11 | 21.11.45 | 0.141.6+1.21.11 | ✅ every server and client check | ✅ boots, all test-mod checks still pass |
+| 26.1.2 | 26.1.2.116 | 0.155.3+26.1.2 | ✅ every server and client check | ✅ boots, all test-mod checks still pass |
+| 26.2 | 26.2.0.90 | 0.161.0+26.2 | ✅ every server and client check | ✅ boots, all test-mod checks still pass |
+| 26.3 (beta) | 26.3.0.69-beta | 0.164.0+26.3 | ✅ every server and client check | ✅ boots, all test-mod checks still pass |
 
 "Boots with Fabric API" means the server starts with the full official Fabric API jar installed. Modules
 that can't work on NeoForge are disabled before any code runs (see below); one that can do without a mixin NeoForge's
@@ -34,8 +34,8 @@ access widener applies; a `server` entrypoint runs; a mixin applies; a mod with 
 reported, naming the dependency; a mod with an impossible mixin is caught by pre-flight and loads without it; a mod whose
 entrypoint throws is isolated while the server keeps running; Fabricated's public API answers and its
 after-initializers callback runs; a client-only interface listed in `@EnvironmentInterface` is stripped on the
-server; and no test mod check reports a failure. The other 21 cover the native Fabric API modules (described in
-their sections below). The client checks: the client starts and joins a singleplayer world, the `main` and
+server; and no test mod check reports a failure. The others cover the native Fabric API modules (described in
+their sections below) and fixes the roadmap lists, each named in `ci/smoke-server.sh` by its finding. The client checks: the client starts and joins a singleplayer world, the `main` and
 `client` entrypoints run, the client-side native modules work, including a networking round trip and a
 configuration task with the integrated server, an extended menu opens with its data, a Mod Menu config screen
 factory is registered with NeoForge, and no test mod check reports a failure.
