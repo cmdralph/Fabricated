@@ -793,9 +793,16 @@ MixinExtras has NeoForge's jar, and a NeoForge mod nested in another jar has tha
   mod's own jar first and then, as Fabric's unnamed modules do, on the whole class path: NeoForge's module for the mod
   has only its own files, so a mod reading Minecraft's `/version.json` that way (Lattice, while Mixin prepares its
   config) stopped the game (RES-1). The mod's calls go through Fabricated's `ClassResources`.
-- `main` entrypoints run while NeoForge registers content, before `Minecraft` exists, where Fabric Loader runs them
-  from `Minecraft`'s constructor: a mod reading `Minecraft.getInstance()` in its `main` entrypoint fails there and is
-  marked as failed (Moonlight's 26.1.2 build, CORPUS-16). Client entrypoints run where Fabric runs them.
+- On a client, `main` and `client` entrypoints run where Fabric Loader runs them: in `Minecraft`'s constructor, once
+  the instance exists, with the registries open (CORPUS-16). NeoForge registers content before `Minecraft` exists, so
+  what it fills once its registration events end takes what Fabric mods registered there too: default attributes,
+  spawn placements, fluid types, the creative tabs' order, Forge Config API Port configs (loaded as they are
+  registered, as the port does on Fabric) and tooltip providers (placed before or after all component tooltips). A
+  NeoForge mod that reads the registries during NeoForge's own registration events doesn't see Fabric mods' content
+  on a client. On a dedicated server `main` and `server` entrypoints run while NeoForge registers content, as before.
+- A Fabric payload type registered after NeoForge's payload registration (MiniHUD's, from the end of `Minecraft`'s
+  constructor; Ledger's, as the server starts) is registered with NeoForge then, as upstream accepts it at any time
+  (NET-3). An id a NeoForge mod already registered stays the NeoForge mod's.
 - `@Environment` and `@EnvironmentInterface` are applied as Fabric Loader applies them: members and interfaces for
   the other side are stripped when the class loads, so a common class implementing a client-only interface loads on
   a dedicated server.

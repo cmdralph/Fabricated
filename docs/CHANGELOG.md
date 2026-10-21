@@ -3,6 +3,27 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-10-21 (pass after PR #53): main entrypoints where Fabric runs them, and late payload types
+
+**Plan.** PR #53's runs showed the 26.x malilib clients and the 1.21.11 advanced server stopping on payload types
+registered after NeoForge's network registration (MiniHUD, Ledger), Axiom failing again for reading the client in its
+main entrypoint, and Flashback not loaded for one large native library.
+
+- NET-3: a Fabric payload type registered after NeoForge's payload registration event is registered with NeoForge
+  then, with its registry reopened for it; an id NeoForge has for the other direction is registered again for both.
+  The test mod registers one as the server starts, and the client sends it after joining.
+- CORPUS-16: on a client, main entrypoints run with the client ones, in `Minecraft`'s constructor, where Fabric Loader
+  runs them, with the registries opened again. What NeoForge fills once its registration events end takes what they
+  register: default attributes (Fabric's attribute modification event runs after the client initializers, as upstream
+  runs it), spawn placements, fluid types and the creative tabs' order; Forge Config API Port configs registered then
+  are loaded right away; late tooltip providers go before or after all component tooltips. A dedicated server keeps
+  the old order. Client checks: the game instance exists in main, and a tab registered there comes after the vanilla
+  tabs.
+- LIMIT-1: one archive entry may be 128 MiB (was 64 MiB): Flashback ships a 71 MB native library. The limits on the
+  whole archive and the compression ratio check are unchanged.
+- Roadmap: PR #53's results (PIP-1, BIOME-2 and LOADER-2 verified as far as the next failure), and what is still open:
+  LuckPerms' translations in a named module (LOADER-3), FrozenLib's entrypoint injection (LOADER-4).
+
 ## 2026-10-21 (pass after PR #52): picture-in-picture renderers, and mixins into what other mods' mixins add
 
 **Plan.** PR #52's runs showed malilib (MiniHUD, Tweakeroo, Litematica) still refused for the picture-in-picture
