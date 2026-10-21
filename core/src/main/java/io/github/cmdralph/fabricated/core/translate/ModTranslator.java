@@ -371,6 +371,8 @@ public final class ModTranslator {
 		// The mod's interfaces its mixins into library classes gave them, now served by generated classes (LIB-1).
 		Map<String, LibraryBridges.Duck> ducks = new HashMap<>();
 		Map<String, Integer> implementors = new HashMap<>();
+		// The accessor mixins into library classes that generated classes serve, kept in their configs (LIB-1b).
+		Set<String> servedAccessors = new HashSet<>();
 
 		for (MixinEntry entry : md.compatHints().mixinsOr(md.mixins())) {
 			if (!entry.environment().matches(side)) continue;
@@ -422,10 +424,12 @@ public final class ModTranslator {
 			Set<String> skip = withDependents(entry.config(), config, wholeSkips, translated, findings, ducks.keySet());
 			skip = withEnumExtensions(entry.config(), config, skip, ModIds.toNeoForgeId(candidate.id()), translated, entries, overlay, findings, enumEntries,
 					enumTargets);
-			skip = withLibraryBridges(entry.config(), config, skip, translated, entries, overlay, findings, ducks, implementors);
+			skip = withLibraryBridges(entry.config(), config, skip, translated, entries, overlay, findings, ducks, implementors, servedAccessors);
 			overlay.putAll(preflight.repairs(entry.config(), config, refmap, skip, findings));
 			if (!override.ignorePreflight()) {
 				List<PreflightFinding> checked = new ArrayList<>(preflight.check(entry.config(), config, refmap, skip));
+				// Their targets are library classes, which Mixin never applies them to: the generated classes stand in.
+				checked.removeIf(f -> servedAccessors.contains(f.mixin()));
 				checked.addAll(unsupportedModuleUses(entry.config(), config, skip, translated));
 				findings.addAll(checked);
 				// As Mixin does with an injector that may fail: only the failing handler goes, the rest of the mixin
@@ -585,15 +589,14 @@ public final class ModTranslator {
 
 	/** A free name for a class generated next to the config's mixins (in the package above theirs). */
 	private static String generatedClass(MixinConfigFile config, FileView files, String simpleName) throws ArchiveException {
+		return freeClassName(aroundMixinPackage(config, simpleName), files, Map.of());
+	}
+
+	/** The class {@code simpleName} in the package around the config's mixin package; null when it has none around it. */
+	private static String aroundMixinPackage(MixinConfigFile config, String simpleName) {
 		String pkg = config.mixinPackage();
 		int dot = pkg == null ? -1 : pkg.lastIndexOf('.');
-		if (dot <= 0) return null;
-		String base = pkg.substring(0, dot).replace('.', '/') + "/" + simpleName;
-		for (int n = 0; n < 100; n++) {
-			String name = n == 0 ? base : base + n;
-			if (files.read(name + ".class") == null) return name;
-		}
-		return null;
+		return dot <= 0 ? null : pkg.substring(0, dot).replace('.', '/') + "/" + simpleName;
 	}
 
 	/** The mixin's name as its config lists it. */
@@ -649,13 +652,15 @@ public final class ModTranslator {
 	/**
 	 * {@code skip} plus the mixins into library classes NeoForge loads without mixin support that only give the class
 	 * interfaces of the mod (LIB-1): a generated class serves each, put in {@code overlay}, and its interfaces go to
-	 * {@code ducks}. Any other mixin into a library class is left to pre-flight, which fails it.
+	 * {@code ducks}. An accessor mixin into one is served the same way (LIB-1b) but stays in the config, as Mixin loads it
+	 * as the mod's interface, and goes to {@code servedAccessors}. Any other mixin into a library class is left to
+	 * pre-flight, which fails it.
 	 *
 	 * @param implementors how many of the mod's classes implement or extend each interface, filled the first time it is needed
 	 */
 	private Set<String> withLibraryBridges(String configName, MixinConfigFile config, Set<String> skip, FileView files, Collection<String> modEntries,
-			Map<String, byte[]> overlay, List<PreflightFinding> findings, Map<String, LibraryBridges.Duck> ducks, Map<String, Integer> implementors)
-			throws ArchiveException {
+			Map<String, byte[]> overlay, List<PreflightFinding> findings, Map<String, LibraryBridges.Duck> ducks, Map<String, Integer> implementors,
+			Set<String> servedAccessors) throws ArchiveException {
 		Set<String> all = skip;
 		ClassIndex libraries = null;
 		for (String mixin : config.mixinsFor(env.clientSide())) {
@@ -669,14 +674,21 @@ public final class ModTranslator {
 			if (implementors.isEmpty()) countImplementors(modEntries, files, implementors);
 			if (libraries == null) libraries = new ClassIndex(env.untransformable());
 			ClassIndex library = libraries;
-			String name = freeClassName(header.interfaces.isEmpty() ? null : header.interfaces.getFirst() + "$FabricatedBridge", files, overlay);
+			boolean accessor = (header.access & Opcodes.ACC_INTERFACE) != 0;
+			// An accessor's bridge goes outside the mixin package, whose classes Mixin loads only when they are mixins.
+			String name = freeClassName(accessor ? aroundMixinPackage(config, header.name.substring(header.name.lastIndexOf('/') + 1) + "$FabricatedBridge")
+					: header.interfaces.isEmpty() ? null : header.interfaces.getFirst() + "$FabricatedBridge", files, overlay);
 			LibraryBridges.Bridge bridge = name == null ? null : LibraryBridges.of(data, targets.getFirst(), library::readNode,
 					itf -> readNode(files, itf + ".class"), itf -> implementors.getOrDefault(itf, 0), name);
 			if (bridge == null) continue;
 			overlay.put(name + ".class", bridge.bytes());
 			bridge.ducks().forEach(d -> ducks.put(d.itf(), d));
-			if (all == skip) all = new TreeSet<>(skip);
-			all.add(mixin);
+			if (accessor) {
+				servedAccessors.add(header.name.replace('/', '.'));
+			} else {
+				if (all == skip) all = new TreeSet<>(skip);
+				all.add(mixin);
+			}
 			findings.add(new PreflightFinding(Severity.INFO, configName, header.name.replace('/', '.'), "Its target, " + targets.getFirst().replace('/', '.')
 					+ ", is a library class NeoForge loads without mixin support: the interfaces the mixin gives it ("
 					+ bridge.ducks().stream().map(d -> d.itf().replace('/', '.')).collect(Collectors.joining(", "))

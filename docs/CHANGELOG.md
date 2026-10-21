@@ -30,6 +30,10 @@ chunk on a feature order cycle.
   methods) is left out alone even when the mixin adds an interface the mod's code uses: owo-lib's `GuiRendererMixin`
   hooks a field read NeoForge's `GuiRenderer.close` doesn't make, which disabled owo on every advanced client. A unit test
   covers a handler that keeps state of the mixin's, which still fails.
+- LIB-1b: an accessor mixin into a library class NeoForge loads without mixin support is served by a generated class,
+  as LIB-1's interfaces are: owo-lib's accessor of JOML's `Matrix3x2fStack` fields, which disabled owo on every
+  advanced client. The accessor stays in its config, which Mixin needs to load it as the mod's interface; unit and
+  pipeline tests run and translate one.
 - FLUID-2: on 26.2 and 26.3, an entity's fluid lookups by tag answer for a mod's fluid tag, as vanilla's do, where
   NeoForge's build threw for any tag but water's and lava's: Biomes O' Plenty's screen overlay asks whether the eyes
   are in its blood, which crashed the 26.2 advanced client once it joined its world. The tag stands for its fluids'

@@ -1097,6 +1097,37 @@ class PipelineTest {
 	}
 
 	@Test
+	void aModWithAnAccessorMixinIntoALibraryClassLoadsWithABridge(@TempDir Path game) throws Exception {
+		// LIB-1b: owo-lib's accessor of JOML's Matrix3x2fStack; pre-flight disabled owo, as Mixin never applies it there.
+		Map<String, byte[]> classes = TestSources.compile(game.resolve("build"), TestSources.MIXIN_ANNOTATIONS, Map.of(
+				"lib/Stack.java", "package lib; public class Stack { private int curr; }",
+				"mod/mixin/StackAccessor.java", """
+						package mod.mixin;
+						@org.spongepowered.asm.mixin.Mixin(lib.Stack.class)
+						public interface StackAccessor { @org.spongepowered.asm.mixin.gen.Accessor("curr") int mod$getCurr(); }""",
+				"mod/Graphics.java", "package mod; public class Graphics { public static int depth(lib.Stack s) { return ((mod.mixin.StackAccessor) s).mod$getCurr(); } }"));
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		Path owo = TestJars.create().fabricModJson(TestJars.modJson("owo", "1.0", "\"mixins\":[\"owo.mixins.json\"]"))
+				.text("owo.mixins.json", "{\"required\":true,\"package\":\"mod.mixin\",\"mixins\":[\"StackAccessor\"]}")
+				.bytes("mod/mixin/StackAccessor.class", classes.get("mod/mixin/StackAccessor"))
+				.bytes("mod/Graphics.class", classes.get("mod/Graphics"))
+				.write(mods.resolve("owo.jar"));
+		ClassBytesSource libraries = name -> name.startsWith("lib/") ? classes.get(name) : null;
+		Pipeline.Result result = Pipeline.run(input(game, List.of(owo), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null, List.of(),
+				InstalledClasses.NONE, libraries));
+
+		assertEquals(List.of("owo"), result.mods().stream().map(m -> m.translated().candidate().id()).toList(), result.report().render());
+		assertTrue(result.report().render().contains("are served by a generated class"), result.report().render());
+		try (SafeArchive overlay = SafeArchive.open(result.mods().getFirst().translated().overlay(), ArchiveLimits.DEFAULTS)) {
+			byte[] config = overlay.read("owo.mixins.json");
+			assertTrue(config == null || new String(config, StandardCharsets.UTF_8).contains("StackAccessor"), "Mixin loads the accessor as the mod's interface");
+			assertNotNull(overlay.read("mod/StackAccessor$FabricatedBridge.class"), "outside the mixin package");
+			String graphics = new String(overlay.read("mod/Graphics.class"), StandardCharsets.ISO_8859_1);
+			assertTrue(graphics.contains("mod/StackAccessor$FabricatedBridge"), "the mod's call goes to the bridge");
+		}
+	}
+
+	@Test
 	void aBuildForIntermediaryNamesIsDisabledOnAnUnobfuscatedVersion(@TempDir Path game) throws Exception {
 		// OBF-1: Modrinth lists Do a Barrel Roll's 1.21.11 build for 26.2; its mixins name intermediary classes.
 		Path mods = Files.createDirectories(game.resolve("mods"));

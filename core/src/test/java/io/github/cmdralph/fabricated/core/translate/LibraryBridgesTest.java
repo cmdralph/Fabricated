@@ -155,6 +155,58 @@ class LibraryBridgesTest {
 				itf -> 2, "mod/Counter$FabricatedBridge"), "another class implementing the interface would get the bridge's calls");
 	}
 
+	@Test
+	void anAccessorMixinIntoALibraryClassBecomesABridgeTheModCalls(@TempDir Path dir) throws Exception {
+		// LIB-1b: owo-lib's accessor of JOML's Matrix3x2fStack, used from its subclass of the stack.
+		Map<String, String> mod = Map.of(
+				"mod/mixin/NodeAccessor.java", """
+						package mod.mixin;
+						import org.spongepowered.asm.mixin.gen.Accessor;
+						@org.spongepowered.asm.mixin.Mixin(lib.Node.class)
+						public interface NodeAccessor {
+							@Accessor("children") java.util.Map<String, lib.Node> mod$children();
+							@Accessor int getCount();
+							@Accessor("count") void mod$setCount(int count);
+						}""",
+				"mod/CountingNode.java", """
+						package mod;
+						import mod.mixin.NodeAccessor;
+						public class CountingNode extends lib.Node {
+							public int reset() {
+								var accessor = (NodeAccessor) this;
+								int before = accessor.getCount();
+								if (before > 0) accessor.mod$setCount(accessor.mod$children().size() - 1);
+								return before;
+							}
+						}""");
+		Map<String, byte[]> classes = TestSources.compile(dir, TestSources.MIXIN_ANNOTATIONS, LIBRARY, mod);
+		LibraryBridges.Bridge bridge = LibraryBridges.of(classes.get("mod/mixin/NodeAccessor"), "lib/Node", name -> node(classes, name),
+				name -> node(classes, name), itf -> 0, "mod/NodeAccessor$FabricatedBridge");
+		assertNotNull(bridge);
+		Map<String, LibraryBridges.Duck> ducks = Map.of("mod/mixin/NodeAccessor", bridge.ducks().getFirst());
+		Map<String, byte[]> loaded = new HashMap<>(classes);
+		loaded.put(bridge.name(), bridge.bytes());
+		loaded.put("mod/CountingNode", LibraryBridges.rewrite(classes.get("mod/CountingNode"), ducks));
+
+		ClassLoader loader = new BytesClassLoader(loaded);
+		Class<?> nodeClass = loader.loadClass("lib.Node");
+		Class<?> counting = loader.loadClass("mod.CountingNode");
+		Object node = counting.getConstructor().newInstance();
+		for (String name : List.of("a", "b", "c")) nodeClass.getMethod("add", String.class, nodeClass).invoke(node, name, nodeClass.getConstructor().newInstance());
+		assertEquals(3, counting.getMethod("reset").invoke(node), "the getter read the private field");
+		assertEquals(2, nodeClass.getMethod("count").invoke(node), "the setter wrote it, with the value read through the other accessor");
+
+		assertNull(LibraryBridges.of(classes.get("mod/mixin/NodeAccessor"), "lib/Node", name -> node(classes, name), name -> node(classes, name),
+				itf -> 1, "mod/NodeAccessor$FabricatedBridge"), "a class of the mod implementing the accessor would get the bridge's calls");
+		Map<String, byte[]> other = TestSources.compile(dir.resolve("other"), TestSources.MIXIN_ANNOTATIONS, LIBRARY, Map.of(
+				"mod/mixin/WrongAccessor.java", """
+						package mod.mixin;
+						@org.spongepowered.asm.mixin.Mixin(lib.Node.class)
+						public interface WrongAccessor { @org.spongepowered.asm.mixin.gen.Accessor("count") long mod$count(); }"""));
+		assertNull(LibraryBridges.of(other.get("mod/mixin/WrongAccessor"), "lib/Node", name -> node(other, name), name -> node(other, name),
+				itf -> 0, "mod/WrongAccessor$FabricatedBridge"), "the field has another type");
+	}
+
 	private static ClassNode node(Map<String, byte[]> classes, String name) {
 		byte[] data = classes.get(name);
 		if (data == null) return null;

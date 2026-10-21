@@ -34,6 +34,7 @@ import org.objectweb.asm.tree.TypeInsnNode;
 import org.objectweb.asm.tree.VarInsnNode;
 
 import io.github.cmdralph.fabricated.core.bytecode.Annotations;
+import io.github.cmdralph.fabricated.core.mixin.MixinPreflight;
 
 /**
  * Mixins into library classes NeoForge loads without mixin support (Brigadier, DataFixerUpper) that only give the
@@ -42,11 +43,16 @@ import io.github.cmdralph.fabricated.core.bytecode.Annotations;
  * methods of a generated class, which reads and writes the library class's fields through reflection, and the mod's
  * casts to the interfaces, checks against them and calls of their methods call that class. Those libraries are on the
  * class path at runtime, in the unnamed module, whose packages are open to reflection.
+ *
+ * <p>An accessor mixin into such a class (an interface of {@code @Accessor} methods, as owo-lib's into JOML's
+ * {@code Matrix3x2fStack}) is served the same way: the generated class reads and writes the fields its methods name
+ * (LIB-1b). Mixin loads an accessor mixin as an ordinary interface, so it stays in its config.
  */
 final class LibraryBridges {
 	private static final String OBJECT = "java/lang/Object";
 	private static final String FIELD = "java/lang/reflect/Field";
 	private static final String SHADOW = "Lorg/spongepowered/asm/mixin/Shadow;";
+	private static final String ACCESSOR = "Lorg/spongepowered/asm/mixin/gen/Accessor;";
 	/** The annotations of Mixin a bridged mixin's members may have: none changes what the mixin does. */
 	private static final Set<String> ALLOWED = Set.of(SHADOW, "Lorg/spongepowered/asm/mixin/Unique;", "Lorg/spongepowered/asm/mixin/Final;",
 			"Lorg/spongepowered/asm/mixin/Mutable;", Annotations.MIXIN);
@@ -67,7 +73,8 @@ final class LibraryBridges {
 	/**
 	 * The class named {@code name} standing in for {@code mixinBytes}, a mixin into the library class {@code target};
 	 * null when it can't: the mixin does more than implement its interfaces with the class's fields and its own methods,
-	 * or one of its interfaces has default methods or another implementation in the mod.
+	 * or one of its interfaces has default methods or another implementation in the mod. An accessor mixin is the
+	 * interface it serves ({@link #accessors}).
 	 *
 	 * @param library      the library's classes, by internal name (to find the fields the mixin shadows)
 	 * @param modClass     the mod's classes, by internal name
@@ -77,7 +84,8 @@ final class LibraryBridges {
 			ToIntFunction<String> implementors, String name) {
 		ClassNode mixin = new ClassNode();
 		new ClassReader(mixinBytes).accept(mixin, ClassReader.EXPAND_FRAMES);
-		if ((mixin.access & Opcodes.ACC_INTERFACE) != 0 || !OBJECT.equals(mixin.superName) || mixin.interfaces.isEmpty()
+		if ((mixin.access & Opcodes.ACC_INTERFACE) != 0) return accessors(mixin, target, library, implementors, name);
+		if (!OBJECT.equals(mixin.superName) || mixin.interfaces.isEmpty()
 				|| !allowed(mixin.visibleAnnotations) || !allowed(mixin.invisibleAnnotations)) return null;
 
 		// Its fields only stand for the library class's: a field of its own would be state no class has.
@@ -118,15 +126,67 @@ final class LibraryBridges {
 			ducks.add(new Duck(itf, name, Set.copyOf(methods)));
 		}
 
-		ClassNode bridge = new ClassNode();
-		bridge.visit(Math.max(mixin.version, Opcodes.V1_8), Opcodes.ACC_PUBLIC | Opcodes.ACC_FINAL | Opcodes.ACC_SUPER | Opcodes.ACC_SYNTHETIC, name,
-				null, OBJECT, null);
-		bridge.visitSource(mixin.sourceFile, null);
+		ClassNode bridge = bridgeClass(mixin, name);
 		Accessors accessors = new Accessors(name, bridge);
 		for (MethodNode m : own.values()) {
 			if (!toStatic(m, mixin.name, target, own, declaring, accessors)) return null;
 			bridge.methods.add(m);
 		}
+		return finish(bridge, target, accessors, ducks);
+	}
+
+	/**
+	 * The class standing in for an accessor mixin: for each of its methods, one taking the library object first that
+	 * reads or writes the field the method names, through the bridge's accessors. Null when the interface has anything
+	 * else (an invoker, a static or default method, constants, superinterfaces), names a field the class doesn't have
+	 * with that type, or a class of the mod implements it.
+	 */
+	private static Bridge accessors(ClassNode mixin, String target, Function<String, ClassNode> library, ToIntFunction<String> implementors,
+			String name) {
+		if (!mixin.interfaces.isEmpty() || !mixin.fields.isEmpty() || implementors.applyAsInt(mixin.name) != 0 || !allowed(mixin.visibleAnnotations)
+				|| !allowed(mixin.invisibleAnnotations)) return null;
+		ClassNode bridge = bridgeClass(mixin, name);
+		Accessors accessors = new Accessors(name, bridge);
+		Set<String> methods = new LinkedHashSet<>();
+		for (MethodNode m : mixin.methods) {
+			AnnotationNode accessor = Annotations.find(m, ACCESSOR);
+			if (accessor == null || (m.access & (Opcodes.ACC_ABSTRACT | Opcodes.ACC_STATIC)) != Opcodes.ACC_ABSTRACT) return null;
+			for (AnnotationNode a : Annotations.all(m)) {
+				if (a != accessor && !allowed(List.of(a))) return null;
+			}
+			Type[] args = Type.getArgumentTypes(m.desc);
+			Type value = Type.getReturnType(m.desc);
+			boolean read = args.length == 0 && value.getSort() != Type.VOID;
+			if (!read && (args.length != 1 || value.getSort() != Type.VOID)) return null;
+			if (!read) value = args[0];
+			String field = Annotations.value(accessor, "value") instanceof String s && !s.isEmpty() ? s : MixinPreflight.inferAccessorName(m.name);
+			String owner = field == null ? null : declaringClass(target, field, value.getDescriptor(), false, library);
+			if (owner == null) return null;
+
+			MethodNode call = new MethodNode(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, m.name, withSelf(m.desc), null, null);
+			call.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+			if (!read) call.instructions.add(new VarInsnNode(value.getOpcode(Opcodes.ILOAD), 1));
+			call.instructions.add(accessors.call(owner, field, value.getDescriptor(), false, read));
+			call.instructions.add(new InsnNode(read ? value.getOpcode(Opcodes.IRETURN) : Opcodes.RETURN));
+			call.maxStack = read ? Math.max(1, value.getSize()) : 1 + value.getSize();
+			call.maxLocals = read ? 1 : 1 + value.getSize();
+			bridge.methods.add(call);
+			methods.add(m.name + m.desc);
+		}
+		if (methods.isEmpty()) return null;
+		return finish(bridge, target, accessors, List.of(new Duck(mixin.name, name, Set.copyOf(methods))));
+	}
+
+	private static ClassNode bridgeClass(ClassNode mixin, String name) {
+		ClassNode bridge = new ClassNode();
+		bridge.visit(Math.max(mixin.version, Opcodes.V1_8), Opcodes.ACC_PUBLIC | Opcodes.ACC_FINAL | Opcodes.ACC_SUPER | Opcodes.ACC_SYNTHETIC, name,
+				null, OBJECT, null);
+		bridge.visitSource(mixin.sourceFile, null);
+		return bridge;
+	}
+
+	/** The bridge with its cast, its check and its accessors' fields; null when two of its methods clash. */
+	private static Bridge finish(ClassNode bridge, String target, Accessors accessors, List<Duck> ducks) {
 		bridge.methods.add(cast(target));
 		bridge.methods.add(is(target));
 		accessors.finish();
@@ -136,7 +196,7 @@ final class LibraryBridges {
 		}
 		ClassWriter writer = new ClassWriter(0);
 		bridge.accept(writer);
-		return new Bridge(name, writer.toByteArray(), List.copyOf(ducks));
+		return new Bridge(bridge.name, writer.toByteArray(), List.copyOf(ducks));
 	}
 
 	/**

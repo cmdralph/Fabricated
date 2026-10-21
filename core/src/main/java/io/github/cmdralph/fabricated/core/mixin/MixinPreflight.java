@@ -1782,7 +1782,8 @@ public final class MixinPreflight {
 				"The method was renamed or removed by " + ctx.changer(false) + ".");
 	}
 
-	static String inferAccessorName(String method) {
+	/** The field an {@code @Accessor} without a value names, as Mixin infers it from the method's name; null when none. */
+	public static String inferAccessorName(String method) {
 		return nameAfterPrefix(method, "get", "is", "set");
 	}
 
