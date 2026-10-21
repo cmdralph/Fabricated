@@ -28,6 +28,7 @@ import io.github.cmdralph.fabricated.core.mixin.InjectionPoints.Range;
 
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassWriter;
+import org.objectweb.asm.Handle;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.AbstractInsnNode;
@@ -35,6 +36,7 @@ import org.objectweb.asm.tree.AnnotationNode;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.FieldInsnNode;
 import org.objectweb.asm.tree.FieldNode;
+import org.objectweb.asm.tree.InvokeDynamicInsnNode;
 import org.objectweb.asm.tree.JumpInsnNode;
 import org.objectweb.asm.tree.LocalVariableNode;
 import org.objectweb.asm.tree.LookupSwitchInsnNode;
@@ -273,6 +275,11 @@ public final class MixinPreflight {
 							changed = true;
 							out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@" + simpleName(ann.desc) + " " + method.name
 									+ " expects a call to " + moved, ""));
+						}
+						for (String lambda : lambdaCallRepairs(ann, method, targets.getFirst(), ctx)) {
+							changed = true;
+							out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@" + simpleName(ann.desc) + " " + method.name
+									+ " expects a call " + lambda, ""));
 						}
 						for (String moved : insertedArgumentRepairs(node, method, ann, targets.getFirst(), ctx, bridges)) {
 							changed = true;
@@ -551,6 +558,73 @@ public final class MixinPreflight {
 					+ subtype.replace('/', '.') + " (the same method); the injection point is pointed there");
 		}
 		return moved;
+	}
+
+	/** The injectors at a call or field access whose handler takes only what that instruction takes and gives. */
+	private static final Set<String> CALL_SITE_INJECTORS = Set.of(WRAP_OPERATION, MODIFY_EXPRESSION_VALUE, REDIRECT,
+			"Lorg/spongepowered/asm/mixin/injection/ModifyArg;", "Lorg/spongepowered/asm/mixin/injection/ModifyArgs;",
+			"Lcom/llamalad7/mixinextras/injector/v2/WrapWithCondition;", "Lcom/llamalad7/mixinextras/injector/WrapWithCondition;");
+
+	/**
+	 * Adds to a call-site injector's methods the lambda a target method's call moved into: when the call or field access
+	 * it hooks is in none of that method's instructions but in exactly one lambda the method creates, as where NeoForge's
+	 * build runs vanilla's code from an {@code Optional} callback (FrozenLib's registry call in
+	 * {@code RegistryDataLoader.loadElementFromResource}, on 1.21.11; LAMBDA-2). The handler takes the instruction's own
+	 * receiver, arguments or result, which are the same in the lambda; one that takes MixinExtras sugar (the method's
+	 * locals), isn't static where the lambda is, or whose point has an ordinal or a slice, isn't moved. Returns a
+	 * description of each lambda added.
+	 */
+	private static List<String> lambdaCallRepairs(AnnotationNode injector, MethodNode handler, ClassNode target, Context ctx) {
+		List<AnnotationNode> ats = Annotations.list(Annotations.value(injector, "at"));
+		if (!CALL_SITE_INJECTORS.contains(injector.desc) || Annotations.value(injector, "slice") != null || ats.size() != 1
+				|| annotatedParameters(handler.visibleParameterAnnotations) || annotatedParameters(handler.invisibleParameterAnnotations)
+				|| !(Annotations.value(injector, "method") instanceof List<?> selectors)) return List.of();
+		AnnotationNode at = ats.getFirst();
+		String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
+		if (!Set.of("INVOKE", "INVOKE_ASSIGN", "FIELD", "NEW").contains(point) || Annotations.value(at, "ordinal") != null
+				|| !(Annotations.value(at, "target") instanceof String raw)) return List.of();
+		String resolved = ctx.resolve(raw);
+		int opcode = Annotations.value(at, "opcode") instanceof Integer i ? i : -1;
+		List<String> added = new ArrayList<>();
+		for (MethodNode method : selectedMethods(injector, target, ctx)) {
+			if (InjectionPoints.count(point, resolved, -1, opcode, Range.ALL, method) != 0) continue;
+			MethodNode only = null;
+			for (MethodNode lambda : target.methods) {
+				if (!lambda.name.startsWith("lambda$" + method.name + "$") || !createsLambda(method, lambda)
+						|| InjectionPoints.count(point, resolved, -1, opcode, Range.ALL, lambda) <= 0) continue;
+				if (only != null) {
+					only = null;
+					break; // in two lambdas: not judged
+				}
+				only = lambda;
+			}
+			if (only == null || (only.access & Opcodes.ACC_STATIC) != 0 && (handler.access & Opcodes.ACC_STATIC) == 0) continue;
+			@SuppressWarnings("unchecked")
+			List<Object> values = (List<Object>) selectors;
+			values.add(only.name + only.desc);
+			added.add(MemberRef.parse(resolved).name() + " in " + method.name + ", which this game build makes in its lambda " + only.name
+					+ "; the lambda is added to its methods");
+		}
+		return added;
+	}
+
+	/** Whether {@code method} creates {@code lambda} (its {@code invokedynamic} names the lambda's body). */
+	private static boolean createsLambda(MethodNode method, MethodNode lambda) {
+		for (AbstractInsnNode insn : method.instructions) {
+			if (!(insn instanceof InvokeDynamicInsnNode indy)) continue;
+			for (Object arg : indy.bsmArgs) {
+				if (arg instanceof Handle h && h.getName().equals(lambda.name) && h.getDesc().equals(lambda.desc)) return true;
+			}
+		}
+		return false;
+	}
+
+	private static boolean annotatedParameters(List<AnnotationNode>[] byParameter) {
+		if (byParameter == null) return false;
+		for (List<AnnotationNode> annotations : byParameter) {
+			if (annotations != null && !annotations.isEmpty()) return true;
+		}
+		return false;
 	}
 
 	/** Whether {@code type} is, extends or implements {@code supertype}, as far as the game's and the libraries' classes tell. */

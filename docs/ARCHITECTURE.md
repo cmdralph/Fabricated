@@ -339,7 +339,7 @@ versions is decided at compile time by which source folders it compiles, plus tw
 * **Mixin differences in Fabric mods** are repaired by core's pre-flight against the running game's bytecode
   (`MixinPreflight.repairs`: overloads NeoForge reordered or moved code into, constructors NeoForge kept for
   vanilla's signature, calls and constructor calls made through a subtype or given one more argument (through bridge
-  handlers that pass a handler's MixinExtras sugar on), renumbered lambdas, hard local captures, accessors of members
+  handlers that pass a handler's MixinExtras sugar on), renumbered lambdas, calls moved into a lambda of the method, hard local captures, accessors of members
   NeoForge added), not by per-version tables. Enum mixins into
   NeoForge's extensible enums become its enum extension entries (`EnumExtensions`), named enums included when their
   names already carry the mod's id.

@@ -3,6 +3,7 @@ package io.github.cmdralph.fabricated.core.mixin;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
@@ -231,6 +232,66 @@ class MixinPreflightTest {
 		assertEquals("val$p_330_", read.name, "the mixin's own uses follow");
 		mod.put("com/example/mixin/Cache", repaired);
 		assertTrue(preflight(game, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty());
+	}
+
+	@Test
+	void aCallNeoForgeMovedIntoALambdaOfTheMethodIsFollowedThere() throws Exception {
+		// LAMBDA-2: NeoForge's 1.21.11 build runs RegistryDataLoader.loadElementFromResource's register call from an
+		// Optional callback; FrozenLib's static @WrapOperation of it gets the lambda added to its methods.
+		ClassWriter target = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		target.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		MethodVisitor load = target.visitMethod(Opcodes.ACC_PUBLIC, "load", "()V", null, null);
+		load.visitCode();
+		load.visitInvokeDynamicInsn("run", "()Ljava/lang/Runnable;",
+				new Handle(Opcodes.H_INVOKESTATIC, "java/lang/invoke/LambdaMetafactory", "metafactory",
+						"(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodType;"
+								+ "Ljava/lang/invoke/MethodHandle;Ljava/lang/invoke/MethodType;)Ljava/lang/invoke/CallSite;", false),
+				Type.getType("()V"), new Handle(Opcodes.H_INVOKESTATIC, TARGET, "lambda$load$0", "()V", false), Type.getType("()V"));
+		load.visitInsn(Opcodes.POP);
+		load.visitInsn(Opcodes.RETURN);
+		load.visitMaxs(0, 0);
+		load.visitEnd();
+		MethodVisitor lambda = target.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, "lambda$load$0", "()V", null, null);
+		lambda.visitCode();
+		lambda.visitMethodInsn(Opcodes.INVOKESTATIC, TARGET, "register", "()V", false);
+		lambda.visitInsn(Opcodes.RETURN);
+		lambda.visitMaxs(0, 0);
+		lambda.visitEnd();
+		target.visitMethod(Opcodes.ACC_STATIC, "register", "()V", null, null).visitEnd();
+		target.visitEnd();
+		ClassIndex game = new ClassIndex(Map.of(TARGET, target.toByteArray())::get);
+		Map<String, byte[]> mod = new HashMap<>();
+		for (boolean isStatic : new boolean[] {true, false}) {
+			mod.put("com/example/mixin/Wrap", mixin("com/example/mixin/Wrap", false, cw -> {
+				MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE | (isStatic ? Opcodes.ACC_STATIC : 0), "wrap",
+						"(" + OPERATION + ")V", null, null);
+				AnnotationVisitor ann = mv.visitAnnotation(WRAP_OPERATION, false);
+				AnnotationVisitor methods = ann.visitArray("method");
+				methods.visit(null, "load");
+				methods.visitEnd();
+				AnnotationVisitor ats = ann.visitArray("at");
+				AnnotationVisitor at = ats.visitAnnotation(null, "Lorg/spongepowered/asm/mixin/injection/At;");
+				at.visit("value", "INVOKE");
+				at.visit("target", "L" + TARGET + ";register()V");
+				at.visitEnd();
+				ats.visitEnd();
+				ann.visitEnd();
+				mv.visitEnd();
+			}));
+			MixinConfigFile config = MixinConfigFile.parse(config(true, "Wrap"));
+			List<PreflightFinding> notes = new ArrayList<>();
+			byte[] repaired = preflight(game, mod::get, ClassBytesSource.EMPTY, false).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes)
+					.get("com/example/mixin/Wrap.class");
+			if (!isStatic) {
+				assertNull(repaired, "an instance handler can't go into a static lambda: " + notes);
+				continue;
+			}
+			assertNotNull(repaired, notes.toString());
+			assertTrue(notes.toString().contains("its lambda lambda$load$0"), notes.toString());
+			mod.put("com/example/mixin/Wrap", repaired);
+			List<PreflightFinding> after = preflight(game, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+			assertTrue(after.isEmpty(), after.toString());
+		}
 	}
 
 	private static final String REGISTER = "register(Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;";

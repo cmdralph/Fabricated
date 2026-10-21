@@ -59,7 +59,8 @@ pre-flight couldn't repair (JourneyMap).
 - REQ-1: pre-flight took an injection point found in any of an injector's target methods as enough, while Mixin counts
   the injections in all of them against `require`. FrozenLib wraps a call in two methods with `require = 2`, and
   NeoForge's 1.21.11 build moved it out of one, which stopped the 1.21.11 advanced corpus (run on `b0f3606`).
-  Pre-flight now counts them, and FrozenLib's injector is left out.
+  Pre-flight now counts them. LAMBDA-2: an injector at a call NeoForge's build moved into a lambda of the method
+  (here an `Optional` callback) gets the lambda added to its methods, so FrozenLib's hook applies there.
 - ENUM-4 (reverted): letting enum mixins into NeoForge's extensible enums through to Mixin, on the reading that NeoForge
   didn't refuse them, crashed the 26.2 and 26.3 advanced corpus at startup on Wilder Wild's: FML's
   `FMLMixinFeatureValidator` refuses them (run on `b0f3606`). Such a mixin disables its mod again.
