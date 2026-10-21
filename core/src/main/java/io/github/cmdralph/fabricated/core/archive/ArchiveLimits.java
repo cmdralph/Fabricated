@@ -20,7 +20,8 @@ public record ArchiveLimits(
 
 	public static final ArchiveLimits DEFAULTS = new ArchiveLimits(
 			256L << 20,
-			64L << 20,
+			// Flashback ships a 71 MB native library (LIMIT-1); the total and the compression ratio still bound a bomb.
+			128L << 20,
 			512L << 20,
 			65_536,
 			100,
