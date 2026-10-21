@@ -11,8 +11,10 @@ modules nearly every client mod uses (key mappings, HUD elements, screen events,
 passes through with some of their mixins left out and bridged from NeoForge's events instead. Of the advanced corpus,
 Freecam is still disabled on 1.21.11 for its MixinExtras requirement alone.
 
-- CI: on 26.x, the Fabric API client run's test mod registers a key mapping, a HUD element, screen init and draw
-  listeners and a client command; a new gate step requires each to have worked once the player is in the world.
+- CI: on 26.x, the Fabric API client run's test mod registers a key mapping, two HUD elements (one added last, one
+  attached after chat), screen init and draw listeners and a client command; a new gate step requires each to have
+  worked once the player is in the world. A HUD element is reported the first time it is drawn: the first run checked
+  40 ticks after joining, while the world's loading screen could still hide the HUD.
 - MIXEXT-2: a mixin config asking for MixinExtras 0.5.4 or 0.5.5 on NeoForge 1.21.11's 0.5.3 asks for 0.5.3 instead, as
   those releases only fixed bugs its mixins run the same without, unless it has a `@Redirect` at several injection
   points. Freecam asks for the version it is built with; whether it then works on 1.21.11 is UNVERIFIED until the

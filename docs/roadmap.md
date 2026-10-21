@@ -191,8 +191,8 @@ NeoForge already cover those users.
   and a client of its own; and a digest of each corpus log's errors with the first stack of the most frequent
   (`ci/log-digest.py`), as a mod that loads may still fail when its code runs.
 - **Done (this pass):** a gate for Fabric API's client modules most client mods use, on 26.x: a Fabric key mapping in
-  the game's options, a HUD element drawn in the world, a screen's init and draw events, client commands registered on
-  joining (`ClientApiTestMod` in the Fabric API client run). 1.21.11 compiles its test mod against stand-ins, which
+  the game's options, HUD elements drawn (one added last, one attached after chat), a screen's init and draw events,
+  client commands registered on joining (`ClientApiTestMod` in the Fabric API client run). 1.21.11 compiles its test mod against stand-ins, which
   these modules don't have yet.
 - **Next:** the gates listed in the rendering-pipeline plan; checks for what the corpus mods do in the world.
 
