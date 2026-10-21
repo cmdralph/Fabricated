@@ -125,6 +125,7 @@ check "FABRICATED-TEST fabric api base event OK" server.out "fabric-api-base eve
 check "FABRICATED-TEST access widener OK" server.out "access widener applied"
 check "FABRICATED-TEST server entrypoint OK" server.out "server entrypoint ran"
 check "FABRICATED-TEST creative tab order OK" server.out "a creative tab registered by a main initializer is ordered after the vanilla tabs"
+check "FABRICATED-TEST resource bundle with a control OK" server.out "translations loaded with a ResourceBundle.Control from a named module (LuckPerms, LOADER-3)"
 check "FABRICATED-TEST mixin OK" server.out "mixin applied"
 check "FABRICATED-TEST early language adapter OK" server.out "Fabric's start-up order: language adapters created before the mods' mixin plugins load"
 check "FABRICATED-TEST lifecycle server started OK" server.out "native lifecycle: SERVER_STARTED"

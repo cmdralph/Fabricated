@@ -23,10 +23,13 @@ main entrypoint, and Flashback not loaded for one large native library.
   no longer fails as defined twice: NeoForge maps its states as it is registered, vanilla then again. BetterEnd's and
   BetterNether's main entrypoints threw there on the 26.2 advanced client. The servers' missing BetterEnd content
   (CORPUS-19) is still unexplained: they logged no such failure.
+- LOADER-3: `ResourceBundle.getBundle` with a `ResourceBundle.Control` in a Fabric mod's code makes the same lookup
+  through Fabricated's `ResourceBundles`: Java refuses a control from a named module, and LuckPerms loads its
+  translations so. The translation schema is bumped.
 - LIMIT-1: one archive entry may be 128 MiB (was 64 MiB): Flashback ships a 71 MB native library. The limits on the
   whole archive and the compression ratio check are unchanged.
 - Roadmap: PR #53's results (PIP-1, BIOME-2 and LOADER-2 verified as far as the next failure), and what is still open:
-  LuckPerms' translations in a named module (LOADER-3), FrozenLib's entrypoint injection (LOADER-4).
+  FrozenLib's entrypoint injection (LOADER-4).
 
 ## 2026-10-21 (pass after PR #52): picture-in-picture renderers, and mixins into what other mods' mixins add
 

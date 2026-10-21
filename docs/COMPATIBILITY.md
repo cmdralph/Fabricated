@@ -793,6 +793,9 @@ MixinExtras has NeoForge's jar, and a NeoForge mod nested in another jar has tha
   mod's own jar first and then, as Fabric's unnamed modules do, on the whole class path: NeoForge's module for the mod
   has only its own files, so a mod reading Minecraft's `/version.json` that way (Lattice, while Mixin prepares its
   config) stopped the game (RES-1). The mod's calls go through Fabricated's `ClassResources`.
+- `ResourceBundle.getBundle` with a `ResourceBundle.Control`, which Java refuses from a named module, makes the same
+  lookup through Fabricated's `ResourceBundles` (LuckPerms' translations, LOADER-3). Bundles loaded so are not cached
+  between calls, as the JDK's are.
 - On a client, `main` and `client` entrypoints run where Fabric Loader runs them: in `Minecraft`'s constructor, once
   the instance exists, with the registries open (CORPUS-16). NeoForge registers content before `Minecraft` exists, so
   what it fills once its registration events end takes what Fabric mods registered there too: default attributes,

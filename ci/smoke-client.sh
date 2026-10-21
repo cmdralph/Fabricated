@@ -210,6 +210,7 @@ check "player list was replaced after NeoForge made its view" "getPlayers() foll
 check "FABRICATED-TEST main entrypoint OK" "main entrypoint ran on the client"
 check "FABRICATED-TEST main entrypoint game instance OK" "main entrypoints run once the game instance exists, as on Fabric (CORPUS-16)"
 check "FABRICATED-TEST creative tab order OK" "a creative tab registered by a main initializer is ordered after the vanilla tabs"
+check "FABRICATED-TEST resource bundle with a control OK" "translations loaded with a ResourceBundle.Control from a named module (LuckPerms, LOADER-3)"
 check "FABRICATED-TEST client entrypoint OK" "client entrypoint ran"
 check "FABRICATED-TEST client entrypoint registration OK" "a client initializer registers content (registries open, as Fabric API leaves them)"
 check "FABRICATED-TEST client started OK" "native client lifecycle: CLIENT_STARTED"

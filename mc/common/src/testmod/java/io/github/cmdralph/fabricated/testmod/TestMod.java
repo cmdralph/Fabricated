@@ -7,6 +7,8 @@ import java.net.JarURLConnection;
 import java.net.URI;
 import java.net.URL;
 import java.util.List;
+import java.util.Locale;
+import java.util.ResourceBundle;
 import java.util.jar.JarFile;
 
 import org.slf4j.Logger;
@@ -159,6 +161,7 @@ public final class TestMod implements ModInitializer, DedicatedServerModInitiali
 
 		classpathScan();
 		classResources();
+		resourceBundle();
 
 		List<Runnable> custom = loader.getEntrypoints("fabricated-test", Runnable.class);
 		custom.forEach(Runnable::run);
@@ -224,6 +227,18 @@ public final class TestMod implements ModInitializer, DedicatedServerModInitiali
 			else LOGGER.error("FABRICATED-TEST access widener NOT applied");
 		} catch (ClassNotFoundException e) {
 			LOGGER.error("FABRICATED-TEST access widener target missing", e);
+		}
+	}
+
+	/** Translations loaded with a control, as LuckPerms loads its own: the JDK refuses that from a named module (LOADER-3). */
+	private static void resourceBundle() {
+		try {
+			ResourceBundle bundle = ResourceBundle.getBundle("fabricated_testmod_messages", Locale.ENGLISH,
+					ResourceBundle.Control.getControl(ResourceBundle.Control.FORMAT_PROPERTIES));
+			if ("hello".equals(bundle.getString("greeting"))) LOGGER.info("FABRICATED-TEST resource bundle with a control OK");
+			else LOGGER.error("FABRICATED-TEST resource bundle with a control FAILED: greeting is {}", bundle.getString("greeting"));
+		} catch (RuntimeException e) {
+			LOGGER.error("FABRICATED-TEST resource bundle with a control FAILED", e);
 		}
 	}
 
