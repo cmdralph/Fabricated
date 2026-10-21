@@ -520,7 +520,7 @@ Versions: 26.1.2, 26.2, 26.3 · package `io.github.cmdralph.fabricated.neoforge.
 | mixins | PacketDecoderContextMixin | common26 (26.1.2,26.2,26.3) | n.m.network.PacketDecoder | @WrapMethod → fabricated$withPacketContext | "decode" |  | — | default |
 | mixins | PacketEncoderContextMixin | common26 (26.1.2,26.2,26.3) | n.m.network.PacketEncoder | @WrapMethod → fabricated$withPacketContext | "encode(L…/ChannelHandlerContext;L…/Packet;L…/ByteBuf;)V" |  | — | default |
 | mixins | GenericPacketSplitterContextMixin | common26 (26.1.2,26.2,26.3) | neo.network.filters.GenericPacketSplitter | @WrapMethod → fabricated$encodeWithPacketContext | "encode(L…/ChannelHandlerContext;L…/Packet;L…/List;)V" |  | — | default |
-| mixins | GenericPacketSplitterContextMixin | common26 (26.1.2,26.2,26.3) | neo.network.filters.GenericPacketSplitter | @WrapMethod → fabricated$decodeWithPacketContext | "receivedPacket" |  | — | default |
+| mixins | GenericPacketSplitterContextMixin | common26 (26.1.2,26.2,26.3) | neo.network.filters.GenericPacketSplitter | @WrapMethod → fabricated$decodeWithPacketContext | "handle" |  | — | default |
 | mixins | MenuProviderMixin | common26 (26.1.2,26.2,26.3) | n.m.world.MenuProvider | no injectors; implements FabricMenuProvider | | | | |
 | mixins | ServerPlayerMenuMixin | common26 (26.1.2,26.2,26.3) | n.m.server.level.ServerPlayer | @WrapMethod → fabricated$trackOpener | OPEN_MENU |  | — | default |
 | mixins | ServerPlayerMenuMixin | common26 (26.1.2,26.2,26.3) | n.m.server.level.ServerPlayer | @WrapOperation → fabricated$shouldCloseCurrentScreen | OPEN_MENU | INVOKE `L…/MenuProvider;shouldTriggerClientSideContainerClosingOnOpen()Z` | — | default |

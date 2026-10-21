@@ -521,6 +521,9 @@ jobs:
           python3 ci/fetch-corpus.py "${{ matrix.minecraft }}" "$RUNNER_TEMP/advanced" fabric $(sed -e '/^#/d' -e '/^$/d' ci/mod-corpus-advanced.txt) \
             | tee "$RUNNER_TEMP/summary-advanced.txt"
           cp "$RUNNER_TEMP/extra/fabric-api.jar" "$RUNNER_TEMP/advanced/"
+          echo "::group::NeoForge biome and structure modifiers in the Fabric jars"
+          python3 -I ci/neoforge-data.py "$RUNNER_TEMP"/advanced/*.jar || true
+          echo "::endgroup::"
       - name: Server with the advanced mod corpus (informational)
         if: ${{ !cancelled() && steps.advanced.outcome == 'success' }}
         continue-on-error: true

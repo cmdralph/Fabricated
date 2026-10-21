@@ -39,11 +39,17 @@ abstract class GenericPacketSplitterContextMixin {
 		}
 	}
 
-	@WrapMethod(method = "receivedPacket")
-	private boolean fabricated$decodeWithPacketContext(SplitPacketPayload payload, IPayloadContext payloadContext, Operation<Boolean> original) {
-		PacketContext context = fabricated$contextOf(payloadContext.connection());
-		if (context == null) return original.call(payload, payloadContext);
-		return ScopedValue.where(PacketContextImpl.VALUE, context).call(() -> original.call(payload, payloadContext));
+	/**
+	 * The splitter's payload handler, which decodes a packet once its last part arrives. Its signature is NeoForge's
+	 * {@code IPayloadHandler}'s; the decoding method's return type differs between NeoForge builds.
+	 */
+	@WrapMethod(method = "handle")
+	private static void fabricated$decodeWithPacketContext(SplitPacketPayload payload, IPayloadContext payloadContext, Operation<Void> original) {
+		if (payloadContext.connection() instanceof PacketContextProvider provider) {
+			ScopedValue.where(PacketContextImpl.VALUE, provider.getPacketContext()).run(() -> original.call(payload, payloadContext));
+		} else {
+			original.call(payload, payloadContext);
+		}
 	}
 
 	/** The connection's context; a splitter belongs to one connection's pipeline. */

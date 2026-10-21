@@ -16,7 +16,10 @@ chunk on a feature order cycle.
   codec read no context while the splitter measured the recipe sync, which closed the connection, and Polymer warned
   that chunk packets lacked the registries. The test mod sends a payload large enough to be split, whose codec checks
   the context on both sides.
-- CI: the client smoke test logs the modules of the libraries LIB-1's bridges reflect on.
+- CI: the client smoke test logs the modules of the libraries LIB-1's bridges reflect on, and the advanced corpus
+  step lists the NeoForge biome and structure modifiers its Fabric jars carry: NeoForge applies them, Fabric doesn't, and
+  the 26.1.2 advanced client stopped on a feature order cycle in one Biomes O' Plenty biome (inferred cause to check: a
+  feature added both by a mod's Fabric code and by its NeoForge data).
 
 ## 2026-10-21 (pass after PR #56): Polymer's handshake, Carpet's Brigadier hooks, and Do a Barrel Roll's jar
 
