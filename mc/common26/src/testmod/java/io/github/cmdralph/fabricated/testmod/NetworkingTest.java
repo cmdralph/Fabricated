@@ -6,6 +6,7 @@ import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.fabricmc.fabric.api.networking.v1.context.PacketContext;
+import net.fabricmc.fabric.api.networking.v1.context.PacketContextProvider;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
@@ -62,14 +63,24 @@ public final class NetworkingTest implements ModInitializer {
 				// The first encoding is the splitter's, which measures the packet before vanilla's encoder.
 				contextEncodeReported = true;
 				if (hasContext(true)) TestMod.LOGGER.info("FABRICATED-TEST packet context while encoding OK");
-				else TestMod.LOGGER.error("FABRICATED-TEST packet context while encoding FAILED: {}", PacketContext.get());
+				else TestMod.LOGGER.error("FABRICATED-TEST packet context while encoding FAILED: {}", describe(PacketContext.get()));
 			}
 			buf.writeByteArray(ping.data());
-		}, buf -> new ContextPing(buf.readByteArray(), hasContext(false)));
+		}, buf -> {
+			if (!hasContext(false)) TestMod.LOGGER.error("FABRICATED-TEST packet context while decoding FAILED: {}", describe(PacketContext.get()));
+			return new ContextPing(buf.readByteArray(), hasContext(false));
+		});
 
 		@Override
 		public Type<? extends CustomPacketPayload> type() {
 			return TYPE;
+		}
+
+		/** What of Fabric API's values the context holds, for a failure's message. */
+		static String describe(PacketContext context) {
+			if (context == null) return "no context";
+			return "registries " + (context.get(PacketContext.REGISTRY_ACCESS) != null) + ", profile " + (context.get(PacketContext.GAME_PROFILE) != null)
+					+ ", server " + (context.get(PacketContext.SERVER_INSTANCE) != null) + ", connection " + context.get(PacketContext.CONNECTION);
 		}
 
 		/** Whether the context holds what Fabric API puts in it: the registries, the profile and, on the server, the server. */
@@ -93,7 +104,7 @@ public final class NetworkingTest implements ModInitializer {
 		ServerPlayNetworking.registerGlobalReceiver(VanillaPing.TYPE, (payload, context) -> context.responseSender().sendPacket(new VanillaPing(payload.value() + 1)));
 		PayloadTypeRegistry.clientboundPlay().register(ContextPing.TYPE, ContextPing.CODEC);
 		ServerPlayConnectionEvents.JOIN.register((listener, sender, server) -> {
-			TestMod.LOGGER.info("FABRICATED-TEST networking join event");
+			TestMod.LOGGER.info("FABRICATED-TEST networking join event (packet context: {})", ContextPing.describe(((PacketContextProvider) listener).getPacketContext()));
 			sender.sendPacket(new ContextPing(new byte[ContextPing.SIZE], false));
 		});
 		if (ServerPlayNetworking.getGlobalReceivers().contains(Ping.TYPE.id())) {
