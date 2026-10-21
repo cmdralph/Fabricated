@@ -485,7 +485,8 @@ attribute, adding a spawn crashed world creation (`IllegalAccessError`, BIOME-1)
 CI checks, on 26.3: a mob spawn added to plains and plains' changed temperature are in the biome once the server has
 started. On 1.21.11, 26.1.2 and 26.2 upstream's module loads: its spawn, effect and feature changes edit objects NeoForge's info
 shares, and the attribute map is an ordinary field there (NeoForge's coremod replaces only the climate and the effects,
-read in its source for 26.1 and 26.2), so they take effect; a weather change replaces the private climate field and
+read in its source for 21.11, 26.1 and 26.2), which the module's widener opens, so they take effect (BIOME-2: Fabricated
+kept that field private on every version before, and the module's first attribute change stopped the 1.21.11 server); a weather change replaces the private climate field and
 fails when it runs (as read; UNVERIFIED in a game).
 
 ### Native `fabric-api-lookup-api-v1` and `fabric-transfer-api-v1`
@@ -800,7 +801,9 @@ MixinExtras has NeoForge's jar, and a NeoForge mod nested in another jar has tha
   a dedicated server.
 - Of Fabric Loader's internals, `FabricLoaderImpl.INSTANCE` (its public API methods) and
   `FabricLauncherBase.getLauncher()` (environment, development flag, runtime namespace) are provided for the mods that
-  use them. `ModContainerImpl`, `EntrypointStorage` and `EntrypointMetadata` exist so that code naming them links
+  use them. A jar a mod adds to the class path while running (`addToClassPath`, or the legacy launcher's `propose`,
+  through which LuckPerms adds the libraries it downloads) is found for the classes no mod's module has, untransformed
+  (LOADER-2). `ModContainerImpl`, `EntrypointStorage` and `EntrypointMetadata` exist so that code naming them links
   (FrozenLib's entrypoint injector, from a mixin plugin): there is no instance of the first two to reach, so such code
   takes the fallback it keeps for a loader without them (LOADER-1). Other internal classes are not provided. A mod's code that reaches for another one, or for a member of Fabric
   Loader's API that Fabricated lacks, is listed among the report's linkage warnings before the game starts.

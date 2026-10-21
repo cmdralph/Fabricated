@@ -187,6 +187,12 @@ Each mod's entrypoints run inside a guard that records mod id, entrypoint key, c
    packages (recorded at discovery). A target in none of them is not judged. The cache entry records each installed class pre-flight read with its SHA-256; when one
    differs at the next launch (the NeoForge mod was updated), the mod is translated again.
 
+   The game is seen as Fabricated's own mixins make it: the fields they add (vanilla's picture-in-picture renderer
+   map, which NeoForge replaced) are part of the game classes pre-flight reads (`RestoredFields`). A field or method a
+   target lacks but an installed Fabric jar's mixin adds to it (Fabric API's `updateSelection` on the creative screen)
+   is not judged: Mixin merges every mixin's members into a class before any injector looks for its target. The
+   adding mixin's class is recorded with its SHA-256 like the installed classes above.
+
    Outcome per mixin:
    * A missing target class fails only where Mixin rejects it: in a required config at compatibility level 0.17.4 or later (before that, Mixin skips the target).
    * In a config with a plugin, which may disable mixins at runtime, an injector that would crash the game is **left out** instead: only its handler, as Mixin itself drops an injector that may fail. A problem with the whole mixin leaves out the mixin, with the mixins depending on its interfaces. Mixins the plugin adds at runtime (`getMixins()`, listed in no config) are found among the classes of the config's package, get the same repairs, and are checked the same way; only their failing injectors are left out, since the plugin may never add them.

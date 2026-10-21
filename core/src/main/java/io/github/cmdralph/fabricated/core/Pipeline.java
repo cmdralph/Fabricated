@@ -1,6 +1,7 @@
 package io.github.cmdralph.fabricated.core;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -25,12 +26,15 @@ import io.github.cmdralph.fabricated.core.bytecode.ClassIndex;
 import io.github.cmdralph.fabricated.core.bytecode.InstalledClasses;
 import io.github.cmdralph.fabricated.core.cache.TranslationCache;
 import io.github.cmdralph.fabricated.core.config.FabricatedConfig;
+import io.github.cmdralph.fabricated.core.json.JsonException;
 import io.github.cmdralph.fabricated.core.metadata.CompatHints;
 import io.github.cmdralph.fabricated.core.metadata.CustomValueImpl;
 import io.github.cmdralph.fabricated.core.metadata.FabricModMetadata;
 import io.github.cmdralph.fabricated.core.metadata.FabricModMetadata.EntrypointSpec;
+import io.github.cmdralph.fabricated.core.mixin.MixinConfigFile;
 import io.github.cmdralph.fabricated.core.mixin.PreflightFinding;
 import io.github.cmdralph.fabricated.core.mixin.PreflightFinding.Severity;
+import io.github.cmdralph.fabricated.core.mixin.RestoredFields;
 import io.github.cmdralph.fabricated.core.remap.JarRemapper;
 import io.github.cmdralph.fabricated.core.remap.MappingException;
 import io.github.cmdralph.fabricated.core.remap.MappingTable;
@@ -340,14 +344,16 @@ public final class Pipeline {
 				mappingTable != null ? MappingResolvers.intermediary(mappingTable) : MappingResolvers.identity(), in::launchArguments);
 		if (eligible.isEmpty()) return assemble(runtime, new Rounds());
 
-		ClassIndex game = new ClassIndex(in.gameClasses());
+		// The game as Fabricated's own mixins leave it: with the vanilla fields they restore, which Fabric mods use (PIP-1).
+		ClassBytesSource gameClasses = RestoredFields.over(in.gameClasses(), in.fabricatedFiles());
+		ClassIndex game = new ClassIndex(gameClasses);
 		// Mixins into the Fabric mods' classes are checked too, against those classes as they will load: on 1.21.11
 		// remapped from intermediary names, as translating each mod remaps it.
 		List<SafeArchive> opened = new ArrayList<>();
 		InstalledClasses installed = in.installedClasses().with(fabricJars(eligible, opened, mappingTable == null ? null : new JarRemapper(mappingTable)));
 		TranslationEnvironment env = new TranslationEnvironment(in.minecraftVersion(), in.neoForgeVersion(), in.clientSide(), in.namespace(),
 				in.runtimeMixinVersion(), in.lowestMixinBehavior(), in.fabricatedVersion(), mappingTable, mappingsHash, game, in.untransformableClasses(),
-				installed, installed.isEmpty() ? game : new ClassIndex(in.gameClasses().or(installed)), unsupportedPackages(scan.candidates()));
+				installed, installed.isEmpty() ? game : new ClassIndex(gameClasses.or(installed)), unsupportedPackages(scan.candidates()));
 		Rounds rounds = new Rounds();
 		try {
 			rounds.run(scan.candidates(), eligible, resolver(), new ModTranslator(env, in.cache(), config.limits()));
@@ -408,9 +414,28 @@ public final class Pipeline {
 				} catch (MappingException e) {
 					return null; // not verified then; translating the mod reports it
 				}
-			}));
+			}, () -> mixinClasses(c, archive.get())));
 		}
 		return jars;
+	}
+
+	/** The mixin classes a Fabric jar's configs list for this side, by internal name; none from a config it can't read. */
+	private List<String> mixinClasses(Candidate c, SafeArchive archive) {
+		if (archive == null) return List.of();
+		EnvType side = in.clientSide() ? EnvType.CLIENT : EnvType.SERVER;
+		List<String> mixins = new ArrayList<>();
+		for (FabricModMetadata.MixinEntry entry : c.metadata().compatHints().mixinsOr(c.metadata().mixins())) {
+			if (!entry.environment().matches(side)) continue;
+			try {
+				byte[] data = archive.read(entry.config());
+				if (data == null) continue;
+				MixinConfigFile config = MixinConfigFile.parse(new String(data, StandardCharsets.UTF_8));
+				for (String mixin : config.mixinsFor(in.clientSide())) mixins.add(config.internalName(mixin));
+			} catch (ArchiveException | JsonException e) {
+				// Translating the mod reports it.
+			}
+		}
+		return mixins;
 	}
 
 	/**

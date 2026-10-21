@@ -1,6 +1,8 @@
 package io.github.cmdralph.fabricated.fabricloader;
 
+import java.nio.file.Path;
 import java.util.Objects;
+import java.util.function.Consumer;
 import java.util.function.Function;
 
 import net.fabricmc.loader.api.FabricLoader;
@@ -17,6 +19,10 @@ public final class FabricLoaderImpl {
 	/** The class loader of the game and its mods (one for all of them on NeoForge), once known. */
 	private static volatile ClassLoader gameClassLoader;
 	private static volatile Function<ModContainer, ClassLoader> classLoaderLookup = mod -> gameClassLoader();
+	/** Adds a jar to what the game's class loader finds; set by the platform once that loader exists. */
+	private static volatile Consumer<Path> classPathAppender = path -> {
+		throw new UnsupportedOperationException("The game's class loader takes no jars yet: " + path);
+	};
 
 	private FabricLoaderImpl() {
 	}
@@ -45,6 +51,19 @@ public final class FabricLoaderImpl {
 		ClassLoader loader = gameClassLoader;
 		if (loader == null) loader = Thread.currentThread().getContextClassLoader();
 		return loader != null ? loader : FabricLoaderImpl.class.getClassLoader();
+	}
+
+	/** Sets how a jar joins the game's class loader ({@link #addToClassPath}). */
+	public static void classPathAppender(Consumer<Path> appender) {
+		classPathAppender = Objects.requireNonNull(appender, "appender");
+	}
+
+	/**
+	 * Adds a jar's classes to those the game's class loader finds, as Fabric Loader's {@code addToClassPath} does (mods
+	 * add the libraries they download that way).
+	 */
+	public static void addToClassPath(Path path) {
+		classPathAppender.accept(Objects.requireNonNull(path, "path"));
 	}
 
 	/** Class loader that can see the classes of {@code mod}. */
