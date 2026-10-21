@@ -3,7 +3,7 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
-## 2026-10-21 (pass after PR #56): Polymer's handshake
+## 2026-10-21 (pass after PR #56): Polymer's handshake, and Carpet's Brigadier hooks
 
 **Plan.** PR #56's last run showed every 26.x advanced server starting (ITEMCOMP-1) and the 1.21.11 advanced client
 past Polymer's codecs (PRE-13), stopping where NeoForge refuses to send Polymer's handshake. The 26.x advanced clients
@@ -12,6 +12,12 @@ still stop on Do a Barrel Roll's camera hook.
 - NET-5: a payload NeoForge has no registration for is sent, as vanilla sends it, where NeoForge threw: no NeoForge or
   Fabric mod declared it, so a mod put it on the wire with its own codec (Polymer's handshake, which Polymer's own hook
   receives).
+- LIB-1: a mixin into a library class NeoForge loads without mixin support that only gives the class interfaces of
+  the mod, implemented with the class's fields and its own methods, becomes a generated class: its methods become
+  static ones reading and writing the fields through reflection, and the mod's casts to the interfaces, checks against
+  them and calls of their methods (method references too) call that class. Carpet's two mixins into Brigadier's
+  command node and dispatcher, which remove a script's commands, disabled Carpet on every version. Unit tests compile
+  such a library, mixins and mod with javac, translate them and run the result; the translation schema is bumped.
 - CI: the mixin diagnostics also print what the report says of the failing mixin's mod (CORPUS-18).
 
 ## 2026-10-21 (pass after PR #55): Polymer's payload codecs, and default components on 26.3
