@@ -84,6 +84,8 @@ pre-flight couldn't repair (JourneyMap).
   nothing and the 26.2 and 26.3 advanced corpus servers stopped loading their data (run on `b871cd5`). Its hooks act
   only when the `fabric-api.datagen` property is set. Its tag appender mixins, which add removal methods NeoForge's tag
   appenders already have, and on 26.3 its loot sub-provider mixins are left out (data generation only).
+  Fabricated's native registry sync gained upstream's `DynamicRegistriesImpl.FABRIC_DYNAMIC_REGISTRY_KEYS`, which
+  the module's dynamic registry provider reads: without it the linkage check disabled the module (run on `3e39947`).
 - ENUM-5: an enum mixin into one of NeoForge's extensible enums that its enum extension file can't carry (a name not
   starting with the mod's id, a constant with a body of its own) becomes an ordinary mixin adding the constants to the
   enum's values from its class initializer, as mods' own NeoForge builds do; FML refuses only enum mixins. A constant's

@@ -1,8 +1,10 @@
 package net.fabricmc.fabric.impl.registry.sync;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 
 import org.jetbrains.annotations.Unmodifiable;
 
@@ -21,6 +23,9 @@ import net.minecraft.resources.RegistryValidator;
  * {@code SKIP_WHEN_EMPTY} has no effect: NeoForge decides itself how to sync an empty registry.
  */
 public final class DynamicRegistriesImpl {
+	/** The registries mods added through {@code DynamicRegistries}, as upstream (its data generation reads them). */
+	public static final Set<ResourceKey<? extends Registry<?>>> FABRIC_DYNAMIC_REGISTRY_KEYS = new HashSet<>();
+
 	private DynamicRegistriesImpl() {
 	}
 
@@ -40,6 +45,7 @@ public final class DynamicRegistriesImpl {
 		Objects.requireNonNull(serverCodec, "Server codec cannot be null");
 		checkNew(key);
 		var entry = new RegistryDataLoader.RegistryData<>(key, serverCodec, RegistryValidator.none());
+		FABRIC_DYNAMIC_REGISTRY_KEYS.add(key);
 		NeoForgeRegistryInternals.addWorldRegistry(entry);
 		return entry;
 	}
