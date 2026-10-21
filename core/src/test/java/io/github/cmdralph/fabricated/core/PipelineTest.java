@@ -1139,6 +1139,52 @@ class PipelineTest {
 		}
 	}
 
+	@Test
+	void mixinsAPluginAddsGetTheRepairsOfListedOnes(@TempDir Path game) throws Exception {
+		// As Friends and Foes' plugin adds its CommandsMixin: a @Redirect whose injection point array of one NeoForge
+		// 1.21.11's MixinExtras reads as one annotation (MIX-1).
+		ClassWriter cw = new ClassWriter(0);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, "com/plug/mixin/Redirecting", null, "java/lang/Object", null);
+		AnnotationVisitor m = cw.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false);
+		AnnotationVisitor targets = m.visitArray("value");
+		targets.visit(null, Type.getObjectType(TARGET));
+		targets.visitEnd();
+		m.visitEnd();
+		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "redirect", "(L" + TARGET + ";)Z", null, null);
+		AnnotationVisitor redirect = mv.visitAnnotation("Lorg/spongepowered/asm/mixin/injection/Redirect;", true);
+		AnnotationVisitor methods = redirect.visitArray("method");
+		methods.visit(null, "tick");
+		methods.visitEnd();
+		AnnotationVisitor ats = redirect.visitArray("at");
+		AnnotationVisitor at = ats.visitAnnotation(null, "Lorg/spongepowered/asm/mixin/injection/At;");
+		at.visit("value", "INVOKE");
+		at.visit("target", "L" + TARGET + ";isDebug()Z");
+		at.visitEnd();
+		ats.visitEnd();
+		redirect.visit("require", 0);
+		redirect.visitEnd();
+		mv.visitCode();
+		mv.visitInsn(Opcodes.ICONST_1);
+		mv.visitInsn(Opcodes.IRETURN);
+		mv.visitMaxs(1, 2);
+		mv.visitEnd();
+		cw.visitEnd();
+		Path jar = TestJars.create().fabricModJson(TestJars.modJson("plug-mod", "1.0", "\"mixins\":[\"plug.mixins.json\"]"))
+				.text("plug.mixins.json", "{\"required\":true,\"package\":\"com.plug.mixin\",\"plugin\":\"com.plug.Plugin\",\"mixins\":[]}")
+				.bytes("com/plug/mixin/Redirecting.class", cw.toByteArray())
+				.write(game.resolve("mods/plug.jar"));
+		Pipeline.Result result = Pipeline.run(input(game, List.of(jar), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
+		assertTrue(result.runtime().isModLoaded("plug-mod"), result.report().render());
+		try (SafeArchive overlay = SafeArchive.open(result.mods().getFirst().translated().overlay(), ArchiveLimits.DEFAULTS)) {
+			byte[] repaired = overlay.read("com/plug/mixin/Redirecting.class");
+			assertNotNull(repaired, "the plugin's mixin is repaired");
+			ClassNode node = new ClassNode();
+			new ClassReader(repaired).accept(node, 0);
+			org.objectweb.asm.tree.AnnotationNode ann = node.methods.getFirst().visibleAnnotations.getFirst();
+			assertTrue(ann.values.get(ann.values.indexOf("at") + 1) instanceof org.objectweb.asm.tree.AnnotationNode, ann.values.toString());
+		}
+	}
+
 	private static Path patchTarget(Path game) throws Exception {
 		return TestJars.create().fabricModJson(TestJars.modJson("target-mod", "2.0", "\"mixins\":[\"target.mixins.json\"]"))
 				.text("target.mixins.json", "{\"required\":true,\"package\":\"com.target.mixin\",\"mixins\":[\"BadMixin\"]}")

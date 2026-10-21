@@ -36,7 +36,10 @@ now load do as the game runs, with deep-hook mods in a corpus of their own.
   crashed).
 - MIX-1: Fabric's Mixin declares the injection points of `@Redirect`, `@ModifyArg`, `@ModifyArgs` and
   `@ModifyVariable` as arrays, and MixinExtras 0.5.3 on NeoForge 1.21.11 reads a `@Redirect`'s as one annotation: the
-  1.21.11 corpus client crashed on Friends and Foes' (run 382). An array of one is now rewritten as that point.
+  1.21.11 corpus client crashed on Friends and Foes' (run 382). An array of one is now rewritten as that point. Run
+  383 still crashed: the `@Redirect` is in a mixin Friends and Foes' plugin adds only when it finds mc-runtime-test
+  (CI's client driver), and the mixins a plugin adds were checked but not repaired. They now get the same repairs
+  (`PipelineTest.mixinsAPluginAddsGetTheRepairsOfListedOnes`).
 - VER-1: a Fabric jar whose version doesn't start with a digit stopped the launch, as NeoForge's loader refuses such
   a version: every advanced corpus run of run 381 stopped at startup on a library FancyMenu nests
   (`animated-gif-lib-1.7`). It is now written as `0+<version>`.
