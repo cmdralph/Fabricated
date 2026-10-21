@@ -29,6 +29,9 @@ chunk on a feature order cycle.
   receiver and arguments, at most one more, that makes the call) is pointed at the hook's call, its handlers bridged as
   for an overload. Architectury's screen render events, FancyMenu's screen hooks and Inventory Profiles Next's overlay
   were left out on every version: NeoForge renders the screen inside `ClientHooks.drawScreen` (26.2 on: `extractScreen`).
+- SIG-2: an `@Inject` handler taking a method's vanilla parameters, the callback info and MixinExtras sugar gets a
+  bridge taking the parameters NeoForge's build gives the method, one more: Ledger's fire hooks take a `@Local` after
+  the callback info, which SIG-1's bridge doesn't carry, and stayed left out on every version.
 - PRE-14: pre-flight checks a `@ModifyVariable` handler's parameters as Mixin does (the variable, then the target's
   first parameters, as many as it takes): Farmer's Delight's crop growth hook takes `getGrowthSpeed`'s vanilla
   parameters, NeoForge's build takes a block state first, and Mixin stopped the 1.21.11 corpus server once ENUM-6 let

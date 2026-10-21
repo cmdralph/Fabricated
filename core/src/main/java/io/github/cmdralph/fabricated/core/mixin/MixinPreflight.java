@@ -306,7 +306,9 @@ public final class MixinPreflight {
 							out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@" + simpleName(ann.desc) + " " + method.name
 									+ " expects a call to " + moved, ""));
 						}
-						for (String lambda : capturedValueRepairs(node, method, ann, targets.getFirst(), ctx, bridges)) {
+						List<String> captured = capturedValueRepairs(node, method, ann, targets.getFirst(), ctx, bridges);
+						// Where the parameters can't be matched by type (one the method has twice), in order, around one added.
+						for (String lambda : captured.isEmpty() ? addedParameterRepairs(node, method, ann, targets.getFirst(), ctx, bridges) : captured) {
 							changed = true;
 							out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@" + simpleName(ann.desc) + " " + method.name
 									+ " targets " + lambda, ""));
@@ -1032,6 +1034,38 @@ public final class MixinPreflight {
 			if (!all[i].equals(own[i])) return false;
 		}
 		return true;
+	}
+
+	/**
+	 * Bridges an {@code @Inject} handler taking the parameters vanilla's method has, then the callback info and MixinExtras
+	 * sugar, into the one method its selector picks, which NeoForge's build declares with one more parameter: the bridge
+	 * takes the method's parameters, and the sugar, and calls the handler without the added one, which Mixin would refuse.
+	 * {@link #capturedValueRepairs} bridges such a handler without sugar (SIG-1); Ledger's hooks into
+	 * {@code FireBlock.checkBurnOut}, which NeoForge's build gives the side the fire burns from, take a {@code @Local}
+	 * after the callback info. The injection points must be in that method. Returns a description of the bridge.
+	 */
+	private static List<String> addedParameterRepairs(ClassNode mixin, MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx,
+			List<MethodNode> bridges) {
+		if (!injector.desc.equals(INJECT) || Annotations.value(injector, "locals") != null || (mixin.access & Opcodes.ACC_INTERFACE) != 0
+				|| !(Annotations.value(injector, "method") instanceof List<?> selectors) || selectors.size() != 1
+				|| !(selectors.getFirst() instanceof String raw)) return List.of();
+		List<Type> args = handlerArgs(handler);
+		if (args == null || args.size() < 2 || !isCallbackInfo(args.getLast())) return List.of();
+		MemberRef ref = MemberRef.parse(ctx.resolve(raw));
+		if (ref.fuzzy() || ref.name() == null) return List.of();
+		MethodNode chosen = target.methods.stream().filter(m -> ref.matchesMethod(m.name, m.desc)).findFirst().orElse(null);
+		if (chosen == null) return List.of();
+		List<Type> own = args.subList(0, args.size() - 1);
+		// The sugar follows the callback info, where the bridge takes it over.
+		if (!List.of(Type.getArgumentTypes(handler.desc)).subList(0, args.size()).equals(args)) return List.of();
+		String vanilla = Type.getMethodDescriptor(Type.getReturnType(chosen.desc), own.toArray(Type[]::new));
+		int inserted = insertedArgument(vanilla, chosen.desc);
+		if (inserted < 0 || InjectionPoints.pointsIn(Annotations.list(Annotations.value(injector, "at")),
+				Annotations.list(Annotations.value(injector, "slice")), chosen, ctx) != Verdict.FOUND) return List.of();
+		bridges.add(HandlerBridges.insertedParameterBridge(mixin.name, handler, injector, 0, own.size(), chosen, inserted,
+				HandlerBridges.freeName(mixin, bridges, handler.name + "$fabricated")));
+		return List.of(chosen.name + vanilla + ", which this game build declares with one more parameter, " + chosen.name + chosen.desc
+				+ "; the handler is called through a bridge taking it");
 	}
 
 	/** The one other overload of the same name {@code method} calls, or null (none, or several). */

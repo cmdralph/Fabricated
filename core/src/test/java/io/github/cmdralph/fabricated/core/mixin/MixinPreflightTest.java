@@ -1155,6 +1155,62 @@ class MixinPreflightTest {
 				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), none).isEmpty(), none.toString());
 	}
 
+	@Test
+	void anInjectionTakingTheParametersVanillasMethodHasGetsABridgeTakingNeoForgesOneMore() throws Exception {
+		// Ledger's hooks into FireBlock.checkBurnOut take vanilla's parameters, then a @Local after the callback info, which
+		// SIG-1's bridge doesn't carry; NeoForge's build adds the side the fire burns from.
+		String vanilla = "(ILjava/lang/String;I)V";
+		String neoForge = "(ILjava/lang/String;ILjava/lang/Long;)V";
+		ClassWriter target = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		target.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		MethodVisitor burn = target.visitMethod(Opcodes.ACC_PRIVATE, "burn", neoForge, null, null);
+		burn.visitCode();
+		burn.visitInsn(Opcodes.RETURN);
+		burn.visitMaxs(0, 0);
+		burn.visitEnd();
+		target.visitEnd();
+		ClassIndex game = new ClassIndex(Map.of(TARGET, target.toByteArray())::get);
+		String handlerDesc = "(ILjava/lang/String;ILorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;Ljava/lang/Object;)V";
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Fire", mixin("com/example/mixin/Fire", false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "onBurn", handlerDesc, null, null);
+			mv.visitParameterAnnotation(4, "Lcom/llamalad7/mixinextras/sugar/Local;", false).visitEnd();
+			AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "burn");
+			methods.visitEnd();
+			AnnotationVisitor ats = ann.visitArray("at");
+			AnnotationVisitor at = ats.visitAnnotation(null, AT);
+			at.visit("value", "HEAD");
+			at.visitEnd();
+			ats.visitEnd();
+			ann.visitEnd();
+			mv.visitCode();
+			mv.visitVarInsn(Opcodes.ILOAD, 1);
+			mv.visitVarInsn(Opcodes.ILOAD, 3);
+			mv.visitInsn(Opcodes.IADD);
+			mv.visitInsn(Opcodes.POP);
+			mv.visitInsn(Opcodes.RETURN);
+			mv.visitMaxs(2, 6);
+			mv.visitEnd();
+		})));
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Fire"));
+		List<PreflightFinding> before = preflight(game, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(before.getFirst().message().contains("does not match the parameters of burn" + neoForge), before.toString());
+
+		List<PreflightFinding> notes = new ArrayList<>();
+		Map<String, byte[]> repaired = preflight(game, mod::get, ClassBytesSource.EMPTY, false).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
+		assertEquals(1, notes.size(), notes.toString());
+		assertTrue(notes.getFirst().message().contains("burn" + vanilla + ", which this game build declares with one more parameter, burn" + neoForge), notes.toString());
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired.get("com/example/mixin/Fire.class")).accept(node, 0);
+		MethodNode bridge = node.methods.stream().filter(m -> m.name.equals("onBurn$fabricated")).findFirst().orElseThrow();
+		assertEquals("(ILjava/lang/String;ILjava/lang/Long;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;Ljava/lang/Object;)V", bridge.desc);
+		assertEquals("Lcom/llamalad7/mixinextras/sugar/Local;", bridge.invisibleParameterAnnotations[5].getFirst().desc, "the sugar moves to the bridge");
+		mod.put("com/example/mixin/Fire", repaired.get("com/example/mixin/Fire.class"));
+		List<PreflightFinding> after = preflight(game, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(after.isEmpty(), after.toString());
+	}
+
 	private static final String HOOKS = "net/neoforged/Hooks";
 
 	/** The game class with {@code helper(I)V}, whose {@code tick} calls {@code Hooks.draw} instead, with {@code hookDesc}. */
