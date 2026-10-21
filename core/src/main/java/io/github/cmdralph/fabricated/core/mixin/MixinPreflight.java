@@ -33,6 +33,7 @@ import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.AnnotationNode;
 import org.objectweb.asm.tree.ClassNode;
+import org.objectweb.asm.tree.FieldInsnNode;
 import org.objectweb.asm.tree.FieldNode;
 import org.objectweb.asm.tree.JumpInsnNode;
 import org.objectweb.asm.tree.LocalVariableNode;
@@ -309,6 +310,13 @@ public final class MixinPreflight {
 							+ " targets the captured variable field " + field + " in " + targets.getFirst().name.replace('/', '.')
 							+ ", which this game build names differently", ""));
 				}
+			}
+			for (FieldNode field : node.fields) {
+				String captured = capturedShadowRepair(node, field, targets, ctx);
+				if (captured == null) continue;
+				changed = true;
+				out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@Shadow field " + captured + " is a captured variable field of "
+						+ targets.getFirst().name.replace('/', '.') + ", which this game build names " + field.name + "; the mixin uses that", ""));
 			}
 			node.methods.addAll(bridges);
 			if (changed) repaired.put(internal + ".class", write(node));
@@ -992,6 +1000,41 @@ public final class MixinPreflight {
 		return name;
 	}
 
+	/**
+	 * Renames a {@code @Shadow} field of a missing captured variable field ({@code val$name}) after the only captured field
+	 * of the same type that every target has under one other name, as {@link #capturedFieldRepair} does for accessors
+	 * (NeoForge's 1.21.11 build names them after the decompiled variables), with the mixin's own uses of it; returns its
+	 * original name, or {@code null} and changes nothing.
+	 */
+	private static String capturedShadowRepair(ClassNode mixin, FieldNode field, List<ClassNode> targets, Context ctx) {
+		if (Annotations.find(field, SHADOW) == null || (field.access & Opcodes.ACC_STATIC) != 0) return null;
+		String name = MemberRef.parse(ctx.resolve(field.name)).nameOr(field.name);
+		if (!name.equals(field.name) || !name.startsWith(CAPTURED_PREFIX)) return null;
+		String renamed = null;
+		for (ClassNode target : targets) {
+			String only = null;
+			for (FieldNode f : target.fields) {
+				if (f.name.equals(name)) return null; // present: nothing to repair
+				if ((f.access & Opcodes.ACC_STATIC) != 0 || !f.desc.equals(field.desc)) continue;
+				if (!f.name.startsWith(CAPTURED_PREFIX) && (f.access & Opcodes.ACC_SYNTHETIC) == 0) continue;
+				if (only != null) return null; // ambiguous
+				only = f.name;
+			}
+			if (only == null || (renamed != null && !renamed.equals(only))) return null;
+			renamed = only;
+		}
+		if (renamed == null) return null;
+		for (MethodNode method : mixin.methods) {
+			for (AbstractInsnNode insn : method.instructions) {
+				if (insn instanceof FieldInsnNode use && use.owner.equals(mixin.name) && use.name.equals(name) && use.desc.equals(field.desc)) {
+					use.name = renamed;
+				}
+			}
+		}
+		field.name = renamed;
+		return name;
+	}
+
 	private static boolean isAccessorAnnotation(AnnotationNode annotation) {
 		return annotation.desc.equals(ACCESSOR) || annotation.desc.equals(INVOKER);
 	}
@@ -1210,8 +1253,8 @@ public final class MixinPreflight {
 			MemberRef ref = MemberRef.parse(name);
 			String fieldName = ref.nameOr(field.name);
 			String desc = ref.fieldDescOr(field.desc);
-			if (game.resolveField(target.name, fieldName + ":" + desc) == ClassIndex.Resolution.MISSING
-					&& !aliasExists(shadow, target, desc, true)) {
+			// Mixin looks for a shadowed field in the target class itself, not its supertypes.
+			if (target.fields.stream().noneMatch(f -> f.name.equals(fieldName) && f.desc.equals(desc)) && !aliasExists(shadow, target, desc, true)) {
 				if (addedByAMixin(fieldName)) {
 					ctx.info("@Shadow field " + fieldName + " is not in " + targetDotted + "; another mod's mixin may add it, so it was not verified");
 				} else {

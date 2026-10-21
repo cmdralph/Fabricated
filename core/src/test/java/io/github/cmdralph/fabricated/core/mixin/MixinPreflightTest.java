@@ -180,6 +180,59 @@ class MixinPreflightTest {
 		assertTrue(after.getFirst().mixin().endsWith("TakesArgs"), after.toString());
 	}
 
+	/**
+	 * Server Translations' mixin into vanilla's anonymous {@code EncoderCache$2} shadows its captured {@code val$codec},
+	 * which NeoForge's 1.21.11 build names after the decompiled variable. The class implements a library interface pre-flight
+	 * has no bytes of, so looking the field up through its supertypes couldn't tell it was missing, and the mixin stopped
+	 * the server; Mixin only looks in the target class. The shadow is pointed at the one captured field of its type.
+	 */
+	@Test
+	void aShadowOfACapturedVariableFieldFindsItUnderTheNameThisBuildGivesIt() throws Exception {
+		String anonymous = "net/minecraft/util/EncoderCache$2";
+		ClassWriter target = new ClassWriter(0);
+		target.visit(Opcodes.V21, Opcodes.ACC_FINAL, anonymous, null, "java/lang/Object", new String[] {"com/mojang/serialization/Codec"});
+		target.visitField(Opcodes.ACC_FINAL | Opcodes.ACC_SYNTHETIC, "val$p_330_", "Lcom/mojang/serialization/Codec;", null, null).visitEnd();
+		target.visitEnd();
+		ClassIndex game = new ClassIndex(Map.of(anonymous, target.toByteArray())::get);
+
+		ClassWriter cw = new ClassWriter(0);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, "com/example/mixin/Cache", null, "java/lang/Object", null);
+		AnnotationVisitor m = cw.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false);
+		AnnotationVisitor names = m.visitArray("targets");
+		names.visit(null, anonymous);
+		names.visitEnd();
+		m.visitEnd();
+		FieldVisitor shadow = cw.visitField(Opcodes.ACC_PRIVATE | Opcodes.ACC_FINAL, "val$codec", "Lcom/mojang/serialization/Codec;", null, null);
+		shadow.visitAnnotation("Lorg/spongepowered/asm/mixin/Shadow;", false).visitEnd();
+		shadow.visitEnd();
+		MethodVisitor uses = cw.visitMethod(Opcodes.ACC_PRIVATE, "codec", "()Ljava/lang/Object;", null, null);
+		uses.visitCode();
+		uses.visitVarInsn(Opcodes.ALOAD, 0);
+		uses.visitFieldInsn(Opcodes.GETFIELD, "com/example/mixin/Cache", "val$codec", "Lcom/mojang/serialization/Codec;");
+		uses.visitInsn(Opcodes.ARETURN);
+		uses.visitMaxs(1, 1);
+		uses.visitEnd();
+		cw.visitEnd();
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Cache", cw.toByteArray()));
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Cache"));
+
+		List<PreflightFinding> before = preflight(game, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertEquals(1, before.size(), before.toString());
+		assertTrue(before.getFirst().message().contains("@Shadow field val$codec"), before.toString());
+
+		List<PreflightFinding> notes = new ArrayList<>();
+		byte[] repaired = preflight(game, mod::get, ClassBytesSource.EMPTY, false).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes)
+				.get("com/example/mixin/Cache.class");
+		assertNotNull(repaired, notes.toString());
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired).accept(node, 0);
+		assertEquals("val$p_330_", node.fields.getFirst().name);
+		org.objectweb.asm.tree.FieldInsnNode read = (org.objectweb.asm.tree.FieldInsnNode) node.methods.getFirst().instructions.get(1);
+		assertEquals("val$p_330_", read.name, "the mixin's own uses follow");
+		mod.put("com/example/mixin/Cache", repaired);
+		assertTrue(preflight(game, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty());
+	}
+
 	private static final String REGISTER = "register(Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;";
 	private static final String REGISTER_WITH_ID = "(ILjava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;";
 

@@ -44,6 +44,12 @@ pre-flight couldn't repair (JourneyMap).
   looks only in the mod's own module, while Fabric's unnamed modules see the whole class path. A Fabric mod's
   `Class.getResource(AsStream)` calls now go through Fabricated's `ClassResources`, which asks the class loader too when
   the module has no such file. The test mod checks it on every version.
+- SHADOW-1: Server Translations shadows the captured `val$codec` of vanilla's anonymous `EncoderCache$2`, which NeoForge's
+  1.21.11 build names otherwise. Pre-flight looked the field up through the class's supertypes, one of which (a
+  DataFixerUpper interface) it has no bytes of, so it couldn't tell, and the mixin stopped the 1.21.11 advanced corpus
+  server (run 385). A shadowed field is now looked for in the target class only, as Mixin does, and one of a captured
+  variable is pointed at the only captured field of its type, as accessors of them already were.
+- CI prints the causes of a server crash report (a mod loading crash's issues are below its description).
 - The translation schema is bumped (28): translations cached by a build before PR #51 are made again.
 
 Run 384 also showed, still open: Moonlight's reload listener on 26.1.2 (CORPUS-16), and on 26.3 the advanced corpus

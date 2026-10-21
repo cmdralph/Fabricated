@@ -641,6 +641,8 @@ jobs:
               for report in $(ls "$RUNNER_TEMP/$run/crash-reports"/*.txt 2>/dev/null | head -1); do
                 echo "-- $(basename "$report")"
                 sed -n '/^Description:/,/^A detailed walkthrough/p' "$report" | grep -v "^A detailed" | head -40
+                # A mod loading crash names its causes below that (its issues' exceptions), with their first frames.
+                grep -E -A4 "^Caused by:|^\s*Exception message:" "$report" | grep -v "^--$" | head -40 | cut -c1-300
               done
               echo "-- server didn't start; last lines of the log:"
               tail -n 6 "$log" | cut -c1-300
