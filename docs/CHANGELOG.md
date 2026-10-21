@@ -3,6 +3,27 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-10-21 (pass after PR #60): hooks into code NeoForge moved or deprecated
+
+**Plan.** PR #60's last run (`36b6f96`) was as clean as PR #59's, and the advanced clients' linkage check no longer
+named Polymer's creative tab call (CTOR-1). Of the hooks pre-flight still left out, several target code NeoForge's
+patches moved elsewhere in the same class: architectury's entity and explosion events, Carpet's fill updates,
+FrozenLib's and Wilder Wild's bone meal hooks.
+
+- SPLIT-2: architectury's entity add event hooks `PersistentEntitySectionManager.addEntity`, whose code NeoForge's build
+  moved into `addEntityWithoutEvent`, which an entry point skipping NeoForge's event calls too; Carpet's fill updates
+  rule changes a constant NeoForge's `Level.setBlock` tests in `markAndNotifyBlock`. Both are pointed at the split-off
+  code now. Moves (HOOK-2, HOOK-3, SPLIT-1) take a handler whose state no other injector of its mixin shares.
+- LOCAL-1: architectury's explosion event takes the entities' list at the loop in `ServerExplosion.hurtEntities`, whose
+  code NeoForge moved into an overload also taking the blocks' list; the moved hook's `@Local` gets the ordinal of the
+  list the overload didn't add, as it already did at a method's end.
+- DEPRECATED-1: an injection into a method NeoForge marks deprecated, whose code moved into the one method of its class
+  it calls with one more parameter, moves there as into an overload: FrozenLib's bone meal hook into `growCrop`, now
+  `applyBonemeal` taking the player. One at a call of such a method moves to the replacement's call the game build
+  makes instead: Wilder Wild's at `useOn`'s call of `growCrop`. A handler a repair moved onto a bridge is no longer
+  bridged again by the repairs after it (an `@Inject` without sugar taking the method's parameters was).
+- Roadmap: CTOR-1 recorded as seen on `36b6f96`.
+
 ## 2026-10-21 (pass after PR #59): calls of game code NeoForge changed
 
 **Plan.** PR #59's last run (`e00f341`) had every advanced client in its world on all four versions, with no failed

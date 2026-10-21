@@ -1031,7 +1031,7 @@ class MixinPreflightTest {
 		AnnotationVisitor methods = ann.visitArray("method");
 		methods.visit(null, "tick");
 		methods.visitEnd();
-		boolean single = injector.equals(REDIRECT);
+		boolean single = injector.equals(REDIRECT) || injector.endsWith("/ModifyArg;");
 		AnnotationVisitor ats = single ? null : ann.visitArray("at");
 		AnnotationVisitor at = single ? ann.visitAnnotation("at", AT) : ats.visitAnnotation(null, AT);
 		at.visit("value", "INVOKE");
@@ -1159,20 +1159,48 @@ class MixinPreflightTest {
 		mod2.put("com/example/mixin/AtHelper", retargeted);
 		assertTrue(preflight(older, mod2::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty());
 
-		// A handler using the mixin's own state stays: it may need another handler's, at the call, which isn't moved.
+		// A handler sharing the mixin's own state with another injector stays, as jGui's (ReplayMod) @Inject after the
+		// screen render: it reads what its @ModifyArg at the call keeps, which can't move with it.
+		Consumer<MethodVisitor> readsContext = mv -> {
+			mv.visitVarInsn(Opcodes.ALOAD, 0);
+			mv.visitFieldInsn(Opcodes.GETFIELD, "com/example/mixin/AtHelper", "context", "Ljava/lang/Object;");
+			mv.visitInsn(Opcodes.POP);
+			mv.visitInsn(Opcodes.RETURN);
+			mv.visitMaxs(1, 2);
+			mv.visitEnd();
+		};
 		byte[] stateful = mixin("com/example/mixin/AtHelper", false, cw -> {
 			cw.visitField(Opcodes.ACC_PRIVATE, "context", "Ljava/lang/Object;", null, null).visitEnd();
-			atHelperCall(cw, INJECT, "inject", "(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V", mv -> {
+			atHelperCall(cw, INJECT, "inject", "(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V", readsContext);
+			atHelperCall(cw, "Lorg/spongepowered/asm/mixin/injection/ModifyArg;", "keep", "(I)I", mv -> {
 				mv.visitVarInsn(Opcodes.ALOAD, 0);
-				mv.visitFieldInsn(Opcodes.GETFIELD, "com/example/mixin/AtHelper", "context", "Ljava/lang/Object;");
-				mv.visitInsn(Opcodes.POP);
-				mv.visitInsn(Opcodes.RETURN);
-				mv.visitMaxs(1, 2);
+				mv.visitInsn(Opcodes.ACONST_NULL);
+				mv.visitFieldInsn(Opcodes.PUTFIELD, "com/example/mixin/AtHelper", "context", "Ljava/lang/Object;");
+				mv.visitVarInsn(Opcodes.ILOAD, 1);
+				mv.visitInsn(Opcodes.IRETURN);
+				mv.visitMaxs(2, 2);
 				mv.visitEnd();
 			});
 		});
 		assertTrue(preflight(older, Map.of("com/example/mixin/AtHelper", stateful)::get, ClassBytesSource.EMPTY, false)
 				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty());
+		// State it shares with the mixin's other members alone (a duck interface's method sets it) moves with it (SPLIT-2).
+		byte[] ownState = mixin("com/example/mixin/AtHelper", false, cw -> {
+			cw.visitField(Opcodes.ACC_PRIVATE, "context", "Ljava/lang/Object;", null, null).visitEnd();
+			atHelperCall(cw, INJECT, "inject", "(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V", readsContext);
+			MethodVisitor attach = cw.visitMethod(Opcodes.ACC_PUBLIC, "attach", "(Ljava/lang/Object;)V", null, null);
+			attach.visitCode();
+			attach.visitVarInsn(Opcodes.ALOAD, 0);
+			attach.visitVarInsn(Opcodes.ALOAD, 1);
+			attach.visitFieldInsn(Opcodes.PUTFIELD, "com/example/mixin/AtHelper", "context", "Ljava/lang/Object;");
+			attach.visitInsn(Opcodes.RETURN);
+			attach.visitMaxs(2, 2);
+			attach.visitEnd();
+		});
+		List<PreflightFinding> alone = new ArrayList<>();
+		preflight(older, Map.of("com/example/mixin/AtHelper", ownState)::get, ClassBytesSource.EMPTY, false)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), alone);
+		assertEquals(1, alone.size(), alone.toString());
 
 		// A static method of that shape that doesn't make the call isn't taken for the hook.
 		ClassIndex unrelated = new ClassIndex(Map.of(TARGET, callingHook(plain), HOOKS, hooks(plain, false))::get);
@@ -1301,6 +1329,336 @@ class MixinPreflightTest {
 		List<PreflightFinding> after = preflight(game, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
 		assertEquals(1, after.size(), after.toString());
 		assertEquals("returning(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;)V", after.getFirst().handler());
+	}
+
+	@Test
+	void aLocalTakenByTypeAtACallInAnOverloadWithAParameterOfThatTypeIsNamedByItsOrdinal() throws Exception {
+		// architectury's explosion hook takes the entities' list at the loop over it in ServerExplosion.hurtEntities, whose
+		// code NeoForge's build moved into an overload that also takes the exploded blocks' list.
+		ClassWriter target = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		target.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		MethodVisitor hurt = target.visitMethod(Opcodes.ACC_PRIVATE, "hurt", "()V", null, null);
+		hurt.visitCode();
+		hurt.visitVarInsn(Opcodes.ALOAD, 0);
+		hurt.visitInsn(Opcodes.ACONST_NULL);
+		hurt.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "hurt", "(Ljava/util/List;)V", false);
+		hurt.visitInsn(Opcodes.RETURN);
+		hurt.visitMaxs(0, 0);
+		hurt.visitEnd();
+		MethodVisitor overload = target.visitMethod(Opcodes.ACC_PRIVATE, "hurt", "(Ljava/util/List;)V", null, null);
+		org.objectweb.asm.Label start = new org.objectweb.asm.Label();
+		org.objectweb.asm.Label listStart = new org.objectweb.asm.Label();
+		org.objectweb.asm.Label end = new org.objectweb.asm.Label();
+		overload.visitCode();
+		overload.visitLabel(start);
+		overload.visitInsn(Opcodes.ACONST_NULL);
+		overload.visitVarInsn(Opcodes.ASTORE, 2);
+		overload.visitLabel(listStart);
+		overload.visitVarInsn(Opcodes.ALOAD, 2);
+		overload.visitMethodInsn(Opcodes.INVOKEINTERFACE, "java/util/List", "iterator", "()Ljava/util/Iterator;", true);
+		overload.visitInsn(Opcodes.POP);
+		overload.visitInsn(Opcodes.RETURN);
+		overload.visitLabel(end);
+		overload.visitLocalVariable("this", "L" + TARGET + ";", null, start, end, 0);
+		overload.visitLocalVariable("blocks", "Ljava/util/List;", null, start, end, 1);
+		overload.visitLocalVariable("list", "Ljava/util/List;", null, listStart, end, 2);
+		overload.visitMaxs(0, 0);
+		overload.visitEnd();
+		target.visitEnd();
+		ClassIndex game = new ClassIndex(Map.of(TARGET, target.toByteArray())::get);
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Explosion", mixin("com/example/mixin/Explosion", false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "explodePost", "(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;Ljava/util/List;)V", null, null);
+			mv.visitParameterAnnotation(1, "Lcom/llamalad7/mixinextras/sugar/Local;", false).visitEnd();
+			AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "hurt");
+			methods.visitEnd();
+			AnnotationVisitor ats = ann.visitArray("at");
+			AnnotationVisitor at = ats.visitAnnotation(null, AT);
+			at.visit("value", "INVOKE");
+			at.visit("target", "Ljava/util/List;iterator()Ljava/util/Iterator;");
+			at.visit("ordinal", 0);
+			at.visitEnd();
+			ats.visitEnd();
+			ann.visitEnd();
+			mv.visitCode();
+			mv.visitInsn(Opcodes.RETURN);
+			mv.visitMaxs(0, 3);
+			mv.visitEnd();
+		})));
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Explosion"));
+		List<PreflightFinding> notes = new ArrayList<>();
+		byte[] repaired = preflight(game, mod::get, ClassBytesSource.EMPTY, false).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes)
+				.get("com/example/mixin/Explosion.class");
+		assertNotNull(repaired, notes.toString());
+		assertTrue(notes.getFirst().message().contains("hurt()V, whose code NeoForge moved into hurt(Ljava/util/List;)V"), notes.toString());
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired).accept(node, 0);
+		MethodNode handler = node.methods.stream().filter(m -> m.name.equals("explodePost")).findFirst().orElseThrow();
+		assertEquals(1, Annotations.value(Annotations.ofParameter(handler, 1).getFirst(), "ordinal"), "the second list in scope, not the blocks'");
+		assertTrue(node.methods.stream().noneMatch(m -> m.name.contains("$fabricated")), "no bridge");
+	}
+
+	@Test
+	void anInjectionIntoAMethodNeoForgeDeprecatedIsPointedAtItsReplacement() throws Exception {
+		// DEPRECATED-1: FrozenLib hooks BoneMealItem.growCrop, which NeoForge's build deprecates for applyBonemeal, taking
+		// the player too, and keeps only to call that on a server level (a jump, so no plain overload).
+		java.util.function.Function<Boolean, byte[]> target = deprecated -> {
+			ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+			cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+			MethodVisitor grow = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC | (deprecated ? Opcodes.ACC_DEPRECATED : 0), "grow", "(Ljava/lang/String;)Z", null, null);
+			if (deprecated) grow.visitAnnotation("Ljava/lang/Deprecated;", true).visitEnd();
+			org.objectweb.asm.Label otherwise = new org.objectweb.asm.Label();
+			grow.visitCode();
+			grow.visitVarInsn(Opcodes.ALOAD, 0);
+			grow.visitJumpInsn(Opcodes.IFNULL, otherwise);
+			grow.visitVarInsn(Opcodes.ALOAD, 0);
+			grow.visitInsn(Opcodes.ACONST_NULL);
+			grow.visitMethodInsn(Opcodes.INVOKESTATIC, TARGET, "apply", "(Ljava/lang/String;Ljava/lang/Object;)Z", false);
+			grow.visitInsn(Opcodes.IRETURN);
+			grow.visitLabel(otherwise);
+			grow.visitFrame(Opcodes.F_SAME, 0, null, 0, null);
+			grow.visitInsn(Opcodes.ICONST_0);
+			grow.visitInsn(Opcodes.IRETURN);
+			grow.visitMaxs(0, 0);
+			grow.visitEnd();
+			MethodVisitor apply = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "apply", "(Ljava/lang/String;Ljava/lang/Object;)Z", null, null);
+			apply.visitCode();
+			apply.visitInsn(Opcodes.ICONST_0);
+			apply.visitMethodInsn(Opcodes.INVOKESTATIC, TARGET, "helper", "(I)V", false);
+			apply.visitInsn(Opcodes.ICONST_1);
+			apply.visitInsn(Opcodes.IRETURN);
+			apply.visitMaxs(0, 0);
+			apply.visitEnd();
+			MethodVisitor helper = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "helper", "(I)V", null, null);
+			helper.visitCode();
+			helper.visitInsn(Opcodes.RETURN);
+			helper.visitMaxs(0, 0);
+			helper.visitEnd();
+			// useOn: where vanilla's calls growCrop, NeoForge's calls applyBonemeal with the player.
+			MethodVisitor use = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "use", "()V", null, null);
+			use.visitCode();
+			use.visitLdcInsn("pos");
+			use.visitInsn(Opcodes.ACONST_NULL);
+			use.visitMethodInsn(Opcodes.INVOKESTATIC, TARGET, "apply", "(Ljava/lang/String;Ljava/lang/Object;)Z", false);
+			use.visitInsn(Opcodes.POP);
+			use.visitInsn(Opcodes.RETURN);
+			use.visitMaxs(0, 0);
+			use.visitEnd();
+			cw.visitEnd();
+			return cw.toByteArray();
+		};
+		String handlerDesc = "(Ljava/lang/String;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;)V";
+		byte[] mixin = mixin("com/example/mixin/BoneMeal", false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "onGrow", handlerDesc, null, null);
+			AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "grow");
+			methods.visitEnd();
+			AnnotationVisitor ats = ann.visitArray("at");
+			AnnotationVisitor at = ats.visitAnnotation(null, AT);
+			at.visit("value", "INVOKE");
+			at.visit("target", "L" + TARGET + ";helper(I)V");
+			at.visitEnd();
+			ats.visitEnd();
+			ann.visitEnd();
+			mv.visitCode();
+			mv.visitInsn(Opcodes.RETURN);
+			mv.visitMaxs(0, 2);
+			mv.visitEnd();
+			MethodVisitor atCall = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "beforeGrow", "(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V", null, null);
+			AnnotationVisitor callAnn = atCall.visitAnnotation(INJECT, false);
+			AnnotationVisitor callMethods = callAnn.visitArray("method");
+			callMethods.visit(null, "use");
+			callMethods.visitEnd();
+			AnnotationVisitor callAts = callAnn.visitArray("at");
+			AnnotationVisitor callAt = callAts.visitAnnotation(null, AT);
+			callAt.visit("value", "INVOKE");
+			callAt.visit("target", "L" + TARGET + ";grow(Ljava/lang/String;)Z");
+			callAt.visit("ordinal", 0);
+			callAt.visitEnd();
+			callAts.visitEnd();
+			callAnn.visitEnd();
+			atCall.visitCode();
+			atCall.visitInsn(Opcodes.RETURN);
+			atCall.visitMaxs(0, 1);
+			atCall.visitEnd();
+		});
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "BoneMeal"));
+		ClassIndex game = new ClassIndex(Map.of(TARGET, target.apply(true))::get);
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/BoneMeal", mixin));
+		List<PreflightFinding> notes = new ArrayList<>();
+		Map<String, byte[]> repaired = preflight(game, mod::get, ClassBytesSource.EMPTY, false).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
+		assertEquals(2, notes.size(), notes.toString());
+		assertTrue(notes.getFirst().message().contains("grow(Ljava/lang/String;)Z, which NeoForge deprecated for apply(Ljava/lang/String;Ljava/lang/Object;)Z"), notes.toString());
+		assertTrue(notes.get(1).message().contains("grow(Ljava/lang/String;)Z, which NeoForge deprecated: this game build calls its replacement "
+				+ TARGET.replace('/', '.') + ".apply(Ljava/lang/String;Ljava/lang/Object;)Z instead"), notes.toString());
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired.get("com/example/mixin/BoneMeal.class")).accept(node, 0);
+		MethodNode bridge = node.methods.stream().filter(m -> m.name.equals("onGrow$fabricated")).findFirst().orElseThrow();
+		assertEquals("(Ljava/lang/String;Ljava/lang/Object;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;)V", bridge.desc);
+		mod.put("com/example/mixin/BoneMeal", repaired.get("com/example/mixin/BoneMeal.class"));
+		List<PreflightFinding> after = preflight(game, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(after.isEmpty(), after.toString());
+
+		// A vanilla method (never deprecated) calling such a method is no sign its code moved there.
+		assertTrue(preflight(new ClassIndex(Map.of(TARGET, target.apply(false))::get), Map.of("com/example/mixin/BoneMeal", mixin)::get,
+				ClassBytesSource.EMPTY, false).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty());
+	}
+
+	@Test
+	void anInjectionIntoCodeNeoForgeSplitOffNextToAnEntryPointWithoutItsEventIsPointedThere() throws Exception {
+		// SPLIT-2: architectury hooks PersistentEntitySectionManager.addEntity for its entity add event, keeping the level
+		// its duck interface is given. NeoForge's build posts its own event there, then calls addEntityWithoutEvent, which
+		// has vanilla's code and parameters, and which its addNewEntityWithoutEvent calls too.
+		String desc = "(Ljava/lang/Object;Z)Z";
+		ClassWriter target = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		target.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		MethodVisitor add = target.visitMethod(Opcodes.ACC_PRIVATE, "addEntity", desc, null, null);
+		add.visitCode();
+		add.visitMethodInsn(Opcodes.INVOKESTATIC, "net/neoforged/Events", "post", "()V", false);
+		add.visitVarInsn(Opcodes.ALOAD, 0);
+		add.visitVarInsn(Opcodes.ALOAD, 1);
+		add.visitVarInsn(Opcodes.ILOAD, 2);
+		add.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "addEntityWithoutEvent", desc, false);
+		add.visitInsn(Opcodes.IRETURN);
+		add.visitMaxs(0, 0);
+		add.visitEnd();
+		MethodVisitor without = target.visitMethod(Opcodes.ACC_PRIVATE, "addEntityWithoutEvent", desc, null, null);
+		without.visitCode();
+		without.visitVarInsn(Opcodes.ALOAD, 0);
+		without.visitInsn(Opcodes.ICONST_0);
+		without.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "helper", "(I)V", false);
+		without.visitInsn(Opcodes.ICONST_1);
+		without.visitInsn(Opcodes.IRETURN);
+		without.visitMaxs(0, 0);
+		without.visitEnd();
+		MethodVisitor entry = target.visitMethod(Opcodes.ACC_PUBLIC, "addNewEntityWithoutEvent", "(Ljava/lang/Object;)Z", null, null);
+		entry.visitCode();
+		entry.visitVarInsn(Opcodes.ALOAD, 0);
+		entry.visitVarInsn(Opcodes.ALOAD, 1);
+		entry.visitInsn(Opcodes.ICONST_0);
+		entry.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "addEntityWithoutEvent", desc, false);
+		entry.visitInsn(Opcodes.IRETURN);
+		entry.visitMaxs(0, 0);
+		entry.visitEnd();
+		MethodVisitor helper = target.visitMethod(Opcodes.ACC_PUBLIC, "helper", "(I)V", null, null);
+		helper.visitCode();
+		helper.visitInsn(Opcodes.RETURN);
+		helper.visitMaxs(0, 0);
+		helper.visitEnd();
+		target.visitEnd();
+		ClassIndex game = new ClassIndex(Map.of(TARGET, target.toByteArray())::get);
+		String handlerDesc = "(Ljava/lang/Object;ZLorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;)V";
+		java.util.function.Function<Boolean, byte[]> mixin = shared -> mixin("com/example/mixin/Entities", false, cw -> {
+			cw.visitField(Opcodes.ACC_PRIVATE, "level", "Ljava/lang/Object;", null, null).visitEnd();
+			MethodVisitor attach = cw.visitMethod(Opcodes.ACC_PUBLIC, "attach", "(Ljava/lang/Object;)V", null, null);
+			attach.visitCode();
+			attach.visitVarInsn(Opcodes.ALOAD, 0);
+			attach.visitVarInsn(Opcodes.ALOAD, 1);
+			attach.visitFieldInsn(Opcodes.PUTFIELD, "com/example/mixin/Entities", "level", "Ljava/lang/Object;");
+			attach.visitInsn(Opcodes.RETURN);
+			attach.visitMaxs(2, 2);
+			attach.visitEnd();
+			for (String name : shared ? List.of("onAdd", "alsoOnAdd") : List.of("onAdd")) {
+				MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, name, handlerDesc, null, null);
+				AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
+				AnnotationVisitor methods = ann.visitArray("method");
+				methods.visit(null, "addEntity");
+				methods.visitEnd();
+				AnnotationVisitor ats = ann.visitArray("at");
+				AnnotationVisitor at = ats.visitAnnotation(null, AT);
+				at.visit("value", "INVOKE");
+				at.visit("target", "L" + TARGET + ";helper(I)V");
+				at.visitEnd();
+				ats.visitEnd();
+				ann.visitEnd();
+				mv.visitCode();
+				mv.visitVarInsn(Opcodes.ALOAD, 0);
+				mv.visitInsn(Opcodes.ACONST_NULL);
+				mv.visitFieldInsn(Opcodes.PUTFIELD, "com/example/mixin/Entities", "level", "Ljava/lang/Object;");
+				mv.visitInsn(Opcodes.RETURN);
+				mv.visitMaxs(2, 4);
+				mv.visitEnd();
+			}
+		});
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Entities"));
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Entities", mixin.apply(false)));
+		List<PreflightFinding> notes = new ArrayList<>();
+		Map<String, byte[]> repaired = preflight(game, mod::get, ClassBytesSource.EMPTY, false).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
+		assertEquals(1, notes.size(), notes.toString());
+		assertTrue(notes.getFirst().message().contains("addEntity" + desc + ", the code of which there NeoForge split off into addEntityWithoutEvent" + desc), notes.toString());
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired.get("com/example/mixin/Entities.class")).accept(node, 0);
+		assertTrue(node.methods.stream().noneMatch(m -> m.name.contains("$fabricated")), "the same parameters need no bridge");
+		mod.put("com/example/mixin/Entities", repaired.get("com/example/mixin/Entities.class"));
+		List<PreflightFinding> after = preflight(game, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(after.isEmpty(), after.toString());
+
+		// Two injectors keeping the same state stay where they are: moving one alone could part them.
+		assertTrue(preflight(game, Map.of("com/example/mixin/Entities", mixin.apply(true))::get, ClassBytesSource.EMPTY, false)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty());
+	}
+
+	@Test
+	void aConstantModifierInCodeNeoForgeSplitOffIsPointedThere() throws Exception {
+		// SPLIT-2: Carpet's fill updates rule changes the shape update flag (16) in Level.setBlock, which NeoForge's build
+		// tests in markAndNotifyBlock.
+		ClassWriter target = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		target.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		MethodVisitor set = target.visitMethod(Opcodes.ACC_PUBLIC, "setBlock", "(I)Z", null, null);
+		set.visitCode();
+		set.visitVarInsn(Opcodes.ALOAD, 0);
+		set.visitVarInsn(Opcodes.ILOAD, 1);
+		set.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "markAndNotifyBlock", "(I)V", false);
+		set.visitInsn(Opcodes.ICONST_1);
+		set.visitInsn(Opcodes.IRETURN);
+		set.visitMaxs(0, 0);
+		set.visitEnd();
+		MethodVisitor notify = target.visitMethod(Opcodes.ACC_PUBLIC, "markAndNotifyBlock", "(I)V", null, null);
+		notify.visitCode();
+		notify.visitVarInsn(Opcodes.ILOAD, 1);
+		notify.visitIntInsn(Opcodes.BIPUSH, 16);
+		notify.visitInsn(Opcodes.IAND);
+		notify.visitInsn(Opcodes.POP);
+		notify.visitInsn(Opcodes.RETURN);
+		notify.visitMaxs(0, 0);
+		notify.visitEnd();
+		target.visitEnd();
+		ClassIndex game = new ClassIndex(Map.of(TARGET, target.toByteArray())::get);
+		java.util.function.Function<String, byte[]> mixin = handlerDesc -> mixin("com/example/mixin/Fill", false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "skipUpdates", handlerDesc, null, null);
+			AnnotationVisitor ann = mv.visitAnnotation("Lorg/spongepowered/asm/mixin/injection/ModifyConstant;", false);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "setBlock(I)Z");
+			methods.visitEnd();
+			AnnotationVisitor constants = ann.visitArray("constant");
+			AnnotationVisitor constant = constants.visitAnnotation(null, "Lorg/spongepowered/asm/mixin/injection/Constant;");
+			constant.visit("intValue", 16);
+			constant.visitEnd();
+			constants.visitEnd();
+			ann.visitEnd();
+			mv.visitCode();
+			mv.visitVarInsn(Opcodes.ILOAD, 1);
+			mv.visitInsn(Opcodes.IRETURN);
+			mv.visitMaxs(1, 3);
+			mv.visitEnd();
+		});
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Fill"));
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Fill", mixin.apply("(I)I")));
+		List<PreflightFinding> before = preflight(game, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(before.getFirst().message().contains("expects the constant 16"), before.toString());
+		List<PreflightFinding> notes = new ArrayList<>();
+		Map<String, byte[]> repaired = preflight(game, mod::get, ClassBytesSource.EMPTY, false).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
+		assertEquals(1, notes.size(), notes.toString());
+		assertTrue(notes.getFirst().message().contains("setBlock(I)Z, the code of which there NeoForge split off into markAndNotifyBlock(I)V"), notes.toString());
+		mod.put("com/example/mixin/Fill", repaired.get("com/example/mixin/Fill.class"));
+		List<PreflightFinding> after = preflight(game, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(after.isEmpty(), after.toString());
+
+		// A handler also taking the method's parameters stays: the other method's differ.
+		assertTrue(preflight(game, Map.of("com/example/mixin/Fill", mixin.apply("(II)I"))::get, ClassBytesSource.EMPTY, false)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty());
 	}
 
 	@Test
