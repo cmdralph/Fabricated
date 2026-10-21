@@ -53,7 +53,11 @@
     },
     "fabric-data-generation-api-v1": {
       "plan": "passthrough",
-      "reason": "Mods' runtime code references its classes (Wover's entrypoints load its tag providers); its hooks act only when the fabric-api.datagen property is set."
+      "skipMixins": [
+        "fabric-data-generation-api-v1.mixins.json:BlockItemTagAppenderMixin",
+        "fabric-data-generation-api-v1.mixins.json:TagAppenderMixin$TagAppender1Mixin"
+      ],
+      "reason": "Mods' runtime code references its classes (Wover's entrypoints load its tag providers); its hooks act only when the fabric-api.datagen property is set. Its tag appender mixins add removal methods NeoForge's own tag appenders already declare, so they are left out: removing entries through a Fabric tag builder doesn't work in data generation."
     },
     "fabric-debug-api-v1": {
       "plan": "passthrough"

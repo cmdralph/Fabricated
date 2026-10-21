@@ -104,7 +104,7 @@ How to read the table:
 | fabric-screen-api-v1, sound-api-v1 on the client | loads (see below) | loads (see below) | loads (see below) | loads (see below) |
 | fabric-model-loading-api-v1 on the client | loads without renderer-api (see below) | loads (see below) | loads (see below) | loads (see below) |
 | fabric-renderer-api-v1, fabric-renderer-indigo | unsupported | client (see below) | client (see below) | client (see below) |
-| fabric-data-generation-api-v1 (its classes; it generates nothing unless `fabric-api.datagen` is set) | loads | loads | loads | loads |
+| fabric-data-generation-api-v1 (its classes; it generates nothing unless `fabric-api.datagen` is set; its tag appender mixins, and on 26.3 its loot sub-provider mixins, are left out) | loads | loads | loads | loads |
 | fabric-gametest-api-v1, client-gametest | unsupported | unsupported | unsupported | unsupported |
 
 ### Why modules are disabled
@@ -253,7 +253,8 @@ Mod resources themselves need nothing: NeoForge already loads the `assets/` and 
 included. Resources from those mod packs report Fabric's mod pack source, as on Fabric. What only NeoForge reads in a
 Fabric jar built for both loaders is left out, as Fabric ignores it: the `neoforge:` sections of its `pack.mcmeta`,
 and the `neoforge:conditions` of its data files, which name its NeoForge build's own condition types (Tectonic's,
-DATA-1); the Fabric build's `fabric:load_conditions` still decide.
+DATA-1); the Fabric build's `fabric:load_conditions` still decide. A built-in pack (`resourcepacks/<name>`, Fabric API's
+`registerBuiltinPack`) is read with those changes too (PACK-2).
 A mod that adds a pack source the vanilla way, replacing the repository's sources with a new immutable set
 (FrozenLib's resource pack API), keeps it: the set is made mutable again before NeoForge adds its own pack finders
 (PACK-1).

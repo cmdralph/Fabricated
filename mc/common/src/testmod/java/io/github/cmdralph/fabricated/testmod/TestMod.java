@@ -180,6 +180,17 @@ public final class TestMod implements ModInitializer, DedicatedServerModInitiali
 			}
 		});
 		ServerLifecycleEvents.SERVER_STOPPING.register(server -> LOGGER.info("FABRICATED-TEST lifecycle server stopping OK"));
+		// Damage types in the mod's data and in its built-in pack, under conditions only a NeoForge build would read
+		// (neoforge:false), which Fabric ignores (DATA-1, PACK-2).
+		ServerLifecycleEvents.SERVER_STARTED.register(server -> {
+			var damageTypes = server.registryAccess().lookupOrThrow(Registries.DAMAGE_TYPE);
+			if (damageTypes.containsKey(Identifier.fromNamespaceAndPath("fabricated_testmod", "conditioned"))) {
+				LOGGER.info("FABRICATED-TEST data without NeoForge conditions OK");
+			}
+			if (damageTypes.containsKey(Identifier.fromNamespaceAndPath("fabricated_testmod", "conditioned_builtin"))) {
+				LOGGER.info("FABRICATED-TEST built-in pack data without NeoForge conditions OK");
+			}
+		});
 		// NeoForge adds its pack finders to the server's pack repository after it was made: it couldn't start had that
 		// failed on the immutable sources the test mod left there (PACK-1).
 		ServerLifecycleEvents.SERVER_STARTED.register(server -> {

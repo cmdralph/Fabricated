@@ -794,7 +794,7 @@ public final class Pipeline {
 					: new ModContainerImpl.Origin(ModOrigin.Kind.NESTED, List.of(), c.parentId(), c.origin().substring(c.origin().lastIndexOf("!/") + 2));
 			ModContainerImpl container = new ModContainerImpl(c.metadata(), List.of(t.jar()), origin,
 					finalIds.contains(c.parentId()) ? c.parentId() : null,
-					c.nestedChildren().stream().filter(finalIds::contains).toList(), runtime);
+					c.nestedChildren().stream().filter(finalIds::contains).toList(), runtime, t.overlay());
 			FabricatedConfig.ModOverride override = config.override(c.id());
 			List<String> extraIds = new ArrayList<>(c.metadata().getProvides());
 			extraIds.addAll(override.aliases());
@@ -903,7 +903,7 @@ public final class Pipeline {
 			Map<String, CustomValue> customValues, List<Path> files) {
 		FabricModMetadata md = FabricModMetadata.builtin(id, parseVersion(version), name, "", customValues);
 		ModOrigin origin = new ModContainerImpl.Origin(files.isEmpty() ? ModOrigin.Kind.UNKNOWN : ModOrigin.Kind.PATH, files, null, null);
-		runtime.addMod(new ModContainerImpl(md, files, origin, null, List.of(), runtime), aliases);
+		runtime.addMod(new ModContainerImpl(md, files, origin, null, List.of(), runtime, null), aliases);
 	}
 
 	private static Version parseVersion(String version) {

@@ -1,13 +1,16 @@
 package io.github.cmdralph.fabricated.neoforge.resource;
 
 import java.nio.file.Files;
+import java.util.List;
 import java.util.Optional;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import net.fabricmc.fabric.api.resource.v1.pack.PackActivationType;
+import net.minecraft.server.packs.CompositePackResources;
 import net.minecraft.server.packs.PackLocationInfo;
+import net.minecraft.server.packs.PackResources;
 import net.minecraft.server.packs.PackSelectionConfig;
 import net.minecraft.server.packs.PackType;
 import net.minecraft.server.packs.PathPackResources;
@@ -42,8 +45,9 @@ final class BuiltinPacks {
 						pack.displayName(),
 						BuiltinPackSources.create(pack.modName(), pack.activationType().isEnabledByDefault()),
 						Optional.empty());
-				Pack created = Pack.readMetaAndCreate(info, new PathPackResources.PathResourcesSupplier(pack.root()), type,
-						new PackSelectionConfig(required, Pack.Position.TOP, false));
+				Pack.ResourcesSupplier files = new PathPackResources.PathResourcesSupplier(pack.root());
+				if (pack.overlayRoot() != null) files = new Layered(files, new PathPackResources.PathResourcesSupplier(pack.overlayRoot()));
+				Pack created = Pack.readMetaAndCreate(info, files, type, new PackSelectionConfig(required, Pack.Position.TOP, false));
 				if (created == null) {
 					LOGGER.warn("Built-in pack {} has no valid pack.mcmeta for {}, skipped", pack.id(), type);
 				} else {
@@ -51,5 +55,21 @@ final class BuiltinPacks {
 				}
 			}
 		});
+	}
+
+	/**
+	 * A built-in pack's files with those translation changed over them (PACK-2), as vanilla layers a pack's overlays: the
+	 * pack's metadata is the mod's own.
+	 */
+	private record Layered(Pack.ResourcesSupplier mod, Pack.ResourcesSupplier translated) implements Pack.ResourcesSupplier {
+		@Override
+		public PackResources openPrimary(PackLocationInfo location) {
+			return new CompositePackResources(mod.openPrimary(location), List.of(translated.openPrimary(location)));
+		}
+
+		@Override
+		public PackResources openFull(PackLocationInfo location, Pack.Metadata metadata) {
+			return new CompositePackResources(mod.openFull(location, metadata), List.of(translated.openFull(location, metadata)));
+		}
 	}
 }

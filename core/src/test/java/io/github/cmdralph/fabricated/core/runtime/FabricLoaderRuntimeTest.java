@@ -54,7 +54,7 @@ class FabricLoaderRuntimeTest {
 	private static ModContainerImpl mod(FabricLoaderRuntime rt, String id, String mainClass) throws Exception {
 		FabricModMetadata md = FabricModJsonParser.parse("{\"schemaVersion\":1,\"id\":\"" + id + "\",\"version\":\"1.0\","
 				+ "\"provides\":[\"" + id + "-provided\"],\"entrypoints\":{\"main\":[\"" + mainClass + "\"],\"custom\":[\"" + mainClass + "\"]}}");
-		ModContainerImpl c = new ModContainerImpl(md, List.of(), new ModContainerImpl.Origin(ModOrigin.Kind.PATH, List.of(), null, null), null, List.of(), rt);
+		ModContainerImpl c = new ModContainerImpl(md, List.of(), new ModContainerImpl.Origin(ModOrigin.Kind.PATH, List.of(), null, null), null, List.of(), rt, null);
 		rt.addMod(c, md.getProvides());
 		rt.addEntrypoints(c, md.entrypoints());
 		return c;
@@ -105,6 +105,26 @@ class FabricLoaderRuntimeTest {
 	 * A Fabric mod's package directories are found in its jar, as Fabric Loader's class loader finds them (SCAN-1), even
 	 * in a jar without directory entries; files are not, nor anything outside the jar, nor mods the game doesn't load.
 	 */
+	/** PACK-2: a built-in pack's directory in the overlay, whose files take priority over the mod's; the roots stay the jar's. */
+	@Test
+	void aContainerFindsDirectoriesOfItsOverlay(@TempDir Path dir) throws Exception {
+		Path overlay = dir.resolve("overlay.jar");
+		try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(overlay))) {
+			zip.putNextEntry(new ZipEntry("resourcepacks/extra/data/test/recipe/conditioned.json"));
+			zip.write("{}".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+			zip.closeEntry();
+		}
+		FabricModMetadata md = FabricModJsonParser.parse("{\"schemaVersion\":1,\"id\":\"packed\",\"version\":\"1.0\"}");
+		ModContainerImpl mod = new ModContainerImpl(md, List.of(), new ModContainerImpl.Origin(ModOrigin.Kind.PATH, List.of(), null, null),
+				null, List.of(), runtime(), overlay);
+		assertTrue(mod.overlayDirectory("resourcepacks/extra").map(p -> Files.isRegularFile(p.resolve("data/test/recipe/conditioned.json"))).orElse(false));
+		assertTrue(mod.overlayDirectory("resourcepacks/other").isEmpty());
+		assertTrue(mod.getRootPaths().isEmpty(), "the overlay isn't a root");
+		ModContainerImpl plain = new ModContainerImpl(md, List.of(), new ModContainerImpl.Origin(ModOrigin.Kind.PATH, List.of(), null, null),
+				null, List.of(), runtime(), null);
+		assertTrue(plain.overlayDirectory("resourcepacks/extra").isEmpty());
+	}
+
 	@Test
 	void findsFabricModsDirectories(@TempDir Path dir) throws Exception {
 		Path jar = dir.resolve("scanned.jar");
@@ -116,7 +136,7 @@ class FabricLoaderRuntimeTest {
 		FabricLoaderRuntime rt = runtime();
 		FabricModMetadata md = FabricModJsonParser.parse("{\"schemaVersion\":1,\"id\":\"scanned\",\"version\":\"1.0\"}");
 		ModContainerImpl mod = new ModContainerImpl(md, List.of(jar), new ModContainerImpl.Origin(ModOrigin.Kind.PATH, List.of(jar), null, null),
-				null, List.of(), rt);
+				null, List.of(), rt, null);
 		rt.addMod(mod, List.of());
 		assertTrue(rt.fabricModDirectories("com/example/scanned/module").isEmpty(), "not before the game layer loads it");
 		rt.setClassLoader(mod, getClass().getClassLoader());
