@@ -17,6 +17,7 @@ import io.github.cmdralph.fabricated.core.remap.MappingTable;
  * @param clientSide          physical side
  * @param namespace           namespace Fabric mods for this version are compiled against
  * @param runtimeMixinVersion running Mixin version, e.g. {@code 0.17.4+mixin.0.8.7}
+ * @param mixinExtrasVersion  running MixinExtras version, e.g. {@code 0.5.3}, or {@code null} when unknown
  * @param fabricatedVersion   Fabricated version (part of cache keys)
  * @param mappings            intermediary table, or {@code null} when {@code namespace} is official
  * @param mappingsHash        hash identifying {@code mappings}, or {@code "none"}
@@ -35,6 +36,7 @@ public record TranslationEnvironment(
 		boolean clientSide,
 		Namespace namespace,
 		String runtimeMixinVersion,
+		String mixinExtrasVersion,
 		String lowestMixinBehavior,
 		String fabricatedVersion,
 		MappingTable mappings,
@@ -46,7 +48,7 @@ public record TranslationEnvironment(
 		Map<String, String> unsupportedPackages) {
 
 	/** Bumped whenever translation output changes for the same inputs. */
-	public static final int TRANSLATION_SCHEMA = 32;
+	public static final int TRANSLATION_SCHEMA = 33;
 
 	/** Namespace Fabric mods are distributed in. */
 	public enum Namespace {

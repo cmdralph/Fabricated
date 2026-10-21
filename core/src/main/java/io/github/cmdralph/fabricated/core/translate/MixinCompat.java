@@ -89,6 +89,18 @@ public final class MixinCompat {
 		return parse(plus >= 0 ? runtimeMixinVersion.substring(0, plus) : runtimeMixinVersion).compareTo(ENUM_EXTENSIONS) >= 0;
 	}
 
+	/**
+	 * Whether a mixin config's {@code mixinextras.minVersion} asks for a newer MixinExtras than the running one, which
+	 * MixinExtras answers by stopping the game as it reads the config. False when either isn't a version.
+	 */
+	public static boolean needsNewerMixinExtras(String required, String running) {
+		try {
+			return VersionParser.parse(required, false).compareTo(VersionParser.parse(running, false)) > 0;
+		} catch (VersionParsingException e) {
+			return false;
+		}
+	}
+
 	private static Version parse(String s) {
 		try {
 			Version v = VersionParser.parse(s, false);
