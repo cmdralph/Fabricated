@@ -37,6 +37,7 @@ import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.FieldInsnNode;
 import org.objectweb.asm.tree.FieldNode;
 import org.objectweb.asm.tree.IincInsnNode;
+import org.objectweb.asm.tree.InnerClassNode;
 import org.objectweb.asm.tree.InvokeDynamicInsnNode;
 import org.objectweb.asm.tree.JumpInsnNode;
 import org.objectweb.asm.tree.LocalVariableNode;
@@ -243,6 +244,10 @@ public final class MixinPreflight {
 			if (node == null) continue;
 			Context ctx = new Context(configName, internal.replace('/', '.'), config, refmap, false, false, false, Set.of(), out, null);
 			boolean changed = singleInjectionPoints(node);
+			for (String moved : anonymousTargetRepairs(node, ctx)) {
+				changed = true;
+				out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "Target class " + moved, ""));
+			}
 			List<ClassNode> targets = new ArrayList<>();
 			for (String target : targetsOf(node, ctx)) {
 				ClassNode targetNode = gameTarget(target);
@@ -1673,6 +1678,59 @@ public final class MixinPreflight {
 			}
 			checkMembers(mixin, targetNode, targetCtx);
 		}
+	}
+
+	/**
+	 * Points a mixin at the anonymous class of the same game class that fits it, when the one it names doesn't: NeoForge's
+	 * build of the game, recompiled from decompiled source, numbers some anonymous classes otherwise than Mojang's, which
+	 * mods are built against (Polymer's hooks into {@code ByteBufCodecs}' and {@code ItemStack}'s stream codecs, No Chat
+	 * Reports' into the JSON one, Ledger's and malilib's into {@code ChestBlock}'s; ANON-1). A class fits when pre-flight
+	 * finds nothing but notes in the mixin against it: its selectors, shadows and injection points are all there. Only a
+	 * single fitting class is taken. Returns a description of each move.
+	 */
+	private List<String> anonymousTargetRepairs(ClassNode mixin, Context ctx) {
+		AnnotationNode mixinAnn = Annotations.find(mixin.invisibleAnnotations, mixin.visibleAnnotations, Annotations.MIXIN);
+		if (mixinAnn == null || (mixin.access & Opcodes.ACC_INTERFACE) != 0 || !(Annotations.value(mixinAnn, "targets") instanceof List<?> names)) {
+			return List.of();
+		}
+		List<String> moved = new ArrayList<>();
+		for (int i = 0; i < names.size(); i++) {
+			if (!(names.get(i) instanceof String raw)) continue;
+			String target = ctx.resolve(raw).replace('.', '/');
+			int dollar = target.lastIndexOf('$');
+			if (!isGameClass(target) || dollar < 0 || !target.substring(dollar + 1).matches("\\d+")) continue;
+			ClassNode named = gameTarget(target);
+			if (named != null && fits(mixin, named, ctx)) continue;
+			ClassNode outer = gameTarget(target.substring(0, dollar));
+			if (outer == null) continue;
+			ClassNode match = null;
+			for (InnerClassNode inner : outer.innerClasses) {
+				// Anonymous classes have neither a simple name nor an outer class in the attribute.
+				if (inner.innerName != null || inner.outerName != null || inner.name.equals(target)
+						|| !inner.name.startsWith(outer.name + "$") || inner.name.indexOf('$', outer.name.length() + 1) >= 0) continue;
+				ClassNode candidate = gameTarget(inner.name);
+				if (candidate == null || !fits(mixin, candidate, ctx)) continue;
+				if (match != null) {
+					match = null;
+					break;
+				}
+				match = candidate;
+			}
+			if (match == null) continue;
+			@SuppressWarnings("unchecked")
+			List<Object> values = (List<Object>) names;
+			values.set(i, raw.indexOf('/') >= 0 ? match.name : match.name.replace('/', '.'));
+			moved.add(target.replace('/', '.') + " doesn't fit the mixin in this game build, whose anonymous classes are numbered differently; "
+					+ match.name.replace('/', '.') + " does, and the mixin is pointed there");
+		}
+		return moved;
+	}
+
+	/** Whether pre-flight finds nothing but notes in {@code mixin} against {@code target}. */
+	private boolean fits(ClassNode mixin, ClassNode target, Context ctx) {
+		List<PreflightFinding> found = new ArrayList<>();
+		checkMembers(mixin, target, new Context(ctx.configName(), ctx.mixinDotted(), ctx.config(), ctx.refmap(), false, false, false, Set.of(), found, null));
+		return found.stream().allMatch(f -> f.severity() == Severity.INFO);
 	}
 
 	/** The classes a mixin's {@code @Mixin} names, as internal names (none when it has no {@code @Mixin}). */
