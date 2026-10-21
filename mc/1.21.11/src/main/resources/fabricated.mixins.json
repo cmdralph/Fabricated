@@ -18,6 +18,7 @@
     "MobEffectMixin",
     "EntityTypeBuilderMixin",
     "BlockEntityTypeMixin",
+    "PoiTypesMixin",
     "BlockMixin",
     "BlockStateMixin",
     "ItemMixin",

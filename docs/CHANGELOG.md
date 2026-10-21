@@ -19,6 +19,10 @@ main entrypoint, and Flashback not loaded for one large native library.
   are loaded right away; late tooltip providers go before or after all component tooltips. A dedicated server keeps
   the old order. Client checks: the game instance exists in main, and a tab registered there comes after the vanilla
   tabs.
+- POI-1: a point-of-interest type registered through vanilla's `PoiTypes.register` (Fabric API's helper, WorldWeaver)
+  no longer fails as defined twice: NeoForge maps its states as it is registered, vanilla then again. BetterEnd's and
+  BetterNether's main entrypoints threw there on the 26.2 advanced client. The servers' missing BetterEnd content
+  (CORPUS-19) is still unexplained: they logged no such failure.
 - LIMIT-1: one archive entry may be 128 MiB (was 64 MiB): Flashback ships a 71 MB native library. The limits on the
   whole archive and the compression ratio check are unchanged.
 - Roadmap: PR #53's results (PIP-1, BIOME-2 and LOADER-2 verified as far as the next failure), and what is still open:

@@ -9,6 +9,7 @@ import net.fabricmc.fabric.api.object.builder.v1.block.entity.FabricBlockEntityT
 import net.fabricmc.fabric.api.object.builder.v1.entity.FabricDefaultAttributeRegistry;
 import net.fabricmc.fabric.api.object.builder.v1.entity.FabricEntityDataRegistry;
 import net.fabricmc.fabric.api.object.builder.v1.entity.FabricEntityType;
+import net.fabricmc.fabric.api.object.builder.v1.world.poi.PoiHelper;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
@@ -25,6 +26,8 @@ import net.minecraft.world.entity.SpawnPlacements;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ai.attributes.DefaultAttributes;
+import net.minecraft.world.entity.ai.village.poi.PoiType;
+import net.minecraft.world.entity.ai.village.poi.PoiTypes;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BarrelBlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityType;
@@ -60,8 +63,14 @@ public final class ObjectBuilderTest implements ModInitializer {
 				FabricBlockEntityTypeBuilder.create(BarrelBlockEntity::new, stone).canPotentiallyExecuteCommands(true).build());
 		blockEntity.addValidBlock(dirt);
 
+		// A point-of-interest type registered through vanilla's own registration, as Fabric API's helper and WorldWeaver
+		// do: NeoForge maps its states too (BetterEnd, POI-1).
+		Block sponge = BuiltInRegistries.BLOCK.getValue(Identifier.withDefaultNamespace("sponge"));
+		PoiType poi = PoiHelper.register(id("test_poi"), 1, 1, sponge);
+
 		ServerLifecycleEvents.SERVER_STARTED.register(server -> {
 			List<String> failed = new ArrayList<>();
+			if (PoiTypes.forState(sponge.defaultBlockState()).map(holder -> holder.value() != poi).orElse(true)) failed.add("poi");
 			AttributeSupplier attributes = DefaultAttributes.hasSupplier(mob) ? DefaultAttributes.getSupplier(mob) : null;
 			if (attributes == null || attributes.getBaseValue(Attributes.MAX_HEALTH) != 42) failed.add("attributes");
 			if (attributes == null || !attributes.hasAttribute(Attributes.ARMOR) || attributes.getBaseValue(Attributes.ARMOR) != 7) failed.add("modify");
