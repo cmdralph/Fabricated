@@ -1855,6 +1855,14 @@ public final class MixinPreflight {
 			return;
 		}
 
+		if (ann.desc.equals(MODIFY_VARIABLE) && !anyFuzzy && !acceptsModifierSignature(handler, matched)) {
+			ctx.classLevel(injectorName + " handler " + handler.name + Type.getMethodDescriptor(Type.getReturnType(handler.desc), handlerArgs(handler).toArray(Type[]::new))
+							+ " does not match the parameters of " + matched.getFirst().name + matched.getFirst().desc + " in " + target.name.replace('/', '.'),
+					(ctx.owner() == null ? "NeoForge's build of Minecraft declares this method with different parameters"
+							: ctx.changer(true) + " declares this method with different parameters") + "; the mod needs an update or this mixin must be skipped.");
+			return;
+		}
+
 		if (ann.desc.equals(MODIFY_CONSTANT)) {
 			for (AnnotationNode constant : Annotations.list(Annotations.value(ann, "constant"))) {
 				String expected = InjectionPoints.constantDescription(constant);
@@ -1948,6 +1956,19 @@ public final class MixinPreflight {
 			if (List.of(Type.getArgumentTypes(target.desc)).equals(wanted)) return true;
 		}
 		return false;
+	}
+
+	/**
+	 * Mixin accepts a {@code @ModifyVariable} handler taking the variable, or the variable and then all of the target's
+	 * parameters; anything else is an {@code InvalidInjectionException} when the mixin applies, whatever its
+	 * {@code require} (Farmer's Delight's hook into {@code CropBlock.getGrowthSpeed}, whose first parameter NeoForge's
+	 * build made a block state). Handlers that use {@code @Coerce} are left to Mixin.
+	 */
+	private static boolean acceptsModifierSignature(MethodNode handler, List<MethodNode> targets) {
+		List<Type> args = handlerArgs(handler);
+		if (args == null || args.size() <= 1) return true;
+		List<Type> captured = args.subList(1, args.size());
+		return targets.stream().allMatch(target -> List.of(Type.getArgumentTypes(target.desc)).equals(captured));
 	}
 
 	/**

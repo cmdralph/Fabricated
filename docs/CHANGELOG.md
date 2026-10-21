@@ -18,6 +18,10 @@ chunk on a feature order cycle.
   read as unset through `PacketContext`'s constants whenever a connection's context initialized first (the client run
   with the test mods alone). The test mod sends a payload large enough to be split, whose codec checks the context on
   both sides.
+- PRE-14: pre-flight checks a `@ModifyVariable` handler's parameters as Mixin does (the variable, alone or followed by
+  all of the target's): Farmer's Delight's crop growth hook takes `getGrowthSpeed`'s vanilla parameters, NeoForge's
+  build takes a block state first, and Mixin stopped the 1.21.11 corpus server once ENUM-6 let the mod load. The hook
+  is now left out (LEAVE-1) and the mod loads.
 - FLUID-2: on 26.2 and 26.3, an entity's fluid lookups by tag answer for a mod's fluid tag, as vanilla's do, where
   NeoForge's build threw for any tag but water's and lava's: Biomes O' Plenty's screen overlay asks whether the eyes
   are in its blood, which crashed the 26.2 advanced client once it joined its world. The tag stands for its fluids'

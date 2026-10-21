@@ -1659,6 +1659,44 @@ class MixinPreflightTest {
 		assertTrue(right.isEmpty(), right.toString());
 	}
 
+	@Test
+	void aModifyVariableWhoseHandlerTakesOtherParametersFails() throws Exception {
+		// Farmer's Delight's hook into CropBlock.getGrowthSpeed(Block, BlockGetter, BlockPos) takes the method's
+		// parameters after the variable; NeoForge's build takes a block state first, and Mixin refuses the handler.
+		ClassWriter target = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		target.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		MethodVisitor render = target.visitMethod(Opcodes.ACC_PUBLIC, "render", "(Ljava/lang/String;)V", null, null);
+		render.visitCode();
+		render.visitInsn(Opcodes.RETURN);
+		render.visitMaxs(0, 0);
+		render.visitEnd();
+		target.visitEnd();
+		ClassIndex game = new ClassIndex(Map.of(TARGET, target.toByteArray())::get);
+		java.util.function.Function<String, byte[]> modifying = desc -> mixin("com/example/mixin/Modify", false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "h", desc, null, null);
+			AnnotationVisitor ann = mv.visitAnnotation("Lorg/spongepowered/asm/mixin/injection/ModifyVariable;", false);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "render");
+			methods.visitEnd();
+			AnnotationVisitor at = ann.visitAnnotation("at", "Lorg/spongepowered/asm/mixin/injection/At;");
+			at.visit("value", "HEAD");
+			at.visitEnd();
+			ann.visitEnd();
+			mv.visitEnd();
+		});
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Modify"));
+		List<PreflightFinding> wrong = preflight(game, Map.of("com/example/mixin/Modify", modifying.apply("(Ljava/lang/String;Ljava/lang/Integer;)Ljava/lang/String;"))::get,
+				ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertEquals(1, wrong.size(), wrong.toString());
+		assertEquals(Severity.LEFT_OUT, wrong.getFirst().severity());
+		assertTrue(wrong.getFirst().message().contains("does not match the parameters of render(Ljava/lang/String;)V"), wrong.getFirst().message());
+		for (String desc : List.of("(Ljava/lang/String;)Ljava/lang/String;", "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;")) {
+			List<PreflightFinding> right = preflight(game, Map.of("com/example/mixin/Modify", modifying.apply(desc))::get, ClassBytesSource.EMPTY, false)
+					.check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+			assertTrue(right.isEmpty(), desc + ": " + right);
+		}
+	}
+
 	/** An {@code @Inject} into tick (no descriptor) at its call to helper(I)V, whose handler has {@code desc}. */
 	private static void injectWith(ClassWriter cw, String desc) {
 		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "h", desc, null, null);
