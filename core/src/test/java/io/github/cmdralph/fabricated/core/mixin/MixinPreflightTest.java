@@ -689,6 +689,105 @@ class MixinPreflightTest {
 				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty(), "a call on another type is another method");
 	}
 
+	private static final String CALLBACK_INFO = "Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;";
+
+	/** {@link #TARGET} with a static lambda body {@code lambda$load$1} of descriptor {@code desc}, as javac names one. */
+	private static byte[] withLambda(String desc) {
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		MethodVisitor lambda = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, "lambda$load$1", desc, null, null);
+		lambda.visitCode();
+		lambda.visitInsn(Opcodes.RETURN);
+		lambda.visitMaxs(0, 0);
+		lambda.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	/**
+	 * A mixin {@code Captures} whose static {@code @Inject} handler {@code h} into {@code lambda$load$1} takes {@code params}
+	 * and the callback info, and passes the ones at {@code used} to {@code String.valueOf}.
+	 */
+	private static byte[] capturingMixin(List<Type> params, int... used) {
+		return mixin("com/example/mixin/Captures", false, cw -> {
+			String desc = Type.getMethodDescriptor(Type.VOID_TYPE, java.util.stream.Stream.concat(params.stream(), java.util.stream.Stream.of(Type.getType(CALLBACK_INFO))).toArray(Type[]::new));
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "h", desc, null, null);
+			AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "lambda$load$1");
+			methods.visitEnd();
+			AnnotationVisitor ats = ann.visitArray("at");
+			AnnotationVisitor at = ats.visitAnnotation(null, "Lorg/spongepowered/asm/mixin/injection/At;");
+			at.visit("value", "HEAD");
+			at.visitEnd();
+			ats.visitEnd();
+			ann.visitEnd();
+			mv.visitCode();
+			for (int slot : used) {
+				mv.visitVarInsn(Opcodes.ALOAD, slot);
+				mv.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/String", "valueOf", "(Ljava/lang/Object;)Ljava/lang/String;", false);
+				mv.visitInsn(Opcodes.POP);
+			}
+			mv.visitInsn(Opcodes.RETURN);
+			mv.visitMaxs(1, params.size() + 1);
+			mv.visitEnd();
+		});
+	}
+
+	@Test
+	void anInjectionIntoALambdaWhoseCapturedValuesAreReorderedGetsABridge() throws Exception {
+		// LAMBDA-3: Wover's handler takes WorldLoader's lambda's captured values in vanilla's order; NeoForge's build captures
+		// a list earlier. Its handler reads neither list, only the values of a type the lambda has once.
+		Type list = Type.getType(List.class);
+		Type string = Type.getType(String.class);
+		Type integer = Type.getType(Integer.class);
+		String neoForgeOrder = Type.getMethodDescriptor(Type.VOID_TYPE, list, string, list, integer);
+		ClassIndex game = new ClassIndex(Map.of(TARGET, withLambda(neoForgeOrder))::get);
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Captures"));
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Captures", capturingMixin(List.of(list, list, string, integer), 2, 3)));
+		assertEquals(1, preflight(game, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).size());
+
+		List<PreflightFinding> notes = new ArrayList<>();
+		byte[] repaired = preflight(game, mod::get, ClassBytesSource.EMPTY, false).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes)
+				.get("com/example/mixin/Captures.class");
+		assertNotNull(repaired, notes.toString());
+		assertTrue(notes.getFirst().message().contains("h targets lambda$load$1" + neoForgeOrder + ", whose captured values"), notes.toString());
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired).accept(node, 0);
+		MethodNode bridge = node.methods.stream().filter(mn -> mn.name.equals("h$fabricated")).findFirst().orElseThrow();
+		assertEquals(neoForgeOrder.replace(")V", CALLBACK_INFO + ")V"), bridge.desc);
+		List<Integer> loads = new ArrayList<>();
+		for (AbstractInsnNode insn : bridge.instructions) {
+			if (insn instanceof VarInsnNode v) loads.add(v.var);
+		}
+		assertEquals(List.of(0, 2, 1, 3, 4), loads, "the string and the integer go where the handler takes them");
+		ClassLoader loader = new ClassLoader(getClass().getClassLoader()) {
+			@Override
+			protected Class<?> findClass(String name) throws ClassNotFoundException {
+				if (!name.equals("com.example.mixin.Captures")) throw new ClassNotFoundException(name);
+				return defineClass(name, repaired, 0, repaired.length);
+			}
+		};
+		Class.forName("com.example.mixin.Captures", true, loader);
+		mod.put("com/example/mixin/Captures", repaired);
+		List<PreflightFinding> after = preflight(game, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(after.isEmpty(), after.toString());
+
+		Map<String, byte[]> readsAList = Map.of("com/example/mixin/Captures", capturingMixin(List.of(list, list, string, integer), 1));
+		assertTrue(preflight(game, readsAList::get, ClassBytesSource.EMPTY, false)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty(), "which list is which is not known");
+
+		// FrozenLib's: NeoForge's build captures one more value, a boolean; the handler's occur in the lambda's in one way only.
+		String withFlag = Type.getMethodDescriptor(Type.VOID_TYPE, list, string, Type.BOOLEAN_TYPE);
+		ClassIndex flagged = new ClassIndex(Map.of(TARGET, withLambda(withFlag))::get);
+		Map<String, byte[]> prefix = Map.of("com/example/mixin/Captures", capturingMixin(List.of(list, string), 0, 1));
+		byte[] bridged = preflight(flagged, prefix::get, ClassBytesSource.EMPTY, false)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).get("com/example/mixin/Captures.class");
+		assertNotNull(bridged);
+		Map<String, byte[]> prefixRepaired = Map.of("com/example/mixin/Captures", bridged);
+		assertTrue(preflight(flagged, prefixRepaired::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty());
+	}
+
 	/** {@link #TARGET} whose static {@code main} calls the static {@code owner.name(false)}, of descriptor {@code desc}. */
 	private static byte[] mainCalling(String owner, String name, String desc) {
 		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);

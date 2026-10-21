@@ -36,6 +36,7 @@ import org.objectweb.asm.tree.AnnotationNode;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.FieldInsnNode;
 import org.objectweb.asm.tree.FieldNode;
+import org.objectweb.asm.tree.IincInsnNode;
 import org.objectweb.asm.tree.InvokeDynamicInsnNode;
 import org.objectweb.asm.tree.JumpInsnNode;
 import org.objectweb.asm.tree.LocalVariableNode;
@@ -301,6 +302,11 @@ public final class MixinPreflight {
 							changed = true;
 							out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@" + simpleName(ann.desc) + " " + method.name
 									+ " expects a call to " + moved, ""));
+						}
+						for (String lambda : capturedValueRepairs(node, method, ann, targets.getFirst(), ctx, bridges)) {
+							changed = true;
+							out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@" + simpleName(ann.desc) + " " + method.name
+									+ " targets " + lambda, ""));
 						}
 					}
 				}
@@ -613,6 +619,108 @@ public final class MixinPreflight {
 					+ subtype.replace('/', '.') + " (the same method); the injection point is pointed there");
 		}
 		return moved;
+	}
+
+	/**
+	 * Gives an {@code @Inject} into a lambda a bridge taking the lambda's parameters as this game build has them, when
+	 * NeoForge's build captures the same values in another order, or more of them: javac orders a lambda's captured values
+	 * by their first use in it, which NeoForge's patches change (Wover's hook into {@code WorldLoader}'s registry load,
+	 * FrozenLib's into {@code RegistryDataLoader}'s; LAMBDA-3). The bridge passes each of the handler's parameters the
+	 * lambda's of its type: in order, when the handler's types occur in the lambda's that way only once; otherwise by
+	 * type, where a type the lambda has more than once is only passed to a parameter the handler never uses. Returns a
+	 * description of the bridged lambda.
+	 */
+	private static List<String> capturedValueRepairs(ClassNode mixin, MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx,
+			List<MethodNode> bridges) {
+		if (!injector.desc.equals(INJECT) || Annotations.value(injector, "locals") != null || (mixin.access & Opcodes.ACC_INTERFACE) != 0
+				|| !(Annotations.value(injector, "method") instanceof List<?> selectors) || selectors.size() != 1
+				|| annotatedParameters(handler.visibleParameterAnnotations) || annotatedParameters(handler.invisibleParameterAnnotations)) return List.of();
+		List<MethodNode> methods = selectedMethods(injector, target, ctx);
+		if (methods.size() != 1 || !LAMBDA.matcher(methods.getFirst().name).matches()) return List.of();
+		MethodNode lambda = methods.getFirst();
+		Type[] own = Type.getArgumentTypes(handler.desc);
+		if (own.length < 2 || !isCallbackInfo(own[own.length - 1])
+				|| (handler.access & Opcodes.ACC_STATIC) != (lambda.access & Opcodes.ACC_STATIC)) return List.of();
+		List<Type> wanted = List.of(own).subList(0, own.length - 1);
+		List<Type> captured = List.of(Type.getArgumentTypes(lambda.desc));
+		if (wanted.equals(captured)) return List.of();
+		int[] from = inOrder(wanted, captured);
+		if (from == null) from = byType(handler, wanted, captured);
+		if (from == null) return List.of();
+
+		List<Type> params = new ArrayList<>(captured);
+		params.add(own[own.length - 1]);
+		MethodNode bridge = HandlerBridges.bridgeMethod(handler, HandlerBridges.freeName(mixin, bridges, handler.name + "$fabricated"), params,
+				Type.getReturnType(handler.desc));
+		int stack = 0;
+		if ((handler.access & Opcodes.ACC_STATIC) == 0) {
+			bridge.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+			stack++;
+		}
+		for (int index : from) {
+			bridge.instructions.add(new VarInsnNode(params.get(index).getOpcode(Opcodes.ILOAD), HandlerBridges.slotOf(handler, params, index)));
+			stack += params.get(index).getSize();
+		}
+		bridge.instructions.add(new VarInsnNode(Opcodes.ALOAD, HandlerBridges.slotOf(handler, params, params.size() - 1)));
+		HandlerBridges.callHandler(bridge, mixin.name, handler, stack + 1);
+		@SuppressWarnings("unchecked")
+		List<Object> values = (List<Object>) selectors;
+		values.set(0, lambda.name + lambda.desc);
+		HandlerBridges.moveInjector(handler, injector, bridge);
+		bridges.add(bridge);
+		return List.of(lambda.name + lambda.desc + ", whose captured values this game build passes in another order or with more;"
+				+ " a bridge passes the handler the ones it takes");
+	}
+
+	/** Where each of {@code wanted} is in {@code captured}, taken in order, when they occur in it that way only once; else null. */
+	private static int[] inOrder(List<Type> wanted, List<Type> captured) {
+		int n = wanted.size();
+		int m = captured.size();
+		// ways[i][j]: in how many ways (up to 2) wanted from i on occurs in order in captured from j on.
+		int[][] ways = new int[n + 1][m + 1];
+		for (int j = 0; j <= m; j++) ways[n][j] = 1;
+		for (int i = n - 1; i >= 0; i--) {
+			for (int j = m - 1; j >= 0; j--) {
+				ways[i][j] = Math.min(2, ways[i][j + 1] + (wanted.get(i).equals(captured.get(j)) ? ways[i + 1][j + 1] : 0));
+			}
+		}
+		if (ways[0][0] != 1) return null;
+		int[] from = new int[n];
+		for (int i = 0, j = 0; i < n; j++) {
+			if (wanted.get(i).equals(captured.get(j)) && ways[i + 1][j + 1] == 1) from[i++] = j;
+		}
+		return from;
+	}
+
+	/**
+	 * Where each of {@code wanted} is in {@code captured} by its type: the k-th parameter of a type goes to the lambda's
+	 * k-th of that type, which is only certain where the lambda has one; a type it has more than once only for a
+	 * parameter the handler never uses. Null when a type is missing, or such a parameter is used.
+	 */
+	private static int[] byType(MethodNode handler, List<Type> wanted, List<Type> captured) {
+		int[] from = new int[wanted.size()];
+		Map<Type, Integer> seen = new HashMap<>();
+		int slot = (handler.access & Opcodes.ACC_STATIC) != 0 ? 0 : 1;
+		for (int i = 0; i < wanted.size(); i++) {
+			Type type = wanted.get(i);
+			int k = seen.merge(type, 1, Integer::sum) - 1;
+			List<Integer> at = new ArrayList<>();
+			for (int j = 0; j < captured.size(); j++) {
+				if (captured.get(j).equals(type)) at.add(j);
+			}
+			if (at.size() <= k || at.size() > 1 && usesSlot(handler, slot)) return null;
+			from[i] = at.get(k);
+			slot += type.getSize();
+		}
+		return from;
+	}
+
+	/** Whether {@code method} reads or writes the local variable in {@code slot}. */
+	private static boolean usesSlot(MethodNode method, int slot) {
+		for (AbstractInsnNode insn : method.instructions) {
+			if (insn instanceof VarInsnNode v && v.var == slot || insn instanceof IincInsnNode inc && inc.var == slot) return true;
+		}
+		return false;
 	}
 
 	/** The injectors at a call or field access whose handler takes only what that instruction takes and gives. */
