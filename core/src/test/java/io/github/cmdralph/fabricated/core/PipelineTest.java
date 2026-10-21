@@ -986,6 +986,26 @@ class PipelineTest {
 	}
 
 	@Test
+	void aModNeedingANewerMixinExtrasIsDisabled(@TempDir Path game) throws Exception {
+		// MIXEXT-1: Freecam's 1.21.11 build asks for MixinExtras 0.5.5, NeoForge 21.11 ships 0.5.3 (the test input's), and
+		// MixinExtras stopped the game reading the config. A config may take the setting from its parent.
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		Path newer = TestJars.create().fabricModJson(TestJars.modJson("freecam", "1.0", "\"mixins\":[\"freecam.mixins.json\"]"))
+				.text("freecam.mixins.json", "{\"parent\":\"freecam-common.mixins.json\",\"package\":\"com.freecam.mixin\",\"mixins\":[]}")
+				.text("freecam-common.mixins.json", "{\"package\":\"com.freecam.mixin\",\"mixins\":[],\"mixinextras\":{\"minVersion\":\"0.5.5\"}}")
+				.write(mods.resolve("freecam.jar"));
+		Path met = TestJars.create().fabricModJson(TestJars.modJson("older", "1.0", "\"mixins\":[\"older.mixins.json\"]"))
+				.text("older.mixins.json", "{\"package\":\"com.older.mixin\",\"mixins\":[],\"mixinextras\":{\"minVersion\":\"0.5.0\"}}")
+				.write(mods.resolve("older.jar"));
+		Pipeline.Result result = Pipeline.run(input(game, List.of(newer, met), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
+
+		assertEquals(List.of("older"), result.mods().stream().map(m -> m.translated().candidate().id()).toList(), result.report().render());
+		Report.ModRow row = result.report().mods().stream().filter(r -> r.id().equals("freecam")).findFirst().orElseThrow();
+		assertEquals(Report.Status.DISABLED, row.status());
+		assertTrue(row.detail().contains("requires MixinExtras 0.5.5 or later; this NeoForge ships MixinExtras 0.5.3"), row.detail());
+	}
+
+	@Test
 	void aBuildForIntermediaryNamesIsDisabledOnAnUnobfuscatedVersion(@TempDir Path game) throws Exception {
 		// OBF-1: Modrinth lists Do a Barrel Roll's 1.21.11 build for 26.2; its mixins name intermediary classes.
 		Path mods = Files.createDirectories(game.resolve("mods"));

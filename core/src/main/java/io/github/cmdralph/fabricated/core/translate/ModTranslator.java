@@ -110,7 +110,7 @@ public final class ModTranslator {
 		List<String> after = loadAfter.stream().sorted().distinct().toList();
 		String key = Hashing.sha256(String.join("|", candidate.sha256(), env.minecraftVersion(), env.neoForgeVersion(),
 				env.side(), env.fabricatedVersion(), Integer.toString(TranslationEnvironment.TRANSLATION_SCHEMA),
-				env.mappingsHash(), env.runtimeMixinVersion(), override.fingerprint(), String.join(",", after),
+				env.mappingsHash(), env.runtimeMixinVersion(), String.valueOf(env.mixinExtrasVersion()), override.fingerprint(), String.join(",", after),
 				// Not only the jar's: a config a containing mod declares may come with it.
 				candidate.metadata().mixins().toString(), env.unsupportedPackages().toString()));
 		String entryName = TranslationCache.entryName(neoId, key);
@@ -363,7 +363,9 @@ public final class ModTranslator {
 			try {
 				config = MixinConfigFile.parse(new String(data, StandardCharsets.UTF_8));
 				byte[] parentData = config.parent() != null ? files.read(config.parent()) : null;
-				if (parentData != null) config = config.inheriting(MixinConfigFile.parse(new String(parentData, StandardCharsets.UTF_8)));
+				MixinConfigFile parent = parentData != null ? MixinConfigFile.parse(new String(parentData, StandardCharsets.UTF_8)) : null;
+				checkMixinExtras(candidate, entry.config(), config, parent);
+				if (parent != null) config = config.inheriting(parent);
 				if (config.refmap() != null) {
 					byte[] refmapData = files.read(config.refmap());
 					if (refmapData != null) refmap = Refmap.parse(new String(refmapData, StandardCharsets.UTF_8));
@@ -802,6 +804,20 @@ public final class ModTranslator {
 			throw new TranslationException(candidate.id() + " adds enum constants with Mixin's enum extensions, which need Mixin 0.17.1 or later;"
 					+ " this NeoForge runs Mixin " + env.runtimeMixinVersion(), "Update NeoForge, or use a build of " + candidate.id() + " made for it.");
 		}
+	}
+
+	/**
+	 * A mixin config asking for a newer MixinExtras than NeoForge ships ({@code mixinextras.minVersion}, which a config
+	 * takes from its parent when it sets none) would stop the game as MixinExtras reads it: the mod is disabled instead
+	 * (MIXEXT-1, Freecam on NeoForge 21.11, which ships 0.5.3).
+	 */
+	private void checkMixinExtras(Candidate candidate, String configName, MixinConfigFile config, MixinConfigFile parent) throws TranslationException {
+		Object settings = config.tree().containsKey("mixinextras") || parent == null ? config.tree().get("mixinextras") : parent.tree().get("mixinextras");
+		if (env.mixinExtrasVersion() == null || !(settings instanceof Map<?, ?> map) || !(map.get("minVersion") instanceof String required)
+				|| !MixinCompat.needsNewerMixinExtras(required, env.mixinExtrasVersion())) return;
+		throw new TranslationException(candidate.id() + "'s mixin config " + configName + " requires MixinExtras " + required
+				+ " or later; this NeoForge ships MixinExtras " + env.mixinExtrasVersion(),
+				"Update NeoForge if a newer build ships it, or use a build of " + candidate.id() + " made for this one.");
 	}
 
 	/**

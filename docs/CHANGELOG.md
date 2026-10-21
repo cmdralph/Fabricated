@@ -3,6 +3,22 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-10-21 (pass after PR #54): lambdas NeoForge's patches change, and MixinExtras requirements
+
+**Plan.** PR #54's runs showed every 26.x advanced server stopping at world creation on Wover's world state, and the
+1.21.11 advanced client stopping on Freecam's MixinExtras requirement.
+
+- LAMBDA-3: an `@Inject` into a lambda whose captured values NeoForge's build orders differently, or captures more of,
+  gets a bridge taking the lambda's parameters as the game has them. Wover's hook into `WorldLoader`'s registry load,
+  which publishes its world state, and FrozenLib's into `RegistryDataLoader`'s were left out before.
+- MIXEXT-1: a mod whose mixin config asks for a newer MixinExtras than NeoForge ships is disabled with that reason,
+  instead of MixinExtras stopping the game. The translation schema is bumped.
+- PACK-4, finished: a built-in pack's metadata is read from the translated files when translation changed them (PR #54
+  only left the NeoForge sections out of the copy, and Tectonic's pack was still skipped). The test mod's built-in pack
+  has such a section.
+- GROUP-1: pre-flight checks injector groups' minimums, as Mixin does; a group too few of whose injectors can apply is
+  left out of a self-contained mixin (or fails the mod), instead of stopping the game as owo-lib's did.
+
 ## 2026-10-21 (pass after PR #53): main entrypoints where Fabric runs them, and late payload types
 
 **Plan.** PR #53's runs showed the 26.x malilib clients and the 1.21.11 advanced server stopping on payload types
