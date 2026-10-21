@@ -752,6 +752,13 @@ Every mod has a root path, as on Fabric (mods take the first without checking): 
 its home, the mods Fabricated provides (Fabric Loader, the native Fabric API modules) have Fabricated's in-game mod,
 MixinExtras has NeoForge's jar, and a NeoForge mod nested in another jar has that jar.
 
+- While Fabric entrypoints run, the thread's context class loader finds a Fabric mod's directories (a package's,
+  as a `jar:file:` URL into its jar), as Fabric Loader's class loader does; NeoForge's finds only files. Mods that
+  find their classes by scanning a package (Reflections, which YUNG's API uses for what it registers) found nothing
+  without it (SCAN-1). A scan outside an entrypoint, on another thread or later, still finds nothing.
+- `main` entrypoints run while NeoForge registers content, before `Minecraft` exists, where Fabric Loader runs them
+  from `Minecraft`'s constructor: a mod reading `Minecraft.getInstance()` in its `main` entrypoint fails there and is
+  marked as failed (Moonlight's 26.1.2 build, CORPUS-16). Client entrypoints run where Fabric runs them.
 - `@Environment` and `@EnvironmentInterface` are applied as Fabric Loader applies them: members and interfaces for
   the other side are stripped when the class loads, so a common class implementing a client-only interface loads on
   a dedicated server.

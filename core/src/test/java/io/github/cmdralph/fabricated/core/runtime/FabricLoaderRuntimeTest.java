@@ -7,13 +7,17 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import io.github.cmdralph.fabricated.core.metadata.FabricModJsonParser;
 import io.github.cmdralph.fabricated.core.metadata.FabricModMetadata;
@@ -95,6 +99,37 @@ class FabricLoaderRuntimeTest {
 		assertEquals(List.of("good_mod", "bad_mod"), contexts);
 		assertEquals(null, context.get());
 		assertTrue(runner.run("main", ModInitializer.class, ModInitializer::onInitialize).isEmpty(), "a failed mod's entrypoints are skipped");
+	}
+
+	/**
+	 * A Fabric mod's package directories are found in its jar, as Fabric Loader's class loader finds them (SCAN-1), even
+	 * in a jar without directory entries; files are not, nor anything outside the jar, nor mods the game doesn't load.
+	 */
+	@Test
+	void findsFabricModsDirectories(@TempDir Path dir) throws Exception {
+		Path jar = dir.resolve("scanned.jar");
+		try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(jar))) {
+			zip.putNextEntry(new ZipEntry("com/example/scanned/module/Registered.class"));
+			zip.write(new byte[] {(byte) 0xCA, (byte) 0xFE});
+			zip.closeEntry();
+		}
+		FabricLoaderRuntime rt = runtime();
+		FabricModMetadata md = FabricModJsonParser.parse("{\"schemaVersion\":1,\"id\":\"scanned\",\"version\":\"1.0\"}");
+		ModContainerImpl mod = new ModContainerImpl(md, List.of(jar), new ModContainerImpl.Origin(ModOrigin.Kind.PATH, List.of(jar), null, null),
+				null, List.of(), rt);
+		rt.addMod(mod, List.of());
+		assertTrue(rt.fabricModDirectories("com/example/scanned/module").isEmpty(), "not before the game layer loads it");
+		rt.setClassLoader(mod, getClass().getClassLoader());
+
+		List<Path> found = rt.fabricModDirectories("com/example/scanned/module");
+		assertEquals(1, found.size(), found.toString());
+		assertTrue(Files.exists(found.getFirst().resolve("Registered.class")));
+		assertEquals(found, rt.fabricModDirectories("com/example/scanned/module/"));
+		String uri = found.getFirst().toUri().toString();
+		assertTrue(uri.startsWith("jar:file:") && uri.contains("!/com/example/scanned/module"), uri);
+		assertTrue(rt.fabricModDirectories("com/example/scanned/module/Registered.class").isEmpty(), "a file is the game loader's to find");
+		assertTrue(rt.fabricModDirectories("com/example/../../..").isEmpty(), "nothing outside the jar");
+		assertTrue(rt.fabricModDirectories("com/example/missing").isEmpty());
 	}
 
 	@Test

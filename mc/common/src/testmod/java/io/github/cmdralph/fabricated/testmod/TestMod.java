@@ -1,7 +1,12 @@
 package io.github.cmdralph.fabricated.testmod;
 
+import java.io.IOException;
 import java.lang.reflect.Modifier;
+import java.net.JarURLConnection;
+import java.net.URI;
+import java.net.URL;
 import java.util.List;
+import java.util.jar.JarFile;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -40,6 +45,29 @@ public final class TestMod implements ModInitializer, DedicatedServerModInitiali
 	 */
 	public static final String NEOFORGE_NAMESPACE = "fabricated_neoforge_test";
 
+	/**
+	 * A classpath scan as Reflections starts one (YUNG's API finds what it registers that way): the directory of a package
+	 * from the context class loader, then the classes under it in the jar the URL names (SCAN-1).
+	 */
+	private static void classpathScan() {
+		String pkg = "io/github/cmdralph/fabricated/testmod/mixin";
+		URL dir = Thread.currentThread().getContextClassLoader().getResource(pkg);
+		String form = dir == null ? "" : dir.toExternalForm();
+		int at = form.lastIndexOf(pkg);
+		try {
+			if (at <= 0) throw new IOException("no directory found: " + dir);
+			JarURLConnection connection = (JarURLConnection) URI.create(form.substring(0, at)).toURL().openConnection();
+			connection.setUseCaches(false);
+			try (JarFile jar = connection.getJarFile()) {
+				long classes = jar.stream().filter(e -> e.getName().startsWith(pkg + "/") && e.getName().endsWith(".class")).count();
+				if (classes > 0) LOGGER.info("FABRICATED-TEST classpath scan OK ({} classes)", classes);
+				else LOGGER.error("FABRICATED-TEST classpath scan FAILED: no classes under {}", form);
+			}
+		} catch (IOException | RuntimeException e) {
+			LOGGER.error("FABRICATED-TEST classpath scan FAILED", e);
+		}
+	}
+
 	@Override
 	public void onInitialize() {
 		LOGGER.info("FABRICATED-TEST main entrypoint OK");
@@ -69,6 +97,8 @@ public final class TestMod implements ModInitializer, DedicatedServerModInitiali
 		if (loader.isModLoaded("minecraft") && self.getMetadata().getName().equals("Fabricated Test Mod") && loader.getConfigDir() != null) {
 			LOGGER.info("FABRICATED-TEST loader api OK ({} mods visible)", loader.getAllMods().size());
 		}
+
+		classpathScan();
 
 		List<Runnable> custom = loader.getEntrypoints("fabricated-test", Runnable.class);
 		custom.forEach(Runnable::run);
