@@ -26,7 +26,10 @@ import net.neoforged.neoforge.event.LootTableLoadEvent;
  *
  * <ul>
  * <li>{@code REPLACE} and {@code MODIFY} run from NeoForge's {@link LootTableLoadEvent}, once per loot table, with the
- * source (vanilla, mod or data pack) of the file the table was read from;</li>
+ * source (vanilla, mod or data pack) of the file the table was read from, for one table at a time: NeoForge fires the
+ * event on parallel workers (as upstream's hook runs, on 26.x), and mods' handlers aren't always safe to run at once
+ * (Farmer's Delight builds a tag in its handler, which REI's mixin into the tag loader isn't safe for: run 381 crashed
+ * loading registries on 26.3);</li>
  * <li>{@code ALL_LOADED} runs once the reload's loot table registry is complete, from Fabricated's hook on
  * {@code ReloadableServerRegistries.reload}, which also notes the resource manager being loaded from.</li>
  * </ul>
@@ -34,6 +37,8 @@ import net.neoforged.neoforge.event.LootTableLoadEvent;
 public final class LootBridge {
 	private static final FileToIdConverter LOOT_TABLES = FileToIdConverter.registry(Registries.LOOT_TABLE);
 	private static volatile WeakReference<ResourceManager> reloadingManager = new WeakReference<>(null);
+	/** Held while mods' handlers modify a table. */
+	private static final Object HANDLERS = new Object();
 
 	private LootBridge() {
 	}
@@ -59,14 +64,17 @@ public final class LootBridge {
 		LootTableSource source = source(event.getName());
 		LootTable table = event.getTable();
 
-		LootTable replacement = LootTableEvents.REPLACE.invoker().replaceLootTable(key, table, source, registries);
-		if (replacement != null) {
-			table = replacement;
-			source = LootTableSource.REPLACED;
+		LootTable result;
+		synchronized (HANDLERS) {
+			LootTable replacement = LootTableEvents.REPLACE.invoker().replaceLootTable(key, table, source, registries);
+			if (replacement != null) {
+				table = replacement;
+				source = LootTableSource.REPLACED;
+			}
+			LootTable.Builder builder = FabricLootTableBuilder.copyOf(table);
+			LootTableEvents.MODIFY.invoker().modifyLootTable(key, builder, source, registries);
+			result = builder.build();
 		}
-		LootTable.Builder builder = FabricLootTableBuilder.copyOf(table);
-		LootTableEvents.MODIFY.invoker().modifyLootTable(key, builder, source, registries);
-		LootTable result = builder.build();
 		// NeoForge names each table (its loot modifiers look tables up by name); a built table has none yet.
 		result.setLootTableId(event.getName());
 		event.setTable(result);
