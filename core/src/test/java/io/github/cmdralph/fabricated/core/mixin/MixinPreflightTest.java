@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -136,7 +137,7 @@ class MixinPreflightTest {
 				"com/example/mixin/Present", shadowMixin("com/example/mixin/Present", renderer, "sections"),
 				"com/example/mixin/Gone", shadowMixin("com/example/mixin/Gone", renderer, "chunks"),
 				"com/example/mixin/Elsewhere", shadowMixin("com/example/mixin/Elsewhere", "net/example/other/Thing", "x"));
-		MixinPreflight preflight = new MixinPreflight(new ClassIndex(installed), installed, mod::get, ClassBytesSource.EMPTY, false, true);
+		MixinPreflight preflight = new MixinPreflight(new ClassIndex(installed), installed, mod::get, ClassBytesSource.EMPTY, false, true, ClassBytesSource.EMPTY);
 
 		List<PreflightFinding> findings = preflight.check("test.mixins.json", MixinConfigFile.parse(config(true, "Present", "Gone", "Elsewhere")),
 				Refmap.EMPTY, Set.of());
@@ -1026,6 +1027,11 @@ class MixinPreflightTest {
 
 	/** A handler {@code name} of {@code injector} on {@code tick} at its call to {@code helper} with {@code helperDesc}. */
 	private static void atHelperCall(ClassWriter cw, String injector, String name, String desc, String helperDesc, Consumer<MethodVisitor> body) {
+		atHelperCall(cw, injector, name, desc, helperDesc, -1, body);
+	}
+
+	/** The same, at the {@code ordinal}-th such call ({@code -1}: each). */
+	private static void atHelperCall(ClassWriter cw, String injector, String name, String desc, String helperDesc, int ordinal, Consumer<MethodVisitor> body) {
 		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, name, desc, null, null);
 		AnnotationVisitor ann = mv.visitAnnotation(injector, false);
 		AnnotationVisitor methods = ann.visitArray("method");
@@ -1036,6 +1042,7 @@ class MixinPreflightTest {
 		AnnotationVisitor at = single ? ann.visitAnnotation("at", AT) : ats.visitAnnotation(null, AT);
 		at.visit("value", "INVOKE");
 		at.visit("target", "L" + TARGET + ";helper" + helperDesc);
+		if (ordinal >= 0) at.visit("ordinal", ordinal);
 		at.visitEnd();
 		if (ats != null) ats.visitEnd();
 		ann.visitEnd();
@@ -1044,6 +1051,83 @@ class MixinPreflightTest {
 			body.accept(mv);
 		}
 		mv.visitEnd();
+	}
+
+	/** Game class: tick() calls helper with each of {@code descs} in turn, the i-th passing i (and null for the rest). */
+	private static byte[] numberedHelperCalls(String... descs) {
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		MethodVisitor tick = cw.visitMethod(Opcodes.ACC_PUBLIC, "tick", "()V", null, null);
+		tick.visitCode();
+		for (int i = 0; i < descs.length; i++) {
+			tick.visitVarInsn(Opcodes.ALOAD, 0);
+			tick.visitInsn(Opcodes.ICONST_0 + i);
+			for (int k = 1; k < Type.getArgumentTypes(descs[i]).length; k++) tick.visitInsn(Opcodes.ACONST_NULL);
+			tick.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "helper", descs[i], false);
+		}
+		tick.visitInsn(Opcodes.RETURN);
+		tick.visitMaxs(0, 0);
+		tick.visitEnd();
+		for (String desc : new LinkedHashSet<>(List.of(descs))) {
+			MethodVisitor helper = cw.visitMethod(Opcodes.ACC_PUBLIC, "helper", desc, null, null);
+			helper.visitCode();
+			helper.visitInsn(Opcodes.RETURN);
+			helper.visitMaxs(0, 0);
+			helper.visitEnd();
+		}
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	@Test
+	void injectionPointsPickedByOrdinalAreReadAgainstVanillasCode() throws Exception {
+		// VANILLA-1: as NeoForge's Camera.alignWithEntity, where vanilla calls setRotation(FF) four times and NeoForge's
+		// patch made the second and third calls of setRotation(FFF), passing a roll: Do a Barrel Roll's hooks pick the
+		// calls by ordinal. Without vanilla's code, the second hook lands on vanilla's fourth call and the last two fail.
+		String thing = "L" + TARGET + ";";
+		String overload = "(ILjava/lang/String;)V";
+		Map<String, byte[]> vanilla = Map.of(TARGET, numberedHelperCalls("(I)V", "(I)V", "(I)V", "(I)V"));
+		ClassIndex neoForge = new ClassIndex(Map.of(TARGET, numberedHelperCalls("(I)V", overload, overload, "(I)V"))::get);
+		byte[] original = mixin("com/example/mixin/Ordinals", false, cw -> {
+			atHelperCall(cw, WRAP_OPERATION, "first", "(" + thing + "I" + OPERATION + ")V", "(I)V", 0, null);
+			atHelperCall(cw, "Lcom/llamalad7/mixinextras/injector/v2/WrapWithCondition;", "second", "(" + thing + "I)Z", "(I)V", 1, null);
+			atHelperCall(cw, INJECT, "third", "(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V", "(I)V", 2, null);
+			atHelperCall(cw, REDIRECT, "fourth", "(" + thing + "I)V", "(I)V", 3, null);
+		});
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Ordinals", original));
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Ordinals"));
+		assertEquals(2, preflight(neoForge, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).size());
+
+		List<PreflightFinding> notes = new ArrayList<>();
+		MixinPreflight withVanilla = new MixinPreflight(neoForge, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, vanilla::get);
+		Map<String, byte[]> repaired = withVanilla.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
+
+		assertEquals(3, notes.size(), notes.toString());
+		assertTrue(notes.stream().allMatch(n -> n.message().contains("in vanilla's code")), notes.toString());
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired.get("com/example/mixin/Ordinals.class")).accept(node, 0);
+		Map<String, AnnotationNode> points = new HashMap<>();
+		for (MethodNode m : node.methods) {
+			for (AnnotationNode ann : Annotations.all(m)) {
+				List<AnnotationNode> ats = Annotations.list(Annotations.value(ann, "at"));
+				if (!ats.isEmpty()) points.put(m.name, ats.getFirst());
+			}
+		}
+		assertEquals(4, points.size(), points.keySet().toString());
+		assertFalse(points.containsKey("second"), "the condition's injector moved to a bridge: " + points.keySet());
+		assertEquals(0, Annotations.value(points.get("first"), "ordinal"));
+		AnnotationNode bridged = points.entrySet().stream().filter(e -> !List.of("first", "third", "fourth", "second").contains(e.getKey()))
+				.findFirst().orElseThrow().getValue();
+		assertEquals("L" + TARGET + ";helper" + overload, Annotations.value(bridged, "target"), "vanilla's second call is the overload's first");
+		assertEquals(0, Annotations.value(bridged, "ordinal"));
+		assertEquals("L" + TARGET + ";helper" + overload, Annotations.value(points.get("third"), "target"));
+		assertEquals(1, Annotations.value(points.get("third"), "ordinal"), "vanilla's third call is the overload's second");
+		assertEquals("L" + TARGET + ";helper(I)V", Annotations.value(points.get("fourth"), "target"));
+		assertEquals(1, Annotations.value(points.get("fourth"), "ordinal"), "vanilla's fourth call is this game build's second");
+		Map<String, byte[]> after = new HashMap<>(mod);
+		repaired.forEach((path, data) -> after.put(path.substring(0, path.length() - ".class".length()), data));
+		assertEquals(List.of(), preflight(neoForge, after::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()),
+				"each hook applies where vanilla's call went");
 	}
 
 	@Test
@@ -3499,6 +3583,6 @@ class MixinPreflightTest {
 
 	private static MixinPreflight preflight(ClassIndex game, ClassBytesSource mod, ClassBytesSource untransformable, boolean clientSide,
 			boolean missingTargetsFatal) {
-		return new MixinPreflight(game, InstalledClasses.NONE, mod, untransformable, clientSide, missingTargetsFatal);
+		return new MixinPreflight(game, InstalledClasses.NONE, mod, untransformable, clientSide, missingTargetsFatal, ClassBytesSource.EMPTY);
 	}
 }

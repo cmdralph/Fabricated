@@ -10,8 +10,8 @@ import net.minecraft.world.entity.Entity;
 import net.neoforged.bus.api.EventPriority;
 import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
+import net.neoforged.neoforge.client.event.lifecycle.ClientStoppingEvent;
 import net.neoforged.neoforge.common.NeoForge;
-import net.neoforged.neoforge.event.GameShuttingDownEvent;
 import net.neoforged.neoforge.event.entity.EntityJoinLevelEvent;
 import net.neoforged.neoforge.event.entity.EntityLeaveLevelEvent;
 import net.neoforged.neoforge.event.level.ChunkEvent;
@@ -21,7 +21,9 @@ import net.neoforged.neoforge.event.tick.LevelTickEvent;
 /**
  * Client half of the native {@code fabric-lifecycle-events-v1} (Minecraft 1.21.11). Only loaded on the physical
  * client. {@code CLIENT_STARTED} fires where Fabric API fires it, as {@code Minecraft.run()} starts (before the first
- * frame; the first client tick if that hook is missing);
+ * frame; the first client tick if that hook is missing), and {@code CLIENT_STOPPING} where it fires it too, as
+ * {@code Minecraft.destroy()} starts (NeoForge's {@code ClientStoppingEvent}: its {@code GameShuttingDownEvent} comes
+ * only from {@code Minecraft.stop()} while the game runs, so not for a game whose loop ended otherwise);
  * {@code AFTER_CLIENT_WORLD_CHANGE} fires when the player logs in and when respawning into another level.
  */
 public final class ClientLifecycleBridge {
@@ -45,8 +47,8 @@ public final class ClientLifecycleBridge {
 			ClientTickEvents.START_CLIENT_TICK.invoker().onStartTick(client);
 		});
 		bus.addListener(ClientTickEvent.Post.class, e -> ClientTickEvents.END_CLIENT_TICK.invoker().onEndTick(Minecraft.getInstance()));
-		bus.addListener(GameShuttingDownEvent.class, e -> {
-			if (started) ClientLifecycleEvents.CLIENT_STOPPING.invoker().onClientStopping(Minecraft.getInstance());
+		bus.addListener(ClientStoppingEvent.class, e -> {
+			if (started) ClientLifecycleEvents.CLIENT_STOPPING.invoker().onClientStopping(e.getClient());
 		});
 
 		bus.addListener(LevelTickEvent.Pre.class, e -> {

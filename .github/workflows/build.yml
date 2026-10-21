@@ -252,6 +252,7 @@ jobs:
           check "screen init event OK" "a screen's initialization fired Fabric's event"
           check "screen draw event OK" "a screen's drawing fired Fabric's event"
           check "client commands OK" "Fabric's client commands were registered on joining the world"
+          check "client stopping OK" "Fabric's CLIENT_STOPPING fired as the game stopped"
           if [ "$failed" = 1 ]; then
             grep -n -m 40 -E "testmod_frapi|HudBridge|ScreenRenderBridge|/(ERROR|FATAL)\]" "$log" || true
             exit 1

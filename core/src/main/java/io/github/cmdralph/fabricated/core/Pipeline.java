@@ -150,6 +150,7 @@ public final class Pipeline {
 			boolean development,
 			ClassBytesSource gameClasses,
 			List<Path> gameFiles,
+			VanillaGame vanillaGame,
 			List<Path> fabricatedFiles,
 			ClassBytesSource untransformableClasses,
 			Set<String> platformPackages,
@@ -160,6 +161,17 @@ public final class Pipeline {
 			InstalledClasses installedClasses,
 			MappingSupplier mappings,
 			String[] launchArguments) {
+	}
+
+	/**
+	 * Vanilla's code of the game, which pre-flight reads to tell where NeoForge's patches moved an injection point
+	 * (VANILLA-1).
+	 *
+	 * @param classes  vanilla's classes, or {@link ClassBytesSource#EMPTY} when they weren't found
+	 * @param location where they were read from, or where they were looked for
+	 */
+	public record VanillaGame(ClassBytesSource classes, String location) {
+		public static final VanillaGame NONE = new VanillaGame(ClassBytesSource.EMPTY, "not looked for");
 	}
 
 	/**
@@ -312,6 +324,7 @@ public final class Pipeline {
 				.environment("Fabric mod namespace", in.namespace() == Namespace.INTERMEDIARY ? "intermediary (remapped to Mojang names)" : "Mojang names (no remapping)")
 				.environment("Mixin", in.runtimeMixinVersion())
 				.environment("MixinExtras", in.mixinExtrasVersion() != null ? in.mixinExtrasVersion() : "not found")
+				.environment("Vanilla game code", in.vanillaGame().location())
 				.environment("Java", Runtime.version().toString())
 				.environment("Fabric API plan", plan.fabricApiVersion())
 				.environment("Fabric Loader API", FABRIC_LOADER_COMPAT_VERSION);
@@ -355,7 +368,8 @@ public final class Pipeline {
 		InstalledClasses installed = in.installedClasses().with(fabricJars(eligible, opened, mappingTable == null ? null : new JarRemapper(mappingTable)));
 		TranslationEnvironment env = new TranslationEnvironment(in.minecraftVersion(), in.neoForgeVersion(), in.clientSide(), in.namespace(),
 				in.runtimeMixinVersion(), in.mixinExtrasVersion(), in.lowestMixinBehavior(), in.fabricatedVersion(), mappingTable, mappingsHash, game, in.untransformableClasses(),
-				installed, installed.isEmpty() ? game : new ClassIndex(gameClasses.or(installed)), unsupportedPackages(scan.candidates()));
+				// Vanilla's code has the game's names only where Fabric mods use Mojang's (26.x).
+				in.namespace() == Namespace.OFFICIAL ? in.vanillaGame().classes() : ClassBytesSource.EMPTY, installed, installed.isEmpty() ? game : new ClassIndex(gameClasses.or(installed)), unsupportedPackages(scan.candidates()));
 		Rounds rounds = new Rounds();
 		try {
 			rounds.run(scan.candidates(), eligible, resolver(), new ModTranslator(env, in.cache(), config.limits()));

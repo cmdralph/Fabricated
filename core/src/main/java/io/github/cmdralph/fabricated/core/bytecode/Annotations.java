@@ -49,6 +49,19 @@ public final class Annotations {
 		return null;
 	}
 
+	/** Sets attribute {@code key} to {@code value}, adding it when not set. */
+	public static void put(AnnotationNode ann, String key, Object value) {
+		if (ann.values == null) ann.values = new ArrayList<>();
+		for (int i = 0; i + 1 < ann.values.size(); i += 2) {
+			if (key.equals(ann.values.get(i))) {
+				ann.values.set(i + 1, value);
+				return;
+			}
+		}
+		ann.values.add(key);
+		ann.values.add(value);
+	}
+
 	/** The annotations an attribute holds: one annotation, or an array of them; none for anything else. */
 	public static List<AnnotationNode> list(Object value) {
 		List<AnnotationNode> ret = new ArrayList<>();

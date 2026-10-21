@@ -3,6 +3,29 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-10-21 (pass after PR #63): vanilla's code for injection points, client stopping
+
+**Plan.** PR #63's last run (`2036fbe`) passed the new client module gate on every 26.x version once HUD-1 was fixed,
+and Freecam loads on 1.21.11. Do a Barrel Roll is still disabled everywhere: its camera hooks pick calls by ordinal,
+and NeoForge's patches add and replace calls, so pre-flight, which only has NeoForge's code, can't tell which call an
+ordinal meant; and an ordinal that still occurs may land on another call than the mod's, unnoticed.
+
+- VANILLA-1: on 26.x the loader finds vanilla's game jar next to the libraries, and pre-flight aligns vanilla's version
+  of a target method with this game build's. An injection point picked by ordinal follows vanilla's instruction: to its
+  ordinal here, or to the overload call NeoForge's patch put in its place (with a bridged handler). Where the
+  alignment can't tell (a repeated sequence), nothing moves.
+- CI: the client test mod also checks that Fabric's `CLIENT_STOPPING` reaches mods; its FAILED line for a HUD element
+  never appeared on `4046a27`, though it was logged from that event.
+- LIFE-1: and on `c03acb1` the check failed on 26.1.2, 26.2 and 26.3. Fabricated fired `CLIENT_STOPPING` from NeoForge's
+  `GameShuttingDownEvent`, which only `Minecraft.stop()` posts, and only while the game runs; a run loop that ends
+  otherwise (mc-runtime-test's) never got it. It now fires from NeoForge's `ClientStoppingEvent`, which
+  `Minecraft.destroy()` posts where Fabric API fires the event, on 1.21.11 and 26.x.
+- Roadmap: HUD-1 and MIXEXT-2 recorded as seen on `2036fbe` and `2380938`.
+- VANILLA-1 on `c03acb1`: every 26.x server and client found vanilla's jar, and Lithostitched's terrain hook moved to
+  the call vanilla's ordinal meant; no version left out more hooks. Do a Barrel Roll's hook at the mirrored camera's call
+  didn't move: its replacement sits beside an instruction the patch repeats (`-xRot`, then `-roll`), which the front and
+  back alignments pair differently, and only an identical range was answered. Now the range both share is.
+
 ## 2026-10-21 (pass after PR #62): Fabric API's client modules in a gate, HUD elements, Freecam on 1.21.11
 
 **Plan.** PR #62's last run (`1810c80`) moved Polymer's codec hook and three of Ledger's hooks on 1.21.11, with every

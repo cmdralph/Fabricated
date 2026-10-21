@@ -289,7 +289,7 @@ class PipelineTest {
 		TranslationCache cache = new TranslationCache(game, config.cacheEnabled(), config.verifyIntegrity());
 		return new Pipeline.Input(game, game.resolve("config"), config, cache, jars, ns == Namespace.OFFICIAL ? "26.2" : "1.21.11",
 				"26.2.0.90", false, ns, mixin, "0.5.3", lowestBehavior, "0.1.0-test", false, gameClasses::get, List.of(game.resolve("minecraft.jar")),
-				List.of(game.resolve("fabricated.jar")), libraries, Set.of("net/neoforged/neoforge"),
+				Pipeline.VanillaGame.NONE, List.of(game.resolve("fabricated.jar")), libraries, Set.of("net/neoforged/neoforge"),
 				FabricApiPlan.parse(PLAN), name -> null, Map::of, neoForgeMods, installed, mappings, new String[0]);
 	}
 

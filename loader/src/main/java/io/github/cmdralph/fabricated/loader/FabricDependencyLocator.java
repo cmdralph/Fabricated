@@ -36,6 +36,7 @@ import io.github.cmdralph.fabricated.core.resolve.FabricApiPlan;
 import io.github.cmdralph.fabricated.core.resolve.PlatformLibraries;
 import io.github.cmdralph.fabricated.core.translate.LinkageAnalysis;
 import io.github.cmdralph.fabricated.core.translate.PackageGuard;
+import io.github.cmdralph.fabricated.core.translate.TranslationEnvironment.Namespace;
 import io.github.cmdralph.fabricated.fabricloader.version.VersionParser;
 import net.fabricmc.loader.api.VersionParsingException;
 import net.neoforged.fml.ModLoadingIssue;
@@ -150,6 +151,9 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 		Supplier<Map<String, List<String>>> nativeApiInterfaces = Map::of;
 		FabricApiPlan plan;
 		Pipeline.Result result;
+		// Vanilla's game jar, which pre-flight reads to tell where NeoForge's patches moved an injection point (VANILLA-1),
+		// only where its names are the game's.
+		List<SafeArchive> vanillaJars = new ArrayList<>();
 		// Closed once the pipeline is done with it, however it ends.
 		try (SafeArchive archive = gameModJar == null ? null : SafeArchive.open(gameModJar, ArchiveLimits.DEFAULTS)) {
 			if (archive != null) {
@@ -185,13 +189,17 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 			byte[] planJson = FabricatedInfo.readOptional("fabric-api-plan.json");
 			if (planJson == null) throw new IllegalStateException("This Fabricated build is missing its fabric-api-plan.json");
 			plan = FabricApiPlan.parse(new String(planJson, StandardCharsets.UTF_8));
+			Pipeline.VanillaGame vanilla = info.namespace() == Namespace.OFFICIAL && !fabricJars.isEmpty()
+					? VanillaGameJar.find(minecraft.getFilePath(), mcVersion, client, cache, vanillaJars) : Pipeline.VanillaGame.NONE;
 			Pipeline.Input input = new Pipeline.Input(gameDir, FMLPaths.CONFIGDIR.get(), config, cache, fabricJars, mcVersion, neoVersion,
-					client, info.namespace(), runtimeMixinVersion(info), mixinExtrasVersion(loadedMods), info.mixinLowest(), info.fabricatedVersion(), !fml.isProduction(), gameClasses, List.of(minecraft.getFilePath()), fabricatedFiles, untransformable,
+					client, info.namespace(), runtimeMixinVersion(info), mixinExtrasVersion(loadedMods), info.mixinLowest(), info.fabricatedVersion(), !fml.isProduction(), gameClasses, List.of(minecraft.getFilePath()), vanilla, fabricatedFiles, untransformable,
 					platformPackages, plan, nativeApi, nativeApiInterfaces, neoForgeMods.mods(), neoForgeMods.classes(),
 					(mappingsCache, mojangPath) -> IntermediaryMappings.load(mappingsCache, mcVersion, client, mojangPath),
 					fml.getProgramArgs().getArguments());
 
 			result = Pipeline.run(input);
+		} finally {
+			closeAll(vanillaJars);
 		}
 		result.runtime().install();
 		// Fabric entrypoints run when Fabricated's in-game mod loads: always in development, else when there is anything Fabric.
@@ -277,6 +285,16 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 			}
 		}
 		return Optional.empty();
+	}
+
+	private static void closeAll(List<SafeArchive> archives) {
+		for (SafeArchive archive : archives) {
+			try {
+				archive.close();
+			} catch (IOException e) {
+				// Read only; nothing to lose.
+			}
+		}
 	}
 
 	/** Copies the bundled in-game mod into the cache (content-addressed, so it is written once). */

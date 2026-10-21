@@ -122,6 +122,9 @@ public final class MixinPreflight {
 	private final ClassBytesSource untransformable;
 	private final boolean clientSide;
 	private final boolean missingTargetsFatal;
+	/** Vanilla's code of the game, or {@link ClassBytesSource#EMPTY} (VANILLA-1). */
+	private final ClassBytesSource vanilla;
+	private final Map<String, Optional<ClassNode>> vanillaCache = new HashMap<>();
 	private final Map<String, Optional<ClassNode>> targetCache = new HashMap<>();
 	/** The installed classes the checks read, with their fingerprints. */
 	private final Map<String, String> installedRead = new TreeMap<>();
@@ -142,13 +145,14 @@ public final class MixinPreflight {
 	 *                            as it does from compatibility level 0.17.4; before, it only skips that target
 	 */
 	public MixinPreflight(ClassIndex game, InstalledClasses installed, ClassBytesSource modClasses, ClassBytesSource untransformable,
-			boolean clientSide, boolean missingTargetsFatal) {
+			boolean clientSide, boolean missingTargetsFatal, ClassBytesSource vanilla) {
 		this.game = game;
 		this.installed = installed;
 		this.modClasses = modClasses;
 		this.untransformable = untransformable;
 		this.clientSide = clientSide;
 		this.missingTargetsFatal = missingTargetsFatal;
+		this.vanilla = vanilla;
 	}
 
 	/**
@@ -296,6 +300,12 @@ public final class MixinPreflight {
 							out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@" + simpleName(ann.desc) + " " + method.name
 									+ " targets " + pinned + ", which this game build declares after another overload; it is pinned to that one", ""));
 						}
+						for (String moved : vanillaPointRepairs(node, method, ann, targets.getFirst(), ctx, bridges)) {
+							changed = true;
+							out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@" + simpleName(ann.desc) + " " + method.name
+									+ " expects " + moved, ""));
+						}
+						if (!Annotations.all(method).contains(ann)) continue;
 						for (String moved : overloadRepairs(node, method, ann, targets.getFirst(), ctx, bridges)) {
 							changed = true;
 							out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@" + simpleName(ann.desc) + " " + method.name
@@ -878,6 +888,118 @@ public final class MixinPreflight {
 	}
 
 	/**
+	 * Reads an injector's points that pick one of a target method's calls, field accesses or constructions by ordinal
+	 * against vanilla's version of the method, when there is one (VANILLA-1). NeoForge's patches add and replace such
+	 * instructions, so this game build's ordinal-th may not be the one the mod was written for, or there may be fewer.
+	 * Vanilla's instructions aligned with this game build's ({@link PatchAlignment}) tell where vanilla's went: where it
+	 * is still there, the point's ordinal becomes its ordinal here; where NeoForge's patch put a call of an overload taking
+	 * one more argument in its place (its camera passes a roll along that way), the point is pointed at that call, with
+	 * its handler bridged as {@link #insertedArgumentRepairs} does. A point inside a slice, or a target method vanilla
+	 * doesn't declare, is left as it is. Returns a description of each change.
+	 */
+	private List<String> vanillaPointRepairs(ClassNode mixin, MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx,
+			List<MethodNode> bridges) {
+		if (Annotations.value(injector, "slice") != null || (mixin.access & Opcodes.ACC_INTERFACE) != 0) return List.of();
+		ClassNode original = vanillaClass(target.name);
+		List<MethodNode> methods = original == null ? List.of() : selectedMethods(injector, target, ctx);
+		if (methods.size() != 1) return List.of();
+		MethodNode patched = methods.getFirst();
+		MethodNode before = declared(original, patched.name, patched.desc);
+		if (before == null) return List.of();
+		List<AnnotationNode> ats = Annotations.list(Annotations.value(injector, "at"));
+		PatchAlignment alignment = null;
+		List<String> moved = new ArrayList<>();
+		for (AnnotationNode at : ats) {
+			String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
+			if (!List.of("INVOKE", "FIELD", "NEW").contains(point) || !(Annotations.value(at, "ordinal") instanceof Integer ordinal) || ordinal < 0
+					|| !(Annotations.value(at, "target") instanceof String raw)) continue;
+			MemberRef ref = MemberRef.parse(ctx.resolve(raw));
+			if (ref.fuzzy()) continue;
+			int opcode = Annotations.value(at, "opcode") instanceof Integer o ? o : -1;
+			List<Integer> inVanilla = matching(before, point, ref, opcode);
+			if (ordinal >= inVanilla.size()) continue;
+			if (alignment == null) alignment = PatchAlignment.of(before, patched);
+			if (alignment == null) return moved;
+			String what = (point.equals("INVOKE") ? "the call " : point.equals("FIELD") ? "the access " : "the construction ") + raw
+					+ " with ordinal " + ordinal + " in vanilla's code, which ";
+			int place = alignment.placeOf(inVanilla.get(ordinal));
+			if (place == PatchAlignment.UNCERTAIN) continue;
+			if (place >= 0) {
+				int now = matching(patched, point, ref, opcode).indexOf(place);
+				if (now < 0 || now == ordinal) continue;
+				Annotations.put(at, "ordinal", now);
+				moved.add(what + "has ordinal " + now + " in this game build, as NeoForge's patches add or replace others; the injection point is pointed there");
+				continue;
+			}
+			boolean pointOnly = injector.desc.equals(INJECT) || injector.desc.equals(MODIFY_EXPRESSION_VALUE);
+			if (!point.equals("INVOKE") || ref.owner() == null || ref.name() == null || ref.desc() == null || !pointOnly && ats.size() != 1
+					|| !pointOnly && !WRAP_WITH_CONDITION.contains(injector.desc) && !injector.desc.equals(REDIRECT) && !injector.desc.equals(WRAP_OPERATION)) continue;
+			MethodInsnNode replacement = replacingOverload(patched, alignment.replacementOf(inVanilla.get(ordinal)), ref);
+			if (replacement == null) continue;
+			int inserted = insertedArgument(ref.desc(), replacement.desc);
+			if (!pointOnly && !bridgeTo(mixin, handler, injector, ref.owner(), ref.desc(), replacement.desc, inserted, replacement.getOpcode() == Opcodes.INVOKESTATIC,
+					bridges)) continue;
+			int now = 0;
+			for (AbstractInsnNode insn = patched.instructions.getFirst(); insn != replacement; insn = insn.getNext()) {
+				if (insn instanceof MethodInsnNode call && call.owner.equals(replacement.owner) && call.name.equals(replacement.name) && call.desc.equals(replacement.desc)) now++;
+			}
+			Annotations.put(at, "target", "L" + replacement.owner + ";" + replacement.name + replacement.desc);
+			Annotations.put(at, "ordinal", now);
+			moved.add(what + "NeoForge's patch replaced with a call of " + replacement.name + replacement.desc + ", taking one more argument (ordinal " + now
+					+ " here); the injection point is pointed there" + (pointOnly ? "" : ", through a bridge handler"));
+		}
+		return moved;
+	}
+
+	/**
+	 * The one call, among the patched instructions {@code range} ({@code [from, to)}, null for none), of an overload of the
+	 * named method taking one more argument; null when there is none or more than one.
+	 */
+	private static MethodInsnNode replacingOverload(MethodNode patched, int[] range, MemberRef ref) {
+		if (range == null) return null;
+		MethodInsnNode found = null;
+		for (int i = range[0]; i < range[1]; i++) {
+			if (!(patched.instructions.get(i) instanceof MethodInsnNode call) || !call.owner.equals(ref.owner()) || !call.name.equals(ref.name())
+					|| insertedArgument(ref.desc(), call.desc) < 0) continue;
+			if (found != null) return null;
+			found = call;
+		}
+		return found;
+	}
+
+	/** The indices of {@code method}'s instructions a point ({@code INVOKE}, {@code FIELD} or {@code NEW}) matches, in order. */
+	private static List<Integer> matching(MethodNode method, String point, MemberRef ref, int opcode) {
+		List<Integer> found = new ArrayList<>();
+		for (int i = 0; i < method.instructions.size(); i++) {
+			AbstractInsnNode insn = method.instructions.get(i);
+			if ((opcode < 0 || insn.getOpcode() == opcode) && InjectionPoints.matchesInsn(point, ref, insn)) found.add(i);
+		}
+		return found;
+	}
+
+	/** Vanilla's version of a game class (parsed once per pre-flight), or null. */
+	private ClassNode vanillaClass(String internalName) {
+		return vanillaCache.computeIfAbsent(internalName, n -> Optional.ofNullable(vanilla.readNode(n, 0))).orElse(null);
+	}
+
+	/**
+	 * Gives a {@code @Redirect}, {@code @WrapWithCondition} or {@code @WrapOperation} handler written for a call of
+	 * {@code owner} with {@code desc} a bridge taking the {@code overload} its point moves to, which has one more argument
+	 * at {@code inserted}, and moves the injector onto it. Whether it could.
+	 */
+	private static boolean bridgeTo(ClassNode mixin, MethodNode handler, AnnotationNode injector, String owner, String desc, String overload, int inserted,
+			boolean staticCall, List<MethodNode> bridges) {
+		Type ownerType = Type.getObjectType(owner);
+		MethodNode bridge = injector.desc.equals(WRAP_OPERATION) ? HandlerBridges.wrapperBridge(mixin, handler, ownerType, desc, overload, inserted, staticCall, bridges)
+				: HandlerBridges.callBridge(mixin, handler, ownerType, desc, overload, inserted, staticCall,
+						WRAP_WITH_CONDITION.contains(injector.desc) ? Type.BOOLEAN_TYPE : Type.getReturnType(desc), bridges);
+		if (bridge == null) return false;
+		HandlerBridges.moveInjector(handler, injector, bridge);
+		bridges.add(bridge);
+		return true;
+	}
+
+	/**
 	 * Points the {@code INVOKE} and {@code NEW} points of an injector at the call this game build makes instead of the named one, an
 	 * overload of the same method taking one more argument (NeoForge's patches pass an item stack or a level along that
 	 * way), when the named call is in none of the methods the injector targets and that overload is the only one there.
@@ -986,14 +1108,7 @@ public final class MixinPreflight {
 			if (named || overload == null || ambiguous || ordinal >= calls) continue;
 			int inserted = insertedArgument(desc, overload);
 			// A hook taking just the call's receiver and arguments takes the handlers as they are.
-			if (!pointOnly && !overload.equals(desc)) {
-				Type ownerType = Type.getObjectType(owner);
-				MethodNode bridge = injector.desc.equals(WRAP_OPERATION) ? HandlerBridges.wrapperBridge(mixin, handler, ownerType, desc, overload, inserted, staticCall, bridges)
-						: HandlerBridges.callBridge(mixin, handler, ownerType, desc, overload, inserted, staticCall, condition ? Type.BOOLEAN_TYPE : Type.getReturnType(desc), bridges);
-				if (bridge == null) continue;
-				HandlerBridges.moveInjector(handler, injector, bridge);
-				bridges.add(bridge);
-			}
+			if (!pointOnly && !overload.equals(desc) && !bridgeTo(mixin, handler, injector, owner, desc, overload, inserted, staticCall, bridges)) continue;
 			for (int i = 0; i + 1 < at.values.size(); i += 2) {
 				if ("target".equals(at.values.get(i))) at.values.set(i + 1, constructor ? overload : "L" + callOwner + ";" + callName + overload);
 			}
