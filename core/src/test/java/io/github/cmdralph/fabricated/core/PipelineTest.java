@@ -803,8 +803,9 @@ class PipelineTest {
 
 	@Test
 	void anEnumMixinIntoAnExtensibleEnumBecomesAnEnumExtension(@TempDir Path game) throws Exception {
-		// ENUM-1: NeoForge's loader adds the constants, from the mod's enum extension file; an enum mixin it can't take
-		// (a constant built from a value computed when the class loads) still disables its mod (CORPUS-10).
+		// ENUM-1: NeoForge's loader adds the constants, from the mod's enum extension file; a constant built from a value
+		// computed when the class loads, from a method generated next to the mixins (ENUM-3). An enum mixin it can't take
+		// (a constant built from the mixin's own fields) still disables its mod (CORPUS-10).
 		String kind = "net/minecraft/world/Kind";
 		Path mods = Files.createDirectories(game.resolve("mods"));
 		Path cooking = TestJars.create().fabricModJson(TestJars.modJson("cooking", "1.0", "\"mixins\":[\"cooking.mixins.json\"]"))
@@ -819,11 +820,22 @@ class PipelineTest {
 						"(Ljava/lang/String;)V", mv -> mv.visitFieldInsn(Opcodes.GETSTATIC, "com/stew/Names", "BOWL", "Ljava/lang/String;"))), cw -> {
 				}))
 				.write(mods.resolve("stew.jar"));
+		Path soup = TestJars.create().fabricModJson(TestJars.modJson("soup", "1.0", "\"mixins\":[\"soup.mixins.json\"]"))
+				.text("soup.mixins.json", "{\"required\":true,\"package\":\"com.soup.mixin\",\"mixins\":[\"KindMixin\"]}")
+				.bytes("com/soup/mixin/KindMixin.class", TestEnums.mixin("com/soup/mixin/KindMixin", kind, List.of(new TestEnums.Constant("SOUP_BOWL",
+						"(Ljava/lang/String;)V", mv -> mv.visitFieldInsn(Opcodes.GETSTATIC, "com/soup/mixin/KindMixin", "NAME", "Ljava/lang/String;"))), cw -> {
+				}))
+				.write(mods.resolve("soup.jar"));
 		Map<String, byte[]> gameClasses = Map.of(TARGET, targetClass(), kind, TestEnums.target(kind, true, List.of("()V", "(Ljava/lang/String;)V"), List.of()));
-		Pipeline.Result result = Pipeline.run(input(game, List.of(cooking, stew), Namespace.OFFICIAL, gameClasses, null));
+		Pipeline.Result result = Pipeline.run(input(game, List.of(cooking, stew, soup), Namespace.OFFICIAL, gameClasses, null));
 
 		Map<String, Pipeline.LoadedMod> loaded = result.mods().stream().collect(Collectors.toMap(m -> m.translated().candidate().id(), m -> m));
-		assertEquals(Set.of("cooking"), loaded.keySet(), result.report().render());
+		assertEquals(Set.of("cooking", "stew"), loaded.keySet(), result.report().render());
+		try (SafeArchive overlay = SafeArchive.open(loaded.get("stew").translated().overlay(), ArchiveLimits.DEFAULTS)) {
+			Map<?, ?> entry = (Map<?, ?>) Json.asList(Json.parseObject(overlay.readText("META-INF/fabricated/enum_extensions.json")).get("entries")).getFirst();
+			assertEquals(Map.of("class", "com/stew/FabricatedEnumArguments", "method", "arguments0"), entry.get("parameters"));
+			assertTrue(overlay.read("com/stew/FabricatedEnumArguments.class") != null, "the class computing the arguments is in the overlay");
+		}
 		try (SafeArchive overlay = SafeArchive.open(loaded.get("cooking").translated().overlay(), ArchiveLimits.DEFAULTS)) {
 			assertTrue(overlay.readText("META-INF/neoforge.mods.toml").contains("enumExtensions=\"META-INF/fabricated/enum_extensions.json\""));
 			Map<?, ?> entry = (Map<?, ?>) Json.asList(Json.parseObject(overlay.readText("META-INF/fabricated/enum_extensions.json")).get("entries")).getFirst();
@@ -831,7 +843,7 @@ class PipelineTest {
 			String config = overlay.readText("cooking.mixins.json");
 			assertTrue(!config.contains("KindMixin") && config.contains("ThingMixin"), "only the enum mixin is left out: " + config);
 		}
-		Report.ModRow row = result.report().mods().stream().filter(r -> r.id().equals("stew")).findFirst().orElseThrow();
+		Report.ModRow row = result.report().mods().stream().filter(r -> r.id().equals("soup")).findFirst().orElseThrow();
 		assertEquals(Report.Status.DISABLED, row.status());
 		assertTrue(row.detail().contains("extensible enums"), row.detail());
 	}

@@ -404,6 +404,12 @@ public final class ModTranslator {
 							+ skipHint + "\"] for " + candidate.id() + " in config/fabricated.json.",
 					failures, null);
 		}
+		// The classes computing enum constants' arguments (ENUM-3).
+		Map<String, List<EnumExtensions.Entry>> computed = new TreeMap<>();
+		for (EnumExtensions.Entry e : enumEntries) {
+			if (e.computed() != null) computed.computeIfAbsent(e.computed().owner(), k -> new ArrayList<>()).add(e);
+		}
+		computed.forEach((owner, owned) -> EnumExtensions.argumentsClasses(owner, owned).forEach((name, bytes) -> overlay.put(name + ".class", bytes)));
 		return specs;
 	}
 
@@ -447,6 +453,23 @@ public final class ModTranslator {
 		}
 	}
 
+	/**
+	 * The class that computes the arguments of a config's enum constants: in the package around the config's mixin
+	 * package (Mixin refuses to load any other class from that), under a name the jar doesn't use; or null when the mixin
+	 * package has none around it.
+	 */
+	private static String argumentsClass(MixinConfigFile config, FileView files) throws ArchiveException {
+		String pkg = config.mixinPackage();
+		int dot = pkg == null ? -1 : pkg.lastIndexOf('.');
+		if (dot <= 0) return null;
+		String base = pkg.substring(0, dot).replace('.', '/') + "/FabricatedEnumArguments";
+		for (int n = 0; n < 100; n++) {
+			String name = n == 0 ? base : base + n;
+			if (files.read(name + ".class") == null) return name;
+		}
+		return null;
+	}
+
 	/** The mixin's name as its config lists it. */
 	private static String relativeMixin(MixinConfigFile config, String mixinDotted) {
 		String pkg = config != null ? config.mixinPackage() : null;
@@ -469,6 +492,13 @@ public final class ModTranslator {
 			String target = EnumExtensions.target(node);
 			List<EnumExtensions.Entry> entries = target == null ? null : EnumExtensions.of(node, env.installedIndex().readNode(target), modId);
 			if (entries == null) continue;
+			if (entries.stream().anyMatch(e -> e.computed() != null)) {
+				// Computed arguments come from a class generated next to the mixins (ENUM-3).
+				String owner = argumentsClass(config, files);
+				if (owner == null) continue;
+				int first = (int) enumEntries.stream().filter(e -> e.computed() != null && e.computed().owner().equals(owner)).count();
+				entries = EnumExtensions.named(entries, owner, first);
+			}
 			if (all == skip) all = new TreeSet<>(skip);
 			all.add(mixin);
 			enumEntries.addAll(entries);
