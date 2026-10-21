@@ -3,6 +3,68 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-10-21 (pass after PR #57): Fabric's packet context, filled and bound everywhere packets are coded
+
+**Plan.** PR #57's last run showed the 26.2 and 26.3 advanced clients joining their worlds for the first time
+(NET-6), then losing the connection on Fabric's recipe sync, and the 26.1.2 advanced client stopping at its first
+chunk on a feature order cycle.
+
+- NET-7: NeoForge's packet splitter encodes each packet before vanilla's encoder, to measure it, and decodes the
+  packets it reassembles; both now run with the connection's Fabric `PacketContext` bound. The context also holds what
+  Fabric API puts in it: the server and its registries once the server's login listener exists, the player's profile
+  once login succeeds (both sides), and the client's registries once its play listener exists. Polymer's ingredient
+  codec read no context while the splitter measured the recipe sync, which closed the connection, and Polymer warned
+  that chunk packets lacked the registries. The context's keys live in a class of their own: as
+  `PacketContextImpl`'s, they read as null through `PacketContext`'s constants whenever a connection's context
+  initialized first (the client runs with the test mods alone and with the recipe viewers): a class's initialization
+  first initializes the interfaces with default methods it implements, before the class's own keys are set. The test
+  mod sends a payload large enough to be split, whose codec checks the context on both sides.
+- MODIFIER-1: a Fabric jar's NeoForge biome and structure modifiers (its NeoForge build's, which Fabric never reads)
+  become modifiers over no biome or structure (`neoforge:none` is gone from 26.x's biome modifiers, and stopped the
+  26.1.2 advanced client on the first try). YUNG's Extras' 26.1.2 Fabric jar carries its desert decorations as a
+  NeoForge biome modifier and adds them from its Fabric code too, so they went into desert biomes twice: the 26.1.2
+  advanced client stopped on a feature order cycle in a Biomes O' Plenty desert (inferred). The corpus scan found the
+  files.
+- HOOK-2: an injection at a call NeoForge's patches moved into a hook of theirs (a static method taking the call's
+  receiver and arguments, at most one more, that makes the call) is pointed at the hook's call, its handlers bridged as
+  for an overload. Architectury's screen render events, FancyMenu's screen hooks and Inventory Profiles Next's overlay
+  were left out on every version: NeoForge renders the screen inside `ClientHooks.drawScreen` (26.2 on: `extractScreen`).
+  A handler using the mixin's own state isn't moved: jGui (ReplayMod) keeps the screen's graphics from a
+  `@ModifyArg` at the same call for its `@Inject` after it, and the moved `@Inject` alone crashed the 26.2 advanced
+  client on `5069513`.
+- SPLIT-1: an injection into code NeoForge's patches split off into a method of its own (`Level.setBlock`'s neighbour
+  updates, now in `markAndNotifyBlock`) is pointed at that method when it alone holds the injection points, nothing
+  else in the class calls it and the handler neither depends on the original method nor uses the mixin's own state:
+  Carpet's update suppression.
+- SIG-2: an `@Inject` handler taking a method's vanilla parameters, the callback info and MixinExtras sugar gets a
+  bridge taking the parameters NeoForge's build gives the method, one more: Ledger's fire hooks take a `@Local` after
+  the callback info, which SIG-1's bridge doesn't carry, and stayed left out on every version.
+- PRE-14: pre-flight checks a `@ModifyVariable` handler's parameters as Mixin does (the variable, then the target's
+  first parameters, as many as it takes): Farmer's Delight's crop growth hook takes `getGrowthSpeed`'s vanilla
+  parameters, NeoForge's build takes a block state first, and Mixin stopped the 1.21.11 corpus server once ENUM-6 let
+  the mod load. The hook is now left out (LEAVE-1) and the mod loads. Asking for all of the target's parameters, as
+  first written, disabled Balm and Waystones on every corpus run.
+- LEAVE-3: a failing injector whose handler uses nothing of its mixin's own (no field of the mixin, no call to its
+  methods) is left out alone even when the mixin adds an interface the mod's code uses: owo-lib's `GuiRendererMixin`
+  hooks a field read NeoForge's `GuiRenderer.close` doesn't make, which disabled owo on every advanced client. A unit test
+  covers a handler that keeps state of the mixin's, which still fails.
+- LIB-1b: an accessor mixin into a library class NeoForge loads without mixin support is served by a generated class,
+  as LIB-1's interfaces are: owo-lib's accessor of JOML's `Matrix3x2fStack` fields, which disabled owo on every
+  advanced client. The accessor stays in its config, which Mixin needs to load it as the mod's interface; unit and
+  pipeline tests run and translate one.
+- FLUID-2: on 26.2 and 26.3, an entity's fluid lookups by tag answer for a mod's fluid tag, as vanilla's do, where
+  NeoForge's build threw for any tag but water's and lava's: Biomes O' Plenty's screen overlay asks whether the eyes
+  are in its blood, which crashed the 26.2 advanced client once it joined its world. The tag stands for its fluids'
+  type, or for none when they have none or several. The test mod asks with its own fluid's tag.
+- ENUM-6: a class tweaker's enum constants no longer need Mixin 0.17.1 when NeoForge's loader adds them from the mod's
+  enum extension file (ENUM-1), or when no enum mixin adds them on this side (a client enum's, on a server). Farmer's
+  Delight Refabricated was disabled on every 1.21.11 corpus run, whose NeoForge runs Mixin 0.16.5. A pipeline test runs
+  both cases with Mixin 0.16.5; the translation schema is bumped.
+- CI: the client smoke test logs the modules of the libraries LIB-1's bridges reflect on, and the advanced corpus
+  step lists the NeoForge biome and structure modifiers its Fabric jars carry: NeoForge applies them, Fabric doesn't, and
+  the 26.1.2 advanced client stopped on a feature order cycle in one Biomes O' Plenty biome (inferred cause to check: a
+  feature added both by a mod's Fabric code and by its NeoForge data).
+
 ## 2026-10-21 (pass after PR #56): Polymer's handshake, Carpet's Brigadier hooks, and Do a Barrel Roll's jar
 
 **Plan.** PR #56's last run showed every 26.x advanced server starting (ITEMCOMP-1) and the 1.21.11 advanced client

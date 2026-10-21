@@ -224,6 +224,10 @@ check "FABRICATED-TEST client join event OK" "native client networking: join eve
 check "FABRICATED-TEST client networking round trip OK" "native networking: client to integrated server and back"
 check "FABRICATED-TEST late payload type round trip OK" "native networking: a payload type the server registered as it started (NET-3)"
 check "FABRICATED-TEST minecraft namespace payload round trip OK" "native networking: a payload type in the minecraft namespace, which NeoForge refuses to register (BetterEnd, NET-4)"
+if [ "$mc" != "1.21.11" ]; then
+	check "FABRICATED-TEST packet context while encoding OK" "Fabric's packet context, filled as Fabric API fills it, while NeoForge's splitter measures a packet (Polymer, NET-7)"
+	check "FABRICATED-TEST packet context while decoding a large payload OK" "Fabric's packet context while NeoForge's splitter reassembles a payload (NET-7)"
+fi
 check "FABRICATED-TEST extended menu opened with its data OK" "extended menu (menu api): opening data reaches the client"
 check "FABRICATED-TEST registry sync: custom registry OK" "registry sync on the client"
 check "FABRICATED-TEST object builder OK" "native object builder in the integrated server"
@@ -236,6 +240,8 @@ check "FABRICATED-TEST transfer OK" "native transfer in the integrated server"
 check "FABRICATED-TEST api OK" "public API on the client"
 check "FABRICATED-TEST modmenu config screen OK" "a Fabric mod's Mod Menu config screen is behind NeoForge's mod list button"
 check "FABRICATED-TEST environment stripping OK" "@EnvironmentInterface kept on the client"
+# Where the libraries LIB-1's bridges reflect on live (informational).
+grep -h -m 1 -o "FABRICATED-TEST library modules: .*" "$log" 2>/dev/null || true
 # The test mods log "FABRICATED-TEST ... FAILED" when one of their own checks fails.
 if grep -q "FABRICATED-TEST .*FAILED" "$log" client.out 2>/dev/null; then
 	echo "FAIL: a test mod check reported a failure:"; grep -h "FABRICATED-TEST .*FAILED" "$log" client.out 2>/dev/null | head -n 5; fail=1

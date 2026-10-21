@@ -127,6 +127,9 @@ public final class TestMod implements ModInitializer, DedicatedServerModInitiali
 	@Override
 	public void onInitialize() {
 		LOGGER.info("FABRICATED-TEST main entrypoint OK");
+		// The modules of libraries NeoForge loads without mixin support, whose fields LIB-1's bridges reach by reflection.
+		LOGGER.info("FABRICATED-TEST library modules: brigadier {}, joml {}", openness(com.mojang.brigadier.CommandDispatcher.class),
+				openness(org.joml.Matrix4f.class));
 		// As on Fabric, a client's main initializers run once the game instance exists (CORPUS-16).
 		if (FabricLoader.getInstance().getEnvironmentType() == EnvType.CLIENT) {
 			if (FabricLoader.getInstance().getGameInstance() != null) LOGGER.info("FABRICATED-TEST main entrypoint game instance OK");
@@ -273,5 +276,12 @@ public final class TestMod implements ModInitializer, DedicatedServerModInitiali
 		public void run() {
 			LOGGER.info("FABRICATED-TEST custom entrypoint OK");
 		}
+	}
+
+	/** A class's module: unnamed, or its name and whether it opens the class's package to every module. */
+	private static String openness(Class<?> type) {
+		Module module = type.getModule();
+		if (!module.isNamed()) return "unnamed";
+		return module.getName() + (module.isOpen(type.getPackageName()) ? " (open)" : " (not open)");
 	}
 }

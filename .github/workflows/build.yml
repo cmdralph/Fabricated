@@ -521,6 +521,9 @@ jobs:
           python3 ci/fetch-corpus.py "${{ matrix.minecraft }}" "$RUNNER_TEMP/advanced" fabric $(sed -e '/^#/d' -e '/^$/d' ci/mod-corpus-advanced.txt) \
             | tee "$RUNNER_TEMP/summary-advanced.txt"
           cp "$RUNNER_TEMP/extra/fabric-api.jar" "$RUNNER_TEMP/advanced/"
+          echo "::group::NeoForge biome and structure modifiers in the Fabric jars"
+          python3 -I ci/neoforge-data.py "$RUNNER_TEMP"/advanced/*.jar | tee "$RUNNER_TEMP/summary-neoforge-data.txt" || true
+          echo "::endgroup::"
       - name: Server with the advanced mod corpus (informational)
         if: ${{ !cancelled() && steps.advanced.outcome == 'success' }}
         continue-on-error: true
@@ -563,6 +566,7 @@ jobs:
           [ -f "$RUNNER_TEMP/summary-polyfrost.txt" ] && { echo "== summary-polyfrost"; head -60 "$RUNNER_TEMP/summary-polyfrost.txt" | cut -c1-300; }
           [ -f viewers.txt ] && { echo "== viewers fetched"; cat viewers.txt; }
           [ -f "$RUNNER_TEMP/summary-advanced.txt" ] && { echo "== advanced corpus fetched"; cut -c1-200 "$RUNNER_TEMP/summary-advanced.txt"; }
+          [ -f "$RUNNER_TEMP/summary-neoforge-data.txt" ] && { echo "== NeoForge biome and structure modifiers in the advanced corpus's Fabric jars"; head -40 "$RUNNER_TEMP/summary-neoforge-data.txt"; }
           for run in client client-fapi client-sodium client-shaders client-sodium-fabric client-sodium-addons client-viewers client-polyfrost client-corpus client-worldmap client-malilib client-advanced; do
             log="$RUNNER_TEMP/$run/run/logs/latest.log"
             if [ ! -f "$log" ]; then
@@ -572,6 +576,8 @@ jobs:
             fi
             echo "== $run"
             grep -h -m 20 -E "FABRICATED-TEST frapi|Caused by|Exception in|crash report|Fabric API's own renderer" "$log" || true
+            # The test mod's own failed checks and its informational lines (far up the log by now).
+            grep -h -m 12 -E "FABRICATED-TEST (.*FAILED|library modules|networking join event)" "$log" | cut -c1-400 || true
             # Whether Iris loaded the shader pack, and drew with it (Iris's own lines).
             if [ "$run" = client-shaders ]; then
               grep -h -m 8 -i -E "shaderpack|shaders are disabled|shader rendering pipeline" "$log" | cut -c1-300 || true

@@ -278,10 +278,17 @@ class PipelineTest {
 	/** @param libraries the classes NeoForge loads outside its transforming class loader (the JDK's and libraries') */
 	private static Pipeline.Input input(Path game, List<Path> jars, Namespace ns, Map<String, byte[]> gameClasses, Pipeline.MappingSupplier mappings,
 			List<Pipeline.NeoForgeMod> neoForgeMods, InstalledClasses installed, ClassBytesSource libraries) throws Exception {
+		return input(game, jars, ns, gameClasses, mappings, neoForgeMods, installed, libraries, "0.17.4+mixin.0.8.7", "0.17.1");
+	}
+
+	/** @param mixin the Mixin NeoForge runs, and {@code lowestBehavior} the lowest behaviour version its FML accepts */
+	private static Pipeline.Input input(Path game, List<Path> jars, Namespace ns, Map<String, byte[]> gameClasses, Pipeline.MappingSupplier mappings,
+			List<Pipeline.NeoForgeMod> neoForgeMods, InstalledClasses installed, ClassBytesSource libraries, String mixin, String lowestBehavior)
+			throws Exception {
 		FabricatedConfig config = FabricatedConfig.load(game.resolve("config"));
 		TranslationCache cache = new TranslationCache(game, config.cacheEnabled(), config.verifyIntegrity());
 		return new Pipeline.Input(game, game.resolve("config"), config, cache, jars, ns == Namespace.OFFICIAL ? "26.2" : "1.21.11",
-				"26.2.0.90", false, ns, "0.17.4+mixin.0.8.7", "0.5.3", "0.17.1", "0.1.0-test", false, gameClasses::get, List.of(game.resolve("minecraft.jar")),
+				"26.2.0.90", false, ns, mixin, "0.5.3", lowestBehavior, "0.1.0-test", false, gameClasses::get, List.of(game.resolve("minecraft.jar")),
 				List.of(game.resolve("fabricated.jar")), libraries, Set.of("net/neoforged/neoforge"),
 				FabricApiPlan.parse(PLAN), name -> null, Map::of, neoForgeMods, installed, mappings, new String[0]);
 	}
@@ -945,6 +952,39 @@ class PipelineTest {
 	}
 
 	@Test
+	void aClassTweakersEnumConstantsNeoForgeAddsNeedNoNewerMixin(@TempDir Path game) throws Exception {
+		// Farmer's Delight Refabricated on 1.21.11, whose NeoForge runs Mixin 0.16.5: its class tweaker declares the
+		// constants its enum mixins add, which Mixin adds from 0.17.1 only. NeoForge's loader adds those of its extensible
+		// enums instead (ENUM-1), and a client enum's constant isn't added on a server, so only a constant an enum mixin
+		// on this side adds some other way still needs the newer Mixin.
+		String kind = "net/minecraft/world/Kind";
+		String tab = "net/minecraft/client/Tab";
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		Path cooking = TestJars.create().fabricModJson(TestJars.modJson("cooking", "1.0", "\"mixins\":[\"cooking.mixins.json\"],\"accessWidener\":\"cooking.classtweaker\""))
+				.text("cooking.mixins.json", "{\"required\":true,\"package\":\"com.cooking.mixin\",\"mixins\":[\"KindMixin\"],\"client\":[\"TabMixin\"]}")
+				.text("cooking.classtweaker", "classTweaker v2 official\nextend-enum " + kind + " COOKING_POT\nextend-enum " + tab + " COOKING_TAB\n")
+				.bytes("com/cooking/mixin/KindMixin.class", TestEnums.mixin("com/cooking/mixin/KindMixin", kind, List.of(TestEnums.Constant.plain("COOKING_POT")), cw -> {
+				}))
+				.bytes("com/cooking/mixin/TabMixin.class", TestEnums.mixin("com/cooking/mixin/TabMixin", tab, List.of(TestEnums.Constant.plain("COOKING_TAB")), cw -> {
+				}))
+				.write(mods.resolve("cooking.jar"));
+		Path baking = TestJars.create().fabricModJson(TestJars.modJson("baking", "1.0", "\"mixins\":[\"baking.mixins.json\"],\"accessWidener\":\"baking.classtweaker\""))
+				.text("baking.mixins.json", "{\"required\":true,\"package\":\"com.baking.mixin\",\"mixins\":[\"KindMixin\"]}")
+				.text("baking.classtweaker", "classTweaker v2 official\nextend-enum " + kind + " BAKING_OVEN\nextend-enum " + kind + " BAKING_TRAY\n")
+				.bytes("com/baking/mixin/KindMixin.class", TestEnums.mixin("com/baking/mixin/KindMixin", kind, List.of(TestEnums.Constant.plain("BAKING_OVEN")), cw -> {
+				}))
+				.write(mods.resolve("baking.jar"));
+		Map<String, byte[]> gameClasses = Map.of(TARGET, targetClass(), kind, TestEnums.target(kind, true, List.of("()V"), List.of()));
+		Pipeline.Result result = Pipeline.run(input(game, List.of(cooking, baking), Namespace.OFFICIAL, gameClasses, null, List.of(), InstalledClasses.NONE,
+				ClassBytesSource.EMPTY, "0.16.5+mixin.0.8.7", "0.16.5"));
+
+		Set<String> loaded = result.mods().stream().map(m -> m.translated().candidate().id()).collect(Collectors.toSet());
+		assertEquals(Set.of("cooking"), loaded, result.report().render());
+		Report.ModRow row = result.report().mods().stream().filter(r -> r.id().equals("baking")).findFirst().orElseThrow();
+		assertTrue(row.detail().contains("Mixin 0.17.1"), "the constant no enum mixin adds still needs it: " + row.detail());
+	}
+
+	@Test
 	void anEnumMixinTheEnumExtensionFileCantCarryBecomesAMixinAddingTheConstants(@TempDir Path game) throws Exception {
 		// ENUM-5: Wilder Wild's grass colour, a constant with a body of its own in one of NeoForge's extensible enums. FML
 		// refuses the enum mixin; an ordinary mixin adding the constant, with a delegate class running the body, passes
@@ -970,14 +1010,19 @@ class PipelineTest {
 	}
 
 	@Test
-	void aFabricJarsDataLosesItsNeoForgeBuildsConditions(@TempDir Path game) throws Exception {
+	void aFabricJarsDataLosesItsNeoForgeBuildsConditionsAndModifiers(@TempDir Path game) throws Exception {
 		// DATA-1: Tectonic's Fabric jar carries its NeoForge build's conditions, whose type only that build registers.
 		String modifier = "data/tectonic/lithostitched/worldgen_modifier/lanterns.json";
 		String plain = "data/tectonic/worldgen/noise/plain.json";
 		// PACK-4: and its built-in pack's pack.mcmeta has overlays gated by them.
 		String builtinMetadata = "resourcepacks/tectonic/pack.mcmeta";
+		// MODIFIER-1: YUNG's Extras' Fabric jar carries its NeoForge build's biome modifiers, adding what its Fabric code adds.
+		String biomeModifier = "data/tectonic/neoforge/biome_modifier/desert_decorations.json";
+		String structureModifier = "data/tectonic/neoforge/structure_modifier/swamp_structures.json";
 		Path mods = Files.createDirectories(game.resolve("mods"));
 		Path tectonic = TestJars.create().fabricModJson(TestJars.modJson("tectonic", "1.0", ""))
+				.text(biomeModifier, "{\"type\": \"neoforge:add_features\", \"biomes\": \"#c:is_desert\", \"features\": \"tectonic:bush\", \"step\": \"vegetal_decoration\"}")
+				.text(structureModifier, "{\"type\": \"neoforge:add_spawns\"}")
 				.text(modifier, "{\"neoforge:conditions\": [{\"type\": \"tectonic:config\"}], \"type\": \"lithostitched:add_features\"}")
 				.text(plain, "{\"amplitudes\": [1.0]}")
 				.text(builtinMetadata, "{\"pack\": {\"pack_format\": 48}, \"neoforge:overlays\": {\"entries\": [{\"directory\": \"increased_height\","
@@ -989,6 +1034,10 @@ class PipelineTest {
 			assertEquals(Map.of("type", "lithostitched:add_features"), Json.parseObject(overlay.readText(modifier)));
 			assertNull(overlay.read(plain), "a file without them is the jar's own");
 			assertEquals(Json.parseObject("{\"pack\": {\"pack_format\": 48}}"), Json.parseObject(overlay.readText(builtinMetadata)));
+			// As modifiers every NeoForge version has, over nothing: 26.x has no neoforge:none biome modifier.
+			assertEquals(Map.of("type", "neoforge:add_features", "biomes", List.of(), "features", List.of(), "step", "vegetal_decoration"),
+					Json.parseObject(overlay.readText(biomeModifier)), "the NeoForge build's biome modifier is turned off");
+			assertEquals(Map.of("type", "neoforge:clear_spawns", "structures", List.of()), Json.parseObject(overlay.readText(structureModifier)));
 		}
 	}
 
@@ -1046,6 +1095,37 @@ class PipelineTest {
 			assertNotNull(overlay.read("mod/NodeAccess$FabricatedBridge.class"));
 			String commands = new String(overlay.read("mod/Commands.class"), StandardCharsets.ISO_8859_1);
 			assertTrue(commands.contains("mod/NodeAccess$FabricatedBridge"), "the mod's call goes to the bridge");
+		}
+	}
+
+	@Test
+	void aModWithAnAccessorMixinIntoALibraryClassLoadsWithABridge(@TempDir Path game) throws Exception {
+		// LIB-1b: owo-lib's accessor of JOML's Matrix3x2fStack; pre-flight disabled owo, as Mixin never applies it there.
+		Map<String, byte[]> classes = TestSources.compile(game.resolve("build"), TestSources.MIXIN_ANNOTATIONS, Map.of(
+				"lib/Stack.java", "package lib; public class Stack { private int curr; }",
+				"mod/mixin/StackAccessor.java", """
+						package mod.mixin;
+						@org.spongepowered.asm.mixin.Mixin(lib.Stack.class)
+						public interface StackAccessor { @org.spongepowered.asm.mixin.gen.Accessor("curr") int mod$getCurr(); }""",
+				"mod/Graphics.java", "package mod; public class Graphics { public static int depth(lib.Stack s) { return ((mod.mixin.StackAccessor) s).mod$getCurr(); } }"));
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		Path owo = TestJars.create().fabricModJson(TestJars.modJson("owo", "1.0", "\"mixins\":[\"owo.mixins.json\"]"))
+				.text("owo.mixins.json", "{\"required\":true,\"package\":\"mod.mixin\",\"mixins\":[\"StackAccessor\"]}")
+				.bytes("mod/mixin/StackAccessor.class", classes.get("mod/mixin/StackAccessor"))
+				.bytes("mod/Graphics.class", classes.get("mod/Graphics"))
+				.write(mods.resolve("owo.jar"));
+		ClassBytesSource libraries = name -> name.startsWith("lib/") ? classes.get(name) : null;
+		Pipeline.Result result = Pipeline.run(input(game, List.of(owo), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null, List.of(),
+				InstalledClasses.NONE, libraries));
+
+		assertEquals(List.of("owo"), result.mods().stream().map(m -> m.translated().candidate().id()).toList(), result.report().render());
+		assertTrue(result.report().render().contains("are served by a generated class"), result.report().render());
+		try (SafeArchive overlay = SafeArchive.open(result.mods().getFirst().translated().overlay(), ArchiveLimits.DEFAULTS)) {
+			byte[] config = overlay.read("owo.mixins.json");
+			assertTrue(config == null || new String(config, StandardCharsets.UTF_8).contains("StackAccessor"), "Mixin loads the accessor as the mod's interface");
+			assertNotNull(overlay.read("mod/StackAccessor$FabricatedBridge.class"), "outside the mixin package");
+			String graphics = new String(overlay.read("mod/Graphics.class"), StandardCharsets.ISO_8859_1);
+			assertTrue(graphics.contains("mod/StackAccessor$FabricatedBridge"), "the mod's call goes to the bridge");
 		}
 	}
 

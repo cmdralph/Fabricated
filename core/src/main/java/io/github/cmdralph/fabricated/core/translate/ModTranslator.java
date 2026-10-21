@@ -19,6 +19,7 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.Semaphore;
 import java.util.function.Function;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.jar.Attributes;
 import java.util.jar.Manifest;
@@ -80,6 +81,15 @@ public final class ModTranslator {
 	static final String PACK_METADATA = "pack.mcmeta";
 	/** The key NeoForge reads a data file's or entry's conditions from; Fabric reads none there. */
 	private static final String NEOFORGE_CONDITIONS = "neoforge:conditions";
+	/** A NeoForge biome or structure modifier, which NeoForge applies from any jar and Fabric never reads (MODIFIER-1). */
+	private static final Pattern NEOFORGE_MODIFIER = Pattern.compile("(^|.*/)data/[^/]+/neoforge/(biome_modifier|structure_modifier)/.+\\.json");
+	/**
+	 * Modifiers of NeoForge's that change nothing, to turn one off with: features added to no biome, spawns cleared from
+	 * no structure. NeoForge's own {@code neoforge:none} is gone from 26.x's biome modifiers and 26.3's structure modifiers.
+	 */
+	private static final byte[] NO_BIOME_MODIFIER = "{\"type\": \"neoforge:add_features\", \"biomes\": [], \"features\": [], \"step\": \"vegetal_decoration\"}\n"
+			.getBytes(StandardCharsets.UTF_8);
+	private static final byte[] NO_STRUCTURE_MODIFIER = "{\"type\": \"neoforge:clear_spawns\", \"structures\": []}\n".getBytes(StandardCharsets.UTF_8);
 	private static final Pattern INTERMEDIARY_CLASS = Pattern.compile("net/minecraft/class_\\d+(\\$.*)?");
 
 	/** Heap a translation may count on, in MiB: a quarter of the maximum, shared by all translations at once. */
@@ -155,15 +165,17 @@ public final class ModTranslator {
 				List<PreflightFinding> findings = new ArrayList<>();
 				Map<String, String> installedClasses = new TreeMap<>();
 				List<EnumExtensions.Entry> enumEntries = new ArrayList<>();
+				Set<String> enumTargets = new HashSet<>();
 				Set<DefaultBridge> bridges = new LinkedHashSet<>();
 				Function<String, ClassNode> classes = classLookup(name -> overlay.containsKey(name) ? overlay.get(name) : files.read(name));
 				Set<String> widened = new TreeSet<>();
 				List<ModsTomlWriter.MixinConfigSpec> mixinSpecs = processMixins(candidate, override, plannedSkips, files,
 						remapped != null ? remapped.keySet() : archive.classEntryNames(), overlay, findings, installedClasses, enumEntries,
-						classes, bridges, notes, widened);
+						enumTargets, classes, bridges, notes, widened);
 				if (!enumEntries.isEmpty()) overlay.put(EnumExtensions.PATH, EnumExtensions.json(enumEntries).getBytes(StandardCharsets.UTF_8));
 
 				int conditioned = 0;
+				int modifiers = 0;
 				for (String name : view != null ? view.keySet() : archive.entryNames()) {
 					// The mod's own pack.mcmeta, and its built-in packs' (resourcepacks/<name>/pack.mcmeta, Tectonic's, PACK-4).
 					if (name.equals(PACK_METADATA) || name.endsWith("/" + PACK_METADATA)) {
@@ -175,6 +187,14 @@ public final class ModTranslator {
 						continue;
 					}
 					if (!name.endsWith(".json") || !name.startsWith("data/") && !name.contains("/data/")) continue;
+					// Its NeoForge build's biome and structure modifiers would add, on NeoForge, what its Fabric code adds
+					// too (YUNG's Extras' desert decorations, twice in a Biomes O' Plenty desert: a feature order cycle).
+					Matcher modifier = NEOFORGE_MODIFIER.matcher(name);
+					if (modifier.matches()) {
+						overlay.put(name, modifier.group(2).equals("biome_modifier") ? NO_BIOME_MODIFIER : NO_STRUCTURE_MODIFIER);
+						modifiers++;
+						continue;
+					}
 					byte[] data = view != null ? view.get(name) : archive.read(name);
 					byte[] fabricData = data == null ? null : withoutNeoForgeConditions(data);
 					if (fabricData == null) continue;
@@ -183,6 +203,9 @@ public final class ModTranslator {
 				}
 				if (conditioned > 0) {
 					notes.add(conditioned + " data file(s) have conditions for NeoForge (its NeoForge build's), which Fabric ignores; left out");
+				}
+				if (modifiers > 0) {
+					notes.add(modifiers + " NeoForge biome or structure modifier(s) (its NeoForge build's), which Fabric ignores; turned off");
 				}
 
 				List<InjectedInterface> injections = List.of();
@@ -197,7 +220,7 @@ public final class ModTranslator {
 						if (tokens != null) text = tokens.remap(text);
 						AccessWidenerFile parsed = AccessWidenerParser.parse(text);
 						checkNamespace(parsed.namespace(), candidate);
-						checkEnumExtensions(parsed, candidate);
+						checkEnumExtensions(parsed, candidate, enumEntries, enumTargets);
 						AccessTransformerConverter.Result at = AccessTransformerConverter.convert(parsed, env.game());
 						notes.addAll(at.warnings());
 						injections = at.injectedInterfaces();
@@ -332,12 +355,13 @@ public final class ModTranslator {
 
 	/**
 	 * @param installedClasses receives the installed classes pre-flight read, with their fingerprints
+	 * @param enumTargets      receives the enums the mod's enum mixins that apply on this side add constants to
 	 * @param widened          receives the access transformer lines pre-flight's repairs need
 	 */
 	private List<ModsTomlWriter.MixinConfigSpec> processMixins(Candidate candidate, ModOverride override, Set<String> plannedSkips, FileView files,
 			Collection<String> entries, Map<String, byte[]> overlay, List<PreflightFinding> findings, Map<String, String> installedClasses,
-			List<EnumExtensions.Entry> enumEntries, Function<String, ClassNode> classes, Set<DefaultBridge> bridges, List<String> notes,
-			Set<String> widened)
+			List<EnumExtensions.Entry> enumEntries, Set<String> enumTargets, Function<String, ClassNode> classes, Set<DefaultBridge> bridges,
+			List<String> notes, Set<String> widened)
 			throws ArchiveException, TranslationException {
 		FabricModMetadata md = candidate.metadata();
 		String behavior = MixinCompat.clampForNeoForge(MixinCompat.fabricBehaviorVersion(md.getDependencies()), env.runtimeMixinVersion(),
@@ -354,6 +378,8 @@ public final class ModTranslator {
 		// The mod's interfaces its mixins into library classes gave them, now served by generated classes (LIB-1).
 		Map<String, LibraryBridges.Duck> ducks = new HashMap<>();
 		Map<String, Integer> implementors = new HashMap<>();
+		// The accessor mixins into library classes that generated classes serve, kept in their configs (LIB-1b).
+		Set<String> servedAccessors = new HashSet<>();
 
 		for (MixinEntry entry : md.compatHints().mixinsOr(md.mixins())) {
 			if (!entry.environment().matches(side)) continue;
@@ -403,11 +429,14 @@ public final class ModTranslator {
 				}
 			}
 			Set<String> skip = withDependents(entry.config(), config, wholeSkips, translated, findings, ducks.keySet());
-			skip = withEnumExtensions(entry.config(), config, skip, ModIds.toNeoForgeId(candidate.id()), translated, entries, overlay, findings, enumEntries);
-			skip = withLibraryBridges(entry.config(), config, skip, translated, entries, overlay, findings, ducks, implementors);
+			skip = withEnumExtensions(entry.config(), config, skip, ModIds.toNeoForgeId(candidate.id()), translated, entries, overlay, findings, enumEntries,
+					enumTargets);
+			skip = withLibraryBridges(entry.config(), config, skip, translated, entries, overlay, findings, ducks, implementors, servedAccessors);
 			overlay.putAll(preflight.repairs(entry.config(), config, refmap, skip, findings));
 			if (!override.ignorePreflight()) {
 				List<PreflightFinding> checked = new ArrayList<>(preflight.check(entry.config(), config, refmap, skip));
+				// Their targets are library classes, which Mixin never applies them to: the generated classes stand in.
+				checked.removeIf(f -> servedAccessors.contains(f.mixin()));
 				checked.addAll(unsupportedModuleUses(entry.config(), config, skip, translated));
 				findings.addAll(checked);
 				// As Mixin does with an injector that may fail: only the failing handler goes, the rest of the mixin
@@ -567,15 +596,14 @@ public final class ModTranslator {
 
 	/** A free name for a class generated next to the config's mixins (in the package above theirs). */
 	private static String generatedClass(MixinConfigFile config, FileView files, String simpleName) throws ArchiveException {
+		return freeClassName(aroundMixinPackage(config, simpleName), files, Map.of());
+	}
+
+	/** The class {@code simpleName} in the package around the config's mixin package; null when it has none around it. */
+	private static String aroundMixinPackage(MixinConfigFile config, String simpleName) {
 		String pkg = config.mixinPackage();
 		int dot = pkg == null ? -1 : pkg.lastIndexOf('.');
-		if (dot <= 0) return null;
-		String base = pkg.substring(0, dot).replace('.', '/') + "/" + simpleName;
-		for (int n = 0; n < 100; n++) {
-			String name = n == 0 ? base : base + n;
-			if (files.read(name + ".class") == null) return name;
-		}
-		return null;
+		return dot <= 0 ? null : pkg.substring(0, dot).replace('.', '/') + "/" + simpleName;
 	}
 
 	/** The mixin's name as its config lists it. */
@@ -586,13 +614,14 @@ public final class ModTranslator {
 
 	/**
 	 * {@code skip} plus the enum mixins whose constants NeoForge's loader adds instead, from the mod's enum extension
-	 * file ({@link EnumExtensions}); their entries go to {@code enumEntries}. An enum mixin into one of NeoForge's
+	 * file ({@link EnumExtensions}); their entries go to {@code enumEntries}, and the enums of every enum mixin to
+	 * {@code enumTargets}. An enum mixin into one of NeoForge's
 	 * extensible enums that the file can't carry becomes, where it can, an ordinary mixin adding its constants
 	 * ({@link EnumValuesMixins}), put in {@code overlay} with the delegate classes its constants' bodies become.
 	 */
 	private Set<String> withEnumExtensions(String configName, MixinConfigFile config, Set<String> skip, String modId, FileView files,
-			Collection<String> modEntries, Map<String, byte[]> overlay, List<PreflightFinding> findings, List<EnumExtensions.Entry> enumEntries)
-			throws ArchiveException {
+			Collection<String> modEntries, Map<String, byte[]> overlay, List<PreflightFinding> findings, List<EnumExtensions.Entry> enumEntries,
+			Set<String> enumTargets) throws ArchiveException {
 		Set<String> all = skip;
 		for (String mixin : config.mixinsFor(env.clientSide())) {
 			if (skip.contains(mixin)) continue;
@@ -601,6 +630,7 @@ public final class ModTranslator {
 			ClassNode node = new ClassNode();
 			new ClassReader(data).accept(node, ClassReader.SKIP_FRAMES);
 			String target = EnumExtensions.target(node);
+			if (target != null) enumTargets.add(target);
 			ClassNode targetNode = target == null ? null : env.installedIndex().readNode(target);
 			List<EnumExtensions.Entry> entries = target == null ? null : EnumExtensions.of(node, targetNode, modId);
 			if (entries == null) {
@@ -629,13 +659,15 @@ public final class ModTranslator {
 	/**
 	 * {@code skip} plus the mixins into library classes NeoForge loads without mixin support that only give the class
 	 * interfaces of the mod (LIB-1): a generated class serves each, put in {@code overlay}, and its interfaces go to
-	 * {@code ducks}. Any other mixin into a library class is left to pre-flight, which fails it.
+	 * {@code ducks}. An accessor mixin into one is served the same way (LIB-1b) but stays in the config, as Mixin loads it
+	 * as the mod's interface, and goes to {@code servedAccessors}. Any other mixin into a library class is left to
+	 * pre-flight, which fails it.
 	 *
 	 * @param implementors how many of the mod's classes implement or extend each interface, filled the first time it is needed
 	 */
 	private Set<String> withLibraryBridges(String configName, MixinConfigFile config, Set<String> skip, FileView files, Collection<String> modEntries,
-			Map<String, byte[]> overlay, List<PreflightFinding> findings, Map<String, LibraryBridges.Duck> ducks, Map<String, Integer> implementors)
-			throws ArchiveException {
+			Map<String, byte[]> overlay, List<PreflightFinding> findings, Map<String, LibraryBridges.Duck> ducks, Map<String, Integer> implementors,
+			Set<String> servedAccessors) throws ArchiveException {
 		Set<String> all = skip;
 		ClassIndex libraries = null;
 		for (String mixin : config.mixinsFor(env.clientSide())) {
@@ -649,14 +681,21 @@ public final class ModTranslator {
 			if (implementors.isEmpty()) countImplementors(modEntries, files, implementors);
 			if (libraries == null) libraries = new ClassIndex(env.untransformable());
 			ClassIndex library = libraries;
-			String name = freeClassName(header.interfaces.isEmpty() ? null : header.interfaces.getFirst() + "$FabricatedBridge", files, overlay);
+			boolean accessor = (header.access & Opcodes.ACC_INTERFACE) != 0;
+			// An accessor's bridge goes outside the mixin package, whose classes Mixin loads only when they are mixins.
+			String name = freeClassName(accessor ? aroundMixinPackage(config, header.name.substring(header.name.lastIndexOf('/') + 1) + "$FabricatedBridge")
+					: header.interfaces.isEmpty() ? null : header.interfaces.getFirst() + "$FabricatedBridge", files, overlay);
 			LibraryBridges.Bridge bridge = name == null ? null : LibraryBridges.of(data, targets.getFirst(), library::readNode,
 					itf -> readNode(files, itf + ".class"), itf -> implementors.getOrDefault(itf, 0), name);
 			if (bridge == null) continue;
 			overlay.put(name + ".class", bridge.bytes());
 			bridge.ducks().forEach(d -> ducks.put(d.itf(), d));
-			if (all == skip) all = new TreeSet<>(skip);
-			all.add(mixin);
+			if (accessor) {
+				servedAccessors.add(header.name.replace('/', '.'));
+			} else {
+				if (all == skip) all = new TreeSet<>(skip);
+				all.add(mixin);
+			}
 			findings.add(new PreflightFinding(Severity.INFO, configName, header.name.replace('/', '.'), "Its target, " + targets.getFirst().replace('/', '.')
 					+ ", is a library class NeoForge loads without mixin support: the interfaces the mixin gives it ("
 					+ bridge.ducks().stream().map(d -> d.itf().replace('/', '.')).collect(Collectors.joining(", "))
@@ -889,10 +928,15 @@ public final class ModTranslator {
 
 	/**
 	 * A class tweaker's enum extensions only declare the constants the mod's enum mixins add: Mixin adds them, from
-	 * 0.17.1 (pre-flight checks the mixins themselves).
+	 * 0.17.1 (pre-flight checks the mixins themselves), or NeoForge's loader, from the mod's enum extension file
+	 * ({@code extended}, ENUM-1), whatever the Mixin version. A constant no enum mixin adds on this side (a client enum's,
+	 * on a server) isn't added or read here either.
 	 */
-	private void checkEnumExtensions(AccessWidenerFile tweaker, Candidate candidate) throws TranslationException {
-		if (!tweaker.enumExtensions().isEmpty() && !MixinCompat.supportsEnumExtensions(env.runtimeMixinVersion())) {
+	private void checkEnumExtensions(AccessWidenerFile tweaker, Candidate candidate, List<EnumExtensions.Entry> extended, Set<String> enumTargets)
+			throws TranslationException {
+		if (MixinCompat.supportsEnumExtensions(env.runtimeMixinVersion())) return;
+		Set<String> added = extended.stream().map(e -> e.enumName() + "." + e.name()).collect(Collectors.toSet());
+		if (tweaker.enumExtensions().stream().anyMatch(e -> enumTargets.contains(e.target()) && !added.contains(e.target() + "." + e.constant()))) {
 			throw new TranslationException(candidate.id() + " adds enum constants with Mixin's enum extensions, which need Mixin 0.17.1 or later;"
 					+ " this NeoForge runs Mixin " + env.runtimeMixinVersion(), "Update NeoForge, or use a build of " + candidate.id() + " made for it.");
 		}

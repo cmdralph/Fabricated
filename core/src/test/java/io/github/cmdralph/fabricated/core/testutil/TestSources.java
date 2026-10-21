@@ -19,7 +19,8 @@ public final class TestSources {
 			"org/spongepowered/asm/mixin/Mixin.java", "package org.spongepowered.asm.mixin; public @interface Mixin { Class<?>[] value(); boolean remap() default true; }",
 			"org/spongepowered/asm/mixin/Shadow.java", "package org.spongepowered.asm.mixin; public @interface Shadow { boolean remap() default true; }",
 			"org/spongepowered/asm/mixin/Final.java", "package org.spongepowered.asm.mixin; public @interface Final { }",
-			"org/spongepowered/asm/mixin/Unique.java", "package org.spongepowered.asm.mixin; public @interface Unique { }");
+			"org/spongepowered/asm/mixin/Unique.java", "package org.spongepowered.asm.mixin; public @interface Unique { }",
+			"org/spongepowered/asm/mixin/gen/Accessor.java", "package org.spongepowered.asm.mixin.gen; public @interface Accessor { String value() default \"\"; }");
 
 	private TestSources() {
 	}

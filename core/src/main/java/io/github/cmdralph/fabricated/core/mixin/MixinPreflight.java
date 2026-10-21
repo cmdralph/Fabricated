@@ -108,6 +108,8 @@ public final class MixinPreflight {
 	/** javac's name for a lambda body: the enclosing method's name and the lambda's index in the class. */
 	private static final Pattern LAMBDA = Pattern.compile("lambda\\$(.+)\\$\\d+");
 	private static final Set<String> GAME_PREFIXES = Set.of("net/minecraft/", "com/mojang/blaze3d/");
+	private static final String NEOFORGE_PACKAGE = "net/neoforged/";
+	private static final String CALLBACK_INFO_RETURNABLE = "Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;";
 
 	private final ClassIndex game;
 	private final InstalledClasses installed;
@@ -156,8 +158,10 @@ public final class MixinPreflight {
 			String internal = config.internalName(mixin);
 			ClassNode node = modClasses.readNode(internal, ClassReader.SKIP_CODE | ClassReader.SKIP_FRAMES);
 			boolean selfContained = node != null && selfContained(node);
+			Set<String> stateless = node == null || selfContained ? Set.of()
+					: statelessHandlers(modClasses.readNode(internal, ClassReader.SKIP_FRAMES));
 			Context ctx = new Context(configName, internal.replace('/', '.'), config, refmap, hasPlugin, selfContained,
-					selfContained && addsFields(node), out, null);
+					selfContained && addsFields(node), stateless, out, null);
 			if (node == null) {
 				ctx.classLevel("Mixin class " + ctx.mixinDotted() + " listed in " + configName + " is missing from the mod jar",
 						"The mod jar is incomplete or corrupted; re-download it.");
@@ -237,7 +241,7 @@ public final class MixinPreflight {
 			String internal = config.internalName(mixin);
 			ClassNode node = modClasses.readNode(internal, 0);
 			if (node == null) continue;
-			Context ctx = new Context(configName, internal.replace('/', '.'), config, refmap, false, false, false, out, null);
+			Context ctx = new Context(configName, internal.replace('/', '.'), config, refmap, false, false, false, Set.of(), out, null);
 			boolean changed = singleInjectionPoints(node);
 			List<ClassNode> targets = new ArrayList<>();
 			for (String target : targetsOf(node, ctx)) {
@@ -303,7 +307,9 @@ public final class MixinPreflight {
 							out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@" + simpleName(ann.desc) + " " + method.name
 									+ " expects a call to " + moved, ""));
 						}
-						for (String lambda : capturedValueRepairs(node, method, ann, targets.getFirst(), ctx, bridges)) {
+						List<String> captured = capturedValueRepairs(node, method, ann, targets.getFirst(), ctx, bridges);
+						// Where the parameters can't be matched by type (one the method has twice), in order, around one added.
+						for (String lambda : captured.isEmpty() ? addedParameterRepairs(node, method, ann, targets.getFirst(), ctx, bridges) : captured) {
 							changed = true;
 							out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@" + simpleName(ann.desc) + " " + method.name
 									+ " targets " + lambda, ""));
@@ -504,9 +510,16 @@ public final class MixinPreflight {
 			boolean localsGone = inject && inChosen == Verdict.FOUND && missingLocal(handler, List.of(chosen)) != null;
 			if (inChosen == Verdict.MISSING || localsGone) {
 				overload = calledOverload(chosen, target);
+				boolean split = overload == null && inChosen == Verdict.MISSING;
+				if (split) overload = splitOff(chosen, target, ats, slices, ctx);
 				if (overload == null || (overload.access & Opcodes.ACC_STATIC) != (chosen.access & Opcodes.ACC_STATIC)
-						|| !Type.getReturnType(overload.desc).equals(Type.getReturnType(chosen.desc))
+						|| !split && !Type.getReturnType(overload.desc).equals(Type.getReturnType(chosen.desc))
 						|| InjectionPoints.pointsIn(ats, slices, overload, ctx) != Verdict.FOUND) continue;
+				// Its callback info must suit the method it moves to: a returnable one only one returning the same. A handler
+				// sharing the mixin's state with others that may stay moves only with them, which this doesn't do (HOOK-2's).
+				if (split && (inject && !Type.getReturnType(overload.desc).equals(Type.getReturnType(chosen.desc))
+						&& handlerArgs(handler).getLast().getDescriptor().equals(CALLBACK_INFO_RETURNABLE)
+						|| !statelessHandlers(mixin).contains(handler.name + handler.desc))) continue;
 				int captured = inject ? (takesParameters ? 0 : -1) : capturedFrom(handler, chosen);
 				int inserted = insertedParameter(chosen, overload);
 				List<Runnable> locals = localsFit(handler, overload) ? List.of() : localsInOverload(handler, overload, inserted, ats);
@@ -516,7 +529,8 @@ public final class MixinPreflight {
 					bridges.add(HandlerBridges.insertedParameterBridge(mixin.name, handler, injector, captured, Type.getArgumentTypes(chosen.desc).length,
 							overload, inserted, HandlerBridges.freeName(mixin, bridges, handler.name + "$fabricated")));
 				}
-				how = localsGone ? ", which NeoForge reduced to a call to " : ", whose code NeoForge moved into ";
+				how = localsGone ? ", which NeoForge reduced to a call to " : split ? ", the code of which there NeoForge split off into "
+						: ", whose code NeoForge moved into ";
 			} else {
 				// The injection points exist, but in a constructor nothing calls any more: its end is the end of the one it calls.
 				overload = keptConstructorDelegate(chosen, target);
@@ -834,9 +848,12 @@ public final class MixinPreflight {
 	 * argument; for {@code @WrapOperation}, with an {@code Operation} that puts it back when the original call is made.
 	 * A {@code NEW} point selecting a constructor by its descriptor is moved the same way, to a constructor taking one
 	 * more argument (NeoForge's patches give records components): its handlers take the arguments, as a static call's.
+	 * An {@code INVOKE} point at a call NeoForge's patches moved into a hook of theirs moves to the hook's call
+	 * ({@link #hookCall}), its handlers bridged the same way when the hook takes one more argument, when the handler uses
+	 * nothing of the mixin's own ({@link #statelessHandlers}) (HOOK-2).
 	 * Returns a description of each move.
 	 */
-	private static List<String> insertedArgumentRepairs(ClassNode mixin, MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx,
+	private List<String> insertedArgumentRepairs(ClassNode mixin, MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx,
 			List<MethodNode> bridges) {
 		// Only the point moves for these: their handlers don't see the call's arguments.
 		boolean pointOnly = injector.desc.equals(INJECT) || injector.desc.equals(MODIFY_EXPRESSION_VALUE);
@@ -887,10 +904,28 @@ public final class MixinPreflight {
 					}
 				}
 			}
+			// The call itself, when it is in none of the methods: in a hook of NeoForge's that took it over, a static method
+			// taking its receiver first, handled as a static call of that.
+			MethodInsnNode hook = named || overload != null || constructor ? null : hookCall(methods, owner, name, desc);
+			// A handler sharing the mixin's state with others moves only with them, which this doesn't do: jGui (ReplayMod)
+			// keeps the screen's graphics from a @ModifyArg at the same call for its @Inject after it.
+			if (hook != null && !statelessHandlers(mixin).contains(handler.name + handler.desc)) continue;
+			String callOwner = owner;
+			String callName = name;
+			String original = desc;
+			if (hook != null) {
+				callOwner = hook.owner;
+				callName = hook.name;
+				desc = staticForm(owner, desc, isStaticCall(owner, name, desc));
+				overload = hook.desc;
+				staticCall = true;
+				calls = countCalls(methods, hook);
+			}
 			int ordinal = Annotations.value(at, "ordinal") instanceof Integer n ? n : -1;
 			if (named || overload == null || ambiguous || ordinal >= calls) continue;
 			int inserted = insertedArgument(desc, overload);
-			if (!pointOnly) {
+			// A hook taking just the call's receiver and arguments takes the handlers as they are.
+			if (!pointOnly && !overload.equals(desc)) {
 				Type ownerType = Type.getObjectType(owner);
 				MethodNode bridge = injector.desc.equals(WRAP_OPERATION) ? HandlerBridges.wrapperBridge(mixin, handler, ownerType, desc, overload, inserted, staticCall, bridges)
 						: HandlerBridges.callBridge(mixin, handler, ownerType, desc, overload, inserted, staticCall, condition ? Type.BOOLEAN_TYPE : Type.getReturnType(desc), bridges);
@@ -899,9 +934,14 @@ public final class MixinPreflight {
 				bridges.add(bridge);
 			}
 			for (int i = 0; i + 1 < at.values.size(); i += 2) {
-				if ("target".equals(at.values.get(i))) at.values.set(i + 1, constructor ? overload : "L" + owner + ";" + name + overload);
+				if ("target".equals(at.values.get(i))) at.values.set(i + 1, constructor ? overload : "L" + callOwner + ";" + callName + overload);
 			}
-			String via = pointOnly ? "" : ", through a bridge handler";
+			String via = pointOnly || overload.equals(desc) ? "" : ", through a bridge handler";
+			if (hook != null) {
+				moved.add(owner.replace('/', '.') + "." + name + original + ", which this game build makes inside NeoForge's hook "
+						+ callOwner.replace('/', '.') + "." + callName + overload + "; the injection point is pointed at the hook's call" + via);
+				continue;
+			}
 			int extra = Type.getArgumentTypes(overload).length - Type.getArgumentTypes(desc).length;
 			String more = extra == 1 ? "one more argument" : extra + " more arguments";
 			moved.add(constructor
@@ -911,6 +951,65 @@ public final class MixinPreflight {
 							+ "; the injection point is pointed there" + via);
 		}
 		return moved;
+	}
+
+	/**
+	 * The one call, in {@code methods}, of a static method of NeoForge's that takes the named call's receiver (unless
+	 * the call is static) and arguments, with at most one more, returns what the call returns, and makes the call itself,
+	 * or through a static method of its class: a hook of NeoForge's patches that took the call over to fire events around
+	 * it, as {@code ClientHooks.drawScreen} for {@code Screen.renderWithTooltipAndSubtitles}. Null when there is none, or
+	 * more than one such hook (several calls of the same one are fine).
+	 */
+	private MethodInsnNode hookCall(List<MethodNode> methods, String owner, String name, String desc) {
+		String form = staticForm(owner, desc, isStaticCall(owner, name, desc));
+		MethodInsnNode found = null;
+		for (MethodNode method : methods) {
+			for (AbstractInsnNode insn : method.instructions) {
+				if (!(insn instanceof MethodInsnNode call) || call.getOpcode() != Opcodes.INVOKESTATIC || !call.owner.startsWith(NEOFORGE_PACKAGE)
+						|| !call.desc.equals(form) && insertedArgument(form, call.desc) < 0) continue;
+				if (found != null && found.owner.equals(call.owner) && found.name.equals(call.name) && found.desc.equals(call.desc)) continue;
+				if (!makesCall(call.owner, call.name, call.desc, owner, name, desc, 2)) continue;
+				if (found != null) return null;
+				found = call;
+			}
+		}
+		return found;
+	}
+
+	/** Whether the static method makes the call, in its own code or, to {@code depth}, in static methods of its class it calls. */
+	private boolean makesCall(String hookOwner, String hookName, String hookDesc, String owner, String name, String desc, int depth) {
+		ClassNode hookClass = game.readNode(hookOwner);
+		MethodNode hook = hookClass == null ? null : declared(hookClass, hookName, hookDesc);
+		if (hook == null || (hook.access & Opcodes.ACC_STATIC) == 0 || hook.instructions == null) return false;
+		for (AbstractInsnNode insn : hook.instructions) {
+			if (!(insn instanceof MethodInsnNode call)) continue;
+			if (call.owner.equals(owner) && call.name.equals(name) && call.desc.equals(desc)) return true;
+			if (depth > 1 && call.getOpcode() == Opcodes.INVOKESTATIC && call.owner.equals(hookOwner)
+					&& makesCall(hookOwner, call.name, call.desc, owner, name, desc, depth - 1)) return true;
+		}
+		return false;
+	}
+
+	/** The descriptor of a call as a static method taking the receiver first, unless the call is static already. */
+	private static String staticForm(String owner, String desc, boolean isStatic) {
+		return isStatic ? desc : "(L" + owner + ";" + desc.substring(1);
+	}
+
+	/** Whether the game declares the named method static (one it doesn't declare is taken as an instance method). */
+	private boolean isStaticCall(String owner, String name, String desc) {
+		ClassNode node = game.readNode(owner);
+		MethodNode method = node == null ? null : declared(node, name, desc);
+		return method != null && (method.access & Opcodes.ACC_STATIC) != 0;
+	}
+
+	private static int countCalls(List<MethodNode> methods, MethodInsnNode target) {
+		int calls = 0;
+		for (MethodNode method : methods) {
+			for (AbstractInsnNode insn : method.instructions) {
+				if (insn instanceof MethodInsnNode call && call.owner.equals(target.owner) && call.name.equals(target.name) && call.desc.equals(target.desc)) calls++;
+			}
+		}
+		return calls;
 	}
 
 	/**
@@ -948,6 +1047,65 @@ public final class MixinPreflight {
 			if (!all[i].equals(own[i])) return false;
 		}
 		return true;
+	}
+
+	/**
+	 * Bridges an {@code @Inject} handler taking the parameters vanilla's method has, then the callback info and MixinExtras
+	 * sugar, into the one method its selector picks, which NeoForge's build declares with one more parameter: the bridge
+	 * takes the method's parameters, and the sugar, and calls the handler without the added one, which Mixin would refuse.
+	 * {@link #capturedValueRepairs} bridges such a handler without sugar (SIG-1); Ledger's hooks into
+	 * {@code FireBlock.checkBurnOut}, which NeoForge's build gives the side the fire burns from, take a {@code @Local}
+	 * after the callback info. The injection points must be in that method. Returns a description of the bridge.
+	 */
+	private static List<String> addedParameterRepairs(ClassNode mixin, MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx,
+			List<MethodNode> bridges) {
+		if (!injector.desc.equals(INJECT) || Annotations.value(injector, "locals") != null || (mixin.access & Opcodes.ACC_INTERFACE) != 0
+				|| !(Annotations.value(injector, "method") instanceof List<?> selectors) || selectors.size() != 1
+				|| !(selectors.getFirst() instanceof String raw)) return List.of();
+		List<Type> args = handlerArgs(handler);
+		if (args == null || args.size() < 2 || !isCallbackInfo(args.getLast())) return List.of();
+		MemberRef ref = MemberRef.parse(ctx.resolve(raw));
+		if (ref.fuzzy() || ref.name() == null) return List.of();
+		MethodNode chosen = target.methods.stream().filter(m -> ref.matchesMethod(m.name, m.desc)).findFirst().orElse(null);
+		if (chosen == null) return List.of();
+		List<Type> own = args.subList(0, args.size() - 1);
+		// The sugar follows the callback info, where the bridge takes it over.
+		if (!List.of(Type.getArgumentTypes(handler.desc)).subList(0, args.size()).equals(args)) return List.of();
+		String vanilla = Type.getMethodDescriptor(Type.getReturnType(chosen.desc), own.toArray(Type[]::new));
+		int inserted = insertedArgument(vanilla, chosen.desc);
+		if (inserted < 0 || InjectionPoints.pointsIn(Annotations.list(Annotations.value(injector, "at")),
+				Annotations.list(Annotations.value(injector, "slice")), chosen, ctx) != Verdict.FOUND) return List.of();
+		bridges.add(HandlerBridges.insertedParameterBridge(mixin.name, handler, injector, 0, own.size(), chosen, inserted,
+				HandlerBridges.freeName(mixin, bridges, handler.name + "$fabricated")));
+		return List.of(chosen.name + vanilla + ", which this game build declares with one more parameter, " + chosen.name + chosen.desc
+				+ "; the handler is called through a bridge taking it");
+	}
+
+	/**
+	 * The one method of the class {@code method} calls in which the injection points are, when none of them is anywhere
+	 * in {@code method} (no ordinal, no slice) and nothing else in the class calls it: code NeoForge's patches split off
+	 * into a method of their own, as {@code Level.setBlock}'s neighbour updates into {@code markAndNotifyBlock}
+	 * (SPLIT-1). Null when none or several are.
+	 */
+	private static MethodNode splitOff(MethodNode method, ClassNode target, List<AnnotationNode> ats, List<AnnotationNode> slices, Context ctx) {
+		if (!slices.isEmpty() || ats.stream().anyMatch(at -> Annotations.value(at, "ordinal") != null)) return null;
+		MethodNode found = null;
+		for (AbstractInsnNode insn : method.instructions) {
+			if (!(insn instanceof MethodInsnNode call) || !call.owner.equals(target.name)) continue;
+			MethodNode callee = declared(target, call.name, call.desc);
+			if (callee == null || callee == method || callee == found || callee.name.startsWith("<")
+					|| InjectionPoints.pointsIn(ats, slices, callee, ctx) != Verdict.FOUND) continue;
+			if (found != null) return null;
+			found = callee;
+		}
+		if (found == null) return null;
+		int calls = 0;
+		for (MethodNode m : target.methods) {
+			for (AbstractInsnNode insn : m.instructions) {
+				if (insn instanceof MethodInsnNode call && call.owner.equals(target.name) && call.name.equals(found.name) && call.desc.equals(found.desc)) calls++;
+			}
+		}
+		return calls == 1 ? found : null;
 	}
 
 	/** The one other overload of the same name {@code method} calls, or null (none, or several). */
@@ -1366,20 +1524,55 @@ public final class MixinPreflight {
 	}
 
 	/**
+	 * The handlers (name and descriptor) of a mixin that use none of its own fields and call none of its own methods
+	 * (LEAVE-3). When the mixin adds an interface or accessors, which the mod's code uses, such a handler failing is left
+	 * out alone: the interface and the mixin's other members still apply, and nothing the handler does is kept for them.
+	 * owo-lib's {@code GuiRendererMixin}, which adds an interface, hooks a field read NeoForge's {@code GuiRenderer.close}
+	 * doesn't make, only to keep its own renderer from closing shared ones.
+	 */
+	static Set<String> statelessHandlers(ClassNode mixin) {
+		if (mixin == null) return Set.of();
+		Set<String> own = new HashSet<>();
+		for (FieldNode field : mixin.fields) {
+			if (Annotations.find(field, SHADOW) == null) own.add(field.name + ":" + field.desc);
+		}
+		for (MethodNode method : mixin.methods) {
+			if (Annotations.find(method, SHADOW) == null) own.add(method.name + method.desc);
+		}
+		Set<String> stateless = new HashSet<>();
+		for (MethodNode method : mixin.methods) {
+			if (method.instructions == null || method.instructions.size() == 0) continue; // no code to judge
+			boolean usesOwn = false;
+			for (AbstractInsnNode insn : method.instructions) {
+				if (insn instanceof FieldInsnNode field && field.owner.equals(mixin.name) && own.contains(field.name + ":" + field.desc)
+						|| insn instanceof MethodInsnNode call && call.owner.equals(mixin.name) && own.contains(call.name + call.desc)
+						|| insn instanceof InvokeDynamicInsnNode indy && List.of(indy.bsmArgs).stream()
+								.anyMatch(arg -> arg instanceof Handle handle && handle.getOwner().equals(mixin.name))) {
+					usesOwn = true;
+					break;
+				}
+			}
+			if (!usesOwn) stateless.add(method.name + method.desc);
+		}
+		return stateless;
+	}
+
+	/**
 	 * @param selfContained see {@link #selfContained(ClassNode)}: a failure then leaves the failing injector, or the whole
 	 *                      mixin, out instead of disabling the mod
 	 * @param addsFields    see {@link #addsFields(ClassNode)}: a failing injector of a self-contained mixin then takes the
 	 *                      whole mixin with it
+	 * @param stateless     see {@link #statelessHandlers(ClassNode)}, for a mixin that isn't self-contained
 	 * @param owner         the installed mod the target belongs to, or {@code null} for a game class
 	 */
 	record Context(String configName, String mixinDotted, MixinConfigFile config, Refmap refmap, boolean hasPlugin,
-			boolean selfContained, boolean addsFields, List<PreflightFinding> out, String owner) {
+			boolean selfContained, boolean addsFields, Set<String> stateless, List<PreflightFinding> out, String owner) {
 		String resolve(String selector) {
 			return refmap.resolve(mixinDotted.replace('.', '/'), selector);
 		}
 
 		Context withOwner(String owner) {
-			return new Context(configName, mixinDotted, config, refmap, hasPlugin, selfContained, addsFields, out, owner);
+			return new Context(configName, mixinDotted, config, refmap, hasPlugin, selfContained, addsFields, stateless, out, owner);
 		}
 
 		/** What changed the target since the mod was built: NeoForge or this Minecraft version, or this version of the mod. */
@@ -1417,12 +1610,12 @@ public final class MixinPreflight {
 		}
 
 		/**
-		 * An injector that can't apply. Where it is required: with a plugin, or in a self-contained mixin that adds no
-		 * fields, only it is left out (as a plugin may do); in a self-contained mixin that adds fields, the whole mixin is
-		 * (no handler named); otherwise it is fatal.
+		 * An injector that can't apply. Where it is required: with a plugin, in a self-contained mixin that adds no
+		 * fields, or with a handler that uses nothing of the mixin's own (LEAVE-3), only it is left out (as a plugin may
+		 * do); in a self-contained mixin that adds fields, the whole mixin is (no handler named); otherwise it is fatal.
 		 */
 		void injector(MethodNode handler, int require, String message, String suggestion) {
-			Severity severity = require > 0 ? fatal() : Severity.WARN;
+			Severity severity = require <= 0 ? Severity.WARN : stateless.contains(handler.name + handler.desc) ? Severity.LEFT_OUT : fatal();
 			boolean wholeMixin = severity == Severity.LEFT_OUT && !hasPlugin && addsFields;
 			out.add(new PreflightFinding(severity, configName, mixinDotted, message, suggestion, wholeMixin ? null : handler.name + handler.desc));
 		}
@@ -1745,7 +1938,8 @@ public final class MixinPreflight {
 				"The method was renamed or removed by " + ctx.changer(false) + ".");
 	}
 
-	static String inferAccessorName(String method) {
+	/** The field an {@code @Accessor} without a value names, as Mixin infers it from the method's name; null when none. */
+	public static String inferAccessorName(String method) {
 		return nameAfterPrefix(method, "get", "is", "set");
 	}
 
@@ -1855,6 +2049,14 @@ public final class MixinPreflight {
 			return;
 		}
 
+		if (ann.desc.equals(MODIFY_VARIABLE) && !anyFuzzy && !acceptsModifierSignature(handler, matched)) {
+			ctx.classLevel(injectorName + " handler " + handler.name + Type.getMethodDescriptor(Type.getReturnType(handler.desc), handlerArgs(handler).toArray(Type[]::new))
+							+ " does not match the parameters of " + matched.getFirst().name + matched.getFirst().desc + " in " + target.name.replace('/', '.'),
+					(ctx.owner() == null ? "NeoForge's build of Minecraft declares this method with different parameters"
+							: ctx.changer(true) + " declares this method with different parameters") + "; the mod needs an update or this mixin must be skipped.");
+			return;
+		}
+
 		if (ann.desc.equals(MODIFY_CONSTANT)) {
 			for (AnnotationNode constant : Annotations.list(Annotations.value(ann, "constant"))) {
 				String expected = InjectionPoints.constantDescription(constant);
@@ -1948,6 +2150,23 @@ public final class MixinPreflight {
 			if (List.of(Type.getArgumentTypes(target.desc)).equals(wanted)) return true;
 		}
 		return false;
+	}
+
+	/**
+	 * Mixin accepts a {@code @ModifyVariable} handler taking the variable and then the target's first parameters, as
+	 * many as it declares (Mixin's {@code Injector.validateParams}: Balm's takes two of three); anything else is an
+	 * {@code InvalidInjectionException} when the mixin applies, whatever its {@code require} (Farmer's Delight's hook
+	 * into {@code CropBlock.getGrowthSpeed}, whose first parameter NeoForge's build made a block state). Handlers that
+	 * use {@code @Coerce} are left to Mixin.
+	 */
+	private static boolean acceptsModifierSignature(MethodNode handler, List<MethodNode> targets) {
+		List<Type> args = handlerArgs(handler);
+		if (args == null || args.size() <= 1) return true;
+		List<Type> captured = args.subList(1, args.size());
+		return targets.stream().allMatch(target -> {
+			List<Type> params = List.of(Type.getArgumentTypes(target.desc));
+			return captured.size() <= params.size() && params.subList(0, captured.size()).equals(captured);
+		});
 	}
 
 	/**
