@@ -474,9 +474,10 @@ attribute, adding a spawn crashed world creation (`IllegalAccessError`, BIOME-1)
 | `NetherBiomes`, `TheEndBiomes` | upstream's biome source mixins, unchanged |
 
 CI checks, on 26.3: a mob spawn added to plains and plains' changed temperature are in the biome once the server has
-started. On 1.21.11, 26.1.2 and 26.2 upstream's module loads: its spawn and feature changes edit objects NeoForge's info
-shares, so they take effect, while a climate or attribute change replaces a private field and fails when it runs (as
-read; UNVERIFIED in a game).
+started. On 1.21.11, 26.1.2 and 26.2 upstream's module loads: its spawn, effect and feature changes edit objects NeoForge's info
+shares, and the attribute map is an ordinary field there (NeoForge's coremod replaces only the climate and the effects,
+read in its source for 26.1 and 26.2), so they take effect; a weather change replaces the private climate field and
+fails when it runs (as read; UNVERIFIED in a game).
 
 ### Native `fabric-api-lookup-api-v1` and `fabric-transfer-api-v1`
 
