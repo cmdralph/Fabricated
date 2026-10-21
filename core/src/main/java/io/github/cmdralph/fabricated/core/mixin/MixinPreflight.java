@@ -34,9 +34,12 @@ import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.AnnotationNode;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.FieldNode;
+import org.objectweb.asm.tree.JumpInsnNode;
 import org.objectweb.asm.tree.LocalVariableNode;
+import org.objectweb.asm.tree.LookupSwitchInsnNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
+import org.objectweb.asm.tree.TableSwitchInsnNode;
 import org.objectweb.asm.tree.TypeInsnNode;
 import org.objectweb.asm.tree.VarInsnNode;
 
@@ -425,9 +428,11 @@ public final class MixinPreflight {
 	/**
 	 * Points the selectors of an injector whose injection points are missing from the method Mixin picks, but all occur in
 	 * the one overload of the same name that method calls (NeoForge's way of keeping vanilla's signature while moving the
-	 * code), at that overload; returns a description of each move. Only handlers that don't depend on the method's own
-	 * parameters or locals are moved: not an {@code @Inject} taking them, nor one capturing locals (the overload's
-	 * differ), except a {@code @Local(argsOnly = true)} of a type exactly one of the overload's parameters has.
+	 * code), at that overload; returns a description of each move. An {@code @Inject} whose points are there but whose
+	 * captured locals aren't (the method only calls the overload now) moves the same way. A handler that takes the
+	 * method's parameters gets them from a bridge taking the overload's, when the method only passes its own parameters
+	 * on with one value it works out ({@link #insertedParameter}, as {@code MappedRegistry.register} with an id). Its
+	 * {@code @Local}s must find their locals in the overload ({@link #localsInOverload}).
 	 */
 	private static List<String> overloadRepairs(ClassNode mixin, MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx,
 			List<MethodNode> bridges) {
@@ -441,6 +446,7 @@ public final class MixinPreflight {
 			if (args == null || args.isEmpty() || !isCallbackInfo(args.getLast())) return List.of();
 			takesParameters = args.size() > 1;
 		}
+		boolean inject = injector.desc.equals(INJECT);
 		List<AnnotationNode> slices = Annotations.list(Annotations.value(injector, "slice"));
 		List<String> moved = new ArrayList<>();
 		for (int i = 0; i < selectors.size(); i++) {
@@ -457,13 +463,23 @@ public final class MixinPreflight {
 			if (chosen == null) continue;
 			MethodNode overload;
 			String how;
-			if (InjectionPoints.pointsIn(ats, slices, chosen, ctx) == Verdict.MISSING) {
-				if (takesParameters) continue;
+			Verdict inChosen = InjectionPoints.pointsIn(ats, slices, chosen, ctx);
+			boolean localsGone = inject && inChosen == Verdict.FOUND && missingLocal(handler, List.of(chosen)) != null;
+			if (inChosen == Verdict.MISSING || localsGone) {
 				overload = calledOverload(chosen, target);
 				if (overload == null || (overload.access & Opcodes.ACC_STATIC) != (chosen.access & Opcodes.ACC_STATIC)
 						|| !Type.getReturnType(overload.desc).equals(Type.getReturnType(chosen.desc))
-						|| !localsFit(handler, overload) || InjectionPoints.pointsIn(ats, slices, overload, ctx) != Verdict.FOUND) continue;
-				how = ", whose code NeoForge moved into ";
+						|| InjectionPoints.pointsIn(ats, slices, overload, ctx) != Verdict.FOUND) continue;
+				int captured = inject ? (takesParameters ? 0 : -1) : capturedFrom(handler, chosen);
+				int inserted = insertedParameter(chosen, overload);
+				List<Runnable> locals = localsFit(handler, overload) ? List.of() : localsInOverload(handler, overload, inserted, ats);
+				if (locals == null || captured >= 0 && (inserted < 0 || selectors.size() != 1 || (mixin.access & Opcodes.ACC_INTERFACE) != 0)) continue;
+				locals.forEach(Runnable::run);
+				if (captured >= 0) {
+					bridges.add(HandlerBridges.insertedParameterBridge(mixin.name, handler, injector, captured, Type.getArgumentTypes(chosen.desc).length,
+							overload, inserted, HandlerBridges.freeName(mixin, bridges, handler.name + "$fabricated")));
+				}
+				how = localsGone ? ", which NeoForge reduced to a call to " : ", whose code NeoForge moved into ";
 			} else {
 				// The injection points exist, but in a constructor nothing calls any more: its end is the end of the one it calls.
 				overload = keptConstructorDelegate(chosen, target);
@@ -679,6 +695,144 @@ public final class MixinPreflight {
 			overload = candidate;
 		}
 		return overload;
+	}
+
+	/**
+	 * The index of the one parameter {@code overload} has that {@code method} doesn't, when {@code method} only calls
+	 * {@code overload} with its own parameters in order and a value it works out for that one (no stores or jumps), and
+	 * returns the result: NeoForge's way of adding a parameter while keeping vanilla's signature, as
+	 * {@code MappedRegistry.register(key, value, info)} calling {@code register(this.byId.size(), key, value, info)}. -1
+	 * otherwise.
+	 */
+	static int insertedParameter(MethodNode method, MethodNode overload) {
+		Type[] own = Type.getArgumentTypes(method.desc);
+		Type[] all = Type.getArgumentTypes(overload.desc);
+		boolean isStatic = (method.access & Opcodes.ACC_STATIC) != 0;
+		if (all.length != own.length + 1 || (overload.access & Opcodes.ACC_STATIC) != (method.access & Opcodes.ACC_STATIC)) return -1;
+		List<AbstractInsnNode> code = new ArrayList<>();
+		for (AbstractInsnNode insn : method.instructions) {
+			if (insn.getOpcode() >= 0) code.add(insn); // not labels, line numbers or frames
+		}
+		if (code.size() < 3 || !(code.get(code.size() - 2) instanceof MethodInsnNode call) || !call.name.equals(overload.name)
+				|| !call.desc.equals(overload.desc) || code.getLast().getOpcode() != Type.getReturnType(method.desc).getOpcode(Opcodes.IRETURN)) return -1;
+		int[] slots = new int[own.length];
+		int slot = isStatic ? 0 : 1;
+		for (int i = 0; i < own.length; i++) {
+			slots[i] = slot;
+			slot += own[i].getSize();
+		}
+		int start = 0;
+		if (!isStatic) {
+			if (!(code.getFirst() instanceof VarInsnNode self) || self.getOpcode() != Opcodes.ALOAD || self.var != 0) return -1;
+			start = 1;
+		}
+		int k = 0;
+		while (k < own.length && isLoad(code.get(start), own[k], slots[k])) {
+			start++;
+			k++;
+		}
+		int end = code.size() - 2;
+		int j = own.length;
+		while (j > k && end > start && isLoad(code.get(end - 1), own[j - 1], slots[j - 1])) {
+			end--;
+			j--;
+		}
+		if (j != k || start == end) return -1;
+		for (int i = start; i < end; i++) {
+			int op = code.get(i).getOpcode();
+			boolean stores = op >= Opcodes.ISTORE && op <= Opcodes.SASTORE || op == Opcodes.PUTFIELD || op == Opcodes.PUTSTATIC || op == Opcodes.IINC;
+			if (stores || code.get(i) instanceof JumpInsnNode || code.get(i) instanceof TableSwitchInsnNode || code.get(i) instanceof LookupSwitchInsnNode
+					|| op >= Opcodes.IRETURN && op <= Opcodes.RETURN || op == Opcodes.ATHROW) return -1;
+		}
+		for (int i = 0; i < own.length; i++) {
+			if (!own[i].equals(all[i < k ? i : i + 1])) return -1;
+		}
+		return k;
+	}
+
+	private static boolean isLoad(AbstractInsnNode insn, Type type, int slot) {
+		return insn instanceof VarInsnNode load && load.getOpcode() == type.getOpcode(Opcodes.ILOAD) && load.var == slot;
+	}
+
+	/**
+	 * Where a handler of an injector other than {@code @Inject} takes {@code method}'s parameters (all of them, as Mixin
+	 * requires), after its own and before any MixinExtras sugar; -1 when it doesn't take them.
+	 */
+	private static int capturedFrom(MethodNode handler, MethodNode method) {
+		List<Type> args = handlerArgs(handler);
+		List<Type> params = List.of(Type.getArgumentTypes(method.desc));
+		if (args == null || params.isEmpty() || args.size() <= params.size()) return -1;
+		return args.subList(args.size() - params.size(), args.size()).equals(params) ? args.size() - params.size() : -1;
+	}
+
+	/**
+	 * How the handler's {@code @Local}s find their locals in {@code overload}, an injector moved there from the method
+	 * that only calls it: by name, when the overload has a local of that name; by type, at the method's end only, when one
+	 * local of that type besides the parameter the method inserted ({@code inserted}) is in scope at each return, which
+	 * the {@code @Local} then names by its ordinal (MixinExtras counts the parameters too); or, as
+	 * {@link #localsFit} allows, a parameter. The changes to make, or null when one can't be found that way.
+	 */
+	private static List<Runnable> localsInOverload(MethodNode handler, MethodNode overload, int inserted, List<AnnotationNode> ats) {
+		Type[] types = Type.getArgumentTypes(handler.desc);
+		Type[] params = Type.getArgumentTypes(overload.desc);
+		boolean isStatic = (overload.access & Opcodes.ACC_STATIC) != 0;
+		int insertedSlot = -1;
+		int slot = isStatic ? 0 : 1;
+		for (int i = 0; i < params.length; i++) {
+			if (i == inserted) insertedSlot = slot;
+			slot += params[i].getSize();
+		}
+		List<Runnable> changes = new ArrayList<>();
+		for (int i = 0; i < types.length; i++) {
+			for (AnnotationNode a : Annotations.ofParameter(handler, i)) {
+				if (!a.desc.equals(LOCAL)) continue;
+				Type type = types[i];
+				if (Boolean.TRUE.equals(Annotations.value(a, "argsOnly"))) {
+					if (List.of(params).stream().filter(type::equals).count() != 1) return null;
+				} else if (Annotations.value(a, "name") instanceof List<?> names && !names.isEmpty()) {
+					if (overload.localVariables == null || overload.localVariables.stream().noneMatch(lv -> names.contains(lv.name))) return null;
+				} else if (Annotations.value(a, "index") != null || Annotations.value(a, "ordinal") != null
+						|| type.getDescriptor().startsWith("Lcom/llamalad7/mixinextras/sugar/ref/") || !atEndOnly(ats)) {
+					return null;
+				} else {
+					int ordinal = endOrdinal(overload, type, insertedSlot);
+					if (ordinal < 0) return null;
+					changes.add(() -> {
+						a.values = a.values == null ? new ArrayList<>() : a.values;
+						a.values.add("ordinal");
+						a.values.add(ordinal);
+					});
+				}
+			}
+		}
+		return changes;
+	}
+
+	/**
+	 * The ordinal, among the locals of {@code type} in scope (parameters first, by slot), of the one besides the parameter
+	 * at {@code insertedSlot} that is in scope at every return of {@code method}; -1 when there is no such single local
+	 * (or no local variable table).
+	 */
+	private static int endOrdinal(MethodNode method, Type type, int insertedSlot) {
+		if (method.localVariables == null || method.localVariables.isEmpty()) return -1;
+		int found = -1;
+		for (int i = 0; i < method.instructions.size(); i++) {
+			int op = method.instructions.get(i).getOpcode();
+			if (op < Opcodes.IRETURN || op > Opcodes.RETURN) continue;
+			TreeSet<Integer> inScope = new TreeSet<>();
+			for (LocalVariableNode lv : method.localVariables) {
+				if (lv.desc.equals(type.getDescriptor()) && method.instructions.indexOf(lv.start) <= i && i < method.instructions.indexOf(lv.end)) {
+					inScope.add(lv.index);
+				}
+			}
+			TreeSet<Integer> others = new TreeSet<>(inScope);
+			others.remove(insertedSlot);
+			if (others.size() != 1) return -1;
+			int ordinal = inScope.headSet(others.first()).size();
+			if (found >= 0 && found != ordinal) return -1;
+			found = ordinal;
+		}
+		return found;
 	}
 
 	/**

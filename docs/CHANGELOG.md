@@ -27,6 +27,14 @@ pre-flight couldn't repair (JourneyMap).
   points such an accessor at the existing method now covers non-public ones too, made public by the mod's access
   transformer.
 
+- DELEGATE-1: NeoForge keeps vanilla's `MappedRegistry.register(key, value, info)` as a call to an overload taking an
+  id first. FrozenLib's registry mixin captures the new entry's id at the method's end, which the kept method no longer
+  has, so FrozenLib and Wilder Wild were disabled on every version (runs 381 to 384). Injectors on such a method now
+  move to the overload: a handler taking the method's parameters gets them from a bridge taking the overload's, and a
+  captured local is found there by name, or by type as the one local of that type besides the added parameter. The
+  repair moving injectors into an overload also stopped moving a handler that takes the method's parameters unchanged,
+  which would have failed once the game ran.
+
 Run 384 also showed, still open: Moonlight's reload listener on 26.1.2 (CORPUS-16), and on 26.3 the advanced corpus
 server stopping on BIOME-1 as well.
 

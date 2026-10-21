@@ -284,6 +284,27 @@ final class HandlerBridges {
 	}
 
 	/**
+	 * A handler for {@code injector} at {@code overload} instead of the method that only calls it with one value inserted
+	 * among its own parameters (at {@code inserted}): it takes what {@code handler} takes, with the {@code count}
+	 * parameters it takes from {@code from} on (that method's) replaced by the overload's, and calls {@code handler} with
+	 * everything but the inserted one. The injector annotation and the annotations of what follows them (callback info,
+	 * MixinExtras sugar) move to it; {@code handler} stays a plain method of the mixin.
+	 */
+	static MethodNode insertedParameterBridge(String mixin, MethodNode handler, AnnotationNode injector, int from, int count, MethodNode overload,
+			int inserted, String name) {
+		List<Type> own = List.of(Type.getArgumentTypes(handler.desc));
+		List<Type> params = new ArrayList<>(own.subList(0, from));
+		params.addAll(List.of(Type.getArgumentTypes(overload.desc)));
+		params.addAll(own.subList(from + count, own.size()));
+		MethodNode bridge = bridgeMethod(handler, name, params, Type.getReturnType(handler.desc));
+		int stack = loadAllBut(bridge, handler, params, from + inserted);
+		moveSugar(handler, from + count, bridge, from + count + 1, own.size() - from - count);
+		callHandler(bridge, mixin, handler, stack);
+		moveInjector(handler, injector, bridge);
+		return bridge;
+	}
+
+	/**
 	 * A handler for {@code injector} at {@code canonical} instead of {@code delegate}: it takes {@code canonical}'s
 	 * parameters and the callback info, and calls {@code handler} with {@code delegate}'s (the same values, see
 	 * {@link #forwardsItsParameters}) and the callback info. The injector annotation moves to it; {@code handler} stays a
