@@ -798,8 +798,10 @@ stop the game on it, so pre-flight catches it before launch, and what happens ne
 code can do without that mixin:
 
 - **A self-contained mixin** adds no interface to its target and has no accessor or invoker, so nothing outside it
-  calls into it. It is left out, whole (its other injectors too, as a mixin's injectors may share state), and the mod
-  loads without it: the features that mixin hooks in for don't work. The report lists each one under "Mixins left out
+  calls into it. The mod loads without the failing part: only the injectors that fail when the mixin adds no fields
+  of its own (Balm's `LivingEntityMixin` keeps its damage, heal and effect events and loses the one hook into
+  `removeAllEffects`, at a `Map.clear()` call NeoForge's code doesn't make there), or the whole mixin when it does, as its injectors may share those
+  fields. The features the left-out part hooks in for don't work. The report lists each one under "Mixins left out
   (NeoForge's code differs where they hook in)", with what NeoForge's code lacks; the mod's row (and
   `/fabricated why <mod>`) gives the count, and the log names the mods at startup.
 - **Any other mixin**: the mod's own code casts its target to the interface the mixin adds, or calls its accessors,

@@ -1000,7 +1000,7 @@ class MixinPreflightTest {
 		MixinConfigFile config = MixinConfigFile.parse(config(true, "Wrap"));
 		List<PreflightFinding> before = preflight(game, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
 		assertTrue(before.size() == 1 && before.getFirst().severity() == Severity.LEFT_OUT && before.getFirst().message().contains("abstract")
-				&& before.getFirst().handler() == null, before.toString());
+				&& "h(ILcom/llamalad7/mixinextras/injector/wrapoperation/Operation;)Ljava/lang/Object;".equals(before.getFirst().handler()), before.toString());
 		List<PreflightFinding> notes = new ArrayList<>();
 		mod.put("com/example/mixin/Wrap", preflight(game, mod::get, ClassBytesSource.EMPTY, false)
 				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes).get("com/example/mixin/Wrap.class"));
@@ -1427,20 +1427,28 @@ class MixinPreflightTest {
 	}
 
 	/**
-	 * A failure in a self-contained mixin leaves the whole mixin out, its working injector too (a mixin's injectors may
-	 * share state), and the mod loads (LEAVE-1). The same mixin adding an interface to its target still fails the mod:
-	 * the mod's own code casts the target to that interface.
+	 * A failure in a self-contained mixin leaves the failing injector out, and the mod loads (LEAVE-1); with a field of
+	 * its own, which its injectors may share, the whole mixin goes, its working injector too. The same mixin adding an
+	 * interface to its target still fails the mod: the mod's own code casts the target to that interface.
 	 */
 	@Test
 	void onlyASelfContainedMixinIsLeftOut() throws Exception {
 		Consumer<ClassWriter> body = cw -> {
 			inject(cw, "works", "tick", "HEAD", null, 1, null);
 			inject(cw, "broken", "removedMethod", "HEAD", null, 1, null);
+			cw.visitField(Opcodes.ACC_PRIVATE, "count", "I", null, null).visitAnnotation("Lorg/spongepowered/asm/mixin/Shadow;", false).visitEnd();
 		};
 		List<PreflightFinding> alone = run(config(true, "Alone"), null, Map.of("com/example/mixin/Alone", mixin("com/example/mixin/Alone", false, body)), false);
 		assertEquals(1, alone.size(), alone.toString());
 		assertEquals(Severity.LEFT_OUT, alone.getFirst().severity());
-		assertEquals(null, alone.getFirst().handler(), "the whole mixin");
+		assertEquals("broken()V", alone.getFirst().handler(), "only the injector: the mixin adds no fields");
+
+		// With a field of its own, which its injectors may share, the whole mixin goes.
+		byte[] stateful = mixin("com/example/mixin/Stateful", false, body.andThen(cw -> cw.visitField(Opcodes.ACC_PRIVATE, "count", "I", null, null).visitEnd()));
+		List<PreflightFinding> withField = run(config(true, "Stateful"), null, Map.of("com/example/mixin/Stateful", stateful), false);
+		assertEquals(1, withField.size(), withField.toString());
+		assertEquals(Severity.LEFT_OUT, withField.getFirst().severity());
+		assertEquals(null, withField.getFirst().handler(), "the whole mixin");
 
 		byte[] duck = mixin("com/example/mixin/Duck", false, List.of("com/example/api/Duck"), body);
 		List<PreflightFinding> withInterface = run(config(true, "Duck"), null, Map.of("com/example/mixin/Duck", duck), false);

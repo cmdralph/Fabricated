@@ -854,7 +854,8 @@ public final class Pipeline {
 		String detail = (millis == null ? "cached" : "translated in " + millis + " ms")
 				+ (t.accessTransformers() > 0 ? ", " + t.accessTransformers() + " access transformer(s)" : "")
 				+ (t.injectedInterfaces().isEmpty() ? "" : ", " + t.injectedInterfaces().size() + " injected interface(s)")
-				+ (leftOut == 0 ? "" : ", " + leftOut + " mixin(s) left out, so the features they hook in for don't work (see " + LEFT_OUT_SECTION + ")");
+				+ (leftOut == 0 ? "" : ", " + leftOut + " mixin(s) left out in whole or in part, so the features they hook in for don't work (see "
+						+ LEFT_OUT_SECTION + ")");
 		report.mod(new ModRow(c.id(), c.version(), c.origin(), Status.LOADED, detail, ""));
 		for (PreflightFinding f : t.findings()) {
 			String line = c.id() + ": " + f + (f.suggestion().isEmpty() ? "" : " - " + f.suggestion());

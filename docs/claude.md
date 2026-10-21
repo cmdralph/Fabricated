@@ -66,8 +66,9 @@ goes through `SafeArchive`, its metadata is parsed, and the dependency graph and
 resolved. Each surviving mod is then translated: remapped from intermediary to Mojang names on 1.21.11 (identity on
 26.x), its mixins checked against NeoForge's patched game bytecode by pre-flight, and its access widener turned into
 an access transformer. A mixin pre-flight finds Mixin would stop the game on is left out when the mod's own code can't
-depend on it (self-contained: no interface it adds, no accessor or invoker), and the mod loads without it; otherwise
-the mod is disabled with the reason (LEAVE-1, `MixinPreflight.Context`). A cached overlay is generated holding `neoforge.mods.toml` with `modLoader="fabricated"`.
+depend on it (self-contained: no interface it adds, no accessor or invoker), and the mod loads without it (only the
+failing injector when the mixin adds no fields its injectors could share); otherwise the mod is disabled with the
+reason (LEAVE-1, `MixinPreflight.Context`). A cached overlay is generated holding `neoforge.mods.toml` with `modLoader="fabricated"`.
 FML loads the jar plus overlay as an ordinary mod file, applies the access transformers and mixin configs itself,
 and hands each mod to `FabricLanguageLoader`, which makes a `FabricModContainer` and adds to the mod's scan data the
 annotations other mods' NeoForge builds look for plugins by (JEI, EMI, REI, Jade: core's `Interop`, from the mod's

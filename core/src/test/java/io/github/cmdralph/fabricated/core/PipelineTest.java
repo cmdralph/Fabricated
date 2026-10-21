@@ -1042,26 +1042,37 @@ class PipelineTest {
 	}
 
 	/**
-	 * A required mixin NeoForge's code can't take, which nothing outside it calls into, is left out of its config and the
-	 * mod loads without it (LEAVE-1); the report says so, in the mod's row too, which {@code /fabricated why} shows.
+	 * A required mixin NeoForge's code can't take, which nothing outside it calls into, is left out of its config (or only
+	 * its failing injector, when it adds no fields) and the mod loads without it (LEAVE-1); the report says so, in the
+	 * mod's row too, which {@code /fabricated why} shows.
 	 */
 	@Test
 	void aSelfContainedMixinNeoForgeCanNotTakeIsLeftOutAndTheModLoads(@TempDir Path game) throws Exception {
+		// Broken keeps state in a field of its own, which its injectors may share: it goes whole. Stateless only loses its
+		// failing injector.
+		ClassNode broken = new ClassNode();
+		new ClassReader(mixinClass("com/partial/mixin/Broken", "removedByNeoForge")).accept(broken, 0);
+		broken.fields.add(new org.objectweb.asm.tree.FieldNode(Opcodes.ACC_PRIVATE, "calls", "I", null, null));
 		Path jar = TestJars.create().fabricModJson(TestJars.modJson("partial-mod", "1.0", "\"mixins\":[\"partial.mixins.json\"]"))
-				.text("partial.mixins.json", "{\"required\":true,\"package\":\"com.partial.mixin\",\"mixins\":[\"Works\",\"Broken\"]}")
+				.text("partial.mixins.json", "{\"required\":true,\"package\":\"com.partial.mixin\",\"mixins\":[\"Works\",\"Broken\",\"Stateless\"]}")
 				.bytes("com/partial/mixin/Works.class", mixinClass("com/partial/mixin/Works", "tick"))
-				.bytes("com/partial/mixin/Broken.class", mixinClass("com/partial/mixin/Broken", "removedByNeoForge"))
+				.bytes("com/partial/mixin/Broken.class", write(broken))
+				.bytes("com/partial/mixin/Stateless.class", mixinClass("com/partial/mixin/Stateless", "removedByNeoForge"))
 				.write(game.resolve("mods/partial.jar"));
 		Pipeline.Result result = Pipeline.run(input(game, List.of(jar), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
 		String report = result.report().render();
 		assertTrue(result.runtime().isModLoaded("partial-mod"), report);
 		assertTrue(report.contains(Pipeline.LEFT_OUT_SECTION), report);
 		assertTrue(report.contains("partial-mod: LEFT_OUT [partial.mixins.json com.partial.mixin.Broken]"), report);
+		assertTrue(report.contains("partial-mod: LEFT_OUT [partial.mixins.json com.partial.mixin.Stateless]"), report);
 		Report.ModRow row = result.report().mods().stream().filter(r -> r.id().equals("partial-mod")).findFirst().orElseThrow();
-		assertTrue(row.detail().contains("1 mixin(s) left out"), row.detail());
+		assertTrue(row.detail().contains("2 mixin(s) left out in whole or in part"), row.detail());
 		try (SafeArchive overlay = SafeArchive.open(result.mods().getFirst().translated().overlay(), ArchiveLimits.DEFAULTS)) {
 			String config = new String(overlay.read("partial.mixins.json"), StandardCharsets.UTF_8);
-			assertTrue(config.contains("Works") && !config.contains("Broken"), config);
+			assertTrue(config.contains("Works") && config.contains("Stateless") && !config.contains("Broken"), config);
+			ClassNode stateless = new ClassNode();
+			new ClassReader(overlay.read("com/partial/mixin/Stateless.class")).accept(stateless, 0);
+			assertTrue(stateless.methods.stream().noneMatch(m -> m.name.equals("handler")), "its failing injector is left out");
 		}
 	}
 

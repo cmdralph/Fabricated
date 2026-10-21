@@ -55,8 +55,9 @@ import org.objectweb.asm.tree.VarInsnNode;
  * Fabric mods) are never reported as failures. When the config declares a plugin, which may disable mixins at runtime,
  * a failure is {@link Severity#LEFT_OUT} instead: the failing injector (or the mixin) is left out rather than the mod
  * disabled. So is a failure of a self-contained mixin, one nothing outside it can call (it adds no interface to its
- * target and has no accessor or invoker): the whole mixin is left out, so that its injectors, which may share state,
- * apply all or none (LEAVE-1). An enum mixin adding constants to one of NeoForge's extensible enums always fails: the
+ * target and has no accessor or invoker) (LEAVE-1): only the failing injector is left out when the mixin keeps no state
+ * of its own (it adds no fields), the whole mixin otherwise, so that injectors sharing its fields apply all or none. An
+ * enum mixin adding constants to one of NeoForge's extensible enums always fails: the
  * mod's own classes read those constants.
  */
 public final class MixinPreflight {
@@ -133,7 +134,9 @@ public final class MixinPreflight {
 			if (skip.contains(mixin)) continue;
 			String internal = config.internalName(mixin);
 			ClassNode node = modClasses.readNode(internal, ClassReader.SKIP_CODE | ClassReader.SKIP_FRAMES);
-			Context ctx = new Context(configName, internal.replace('/', '.'), config, refmap, hasPlugin, node != null && selfContained(node), out, null);
+			boolean selfContained = node != null && selfContained(node);
+			Context ctx = new Context(configName, internal.replace('/', '.'), config, refmap, hasPlugin, selfContained,
+					selfContained && addsFields(node), out, null);
 			if (node == null) {
 				ctx.classLevel("Mixin class " + ctx.mixinDotted() + " listed in " + configName + " is missing from the mod jar",
 						"The mod jar is incomplete or corrupted; re-download it.");
@@ -201,7 +204,7 @@ public final class MixinPreflight {
 			String internal = config.internalName(mixin);
 			ClassNode node = modClasses.readNode(internal, 0);
 			if (node == null) continue;
-			Context ctx = new Context(configName, internal.replace('/', '.'), config, refmap, false, false, out, null);
+			Context ctx = new Context(configName, internal.replace('/', '.'), config, refmap, false, false, false, out, null);
 			List<ClassNode> targets = new ArrayList<>();
 			for (String target : targetsOf(node, ctx)) {
 				ClassNode targetNode = gameTarget(target);
@@ -833,18 +836,31 @@ public final class MixinPreflight {
 	}
 
 	/**
-	 * @param selfContained see {@link #selfContained(ClassNode)}: a failure then leaves the whole mixin out instead of
-	 *                      disabling the mod
+	 * Whether a mixin adds fields to its target (any but its {@code @Shadow}s and the compiler's synthetic ones): state its
+	 * injectors may share.
+	 */
+	static boolean addsFields(ClassNode mixin) {
+		for (FieldNode field : mixin.fields) {
+			if ((field.access & Opcodes.ACC_SYNTHETIC) == 0 && Annotations.find(field, SHADOW) == null) return true;
+		}
+		return false;
+	}
+
+	/**
+	 * @param selfContained see {@link #selfContained(ClassNode)}: a failure then leaves the failing injector, or the whole
+	 *                      mixin, out instead of disabling the mod
+	 * @param addsFields    see {@link #addsFields(ClassNode)}: a failing injector of a self-contained mixin then takes the
+	 *                      whole mixin with it
 	 * @param owner         the installed mod the target belongs to, or {@code null} for a game class
 	 */
 	record Context(String configName, String mixinDotted, MixinConfigFile config, Refmap refmap, boolean hasPlugin,
-			boolean selfContained, List<PreflightFinding> out, String owner) {
+			boolean selfContained, boolean addsFields, List<PreflightFinding> out, String owner) {
 		String resolve(String selector) {
 			return refmap.resolve(mixinDotted.replace('.', '/'), selector);
 		}
 
 		Context withOwner(String owner) {
-			return new Context(configName, mixinDotted, config, refmap, hasPlugin, selfContained, out, owner);
+			return new Context(configName, mixinDotted, config, refmap, hasPlugin, selfContained, addsFields, out, owner);
 		}
 
 		/** What changed the target since the mod was built: NeoForge or this Minecraft version, or this version of the mod. */
@@ -882,12 +898,13 @@ public final class MixinPreflight {
 		}
 
 		/**
-		 * An injector that can't apply. Where it is required: with a plugin, only it is left out (as the plugin may do); in
-		 * a self-contained mixin, the whole mixin is (no handler named); otherwise it is fatal.
+		 * An injector that can't apply. Where it is required: with a plugin, or in a self-contained mixin that adds no
+		 * fields, only it is left out (as a plugin may do); in a self-contained mixin that adds fields, the whole mixin is
+		 * (no handler named); otherwise it is fatal.
 		 */
 		void injector(MethodNode handler, int require, String message, String suggestion) {
 			Severity severity = require > 0 ? fatal() : Severity.WARN;
-			boolean wholeMixin = severity == Severity.LEFT_OUT && !hasPlugin;
+			boolean wholeMixin = severity == Severity.LEFT_OUT && !hasPlugin && addsFields;
 			out.add(new PreflightFinding(severity, configName, mixinDotted, message, suggestion, wholeMixin ? null : handler.name + handler.desc));
 		}
 

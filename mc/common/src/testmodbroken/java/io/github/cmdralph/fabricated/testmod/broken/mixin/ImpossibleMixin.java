@@ -9,7 +9,7 @@ import net.minecraft.server.MinecraftServer;
 
 /**
  * Targets a method that does not exist: the mixin pre-flight must catch it before launch. Nothing outside this mixin calls
- * into it, so it is left out and the mod loads without it (LEAVE-1); applied, it would stop the game.
+ * into it, so its injector is left out and the mod loads without it (LEAVE-1); applied, it would stop the game.
  */
 @Mixin(MinecraftServer.class)
 public abstract class ImpossibleMixin {
