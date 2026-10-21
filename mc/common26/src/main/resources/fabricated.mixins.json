@@ -17,7 +17,7 @@
     "ReloadableServerResourcesMixin",
     "ResourceMixin",
     "MappedRegistryMixin",
-    "MappedRegistryRootMixin",
+    "MappedRegistryEarlyWriteMixin",
     "MobEffectMixin",
     "EntityTypeBuilderMixin",
     "BlockEntityTypeMixin",

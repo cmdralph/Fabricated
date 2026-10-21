@@ -58,14 +58,33 @@ public final class TestMod implements ModInitializer, DedicatedServerModInitiali
 	 * information: on Fabric the class path has it, on NeoForge only the mod's module, unless Fabricated adapts the read.
 	 */
 	/** A registry vanilla's own code adds to the root while mods start, which works on Fabric (REG-3: Wover's). */
-	@SuppressWarnings({"unchecked", "rawtypes"})
 	private static void lateRegistry() {
-		ResourceKey<Registry<String>> key = ResourceKey.createRegistryKey(Identifier.fromNamespaceAndPath("fabricated_testmod", "late"));
+		if (addRegistry("late")) LOGGER.info("FABRICATED-TEST late registry OK");
+	}
+
+	/**
+	 * Called from {@code RegistryDataLoader}'s class initializer, where Wover creates its registries and registers entries
+	 * in vanilla ones (REG-3): NeoForge has frozen them by then, and its registration events haven't opened them yet.
+	 */
+	public static void earlyRegistryWrites() {
+		Identifier stat = Identifier.fromNamespaceAndPath("fabricated_testmod", "early_stat");
+		try {
+			Registry.register(BuiltInRegistries.CUSTOM_STAT, stat, stat);
+			if (addRegistry("early")) LOGGER.info("FABRICATED-TEST early registry writes OK");
+		} catch (RuntimeException e) {
+			LOGGER.error("FABRICATED-TEST early registry writes FAILED", e);
+		}
+	}
+
+	@SuppressWarnings({"unchecked", "rawtypes"})
+	private static boolean addRegistry(String name) {
+		ResourceKey<Registry<String>> key = ResourceKey.createRegistryKey(Identifier.fromNamespaceAndPath("fabricated_testmod", name));
 		try {
 			Registry.register((Registry) BuiltInRegistries.REGISTRY, key.identifier(), new MappedRegistry<>(key, Lifecycle.stable()));
-			if (BuiltInRegistries.REGISTRY.containsKey(key.identifier())) LOGGER.info("FABRICATED-TEST late registry OK");
+			return BuiltInRegistries.REGISTRY.containsKey(key.identifier());
 		} catch (RuntimeException e) {
-			LOGGER.error("FABRICATED-TEST late registry FAILED", e);
+			LOGGER.error("FABRICATED-TEST registry {} FAILED", name, e);
+			return false;
 		}
 	}
 

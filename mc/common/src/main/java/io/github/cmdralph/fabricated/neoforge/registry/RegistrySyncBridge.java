@@ -95,16 +95,21 @@ public final class RegistrySyncBridge {
 	}
 
 	/**
-	 * Opens the frozen root registry for a registry vanilla's own code creates before NeoForge's registration has ended.
+	 * Opens a frozen built-in registry that vanilla's own code writes to before NeoForge's registration has ended.
 	 * NeoForge freezes the root after its {@code NewRegistryEvent}, and processing its data pack registry event then loads
-	 * the class Wover hooks to create its registries ({@code BuiltInRegistries.registerSimple}), which works on Fabric.
-	 * NeoForge's registration events, which run over every registry in the root, then include it; it is closed again with
-	 * the root {@link #rootForRegistration} opens.
+	 * the class Wover hooks to create its registries ({@code BuiltInRegistries.registerSimple}) and register entries in
+	 * vanilla ones, which works on Fabric. NeoForge's registration events then open, run over and freeze every registry in
+	 * the root (read in NeoForge's {@code CommonModLoader}), so another registry is opened only before they start; the root
+	 * is closed again with the root {@link #rootForRegistration} opens.
 	 */
-	public static synchronized void openRootForLateRegistry() {
-		if (registrationEnded || !(BuiltInRegistries.REGISTRY instanceof MappedRegistry<?> mapped)) return;
-		mapped.unfreeze(false);
-		rootOpened = true;
+	public static synchronized void openForEarlyWrite(MappedRegistry<?> registry) {
+		if (registrationEnded) return;
+		if (registry == BuiltInRegistries.REGISTRY) {
+			registry.unfreeze(false);
+			rootOpened = true;
+		} else if (!registrationOpen && BuiltInRegistries.REGISTRY.getValue(registry.key().identifier()) == registry) {
+			registry.unfreeze(false);
+		}
 	}
 
 	private static synchronized void closeRoot() {

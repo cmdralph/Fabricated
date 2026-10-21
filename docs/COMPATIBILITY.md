@@ -793,7 +793,8 @@ MixinExtras has NeoForge's jar, and a NeoForge mod nested in another jar has tha
   Loader's API that Fabricated lacks, is listed among the report's linkage warnings before the game starts.
 - A registry a mod creates through vanilla's own code (`BuiltInRegistries`) before NeoForge's registration has ended
   joins the root registry, which NeoForge froze after its new-registry event, as Fabric API's `FabricRegistryBuilder`
-  registries do (REG-3: Wover, BetterX's library).
+  registries do; an entry a mod registers in a vanilla registry before NeoForge's registration events is accepted, as
+  on Fabric (REG-3: Wover, BetterX's library).
 - A mod whose required mixin (in a required config without a plugin) calls into a Fabric mod that isn't loading is
   disabled, with the reason: Mixin would stop the game looking for that mod's class while applying it.
 - Mods detect Fabricated with `FabricLoader.getInstance().isModLoaded("fabricated")`; see [API.md](API.md).

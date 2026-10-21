@@ -116,6 +116,7 @@ check "FABRICATED-TEST classpath scan OK" server.out "classpath scan finds a Fab
 check "FABRICATED-TEST class resources OK" server.out "a mod's class finds another jar's file, as on Fabric (RES-1)"
 check "FABRICATED-TEST registry OK" server.out "direct registry registration works"
 check "FABRICATED-TEST late registry OK" server.out "a registry vanilla's code adds while mods start joins the root registry (REG-3)"
+check "FABRICATED-TEST early registry writes OK" server.out "vanilla's code writes to built-in registries before NeoForge's registration events, as Wover does (REG-3)"
 check "FABRICATED-TEST fabric api base event OK" server.out "fabric-api-base events work"
 check "FABRICATED-TEST access widener OK" server.out "access widener applied"
 check "FABRICATED-TEST server entrypoint OK" server.out "server entrypoint ran"

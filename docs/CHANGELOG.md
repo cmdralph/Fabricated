@@ -65,9 +65,12 @@ pre-flight couldn't repair (JourneyMap).
   - AT-1: one mod's access widener made `InstrumentItem.getInstrument` final (Fabric's implicit final for an accessible
     private method) and another's extended it; NeoForge refuses the conflict, which stopped 1.21.11. That implicit final
     isn't written any more, so the lines merge to Fabric's result.
-  - REG-3: Wover creates its registries through vanilla's `BuiltInRegistries` while NeoForge processes its data pack
-    registry event, after NeoForge froze the root registry, which stopped 26.1.2. The root is opened for a new registry
-    until NeoForge's registration ends, as it is for `FabricRegistryBuilder`; the test mod checks it.
+  - REG-3: Wover creates its registries through vanilla's `BuiltInRegistries`, and registers entries in vanilla ones,
+    while NeoForge processes its data pack registry event, after NeoForge froze them, which stopped 26.1.2. A frozen
+    built-in registry written to then is opened: the root until NeoForge's registration ends, as it is for
+    `FabricRegistryBuilder`; any other registry before NeoForge's registration events, which open and freeze every
+    registry themselves. The test mod checks both, from where Wover writes (run on `b0f3606` showed the root part
+    working, then Wover's next write).
 - CI prints the causes of a server or client crash report (a mod loading crash's issues are below its description).
 - The translation schema is bumped (28): translations cached by a build before PR #51 are made again.
 

@@ -8,19 +8,19 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import io.github.cmdralph.fabricated.neoforge.registry.RegistrySyncBridge;
 import net.minecraft.core.MappedRegistry;
-import net.minecraft.core.registries.BuiltInRegistries;
 
 /**
- * A registry vanilla's own code adds to the frozen root registry before NeoForge's registration has ended gets the root
- * opened for it, as {@code FabricRegistryBuilder}'s registries do ({@link RegistrySyncBridge#openRootForLateRegistry}).
+ * A frozen built-in registry vanilla's own code writes to before NeoForge's registration has ended (a new registry in
+ * the root, an entry in a vanilla registry) is opened for it, as the root is for {@code FabricRegistryBuilder}'s
+ * registries ({@link RegistrySyncBridge#openForEarlyWrite}).
  */
 @Mixin(MappedRegistry.class)
-abstract class MappedRegistryRootMixin {
+abstract class MappedRegistryEarlyWriteMixin {
 	@Shadow
 	private boolean frozen;
 
 	@Inject(method = "validateWrite(Lnet/minecraft/resources/ResourceKey;)V", at = @At("HEAD"))
-	private void fabricated$openRootForLateRegistry(CallbackInfo ci) {
-		if (frozen && (Object) this == BuiltInRegistries.REGISTRY) RegistrySyncBridge.openRootForLateRegistry();
+	private void fabricated$openForEarlyWrite(CallbackInfo ci) {
+		if (frozen) RegistrySyncBridge.openForEarlyWrite((MappedRegistry<?>) (Object) this);
 	}
 }
