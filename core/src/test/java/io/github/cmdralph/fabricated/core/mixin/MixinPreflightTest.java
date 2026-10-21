@@ -734,6 +734,121 @@ class MixinPreflightTest {
 		});
 	}
 
+	/** {@link #TARGET} as NeoForge's {@code Camera}: {@code setRotation(FF)V} only calls {@code setRotation(FFF)V}, which calls {@code rotationYXZ}. */
+	private static byte[] delegatingRotation() {
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		cw.visitField(Opcodes.ACC_PRIVATE | Opcodes.ACC_FINAL, "rotation", "Lorg/joml/Quaternionf;", null, null).visitEnd();
+		MethodVisitor two = cw.visitMethod(Opcodes.ACC_PROTECTED, "setRotation", "(FF)V", null, null);
+		two.visitCode();
+		two.visitVarInsn(Opcodes.ALOAD, 0);
+		two.visitVarInsn(Opcodes.FLOAD, 1);
+		two.visitVarInsn(Opcodes.FLOAD, 2);
+		two.visitInsn(Opcodes.FCONST_0);
+		two.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "setRotation", "(FFF)V", false);
+		two.visitInsn(Opcodes.RETURN);
+		two.visitMaxs(0, 0);
+		two.visitEnd();
+		MethodVisitor three = cw.visitMethod(Opcodes.ACC_PROTECTED, "setRotation", "(FFF)V", null, null);
+		three.visitCode();
+		three.visitVarInsn(Opcodes.ALOAD, 0);
+		three.visitFieldInsn(Opcodes.GETFIELD, TARGET, "rotation", "Lorg/joml/Quaternionf;");
+		three.visitVarInsn(Opcodes.FLOAD, 1);
+		three.visitVarInsn(Opcodes.FLOAD, 2);
+		three.visitVarInsn(Opcodes.FLOAD, 3);
+		three.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "org/joml/Quaternionf", "rotationYXZ", "(FFF)Lorg/joml/Quaternionf;", false);
+		three.visitInsn(Opcodes.POP);
+		three.visitInsn(Opcodes.RETURN);
+		three.visitMaxs(0, 0);
+		three.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	@Test
+	void anArgumentModifierInAMethodThatOnlyCallsItsOverloadMovesThere() throws Exception {
+		// CORPUS-18: Do a Barrel Roll's roll modifier in Camera.setRotation, whose code NeoForge moved into setRotation(FFF).
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Roll", mixin("com/example/mixin/Roll", false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "setRoll", "(F)F", null, null);
+			AnnotationVisitor ann = mv.visitAnnotation("Lorg/spongepowered/asm/mixin/injection/ModifyArg;", true);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "setRotation");
+			methods.visitEnd();
+			AnnotationVisitor ats = ann.visitArray("at");
+			AnnotationVisitor at = ats.visitAnnotation(null, AT);
+			at.visit("value", "INVOKE");
+			at.visit("target", "Lorg/joml/Quaternionf;rotationYXZ(FFF)Lorg/joml/Quaternionf;");
+			at.visit("remap", false);
+			at.visitEnd();
+			ats.visitEnd();
+			ann.visit("index", 2);
+			ann.visitEnd();
+			mv.visitCode();
+			mv.visitVarInsn(Opcodes.FLOAD, 1);
+			mv.visitInsn(Opcodes.FRETURN);
+			mv.visitMaxs(1, 2);
+			mv.visitEnd();
+		})));
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Roll"));
+		ClassIndex neoForge = new ClassIndex(Map.of(TARGET, delegatingRotation())::get);
+
+		List<PreflightFinding> notes = new ArrayList<>();
+		Map<String, byte[]> repaired = preflight(neoForge, mod::get, ClassBytesSource.EMPTY, true).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
+		assertTrue(notes.getFirst().message().contains("setRoll targets setRotation(FF)V, whose code NeoForge moved into setRotation(FFF)V"), notes.toString());
+		mod.put("com/example/mixin/Roll", repaired.get("com/example/mixin/Roll.class"));
+		assertTrue(preflight(neoForge, mod::get, ClassBytesSource.EMPTY, true).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty());
+	}
+
+	@Test
+	void anExpressionModifierMovesToAnOverloadTakingMoreArguments() throws Exception {
+		// PRE-13: Polymer modifies the codecs vanilla's custom payload packets make with CustomPacketPayload.codec(fallback,
+		// types); NeoForge's patches call codec(fallback, types, protocol, flow) in both places.
+		String codecs = "com/example/lib/Codecs";
+		String vanilla = "(Ljava/lang/Object;Ljava/util/List;)Ljava/lang/Object;";
+		String neoForge = "(Ljava/lang/Object;Ljava/util/List;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/Object;";
+		ClassWriter target = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		target.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		MethodVisitor init = target.visitMethod(Opcodes.ACC_STATIC, "<clinit>", "()V", null, null);
+		init.visitCode();
+		for (int i = 0; i < 2; i++) {
+			for (int arg = 0; arg < 4; arg++) init.visitInsn(Opcodes.ACONST_NULL);
+			init.visitMethodInsn(Opcodes.INVOKESTATIC, codecs, "codec", neoForge, false);
+			init.visitInsn(Opcodes.POP);
+		}
+		init.visitInsn(Opcodes.RETURN);
+		init.visitMaxs(0, 0);
+		init.visitEnd();
+		target.visitEnd();
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Payloads", mixin("com/example/mixin/Payloads", false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "wrap", "(Ljava/lang/Object;)Ljava/lang/Object;", null, null);
+			AnnotationVisitor ann = mv.visitAnnotation("Lcom/llamalad7/mixinextras/injector/ModifyExpressionValue;", false);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "<clinit>");
+			methods.visitEnd();
+			AnnotationVisitor ats = ann.visitArray("at");
+			AnnotationVisitor at = ats.visitAnnotation(null, AT);
+			at.visit("value", "INVOKE");
+			at.visit("target", "L" + codecs + ";codec" + vanilla);
+			at.visitEnd();
+			ats.visitEnd();
+			ann.visitEnd();
+			mv.visitCode();
+			mv.visitVarInsn(Opcodes.ALOAD, 0);
+			mv.visitInsn(Opcodes.ARETURN);
+			mv.visitMaxs(1, 1);
+			mv.visitEnd();
+		})));
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Payloads"));
+		ClassIndex neoForgeGame = new ClassIndex(Map.of(TARGET, target.toByteArray())::get);
+
+		List<PreflightFinding> notes = new ArrayList<>();
+		Map<String, byte[]> repaired = preflight(neoForgeGame, mod::get, ClassBytesSource.EMPTY, false).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
+		assertTrue(notes.getFirst().message().contains("through an overload with 2 more arguments, codec" + neoForge), notes.toString());
+		mod.put("com/example/mixin/Payloads", repaired.get("com/example/mixin/Payloads.class"));
+		assertTrue(preflight(neoForgeGame, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty());
+		assertFalse(MixinPreflight.appendsArguments(vanilla, "(Ljava/lang/String;Ljava/util/List;Ljava/lang/String;)Ljava/lang/Object;"), "only after the named call's parameters");
+	}
+
 	@Test
 	void anInjectionIntoALambdaWhoseCapturedValuesAreReorderedGetsABridge() throws Exception {
 		// LAMBDA-3: Wover's handler takes WorldLoader's lambda's captured values in vanilla's order; NeoForge's build captures
@@ -952,10 +1067,16 @@ class MixinPreflightTest {
 		List<PreflightFinding> after = preflight(neoForge, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
 		assertTrue(after.isEmpty(), after.toString());
 
-		for (byte[] game : List.of(callingHelper("(I)V", "(ILjava/lang/String;)V"), callingHelper("(II)V"), callingHelper("(ILjava/lang/String;Z)V"))) {
-			assertTrue(preflight(new ClassIndex(Map.of(TARGET, game)::get), Map.of("com/example/mixin/AtHelper", original)::get, ClassBytesSource.EMPTY, false)
-					.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty(),
-					"the named call still made, an added argument that can't be told apart, or two added");
+		assertTrue(preflight(new ClassIndex(Map.of(TARGET, callingHelper("(I)V", "(ILjava/lang/String;)V"))::get), Map.of("com/example/mixin/AtHelper", original)::get,
+				ClassBytesSource.EMPTY, false).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty(), "the named call still made");
+		for (byte[] game : List.of(callingHelper("(II)V"), callingHelper("(ILjava/lang/String;Z)V"))) {
+			// The handlers taking the arguments can't be bridged (an added argument that can't be told apart, or two added);
+			// the @Inject's point moves to the overload all the same (PRE-13): it sees none of them.
+			List<PreflightFinding> moved = new ArrayList<>();
+			preflight(new ClassIndex(Map.of(TARGET, game)::get), Map.of("com/example/mixin/AtHelper", original)::get, ClassBytesSource.EMPTY, false)
+					.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), moved);
+			assertEquals(1, moved.size(), moved.toString());
+			assertTrue(moved.getFirst().message().startsWith("@Inject inject expects a call to"), moved.toString());
 		}
 	}
 
