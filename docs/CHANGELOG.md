@@ -3,6 +3,19 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-10-21 (pass after PR #55): Polymer's payload codecs, and default components on 26.3
+
+**Plan.** PR #55's last run showed the 26.1.2 and 26.2 advanced servers starting (LAMBDA-3), Tectonic's pack loading
+(PACK-4) and Freecam disabled with its reason (MIXEXT-1). The next stops: the 1.21.11 advanced client on Polymer's
+payload codec, the 26.3 advanced server on Fabric's default component event.
+
+- PRE-13: an `@Inject`'s or `@ModifyExpressionValue`'s call point moves to the overload NeoForge's patches call with
+  more arguments after the named ones, as its custom payload packets call `CustomPacketPayload.codec` with the
+  protocol and direction. Polymer's codec hooks were left out, and its hello payload then failed to encode.
+- ITEMCOMP-1: on 26.x, Fabric's default component changes run once the items' components are bound, as upstream runs
+  them, not in NeoForge's event before the binding: Wover's predicate reads an item's components.
+- CI: the mixin diagnostics also print the overlays they found and the report's lines on the mixin (CORPUS-18).
+
 ## 2026-10-21 (pass after PR #54): lambdas NeoForge's patches change, and MixinExtras requirements
 
 **Plan.** PR #54's runs showed every 26.x advanced server stopping at world creation on Wover's world state, and the

@@ -109,7 +109,13 @@ def main():
         methods = {name.split("(")[0] for name in re.findall(r'"([A-Za-z0-9_$<>]+(?:\([^"]*)?)"', " ".join(
             re.findall(r"method=\[([^\]]*)\]", "\n".join(lines))))}
         patched = glob.glob(f"{work}/minecraft/libraries/**/minecraft-client-patched-*.jar", recursive=True)
-        print(f"-- targets {targets}, methods {sorted(methods)}, patched jar {'found' if patched else 'not found'}")
+        print(f"-- targets {targets}, methods {sorted(methods)}, patched jar {'found' if patched else 'not found'}, {len(overlays)} translation overlay(s)")
+        simple = mixin.rsplit(".", 1)[-1]
+        for report in glob.glob(f"{work}/run/logs/fabric-bridge-report*.txt"):
+            with open(report, encoding="utf-8", errors="replace") as f:
+                for line in f:
+                    if simple in line:
+                        print("-- report: " + line.rstrip()[:300])
         if not targets or not methods:
             return
         target = targets[0]
