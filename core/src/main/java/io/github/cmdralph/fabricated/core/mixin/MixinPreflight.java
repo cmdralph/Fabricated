@@ -515,9 +515,11 @@ public final class MixinPreflight {
 				if (overload == null || (overload.access & Opcodes.ACC_STATIC) != (chosen.access & Opcodes.ACC_STATIC)
 						|| !split && !Type.getReturnType(overload.desc).equals(Type.getReturnType(chosen.desc))
 						|| InjectionPoints.pointsIn(ats, slices, overload, ctx) != Verdict.FOUND) continue;
-				// Its callback info must suit the method it moves to: a returnable one only one returning the same.
-				if (split && inject && !Type.getReturnType(overload.desc).equals(Type.getReturnType(chosen.desc))
-						&& handlerArgs(handler).getLast().getDescriptor().equals(CALLBACK_INFO_RETURNABLE)) continue;
+				// Its callback info must suit the method it moves to: a returnable one only one returning the same. A handler
+				// sharing the mixin's state with others that may stay moves only with them, which this doesn't do (HOOK-2's).
+				if (split && (inject && !Type.getReturnType(overload.desc).equals(Type.getReturnType(chosen.desc))
+						&& handlerArgs(handler).getLast().getDescriptor().equals(CALLBACK_INFO_RETURNABLE)
+						|| !statelessHandlers(mixin).contains(handler.name + handler.desc))) continue;
 				int captured = inject ? (takesParameters ? 0 : -1) : capturedFrom(handler, chosen);
 				int inserted = insertedParameter(chosen, overload);
 				List<Runnable> locals = localsFit(handler, overload) ? List.of() : localsInOverload(handler, overload, inserted, ats);
@@ -847,7 +849,8 @@ public final class MixinPreflight {
 	 * A {@code NEW} point selecting a constructor by its descriptor is moved the same way, to a constructor taking one
 	 * more argument (NeoForge's patches give records components): its handlers take the arguments, as a static call's.
 	 * An {@code INVOKE} point at a call NeoForge's patches moved into a hook of theirs moves to the hook's call
-	 * ({@link #hookCall}), its handlers bridged the same way when the hook takes one more argument (HOOK-2).
+	 * ({@link #hookCall}), its handlers bridged the same way when the hook takes one more argument, when the handler uses
+	 * nothing of the mixin's own ({@link #statelessHandlers}) (HOOK-2).
 	 * Returns a description of each move.
 	 */
 	private List<String> insertedArgumentRepairs(ClassNode mixin, MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx,
@@ -904,6 +907,9 @@ public final class MixinPreflight {
 			// The call itself, when it is in none of the methods: in a hook of NeoForge's that took it over, a static method
 			// taking its receiver first, handled as a static call of that.
 			MethodInsnNode hook = named || overload != null || constructor ? null : hookCall(methods, owner, name, desc);
+			// A handler sharing the mixin's state with others moves only with them, which this doesn't do: jGui (ReplayMod)
+			// keeps the screen's graphics from a @ModifyArg at the same call for its @Inject after it.
+			if (hook != null && !statelessHandlers(mixin).contains(handler.name + handler.desc)) continue;
 			String callOwner = owner;
 			String callName = name;
 			String original = desc;

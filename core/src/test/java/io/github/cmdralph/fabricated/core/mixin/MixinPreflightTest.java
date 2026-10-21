@@ -1106,11 +1106,21 @@ class MixinPreflightTest {
 		// HOOK-2: architectury, FancyMenu and Inventory Profiles Next hook the game's call rendering the screen, which
 		// NeoForge's patches make inside ClientHooks.drawScreen(screen, ...) (26.2 on: extractScreen, taking one more).
 		String thing = "L" + TARGET + ";";
+		Consumer<MethodVisitor> returns = mv -> {
+			mv.visitInsn(Opcodes.RETURN);
+			mv.visitMaxs(0, 6);
+			mv.visitEnd();
+		};
 		byte[] original = mixin("com/example/mixin/AtHelper", false, cw -> {
-			atHelperCall(cw, INJECT, "inject", "(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V", null);
-			atHelperCall(cw, REDIRECT, "redirect", "(" + thing + "I)V", null);
-			atHelperCall(cw, WRAP_OPERATION, "wrap", "(" + thing + "I" + OPERATION + ")V", null);
-			atHelperCall(cw, "Lcom/llamalad7/mixinextras/injector/v2/WrapWithCondition;", "condition", "(" + thing + "I)Z", null);
+			atHelperCall(cw, INJECT, "inject", "(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V", returns);
+			atHelperCall(cw, REDIRECT, "redirect", "(" + thing + "I)V", returns);
+			atHelperCall(cw, WRAP_OPERATION, "wrap", "(" + thing + "I" + OPERATION + ")V", returns);
+			atHelperCall(cw, "Lcom/llamalad7/mixinextras/injector/v2/WrapWithCondition;", "condition", "(" + thing + "I)Z", mv -> {
+				mv.visitInsn(Opcodes.ICONST_1);
+				mv.visitInsn(Opcodes.IRETURN);
+				mv.visitMaxs(1, 3);
+				mv.visitEnd();
+			});
 		});
 		MixinConfigFile config = MixinConfigFile.parse(config(true, "AtHelper"));
 		String withLayers = "(" + thing + "Ljava/lang/String;I)V";
@@ -1147,6 +1157,21 @@ class MixinPreflightTest {
 		assertTrue(plainNode.methods.stream().noneMatch(m -> m.name.contains("$fabricated")), "no bridge");
 		mod2.put("com/example/mixin/AtHelper", retargeted);
 		assertTrue(preflight(older, mod2::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty());
+
+		// A handler using the mixin's own state stays: it may need another handler's, at the call, which isn't moved.
+		byte[] stateful = mixin("com/example/mixin/AtHelper", false, cw -> {
+			cw.visitField(Opcodes.ACC_PRIVATE, "context", "Ljava/lang/Object;", null, null).visitEnd();
+			atHelperCall(cw, INJECT, "inject", "(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V", mv -> {
+				mv.visitVarInsn(Opcodes.ALOAD, 0);
+				mv.visitFieldInsn(Opcodes.GETFIELD, "com/example/mixin/AtHelper", "context", "Ljava/lang/Object;");
+				mv.visitInsn(Opcodes.POP);
+				mv.visitInsn(Opcodes.RETURN);
+				mv.visitMaxs(1, 2);
+				mv.visitEnd();
+			});
+		});
+		assertTrue(preflight(older, Map.of("com/example/mixin/AtHelper", stateful)::get, ClassBytesSource.EMPTY, false)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty());
 
 		// A static method of that shape that doesn't make the call isn't taken for the hook.
 		ClassIndex unrelated = new ClassIndex(Map.of(TARGET, callingHook(plain), HOOKS, hooks(plain, false))::get);
@@ -1255,6 +1280,9 @@ class MixinPreflightTest {
 			at.visitEnd();
 			if (ats != null) ats.visitEnd();
 			ann.visitEnd();
+			mv.visitCode();
+			mv.visitInsn(Opcodes.RETURN);
+			mv.visitMaxs(0, 3);
 			mv.visitEnd();
 		};
 		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Updates", mixin("com/example/mixin/Updates", false, cw -> {

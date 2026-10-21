@@ -3,16 +3,6 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
-## 2026-10-21 (pass after PR #58): code NeoForge split off
-
-**Plan.** PR #58's last run had every advanced client in its world on all four versions; what is left is mostly the
-hooks LEAVE-1 leaves out, so each change here gives some of them back.
-
-- SPLIT-1: an injection into code NeoForge's patches split off into a method of its own (`Level.setBlock`'s neighbour
-  updates, now in `markAndNotifyBlock`) is pointed at that method when it alone holds the injection points, nothing
-  else in the class calls it and the handler doesn't depend on the original method. Carpet's update suppression is
-  the case at hand.
-
 ## 2026-10-21 (pass after PR #57): Fabric's packet context, filled and bound everywhere packets are coded
 
 **Plan.** PR #57's last run showed the 26.2 and 26.3 advanced clients joining their worlds for the first time
@@ -39,6 +29,13 @@ chunk on a feature order cycle.
   receiver and arguments, at most one more, that makes the call) is pointed at the hook's call, its handlers bridged as
   for an overload. Architectury's screen render events, FancyMenu's screen hooks and Inventory Profiles Next's overlay
   were left out on every version: NeoForge renders the screen inside `ClientHooks.drawScreen` (26.2 on: `extractScreen`).
+  A handler using the mixin's own state isn't moved: jGui (ReplayMod) keeps the screen's graphics from a
+  `@ModifyArg` at the same call for its `@Inject` after it, and the moved `@Inject` alone crashed the 26.2 advanced
+  client on `5069513`.
+- SPLIT-1: an injection into code NeoForge's patches split off into a method of its own (`Level.setBlock`'s neighbour
+  updates, now in `markAndNotifyBlock`) is pointed at that method when it alone holds the injection points, nothing
+  else in the class calls it and the handler neither depends on the original method nor uses the mixin's own state:
+  Carpet's update suppression.
 - SIG-2: an `@Inject` handler taking a method's vanilla parameters, the callback info and MixinExtras sugar gets a
   bridge taking the parameters NeoForge's build gives the method, one more: Ledger's fire hooks take a `@Local` after
   the callback info, which SIG-1's bridge doesn't carry, and stayed left out on every version.
