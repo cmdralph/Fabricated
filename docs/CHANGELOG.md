@@ -31,10 +31,22 @@ main entrypoint, and Flashback not loaded for one large native library.
   initializers. It stopped the 1.21.11 advanced corpus client at bootstrap.
 - LIMIT-1: one archive entry may be 128 MiB (was 64 MiB): Flashback ships a 71 MB native library. The limits on the
   whole archive and the compression ratio check are unchanged.
+- HOLD-1: with CORPUS-16, every 26.x advanced client stopped at NeoForge's freeze before `Minecraft` exists on
+  BetterNether's entity types, made before its main entrypoint registers them. While the main entrypoints are still to
+  run, that freeze keeps such waiting holders for the registration; the freeze after them checks them as vanilla does.
+- HOOK-1: an `@Inject` after Fabric Loader's `Hooks.startServer` (owo-lib's registry freeze) is pointed at NeoForge's
+  `ServerModLoader.load`, where Fabricated runs the entrypoints that hook marks. owo's group stopped the 1.21.11,
+  26.1.2 and 26.2 corpus servers.
+- PACK-4: a Fabric jar's built-in packs lose the `neoforge:` sections of their `pack.mcmeta` too (Tectonic's pack was
+  skipped on the 26.x advanced servers).
+- SIDE-1: a dependency on a mod installed for the other side only is a suggestion there, as Fabric Loader resolves it:
+  Emotecraft, which requires the client-only key binding module, loads on a server again.
 - CI: when Mixin stops a client on an injector pre-flight passed, the summary prints the handler's annotations and its
   target methods' code (CORPUS-18); the server summaries list entrypoint failures and slow entrypoints (CORPUS-19).
 - Roadmap: PR #53's results (PIP-1, BIOME-2 and LOADER-2 verified as far as the next failure), and what is still open:
-  FrozenLib's entrypoint injection (LOADER-4).
+  FrozenLib's entrypoint injection (LOADER-4), BetterEnd's payload type in the `minecraft` namespace (NET-4), Freecam's
+  MixinExtras requirement on 1.21.11 (MIXEXT-1), and Wover's world state at world creation (CORPUS-19, whose data
+  pack errors are gone).
 
 ## 2026-10-21 (pass after PR #52): picture-in-picture renderers, and mixins into what other mods' mixins add
 
