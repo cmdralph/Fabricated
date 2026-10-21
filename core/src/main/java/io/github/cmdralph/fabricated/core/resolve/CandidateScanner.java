@@ -179,6 +179,10 @@ public final class CandidateScanner {
 		} catch (IOException e) {
 			rejected.add(new Rejected(origin, "could not read: " + e.getMessage()));
 			return null;
+		} catch (RuntimeException | StackOverflowError e) {
+			// Its metadata is untrusted: whatever reading it throws rejects this jar, not every Fabric mod.
+			rejected.add(new Rejected(origin, "unreadable metadata: " + e));
+			return null;
 		}
 
 		String id = metadata.getId();

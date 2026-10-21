@@ -1,9 +1,11 @@
 package io.github.cmdralph.fabricated.core.resolve;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Path;
+import java.time.Duration;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -59,5 +61,14 @@ class MultiLoaderJarsTest {
 		mod.visitEnd();
 		cw.visitEnd();
 		return cw.toByteArray();
+	}
+
+	/** The mods.toml is untrusted: lines of blanks were each rescanned to the end, so a run of them took minutes. */
+	@Test
+	void manyBlankLinesAreReadQuickly(@TempDir Path dir) throws Exception {
+		Path jar = TestJars.create().fabricModJson(TestJars.modJson("example", "1.0", ENTRYPOINTS))
+				.text(MultiLoaderJars.MODS_TOML, "\n".repeat(200_000) + JAVA_MOD)
+				.write(dir.resolve("blank-lines.jar"));
+		assertTimeoutPreemptively(Duration.ofSeconds(10), () -> assertFalse(MultiLoaderJars.forNeoForge(jar, ArchiveLimits.DEFAULTS)));
 	}
 }

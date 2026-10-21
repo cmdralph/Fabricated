@@ -162,21 +162,24 @@ public final class SafeArchive implements Closeable {
 	}
 
 	/**
-	 * Reads an entry fully, enforcing the per-entry and per-archive limits on the bytes actually
-	 * decompressed.
+	 * Reads an entry fully, enforcing the per-entry and per-archive limits on the bytes actually decompressed, and the
+	 * entry's declared size: {@code ZipFile} inflates past it, and the checks made when the archive was opened (the
+	 * compression ratio, the declared total) and the memory a translation reserves trust it.
 	 *
 	 * @return the bytes, or {@code null} if the entry does not exist or is a directory
 	 */
 	public synchronized byte[] read(String name) throws ArchiveException {
 		ZipEntry entry = entries.get(name);
 		if (entry == null || entry.isDirectory()) return null;
-		long budget = Math.min(limits.maxEntryBytes(), limits.maxTotalUncompressedBytes() - totalRead);
+		long limit = Math.min(limits.maxEntryBytes(), limits.maxTotalUncompressedBytes() - totalRead);
+		long budget = entry.getSize() >= 0 ? Math.min(entry.getSize(), limit) : limit;
 		try (InputStream in = zip.getInputStream(entry)) {
 			// Reading one byte past the budget detects oversized entries whatever their headers claim; the trailing
 			// read() also rejects entries too large for a Java array when the budget is above that.
 			byte[] data = in.readNBytes((int) Math.min(budget + 1, Integer.MAX_VALUE - 8));
 			if (data.length > budget || in.read() >= 0) {
-				throw new ArchiveException("Entry '" + name + "' exceeds the decompression limit");
+				throw new ArchiveException("Entry '" + name + "' " + (budget < limit ? "holds more bytes than its header declares"
+						: "exceeds the decompression limit"));
 			}
 			totalRead += data.length;
 			return data;

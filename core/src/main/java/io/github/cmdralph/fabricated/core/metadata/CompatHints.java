@@ -54,6 +54,7 @@ public record CompatHints(Set<String> skipMixins, List<MixinEntry> mixins, Map<S
 	private static final int MAX_ENTRIES = 64;
 	private static final Pattern SKIP_MIXIN = Pattern.compile("([A-Za-z0-9_./-]{1,128}\\.json:)?[A-Za-z_$][A-Za-z0-9_$.]{0,255}(#[A-Za-z_$][A-Za-z0-9_$]{0,255})?");
 	private static final Pattern ENTRYPOINT_KEY = Pattern.compile("[A-Za-z0-9_:-]{1,64}");
+	private static final int MAX_CONFIG_PATH = 256;
 	private static final Pattern CONFIG_PATH = Pattern.compile("([A-Za-z0-9_-][A-Za-z0-9_.-]*/)*[A-Za-z0-9_-][A-Za-z0-9_.-]*\\.json");
 
 	public CompatHints {
@@ -128,7 +129,8 @@ public record CompatHints(Set<String> skipMixins, List<MixinEntry> mixins, Map<S
 						List<MixinEntry> parsed = FabricModJsonParser.parseMixins(e.getValue());
 						if (parsed.size() > MAX_ENTRIES) throw new MetadataException("more than " + MAX_ENTRIES + " entries");
 						for (MixinEntry entry : parsed) {
-							if (!CONFIG_PATH.matcher(entry.config()).matches() || entry.config().contains("..")) {
+							// Bounded first: the pattern repeats a group per directory, which recurses once each.
+							if (entry.config().length() > MAX_CONFIG_PATH || !CONFIG_PATH.matcher(entry.config()).matches() || entry.config().contains("..")) {
 								throw new MetadataException("\"" + entry.config() + "\" is not a mixin config path in this jar");
 							}
 						}

@@ -157,9 +157,30 @@ tasks.named('processTestmodResources', ProcessResources) {
 }
 
 // --- Generated build facts ---------------------------------------------------------------------------
+// What a cached translation depends on besides the mod: Fabricated's own classes and data. Their contents are digested
+// in a fixed order (not the jars, whose entries carry timestamps), so rebuilding the same sources keeps players' caches,
+// and any change to them translates the mods again without a hand-bumped schema.
+def buildContents = files(sourceSets.loader.output, configurations.bundled, sourceSets.main.output)
+def contentDigest = { FileCollection roots ->
+    def digest = MessageDigest.getInstance('SHA-256')
+    roots.files.findAll { it.exists() }.each { root ->
+        def contents = new TreeMap<String, byte[]>()
+        (root.isDirectory() ? fileTree(root) : zipTree(root)).visit { FileVisitDetails entry ->
+            if (!entry.directory) contents[entry.relativePath.pathString] = entry.open().withCloseable { it.readAllBytes() }
+        }
+        contents.each { path, bytes ->
+            digest.update(path.getBytes('UTF-8'))
+            digest.update((byte) 0)
+            digest.update(bytes)
+        }
+    }
+    digest.digest().encodeHex().toString()
+}
 def versionProperties = tasks.register('fabricatedVersionProperties', WriteProperties) {
     destinationFile = layout.buildDirectory.file('generated/fabricated/version.properties')
+    inputs.files(buildContents)
     property 'fabricated.version', releaseName
+    property 'fabricated.build', providers.provider { contentDigest(buildContents) }
     property 'minecraft.version', mcVersion
     property 'namespace', project.namespace
     property 'mixin.fallback', project.mixin_fallback

@@ -16,8 +16,10 @@ import io.github.cmdralph.fabricated.core.translate.TranslationEnvironment.Names
  * @param namespace         how Fabric mods for that version are distributed
  * @param mixinFallback     Mixin version to assume if the runtime's cannot be detected
  * @param mixinLowest       lowest Mixin behaviour version this NeoForge's FML accepts
+ * @param build             a digest of the code and data this jar was built from (empty when the build didn't record one)
  */
-public record FabricatedInfo(String fabricatedVersion, String minecraftVersion, Namespace namespace, String mixinFallback, String mixinLowest) {
+public record FabricatedInfo(String fabricatedVersion, String minecraftVersion, Namespace namespace, String mixinFallback, String mixinLowest,
+		String build) {
 	public static final String RESOURCE_ROOT = "/META-INF/fabricated/";
 
 	private static FabricatedInfo instance;
@@ -39,7 +41,7 @@ public record FabricatedInfo(String fabricatedVersion, String minecraftVersion, 
 				require(p, "fabricated.version"),
 				require(p, "minecraft.version"),
 				Namespace.valueOf(require(p, "namespace")),
-				require(p, "mixin.fallback"), require(p, "mixin.lowest"));
+				require(p, "mixin.fallback"), require(p, "mixin.lowest"), p.getProperty("fabricated.build", "").trim());
 	}
 
 	private static String require(Properties p, String key) {

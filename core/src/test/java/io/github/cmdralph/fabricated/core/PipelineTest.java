@@ -288,7 +288,7 @@ class PipelineTest {
 		FabricatedConfig config = FabricatedConfig.load(game.resolve("config"));
 		TranslationCache cache = new TranslationCache(game, config.cacheEnabled(), config.verifyIntegrity());
 		return new Pipeline.Input(game, game.resolve("config"), config, cache, jars, ns == Namespace.OFFICIAL ? "26.2" : "1.21.11",
-				"26.2.0.90", false, ns, mixin, "0.5.3", lowestBehavior, "0.1.0-test", false, gameClasses::get, List.of(game.resolve("minecraft.jar")),
+				"26.2.0.90", false, ns, mixin, "0.5.3", lowestBehavior, "0.1.0-test", "test-build", false, gameClasses::get, List.of(game.resolve("minecraft.jar")),
 				Pipeline.VanillaGame.NONE, List.of(game.resolve("fabricated.jar")), libraries, Set.of("net/neoforged/neoforge"),
 				FabricApiPlan.parse(PLAN), name -> null, Map::of, neoForgeMods, installed, mappings, new String[0]);
 	}
@@ -883,6 +883,12 @@ class PipelineTest {
 		Report.ModRow row = result.report().mods().stream().filter(r -> r.id().equals("user-mod")).findFirst().orElseThrow();
 		assertEquals(Report.Status.DISABLED, row.status());
 		assertTrue(row.detail().contains("com.user.mixin.UsesMixin -> needs class com.lib.Api of lib-mod, which isn't loading"), row.detail());
+
+		// Skipping that mixin changes the mod's translation, not its jar: the analysis cached for the jar is not reused.
+		Files.writeString(game.resolve("config/fabricated.json"), "{\"schema\":1,\"mods\":{\"user-mod\":{\"skipMixins\":[\"user.mixins.json:UsesMixin\"]}}}");
+		Pipeline.Result skipped = Pipeline.run(input(game, List.of(lib, user, guarded), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
+		assertEquals(Set.of("guarded-mod", "user-mod"), skipped.mods().stream().map(m -> m.translated().candidate().id()).collect(Collectors.toSet()),
+				skipped.report().render());
 	}
 
 	@Test

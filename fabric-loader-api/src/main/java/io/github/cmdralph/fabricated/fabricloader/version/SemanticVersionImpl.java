@@ -19,7 +19,6 @@ import net.fabricmc.loader.api.VersionParsingException;
  * {@link SemanticVersion#COMPONENT_WILDCARD}.
  */
 public final class SemanticVersionImpl implements SemanticVersion {
-	private static final Pattern DOT_SEPARATED_ID = Pattern.compile("|[-0-9A-Za-z]+(\\.[-0-9A-Za-z]+)*");
 	private static final Pattern UNSIGNED_INTEGER = Pattern.compile("0|[1-9][0-9]*");
 
 	private final int[] components;
@@ -42,10 +41,10 @@ public final class SemanticVersionImpl implements SemanticVersion {
 			prereleasePart = rest.substring(dashDelim + 1);
 			rest = rest.substring(0, dashDelim);
 		}
-		if (prereleasePart != null && !DOT_SEPARATED_ID.matcher(prereleasePart).matches()) {
+		if (prereleasePart != null && !dotSeparatedIds(prereleasePart)) {
 			throw new VersionParsingException("Invalid prerelease string '" + prereleasePart + "'!");
 		}
-		if (buildPart != null && !DOT_SEPARATED_ID.matcher(buildPart).matches()) {
+		if (buildPart != null && !dotSeparatedIds(buildPart)) {
 			throw new VersionParsingException("Invalid build string '" + buildPart + "'!");
 		}
 		if (rest.isEmpty()) {
@@ -216,5 +215,21 @@ public final class SemanticVersionImpl implements SemanticVersion {
 	@Override
 	public String toString() {
 		return friendlyName;
+	}
+
+	/**
+	 * Whether {@code s} is empty or identifiers of {@code [-0-9A-Za-z]} separated by dots. Checked part by part: a
+	 * pattern repeating a group recurses once per part, so a version with thousands of them overflowed the stack.
+	 */
+	private static boolean dotSeparatedIds(String s) {
+		if (s.isEmpty()) return true;
+		for (String part : s.split("\\.", -1)) {
+			if (part.isEmpty()) return false;
+			for (int i = 0; i < part.length(); i++) {
+				char c = part.charAt(i);
+				if (!(c == '-' || c >= '0' && c <= '9' || c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z')) return false;
+			}
+		}
+		return true;
 	}
 }

@@ -7,6 +7,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.ByteArrayOutputStream;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -84,6 +86,28 @@ class SafeArchiveTest {
 		ArchiveLimits fewEntries = new ArchiveLimits(1 << 20, 1 << 20, 1 << 20, 2, 100, 1);
 		Path many = TestJars.create().text("1", "a").text("2", "b").text("3", "c").write(tmp.resolve("many.jar"));
 		assertThrows(ArchiveException.class, () -> SafeArchive.open(many, fewEntries));
+	}
+
+	/**
+	 * ZipFile inflates past an entry's declared size, which the compression ratio check and a translation's memory
+	 * reservation trust: an entry declaring 1000 bytes that holds 200,000 is refused when read.
+	 */
+	@Test
+	void refusesAnEntryHoldingMoreThanItsHeaderDeclares() throws Exception {
+		byte[] bytes = TestJars.create().bytes("big.bin", new byte[200_000]).text("small.txt", "hello").toBytes();
+		ByteBuffer zip = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN);
+		for (int i = 0; i + 46 < bytes.length; i++) {
+			if (zip.getInt(i) != 0x02014b50) continue; // a central directory header
+			String name = new String(bytes, i + 46, zip.getShort(i + 28), StandardCharsets.UTF_8);
+			if (name.equals("big.bin")) zip.putInt(i + 24, 1000); // its uncompressed size
+		}
+		Path jar = Files.write(tmp.resolve("lying.jar"), bytes);
+		try (SafeArchive archive = SafeArchive.open(jar, ArchiveLimits.DEFAULTS)) {
+			assertEquals(1005, archive.declaredUncompressedSize());
+			ArchiveException e = assertThrows(ArchiveException.class, () -> archive.read("big.bin"));
+			assertTrue(e.getMessage().contains("more bytes than its header declares"), e.getMessage());
+			assertEquals("hello", archive.readText("small.txt"));
+		}
 	}
 
 	@Test

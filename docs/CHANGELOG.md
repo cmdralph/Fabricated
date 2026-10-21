@@ -3,6 +3,42 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-10-21 (health pass after PR #64): untrusted input, cache keys, bridged handlers
+
+**Plan.** Before more mods: a review of the whole engine on four fronts. Stability of the translation pipeline and
+pre-flight across 1.21.11 and 26.x, the untrusted-input model for Fabric jars, overhead and lightweightness, and
+drift from the design documents. Four read-only reviews traced their findings to code; each defect below was
+reproduced or shown by a test that fails without its fix.
+
+- SEC-1: one crafted jar disabled every Fabric mod: a very long mixin config path or version overflowed the stack in a
+  pattern, and the scan caught only checked exceptions. Now bounded and checked without recursion, and whatever a
+  jar's metadata throws rejects that jar alone.
+- SEC-2: a `neoforge.mods.toml` of blank lines hung discovery for minutes (a quadratic pattern). Now linear.
+- SEC-3: a hostile mixin class in one jar failed, and blamed, every other mod whose pre-flight read it. Now skipped as
+  unreadable.
+- SEC-4: an entry may inflate past the size its header declares, which the ratio check and memory reservations
+  trusted. Such an entry is refused when read.
+- CACHE-1: the cached linkage result ignored overrides and installed NeoForge mods (a `skipMixins` didn't bring a
+  disabled mod back). Its key now holds each mod's translation and the NeoForge mods.
+- CACHE-2: a new build of the same version reused older translations unless the schema was bumped by hand, which six
+  repairs didn't do. The build now records a digest of Fabricated's code and data, which the keys include.
+- BRIDGE-1: bridging a handler left its MixinExtras expression annotations behind. They move with the injector.
+- BRIDGE-2: a handler's independence from its mixin's other injectors was judged mid-repair. Now on the mixin as
+  written.
+- VANILLA-1: on PR #64's last run (`f80f687`) Do a Barrel Roll still didn't load on 26.x clients: the call NeoForge put
+  in place of vanilla's, `setRotation(FFF)`, wasn't taken for an overload with one more argument, as which float is the
+  added one can't be told by types. The old `setRotation(FF)`, which NeoForge keeps forwarding `(yRot, xRot, 0F)`, now
+  tells it.
+- Kept, with its comment corrected: `BlockApiCacheInvalidationMixin`, whose stated reason was stale but which also
+  passes NeoForge mods' capability invalidations to Fabric's caches.
+- CI: no game matrix for a change to documentation alone (`paths-ignore`), and time limits on the jobs. Commit and
+  merge conventions recorded in `claude.md`: a commit per concern, Conventional Commit subjects, one push per round.
+- Docs: the design documents corrected where the code had moved on (module classification, the cache's layout and
+  key, the security and performance claims, renderer status on 1.21.11, the mixin inventory); fixed findings that sat
+  in the open table moved to the fixed one.
+- Open: SEC-5 (no budget across all jars), PERF-1 (allocation per packet, unmeasured), PERF-2 (startup work repeated
+  with a warm cache), CACHE-3 (index entries never cleaned), ARCH-1 (`MixinPreflight`'s size and repair ordering).
+
 ## 2026-10-21 (pass after PR #63): vanilla's code for injection points, client stopping
 
 **Plan.** PR #63's last run (`2036fbe`) passed the new client module gate on every 26.x version once HUD-1 was fixed,

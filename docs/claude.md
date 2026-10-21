@@ -18,12 +18,16 @@ verified) and [`../CONTRIBUTING.md`](../CONTRIBUTING.md) (layout, build, adding 
   that can't be checked is marked `UNVERIFIED` in `roadmap.md`.
 - **Behaviour changes only fix a proven defect.** The commit message names the file, the failure and why tests
   missed it.
-- **Commits** are small and atomic: `fix(core): ...`, `feat(frapi): ...`, `refactor(mc/26.x): ...`, `docs: ...`,
-  `ci: ...`, with a body that explains why.
+- **Commits batch a concern, not a file** (the owner's decision, 2026-10-21): related changes (a fix with its tests
+  and docs, a round of core bytecode work, the CI changes of a pass) go in one commit, made once they are done and
+  checked, not after each edit. The subject is a strict Conventional Commit, `type(scope): summary` (`fix(preflight):`,
+  `feat(core):`, `fix(security):`, `ci:`, `docs:`); the body says why, and for a fix, why the tests missed it. Each
+  push starts a CI run of about 25 minutes per version, so a round's commits go up in one push.
 - **No placeholders** in merged code (`CONTRIBUTING.md`): an unsupported feature is reported in
   `fabric-bridge-report.txt`, `COMPATIBILITY.md` and `roadmap.md`, not stubbed.
 - **Pull requests are merged once CI is green on their final commit** (the owner's standing decision, 2026-10-19):
-  drive the PR to green, merge it with a merge commit, then continue on the same branch from the new `main`.
+  drive the PR to green, merge it with a merge commit whose title is a Conventional Commit summarising the pull
+  request, then continue on the same branch from the new `main`.
 - **One pull request per pass, not per change** (the owner's decision, 2026-10-20): commit and push to the working
   branch as work goes; while no pull request is open, a push builds nothing, so run CI on the branch by hand
   (`workflow_dispatch`) whenever game-facing work needs it. Open the pull request when the whole pass is done.
@@ -44,7 +48,8 @@ verified) and [`../CONTRIBUTING.md`](../CONTRIBUTING.md) (layout, build, adding 
 apply, only in GitHub Actions (`.github/workflows/build.yml`). The loop is: run the `coreOnly` build locally, push,
 and read the CI job logs. `compileJava` doesn't check mixin targets or injection points; those fail when the game
 applies them, which the CI server and client runs do for every commit of a pull request (built once, as the pull
-request; pushes to other branches build only on `main`).
+request; pushes to other branches build only on `main`). A change to documentation alone (`docs/`, `*.md`) builds
+nothing.
 
 **What CI proves, per version** (`.github/workflows/build.yml`):
 1. Unit tests (core, fabric-loader-api, api).
@@ -162,13 +167,13 @@ exists). The full inventory (target, injector, point and versions of every mixin
 
 | | 1.21.11 (0.141.6) | 26.1.2 (0.155.3) | 26.2 (0.161.0) | 26.3 (0.164.0) |
 |---|---|---|---|---|
-| `fabric-renderer-api-v1` | unsupported (its own mixins fail pre-flight, see `COMPATIBILITY.md`) | pass-through | pass-through | pass-through |
-| `fabric-renderer-indigo` (the renderer) | unsupported | pass-through | pass-through | pass-through |
-| Fabric models in the **world** (chunk meshing) | no | **yes**, `FabricBlockRendering` | **yes** | **yes** |
-| Fabric models as **parts** of a vanilla multipart or weighted model | no | **yes** (the whole block goes through Fabric's renderer) | **yes** | **yes** |
-| Fabric models in item / block entity rendering | no | upstream's mixins apply (not tested in CI) | same | same |
-| Moving blocks (pistons, falling blocks) and the breaking overlay | no | **yes** | **yes** | **yes** (moving blocks may be forced translucent) |
-| Block outlines, a moving block's glow outline | no | from the model's parts, as NeoForge sees them | same | same |
+| `fabric-renderer-api-v1` | pass-through (its mixins NeoForge's code can't take left out, M5) | pass-through | pass-through | pass-through |
+| `fabric-renderer-indigo` (the renderer) | pass-through | pass-through | pass-through | pass-through |
+| Fabric models in the **world** (chunk meshing) | **yes**, 1.21.11's `FabricBlockRendering` | **yes**, `FabricBlockRendering` | **yes** | **yes** |
+| Fabric models as **parts** of a vanilla multipart or weighted model | **yes** | **yes** (the whole block goes through Fabric's renderer) | **yes** | **yes** |
+| Fabric models in item / block entity rendering | not tested in CI | upstream's mixins apply (not tested in CI) | same | same |
+| Moving blocks (pistons, falling blocks) and the breaking overlay | **yes**, from parts made from the model's quads | **yes** | **yes** | **yes** (moving blocks may be forced translucent) |
+| Block outlines, a moving block's glow outline | from the parts made from the model's quads | from the model's parts, as NeoForge sees them | same | same |
 
 The 26.x surface is **not** the 1.x API most documentation describes. There is no `RenderMaterial`,
 `MaterialFinder` or `BlendMode`. Material state is per quad, on `MutableQuadView`: `chunkLayer`,

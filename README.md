@@ -7,7 +7,9 @@ next to your NeoForge mods.
 It is built to be:
 
 - **Lightweight.** No dependencies beyond what NeoForge already ships. Translation results are cached, so
-  later launches only re-check file hashes. Fabricated adds no per-tick work of its own.
+  later launches re-check memoised file hashes instead of translating again (NeoForge mods' nested jars are still
+  read each launch). Without Fabric mods, Fabricated adds nothing to the game. With them, its native Fabric API
+  modules listen to NeoForge's tick events whether or not a Fabric mod does, one event call per tick each.
 - **Robust.** A broken Fabric mod is disabled, not allowed to crash the game, whenever that can be decided
   before its code runs. Every decision is explained in `logs/fabric-bridge-report.txt`.
 - **Safe.** Mod jars are treated as untrusted input. Fabricated never runs mod code while translating, never
@@ -43,11 +45,12 @@ that NeoForge has already changed. Fabricated handles this per module:
   `fabric-object-builder-api-v1`, `fabric-item-api-v1`, `fabric-block-api-v1`,
   `fabric-events-interaction-v0`, `fabric-loot-api-v3`, `fabric-content-registries-v0`,
   `fabric-transfer-api-v1`, `fabric-api-lookup-api-v1`, `fabric-menu-api-v1` (`fabric-screen-handler-api-v1`
-  on 1.21.11) and `fabric-crash-report-info-v1`.
+  on 1.21.11) and `fabric-crash-report-info-v1`, plus `fabric-biome-api-v1` on 26.3.
 - **Pass-through**: the module is loaded from the official Fabric API jar you install. Fabricated checks
   every mixin against NeoForge's code before loading it ("mixin pre-flight"). Modules whose mixins can't
   apply are disabled, along with every mod that requires them, with an explanation.
-- **Unsupported**: development-only modules (game tests, data generation).
+- **Unsupported**: the development-only game test modules. Data generation passes through: mods' runtime code
+  uses its classes, and it generates nothing unless the `fabric-api.datagen` property is set.
 
 With the official Fabric API jar installed, the server boots on all four versions. The modules that can't
 work are disabled, and the rest load. So a Fabric mod that needs only the Fabric Loader API, `fabric-api-base` or pass-through modules that
@@ -184,7 +187,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). In short:
 
 ```bash
 ./gradlew -Pfabricated.coreOnly=true build          # unit tests, no Minecraft needed
-./gradlew :mc:26.2:fabricatedJar :mc:26.2:testmods   # build/libs/fabricated-0.1.0+mc26.2.jar
+./gradlew :mc:26.2:fabricatedJar :mc:26.2:testmods   # build/libs/fabricated-0.4.0+mc26.2.jar
 ```
 
 ## Design and research

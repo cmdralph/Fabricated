@@ -1,19 +1,23 @@
 # Compatibility
 
 Everything in this file comes from CI runs on a real NeoForge dedicated server (`ci/smoke-server.sh`) and a
-real NeoForge client (`ci/smoke-client.sh`), not from expectations. CI starts each version three times:
+real NeoForge client (`ci/smoke-client.sh`), not from expectations. CI starts each version many times (up to five
+server runs, and up to nine client runs on 1.21.11 or twelve on 26.x, all in `.github/workflows/build.yml`); these
+three are the base of this file:
 
 1. **Test mods only**: Fabricated plus the Fabric test mods in `mc/common/src/testmod*`. This is a pass/fail
    gate.
-2. **With the official Fabric API jar** added: the server must start (a gate); the other checks are
-   informational. The resulting `fabric-bridge-report.txt` is kept as a CI artifact
+2. **With the official Fabric API jar** added: the server must start (a gate), and the energy bridge check must
+   pass where CI finds Team Reborn's energy library for the version; the other checks are informational. The
+   resulting `fabric-bridge-report.txt` is kept as a CI artifact
    (`smoke-fabric-api-<version>`), and the tables below are taken from it.
 3. **Client**: a real NeoForge client, started headlessly, joins a singleplayer world with Fabricated and the test
    mod (client entrypoint, client lifecycle, a client resource listener, a networking round trip with the
    integrated server). This is a pass/fail gate.
 
-Last updated from CI run [38491176425](https://github.com/cmdralph/Fabricated/actions/runs/38491176425)
-(Fabricated 0.1.0 development build).
+The module tables were first taken from CI run [38491176425](https://github.com/cmdralph/Fabricated/actions/runs/38491176425)
+(Fabricated 0.1.0 development build) and have been edited since; a newer run's `smoke-fabric-api-<version>` report
+is the measured state.
 
 ## Minecraft versions
 
@@ -40,9 +44,10 @@ their sections below) and fixes the roadmap lists, each named in `ci/smoke-serve
 configuration task with the integrated server, an extended menu opens with its data, a Mod Menu config screen
 factory is registered with NeoForge, and no test mod check reports a failure.
 
-CI also starts the client with the full Fabric API jar, for information only (it doesn't fail the build). It
-joins its world and passes every client check on all four versions. On 26.x every Fabric API module loads on the
-client, the renderer API, Indigo and model loading included, and on 1.21.11 too since this pass. That run checks on
+CI also starts the client with the full Fabric API jar. The run itself is informational, but the checks CI then makes
+in its log are gates: Fabric's renderer API, model formats and client modules on 26.x, model loading and the renderer
+API on 1.21.11. It joins its world and passes every client check on all four versions. On 26.x every Fabric API
+module loads on the client, the renderer API, Indigo and model loading included, and on 1.21.11 too. That run checks on
 1.21.11 that a model file of a Fabric type is read by its Fabric deserializer and that Fabric block models are drawn in
 chunk sections. On the dedicated server no Fabric API module is disabled.
 
@@ -102,8 +107,8 @@ How to read the table:
 | fabric-key-mapping-api-v1 / key-binding-api-v1, screen-api-v1, rendering-v1, sound-api-v1, model-loading-api-v1 | client | client | client | client |
 | fabric-rendering-v1 on the client | loads (see below) | loads (see below) | loads (see below) | loads (see below) |
 | fabric-screen-api-v1, sound-api-v1 on the client | loads (see below) | loads (see below) | loads (see below) | loads (see below) |
-| fabric-model-loading-api-v1 on the client | loads without renderer-api (see below) | loads (see below) | loads (see below) | loads (see below) |
-| fabric-renderer-api-v1, fabric-renderer-indigo | unsupported | client (see below) | client (see below) | client (see below) |
+| fabric-model-loading-api-v1 on the client | loads (see below) | loads (see below) | loads (see below) | loads (see below) |
+| fabric-renderer-api-v1, fabric-renderer-indigo | client (see below) | client (see below) | client (see below) | client (see below) |
 | fabric-data-generation-api-v1 (its classes; it generates nothing unless `fabric-api.datagen` is set; its tag appender mixins, and on 26.3 its loot sub-provider mixins, are left out) | loads | loads | loads | loads |
 | fabric-gametest-api-v1, client-gametest | unsupported | unsupported | unsupported | unsupported |
 
@@ -167,9 +172,9 @@ failures fall into a few groups:
   `@ModifyExpressionValue`, `@Redirect` and so on), Fabricated points the injector at the overload (for any mod,
   reported as a warning).
 - **A mixin uses an unsupported module**: Mixin fails on a class it can't find as it applies a mixin, so a mod
-  whose mixin uses a class only an unsupported Fabric API module has (Continuity's use the renderer API, which can't
-  run on NeoForge 1.21.11) is disabled before launch with the reason. When the mixin's config has a plugin, which may
-  skip it at runtime, or isn't required, only that mixin is left out.
+  whose mixin uses a class only an unsupported Fabric API module has (Continuity's used the renderer API while that
+  was unsupported on 1.21.11; today only the game test modules are) is disabled before launch with the reason.
+  When the mixin's config has a plugin, which may skip it at runtime, or isn't required, only that mixin is left out.
 - **Dependency cascade**: a module that requires a disabled module is disabled too. In the current CI runs no
   Fabric API module is disabled only for that reason; `fabric-data-attachment-api-v1`, which needed
   object-builder, loads now.
@@ -896,8 +901,8 @@ A mod disabled this way can still be loaded without the mixin, by naming it in `
 ### What this means for Fabric mods
 
 A Fabric mod works today if it needs only the Fabric Loader API and the **native** or **loads** modules
-above. Many content mods also need item, block, entity or loot modules that still fail pre-flight, so they are
-disabled with a message naming the missing module.
+above (the item, block, entity and loot modules are native on all four versions), and its own mixins pass
+pre-flight or can be left out (LEAVE-1 above).
 
 ### Planned work, in order of impact
 
@@ -909,14 +914,14 @@ modules that cascade from it.
 2. ✅ `fabric-networking-api-v1` on 26.x (done). Its dependants now load or fail on their own mixins
    (particles, recipe-api). Ported to 1.21.11 as well.
 3. ✅ `fabric-resource-loader-v1` on all four versions (done). Unblocked the v0 API, creative-tab /
-   item-group and, on 26.2, advancement-api. tag-api, loot-api and resource-conditions now fail on their own
-   mixins (see above).
+   item-group and, on 26.2, advancement-api. tag-api, loot-api and resource-conditions then failed on their own
+   mixins (see above; all three load or are native now).
 4. ✅ `fabric-registry-sync-v0` on all four versions (done). Unblocked debug-api on 26.x. object-builder
-   now fails on its own mixins (see above) and is a candidate for a native implementation.
+   then failed on its own mixins (native since step 6).
 5. ✅ `fabric-entity-events-v1` on all four versions (done).
 6. ✅ `fabric-object-builder-api-v1` on all four versions (done). Unblocked `fabric-data-attachment-api-v1`.
 7. ✅ `fabric-item-api-v1` and `fabric-block-api-v1` on all four versions (done). The modules that build on them
-   (transfer, content registries) still fail on their own mixins.
+   (transfer, content registries) then failed on their own mixins (native since steps 10 and 11).
 8. ✅ `fabric-events-interaction-v0` on all four versions (done).
 9. ✅ `fabric-loot-api-v3` on all four versions (done).
 10. ✅ `fabric-content-registries-v0` on all four versions (done).

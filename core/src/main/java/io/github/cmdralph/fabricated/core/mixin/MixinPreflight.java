@@ -8,6 +8,7 @@ import java.util.Collections;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -95,6 +96,8 @@ public final class MixinPreflight {
 	 * build makes at that step, in the same method: Fabricated runs those entrypoints in NeoForge's mod loading. Mods inject
 	 * after them to run once every mod has initialized (owo-lib freezes its registries after the server's, HOOK-1).
 	 */
+	/** The receiver, among the values {@link #insertedArgument(ClassNode, String, String, String)} sees pushed. */
+	private static final int THIS = Integer.MIN_VALUE;
 	private static final Map<String, String> LOADER_HOOKS = Map.of(
 			"Lnet/fabricmc/loader/impl/game/minecraft/Hooks;startServer(Ljava/io/File;Ljava/lang/Object;)V",
 			"Lnet/neoforged/neoforge/server/loading/ServerModLoader;load(Z)V");
@@ -126,6 +129,12 @@ public final class MixinPreflight {
 	private final ClassBytesSource vanilla;
 	private final Map<String, Optional<ClassNode>> vanillaCache = new HashMap<>();
 	private final Map<String, Optional<ClassNode>> targetCache = new HashMap<>();
+	/**
+	 * {@link #independentHandlers} of each mixin as it was read: a repair moving an injector to a bridge (added to the
+	 * mixin once all are made) takes its handler out of the mixin's injectors, so a later handler sharing its state would
+	 * look independent.
+	 */
+	private final Map<ClassNode, Set<String>> independent = new IdentityHashMap<>();
 	/** The installed classes the checks read, with their fingerprints. */
 	private final Map<String, String> installedRead = new TreeMap<>();
 	/** Access transformer lines {@link #repairs} needs, by the method they make public. */
@@ -251,6 +260,7 @@ public final class MixinPreflight {
 			ClassNode node = modClasses.readNode(internal, 0);
 			if (node == null) continue;
 			Context ctx = new Context(configName, internal.replace('/', '.'), config, refmap, false, false, false, Set.of(), out, null);
+			independent.put(node, independentHandlers(node));
 			boolean changed = singleInjectionPoints(node);
 			for (String moved : anonymousTargetRepairs(node, ctx)) {
 				changed = true;
@@ -523,7 +533,7 @@ public final class MixinPreflight {
 	 * on with one value it works out ({@link #insertedParameter}, as {@code MappedRegistry.register} with an id). Its
 	 * {@code @Local}s must find their locals in the overload ({@link #localsInOverload}).
 	 */
-	private static List<String> overloadRepairs(ClassNode mixin, MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx,
+	private List<String> overloadRepairs(ClassNode mixin, MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx,
 			List<MethodNode> bridges) {
 		if (!(Annotations.value(injector, "method") instanceof List<?> selectors)) return List.of();
 		List<AnnotationNode> ats = Annotations.list(Annotations.value(injector, "at"));
@@ -567,7 +577,7 @@ public final class MixinPreflight {
 				// sharing the mixin's state with others that may stay moves only with them, which this doesn't do (HOOK-2's).
 				if (split && (inject && !Type.getReturnType(overload.desc).equals(Type.getReturnType(chosen.desc))
 						&& handlerArgs(handler).getLast().getDescriptor().equals(CALLBACK_INFO_RETURNABLE)
-						|| !independentHandlers(mixin).contains(handler.name + handler.desc))) continue;
+						|| !independentOf(mixin).contains(handler.name + handler.desc))) continue;
 				// A handler taking the method's parameters takes the other's as they are, when they are the same.
 				boolean sameParameters = Arrays.equals(Type.getArgumentTypes(chosen.desc), Type.getArgumentTypes(overload.desc));
 				int captured = sameParameters ? -1 : inject ? (takesParameters ? 0 : -1) : capturedFrom(handler, chosen);
@@ -934,9 +944,10 @@ public final class MixinPreflight {
 			boolean pointOnly = injector.desc.equals(INJECT) || injector.desc.equals(MODIFY_EXPRESSION_VALUE);
 			if (!point.equals("INVOKE") || ref.owner() == null || ref.name() == null || ref.desc() == null || !pointOnly && ats.size() != 1
 					|| !pointOnly && !WRAP_WITH_CONDITION.contains(injector.desc) && !injector.desc.equals(REDIRECT) && !injector.desc.equals(WRAP_OPERATION)) continue;
-			MethodInsnNode replacement = replacingOverload(patched, alignment.replacementOf(inVanilla.get(ordinal)), ref);
+			ClassNode owner = gameTarget(ref.owner());
+			MethodInsnNode replacement = replacingOverload(patched, alignment.replacementOf(inVanilla.get(ordinal)), ref, owner);
 			if (replacement == null) continue;
-			int inserted = insertedArgument(ref.desc(), replacement.desc);
+			int inserted = insertedArgument(owner, ref.name(), ref.desc(), replacement.desc);
 			if (!pointOnly && !bridgeTo(mixin, handler, injector, ref.owner(), ref.desc(), replacement.desc, inserted, replacement.getOpcode() == Opcodes.INVOKESTATIC,
 					bridges)) continue;
 			int now = 0;
@@ -953,14 +964,15 @@ public final class MixinPreflight {
 
 	/**
 	 * The one call, among the patched instructions {@code range} ({@code [from, to)}, null for none), of an overload of the
-	 * named method taking one more argument; null when there is none or more than one.
+	 * named method taking one more argument (as {@code owner}, the named method's class, tells it); null when there is none
+	 * or more than one.
 	 */
-	private static MethodInsnNode replacingOverload(MethodNode patched, int[] range, MemberRef ref) {
+	private static MethodInsnNode replacingOverload(MethodNode patched, int[] range, MemberRef ref, ClassNode owner) {
 		if (range == null) return null;
 		MethodInsnNode found = null;
 		for (int i = range[0]; i < range[1]; i++) {
 			if (!(patched.instructions.get(i) instanceof MethodInsnNode call) || !call.owner.equals(ref.owner()) || !call.name.equals(ref.name())
-					|| insertedArgument(ref.desc(), call.desc) < 0) continue;
+					|| insertedArgument(owner, ref.name(), ref.desc(), call.desc) < 0) continue;
 			if (found != null) return null;
 			found = call;
 		}
@@ -1011,8 +1023,8 @@ public final class MixinPreflight {
 	 * A {@code NEW} point selecting a constructor by its descriptor is moved the same way, to a constructor taking one
 	 * more argument (NeoForge's patches give records components): its handlers take the arguments, as a static call's.
 	 * An {@code INVOKE} point at a call NeoForge's patches moved into a hook of theirs moves to the hook's call
-	 * ({@link #hookCall}), its handlers bridged the same way when the hook takes one more argument, when the handler uses
-	 * nothing of the mixin's own ({@link #statelessHandlers}) (HOOK-2).
+	 * ({@link #hookCall}), its handlers bridged the same way when the hook takes one more argument, when the handler shares
+	 * none of the mixin's own state with its other injectors ({@link #independentHandlers}) (HOOK-2).
 	 * Returns a description of each move.
 	 */
 	private List<String> insertedArgumentRepairs(ClassNode mixin, MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx,
@@ -1076,7 +1088,7 @@ public final class MixinPreflight {
 					: callLeadingTo(methods, owner, name, desc);
 			// A handler sharing the mixin's state with others moves only with them, which this doesn't do: jGui (ReplayMod)
 			// keeps the screen's graphics from a @ModifyArg at the same call for its @Inject after it.
-			if ((hook != null || leading != null) && !independentHandlers(mixin).contains(handler.name + handler.desc)) continue;
+			if ((hook != null || leading != null) && !independentOf(mixin).contains(handler.name + handler.desc)) continue;
 			if (leading != null) {
 				int ordinal = Annotations.value(at, "ordinal") instanceof Integer n ? n : -1;
 				if (ordinal >= countCalls(methods, leading)) continue;
@@ -1283,6 +1295,56 @@ public final class MixinPreflight {
 	}
 
 	/**
+	 * {@link #insertedArgument(String, String)}, or, where the types can't tell (one more float among floats), what the
+	 * named method of {@code owner} tells when it only forwards to the overload: NeoForge keeps a method it gave a
+	 * parameter, deprecated, passing its own parameters in order and a default for the new one
+	 * ({@code Camera.setRotation(yRot, xRot)} calls {@code setRotation(yRot, xRot, 0F)}). -1 when neither tells.
+	 */
+	static int insertedArgument(ClassNode owner, String name, String desc, String overload) {
+		int byTypes = insertedArgument(desc, overload);
+		if (byTypes >= 0 || owner == null || Type.getArgumentTypes(overload).length != Type.getArgumentTypes(desc).length + 1) return byTypes;
+		MethodNode old = declared(owner, name, desc);
+		if (old == null || old.instructions == null) return -1;
+		boolean isStatic = (old.access & Opcodes.ACC_STATIC) != 0;
+		// What each value pushed before the call is: the old method's parameter it loads, or -1 for anything else.
+		Map<Integer, Integer> parameterAt = new HashMap<>();
+		int slot = isStatic ? 0 : 1;
+		Type[] params = Type.getArgumentTypes(desc);
+		for (int i = 0; i < params.length; i++) {
+			parameterAt.put(slot, i);
+			slot += params[i].getSize();
+		}
+		List<Integer> pushed = new ArrayList<>();
+		for (AbstractInsnNode insn : old.instructions) {
+			if (insn.getOpcode() < 0) continue; // labels, line numbers, frames
+			if (insn instanceof MethodInsnNode call) {
+				if (!call.owner.equals(owner.name) || !call.name.equals(name) || !call.desc.equals(overload)) return -1;
+				if (!isStatic && (pushed.isEmpty() || pushed.removeFirst() != THIS)) return -1;
+				if (pushed.size() != params.length + 1) return -1;
+				int inserted = -1;
+				for (int k = 0, own = 0; k < pushed.size(); k++) {
+					if (pushed.get(k) == own) {
+						own++;
+					} else if (inserted < 0 && pushed.get(k) == -1) {
+						inserted = k;
+					} else {
+						return -1;
+					}
+				}
+				return inserted;
+			}
+			if (insn instanceof VarInsnNode load && insn.getOpcode() >= Opcodes.ILOAD && insn.getOpcode() <= Opcodes.ALOAD) {
+				pushed.add(!isStatic && load.var == 0 && insn.getOpcode() == Opcodes.ALOAD ? THIS : parameterAt.getOrDefault(load.var, -2));
+			} else if (insn.getOpcode() >= Opcodes.ACONST_NULL && insn.getOpcode() <= Opcodes.LDC) {
+				pushed.add(-1); // a constant
+			} else {
+				return -1; // more than forwarding
+			}
+		}
+		return -1;
+	}
+
+	/**
 	 * The index of the one parameter {@code overload} adds to {@code desc}'s, with the same result, or -1: when it adds
 	 * none or several, or when which one is the added can't be told (next to another of its type).
 	 */
@@ -1358,7 +1420,7 @@ public final class MixinPreflight {
 	 * (others take the method's parameters too), and one sharing none of its mixin's state with its other injectors.
 	 * Returns a description of each move.
 	 */
-	private static List<String> constantSplitRepairs(ClassNode mixin, MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx) {
+	private List<String> constantSplitRepairs(ClassNode mixin, MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx) {
 		if (!injector.desc.equals(MODIFY_CONSTANT) || !(Annotations.value(injector, "method") instanceof List<?> selectors)
 				|| Annotations.value(injector, "slice") != null || handlerArgs(handler) == null || handlerArgs(handler).size() != 1) return List.of();
 		List<AnnotationNode> constants = Annotations.list(Annotations.value(injector, "constant"));
@@ -1380,7 +1442,7 @@ public final class MixinPreflight {
 			if (from == null || constants.stream().anyMatch(c -> InjectionPoints.constantVerdict(c, from) != Verdict.MISSING)) continue;
 			MethodNode split = splitOff(from, target, m -> constants.stream().allMatch(c -> InjectionPoints.constantVerdict(c, m) == Verdict.FOUND));
 			if (split == null || (split.access & Opcodes.ACC_STATIC) != (from.access & Opcodes.ACC_STATIC)
-					|| !independentHandlers(mixin).contains(handler.name + handler.desc)) continue;
+					|| !independentOf(mixin).contains(handler.name + handler.desc)) continue;
 			@SuppressWarnings("unchecked")
 			List<Object> values = (List<Object>) selectors;
 			values.set(i, split.name + split.desc);
@@ -1951,6 +2013,10 @@ public final class MixinPreflight {
 	 * may be the mixin's other members': architectury's entity manager mixin keeps the level its duck interface is given
 	 * for its hook alone. A stateless handler ({@link #statelessHandlers}) is one.
 	 */
+	private Set<String> independentOf(ClassNode mixin) {
+		return independent.computeIfAbsent(mixin, MixinPreflight::independentHandlers);
+	}
+
 	static Set<String> independentHandlers(ClassNode mixin) {
 		if (mixin == null) return Set.of();
 		Set<String> ownFields = new HashSet<>();

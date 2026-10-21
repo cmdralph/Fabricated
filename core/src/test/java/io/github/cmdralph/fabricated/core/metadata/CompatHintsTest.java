@@ -48,4 +48,13 @@ class CompatHintsTest {
 		assertEquals(1, hints("[]").warnings().size());
 		assertSame(CompatHints.NONE, FabricModJsonParser.parse("{\"schemaVersion\":1,\"id\":\"mm\",\"version\":\"1\"}").compatHints());
 	}
+
+	/** The config path pattern repeats a group per directory; a path of thousands of them once overflowed the stack. */
+	@Test
+	void aVeryLongConfigPathIsIgnored() throws Exception {
+		CompatHints h = hints("{\"mixins\": [\"" + "a/".repeat(5000) + "x.json\"]}");
+		assertNull(h.mixins());
+		assertEquals(1, h.warnings().size(), h.warnings().toString());
+		assertEquals("a/b/x.mixins.json", hints("{\"mixins\": [\"a/b/x.mixins.json\"]}").mixins().getFirst().config());
+	}
 }
