@@ -11,6 +11,7 @@ import net.minecraft.server.packs.PackLocationInfo;
 import net.minecraft.server.packs.PackSelectionConfig;
 import net.minecraft.server.packs.PackType;
 import net.minecraft.server.packs.PathPackResources;
+import net.minecraft.server.packs.repository.KnownPack;
 import net.minecraft.server.packs.repository.Pack;
 import net.neoforged.neoforge.event.AddPackFindersEvent;
 
@@ -25,6 +26,8 @@ import net.neoforged.neoforge.event.AddPackFindersEvent;
  */
 final class BuiltinPacks {
 	private static final Logger LOGGER = LoggerFactory.getLogger("Fabricated");
+	/** The namespace upstream's mod packs take in their known-pack identity. */
+	private static final String KNOWN_PACK_NAMESPACE = "vanilla";
 
 	private BuiltinPacks() {
 	}
@@ -41,9 +44,12 @@ final class BuiltinPacks {
 						pack.id().toString(),
 						pack.displayName(),
 						BuiltinPackSources.create(pack.modName(), pack.activationType().isEnabledByDefault()),
-						Optional.empty());
-				Pack created = Pack.readMetaAndCreate(info, new PathPackResources.PathResourcesSupplier(pack.root()), type,
-						new PackSelectionConfig(required, Pack.Position.TOP, false));
+						// Upstream's known-pack identity (PACK-3): vanilla marks the registry entries of a pack without one
+						// experimental, and asks to confirm creating or loading a world with them.
+						Optional.of(new KnownPack(KNOWN_PACK_NAMESPACE, pack.id().toString(), pack.modVersion())));
+				Pack.ResourcesSupplier files = new PathPackResources.PathResourcesSupplier(pack.root());
+				if (pack.overlayRoot() != null) files = LayeredPackResources.of(files, new PathPackResources.PathResourcesSupplier(pack.overlayRoot()));
+				Pack created = Pack.readMetaAndCreate(info, files, type, new PackSelectionConfig(required, Pack.Position.TOP, false));
 				if (created == null) {
 					LOGGER.warn("Built-in pack {} has no valid pack.mcmeta for {}, skipped", pack.id(), type);
 				} else {

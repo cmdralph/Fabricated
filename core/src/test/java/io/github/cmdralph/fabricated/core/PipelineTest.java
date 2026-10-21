@@ -47,6 +47,7 @@ import io.github.cmdralph.fabricated.core.remap.MappingTable;
 import io.github.cmdralph.fabricated.core.report.Report;
 import io.github.cmdralph.fabricated.core.resolve.Candidate;
 import io.github.cmdralph.fabricated.core.resolve.FabricApiPlan;
+import io.github.cmdralph.fabricated.core.testutil.TestEnumBodies;
 import io.github.cmdralph.fabricated.core.testutil.TestEnums;
 import io.github.cmdralph.fabricated.core.testutil.TestJars;
 import io.github.cmdralph.fabricated.core.translate.DefaultBridge;
@@ -479,6 +480,27 @@ class PipelineTest {
 		assertTrue(row.detail().contains("drawSections, which does not exist in com.base.Renderer"), row.detail());
 	}
 
+	/** REMAP-2: a mixin config the mod adds to Mixin itself, unlisted in its metadata (ReplayMod's), has its refmap remapped. */
+	@Test
+	void refmapsOfUnlistedMixinConfigsAreRemapped(@TempDir Path game) throws Exception {
+		String tiny = "v1\tofficial\tintermediary\nCLASS\ta\tnet/minecraft/class_1\n";
+		String proguard = "net.minecraft.world.Thing -> a:\n";
+		MappingTable table = MappingComposer.compose(new StringReader(tiny), new StringReader(proguard));
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		Path replay = TestJars.create().fabricModJson(TestJars.modJson("replay", "1.0", ""))
+				.text("mixins.replay.json", "{\"package\":\"com.replay.mixin\",\"refmap\":\"mixins.replay.refmap.json\",\"mixins\":[]}")
+				.text("mixins.replay.refmap.json", "{\"mappings\":{\"com/replay/mixin/ThingMixin\":{\"tick\":\"Lnet/minecraft/class_1;tick()V\"}}}")
+				.write(mods.resolve("replay.jar"));
+
+		Pipeline.Result result = Pipeline.run(input(game, List.of(replay), Namespace.INTERMEDIARY, Map.of(TARGET, targetClass()),
+				(cache, path) -> new Pipeline.Mappings(table, "test-hash"), List.of()));
+
+		try (SafeArchive jar = SafeArchive.open(result.mods().getFirst().translated().jar(), ArchiveLimits.DEFAULTS)) {
+			String refmap = jar.readText("mixins.replay.refmap.json");
+			assertTrue(refmap.contains("Lnet/minecraft/world/Thing;tick()V"), refmap);
+		}
+	}
+
 	/**
 	 * A NeoForge mod's mod properties are its custom values to Fabric code, and the Fabric mods it says it provides are
 	 * present: Sodium for NeoForge makes Fabric API's default renderer stand down and provides Indium, whose Fabric jar
@@ -802,6 +824,25 @@ class PipelineTest {
 	}
 
 	@Test
+	void aRequiredMixinUsingAModOnlyForTheOtherSideKeepsItsMod(@TempDir Path game) throws Exception {
+		// CORPUS-15: on Fabric a client-only library isn't on a server either, and a mod's mixin using it is in a class
+		// only the client loads (as GlitchCore's into its client render helper); it is no reason to disable the mod.
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		String api = "com/lib/Api";
+		Path lib = TestJars.create().fabricModJson(TestJars.modJson("client-lib", "1.0", "\"environment\":\"client\""))
+				.bytes(api + ".class", TestJars.emptyClass(api, "java/lang/Object"))
+				.write(mods.resolve("lib.jar"));
+		Path user = TestJars.create().fabricModJson(TestJars.modJson("user-mod", "1.0", "\"mixins\":[\"user.mixins.json\"]"))
+				.text("user.mixins.json", "{\"required\":true,\"package\":\"com.user.mixin\",\"mixins\":[\"UsesMixin\"]}")
+				.bytes("com/user/mixin/UsesMixin.class", mixinCalling("com/user/mixin/UsesMixin", api))
+				.write(mods.resolve("user.jar"));
+		Pipeline.Result result = Pipeline.run(input(game, List.of(lib, user), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
+
+		Set<String> loaded = result.mods().stream().map(m -> m.translated().candidate().id()).collect(Collectors.toSet());
+		assertEquals(Set.of("user-mod"), loaded, result.report().render());
+	}
+
+	@Test
 	void anEnumMixinIntoAnExtensibleEnumBecomesAnEnumExtension(@TempDir Path game) throws Exception {
 		// ENUM-1: NeoForge's loader adds the constants, from the mod's enum extension file; a constant built from a value
 		// computed when the class loads, from a method generated next to the mixins (ENUM-3). An enum mixin it can't take
@@ -846,6 +887,65 @@ class PipelineTest {
 		Report.ModRow row = result.report().mods().stream().filter(r -> r.id().equals("soup")).findFirst().orElseThrow();
 		assertEquals(Report.Status.DISABLED, row.status());
 		assertTrue(row.detail().contains("extensible enums"), row.detail());
+	}
+
+	@Test
+	void anEnumMixinTheEnumExtensionFileCantCarryBecomesAMixinAddingTheConstants(@TempDir Path game) throws Exception {
+		// ENUM-5: Wilder Wild's grass colour, a constant with a body of its own in one of NeoForge's extensible enums. FML
+		// refuses the enum mixin; an ordinary mixin adding the constant, with a delegate class running the body, passes
+		// pre-flight and loads the mod.
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		Path tundra = TestJars.create().fabricModJson(TestJars.modJson("example", "1.0", "\"mixins\":[\"example.mixins.json\"]"))
+				.text("example.mixins.json", "{\"required\":true,\"package\":\"com.example.mixin\",\"mixins\":[\"ModifierMixin\"]}")
+				.bytes(TestEnumBodies.MIXIN + ".class", TestEnumBodies.mixin())
+				.bytes(TestEnumBodies.BODY + ".class", TestEnumBodies.body(false))
+				.bytes(TestEnumBodies.HOLDER + ".class", TestEnumBodies.holder())
+				.write(mods.resolve("tundra.jar"));
+		Map<String, byte[]> gameClasses = Map.of(TARGET, targetClass(), TestEnumBodies.TARGET, TestEnumBodies.target(), TestEnumBodies.COLOR,
+				TestEnumBodies.color());
+		Pipeline.Result result = Pipeline.run(input(game, List.of(tundra), Namespace.OFFICIAL, gameClasses, null));
+
+		assertEquals(List.of("example"), result.mods().stream().map(m -> m.translated().candidate().id()).toList(), result.report().render());
+		try (SafeArchive overlay = SafeArchive.open(result.mods().getFirst().translated().overlay(), ArchiveLimits.DEFAULTS)) {
+			ClassNode mixin = new ClassNode();
+			new ClassReader(overlay.read(TestEnumBodies.MIXIN + ".class")).accept(mixin, ClassReader.SKIP_CODE);
+			assertEquals(0, mixin.access & Opcodes.ACC_ENUM, "the enum mixin is replaced by an ordinary one");
+			assertNotNull(overlay.read(TestEnumBodies.BODIES + "$0.class"), "the body's delegate is in the overlay");
+		}
+	}
+
+	@Test
+	void aFabricJarsDataLosesItsNeoForgeBuildsConditions(@TempDir Path game) throws Exception {
+		// DATA-1: Tectonic's Fabric jar carries its NeoForge build's conditions, whose type only that build registers.
+		String modifier = "data/tectonic/lithostitched/worldgen_modifier/lanterns.json";
+		String plain = "data/tectonic/worldgen/noise/plain.json";
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		Path tectonic = TestJars.create().fabricModJson(TestJars.modJson("tectonic", "1.0", ""))
+				.text(modifier, "{\"neoforge:conditions\": [{\"type\": \"tectonic:config\"}], \"type\": \"lithostitched:add_features\"}")
+				.text(plain, "{\"amplitudes\": [1.0]}")
+				.write(mods.resolve("tectonic.jar"));
+		Pipeline.Result result = Pipeline.run(input(game, List.of(tectonic), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
+
+		try (SafeArchive overlay = SafeArchive.open(result.mods().getFirst().translated().overlay(), ArchiveLimits.DEFAULTS)) {
+			assertEquals(Map.of("type", "lithostitched:add_features"), Json.parseObject(overlay.readText(modifier)));
+			assertNull(overlay.read(plain), "a file without them is the jar's own");
+		}
+	}
+
+	@Test
+	void aBuildForIntermediaryNamesIsDisabledOnAnUnobfuscatedVersion(@TempDir Path game) throws Exception {
+		// OBF-1: Modrinth lists Do a Barrel Roll's 1.21.11 build for 26.2; its mixins name intermediary classes.
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		Path old = TestJars.create().fabricModJson(TestJars.modJson("barrel", "1.0", "\"mixins\":[\"barrel.mixins.json\"]"))
+				.text("barrel.mixins.json", "{\"required\":true,\"package\":\"com.barrel.mixin\",\"client\":[],\"mixins\":[\"CameraMixin\"]}")
+				.bytes("com/barrel/mixin/CameraMixin.class", mixinClass("com/barrel/mixin/CameraMixin", "net/minecraft/class_4184", "method_19325"))
+				.write(mods.resolve("barrel.jar"));
+		Pipeline.Result result = Pipeline.run(input(game, List.of(old), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
+
+		assertTrue(result.mods().isEmpty(), result.report().render());
+		Report.ModRow row = result.report().mods().stream().filter(r -> r.id().equals("barrel")).findFirst().orElseThrow();
+		assertEquals(Report.Status.DISABLED, row.status());
+		assertTrue(row.detail().contains("obfuscated names") && row.detail().contains("net.minecraft.class_4184"), row.detail());
 	}
 
 	@Test

@@ -19,10 +19,10 @@ Last updated from CI run [38491176425](https://github.com/cmdralph/Fabricated/ac
 
 | Minecraft | NeoForge | Fabric API tested | Test mods | Server boots with Fabric API |
 |---|---|---|---|---|
-| 1.21.11 | 21.11.45 | 0.141.6+1.21.11 | ✅ all 36 server and 22 client checks | ✅ boots, all test-mod checks still pass |
-| 26.1.2 | 26.1.2.116 | 0.155.3+26.1.2 | ✅ all 36 server and 22 client checks | ✅ boots, all test-mod checks still pass |
-| 26.2 | 26.2.0.90 | 0.161.0+26.2 | ✅ all 36 server and 22 client checks | ✅ boots, all test-mod checks still pass |
-| 26.3 (beta) | 26.3.0.69-beta | 0.164.0+26.3 | ✅ all 36 server and 22 client checks | ✅ boots, all test-mod checks still pass |
+| 1.21.11 | 21.11.45 | 0.141.6+1.21.11 | ✅ every server and client check | ✅ boots, all test-mod checks still pass |
+| 26.1.2 | 26.1.2.116 | 0.155.3+26.1.2 | ✅ every server and client check | ✅ boots, all test-mod checks still pass |
+| 26.2 | 26.2.0.90 | 0.161.0+26.2 | ✅ every server and client check | ✅ boots, all test-mod checks still pass |
+| 26.3 (beta) | 26.3.0.69-beta | 0.164.0+26.3 | ✅ every server and client check | ✅ boots, all test-mod checks still pass |
 
 "Boots with Fabric API" means the server starts with the full official Fabric API jar installed. Modules
 that can't work on NeoForge are disabled before any code runs (see below); one that can do without a mixin NeoForge's
@@ -34,8 +34,8 @@ access widener applies; a `server` entrypoint runs; a mixin applies; a mod with 
 reported, naming the dependency; a mod with an impossible mixin is caught by pre-flight and loads without it; a mod whose
 entrypoint throws is isolated while the server keeps running; Fabricated's public API answers and its
 after-initializers callback runs; a client-only interface listed in `@EnvironmentInterface` is stripped on the
-server; and no test mod check reports a failure. The other 21 cover the native Fabric API modules (described in
-their sections below). The client checks: the client starts and joins a singleplayer world, the `main` and
+server; and no test mod check reports a failure. The others cover the native Fabric API modules (described in
+their sections below) and fixes the roadmap lists, each named in `ci/smoke-server.sh` by its finding. The client checks: the client starts and joins a singleplayer world, the `main` and
 `client` entrypoints run, the client-side native modules work, including a networking round trip and a
 configuration task with the integrated server, an extended menu opens with its data, a Mod Menu config screen
 factory is registered with NeoForge, and no test mod check reports a failure.
@@ -65,7 +65,7 @@ How to read the table:
 |---|---|---|---|---|
 | fabric-api-base | native | native | native | native |
 | fabric-crash-report-info-v1 | native | native | native | native |
-| fabric-biome-api-v1 | loads | loads | loads | loads |
+| fabric-biome-api-v1 | loads | loads | loads | native (see below) |
 | fabric-block-getter-api-v2 / block-view-api-v2 | loads | loads | loads | loads |
 | fabric-message-api-v1 | loads | loads | loads | loads |
 | fabric-rendering-fluids-v1 | loads | loads | loads | loads |
@@ -104,7 +104,8 @@ How to read the table:
 | fabric-screen-api-v1, sound-api-v1 on the client | loads (see below) | loads (see below) | loads (see below) | loads (see below) |
 | fabric-model-loading-api-v1 on the client | loads without renderer-api (see below) | loads (see below) | loads (see below) | loads (see below) |
 | fabric-renderer-api-v1, fabric-renderer-indigo | unsupported | client (see below) | client (see below) | client (see below) |
-| fabric-data-generation-api-v1, gametest, client-gametest | unsupported | unsupported | unsupported | unsupported |
+| fabric-data-generation-api-v1 (its classes; it generates nothing unless `fabric-api.datagen` is set; its tag appender mixins, and on 26.3 its loot sub-provider mixins, are left out) | loads | loads | loads | loads |
+| fabric-gametest-api-v1, client-gametest | unsupported | unsupported | unsupported | unsupported |
 
 ### Why modules are disabled
 
@@ -249,7 +250,15 @@ mixin into `Minecraft`'s constructor) after NeoForge has sorted the client's lis
 it, and runs from the next reload; NeoForge itself would throw there.
 
 Mod resources themselves need nothing: NeoForge already loads the `assets/` and `data/` of every mod, Fabric mods
-included. Resources from those mod packs report Fabric's mod pack source, as on Fabric.
+included. Resources from those mod packs report Fabric's mod pack source, as on Fabric. What only NeoForge reads in a
+Fabric jar built for both loaders is left out, as Fabric ignores it: the `neoforge:` sections of its `pack.mcmeta`,
+and the `neoforge:conditions` of its data files, which name its NeoForge build's own condition types (Tectonic's,
+DATA-1); the Fabric build's `fabric:load_conditions` still decide. A built-in pack (`resourcepacks/<name>`, Fabric API's
+`registerBuiltinPack`) is read with those changes too (PACK-2), and has Fabric API's known-pack identity, so the
+registry entries it adds are stable and a world with them opens without an experimental-settings warning (PACK-3).
+A mod that adds a pack source the vanilla way, replacing the repository's sources with a new immutable set
+(FrozenLib's resource pack API), keeps it: the set is made mutable again before NeoForge adds its own pack finders
+(PACK-1).
 
 Differences from upstream:
 
@@ -459,6 +468,25 @@ On 26.3, composting, stripping and fuel are data-driven in vanilla, and Fabric A
 
 CI checks, on all four versions: a flammable block, a waxable pair and a custom game event's vibration frequency take
 effect; up to 26.2 also a compostable item, a strippable block and a fuel value.
+
+### Native `fabric-biome-api-v1` (26.3)
+
+NeoForge reads a biome's climate, environment attributes, effects and generation settings from its own modifiable
+biome info, made when the biome is built, and keeps the biome's fields for them private. Upstream's module replaces
+those fields: on NeoForge that would change nothing NeoForge reads, and on 26.3, where mob spawns are an environment
+attribute, adding a spawn crashed world creation (`IllegalAccessError`, BIOME-1). On 26.3 Fabricated ships the module:
+
+| Part | On NeoForge |
+|---|---|
+| `BiomeModifications` | applied by a NeoForge biome modifier (`fabricated:fabric_biome_api`, declared by Fabricated's data pack) on NeoForge's builders, as the server starts: additions in NeoForge's `ADD` phase, removals in `REMOVE`, replacements in `MODIFY`, post-processing in `AFTER_EVERYTHING`; selectors see the biome as it was built, as upstream's do |
+| Mob spawns and spawn costs | NeoForge's spawn builder, which NeoForge writes into the biome's `NATURAL_MOB_SPAWNS` attribute as an overlay; a mod setting that attribute itself replaces the builder's spawns and costs. For a biome whose spawns aren't an overlay (which NeoForge then leaves alone), the spawns are read from the attribute and set on it, as upstream does |
+| `NetherBiomes`, `TheEndBiomes` | upstream's biome source mixins, unchanged |
+
+CI checks, on 26.3: a mob spawn added to plains and plains' changed temperature are in the biome once the server has
+started. On 1.21.11, 26.1.2 and 26.2 upstream's module loads: its spawn, effect and feature changes edit objects NeoForge's info
+shares, and the attribute map is an ordinary field there (NeoForge's coremod replaces only the climate and the effects,
+read in its source for 26.1 and 26.2), so they take effect; a weather change replaces the private climate field and
+fails when it runs (as read; UNVERIFIED in a game).
 
 ### Native `fabric-api-lookup-api-v1` and `fabric-transfer-api-v1`
 
@@ -731,6 +759,10 @@ A few mods' Fabric builds can't work on NeoForge whatever Fabricated does; these
 `compat-plan.json`). Such a build is disabled with the reason and what to do instead, and the mods that need it with
 it; `loadUnsupported` loads it anyway, for testing.
 
+A build for another Minecraft version that Fabricated can tell can't run is disabled too, with the build to install:
+on 26.x, one whose mixins name intermediary classes (`net.minecraft.class_1234`), the names obfuscated versions (1.21.11
+and older) run Fabric mods with, which 26.x doesn't have (OBF-1: Modrinth lists some 1.21.11 builds for 26.x too).
+
 - **Sodium and Iris**: their NeoForge builds are used (see *Renderer mods* above).
 - **Essential** (`essential-container`, and `essential-loader`, which partner mods nest): its Fabric build is a loader
   that downloads Essential when the game starts and adds it to Fabric Loader's internal mod list, class loader and
@@ -756,6 +788,10 @@ MixinExtras has NeoForge's jar, and a NeoForge mod nested in another jar has tha
   as a `jar:file:` URL into its jar), as Fabric Loader's class loader does; NeoForge's finds only files. Mods that
   find their classes by scanning a package (Reflections, which YUNG's API uses for what it registers) found nothing
   without it (SCAN-1). A scan outside an entrypoint, on another thread or later, still finds nothing.
+- A file read through one of the mod's classes (`Class.getResourceAsStream`, `Class.getResource`) is looked up in the
+  mod's own jar first and then, as Fabric's unnamed modules do, on the whole class path: NeoForge's module for the mod
+  has only its own files, so a mod reading Minecraft's `/version.json` that way (Lattice, while Mixin prepares its
+  config) stopped the game (RES-1). The mod's calls go through Fabricated's `ClassResources`.
 - `main` entrypoints run while NeoForge registers content, before `Minecraft` exists, where Fabric Loader runs them
   from `Minecraft`'s constructor: a mod reading `Minecraft.getInstance()` in its `main` entrypoint fails there and is
   marked as failed (Moonlight's 26.1.2 build, CORPUS-16). Client entrypoints run where Fabric runs them.
@@ -764,8 +800,14 @@ MixinExtras has NeoForge's jar, and a NeoForge mod nested in another jar has tha
   a dedicated server.
 - Of Fabric Loader's internals, `FabricLoaderImpl.INSTANCE` (its public API methods) and
   `FabricLauncherBase.getLauncher()` (environment, development flag, runtime namespace) are provided for the mods that
-  use them; other internal classes are not. A mod's code that reaches for another one, or for a member of Fabric
+  use them. `ModContainerImpl`, `EntrypointStorage` and `EntrypointMetadata` exist so that code naming them links
+  (FrozenLib's entrypoint injector, from a mixin plugin): there is no instance of the first two to reach, so such code
+  takes the fallback it keeps for a loader without them (LOADER-1). Other internal classes are not provided. A mod's code that reaches for another one, or for a member of Fabric
   Loader's API that Fabricated lacks, is listed among the report's linkage warnings before the game starts.
+- A registry a mod creates through vanilla's own code (`BuiltInRegistries`) before NeoForge's registration has ended
+  joins the root registry, which NeoForge froze after its new-registry event, as Fabric API's `FabricRegistryBuilder`
+  registries do; an entry a mod registers in a vanilla registry before NeoForge's registration events is accepted, as
+  on Fabric (REG-3: Wover, BetterX's library).
 - A mod whose required mixin (in a required config without a plugin) calls into a Fabric mod that isn't loading is
   disabled, with the reason: Mixin would stop the game looking for that mod's class while applying it.
 - Mods detect Fabricated with `FabricLoader.getInstance().isModLoaded("fabricated")`; see [API.md](API.md).
@@ -781,7 +823,8 @@ MixinExtras has NeoForge's jar, and a NeoForge mod nested in another jar has tha
 - Class tweakers v2 load: their `extend-enum` lines only declare the constants a mod's enum mixins add, which Mixin
   adds itself (0.17.1 or later, so on 26.x; not to NeoForge's own extensible enums).
 - An enum mixin that only adds constants to one of NeoForge's extensible enums (which NeoForge lets only its own enum
-  extensions change) becomes an enum extension NeoForge's loader applies, when each constant's name starts with the
+  extensions change: FML refuses an enum mixin into one) becomes an enum extension NeoForge's loader applies, when each
+  constant's name starts with the
   mod's id (Farmer's Delight's recipe book type). Constant arguments are written into the extension; arguments the
   mixin computes when the class loads (a registered object, a static array) come from a method Fabricated generates
   next to the mod's mixins, which runs the mixin's code for them when NeoForge adds the constant (ENUM-3). Where
@@ -789,6 +832,13 @@ MixinExtras has NeoForge's jar, and a NeoForge mod nested in another jar has tha
   with its raiders), the values are handed over in suppliers. Code that branches, uses local variables, or reads the
   mixin's or the enum's own members isn't moved, and its enum mixin disables the mod, with the reason, as other enum
   mixins into those enums do.
+- An enum mixin into one of NeoForge's extensible enums that the enum extension file can't carry (a constant named
+  otherwise than the mod's id and a colon, or with a body of its own) becomes an ordinary mixin into the enum's class
+  initializer that makes the constants with the enum's constructor and appends them to its values, as mods' own NeoForge
+  builds do (ENUM-5). A body overriding the method the enum forwards to a delegate (`GrassColorModifier`'s
+  `ColorModifier`, which Wilder Wild's tundra grass colour overrides) becomes a delegate class running it. Code that
+  branches or uses the mixin isn't moved, nor constants the mod's classes read as fields of the enum; such a mixin still
+  disables its mod. UNVERIFIED in the game.
 - Config screens a Fabric mod offers to Mod Menu (its `modmenu` entrypoint) open from the Config button of NeoForge's
   mod list. Mod Menu's API interfaces are provided, so such mods load without Mod Menu, which itself can't run on
   NeoForge (it would duplicate NeoForge's mod list): an installed Mod Menu jar is skipped and provided at its version.
@@ -809,8 +859,8 @@ own hook, a method whose signature NeoForge changed, a library class NeoForge lo
 stop the game on it, so pre-flight catches it before launch, and what happens next depends on whether the mod's own
 code can do without that mixin:
 
-- **A self-contained mixin** adds no interface to its target and has no accessor or invoker, so nothing outside it
-  calls into it. The mod loads without the failing part: only the injectors that fail when the mixin adds no fields
+- **A self-contained mixin** adds no interface to its target and has no accessor or invoker (an interface mixin, no
+  abstract method either), so nothing outside it calls into it. The mod loads without the failing part: only the injectors that fail when the mixin adds no fields
   of its own (Balm's `LivingEntityMixin` keeps its damage, heal and effect events and loses the one hook into
   `removeAllEffects`, at a `Map.clear()` call NeoForge's code doesn't make there), or the whole mixin when it does, as its injectors may share those
   fields. The features the left-out part hooks in for don't work. The report lists each one under "Mixins left out

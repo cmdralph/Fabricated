@@ -25,20 +25,43 @@ public final class ModContainerImpl implements ModContainer {
 	private final String parentId;
 	private final List<String> childIds;
 	private final FabricLoaderRuntime runtime;
+	private final Path overlay;
 	private List<Path> roots;
+	private Path overlayRoot;
 
 	/**
 	 * @param sources  jar files or directories holding the mod's files (first = primary)
 	 * @param parentId id of the containing mod for nested jars, else {@code null}
+	 * @param overlay  the jar of files translation generated or changed for the mod, which take priority over its own, or
+	 *                 {@code null}
 	 */
 	public ModContainerImpl(ModMetadata metadata, List<Path> sources, ModOrigin origin, String parentId, List<String> childIds,
-			FabricLoaderRuntime runtime) {
+			FabricLoaderRuntime runtime, Path overlay) {
 		this.metadata = metadata;
 		this.sources = List.copyOf(sources);
 		this.origin = origin;
 		this.parentId = parentId;
 		this.childIds = List.copyOf(childIds);
 		this.runtime = runtime;
+		this.overlay = overlay;
+	}
+
+	/**
+	 * A directory of the mod's overlay, when it has one there: its files take priority over the mod's own, as NeoForge
+	 * reads the mod's (a built-in pack's data without its NeoForge build's conditions, PACK-2). The root paths stay the
+	 * mod's own files, which mods walk.
+	 */
+	public synchronized Optional<Path> overlayDirectory(String path) {
+		if (overlay == null) return Optional.empty();
+		if (overlayRoot == null) {
+			try {
+				overlayRoot = FileSystems.newFileSystem(overlay, (ClassLoader) null).getRootDirectories().iterator().next();
+			} catch (IOException | RuntimeException e) {
+				return Optional.empty(); // a missing overlay changes nothing
+			}
+		}
+		Path directory = overlayRoot.resolve(path);
+		return Files.isDirectory(directory) ? Optional.of(directory) : Optional.empty();
 	}
 
 	@Override

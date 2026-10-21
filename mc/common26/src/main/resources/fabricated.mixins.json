@@ -17,6 +17,8 @@
     "ReloadableServerResourcesMixin",
     "ResourceMixin",
     "MappedRegistryMixin",
+    "MappedRegistryEarlyWriteMixin",
+    "PackRepositorySourcesMixin",
     "MobEffectMixin",
     "EntityTypeBuilderMixin",
     "BlockEntityTypeMixin",

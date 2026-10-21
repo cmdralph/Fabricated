@@ -1,6 +1,7 @@
 package io.github.cmdralph.fabricated.testmod;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.lang.reflect.Modifier;
 import java.net.JarURLConnection;
 import java.net.URI;
@@ -10,6 +11,8 @@ import java.util.jar.JarFile;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.mojang.serialization.Lifecycle;
 
 import io.github.cmdralph.fabricated.api.FabricApiModule;
 import io.github.cmdralph.fabricated.api.Fabricated;
@@ -23,6 +26,7 @@ import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.loader.api.ModContainer;
+import net.minecraft.core.MappedRegistry;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
@@ -44,6 +48,52 @@ public final class TestMod implements ModInitializer, DedicatedServerModInitiali
 	 * tell the two apart by namespace.
 	 */
 	public static final String NEOFORGE_NAMESPACE = "fabricated_neoforge_test";
+	/** Set when a pack repository's sources were made immutable (PackRepositoryMixin), as FrozenLib leaves them (PACK-1). */
+	public static volatile boolean immutablePackSources;
+
+	/** A registry vanilla's own code adds to the root while mods start, which works on Fabric (REG-3: Wover's). */
+	private static void lateRegistry() {
+		if (addRegistry("late")) LOGGER.info("FABRICATED-TEST late registry OK");
+	}
+
+	/**
+	 * Called from {@code RegistryDataLoader}'s class initializer, where Wover creates its registries and registers entries
+	 * in vanilla ones (REG-3): NeoForge has frozen them by then, and its registration events haven't opened them yet.
+	 */
+	public static void earlyRegistryWrites() {
+		Identifier stat = Identifier.fromNamespaceAndPath("fabricated_testmod", "early_stat");
+		try {
+			Registry.register(BuiltInRegistries.CUSTOM_STAT, stat, stat);
+			if (addRegistry("early")) LOGGER.info("FABRICATED-TEST early registry writes OK");
+		} catch (RuntimeException e) {
+			LOGGER.error("FABRICATED-TEST early registry writes FAILED", e);
+		}
+	}
+
+	@SuppressWarnings({"unchecked", "rawtypes"})
+	private static boolean addRegistry(String name) {
+		ResourceKey<Registry<String>> key = ResourceKey.createRegistryKey(Identifier.fromNamespaceAndPath("fabricated_testmod", name));
+		try {
+			Registry.register((Registry) BuiltInRegistries.REGISTRY, key.identifier(), new MappedRegistry<>(key, Lifecycle.stable()));
+			return BuiltInRegistries.REGISTRY.containsKey(key.identifier());
+		} catch (RuntimeException e) {
+			LOGGER.error("FABRICATED-TEST registry {} FAILED", name, e);
+			return false;
+		}
+	}
+
+	/**
+	 * RES-1: a file of another jar read through one of the mod's own classes, as Lattice reads Minecraft's version
+	 * information: on Fabric the class path has it, on NeoForge only the mod's module, unless Fabricated adapts the read.
+	 */
+	private static void classResources() {
+		try (InputStream in = TestMod.class.getResourceAsStream("/version.json")) {
+			if (in != null) LOGGER.info("FABRICATED-TEST class resources OK");
+			else LOGGER.error("FABRICATED-TEST class resources FAILED: /version.json not found through the mod's class");
+		} catch (IOException e) {
+			LOGGER.error("FABRICATED-TEST class resources FAILED", e);
+		}
+	}
 
 	/**
 	 * A classpath scan as Reflections starts one (YUNG's API finds what it registers that way): the directory of a package
@@ -99,6 +149,7 @@ public final class TestMod implements ModInitializer, DedicatedServerModInitiali
 		}
 
 		classpathScan();
+		classResources();
 
 		List<Runnable> custom = loader.getEntrypoints("fabricated-test", Runnable.class);
 		custom.forEach(Runnable::run);
@@ -107,6 +158,7 @@ public final class TestMod implements ModInitializer, DedicatedServerModInitiali
 		if (BuiltInRegistries.ITEM.getKey(item).equals(ITEM_ID)) {
 			LOGGER.info("FABRICATED-TEST registry OK");
 		}
+		lateRegistry();
 
 		Event<Runnable> event = EventFactory.createArrayBacked(Runnable.class, listeners -> () -> {
 			for (Runnable listener : listeners) listener.run();
@@ -128,6 +180,28 @@ public final class TestMod implements ModInitializer, DedicatedServerModInitiali
 			}
 		});
 		ServerLifecycleEvents.SERVER_STOPPING.register(server -> LOGGER.info("FABRICATED-TEST lifecycle server stopping OK"));
+		// Damage types in the mod's data and in its built-in pack, under conditions only a NeoForge build would read
+		// (neoforge:false), which Fabric ignores (DATA-1, PACK-2).
+		ServerLifecycleEvents.SERVER_STARTED.register(server -> {
+			var damageTypes = server.registryAccess().lookupOrThrow(Registries.DAMAGE_TYPE);
+			if (damageTypes.containsKey(Identifier.fromNamespaceAndPath("fabricated_testmod", "conditioned"))) {
+				LOGGER.info("FABRICATED-TEST data without NeoForge conditions OK");
+			}
+			Identifier builtin = Identifier.fromNamespaceAndPath("fabricated_testmod", "conditioned_builtin");
+			if (damageTypes.containsKey(builtin)) {
+				LOGGER.info("FABRICATED-TEST built-in pack data without NeoForge conditions OK");
+			}
+			// A world whose registries hold an experimental entry asks the player to confirm before it opens (PACK-3).
+			if (damageTypes.registrationInfo(ResourceKey.create(Registries.DAMAGE_TYPE, builtin))
+					.filter(info -> info.lifecycle().equals(Lifecycle.stable())).isPresent()) {
+				LOGGER.info("FABRICATED-TEST built-in pack data is stable OK");
+			}
+		});
+		// NeoForge adds its pack finders to the server's pack repository after it was made: it couldn't start had that
+		// failed on the immutable sources the test mod left there (PACK-1).
+		ServerLifecycleEvents.SERVER_STARTED.register(server -> {
+			if (immutablePackSources) LOGGER.info("FABRICATED-TEST immutable pack sources OK");
+		});
 		// Upstream fires TAGS_LOADED once a data load bound the tags and the items' default components: mods build item
 		// stacks in it (Jade, CORPUS-9), which throws while the components aren't bound.
 		CommonLifecycleEvents.TAGS_LOADED.register((registries, client) -> {

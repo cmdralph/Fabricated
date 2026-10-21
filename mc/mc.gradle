@@ -117,8 +117,13 @@ neoForge.addModdingDependenciesTo(sourceSets.testmod)
 neoForge.addModdingDependenciesTo(sourceSets.testmodbroken)
 neoForge.addModdingDependenciesTo(sourceSets.testmodstubs)
 
+// Mixin configs only this version ships (from its own src/main/resources), declared in the in-game mod's mods.toml.
+def versionMixins = (project.findProperty('version_mixin_configs') ?: '').split(',')*.trim().findAll { it }
+        .collect { "[[mixins]]\nconfig=\"${it}\"\n" }.join('\n')
+
 def expandProps = [
         version                : releaseName,
+        version_mixins         : versionMixins,
         minecraft_version      : mcVersion,
         neoforge_version_range : project.neoforge_version_range,
         minecraft_version_range: project.minecraft_version_range,

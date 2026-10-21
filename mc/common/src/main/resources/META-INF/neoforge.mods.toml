@@ -50,6 +50,9 @@ config="fabricated-transfer.mixins.json"
 config="fabricated-renderer.mixins.json"
 requiredMods=["fabric_renderer_api_v1"]
 
+# This Minecraft version's own mixin configs (version_mixin_configs in mc/<version>/gradle.properties): on 26.3,
+# fabric-biome-api-v1's biome source mixins, unchanged from upstream.
+${version_mixins}
 # Access for the vendored Fabric API sources (see the file).
 [[accessTransformers]]
 file="META-INF/accesstransformer.cfg"

@@ -3,6 +3,118 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-10-21 (pass after PR #51): biome modifications on 26.3, and what the advanced corpus stopped on
+
+**Plan.** Run 384 (PR #51's last) confirmed the 1.21.11 corpus client reaches a world with Friends and Foes loaded
+(MIX-1's plugin-mixin repair). The remaining stops were Fabric API's biome module on 26.3 (BIOME-1: the corpus server
+and client crash creating a world), a mixin pre-flight passed that failed once the game ran (Polymer), and an accessor
+pre-flight couldn't repair (JourneyMap).
+
+- BIOME-1: on 26.3 Fabricated ships `fabric-biome-api-v1`. Upstream's biome modifications replace `Biome` fields
+  NeoForge keeps private and no longer reads (NeoForge reads its modifiable biome info), so adding a mob spawn, which
+  is an environment attribute on 26.3, crashed world creation. They now run as a NeoForge biome modifier
+  (`fabricated:fabric_biome_api`, declared by Fabricated's data pack) on NeoForge's builders, Fabric's phases mapped
+  onto NeoForge's; upstream's API and biome source mixins ship unchanged. A version can now declare mixin configs of
+  its own (`version_mixin_configs`). The test mod adds a spawn and changes plains' temperature on 26.3, and checks both
+  once the server has started. Not built or run locally (Mojang's and NeoForge's servers are unreachable here): CI is
+  its first build. Run 385 (this PR's first): it builds, the test mod's checks pass, and the 26.3 corpus client and
+  server, which crashed on it, reach a world and start. With the corpus mods the test mod's spawn wasn't in plains,
+  though (the corpus server's check failed); the cause wasn't in the log's tail. One way it can happen: a biome whose
+  spawns aren't an overlay, which NeoForge doesn't write spawns into; such spawns are now set on the attribute as
+  upstream sets them, and the check reports what plains has when it fails.
+- RET-1: pre-flight took `@At("RETURN", ordinal = n)` as present in any method with code. Polymer's stream codec
+  injector asks for a second return this game build's `decode` doesn't have: it passed pre-flight and stopped the
+  advanced corpus at startup (1.21.11 server, run 383; 26.1.2 client, run 384). Return points now count returns as
+  Mixin does.
+- ACC-1: JourneyMap's `EditBoxAccessor` declares `isEditable()Z`, which `EditBox` already declares without public
+  access, so Mixin can't generate it and JourneyMap was disabled on every version (runs 381 to 383). The repair that
+  points such an accessor at the existing method now covers non-public ones too, made public by the mod's access
+  transformer.
+
+- DELEGATE-1: NeoForge keeps vanilla's `MappedRegistry.register(key, value, info)` as a call to an overload taking an
+  id first. FrozenLib's registry mixin captures the new entry's id at the method's end, which the kept method no longer
+  has, so FrozenLib and Wilder Wild were disabled on every version (runs 381 to 384). Injectors on such a method now
+  move to the overload: a handler taking the method's parameters gets them from a bridge taking the overload's, and a
+  captured local is found there by name, or by type as the one local of that type besides the added parameter. The
+  repair moving injectors into an overload also stopped moving a handler that takes the method's parameters unchanged,
+  which would have failed once the game ran.
+
+- RES-1: the advanced corpus client stopped on every version while Mixin prepared Lattice's config (Axiom's and
+  Flashback's config library): its plugin reads Minecraft's `/version.json` through its own class, which on NeoForge
+  looks only in the mod's own module, while Fabric's unnamed modules see the whole class path. A Fabric mod's
+  `Class.getResource(AsStream)` calls now go through Fabricated's `ClassResources`, which asks the class loader too when
+  the module has no such file. The test mod checks it on every version.
+- SHADOW-1: Server Translations shadows the captured `val$codec` of vanilla's anonymous `EncoderCache$2`, which NeoForge's
+  1.21.11 build names otherwise. Pre-flight looked the field up through the class's supertypes, one of which (a
+  DataFixerUpper interface) it has no bytes of, so it couldn't tell, and the mixin stopped the 1.21.11 advanced corpus
+  server (run 385). A shadowed field is now looked for in the target class only, as Mixin does, and one of a captured
+  variable is pointed at the only captured field of its type, as accessors of them already were.
+- CORPUS-15: GlitchCore's client render helper mixin uses Fabric API's client rendering module, which a dedicated
+  server doesn't load, so GlitchCore was disabled on every corpus server (run 385), and Biomes O' Plenty with it. A mod
+  only for the other side no longer counts as one that isn't loading: on Fabric it isn't there either, and a mixin
+  using it is in a class only that side loads.
+- REMAP-2: ReplayMod adds some of its mixin configs to Mixin itself instead of listing them in its metadata; on 1.21.11
+  their refmaps weren't remapped and still named intermediary classes, which stopped the advanced corpus client (run on
+  `b0f3606`). Refmaps of the mixin configs at a jar's root are now remapped, listed or not.
+- REQ-1: pre-flight took an injection point found in any of an injector's target methods as enough, while Mixin counts
+  the injections in all of them against `require`. FrozenLib wraps a call in two methods with `require = 2`, and
+  NeoForge's 1.21.11 build moved it out of one, which stopped the 1.21.11 advanced corpus (run on `b0f3606`).
+  Pre-flight now counts them. LAMBDA-2: an injector at a call NeoForge's build moved into a lambda of the method
+  (here an `Optional` callback) gets the lambda added to its methods, so FrozenLib's hook applies there.
+- LEAVE-2: an interface mixin with only handlers (no accessor, invoker or shadow) counts as self-contained, so one that
+  can't apply is left out instead of disabling its mod (owo-lib's debug hooks into DataFixerUpper on 26.2).
+- OBF-1: on 26.x, a mod whose mixins name intermediary classes (a build for 1.21.11 or older) is disabled with the
+  build to install: Modrinth lists Do a Barrel Roll's 1.21.11 build for 26.2, which crashed the 26.2 advanced corpus
+  client (run on `b871cd5`).
+- PACK-1: a pack repository's sources stay mutable for NeoForge's pack finders when a Fabric mod replaced them with
+  an immutable set, as vanilla has them: FrozenLib's resource pack API does, which crashed the 26.1.2 advanced corpus
+  client in `Minecraft`'s constructor (run on `b871cd5`). The test mod checks it on every version.
+- PACK-3: a Fabric mod's built-in packs take Fabric API's known-pack identity (namespace `vanilla`, the pack's id, the
+  mod's version). Without one, the registry entries a built-in pack adds were experimental, and creating or loading a
+  world with them asked for a confirmation that Fabric never shows. The test mod checks its built-in pack's damage type
+  is stable.
+- PACK-2: a Fabric mod's built-in packs are read with translation's changed files over the jar's, so DATA-1 reaches
+  them too (Tectonic's worldgen modifiers are in its built-in pack). The test mod checks a damage type under
+  `neoforge:false` in its own data and in its built-in pack on every version.
+- DATA-1: a Fabric jar's data files lose their `neoforge:conditions`, which Fabric never reads: Tectonic's name a
+  condition type only its NeoForge build registers, which stopped the 1.21.11 advanced corpus server (run on `b871cd5`).
+  The Fabric build's own `fabric:load_conditions` still decide.
+- DATAGEN-1: Fabric API's data generation module loads (from the player's Fabric API jar, as on Fabric): Wover's block
+  and item entrypoints load its tag providers at startup and failed without it, so BetterEnd and BetterNether registered
+  nothing and the 26.2 and 26.3 advanced corpus servers stopped loading their data (run on `b871cd5`). Its hooks act
+  only when the `fabric-api.datagen` property is set. Its tag appender mixins, which add removal methods NeoForge's tag
+  appenders already have, and on 26.3 its loot sub-provider mixins are left out (data generation only).
+  Fabricated's native registry sync gained upstream's `DynamicRegistriesImpl.FABRIC_DYNAMIC_REGISTRY_KEYS`, which
+  the module's dynamic registry provider reads: without it the linkage check disabled the module (run on `3e39947`).
+- ENUM-5: an enum mixin into one of NeoForge's extensible enums that its enum extension file can't carry (a name not
+  starting with the mod's id, a constant with a body of its own) becomes an ordinary mixin adding the constants to the
+  enum's values from its class initializer, as mods' own NeoForge builds do; FML refuses only enum mixins. A constant's
+  body becomes a delegate class where the enum forwards the overridden method to one (Wilder Wild's tundra grass colour).
+  UNVERIFIED in the game until the advanced corpus runs.
+- ENUM-4 (reverted): letting enum mixins into NeoForge's extensible enums through to Mixin, on the reading that NeoForge
+  didn't refuse them, crashed the 26.2 and 26.3 advanced corpus at startup on Wilder Wild's: FML's
+  `FMLMixinFeatureValidator` refuses them (run on `b0f3606`). Such a mixin disables its mod again.
+- Run on `fad7762` (this PR): CI green; RES-1 and BIOME-1 pass on 26.3; FrozenLib and Wilder Wild load on the 26.3
+  advanced client (DELEGATE-1, ENUM-4). The advanced corpus still stopped before reaching a world, for three new
+  reasons, each fixed here:
+  - LOADER-1: FrozenLib's mixin plugin injects its entrypoints into Fabric Loader's internal storage, and its code
+    names internal classes Fabricated lacked, which stopped 26.2 and 26.3 at startup. The classes now exist, with no
+    instance to reach, so FrozenLib's reflective lookup fails as it plans for and it runs its entrypoints itself.
+  - AT-1: one mod's access widener made `InstrumentItem.getInstrument` final (Fabric's implicit final for an accessible
+    private method) and another's extended it; NeoForge refuses the conflict, which stopped 1.21.11. That implicit final
+    isn't written any more, so the lines merge to Fabric's result.
+  - REG-3: Wover creates its registries through vanilla's `BuiltInRegistries`, and registers entries in vanilla ones,
+    while NeoForge processes its data pack registry event, after NeoForge froze them, which stopped 26.1.2. A frozen
+    built-in registry written to then is opened: the root until NeoForge's registration ends, as it is for
+    `FabricRegistryBuilder`; any other registry before NeoForge's registration events, which open and freeze every
+    registry themselves. The test mod checks both, from where Wover writes (run on `b0f3606` showed the root part
+    working, then Wover's next write).
+- CI prints the causes of a server or client crash report (a mod loading crash's issues are below its description).
+- The translation schema is bumped (28): translations cached by a build before PR #51 are made again.
+
+Run 384 also showed, still open: Moonlight's reload listener on 26.1.2 (CORPUS-16), and on 26.3 the advanced corpus
+server stopping on BIOME-1 as well.
+
 ## 2026-10-21 (pass after PR #50): more Fabric mods load, and run
 
 **Plan.** The corpus showed one mixin NeoForge's code can't take disabling a whole mod, and with it every mod that

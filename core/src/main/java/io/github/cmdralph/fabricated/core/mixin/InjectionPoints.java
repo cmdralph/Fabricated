@@ -163,14 +163,55 @@ final class InjectionPoints {
 	}
 
 	static Verdict evaluate(String point, String target, int ordinal, int opcode, Range range, MethodNode method) {
+		if (point.equals("LOAD") || point.equals("STORE")) {
+			// Not judged precisely (the local's type and index), but a slice without any local variable load or
+			// store (as when its end point is gone and Mixin cuts it down to one instruction) can't match.
+			if (range == Range.UNEVALUATED || method.instructions == null) return Verdict.UNKNOWN;
+			boolean load = point.equals("LOAD");
+			int last = Math.min(range.end(), method.instructions.size() - 1);
+			for (int i = Math.max(range.start(), 0); i <= last; i++) {
+				int op = method.instructions.get(i).getOpcode();
+				if (load ? op >= Opcodes.ILOAD && op <= Opcodes.ALOAD : op >= Opcodes.ISTORE && op <= Opcodes.ASTORE) return Verdict.UNKNOWN;
+			}
+			return Verdict.MISSING;
+		}
+		int n = count(point, target, ordinal, opcode, range, method);
+		return n == 0 ? Verdict.MISSING : n > 0 || n == PRESENT ? Verdict.FOUND : Verdict.UNKNOWN;
+	}
+
+	/** {@link #count}'s answer for a point the method has where the injections it makes there aren't counted. */
+	static final int PRESENT = -2;
+
+	/**
+	 * How many injections Mixin makes at the point in {@code method} (each instruction it matches in the slice, or one
+	 * with an ordinal); {@link #PRESENT} where the method has it but the slice couldn't be evaluated, -1 where the point
+	 * isn't judged.
+	 */
+	static int count(String point, String target, int ordinal, int opcode, Range range, MethodNode method) {
 		switch (point) {
-			case "HEAD", "RETURN", "TAIL" -> {
-				return method.instructions == null || method.instructions.size() == 0 ? Verdict.MISSING : Verdict.FOUND;
+			case "HEAD", "TAIL" -> {
+				return method.instructions == null || method.instructions.size() == 0 ? 0 : 1;
+			}
+			case "RETURN" -> {
+				// Mixin's BeforeReturn: each return instruction, or with an ordinal, only the ordinal-th in the slice.
+				if (method.instructions == null || method.instructions.size() == 0) return 0;
+				int countInMethod = 0;
+				int countInRange = 0;
+				for (int i = 0; i < method.instructions.size(); i++) {
+					int op = method.instructions.get(i).getOpcode();
+					if (op < Opcodes.IRETURN || op > Opcodes.RETURN) continue;
+					countInMethod++;
+					if (i >= range.start() && i <= range.end()) countInRange++;
+				}
+				if (ordinal < 0) return range != Range.UNEVALUATED && countInRange > 0 ? countInRange : PRESENT;
+				if (countInMethod <= ordinal) return 0;
+				if (range == Range.UNEVALUATED) return PRESENT;
+				return countInRange <= ordinal ? 0 : 1;
 			}
 			case "INVOKE", "INVOKE_ASSIGN", "INVOKE_STRING", "FIELD", "NEW" -> {
-				if (target == null) return Verdict.UNKNOWN;
+				if (target == null) return -1;
 				MemberRef ref = MemberRef.parse(target);
-				if (ref.fuzzy()) return Verdict.UNKNOWN;
+				if (ref.fuzzy()) return -1;
 				int countInMethod = 0;
 				int countInRange = 0;
 				for (int i = 0; i < method.instructions.size(); i++) {
@@ -180,26 +221,14 @@ final class InjectionPoints {
 					countInMethod++;
 					if (i >= range.start() && i <= range.end()) countInRange++;
 				}
-				if (countInMethod == 0) return Verdict.MISSING;
-				if (range == Range.UNEVALUATED) return Verdict.FOUND;
-				if (countInRange == 0) return Verdict.MISSING;
-				if (ordinal >= 0 && countInRange <= ordinal) return Verdict.MISSING;
-				return Verdict.FOUND;
-			}
-			case "LOAD", "STORE" -> {
-				// Not judged precisely (the local's type and index), but a slice without any local variable load or
-				// store (as when its end point is gone and Mixin cuts it down to one instruction) can't match.
-				if (range == Range.UNEVALUATED || method.instructions == null) return Verdict.UNKNOWN;
-				boolean load = point.equals("LOAD");
-				int last = Math.min(range.end(), method.instructions.size() - 1);
-				for (int i = Math.max(range.start(), 0); i <= last; i++) {
-					int op = method.instructions.get(i).getOpcode();
-					if (load ? op >= Opcodes.ILOAD && op <= Opcodes.ALOAD : op >= Opcodes.ISTORE && op <= Opcodes.ASTORE) return Verdict.UNKNOWN;
-				}
-				return Verdict.MISSING;
+				if (countInMethod == 0) return 0;
+				if (range == Range.UNEVALUATED) return PRESENT;
+				if (countInRange == 0) return 0;
+				if (ordinal >= 0) return countInRange <= ordinal ? 0 : 1;
+				return countInRange;
 			}
 			default -> {
-				return Verdict.UNKNOWN;
+				return -1;
 			}
 		}
 	}

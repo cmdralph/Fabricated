@@ -12,8 +12,6 @@ import io.github.cmdralph.fabricated.core.accesswidener.AccessWidenerFile.Entry;
 import io.github.cmdralph.fabricated.core.accesswidener.AccessWidenerFile.InjectedInterface;
 import io.github.cmdralph.fabricated.core.bytecode.ClassIndex;
 
-import org.objectweb.asm.Opcodes;
-
 /**
  * Converts access widener / class tweaker directives (already in runtime names) to NeoForge access
  * transformer lines.
@@ -21,6 +19,10 @@ import org.objectweb.asm.Opcodes;
  * <p>NeoForge's AT engine only ever widens access, so {@code private-f} means "keep the current access,
  * remove {@code final}", which is exactly what {@code mutable} needs. Directives for the same target are
  * merged into one line. Members widened by Fabric also widen their owning class, as Fabric does.
+ * <p>Fabric also makes a private instance method made accessible final, unless a mod makes it extendable: it merges
+ * all mods' wideners first. NeoForge reads each mod's file on its own and refuses one's {@code +f} next to another's
+ * {@code -f} for the same member, which stopped the game (AT-1), so that final isn't added: where another mod extends
+ * the method the merged line is Fabric's, and otherwise the method is only left overridable.
  * {@code inject-interface} has no AT equivalent and is returned separately for the interface-injection
  * class processor.
  */
@@ -55,20 +57,18 @@ public final class AccessTransformerConverter {
 	private static final class Target {
 		Modifier modifier = Modifier.PRIVATE;
 		boolean removeFinal;
-		boolean addFinal;
 
 		void widen(Modifier m) {
 			if (m.ordinal() < modifier.ordinal()) modifier = m;
 		}
 
 		String render(String target) {
-			return modifier.name().toLowerCase(Locale.ROOT) + (removeFinal ? "-f" : addFinal ? "+f" : "") + " " + target;
+			return modifier.name().toLowerCase(Locale.ROOT) + (removeFinal ? "-f" : "") + " " + target;
 		}
 	}
 
 	/**
-	 * @param game index of runtime game classes used to validate targets and to apply Fabric's
-	 *             "private methods made accessible become final" rule; may be {@code null}
+	 * @param game index of runtime game classes used to validate targets; may be {@code null}
 	 */
 	public static Result convert(AccessWidenerFile file, ClassIndex game) {
 		Map<String, Target> targets = new TreeMap<>();
@@ -98,9 +98,6 @@ public final class AccessTransformerConverter {
 					cls.widen(Modifier.PUBLIC);
 					if (e.access() == Access.ACCESSIBLE) {
 						t.widen(Modifier.PUBLIC);
-						boolean wasPrivate = access != null && (access & Opcodes.ACC_PRIVATE) != 0;
-						boolean isStatic = access != null && (access & Opcodes.ACC_STATIC) != 0;
-						if (wasPrivate && !isStatic && !e.name().equals("<init>")) t.addFinal = true;
 					} else {
 						t.widen(Modifier.PROTECTED);
 						t.removeFinal = true;
@@ -128,11 +125,6 @@ public final class AccessTransformerConverter {
 					}
 				}
 			}
-		}
-
-		// Extendable wins over Fabric's implicit "+f" for accessible private methods.
-		for (Target t : targets.values()) {
-			if (t.removeFinal) t.addFinal = false;
 		}
 
 		List<InjectedInterface> injections = new ArrayList<>();

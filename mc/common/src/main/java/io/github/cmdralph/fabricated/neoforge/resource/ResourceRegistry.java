@@ -13,6 +13,9 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
 
+import org.jspecify.annotations.Nullable;
+
+import io.github.cmdralph.fabricated.core.runtime.ModContainerImpl;
 import net.fabricmc.fabric.api.resource.v1.pack.PackActivationType;
 import net.fabricmc.loader.api.ModContainer;
 import net.minecraft.core.HolderLookup;
@@ -35,8 +38,14 @@ public final class ResourceRegistry {
 	public record Ordering(Identifier first, Identifier second) {
 	}
 
-	/** A pack inside a mod ({@code resourcepacks/<name>} by default), registered by {@code ResourceLoader.registerBuiltinPack}. */
-	public record BuiltinPack(Identifier id, String modName, Path root, Component displayName, PackActivationType activationType) {
+	/**
+	 * A pack inside a mod ({@code resourcepacks/<name>} by default), registered by {@code ResourceLoader.registerBuiltinPack}.
+	 *
+	 * @param modVersion  the mod's version, part of the pack's known-pack identity
+	 * @param overlayRoot the pack's directory in the mod's translation overlay, whose files take priority, or {@code null}
+	 */
+	public record BuiltinPack(Identifier id, String modName, String modVersion, Path root, @Nullable Path overlayRoot, Component displayName,
+			PackActivationType activationType) {
 	}
 
 	private final Map<Identifier, PreparableReloadListener> listeners = new LinkedHashMap<>();
@@ -107,8 +116,11 @@ public final class ResourceRegistry {
 		Objects.requireNonNull(activationType, "The activation type should not be null.");
 		Optional<Path> root = container.findPath(subPath).filter(Files::isDirectory);
 		if (root.isEmpty()) return false;
+		// Translation changed some of the pack's files (PACK-2): its data without the NeoForge build's conditions.
+		Path overlayRoot = container instanceof ModContainerImpl fabric ? fabric.overlayDirectory(subPath).orElse(null) : null;
 		synchronized (BUILTIN_PACKS) {
-			BUILTIN_PACKS.add(new BuiltinPack(id, container.getMetadata().getName(), root.get(), displayName, activationType));
+			BUILTIN_PACKS.add(new BuiltinPack(id, container.getMetadata().getName(), container.getMetadata().getVersion().getFriendlyString(), root.get(),
+					overlayRoot, displayName, activationType));
 		}
 		return true;
 	}

@@ -38,6 +38,8 @@ public final class RegistrySyncBridge {
 	private static final Logger LOGGER = LoggerFactory.getLogger("Fabricated");
 	/** True while NeoForge's registration events run: the only time new registries may join the root registry. */
 	private static volatile boolean registrationOpen;
+	/** True from common setup on, when NeoForge's registration has ended. */
+	private static volatile boolean registrationEnded;
 	private static boolean rootOpened;
 	/** Whether the root registry's callback is added (only read and written where registration events are posted). */
 	private static boolean syncedCallbackAdded;
@@ -69,6 +71,7 @@ public final class RegistrySyncBridge {
 		modBus.addListener(EventPriority.LOWEST, RegisterEvent.class, e -> closeRoot());
 		modBus.addListener(FMLCommonSetupEvent.class, e -> {
 			registrationOpen = false;
+			registrationEnded = true;
 			// A parallel event: freezing a vanilla registry belongs on the main thread.
 			e.enqueueWork(RegistrySyncBridge::closeRoot);
 		});
@@ -89,6 +92,24 @@ public final class RegistrySyncBridge {
 			LOGGER.warn("A Fabric mod is creating a registry outside NeoForge's registration events; registries are frozen by now, so this will fail");
 		}
 		return (WritableRegistry<WritableRegistry<?>>) (Object) root;
+	}
+
+	/**
+	 * Opens a frozen built-in registry that vanilla's own code writes to before NeoForge's registration has ended.
+	 * NeoForge freezes the root after its {@code NewRegistryEvent}, and processing its data pack registry event then loads
+	 * the class Wover hooks to create its registries ({@code BuiltInRegistries.registerSimple}) and register entries in
+	 * vanilla ones, which works on Fabric. NeoForge's registration events then open, run over and freeze every registry in
+	 * the root (read in NeoForge's {@code CommonModLoader}), so another registry is opened only before they start; the root
+	 * is closed again with the root {@link #rootForRegistration} opens.
+	 */
+	public static synchronized void openForEarlyWrite(MappedRegistry<?> registry) {
+		if (registrationEnded) return;
+		if (registry == BuiltInRegistries.REGISTRY) {
+			registry.unfreeze(false);
+			rootOpened = true;
+		} else if (!registrationOpen && BuiltInRegistries.REGISTRY.getValue(registry.key().identifier()) == registry) {
+			registry.unfreeze(false);
+		}
 	}
 
 	private static synchronized void closeRoot() {

@@ -40,7 +40,7 @@
                    │  b. Mixin prep    (refmap remap, config filtering, behaviorVersion)
                    │  c. Pre-flight    (mixin target/injection-point verification vs game bytecode)
                    │  d. AW/CT → AT    (+ interface-injection table)
-                   │  e. Overlay       (generated META-INF/neoforge.mods.toml, AT, manifest; pack.mcmeta without NeoForge-only sections; enum extensions)
+                   │  e. Overlay       (generated META-INF/neoforge.mods.toml, AT, manifest; pack.mcmeta without NeoForge-only sections; data without neoforge:conditions; enum extensions)
                    ▼
               [6] Package guard: JPMS split-package detection & resolution
                    ▼
@@ -241,9 +241,10 @@ Each mod's entrypoints run inside a guard that records mod id, entrypoint key, c
 | `fabric-menu-api-v1` / `fabric-screen-handler-api-v1` | **Native** | NeoForge `IMenuTypeExtension` / `RegisterMenuScreensEvent` |
 | `fabric-events-interaction-v0`, `fabric-entity-events-v1`, `fabric-message-api-v1`, `fabric-loot-api-v3` | **Native** | `PlayerInteractEvent`, `UseItemOnBlockEvent`, `LivingDeathEvent`, `ServerChatEvent`, `LootTableLoadEvent`, … |
 | `fabric-data-attachment-api-v1` | **Native** | NeoForge data attachments |
-| `fabric-api-lookup-api-v1`, `fabric-block-api-v1`, `fabric-block-getter-api-v2`/`block-view-api-v2`, `fabric-item-api-v1`, `fabric-object-builder-api-v1`, `fabric-tag-api-v1`, `fabric-serialization-api-v1`, `fabric-sound-api-v1`, `fabric-transfer-api-v1`, `fabric-recipe-api-v1`, `fabric-content-registries-v0`, `fabric-dimensions-v1`, `fabric-game-rule-api-v1`, `fabric-biome-api-v1`, `fabric-model-loading-api-v1`, `fabric-rendering-fluids-v1`, `fabric-crash-report-info-v1`, `fabric-transitive-access-wideners-v1`, `fabric-advancement-api-v1`, `fabric-permission-api-v1` | **Pass-through** (promoted to Native when pre-flight or testing shows a conflict) | upstream code |
+| `fabric-api-lookup-api-v1`, `fabric-block-api-v1`, `fabric-block-getter-api-v2`/`block-view-api-v2`, `fabric-item-api-v1`, `fabric-object-builder-api-v1`, `fabric-tag-api-v1`, `fabric-serialization-api-v1`, `fabric-sound-api-v1`, `fabric-transfer-api-v1`, `fabric-recipe-api-v1`, `fabric-content-registries-v0`, `fabric-dimensions-v1`, `fabric-game-rule-api-v1`, `fabric-biome-api-v1` (native on 26.3), `fabric-model-loading-api-v1`, `fabric-rendering-fluids-v1`, `fabric-crash-report-info-v1`, `fabric-transitive-access-wideners-v1`, `fabric-advancement-api-v1`, `fabric-permission-api-v1` | **Pass-through** (promoted to Native when pre-flight or testing shows a conflict) | upstream code |
 | `fabric-renderer-api-v1`, `fabric-renderer-indigo` | **Unsupported** | would replace NeoForge's model pipeline |
-| `fabric-data-generation-api-v1`, `fabric-gametest-api-v1`, `fabric-client-gametest-api-v1`, `fabric-debug-api-v1` | **Unsupported** | development-time only |
+| `fabric-data-generation-api-v1` | **Pass-through** | mods' runtime code references its classes (Wover's entrypoints load its tag providers, DATAGEN-1); its hooks act only when the `fabric-api.datagen` property is set |
+| `fabric-gametest-api-v1`, `fabric-client-gametest-api-v1` | **Unsupported** | development-time only |
 
 This table is data (`mc/<ver>/fabric-api-plan.json`), not code, so it can change per MC version without code changes.
 
@@ -311,8 +312,11 @@ A unit test remaps the same input twice and compares SHA-256.
 | `mutable field C f d` | `<current access>-f C f`, with the current access read from game bytecode (AT has no "keep access" modifier) |
 | `transitive-*` | same as the non-transitive form (ATs are global) |
 | `inject-interface C I` (class tweaker) | **not expressible in AT.** Applied by Fabricated's `ClassProcessor` (FML SPI), which adds `I` to `C` at load time. Generic signatures are kept. |
-| `extend-enum C K` (class tweaker v2) | nothing: the line only declares a constant the mod's enum mixin adds, which Mixin (0.17.1 or later) does itself. The mod is disabled if the running Mixin is older, or if `C` is one of NeoForge's `IExtensibleEnum`s (NeoForge reserves those for its own enum extensions). |
+| `extend-enum C K` (class tweaker v2) | nothing: the line only declares a constant the mod's enum mixin adds, which Mixin (0.17.1 or later) does itself. The mod is disabled if the running Mixin is older, or if `C` is one of NeoForge's `IExtensibleEnum`s (FML refuses enum mixins into those, ENUM-4) and the mixin can become neither an enum extension (ENUM-3) nor an ordinary mixin adding the constants (ENUM-5). |
 
+* Fabric also makes a private instance method made `accessible` final unless a mod extends it, from all mods' wideners
+  merged. NeoForge reads each mod's file on its own and stops the game when one's `+f` meets another's `-f` on the
+  same member (AT-1), so that final isn't written: where another mod extends the method, the lines merge to Fabric's.
 * Headers are validated: `accessWidener v1|v2 <ns>` and `classTweaker v1|v2 <ns>`. The namespace must be `intermediary` (1.21.11) or `official` (26.x), otherwise the mod is rejected with an explanation.
 * Entries targeting members that don't exist are dropped with a warning (Fabric Loader would crash).
 * The AT file is written into the overlay at `META-INF/accesstransformer.cfg`, which FML picks up by default.
@@ -336,7 +340,7 @@ versions is decided at compile time by which source folders it compiles, plus tw
 * **Mixin differences in Fabric mods** are repaired by core's pre-flight against the running game's bytecode
   (`MixinPreflight.repairs`: overloads NeoForge reordered or moved code into, constructors NeoForge kept for
   vanilla's signature, calls and constructor calls made through a subtype or given one more argument (through bridge
-  handlers that pass a handler's MixinExtras sugar on), renumbered lambdas, hard local captures, accessors of members
+  handlers that pass a handler's MixinExtras sugar on), renumbered lambdas, calls moved into a lambda of the method, hard local captures, accessors of members
   NeoForge added), not by per-version tables. Enum mixins into
   NeoForge's extensible enums become its enum extension entries (`EnumExtensions`), named enums included when their
   names already carry the mod's id.
