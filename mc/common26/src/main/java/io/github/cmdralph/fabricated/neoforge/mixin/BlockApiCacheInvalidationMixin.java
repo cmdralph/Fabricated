@@ -10,9 +10,9 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 
 /**
- * Invalidates Fabric's {@code BlockApiCache}s where NeoForge invalidates its capability caches: when a block entity
- * is placed or removed. Upstream does it from block entity load and unload events, which Fabricated only fires for
- * whole chunks, so without this a cache keeps returning a removed block entity's storage.
+ * Invalidates Fabric's {@code BlockApiCache}s where NeoForge invalidates its capability caches. Upstream does it from
+ * block entity load and unload events, which Fabricated fires too; NeoForge's also come when a NeoForge mod announces
+ * that what a position provides changed without a block entity changing, which Fabric's caches then see.
  */
 @Mixin(ServerLevel.class)
 public abstract class BlockApiCacheInvalidationMixin {
