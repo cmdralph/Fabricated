@@ -31,6 +31,8 @@ import io.github.cmdralph.fabricated.core.config.FabricatedConfig;
 import io.github.cmdralph.fabricated.core.json.JsonException;
 import io.github.cmdralph.fabricated.core.metadata.ModIds;
 import io.github.cmdralph.fabricated.core.mixin.PreflightFinding;
+import io.github.cmdralph.fabricated.core.remap.MappingException;
+import io.github.cmdralph.fabricated.core.remap.OfficialClasses;
 import io.github.cmdralph.fabricated.core.report.Report;
 import io.github.cmdralph.fabricated.core.resolve.FabricApiPlan;
 import io.github.cmdralph.fabricated.core.resolve.PlatformLibraries;
@@ -189,8 +191,19 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 			byte[] planJson = FabricatedInfo.readOptional("fabric-api-plan.json");
 			if (planJson == null) throw new IllegalStateException("This Fabricated build is missing its fabric-api-plan.json");
 			plan = FabricApiPlan.parse(new String(planJson, StandardCharsets.UTF_8));
-			Pipeline.VanillaGame vanilla = info.namespace() == Namespace.OFFICIAL && !fabricJars.isEmpty()
-					? VanillaGameJar.find(minecraft.getFilePath(), mcVersion, client, cache, vanillaJars) : Pipeline.VanillaGame.NONE;
+			Pipeline.VanillaGame vanilla = fabricJars.isEmpty() ? Pipeline.VanillaGame.NONE
+					: VanillaGameJar.find(minecraft.getFilePath(), mcVersion, client, cache, vanillaJars);
+			if (info.namespace() == Namespace.INTERMEDIARY && vanilla.classes() != ClassBytesSource.EMPTY) {
+				// 1.21.11's game jar is obfuscated: read in Mojang's names through the mappings NeoForge's installer left (VANILLA-2).
+				vanilla = new Pipeline.VanillaGame(new OfficialClasses(vanilla.classes(), () -> {
+					try {
+						return Files.newBufferedReader(IntermediaryMappings.locateMojangMappings(mcVersion, client, config.mojangMappingsPath()),
+								StandardCharsets.UTF_8);
+					} catch (MappingException e) {
+						throw new IOException(e.getMessage(), e);
+					}
+				}), vanilla.location() + ", in Mojang's names through its mappings");
+			}
 			Pipeline.Input input = new Pipeline.Input(gameDir, FMLPaths.CONFIGDIR.get(), config, cache, fabricJars, mcVersion, neoVersion,
 					client, info.namespace(), runtimeMixinVersion(info), mixinExtrasVersion(loadedMods), info.mixinLowest(), info.fabricatedVersion(), info.build(), !fml.isProduction(), gameClasses, List.of(minecraft.getFilePath()), vanilla, fabricatedFiles, untransformable,
 					platformPackages, plan, nativeApi, nativeApiInterfaces, neoForgeMods.mods(), neoForgeMods.classes(),

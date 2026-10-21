@@ -373,8 +373,8 @@ public final class Pipeline {
 		InstalledClasses installed = in.installedClasses().with(fabricJars(eligible, opened, mappingTable == null ? null : new JarRemapper(mappingTable)));
 		TranslationEnvironment env = new TranslationEnvironment(in.minecraftVersion(), in.neoForgeVersion(), in.clientSide(), in.namespace(),
 				in.runtimeMixinVersion(), in.mixinExtrasVersion(), in.lowestMixinBehavior(), in.fabricatedVersion() + " " + in.fabricatedBuild(), mappingTable, mappingsHash, game, in.untransformableClasses(),
-				// Vanilla's code has the game's names only where Fabric mods use Mojang's (26.x).
-				in.namespace() == Namespace.OFFICIAL ? in.vanillaGame().classes() : ClassBytesSource.EMPTY, installed, installed.isEmpty() ? game : new ClassIndex(gameClasses.or(installed)), unsupportedPackages(scan.candidates()));
+				// In the game's names: on 1.21.11 the loader reads the obfuscated jar through Mojang's mappings.
+				in.vanillaGame().classes(), installed, installed.isEmpty() ? game : new ClassIndex(gameClasses.or(installed)), unsupportedPackages(scan.candidates()));
 		Rounds rounds = new Rounds();
 		try {
 			rounds.run(scan.candidates(), eligible, resolver(), new ModTranslator(env, in.cache(), config.limits()));
