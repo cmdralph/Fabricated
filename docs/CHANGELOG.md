@@ -14,10 +14,11 @@ chunk on a feature order cycle.
   Fabric API puts in it: the server and its registries once the server's login listener exists, the player's profile
   once login succeeds (both sides), and the client's registries once its play listener exists. Polymer's ingredient
   codec read no context while the splitter measured the recipe sync, which closed the connection, and Polymer warned
-  that chunk packets lacked the registries. The context's keys are made directly: made with `PacketContext.key`, they
-  read as unset through `PacketContext`'s constants whenever a connection's context initialized first (the client run
-  with the test mods alone). The test mod sends a payload large enough to be split, whose codec checks the context on
-  both sides.
+  that chunk packets lacked the registries. The context's keys live in a class of their own: as
+  `PacketContextImpl`'s, they read as null through `PacketContext`'s constants whenever a connection's context
+  initialized first (the client runs with the test mods alone and with the recipe viewers): a class's initialization
+  first initializes the interfaces with default methods it implements, before the class's own keys are set. The test
+  mod sends a payload large enough to be split, whose codec checks the context on both sides.
 - MODIFIER-1: a Fabric jar's NeoForge biome and structure modifiers (its NeoForge build's, which Fabric never reads)
   become NeoForge's `neoforge:none`. YUNG's Extras' 26.1.2 Fabric jar carries its desert decorations as a NeoForge
   biome modifier and adds them from its Fabric code too, so they went into desert biomes twice: the 26.1.2 advanced

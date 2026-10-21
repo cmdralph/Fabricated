@@ -33,6 +33,7 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ServerLoginPacketListenerImpl;
 
 import net.fabricmc.fabric.impl.networking.context.PacketContextImpl;
+import net.fabricmc.fabric.impl.networking.context.PacketContextKeys;
 
 /**
  * This class allow to easily pass context between multiple packet listeners and packet serialization.
@@ -61,27 +62,29 @@ import net.fabricmc.fabric.impl.networking.context.PacketContextImpl;
  */
 @ApiStatus.NonExtendable
 public interface PacketContext {
+	// Fabricated: the constants read PacketContextKeys, not PacketContextImpl, which initializes this interface first
+	// when it is initialized first (NET-7).
 	/**
 	 * The server instance that handles this connection. Only present on clientbound connections.
 	 * This value is set once the {@link ServerLoginPacketListenerImpl} is constructed.
 	 */
-	ReadKey<MinecraftServer> SERVER_INSTANCE = PacketContextImpl.SERVER_INSTANCE;
+	ReadKey<MinecraftServer> SERVER_INSTANCE = PacketContextKeys.SERVER_INSTANCE;
 	/**
 	 * The instance of registry access.
 	 * This value is set once the {@link ServerLoginPacketListenerImpl} is constructed (on serve)
 	 * and once client side configuration is finished.
 	 */
-	ReadKey<RegistryAccess> REGISTRY_ACCESS = PacketContextImpl.REGISTRY_ACCESS;
+	ReadKey<RegistryAccess> REGISTRY_ACCESS = PacketContextKeys.REGISTRY_ACCESS;
 	/**
 	 * The Game Profile attached to this connection.
 	 * This value is set on both server and client, once the login process succeeds.
 	 */
-	ReadKey<GameProfile> GAME_PROFILE = PacketContextImpl.GAME_PROFILE;
+	ReadKey<GameProfile> GAME_PROFILE = PacketContextKeys.GAME_PROFILE;
 	/**
 	 * The connection that owns this packet context.
 	 * This value is always present.
 	 */
-	ReadKey<@NonNull Connection> CONNECTION = PacketContextImpl.CONNECTION;
+	ReadKey<@NonNull Connection> CONNECTION = PacketContextKeys.CONNECTION;
 
 	/**
 	 * Returns currently stored value.

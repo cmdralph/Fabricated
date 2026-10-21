@@ -34,10 +34,11 @@ import net.fabricmc.fabric.api.networking.v1.context.PacketContext;
 
 public final class PacketContextImpl implements PacketContext {
 	public static final ScopedValue<PacketContext> VALUE = ScopedValue.newInstance();
-	public static final Key<MinecraftServer> SERVER_INSTANCE = fabricKey("server_instance");
-	public static final Key<RegistryAccess> REGISTRY_ACCESS = fabricKey("registry_access");
-	public static final Key<GameProfile> GAME_PROFILE = fabricKey("game_profile");
-	public static final Key<@NonNull Connection> CONNECTION = fabricKey("connection");
+	// Fabricated: the keys are made in PacketContextKeys, whose comment says why.
+	public static final Key<MinecraftServer> SERVER_INSTANCE = PacketContextKeys.SERVER_INSTANCE;
+	public static final Key<RegistryAccess> REGISTRY_ACCESS = PacketContextKeys.REGISTRY_ACCESS;
+	public static final Key<GameProfile> GAME_PROFILE = PacketContextKeys.GAME_PROFILE;
+	public static final Key<@NonNull Connection> CONNECTION = PacketContextKeys.CONNECTION;
 
 	private final ReadWriteLock lock = new ReentrantReadWriteLock();
 	private final Map<Key<?>, Object> contextMap = new IdentityHashMap<>();
@@ -69,13 +70,6 @@ public final class PacketContextImpl implements PacketContext {
 		}
 
 		this.lock.writeLock().unlock();
-	}
-
-	// Made here, not with PacketContext.key: PacketContext's constants are this class's keys, so initializing it from
-	// this class's initializer, as a connection's first context does, would read them before they are set, and every
-	// lookup through PacketContext's constants would find nothing (Fabricated, NET-7).
-	private static <T> Key<T> fabricKey(String path) {
-		return new KeyImpl<>(Identifier.fromNamespaceAndPath("fabric", path));
 	}
 
 	public static final class KeyImpl<T> implements PacketContext.Key<T> {
