@@ -3,6 +3,19 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-10-21 (pass after PR #59): calls of game code NeoForge changed
+
+**Plan.** PR #59's last run (`e00f341`) had every advanced client in its world on all four versions, with no failed
+check. ANON-1 moved Polymer's codec and item stack hooks on every version, and HOOK-3 moved Ledger's explosion hook on
+three. Beyond the hooks still left out, the advanced clients' linkage check named one call of game code NeoForge's build
+doesn't have, on every version.
+
+- CTOR-1: a subclass of `CreativeModeTab` calling vanilla's constructor (Polymer's tabs for a server's item groups)
+  calls NeoForge's constructor taking a builder, with a builder Fabricated makes from vanilla's arguments. NeoForge's
+  patches give vanilla's constructor eight more parameters, and Polymer swallows the `NoSuchMethodError`, so a server's
+  Polymer item groups never showed in the creative inventory. Translation schema 36.
+- Roadmap: SPLIT-1 and SIG-2 recorded as seen on `1b48295`, ANON-1 and HOOK-3 on `e00f341`.
+
 ## 2026-10-21 (pass after PR #58): anonymous classes as NeoForge's build numbers them
 
 **Plan.** PR #58's last run had every advanced client in its world on all four versions, with no failed check; what is
