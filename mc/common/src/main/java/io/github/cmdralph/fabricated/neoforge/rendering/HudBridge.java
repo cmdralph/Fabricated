@@ -4,9 +4,11 @@ import java.lang.invoke.LambdaMetafactory;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -38,6 +40,7 @@ public final class HudBridge {
 	private static final Logger LOGGER = LoggerFactory.getLogger("Fabricated");
 	private static final String REGISTRY = "net.fabricmc.fabric.impl.client.rendering.hud.HudElementRegistryImpl";
 	private static final String ELEMENT = "net.fabricmc.fabric.api.client.rendering.v1.hud.HudElement";
+	private static final String VANILLA_ELEMENTS = "net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements";
 
 	private static final Identifier SPECTATOR_MENU = Identifier.withDefaultNamespace("spectator_menu");
 	private static final Identifier HOTBAR = Identifier.withDefaultNamespace("hotbar");
@@ -104,9 +107,11 @@ public final class HudBridge {
 
 	/**
 	 * Upstream's {@code HudElementRegistryImpl}, reached through method handles, and a factory for {@code HudElement}s
-	 * that draw a NeoForge layer (a generated class, like a lambda: no reflection per frame).
+	 * that draw a NeoForge layer (a generated class, like a lambda: no reflection per frame). Upstream keeps its vanilla
+	 * elements' roots by identity, keyed by the {@code VanillaHudElements} constants, so an element is looked up by the
+	 * constant equal to its id ({@code vanillaIds}): an equal id of Fabricated's finds none (HUD-1).
 	 */
-	private record FabricHud(MethodHandle getRoot, MethodHandle draw, MethodHandle element) {
+	private record FabricHud(MethodHandle getRoot, MethodHandle draw, MethodHandle element, Map<Identifier, Identifier> vanillaIds) {
 		static @Nullable FabricHud find() {
 			ClassLoader loader = HudBridge.class.getClassLoader();
 			Class<?> registry;
@@ -135,7 +140,11 @@ public final class HudBridge {
 								MethodType.methodType(element, GuiLayer.class), drawType,
 								lookup.findVirtual(GuiLayer.class, layerDraw.getName(), drawType), drawType)
 						.getTarget().asType(MethodType.methodType(Object.class, GuiLayer.class));
-				return new FabricHud(getRoot, draw, factory);
+				Map<Identifier, Identifier> vanillaIds = new HashMap<>();
+				for (Field field : Class.forName(VANILLA_ELEMENTS, true, loader).getFields()) {
+					if (Modifier.isStatic(field.getModifiers()) && field.get(null) instanceof Identifier id) vanillaIds.put(id, id);
+				}
+				return new FabricHud(getRoot, draw, factory, vanillaIds);
 			} catch (ReflectiveOperationException | java.lang.invoke.LambdaConversionException | LinkageError e) {
 				LOGGER.error("fabric-rendering-v1's HUD registry has an unexpected shape; Fabric HUD elements will not be drawn", e);
 				return null;
@@ -147,7 +156,7 @@ public final class HudBridge {
 			Object root;
 			Object vanillaElement;
 			try {
-				root = (Object) getRoot.invokeExact(element);
+				root = (Object) getRoot.invokeExact(vanillaIds.getOrDefault(element, element));
 				if (root == null) return vanilla;
 				vanillaElement = (Object) this.element.invokeExact(vanilla);
 			} catch (RuntimeException | Error e) {
