@@ -30,7 +30,13 @@ now load do as the game runs, with deep-hook mods in a corpus of their own.
   static array) becomes a NeoForge enum extension too: the arguments come from a method Fabricated generates next to
   the mod's mixins, which runs the mixin's code for them when NeoForge adds the constant, in suppliers where NeoForge
   reserves the mixin's constructor for one taking them. That is what still kept Friends and Foes from loading on
-  every version. Core's tests define the generated classes and call them as NeoForge's loader does.
+  every version. Core's tests define the generated classes and call them as NeoForge's loader does. Run 382: Friends
+  and Foes loaded on every version. Loading, it showed two more problems: MIX-1 below, and on 26.3 Fabric API's own
+  biome module, which writes a field NeoForge keeps private when a mod adds a spawn (BIOME-1, open: world creation
+  crashed).
+- MIX-1: Fabric's Mixin declares the injection points of `@Redirect`, `@ModifyArg`, `@ModifyArgs` and
+  `@ModifyVariable` as arrays, and MixinExtras 0.5.3 on NeoForge 1.21.11 reads a `@Redirect`'s as one annotation: the
+  1.21.11 corpus client crashed on Friends and Foes' (run 382). An array of one is now rewritten as that point.
 - VER-1: a Fabric jar whose version doesn't start with a digit stopped the launch, as NeoForge's loader refuses such
   a version: every advanced corpus run of run 381 stopped at startup on a library FancyMenu nests
   (`animated-gif-lib-1.7`). It is now written as `0+<version>`.

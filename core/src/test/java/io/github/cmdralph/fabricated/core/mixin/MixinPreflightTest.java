@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
+import java.util.function.Function;
 
 import org.junit.jupiter.api.Test;
 import org.objectweb.asm.AnnotationVisitor;
@@ -1415,6 +1416,51 @@ class MixinPreflightTest {
 		List<PreflightFinding> findings = preflight.check("test.mixins.json", config, Refmap.EMPTY, Set.of());
 		assertEquals(1, findings.size(), findings.toString());
 		assertTrue(findings.getFirst().mixin().endsWith("Private"), "the private duplicate still fails: " + findings);
+	}
+
+	/**
+	 * A {@code @Redirect} built against Fabric's Mixin, whose {@code at} is an array, gets the single injection point
+	 * NeoForge 1.21.11's MixinExtras reads (MIX-1); the mixin is rewritten even when its target is no game class.
+	 */
+	@Test
+	void aRedirectsInjectionPointArrayOfOneBecomesSingle() throws Exception {
+		Function<String, byte[]> redirect = target -> {
+			ClassWriter cw = new ClassWriter(0);
+			cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, "com/example/mixin/Redir", null, "java/lang/Object", null);
+			AnnotationVisitor m = cw.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false);
+			AnnotationVisitor targets = m.visitArray("value");
+			targets.visit(null, Type.getObjectType(target));
+			targets.visitEnd();
+			m.visitEnd();
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "h", "(L" + TARGET + ";I)V", null, null);
+			AnnotationVisitor ann = mv.visitAnnotation(REDIRECT, true);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "tick");
+			methods.visitEnd();
+			AnnotationVisitor ats = ann.visitArray("at");
+			AnnotationVisitor at = ats.visitAnnotation(null, AT);
+			at.visit("value", "INVOKE");
+			at.visit("target", "L" + TARGET + ";helper(I)V");
+			at.visitEnd();
+			ats.visitEnd();
+			ann.visitEnd();
+			mv.visitCode();
+			mv.visitInsn(Opcodes.RETURN);
+			mv.visitMaxs(0, 3);
+			mv.visitEnd();
+			cw.visitEnd();
+			return cw.toByteArray();
+		};
+		ClassIndex game = new ClassIndex(Map.of(TARGET, targetClass())::get);
+		for (String target : List.of(TARGET, "com/othermod/Machine")) {
+			Map<String, byte[]> mod = Map.of("com/example/mixin/Redir", redirect.apply(target));
+			Map<String, byte[]> repaired = preflight(game, mod::get, ClassBytesSource.EMPTY, false)
+					.repairs("test.mixins.json", MixinConfigFile.parse(config(true, "Redir")), Refmap.EMPTY, Set.of(), new ArrayList<>());
+			ClassNode node = new ClassNode();
+			new ClassReader(repaired.get("com/example/mixin/Redir.class")).accept(node, 0);
+			AnnotationNode ann = node.methods.getFirst().visibleAnnotations.getFirst();
+			assertTrue(ann.values.get(ann.values.indexOf("at") + 1) instanceof AnnotationNode, target + ": " + ann.values);
+		}
 	}
 
 	@Test

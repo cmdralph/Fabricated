@@ -82,6 +82,9 @@ public final class MixinPreflight {
 	/** NeoForge's marker for the enums only its own enum extension system may extend. */
 	private static final String EXTENSIBLE_ENUM = "net/neoforged/fml/common/asm/enumextension/IExtensibleEnum";
 	private static final String MODIFY_VARIABLE = "Lorg/spongepowered/asm/mixin/injection/ModifyVariable;";
+	/** The injectors whose {@code at} is one injection point in NeoForge 1.21.11's Mixin and an array in Fabric's. */
+	private static final Set<String> SINGLE_POINT_INJECTORS = Set.of(REDIRECT, MODIFY_VARIABLE, "Lorg/spongepowered/asm/mixin/injection/ModifyArg;",
+			"Lorg/spongepowered/asm/mixin/injection/ModifyArgs;");
 	private static final String MODIFY_CONSTANT = "Lorg/spongepowered/asm/mixin/injection/ModifyConstant;";
 	static final String OPERATION = "Lcom/llamalad7/mixinextras/injector/wrapoperation/Operation;";
 	/** The name prefix javac gives the fields holding the local variables an anonymous or local class captures. */
@@ -194,6 +197,8 @@ public final class MixinPreflight {
 	 * <li>An injector targeting a lambda ({@code lambda$enclosing$3}) that the game numbers differently (NeoForge's
 	 * 1.21.11 build is compiled from decompiled code, and NeoForge's patches add lambdas): it is pointed at the one
 	 * lambda of the same enclosing method with the same descriptor.</li>
+	 * <li>A {@code @Redirect}, {@code @ModifyArg}, {@code @ModifyArgs} or {@code @ModifyVariable} whose {@code at} is an
+	 * array of one ({@link #singleInjectionPoints}).</li>
 	 * </ul>
 	 */
 	public Map<String, byte[]> repairs(String configName, MixinConfigFile config, Refmap refmap, Set<String> skip,
@@ -205,6 +210,7 @@ public final class MixinPreflight {
 			ClassNode node = modClasses.readNode(internal, 0);
 			if (node == null) continue;
 			Context ctx = new Context(configName, internal.replace('/', '.'), config, refmap, false, false, false, out, null);
+			boolean changed = singleInjectionPoints(node);
 			List<ClassNode> targets = new ArrayList<>();
 			for (String target : targetsOf(node, ctx)) {
 				ClassNode targetNode = gameTarget(target);
@@ -214,8 +220,11 @@ public final class MixinPreflight {
 				}
 				targets.add(targetNode);
 			}
-			if (targets.isEmpty()) continue;
-			boolean changed = false;
+			if (targets.isEmpty()) {
+				// Not a game class's: only the injection points are made single.
+				if (changed) repaired.put(internal + ".class", write(node));
+				continue;
+			}
 			List<MethodNode> bridges = new ArrayList<>();
 			for (MethodNode method : node.methods) {
 				for (AnnotationNode ann : Annotations.all(method)) {
@@ -279,12 +288,38 @@ public final class MixinPreflight {
 				}
 			}
 			node.methods.addAll(bridges);
-			if (!changed) continue;
-			ClassWriter writer = new ClassWriter(0);
-			node.accept(writer);
-			repaired.put(internal + ".class", writer.toByteArray());
+			if (changed) repaired.put(internal + ".class", write(node));
 		}
 		return repaired;
+	}
+
+	private static byte[] write(ClassNode node) {
+		ClassWriter writer = new ClassWriter(0);
+		node.accept(writer);
+		return writer.toByteArray();
+	}
+
+	/**
+	 * Gives the injectors whose {@code at} Fabric's Mixin declares as an array, and the Mixin NeoForge 1.21.11 runs as a
+	 * single injection point ({@code @Redirect}, {@code @ModifyArg}, {@code @ModifyArgs}, {@code @ModifyVariable}), that
+	 * single point where the array holds one, as both read it. MixinExtras 0.5.3, which NeoForge 1.21.11 runs, reads a
+	 * {@code @Redirect}'s {@code at} as one annotation and crashed on Friends and Foes' (run 382). Returns whether it
+	 * changed anything.
+	 */
+	static boolean singleInjectionPoints(ClassNode mixin) {
+		boolean changed = false;
+		for (MethodNode method : mixin.methods) {
+			for (AnnotationNode ann : Annotations.all(method)) {
+				if (!SINGLE_POINT_INJECTORS.contains(ann.desc) || ann.values == null) continue;
+				for (int i = 0; i + 1 < ann.values.size(); i += 2) {
+					if ("at".equals(ann.values.get(i)) && ann.values.get(i + 1) instanceof List<?> points && points.size() == 1) {
+						ann.values.set(i + 1, points.getFirst());
+						changed = true;
+					}
+				}
+			}
+		}
+		return changed;
 	}
 
 	/**
