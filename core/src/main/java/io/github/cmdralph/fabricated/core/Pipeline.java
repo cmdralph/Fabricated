@@ -691,7 +691,9 @@ public final class Pipeline {
 			Map<String, String> unloaded = new HashMap<>();
 			Set<String> loadingIds = ordered.stream().map(t -> t.candidate().id()).collect(Collectors.toSet());
 			for (Candidate c : scanned) {
-				if (loadingIds.contains(c.id())) continue;
+				// A mod only for the other side isn't on Fabric either: a mixin using it (in a class of its own mod that
+				// only that side loads, as GlitchCore's into its client render helper) is as safe as it is there.
+				if (loadingIds.contains(c.id()) || !c.metadata().getEnvironment().matches(side)) continue;
 				for (String p : c.packages()) {
 					// A library jar the platform already provides isn't loading, but its classes exist.
 					if (!loading.contains(p) && !in.platformPackages().contains(p)) unloaded.putIfAbsent(p, c.id());

@@ -49,6 +49,10 @@ pre-flight couldn't repair (JourneyMap).
   DataFixerUpper interface) it has no bytes of, so it couldn't tell, and the mixin stopped the 1.21.11 advanced corpus
   server (run 385). A shadowed field is now looked for in the target class only, as Mixin does, and one of a captured
   variable is pointed at the only captured field of its type, as accessors of them already were.
+- CORPUS-15: GlitchCore's client render helper mixin uses Fabric API's client rendering module, which a dedicated
+  server doesn't load, so GlitchCore was disabled on every corpus server (run 385), and Biomes O' Plenty with it. A mod
+  only for the other side no longer counts as one that isn't loading: on Fabric it isn't there either, and a mixin
+  using it is in a class only that side loads.
 - CI prints the causes of a server crash report (a mod loading crash's issues are below its description).
 - The translation schema is bumped (28): translations cached by a build before PR #51 are made again.
 

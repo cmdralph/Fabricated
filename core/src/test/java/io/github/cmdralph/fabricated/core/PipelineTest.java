@@ -802,6 +802,25 @@ class PipelineTest {
 	}
 
 	@Test
+	void aRequiredMixinUsingAModOnlyForTheOtherSideKeepsItsMod(@TempDir Path game) throws Exception {
+		// CORPUS-15: on Fabric a client-only library isn't on a server either, and a mod's mixin using it is in a class
+		// only the client loads (as GlitchCore's into its client render helper); it is no reason to disable the mod.
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		String api = "com/lib/Api";
+		Path lib = TestJars.create().fabricModJson(TestJars.modJson("client-lib", "1.0", "\"environment\":\"client\""))
+				.bytes(api + ".class", TestJars.emptyClass(api, "java/lang/Object"))
+				.write(mods.resolve("lib.jar"));
+		Path user = TestJars.create().fabricModJson(TestJars.modJson("user-mod", "1.0", "\"mixins\":[\"user.mixins.json\"]"))
+				.text("user.mixins.json", "{\"required\":true,\"package\":\"com.user.mixin\",\"mixins\":[\"UsesMixin\"]}")
+				.bytes("com/user/mixin/UsesMixin.class", mixinCalling("com/user/mixin/UsesMixin", api))
+				.write(mods.resolve("user.jar"));
+		Pipeline.Result result = Pipeline.run(input(game, List.of(lib, user), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
+
+		Set<String> loaded = result.mods().stream().map(m -> m.translated().candidate().id()).collect(Collectors.toSet());
+		assertEquals(Set.of("user-mod"), loaded, result.report().render());
+	}
+
+	@Test
 	void anEnumMixinIntoAnExtensibleEnumBecomesAnEnumExtension(@TempDir Path game) throws Exception {
 		// ENUM-1: NeoForge's loader adds the constants, from the mod's enum extension file; a constant built from a value
 		// computed when the class loads, from a method generated next to the mixins (ENUM-3). An enum mixin it can't take
