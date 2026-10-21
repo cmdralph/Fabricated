@@ -25,6 +25,10 @@ chunk on a feature order cycle.
   NeoForge biome modifier and adds them from its Fabric code too, so they went into desert biomes twice: the 26.1.2
   advanced client stopped on a feature order cycle in a Biomes O' Plenty desert (inferred). The corpus scan found the
   files.
+- HOOK-2: an injection at a call NeoForge's patches moved into a hook of theirs (a static method taking the call's
+  receiver and arguments, at most one more, that makes the call) is pointed at the hook's call, its handlers bridged as
+  for an overload. Architectury's screen render events, FancyMenu's screen hooks and Inventory Profiles Next's overlay
+  were left out on every version: NeoForge renders the screen inside `ClientHooks.drawScreen` (26.2 on: `extractScreen`).
 - PRE-14: pre-flight checks a `@ModifyVariable` handler's parameters as Mixin does (the variable, alone or followed by
   all of the target's): Farmer's Delight's crop growth hook takes `getGrowthSpeed`'s vanilla parameters, NeoForge's
   build takes a block state first, and Mixin stopped the 1.21.11 corpus server once ENUM-6 let the mod load. The hook

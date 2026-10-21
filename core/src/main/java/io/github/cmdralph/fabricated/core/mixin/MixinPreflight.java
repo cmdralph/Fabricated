@@ -108,6 +108,7 @@ public final class MixinPreflight {
 	/** javac's name for a lambda body: the enclosing method's name and the lambda's index in the class. */
 	private static final Pattern LAMBDA = Pattern.compile("lambda\\$(.+)\\$\\d+");
 	private static final Set<String> GAME_PREFIXES = Set.of("net/minecraft/", "com/mojang/blaze3d/");
+	private static final String NEOFORGE_PACKAGE = "net/neoforged/";
 
 	private final ClassIndex game;
 	private final InstalledClasses installed;
@@ -836,9 +837,11 @@ public final class MixinPreflight {
 	 * argument; for {@code @WrapOperation}, with an {@code Operation} that puts it back when the original call is made.
 	 * A {@code NEW} point selecting a constructor by its descriptor is moved the same way, to a constructor taking one
 	 * more argument (NeoForge's patches give records components): its handlers take the arguments, as a static call's.
+	 * An {@code INVOKE} point at a call NeoForge's patches moved into a hook of theirs moves to the hook's call
+	 * ({@link #hookCall}), its handlers bridged the same way when the hook takes one more argument (HOOK-2).
 	 * Returns a description of each move.
 	 */
-	private static List<String> insertedArgumentRepairs(ClassNode mixin, MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx,
+	private List<String> insertedArgumentRepairs(ClassNode mixin, MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx,
 			List<MethodNode> bridges) {
 		// Only the point moves for these: their handlers don't see the call's arguments.
 		boolean pointOnly = injector.desc.equals(INJECT) || injector.desc.equals(MODIFY_EXPRESSION_VALUE);
@@ -889,10 +892,25 @@ public final class MixinPreflight {
 					}
 				}
 			}
+			// The call itself, when it is in none of the methods: in a hook of NeoForge's that took it over, a static method
+			// taking its receiver first, handled as a static call of that.
+			MethodInsnNode hook = named || overload != null || constructor ? null : hookCall(methods, owner, name, desc);
+			String callOwner = owner;
+			String callName = name;
+			String original = desc;
+			if (hook != null) {
+				callOwner = hook.owner;
+				callName = hook.name;
+				desc = staticForm(owner, desc, isStaticCall(owner, name, desc));
+				overload = hook.desc;
+				staticCall = true;
+				calls = countCalls(methods, hook);
+			}
 			int ordinal = Annotations.value(at, "ordinal") instanceof Integer n ? n : -1;
 			if (named || overload == null || ambiguous || ordinal >= calls) continue;
 			int inserted = insertedArgument(desc, overload);
-			if (!pointOnly) {
+			// A hook taking just the call's receiver and arguments takes the handlers as they are.
+			if (!pointOnly && !overload.equals(desc)) {
 				Type ownerType = Type.getObjectType(owner);
 				MethodNode bridge = injector.desc.equals(WRAP_OPERATION) ? HandlerBridges.wrapperBridge(mixin, handler, ownerType, desc, overload, inserted, staticCall, bridges)
 						: HandlerBridges.callBridge(mixin, handler, ownerType, desc, overload, inserted, staticCall, condition ? Type.BOOLEAN_TYPE : Type.getReturnType(desc), bridges);
@@ -901,9 +919,14 @@ public final class MixinPreflight {
 				bridges.add(bridge);
 			}
 			for (int i = 0; i + 1 < at.values.size(); i += 2) {
-				if ("target".equals(at.values.get(i))) at.values.set(i + 1, constructor ? overload : "L" + owner + ";" + name + overload);
+				if ("target".equals(at.values.get(i))) at.values.set(i + 1, constructor ? overload : "L" + callOwner + ";" + callName + overload);
 			}
-			String via = pointOnly ? "" : ", through a bridge handler";
+			String via = pointOnly || overload.equals(desc) ? "" : ", through a bridge handler";
+			if (hook != null) {
+				moved.add(owner.replace('/', '.') + "." + name + original + ", which this game build makes inside NeoForge's hook "
+						+ callOwner.replace('/', '.') + "." + callName + overload + "; the injection point is pointed at the hook's call" + via);
+				continue;
+			}
 			int extra = Type.getArgumentTypes(overload).length - Type.getArgumentTypes(desc).length;
 			String more = extra == 1 ? "one more argument" : extra + " more arguments";
 			moved.add(constructor
@@ -913,6 +936,65 @@ public final class MixinPreflight {
 							+ "; the injection point is pointed there" + via);
 		}
 		return moved;
+	}
+
+	/**
+	 * The one call, in {@code methods}, of a static method of NeoForge's that takes the named call's receiver (unless
+	 * the call is static) and arguments, with at most one more, returns what the call returns, and makes the call itself,
+	 * or through a static method of its class: a hook of NeoForge's patches that took the call over to fire events around
+	 * it, as {@code ClientHooks.drawScreen} for {@code Screen.renderWithTooltipAndSubtitles}. Null when there is none, or
+	 * more than one such hook (several calls of the same one are fine).
+	 */
+	private MethodInsnNode hookCall(List<MethodNode> methods, String owner, String name, String desc) {
+		String form = staticForm(owner, desc, isStaticCall(owner, name, desc));
+		MethodInsnNode found = null;
+		for (MethodNode method : methods) {
+			for (AbstractInsnNode insn : method.instructions) {
+				if (!(insn instanceof MethodInsnNode call) || call.getOpcode() != Opcodes.INVOKESTATIC || !call.owner.startsWith(NEOFORGE_PACKAGE)
+						|| !call.desc.equals(form) && insertedArgument(form, call.desc) < 0) continue;
+				if (found != null && found.owner.equals(call.owner) && found.name.equals(call.name) && found.desc.equals(call.desc)) continue;
+				if (!makesCall(call.owner, call.name, call.desc, owner, name, desc, 2)) continue;
+				if (found != null) return null;
+				found = call;
+			}
+		}
+		return found;
+	}
+
+	/** Whether the static method makes the call, in its own code or, to {@code depth}, in static methods of its class it calls. */
+	private boolean makesCall(String hookOwner, String hookName, String hookDesc, String owner, String name, String desc, int depth) {
+		ClassNode hookClass = game.readNode(hookOwner);
+		MethodNode hook = hookClass == null ? null : declared(hookClass, hookName, hookDesc);
+		if (hook == null || (hook.access & Opcodes.ACC_STATIC) == 0 || hook.instructions == null) return false;
+		for (AbstractInsnNode insn : hook.instructions) {
+			if (!(insn instanceof MethodInsnNode call)) continue;
+			if (call.owner.equals(owner) && call.name.equals(name) && call.desc.equals(desc)) return true;
+			if (depth > 1 && call.getOpcode() == Opcodes.INVOKESTATIC && call.owner.equals(hookOwner)
+					&& makesCall(hookOwner, call.name, call.desc, owner, name, desc, depth - 1)) return true;
+		}
+		return false;
+	}
+
+	/** The descriptor of a call as a static method taking the receiver first, unless the call is static already. */
+	private static String staticForm(String owner, String desc, boolean isStatic) {
+		return isStatic ? desc : "(L" + owner + ";" + desc.substring(1);
+	}
+
+	/** Whether the game declares the named method static (one it doesn't declare is taken as an instance method). */
+	private boolean isStaticCall(String owner, String name, String desc) {
+		ClassNode node = game.readNode(owner);
+		MethodNode method = node == null ? null : declared(node, name, desc);
+		return method != null && (method.access & Opcodes.ACC_STATIC) != 0;
+	}
+
+	private static int countCalls(List<MethodNode> methods, MethodInsnNode target) {
+		int calls = 0;
+		for (MethodNode method : methods) {
+			for (AbstractInsnNode insn : method.instructions) {
+				if (insn instanceof MethodInsnNode call && call.owner.equals(target.owner) && call.name.equals(target.name) && call.desc.equals(target.desc)) calls++;
+			}
+		}
+		return calls;
 	}
 
 	/**

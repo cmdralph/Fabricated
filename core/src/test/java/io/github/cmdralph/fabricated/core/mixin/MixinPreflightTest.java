@@ -1101,6 +1101,113 @@ class MixinPreflightTest {
 		}
 	}
 
+	@Test
+	void anInjectionAtACallNeoForgeMovedIntoAHookIsPointedAtTheHook() throws Exception {
+		// HOOK-2: architectury, FancyMenu and Inventory Profiles Next hook the game's call rendering the screen, which
+		// NeoForge's patches make inside ClientHooks.drawScreen(screen, ...) (26.2 on: extractScreen, taking one more).
+		String thing = "L" + TARGET + ";";
+		byte[] original = mixin("com/example/mixin/AtHelper", false, cw -> {
+			atHelperCall(cw, INJECT, "inject", "(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V", null);
+			atHelperCall(cw, REDIRECT, "redirect", "(" + thing + "I)V", null);
+			atHelperCall(cw, WRAP_OPERATION, "wrap", "(" + thing + "I" + OPERATION + ")V", null);
+			atHelperCall(cw, "Lcom/llamalad7/mixinextras/injector/v2/WrapWithCondition;", "condition", "(" + thing + "I)Z", null);
+		});
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "AtHelper"));
+		String withLayers = "(" + thing + "Ljava/lang/String;I)V";
+		ClassIndex neoForge = new ClassIndex(Map.of(TARGET, callingHook(withLayers), HOOKS, hooks(withLayers, true))::get);
+
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/AtHelper", original));
+		List<PreflightFinding> notes = new ArrayList<>();
+		Map<String, byte[]> repaired = preflight(neoForge, mod::get, ClassBytesSource.EMPTY, false)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
+		assertEquals(4, notes.size(), notes.toString());
+		assertTrue(notes.stream().allMatch(n -> n.message().contains("inside NeoForge's hook net.neoforged.Hooks.draw" + withLayers)), notes.toString());
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired.get("com/example/mixin/AtHelper.class")).accept(node, 0);
+		Map<String, MethodNode> methods = new HashMap<>();
+		node.methods.forEach(m -> methods.put(m.name, m));
+		assertEquals("L" + HOOKS + ";draw" + withLayers,
+				Annotations.value((AnnotationNode) ((List<?>) Annotations.value(methods.get("inject").invisibleAnnotations.getFirst(), "at")).getFirst(), "target"));
+		assertEquals(withLayers, methods.get("redirect$fabricated").desc, "the bridge takes the hook's arguments");
+		assertEquals("(" + thing + "Ljava/lang/String;I" + OPERATION + ")V", methods.get("wrap$fabricated").desc);
+		mod.put("com/example/mixin/AtHelper", repaired.get("com/example/mixin/AtHelper.class"));
+		List<PreflightFinding> after = preflight(neoForge, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(after.isEmpty(), after.toString());
+
+		// A hook taking just the call's receiver and arguments (1.21.11 to 26.1) takes the handlers as they are.
+		String plain = "(" + thing + "I)V";
+		ClassIndex older = new ClassIndex(Map.of(TARGET, callingHook(plain), HOOKS, hooks(plain, true))::get);
+		Map<String, byte[]> mod2 = new HashMap<>(Map.of("com/example/mixin/AtHelper", original));
+		List<PreflightFinding> moved = new ArrayList<>();
+		byte[] retargeted = preflight(older, mod2::get, ClassBytesSource.EMPTY, false)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), moved).get("com/example/mixin/AtHelper.class");
+		assertEquals(4, moved.size(), moved.toString());
+		ClassNode plainNode = new ClassNode();
+		new ClassReader(retargeted).accept(plainNode, 0);
+		assertTrue(plainNode.methods.stream().noneMatch(m -> m.name.contains("$fabricated")), "no bridge");
+		mod2.put("com/example/mixin/AtHelper", retargeted);
+		assertTrue(preflight(older, mod2::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty());
+
+		// A static method of that shape that doesn't make the call isn't taken for the hook.
+		ClassIndex unrelated = new ClassIndex(Map.of(TARGET, callingHook(plain), HOOKS, hooks(plain, false))::get);
+		List<PreflightFinding> none = new ArrayList<>();
+		assertTrue(preflight(unrelated, Map.of("com/example/mixin/AtHelper", original)::get, ClassBytesSource.EMPTY, false)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), none).isEmpty(), none.toString());
+	}
+
+	private static final String HOOKS = "net/neoforged/Hooks";
+
+	/** The game class with {@code helper(I)V}, whose {@code tick} calls {@code Hooks.draw} instead, with {@code hookDesc}. */
+	private static byte[] callingHook(String hookDesc) {
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		MethodVisitor tick = cw.visitMethod(Opcodes.ACC_PUBLIC, "tick", "()V", null, null);
+		tick.visitCode();
+		tick.visitVarInsn(Opcodes.ALOAD, 0);
+		for (Type arg : Type.getArgumentTypes(hookDesc)) {
+			if (arg.getSort() == Type.INT) tick.visitInsn(Opcodes.ICONST_0);
+			else if (!arg.getInternalName().equals(TARGET)) tick.visitInsn(Opcodes.ACONST_NULL);
+		}
+		tick.visitMethodInsn(Opcodes.INVOKESTATIC, HOOKS, "draw", hookDesc, false);
+		tick.visitInsn(Opcodes.RETURN);
+		tick.visitMaxs(0, 0);
+		tick.visitEnd();
+		MethodVisitor helper = cw.visitMethod(Opcodes.ACC_PUBLIC, "helper", "(I)V", null, null);
+		helper.visitCode();
+		helper.visitInsn(Opcodes.RETURN);
+		helper.visitMaxs(0, 0);
+		helper.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	/** NeoForge's hooks class: {@code draw} calls a private static method that makes the game's call, if {@code calls}. */
+	private static byte[] hooks(String drawDesc, boolean calls) {
+		String thing = "L" + TARGET + ";";
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, HOOKS, null, "java/lang/Object", null);
+		MethodVisitor draw = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "draw", drawDesc, null, null);
+		draw.visitCode();
+		draw.visitVarInsn(Opcodes.ALOAD, 0);
+		draw.visitVarInsn(Opcodes.ILOAD, Type.getArgumentTypes(drawDesc).length - 1);
+		draw.visitMethodInsn(Opcodes.INVOKESTATIC, HOOKS, "drawInternal", "(" + thing + "I)V", false);
+		draw.visitInsn(Opcodes.RETURN);
+		draw.visitMaxs(0, 0);
+		draw.visitEnd();
+		MethodVisitor inner = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "drawInternal", "(" + thing + "I)V", null, null);
+		inner.visitCode();
+		if (calls) {
+			inner.visitVarInsn(Opcodes.ALOAD, 0);
+			inner.visitVarInsn(Opcodes.ILOAD, 1);
+			inner.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "helper", "(I)V", false);
+		}
+		inner.visitInsn(Opcodes.RETURN);
+		inner.visitMaxs(0, 0);
+		inner.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
 	/** A game class whose {@code tick} constructs {@code THING} once with each of {@code initDescs}. */
 	private static byte[] constructingHelper(String... initDescs) {
 		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
