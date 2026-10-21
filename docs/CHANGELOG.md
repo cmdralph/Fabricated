@@ -53,7 +53,12 @@ pre-flight couldn't repair (JourneyMap).
   server doesn't load, so GlitchCore was disabled on every corpus server (run 385), and Biomes O' Plenty with it. A mod
   only for the other side no longer counts as one that isn't loading: on Fabric it isn't there either, and a mixin
   using it is in a class only that side loads.
-- CI prints the causes of a server crash report (a mod loading crash's issues are below its description).
+- ENUM-4: Wilder Wild's enum mixin adds a grass colour with a body of its own to one of NeoForge's extensible enums,
+  under a name NeoForge's enum extension files refuse, and pre-flight disabled any such mixin, on the untested premise
+  that NeoForge reserves those enums. NeoForge's loader adds its files' constants before Mixin runs, and Mixin (0.17.1
+  or later; 26.x runs 0.17.4) adds an enum mixin's constants after them, as on Fabric (both read in their source): such
+  a mixin now stays for Mixin there. ENUM-1's translation is still used where it applies.
+- CI prints the causes of a server or client crash report (a mod loading crash's issues are below its description).
 - The translation schema is bumped (28): translations cached by a build before PR #51 are made again.
 
 Run 384 also showed, still open: Moonlight's reload listener on 26.1.2 (CORPUS-16), and on 26.3 the advanced corpus

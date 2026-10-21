@@ -824,7 +824,7 @@ class PipelineTest {
 	void anEnumMixinIntoAnExtensibleEnumBecomesAnEnumExtension(@TempDir Path game) throws Exception {
 		// ENUM-1: NeoForge's loader adds the constants, from the mod's enum extension file; a constant built from a value
 		// computed when the class loads, from a method generated next to the mixins (ENUM-3). An enum mixin it can't take
-		// (a constant built from the mixin's own fields) still disables its mod (CORPUS-10).
+		// (a constant built from the mixin's own fields) stays in its config, for Mixin to add as on Fabric (ENUM-4).
 		String kind = "net/minecraft/world/Kind";
 		Path mods = Files.createDirectories(game.resolve("mods"));
 		Path cooking = TestJars.create().fabricModJson(TestJars.modJson("cooking", "1.0", "\"mixins\":[\"cooking.mixins.json\"]"))
@@ -849,7 +849,7 @@ class PipelineTest {
 		Pipeline.Result result = Pipeline.run(input(game, List.of(cooking, stew, soup), Namespace.OFFICIAL, gameClasses, null));
 
 		Map<String, Pipeline.LoadedMod> loaded = result.mods().stream().collect(Collectors.toMap(m -> m.translated().candidate().id(), m -> m));
-		assertEquals(Set.of("cooking", "stew"), loaded.keySet(), result.report().render());
+		assertEquals(Set.of("cooking", "stew", "soup"), loaded.keySet(), result.report().render());
 		try (SafeArchive overlay = SafeArchive.open(loaded.get("stew").translated().overlay(), ArchiveLimits.DEFAULTS)) {
 			Map<?, ?> entry = (Map<?, ?>) Json.asList(Json.parseObject(overlay.readText("META-INF/fabricated/enum_extensions.json")).get("entries")).getFirst();
 			assertEquals(Map.of("class", "com/stew/FabricatedEnumArguments", "method", "arguments0"), entry.get("parameters"));
@@ -862,9 +862,9 @@ class PipelineTest {
 			String config = overlay.readText("cooking.mixins.json");
 			assertTrue(!config.contains("KindMixin") && config.contains("ThingMixin"), "only the enum mixin is left out: " + config);
 		}
-		Report.ModRow row = result.report().mods().stream().filter(r -> r.id().equals("soup")).findFirst().orElseThrow();
-		assertEquals(Report.Status.DISABLED, row.status());
-		assertTrue(row.detail().contains("extensible enums"), row.detail());
+		try (SafeArchive overlay = SafeArchive.open(loaded.get("soup").translated().overlay(), ArchiveLimits.DEFAULTS)) {
+			assertTrue(overlay.read("META-INF/fabricated/enum_extensions.json") == null, "no enum extension file");
+		}
 	}
 
 	@Test

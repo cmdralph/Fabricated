@@ -311,7 +311,7 @@ A unit test remaps the same input twice and compares SHA-256.
 | `mutable field C f d` | `<current access>-f C f`, with the current access read from game bytecode (AT has no "keep access" modifier) |
 | `transitive-*` | same as the non-transitive form (ATs are global) |
 | `inject-interface C I` (class tweaker) | **not expressible in AT.** Applied by Fabricated's `ClassProcessor` (FML SPI), which adds `I` to `C` at load time. Generic signatures are kept. |
-| `extend-enum C K` (class tweaker v2) | nothing: the line only declares a constant the mod's enum mixin adds, which Mixin (0.17.1 or later) does itself. The mod is disabled if the running Mixin is older, or if `C` is one of NeoForge's `IExtensibleEnum`s (NeoForge reserves those for its own enum extensions). |
+| `extend-enum C K` (class tweaker v2) | nothing: the line only declares a constant the mod's enum mixin adds, which Mixin (0.17.1 or later) does itself. The mod is disabled if the running Mixin is older. |
 
 * Headers are validated: `accessWidener v1|v2 <ns>` and `classTweaker v1|v2 <ns>`. The namespace must be `intermediary` (1.21.11) or `official` (26.x), otherwise the mod is rejected with an explanation.
 * Entries targeting members that don't exist are dropped with a warning (Fabric Loader would crash).
@@ -339,7 +339,7 @@ versions is decided at compile time by which source folders it compiles, plus tw
   handlers that pass a handler's MixinExtras sugar on), renumbered lambdas, hard local captures, accessors of members
   NeoForge added), not by per-version tables. Enum mixins into
   NeoForge's extensible enums become its enum extension entries (`EnumExtensions`), named enums included when their
-  names already carry the mod's id.
+  names already carry the mod's id; others stay for Mixin, which adds their constants after NeoForge's (ENUM-4).
 * Everything Minecraft-agnostic stays in `core`/`loader`. The full seam table is in [`claude.md`](claude.md).
 * **Adding a version** (summarised from `CONTRIBUTING.md`): copy the nearest `mc/<ver>` directory, set
   `minecraft_version`/`neo_version` in its `gradle.properties`, add it to `settings.gradle` and the CI matrix, fix

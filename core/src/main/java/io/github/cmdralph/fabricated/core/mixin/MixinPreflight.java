@@ -62,8 +62,9 @@ import org.objectweb.asm.tree.VarInsnNode;
  * disabled. So is a failure of a self-contained mixin, one nothing outside it can call (it adds no interface to its
  * target and has no accessor or invoker) (LEAVE-1): only the failing injector is left out when the mixin keeps no state
  * of its own (it adds no fields), the whole mixin otherwise, so that injectors sharing its fields apply all or none. An
- * enum mixin adding constants to one of NeoForge's extensible enums always fails: the
- * mod's own classes read those constants.
+ * enum mixin adding constants to one of NeoForge's extensible enums (one its enum extension file can't carry) is left to
+ * Mixin, which adds them as on Fabric, from 0.17.1; with an older Mixin it always fails: the mod's own classes read
+ * those constants.
  */
 public final class MixinPreflight {
 	private static final String PSEUDO = "Lorg/spongepowered/asm/mixin/Pseudo;";
@@ -104,6 +105,7 @@ public final class MixinPreflight {
 	private final ClassBytesSource untransformable;
 	private final boolean clientSide;
 	private final boolean missingTargetsFatal;
+	private final boolean enumMixins;
 	private final Map<String, Optional<ClassNode>> targetCache = new HashMap<>();
 	/** The installed classes the checks read, with their fingerprints. */
 	private final Map<String, String> installedRead = new TreeMap<>();
@@ -122,15 +124,18 @@ public final class MixinPreflight {
 	 * @param clientSide          whether the physical side is the client
 	 * @param missingTargetsFatal whether Mixin rejects a mixin whose target class doesn't exist (in a required config),
 	 *                            as it does from compatibility level 0.17.4; before, it only skips that target
+	 * @param enumMixins          whether the running Mixin adds the constants of an enum mixin to its target (0.17.1 or
+	 *                            later)
 	 */
 	public MixinPreflight(ClassIndex game, InstalledClasses installed, ClassBytesSource modClasses, ClassBytesSource untransformable,
-			boolean clientSide, boolean missingTargetsFatal) {
+			boolean clientSide, boolean missingTargetsFatal, boolean enumMixins) {
 		this.game = game;
 		this.installed = installed;
 		this.modClasses = modClasses;
 		this.untransformable = untransformable;
 		this.clientSide = clientSide;
 		this.missingTargetsFatal = missingTargetsFatal;
+		this.enumMixins = enumMixins;
 	}
 
 	/**
@@ -1210,9 +1215,15 @@ public final class MixinPreflight {
 			}
 			Context targetCtx = owner == null ? ctx : ctx.withOwner(owner);
 			if ((mixin.access & Opcodes.ACC_ENUM) != 0 && targetNode.interfaces.contains(EXTENSIBLE_ENUM)) {
-				targetCtx.essential("Enum mixin adds constants to " + target.replace('/', '.') + ", one of NeoForge's extensible enums, which"
-						+ " NeoForge lets only its own enum extensions change", "Install the NeoForge build of the mod, if it has one.");
-				continue;
+				// NeoForge's loader adds the constants of its enum extension files before Mixin runs, and Mixin counts them
+				// (read in FML's RuntimeEnumExtender and Mixin's MixinApplicatorEnum); its constants are built as vanilla's are.
+				if (!enumMixins) {
+					targetCtx.essential("Enum mixin adds constants to " + target.replace('/', '.') + ", which this NeoForge's Mixin can't do"
+							+ " (it needs 0.17.1 or later)", "Update NeoForge, or install the NeoForge build of the mod, if it has one.");
+					continue;
+				}
+				targetCtx.info("Mixin adds its constants to " + target.replace('/', '.') + ", one of NeoForge's extensible enums, as on Fabric:"
+						+ " NeoForge's own record of the enum's extensions doesn't list them");
 			}
 			checkMembers(mixin, targetNode, targetCtx);
 		}
