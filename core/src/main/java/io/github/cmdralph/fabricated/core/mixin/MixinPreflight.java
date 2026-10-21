@@ -643,7 +643,8 @@ public final class MixinPreflight {
 				|| (handler.access & Opcodes.ACC_STATIC) != (lambda.access & Opcodes.ACC_STATIC)) return List.of();
 		List<Type> wanted = List.of(own).subList(0, own.length - 1);
 		List<Type> captured = List.of(Type.getArgumentTypes(lambda.desc));
-		if (wanted.equals(captured)) return List.of();
+		// A patch captures a value or two more; a lambda taking many more is more likely another one under that name.
+		if (wanted.equals(captured) || captured.size() > wanted.size() + 2) return List.of();
 		int[] from = inOrder(wanted, captured);
 		if (from == null) from = byType(handler, wanted, captured);
 		if (from == null) return List.of();
