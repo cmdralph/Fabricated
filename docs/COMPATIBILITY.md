@@ -801,7 +801,9 @@ MixinExtras has NeoForge's jar, and a NeoForge mod nested in another jar has tha
   a dedicated server.
 - Of Fabric Loader's internals, `FabricLoaderImpl.INSTANCE` (its public API methods) and
   `FabricLauncherBase.getLauncher()` (environment, development flag, runtime namespace) are provided for the mods that
-  use them. `ModContainerImpl`, `EntrypointStorage` and `EntrypointMetadata` exist so that code naming them links
+  use them. A jar a mod adds to the class path while running (`addToClassPath`, or the legacy launcher's `propose`,
+  through which LuckPerms adds the libraries it downloads) is found for the classes no mod's module has, untransformed
+  (LOADER-2). `ModContainerImpl`, `EntrypointStorage` and `EntrypointMetadata` exist so that code naming them links
   (FrozenLib's entrypoint injector, from a mixin plugin): there is no instance of the first two to reach, so such code
   takes the fallback it keeps for a loader without them (LOADER-1). Other internal classes are not provided. A mod's code that reaches for another one, or for a member of Fabric
   Loader's API that Fabricated lacks, is listed among the report's linkage warnings before the game starts.

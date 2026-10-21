@@ -19,6 +19,9 @@ adds to the creative screen.
 - BIOME-2: `Biome.attributes` is widened where NeoForge leaves it a plain field (1.21.11, 26.1.2, 26.2): a field stays
   private only where the game's class has the getter NeoForge's coremod reads it through, not wherever any version's
   coremod names it. Fabric API's biome module stopped the 1.21.11 advanced corpus server reading it.
+- LOADER-2: a jar a Fabric mod adds to the class path while running (Fabric Loader's `addToClassPath`, or its legacy
+  launcher's `propose`, which LuckPerms uses for the libraries it downloads) is found for the classes no mod's module
+  has: Fabricated puts a URL class loader in front of the fallback FML's module class loader hands those to.
 - Roadmap: what PR #52's last runs showed, still open: Do a Barrel Roll's camera mixin on 26.x (CORPUS-18), BetterEnd's
   content on the 26.x advanced servers (CORPUS-19), owo's two remaining mixins (CORPUS-20), and what NeoForge runs
   before `Minecraft` exists (CORPUS-16).

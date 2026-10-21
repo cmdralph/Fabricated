@@ -18,4 +18,10 @@ public interface FabricLauncher {
 
 	/** Fabricated loads mods through NeoForge, not a class path; this is empty. */
 	List<Path> getClassPath();
+
+	/**
+	 * Adds a jar's classes to those the game's class loader finds (in packages no mod has); Fabricated doesn't limit
+	 * them to {@code allowedPrefixes}.
+	 */
+	void addToClassPath(Path path, String... allowedPrefixes);
 }

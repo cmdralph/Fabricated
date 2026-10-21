@@ -44,4 +44,9 @@ public abstract class FabricLauncherBase implements FabricLauncher {
 	public List<Path> getClassPath() {
 		return List.of();
 	}
+
+	@Override
+	public void addToClassPath(Path path, String... allowedPrefixes) {
+		FabricLoaderImpl.addToClassPath(path);
+	}
 }

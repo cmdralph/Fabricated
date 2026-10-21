@@ -26,6 +26,11 @@ class NoNetworkTest {
 	private static final List<String> FORBIDDEN = List.of(
 			"java/net/Socket", "java/net/ServerSocket", "java/net/URL", "java/net/URLConnection", "java/net/HttpURLConnection",
 			"java/net/DatagramSocket", "java/net/http/", "java/nio/channels/SocketChannel", "javax/net/");
+	/**
+	 * Fabric Loader's legacy launcher API takes the jar a mod adds to the class path as a (file) URL, which its stand-in
+	 * only turns into a path ({@code URL.toURI}); it opens nothing (LOADER-2).
+	 */
+	private static final String LEGACY_LAUNCHER = "net/fabricmc/loader/launch/common/FabricLauncherBase";
 
 	@Test
 	void noNetworkingApisAreReferenced() throws Exception {
@@ -74,6 +79,7 @@ class NoNetworkTest {
 					return new MethodVisitor(Opcodes.ASM9) {
 						@Override
 						public void visitMethodInsn(int opcode, String owner, String n, String d, boolean itf) {
+							if (name.equals(LEGACY_LAUNCHER) && owner.equals("java/net/URL") && n.equals("toURI")) return;
 							check(owner);
 						}
 
