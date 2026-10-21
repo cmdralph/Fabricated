@@ -3,6 +3,22 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-10-21 (pass after PR #65): vanilla's code on 1.21.11
+
+**Plan.** PR #65's run (`9b322e1`) was green everywhere. Do a Barrel Roll loads on every 26.x client, each report names
+its build ("Fabricated build", a digest per version), and none of the new rejections fired on the real corpus.
+Do a Barrel Roll is still disabled on 1.21.11 clients. NeoForge's 1.21.11 camera patch is the one 26.x has, but
+vanilla's 1.21.11 jar is obfuscated, so pre-flight had no vanilla code to read there.
+
+- VANILLA-2: the loader finds vanilla's jar on 1.21.11 too and reads it through the Mojang mappings NeoForge's
+  installer left. Each class is remapped from the obfuscated names to Mojang's. A member gets the name the class
+  declaring it maps it to, found up the vanilla jar's own hierarchy.
+- CACHE-3: the cache's index forgets a name it looked up but never stored (a failed translation), once unused for as long
+  as the entries it would have named.
+- CORPUS-22 (open): Biomes O' Plenty on 1.21.11 is disabled for a hook on a call NeoForge's patch removed. The hook's
+  mixin shares state with the rest of the mod, so it can't be left out alone.
+- Roadmap: VANILLA-1 recorded as seen on `9b322e1`.
+
 ## 2026-10-21 (health pass after PR #64): untrusted input, cache keys, bridged handlers
 
 **Plan.** Before more mods: a review of the whole engine on four fronts. Stability of the translation pipeline and
