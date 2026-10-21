@@ -933,6 +933,22 @@ class PipelineTest {
 	}
 
 	@Test
+	void aBuildForIntermediaryNamesIsDisabledOnAnUnobfuscatedVersion(@TempDir Path game) throws Exception {
+		// OBF-1: Modrinth lists Do a Barrel Roll's 1.21.11 build for 26.2; its mixins name intermediary classes.
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		Path old = TestJars.create().fabricModJson(TestJars.modJson("barrel", "1.0", "\"mixins\":[\"barrel.mixins.json\"]"))
+				.text("barrel.mixins.json", "{\"required\":true,\"package\":\"com.barrel.mixin\",\"client\":[],\"mixins\":[\"CameraMixin\"]}")
+				.bytes("com/barrel/mixin/CameraMixin.class", mixinClass("com/barrel/mixin/CameraMixin", "net/minecraft/class_4184", "method_19325"))
+				.write(mods.resolve("barrel.jar"));
+		Pipeline.Result result = Pipeline.run(input(game, List.of(old), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
+
+		assertTrue(result.mods().isEmpty(), result.report().render());
+		Report.ModRow row = result.report().mods().stream().filter(r -> r.id().equals("barrel")).findFirst().orElseThrow();
+		assertEquals(Report.Status.DISABLED, row.status());
+		assertTrue(row.detail().contains("obfuscated names") && row.detail().contains("net.minecraft.class_4184"), row.detail());
+	}
+
+	@Test
 	void anInterfaceAMixinAddsGetsItsSecondDefaultBridged(@TempDir Path game) throws Exception {
 		// CORPUS-11: Entity Culling's interface mixin gives BlockEntityRenderer a second default of NeoForge's
 		// getRenderBoundingBox. The bridge is kept in the cache.

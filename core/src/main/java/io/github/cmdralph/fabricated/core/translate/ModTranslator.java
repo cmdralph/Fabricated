@@ -19,6 +19,7 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.Semaphore;
 import java.util.function.Function;
+import java.util.regex.Pattern;
 import java.util.jar.Attributes;
 import java.util.jar.Manifest;
 import java.util.stream.Collectors;
@@ -78,6 +79,7 @@ public final class ModTranslator {
 	static final String PACK_METADATA = "pack.mcmeta";
 	/** The key NeoForge reads a data file's or entry's conditions from; Fabric reads none there. */
 	private static final String NEOFORGE_CONDITIONS = "neoforge:conditions";
+	private static final Pattern INTERMEDIARY_CLASS = Pattern.compile("net/minecraft/class_\\d+(\\$.*)?");
 
 	/** Heap a translation may count on, in MiB: a quarter of the maximum, shared by all translations at once. */
 	private static final int MEMORY_MIB = (int) Math.max(64, Math.min(Integer.MAX_VALUE, Runtime.getRuntime().maxMemory() / 4 / (1 << 20)));
@@ -368,6 +370,14 @@ public final class ModTranslator {
 			}
 			configs.put(entry.config(), config);
 			refmaps.put(entry.config(), refmap);
+			if (env.namespace() == Namespace.OFFICIAL) {
+				String intermediary = intermediaryTarget(config, classes);
+				if (intermediary != null) {
+					throw new TranslationException("Built for a Minecraft version with obfuscated names (1.21.11 or older): its mixins target "
+							+ intermediary.replace('/', '.') + ", a name Minecraft " + env.minecraftVersion() + " doesn't have",
+							"Install the mod's build for Minecraft " + env.minecraftVersion() + ".");
+				}
+			}
 
 			Skips skips = skipsFor(entry.config(), config, override.skipMixins());
 			matchedSkips.addAll(skips.matched());
@@ -918,6 +928,20 @@ public final class ModTranslator {
 	}
 
 	/** The classes a mixin's {@code @Mixin} names, as internal names. */
+	/**
+	 * The first intermediary class name ({@code net/minecraft/class_1234}) a config's mixins target, or null. Those are
+	 * the names obfuscated Minecraft versions run Fabric mods with; unobfuscated ones (26.x) have none of them, and Mixin
+	 * fails on such a mixin as it applies it (OBF-1: a 1.21.11 build Modrinth lists for 26.2).
+	 */
+	private String intermediaryTarget(MixinConfigFile config, Function<String, ClassNode> classes) {
+		for (String mixin : config.mixinsFor(env.clientSide())) {
+			ClassNode node = classes.apply(config.internalName(mixin));
+			if (node == null) continue;
+			for (String target : mixinTargets(node)) if (INTERMEDIARY_CLASS.matcher(target).matches()) return target;
+		}
+		return null;
+	}
+
 	private static List<String> mixinTargets(ClassNode mixin) {
 		AnnotationNode ann = Annotations.find(mixin.invisibleAnnotations, mixin.visibleAnnotations, Annotations.MIXIN);
 		List<String> targets = new ArrayList<>();

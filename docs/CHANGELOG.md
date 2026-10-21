@@ -61,6 +61,9 @@ pre-flight couldn't repair (JourneyMap).
   NeoForge's 1.21.11 build moved it out of one, which stopped the 1.21.11 advanced corpus (run on `b0f3606`).
   Pre-flight now counts them. LAMBDA-2: an injector at a call NeoForge's build moved into a lambda of the method
   (here an `Optional` callback) gets the lambda added to its methods, so FrozenLib's hook applies there.
+- OBF-1: on 26.x, a mod whose mixins name intermediary classes (a build for 1.21.11 or older) is disabled with the
+  build to install: Modrinth lists Do a Barrel Roll's 1.21.11 build for 26.2, which crashed the 26.2 advanced corpus
+  client (run on `b871cd5`).
 - PACK-1: a pack repository's sources stay mutable for NeoForge's pack finders when a Fabric mod replaced them with
   an immutable set, as vanilla has them: FrozenLib's resource pack API does, which crashed the 26.1.2 advanced corpus
   client in `Minecraft`'s constructor (run on `b871cd5`). The test mod checks it on every version.

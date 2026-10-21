@@ -757,6 +757,10 @@ A few mods' Fabric builds can't work on NeoForge whatever Fabricated does; these
 `compat-plan.json`). Such a build is disabled with the reason and what to do instead, and the mods that need it with
 it; `loadUnsupported` loads it anyway, for testing.
 
+A build for another Minecraft version that Fabricated can tell can't run is disabled too, with the build to install:
+on 26.x, one whose mixins name intermediary classes (`net.minecraft.class_1234`), the names obfuscated versions (1.21.11
+and older) run Fabric mods with, which 26.x doesn't have (OBF-1: Modrinth lists some 1.21.11 builds for 26.x too).
+
 - **Sodium and Iris**: their NeoForge builds are used (see *Renderer mods* above).
 - **Essential** (`essential-container`, and `essential-loader`, which partner mods nest): its Fabric build is a loader
   that downloads Essential when the game starts and adds it to Fabric Loader's internal mod list, class loader and
