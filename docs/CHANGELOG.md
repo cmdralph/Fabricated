@@ -28,6 +28,8 @@ still stop on Do a Barrel Roll's camera hook.
   update), goes as vanilla's own payloads do: NeoForge's codec lookup gets its Fabric codec, each side announces the
   ones it receives with `minecraft:register` as Fabric does, and the vanilla path of the custom payload handler hands
   them to Fabric's receivers. The test mod sends one both ways.
+- NET-6: on 26.x, packets are decoded and encoded with the connection's Fabric `PacketContext` bound, as upstream's
+  networking module does; Polymer's hello payload failed to decode without it (26.2 advanced client).
 - ATTR-1: on a client, the check that living entity types have attributes waits for the main entrypoints, where
   Fabric mods register them; it logged an error for each of their entity types before (BetterNether's).
 - CI: the mixin diagnostics also print what the report says of the failing mixin's mod (CORPUS-18).

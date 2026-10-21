@@ -15,7 +15,7 @@ Fabricated-owned (shipped in `game-mod.jar`, registered in `mc/common/src/main/r
 | Config file | Package | Versions | Sections | defaultRequire | overwrites.requireAnnotations | plugin |
 |---|---|---|---|---|---|---|
 | `mc/1.21.11/src/main/resources/fabricated.mixins.json` | `io.github.cmdralph.fabricated.neoforge.mixin` | 1.21.11 | mixins 52, client 23 | 1 | true | `FabricatedMixinPlugin` (creates Fabric language adapters in `onLoad`; filters nothing) |
-| `mc/common26/src/main/resources/fabricated.mixins.json` | same | 26.1.2, 26.2, 26.3 | mixins 59, client 24 | 1 | true | same |
+| `mc/common26/src/main/resources/fabricated.mixins.json` | same | 26.1.2, 26.2, 26.3 | mixins 61, client 24 | 1 | true | same |
 | `mc/common/src/main/resources/fabricated-fabric-api.mixins.json` | `net.fabricmc.fabric.mixin.networking.accessor` | all | mixins 4 | 1 | true | none |
 | `mc/common/src/main/resources/fabricated-lookup.mixins.json` | `net.fabricmc.fabric.mixin.lookup` | all | mixins 2 (classes in `mc/<v>/src/fabricapi/java`) | 1 | true | none |
 | `mc/common/src/main/resources/fabricated-loot.mixins.json` | `net.fabricmc.fabric.mixin.loot` | all | mixins 5 | 1 | true | none |
@@ -516,6 +516,8 @@ Versions: 26.1.2, 26.2, 26.3 · package `io.github.cmdralph.fabricated.neoforge.
 | mixins | NetworkRegistryUnregisteredPayloadMixin | common (1.21.11,26.1.2,26.2,26.3) | neo.network.registration.NetworkRegistry | @Inject → fabricated$sendUnregisteredToClient | "checkPacket(L…/Packet;L…/ServerCommonPacketListener;)V" | HEAD cancellable=true | — | default |
 | mixins | NetworkRegistryUnregisteredPayloadMixin | common (1.21.11,26.1.2,26.2,26.3) | neo.network.registration.NetworkRegistry | @Inject → fabricated$sendUnregisteredToServer | "checkPacket(L…/Packet;L…/ClientCommonPacketListener;)V" | HEAD cancellable=true | — | default |
 | mixins | VanillaNamespacePayloadMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.server.network.ServerCommonPacketListenerImpl | @Inject → fabricated$receiveVanillaNamespace | "handleCustomPayload(L…/ServerboundCustomPayloadPacket;)V" | HEAD cancellable=true | — | default |
+| mixins | PacketDecoderContextMixin | common26 (26.1.2,26.2,26.3) | n.m.network.PacketDecoder | @WrapMethod → fabricated$withPacketContext | "decode" |  | — | default |
+| mixins | PacketEncoderContextMixin | common26 (26.1.2,26.2,26.3) | n.m.network.PacketEncoder | @WrapMethod → fabricated$withPacketContext | "encode(L…/ChannelHandlerContext;L…/Packet;L…/ByteBuf;)V" |  | — | default |
 | mixins | MenuProviderMixin | common26 (26.1.2,26.2,26.3) | n.m.world.MenuProvider | no injectors; implements FabricMenuProvider | | | | |
 | mixins | ServerPlayerMenuMixin | common26 (26.1.2,26.2,26.3) | n.m.server.level.ServerPlayer | @WrapMethod → fabricated$trackOpener | OPEN_MENU |  | — | default |
 | mixins | ServerPlayerMenuMixin | common26 (26.1.2,26.2,26.3) | n.m.server.level.ServerPlayer | @WrapOperation → fabricated$shouldCloseCurrentScreen | OPEN_MENU | INVOKE `L…/MenuProvider;shouldTriggerClientSideContainerClosingOnOpen()Z` | — | default |
