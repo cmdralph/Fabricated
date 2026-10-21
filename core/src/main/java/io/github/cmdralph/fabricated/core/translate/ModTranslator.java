@@ -162,14 +162,17 @@ public final class ModTranslator {
 						classes, bridges, notes, widened);
 				if (!enumEntries.isEmpty()) overlay.put(EnumExtensions.PATH, EnumExtensions.json(enumEntries).getBytes(StandardCharsets.UTF_8));
 
-				byte[] packMetadata = files.read(PACK_METADATA);
-				byte[] fabricPackMetadata = packMetadata == null ? null : withoutNeoForgeSections(packMetadata);
-				if (fabricPackMetadata != null) {
-					overlay.put(PACK_METADATA, fabricPackMetadata);
-					notes.add("Its pack.mcmeta has sections for NeoForge (its NeoForge build's), which Fabric ignores; left out");
-				}
 				int conditioned = 0;
 				for (String name : view != null ? view.keySet() : archive.entryNames()) {
+					// The mod's own pack.mcmeta, and its built-in packs' (resourcepacks/<name>/pack.mcmeta, Tectonic's, PACK-4).
+					if (name.equals(PACK_METADATA) || name.endsWith("/" + PACK_METADATA)) {
+						byte[] packMetadata = files.read(name);
+						byte[] fabricPackMetadata = packMetadata == null ? null : withoutNeoForgeSections(packMetadata);
+						if (fabricPackMetadata == null) continue;
+						overlay.put(name, fabricPackMetadata);
+						notes.add("Its " + name + " has sections for NeoForge (its NeoForge build's), which Fabric ignores; left out");
+						continue;
+					}
 					if (!name.endsWith(".json") || !name.startsWith("data/") && !name.contains("/data/")) continue;
 					byte[] data = view != null ? view.get(name) : archive.read(name);
 					byte[] fabricData = data == null ? null : withoutNeoForgeConditions(data);
