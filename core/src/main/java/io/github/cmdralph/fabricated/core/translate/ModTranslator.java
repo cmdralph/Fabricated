@@ -726,16 +726,25 @@ public final class ModTranslator {
 		}
 	}
 
+	/**
+	 * The refmaps of the mod's mixin configs: those its metadata lists, and those at the jar's root it doesn't, which a mod
+	 * can add to Mixin itself (ReplayMod does: its refmaps, left in intermediary names, stopped the 1.21.11 client, REMAP-2).
+	 */
 	private static Set<String> collectRefmapPaths(FabricModMetadata md, SafeArchive archive) throws ArchiveException {
+		Set<String> configs = new LinkedHashSet<>();
+		for (MixinEntry entry : md.compatHints().mixinsOr(md.mixins())) configs.add(entry.config());
+		for (String name : archive.entryNames()) {
+			if (name.endsWith(".json") && name.indexOf('/') < 0 && !name.equals("fabric.mod.json")) configs.add(name);
+		}
 		Set<String> refmaps = new TreeSet<>();
-		for (MixinEntry entry : md.compatHints().mixinsOr(md.mixins())) {
-			String json = archive.readText(entry.config());
+		for (String config : configs) {
+			String json = archive.readText(config);
 			if (json == null) continue;
 			try {
 				MixinConfigFile cfg = MixinConfigFile.parse(json);
-				if (cfg.refmap() != null) refmaps.add(cfg.refmap());
+				if (cfg.refmap() != null && cfg.mixinPackage() != null) refmaps.add(cfg.refmap());
 			} catch (JsonException ignored) {
-				// reported later with a clear message when the config is processed
+				// a listed config's problem is reported when the config is processed; another JSON file isn't a config
 			}
 		}
 		return refmaps;

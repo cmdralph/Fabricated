@@ -53,6 +53,9 @@ pre-flight couldn't repair (JourneyMap).
   server doesn't load, so GlitchCore was disabled on every corpus server (run 385), and Biomes O' Plenty with it. A mod
   only for the other side no longer counts as one that isn't loading: on Fabric it isn't there either, and a mixin
   using it is in a class only that side loads.
+- REMAP-2: ReplayMod adds some of its mixin configs to Mixin itself instead of listing them in its metadata; on 1.21.11
+  their refmaps weren't remapped and still named intermediary classes, which stopped the advanced corpus client (run on
+  `b0f3606`). Refmaps of the mixin configs at a jar's root are now remapped, listed or not.
 - REQ-1: pre-flight took an injection point found in any of an injector's target methods as enough, while Mixin counts
   the injections in all of them against `require`. FrozenLib wraps a call in two methods with `require = 2`, and
   NeoForge's 1.21.11 build moved it out of one, which stopped the 1.21.11 advanced corpus (run on `b0f3606`).

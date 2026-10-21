@@ -479,6 +479,27 @@ class PipelineTest {
 		assertTrue(row.detail().contains("drawSections, which does not exist in com.base.Renderer"), row.detail());
 	}
 
+	/** REMAP-2: a mixin config the mod adds to Mixin itself, unlisted in its metadata (ReplayMod's), has its refmap remapped. */
+	@Test
+	void refmapsOfUnlistedMixinConfigsAreRemapped(@TempDir Path game) throws Exception {
+		String tiny = "v1\tofficial\tintermediary\nCLASS\ta\tnet/minecraft/class_1\n";
+		String proguard = "net.minecraft.world.Thing -> a:\n";
+		MappingTable table = MappingComposer.compose(new StringReader(tiny), new StringReader(proguard));
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		Path replay = TestJars.create().fabricModJson(TestJars.modJson("replay", "1.0", ""))
+				.text("mixins.replay.json", "{\"package\":\"com.replay.mixin\",\"refmap\":\"mixins.replay.refmap.json\",\"mixins\":[]}")
+				.text("mixins.replay.refmap.json", "{\"mappings\":{\"com/replay/mixin/ThingMixin\":{\"tick\":\"Lnet/minecraft/class_1;tick()V\"}}}")
+				.write(mods.resolve("replay.jar"));
+
+		Pipeline.Result result = Pipeline.run(input(game, List.of(replay), Namespace.INTERMEDIARY, Map.of(TARGET, targetClass()),
+				(cache, path) -> new Pipeline.Mappings(table, "test-hash"), List.of()));
+
+		try (SafeArchive jar = SafeArchive.open(result.mods().getFirst().translated().jar(), ArchiveLimits.DEFAULTS)) {
+			String refmap = jar.readText("mixins.replay.refmap.json");
+			assertTrue(refmap.contains("Lnet/minecraft/world/Thing;tick()V"), refmap);
+		}
+	}
+
 	/**
 	 * A NeoForge mod's mod properties are its custom values to Fabric code, and the Fabric mods it says it provides are
 	 * present: Sodium for NeoForge makes Fabric API's default renderer stand down and provides Indium, whose Fabric jar
