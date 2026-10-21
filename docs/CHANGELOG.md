@@ -3,6 +3,25 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-10-21 (pass after PR #66): 26.3 stable, and the platform evaluation
+
+**Plan.** PR #66's run (`9431800`) was green everywhere. Every 1.21.11 report reads vanilla's jar in Mojang's names
+through its mappings, and Do a Barrel Roll loads on 1.21.11 clients too, so it now loads on every supported client.
+LEFT_OUT went from 182 to 183 on 1.21.11 (Do a Barrel Roll's `InGameHudMixin`, counted now that the mod loads) and is
+unchanged on 26.x. NeoForge's 26.3 line left beta (its `26.3.0-stable` tag), and the owner set a two-track plan:
+`main` stays the active branch, `1.20.1-legacy` is in an architectural evaluation phase, and Forge gets a branch of
+its own later.
+
+- 26.3 is a stable target: CI pins NeoForge 26.3.0.95 and no version is experimental, so the 26.3 job is a gate like
+  the others. README, CONTRIBUTING, ARCHITECTURE, COMPATIBILITY and RESEARCH no longer call it a beta.
+- `PORTING.md`: the evaluation of the shared engine and the build for Minecraft 1.20.1 (Forge 47.4 first, NeoForge
+  47.1 best-effort) and for Minecraft Forge on the versions `main` covers. It covers what carries over, the Java 17
+  blockers, the facts each branch rests on (with sources), the build and CI layout, the behaviour-neutral seams to
+  add on `main` first, the phases to a stable engine on each branch with exit criteria, risks, and the decisions
+  the owner makes before any branch work starts.
+- `claude.md`: the branch rule (shared modules change only on `main`; branches merge it and add files of their own).
+  Roadmap: the platform tracks, and VANILLA-2 as seen on `9431800`.
+
 ## 2026-10-21 (pass after PR #65): vanilla's code on 1.21.11
 
 **Plan.** PR #65's run (`9b322e1`) was green everywhere. Do a Barrel Roll loads on every 26.x client, each report names
