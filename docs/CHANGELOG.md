@@ -16,7 +16,15 @@ ordinal meant; and an ordinal that still occurs may land on another call than th
   alignment can't tell (a repeated sequence), nothing moves.
 - CI: the client test mod also checks that Fabric's `CLIENT_STOPPING` reaches mods; its FAILED line for a HUD element
   never appeared on `4046a27`, though it was logged from that event.
+- LIFE-1: and on `c03acb1` the check failed on 26.1.2, 26.2 and 26.3. Fabricated fired `CLIENT_STOPPING` from NeoForge's
+  `GameShuttingDownEvent`, which only `Minecraft.stop()` posts, and only while the game runs; a run loop that ends
+  otherwise (mc-runtime-test's) never got it. It now fires from NeoForge's `ClientStoppingEvent`, which
+  `Minecraft.destroy()` posts where Fabric API fires the event, on 1.21.11 and 26.x.
 - Roadmap: HUD-1 and MIXEXT-2 recorded as seen on `2036fbe` and `2380938`.
+- VANILLA-1 on `c03acb1`: every 26.x server and client found vanilla's jar, and Lithostitched's terrain hook moved to
+  the call vanilla's ordinal meant; no version left out more hooks. Do a Barrel Roll's hook at the mirrored camera's call
+  didn't move: its replacement sits beside an instruction the patch repeats (`-xRot`, then `-roll`), which the front and
+  back alignments pair differently, and only an identical range was answered. Now the range both share is.
 
 ## 2026-10-21 (pass after PR #62): Fabric API's client modules in a gate, HUD elements, Freecam on 1.21.11
 

@@ -6,6 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 
 import org.junit.jupiter.api.Test;
 import org.objectweb.asm.Opcodes;
+import org.objectweb.asm.tree.AbstractInsnNode;
+import org.objectweb.asm.tree.FieldInsnNode;
 import org.objectweb.asm.tree.InsnNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
@@ -47,5 +49,34 @@ class PatchAlignmentTest {
 		assertEquals(PatchAlignment.UNCERTAIN, alignment.placeOf(2));
 		assertEquals(PatchAlignment.UNCERTAIN, alignment.placeOf(5));
 		assertNull(alignment.replacementOf(5));
+	}
+
+	@Test
+	void aReplacementBesideAnInstructionThePatchRepeatsIsWhatBothAlignmentsPlaceThere() {
+		// As NeoForge's Camera.alignWithEntity: vanilla's setRotation(-xRot) became setRotation(-xRot, -roll), so vanilla's
+		// FNEG pairs with the patch's first from the front and with its second from the back.
+		MethodNode vanilla = method(new InsnNode(Opcodes.ICONST_1), new VarInsnNode(Opcodes.ALOAD, 0), xRot(), new InsnNode(Opcodes.FNEG),
+				setRotation("(F)V"), new InsnNode(Opcodes.ICONST_2), new InsnNode(Opcodes.RETURN));
+		MethodNode patched = method(new InsnNode(Opcodes.ICONST_3), new VarInsnNode(Opcodes.ALOAD, 0), xRot(), new InsnNode(Opcodes.FNEG),
+				new VarInsnNode(Opcodes.ALOAD, 0), new FieldInsnNode(Opcodes.GETFIELD, "game/Camera", "roll", "F"), new InsnNode(Opcodes.FNEG),
+				setRotation("(FF)V"), new InsnNode(Opcodes.ICONST_4), new InsnNode(Opcodes.RETURN));
+		PatchAlignment alignment = PatchAlignment.of(vanilla, patched);
+
+		assertEquals(PatchAlignment.UNCERTAIN, alignment.placeOf(3), "which FNEG is vanilla's");
+		assertArrayEquals(new int[] {7, 9}, alignment.replacementOf(4), "the overload's call, and what follows it until the return");
+	}
+
+	private static MethodNode method(AbstractInsnNode... insns) {
+		MethodNode method = new MethodNode(Opcodes.ACC_PUBLIC, "alignWithEntity", "()V", null, null);
+		for (AbstractInsnNode insn : insns) method.instructions.add(insn);
+		return method;
+	}
+
+	private static FieldInsnNode xRot() {
+		return new FieldInsnNode(Opcodes.GETFIELD, "game/Camera", "xRot", "F");
+	}
+
+	private static MethodInsnNode setRotation(String desc) {
+		return new MethodInsnNode(Opcodes.INVOKEVIRTUAL, "game/Camera", "setRotation", desc);
 	}
 }

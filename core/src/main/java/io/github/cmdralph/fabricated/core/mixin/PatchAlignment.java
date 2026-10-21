@@ -71,14 +71,19 @@ final class PatchAlignment {
 
 	/**
 	 * The patched instructions, as {@code [from, to)} indices, between the places of the aligned instructions around
-	 * vanilla's at {@code vanillaIndex}: what NeoForge's patch put where it changed that instruction. Null when it has
-	 * a place, or when that can't be told.
+	 * vanilla's at {@code vanillaIndex}: what NeoForge's patch put where it changed that instruction. Where a neighbour
+	 * repeats in what the patch put there (vanilla's {@code -xRot} next to the patch's {@code -roll}), the two alignments
+	 * pair it with different copies, and the instructions both place there are answered. Null when it has a place, or
+	 * when no instruction is placed there by both.
 	 */
 	int[] replacementOf(int vanillaIndex) {
 		if (placeOf(vanillaIndex) != -1) return null;
 		int[] front = between(fromFront, vanillaIndex);
 		int[] back = between(fromBack, vanillaIndex);
-		return front != null && Arrays.equals(front, back) ? front : null;
+		if (front == null || back == null) return null;
+		int from = Math.max(front[0], back[0]);
+		int to = Math.min(front[1], back[1]);
+		return from <= to ? new int[] {from, to} : null;
 	}
 
 	private int[] between(int[] places, int vanillaIndex) {
