@@ -666,6 +666,12 @@ jobs:
             log="$RUNNER_TEMP/$run/logs/latest.log"
             [ -f "$log" ] || continue
             echo "== $run"
+            # Every disabled mod with its reason (one line each), as for the corpus clients.
+            report="$RUNNER_TEMP/$run/logs/fabric-bridge-report.txt"
+            if [ -f "$report" ]; then
+              echo "-- disabled mods:"
+              awk '/^== Disabled Fabric mods/ { show = 1; next } /^$/ { show = 0 } show && /^  [^ ]/ { id = $1 } show && /^      / && !/^      Fix:/ && id { print "  " id ": " substr($0, 7); id = "" }' "$report" | cut -c1-260
+            fi
             digest "$log"
             if ! grep -q -E 'Done \([0-9.]+s\)!' "$log"; then
               for report in $(ls "$RUNNER_TEMP/$run/crash-reports"/*.txt 2>/dev/null | head -1); do
