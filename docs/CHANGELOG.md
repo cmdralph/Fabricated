@@ -12,6 +12,9 @@ left is mostly the hooks LEAVE-1 leaves out. A group of them name anonymous game
   class that does (its selectors, shadows and injection points all there). NeoForge's build, recompiled from decompiled
   source, numbers some anonymous classes otherwise than Mojang's (inferred), so Polymer's codec hooks, No Chat Reports'
   JSON codec hook and Ledger's and malilib's chest hooks were left out on every version.
+- HOOK-3: an `@Inject` at a call NeoForge's build makes through methods of its own (a default method of an extension
+  interface calling another) is pointed at the call of NeoForge's that leads there: Ledger logs blocks explosions
+  remove at a `setBlock` NeoForge makes in `IBlockExtension.onBlockExploded`.
 
 ## 2026-10-21 (pass after PR #57): Fabric's packet context, filled and bound everywhere packets are coded
 

@@ -1374,6 +1374,65 @@ class MixinPreflightTest {
 				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty());
 	}
 
+	@Test
+	void anInjectionAtACallMadeThroughNeoForgesExtensionsIsPointedAtTheCallLeadingThere() throws Exception {
+		// HOOK-3: Ledger logs blocks an explosion removes at BlockBehaviour.onExplosionHit's setBlock, which NeoForge's build
+		// makes through BlockState.onBlockExploded, a default method of its extension interfaces.
+		String thing = "L" + TARGET + ";";
+		java.util.function.Function<String, Map<String, byte[]>> game = extension -> {
+			ClassWriter target = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+			target.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", new String[] {extension});
+			MethodVisitor tick = target.visitMethod(Opcodes.ACC_PUBLIC, "tick", "()V", null, null);
+			tick.visitCode();
+			tick.visitVarInsn(Opcodes.ALOAD, 0);
+			tick.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "exploded", "()V", false);
+			tick.visitInsn(Opcodes.RETURN);
+			tick.visitMaxs(0, 0);
+			tick.visitEnd();
+			MethodVisitor helper = target.visitMethod(Opcodes.ACC_PUBLIC, "helper", "(I)V", null, null);
+			helper.visitCode();
+			helper.visitInsn(Opcodes.RETURN);
+			helper.visitMaxs(0, 0);
+			helper.visitEnd();
+			target.visitEnd();
+			ClassWriter itf = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+			itf.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_INTERFACE | Opcodes.ACC_ABSTRACT, extension, null, "java/lang/Object", null);
+			MethodVisitor exploded = itf.visitMethod(Opcodes.ACC_PUBLIC, "exploded", "()V", null, null);
+			exploded.visitCode();
+			exploded.visitVarInsn(Opcodes.ALOAD, 0);
+			exploded.visitTypeInsn(Opcodes.CHECKCAST, TARGET);
+			exploded.visitInsn(Opcodes.ICONST_0);
+			exploded.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "helper", "(I)V", false);
+			exploded.visitInsn(Opcodes.RETURN);
+			exploded.visitMaxs(0, 0);
+			exploded.visitEnd();
+			itf.visitEnd();
+			return Map.of(TARGET, target.toByteArray(), extension, itf.toByteArray());
+		};
+		byte[] original = mixin("com/example/mixin/Explosions", false, cw -> atHelperCall(cw, INJECT, "inject",
+				"(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V", mv -> {
+					mv.visitInsn(Opcodes.RETURN);
+					mv.visitMaxs(0, 2);
+					mv.visitEnd();
+				}));
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Explosions"));
+		ClassIndex neoForge = new ClassIndex(game.apply("net/neoforged/extensions/IThingExtension")::get);
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Explosions", original));
+
+		List<PreflightFinding> notes = new ArrayList<>();
+		Map<String, byte[]> repaired = preflight(neoForge, mod::get, ClassBytesSource.EMPTY, false).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
+		assertEquals(1, notes.size(), notes.toString());
+		assertTrue(notes.getFirst().message().contains(TARGET.replace('/', '.') + ".helper(I)V, which this game build makes through NeoForge's "
+				+ TARGET.replace('/', '.') + ".exploded()V"), notes.toString());
+		mod.put("com/example/mixin/Explosions", repaired.get("com/example/mixin/Explosions.class"));
+		assertTrue(preflight(neoForge, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty());
+
+		// A default method of the game's own isn't taken for NeoForge's.
+		ClassIndex vanilla = new ClassIndex(game.apply("net/minecraft/world/ThingExtension")::get);
+		assertTrue(preflight(vanilla, Map.of("com/example/mixin/Explosions", original)::get, ClassBytesSource.EMPTY, false)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty());
+	}
+
 	private static final String HOOKS = "net/neoforged/Hooks";
 
 	/** The game class with {@code helper(I)V}, whose {@code tick} calls {@code Hooks.draw} instead, with {@code hookDesc}. */
