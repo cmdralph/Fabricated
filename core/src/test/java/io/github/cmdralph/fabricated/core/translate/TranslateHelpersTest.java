@@ -54,6 +54,18 @@ class TranslateHelpersTest {
 		assertFalse(toml.contains("sodium:options"));
 	}
 
+	/**
+	 * NeoForge's loader refuses a version not starting with a digit, and stops the launch; a Fabric library's
+	 * {@code animated-gif-lib-1.7} did (run 381).
+	 */
+	@Test
+	void writesVersionsNeoForgeAccepts() {
+		assertEquals("1.0.0", ModsTomlWriter.neoForgeVersion("1.0.0"));
+		assertEquals("0+animated-gif-lib-1.7", ModsTomlWriter.neoForgeVersion("animated-gif-lib-1.7"));
+		assertEquals("0+v2.1", ModsTomlWriter.neoForgeVersion("v2.1"));
+		assertEquals("0+", ModsTomlWriter.neoForgeVersion(""));
+	}
+
 	/** A jar built for both loaders: its NeoForge build's pack metadata is left out, as Fabric ignores it (CORPUS-1). */
 	@Test
 	void packMetadataLosesOnlyNeoForgeSections() throws Exception {
