@@ -71,8 +71,11 @@ public final class PacketContextImpl implements PacketContext {
 		this.lock.writeLock().unlock();
 	}
 
+	// Made here, not with PacketContext.key: PacketContext's constants are this class's keys, so initializing it from
+	// this class's initializer, as a connection's first context does, would read them before they are set, and every
+	// lookup through PacketContext's constants would find nothing (Fabricated, NET-7).
 	private static <T> Key<T> fabricKey(String path) {
-		return PacketContext.key(Identifier.fromNamespaceAndPath("fabric", path));
+		return new KeyImpl<>(Identifier.fromNamespaceAndPath("fabric", path));
 	}
 
 	public static final class KeyImpl<T> implements PacketContext.Key<T> {

@@ -14,8 +14,10 @@ chunk on a feature order cycle.
   Fabric API puts in it: the server and its registries once the server's login listener exists, the player's profile
   once login succeeds (both sides), and the client's registries once its play listener exists. Polymer's ingredient
   codec read no context while the splitter measured the recipe sync, which closed the connection, and Polymer warned
-  that chunk packets lacked the registries. The test mod sends a payload large enough to be split, whose codec checks
-  the context on both sides.
+  that chunk packets lacked the registries. The context's keys are made directly: made with `PacketContext.key`, they
+  read as unset through `PacketContext`'s constants whenever a connection's context initialized first (the client run
+  with the test mods alone). The test mod sends a payload large enough to be split, whose codec checks the context on
+  both sides.
 - FLUID-2: on 26.2 and 26.3, an entity's fluid lookups by tag answer for a mod's fluid tag, as vanilla's do, where
   NeoForge's build threw for any tag but water's and lava's: Biomes O' Plenty's screen overlay asks whether the eyes
   are in its blood, which crashed the 26.2 advanced client once it joined its world. The tag stands for its fluids'
