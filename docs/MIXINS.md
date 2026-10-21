@@ -15,7 +15,7 @@ Fabricated-owned (shipped in `game-mod.jar`, registered in `mc/common/src/main/r
 | Config file | Package | Versions | Sections | defaultRequire | overwrites.requireAnnotations | plugin |
 |---|---|---|---|---|---|---|
 | `mc/1.21.11/src/main/resources/fabricated.mixins.json` | `io.github.cmdralph.fabricated.neoforge.mixin` | 1.21.11 | mixins 52, client 23 | 1 | true | `FabricatedMixinPlugin` (creates Fabric language adapters in `onLoad`; filters nothing) |
-| `mc/common26/src/main/resources/fabricated.mixins.json` | same | 26.1.2, 26.2, 26.3 | mixins 62, client 26 | 1 | true | same |
+| `mc/common26/src/main/resources/fabricated.mixins.json` | same | 26.1.2, 26.2, 26.3 | mixins 63, client 26 | 1 | true | same |
 | `mc/common/src/main/resources/fabricated-fabric-api.mixins.json` | `net.fabricmc.fabric.mixin.networking.accessor` | all | mixins 4 | 1 | true | none |
 | `mc/common/src/main/resources/fabricated-lookup.mixins.json` | `net.fabricmc.fabric.mixin.lookup` | all | mixins 2 (classes in `mc/<v>/src/fabricapi/java`) | 1 | true | none |
 | `mc/common/src/main/resources/fabricated-loot.mixins.json` | `net.fabricmc.fabric.mixin.loot` | all | mixins 5 | 1 | true | none |
@@ -521,6 +521,7 @@ Versions: 26.1.2, 26.2, 26.3 · package `io.github.cmdralph.fabricated.neoforge.
 | mixins | PacketEncoderContextMixin | common26 (26.1.2,26.2,26.3) | n.m.network.PacketEncoder | @WrapMethod → fabricated$withPacketContext | "encode(L…/ChannelHandlerContext;L…/Packet;L…/ByteBuf;)V" |  | — | default |
 | mixins | GenericPacketSplitterContextMixin | common26 (26.1.2,26.2,26.3) | neo.network.filters.GenericPacketSplitter | @WrapMethod → fabricated$encodeWithPacketContext | "encode(L…/ChannelHandlerContext;L…/Packet;L…/List;)V" |  | — | default |
 | mixins | GenericPacketSplitterContextMixin | common26 (26.1.2,26.2,26.3) | neo.network.filters.GenericPacketSplitter | @WrapMethod → fabricated$decodeWithPacketContext | "handle" |  | — | default |
+| mixins | EntityFluidInteractionTagMixin | common26 (applies on 26.2, 26.3; `@Pseudo`, 26.1 has no target) | n.m.world.entity.EntityFluidInteraction | @Inject → fabricated$typeOfModTag (cancellable) | "getFluidTypeByTag" | HEAD | — | default |
 | mixins | MenuProviderMixin | common26 (26.1.2,26.2,26.3) | n.m.world.MenuProvider | no injectors; implements FabricMenuProvider | | | | |
 | mixins | ServerPlayerMenuMixin | common26 (26.1.2,26.2,26.3) | n.m.server.level.ServerPlayer | @WrapMethod → fabricated$trackOpener | OPEN_MENU |  | — | default |
 | mixins | ServerPlayerMenuMixin | common26 (26.1.2,26.2,26.3) | n.m.server.level.ServerPlayer | @WrapOperation → fabricated$shouldCloseCurrentScreen | OPEN_MENU | INVOKE `L…/MenuProvider;shouldTriggerClientSideContainerClosingOnOpen()Z` | — | default |

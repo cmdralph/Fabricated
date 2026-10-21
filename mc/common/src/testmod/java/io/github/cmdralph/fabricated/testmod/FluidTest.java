@@ -12,6 +12,7 @@ import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.tags.TagKey;
 import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
@@ -19,6 +20,7 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.LiquidBlock;
 import net.minecraft.world.level.block.state.BlockBehaviour;
+import net.minecraft.world.level.material.Fluid;
 import net.neoforged.neoforge.fluids.FluidType;
 import net.neoforged.neoforge.registries.NeoForgeRegistries;
 
@@ -30,6 +32,8 @@ import net.neoforged.neoforge.registries.NeoForgeRegistries;
  * as through air.
  */
 public final class FluidTest implements ModInitializer {
+	private static final TagKey<Fluid> DRY_TAG = TagKey.create(Registries.FLUID, Identifier.fromNamespaceAndPath("fabricated_testmod", "dry"));
+	private static final TagKey<Fluid> NO_FLUIDS = TagKey.create(Registries.FLUID, Identifier.fromNamespaceAndPath("fabricated_testmod", "no_fluids"));
 	private static Family dry;
 	private static Family wet;
 
@@ -74,6 +78,9 @@ public final class FluidTest implements ModInitializer {
 		level.addFreshEntity(pig);
 		double start = pig.getY();
 		for (int i = 0; i < 10; i++) pig.tick();
+		// Fabric mods ask with their own fluids' tags, as vanilla answers for any (FLUID-2).
+		pig.isEyeInFluid(DRY_TAG);
+		if (pig.isEyeInFluid(NO_FLUIDS)) failed.add("the pig's eyes are in a tag without fluids");
 		double fell = start - pig.getY();
 		pig.discard();
 		for (int i = 0; i < 8; i++) level.setBlockAndUpdate(bottom.above(i), Blocks.AIR.defaultBlockState());

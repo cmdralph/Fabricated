@@ -16,6 +16,10 @@ chunk on a feature order cycle.
   codec read no context while the splitter measured the recipe sync, which closed the connection, and Polymer warned
   that chunk packets lacked the registries. The test mod sends a payload large enough to be split, whose codec checks
   the context on both sides.
+- FLUID-2: on 26.2 and 26.3, an entity's fluid lookups by tag answer for a mod's fluid tag, as vanilla's do, where
+  NeoForge's build threw for any tag but water's and lava's: Biomes O' Plenty's screen overlay asks whether the eyes
+  are in its blood, which crashed the 26.2 advanced client once it joined its world. The tag stands for its fluids'
+  type, or for none when they have none or several. The test mod asks with its own fluid's tag.
 - ENUM-6: a class tweaker's enum constants no longer need Mixin 0.17.1 when NeoForge's loader adds them from the mod's
   enum extension file (ENUM-1), or when no enum mixin adds them on this side (a client enum's, on a server). Farmer's
   Delight Refabricated was disabled on every 1.21.11 corpus run, whose NeoForge runs Mixin 0.16.5. A pipeline test runs

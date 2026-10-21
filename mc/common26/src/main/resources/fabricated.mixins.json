@@ -55,6 +55,7 @@
     "PacketDecoderContextMixin",
     "PacketEncoderContextMixin",
     "GenericPacketSplitterContextMixin",
+    "EntityFluidInteractionTagMixin",
     "NetworkRegistryMixin",
     "MenuProviderMixin",
     "ServerPlayerMenuMixin",
