@@ -23,6 +23,9 @@ import io.github.cmdralph.fabricated.core.remap.MappingTable;
  * @param mappingsHash        hash identifying {@code mappings}, or {@code "none"}
  * @param game                index of runtime game classes (Minecraft + NeoForge)
  * @param untransformable     classes loaded outside NeoForge's transforming class loader (the JDK, libraries)
+ * @param vanilla             vanilla's code of the game, which pre-flight reads to tell where NeoForge's patches moved an
+ *                            injection point (VANILLA-1), or {@link ClassBytesSource#EMPTY} when it wasn't found or its
+ *                            names aren't the game's (1.21.11's are obfuscated)
  * @param installed           classes of the jars installed next to the Fabric mods (Fabricated's Fabric API, NeoForge
  *                            mods, and on 26.x the Fabric mods), which Fabric mixins may target; the pre-flight
  *                            results that depend on them are cached with their fingerprints
@@ -43,12 +46,13 @@ public record TranslationEnvironment(
 		String mappingsHash,
 		ClassIndex game,
 		ClassBytesSource untransformable,
+		ClassBytesSource vanilla,
 		InstalledClasses installed,
 		ClassIndex installedIndex,
 		Map<String, String> unsupportedPackages) {
 
 	/** Bumped whenever translation output changes for the same inputs. */
-	public static final int TRANSLATION_SCHEMA = 37;
+	public static final int TRANSLATION_SCHEMA = 38;
 
 	/** Namespace Fabric mods are distributed in. */
 	public enum Namespace {

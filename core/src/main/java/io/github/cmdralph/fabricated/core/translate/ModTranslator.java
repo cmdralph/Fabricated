@@ -125,7 +125,9 @@ public final class ModTranslator {
 				env.side(), env.fabricatedVersion(), Integer.toString(TranslationEnvironment.TRANSLATION_SCHEMA),
 				env.mappingsHash(), env.runtimeMixinVersion(), String.valueOf(env.mixinExtrasVersion()), override.fingerprint(), String.join(",", after),
 				// Not only the jar's: a config a containing mod declares may come with it.
-				candidate.metadata().mixins().toString(), env.unsupportedPackages().toString()));
+				candidate.metadata().mixins().toString(), env.unsupportedPackages().toString(),
+				// Pre-flight reads vanilla's code where it was found (VANILLA-1).
+				env.vanilla() == ClassBytesSource.EMPTY ? "no vanilla" : "vanilla"));
 		String entryName = TranslationCache.entryName(neoId, key);
 
 		Optional<TranslationCache.Entry> hit = env.namespace() == Namespace.INTERMEDIARY
@@ -373,7 +375,7 @@ public final class ModTranslator {
 		// Pre-flight sees the mod as it will load: with the handler methods left out below.
 		FileView translated = name -> overlay.containsKey(name) ? overlay.get(name) : files.read(name);
 		MixinPreflight preflight = new MixinPreflight(env.installedIndex(), env.installed(), classSource(translated), env.untransformable(),
-				env.clientSide(), MixinCompat.missingTargetsFatal(behavior));
+				env.clientSide(), MixinCompat.missingTargetsFatal(behavior), env.vanilla());
 		Map<String, MixinConfigFile> configs = new HashMap<>();
 		Set<String> matchedSkips = new HashSet<>();
 		Map<String, Refmap> refmaps = new HashMap<>();

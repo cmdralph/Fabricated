@@ -25,8 +25,8 @@ import net.minecraft.resources.Identifier;
  * after a vanilla element, which Fabricated draws from NeoForge's HUD layer for it, and one added last, which upstream's
  * subtitle overlay mixin draws), a screen's initialization and drawing events (screen API, whose drawing events
  * Fabricated fires from NeoForge's screen render events) and the client commands' registration on joining a world
- * (command API). A HUD element is reported the first time it is drawn, as the world's loading screen may still hide the
- * HUD for a while after joining, and as not drawn when the game stops.
+ * (command API), and the lifecycle API's client stopping event. A HUD element is reported the first time it is drawn, as
+ * the world's loading screen may still hide the HUD for a while after joining, and as not drawn when the game stops.
  */
 public final class ClientApiTestMod implements ClientModInitializer {
 	private static final List<String> HUD_CHECKS = List.of("hud element", "hud element after chat");
@@ -48,6 +48,7 @@ public final class ClientApiTestMod implements ClientModInitializer {
 		HudElementRegistry.attachElementAfter(VanillaHudElements.CHAT, Identifier.fromNamespaceAndPath("fabricated_testmod_frapi", "after_chat"),
 				(graphics, deltaTracker) -> drawn("hud element after chat"));
 		ClientLifecycleEvents.CLIENT_STOPPING.register(client -> {
+			FrapiTestMod.LOGGER.info("FABRICATED-TEST client stopping OK");
 			for (String check : HUD_CHECKS) {
 				if (!drawn.contains(check)) report(false, check, "not drawn while the game ran");
 			}
