@@ -3,7 +3,7 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
-## 2026-10-21 (pass after PR #56): Polymer's handshake, and Carpet's Brigadier hooks
+## 2026-10-21 (pass after PR #56): Polymer's handshake, Carpet's Brigadier hooks, and Do a Barrel Roll's jar
 
 **Plan.** PR #56's last run showed every 26.x advanced server starting (ITEMCOMP-1) and the 1.21.11 advanced client
 past Polymer's codecs (PRE-13), stopping where NeoForge refuses to send Polymer's handshake. The 26.x advanced clients
@@ -18,6 +18,12 @@ still stop on Do a Barrel Roll's camera hook.
   them and calls of their methods (method references too) call that class. Carpet's two mixins into Brigadier's
   command node and dispatcher, which remove a script's commands, disabled Carpet on every version. Unit tests compile
   such a library, mixins and mod with javac, translate them and run the result; the translation schema is bumped.
+- MULTI-1: a jar with both Fabric's and NeoForge's metadata is a Fabric mod when its NeoForge side starts nothing of
+  its own (Java's language loader, no class with NeoForge's `@Mod`) and its Fabric side has entrypoints. Do a Barrel
+  Roll's 26.x Fabric jars keep the NeoForge build's `neoforge.mods.toml`, so NeoForge loaded them itself and applied
+  their Fabric mixins, which stopped every 26.x advanced client (CORPUS-18). The mixin diagnostics pointed there: no
+  line of Fabricated's report named the mod, and NeoForge's mod list did (the jar's entries weren't listed; the next
+  run's log names each jar Fabricated takes this way).
 - CI: the mixin diagnostics also print what the report says of the failing mixin's mod (CORPUS-18).
 
 ## 2026-10-21 (pass after PR #55): Polymer's payload codecs, and default components on 26.3
