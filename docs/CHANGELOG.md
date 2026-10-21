@@ -3,6 +3,24 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-10-21 (pass after PR #52): picture-in-picture renderers, and mixins into what other mods' mixins add
+
+**Plan.** PR #52's runs showed malilib (MiniHUD, Tweakeroo, Litematica) still refused for the picture-in-picture
+renderer map NeoForge replaced (CORPUS-13), and owo-lib disabled partly for a hook into a method Fabric API's own mixin
+adds to the creative screen.
+
+- PIP-1: the GUI renderer has vanilla's map of picture-in-picture renderers again, which NeoForge replaced with renderer
+  pools: renderers Fabric mods put in it (malilib's) prepare the states NeoForge has no pool for, and pre-flight sees the
+  map. CI loads malilib, MiniHUD and Tweakeroo on their own until it is verified; the compatibility plan still refuses
+  malilib meanwhile.
+- PRE-12: a field or method a target lacks that an installed Fabric jar's mixin adds to it is not judged by pre-flight
+  (Mixin merges every mixin's members before it injects): owo's hook into the `updateSelection` Fabric API's creative
+  tab mixin adds. The result is cached with the adding mixin's class.
+- Roadmap: what PR #52's last runs showed, still open: Do a Barrel Roll's camera mixin on 26.x (CORPUS-18), BetterEnd's
+  content on the 26.x advanced servers (CORPUS-19), Fabric API's biome module on 1.21.11 (BIOME-2), owo's two remaining
+  mixins (CORPUS-20), and what NeoForge runs before `Minecraft` exists (CORPUS-16).
+- The translation schema is bumped (pre-flight's results change).
+
 ## 2026-10-21 (pass after PR #51): biome modifications on 26.3, and what the advanced corpus stopped on
 
 **Plan.** Run 384 (PR #51's last) confirmed the 1.21.11 corpus client reaches a world with Friends and Foes loaded

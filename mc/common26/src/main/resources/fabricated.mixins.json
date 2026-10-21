@@ -82,6 +82,7 @@
     "client.SectionCompilerMixin",
     "client.MovingBlockRenderMixin",
     "client.BlockBreakingRenderMixin",
+    "client.GuiRendererPictureInPictureMixin",
     "client.MultiPartModelMixin",
     "client.WeightedVariantsMixin",
     "client.UnbakedModelParserMixin",

@@ -78,6 +78,7 @@
     "client.ModelManagerSpriteGetterMixin",
     "client.MultiPartModelMixin",
     "client.SectionCompilerMixin",
-    "client.WeightedVariantsMixin"
+    "client.WeightedVariantsMixin",
+    "client.GuiRendererPictureInPictureMixin"
   ]
 }

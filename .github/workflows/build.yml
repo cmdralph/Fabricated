@@ -497,6 +497,20 @@ jobs:
           python3 ci/fetch-corpus.py "${{ matrix.minecraft }}" "$RUNNER_TEMP/extra-worldmap" fabric xaeros-world-map
           cp "$RUNNER_TEMP/extra/fabric-api.jar" "$RUNNER_TEMP/extra-worldmap/"
           SMOKE_TIMEOUT=420 ci/smoke-client.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/client-worldmap" "$RUNNER_TEMP/extra-worldmap" || true
+      # malilib (MiniHUD's and Tweakeroo's library) adds its picture-in-picture renderers through the GUI renderer's map
+      # NeoForge replaced, which Fabricated restores (PIP-1). On its own, with the compatibility plan's refusal lifted,
+      # until it is verified.
+      - name: Client with malilib, MiniHUD and Tweakeroo (informational, PIP-1)
+        if: ${{ !cancelled() && steps.corpus.outcome == 'success' }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FABRICATED_MODS: '{"malilib": {"loadUnsupported": true}}'
+        run: |
+          mkdir -p "$RUNNER_TEMP/extra-malilib"
+          python3 ci/fetch-corpus.py "${{ matrix.minecraft }}" "$RUNNER_TEMP/extra-malilib" fabric malilib fabric minihud fabric tweakeroo
+          cp "$RUNNER_TEMP/extra/fabric-api.jar" "$RUNNER_TEMP/extra-malilib/"
+          SMOKE_TIMEOUT=420 ci/smoke-client.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/client-malilib" "$RUNNER_TEMP/extra-malilib" || true
       # Fabric mods with deep hooks (ci/mod-corpus-advanced.txt), on their own: one that stops the game can't hide how
       # the main corpus did.
       - name: Fetch the advanced mod corpus
@@ -549,7 +563,7 @@ jobs:
           [ -f "$RUNNER_TEMP/summary-polyfrost.txt" ] && { echo "== summary-polyfrost"; head -60 "$RUNNER_TEMP/summary-polyfrost.txt" | cut -c1-300; }
           [ -f viewers.txt ] && { echo "== viewers fetched"; cat viewers.txt; }
           [ -f "$RUNNER_TEMP/summary-advanced.txt" ] && { echo "== advanced corpus fetched"; cut -c1-200 "$RUNNER_TEMP/summary-advanced.txt"; }
-          for run in client client-fapi client-sodium client-shaders client-sodium-fabric client-sodium-addons client-viewers client-polyfrost client-corpus client-worldmap client-advanced; do
+          for run in client client-fapi client-sodium client-shaders client-sodium-fabric client-sodium-addons client-viewers client-polyfrost client-corpus client-worldmap client-malilib client-advanced; do
             log="$RUNNER_TEMP/$run/run/logs/latest.log"
             if [ ! -f "$log" ]; then
               # The game never started (the launcher stopped first): what the launcher said last.
@@ -569,7 +583,7 @@ jobs:
             [ -f "$report" ] && awk '/^== Mixin pre-flight failures ==/ { show = 1; next } /^$/ { show = 0 } show' "$report" | head -24 | cut -c1-700
             # The corpus: every disabled mod with its reason (one line each), and code that reaches for Fabric Loader
             # internals Fabricated doesn't provide (deep hooks that would fail when they run).
-            if { [ "$run" = client-corpus ] || [ "$run" = client-advanced ] || [ "$run" = client-sodium-addons ]; } && [ -f "$report" ]; then
+            if { [ "$run" = client-corpus ] || [ "$run" = client-advanced ] || [ "$run" = client-malilib ] || [ "$run" = client-sodium-addons ]; } && [ -f "$report" ]; then
               echo "-- disabled mods:"
               awk '/^== Disabled Fabric mods/ { show = 1; next } /^$/ { show = 0 } show && /^  [^ ]/ { id = $1 } show && /^      / && !/^      Fix:/ && id { print "  " id ": " substr($0, 7); id = "" }' "$report" | cut -c1-260
               echo "-- Fabric Loader references Fabricated doesn't provide:"

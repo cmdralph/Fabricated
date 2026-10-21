@@ -106,6 +106,23 @@ class PipelineTest {
 		return cw.toByteArray();
 	}
 
+	/** A mixin as {@link #mixinClass(String, String)} that merges a method of its own, {@code added}, into its target. */
+	private static byte[] mixinAdding(String name, String added) {
+		ClassWriter cw = new ClassWriter(0);
+		new ClassReader(mixinClass(name, "tick")).accept(new org.objectweb.asm.ClassVisitor(Opcodes.ASM9, cw) {
+			@Override
+			public void visitEnd() {
+				MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC, added, "()V", null, null);
+				mv.visitCode();
+				mv.visitInsn(Opcodes.RETURN);
+				mv.visitMaxs(0, 1);
+				mv.visitEnd();
+				super.visitEnd();
+			}
+		}, 0);
+		return cw.toByteArray();
+	}
+
 	/** A mixin as {@link #mixinClass(String, String)} with a method that calls a static method of {@code owner}. */
 	private static byte[] mixinCalling(String name, String owner) {
 		ClassWriter cw = new ClassWriter(0);
@@ -412,6 +429,37 @@ class PipelineTest {
 		assertTrue(installedNow.mods().isEmpty(), installedNow.report().render());
 		Report.ModRow row = installedNow.report().mods().stream().filter(r -> r.id().equals("addon")).findFirst().orElseThrow();
 		assertTrue(row.detail().contains("drawSections, which does not exist in net.example.sodium.Renderer"), row.detail());
+	}
+
+	/**
+	 * A mixin may inject into a method another Fabric mod's mixin adds to the target, as owo's creative screen mixin
+	 * does into the one Fabric API's adds: Mixin merges every mixin's methods before it injects. One into a method no
+	 * mixin adds still disables its mod.
+	 */
+	@Test
+	void anInjectorIntoAMethodAnotherModsMixinAddsIsNotAFailure(@TempDir Path game) throws Exception {
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		Path api = TestJars.create().fabricModJson(TestJars.modJson("api", "1.0", "\"name\":\"Api\",\"mixins\":[\"api.mixins.json\"]"))
+				.text("api.mixins.json", "{\"required\":true,\"package\":\"com.api.mixin\",\"mixins\":[\"ThingMixin\"]}")
+				.bytes("com/api/mixin/ThingMixin.class", mixinAdding("com/api/mixin/ThingMixin", "updateSelection"))
+				.write(mods.resolve("api.jar"));
+		Path user = TestJars.create().fabricModJson(TestJars.modJson("user", "1.0", "\"mixins\":[\"user.mixins.json\"],\"depends\":{\"api\":\"*\"}"))
+				.text("user.mixins.json", "{\"required\":true,\"package\":\"com.user.mixin\",\"mixins\":[\"ThingMixin\"]}")
+				.bytes("com/user/mixin/ThingMixin.class", duckMixinClass("com/user/mixin/ThingMixin", "updateSelection"))
+				.write(mods.resolve("user.jar"));
+		Path stale = TestJars.create().fabricModJson(TestJars.modJson("stale", "1.0", "\"mixins\":[\"stale.mixins.json\"],\"depends\":{\"api\":\"*\"}"))
+				.text("stale.mixins.json", "{\"required\":true,\"package\":\"com.stale.mixin\",\"mixins\":[\"ThingMixin\"]}")
+				.bytes("com/stale/mixin/ThingMixin.class", duckMixinClass("com/stale/mixin/ThingMixin", "updateSelections"))
+				.write(mods.resolve("stale.jar"));
+
+		Pipeline.Result result = Pipeline.run(input(game, List.of(api, user, stale), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
+
+		Set<String> loaded = result.mods().stream().map(m -> m.translated().candidate().id()).collect(Collectors.toSet());
+		assertEquals(Set.of("api", "user"), loaded, result.report().render());
+		assertTrue(result.report().render().contains("updateSelection, which is not in net.minecraft.world.Thing; Api's mixin com.api.mixin.ThingMixin adds it"),
+				result.report().render());
+		Report.ModRow row = result.report().mods().stream().filter(r -> r.id().equals("stale")).findFirst().orElseThrow();
+		assertTrue(row.detail().contains("updateSelections, which does not exist in net.minecraft.world.Thing"), row.detail());
 	}
 
 	/** On 26.x an addon's mixins into another Fabric mod's classes are checked against that mod's jar. */
@@ -946,6 +994,47 @@ class PipelineTest {
 		Report.ModRow row = result.report().mods().stream().filter(r -> r.id().equals("barrel")).findFirst().orElseThrow();
 		assertEquals(Report.Status.DISABLED, row.status());
 		assertTrue(row.detail().contains("obfuscated names") && row.detail().contains("net.minecraft.class_4184"), row.detail());
+	}
+
+	@Test
+	void aFieldFabricatedsOwnMixinRestoresIsTheGamesForPreflight(@TempDir Path game) throws Exception {
+		// PIP-1: Fabricated's mixin gives GuiRenderer back vanilla's map of picture-in-picture renderers, which NeoForge
+		// replaced; malilib shadows it. Fabricated's unique and shadowed fields aren't the game's.
+		String own = "io/github/cmdralph/fabricated/neoforge/mixin/RestoringMixin";
+		ClassWriter restoring = new ClassWriter(0);
+		restoring.visit(Opcodes.V21, Opcodes.ACC_ABSTRACT, own, null, "java/lang/Object", null);
+		AnnotationVisitor target = restoring.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false).visitArray("value");
+		target.visit(null, Type.getObjectType(TARGET));
+		target.visitEnd();
+		restoring.visitField(Opcodes.ACC_PRIVATE | Opcodes.ACC_FINAL, "renderers", "Ljava/util/Map;", null, null).visitEnd();
+		restoring.visitField(Opcodes.ACC_PRIVATE, "fabricated$own", "I", null, null).visitAnnotation("Lorg/spongepowered/asm/mixin/Unique;", false).visitEnd();
+		restoring.visitEnd();
+		TestJars.create().text("fabricated.mixins.json", "{\"package\":\"io.github.cmdralph.fabricated.neoforge.mixin\",\"client\":[\"RestoringMixin\"]}")
+				.bytes(own + ".class", restoring.toByteArray()).write(game.resolve("fabricated.jar"));
+
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		Path user = TestJars.create().fabricModJson(TestJars.modJson("pip-user", "1.0", "\"mixins\":[\"pip.mixins.json\"]"))
+				.text("pip.mixins.json", "{\"required\":true,\"package\":\"com.pip.mixin\",\"mixins\":[\"Uses\",\"UsesUnique\"]}")
+				.bytes("com/pip/mixin/Uses.class", shadowing("com/pip/mixin/Uses", "renderers", "Ljava/util/Map;"))
+				.bytes("com/pip/mixin/UsesUnique.class", shadowing("com/pip/mixin/UsesUnique", "fabricated$own", "I"))
+				.write(mods.resolve("user.jar"));
+		Pipeline.Result result = Pipeline.run(input(game, List.of(user), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
+
+		String findings = result.mods().stream().filter(m -> m.translated().candidate().id().equals("pip-user")).findFirst().orElseThrow()
+				.translated().findings().toString();
+		assertTrue(findings.contains("fabricated$own") && !findings.contains("renderers"), findings);
+	}
+
+	/** A mixin into {@link #TARGET} shadowing one field. */
+	private static byte[] shadowing(String name, String field, String desc) {
+		ClassWriter cw = new ClassWriter(0);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, name, null, "java/lang/Object", null);
+		AnnotationVisitor target = cw.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false).visitArray("value");
+		target.visit(null, Type.getObjectType(TARGET));
+		target.visitEnd();
+		cw.visitField(Opcodes.ACC_PRIVATE, field, desc, null, null).visitAnnotation("Lorg/spongepowered/asm/mixin/Shadow;", false).visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
 	}
 
 	@Test

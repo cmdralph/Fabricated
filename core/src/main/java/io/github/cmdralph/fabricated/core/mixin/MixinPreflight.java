@@ -1334,7 +1334,10 @@ public final class MixinPreflight {
 			String desc = ref.fieldDescOr(field.desc);
 			// Mixin looks for a shadowed field in the target class itself, not its supertypes.
 			if (target.fields.stream().noneMatch(f -> f.name.equals(fieldName) && f.desc.equals(desc)) && !aliasExists(shadow, target, desc, true)) {
-				if (addedByAMixin(fieldName)) {
+				InstalledClasses.AddedMember added = addedByInstalledMixin(target.name, fieldName, desc, true);
+				if (added != null) {
+					ctx.info("@Shadow field " + fieldName + " is not in " + targetDotted + "; " + addedBy(added) + " adds it, so it was not verified");
+				} else if (addedByAMixin(fieldName)) {
 					ctx.info("@Shadow field " + fieldName + " is not in " + targetDotted + "; another mod's mixin may add it, so it was not verified");
 				} else {
 					ctx.classLevel("@Shadow field " + fieldName + " (" + desc + ") does not exist in " + targetDotted,
@@ -1353,7 +1356,10 @@ public final class MixinPreflight {
 				String desc = ref.methodDescOr(method.desc);
 				if (game.resolveMethod(target.name, methodName + desc) == ClassIndex.Resolution.MISSING
 						&& !aliasExists(shadow, target, desc, false)) {
-					if (addedByAMixin(methodName)) {
+					InstalledClasses.AddedMember added = addedByInstalledMixin(target.name, methodName, desc, false);
+					if (added != null) {
+						ctx.info("@Shadow method " + methodName + " is not in " + targetDotted + "; " + addedBy(added) + " adds it, so it was not verified");
+					} else if (addedByAMixin(methodName)) {
 						ctx.info("@Shadow method " + methodName + " is not in " + targetDotted + "; another mod's mixin may add it, so it was not verified");
 					} else {
 						ctx.classLevel("@Shadow method " + methodName + desc + " does not exist in " + targetDotted,
@@ -1435,6 +1441,28 @@ public final class MixinPreflight {
 	 */
 	static boolean addedByAMixin(String member) {
 		return member.indexOf('$') > 0 && JAVAC_PREFIXES.stream().noneMatch(member::startsWith);
+	}
+
+	/**
+	 * The mixin of an installed jar that adds this member to the target ({@link InstalledClasses#addedMember}), or null;
+	 * the result then depends on that mixin, so it is recorded with its fingerprint.
+	 */
+	private InstalledClasses.AddedMember addedByInstalledMixin(String target, String name, String desc, boolean field) {
+		InstalledClasses.AddedMember added = installed.addedMember(target, name, desc, field);
+		if (added != null && !installedRead.containsKey(added.mixin())) {
+			String fingerprint;
+			try {
+				fingerprint = installed.fingerprint(added.mixin());
+			} catch (IOException e) {
+				fingerprint = "";
+			}
+			installedRead.put(added.mixin(), fingerprint);
+		}
+		return added;
+	}
+
+	private static String addedBy(InstalledClasses.AddedMember added) {
+		return added.owner() + "'s mixin " + added.mixin().replace('/', '.');
 	}
 
 	private boolean aliasExists(AnnotationNode shadow, ClassNode target, String desc, boolean field) {
@@ -1532,7 +1560,7 @@ public final class MixinPreflight {
 				|| desc.startsWith("Lcom/llamalad7/mixinextras/injector/");
 	}
 
-	private static void checkInjector(ClassNode mixin, MethodNode handler, AnnotationNode ann, ClassNode target, Context ctx) {
+	private void checkInjector(ClassNode mixin, MethodNode handler, AnnotationNode ann, ClassNode target, Context ctx) {
 		if (!(Annotations.value(ann, "method") instanceof List<?> selectors) || selectors.isEmpty()) return;
 		// As Mixin: a grouped injector requires nothing by default, its group's minimum being the check.
 		int require = Annotations.value(ann, "require") instanceof Integer r && r >= 0 ? r : grouped(handler) ? 0 : ctx.config().defaultRequire();
@@ -1543,6 +1571,7 @@ public final class MixinPreflight {
 		boolean anyFuzzy = false;
 		String lastSelector = null;
 		String lastName = null;
+		String lastDesc = null;
 		for (Object o : selectors) {
 			if (!(o instanceof String raw)) continue;
 			MemberRef ref = MemberRef.parse(ctx.resolve(raw));
@@ -1552,6 +1581,7 @@ public final class MixinPreflight {
 			}
 			lastSelector = ref.name() + (ref.desc() != null ? ref.desc() : "");
 			lastName = ref.name();
+			lastDesc = ref.desc();
 			if (addsMethod(mixin, ref)) {
 				anyFuzzy = true; // a method the mixin itself merges into the target: not judged
 				continue;
@@ -1564,7 +1594,11 @@ public final class MixinPreflight {
 			}
 		}
 		if (matched.isEmpty()) {
-			if (!anyFuzzy && lastSelector != null && addedByAMixin(lastName)) {
+			InstalledClasses.AddedMember added = !anyFuzzy && lastSelector != null ? addedByInstalledMixin(target.name, lastName, lastDesc, false) : null;
+			if (added != null) {
+				ctx.info(injectorName + " " + handler.name + " targets method " + lastSelector + ", which is not in " + target.name.replace('/', '.')
+						+ "; " + addedBy(added) + " adds it, so it was not verified");
+			} else if (!anyFuzzy && lastSelector != null && addedByAMixin(lastName)) {
 				ctx.info(injectorName + " " + handler.name + " targets method " + lastSelector + ", which is not in " + target.name.replace('/', '.')
 						+ "; another mod's mixin may add it, so it was not verified");
 			} else if (!anyFuzzy && lastSelector != null) {
