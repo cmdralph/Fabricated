@@ -75,6 +75,14 @@ public final class ClientTestMod implements ClientModInitializer {
 			} else {
 				TestMod.LOGGER.error("FABRICATED-TEST client cannot send the ping payload to the server");
 			}
+			// The type the integrated server registered as it started, after NeoForge's registration event (NET-3).
+			if (!ClientPlayNetworking.getGlobalReceivers().contains(NetworkingTest.LatePing.TYPE.id())) {
+				ClientPlayNetworking.registerGlobalReceiver(NetworkingTest.LatePing.TYPE, (payload, context) -> {
+					if (payload.value() == 8) TestMod.LOGGER.info("FABRICATED-TEST late payload type round trip OK");
+				});
+			}
+			if (ClientPlayNetworking.canSend(NetworkingTest.LatePing.TYPE)) ClientPlayNetworking.send(new NetworkingTest.LatePing(7));
+			else TestMod.LOGGER.error("FABRICATED-TEST late payload type round trip FAILED: the client cannot send it");
 		});
 	}
 }

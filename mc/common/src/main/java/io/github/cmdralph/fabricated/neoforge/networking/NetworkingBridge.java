@@ -1,14 +1,16 @@
 package io.github.cmdralph.fabricated.neoforge.networking;
 
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.github.cmdralph.fabricated.neoforge.mixin.NetworkRegistryAccessor;
 import net.fabricmc.fabric.api.networking.v1.EntityTrackingEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerConfigurationConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
@@ -17,7 +19,6 @@ import net.fabricmc.fabric.impl.networking.server.ServerNetworkingImpl;
 import net.fabricmc.fabric.impl.networking.server.ServerPlayNetworkAddon;
 import net.fabricmc.fabric.mixin.networking.accessor.ServerCommonPacketListenerImplAccessor;
 import net.minecraft.network.ConnectionProtocol;
-import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
@@ -53,7 +54,7 @@ public final class NetworkingBridge {
 	 * The NeoForge configuration-task events being dispatched, by connection, so Fabric's {@code addTask} can join the
 	 * right one. Keyed by listener because several players can be configured at the same time.
 	 */
-	private static final Map<ServerConfigurationPacketListenerImpl, RegisterConfigurationTasksEvent> CURRENT_TASKS = new java.util.concurrent.ConcurrentHashMap<>();
+	private static final Map<ServerConfigurationPacketListenerImpl, RegisterConfigurationTasksEvent> CURRENT_TASKS = new ConcurrentHashMap<>();
 
 	private NetworkingBridge() {
 	}
@@ -121,52 +122,93 @@ public final class NetworkingBridge {
 		PayloadRegistrar play = event.registrar("1").optional();
 		// Fabric runs configuration handlers on the network thread and play handlers on the main thread.
 		PayloadRegistrar configuration = play.executesOn(HandlerThread.NETWORK);
-		int count = registerPhase(FabricPayloads.SERVERBOUND_PLAY, FabricPayloads.CLIENTBOUND_PLAY, true, play, problems)
-				+ registerPhase(FabricPayloads.SERVERBOUND_CONFIGURATION, FabricPayloads.CLIENTBOUND_CONFIGURATION, false, configuration, problems);
+		int count = registerPhase(new Phase(FabricPayloads.SERVERBOUND_PLAY, FabricPayloads.CLIENTBOUND_PLAY, true, play, problems,
+				ConcurrentHashMap.newKeySet()))
+				+ registerPhase(new Phase(FabricPayloads.SERVERBOUND_CONFIGURATION, FabricPayloads.CLIENTBOUND_CONFIGURATION, false, configuration,
+						problems, ConcurrentHashMap.newKeySet()));
 		if (count > 0) LOGGER.info("Registered {} Fabric payload type(s) with NeoForge", count);
 	}
 
-	@SuppressWarnings({"unchecked", "rawtypes"})
-	private static <B extends FriendlyByteBuf> int registerPhase(PayloadTypeRegistryImpl<B> serverbound, PayloadTypeRegistryImpl<B> clientbound,
-			boolean play, PayloadRegistrar registrar, Consumer<String> problems) {
-		Map<Identifier, CustomPacketPayload.TypeAndCodec> toServer = new LinkedHashMap<>();
-		Map<Identifier, CustomPacketPayload.TypeAndCodec> toClient = new LinkedHashMap<>();
-		serverbound.lock().forEach(t -> toServer.put(t.type().id(), t));
-		clientbound.lock().forEach(t -> toClient.put(t.type().id(), t));
-		List<Identifier> ids = new ArrayList<>(toServer.keySet());
-		toClient.keySet().stream().filter(id -> !toServer.containsKey(id)).forEach(ids::add);
+	/**
+	 * One protocol's Fabric payload types, both directions, the NeoForge registrar they go to and the ids NeoForge took
+	 * from it.
+	 */
+	private record Phase(PayloadTypeRegistryImpl<?> serverbound, PayloadTypeRegistryImpl<?> clientbound, boolean play,
+			PayloadRegistrar registrar, Consumer<String> problems, Set<Identifier> registered) {
+		ConnectionProtocol protocol() {
+			return play ? ConnectionProtocol.PLAY : ConnectionProtocol.CONFIGURATION;
+		}
+	}
 
+	private static int registerPhase(Phase phase) {
+		List<Identifier> ids = new ArrayList<>();
+		phase.serverbound().lock(id -> registerLate(phase, id)).forEach(t -> ids.add(t.type().id()));
+		phase.clientbound().lock(id -> registerLate(phase, id)).forEach(t -> {
+			if (!ids.contains(t.type().id())) ids.add(t.type().id());
+		});
+		int count = 0;
+		for (Identifier id : ids) {
+			if (register(phase, id)) count++;
+		}
+		return count;
+	}
+
+	/**
+	 * A payload type registered after NeoForge's registration event, which upstream accepts at any time (NET-3):
+	 * MiniHUD registers its own from the end of {@code Minecraft}'s constructor, Ledger as the server starts. NeoForge's
+	 * registry takes it while reopened. An id NeoForge already has for the other direction is registered again, for
+	 * both: NeoForge keeps one registration per id. An id a NeoForge mod has is left to it. No connection is open yet when
+	 * mods register this late.
+	 */
+	private static synchronized void registerLate(Phase phase, Identifier id) {
+		if (phase.registered().remove(id)) {
+			NetworkRegistryAccessor.fabricated$registrations().get(phase.protocol()).remove(id);
+			NetworkRegistryAccessor.fabricated$serverboundHandlers().get(phase.protocol()).remove(id);
+			NetworkRegistryAccessor.fabricated$clientboundHandlers().get(phase.protocol()).remove(id);
+		}
+		boolean setup = NetworkRegistryAccessor.fabricated$setup();
+		NetworkRegistryAccessor.fabricated$setSetup(false);
+		try {
+			if (register(phase, id)) LOGGER.info("Registered Fabric payload type {} with NeoForge after its registration event", id);
+		} finally {
+			NetworkRegistryAccessor.fabricated$setSetup(setup);
+		}
+	}
+
+	/** Registers an id's Fabric payload types (one per direction) with NeoForge; false if NeoForge refused them. */
+	@SuppressWarnings({"unchecked", "rawtypes"})
+	private static boolean register(Phase phase, Identifier id) {
+		CustomPacketPayload.TypeAndCodec s = phase.serverbound().get(id);
+		CustomPacketPayload.TypeAndCodec c = phase.clientbound().get(id);
+		boolean play = phase.play();
+		PayloadRegistrar registrar = phase.registrar();
 		IPayloadHandler serverHandler = play ? NetworkingBridge::handleServerPlay : NetworkingBridge::handleServerConfiguration;
 		// Lambdas, not method references: the client bridge must only be loaded when a clientbound payload
 		// is actually handled, which never happens on a dedicated server.
 		IPayloadHandler clientHandler = play
 				? (payload, context) -> ClientNetworkingBridge.handlePlay((CustomPacketPayload) payload, context)
 				: (payload, context) -> ClientNetworkingBridge.handleConfiguration((CustomPacketPayload) payload, context);
-		int count = 0;
-		for (Identifier id : ids) {
-			CustomPacketPayload.TypeAndCodec s = toServer.get(id);
-			CustomPacketPayload.TypeAndCodec c = toClient.get(id);
-			try {
-				if (s != null && c != null) {
-					// NeoForge keeps one codec per payload id; Fabric allows one per direction (see ClientboundCodecs).
-					if (s.codec() != c.codec()) ClientboundCodecs.put(play ? ConnectionProtocol.PLAY : ConnectionProtocol.CONFIGURATION, id, c.codec());
-					if (play) registrar.playBidirectional(s.type(), s.codec(), serverHandler, clientHandler);
-					else registrar.configurationBidirectional(s.type(), s.codec(), serverHandler, clientHandler);
-				} else if (s != null) {
-					if (play) registrar.playToServer(s.type(), s.codec(), serverHandler);
-					else registrar.configurationToServer(s.type(), s.codec(), serverHandler);
-				} else {
-					if (play) registrar.playToClient(c.type(), c.codec(), clientHandler);
-					else registrar.configurationToClient(c.type(), c.codec(), clientHandler);
-				}
-				count++;
-			} catch (RuntimeException e) {
-				// For example, a NeoForge mod already registered the same payload id.
-				problems.accept(id + ": NeoForge rejected the payload type (" + e.getMessage() + "); Fabric mods using it cannot exchange it");
-				LOGGER.error("NeoForge rejected Fabric payload type {}", id, e);
+		try {
+			if (s != null && c != null) {
+				// NeoForge keeps one codec per payload id; Fabric allows one per direction (see ClientboundCodecs).
+				if (s.codec() != c.codec()) ClientboundCodecs.put(phase.protocol(), id, c.codec());
+				if (play) registrar.playBidirectional(s.type(), s.codec(), serverHandler, clientHandler);
+				else registrar.configurationBidirectional(s.type(), s.codec(), serverHandler, clientHandler);
+			} else if (s != null) {
+				if (play) registrar.playToServer(s.type(), s.codec(), serverHandler);
+				else registrar.configurationToServer(s.type(), s.codec(), serverHandler);
+			} else {
+				if (play) registrar.playToClient(c.type(), c.codec(), clientHandler);
+				else registrar.configurationToClient(c.type(), c.codec(), clientHandler);
 			}
+			phase.registered().add(id);
+			return true;
+		} catch (RuntimeException e) {
+			// For example, a NeoForge mod already registered the same payload id.
+			phase.problems().accept(id + ": NeoForge rejected the payload type (" + e.getMessage() + "); Fabric mods using it cannot exchange it");
+			LOGGER.error("NeoForge rejected Fabric payload type {}", id, e);
+			return false;
 		}
-		return count;
 	}
 
 	/** Whether {@code id} is a Fabric mod's payload type that the connection behind {@code listener} has no channel for: Fabric doesn't send those (NeoForge throws). */

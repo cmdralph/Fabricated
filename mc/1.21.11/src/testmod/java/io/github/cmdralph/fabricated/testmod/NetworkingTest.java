@@ -1,6 +1,7 @@
 package io.github.cmdralph.fabricated.testmod;
 
 import net.fabricmc.api.ModInitializer;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
@@ -12,10 +13,23 @@ import net.minecraft.resources.Identifier;
 
 /** 1.21.11 part of the CI test mod: exercises Fabricated's native fabric-networking-api-v1. */
 public final class NetworkingTest implements ModInitializer {
+	private static boolean lateRegistered;
+
 	/** A tiny payload sent in both directions. */
 	public record Ping(int value) implements CustomPacketPayload {
 		public static final Type<Ping> TYPE = new Type<>(Identifier.fromNamespaceAndPath("fabricated_testmod", "ping"));
 		public static final StreamCodec<RegistryFriendlyByteBuf, Ping> CODEC = StreamCodec.composite(ByteBufCodecs.VAR_INT, Ping::value, Ping::new);
+
+		@Override
+		public Type<? extends CustomPacketPayload> type() {
+			return TYPE;
+		}
+	}
+
+	/** A payload whose type is registered as the server starts, after NeoForge's registration event (NET-3). */
+	public record LatePing(int value) implements CustomPacketPayload {
+		public static final Type<LatePing> TYPE = new Type<>(Identifier.fromNamespaceAndPath("fabricated_testmod", "late_ping"));
+		public static final StreamCodec<RegistryFriendlyByteBuf, LatePing> CODEC = StreamCodec.composite(ByteBufCodecs.VAR_INT, LatePing::value, LatePing::new);
 
 		@Override
 		public Type<? extends CustomPacketPayload> type() {
@@ -35,5 +49,14 @@ public final class NetworkingTest implements ModInitializer {
 		if (ServerPlayNetworking.getGlobalReceivers().contains(Ping.TYPE.id())) {
 			TestMod.LOGGER.info("FABRICATED-TEST networking registration OK");
 		}
+		// As Ledger registers its payload types: as the server starts, which upstream accepts.
+		ServerLifecycleEvents.SERVER_STARTING.register(server -> {
+			if (lateRegistered) return; // a second world in the same game
+			lateRegistered = true;
+			PayloadTypeRegistry.playC2S().register(LatePing.TYPE, LatePing.CODEC);
+			PayloadTypeRegistry.playS2C().register(LatePing.TYPE, LatePing.CODEC);
+			ServerPlayNetworking.registerGlobalReceiver(LatePing.TYPE, (payload, context) -> context.responseSender().sendPacket(new LatePing(payload.value() + 1)));
+			TestMod.LOGGER.info("FABRICATED-TEST late payload type registration OK");
+		});
 	}
 }

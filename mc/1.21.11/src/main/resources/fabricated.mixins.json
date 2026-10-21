@@ -39,6 +39,7 @@
     "LivingEntityEffectsMixin",
     "LivingEntityFluidTravelMixin",
     "FluidTypeMixin",
+    "NetworkRegistryAccessor",
     "NetworkRegistryMixin",
     "MenuProviderMixin",
     "ServerPlayerMenuMixin",
