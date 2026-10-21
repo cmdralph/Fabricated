@@ -2,7 +2,8 @@
 """Summarizes a game log's errors (CI only): its ERROR and FATAL lines by logger (count, first message), the
 exceptions it names (count), and the first occurrence of each of the most frequent errors with its stack, so a mod
 that loads but fails when its code runs shows why. Leaves out the errors every CI run has: the narrator's, the
-offline account's (Realms included), the missing audio devices' and an empty server.properties field's.
+offline account's (Realms included), the missing audio devices', an empty server.properties field's, the test mod
+that fails on purpose, and Cardinal Components' first-run config.
 
 Usage: ci/log-digest.py <latest.log>
 """
@@ -14,7 +15,8 @@ LINE = re.compile(r"^\[[^]]*\] \[[^]]*/(ERROR|FATAL)\] \[([^]/]*)[^]]*\]: (.*)$"
 ANY_LINE = re.compile(r"^\[[^]]*\] \[")
 EXCEPTION = re.compile(r"(?:^|Caused by: )([a-z][a-zA-Z0-9_]*(?:\.[a-zA-Z0-9_$]+)+(?:Exception|Error)(?:: .*)?)$")
 NOISE = re.compile(r"[Nn]arrator|flite|401|[Rr]ealms|user properties|TargetDataLine|OpenAL|audio device|[Mm]icrophone|SoundSystem"
-                   r"|sound manager|No key [a-z]+ in MapLike\[\{\}\]")
+                   r"|sound manager|No key [a-z]+ in MapLike\[\{\}\]|intentional failure for Fabricated CI"
+                   r"|cardinal-components-api.properties")
 STACKS = 5
 FRAMES = 12
 

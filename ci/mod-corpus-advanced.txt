@@ -1,8 +1,8 @@
 # Fabric mods with deep hooks into the game, which CI loads together apart from the main corpus (informational), so
 # that one stopping the game doesn't hide how the others did. By Modrinth project slug, as in mod-corpus.txt: each
 # one's newest Fabric build for the Minecraft version, with its required dependencies; a mod without one is left out.
-# Not listed: jars NeoForge loads itself (Distant Horizons'), and mods that download their code as the game starts
-# (Essential's loader).
+# Not listed: jars NeoForge loads itself (Distant Horizons', WorldEdit's, which then needs a newer NeoForge than CI
+# pins on 26.3), and mods that download their code as the game starts (Essential's loader).
 
 # World generation (biome, structure and chunk generator hooks)
 bclib
@@ -53,7 +53,6 @@ ledger
 luckperms
 polymer
 servercore
-worldedit
 
 # Libraries many of these use
 fzzy-config
