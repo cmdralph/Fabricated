@@ -311,7 +311,7 @@ A unit test remaps the same input twice and compares SHA-256.
 | `mutable field C f d` | `<current access>-f C f`, with the current access read from game bytecode (AT has no "keep access" modifier) |
 | `transitive-*` | same as the non-transitive form (ATs are global) |
 | `inject-interface C I` (class tweaker) | **not expressible in AT.** Applied by Fabricated's `ClassProcessor` (FML SPI), which adds `I` to `C` at load time. Generic signatures are kept. |
-| `extend-enum C K` (class tweaker v2) | nothing: the line only declares a constant the mod's enum mixin adds, which Mixin (0.17.1 or later) does itself. The mod is disabled if the running Mixin is older, or if `C` is one of NeoForge's `IExtensibleEnum`s (FML refuses enum mixins into those, ENUM-4). |
+| `extend-enum C K` (class tweaker v2) | nothing: the line only declares a constant the mod's enum mixin adds, which Mixin (0.17.1 or later) does itself. The mod is disabled if the running Mixin is older, or if `C` is one of NeoForge's `IExtensibleEnum`s (FML refuses enum mixins into those, ENUM-4) and the mixin can become neither an enum extension (ENUM-3) nor an ordinary mixin adding the constants (ENUM-5). |
 
 * Fabric also makes a private instance method made `accessible` final unless a mod extends it, from all mods' wideners
   merged. NeoForge reads each mod's file on its own and stops the game when one's `+f` meets another's `-f` on the

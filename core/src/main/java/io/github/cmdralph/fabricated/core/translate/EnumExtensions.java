@@ -212,7 +212,7 @@ final class EnumExtensions {
 	 * straight through (no jumps), keeps nothing in local variables, writes no field, and uses nothing of the mixin, nor
 	 * members of the enum (which the mixin's code, merged into it, could reach privately).
 	 */
-	private static boolean computable(List<AbstractInsnNode> code, String mixin, String target) {
+	static boolean computable(List<AbstractInsnNode> code, String mixin, String target) {
 		String self = "L" + mixin + ";";
 		for (AbstractInsnNode insn : code) {
 			int op = insn.getOpcode();
@@ -377,7 +377,7 @@ final class EnumExtensions {
 	}
 
 	/** The constant an instruction loads ({@code null} for {@code ACONST_NULL}), or {@link #NOT_CONSTANT}. */
-	private static Object constant(AbstractInsnNode insn) {
+	static Object constant(AbstractInsnNode insn) {
 		if (insn == null) return NOT_CONSTANT;
 		int op = insn.getOpcode();
 		if (op == Opcodes.ACONST_NULL) return null;
@@ -403,7 +403,7 @@ final class EnumExtensions {
 	}
 
 	/** The instruction or the next one that is code (not a label, line number or frame). */
-	private static AbstractInsnNode real(AbstractInsnNode insn) {
+	static AbstractInsnNode real(AbstractInsnNode insn) {
 		while (insn != null && insn.getOpcode() < 0) insn = insn.getNext();
 		return insn;
 	}

@@ -819,6 +819,13 @@ MixinExtras has NeoForge's jar, and a NeoForge mod nested in another jar has tha
   with its raiders), the values are handed over in suppliers. Code that branches, uses local variables, or reads the
   mixin's or the enum's own members isn't moved, and its enum mixin disables the mod, with the reason, as other enum
   mixins into those enums do.
+- An enum mixin into one of NeoForge's extensible enums that the enum extension file can't carry (a constant named
+  otherwise than the mod's id and a colon, or with a body of its own) becomes an ordinary mixin into the enum's class
+  initializer that makes the constants with the enum's constructor and appends them to its values, as mods' own NeoForge
+  builds do (ENUM-5). A body overriding the method the enum forwards to a delegate (`GrassColorModifier`'s
+  `ColorModifier`, which Wilder Wild's tundra grass colour overrides) becomes a delegate class running it. Code that
+  branches or uses the mixin isn't moved, nor constants the mod's classes read as fields of the enum; such a mixin still
+  disables its mod. UNVERIFIED in the game.
 - Config screens a Fabric mod offers to Mod Menu (its `modmenu` entrypoint) open from the Config button of NeoForge's
   mod list. Mod Menu's API interfaces are provided, so such mods load without Mod Menu, which itself can't run on
   NeoForge (it would duplicate NeoForge's mod list): an installed Mod Menu jar is skipped and provided at its version.

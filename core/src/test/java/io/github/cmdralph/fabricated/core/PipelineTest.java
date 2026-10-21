@@ -47,6 +47,7 @@ import io.github.cmdralph.fabricated.core.remap.MappingTable;
 import io.github.cmdralph.fabricated.core.report.Report;
 import io.github.cmdralph.fabricated.core.resolve.Candidate;
 import io.github.cmdralph.fabricated.core.resolve.FabricApiPlan;
+import io.github.cmdralph.fabricated.core.testutil.TestEnumBodies;
 import io.github.cmdralph.fabricated.core.testutil.TestEnums;
 import io.github.cmdralph.fabricated.core.testutil.TestJars;
 import io.github.cmdralph.fabricated.core.translate.DefaultBridge;
@@ -886,6 +887,31 @@ class PipelineTest {
 		Report.ModRow row = result.report().mods().stream().filter(r -> r.id().equals("soup")).findFirst().orElseThrow();
 		assertEquals(Report.Status.DISABLED, row.status());
 		assertTrue(row.detail().contains("extensible enums"), row.detail());
+	}
+
+	@Test
+	void anEnumMixinTheEnumExtensionFileCantCarryBecomesAMixinAddingTheConstants(@TempDir Path game) throws Exception {
+		// ENUM-5: Wilder Wild's grass colour, a constant with a body of its own in one of NeoForge's extensible enums. FML
+		// refuses the enum mixin; an ordinary mixin adding the constant, with a delegate class running the body, passes
+		// pre-flight and loads the mod.
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		Path tundra = TestJars.create().fabricModJson(TestJars.modJson("example", "1.0", "\"mixins\":[\"example.mixins.json\"]"))
+				.text("example.mixins.json", "{\"required\":true,\"package\":\"com.example.mixin\",\"mixins\":[\"ModifierMixin\"]}")
+				.bytes(TestEnumBodies.MIXIN + ".class", TestEnumBodies.mixin())
+				.bytes(TestEnumBodies.BODY + ".class", TestEnumBodies.body(false))
+				.bytes(TestEnumBodies.HOLDER + ".class", TestEnumBodies.holder())
+				.write(mods.resolve("tundra.jar"));
+		Map<String, byte[]> gameClasses = Map.of(TARGET, targetClass(), TestEnumBodies.TARGET, TestEnumBodies.target(), TestEnumBodies.COLOR,
+				TestEnumBodies.color());
+		Pipeline.Result result = Pipeline.run(input(game, List.of(tundra), Namespace.OFFICIAL, gameClasses, null));
+
+		assertEquals(List.of("example"), result.mods().stream().map(m -> m.translated().candidate().id()).toList(), result.report().render());
+		try (SafeArchive overlay = SafeArchive.open(result.mods().getFirst().translated().overlay(), ArchiveLimits.DEFAULTS)) {
+			ClassNode mixin = new ClassNode();
+			new ClassReader(overlay.read(TestEnumBodies.MIXIN + ".class")).accept(mixin, ClassReader.SKIP_CODE);
+			assertEquals(0, mixin.access & Opcodes.ACC_ENUM, "the enum mixin is replaced by an ordinary one");
+			assertNotNull(overlay.read(TestEnumBodies.BODIES + "$0.class"), "the body's delegate is in the overlay");
+		}
 	}
 
 	@Test

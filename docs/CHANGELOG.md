@@ -61,6 +61,11 @@ pre-flight couldn't repair (JourneyMap).
   NeoForge's 1.21.11 build moved it out of one, which stopped the 1.21.11 advanced corpus (run on `b0f3606`).
   Pre-flight now counts them. LAMBDA-2: an injector at a call NeoForge's build moved into a lambda of the method
   (here an `Optional` callback) gets the lambda added to its methods, so FrozenLib's hook applies there.
+- ENUM-5: an enum mixin into one of NeoForge's extensible enums that its enum extension file can't carry (a name not
+  starting with the mod's id, a constant with a body of its own) becomes an ordinary mixin adding the constants to the
+  enum's values from its class initializer, as mods' own NeoForge builds do; FML refuses only enum mixins. A constant's
+  body becomes a delegate class where the enum forwards the overridden method to one (Wilder Wild's tundra grass colour).
+  UNVERIFIED in the game until the advanced corpus runs.
 - ENUM-4 (reverted): letting enum mixins into NeoForge's extensible enums through to Mixin, on the reading that NeoForge
   didn't refuse them, crashed the 26.2 and 26.3 advanced corpus at startup on Wilder Wild's: FML's
   `FMLMixinFeatureValidator` refuses them (run on `b0f3606`). Such a mixin disables its mod again.

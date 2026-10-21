@@ -370,7 +370,7 @@ public final class ModTranslator {
 				}
 			}
 			Set<String> skip = withDependents(entry.config(), config, wholeSkips, translated, findings);
-			skip = withEnumExtensions(entry.config(), config, skip, ModIds.toNeoForgeId(candidate.id()), translated, findings, enumEntries);
+			skip = withEnumExtensions(entry.config(), config, skip, ModIds.toNeoForgeId(candidate.id()), translated, entries, overlay, findings, enumEntries);
 			overlay.putAll(preflight.repairs(entry.config(), config, refmap, skip, findings));
 			if (!override.ignorePreflight()) {
 				List<PreflightFinding> checked = new ArrayList<>(preflight.check(entry.config(), config, refmap, skip));
@@ -480,10 +480,52 @@ public final class ModTranslator {
 	 * package has none around it.
 	 */
 	private static String argumentsClass(MixinConfigFile config, FileView files) throws ArchiveException {
+		return generatedClass(config, files, "FabricatedEnumArguments");
+	}
+
+	/**
+	 * Replaces an enum mixin NeoForge's enum extension file can't carry with an ordinary mixin adding its constants
+	 * (ENUM-5), when it can be and no class of the mod reads them as fields of the enum; pre-flight disables the mod
+	 * otherwise, as FML would refuse the enum mixin.
+	 */
+	private static void valuesMixin(String configName, MixinConfigFile config, String mixin, ClassNode node, ClassNode target, FileView files,
+			Collection<String> modEntries, Map<String, byte[]> overlay, List<PreflightFinding> findings) throws ArchiveException {
+		String bodies = generatedClass(config, files, "FabricatedEnumBodies");
+		if (bodies == null) return;
+		EnumValuesMixins.Result result = EnumValuesMixins.of(node, target, name -> readNode(files, name + ".class"), bodies);
+		if (result == null) return;
+		List<ClassNode> modClasses = new ArrayList<>();
+		for (String entry : modEntries) {
+			ClassNode c = entry.endsWith(".class") ? readNode(files, entry) : null;
+			if (c != null) modClasses.add(c);
+		}
+		if (EnumValuesMixins.readAsFields(modClasses, target.name, result.constants())) return;
+		overlay.put(config.internalName(mixin) + ".class", result.mixin());
+		result.classes().forEach((name, bytes) -> overlay.put(name + ".class", bytes));
+		findings.add(new PreflightFinding(Severity.INFO, configName, node.name.replace('/', '.'), "Its constants (" + String.join(", ", result.constants())
+				+ ") go to one of NeoForge's extensible enums, " + target.name.replace('/', '.') + ", whose enum extension file can't carry them:"
+				+ " a mixin into its class initializer adds them, as mods' own NeoForge builds do", ""));
+	}
+
+	/** A file's class with its code, or null when it isn't there or can't be read. */
+	private static ClassNode readNode(FileView files, String path) {
+		try {
+			byte[] data = files.read(path);
+			if (data == null) return null;
+			ClassNode node = new ClassNode();
+			new ClassReader(data).accept(node, ClassReader.SKIP_FRAMES);
+			return node;
+		} catch (ArchiveException | RuntimeException e) {
+			return null; // translation reports an unreadable class
+		}
+	}
+
+	/** A free name for a class generated next to the config's mixins (in the package above theirs). */
+	private static String generatedClass(MixinConfigFile config, FileView files, String simpleName) throws ArchiveException {
 		String pkg = config.mixinPackage();
 		int dot = pkg == null ? -1 : pkg.lastIndexOf('.');
 		if (dot <= 0) return null;
-		String base = pkg.substring(0, dot).replace('.', '/') + "/FabricatedEnumArguments";
+		String base = pkg.substring(0, dot).replace('.', '/') + "/" + simpleName;
 		for (int n = 0; n < 100; n++) {
 			String name = n == 0 ? base : base + n;
 			if (files.read(name + ".class") == null) return name;
@@ -499,10 +541,13 @@ public final class ModTranslator {
 
 	/**
 	 * {@code skip} plus the enum mixins whose constants NeoForge's loader adds instead, from the mod's enum extension
-	 * file ({@link EnumExtensions}); their entries go to {@code enumEntries}.
+	 * file ({@link EnumExtensions}); their entries go to {@code enumEntries}. An enum mixin into one of NeoForge's
+	 * extensible enums that the file can't carry becomes, where it can, an ordinary mixin adding its constants
+	 * ({@link EnumValuesMixins}), put in {@code overlay} with the delegate classes its constants' bodies become.
 	 */
 	private Set<String> withEnumExtensions(String configName, MixinConfigFile config, Set<String> skip, String modId, FileView files,
-			List<PreflightFinding> findings, List<EnumExtensions.Entry> enumEntries) throws ArchiveException {
+			Collection<String> modEntries, Map<String, byte[]> overlay, List<PreflightFinding> findings, List<EnumExtensions.Entry> enumEntries)
+			throws ArchiveException {
 		Set<String> all = skip;
 		for (String mixin : config.mixinsFor(env.clientSide())) {
 			if (skip.contains(mixin)) continue;
@@ -511,8 +556,14 @@ public final class ModTranslator {
 			ClassNode node = new ClassNode();
 			new ClassReader(data).accept(node, ClassReader.SKIP_FRAMES);
 			String target = EnumExtensions.target(node);
-			List<EnumExtensions.Entry> entries = target == null ? null : EnumExtensions.of(node, env.installedIndex().readNode(target), modId);
-			if (entries == null) continue;
+			ClassNode targetNode = target == null ? null : env.installedIndex().readNode(target);
+			List<EnumExtensions.Entry> entries = target == null ? null : EnumExtensions.of(node, targetNode, modId);
+			if (entries == null) {
+				if (targetNode != null && targetNode.interfaces.contains(EnumExtensions.EXTENSIBLE_ENUM)) {
+					valuesMixin(configName, config, mixin, node, targetNode, files, modEntries, overlay, findings);
+				}
+				continue;
+			}
 			if (entries.stream().anyMatch(e -> e.computed() != null)) {
 				// Computed arguments come from a class generated next to the mixins (ENUM-3).
 				String owner = argumentsClass(config, files);
