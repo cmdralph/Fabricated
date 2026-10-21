@@ -41,9 +41,10 @@ public final class ResourceRegistry {
 	/**
 	 * A pack inside a mod ({@code resourcepacks/<name>} by default), registered by {@code ResourceLoader.registerBuiltinPack}.
 	 *
+	 * @param modVersion  the mod's version, part of the pack's known-pack identity
 	 * @param overlayRoot the pack's directory in the mod's translation overlay, whose files take priority, or {@code null}
 	 */
-	public record BuiltinPack(Identifier id, String modName, Path root, @Nullable Path overlayRoot, Component displayName,
+	public record BuiltinPack(Identifier id, String modName, String modVersion, Path root, @Nullable Path overlayRoot, Component displayName,
 			PackActivationType activationType) {
 	}
 
@@ -118,7 +119,8 @@ public final class ResourceRegistry {
 		// Translation changed some of the pack's files (PACK-2): its data without the NeoForge build's conditions.
 		Path overlayRoot = container instanceof ModContainerImpl fabric ? fabric.overlayDirectory(subPath).orElse(null) : null;
 		synchronized (BUILTIN_PACKS) {
-			BUILTIN_PACKS.add(new BuiltinPack(id, container.getMetadata().getName(), root.get(), overlayRoot, displayName, activationType));
+			BUILTIN_PACKS.add(new BuiltinPack(id, container.getMetadata().getName(), container.getMetadata().getVersion().getFriendlyString(), root.get(),
+					overlayRoot, displayName, activationType));
 		}
 		return true;
 	}

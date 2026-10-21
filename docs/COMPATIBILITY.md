@@ -254,7 +254,8 @@ included. Resources from those mod packs report Fabric's mod pack source, as on 
 Fabric jar built for both loaders is left out, as Fabric ignores it: the `neoforge:` sections of its `pack.mcmeta`,
 and the `neoforge:conditions` of its data files, which name its NeoForge build's own condition types (Tectonic's,
 DATA-1); the Fabric build's `fabric:load_conditions` still decide. A built-in pack (`resourcepacks/<name>`, Fabric API's
-`registerBuiltinPack`) is read with those changes too (PACK-2).
+`registerBuiltinPack`) is read with those changes too (PACK-2), and has Fabric API's known-pack identity, so the
+registry entries it adds are stable and a world with them opens without an experimental-settings warning (PACK-3).
 A mod that adds a pack source the vanilla way, replacing the repository's sources with a new immutable set
 (FrozenLib's resource pack API), keeps it: the set is made mutable again before NeoForge adds its own pack finders
 (PACK-1).

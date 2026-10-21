@@ -69,6 +69,10 @@ pre-flight couldn't repair (JourneyMap).
 - PACK-1: a pack repository's sources stay mutable for NeoForge's pack finders when a Fabric mod replaced them with
   an immutable set, as vanilla has them: FrozenLib's resource pack API does, which crashed the 26.1.2 advanced corpus
   client in `Minecraft`'s constructor (run on `b871cd5`). The test mod checks it on every version.
+- PACK-3: a Fabric mod's built-in packs take Fabric API's known-pack identity (namespace `vanilla`, the pack's id, the
+  mod's version). Without one, the registry entries a built-in pack adds were experimental, and creating or loading a
+  world with them asked for a confirmation that Fabric never shows. The test mod checks its built-in pack's damage type
+  is stable.
 - PACK-2: a Fabric mod's built-in packs are read with translation's changed files over the jar's, so DATA-1 reaches
   them too (Tectonic's worldgen modifiers are in its built-in pack). The test mod checks a damage type under
   `neoforge:false` in its own data and in its built-in pack on every version.

@@ -187,8 +187,14 @@ public final class TestMod implements ModInitializer, DedicatedServerModInitiali
 			if (damageTypes.containsKey(Identifier.fromNamespaceAndPath("fabricated_testmod", "conditioned"))) {
 				LOGGER.info("FABRICATED-TEST data without NeoForge conditions OK");
 			}
-			if (damageTypes.containsKey(Identifier.fromNamespaceAndPath("fabricated_testmod", "conditioned_builtin"))) {
+			Identifier builtin = Identifier.fromNamespaceAndPath("fabricated_testmod", "conditioned_builtin");
+			if (damageTypes.containsKey(builtin)) {
 				LOGGER.info("FABRICATED-TEST built-in pack data without NeoForge conditions OK");
+			}
+			// A world whose registries hold an experimental entry asks the player to confirm before it opens (PACK-3).
+			if (damageTypes.registrationInfo(ResourceKey.create(Registries.DAMAGE_TYPE, builtin))
+					.filter(info -> info.lifecycle().equals(Lifecycle.stable())).isPresent()) {
+				LOGGER.info("FABRICATED-TEST built-in pack data is stable OK");
 			}
 		});
 		// NeoForge adds its pack finders to the server's pack repository after it was made: it couldn't start had that
