@@ -1034,8 +1034,10 @@ class PipelineTest {
 			assertEquals(Map.of("type", "lithostitched:add_features"), Json.parseObject(overlay.readText(modifier)));
 			assertNull(overlay.read(plain), "a file without them is the jar's own");
 			assertEquals(Json.parseObject("{\"pack\": {\"pack_format\": 48}}"), Json.parseObject(overlay.readText(builtinMetadata)));
-			assertEquals(Map.of("type", "neoforge:none"), Json.parseObject(overlay.readText(biomeModifier)), "the NeoForge build's biome modifier is turned off");
-			assertEquals(Map.of("type", "neoforge:none"), Json.parseObject(overlay.readText(structureModifier)));
+			// As modifiers every NeoForge version has, over nothing: 26.x has no neoforge:none biome modifier.
+			assertEquals(Map.of("type", "neoforge:add_features", "biomes", List.of(), "features", List.of(), "step", "vegetal_decoration"),
+					Json.parseObject(overlay.readText(biomeModifier)), "the NeoForge build's biome modifier is turned off");
+			assertEquals(Map.of("type", "neoforge:clear_spawns", "structures", List.of()), Json.parseObject(overlay.readText(structureModifier)));
 		}
 	}
 

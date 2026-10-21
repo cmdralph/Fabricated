@@ -19,6 +19,7 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.Semaphore;
 import java.util.function.Function;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.jar.Attributes;
 import java.util.jar.Manifest;
@@ -82,8 +83,13 @@ public final class ModTranslator {
 	private static final String NEOFORGE_CONDITIONS = "neoforge:conditions";
 	/** A NeoForge biome or structure modifier, which NeoForge applies from any jar and Fabric never reads (MODIFIER-1). */
 	private static final Pattern NEOFORGE_MODIFIER = Pattern.compile("(^|.*/)data/[^/]+/neoforge/(biome_modifier|structure_modifier)/.+\\.json");
-	/** NeoForge's modifier that does nothing, which a data pack uses to turn another off. */
-	private static final byte[] NONE_MODIFIER = "{\"type\": \"neoforge:none\"}\n".getBytes(StandardCharsets.UTF_8);
+	/**
+	 * Modifiers of NeoForge's that change nothing, to turn one off with: features added to no biome, spawns cleared from
+	 * no structure. NeoForge's own {@code neoforge:none} is gone from 26.x's biome modifiers and 26.3's structure modifiers.
+	 */
+	private static final byte[] NO_BIOME_MODIFIER = "{\"type\": \"neoforge:add_features\", \"biomes\": [], \"features\": [], \"step\": \"vegetal_decoration\"}\n"
+			.getBytes(StandardCharsets.UTF_8);
+	private static final byte[] NO_STRUCTURE_MODIFIER = "{\"type\": \"neoforge:clear_spawns\", \"structures\": []}\n".getBytes(StandardCharsets.UTF_8);
 	private static final Pattern INTERMEDIARY_CLASS = Pattern.compile("net/minecraft/class_\\d+(\\$.*)?");
 
 	/** Heap a translation may count on, in MiB: a quarter of the maximum, shared by all translations at once. */
@@ -183,8 +189,9 @@ public final class ModTranslator {
 					if (!name.endsWith(".json") || !name.startsWith("data/") && !name.contains("/data/")) continue;
 					// Its NeoForge build's biome and structure modifiers would add, on NeoForge, what its Fabric code adds
 					// too (YUNG's Extras' desert decorations, twice in a Biomes O' Plenty desert: a feature order cycle).
-					if (NEOFORGE_MODIFIER.matcher(name).matches()) {
-						overlay.put(name, NONE_MODIFIER);
+					Matcher modifier = NEOFORGE_MODIFIER.matcher(name);
+					if (modifier.matches()) {
+						overlay.put(name, modifier.group(2).equals("biome_modifier") ? NO_BIOME_MODIFIER : NO_STRUCTURE_MODIFIER);
 						modifiers++;
 						continue;
 					}

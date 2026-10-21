@@ -20,9 +20,11 @@ chunk on a feature order cycle.
   first initializes the interfaces with default methods it implements, before the class's own keys are set. The test
   mod sends a payload large enough to be split, whose codec checks the context on both sides.
 - MODIFIER-1: a Fabric jar's NeoForge biome and structure modifiers (its NeoForge build's, which Fabric never reads)
-  become NeoForge's `neoforge:none`. YUNG's Extras' 26.1.2 Fabric jar carries its desert decorations as a NeoForge
-  biome modifier and adds them from its Fabric code too, so they went into desert biomes twice: the 26.1.2 advanced
-  client stopped on a feature order cycle in a Biomes O' Plenty desert (inferred). The corpus scan found the files.
+  become modifiers over no biome or structure (`neoforge:none` is gone from 26.x's biome modifiers, and stopped the
+  26.1.2 advanced client on the first try). YUNG's Extras' 26.1.2 Fabric jar carries its desert decorations as a
+  NeoForge biome modifier and adds them from its Fabric code too, so they went into desert biomes twice: the 26.1.2
+  advanced client stopped on a feature order cycle in a Biomes O' Plenty desert (inferred). The corpus scan found the
+  files.
 - PRE-14: pre-flight checks a `@ModifyVariable` handler's parameters as Mixin does (the variable, alone or followed by
   all of the target's): Farmer's Delight's crop growth hook takes `getGrowthSpeed`'s vanilla parameters, NeoForge's
   build takes a block state first, and Mixin stopped the 1.21.11 corpus server once ENUM-6 let the mod load. The hook
