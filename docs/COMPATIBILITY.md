@@ -775,6 +775,10 @@ MixinExtras has NeoForge's jar, and a NeoForge mod nested in another jar has tha
   as a `jar:file:` URL into its jar), as Fabric Loader's class loader does; NeoForge's finds only files. Mods that
   find their classes by scanning a package (Reflections, which YUNG's API uses for what it registers) found nothing
   without it (SCAN-1). A scan outside an entrypoint, on another thread or later, still finds nothing.
+- A file read through one of the mod's classes (`Class.getResourceAsStream`, `Class.getResource`) is looked up in the
+  mod's own jar first and then, as Fabric's unnamed modules do, on the whole class path: NeoForge's module for the mod
+  has only its own files, so a mod reading Minecraft's `/version.json` that way (Lattice, while Mixin prepares its
+  config) stopped the game (RES-1). The mod's calls go through Fabricated's `ClassResources`.
 - `main` entrypoints run while NeoForge registers content, before `Minecraft` exists, where Fabric Loader runs them
   from `Minecraft`'s constructor: a mod reading `Minecraft.getInstance()` in its `main` entrypoint fails there and is
   marked as failed (Moonlight's 26.1.2 build, CORPUS-16). Client entrypoints run where Fabric runs them.

@@ -287,18 +287,19 @@ public final class ModTranslator {
 
 	/**
 	 * Puts the mod's classes that use members NeoForge renamed (see {@link PlatformRenames}), with the references
-	 * renamed, into {@code target}; returns how many there were.
+	 * renamed, into {@code target}, and those reading resources through a class, with the reads made to look beyond the
+	 * mod's module as on Fabric ({@link ResourceLookups}); returns how many used renamed members.
 	 */
 	private int applyRenames(Map<String, byte[]> target, Collection<String> entries, FileView files) throws ArchiveException {
 		int count = 0;
 		for (String name : List.copyOf(entries)) {
 			if (!name.endsWith(".class") || name.startsWith("META-INF/")) continue;
 			byte[] data = target.containsKey(name) ? target.get(name) : files.read(name);
-			byte[] renamed = data == null ? null : renames.apply(data);
-			if (renamed != null) {
-				target.put(name, renamed);
-				count++;
-			}
+			if (data == null) continue;
+			byte[] renamed = renames.apply(data);
+			if (renamed != null) count++;
+			byte[] adapted = ResourceLookups.apply(renamed != null ? renamed : data);
+			if (adapted != null || renamed != null) target.put(name, adapted != null ? adapted : renamed);
 		}
 		return count;
 	}

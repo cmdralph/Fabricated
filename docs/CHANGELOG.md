@@ -35,6 +35,13 @@ pre-flight couldn't repair (JourneyMap).
   repair moving injectors into an overload also stopped moving a handler that takes the method's parameters unchanged,
   which would have failed once the game ran.
 
+- RES-1: the advanced corpus client stopped on every version while Mixin prepared Lattice's config (Axiom's and
+  Flashback's config library): its plugin reads Minecraft's `/version.json` through its own class, which on NeoForge
+  looks only in the mod's own module, while Fabric's unnamed modules see the whole class path. A Fabric mod's
+  `Class.getResource(AsStream)` calls now go through Fabricated's `ClassResources`, which asks the class loader too when
+  the module has no such file. The test mod checks it on every version.
+- The translation schema is bumped (28): translations cached by a build before PR #51 are made again.
+
 Run 384 also showed, still open: Moonlight's reload listener on 26.1.2 (CORPUS-16), and on 26.3 the advanced corpus
 server stopping on BIOME-1 as well.
 

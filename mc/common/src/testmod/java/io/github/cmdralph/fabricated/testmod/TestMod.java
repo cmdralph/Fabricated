@@ -1,6 +1,7 @@
 package io.github.cmdralph.fabricated.testmod;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.lang.reflect.Modifier;
 import java.net.JarURLConnection;
 import java.net.URI;
@@ -49,6 +50,19 @@ public final class TestMod implements ModInitializer, DedicatedServerModInitiali
 	 * A classpath scan as Reflections starts one (YUNG's API finds what it registers that way): the directory of a package
 	 * from the context class loader, then the classes under it in the jar the URL names (SCAN-1).
 	 */
+	/**
+	 * RES-1: a file of another jar read through one of the mod's own classes, as Lattice reads Minecraft's version
+	 * information: on Fabric the class path has it, on NeoForge only the mod's module, unless Fabricated adapts the read.
+	 */
+	private static void classResources() {
+		try (InputStream in = TestMod.class.getResourceAsStream("/version.json")) {
+			if (in != null) LOGGER.info("FABRICATED-TEST class resources OK");
+			else LOGGER.error("FABRICATED-TEST class resources FAILED: /version.json not found through the mod's class");
+		} catch (IOException e) {
+			LOGGER.error("FABRICATED-TEST class resources FAILED", e);
+		}
+	}
+
 	private static void classpathScan() {
 		String pkg = "io/github/cmdralph/fabricated/testmod/mixin";
 		URL dir = Thread.currentThread().getContextClassLoader().getResource(pkg);
@@ -99,6 +113,7 @@ public final class TestMod implements ModInitializer, DedicatedServerModInitiali
 		}
 
 		classpathScan();
+		classResources();
 
 		List<Runnable> custom = loader.getEntrypoints("fabricated-test", Runnable.class);
 		custom.forEach(Runnable::run);
