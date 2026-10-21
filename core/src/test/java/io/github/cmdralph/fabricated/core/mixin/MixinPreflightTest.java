@@ -689,6 +689,69 @@ class MixinPreflightTest {
 				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty(), "a call on another type is another method");
 	}
 
+	/** {@link #TARGET} whose static {@code main} calls the static {@code owner.name(false)}, of descriptor {@code desc}. */
+	private static byte[] mainCalling(String owner, String name, String desc) {
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		MethodVisitor main = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "main", "([Ljava/lang/String;)V", null, null);
+		main.visitCode();
+		main.visitInsn(Opcodes.ICONST_0);
+		main.visitMethodInsn(Opcodes.INVOKESTATIC, owner, name, desc, false);
+		main.visitInsn(Opcodes.RETURN);
+		main.visitMaxs(0, 0);
+		main.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	@Test
+	void anInjectionAfterFabricLoadersServerHookIsPointedWhereNeoForgeLoadsMods() throws Exception {
+		// HOOK-1: owo-lib's MainMixin, one of a group for Fabric's and Quilt's hooks; neither is in NeoForge's Main.
+		String fabricHook = "Lnet/fabricmc/loader/impl/game/minecraft/Hooks;startServer(Ljava/io/File;Ljava/lang/Object;)V";
+		String quiltHook = "Lorg/quiltmc/loader/impl/game/minecraft/Hooks;startServer(Ljava/io/File;Ljava/lang/Object;)V";
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/AfterHooks", mixin("com/example/mixin/AfterHooks", false, cw -> {
+			for (String hook : List.of(fabricHook, quiltHook)) {
+				MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, hook.contains("quilt") ? "afterQuilt" : "afterFabric",
+						"(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V", null, null);
+				AnnotationVisitor group = mv.visitAnnotation("Lorg/spongepowered/asm/mixin/injection/Group;", false);
+				group.visit("name", "serverFreezeHooks");
+				group.visit("min", 1);
+				group.visit("max", 1);
+				group.visitEnd();
+				AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
+				AnnotationVisitor methods = ann.visitArray("method");
+				methods.visit(null, "main");
+				methods.visitEnd();
+				AnnotationVisitor ats = ann.visitArray("at");
+				AnnotationVisitor at = ats.visitAnnotation(null, "Lorg/spongepowered/asm/mixin/injection/At;");
+				at.visit("value", "INVOKE");
+				at.visit("remap", false);
+				at.visit("target", hook);
+				at.visitEnum("shift", "Lorg/spongepowered/asm/mixin/injection/At$Shift;", "AFTER");
+				at.visitEnd();
+				ats.visitEnd();
+				ann.visitEnd();
+				mv.visitEnd();
+			}
+		})));
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "AfterHooks"));
+		ClassIndex neoForge = new ClassIndex(Map.of(TARGET, mainCalling("net/neoforged/neoforge/server/loading/ServerModLoader", "load", "(Z)V"))::get);
+
+		List<PreflightFinding> notes = new ArrayList<>();
+		Map<String, byte[]> repaired = preflight(neoForge, mod::get, n -> null, false).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
+		assertEquals(1, notes.size(), notes.toString());
+		assertTrue(notes.getFirst().message().contains("afterFabric expects a call to net.fabricmc.loader.impl.game.minecraft.Hooks.startServer")
+				&& notes.getFirst().message().contains("ServerModLoader.load"), notes.toString());
+		mod.put("com/example/mixin/AfterHooks", repaired.get("com/example/mixin/AfterHooks.class"));
+		List<PreflightFinding> findings = preflight(neoForge, mod::get, n -> null, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(findings.stream().noneMatch(f -> f.message().contains("fabricmc")), findings.toString());
+		assertTrue(findings.stream().allMatch(f -> f.message().contains("quiltmc") && f.severity() == Severity.WARN), "Quilt's stays unmatched, as on Fabric: " + findings);
+
+		ClassIndex elsewhere = new ClassIndex(Map.of(TARGET, mainCalling("com/example/Other", "load", "(Z)V"))::get);
+		assertTrue(preflight(elsewhere, mod::get, n -> null, false)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty(), "only where NeoForge loads mods");
+	}
+
 	/** {@link #TARGET} whose {@code tick} calls {@code helper} through each of {@code descs} on itself, passing zeros and nulls. */
 	private static byte[] callingHelper(String... descs) {
 		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
