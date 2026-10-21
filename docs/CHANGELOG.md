@@ -3,6 +3,33 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-10-21 (pass after PR #51): biome modifications on 26.3, and what the advanced corpus stopped on
+
+**Plan.** Run 384 (PR #51's last) confirmed the 1.21.11 corpus client reaches a world with Friends and Foes loaded
+(MIX-1's plugin-mixin repair). The remaining stops were Fabric API's biome module on 26.3 (BIOME-1: the corpus server
+and client crash creating a world), a mixin pre-flight passed that failed once the game ran (Polymer), and an accessor
+pre-flight couldn't repair (JourneyMap).
+
+- BIOME-1: on 26.3 Fabricated ships `fabric-biome-api-v1`. Upstream's biome modifications replace `Biome` fields
+  NeoForge keeps private and no longer reads (NeoForge reads its modifiable biome info), so adding a mob spawn, which
+  is an environment attribute on 26.3, crashed world creation. They now run as a NeoForge biome modifier
+  (`fabricated:fabric_biome_api`, declared by Fabricated's data pack) on NeoForge's builders, Fabric's phases mapped
+  onto NeoForge's; upstream's API and biome source mixins ship unchanged. A version can now declare mixin configs of
+  its own (`version_mixin_configs`). The test mod adds a spawn and changes plains' temperature on 26.3, and checks both
+  once the server has started. Not built or run locally (Mojang's and NeoForge's servers are unreachable here): CI is
+  its first build.
+- RET-1: pre-flight took `@At("RETURN", ordinal = n)` as present in any method with code. Polymer's stream codec
+  injector asks for a second return this game build's `decode` doesn't have: it passed pre-flight and stopped the
+  advanced corpus at startup (1.21.11 server, run 383; 26.1.2 client, run 384). Return points now count returns as
+  Mixin does.
+- ACC-1: JourneyMap's `EditBoxAccessor` declares `isEditable()Z`, which `EditBox` already declares without public
+  access, so Mixin can't generate it and JourneyMap was disabled on every version (runs 381 to 383). The repair that
+  points such an accessor at the existing method now covers non-public ones too, made public by the mod's access
+  transformer.
+
+Run 384 also showed, still open: Moonlight's reload listener on 26.1.2 (CORPUS-16), and on 26.3 the advanced corpus
+server stopping on BIOME-1 as well.
+
 ## 2026-10-21 (pass after PR #50): more Fabric mods load, and run
 
 **Plan.** The corpus showed one mixin NeoForge's code can't take disabling a whole mod, and with it every mod that

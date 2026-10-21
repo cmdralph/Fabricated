@@ -1525,6 +1525,18 @@ class MixinPreflightTest {
 		assertEquals(Severity.LEFT_OUT, findings.getFirst().severity(), "only one call exists, ordinal 3 cannot match");
 	}
 
+	/** Polymer's {@code @At(value = "RETURN", ordinal = 1)} in a method with one return failed only once the game ran. */
+	@Test
+	void aReturnPointsOrdinalCountsTheMethodsReturns() throws Exception {
+		String cfg = "{\"required\":true,\"package\":\"com.example.mixin\",\"mixins\":[\"Ret\"],\"injectors\":{\"defaultRequire\":1}}";
+		byte[] second = mixin("com/example/mixin/Ret", false, cw -> inject(cw, "h", "tick", "RETURN", null, null, 1));
+		List<PreflightFinding> findings = run(cfg, null, Map.of("com/example/mixin/Ret", second), false);
+		assertEquals(1, findings.size(), findings.toString());
+		assertEquals(Severity.LEFT_OUT, findings.getFirst().severity(), "tick returns once, so there is no second return");
+		byte[] first = mixin("com/example/mixin/Ret", false, cw -> inject(cw, "h", "tick", "RETURN", null, null, 0));
+		assertTrue(run(cfg, null, Map.of("com/example/mixin/Ret", first), false).isEmpty());
+	}
+
 	@Test
 	void resolvesSelectorsThroughRefmap() throws Exception {
 		byte[] mapped = mixin("com/example/mixin/Mapped", false, cw -> inject(cw, "h", "devName", "INVOKE", "devTarget", 1, null));

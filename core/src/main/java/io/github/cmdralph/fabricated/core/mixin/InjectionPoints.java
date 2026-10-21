@@ -164,8 +164,24 @@ final class InjectionPoints {
 
 	static Verdict evaluate(String point, String target, int ordinal, int opcode, Range range, MethodNode method) {
 		switch (point) {
-			case "HEAD", "RETURN", "TAIL" -> {
+			case "HEAD", "TAIL" -> {
 				return method.instructions == null || method.instructions.size() == 0 ? Verdict.MISSING : Verdict.FOUND;
+			}
+			case "RETURN" -> {
+				// Mixin's BeforeReturn: each return instruction, or with an ordinal, only the ordinal-th in the slice.
+				if (method.instructions == null || method.instructions.size() == 0) return Verdict.MISSING;
+				if (ordinal < 0) return Verdict.FOUND;
+				int countInMethod = 0;
+				int countInRange = 0;
+				for (int i = 0; i < method.instructions.size(); i++) {
+					int op = method.instructions.get(i).getOpcode();
+					if (op < Opcodes.IRETURN || op > Opcodes.RETURN) continue;
+					countInMethod++;
+					if (i >= range.start() && i <= range.end()) countInRange++;
+				}
+				if (countInMethod <= ordinal) return Verdict.MISSING;
+				if (range == Range.UNEVALUATED) return Verdict.FOUND;
+				return countInRange <= ordinal ? Verdict.MISSING : Verdict.FOUND;
 			}
 			case "INVOKE", "INVOKE_ASSIGN", "INVOKE_STRING", "FIELD", "NEW" -> {
 				if (target == null) return Verdict.UNKNOWN;
