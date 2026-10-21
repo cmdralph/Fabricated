@@ -101,7 +101,7 @@ Fabricated/
 │   │                        fabric-api-plan.json, version-specific bridges (Java 21)
 │   ├── 26.1.2/              ... for 26.1.2 (Java 25)
 │   ├── 26.2/                ... for 26.2   (Java 25)
-│   └── 26.3/                ... for 26.3   (Java 25, NeoForge beta)
+│   └── 26.3/                ... for 26.3   (Java 25)
 ├── ci/                      Server, client and mod-corpus smoke tests run by GitHub Actions
 └── docs/                    claude.md (start here), roadmap.md, RESEARCH, ARCHITECTURE, COMPATIBILITY, MIXINS, API
 ```
@@ -457,7 +457,7 @@ Unknown keys produce a warning. Invalid values fall back to defaults with a warn
 * **Unit (core, runs anywhere):** metadata parsing/translation, version predicates, id normalisation, dependency resolution, archive safety (crafted malicious zips generated in-test), Tiny/ProGuard parsing and composition, remapping (incl. determinism), refmap rewriting, AW/CT→AT, pre-flight verifier (synthetic target/mixin classes generated with ASM), cache integrity, config validation, report rendering. **No third-party binaries are committed.** Fixtures are generated in tests.
 * **Integration (per MC version, CI):** no `gameTestServer` run. A real NeoForge dedicated server starts with the in-repo test mods (`ci/smoke-server.sh`: entrypoints, the Fabric Loader API, registries, mixins, access wideners, the native Fabric API modules, commands, and the isolation of a missing dependency, an impossible mixin and a throwing entrypoint), plus a client started headlessly under Xvfb (`ci/smoke-client.sh`) that joins a singleplayer world and exits.
 * **Real-mod smoke (CI only):** Fabric mods from Modrinth (`ci/mod-corpus.txt`, `ci/mod-corpus-advanced.txt` and projects named in the workflow), fetched by **CI** (never by Fabricated) with `ci/fetch-corpus.py`: each project's newest build for the version unless a Modrinth version id is named (the plugin hosts' are), each file checked against the SHA-512 Modrinth lists. Results feed `docs/COMPATIBILITY.md`.
-* **GitHub Actions:** a `core` job (JDK 21: the Minecraft-independent modules' build and unit tests), then a matrix `{1.21.11: JDK 21, 26.1.2: JDK 25, 26.2: JDK 25, 26.3: JDK 25}` (the JDK the game runs on). Steps: build Fabricated and the test mods, then the server and client runs, gates and informational ones. The 26.3 job is marked `continue-on-error` (`experimental`) while NeoForge 26.3 is beta.
+* **GitHub Actions:** a `core` job (JDK 21: the Minecraft-independent modules' build and unit tests), then a matrix `{1.21.11: JDK 21, 26.1.2: JDK 25, 26.2: JDK 25, 26.3: JDK 25}` (the JDK the game runs on). Steps: build Fabricated and the test mods, then the server and client runs, gates and informational ones. A version whose NeoForge line is in beta is marked `experimental` (`continue-on-error`); none is now, 26.3 having left beta.
 
 ## 17. Licensing
 

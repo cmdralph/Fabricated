@@ -47,7 +47,8 @@ jobs:
     # A job takes 20 to 30 minutes; a hung game run is stopped at its own timeout, and this bounds anything else.
     timeout-minutes: 75
     needs: core
-    # NeoForge 26.3 is still in beta, so its job is best-effort and does not fail the workflow.
+    # A version whose NeoForge line is still in beta is marked experimental: its job is best-effort and does not fail
+    # the workflow. None is now (NeoForge tagged 26.3.0-stable).
     continue-on-error: ${{ matrix.experimental }}
     strategy:
       fail-fast: false
@@ -76,11 +77,11 @@ jobs:
             experimental: false
           - minecraft: "26.3"
             fabric_api: "0.164.0+26.3"
-            neoforge: "26.3.0.69-beta"
+            neoforge: "26.3.0.95"
             # Modrinth version ids of the mods reading plugins (no WTHIT build for 26.3).
             plugin_hosts: "jei@3EynCW85 rei@uwE0PJmc jade@dVB8U7Td simple-voice-chat@3rpCvvMZ"
             java: 25
-            experimental: true
+            experimental: false
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4

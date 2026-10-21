@@ -31,7 +31,7 @@ The NeoForge repository has exactly four release branches in range. Its "stable"
 | **1.21.11** | `1.21.11` | `21.11.x` | ✅ (`21.11-stable` tag) | **10.0.36** | **21** | 9.2.0 | 2.0.124 | 0.16.5+mixin.0.8.7 | 0.5.3 | **Yes**; NeoForm `20251209.172050`. NeoForge runs on **Mojang names** at runtime. |
 | **26.1 / 26.1.1 / 26.1.2** | `26.1.x` | 4 components: `26.1.2.N` (e.g. Connector builds against `26.1.2.100`) | ✅ (`26.1.2-stable`) | 11.0.15 | **25** | 9.2.0 | 2.0.140 | 0.17.4+mixin.0.8.7 | 0.5.5 | **No.** First unobfuscated release, with parameter names included. |
 | **26.2** | `26.2.x` | `26.2.0.N` (a tracker reports `26.2.0.89`, *unverified*) | ✅ (`26.2.0-stable`) | 11.0.16 | 25 | 9.7.0 | 2.0.142 | 0.17.4+mixin.0.8.7 | 0.5.5 | No |
-| **26.3** | `26.3.x` | `26.3.0.N-beta` (trackers report builds 40–69, *unverified*) | ❌ **beta** (no stable tag) | 12.0.10 | 25 | 9.7.0 | 2.0.142 | 0.17.4+mixin.0.8.7 | 0.5.5 | No |
+| **26.3** | `26.3.x` | `26.3.0.N` (CI's newest-build check finds `26.3.0.95`; earlier builds were `26.3.0.N-beta`) | ✅ (`26.3.0-stable`) | 12.0.10 | 25 | 9.7.0 | 2.0.142 | 0.17.4+mixin.0.8.7 | 0.5.5 | No |
 
 Notes:
 * NeoForge's git has marker tags `26.1.0` and `26.1.1`, so NeoForge builds existed for 26.1 and 26.1.1, but the maintained branch is now 26.1.**2**. Fabricated should target **26.1.2** and treat 26.1/26.1.1 as "may work, untested".

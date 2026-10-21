@@ -26,7 +26,7 @@ is the measured state.
 | 1.21.11 | 21.11.45 | 0.141.6+1.21.11 | ✅ every server and client check | ✅ boots, all test-mod checks still pass |
 | 26.1.2 | 26.1.2.116 | 0.155.3+26.1.2 | ✅ every server and client check | ✅ boots, all test-mod checks still pass |
 | 26.2 | 26.2.0.90 | 0.161.0+26.2 | ✅ every server and client check | ✅ boots, all test-mod checks still pass |
-| 26.3 (beta) | 26.3.0.69-beta | 0.164.0+26.3 | ✅ every server and client check | ✅ boots, all test-mod checks still pass |
+| 26.3 | 26.3.0.95 | 0.164.0+26.3 | ✅ every server and client check | ✅ boots, all test-mod checks still pass |
 
 "Boots with Fabric API" means the server starts with the full official Fabric API jar installed. Modules
 that can't work on NeoForge are disabled before any code runs (see below); one that can do without a mixin NeoForge's
@@ -51,8 +51,8 @@ module loads on the client, the renderer API, Indigo and model loading included,
 1.21.11 that a model file of a Fabric type is read by its Fabric deserializer and that Fabric block models are drawn in
 chunk sections. On the dedicated server no Fabric API module is disabled.
 
-The 26.3 job is marked experimental in CI because NeoForge 26.3 is a beta; it passes every check. Its client
-opens its window with SDL3 over EGL, so CI installs Mesa's EGL library for it.
+NeoForge's 26.3 line left beta (its `26.3.0-stable` tag), so its job is a gate like the others; until then it was
+marked experimental, and passed every check on `26.3.0.69-beta`. Its client opens its window with SDL3 over EGL, so CI installs Mesa's EGL library for it.
 
 ## Fabric API modules
 
