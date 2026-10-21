@@ -1393,8 +1393,13 @@ class MixinPreflightTest {
 		return cw.toByteArray();
 	}
 
+	/**
+	 * An invoker of a method the target already declares uses that method instead of having Mixin generate one; one the
+	 * target declares privately (as JourneyMap's accessor clashes with vanilla's {@code EditBox.isEditable()}) is made
+	 * public by the mod's access transformer (ACC-1).
+	 */
 	@Test
-	void accessorsDuplicatingAPublicMethodUseItInstead() throws Exception {
+	void accessorsDuplicatingAMethodOfTheTargetUseIt() throws Exception {
 		Map<String, byte[]> mod = new HashMap<>(Map.of(
 				"com/example/mixin/Public", invokerInterface("com/example/mixin/Public", "tick", "()V"),
 				"com/example/mixin/Private", invokerInterface("com/example/mixin/Private", "helper", "(I)V")));
@@ -1403,9 +1408,11 @@ class MixinPreflightTest {
 		MixinConfigFile config = MixinConfigFile.parse(config(true, "Public", "Private"));
 		List<PreflightFinding> repairs = new java.util.ArrayList<>();
 		Map<String, byte[]> repaired = preflight.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), repairs);
-		assertEquals(Set.of("com/example/mixin/Public.class"), repaired.keySet(), "only a public method of the target is used instead");
-		assertEquals(1, repairs.size(), repairs.toString());
-		assertEquals(Severity.WARN, repairs.getFirst().severity());
+		assertEquals(Set.of("com/example/mixin/Public.class", "com/example/mixin/Private.class"), repaired.keySet());
+		assertEquals(2, repairs.size(), repairs.toString());
+		assertTrue(repairs.stream().allMatch(f -> f.severity() == Severity.WARN), repairs.toString());
+		assertTrue(repairs.stream().anyMatch(f -> f.message().contains("helper(I)V already exists in") && f.message().contains("made public")), repairs.toString());
+		assertEquals(Set.of("public net.minecraft.world.Thing helper(I)V"), preflight.accessTransformers(), "only the private one is made public");
 
 		org.objectweb.asm.tree.ClassNode node = new org.objectweb.asm.tree.ClassNode();
 		new org.objectweb.asm.ClassReader(repaired.get("com/example/mixin/Public.class")).accept(node, 0);
@@ -1413,9 +1420,9 @@ class MixinPreflightTest {
 		assertTrue((tick.access & Opcodes.ACC_SYNTHETIC) != 0, "synthetic, so Mixin still treats the interface as an accessor mixin");
 		assertEquals(List.of("Lorg/spongepowered/asm/mixin/Shadow;"), tick.visibleAnnotations.stream().map(a -> a.desc).toList());
 		mod.put("com/example/mixin/Public", repaired.get("com/example/mixin/Public.class"));
+		mod.put("com/example/mixin/Private", repaired.get("com/example/mixin/Private.class"));
 		List<PreflightFinding> findings = preflight.check("test.mixins.json", config, Refmap.EMPTY, Set.of());
-		assertEquals(1, findings.size(), findings.toString());
-		assertTrue(findings.getFirst().mixin().endsWith("Private"), "the private duplicate still fails: " + findings);
+		assertTrue(findings.isEmpty(), findings.toString());
 	}
 
 	/**

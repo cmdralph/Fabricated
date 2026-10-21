@@ -13,6 +13,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -102,6 +103,8 @@ public final class MixinPreflight {
 	private final Map<String, Optional<ClassNode>> targetCache = new HashMap<>();
 	/** The installed classes the checks read, with their fingerprints. */
 	private final Map<String, String> installedRead = new TreeMap<>();
+	/** Access transformer lines {@link #repairs} needs, by the method they make public. */
+	private final Set<String> widened = new TreeSet<>();
 	/** The libraries' classes (the JDK, DataFixerUpper, ...), for the supertypes of the classes a game method calls. */
 	private ClassIndex libraries;
 
@@ -164,13 +167,23 @@ public final class MixinPreflight {
 	}
 
 	/**
+	 * The access transformer lines the mixins {@link #repairs} rewrote need: game methods made public, which their
+	 * accessors and invokers now use.
+	 */
+	public Set<String> accessTransformers() {
+		return Collections.unmodifiableSet(new TreeSet<>(widened));
+	}
+
+	/**
 	 * Mixins that Mixin would reject but that can be pointed at what the game really has, before pre-flight checks them.
 	 * Returns the mixin classes rewritten, by class file name; each repair is reported as a warning.
 	 * <ul>
 	 * <li>An accessor or invoker that every target already declares publicly, with the same descriptor (typically a
 	 * method NeoForge added): Mixin cannot generate it, but the existing method does the job, so it becomes a
 	 * synthetic {@code @Shadow} of it. (Synthetic, because Mixin treats an interface with any other non-accessor
-	 * method as an interface mixin, which may only target interfaces.)</li>
+	 * method as an interface mixin, which may only target interfaces.) Where a target declares it without public access
+	 * (vanilla's {@code EditBox.isEditable()}, which JourneyMap's accessor of the field of that name clashes with), the
+	 * mod's access transformer makes it public ({@link #accessTransformers}), and the same applies (ACC-1).</li>
 	 * <li>An {@code @Accessor} of a local variable an anonymous class captured ({@code val$name}), where the game names
 	 * that field after the decompiled variable instead (NeoForge's 1.21.11 build, for example): it is pointed at the
 	 * one captured field of the same type in each target.</li>
@@ -268,16 +281,23 @@ public final class MixinPreflight {
 				AnnotationNode accessor = Annotations.find(method, ACCESSOR);
 				String kind = accessor != null ? "@Accessor" : Annotations.find(method, INVOKER) != null ? "@Invoker" : null;
 				if (kind == null) continue;
-				if (targets.stream().allMatch(t -> declaresPublicInstance(t, method.name, method.desc))) {
+				if (targets.stream().allMatch(t -> declaresInstance(t, method.name, method.desc))) {
 					if (method.visibleAnnotations != null) method.visibleAnnotations.removeIf(MixinPreflight::isAccessorAnnotation);
 					if (method.invisibleAnnotations != null) method.invisibleAnnotations.removeIf(MixinPreflight::isAccessorAnnotation);
 					if (method.visibleAnnotations == null) method.visibleAnnotations = new ArrayList<>();
 					method.visibleAnnotations.add(new AnnotationNode(SHADOW));
 					method.access |= Opcodes.ACC_SYNTHETIC;
 					changed = true;
+					boolean madePublic = false;
+					for (ClassNode t : targets) {
+						if (declaresPublicInstance(t, method.name, method.desc)) continue;
+						widened.add("public " + t.name.replace('/', '.') + " " + method.name + method.desc);
+						madePublic = true;
+					}
 					out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), kind + " " + method.name + method.desc
-							+ " already exists publicly in " + targets.getFirst().name.replace('/', '.')
-							+ " (added by NeoForge or this Minecraft version); the mixin uses that method instead of generating one", ""));
+							+ " already exists " + (madePublic ? "" : "publicly ") + "in " + targets.getFirst().name.replace('/', '.')
+							+ " (added by NeoForge or this Minecraft version); the mixin uses that method instead of generating one"
+							+ (madePublic ? ", made public for it" : ""), ""));
 				} else if (accessor != null) {
 					String field = capturedFieldRepair(method, accessor, targets, ctx);
 					if (field == null) continue;
@@ -825,6 +845,11 @@ public final class MixinPreflight {
 	private static boolean declaresPublicInstance(ClassNode target, String name, String desc) {
 		MethodNode m = declared(target, name, desc);
 		return m != null && (m.access & Opcodes.ACC_PUBLIC) != 0 && (m.access & Opcodes.ACC_STATIC) == 0;
+	}
+
+	private static boolean declaresInstance(ClassNode target, String name, String desc) {
+		MethodNode m = declared(target, name, desc);
+		return m != null && (m.access & Opcodes.ACC_STATIC) == 0;
 	}
 
 	private static boolean isGameClass(String internalName) {
