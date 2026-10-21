@@ -104,7 +104,7 @@ Fabricated/
 ## 3. Mod discovery and metadata translation
 
 ### 3.1 Claiming Fabric jars
-`FabricCandidateLocator implements IModFileCandidateLocator` (ServiceLoader-registered) claims any jar in the mods folder containing `fabric.mod.json` and **no** `META-INF/neoforge.mods.toml`, which leaves multi-loader jars to NeoForge. It only marks the jar as located (`addLocated`), so NeoForge doesn't report it as an incompatible Fabric jar; it is not a NeoForge mod file. `FabricDependencyLocator implements IDependencyLocator` then processes all candidates together, since resolution needs the global view. The same discovery pattern is used by prior art; this implementation is clean-room.
+`FabricCandidateLocator implements IModFileCandidateLocator` (ServiceLoader-registered) claims any jar in the mods folder containing `fabric.mod.json` and **no** `META-INF/neoforge.mods.toml`, which leaves multi-loader jars to NeoForge. A jar with both is claimed too when its NeoForge side starts nothing of its own while its Fabric side has entrypoints: Java's language loader and no class with NeoForge's `@Mod` (`MultiLoaderJars`, MULTI-1). That is a Fabric build that kept its NeoForge build's metadata, as Do a Barrel Roll's 26.x jars do; NeoForge would load its Fabric mixins as a NeoForge mod's. It only marks the jar as located (`addLocated`), so NeoForge doesn't report it as an incompatible Fabric jar; it is not a NeoForge mod file. `FabricDependencyLocator implements IDependencyLocator` then processes all candidates together, since resolution needs the global view. The same discovery pattern is used by prior art; this implementation is clean-room.
 
 ### 3.2 `fabric.mod.json` → descriptor
 * `schemaVersion` 1 is fully supported. Schema 0 (pre-2019) is rejected with a clear message.
@@ -178,7 +178,7 @@ Each mod's entrypoints run inside a guard that records mod id, entrypoint key, c
    * `@Inject` handlers take either only the callback info or the target's parameters followed by it (MixinExtras sugar parameters such as `@Local` aside). NeoForge recompiles Minecraft, so a synthetic lambda can take its captured values in another order. Handlers that capture locals or use `@Coerce` are not judged;
    * `@Local(name = …)` captures name a local variable the target declares (when the game class carries local names), and `@ModifyConstant` constants occur in the target;
    * merged methods, `@Accessor`s and `@Invoker`s don't collide with a method the target already declares (NeoForge adds some, such as `hashCode` or public getters);
-   * a `NEW` point with a constructor descriptor matches that constructor only, and targets in library classes NeoForge loads without mixin support (DataFixerUpper, Brigadier, the JDK) fail.
+   * a `NEW` point with a constructor descriptor matches that constructor only, and targets in library classes NeoForge loads without mixin support (DataFixerUpper, Brigadier, the JDK) fail. A mixin into such a class that only gives it interfaces of the mod, implemented with the class's fields and the mixin's own methods (Carpet's command removal), never reaches that check: translation replaces it with a generated class serving the interfaces (`LibraryBridges`, LIB-1), whose static methods read and write the fields through reflection, and points the mod's casts to the interfaces, checks against them and calls of their methods at it.
 
    Mixins into the classes of the jars installed next to the Fabric mods get the same checks (`InstalledClasses`:
    Fabricated's Fabric API, then each NeoForge mod's jar, nested ones too, then the Fabric mods' jars, whose classes
@@ -349,7 +349,8 @@ versions is decided at compile time by which source folders it compiles, plus tw
   handlers that pass a handler's MixinExtras sugar on), renumbered lambdas, calls moved into a lambda of the method, hard local captures, accessors of members
   NeoForge added), not by per-version tables. Enum mixins into
   NeoForge's extensible enums become its enum extension entries (`EnumExtensions`), named enums included when their
-  names already carry the mod's id.
+  names already carry the mod's id. Mixins only giving a library class the mod's interfaces become generated classes
+  the mod calls instead (`LibraryBridges`).
 * Everything Minecraft-agnostic stays in `core`/`loader`. The full seam table is in [`claude.md`](claude.md).
 * **Adding a version** (summarised from `CONTRIBUTING.md`): copy the nearest `mc/<ver>` directory, set
   `minecraft_version`/`neo_version` in its `gradle.properties`, add it to `settings.gradle` and the CI matrix, fix

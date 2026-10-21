@@ -50,6 +50,7 @@ import io.github.cmdralph.fabricated.core.resolve.FabricApiPlan;
 import io.github.cmdralph.fabricated.core.testutil.TestEnumBodies;
 import io.github.cmdralph.fabricated.core.testutil.TestEnums;
 import io.github.cmdralph.fabricated.core.testutil.TestJars;
+import io.github.cmdralph.fabricated.core.testutil.TestSources;
 import io.github.cmdralph.fabricated.core.translate.DefaultBridge;
 import io.github.cmdralph.fabricated.core.translate.PackageGuard;
 import io.github.cmdralph.fabricated.core.translate.TranslatedMod;
@@ -271,11 +272,17 @@ class PipelineTest {
 
 	private static Pipeline.Input input(Path game, List<Path> jars, Namespace ns, Map<String, byte[]> gameClasses, Pipeline.MappingSupplier mappings,
 			List<Pipeline.NeoForgeMod> neoForgeMods, InstalledClasses installed) throws Exception {
+		return input(game, jars, ns, gameClasses, mappings, neoForgeMods, installed, ClassBytesSource.EMPTY);
+	}
+
+	/** @param libraries the classes NeoForge loads outside its transforming class loader (the JDK's and libraries') */
+	private static Pipeline.Input input(Path game, List<Path> jars, Namespace ns, Map<String, byte[]> gameClasses, Pipeline.MappingSupplier mappings,
+			List<Pipeline.NeoForgeMod> neoForgeMods, InstalledClasses installed, ClassBytesSource libraries) throws Exception {
 		FabricatedConfig config = FabricatedConfig.load(game.resolve("config"));
 		TranslationCache cache = new TranslationCache(game, config.cacheEnabled(), config.verifyIntegrity());
 		return new Pipeline.Input(game, game.resolve("config"), config, cache, jars, ns == Namespace.OFFICIAL ? "26.2" : "1.21.11",
 				"26.2.0.90", false, ns, "0.17.4+mixin.0.8.7", "0.5.3", "0.17.1", "0.1.0-test", false, gameClasses::get, List.of(game.resolve("minecraft.jar")),
-				List.of(game.resolve("fabricated.jar")), ClassBytesSource.EMPTY, Set.of("net/neoforged/neoforge"),
+				List.of(game.resolve("fabricated.jar")), libraries, Set.of("net/neoforged/neoforge"),
 				FabricApiPlan.parse(PLAN), name -> null, Map::of, neoForgeMods, installed, mappings, new String[0]);
 	}
 
@@ -1003,6 +1010,43 @@ class PipelineTest {
 		Report.ModRow row = result.report().mods().stream().filter(r -> r.id().equals("freecam")).findFirst().orElseThrow();
 		assertEquals(Report.Status.DISABLED, row.status());
 		assertTrue(row.detail().contains("requires MixinExtras 0.5.5 or later; this NeoForge ships MixinExtras 0.5.3"), row.detail());
+	}
+
+	@Test
+	void aModWhoseMixinOnlyGivesALibraryClassAnInterfaceLoadsWithABridge(@TempDir Path game) throws Exception {
+		// LIB-1: Carpet's mixins give Brigadier's CommandNode an interface removing a child; NeoForge loads Brigadier without
+		// mixin support, and pre-flight disabled Carpet. The mixin into a library class that does more is still judged.
+		Map<String, byte[]> classes = TestSources.compile(game.resolve("build"), TestSources.MIXIN_ANNOTATIONS, Map.of(
+				"lib/Node.java", "package lib; public class Node { private final java.util.Map<String, Node> children = new java.util.HashMap<>(); }",
+				"mod/NodeAccess.java", "package mod; public interface NodeAccess { void removeChild(String name); }",
+				"mod/mixin/NodeMixin.java", """
+						package mod.mixin;
+						import org.spongepowered.asm.mixin.*;
+						@Mixin(value = lib.Node.class, remap = false)
+						public class NodeMixin implements mod.NodeAccess {
+							@Shadow @Final private java.util.Map<String, lib.Node> children;
+							@Override public void removeChild(String name) { children.remove(name); }
+						}""",
+				"mod/Commands.java", "package mod; public class Commands { public static void drop(Object node) { ((NodeAccess) node).removeChild(\"tick\"); } }"));
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		Path carpet = TestJars.create().fabricModJson(TestJars.modJson("carpet", "1.0", "\"mixins\":[\"carpet.mixins.json\"]"))
+				.text("carpet.mixins.json", "{\"required\":true,\"package\":\"mod.mixin\",\"mixins\":[\"NodeMixin\"]}")
+				.bytes("mod/NodeAccess.class", classes.get("mod/NodeAccess"))
+				.bytes("mod/mixin/NodeMixin.class", classes.get("mod/mixin/NodeMixin"))
+				.bytes("mod/Commands.class", classes.get("mod/Commands"))
+				.write(mods.resolve("carpet.jar"));
+		ClassBytesSource libraries = name -> name.startsWith("lib/") ? classes.get(name) : null;
+		Pipeline.Result result = Pipeline.run(input(game, List.of(carpet), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null, List.of(),
+				InstalledClasses.NONE, libraries));
+
+		assertEquals(List.of("carpet"), result.mods().stream().map(m -> m.translated().candidate().id()).toList(), result.report().render());
+		assertTrue(result.report().render().contains("are served by a generated class"), result.report().render());
+		try (SafeArchive overlay = SafeArchive.open(result.mods().getFirst().translated().overlay(), ArchiveLimits.DEFAULTS)) {
+			assertFalse(new String(overlay.read("carpet.mixins.json"), StandardCharsets.UTF_8).contains("NodeMixin"), "Mixin doesn't apply it");
+			assertNotNull(overlay.read("mod/NodeAccess$FabricatedBridge.class"));
+			String commands = new String(overlay.read("mod/Commands.class"), StandardCharsets.ISO_8859_1);
+			assertTrue(commands.contains("mod/NodeAccess$FabricatedBridge"), "the mod's call goes to the bridge");
+		}
 	}
 
 	@Test

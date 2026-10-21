@@ -11,6 +11,8 @@ import java.util.zip.ZipFile;
 import org.slf4j.LoggerFactory;
 import org.slf4j.Logger;
 
+import io.github.cmdralph.fabricated.core.archive.ArchiveLimits;
+import io.github.cmdralph.fabricated.core.resolve.MultiLoaderJars;
 import net.neoforged.fml.loading.FMLPaths;
 import net.neoforged.neoforgespi.ILaunchContext;
 import net.neoforged.neoforgespi.locating.IDiscoveryPipeline;
@@ -20,7 +22,8 @@ import net.neoforged.neoforgespi.locating.IModFileCandidateLocator;
  * Claims Fabric jars in the mods folder before NeoForge's own mods-folder scan, which would otherwise
  * reject them as incompatible. Claimed jars are processed later, all together, by
  * {@link FabricDependencyLocator}. Jars that also contain {@code META-INF/neoforge.mods.toml} are
- * multi-loader jars and are left to NeoForge.
+ * multi-loader jars and are left to NeoForge, unless their NeoForge side starts nothing of its own ({@link
+ * MultiLoaderJars}).
  */
 public final class FabricCandidateLocator implements IModFileCandidateLocator {
 	private static final Logger LOGGER = LoggerFactory.getLogger("Fabricated");
@@ -50,14 +53,19 @@ public final class FabricCandidateLocator implements IModFileCandidateLocator {
 		LOGGER.info("Fabricated found {} Fabric mod jar(s) in {}", found.size(), modsDir);
 	}
 
-	/** Cheap check of the central directory only; full validation happens in the pipeline. */
+	/** Cheap check of the central directory, unless the jar has both loaders' metadata; full validation happens in the pipeline. */
 	static boolean isFabricOnlyJar(Path jar) {
 		try (ZipFile zip = new ZipFile(jar.toFile())) {
-			return zip.getEntry("fabric.mod.json") != null && zip.getEntry("META-INF/neoforge.mods.toml") == null;
+			if (zip.getEntry("fabric.mod.json") == null) return false;
+			if (zip.getEntry(MultiLoaderJars.MODS_TOML) == null) return true;
 		} catch (IOException | RuntimeException e) {
 			// Not a zip or unreadable: leave it to NeoForge, which reports broken files itself.
 			return false;
 		}
+		if (MultiLoaderJars.forNeoForge(jar, ArchiveLimits.DEFAULTS)) return false;
+		LOGGER.info("Fabricated loads {} as a Fabric mod: it declares a NeoForge mod too, but no class of it for NeoForge to start (MULTI-1)",
+				jar.getFileName());
+		return true;
 	}
 
 	/** Jars claimed during this launch, sorted by path. */

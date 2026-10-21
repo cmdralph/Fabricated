@@ -123,7 +123,9 @@ failures fall into a few groups:
 - **The mixin targets a library class**: `fabric-dimensions-v1` patches DataFixerUpper's `TaggedChoice`,
   which NeoForge loads without mixin support. Fabricated's Fabric API plan
   (`fabric-api-plan.json`) leaves out those mixins and the mixin that depends on them, so the rest of the
-  module loads; only the safety net for worlds that reference a removed modded dimension is missing.
+  module loads; only the safety net for worlds that reference a removed modded dimension is missing. A Fabric
+  mod's mixin into such a class that only gives it one of the mod's interfaces (Carpet's into Brigadier's command
+  nodes, to remove a script's commands) is replaced by a generated class serving the interface (LIB-1).
 - **NeoForge changed a field's type**: an `@Accessor` must read a field of exactly its type. Upstream's
   `fabric-object-builder-api-v1` (26.x) read `AttributeSupplier.Builder.builder` as an `ImmutableMap.Builder`,
   which NeoForge replaced; it is native now (see below).

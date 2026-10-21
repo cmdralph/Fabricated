@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """For a crash where Mixin could not apply an injector that pre-flight passed (CI only): the handler's annotations, as
 the mod's jar has them and as Fabricated's translation left them, the code of the target methods in the game's
-patched jar, and the other mixins naming the target class and those methods, so what Mixin searched is in the log
-(CORPUS-18).
+patched jar, the other mixins naming the target class and those methods, and what Fabricated's report says of the mixin
+and of its mod, so what Mixin searched is in the log (CORPUS-18).
 
 Usage: ci/mixin-diag.py <crash report> <client work directory (run/mods, run/.fabricated, minecraft/libraries)>
 """
@@ -77,10 +77,10 @@ def main():
     with open(sys.argv[1], encoding="utf-8", errors="replace") as f:
         crash = f.read()
     work = sys.argv[2]
-    m = re.search(r"method ([A-Za-z0-9_$]+)\(.*? in ([A-Za-z0-9_.-]+\.json):([A-Za-z0-9_.$]+) from mod", crash)
+    m = re.search(r"method ([A-Za-z0-9_$]+)\(.*? in ([A-Za-z0-9_.-]+\.json):([A-Za-z0-9_.$]+) from mod ([A-Za-z0-9_.-]+)", crash)
     if not m:
         return
-    handler, config, mixin = m.groups()
+    handler, config, mixin, mod = m.groups()
     overlays = glob.glob(f"{work}/run/.fabricated/cache/**/overlay.jar", recursive=True)
     for jar in glob.glob(f"{work}/run/mods/*.jar"):
         try:
@@ -110,12 +110,20 @@ def main():
             re.findall(r"method=\[([^\]]*)\]", "\n".join(lines))))}
         patched = glob.glob(f"{work}/minecraft/libraries/**/minecraft-client-patched-*.jar", recursive=True)
         print(f"-- targets {targets}, methods {sorted(methods)}, patched jar {'found' if patched else 'not found'}, {len(overlays)} translation overlay(s)")
+        # What the report says of the mixin, and of its mod (its row, notes and findings), in case none names the mixin.
         simple = mixin.rsplit(".", 1)[-1]
         for report in glob.glob(f"{work}/run/logs/fabric-bridge-report*.txt"):
             with open(report, encoding="utf-8", errors="replace") as f:
-                for line in f:
-                    if simple in line:
-                        print("-- report: " + line.rstrip()[:300])
+                lines_of_report = f.read().splitlines()
+            for i, line in enumerate(lines_of_report):
+                words = line.split()
+                if simple in line or words and words[0] in (mod, mod + ":"):
+                    print("-- report: " + line.rstrip()[:300])
+                    # A mod's row continues on the indented lines below it.
+                    for detail in lines_of_report[i + 1:i + 4]:
+                        if not detail.startswith("      "):
+                            break
+                        print("-- report:   " + detail.strip()[:300])
         if not targets or not methods:
             return
         target = targets[0]

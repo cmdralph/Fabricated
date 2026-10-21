@@ -3,6 +3,37 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-10-21 (pass after PR #56): Polymer's handshake, Carpet's Brigadier hooks, and Do a Barrel Roll's jar
+
+**Plan.** PR #56's last run showed every 26.x advanced server starting (ITEMCOMP-1) and the 1.21.11 advanced client
+past Polymer's codecs (PRE-13), stopping where NeoForge refuses to send Polymer's handshake. The 26.x advanced clients
+still stop on Do a Barrel Roll's camera hook.
+
+- NET-5: a payload NeoForge has no registration for is sent, as vanilla sends it, where NeoForge threw: no NeoForge or
+  Fabric mod declared it, so a mod put it on the wire with its own codec (Polymer's handshake, which Polymer's own hook
+  receives).
+- LIB-1: a mixin into a library class NeoForge loads without mixin support that only gives the class interfaces of
+  the mod, implemented with the class's fields and its own methods, becomes a generated class: its methods become
+  static ones reading and writing the fields through reflection, and the mod's casts to the interfaces, checks against
+  them and calls of their methods (method references too) call that class. Carpet's two mixins into Brigadier's
+  command node and dispatcher, which remove a script's commands, disabled Carpet on every version. Unit tests compile
+  such a library, mixins and mod with javac, translate them and run the result; the translation schema is bumped.
+- MULTI-1: a jar with both Fabric's and NeoForge's metadata is a Fabric mod when its NeoForge side starts nothing of
+  its own (Java's language loader, no class with NeoForge's `@Mod`) and its Fabric side has entrypoints. Do a Barrel
+  Roll's 26.x Fabric jars keep the NeoForge build's `neoforge.mods.toml`, so NeoForge loaded them itself and applied
+  their Fabric mixins, which stopped every 26.x advanced client (CORPUS-18). The mixin diagnostics pointed there: no
+  line of Fabricated's report named the mod, and NeoForge's mod list did (the jar's entries weren't listed; the next
+  run's log names each jar Fabricated takes this way).
+- NET-4: a Fabric payload type in the `minecraft` namespace, which NeoForge refuses to register (BetterEnd's ritual
+  update), goes as vanilla's own payloads do: NeoForge's codec lookup gets its Fabric codec, each side announces the
+  ones it receives with `minecraft:register` as Fabric does, and the vanilla path of the custom payload handler hands
+  them to Fabric's receivers. The test mod sends one both ways.
+- NET-6: on 26.x, packets are decoded and encoded with the connection's Fabric `PacketContext` bound, as upstream's
+  networking module does; Polymer's hello payload failed to decode without it (26.2 advanced client).
+- ATTR-1: on a client, the check that living entity types have attributes waits for the main entrypoints, where
+  Fabric mods register them; it logged an error for each of their entity types before (BetterNether's).
+- CI: the mixin diagnostics also print what the report says of the failing mixin's mod (CORPUS-18).
+
 ## 2026-10-21 (pass after PR #55): Polymer's payload codecs, and default components on 26.3
 
 **Plan.** PR #55's last run showed the 26.1.2 and 26.2 advanced servers starting (LAMBDA-3), Tectonic's pack loading

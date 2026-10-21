@@ -26,6 +26,7 @@ import net.minecraft.world.inventory.MenuType;
  */
 public final class ClientTestMod implements ClientModInitializer {
 	private boolean menuRequested;
+	private boolean vanillaPingSent;
 
 	@Override
 	public void onInitializeClient() {
@@ -50,6 +51,9 @@ public final class ClientTestMod implements ClientModInitializer {
 
 		ClientConfigurationNetworking.registerGlobalReceiver(ConfigurationTest.Request.TYPE,
 				(payload, context) -> context.responseSender().sendPacket(new ConfigurationTest.Reply(7)));
+		ClientPlayNetworking.registerGlobalReceiver(NetworkingTest.VanillaPing.TYPE, (payload, context) -> {
+			if (payload.value() == 12) TestMod.LOGGER.info("FABRICATED-TEST minecraft namespace payload round trip OK");
+		});
 		ClientPlayNetworking.registerGlobalReceiver(NetworkingTest.Ping.TYPE, (payload, context) -> {
 			if (payload.value() == 42) TestMod.LOGGER.info("FABRICATED-TEST client networking round trip OK");
 		});
@@ -62,6 +66,11 @@ public final class ClientTestMod implements ClientModInitializer {
 			TestMod.LOGGER.error("FABRICATED-TEST could not register the test menu's screen", e);
 		}
 		ClientTickEvents.END_CLIENT_TICK.register(client -> {
+			// Once the server has announced it receives the payload (NET-4).
+			if (!vanillaPingSent && client.player != null && client.player.tickCount > 40 && ClientPlayNetworking.canSend(NetworkingTest.VanillaPing.TYPE)) {
+				vanillaPingSent = true;
+				ClientPlayNetworking.send(new NetworkingTest.VanillaPing(11));
+			}
 			if (!menuRequested && client.player != null && client.player.tickCount > 40 && ClientPlayNetworking.canSend(NetworkingTest.Ping.TYPE)) {
 				menuRequested = true;
 				ClientPlayNetworking.send(new NetworkingTest.Ping(MenuTest.OPEN_REQUEST));
