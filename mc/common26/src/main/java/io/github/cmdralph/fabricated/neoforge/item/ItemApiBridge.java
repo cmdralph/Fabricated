@@ -11,28 +11,37 @@ import net.fabricmc.fabric.api.item.v1.CustomDamageHandler;
 import net.fabricmc.fabric.api.item.v1.DefaultItemComponentEvents;
 import net.fabricmc.fabric.api.item.v1.FabricItem;
 import net.fabricmc.fabric.impl.item.ItemComponentTooltipProviderRegistryImpl;
+import net.minecraft.core.HolderLookup;
+import net.minecraft.core.component.DataComponentMap;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.neoforged.api.distmarker.Dist;
+import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.common.tooltip.TooltipAppender;
 import net.neoforged.neoforge.common.tooltip.TooltipLocation;
+import net.neoforged.neoforge.event.DefaultDataComponentsBoundEvent;
 import net.neoforged.neoforge.event.ModifyDefaultComponentsEvent;
 import net.neoforged.neoforge.event.RegisterTooltipAppendersEvent;
 import net.neoforged.neoforge.event.entity.player.ItemTooltipEvent;
 
 /**
  * Native {@code fabric-item-api-v1} (26.x): the events, and helpers for Fabricated's item mixins. Fabric's default
- * component changes go through NeoForge's {@link ModifyDefaultComponentsEvent} and tooltip providers through its
- * {@link RegisterTooltipAppendersEvent}; item click behaviour (26.2+) through {@link ItemApiCompat}; Fabric's client
+ * component changes are made as the items' default components are bound ({@link DefaultDataComponentsBoundEvent}) and
+ * tooltip providers go through NeoForge's {@link RegisterTooltipAppendersEvent}; item click behaviour (26.2+) through {@link ItemApiCompat}; Fabric's client
  * tooltip callback is fired from NeoForge's {@link ItemTooltipEvent}.
  */
 public final class ItemApiBridge {
 	private static final Logger LOGGER = LoggerFactory.getLogger("Fabricated");
 	private static volatile Supplier<@Nullable Player> clientPlayer = () -> null;
+	/** The registries the items' default component initializers last ran with: what Fabric's changes are given. */
+	private static volatile HolderLookup.@Nullable Provider componentRegistries;
 
 	/** Whether an item class overrides Fabric's {@code getCreatorNamespace} (otherwise NeoForge's answer is kept). */
 	private static final ClassValue<Boolean> OVERRIDES_CREATOR_NAMESPACE = new ClassValue<>() {
@@ -50,8 +59,9 @@ public final class ItemApiBridge {
 	}
 
 	public static void register(IEventBus modBus, Dist dist) {
-		modBus.addListener(ModifyDefaultComponentsEvent.class, event -> DefaultItemComponentEvents.MODIFY.invoker().modify(
-				(predicate, consumer) -> event.modifyMatching((item, components) -> predicate.test(item), consumer::modify)));
+		// Only to learn the registries the initializers run with; Fabric's changes wait for the binding (ITEMCOMP-1).
+		modBus.addListener(ModifyDefaultComponentsEvent.class, event -> event.modify(Items.STONE, (components, registries, item) -> componentRegistries = registries));
+		NeoForge.EVENT_BUS.addListener(EventPriority.HIGHEST, DefaultDataComponentsBoundEvent.class, ItemApiBridge::modifyDefaultComponents);
 		modBus.addListener(RegisterTooltipAppendersEvent.class, ItemApiBridge::registerTooltipProviders);
 		ItemApiCompat.register();
 		if (dist.isClient()) {
@@ -59,6 +69,26 @@ public final class ItemApiBridge {
 			NeoForge.EVENT_BUS.addListener(ItemTooltipEvent.class, event -> ItemTooltipCallback.EVENT.invoker()
 					.getTooltip(event.getItemStack(), event.getContext(), event.getFlags(), event.getToolTip()));
 		}
+	}
+
+	/**
+	 * Fabric's default component changes, as upstream makes them once an item's default components are bound (read in
+	 * its {@code DefaultItemComponentImpl} and {@code DataComponentInitializersPendingComponentsMixin}): a listener's
+	 * predicate may read the item's components, as Wover's reads them; NeoForge's own event runs before the binding,
+	 * where that throws ("Components not bound yet", which stopped the 26.3 advanced corpus server). Not on a client of
+	 * its own integrated server, whose items the server already bound.
+	 */
+	private static void modifyDefaultComponents(DefaultDataComponentsBoundEvent event) {
+		if (!event.shouldUpdateStaticData()) return;
+		HolderLookup.Provider registries = componentRegistries;
+		DefaultItemComponentEvents.MODIFY.invoker().modify((predicate, consumer) -> {
+			for (Item item : BuiltInRegistries.ITEM) {
+				if (!predicate.test(item)) continue;
+				DataComponentMap.Builder builder = DataComponentMap.builder().addAll(item.components());
+				consumer.modify(builder, registries, item);
+				item.builtInRegistryHolder().bindComponents(builder.build());
+			}
+		});
 	}
 
 	/** Fabric's {@code ItemComponentTooltipProviderRegistry}, placed where NeoForge places component tooltips. */
