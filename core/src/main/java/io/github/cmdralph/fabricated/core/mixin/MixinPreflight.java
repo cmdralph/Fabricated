@@ -109,6 +109,7 @@ public final class MixinPreflight {
 	private static final Pattern LAMBDA = Pattern.compile("lambda\\$(.+)\\$\\d+");
 	private static final Set<String> GAME_PREFIXES = Set.of("net/minecraft/", "com/mojang/blaze3d/");
 	private static final String NEOFORGE_PACKAGE = "net/neoforged/";
+	private static final String CALLBACK_INFO_RETURNABLE = "Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;";
 
 	private final ClassIndex game;
 	private final InstalledClasses installed;
@@ -509,9 +510,14 @@ public final class MixinPreflight {
 			boolean localsGone = inject && inChosen == Verdict.FOUND && missingLocal(handler, List.of(chosen)) != null;
 			if (inChosen == Verdict.MISSING || localsGone) {
 				overload = calledOverload(chosen, target);
+				boolean split = overload == null && inChosen == Verdict.MISSING;
+				if (split) overload = splitOff(chosen, target, ats, slices, ctx);
 				if (overload == null || (overload.access & Opcodes.ACC_STATIC) != (chosen.access & Opcodes.ACC_STATIC)
-						|| !Type.getReturnType(overload.desc).equals(Type.getReturnType(chosen.desc))
+						|| !split && !Type.getReturnType(overload.desc).equals(Type.getReturnType(chosen.desc))
 						|| InjectionPoints.pointsIn(ats, slices, overload, ctx) != Verdict.FOUND) continue;
+				// Its callback info must suit the method it moves to: a returnable one only one returning the same.
+				if (split && inject && !Type.getReturnType(overload.desc).equals(Type.getReturnType(chosen.desc))
+						&& handlerArgs(handler).getLast().getDescriptor().equals(CALLBACK_INFO_RETURNABLE)) continue;
 				int captured = inject ? (takesParameters ? 0 : -1) : capturedFrom(handler, chosen);
 				int inserted = insertedParameter(chosen, overload);
 				List<Runnable> locals = localsFit(handler, overload) ? List.of() : localsInOverload(handler, overload, inserted, ats);
@@ -521,7 +527,8 @@ public final class MixinPreflight {
 					bridges.add(HandlerBridges.insertedParameterBridge(mixin.name, handler, injector, captured, Type.getArgumentTypes(chosen.desc).length,
 							overload, inserted, HandlerBridges.freeName(mixin, bridges, handler.name + "$fabricated")));
 				}
-				how = localsGone ? ", which NeoForge reduced to a call to " : ", whose code NeoForge moved into ";
+				how = localsGone ? ", which NeoForge reduced to a call to " : split ? ", the code of which there NeoForge split off into "
+						: ", whose code NeoForge moved into ";
 			} else {
 				// The injection points exist, but in a constructor nothing calls any more: its end is the end of the one it calls.
 				overload = keptConstructorDelegate(chosen, target);
@@ -1066,6 +1073,33 @@ public final class MixinPreflight {
 				HandlerBridges.freeName(mixin, bridges, handler.name + "$fabricated")));
 		return List.of(chosen.name + vanilla + ", which this game build declares with one more parameter, " + chosen.name + chosen.desc
 				+ "; the handler is called through a bridge taking it");
+	}
+
+	/**
+	 * The one method of the class {@code method} calls in which the injection points are, when none of them is anywhere
+	 * in {@code method} (no ordinal, no slice) and nothing else in the class calls it: code NeoForge's patches split off
+	 * into a method of their own, as {@code Level.setBlock}'s neighbour updates into {@code markAndNotifyBlock}
+	 * (SPLIT-1). Null when none or several are.
+	 */
+	private static MethodNode splitOff(MethodNode method, ClassNode target, List<AnnotationNode> ats, List<AnnotationNode> slices, Context ctx) {
+		if (!slices.isEmpty() || ats.stream().anyMatch(at -> Annotations.value(at, "ordinal") != null)) return null;
+		MethodNode found = null;
+		for (AbstractInsnNode insn : method.instructions) {
+			if (!(insn instanceof MethodInsnNode call) || !call.owner.equals(target.name)) continue;
+			MethodNode callee = declared(target, call.name, call.desc);
+			if (callee == null || callee == method || callee == found || callee.name.startsWith("<")
+					|| InjectionPoints.pointsIn(ats, slices, callee, ctx) != Verdict.FOUND) continue;
+			if (found != null) return null;
+			found = callee;
+		}
+		if (found == null) return null;
+		int calls = 0;
+		for (MethodNode m : target.methods) {
+			for (AbstractInsnNode insn : m.instructions) {
+				if (insn instanceof MethodInsnNode call && call.owner.equals(target.name) && call.name.equals(found.name) && call.desc.equals(found.desc)) calls++;
+			}
+		}
+		return calls == 1 ? found : null;
 	}
 
 	/** The one other overload of the same name {@code method} calls, or null (none, or several). */

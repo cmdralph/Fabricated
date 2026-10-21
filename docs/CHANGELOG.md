@@ -3,6 +3,16 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-10-21 (pass after PR #58): code NeoForge split off
+
+**Plan.** PR #58's last run had every advanced client in its world on all four versions; what is left is mostly the
+hooks LEAVE-1 leaves out, so each change here gives some of them back.
+
+- SPLIT-1: an injection into code NeoForge's patches split off into a method of its own (`Level.setBlock`'s neighbour
+  updates, now in `markAndNotifyBlock`) is pointed at that method when it alone holds the injection points, nothing
+  else in the class calls it and the handler doesn't depend on the original method. Carpet's update suppression is
+  the case at hand.
+
 ## 2026-10-21 (pass after PR #57): Fabric's packet context, filled and bound everywhere packets are coded
 
 **Plan.** PR #57's last run showed the 26.2 and 26.3 advanced clients joining their worlds for the first time

@@ -1211,6 +1211,69 @@ class MixinPreflightTest {
 		assertTrue(after.isEmpty(), after.toString());
 	}
 
+	@Test
+	void anInjectionIntoCodeNeoForgeSplitOffIsPointedAtTheMethodItIsIn() throws Exception {
+		// SPLIT-1: Carpet hooks Level.setBlock's neighbour updates, which NeoForge's build moved into markAndNotifyBlock.
+		String thing = "L" + TARGET + ";";
+		ClassWriter target = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		target.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		MethodVisitor set = target.visitMethod(Opcodes.ACC_PUBLIC, "set", "(Ljava/lang/String;)Z", null, null);
+		set.visitCode();
+		set.visitVarInsn(Opcodes.ALOAD, 0);
+		set.visitInsn(Opcodes.ICONST_0);
+		set.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "notifyAll", "(I)V", false);
+		set.visitInsn(Opcodes.ICONST_1);
+		set.visitInsn(Opcodes.IRETURN);
+		set.visitMaxs(0, 0);
+		set.visitEnd();
+		MethodVisitor notifyAll = target.visitMethod(Opcodes.ACC_PUBLIC, "notifyAll", "(I)V", null, null);
+		notifyAll.visitCode();
+		notifyAll.visitVarInsn(Opcodes.ALOAD, 0);
+		notifyAll.visitVarInsn(Opcodes.ILOAD, 1);
+		notifyAll.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "helper", "(I)V", false);
+		notifyAll.visitInsn(Opcodes.RETURN);
+		notifyAll.visitMaxs(0, 0);
+		notifyAll.visitEnd();
+		MethodVisitor helper = target.visitMethod(Opcodes.ACC_PUBLIC, "helper", "(I)V", null, null);
+		helper.visitCode();
+		helper.visitInsn(Opcodes.RETURN);
+		helper.visitMaxs(0, 0);
+		helper.visitEnd();
+		target.visitEnd();
+		ClassIndex game = new ClassIndex(Map.of(TARGET, target.toByteArray())::get);
+		java.util.function.BiConsumer<ClassWriter, String[]> atHelperInSet = (cw, handler) -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, handler[1], handler[2], null, null);
+			AnnotationVisitor ann = mv.visitAnnotation(handler[0], false);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "set");
+			methods.visitEnd();
+			boolean single = handler[0].equals(REDIRECT);
+			AnnotationVisitor ats = single ? null : ann.visitArray("at");
+			AnnotationVisitor at = single ? ann.visitAnnotation("at", AT) : ats.visitAnnotation(null, AT);
+			at.visit("value", "INVOKE");
+			at.visit("target", "L" + TARGET + ";helper(I)V");
+			at.visitEnd();
+			if (ats != null) ats.visitEnd();
+			ann.visitEnd();
+			mv.visitEnd();
+		};
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Updates", mixin("com/example/mixin/Updates", false, cw -> {
+			atHelperInSet.accept(cw, new String[] {REDIRECT, "redirect", "(" + thing + "I)V"});
+			atHelperInSet.accept(cw, new String[] {INJECT, "inject", "(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V"});
+			atHelperInSet.accept(cw, new String[] {INJECT, "returning", "(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;)V"});
+		})));
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Updates"));
+
+		List<PreflightFinding> notes = new ArrayList<>();
+		Map<String, byte[]> repaired = preflight(game, mod::get, ClassBytesSource.EMPTY, false).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
+		assertEquals(2, notes.size(), "the returnable callback info doesn't suit notifyAll: " + notes);
+		assertTrue(notes.stream().allMatch(n -> n.message().contains("set(Ljava/lang/String;)Z, the code of which there NeoForge split off into notifyAll(I)V")), notes.toString());
+		mod.put("com/example/mixin/Updates", repaired.get("com/example/mixin/Updates.class"));
+		List<PreflightFinding> after = preflight(game, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertEquals(1, after.size(), after.toString());
+		assertEquals("returning(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;)V", after.getFirst().handler());
+	}
+
 	private static final String HOOKS = "net/neoforged/Hooks";
 
 	/** The game class with {@code helper(I)V}, whose {@code tick} calls {@code Hooks.draw} instead, with {@code hookDesc}. */
