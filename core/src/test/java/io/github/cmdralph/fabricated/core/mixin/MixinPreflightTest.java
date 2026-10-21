@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
+import java.util.function.Function;
 
 import org.junit.jupiter.api.Test;
 import org.objectweb.asm.AnnotationVisitor;
@@ -139,7 +140,7 @@ class MixinPreflightTest {
 
 		assertEquals(2, findings.size(), findings.toString());
 		PreflightFinding gone = findings.stream().filter(f -> f.mixin().endsWith("Gone")).findFirst().orElseThrow();
-		assertEquals(Severity.FAIL, gone.severity());
+		assertEquals(Severity.LEFT_OUT, gone.severity());
 		assertTrue(gone.suggestion().startsWith("This version of Sodium changed net.example.sodium.Renderer"), gone.suggestion());
 		assertEquals(Severity.INFO, findings.stream().filter(f -> f.mixin().endsWith("Elsewhere")).findFirst().orElseThrow().severity());
 		// What the result depends on: the installed class it read, and the target no installed jar has (yet).
@@ -340,7 +341,7 @@ class MixinPreflightTest {
 				.check("test.mixins.json", MixinConfigFile.parse(config(true, "Added", "Gone")), Refmap.EMPTY, Set.of());
 
 		assertEquals(Severity.INFO, findings.stream().filter(f -> f.mixin().endsWith("Added")).findFirst().orElseThrow().severity(), findings.toString());
-		assertEquals(Severity.FAIL, findings.stream().filter(f -> f.mixin().endsWith("Gone")).findFirst().orElseThrow().severity(), findings.toString());
+		assertEquals(Severity.LEFT_OUT, findings.stream().filter(f -> f.mixin().endsWith("Gone")).findFirst().orElseThrow().severity(), findings.toString());
 		assertTrue(MixinPreflight.addedByAMixin("iris$flag"));
 		for (String javac : List.of("lambda$tick$0", "access$000", "this$0", "val$player", "tick")) {
 			assertFalse(MixinPreflight.addedByAMixin(javac), javac);
@@ -954,7 +955,7 @@ class MixinPreflightTest {
 		List<PreflightFinding> missing = preflight(game, Map.of("com/example/mixin/Constants", modifying.apply(7))::get, ClassBytesSource.EMPTY, false)
 				.check("test.mixins.json", config, Refmap.EMPTY, Set.of());
 		assertEquals(1, missing.size(), missing.toString());
-		assertEquals(Severity.FAIL, missing.getFirst().severity());
+		assertEquals(Severity.LEFT_OUT, missing.getFirst().severity());
 		assertTrue(missing.getFirst().message().contains("expects the constant 7"), missing.getFirst().message());
 	}
 
@@ -999,8 +1000,8 @@ class MixinPreflightTest {
 		})));
 		MixinConfigFile config = MixinConfigFile.parse(config(true, "Wrap"));
 		List<PreflightFinding> before = preflight(game, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
-		assertTrue(before.size() == 1 && before.getFirst().severity() == Severity.FAIL && before.getFirst().message().contains("abstract")
-				&& before.getFirst().handler().equals("h(ILcom/llamalad7/mixinextras/injector/wrapoperation/Operation;)Ljava/lang/Object;"), before.toString());
+		assertTrue(before.size() == 1 && before.getFirst().severity() == Severity.LEFT_OUT && before.getFirst().message().contains("abstract")
+				&& "h(ILcom/llamalad7/mixinextras/injector/wrapoperation/Operation;)Ljava/lang/Object;".equals(before.getFirst().handler()), before.toString());
 		List<PreflightFinding> notes = new ArrayList<>();
 		mod.put("com/example/mixin/Wrap", preflight(game, mod::get, ClassBytesSource.EMPTY, false)
 				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes).get("com/example/mixin/Wrap.class"));
@@ -1035,7 +1036,7 @@ class MixinPreflightTest {
 		List<PreflightFinding> wrong = preflight(game, Map.of("com/example/mixin/Wrap", wrapping.apply("(FL" + operation.substring(1) + ")V"))::get,
 				ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
 		assertEquals(1, wrong.size(), wrong.toString());
-		assertEquals(Severity.FAIL, wrong.getFirst().severity());
+		assertEquals(Severity.LEFT_OUT, wrong.getFirst().severity());
 		assertTrue(wrong.getFirst().message().contains("does not match the parameters of render(Ljava/lang/String;)V"), wrong.getFirst().message());
 		List<PreflightFinding> right = preflight(game, Map.of("com/example/mixin/Wrap", wrapping.apply("(Ljava/lang/String;" + operation + ")V"))::get,
 				ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
@@ -1062,8 +1063,13 @@ class MixinPreflightTest {
 
 	/** Builds a mixin class targeting {@link #TARGET}; {@code body} adds members. */
 	private static byte[] mixin(String name, boolean pseudo, Consumer<ClassWriter> body) {
+		return mixin(name, pseudo, List.of(), body);
+	}
+
+	/** A mixin that also adds {@code interfaces} to its target. */
+	private static byte[] mixin(String name, boolean pseudo, List<String> interfaces, Consumer<ClassWriter> body) {
 		ClassWriter cw = new ClassWriter(0);
-		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, name, null, "java/lang/Object", null);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, name, null, "java/lang/Object", interfaces.toArray(String[]::new));
 		AnnotationVisitor m = cw.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false);
 		AnnotationVisitor values = m.visitArray("value");
 		values.visit(null, Type.getObjectType(name.contains("Missing") ? "net/minecraft/world/Gone" : TARGET));
@@ -1152,7 +1158,7 @@ class MixinPreflightTest {
 		byte[] gone = mixin("com/example/mixin/Gone", false, cw -> expression(cw, "h", Type.getObjectType("net/minecraft/world/HalfTransparent"), null));
 		List<PreflightFinding> findings = run(config(true, "Gone"), null, Map.of("com/example/mixin/Gone", gone), false);
 		assertEquals(1, findings.size(), findings.toString());
-		assertEquals(Severity.FAIL, findings.getFirst().severity());
+		assertEquals(Severity.LEFT_OUT, findings.getFirst().severity());
 		assertTrue(findings.getFirst().message().contains("MIXINEXTRAS:EXPRESSION"), findings.toString());
 	}
 
@@ -1270,7 +1276,7 @@ class MixinPreflightTest {
 		byte[] bad = mixin("com/example/mixin/WrapBad", false, cw -> wrapHelper(cw, "wrap", "(I" + operation + ")V"));
 		List<PreflightFinding> findings = run(config(true, "WrapBad"), null, Map.of("com/example/mixin/WrapBad", bad), false);
 		assertEquals(1, findings.size(), findings.toString());
-		assertEquals(Severity.FAIL, findings.getFirst().severity());
+		assertEquals(Severity.LEFT_OUT, findings.getFirst().severity());
 		assertTrue(findings.getFirst().message().contains("passes [2]"), findings.toString());
 	}
 
@@ -1412,13 +1418,89 @@ class MixinPreflightTest {
 		assertTrue(findings.getFirst().mixin().endsWith("Private"), "the private duplicate still fails: " + findings);
 	}
 
+	/**
+	 * A {@code @Redirect} built against Fabric's Mixin, whose {@code at} is an array, gets the single injection point
+	 * NeoForge 1.21.11's MixinExtras reads (MIX-1); the mixin is rewritten even when its target is no game class.
+	 */
+	@Test
+	void aRedirectsInjectionPointArrayOfOneBecomesSingle() throws Exception {
+		Function<String, byte[]> redirect = target -> {
+			ClassWriter cw = new ClassWriter(0);
+			cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, "com/example/mixin/Redir", null, "java/lang/Object", null);
+			AnnotationVisitor m = cw.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false);
+			AnnotationVisitor targets = m.visitArray("value");
+			targets.visit(null, Type.getObjectType(target));
+			targets.visitEnd();
+			m.visitEnd();
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "h", "(L" + TARGET + ";I)V", null, null);
+			AnnotationVisitor ann = mv.visitAnnotation(REDIRECT, true);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "tick");
+			methods.visitEnd();
+			AnnotationVisitor ats = ann.visitArray("at");
+			AnnotationVisitor at = ats.visitAnnotation(null, AT);
+			at.visit("value", "INVOKE");
+			at.visit("target", "L" + TARGET + ";helper(I)V");
+			at.visitEnd();
+			ats.visitEnd();
+			ann.visitEnd();
+			mv.visitCode();
+			mv.visitInsn(Opcodes.RETURN);
+			mv.visitMaxs(0, 3);
+			mv.visitEnd();
+			cw.visitEnd();
+			return cw.toByteArray();
+		};
+		ClassIndex game = new ClassIndex(Map.of(TARGET, targetClass())::get);
+		for (String target : List.of(TARGET, "com/othermod/Machine")) {
+			Map<String, byte[]> mod = Map.of("com/example/mixin/Redir", redirect.apply(target));
+			Map<String, byte[]> repaired = preflight(game, mod::get, ClassBytesSource.EMPTY, false)
+					.repairs("test.mixins.json", MixinConfigFile.parse(config(true, "Redir")), Refmap.EMPTY, Set.of(), new ArrayList<>());
+			ClassNode node = new ClassNode();
+			new ClassReader(repaired.get("com/example/mixin/Redir.class")).accept(node, 0);
+			AnnotationNode ann = node.methods.getFirst().visibleAnnotations.getFirst();
+			assertTrue(ann.values.get(ann.values.indexOf("at") + 1) instanceof AnnotationNode, target + ": " + ann.values);
+		}
+	}
+
 	@Test
 	void failsWhenRequiredInjectionTargetIsMissing() throws Exception {
 		byte[] bad = mixin("com/example/mixin/Bad", false, cw -> inject(cw, "h", "removedMethod", "HEAD", null, 1, null));
 		List<PreflightFinding> findings = run(config(true, "Bad"), null, Map.of("com/example/mixin/Bad", bad), false);
 		assertEquals(1, findings.size());
-		assertEquals(Severity.FAIL, findings.getFirst().severity());
+		assertEquals(Severity.LEFT_OUT, findings.getFirst().severity());
 		assertTrue(findings.getFirst().message().contains("removedMethod"));
+	}
+
+	/**
+	 * A failure in a self-contained mixin leaves the failing injector out, and the mod loads (LEAVE-1); with a field of
+	 * its own, which its injectors may share, the whole mixin goes, its working injector too. The same mixin adding an
+	 * interface to its target still fails the mod: the mod's own code casts the target to that interface.
+	 */
+	@Test
+	void onlyASelfContainedMixinIsLeftOut() throws Exception {
+		Consumer<ClassWriter> body = cw -> {
+			inject(cw, "works", "tick", "HEAD", null, 1, null);
+			inject(cw, "broken", "removedMethod", "HEAD", null, 1, null);
+			cw.visitField(Opcodes.ACC_PRIVATE, "count", "I", null, null).visitAnnotation("Lorg/spongepowered/asm/mixin/Shadow;", false).visitEnd();
+		};
+		List<PreflightFinding> alone = run(config(true, "Alone"), null, Map.of("com/example/mixin/Alone", mixin("com/example/mixin/Alone", false, body)), false);
+		assertEquals(1, alone.size(), alone.toString());
+		assertEquals(Severity.LEFT_OUT, alone.getFirst().severity());
+		assertEquals("broken()V", alone.getFirst().handler(), "only the injector: the mixin adds no fields");
+
+		// With a field of its own, which its injectors may share, the whole mixin goes.
+		byte[] stateful = mixin("com/example/mixin/Stateful", false, body.andThen(cw -> cw.visitField(Opcodes.ACC_PRIVATE, "count", "I", null, null).visitEnd()));
+		List<PreflightFinding> withField = run(config(true, "Stateful"), null, Map.of("com/example/mixin/Stateful", stateful), false);
+		assertEquals(1, withField.size(), withField.toString());
+		assertEquals(Severity.LEFT_OUT, withField.getFirst().severity());
+		assertEquals(null, withField.getFirst().handler(), "the whole mixin");
+
+		byte[] duck = mixin("com/example/mixin/Duck", false, List.of("com/example/api/Duck"), body);
+		List<PreflightFinding> withInterface = run(config(true, "Duck"), null, Map.of("com/example/mixin/Duck", duck), false);
+		assertEquals(1, withInterface.size(), withInterface.toString());
+		assertEquals(Severity.FAIL, withInterface.getFirst().severity());
+		assertEquals("broken()V", withInterface.getFirst().handler());
 	}
 
 	@Test
@@ -1433,7 +1515,7 @@ class MixinPreflightTest {
 		byte[] ord = mixin("com/example/mixin/Ord", false, cw -> inject(cw, "h", "tick", "INVOKE", "Lnet/minecraft/world/Thing;helper(I)V", null, 3));
 		String cfg = "{\"required\":true,\"package\":\"com.example.mixin\",\"mixins\":[\"Ord\"],\"injectors\":{\"defaultRequire\":1}}";
 		List<PreflightFinding> findings = run(cfg, null, Map.of("com/example/mixin/Ord", ord), false);
-		assertEquals(Severity.FAIL, findings.getFirst().severity(), "only one call exists, ordinal 3 cannot match");
+		assertEquals(Severity.LEFT_OUT, findings.getFirst().severity(), "only one call exists, ordinal 3 cannot match");
 	}
 
 	@Test
@@ -1446,7 +1528,7 @@ class MixinPreflightTest {
 	@Test
 	void missingTargetClassDependsOnRequiredAndPseudo() throws Exception {
 		byte[] missing = mixin("com/example/mixin/Missing", false, cw -> { });
-		assertEquals(Severity.FAIL, run(config(true, "Missing"), null, Map.of("com/example/mixin/Missing", missing), false).getFirst().severity());
+		assertEquals(Severity.LEFT_OUT, run(config(true, "Missing"), null, Map.of("com/example/mixin/Missing", missing), false).getFirst().severity());
 		assertEquals(Severity.WARN, run(config(false, "Missing"), null, Map.of("com/example/mixin/Missing", missing), false).getFirst().severity());
 		// Before compatibility level 0.17.4, Mixin skips a missing target instead of rejecting the mixin.
 		MixinPreflight lenient = preflight(new ClassIndex(Map.of(TARGET, targetClass())::get), Map.of("com/example/mixin/Missing", missing)::get,
@@ -1461,7 +1543,7 @@ class MixinPreflightTest {
 		byte[] shadow = mixin("com/example/mixin/Shadowy", false, cw -> cw.visitField(Opcodes.ACC_PRIVATE, "gone", "I", null, null)
 				.visitAnnotation("Lorg/spongepowered/asm/mixin/Shadow;", false).visitEnd());
 		List<PreflightFinding> findings = run(config(true, "Shadowy"), null, Map.of("com/example/mixin/Shadowy", shadow), false);
-		assertEquals(Severity.FAIL, findings.getFirst().severity());
+		assertEquals(Severity.LEFT_OUT, findings.getFirst().severity());
 		assertTrue(findings.getFirst().message().contains("@Shadow field gone"));
 	}
 
@@ -1551,7 +1633,7 @@ class MixinPreflightTest {
 		byte[] bad = mixin("com/example/mixin/ClientBad", false, cw -> inject(cw, "h", "removedMethod", "HEAD", null, 1, null));
 		String cfg = "{\"required\":true,\"package\":\"com.example.mixin\",\"client\":[\"ClientBad\"]}";
 		assertTrue(run(cfg, null, Map.of("com/example/mixin/ClientBad", bad), false).isEmpty());
-		assertEquals(Severity.FAIL, run(cfg, null, Map.of("com/example/mixin/ClientBad", bad), true).getFirst().severity());
+		assertEquals(Severity.LEFT_OUT, run(cfg, null, Map.of("com/example/mixin/ClientBad", bad), true).getFirst().severity());
 	}
 
 	@Test
@@ -1595,7 +1677,7 @@ class MixinPreflightTest {
 		List<PreflightFinding> withLibraries = preflight(game, mod::get, libraries::get, false)
 				.check("test.mixins.json", MixinConfigFile.parse(config(true, "LibMixin")), Refmap.EMPTY, Set.of());
 		assertEquals(1, withLibraries.size(), withLibraries.toString());
-		assertEquals(PreflightFinding.Severity.FAIL, withLibraries.getFirst().severity());
+		assertEquals(PreflightFinding.Severity.LEFT_OUT, withLibraries.getFirst().severity());
 		assertTrue(withLibraries.getFirst().message().contains("without mixin support"));
 
 		// Unknown non-Minecraft targets (another mod's classes) are still only noted.
@@ -1636,7 +1718,7 @@ class MixinPreflightTest {
 				"Lnet/minecraft/world/Thing;count:I", "Lnet/minecraft/world/Thing;helper(I)V"));
 		List<PreflightFinding> fail = run(config(true, "Outside"), null, Map.of("com/example/mixin/Outside", outside), false);
 		assertEquals(1, fail.size(), fail.toString());
-		assertEquals(PreflightFinding.Severity.FAIL, fail.getFirst().severity());
+		assertEquals(PreflightFinding.Severity.LEFT_OUT, fail.getFirst().severity());
 
 		byte[] inside = mixin("com/example/mixin/Inside", false, cw -> injectSliced(cw, "h", "INVOKE",
 				"Lnet/minecraft/world/Thing;helper(I)V", "Lnet/minecraft/world/Thing;helper(I)V"));
@@ -1652,7 +1734,7 @@ class MixinPreflightTest {
 				"Lnet/minecraft/world/Thing;", "Lnet/minecraft/world/Thing;helper(I)V"));
 		List<PreflightFinding> missingLoad = run(config(true, "NoLoad"), null, Map.of("com/example/mixin/NoLoad", noLoad), false);
 		assertEquals(1, missingLoad.size(), missingLoad.toString());
-		assertEquals(PreflightFinding.Severity.FAIL, missingLoad.getFirst().severity());
+		assertEquals(PreflightFinding.Severity.LEFT_OUT, missingLoad.getFirst().severity());
 		byte[] load = mixin("com/example/mixin/Load", false, cw -> inject(cw, "h", "tick", "LOAD", null, 1, null));
 		assertTrue(run(config(true, "Load"), null, Map.of("com/example/mixin/Load", load), false).isEmpty());
 	}
@@ -1713,7 +1795,7 @@ class MixinPreflightTest {
 		String strict = "{\"required\":true,\"package\":\"com.example.mixin\",\"mixins\":[\"Merged\"],\"overwrites\":{\"requireAnnotations\":true}}";
 		List<PreflightFinding> fail = run(strict, null, Map.of("com/example/mixin/Merged", merged), false);
 		assertEquals(1, fail.size(), fail.toString());
-		assertEquals(PreflightFinding.Severity.FAIL, fail.getFirst().severity());
+		assertEquals(PreflightFinding.Severity.LEFT_OUT, fail.getFirst().severity());
 
 		List<PreflightFinding> warn = run(config(true, "Merged"), null, Map.of("com/example/mixin/Merged", merged), false);
 		assertEquals(1, warn.size(), warn.toString());
@@ -1786,7 +1868,7 @@ class MixinPreflightTest {
 		assertTrue(run.apply("(I" + ci + "I)V", 2).isEmpty(), "MixinExtras @Local parameters are not counted");
 		List<PreflightFinding> wrong = run.apply("(J" + ci + ")V", -1);
 		assertEquals(1, wrong.size(), wrong.toString());
-		assertEquals(Severity.FAIL, wrong.getFirst().severity());
+		assertEquals(Severity.LEFT_OUT, wrong.getFirst().severity());
 		assertTrue(wrong.getFirst().message().contains("does not match the parameters"), wrong.getFirst().message());
 	}
 

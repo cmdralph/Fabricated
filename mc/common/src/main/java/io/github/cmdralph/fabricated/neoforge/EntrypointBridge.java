@@ -65,16 +65,25 @@ public final class EntrypointBridge {
 		runner = new EntrypointRunner(state.runtime(), new EntrypointRunner.ContextHook() {
 			// Restored after each entrypoint: Fabricated's own in the RegisterEvent loop, none in Minecraft's constructor.
 			private ModContainer previous;
+			// And the thread's context class loader, which finds Fabric mods' directories meanwhile (SCAN-1).
+			private ClassLoader previousLoader;
+			private ModDirectoryClassLoader loader;
 
 			@Override
 			public void enter(String modId) {
 				previous = ModLoadingContext.get().getActiveContainer();
 				container(modId).ifPresent(c -> ModLoadingContext.get().setActiveContainer(c));
+				Thread thread = Thread.currentThread();
+				previousLoader = thread.getContextClassLoader();
+				if (previousLoader == null) return;
+				if (loader == null || loader.getParent() != previousLoader) loader = new ModDirectoryClassLoader(previousLoader, state.runtime());
+				thread.setContextClassLoader(loader);
 			}
 
 			@Override
 			public void exit() {
 				ModLoadingContext.get().setActiveContainer(previous);
+				Thread.currentThread().setContextClassLoader(previousLoader);
 			}
 		});
 

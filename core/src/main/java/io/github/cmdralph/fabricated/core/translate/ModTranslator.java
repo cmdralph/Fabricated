@@ -385,7 +385,7 @@ public final class ModTranslator {
 			}
 			specs.add(new ModsTomlWriter.MixinConfigSpec(entry.config(), behavior));
 		}
-		if (!override.ignorePreflight()) checkPluginMixins(entries, configs, refmaps, preflight, translated, overlay, findings);
+		pluginMixins(entries, configs, refmaps, preflight, !override.ignorePreflight(), translated, overlay, findings);
 		installedClasses.putAll(preflight.installedClasses());
 		Set<String> written = new TreeSet<>(override.skipMixins());
 		written.removeAll(plannedSkips);
@@ -404,6 +404,12 @@ public final class ModTranslator {
 							+ skipHint + "\"] for " + candidate.id() + " in config/fabricated.json.",
 					failures, null);
 		}
+		// The classes computing enum constants' arguments (ENUM-3).
+		Map<String, List<EnumExtensions.Entry>> computed = new TreeMap<>();
+		for (EnumExtensions.Entry e : enumEntries) {
+			if (e.computed() != null) computed.computeIfAbsent(e.computed().owner(), k -> new ArrayList<>()).add(e);
+		}
+		computed.forEach((owner, owned) -> EnumExtensions.argumentsClasses(owner, owned).forEach((name, bytes) -> overlay.put(name + ".class", bytes)));
 		return specs;
 	}
 
@@ -416,12 +422,15 @@ public final class ModTranslator {
 
 	/**
 	 * Mixins a config's plugin adds at runtime ({@code IMixinConfigPlugin.getMixins}) are listed in no config, so they
-	 * are found as the other classes in the config's package (Mixin requires them there). Pre-flight checks them as
-	 * listed; an injector that would crash is left out, while problems of the whole mixin (a target missing on this
+	 * are found as the other classes in the config's package (Mixin requires them there). They get the listed mixins'
+	 * repairs (Friends and Foes' plugin adds a {@code @Redirect} when it finds mc-runtime-test, CI's client driver, whose
+	 * injection point array crashed NeoForge 1.21.11's MixinExtras, MIX-1). With {@code check}, pre-flight checks them
+	 * as listed; an injector that would crash is left out, while problems of the whole mixin (a target missing on this
 	 * side, say) are not reported: the plugin may well never add it.
 	 */
-	private static void checkPluginMixins(Collection<String> entries, Map<String, MixinConfigFile> configs, Map<String, Refmap> refmaps,
-			MixinPreflight preflight, FileView files, Map<String, byte[]> overlay, List<PreflightFinding> findings) throws ArchiveException {
+	private static void pluginMixins(Collection<String> entries, Map<String, MixinConfigFile> configs, Map<String, Refmap> refmaps,
+			MixinPreflight preflight, boolean check, FileView files, Map<String, byte[]> overlay, List<PreflightFinding> findings)
+			throws ArchiveException {
 		Set<String> listed = new HashSet<>();
 		for (MixinConfigFile config : configs.values()) {
 			for (String mixin : config.allMixins()) listed.add(config.internalName(mixin) + ".class");
@@ -437,14 +446,34 @@ public final class ModTranslator {
 				}
 			}
 			if (unlisted.isEmpty()) continue;
+			MixinConfigFile added = config.listing(unlisted);
+			overlay.putAll(preflight.repairs(e.getKey(), added, refmaps.get(e.getKey()), Set.of(), findings));
+			if (!check) continue;
 			Map<String, Set<String>> handlers = new TreeMap<>();
-			for (PreflightFinding f : preflight.check(e.getKey(), config.listing(unlisted), refmaps.get(e.getKey()), Set.of())) {
+			for (PreflightFinding f : preflight.check(e.getKey(), added, refmaps.get(e.getKey()), Set.of())) {
 				if (f.severity() != Severity.LEFT_OUT || f.handler() == null) continue;
 				findings.add(f);
 				handlers.computeIfAbsent(f.mixin().replace('.', '/') + ".class", k -> new TreeSet<>()).add(f.handler());
 			}
 			leaveOutHandlers(handlers, files, overlay);
 		}
+	}
+
+	/**
+	 * The class that computes the arguments of a config's enum constants: in the package around the config's mixin
+	 * package (Mixin refuses to load any other class from that), under a name the jar doesn't use; or null when the mixin
+	 * package has none around it.
+	 */
+	private static String argumentsClass(MixinConfigFile config, FileView files) throws ArchiveException {
+		String pkg = config.mixinPackage();
+		int dot = pkg == null ? -1 : pkg.lastIndexOf('.');
+		if (dot <= 0) return null;
+		String base = pkg.substring(0, dot).replace('.', '/') + "/FabricatedEnumArguments";
+		for (int n = 0; n < 100; n++) {
+			String name = n == 0 ? base : base + n;
+			if (files.read(name + ".class") == null) return name;
+		}
+		return null;
 	}
 
 	/** The mixin's name as its config lists it. */
@@ -469,6 +498,13 @@ public final class ModTranslator {
 			String target = EnumExtensions.target(node);
 			List<EnumExtensions.Entry> entries = target == null ? null : EnumExtensions.of(node, env.installedIndex().readNode(target), modId);
 			if (entries == null) continue;
+			if (entries.stream().anyMatch(e -> e.computed() != null)) {
+				// Computed arguments come from a class generated next to the mixins (ENUM-3).
+				String owner = argumentsClass(config, files);
+				if (owner == null) continue;
+				int first = (int) enumEntries.stream().filter(e -> e.computed() != null && e.computed().owner().equals(owner)).count();
+				entries = EnumExtensions.named(entries, owner, first);
+			}
 			if (all == skip) all = new TreeSet<>(skip);
 			all.add(mixin);
 			enumEntries.addAll(entries);

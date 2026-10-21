@@ -20,8 +20,10 @@ public record PreflightFinding(Severity severity, String config, String mixin, S
 		/** The mixin would crash the game when applied; the mod must not load. */
 		FAIL,
 		/**
-		 * The mixin would crash the game when applied, but its config's plugin may disable it at runtime: only the
-		 * failing injector (its handler) is left out, or the whole mixin when the problem is not one injector's.
+		 * The mixin would crash the game when applied, but the mod can load without it: its config's plugin may disable it
+		 * at runtime (only the failing injector, its handler, is left out, or the whole mixin when the problem is not one
+		 * injector's), or nothing outside the mixin calls into it (the whole mixin is left out). The features it hooks
+		 * in for don't work.
 		 */
 		LEFT_OUT,
 		/** The mixin would silently not apply (part of the mod's behaviour is missing). */

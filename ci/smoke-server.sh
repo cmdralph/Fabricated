@@ -112,6 +112,7 @@ check() {
 check "FABRICATED-TEST main entrypoint OK" server.out "main entrypoint ran"
 check "FABRICATED-TEST loader api OK" server.out "Fabric Loader API works"
 check "FABRICATED-TEST custom entrypoint OK" server.out "custom entrypoint resolved"
+check "FABRICATED-TEST classpath scan OK" server.out "classpath scan finds a Fabric mod's package directory (SCAN-1)"
 check "FABRICATED-TEST registry OK" server.out "direct registry registration works"
 check "FABRICATED-TEST fabric api base event OK" server.out "fabric-api-base events work"
 check "FABRICATED-TEST access widener OK" server.out "access widener applied"
@@ -151,7 +152,7 @@ check "FABRICATED-TEST api OK" server.out "public API: Fabricated detected, mod 
 check "FABRICATED-TEST environment stripping OK" server.out "@EnvironmentInterface: a client-only interface is stripped on the dedicated server"
 check "fabricated-testmod-missing" logs/fabric-bridge-report.txt "missing dependency reported"
 check "fabricated-library-that-does-not-exist" logs/fabric-bridge-report.txt "missing dependency named"
-check "fabricatedMethodThatDoesNotExist" logs/fabric-bridge-report.txt "impossible mixin caught by pre-flight"
+check "LEFT_OUT .*ImpossibleMixin.*fabricatedMethodThatDoesNotExist" logs/fabric-bridge-report.txt "impossible mixin caught by pre-flight and left out"
 check "intentional failure for Fabricated CI" logs/fabric-bridge-report.txt "throwing entrypoint isolated"
 # The test mods log "FABRICATED-TEST ... FAILED" when one of their own checks fails.
 if grep -q "FABRICATED-TEST .*FAILED" server.out; then

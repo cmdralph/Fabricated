@@ -30,6 +30,7 @@ import io.github.cmdralph.fabricated.core.cache.TranslationCache;
 import io.github.cmdralph.fabricated.core.config.FabricatedConfig;
 import io.github.cmdralph.fabricated.core.json.JsonException;
 import io.github.cmdralph.fabricated.core.metadata.ModIds;
+import io.github.cmdralph.fabricated.core.mixin.PreflightFinding;
 import io.github.cmdralph.fabricated.core.report.Report;
 import io.github.cmdralph.fabricated.core.resolve.FabricApiPlan;
 import io.github.cmdralph.fabricated.core.resolve.PlatformLibraries;
@@ -248,6 +249,19 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 		}
 		if (quietFabricApi > 0) {
 			LOGGER.info("{} Fabric API module(s) can't run on NeoForge yet and were skipped; see logs/fabric-bridge-report.txt", quietFabricApi);
+		}
+		// The player's mods that loaded without some of their mixins (LEAVE-1): in the log, as a warnings screen on every
+		// launch would be worse than the features those mixins hook in for.
+		List<String> partial = new ArrayList<>();
+		for (Pipeline.LoadedMod mod : result.mods()) {
+			String id = mod.translated().candidate().id();
+			if (!plan.isFabricApiModule(id) && mod.translated().findings().stream().anyMatch(f -> f.severity() == PreflightFinding.Severity.LEFT_OUT)) {
+				partial.add(id);
+			}
+		}
+		if (!partial.isEmpty()) {
+			LOGGER.warn("{} Fabric mod(s) loaded without some of their mixins, as NeoForge's code differs where they hook in, so the features"
+					+ " those hook in for don't work: {}. See logs/{}", partial.size(), String.join(", ", partial), Report.FILE_NAME);
 		}
 		// The pipeline reported the cache's notes so far; saving its index may add one.
 		int reported = cache.notes().size();

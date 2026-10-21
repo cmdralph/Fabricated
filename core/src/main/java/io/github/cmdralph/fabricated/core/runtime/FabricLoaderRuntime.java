@@ -1,6 +1,7 @@
 package io.github.cmdralph.fabricated.core.runtime;
 
 import java.io.File;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -152,6 +153,26 @@ public final class FabricLoaderRuntime implements FabricLoader {
 	public void setClassLoader(ModContainerImpl container, ClassLoader loader) {
 		classLoaders.put(container, loader);
 		FabricLoaderImpl.gameClassLoader(loader);
+	}
+
+	/**
+	 * The directory {@code name} (a package's, as {@code com/example/mod}) in each Fabric mod whose classes the game layer
+	 * loads, in load order. Fabric Loader's class loader finds a mod's directories as resources, where classpath scanners
+	 * start (SCAN-1); NeoForge's finds only files. Names of files (with a dot in their last part) find none, nor do names
+	 * leading out of the jar.
+	 */
+	public List<Path> fabricModDirectories(String name) {
+		String dir = name.endsWith("/") ? name.substring(0, name.length() - 1) : name;
+		if (dir.isEmpty() || dir.startsWith("/") || dir.substring(dir.lastIndexOf('/') + 1).contains(".")) return List.of();
+		List<Path> found = new ArrayList<>();
+		for (ModContainer mod : snapshot().all()) {
+			if (!(mod instanceof ModContainerImpl impl) || !classLoaders.containsKey(impl)) continue;
+			for (Path root : impl.getRootPaths()) {
+				Path path = root.resolve(dir).normalize();
+				if (path.startsWith(root) && Files.isDirectory(path)) found.add(path);
+			}
+		}
+		return found;
 	}
 
 	/** Registers a mod's entrypoints (as Fabricated runs them: hints applied, skipped keys left out). */

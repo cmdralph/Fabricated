@@ -38,7 +38,7 @@ Test-mod configs (not shipped):
 |---|---|---|---|
 | `mc/common/src/testmod/resources/fabricated-testmod.mixins.json` | `io.github.cmdralph.fabricated.testmod.mixin` | 1 | `MinecraftServerMixin` (`@Inject tickServer TAIL`, `mc/common/src/testmod/java/.../mixin/MinecraftServerMixin.java`) |
 | `mc/common26/src/testmodfrapi/resources/fabricated-testmod-frapi.mixins.json` | `io.github.cmdralph.fabricated.testmod.frapi.mixin` | 1 | `BakedQuadMixin` (`@Inject <init> RETURN` with vanilla's parameters, `mc/common26/src/testmodfrapi/java/.../mixin/BakedQuadMixin.java`). Exercises pre-flight's constructor repair and handler bridge (CI's renderer API gate) |
-| `mc/common/src/testmodbroken/resources/badmixin/fabricated-testmod-badmixin.mixins.json` | `io.github.cmdralph.fabricated.testmod.broken.mixin` | unset | `ImpossibleMixin` (`@Inject method="fabricatedMethodThatDoesNotExist" HEAD require=1`, `.../ImpossibleMixin.java`). Meant to fail pre-flight (`ci/smoke-server.sh`) |
+| `mc/common/src/testmodbroken/resources/badmixin/fabricated-testmod-badmixin.mixins.json` | `io.github.cmdralph.fabricated.testmod.broken.mixin` | unset | `ImpossibleMixin` (`@Inject method="fabricatedMethodThatDoesNotExist" HEAD require=1`, `.../ImpossibleMixin.java`). Meant to fail pre-flight, which leaves its injector out as the mixin is self-contained (`ci/smoke-server.sh`) |
 
 ## Fragility review
 

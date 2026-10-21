@@ -66,11 +66,23 @@ class EnumExtensionsTest {
 		assertNull(entries(Constant.plain("OTHER_PLAIN"), cw -> {
 		}), "NeoForge requires the mod's id first in the name");
 		assertNull(entries(new Constant("MYMOD_ARGS", "(Ljava/lang/String;IZ)V", mv -> {
-			mv.visitFieldInsn(Opcodes.GETSTATIC, "com/example/Texts", "TEXT", "Ljava/lang/String;");
+			mv.visitFieldInsn(Opcodes.GETSTATIC, MIXIN, "TEXT", "Ljava/lang/String;");
 			mv.visitIntInsn(Opcodes.BIPUSH, 7);
 			mv.visitInsn(Opcodes.ICONST_1);
 		}), cw -> {
-		}), "an argument computed when the class loads");
+		}), "an argument computed from the mixin itself");
+		assertNull(entries(new Constant("MYMOD_ARGS", "(Ljava/lang/String;IZ)V", mv -> {
+			mv.visitFieldInsn(Opcodes.GETSTATIC, KIND, "TEXT", "Ljava/lang/String;");
+			mv.visitIntInsn(Opcodes.BIPUSH, 7);
+			mv.visitInsn(Opcodes.ICONST_1);
+		}), cw -> {
+		}), "an argument computed from the enum's members, which the mixin's code reaches from inside it");
+		assertNull(entries(new Constant("MYMOD_ARGS", "(Ljava/lang/String;IZ)V", mv -> {
+			mv.visitLdcInsn("text");
+			mv.visitIntInsn(Opcodes.BIPUSH, 7);
+			mv.visitVarInsn(Opcodes.ILOAD, 0);
+		}), cw -> {
+		}), "an argument kept in a local variable");
 		assertNull(entries(new Constant("MYMOD_RESERVED", "(J)V", mv -> mv.visitInsn(Opcodes.LCONST_1)), cw -> {
 		}), "a constructor NeoForge reserves");
 		assertNull(entries(Constant.plain("MYMOD_PLAIN"), cw -> cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, "describe",
@@ -83,6 +95,71 @@ class EnumExtensionsTest {
 		})), named, "mymod"), "a named enum's constant without a name argument");
 		assertNull(EnumExtensions.of(node(TestEnums.mixin(MIXIN, KIND, List.of(WITH_ARGUMENTS), cw -> {
 		})), named, "mymod"), "a named enum's name not starting with the mod's id and a colon, which NeoForge refuses");
+	}
+
+	/**
+	 * ENUM-3: a constant whose arguments are computed when the class loads is entered with a method that computes them as
+	 * the mixin's class initializer does, which NeoForge's loader calls for each argument. Where NeoForge reserves the
+	 * mixin's constructor for one taking a supplier ({@code Raid.RaiderType}'s), the value comes in a supplier.
+	 */
+	@Test
+	void computedArgumentsComeFromAGeneratedMethod() throws Exception {
+		List<EnumExtensions.Entry> plain = entries(new Constant("MYMOD_ARGS", "(Ljava/lang/String;IZ)V", mv -> {
+			mv.visitFieldInsn(Opcodes.GETSTATIC, "com/example/Texts", "TEXT", "Ljava/lang/String;");
+			mv.visitIntInsn(Opcodes.BIPUSH, 7);
+			mv.visitInsn(Opcodes.ICONST_1);
+		}), cw -> {
+		});
+		ClassNode raider = node(TestEnums.target(KIND, true, List.of("(Ljava/lang/Object;[I)V", "(Ljava/util/function/Supplier;[I)V"),
+				List.of("(Ljava/lang/Object;[I)V")));
+		List<EnumExtensions.Entry> supplied = EnumExtensions.of(node(TestEnums.mixin(MIXIN, KIND, List.of(new Constant("MYMOD_RAIDER",
+				"(Ljava/lang/Object;[I)V", mv -> {
+					mv.visitFieldInsn(Opcodes.GETSTATIC, "com/example/Texts", "TEXT", "Ljava/lang/String;");
+					mv.visitInsn(Opcodes.ICONST_2);
+					mv.visitIntInsn(Opcodes.NEWARRAY, Opcodes.T_INT);
+					mv.visitInsn(Opcodes.DUP);
+					mv.visitInsn(Opcodes.ICONST_0);
+					mv.visitInsn(Opcodes.ICONST_5);
+					mv.visitInsn(Opcodes.IASTORE);
+					mv.visitInsn(Opcodes.DUP);
+					mv.visitInsn(Opcodes.ICONST_1);
+					mv.visitIntInsn(Opcodes.BIPUSH, 9);
+					mv.visitInsn(Opcodes.IASTORE);
+				})), cw -> {
+		})), raider, "mymod");
+		assertEquals("(Ljava/lang/String;IZ)V", plain.getFirst().constructor());
+		assertEquals("(Ljava/util/function/Supplier;[I)V", supplied.getFirst().constructor(), "the constructor NeoForge allows");
+
+		String owner = "com/example/FabricatedEnumArguments";
+		List<EnumExtensions.Entry> entries = new java.util.ArrayList<>(EnumExtensions.named(plain, owner, 0));
+		entries.addAll(EnumExtensions.named(supplied, owner, 1));
+		List<Object> written = Json.asList(Json.parseObject(EnumExtensions.json(entries)).get("entries"));
+		assertEquals(Map.of("class", owner, "method", "arguments0"), ((Map<?, ?>) written.get(0)).get("parameters"));
+		assertEquals(Map.of("class", owner, "method", "arguments1"), ((Map<?, ?>) written.get(1)).get("parameters"));
+
+		// Called as NeoForge's loader calls them: once per argument, with its index and type.
+		ClassWriter texts = new ClassWriter(0);
+		texts.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_SUPER, "com/example/Texts", null, "java/lang/Object", null);
+		texts.visitField(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC | Opcodes.ACC_FINAL, "TEXT", "Ljava/lang/String;", null, "text").visitEnd();
+		texts.visitEnd();
+		Map<String, byte[]> classes = new java.util.LinkedHashMap<>(Map.of("com/example/Texts", texts.toByteArray()));
+		classes.putAll(EnumExtensions.argumentsClasses(owner, entries));
+		ClassLoader loader = new ClassLoader(getClass().getClassLoader()) {
+			@Override
+			protected Class<?> findClass(String name) throws ClassNotFoundException {
+				byte[] bytes = classes.get(name.replace('.', '/'));
+				if (bytes == null) throw new ClassNotFoundException(name);
+				return defineClass(name, bytes, 0, bytes.length);
+			}
+		};
+		Class<?> arguments = loader.loadClass(owner.replace('/', '.'));
+		java.lang.reflect.Method first = arguments.getMethod("arguments0", int.class, Class.class);
+		assertEquals("text", first.invoke(null, 0, String.class));
+		assertEquals(7, first.invoke(null, 1, int.class));
+		assertEquals(true, first.invoke(null, 2, boolean.class));
+		java.lang.reflect.Method second = arguments.getMethod("arguments1", int.class, Class.class);
+		assertEquals("text", ((java.util.function.Supplier<?>) second.invoke(null, 0, java.util.function.Supplier.class)).get());
+		assertEquals(List.of(5, 9), java.util.Arrays.stream((int[]) second.invoke(null, 1, int[].class)).boxed().toList());
 	}
 
 	/** A named enum ({@code MobCategory}): its name argument carries over when it already starts with the mod's id. */
