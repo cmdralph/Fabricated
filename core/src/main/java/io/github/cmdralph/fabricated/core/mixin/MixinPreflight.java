@@ -1488,6 +1488,45 @@ public final class MixinPreflight {
 	}
 
 	private void checkMembers(ClassNode mixin, ClassNode target, Context ctx) {
+		int findingsBefore = ctx.out().size();
+		checkMembersOf(mixin, target, ctx);
+		checkGroups(mixin, ctx, findingsBefore);
+	}
+
+	/**
+	 * Mixin checks the injectors of a named group ({@code @Group}) together: fewer than its minimum applying stops the
+	 * game, though each requires nothing alone (owo-lib's hooks after Fabric's and Quilt's loader calls stopped three
+	 * corpus servers before HOOK-1; GROUP-1). Each member pre-flight found can't apply has a warning from {@code from}
+	 * on; when too few are left, every member fails as a required injector would, so a self-contained mixin loses the
+	 * whole group, which Mixin then doesn't check.
+	 */
+	private static void checkGroups(ClassNode mixin, Context ctx, int from) {
+		Map<String, Integer> minimums = new TreeMap<>();
+		Map<String, List<MethodNode>> members = new HashMap<>();
+		for (MethodNode method : mixin.methods) {
+			AnnotationNode group = Annotations.find(method, GROUP);
+			if (group == null || !(Annotations.value(group, "name") instanceof String name)) continue;
+			members.computeIfAbsent(name, k -> new ArrayList<>()).add(method);
+			if (Annotations.value(group, "min") instanceof Integer min) minimums.merge(name, min, Math::max);
+		}
+		if (minimums.isEmpty()) return;
+		Set<String> missing = new HashSet<>();
+		for (PreflightFinding f : ctx.out().subList(from, ctx.out().size())) {
+			if (f.severity() == Severity.WARN && f.handler() != null) missing.add(f.handler());
+		}
+		minimums.forEach((name, min) -> {
+			List<MethodNode> group = members.get(name);
+			long applying = group.stream().filter(m -> !missing.contains(m.name + m.desc)).count();
+			if (applying >= min) return;
+			for (MethodNode m : group) {
+				ctx.injector(m, 1, "@Group " + name + " needs " + min + " of its " + group.size() + " injectors to apply, and "
+								+ (applying == 0 ? "none" : "only " + applying) + " can",
+						ctx.changer(true) + " changed the code its injectors hook; the mod needs an update or this mixin must be skipped.");
+			}
+		});
+	}
+
+	private void checkMembersOf(ClassNode mixin, ClassNode target, Context ctx) {
 		String targetDotted = target.name.replace('/', '.');
 		for (FieldNode field : mixin.fields) {
 			AnnotationNode shadow = Annotations.find(field, SHADOW);

@@ -1208,6 +1208,42 @@ class MixinPreflightTest {
 		assertTrue(findings.stream().noneMatch(f -> f.severity() == Severity.FAIL), findings.toString());
 	}
 
+	/** GROUP-1: Mixin stops the game when fewer of a group's injectors apply than its minimum, as owo-lib's did. */
+	@Test
+	void aGroupWhoseInjectorsCantReachItsMinimumFails() throws Exception {
+		Map<String, byte[]> mod = Map.of("com/example/mixin/Grouped", mixin("com/example/mixin/Grouped", false, cw -> {
+			for (String handler : List.of("viaFabric", "viaQuilt")) {
+				MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, handler, "(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V", null, null);
+				AnnotationVisitor group = mv.visitAnnotation("Lorg/spongepowered/asm/mixin/injection/Group;", false);
+				group.visit("name", "hooks");
+				group.visit("min", 1);
+				group.visit("max", 1);
+				group.visitEnd();
+				AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
+				AnnotationVisitor methods = ann.visitArray("method");
+				methods.visit(null, "tick");
+				methods.visitEnd();
+				AnnotationVisitor ats = ann.visitArray("at");
+				AnnotationVisitor at = ats.visitAnnotation(null, AT);
+				at.visit("value", "INVOKE");
+				at.visit("target", "Lcom/example/" + handler + "/Hooks;start()V");
+				at.visitEnd();
+				ats.visitEnd();
+				ann.visitEnd();
+				mv.visitEnd();
+			}
+		}));
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Grouped"));
+		ClassIndex neoForge = new ClassIndex(Map.of(TARGET, callingHelper("(I)V"))::get);
+
+		List<PreflightFinding> findings = preflight(neoForge, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		List<PreflightFinding> group = findings.stream().filter(f -> f.message().startsWith("@Group hooks needs 1 of its 2 injectors to apply, and none can")).toList();
+		assertEquals(2, group.size(), findings.toString());
+		assertTrue(group.stream().allMatch(f -> f.severity() == Severity.LEFT_OUT), "the mixin is self-contained: the group is left out " + group);
+		assertEquals(Set.of("viaFabric(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V",
+				"viaQuilt(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V"), group.stream().map(PreflightFinding::handler).collect(java.util.stream.Collectors.toSet()));
+	}
+
 	/**
 	 * A bridge takes the call's exact types, so a handler taking a supertype of the receiver (with {@code @Coerce}) isn't
 	 * bridged: the bridge wouldn't carry the annotation, and Mixin would refuse it at apply time, after pre-flight.
