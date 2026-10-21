@@ -538,17 +538,8 @@ jobs:
       - name: Summary of the informational runs
         if: ${{ !cancelled() }}
         run: |
-          # A log's ERROR and FATAL lines by logger (count, first message), and the exceptions it names (count): a mod
-          # that loads may still fail when its code runs. Without the narrator's and the offline account's, which every run has.
-          digest() {
-            echo "-- errors by logger (count, first message):"
-            grep -E '^\[[^]]*\] \[[^]]*/(ERROR|FATAL)\] ' "$1" | grep -v -E '[Nn]arrator|flite|401|TargetDataLine' \
-              | sed -E 's/^\[[^]]*\] \[[^]]*\] \[([^]/]*)[^]]*\]: (.*)$/\1\t\2/' \
-              | awk -F'\t' '{ n[$1]++; if (!($1 in m)) m[$1] = substr($2, 1, 220) } END { for (k in n) printf "%5d  %s: %s\n", n[k], k, m[k] }' | sort -rn | head -40
-            echo "-- exceptions (count):"
-            grep -h -o -E '(^|Caused by: )[a-z][a-zA-Z0-9_]*(\.[a-zA-Z0-9_$]+)+(Exception|Error)(: .*)?$' "$1" | sed -E 's/^Caused by: //' | cut -c1-200 \
-              | sort | uniq -c | sort -rn | head -30
-          }
+          # A log's errors as the game ran, with the stacks of the most frequent: a mod that loads may still fail when its code runs.
+          digest() { python3 ci/log-digest.py "$1" || true; }
           [ -f "$RUNNER_TEMP/summary-energy.txt" ] && { echo "== summary-energy"; cut -c1-300 "$RUNNER_TEMP/summary-energy.txt"; }
           # The gated client's failed checks, when it has any (the job log may no longer hold them).
           grep -q "^FAIL" "$RUNNER_TEMP/summary-client.txt" 2>/dev/null && { echo "== summary-client"; grep "^FAIL" "$RUNNER_TEMP/summary-client.txt" | head -40 | cut -c1-300; }
