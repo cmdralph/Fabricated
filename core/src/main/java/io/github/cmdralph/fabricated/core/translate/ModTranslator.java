@@ -197,7 +197,7 @@ public final class ModTranslator {
 						if (tokens != null) text = tokens.remap(text);
 						AccessWidenerFile parsed = AccessWidenerParser.parse(text);
 						checkNamespace(parsed.namespace(), candidate);
-						checkEnumExtensions(parsed, candidate);
+						checkEnumExtensions(parsed, candidate, enumEntries);
 						AccessTransformerConverter.Result at = AccessTransformerConverter.convert(parsed, env.game());
 						notes.addAll(at.warnings());
 						injections = at.injectedInterfaces();
@@ -889,10 +889,13 @@ public final class ModTranslator {
 
 	/**
 	 * A class tweaker's enum extensions only declare the constants the mod's enum mixins add: Mixin adds them, from
-	 * 0.17.1 (pre-flight checks the mixins themselves).
+	 * 0.17.1 (pre-flight checks the mixins themselves), or NeoForge's loader, from the mod's enum extension file
+	 * ({@code extended}, ENUM-1), whatever the Mixin version.
 	 */
-	private void checkEnumExtensions(AccessWidenerFile tweaker, Candidate candidate) throws TranslationException {
-		if (!tweaker.enumExtensions().isEmpty() && !MixinCompat.supportsEnumExtensions(env.runtimeMixinVersion())) {
+	private void checkEnumExtensions(AccessWidenerFile tweaker, Candidate candidate, List<EnumExtensions.Entry> extended) throws TranslationException {
+		if (MixinCompat.supportsEnumExtensions(env.runtimeMixinVersion())) return;
+		Set<String> added = extended.stream().map(e -> e.enumName() + "." + e.name()).collect(Collectors.toSet());
+		if (!tweaker.enumExtensions().stream().allMatch(e -> added.contains(e.target() + "." + e.constant()))) {
 			throw new TranslationException(candidate.id() + " adds enum constants with Mixin's enum extensions, which need Mixin 0.17.1 or later;"
 					+ " this NeoForge runs Mixin " + env.runtimeMixinVersion(), "Update NeoForge, or use a build of " + candidate.id() + " made for it.");
 		}

@@ -278,10 +278,17 @@ class PipelineTest {
 	/** @param libraries the classes NeoForge loads outside its transforming class loader (the JDK's and libraries') */
 	private static Pipeline.Input input(Path game, List<Path> jars, Namespace ns, Map<String, byte[]> gameClasses, Pipeline.MappingSupplier mappings,
 			List<Pipeline.NeoForgeMod> neoForgeMods, InstalledClasses installed, ClassBytesSource libraries) throws Exception {
+		return input(game, jars, ns, gameClasses, mappings, neoForgeMods, installed, libraries, "0.17.4+mixin.0.8.7", "0.17.1");
+	}
+
+	/** @param mixin the Mixin NeoForge runs, and {@code lowestBehavior} the lowest behaviour version its FML accepts */
+	private static Pipeline.Input input(Path game, List<Path> jars, Namespace ns, Map<String, byte[]> gameClasses, Pipeline.MappingSupplier mappings,
+			List<Pipeline.NeoForgeMod> neoForgeMods, InstalledClasses installed, ClassBytesSource libraries, String mixin, String lowestBehavior)
+			throws Exception {
 		FabricatedConfig config = FabricatedConfig.load(game.resolve("config"));
 		TranslationCache cache = new TranslationCache(game, config.cacheEnabled(), config.verifyIntegrity());
 		return new Pipeline.Input(game, game.resolve("config"), config, cache, jars, ns == Namespace.OFFICIAL ? "26.2" : "1.21.11",
-				"26.2.0.90", false, ns, "0.17.4+mixin.0.8.7", "0.5.3", "0.17.1", "0.1.0-test", false, gameClasses::get, List.of(game.resolve("minecraft.jar")),
+				"26.2.0.90", false, ns, mixin, "0.5.3", lowestBehavior, "0.1.0-test", false, gameClasses::get, List.of(game.resolve("minecraft.jar")),
 				List.of(game.resolve("fabricated.jar")), libraries, Set.of("net/neoforged/neoforge"),
 				FabricApiPlan.parse(PLAN), name -> null, Map::of, neoForgeMods, installed, mappings, new String[0]);
 	}
@@ -942,6 +949,35 @@ class PipelineTest {
 		Report.ModRow row = result.report().mods().stream().filter(r -> r.id().equals("soup")).findFirst().orElseThrow();
 		assertEquals(Report.Status.DISABLED, row.status());
 		assertTrue(row.detail().contains("extensible enums"), row.detail());
+	}
+
+	@Test
+	void aClassTweakersEnumConstantsNeoForgeAddsNeedNoNewerMixin(@TempDir Path game) throws Exception {
+		// Farmer's Delight Refabricated on 1.21.11, whose NeoForge runs Mixin 0.16.5: its class tweaker declares the
+		// constants its enum mixin adds, which Mixin adds from 0.17.1 only. NeoForge's loader adds them instead (ENUM-1),
+		// so only a constant nothing else adds still needs the newer Mixin.
+		String kind = "net/minecraft/world/Kind";
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		Path cooking = TestJars.create().fabricModJson(TestJars.modJson("cooking", "1.0", "\"mixins\":[\"cooking.mixins.json\"],\"accessWidener\":\"cooking.classtweaker\""))
+				.text("cooking.mixins.json", "{\"required\":true,\"package\":\"com.cooking.mixin\",\"mixins\":[\"KindMixin\"]}")
+				.text("cooking.classtweaker", "classTweaker v2 official\nextend-enum " + kind + " COOKING_POT\n")
+				.bytes("com/cooking/mixin/KindMixin.class", TestEnums.mixin("com/cooking/mixin/KindMixin", kind, List.of(TestEnums.Constant.plain("COOKING_POT")), cw -> {
+				}))
+				.write(mods.resolve("cooking.jar"));
+		Path baking = TestJars.create().fabricModJson(TestJars.modJson("baking", "1.0", "\"mixins\":[\"baking.mixins.json\"],\"accessWidener\":\"baking.classtweaker\""))
+				.text("baking.mixins.json", "{\"required\":true,\"package\":\"com.baking.mixin\",\"mixins\":[\"KindMixin\"]}")
+				.text("baking.classtweaker", "classTweaker v2 official\nextend-enum " + kind + " BAKING_OVEN\nextend-enum " + kind + " BAKING_TRAY\n")
+				.bytes("com/baking/mixin/KindMixin.class", TestEnums.mixin("com/baking/mixin/KindMixin", kind, List.of(TestEnums.Constant.plain("BAKING_OVEN")), cw -> {
+				}))
+				.write(mods.resolve("baking.jar"));
+		Map<String, byte[]> gameClasses = Map.of(TARGET, targetClass(), kind, TestEnums.target(kind, true, List.of("()V"), List.of()));
+		Pipeline.Result result = Pipeline.run(input(game, List.of(cooking, baking), Namespace.OFFICIAL, gameClasses, null, List.of(), InstalledClasses.NONE,
+				ClassBytesSource.EMPTY, "0.16.5+mixin.0.8.7", "0.16.5"));
+
+		Set<String> loaded = result.mods().stream().map(m -> m.translated().candidate().id()).collect(Collectors.toSet());
+		assertEquals(Set.of("cooking"), loaded, result.report().render());
+		Report.ModRow row = result.report().mods().stream().filter(r -> r.id().equals("baking")).findFirst().orElseThrow();
+		assertTrue(row.detail().contains("Mixin 0.17.1"), "the constant no enum mixin adds still needs it: " + row.detail());
 	}
 
 	@Test
