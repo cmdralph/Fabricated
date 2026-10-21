@@ -627,8 +627,9 @@ public final class MixinPreflight {
 	 * by their first use in it, which NeoForge's patches change (Wover's hook into {@code WorldLoader}'s registry load,
 	 * FrozenLib's into {@code RegistryDataLoader}'s; LAMBDA-3). The bridge passes each of the handler's parameters the
 	 * lambda's of its type: in order, when the handler's types occur in the lambda's that way only once; otherwise by
-	 * type, where a type the lambda has more than once is only passed to a parameter the handler never uses. Returns a
-	 * description of the bridged lambda.
+	 * type, where a type the lambda has more than once is only passed to a parameter the handler never uses. A method
+	 * NeoForge gave more parameters gets the same bridge, in order only (Ledger's hooks into {@code FireBlock.checkBurnOut},
+	 * which takes a face too; SIG-1). Returns a description of the bridged method.
 	 */
 	private static List<String> capturedValueRepairs(ClassNode mixin, MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx,
 			List<MethodNode> bridges) {
@@ -636,8 +637,9 @@ public final class MixinPreflight {
 				|| !(Annotations.value(injector, "method") instanceof List<?> selectors) || selectors.size() != 1
 				|| annotatedParameters(handler.visibleParameterAnnotations) || annotatedParameters(handler.invisibleParameterAnnotations)) return List.of();
 		List<MethodNode> methods = selectedMethods(injector, target, ctx);
-		if (methods.size() != 1 || !LAMBDA.matcher(methods.getFirst().name).matches()) return List.of();
+		if (methods.size() != 1 || methods.getFirst().name.startsWith("<")) return List.of();
 		MethodNode lambda = methods.getFirst();
+		boolean isLambda = LAMBDA.matcher(lambda.name).matches();
 		Type[] own = Type.getArgumentTypes(handler.desc);
 		if (own.length < 2 || !isCallbackInfo(own[own.length - 1])
 				|| (handler.access & Opcodes.ACC_STATIC) != (lambda.access & Opcodes.ACC_STATIC)) return List.of();
@@ -646,7 +648,7 @@ public final class MixinPreflight {
 		// A patch captures a value or two more; a lambda taking many more is more likely another one under that name.
 		if (wanted.equals(captured) || captured.size() > wanted.size() + 2) return List.of();
 		int[] from = inOrder(wanted, captured);
-		if (from == null) from = byType(handler, wanted, captured);
+		if (from == null && isLambda) from = byType(handler, wanted, captured);
 		if (from == null) return List.of();
 
 		List<Type> params = new ArrayList<>(captured);
@@ -669,8 +671,8 @@ public final class MixinPreflight {
 		values.set(0, lambda.name + lambda.desc);
 		HandlerBridges.moveInjector(handler, injector, bridge);
 		bridges.add(bridge);
-		return List.of(lambda.name + lambda.desc + ", whose captured values this game build passes in another order or with more;"
-				+ " a bridge passes the handler the ones it takes");
+		return List.of(lambda.name + lambda.desc + (isLambda ? ", whose captured values this game build passes in another order or with more"
+				: ", which this game build declares with more parameters") + "; a bridge passes the handler the ones it takes");
 	}
 
 	/** Where each of {@code wanted} is in {@code captured}, taken in order, when they occur in it that way only once; else null. */
@@ -825,7 +827,8 @@ public final class MixinPreflight {
 	 * Points the {@code INVOKE} and {@code NEW} points of an injector at the call this game build makes instead of the named one, an
 	 * overload of the same method taking one more argument (NeoForge's patches pass an item stack or a level along that
 	 * way), when the named call is in none of the methods the injector targets and that overload is the only one there.
-	 * The handler of an {@code @Inject} or {@code @ModifyExpressionValue} doesn't see the arguments. One of a
+	 * The handler of an {@code @Inject} or {@code @ModifyExpressionValue} doesn't see the arguments, so its {@code INVOKE}
+	 * point also moves to an overload that takes more after them ({@link #appendsArguments}). One of a
 	 * {@code @Redirect}, {@code @WrapWithCondition} or {@code @WrapOperation} that takes exactly the call's receiver and
 	 * arguments (and the {@code Operation}), and then any MixinExtras sugar, gets a bridge taking the overload's, which calls it without the added
 	 * argument; for {@code @WrapOperation}, with an {@code Operation} that puts it back when the original call is made.
@@ -876,7 +879,7 @@ public final class MixinPreflight {
 					String callDesc = constructor ? call.desc.substring(0, call.desc.indexOf(')') + 1) + "L" + owner + ";" : call.desc;
 					if (callDesc.equals(desc)) {
 						named = true;
-					} else if (insertedArgument(desc, callDesc) >= 0) {
+					} else if (insertedArgument(desc, callDesc) >= 0 || pointOnly && !constructor && appendsArguments(desc, callDesc)) {
 						ambiguous |= overload != null && !overload.equals(callDesc);
 						overload = callDesc;
 						staticCall |= call.getOpcode() == Opcodes.INVOKESTATIC;
@@ -899,10 +902,12 @@ public final class MixinPreflight {
 				if ("target".equals(at.values.get(i))) at.values.set(i + 1, constructor ? overload : "L" + owner + ";" + name + overload);
 			}
 			String via = pointOnly ? "" : ", through a bridge handler";
+			int extra = Type.getArgumentTypes(overload).length - Type.getArgumentTypes(desc).length;
+			String more = extra == 1 ? "one more argument" : extra + " more arguments";
 			moved.add(constructor
-					? "new " + owner.replace('/', '.') + desc.substring(0, desc.indexOf(')') + 1) + ", which this game build makes with a constructor taking one more argument, "
+					? "new " + owner.replace('/', '.') + desc.substring(0, desc.indexOf(')') + 1) + ", which this game build makes with a constructor taking " + more + ", "
 							+ overload + "; the injection point is pointed there" + via
-					: owner.replace('/', '.') + "." + name + desc + ", which this game build makes through an overload with one more argument, " + name + overload
+					: owner.replace('/', '.') + "." + name + desc + ", which this game build makes through an overload with " + more + ", " + name + overload
 							+ "; the injection point is pointed there" + via);
 		}
 		return moved;
@@ -927,6 +932,22 @@ public final class MixinPreflight {
 			found = added;
 		}
 		return found;
+	}
+
+	/**
+	 * Whether {@code overload} takes {@code desc}'s parameters and more after them, with the same result: what NeoForge's
+	 * patches call to pass more along, as its {@code CustomPacketPayload.codec} with the protocol and the direction
+	 * (Polymer's codec hooks, PRE-13). Only a point that sees no argument (an {@code @Inject}'s, a
+	 * {@code @ModifyExpressionValue}'s) moves to any such overload.
+	 */
+	static boolean appendsArguments(String desc, String overload) {
+		Type[] own = Type.getArgumentTypes(desc);
+		Type[] all = Type.getArgumentTypes(overload);
+		if (all.length <= own.length || !Type.getReturnType(desc).equals(Type.getReturnType(overload))) return false;
+		for (int i = 0; i < own.length; i++) {
+			if (!all[i].equals(own[i])) return false;
+		}
+		return true;
 	}
 
 	/** The one other overload of the same name {@code method} calls, or null (none, or several). */

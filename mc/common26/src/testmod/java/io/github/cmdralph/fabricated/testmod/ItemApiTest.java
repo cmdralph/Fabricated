@@ -69,7 +69,9 @@ public final class ItemApiTest implements ModInitializer {
 				});
 		boolean idOk = key.equals(properties.itemId());
 		Item item = Registry.register(BuiltInRegistries.ITEM, key, new TestItem(properties));
-		DefaultItemComponentEvents.MODIFY.register(context -> context.modify(item, builder -> builder.set(DataComponents.RARITY, Rarity.EPIC)));
+		// Its predicate reads every item's components, as Wover's does: upstream tests it once they are bound (ITEMCOMP-1).
+		DefaultItemComponentEvents.MODIFY.register(context -> context.modify(candidate -> candidate.components().has(DataComponents.MAX_DAMAGE) && candidate == item,
+				(builder, modified) -> builder.set(DataComponents.RARITY, Rarity.EPIC)));
 		EnchantmentEvents.ALLOW_ENCHANTING.register((enchantment, stack, context) -> stack.is(item) ? TriState.TRUE : TriState.DEFAULT);
 		EnchantmentEvents.MODIFY_WITH_LOOKUP.register((enchantment, builder, source, registries) -> {
 			if (!enchantment.equals(Enchantments.SHARPNESS)) return;

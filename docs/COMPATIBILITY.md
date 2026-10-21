@@ -388,7 +388,7 @@ overrides of `FabricItem` take effect wherever NeoForge asks.
 | `Properties.customDamage` | `damageItem` | not asked for creative players, as upstream; the slot is the one holding the stack |
 | `allowComponentsUpdateAnimation`, `allowContinuingBlockBreaking` (client) | `shouldCauseReequipAnimation`, `shouldCauseBlockBreakReset` | |
 | `getCreatorNamespace` | `getCreatorModId` | when the item overrides it |
-| `DefaultItemComponentEvents.MODIFY` | `ModifyDefaultComponentsEvent` | as a component patch on 1.21.11 |
+| `DefaultItemComponentEvents.MODIFY` | `DefaultDataComponentsBoundEvent` on 26.x (as upstream, once the items' default components are bound); `ModifyDefaultComponentsEvent` on 1.21.11 | as a component patch on 1.21.11 |
 | `ItemComponentTooltipProviderRegistry` (26.x) | `RegisterTooltipAppendersEvent` | same placements (first, last, before, after) |
 | `ComponentTooltipAppenderRegistry` (1.21.11) | `ItemTooltipEvent` | NeoForge 1.21.11 can't place component tooltips, so they come after the other lines; anchors aren't honoured |
 | `ItemClickBehaviorCallback` (26.2+) | `ItemStackedOnOtherEvent` | |
