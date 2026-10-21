@@ -14,6 +14,9 @@ import io.github.cmdralph.fabricated.core.config.FabricatedConfig;
 import io.github.cmdralph.fabricated.core.runtime.EntrypointRunner;
 import io.github.cmdralph.fabricated.core.metadata.ModIds;
 import io.github.cmdralph.fabricated.loader.FabricatedState;
+import io.github.cmdralph.fabricated.neoforge.fluid.FabricFluidType;
+import io.github.cmdralph.fabricated.neoforge.item.CreativeTabOrder;
+import io.github.cmdralph.fabricated.neoforge.objectbuilder.ObjectBuilderBridge;
 import io.github.cmdralph.fabricated.neoforge.registry.FabricTableEntries;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.api.DedicatedServerModInitializer;
@@ -25,6 +28,7 @@ import net.neoforged.fml.ModList;
 import net.neoforged.fml.ModLoader;
 import net.neoforged.fml.ModLoadingContext;
 import net.neoforged.fml.ModLoadingIssue;
+import net.neoforged.neoforge.data.loading.DatagenModLoader;
 import net.neoforged.neoforge.registries.GameData;
 
 /**
@@ -34,10 +38,13 @@ import net.neoforged.neoforge.registries.GameData;
  * so NeoForge attributes registrations and errors correctly.
  *
  * <p>NeoForge builds and registers mods before it creates {@code Minecraft}, while Fabric Loader runs every
- * initializer from {@code Minecraft}'s constructor, once {@code Minecraft.getInstance()} is set. Fabric content must
- * be registered while the registries are open, so {@code preLaunch} and {@code main} run in the RegisterEvent loop;
- * {@code client} runs where Fabric runs it ({@link #runClientEntrypoints()}), since client initializers commonly use
- * the instance, with the registries opened again for it (Fabric API freezes them only after it).
+ * initializer from {@code Minecraft}'s constructor, once {@code Minecraft.getInstance()} is set. {@code preLaunch} runs
+ * in NeoForge's RegisterEvent loop. On a client, {@code main} and {@code client} run where Fabric runs them
+ * ({@link #runClientEntrypoints()}), since mods use the instance there (CORPUS-16), with the registries opened again
+ * (Fabric API freezes them only after the client initializers); what NeoForge fills once, as its registration events
+ * end, then takes what they registered ({@link #registerLate()}). On a dedicated server, and in a data run, where
+ * no {@code Minecraft} comes, {@code main} and {@code server} run in the RegisterEvent loop, where Fabric content can
+ * be registered.
  */
 public final class EntrypointBridge {
 	private static final Logger LOGGER = LoggerFactory.getLogger("Fabricated");
@@ -48,6 +55,8 @@ public final class EntrypointBridge {
 	private final FabricatedState state;
 	private final Dist dist;
 	private boolean ran;
+	/** Whether {@code main} waits for {@code Minecraft}'s constructor, with {@code client}. */
+	private boolean mainWithClient;
 	private EntrypointRunner runner;
 	private final List<EntrypointRunner.Failure> failures = new ArrayList<>();
 	private long nanos;
@@ -89,18 +98,20 @@ public final class EntrypointBridge {
 
 		FabricTableEntries.recordVanilla();
 		failures.addAll(runner.run("preLaunch", PreLaunchEntrypoint.class, PreLaunchEntrypoint::onPreLaunch));
-		failures.addAll(runner.run("main", ModInitializer.class, ModInitializer::onInitialize));
 		if (dist.isClient()) {
+			mainWithClient = !DatagenModLoader.isRunningDataGen();
+			if (!mainWithClient) failures.addAll(runner.run("main", ModInitializer.class, ModInitializer::onInitialize));
 			nanos = System.nanoTime() - start;
 			pendingClient = this;
 			return;
 		}
+		failures.addAll(runner.run("main", ModInitializer.class, ModInitializer::onInitialize));
 		failures.addAll(runner.run("server", DedicatedServerModInitializer.class, DedicatedServerModInitializer::onInitializeServer));
 		nanos = System.nanoTime() - start;
 		finish();
 	}
 
-	/** Runs the client entrypoints (once); called from {@code Minecraft}'s constructor where Fabric Loader runs them. */
+	/** Runs the main and client entrypoints (once); called from {@code Minecraft}'s constructor where Fabric Loader runs them. */
 	public static void runClientEntrypoints() {
 		EntrypointBridge bridge = pendingClient;
 		pendingClient = null;
@@ -110,18 +121,31 @@ public final class EntrypointBridge {
 	private synchronized void runClient() {
 		long start = System.nanoTime();
 		state.runtime().setGameInstance(ClientSupport.gameInstance());
-		// Fabric API freezes the registries after the client initializers too, and some register content there
-		// (Xaero's Minimap its effect). NeoForge froze them before Minecraft existed: they are opened for these
-		// initializers and frozen again as NeoForge freezes them, which renews the snapshot it restores on leaving a
-		// server.
+		// Fabric API freezes the registries after the client initializers, and mods register content up to there (in
+		// main initializers, and some in client ones: Xaero's Minimap its effect). NeoForge froze them before Minecraft
+		// existed: they are opened for these initializers and frozen again as NeoForge freezes them, which renews the
+		// snapshot it restores on leaving a server.
 		GameData.unfreezeData();
 		try {
+			if (mainWithClient) failures.addAll(runner.run("main", ModInitializer.class, ModInitializer::onInitialize));
 			failures.addAll(runner.run("client", ClientModInitializer.class, ClientModInitializer::onInitializeClient));
+			registerLate();
 		} finally {
 			GameData.freezeData();
 		}
 		nanos += System.nanoTime() - start;
 		finish();
+	}
+
+	/**
+	 * Hands what Fabric mods registered after NeoForge's registration events to what NeoForge fills once, as they end:
+	 * default attributes and spawn placements, fluid types, and the creative tabs' order. Run with the registries open,
+	 * before NeoForge freezes them again (which checks that every living entity type has attributes).
+	 */
+	private static void registerLate() {
+		ObjectBuilderBridge.registerLate();
+		FabricFluidType.registerLate();
+		CreativeTabOrder.sortLate();
 	}
 
 	private void finish() {

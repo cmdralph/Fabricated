@@ -3,6 +3,7 @@ package io.github.cmdralph.fabricated.neoforge.config;
 import java.io.IOException;
 import java.io.Reader;
 import java.lang.reflect.Constructor;
+import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
@@ -29,6 +30,7 @@ import net.neoforged.fml.ModList;
 import net.neoforged.fml.config.ConfigTracker;
 import net.neoforged.fml.config.IConfigSpec;
 import net.neoforged.fml.config.ModConfig;
+import net.neoforged.fml.config.ModConfigs;
 import net.neoforged.fml.event.config.ModConfigEvent;
 import net.neoforged.fml.loading.FMLPaths;
 
@@ -40,7 +42,9 @@ import net.neoforged.fml.loading.FMLPaths;
  *
  * <p>On Fabric the port loads every config but the per-world one as it is registered, and Fabric mods read their
  * values right after; NeoForge loads them later in mod loading. Until then the spec reads the file as it is on disk
- * (missing values at their defaults), without writing it or firing events: NeoForge's own load does both.
+ * (missing values at their defaults), without writing it or firing events: NeoForge's own load does both. A config
+ * registered once NeoForge has loaded those of its type (on a client, Fabric initializers run in {@code Minecraft}'s
+ * constructor, after that: CORPUS-16) is loaded as NeoForge loads one, right away.
  */
 public final class ForgeConfigApiPortBridge {
 	private static final Logger LOGGER = LoggerFactory.getLogger("Fabricated");
@@ -61,11 +65,13 @@ public final class ForgeConfigApiPortBridge {
 				return;
 			}
 			ModConfig config = ConfigTracker.INSTANCE.registerConfig(type, spec, container.get(), fileName);
-			if (type != ModConfig.Type.STARTUP && !perWorld(type)) preload(config);
+			if (type == ModConfig.Type.STARTUP || perWorld(type)) return;
+			if (!loadedByNeoForge(type) || !open(config)) preload(config);
 		}
 	};
 
 	private static volatile Constructor<?> loadedConfig;
+	private static volatile Method openConfig;
 
 	/** A mod's config events; NeoForge's are forwarded to them from the mod's event bus. */
 	public record Events(Event<ModConfigEvents.Loading> loading, Event<ModConfigEvents.Reloading> reloading,
@@ -103,6 +109,28 @@ public final class ForgeConfigApiPortBridge {
 	/** The server config (FML 12 calls it synced): loaded with each world, also by the port. */
 	private static boolean perWorld(ModConfig.Type type) {
 		return type.name().equals("SERVER") || type.name().equals("SYNCED");
+	}
+
+	/** Whether NeoForge has loaded the configs of this type (its own among them). */
+	private static boolean loadedByNeoForge(ModConfig.Type type) {
+		return ModConfigs.getConfigSet(type).stream().anyMatch(config -> config.getLoadedConfig() != null);
+	}
+
+	/** Loads the config as NeoForge loads each one ({@code ConfigTracker.openConfig}: file, events, watcher). */
+	private static boolean open(ModConfig config) {
+		try {
+			Method method = openConfig;
+			if (method == null) {
+				method = ConfigTracker.class.getDeclaredMethod("openConfig", ModConfig.class, Path.class, Path.class);
+				method.setAccessible(true);
+				openConfig = method;
+			}
+			method.invoke(null, config, FMLPaths.CONFIGDIR.get(), null);
+			return true;
+		} catch (ReflectiveOperationException | RuntimeException e) {
+			LOGGER.warn("Config {} of {} is read from its file but not loaded as NeoForge loads configs: {}", config.getFileName(), config.getModId(), e.toString());
+			return false;
+		}
 	}
 
 	private static void preload(ModConfig config) {

@@ -43,11 +43,12 @@ public final class FabricatedMod {
 			state.writeReport();
 		});
 		// Vanilla registries are frozen during mod construction and opened for the RegisterEvent loop. Fabric
-		// mods register content directly from their initializers, so they run inside that loop: on the first
-		// RegisterEvent after the attribute registry's, which NeoForge posts first. NeoForge registers its own
-		// attributes there, and every living entity's attribute builder includes them, so a Fabric initializer
-		// that builds attributes (a very common thing to do) needs them registered. All registries stay open
-		// until the loop ends, so Fabric mods can still register attributes.
+		// mods register content directly from their initializers, so on a dedicated server they run inside that
+		// loop (on a client, from Minecraft's constructor, with the registries opened again: see EntrypointBridge):
+		// on the first RegisterEvent after the attribute registry's, which NeoForge posts first. NeoForge registers
+		// its own attributes there, and every living entity's attribute builder includes them, so a Fabric
+		// initializer that builds attributes (a very common thing to do) needs them registered. All registries stay
+		// open until the loop ends, so Fabric mods can still register attributes.
 		modBus.addListener(EventPriority.HIGHEST, RegisterEvent.class, event -> {
 			if (!event.getRegistryKey().equals(Registries.ATTRIBUTE)) entrypoints.runOnce();
 		});

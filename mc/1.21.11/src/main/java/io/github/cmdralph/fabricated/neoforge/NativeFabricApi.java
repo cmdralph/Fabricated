@@ -44,7 +44,7 @@ public final class NativeFabricApi {
 			FabricFluidClientExtensions.register(modBus);
 		}
 		// The 1.21.11 API has no FabricDefaultAttributeRegistry.MODIFY.
-		ObjectBuilderBridge.register(modBus, modifier -> {
+		ObjectBuilderBridge.register(modBus, state.api()::entrypointsComplete, modifier -> {
 		});
 		TradeOfferInternals.register();
 		NetworkingBridge.register(modBus, dist, problem -> {

@@ -19,6 +19,7 @@ import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.common.tooltip.TooltipAppender;
+import net.neoforged.neoforge.common.tooltip.TooltipLocation;
 import net.neoforged.neoforge.event.ModifyDefaultComponentsEvent;
 import net.neoforged.neoforge.event.RegisterTooltipAppendersEvent;
 import net.neoforged.neoforge.event.entity.player.ItemTooltipEvent;
@@ -62,7 +63,12 @@ public final class ItemApiBridge {
 
 	/** Fabric's {@code ItemComponentTooltipProviderRegistry}, placed where NeoForge places component tooltips. */
 	private static void registerTooltipProviders(RegisterTooltipAppendersEvent event) {
-		for (var entry : ItemComponentTooltipProviderRegistryImpl.entries()) {
+		var entries = ItemComponentTooltipProviderRegistryImpl.entries();
+		// Providers registered after this event (on a client, main initializers run in Minecraft's constructor,
+		// CORPUS-16) go before or after all component tooltips: the nearest places NeoForge still takes.
+		event.registerAppender(TooltipLocation.POST_CUSTOM, lateProviders(entries.size(), true));
+		event.registerAppender(TooltipLocation.PRE_ITEM_INFO, lateProviders(entries.size(), false));
+		for (var entry : entries) {
 			TooltipAppender appender = entry.appender();
 			try {
 				switch (entry.position()) {
@@ -75,6 +81,20 @@ public final class ItemApiBridge {
 				LOGGER.warn("Tooltip provider for component {} is registered more than once; the first registration is kept", entry.type());
 			}
 		}
+	}
+
+	/** The providers registered after the first {@code skip}: those placed first or before another, or the others. */
+	private static TooltipAppender lateProviders(int skip, boolean before) {
+		return (stack, context, display, player, flag, builder) -> {
+			var entries = ItemComponentTooltipProviderRegistryImpl.entries();
+			for (int i = skip; i < entries.size(); i++) {
+				var entry = entries.get(i);
+				ItemComponentTooltipProviderRegistryImpl.Position position = entry.position();
+				boolean first = position == ItemComponentTooltipProviderRegistryImpl.Position.FIRST
+						|| position == ItemComponentTooltipProviderRegistryImpl.Position.BEFORE;
+				if (first == before) entry.appender().append(stack, context, display, player, flag, builder);
+			}
+		};
 	}
 
 	/** The client's player, for Fabric's client-side item hooks; null on a server. */

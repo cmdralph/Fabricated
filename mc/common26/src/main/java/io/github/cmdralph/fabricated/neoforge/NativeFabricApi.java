@@ -48,7 +48,7 @@ public final class NativeFabricApi {
 		}
 		ItemApiBridge.register(modBus, dist);
 		BlockApiCompat.register(modBus);
-		ObjectBuilderBridge.register(modBus, modifier -> FabricDefaultAttributeRegistry.MODIFY.invoker().modify(new FabricDefaultAttributeRegistry.ModifyContext() {
+		ObjectBuilderBridge.register(modBus, state.api()::entrypointsComplete, modifier -> FabricDefaultAttributeRegistry.MODIFY.invoker().modify(new FabricDefaultAttributeRegistry.ModifyContext() {
 			@Override
 			public void modify(Predicate<EntityType<? extends LivingEntity>> types, FabricDefaultAttributeRegistry.ModifyConsumer consumer) {
 				modifier.modify(types, consumer::accept);
