@@ -122,6 +122,20 @@ class TranslationCacheTest {
 		assertFalse(Files.exists(new TranslationCache(game, true, true).root().resolve("entries").resolve(name)));
 	}
 
+	/** CACHE-3: a name looked up but never stored (its translation failed) leaves the index too, though it has no file. */
+	@Test
+	void forgetsNamesNeverStored(@TempDir Path game) throws Exception {
+		String name = TranslationCache.entryName("failed_mod", "22".repeat(32));
+		TranslationCache first = new TranslationCache(game, true, true);
+		assertTrue(first.lookup(name, "overlay.jar").isEmpty());
+		first.finish(1);
+		assertTrue(Files.readString(first.root().resolve("index.json")).contains(name));
+		for (int i = 0; i < 3; i++) {
+			new TranslationCache(game, true, true).finish(1);
+		}
+		assertFalse(Files.readString(first.root().resolve("index.json")).contains(name));
+	}
+
 	@Test
 	void keepsNestedJarsAndEntriesUsedEveryLaunch(@TempDir Path game) throws Exception {
 		// As in a real launch: Fabricated's game mod is extracted, then a mod entry and a nested library are used.
