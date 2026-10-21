@@ -54,8 +54,10 @@ import org.objectweb.asm.tree.VarInsnNode;
  * evaluate (wildcards, slice bounds other than member references or {@code HEAD}, custom points, targets in other
  * Fabric mods) are never reported as failures. When the config declares a plugin, which may disable mixins at runtime,
  * a failure is {@link Severity#LEFT_OUT} instead: the failing injector (or the mixin) is left out rather than the mod
- * disabled. An enum mixin adding constants to one of NeoForge's extensible enums always fails: the mod's own classes
- * read those constants.
+ * disabled. So is a failure of a self-contained mixin, one nothing outside it can call (it adds no interface to its
+ * target and has no accessor or invoker): the whole mixin is left out, so that its injectors, which may share state,
+ * apply all or none (LEAVE-1). An enum mixin adding constants to one of NeoForge's extensible enums always fails: the
+ * mod's own classes read those constants.
  */
 public final class MixinPreflight {
 	private static final String PSEUDO = "Lorg/spongepowered/asm/mixin/Pseudo;";
@@ -131,7 +133,7 @@ public final class MixinPreflight {
 			if (skip.contains(mixin)) continue;
 			String internal = config.internalName(mixin);
 			ClassNode node = modClasses.readNode(internal, ClassReader.SKIP_CODE | ClassReader.SKIP_FRAMES);
-			Context ctx = new Context(configName, internal.replace('/', '.'), config, refmap, hasPlugin, out, null);
+			Context ctx = new Context(configName, internal.replace('/', '.'), config, refmap, hasPlugin, node != null && selfContained(node), out, null);
 			if (node == null) {
 				ctx.classLevel("Mixin class " + ctx.mixinDotted() + " listed in " + configName + " is missing from the mod jar",
 						"The mod jar is incomplete or corrupted; re-download it.");
@@ -199,7 +201,7 @@ public final class MixinPreflight {
 			String internal = config.internalName(mixin);
 			ClassNode node = modClasses.readNode(internal, 0);
 			if (node == null) continue;
-			Context ctx = new Context(configName, internal.replace('/', '.'), config, refmap, false, out, null);
+			Context ctx = new Context(configName, internal.replace('/', '.'), config, refmap, false, false, out, null);
 			List<ClassNode> targets = new ArrayList<>();
 			for (String target : targetsOf(node, ctx)) {
 				ClassNode targetNode = gameTarget(target);
@@ -817,15 +819,32 @@ public final class MixinPreflight {
 		return targetCache.computeIfAbsent(internalName, t -> Optional.ofNullable(game.readNode(t))).orElse(null);
 	}
 
-	/** @param owner the installed mod the target belongs to, or {@code null} for a game class */
+	/**
+	 * Whether nothing outside a mixin can call into what it adds to its target, so the mod's own code doesn't depend on
+	 * it applying: it adds no interface (the mod's classes cast targets to those) and has no accessor or invoker. A mixin
+	 * that is itself an interface (accessors) or an enum (its constants) never is.
+	 */
+	static boolean selfContained(ClassNode mixin) {
+		if ((mixin.access & (Opcodes.ACC_INTERFACE | Opcodes.ACC_ENUM)) != 0 || !mixin.interfaces.isEmpty()) return false;
+		for (MethodNode method : mixin.methods) {
+			if (Annotations.find(method, ACCESSOR) != null || Annotations.find(method, INVOKER) != null) return false;
+		}
+		return true;
+	}
+
+	/**
+	 * @param selfContained see {@link #selfContained(ClassNode)}: a failure then leaves the whole mixin out instead of
+	 *                      disabling the mod
+	 * @param owner         the installed mod the target belongs to, or {@code null} for a game class
+	 */
 	record Context(String configName, String mixinDotted, MixinConfigFile config, Refmap refmap, boolean hasPlugin,
-			List<PreflightFinding> out, String owner) {
+			boolean selfContained, List<PreflightFinding> out, String owner) {
 		String resolve(String selector) {
 			return refmap.resolve(mixinDotted.replace('.', '/'), selector);
 		}
 
 		Context withOwner(String owner) {
-			return new Context(configName, mixinDotted, config, refmap, hasPlugin, out, owner);
+			return new Context(configName, mixinDotted, config, refmap, hasPlugin, selfContained, out, owner);
 		}
 
 		/** What changed the target since the mod was built: NeoForge or this Minecraft version, or this version of the mod. */
@@ -839,7 +858,7 @@ public final class MixinPreflight {
 			return owner == null ? "NeoForge" : owner;
 		}
 
-		/** A problem that makes Mixin reject the whole mixin; fatal when the config is required. */
+		/** A problem that makes Mixin reject the whole mixin; fatal when the config is required, unless it can be left out. */
 		void classLevel(String message, String suggestion) {
 			out.add(new PreflightFinding(config.required() ? fatal() : Severity.WARN, configName, mixinDotted, message, suggestion));
 		}
@@ -862,14 +881,22 @@ public final class MixinPreflight {
 			out.add(new PreflightFinding(Severity.FAIL, configName, mixinDotted, message, suggestion));
 		}
 
+		/**
+		 * An injector that can't apply. Where it is required: with a plugin, only it is left out (as the plugin may do); in
+		 * a self-contained mixin, the whole mixin is (no handler named); otherwise it is fatal.
+		 */
 		void injector(MethodNode handler, int require, String message, String suggestion) {
-			out.add(new PreflightFinding(require > 0 ? fatal() : Severity.WARN, configName, mixinDotted, message, suggestion,
-					handler.name + handler.desc));
+			Severity severity = require > 0 ? fatal() : Severity.WARN;
+			boolean wholeMixin = severity == Severity.LEFT_OUT && !hasPlugin;
+			out.add(new PreflightFinding(severity, configName, mixinDotted, message, suggestion, wholeMixin ? null : handler.name + handler.desc));
 		}
 
-		/** A config plugin may disable the mixin at runtime, so a crash only leaves the mixin out. */
+		/**
+		 * A failure that would stop the game: left out when a config plugin may disable the mixin at runtime, or when
+		 * the mixin is self-contained, so the mod loads without it; fatal otherwise.
+		 */
 		private Severity fatal() {
-			return hasPlugin ? Severity.LEFT_OUT : Severity.FAIL;
+			return hasPlugin || selfContained ? Severity.LEFT_OUT : Severity.FAIL;
 		}
 
 		void info(String message) {

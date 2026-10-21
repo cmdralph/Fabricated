@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.StringReader;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -122,6 +123,25 @@ class PipelineTest {
 		return cw.toByteArray();
 	}
 
+	/**
+	 * A mixin as {@link #mixinClass(String, String, String)} that also adds an interface to its target, which the mod's
+	 * code may cast to: a failure in it can't be left out (LEAVE-1), so it disables the mod.
+	 */
+	private static byte[] duckMixinClass(String name, String target, String targetMethod) {
+		ClassWriter cw = new ClassWriter(0);
+		new ClassReader(mixinClass(name, target, targetMethod)).accept(new org.objectweb.asm.ClassVisitor(Opcodes.ASM9, cw) {
+			@Override
+			public void visit(int version, int access, String className, String signature, String superName, String[] interfaces) {
+				super.visit(version, access, className, signature, superName, new String[] {className + "$Duck"});
+			}
+		}, 0);
+		return cw.toByteArray();
+	}
+
+	private static byte[] duckMixinClass(String name, String targetMethod) {
+		return duckMixinClass(name, TARGET, targetMethod);
+	}
+
 	/** A mixin into {@code target} whose required {@code @Inject} goes at the head of {@code targetMethod}. */
 	private static byte[] mixinClass(String name, String target, String targetMethod) {
 		ClassWriter cw = new ClassWriter(0);
@@ -165,7 +185,7 @@ class PipelineTest {
 
 		TestJars.create().fabricModJson(TestJars.modJson("bad-mixin", "2.0", "\"mixins\":[\"bad.mixins.json\"]"))
 				.text("bad.mixins.json", "{\"required\":true,\"package\":\"com.bad.mixin\",\"mixins\":[\"BadMixin\"]}")
-				.bytes("com/bad/mixin/BadMixin.class", mixinClass("com/bad/mixin/BadMixin", "removedByNeoForge"))
+				.bytes("com/bad/mixin/BadMixin.class", duckMixinClass("com/bad/mixin/BadMixin", "removedByNeoForge"))
 				.write(mods.resolve("bad.jar"));
 
 		byte[] inner = TestJars.create()
@@ -348,7 +368,7 @@ class PipelineTest {
 		String renderer = "net/example/sodium/Renderer";
 		Path addon = TestJars.create().fabricModJson(TestJars.modJson("addon", "1.0", "\"mixins\":[\"addon.mixins.json\"]"))
 				.text("addon.mixins.json", "{\"required\":true,\"package\":\"com.addon.mixin\",\"mixins\":[\"RendererMixin\"]}")
-				.bytes("com/addon/mixin/RendererMixin.class", mixinClass("com/addon/mixin/RendererMixin", renderer, "drawSections"))
+				.bytes("com/addon/mixin/RendererMixin.class", duckMixinClass("com/addon/mixin/RendererMixin", renderer, "drawSections"))
 				.write(Files.createDirectories(game.resolve("mods")).resolve("addon.jar"));
 		Map<String, byte[]> sodium = new HashMap<>(Map.of(renderer, installedClass(renderer, "drawSections")));
 		Supplier<InstalledClasses> installed = () -> new InstalledClasses(List.of(new InstalledClasses.Jar("Sodium", sodium::containsKey, sodium::get)));
@@ -376,7 +396,7 @@ class PipelineTest {
 		String renderer = "net/example/sodium/Renderer";
 		Path addon = TestJars.create().fabricModJson(TestJars.modJson("addon", "1.0", "\"mixins\":[\"addon.mixins.json\"]"))
 				.text("addon.mixins.json", "{\"required\":true,\"package\":\"com.addon.mixin\",\"mixins\":[\"RendererMixin\"]}")
-				.bytes("com/addon/mixin/RendererMixin.class", mixinClass("com/addon/mixin/RendererMixin", renderer, "drawSections"))
+				.bytes("com/addon/mixin/RendererMixin.class", duckMixinClass("com/addon/mixin/RendererMixin", renderer, "drawSections"))
 				.write(Files.createDirectories(game.resolve("mods")).resolve("addon.jar"));
 		Map<String, byte[]> sodium = new HashMap<>();
 		Supplier<InstalledClasses> installed = () -> new InstalledClasses(List.of(new InstalledClasses.Jar("Sodium", sodium::containsKey, sodium::get)));
@@ -407,7 +427,7 @@ class PipelineTest {
 				.write(mods.resolve("good-addon.jar"));
 		Path stale = TestJars.create().fabricModJson(TestJars.modJson("stale-addon", "1.0", "\"mixins\":[\"stale.mixins.json\"],\"depends\":{\"base\":\"*\"}"))
 				.text("stale.mixins.json", "{\"required\":true,\"package\":\"com.stale.mixin\",\"mixins\":[\"RendererMixin\"]}")
-				.bytes("com/stale/mixin/RendererMixin.class", mixinClass("com/stale/mixin/RendererMixin", renderer, "drawSections"))
+				.bytes("com/stale/mixin/RendererMixin.class", duckMixinClass("com/stale/mixin/RendererMixin", renderer, "drawSections"))
 				.write(mods.resolve("stale-addon.jar"));
 
 		Pipeline.Result result = Pipeline.run(input(game, List.of(base, good, stale), Namespace.OFFICIAL, Map.of(), null, List.of()));
@@ -447,7 +467,7 @@ class PipelineTest {
 				.write(mods.resolve("good-addon.jar"));
 		Path stale = TestJars.create().fabricModJson(TestJars.modJson("stale-addon", "1.0", "\"mixins\":[\"stale.mixins.json\"],\"depends\":{\"base\":\"*\"}"))
 				.text("stale.mixins.json", "{\"required\":true,\"package\":\"com.stale.mixin\",\"mixins\":[\"RendererMixin\"]}")
-				.bytes("com/stale/mixin/RendererMixin.class", mixinClass("com/stale/mixin/RendererMixin", renderer, "drawSections"))
+				.bytes("com/stale/mixin/RendererMixin.class", duckMixinClass("com/stale/mixin/RendererMixin", renderer, "drawSections"))
 				.write(mods.resolve("stale-addon.jar"));
 
 		Pipeline.Result result = Pipeline.run(input(game, List.of(base, good, stale), Namespace.INTERMEDIARY, Map.of(TARGET, targetClass()),
@@ -760,7 +780,7 @@ class PipelineTest {
 		// The library fails pre-flight (its mixin injects into a method the game doesn't have), so it isn't loading.
 		Path lib = TestJars.create().fabricModJson(TestJars.modJson("lib-mod", "1.0", "\"mixins\":[\"lib.mixins.json\"]"))
 				.text("lib.mixins.json", "{\"required\":true,\"package\":\"com.lib.mixin\",\"mixins\":[\"BrokenMixin\"]}")
-				.bytes("com/lib/mixin/BrokenMixin.class", mixinClass("com/lib/mixin/BrokenMixin", "methodTheGameDoesNotHave"))
+				.bytes("com/lib/mixin/BrokenMixin.class", duckMixinClass("com/lib/mixin/BrokenMixin", "methodTheGameDoesNotHave"))
 				.bytes(api + ".class", TestJars.emptyClass(api, "java/lang/Object"))
 				.write(mods.resolve("lib.jar"));
 		Path user = TestJars.create().fabricModJson(TestJars.modJson("user-mod", "1.0", "\"mixins\":[\"user.mixins.json\"]"))
@@ -1021,6 +1041,30 @@ class PipelineTest {
 		assertTrue(result.report().render().contains("Compatibility hints"));
 	}
 
+	/**
+	 * A required mixin NeoForge's code can't take, which nothing outside it calls into, is left out of its config and the
+	 * mod loads without it (LEAVE-1); the report says so, in the mod's row too, which {@code /fabricated why} shows.
+	 */
+	@Test
+	void aSelfContainedMixinNeoForgeCanNotTakeIsLeftOutAndTheModLoads(@TempDir Path game) throws Exception {
+		Path jar = TestJars.create().fabricModJson(TestJars.modJson("partial-mod", "1.0", "\"mixins\":[\"partial.mixins.json\"]"))
+				.text("partial.mixins.json", "{\"required\":true,\"package\":\"com.partial.mixin\",\"mixins\":[\"Works\",\"Broken\"]}")
+				.bytes("com/partial/mixin/Works.class", mixinClass("com/partial/mixin/Works", "tick"))
+				.bytes("com/partial/mixin/Broken.class", mixinClass("com/partial/mixin/Broken", "removedByNeoForge"))
+				.write(game.resolve("mods/partial.jar"));
+		Pipeline.Result result = Pipeline.run(input(game, List.of(jar), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
+		String report = result.report().render();
+		assertTrue(result.runtime().isModLoaded("partial-mod"), report);
+		assertTrue(report.contains(Pipeline.LEFT_OUT_SECTION), report);
+		assertTrue(report.contains("partial-mod: LEFT_OUT [partial.mixins.json com.partial.mixin.Broken]"), report);
+		Report.ModRow row = result.report().mods().stream().filter(r -> r.id().equals("partial-mod")).findFirst().orElseThrow();
+		assertTrue(row.detail().contains("1 mixin(s) left out"), row.detail());
+		try (SafeArchive overlay = SafeArchive.open(result.mods().getFirst().translated().overlay(), ArchiveLimits.DEFAULTS)) {
+			String config = new String(overlay.read("partial.mixins.json"), StandardCharsets.UTF_8);
+			assertTrue(config.contains("Works") && !config.contains("Broken"), config);
+		}
+	}
+
 	@Test
 	void aSingleHandlerMethodCanBeLeftOut(@TempDir Path game) throws Exception {
 		ClassNode mixin = new ClassNode();
@@ -1075,7 +1119,7 @@ class PipelineTest {
 	private static Path patchTarget(Path game) throws Exception {
 		return TestJars.create().fabricModJson(TestJars.modJson("target-mod", "2.0", "\"mixins\":[\"target.mixins.json\"]"))
 				.text("target.mixins.json", "{\"required\":true,\"package\":\"com.target.mixin\",\"mixins\":[\"BadMixin\"]}")
-				.bytes("com/target/mixin/BadMixin.class", mixinClass("com/target/mixin/BadMixin", "removedByNeoForge"))
+				.bytes("com/target/mixin/BadMixin.class", duckMixinClass("com/target/mixin/BadMixin", "removedByNeoForge"))
 				.write(game.resolve("mods/target.jar"));
 	}
 

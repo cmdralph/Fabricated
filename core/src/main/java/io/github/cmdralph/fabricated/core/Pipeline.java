@@ -30,6 +30,7 @@ import io.github.cmdralph.fabricated.core.metadata.CustomValueImpl;
 import io.github.cmdralph.fabricated.core.metadata.FabricModMetadata;
 import io.github.cmdralph.fabricated.core.metadata.FabricModMetadata.EntrypointSpec;
 import io.github.cmdralph.fabricated.core.mixin.PreflightFinding;
+import io.github.cmdralph.fabricated.core.mixin.PreflightFinding.Severity;
 import io.github.cmdralph.fabricated.core.remap.JarRemapper;
 import io.github.cmdralph.fabricated.core.remap.MappingException;
 import io.github.cmdralph.fabricated.core.remap.MappingTable;
@@ -841,14 +842,23 @@ public final class Pipeline {
 		return lines;
 	}
 
+	/**
+	 * The report section of the mixins (or their failing injectors) left out of loaded mods: NeoForge's code differs
+	 * where they hook in, and the mod loads without them (LEAVE-1).
+	 */
+	static final String LEFT_OUT_SECTION = "Mixins left out (NeoForge's code differs where they hook in)";
+
 	private void reportLoaded(TranslatedMod t, Long millis, PackageGuard.Decision decision, List<String> linkageIssues) {
 		Candidate c = t.candidate();
+		long leftOut = t.findings().stream().filter(f -> f.severity() == Severity.LEFT_OUT).map(f -> f.config() + " " + f.mixin()).distinct().count();
 		String detail = (millis == null ? "cached" : "translated in " + millis + " ms")
 				+ (t.accessTransformers() > 0 ? ", " + t.accessTransformers() + " access transformer(s)" : "")
-				+ (t.injectedInterfaces().isEmpty() ? "" : ", " + t.injectedInterfaces().size() + " injected interface(s)");
+				+ (t.injectedInterfaces().isEmpty() ? "" : ", " + t.injectedInterfaces().size() + " injected interface(s)")
+				+ (leftOut == 0 ? "" : ", " + leftOut + " mixin(s) left out, so the features they hook in for don't work (see " + LEFT_OUT_SECTION + ")");
 		report.mod(new ModRow(c.id(), c.version(), c.origin(), Status.LOADED, detail, ""));
 		for (PreflightFinding f : t.findings()) {
-			report.line("Mixin pre-flight warnings", c.id() + ": " + f + (f.suggestion().isEmpty() ? "" : " - " + f.suggestion()));
+			String line = c.id() + ": " + f + (f.suggestion().isEmpty() ? "" : " - " + f.suggestion());
+			report.line(f.severity() == Severity.LEFT_OUT ? LEFT_OUT_SECTION : "Mixin pre-flight warnings", line);
 		}
 		for (String n : t.notes()) report.line("Translation notes", c.id() + ": " + n);
 		FabricApiPlan.Module planned = plan.module(c.id());

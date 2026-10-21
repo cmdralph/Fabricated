@@ -151,7 +151,7 @@ check "FABRICATED-TEST api OK" server.out "public API: Fabricated detected, mod 
 check "FABRICATED-TEST environment stripping OK" server.out "@EnvironmentInterface: a client-only interface is stripped on the dedicated server"
 check "fabricated-testmod-missing" logs/fabric-bridge-report.txt "missing dependency reported"
 check "fabricated-library-that-does-not-exist" logs/fabric-bridge-report.txt "missing dependency named"
-check "fabricatedMethodThatDoesNotExist" logs/fabric-bridge-report.txt "impossible mixin caught by pre-flight"
+check "LEFT_OUT .*ImpossibleMixin.*fabricatedMethodThatDoesNotExist" logs/fabric-bridge-report.txt "impossible mixin caught by pre-flight and left out"
 check "intentional failure for Fabricated CI" logs/fabric-bridge-report.txt "throwing entrypoint isolated"
 # The test mods log "FABRICATED-TEST ... FAILED" when one of their own checks fails.
 if grep -q "FABRICATED-TEST .*FAILED" server.out; then

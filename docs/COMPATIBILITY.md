@@ -25,13 +25,13 @@ Last updated from CI run [38491176425](https://github.com/cmdralph/Fabricated/ac
 | 26.3 (beta) | 26.3.0.69-beta | 0.164.0+26.3 | ✅ all 36 server and 22 client checks | ✅ boots, all test-mod checks still pass |
 
 "Boots with Fabric API" means the server starts with the full official Fabric API jar installed. Modules
-that can't work on NeoForge are disabled before any code runs (see below), and the rest load alongside
-Fabricated's test mods.
+that can't work on NeoForge are disabled before any code runs (see below); one that can do without a mixin NeoForge's
+code can't take loads without it (LEAVE-1); the rest load alongside Fabricated's test mods.
 
 The server checks: the server starts; a `main` entrypoint runs; the Fabric Loader API works; a custom
 entrypoint resolves; content registers directly into vanilla registries; `fabric-api-base` events fire; an
 access widener applies; a `server` entrypoint runs; a mixin applies; a mod with a missing dependency is
-reported, naming the dependency; a mod with an impossible mixin is caught by pre-flight; a mod whose
+reported, naming the dependency; a mod with an impossible mixin is caught by pre-flight and loads without it; a mod whose
 entrypoint throws is isolated while the server keeps running; Fabricated's public API answers and its
 after-initializers callback runs; a client-only interface listed in `@EnvironmentInterface` is stripped on the
 server; and no test mod check reports a failure. The other 21 cover the native Fabric API modules (described in
@@ -789,6 +789,26 @@ MixinExtras has NeoForge's jar, and a NeoForge mod nested in another jar has tha
   when the player list is constructed, so a mod whose mixin replaces the list (written for vanilla, where both are one
   object) would leave it on the old, empty list, and an integrated server finding no player stays paused. The view is
   still unmodifiable; Fabricated logs a warning once when it sees a replaced list.
+
+### Mixins NeoForge's code can't take (LEAVE-1)
+
+A Fabric mod's mixin can need something NeoForge's build of the game doesn't have: a call NeoForge replaced with its
+own hook, a method whose signature NeoForge changed, a library class NeoForge loads without mixin support. Mixin would
+stop the game on it, so pre-flight catches it before launch, and what happens next depends on whether the mod's own
+code can do without that mixin:
+
+- **A self-contained mixin** adds no interface to its target and has no accessor or invoker, so nothing outside it
+  calls into it. It is left out, whole (its other injectors too, as a mixin's injectors may share state), and the mod
+  loads without it: the features that mixin hooks in for don't work. The report lists each one under "Mixins left out
+  (NeoForge's code differs where they hook in)", with what NeoForge's code lacks; the mod's row (and
+  `/fabricated why <mod>`) gives the count, and the log names the mods at startup.
+- **Any other mixin**: the mod's own code casts its target to the interface the mixin adds, or calls its accessors,
+  so leaving the mixin out would only move the crash into the mod. The mod is disabled with the reason, as are the
+  enum mixins NeoForge's extensible enums don't allow.
+- In a config with a plugin, which may disable mixins itself, only the failing injector is left out.
+
+A mod disabled this way can still be loaded without the mixin, by naming it in `skipMixins` in
+`config/fabricated.json` (the report's suggestion gives the exact entry).
 
 ### What this means for Fabric mods
 

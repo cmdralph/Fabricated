@@ -71,7 +71,8 @@ mixins into an installed NeoForge mod (a Fabric addon of a mod's NeoForge build)
 - **Fabric mods built for another Minecraft version.** A Fabric mod for 1.21.11 won't run on 26.x and vice
   versa, just as on Fabric.
 - **Mixins into library classes** (DataFixerUpper, Brigadier, the JDK). NeoForge loads those without mixin
-  support. Pre-flight detects this and disables the mod instead of letting it misbehave.
+  support. Pre-flight detects this: a mixin nothing outside it calls into is left out and the mod loads without that
+  feature; otherwise the mod is disabled instead of letting it misbehave.
 - **Multiplayer client testing.** CI starts a client into a singleplayer world, which covers the client and the
   integrated server, but not a client joining a separate dedicated server.
 
