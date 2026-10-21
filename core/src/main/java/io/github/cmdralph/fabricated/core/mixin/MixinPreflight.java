@@ -1548,6 +1548,11 @@ public final class MixinPreflight {
 			return;
 		}
 
+		// Mixin counts an injector's injections in all its target methods against require: a method that lost its point
+		// can leave too few, though the point is found in another (FrozenLib's, where NeoForge moved a call into a lambda,
+		// REQ-1). Counted only where that can happen and every target is known.
+		int injections = require > 1 && !anyFuzzy ? 0 : -1;
+		List<String> without = new ArrayList<>();
 		for (AnnotationNode at : Annotations.list(Annotations.value(ann, "at"))) {
 			String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
 			String rawTarget = Annotations.value(at, "target") instanceof String t ? t : null;
@@ -1557,13 +1562,16 @@ public final class MixinPreflight {
 			Verdict verdict = Verdict.UNKNOWN;
 			for (MethodNode m : matched) {
 				Range range = slice == null ? Range.ALL : InjectionPoints.sliceRange(slice, m, ctx);
-				Verdict v = point.equals("MIXINEXTRAS:EXPRESSION") ? InjectionPoints.evaluateExpression(handler, m, ctx)
-						: InjectionPoints.evaluate(point, rawTarget == null ? null : ctx.resolve(rawTarget), ordinal, opcode, range, m);
-				if (v == Verdict.FOUND) {
-					verdict = Verdict.FOUND;
-					break;
+				boolean expression = point.equals("MIXINEXTRAS:EXPRESSION");
+				String resolved = rawTarget == null ? null : ctx.resolve(rawTarget);
+				Verdict v = expression ? InjectionPoints.evaluateExpression(handler, m, ctx) : InjectionPoints.evaluate(point, resolved, ordinal, opcode, range, m);
+				if (injections >= 0) {
+					int n = expression ? -1 : InjectionPoints.count(point, resolved, ordinal, opcode, range, m);
+					if (n == 0) without.add(m.name);
+					injections = n < 0 ? -1 : injections + n;
 				}
-				if (v == Verdict.MISSING && verdict == Verdict.UNKNOWN) verdict = Verdict.MISSING;
+				if (v == Verdict.FOUND) verdict = Verdict.FOUND;
+				else if (v == Verdict.MISSING && verdict == Verdict.UNKNOWN) verdict = Verdict.MISSING;
 			}
 			if (verdict == Verdict.MISSING) {
 				ctx.injector(handler, require, injectorName + " in " + matched.getFirst().name + " expects @At(\"" + point + "\""
@@ -1580,6 +1588,11 @@ public final class MixinPreflight {
 					return;
 				}
 			}
+		}
+		if (injections >= 0 && injections < require) {
+			ctx.injector(handler, require, injectorName + " " + handler.name + " applies " + injections + " time(s) where it requires " + require
+							+ ": its point does not occur in " + String.join(", ", new TreeSet<>(without)) + " in " + target.name.replace('/', '.'),
+					ctx.changer(true) + " changed " + (without.size() == 1 ? "that method" : "those methods") + "; the mod needs an update or this mixin must be skipped.");
 		}
 	}
 

@@ -53,6 +53,10 @@ pre-flight couldn't repair (JourneyMap).
   server doesn't load, so GlitchCore was disabled on every corpus server (run 385), and Biomes O' Plenty with it. A mod
   only for the other side no longer counts as one that isn't loading: on Fabric it isn't there either, and a mixin
   using it is in a class only that side loads.
+- REQ-1: pre-flight took an injection point found in any of an injector's target methods as enough, while Mixin counts
+  the injections in all of them against `require`. FrozenLib wraps a call in two methods with `require = 2`, and
+  NeoForge's 1.21.11 build moved it out of one, which stopped the 1.21.11 advanced corpus (run on `b0f3606`).
+  Pre-flight now counts them, and FrozenLib's injector is left out.
 - ENUM-4 (reverted): letting enum mixins into NeoForge's extensible enums through to Mixin, on the reading that NeoForge
   didn't refuse them, crashed the 26.2 and 26.3 advanced corpus at startup on Wilder Wild's: FML's
   `FMLMixinFeatureValidator` refuses them (run on `b0f3606`). Such a mixin disables its mod again.

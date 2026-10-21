@@ -1339,6 +1339,39 @@ class MixinPreflightTest {
 		assertTrue(findings.isEmpty(), findings.toString());
 	}
 
+	@Test
+	void requireCountsInjectionsInEveryTargetMethod() throws Exception {
+		// REQ-1: FrozenLib wraps a call in two methods with require = 2; NeoForge moved it out of one, so Mixin makes one
+		// injection and stops the game, though each point is found somewhere.
+		for (int require : new int[] {1, 2}) {
+			byte[] both = mixin("com/example/mixin/Both", false, cw -> {
+				MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "h", "(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V", null, null);
+				AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
+				AnnotationVisitor methods = ann.visitArray("method");
+				methods.visit(null, "tick");
+				methods.visit(null, "helper");
+				methods.visitEnd();
+				AnnotationVisitor ats = ann.visitArray("at");
+				AnnotationVisitor at = ats.visitAnnotation(null, "Lorg/spongepowered/asm/mixin/injection/At;");
+				at.visit("value", "INVOKE");
+				at.visit("target", "Lnet/minecraft/world/Thing;helper(I)V");
+				at.visitEnd();
+				ats.visitEnd();
+				ann.visit("require", require);
+				ann.visitEnd();
+				mv.visitEnd();
+			});
+			List<PreflightFinding> findings = run(config(true, "Both"), null, Map.of("com/example/mixin/Both", both), false);
+			if (require == 1) {
+				assertTrue(findings.isEmpty(), findings.toString());
+			} else {
+				assertEquals(1, findings.size(), findings.toString());
+				assertTrue(findings.getFirst().message().contains("applies 1 time(s) where it requires 2: its point does not occur in helper"),
+						findings.getFirst().message());
+			}
+		}
+	}
+
 	/** A MixinExtras expression handler on tick() whose @Definition names {@code type} or {@code method}. */
 	private static void expression(ClassWriter cw, String handler, Type type, String method) {
 		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, handler, "(Z)Z", null, null);
