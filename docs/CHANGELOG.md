@@ -3,6 +3,19 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-10-21 (pass after PR #58): anonymous classes as NeoForge's build numbers them
+
+**Plan.** PR #58's last run had every advanced client in its world on all four versions, with no failed check; what is
+left is mostly the hooks LEAVE-1 leaves out. A group of them name anonymous game classes.
+
+- ANON-1: a mixin naming an anonymous game class that doesn't fit it is pointed at the one anonymous class of the same
+  class that does (its selectors, shadows and injection points all there). NeoForge's build, recompiled from decompiled
+  source, numbers some anonymous classes otherwise than Mojang's (inferred), so Polymer's codec hooks, No Chat Reports'
+  JSON codec hook and Ledger's and malilib's chest hooks were left out on every version.
+- HOOK-3: an `@Inject` at a call NeoForge's build makes through methods of its own (a default method of an extension
+  interface calling another) is pointed at the call of NeoForge's that leads there: Ledger logs blocks explosions
+  remove at a `setBlock` NeoForge makes in `IBlockExtension.onBlockExploded`.
+
 ## 2026-10-21 (pass after PR #57): Fabric's packet context, filled and bound everywhere packets are coded
 
 **Plan.** PR #57's last run showed the 26.2 and 26.3 advanced clients joining their worlds for the first time

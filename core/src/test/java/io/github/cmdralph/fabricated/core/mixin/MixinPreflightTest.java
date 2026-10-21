@@ -46,6 +46,7 @@ class MixinPreflightTest {
 	private static final String WRAP_OPERATION = "Lcom/llamalad7/mixinextras/injector/wrapoperation/WrapOperation;";
 	private static final String OPERATION = "Lcom/llamalad7/mixinextras/injector/wrapoperation/Operation;";
 	private static final String AT = "Lorg/spongepowered/asm/mixin/injection/At;";
+	private static final String SHADOW = "Lorg/spongepowered/asm/mixin/Shadow;";
 	private static final String LOCAL = "Lcom/llamalad7/mixinextras/sugar/Local;";
 
 	/** Game class: tick() calls helper(I)V once and reads field "count". */
@@ -1300,6 +1301,136 @@ class MixinPreflightTest {
 		List<PreflightFinding> after = preflight(game, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
 		assertEquals(1, after.size(), after.toString());
 		assertEquals("returning(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;)V", after.getFirst().handler());
+	}
+
+	@Test
+	void aMixinIntoAnAnonymousClassNumberedOtherwiseIsPointedAtTheOneThatFits() throws Exception {
+		// ANON-1: Polymer's hook into ByteBufCodecs' registry codec names its anonymous class by Mojang's numbering;
+		// NeoForge's recompiled build numbers it otherwise.
+		String outer = "net/minecraft/world/Codecs";
+		java.util.function.BiFunction<String, String, byte[]> anonymous = (name, encodeDesc) -> {
+			ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+			cw.visit(Opcodes.V21, Opcodes.ACC_FINAL, name, null, "java/lang/Object", null);
+			cw.visitOuterClass(outer, "registry", "()V");
+			cw.visitInnerClass(name, null, null, Opcodes.ACC_FINAL);
+			if (encodeDesc.contains("Integer")) cw.visitField(Opcodes.ACC_FINAL | Opcodes.ACC_SYNTHETIC, "val$key", "Ljava/lang/String;", null, null).visitEnd();
+			MethodVisitor encode = cw.visitMethod(Opcodes.ACC_PUBLIC, "encode", encodeDesc, null, null);
+			encode.visitCode();
+			encode.visitInsn(Opcodes.RETURN);
+			encode.visitMaxs(0, 0);
+			encode.visitEnd();
+			cw.visitEnd();
+			return cw.toByteArray();
+		};
+		java.util.function.Function<Integer, byte[]> outerClass = count -> {
+			ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+			cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, outer, null, "java/lang/Object", null);
+			for (int n = 1; n <= count; n++) cw.visitInnerClass(outer + "$" + n, null, null, Opcodes.ACC_FINAL);
+			cw.visitEnd();
+			return cw.toByteArray();
+		};
+		ClassWriter mixin = new ClassWriter(0);
+		mixin.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, "com/example/mixin/Registry", null, "java/lang/Object", null);
+		AnnotationVisitor m = mixin.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false);
+		AnnotationVisitor targets = m.visitArray("targets");
+		targets.visit(null, outer + "$1");
+		targets.visitEnd();
+		m.visitEnd();
+		mixin.visitField(Opcodes.ACC_PRIVATE, "val$key", "Ljava/lang/String;", null, null).visitAnnotation(SHADOW, false).visitEnd();
+		MethodVisitor mv = mixin.visitMethod(Opcodes.ACC_PRIVATE, "onEncode", "(Ljava/lang/Integer;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V", null, null);
+		AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
+		AnnotationVisitor methods = ann.visitArray("method");
+		methods.visit(null, "encode(Ljava/lang/Integer;)V");
+		methods.visitEnd();
+		AnnotationVisitor ats = ann.visitArray("at");
+		AnnotationVisitor at = ats.visitAnnotation(null, AT);
+		at.visit("value", "HEAD");
+		at.visitEnd();
+		ats.visitEnd();
+		ann.visitEnd();
+		mv.visitCode();
+		mv.visitInsn(Opcodes.RETURN);
+		mv.visitMaxs(0, 3);
+		mv.visitEnd();
+		mixin.visitEnd();
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Registry", mixin.toByteArray()));
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Registry"));
+		ClassIndex game = new ClassIndex(Map.of(outer, outerClass.apply(2), outer + "$1", anonymous.apply(outer + "$1", "(Ljava/lang/String;)V"),
+				outer + "$2", anonymous.apply(outer + "$2", "(Ljava/lang/Integer;)V"))::get);
+		assertFalse(preflight(game, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty());
+
+		List<PreflightFinding> notes = new ArrayList<>();
+		Map<String, byte[]> repaired = preflight(game, mod::get, ClassBytesSource.EMPTY, false).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
+		assertEquals(1, notes.size(), notes.toString());
+		assertTrue(notes.getFirst().message().contains("net.minecraft.world.Codecs$1 doesn't fit the mixin in this game build, whose anonymous classes are numbered "
+				+ "differently; net.minecraft.world.Codecs$2 does"), notes.toString());
+		mod.put("com/example/mixin/Registry", repaired.get("com/example/mixin/Registry.class"));
+		assertTrue(preflight(game, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty());
+
+		// Two that fit: which one the mod meant can't be told.
+		ClassIndex twice = new ClassIndex(Map.of(outer, outerClass.apply(3), outer + "$1", anonymous.apply(outer + "$1", "(Ljava/lang/String;)V"),
+				outer + "$2", anonymous.apply(outer + "$2", "(Ljava/lang/Integer;)V"), outer + "$3", anonymous.apply(outer + "$3", "(Ljava/lang/Integer;)V"))::get);
+		assertTrue(preflight(twice, Map.of("com/example/mixin/Registry", mixin.toByteArray())::get, ClassBytesSource.EMPTY, false)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty());
+	}
+
+	@Test
+	void anInjectionAtACallMadeThroughNeoForgesExtensionsIsPointedAtTheCallLeadingThere() throws Exception {
+		// HOOK-3: Ledger logs blocks an explosion removes at BlockBehaviour.onExplosionHit's setBlock, which NeoForge's build
+		// makes through BlockState.onBlockExploded, a default method of its extension interfaces.
+		String thing = "L" + TARGET + ";";
+		java.util.function.Function<String, Map<String, byte[]>> game = extension -> {
+			ClassWriter target = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+			target.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", new String[] {extension});
+			MethodVisitor tick = target.visitMethod(Opcodes.ACC_PUBLIC, "tick", "()V", null, null);
+			tick.visitCode();
+			tick.visitVarInsn(Opcodes.ALOAD, 0);
+			tick.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "exploded", "()V", false);
+			tick.visitInsn(Opcodes.RETURN);
+			tick.visitMaxs(0, 0);
+			tick.visitEnd();
+			MethodVisitor helper = target.visitMethod(Opcodes.ACC_PUBLIC, "helper", "(I)V", null, null);
+			helper.visitCode();
+			helper.visitInsn(Opcodes.RETURN);
+			helper.visitMaxs(0, 0);
+			helper.visitEnd();
+			target.visitEnd();
+			ClassWriter itf = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+			itf.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_INTERFACE | Opcodes.ACC_ABSTRACT, extension, null, "java/lang/Object", null);
+			MethodVisitor exploded = itf.visitMethod(Opcodes.ACC_PUBLIC, "exploded", "()V", null, null);
+			exploded.visitCode();
+			exploded.visitVarInsn(Opcodes.ALOAD, 0);
+			exploded.visitTypeInsn(Opcodes.CHECKCAST, TARGET);
+			exploded.visitInsn(Opcodes.ICONST_0);
+			exploded.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "helper", "(I)V", false);
+			exploded.visitInsn(Opcodes.RETURN);
+			exploded.visitMaxs(0, 0);
+			exploded.visitEnd();
+			itf.visitEnd();
+			return Map.of(TARGET, target.toByteArray(), extension, itf.toByteArray());
+		};
+		byte[] original = mixin("com/example/mixin/Explosions", false, cw -> atHelperCall(cw, INJECT, "inject",
+				"(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V", mv -> {
+					mv.visitInsn(Opcodes.RETURN);
+					mv.visitMaxs(0, 2);
+					mv.visitEnd();
+				}));
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Explosions"));
+		ClassIndex neoForge = new ClassIndex(game.apply("net/neoforged/extensions/IThingExtension")::get);
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Explosions", original));
+
+		List<PreflightFinding> notes = new ArrayList<>();
+		Map<String, byte[]> repaired = preflight(neoForge, mod::get, ClassBytesSource.EMPTY, false).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
+		assertEquals(1, notes.size(), notes.toString());
+		assertTrue(notes.getFirst().message().contains(TARGET.replace('/', '.') + ".helper(I)V, which this game build makes through NeoForge's "
+				+ TARGET.replace('/', '.') + ".exploded()V"), notes.toString());
+		mod.put("com/example/mixin/Explosions", repaired.get("com/example/mixin/Explosions.class"));
+		assertTrue(preflight(neoForge, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty());
+
+		// A default method of the game's own isn't taken for NeoForge's.
+		ClassIndex vanilla = new ClassIndex(game.apply("net/minecraft/world/ThingExtension")::get);
+		assertTrue(preflight(vanilla, Map.of("com/example/mixin/Explosions", original)::get, ClassBytesSource.EMPTY, false)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty());
 	}
 
 	private static final String HOOKS = "net/neoforged/Hooks";

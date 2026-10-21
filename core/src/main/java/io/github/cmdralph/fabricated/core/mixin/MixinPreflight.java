@@ -37,6 +37,7 @@ import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.FieldInsnNode;
 import org.objectweb.asm.tree.FieldNode;
 import org.objectweb.asm.tree.IincInsnNode;
+import org.objectweb.asm.tree.InnerClassNode;
 import org.objectweb.asm.tree.InvokeDynamicInsnNode;
 import org.objectweb.asm.tree.JumpInsnNode;
 import org.objectweb.asm.tree.LocalVariableNode;
@@ -112,6 +113,8 @@ public final class MixinPreflight {
 	private static final String CALLBACK_INFO_RETURNABLE = "Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;";
 
 	private final ClassIndex game;
+	/** Classes {@link #declaration} walked, NeoForge's among them. */
+	private final Map<String, Optional<ClassNode>> codeCache = new HashMap<>();
 	private final InstalledClasses installed;
 	private final ClassBytesSource modClasses;
 	private final ClassBytesSource untransformable;
@@ -243,6 +246,10 @@ public final class MixinPreflight {
 			if (node == null) continue;
 			Context ctx = new Context(configName, internal.replace('/', '.'), config, refmap, false, false, false, Set.of(), out, null);
 			boolean changed = singleInjectionPoints(node);
+			for (String moved : anonymousTargetRepairs(node, ctx)) {
+				changed = true;
+				out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "Target class " + moved, ""));
+			}
 			List<ClassNode> targets = new ArrayList<>();
 			for (String target : targetsOf(node, ctx)) {
 				ClassNode targetNode = gameTarget(target);
@@ -907,9 +914,22 @@ public final class MixinPreflight {
 			// The call itself, when it is in none of the methods: in a hook of NeoForge's that took it over, a static method
 			// taking its receiver first, handled as a static call of that.
 			MethodInsnNode hook = named || overload != null || constructor ? null : hookCall(methods, owner, name, desc);
+			// An @Inject sees none of the call's arguments: any call of NeoForge's that leads to it will do (HOOK-3).
+			MethodInsnNode leading = hook != null || named || overload != null || constructor || !injector.desc.equals(INJECT) ? null
+					: callLeadingTo(methods, owner, name, desc);
 			// A handler sharing the mixin's state with others moves only with them, which this doesn't do: jGui (ReplayMod)
 			// keeps the screen's graphics from a @ModifyArg at the same call for its @Inject after it.
-			if (hook != null && !statelessHandlers(mixin).contains(handler.name + handler.desc)) continue;
+			if ((hook != null || leading != null) && !statelessHandlers(mixin).contains(handler.name + handler.desc)) continue;
+			if (leading != null) {
+				int ordinal = Annotations.value(at, "ordinal") instanceof Integer n ? n : -1;
+				if (ordinal >= countCalls(methods, leading)) continue;
+				for (int i = 0; i + 1 < at.values.size(); i += 2) {
+					if ("target".equals(at.values.get(i))) at.values.set(i + 1, "L" + leading.owner + ";" + leading.name + leading.desc);
+				}
+				moved.add(owner.replace('/', '.') + "." + name + desc + ", which this game build makes through NeoForge's "
+						+ leading.owner.replace('/', '.') + "." + leading.name + leading.desc + "; the injection point is pointed at that call");
+				continue;
+			}
 			String callOwner = owner;
 			String callName = name;
 			String original = desc;
@@ -974,6 +994,76 @@ public final class MixinPreflight {
 			}
 		}
 		return found;
+	}
+
+	/**
+	 * The one call, in {@code methods}, of a method NeoForge declares (in its own classes, or as a default method of its
+	 * extension interfaces) that makes the named call, itself or through other methods NeoForge declares: as
+	 * {@code BlockBehaviour.onExplosionHit} removing the block through {@code IBlockStateExtension.onBlockExploded} and
+	 * {@code IBlockExtension.onBlockExploded} (Ledger's explosion logging). Null when none or several do.
+	 */
+	private MethodInsnNode callLeadingTo(List<MethodNode> methods, String owner, String name, String desc) {
+		MethodInsnNode found = null;
+		for (MethodNode method : methods) {
+			for (AbstractInsnNode insn : method.instructions) {
+				if (!(insn instanceof MethodInsnNode call)) continue;
+				if (found != null && found.owner.equals(call.owner) && found.name.equals(call.name) && found.desc.equals(call.desc)) continue;
+				Code code = declaration(call.owner, call.name, call.desc);
+				if (code == null || !code.owner().startsWith(NEOFORGE_PACKAGE) || !leadsTo(code, owner, name, desc, 2)) continue;
+				if (found != null) return null;
+				found = call;
+			}
+		}
+		return found;
+	}
+
+	/** Whether the code makes the call, itself or, to {@code depth}, through methods NeoForge declares that it calls. */
+	private boolean leadsTo(Code code, String owner, String name, String desc, int depth) {
+		for (AbstractInsnNode insn : code.method().instructions) {
+			if (!(insn instanceof MethodInsnNode call)) continue;
+			if (call.owner.equals(owner) && call.name.equals(name) && call.desc.equals(desc)) return true;
+			if (depth <= 1) continue;
+			Code next = declaration(call.owner, call.name, call.desc);
+			if (next != null && next.owner().startsWith(NEOFORGE_PACKAGE) && leadsTo(next, owner, name, desc, depth - 1)) return true;
+		}
+		return false;
+	}
+
+	/** A class of the game or NeoForge with its code (parsed once per pre-flight), or null. */
+	private ClassNode codeOf(String internalName) {
+		return codeCache.computeIfAbsent(internalName, n -> Optional.ofNullable(game.readNode(n))).orElse(null);
+	}
+
+	/** A method with code and the class declaring it. */
+	private record Code(String owner, MethodNode method) {
+	}
+
+	/**
+	 * The code a call of {@code owner.name(desc)} runs unless a subclass overrides it: the method in the class or its
+	 * superclasses, else a default method of an interface they implement, as far as the game's classes go. Null when
+	 * none has code.
+	 */
+	private Code declaration(String owner, String name, String desc) {
+		List<String> interfaces = new ArrayList<>();
+		for (String c = owner; c != null; ) {
+			ClassNode node = codeOf(c);
+			if (node == null) break; // the JDK's, or a library's
+			MethodNode m = declared(node, name, desc);
+			if (m != null) return m.instructions != null && m.instructions.size() > 0 ? new Code(c, m) : null;
+			interfaces.addAll(node.interfaces);
+			c = node.superName;
+		}
+		Set<String> seen = new HashSet<>();
+		for (int i = 0; i < interfaces.size(); i++) {
+			String itf = interfaces.get(i);
+			if (!seen.add(itf)) continue;
+			ClassNode node = codeOf(itf);
+			if (node == null) continue;
+			MethodNode m = declared(node, name, desc);
+			if (m != null && m.instructions != null && m.instructions.size() > 0) return new Code(itf, m);
+			interfaces.addAll(node.interfaces);
+		}
+		return null;
 	}
 
 	/** Whether the static method makes the call, in its own code or, to {@code depth}, in static methods of its class it calls. */
@@ -1673,6 +1763,59 @@ public final class MixinPreflight {
 			}
 			checkMembers(mixin, targetNode, targetCtx);
 		}
+	}
+
+	/**
+	 * Points a mixin at the anonymous class of the same game class that fits it, when the one it names doesn't: NeoForge's
+	 * build of the game, recompiled from decompiled source, numbers some anonymous classes otherwise than Mojang's, which
+	 * mods are built against (Polymer's hooks into {@code ByteBufCodecs}' and {@code ItemStack}'s stream codecs, No Chat
+	 * Reports' into the JSON one, Ledger's and malilib's into {@code ChestBlock}'s; ANON-1). A class fits when pre-flight
+	 * finds nothing but notes in the mixin against it: its selectors, shadows and injection points are all there. Only a
+	 * single fitting class is taken. Returns a description of each move.
+	 */
+	private List<String> anonymousTargetRepairs(ClassNode mixin, Context ctx) {
+		AnnotationNode mixinAnn = Annotations.find(mixin.invisibleAnnotations, mixin.visibleAnnotations, Annotations.MIXIN);
+		if (mixinAnn == null || (mixin.access & Opcodes.ACC_INTERFACE) != 0 || !(Annotations.value(mixinAnn, "targets") instanceof List<?> names)) {
+			return List.of();
+		}
+		List<String> moved = new ArrayList<>();
+		for (int i = 0; i < names.size(); i++) {
+			if (!(names.get(i) instanceof String raw)) continue;
+			String target = ctx.resolve(raw).replace('.', '/');
+			int dollar = target.lastIndexOf('$');
+			if (!isGameClass(target) || dollar < 0 || !target.substring(dollar + 1).matches("\\d+")) continue;
+			ClassNode named = gameTarget(target);
+			if (named != null && fits(mixin, named, ctx)) continue;
+			ClassNode outer = gameTarget(target.substring(0, dollar));
+			if (outer == null) continue;
+			ClassNode match = null;
+			for (InnerClassNode inner : outer.innerClasses) {
+				// Anonymous classes have neither a simple name nor an outer class in the attribute.
+				if (inner.innerName != null || inner.outerName != null || inner.name.equals(target)
+						|| !inner.name.startsWith(outer.name + "$") || inner.name.indexOf('$', outer.name.length() + 1) >= 0) continue;
+				ClassNode candidate = gameTarget(inner.name);
+				if (candidate == null || !fits(mixin, candidate, ctx)) continue;
+				if (match != null) {
+					match = null;
+					break;
+				}
+				match = candidate;
+			}
+			if (match == null) continue;
+			@SuppressWarnings("unchecked")
+			List<Object> values = (List<Object>) names;
+			values.set(i, raw.indexOf('/') >= 0 ? match.name : match.name.replace('/', '.'));
+			moved.add(target.replace('/', '.') + " doesn't fit the mixin in this game build, whose anonymous classes are numbered differently; "
+					+ match.name.replace('/', '.') + " does, and the mixin is pointed there");
+		}
+		return moved;
+	}
+
+	/** Whether pre-flight finds nothing but notes in {@code mixin} against {@code target}. */
+	private boolean fits(ClassNode mixin, ClassNode target, Context ctx) {
+		List<PreflightFinding> found = new ArrayList<>();
+		checkMembers(mixin, target, new Context(ctx.configName(), ctx.mixinDotted(), ctx.config(), ctx.refmap(), false, false, false, Set.of(), found, null));
+		return found.stream().allMatch(f -> f.severity() == Severity.INFO);
 	}
 
 	/** The classes a mixin's {@code @Mixin} names, as internal names (none when it has no {@code @Mixin}). */
