@@ -4,7 +4,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
 import java.util.TreeMap;
 
 import io.github.cmdralph.fabricated.core.accesswidener.AccessWidenerFile.Access;
@@ -32,15 +31,17 @@ public final class AccessTransformerConverter {
 
 	/**
 	 * Fields NeoForge's {@code ReplaceFieldWithGetterAccess} coremod requires to stay private (it throws while
-	 * loading the class otherwise, which crashes the game). Union of NeoForge 21.11 and 26.x
-	 * ({@code NeoForgeCoreMod}); entries that do not exist on a version are simply never matched.
+	 * loading the class otherwise, which crashes the game), with the getter it reads them through instead, which
+	 * NeoForge's patches add to the class (read in {@code NeoForgeCoreMod} of NeoForge 21.11 and 26.x). A field
+	 * counts only where the game's class has that getter: only NeoForge's 26.3 build replaces {@code Biome.attributes},
+	 * which its 21.11, 26.1 and 26.2 builds leave a plain field Fabric API's biome module widens (BIOME-2).
 	 */
-	static final Set<String> PLATFORM_PRIVATE_FIELDS = Set.of(
-			"net/minecraft/world/level/biome/Biome climateSettings",
-			"net/minecraft/world/level/biome/Biome specialEffects",
-			"net/minecraft/world/level/biome/Biome attributes",
-			"net/minecraft/world/level/levelgen/structure/Structure settings",
-			"net/minecraft/world/level/block/FlowerPotBlock potted");
+	static final Map<String, String> PLATFORM_PRIVATE_FIELDS = Map.of(
+			"net/minecraft/world/level/biome/Biome climateSettings", "getModifiedClimateSettings",
+			"net/minecraft/world/level/biome/Biome specialEffects", "getModifiedSpecialEffects",
+			"net/minecraft/world/level/biome/Biome attributes", "getModifiedEnvironmentAttributes",
+			"net/minecraft/world/level/levelgen/structure/Structure settings", "getModifiedStructureSettings",
+			"net/minecraft/world/level/block/FlowerPotBlock potted", "getPotted");
 
 	/** Conversion output. */
 	public record Result(String accessTransformer, List<InjectedInterface> injectedInterfaces, List<String> warnings, int lineCount) {
@@ -70,6 +71,12 @@ public final class AccessTransformerConverter {
 	/**
 	 * @param game index of runtime game classes used to validate targets; may be {@code null}
 	 */
+	/** Whether a NeoForge coremod reads this field through its getter here; without the game's classes, whether one may. */
+	private static boolean platformPrivate(ClassIndex.ClassInfo owner, String field) {
+		String getter = PLATFORM_PRIVATE_FIELDS.get(field);
+		return getter != null && (owner == null || owner.methods().keySet().stream().anyMatch(m -> m.startsWith(getter + "(")));
+	}
+
 	public static Result convert(AccessWidenerFile file, ClassIndex game) {
 		Map<String, Target> targets = new TreeMap<>();
 		List<String> warnings = new ArrayList<>();
@@ -110,7 +117,7 @@ public final class AccessTransformerConverter {
 						warnings.add("line " + e.line() + ": field " + e.owner() + "." + e.name() + " does not exist; ignored");
 						continue;
 					}
-					if (e.access() == Access.ACCESSIBLE && PLATFORM_PRIVATE_FIELDS.contains(e.owner() + " " + e.name())) {
+					if (e.access() == Access.ACCESSIBLE && platformPrivate(owner, e.owner() + " " + e.name())) {
 						warnings.add("line " + e.line() + ": field " + e.owner() + "." + e.name()
 								+ " must stay private on NeoForge (a NeoForge coremod replaces it with a getter); not widened. "
 								+ "Code reading it directly fails when it runs.");

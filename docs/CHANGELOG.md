@@ -16,9 +16,12 @@ adds to the creative screen.
 - PRE-12: a field or method a target lacks that an installed Fabric jar's mixin adds to it is not judged by pre-flight
   (Mixin merges every mixin's members before it injects): owo's hook into the `updateSelection` Fabric API's creative
   tab mixin adds. The result is cached with the adding mixin's class.
+- BIOME-2: `Biome.attributes` is widened where NeoForge leaves it a plain field (1.21.11, 26.1.2, 26.2): a field stays
+  private only where the game's class has the getter NeoForge's coremod reads it through, not wherever any version's
+  coremod names it. Fabric API's biome module stopped the 1.21.11 advanced corpus server reading it.
 - Roadmap: what PR #52's last runs showed, still open: Do a Barrel Roll's camera mixin on 26.x (CORPUS-18), BetterEnd's
-  content on the 26.x advanced servers (CORPUS-19), Fabric API's biome module on 1.21.11 (BIOME-2), owo's two remaining
-  mixins (CORPUS-20), and what NeoForge runs before `Minecraft` exists (CORPUS-16).
+  content on the 26.x advanced servers (CORPUS-19), owo's two remaining mixins (CORPUS-20), and what NeoForge runs
+  before `Minecraft` exists (CORPUS-16).
 - The translation schema is bumped (pre-flight's results change).
 
 ## 2026-10-21 (pass after PR #51): biome modifications on 26.3, and what the advanced corpus stopped on

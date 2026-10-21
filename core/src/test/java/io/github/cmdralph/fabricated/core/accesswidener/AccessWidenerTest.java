@@ -133,4 +133,30 @@ class AccessWidenerTest {
 		assertEquals(1, result.warnings().size());
 		assertTrue(result.warnings().getFirst().contains("must stay private"));
 	}
+
+	/**
+	 * A field stays private only where NeoForge's patches add the getter its coremod reads it through: NeoForge 21.11,
+	 * 26.1 and 26.2 leave {@code Biome.attributes} a plain field, which Fabric API's biome module widens (BIOME-2).
+	 */
+	@Test
+	void widensAFieldNeoForgeLeavesPlain() throws Exception {
+		String biome = "net/minecraft/world/level/biome/Biome";
+		ClassWriter cw = new ClassWriter(0);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_FINAL, biome, null, "java/lang/Object", null);
+		cw.visitField(Opcodes.ACC_PRIVATE | Opcodes.ACC_FINAL, "climateSettings", "Lnet/minecraft/world/level/biome/Biome$ClimateSettings;", null, null).visitEnd();
+		cw.visitField(Opcodes.ACC_PRIVATE | Opcodes.ACC_FINAL, "attributes", "Lnet/minecraft/world/attribute/EnvironmentAttributeMap;", null, null).visitEnd();
+		cw.visitMethod(Opcodes.ACC_PUBLIC, "getModifiedClimateSettings", "()Lnet/minecraft/world/level/biome/Biome$ClimateSettings;", null, null).visitEnd();
+		cw.visitEnd();
+		ClassIndex game = new ClassIndex(Map.of(biome, cw.toByteArray())::get);
+		AccessWidenerFile file = AccessWidenerParser.parse("""
+				accessWidener v2 named
+				accessible field net/minecraft/world/level/biome/Biome climateSettings Lnet/minecraft/world/level/biome/Biome$ClimateSettings;
+				accessible field net/minecraft/world/level/biome/Biome attributes Lnet/minecraft/world/attribute/EnvironmentAttributeMap;
+				mutable field net/minecraft/world/level/biome/Biome attributes Lnet/minecraft/world/attribute/EnvironmentAttributeMap;
+				""");
+		AccessTransformerConverter.Result result = AccessTransformerConverter.convert(file, game);
+		assertTrue(result.accessTransformer().contains("public-f net.minecraft.world.level.biome.Biome attributes"), result.accessTransformer());
+		assertTrue(!result.accessTransformer().contains("climateSettings"), "its coremod's getter is there: " + result.accessTransformer());
+		assertEquals(1, result.warnings().size(), result.warnings().toString());
+	}
 }
