@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """For a crash where Mixin could not apply an injector that pre-flight passed (CI only): the handler's annotations, as
-the mod's jar has them, and the code of the target methods in the game's patched jar, so what Mixin searched is in the
-log (CORPUS-18).
+the mod's jar has them and as Fabricated's translation left them, the code of the target methods in the game's
+patched jar, and the other mixins naming the target class and those methods, so what Mixin searched is in the log
+(CORPUS-18).
 
-Usage: ci/mixin-diag.py <crash report> <client work directory (run/mods, minecraft/libraries)>
+Usage: ci/mixin-diag.py <crash report> <client work directory (run/mods, run/.fabricated, minecraft/libraries)>
 """
 import glob
 import json
@@ -13,6 +14,7 @@ import sys
 import zipfile
 
 LINES = 60
+MIXIN = b"Lorg/spongepowered/asm/mixin/Mixin;"
 
 
 def javap(*args):
@@ -39,6 +41,38 @@ def blocks(listing, name):
     return found
 
 
+def handler_lines(listing, handler):
+    return [line for block in blocks(listing, handler) for line in block
+            if not re.match(r"\s+(\d+: |stack=|line \d+|LocalVariableTable|Start +Length|LineNumberTable)", line)]
+
+
+def print_handler(title, listing, handler):
+    print(title)
+    lines = handler_lines(listing, handler)
+    for line in lines[:LINES]:
+        print("  " + line.rstrip()[:250])
+    return lines
+
+
+def others(jars, own, target, methods):
+    """Mixin classes in `jars`, but `own`, whose bytes name the target class and one of the methods."""
+    needle = target.encode()
+    names = [m.encode() for m in methods]
+    found = []
+    for jar in jars:
+        try:
+            with zipfile.ZipFile(jar) as z:
+                for entry in z.namelist():
+                    if not entry.endswith(".class") or entry == own:
+                        continue
+                    data = z.read(entry)
+                    if MIXIN in data and needle in data and any(n in data for n in names):
+                        found.append(f"{jar.rsplit('/', 1)[-1]}: {entry[:-6]}")
+        except (OSError, zipfile.BadZipFile):
+            continue
+    return found
+
+
 def main():
     with open(sys.argv[1], encoding="utf-8", errors="replace") as f:
         crash = f.read()
@@ -47,6 +81,7 @@ def main():
     if not m:
         return
     handler, config, mixin = m.groups()
+    overlays = glob.glob(f"{work}/run/.fabricated/cache/**/overlay.jar", recursive=True)
     for jar in glob.glob(f"{work}/run/mods/*.jar"):
         try:
             with zipfile.ZipFile(jar) as z:
@@ -55,22 +90,36 @@ def main():
                 package = json.loads(z.read(config)).get("package", "")
         except (OSError, zipfile.BadZipFile, ValueError):
             continue
-        listing = javap("-v", "-p", "-cp", jar, f"{package}.{mixin}")
-        print(f"-- {mixin} in {jar.rsplit('/', 1)[-1]}: {handler}, as the jar has it")
-        handler_lines = [line for block in blocks(listing, handler) for line in block
-                         if not re.match(r"\s+(\d+: |stack=|line \d+|LocalVariableTable|Start +Length|LineNumberTable)", line)]
-        for line in handler_lines[:LINES]:
-            print("  " + line.rstrip()[:250])
-        targets = re.findall(r"class (net/minecraft/[A-Za-z0-9_/$]+)", listing.split("RuntimeInvisibleAnnotations")[-1])
+        name = f"{package}.{mixin}"
+        entry = name.replace(".", "/") + ".class"
+        listing = javap("-v", "-p", "-cp", jar, name)
+        lines = print_handler(f"-- {mixin} in {jar.rsplit('/', 1)[-1]}: {handler}, as the jar has it", listing, handler)
+        for overlay in overlays:
+            try:
+                with zipfile.ZipFile(overlay) as z:
+                    if entry not in z.namelist():
+                        continue
+            except (OSError, zipfile.BadZipFile):
+                continue
+            translated = javap("-v", "-p", "-cp", overlay, name)
+            lines = print_handler(f"-- {mixin}: {handler}, as Fabricated's translation has it", translated, handler) or lines
+            listing = translated
+        # javap prints a class-valued annotation element as `class Lpkg/Name;`.
+        targets = re.findall(r"class L?(net/minecraft/[A-Za-z0-9_/$]+);?", listing.split("RuntimeInvisibleAnnotations")[-1])
         methods = {name.split("(")[0] for name in re.findall(r'"([A-Za-z0-9_$<>]+(?:\([^"]*)?)"', " ".join(
-            re.findall(r"method=\[([^\]]*)\]", "\n".join(handler_lines))))}
+            re.findall(r"method=\[([^\]]*)\]", "\n".join(lines))))}
         patched = glob.glob(f"{work}/minecraft/libraries/**/minecraft-client-patched-*.jar", recursive=True)
-        if not targets or not methods or not patched:
+        print(f"-- targets {targets}, methods {sorted(methods)}, patched jar {'found' if patched else 'not found'}")
+        if not targets or not methods:
             return
-        target = targets[0].replace("/", ".")
-        code = javap("-c", "-p", "-cp", patched[0], target)
-        for name in sorted(methods):
-            for block in blocks(code, name)[:3]:
+        target = targets[0]
+        for other in others(glob.glob(f"{work}/run/mods/*.jar") + overlays, entry, target, methods):
+            print(f"-- another mixin naming {target} and {sorted(methods)}: {other}")
+        if not patched:
+            return
+        code = javap("-c", "-p", "-cp", patched[0], target.replace("/", "."))
+        for method in sorted(methods):
+            for block in blocks(code, method)[:3]:
                 print(f"-- {target}: {block[0].strip()[:200]}, as the game has it")
                 for line in block[1:LINES]:
                     print("  " + line.rstrip()[:200])
