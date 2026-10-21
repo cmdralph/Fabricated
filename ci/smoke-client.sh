@@ -236,6 +236,8 @@ check "FABRICATED-TEST transfer OK" "native transfer in the integrated server"
 check "FABRICATED-TEST api OK" "public API on the client"
 check "FABRICATED-TEST modmenu config screen OK" "a Fabric mod's Mod Menu config screen is behind NeoForge's mod list button"
 check "FABRICATED-TEST environment stripping OK" "@EnvironmentInterface kept on the client"
+# Where the libraries LIB-1's bridges reflect on live (informational).
+grep -h -m 1 -o "FABRICATED-TEST library modules: .*" "$log" 2>/dev/null || true
 # The test mods log "FABRICATED-TEST ... FAILED" when one of their own checks fails.
 if grep -q "FABRICATED-TEST .*FAILED" "$log" client.out 2>/dev/null; then
 	echo "FAIL: a test mod check reported a failure:"; grep -h "FABRICATED-TEST .*FAILED" "$log" client.out 2>/dev/null | head -n 5; fail=1
