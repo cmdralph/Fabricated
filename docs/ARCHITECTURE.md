@@ -311,7 +311,7 @@ A unit test remaps the same input twice and compares SHA-256.
 | `mutable field C f d` | `<current access>-f C f`, with the current access read from game bytecode (AT has no "keep access" modifier) |
 | `transitive-*` | same as the non-transitive form (ATs are global) |
 | `inject-interface C I` (class tweaker) | **not expressible in AT.** Applied by Fabricated's `ClassProcessor` (FML SPI), which adds `I` to `C` at load time. Generic signatures are kept. |
-| `extend-enum C K` (class tweaker v2) | nothing: the line only declares a constant the mod's enum mixin adds, which Mixin (0.17.1 or later) does itself. The mod is disabled if the running Mixin is older. |
+| `extend-enum C K` (class tweaker v2) | nothing: the line only declares a constant the mod's enum mixin adds, which Mixin (0.17.1 or later) does itself. The mod is disabled if the running Mixin is older, or if `C` is one of NeoForge's `IExtensibleEnum`s (FML refuses enum mixins into those, ENUM-4). |
 
 * Fabric also makes a private instance method made `accessible` final unless a mod extends it, from all mods' wideners
   merged. NeoForge reads each mod's file on its own and stops the game when one's `+f` meets another's `-f` on the
@@ -342,7 +342,7 @@ versions is decided at compile time by which source folders it compiles, plus tw
   handlers that pass a handler's MixinExtras sugar on), renumbered lambdas, hard local captures, accessors of members
   NeoForge added), not by per-version tables. Enum mixins into
   NeoForge's extensible enums become its enum extension entries (`EnumExtensions`), named enums included when their
-  names already carry the mod's id; others stay for Mixin, which adds their constants after NeoForge's (ENUM-4).
+  names already carry the mod's id.
 * Everything Minecraft-agnostic stays in `core`/`loader`. The full seam table is in [`claude.md`](claude.md).
 * **Adding a version** (summarised from `CONTRIBUTING.md`): copy the nearest `mc/<ver>` directory, set
   `minecraft_version`/`neo_version` in its `gradle.properties`, add it to `settings.gradle` and the CI matrix, fix

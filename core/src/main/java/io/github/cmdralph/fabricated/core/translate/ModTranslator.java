@@ -327,7 +327,7 @@ public final class ModTranslator {
 		// Pre-flight sees the mod as it will load: with the handler methods left out below.
 		FileView translated = name -> overlay.containsKey(name) ? overlay.get(name) : files.read(name);
 		MixinPreflight preflight = new MixinPreflight(env.installedIndex(), env.installed(), classSource(translated), env.untransformable(),
-				env.clientSide(), MixinCompat.missingTargetsFatal(behavior), MixinCompat.supportsEnumExtensions(env.runtimeMixinVersion()));
+				env.clientSide(), MixinCompat.missingTargetsFatal(behavior));
 		Map<String, MixinConfigFile> configs = new HashMap<>();
 		Set<String> matchedSkips = new HashSet<>();
 		Map<String, Refmap> refmaps = new HashMap<>();

@@ -53,11 +53,9 @@ pre-flight couldn't repair (JourneyMap).
   server doesn't load, so GlitchCore was disabled on every corpus server (run 385), and Biomes O' Plenty with it. A mod
   only for the other side no longer counts as one that isn't loading: on Fabric it isn't there either, and a mixin
   using it is in a class only that side loads.
-- ENUM-4: Wilder Wild's enum mixin adds a grass colour with a body of its own to one of NeoForge's extensible enums,
-  under a name NeoForge's enum extension files refuse, and pre-flight disabled any such mixin, on the untested premise
-  that NeoForge reserves those enums. NeoForge's loader adds its files' constants before Mixin runs, and Mixin (0.17.1
-  or later; 26.x runs 0.17.4) adds an enum mixin's constants after them, as on Fabric (both read in their source): such
-  a mixin now stays for Mixin there. ENUM-1's translation is still used where it applies.
+- ENUM-4 (reverted): letting enum mixins into NeoForge's extensible enums through to Mixin, on the reading that NeoForge
+  didn't refuse them, crashed the 26.2 and 26.3 advanced corpus at startup on Wilder Wild's: FML's
+  `FMLMixinFeatureValidator` refuses them (run on `b0f3606`). Such a mixin disables its mod again.
 - Run on `fad7762` (this PR): CI green; RES-1 and BIOME-1 pass on 26.3; FrozenLib and Wilder Wild load on the 26.3
   advanced client (DELEGATE-1, ENUM-4). The advanced corpus still stopped before reaching a world, for three new
   reasons, each fixed here:

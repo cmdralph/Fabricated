@@ -134,7 +134,7 @@ class MixinPreflightTest {
 				"com/example/mixin/Present", shadowMixin("com/example/mixin/Present", renderer, "sections"),
 				"com/example/mixin/Gone", shadowMixin("com/example/mixin/Gone", renderer, "chunks"),
 				"com/example/mixin/Elsewhere", shadowMixin("com/example/mixin/Elsewhere", "net/example/other/Thing", "x"));
-		MixinPreflight preflight = new MixinPreflight(new ClassIndex(installed), installed, mod::get, ClassBytesSource.EMPTY, false, true, true);
+		MixinPreflight preflight = new MixinPreflight(new ClassIndex(installed), installed, mod::get, ClassBytesSource.EMPTY, false, true);
 
 		List<PreflightFinding> findings = preflight.check("test.mixins.json", MixinConfigFile.parse(config(true, "Present", "Gone", "Elsewhere")),
 				Refmap.EMPTY, Set.of());
@@ -1836,10 +1836,9 @@ class MixinPreflightTest {
 	}
 
 	@Test
-	void anEnumMixinIntoAnExtensibleEnumIsLeftToAMixinThatAddsConstants() throws Exception {
-		// Mixin adds an enum mixin's constants from 0.17.1, to NeoForge's extensible enums too (ENUM-4: Wilder Wild). With
-		// an older Mixin the mod's own classes would read constants that don't exist: leaving the mixin out, as a plugin
-		// config's crashing injectors are, would only move the crash into the mod (Farmer's Delight, CORPUS-10).
+	void anEnumMixinIntoAnExtensibleEnumFailsItsModEvenWithAPlugin() throws Exception {
+		// The mod's own classes read the constants such a mixin adds: leaving it out, as a plugin config's crashing
+		// injectors are, would only move the crash into the mod (Farmer's Delight, CORPUS-10).
 		ClassWriter target = new ClassWriter(0);
 		target.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_FINAL | Opcodes.ACC_ENUM, TARGET, null, "java/lang/Enum",
 				new String[] {"net/neoforged/fml/common/asm/enumextension/IExtensibleEnum"});
@@ -1856,14 +1855,10 @@ class MixinPreflightTest {
 		Map<String, byte[]> mod = Map.of("com/example/mixin/Constants", cw.toByteArray());
 		for (String plugin : List.of("", ",\"plugin\":\"com.example.Plugin\"")) {
 			String cfg = "{\"required\":true,\"package\":\"com.example.mixin\"" + plugin + ",\"mixins\":[\"Constants\"]}";
-			List<PreflightFinding> findings = new MixinPreflight(game, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, false)
+			List<PreflightFinding> findings = preflight(game, mod::get, ClassBytesSource.EMPTY, false)
 					.check("test.mixins.json", MixinConfigFile.parse(cfg), Refmap.EMPTY, Set.of());
 			assertEquals(Severity.FAIL, findings.getFirst().severity(), findings.toString());
-			assertTrue(findings.getFirst().message().contains("0.17.1"), findings.toString());
-			List<PreflightFinding> added = preflight(game, mod::get, ClassBytesSource.EMPTY, false)
-					.check("test.mixins.json", MixinConfigFile.parse(cfg), Refmap.EMPTY, Set.of());
-			assertEquals(List.of(Severity.INFO), added.stream().map(PreflightFinding::severity).toList(), added.toString());
-			assertTrue(added.getFirst().message().contains("extensible enums"), added.toString());
+			assertTrue(findings.getFirst().message().contains("extensible enums"), findings.toString());
 		}
 	}
 
@@ -2157,6 +2152,6 @@ class MixinPreflightTest {
 
 	private static MixinPreflight preflight(ClassIndex game, ClassBytesSource mod, ClassBytesSource untransformable, boolean clientSide,
 			boolean missingTargetsFatal) {
-		return new MixinPreflight(game, InstalledClasses.NONE, mod, untransformable, clientSide, missingTargetsFatal, true);
+		return new MixinPreflight(game, InstalledClasses.NONE, mod, untransformable, clientSide, missingTargetsFatal);
 	}
 }
