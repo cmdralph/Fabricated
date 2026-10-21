@@ -1042,23 +1042,58 @@ class PipelineTest {
 	}
 
 	@Test
-	void aModNeedingANewerMixinExtrasIsDisabled(@TempDir Path game) throws Exception {
+	void aModNeedingANewerMixinExtrasIsDisabledUnlessTheReleasesSinceOnlyFixedBugs(@TempDir Path game) throws Exception {
 		// MIXEXT-1: Freecam's 1.21.11 build asks for MixinExtras 0.5.5, NeoForge 21.11 ships 0.5.3 (the test input's), and
-		// MixinExtras stopped the game reading the config. A config may take the setting from its parent.
+		// MixinExtras stopped the game reading the config. A config may take the setting from its parent. MIXEXT-2: 0.5.4 and
+		// 0.5.5 only fixed bugs, so such a config asks for 0.5.3 instead, unless a @Redirect of its package has several
+		// injection points, which only 0.5.5 reads. A release after those is not known, and still disables the mod.
 		Path mods = Files.createDirectories(game.resolve("mods"));
-		Path newer = TestJars.create().fabricModJson(TestJars.modJson("freecam", "1.0", "\"mixins\":[\"freecam.mixins.json\"]"))
+		Path fixesOnly = TestJars.create().fabricModJson(TestJars.modJson("freecam", "1.0", "\"mixins\":[\"freecam.mixins.json\"]"))
 				.text("freecam.mixins.json", "{\"parent\":\"freecam-common.mixins.json\",\"package\":\"com.freecam.mixin\",\"mixins\":[]}")
 				.text("freecam-common.mixins.json", "{\"package\":\"com.freecam.mixin\",\"mixins\":[],\"mixinextras\":{\"minVersion\":\"0.5.5\"}}")
 				.write(mods.resolve("freecam.jar"));
+		Path unknown = TestJars.create().fabricModJson(TestJars.modJson("newer", "1.0", "\"mixins\":[\"newer.mixins.json\"]"))
+				.text("newer.mixins.json", "{\"package\":\"com.newer.mixin\",\"mixins\":[],\"mixinextras\":{\"minVersion\":\"0.6.0\"}}")
+				.write(mods.resolve("newer.jar"));
+		ClassWriter cw = new ClassWriter(0);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, "com/points/mixin/Redirecting", null, "java/lang/Object", null);
+		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "redirect", "(L" + TARGET + ";)Z", null, null);
+		AnnotationVisitor redirect = mv.visitAnnotation("Lorg/spongepowered/asm/mixin/injection/Redirect;", true);
+		AnnotationVisitor ats = redirect.visitArray("at");
+		for (String called : List.of("isDebug", "isDemo")) {
+			AnnotationVisitor at = ats.visitAnnotation(null, "Lorg/spongepowered/asm/mixin/injection/At;");
+			at.visit("value", "INVOKE");
+			at.visit("target", "L" + TARGET + ";" + called + "()Z");
+			at.visitEnd();
+		}
+		ats.visitEnd();
+		redirect.visitEnd();
+		mv.visitEnd();
+		cw.visitEnd();
+		Path severalPoints = TestJars.create().fabricModJson(TestJars.modJson("points", "1.0", "\"mixins\":[\"points.mixins.json\"]"))
+				.text("points.mixins.json", "{\"package\":\"com.points.mixin\",\"mixins\":[],\"mixinextras\":{\"minVersion\":\"0.5.5\"}}")
+				.bytes("com/points/mixin/Redirecting.class", cw.toByteArray())
+				.write(mods.resolve("points.jar"));
 		Path met = TestJars.create().fabricModJson(TestJars.modJson("older", "1.0", "\"mixins\":[\"older.mixins.json\"]"))
 				.text("older.mixins.json", "{\"package\":\"com.older.mixin\",\"mixins\":[],\"mixinextras\":{\"minVersion\":\"0.5.0\"}}")
 				.write(mods.resolve("older.jar"));
-		Pipeline.Result result = Pipeline.run(input(game, List.of(newer, met), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
+		Pipeline.Result result = Pipeline.run(input(game, List.of(fixesOnly, unknown, severalPoints, met), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
 
-		assertEquals(List.of("older"), result.mods().stream().map(m -> m.translated().candidate().id()).toList(), result.report().render());
-		Report.ModRow row = result.report().mods().stream().filter(r -> r.id().equals("freecam")).findFirst().orElseThrow();
-		assertEquals(Report.Status.DISABLED, row.status());
-		assertTrue(row.detail().contains("requires MixinExtras 0.5.5 or later; this NeoForge ships MixinExtras 0.5.3"), row.detail());
+		assertEquals(List.of("freecam", "older"), result.mods().stream().map(m -> m.translated().candidate().id()).sorted().toList(), result.report().render());
+		try (SafeArchive overlay = SafeArchive.open(result.mods().stream().filter(m -> m.translated().candidate().id().equals("freecam")).findFirst()
+				.orElseThrow().translated().overlay(), ArchiveLimits.DEFAULTS)) {
+			assertEquals(Map.of("minVersion", "0.5.3"), Json.parseObject(overlay.readText("freecam.mixins.json")).get("mixinextras"),
+					"the config asks for NeoForge's MixinExtras, over its parent's setting");
+		}
+		assertTrue(result.report().render().contains("freecam: Its mixin config freecam.mixins.json asks for MixinExtras 0.5.5; it runs with NeoForge's 0.5.3"),
+				result.report().render());
+		Report.ModRow newer = result.report().mods().stream().filter(r -> r.id().equals("newer")).findFirst().orElseThrow();
+		assertEquals(Report.Status.DISABLED, newer.status());
+		assertTrue(newer.detail().contains("requires MixinExtras 0.6.0 or later; this NeoForge ships MixinExtras 0.5.3"), newer.detail());
+		Report.ModRow points = result.report().mods().stream().filter(r -> r.id().equals("points")).findFirst().orElseThrow();
+		assertEquals(Report.Status.DISABLED, points.status());
+		assertTrue(points.detail().contains("com.points.mixin.Redirecting has a @Redirect at several injection points, which MixinExtras reads from 0.5.5"),
+				points.detail());
 	}
 
 	@Test
