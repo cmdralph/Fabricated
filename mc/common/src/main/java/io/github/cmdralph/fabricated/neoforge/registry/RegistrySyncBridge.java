@@ -38,6 +38,8 @@ public final class RegistrySyncBridge {
 	private static final Logger LOGGER = LoggerFactory.getLogger("Fabricated");
 	/** True while NeoForge's registration events run: the only time new registries may join the root registry. */
 	private static volatile boolean registrationOpen;
+	/** True from common setup on, when NeoForge's registration has ended. */
+	private static volatile boolean registrationEnded;
 	private static boolean rootOpened;
 	/** Whether the root registry's callback is added (only read and written where registration events are posted). */
 	private static boolean syncedCallbackAdded;
@@ -69,6 +71,7 @@ public final class RegistrySyncBridge {
 		modBus.addListener(EventPriority.LOWEST, RegisterEvent.class, e -> closeRoot());
 		modBus.addListener(FMLCommonSetupEvent.class, e -> {
 			registrationOpen = false;
+			registrationEnded = true;
 			// A parallel event: freezing a vanilla registry belongs on the main thread.
 			e.enqueueWork(RegistrySyncBridge::closeRoot);
 		});
@@ -89,6 +92,19 @@ public final class RegistrySyncBridge {
 			LOGGER.warn("A Fabric mod is creating a registry outside NeoForge's registration events; registries are frozen by now, so this will fail");
 		}
 		return (WritableRegistry<WritableRegistry<?>>) (Object) root;
+	}
+
+	/**
+	 * Opens the frozen root registry for a registry vanilla's own code creates before NeoForge's registration has ended.
+	 * NeoForge freezes the root after its {@code NewRegistryEvent}, and processing its data pack registry event then loads
+	 * the class Wover hooks to create its registries ({@code BuiltInRegistries.registerSimple}), which works on Fabric.
+	 * NeoForge's registration events, which run over every registry in the root, then include it; it is closed again with
+	 * the root {@link #rootForRegistration} opens.
+	 */
+	public static synchronized void openRootForLateRegistry() {
+		if (registrationEnded || !(BuiltInRegistries.REGISTRY instanceof MappedRegistry<?> mapped)) return;
+		mapped.unfreeze(false);
+		rootOpened = true;
 	}
 
 	private static synchronized void closeRoot() {

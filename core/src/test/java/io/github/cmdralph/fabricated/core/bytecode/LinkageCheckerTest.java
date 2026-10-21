@@ -176,9 +176,15 @@ class LinkageCheckerTest {
 				caller("u/A", "net/fabricmc/loader/api/FabricLoader", "getInstance", "()Lnet/fabricmc/loader/api/FabricLoader;", false)));
 		TranslatedMod internals = mod(dir, "internals-user", TestJars.create().bytes("u/B.class",
 				caller("u/B", "net/fabricmc/loader/impl/ModContainerImpl", "create", "()V", false)));
+		// FrozenLib's entrypoint injector names these internals, from a mixin plugin: they must link (AT-1's pass).
+		ClassWriter metadata = new ClassWriter(0);
+		metadata.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, "u/Metadata", null, "java/lang/Object",
+				new String[] {"net/fabricmc/loader/impl/metadata/EntrypointMetadata"});
+		metadata.visitEnd();
+		TranslatedMod injector = mod(dir, "injector", TestJars.create().bytes("u/Metadata.class", metadata.toByteArray()));
 		LinkageAnalysis analysis = new LinkageAnalysis(new TranslationCache(dir.resolve("game"), true, true), ArchiveLimits.DEFAULTS, false);
 
-		Map<String, List<String>> issues = analysis.analyse(List.of(api, internals), ClassBytesSource.EMPTY, Map::of, "loader");
+		Map<String, List<String>> issues = analysis.analyse(List.of(api, internals, injector), ClassBytesSource.EMPTY, Map::of, "loader");
 
 		assertEquals(Set.of("internals_user"), issues.keySet(), issues.toString());
 		assertTrue(issues.get("internals_user").getFirst().contains("net.fabricmc.loader.impl.ModContainerImpl"), issues.toString());

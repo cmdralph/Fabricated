@@ -12,6 +12,8 @@ import java.util.jar.JarFile;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.mojang.serialization.Lifecycle;
+
 import io.github.cmdralph.fabricated.api.FabricApiModule;
 import io.github.cmdralph.fabricated.api.Fabricated;
 import net.fabricmc.api.DedicatedServerModInitializer;
@@ -24,6 +26,7 @@ import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.loader.api.ModContainer;
+import net.minecraft.core.MappedRegistry;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
@@ -54,6 +57,18 @@ public final class TestMod implements ModInitializer, DedicatedServerModInitiali
 	 * RES-1: a file of another jar read through one of the mod's own classes, as Lattice reads Minecraft's version
 	 * information: on Fabric the class path has it, on NeoForge only the mod's module, unless Fabricated adapts the read.
 	 */
+	/** A registry vanilla's own code adds to the root while mods start, which works on Fabric (REG-3: Wover's). */
+	@SuppressWarnings({"unchecked", "rawtypes"})
+	private static void lateRegistry() {
+		ResourceKey<Registry<String>> key = ResourceKey.createRegistryKey(Identifier.fromNamespaceAndPath("fabricated_testmod", "late"));
+		try {
+			Registry.register((Registry) BuiltInRegistries.REGISTRY, key.identifier(), new MappedRegistry<>(key, Lifecycle.stable()));
+			if (BuiltInRegistries.REGISTRY.containsKey(key.identifier())) LOGGER.info("FABRICATED-TEST late registry OK");
+		} catch (RuntimeException e) {
+			LOGGER.error("FABRICATED-TEST late registry FAILED", e);
+		}
+	}
+
 	private static void classResources() {
 		try (InputStream in = TestMod.class.getResourceAsStream("/version.json")) {
 			if (in != null) LOGGER.info("FABRICATED-TEST class resources OK");
@@ -122,6 +137,7 @@ public final class TestMod implements ModInitializer, DedicatedServerModInitiali
 		if (BuiltInRegistries.ITEM.getKey(item).equals(ITEM_ID)) {
 			LOGGER.info("FABRICATED-TEST registry OK");
 		}
+		lateRegistry();
 
 		Event<Runnable> event = EventFactory.createArrayBacked(Runnable.class, listeners -> () -> {
 			for (Runnable listener : listeners) listener.run();

@@ -87,7 +87,7 @@ class AccessWidenerTest {
 				"private-f net.minecraft.A constant",
 				"public-f net.minecraft.A count",
 				"protected-f net.minecraft.A finalMethod()V",
-				"public+f net.minecraft.A privateMethod()V",
+				"public net.minecraft.A privateMethod()V",
 				"public net.minecraft.A staticPrivate()V",
 				"public net.minecraft.A$Inner"), lines);
 		assertEquals(2, result.warnings().size(), result.warnings().toString());

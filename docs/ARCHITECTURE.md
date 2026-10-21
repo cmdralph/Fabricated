@@ -313,6 +313,9 @@ A unit test remaps the same input twice and compares SHA-256.
 | `inject-interface C I` (class tweaker) | **not expressible in AT.** Applied by Fabricated's `ClassProcessor` (FML SPI), which adds `I` to `C` at load time. Generic signatures are kept. |
 | `extend-enum C K` (class tweaker v2) | nothing: the line only declares a constant the mod's enum mixin adds, which Mixin (0.17.1 or later) does itself. The mod is disabled if the running Mixin is older. |
 
+* Fabric also makes a private instance method made `accessible` final unless a mod extends it, from all mods' wideners
+  merged. NeoForge reads each mod's file on its own and stops the game when one's `+f` meets another's `-f` on the
+  same member (AT-1), so that final isn't written: where another mod extends the method, the lines merge to Fabric's.
 * Headers are validated: `accessWidener v1|v2 <ns>` and `classTweaker v1|v2 <ns>`. The namespace must be `intermediary` (1.21.11) or `official` (26.x), otherwise the mod is rejected with an explanation.
 * Entries targeting members that don't exist are dropped with a warning (Fabric Loader would crash).
 * The AT file is written into the overlay at `META-INF/accesstransformer.cfg`, which FML picks up by default.

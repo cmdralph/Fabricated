@@ -115,6 +115,7 @@ check "FABRICATED-TEST custom entrypoint OK" server.out "custom entrypoint resol
 check "FABRICATED-TEST classpath scan OK" server.out "classpath scan finds a Fabric mod's package directory (SCAN-1)"
 check "FABRICATED-TEST class resources OK" server.out "a mod's class finds another jar's file, as on Fabric (RES-1)"
 check "FABRICATED-TEST registry OK" server.out "direct registry registration works"
+check "FABRICATED-TEST late registry OK" server.out "a registry vanilla's code adds while mods start joins the root registry (REG-3)"
 check "FABRICATED-TEST fabric api base event OK" server.out "fabric-api-base events work"
 check "FABRICATED-TEST access widener OK" server.out "access widener applied"
 check "FABRICATED-TEST server entrypoint OK" server.out "server entrypoint ran"

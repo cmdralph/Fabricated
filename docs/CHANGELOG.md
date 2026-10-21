@@ -58,6 +58,18 @@ pre-flight couldn't repair (JourneyMap).
   that NeoForge reserves those enums. NeoForge's loader adds its files' constants before Mixin runs, and Mixin (0.17.1
   or later; 26.x runs 0.17.4) adds an enum mixin's constants after them, as on Fabric (both read in their source): such
   a mixin now stays for Mixin there. ENUM-1's translation is still used where it applies.
+- Run on `fad7762` (this PR): CI green; RES-1 and BIOME-1 pass on 26.3; FrozenLib and Wilder Wild load on the 26.3
+  advanced client (DELEGATE-1, ENUM-4). The advanced corpus still stopped before reaching a world, for three new
+  reasons, each fixed here:
+  - LOADER-1: FrozenLib's mixin plugin injects its entrypoints into Fabric Loader's internal storage, and its code
+    names internal classes Fabricated lacked, which stopped 26.2 and 26.3 at startup. The classes now exist, with no
+    instance to reach, so FrozenLib's reflective lookup fails as it plans for and it runs its entrypoints itself.
+  - AT-1: one mod's access widener made `InstrumentItem.getInstrument` final (Fabric's implicit final for an accessible
+    private method) and another's extended it; NeoForge refuses the conflict, which stopped 1.21.11. That implicit final
+    isn't written any more, so the lines merge to Fabric's result.
+  - REG-3: Wover creates its registries through vanilla's `BuiltInRegistries` while NeoForge processes its data pack
+    registry event, after NeoForge froze the root registry, which stopped 26.1.2. The root is opened for a new registry
+    until NeoForge's registration ends, as it is for `FabricRegistryBuilder`; the test mod checks it.
 - CI prints the causes of a server or client crash report (a mod loading crash's issues are below its description).
 - The translation schema is bumped (28): translations cached by a build before PR #51 are made again.
 
