@@ -48,7 +48,11 @@ final class BuiltinPacks {
 						// experimental, and asks to confirm creating or loading a world with them.
 						Optional.of(new KnownPack(KNOWN_PACK_NAMESPACE, pack.id().toString(), pack.modVersion())));
 				Pack.ResourcesSupplier files = new PathPackResources.PathResourcesSupplier(pack.root());
-				if (pack.overlayRoot() != null) files = LayeredPackResources.of(files, new PathPackResources.PathResourcesSupplier(pack.overlayRoot()));
+				if (pack.overlayRoot() != null) {
+					// Translation changes a built-in pack's pack.mcmeta only to leave out its NeoForge build's sections (PACK-4).
+					files = LayeredPackResources.of(files, new PathPackResources.PathResourcesSupplier(pack.overlayRoot()),
+							Files.isRegularFile(pack.overlayRoot().resolve("pack.mcmeta")));
+				}
 				Pack created = Pack.readMetaAndCreate(info, files, type, new PackSelectionConfig(required, Pack.Position.TOP, false));
 				if (created == null) {
 					LOGGER.warn("Built-in pack {} has no valid pack.mcmeta for {}, skipped", pack.id(), type);

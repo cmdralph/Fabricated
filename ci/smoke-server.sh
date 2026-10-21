@@ -119,7 +119,7 @@ check "FABRICATED-TEST late registry OK" server.out "a registry vanilla's code a
 check "FABRICATED-TEST early registry writes OK" server.out "vanilla's code writes to built-in registries before NeoForge's registration events, as Wover does (REG-3)"
 check "FABRICATED-TEST immutable pack sources OK" server.out "NeoForge adds its pack finders to sources a mod left immutable, as FrozenLib does (PACK-1)"
 check "FABRICATED-TEST data without NeoForge conditions OK" server.out "a Fabric jar's data loads without the conditions only its NeoForge build reads (DATA-1)"
-check "FABRICATED-TEST built-in pack data without NeoForge conditions OK" server.out "so does its built-in pack's (PACK-2)"
+check "FABRICATED-TEST built-in pack data without NeoForge conditions OK" server.out "so does its built-in pack's (PACK-2), whose pack.mcmeta has its NeoForge build's sections too (PACK-4)"
 check "FABRICATED-TEST built-in pack data is stable OK" server.out "a built-in pack's registry entries aren't experimental: a world with them opens without a confirmation (PACK-3)"
 check "FABRICATED-TEST fabric api base event OK" server.out "fabric-api-base events work"
 check "FABRICATED-TEST access widener OK" server.out "access widener applied"

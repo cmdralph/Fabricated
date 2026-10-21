@@ -3,5 +3,13 @@
     "description": "Fabricated test mod built-in pack",
     "min_format": 82,
     "max_format": 2048
+  },
+  "neoforge:overlays": {
+    "entries": [
+      {
+        "directory": "neoforge_build_only",
+        "neoforge:conditions": [{"type": "fabricated_testmod:registered_by_its_neoforge_build_only"}]
+      }
+    ]
   }
 }

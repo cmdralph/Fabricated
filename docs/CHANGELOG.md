@@ -13,6 +13,9 @@ One entry per working session, newest first: what changed, and how it was verifi
   which publishes its world state, and FrozenLib's into `RegistryDataLoader`'s were left out before.
 - MIXEXT-1: a mod whose mixin config asks for a newer MixinExtras than NeoForge ships is disabled with that reason,
   instead of MixinExtras stopping the game. The translation schema is bumped.
+- PACK-4, finished: a built-in pack's metadata is read from the translated files when translation changed them (PR #54
+  only left the NeoForge sections out of the copy, and Tectonic's pack was still skipped). The test mod's built-in pack
+  has such a section.
 - GROUP-1: pre-flight checks injector groups' minimums, as Mixin does; a group too few of whose injectors can apply is
   left out of a self-contained mixin (or fails the mod), instead of stopping the game as owo-lib's did.
 
