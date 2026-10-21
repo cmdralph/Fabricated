@@ -42,6 +42,7 @@
     "LivingEntityFluidTravelMixin",
     "FluidTypeMixin",
     "NetworkRegistryAccessor",
+    "NetworkRegistryUnregisteredPayloadMixin",
     "NetworkRegistryMixin",
     "MenuProviderMixin",
     "ServerPlayerMenuMixin",

@@ -219,6 +219,14 @@ public final class NetworkingBridge {
 		return fabric && !NetworkRegistry.hasChannel(listener, id);
 	}
 
+	/** Whether NeoForge has no registration for {@code id} in any protocol: no NeoForge or Fabric mod declared it (NET-5). */
+	public static boolean unregistered(Identifier id) {
+		for (Map<Identifier, ?> registrations : NetworkRegistryAccessor.fabricated$registrations().values()) {
+			if (registrations.containsKey(id)) return false;
+		}
+		return true;
+	}
+
 	private static void handleServerPlay(CustomPacketPayload payload, IPayloadContext context) {
 		if (context.listener() instanceof ServerGamePacketListenerImpl listener) ServerNetworkingImpl.getAddon(listener).handle(payload);
 	}

@@ -49,6 +49,7 @@
     "FluidTypeMixin",
     "ServerPayloadSendMixin",
     "NetworkRegistryAccessor",
+    "NetworkRegistryUnregisteredPayloadMixin",
     "NetworkRegistryMixin",
     "MenuProviderMixin",
     "ServerPlayerMenuMixin",
