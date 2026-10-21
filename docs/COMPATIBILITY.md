@@ -65,7 +65,7 @@ How to read the table:
 |---|---|---|---|---|
 | fabric-api-base | native | native | native | native |
 | fabric-crash-report-info-v1 | native | native | native | native |
-| fabric-biome-api-v1 | loads | loads | loads | loads |
+| fabric-biome-api-v1 | loads | loads | loads | native (see below) |
 | fabric-block-getter-api-v2 / block-view-api-v2 | loads | loads | loads | loads |
 | fabric-message-api-v1 | loads | loads | loads | loads |
 | fabric-rendering-fluids-v1 | loads | loads | loads | loads |
@@ -459,6 +459,24 @@ On 26.3, composting, stripping and fuel are data-driven in vanilla, and Fabric A
 
 CI checks, on all four versions: a flammable block, a waxable pair and a custom game event's vibration frequency take
 effect; up to 26.2 also a compostable item, a strippable block and a fuel value.
+
+### Native `fabric-biome-api-v1` (26.3)
+
+NeoForge reads a biome's climate, environment attributes, effects and generation settings from its own modifiable
+biome info, made when the biome is built, and keeps the biome's fields for them private. Upstream's module replaces
+those fields: on NeoForge that would change nothing NeoForge reads, and on 26.3, where mob spawns are an environment
+attribute, adding a spawn crashed world creation (`IllegalAccessError`, BIOME-1). On 26.3 Fabricated ships the module:
+
+| Part | On NeoForge |
+|---|---|
+| `BiomeModifications` | applied by a NeoForge biome modifier (`fabricated:fabric_biome_api`, declared by Fabricated's data pack) on NeoForge's builders, as the server starts: additions in NeoForge's `ADD` phase, removals in `REMOVE`, replacements in `MODIFY`, post-processing in `AFTER_EVERYTHING`; selectors see the biome as it was built, as upstream's do |
+| Mob spawns and spawn costs | NeoForge's spawn builder, which NeoForge writes into the biome's `NATURAL_MOB_SPAWNS` attribute as an overlay; a mod setting that attribute itself replaces the builder's spawns and costs |
+| `NetherBiomes`, `TheEndBiomes` | upstream's biome source mixins, unchanged |
+
+CI checks, on 26.3: a mob spawn added to plains and plains' changed temperature are in the biome once the server has
+started. On 1.21.11, 26.1.2 and 26.2 upstream's module loads: its spawn and feature changes edit objects NeoForge's info
+shares, so they take effect, while a climate or attribute change replaces a private field and fails when it runs (as
+read; UNVERIFIED in a game).
 
 ### Native `fabric-api-lookup-api-v1` and `fabric-transfer-api-v1`
 

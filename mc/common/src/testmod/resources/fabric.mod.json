@@ -27,7 +27,8 @@
       "io.github.cmdralph.fabricated.testmod.FluidTest",
       "io.github.cmdralph.fabricated.testmod.EnergyTest",
       "io.github.cmdralph.fabricated.testmod.CommandsTest",
-      "io.github.cmdralph.fabricated.testmod.BlockEntityEventsTest"
+      "io.github.cmdralph.fabricated.testmod.BlockEntityEventsTest",
+      "io.github.cmdralph.fabricated.testmod.BiomeTest"
     ],
     "server": ["io.github.cmdralph.fabricated.testmod.TestMod"],
     "client": ["io.github.cmdralph.fabricated.testmod.ClientTestMod", "io.github.cmdralph.fabricated.testmod.BlockEntityEventsClientTest",

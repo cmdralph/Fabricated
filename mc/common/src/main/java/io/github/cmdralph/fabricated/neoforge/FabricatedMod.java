@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.github.cmdralph.fabricated.loader.FabricatedState;
+import io.github.cmdralph.fabricated.neoforge.biome.BiomeCompat;
 import io.github.cmdralph.fabricated.neoforge.fluid.FabricFluidType;
 import io.github.cmdralph.fabricated.neoforge.registry.RegistrySyncBridge;
 import net.minecraft.core.registries.Registries;
@@ -27,6 +28,9 @@ public final class FabricatedMod {
 	private static final Logger LOGGER = LoggerFactory.getLogger("Fabricated");
 
 	public FabricatedMod(IEventBus modBus, Dist dist) {
+		// First: this mod's data pack declares a biome modifier of the type it registers (26.3), which must exist even
+		// when Fabricated stops below, or worlds fail to load.
+		BiomeCompat.register(modBus);
 		FabricatedState state = FabricatedState.get();
 		if (state == null) {
 			LOGGER.warn("Fabricated's discovery did not run; Fabric mods are not loaded (see the warnings above in the log)");

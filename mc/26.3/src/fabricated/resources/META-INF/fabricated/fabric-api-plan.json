@@ -19,7 +19,9 @@
       "reason": "Shipped by Fabricated (unchanged from upstream) because its transfer API builds on it."
     },
     "fabric-biome-api-v1": {
-      "plan": "passthrough"
+      "plan": "native",
+      "version": "20.1.0",
+      "reason": "Shipped by Fabricated: upstream's API and biome source mixins, with biome modifications applied as a NeoForge biome modifier (upstream replaces biome fields NeoForge keeps private and no longer reads)."
     },
     "fabric-block-api-v1": {
       "plan": "native",

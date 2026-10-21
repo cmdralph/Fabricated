@@ -1,0 +1,19 @@
+{
+  "required": true,
+  "package": "net.fabricmc.fabric.mixin.biome",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "BiomeSourceMixin",
+    "ClimateSamplerMixin",
+    "MultiNoiseBiomeSourceMixin",
+    "NetherBiomePresetMixin",
+    "RandomStateMixin",
+    "TheEndBiomeSourceMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  },
+  "overwrites": {
+    "requireAnnotations": true
+  }
+}

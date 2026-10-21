@@ -145,6 +145,10 @@ check "FABRICATED-TEST item api OK" server.out "native item api: equipment slot,
 check "FABRICATED-TEST interaction events OK" server.out "native interaction events: use/attack block, item and entity callbacks, block and item events, block break events, pick item, fake player"
 check "FABRICATED-TEST loot OK" server.out "native loot: replace/modify with source, all loaded, modified drops"
 check "FABRICATED-TEST content registries OK" server.out "native content registries: flammable, waxable, vibration frequency (up to 26.2: compostable, strippable, fuel)"
+# fabric-biome-api-v1 is native only on 26.3 (upstream's module elsewhere, which this run doesn't load).
+if [ "$mc" = "26.3" ]; then
+	check "FABRICATED-TEST biome modifications OK" server.out "native biome api: an added mob spawn and a climate change reach the biome NeoForge reads (BIOME-1)"
+fi
 check "FABRICATED-TEST transfer OK" server.out "native transfer: item and fluid storages over vanilla blocks and in items, transaction abort and commit"
 check "FABRICATED-TEST fluid types OK" server.out "Fabric fluids: a registered NeoForge fluid type per family, named and lit from Fabric's attributes, water-like by tag; placed in the world; entities move through an untagged one as through air"
 check "FABRICATED-TEST commands OK" server.out "/fabricated why, disable and enable from the console"
