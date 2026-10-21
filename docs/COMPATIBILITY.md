@@ -782,8 +782,13 @@ MixinExtras has NeoForge's jar, and a NeoForge mod nested in another jar has tha
   adds itself (0.17.1 or later, so on 26.x; not to NeoForge's own extensible enums).
 - An enum mixin that only adds constants to one of NeoForge's extensible enums (which NeoForge lets only its own enum
   extensions change) becomes an enum extension NeoForge's loader applies, when each constant's name starts with the
-  mod's id and its constructor's arguments are constants (Farmer's Delight's recipe book type). Other enum mixins into
-  those enums disable their mod, with the reason.
+  mod's id (Farmer's Delight's recipe book type). Constant arguments are written into the extension; arguments the
+  mixin computes when the class loads (a registered object, a static array) come from a method Fabricated generates
+  next to the mod's mixins, which runs the mixin's code for them when NeoForge adds the constant (ENUM-3). Where
+  NeoForge reserves the mixin's constructor for one taking suppliers (`Raid.RaiderType`, which Friends and Foes extends
+  with its raiders), the values are handed over in suppliers. Code that branches, uses local variables, or reads the
+  mixin's or the enum's own members isn't moved, and its enum mixin disables the mod, with the reason, as other enum
+  mixins into those enums do.
 - Config screens a Fabric mod offers to Mod Menu (its `modmenu` entrypoint) open from the Config button of NeoForge's
   mod list. Mod Menu's API interfaces are provided, so such mods load without Mod Menu, which itself can't run on
   NeoForge (it would duplicate NeoForge's mod list): an installed Mod Menu jar is skipped and provided at its version.

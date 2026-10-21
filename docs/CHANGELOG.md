@@ -3,6 +3,48 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-10-21 (pass after PR #50): more Fabric mods load, and run
+
+**Plan.** The corpus showed one mixin NeoForge's code can't take disabling a whole mod, and with it every mod that
+needs it. Load those mods without what can't apply where nothing else depends on it, then check what the mods that
+now load do as the game runs, with deep-hook mods in a corpus of their own.
+
+- LEAVE-1: a failure in a self-contained mixin (no interface added to its target, no accessor or invoker, so nothing
+  outside it calls into it) no longer disables the mod. Only the failing injectors are left out when the mixin adds
+  no fields of its own; the whole mixin goes when it does, as its injectors may share them. A mixin the mod's own code
+  calls into still disables the mod, as do enum mixins into NeoForge's extensible enums. The report lists what was
+  left out in its own section, the mod's row counts it, and the log names those mods at startup. Run 379, with whole
+  mixins left out: the corpus disabled 2 or 3 mods per version (owo, Friends and Foes, and Farmer's Delight
+  Refabricated on 1.21.11, whose enum extensions need a newer Mixin), down from 7 to 10 on run 377. Balm, Waystones,
+  JEI, No Chat Reports, Moonlight, YUNG's mods, Comforts, Expandability and codecui loaded, and every gate passed.
+- SCAN-1: Fabric mods find their package directories while their entrypoints run. YUNG's API scans its own package
+  with Reflections to find what it registers, which starts from the package's directory; NeoForge's class loader finds
+  only files (read in FML's source), so the scan found nothing and the 26.1.2 corpus client crashed loading
+  registries once LEAVE-1 let YUNG's API load (run 379). The thread's context class loader now also finds the Fabric
+  mods' directories. Core's tests cover finding them; the test mod scans one of its packages as Reflections does.
+  Run 381: every version passed the new gate, and YUNG's mods no longer stopped the 26.1.2 client.
+- Moonlight's 26.1.2 Fabric build reads `Minecraft.getInstance()` in its main entrypoint, which runs before
+  `Minecraft` exists on NeoForge (CORPUS-16, open): its entrypoint is marked as failed, and on run 381 its reload
+  listener, finding its setup never ran, then stopped the 26.1.2 corpus client.
+- ENUM-3: an enum mixin whose constants are built from values computed when the class loads (a registered object, a
+  static array) becomes a NeoForge enum extension too: the arguments come from a method Fabricated generates next to
+  the mod's mixins, which runs the mixin's code for them when NeoForge adds the constant, in suppliers where NeoForge
+  reserves the mixin's constructor for one taking them. That is what still kept Friends and Foes from loading on
+  every version. Core's tests define the generated classes and call them as NeoForge's loader does.
+- VER-1: a Fabric jar whose version doesn't start with a digit stopped the launch, as NeoForge's loader refuses such
+  a version: every advanced corpus run of run 381 stopped at startup on a library FancyMenu nests
+  (`animated-gif-lib-1.7`). It is now written as `0+<version>`.
+- LOOT-2: Fabric's loot table handlers run for one table at a time. NeoForge fires its loot event on parallel
+  workers, where Farmer's Delight builds a tag that REI's mixin isn't safe for: the 26.3 corpus client crashed
+  loading registries on run 381 (upstream's own hook runs in that parallel parse too, read in its source).
+- CI: an advanced corpus of Fabric mods with deep hooks (world generation, gameplay systems, camera, sound, replays,
+  server tools) runs on a server and a client of its own; run 381 fetched 35 to 45 of them per version, and its
+  pre-flight disabled Carpet (Brigadier is a library NeoForge loads without mixin support), JourneyMap (an accessor
+  of a method the game has), FrozenLib with Wilder Wild (a captured local NeoForge's registry lacks) and, on 1.21.11,
+  Biomes O' Plenty and Emotecraft. WorldEdit's jar is a NeoForge mod too and is out of that list. Each corpus log gets
+  a digest of its errors with the first stack of the most frequent (`ci/log-digest.py`), which found the stacks of
+  both crashes above; REI's "Failed to fill display" errors (CORPUS-17) come without one.
+
 ## 2026-10-20 (pass after PR #49): renderer and deep-hook mods
 
 **Plan.** Find out why CI failed on `main` after PR #49, then broaden which mods load, renderer-changing and
