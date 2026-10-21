@@ -223,6 +223,7 @@ check "FABRICATED-TEST configuration task OK" "Fabric configuration task with th
 check "FABRICATED-TEST client join event OK" "native client networking: join event"
 check "FABRICATED-TEST client networking round trip OK" "native networking: client to integrated server and back"
 check "FABRICATED-TEST late payload type round trip OK" "native networking: a payload type the server registered as it started (NET-3)"
+check "FABRICATED-TEST minecraft namespace payload round trip OK" "native networking: a payload type in the minecraft namespace, which NeoForge refuses to register (BetterEnd, NET-4)"
 check "FABRICATED-TEST extended menu opened with its data OK" "extended menu (menu api): opening data reaches the client"
 check "FABRICATED-TEST registry sync: custom registry OK" "registry sync on the client"
 check "FABRICATED-TEST object builder OK" "native object builder in the integrated server"

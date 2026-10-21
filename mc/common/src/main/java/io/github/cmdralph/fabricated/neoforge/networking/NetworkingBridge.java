@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 
@@ -19,7 +20,12 @@ import net.fabricmc.fabric.impl.networking.server.ServerNetworkingImpl;
 import net.fabricmc.fabric.impl.networking.server.ServerPlayNetworkAddon;
 import net.fabricmc.fabric.mixin.networking.accessor.ServerCommonPacketListenerImplAccessor;
 import net.minecraft.network.ConnectionProtocol;
+import net.minecraft.network.codec.StreamCodec;
+import net.minecraft.network.protocol.PacketFlow;
+import net.minecraft.network.protocol.common.ClientboundCustomPayloadPacket;
+import net.minecraft.network.protocol.common.ServerCommonPacketListener;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.network.protocol.common.custom.DiscardedPayload;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
@@ -36,6 +42,8 @@ import net.neoforged.neoforge.network.event.RegisterConfigurationTasksEvent;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 import net.neoforged.neoforge.network.handling.IPayloadHandler;
+import net.neoforged.neoforge.network.handling.ServerPayloadContext;
+import net.neoforged.neoforge.network.payload.MinecraftRegisterPayload;
 import net.neoforged.neoforge.network.registration.HandlerThread;
 import net.neoforged.neoforge.network.registration.NetworkRegistry;
 import net.neoforged.neoforge.network.registration.PayloadRegistrar;
@@ -55,6 +63,8 @@ public final class NetworkingBridge {
 	 * right one. Keyed by listener because several players can be configured at the same time.
 	 */
 	private static final Map<ServerConfigurationPacketListenerImpl, RegisterConfigurationTasksEvent> CURRENT_TASKS = new ConcurrentHashMap<>();
+	/** Fabric payload types in the {@code minecraft} namespace, which NeoForge keeps for vanilla's own (NET-4). */
+	private static final Set<Identifier> VANILLA_NAMESPACE = ConcurrentHashMap.newKeySet();
 
 	private NetworkingBridge() {
 	}
@@ -73,6 +83,9 @@ public final class NetworkingBridge {
 			ServerPlayNetworkAddon addon = ServerNetworkingImpl.getAddon(listener);
 			ServerPlayConnectionEvents.INIT.invoker().onPlayInit(listener, server);
 			ServerPlayConnectionEvents.JOIN.invoker().onPlayReady(listener, addon, server);
+			// The client learns which of them the server receives as Fabric announces channels, which NeoForge records.
+			Set<Identifier> vanilla = vanillaNamespaceIds(FabricPayloads.SERVERBOUND_PLAY);
+			if (!vanilla.isEmpty()) listener.send(new ClientboundCustomPayloadPacket(new MinecraftRegisterPayload(vanilla)));
 			List<Identifier> channels = List.copyOf(addon.getSendableChannels());
 			if (!channels.isEmpty()) FabricPayloads.announceChannels(listener, addon, server, channels);
 		});
@@ -178,6 +191,11 @@ public final class NetworkingBridge {
 	/** Registers an id's Fabric payload types (one per direction) with NeoForge; false if NeoForge refused them. */
 	@SuppressWarnings({"unchecked", "rawtypes"})
 	private static boolean register(Phase phase, Identifier id) {
+		if ("minecraft".equals(id.getNamespace())) {
+			// NeoForge refuses the namespace: such a payload goes as vanilla's own do, with Fabric's codec (NET-4).
+			VANILLA_NAMESPACE.add(id);
+			return true;
+		}
 		CustomPacketPayload.TypeAndCodec s = phase.serverbound().get(id);
 		CustomPacketPayload.TypeAndCodec c = phase.clientbound().get(id);
 		boolean play = phase.play();
@@ -224,6 +242,46 @@ public final class NetworkingBridge {
 		for (Map<Identifier, ?> registrations : NetworkRegistryAccessor.fabricated$registrations().values()) {
 			if (registrations.containsKey(id)) return false;
 		}
+		return true;
+	}
+
+	/**
+	 * The Fabric codec of a payload in the {@code minecraft} namespace for that protocol and direction, which NeoForge
+	 * has no registration of (NET-4); null for any other.
+	 */
+	public static StreamCodec<?, ?> vanillaNamespaceCodec(Identifier id, ConnectionProtocol protocol, PacketFlow flow) {
+		if (!VANILLA_NAMESPACE.contains(id)) return null;
+		boolean play = protocol == ConnectionProtocol.PLAY;
+		PayloadTypeRegistryImpl<?> registry = flow == PacketFlow.SERVERBOUND
+				? play ? FabricPayloads.SERVERBOUND_PLAY : FabricPayloads.SERVERBOUND_CONFIGURATION
+				: play ? FabricPayloads.CLIENTBOUND_PLAY : FabricPayloads.CLIENTBOUND_CONFIGURATION;
+		CustomPacketPayload.TypeAndCodec<?, ?> type = registry.get(id);
+		return type == null ? null : type.codec();
+	}
+
+	/** The ids of the Fabric payload types in the {@code minecraft} namespace {@code registry} has, which a side announces it receives. */
+	static Set<Identifier> vanillaNamespaceIds(PayloadTypeRegistryImpl<?> registry) {
+		Set<Identifier> ids = new TreeSet<>();
+		for (Identifier id : VANILLA_NAMESPACE) {
+			if (registry.get(id) != null) ids.add(id);
+		}
+		return ids;
+	}
+
+	/** Whether {@code payload} is a Fabric payload in the {@code minecraft} namespace, which NeoForge's modded payload handling skips. */
+	static boolean inVanillaNamespace(CustomPacketPayload payload) {
+		return !(payload instanceof DiscardedPayload) && VANILLA_NAMESPACE.contains(payload.type().id());
+	}
+
+	/**
+	 * Hands a Fabric payload in the {@code minecraft} namespace to Fabric's receivers, as NeoForge would a registered one:
+	 * play payloads on the server thread, configuration ones on the network thread (NET-4). False for any other payload.
+	 */
+	public static boolean receiveVanillaNamespace(ServerCommonPacketListener listener, CustomPacketPayload payload) {
+		if (!inVanillaNamespace(payload)) return false;
+		ServerPayloadContext context = new ServerPayloadContext(listener, payload.type().id());
+		if (listener instanceof ServerGamePacketListenerImpl) context.enqueueWork(() -> handleServerPlay(payload, context));
+		else handleServerConfiguration(payload, context);
 		return true;
 	}
 

@@ -24,6 +24,10 @@ still stop on Do a Barrel Roll's camera hook.
   their Fabric mixins, which stopped every 26.x advanced client (CORPUS-18). The mixin diagnostics pointed there: no
   line of Fabricated's report named the mod, and NeoForge's mod list did (the jar's entries weren't listed; the next
   run's log names each jar Fabricated takes this way).
+- NET-4: a Fabric payload type in the `minecraft` namespace, which NeoForge refuses to register (BetterEnd's ritual
+  update), goes as vanilla's own payloads do: NeoForge's codec lookup gets its Fabric codec, each side announces the
+  ones it receives with `minecraft:register` as Fabric does, and the vanilla path of the custom payload handler hands
+  them to Fabric's receivers. The test mod sends one both ways.
 - CI: the mixin diagnostics also print what the report says of the failing mixin's mod (CORPUS-18).
 
 ## 2026-10-21 (pass after PR #55): Polymer's payload codecs, and default components on 26.3

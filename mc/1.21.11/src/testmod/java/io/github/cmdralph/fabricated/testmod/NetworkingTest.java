@@ -37,6 +37,17 @@ public final class NetworkingTest implements ModInitializer {
 		}
 	}
 
+	/** A payload in the minecraft namespace, which NeoForge keeps for vanilla's own, as BetterEnd registers its ritual update (NET-4). */
+	public record VanillaPing(int value) implements CustomPacketPayload {
+		public static final Type<VanillaPing> TYPE = new Type<>(Identifier.fromNamespaceAndPath("minecraft", "fabricated_testmod_ping"));
+		public static final StreamCodec<RegistryFriendlyByteBuf, VanillaPing> CODEC = StreamCodec.composite(ByteBufCodecs.VAR_INT, VanillaPing::value, VanillaPing::new);
+
+		@Override
+		public Type<? extends CustomPacketPayload> type() {
+			return TYPE;
+		}
+	}
+
 	@Override
 	public void onInitialize() {
 		PayloadTypeRegistry.playC2S().register(Ping.TYPE, Ping.CODEC);
@@ -45,6 +56,9 @@ public final class NetworkingTest implements ModInitializer {
 			if (payload.value() == MenuTest.OPEN_REQUEST) MenuTest.open(context.player());
 			else context.responseSender().sendPacket(new Ping(payload.value() + 1));
 		});
+		PayloadTypeRegistry.playC2S().register(VanillaPing.TYPE, VanillaPing.CODEC);
+		PayloadTypeRegistry.playS2C().register(VanillaPing.TYPE, VanillaPing.CODEC);
+		ServerPlayNetworking.registerGlobalReceiver(VanillaPing.TYPE, (payload, context) -> context.responseSender().sendPacket(new VanillaPing(payload.value() + 1)));
 		ServerPlayConnectionEvents.JOIN.register((listener, sender, server) -> TestMod.LOGGER.info("FABRICATED-TEST networking join event"));
 		if (ServerPlayNetworking.getGlobalReceivers().contains(Ping.TYPE.id())) {
 			TestMod.LOGGER.info("FABRICATED-TEST networking registration OK");
