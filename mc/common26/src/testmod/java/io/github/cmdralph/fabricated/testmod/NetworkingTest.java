@@ -5,6 +5,7 @@ import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
+import net.fabricmc.fabric.api.networking.v1.context.PacketContext;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
@@ -14,6 +15,7 @@ import net.minecraft.resources.Identifier;
 /** 26.x part of the CI test mod: exercises Fabricated's native fabric-networking-api-v1. */
 public final class NetworkingTest implements ModInitializer {
 	private static boolean lateRegistered;
+	private static volatile boolean contextEncodeReported;
 
 	/** A tiny payload sent in both directions. */
 	public record Ping(int value) implements CustomPacketPayload {
@@ -48,6 +50,36 @@ public final class NetworkingTest implements ModInitializer {
 		}
 	}
 
+	/**
+	 * A payload whose codec reads Fabric's packet context, as Polymer's do (NET-6, NET-7), and large enough for
+	 * NeoForge's packet splitter to send it in parts. The client's decoder records whether it saw the context.
+	 */
+	public record ContextPing(byte[] data, boolean decodedWithContext) implements CustomPacketPayload {
+		public static final int SIZE = 3 << 20;
+		public static final Type<ContextPing> TYPE = new Type<>(Identifier.fromNamespaceAndPath("fabricated_testmod", "context_ping"));
+		public static final StreamCodec<RegistryFriendlyByteBuf, ContextPing> CODEC = StreamCodec.of((buf, ping) -> {
+			if (!contextEncodeReported) {
+				// The first encoding is the splitter's, which measures the packet before vanilla's encoder.
+				contextEncodeReported = true;
+				if (hasContext(true)) TestMod.LOGGER.info("FABRICATED-TEST packet context while encoding OK");
+				else TestMod.LOGGER.error("FABRICATED-TEST packet context while encoding FAILED: {}", PacketContext.get());
+			}
+			buf.writeByteArray(ping.data());
+		}, buf -> new ContextPing(buf.readByteArray(), hasContext(false)));
+
+		@Override
+		public Type<? extends CustomPacketPayload> type() {
+			return TYPE;
+		}
+
+		/** Whether the context holds what Fabric API puts in it: the registries, the profile and, on the server, the server. */
+		private static boolean hasContext(boolean server) {
+			PacketContext context = PacketContext.get();
+			return context != null && context.get(PacketContext.REGISTRY_ACCESS) != null && context.get(PacketContext.GAME_PROFILE) != null
+					&& (!server || context.get(PacketContext.SERVER_INSTANCE) != null);
+		}
+	}
+
 	@Override
 	public void onInitialize() {
 		PayloadTypeRegistry.serverboundPlay().register(Ping.TYPE, Ping.CODEC);
@@ -59,7 +91,11 @@ public final class NetworkingTest implements ModInitializer {
 		PayloadTypeRegistry.serverboundPlay().register(VanillaPing.TYPE, VanillaPing.CODEC);
 		PayloadTypeRegistry.clientboundPlay().register(VanillaPing.TYPE, VanillaPing.CODEC);
 		ServerPlayNetworking.registerGlobalReceiver(VanillaPing.TYPE, (payload, context) -> context.responseSender().sendPacket(new VanillaPing(payload.value() + 1)));
-		ServerPlayConnectionEvents.JOIN.register((listener, sender, server) -> TestMod.LOGGER.info("FABRICATED-TEST networking join event"));
+		PayloadTypeRegistry.clientboundPlay().register(ContextPing.TYPE, ContextPing.CODEC);
+		ServerPlayConnectionEvents.JOIN.register((listener, sender, server) -> {
+			TestMod.LOGGER.info("FABRICATED-TEST networking join event");
+			sender.sendPacket(new ContextPing(new byte[ContextPing.SIZE], false));
+		});
 		if (ServerPlayNetworking.getGlobalReceivers().contains(Ping.TYPE.id())) {
 			TestMod.LOGGER.info("FABRICATED-TEST networking registration OK");
 		}

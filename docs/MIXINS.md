@@ -15,7 +15,7 @@ Fabricated-owned (shipped in `game-mod.jar`, registered in `mc/common/src/main/r
 | Config file | Package | Versions | Sections | defaultRequire | overwrites.requireAnnotations | plugin |
 |---|---|---|---|---|---|---|
 | `mc/1.21.11/src/main/resources/fabricated.mixins.json` | `io.github.cmdralph.fabricated.neoforge.mixin` | 1.21.11 | mixins 52, client 23 | 1 | true | `FabricatedMixinPlugin` (creates Fabric language adapters in `onLoad`; filters nothing) |
-| `mc/common26/src/main/resources/fabricated.mixins.json` | same | 26.1.2, 26.2, 26.3 | mixins 61, client 24 | 1 | true | same |
+| `mc/common26/src/main/resources/fabricated.mixins.json` | same | 26.1.2, 26.2, 26.3 | mixins 62, client 26 | 1 | true | same |
 | `mc/common/src/main/resources/fabricated-fabric-api.mixins.json` | `net.fabricmc.fabric.mixin.networking.accessor` | all | mixins 4 | 1 | true | none |
 | `mc/common/src/main/resources/fabricated-lookup.mixins.json` | `net.fabricmc.fabric.mixin.lookup` | all | mixins 2 (classes in `mc/<v>/src/fabricapi/java`) | 1 | true | none |
 | `mc/common/src/main/resources/fabricated-loot.mixins.json` | `net.fabricmc.fabric.mixin.loot` | all | mixins 5 | 1 | true | none |
@@ -465,7 +465,8 @@ Versions: 26.1.2, 26.2, 26.3 · package `io.github.cmdralph.fabricated.neoforge.
 | mixins | ConnectionMixin | common26 (26.1.2,26.2,26.3) | n.m.network.Connection | no injectors; implements PacketContextProvider; adds methods getPacketContext; @Unique fields fabricated$packetContext | | | | |
 | mixins | ServerCommonPacketListenerImplMixin | common26 (26.1.2,26.2,26.3) | n.m.server.network.ServerCommonPacketListenerImpl | no injectors; implements PacketContextProvider; adds methods getPacketContext | | | | |
 | mixins | ServerPlayerMixin | common26 (26.1.2,26.2,26.3) | n.m.server.level.ServerPlayer | no injectors; implements PacketContextProvider; adds methods getPacketContext | | | | |
-| mixins | ServerLoginPacketListenerImplMixin | common26 (26.1.2,26.2,26.3) | n.m.server.network.ServerLoginPacketListenerImpl | no injectors; implements PacketContextProvider; adds methods getPacketContext | | | | |
+| mixins | ServerLoginPacketListenerImplMixin | common26 (26.1.2,26.2,26.3) | n.m.server.network.ServerLoginPacketListenerImpl | @Inject → fabricated$fillPacketContext; implements PacketContextProvider; adds methods getPacketContext | "<init>" | TAIL | — | default |
+| mixins | ServerLoginPacketListenerImplMixin | common26 (26.1.2,26.2,26.3) | n.m.server.network.ServerLoginPacketListenerImpl | @Inject → fabricated$storeGameProfile | "finishLoginAndWaitForClient" | HEAD | — | default |
 | mixins | ServerConfigurationPacketListenerImplMixin | common26 (26.1.2,26.2,26.3) | n.m.server.network.ServerConfigurationPacketListenerImpl | no injectors; implements FabricServerConfigurationPacketListenerImpl; adds methods addTask, completeTask | | | | |
 | mixins | MinecraftServerMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.server.MinecraftServer | no injectors; implements DataResourceStore; adds methods getOrThrow | | | | |
 | mixins | ChunkGeneratorFeaturesMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.world.level.chunk.ChunkGenerator | @Inject → fabricated$keepNeoForgesLazy | "refreshFeaturesPerStep" | HEAD | — | require=0 |
@@ -518,6 +519,8 @@ Versions: 26.1.2, 26.2, 26.3 · package `io.github.cmdralph.fabricated.neoforge.
 | mixins | VanillaNamespacePayloadMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.server.network.ServerCommonPacketListenerImpl | @Inject → fabricated$receiveVanillaNamespace | "handleCustomPayload(L…/ServerboundCustomPayloadPacket;)V" | HEAD cancellable=true | — | default |
 | mixins | PacketDecoderContextMixin | common26 (26.1.2,26.2,26.3) | n.m.network.PacketDecoder | @WrapMethod → fabricated$withPacketContext | "decode" |  | — | default |
 | mixins | PacketEncoderContextMixin | common26 (26.1.2,26.2,26.3) | n.m.network.PacketEncoder | @WrapMethod → fabricated$withPacketContext | "encode(L…/ChannelHandlerContext;L…/Packet;L…/ByteBuf;)V" |  | — | default |
+| mixins | GenericPacketSplitterContextMixin | common26 (26.1.2,26.2,26.3) | neo.network.filters.GenericPacketSplitter | @WrapMethod → fabricated$encodeWithPacketContext | "encode(L…/ChannelHandlerContext;L…/Packet;L…/List;)V" |  | — | default |
+| mixins | GenericPacketSplitterContextMixin | common26 (26.1.2,26.2,26.3) | neo.network.filters.GenericPacketSplitter | @WrapMethod → fabricated$decodeWithPacketContext | "receivedPacket" |  | — | default |
 | mixins | MenuProviderMixin | common26 (26.1.2,26.2,26.3) | n.m.world.MenuProvider | no injectors; implements FabricMenuProvider | | | | |
 | mixins | ServerPlayerMenuMixin | common26 (26.1.2,26.2,26.3) | n.m.server.level.ServerPlayer | @WrapMethod → fabricated$trackOpener | OPEN_MENU |  | — | default |
 | mixins | ServerPlayerMenuMixin | common26 (26.1.2,26.2,26.3) | n.m.server.level.ServerPlayer | @WrapOperation → fabricated$shouldCloseCurrentScreen | OPEN_MENU | INVOKE `L…/MenuProvider;shouldTriggerClientSideContainerClosingOnOpen()Z` | — | default |
@@ -549,6 +552,8 @@ Versions: 26.1.2, 26.2, 26.3 · package `io.github.cmdralph.fabricated.neoforge.
 | client | client.ClientNetworkAddonHolderMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.client.multiplayer.ClientCommonPacketListenerImpl<br>n.m.client.multiplayer.ClientHandshakePacketListenerImpl | no injectors; implements NetworkAddons.Holder; adds methods fabricated$networkAddon, fabricated$setNetworkAddon; @Unique fields fabricated$networkAddon | | | | |
 | client | client.ClientPayloadSendMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.client.multiplayer.ClientCommonPacketListenerImpl | @Inject → fabricated$dropUnsendableFabricPayload | "send(L…/Packet;)V" | HEAD cancellable=true | — | default |
 | client | client.ClientVanillaNamespacePayloadMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.client.multiplayer.ClientCommonPacketListenerImpl | @Inject → fabricated$receiveVanillaNamespace | "handleCustomPayload(L…/ClientboundCustomPayloadPacket;)V" | HEAD cancellable=true | — | default |
+| client | client.ClientHandshakePacketContextMixin | common26 (26.1.2,26.2,26.3) | n.m.client.multiplayer.ClientHandshakePacketListenerImpl | @Inject → fabricated$storeGameProfile | "handleLoginFinished" | HEAD | — | default |
+| client | client.ClientPacketListenerContextMixin | common26 (26.1.2,26.2,26.3) | n.m.client.multiplayer.ClientPacketListener | @Inject → fabricated$storeRegistries | "<init>" | TAIL | — | default |
 | client | client.SoundEngineStreamMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.client.sounds.SoundEngine | @WrapOperation → fabricated$fabricAudioStream | "play" | INVOKE `L…/SoundInstance;getStream(L…/SoundBufferLibrary;L…/Sound;Z)L…/CompletableFuture;` | — | default |
 | client | client.ParticleResourcesMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.client.particle.ParticleResources | no injectors; non-@Unique fields providers | | | | |
 | client | ClientChunkCacheMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.client.multiplayer.ClientChunkCache | @ModifyExpressionValue → fabricated$unloadOutOfRange | "updateViewRadius" | INVOKE `L…/ClientChunkCache$Storage;inRange(II)Z` sugar:@Local LevelChunk | — | default |

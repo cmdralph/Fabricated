@@ -3,6 +3,21 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-10-21 (pass after PR #57): Fabric's packet context, filled and bound everywhere packets are coded
+
+**Plan.** PR #57's last run showed the 26.2 and 26.3 advanced clients joining their worlds for the first time
+(NET-6), then losing the connection on Fabric's recipe sync, and the 26.1.2 advanced client stopping at its first
+chunk on a feature order cycle.
+
+- NET-7: NeoForge's packet splitter encodes each packet before vanilla's encoder, to measure it, and decodes the
+  packets it reassembles; both now run with the connection's Fabric `PacketContext` bound. The context also holds what
+  Fabric API puts in it: the server and its registries once the server's login listener exists, the player's profile
+  once login succeeds (both sides), and the client's registries once its play listener exists. Polymer's ingredient
+  codec read no context while the splitter measured the recipe sync, which closed the connection, and Polymer warned
+  that chunk packets lacked the registries. The test mod sends a payload large enough to be split, whose codec checks
+  the context on both sides.
+- CI: the client smoke test logs the modules of the libraries LIB-1's bridges reflect on.
+
 ## 2026-10-21 (pass after PR #56): Polymer's handshake, Carpet's Brigadier hooks, and Do a Barrel Roll's jar
 
 **Plan.** PR #56's last run showed every 26.x advanced server starting (ITEMCOMP-1) and the 1.21.11 advanced client

@@ -52,6 +52,14 @@ public final class ClientTestMod implements ClientModInitializer {
 		ClientPlayNetworking.registerGlobalReceiver(NetworkingTest.VanillaPing.TYPE, (payload, context) -> {
 			if (payload.value() == 12) TestMod.LOGGER.info("FABRICATED-TEST minecraft namespace payload round trip OK");
 		});
+		ClientPlayNetworking.registerGlobalReceiver(NetworkingTest.ContextPing.TYPE, (payload, context) -> {
+			if (payload.data().length == NetworkingTest.ContextPing.SIZE && payload.decodedWithContext()) {
+				TestMod.LOGGER.info("FABRICATED-TEST packet context while decoding a large payload OK");
+			} else {
+				TestMod.LOGGER.error("FABRICATED-TEST packet context while decoding a large payload FAILED: {} bytes, context {}", payload.data().length,
+						payload.decodedWithContext());
+			}
+		});
 		ClientPlayNetworking.registerGlobalReceiver(NetworkingTest.Ping.TYPE, (payload, context) -> {
 			if (payload.value() == 42) TestMod.LOGGER.info("FABRICATED-TEST client networking round trip OK");
 		});
