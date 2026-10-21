@@ -28,6 +28,8 @@ import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.AnnotationNode;
 import org.objectweb.asm.tree.ClassNode;
+import org.objectweb.asm.tree.InsnNode;
+import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
 import org.objectweb.asm.tree.VarInsnNode;
 
@@ -1184,6 +1186,142 @@ class MixinPreflightTest {
 			assertEquals(1, moved.size(), moved.toString());
 			assertTrue(moved.getFirst().message().startsWith("@Inject inject expects a call to"), moved.toString());
 		}
+	}
+
+	/**
+	 * One more float among floats can't be told by types: NeoForge's patched {@code Camera} keeps {@code setRotation(FF)},
+	 * forwarding {@code (yRot, xRot, 0F)} to {@code setRotation(FFF)}, which says the roll is the added one (VANILLA-1, Do a
+	 * Barrel Roll's camera hooks).
+	 */
+	@Test
+	void anAddedArgumentOfTheSameTypeIsToldByTheMethodForwardingToTheOverload() {
+		ClassNode camera = new ClassNode();
+		camera.name = TARGET;
+		camera.methods.add(forwarder(Opcodes.ALOAD, 0, Opcodes.FLOAD, 1, Opcodes.FLOAD, 2, Opcodes.FCONST_0, -1));
+		assertEquals(-1, MixinPreflight.insertedArgument("(FF)V", "(FFF)V"));
+		assertEquals(2, MixinPreflight.insertedArgument(camera, "setRotation", "(FF)V", "(FFF)V"));
+
+		camera.methods.set(0, forwarder(Opcodes.ALOAD, 0, Opcodes.FCONST_0, -1, Opcodes.FLOAD, 1, Opcodes.FLOAD, 2));
+		assertEquals(0, MixinPreflight.insertedArgument(camera, "setRotation", "(FF)V", "(FFF)V"), "the default first");
+		camera.methods.set(0, forwarder(Opcodes.ALOAD, 0, Opcodes.FLOAD, 2, Opcodes.FLOAD, 1, Opcodes.FCONST_0, -1));
+		assertEquals(-1, MixinPreflight.insertedArgument(camera, "setRotation", "(FF)V", "(FFF)V"), "its parameters out of order");
+		assertEquals(-1, MixinPreflight.insertedArgument(new ClassNode(), "setRotation", "(FF)V", "(FFF)V"), "no such method");
+	}
+
+	/** {@code Camera.setRotation(FF)} forwarding to {@code setRotation(FFF)} with these (opcode, operand) pushes; -1: none. */
+	private static MethodNode forwarder(int... pushes) {
+		MethodNode method = new MethodNode(Opcodes.ACC_PROTECTED, "setRotation", "(FF)V", null, null);
+		for (int i = 0; i < pushes.length; i += 2) {
+			method.instructions.add(pushes[i + 1] < 0 ? new InsnNode(pushes[i]) : new VarInsnNode(pushes[i], pushes[i + 1]));
+		}
+		method.instructions.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL, TARGET, "setRotation", "(FFF)V"));
+		method.instructions.add(new InsnNode(Opcodes.RETURN));
+		return method;
+	}
+
+	/** MixinExtras reads an expression point's {@code @Expression} and {@code @Definition}s from the injector's method. */
+	@Test
+	void aBridgedHandlersExpressionMovesWithItsInjector() {
+		MethodNode handler = new MethodNode(Opcodes.ACC_PRIVATE, "onTick", "(" + CALLBACK_INFO + ")V", null, null);
+		AnnotationNode inject = new AnnotationNode(INJECT);
+		AnnotationNode expression = new AnnotationNode("Lcom/llamalad7/mixinextras/expression/Expression;");
+		AnnotationNode definition = new AnnotationNode("Lcom/llamalad7/mixinextras/expression/Definition;");
+		handler.invisibleAnnotations = new ArrayList<>(List.of(inject, expression, definition));
+		MethodNode bridge = new MethodNode(Opcodes.ACC_PRIVATE, "onTick$fabricated", handler.desc, null, null);
+
+		HandlerBridges.moveInjector(handler, inject, bridge);
+
+		assertEquals(List.of(inject, expression, definition), bridge.invisibleAnnotations);
+		assertTrue(handler.invisibleAnnotations.isEmpty(), handler.invisibleAnnotations.toString());
+	}
+
+	/**
+	 * Whether a handler shares the mixin's state with its other injectors is judged on the mixin as the mod wrote it: a
+	 * repair moving an earlier handler's injector to a bridge doesn't make a later handler sharing its field independent.
+	 * Here the condition at {@code helper(I)V} moves to the overload NeoForge calls instead, and the {@code @Inject} at
+	 * {@code other(I)V}, a call NeoForge moved into its hook, reads what the condition keeps: it stays.
+	 */
+	@Test
+	void aHandlerSharingStateWithOneAnEarlierRepairBridgedStays() throws Exception {
+		String thing = "L" + TARGET + ";";
+		ClassWriter target = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		target.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		MethodVisitor tick = target.visitMethod(Opcodes.ACC_PUBLIC, "tick", "()V", null, null);
+		tick.visitCode();
+		tick.visitVarInsn(Opcodes.ALOAD, 0);
+		tick.visitInsn(Opcodes.ICONST_0);
+		tick.visitInsn(Opcodes.ACONST_NULL);
+		tick.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "helper", "(ILjava/lang/String;)V", false);
+		tick.visitVarInsn(Opcodes.ALOAD, 0);
+		tick.visitInsn(Opcodes.ICONST_0);
+		tick.visitMethodInsn(Opcodes.INVOKESTATIC, HOOKS, "draw", "(" + thing + "I)V", false);
+		tick.visitInsn(Opcodes.RETURN);
+		tick.visitMaxs(0, 0);
+		tick.visitEnd();
+		for (String[] member : new String[][] {{"helper", "(ILjava/lang/String;)V"}, {"other", "(I)V"}}) {
+			MethodVisitor mv = target.visitMethod(Opcodes.ACC_PUBLIC, member[0], member[1], null, null);
+			mv.visitCode();
+			mv.visitInsn(Opcodes.RETURN);
+			mv.visitMaxs(0, 0);
+			mv.visitEnd();
+		}
+		target.visitEnd();
+		ClassWriter hooks = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		hooks.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, HOOKS, null, "java/lang/Object", null);
+		MethodVisitor draw = hooks.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "draw", "(" + thing + "I)V", null, null);
+		draw.visitCode();
+		draw.visitVarInsn(Opcodes.ALOAD, 0);
+		draw.visitVarInsn(Opcodes.ILOAD, 1);
+		draw.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "other", "(I)V", false);
+		draw.visitInsn(Opcodes.RETURN);
+		draw.visitMaxs(0, 0);
+		draw.visitEnd();
+		hooks.visitEnd();
+		ClassIndex neoForge = new ClassIndex(Map.of(TARGET, target.toByteArray(), HOOKS, hooks.toByteArray())::get);
+
+		byte[] mixin = mixin("com/example/mixin/Shared", false, cw -> {
+			cw.visitField(Opcodes.ACC_PRIVATE, "context", "Ljava/lang/Object;", null, null).visitEnd();
+			atHelperCall(cw, "Lcom/llamalad7/mixinextras/injector/v2/WrapWithCondition;", "keep", "(" + thing + "I)Z", mv -> {
+				mv.visitVarInsn(Opcodes.ALOAD, 0);
+				mv.visitInsn(Opcodes.ACONST_NULL);
+				mv.visitFieldInsn(Opcodes.PUTFIELD, "com/example/mixin/Shared", "context", "Ljava/lang/Object;");
+				mv.visitInsn(Opcodes.ICONST_1);
+				mv.visitInsn(Opcodes.IRETURN);
+				mv.visitMaxs(2, 3);
+				mv.visitEnd();
+			});
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "read", "(" + CALLBACK_INFO + ")V", null, null);
+			AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "tick");
+			methods.visitEnd();
+			AnnotationVisitor ats = ann.visitArray("at");
+			AnnotationVisitor at = ats.visitAnnotation(null, AT);
+			at.visit("value", "INVOKE");
+			at.visit("target", "L" + TARGET + ";other(I)V");
+			at.visitEnd();
+			ats.visitEnd();
+			ann.visitEnd();
+			mv.visitCode();
+			mv.visitVarInsn(Opcodes.ALOAD, 0);
+			mv.visitFieldInsn(Opcodes.GETFIELD, "com/example/mixin/Shared", "context", "Ljava/lang/Object;");
+			mv.visitInsn(Opcodes.POP);
+			mv.visitInsn(Opcodes.RETURN);
+			mv.visitMaxs(1, 2);
+			mv.visitEnd();
+		});
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Shared"));
+		List<PreflightFinding> notes = new ArrayList<>();
+		Map<String, byte[]> repaired = preflight(neoForge, Map.of("com/example/mixin/Shared", mixin)::get, ClassBytesSource.EMPTY, false)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
+
+		assertEquals(1, notes.size(), notes.toString());
+		assertTrue(notes.getFirst().message().contains("helper"), notes.toString());
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired.get("com/example/mixin/Shared.class")).accept(node, 0);
+		MethodNode read = node.methods.stream().filter(m -> m.name.equals("read")).findFirst().orElseThrow();
+		AnnotationNode point = Annotations.list(Annotations.value(Annotations.find(read, INJECT), "at")).getFirst();
+		assertEquals("L" + TARGET + ";other(I)V", Annotations.value(point, "target"), "the hook's call isn't taken for it");
 	}
 
 	@Test

@@ -2,6 +2,7 @@ package io.github.cmdralph.fabricated.core.mixin;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Iterator;
 import java.util.List;
 
 import org.objectweb.asm.Handle;
@@ -30,6 +31,8 @@ import io.github.cmdralph.fabricated.core.bytecode.Annotations;
 final class HandlerBridges {
 	/** The package of MixinExtras' sugar annotations ({@code @Local}, {@code @Share}, {@code @Cancellable}). */
 	private static final String SUGAR = "Lcom/llamalad7/mixinextras/sugar/";
+	/** {@code @Expression}, {@code @Definition} and {@code @Definitions}. */
+	private static final String EXPRESSION_PACKAGE = "Lcom/llamalad7/mixinextras/expression/";
 	private static final String COERCE = "Lorg/spongepowered/asm/mixin/injection/Coerce;";
 
 	private HandlerBridges() {
@@ -266,9 +269,11 @@ final class HandlerBridges {
 	}
 
 	/**
-	 * Moves the injector annotation from {@code handler} to {@code bridge}; {@code handler} stays a plain method of the
-	 * mixin, private (Mixin takes no other static methods) and {@code @Unique}, so that Mixin renames it rather than
-	 * merging it over a method of the same name another mixin added (as an injector, Mixin gave it a name of its own).
+	 * Moves the injector annotation from {@code handler} to {@code bridge}, with the MixinExtras expression's
+	 * {@code @Expression} and {@code @Definition}s, which MixinExtras reads from the injector's method; {@code handler}
+	 * stays a plain method of the mixin, private (Mixin takes no other static methods) and {@code @Unique}, so that Mixin
+	 * renames it rather than merging it over a method of the same name another mixin added (as an injector, Mixin gave it
+	 * a name of its own).
 	 */
 	static void moveInjector(MethodNode handler, AnnotationNode injector, MethodNode bridge) {
 		handler.access = handler.access & ~(Opcodes.ACC_PUBLIC | Opcodes.ACC_PROTECTED) | Opcodes.ACC_PRIVATE;
@@ -281,6 +286,21 @@ final class HandlerBridges {
 		} else if (handler.invisibleAnnotations != null && handler.invisibleAnnotations.remove(injector)) {
 			bridge.invisibleAnnotations = new ArrayList<>(List.of(injector));
 		}
+		bridge.visibleAnnotations = withExpression(handler.visibleAnnotations, bridge.visibleAnnotations);
+		bridge.invisibleAnnotations = withExpression(handler.invisibleAnnotations, bridge.invisibleAnnotations);
+	}
+
+	/** {@code to} with the expression annotations taken out of {@code from}. */
+	private static List<AnnotationNode> withExpression(List<AnnotationNode> from, List<AnnotationNode> to) {
+		if (from == null || from.stream().noneMatch(a -> a.desc.startsWith(EXPRESSION_PACKAGE))) return to;
+		List<AnnotationNode> moved = to == null ? new ArrayList<>() : to;
+		for (Iterator<AnnotationNode> it = from.iterator(); it.hasNext(); ) {
+			AnnotationNode a = it.next();
+			if (!a.desc.startsWith(EXPRESSION_PACKAGE)) continue;
+			it.remove();
+			moved.add(a);
+		}
+		return moved;
 	}
 
 	/**
