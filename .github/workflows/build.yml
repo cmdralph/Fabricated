@@ -675,6 +675,11 @@ jobs:
             if [ -f "$report" ]; then
               echo "-- disabled mods:"
               awk '/^== Disabled Fabric mods/ { show = 1; next } /^$/ { show = 0 } show && /^  [^ ]/ { id = $1 } show && /^      / && !/^      Fix:/ && id { print "  " id ": " substr($0, 7); id = "" }' "$report" | cut -c1-260
+              # Which mods' entrypoints failed, and which ran long (a mod whose content is missing shows whether it ran).
+              echo "-- entrypoint failures:"
+              awk '/^== Entrypoint failures/ { show = 1; next } /^$/ { show = 0 } show' "$report" | cut -c1-260 | head -20
+              echo "-- slow entrypoints:"
+              awk '/^== Slow entrypoints/ { show = 1; next } /^$/ { show = 0 } show' "$report" | head -25
             fi
             digest "$log"
             if ! grep -q -E 'Done \([0-9.]+s\)!' "$log"; then
