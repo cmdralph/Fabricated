@@ -3,6 +3,27 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-10-21 (pass after PR #62): Fabric API's client modules in a gate, HUD elements, Freecam on 1.21.11
+
+**Plan.** PR #62's last run (`1810c80`) moved Polymer's codec hook and three of Ledger's hooks on 1.21.11, with every
+client in its world. The test mods check Fabric's renderer and model loading APIs in the world, but none of the client
+modules nearly every client mod uses (key mappings, HUD elements, screen events, client commands), which Fabricated
+passes through with some of their mixins left out and bridged from NeoForge's events instead. Of the advanced corpus,
+Freecam is still disabled on 1.21.11 for its MixinExtras requirement alone.
+
+- CI: on 26.x, the Fabric API client run's test mod registers a key mapping, two HUD elements (one added last, one
+  attached after chat), screen init and draw listeners and a client command; a new gate step requires each to have
+  worked once the player is in the world. A HUD element is reported the first time it is drawn: the first run checked
+  40 ticks after joining, while the world's loading screen could still hide the HUD.
+- HUD-1: Fabric HUD elements attached before or after a vanilla element (and replacements and removals of one) were
+  never drawn on NeoForge: upstream keeps the vanilla elements' roots by identity, and Fabricated's HUD bridge looked
+  them up with equal ids of its own. It now uses upstream's `VanillaHudElements` constants. Found by the new gate.
+- MIXEXT-2: a mixin config asking for MixinExtras 0.5.4 or 0.5.5 on NeoForge 1.21.11's 0.5.3 asks for 0.5.3 instead, as
+  those releases only fixed bugs its mixins run the same without, unless it has a `@Redirect` at several injection
+  points. Freecam asks for the version it is built with: on `2380938` it loads on 1.21.11, none of its hooks left out,
+  with the advanced client in its world.
+- Roadmap: CAPTURE-1 and LAMBDA-4 recorded as seen on `1810c80`.
+
 ## 2026-10-21 (pass after PR #61): what NeoForge's 1.21.11 build names otherwise
 
 **Plan.** PR #61's last run (`8c7718c`) moved architectury's entity and explosion events, Carpet's fill updates and

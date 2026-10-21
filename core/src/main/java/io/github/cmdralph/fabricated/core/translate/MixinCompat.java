@@ -36,6 +36,9 @@ public final class MixinCompat {
 	private static final String FABRIC_FALLBACK = "0.9.2";
 	private static final Version ENUM_EXTENSIONS = parse("0.17.1");
 	private static final Version MISSING_TARGETS_FATAL = parse("0.17.4");
+	/** The MixinExtras release NeoForge 21.11 ships, and the last of those after it that only fixed bugs (MIXEXT-2). */
+	private static final Version BEFORE_FIX_RELEASES = parse("0.5.3");
+	private static final Version LAST_FIX_RELEASE = parse("0.5.5");
 
 	private MixinCompat() {
 	}
@@ -96,6 +99,23 @@ public final class MixinCompat {
 	public static boolean needsNewerMixinExtras(String required, String running) {
 		try {
 			return VersionParser.parse(required, false).compareTo(VersionParser.parse(running, false)) > 0;
+		} catch (VersionParsingException e) {
+			return false;
+		}
+	}
+
+	/**
+	 * Whether the MixinExtras releases after the running one, up to the {@code required} one, only fixed bugs that leave a
+	 * config's mixins running as they would with it, with one exception the caller checks: a {@code @Redirect} whose
+	 * {@code at} is an array of several points (MIXEXT-2). From their commits: 0.5.4 keeps {@code @Local} contexts per
+	 * Fabric compatibility level, in a cache every config on the running MixinExtras shares whatever it asks for; 0.5.5
+	 * reads a {@code @Redirect}'s {@code at} written as an array, as mods built against Fabric's Mixin 0.17.4 have it
+	 * (MIX-1 makes an array of one a single point, which 0.5.3 reads). Releases after 0.5.5 are not known here.
+	 */
+	public static boolean onlyFixesUpTo(String required, String running) {
+		try {
+			return VersionParser.parse(running, false).compareTo(BEFORE_FIX_RELEASES) >= 0
+					&& VersionParser.parse(required, false).compareTo(LAST_FIX_RELEASE) <= 0;
 		} catch (VersionParsingException e) {
 			return false;
 		}

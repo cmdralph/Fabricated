@@ -229,6 +229,33 @@ jobs:
             grep -n -m 40 -E "frapi|FabricBlockRendering|RenderMixin|SectionCompiler|/(ERROR|FATAL)\]" "$log" || true
             exit 1
           fi
+      # Fabric API's client modules most client mods use, passed through from the Fabric API jar: the test mod's key
+      # mapping must be in the game's options, its HUD elements drawn (one attached after chat, from NeoForge's HUD
+      # layer, one added last), a screen's init and draw events fired (the draw event from NeoForge's screen render
+      # events) and its client commands registered on joining the world. A gate.
+      - name: Fabric API client modules (26.x)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && startsWith(matrix.minecraft, '26.') }}
+        run: |
+          log="$RUNNER_TEMP/client-fapi/run/logs/latest.log"
+          failed=0
+          check() {
+            if grep -h "FABRICATED-TEST $1" "$log"; then
+              echo "PASS: $2"
+            else
+              echo "::error::FAIL: $2 (no \"$1\" line)"
+              failed=1
+            fi
+          }
+          check "key mapping OK" "a Fabric key mapping is in the game's options"
+          check "hud element OK" "a Fabric HUD element added last was drawn (upstream's subtitle overlay mixin)"
+          check "hud element after chat OK" "a Fabric HUD element attached after chat was drawn (from NeoForge's chat layer)"
+          check "screen init event OK" "a screen's initialization fired Fabric's event"
+          check "screen draw event OK" "a screen's drawing fired Fabric's event"
+          check "client commands OK" "Fabric's client commands were registered on joining the world"
+          if [ "$failed" = 1 ]; then
+            grep -n -m 40 -E "testmod_frapi|HudBridge|ScreenRenderBridge|/(ERROR|FATAL)\]" "$log" || true
+            exit 1
+          fi
       # Fabric's model loading and renderer APIs on 1.21.11: a model file of a Fabric type must be read by the test
       # mod's Fabric deserializer, the baked extra models reach the model manager (CORPUS-6), and Fabric block models,
       # alone and inside a vanilla multipart model, are meshed into chunk sections. A gate.

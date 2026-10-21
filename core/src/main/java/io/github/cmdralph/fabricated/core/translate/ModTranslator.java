@@ -36,6 +36,7 @@ import org.objectweb.asm.commons.ClassRemapper;
 import org.objectweb.asm.commons.Remapper;
 import org.objectweb.asm.tree.AnnotationNode;
 import org.objectweb.asm.tree.ClassNode;
+import org.objectweb.asm.tree.MethodNode;
 
 import io.github.cmdralph.fabricated.core.accesswidener.AccessTransformerConverter;
 import io.github.cmdralph.fabricated.core.accesswidener.AccessWidenerException;
@@ -81,6 +82,7 @@ public final class ModTranslator {
 	static final String PACK_METADATA = "pack.mcmeta";
 	/** The key NeoForge reads a data file's or entry's conditions from; Fabric reads none there. */
 	private static final String NEOFORGE_CONDITIONS = "neoforge:conditions";
+	private static final String REDIRECT = "Lorg/spongepowered/asm/mixin/injection/Redirect;";
 	/** A NeoForge biome or structure modifier, which NeoForge applies from any jar and Fabric never reads (MODIFIER-1). */
 	private static final Pattern NEOFORGE_MODIFIER = Pattern.compile("(^|.*/)data/[^/]+/neoforge/(biome_modifier|structure_modifier)/.+\\.json");
 	/**
@@ -390,11 +392,14 @@ public final class ModTranslator {
 			}
 			MixinConfigFile config;
 			Refmap refmap = Refmap.EMPTY;
+			boolean rewritten;
 			try {
 				config = MixinConfigFile.parse(new String(data, StandardCharsets.UTF_8));
 				byte[] parentData = config.parent() != null ? files.read(config.parent()) : null;
 				MixinConfigFile parent = parentData != null ? MixinConfigFile.parse(new String(parentData, StandardCharsets.UTF_8)) : null;
-				checkMixinExtras(candidate, entry.config(), config, parent);
+				MixinConfigFile asked = config;
+				config = checkMixinExtras(candidate, entry.config(), config, parent, entries, classes, notes);
+				rewritten = config != asked;
 				if (parent != null) config = config.inheriting(parent);
 				if (config.refmap() != null) {
 					byte[] refmapData = files.read(config.refmap());
@@ -451,7 +456,7 @@ public final class ModTranslator {
 				leaveOutHandlers(handlers, translated, overlay);
 				if (leftOut.size() > skip.size()) skip = withDependents(entry.config(), config, leftOut, translated, findings, ducks.keySet());
 			}
-			if (!skip.isEmpty()) {
+			if (!skip.isEmpty() || rewritten) {
 				overlay.put(entry.config(), config.withoutMixins(skip).getBytes(StandardCharsets.UTF_8));
 			}
 			// The interfaces the kept mixins add to their targets.
@@ -944,16 +949,47 @@ public final class ModTranslator {
 
 	/**
 	 * A mixin config asking for a newer MixinExtras than NeoForge ships ({@code mixinextras.minVersion}, which a config
-	 * takes from its parent when it sets none) would stop the game as MixinExtras reads it: the mod is disabled instead
-	 * (MIXEXT-1, Freecam on NeoForge 21.11, which ships 0.5.3).
+	 * takes from its parent when it sets none) would stop the game as MixinExtras reads it. When the releases in between
+	 * only fixed bugs its mixins run the same without ({@link MixinCompat#onlyFixesUpTo}), it asks for NeoForge's instead
+	 * (MIXEXT-2: Freecam, which asks for the MixinExtras it is built with); otherwise the mod is disabled (MIXEXT-1, on
+	 * NeoForge 21.11, which ships 0.5.3). Returns the config as it will load.
 	 */
-	private void checkMixinExtras(Candidate candidate, String configName, MixinConfigFile config, MixinConfigFile parent) throws TranslationException {
+	private MixinConfigFile checkMixinExtras(Candidate candidate, String configName, MixinConfigFile config, MixinConfigFile parent,
+			Collection<String> entries, Function<String, ClassNode> classes, List<String> notes) throws TranslationException {
 		Object settings = config.tree().containsKey("mixinextras") || parent == null ? config.tree().get("mixinextras") : parent.tree().get("mixinextras");
-		if (env.mixinExtrasVersion() == null || !(settings instanceof Map<?, ?> map) || !(map.get("minVersion") instanceof String required)
-				|| !MixinCompat.needsNewerMixinExtras(required, env.mixinExtrasVersion())) return;
+		String running = env.mixinExtrasVersion();
+		if (running == null || !(settings instanceof Map<?, ?> map) || !(map.get("minVersion") instanceof String required)
+				|| !MixinCompat.needsNewerMixinExtras(required, running)) return config;
+		boolean fixesOnly = MixinCompat.onlyFixesUpTo(required, running);
+		String severalPoints = fixesOnly ? redirectAtSeveralPoints(config, entries, classes) : null;
+		if (fixesOnly && severalPoints == null) {
+			notes.add("Its mixin config " + configName + " asks for MixinExtras " + required + "; it runs with NeoForge's " + running
+					+ ", as the releases since only fixed bugs its mixins don't meet");
+			return config.requiringMixinExtras(running);
+		}
+		String why = severalPoints != null ? " (" + severalPoints + " has a @Redirect at several injection points, which MixinExtras reads from 0.5.5)" : "";
 		throw new TranslationException(candidate.id() + "'s mixin config " + configName + " requires MixinExtras " + required
-				+ " or later; this NeoForge ships MixinExtras " + env.mixinExtrasVersion(),
+				+ " or later; this NeoForge ships MixinExtras " + running + why,
 				"Update NeoForge if a newer build ships it, or use a build of " + candidate.id() + " made for this one.");
+	}
+
+	/**
+	 * A class in the config's package (its listed mixins and those its plugin may add) with a {@code @Redirect} whose
+	 * {@code at} is an array of several points, which MixinExtras reads only from 0.5.5 (an array of one becomes a single
+	 * point, MIX-1), dotted; or null.
+	 */
+	private static String redirectAtSeveralPoints(MixinConfigFile config, Collection<String> entries, Function<String, ClassNode> classes) {
+		String prefix = config.internalName("");
+		for (String entry : entries) {
+			if (!entry.startsWith(prefix) || !entry.endsWith(".class")) continue;
+			ClassNode node = classes.apply(entry.substring(0, entry.length() - ".class".length()));
+			if (node == null) continue;
+			for (MethodNode method : node.methods) {
+				AnnotationNode redirect = Annotations.find(method, REDIRECT);
+				if (redirect != null && Annotations.value(redirect, "at") instanceof List<?> points && points.size() > 1) return node.name.replace('/', '.');
+			}
+		}
+		return null;
 	}
 
 	/**

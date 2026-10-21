@@ -62,6 +62,17 @@ public record MixinConfigFile(
 				parent, overwritesRequireAnnotations);
 	}
 
+	/** This config asking for MixinExtras {@code version} ({@code mixinextras.minVersion}), whatever it or its parent asked for. */
+	public MixinConfigFile requiringMixinExtras(String version) {
+		Map<String, Object> copy = new LinkedHashMap<>(tree);
+		Map<String, Object> settings = new LinkedHashMap<>();
+		if (copy.get("mixinextras") instanceof Map<?, ?> map) map.forEach((key, value) -> settings.put(String.valueOf(key), value));
+		settings.put("minVersion", version);
+		copy.put("mixinextras", settings);
+		return new MixinConfigFile(copy, mixinPackage, common, client, server, refmap, required, plugin, defaultRequire, parent,
+				overwritesRequireAnnotations);
+	}
+
 	private static String optString(Map<String, Object> tree, String key) throws JsonException {
 		Object v = tree.get(key);
 		if (v == null) return null;
