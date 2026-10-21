@@ -54,6 +54,9 @@ luckperms
 polymer
 servercore
 
-# Libraries many of these use
+# Libraries many of these use (TerraBlender and GlitchCore for Biomes O' Plenty, whose builds don't list them as
+# required, so they aren't fetched with it)
 fzzy-config
+glitchcore
 midnightlib
+terrablender
