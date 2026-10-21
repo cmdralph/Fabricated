@@ -80,6 +80,10 @@ public final class ModTranslator {
 	static final String PACK_METADATA = "pack.mcmeta";
 	/** The key NeoForge reads a data file's or entry's conditions from; Fabric reads none there. */
 	private static final String NEOFORGE_CONDITIONS = "neoforge:conditions";
+	/** A NeoForge biome or structure modifier, which NeoForge applies from any jar and Fabric never reads (MODIFIER-1). */
+	private static final Pattern NEOFORGE_MODIFIER = Pattern.compile("(^|.*/)data/[^/]+/neoforge/(biome_modifier|structure_modifier)/.+\\.json");
+	/** NeoForge's modifier that does nothing, which a data pack uses to turn another off. */
+	private static final byte[] NONE_MODIFIER = "{\"type\": \"neoforge:none\"}\n".getBytes(StandardCharsets.UTF_8);
 	private static final Pattern INTERMEDIARY_CLASS = Pattern.compile("net/minecraft/class_\\d+(\\$.*)?");
 
 	/** Heap a translation may count on, in MiB: a quarter of the maximum, shared by all translations at once. */
@@ -165,6 +169,7 @@ public final class ModTranslator {
 				if (!enumEntries.isEmpty()) overlay.put(EnumExtensions.PATH, EnumExtensions.json(enumEntries).getBytes(StandardCharsets.UTF_8));
 
 				int conditioned = 0;
+				int modifiers = 0;
 				for (String name : view != null ? view.keySet() : archive.entryNames()) {
 					// The mod's own pack.mcmeta, and its built-in packs' (resourcepacks/<name>/pack.mcmeta, Tectonic's, PACK-4).
 					if (name.equals(PACK_METADATA) || name.endsWith("/" + PACK_METADATA)) {
@@ -176,6 +181,13 @@ public final class ModTranslator {
 						continue;
 					}
 					if (!name.endsWith(".json") || !name.startsWith("data/") && !name.contains("/data/")) continue;
+					// Its NeoForge build's biome and structure modifiers would add, on NeoForge, what its Fabric code adds
+					// too (YUNG's Extras' desert decorations, twice in a Biomes O' Plenty desert: a feature order cycle).
+					if (NEOFORGE_MODIFIER.matcher(name).matches()) {
+						overlay.put(name, NONE_MODIFIER);
+						modifiers++;
+						continue;
+					}
 					byte[] data = view != null ? view.get(name) : archive.read(name);
 					byte[] fabricData = data == null ? null : withoutNeoForgeConditions(data);
 					if (fabricData == null) continue;
@@ -184,6 +196,9 @@ public final class ModTranslator {
 				}
 				if (conditioned > 0) {
 					notes.add(conditioned + " data file(s) have conditions for NeoForge (its NeoForge build's), which Fabric ignores; left out");
+				}
+				if (modifiers > 0) {
+					notes.add(modifiers + " NeoForge biome or structure modifier(s) (its NeoForge build's), which Fabric ignores; turned off");
 				}
 
 				List<InjectedInterface> injections = List.of();

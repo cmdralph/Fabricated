@@ -1010,14 +1010,19 @@ class PipelineTest {
 	}
 
 	@Test
-	void aFabricJarsDataLosesItsNeoForgeBuildsConditions(@TempDir Path game) throws Exception {
+	void aFabricJarsDataLosesItsNeoForgeBuildsConditionsAndModifiers(@TempDir Path game) throws Exception {
 		// DATA-1: Tectonic's Fabric jar carries its NeoForge build's conditions, whose type only that build registers.
 		String modifier = "data/tectonic/lithostitched/worldgen_modifier/lanterns.json";
 		String plain = "data/tectonic/worldgen/noise/plain.json";
 		// PACK-4: and its built-in pack's pack.mcmeta has overlays gated by them.
 		String builtinMetadata = "resourcepacks/tectonic/pack.mcmeta";
+		// MODIFIER-1: YUNG's Extras' Fabric jar carries its NeoForge build's biome modifiers, adding what its Fabric code adds.
+		String biomeModifier = "data/tectonic/neoforge/biome_modifier/desert_decorations.json";
+		String structureModifier = "data/tectonic/neoforge/structure_modifier/swamp_structures.json";
 		Path mods = Files.createDirectories(game.resolve("mods"));
 		Path tectonic = TestJars.create().fabricModJson(TestJars.modJson("tectonic", "1.0", ""))
+				.text(biomeModifier, "{\"type\": \"neoforge:add_features\", \"biomes\": \"#c:is_desert\", \"features\": \"tectonic:bush\", \"step\": \"vegetal_decoration\"}")
+				.text(structureModifier, "{\"type\": \"neoforge:add_spawns\"}")
 				.text(modifier, "{\"neoforge:conditions\": [{\"type\": \"tectonic:config\"}], \"type\": \"lithostitched:add_features\"}")
 				.text(plain, "{\"amplitudes\": [1.0]}")
 				.text(builtinMetadata, "{\"pack\": {\"pack_format\": 48}, \"neoforge:overlays\": {\"entries\": [{\"directory\": \"increased_height\","
@@ -1029,6 +1034,8 @@ class PipelineTest {
 			assertEquals(Map.of("type", "lithostitched:add_features"), Json.parseObject(overlay.readText(modifier)));
 			assertNull(overlay.read(plain), "a file without them is the jar's own");
 			assertEquals(Json.parseObject("{\"pack\": {\"pack_format\": 48}}"), Json.parseObject(overlay.readText(builtinMetadata)));
+			assertEquals(Map.of("type", "neoforge:none"), Json.parseObject(overlay.readText(biomeModifier)), "the NeoForge build's biome modifier is turned off");
+			assertEquals(Map.of("type", "neoforge:none"), Json.parseObject(overlay.readText(structureModifier)));
 		}
 	}
 
