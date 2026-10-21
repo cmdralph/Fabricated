@@ -14,6 +14,8 @@ payload codec, the 26.3 advanced server on Fabric's default component event.
   protocol and direction. Polymer's codec hooks were left out, and its hello payload then failed to encode.
 - ITEMCOMP-1: on 26.x, Fabric's default component changes run once the items' components are bound, as upstream runs
   them, not in NeoForge's event before the binding: Wover's predicate reads an item's components.
+- SIG-1: LAMBDA-3's bridge also takes a method NeoForge gave more parameters after the ones a handler takes (Ledger's
+  fire logging, `FireBlock.checkBurnOut` with a face).
 - CI: the mixin diagnostics also print the overlays they found and the report's lines on the mixin (CORPUS-18).
 
 ## 2026-10-21 (pass after PR #54): lambdas NeoForge's patches change, and MixinExtras requirements

@@ -693,9 +693,14 @@ class MixinPreflightTest {
 
 	/** {@link #TARGET} with a static lambda body {@code lambda$load$1} of descriptor {@code desc}, as javac names one. */
 	private static byte[] withLambda(String desc) {
+		return withStaticMethod("lambda$load$1", desc);
+	}
+
+	/** {@link #TARGET} with an empty private static method {@code name} of descriptor {@code desc}. */
+	private static byte[] withStaticMethod(String name, String desc) {
 		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
 		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
-		MethodVisitor lambda = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, "lambda$load$1", desc, null, null);
+		MethodVisitor lambda = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, name, desc, null, null);
 		lambda.visitCode();
 		lambda.visitInsn(Opcodes.RETURN);
 		lambda.visitMaxs(0, 0);
@@ -709,12 +714,17 @@ class MixinPreflightTest {
 	 * and the callback info, and passes the ones at {@code used} to {@code String.valueOf}.
 	 */
 	private static byte[] capturingMixin(List<Type> params, int... used) {
+		return capturingMixin("lambda$load$1", params, used);
+	}
+
+	/** {@link #capturingMixin(List, int...)} into {@code method}. */
+	private static byte[] capturingMixin(String method, List<Type> params, int... used) {
 		return mixin("com/example/mixin/Captures", false, cw -> {
 			String desc = Type.getMethodDescriptor(Type.VOID_TYPE, java.util.stream.Stream.concat(params.stream(), java.util.stream.Stream.of(Type.getType(CALLBACK_INFO))).toArray(Type[]::new));
 			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "h", desc, null, null);
 			AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
 			AnnotationVisitor methods = ann.visitArray("method");
-			methods.visit(null, "lambda$load$1");
+			methods.visit(null, method);
 			methods.visitEnd();
 			AnnotationVisitor ats = ann.visitArray("at");
 			AnnotationVisitor at = ats.visitAnnotation(null, "Lorg/spongepowered/asm/mixin/injection/At;");
@@ -891,6 +901,17 @@ class MixinPreflightTest {
 		Map<String, byte[]> readsAList = Map.of("com/example/mixin/Captures", capturingMixin(List.of(list, list, string, integer), 1));
 		assertTrue(preflight(game, readsAList::get, ClassBytesSource.EMPTY, false)
 				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty(), "which list is which is not known");
+
+		// SIG-1: a method NeoForge gave one more parameter (Ledger's FireBlock.checkBurnOut, which takes a face too) is bridged
+		// in order; its parameters are not matched by type, as only a lambda's captured values are reordered.
+		ClassIndex withFace = new ClassIndex(Map.of(TARGET, withStaticMethod("checkBurnOut", Type.getMethodDescriptor(Type.VOID_TYPE, list, string, integer, Type.BOOLEAN_TYPE)))::get);
+		List<PreflightFinding> burnNotes = new ArrayList<>();
+		assertNotNull(preflight(withFace, Map.of("com/example/mixin/Captures", capturingMixin("checkBurnOut", List.of(list, string, integer), 1))::get,
+				ClassBytesSource.EMPTY, false).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), burnNotes).get("com/example/mixin/Captures.class"));
+		assertTrue(burnNotes.getFirst().message().contains("which this game build declares with more parameters"), burnNotes.toString());
+		ClassIndex reordered = new ClassIndex(Map.of(TARGET, withStaticMethod("checkBurnOut", neoForgeOrder))::get);
+		assertTrue(preflight(reordered, Map.of("com/example/mixin/Captures", capturingMixin("checkBurnOut", List.of(list, list, string, integer), 2, 3))::get,
+				ClassBytesSource.EMPTY, false).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty(), "only a lambda's values are reordered");
 
 		// FrozenLib's: NeoForge's build captures one more value, a boolean; the handler's occur in the lambda's in one way only.
 		String withFlag = Type.getMethodDescriptor(Type.VOID_TYPE, list, string, Type.BOOLEAN_TYPE);

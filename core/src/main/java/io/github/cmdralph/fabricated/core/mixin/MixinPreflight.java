@@ -627,8 +627,9 @@ public final class MixinPreflight {
 	 * by their first use in it, which NeoForge's patches change (Wover's hook into {@code WorldLoader}'s registry load,
 	 * FrozenLib's into {@code RegistryDataLoader}'s; LAMBDA-3). The bridge passes each of the handler's parameters the
 	 * lambda's of its type: in order, when the handler's types occur in the lambda's that way only once; otherwise by
-	 * type, where a type the lambda has more than once is only passed to a parameter the handler never uses. Returns a
-	 * description of the bridged lambda.
+	 * type, where a type the lambda has more than once is only passed to a parameter the handler never uses. A method
+	 * NeoForge gave more parameters gets the same bridge, in order only (Ledger's hooks into {@code FireBlock.checkBurnOut},
+	 * which takes a face too; SIG-1). Returns a description of the bridged method.
 	 */
 	private static List<String> capturedValueRepairs(ClassNode mixin, MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx,
 			List<MethodNode> bridges) {
@@ -636,8 +637,9 @@ public final class MixinPreflight {
 				|| !(Annotations.value(injector, "method") instanceof List<?> selectors) || selectors.size() != 1
 				|| annotatedParameters(handler.visibleParameterAnnotations) || annotatedParameters(handler.invisibleParameterAnnotations)) return List.of();
 		List<MethodNode> methods = selectedMethods(injector, target, ctx);
-		if (methods.size() != 1 || !LAMBDA.matcher(methods.getFirst().name).matches()) return List.of();
+		if (methods.size() != 1 || methods.getFirst().name.startsWith("<")) return List.of();
 		MethodNode lambda = methods.getFirst();
+		boolean isLambda = LAMBDA.matcher(lambda.name).matches();
 		Type[] own = Type.getArgumentTypes(handler.desc);
 		if (own.length < 2 || !isCallbackInfo(own[own.length - 1])
 				|| (handler.access & Opcodes.ACC_STATIC) != (lambda.access & Opcodes.ACC_STATIC)) return List.of();
@@ -646,7 +648,7 @@ public final class MixinPreflight {
 		// A patch captures a value or two more; a lambda taking many more is more likely another one under that name.
 		if (wanted.equals(captured) || captured.size() > wanted.size() + 2) return List.of();
 		int[] from = inOrder(wanted, captured);
-		if (from == null) from = byType(handler, wanted, captured);
+		if (from == null && isLambda) from = byType(handler, wanted, captured);
 		if (from == null) return List.of();
 
 		List<Type> params = new ArrayList<>(captured);
@@ -669,8 +671,8 @@ public final class MixinPreflight {
 		values.set(0, lambda.name + lambda.desc);
 		HandlerBridges.moveInjector(handler, injector, bridge);
 		bridges.add(bridge);
-		return List.of(lambda.name + lambda.desc + ", whose captured values this game build passes in another order or with more;"
-				+ " a bridge passes the handler the ones it takes");
+		return List.of(lambda.name + lambda.desc + (isLambda ? ", whose captured values this game build passes in another order or with more"
+				: ", which this game build declares with more parameters") + "; a bridge passes the handler the ones it takes");
 	}
 
 	/** Where each of {@code wanted} is in {@code captured}, taken in order, when they occur in it that way only once; else null. */
