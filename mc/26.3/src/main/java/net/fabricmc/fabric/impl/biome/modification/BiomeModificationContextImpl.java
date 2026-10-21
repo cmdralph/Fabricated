@@ -75,13 +75,31 @@ public class BiomeModificationContextImpl implements BiomeModificationContext {
 	private final GenerationSettingsContext generationSettings;
 	private final MobSpawnSettingsContext spawnSettings;
 
+	private final EnvironmentAttributeMapBuilder attributeMap;
+	private final MobSpawnSettingsBuilder spawns;
+	/** Whether {@link #spawns} is this context's own, which {@link #finish} writes: NeoForge writes its builder's only. */
+	private final boolean ownSpawns;
+
 	public BiomeModificationContextImpl(RegistryAccess registries, ModifiableBiomeInfo.BiomeInfo.Builder builder) {
 		this.registries = registries;
+		this.attributeMap = builder.getAttributes();
+		// NeoForge writes its spawn builder into the attribute only for a biome that has its spawns as an overlay (or none).
+		// For any other (a data pack's biome, say) it leaves the attribute alone and the builder starts empty: the spawns
+		// are then read from the attribute and set on it once the modifiers ran, as upstream sets them.
+		EnvironmentAttributeMap.Entry<MobSpawnSettings, ?> entry = attributeMap.get(EnvironmentAttributes.NATURAL_MOB_SPAWNS);
+		this.ownSpawns = entry != null && entry.modifier() != MobSpawnSettingsModifier.overlay();
+		this.spawns = ownSpawns ? new MobSpawnSettingsBuilder(entry.applyModifier(EnvironmentAttributes.NATURAL_MOB_SPAWNS.defaultValue()))
+				: builder.getMobSpawnSettings();
 		this.weather = new WeatherContextImpl(builder.getClimateSettings());
-		this.attributes = new AttributesContextImpl(builder.getAttributes(), builder.getMobSpawnSettings());
+		this.attributes = new AttributesContextImpl(attributeMap, spawns);
 		this.effects = new EffectsContextImpl(builder.getSpecialEffects(), attributes);
 		this.generationSettings = new GenerationSettingsContextImpl(builder.getGenerationSettings());
-		this.spawnSettings = new SpawnSettingsContextImpl(builder.getMobSpawnSettings(), attributes);
+		this.spawnSettings = new SpawnSettingsContextImpl(spawns, attributes);
+	}
+
+	/** Called once the phase's modifiers ran: sets the spawns NeoForge wouldn't write (see the constructor). */
+	void finish() {
+		if (ownSpawns) attributeMap.set(EnvironmentAttributes.NATURAL_MOB_SPAWNS, spawns.build());
 	}
 
 	@Override

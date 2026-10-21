@@ -41,7 +41,11 @@ public final class BiomeTest implements ModInitializer {
 			WeightedList<MobSpawnSettings.SpawnerData> creatures = plains.getAttributes()
 					.applyModifier(EnvironmentAttributes.NATURAL_MOB_SPAWNS, EnvironmentAttributes.NATURAL_MOB_SPAWNS.defaultValue())
 					.getMobsInCategory(MobCategory.CREATURE);
-			if (creatures == null || creatures.unwrap().stream().noneMatch(spawn -> spawn.value().type() == fox)) failed.add("spawn");
+			if (creatures == null || creatures.unwrap().stream().noneMatch(spawn -> spawn.value().type() == fox)) {
+				var entry = plains.getAttributes().get(EnvironmentAttributes.NATURAL_MOB_SPAWNS);
+				failed.add("spawn (" + (entry == null ? "no spawn attribute" : entry.modifier()) + ", creatures "
+						+ (creatures == null ? "none" : creatures.unwrap().stream().map(spawn -> BuiltInRegistries.ENTITY_TYPE.getKey(spawn.value().type())).toList()) + ")");
+			}
 			if (plains.getBaseTemperature() != TEMPERATURE) failed.add("temperature " + plains.getBaseTemperature());
 			if (failed.isEmpty()) {
 				TestMod.LOGGER.info("FABRICATED-TEST biome modifications OK");

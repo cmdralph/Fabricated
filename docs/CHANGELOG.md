@@ -17,7 +17,11 @@ pre-flight couldn't repair (JourneyMap).
   onto NeoForge's; upstream's API and biome source mixins ship unchanged. A version can now declare mixin configs of
   its own (`version_mixin_configs`). The test mod adds a spawn and changes plains' temperature on 26.3, and checks both
   once the server has started. Not built or run locally (Mojang's and NeoForge's servers are unreachable here): CI is
-  its first build.
+  its first build. Run 385 (this PR's first): it builds, the test mod's checks pass, and the 26.3 corpus client and
+  server, which crashed on it, reach a world and start. With the corpus mods the test mod's spawn wasn't in plains,
+  though (the corpus server's check failed); the cause wasn't in the log's tail. One way it can happen: a biome whose
+  spawns aren't an overlay, which NeoForge doesn't write spawns into; such spawns are now set on the attribute as
+  upstream sets them, and the check reports what plains has when it fails.
 - RET-1: pre-flight took `@At("RETURN", ordinal = n)` as present in any method with code. Polymer's stream codec
   injector asks for a second return this game build's `decode` doesn't have: it passed pre-flight and stopped the
   advanced corpus at startup (1.21.11 server, run 383; 26.1.2 client, run 384). Return points now count returns as

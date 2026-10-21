@@ -109,6 +109,7 @@ public class BiomeModificationImpl {
 			if (modificationContext == null) modificationContext = new BiomeModificationContextImpl(registries, builder);
 			modifier.apply(context, modificationContext);
 		}
+		if (modificationContext != null) modificationContext.finish();
 	}
 
 	private static class ModifierRecord {

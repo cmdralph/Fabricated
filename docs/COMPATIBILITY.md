@@ -470,7 +470,7 @@ attribute, adding a spawn crashed world creation (`IllegalAccessError`, BIOME-1)
 | Part | On NeoForge |
 |---|---|
 | `BiomeModifications` | applied by a NeoForge biome modifier (`fabricated:fabric_biome_api`, declared by Fabricated's data pack) on NeoForge's builders, as the server starts: additions in NeoForge's `ADD` phase, removals in `REMOVE`, replacements in `MODIFY`, post-processing in `AFTER_EVERYTHING`; selectors see the biome as it was built, as upstream's do |
-| Mob spawns and spawn costs | NeoForge's spawn builder, which NeoForge writes into the biome's `NATURAL_MOB_SPAWNS` attribute as an overlay; a mod setting that attribute itself replaces the builder's spawns and costs |
+| Mob spawns and spawn costs | NeoForge's spawn builder, which NeoForge writes into the biome's `NATURAL_MOB_SPAWNS` attribute as an overlay; a mod setting that attribute itself replaces the builder's spawns and costs. For a biome whose spawns aren't an overlay (which NeoForge then leaves alone), the spawns are read from the attribute and set on it, as upstream does |
 | `NetherBiomes`, `TheEndBiomes` | upstream's biome source mixins, unchanged |
 
 CI checks, on 26.3: a mob spawn added to plains and plains' changed temperature are in the biome once the server has
