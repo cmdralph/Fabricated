@@ -14,8 +14,8 @@ Fabricated-owned (shipped in `game-mod.jar`, registered in `mc/common/src/main/r
 
 | Config file | Package | Versions | Sections | defaultRequire | overwrites.requireAnnotations | plugin |
 |---|---|---|---|---|---|---|
-| `mc/1.21.11/src/main/resources/fabricated.mixins.json` | `io.github.cmdralph.fabricated.neoforge.mixin` | 1.21.11 | mixins 51, client 23 | 1 | true | `FabricatedMixinPlugin` (creates Fabric language adapters in `onLoad`; filters nothing) |
-| `mc/common26/src/main/resources/fabricated.mixins.json` | same | 26.1.2, 26.2, 26.3 | mixins 58, client 24 | 1 | true | same |
+| `mc/1.21.11/src/main/resources/fabricated.mixins.json` | `io.github.cmdralph.fabricated.neoforge.mixin` | 1.21.11 | mixins 52, client 23 | 1 | true | `FabricatedMixinPlugin` (creates Fabric language adapters in `onLoad`; filters nothing) |
+| `mc/common26/src/main/resources/fabricated.mixins.json` | same | 26.1.2, 26.2, 26.3 | mixins 59, client 24 | 1 | true | same |
 | `mc/common/src/main/resources/fabricated-fabric-api.mixins.json` | `net.fabricmc.fabric.mixin.networking.accessor` | all | mixins 4 | 1 | true | none |
 | `mc/common/src/main/resources/fabricated-lookup.mixins.json` | `net.fabricmc.fabric.mixin.lookup` | all | mixins 2 (classes in `mc/<v>/src/fabricapi/java`) | 1 | true | none |
 | `mc/common/src/main/resources/fabricated-loot.mixins.json` | `net.fabricmc.fabric.mixin.loot` | all | mixins 5 | 1 | true | none |
@@ -152,6 +152,7 @@ Versions: 1.21.11 · package `io.github.cmdralph.fabricated.neoforge.mixin` · r
 | mixins | MappedRegistryEarlyWriteMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.core.MappedRegistry | @Inject → fabricated$openForEarlyWrite | "validateWrite(Lnet/minecraft/resources/ResourceKey;)V" | HEAD | — | default |
 | mixins | MappedRegistryPendingHoldersMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.core.MappedRegistry | @Inject → fabricated$keepPendingHolders | "freeze" | HEAD | — | default |
 | mixins | MappedRegistryPendingHoldersMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.core.MappedRegistry | @Inject → fabricated$restorePendingHolders | "freeze" | RETURN | — | default |
+| mixins | DefaultAttributesValidationMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.world.entity.ai.attributes.DefaultAttributes | @Inject → fabricated$validateAfterMainEntrypoints | "validate" | HEAD cancellable=true | — | default |
 | mixins | MobEffectMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.world.effect.MobEffect | no injectors; implements FabricMobEffect | | | | |
 | mixins | EntityTypeBuilderMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.world.entity.EntityType$Builder | @Inject → fabricated$applyChildBuilders | "build" | RETURN | — | default |
 | mixins | BlockEntityTypeMixin | 1.21.11 (1.21.11) | n.m.world.level.block.entity.BlockEntityType | no injectors; implements FabricBlockEntityType; adds methods addSupportedBlock | | | | |
@@ -474,6 +475,7 @@ Versions: 26.1.2, 26.2, 26.3 · package `io.github.cmdralph.fabricated.neoforge.
 | mixins | MappedRegistryEarlyWriteMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.core.MappedRegistry | @Inject → fabricated$openForEarlyWrite | "validateWrite(Lnet/minecraft/resources/ResourceKey;)V" | HEAD | — | default |
 | mixins | MappedRegistryPendingHoldersMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.core.MappedRegistry | @Inject → fabricated$keepPendingHolders | "freeze" | HEAD | — | default |
 | mixins | MappedRegistryPendingHoldersMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.core.MappedRegistry | @Inject → fabricated$restorePendingHolders | "freeze" | RETURN | — | default |
+| mixins | DefaultAttributesValidationMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.world.entity.ai.attributes.DefaultAttributes | @Inject → fabricated$validateAfterMainEntrypoints | "validate" | HEAD cancellable=true | — | default |
 | mixins | MobEffectMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.world.effect.MobEffect | no injectors; implements FabricMobEffect | | | | |
 | mixins | EntityTypeBuilderMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.world.entity.EntityType$Builder | @Inject → fabricated$applyChildBuilders | "build" | RETURN | — | default |
 | mixins | BlockEntityTypeMixin | common26 (26.1.2,26.2,26.3) | n.m.world.level.block.entity.BlockEntityType | no injectors; implements FabricBlockEntityType; adds methods addValidBlock | | | | |

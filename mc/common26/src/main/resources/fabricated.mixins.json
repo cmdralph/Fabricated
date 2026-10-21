@@ -19,6 +19,7 @@
     "MappedRegistryMixin",
     "MappedRegistryEarlyWriteMixin",
     "MappedRegistryPendingHoldersMixin",
+    "DefaultAttributesValidationMixin",
     "PackRepositorySourcesMixin",
     "MobEffectMixin",
     "EntityTypeBuilderMixin",
