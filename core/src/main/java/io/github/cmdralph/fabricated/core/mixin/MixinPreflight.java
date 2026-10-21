@@ -270,7 +270,7 @@ public final class MixinPreflight {
 			for (MethodNode method : node.methods) {
 				for (AnnotationNode ann : Annotations.all(method)) {
 					if (!isInjector(ann.desc)) continue;
-					for (String lambda : lambdaRepairs(ann, targets, ctx)) {
+					for (String lambda : lambdaRepairs(method, ann, targets, ctx)) {
 						changed = true;
 						out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@" + simpleName(ann.desc) + " " + method.name
 								+ " targets " + lambda + ", which this game build numbers differently", ""));
@@ -406,34 +406,40 @@ public final class MixinPreflight {
 	}
 
 	/**
-	 * Points the selectors of an injector that name a missing lambda ({@code lambda$enclosing$N} with a descriptor) at
-	 * the only lambda of the same enclosing method and descriptor that every target has under one other name, and
-	 * returns the selectors' original names.
+	 * Points the selectors of an injector that name a missing lambda ({@code lambda$enclosing$N}) at the only lambda of
+	 * the same enclosing method and descriptor that every target has under one other name, and returns the selectors'
+	 * original names. A selector without a descriptor is matched by the parameters an {@code @Inject} handler takes,
+	 * which are the lambda's (Ledger's portal hook on 1.21.11, whose lambdas NeoForge's recompiled build numbers
+	 * otherwise; LAMBDA-4); one taking none isn't judged.
 	 */
-	private static List<String> lambdaRepairs(AnnotationNode injector, List<ClassNode> targets, Context ctx) {
+	private static List<String> lambdaRepairs(MethodNode handler, AnnotationNode injector, List<ClassNode> targets, Context ctx) {
 		if (!(Annotations.value(injector, "method") instanceof List<?> selectors)) return List.of();
 		List<String> repaired = new ArrayList<>();
 		next:
 		for (int i = 0; i < selectors.size(); i++) {
 			if (!(selectors.get(i) instanceof String raw)) continue;
 			MemberRef ref = MemberRef.parse(ctx.resolve(raw));
-			Matcher lambda = ref.fuzzy() || ref.name() == null || ref.desc() == null ? null : LAMBDA.matcher(ref.name());
+			Matcher lambda = ref.fuzzy() || ref.name() == null ? null : LAMBDA.matcher(ref.name());
 			if (lambda == null || !lambda.matches()) continue;
+			List<Type> params = ref.desc() == null ? lambdaParameters(handler, injector) : null;
+			if (ref.desc() == null && params == null) continue;
 			String prefix = "lambda$" + lambda.group(1) + "$";
-			String renamed = null;
+			MethodNode renamed = null;
 			for (ClassNode target : targets) {
-				String only = null;
+				if (ref.desc() == null && target.methods.stream().anyMatch(m -> m.name.equals(ref.name()))) continue next;
+				MethodNode only = null;
 				for (MethodNode m : target.methods) {
-					if (!m.desc.equals(ref.desc())) continue;
+					if (ref.desc() != null ? !m.desc.equals(ref.desc()) : !List.of(Type.getArgumentTypes(m.desc)).equals(params)
+							|| Type.getReturnType(m.desc).equals(Type.VOID_TYPE) == returnsValue(handler)) continue;
 					if (m.name.equals(ref.name())) continue next; // present: nothing to repair
 					if (!m.name.startsWith(prefix) || !LAMBDA.matcher(m.name).matches()) continue;
 					if (only != null) {
 						only = null;
 						break; // ambiguous
 					}
-					only = m.name;
+					only = m;
 				}
-				if (only == null || (renamed != null && !renamed.equals(only))) {
+				if (only == null || (renamed != null && !(renamed.name + renamed.desc).equals(only.name + only.desc))) {
 					renamed = null;
 					break;
 				}
@@ -442,10 +448,23 @@ public final class MixinPreflight {
 			if (renamed == null) continue;
 			@SuppressWarnings("unchecked")
 			List<Object> values = (List<Object>) selectors;
-			values.set(i, renamed + ref.desc());
-			repaired.add(ref.name() + ref.desc());
+			values.set(i, renamed.name + renamed.desc);
+			repaired.add(ref.name() + (ref.desc() != null ? ref.desc() : ""));
 		}
 		return repaired;
+	}
+
+	/** Whether an {@code @Inject} handler takes a returnable callback info: its target returns a value. */
+	private static boolean returnsValue(MethodNode handler) {
+		List<Type> args = handlerArgs(handler);
+		return args != null && !args.isEmpty() && args.getLast().getDescriptor().equals(CALLBACK_INFO_RETURNABLE);
+	}
+
+	/** The parameters an {@code @Inject} handler takes before its callback info (and any sugar), or null when it takes none. */
+	private static List<Type> lambdaParameters(MethodNode handler, AnnotationNode injector) {
+		List<Type> args = injector.desc.equals(INJECT) ? handlerArgs(handler) : null;
+		if (args == null || args.size() < 2 || !isCallbackInfo(args.getLast())) return null;
+		return args.subList(0, args.size() - 1);
 	}
 
 	/**
@@ -1989,8 +2008,9 @@ public final class MixinPreflight {
 	 * build of the game, recompiled from decompiled source, numbers some anonymous classes otherwise than Mojang's, which
 	 * mods are built against (Polymer's hooks into {@code ByteBufCodecs}' and {@code ItemStack}'s stream codecs, No Chat
 	 * Reports' into the JSON one, Ledger's and malilib's into {@code ChestBlock}'s; ANON-1). A class fits when pre-flight
-	 * finds nothing but notes in the mixin against it: its selectors, shadows and injection points are all there. Only a
-	 * single fitting class is taken. Returns a description of each move.
+	 * finds nothing but notes in the mixin against it: its selectors, shadows and injection points are all there, a shadow
+	 * of a captured value perhaps under another name ({@link #capturedRenames}). Only a single fitting class is taken.
+	 * Returns a description of each move.
 	 */
 	private List<String> anonymousTargetRepairs(ClassNode mixin, Context ctx) {
 		AnnotationNode mixinAnn = Annotations.find(mixin.invisibleAnnotations, mixin.visibleAnnotations, Annotations.MIXIN);
@@ -2005,29 +2025,87 @@ public final class MixinPreflight {
 			if (!isGameClass(target) || dollar < 0 || !target.substring(dollar + 1).matches("\\d+")) continue;
 			ClassNode named = gameTarget(target);
 			if (named != null && fits(mixin, named, ctx)) continue;
+			Map<String, String> namedRenames = named == null ? null : capturedRenames(mixin, named);
+			if (namedRenames != null && !namedRenames.isEmpty() && fits(renamed(mixin, namedRenames), named, ctx)) {
+				renameShadows(mixin, namedRenames);
+				moved.add(target.replace('/', '.') + " names the values it captures otherwise in this game build " + namedRenames
+						+ "; the mixin's shadows of them are renamed");
+				continue;
+			}
 			ClassNode outer = gameTarget(target.substring(0, dollar));
 			if (outer == null) continue;
 			ClassNode match = null;
+			Map<String, String> matchRenames = Map.of();
 			for (InnerClassNode inner : outer.innerClasses) {
 				// Anonymous classes have neither a simple name nor an outer class in the attribute.
 				if (inner.innerName != null || inner.outerName != null || inner.name.equals(target)
 						|| !inner.name.startsWith(outer.name + "$") || inner.name.indexOf('$', outer.name.length() + 1) >= 0) continue;
 				ClassNode candidate = gameTarget(inner.name);
-				if (candidate == null || !fits(mixin, candidate, ctx)) continue;
+				Map<String, String> renames = candidate == null ? null : capturedRenames(mixin, candidate);
+				if (renames == null || !fits(renames.isEmpty() ? mixin : renamed(mixin, renames), candidate, ctx)) continue;
 				if (match != null) {
 					match = null;
 					break;
 				}
 				match = candidate;
+				matchRenames = renames;
 			}
 			if (match == null) continue;
+			renameShadows(mixin, matchRenames);
 			@SuppressWarnings("unchecked")
 			List<Object> values = (List<Object>) names;
 			values.set(i, raw.indexOf('/') >= 0 ? match.name : match.name.replace('/', '.'));
 			moved.add(target.replace('/', '.') + " doesn't fit the mixin in this game build, whose anonymous classes are numbered differently; "
-					+ match.name.replace('/', '.') + " does, and the mixin is pointed there");
+					+ match.name.replace('/', '.') + " does" + (matchRenames.isEmpty() ? "" : ", naming the values it captures otherwise " + matchRenames)
+					+ ", and the mixin is pointed there");
 		}
 		return moved;
+	}
+
+	/**
+	 * New names for the mixin's shadows of values an anonymous class captures ({@code val$name}) that {@code target} has
+	 * under another name: the one captured value of the same type there. NeoForge's 1.21.11 build names them after its
+	 * own parameter names (recompiled from decompiled source; inferred from Polymer's {@code val$registryKey} missing
+	 * there, CAPTURE-1). Empty when every shadow is there, null when one's new name can't be told (none or several of its
+	 * type, or one another shadow has).
+	 */
+	private static Map<String, String> capturedRenames(ClassNode mixin, ClassNode target) {
+		Map<String, String> renames = new TreeMap<>();
+		Set<String> kept = new HashSet<>();
+		for (FieldNode field : mixin.fields) {
+			if (!field.name.startsWith("val$") || Annotations.find(field, SHADOW) == null) continue;
+			if (target.fields.stream().anyMatch(f -> f.name.equals(field.name) && f.desc.equals(field.desc))) {
+				kept.add(field.name);
+				continue;
+			}
+			List<String> sameType = target.fields.stream().filter(f -> f.name.startsWith("val$") && f.desc.equals(field.desc)).map(f -> f.name).toList();
+			if (sameType.size() != 1) return null;
+			renames.put(field.name, sameType.getFirst());
+		}
+		Set<String> to = new HashSet<>(renames.values());
+		return to.size() == renames.size() && Collections.disjoint(to, kept) ? renames : null;
+	}
+
+	/** A copy of {@code mixin} with its shadows renamed. */
+	private static ClassNode renamed(ClassNode mixin, Map<String, String> renames) {
+		ClassNode copy = new ClassNode();
+		mixin.accept(copy);
+		renameShadows(copy, renames);
+		return copy;
+	}
+
+	/** Renames the mixin's shadow fields, and its code's uses of them. */
+	private static void renameShadows(ClassNode mixin, Map<String, String> renames) {
+		if (renames.isEmpty()) return;
+		for (FieldNode field : mixin.fields) {
+			if (Annotations.find(field, SHADOW) != null) field.name = renames.getOrDefault(field.name, field.name);
+		}
+		for (MethodNode method : mixin.methods) {
+			if (method.instructions == null) continue;
+			for (AbstractInsnNode insn : method.instructions) {
+				if (insn instanceof FieldInsnNode use && use.owner.equals(mixin.name)) use.name = renames.getOrDefault(use.name, use.name);
+			}
+		}
 	}
 
 	/** Whether pre-flight finds nothing but notes in {@code mixin} against {@code target}. */

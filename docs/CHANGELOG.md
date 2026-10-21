@@ -3,6 +3,18 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-10-21 (pass after PR #61): what NeoForge's 1.21.11 build names otherwise
+
+**Plan.** PR #61's last run (`8c7718c`) moved architectury's entity and explosion events, Carpet's fill updates and
+the bone meal hooks, with every advanced client in its world. Some hooks are still left out only on 1.21.11, where
+NeoForge's build is recompiled from decompiled source and names or numbers some synthetic members otherwise.
+
+- CAPTURE-1: a shadow of a value an anonymous class captures (`val$...`) that the class has under another name matches
+  the one captured value of its type there, and is renamed: Polymer's registry codec hook on 1.21.11.
+- LAMBDA-4: a lambda named without a descriptor is found by the parameters its `@Inject` handler takes: Ledger's
+  portal hook on 1.21.11.
+- Roadmap: SPLIT-2, LOCAL-1 and DEPRECATED-1 recorded as seen on `8c7718c`.
+
 ## 2026-10-21 (pass after PR #60): hooks into code NeoForge moved or deprecated
 
 **Plan.** PR #60's last run (`36b6f96`) was as clean as PR #59's, and the advanced clients' linkage check no longer

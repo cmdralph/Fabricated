@@ -1662,6 +1662,54 @@ class MixinPreflightTest {
 	}
 
 	@Test
+	void aLambdaNamedWithoutDescriptorIsFoundByTheParametersItsHandlerTakes() throws Exception {
+		// LAMBDA-4: Ledger's portal hook names PortalShape's lambda by Mojang's 1.21.11 numbering, without a descriptor;
+		// NeoForge's recompiled build numbers the lambdas of createPortalBlocks otherwise.
+		ClassWriter target = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		target.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		for (String[] lambda : new String[][] {{"lambda$create$5", "(Ljava/lang/Object;Ljava/lang/String;)V"}, {"lambda$create$6", "(I)V"},
+				{"lambda$other$2", "(Ljava/lang/Object;Ljava/lang/String;)V"}}) {
+			MethodVisitor mv = target.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, lambda[0], lambda[1], null, null);
+			mv.visitCode();
+			mv.visitInsn(Opcodes.RETURN);
+			mv.visitMaxs(0, 2);
+			mv.visitEnd();
+		}
+		target.visitEnd();
+		ClassIndex game = new ClassIndex(Map.of(TARGET, target.toByteArray())::get);
+		java.util.function.Function<String, byte[]> mixin = handlerDesc -> mixin("com/example/mixin/Portal", false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "logPortal", handlerDesc, null, null);
+			AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "lambda$create$2");
+			methods.visitEnd();
+			AnnotationVisitor ats = ann.visitArray("at");
+			AnnotationVisitor at = ats.visitAnnotation(null, AT);
+			at.visit("value", "HEAD");
+			at.visitEnd();
+			ats.visitEnd();
+			ann.visitEnd();
+			mv.visitCode();
+			mv.visitInsn(Opcodes.RETURN);
+			mv.visitMaxs(0, 3);
+			mv.visitEnd();
+		});
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Portal"));
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Portal",
+				mixin.apply("(Ljava/lang/Object;Ljava/lang/String;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V")));
+		List<PreflightFinding> notes = new ArrayList<>();
+		Map<String, byte[]> repaired = preflight(game, mod::get, ClassBytesSource.EMPTY, false).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
+		assertEquals(1, notes.size(), notes.toString());
+		assertTrue(notes.getFirst().message().contains("targets lambda$create$2, which this game build numbers differently"), notes.toString());
+		mod.put("com/example/mixin/Portal", repaired.get("com/example/mixin/Portal.class"));
+		assertTrue(preflight(game, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty());
+
+		// A handler taking no parameter tells none of the lambdas apart.
+		assertTrue(preflight(game, Map.of("com/example/mixin/Portal", mixin.apply("(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V"))::get,
+				ClassBytesSource.EMPTY, false).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty());
+	}
+
+	@Test
 	void aMixinIntoAnAnonymousClassNumberedOtherwiseIsPointedAtTheOneThatFits() throws Exception {
 		// ANON-1: Polymer's hook into ByteBufCodecs' registry codec names its anonymous class by Mojang's numbering;
 		// NeoForge's recompiled build numbers it otherwise.
@@ -1707,8 +1755,11 @@ class MixinPreflightTest {
 		ats.visitEnd();
 		ann.visitEnd();
 		mv.visitCode();
+		mv.visitVarInsn(Opcodes.ALOAD, 0);
+		mv.visitFieldInsn(Opcodes.GETFIELD, "com/example/mixin/Registry", "val$key", "Ljava/lang/String;");
+		mv.visitInsn(Opcodes.POP);
 		mv.visitInsn(Opcodes.RETURN);
-		mv.visitMaxs(0, 3);
+		mv.visitMaxs(1, 3);
 		mv.visitEnd();
 		mixin.visitEnd();
 		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Registry", mixin.toByteArray()));
@@ -1730,6 +1781,30 @@ class MixinPreflightTest {
 				outer + "$2", anonymous.apply(outer + "$2", "(Ljava/lang/Integer;)V"), outer + "$3", anonymous.apply(outer + "$3", "(Ljava/lang/Integer;)V"))::get);
 		assertTrue(preflight(twice, Map.of("com/example/mixin/Registry", mixin.toByteArray())::get, ClassBytesSource.EMPTY, false)
 				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty());
+
+		// CAPTURE-1: NeoForge's 1.21.11 build names the captured value after its own parameter name; the one value of the
+		// shadow's type is taken for it, and the shadow renamed.
+		byte[] otherName = anonymous.apply(outer + "$2", "(Ljava/lang/Integer;)V");
+		ClassNode otherNode = new ClassNode();
+		new ClassReader(otherName).accept(otherNode, 0);
+		otherNode.fields.getFirst().name = "val$p_1_";
+		ClassWriter otherWriter = new ClassWriter(0);
+		otherNode.accept(otherWriter);
+		ClassIndex renamedGame = new ClassIndex(Map.of(outer, outerClass.apply(2), outer + "$1", anonymous.apply(outer + "$1", "(Ljava/lang/String;)V"),
+				outer + "$2", otherWriter.toByteArray())::get);
+		Map<String, byte[]> renamedMod = new HashMap<>(Map.of("com/example/mixin/Registry", mixin.toByteArray()));
+		List<PreflightFinding> renamedNotes = new ArrayList<>();
+		byte[] renamed = preflight(renamedGame, renamedMod::get, ClassBytesSource.EMPTY, false)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), renamedNotes).get("com/example/mixin/Registry.class");
+		assertNotNull(renamed, renamedNotes.toString());
+		assertTrue(renamedNotes.getFirst().message().contains("Codecs$2 does, naming the values it captures otherwise {val$key=val$p_1_}"), renamedNotes.toString());
+		ClassNode renamedMixin = new ClassNode();
+		new ClassReader(renamed).accept(renamedMixin, 0);
+		assertEquals("val$p_1_", renamedMixin.fields.getFirst().name);
+		MethodNode handler = renamedMixin.methods.stream().filter(method -> method.name.equals("onEncode")).findFirst().orElseThrow();
+		assertEquals("val$p_1_", ((org.objectweb.asm.tree.FieldInsnNode) handler.instructions.get(1)).name, "its read of the value too");
+		renamedMod.put("com/example/mixin/Registry", renamed);
+		assertTrue(preflight(renamedGame, renamedMod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty());
 	}
 
 	@Test
