@@ -2193,8 +2193,46 @@ class MixinPreflightTest {
 		byte[] duck = mixin("com/example/mixin/Duck", false, List.of("com/example/api/Duck"), body);
 		List<PreflightFinding> withInterface = run(config(true, "Duck"), null, Map.of("com/example/mixin/Duck", duck), false);
 		assertEquals(1, withInterface.size(), withInterface.toString());
-		assertEquals(Severity.FAIL, withInterface.getFirst().severity());
+		assertEquals(Severity.FAIL, withInterface.getFirst().severity(), "a handler without code to judge");
 		assertEquals("broken()V", withInterface.getFirst().handler());
+
+		// LEAVE-3: in a mixin adding an interface the mod's code uses, a handler using nothing of the mixin's own is left
+		// out alone (owo-lib's GuiRendererMixin); the interface still applies. One keeping state of the mixin's own, which
+		// the interface's methods may read, still disables the mod.
+		java.util.function.BiFunction<String, Boolean, byte[]> handlerWithCode = (name, keepsState) -> mixin("com/example/mixin/" + name, false,
+				List.of("com/example/api/Duck"), cw -> {
+					cw.visitField(Opcodes.ACC_PRIVATE, "seen", "Z", null, null).visitEnd();
+					MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "broken", "()V", null, null);
+					AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
+					AnnotationVisitor methods = ann.visitArray("method");
+					methods.visit(null, "removedMethod");
+					methods.visitEnd();
+					AnnotationVisitor ats = ann.visitArray("at");
+					AnnotationVisitor at = ats.visitAnnotation(null, "Lorg/spongepowered/asm/mixin/injection/At;");
+					at.visit("value", "HEAD");
+					at.visitEnd();
+					ats.visitEnd();
+					ann.visit("require", 1);
+					ann.visitEnd();
+					mv.visitCode();
+					if (keepsState) {
+						mv.visitVarInsn(Opcodes.ALOAD, 0);
+						mv.visitInsn(Opcodes.ICONST_1);
+						mv.visitFieldInsn(Opcodes.PUTFIELD, "com/example/mixin/" + name, "seen", "Z");
+					}
+					mv.visitInsn(Opcodes.RETURN);
+					mv.visitMaxs(2, 1);
+					mv.visitEnd();
+				});
+		List<PreflightFinding> stateless = run(config(true, "Plain"), null, Map.of("com/example/mixin/Plain", handlerWithCode.apply("Plain", false)), false);
+		assertEquals(1, stateless.size(), stateless.toString());
+		assertEquals(Severity.LEFT_OUT, stateless.getFirst().severity());
+		assertEquals("broken()V", stateless.getFirst().handler(), "only the injector: the interface stays");
+		byte[] keeping = handlerWithCode.apply("Keeping", true);
+		List<PreflightFinding> withState = run(config(true, "Keeping"), null, Map.of("com/example/mixin/Keeping", keeping), false);
+		assertEquals(1, withState.size(), withState.toString());
+		assertEquals(Severity.FAIL, withState.getFirst().severity());
+		assertEquals("broken()V", withState.getFirst().handler());
 	}
 
 	/**

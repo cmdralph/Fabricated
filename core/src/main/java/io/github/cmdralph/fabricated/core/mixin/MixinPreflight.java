@@ -156,8 +156,10 @@ public final class MixinPreflight {
 			String internal = config.internalName(mixin);
 			ClassNode node = modClasses.readNode(internal, ClassReader.SKIP_CODE | ClassReader.SKIP_FRAMES);
 			boolean selfContained = node != null && selfContained(node);
+			Set<String> stateless = node == null || selfContained ? Set.of()
+					: statelessHandlers(modClasses.readNode(internal, ClassReader.SKIP_FRAMES));
 			Context ctx = new Context(configName, internal.replace('/', '.'), config, refmap, hasPlugin, selfContained,
-					selfContained && addsFields(node), out, null);
+					selfContained && addsFields(node), stateless, out, null);
 			if (node == null) {
 				ctx.classLevel("Mixin class " + ctx.mixinDotted() + " listed in " + configName + " is missing from the mod jar",
 						"The mod jar is incomplete or corrupted; re-download it.");
@@ -237,7 +239,7 @@ public final class MixinPreflight {
 			String internal = config.internalName(mixin);
 			ClassNode node = modClasses.readNode(internal, 0);
 			if (node == null) continue;
-			Context ctx = new Context(configName, internal.replace('/', '.'), config, refmap, false, false, false, out, null);
+			Context ctx = new Context(configName, internal.replace('/', '.'), config, refmap, false, false, false, Set.of(), out, null);
 			boolean changed = singleInjectionPoints(node);
 			List<ClassNode> targets = new ArrayList<>();
 			for (String target : targetsOf(node, ctx)) {
@@ -1366,20 +1368,55 @@ public final class MixinPreflight {
 	}
 
 	/**
+	 * The handlers (name and descriptor) of a mixin that use none of its own fields and call none of its own methods
+	 * (LEAVE-3). When the mixin adds an interface or accessors, which the mod's code uses, such a handler failing is left
+	 * out alone: the interface and the mixin's other members still apply, and nothing the handler does is kept for them.
+	 * owo-lib's {@code GuiRendererMixin}, which adds an interface, hooks a field read NeoForge's {@code GuiRenderer.close}
+	 * doesn't make, only to keep its own renderer from closing shared ones.
+	 */
+	static Set<String> statelessHandlers(ClassNode mixin) {
+		if (mixin == null) return Set.of();
+		Set<String> own = new HashSet<>();
+		for (FieldNode field : mixin.fields) {
+			if (Annotations.find(field, SHADOW) == null) own.add(field.name + ":" + field.desc);
+		}
+		for (MethodNode method : mixin.methods) {
+			if (Annotations.find(method, SHADOW) == null) own.add(method.name + method.desc);
+		}
+		Set<String> stateless = new HashSet<>();
+		for (MethodNode method : mixin.methods) {
+			if (method.instructions == null || method.instructions.size() == 0) continue; // no code to judge
+			boolean usesOwn = false;
+			for (AbstractInsnNode insn : method.instructions) {
+				if (insn instanceof FieldInsnNode field && field.owner.equals(mixin.name) && own.contains(field.name + ":" + field.desc)
+						|| insn instanceof MethodInsnNode call && call.owner.equals(mixin.name) && own.contains(call.name + call.desc)
+						|| insn instanceof InvokeDynamicInsnNode indy && List.of(indy.bsmArgs).stream()
+								.anyMatch(arg -> arg instanceof Handle handle && handle.getOwner().equals(mixin.name))) {
+					usesOwn = true;
+					break;
+				}
+			}
+			if (!usesOwn) stateless.add(method.name + method.desc);
+		}
+		return stateless;
+	}
+
+	/**
 	 * @param selfContained see {@link #selfContained(ClassNode)}: a failure then leaves the failing injector, or the whole
 	 *                      mixin, out instead of disabling the mod
 	 * @param addsFields    see {@link #addsFields(ClassNode)}: a failing injector of a self-contained mixin then takes the
 	 *                      whole mixin with it
+	 * @param stateless     see {@link #statelessHandlers(ClassNode)}, for a mixin that isn't self-contained
 	 * @param owner         the installed mod the target belongs to, or {@code null} for a game class
 	 */
 	record Context(String configName, String mixinDotted, MixinConfigFile config, Refmap refmap, boolean hasPlugin,
-			boolean selfContained, boolean addsFields, List<PreflightFinding> out, String owner) {
+			boolean selfContained, boolean addsFields, Set<String> stateless, List<PreflightFinding> out, String owner) {
 		String resolve(String selector) {
 			return refmap.resolve(mixinDotted.replace('.', '/'), selector);
 		}
 
 		Context withOwner(String owner) {
-			return new Context(configName, mixinDotted, config, refmap, hasPlugin, selfContained, addsFields, out, owner);
+			return new Context(configName, mixinDotted, config, refmap, hasPlugin, selfContained, addsFields, stateless, out, owner);
 		}
 
 		/** What changed the target since the mod was built: NeoForge or this Minecraft version, or this version of the mod. */
@@ -1417,12 +1454,12 @@ public final class MixinPreflight {
 		}
 
 		/**
-		 * An injector that can't apply. Where it is required: with a plugin, or in a self-contained mixin that adds no
-		 * fields, only it is left out (as a plugin may do); in a self-contained mixin that adds fields, the whole mixin is
-		 * (no handler named); otherwise it is fatal.
+		 * An injector that can't apply. Where it is required: with a plugin, in a self-contained mixin that adds no
+		 * fields, or with a handler that uses nothing of the mixin's own (LEAVE-3), only it is left out (as a plugin may
+		 * do); in a self-contained mixin that adds fields, the whole mixin is (no handler named); otherwise it is fatal.
 		 */
 		void injector(MethodNode handler, int require, String message, String suggestion) {
-			Severity severity = require > 0 ? fatal() : Severity.WARN;
+			Severity severity = require <= 0 ? Severity.WARN : stateless.contains(handler.name + handler.desc) ? Severity.LEFT_OUT : fatal();
 			boolean wholeMixin = severity == Severity.LEFT_OUT && !hasPlugin && addsFields;
 			out.add(new PreflightFinding(severity, configName, mixinDotted, message, suggestion, wholeMixin ? null : handler.name + handler.desc));
 		}

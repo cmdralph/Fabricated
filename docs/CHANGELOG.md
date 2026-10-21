@@ -26,6 +26,10 @@ chunk on a feature order cycle.
   all of the target's): Farmer's Delight's crop growth hook takes `getGrowthSpeed`'s vanilla parameters, NeoForge's
   build takes a block state first, and Mixin stopped the 1.21.11 corpus server once ENUM-6 let the mod load. The hook
   is now left out (LEAVE-1) and the mod loads.
+- LEAVE-3: a failing injector whose handler uses nothing of its mixin's own (no field of the mixin, no call to its
+  methods) is left out alone even when the mixin adds an interface the mod's code uses: owo-lib's `GuiRendererMixin`
+  hooks a field read NeoForge's `GuiRenderer.close` doesn't make, which disabled owo on every advanced client. A unit test
+  covers a handler that keeps state of the mixin's, which still fails.
 - FLUID-2: on 26.2 and 26.3, an entity's fluid lookups by tag answer for a mod's fluid tag, as vanilla's do, where
   NeoForge's build threw for any tag but water's and lava's: Biomes O' Plenty's screen overlay asks whether the eyes
   are in its blood, which crashed the 26.2 advanced client once it joined its world. The tag stands for its fluids'
