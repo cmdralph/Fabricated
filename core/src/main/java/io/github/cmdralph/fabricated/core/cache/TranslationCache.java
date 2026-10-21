@@ -308,6 +308,8 @@ public final class TranslationCache {
 		gcDirectory(root.resolve("entries"), "", maxUnusedLaunches);
 		gcDirectory(root.resolve("nested"), "nested/", maxUnusedLaunches);
 		gcDirectory(root.resolve("blobs"), "blobs/", maxUnusedLaunches);
+		// What is left that long unused has no file to clean: a name looked up but never stored (a failed translation).
+		lastUsed.values().removeIf(used -> launch - used > maxUnusedLaunches);
 		hashMemo.values().removeIf(m -> launch - m.launch() > maxUnusedLaunches);
 		nestedIndex.values().removeIf(n -> launch - n.launch() > maxUnusedLaunches);
 		try {
