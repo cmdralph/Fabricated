@@ -61,6 +61,13 @@ pre-flight couldn't repair (JourneyMap).
   NeoForge's 1.21.11 build moved it out of one, which stopped the 1.21.11 advanced corpus (run on `b0f3606`).
   Pre-flight now counts them. LAMBDA-2: an injector at a call NeoForge's build moved into a lambda of the method
   (here an `Optional` callback) gets the lambda added to its methods, so FrozenLib's hook applies there.
+- DATA-1: a Fabric jar's data files lose their `neoforge:conditions`, which Fabric never reads: Tectonic's name a
+  condition type only its NeoForge build registers, which stopped the 1.21.11 advanced corpus server (run on `b871cd5`).
+  The Fabric build's own `fabric:load_conditions` still decide.
+- DATAGEN-1: Fabric API's data generation module loads (from the player's Fabric API jar, as on Fabric): Wover's block
+  and item entrypoints load its tag providers at startup and failed without it, so BetterEnd and BetterNether registered
+  nothing and the 26.2 and 26.3 advanced corpus servers stopped loading their data (run on `b871cd5`). Its hooks act
+  only when the `fabric-api.datagen` property is set.
 - ENUM-5: an enum mixin into one of NeoForge's extensible enums that its enum extension file can't carry (a name not
   starting with the mod's id, a constant with a body of its own) becomes an ordinary mixin adding the constants to the
   enum's values from its class initializer, as mods' own NeoForge builds do; FML refuses only enum mixins. A constant's

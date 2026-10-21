@@ -83,6 +83,28 @@ class TranslateHelpersTest {
 	}
 
 	/**
+	 * DATA-1: Tectonic's data carries its NeoForge build's conditions next to its Fabric build's; Fabric reads only its
+	 * own, so the NeoForge ones (on the file, and on entries within it) are left out.
+	 */
+	@Test
+	void dataFilesLoseOnlyNeoForgeConditions() throws Exception {
+		String both = """
+				{"fabric:load_conditions": [{"condition": "tectonic:config", "key": "underground_rivers"}],
+				 "neoforge:conditions": [{"type": "tectonic:config", "key": "underground_rivers"}],
+				 "type": "lithostitched:add_features", "step": 0.5,
+				 "entries": [{"id": "a", "neoforge:conditions": [{"type": "neoforge:false"}]}, "neoforge:conditions"]}""";
+		byte[] fabric = ModTranslator.withoutNeoForgeConditions(both.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+		Map<String, Object> read = io.github.cmdralph.fabricated.core.json.Json.parseObject(new String(fabric, java.nio.charset.StandardCharsets.UTF_8));
+		Map<String, Object> expected = io.github.cmdralph.fabricated.core.json.Json.parseObject("""
+				{"fabric:load_conditions": [{"condition": "tectonic:config", "key": "underground_rivers"}],
+				 "type": "lithostitched:add_features", "step": 0.5, "entries": [{"id": "a"}, "neoforge:conditions"]}""");
+		assertEquals(expected, read);
+		assertEquals(null, ModTranslator.withoutNeoForgeConditions("{\"values\": [\"neoforge:conditions\"]}".getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+				"a value naming the key is no condition: the jar's own file is used");
+		assertEquals(null, ModTranslator.withoutNeoForgeConditions("{\"neoforge:conditions\": [] // lenient".getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+	}
+
+	/**
 	 * A Fabric mod's custom values and Sodium options page, where NeoForge mods read them: mod properties, and the
 	 * namespaced values also as keys of the file (Lithium) and of the mod's entry (Sodium).
 	 */

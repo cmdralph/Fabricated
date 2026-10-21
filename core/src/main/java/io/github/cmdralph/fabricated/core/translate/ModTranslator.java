@@ -76,6 +76,8 @@ public final class ModTranslator {
 	public static final String REMAPPED = "remapped.jar";
 	public static final String AT_PATH = "META-INF/accesstransformer.cfg";
 	static final String PACK_METADATA = "pack.mcmeta";
+	/** The key NeoForge reads a data file's or entry's conditions from; Fabric reads none there. */
+	private static final String NEOFORGE_CONDITIONS = "neoforge:conditions";
 
 	/** Heap a translation may count on, in MiB: a quarter of the maximum, shared by all translations at once. */
 	private static final int MEMORY_MIB = (int) Math.max(64, Math.min(Integer.MAX_VALUE, Runtime.getRuntime().maxMemory() / 4 / (1 << 20)));
@@ -163,6 +165,18 @@ public final class ModTranslator {
 				if (fabricPackMetadata != null) {
 					overlay.put(PACK_METADATA, fabricPackMetadata);
 					notes.add("Its pack.mcmeta has sections for NeoForge (its NeoForge build's), which Fabric ignores; left out");
+				}
+				int conditioned = 0;
+				for (String name : view != null ? view.keySet() : archive.entryNames()) {
+					if (!name.endsWith(".json") || !name.startsWith("data/") && !name.contains("/data/")) continue;
+					byte[] data = view != null ? view.get(name) : archive.read(name);
+					byte[] fabricData = data == null ? null : withoutNeoForgeConditions(data);
+					if (fabricData == null) continue;
+					overlay.put(name, fabricData);
+					conditioned++;
+				}
+				if (conditioned > 0) {
+					notes.add(conditioned + " data file(s) have conditions for NeoForge (its NeoForge build's), which Fabric ignores; left out");
 				}
 
 				List<InjectedInterface> injections = List.of();
@@ -991,6 +1005,37 @@ public final class ModTranslator {
 		}
 		if (!root.keySet().removeIf(key -> key.startsWith("neoforge:"))) return null;
 		return Json.write(root, true).getBytes(StandardCharsets.UTF_8);
+	}
+
+	/**
+	 * A data file as Fabric reads it: without the conditions only NeoForge reads ({@code neoforge:conditions}, wherever
+	 * they are). Jars built for both loaders carry their NeoForge build's, naming that build's own condition types, which
+	 * NeoForge then fails to read for the Fabric build (Tectonic's worldgen modifiers, DATA-1); the Fabric build's own
+	 * conditions ({@code fabric:load_conditions}) still apply. Null when there are none, or the file isn't JSON.
+	 */
+	static byte[] withoutNeoForgeConditions(byte[] data) {
+		String text = new String(data, StandardCharsets.UTF_8);
+		if (!text.contains(NEOFORGE_CONDITIONS)) return null;
+		Object root;
+		try {
+			root = Json.parse(text, text.length(), Json.DEFAULT_MAX_DEPTH);
+		} catch (JsonException e) {
+			return null;
+		}
+		return withoutKey(root, NEOFORGE_CONDITIONS) ? Json.write(root, true).getBytes(StandardCharsets.UTF_8) : null;
+	}
+
+	/** Removes {@code key} from every object in a parsed JSON value; whether there was one. */
+	private static boolean withoutKey(Object value, String key) {
+		boolean removed = false;
+		if (value instanceof Map<?, ?> map) {
+			removed = map.containsKey(key);
+			map.remove(key);
+			for (Object v : map.values()) removed |= withoutKey(v, key);
+		} else if (value instanceof List<?> list) {
+			for (Object v : list) removed |= withoutKey(v, key);
+		}
+		return removed;
 	}
 
 	/**

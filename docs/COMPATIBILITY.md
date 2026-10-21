@@ -104,7 +104,8 @@ How to read the table:
 | fabric-screen-api-v1, sound-api-v1 on the client | loads (see below) | loads (see below) | loads (see below) | loads (see below) |
 | fabric-model-loading-api-v1 on the client | loads without renderer-api (see below) | loads (see below) | loads (see below) | loads (see below) |
 | fabric-renderer-api-v1, fabric-renderer-indigo | unsupported | client (see below) | client (see below) | client (see below) |
-| fabric-data-generation-api-v1, gametest, client-gametest | unsupported | unsupported | unsupported | unsupported |
+| fabric-data-generation-api-v1 (its classes; it generates nothing unless `fabric-api.datagen` is set) | loads | loads | loads | loads |
+| fabric-gametest-api-v1, client-gametest | unsupported | unsupported | unsupported | unsupported |
 
 ### Why modules are disabled
 
@@ -249,7 +250,10 @@ mixin into `Minecraft`'s constructor) after NeoForge has sorted the client's lis
 it, and runs from the next reload; NeoForge itself would throw there.
 
 Mod resources themselves need nothing: NeoForge already loads the `assets/` and `data/` of every mod, Fabric mods
-included. Resources from those mod packs report Fabric's mod pack source, as on Fabric.
+included. Resources from those mod packs report Fabric's mod pack source, as on Fabric. What only NeoForge reads in a
+Fabric jar built for both loaders is left out, as Fabric ignores it: the `neoforge:` sections of its `pack.mcmeta`,
+and the `neoforge:conditions` of its data files, which name its NeoForge build's own condition types (Tectonic's,
+DATA-1); the Fabric build's `fabric:load_conditions` still decide.
 
 Differences from upstream:
 

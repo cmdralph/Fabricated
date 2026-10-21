@@ -915,6 +915,24 @@ class PipelineTest {
 	}
 
 	@Test
+	void aFabricJarsDataLosesItsNeoForgeBuildsConditions(@TempDir Path game) throws Exception {
+		// DATA-1: Tectonic's Fabric jar carries its NeoForge build's conditions, whose type only that build registers.
+		String modifier = "data/tectonic/lithostitched/worldgen_modifier/lanterns.json";
+		String plain = "data/tectonic/worldgen/noise/plain.json";
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		Path tectonic = TestJars.create().fabricModJson(TestJars.modJson("tectonic", "1.0", ""))
+				.text(modifier, "{\"neoforge:conditions\": [{\"type\": \"tectonic:config\"}], \"type\": \"lithostitched:add_features\"}")
+				.text(plain, "{\"amplitudes\": [1.0]}")
+				.write(mods.resolve("tectonic.jar"));
+		Pipeline.Result result = Pipeline.run(input(game, List.of(tectonic), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
+
+		try (SafeArchive overlay = SafeArchive.open(result.mods().getFirst().translated().overlay(), ArchiveLimits.DEFAULTS)) {
+			assertEquals(Map.of("type", "lithostitched:add_features"), Json.parseObject(overlay.readText(modifier)));
+			assertNull(overlay.read(plain), "a file without them is the jar's own");
+		}
+	}
+
+	@Test
 	void anInterfaceAMixinAddsGetsItsSecondDefaultBridged(@TempDir Path game) throws Exception {
 		// CORPUS-11: Entity Culling's interface mixin gives BlockEntityRenderer a second default of NeoForge's
 		// getRenderBoundingBox. The bridge is kept in the cache.

@@ -40,7 +40,7 @@
                    │  b. Mixin prep    (refmap remap, config filtering, behaviorVersion)
                    │  c. Pre-flight    (mixin target/injection-point verification vs game bytecode)
                    │  d. AW/CT → AT    (+ interface-injection table)
-                   │  e. Overlay       (generated META-INF/neoforge.mods.toml, AT, manifest; pack.mcmeta without NeoForge-only sections; enum extensions)
+                   │  e. Overlay       (generated META-INF/neoforge.mods.toml, AT, manifest; pack.mcmeta without NeoForge-only sections; data without neoforge:conditions; enum extensions)
                    ▼
               [6] Package guard: JPMS split-package detection & resolution
                    ▼
@@ -243,7 +243,8 @@ Each mod's entrypoints run inside a guard that records mod id, entrypoint key, c
 | `fabric-data-attachment-api-v1` | **Native** | NeoForge data attachments |
 | `fabric-api-lookup-api-v1`, `fabric-block-api-v1`, `fabric-block-getter-api-v2`/`block-view-api-v2`, `fabric-item-api-v1`, `fabric-object-builder-api-v1`, `fabric-tag-api-v1`, `fabric-serialization-api-v1`, `fabric-sound-api-v1`, `fabric-transfer-api-v1`, `fabric-recipe-api-v1`, `fabric-content-registries-v0`, `fabric-dimensions-v1`, `fabric-game-rule-api-v1`, `fabric-biome-api-v1` (native on 26.3), `fabric-model-loading-api-v1`, `fabric-rendering-fluids-v1`, `fabric-crash-report-info-v1`, `fabric-transitive-access-wideners-v1`, `fabric-advancement-api-v1`, `fabric-permission-api-v1` | **Pass-through** (promoted to Native when pre-flight or testing shows a conflict) | upstream code |
 | `fabric-renderer-api-v1`, `fabric-renderer-indigo` | **Unsupported** | would replace NeoForge's model pipeline |
-| `fabric-data-generation-api-v1`, `fabric-gametest-api-v1`, `fabric-client-gametest-api-v1`, `fabric-debug-api-v1` | **Unsupported** | development-time only |
+| `fabric-data-generation-api-v1` | **Pass-through** | mods' runtime code references its classes (Wover's entrypoints load its tag providers, DATAGEN-1); its hooks act only when the `fabric-api.datagen` property is set |
+| `fabric-gametest-api-v1`, `fabric-client-gametest-api-v1` | **Unsupported** | development-time only |
 
 This table is data (`mc/<ver>/fabric-api-plan.json`), not code, so it can change per MC version without code changes.
 
