@@ -159,4 +159,15 @@ class VersionSemanticsTest {
 		assertEquals(2, VersionInterval.or(List.of(interval("1", true, "2", false)), interval("2", false, "3", false)).size(),
 				"intervals that only meet at an excluded point stay separate");
 	}
+
+	/** A version comes from untrusted metadata: thousands of prerelease parts once overflowed the stack. */
+	@Test
+	void longPrereleaseAndBuildStringsParse() throws Exception {
+		String parts = "a.".repeat(20_000) + "a";
+		assertInstanceOf(SemanticVersion.class, v("1.0.0-" + parts + "+" + parts));
+		assertTrue(matches(">=1.0.0-" + parts, "1.0.0"));
+		assertInstanceOf(StringVersion.class, v("1.0.0-a..b"), "an empty identifier is not semantic");
+		assertInstanceOf(StringVersion.class, v("1.0.0-a_b"));
+		assertInstanceOf(SemanticVersion.class, v("1.0.0-"), "an empty prerelease is, as in Fabric Loader");
+	}
 }

@@ -427,8 +427,9 @@ public final class Pipeline {
 				if (data == null || remapper == null) return data;
 				try {
 					return remapper.remapClass(data, name);
-				} catch (MappingException e) {
-					return null; // not verified then; translating the mod reports it
+				} catch (MappingException | RuntimeException | StackOverflowError e) {
+					// Not verified then; translating the mod reports it. Another mod's pre-flight reads this jar's classes.
+					return null;
 				}
 			}, () -> mixinClasses(c, archive.get())));
 		}

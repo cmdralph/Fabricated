@@ -140,17 +140,13 @@ public final class InstalledClasses implements ClassBytesSource {
 		return added;
 	}
 
-	/** A mixin class of the jar, without its code; null when it is missing or unreadable (translating its mod reports that). */
+	/**
+	 * A mixin class of the jar, without its code; null when it is missing or unreadable (translating its mod reports
+	 * that). Read as untrusted bytes are ({@link ClassBytesSource#readNode}): a hostile class one jar lists must not stop
+	 * the pre-flight of another mod's mixins, which reads every jar's.
+	 */
 	private static ClassNode readMixin(Jar jar, String mixin) {
-		try {
-			byte[] data = jar.classes().read(mixin);
-			if (data == null) return null;
-			ClassNode node = new ClassNode();
-			new ClassReader(data).accept(node, ClassReader.SKIP_CODE | ClassReader.SKIP_FRAMES);
-			return node;
-		} catch (IOException | RuntimeException e) {
-			return null; // the bytes are untrusted: ASM throws on malformed ones
-		}
+		return jar.classes().readNode(mixin, ClassReader.SKIP_CODE | ClassReader.SKIP_FRAMES);
 	}
 
 	/** Whether a member is a {@code @Shadow} (it adds nothing) or, for a method, an injector handler (Mixin renames those). */

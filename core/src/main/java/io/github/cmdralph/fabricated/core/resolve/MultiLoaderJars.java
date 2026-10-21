@@ -23,7 +23,7 @@ public final class MultiLoaderJars {
 	public static final String MODS_TOML = "META-INF/neoforge.mods.toml";
 	/** NeoForge's {@code @Mod}, which marks the class it starts a Java mod with. */
 	private static final byte[] MOD_ANNOTATION = "Lnet/neoforged/fml/common/Mod;".getBytes(StandardCharsets.UTF_8);
-	private static final Pattern JAVA_MOD_LOADER = Pattern.compile("(?m)^\\s*modLoader\\s*=\\s*[\"']javafml[\"']");
+	private static final Pattern JAVA_MOD_LOADER = Pattern.compile("(?m)^[ \\t]*modLoader[ \\t]*=[ \\t]*[\"']javafml[\"']");
 
 	private MultiLoaderJars() {
 	}

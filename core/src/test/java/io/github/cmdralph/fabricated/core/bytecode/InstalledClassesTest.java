@@ -4,11 +4,16 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.junit.jupiter.api.Test;
+import org.objectweb.asm.AnnotationVisitor;
+import org.objectweb.asm.ClassWriter;
+import org.objectweb.asm.Opcodes;
 
 import io.github.cmdralph.fabricated.core.archive.Hashing;
 
@@ -47,5 +52,30 @@ class InstalledClassesTest {
 			assertNull(installed.read(bad), bad);
 		}
 		assertEquals("Any", installed.owner("net/caffeinemc/Renderer$Inner"));
+	}
+
+	/**
+	 * Every jar's mixins are read for another mod's pre-flight: a hostile one nesting annotation arrays without end (ASM
+	 * reads them recursively) is skipped, instead of failing that mod's translation.
+	 */
+	@Test
+	void aMixinClassNestedTooDeeplyToReadIsSkipped() {
+		ClassWriter cw = new ClassWriter(0);
+		cw.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, "evil/M", null, "java/lang/Object", null);
+		AnnotationVisitor root = cw.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false);
+		Deque<AnnotationVisitor> open = new ArrayDeque<>();
+		AnnotationVisitor array = root.visitArray("value");
+		for (int i = 0; i < 200_000; i++) {
+			open.push(array);
+			array = array.visitArray(null);
+		}
+		array.visitEnd();
+		while (!open.isEmpty()) open.pop().visitEnd();
+		root.visitEnd();
+		cw.visitEnd();
+		byte[] hostile = cw.toByteArray();
+		InstalledClasses installed = new InstalledClasses(List.of(new InstalledClasses.Jar("hostile", "evil/M"::equals,
+				name -> name.equals("evil/M") ? hostile : null, () -> List.of("evil/M"))));
+		assertNull(installed.addedMember("net/minecraft/Foo", "x", "I", true));
 	}
 }
