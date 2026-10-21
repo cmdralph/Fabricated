@@ -2079,16 +2079,20 @@ public final class MixinPreflight {
 	}
 
 	/**
-	 * Mixin accepts a {@code @ModifyVariable} handler taking the variable, or the variable and then all of the target's
-	 * parameters; anything else is an {@code InvalidInjectionException} when the mixin applies, whatever its
-	 * {@code require} (Farmer's Delight's hook into {@code CropBlock.getGrowthSpeed}, whose first parameter NeoForge's
-	 * build made a block state). Handlers that use {@code @Coerce} are left to Mixin.
+	 * Mixin accepts a {@code @ModifyVariable} handler taking the variable and then the target's first parameters, as
+	 * many as it declares (Mixin's {@code Injector.validateParams}: Balm's takes two of three); anything else is an
+	 * {@code InvalidInjectionException} when the mixin applies, whatever its {@code require} (Farmer's Delight's hook
+	 * into {@code CropBlock.getGrowthSpeed}, whose first parameter NeoForge's build made a block state). Handlers that
+	 * use {@code @Coerce} are left to Mixin.
 	 */
 	private static boolean acceptsModifierSignature(MethodNode handler, List<MethodNode> targets) {
 		List<Type> args = handlerArgs(handler);
 		if (args == null || args.size() <= 1) return true;
 		List<Type> captured = args.subList(1, args.size());
-		return targets.stream().allMatch(target -> List.of(Type.getArgumentTypes(target.desc)).equals(captured));
+		return targets.stream().allMatch(target -> {
+			List<Type> params = List.of(Type.getArgumentTypes(target.desc));
+			return captured.size() <= params.size() && params.subList(0, captured.size()).equals(captured);
+		});
 	}
 
 	/**

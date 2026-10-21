@@ -29,10 +29,11 @@ chunk on a feature order cycle.
   receiver and arguments, at most one more, that makes the call) is pointed at the hook's call, its handlers bridged as
   for an overload. Architectury's screen render events, FancyMenu's screen hooks and Inventory Profiles Next's overlay
   were left out on every version: NeoForge renders the screen inside `ClientHooks.drawScreen` (26.2 on: `extractScreen`).
-- PRE-14: pre-flight checks a `@ModifyVariable` handler's parameters as Mixin does (the variable, alone or followed by
-  all of the target's): Farmer's Delight's crop growth hook takes `getGrowthSpeed`'s vanilla parameters, NeoForge's
-  build takes a block state first, and Mixin stopped the 1.21.11 corpus server once ENUM-6 let the mod load. The hook
-  is now left out (LEAVE-1) and the mod loads.
+- PRE-14: pre-flight checks a `@ModifyVariable` handler's parameters as Mixin does (the variable, then the target's
+  first parameters, as many as it takes): Farmer's Delight's crop growth hook takes `getGrowthSpeed`'s vanilla
+  parameters, NeoForge's build takes a block state first, and Mixin stopped the 1.21.11 corpus server once ENUM-6 let
+  the mod load. The hook is now left out (LEAVE-1) and the mod loads. Asking for all of the target's parameters, as
+  first written, disabled Balm and Waystones on every corpus run.
 - LEAVE-3: a failing injector whose handler uses nothing of its mixin's own (no field of the mixin, no call to its
   methods) is left out alone even when the mixin adds an interface the mod's code uses: owo-lib's `GuiRendererMixin`
   hooks a field read NeoForge's `GuiRenderer.close` doesn't make, which disabled owo on every advanced client. A unit test
