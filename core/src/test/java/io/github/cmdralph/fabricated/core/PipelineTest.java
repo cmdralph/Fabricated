@@ -954,14 +954,18 @@ class PipelineTest {
 	@Test
 	void aClassTweakersEnumConstantsNeoForgeAddsNeedNoNewerMixin(@TempDir Path game) throws Exception {
 		// Farmer's Delight Refabricated on 1.21.11, whose NeoForge runs Mixin 0.16.5: its class tweaker declares the
-		// constants its enum mixin adds, which Mixin adds from 0.17.1 only. NeoForge's loader adds them instead (ENUM-1),
-		// so only a constant nothing else adds still needs the newer Mixin.
+		// constants its enum mixins add, which Mixin adds from 0.17.1 only. NeoForge's loader adds those of its extensible
+		// enums instead (ENUM-1), and a client enum's constant isn't added on a server, so only a constant an enum mixin
+		// on this side adds some other way still needs the newer Mixin.
 		String kind = "net/minecraft/world/Kind";
+		String tab = "net/minecraft/client/Tab";
 		Path mods = Files.createDirectories(game.resolve("mods"));
 		Path cooking = TestJars.create().fabricModJson(TestJars.modJson("cooking", "1.0", "\"mixins\":[\"cooking.mixins.json\"],\"accessWidener\":\"cooking.classtweaker\""))
-				.text("cooking.mixins.json", "{\"required\":true,\"package\":\"com.cooking.mixin\",\"mixins\":[\"KindMixin\"]}")
-				.text("cooking.classtweaker", "classTweaker v2 official\nextend-enum " + kind + " COOKING_POT\n")
+				.text("cooking.mixins.json", "{\"required\":true,\"package\":\"com.cooking.mixin\",\"mixins\":[\"KindMixin\"],\"client\":[\"TabMixin\"]}")
+				.text("cooking.classtweaker", "classTweaker v2 official\nextend-enum " + kind + " COOKING_POT\nextend-enum " + tab + " COOKING_TAB\n")
 				.bytes("com/cooking/mixin/KindMixin.class", TestEnums.mixin("com/cooking/mixin/KindMixin", kind, List.of(TestEnums.Constant.plain("COOKING_POT")), cw -> {
+				}))
+				.bytes("com/cooking/mixin/TabMixin.class", TestEnums.mixin("com/cooking/mixin/TabMixin", tab, List.of(TestEnums.Constant.plain("COOKING_TAB")), cw -> {
 				}))
 				.write(mods.resolve("cooking.jar"));
 		Path baking = TestJars.create().fabricModJson(TestJars.modJson("baking", "1.0", "\"mixins\":[\"baking.mixins.json\"],\"accessWidener\":\"baking.classtweaker\""))

@@ -16,9 +16,10 @@ chunk on a feature order cycle.
   codec read no context while the splitter measured the recipe sync, which closed the connection, and Polymer warned
   that chunk packets lacked the registries. The test mod sends a payload large enough to be split, whose codec checks
   the context on both sides.
-- ENUM-6: a class tweaker's enum constants that NeoForge's loader adds from the mod's enum extension file (ENUM-1) no
-  longer need Mixin 0.17.1: Farmer's Delight Refabricated was disabled on every 1.21.11 corpus run, whose NeoForge
-  runs Mixin 0.16.5, though the same translation loads it on 26.x. A pipeline test runs it with Mixin 0.16.5.
+- ENUM-6: a class tweaker's enum constants no longer need Mixin 0.17.1 when NeoForge's loader adds them from the mod's
+  enum extension file (ENUM-1), or when no enum mixin adds them on this side (a client enum's, on a server). Farmer's
+  Delight Refabricated was disabled on every 1.21.11 corpus run, whose NeoForge runs Mixin 0.16.5. A pipeline test runs
+  both cases with Mixin 0.16.5; the translation schema is bumped.
 - CI: the client smoke test logs the modules of the libraries LIB-1's bridges reflect on, and the advanced corpus
   step lists the NeoForge biome and structure modifiers its Fabric jars carry: NeoForge applies them, Fabric doesn't, and
   the 26.1.2 advanced client stopped on a feature order cycle in one Biomes O' Plenty biome (inferred cause to check: a

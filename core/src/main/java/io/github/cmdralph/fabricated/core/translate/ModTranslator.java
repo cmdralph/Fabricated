@@ -155,12 +155,13 @@ public final class ModTranslator {
 				List<PreflightFinding> findings = new ArrayList<>();
 				Map<String, String> installedClasses = new TreeMap<>();
 				List<EnumExtensions.Entry> enumEntries = new ArrayList<>();
+				Set<String> enumTargets = new HashSet<>();
 				Set<DefaultBridge> bridges = new LinkedHashSet<>();
 				Function<String, ClassNode> classes = classLookup(name -> overlay.containsKey(name) ? overlay.get(name) : files.read(name));
 				Set<String> widened = new TreeSet<>();
 				List<ModsTomlWriter.MixinConfigSpec> mixinSpecs = processMixins(candidate, override, plannedSkips, files,
 						remapped != null ? remapped.keySet() : archive.classEntryNames(), overlay, findings, installedClasses, enumEntries,
-						classes, bridges, notes, widened);
+						enumTargets, classes, bridges, notes, widened);
 				if (!enumEntries.isEmpty()) overlay.put(EnumExtensions.PATH, EnumExtensions.json(enumEntries).getBytes(StandardCharsets.UTF_8));
 
 				int conditioned = 0;
@@ -197,7 +198,7 @@ public final class ModTranslator {
 						if (tokens != null) text = tokens.remap(text);
 						AccessWidenerFile parsed = AccessWidenerParser.parse(text);
 						checkNamespace(parsed.namespace(), candidate);
-						checkEnumExtensions(parsed, candidate, enumEntries);
+						checkEnumExtensions(parsed, candidate, enumEntries, enumTargets);
 						AccessTransformerConverter.Result at = AccessTransformerConverter.convert(parsed, env.game());
 						notes.addAll(at.warnings());
 						injections = at.injectedInterfaces();
@@ -332,12 +333,13 @@ public final class ModTranslator {
 
 	/**
 	 * @param installedClasses receives the installed classes pre-flight read, with their fingerprints
+	 * @param enumTargets      receives the enums the mod's enum mixins that apply on this side add constants to
 	 * @param widened          receives the access transformer lines pre-flight's repairs need
 	 */
 	private List<ModsTomlWriter.MixinConfigSpec> processMixins(Candidate candidate, ModOverride override, Set<String> plannedSkips, FileView files,
 			Collection<String> entries, Map<String, byte[]> overlay, List<PreflightFinding> findings, Map<String, String> installedClasses,
-			List<EnumExtensions.Entry> enumEntries, Function<String, ClassNode> classes, Set<DefaultBridge> bridges, List<String> notes,
-			Set<String> widened)
+			List<EnumExtensions.Entry> enumEntries, Set<String> enumTargets, Function<String, ClassNode> classes, Set<DefaultBridge> bridges,
+			List<String> notes, Set<String> widened)
 			throws ArchiveException, TranslationException {
 		FabricModMetadata md = candidate.metadata();
 		String behavior = MixinCompat.clampForNeoForge(MixinCompat.fabricBehaviorVersion(md.getDependencies()), env.runtimeMixinVersion(),
@@ -403,7 +405,8 @@ public final class ModTranslator {
 				}
 			}
 			Set<String> skip = withDependents(entry.config(), config, wholeSkips, translated, findings, ducks.keySet());
-			skip = withEnumExtensions(entry.config(), config, skip, ModIds.toNeoForgeId(candidate.id()), translated, entries, overlay, findings, enumEntries);
+			skip = withEnumExtensions(entry.config(), config, skip, ModIds.toNeoForgeId(candidate.id()), translated, entries, overlay, findings, enumEntries,
+					enumTargets);
 			skip = withLibraryBridges(entry.config(), config, skip, translated, entries, overlay, findings, ducks, implementors);
 			overlay.putAll(preflight.repairs(entry.config(), config, refmap, skip, findings));
 			if (!override.ignorePreflight()) {
@@ -586,13 +589,14 @@ public final class ModTranslator {
 
 	/**
 	 * {@code skip} plus the enum mixins whose constants NeoForge's loader adds instead, from the mod's enum extension
-	 * file ({@link EnumExtensions}); their entries go to {@code enumEntries}. An enum mixin into one of NeoForge's
+	 * file ({@link EnumExtensions}); their entries go to {@code enumEntries}, and the enums of every enum mixin to
+	 * {@code enumTargets}. An enum mixin into one of NeoForge's
 	 * extensible enums that the file can't carry becomes, where it can, an ordinary mixin adding its constants
 	 * ({@link EnumValuesMixins}), put in {@code overlay} with the delegate classes its constants' bodies become.
 	 */
 	private Set<String> withEnumExtensions(String configName, MixinConfigFile config, Set<String> skip, String modId, FileView files,
-			Collection<String> modEntries, Map<String, byte[]> overlay, List<PreflightFinding> findings, List<EnumExtensions.Entry> enumEntries)
-			throws ArchiveException {
+			Collection<String> modEntries, Map<String, byte[]> overlay, List<PreflightFinding> findings, List<EnumExtensions.Entry> enumEntries,
+			Set<String> enumTargets) throws ArchiveException {
 		Set<String> all = skip;
 		for (String mixin : config.mixinsFor(env.clientSide())) {
 			if (skip.contains(mixin)) continue;
@@ -601,6 +605,7 @@ public final class ModTranslator {
 			ClassNode node = new ClassNode();
 			new ClassReader(data).accept(node, ClassReader.SKIP_FRAMES);
 			String target = EnumExtensions.target(node);
+			if (target != null) enumTargets.add(target);
 			ClassNode targetNode = target == null ? null : env.installedIndex().readNode(target);
 			List<EnumExtensions.Entry> entries = target == null ? null : EnumExtensions.of(node, targetNode, modId);
 			if (entries == null) {
@@ -890,12 +895,14 @@ public final class ModTranslator {
 	/**
 	 * A class tweaker's enum extensions only declare the constants the mod's enum mixins add: Mixin adds them, from
 	 * 0.17.1 (pre-flight checks the mixins themselves), or NeoForge's loader, from the mod's enum extension file
-	 * ({@code extended}, ENUM-1), whatever the Mixin version.
+	 * ({@code extended}, ENUM-1), whatever the Mixin version. A constant no enum mixin adds on this side (a client enum's,
+	 * on a server) isn't added or read here either.
 	 */
-	private void checkEnumExtensions(AccessWidenerFile tweaker, Candidate candidate, List<EnumExtensions.Entry> extended) throws TranslationException {
+	private void checkEnumExtensions(AccessWidenerFile tweaker, Candidate candidate, List<EnumExtensions.Entry> extended, Set<String> enumTargets)
+			throws TranslationException {
 		if (MixinCompat.supportsEnumExtensions(env.runtimeMixinVersion())) return;
 		Set<String> added = extended.stream().map(e -> e.enumName() + "." + e.name()).collect(Collectors.toSet());
-		if (!tweaker.enumExtensions().stream().allMatch(e -> added.contains(e.target() + "." + e.constant()))) {
+		if (tweaker.enumExtensions().stream().anyMatch(e -> enumTargets.contains(e.target()) && !added.contains(e.target() + "." + e.constant()))) {
 			throw new TranslationException(candidate.id() + " adds enum constants with Mixin's enum extensions, which need Mixin 0.17.1 or later;"
 					+ " this NeoForge runs Mixin " + env.runtimeMixinVersion(), "Update NeoForge, or use a build of " + candidate.id() + " made for it.");
 		}
