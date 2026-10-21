@@ -26,8 +26,13 @@ main entrypoint, and Flashback not loaded for one large native library.
 - LOADER-3: `ResourceBundle.getBundle` with a `ResourceBundle.Control` in a Fabric mod's code makes the same lookup
   through Fabricated's `ResourceBundles`: Java refuses a control from a named module, and LuckPerms loads its
   translations so. The translation schema is bumped.
+- CORPUS-21: the compatibility plan refuses Flashback's Fabric build. Its registry freeze hook starts Flashback, whose
+  start-up needs the client, on the first freeze: NeoForge freezes at bootstrap, Fabric API only after the client
+  initializers. It stopped the 1.21.11 advanced corpus client at bootstrap.
 - LIMIT-1: one archive entry may be 128 MiB (was 64 MiB): Flashback ships a 71 MB native library. The limits on the
   whole archive and the compression ratio check are unchanged.
+- CI: when Mixin stops a client on an injector pre-flight passed, the summary prints the handler's annotations and its
+  target methods' code (CORPUS-18); the server summaries list entrypoint failures and slow entrypoints (CORPUS-19).
 - Roadmap: PR #53's results (PIP-1, BIOME-2 and LOADER-2 verified as far as the next failure), and what is still open:
   FrozenLib's entrypoint injection (LOADER-4).
 

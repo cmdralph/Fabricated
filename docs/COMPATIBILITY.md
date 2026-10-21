@@ -772,6 +772,10 @@ and older) run Fabric mods with, which 26.x doesn't have (OBF-1: Modrinth lists 
 - **malilib** (and with it Tweakeroo, MiniHUD and Litematica): it adds its picture-in-picture renderers through a map
   NeoForge replaced with renderer pools on every version, and calls that accessor while the game starts (CORPUS-13).
 - **WTHIT**: its Fabric build refuses NeoForge itself; its NeoForge build is the one to use.
+- **Flashback**: its mixin into `MappedRegistry.freeze` starts Flashback on the first registry freeze, and its start-up
+  registers a key binding through the client. NeoForge freezes the registries at bootstrap and again before the client
+  exists; Fabric API delays that freeze until after the client initializers. The 1.21.11 advanced corpus client stopped
+  at bootstrap (CORPUS-21).
 
 ### Fabric Loader
 
