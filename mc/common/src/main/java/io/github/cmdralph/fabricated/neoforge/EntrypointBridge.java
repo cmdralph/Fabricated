@@ -111,6 +111,12 @@ public final class EntrypointBridge {
 		finish();
 	}
 
+	/** Whether the main entrypoints are still to run, in {@code Minecraft}'s constructor. */
+	public static boolean mainEntrypointsPending() {
+		EntrypointBridge bridge = pendingClient;
+		return bridge != null && bridge.mainWithClient;
+	}
+
 	/** Runs the main and client entrypoints (once); called from {@code Minecraft}'s constructor where Fabric Loader runs them. */
 	public static void runClientEntrypoints() {
 		EntrypointBridge bridge = pendingClient;

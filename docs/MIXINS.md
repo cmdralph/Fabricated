@@ -149,9 +149,13 @@ Versions: 1.21.11 · package `io.github.cmdralph.fabricated.neoforge.mixin` · r
 | mixins | ReloadableServerResourcesMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.server.ReloadableServerResources | no injectors; implements FabricDataResourceStoreHolder; adds methods fabric$getDataResourceStore; @Unique fields fabricated$dataResourceStore | | | | |
 | mixins | ResourceMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.server.packs.resources.Resource | no injectors; implements FabricResource; adds methods getFabricPackSource | | | | |
 | mixins | MappedRegistryMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.core.MappedRegistry | no injectors; implements FabricRegistry | | | | |
+| mixins | MappedRegistryEarlyWriteMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.core.MappedRegistry | @Inject → fabricated$openForEarlyWrite | "validateWrite(Lnet/minecraft/resources/ResourceKey;)V" | HEAD | — | default |
+| mixins | MappedRegistryPendingHoldersMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.core.MappedRegistry | @Inject → fabricated$keepPendingHolders | "freeze" | HEAD | — | default |
+| mixins | MappedRegistryPendingHoldersMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.core.MappedRegistry | @Inject → fabricated$restorePendingHolders | "freeze" | RETURN | — | default |
 | mixins | MobEffectMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.world.effect.MobEffect | no injectors; implements FabricMobEffect | | | | |
 | mixins | EntityTypeBuilderMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.world.entity.EntityType$Builder | @Inject → fabricated$applyChildBuilders | "build" | RETURN | — | default |
 | mixins | BlockEntityTypeMixin | 1.21.11 (1.21.11) | n.m.world.level.block.entity.BlockEntityType | no injectors; implements FabricBlockEntityType; adds methods addSupportedBlock | | | | |
+| mixins | PoiTypesMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.world.entity.ai.village.poi.PoiTypes | @Inject → fabricated$withoutCallbackEntries | "registerBlockStates" | HEAD | — | default |
 | mixins | BlockMixin | 1.21.11 (1.21.11) | n.m.world.level.block.Block | no injectors; implements FabricBlock; adds methods getAppearance, makesOpenTrapdoorAboveClimbable | | | | |
 | mixins | BlockStateMixin | 1.21.11 (1.21.11) | n.m.world.level.block.state.BlockState | no injectors; implements FabricBlockState; adds methods getAppearance | | | | |
 | mixins | ItemMixin | 1.21.11 (1.21.11) | n.m.world.item.Item | @Inject → fabricated$onConstruct | "<init>" | RETURN | — | default |
@@ -180,6 +184,7 @@ Versions: 1.21.11 · package `io.github.cmdralph.fabricated.neoforge.mixin` · r
 | mixins | LivingEntityFluidTravelMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.world.entity.LivingEntity | @Inject → fabricated$throughFabricFluid (cancellable) | "shouldTravelInFluid" | RETURN | — | default |
 | mixins | FluidTypeMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.world.level.material.Fluid | @WrapOperation → fabricated$fabricFluidType | "getFluidType" (NeoForge's) | INVOKE `L…/CommonHooks;getVanillaFluidType(L…/Fluid;)L…/FluidType;` | — | default |
 | mixins | NetworkRegistryMixin | common (1.21.11,26.1.2,26.2,26.3) | neo.network.registration.NetworkRegistry | @Inject → fabricated$clientboundCodec | "getCodec" | HEAD cancellable=true | — | default |
+| mixins | NetworkRegistryAccessor | common (1.21.11,26.1.2,26.2,26.3) | neo.network.registration.NetworkRegistry | @Accessor fabricated$registrations, fabricated$serverboundHandlers, fabricated$clientboundHandlers, fabricated$setup; @Accessor (setter) fabricated$setSetup | | | | |
 | mixins | MenuProviderMixin | 1.21.11 (1.21.11) | n.m.world.MenuProvider | no injectors; implements FabricScreenHandlerFactory | | | | |
 | mixins | ServerPlayerMenuMixin | 1.21.11 (1.21.11) | n.m.server.level.ServerPlayer | @WrapMethod → fabricated$trackOpener | OPEN_MENU |  | — | default |
 | mixins | ServerPlayerMenuMixin | 1.21.11 (1.21.11) | n.m.server.level.ServerPlayer | @WrapOperation → fabricated$shouldCloseCurrentScreen | OPEN_MENU | INVOKE `L…/MenuProvider;shouldTriggerClientSideContainerClosingOnOpen()Z` | — | default |
@@ -462,9 +467,13 @@ Versions: 26.1.2, 26.2, 26.3 · package `io.github.cmdralph.fabricated.neoforge.
 | mixins | ReloadableServerResourcesMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.server.ReloadableServerResources | no injectors; implements FabricDataResourceStoreHolder; adds methods fabric$getDataResourceStore; @Unique fields fabricated$dataResourceStore | | | | |
 | mixins | ResourceMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.server.packs.resources.Resource | no injectors; implements FabricResource; adds methods getFabricPackSource | | | | |
 | mixins | MappedRegistryMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.core.MappedRegistry | no injectors; implements FabricRegistry | | | | |
+| mixins | MappedRegistryEarlyWriteMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.core.MappedRegistry | @Inject → fabricated$openForEarlyWrite | "validateWrite(Lnet/minecraft/resources/ResourceKey;)V" | HEAD | — | default |
+| mixins | MappedRegistryPendingHoldersMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.core.MappedRegistry | @Inject → fabricated$keepPendingHolders | "freeze" | HEAD | — | default |
+| mixins | MappedRegistryPendingHoldersMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.core.MappedRegistry | @Inject → fabricated$restorePendingHolders | "freeze" | RETURN | — | default |
 | mixins | MobEffectMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.world.effect.MobEffect | no injectors; implements FabricMobEffect | | | | |
 | mixins | EntityTypeBuilderMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.world.entity.EntityType$Builder | @Inject → fabricated$applyChildBuilders | "build" | RETURN | — | default |
 | mixins | BlockEntityTypeMixin | common26 (26.1.2,26.2,26.3) | n.m.world.level.block.entity.BlockEntityType | no injectors; implements FabricBlockEntityType; adds methods addValidBlock | | | | |
+| mixins | PoiTypesMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.world.entity.ai.village.poi.PoiTypes | @Inject → fabricated$withoutCallbackEntries | "registerBlockStates" | HEAD | — | default |
 | mixins | BlockMixin | common26 (26.1.2,26.2,26.3) | n.m.world.level.block.Block | no injectors; implements FabricBlock; adds methods getAppearance, getEnchantPowerBonus, makesOpenTrapdoorAboveClimbable | | | | |
 | mixins | BlockStateMixin | common26 (26.1.2,26.2,26.3) | n.m.world.level.block.state.BlockState | no injectors; implements FabricBlockState; adds methods getAppearance | | | | |
 | mixins | BlockBehaviourPropertiesMixin | common26 (26.1.2,26.2,26.3) | n.m.world.level.block.state.BlockBehaviour$Properties | no injectors; implements FabricBlock.FabricProperties; adds methods blockId | | | | |
@@ -497,6 +506,7 @@ Versions: 26.1.2, 26.2, 26.3 · package `io.github.cmdralph.fabricated.neoforge.
 | mixins | ServerPayloadSendMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.server.network.ServerCommonPacketListenerImpl | @Inject → fabricated$dropUnsendableFabricPayload | "send(L…/Packet;Lio/netty/channel/ChannelFutureListener;)V" | HEAD cancellable=true | — | default |
 | mixins | ServerCommonPacketListenerDisconnectMixin | common (1.21.11,26.1.2,26.2,26.3) | n.m.server.network.ServerCommonPacketListenerImpl | @Inject → fabricated$onDisconnect | "onDisconnect" | HEAD | — | default |
 | mixins | NetworkRegistryMixin | common (1.21.11,26.1.2,26.2,26.3) | neo.network.registration.NetworkRegistry | @Inject → fabricated$clientboundCodec | "getCodec" | HEAD cancellable=true | — | default |
+| mixins | NetworkRegistryAccessor | common (1.21.11,26.1.2,26.2,26.3) | neo.network.registration.NetworkRegistry | @Accessor fabricated$registrations, fabricated$serverboundHandlers, fabricated$clientboundHandlers, fabricated$setup; @Accessor (setter) fabricated$setSetup | | | | |
 | mixins | MenuProviderMixin | common26 (26.1.2,26.2,26.3) | n.m.world.MenuProvider | no injectors; implements FabricMenuProvider | | | | |
 | mixins | ServerPlayerMenuMixin | common26 (26.1.2,26.2,26.3) | n.m.server.level.ServerPlayer | @WrapMethod → fabricated$trackOpener | OPEN_MENU |  | — | default |
 | mixins | ServerPlayerMenuMixin | common26 (26.1.2,26.2,26.3) | n.m.server.level.ServerPlayer | @WrapOperation → fabricated$shouldCloseCurrentScreen | OPEN_MENU | INVOKE `L…/MenuProvider;shouldTriggerClientSideContainerClosingOnOpen()Z` | — | default |

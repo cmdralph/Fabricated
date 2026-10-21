@@ -14,6 +14,7 @@
     "ResourceMixin",
     "MappedRegistryMixin",
     "MappedRegistryEarlyWriteMixin",
+    "MappedRegistryPendingHoldersMixin",
     "PackRepositorySourcesMixin",
     "MobEffectMixin",
     "EntityTypeBuilderMixin",
