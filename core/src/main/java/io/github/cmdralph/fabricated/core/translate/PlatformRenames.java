@@ -16,6 +16,7 @@ import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.FieldNode;
 
 import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
+import io.github.cmdralph.fabricated.core.bytecode.ClassIndex;
 
 /**
  * Members NeoForge renamed that Fabric mods still reach by their old names, through the copies of NeoForge's API made
@@ -26,6 +27,11 @@ import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
  * NeoForge version supported): a mod's {@code new ConfigurationScreen(modId, parent, ...)} passes the container that
  * Fabricated finds for that id instead, and its constructor references ({@code ConfigurationScreen::new}) point at
  * Fabricated's factories taking the id.
+ *
+ * <p>NeoForge's patches give vanilla's {@code CreativeModeTab} constructor eight more parameters, its builder's own
+ * settings, and add a constructor taking the builder. A mod's subclass calling vanilla's constructor (which an access
+ * widener opens: Polymer's tabs for a server's item groups) calls that one instead, with a builder Fabricated makes from
+ * vanilla's arguments (CTOR-1).
  */
 final class PlatformRenames {
 	private static final String CONFIGURATION_SCREEN = "net/neoforged/neoforge/client/gui/ConfigurationScreen";
@@ -35,19 +41,33 @@ final class PlatformRenames {
 	private static final String CONTAINER_OF_OWNER = "io/github/cmdralph/fabricated/neoforge/config/ForgeConfigApiPortBridge";
 	/** Fabricated's (client only): {@code configurationScreen(modId, parent, ...)} for each of the port's constructors. */
 	private static final String SCREEN_FACTORIES = "io/github/cmdralph/fabricated/neoforge/config/ForgeConfigApiPortScreens";
+	private static final String CREATIVE_TAB = "net/minecraft/world/item/CreativeModeTab";
+	private static final String TAB_BUILDER = CREATIVE_TAB + "$Builder";
+	/** Vanilla's constructor's parameters: row, column, type, name, icon, display items. */
+	private static final String VANILLA_TAB_ARGUMENTS = "(L" + CREATIVE_TAB + "$Row;IL" + CREATIVE_TAB + "$Type;Lnet/minecraft/network/chat/Component;"
+			+ "Ljava/util/function/Supplier;L" + CREATIVE_TAB + "$DisplayItemsGenerator;)";
+	private static final String BUILDER_CONSTRUCTOR = "(L" + TAB_BUILDER + ";)V";
+	/** Fabricated's: {@code builder(...)}, a builder made from vanilla's constructor arguments. */
+	private static final String TAB_BUILDERS = "io/github/cmdralph/fabricated/neoforge/item/VanillaCreativeTabs";
 
 	/** Owner, then old name to new name. */
 	private static final Map<String, Map<String, String>> KNOWN = Map.of(
 			"net/neoforged/fml/config/ModConfig$Type", Map.of("COMMON", "LOCAL", "SERVER", "SYNCED"));
 
 	private final Map<String, Map<String, String>> active;
+	/** Whether the game's creative tab has NeoForge's constructor taking a builder, and not vanilla's. */
+	private final boolean tabBuilders;
 
-	private PlatformRenames(Map<String, Map<String, String>> active) {
+	private PlatformRenames(Map<String, Map<String, String>> active, boolean tabBuilders) {
 		this.active = active;
+		this.tabBuilders = tabBuilders;
 	}
 
-	/** The renames the platform's classes call for: an old field missing there, its new one present. */
-	static PlatformRenames of(ClassBytesSource platform) {
+	/**
+	 * The renames the platform's classes call for: an old field missing there, its new one present; and the
+	 * adaptations the game's classes do.
+	 */
+	static PlatformRenames of(ClassBytesSource platform, ClassIndex game) {
 		Map<String, Map<String, String>> active = new HashMap<>();
 		KNOWN.forEach((owner, renames) -> {
 			ClassNode node = platform.readNode(owner, ClassReader.SKIP_CODE);
@@ -58,7 +78,10 @@ final class PlatformRenames {
 			});
 			if (!applying.isEmpty()) active.put(owner, Map.copyOf(applying));
 		});
-		return new PlatformRenames(Map.copyOf(active));
+		ClassIndex.ClassInfo tab = game.get(CREATIVE_TAB);
+		boolean tabBuilders = tab != null && tab.methodAccess("<init>" + BUILDER_CONSTRUCTOR) != null
+				&& tab.methodAccess("<init>" + VANILLA_TAB_ARGUMENTS + "V") == null;
+		return new PlatformRenames(Map.copyOf(active), tabBuilders);
 	}
 
 	/** {@code classFile} with the renames and adaptations applied, or null when it uses none of those members. */
@@ -66,12 +89,21 @@ final class PlatformRenames {
 		String text = new String(classFile, StandardCharsets.ISO_8859_1);
 		boolean renames = active.keySet().stream().anyMatch(text::contains);
 		boolean screens = text.contains(CONFIGURATION_SCREEN) && text.contains(PORT_CONSTRUCTOR);
-		if (!renames && !screens) return null;
+		boolean tabs = tabBuilders && text.contains(VANILLA_TAB_ARGUMENTS);
+		if (!renames && !screens && !tabs) return null;
 		boolean[] changed = {false};
 		ClassReader reader = new ClassReader(classFile);
 		// Maxs recomputed: the argument shuffling below needs up to two more stack slots.
 		ClassWriter writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
 		ClassVisitor adapter = new ClassVisitor(Opcodes.ASM9, writer) {
+			private boolean tabSubclass;
+
+			@Override
+			public void visit(int version, int access, String name, String signature, String superName, String[] interfaces) {
+				tabSubclass = tabs && CREATIVE_TAB.equals(superName);
+				super.visit(version, access, name, signature, superName, interfaces);
+			}
+
 			@Override
 			public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
 				return new MethodVisitor(Opcodes.ASM9, super.visitMethod(access, name, descriptor, signature, exceptions)) {
@@ -79,6 +111,15 @@ final class PlatformRenames {
 					public void visitMethodInsn(int opcode, String owner, String method, String desc, boolean itf) {
 						if (opcode == Opcodes.INVOKESPECIAL && owner.equals(CONFIGURATION_SCREEN) && method.equals("<init>")
 								&& desc.startsWith(PORT_CONSTRUCTOR) && withContainer(desc, owner, itf)) {
+							changed[0] = true;
+							return;
+						}
+						if (tabSubclass && opcode == Opcodes.INVOKESPECIAL && owner.equals(CREATIVE_TAB) && method.equals("<init>")
+								&& desc.equals(VANILLA_TAB_ARGUMENTS + "V")) {
+							// row, column, type, name, icon, items -> builder; NeoForge's constructor is protected, so
+							// only a subclass's call of it links.
+							super.visitMethodInsn(Opcodes.INVOKESTATIC, TAB_BUILDERS, "builder", VANILLA_TAB_ARGUMENTS + "L" + TAB_BUILDER + ";", false);
+							super.visitMethodInsn(Opcodes.INVOKESPECIAL, CREATIVE_TAB, "<init>", BUILDER_CONSTRUCTOR, false);
 							changed[0] = true;
 							return;
 						}

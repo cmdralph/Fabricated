@@ -105,7 +105,7 @@ public final class ModTranslator {
 		this.env = env;
 		this.cache = cache;
 		this.limits = limits;
-		this.renames = PlatformRenames.of(env.untransformable());
+		this.renames = PlatformRenames.of(env.untransformable(), env.game());
 	}
 
 	/**
