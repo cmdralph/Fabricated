@@ -721,6 +721,9 @@ jobs:
               echo "-- slow entrypoints:"
               awk '/^== Slow entrypoints/ { show = 1; next } /^$/ { show = 0 } show' "$report" | head -25
             fi
+            # Fabricated's own warnings and errors (a NeoForge internal it could not reach, a bridge that failed).
+            echo "-- Fabricated's warnings and errors:"
+            grep -h -E '/(WARN|ERROR)\] \[Fabricated' "$log" | head -15 | cut -c1-300 || true
             digest "$log"
             if ! grep -q -E 'Done \([0-9.]+s\)!' "$log"; then
               for report in $(ls "$RUNNER_TEMP/$run/crash-reports"/*.txt 2>/dev/null | head -1); do
