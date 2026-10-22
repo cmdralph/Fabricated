@@ -3,7 +3,9 @@ package io.github.cmdralph.fabricated.neoforge.registry;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.RecordComponent;
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
@@ -30,8 +32,8 @@ import net.neoforged.neoforge.registries.DataPackRegistriesHooks;
  * </ul>
  * Since NeoForge's change #3659 (26.3; in 26.3.0.95), NeoForge loads data-pack registries from {@code RegistryDataLoader}'s lists, which it
  * keeps as views of these. A mod written for Fabric may replace one with a copy of its own from the class's
- * initializer, as Wover does to add its registries; a registry added after that copy never reaches the loader, so
- * Fabricated adds it to the copy as well (REG-4).
+ * initializer, as Wover does to add its registries; registries added after that copy, NeoForge's own and Fabric mods',
+ * never reach the loader, so Fabricated brings the copy up to date (REG-4).
  */
 public final class NeoForgeRegistryInternals {
 	private static final Logger LOGGER = LoggerFactory.getLogger("Fabricated");
@@ -79,12 +81,12 @@ public final class NeoForgeRegistryInternals {
 
 	public static synchronized void addWorldRegistry(RegistryDataLoader.RegistryData<?> data) {
 		add(WORLD, data, "data-pack registries");
-		alsoInLoaderList(LOADER_WORLD, data);
+		syncLoaderList(LOADER_WORLD, WORLD);
 	}
 
 	public static synchronized void addReloadableRegistry(RegistryDataLoader.RegistryData<?> data) {
 		add(RELOADABLE, data, "reloadable registries");
-		alsoInLoaderList(LOADER_RELOADABLE, data);
+		syncLoaderList(LOADER_RELOADABLE, RELOADABLE);
 	}
 
 	/** Makes NeoForge send the registry's entries to clients, decoded there with {@code data}'s codec. */
@@ -108,21 +110,40 @@ public final class NeoForgeRegistryInternals {
 		if (registries.keys() != null) registries.keys().add(data.key());
 	}
 
-	/** Adds the registry to the list the loader's field holds, when a mod replaced NeoForge's view with a list without it. */
+	/**
+	 * Brings the loader's lists up to date with NeoForge's where a mod replaced them; called once mods have loaded, as
+	 * NeoForge adds its own data-pack registries after the loader's class initializer.
+	 */
+	public static synchronized void syncLoaderLists() {
+		syncLoaderList(LOADER_WORLD, WORLD);
+		syncLoaderList(LOADER_RELOADABLE, RELOADABLE);
+	}
+
+	/** Adds what NeoForge's list has to the list the loader's field holds, when a mod replaced NeoForge's view of it. */
 	@SuppressWarnings("unchecked")
-	private static void alsoInLoaderList(@Nullable Field field, RegistryDataLoader.RegistryData<?> data) {
-		if (field == null) return;
+	private static void syncLoaderList(@Nullable Field field, @Nullable Registries registries) {
+		if (field == null || registries == null) return;
+		List<RegistryDataLoader.RegistryData<?>> missing = new ArrayList<>();
 		try {
 			if (!(field.get(null) instanceof List<?> list)) return;
+			Set<ResourceKey<?>> present = new HashSet<>();
 			for (Object entry : list) {
-				if (entry instanceof RegistryDataLoader.RegistryData<?> loaded && loaded.key().equals(data.key())) return;
+				if (entry instanceof RegistryDataLoader.RegistryData<?> loaded) present.add(loaded.key());
 			}
-			((List<RegistryDataLoader.RegistryData<?>>) list).add(data);
-			LOGGER.info("Registry {} added to RegistryDataLoader.{} too, which a mod replaced with a list of its own", data.key().identifier(), field.getName());
+			for (RegistryDataLoader.RegistryData<?> data : registries.data()) {
+				if (present.add(data.key())) missing.add(data);
+			}
+			if (missing.isEmpty()) return;
+			((List<RegistryDataLoader.RegistryData<?>>) list).addAll(missing);
+			LOGGER.info("Added {} to RegistryDataLoader.{}, which a mod replaced with a list of its own", keys(missing), field.getName());
 		} catch (ReflectiveOperationException | RuntimeException e) {
-			LOGGER.warn("Registry {} will not load from data packs: a mod replaced RegistryDataLoader.{} with a list Fabricated cannot add to ({})",
-					data.key().identifier(), field.getName(), e.toString());
+			LOGGER.warn("Registries {} will not load from data packs: a mod replaced RegistryDataLoader.{} with a list Fabricated cannot add to ({})",
+					keys(missing), field.getName(), e.toString());
 		}
+	}
+
+	private static List<String> keys(List<RegistryDataLoader.RegistryData<?>> registries) {
+		return registries.stream().map(data -> data.key().identifier().toString()).toList();
 	}
 
 	/** The loader's list field, if NeoForge captures it in {@code capture} (and so loads from it). */

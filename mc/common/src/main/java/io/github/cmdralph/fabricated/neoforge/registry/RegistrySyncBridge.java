@@ -15,6 +15,7 @@ import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
+import net.neoforged.fml.event.lifecycle.FMLLoadCompleteEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.server.ServerAboutToStartEvent;
 import net.neoforged.neoforge.registries.RegisterEvent;
@@ -75,6 +76,8 @@ public final class RegistrySyncBridge {
 			// A parallel event: freezing a vanilla registry belongs on the main thread.
 			e.enqueueWork(RegistrySyncBridge::closeRoot);
 		});
+		// NeoForge's own data-pack registries come after a mod may have replaced the loader's lists (REG-4).
+		modBus.addListener(FMLLoadCompleteEvent.class, e -> e.enqueueWork(NeoForgeRegistryInternals::syncLoaderLists));
 		NeoForge.EVENT_BUS.addListener(ServerAboutToStartEvent.class, e -> DynamicRegistrySetup.fire(e.getServer().registryAccess(), "server", problems));
 		if (dist.isClient()) ClientRegistrySync.register(problems);
 	}
