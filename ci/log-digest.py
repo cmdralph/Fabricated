@@ -21,6 +21,9 @@ NOISE = re.compile(r"[Nn]arrator|flite|401|[Rr]ealms|user properties|TargetDataL
                    r"|cardinal-components-api.properties")
 STACKS = 5
 FRAMES = 12
+# Lines printed of one error's text: a report listing every failed entry (NeoForge's registry loading) can run to
+# thousands, and the job log keeps only its end.
+STACK_LINES = 60
 
 
 def main():
@@ -65,13 +68,18 @@ def main():
         print(f"-- first {logger} error with its stack ({n} in all):")
         print("  " + lines[first[logger]][:300])
         frames = 0
-        for line in stack:
+        printed = 0
+        for i, line in enumerate(stack):
             if line.lstrip().startswith("at "):
                 frames += 1
                 if frames > FRAMES:
                     continue
             else:
                 frames = 0
+            if printed == STACK_LINES:
+                print(f"    ... {len(stack) - i} more lines")
+                break
+            printed += 1
             print("    " + line.strip()[:250])
 
 

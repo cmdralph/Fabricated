@@ -34,7 +34,7 @@ entrypoint that throws).
 | 1.21.11 | 21.11.45 | 21 | Intermediary names (remapped at load) | ✅ test mods pass |
 | 26.1.2 | 26.1.2.116 | 25 | Mojang names (no remapping) | ✅ test mods pass |
 | 26.2 | 26.2.0.90 | 25 | Mojang names (no remapping) | ✅ test mods pass |
-| 26.3 | 26.3.0.69-beta | 25 | Mojang names (no remapping) | ⚠️ best-effort (NeoForge 26.3 is beta) |
+| 26.3 | 26.3.0.95 | 25 | Mojang names (no remapping) | ✅ test mods pass |
 
 **Fabric API** is the big caveat. Most Fabric mods need it, and many of its modules patch Minecraft code
 that NeoForge has already changed. Fabricated handles this per module:

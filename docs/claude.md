@@ -6,10 +6,15 @@ before committing. The longer design documents remain the reference for details:
 [`ARCHITECTURE.md`](ARCHITECTURE.md) (pipeline, isolation, caching, security), [`RESEARCH.md`](RESEARCH.md) (verified
 facts about NeoForge, FML and Fabric), [`COMPATIBILITY.md`](COMPATIBILITY.md) (what works, per version and module),
 [`API.md`](API.md) (Fabricated's public API), [`CHANGELOG.md`](CHANGELOG.md) (each session's changes and how they were
-verified) and [`../CONTRIBUTING.md`](../CONTRIBUTING.md) (layout, build, adding a version).
+verified), [`PORTING.md`](PORTING.md) (the 1.20.1 and Forge evaluation and the branch model) and
+[`../CONTRIBUTING.md`](../CONTRIBUTING.md) (layout, build, adding a version).
 
 ## Working rules
 
+- **Branches** (the owner's decision, 2026-10-21): `main` is NeoForge 1.21.11 to 26.3 and the active branch; every fix
+  and feature lands there first. `1.20.1-legacy` (Minecraft 1.20.1) is in its architectural evaluation phase, and a
+  `forge` branch is planned. Shared modules (`core`, `api`, `fabric-loader-api`) change only on `main`; a branch takes
+  them by merging `main`, never by cherry-picking, and adds only files of its own (`PORTING.md` §1).
 - **Verify, never assume.** A Minecraft, NeoForge, FML or Fabric API class, method or field is used only after
   reading it: in this repository, in the NeoForge sources for that line (`neoforged/NeoForge` branches `1.21.11`,
   `26.1.x`, `26.2.x`, `26.3.x`; the Minecraft code NeoForge changes is in `patches/`), or in the Fabric API sources
