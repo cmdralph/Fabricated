@@ -21,6 +21,12 @@ its own later.
   the owner makes before any branch work starts.
 - `claude.md`: the branch rule (shared modules change only on `main`; branches merge it and add files of their own).
   Roadmap: the platform tracks, and VANILLA-2 as seen on `9431800`.
+- REG-4: on 26.3.0.95 the advanced corpus server and client stopped loading registries (Wilder Wild's features could not
+  find FrozenLib's `config_predicate_provider` registry). NeoForge now loads from `RegistryDataLoader.WORLD_REGISTRIES`,
+  which Wover replaces with a copy of its own, so Fabric registries added later were lost. Fabricated adds them to such
+  a copy too; the test mod replaces the list as Wover does, so the server gate checks it.
+- CI: the log digest cuts an error's text after 60 lines (NeoForge's registry report had pushed the rest of the summary
+  out of the readable log), and the dedicated servers' summary lists Fabricated's warnings and errors.
 
 ## 2026-10-21 (pass after PR #65): vanilla's code on 1.21.11
 

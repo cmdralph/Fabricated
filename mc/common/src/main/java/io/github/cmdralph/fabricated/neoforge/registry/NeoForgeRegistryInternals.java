@@ -28,6 +28,10 @@ import net.neoforged.neoforge.registries.DataPackRegistriesHooks;
  *       {@code DynamicRegistries} adds to them directly. The field names differ between NeoForge versions, and later
  *       26.3 builds keep each list with the set of its keys in a record.</li>
  * </ul>
+ * Since NeoForge's change #3659 (26.3; in 26.3.0.95), NeoForge loads data-pack registries from {@code RegistryDataLoader}'s lists, which it
+ * keeps as views of these. A mod written for Fabric may replace one with a copy of its own from the class's
+ * initializer, as Wover does to add its registries; a registry added after that copy never reaches the loader, so
+ * Fabricated adds it to the copy as well (REG-4).
  */
 public final class NeoForgeRegistryInternals {
 	private static final Logger LOGGER = LoggerFactory.getLogger("Fabricated");
@@ -36,6 +40,9 @@ public final class NeoForgeRegistryInternals {
 	private static final @Nullable Registries SYNCED = registries(List.of("SYNCED_REGISTRIES", "NETWORKABLE_REGISTRIES"),
 			"SYNCED_REGISTRY_KEYS", "SYNCED_CUSTOM_REGISTRIES");
 	private static final @Nullable Registries RELOADABLE = registries(List.of("RELOADABLE_REGISTRIES"), "RELOADABLE_REGISTRY_KEYS");
+	/** {@code RegistryDataLoader}'s lists, where NeoForge loads from them (it then captures them in these methods). */
+	private static final @Nullable Field LOADER_WORLD = loaderList("WORLD_REGISTRIES", "captureWorldRegistries");
+	private static final @Nullable Field LOADER_RELOADABLE = loaderList("RELOADABLE_REGISTRIES", "captureReloadableRegistries");
 
 	/** One of NeoForge's lists of data-pack registries, and the set of their keys when NeoForge keeps one. */
 	private record Registries(List<RegistryDataLoader.RegistryData<?>> data, @Nullable Collection<ResourceKey<? extends Registry<?>>> keys) {
@@ -72,10 +79,12 @@ public final class NeoForgeRegistryInternals {
 
 	public static synchronized void addWorldRegistry(RegistryDataLoader.RegistryData<?> data) {
 		add(WORLD, data, "data-pack registries");
+		alsoInLoaderList(LOADER_WORLD, data);
 	}
 
 	public static synchronized void addReloadableRegistry(RegistryDataLoader.RegistryData<?> data) {
 		add(RELOADABLE, data, "reloadable registries");
+		alsoInLoaderList(LOADER_RELOADABLE, data);
 	}
 
 	/** Makes NeoForge send the registry's entries to clients, decoded there with {@code data}'s codec. */
@@ -97,6 +106,37 @@ public final class NeoForgeRegistryInternals {
 		}
 		registries.data().add(data);
 		if (registries.keys() != null) registries.keys().add(data.key());
+	}
+
+	/** Adds the registry to the list the loader's field holds, when a mod replaced NeoForge's view with a list without it. */
+	@SuppressWarnings("unchecked")
+	private static void alsoInLoaderList(@Nullable Field field, RegistryDataLoader.RegistryData<?> data) {
+		if (field == null) return;
+		try {
+			if (!(field.get(null) instanceof List<?> list)) return;
+			for (Object entry : list) {
+				if (entry instanceof RegistryDataLoader.RegistryData<?> loaded && loaded.key().equals(data.key())) return;
+			}
+			((List<RegistryDataLoader.RegistryData<?>>) list).add(data);
+			LOGGER.info("Registry {} added to RegistryDataLoader.{} too, which a mod replaced with a list of its own", data.key().identifier(), field.getName());
+		} catch (ReflectiveOperationException | RuntimeException e) {
+			LOGGER.warn("Registry {} will not load from data packs: a mod replaced RegistryDataLoader.{} with a list Fabricated cannot add to ({})",
+					data.key().identifier(), field.getName(), e.toString());
+		}
+	}
+
+	/** The loader's list field, if NeoForge captures it in {@code capture} (and so loads from it). */
+	private static @Nullable Field loaderList(String name, String capture) {
+		try {
+			DataPackRegistriesHooks.class.getMethod(capture, List.class);
+			return RegistryDataLoader.class.getField(name);
+		} catch (NoSuchMethodException | NoSuchFieldException e) {
+			// An older NeoForge, which loads from its own lists.
+			return null;
+		} catch (RuntimeException e) {
+			LOGGER.warn("RegistryDataLoader.{} is not accessible: {}", name, e.toString());
+			return null;
+		}
 	}
 
 	private static @Nullable Method method(Class<?> owner, String name, Class<?>... parameters) {
