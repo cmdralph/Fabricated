@@ -210,7 +210,7 @@ public final class PackageGuard {
 				List<String> missing = service.getValue().providers().stream().filter(p -> !serves(contents, excluded, p)).toList();
 				if (missing.isEmpty()) continue;
 				hidden.add(service.getKey());
-				notes.add("declares the service " + service.getKey().substring(SERVICES.length()) + " with " + missing.getFirst()
+				notes.add("declares the service " + service.getKey().substring(SERVICES.length()) + " with " + missing.get(0)
 						+ (missing.size() > 1 ? " and " + (missing.size() - 1) + " more provider(s)" : "")
 						+ ", which its module doesn't have; the service file is left out, as a module can only declare its own providers");
 			}

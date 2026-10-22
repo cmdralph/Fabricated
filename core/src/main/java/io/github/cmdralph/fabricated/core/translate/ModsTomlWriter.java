@@ -114,7 +114,7 @@ public final class ModsTomlWriter {
 		// After Fabricated's own mod, whose mixin config plugin creates the Fabric mods' language adapters before any
 		// Fabric mod's mixin plugin loads (FML registers mixin configs in this order), as Fabric Loader does.
 		List<String> after = new ArrayList<>(spec.loadAfter());
-		if (!after.contains(ModIds.FABRICATED)) after.addFirst(ModIds.FABRICATED);
+		if (!after.contains(ModIds.FABRICATED)) after.add(0, ModIds.FABRICATED);
 		for (String id : after) {
 			sb.append("[[dependencies.").append(spec.neoForgeId()).append("]]\n");
 			kv(sb, "modId", id);

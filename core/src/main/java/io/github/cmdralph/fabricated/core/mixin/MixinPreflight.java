@@ -296,7 +296,7 @@ public final class MixinPreflight {
 					}
 					// A group's alternative for Fabric Loader's hook too: the other alternatives are for other loaders' hooks.
 					if (targets.size() == 1) {
-						for (String moved : loaderHookRepairs(ann, targets.getFirst(), ctx)) {
+						for (String moved : loaderHookRepairs(ann, targets.get(0), ctx)) {
 							changed = true;
 							out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@" + simpleName(ann.desc) + " " + method.name
 									+ " expects a call to " + moved, ""));
@@ -305,48 +305,48 @@ public final class MixinPreflight {
 					// A grouped injector is one of the mod's alternatives for code that differs: pointing it elsewhere could make
 					// more of the group apply than the group allows.
 					if (targets.size() == 1 && !grouped(method)) {
-						for (String pinned : overloadByParameters(method, ann, targets.getFirst(), ctx)) {
+						for (String pinned : overloadByParameters(method, ann, targets.get(0), ctx)) {
 							changed = true;
 							out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@" + simpleName(ann.desc) + " " + method.name
 									+ " targets " + pinned + ", which this game build declares after another overload; it is pinned to that one", ""));
 						}
-						for (String moved : vanillaPointRepairs(node, method, ann, targets.getFirst(), ctx, bridges)) {
+						for (String moved : vanillaPointRepairs(node, method, ann, targets.get(0), ctx, bridges)) {
 							changed = true;
 							out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@" + simpleName(ann.desc) + " " + method.name
 									+ " expects " + moved, ""));
 						}
 						if (!Annotations.all(method).contains(ann)) continue;
-						for (String moved : overloadRepairs(node, method, ann, targets.getFirst(), ctx, bridges)) {
+						for (String moved : overloadRepairs(node, method, ann, targets.get(0), ctx, bridges)) {
 							changed = true;
 							out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@" + simpleName(ann.desc) + " " + method.name
 									+ " targets " + moved, ""));
 						}
 						// A repair that bridged the handler moved the injector onto the bridge: it is done with.
 						if (!Annotations.all(method).contains(ann)) continue;
-						for (String moved : constantSplitRepairs(node, method, ann, targets.getFirst(), ctx)) {
+						for (String moved : constantSplitRepairs(node, method, ann, targets.get(0), ctx)) {
 							changed = true;
 							out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@ModifyConstant " + method.name
 									+ " targets " + moved, ""));
 						}
-						for (String moved : subtypeCallRepairs(ann, targets.getFirst(), ctx)) {
+						for (String moved : subtypeCallRepairs(ann, targets.get(0), ctx)) {
 							changed = true;
 							out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@" + simpleName(ann.desc) + " " + method.name
 									+ " expects a call to " + moved, ""));
 						}
-						for (String lambda : lambdaCallRepairs(ann, method, targets.getFirst(), ctx)) {
+						for (String lambda : lambdaCallRepairs(ann, method, targets.get(0), ctx)) {
 							changed = true;
 							out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@" + simpleName(ann.desc) + " " + method.name
 									+ " expects a call " + lambda, ""));
 						}
-						for (String moved : insertedArgumentRepairs(node, method, ann, targets.getFirst(), ctx, bridges)) {
+						for (String moved : insertedArgumentRepairs(node, method, ann, targets.get(0), ctx, bridges)) {
 							changed = true;
 							out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@" + simpleName(ann.desc) + " " + method.name
 									+ " expects a call to " + moved, ""));
 						}
 						if (!Annotations.all(method).contains(ann)) continue;
-						List<String> captured = capturedValueRepairs(node, method, ann, targets.getFirst(), ctx, bridges);
+						List<String> captured = capturedValueRepairs(node, method, ann, targets.get(0), ctx, bridges);
 						// Where the parameters can't be matched by type (one the method has twice), in order, around one added.
-						for (String lambda : captured.isEmpty() ? addedParameterRepairs(node, method, ann, targets.getFirst(), ctx, bridges) : captured) {
+						for (String lambda : captured.isEmpty() ? addedParameterRepairs(node, method, ann, targets.get(0), ctx, bridges) : captured) {
 							changed = true;
 							out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@" + simpleName(ann.desc) + " " + method.name
 									+ " targets " + lambda, ""));
@@ -371,7 +371,7 @@ public final class MixinPreflight {
 						madePublic = true;
 					}
 					out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), kind + " " + method.name + method.desc
-							+ " already exists " + (madePublic ? "" : "publicly ") + "in " + targets.getFirst().name.replace('/', '.')
+							+ " already exists " + (madePublic ? "" : "publicly ") + "in " + targets.get(0).name.replace('/', '.')
 							+ " (added by NeoForge or this Minecraft version); the mixin uses that method instead of generating one"
 							+ (madePublic ? ", made public for it" : ""), ""));
 				} else if (accessor != null) {
@@ -379,7 +379,7 @@ public final class MixinPreflight {
 					if (field == null) continue;
 					changed = true;
 					out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@Accessor " + method.name + method.desc
-							+ " targets the captured variable field " + field + " in " + targets.getFirst().name.replace('/', '.')
+							+ " targets the captured variable field " + field + " in " + targets.get(0).name.replace('/', '.')
 							+ ", which this game build names differently", ""));
 				}
 			}
@@ -388,7 +388,7 @@ public final class MixinPreflight {
 				if (captured == null) continue;
 				changed = true;
 				out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@Shadow field " + captured + " is a captured variable field of "
-						+ targets.getFirst().name.replace('/', '.') + ", which this game build names " + field.name + "; the mixin uses that", ""));
+						+ targets.get(0).name.replace('/', '.') + ", which this game build names " + field.name + "; the mixin uses that", ""));
 			}
 			node.methods.addAll(bridges);
 			if (changed) repaired.put(internal + ".class", write(node));
@@ -416,7 +416,7 @@ public final class MixinPreflight {
 				if (!SINGLE_POINT_INJECTORS.contains(ann.desc) || ann.values == null) continue;
 				for (int i = 0; i + 1 < ann.values.size(); i += 2) {
 					if ("at".equals(ann.values.get(i)) && ann.values.get(i + 1) instanceof List<?> points && points.size() == 1) {
-						ann.values.set(i + 1, points.getFirst());
+						ann.values.set(i + 1, points.get(0));
 						changed = true;
 					}
 				}
@@ -477,13 +477,13 @@ public final class MixinPreflight {
 	/** Whether an {@code @Inject} handler takes a returnable callback info: its target returns a value. */
 	private static boolean returnsValue(MethodNode handler) {
 		List<Type> args = handlerArgs(handler);
-		return args != null && !args.isEmpty() && args.getLast().getDescriptor().equals(CALLBACK_INFO_RETURNABLE);
+		return args != null && !args.isEmpty() && args.get(args.size() - 1).getDescriptor().equals(CALLBACK_INFO_RETURNABLE);
 	}
 
 	/** The parameters an {@code @Inject} handler takes before its callback info (and any sugar), or null when it takes none. */
 	private static List<Type> lambdaParameters(MethodNode handler, AnnotationNode injector) {
 		List<Type> args = injector.desc.equals(INJECT) ? handlerArgs(handler) : null;
-		if (args == null || args.size() < 2 || !isCallbackInfo(args.getLast())) return null;
+		if (args == null || args.size() < 2 || !isCallbackInfo(args.get(args.size() - 1))) return null;
 		return args.subList(0, args.size() - 1);
 	}
 
@@ -497,7 +497,7 @@ public final class MixinPreflight {
 				|| !(Annotations.value(injector, "method") instanceof List<?> selectors)) return List.of();
 		List<Type> args = handlerArgs(handler);
 		if (args == null || args.size() < 2
-				|| !(inject ? isCallbackInfo(args.getLast()) : args.getLast().getDescriptor().equals(OPERATION))) return List.of();
+				|| !(inject ? isCallbackInfo(args.get(args.size() - 1)) : args.get(args.size() - 1).getDescriptor().equals(OPERATION))) return List.of();
 		List<Type> wanted = args.subList(0, args.size() - 1);
 		List<String> pinned = new ArrayList<>();
 		for (int i = 0; i < selectors.size(); i++) {
@@ -542,7 +542,7 @@ public final class MixinPreflight {
 		boolean takesParameters = false;
 		if (injector.desc.equals(INJECT)) {
 			List<Type> args = handlerArgs(handler);
-			if (args == null || args.isEmpty() || !isCallbackInfo(args.getLast())) return List.of();
+			if (args == null || args.isEmpty() || !isCallbackInfo(args.get(args.size() - 1))) return List.of();
 			takesParameters = args.size() > 1;
 		}
 		boolean inject = injector.desc.equals(INJECT);
@@ -576,7 +576,7 @@ public final class MixinPreflight {
 				// Its callback info must suit the method it moves to: a returnable one only one returning the same. A handler
 				// sharing the mixin's state with others that may stay moves only with them, which this doesn't do (HOOK-2's).
 				if (split && (inject && !Type.getReturnType(overload.desc).equals(Type.getReturnType(chosen.desc))
-						&& handlerArgs(handler).getLast().getDescriptor().equals(CALLBACK_INFO_RETURNABLE)
+						&& last(handlerArgs(handler)).getDescriptor().equals(CALLBACK_INFO_RETURNABLE)
 						|| !independentOf(mixin).contains(handler.name + handler.desc))) continue;
 				// A handler taking the method's parameters takes the other's as they are, when they are the same.
 				boolean sameParameters = Arrays.equals(Type.getArgumentTypes(chosen.desc), Type.getArgumentTypes(overload.desc));
@@ -711,8 +711,8 @@ public final class MixinPreflight {
 				|| !(Annotations.value(injector, "method") instanceof List<?> selectors) || selectors.size() != 1
 				|| annotatedParameters(handler.visibleParameterAnnotations) || annotatedParameters(handler.invisibleParameterAnnotations)) return List.of();
 		List<MethodNode> methods = selectedMethods(injector, target, ctx);
-		if (methods.size() != 1 || methods.getFirst().name.startsWith("<")) return List.of();
-		MethodNode lambda = methods.getFirst();
+		if (methods.size() != 1 || methods.get(0).name.startsWith("<")) return List.of();
+		MethodNode lambda = methods.get(0);
 		boolean isLambda = LAMBDA.matcher(lambda.name).matches();
 		Type[] own = Type.getArgumentTypes(handler.desc);
 		if (own.length < 2 || !isCallbackInfo(own[own.length - 1])
@@ -819,7 +819,7 @@ public final class MixinPreflight {
 		if (!CALL_SITE_INJECTORS.contains(injector.desc) || Annotations.value(injector, "slice") != null || ats.size() != 1
 				|| annotatedParameters(handler.visibleParameterAnnotations) || annotatedParameters(handler.invisibleParameterAnnotations)
 				|| !(Annotations.value(injector, "method") instanceof List<?> selectors)) return List.of();
-		AnnotationNode at = ats.getFirst();
+		AnnotationNode at = ats.get(0);
 		String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
 		if (!Set.of("INVOKE", "INVOKE_ASSIGN", "FIELD", "NEW").contains(point) || Annotations.value(at, "ordinal") != null
 				|| !(Annotations.value(at, "target") instanceof String raw)) return List.of();
@@ -913,7 +913,7 @@ public final class MixinPreflight {
 		ClassNode original = vanillaClass(target.name);
 		List<MethodNode> methods = original == null ? List.of() : selectedMethods(injector, target, ctx);
 		if (methods.size() != 1) return List.of();
-		MethodNode patched = methods.getFirst();
+		MethodNode patched = methods.get(0);
 		MethodNode before = declared(original, patched.name, patched.desc);
 		if (before == null) return List.of();
 		List<AnnotationNode> ats = Annotations.list(Annotations.value(injector, "at"));
@@ -1319,7 +1319,7 @@ public final class MixinPreflight {
 			if (insn.getOpcode() < 0) continue; // labels, line numbers, frames
 			if (insn instanceof MethodInsnNode call) {
 				if (!call.owner.equals(owner.name) || !call.name.equals(name) || !call.desc.equals(overload)) return -1;
-				if (!isStatic && (pushed.isEmpty() || pushed.removeFirst() != THIS)) return -1;
+				if (!isStatic && (pushed.isEmpty() || pushed.remove(0) != THIS)) return -1;
 				if (pushed.size() != params.length + 1) return -1;
 				int inserted = -1;
 				for (int k = 0, own = 0; k < pushed.size(); k++) {
@@ -1393,9 +1393,9 @@ public final class MixinPreflight {
 			List<MethodNode> bridges) {
 		if (!injector.desc.equals(INJECT) || Annotations.value(injector, "locals") != null || (mixin.access & Opcodes.ACC_INTERFACE) != 0
 				|| !(Annotations.value(injector, "method") instanceof List<?> selectors) || selectors.size() != 1
-				|| !(selectors.getFirst() instanceof String raw)) return List.of();
+				|| !(selectors.get(0) instanceof String raw)) return List.of();
 		List<Type> args = handlerArgs(handler);
-		if (args == null || args.size() < 2 || !isCallbackInfo(args.getLast())) return List.of();
+		if (args == null || args.size() < 2 || !isCallbackInfo(args.get(args.size() - 1))) return List.of();
 		MemberRef ref = MemberRef.parse(ctx.resolve(raw));
 		if (ref.fuzzy() || ref.name() == null) return List.of();
 		MethodNode chosen = target.methods.stream().filter(m -> ref.matchesMethod(m.name, m.desc)).findFirst().orElse(null);
@@ -1556,7 +1556,7 @@ public final class MixinPreflight {
 			if (insn.getOpcode() >= 0) code.add(insn); // not labels, line numbers or frames
 		}
 		if (code.size() < 3 || !(code.get(code.size() - 2) instanceof MethodInsnNode call) || !call.name.equals(overload.name)
-				|| !call.desc.equals(overload.desc) || code.getLast().getOpcode() != Type.getReturnType(method.desc).getOpcode(Opcodes.IRETURN)) return -1;
+				|| !call.desc.equals(overload.desc) || code.get(code.size() - 1).getOpcode() != Type.getReturnType(method.desc).getOpcode(Opcodes.IRETURN)) return -1;
 		int[] slots = new int[own.length];
 		int slot = isStatic ? 0 : 1;
 		for (int i = 0; i < own.length; i++) {
@@ -1565,7 +1565,7 @@ public final class MixinPreflight {
 		}
 		int start = 0;
 		if (!isStatic) {
-			if (!(code.getFirst() instanceof VarInsnNode self) || self.getOpcode() != Opcodes.ALOAD || self.var != 0) return -1;
+			if (!(code.get(0) instanceof VarInsnNode self) || self.getOpcode() != Opcodes.ALOAD || self.var != 0) return -1;
 			start = 1;
 		}
 		int k = 0;
@@ -1668,7 +1668,7 @@ public final class MixinPreflight {
 			return positions.isEmpty() ? null : positions;
 		}
 		if (ats.size() != 1) return null;
-		AnnotationNode at = ats.getFirst();
+		AnnotationNode at = ats.get(0);
 		String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
 		if (!List.of("INVOKE", "FIELD", "NEW").contains(point) || !(Annotations.value(at, "target") instanceof String raw)
 				|| Annotations.value(at, "shift") != null || Annotations.value(at, "by") != null) return null;
@@ -1765,7 +1765,7 @@ public final class MixinPreflight {
 			if (insn.getOpcode() >= 0) code.add(insn); // not labels, line numbers or frames
 		}
 		if (code.size() != own.length + (all.length - own.length) + 3) return false;
-		if (!(code.getFirst() instanceof VarInsnNode self) || self.getOpcode() != Opcodes.ALOAD || self.var != 0) return false;
+		if (!(code.get(0) instanceof VarInsnNode self) || self.getOpcode() != Opcodes.ALOAD || self.var != 0) return false;
 		int slot = 1;
 		for (int i = 0; i < own.length; i++) {
 			if (!(code.get(1 + i) instanceof VarInsnNode load) || load.getOpcode() != own[i].getOpcode(Opcodes.ILOAD) || load.var != slot) return false;
@@ -1778,7 +1778,7 @@ public final class MixinPreflight {
 			if (!constant) return false;
 		}
 		return code.get(code.size() - 2) instanceof MethodInsnNode call && call.getOpcode() == Opcodes.INVOKESPECIAL && call.desc.equals(delegate.desc)
-				&& code.getLast().getOpcode() == Opcodes.RETURN;
+				&& code.get(code.size() - 1).getOpcode() == Opcodes.RETURN;
 	}
 
 	/** Whether {@code handler} takes {@code method}'s parameters and a callback info, and nothing else (no captured locals or sugar). */
@@ -2051,13 +2051,14 @@ public final class MixinPreflight {
 		for (AbstractInsnNode insn : method.instructions) {
 			if (insn instanceof FieldInsnNode field && field.owner.equals(mixin.name) && ownFields.contains(field.name + ":" + field.desc)) {
 				fields.add(field.name + ":" + field.desc);
-			} else if (insn instanceof MethodInsnNode call && call.owner.equals(mixin.name) && ownMethods.get(call.name + call.desc) instanceof MethodNode callee) {
-				fields.addAll(fieldsUsed(mixin, callee, ownFields, ownMethods, seen));
+			} else if (insn instanceof MethodInsnNode call && call.owner.equals(mixin.name) && ownMethods.get(call.name + call.desc) != null) {
+				fields.addAll(fieldsUsed(mixin, ownMethods.get(call.name + call.desc), ownFields, ownMethods, seen));
 			} else if (insn instanceof InvokeDynamicInsnNode indy) {
 				for (Object arg : indy.bsmArgs) {
 					if (!(arg instanceof Handle handle) || !handle.getOwner().equals(mixin.name)) continue;
 					if (ownFields.contains(handle.getName() + ":" + handle.getDesc())) fields.add(handle.getName() + ":" + handle.getDesc());
-					if (ownMethods.get(handle.getName() + handle.getDesc()) instanceof MethodNode callee) {
+					MethodNode callee = ownMethods.get(handle.getName() + handle.getDesc());
+					if (callee != null) {
 						fields.addAll(fieldsUsed(mixin, callee, ownFields, ownMethods, seen));
 					}
 				}
@@ -2261,7 +2262,7 @@ public final class MixinPreflight {
 			}
 			List<String> sameType = target.fields.stream().filter(f -> f.name.startsWith("val$") && f.desc.equals(field.desc)).map(f -> f.name).toList();
 			if (sameType.size() != 1) return null;
-			renames.put(field.name, sameType.getFirst());
+			renames.put(field.name, sameType.get(0));
 		}
 		Set<String> to = new HashSet<>(renames.values());
 		return to.size() == renames.size() && Collections.disjoint(to, kept) ? renames : null;
@@ -2649,7 +2650,7 @@ public final class MixinPreflight {
 		}
 		if (ann.desc.equals(INJECT) && !anyFuzzy && !acceptsCallbackSignature(handler, ann, matched)) {
 			ctx.classLevel(injectorName + " handler " + handler.name + Type.getMethodDescriptor(Type.getReturnType(handler.desc), handlerArgs(handler).toArray(Type[]::new))
-							+ " does not match the parameters of " + matched.getFirst().name + matched.getFirst().desc + " in " + target.name.replace('/', '.'),
+							+ " does not match the parameters of " + matched.get(0).name + matched.get(0).desc + " in " + target.name.replace('/', '.'),
 					(ctx.owner() == null ? "NeoForge's build of Minecraft declares this method with different parameters (often a lambda whose captured values are ordered differently)"
 							: ctx.changer(true) + " declares this method with different parameters") + "; the mod needs an update or this mixin must be skipped.");
 			return;
@@ -2657,14 +2658,14 @@ public final class MixinPreflight {
 
 		if (ann.desc.equals(WRAP_METHOD) && matched.stream().allMatch(m -> (m.access & Opcodes.ACC_ABSTRACT) != 0)) {
 			// MixinExtras throws while preparing the injector, which require doesn't cover (a config that isn't required survives it).
-			ctx.injector(handler, ctx.config().required() ? 1 : 0, injectorName + " targets " + matched.getFirst().name + matched.getFirst().desc
+			ctx.injector(handler, ctx.config().required() ? 1 : 0, injectorName + " targets " + matched.get(0).name + matched.get(0).desc
 							+ ", which is abstract in " + target.name.replace('/', '.'),
 					"Mixin picks the first method of that name; the mod needs an update or this mixin must be skipped.");
 			return;
 		}
 		if (ann.desc.equals(WRAP_METHOD) && !anyFuzzy && !acceptsWrapperSignature(handler, matched)) {
 			ctx.classLevel(injectorName + " handler " + handler.name + Type.getMethodDescriptor(Type.getReturnType(handler.desc), handlerArgs(handler).toArray(Type[]::new))
-							+ " does not match the parameters of " + matched.getFirst().name + matched.getFirst().desc + " in " + target.name.replace('/', '.'),
+							+ " does not match the parameters of " + matched.get(0).name + matched.get(0).desc + " in " + target.name.replace('/', '.'),
 					(ctx.owner() == null ? "NeoForge's build of Minecraft declares this method with different parameters"
 							: ctx.changer(true) + " declares this method with different parameters") + "; the mod needs an update or this mixin must be skipped.");
 			return;
@@ -2672,7 +2673,7 @@ public final class MixinPreflight {
 
 		if (ann.desc.equals(MODIFY_VARIABLE) && !anyFuzzy && !acceptsModifierSignature(handler, matched)) {
 			ctx.classLevel(injectorName + " handler " + handler.name + Type.getMethodDescriptor(Type.getReturnType(handler.desc), handlerArgs(handler).toArray(Type[]::new))
-							+ " does not match the parameters of " + matched.getFirst().name + matched.getFirst().desc + " in " + target.name.replace('/', '.'),
+							+ " does not match the parameters of " + matched.get(0).name + matched.get(0).desc + " in " + target.name.replace('/', '.'),
 					(ctx.owner() == null ? "NeoForge's build of Minecraft declares this method with different parameters"
 							: ctx.changer(true) + " declares this method with different parameters") + "; the mod needs an update or this mixin must be skipped.");
 			return;
@@ -2683,7 +2684,7 @@ public final class MixinPreflight {
 				String expected = InjectionPoints.constantDescription(constant);
 				if (expected == null) continue;
 				if (matched.stream().allMatch(m -> InjectionPoints.constantVerdict(constant, m) == Verdict.MISSING)) {
-					ctx.injector(handler, require, injectorName + " in " + matched.getFirst().name + " expects the constant " + expected
+					ctx.injector(handler, require, injectorName + " in " + matched.get(0).name + " expects the constant " + expected
 									+ ", which does not occur in that method",
 							ctx.changer(true) + " changed the method body; the mod needs an update or this mixin must be skipped.");
 					return;
@@ -2694,14 +2695,14 @@ public final class MixinPreflight {
 		String missingLocal = missingLocal(handler, matched);
 		if (missingLocal != null) {
 			ctx.injector(handler, require, injectorName + " handler " + handler.name + " captures the local variable " + missingLocal + ", which "
-							+ matched.getFirst().name + " in " + target.name.replace('/', '.') + " does not declare",
+							+ matched.get(0).name + " in " + target.name.replace('/', '.') + " does not declare",
 					ctx.changer(true) + " changed the method body; the mod needs an update or this mixin must be skipped.");
 			return;
 		}
 		String ambiguous = slices.isEmpty() ? ambiguousLocal(handler, ann, matched, ctx) : null;
 		if (ambiguous != null) {
 			ctx.injector(handler, require, injectorName + " handler " + handler.name + " captures the local variable " + ambiguous
-							+ " by its type, which " + matched.getFirst().name + " in " + target.name.replace('/', '.') + " has more than one of there",
+							+ " by its type, which " + matched.get(0).name + " in " + target.name.replace('/', '.') + " has more than one of there",
 					ctx.changer(true) + " added a local of that type; the mod needs an update or this mixin must be skipped.");
 			return;
 		}
@@ -2732,7 +2733,7 @@ public final class MixinPreflight {
 				else if (v == Verdict.MISSING && verdict == Verdict.UNKNOWN) verdict = Verdict.MISSING;
 			}
 			if (verdict == Verdict.MISSING) {
-				ctx.injector(handler, require, injectorName + " in " + matched.getFirst().name + " expects @At(\"" + point + "\""
+				ctx.injector(handler, require, injectorName + " in " + matched.get(0).name + " expects @At(\"" + point + "\""
 								+ (rawTarget != null ? ", target=\"" + ctx.resolve(rawTarget) + "\"" : "")
 								+ (ordinal >= 0 ? ", ordinal=" + ordinal : "") + "), which does not occur in that method",
 						ctx.changer(true) + " changed the method body; the mod needs an update or this mixin must be skipped.");
@@ -2741,7 +2742,7 @@ public final class MixinPreflight {
 			if (verdict == Verdict.FOUND && ann.desc.equals(WRAP_OPERATION) && rawTarget != null) {
 				String mismatch = InjectionPoints.wrappedArityMismatch(handler, point, ctx.resolve(rawTarget), matched);
 				if (mismatch != null) {
-					ctx.classLevel(injectorName + " handler " + handler.name + " " + mismatch + " in " + matched.getFirst().name,
+					ctx.classLevel(injectorName + " handler " + handler.name + " " + mismatch + " in " + matched.get(0).name,
 							(ctx.owner() == null ? "NeoForge's build of Minecraft" : ctx.changer(true)) + " calls this with different arguments; the mod needs an update or this handler must be skipped.");
 					return;
 				}
@@ -2764,7 +2765,7 @@ public final class MixinPreflight {
 		if (Annotations.value(inject, "locals") != null) return true;
 		List<Type> args = handlerArgs(handler);
 		if (args == null) return true;
-		if (args.isEmpty() || !isCallbackInfo(args.getLast())) return true; // unusual shape: leave it to Mixin
+		if (args.isEmpty() || !isCallbackInfo(args.get(args.size() - 1))) return true; // unusual shape: leave it to Mixin
 		if (args.size() == 1) return true;
 		List<Type> wanted = args.subList(0, args.size() - 1);
 		for (MethodNode target : targets) {
@@ -2798,7 +2799,7 @@ public final class MixinPreflight {
 	 */
 	private static boolean acceptsWrapperSignature(MethodNode handler, List<MethodNode> targets) {
 		List<Type> args = handlerArgs(handler);
-		if (args == null || args.isEmpty() || !args.getLast().getDescriptor().equals(OPERATION)) return true;
+		if (args == null || args.isEmpty() || !args.get(args.size() - 1).getDescriptor().equals(OPERATION)) return true;
 		List<Type> wanted = args.subList(0, args.size() - 1);
 		return targets.stream().allMatch(target -> List.of(Type.getArgumentTypes(target.desc)).equals(wanted));
 	}
@@ -2814,7 +2815,7 @@ public final class MixinPreflight {
 				if (!a.desc.equals(LOCAL)) continue;
 				if (Annotations.value(a, "name") instanceof List<?> names && !names.isEmpty()) {
 					if (!judgedMissing(targets, local -> names.contains(local.name))) continue;
-					return String.valueOf(names.getFirst());
+					return String.valueOf(names.get(0));
 				}
 				// By type alone: the method must have a local of that type somewhere (or a parameter, with argsOnly).
 				Type type = params[i];
@@ -2840,7 +2841,7 @@ public final class MixinPreflight {
 	private static String ambiguousLocal(MethodNode handler, AnnotationNode injector, List<MethodNode> targets, Context ctx) {
 		List<AnnotationNode> ats = Annotations.list(Annotations.value(injector, "at"));
 		if (ats.size() != 1) return null;
-		AnnotationNode at = ats.getFirst();
+		AnnotationNode at = ats.get(0);
 		String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
 		if (!point.equals("INVOKE") && !point.equals("FIELD") && !point.equals("NEW")
 				|| !(Annotations.value(at, "target") instanceof String raw)) return null;
@@ -2889,6 +2890,11 @@ public final class MixinPreflight {
 			}
 		}
 		return judged;
+	}
+
+	/** The last element of a non-empty list. */
+	private static <T> T last(List<T> list) {
+		return list.get(list.size() - 1);
 	}
 
 	/** The handler's parameter types without MixinExtras sugar parameters; null if a parameter uses {@code @Coerce}. */

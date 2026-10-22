@@ -112,7 +112,7 @@ public final class ModContainerImpl implements ModContainer {
 	public Path getRootPath() {
 		List<Path> r = getRootPaths();
 		if (r.isEmpty()) throw new IllegalStateException("Mod " + metadata.getId() + " has no root path");
-		return r.getFirst();
+		return r.get(0);
 	}
 
 	@Override

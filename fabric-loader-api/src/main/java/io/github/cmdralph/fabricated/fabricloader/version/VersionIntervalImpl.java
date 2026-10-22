@@ -146,7 +146,7 @@ public final class VersionIntervalImpl implements VersionInterval {
 				merged.add(cur);
 				continue;
 			}
-			VersionInterval last = merged.getLast();
+			VersionInterval last = merged.get(merged.size() - 1);
 			if (touches(last, cur)) {
 				merged.set(merged.size() - 1, union(last, cur));
 			} else {

@@ -63,7 +63,7 @@ public final class VersionPredicateParser {
 		}
 
 		if (terms.isEmpty()) return AnyVersionPredicate.INSTANCE;
-		if (terms.size() == 1) return terms.getFirst();
+		if (terms.size() == 1) return terms.get(0);
 		return new MultiVersionPredicate(terms);
 	}
 

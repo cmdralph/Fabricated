@@ -293,11 +293,7 @@ public final class LinkageAnalysis {
 		}
 		for (MethodNode method : node.methods) {
 			for (AbstractInsnNode insn : method.instructions) {
-				String owner = switch (insn) {
-					case MethodInsnNode m -> m.owner;
-					case FieldInsnNode f -> f.owner;
-					default -> null;
-				};
+				String owner = insn instanceof MethodInsnNode m ? m.owner : insn instanceof FieldInsnNode f ? f.owner : null;
 				if (owner != null && !owner.startsWith("[") && unloaded.containsKey(packageOf(owner)) && !exists.test(owner)) return owner;
 			}
 		}

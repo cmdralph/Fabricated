@@ -92,7 +92,7 @@ public final class DefaultLanguageAdapter implements LanguageAdapter {
 			throw new LanguageAdapterException("Cannot adapt method " + value + " to non-interface type " + type.getName());
 		}
 
-		Method method = methods.getFirst();
+		Method method = methods.get(0);
 		try {
 			method.setAccessible(true);
 			MethodHandle handle = MethodHandles.lookup().unreflect(method);

@@ -89,7 +89,7 @@ final class EnumExtensions {
 	static String target(ClassNode mixin) {
 		AnnotationNode ann = Annotations.find(mixin.invisibleAnnotations, mixin.visibleAnnotations, Annotations.MIXIN);
 		if (ann == null || Annotations.value(ann, "targets") != null) return null;
-		return Annotations.value(ann, "value") instanceof List<?> types && types.size() == 1 && types.getFirst() instanceof Type type
+		return Annotations.value(ann, "value") instanceof List<?> types && types.size() == 1 && types.get(0) instanceof Type type
 				? type.getInternalName() : null;
 	}
 
@@ -220,17 +220,17 @@ final class EnumExtensions {
 					|| insn instanceof IincInsnNode || insn instanceof InvokeDynamicInsnNode || op >= Opcodes.IRETURN && op <= Opcodes.RETURN
 					|| op == Opcodes.ATHROW || op == Opcodes.MONITORENTER || op == Opcodes.MONITOREXIT || op == Opcodes.PUTFIELD
 					|| op == Opcodes.PUTSTATIC) return false;
-			boolean usesMixin = switch (insn) {
-				case FieldInsnNode field -> field.owner.equals(mixin) || field.owner.equals(target) || field.desc.contains(self);
-				case MethodInsnNode method -> method.owner.equals(mixin) || method.owner.equals(target) || method.desc.contains(self);
-				case TypeInsnNode type -> type.desc.equals(mixin) || type.desc.contains(self);
-				case MultiANewArrayInsnNode array -> array.desc.contains(self);
-				case LdcInsnNode ldc -> ldc.cst instanceof Type type && type.getDescriptor().contains(self);
-				default -> false;
-			};
-			if (usesMixin) return false;
+			if (usesMixin(insn, mixin, target, self)) return false;
 		}
 		return true;
+	}
+
+	private static boolean usesMixin(AbstractInsnNode insn, String mixin, String target, String self) {
+		if (insn instanceof FieldInsnNode field) return field.owner.equals(mixin) || field.owner.equals(target) || field.desc.contains(self);
+		if (insn instanceof MethodInsnNode method) return method.owner.equals(mixin) || method.owner.equals(target) || method.desc.contains(self);
+		if (insn instanceof TypeInsnNode type) return type.desc.equals(mixin) || type.desc.contains(self);
+		if (insn instanceof MultiANewArrayInsnNode array) return array.desc.contains(self);
+		return insn instanceof LdcInsnNode ldc && ldc.cst instanceof Type type && type.getDescriptor().contains(self);
 	}
 
 	/** The entries, the computed ones with the methods {@code owner} gives them, numbered from {@code first}. */
