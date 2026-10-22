@@ -183,22 +183,21 @@ final class EnumValuesMixins {
 		if (forwarded == null) return null;
 		Set<String> foreign = Set.of(body.name, mixin.name);
 		for (AbstractInsnNode insn : override.instructions) {
-			boolean uses = switch (insn) {
-				case VarInsnNode var -> var.var == 0;
-				case JumpInsnNode jump -> true;
-				case TableSwitchInsnNode table -> true;
-				case LookupSwitchInsnNode lookup -> true;
-				case FieldInsnNode field -> foreign.contains(field.owner) || mentions(field.desc, foreign);
-				case MethodInsnNode call -> foreign.contains(call.owner) || mentions(call.desc, foreign);
-				case TypeInsnNode type -> foreign.contains(type.desc) || mentions(type.desc, foreign);
-				case MultiANewArrayInsnNode array -> mentions(array.desc, foreign);
-				case InvokeDynamicInsnNode indy -> mentions(indy.desc, foreign) || handlesForeign(indy, foreign);
-				case LdcInsnNode ldc -> ldc.cst instanceof org.objectweb.asm.Type t && mentions(t.getDescriptor(), foreign);
-				default -> false;
-			};
-			if (uses) return null;
+			if (uses(insn, foreign)) return null;
 		}
 		return new Delegate(forwarded.owner, forwarded.name, override);
+	}
+
+	/** Whether an instruction of an override uses {@code this}, branches, or names one of the {@code foreign} classes. */
+	private static boolean uses(AbstractInsnNode insn, Set<String> foreign) {
+		if (insn instanceof VarInsnNode var) return var.var == 0;
+		if (insn instanceof JumpInsnNode || insn instanceof TableSwitchInsnNode || insn instanceof LookupSwitchInsnNode) return true;
+		if (insn instanceof FieldInsnNode field) return foreign.contains(field.owner) || mentions(field.desc, foreign);
+		if (insn instanceof MethodInsnNode call) return foreign.contains(call.owner) || mentions(call.desc, foreign);
+		if (insn instanceof TypeInsnNode type) return foreign.contains(type.desc) || mentions(type.desc, foreign);
+		if (insn instanceof MultiANewArrayInsnNode array) return mentions(array.desc, foreign);
+		if (insn instanceof InvokeDynamicInsnNode indy) return mentions(indy.desc, foreign) || handlesForeign(indy, foreign);
+		return insn instanceof LdcInsnNode ldc && ldc.cst instanceof org.objectweb.asm.Type t && mentions(t.getDescriptor(), foreign);
 	}
 
 	/** Whether the enum has an instance field of that interface type (its delegate). */
@@ -223,24 +222,25 @@ final class EnumValuesMixins {
 	private static boolean movable(List<AbstractInsnNode> rest, String mixin, Set<String> constants) {
 		Set<String> foreign = Set.of(mixin);
 		for (AbstractInsnNode insn : rest) {
-			int op = insn.getOpcode();
-			boolean ok = switch (insn) {
-				case JumpInsnNode jump -> false;
-				case TableSwitchInsnNode table -> false;
-				case LookupSwitchInsnNode lookup -> false;
-				case VarInsnNode var -> false;
-				case FieldInsnNode field -> field.owner.equals(mixin) ? op == Opcodes.GETSTATIC && constants.contains(field.name) : !mentions(field.desc, foreign);
-				case MethodInsnNode call -> !call.owner.equals(mixin) && !mentions(call.desc, foreign);
-				case TypeInsnNode type -> !type.desc.equals(mixin) && !mentions(type.desc, foreign);
-				case MultiANewArrayInsnNode array -> !mentions(array.desc, foreign);
-				case InvokeDynamicInsnNode indy -> !mentions(indy.desc, foreign) && !handlesForeign(indy, foreign);
-				case LdcInsnNode ldc -> !(ldc.cst instanceof org.objectweb.asm.Type t && mentions(t.getDescriptor(), foreign));
-				default -> op != Opcodes.ATHROW && op != Opcodes.MONITORENTER && op != Opcodes.MONITOREXIT && (op < Opcodes.IRETURN || op > Opcodes.RETURN)
-						&& op != Opcodes.IINC;
-			};
-			if (!ok) return false;
+			if (!movable(insn, mixin, constants, foreign)) return false;
 		}
 		return true;
+	}
+
+	private static boolean movable(AbstractInsnNode insn, String mixin, Set<String> constants, Set<String> foreign) {
+		int op = insn.getOpcode();
+		if (insn instanceof JumpInsnNode || insn instanceof TableSwitchInsnNode || insn instanceof LookupSwitchInsnNode
+				|| insn instanceof VarInsnNode) return false;
+		if (insn instanceof FieldInsnNode field) {
+			return field.owner.equals(mixin) ? op == Opcodes.GETSTATIC && constants.contains(field.name) : !mentions(field.desc, foreign);
+		}
+		if (insn instanceof MethodInsnNode call) return !call.owner.equals(mixin) && !mentions(call.desc, foreign);
+		if (insn instanceof TypeInsnNode type) return !type.desc.equals(mixin) && !mentions(type.desc, foreign);
+		if (insn instanceof MultiANewArrayInsnNode array) return !mentions(array.desc, foreign);
+		if (insn instanceof InvokeDynamicInsnNode indy) return !mentions(indy.desc, foreign) && !handlesForeign(indy, foreign);
+		if (insn instanceof LdcInsnNode ldc) return !(ldc.cst instanceof org.objectweb.asm.Type t && mentions(t.getDescriptor(), foreign));
+		return op != Opcodes.ATHROW && op != Opcodes.MONITORENTER && op != Opcodes.MONITOREXIT && (op < Opcodes.IRETURN || op > Opcodes.RETURN)
+				&& op != Opcodes.IINC;
 	}
 
 	private static boolean mentions(String descriptor, Set<String> classes) {

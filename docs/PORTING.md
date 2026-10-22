@@ -1,6 +1,7 @@
 # Fabricated beyond modern NeoForge: the 1.20.1 and Forge evaluation
 
-Status: **architectural evaluation**, written 2026-10-21. Nothing here is implemented. `main` stays the active
+Status: **architectural evaluation**, written 2026-10-21; the owner's decisions are in §8 and `RESEARCH.md` §8.
+Of the work below, only §6 item 1 (Java 17 for the shared modules) is done. `main` stays the active
 branch: NeoForge for Minecraft 1.21.11, 26.1.2, 26.2 and 26.3, all four on stable NeoForge lines. This document
 says what of the engine carries over to Minecraft 1.20.1 (branch `1.20.1-legacy`) and to Minecraft Forge (a
 future `forge` branch), what the build needs, what must change on `main` first, and in which order the work goes.
@@ -40,12 +41,14 @@ check, the remapping machinery and nearly all of mixin pre-flight work on bytes 
 | `translate` (ModsTomlWriter, EnumExtensions, EnumValuesMixins, PlatformRenames, MixinCompat, about 270 lines of ModTranslator) | no | The `neoforge.mods.toml` dialect (`[[mixins]]` with `behaviorVersion`, `[[accessTransformers]]`, `enumExtensions`, `type="optional"`), NeoForge's enum extension format, NeoForge's patched names, `neoforge:conditions`, `neoforge/biome_modifier` paths. |
 | `loader` | no (977 of 1,458 lines) | FML 10+ SPI: `IModFileCandidateLocator`, `IDependencyLocator`, `IModLanguageLoader`, `ClassProcessor`, `JarContents`; NeoForge's installer layout. |
 
-**Java level.** `core`, `api` and `fabric-loader-api` compile with `release = 21`, which 1.20.1's Java 17 can't load.
-A trial compile at `--release 17` finds only two kinds of blocker: 66 calls of `List.getFirst/getLast/removeFirst/
+**Java level.** `core`, `api` and `fabric-loader-api` compiled with `release = 21`, which 1.20.1's Java 17 can't load.
+A trial compile at `--release 17` found only two kinds of blocker: 66 calls of `List.getFirst/getLast/removeFirst/
 addFirst` (Java 21's sequenced collections; 3 of them in `fabric-loader-api`) and 8 `switch` statements with type
 patterns (53 labels, in `PatchAlignment`, `InjectionPoints`, `LinkageChecker`, `EnumExtensions`, `LibraryBridges`,
-`EnumValuesMixins` and `LinkageAnalysis`). No record patterns, `when` guards or newer APIs. The tests use about 160
-more `getFirst`/`getLast` calls. Generated classes already target Java 17.
+`EnumValuesMixins` and `LinkageAnalysis`), plus 3 `instanceof` patterns of the expression's own type, which Java 17
+rejects. No record patterns, `when` guards or newer APIs. The tests use about 160 more `getFirst`/`getLast` calls.
+Generated classes already target Java 17. Since D2 the main code of the three modules compiles at `release = 17`
+(tests at 21), with those calls and switches rewritten.
 
 **Where platform facts already come in as data.** `version.properties` (Minecraft version, namespace, Mixin
 behaviour floor and fallback, build digest), the per-version `fabric-api-plan.json`, `compat-plan.json`,
@@ -142,16 +145,17 @@ Each of these is behaviour-neutral for NeoForge, lands on `main` as its own pull
 `main` mergeable into the branches without breaking them. Per the rule against abstractions without a second user,
 the abstractions below are added when the branch work starts (owner decision D2 on timing), not before.
 
-1. **Java 17 for the shared modules**: `release = 17` for `core`, `api`, `fabric-loader-api` (toolchain stays 21):
-   the 66 sequenced-collection calls and 8 type-pattern switches rewritten. Without it, any later `getFirst()` on
-   `main` breaks a branch at merge time with no textual conflict.
+1. **Java 17 for the shared modules** (done, D2): `release = 17` for the main code of `core`, `api`,
+   `fabric-loader-api` (toolchain and tests stay 21): the 66 sequenced-collection calls, 8 type-pattern switches and
+   3 own-type `instanceof` patterns rewritten. Without it, any later `getFirst()` on `main` breaks a branch at merge
+   time with no textual conflict.
 2. **One loader per platform**: `loader/` moves to `loader/neoforge`, chosen per target by a `loader_dir` property;
    the platform-free helpers move to a shared source folder.
 3. **The build split**: `mc/mc.gradle` into what every target shares and `platform-neoforge.gradle`; the version
    conditions keyed on a property, not on "not 26.x".
 4. **CI from data**: the matrix read from `ci/targets.json` (`fromJSON`), the smoke scripts taking the loader and
-   installer as parameters, each version's server checks in `ci/checks/<mc>.txt`; the long-lived branches added to
-   the workflow's `push` branches.
+   installer as parameters, each version's server checks in `ci/checks/<mc>.txt`. Pushes keep building `main` only;
+   the branches are built through pull requests to them (D6).
 5. **A platform profile** (data, per target, part of the cache key): the descriptor path and dialect, the
    platform's package prefixes and provided libraries, who provides MixinExtras, the data-pack keys, the Mixin facts
    (absorbing `mixin.*` from `version.properties`), the loader hook map, the rename table and the coremod-private
@@ -166,8 +170,8 @@ the abstractions below are added when the branch work starts (owner decision D2 
 
 | Phase | Work | Exit criterion |
 |---|---|---|
-| L0 Evaluation (now) | This document; decisions D1 to D6. | Decisions recorded. |
-| L1 Seams on `main` | §6, items 1 to 6, as separate pull requests. | `main` green on all four versions after each; `core` builds at release 17. |
+| L0 Evaluation (done) | This document; decisions D1 to D6. | Decisions recorded (§8). |
+| L1 Seams on `main` | §6, items 1 to 6, as separate pull requests (item 1 done). | `main` green on all four versions after each; `core` builds at release 17. |
 | L2 Scaffolding | Merge `main` into `1.20.1-legacy`; `mc/1.20.1` on `legacyforge` (R1 settled first); Fabric API 0.92.12 plan (which modules native); compile only. | `:mc:1.20.1:fabricatedJar` builds in CI. |
 | L3 Discovery and translation | forgespi 7 adapter (locator, dependency locator, language provider, nested jars); Intermediary → SRG composer from MCPConfig; Forge descriptor writer; MixinExtras provision; class transforms through `ITransformationService`. | The test mods' server smoke passes on Forge 47.4 (entrypoints, registries, mixins, access wideners). |
 | L4 Native Fabric API | Lifecycle, registries, networking on `SimpleChannel`, resource loader, events, transfer on `LazyOptional` capabilities, the old renderer API; client smoke with HeadlessMC and mc-runtime-test. | Server and client smoke gates green; Fabric API 0.92.12 boots. |
@@ -177,7 +181,7 @@ the abstractions below are added when the branch work starts (owner decision D2 
 
 | Phase | Work | Exit criterion |
 |---|---|---|
-| F0 Evaluation (now) | This document; decision D5. | |
+| F0 Evaluation (done) | This document; decision D5. | Decided: ForgeGradle. |
 | F1 Seams on `main` | The same as L1, plus nothing Forge-only: EventBus 7 bridges live in the branch's `mc/*`. | |
 | F2 Scaffolding | ForgeGradle build for 1.21.11 (Forge 61) and 26.x (64 to 66); compile only. | Jars build in CI. |
 | F3 Discovery and translation | forgespi 8 adapter (shared design with L3); descriptor writer; class transforms. | Server smoke on one version. |
@@ -196,13 +200,17 @@ the same locator interfaces), so the second one is a port of the first.
 | R2 | Fabric mods for 1.20.1 were built against Fabric's Mixin fork (0.12.5 to 0.15.5); upstream 0.8.5 may lack what they use. | Measure on the corpus in L5; pre-flight reports the gap per mod rather than crashing. |
 | R3 | Discovery: the locator jar leaves normal mod loading, and a language provider must sit in the plugin layer; how a single download carries all three parts is UNVERIFIED. | Prototype in L3 before the bridges. |
 | R4 | SRG names: every name-bearing data file (access transformers, refmaps, rename tables) must target members by SRG name. | One mapping table drives all of them, as Intermediary → Mojang does today. |
-| R5 | CI cost: every target adds about 25 minutes per run. | Branch CI runs only for pull requests to that branch; docs-only changes build nothing (already so). |
+| R5 | CI cost: every target adds about 25 minutes per run. | Branch CI runs only for pull requests to that branch (D6); docs-only changes build nothing. |
 
-Decisions for the owner:
+Decisions (the owner's, 2026-10-21; D3 and D4 delegated, both provisional until the phase that fixes them):
 
-- **D1:** 1.20.1 targets MinecraftForge 47.4 first, with NeoForge 47.1 best-effort.
-- **D2:** when L1 starts. It is behaviour-neutral, and item 1 (Java 17) is cheapest done early.
-- **D3:** which Fabric API modules are native on 1.20.1, and which are pass-through.
-- **D4:** the 1.20.1 release criteria.
-- **D5:** the build tool for modern Forge (ForgeGradle, version to verify).
-- **D6:** CI policy for the branches (R5).
+- **D1:** 1.20.1 targets MinecraftForge 47.4 first; NeoForge 47.1 is best-effort later.
+- **D2:** Java 17 constraints are kept from now on: the shared modules' main code compiles at `release = 17` (§6
+  item 1, done), so `main` can't write code the legacy branch can't load.
+- **D3:** native on 1.20.1 is `main`'s native set where Fabric API 0.92.12 has the module; fixed in L2 against the
+  1.20.1 corpus.
+- **D4:** the 1.20.1 release criteria are `main`'s gates: server and client smoke, the client module gate, Fabric API
+  booting, and corpus runs with no crash and every mod left out reported with its reason.
+- **D5:** modern Forge builds with ForgeGradle (version to verify against Gradle 9.7).
+- **D6:** CI runs on secondary branches for pull requests only; a push builds only `main` (already so in
+  `build.yml`).

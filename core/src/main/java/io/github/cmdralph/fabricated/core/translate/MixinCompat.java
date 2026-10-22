@@ -54,8 +54,8 @@ public final class MixinCompat {
 				required = VersionInterval.and(required, VersionInterval.not(dep.getVersionIntervals()));
 			}
 		}
-		if (required.isEmpty() || required.getFirst().getMin() == null) return FABRIC_FALLBACK;
-		Version min = required.getFirst().getMin();
+		if (required.isEmpty() || required.get(0).getMin() == null) return FABRIC_FALLBACK;
+		Version min = required.get(0).getMin();
 		for (Row row : TABLE) {
 			if (min.compareTo(row.minLoader()) >= 0) return row.behavior();
 		}

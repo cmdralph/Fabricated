@@ -64,7 +64,7 @@ Steps 1–7 run during FML discovery, before any mod or Minecraft code is class-
 ```
 Fabricated/
 ├── settings.gradle, build.gradle, gradle.properties, gradle/wrapper (Gradle 9.7.0)
-├── core/                    Pure Java 21. No Minecraft, no FML. ~all logic that can be unit tested.
+├── core/                    Pure Java (release 17). No Minecraft, no FML. ~all logic that can be unit tested.
 │   ├── Pipeline.java        the discovery-time pipeline: scan, resolve, translate, guard packages, linkage, runtime
 │   ├── archive/             SafeArchive, limits, hashing, atomic writes, deterministic jar writer
 │   ├── json/                small dependency-free JSON reader/writer with length and depth caps
@@ -108,7 +108,7 @@ Fabricated/
 
 * **Output:** one jar per MC version, `fabricated-<version>+mc<mc>.jar`. `core`, `loader`, `fabric-loader-api` and `api` are shaded in, all under the Fabricated-owned package `io.github.cmdralph.fabricated.*`, so they can't clash with anything. The `fabric-loader-api` types keep their original `net.fabricmc.*` package names because Fabric mods link against them.
 * **No preprocessor** (no Stonecutter/Manifold). Version differences live in each `mc/<ver>` directory; code shared by every version lives once in `mc/common`, by all 26.x versions in `mc/common26`, by 26.1.2 and 26.2 in `mc/common26early`, and by 26.2 and 26.3 in `mc/common26late` (see `sharedSources` in `mc/mc.gradle`).
-* `core` targets Java 21 bytecode so the *same* compiled classes run on every line.
+* `core`, `api` and `fabric-loader-api` target Java 17 bytecode so the *same* compiled classes run on every line, and on Minecraft 1.20.1 (`RESEARCH.md` §8, D2).
 
 ---
 

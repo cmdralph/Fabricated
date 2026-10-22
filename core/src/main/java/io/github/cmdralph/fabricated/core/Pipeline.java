@@ -732,7 +732,7 @@ public final class Pipeline {
 				// never calls): those stay warnings, and its plan's CI check covers the rest.
 				boolean plannedWithout = fapiModule && !module.dropDependencies().isEmpty();
 				if (config.strictLinkage() || fapiModule && fabricApiReference && !plannedWithout) {
-					this.dropped.put(t.candidate().id(), new Drop("references code that does not exist at runtime: " + issues.getFirst(), fapiModule
+					this.dropped.put(t.candidate().id(), new Drop("references code that does not exist at runtime: " + issues.get(0), fapiModule
 							? "This Fabric API module depends on internals that Fabricated implements differently; mods needing it cannot run yet."
 							: "Update the mod, or set \"strictLinkage\": false to load it anyway.", t.candidate()));
 					dropped = true;

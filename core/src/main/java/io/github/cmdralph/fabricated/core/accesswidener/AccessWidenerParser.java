@@ -28,7 +28,7 @@ public final class AccessWidenerParser {
 	public static AccessWidenerFile parse(String text) throws AccessWidenerException {
 		List<String> lines = text.lines().toList();
 		if (lines.isEmpty()) throw new AccessWidenerException(1, "Empty file");
-		String headerLine = lines.getFirst();
+		String headerLine = lines.get(0);
 		String[] header = headerLine.trim().split("\\s+");
 		if (header.length != 3 || !header[0].equals("accessWidener") && !header[0].equals("classTweaker")) {
 			throw new AccessWidenerException(1, "Invalid header '" + headerLine + "'; expected '<accessWidener|classTweaker> <v1|v2> <namespace>'");

@@ -13,7 +13,8 @@ java {
 }
 
 tasks.withType(JavaCompile).configureEach {
-    options.release = 21
+    // Main code stays loadable on Java 17, for the 1.20.1 branch (docs/PORTING.md, D2); tests may use newer APIs.
+    options.release = name == 'compileJava' ? 17 : 21
 }
 
 tasks.named('jar', Jar) {

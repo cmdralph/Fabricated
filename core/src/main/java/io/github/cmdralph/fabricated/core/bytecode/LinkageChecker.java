@@ -74,35 +74,29 @@ public final class LinkageChecker {
 			if (method.instructions == null) continue;
 			for (AbstractInsnNode insn : method.instructions) {
 				if (out.size() >= MAX_ISSUES) return;
-				switch (insn) {
-					case MethodInsnNode m -> {
-						if (m.owner.startsWith("[")) break;
-						if (checkClass(node.name, m.owner, seen, out) && isChecked.test(m.owner)
-								&& available.resolveMethod(m.owner, m.name + m.desc) == ClassIndex.Resolution.MISSING
-								&& seen.add("m:" + m.owner + "." + m.name + m.desc)) {
-							out.add(new Issue(node.name, m.owner.replace('/', '.') + "." + m.name + m.desc, "method"));
-						}
+				if (insn instanceof MethodInsnNode m) {
+					if (!m.owner.startsWith("[") && checkClass(node.name, m.owner, seen, out) && isChecked.test(m.owner)
+							&& available.resolveMethod(m.owner, m.name + m.desc) == ClassIndex.Resolution.MISSING
+							&& seen.add("m:" + m.owner + "." + m.name + m.desc)) {
+						out.add(new Issue(node.name, m.owner.replace('/', '.') + "." + m.name + m.desc, "method"));
 					}
-					case FieldInsnNode f -> {
-						if (checkClass(node.name, f.owner, seen, out) && isChecked.test(f.owner)
-								&& available.resolveField(f.owner, f.name + ":" + f.desc) == ClassIndex.Resolution.MISSING
-								&& seen.add("f:" + f.owner + "." + f.name)) {
-							out.add(new Issue(node.name, f.owner.replace('/', '.') + "." + f.name, "field"));
-						}
+				} else if (insn instanceof FieldInsnNode f) {
+					if (checkClass(node.name, f.owner, seen, out) && isChecked.test(f.owner)
+							&& available.resolveField(f.owner, f.name + ":" + f.desc) == ClassIndex.Resolution.MISSING
+							&& seen.add("f:" + f.owner + "." + f.name)) {
+						out.add(new Issue(node.name, f.owner.replace('/', '.') + "." + f.name, "field"));
 					}
-					case TypeInsnNode t -> checkClass(node.name, elementClass(t.desc), seen, out);
-					case MultiANewArrayInsnNode a -> checkClass(node.name, elementClass(a.desc), seen, out);
-					case LdcInsnNode ldc -> {
-						if (ldc.cst instanceof Type type && type.getSort() == Type.OBJECT) {
-							checkClass(node.name, type.getInternalName(), seen, out);
-						}
+				} else if (insn instanceof TypeInsnNode t) {
+					checkClass(node.name, elementClass(t.desc), seen, out);
+				} else if (insn instanceof MultiANewArrayInsnNode a) {
+					checkClass(node.name, elementClass(a.desc), seen, out);
+				} else if (insn instanceof LdcInsnNode ldc) {
+					if (ldc.cst instanceof Type type && type.getSort() == Type.OBJECT) {
+						checkClass(node.name, type.getInternalName(), seen, out);
 					}
-					case InvokeDynamicInsnNode indy -> {
-						for (Object arg : indy.bsmArgs) {
-							if (arg instanceof Handle h) checkClass(node.name, h.getOwner(), seen, out);
-						}
-					}
-					default -> {
+				} else if (insn instanceof InvokeDynamicInsnNode indy) {
+					for (Object arg : indy.bsmArgs) {
+						if (arg instanceof Handle h) checkClass(node.name, h.getOwner(), seen, out);
 					}
 				}
 			}

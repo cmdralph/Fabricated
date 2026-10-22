@@ -684,15 +684,15 @@ public final class ModTranslator {
 			ClassNode header = new ClassNode();
 			new ClassReader(data).accept(header, ClassReader.SKIP_CODE);
 			List<String> targets = mixinTargets(header);
-			if (targets.size() != 1 || !isLibraryClass(targets.getFirst())) continue;
+			if (targets.size() != 1 || !isLibraryClass(targets.get(0))) continue;
 			if (implementors.isEmpty()) countImplementors(modEntries, files, implementors);
 			if (libraries == null) libraries = new ClassIndex(env.untransformable());
 			ClassIndex library = libraries;
 			boolean accessor = (header.access & Opcodes.ACC_INTERFACE) != 0;
 			// An accessor's bridge goes outside the mixin package, whose classes Mixin loads only when they are mixins.
 			String name = freeClassName(accessor ? aroundMixinPackage(config, header.name.substring(header.name.lastIndexOf('/') + 1) + "$FabricatedBridge")
-					: header.interfaces.isEmpty() ? null : header.interfaces.getFirst() + "$FabricatedBridge", files, overlay);
-			LibraryBridges.Bridge bridge = name == null ? null : LibraryBridges.of(data, targets.getFirst(), library::readNode,
+					: header.interfaces.isEmpty() ? null : header.interfaces.get(0) + "$FabricatedBridge", files, overlay);
+			LibraryBridges.Bridge bridge = name == null ? null : LibraryBridges.of(data, targets.get(0), library::readNode,
 					itf -> readNode(files, itf + ".class"), itf -> implementors.getOrDefault(itf, 0), name);
 			if (bridge == null) continue;
 			overlay.put(name + ".class", bridge.bytes());
@@ -703,7 +703,7 @@ public final class ModTranslator {
 				if (all == skip) all = new TreeSet<>(skip);
 				all.add(mixin);
 			}
-			findings.add(new PreflightFinding(Severity.INFO, configName, header.name.replace('/', '.'), "Its target, " + targets.getFirst().replace('/', '.')
+			findings.add(new PreflightFinding(Severity.INFO, configName, header.name.replace('/', '.'), "Its target, " + targets.get(0).replace('/', '.')
 					+ ", is a library class NeoForge loads without mixin support: the interfaces the mixin gives it ("
 					+ bridge.ducks().stream().map(d -> d.itf().replace('/', '.')).collect(Collectors.joining(", "))
 					+ ") are served by a generated class, which uses the class's fields through reflection, and the mod's uses of them call that class", ""));

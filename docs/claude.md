@@ -14,7 +14,15 @@ verified), [`PORTING.md`](PORTING.md) (the 1.20.1 and Forge evaluation and the b
 - **Branches** (the owner's decision, 2026-10-21): `main` is NeoForge 1.21.11 to 26.3 and the active branch; every fix
   and feature lands there first. `1.20.1-legacy` (Minecraft 1.20.1) is in its architectural evaluation phase, and a
   `forge` branch is planned. Shared modules (`core`, `api`, `fabric-loader-api`) change only on `main`; a branch takes
-  them by merging `main`, never by cherry-picking, and adds only files of its own (`PORTING.md` §1).
+  them by merging `main`, never by cherry-picking, and adds only files of its own (`PORTING.md` §1). 1.20.1 targets
+  Forge 47.4 (NeoForge 47.1 best-effort), modern Forge builds with ForgeGradle, and CI on the secondary branches runs
+  for pull requests only: decisions D1 to D6 in `RESEARCH.md` §8, with the build paths.
+- **Shared modules stay Java 17** (the owner's decision D2, 2026-10-21): `core`, `api` and `fabric-loader-api` compile
+  their main code with `release = 17`, so the build rejects what 1.20.1's Java 17 can't load. Not available there: a
+  `List`'s `getFirst`/`getLast`/`removeFirst`/`addFirst` (Java 21's sequenced collections: use `get(0)`,
+  `get(size() - 1)`, `remove(0)`, `add(0, e)`; a `Deque`'s and ASM's `InsnList`'s own methods are fine), `switch` with
+  type patterns (use an `instanceof` chain), record patterns, and an `instanceof` pattern of the expression's own
+  type (use a null check). Tests and `loader` stay at Java 21.
 - **Verify, never assume.** A Minecraft, NeoForge, FML or Fabric API class, method or field is used only after
   reading it: in this repository, in the NeoForge sources for that line (`neoforged/NeoForge` branches `1.21.11`,
   `26.1.x`, `26.2.x`, `26.3.x`; the Minecraft code NeoForge changes is in `patches/`), or in the Fabric API sources
@@ -112,7 +120,7 @@ are not among them, so pre-flight of mixins into the game is unchanged by what e
 ```
 fabric-loader-api   (Fabric Loader's public API, Apache-2.0; no deps)
 api                 (Fabricated's public API for NeoForge mods; no deps)
-core  ──api──► fabric-loader-api, api       (pure Java 21; compileOnly ASM)
+core  ──api──► fabric-loader-api, api       (pure Java, release 17; compileOnly ASM)
 mc/<version>        (one Gradle project per Minecraft version, MDG)
   ├─ source set loader  = loader/src/main/java ──► core          (FML SPI only; early-services class loader)
   ├─ source set main    = in-game NeoForge mod  ──compileOnly──► loader output, core

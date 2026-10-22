@@ -60,8 +60,9 @@ experimental (best-effort) in the matrix.
   version. The sources are public (`neoforged/NeoForge` branches, `neoforged/FancyModLoader` tags).
 - **No placeholders.** Don't merge `TODO` stubs or empty implementations. If something is not supported,
   say so in the report and in `docs/COMPATIBILITY.md`.
-- Java 21 language level in `core`, `loader` and `fabric-loader-api` (they run on every version). Tabs for
-  indentation, as in the existing code.
+- Java 17 for the main code of `core`, `api` and `fabric-loader-api` (`release = 17`: they run on every version,
+  and on Minecraft 1.20.1's Java 17), Java 21 for `loader` and the tests. Tabs for indentation, as in the existing
+  code.
 
 ## Adding a new Minecraft version
 

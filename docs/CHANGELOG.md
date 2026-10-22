@@ -3,6 +3,21 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-10-21 (pass after PR #67): the platform decisions, and Java 17 for the shared modules
+
+**Plan.** The owner decided the evaluation's open questions: 1.20.1 targets Forge 47.4 first (NeoForge 47.1
+best-effort), the shared engine keeps to Java 17 from now on, modern Forge builds with ForgeGradle, and secondary
+branches get CI through pull requests only. D3 and D4 were left to this session and are recorded as provisional.
+
+- D2 as a build rule: the main code of `core`, `api` and `fabric-loader-api` compiles with `release = 17` (tests and
+  the toolchain stay at 21), so the compiler rejects what Java 17 can't load. 66 calls of Java 21's sequenced
+  collections became index calls, 8 type-pattern switches became `instanceof` chains (three of them as small helper
+  methods), and 3 `instanceof` patterns of the expression's own type became null checks. No behaviour changes: the
+  281 unit tests pass unchanged, and the classes are Java 17 class files (version 61).
+- `RESEARCH.md` §8: decisions D1 to D6 and the build paths per branch; `claude.md`: the Java 17 rule with what to use
+  instead; `PORTING.md`: decisions recorded, L0 and F0 done, §6 item 1 done, D6's CI policy; `CONTRIBUTING.md`,
+  `ARCHITECTURE.md`: the shared modules' Java level.
+
 ## 2026-10-21 (pass after PR #66): 26.3 stable, and the platform evaluation
 
 **Plan.** PR #66's run (`9431800`) was green everywhere. Every 1.21.11 report reads vanilla's jar in Mojang's names

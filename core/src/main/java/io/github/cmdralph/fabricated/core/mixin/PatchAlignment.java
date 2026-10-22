@@ -172,18 +172,16 @@ final class PatchAlignment {
 	/** An instruction as it is compared: its opcode and what it names or pushes, without local variable slots or jump targets. */
 	private static String token(AbstractInsnNode insn) {
 		String op = Integer.toString(insn.getOpcode());
-		return switch (insn) {
-			case MethodInsnNode m -> op + " " + m.owner + "." + m.name + m.desc;
-			case FieldInsnNode f -> op + " " + f.owner + "." + f.name + ":" + f.desc;
-			case TypeInsnNode t -> op + " " + t.desc;
-			case LdcInsnNode l -> op + " " + l.cst.getClass().getSimpleName() + ":" + l.cst;
-			case IntInsnNode i -> op + " " + i.operand;
-			case InvokeDynamicInsnNode d -> op + " " + d.name + d.desc + " " + handle(d.bsm);
-			case MultiANewArrayInsnNode a -> op + " " + a.desc + " " + a.dims;
-			case TableSwitchInsnNode s -> op + " " + s.min + ".." + s.max;
-			case LookupSwitchInsnNode s -> op + " " + s.keys;
-			default -> op;
-		};
+		if (insn instanceof MethodInsnNode m) return op + " " + m.owner + "." + m.name + m.desc;
+		if (insn instanceof FieldInsnNode f) return op + " " + f.owner + "." + f.name + ":" + f.desc;
+		if (insn instanceof TypeInsnNode t) return op + " " + t.desc;
+		if (insn instanceof LdcInsnNode l) return op + " " + l.cst.getClass().getSimpleName() + ":" + l.cst;
+		if (insn instanceof IntInsnNode i) return op + " " + i.operand;
+		if (insn instanceof InvokeDynamicInsnNode d) return op + " " + d.name + d.desc + " " + handle(d.bsm);
+		if (insn instanceof MultiANewArrayInsnNode a) return op + " " + a.desc + " " + a.dims;
+		if (insn instanceof TableSwitchInsnNode s) return op + " " + s.min + ".." + s.max;
+		if (insn instanceof LookupSwitchInsnNode s) return op + " " + s.keys;
+		return op;
 	}
 
 	private static String handle(Handle h) {

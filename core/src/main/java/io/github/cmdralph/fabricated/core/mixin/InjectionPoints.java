@@ -52,7 +52,8 @@ final class InjectionPoints {
 	static Verdict constantVerdict(AnnotationNode constant, MethodNode method) {
 		Object wanted = null;
 		for (String key : List.of("intValue", "floatValue", "longValue", "doubleValue", "stringValue", "classValue")) {
-			if (Annotations.value(constant, key) instanceof Object v) wanted = v;
+			Object value = Annotations.value(constant, key);
+			if (value != null) wanted = value;
 		}
 		boolean nullValue = Boolean.TRUE.equals(Annotations.value(constant, "nullValue"));
 		int count = 0;
@@ -333,14 +334,12 @@ final class InjectionPoints {
 	static boolean references(AbstractInsnNode insn, Type type) {
 		String internal = type.getInternalName();
 		String desc = type.getDescriptor();
-		return switch (insn) {
-			case TypeInsnNode t -> t.desc.equals(internal);
-			case MethodInsnNode m -> m.owner.equals(internal) || m.desc.contains(desc);
-			case FieldInsnNode f -> f.owner.equals(internal) || f.desc.contains(desc);
-			case InvokeDynamicInsnNode d -> d.desc.contains(desc);
-			case LdcInsnNode l -> type.equals(l.cst);
-			default -> false;
-		};
+		if (insn instanceof TypeInsnNode t) return t.desc.equals(internal);
+		if (insn instanceof MethodInsnNode m) return m.owner.equals(internal) || m.desc.contains(desc);
+		if (insn instanceof FieldInsnNode f) return f.owner.equals(internal) || f.desc.contains(desc);
+		if (insn instanceof InvokeDynamicInsnNode d) return d.desc.contains(desc);
+		if (insn instanceof LdcInsnNode l) return type.equals(l.cst);
+		return false;
 	}
 
 	static boolean matchesInsn(String point, MemberRef ref, AbstractInsnNode insn) {

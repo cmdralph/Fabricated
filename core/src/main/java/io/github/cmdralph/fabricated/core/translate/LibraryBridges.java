@@ -212,19 +212,21 @@ final class LibraryBridges {
 		for (MethodNode m : node.methods) {
 			for (AbstractInsnNode insn : m.instructions.toArray()) {
 				AbstractInsnNode replacement = null;
-				if (insn instanceof TypeInsnNode t && ducks.get(t.desc) instanceof Duck d) {
+				if (insn instanceof TypeInsnNode t && ducks.get(t.desc) != null) {
+					Duck d = ducks.get(t.desc);
 					if (t.getOpcode() == Opcodes.CHECKCAST) {
 						replacement = new MethodInsnNode(Opcodes.INVOKESTATIC, d.bridge(), CAST, "(Ljava/lang/Object;)Ljava/lang/Object;", false);
 					} else if (t.getOpcode() == Opcodes.INSTANCEOF) {
 						replacement = new MethodInsnNode(Opcodes.INVOKESTATIC, d.bridge(), IS, "(Ljava/lang/Object;)Z", false);
 					}
-				} else if (insn instanceof MethodInsnNode c && c.getOpcode() == Opcodes.INVOKEINTERFACE && ducks.get(c.owner) instanceof Duck d
-						&& d.methods().contains(c.name + c.desc)) {
-					replacement = new MethodInsnNode(Opcodes.INVOKESTATIC, d.bridge(), c.name, withSelf(c.desc), false);
+				} else if (insn instanceof MethodInsnNode c && c.getOpcode() == Opcodes.INVOKEINTERFACE && ducks.get(c.owner) != null
+						&& ducks.get(c.owner).methods().contains(c.name + c.desc)) {
+					replacement = new MethodInsnNode(Opcodes.INVOKESTATIC, ducks.get(c.owner).bridge(), c.name, withSelf(c.desc), false);
 				} else if (insn instanceof InvokeDynamicInsnNode indy) {
 					for (int i = 0; i < indy.bsmArgs.length; i++) {
-						if (indy.bsmArgs[i] instanceof Handle h && h.getTag() == Opcodes.H_INVOKEINTERFACE && ducks.get(h.getOwner()) instanceof Duck d
-								&& d.methods().contains(h.getName() + h.getDesc())) {
+						if (!(indy.bsmArgs[i] instanceof Handle h) || h.getTag() != Opcodes.H_INVOKEINTERFACE) continue;
+						Duck d = ducks.get(h.getOwner());
+						if (d != null && d.methods().contains(h.getName() + h.getDesc())) {
 							indy.bsmArgs[i] = new Handle(Opcodes.H_INVOKESTATIC, d.bridge(), h.getName(), withSelf(h.getDesc()), false);
 							// A bound receiver is captured as the bridge's first parameter, which must have its exact type.
 							String receiver = "(L" + h.getOwner() + ";";
@@ -448,17 +450,17 @@ final class LibraryBridges {
 	/** Whether the instruction names the class {@code name} other than as a field's or method's owner. */
 	private static boolean references(AbstractInsnNode insn, String name) {
 		String desc = "L" + name + ";";
-		return switch (insn) {
-			case TypeInsnNode t -> t.desc.equals(name) || t.desc.contains(desc);
-			case FieldInsnNode f -> f.desc.contains(desc);
-			case MethodInsnNode c -> c.desc.contains(desc);
-			case LdcInsnNode l -> l.cst instanceof Type t && t.getDescriptor().contains(desc);
-			case MultiANewArrayInsnNode a -> a.desc.contains(desc);
-			case InvokeDynamicInsnNode indy -> indy.desc.contains(desc) || indy.bsm.getOwner().equals(name) || Arrays.stream(indy.bsmArgs)
+		if (insn instanceof TypeInsnNode t) return t.desc.equals(name) || t.desc.contains(desc);
+		if (insn instanceof FieldInsnNode f) return f.desc.contains(desc);
+		if (insn instanceof MethodInsnNode c) return c.desc.contains(desc);
+		if (insn instanceof LdcInsnNode l) return l.cst instanceof Type t && t.getDescriptor().contains(desc);
+		if (insn instanceof MultiANewArrayInsnNode a) return a.desc.contains(desc);
+		if (insn instanceof InvokeDynamicInsnNode indy) {
+			return indy.desc.contains(desc) || indy.bsm.getOwner().equals(name) || Arrays.stream(indy.bsmArgs)
 					.anyMatch(arg -> arg instanceof Handle h && (h.getOwner().equals(name) || h.getDesc().contains(desc))
 							|| arg instanceof Type t && t.getDescriptor().contains(desc));
-			default -> false;
-		};
+		}
+		return false;
 	}
 
 	private static void replace(List<Object> types, String from, String to) {

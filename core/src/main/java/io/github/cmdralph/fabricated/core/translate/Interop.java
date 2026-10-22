@@ -93,7 +93,7 @@ public final class Interop {
 		for (Map.Entry<String, List<EntrypointSpec>> e : entrypoints.entrySet()) {
 			Convention convention = BUILTIN.get(e.getKey());
 			if (convention == null || convention.property() == null || e.getValue().isEmpty()) continue;
-			EntrypointSpec first = e.getValue().getFirst();
+			EntrypointSpec first = e.getValue().get(0);
 			if (!plainClass(first, convention, "entrypoint", notes)) continue;
 			properties.put(convention.property(), first.value());
 			if (e.getValue().size() > 1) {
