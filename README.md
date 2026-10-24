@@ -23,8 +23,7 @@ It is built to be:
 
 ## What works today
 
-Every version below is tested in CI on a real NeoForge dedicated server and a real NeoForge client (started
-headlessly, joining a singleplayer world) with Fabric test mods. The tests cover Fabric entrypoints (main,
+Every version below is tested on CI with Fabric test mods. Tests cover Fabric entrypoints (main,
 server and client), the Fabric Loader API, registering content, the native Fabric API modules, access
 wideners, mixins, and the isolation of broken mods (a missing dependency, an impossible mixin, and an
 entrypoint that throws).
@@ -192,8 +191,6 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). In short:
 
 ## Design and research
 
-- [docs/claude.md](docs/claude.md): start here when working on Fabricated. Architecture map, rules, Fabric's
-  renderer API design, mixin conventions and the commands to run.
 - [docs/roadmap.md](docs/roadmap.md): the roadmap (tracks, what is next), findings log, test matrices and what is still unverified.
 - [docs/CHANGELOG.md](docs/CHANGELOG.md): what each working session changed, and how it was verified.
 - [docs/MIXINS.md](docs/MIXINS.md): every mixin Fabricated applies, with its target and injection point.
@@ -205,5 +202,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). In short:
 ## License
 
 GPL-3.0, see [LICENSE](LICENSE). Third-party material (the Fabric Loader API and vendored Fabric API modules
-under Apache-2.0, which GPL-3.0 can include, and Intermediary mappings under CC0) is listed in [NOTICE](NOTICE). Fabricated contains
-no code from Sinytra Connector, Forgified Fabric API or Launchpad.
+under Apache-2.0, which GPL-3.0 can include, and Intermediary mappings under CC0) is listed in [NOTICE](NOTICE).
