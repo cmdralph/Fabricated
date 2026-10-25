@@ -24,15 +24,17 @@ import io.github.cmdralph.fabricated.core.remap.MappingTable;
  * @param mappingsHash        hash identifying {@code mappings}, or {@code "none"}
  * @param game                index of runtime game classes (Minecraft + NeoForge)
  * @param untransformable     classes loaded outside NeoForge's transforming class loader (the JDK, libraries)
- * @param vanilla             vanilla's code of the game, which pre-flight reads to tell where NeoForge's patches moved an
- *                            injection point (VANILLA-1), or {@link ClassBytesSource#EMPTY} when it wasn't found or its
- *                            names aren't the game's (1.21.11's are obfuscated)
+ * @param vanilla             vanilla's code of the game in the game's names, which pre-flight reads to tell where
+ *                            NeoForge's patches moved an injection point (VANILLA-1; on 1.21.11 the obfuscated jar read
+ *                            through Mojang's mappings, VANILLA-2), or {@link ClassBytesSource#EMPTY} when it wasn't found
  * @param installed           classes of the jars installed next to the Fabric mods (Fabricated's Fabric API, NeoForge
  *                            mods, and on 26.x the Fabric mods), which Fabric mixins may target; the pre-flight
  *                            results that depend on them are cached with their fingerprints
  * @param installedIndex      index of the game classes and {@code installed}
  * @param unsupportedPackages the packages only unsupported Fabric API modules have (internal names), with the module:
  *                            a mixin using a class there can't apply
+ * @param descriptor          how the platform's loader learns of a translated mod ({@link PlatformDescriptor#NEOFORGE}
+ *                            on {@code main})
  */
 public record TranslationEnvironment(
 		String minecraftVersion,
@@ -50,7 +52,8 @@ public record TranslationEnvironment(
 		ClassBytesSource vanilla,
 		InstalledClasses installed,
 		ClassIndex installedIndex,
-		Map<String, String> unsupportedPackages) {
+		Map<String, String> unsupportedPackages,
+		PlatformDescriptor descriptor) {
 
 	/**
 	 * The format of cached translations. Builds of Fabricated differ in {@link #fabricatedBuild}, so a change to what

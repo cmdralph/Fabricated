@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Deque;
 import java.util.HashMap;
@@ -316,6 +317,11 @@ public final class MixinPreflight {
 									+ " expects " + moved, ""));
 						}
 						if (!Annotations.all(method).contains(ann)) continue;
+						for (String local : vanillaLocalRepairs(method, ann, targets.get(0), ctx)) {
+							changed = true;
+							out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@" + simpleName(ann.desc) + " " + method.name
+									+ " captures " + local, ""));
+						}
 						for (String moved : overloadRepairs(node, method, ann, targets.get(0), ctx, bridges)) {
 							changed = true;
 							out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@" + simpleName(ann.desc) + " " + method.name
@@ -960,6 +966,107 @@ public final class MixinPreflight {
 					+ " here); the injection point is pointed there" + (pointOnly ? "" : ", through a bridge handler"));
 		}
 		return moved;
+	}
+
+	/**
+	 * Names by its ordinal each {@code @Local} capturing a local by its type alone where this game build has several of
+	 * that type in scope at the injection point, NeoForge's patch having added one (LOCAL-2: Ledger's item pickup hooks
+	 * in {@code ItemEntity.playerTouch}, where NeoForge's patch copies the stack for its pickup event). Vanilla's version
+	 * of the method (VANILLA-1) aligned with this build's ({@link PatchAlignment}) tells which local is vanilla's: the
+	 * one whose store is one of vanilla's instructions, or a parameter, when exactly one of those in scope is, as vanilla
+	 * had one of the type there for the capture to work at all. Its ordinal among the locals of the type in scope
+	 * (parameters first, by slot, as {@link #ordinalAt} counts) must be the same at every instruction the point picks.
+	 * Only for an injector with one {@code @At} naming a call, field access or construction, outside a slice, into one
+	 * method vanilla declares, as {@link #ambiguousLocal} judges them. Returns a description of each.
+	 */
+	private List<String> vanillaLocalRepairs(MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx) {
+		if (Annotations.value(injector, "slice") != null) return List.of();
+		List<AnnotationNode> ats = Annotations.list(Annotations.value(injector, "at"));
+		if (ats.size() != 1) return List.of();
+		AnnotationNode at = ats.get(0);
+		String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
+		if (!List.of("INVOKE", "FIELD", "NEW").contains(point) || !(Annotations.value(at, "target") instanceof String raw)) return List.of();
+		MemberRef ref = MemberRef.parse(ctx.resolve(raw));
+		if (ref.fuzzy()) return List.of();
+		ClassNode original = vanillaClass(target.name);
+		List<MethodNode> methods = original == null ? List.of() : selectedMethods(injector, target, ctx);
+		if (methods.size() != 1) return List.of();
+		MethodNode patched = methods.get(0);
+		MethodNode before = declared(original, patched.name, patched.desc);
+		if (before == null || patched.localVariables == null || patched.localVariables.isEmpty()) return List.of();
+		List<Integer> positions = matching(patched, point, ref, Annotations.value(at, "opcode") instanceof Integer o ? o : -1);
+		int pointOrdinal = Annotations.value(at, "ordinal") instanceof Integer n ? n : -1;
+		if (pointOrdinal >= 0) positions = pointOrdinal < positions.size() ? List.of(positions.get(pointOrdinal)) : List.of();
+		if (positions.isEmpty()) return List.of();
+		Set<Integer> vanillaPlaces = null;
+		List<String> named = new ArrayList<>();
+		Type[] params = Type.getArgumentTypes(handler.desc);
+		for (int p = 0; p < params.length; p++) {
+			for (AnnotationNode local : Annotations.ofParameter(handler, p)) {
+				if (!local.desc.equals(LOCAL) || Annotations.value(local, "name") != null || Annotations.value(local, "index") != null
+						|| Annotations.value(local, "ordinal") != null || Boolean.TRUE.equals(Annotations.value(local, "argsOnly"))
+						|| params[p].getDescriptor().startsWith("Lcom/llamalad7/mixinextras/sugar/ref/")) continue;
+				if (vanillaPlaces == null) {
+					PatchAlignment alignment = PatchAlignment.of(before, patched);
+					if (alignment == null) return named;
+					vanillaPlaces = new HashSet<>();
+					for (int i = 0; i < before.instructions.size(); i++) {
+						if (alignment.placeOf(i) >= 0) vanillaPlaces.add(alignment.placeOf(i));
+					}
+				}
+				int ordinal = vanillasLocalOrdinal(patched, params[p].getDescriptor(), positions, vanillaPlaces);
+				if (ordinal < 0) continue;
+				Annotations.put(local, "ordinal", ordinal);
+				named.add("the local of type " + params[p].getClassName() + " by its type, of which " + patched.name + " in "
+						+ target.name.replace('/', '.') + " has more than one there, NeoForge's patch having added one; vanilla's is the one with ordinal "
+						+ ordinal + " here, and the @Local names it");
+			}
+		}
+		return named;
+	}
+
+	/**
+	 * The ordinal, among the locals of type {@code desc} in scope (parameters first, by slot), of the one of them that is
+	 * vanilla's ({@link #isVanillasLocal}), the same at each of {@code positions}; -1 when there aren't several in scope
+	 * at one of them, or not exactly one of those is vanilla's.
+	 */
+	private static int vanillasLocalOrdinal(MethodNode method, String desc, List<Integer> positions, Set<Integer> vanillaPlaces) {
+		int found = -1;
+		for (int i : positions) {
+			TreeSet<Integer> inScope = new TreeSet<>();
+			int vanillas = 0;
+			int chosen = -1;
+			for (LocalVariableNode lv : method.localVariables) {
+				if (!lv.desc.equals(desc) || method.instructions.indexOf(lv.start) > i || i >= method.instructions.indexOf(lv.end)) continue;
+				inScope.add(lv.index);
+				if (isVanillasLocal(method, lv, vanillaPlaces)) {
+					vanillas++;
+					chosen = lv.index;
+				}
+			}
+			if (inScope.size() < 2 || vanillas != 1) return -1;
+			int ordinal = inScope.headSet(chosen).size();
+			if (found >= 0 && found != ordinal) return -1;
+			found = ordinal;
+		}
+		return found;
+	}
+
+	/**
+	 * Whether a local is vanilla's: a parameter, or one whose scope starts right after a store into its slot that is one
+	 * of vanilla's instructions ({@code vanillaPlaces}, their places in this build's method), not one NeoForge's patch put
+	 * there.
+	 */
+	private static boolean isVanillasLocal(MethodNode method, LocalVariableNode local, Set<Integer> vanillaPlaces) {
+		AbstractInsnNode store = local.start.getPrevious();
+		while (store != null && store.getOpcode() < 0) store = store.getPrevious();
+		if (store == null) {
+			int parameterSlots = (method.access & Opcodes.ACC_STATIC) != 0 ? 0 : 1;
+			for (Type type : Type.getArgumentTypes(method.desc)) parameterSlots += type.getSize();
+			return local.index < parameterSlots;
+		}
+		return store instanceof VarInsnNode var && var.getOpcode() >= Opcodes.ISTORE && var.getOpcode() <= Opcodes.ASTORE && var.var == local.index
+				&& vanillaPlaces.contains(method.instructions.indexOf(store));
 	}
 
 	/**
@@ -2207,7 +2314,8 @@ public final class MixinPreflight {
 			if (!isGameClass(target) || dollar < 0 || !target.substring(dollar + 1).matches("\\d+")) continue;
 			ClassNode named = gameTarget(target);
 			if (named != null && fits(mixin, named, ctx)) continue;
-			Map<String, String> namedRenames = named == null ? null : capturedRenames(mixin, named);
+			ClassNode original = vanillaClass(target);
+			Map<String, String> namedRenames = named == null ? null : capturedRenames(mixin, named, original);
 			if (namedRenames != null && !namedRenames.isEmpty() && fits(renamed(mixin, namedRenames), named, ctx)) {
 				renameShadows(mixin, namedRenames);
 				moved.add(target.replace('/', '.') + " names the values it captures otherwise in this game build " + namedRenames
@@ -2223,7 +2331,7 @@ public final class MixinPreflight {
 				if (inner.innerName != null || inner.outerName != null || inner.name.equals(target)
 						|| !inner.name.startsWith(outer.name + "$") || inner.name.indexOf('$', outer.name.length() + 1) >= 0) continue;
 				ClassNode candidate = gameTarget(inner.name);
-				Map<String, String> renames = candidate == null ? null : capturedRenames(mixin, candidate);
+				Map<String, String> renames = candidate == null ? null : capturedRenames(mixin, candidate, original);
 				if (renames == null || !fits(renames.isEmpty() ? mixin : renamed(mixin, renames), candidate, ctx)) continue;
 				if (match != null) {
 					match = null;
@@ -2246,12 +2354,14 @@ public final class MixinPreflight {
 
 	/**
 	 * New names for the mixin's shadows of values an anonymous class captures ({@code val$name}) that {@code target} has
-	 * under another name: the one captured value of the same type there. NeoForge's 1.21.11 build names them after its
-	 * own parameter names (recompiled from decompiled source; inferred from Polymer's {@code val$registryKey} missing
-	 * there, CAPTURE-1). Empty when every shadow is there, null when one's new name can't be told (none or several of its
-	 * type, or one another shadow has).
+	 * under another name: the one captured value of the same type there (CAPTURE-1), or, of several, the one in the place
+	 * the shadow's has among vanilla's of that type in {@code original}, the class the mixin names in vanilla's code
+	 * ({@link #inVanillasOrder}, CAPTURE-2). NeoForge's 1.21.11 build names them after its own parameter names
+	 * (recompiled from decompiled source; inferred from Polymer's {@code val$registryKey} missing there). Empty when every
+	 * shadow is there, null when one's new name can't be told (none of its type, several that vanilla's class doesn't
+	 * tell apart, or one another shadow has).
 	 */
-	private static Map<String, String> capturedRenames(ClassNode mixin, ClassNode target) {
+	private static Map<String, String> capturedRenames(ClassNode mixin, ClassNode target, ClassNode original) {
 		Map<String, String> renames = new TreeMap<>();
 		Set<String> kept = new HashSet<>();
 		for (FieldNode field : mixin.fields) {
@@ -2260,12 +2370,57 @@ public final class MixinPreflight {
 				kept.add(field.name);
 				continue;
 			}
-			List<String> sameType = target.fields.stream().filter(f -> f.name.startsWith("val$") && f.desc.equals(field.desc)).map(f -> f.name).toList();
-			if (sameType.size() != 1) return null;
-			renames.put(field.name, sameType.get(0));
+			List<String> sameType = captured(target, field.desc);
+			String renamed = sameType.size() == 1 ? sameType.get(0) : inVanillasOrder(field.name, field.desc, sameType, target, original);
+			if (renamed == null) return null;
+			renames.put(field.name, renamed);
 		}
 		Set<String> to = new HashSet<>(renames.values());
 		return to.size() == renames.size() && Collections.disjoint(to, kept) ? renames : null;
+	}
+
+	/** The values an anonymous class captures of one type ({@code val$} fields), in the order it declares them. */
+	private static List<String> captured(ClassNode type, String desc) {
+		return type.fields.stream().filter(f -> f.name.startsWith("val$") && f.desc.equals(desc)).map(f -> f.name).toList();
+	}
+
+	/**
+	 * Which of {@code target}'s captured values of a type is vanilla's {@code name}, when it captures several (Ledger's and
+	 * malilib's hooks into {@code ChestBlock}'s menu provider shadow the two chest block entities it captures): the one in
+	 * the place {@code name} has among {@code original}'s of the type. The order javac declares captured values in follows
+	 * the class's code, which a recompiled build keeps; as that is inferred, not read, the place is taken only when
+	 * {@code original} captures as many of the type and every method both classes declare reads them in the same order,
+	 * matched by place, with at least one such read. Null otherwise, or without vanilla's class.
+	 */
+	private static String inVanillasOrder(String name, String desc, List<String> sameType, ClassNode target, ClassNode original) {
+		if (original == null || sameType.size() < 2) return null;
+		List<String> originals = captured(original, desc);
+		int place = originals.indexOf(name);
+		if (place < 0 || originals.size() != sameType.size()) return null;
+		Map<String, String> byPlace = new HashMap<>();
+		for (int i = 0; i < originals.size(); i++) byPlace.put(originals.get(i), sameType.get(i));
+		boolean compared = false;
+		for (MethodNode method : original.methods) {
+			if (method.name.equals("<init>") || method.instructions == null) continue;
+			MethodNode same = target.methods.stream().filter(m -> m.name.equals(method.name) && m.desc.equals(method.desc)).findFirst().orElse(null);
+			if (same == null) continue;
+			List<String> expected = reads(method, original.name, byPlace.keySet()).stream().map(byPlace::get).toList();
+			if (!expected.equals(reads(same, target.name, byPlace.values()))) return null;
+			compared |= !expected.isEmpty();
+		}
+		return compared ? sameType.get(place) : null;
+	}
+
+	/** The reads of {@code fields} of {@code owner} in a method, in order. */
+	private static List<String> reads(MethodNode method, String owner, Collection<String> fields) {
+		List<String> reads = new ArrayList<>();
+		if (method.instructions == null) return reads;
+		for (AbstractInsnNode insn : method.instructions) {
+			if (insn instanceof FieldInsnNode read && read.getOpcode() == Opcodes.GETFIELD && read.owner.equals(owner) && fields.contains(read.name)) {
+				reads.add(read.name);
+			}
+		}
+		return reads;
 	}
 
 	/** A copy of {@code mixin} with its shadows renamed. */

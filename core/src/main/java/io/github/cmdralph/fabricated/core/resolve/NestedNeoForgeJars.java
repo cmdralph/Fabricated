@@ -26,7 +26,8 @@ import io.github.cmdralph.fabricated.core.json.JsonException;
  * The mods.toml and classes of the jars a NeoForge mod file nests (jar-in-jar, listed in its
  * {@code META-INF/jarjar/metadata.json}). NeoForge's discovery finds those mods only after Fabricated's has run, yet
  * Fabric mods may depend on them, be replaced by them, or target their classes with mixins (Sodium for NeoForge nests its
- * mod in a service jar). They are read in place, nothing is extracted.
+ * mod in a service jar). They are read in place, nothing is extracted. A platform whose mods' descriptor is elsewhere
+ * (Forge's {@code META-INF/mods.toml}) names it ({@link #read(Path, ArchiveLimits, String)}).
  */
 public final class NestedNeoForgeJars {
 	/** The jar-in-jar list of a NeoForge mod file. */
@@ -51,17 +52,24 @@ public final class NestedNeoForgeJars {
 	}
 
 	private final ArchiveLimits limits;
+	private final String descriptor;
 	private final List<ModsToml> found = new ArrayList<>();
 	private int opened;
 
-	private NestedNeoForgeJars(ArchiveLimits limits) {
+	private NestedNeoForgeJars(ArchiveLimits limits, String descriptor) {
 		this.limits = limits;
+		this.descriptor = descriptor;
 	}
 
 	/** The mods.toml and classes of every mod jar nested in {@code jar}, down to the limits' nesting depth. */
 	public static List<ModsToml> read(Path jar, ArchiveLimits limits) throws IOException, JsonException {
+		return read(jar, limits, MODS_TOML);
+	}
+
+	/** As {@link #read(Path, ArchiveLimits)}, for a platform reading a mod's descriptor at {@code descriptor}. */
+	public static List<ModsToml> read(Path jar, ArchiveLimits limits, String descriptor) throws IOException, JsonException {
 		if (Files.size(jar) > limits.maxJarBytes()) throw new IOException(jar + " is larger than " + limits.maxJarBytes() + " bytes");
-		NestedNeoForgeJars reader = new NestedNeoForgeJars(limits);
+		NestedNeoForgeJars reader = new NestedNeoForgeJars(limits, descriptor);
 		try (FileSystem archive = open(jar)) {
 			reader.readNested(archive, String.valueOf(jar.getFileName()), List.of());
 		}
@@ -107,7 +115,7 @@ public final class NestedNeoForgeJars {
 			List<String> nestedChain = new ArrayList<>(chain);
 			nestedChain.add(path);
 			try (FileSystem inner = open(nested)) {
-				String toml = text(inner, MODS_TOML);
+				String toml = text(inner, descriptor);
 				if (toml != null) found.add(new ModsToml(nestedOrigin, toml, jarVersion(inner, listed), List.copyOf(nestedChain), classes(inner, nestedOrigin)));
 				if (nestedChain.size() < limits.maxNestingDepth()) readNested(inner, nestedOrigin, nestedChain);
 			}
