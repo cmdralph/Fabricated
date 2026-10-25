@@ -67,7 +67,8 @@ public final class FrapiTestMod implements ModInitializer {
 			level.destroyBlockProgress(BREAKER_ID, breaking, 5);
 			// Cleared each time (the last copy landed in it), so every copy falls the whole way.
 			for (int i = 0; i <= FALL_HEIGHT; i++) level.setBlockAndUpdate(landing.above(i), Blocks.AIR.defaultBlockState());
-			FallingBlockEntity.fall(level, landing.above(FALL_HEIGHT), terrainBlock.defaultBlockState());
+			// Glowing, so the client draws it a second time for its outline (M2b).
+			FallingBlockEntity.fall(level, landing.above(FALL_HEIGHT), terrainBlock.defaultBlockState()).setGlowingTag(true);
 		});
 	}
 

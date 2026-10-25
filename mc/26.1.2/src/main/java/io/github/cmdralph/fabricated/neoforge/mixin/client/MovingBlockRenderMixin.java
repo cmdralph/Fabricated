@@ -38,6 +38,12 @@ abstract class MovingBlockRenderMixin implements FabricBlockRendering.MovingBloc
 		return fabricated$bufferSource.getBuffer(type);
 	}
 
+	/** 26.1.2 draws no outline around moving blocks. */
+	@Override
+	public @Nullable VertexConsumer fabricated$outlineBuffer(RenderType type) {
+		return null;
+	}
+
 	/** NeoForge draws the block unless its model is a Fabric model, which Fabric's renderer draws instead. */
 	@WrapWithCondition(method = "renderMovingBlockSubmits", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/block/ModelBlockRenderer;tesselateBlock(Lnet/minecraft/client/renderer/block/BlockQuadOutput;FFFLnet/minecraft/client/renderer/block/BlockAndTintGetter;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/client/renderer/block/dispatch/BlockStateModel;J)V"))
 	private boolean fabricated$fabricModels(ModelBlockRenderer renderer, BlockQuadOutput output, float x, float y, float z,
@@ -46,7 +52,7 @@ abstract class MovingBlockRenderMixin implements FabricBlockRendering.MovingBloc
 			@Local(name = "poseStack") PoseStack poseStack) {
 		if (!FabricBlockRendering.draws(model)) return true;
 		fabricated$bufferSource = bufferSource;
-		FabricBlockRendering.tesselateMoving(this, poseStack.last(), false, options.ambientOcclusion, Minecraft.getInstance().getBlockColors(),
+		FabricBlockRendering.tesselateMoving(this, poseStack.last(), false, 0, options.ambientOcclusion, Minecraft.getInstance().getBlockColors(),
 				x, y, z, level, pos, state, model, seed);
 		fabricated$bufferSource = null;
 		return false;

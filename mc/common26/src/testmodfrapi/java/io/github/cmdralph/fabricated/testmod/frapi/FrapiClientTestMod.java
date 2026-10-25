@@ -16,6 +16,7 @@ import net.fabricmc.fabric.api.client.model.loading.v1.UnbakedModelDeserializer;
 import net.fabricmc.fabric.api.client.model.loading.v1.wrapper.WrapperBlockStateModel;
 import net.fabricmc.fabric.api.client.renderer.v1.mesh.QuadEmitter;
 import net.fabricmc.fabric.api.client.renderer.v1.mesh.QuadTransform;
+import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
 import net.minecraft.client.renderer.block.BlockAndTintGetter;
 import net.minecraft.client.renderer.block.MovingBlockRenderState;
 import net.minecraft.client.renderer.block.dispatch.BlockStateModel;
@@ -37,8 +38,9 @@ import net.neoforged.neoforge.client.model.block.CompositeBlockModel;
 /**
  * Fabric models (their own {@code emitQuads}), which NeoForge's block renderer can't draw:
  * <ul>
- * <li>the test block's model, wrapped after baking: drawn in a chunk section, as a falling block and with the breaking
- * overlay, each reached from Fabric's renderer with a different level;</li>
+ * <li>the test block's model, wrapped after baking: drawn in a chunk section, as a falling block (and again for the
+ * glowing falling block's outline, from 26.2 on) and with the breaking overlay, each reached from Fabric's renderer with
+ * a different level;</li>
  * <li>a custom model type ({@code fabric:type}) used as the part of the nested test block's multipart model: drawn in
  * a chunk section, inside a vanilla model.</li>
  * </ul>
@@ -50,6 +52,7 @@ import net.neoforged.neoforge.client.model.block.CompositeBlockModel;
 public final class FrapiClientTestMod implements ClientModInitializer {
 	@Override
 	public void onInitializeClient() {
+		LevelRenderEvents.START_MAIN.register(context -> TerrainCheckModel.frames++);
 		AtomicBoolean wrapped = new AtomicBoolean();
 		AtomicBoolean neoForgeType = new AtomicBoolean();
 		ModelLoadingPlugin.register(plugin -> plugin.modifyBlockModelAfterBake().register((model, context) -> {
@@ -84,6 +87,11 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 	private static final class TerrainCheckModel extends WrapperBlockStateModel {
 		private static final AtomicBoolean TERRAIN = new AtomicBoolean();
 		private static final AtomicBoolean MOVING = new AtomicBoolean();
+		private static final AtomicBoolean OUTLINE = new AtomicBoolean();
+		/** Frames the game began drawing the level (render thread), to tell a block's outline pass from the next frame. */
+		static long frames;
+		private static long movingFrame = -1;
+		private static @Nullable BlockPos movingPos;
 		private static final AtomicBoolean BREAKING = new AtomicBoolean();
 		private static final AtomicBoolean COLORS = new AtomicBoolean();
 		/**
@@ -112,11 +120,24 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 			if (isSection(level) && !TERRAIN.getAndSet(true)) {
 				FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi terrain OK ({} in {} on {})", state, level.getClass().getName(), Thread.currentThread().getName());
 				checkQuadMark(level, pos, state, random);
-			} else if (level instanceof MovingBlockRenderState && !MOVING.getAndSet(true)) {
-				FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi moving block OK ({})", state);
+			} else if (level instanceof MovingBlockRenderState) {
+				if (!MOVING.getAndSet(true)) FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi moving block OK ({})", state);
+				checkOutline(pos);
 			} else if (level == BlockAndTintGetter.EMPTY && !BREAKING.getAndSet(true)) {
 				FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi breaking OK ({})", state);
 			}
+		}
+
+		/**
+		 * Logs once that a moving block reached Fabric's renderer twice in one frame: the glowing falling block is drawn,
+		 * then drawn again for its outline. NeoForge would draw the outline from the model's parts instead (M2b).
+		 */
+		private static void checkOutline(BlockPos pos) {
+			if (frames > 0 && frames == movingFrame && pos.equals(movingPos) && !OUTLINE.getAndSet(true)) {
+				FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi moving block outline OK ({} in frame {})", pos, frames);
+			}
+			movingFrame = frames;
+			movingPos = pos.immutable();
 		}
 
 		/** Whether the quads NeoForge baked for the wrapped model went through {@code BakedQuadMixin}'s hook. */

@@ -68,6 +68,9 @@ public final class FabricBlockRendering {
 	/** A moving block renderer's buffers, which Fabricated's mixin exposes. */
 	public interface MovingBlockBuffers {
 		VertexConsumer fabricated$buffer(RenderType type);
+
+		/** The buffer of the render type's outline, for an outlined block (a glowing falling block); null if none. */
+		@Nullable VertexConsumer fabricated$outlineBuffer(RenderType type);
 	}
 
 	/**
@@ -102,10 +105,10 @@ public final class FabricBlockRendering {
 	 * Draws one moving block, as NeoForge's block renderer would have with the same arguments, into the moving block
 	 * render type of each quad's layer ({@code forceTranslucent}: the translucent one for all).
 	 */
-	public static void tesselateMoving(MovingBlockBuffers buffers, PoseStack.Pose pose, boolean forceTranslucent,
+	public static void tesselateMoving(MovingBlockBuffers buffers, PoseStack.Pose pose, boolean forceTranslucent, int outlineColor,
 			boolean ambientOcclusion, BlockColors blockColors,
 			float x, float y, float z, BlockAndTintGetter level, BlockPos pos, BlockState state, BlockStateModel model, long seed) {
-		Frapi.tesselateMoving(buffers, pose, forceTranslucent, ambientOcclusion, blockColors, x, y, z, level, pos, state, model, seed);
+		Frapi.tesselateMoving(buffers, pose, forceTranslucent, outlineColor, ambientOcclusion, blockColors, x, y, z, level, pos, state, model, seed);
 	}
 
 	/**
@@ -243,7 +246,7 @@ public final class FabricBlockRendering {
 			}
 		}
 
-		static void tesselateMoving(MovingBlockBuffers buffers, PoseStack.Pose pose, boolean forceTranslucent,
+		static void tesselateMoving(MovingBlockBuffers buffers, PoseStack.Pose pose, boolean forceTranslucent, int outlineColor,
 				boolean ambientOcclusion, BlockColors blockColors,
 				float x, float y, float z, BlockAndTintGetter level, BlockPos pos, BlockState state, BlockStateModel model, long seed) {
 			MovingState moving = MOVING.get();
@@ -254,6 +257,7 @@ public final class FabricBlockRendering {
 			moving.buffers = buffers;
 			moving.pose = pose;
 			moving.forceTranslucent = forceTranslucent;
+			moving.outlineColor = outlineColor;
 			try {
 				moving.renderer.tesselateBlock(moving.emitter, x, y, z, level, pos, state, model, seed);
 			} catch (VirtualMachineError | ReportedException e) {
@@ -332,6 +336,7 @@ public final class FabricBlockRendering {
 		@Nullable MovingBlockBuffers buffers;
 		PoseStack.@Nullable Pose pose;
 		boolean forceTranslucent;
+		int outlineColor;
 
 		MovingState(Renderer renderer, boolean ambientOcclusion, BlockColors blockColors) {
 			this.ambientOcclusion = ambientOcclusion;
@@ -341,11 +346,21 @@ public final class FabricBlockRendering {
 			this.emitter = renderer.quadEmitter(this);
 		}
 
-		/** A finished quad goes to the moving block render type of its layer, as upstream does. */
+		/**
+		 * A finished quad goes to the moving block render type of its layer, as upstream does: an outlined block's to
+		 * that type's outline, in the outline's colour.
+		 */
 		@Override
 		public void accept(MutableQuadView quad) {
 			ChunkSectionLayer layer = forceTranslucent ? ChunkSectionLayer.TRANSLUCENT : quad.chunkLayer();
-			quad.buffer(OverlayTexture.NO_OVERLAY, pose, buffers.fabricated$buffer(ChunkSectionLayerHelper.getMovingBlockRenderType(layer)));
+			RenderType type = ChunkSectionLayerHelper.getMovingBlockRenderType(layer);
+			VertexConsumer outline = outlineColor != 0 ? buffers.fabricated$outlineBuffer(type) : null;
+			if (outline != null) {
+				for (int i = 0; i < 4; i++) quad.color(i, outlineColor);
+				quad.buffer(OverlayTexture.NO_OVERLAY, pose, outline);
+			} else {
+				quad.buffer(OverlayTexture.NO_OVERLAY, pose, buffers.fabricated$buffer(type));
+			}
 		}
 	}
 
