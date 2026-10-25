@@ -25,8 +25,9 @@ public final class MixinCompat {
 		}
 	}
 
-	/** Minimum loader version → Mixin behaviour version, newest first (from Fabric Loader 0.19.5). */
+	/** Minimum loader version → Mixin behaviour version, newest first (from Fabric Loader 0.20.1). */
 	private static final List<Row> TABLE = List.of(
+			new Row("0.20.0", "0.17.5"),
 			new Row("0.19.4", "0.17.4"),
 			new Row("0.19.0", "0.17.1"),
 			new Row("0.18.4", "0.17.0"),
