@@ -24,7 +24,7 @@ changed on `main`; a branch picks a change up by merging `main`. A branch adds i
 adapter, its `mc/<target>` projects, its CI target list) and never edits or deletes a file `main` owns, or every
 merge conflicts. GitHub's merges ignore `merge=ours` attributes, so ownership comes from where files live, not from
 merge settings. On 2026-10-25 both were brought up to `main` (`d42a605`) and got their first files of their own, the compile-only
-scaffolds (`forge-legacy`: #71, `forge`: #72).
+scaffolds (`forge-legacy`: #71, `forge`: #72 and #74).
 
 ## 2. What of the engine is portable
 
@@ -141,6 +141,90 @@ Java 25 for every target and downloads from Forge's maven. A version project dep
 (cmdralph/Fabricated#72) prepared Forge 1.21.11 with Mojang's mappings in 3 min 47 s and built the project in 4 min
 18 s. Forge's newest 1.21.11 build on its maven that day was 61.2.4.
 
+### 4.1 F3 design: discovery and translation on Forge 61 to 66
+
+Read in source (2026-10-25): Forge `1.21.11`, `26.1.2`, `26.2` and `26.3`, forgespi 8.0.0, ModLauncher 10.2.6,
+securemodules 2.2.24 and Mixin 0.8.7, the versions all four Forge targets ship. The discovery classes are the same
+on 61 to 66; two internals differ on 61 (`FMLLoader.getLanguageLoadingProvider()` is an instance method, and
+`ModLoader.addWarning` is an instance method where 66 has a static one). Nothing here has run yet: every row is
+UNVERIFIED at runtime until a Forge server smoke runs.
+
+**Each NeoForge SPI Fabricated uses, and Forge's counterpart.**
+
+| `loader/neoforge` today | Forge | What differs |
+|---|---|---|
+| `IModFileCandidateLocator` (`FabricCandidateLocator`) | `IModLocator.scanMods()` → `List<ModFileOrException>`, SERVICE layer, during ModLauncher's scan (`FMLServiceProvider.beginScanning`) | No priority and no claiming. Forge's mods-folder locator skips a jar without `META-INF/mods.toml` and `FMLModType` silently, so Fabric jars need no claim; nor can Fabricated keep a multi-loader jar from Forge (the one exclusion list, `ModDirTransformerDiscoverer`'s, is private), so MULTI-1 doesn't carry over. Only `ModFile` instances are accepted. |
+| `IDependencyLocator` (`FabricDependencyLocator`) | `IDependencyLocator.scanMods(Iterable<IModFile>)`, SERVICE layer, after every mod locator | Chained: each gets the files found so far, earlier dependency locators' included. A layer's providers come before its parents' (JDK `ServiceLoader`, checked with a JDK test), and fmlloader is in BOOT, so Fabricated's locators should run before Forge's (unverified). The only error path is a fatal `EarlyLoadingException`: no warnings. |
+| `IModLanguageLoader` (`FabricLanguageLoader`) | `IModLanguageProvider` with a nested `IModLanguageLoader.loadMod(IModInfo, ModFileScanData, ModuleLayer)`, PLUGIN layer | Its version comes from the package's `Implementation-Version`, which must be present in production. Its file visitor registers a loader for every mod id of a file (`addLanguageLoader`), or loading fails. `loadMod` runs for every file before any mod is constructed. |
+| `ClassProcessor` (`FabricClassProcessor`, `DefaultBridgeProcessor`) | `ITransformationService` from a jar in `mods/`, returning `ITransformer<ClassNode>`s, SERVICE layer | `transformers()` is called after FML's scan, so discovery's state exists. Transformers run between the launch plugins' BEFORE and AFTER phases and Mixin works in AFTER: every transformer runs before Mixin, and always with `COMPUTE_FRAMES`. A step after Mixin (what `DefaultBridgeProcessor` is) is impossible from `mods/`: launch plugins load only from BOOT. |
+| `NeoForgeMods` | the same forgespi calls (`IModFile.getModInfos()`, `IModInfo`) over `getSecureJar()` | The platform's files are `minecraft` and `forge`; nested mods use `META-INF/mods.toml` where `core` reads `neoforge.mods.toml` (`NestedNeoForgeJars`, `MultiLoaderJars`): the platform profile (§6 item 5). |
+
+**R3: one download carrying the three parts.** ModLauncher's layers are BOOT, SERVICE(BOOT), PLUGIN(BOOT) and
+GAME(PLUGIN, SERVICE): plugin-layer code can't see service-layer classes. The layout read through, link by link:
+
+- **The outer jar, in `mods/`**, holds today's merged loader, core and APIs, with `Automatic-Module-Name:
+  io.github.cmdralph.fabricated` and service files for `IModLocator`, `IDependencyLocator` and
+  `ITransformationService`. `ModDirTransformerDiscoverer` finds it by those files and puts it in SERVICE (an
+  automatic module's `provides` come from its service files; the duplicate entries one per service are ignored), and
+  the mods-folder scan then leaves it out. So Forge's jar-in-jar locator never sees what it nests: Fabricated
+  returns its nested parts itself.
+- **`META-INF/fabricated/lang-provider.jar`** (new): manifest `FMLModType: LANGPROVIDER`, an
+  `Implementation-Version`, its own `Automatic-Module-Name`, and the `IModLanguageProvider` service file.
+  Fabricated's `IModLocator` extracts it to the cache and returns `ModFileFactory.FACTORY.build(SecureJar.from(path),
+  this, parser)`; the manifest type puts it in PLUGIN. It may use only forgespi, fmlcore and the JDK, and loads its
+  container by name from the game layer's `fabricated` module, as Forge's own Java provider does.
+- **`META-INF/fabricated/game-mod.jar`**: today's game mod with its `mods.toml` (javafml) and `MixinConfigs` in its
+  manifest. Fabricated's `IDependencyLocator` returns it; it loads in GAME as type MOD and holds
+  `FabricModContainer`, which sees fmlcore (PLUGIN) and `FabricatedState` (SERVICE).
+- **Translated mods**: `new ModFile(SecureJar.from(metadata, filter, jar, ..., overlay), this,
+  ModFileParser::modsTomlParser)` with the overlay **last**: for files the first path wins, but the manifest and
+  primary path come from the last, and Mixin reads `MixinConfigs` from the primary path. So the filter hides, on the
+  jar's path, every entry the overlay replaces. `ModJarMetadata`'s constructor is package-private: Fabricated needs
+  its own `JarMetadata`.
+- The three parts share no package (GAME's automatic modules read every module).
+
+Fallbacks, both read in source: return the language jar as a PLUGIN `Resource` from
+`ITransformationService.beginScanning`; or no language provider at all, `modLoader="javafml"` with a generated
+`@Mod` class per overlay (a change to `core`).
+
+**The port of `loader/neoforge`.** `loader/common` is reused unchanged: `ProposedJars`' reflection holds (Forge's
+`TransformingClassLoader` is a securemodules `ModuleClassLoader`, which has `setFallbackClassLoader`), reached from
+GAME code through a new public hook; `VanillaGameJar` needs Forge's server layout (on 1.21.11 the installer also
+writes `net.minecraft:<side>:<mc>:official` jars), and any change to it goes to `main`.
+
+| `loader/neoforge` | `loader/forge` | Change |
+|---|---|---|
+| `FabricCandidateLocator` | `FabricModLocator implements IModLocator`: lists Fabric jars (no `META-INF/mods.toml`), returns the language provider's `ModFile` | small rewrite |
+| `FabricDependencyLocator` | same name: the `Pipeline.Input` assembly carries over; the glue (`FMLLoader` facts, `SecureJar` for `JarContents`, platform packages from the BOOT and SERVICE layers, warnings through `FabricatedState`, MixinExtras as data) is rewritten | about 40% rewritten |
+| `FabricLanguageLoader` | `FabricLanguageProvider` (new `langprovider` source set) and `FabricModContainer` (`mc/forge-common`) | rewrite |
+| `FabricModContainer` | extends fmlcore's `ModContainer` (`matches`, `getMod`) | simpler rewrite |
+| `FabricClassProcessor` | `FabricTransformationService` and an `ITransformer<ClassNode>`; the `ClassNode` code carries over | new wrapper |
+| `DefaultBridgeProcessor` | the same transformer, before Mixin: Mixin replaces a target method its mixin also declares, unless `requireOverwriteAnnotations` or `@Intrinsic`; whether that changes the bridges' meaning is unverified | needs a test |
+| `IntermediaryMappings` | `load()` unchanged; `locate` without `LibraryFinder` (Forge 61 writes `net.minecraft:<side>:<mc>:mappings@tsrg`; its format is unverified) | partial |
+| `NeoForgeMods` | `ForgeMods`, over `SecureJar`, platform files `{minecraft, forge}` | port |
+
+New: `ForgeLoaderHooks` (public, package `io.github.cmdralph.fabricated.loader`), `FabricJarMetadata`, and the
+build changes in `mc/platform-forge.gradle`. `core` needs the platform profile (§6 item 5): the Forge descriptor
+writer, the nested and multi-loader `mods.toml` paths, and who provides MixinExtras (Forge's jar-in-jar locator adds
+`mixinextras-forge` for a mod whose manifest has `MixinConfigs`).
+
+**Order of work on `forge`.** (1) The `langprovider` source set, compiled against forgespi and fmlcore only, the
+nested jar and the service files. (2) The R3 prototype: locator, language provider, container, game mod. (3) The
+dependency locator, `ForgeMods` and mappings. (4) The transformation service. (5) Warnings and MixinExtras.
+Compile-only CI covers compilation, the layer separation (the source sets' classpaths enforce it), checks on the
+built jar (nested manifests, service files, no shared packages) and unit tests of the transformer and of the overlay
+order; everything else needs a server smoke.
+
+**Questions only a run answers.** (1) Does ForgeGradle's compile classpath hold fmlloader, fmlcore, forgespi,
+modlauncher and securemodules? (2) Do Fabricated's locators run before `ModsFolderLocator` and the jar-in-jar
+locator (the debug lines "Found Mod Locators" and "Trying locator")? (3) On Forge 61, the Mojang mappings file's name
+and format, whether the `official` jars exist, and the server's vanilla jar path. (4) Is the `LANGPROVIDER` file
+accepted from the cache, PLUGIN resolved, and the provider's version read? (5) Do Forge and Mixin read the overlay's
+`mods.toml` and `MixinConfigs`? (6) Does the transformer run before Mixin, what does `COMPUTE_FRAMES` cost, and do
+default bridges applied before Mixin behave as on NeoForge? (7) Is MixinExtras added? (8) Does the `ProposedJars`
+fallback work? (9) How does the service jar reach SERVICE in a development run (`ClasspathLocator` drops service
+providers)? (10) Where can a locator read the program arguments?
+
 ## 5. Build and CI
 
 **Today.** `settings.gradle` includes every `mc/<dir>` with a `build.gradle`; each `mc/<v>` applies
@@ -225,8 +309,8 @@ the abstractions below are added when the branch work starts (owner decision D2 
 |---|---|---|
 | F0 Evaluation (done) | This document; decision D5. | Decided: ForgeGradle. |
 | F1 Seams on `main` | The same as L1, plus nothing Forge-only: EventBus 7 bridges live in the branch's `mc/*`. The branches' build plugins are pinned in `main`'s `settings.gradle` (done). | |
-| F2 Scaffolding | ForgeGradle build for 1.21.11 (Forge 61) and 26.x (64 to 66); compile only. | Jars build in CI (1.21.11 done, #72; 26.x next, with a Fabric API plan for its pass-through stand-ins). |
-| F3 Discovery and translation | forgespi 8 adapter (shared design with L3); descriptor writer; class transforms. | Server smoke on one version. |
+| F2 Scaffolding | ForgeGradle build for 1.21.11 (Forge 61) and 26.x (64 to 66); compile only. | Jars build in CI (done: 1.21.11, #72; 26.x, #74). |
+| F3 Discovery and translation | forgespi 8 adapter (shared design with L3; designed in §4.1, in the order given there); descriptor writer; class transforms. | Server smoke on one version. |
 | F4 Bridges | Native Fabric API modules against EventBus 7, old capabilities, `ChannelBuilder` networking, `AddGuiOverlayLayersEvent`. | Server and client smoke gates on every version. |
 | F5 Corpus | As L5. | Release criteria. |
 
@@ -240,7 +324,7 @@ the same locator interfaces), so the second one is a port of the first.
 |---|---|---|
 | R1 | ModDevGradle `legacyforge` on Gradle 9.7 is untested upstream. | Settled: `forge-legacy`'s first CI run built the 1.20.1 project with `legacyforge` on Gradle 9.7.0 (#71). Should a later Gradle break it, fix forward (a ModDevGradle update on `main`): a branch-local older wrapper won't do, as the branch also carries `main`'s 26.x projects, whose Java 25 toolchain needs Gradle 9.1 or later. |
 | R2 | Fabric mods for 1.20.1 were built against Fabric's Mixin fork (0.12.5 to 0.15.5); upstream 0.8.5 may lack what they use. | Measure on the corpus in L5; pre-flight reports the gap per mod rather than crashing. |
-| R3 | Discovery: the locator jar leaves normal mod loading, and a language provider must sit in the plugin layer; how a single download carries all three parts is UNVERIFIED. | Prototype in L3 before the bridges. |
+| R3 | Discovery: the locator jar leaves normal mod loading, and a language provider must sit in the plugin layer; how a single download carries all three parts is UNVERIFIED. | A layout for Forge 61 to 66 read through in source, with two fallbacks (§4.1); prototyped in F3 (and L3) before the bridges. |
 | R4 | SRG names: every name-bearing data file (access transformers, refmaps, rename tables) must target members by SRG name. | One mapping table drives all of them, as Intermediary → Mojang does today. |
 | R5 | CI cost: every target adds about 25 minutes per run. | Branch CI runs only for pull requests to that branch (D6); docs-only changes build nothing. |
 
