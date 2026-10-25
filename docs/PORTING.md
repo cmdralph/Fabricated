@@ -103,6 +103,20 @@ is the same code base two years older (no `clientSideOnly`, no `accessTransforme
 | Native Fabric API modules and bridges (`mc/*`) | the design, not the code | Re-vendored from Fabric API 0.92.12, bridged to Forge 47's events, capabilities (`LazyOptional`), `SimpleChannel` networking and serializer-based conditions. The renderer bridge targets the old renderer API. |
 | Data packs | the stripping and translation logic | Forge's keys (`forge:conditions`, `forge/biome_modifier`) and 1.20.1's formats. |
 
+**Fabric API 0.92.12 for 1.20.1 (D3, read 2026-10-25 from FabricMC/fabric tag `0.92.12+1.20.1`).** 43 modules. D3
+makes native the 14 of `main`'s 16 native modules (1.21.11's plan) that exist there: `fabric-api-base` 0.4.32,
+`fabric-api-lookup-api-v1` 1.6.37, `fabric-block-api-v1` 1.0.12, `fabric-content-registries-v0` 4.0.13,
+`fabric-crash-report-info-v1` 0.2.20, `fabric-entity-events-v1` 1.6.1, `fabric-events-interaction-v0` 0.6.6,
+`fabric-item-api-v1` 2.1.29, `fabric-lifecycle-events-v1` 2.2.23, `fabric-networking-api-v1` 1.3.15,
+`fabric-object-builder-api-v1` 11.1.5, `fabric-registry-sync-v0` 2.4.1, `fabric-screen-handler-api-v1` 1.3.34 and
+`fabric-transfer-api-v1` 3.3.6. `main`'s other two native modules don't exist yet in 0.92.12: `fabric-loot-api-v3` and
+`fabric-resource-loader-v1`, whose 1.20.1 predecessors `fabric-loot-api-v2` and `fabric-resource-loader-v0` pass
+through on `main`; whether Forge 47's patches leave their hooks in place is for L4, with pre-flight against Forge's
+game jar. Three modules have no `main` counterpart: `fabric-blockrenderlayer-v1`, `fabric-client-tags-api-v1` and
+`fabric-mining-level-api-v1` (pass-through until L4 says otherwise); `fabric-gametest-api-v1` stays unsupported. The
+plan file itself (`mc/1.20.1`'s `fabric-api-plan.json`) is written in L4, with the vendored modules: a native entry
+before Fabricated ships the module would hide the player's copy.
+
 ## 4. Minecraft Forge (modern)
 
 | Fact | Evidence |
