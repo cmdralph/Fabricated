@@ -4,14 +4,13 @@ Fabricated is a NeoForge mod that loads **Fabric mods and libraries on NeoForge*
 **1.21.11, 26.1.2, 26.2 and 26.3**. Put Fabricated and your Fabric mods in the `mods` folder, and they load
 next to your NeoForge mods.
 
-It is built to be:
+It's built to be:
 
 - **Lightweight.** No dependencies beyond what NeoForge already ships. Translation results are cached, so
   later launches re-check memoised file hashes instead of translating again (NeoForge mods' nested jars are still
-  read each launch). Without Fabric mods, Fabricated adds nothing to the game. With them, its native Fabric API
-  modules listen to NeoForge's tick events whether or not a Fabric mod does, one event call per tick each.
-- **Robust.** A broken Fabric mod is disabled, not allowed to crash the game, whenever that can be decided
-  before its code runs. Every decision is explained in `logs/fabric-bridge-report.txt`.
+  read each launch). Fabricated itself adds nothing to the game.
+- **Robust.** Broken Fabric mods are disabled and not allowed to crash your game, that can be decided
+  before its code runs. Everything is explained in `logs/fabric-bridge-report.txt`.
 - **Safe.** Mod jars are treated as untrusted input. Fabricated never runs mod code while translating, never
   modifies your mod jars, never touches the network, and has no telemetry.
 
@@ -25,8 +24,7 @@ It is built to be:
 
 Every version below is tested on CI with Fabric test mods. Tests cover Fabric entrypoints (main,
 server and client), the Fabric Loader API, registering content, the native Fabric API modules, access
-wideners, mixins, and the isolation of broken mods (a missing dependency, an impossible mixin, and an
-entrypoint that throws).
+wideners, mixins, and the isolation of broken mods, eg. (a missing dependency, an impossible mixin, etc).
 
 | Minecraft | NeoForge | Java | Fabric mods use | Status |
 |---|---|---|---|---|
@@ -51,23 +49,24 @@ that NeoForge has already changed. Fabricated handles this per module:
 - **Unsupported**: the development-only game test modules. Data generation passes through: mods' runtime code
   uses its classes, and it generates nothing unless the `fabric-api.datagen` property is set.
 
-With the official Fabric API jar installed, the server boots on all four versions. The modules that can't
-work are disabled, and the rest load. So a Fabric mod that needs only the Fabric Loader API, `fabric-api-base` or pass-through modules that
-survive pre-flight works today, including mods that add reload listeners, built-in packs, their own
-registries, items and blocks using Fabric's item and block APIs, entities with default attributes, block entity
-types, data attachments or Fabric's interaction events. Loot table events, content registries and Fabric's transfer API work too, and Fabric storages and NeoForge's item and fluid capabilities see each other (a NeoForge pipe reaches a Fabric machine). The per-module details are in [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md).
+Fabric API modules that can't work are disabled, and the rest load. So Fabric mods that only require Fabric Loader API, 
+`fabric-api-base` or pass-through modules that survive pre-flight works today, including mods that add 
+reload listeners, built-in packs, their own registries, items and blocks using Fabric's item and block APIs, 
+entities with default attributes, block entity types, data attachments or Fabric's interaction events. 
+Loot table events, content registries and Fabric's transfer API work too. Per-module details are in [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md).
 
-Fabric mods also reach NeoForge mods: a Fabric mod's plugins for JEI, REI, Jade and EMI are found by those mods'
-NeoForge builds (WTHIT reads its plugin file as it is), its config screen opens from NeoForge's mod list, and its
-mixins into an installed NeoForge mod (a Fabric addon of a mod's NeoForge build) are checked before the game starts.
+Fabric mods can also reach and integrate with NeoForge mods: Eg. JEI, REI, Jade and EMI are found by those mods'
+NeoForge builds, its config screen opens from NeoForge's mod list, and its mixins into an installed NeoForge 
+mod are checked before the game starts.
 
 ## What it does not support
 
 - **Fabric API modules that NeoForge conflicts with**, until Fabricated implements them natively (see above).
-- **The Fabric builds of renderer mods** (Sodium, Iris), by default. Use their NeoForge builds: on 26.x Sodium for
-  NeoForge draws Fabric block models through its own Fabric renderer, and Iris runs on top (see
-  [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md)). Running their Fabric builds is work in progress
-  ([docs/roadmap.md](docs/roadmap.md), rendering-pipeline track); `loadUnsupported` loads them for testing.
+- **The Fabric builds of renderer mods** (Sodium, Iris, ...), by default. Use their NeoForge builds:
+     26.x Sodium for NeoForge draws Fabric block models through its own Fabric renderer, and Iris runs on top (see
+     [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md)). Running their Fabric builds is a work in progress
+     ([docs/roadmap.md](docs/roadmap.md), rendering-pipeline track); `loadUnsupported` loads them for testing.
+  
 - **Mods that use Fabric Loader internals** (`net.fabricmc.loader.impl.*`). Only the public Fabric Loader
   API is provided.
 - **Fabric mods built for another Minecraft version.** A Fabric mod for 1.21.11 won't run on 26.x and vice
