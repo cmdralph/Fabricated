@@ -187,7 +187,7 @@ exists). The full inventory (target, injector, point and versions of every mixin
 | Fabric models as **parts** of a vanilla multipart or weighted model | **yes** | **yes** (the whole block goes through Fabric's renderer) | **yes** | **yes** |
 | Fabric models in item / block entity rendering | not tested in CI | upstream's mixins apply (not tested in CI) | same | same |
 | Moving blocks (pistons, falling blocks) and the breaking overlay | **yes**, from parts made from the model's quads | **yes** | **yes** | **yes** (moving blocks may be forced translucent) |
-| Block outlines, a moving block's glow outline | from the parts made from the model's quads | from the model's parts, as NeoForge sees them | same | same |
+| Block outlines, a moving block's glow outline | from the parts made from the model's quads | block outlines from the model's parts, as NeoForge sees them; moving blocks have no outline | block outlines: same; the glow outline by Fabric's renderer (M2b) | same as 26.2 |
 
 The 26.x surface is **not** the 1.x API most documentation describes. There is no `RenderMaterial`,
 `MaterialFinder` or `BlendMode`. Material state is per quad, on `MutableQuadView`: `chunkLayer`,
@@ -218,7 +218,8 @@ through `FabricBlockRendering` (`mc/common26/.../rendering`), which with `FrapiD
   section's own buffers, as upstream does on Fabric.
 - **Moving blocks** (pistons, falling blocks). `MovingBlockRenderMixin` does the same where moving blocks are drawn
   (26.1.2: `BlockFeatureRenderer.renderMovingBlockSubmits`; 26.2, 26.3: `MovingBlockFeatureRenderer.buildGroup`),
-  into the moving block render type of each quad's layer. An outline submit (a glowing falling block) stays NeoForge's.
+  into the moving block render type of each quad's layer. An outline submit (a glowing falling block, 26.2 and 26.3)
+  goes the same way, into the outline of that render type in the outline's colour, as upstream does (M2b).
 - **The breaking overlay.** The overlay takes model parts. `BlockBreakingRenderMixin` wraps NeoForge's level-aware
   `collectParts` call there (26.1.2: `BlockFeatureRenderer.renderBreakingBlockModelSubmits`; 26.2, 26.3:
   `LevelRenderer.submitBlockDestroyAnimation`) and adds a Fabric model's emitted quads, turned back into vanilla

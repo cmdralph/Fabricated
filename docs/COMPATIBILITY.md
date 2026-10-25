@@ -648,8 +648,9 @@ whose model implements `emitQuads` itself (a Fabric model), or whose vanilla mul
 model among its parts, is drawn by Fabric's renderer: in the world (into the chunk's buffers), as a moving block
 (pushed by a piston, falling) and with the breaking overlay. Every other block keeps NeoForge's renderer, so NeoForge's
 model data, tints, face culling and ambient occlusion per part still apply to it; upstream's hooks that send *every*
-block through Fabric's renderer in those places are left out for that reason. Block outlines, and the glow outline of a
-moving block, still come from a model's parts as NeoForge sees them. NeoForge already gives vanilla's models
+block through Fabric's renderer in those places are left out for that reason. A glowing moving block's outline is
+drawn by Fabric's renderer too, into the outline's buffers (26.2 and 26.3; 26.1.2 draws no outline around moving
+blocks). Other block outlines still come from a model's parts as NeoForge sees them. NeoForge already gives vanilla's models
 `createGeometryKey` and `particleMaterial` with Fabric's signatures, so upstream's copies are left out, and
 `BlockStateModel`, which then inherits both interfaces' defaults of each, declares NeoForge's (a default method
 bridge, as for any added interface). On 26.1.2, where upstream's check of a mesh
