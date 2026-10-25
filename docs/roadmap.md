@@ -19,14 +19,18 @@ handled safely, no network access, original jars never changed, and no code that
 
 - **`main`:** NeoForge for 1.21.11, 26.1.2, 26.2 and 26.3, every line stable (NeoForge tagged `26.3.0-stable`; CI
   pins 26.3.0.95 and no version is experimental any more).
-- **`1.20.1-legacy`:** architectural evaluation ([`PORTING.md`](PORTING.md)): about 80 % of `core` and the Fabric
-  Loader API carry over; the platform layer (discovery on forgespi 7, Mojang class names with SRG member names,
-  Forge's `mods.toml`, MixinExtras provision, class transforms through ModLauncher) and the native Fabric API modules
-  are new. Decided (`RESEARCH.md` §8): Forge 47.4 first, NeoForge 47.1 best-effort, the shared modules kept loadable on
-  Java 17, CI for pull requests only. L1, the behaviour-neutral seams on `main`: Java 17 for the shared modules done
-  (their main code compiles at release 17); the loader split, build split, CI from data and platform profile follow.
-- **`forge` (planned):** Minecraft Forge 61 to 66 for the versions `main` covers, built with ForgeGradle. The same
-  seams, a forgespi 8 adapter, and bridges rewritten for EventBus 7 (`PORTING.md` §4).
+- **`forge`:** Minecraft Forge 61 to 66 for the versions `main` covers, built with ForgeGradle; architectural
+  evaluation. The seams below, a forgespi 8 adapter, and bridges rewritten for EventBus 7 (`PORTING.md` §4).
+- **`forge-legacy`:** Minecraft Forge for 1.20.1 (Forge 47.4) and other legacy versions; architectural evaluation
+  ([`PORTING.md`](PORTING.md)). About 80 % of `core` and the Fabric Loader API carry over; the platform layer
+  (discovery on forgespi 7, Mojang class names with SRG member names, Forge's `mods.toml`, MixinExtras provision, class
+  transforms through ModLauncher) and the native Fabric API modules are new. NeoForge needs no legacy branch.
+- **Decided** (`RESEARCH.md` §8): Forge 47.4 for 1.20.1, the shared modules kept loadable on Java 17, ForgeGradle for
+  modern Forge, CI for pull requests only. L1, the behaviour-neutral seams on `main`: Java 17 for the shared modules
+  (their main code compiles at release 17), the loader split (`loader/common`, `loader/neoforge`), the build split
+  (`mc/platform-neoforge.gradle`, version conditions keyed on properties) and `build.yml` building pull requests to
+  `main` only are done; CI from data and the platform profile follow when the branches run the game. Work happens on
+  `claude/dev` and reaches `main` by pull request.
 
 ### Loader and translation
 
@@ -69,14 +73,24 @@ The Fabric renderer API on NeoForge:
 | Moving blocks (pistons, falling) and the breaking overlay | yes, from parts made from the model's quads (this pass; CI checks a falling block and the overlay) | yes (M2) | yes | yes |
 | Blocks drawn as entities, other mods drawing blocks from their parts | yes, from parts made from the model's quads (this pass) | not checked | not checked | not checked |
 | Fabric models nested in a vanilla multipart or weighted model | yes (this pass, CI) | yes (M3) | yes | yes |
-| Block outlines, a moving block's glow outline | the translucent outline pass from the parts made from the quads | from the model's parts, as NeoForge sees them | same | same |
+| Block outlines, a moving block's glow outline | the translucent outline pass from the parts made from the quads | block outlines from the model's parts, as NeoForge sees them; moving blocks have no outline | block outlines: same; the glow outline by Fabric's renderer (M2b, this pass; CI checks a glowing falling block) | same as 26.2 |
 | Under Sodium for NeoForge | Sodium meshes the parts made from the quads, with Indigo registered as the renderer (this pass; informational CI, run 374) | Sodium's own Fabric renderer, Indigo stands down (R1, CI) | same | same |
 
 - **Done:** M1 (Fabric block models in chunk sections, `8e80c6e`, `0dbdfda`, `08aff28`), M2 (moving blocks and the
   breaking overlay, `4db3deb`), M3 (Fabric models inside vanilla multipart and weighted models, `4db3deb`), M4
   (Fabric's model formats through NeoForge's parsers, `c02d85f`), NeoForge-aware `emitQuads` defaults (`75e5867`).
-- **Next:** M2b, block outlines and a moving block's glow outline for Fabric models (today they come from the model's
-  parts as NeoForge sees them, so a model with only `emitQuads` has none).
+- **Done (this pass):** M2b, a glowing moving block's outline (26.2, 26.3): Fabric's renderer draws the outline submit
+  into the outline of each quad's render type, in the outline's colour, as upstream does, instead of leaving it to
+  NeoForge, which draws it from the model's parts (none for a model with only `emitQuads`). The test mod's falling
+  blocks glow, and its model logs when the same moving block reaches Fabric's renderer twice in one frame
+  (`frapi moving block outline OK`, gated on 26.2 and 26.3); the gate passed on manual run 40227052304 (`2ce68ec`).
+- **Candidate:** Fabric's level-aware `materialFlags` where NeoForge asks whether a block is translucent on 26.x (the
+  pass its selection outline is drawn in, a moving block's batch). NeoForge asks its own level-aware method, whose
+  default returns the model's context-free flags; upstream's redirects at vanilla's calls are left out. Fabric's
+  contract makes the context-free flags hold in every context and lets callers skip the level-aware method, so this
+  is accuracy (a model translucent at some positions counts as translucent at all), not a fault; the 2026-10-25 pass
+  read the code (NeoForge's `LevelExtractor` and `SubmitNodeCollection` patches, upstream's `LevelExtractorMixin`) and
+  corrected the earlier note that the outline pass reads the model's parts.
 - **Done (this pass):** M5, the renderer API on 1.21.11 in chunk sections, alone and nested (its conflicting mixins
   left out, the sprite getter's finders from Fabricated), with NeoForge-aware `emitQuads` defaults (CI checks the level
   and baked colours). Then everywhere else NeoForge collects a model's parts: a Fabric model's parts are made from its
@@ -314,6 +328,7 @@ Severity: **P0** crash or data loss on a normal launch · **P1** a supported fea
 | PRE-10 | P2 | `MixinPreflight` (resourcefullib, every version) | resourcefullib's `@WrapOperation` at `new BlockOutlineRenderState(BlockPos, boolean, boolean, VoxelShape)` failed pre-flight (run 360): NeoForge's build constructs the record with one more component, its custom outline renderers (`event.getCustomRenderers()`, read in NeoForge's `LevelRenderer` patch), so the mod was disabled. | PRE-7 covered calls (`INVOKE`) given one more argument, not constructor calls (`NEW`). | This pass: a `NEW` point selecting a constructor by descriptor is moved the same way, with the same bridges (a constructor's handlers take its arguments, as a static call's). Unit test, which runs the `@WrapOperation` bridge. resourcefullib still failed in run 362: its handler also takes a `@Local`, which the bridges refused (PRE-11). |
 | PRE-11 | P2 | `HandlerBridges` (resourcefullib, every version) | The bridges of PRE-7 and PRE-10 were built only for a handler taking exactly the call's receiver and arguments (and the `Operation`). resourcefullib's wrapper of `new BlockOutlineRenderState(...)` also takes `@Local(ordinal = 0) BlockState state` (read in its source, branch 26.x), so the repair was refused and the mod stayed disabled (run 362, 26.3). | A handler's MixinExtras sugar wasn't considered. | This pass: a bridge also takes the handler's trailing sugar parameters (`@Local`, `@Share`, `@Cancellable`), which MixinExtras fills for the bridge as it would for the handler, with their annotations moved onto it, and passes them on. Unit test, which loads the bridges. |
 | CORPUS-15 | P2 | `LinkageAnalysis`, `Pipeline` (any mod) | CORPUS-7 failed a mixin using a class only an *unsupported* Fabric API module has. A Fabric mod disabled at launch (a library failing pre-flight, a refused build, a Fabric API module pre-flight disabled, as the renderer API on 1.21.11 before M5) took down the mods whose mixins use its classes without declaring it: they still loaded, and Mixin stopped the game looking the class up (Continuity, run 362: `ClassNotFoundException` for `RenderLayerHelper` in an attach error). | Each round only looked at the mods it kept. | This pass: the linkage analysis, which runs again whenever the set of mods changes, finds a mixin in a required config without a plugin whose code calls into, or reads from, a class only a Fabric jar that isn't loading has (outside the platform's packages, and absent from installed NeoForge mods and Fabricated), and that mod is disabled with the reason; a config with a plugin, which can skip it, is left alone. `PipelineTest.aRequiredMixinUsingAModThatIsNotLoadingDisablesItsMod`. A mod only for the other side isn't counted (GlitchCore's client mixin, run 385, disabled it and Biomes O' Plenty on servers): it isn't there on Fabric either. `PipelineTest.aRequiredMixinUsingAModOnlyForTheOtherSideKeepsItsMod`. |
+| LINK-1 | P2 | `LinkageChecker.isClientName` (1.21.11 servers: any mod using client classes) | A 1.21.11 dedicated server's report listed about 650 linkage warnings "missing class net.minecraft.class_NNN" (PR #66's run, `9431800`; the 26.x servers listed 8): client classes keep their Intermediary names there, as the server's Mojang mappings name only the classes the server has, and the check knew client code only by its packages (`net/minecraft/client/`, `com/mojang/blaze3d/`). The warnings buried the real ones, and with `strictLinkage` they would have disabled the mods. | No test had a mod using a client class in Intermediary's names on a server. | This pass: on a dedicated server a class left in Intermediary's names (`net/minecraft/class_`) is client code, so a class using it is skipped as client-only code is. `LinkageCheckerTest.skipsClassesLeftInIntermediaryNamesOnServer` (it fails without the change). On manual run 40227052304 (`2ce68ec`) the 1.21.11 server's `net.minecraft.class_` warnings fell from 637 to 5, with the mods left out unchanged (180). |
 | TOML-1 | P2 | `ModsTomlWriter` (any mod, untrusted metadata) | A custom value past a double's range (`"custom": {"x": 1e400}`) became `Infinity`, which the writer printed as Java spells it; TOML spells it `inf`, so NeoForge's parser (night-config) refused the generated `mods.toml` (`Invalid integer: Infinity`, reproduced against 3.8.3). Since CONV-1 every custom value reaches `mods.toml`, so one such value in any mod's `fabric.mod.json` made its translation unreadable to NeoForge. | Found by this pass's review; the round-trip test had only finite numbers. | This pass: non-finite numbers are written as TOML's `inf`, `-inf` and `nan`, which night-config 3.8.3 reads back (checked). The round-trip test now has them. |
 | FRAPI-4 | P2 | `FabricBlockRendering` (every version) | Whether a model class implements `emitQuads` is asked with `Class.getMethod`, which resolves the types of every public method the class has: a model class naming a type from a mod that isn't installed (an optional integration's overload) threw `NoClassDefFoundError` out of chunk section compilation, which isn't cached, so every section with such a block would fail. Only `NoSuchMethodException` was caught. | Found by this pass's review; the test models name no missing types. | This pass: a `LinkageError` there leaves the class to NeoForge's renderer, logged once (the answer is cached per class). |
 | ENUM-2 | P2 | `EnumExtensions` (Friends and Foes) | An enum mixin adding constants to a named enum NeoForge makes extensible (`MobCategory`, `@NamedEnum`) stayed a pre-flight failure, though FML only requires the name argument to start with the mod's id and a colon (`RuntimeEnumExtender.validateNameParameter`, read in FML's source) and Friends and Foes' names do (`friendsandfoes:glares`). | ENUM-1 refused named enums outright. | This pass: a named enum's constants are translated when each name argument is a constant starting with the mod's NeoForge id and a colon. Unit test. Friends and Foes stays disabled by its `Raid$RaiderType` mixin, whose arguments are computed when the class loads, which NeoForge's enum extension file can't carry. |

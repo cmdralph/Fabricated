@@ -1,12 +1,15 @@
 name: Build and test
 
 # A branch with a pull request is built once, as the pull request (merged with its base): a push event too would build
-# every commit twice. Changes to documentation alone build nothing: the game runs check code, not prose.
+# every commit twice. Changes to documentation alone build nothing: the game runs check code, not prose. This builds
+# NeoForge's targets, for pushes and pull requests to main; the forge and forge-legacy branches build through their own
+# workflow, for pull requests to them only (owner decision D6).
 on:
   push:
     branches: [main]
     paths-ignore: ['docs/**', '**.md']
   pull_request:
+    branches: [main]
     paths-ignore: ['docs/**', '**.md']
   workflow_dispatch:
 
@@ -225,6 +228,10 @@ jobs:
           check "frapi terrain OK" "a Fabric block model was meshed into a chunk section"
           check "frapi nested terrain OK" "a Fabric model inside a vanilla multipart model was meshed"
           check "frapi moving block OK" "a falling Fabric block model was drawn as a moving block"
+          # 26.1.2 draws no outline around moving blocks.
+          if [ "${{ matrix.minecraft }}" != "26.1.2" ]; then
+            check "frapi moving block outline OK" "a glowing falling Fabric block model's outline was drawn by Fabric's renderer (M2b)"
+          fi
           check "frapi baked colors OK" "a NeoForge quad's baked colour reached Fabric's renderer (FRAPI-2)"
           check "frapi baked quad constructor hook OK" "a mixin at the end of BakedQuad's vanilla constructor ran for NeoForge's block quads (pre-flight repair)"
           check "frapi breaking OK" "a Fabric block model got the breaking overlay"

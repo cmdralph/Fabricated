@@ -3,8 +3,8 @@
 Status: **architectural evaluation**, written 2026-10-21; the owner's decisions are in §8 and `RESEARCH.md` §8.
 Of the work below, only §6 item 1 (Java 17 for the shared modules) is done. `main` stays the active
 branch: NeoForge for Minecraft 1.21.11, 26.1.2, 26.2 and 26.3, all four on stable NeoForge lines. This document
-says what of the engine carries over to Minecraft 1.20.1 (branch `1.20.1-legacy`) and to Minecraft Forge (a
-future `forge` branch), what the build needs, what must change on `main` first, and in which order the work goes.
+says what of the engine carries over to Minecraft Forge for 1.20.1 and other legacy versions (branch
+`forge-legacy`) and for the versions `main` covers (branch `forge`), what the build needs, what must change on `main` first, and in which order the work goes.
 Facts about other projects cite their repository, ref and file; what could not be checked is marked UNVERIFIED.
 
 ## 1. Branch model
@@ -12,14 +12,17 @@ Facts about other projects cite their repository, ref and file; what could not b
 | Branch | Platform | Phase | Rule |
 |---|---|---|---|
 | `main` | NeoForge 1.21.11, 26.1.2, 26.2, 26.3 | active | Every fix and feature lands here first. |
-| `1.20.1-legacy` | Minecraft 1.20.1 on Forge 47.x (NeoForge 47.1 best-effort, §3.1) | architectural evaluation | Takes `main` by merge, never by cherry-pick; adds only its own files. |
-| `forge` (future) | Minecraft Forge for the versions `main` covers (Forge 61 for 1.21.11, 64 to 66 for 26.1.2 to 26.3) | not started | Same rules as `1.20.1-legacy`. |
+| `forge` | Minecraft Forge for the versions `main` covers (Forge 61 for 1.21.11, 64 to 66 for 26.1.2 to 26.3) | architectural evaluation | Takes `main` by merge, never by cherry-pick; adds only its own files. |
+| `forge-legacy` | Minecraft Forge for 1.20.1 (Forge 47.4, §3.1) and other legacy versions | architectural evaluation | Same rules as `forge`. |
+
+NeoForge needs no legacy branch: its 1.20.1 build is a 2024 fork of Forge 47.1 (§3.1), so the legacy line is Forge's
+(the owner's decision, 2026-10-25). Work is done on `claude/dev` and reaches `main` by pull request.
 
 How code flows. Shared modules (`core`, `api`, `fabric-loader-api`, the Gradle wrapper, `ci/*.py`) are only ever
 changed on `main`; a branch picks a change up by merging `main`. A branch adds its own directories (its loader
 adapter, its `mc/<target>` projects, its CI target list) and never edits or deletes a file `main` owns, or every
 merge conflicts. GitHub's merges ignore `merge=ours` attributes, so ownership comes from where files live, not from
-merge settings. Today `1.20.1-legacy` is `main` as of PR #64 (`b5911bc`), with nothing of its own.
+merge settings. On 2026-10-25 `forge` and `forge-legacy` are `main` (`e8d4aa8`), with nothing of their own.
 
 ## 2. What of the engine is portable
 
@@ -79,8 +82,8 @@ load time, nests MixinExtras, and relies on a separate Forgified Fabric API. Fab
 project's rule); it only shows the platform can carry this design.
 
 **Target choice.** MinecraftForge 47.4.x is the maintained line and the one the 1.20.1 ecosystem uses; NeoForge 47.1
-is the same code base two years older. The plan targets Forge 47.4 and treats NeoForge 47.1 as best-effort (no
-`clientSideOnly`, no `accessTransformers` list). Owner decision D1.
+is the same code base two years older (no `clientSideOnly`, no `accessTransformers` list). The plan targets Forge
+47.4 on `forge-legacy`; NeoForge 47.1 is not a target, as NeoForge needs no legacy branch. Owner decision D1.
 
 ### 3.2 What each subsystem needs on 1.20.1
 
@@ -118,10 +121,12 @@ and, through `legacyforge`, Forge up to 1.20.1); its version and its Gradle 9.7 
 ## 5. Build and CI
 
 **Today.** `settings.gradle` includes every `mc/<dir>` with a `build.gradle`; each `mc/<v>` applies
-`net.neoforged.moddev` and the shared `mc/mc.gradle`, which picks shared source folders by version (`common`,
-`common26`, `common26early`, `common26late`), builds the in-game mod as `game-mod.jar` and merges `loader`, `core`,
-`api` and `fabric-loader-api` into `fabricatedJar`. Its `else` branches assume "not 26.x" means 1.21.11, and so do
-CI's step conditions. CI's matrix, installers (`neoforge-<v>-installer.jar`), HeadlessMC launch names and
+`net.neoforged.moddev` and the shared `mc/mc.gradle`, which takes the shared source folders from the version's
+`shared_sources` property (`common`, `common26`, `common26early`, `common26late`), applies
+`mc/platform-<platform>.gradle` (the `platform` property, `neoforge` by default: MDG's settings, `neoforge.mods.toml`,
+`gameDependencies`), builds the in-game mod as `game-mod.jar` and merges `loader` (`loader/common` and
+`loader/<loader_dir>`), `core`, `api` and `fabric-loader-api` into `fabricatedJar` (§6, items 2 and 3). CI's step
+conditions still name versions, and its matrix, installers (`neoforge-<v>-installer.jar`), HeadlessMC launch names and
 mc-runtime-test assets are NeoForge's.
 
 **1.20.1 with ModDevGradle's `legacyforge` plugin.** MDG ships `net.neoforged.moddev.legacyforge` at the same
@@ -141,7 +146,7 @@ already takes the loader as an argument.
 
 ## 6. Work on `main` first (seams)
 
-Each of these is behaviour-neutral for NeoForge, lands on `main` as its own pull request with CI, and is what makes
+Each of these is behaviour-neutral for NeoForge, lands on `main` through a pull request with CI, and is what makes
 `main` mergeable into the branches without breaking them. Per the rule against abstractions without a second user,
 the abstractions below are added when the branch work starts (owner decision D2 on timing), not before.
 
@@ -149,13 +154,21 @@ the abstractions below are added when the branch work starts (owner decision D2 
    `fabric-loader-api` (toolchain and tests stay 21): the 66 sequenced-collection calls, 8 type-pattern switches and
    3 own-type `instanceof` patterns rewritten. Without it, any later `getFirst()` on `main` breaks a branch at merge
    time with no textual conflict.
-2. **One loader per platform**: `loader/` moves to `loader/neoforge`, chosen per target by a `loader_dir` property;
-   the platform-free helpers move to a shared source folder.
-3. **The build split**: `mc/mc.gradle` into what every target shares and `platform-neoforge.gradle`; the version
-   conditions keyed on a property, not on "not 26.x".
-4. **CI from data**: the matrix read from `ci/targets.json` (`fromJSON`), the smoke scripts taking the loader and
-   installer as parameters, each version's server checks in `ci/checks/<mc>.txt`. Pushes keep building `main` only;
-   the branches are built through pull requests to them (D6).
+2. **One loader per platform** (done): `loader/` moved to `loader/neoforge` (the FML SPI services, `NeoForgeMods`,
+   `IntermediaryMappings`, which uses NeoForge's `LibraryFinder`), chosen per target by a `loader_dir` property (the
+   platform by default); the six platform-free helpers (`ClassResources`, `FabricatedInfo`, `FabricatedState`,
+   `ProposedJars`, `ResourceBundles`, `VanillaGameJar`) are in `loader/common`, which names no loader types.
+3. **The build split** (done): `mc/mc.gradle` keeps what every target shares; `mc/platform-neoforge.gradle` has MDG's
+   `neoForge {}` block, the descriptor's placeholders and `gameDependencies(sourceSet)`, the one call the shared
+   script makes for a source set's game and loader classes. The version conditions are keyed on properties: the
+   shared source folders on `shared_sources`, the pass-through Fabric API jars on `namespace` (`OFFICIAL`), the
+   FRAPI test mod's folder on the first shared folder that has one. Checked behaviour-neutral by printing every
+   version project's source sets, declared dependencies and placeholders before and after: only the loader's
+   folders differ.
+4. **CI per branch** (the trigger part done): `build.yml` builds pull requests to `main` only, so a branch's pull
+   requests run the branch's own workflow (D6). Still to do, when a branch first runs the game in CI (L3, F3): the
+   matrix read from `ci/targets.json` (`fromJSON`), the smoke scripts taking the loader and installer as parameters,
+   each version's server checks in `ci/checks/<mc>.txt`.
 5. **A platform profile** (data, per target, part of the cache key): the descriptor path and dialect, the
    platform's package prefixes and provided libraries, who provides MixinExtras, the data-pack keys, the Mixin facts
    (absorbing `mixin.*` from `version.properties`), the loader hook map, the rename table and the coremod-private
@@ -166,13 +179,13 @@ the abstractions below are added when the branch work starts (owner decision D2 
 
 ## 7. Roadmap
 
-### 1.20.1-legacy
+### forge-legacy (1.20.1)
 
 | Phase | Work | Exit criterion |
 |---|---|---|
 | L0 Evaluation (done) | This document; decisions D1 to D6. | Decisions recorded (§8). |
-| L1 Seams on `main` | §6, items 1 to 6, as separate pull requests (item 1 done). | `main` green on all four versions after each; `core` builds at release 17. |
-| L2 Scaffolding | Merge `main` into `1.20.1-legacy`; `mc/1.20.1` on `legacyforge` (R1 settled first); Fabric API 0.92.12 plan (which modules native); compile only. | `:mc:1.20.1:fabricatedJar` builds in CI. |
+| L1 Seams on `main` | §6, items 1 to 6, by pull request (items 1 to 3 done, and item 4's trigger; the rest of 4, and 5 and 6, when L3 needs them). | `main` green on all four versions after each; `core` builds at release 17. |
+| L2 Scaffolding | Merge `main` into `forge-legacy`; `mc/1.20.1` on `legacyforge` (R1 settled first); Fabric API 0.92.12 plan (which modules native); compile only. | `:mc:1.20.1:fabricatedJar` builds in CI. |
 | L3 Discovery and translation | forgespi 7 adapter (locator, dependency locator, language provider, nested jars); Intermediary → SRG composer from MCPConfig; Forge descriptor writer; MixinExtras provision; class transforms through `ITransformationService`. | The test mods' server smoke passes on Forge 47.4 (entrypoints, registries, mixins, access wideners). |
 | L4 Native Fabric API | Lifecycle, registries, networking on `SimpleChannel`, resource loader, events, transfer on `LazyOptional` capabilities, the old renderer API; client smoke with HeadlessMC and mc-runtime-test. | Server and client smoke gates green; Fabric API 0.92.12 boots. |
 | L5 Corpus and stabilisation | 1.20.1 corpus from Modrinth; pre-flight repairs against Forge 47's patches, vanilla code through MCPConfig; Fabric's Mixin fork features measured (R2). | Release criteria met (to be set with the owner, as for `main`). |
@@ -204,7 +217,7 @@ the same locator interfaces), so the second one is a port of the first.
 
 Decisions (the owner's, 2026-10-21; D3 and D4 delegated, both provisional until the phase that fixes them):
 
-- **D1:** 1.20.1 targets MinecraftForge 47.4 first; NeoForge 47.1 is best-effort later.
+- **D1:** 1.20.1 targets MinecraftForge 47.4, on `forge-legacy`; NeoForge's 1.20.1 fork is not a target (2026-10-25).
 - **D2:** Java 17 constraints are kept from now on: the shared modules' main code compiles at `release = 17` (§6
   item 1, done), so `main` can't write code the legacy branch can't load.
 - **D3:** native on 1.20.1 is `main`'s native set where Fabric API 0.92.12 has the module; fixed in L2 against the

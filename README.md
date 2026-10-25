@@ -9,8 +9,8 @@ It's built to be:
 - **Lightweight.** No dependencies beyond what NeoForge already ships. Translation results are cached, so
   later launches re-check memoised file hashes instead of translating again (NeoForge mods' nested jars are still
   read each launch). Fabricated itself adds nothing to the game.
-- **Robust.** Broken Fabric mods are disabled and not allowed to crash your game, that can be decided
-  before its code runs. Everything is explained in `logs/fabric-bridge-report.txt`.
+- **Robust.** Broken Fabric mods are disabled and not allowed to crash your game, whenever that can be decided
+  before their code runs. Everything is explained in `logs/fabric-bridge-report.txt`.
 - **Safe.** Mod jars are treated as untrusted input. Fabricated never runs mod code while translating, never
   modifies your mod jars, never touches the network, and has no telemetry.
 
@@ -22,9 +22,9 @@ It's built to be:
 
 ## What works today
 
-Every version below is tested on CI with Fabric test mods. Tests cover Fabric entrypoints (main,
+Every version below is tested in CI with Fabric test mods. Tests cover Fabric entrypoints (main,
 server and client), the Fabric Loader API, registering content, the native Fabric API modules, access
-wideners, mixins, and the isolation of broken mods, eg. (a missing dependency, an impossible mixin, etc).
+wideners, mixins, and the isolation of broken mods (for example a missing dependency or an impossible mixin).
 
 | Minecraft | NeoForge | Java | Fabric mods use | Status |
 |---|---|---|---|---|
@@ -50,14 +50,14 @@ that NeoForge has already changed. Fabricated handles this per module:
   uses its classes, and it generates nothing unless the `fabric-api.datagen` property is set.
 
 Fabric API modules that can't work are disabled, and the rest load. So Fabric mods that only require Fabric Loader API, 
-`fabric-api-base` or pass-through modules that survive pre-flight works today, including mods that add 
+`fabric-api-base` or pass-through modules that survive pre-flight work today, including mods that add 
 reload listeners, built-in packs, their own registries, items and blocks using Fabric's item and block APIs, 
 entities with default attributes, block entity types, data attachments or Fabric's interaction events. 
 Loot table events, content registries and Fabric's transfer API work too. Per-module details are in [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md).
 
-Fabric mods can also reach and integrate with NeoForge mods: Eg. JEI, REI, Jade and EMI are found by those mods'
-NeoForge builds, its config screen opens from NeoForge's mod list, and its mixins into an installed NeoForge 
-mod are checked before the game starts.
+Fabric mods can also reach and integrate with NeoForge mods: a Fabric mod's plugins for JEI, REI, Jade and EMI are
+found by those mods' NeoForge builds, its config screen opens from NeoForge's mod list, and its mixins into an
+installed NeoForge mod are checked before the game starts.
 
 ## What it does not support
 

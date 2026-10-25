@@ -11,12 +11,13 @@ verified), [`PORTING.md`](PORTING.md) (the 1.20.1 and Forge evaluation and the b
 
 ## Working rules
 
-- **Branches** (the owner's decision, 2026-10-21): `main` is NeoForge 1.21.11 to 26.3 and the active branch; every fix
-  and feature lands there first. `1.20.1-legacy` (Minecraft 1.20.1) is in its architectural evaluation phase, and a
-  `forge` branch is planned. Shared modules (`core`, `api`, `fabric-loader-api`) change only on `main`; a branch takes
-  them by merging `main`, never by cherry-picking, and adds only files of its own (`PORTING.md` §1). 1.20.1 targets
-  Forge 47.4 (NeoForge 47.1 best-effort), modern Forge builds with ForgeGradle, and CI on the secondary branches runs
-  for pull requests only: decisions D1 to D6 in `RESEARCH.md` §8, with the build paths.
+- **Branches** (the owner's decisions, 2026-10-21 and 2026-10-25): `main` is NeoForge 1.21.11 to 26.3 and the active
+  branch; every fix and feature lands there first, by pull request from the working branch `claude/dev`. `forge` is
+  Minecraft Forge for the versions `main` covers, and `forge-legacy` is Forge for 1.20.1 and other legacy versions
+  (NeoForge needs no legacy branch); both are in their architectural evaluation phase. Shared modules (`core`, `api`,
+  `fabric-loader-api`) change only on `main`; a branch takes them by merging `main`, never by cherry-picking, and adds
+  only files of its own (`PORTING.md` §1). 1.20.1 targets Forge 47.4, modern Forge builds with ForgeGradle, and CI on
+  the secondary branches runs for pull requests only: decisions D1 to D6 in `RESEARCH.md` §8, with the build paths.
 - **Shared modules stay Java 17** (the owner's decision D2, 2026-10-21): `core`, `api` and `fabric-loader-api` compile
   their main code with `release = 17`, so the build rejects what 1.20.1's Java 17 can't load. Not available there: a
   `List`'s `getFirst`/`getLast`/`removeFirst`/`addFirst` (Java 21's sequenced collections: use `get(0)`,
@@ -122,10 +123,11 @@ fabric-loader-api   (Fabric Loader's public API, Apache-2.0; no deps)
 api                 (Fabricated's public API for NeoForge mods; no deps)
 core  ──api──► fabric-loader-api, api       (pure Java, release 17; compileOnly ASM)
 mc/<version>        (one Gradle project per Minecraft version, MDG)
-  ├─ source set loader  = loader/src/main/java ──► core          (FML SPI only; early-services class loader)
+  ├─ source set loader  = loader/common + loader/neoforge ──► core   (FML SPI only; early-services class loader)
   ├─ source set main    = in-game NeoForge mod  ──compileOnly──► loader output, core
   │     sources: mc/<v>/src/main/java + mc/<v>/src/fabricapi/java (vendored native Fabric API modules)
-  │              + mc/common (all) + mc/common26 (26.x) + mc/common26early (26.1.2, 26.2) + mc/common26late (26.2, 26.3)
+  │              + the folders the version's `shared_sources` lists: mc/common (all), mc/common26 (26.x),
+  │                mc/common26early (26.1.2, 26.2), mc/common26late (26.2, 26.3)
   │     26.x only, compileOnly: fabric-renderer-api-v1's jar (pass-through module, typed calls)
   ├─ source sets testmod, testmodbroken, testmodfrapi (26.x)  ──compileOnly──► main output, fabric-loader-api, api
   └─ fabricatedJar = loader classes + core + fabric-loader-api + api + META-INF/fabricated/game-mod.jar (main)
@@ -133,8 +135,9 @@ mc/<version>        (one Gradle project per Minecraft version, MDG)
 
 **Illegal edges: none.** Checked: `core`, `api` and `fabric-loader-api` have no Minecraft, NeoForge or FML
 dependency (their `build.gradle` files list only `fabric-loader-api`, `api`, ASM and JUnit), nothing depends on a
-`mc/*` project, and there are no cycles. `loader` sees FML only (`neoForge.addModdingDependenciesTo(sourceSets.loader)`
-gives it the game too, but it references FML SPI types only, so it runs before the game exists). The in-game mod
+`mc/*` project, and there are no cycles. `loader` sees FML only (`gameDependencies(sourceSets.loader)`, from
+`mc/platform-neoforge.gradle`, gives it the game too, but it references FML SPI types only, so it runs before the game
+exists); `loader/common` names no loader types at all, so another platform's branch reuses it. The in-game mod
 reaches `loader` and `core` through NeoForge's parent class loader at runtime (`compileOnly`), never the reverse.
 
 The prompt that started the 2026-10-19 session described `api/` as "Fabric API surface re-implementations". It
@@ -145,7 +148,8 @@ vendored modules in `mc/<version>/src/fabricapi` and the bridges in `mc/common*`
 
 | Seam | How | Type-safe? |
 |---|---|---|
-| Which code a version gets | Gradle source directories (`sharedSources` in `mc/mc.gradle`): each version compiles only its own and the shared folders that apply | compile-time |
+| Which code a version gets | Gradle source directories (the version's `shared_sources` property, read by `mc/mc.gradle`): each version compiles only its own and the shared folders it lists | compile-time |
+| Which loader a version builds for | The version's `platform` property (default `neoforge`): `mc/platform-<platform>.gradle` (build plugin, mod descriptor, `gameDependencies`) and `loader/<loader_dir>` (discovery services; `loader_dir` defaults to the platform) next to `loader/common`. `main` has NeoForge's only; the `forge` and `forge-legacy` branches add theirs | compile-time |
 | Discovery services → FML | `META-INF/services` in the `loader` source set: `IModFileCandidateLocator`, `IDependencyLocator`, `IModLanguageLoader`, `ClassProcessor` | compile-time against FML SPI |
 | Version facts → core | `META-INF/fabricated/version.properties` (generated: Minecraft version, namespace, Mixin versions) and `fabric-api-plan.json` (data, per version) | data, validated when parsed |
 | Discovery → in-game mod | `FabricatedState.get()` (a `volatile` static in `loader`, published once discovery ends) | compile-time |
@@ -186,7 +190,7 @@ exists). The full inventory (target, injector, point and versions of every mixin
 | Fabric models as **parts** of a vanilla multipart or weighted model | **yes** | **yes** (the whole block goes through Fabric's renderer) | **yes** | **yes** |
 | Fabric models in item / block entity rendering | not tested in CI | upstream's mixins apply (not tested in CI) | same | same |
 | Moving blocks (pistons, falling blocks) and the breaking overlay | **yes**, from parts made from the model's quads | **yes** | **yes** | **yes** (moving blocks may be forced translucent) |
-| Block outlines, a moving block's glow outline | from the parts made from the model's quads | from the model's parts, as NeoForge sees them | same | same |
+| Block outlines, a moving block's glow outline | from the parts made from the model's quads | block outlines from the model's parts, as NeoForge sees them; moving blocks have no outline | block outlines: same; the glow outline by Fabric's renderer (M2b) | same as 26.2 |
 
 The 26.x surface is **not** the 1.x API most documentation describes. There is no `RenderMaterial`,
 `MaterialFinder` or `BlendMode`. Material state is per quad, on `MutableQuadView`: `chunkLayer`,
@@ -217,7 +221,8 @@ through `FabricBlockRendering` (`mc/common26/.../rendering`), which with `FrapiD
   section's own buffers, as upstream does on Fabric.
 - **Moving blocks** (pistons, falling blocks). `MovingBlockRenderMixin` does the same where moving blocks are drawn
   (26.1.2: `BlockFeatureRenderer.renderMovingBlockSubmits`; 26.2, 26.3: `MovingBlockFeatureRenderer.buildGroup`),
-  into the moving block render type of each quad's layer. An outline submit (a glowing falling block) stays NeoForge's.
+  into the moving block render type of each quad's layer. An outline submit (a glowing falling block, 26.2 and 26.3)
+  goes the same way, into the outline of that render type in the outline's colour, as upstream does (M2b).
 - **The breaking overlay.** The overlay takes model parts. `BlockBreakingRenderMixin` wraps NeoForge's level-aware
   `collectParts` call there (26.1.2: `BlockFeatureRenderer.renderBreakingBlockModelSubmits`; 26.2, 26.3:
   `LevelRenderer.submitBlockDestroyAnimation`) and adds a Fabric model's emitted quads, turned back into vanilla

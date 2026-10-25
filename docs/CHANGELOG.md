@@ -3,6 +3,21 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-10-25: branch reorganisation, a glowing moving block's outline, 1.21.11 server linkage noise
+
+**Plan.** The owner renamed the working branch to `claude/dev` and replaced `1.20.1-legacy` with `forge-legacy` (Forge
+for 1.20.1 and other legacy versions); `forge` and `forge-legacy` were fast-forwarded to `main`, and `main` gained an
+updated README and `.claude/settings.json`. Then two items from the rendering track and the reports.
+
+- Docs follow the new branches (`claude.md`, `PORTING.md`, `RESEARCH.md` §8, roadmap; D1 no longer lists NeoForge
+  47.1), and the README's latest edit gets a few grammar and meaning fixes.
+- M2b (26.2, 26.3): a glowing moving block's outline is drawn by Fabric's renderer, into the outline's buffers, as
+  upstream does; NeoForge drew it from the model's parts, which a model with only `emitQuads` doesn't have. The test
+  mod's falling blocks glow, and the FRAPI gate checks that the outline pass reached Fabric's renderer.
+- LINK-1: on a 1.21.11 dedicated server, classes left in Intermediary's names are client code (the server's mappings
+  name only the server's classes), so mods using client classes no longer fill the report with "missing class
+  net.minecraft.class_NNN" warnings (about 650 on PR #66's run).
+
 ## 2026-10-21 (pass after PR #67): the platform decisions, and Java 17 for the shared modules
 
 **Plan.** The owner decided the evaluation's open questions: 1.20.1 targets Forge 47.4 first (NeoForge 47.1
