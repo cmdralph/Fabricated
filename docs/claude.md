@@ -14,7 +14,8 @@ verified), [`PORTING.md`](PORTING.md) (the 1.20.1 and Forge evaluation and the b
 - **Branches** (the owner's decisions, 2026-10-21 and 2026-10-25): `main` is NeoForge 1.21.11 to 26.3 and the active
   branch; every fix and feature lands there first, by pull request from the working branch `claude/dev`. `forge` is
   Minecraft Forge for the versions `main` covers, and `forge-legacy` is Forge for 1.20.1 and other legacy versions
-  (NeoForge needs no legacy branch); both are in their architectural evaluation phase. Shared modules (`core`, `api`,
+  (NeoForge needs no legacy branch); both are in scaffolding (compile-only projects building in their own CI, for pull
+  requests to them), worked on from `claude/forge` and `claude/forge-legacy` by pull request. Shared modules (`core`, `api`,
   `fabric-loader-api`) change only on `main`; a branch takes them by merging `main`, never by cherry-picking, and adds
   only files of its own (`PORTING.md` §1). 1.20.1 targets Forge 47.4, modern Forge builds with ForgeGradle, and CI on
   the secondary branches runs for pull requests only: decisions D1 to D6 in `RESEARCH.md` §8, with the build paths.
