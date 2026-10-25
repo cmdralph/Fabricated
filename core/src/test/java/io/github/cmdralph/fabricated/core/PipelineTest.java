@@ -124,6 +124,29 @@ class PipelineTest {
 		return cw.toByteArray();
 	}
 
+	/**
+	 * A mixin as {@link #mixinAdding(String, String)} adding {@code prefix + added}, a soft implementation of an interface's
+	 * method ({@code @Implements(@Interface(iface = Runnable.class, prefix = ...))}), which Mixin merges as {@code added}.
+	 */
+	private static byte[] mixinSoftImplementing(String name, String prefix, String added) {
+		ClassWriter cw = new ClassWriter(0);
+		new ClassReader(mixinAdding(name, prefix + added)).accept(new org.objectweb.asm.ClassVisitor(Opcodes.ASM9, cw) {
+			@Override
+			public void visit(int version, int access, String className, String signature, String superName, String[] interfaces) {
+				super.visit(version, access, className, signature, superName, interfaces);
+				AnnotationVisitor implementsAnn = cw.visitAnnotation("Lorg/spongepowered/asm/mixin/Implements;", false);
+				AnnotationVisitor value = implementsAnn.visitArray("value");
+				AnnotationVisitor iface = value.visitAnnotation(null, "Lorg/spongepowered/asm/mixin/Interface;");
+				iface.visit("iface", Type.getObjectType("java/lang/Runnable"));
+				iface.visit("prefix", prefix);
+				iface.visitEnd();
+				value.visitEnd();
+				implementsAnn.visitEnd();
+			}
+		}, 0);
+		return cw.toByteArray();
+	}
+
 	/** A mixin as {@link #mixinClass(String, String)} with a method that calls a static method of {@code owner}. */
 	private static byte[] mixinCalling(String name, String owner) {
 		ClassWriter cw = new ClassWriter(0);
@@ -474,6 +497,27 @@ class PipelineTest {
 				result.report().render());
 		Report.ModRow row = result.report().mods().stream().filter(r -> r.id().equals("stale")).findFirst().orElseThrow();
 		assertTrue(row.detail().contains("updateSelections, which does not exist in net.minecraft.world.Thing"), row.detail());
+	}
+
+	/**
+	 * A mixin may inject into a method its mod's other mixin adds as a soft implementation, which Mixin merges without its
+	 * prefix (ShulkerBoxTooltip's ender chest mixins on 26.x).
+	 */
+	@Test
+	void anInjectorIntoASoftImplementationAnotherMixinAddsIsNotAFailure(@TempDir Path game) throws Exception {
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		Path softie = TestJars.create().fabricModJson(TestJars.modJson("softie", "1.0", "\"name\":\"Softie\",\"mixins\":[\"softie.mixins.json\"]"))
+				.text("softie.mixins.json", "{\"required\":true,\"package\":\"com.softie.mixin\",\"mixins\":[\"ThingMixin\",\"ThingHookMixin\"]}")
+				.bytes("com/softie/mixin/ThingMixin.class", mixinSoftImplementing("com/softie/mixin/ThingMixin", "container$", "setChanged"))
+				.bytes("com/softie/mixin/ThingHookMixin.class", mixinClass("com/softie/mixin/ThingHookMixin", TARGET, "setChanged"))
+				.write(mods.resolve("softie.jar"));
+
+		Pipeline.Result result = Pipeline.run(input(game, List.of(softie), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
+
+		Set<String> loaded = result.mods().stream().map(m -> m.translated().candidate().id()).collect(Collectors.toSet());
+		assertEquals(Set.of("softie"), loaded, result.report().render());
+		assertTrue(result.report().render().contains("setChanged, which is not in net.minecraft.world.Thing; Softie's mixin com.softie.mixin.ThingMixin adds it"),
+				result.report().render());
 	}
 
 	/** On 26.x an addon's mixins into another Fabric mod's classes are checked against that mod's jar. */
