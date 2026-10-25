@@ -3,8 +3,8 @@
 Status: **architectural evaluation**, written 2026-10-21; the owner's decisions are in §8 and `RESEARCH.md` §8.
 Of the work below, only §6 item 1 (Java 17 for the shared modules) is done. `main` stays the active
 branch: NeoForge for Minecraft 1.21.11, 26.1.2, 26.2 and 26.3, all four on stable NeoForge lines. This document
-says what of the engine carries over to Minecraft 1.20.1 (branch `1.20.1-legacy`) and to Minecraft Forge (a
-future `forge` branch), what the build needs, what must change on `main` first, and in which order the work goes.
+says what of the engine carries over to Minecraft Forge for 1.20.1 and other legacy versions (branch
+`forge-legacy`) and for the versions `main` covers (branch `forge`), what the build needs, what must change on `main` first, and in which order the work goes.
 Facts about other projects cite their repository, ref and file; what could not be checked is marked UNVERIFIED.
 
 ## 1. Branch model
@@ -12,14 +12,17 @@ Facts about other projects cite their repository, ref and file; what could not b
 | Branch | Platform | Phase | Rule |
 |---|---|---|---|
 | `main` | NeoForge 1.21.11, 26.1.2, 26.2, 26.3 | active | Every fix and feature lands here first. |
-| `1.20.1-legacy` | Minecraft 1.20.1 on Forge 47.x (NeoForge 47.1 best-effort, §3.1) | architectural evaluation | Takes `main` by merge, never by cherry-pick; adds only its own files. |
-| `forge` (future) | Minecraft Forge for the versions `main` covers (Forge 61 for 1.21.11, 64 to 66 for 26.1.2 to 26.3) | not started | Same rules as `1.20.1-legacy`. |
+| `forge` | Minecraft Forge for the versions `main` covers (Forge 61 for 1.21.11, 64 to 66 for 26.1.2 to 26.3) | architectural evaluation | Takes `main` by merge, never by cherry-pick; adds only its own files. |
+| `forge-legacy` | Minecraft Forge for 1.20.1 (Forge 47.4, §3.1) and other legacy versions | architectural evaluation | Same rules as `forge`. |
+
+NeoForge needs no legacy branch: its 1.20.1 build is a 2024 fork of Forge 47.1 (§3.1), so the legacy line is Forge's
+(the owner's decision, 2026-10-25). Work is done on `claude/dev` and reaches `main` by pull request.
 
 How code flows. Shared modules (`core`, `api`, `fabric-loader-api`, the Gradle wrapper, `ci/*.py`) are only ever
 changed on `main`; a branch picks a change up by merging `main`. A branch adds its own directories (its loader
 adapter, its `mc/<target>` projects, its CI target list) and never edits or deletes a file `main` owns, or every
 merge conflicts. GitHub's merges ignore `merge=ours` attributes, so ownership comes from where files live, not from
-merge settings. Today `1.20.1-legacy` is `main` as of PR #64 (`b5911bc`), with nothing of its own.
+merge settings. On 2026-10-25 `forge` and `forge-legacy` are `main` (`e8d4aa8`), with nothing of their own.
 
 ## 2. What of the engine is portable
 
@@ -79,8 +82,8 @@ load time, nests MixinExtras, and relies on a separate Forgified Fabric API. Fab
 project's rule); it only shows the platform can carry this design.
 
 **Target choice.** MinecraftForge 47.4.x is the maintained line and the one the 1.20.1 ecosystem uses; NeoForge 47.1
-is the same code base two years older. The plan targets Forge 47.4 and treats NeoForge 47.1 as best-effort (no
-`clientSideOnly`, no `accessTransformers` list). Owner decision D1.
+is the same code base two years older (no `clientSideOnly`, no `accessTransformers` list). The plan targets Forge
+47.4 on `forge-legacy`; NeoForge 47.1 is not a target, as NeoForge needs no legacy branch. Owner decision D1.
 
 ### 3.2 What each subsystem needs on 1.20.1
 
@@ -166,13 +169,13 @@ the abstractions below are added when the branch work starts (owner decision D2 
 
 ## 7. Roadmap
 
-### 1.20.1-legacy
+### forge-legacy (1.20.1)
 
 | Phase | Work | Exit criterion |
 |---|---|---|
 | L0 Evaluation (done) | This document; decisions D1 to D6. | Decisions recorded (§8). |
 | L1 Seams on `main` | §6, items 1 to 6, as separate pull requests (item 1 done). | `main` green on all four versions after each; `core` builds at release 17. |
-| L2 Scaffolding | Merge `main` into `1.20.1-legacy`; `mc/1.20.1` on `legacyforge` (R1 settled first); Fabric API 0.92.12 plan (which modules native); compile only. | `:mc:1.20.1:fabricatedJar` builds in CI. |
+| L2 Scaffolding | Merge `main` into `forge-legacy`; `mc/1.20.1` on `legacyforge` (R1 settled first); Fabric API 0.92.12 plan (which modules native); compile only. | `:mc:1.20.1:fabricatedJar` builds in CI. |
 | L3 Discovery and translation | forgespi 7 adapter (locator, dependency locator, language provider, nested jars); Intermediary → SRG composer from MCPConfig; Forge descriptor writer; MixinExtras provision; class transforms through `ITransformationService`. | The test mods' server smoke passes on Forge 47.4 (entrypoints, registries, mixins, access wideners). |
 | L4 Native Fabric API | Lifecycle, registries, networking on `SimpleChannel`, resource loader, events, transfer on `LazyOptional` capabilities, the old renderer API; client smoke with HeadlessMC and mc-runtime-test. | Server and client smoke gates green; Fabric API 0.92.12 boots. |
 | L5 Corpus and stabilisation | 1.20.1 corpus from Modrinth; pre-flight repairs against Forge 47's patches, vanilla code through MCPConfig; Fabric's Mixin fork features measured (R2). | Release criteria met (to be set with the owner, as for `main`). |
@@ -204,7 +207,7 @@ the same locator interfaces), so the second one is a port of the first.
 
 Decisions (the owner's, 2026-10-21; D3 and D4 delegated, both provisional until the phase that fixes them):
 
-- **D1:** 1.20.1 targets MinecraftForge 47.4 first; NeoForge 47.1 is best-effort later.
+- **D1:** 1.20.1 targets MinecraftForge 47.4, on `forge-legacy`; NeoForge's 1.20.1 fork is not a target (2026-10-25).
 - **D2:** Java 17 constraints are kept from now on: the shared modules' main code compiles at `release = 17` (§6
   item 1, done), so `main` can't write code the legacy branch can't load.
 - **D3:** native on 1.20.1 is `main`'s native set where Fabric API 0.92.12 has the module; fixed in L2 against the

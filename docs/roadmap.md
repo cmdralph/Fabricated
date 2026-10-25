@@ -19,14 +19,16 @@ handled safely, no network access, original jars never changed, and no code that
 
 - **`main`:** NeoForge for 1.21.11, 26.1.2, 26.2 and 26.3, every line stable (NeoForge tagged `26.3.0-stable`; CI
   pins 26.3.0.95 and no version is experimental any more).
-- **`1.20.1-legacy`:** architectural evaluation ([`PORTING.md`](PORTING.md)): about 80 % of `core` and the Fabric
-  Loader API carry over; the platform layer (discovery on forgespi 7, Mojang class names with SRG member names,
-  Forge's `mods.toml`, MixinExtras provision, class transforms through ModLauncher) and the native Fabric API modules
-  are new. Decided (`RESEARCH.md` §8): Forge 47.4 first, NeoForge 47.1 best-effort, the shared modules kept loadable on
-  Java 17, CI for pull requests only. L1, the behaviour-neutral seams on `main`: Java 17 for the shared modules done
-  (their main code compiles at release 17); the loader split, build split, CI from data and platform profile follow.
-- **`forge` (planned):** Minecraft Forge 61 to 66 for the versions `main` covers, built with ForgeGradle. The same
-  seams, a forgespi 8 adapter, and bridges rewritten for EventBus 7 (`PORTING.md` §4).
+- **`forge`:** Minecraft Forge 61 to 66 for the versions `main` covers, built with ForgeGradle; architectural
+  evaluation. The seams below, a forgespi 8 adapter, and bridges rewritten for EventBus 7 (`PORTING.md` §4).
+- **`forge-legacy`:** Minecraft Forge for 1.20.1 (Forge 47.4) and other legacy versions; architectural evaluation
+  ([`PORTING.md`](PORTING.md)). About 80 % of `core` and the Fabric Loader API carry over; the platform layer
+  (discovery on forgespi 7, Mojang class names with SRG member names, Forge's `mods.toml`, MixinExtras provision, class
+  transforms through ModLauncher) and the native Fabric API modules are new. NeoForge needs no legacy branch.
+- **Decided** (`RESEARCH.md` §8): Forge 47.4 for 1.20.1, the shared modules kept loadable on Java 17, ForgeGradle for
+  modern Forge, CI for pull requests only. L1, the behaviour-neutral seams on `main`: Java 17 for the shared modules
+  done (their main code compiles at release 17); the loader split, build split, CI from data and platform profile
+  follow. Work happens on `claude/dev` and reaches `main` by pull request.
 
 ### Loader and translation
 

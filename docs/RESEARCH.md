@@ -204,19 +204,19 @@ The owner's decisions after the platform evaluation. The evidence for each fact 
 
 | ID | Decision | What it fixes |
 |---|---|---|
-| D1 | **1.20.1 targets MinecraftForge 47.4 first**; NeoForge 47.1 (a 2024 fork of Forge 47.1) is best-effort later. | The 1.20.1 platform layer is written against forgespi 7 and Forge 47.4's `mods.toml` (`clientSideOnly`, the `accessTransformers` list); NeoForge 47.1 lacks both. |
-| D2 | **The shared modules stay loadable on Java 17.** `core`, `api` and `fabric-loader-api` compile their main code with `release = 17` (tests at 21, toolchain 21), so the build itself rejects Java 21-only APIs and language features in them. | Code written on `main` merges into `1.20.1-legacy` without breaking it. |
+| D1 | **1.20.1 targets MinecraftForge 47.4**, on the `forge-legacy` branch (Forge for 1.20.1 and other legacy versions). NeoForge's 1.20.1 build (47.1, a 2024 fork of Forge 47.1) is not a target: NeoForge needs no legacy branch (2026-10-25). | The 1.20.1 platform layer is written against forgespi 7 and Forge 47.4's `mods.toml` (`clientSideOnly`, the `accessTransformers` list). |
+| D2 | **The shared modules stay loadable on Java 17.** `core`, `api` and `fabric-loader-api` compile their main code with `release = 17` (tests at 21, toolchain 21), so the build itself rejects Java 21-only APIs and language features in them. | Code written on `main` merges into `forge-legacy` without breaking it. |
 | D3 | Native Fabric API modules on 1.20.1 (delegated): **`main`'s native set where Fabric API 0.92.12 has the module**, the rest passed through as on `main`; the list is fixed in phase L2 against the 1.20.1 corpus. | Which bridges the branch writes first. |
-| D4 | 1.20.1 release criteria (delegated): **the gates `main` has**: the test mods' server and client smoke, the client module gate, Fabric API 0.92.12 booting, and corpus runs where no client or server crashes and every mod left out is reported with its reason. | When `1.20.1-legacy` leaves its evaluation and stabilisation phases. |
+| D4 | 1.20.1 release criteria (delegated): **the gates `main` has**: the test mods' server and client smoke, the client module gate, Fabric API 0.92.12 booting, and corpus runs where no client or server crashes and every mod left out is reported with its reason. | When `forge-legacy`'s 1.20.1 target leaves its evaluation and stabilisation phases. |
 | D5 | **Modern Forge builds with ForgeGradle** (version to verify against Gradle 9.7 when the `forge` branch starts). | ModDevGradle supports NeoForge, and Forge only up to 1.20.1 through `legacyforge`. |
-| D6 | **CI on secondary branches runs for pull requests only.** A push builds only `main`; work on `1.20.1-legacy` and `forge` is built when a pull request targets them (`.github/workflows/build.yml`: `push: branches: [main]`, `pull_request` for any base). | Runner time: each game target costs about 25 minutes per run. |
+| D6 | **CI on secondary branches runs for pull requests only.** A push builds only `main`; work on `forge` and `forge-legacy` is built when a pull request targets them (`.github/workflows/build.yml`: `push: branches: [main]`, `pull_request` for any base). | Runner time: each game target costs about 25 minutes per run. |
 
 **Build paths.**
 
 | Branch | Platform | Build plugin | Java | Runtime names | CI target |
 |---|---|---|---|---|---|
 | `main` | NeoForge 21.11, 26.1, 26.2, 26.3 | ModDevGradle 2.0.142 (`net.neoforged.moddev`) | 21 (1.21.11), 25 (26.x) | Mojang | NeoForge installers, HeadlessMC, mc-runtime-test |
-| `1.20.1-legacy` | Forge 47.4 (NeoForge 47.1 later) | ModDevGradle `net.neoforged.moddev.legacyforge` (`legacyForge { version = "1.20.1-47.4.x" }`, `reobfJar` to SRG, mixin refmaps); on Gradle 9.7 UNVERIFIED (R1) | 17 | Mojang classes, SRG members (`f_…_`, `m_…_`) from MCPConfig | Forge installer from `maven.minecraftforge.net`, HeadlessMC `forge-47.x`, mc-runtime-test's 1.20.1 LexForge build |
+| `forge-legacy` | Forge 47.4 (1.20.1) | ModDevGradle `net.neoforged.moddev.legacyforge` (`legacyForge { version = "1.20.1-47.4.x" }`, `reobfJar` to SRG, mixin refmaps); on Gradle 9.7 UNVERIFIED (R1) | 17 | Mojang classes, SRG members (`f_…_`, `m_…_`) from MCPConfig | Forge installer from `maven.minecraftforge.net`, HeadlessMC `forge-47.x`, mc-runtime-test's 1.20.1 LexForge build |
 | `forge` | Forge 61 (1.21.11), 64 to 66 (26.1.2 to 26.3) | ForgeGradle (D5) | 21, 25 | Mojang | Forge installers |
 
 **What 1.20.1 changes in the engine** (`PORTING.md` §3.2): discovery on forgespi 7 (`IModLocator`, `IDependencyLocator`,

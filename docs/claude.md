@@ -11,12 +11,13 @@ verified), [`PORTING.md`](PORTING.md) (the 1.20.1 and Forge evaluation and the b
 
 ## Working rules
 
-- **Branches** (the owner's decision, 2026-10-21): `main` is NeoForge 1.21.11 to 26.3 and the active branch; every fix
-  and feature lands there first. `1.20.1-legacy` (Minecraft 1.20.1) is in its architectural evaluation phase, and a
-  `forge` branch is planned. Shared modules (`core`, `api`, `fabric-loader-api`) change only on `main`; a branch takes
-  them by merging `main`, never by cherry-picking, and adds only files of its own (`PORTING.md` §1). 1.20.1 targets
-  Forge 47.4 (NeoForge 47.1 best-effort), modern Forge builds with ForgeGradle, and CI on the secondary branches runs
-  for pull requests only: decisions D1 to D6 in `RESEARCH.md` §8, with the build paths.
+- **Branches** (the owner's decisions, 2026-10-21 and 2026-10-25): `main` is NeoForge 1.21.11 to 26.3 and the active
+  branch; every fix and feature lands there first, by pull request from the working branch `claude/dev`. `forge` is
+  Minecraft Forge for the versions `main` covers, and `forge-legacy` is Forge for 1.20.1 and other legacy versions
+  (NeoForge needs no legacy branch); both are in their architectural evaluation phase. Shared modules (`core`, `api`,
+  `fabric-loader-api`) change only on `main`; a branch takes them by merging `main`, never by cherry-picking, and adds
+  only files of its own (`PORTING.md` §1). 1.20.1 targets Forge 47.4, modern Forge builds with ForgeGradle, and CI on
+  the secondary branches runs for pull requests only: decisions D1 to D6 in `RESEARCH.md` §8, with the build paths.
 - **Shared modules stay Java 17** (the owner's decision D2, 2026-10-21): `core`, `api` and `fabric-loader-api` compile
   their main code with `release = 17`, so the build rejects what 1.20.1's Java 17 can't load. Not available there: a
   `List`'s `getFirst`/`getLast`/`removeFirst`/`addFirst` (Java 21's sequenced collections: use `get(0)`,
