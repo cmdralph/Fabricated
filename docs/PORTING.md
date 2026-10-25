@@ -215,6 +215,18 @@ Compile-only CI covers compilation, the layer separation (the source sets' class
 built jar (nested manifests, service files, no shared packages) and unit tests of the transformer and of the overlay
 order; everything else needs a server smoke.
 
+**What the first runs answered** (the `forge` branch's CI, 2026-10-25). (1) ForgeGradle's loader classpath holds
+fmlcore and fmlloader (`<mc>-<forge>`), forgespi 8.0.0, modlauncher 10.2.6, securemodules 2.2.24, Mixin 0.8.7 and
+MixinExtras 0.5.4 (#79). Booting a Forge server with the Fabricated jar on Forge 61, 64, 65 and 66 (#82): (2) Forge
+lists Fabricated's mod and dependency locators before its own (`Found Mod Locators : (fabricated:…),(mods folder:null),…`,
+`Found Dependency Locators : (fabricated:…),(JarInJar:null)`); (4) it takes the language provider from the cache as a
+`LANGPROVIDER` file and reads its version (`Found language provider fabricated, version 0.4.0+mc…`); the in-game mod the
+dependency locator hands it loads from the cache and `javafml` constructs it. The service jar is listed once per
+service, and the module finder ignores the duplicates, as read. (7) Forge's jar-in-jar locator finds its
+`mixinextras-forge` option but loads nothing while no file declares `MixinConfigs`. The in-game mod still lacks a
+`pack.mcmeta` ("Missing metadata in pack mod:fabricated"). Still open: 3, 5, 6, 8, 9, 10, and 7 with a mod declaring
+mixins.
+
 **Questions only a run answers.** (1) Does ForgeGradle's compile classpath hold fmlloader, fmlcore, forgespi,
 modlauncher and securemodules? (2) Do Fabricated's locators run before `ModsFolderLocator` and the jar-in-jar
 locator (the debug lines "Found Mod Locators" and "Trying locator")? (3) On Forge 61, the Mojang mappings file's name
