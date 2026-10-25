@@ -63,6 +63,15 @@ jobs:
         run: ./gradlew --configure-on-demand :mc:forge-${{ matrix.minecraft }}:fabricatedJar --stacktrace
       - name: Check the jar's layout for Forge
         run: ./gradlew --configure-on-demand :mc:forge-${{ matrix.minecraft }}:checkForgeJar --stacktrace
+      # The first run of the game on this branch (docs/PORTING.md §4.1): what Forge makes of the jar's layout. Reported,
+      # not gated, until F3's discovery and a test mod are in.
+      - name: Server with Fabricated (informational)
+        continue-on-error: true
+        run: |
+          # Forge 61 (1.21.11) runs on Java 21, Forge 64 to 66 (26.x) on Java 25.
+          [ "${{ matrix.minecraft }}" = "1.21.11" ] || export PATH="$JAVA_HOME_25_X64/bin:$PATH"
+          forge=$(sed -n 's/^forge_version=//p' "mc/forge-${{ matrix.minecraft }}/gradle.properties")
+          ci/forge/smoke-server.sh "${{ matrix.minecraft }}" "$forge" "$RUNNER_TEMP/server"
       - name: Upload Fabricated jar
         uses: actions/upload-artifact@v4
         with:
