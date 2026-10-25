@@ -49,7 +49,8 @@ Notes:
 | 26.2 | `0.161.0+26.2` | 45 | official | `classTweaker v1 official` | |
 | 26.3 | `0.162.0+26.3` | 45 | official | `classTweaker v1 official` | |
 
-* **Fabric Loader** latest is `0.19.5` (git tags). It ships `net.fabricmc:sponge-mixin:0.17.4+mixin.0.8.7`, MixinExtras 0.5.5, `class-tweaker 0.3.0` and `tiny-remapper 0.14.1`.
+* **Fabric Loader** latest is `0.19.5` (git tags; on 2026-10-25 `0.20.1`, with the same public API, Mixin
+  `0.17.5+mixin.0.8.7` and a behaviour version 0.17.5 for mods declaring 0.20.0 or later). It ships `net.fabricmc:sponge-mixin:0.17.4+mixin.0.8.7`, MixinExtras 0.5.5, `class-tweaker 0.3.0` and `tiny-remapper 0.14.1`.
 * **Same Mixin fork on both sides:** NeoForge uses Fabric's own Mixin fork (`net.fabricmc:sponge-mixin`). On 26.x it's the *same version* Fabric Loader uses (0.17.4). This is the single most important feasibility fact: Fabric mixin configs, injectors and MixinExtras features behave identically on NeoForge 26.x. On 1.21.11 NeoForge has 0.16.5, one minor behind, which is usually compatible.
 * **Module renames in 26.1** (Mojang-name alignment), relevant for dependency satisfaction:
 

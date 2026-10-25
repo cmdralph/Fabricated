@@ -790,7 +790,8 @@ and older) run Fabric mods with, which 26.x doesn't have (OBF-1: Modrinth lists 
 
 ### Fabric Loader
 
-The public `net.fabricmc.loader.api` is complete: entrypoints (including custom ones and language adapters such as
+Fabricated reports itself as Fabric Loader 0.20.1, whose public API is 0.19.5's, unchanged (since this pass; it
+reported 0.19.5, so mods declaring a newer loader were refused). The public `net.fabricmc.loader.api` is complete: entrypoints (including custom ones and language adapters such as
 Kotlin's), mod containers and metadata, versions and predicates, the object share, and the mapping resolver
 (intermediary to Mojang names on 1.21.11). As on Fabric, every declared language adapter is created before any Fabric
 mod's mixin plugin loads (some mods declare one only to run code that early). `preLaunch` entrypoints still run later
