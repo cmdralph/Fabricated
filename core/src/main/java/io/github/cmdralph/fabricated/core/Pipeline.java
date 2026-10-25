@@ -75,8 +75,11 @@ import net.fabricmc.loader.api.metadata.ModOrigin;
  * NeoForge.
  */
 public final class Pipeline {
-	/** Fabric Loader version Fabricated reports for {@code fabricloader} dependencies. */
-	public static final String FABRIC_LOADER_COMPAT_VERSION = "0.19.5";
+	/**
+	 * Fabric Loader version Fabricated reports for {@code fabricloader} dependencies: the newest release whose public API
+	 * {@code :fabric-loader-api} reproduces (0.20.1's is 0.19.5's, unchanged).
+	 */
+	public static final String FABRIC_LOADER_COMPAT_VERSION = "0.20.1";
 
 	/**
 	 * A NeoForge mod NeoForge's own discovery found, or one nested in a mod file it found.

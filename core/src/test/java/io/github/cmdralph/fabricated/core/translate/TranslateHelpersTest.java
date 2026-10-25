@@ -170,6 +170,9 @@ class TranslateHelpersTest {
 
 	@Test
 	void computesFabricMixinBehaviourAndClampsForNeoForge() throws Exception {
+		var newestMod = FabricModJsonParser.parse("{\"schemaVersion\":1,\"id\":\"aaa\",\"version\":\"1\",\"depends\":{\"fabricloader\":\">=0.20.1\"}}");
+		assertEquals("0.17.5", MixinCompat.fabricBehaviorVersion(newestMod.getDependencies()));
+		assertEquals("0.17.4", MixinCompat.clampForNeoForge("0.17.5", "0.17.4+mixin.0.8.7", "0.17.1"), "lowered to the running Mixin on 26.x");
 		var newMod = FabricModJsonParser.parse("{\"schemaVersion\":1,\"id\":\"aaa\",\"version\":\"1\",\"depends\":{\"fabricloader\":\">=0.19.4\"}}");
 		assertEquals("0.17.4", MixinCompat.fabricBehaviorVersion(newMod.getDependencies()));
 		var midMod = FabricModJsonParser.parse("{\"schemaVersion\":1,\"id\":\"aaa\",\"version\":\"1\",\"depends\":{\"fabricloader\":\">=0.18.4\"}}");
