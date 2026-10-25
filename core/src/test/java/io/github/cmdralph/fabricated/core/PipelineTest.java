@@ -191,7 +191,7 @@ class PipelineTest {
 		TestJars.create()
 				.fabricModJson(TestJars.modJson("good-mod", "1.0.0", """
 						"name":"Good Mod","entrypoints":{"main":["com.good.Main"]},"mixins":["good.mixins.json"],
-						"accessWidener":"good.accesswidener","depends":{"fabricloader":">=0.19.0","minecraft":"~26.2","fabric-api-base":"*","cloth-config":"*"}"""))
+						"accessWidener":"good.accesswidener","depends":{"fabricloader":">=0.20.1","minecraft":"~26.2","fabric-api-base":"*","cloth-config":"*"}"""))
 				.text("good.mixins.json", "{\"required\":true,\"package\":\"com.good.mixin\",\"mixins\":[\"ThingMixin\"]}")
 				.bytes("com/good/mixin/ThingMixin.class", mixinClass("com/good/mixin/ThingMixin", "tick"))
 				.bytes("com/good/Main.class", TestJars.emptyClass("com/good/Main", "java/lang/Object"))
@@ -349,7 +349,7 @@ class PipelineTest {
 			String toml = overlay.readText("META-INF/neoforge.mods.toml");
 			assertTrue(toml.contains("modId=\"good_mod\""), toml);
 			assertTrue(toml.contains("config=\"good.mixins.json\""));
-			assertTrue(toml.contains("behaviorVersion=\"0.17.1\""), toml);
+			assertTrue(toml.contains("behaviorVersion=\"0.17.4\""), "Fabric Loader 0.20's 0.17.5, lowered to the running Mixin: " + toml);
 			assertTrue(toml.contains("modId=\"cloth_config\""), "loads after the NeoForge mod it depends on");
 			String at = overlay.readText("META-INF/accesstransformer.cfg");
 			assertTrue(at.contains("public net.minecraft.world.Thing count"), at);
