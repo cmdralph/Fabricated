@@ -1,0 +1,19 @@
+// Forge 1.20.1's part of the build for a Minecraft version project (mc/mc.gradle applies this for
+// platform=legacyforge): ModDevGradle's legacyforge settings, the in-game mod's mods.toml, and how a source set gets the
+// game to compile against. The game-mod jar is not reobfuscated to SRG names yet: the scaffold only compiles (L2).
+
+legacyForge {
+    version = project.forge_version
+}
+
+ext.gameDependencies = { SourceSet sourceSet -> legacyForge.addModdingDependenciesTo(sourceSet) }
+
+expandProps.forge_version_range = project.forge_version_range
+
+tasks.named('processResources', ProcessResources) {
+    filesMatching('META-INF/mods.toml') { expand(expandProps) }
+}
+
+// Named apart from the NeoForge jar of the same Minecraft version: once mc/mc.gradle has registered the task, as its
+// own configuration would otherwise set the name back.
+afterEvaluate { tasks.named('fabricatedJar', Jar) { archiveBaseName = 'fabricated-forge' } }

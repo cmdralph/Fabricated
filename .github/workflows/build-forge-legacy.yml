@@ -1,0 +1,65 @@
+name: Build forge-legacy
+
+# The forge-legacy branch's own build: pull requests to the branch only (owner decision D6); main's build.yml builds
+# NeoForge's targets for main. Compile only until the branch runs the game (docs/PORTING.md §7, L2).
+on:
+  pull_request:
+    branches: [forge-legacy]
+    paths-ignore: ['docs/**', '**.md']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-forge-legacy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  core:
+    name: Core and unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build and test Minecraft-independent modules
+        run: ./gradlew -Pfabricated.coreOnly=true build --stacktrace
+
+  minecraft:
+    name: Forge ${{ matrix.minecraft }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    needs: core
+    strategy:
+      fail-fast: false
+      matrix:
+        minecraft: ["1.20.1"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: |
+            17
+            21
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Newest Forge builds for ${{ matrix.minecraft }} (informational)
+        run: |
+          pinned=$(sed -n 's/^forge_version=//p' "mc/${{ matrix.minecraft }}/gradle.properties")
+          newest=$(curl -fsS https://maven.minecraftforge.net/net/minecraftforge/forge/maven-metadata.xml \
+            | grep -o "<version>${{ matrix.minecraft }}-[^<]*" | sed 's/<version>//' | tail -n 5 | tr '\n' ' ') || true
+          echo "Pinned: $pinned. Newest published: ${newest:-unknown}" | tee -a "$GITHUB_STEP_SUMMARY"
+      # Only the requested project and what it depends on are configured, not main's NeoForge projects.
+      - name: Build Fabricated
+        run: ./gradlew --configure-on-demand :mc:${{ matrix.minecraft }}:fabricatedJar --stacktrace
+      - name: Upload Fabricated jar
+        uses: actions/upload-artifact@v4
+        with:
+          name: fabricated-forge-${{ matrix.minecraft }}
+          path: build/libs/fabricated-forge-*+mc${{ matrix.minecraft }}.jar
+          if-no-files-found: error
