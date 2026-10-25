@@ -1,12 +1,15 @@
 name: Build and test
 
 # A branch with a pull request is built once, as the pull request (merged with its base): a push event too would build
-# every commit twice. Changes to documentation alone build nothing: the game runs check code, not prose.
+# every commit twice. Changes to documentation alone build nothing: the game runs check code, not prose. This builds
+# NeoForge's targets, for pushes and pull requests to main; the forge and forge-legacy branches build through their own
+# workflow, for pull requests to them only (owner decision D6).
 on:
   push:
     branches: [main]
     paths-ignore: ['docs/**', '**.md']
   pull_request:
+    branches: [main]
     paths-ignore: ['docs/**', '**.md']
   workflow_dispatch:
 
