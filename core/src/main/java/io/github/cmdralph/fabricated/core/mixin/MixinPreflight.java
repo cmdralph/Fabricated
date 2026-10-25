@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Deque;
 import java.util.HashMap;
@@ -2207,7 +2208,8 @@ public final class MixinPreflight {
 			if (!isGameClass(target) || dollar < 0 || !target.substring(dollar + 1).matches("\\d+")) continue;
 			ClassNode named = gameTarget(target);
 			if (named != null && fits(mixin, named, ctx)) continue;
-			Map<String, String> namedRenames = named == null ? null : capturedRenames(mixin, named);
+			ClassNode original = vanillaClass(target);
+			Map<String, String> namedRenames = named == null ? null : capturedRenames(mixin, named, original);
 			if (namedRenames != null && !namedRenames.isEmpty() && fits(renamed(mixin, namedRenames), named, ctx)) {
 				renameShadows(mixin, namedRenames);
 				moved.add(target.replace('/', '.') + " names the values it captures otherwise in this game build " + namedRenames
@@ -2223,7 +2225,7 @@ public final class MixinPreflight {
 				if (inner.innerName != null || inner.outerName != null || inner.name.equals(target)
 						|| !inner.name.startsWith(outer.name + "$") || inner.name.indexOf('$', outer.name.length() + 1) >= 0) continue;
 				ClassNode candidate = gameTarget(inner.name);
-				Map<String, String> renames = candidate == null ? null : capturedRenames(mixin, candidate);
+				Map<String, String> renames = candidate == null ? null : capturedRenames(mixin, candidate, original);
 				if (renames == null || !fits(renames.isEmpty() ? mixin : renamed(mixin, renames), candidate, ctx)) continue;
 				if (match != null) {
 					match = null;
@@ -2246,12 +2248,14 @@ public final class MixinPreflight {
 
 	/**
 	 * New names for the mixin's shadows of values an anonymous class captures ({@code val$name}) that {@code target} has
-	 * under another name: the one captured value of the same type there. NeoForge's 1.21.11 build names them after its
-	 * own parameter names (recompiled from decompiled source; inferred from Polymer's {@code val$registryKey} missing
-	 * there, CAPTURE-1). Empty when every shadow is there, null when one's new name can't be told (none or several of its
-	 * type, or one another shadow has).
+	 * under another name: the one captured value of the same type there (CAPTURE-1), or, of several, the one in the place
+	 * the shadow's has among vanilla's of that type in {@code original}, the class the mixin names in vanilla's code
+	 * ({@link #inVanillasOrder}, CAPTURE-2). NeoForge's 1.21.11 build names them after its own parameter names
+	 * (recompiled from decompiled source; inferred from Polymer's {@code val$registryKey} missing there). Empty when every
+	 * shadow is there, null when one's new name can't be told (none of its type, several that vanilla's class doesn't
+	 * tell apart, or one another shadow has).
 	 */
-	private static Map<String, String> capturedRenames(ClassNode mixin, ClassNode target) {
+	private static Map<String, String> capturedRenames(ClassNode mixin, ClassNode target, ClassNode original) {
 		Map<String, String> renames = new TreeMap<>();
 		Set<String> kept = new HashSet<>();
 		for (FieldNode field : mixin.fields) {
@@ -2260,12 +2264,57 @@ public final class MixinPreflight {
 				kept.add(field.name);
 				continue;
 			}
-			List<String> sameType = target.fields.stream().filter(f -> f.name.startsWith("val$") && f.desc.equals(field.desc)).map(f -> f.name).toList();
-			if (sameType.size() != 1) return null;
-			renames.put(field.name, sameType.get(0));
+			List<String> sameType = captured(target, field.desc);
+			String renamed = sameType.size() == 1 ? sameType.get(0) : inVanillasOrder(field.name, field.desc, sameType, target, original);
+			if (renamed == null) return null;
+			renames.put(field.name, renamed);
 		}
 		Set<String> to = new HashSet<>(renames.values());
 		return to.size() == renames.size() && Collections.disjoint(to, kept) ? renames : null;
+	}
+
+	/** The values an anonymous class captures of one type ({@code val$} fields), in the order it declares them. */
+	private static List<String> captured(ClassNode type, String desc) {
+		return type.fields.stream().filter(f -> f.name.startsWith("val$") && f.desc.equals(desc)).map(f -> f.name).toList();
+	}
+
+	/**
+	 * Which of {@code target}'s captured values of a type is vanilla's {@code name}, when it captures several (Ledger's and
+	 * malilib's hooks into {@code ChestBlock}'s menu provider shadow the two chest block entities it captures): the one in
+	 * the place {@code name} has among {@code original}'s of the type. The order javac declares captured values in follows
+	 * the class's code, which a recompiled build keeps; as that is inferred, not read, the place is taken only when
+	 * {@code original} captures as many of the type and every method both classes declare reads them in the same order,
+	 * matched by place, with at least one such read. Null otherwise, or without vanilla's class.
+	 */
+	private static String inVanillasOrder(String name, String desc, List<String> sameType, ClassNode target, ClassNode original) {
+		if (original == null || sameType.size() < 2) return null;
+		List<String> originals = captured(original, desc);
+		int place = originals.indexOf(name);
+		if (place < 0 || originals.size() != sameType.size()) return null;
+		Map<String, String> byPlace = new HashMap<>();
+		for (int i = 0; i < originals.size(); i++) byPlace.put(originals.get(i), sameType.get(i));
+		boolean compared = false;
+		for (MethodNode method : original.methods) {
+			if (method.name.equals("<init>") || method.instructions == null) continue;
+			MethodNode same = target.methods.stream().filter(m -> m.name.equals(method.name) && m.desc.equals(method.desc)).findFirst().orElse(null);
+			if (same == null) continue;
+			List<String> expected = reads(method, original.name, byPlace.keySet()).stream().map(byPlace::get).toList();
+			if (!expected.equals(reads(same, target.name, byPlace.values()))) return null;
+			compared |= !expected.isEmpty();
+		}
+		return compared ? sameType.get(place) : null;
+	}
+
+	/** The reads of {@code fields} of {@code owner} in a method, in order. */
+	private static List<String> reads(MethodNode method, String owner, Collection<String> fields) {
+		List<String> reads = new ArrayList<>();
+		if (method.instructions == null) return reads;
+		for (AbstractInsnNode insn : method.instructions) {
+			if (insn instanceof FieldInsnNode read && read.getOpcode() == Opcodes.GETFIELD && read.owner.equals(owner) && fields.contains(read.name)) {
+				reads.add(read.name);
+			}
+		}
+		return reads;
 	}
 
 	/** A copy of {@code mixin} with its shadows renamed. */

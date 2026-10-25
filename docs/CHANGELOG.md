@@ -39,6 +39,13 @@ updated README and `.claude/settings.json`. Then two items from the rendering tr
   Mixin merges without the prefix, so ShulkerBoxTooltip's ender chest hook no longer disables it on 26.x.
 - The build declares Fabric's exclusive repository before the platform's, so the `forge` branch's 26.x projects
   configure (#75).
+- CAPTURE-2: when an anonymous class captures several values of one type under other names in NeoForge's build,
+  pre-flight tells them apart by their place in vanilla's class, checked against the order each method reads them
+  in, so Ledger's and malilib's hooks into `ChestBlock`'s menu provider can apply on 1.21.11.
+- CORPUS-24, closed: Ledger's "NOT NULL constraint failed: players.player_name" on the 26.x advanced servers is
+  Ledger's own, met through the test mod's Fabric fake player (read in its source and the logged stack).
+- F3 design for modern Forge recorded in `PORTING.md` §4.1, and the branches' first F3 step: a plugin-layer language
+  provider nested in the `forge` jar, compile only (on `claude/forge`).
 - The 26.x note on NeoForge's translucent outline pass is corrected: NeoForge decides it from the model's
   context-free material flags (not its parts), which Fabric's contract makes correct everywhere; a candidate for
   accuracy, not a fault.

@@ -2030,6 +2030,96 @@ class MixinPreflightTest {
 	}
 
 	@Test
+	void capturedValuesOfOneTypeAreToldApartByTheirPlaceInVanillasClass() throws Exception {
+		// CAPTURE-2: Ledger's and malilib's hooks into ChestBlock's menu provider (ChestBlock$2$1) shadow the two chest block
+		// entities it captures, val$first and val$second, which NeoForge's 1.21.11 build names after its own parameters.
+		String outer = "net/minecraft/world/Chests";
+		String anonymous = outer + "$1";
+		String chest = "Ljava/lang/String;";
+		// An anonymous class capturing two values of one type, whose menu() reads them in the order given.
+		java.util.function.BiFunction<List<String>, List<String>, byte[]> provider = (fields, readOrder) -> {
+			ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+			cw.visit(Opcodes.V21, Opcodes.ACC_FINAL, anonymous, null, "java/lang/Object", null);
+			cw.visitOuterClass(outer, "combiner", "()V");
+			cw.visitInnerClass(anonymous, null, null, Opcodes.ACC_FINAL);
+			for (String field : fields) cw.visitField(Opcodes.ACC_FINAL | Opcodes.ACC_SYNTHETIC, field, chest, null, null).visitEnd();
+			MethodVisitor menu = cw.visitMethod(Opcodes.ACC_PUBLIC, "menu", "()V", null, null);
+			menu.visitCode();
+			for (String field : readOrder) {
+				menu.visitVarInsn(Opcodes.ALOAD, 0);
+				menu.visitFieldInsn(Opcodes.GETFIELD, anonymous, field, chest);
+				menu.visitInsn(Opcodes.POP);
+			}
+			menu.visitInsn(Opcodes.RETURN);
+			menu.visitMaxs(0, 0);
+			menu.visitEnd();
+			cw.visitEnd();
+			return cw.toByteArray();
+		};
+		ClassWriter outerClass = new ClassWriter(0);
+		outerClass.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, outer, null, "java/lang/Object", null);
+		outerClass.visitInnerClass(anonymous, null, null, Opcodes.ACC_FINAL);
+		outerClass.visitEnd();
+		byte[] outerBytes = outerClass.toByteArray();
+
+		// The mixin shadows the second one and reads it from a hook into menu().
+		ClassWriter mixin = new ClassWriter(0);
+		mixin.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, "com/example/mixin/Chest", null, "java/lang/Object", null);
+		AnnotationVisitor m = mixin.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false);
+		AnnotationVisitor targets = m.visitArray("targets");
+		targets.visit(null, anonymous);
+		targets.visitEnd();
+		m.visitEnd();
+		mixin.visitField(Opcodes.ACC_PRIVATE, "val$second", chest, null, null).visitAnnotation(SHADOW, false).visitEnd();
+		MethodVisitor mv = mixin.visitMethod(Opcodes.ACC_PRIVATE, "onMenu", "(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V", null, null);
+		AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
+		AnnotationVisitor methods = ann.visitArray("method");
+		methods.visit(null, "menu()V");
+		methods.visitEnd();
+		AnnotationVisitor ats = ann.visitArray("at");
+		AnnotationVisitor at = ats.visitAnnotation(null, AT);
+		at.visit("value", "HEAD");
+		at.visitEnd();
+		ats.visitEnd();
+		ann.visitEnd();
+		mv.visitCode();
+		mv.visitVarInsn(Opcodes.ALOAD, 0);
+		mv.visitFieldInsn(Opcodes.GETFIELD, "com/example/mixin/Chest", "val$second", chest);
+		mv.visitInsn(Opcodes.POP);
+		mv.visitInsn(Opcodes.RETURN);
+		mv.visitMaxs(1, 2);
+		mv.visitEnd();
+		mixin.visitEnd();
+		byte[] mixinBytes = mixin.toByteArray();
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Chest"));
+
+		Map<String, byte[]> vanilla = Map.of(anonymous, provider.apply(List.of("val$first", "val$second"), List.of("val$first", "val$second", "val$first")));
+		ClassIndex neoForge = new ClassIndex(Map.of(outer, outerBytes,
+				anonymous, provider.apply(List.of("val$p_1_", "val$p_2_"), List.of("val$p_1_", "val$p_2_", "val$p_1_")))::get);
+
+		// Without vanilla's class, two of the type can't be told apart.
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Chest", mixinBytes));
+		assertTrue(preflight(neoForge, mod::get, ClassBytesSource.EMPTY, false).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty());
+
+		List<PreflightFinding> notes = new ArrayList<>();
+		byte[] repaired = new MixinPreflight(neoForge, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, vanilla::get)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes).get("com/example/mixin/Chest.class");
+		assertNotNull(repaired, notes.toString());
+		assertTrue(notes.getFirst().message().contains("names the values it captures otherwise in this game build {val$second=val$p_2_}"), notes.toString());
+		ClassNode renamed = new ClassNode();
+		new ClassReader(repaired).accept(renamed, 0);
+		assertEquals("val$p_2_", renamed.fields.getFirst().name, "vanilla's second value of the type is this build's second");
+		mod.put("com/example/mixin/Chest", repaired);
+		assertTrue(preflight(neoForge, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty());
+
+		// A method reading them in another order than vanilla's, matched by place, leaves the place unproven.
+		ClassIndex reordered = new ClassIndex(Map.of(outer, outerBytes,
+				anonymous, provider.apply(List.of("val$p_1_", "val$p_2_"), List.of("val$p_2_", "val$p_1_", "val$p_2_")))::get);
+		assertTrue(new MixinPreflight(reordered, InstalledClasses.NONE, Map.of("com/example/mixin/Chest", mixinBytes)::get, ClassBytesSource.EMPTY, false, true, vanilla::get)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty());
+	}
+
+	@Test
 	void anInjectionAtACallMadeThroughNeoForgesExtensionsIsPointedAtTheCallLeadingThere() throws Exception {
 		// HOOK-3: Ledger logs blocks an explosion removes at BlockBehaviour.onExplosionHit's setBlock, which NeoForge's build
 		// makes through BlockState.onBlockExploded, a default method of its extension interfaces.
