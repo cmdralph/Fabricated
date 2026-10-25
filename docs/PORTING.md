@@ -108,7 +108,7 @@ is the same code base two years older (no `clientSideOnly`, no `accessTransforme
 | Forge is maintained for every version `main` targets: branches `1.21.11` (Forge 61, recommended build 61.2), `26.1.2` (64.1 RB), `26.2` (65.1 RB), `26.3` (66.1 RB, 2026-10-21). That the binaries are published is UNVERIFIED (Forge's maven is not reachable here). | MinecraftForge/MinecraftForge branches and tags |
 | Discovery is forgespi 8.0: the same `IModLocator`/`IDependencyLocator` list shapes as 1.20.1, `ModFile`s built by `ModFileFactory` over `SecureJar`; `IModLanguageProvider` in the plugin layer. No `ClassProcessor`: `ITransformationService` from `mods/` (called after the mod scan); JS coremods are gone. | MinecraftForge/forgespi `8.0`; Forge `26.3` `ModDiscoverer.java`; ModLauncher `LaunchPluginHandler.java:38-43` |
 | `META-INF/mods.toml` with `mandatory`; no `[[mixins]]` (manifest `MixinConfigs`), no `enumExtensions`; access transformers as a top-level list. | Forge `26.3` `ModFileParser.java:33`, `ModFile.identifyMods` |
-| Mojang names at runtime since 1.20.6; upstream Mixin 0.8.7; MixinExtras 0.5.4 added by Forge when a mod declares mixin configs. | Forge `ForgeProdLaunchHandler.getNaming()` on `1.20.x` to `26.3`; `JarInJarDependencyLocator.java:74,236` |
+| Mojang names at runtime on 1.21.11 (26.x is unobfuscated); upstream Mixin 0.8.7; MixinExtras 0.5.4 added by Forge when a mod's manifest declares mixin configs (`MixinConfigs`). | Forge `1.21.11` `build.gradle:183-188` ("runtime official mappings") and its `mappings-channel = "official"` (an earlier version of this row cited `ForgeProdLaunchHandler.getNaming()`, which returns `"mcp"` and shows nothing about names); `JarInJarDependencyLocator.java:74,236` |
 | EventBus 7: each event has its own static bus (`X.BUS.addListener`), events are records or `MutableEvent`s, cancellation is a listener's return value, `Event.Result` gone. Every bridge Fabricated has is written against NeoForge's bus. | MinecraftForge/EventBus 7.0.x |
 | Old capabilities, `ChannelBuilder` networking (with a payload channel), no data maps, `AddGuiOverlayLayersEvent` for HUD layers, `forge:condition` (single object), `IExtensibleEnum` only. | Forge `26.3` sources |
 | Forge is LGPL-2.1 with an exception for mods using it through ordinary Java mechanisms; ModLauncher LGPL-3.0. Calling these APIs from a GPL-3.0 mod appears compatible (not legal advice). | Forge `LICENSE.txt` |
@@ -116,7 +116,12 @@ is the same code base two years older (no `clientSideOnly`, no `accessTransforme
 So a `forge` branch keeps `core` and the remapping as they are (the same names at runtime as on NeoForge), and
 rewrites `loader` (forgespi 8, close to the 1.20.1 adapter) and every bridge in `mc/*` (EventBus 7, capabilities,
 networking, HUD layers). The build tool for modern Forge is ForgeGradle, not ModDevGradle (which supports NeoForge
-and, through `legacyforge`, Forge up to 1.20.1); its version and its Gradle 9.7 compatibility are UNVERIFIED.
+and, through `legacyforge`, Forge up to 1.20.1): ForgeGradle 7 (7.0.40, 2026-09-11, on the Gradle plugin portal, as
+Forge's own MDKs use for 1.21.11 to 26.3), which needs Gradle 9.3 or later and declares Gradle 9.7's isolated projects
+supported (read in its source, `ForgeGradlePluginEntry`, and history). Its Mavenizer, which prepares the game, runs on
+Java 25 for every target and downloads from Forge's maven. A version project depends on
+`minecraft.dependency("net.minecraftforge:forge:<mc>-<forge>")`; mixin configs are declared in the jar manifest's
+`MixinConfigs`, as `mods.toml` has no `[[mixins]]`. A build on our Gradle 9.7.0 is UNVERIFIED until the branch's CI.
 
 ## 5. Build and CI
 
@@ -134,8 +139,14 @@ version as the main plugin (our 2.0.142 has it): "support for developing mods ag
 Minecraft versions 1.17 up to 1.20.1", configured as `legacyForge { version = "1.20.1-47.3.0" }`, NeoForge 47.1
 through `setNeoForgeVersion`. It reobfuscates the `jar` task to SRG (`reobfJar`; other jars through
 `obfuscation.reobfuscate(...)`), and mixin refmaps come from `mixin { add sourceSets.main, '<name>.refmap.json' }`
-with the `MixinConfigs` manifest attribute (neoforged/ModDevGradle `LEGACY.md`). Its own builds use Gradle 8.14; a
-Gradle 9 fix landed in June 2025, so **legacyforge on our Gradle 9.7 is UNVERIFIED** (risk R1). A `mc/1.20.1`
+with the `MixinConfigs` manifest attribute (neoforged/ModDevGradle `LEGACY.md`). Its own CI builds on Gradle 8.14; its
+Gradle 9 fix is in 2.0.94. On 2026-10-25 a scratch build on Gradle 9.7.0 with MDG 2.0.142, one project on
+`net.neoforged.moddev` and one on `legacyforge` (both ids declared in `settings.gradle`, as `main` now does), configured
+without deprecation warnings and planned a reobfuscated jar; executing it needs Forge's maven, which the sandbox
+can't reach, so **a full legacyforge build on Gradle 9.7 is UNVERIFIED** until `forge-legacy`'s CI (risk R1). Other
+projects build `legacyforge` on Gradle 9.4 and 9.8 (third-party; their CI results not read). Forge's 1.20.1 branch tip
+is build 47.4.28 by its version scheme (2026-10-13; that it is published is UNVERIFIED, 47.4.21 is in HeadlessMC's copy
+of the published list); an access transformer for 1.20.1 names members by SRG name. A `mc/1.20.1`
 project would apply it, reobfuscate `game-mod.jar` (loader classes name no game members), build against Java 17,
 and use its own source folders: `mc/common` is NeoForge's and 1.21's (45 of its 149 files import `net.neoforged`).
 
@@ -195,7 +206,7 @@ the abstractions below are added when the branch work starts (owner decision D2 
 | Phase | Work | Exit criterion |
 |---|---|---|
 | F0 Evaluation (done) | This document; decision D5. | Decided: ForgeGradle. |
-| F1 Seams on `main` | The same as L1, plus nothing Forge-only: EventBus 7 bridges live in the branch's `mc/*`. | |
+| F1 Seams on `main` | The same as L1, plus nothing Forge-only: EventBus 7 bridges live in the branch's `mc/*`. The branches' build plugins are pinned in `main`'s `settings.gradle` (done). | |
 | F2 Scaffolding | ForgeGradle build for 1.21.11 (Forge 61) and 26.x (64 to 66); compile only. | Jars build in CI. |
 | F3 Discovery and translation | forgespi 8 adapter (shared design with L3); descriptor writer; class transforms. | Server smoke on one version. |
 | F4 Bridges | Native Fabric API modules against EventBus 7, old capabilities, `ChannelBuilder` networking, `AddGuiOverlayLayersEvent`. | Server and client smoke gates on every version. |
@@ -209,7 +220,7 @@ the same locator interfaces), so the second one is a port of the first.
 
 | ID | Risk | Mitigation |
 |---|---|---|
-| R1 | ModDevGradle `legacyforge` on Gradle 9.7 is untested upstream. | Try it first in L2; if it fails, a branch-local Gradle wrapper (the wrapper is then a branch-owned file). |
+| R1 | ModDevGradle `legacyforge` on Gradle 9.7 is untested upstream. | Configured on Gradle 9.7.0 in a scratch build (§5); a full build is `forge-legacy`'s first CI run (L2). If it fails, fix forward (a ModDevGradle update on `main`): a branch-local older wrapper won't do, as the branch also carries `main`'s 26.x projects, whose Java 25 toolchain needs Gradle 9.1 or later. |
 | R2 | Fabric mods for 1.20.1 were built against Fabric's Mixin fork (0.12.5 to 0.15.5); upstream 0.8.5 may lack what they use. | Measure on the corpus in L5; pre-flight reports the gap per mod rather than crashing. |
 | R3 | Discovery: the locator jar leaves normal mod loading, and a language provider must sit in the plugin layer; how a single download carries all three parts is UNVERIFIED. | Prototype in L3 before the bridges. |
 | R4 | SRG names: every name-bearing data file (access transformers, refmaps, rename tables) must target members by SRG name. | One mapping table drives all of them, as Intermediary → Mojang does today. |
@@ -224,6 +235,7 @@ Decisions (the owner's, 2026-10-21; D3 and D4 delegated, both provisional until 
   1.20.1 corpus.
 - **D4:** the 1.20.1 release criteria are `main`'s gates: server and client smoke, the client module gate, Fabric API
   booting, and corpus runs with no crash and every mod left out reported with its reason.
-- **D5:** modern Forge builds with ForgeGradle (version to verify against Gradle 9.7).
+- **D5:** modern Forge builds with ForgeGradle (7.0.40, pinned in `settings.gradle`: Gradle 9.3 or later; a build on
+  9.7.0 is the `forge` branch's first CI run).
 - **D6:** CI runs on secondary branches for pull requests only; a push builds only `main` (already so in
   `build.yml`).
