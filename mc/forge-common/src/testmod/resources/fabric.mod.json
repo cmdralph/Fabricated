@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "fabricated-forge-testmod",
+  "version": "${version}",
+  "name": "Fabricated Forge Test Mod",
+  "description": "Exercises Fabricated on Forge in CI: a Fabric mod with entrypoints and a mixin, without Fabric API. Not meant for players.",
+  "authors": ["Fabricated contributors"],
+  "license": "GPL-3.0",
+  "environment": "*",
+  "entrypoints": {
+    "main": ["io.github.cmdralph.fabricated.forgetest.ForgeTestMod"],
+    "server": ["io.github.cmdralph.fabricated.forgetest.ForgeTestMod"]
+  },
+  "mixins": ["fabricated-forge-testmod.mixins.json"],
+  "depends": {
+    "fabricloader": ">=0.16.0",
+    "minecraft": "${minecraft_version}"
+  }
+}
