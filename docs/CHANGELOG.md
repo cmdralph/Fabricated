@@ -25,8 +25,13 @@ updated README and `.claude/settings.json`. Then two items from the rendering tr
   folders differ), then CI on all four versions (PR #69).
 - The branches' build plugins are pinned in `settings.gradle` (ModDevGradle's `legacyforge` at `main`'s version,
   ForgeGradle 7.0.40); `main` applies neither. Research for the branches is in `PORTING.md` §4 and §5: ForgeGradle 7
-  needs Gradle 9.3 or later and `legacyforge` configures on Gradle 9.7.0 in a scratch build; a full build of either is
-  the branches' first CI run.
+  needs Gradle 9.3 or later and `legacyforge` configures on Gradle 9.7.0 in a scratch build.
+- The branches' scaffolds (compile only, each built by the branch's own workflow for pull requests to it):
+  `forge-legacy`'s `mc/1.20.1` on `legacyforge` with Forge 47.4.28 (#71) and `forge`'s `mc/forge-1.21.11` on
+  ForgeGradle with Forge 61.2.4 (#72). Their first CI runs settled risk R1 (`legacyforge` builds on Gradle 9.7.0, in
+  1 min 13 s) and showed ForgeGradle 7.0.40 building on it (4 min 18 s, of which 3 min 47 s preparing Forge); both
+  pins moved to the newest builds those runs listed on Forge's maven. Work on them happens on `claude/forge-legacy`
+  and `claude/forge`.
 - The 26.x note on NeoForge's translucent outline pass is corrected: NeoForge decides it from the model's
   context-free material flags (not its parts), which Fabric's contract makes correct everywhere; a candidate for
   accuracy, not a fault.

@@ -1,6 +1,7 @@
 # Fabricated beyond modern NeoForge: the 1.20.1 and Forge evaluation
 
-Status: **architectural evaluation**, written 2026-10-21; the owner's decisions are in §8 and `RESEARCH.md` §8.
+Status: **scaffolding** (L2, F2: compile-only projects build in each branch's CI since 2026-10-25), written
+2026-10-21; the owner's decisions are in §8 and `RESEARCH.md` §8.
 Of the work below, only §6 item 1 (Java 17 for the shared modules) is done. `main` stays the active
 branch: NeoForge for Minecraft 1.21.11, 26.1.2, 26.2 and 26.3, all four on stable NeoForge lines. This document
 says what of the engine carries over to Minecraft Forge for 1.20.1 and other legacy versions (branch
@@ -12,8 +13,8 @@ Facts about other projects cite their repository, ref and file; what could not b
 | Branch | Platform | Phase | Rule |
 |---|---|---|---|
 | `main` | NeoForge 1.21.11, 26.1.2, 26.2, 26.3 | active | Every fix and feature lands here first. |
-| `forge` | Minecraft Forge for the versions `main` covers (Forge 61 for 1.21.11, 64 to 66 for 26.1.2 to 26.3) | architectural evaluation | Takes `main` by merge, never by cherry-pick; adds only its own files. |
-| `forge-legacy` | Minecraft Forge for 1.20.1 (Forge 47.4, §3.1) and other legacy versions | architectural evaluation | Same rules as `forge`. |
+| `forge` | Minecraft Forge for the versions `main` covers (Forge 61 for 1.21.11, 64 to 66 for 26.1.2 to 26.3) | scaffolding (F2): `mc/forge-1.21.11` compiles | Takes `main` by merge, never by cherry-pick; adds only its own files. Working branch `claude/forge`. |
+| `forge-legacy` | Minecraft Forge for 1.20.1 (Forge 47.4, §3.1) and other legacy versions | scaffolding (L2): `mc/1.20.1` compiles | Same rules as `forge`. Working branch `claude/forge-legacy`. |
 
 NeoForge needs no legacy branch: its 1.20.1 build is a 2024 fork of Forge 47.1 (§3.1), so the legacy line is Forge's
 (the owner's decision, 2026-10-25). Work is done on `claude/dev` and reaches `main` by pull request.
@@ -22,7 +23,8 @@ How code flows. Shared modules (`core`, `api`, `fabric-loader-api`, the Gradle w
 changed on `main`; a branch picks a change up by merging `main`. A branch adds its own directories (its loader
 adapter, its `mc/<target>` projects, its CI target list) and never edits or deletes a file `main` owns, or every
 merge conflicts. GitHub's merges ignore `merge=ours` attributes, so ownership comes from where files live, not from
-merge settings. On 2026-10-25 `forge` and `forge-legacy` are `main` (`e8d4aa8`), with nothing of their own.
+merge settings. On 2026-10-25 both were brought up to `main` (`d42a605`) and got their first files of their own, the compile-only
+scaffolds (`forge-legacy`: #71, `forge`: #72).
 
 ## 2. What of the engine is portable
 
@@ -101,6 +103,20 @@ is the same code base two years older (no `clientSideOnly`, no `accessTransforme
 | Native Fabric API modules and bridges (`mc/*`) | the design, not the code | Re-vendored from Fabric API 0.92.12, bridged to Forge 47's events, capabilities (`LazyOptional`), `SimpleChannel` networking and serializer-based conditions. The renderer bridge targets the old renderer API. |
 | Data packs | the stripping and translation logic | Forge's keys (`forge:conditions`, `forge/biome_modifier`) and 1.20.1's formats. |
 
+**Fabric API 0.92.12 for 1.20.1 (D3, read 2026-10-25 from FabricMC/fabric tag `0.92.12+1.20.1`).** 43 modules. D3
+makes native the 14 of `main`'s 16 native modules (1.21.11's plan) that exist there: `fabric-api-base` 0.4.32,
+`fabric-api-lookup-api-v1` 1.6.37, `fabric-block-api-v1` 1.0.12, `fabric-content-registries-v0` 4.0.13,
+`fabric-crash-report-info-v1` 0.2.20, `fabric-entity-events-v1` 1.6.1, `fabric-events-interaction-v0` 0.6.6,
+`fabric-item-api-v1` 2.1.29, `fabric-lifecycle-events-v1` 2.2.23, `fabric-networking-api-v1` 1.3.15,
+`fabric-object-builder-api-v1` 11.1.5, `fabric-registry-sync-v0` 2.4.1, `fabric-screen-handler-api-v1` 1.3.34 and
+`fabric-transfer-api-v1` 3.3.6. `main`'s other two native modules don't exist yet in 0.92.12: `fabric-loot-api-v3` and
+`fabric-resource-loader-v1`, whose 1.20.1 predecessors `fabric-loot-api-v2` and `fabric-resource-loader-v0` pass
+through on `main`; whether Forge 47's patches leave their hooks in place is for L4, with pre-flight against Forge's
+game jar. Three modules have no `main` counterpart: `fabric-blockrenderlayer-v1`, `fabric-client-tags-api-v1` and
+`fabric-mining-level-api-v1` (pass-through until L4 says otherwise); `fabric-gametest-api-v1` stays unsupported. The
+plan file itself (`mc/1.20.1`'s `fabric-api-plan.json`) is written in L4, with the vendored modules: a native entry
+before Fabricated ships the module would hide the player's copy.
+
 ## 4. Minecraft Forge (modern)
 
 | Fact | Evidence |
@@ -121,7 +137,9 @@ Forge's own MDKs use for 1.21.11 to 26.3), which needs Gradle 9.3 or later and d
 supported (read in its source, `ForgeGradlePluginEntry`, and history). Its Mavenizer, which prepares the game, runs on
 Java 25 for every target and downloads from Forge's maven. A version project depends on
 `minecraft.dependency("net.minecraftforge:forge:<mc>-<forge>")`; mixin configs are declared in the jar manifest's
-`MixinConfigs`, as `mods.toml` has no `[[mixins]]`. A build on our Gradle 9.7.0 is UNVERIFIED until the branch's CI.
+`MixinConfigs`, as `mods.toml` has no `[[mixins]]`. It builds on our Gradle 9.7.0: the `forge` branch's first CI run
+(cmdralph/Fabricated#72) prepared Forge 1.21.11 with Mojang's mappings in 3 min 47 s and built the project in 4 min
+18 s. Forge's newest 1.21.11 build on its maven that day was 61.2.4.
 
 ## 5. Build and CI
 
@@ -143,10 +161,10 @@ with the `MixinConfigs` manifest attribute (neoforged/ModDevGradle `LEGACY.md`).
 Gradle 9 fix is in 2.0.94. On 2026-10-25 a scratch build on Gradle 9.7.0 with MDG 2.0.142, one project on
 `net.neoforged.moddev` and one on `legacyforge` (both ids declared in `settings.gradle`, as `main` now does), configured
 without deprecation warnings and planned a reobfuscated jar; executing it needs Forge's maven, which the sandbox
-can't reach, so **a full legacyforge build on Gradle 9.7 is UNVERIFIED** until `forge-legacy`'s CI (risk R1). Other
-projects build `legacyforge` on Gradle 9.4 and 9.8 (third-party; their CI results not read). Forge's 1.20.1 branch tip
-is build 47.4.28 by its version scheme (2026-10-13; that it is published is UNVERIFIED, 47.4.21 is in HeadlessMC's copy
-of the published list); an access transformer for 1.20.1 names members by SRG name. A `mc/1.20.1`
+can't reach. **`forge-legacy`'s first CI run (cmdralph/Fabricated#71) then built the 1.20.1 project with it on Gradle
+9.7.0** (`createMinecraftArtifacts`, both compiles, the jar) in 1 min 13 s: risk R1 is settled. Forge's newest 1.20.1
+build on its maven that day was 47.4.28 (the branch tip of 2026-10-13); an access transformer for 1.20.1 names members
+by SRG name. A `mc/1.20.1`
 project would apply it, reobfuscate `game-mod.jar` (loader classes name no game members), build against Java 17,
 and use its own source folders: `mc/common` is NeoForge's and 1.21's (45 of its 149 files import `net.neoforged`).
 
@@ -196,7 +214,7 @@ the abstractions below are added when the branch work starts (owner decision D2 
 |---|---|---|
 | L0 Evaluation (done) | This document; decisions D1 to D6. | Decisions recorded (§8). |
 | L1 Seams on `main` | §6, items 1 to 6, by pull request (items 1 to 3 done, and item 4's trigger; the rest of 4, and 5 and 6, when L3 needs them). | `main` green on all four versions after each; `core` builds at release 17. |
-| L2 Scaffolding | Merge `main` into `forge-legacy`; `mc/1.20.1` on `legacyforge` (R1 settled first); Fabric API 0.92.12 plan (which modules native); compile only. | `:mc:1.20.1:fabricatedJar` builds in CI. |
+| L2 Scaffolding | Merge `main` into `forge-legacy`; `mc/1.20.1` on `legacyforge` (R1 settled first); Fabric API 0.92.12 plan (which modules native); compile only. | `:mc:1.20.1:fabricatedJar` builds in CI (done for the project, #71; the Fabric API plan is next). |
 | L3 Discovery and translation | forgespi 7 adapter (locator, dependency locator, language provider, nested jars); Intermediary → SRG composer from MCPConfig; Forge descriptor writer; MixinExtras provision; class transforms through `ITransformationService`. | The test mods' server smoke passes on Forge 47.4 (entrypoints, registries, mixins, access wideners). |
 | L4 Native Fabric API | Lifecycle, registries, networking on `SimpleChannel`, resource loader, events, transfer on `LazyOptional` capabilities, the old renderer API; client smoke with HeadlessMC and mc-runtime-test. | Server and client smoke gates green; Fabric API 0.92.12 boots. |
 | L5 Corpus and stabilisation | 1.20.1 corpus from Modrinth; pre-flight repairs against Forge 47's patches, vanilla code through MCPConfig; Fabric's Mixin fork features measured (R2). | Release criteria met (to be set with the owner, as for `main`). |
@@ -207,7 +225,7 @@ the abstractions below are added when the branch work starts (owner decision D2 
 |---|---|---|
 | F0 Evaluation (done) | This document; decision D5. | Decided: ForgeGradle. |
 | F1 Seams on `main` | The same as L1, plus nothing Forge-only: EventBus 7 bridges live in the branch's `mc/*`. The branches' build plugins are pinned in `main`'s `settings.gradle` (done). | |
-| F2 Scaffolding | ForgeGradle build for 1.21.11 (Forge 61) and 26.x (64 to 66); compile only. | Jars build in CI. |
+| F2 Scaffolding | ForgeGradle build for 1.21.11 (Forge 61) and 26.x (64 to 66); compile only. | Jars build in CI (1.21.11 done, #72; 26.x next, with a Fabric API plan for its pass-through stand-ins). |
 | F3 Discovery and translation | forgespi 8 adapter (shared design with L3); descriptor writer; class transforms. | Server smoke on one version. |
 | F4 Bridges | Native Fabric API modules against EventBus 7, old capabilities, `ChannelBuilder` networking, `AddGuiOverlayLayersEvent`. | Server and client smoke gates on every version. |
 | F5 Corpus | As L5. | Release criteria. |
@@ -220,7 +238,7 @@ the same locator interfaces), so the second one is a port of the first.
 
 | ID | Risk | Mitigation |
 |---|---|---|
-| R1 | ModDevGradle `legacyforge` on Gradle 9.7 is untested upstream. | Configured on Gradle 9.7.0 in a scratch build (§5); a full build is `forge-legacy`'s first CI run (L2). If it fails, fix forward (a ModDevGradle update on `main`): a branch-local older wrapper won't do, as the branch also carries `main`'s 26.x projects, whose Java 25 toolchain needs Gradle 9.1 or later. |
+| R1 | ModDevGradle `legacyforge` on Gradle 9.7 is untested upstream. | Settled: `forge-legacy`'s first CI run built the 1.20.1 project with `legacyforge` on Gradle 9.7.0 (#71). Should a later Gradle break it, fix forward (a ModDevGradle update on `main`): a branch-local older wrapper won't do, as the branch also carries `main`'s 26.x projects, whose Java 25 toolchain needs Gradle 9.1 or later. |
 | R2 | Fabric mods for 1.20.1 were built against Fabric's Mixin fork (0.12.5 to 0.15.5); upstream 0.8.5 may lack what they use. | Measure on the corpus in L5; pre-flight reports the gap per mod rather than crashing. |
 | R3 | Discovery: the locator jar leaves normal mod loading, and a language provider must sit in the plugin layer; how a single download carries all three parts is UNVERIFIED. | Prototype in L3 before the bridges. |
 | R4 | SRG names: every name-bearing data file (access transformers, refmaps, rename tables) must target members by SRG name. | One mapping table drives all of them, as Intermediary → Mojang does today. |
@@ -235,7 +253,7 @@ Decisions (the owner's, 2026-10-21; D3 and D4 delegated, both provisional until 
   1.20.1 corpus.
 - **D4:** the 1.20.1 release criteria are `main`'s gates: server and client smoke, the client module gate, Fabric API
   booting, and corpus runs with no crash and every mod left out reported with its reason.
-- **D5:** modern Forge builds with ForgeGradle (7.0.40, pinned in `settings.gradle`: Gradle 9.3 or later; a build on
-  9.7.0 is the `forge` branch's first CI run).
+- **D5:** modern Forge builds with ForgeGradle (7.0.40, pinned in `settings.gradle`: Gradle 9.3 or later; builds on
+  9.7.0, #72).
 - **D6:** CI runs on secondary branches for pull requests only; a push builds only `main` (already so in
   `build.yml`).
