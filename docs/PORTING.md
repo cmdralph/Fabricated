@@ -301,8 +301,10 @@ the abstractions below are added when the branch work starts (owner decision D2 
    enum extension strategy. A second `MappingSupplier` for SRG. The descriptor part is in (F3 needs it):
    `PlatformDescriptor` in `core` gives the descriptor's path, its writer, the overlay manifest's extra attributes
    and whether the platform reads enum extension files; the loader passes it in `Pipeline.Input`, NeoForge's being
-   `PlatformDescriptor.NEOFORGE` (today's `ModsTomlWriter`), a branch's its own. `NestedNeoForgeJars` takes the
-   nested jars' descriptor path the same way. The rest follows as each branch needs it.
+   `PlatformDescriptor.NEOFORGE` (today's `ModsTomlWriter`), Forge's `PlatformDescriptor.FORGE` (for both Forge
+   branches: `META-INF/mods.toml` with `mandatory` dependencies, mixin configs in the manifest's `MixinConfigs`, no
+   enum extensions). `NestedNeoForgeJars` takes the nested jars' descriptor path the same way. The rest follows as
+   each branch needs it.
 6. **Tests that name NeoForge** (`NestedNeoForgeJarsTest`, `MultiLoaderJarsTest`, `PlatformRenamesTest`, …) run
    against the NeoForge profile, so a branch can run them against its own.
 

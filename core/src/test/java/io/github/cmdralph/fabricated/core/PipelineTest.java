@@ -328,31 +328,11 @@ class PipelineTest {
 		try (var s = Files.list(mods)) {
 			jars = s.sorted().toList();
 		}
-		PlatformDescriptor forgeLike = new PlatformDescriptor() {
-			@Override
-			public String path() {
-				return "META-INF/mods.toml";
-			}
-
-			@Override
-			public String write(ModsTomlWriter.Spec spec) {
-				return "modLoader=\"fabricated\"\n[[mods]]\nmodId=\"" + spec.neoForgeId() + "\"\n";
-			}
-
-			@Override
-			public Map<String, String> manifestAttributes(ModsTomlWriter.Spec spec) {
-				return Map.of("MixinConfigs", spec.mixins().stream().map(ModsTomlWriter.MixinConfigSpec::config).collect(Collectors.joining(",")));
-			}
-
-			@Override
-			public boolean enumExtensions() {
-				return false;
-			}
-		};
-		Pipeline.Result result = Pipeline.run(withDescriptor(input(game, jars, Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null), forgeLike));
+		Pipeline.Result result = Pipeline.run(withDescriptor(input(game, jars, Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null), PlatformDescriptor.FORGE));
 		Pipeline.LoadedMod good = result.mods().stream().filter(m -> m.translated().candidate().id().equals("good-mod")).findFirst().orElseThrow();
 		try (SafeArchive overlay = SafeArchive.open(good.translated().overlay(), ArchiveLimits.DEFAULTS)) {
-			assertEquals("modLoader=\"fabricated\"\n[[mods]]\nmodId=\"good_mod\"\n", overlay.readText("META-INF/mods.toml"));
+			String toml = overlay.readText(ModsTomlWriter.FORGE_PATH);
+			assertTrue(toml != null && toml.contains("modId=\"good_mod\"") && toml.contains("mandatory=false") && !toml.contains("[[mixins]]"), toml);
 			assertNull(overlay.readText(ModsTomlWriter.PATH), "no NeoForge descriptor");
 			String manifest = overlay.readText("META-INF/MANIFEST.MF");
 			assertTrue(manifest.contains("MixinConfigs: good.mixins.json"), manifest);
