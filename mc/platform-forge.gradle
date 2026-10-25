@@ -1,0 +1,41 @@
+// Minecraft Forge's part of the build for a Minecraft version project (mc/mc.gradle applies this for platform=forge):
+// ForgeGradle's settings, the in-game mod's mods.toml, and how a source set gets the game to compile against.
+
+def forgeArtifact = "net.minecraftforge:forge:${project.minecraft_version}-${project.forge_version}"
+
+minecraft {
+    // An obfuscated Minecraft version (Fabric mods in Intermediary's names) is named with Mojang's mappings, as Forge
+    // runs it; 26.x is unobfuscated.
+    if (project.namespace == 'INTERMEDIARY') mappings channel: 'official', version: project.minecraft_version
+}
+
+repositories {
+    minecraft.mavenizer(it)
+    maven fg.forgeMaven
+    maven fg.minecraftLibsMaven
+}
+
+// The game, declared once (ForgeGradle names each Minecraft dependency it prepares, "default" unless told otherwise);
+// ForgeGradle prepares it for every resolvable configuration whose hierarchy contains it.
+configurations {
+    forgeGame {
+        canBeConsumed = false
+        canBeResolved = false
+    }
+    implementation.extendsFrom(forgeGame)
+}
+dependencies {
+    forgeGame minecraft.dependency(forgeArtifact)
+}
+
+ext.gameDependencies = { SourceSet sourceSet -> configurations.named(sourceSet.compileOnlyConfigurationName) { extendsFrom(configurations.forgeGame) } }
+
+expandProps.forge_version_range = project.forge_version_range
+
+tasks.named('processResources', ProcessResources) {
+    filesMatching('META-INF/mods.toml') { expand(expandProps) }
+}
+
+// Named apart from the NeoForge jar of the same Minecraft version: once mc/mc.gradle has registered the task, as its
+// own configuration would otherwise set the name back.
+afterEvaluate { tasks.named('fabricatedJar', Jar) { archiveBaseName = 'fabricated-forge' } }
