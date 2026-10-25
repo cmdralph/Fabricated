@@ -42,6 +42,9 @@ updated README and `.claude/settings.json`. Then two items from the rendering tr
 - CAPTURE-2: when an anonymous class captures several values of one type under other names in NeoForge's build,
   pre-flight tells them apart by their place in vanilla's class, checked against the order each method reads them
   in, so Ledger's and malilib's hooks into `ChestBlock`'s menu provider can apply on 1.21.11.
+- LOCAL-2: an `@Local` taken by type where NeoForge's patch added a local of that type gets the ordinal of vanilla's
+  local, found as the one whose store aligns with vanilla's code (Ledger's item pickup logging, Puzzles Lib's fog
+  hook).
 - CORPUS-24, closed: Ledger's "NOT NULL constraint failed: players.player_name" on the 26.x advanced servers is
   Ledger's own, met through the test mod's Fabric fake player (read in its source and the logged stack).
 - F3 design for modern Forge recorded in `PORTING.md` §4.1, and the branches' first F3 step: a plugin-layer language

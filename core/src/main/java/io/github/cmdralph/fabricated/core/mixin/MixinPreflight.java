@@ -317,6 +317,11 @@ public final class MixinPreflight {
 									+ " expects " + moved, ""));
 						}
 						if (!Annotations.all(method).contains(ann)) continue;
+						for (String local : vanillaLocalRepairs(method, ann, targets.get(0), ctx)) {
+							changed = true;
+							out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@" + simpleName(ann.desc) + " " + method.name
+									+ " captures " + local, ""));
+						}
 						for (String moved : overloadRepairs(node, method, ann, targets.get(0), ctx, bridges)) {
 							changed = true;
 							out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@" + simpleName(ann.desc) + " " + method.name
@@ -961,6 +966,107 @@ public final class MixinPreflight {
 					+ " here); the injection point is pointed there" + (pointOnly ? "" : ", through a bridge handler"));
 		}
 		return moved;
+	}
+
+	/**
+	 * Names by its ordinal each {@code @Local} capturing a local by its type alone where this game build has several of
+	 * that type in scope at the injection point, NeoForge's patch having added one (LOCAL-2: Ledger's item pickup hooks
+	 * in {@code ItemEntity.playerTouch}, where NeoForge's patch copies the stack for its pickup event). Vanilla's version
+	 * of the method (VANILLA-1) aligned with this build's ({@link PatchAlignment}) tells which local is vanilla's: the
+	 * one whose store is one of vanilla's instructions, or a parameter, when exactly one of those in scope is, as vanilla
+	 * had one of the type there for the capture to work at all. Its ordinal among the locals of the type in scope
+	 * (parameters first, by slot, as {@link #ordinalAt} counts) must be the same at every instruction the point picks.
+	 * Only for an injector with one {@code @At} naming a call, field access or construction, outside a slice, into one
+	 * method vanilla declares, as {@link #ambiguousLocal} judges them. Returns a description of each.
+	 */
+	private List<String> vanillaLocalRepairs(MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx) {
+		if (Annotations.value(injector, "slice") != null) return List.of();
+		List<AnnotationNode> ats = Annotations.list(Annotations.value(injector, "at"));
+		if (ats.size() != 1) return List.of();
+		AnnotationNode at = ats.get(0);
+		String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
+		if (!List.of("INVOKE", "FIELD", "NEW").contains(point) || !(Annotations.value(at, "target") instanceof String raw)) return List.of();
+		MemberRef ref = MemberRef.parse(ctx.resolve(raw));
+		if (ref.fuzzy()) return List.of();
+		ClassNode original = vanillaClass(target.name);
+		List<MethodNode> methods = original == null ? List.of() : selectedMethods(injector, target, ctx);
+		if (methods.size() != 1) return List.of();
+		MethodNode patched = methods.get(0);
+		MethodNode before = declared(original, patched.name, patched.desc);
+		if (before == null || patched.localVariables == null || patched.localVariables.isEmpty()) return List.of();
+		List<Integer> positions = matching(patched, point, ref, Annotations.value(at, "opcode") instanceof Integer o ? o : -1);
+		int pointOrdinal = Annotations.value(at, "ordinal") instanceof Integer n ? n : -1;
+		if (pointOrdinal >= 0) positions = pointOrdinal < positions.size() ? List.of(positions.get(pointOrdinal)) : List.of();
+		if (positions.isEmpty()) return List.of();
+		Set<Integer> vanillaPlaces = null;
+		List<String> named = new ArrayList<>();
+		Type[] params = Type.getArgumentTypes(handler.desc);
+		for (int p = 0; p < params.length; p++) {
+			for (AnnotationNode local : Annotations.ofParameter(handler, p)) {
+				if (!local.desc.equals(LOCAL) || Annotations.value(local, "name") != null || Annotations.value(local, "index") != null
+						|| Annotations.value(local, "ordinal") != null || Boolean.TRUE.equals(Annotations.value(local, "argsOnly"))
+						|| params[p].getDescriptor().startsWith("Lcom/llamalad7/mixinextras/sugar/ref/")) continue;
+				if (vanillaPlaces == null) {
+					PatchAlignment alignment = PatchAlignment.of(before, patched);
+					if (alignment == null) return named;
+					vanillaPlaces = new HashSet<>();
+					for (int i = 0; i < before.instructions.size(); i++) {
+						if (alignment.placeOf(i) >= 0) vanillaPlaces.add(alignment.placeOf(i));
+					}
+				}
+				int ordinal = vanillasLocalOrdinal(patched, params[p].getDescriptor(), positions, vanillaPlaces);
+				if (ordinal < 0) continue;
+				Annotations.put(local, "ordinal", ordinal);
+				named.add("the local of type " + params[p].getClassName() + " by its type, of which " + patched.name + " in "
+						+ target.name.replace('/', '.') + " has more than one there, NeoForge's patch having added one; vanilla's is the one with ordinal "
+						+ ordinal + " here, and the @Local names it");
+			}
+		}
+		return named;
+	}
+
+	/**
+	 * The ordinal, among the locals of type {@code desc} in scope (parameters first, by slot), of the one of them that is
+	 * vanilla's ({@link #isVanillasLocal}), the same at each of {@code positions}; -1 when there aren't several in scope
+	 * at one of them, or not exactly one of those is vanilla's.
+	 */
+	private static int vanillasLocalOrdinal(MethodNode method, String desc, List<Integer> positions, Set<Integer> vanillaPlaces) {
+		int found = -1;
+		for (int i : positions) {
+			TreeSet<Integer> inScope = new TreeSet<>();
+			int vanillas = 0;
+			int chosen = -1;
+			for (LocalVariableNode lv : method.localVariables) {
+				if (!lv.desc.equals(desc) || method.instructions.indexOf(lv.start) > i || i >= method.instructions.indexOf(lv.end)) continue;
+				inScope.add(lv.index);
+				if (isVanillasLocal(method, lv, vanillaPlaces)) {
+					vanillas++;
+					chosen = lv.index;
+				}
+			}
+			if (inScope.size() < 2 || vanillas != 1) return -1;
+			int ordinal = inScope.headSet(chosen).size();
+			if (found >= 0 && found != ordinal) return -1;
+			found = ordinal;
+		}
+		return found;
+	}
+
+	/**
+	 * Whether a local is vanilla's: a parameter, or one whose scope starts right after a store into its slot that is one
+	 * of vanilla's instructions ({@code vanillaPlaces}, their places in this build's method), not one NeoForge's patch put
+	 * there.
+	 */
+	private static boolean isVanillasLocal(MethodNode method, LocalVariableNode local, Set<Integer> vanillaPlaces) {
+		AbstractInsnNode store = local.start.getPrevious();
+		while (store != null && store.getOpcode() < 0) store = store.getPrevious();
+		if (store == null) {
+			int parameterSlots = (method.access & Opcodes.ACC_STATIC) != 0 ? 0 : 1;
+			for (Type type : Type.getArgumentTypes(method.desc)) parameterSlots += type.getSize();
+			return local.index < parameterSlots;
+		}
+		return store instanceof VarInsnNode var && var.getOpcode() >= Opcodes.ISTORE && var.getOpcode() <= Opcodes.ASTORE && var.var == local.index
+				&& vanillaPlaces.contains(method.instructions.indexOf(store));
 	}
 
 	/**

@@ -2120,6 +2120,88 @@ class MixinPreflightTest {
 	}
 
 	@Test
+	void aLocalTakenByTypeWhereNeoForgesPatchAddedOneOfThatTypeIsNamedByVanillasStore() throws Exception {
+		// LOCAL-2: Ledger's item pickup hooks take the stack (@Local ItemStack) at Inventory.add in ItemEntity.playerTouch,
+		// where NeoForge's patch also keeps a copy of it for its pickup event: two locals of the type in scope there. Here
+		// the patch's local comes first, so vanilla's is the second.
+		String stack = "Ljava/lang/String;";
+		java.util.function.Function<Boolean, byte[]> target = patched -> {
+			ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+			cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+			MethodVisitor touch = cw.visitMethod(Opcodes.ACC_PUBLIC, "touch", "()V", null, null);
+			org.objectweb.asm.Label start = new org.objectweb.asm.Label();
+			org.objectweb.asm.Label copyStart = new org.objectweb.asm.Label();
+			org.objectweb.asm.Label itemStart = new org.objectweb.asm.Label();
+			org.objectweb.asm.Label end = new org.objectweb.asm.Label();
+			int item = patched ? 2 : 1;
+			touch.visitCode();
+			touch.visitLabel(start);
+			if (patched) {
+				touch.visitVarInsn(Opcodes.ALOAD, 0);
+				touch.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "pickupCopy", "()" + stack, false);
+				touch.visitVarInsn(Opcodes.ASTORE, 1);
+				touch.visitLabel(copyStart);
+			}
+			touch.visitVarInsn(Opcodes.ALOAD, 0);
+			touch.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "item", "()" + stack, false);
+			touch.visitVarInsn(Opcodes.ASTORE, item);
+			touch.visitLabel(itemStart);
+			touch.visitVarInsn(Opcodes.ALOAD, item);
+			touch.visitMethodInsn(Opcodes.INVOKESTATIC, TARGET, "add", "(" + stack + ")Z", false);
+			touch.visitInsn(Opcodes.POP);
+			touch.visitInsn(Opcodes.RETURN);
+			touch.visitLabel(end);
+			touch.visitLocalVariable("this", "L" + TARGET + ";", null, start, end, 0);
+			if (patched) touch.visitLocalVariable("copy", stack, null, copyStart, end, 1);
+			touch.visitLocalVariable("item", stack, null, itemStart, end, item);
+			touch.visitMaxs(0, 0);
+			touch.visitEnd();
+			cw.visitEnd();
+			return cw.toByteArray();
+		};
+		byte[] mixin = mixin("com/example/mixin/Pickup", false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "store", "(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;" + stack + ")V", null, null);
+			mv.visitParameterAnnotation(1, "Lcom/llamalad7/mixinextras/sugar/Local;", false).visitEnd();
+			AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "touch");
+			methods.visitEnd();
+			AnnotationVisitor ats = ann.visitArray("at");
+			AnnotationVisitor at = ats.visitAnnotation(null, AT);
+			at.visit("value", "INVOKE");
+			at.visit("target", "L" + TARGET + ";add(" + stack + ")Z");
+			at.visit("shift", "AFTER");
+			at.visitEnd();
+			ats.visitEnd();
+			ann.visitEnd();
+			mv.visitCode();
+			mv.visitInsn(Opcodes.RETURN);
+			mv.visitMaxs(0, 3);
+			mv.visitEnd();
+		});
+		ClassIndex neoForge = new ClassIndex(Map.of(TARGET, target.apply(true))::get);
+		Map<String, byte[]> vanilla = Map.of(TARGET, target.apply(false));
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Pickup", mixin));
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Pickup"));
+		List<PreflightFinding> found = preflight(neoForge, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(found.stream().anyMatch(f -> f.message().contains("has more than one of there")), found.toString());
+		// Without vanilla's code, which of them is meant can't be told.
+		assertTrue(preflight(neoForge, mod::get, ClassBytesSource.EMPTY, false).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty());
+
+		List<PreflightFinding> notes = new ArrayList<>();
+		byte[] repaired = new MixinPreflight(neoForge, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, vanilla::get)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes).get("com/example/mixin/Pickup.class");
+		assertNotNull(repaired, notes.toString());
+		assertTrue(notes.getFirst().message().contains("NeoForge's patch having added one; vanilla's is the one with ordinal 1 here"), notes.toString());
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired).accept(node, 0);
+		MethodNode handler = node.methods.stream().filter(m -> m.name.equals("store")).findFirst().orElseThrow();
+		assertEquals(1, Annotations.value(Annotations.ofParameter(handler, 1).getFirst(), "ordinal"), "vanilla's stack, not the patch's copy");
+		mod.put("com/example/mixin/Pickup", repaired);
+		assertTrue(preflight(neoForge, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty());
+	}
+
+	@Test
 	void anInjectionAtACallMadeThroughNeoForgesExtensionsIsPointedAtTheCallLeadingThere() throws Exception {
 		// HOOK-3: Ledger logs blocks an explosion removes at BlockBehaviour.onExplosionHit's setBlock, which NeoForge's build
 		// makes through BlockState.onBlockExploded, a default method of its extension interfaces.
