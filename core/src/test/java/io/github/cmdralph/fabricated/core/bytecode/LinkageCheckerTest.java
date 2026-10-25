@@ -85,6 +85,16 @@ class LinkageCheckerTest {
 	}
 
 	@Test
+	void skipsClassesLeftInIntermediaryNamesOnServer() {
+		// A 1.21.11 server's mappings name only the classes the server has: a client class (here Minecraft's client
+		// class) keeps its Intermediary name, so code using it is client code.
+		assertTrue(check(caller("m/A", "net/minecraft/class_310", "method_1551", "()V", false), false).isEmpty());
+		assertTrue(check(caller("m/A", "net/minecraft/class_310$class_311", "x", "()V", false), false).isEmpty());
+		assertEquals(1, check(caller("m/A", "net/minecraft/class_310", "method_1551", "()V", false), true).size(),
+				"on a client every class is named, so an unnamed one is missing");
+	}
+
+	@Test
 	void resolvesMethodsOfInjectedInterfaces() {
 		// A mod injects m/Ext (with default method ext()V) into net/minecraft/Util and calls it on Util.
 		ClassWriter iface = new ClassWriter(0);

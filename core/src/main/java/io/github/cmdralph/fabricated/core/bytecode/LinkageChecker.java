@@ -25,7 +25,9 @@ import org.objectweb.asm.tree.TypeInsnNode;
  *
  * <p>Only references whose owner matches {@link #isChecked} are verified, against an index that is
  * complete for those namespaces. On a dedicated server, classes that reference client-only code or are
- * annotated {@code @Environment(EnvType.CLIENT)} are skipped because they never load there.
+ * annotated {@code @Environment(EnvType.CLIENT)} are skipped because they never load there. Client-only code is the
+ * client's packages and, on a 1.21.11 server, classes left in Intermediary's names: the server's mappings name only
+ * the classes the server has.
  */
 public final class LinkageChecker {
 	private static final int MAX_ISSUES = 25;
@@ -136,7 +138,7 @@ public final class LinkageChecker {
 			}
 		}
 		for (MethodNode m : node.methods) {
-			if (m.desc.contains("Lnet/minecraft/client/") || m.desc.contains("Lcom/mojang/blaze3d/")) return true;
+			if (m.desc.contains("Lnet/minecraft/client/") || m.desc.contains("Lcom/mojang/blaze3d/") || m.desc.contains("Lnet/minecraft/class_")) return true;
 			if (m.instructions == null) continue;
 			for (AbstractInsnNode insn : m.instructions) {
 				if (insn instanceof MethodInsnNode mi && isClientName(mi.owner)) return true;
@@ -148,6 +150,7 @@ public final class LinkageChecker {
 	}
 
 	private static boolean isClientName(String name) {
-		return name != null && (name.startsWith("net/minecraft/client/") || name.startsWith("com/mojang/blaze3d/"));
+		return name != null && (name.startsWith("net/minecraft/client/") || name.startsWith("com/mojang/blaze3d/")
+				|| name.startsWith("net/minecraft/class_"));
 	}
 }
