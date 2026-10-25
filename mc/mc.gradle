@@ -1,8 +1,11 @@
-// Shared build logic for every Minecraft version project (mc/<version>/build.gradle applies this).
+// Shared build logic for every Minecraft version project (mc/<version>/build.gradle applies this). What is specific
+// to the mod loader the target runs on is in mc/platform-<platform>.gradle (the version's `platform` property,
+// NeoForge's by default), which this applies once the source sets exist, and the loader classes in
+// loader/<loader_dir> (next to the shared ones in loader/common): a branch for another loader adds its own.
 //
 // Each version project produces build/libs/fabricated-<version>+mc<minecraft>.jar in the root project:
-//   - the "loader" source set (NeoForge discovery services) plus :core and :fabric-loader-api, which run
-//     in NeoForge's early-services class loader, and
+//   - the "loader" source set (the loader's discovery services) plus :core and :fabric-loader-api, which run
+//     in the loader's early-services class loader, and
 //   - META-INF/fabricated/game-mod.jar, Fabricated's in-game NeoForge mod (main source set: common code,
 //     version-specific code and the native Fabric API modules).
 // It also builds the Fabric test mods used by the CI smoke test (build/testmods).
@@ -29,17 +32,18 @@ repositories {
     mavenCentral()
 }
 
-// Source shared between versions, in mc/<name>: every version, 26.x (unobfuscated, with one Fabric API surface),
-// 26.1.2 and 26.2 (26.3 changed the APIs that code uses), and 26.2 and 26.3.
-def sharedSources = ['common']
-if (mcVersion.startsWith('26.')) sharedSources << 'common26'
-if (mcVersion in ['26.1.2', '26.2']) sharedSources << 'common26early'
-if (mcVersion in ['26.2', '26.3']) sharedSources << 'common26late'
+// Source shared between versions, in mc/<name>, as the version's `shared_sources` property lists them: every version
+// (common), 26.x (common26: unobfuscated, with one Fabric API surface), 26.1.2 and 26.2 (common26early: 26.3 changed the
+// APIs that code uses), and 26.2 and 26.3 (common26late).
+ext.sharedSources = (project.shared_sources as String).split(',')*.trim().findAll { it }
+def platform = project.findProperty('platform') ?: 'neoforge'
+def loaderDir = project.findProperty('loader_dir') ?: platform
 
 sourceSets {
     loader {
-        java.srcDir rootProject.file('loader/src/main/java')
-        resources.srcDir rootProject.file('loader/src/main/resources')
+        java.srcDir rootProject.file('loader/common/src/main/java')
+        java.srcDir rootProject.file("loader/${loaderDir}/src/main/java")
+        resources.srcDir rootProject.file("loader/${loaderDir}/src/main/resources")
         resources.srcDir 'src/fabricated/resources'
     }
     main {
@@ -98,41 +102,21 @@ dependencies {
     testmodbrokenCompileOnly project(':fabric-loader-api')
 }
 
-neoForge {
-    version = project.neoforge_version
-    // The in-game mod's access transformer (shipped in game-mod.jar and applied by NeoForge at runtime).
-    accessTransformers {
-        from(rootProject.file('mc/common/src/main/resources/META-INF/accesstransformer.cfg'))
-        from(file('src/main/resources/META-INF/accesstransformer-version.cfg'))
-    }
-    // Compile-time view of the interfaces Fabricated's mixins add at runtime (Fabric API's injected
-    // interfaces), so the vendored Fabric API sources compile as they do with Loom: the shared files plus the version's own.
-    interfaceInjectionData {
-        sharedSources.collect { rootProject.file("mc/$it/interfaces.json") }.findAll { it.exists() }.each { from(it) }
-        if (file('interfaces.json').exists()) from(file('interfaces.json'))
-    }
-}
-neoForge.addModdingDependenciesTo(sourceSets.loader)
-neoForge.addModdingDependenciesTo(sourceSets.testmod)
-neoForge.addModdingDependenciesTo(sourceSets.testmodbroken)
-neoForge.addModdingDependenciesTo(sourceSets.testmodstubs)
-
-// Mixin configs only this version ships (from its own src/main/resources), declared in the in-game mod's mods.toml.
-def versionMixins = (project.findProperty('version_mixin_configs') ?: '').split(',')*.trim().findAll { it }
-        .collect { "[[mixins]]\nconfig=\"${it}\"\n" }.join('\n')
-
-def expandProps = [
+// Placeholders the resources expand (the platform adds those of its own descriptor).
+ext.expandProps = [
         version                : releaseName,
-        version_mixins         : versionMixins,
         minecraft_version      : mcVersion,
-        neoforge_version_range : project.neoforge_version_range,
         minecraft_version_range: project.minecraft_version_range,
         aw_header              : project.aw_header,
 ]
 
+// The platform: its build plugin's settings, its mod descriptor, and gameDependencies(sourceSet), which gives a source
+// set the game and the loader to compile against.
+apply from: rootProject.file("mc/platform-${platform}.gradle")
+[sourceSets.loader, sourceSets.testmod, sourceSets.testmodbroken, sourceSets.testmodstubs].each { gameDependencies(it) }
+
 tasks.named('processResources', ProcessResources) {
     inputs.properties(expandProps)
-    filesMatching('META-INF/neoforge.mods.toml') { expand(expandProps) }
     // A mixin config owns its whole package, subpackages included: Mixin refuses to load any other class there, so
     // one config's package inside another's makes the inner config's classes unloadable at runtime.
     doLast {
@@ -290,7 +274,8 @@ tasks.register('testmods') {
 }
 
 // --- A Fabric mod using Fabric's renderer API, for the client smoke test with Fabric API (ci/smoke-client.sh) ----------
-def frapiTestmodDir = mcVersion.startsWith('26.') ? rootProject.file('mc/common26/src/testmodfrapi') : file('src/testmodfrapi')
+// The first shared source folder that has one (26.x's), or the version's own.
+def frapiTestmodDir = sharedSources.collect { rootProject.file("mc/$it/src/testmodfrapi") }.find { it.isDirectory() } ?: file('src/testmodfrapi')
 sourceSets {
     testmodfrapi {
         // Set, not added to Gradle's default (src/testmodfrapi), which on 1.21.11 is the same folder.
@@ -298,7 +283,7 @@ sourceSets {
         resources.srcDirs = [new File(frapiTestmodDir, 'resources')]
     }
 }
-neoForge.addModdingDependenciesTo(sourceSets.testmodfrapi)
+gameDependencies(sourceSets.testmodfrapi)
 dependencies {
     testmodfrapiCompileOnly project(':fabric-loader-api')
     testmodfrapiCompileOnly sourceSets.main.output
@@ -317,8 +302,9 @@ tasks.named('testmods') { dependsOn frapiTestmodJar }
 // --- Pass-through Fabric API modules, at compile time only -------------------------------------------------
 // The player's Fabric API jar provides these modules at runtime; Fabricated never ships them. Code that uses one
 // only runs when that module is loaded, and is compiled against the module's own jar from the Fabric API release
-// in this version's plan, so its calls are typed and checked. 26.x only: those jars use Mojang's names, as NeoForge does.
-if (mcVersion.startsWith('26.')) {
+// in this version's plan, so its calls are typed and checked. Only where those jars use the game's names (Mojang's, as on
+// 26.x: the OFFICIAL namespace).
+if (project.namespace == 'OFFICIAL') {
     def fabricApiRelease = new groovy.json.JsonSlurper().parse(file('src/fabricated/resources/META-INF/fabricated/fabric-api-plan.json')).fabricApiVersion
     def passThroughModules = { List<String> modules ->
         configurations.detachedConfiguration(dependencies.create("net.fabricmc.fabric-api:fabric-api:${fabricApiRelease}"))
@@ -351,7 +337,7 @@ if (mcVersion.startsWith('26.')) {
         source files('src/fabricapi/java/net/fabricmc/fabric/api/util/TriState.java',
                 'src/fabricapi/java/net/fabricmc/fabric/api/util/BooleanFunction.java')
     }
-    neoForge.addModdingDependenciesTo(sourceSets.fabricapistubs)
+    gameDependencies(sourceSets.fabricapistubs)
     dependencies {
         compileOnly sourceSets.fabricapistubs.output
         testmodCompileOnly sourceSets.fabricapistubs.output
