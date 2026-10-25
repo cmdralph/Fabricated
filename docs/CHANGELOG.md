@@ -3,7 +3,7 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
-## 2026-10-25: branch reorganisation, a glowing moving block's outline, 1.21.11 server linkage noise
+## 2026-10-25: branch reorganisation, a glowing moving block's outline, 1.21.11 server linkage noise, platform seams
 
 **Plan.** The owner renamed the working branch to `claude/dev` and replaced `1.20.1-legacy` with `forge-legacy` (Forge
 for 1.20.1 and other legacy versions); `forge` and `forge-legacy` were fast-forwarded to `main`, and `main` gained an
@@ -16,7 +16,20 @@ updated README and `.claude/settings.json`. Then two items from the rendering tr
   mod's falling blocks glow, and the FRAPI gate checks that the outline pass reached Fabric's renderer.
 - LINK-1: on a 1.21.11 dedicated server, classes left in Intermediary's names are client code (the server's mappings
   name only the server's classes), so mods using client classes no longer fill the report with "missing class
-  net.minecraft.class_NNN" warnings (about 650 on PR #66's run).
+  net.minecraft.class_NNN" warnings (about 650 on PR #66's run; 5 on run 40227052304).
+- L1 seams for the Forge branches (`PORTING.md` §6, items 2 and 3, and item 4's trigger): the loader's NeoForge
+  services in `loader/neoforge` and its six loader-free helpers in `loader/common`; NeoForge's part of the build in
+  `mc/platform-neoforge.gradle`; the shared source folders from each version's `shared_sources`, the pass-through
+  Fabric API jars where `namespace=OFFICIAL`; `build.yml` builds pull requests to `main` only. Checked by printing
+  every version project's source sets, declared dependencies and placeholders before and after (only the loader's
+  folders differ), then CI on all four versions (PR #69).
+- The branches' build plugins are pinned in `settings.gradle` (ModDevGradle's `legacyforge` at `main`'s version,
+  ForgeGradle 7.0.40); `main` applies neither. Research for the branches is in `PORTING.md` §4 and §5: ForgeGradle 7
+  needs Gradle 9.3 or later and `legacyforge` configures on Gradle 9.7.0 in a scratch build; a full build of either is
+  the branches' first CI run.
+- The 26.x note on NeoForge's translucent outline pass is corrected: NeoForge decides it from the model's
+  context-free material flags (not its parts), which Fabric's contract makes correct everywhere; a candidate for
+  accuracy, not a fault.
 
 ## 2026-10-21 (pass after PR #67): the platform decisions, and Java 17 for the shared modules
 

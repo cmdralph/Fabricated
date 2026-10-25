@@ -8,6 +8,11 @@ pluginManagement {
     }
     plugins {
         id 'net.neoforged.moddev' version providers.gradleProperty('moddevgradle_version').get()
+        // The branches' build plugins, pinned here with main's so a branch never edits this file (docs/PORTING.md §1);
+        // main applies neither. forge-legacy's 1.20.1 project: ModDevGradle's plugin for Forge up to 1.20.1 (same jar).
+        id 'net.neoforged.moddev.legacyforge' version providers.gradleProperty('moddevgradle_version').get()
+        // The forge branch's projects (Minecraft Forge 61 and later).
+        id 'net.minecraftforge.gradle' version providers.gradleProperty('forgegradle_version').get()
     }
 }
 

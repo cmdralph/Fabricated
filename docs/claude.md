@@ -23,7 +23,8 @@ verified), [`PORTING.md`](PORTING.md) (the 1.20.1 and Forge evaluation and the b
   `List`'s `getFirst`/`getLast`/`removeFirst`/`addFirst` (Java 21's sequenced collections: use `get(0)`,
   `get(size() - 1)`, `remove(0)`, `add(0, e)`; a `Deque`'s and ASM's `InsnList`'s own methods are fine), `switch` with
   type patterns (use an `instanceof` chain), record patterns, and an `instanceof` pattern of the expression's own
-  type (use a null check). Tests and `loader` stay at Java 21.
+  type (use a null check). Tests and `loader/neoforge` stay at Java 21; `loader/common` keeps to Java 17 too, as
+  `forge-legacy` compiles it there (checked on 2026-10-25 with `javac --release 17` against the shared modules' jars).
 - **Verify, never assume.** A Minecraft, NeoForge, FML or Fabric API class, method or field is used only after
   reading it: in this repository, in the NeoForge sources for that line (`neoforged/NeoForge` branches `1.21.11`,
   `26.1.x`, `26.2.x`, `26.3.x`; the Minecraft code NeoForge changes is in `patches/`), or in the Fabric API sources
