@@ -119,11 +119,19 @@ afterEvaluate {
             def manifest = new java.util.jar.Manifest(new ByteArrayInputStream(provider['META-INF/MANIFEST.MF'] ?: new byte[0])).mainAttributes
             if (manifest.getValue('FMLModType') != 'LANGPROVIDER') throw new GradleException('lang-provider.jar is not FMLModType: LANGPROVIDER')
             if (!manifest.getValue('Implementation-Version')) throw new GradleException('lang-provider.jar has no Implementation-Version')
-            def service = provider['META-INF/services/net.minecraftforge.forgespi.language.IModLanguageProvider']
-            def implementation = service == null ? null : new String(service, 'UTF-8').readLines()*.trim().find { it && !it.startsWith('#') }
-            if (implementation == null || !provider.containsKey(implementation.replace('.', '/') + '.class')) {
-                throw new GradleException("lang-provider.jar's IModLanguageProvider service names no class it has: $implementation")
+            // A service file's first provider, which must be a class of the same jar.
+            def provided = { Map entries, String jarName, String service ->
+                def file = entries["META-INF/services/$service"]
+                def name = file == null ? null : new String(file, 'UTF-8').readLines()*.trim().find { it && !it.startsWith('#') }
+                if (name == null || !entries.containsKey(name.replace('.', '/') + '.class')) {
+                    throw new GradleException("$jarName's $service service names no class it has: $name")
+                }
+                name
             }
+            def implementation = provided(provider, 'lang-provider.jar', 'net.minecraftforge.forgespi.language.IModLanguageProvider')
+            // Forge finds the Fabricated jar in the mods folder by these (ModDirTransformerDiscoverer).
+            def locators = ['net.minecraftforge.forgespi.locating.IModLocator', 'net.minecraftforge.forgespi.locating.IDependencyLocator']
+                    .collect { provided(outer, 'The Fabricated jar', it) }
 
             def names = parts.keySet() as List
             for (int i = 0; i < names.size(); i++) {
@@ -132,7 +140,7 @@ afterEvaluate {
                     if (shared) throw new GradleException("${names[i]} and ${names[j]} share packages: ${shared.sort()}")
                 }
             }
-            logger.lifecycle("Forge layout: ${names.collect { "$it (${packages(parts[it]).size()} packages)" }.join(', ')}; language provider $implementation")
+            logger.lifecycle("Forge layout: ${names.collect { "$it (${packages(parts[it]).size()} packages)" }.join(', ')}; language provider $implementation; locators $locators")
         }
     }
     tasks.named('check') { dependsOn checkJar }
