@@ -45,6 +45,10 @@ updated README and `.claude/settings.json`. Then two items from the rendering tr
 - LOCAL-2: an `@Local` taken by type where NeoForge's patch added a local of that type gets the ordinal of vanilla's
   local, found as the one whose store aligns with vanilla's code (Ledger's item pickup logging, Puzzles Lib's fog
   hook).
+- The platform profile's descriptor part (`PORTING.md` §6 item 5): `PlatformDescriptor` decides where a translated
+  mod's descriptor goes, how it reads, what the overlay's manifest adds and whether enum extension files are used;
+  NeoForge's is today's `neoforge.mods.toml`, so nothing changes on `main`, and the `forge` branch can pass Forge's.
+  `PipelineTest` translates with a Forge-like descriptor.
 - CORPUS-24, closed: Ledger's "NOT NULL constraint failed: players.player_name" on the 26.x advanced servers is
   Ledger's own, met through the test mod's Fabric fake player (read in its source and the logged stack).
 - F3 design for modern Forge recorded in `PORTING.md` §4.1, and the branches' first F3 step: a plugin-layer language

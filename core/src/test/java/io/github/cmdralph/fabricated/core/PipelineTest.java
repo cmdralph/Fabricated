@@ -52,7 +52,9 @@ import io.github.cmdralph.fabricated.core.testutil.TestEnums;
 import io.github.cmdralph.fabricated.core.testutil.TestJars;
 import io.github.cmdralph.fabricated.core.testutil.TestSources;
 import io.github.cmdralph.fabricated.core.translate.DefaultBridge;
+import io.github.cmdralph.fabricated.core.translate.ModsTomlWriter;
 import io.github.cmdralph.fabricated.core.translate.PackageGuard;
+import io.github.cmdralph.fabricated.core.translate.PlatformDescriptor;
 import io.github.cmdralph.fabricated.core.translate.TranslatedMod;
 import io.github.cmdralph.fabricated.core.translate.TranslationEnvironment.Namespace;
 import net.fabricmc.loader.api.ModContainer;
@@ -313,7 +315,61 @@ class PipelineTest {
 		return new Pipeline.Input(game, game.resolve("config"), config, cache, jars, ns == Namespace.OFFICIAL ? "26.2" : "1.21.11",
 				"26.2.0.90", false, ns, mixin, "0.5.3", lowestBehavior, "0.1.0-test", "test-build", false, gameClasses::get, List.of(game.resolve("minecraft.jar")),
 				Pipeline.VanillaGame.NONE, List.of(game.resolve("fabricated.jar")), libraries, Set.of("net/neoforged/neoforge"),
-				FabricApiPlan.parse(PLAN), name -> null, Map::of, neoForgeMods, installed, mappings, new String[0]);
+				FabricApiPlan.parse(PLAN), name -> null, Map::of, neoForgeMods, installed, mappings, new String[0], PlatformDescriptor.NEOFORGE);
+	}
+
+	@Test
+	void anotherPlatformsDescriptorDecidesHowItsLoaderLearnsOfTheMod(@TempDir Path game) throws Exception {
+		// docs/PORTING.md §6 item 5: Forge reads META-INF/mods.toml, takes mixin configs from the manifest's MixinConfigs,
+		// and has no enum extension files; a branch hands the pipeline its descriptor.
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		writeMods(mods);
+		List<Path> jars;
+		try (var s = Files.list(mods)) {
+			jars = s.sorted().toList();
+		}
+		PlatformDescriptor forgeLike = new PlatformDescriptor() {
+			@Override
+			public String path() {
+				return "META-INF/mods.toml";
+			}
+
+			@Override
+			public String write(ModsTomlWriter.Spec spec) {
+				return "modLoader=\"fabricated\"\n[[mods]]\nmodId=\"" + spec.neoForgeId() + "\"\n";
+			}
+
+			@Override
+			public Map<String, String> manifestAttributes(ModsTomlWriter.Spec spec) {
+				return Map.of("MixinConfigs", spec.mixins().stream().map(ModsTomlWriter.MixinConfigSpec::config).collect(Collectors.joining(",")));
+			}
+
+			@Override
+			public boolean enumExtensions() {
+				return false;
+			}
+		};
+		Pipeline.Result result = Pipeline.run(withDescriptor(input(game, jars, Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null), forgeLike));
+		Pipeline.LoadedMod good = result.mods().stream().filter(m -> m.translated().candidate().id().equals("good-mod")).findFirst().orElseThrow();
+		try (SafeArchive overlay = SafeArchive.open(good.translated().overlay(), ArchiveLimits.DEFAULTS)) {
+			assertEquals("modLoader=\"fabricated\"\n[[mods]]\nmodId=\"good_mod\"\n", overlay.readText("META-INF/mods.toml"));
+			assertNull(overlay.readText(ModsTomlWriter.PATH), "no NeoForge descriptor");
+			String manifest = overlay.readText("META-INF/MANIFEST.MF");
+			assertTrue(manifest.contains("MixinConfigs: good.mixins.json"), manifest);
+			assertTrue(manifest.contains("Fabricated-Translated-Mod: good_mod"), manifest);
+		}
+	}
+
+	/** {@code in} with another platform's descriptor. */
+	private static Pipeline.Input withDescriptor(Pipeline.Input in, PlatformDescriptor descriptor) throws Exception {
+		java.lang.reflect.RecordComponent[] parts = Pipeline.Input.class.getRecordComponents();
+		Class<?>[] types = new Class<?>[parts.length];
+		Object[] values = new Object[parts.length];
+		for (int i = 0; i < parts.length; i++) {
+			types[i] = parts[i].getType();
+			values[i] = types[i] == PlatformDescriptor.class ? descriptor : parts[i].getAccessor().invoke(in);
+		}
+		return Pipeline.Input.class.getDeclaredConstructor(types).newInstance(values);
 	}
 
 	@Test

@@ -286,7 +286,11 @@ the abstractions below are added when the branch work starts (owner decision D2 
    platform's package prefixes and provided libraries, who provides MixinExtras, the data-pack keys, the Mixin facts
    (absorbing `mixin.*` from `version.properties`), the loader hook map, the rename table and the coremod-private
    fields, plus the runtime namespace. Two small interfaces where data isn't enough: the descriptor writer and the
-   enum extension strategy. A second `MappingSupplier` for SRG.
+   enum extension strategy. A second `MappingSupplier` for SRG. The descriptor part is in (F3 needs it):
+   `PlatformDescriptor` in `core` gives the descriptor's path, its writer, the overlay manifest's extra attributes
+   and whether the platform reads enum extension files; the loader passes it in `Pipeline.Input`, NeoForge's being
+   `PlatformDescriptor.NEOFORGE` (today's `ModsTomlWriter`), a branch's its own. `NestedNeoForgeJars` takes the
+   nested jars' descriptor path the same way. The rest follows as each branch needs it.
 6. **Tests that name NeoForge** (`NestedNeoForgeJarsTest`, `MultiLoaderJarsTest`, `PlatformRenamesTest`, …) run
    against the NeoForge profile, so a branch can run them against its own.
 
