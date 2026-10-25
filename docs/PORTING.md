@@ -215,6 +215,18 @@ Compile-only CI covers compilation, the layer separation (the source sets' class
 built jar (nested manifests, service files, no shared packages) and unit tests of the transformer and of the overlay
 order; everything else needs a server smoke.
 
+**What the first runs answered** (the `forge` branch's CI, 2026-10-25). (1) ForgeGradle's loader classpath holds
+fmlcore and fmlloader (`<mc>-<forge>`), forgespi 8.0.0, modlauncher 10.2.6, securemodules 2.2.24, Mixin 0.8.7 and
+MixinExtras 0.5.4 (#79). Booting a Forge server with the Fabricated jar on Forge 61, 64, 65 and 66 (#82): (2) Forge
+lists Fabricated's mod and dependency locators before its own (`Found Mod Locators : (fabricated:…),(mods folder:null),…`,
+`Found Dependency Locators : (fabricated:…),(JarInJar:null)`); (4) it takes the language provider from the cache as a
+`LANGPROVIDER` file and reads its version (`Found language provider fabricated, version 0.4.0+mc…`); the in-game mod the
+dependency locator hands it loads from the cache and `javafml` constructs it. The service jar is listed once per
+service, and the module finder ignores the duplicates, as read. (7) Forge's jar-in-jar locator finds its
+`mixinextras-forge` option but loads nothing while no file declares `MixinConfigs`. The in-game mod still lacks a
+`pack.mcmeta` ("Missing metadata in pack mod:fabricated"). Still open: 3, 5, 6, 8, 9, 10, and 7 with a mod declaring
+mixins.
+
 **Questions only a run answers.** (1) Does ForgeGradle's compile classpath hold fmlloader, fmlcore, forgespi,
 modlauncher and securemodules? (2) Do Fabricated's locators run before `ModsFolderLocator` and the jar-in-jar
 locator (the debug lines "Found Mod Locators" and "Trying locator")? (3) On Forge 61, the Mojang mappings file's name
@@ -286,7 +298,13 @@ the abstractions below are added when the branch work starts (owner decision D2 
    platform's package prefixes and provided libraries, who provides MixinExtras, the data-pack keys, the Mixin facts
    (absorbing `mixin.*` from `version.properties`), the loader hook map, the rename table and the coremod-private
    fields, plus the runtime namespace. Two small interfaces where data isn't enough: the descriptor writer and the
-   enum extension strategy. A second `MappingSupplier` for SRG.
+   enum extension strategy. A second `MappingSupplier` for SRG. The descriptor part is in (F3 needs it):
+   `PlatformDescriptor` in `core` gives the descriptor's path, its writer, the overlay manifest's extra attributes
+   and whether the platform reads enum extension files; the loader passes it in `Pipeline.Input`, NeoForge's being
+   `PlatformDescriptor.NEOFORGE` (today's `ModsTomlWriter`), Forge's `PlatformDescriptor.FORGE` (for both Forge
+   branches: `META-INF/mods.toml` with `mandatory` dependencies, mixin configs in the manifest's `MixinConfigs`, no
+   enum extensions). `NestedNeoForgeJars` takes the nested jars' descriptor path the same way. The rest follows as
+   each branch needs it.
 6. **Tests that name NeoForge** (`NestedNeoForgeJarsTest`, `MultiLoaderJarsTest`, `PlatformRenamesTest`, …) run
    against the NeoForge profile, so a branch can run them against its own.
 
