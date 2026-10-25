@@ -36,6 +36,104 @@ tasks.named('processResources', ProcessResources) {
     filesMatching('META-INF/mods.toml') { expand(expandProps) }
 }
 
-// Named apart from the NeoForge jar of the same Minecraft version: once mc/mc.gradle has registered the task, as its
-// own configuration would otherwise set the name back.
-afterEvaluate { tasks.named('fabricatedJar', Jar) { archiveBaseName = 'fabricated-forge' } }
+// --- The language provider (docs/PORTING.md §4.1) ----------------------------------------------------------------
+// Forge loads language providers into its plugin layer, which sees neither Fabricated's discovery (the service layer)
+// nor the game: the provider is a jar of its own, nested in the Fabricated jar, and compiles against the two Forge
+// libraries it may use, so code reaching for anything else fails to build.
+def pluginLayerApis = ~/(forgespi|fmlcore)-.+\.jar/
+sourceSets {
+    langprovider {
+        java.srcDirs = [rootProject.file('loader/forge/src/langprovider/java')]
+        resources.srcDirs = [rootProject.file('loader/forge/src/langprovider/resources')]
+        compileClasspath = configurations.loaderCompileClasspath.filter { it.name ==~ pluginLayerApis }
+    }
+}
+
+def langProviderJar = tasks.register('langProviderJar', Jar) {
+    archiveFileName = 'lang-provider.jar'
+    destinationDirectory = layout.buildDirectory.dir('langprovider')
+    from sourceSets.langprovider.output
+    from(rootProject.file('LICENSE'))
+    from(rootProject.file('NOTICE'))
+    manifest.attributes(
+            'FMLModType': 'LANGPROVIDER',
+            'Automatic-Module-Name': 'io.github.cmdralph.fabricated.langprovider',
+            'Implementation-Title': 'Fabricated (language provider)',
+            // Forge reads a provider's version from its package's Implementation-Version and fails without one.
+            'Implementation-Version': project.version)
+}
+
+// Which Forge libraries a source set compiles against: ForgeGradle's classpath for the loader, by jar name (what
+// Forge's own libraries are named decides the language provider's classpath above).
+tasks.register('forgeClasspathReport') {
+    group = 'help'
+    description = "Lists the jars of the loader's compile classpath"
+    def classpath = configurations.loaderCompileClasspath
+    doLast {
+        def names = classpath.files*.name.sort()
+        logger.lifecycle("Loader compile classpath (${names.size()} jars):")
+        names.each { logger.lifecycle("  $it") }
+        logger.lifecycle("Language provider compile classpath: ${names.findAll { it ==~ pluginLayerApis }}")
+    }
+}
+
+afterEvaluate {
+    def fabricatedJar = tasks.named('fabricatedJar', Jar) {
+        // Named apart from the NeoForge jar of the same Minecraft version: here, once mc/mc.gradle has registered the
+        // task, as its own configuration would otherwise set the name back.
+        archiveBaseName = 'fabricated-forge'
+        from(langProviderJar) { into 'META-INF/fabricated' }
+    }
+
+    // What Forge needs of the jar's layout, checked on the built jar: the nested language provider's manifest and
+    // service file, and no package in two of the three parts (each is a module in its own layer, and the game layer
+    // reads them all).
+    def checkJar = tasks.register('checkForgeJar') {
+        group = 'verification'
+        description = 'Checks the Fabricated jar against the layout Forge loads it by'
+        def jarFile = fabricatedJar.flatMap { it.archiveFile }
+        inputs.file(jarFile)
+        doLast {
+            def readZip = { InputStream input ->
+                def entries = [:]
+                new java.util.zip.ZipInputStream(input).withCloseable { zip ->
+                    for (def e = zip.nextEntry; e != null; e = zip.nextEntry) {
+                        if (!e.directory) entries[e.name] = zip.readAllBytes()
+                    }
+                }
+                entries
+            }
+            def packages = { Map entries ->
+                entries.keySet().findAll { it.endsWith('.class') && it.contains('/') && !it.startsWith('META-INF/') }
+                        .collect { it.substring(0, it.lastIndexOf('/')).replace('/', '.') } as Set
+            }
+            def outer = jarFile.get().asFile.withInputStream { readZip(it) }
+            def parts = [outer: outer]
+            ['lang-provider.jar', 'game-mod.jar'].each { name ->
+                def bytes = outer["META-INF/fabricated/$name"]
+                if (bytes == null) throw new GradleException("The Fabricated jar has no META-INF/fabricated/$name")
+                parts[name] = readZip(new ByteArrayInputStream(bytes))
+            }
+
+            def provider = parts['lang-provider.jar']
+            def manifest = new java.util.jar.Manifest(new ByteArrayInputStream(provider['META-INF/MANIFEST.MF'] ?: new byte[0])).mainAttributes
+            if (manifest.getValue('FMLModType') != 'LANGPROVIDER') throw new GradleException('lang-provider.jar is not FMLModType: LANGPROVIDER')
+            if (!manifest.getValue('Implementation-Version')) throw new GradleException('lang-provider.jar has no Implementation-Version')
+            def service = provider['META-INF/services/net.minecraftforge.forgespi.language.IModLanguageProvider']
+            def implementation = service == null ? null : new String(service, 'UTF-8').readLines()*.trim().find { it && !it.startsWith('#') }
+            if (implementation == null || !provider.containsKey(implementation.replace('.', '/') + '.class')) {
+                throw new GradleException("lang-provider.jar's IModLanguageProvider service names no class it has: $implementation")
+            }
+
+            def names = parts.keySet() as List
+            for (int i = 0; i < names.size(); i++) {
+                for (int j = i + 1; j < names.size(); j++) {
+                    def shared = packages(parts[names[i]]).intersect(packages(parts[names[j]]))
+                    if (shared) throw new GradleException("${names[i]} and ${names[j]} share packages: ${shared.sort()}")
+                }
+            }
+            logger.lifecycle("Forge layout: ${names.collect { "$it (${packages(parts[it]).size()} packages)" }.join(', ')}; language provider $implementation")
+        }
+    }
+    tasks.named('check') { dependsOn checkJar }
+}

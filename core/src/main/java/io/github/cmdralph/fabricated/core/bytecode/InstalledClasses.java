@@ -49,6 +49,7 @@ public final class InstalledClasses implements ClassBytesSource {
 
 	private static final String MIXIN = "Lorg/spongepowered/asm/mixin/Mixin;";
 	private static final String SHADOW = "Lorg/spongepowered/asm/mixin/Shadow;";
+	private static final String IMPLEMENTS = "Lorg/spongepowered/asm/mixin/Implements;";
 	/** Packages of the injector annotations: Mixin gives their handlers a name of its own as it merges them. */
 	private static final List<String> INJECTOR_PACKAGES = List.of("Lorg/spongepowered/asm/mixin/injection/", "Lcom/llamalad7/mixinextras/injector/");
 
@@ -122,12 +123,13 @@ public final class InstalledClasses implements ClassBytesSource {
 				ClassNode node = readMixin(jar, mixin);
 				if (node == null) continue;
 				List<String> members = new ArrayList<>();
+				List<String> prefixes = softImplementationPrefixes(node);
 				for (FieldNode f : node.fields) {
 					if (!annotated(f.invisibleAnnotations, false) && !annotated(f.visibleAnnotations, false)) members.add(f.name + ":" + f.desc);
 				}
 				for (MethodNode m : node.methods) {
 					if (m.name.startsWith("<") || annotated(m.invisibleAnnotations, true) || annotated(m.visibleAnnotations, true)) continue;
-					members.add(m.name + m.desc);
+					members.add(mergedName(m.name, prefixes) + m.desc);
 				}
 				AddedMember adder = new AddedMember(jar.owner(), mixin);
 				for (String target : targets(node)) {
@@ -147,6 +149,38 @@ public final class InstalledClasses implements ClassBytesSource {
 	 */
 	private static ClassNode readMixin(Jar jar, String mixin) {
 		return jar.classes().readNode(mixin, ClassReader.SKIP_CODE | ClassReader.SKIP_FRAMES);
+	}
+
+	/**
+	 * The prefixes of a mixin's soft implementations ({@code @Implements(@Interface(iface = ..., prefix = "..."))}): Mixin
+	 * merges a method named with one under its name without it, as the interface's method. ShulkerBoxTooltip adds
+	 * {@code setChanged} to the ender chest's container that way ({@code container$setChanged}), for its other mixin to
+	 * inject into.
+	 */
+	private static List<String> softImplementationPrefixes(ClassNode mixin) {
+		List<String> prefixes = new ArrayList<>();
+		if (mixin.invisibleAnnotations == null) return prefixes;
+		for (AnnotationNode a : mixin.invisibleAnnotations) {
+			if (!a.desc.equals(IMPLEMENTS) || a.values == null) continue;
+			for (int i = 0; i + 1 < a.values.size(); i += 2) {
+				if (!(a.values.get(i + 1) instanceof List<?> interfaces)) continue;
+				for (Object o : interfaces) {
+					if (!(o instanceof AnnotationNode iface) || iface.values == null) continue;
+					for (int j = 0; j + 1 < iface.values.size(); j += 2) {
+						if ("prefix".equals(iface.values.get(j)) && iface.values.get(j + 1) instanceof String prefix && !prefix.isEmpty()) prefixes.add(prefix);
+					}
+				}
+			}
+		}
+		return prefixes;
+	}
+
+	/** The name Mixin merges a mixin's method under: without the soft implementation prefix it starts with, if any. */
+	private static String mergedName(String name, List<String> prefixes) {
+		for (String prefix : prefixes) {
+			if (name.startsWith(prefix) && name.length() > prefix.length()) return name.substring(prefix.length());
+		}
+		return name;
 	}
 
 	/** Whether a member is a {@code @Shadow} (it adds nothing) or, for a method, an injector handler (Mixin renames those). */

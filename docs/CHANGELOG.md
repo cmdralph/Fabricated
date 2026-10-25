@@ -32,6 +32,13 @@ updated README and `.claude/settings.json`. Then two items from the rendering tr
   1 min 13 s) and showed ForgeGradle 7.0.40 building on it (4 min 18 s, of which 3 min 47 s preparing Forge); both
   pins moved to the newest builds those runs listed on Forge's maven. Work on them happens on `claude/forge-legacy`
   and `claude/forge`.
+- LOADER-5: Fabricated reports Fabric Loader 0.20.1 (its public API is 0.19.5's), so mods built against 0.20, such
+  as Sodium Extra on 26.x, are no longer refused for an old loader; mods declaring 0.20 get Mixin behaviour 0.17.5,
+  lowered to the running Mixin.
+- PRE-15: pre-flight sees a method another mixin adds as a soft implementation (`@Implements` with a prefix), which
+  Mixin merges without the prefix, so ShulkerBoxTooltip's ender chest hook no longer disables it on 26.x.
+- The build declares Fabric's exclusive repository before the platform's, so the `forge` branch's 26.x projects
+  configure (#75).
 - The 26.x note on NeoForge's translucent outline pass is corrected: NeoForge decides it from the model's
   context-free material flags (not its parts), which Fabric's contract makes correct everywhere; a candidate for
   accuracy, not a fault.

@@ -57,8 +57,12 @@ jobs:
             | grep -o "<version>${{ matrix.minecraft }}-[^<]*" | sed 's/<version>//' | tail -n 5 | tr '\n' ' ') || true
           echo "Pinned: $pinned. Newest published: ${newest:-unknown}" | tee -a "$GITHUB_STEP_SUMMARY"
       # Only the requested project and what it depends on are configured, not main's NeoForge projects.
+      - name: Forge libraries on the compile classpath (informational)
+        run: ./gradlew --configure-on-demand :mc:forge-${{ matrix.minecraft }}:forgeClasspathReport || true
       - name: Build Fabricated
         run: ./gradlew --configure-on-demand :mc:forge-${{ matrix.minecraft }}:fabricatedJar --stacktrace
+      - name: Check the jar's layout for Forge
+        run: ./gradlew --configure-on-demand :mc:forge-${{ matrix.minecraft }}:checkForgeJar --stacktrace
       - name: Upload Fabricated jar
         uses: actions/upload-artifact@v4
         with:
