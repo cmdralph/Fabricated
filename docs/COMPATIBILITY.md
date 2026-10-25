@@ -650,7 +650,10 @@ model among its parts, is drawn by Fabric's renderer: in the world (into the chu
 model data, tints, face culling and ambient occlusion per part still apply to it; upstream's hooks that send *every*
 block through Fabric's renderer in those places are left out for that reason. A glowing moving block's outline is
 drawn by Fabric's renderer too, into the outline's buffers (26.2 and 26.3; 26.1.2 draws no outline around moving
-blocks). Other block outlines still come from a model's parts as NeoForge sees them. NeoForge already gives vanilla's models
+blocks). Other block outlines still come from a model's parts as NeoForge sees them. Where NeoForge asks whether a
+block is translucent (the pass its selection outline is drawn in, and a moving block's), it gets the model's
+context-free material flags, not Fabric's level-aware `materialFlags`, as upstream's redirects at vanilla's calls are
+left out: a model translucent at some positions counts as translucent everywhere, which Fabric's contract allows. NeoForge already gives vanilla's models
 `createGeometryKey` and `particleMaterial` with Fabric's signatures, so upstream's copies are left out, and
 `BlockStateModel`, which then inherits both interfaces' defaults of each, declares NeoForge's (a default method
 bridge, as for any added interface). On 26.1.2, where upstream's check of a mesh

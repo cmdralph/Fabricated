@@ -123,10 +123,11 @@ fabric-loader-api   (Fabric Loader's public API, Apache-2.0; no deps)
 api                 (Fabricated's public API for NeoForge mods; no deps)
 core  ──api──► fabric-loader-api, api       (pure Java, release 17; compileOnly ASM)
 mc/<version>        (one Gradle project per Minecraft version, MDG)
-  ├─ source set loader  = loader/src/main/java ──► core          (FML SPI only; early-services class loader)
+  ├─ source set loader  = loader/common + loader/neoforge ──► core   (FML SPI only; early-services class loader)
   ├─ source set main    = in-game NeoForge mod  ──compileOnly──► loader output, core
   │     sources: mc/<v>/src/main/java + mc/<v>/src/fabricapi/java (vendored native Fabric API modules)
-  │              + mc/common (all) + mc/common26 (26.x) + mc/common26early (26.1.2, 26.2) + mc/common26late (26.2, 26.3)
+  │              + the folders the version's `shared_sources` lists: mc/common (all), mc/common26 (26.x),
+  │                mc/common26early (26.1.2, 26.2), mc/common26late (26.2, 26.3)
   │     26.x only, compileOnly: fabric-renderer-api-v1's jar (pass-through module, typed calls)
   ├─ source sets testmod, testmodbroken, testmodfrapi (26.x)  ──compileOnly──► main output, fabric-loader-api, api
   └─ fabricatedJar = loader classes + core + fabric-loader-api + api + META-INF/fabricated/game-mod.jar (main)
@@ -134,8 +135,9 @@ mc/<version>        (one Gradle project per Minecraft version, MDG)
 
 **Illegal edges: none.** Checked: `core`, `api` and `fabric-loader-api` have no Minecraft, NeoForge or FML
 dependency (their `build.gradle` files list only `fabric-loader-api`, `api`, ASM and JUnit), nothing depends on a
-`mc/*` project, and there are no cycles. `loader` sees FML only (`neoForge.addModdingDependenciesTo(sourceSets.loader)`
-gives it the game too, but it references FML SPI types only, so it runs before the game exists). The in-game mod
+`mc/*` project, and there are no cycles. `loader` sees FML only (`gameDependencies(sourceSets.loader)`, from
+`mc/platform-neoforge.gradle`, gives it the game too, but it references FML SPI types only, so it runs before the game
+exists); `loader/common` names no loader types at all, so another platform's branch reuses it. The in-game mod
 reaches `loader` and `core` through NeoForge's parent class loader at runtime (`compileOnly`), never the reverse.
 
 The prompt that started the 2026-10-19 session described `api/` as "Fabric API surface re-implementations". It
@@ -146,7 +148,8 @@ vendored modules in `mc/<version>/src/fabricapi` and the bridges in `mc/common*`
 
 | Seam | How | Type-safe? |
 |---|---|---|
-| Which code a version gets | Gradle source directories (`sharedSources` in `mc/mc.gradle`): each version compiles only its own and the shared folders that apply | compile-time |
+| Which code a version gets | Gradle source directories (the version's `shared_sources` property, read by `mc/mc.gradle`): each version compiles only its own and the shared folders it lists | compile-time |
+| Which loader a version builds for | The version's `platform` property (default `neoforge`): `mc/platform-<platform>.gradle` (build plugin, mod descriptor, `gameDependencies`) and `loader/<loader_dir>` (discovery services; `loader_dir` defaults to the platform) next to `loader/common`. `main` has NeoForge's only; the `forge` and `forge-legacy` branches add theirs | compile-time |
 | Discovery services → FML | `META-INF/services` in the `loader` source set: `IModFileCandidateLocator`, `IDependencyLocator`, `IModLanguageLoader`, `ClassProcessor` | compile-time against FML SPI |
 | Version facts → core | `META-INF/fabricated/version.properties` (generated: Minecraft version, namespace, Mixin versions) and `fabric-api-plan.json` (data, per version) | data, validated when parsed |
 | Discovery → in-game mod | `FabricatedState.get()` (a `volatile` static in `loader`, published once discovery ends) | compile-time |
