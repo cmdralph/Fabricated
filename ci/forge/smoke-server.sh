@@ -88,6 +88,7 @@ report() { if eval "$2"; then echo "PASS: $1"; else echo "NOT SEEN: $1"; fi; }
 report "Forge ran Fabricated's mod locator" "grep -qi 'fabricated' logs/debug.log 2>/dev/null && grep -i 'locator' logs/debug.log | grep -qi 'fabricated'"
 report "Forge took Fabricated's language provider" "grep -i -E 'language|lang' logs/debug.log 2>/dev/null | grep -qi 'fabricated'"
 report "Forge constructed Fabricated's in-game mod" "grep -q \"Fabricated's discovery did not run\" logs/latest.log 2>/dev/null"
+report "the in-game mod's resources load (its pack.mcmeta)" "! grep -q 'Missing metadata in pack mod:fabricated' logs/latest.log 2>/dev/null"
 
 echo "Server status: $status"
 [ "$status" = "started" ]
