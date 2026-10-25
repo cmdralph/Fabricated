@@ -41,9 +41,9 @@ final class IntermediaryMappings {
 	private IntermediaryMappings() {
 	}
 
-	static Pipeline.Mappings load(TranslationCache cache, String minecraftVersion, boolean client, String configuredPath)
+	static Pipeline.Mappings load(TranslationCache cache, String minecraftVersion, boolean client, String configuredPath, Path gameJar)
 			throws MappingException, IOException {
-		Path mojang = locateMojangMappings(minecraftVersion, client, configuredPath);
+		Path mojang = locateMojangMappings(minecraftVersion, client, configuredPath, gameJar);
 		// Intermediary is fixed per Minecraft version and Fabricated build (which bundles it and composes the table), and
 		// the Mojang file's hash is memoised: a warm launch reads neither mapping file.
 		String hash = Hashing.sha256("intermediary-" + minecraftVersion + "|" + FabricatedInfo.get().fabricatedVersion() + "|"
@@ -80,12 +80,16 @@ final class IntermediaryMappings {
 	}
 
 	/**
-	 * Candidates, in order: the config value, the {@value #SYSTEM_PROPERTY} system property, then in each libraries
-	 * directory (the {@code libraryDirectory} system property, and the one Forge's own loader jar is in)
-	 * {@code net/minecraft/<side>/<mc>/<side>-<mc>-mappings.txt}, as NeoForge's installer names it, and the same with the
-	 * MCP version after the Minecraft version, as Forge's installers named it up to 1.20.1.
+	 * Candidates, in order: the config value, the {@value #SYSTEM_PROPERTY} system property, {@code <side>-<mc>-mappings.txt}
+	 * next to the game's jar, then in each libraries directory (the {@code libraryDirectory} system property, and the one
+	 * Forge's own loader jar is in) {@code net/minecraft/<side>/<mc>/<side>-<mc>-mappings.txt}, as NeoForge's installer
+	 * names it, and the same with the MCP version after the Minecraft version, as Forge's installers named it up to
+	 * 1.20.1. Forge 61's server installer leaves {@code <side>-<mc>-mappings.tsrg} there instead (the forge branch's
+	 * server smoke), whose format Fabricated doesn't read yet: the error names it.
+	 *
+	 * @param gameJar the game's jar as Forge runs it (among the libraries, next to Mojang's mappings), or null
 	 */
-	static Path locateMojangMappings(String minecraftVersion, boolean client, String configuredPath) throws MappingException {
+	static Path locateMojangMappings(String minecraftVersion, boolean client, String configuredPath, Path gameJar) throws MappingException {
 		List<String> tried = new ArrayList<>();
 		for (String candidate : new String[] {configuredPath, System.getProperty(SYSTEM_PROPERTY)}) {
 			if (candidate == null || candidate.isBlank()) continue;
@@ -98,6 +102,12 @@ final class IntermediaryMappings {
 			}
 		}
 		String side = client ? "client" : "server";
+		Path gameDir = gameJar == null ? null : gameJar.toAbsolutePath().getParent();
+		if (gameDir != null) {
+			Path p = gameDir.resolve(side + "-" + minecraftVersion + "-mappings.txt");
+			if (Files.isRegularFile(p)) return p;
+			tried.add(p.toString());
+		}
 		String mcp = FMLLoader.versionInfo().mcpVersion();
 		List<String> versions = new ArrayList<>(List.of(minecraftVersion));
 		if (mcp != null && !mcp.isBlank()) versions.add(minecraftVersion + "-" + mcp);
@@ -108,7 +118,9 @@ final class IntermediaryMappings {
 				tried.add(p.toString());
 			}
 		}
-		throw new MappingException("Mojang's " + side + " mapping file for " + minecraftVersion + " was not found (looked at " + String.join(", ", tried) + ")");
+		Path tsrg = gameDir == null ? null : gameDir.resolve(side + "-" + minecraftVersion + "-mappings.tsrg");
+		String unreadable = tsrg != null && Files.isRegularFile(tsrg) ? "; Forge's installer left " + tsrg + ", which this Fabricated can't read yet" : "";
+		throw new MappingException("Mojang's " + side + " mapping file for " + minecraftVersion + " was not found (looked at " + String.join(", ", tried) + ")" + unreadable);
 	}
 
 	/** The libraries directories to look in: the launcher's, as a system property, and the one Forge's loader is in. */

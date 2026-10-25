@@ -203,8 +203,8 @@ public final class FabricDependencyLocator extends AbstractModProvider implement
 				// 1.21.11's game jar is obfuscated: read in Mojang's names through the mappings Forge's installer left (VANILLA-2).
 				vanilla = new Pipeline.VanillaGame(new OfficialClasses(vanilla.classes(), () -> {
 					try {
-						return Files.newBufferedReader(IntermediaryMappings.locateMojangMappings(mcVersion, client, config.mojangMappingsPath()),
-								StandardCharsets.UTF_8);
+						return Files.newBufferedReader(IntermediaryMappings.locateMojangMappings(mcVersion, client, config.mojangMappingsPath(),
+								minecraft.getFilePath()), StandardCharsets.UTF_8);
 					} catch (MappingException e) {
 						throw new IOException(e.getMessage(), e);
 					}
@@ -215,7 +215,7 @@ public final class FabricDependencyLocator extends AbstractModProvider implement
 					client, info.namespace(), runtimeMixinVersion(info), mixinExtrasVersion(loadedMods), info.mixinLowest(), info.fabricatedVersion(),
 					info.build(), !FMLLoader.isProduction(), gameClasses, List.of(minecraft.getFilePath()), vanilla, fabricatedFiles, untransformable,
 					platformPackages, plan, nativeApi, nativeApiInterfaces, forgeMods.mods(), forgeMods.classes(),
-					(mappingsCache, mojangPath) -> IntermediaryMappings.load(mappingsCache, mcVersion, client, mojangPath),
+					(mappingsCache, mojangPath) -> IntermediaryMappings.load(mappingsCache, mcVersion, client, mojangPath, minecraft.getFilePath()),
 					new String[0], PlatformDescriptor.FORGE);
 
 			result = Pipeline.run(input);

@@ -92,6 +92,18 @@ echo "::endgroup::"
 # Where the installer left Mojang's mappings and the vanilla jar (docs/PORTING.md §4.1, question 3).
 echo "::group::libraries/net/minecraft"
 find libraries/net/minecraft -maxdepth 4 2>/dev/null | sort | head -n 60 || true
+# The mapping file's format, and which names the installer's game jars use (MinecraftServer keeps its name everywhere;
+# Level is obfuscated in the vanilla jar).
+for f in libraries/net/minecraft/server/"$mc"/*-mappings.*; do
+	[ -f "$f" ] || continue
+	echo "-- $f (first lines)"
+	head -n 8 "$f" | cut -c1-200
+done
+for f in libraries/net/minecraft/server/"$mc"/*.jar; do
+	[ -f "$f" ] || continue
+	entries=$(unzip -Z1 "$f" 2>/dev/null || true)
+	echo "-- $f: $(printf '%s\n' "$entries" | grep -c '\.class$') classes; MinecraftServer: $(printf '%s\n' "$entries" | grep -c '^net/minecraft/server/MinecraftServer\.class$'), net/minecraft/world/level/Level: $(printf '%s\n' "$entries" | grep -c '^net/minecraft/world/level/Level\.class$')"
+done
 echo "::endgroup::"
 report() { if eval "$2"; then echo "PASS: $1"; else echo "NOT SEEN: $1"; fi; }
 report "Forge ran Fabricated's mod locator" "grep -qi 'fabricated' logs/debug.log 2>/dev/null && grep -i 'locator' logs/debug.log | grep -qi 'fabricated'"
