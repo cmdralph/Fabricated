@@ -1,6 +1,11 @@
 {
   "fabricApiVersion": "0.164.0+26.3",
   "modules": {
+    "fabric-advancement-api-v1": {
+      "plan": "passthrough",
+      "skipMixins": ["fabric-advancement-api-v1.mixins.json:ResourceManagerRegistryLoadTaskMixin"],
+      "reason": "Forge 66 decodes advancements as Optional<Advancement> (its conditional data), which upstream's loading hook casts to Advancement and stops data pack loading: the advancement modify event doesn't run until a native module on Forge's events replaces it."
+    },
     "fabric-loot-api-v3": {
       "plan": "passthrough",
       "skipMixins": ["fabric-loot-api-v3.mixins.json:ResourceManagerRegistryLoadTaskMixin"],
