@@ -80,7 +80,8 @@ jobs:
     # The Gradle cache is off, so ForgeGradle's Mavenizer and NeoForge's setup run in full.
     timeout-minutes: 60
     strategy:
-      fail-fast: true
+      # Every jar is built even when one fails, so a rerun repeats only what failed.
+      fail-fast: false
       matrix:
         include:
           - { platform: NeoForge, minecraft: "1.21.11", java: 25, jar: fabricated, tasks: "-Pfabricated.platforms=neoforge :mc:neoforge-1.21.11:fabricatedJar" }
@@ -117,7 +118,13 @@ jobs:
             exit 1
           fi
       - name: Build the jar
-        run: ./gradlew ${{ matrix.tasks }} --stacktrace
+        # With no cache, a build downloads everything its platform's plugin needs, and a platform's maven can time out
+        # (ForgeGradle's Mavenizer on Forge's, in v0.4.0-alpha's first run): a failed build is tried once more.
+        run: |
+          ./gradlew ${{ matrix.tasks }} --stacktrace || {
+            echo "::warning::The build failed; trying once more"
+            ./gradlew ${{ matrix.tasks }} --stacktrace
+          }
       - uses: actions/upload-artifact@v4
         with:
           name: jar-${{ matrix.jar }}-${{ matrix.minecraft }}
