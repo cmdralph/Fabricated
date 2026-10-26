@@ -12,20 +12,37 @@ import net.fabricmc.api.DedicatedServerModInitializer;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.loader.api.entrypoint.PreLaunchEntrypoint;
 import net.minecraftforge.fml.common.Mod;
+import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 import net.minecraftforge.fml.loading.FMLLoader;
+import net.minecraftforge.registries.ForgeRegistries;
+import net.minecraftforge.registries.ForgeRegistry;
+import net.minecraftforge.registries.RegisterEvent;
+import net.minecraftforge.registries.RegistryManager;
 
 /**
  * Fabricated's in-game mod on Minecraft Forge, shared by every project of the forge branch. It runs the Fabric mods'
- * entrypoints once discovery has handed Forge their files (docs/PORTING.md §4.1, F3 step 3): for now the pre-launch, main
- * and dedicated server ones as the mod is constructed. Where Fabric runs them (the main ones as registries open, the
- * client ones in Minecraft's constructor) and Fabric API on Forge's events follow.
+ * entrypoints once discovery has handed Forge their files (docs/PORTING.md §4.1): the pre-launch ones as the mod is
+ * constructed, the main and dedicated server ones as registries open. The client ones (in Minecraft's constructor) and
+ * Fabric API on Forge's events follow.
+ *
+ * <p>Fabric mods register their content directly from their initializers. Forge opens vanilla's registries for its
+ * registration events only ({@code UNFREEZE_DATA}, then {@code LOAD_REGISTRIES}), and each registry it manages only for
+ * that registry's own event; the others are locked, those whose event hasn't come yet too (found on Forge 47, whose
+ * registration Forge 61 to 66 keep: read in their {@code ForgeStatesProvider}, {@code GameData} and {@code ForgeRegistry}).
+ * The initializers run in the event after the attribute registry's, as every mod has registered its attributes by then,
+ * Forge's own among them, which the attribute builders Forge patches include (a Fabric initializer building an entity's
+ * attributes needs them), with every other registry Forge manages for vanilla opened for as long as they run, then locked
+ * as Forge leaves a registry after its event; Forge opens each again for its own event.
  */
 @Mod(FabricatedMod.MOD_ID)
 public final class FabricatedMod {
 	public static final String MOD_ID = "fabricated";
 	private static final Logger LOGGER = LoggerFactory.getLogger("Fabricated");
 
-	public FabricatedMod() {
+	private boolean attributesRegistered;
+	private boolean initialized;
+
+	public FabricatedMod(FMLJavaModLoadingContext context) {
 		FabricatedState state = FabricatedState.get();
 		if (state == null) {
 			LOGGER.warn("Fabricated's discovery did not run; Fabric mods are not loaded");
@@ -40,15 +57,44 @@ public final class FabricatedMod {
 			public void exit() {
 			}
 		});
-		List<EntrypointRunner.Failure> failures = new ArrayList<>();
-		failures.addAll(runner.run("preLaunch", PreLaunchEntrypoint.class, PreLaunchEntrypoint::onPreLaunch));
-		failures.addAll(runner.run("main", ModInitializer.class, ModInitializer::onInitialize));
-		if (FMLLoader.getDist().isDedicatedServer()) {
-			failures.addAll(runner.run("server", DedicatedServerModInitializer.class, DedicatedServerModInitializer::onInitializeServer));
-		} else {
-			LOGGER.warn("Fabric client entrypoints don't run on Forge yet");
+		report(state, runner.run("preLaunch", PreLaunchEntrypoint.class, PreLaunchEntrypoint::onPreLaunch), "pre-launch");
+		RegisterEvent.getBus(context.getModBusGroup()).addListener(event -> {
+			if (initialized) return;
+			if (event.getRegistryKey().equals(ForgeRegistries.Keys.ATTRIBUTES)) {
+				attributesRegistered = true;
+			} else if (attributesRegistered) {
+				initialized = true;
+				initialize(state, runner, event.getForgeRegistry());
+			}
+		});
+	}
+
+	/** @param current the registry whose event this is, which Forge opened and locks after it (null if Forge doesn't manage it) */
+	private static void initialize(FabricatedState state, EntrypointRunner runner, Object current) {
+		List<ForgeRegistry<?>> opened = new ArrayList<>();
+		for (var key : RegistryManager.getVanillaRegistryKeys()) {
+			ForgeRegistry<?> registry = RegistryManager.ACTIVE.getRegistry(key);
+			if (registry != null && registry != current) {
+				registry.unfreeze();
+				opened.add(registry);
+			}
 		}
+		List<EntrypointRunner.Failure> failures = new ArrayList<>();
+		try {
+			failures.addAll(runner.run("main", ModInitializer.class, ModInitializer::onInitialize));
+			if (FMLLoader.getDist().isDedicatedServer()) {
+				failures.addAll(runner.run("server", DedicatedServerModInitializer.class, DedicatedServerModInitializer::onInitializeServer));
+			} else {
+				LOGGER.warn("Fabric client entrypoints don't run on Forge yet");
+			}
+		} finally {
+			opened.forEach(ForgeRegistry::freeze);
+		}
+		report(state, failures, "main");
+	}
+
+	private static void report(FabricatedState state, List<EntrypointRunner.Failure> failures, String phase) {
 		for (EntrypointRunner.Failure failure : failures) LOGGER.error("Fabric entrypoint failed: {}", failure.describe(), failure.error());
-		LOGGER.info("Fabricated ran the Fabric entrypoints of {} mod(s) on Forge ({} failed)", state.mods().size(), failures.size());
+		LOGGER.info("Fabricated ran the Fabric {} entrypoints of {} mod(s) on Forge ({} failed)", phase, state.mods().size(), failures.size());
 	}
 }

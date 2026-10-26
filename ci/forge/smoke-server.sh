@@ -112,7 +112,7 @@ report "Forge ran Fabricated's mod locator" "grep -qi 'fabricated' logs/debug.lo
 report "Forge took Fabricated's language provider" "grep -i -E 'language|lang' logs/debug.log 2>/dev/null | grep -qi 'fabricated'"
 report "Fabricated's discovery ran" "grep -q 'Fabricated discovery finished' logs/latest.log 2>/dev/null"
 report "Fabricated handed Forge the translated test mod" "grep -q 'Fabricated handed Forge [1-9]' logs/latest.log 2>/dev/null"
-report "Forge constructed Fabricated's in-game mod" "grep -q 'Fabricated ran the Fabric entrypoints' logs/latest.log 2>/dev/null"
+report "Forge constructed Fabricated's in-game mod" "grep -q 'Fabricated ran the Fabric pre-launch entrypoints' logs/latest.log 2>/dev/null"
 report "the in-game mod's resources load (its pack.mcmeta)" "! grep -q 'Missing metadata in pack mod:fabricated\$' logs/latest.log 2>/dev/null"
 report "the test mod's resources load (Forge reads no pack without metadata)" "grep -q 'FABRICATED-FORGE-TEST main entrypoint OK' logs/latest.log 2>/dev/null && ! grep -q 'Missing metadata in pack mod:fabricated_forge_testmod' logs/latest.log 2>/dev/null"
 report "the test mod's main entrypoint ran" "grep -q 'FABRICATED-FORGE-TEST main entrypoint OK' logs/latest.log 2>/dev/null"
@@ -122,6 +122,7 @@ report "Forge took Fabricated's transformation service" "grep -q 'Fabricated tra
 report "the test mod's injected interface is on MinecraftServer (inject-interface)" "grep -q 'FABRICATED-FORGE-TEST injected interface OK' logs/latest.log 2>/dev/null"
 report "the test mod's client-only method was stripped (@Environment)" "grep -q 'FABRICATED-FORGE-TEST environment strip OK' logs/latest.log 2>/dev/null"
 report "Forge added MixinExtras for the test mod" "grep -i 'mixinextras' logs/debug.log 2>/dev/null | grep -qi -E 'select|load|add'"
+report "the Fabric main entrypoints ran in Forge's registry events" "grep -q 'Fabricated ran the Fabric main entrypoints of [1-9][0-9]* mod(s) on Forge (0 failed)' logs/latest.log 2>/dev/null"
 report "Fabricated's report names Forge as the loader" "grep -q '^  Forge: ' logs/fabric-bridge-report.txt 2>/dev/null && ! grep -q '^  NeoForge: ' logs/fabric-bridge-report.txt 2>/dev/null"
 
 echo "Server status: $status"
