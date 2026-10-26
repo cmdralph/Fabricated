@@ -60,7 +60,8 @@ import net.minecraftforge.forgespi.locating.ModFileFactory;
  * the game with ({@link IntermediaryMappings}) and overlaid with the generated descriptor ({@link ForgeDescriptor}), and
  * Fabricated's in-game mod nested in its jar. Forge's only
  * error path here stops the game, so anything that goes wrong is logged and Fabric support is off for the launch; the
- * Fabric mods that weren't loaded are in the log and Fabricated's report (Forge's warnings screen follows, F3 step 5).
+ * Fabric mods that weren't loaded are in the log, Fabricated's report and Forge's loading warnings (which the in-game mod
+ * adds, as Forge reads them after loading: on the server in its log, on the client on its warnings screen).
  * In a development workspace, where the in-game mod is a mod of its own, it isn't handed over again.
  */
 public final class FabricDependencyLocator extends AbstractJarFileModProvider implements IDependencyLocator {
@@ -264,6 +265,7 @@ public final class FabricDependencyLocator extends AbstractJarFileModProvider im
 		}
 
 		int quietFabricApi = 0;
+		List<String> notLoaded = new ArrayList<>();
 		for (Report.ModRow row : result.report().mods()) {
 			if (row.status() == Report.Status.DISABLED || row.status() == Report.Status.REJECTED) {
 				// A disabled Fabric API module isn't the player's mod: any mod that needs it is disabled too, with its own
@@ -272,10 +274,15 @@ public final class FabricDependencyLocator extends AbstractJarFileModProvider im
 					quietFabricApi++;
 					continue;
 				}
-				LOGGER.warn("Fabric mod {}{} was not loaded: {}{}", row.id(), row.version().isEmpty() ? "" : " " + row.version(), row.detail(),
-						row.suggestion().isEmpty() ? "" : " Fix: " + row.suggestion());
+				String text = "Fabric mod " + row.id() + (row.version().isEmpty() ? "" : " " + row.version()) + " was not loaded: " + row.detail()
+						+ (row.suggestion().isEmpty() ? "" : " Fix: " + row.suggestion());
+				// Logged here too: Forge's client shows its loading warnings on a screen without logging them.
+				LOGGER.warn("{}", text);
+				notLoaded.add(text);
 			}
 		}
+		// Fabricated's in-game mod adds them to Forge's loading warnings.
+		ForgeLoaderHooks.notLoaded(notLoaded);
 		if (quietFabricApi > 0) {
 			LOGGER.info("{} Fabric API module(s) can't run on Forge yet and were skipped; see logs/{}", quietFabricApi, Report.FILE_NAME);
 		}

@@ -8,11 +8,15 @@ import org.slf4j.LoggerFactory;
 
 import io.github.cmdralph.fabricated.core.runtime.EntrypointRunner;
 import io.github.cmdralph.fabricated.loader.FabricatedState;
+import io.github.cmdralph.fabricated.loader.ForgeLoaderHooks;
 import net.fabricmc.api.DedicatedServerModInitializer;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.loader.api.entrypoint.PreLaunchEntrypoint;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraftforge.eventbus.api.EventPriority;
+import net.minecraftforge.fml.ModLoader;
+import net.minecraftforge.fml.ModLoadingStage;
+import net.minecraftforge.fml.ModLoadingWarning;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 import net.minecraftforge.fml.loading.FMLLoader;
@@ -25,7 +29,9 @@ import net.minecraftforge.registries.RegistryManager;
  * Fabricated's in-game mod on Minecraft Forge 47 (the forge-legacy branch; the forge branch's, ported). It runs the
  * Fabric mods' entrypoints once discovery has handed Forge their files (docs/PORTING.md §7, L3): the pre-launch ones as
  * the mod is constructed, the main and dedicated server ones as registries open. The client ones (in Minecraft's
- * constructor) and Fabric API on Forge's events follow.
+ * constructor) and Fabric API on Forge's events follow. It also adds the Fabric mods discovery didn't load to Forge's
+ * loading warnings, which Forge reads once every mod has loaded: the server logs them, the client shows them on its
+ * warnings screen.
  *
  * <p>Fabric mods register their content directly from their initializers. Forge 47 opens vanilla's registries for its
  * registration events only ({@code UNFREEZE_DATA}, then {@code LOAD_REGISTRIES}), and each registry it manages only for
@@ -40,6 +46,8 @@ import net.minecraftforge.registries.RegistryManager;
 public final class FabricatedMod {
 	public static final String MOD_ID = "fabricated";
 	private static final Logger LOGGER = LoggerFactory.getLogger("Fabricated");
+	/** A warning's message pattern, which Forge formats with the mod, the stage, then the warning's arguments: the first argument as is. */
+	private static final String AS_IS = "{2}";
 
 	private boolean attributesRegistered;
 	private boolean initialized;
@@ -49,6 +57,10 @@ public final class FabricatedMod {
 		if (state == null) {
 			LOGGER.warn("Fabricated's discovery did not run; Fabric mods are not loaded");
 			return;
+		}
+		FMLJavaModLoadingContext context = FMLJavaModLoadingContext.get();
+		for (String text : ForgeLoaderHooks.notLoaded()) {
+			ModLoader.get().addWarning(new ModLoadingWarning(context.getContainer().getModInfo(), ModLoadingStage.CONSTRUCT, AS_IS, text));
 		}
 		EntrypointRunner runner = new EntrypointRunner(state.runtime(), new EntrypointRunner.ContextHook() {
 			@Override
@@ -60,7 +72,7 @@ public final class FabricatedMod {
 			}
 		});
 		report(state, runner.run("preLaunch", PreLaunchEntrypoint.class, PreLaunchEntrypoint::onPreLaunch), "pre-launch");
-		FMLJavaModLoadingContext.get().getModEventBus().addListener(EventPriority.HIGHEST, false, RegisterEvent.class, event -> {
+		context.getModEventBus().addListener(EventPriority.HIGHEST, false, RegisterEvent.class, event -> {
 			if (initialized) return;
 			if (event.getRegistryKey().equals(ForgeRegistries.Keys.ATTRIBUTES)) {
 				attributesRegistered = true;
