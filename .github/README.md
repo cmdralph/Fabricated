@@ -30,6 +30,7 @@ On each run, the server checks that:
 - it registers an item by Intermediary names;
 - content it builds during the game's bootstrap, before any mod is constructed, waits for its main entrypoint to
   register it, as on Fabric (CORPUS-31);
+- the built-in registries' freeze, which Fabric mods mix into, runs after its main entrypoint, as on Fabric (CORPUS-32);
 - two Fabric mods that depend on each other load, with one ordering of their cycle left out (ORDER-1);
 - it reads a private field its access widener opens;
 - an access widener leaves private a field Forge's coremod reads through a getter, and the report says so;
