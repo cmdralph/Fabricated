@@ -1,5 +1,6 @@
 package io.github.cmdralph.fabricated.loader;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -8,7 +9,21 @@ import java.util.Optional;
  * uses on NeoForge (where the containers are discovery's) are reached through here.
  */
 public final class ForgeLoaderHooks {
+	private static volatile List<String> notLoaded = List.of();
+
 	private ForgeLoaderHooks() {
+	}
+
+	/**
+	 * What the player is told about each Fabric mod discovery didn't load (its API modules aside), for Forge's loading
+	 * warnings: discovery runs in the service layer, which can't reach them. Empty when discovery didn't run.
+	 */
+	public static List<String> notLoaded() {
+		return notLoaded;
+	}
+
+	static void notLoaded(List<String> lines) {
+		notLoaded = List.copyOf(lines);
 	}
 
 	/**
