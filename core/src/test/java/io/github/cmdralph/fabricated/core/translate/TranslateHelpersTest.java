@@ -249,6 +249,10 @@ class TranslateHelpersTest {
 		assertEquals(MixinPreflight.ConstructorInjects.RETURNS_ONLY, MixinCompat.constructorInjects("0.8.5+Jenkins-b310.git-1"), "Forge 47");
 		assertEquals(MixinPreflight.ConstructorInjects.UNSAFE_POINTS, MixinCompat.constructorInjects("0.8.7+Jenkins-b321.git-4"), "Forge 61 to 66");
 		assertEquals(MixinPreflight.ConstructorInjects.AFTER_DELEGATE, MixinCompat.constructorInjects("0.17.4+mixin.0.8.7"), "Fabric's Mixin");
+		// ARGS-1: whether a @ModifyVariable taking arguments only knows them by their names.
+		assertFalse(MixinCompat.argumentNames("0.8.5+Jenkins-b310.git-1"), "Forge 47");
+		assertFalse(MixinCompat.argumentNames("0.8.7+Jenkins-b321.git-4"), "Forge 61 to 66");
+		assertTrue(MixinCompat.argumentNames("0.17.4+mixin.0.8.7"), "Fabric's Mixin");
 
 		assertEquals(25, MixinCompat.compatibilityLevel(" java_25 "), "as Mixin reads it");
 		assertEquals(8, MixinCompat.compatibilityLevel("JAVA_8"));

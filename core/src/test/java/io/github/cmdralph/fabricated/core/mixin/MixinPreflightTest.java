@@ -50,6 +50,7 @@ class MixinPreflightTest {
 	private static final String WRAP_OPERATION = "Lcom/llamalad7/mixinextras/injector/wrapoperation/WrapOperation;";
 	private static final String OPERATION = "Lcom/llamalad7/mixinextras/injector/wrapoperation/Operation;";
 	private static final String AT = "Lorg/spongepowered/asm/mixin/injection/At;";
+	private static final String MODIFY_VARIABLE = "Lorg/spongepowered/asm/mixin/injection/ModifyVariable;";
 	private static final String SHADOW = "Lorg/spongepowered/asm/mixin/Shadow;";
 	private static final String LOCAL = "Lcom/llamalad7/mixinextras/sugar/Local;";
 
@@ -2287,6 +2288,92 @@ class MixinPreflightTest {
 		assertEquals(1, Annotations.value(Annotations.ofParameter(handler, 1).getFirst(), "ordinal"), "vanilla's stack, not the patch's copy");
 		mod.put("com/example/mixin/Pickup", repaired);
 		assertTrue(preflight(neoForge, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty());
+	}
+
+	@Test
+	void anArgumentTakenByNameIsTakenByItsSlotWhereMixinDoesntKnowArgumentNames() throws Exception {
+		// ARGS-1: Fabric API's resource loader hook takes @ModifyVariable(argsOnly = true, name = "enableProfiling") in
+		// SimpleReloadInstance.create; SpongePowered's Mixin (Forge 61 to 66) names arguments arg and their slot there, so
+		// the name never matches and Forge 65's server stopped. Fabric's Mixin takes their names from 0.17.0.
+		java.util.function.BiFunction<Boolean, Boolean, byte[]> target = (names, secondFlag) -> {
+			ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+			cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+			String desc = secondFlag ? "(Ljava/lang/String;ZZ)I" : "(Ljava/lang/String;Z)I";
+			MethodVisitor make = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "make", desc, null, null);
+			org.objectweb.asm.Label start = new org.objectweb.asm.Label();
+			org.objectweb.asm.Label end = new org.objectweb.asm.Label();
+			make.visitCode();
+			make.visitLabel(start);
+			make.visitVarInsn(Opcodes.ILOAD, 1);
+			make.visitInsn(Opcodes.IRETURN);
+			make.visitLabel(end);
+			if (names) {
+				make.visitLocalVariable("id", "Ljava/lang/String;", null, start, end, 0);
+				make.visitLocalVariable("enableProfiling", "Z", null, start, end, 1);
+				if (secondFlag) make.visitLocalVariable("other", "Z", null, start, end, 2);
+			}
+			make.visitMaxs(0, 0);
+			make.visitEnd();
+			cw.visitEnd();
+			return cw.toByteArray();
+		};
+		java.util.function.Function<Boolean, byte[]> mixinOf = secondFlag -> mixin("com/example/mixin/Reload", false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "adjust", "(Z)Z", null, null);
+			AnnotationVisitor ann = mv.visitAnnotation(MODIFY_VARIABLE, true);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, secondFlag ? "make(Ljava/lang/String;ZZ)I" : "make(Ljava/lang/String;Z)I");
+			methods.visitEnd();
+			AnnotationVisitor at = ann.visitAnnotation("at", AT);
+			at.visit("value", "LOAD");
+			at.visit("ordinal", 0);
+			at.visitEnd();
+			ann.visit("argsOnly", true);
+			AnnotationVisitor names = ann.visitArray("name");
+			names.visit(null, "enableProfiling");
+			names.visitEnd();
+			ann.visitEnd();
+			mv.visitCode();
+			mv.visitVarInsn(Opcodes.ILOAD, 0);
+			mv.visitInsn(Opcodes.IRETURN);
+			mv.visitMaxs(1, 1);
+			mv.visitEnd();
+		});
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Reload"));
+		java.util.function.BiFunction<ClassIndex, Map<String, byte[]>, MixinPreflight> forge = (game, mod) -> new MixinPreflight(game,
+				InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, ClassBytesSource.EMPTY, "Forge", true,
+				MixinPreflight.ConstructorInjects.UNSAFE_POINTS, false);
+
+		// Fabric's Mixin knows the name: nothing to do.
+		ClassIndex named = new ClassIndex(Map.of(TARGET, target.apply(true, false))::get);
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Reload", mixinOf.apply(false)));
+		assertTrue(preflight(named, mod::get, ClassBytesSource.EMPTY, false).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty());
+		assertTrue(preflight(named, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty());
+
+		// SpongePowered's: reported before the repair, taken by its slot after it.
+		assertTrue(forge.apply(named, mod).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).stream()
+				.anyMatch(f -> f.message().contains("takes the argument enableProfiling of make") && f.message().contains("by its name")));
+		List<PreflightFinding> notes = new ArrayList<>();
+		byte[] repaired = forge.apply(named, mod).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes).get("com/example/mixin/Reload.class");
+		assertNotNull(repaired, notes.toString());
+		assertTrue(notes.getFirst().message().contains("takes the argument enableProfiling by its name, which Forge's Mixin doesn't know; it takes the argument's slot, 1, instead"),
+				notes.toString());
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired).accept(node, 0);
+		AnnotationNode modify = Annotations.find(node.methods.stream().filter(m -> m.name.equals("adjust")).findFirst().orElseThrow(), MODIFY_VARIABLE);
+		assertEquals(1, Annotations.value(modify, "index"));
+		assertNull(Annotations.value(modify, "name"));
+		mod.put("com/example/mixin/Reload", repaired);
+		assertTrue(forge.apply(named, mod).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty());
+
+		// Without local variable names, the only argument of the handler's type is it.
+		ClassIndex unnamed = new ClassIndex(Map.of(TARGET, target.apply(false, false))::get);
+		Map<String, byte[]> fresh = Map.of("com/example/mixin/Reload", mixinOf.apply(false));
+		assertNotNull(forge.apply(unnamed, fresh).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).get("com/example/mixin/Reload.class"));
+		// Two of the type and no names: which one is meant can't be told, and the injector is reported.
+		ClassIndex two = new ClassIndex(Map.of(TARGET, target.apply(false, true))::get);
+		Map<String, byte[]> twoMod = Map.of("com/example/mixin/Reload", mixinOf.apply(true));
+		assertTrue(forge.apply(two, twoMod).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty());
+		assertFalse(forge.apply(two, twoMod).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty());
 	}
 
 	@Test
