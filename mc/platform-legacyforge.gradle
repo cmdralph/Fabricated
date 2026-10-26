@@ -36,8 +36,11 @@ def gameModMixins = [
         'fabricated-dimension.mixins.json']
 dependencies {
     annotationProcessor "org.spongepowered:mixin:${project.mixin_processor_version}:processor"
-    // The in-game mod's own mixins use MixinExtras' injectors, which the nested mixinextras-forge (below) provides.
+    // The in-game mod's own mixins use MixinExtras' injectors, which the nested mixinextras-forge (below) provides. Its
+    // annotation processor has Mixin's write their targets to the refmap too: Mixin's knows only its own injectors, and
+    // left a vanilla method a MixinExtras injector names (LivingEntity.travel) in Mojang's name.
     compileOnly "io.github.llamalad7:mixinextras-common:${project.mixinextras_version}"
+    annotationProcessor "io.github.llamalad7:mixinextras-common:${project.mixinextras_version}"
 }
 def gameModRefmap = mixin.add(sourceSets.main, 'fabricated-forge.refmap.json')
 gameModMixins.each { mixin.config(it) }

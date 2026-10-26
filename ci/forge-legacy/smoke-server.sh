@@ -199,6 +199,28 @@ for f in libraries/net/minecraft/server/*/*-mappings.txt; do
 	' "$f" | cut -c1-300
 done
 echo "::endgroup::"
+# The same for the test mod's Fabric fluids (fluid types, L4): the members its stand-ins name in Intermediary's names,
+# in Mojang's names with their obfuscated names, to check against Intermediary's.
+echo "::group::Mojang's names the test mod's fluid stand-ins rely on (server mappings)"
+for f in libraries/net/minecraft/server/*/*-mappings.txt; do
+	[ -f "$f" ] || continue
+	awk '
+		BEGIN {
+			want["net.minecraft.world.level.material.Fluid"] = " getBucket\\(| canBeReplacedWith\\(| getTickDelay\\(| getExplosionResistance\\(| createLegacyBlock\\(| isSource\\(| getAmount\\(| isSame\\(| createFluidStateDefinition\\("
+			want["net.minecraft.world.level.material.FlowingFluid"] = " LEVEL | getFlowing\\(\\)| getSource\\(\\)| canConvertToSource\\(| beforeDestroyingBlock\\(| getSlopeFindDistance\\(| getDropOff\\(| getLegacyLevel\\("
+			want["net.minecraft.world.level.block.state.StateHolder"] = " getValue\\(| setValue\\("
+			want["net.minecraft.world.level.block.state.StateDefinition$Builder"] = " add\\("
+			want["net.minecraft.world.level.block.LiquidBlock"] = " LEVEL |<init>"
+			want["net.minecraft.world.level.block.state.BlockBehaviour$Properties"] = " copy\\("
+			want["net.minecraft.world.entity.Entity"] = " tick\\(\\)| getY\\(\\)"
+			want["net.minecraft.world.item.Items"] = " AIR "
+			want["net.minecraft.core.registries.BuiltInRegistries"] = " FLUID "
+		}
+		/^[^ \t#]/ { cls = $1; if (cls in want) print; next }
+		cls in want && $0 ~ want[cls] { print }
+	' "$f" | cut -c1-300
+done
+echo "::endgroup::"
 report() { if eval "$2"; then echo "PASS: $1"; else echo "NOT SEEN: $1"; fi; }
 report "Forge ran Fabricated's mod locator" "grep -qi 'fabricated' logs/debug.log 2>/dev/null && grep -i 'locator' logs/debug.log | grep -qi 'fabricated'"
 report "Forge took Fabricated's language provider" "grep -i -E 'language|lang' logs/debug.log 2>/dev/null | grep -qi 'fabricated'"
@@ -230,6 +252,7 @@ report "the in-game mod's mixin reads tag files' fabric:remove (the in-game mod 
 report "native fabric-biome-api-v1: a spawn and a temperature added to plains reach the biome Forge reads (Forge's biome modifiers)" "grep -q 'FABRICATED-FORGE-TEST biome modifications OK' logs/latest.log 2>/dev/null"
 report "native fabric-loot-api-v2 and fabric-loot-tables-v1: a pool added in MODIFY and a replaced table are in the tables the game keeps, each event seeing its table's source (Forge's pools list)" "grep -q 'FABRICATED-FORGE-TEST loot OK' logs/latest.log 2>/dev/null"
 report "native fabric-dimensions-v1: an armor stand teleported to the End lands at its target with no obsidian platform built (Forge's teleporter)" "grep -q 'FABRICATED-FORGE-TEST dimensions OK' logs/latest.log 2>/dev/null"
+report "a Fabric mod's fluids have Forge fluid types (the in-game mod's, registered under their ids), and a pig falls through one that isn't water as through air" "grep -q 'FABRICATED-FORGE-TEST fluid types OK' logs/latest.log 2>/dev/null"
 report "Forge's biome coremod applied (the biome's climate field stayed private)" "! grep -qs 'field_to_method.js function biome' logs/latest.log server.out"
 report "Forge's loading warnings name the Fabric mod that wasn't loaded" "grep -qsE 'ServerModLoader.*: Fabric mod fabricated_forge_unmet 1\\.0\\.0 was not loaded: ' logs/latest.log logs/debug.log"
 report "Fabricated's report names Forge as the loader" "grep -q '^  Forge: ' logs/fabric-bridge-report.txt 2>/dev/null && ! grep -q '^  NeoForge: ' logs/fabric-bridge-report.txt 2>/dev/null"
