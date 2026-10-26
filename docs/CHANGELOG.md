@@ -3,6 +3,16 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-10-26: Intermediary to SRG names for Forge on 1.20.1
+
+- `MappingComposer.composeSrg` builds the table for Forge 47 (`forge-legacy`, L3), whose game has Mojang's class
+  names and SRG member names: members from MCPConfig's obfuscated → SRG mappings in TSRG v2 (`joined.tsrg`, which
+  Forge's installer keeps as `mcp_config-<version>-mappings.txt`), classes from Mojang's mappings; a class Mojang's
+  file doesn't name keeps its intermediary name, as on a 1.21.11 server. Checked on 1.20.1's Intermediary and
+  MCPConfig's `joined.tsrg`: all 68,666 Intermediary members map (the few names Intermediary gives two fields, and
+  record components, through the owner and descriptor). Unit tests for descriptors, a shared field name without
+  them, a server's file and malformed input.
+
 ## 2026-10-25: branch reorganisation, a glowing moving block's outline, 1.21.11 server linkage noise, platform seams
 
 **Plan.** The owner renamed the working branch to `claude/dev` and replaced `1.20.1-legacy` with `forge-legacy` (Forge
