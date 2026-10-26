@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.lang.reflect.Field;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -25,9 +26,13 @@ import io.github.cmdralph.fabricated.core.remap.MappingTable;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.loader.api.EntrypointException;
+import net.fabricmc.loader.api.LanguageAdapter;
 import net.fabricmc.loader.api.entrypoint.EntrypointContainer;
 import net.fabricmc.loader.api.MappingResolver;
 import net.fabricmc.loader.api.metadata.ModOrigin;
+import net.fabricmc.loader.impl.FabricLoaderImpl;
+import net.fabricmc.loader.impl.entrypoint.EntrypointStorage;
+import net.fabricmc.loader.impl.metadata.EntrypointMetadata;
 
 class FabricLoaderRuntimeTest {
 	static final List<String> CALLS = new ArrayList<>();
@@ -43,6 +48,13 @@ class FabricLoaderRuntimeTest {
 		@Override
 		public void onInitialize() {
 			throw new IllegalStateException("boom");
+		}
+	}
+
+	public static final class Added implements ModInitializer {
+		@Override
+		public void onInitialize() {
+			CALLS.add("added");
 		}
 	}
 
@@ -173,6 +185,57 @@ class FabricLoaderRuntimeTest {
 		assertEquals(2, containers.size());
 		assertSame(main.getFirst(), containers.getFirst().getEntrypoint());
 		assertThrows(EntrypointException.class, () -> containers.get(1).getEntrypoint());
+	}
+
+	/**
+	 * LOADER-4: a mod adds an entrypoint to Fabric Loader's storage as FrozenLib does, by reflection on
+	 * {@code FabricLoaderImpl}'s private fields and with a container it tests against Fabric Loader's class; the loader
+	 * then returns it after those the mods' metadata declares. This installs the runtime for the rest of the JVM's tests,
+	 * none of which reads the installed loader.
+	 */
+	@Test
+	@SuppressWarnings("unchecked")
+	void anEntrypointAddedToFabricLoadersStorageComesAfterTheDeclaredOnes() throws Exception {
+		CALLS.clear();
+		FabricLoaderRuntime rt = runtime();
+		mod(rt, "good_mod", Good.class.getName());
+		ModContainerImpl removed = mod(rt, "removed_mod", Good.class.getName());
+		rt.removeMod("removed_mod");
+		rt.install();
+		FabricLoaderImpl loader = FabricLoaderImpl.INSTANCE;
+		Field storageField = FabricLoaderImpl.class.getDeclaredField("entrypointStorage");
+		storageField.setAccessible(true);
+		Field adapterField = FabricLoaderImpl.class.getDeclaredField("adapterMap");
+		adapterField.setAccessible(true);
+		EntrypointStorage storage = (EntrypointStorage) storageField.get(loader);
+		Map<String, LanguageAdapter> adapters = (Map<String, LanguageAdapter>) adapterField.get(loader);
+		net.fabricmc.loader.impl.ModContainerImpl container =
+				(net.fabricmc.loader.impl.ModContainerImpl) loader.getModContainer("good_mod").orElseThrow();
+
+		storage.add(container, "main", metadata("default", Added.class.getName()), adapters);
+		rt.getEntrypoints("main", ModInitializer.class).forEach(ModInitializer::onInitialize);
+
+		assertEquals(List.of("good", "added"), CALLS);
+		assertThrows(Exception.class, () -> storage.add(container, "main", metadata("kotlin", Added.class.getName()), adapters),
+				"an adapter the map lacks is refused, as Fabric Loader refuses it");
+		assertThrows(UnsupportedOperationException.class, () -> adapters.put("kotlin", adapters.get("default")));
+		assertThrows(IllegalArgumentException.class, () -> rt.addEntrypoint(removed, "main", "default", Added.class.getName()),
+				"a mod that won't load declares none");
+		assertEquals(2, rt.getEntrypoints("main", ModInitializer.class).size());
+	}
+
+	private static EntrypointMetadata metadata(String adapter, String value) {
+		return new EntrypointMetadata() {
+			@Override
+			public String getAdapter() {
+				return adapter;
+			}
+
+			@Override
+			public String getValue() {
+				return value;
+			}
+		};
 	}
 
 	@Test
