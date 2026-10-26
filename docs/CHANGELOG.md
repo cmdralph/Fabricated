@@ -3,6 +3,22 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-10-26: the project rethought, a parity table, Forge's own private fields
+
+- **The roadmap looks forward only.** Its findings log had grown to four fifths of its 240,000 characters: the fixed
+  findings move, unchanged, to [`FINDINGS.md`](FINDINGS.md), and a finding moves there in the change that fixes it;
+  the open ones stay. Its long accounts of the Forge ports move, unchanged, to `PORTING.md` §7 ("Where it stands"),
+  and stale "this pass" markers name their milestone. The roadmap opens with *How the project fits together* (one
+  engine, three platforms, one tree, and five rules that keep the work on track) and a parity table: each capability
+  on NeoForge, Forge 61 to 66 and Forge 47.
+- **`COMPATIBILITY.md` covers the Forge builds:** each Fabric API module's status on Forge 61, 64, 65, 66 and 47, taken
+  from the Fabric API runs' reports on #157 and #158, and the bridges the in-game mod adds there.
+- **Branches:** a release branch takes only merges from `claude/dev` and `branch-readme.yml`'s commits, and is never
+  merged back (`claude.md`): merging one back would bring its `.github/README.md`, and #157's first head showed what a
+  release branch merged back while it moves on does (two merge bases, a conflict, no CI).
+- **CI-1** (`FINDINGS.md`): three of the Forge smoke scripts' informational checks read a line in `debug.log` as NOT SEEN
+  when `grep -q` ended their pipeline under pipefail, which is why they changed between runs of the same code.
+
 ## 2026-10-26: one working branch, one folder per platform
 
 - The owner's decision: `claude/dev` is the only working branch and holds every platform; it is merged into `main`,
@@ -24,7 +40,11 @@ One entry per working session, newest first: what changed, and how it was verifi
 - Verification: `settings.gradle` lists `:mc:neoforge-1.21.11` to `:mc:neoforge-26.3` by default and
   `:mc:forge-legacy-1.20.1` with `-Pfabricated.platforms=forge-legacy`, refuses an unknown platform, and with `all`
   reaches `:mc:forge-1.21.11`, whose ForgeGradle setup needs a download the cloud sandbox blocks. Compiling and running
-  each platform is left to its branch's CI on the pull requests.
+  each platform is left to its branch's CI on the pull requests: #156, #157 and #158, all from `8359033`, merged with
+  each branch's CI green. NeoForge's matrix passed on all four versions, with the 26.3 corpus runs' error digest as on
+  #153. Forge 61, 64, 65 and 66 started both servers with 42 or 43 checks passing and none failing, fluid types OK in
+  both runs, as on #154. Forge 47 passed 27 checks, then 26 and the language provider line, as on #155.
+  `branch-readme.yml` then wrote each Forge branch's `.github/README.md`.
 
 ## 2026-10-26: development of 0.5.0
 

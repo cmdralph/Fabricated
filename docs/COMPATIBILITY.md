@@ -17,7 +17,8 @@ three are the base of this file:
 
 The module tables were first taken from CI run [38491176425](https://github.com/cmdralph/Fabricated/actions/runs/38491176425)
 (Fabricated 0.1.0 development build) and have been edited since; a newer run's `smoke-fabric-api-<version>` report
-is the measured state.
+is the measured state. The experimental Forge builds have their own table,
+[*Fabric API modules on Forge*](#fabric-api-modules-on-forge-experimental).
 
 ## Minecraft versions
 
@@ -945,6 +946,100 @@ modules that cascade from it.
 12. ✅ The bridge between Fabric storages and NeoForge's item and fluid capabilities (done).
 13. ✅ `fabric-menu-api-v1` / `fabric-screen-handler-api-v1` on all four versions (done).
 
+## Fabric API modules on Forge (experimental)
+
+The `forge` and `forge-legacy` branches build Fabricated for Minecraft Forge 61 to 66 and Forge 47 (their READMEs,
+`docs/readme/`). CI runs only dedicated servers there: `ci/forge/smoke-server.sh` and `ci/forge-legacy/smoke-server.sh`
+start one with the test mod and one with the official Fabric API jar too. This table is the second run's
+`fabric-bridge-report.txt`, from the runs on `claude/dev` at `8359033` (#157 and #158, 2026-10-26): Fabric API
+0.141.6+1.21.11, 0.155.3+26.1.2, 0.161.0+26.2, 0.164.0+26.3 and 0.92.12+1.20.1, on Forge 61.2.4, 64.1.5, 65.1.5,
+66.1.0 and 47.4.28. The server starts in every run, and no module is disabled. The Forge 47 run is a gate, the others
+are informational.
+
+How to read it: as the NeoForge table, and
+
+- **loads, part**: the module loads without some of its hooks, ones its plan leaves out where Forge's code differs or
+  ones pre-flight finds Forge's code can't take (LEAVE-1). The report names each, with what is lost.
+- **client**: client-only. No Forge client runs in CI yet, so its status on the client is unknown.
+
+| Module | 1.21.11 (Forge 61) | 26.1.2 (Forge 64) | 26.2 (Forge 65) | 26.3 (Forge 66) | 1.20.1 (Forge 47) |
+|---|---|---|---|---|---|
+| fabric-advancement-api-v1 | — | — | loads | loads, part | — |
+| fabric-api-base | native | native | native | native | native |
+| fabric-api-lookup-api-v1 | loads | loads | loads | loads | loads |
+| fabric-biome-api-v1 | loads | loads | loads | loads | native |
+| fabric-block-api-v1 | loads | loads | loads | loads | loads |
+| fabric-block-getter-api-v2 | — | loads | loads | loads | — |
+| fabric-block-view-api-v2 | loads | — | — | — | loads |
+| fabric-blockrenderlayer-v1 | — | — | — | — | client |
+| fabric-client-tags-api-v1 | — | — | — | — | client |
+| fabric-command-api-v1 | — | — | — | — | loads |
+| fabric-command-api-v2 | loads | loads | loads | loads | loads, part |
+| fabric-commands-v0 | — | — | — | — | loads |
+| fabric-containers-v0 | — | — | — | — | loads |
+| fabric-content-registries-v0 | loads | loads, part | loads, part | loads, part | loads, part |
+| fabric-convention-tags-v1 | loads | — | — | — | loads |
+| fabric-convention-tags-v2 | loads | loads | loads | loads | — |
+| fabric-crash-report-info-v1 | loads | loads | loads | loads | loads |
+| fabric-creative-tab-api-v1 | — | loads | loads | loads | — |
+| fabric-data-attachment-api-v1 | loads | loads | loads | loads | loads |
+| fabric-data-generation-api-v1 | loads, part | loads, part | loads, part | loads, part | loads, part |
+| fabric-debug-api-v1 | — | loads | loads | loads | — |
+| fabric-dimensions-v1 | loads, part | loads, part | loads, part | loads, part | native |
+| fabric-entity-events-v1 | loads, part | loads, part | loads, part | loads, part | loads, part |
+| fabric-events-interaction-v0 | loads, part | loads, part | loads, part | loads, part | loads |
+| fabric-events-lifecycle-v0 | — | — | — | — | loads |
+| fabric-game-rule-api-v1 | loads | loads | loads | loads | loads |
+| fabric-item-api-v1 | loads, part | loads, part | loads, part | loads, part | loads, part |
+| fabric-item-group-api-v1 | loads | — | — | — | loads |
+| fabric-key-binding-api-v1 | client | — | — | — | client |
+| fabric-key-mapping-api-v1 | — | client | client | client | — |
+| fabric-keybindings-v0 | — | — | — | — | client |
+| fabric-lifecycle-events-v1 | loads, part | loads, part | loads, part | loads, part | loads, part |
+| fabric-loot-api-v2 | loads | — | — | — | native |
+| fabric-loot-api-v3 | native | native | native | native | — |
+| fabric-loot-tables-v1 | — | — | — | — | native |
+| fabric-menu-api-v1 | — | loads | loads | loads | — |
+| fabric-message-api-v1 | loads | loads | loads | loads | loads |
+| fabric-mining-level-api-v1 | — | — | — | — | loads |
+| fabric-model-loading-api-v1 | client | client | client | client | client |
+| fabric-models-v0 | — | — | — | — | client |
+| fabric-networking-api-v1 | loads | loads | loads | loads | loads |
+| fabric-networking-v0 | — | — | — | — | loads |
+| fabric-object-builder-api-v1 | loads, part | loads, part | loads, part | loads, part | loads |
+| fabric-particles-v1 | loads | loads | loads | loads | loads |
+| fabric-permission-api-v1 | — | loads | loads | loads | — |
+| fabric-recipe-api-v1 | loads | loads | loads | loads | loads |
+| fabric-registry-sync-v0 | loads, part | loads, part | loads, part | loads, part | loads, part |
+| fabric-renderer-api-v1 | client | client | client | client | client |
+| fabric-renderer-indigo | client | client | client | client | client |
+| fabric-renderer-registries-v1 | — | — | — | — | client |
+| fabric-rendering-data-attachment-v1 | — | — | — | — | loads |
+| fabric-rendering-fluids-v1 | loads | loads | loads | loads | loads |
+| fabric-rendering-v0 | — | — | — | — | client |
+| fabric-rendering-v1 | client | client | client | client | client |
+| fabric-resource-conditions-api-v1 | loads, part | loads | loads | loads, part | loads, part |
+| fabric-resource-loader-v0 | loads | loads | loads | loads | loads |
+| fabric-resource-loader-v1 | loads, part | loads, part | loads, part | loads, part | — |
+| fabric-screen-api-v1 | client | client | client | client | client |
+| fabric-screen-handler-api-v1 | loads | — | — | — | loads |
+| fabric-serialization-api-v1 | loads | loads | loads | loads | — |
+| fabric-sound-api-v1 | client | client | client | client | client |
+| fabric-tag-api-v1 | loads, part | loads, part | loads, part | loads, part | loads, part |
+| fabric-transfer-api-v1 | loads | loads | loads | loads | loads |
+| fabric-transitive-access-wideners-v1 | loads | loads | loads | loads | loads |
+
+On top of the modules, the in-game mod bridges these to Forge, each checked by the server runs:
+
+- **Tags:** tag files' `fabric:remove` entries are read into Forge's own removal list, with and without Fabric API (all
+  five).
+- **Fluids:** Fabric mods' fluids get Forge fluid types, and an entity moves through one that isn't water as through
+  air, as on Fabric (all five).
+- **Default attributes:** `FabricDefaultAttributeRegistry.MODIFY` runs in Forge's attribute modification event, and a
+  cow's armor set through it is what the game reads (Forge 64 to 66, with Fabric API).
+- **Advancements:** a vanilla advancement's reward set through `AdvancementEvents.MODIFY` is what the server loads
+  (Forge 65 and 66, with Fabric API; on Forge 66 through a hook on Forge's conditional decoding).
+
 ## Fabric mods tested
 
 CI checks Fabricated's own test mods as gates on every version. Real mods run in these CI runs too, downloaded from
@@ -953,7 +1048,7 @@ Modrinth in CI (never redistributed):
 - **A corpus of popular Fabric mods** (`ci/mod-corpus.txt`: libraries, interface, rendering, performance and content
   mods, with their dependencies), on a server and a client, on every version. Informational: each run's report lists
   which load and why the others are disabled. Known problems are tracked as CORPUS-n in
-  [roadmap.md](roadmap.md#findings-log).
+  [roadmap.md](roadmap.md#findings), and fixed ones in [FINDINGS.md](FINDINGS.md).
 - **An advanced corpus of Fabric mods with deep hooks** (`ci/mod-corpus-advanced.txt`: world generation, gameplay
   systems, camera, sound, replays, server tools), on a server and a client of its own, so that one stopping the game
   can't hide the main corpus's results. Informational, as the main corpus is.

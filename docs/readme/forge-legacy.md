@@ -25,6 +25,7 @@ On each run, the server checks that:
 - its main and server entrypoints run in Forge's registry events, with the registries open;
 - it registers an item by Intermediary names;
 - it reads a private field its access widener opens;
+- an access widener leaves private a field Forge's coremod reads through a getter, and the report says so;
 - its mixins are applied, including one through MixinExtras 0.5.5, which Fabricated ships for Forge 47 because Forge
   47 has none;
 - its injected interfaces are added, and its other side's members are stripped.
@@ -80,6 +81,7 @@ The build uses ModDevGradle's `legacyforge` plugin (`mc/platform-forge-legacy.gr
 
 - [`docs/PORTING.md`](/docs/PORTING.md) §3 and §7: the 1.20.1 port's design and its steps (L1 to L4).
 - [`docs/roadmap.md`](/docs/roadmap.md): where the `forge-legacy` track stands and what comes next.
+- [`docs/COMPATIBILITY.md`](/docs/COMPATIBILITY.md): what works, per version and per Fabric API module, with a table for the Forge builds.
 - [`README.md`](/README.md): Fabricated's main README (NeoForge).
 
 ## License

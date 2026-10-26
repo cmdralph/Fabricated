@@ -29,6 +29,7 @@ On each run, the server checks that:
 - it registers an item that stays in the frozen registry;
 - its mixins are applied, its injected interfaces are added, and its other side's members are stripped;
 - Forge's loading warnings name a Fabric mod that wasn't loaded;
+- an access widener leaves private a field Forge's coremod reads through a getter, and the report says so;
 - the report names Forge as the loader.
 
 **With the official Fabric API jar**, the server starts on all four versions and no Fabric API module is turned off.
@@ -86,7 +87,7 @@ CI is `.github/workflows/build-forge.yml` with `ci/forge/smoke-server.sh`. The p
 
 - [`docs/PORTING.md`](/docs/PORTING.md) §4 and §7: the Forge port's design and its steps (F1 to F4).
 - [`docs/roadmap.md`](/docs/roadmap.md): where the `forge` track stands and what comes next.
-- [`docs/COMPATIBILITY.md`](/docs/COMPATIBILITY.md): what works on NeoForge, per version and per Fabric API module.
+- [`docs/COMPATIBILITY.md`](/docs/COMPATIBILITY.md): what works, per version and per Fabric API module, with a table for the Forge builds.
 - [`README.md`](/README.md): Fabricated's main README (NeoForge).
 
 ## License
