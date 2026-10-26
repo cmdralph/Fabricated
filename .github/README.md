@@ -28,6 +28,9 @@ On each run, the server checks that:
   composed from the files Forge's installer leaves, so nothing is downloaded.
 - its main and server entrypoints run in Forge's registry events, with the registries open;
 - it registers an item by Intermediary names;
+- content it builds during the game's bootstrap, before any mod is constructed, waits for its main entrypoint to
+  register it, as on Fabric (CORPUS-31);
+- two Fabric mods that depend on each other load, with one ordering of their cycle left out (ORDER-1);
 - it reads a private field its access widener opens;
 - an access widener leaves private a field Forge's coremod reads through a getter, and the report says so;
 - its mixins are applied, including one through MixinExtras 0.5.5, which Fabricated ships for Forge 47 because Forge
