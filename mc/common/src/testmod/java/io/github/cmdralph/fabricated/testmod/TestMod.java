@@ -168,6 +168,8 @@ public final class TestMod implements ModInitializer, DedicatedServerModInitiali
 
 		List<Runnable> custom = loader.getEntrypoints("fabricated-test", Runnable.class);
 		custom.forEach(Runnable::run);
+		// The entrypoint the mod's mixin plugin added to Fabric Loader's storage, as FrozenLib adds its own (LOADER-4).
+		loader.getEntrypoints(AddedEntrypoint.KEY, Runnable.class).forEach(Runnable::run);
 
 		Item item = Registry.register(BuiltInRegistries.ITEM, ITEM_ID, new Item(new Item.Properties().setId(ResourceKey.create(Registries.ITEM, ITEM_ID))));
 		if (BuiltInRegistries.ITEM.getKey(item).equals(ITEM_ID)) {

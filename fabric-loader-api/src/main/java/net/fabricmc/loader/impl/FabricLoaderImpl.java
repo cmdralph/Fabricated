@@ -2,27 +2,62 @@ package net.fabricmc.loader.impl;
 
 import java.io.File;
 import java.nio.file.Path;
+import java.util.AbstractMap;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Consumer;
 
 import net.fabricmc.api.EnvType;
 import net.fabricmc.loader.api.FabricLoader;
+import net.fabricmc.loader.api.LanguageAdapter;
 import net.fabricmc.loader.api.MappingResolver;
 import net.fabricmc.loader.api.ModContainer;
 import net.fabricmc.loader.api.ObjectShare;
 import net.fabricmc.loader.api.entrypoint.EntrypointContainer;
+import net.fabricmc.loader.impl.entrypoint.EntrypointStorage;
 
 /**
  * Stand-in for Fabric Loader's internal {@code FabricLoaderImpl}, which some mods use instead of the public API. Every
- * public API method works (it delegates to {@link FabricLoader#getInstance()}); Fabric Loader's internal methods (game
- * provider, mod candidates) do not exist under Fabricated.
+ * public API method works (it delegates to {@link FabricLoader#getInstance()}), and so do the private fields mods read
+ * by reflection to add entrypoints of their own (LOADER-4); Fabric Loader's internal methods (game provider, mod
+ * candidates) do not exist under Fabricated.
  */
 public final class FabricLoaderImpl implements FabricLoader {
 	public static final FabricLoaderImpl INSTANCE = new FabricLoaderImpl();
 
+	/** Fabric Loader's entrypoint storage, which mods add to (FrozenLib); what they add goes to Fabricated's loader. */
+	@SuppressWarnings("unused") // read by mods, by reflection
+	private final EntrypointStorage entrypointStorage = new EntrypointStorage();
+	/** Fabric Loader's language adapters by id, which mods pass back to the storage with what they add; read-only. */
+	@SuppressWarnings("unused") // read by mods, by reflection
+	private final Map<String, LanguageAdapter> adapterMap = new LanguageAdapters();
+
 	private FabricLoaderImpl() {
+	}
+
+	/** The installed loader's language adapters, looked up on each use: the field is set when this class loads. */
+	private static final class LanguageAdapters extends AbstractMap<String, LanguageAdapter> {
+		private static Map<String, LanguageAdapter> adapters() {
+			return io.github.cmdralph.fabricated.fabricloader.FabricLoaderImpl.internals().languageAdapters();
+		}
+
+		@Override
+		public Set<Entry<String, LanguageAdapter>> entrySet() {
+			return adapters().entrySet();
+		}
+
+		@Override
+		public boolean containsKey(Object key) {
+			return adapters().containsKey(key);
+		}
+
+		@Override
+		public LanguageAdapter get(Object key) {
+			return adapters().get(key);
+		}
 	}
 
 	private static FabricLoader loader() {

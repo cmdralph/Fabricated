@@ -64,6 +64,29 @@ One entry per working session, newest first: what changed, and how it was verifi
   26.x corpus's remaining errors were traced to the mods themselves: FrozenLib's "Unable to read config entry" on a
   fresh config directory (CORPUS-27) and Wilder Wild 26.3's reinforced deepslate blockstate without its mixin
   (CORPUS-28). Forge 47's biome coremod failing with Fabric API installed is recorded for L4 in the roadmap.
+- No Fabric API module disabled on either Forge branch any more. `fabric-dimensions-v1` loads on Forge 61 to 66
+  without its DataFixerUpper mixins (forge #140), and is native on Forge 47 (forge-legacy #141): a Fabric teleport goes
+  through Forge's teleporter without the End's platform or credits, and Forge's own lenient codec stands in for
+  upstream's codec hook; with Fabric API, no module of 0.92.12 is disabled on Forge 47 any more. On Forge 64 to 66, `fabric-object-builder-api-v1` and, with it,
+  `fabric-data-attachment-api-v1` load (forge #142): Forge's attribute builder keeps its entries in a map of its own,
+  so upstream's accessor is left out, and the in-game mod gives the attribute copy Forge's constructor and runs
+  `FabricDefaultAttributeRegistry.MODIFY` in Forge's attribute modification event (upstream's hook fired at bootstrap
+  on Forge, before any listener existed); a cow's armor set through MODIFY is what the game reads. Content registries
+  (Forge 64 to 66) and data generation (Forge 61 to 66) load without the hooks Forge's code can't take (forge #144):
+  with the official Fabric API jar, no module is disabled on any Forge version Fabricated targets.
+- Native loot modules on both Forge branches. On Forge 61 to 66, `fabric-loot-api-v3` and `fabric-api-base` (forge
+  #137, a port of `main`'s): Fabric's loot table events run from Forge's loot table event, and from a hook into the
+  registry decode on Forge 66, whose loot skip is gone; the in-game mod's mixins use no MixinExtras sugar, after its
+  first run showed Forge's MixinExtras failing `@Local` without Fabric API. On Forge 47, `fabric-loot-api-v2`,
+  `fabric-loot-tables-v1` and `fabric-api-base` (forge-legacy #138), which were disabled as Forge 47's loot pools are a
+  list. Tech Reborn's 26.1.2 recipes of type `reborncore:padded`, which its code doesn't register, are recorded as the
+  mod's own (CORPUS-29).
+- SKIP-1 is verified: main's tag removal check passes on all four versions with Fabric API (#133), Forge 47's Fabric
+  API run reads `fabric:remove` (forge-legacy #132, whose in-game mod is now reobfuscated to SRG's names and has mixins
+  of its own), and Fabric API's tag module loads on Forge 61 to 66 with both removals applied (forge #134, the forge
+  branch's first in-game mixin). On Forge 47, `fabric-biome-api-v1` is native on Forge's biome modifiers (forge-legacy
+  #135, a port of BIOME-1): Fabric's biome changes reach the biome Forge reads, and Forge's field-to-method coremod,
+  which failed while Fabric API was installed, applies again.
 - A mixin member left out by name takes the class's stores to its field with it (SKIP-1). Left in, Mixin pointed them
   at the target's field of that name: fabric-tag-api-v1's `TagFileMixin` initialises its own `remove` list, and with
   the field left out the empty list was written over the platform's `remove` after the record's constructor set it, so
@@ -127,6 +150,22 @@ One entry per working session, newest first: what changed, and how it was verifi
   Forge 61 and 64 to 66); `forge-legacy` runs one on Forge 47.4.28, remapped to SRG names, its mixin applied (#89: ten
   checks), after three Forge 47 differences the smoke found (providers' `scanFile`, file infos, securejarhandler's
   primary path).
+- Mods can add entrypoints to Fabric Loader's internal storage (LOADER-4). FrozenLib adds those its `frozenlib.json`
+  files declare from its mixin plugin, and its Fabric build registers its events' listeners only from
+  `FabricLoader.getEntrypoints`; on Fabricated the storage didn't exist, so Wilder Wild's 26.3 block changes (its
+  reinforced deepslate pillar, random ticks for its froglights and firefly bush) were never registered. CORPUS-28's
+  blockstate warning, put down to Wilder Wild before, was this: the corpus run on #145 no longer logs it, nor
+  FrozenLib's lookup error. `FabricLoaderImpl`'s storage and adapter fields now
+  work, adding to Fabricated's loader, and Fabricated's containers extend Fabric Loader's `ModContainerImpl`. Tests:
+  the runtime used as FrozenLib uses it, the linkage check accepting FrozenLib's call (core and loader API tests
+  pass), and a server check on every version: the test mod's mixin plugin adds an entrypoint the same way and its main
+  entrypoint runs it.
+- Forge 66 runs Fabric API's advancement events (`forge`, #146): Forge decodes each advancement as an `Optional`
+  (its conditional data), which upstream's loading hook casts to an advancement, so the plan leaves that hook out and
+  the in-game mod's own hook on the same decoding runs upstream's code on the advancement inside, found by reflection
+  as the module is passed through. A version's project names the in-game mod's extra mixin configs
+  (`game_mod_mixins`). Test: the forge test mod sets a vanilla advancement's reward through `MODIFY`, which the server
+  loads on Forge 65 and 66 with Fabric API.
 
 ## 2026-10-25: branch reorganisation, a glowing moving block's outline, 1.21.11 server linkage noise, platform seams
 

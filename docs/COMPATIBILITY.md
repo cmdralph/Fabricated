@@ -831,9 +831,12 @@ MixinExtras has NeoForge's jar, and a NeoForge mod nested in another jar has tha
   `FabricLauncherBase.getLauncher()` (environment, development flag, runtime namespace) are provided for the mods that
   use them. A jar a mod adds to the class path while running (`addToClassPath`, or the legacy launcher's `propose`,
   through which LuckPerms adds the libraries it downloads) is found for the classes no mod's module has, untransformed
-  (LOADER-2). `ModContainerImpl`, `EntrypointStorage` and `EntrypointMetadata` exist so that code naming them links
-  (FrozenLib's entrypoint injector, from a mixin plugin): there is no instance of the first two to reach, so such code
-  takes the fallback it keeps for a loader without them (LOADER-1). Other internal classes are not provided. A mod's code that reaches for another one, or for a member of Fabric
+  (LOADER-2). Mods can add entrypoints to Fabric Loader's internal storage as on Fabric
+  (LOADER-4): `FabricLoaderImpl`'s `entrypointStorage` and `adapterMap` fields, which they read by reflection, work, and
+  every container is Fabric Loader's `ModContainerImpl`, which mods test for first; what they add is returned by
+  `FabricLoader.getEntrypoints` after the entrypoints the mods' metadata declares (FrozenLib's `frozenlib.json`
+  entrypoints, among them the listeners of its events). `ModContainerImpl`'s own internal methods are not provided.
+  Other internal classes are not provided. A mod's code that reaches for another one, or for a member of Fabric
   Loader's API that Fabricated lacks, is listed among the report's linkage warnings before the game starts.
 - A registry a mod creates through vanilla's own code (`BuiltInRegistries`) before NeoForge's registration has ended
   joins the root registry, which NeoForge froze after its new-registry event, as Fabric API's `FabricRegistryBuilder`

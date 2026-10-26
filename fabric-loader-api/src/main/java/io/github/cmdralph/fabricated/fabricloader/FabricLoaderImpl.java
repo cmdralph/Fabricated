@@ -70,4 +70,10 @@ public final class FabricLoaderImpl {
 	public static ClassLoader classLoaderFor(ModContainer mod) {
 		return classLoaderLookup.apply(mod);
 	}
+
+	/** What the installed loader does for Fabric Loader's internals mods use. */
+	public static LoaderInternals internals() {
+		if (INSTANCE instanceof LoaderInternals internals) return internals;
+		throw new IllegalStateException("No Fabricated loader is installed: " + INSTANCE);
+	}
 }
