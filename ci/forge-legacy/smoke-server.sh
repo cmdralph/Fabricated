@@ -257,6 +257,7 @@ report "native fabric-dimensions-v1: an armor stand teleported to the End lands 
 report "a Fabric mod's fluids have Forge fluid types (the in-game mod's, registered under their ids), and a pig falls through one that isn't water as through air" "grep -q 'FABRICATED-FORGE-TEST fluid types OK' logs/latest.log 2>/dev/null"
 report "Forge's biome coremod applied (the biome's climate field stayed private)" "! grep -qs 'field_to_method.js function biome' logs/latest.log server.out"
 report "Forge's loading warnings name the Fabric mod that wasn't loaded" "grep -qsE 'ServerModLoader.*: Fabric mod fabricated_forge_unmet 1\\.0\\.0 was not loaded: ' logs/latest.log logs/debug.log"
+report "an access widener leaves a field private that Forge's coremod reads through a getter: the test mod's BucketItem fluid (PLAT-4)" "grep -q 'BucketItem.f_40687_ must stay private on Forge' logs/fabric-bridge-report.txt 2>/dev/null && ! grep -qs 'field_to_method.js function bucketitem' logs/latest.log server.out"
 report "Fabricated's report names Forge as the loader" "grep -q '^  Forge: ' logs/fabric-bridge-report.txt 2>/dev/null && ! grep -q '^  NeoForge: ' logs/fabric-bridge-report.txt 2>/dev/null"
 
 echo "Server status: $status"

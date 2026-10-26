@@ -1,3 +1,4 @@
 classTweaker v1 intermediary
 inject-interface net/minecraft/server/MinecraftServer io/github/cmdralph/fabricated/forgetest/ForgeTestMarker
 accessible field net/minecraft/class_1792 field_8013 I
+accessible field net/minecraft/class_1755 field_7905 Lnet/minecraft/class_3611;

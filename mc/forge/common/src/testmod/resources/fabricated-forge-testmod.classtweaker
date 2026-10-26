@@ -1,2 +1,3 @@
 classTweaker v1 named
 inject-interface net/minecraft/server/MinecraftServer io/github/cmdralph/fabricated/forgetest/ForgeTestMarker
+accessible field net/minecraft/world/item/BucketItem content Lnet/minecraft/world/level/material/Fluid;

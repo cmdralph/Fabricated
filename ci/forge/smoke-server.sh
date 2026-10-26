@@ -151,6 +151,7 @@ report "fabric-object-builder-api-v1 (with Fabric API, 26.x): a cow's default ar
 report "fabric-advancement-api-v1 (with Fabric API, 26.2 and 26.3): a vanilla advancement's reward set through AdvancementEvents.MODIFY is what the server loads (on Forge 66 through the in-game mod's hook on Forge's conditional decoding)" "grep -q 'FABRICATED-FORGE-TEST advancement modify OK' logs/latest.log 2>/dev/null"
 report "a Fabric mod's fluids have Forge fluid types (the in-game mod's, registered under their ids), and a pig falls through one that isn't water as through air" "grep -q 'FABRICATED-FORGE-TEST fluid types OK' logs/latest.log 2>/dev/null"
 report "Forge's loading warnings name the Fabric mod that wasn't loaded" "grep -qsE 'ServerModLoader.*: Fabric mod fabricated_forge_unmet 1\\.0\\.0 was not loaded: ' logs/latest.log logs/debug.log"
+report "an access widener leaves a field private that Forge's coremod reads through a getter: the test mod's BucketItem.content (PLAT-4)" "grep -q 'BucketItem.content must stay private on Forge' logs/fabric-bridge-report.txt 2>/dev/null"
 report "Fabricated's report names Forge as the loader" "grep -q '^  Forge: ' logs/fabric-bridge-report.txt 2>/dev/null && ! grep -q '^  NeoForge: ' logs/fabric-bridge-report.txt 2>/dev/null"
 
 echo "Server status: $status"
