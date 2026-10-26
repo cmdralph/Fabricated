@@ -87,9 +87,10 @@ echo "::endgroup::"
 echo "::group::First errors in the log"
 { grep -n -E "/(ERROR|FATAL)\]|Exception|Caused by" logs/latest.log 2>/dev/null | grep -v 'does not specify "minVersion"' | head -n 60; } || true
 echo "::endgroup::"
+# The console has what the game logs before its log files are set up, and the causes of a crash past the tail above.
 echo "::group::Mixin failures in the logs"
 grep -h -m 20 -E "InjectionError|Invalid[A-Za-z]*Exception|MixinApplyError|MixinInitialisationError|Mixin apply for mod .* failed" \
-	logs/latest.log logs/debug.log 2>/dev/null | cut -c1-600 || true
+	server.out logs/latest.log logs/debug.log 2>/dev/null | cut -c1-600 || true
 echo "::endgroup::"
 for report in crash-reports/*.txt; do
 	[ -f "$report" ] || continue
