@@ -125,9 +125,11 @@ for f in libraries/net/minecraft/server/"$mc"/*.jar; do
 	echo "-- $f: $(printf '%s\n' "$entries" | grep -c '\.class$') classes; MinecraftServer: $(printf '%s\n' "$entries" | grep -c '^net/minecraft/server/MinecraftServer\.class$'), net/minecraft/world/level/Level: $(printf '%s\n' "$entries" | grep -c '^net/minecraft/world/level/Level\.class$')"
 done
 echo "::endgroup::"
+# A pipeline's last grep reads all its input (no -q): under pipefail, -q's exit at the first match can kill the grep
+# feeding it with SIGPIPE, and a line that is there reads as not seen.
 report() { if eval "$2"; then echo "PASS: $1"; else echo "NOT SEEN: $1"; fi; }
-report "Forge ran Fabricated's mod locator" "grep -qi 'fabricated' logs/debug.log 2>/dev/null && grep -i 'locator' logs/debug.log | grep -qi 'fabricated'"
-report "Forge took Fabricated's language provider" "grep -i -E 'language|lang' logs/debug.log 2>/dev/null | grep -qi 'fabricated'"
+report "Forge ran Fabricated's mod locator" "grep -qi 'fabricated' logs/debug.log 2>/dev/null && grep -i 'locator' logs/debug.log | grep -i 'fabricated' > /dev/null"
+report "Forge took Fabricated's language provider" "grep -i -E 'language|lang' logs/debug.log 2>/dev/null | grep -i 'fabricated' > /dev/null"
 report "Fabricated's discovery ran" "grep -q 'Fabricated discovery finished' logs/latest.log 2>/dev/null"
 report "Fabricated handed Forge the translated test mod" "grep -q 'Fabricated handed Forge [1-9]' logs/latest.log 2>/dev/null"
 report "Forge constructed Fabricated's in-game mod" "grep -q 'Fabricated ran the Fabric pre-launch entrypoints' logs/latest.log 2>/dev/null"
@@ -139,7 +141,7 @@ report "the test mod's mixin applied (Mixin read the overlay's MixinConfigs)" "g
 report "Forge took Fabricated's transformation service" "grep -q 'Fabricated transforms [1-9][0-9]* class(es) for Fabric mods before Mixin' logs/latest.log 2>/dev/null"
 report "the test mod's injected interface is on MinecraftServer (inject-interface)" "grep -q 'FABRICATED-FORGE-TEST injected interface OK' logs/latest.log 2>/dev/null"
 report "the test mod's client-only method was stripped (@Environment)" "grep -q 'FABRICATED-FORGE-TEST environment strip OK' logs/latest.log 2>/dev/null"
-report "Forge added MixinExtras for the test mod" "grep -i 'mixinextras' logs/debug.log 2>/dev/null | grep -qi -E 'select|load|add'"
+report "Forge added MixinExtras for the test mod" "grep -i 'mixinextras' logs/debug.log 2>/dev/null | grep -i -E 'select|load|add' > /dev/null"
 report "the Fabric main entrypoints ran in Forge's registry events" "grep -q 'Fabricated ran the Fabric main entrypoints of [1-9][0-9]* mod(s) on Forge (0 failed)' logs/latest.log 2>/dev/null"
 report "the test mod registered an item" "grep -q 'FABRICATED-FORGE-TEST registry OK' logs/latest.log 2>/dev/null"
 report "the test mod's item is in the frozen registry at the first tick" "grep -q 'FABRICATED-FORGE-TEST registry entry kept OK' logs/latest.log 2>/dev/null"

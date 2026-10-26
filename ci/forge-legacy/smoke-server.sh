@@ -221,9 +221,11 @@ for f in libraries/net/minecraft/server/*/*-mappings.txt; do
 	' "$f" | cut -c1-300
 done
 echo "::endgroup::"
+# A pipeline's last grep reads all its input (no -q): under pipefail, -q's exit at the first match can kill the grep
+# feeding it with SIGPIPE, and a line that is there reads as not seen.
 report() { if eval "$2"; then echo "PASS: $1"; else echo "NOT SEEN: $1"; fi; }
-report "Forge ran Fabricated's mod locator" "grep -qi 'fabricated' logs/debug.log 2>/dev/null && grep -i 'locator' logs/debug.log | grep -qi 'fabricated'"
-report "Forge took Fabricated's language provider" "grep -i -E 'language|lang' logs/debug.log 2>/dev/null | grep -qi 'fabricated'"
+report "Forge ran Fabricated's mod locator" "grep -qi 'fabricated' logs/debug.log 2>/dev/null && grep -i 'locator' logs/debug.log | grep -i 'fabricated' > /dev/null"
+report "Forge took Fabricated's language provider" "grep -i -E 'language|lang' logs/debug.log 2>/dev/null | grep -i 'fabricated' > /dev/null"
 report "Fabricated's discovery ran" "grep -q 'Fabricated discovery finished' logs/latest.log 2>/dev/null"
 report "Fabricated handed Forge the translated test mod" "grep -q 'Fabricated handed Forge [1-9]' logs/latest.log 2>/dev/null"
 report "Forge constructed Fabricated's in-game mod" "grep -q 'Fabricated ran the Fabric pre-launch entrypoints' logs/latest.log 2>/dev/null"
