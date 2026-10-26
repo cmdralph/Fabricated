@@ -42,8 +42,13 @@ public abstract class MinecraftServerMixin {
 			// The test mod's tag lists stone and dirt and removes dirt in fabric:remove, which Fabricated's in-game mod reads
 			// into Forge's remove list.
 			class_6862<class_1792> tag = class_6862.method_40092(items.method_30517(), new class_2960(ForgeTestMod.MOD_ID, "fabric_remove"));
-			if (new class_1799(class_1802.field_20391).method_31573(tag) && !new class_1799(class_1802.field_8831).method_31573(tag)) {
+			boolean stone = new class_1799(class_1802.field_20391).method_31573(tag);
+			boolean dirt = new class_1799(class_1802.field_8831).method_31573(tag);
+			if (stone && !dirt) {
 				ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST fabric:remove OK");
+			} else {
+				ForgeTestMod.LOGGER.warn("FABRICATED-FORGE-TEST fabric:remove: the tag is loaded {}, stone is in it {}, dirt is in it {}",
+						items.method_40266(tag).isPresent(), stone, dirt);
 			}
 		}
 	}
