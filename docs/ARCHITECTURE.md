@@ -127,7 +127,7 @@ Fabricated/
 | `version` (SemVer or free-form) | `version` string unchanged. Comparison uses Fabric SemVer rules in `core`. |
 | `name`, `description`, `authors`, `contributors`, `contact`, `license`, `icon` | `displayName`, `description`, `authors`, `credits`, `displayURL`/`issueTrackerURL`, `license`, `logoFile` |
 | `environment` (`*`/`client`/`server`) | The mod is skipped (with an INFO note) when the dist doesn't match |
-| `depends` / `recommends` / `suggests` / `conflicts` / `breaks` | Resolved **by Fabricated** (§3.4). NeoForge dependencies are also emitted for ordering (`ordering="AFTER"`, type `optional`) so FML's sort respects them without FML being able to abort the whole game. |
+| `depends` / `recommends` / `suggests` / `conflicts` / `breaks` | Resolved **by Fabricated** (§3.4). NeoForge dependencies are also emitted for ordering (`ordering="AFTER"`, type `optional`) so FML's sort respects them without FML being able to abort the whole game over a missing one. Orderings that would close a cycle, which Fabric's dependencies may form and every platform's sort refuses, are left out, one per cycle, and the report names them (ORDER-1, `LoadOrderings`). |
 | `provides` | Extra aliases (e.g. a library provides `fabric-api-base`) |
 | `entrypoints` | Stored for the language loader (§4) |
 | `mixins` (string or `{config, environment}`) | `[[mixins]]` entries in the generated toml, filtered by environment at generation time, since the dist is known at discovery |

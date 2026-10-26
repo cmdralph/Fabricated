@@ -12,8 +12,8 @@ import io.github.cmdralph.fabricated.core.accesswidener.AccessWidenerFile.Inject
 import io.github.cmdralph.fabricated.core.bytecode.ClassIndex;
 
 /**
- * Converts access widener / class tweaker directives (already in runtime names) to NeoForge access
- * transformer lines.
+ * Converts access widener / class tweaker directives (already in runtime names) to access transformer lines, which
+ * NeoForge and Forge read alike.
  *
  * <p>NeoForge's AT engine only ever widens access, so {@code private-f} means "keep the current access,
  * remove {@code final}", which is exactly what {@code mutable} needs. Directives for the same target are
@@ -36,11 +36,25 @@ public final class AccessTransformerConverter {
 	 * counts only where the game's class has that getter: only NeoForge's 26.3 build replaces {@code Biome.attributes},
 	 * which its 21.11, 26.1 and 26.2 builds leave a plain field Fabric API's biome module widens (BIOME-2).
 	 */
-	static final Map<String, String> PLATFORM_PRIVATE_FIELDS = Map.of(
+	public static final Map<String, String> NEOFORGE_PRIVATE_FIELDS = Map.of(
 			"net/minecraft/world/level/biome/Biome climateSettings", "getModifiedClimateSettings",
 			"net/minecraft/world/level/biome/Biome specialEffects", "getModifiedSpecialEffects",
 			"net/minecraft/world/level/biome/Biome attributes", "getModifiedEnvironmentAttributes",
 			"net/minecraft/world/level/levelgen/structure/Structure settings", "getModifiedStructureSettings",
+			"net/minecraft/world/level/block/FlowerPotBlock potted", "getPotted");
+
+	/**
+	 * Forge 61 to 66's: the fields its {@code FieldToMethodTransformer} redirects to a getter, which throws unless the
+	 * field is private ("is not private and an instance field"), read in MinecraftForge's 1.21.11, 26.1.2, 26.2 and 26.3
+	 * sources (PLAT-4). Forge 66 no longer redirects {@code Biome}'s two, but its {@code Biome} keeps their getters, so
+	 * they stay private there too: Fabric API's biome module, which widens them, reads them from a native module only.
+	 */
+	public static final Map<String, String> FORGE_PRIVATE_FIELDS = Map.of(
+			"net/minecraft/world/level/biome/Biome climateSettings", "getModifiedClimateSettings",
+			"net/minecraft/world/level/biome/Biome specialEffects", "getModifiedSpecialEffects",
+			"net/minecraft/world/effect/MobEffectInstance effect", "getEffect",
+			"net/minecraft/world/level/block/LiquidBlock fluid", "getFluid",
+			"net/minecraft/world/item/BucketItem content", "getFluid",
 			"net/minecraft/world/level/block/FlowerPotBlock potted", "getPotted");
 
 	/** Conversion output. */
@@ -68,23 +82,26 @@ public final class AccessTransformerConverter {
 		}
 	}
 
-	/**
-	 * @param game index of runtime game classes used to validate targets; may be {@code null}
-	 */
-	/** Whether a NeoForge coremod reads this field through its getter here; without the game's classes, whether one may. */
-	private static boolean platformPrivate(ClassIndex.ClassInfo owner, String field) {
-		String getter = PLATFORM_PRIVATE_FIELDS.get(field);
+	/** Whether the platform's coremod reads this field through its getter here; without the game's classes, whether it may. */
+	private static boolean platformPrivate(Map<String, String> privateFields, ClassIndex.ClassInfo owner, String field) {
+		String getter = privateFields.get(field);
 		return getter != null && (owner == null || owner.methods().keySet().stream().anyMatch(m -> m.startsWith(getter + "(")));
 	}
 
-	public static Result convert(AccessWidenerFile file, ClassIndex game) {
+	/**
+	 * @param game          index of runtime game classes used to validate targets; may be {@code null}
+	 * @param privateFields the fields the platform's loader requires to stay private, as {@code owner field} in runtime
+	 *                      names, to the getter it reads them through ({@link #NEOFORGE_PRIVATE_FIELDS})
+	 * @param loaderName    the platform's loader, for the warnings
+	 */
+	public static Result convert(AccessWidenerFile file, ClassIndex game, Map<String, String> privateFields, String loaderName) {
 		Map<String, Target> targets = new TreeMap<>();
 		List<String> warnings = new ArrayList<>();
 
 		for (Entry e : file.entries()) {
 			ClassIndex.ClassInfo owner = game != null ? game.get(e.owner()) : null;
 			if (game != null && owner == null) {
-				warnings.add("line " + e.line() + ": class " + e.owner() + " does not exist on this Minecraft/NeoForge version; ignored");
+				warnings.add("line " + e.line() + ": class " + e.owner() + " does not exist on this Minecraft/" + loaderName + " version; ignored");
 				continue;
 			}
 			String ownerDotted = e.owner().replace('/', '.');
@@ -117,9 +134,9 @@ public final class AccessTransformerConverter {
 						warnings.add("line " + e.line() + ": field " + e.owner() + "." + e.name() + " does not exist; ignored");
 						continue;
 					}
-					if (e.access() == Access.ACCESSIBLE && platformPrivate(owner, e.owner() + " " + e.name())) {
-						warnings.add("line " + e.line() + ": field " + e.owner() + "." + e.name()
-								+ " must stay private on NeoForge (a NeoForge coremod replaces it with a getter); not widened. "
+					if (e.access() == Access.ACCESSIBLE && platformPrivate(privateFields, owner, e.owner() + " " + e.name())) {
+						warnings.add("line " + e.line() + ": field " + e.owner() + "." + e.name() + " must stay private on " + loaderName
+								+ " (a " + loaderName + " coremod replaces it with a getter); not widened. "
 								+ "Code reading it directly fails when it runs.");
 						continue;
 					}

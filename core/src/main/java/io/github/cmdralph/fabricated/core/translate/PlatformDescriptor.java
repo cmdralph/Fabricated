@@ -5,12 +5,13 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import io.github.cmdralph.fabricated.core.accesswidener.AccessTransformerConverter;
 import io.github.cmdralph.fabricated.core.json.Json;
 
 /**
  * How the platform's loader learns of a translated Fabric mod (docs/PORTING.md §6 item 5): where it reads a mod's
- * descriptor and in which dialect, what the overlay's manifest adds, and whether it adds enum constants from a mod's
- * enum extension file. NeoForge's is {@link #NEOFORGE} and Forge's {@link #FORGE}; a branch for another loader hands the
+ * descriptor and in which dialect, what the overlay's manifest adds, whether it adds enum constants from a mod's
+ * enum extension file, and which fields its coremods keep private. NeoForge's is {@link #NEOFORGE} and Forge's {@link #FORGE}; a branch for another loader hands the
  * pipeline its own.
  */
 public interface PlatformDescriptor {
@@ -59,6 +60,11 @@ public interface PlatformDescriptor {
 			return false;
 		}
 
+		@Override
+		public Map<String, String> privateFields() {
+			return AccessTransformerConverter.FORGE_PRIVATE_FIELDS;
+		}
+
 		/**
 		 * Forge reads no mod's pack without metadata ("Missing metadata in pack mod:...", then "Missing data pack", in the
 		 * forge branch's server smoke on Forge 64 to 66), where NeoForge makes one: the formats are those Fabricated's own
@@ -93,6 +99,15 @@ public interface PlatformDescriptor {
 	/** Whether the platform's loader adds enum constants from the file a descriptor names (ENUM-1). */
 	default boolean enumExtensions() {
 		return true;
+	}
+
+	/**
+	 * The fields the platform's loader reads through a getter its patches add and requires to stay private, as
+	 * {@code owner field} in the game's runtime names, to that getter: an access widener can't open them (PLAT-4).
+	 * NeoForge's by default.
+	 */
+	default Map<String, String> privateFields() {
+		return AccessTransformerConverter.NEOFORGE_PRIVATE_FIELDS;
 	}
 
 	/**
