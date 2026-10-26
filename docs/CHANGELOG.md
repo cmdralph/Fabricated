@@ -28,6 +28,14 @@ One entry per working session, newest first: what changed, and how it was verifi
   which NeoForge skips on 1.21.11 to 26.3, and 1.21.11's list names none of them; a mod depending on Porting Lib, which
   reads the same folder on Fabric, keeps its own. Recorded, not changed: vanilla's pack metadata errors for two 1.21.11
   mods' packs, which NeoForge loads anyway (CORPUS-26). Test: 273 core tests.
+- `fabric-biome-api-v1` is native on 1.21.11, 26.1.2 and 26.2 too (BIOME-1, as on 26.3): upstream's API and biome
+  source mixins, with the modifications applied by a NeoForge biome modifier on NeoForge's builders. Upstream's module
+  replaces biome fields NeoForge doesn't read, and its weather changes read the climate field NeoForge's coremod keeps
+  private, which fails when it runs (Fabricated's class tweaker conversion logs it on every run with Fabric API; no
+  corpus mod changes the weather). NeoForge's biome info there doesn't hold environment attributes: they are replaced
+  on the biome, as upstream does, and the biome is then sent to clients. The test mod checks a spawn, a temperature and
+  (before 26.3) a sky colour on every version. Imported with the repository's script; its re-import also showed NET-7's
+  edit to the imported `PacketContext` would be lost, so that edit now lives in each version's overrides.
 - Branches, recorded in `PORTING.md` §3 and §4.1: `forge` runs a translated Fabric mod on Forge 61 (1.21.11) too, and
   applies Fabric's class transforms through a ModLauncher transformation service (#87, #90: fourteen server checks on
   Forge 61 and 64 to 66); `forge-legacy` runs one on Forge 47.4.28, remapped to SRG names, its mixin applied (#89: ten
