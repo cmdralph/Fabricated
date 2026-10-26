@@ -16,6 +16,11 @@
       "version": "3.0.12",
       "reason": "Shipped by Fabricated: upstream's builder and drop mixins as they are, its loading hook replaced by Forge's LootTableLoadEvent (upstream's conflicts with Forge's loot loading)."
     },
+    "fabric-object-builder-api-v1": {
+      "plan": "passthrough",
+      "skipMixins": ["fabric-object-builder-v1.mixins.json:AttributeSupplierBuilderAccessor", "fabric-object-builder-v1.mixins.json:BuiltInRegistriesMixin"],
+      "reason": "Forge keeps an attribute builder's entries in a map of its own, where upstream's accessor reads vanilla's ImmutableMap builder, so pre-flight disabled the module (and fabric-data-attachment-api-v1, which needs it). The accessor's one use, copying an entity type's default attributes for FabricDefaultAttributeRegistry.MODIFY, takes Forge's copy constructor from the in-game mod instead. Upstream runs MODIFY as the built-in registries freeze, which Forge does at bootstrap, before any Fabric mod has registered a listener: its hook is left out and the in-game mod runs MODIFY in Forge's EntityAttributeModificationEvent, after every registration and before Forge builds the attributes the game reads."
+    },
     "fabric-tag-api-v1": {
       "plan": "passthrough",
       "skipMixins": ["fabric-tag-api-v1.mixins.json:TagFileMixin#remove", "fabric-tag-api-v1.mixins.json:TagFileMixin#modifyCodec", "fabric-tag-api-v1.mixins.json:TagLoaderMixin#removeTagRemovalReferenceOnReplace", "fabric-tag-api-v1.mixins.json:TagLoaderMixin#loadRemoveEntries", "fabric-tag-api-v1.mixins.json:TagLoaderMixin#scopeIdToTryBuildTag", "fabric-tag-api-v1.mixins.json:TagLoaderMixin#addTagRemovalReferencesToDependencySorter", "fabric-tag-api-v1.mixins.json:TagLoaderMixin#removeEntriesFromTags", "fabric-tag-api-v1.mixins.json:TagLoaderMixin#removeTagRemovalReferencesWhenFinished"],

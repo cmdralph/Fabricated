@@ -41,6 +41,14 @@ ext.gameDependencies = { SourceSet sourceSet ->
     configurations.named(sourceSet.compileOnlyConfigurationName) { extendsFrom(configurations.forgeGame, configurations.fabricApiAnnotations) }
 }
 
+// Stand-ins for the Fabric API modules Fabricated passes through on Forge that the test mod uses (the shared sources'
+// src/testmodstubs, 26.x's object builder module), next to mc/common's: compiled against, never packaged. They name
+// the vendored fabric-api-base's types, in the in-game mod.
+sharedSources.each { sourceSets.testmodstubs.java.srcDir rootProject.file("mc/$it/src/testmodstubs/java") }
+dependencies {
+    testmodstubsCompileOnly sourceSets.main.output
+}
+
 expandProps.forge_version_range = project.forge_version_range
 
 tasks.named('processResources', ProcessResources) {

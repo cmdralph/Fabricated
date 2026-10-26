@@ -24,7 +24,8 @@ import net.minecraft.world.item.Items;
 /**
  * The forge branch's Fabric test mod (docs/PORTING.md §4.1, F3 step 3): its entrypoints and its mixin each log a line
  * the server smoke looks for (ci/forge/smoke-server.sh). It uses Fabric Loader's API and, of Fabric API, only the loot
- * module Fabricated ships itself ({@link ForgeLootTest}), so it runs without Fabric API's jar.
+ * module Fabricated ships itself ({@link ForgeLootTest}), so it runs without Fabric API's jar; with it, it also tries the
+ * object builder module's default attribute event ({@link ForgeAttributeTest}).
  */
 public final class ForgeTestMod implements ModInitializer, DedicatedServerModInitializer {
 	public static final String MOD_ID = "fabricated-forge-testmod";
@@ -53,6 +54,13 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 			ForgeLootTest.register();
 		} catch (RuntimeException | LinkageError e) {
 			LOGGER.warn("FABRICATED-FORGE-TEST loot listeners not registered", e);
+		}
+		if (FabricLoader.getInstance().isModLoaded("fabric-object-builder-api-v1")) {
+			try {
+				ForgeAttributeTest.register();
+			} catch (RuntimeException | LinkageError e) {
+				LOGGER.warn("FABRICATED-FORGE-TEST default attribute listener not registered", e);
+			}
 		}
 	}
 
@@ -85,6 +93,15 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 			ForgeLootTest.check(server.overworld());
 		} catch (RuntimeException | LinkageError e) {
 			LOGGER.warn("FABRICATED-FORGE-TEST loot check failed", e);
+		}
+	}
+
+	/** Whether Fabric's default attribute event changed a cow's defaults ({@link ForgeAttributeTest}; with Fabric API only). */
+	public static void checkDefaultAttributes() {
+		try {
+			ForgeAttributeTest.check();
+		} catch (RuntimeException | LinkageError e) {
+			LOGGER.warn("FABRICATED-FORGE-TEST default attribute check failed", e);
 		}
 	}
 
