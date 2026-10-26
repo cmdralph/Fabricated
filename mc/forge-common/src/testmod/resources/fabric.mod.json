@@ -12,6 +12,7 @@
     "server": ["io.github.cmdralph.fabricated.forgetest.ForgeTestMod"]
   },
   "mixins": ["fabricated-forge-testmod.mixins.json"],
+  "accessWidener": "fabricated-forge-testmod.classtweaker",
   "depends": {
     "fabricloader": ">=0.16.0",
     "minecraft": "${minecraft_version}"
