@@ -30,9 +30,14 @@ handled safely, no network access, original jars never changed, and no code that
   mixins, where Forge's code differs. The tag API loads too since #134 (it was disabled: Forge's `TagFile` has its own
   `remove`): the plans leave out the members `main` leaves out on NeoForge, and the in-game mod's first mixin reads tag
   files' `fabric:remove` into Forge's list, checked with and without Fabric API (one more module's entrypoint runs on
-  Forge 61 and 66). Next: native modules on Forge's events where `main` has them on NeoForge's (loot, advancements,
-  entity and interaction events), the modules still disabled (dimensions, content registries, object builder on 26.x),
-  the client's entrypoints.
+  Forge 61 and 66). `fabric-loot-api-v3` is native on all four since #137 (a port of `main`'s, with `fabric-api-base`
+  native too, which its events need without a Fabric API jar): Fabric's loot table events run from Forge's
+  `LootTableLoadEvent` on Forge 61 to 65 and from a hook into the registry decode on Forge 66, whose loot skip is
+  gone; a test mod's pool added in `MODIFY` reaches dirt's table, with and without Fabric API. The in-game mod's own
+  mixins use no MixinExtras sugar: without Fabric API, Forge's MixinExtras couldn't load the Mixin class `@Local`
+  needs and the server didn't start (caught on #137's first run). Next: native modules on Forge's events where `main`
+  has them on NeoForge's (advancements on Forge 66, entity and interaction events), the modules still disabled
+  (dimensions, content registries, object builder on 26.x), the client's entrypoints.
 - **`forge-legacy`:** Minecraft Forge for 1.20.1 (Forge 47.4) and other legacy versions, built with ModDevGradle's
   `legacyforge`. L3's server smoke passes on Forge 47.4.28, a gate since #97: a translated Fabric mod is discovered,
   remapped to the names Forge runs the game with (Mojang's classes, SRG's members, composed from the files Forge's
@@ -51,9 +56,12 @@ handled safely, no network access, original jars never changed, and no code that
   on Forge 47's biome modifiers (#135, a port of BIOME-1), applies Fabric's biome changes where Forge reads them, and
   Forge's field-to-method coremod applies again (upstream's access widener had opened `Biome.climateSettings`, which
   the coremod needs private, so its whole biome transform failed while Fabric API was installed): a spawn and a
-  temperature added to plains reach the biome Forge reads, with and without Fabric API. Next: native loot tables and
-  dimensions (both disabled: Forge 47's loot pools are a list, and its `changeDimension` takes a teleporter), then the
-  old capability system and `SimpleChannel`. NeoForge needs no legacy branch.
+  temperature added to plains reach the biome Forge reads, with and without Fabric API. `fabric-loot-api-v2` and
+  `fabric-loot-tables-v1` are native since #138, with `fabric-api-base` (they were disabled: Forge 47's loot pools are
+  a list): Fabric's loot events run where `LootDataManager` applies the parsed tables, and the test mod's pools added
+  through both versions and its replaced table are in the tables the game keeps, each event seeing its table's
+  source. Next: dimensions (disabled: Forge 47's `changeDimension` takes a teleporter), then the old capability system
+  and `SimpleChannel`. NeoForge needs no legacy branch.
 - **Decided** (`RESEARCH.md` §8): Forge 47.4 for 1.20.1, the shared modules kept loadable on Java 17, ForgeGradle for
   modern Forge, CI for pull requests only. L1, the behaviour-neutral seams on `main`: Java 17 for the shared modules
   (their main code compiles at release 17), the loader split (`loader/common`, `loader/neoforge`), the build split
@@ -475,6 +483,7 @@ crash in run 229).
 | PERF-2 | P3 | `NeoForgeMods` (`NestedNeoForgeJars`), `FabricDependencyLocator`, `Pipeline` (1.21.11 mappings) | A launch with everything cached still reads every NeoForge mod's nested jars, re-reads and hashes `game-mod.jar`, and on 1.21.11 loads the mapping table, whichever mods need it. | Cache the nested NeoForge mods' metadata by their files' hashes; load the mapping table when a mod is translated or calls `MappingResolver`. |
 | ARCH-1 | P3 | `MixinPreflight` (2,872 lines, 113 methods) | The checker, about fourteen repair families, call-graph helpers and state analysis share one class; repairs run in a fixed order, each guarded against an earlier one having moved the annotation, a guard a new repair placed between them could miss (BRIDGE-2 was one such interaction). | Split the repairs out by family behind one interface (pattern in, moves out), with the order and the guards in one place; worth doing before the next repair family. |
 | CORPUS-22 | P3 | Biomes O' Plenty on 1.21.11 (`MixinEntity`) | Disabled on 1.21.11 servers and clients: its `@Redirect` at `FluidState.getTags()` in `Entity.updateFluidOnEyes`, which only records the fluid state at the eyes and returns the tags as they are, has no call to take, as NeoForge's 1.21.11 patch reads the state's fluid type there instead (read in its `1.21.11` branch). The mixin adds an interface whose method returns that state, and a field the redirect writes, so the hook can't be left out alone (LEAVE-1). | Not repaired: no call there gives the handler what it takes. Its NeoForge build is used when installed. |
+| CORPUS-29 | — | Tech Reborn on 26.1.2 (server and client corpus, every run since at least #101) | 67 errors a server run (134 with the client): "Couldn't parse data file 'techreborn:crafting_table/uu_matter/misc/plant/twisting_vines': Unknown registry key in ResourceKey[minecraft:root / minecraft:recipe_serializer]: reborncore:padded" (the first of them; CI of PR #133). Its `26.1` branch (`221345f`) has 67 recipe files of type `reborncore:padded` and no code registering a serializer of that name, RebornCore's included (only the JSON files name it). Vanilla's registry lookup fails the same on Fabric. That the released jar matches the branch is UNVERIFIED. | Tech Reborn's own on 26.1.2; left as it is. |
 | CORPUS-28 | — | Wilder Wild 4.3.3 on 26.3 (advanced corpus client) | NeoForge's model loading logs "Exception loading blockstate definition: 'minecraft:reinforced_deepslate/mod/wilderwild' for variant: 'axis=x'" (3 times; CI of PR #127). Wilder Wild ships a reinforced deepslate blockstate with an `axis` property, for the pillar block its `block.reinforced_deepslate.BlocksMixin` registers when `newReinforcedDeepslate` is on (the default). Its 26.3 build no longer has that mixin (its `4.3.2-mc26.3` tag lists none in `wilderwild.mixins.json`; its `4.3.3-mc26.2` tag does), but still ships the blockstate, so the block keeps vanilla's states. 26.2 runs the same release with the mixin and logs nothing. | Wilder Wild's own on 26.3; left as it is. |
 | CORPUS-27 | — | FrozenLib's config (advanced corpus, every 26.x version) | FrozenLib logs "Unable to read config entry" for Wilder Wild's entries (`newReinforcedDeepslate`, `unpassableRail`, `reachBoostBeacon` and others; 28 a run on 26.1.2, CI of PR #127). Read in FrozenLib's `ConfigSerializer` and `ConfigData`: an entry is read from the config file's map, and an entry absent from it fails to parse and logs this; on a fresh config directory, as in every CI run, the map is empty, so each entry read before FrozenLib first saves the file logs it, and keeps its default. | FrozenLib's first-run behaviour, as on Fabric (by its source; not run there): left as it is. |
 | CORPUS-26 | — | Translated mods' packs on 1.21.11 (First-person Model, its TRansition library) | Vanilla logs "Couldn't load mod/firstperson pack metadata: Pack declares support for format 75, but game versions supporting formats 17 to 81 require a supported_formats field" (8 to 12 times a run, client and server; CI of PR #91). NeoForge loads the pack anyway: a mod's pack whose metadata doesn't read is compatible to its `ResourcePackLoader.readMeta` (read in its 1.21.11 and 26.3 source). Fabric reads no mod's own pack metadata for its grouped mod resources, so the error is NeoForge's alone. Lootr's built-in `old_textures` pack logs the same family ("missing mandatory fields min_format and max_format"); a built-in pack's metadata is read on Fabric too, so whether it fails there is UNVERIFIED. | Noise, nothing lost: left as it is. |
