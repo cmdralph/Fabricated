@@ -96,8 +96,10 @@ find libraries/net/minecraft -maxdepth 4 2>/dev/null | sort | head -n 60 || true
 # Level is obfuscated in the vanilla jar).
 for f in libraries/net/minecraft/server/"$mc"/*-mappings.*; do
 	[ -f "$f" ] || continue
-	echo "-- $f (first lines)"
+	echo "-- $f (first lines, and methods whose descriptors name classes: which names they use)"
 	head -n 8 "$f" | cut -c1-200
+	grep -m 6 -E $'^\t[^ ]+ \([^)]*L[a-z]' "$f" | cut -c1-200 || true
+	grep -m 3 -E '^net/minecraft/server/MinecraftServer ' "$f" | cut -c1-200 || true
 done
 for f in libraries/net/minecraft/server/"$mc"/*.jar; do
 	[ -f "$f" ] || continue
