@@ -22,6 +22,7 @@ import io.github.cmdralph.fabricated.core.metadata.ContactInformationImpl.Person
 import io.github.cmdralph.fabricated.core.metadata.FabricModJsonParser;
 import io.github.cmdralph.fabricated.core.metadata.FabricModMetadata;
 import io.github.cmdralph.fabricated.core.mixin.MixinConfigFile;
+import io.github.cmdralph.fabricated.core.mixin.MixinPreflight;
 import io.github.cmdralph.fabricated.core.mixin.PreflightFinding;
 import net.fabricmc.loader.api.metadata.ContactInformation;
 import net.fabricmc.loader.api.metadata.ModEnvironment;
@@ -231,15 +232,23 @@ class TranslateHelpersTest {
 		// LEVEL-1: from the CompatibilityLevel enums of Mixin 0.8.5, 0.8.6 and 0.8.7.
 		assertEquals(18, MixinCompat.lastCompatibilityLevel("0.8.5"), "Forge 47");
 		assertEquals(21, MixinCompat.lastCompatibilityLevel("0.8.7"), "Forge 61 to 66");
+		assertEquals(18, MixinCompat.lastCompatibilityLevel("0.8.5+Jenkins-b310.git-155314e6e91465dad727e621a569906a410cd6f4"),
+				"as Forge 47 reports it, with build metadata");
 		assertEquals(0, MixinCompat.lastCompatibilityLevel("0.17.4+mixin.0.8.7"), "Fabric's Mixin isn't limited here");
 		assertEquals(0, MixinCompat.lastCompatibilityLevel("0.8.8"), "a later release isn't known");
 		assertEquals(0, MixinCompat.lastCompatibilityLevel(null));
 
 		// INTERFACE-1: injectors in interface mixins came with 0.8.6.
 		assertFalse(MixinCompat.interfaceInjectors("0.8.5"), "Forge 47");
+		assertFalse(MixinCompat.interfaceInjectors("0.8.5+Jenkins-b310.git-155314e6e91465dad727e621a569906a410cd6f4"), "as Forge 47 reports it");
 		assertTrue(MixinCompat.interfaceInjectors("0.8.7"), "Forge 61 to 66");
 		assertTrue(MixinCompat.interfaceInjectors("0.17.4+mixin.0.8.7"), "Fabric's Mixin");
 		assertTrue(MixinCompat.interfaceInjectors(null));
+
+		// CTOR-2: where an @Inject into a constructor goes.
+		assertEquals(MixinPreflight.ConstructorInjects.RETURNS_ONLY, MixinCompat.constructorInjects("0.8.5+Jenkins-b310.git-1"), "Forge 47");
+		assertEquals(MixinPreflight.ConstructorInjects.UNSAFE_POINTS, MixinCompat.constructorInjects("0.8.7+Jenkins-b321.git-4"), "Forge 61 to 66");
+		assertEquals(MixinPreflight.ConstructorInjects.AFTER_DELEGATE, MixinCompat.constructorInjects("0.17.4+mixin.0.8.7"), "Fabric's Mixin");
 
 		assertEquals(25, MixinCompat.compatibilityLevel(" java_25 "), "as Mixin reads it");
 		assertEquals(8, MixinCompat.compatibilityLevel("JAVA_8"));

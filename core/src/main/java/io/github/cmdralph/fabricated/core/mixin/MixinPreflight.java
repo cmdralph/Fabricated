@@ -128,6 +128,18 @@ public final class MixinPreflight {
 	private final boolean missingTargetsFatal;
 	/** Whether the running Mixin applies injectors in interface mixins (INTERFACE-1: Forge 47's doesn't). */
 	private final boolean interfaceInjectors;
+	/** Where the running Mixin takes an {@code @Inject} into a constructor (CTOR-2). */
+	private final ConstructorInjects constructorInjects;
+
+	/** Where the running Mixin takes an {@code @Inject} into a constructor (CTOR-2). */
+	public enum ConstructorInjects {
+		/** Anywhere after the call to the delegate constructor, as Fabric's Mixin does; not judged. */
+		AFTER_DELEGATE,
+		/** At a return, or at a point marked {@code unsafe} (SpongePowered's 0.8.6 and 0.8.7). */
+		UNSAFE_POINTS,
+		/** At a return only (SpongePowered's 0.8.5, whose points take no {@code unsafe}). */
+		RETURNS_ONLY
+	}
 	/** The platform's loader, as messages name it ({@code NeoForge}, {@code Forge}). */
 	private final String loader;
 	/** Vanilla's code of the game, or {@link ClassBytesSource#EMPTY} (VANILLA-1). */
@@ -175,7 +187,16 @@ public final class MixinPreflight {
 	 */
 	public MixinPreflight(ClassIndex game, InstalledClasses installed, ClassBytesSource modClasses, ClassBytesSource untransformable,
 			boolean clientSide, boolean missingTargetsFatal, ClassBytesSource vanilla, String loader, boolean interfaceInjectors) {
+		this(game, installed, modClasses, untransformable, clientSide, missingTargetsFatal, vanilla, loader, interfaceInjectors,
+				ConstructorInjects.AFTER_DELEGATE);
+	}
+
+	/** @param constructorInjects where the running Mixin takes an {@code @Inject} into a constructor (CTOR-2) */
+	public MixinPreflight(ClassIndex game, InstalledClasses installed, ClassBytesSource modClasses, ClassBytesSource untransformable,
+			boolean clientSide, boolean missingTargetsFatal, ClassBytesSource vanilla, String loader, boolean interfaceInjectors,
+			ConstructorInjects constructorInjects) {
 		this.interfaceInjectors = interfaceInjectors;
+		this.constructorInjects = constructorInjects;
 		this.game = game;
 		this.installed = installed;
 		this.modClasses = modClasses;
@@ -310,6 +331,10 @@ public final class MixinPreflight {
 						changed = true;
 						out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@" + simpleName(ann.desc) + " " + method.name
 								+ " targets " + lambda + ", which this game build numbers differently", ""));
+					}
+					for (String marked : constructorPointRepairs(method, ann, targets, ctx)) {
+						changed = true;
+						out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@Inject " + method.name + " injects into " + marked, ""));
 					}
 					if (softenLocalCapture(ann)) {
 						changed = true;
@@ -922,6 +947,97 @@ public final class MixinPreflight {
 			target.methods.stream().filter(m -> ref.matchesMethod(m.name, m.desc)).findFirst().ifPresent(methods::add);
 		}
 		return methods;
+	}
+
+	/**
+	 * The first point of an {@code @Inject} into a constructor that SpongePowered's Mixin rejects (CTOR-2: it throws as it
+	 * applies the mixin, whatever the config's {@code required}): any but a return that isn't marked {@code unsafe}, or,
+	 * on 0.8.5, any but a return. Null when it takes them all, or on Fabric's Mixin.
+	 */
+	private String constructorPointRejected(AnnotationNode injector, List<MethodNode> matched) {
+		if (constructorInjects == ConstructorInjects.AFTER_DELEGATE || !injector.desc.equals(INJECT)
+				|| matched.stream().noneMatch(m -> m.name.equals("<init>"))) return null;
+		for (AnnotationNode at : Annotations.list(Annotations.value(injector, "at"))) {
+			String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
+			if (RETURN_POINTS.contains(point)) continue;
+			if (constructorInjects == ConstructorInjects.UNSAFE_POINTS && Boolean.TRUE.equals(Annotations.value(at, "unsafe"))) continue;
+			return point;
+		}
+		return null;
+	}
+
+	/** Points an {@code @Inject} into a constructor may take anywhere on SpongePowered's Mixin: its returns (CTOR-2). */
+	private static final Set<String> RETURN_POINTS = Set.of("RETURN", "TAIL");
+	/** Points whose instructions pre-flight finds, so it can tell whether they follow the delegate constructor call. */
+	private static final Set<String> PLACED_POINTS = Set.of("INVOKE", "INVOKE_ASSIGN", "INVOKE_STRING", "FIELD", "NEW");
+
+	/**
+	 * Marks {@code unsafe} the points of an {@code @Inject} into a constructor that SpongePowered's Mixin takes only so
+	 * marked (CTOR-2): any but a return, where Fabric's Mixin takes any point after the call to the delegate constructor
+	 * ({@code super(...)} or {@code this(...)}). A point is marked when every instruction it picks in every constructor
+	 * selected follows that call, which gives Fabric's behaviour: fabric-command-api-v2's hook into {@code Commands}'
+	 * constructor, which stopped Forge 61's server. Returns a description of each point marked.
+	 */
+	private List<String> constructorPointRepairs(MethodNode handler, AnnotationNode injector, List<ClassNode> targets, Context ctx) {
+		if (constructorInjects != ConstructorInjects.UNSAFE_POINTS || !injector.desc.equals(INJECT)) return List.of();
+		List<AnnotationNode> slices = Annotations.list(Annotations.value(injector, "slice"));
+		List<String> marked = new ArrayList<>();
+		for (AnnotationNode at : Annotations.list(Annotations.value(injector, "at"))) {
+			String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
+			if (!PLACED_POINTS.contains(point) || Boolean.TRUE.equals(Annotations.value(at, "unsafe"))) continue;
+			String target = Annotations.value(at, "target") instanceof String t ? ctx.resolve(t) : null;
+			int ordinal = Annotations.value(at, "ordinal") instanceof Integer i ? i : -1;
+			int opcode = Annotations.value(at, "opcode") instanceof Integer i ? i : -1;
+			AnnotationNode slice = InjectionPoints.sliceFor(at, slices);
+			boolean picked = false;
+			boolean afterDelegate = true;
+			String where = null;
+			for (ClassNode t : targets) {
+				for (MethodNode m : selectedMethods(injector, t, ctx)) {
+					if (!m.name.equals("<init>")) continue;
+					int delegate = delegateCall(m, t);
+					Range range = slice == null ? Range.ALL : InjectionPoints.sliceRange(slice, m, ctx);
+					List<Integer> at2 = InjectionPoints.indexes(point, target, ordinal, opcode, range, m);
+					if (delegate < 0 || at2 == null) {
+						afterDelegate = false;
+						continue;
+					}
+					for (int i : at2) {
+						picked = true;
+						afterDelegate &= i > delegate;
+					}
+					where = t.name.replace('/', '.');
+				}
+			}
+			if (!picked || !afterDelegate) continue;
+			Annotations.put(at, "unsafe", true);
+			marked.add("the constructor of " + where + " at @At(\"" + point + "\"" + (target != null ? ", target=\"" + target + "\"" : "")
+					+ ") after its super() call, which " + loader + "'s Mixin takes only at a point marked unsafe; it is so marked, as Fabric's Mixin takes it");
+		}
+		return marked;
+	}
+
+	/**
+	 * The index of a constructor's call to its delegate constructor ({@code super(...)} or {@code this(...)}): the first
+	 * {@code INVOKESPECIAL <init>} of its class or superclass that doesn't initialise an instance the constructor makes
+	 * itself ({@code new}); -1 when there is none.
+	 */
+	private static int delegateCall(MethodNode constructor, ClassNode owner) {
+		Map<String, Integer> made = new HashMap<>();
+		for (int i = 0; i < constructor.instructions.size(); i++) {
+			AbstractInsnNode insn = constructor.instructions.get(i);
+			if (insn instanceof TypeInsnNode type && type.getOpcode() == Opcodes.NEW) {
+				made.merge(type.desc, 1, Integer::sum);
+			} else if (insn instanceof MethodInsnNode call && call.getOpcode() == Opcodes.INVOKESPECIAL && call.name.equals("<init>")) {
+				Integer pending = made.get(call.owner);
+				if (pending != null && pending > 0) {
+					made.put(call.owner, pending - 1);
+				} else if (call.owner.equals(owner.name) || call.owner.equals(owner.superName)) {
+					return i;
+				}
+			}
+		}
+		return -1;
 	}
 
 	/**
@@ -2378,21 +2494,28 @@ public final class MixinPreflight {
 	 * under another name: the one captured value of the same type there (CAPTURE-1), or, of several, the one in the place
 	 * the shadow's has among vanilla's of that type in {@code original}, the class the mixin names in vanilla's code
 	 * ({@link #inVanillasOrder}, CAPTURE-2). NeoForge's 1.21.11 build names them after its own parameter names
-	 * (recompiled from decompiled source; inferred from Polymer's {@code val$registryKey} missing there). Empty when every
-	 * shadow is there, null when one's new name can't be told (none of its type, several that vanilla's class doesn't
-	 * tell apart, or one another shadow has).
+	 * (recompiled from decompiled source; inferred from Polymer's {@code val$registryKey} missing there). A shadow in SRG's
+	 * names is one of them where vanilla's class declares it synthetic, and takes a synthetic field of its type: Forge
+	 * 47's build, recompiled too, names them as javac does (Fabric API's interaction hook shadows {@code f_143670_} of
+	 * {@code ServerGamePacketListenerImpl$1}, there {@code val$entity}; CAPTURE-3). Empty when every shadow is there, null
+	 * when one's new name can't be told (none of its type, several that vanilla's class doesn't tell apart, or one
+	 * another shadow has).
 	 */
 	private static Map<String, String> capturedRenames(ClassNode mixin, ClassNode target, ClassNode original) {
 		Map<String, String> renames = new TreeMap<>();
 		Set<String> kept = new HashSet<>();
 		for (FieldNode field : mixin.fields) {
-			if (!field.name.startsWith("val$") || Annotations.find(field, SHADOW) == null) continue;
+			if (Annotations.find(field, SHADOW) == null) continue;
+			// SRG names a captured value, and the outer instance, as it does any field (f_143670_), where Mojang's names
+			// are javac's (val$entity, this$0): vanilla's class marks it synthetic (CAPTURE-3).
+			boolean javacNamed = field.name.startsWith("val$");
+			if (!javacNamed && !synthetic(original, field.desc).contains(field.name)) continue;
 			if (target.fields.stream().anyMatch(f -> f.name.equals(field.name) && f.desc.equals(field.desc))) {
 				kept.add(field.name);
 				continue;
 			}
-			List<String> sameType = captured(target, field.desc);
-			String renamed = sameType.size() == 1 ? sameType.get(0) : inVanillasOrder(field.name, field.desc, sameType, target, original);
+			List<String> sameType = javacNamed ? captured(target, field.desc) : synthetic(target, field.desc);
+			String renamed = sameType.size() == 1 ? sameType.get(0) : inVanillasOrder(field.name, field.desc, javacNamed, sameType, target, original);
 			if (renamed == null) return null;
 			renames.put(field.name, renamed);
 		}
@@ -2406,16 +2529,27 @@ public final class MixinPreflight {
 	}
 
 	/**
+	 * A class's synthetic instance fields of one type, in the order it declares them: an anonymous class's captured values
+	 * and outer instance, whatever their names. Empty without the class.
+	 */
+	private static List<String> synthetic(ClassNode type, String desc) {
+		if (type == null) return List.of();
+		return type.fields.stream().filter(f -> (f.access & (Opcodes.ACC_SYNTHETIC | Opcodes.ACC_STATIC)) == Opcodes.ACC_SYNTHETIC && f.desc.equals(desc))
+				.map(f -> f.name).toList();
+	}
+
+	/**
 	 * Which of {@code target}'s captured values of a type is vanilla's {@code name}, when it captures several (Ledger's and
 	 * malilib's hooks into {@code ChestBlock}'s menu provider shadow the two chest block entities it captures): the one in
 	 * the place {@code name} has among {@code original}'s of the type. The order javac declares captured values in follows
 	 * the class's code, which a recompiled build keeps; as that is inferred, not read, the place is taken only when
 	 * {@code original} captures as many of the type and every method both classes declare reads them in the same order,
-	 * matched by place, with at least one such read. Null otherwise, or without vanilla's class.
+	 * matched by place, with at least one such read. Null otherwise, or without vanilla's class. {@code javacNamed}: the
+	 * values go by javac's names ({@code val$name}) in both classes, else by vanilla's synthetic fields under SRG's.
 	 */
-	private static String inVanillasOrder(String name, String desc, List<String> sameType, ClassNode target, ClassNode original) {
+	private static String inVanillasOrder(String name, String desc, boolean javacNamed, List<String> sameType, ClassNode target, ClassNode original) {
 		if (original == null || sameType.size() < 2) return null;
-		List<String> originals = captured(original, desc);
+		List<String> originals = javacNamed ? captured(original, desc) : synthetic(original, desc);
 		int place = originals.indexOf(name);
 		if (place < 0 || originals.size() != sameType.size()) return null;
 		Map<String, String> byPlace = new HashMap<>();
@@ -2760,20 +2894,22 @@ public final class MixinPreflight {
 		return null;
 	}
 
-	/** {@code getFooBar} -> {@code fooBar} for the first matching prefix followed by an upper-case letter. */
+	/**
+	 * {@code getFooBar} -> {@code fooBar} for the first matching prefix followed by an upper-case letter, as Mixin's
+	 * {@code AccessorInfo.AccessorName} inflects it: a name all in upper case keeps its case ({@code getURL} ->
+	 * {@code URL}, {@code setX_SIDE_LENGTH} -> {@code X_SIDE_LENGTH}), any other has its first letter lowered
+	 * ({@code getURLFoo} -> {@code uRLFoo}).
+	 */
 	private static String nameAfterPrefix(String method, String... prefixes) {
 		for (String prefix : prefixes) {
-			if (method.length() > prefix.length() && method.startsWith(prefix) && Character.isUpperCase(method.charAt(prefix.length()))) {
-				return decapitalize(method.substring(prefix.length()));
+			if (method.length() > prefix.length() && method.startsWith(prefix)) {
+				char first = method.charAt(prefix.length());
+				if (first < 'A' || first > 'Z') continue;
+				String name = method.substring(prefix.length());
+				return name.toUpperCase(Locale.ROOT).equals(name) ? name : Character.toLowerCase(first) + name.substring(1);
 			}
 		}
 		return null;
-	}
-
-	private static String decapitalize(String s) {
-		// Mixin keeps all-caps names (e.g. "getURL" -> "URL") as they are.
-		if (s.length() > 1 && Character.isUpperCase(s.charAt(1))) return s;
-		return Character.toLowerCase(s.charAt(0)) + s.substring(1);
 	}
 
 	/** Whether {@code handler} is in a named injector group ({@code @Group}), whose members Mixin checks together. */
@@ -2895,6 +3031,15 @@ public final class MixinPreflight {
 			ctx.injector(handler, require, injectorName + " handler " + handler.name + " captures the local variable " + ambiguous
 							+ " by its type, which " + matched.get(0).name + " in " + target.name.replace('/', '.') + " has more than one of there",
 					ctx.changer(true) + " added a local of that type; the mod needs an update or this mixin must be skipped.");
+			return;
+		}
+
+		String constructorPoint = constructorPointRejected(ann, matched);
+		if (constructorPoint != null) {
+			ctx.injector(handler, 1, injectorName + " " + handler.name + " injects into the constructor of " + target.name.replace('/', '.') + " at @At(\""
+							+ constructorPoint + "\"), which " + loader + "'s Mixin takes only at a return"
+							+ (constructorInjects == ConstructorInjects.UNSAFE_POINTS ? " or a point marked unsafe" : "") + " (Fabric's Mixin takes any point after super())",
+					"The feature this hook serves doesn't work on this " + loader + ".");
 			return;
 		}
 
