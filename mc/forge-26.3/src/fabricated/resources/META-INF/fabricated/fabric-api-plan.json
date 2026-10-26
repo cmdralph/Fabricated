@@ -1,4 +1,10 @@
 {
   "fabricApiVersion": "0.164.0+26.3",
-  "modules": {}
+  "modules": {
+    "fabric-loot-api-v3": {
+      "plan": "passthrough",
+      "skipMixins": ["fabric-loot-api-v3.mixins.json:ResourceManagerRegistryLoadTaskMixin"],
+      "reason": "Forge 66 decodes loot tables as Optional<LootTable> (its conditional loot tables), which upstream's loading hook casts to LootTable and stops data pack loading: the loot table replace and modify events don't run until a native loot module on Forge's LootTableLoadEvent replaces it."
+    }
+  }
 }
