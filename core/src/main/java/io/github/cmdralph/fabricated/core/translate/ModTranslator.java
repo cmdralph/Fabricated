@@ -259,6 +259,8 @@ public final class ModTranslator {
 						overlay.containsKey(AT_PATH), overlay.containsKey(EnumExtensions.PATH), after, modProperties(md, notes), options(md));
 				overlay.put(env.descriptor().path(), env.descriptor().write(spec).getBytes(StandardCharsets.UTF_8));
 				overlay.put("META-INF/MANIFEST.MF", overlayManifest(neoId, env.descriptor().manifestAttributes(spec)));
+				byte[] packMetadata = env.descriptor().packMetadata(spec);
+				if (packMetadata != null && !overlay.containsKey(PACK_METADATA) && !archive.contains(PACK_METADATA)) overlay.put(PACK_METADATA, packMetadata);
 
 				Map<String, byte[]> outputs = new LinkedHashMap<>();
 				outputs.put(OVERLAY, jarBytes(overlay));
