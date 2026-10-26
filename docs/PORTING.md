@@ -247,6 +247,16 @@ own jar (`libraries/net/minecraftforge/forge/<version>/`) as its path, so the li
 Fabric mods' entrypoints run as the in-game mod is constructed, not yet where Fabric runs them, and client entrypoints
 don't run. Still open: 6, 8, 9, 10.
 
+**Steps 3 and 4 on all four versions** (#87, #90). On Forge 61 (1.21.11) the test mod is translated through Forge's
+TSRG mappings and Intermediary, which the 1.21.11 build bundles as `main`'s does, and pre-flight reads vanilla from
+`-official.jar`; the smoke's eleven checks pass on Forge 61 and 64 to 66. Step 4: `FabricTransformationService`, which
+ModLauncher loads from the Fabricated jar's service file into the service layer and asks for transformers after FML's
+scan, applies `FabricClassTransforms.beforeMixin` (`loader/common`, shared with NeoForge's class processors) to the
+classes discovery named; on all four versions the test mod's class-tweaker interface is on `MinecraftServer` and its
+client-only method is stripped on the server (fourteen checks). Default bridges (CORPUS-11) are not added on Forge:
+they must come after Mixin, which no transformer from the mods folder does; a launch with classes that need them says
+so.
+
 **Questions only a run answers.** (1) Does ForgeGradle's compile classpath hold fmlloader, fmlcore, forgespi,
 modlauncher and securemodules? (2) Do Fabricated's locators run before `ModsFolderLocator` and the jar-in-jar
 locator (the debug lines "Found Mod Locators" and "Trying locator")? (3) On Forge 61, the Mojang mappings file's name

@@ -19,9 +19,11 @@ handled safely, no network access, original jars never changed, and no code that
 
 - **`main`:** NeoForge for 1.21.11, 26.1.2, 26.2 and 26.3, every line stable (NeoForge tagged `26.3.0-stable`; CI
   pins 26.3.0.95 and no version is experimental any more).
-- **`forge`:** Minecraft Forge 61 to 66 for the versions `main` covers, built with ForgeGradle; scaffolding:
-  `mc/forge-1.21.11` (Forge 61.2.4) compiles in the branch's CI (#72). Next: 26.x, a forgespi 8 adapter, and bridges
-  rewritten for EventBus 7 (`PORTING.md` §4).
+- **`forge`:** Minecraft Forge 61 to 66 for the versions `main` covers, built with ForgeGradle. F3 steps 1 to 4 done:
+  on Forge 61 (1.21.11) and 64 to 66 (26.x) a translated Fabric mod is discovered, loads, runs its entrypoints, has
+  its mixins applied, its injected interfaces added and its other side's members stripped (#85, #87, #90; `PORTING.md`
+  §4.1). Next: entrypoints where Fabric runs them and the client's, default bridges after Mixin, warnings (step 5),
+  then Fabric API on Forge's events (EventBus 7).
 - **`forge-legacy`:** Minecraft Forge for 1.20.1 (Forge 47.4) and other legacy versions; scaffolding: `mc/1.20.1` on
   ModDevGradle's `legacyforge` (Forge 47.4.28) compiles in the branch's CI (#71) ([`PORTING.md`](PORTING.md)). About 80 % of `core` and the Fabric Loader API carry over; the platform layer
   (discovery on forgespi 7, Mojang class names with SRG member names, Forge's `mods.toml`, MixinExtras provision, class
