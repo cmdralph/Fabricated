@@ -64,6 +64,13 @@ One entry per working session, newest first: what changed, and how it was verifi
   26.x corpus's remaining errors were traced to the mods themselves: FrozenLib's "Unable to read config entry" on a
   fresh config directory (CORPUS-27) and Wilder Wild 26.3's reinforced deepslate blockstate without its mixin
   (CORPUS-28). Forge 47's biome coremod failing with Fabric API installed is recorded for L4 in the roadmap.
+- Native loot modules on both Forge branches. On Forge 61 to 66, `fabric-loot-api-v3` and `fabric-api-base` (forge
+  #137, a port of `main`'s): Fabric's loot table events run from Forge's loot table event, and from a hook into the
+  registry decode on Forge 66, whose loot skip is gone; the in-game mod's mixins use no MixinExtras sugar, after its
+  first run showed Forge's MixinExtras failing `@Local` without Fabric API. On Forge 47, `fabric-loot-api-v2`,
+  `fabric-loot-tables-v1` and `fabric-api-base` (forge-legacy #138), which were disabled as Forge 47's loot pools are a
+  list. Tech Reborn's 26.1.2 recipes of type `reborncore:padded`, which its code doesn't register, are recorded as the
+  mod's own (CORPUS-29).
 - SKIP-1 is verified: main's tag removal check passes on all four versions with Fabric API (#133), Forge 47's Fabric
   API run reads `fabric:remove` (forge-legacy #132, whose in-game mod is now reobfuscated to SRG's names and has mixins
   of its own), and Fabric API's tag module loads on Forge 61 to 66 with both removals applied (forge #134, the forge
