@@ -3,6 +3,52 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-10-26: Fabric mods that depend on each other
+
+- **ORDER-1** (`FINDINGS.md`), reported on Forge 47 ("Mod Sorting failed", "Detected Cycles"): every translated mod's
+  descriptor ordered it after each Fabric mod it depends on, so two mods depending on each other, which Fabric allows,
+  made a cycle every platform's sorter refuses, and the game stopped. Fabricated now leaves out one ordering of each
+  cycle, found by a depth-first walk over the Fabric mods' orderings, and the report names it under *Load order*.
+- Verification: `LoadOrderingsTest` and `PipelineTest`'s new case pass with core's whole suite (321 tests); the new
+  Pipeline case failed before the fix, its descriptors holding both cycles. Each platform's server smoke loads two Fabric
+  mods that depend on each other and must start.
+
+## 2026-10-26: Forge's server runs as gates
+
+- Both server runs on every Forge version are gates now, the one with Fabric API included, as v0.5.0's goals set once
+  their checks held: after CI-1 and PLAT-4, every check passed in both runs on all five versions (manual runs
+  40385962374 and 40385967190), and the only lines not seen were checks that apply elsewhere. Those now run only where
+  they apply: the default attributes check with Fabric API on 26.x, the advancement check with Fabric API on 26.2 and
+  26.3. A check that applies and fails fails the run, as a server that doesn't start does. The lines read from Forge's
+  debug log (its mod locator, its language provider, MixinExtras on Forge 61 to 66) stay reported only, as Forge words
+  its debug output as it likes.
+- The Forge READMEs, the roadmap's parity table and `COMPATIBILITY.md` describe the runs as gates.
+
+## 2026-10-26: the project rethought, a parity table, Forge's own private fields
+
+- **The roadmap looks forward only.** Its findings log had grown to four fifths of its 240,000 characters: the fixed
+  findings move, unchanged, to [`FINDINGS.md`](FINDINGS.md), and a finding moves there in the change that fixes it;
+  the open ones stay. Its long accounts of the Forge ports move, unchanged, to `PORTING.md` §7 ("Where it stands"),
+  and stale "this pass" markers name their milestone. The roadmap opens with *How the project fits together* (one
+  engine, three platforms, one tree, and five rules that keep the work on track) and a parity table: each capability
+  on NeoForge, Forge 61 to 66 and Forge 47.
+- **`COMPATIBILITY.md` covers the Forge builds:** each Fabric API module's status on Forge 61, 64, 65, 66 and 47, taken
+  from the Fabric API runs' reports on #157 and #158, and the bridges the in-game mod adds there.
+- **Branches:** a release branch takes only merges from `claude/dev` and `branch-readme.yml`'s commits, and is never
+  merged back (`claude.md`): merging one back would bring its `.github/README.md`, and #157's first head showed what a
+  release branch merged back while it moves on does (two merge bases, a conflict, no CI).
+- **CI-1** (`FINDINGS.md`): three of the Forge smoke scripts' informational checks read a line in `debug.log` as NOT SEEN
+  when `grep -q` ended their pipeline under pipefail, which is why they changed between runs of the same code.
+- **PLAT-4** (`FINDINGS.md`): on Forge, Fabricated widened fields Forge's own coremod needs private, as it knew only
+  NeoForge's list. Reproduced first, with the Forge test mods' access wideners opening `BucketItem`'s fluid: Forge 61
+  and 66 failed to load `BucketItem` and the servers exited; Forge 47 skipped its redirect. Each platform's descriptor
+  now holds its list (NeoForge's, Forge 61 to 66's, Forge 47's in SRG's names), and the converter's warnings name the
+  platform's loader.
+- Verification: core's tests pass locally (the converter's new case among them). On `6db114a` (manual runs 40385962374
+  and 40385967190) both Forge servers start on all five versions, the field stays private with no transformer error,
+  and no check fails: 46 to 48 checks on Forge 61 to 66, whose only lines not seen are the checks that apply to other
+  versions, and 56 on Forge 47, every one of them in both runs (CI-1 brought back the language provider's).
+
 ## 2026-10-26: one working branch, one folder per platform
 
 - The owner's decision: `claude/dev` is the only working branch and holds every platform; it is merged into `main`,
@@ -24,7 +70,11 @@ One entry per working session, newest first: what changed, and how it was verifi
 - Verification: `settings.gradle` lists `:mc:neoforge-1.21.11` to `:mc:neoforge-26.3` by default and
   `:mc:forge-legacy-1.20.1` with `-Pfabricated.platforms=forge-legacy`, refuses an unknown platform, and with `all`
   reaches `:mc:forge-1.21.11`, whose ForgeGradle setup needs a download the cloud sandbox blocks. Compiling and running
-  each platform is left to its branch's CI on the pull requests.
+  each platform is left to its branch's CI on the pull requests: #156, #157 and #158, all from `8359033`, merged with
+  each branch's CI green. NeoForge's matrix passed on all four versions, with the 26.3 corpus runs' error digest as on
+  #153. Forge 61, 64, 65 and 66 started both servers with 42 or 43 checks passing and none failing, fluid types OK in
+  both runs, as on #154. Forge 47 passed 27 checks, then 26 and the language provider line, as on #155.
+  `branch-readme.yml` then wrote each Forge branch's `.github/README.md`.
 
 ## 2026-10-26: development of 0.5.0
 

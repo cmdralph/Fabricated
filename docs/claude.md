@@ -20,7 +20,10 @@ verified), [`PORTING.md`](PORTING.md) (the 1.20.1 and Forge evaluation and the b
   that builds it (`build.yml`, `build-forge.yml`, `build-forge-legacy.yml`), the jars it stands for in a release and its
   README (`docs/readme/<branch>.md`, which `branch-readme.yml` copies to the branch's `.github/README.md`: `claude/dev`
   never holds that file). Every change goes to all three as one pull request each, from the same `claude/dev` head, and
-  each merges once its own CI is green; `claude/dev` is never reset to a release branch. All three targets move
+  each merges once its own CI is green; `claude/dev` is never reset to a release branch. A release branch receives
+  nothing else but `branch-readme.yml`'s commits, and is never merged back into `claude/dev`: that would bring its
+  `.github/README.md` along, and a release branch merged back while it moves on gives the next pull request two merge
+  bases, which GitHub reports as a conflict and on which no CI runs (#157's first head did). All three targets move
   together: a change to shared code is checked on every platform's CI, and a platform's port of a feature follows in
   the same pass where its API allows. 1.20.1 targets Forge 47.4, modern Forge builds with ForgeGradle, and secondary
   branches' CI runs for pull requests only: decisions D1 to D6 in `RESEARCH.md` §8, with the build paths.

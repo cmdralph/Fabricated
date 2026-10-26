@@ -1591,6 +1591,68 @@ class PipelineTest {
 		}
 	}
 
+	/**
+	 * Fabric lets mods depend on each other, in pairs or rings, while NeoForge's and Forge's sorters stop the game at a
+	 * cycle of load orderings ("Mod Sorting failed", "Detected Cycles"): a translated mod is ordered only after the mods
+	 * before it in the resolved order, so a cycle loses one of its orderings and nothing else does (ORDER-1).
+	 */
+	@Test
+	void dependenciesOnEachOtherLeaveNoCycleOfLoadOrderings(@TempDir Path game) throws Exception {
+		Map<String, String> depends = Map.of("pair_a", "pair_b", "pair_b", "pair_a", "ring_c", "ring_d", "ring_d", "ring_e", "ring_e", "ring_c", "user_f", "pair_a");
+		for (PlatformDescriptor descriptor : List.of(PlatformDescriptor.NEOFORGE, PlatformDescriptor.FORGE)) {
+			Path dir = game.resolve(descriptor.loaderName());
+			List<Path> jars = new ArrayList<>();
+			for (Map.Entry<String, String> mod : depends.entrySet()) {
+				jars.add(TestJars.create()
+						.fabricModJson(TestJars.modJson(mod.getKey(), "1.0", "\"depends\":{\"" + mod.getValue() + "\":\"*\"}"))
+						.write(dir.resolve("mods/" + mod.getKey() + ".jar")));
+			}
+			Pipeline.Result result = Pipeline.run(withDescriptor(input(dir, jars, Namespace.OFFICIAL, Map.of(), null), descriptor));
+			Map<String, Set<String>> after = new HashMap<>();
+			for (Pipeline.LoadedMod mod : result.mods()) {
+				try (SafeArchive overlay = SafeArchive.open(mod.translated().overlay(), ArchiveLimits.DEFAULTS)) {
+					java.util.regex.Matcher m = java.util.regex.Pattern.compile("\\[\\[dependencies\\.(\\w+)]]\nmodId=\"(\\w+)\"")
+							.matcher(overlay.readText(descriptor.path()));
+					while (m.find()) {
+						if (depends.containsKey(m.group(2))) after.computeIfAbsent(m.group(1), k -> new java.util.TreeSet<>()).add(m.group(2));
+					}
+				}
+			}
+			assertEquals(depends.keySet(), result.mods().stream().map(m -> m.translated().candidate().id()).collect(Collectors.toSet()),
+					result.report().render());
+			assertFalse(hasCycle(after), descriptor.loaderName() + ": " + after);
+			assertEquals(Set.of("pair_a"), after.get("user_f"), "an ordering outside a cycle stays");
+			// Each cycle keeps all its orderings but one: a pair one, the ring two.
+			assertEquals(1, after.getOrDefault("pair_a", Set.of()).size() + after.getOrDefault("pair_b", Set.of()).size(), after.toString());
+			assertEquals(2, after.getOrDefault("ring_c", Set.of()).size() + after.getOrDefault("ring_d", Set.of()).size()
+					+ after.getOrDefault("ring_e", Set.of()).size(), after.toString());
+			// The report says which orderings went, and why.
+			List<String> loadOrder = result.report().render().lines().filter(l -> l.contains("doesn't load after")).toList();
+			assertEquals(2, loadOrder.size(), result.report().render());
+			assertTrue(loadOrder.stream().allMatch(l -> l.contains(descriptor.loaderName() + " refuses")), loadOrder.toString());
+		}
+	}
+
+	private static boolean hasCycle(Map<String, Set<String>> after) {
+		Map<String, Integer> state = new HashMap<>();
+		for (String id : after.keySet()) {
+			if (visits(id, after, state)) return true;
+		}
+		return false;
+	}
+
+	/** Depth first: 1 while on the path, 2 once done. */
+	private static boolean visits(String id, Map<String, Set<String>> after, Map<String, Integer> state) {
+		Integer s = state.get(id);
+		if (s != null) return s == 1;
+		state.put(id, 1);
+		for (String next : after.getOrDefault(id, Set.of())) {
+			if (visits(next, after, state)) return true;
+		}
+		state.put(id, 2);
+		return false;
+	}
+
 	/** Classes find the native libraries of a jar without classes nested beside them, as on Fabric's class path (Skiko's). */
 	@Test
 	void rootFilesOfAJarWithoutClassesAreServedByTheModulesBesideIt(@TempDir Path game) throws Exception {

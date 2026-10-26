@@ -1,8 +1,9 @@
 name: Build forge
 
 # The forge branch's build of Minecraft Forge's targets (mc/forge, the projects :mc:forge-<version>): pull requests to
-# the branch only (owner decision D6). Every branch holds every platform; main's build.yml builds NeoForge's. Changes to
-# documentation alone build nothing, nor do changes to another platform's folders alone.
+# the branch only (owner decision D6). Every branch holds every platform; main's build.yml builds NeoForge's. Two server
+# smokes per version, with the test mod and with Fabric API too, each a gate: the server must start and every check that
+# applies pass. Changes to documentation alone build nothing, nor do changes to another platform's folders alone.
 on:
   pull_request:
     branches: [forge]
@@ -78,19 +79,17 @@ jobs:
       - name: Check the jar's layout for Forge
         run: ./gradlew -Pfabricated.platforms=forge --configure-on-demand :mc:forge-${{ matrix.minecraft }}:checkForgeJar --stacktrace
       # The game on this branch (docs/PORTING.md §4.1): what Forge makes of the jar's layout and of the translated test
-      # mod. Reported, not gated, until F3's discovery is settled.
-      - name: Server with Fabricated (informational)
-        continue-on-error: true
+      # mod. The server must start and every check that applies pass.
+      - name: Server with Fabricated (must pass)
         run: |
           # Forge 61 (1.21.11) runs on Java 21, Forge 64 to 66 (26.x) on Java 25.
           [ "${{ matrix.minecraft }}" = "1.21.11" ] || export PATH="$JAVA_HOME_25_X64/bin:$PATH"
           forge=$(sed -n 's/^forge_version=//p' "mc/forge/${{ matrix.minecraft }}/gradle.properties")
           ci/forge/smoke-server.sh "${{ matrix.minecraft }}" "$forge" "$RUNNER_TEMP/server"
       # The official Fabric API jar (downloaded here in CI, never by Fabricated) with every module passed through: what
-      # loads on Forge and what pre-flight disables, for F4's choice of native modules. Informational.
-      - name: Server with Fabricated and Fabric API (informational)
+      # loads on Forge and what pre-flight disables, for F4's choice of native modules. A gate like the first run.
+      - name: Server with Fabricated and Fabric API (must pass)
         if: ${{ !cancelled() }}
-        continue-on-error: true
         run: |
           [ "${{ matrix.minecraft }}" = "1.21.11" ] || export PATH="$JAVA_HOME_25_X64/bin:$PATH"
           forge=$(sed -n 's/^forge_version=//p' "mc/forge/${{ matrix.minecraft }}/gradle.properties")

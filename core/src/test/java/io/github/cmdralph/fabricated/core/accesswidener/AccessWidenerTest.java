@@ -14,6 +14,8 @@ import org.objectweb.asm.Opcodes;
 import io.github.cmdralph.fabricated.core.bytecode.ClassIndex;
 
 class AccessWidenerTest {
+	private static final Map<String, String> NEOFORGE = AccessTransformerConverter.NEOFORGE_PRIVATE_FIELDS;
+
 	@Test
 	void parsesV1V2AndClassTweakers() throws Exception {
 		AccessWidenerFile v1 = AccessWidenerParser.parse("""
@@ -80,7 +82,7 @@ class AccessWidenerTest {
 		ClassIndex game = new ClassIndex(Map.of(
 				"net/minecraft/A", gameClass(),
 				"net/minecraft/A$Inner", emptyGameClass("net/minecraft/A$Inner"))::get);
-		AccessTransformerConverter.Result result = AccessTransformerConverter.convert(file, game);
+		AccessTransformerConverter.Result result = AccessTransformerConverter.convert(file, game, NEOFORGE, "NeoForge");
 		List<String> lines = result.accessTransformer().lines().filter(l -> !l.startsWith("#")).toList();
 		assertEquals(List.of(
 				"public-f net.minecraft.A",
@@ -96,7 +98,7 @@ class AccessWidenerTest {
 	@Test
 	void convertsWithoutGameIndex() throws Exception {
 		AccessWidenerFile file = AccessWidenerParser.parse("accessWidener v1 named\naccessible method a/B m ()V\n");
-		AccessTransformerConverter.Result result = AccessTransformerConverter.convert(file, null);
+		AccessTransformerConverter.Result result = AccessTransformerConverter.convert(file, null, NEOFORGE, "NeoForge");
 		assertTrue(result.accessTransformer().contains("public a.B m()V"));
 		assertTrue(result.accessTransformer().contains("public a.B\n"));
 	}
@@ -120,6 +122,39 @@ class AccessWidenerTest {
 		return cw.toByteArray();
 	}
 
+	/**
+	 * Forge's transformer throws unless the fields it redirects to getters are private, and Forge's list isn't NeoForge's:
+	 * a fluid mod's widened {@code BucketItem.content} stays private on Forge and is widened on NeoForge, and the
+	 * warnings name the platform's loader (PLAT-4).
+	 */
+	@Test
+	void keepsTheFieldsOfThePlatformsOwnCoremodPrivate() throws Exception {
+		AccessWidenerFile file = AccessWidenerParser.parse("""
+				accessWidener v2 named
+				accessible field net/minecraft/world/item/BucketItem content Lnet/minecraft/world/level/material/Fluid;
+				accessible class net/minecraft/Missing
+				""");
+		ClassIndex game = new ClassIndex(Map.of("net/minecraft/world/item/BucketItem", bucketItem())::get);
+		AccessTransformerConverter.Result onForge = AccessTransformerConverter.convert(file, game,
+				AccessTransformerConverter.FORGE_PRIVATE_FIELDS, "Forge");
+		assertTrue(!onForge.accessTransformer().contains("content"), onForge.accessTransformer());
+		assertEquals(List.of(
+				"line 2: field net/minecraft/world/item/BucketItem.content must stay private on Forge (a Forge coremod replaces it with a getter); "
+						+ "not widened. Code reading it directly fails when it runs.",
+				"line 3: class net/minecraft/Missing does not exist on this Minecraft/Forge version; ignored"), onForge.warnings());
+		AccessTransformerConverter.Result onNeoForge = AccessTransformerConverter.convert(file, game, NEOFORGE, "NeoForge");
+		assertTrue(onNeoForge.accessTransformer().contains("public net.minecraft.world.item.BucketItem content"), onNeoForge.accessTransformer());
+	}
+
+	private static byte[] bucketItem() {
+		ClassWriter cw = new ClassWriter(0);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, "net/minecraft/world/item/BucketItem", null, "java/lang/Object", null);
+		cw.visitField(Opcodes.ACC_PRIVATE | Opcodes.ACC_FINAL, "content", "Lnet/minecraft/world/level/material/Fluid;", null, null).visitEnd();
+		cw.visitMethod(Opcodes.ACC_PUBLIC, "getFluid", "()Lnet/minecraft/world/level/material/Fluid;", null, null).visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
 	@Test
 	void keepsFieldsNeoForgeCoremodsNeedPrivate() throws Exception {
 		AccessWidenerFile file = AccessWidenerParser.parse("""
@@ -127,7 +162,7 @@ class AccessWidenerTest {
 				accessible field net/minecraft/world/level/biome/Biome climateSettings Lnet/minecraft/world/level/biome/Biome$ClimateSettings;
 				mutable field net/minecraft/world/level/biome/Biome specialEffects Lnet/minecraft/world/level/biome/BiomeSpecialEffects;
 				""");
-		AccessTransformerConverter.Result result = AccessTransformerConverter.convert(file, null);
+		AccessTransformerConverter.Result result = AccessTransformerConverter.convert(file, null, NEOFORGE, "NeoForge");
 		assertTrue(!result.accessTransformer().contains("climateSettings"), result.accessTransformer());
 		assertTrue(result.accessTransformer().contains("private-f net.minecraft.world.level.biome.Biome specialEffects"), result.accessTransformer());
 		assertEquals(1, result.warnings().size());
@@ -154,7 +189,7 @@ class AccessWidenerTest {
 				accessible field net/minecraft/world/level/biome/Biome attributes Lnet/minecraft/world/attribute/EnvironmentAttributeMap;
 				mutable field net/minecraft/world/level/biome/Biome attributes Lnet/minecraft/world/attribute/EnvironmentAttributeMap;
 				""");
-		AccessTransformerConverter.Result result = AccessTransformerConverter.convert(file, game);
+		AccessTransformerConverter.Result result = AccessTransformerConverter.convert(file, game, NEOFORGE, "NeoForge");
 		assertTrue(result.accessTransformer().contains("public-f net.minecraft.world.level.biome.Biome attributes"), result.accessTransformer());
 		assertTrue(!result.accessTransformer().contains("climateSettings"), "its coremod's getter is there: " + result.accessTransformer());
 		assertEquals(1, result.warnings().size(), result.warnings().toString());
