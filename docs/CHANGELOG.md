@@ -58,6 +58,12 @@ One entry per working session, newest first: what changed, and how it was verifi
   them and lambdas implementing them kept their official names, and Fabric API's resource pack lambda stopped the server
   (AbstractMethodError). A descriptor without Minecraft classes is matched by its owner only, so a mod's `Runnable.run`
   keeps its name. Test: 278 core tests.
+- PLAIN-1 joins a method whose official name Intermediary renames elsewhere, where the descriptor differs: three
+  unrelated `get(F)` methods Intermediary renames kept `IoSupplier.get()` (SRG's `m_247737_`) out of the table, and
+  Fabric API's resource pack stopped Forge 47's server on #116 (NoSuchMethodError). 77 more methods on 1.20.1, mostly
+  functional interfaces' (`BlockEntityType.BlockEntitySupplier.create`, `MenuType.MenuSupplier.create`,
+  `EntityType.EntityFactory.create`), which lambdas in most content mods implement. Checked on Fabric API 0.92.12:
+  17 of its references to such methods were left unmapped, none now. Test: 282 core tests.
 - On Forge 47, a mixin's shadow of a value an anonymous class captures, or of its outer instance, finds it under
   javac's name (CAPTURE-3): SRG names those fields as any other (`f_143670_`), and Forge's build of a class it patches is
   recompiled, which names them `val$entity` and `this$0`. Vanilla's class, from Forge's installed game, tells such a
