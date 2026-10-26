@@ -118,7 +118,7 @@ public final class ModTranslator {
 	public TranslatedMod translate(Candidate candidate, ModOverride override, Set<String> plannedSkips, List<String> loadAfter) throws TranslationException {
 		String neoId = ModIds.toNeoForgeId(candidate.id());
 		if (ModIds.RESERVED.contains(neoId)) {
-			throw new TranslationException("Mod id '" + candidate.id() + "' cannot be used on NeoForge", "Report this to the mod author.");
+			throw new TranslationException("Mod id '" + candidate.id() + "' cannot be used on " + env.descriptor().loaderName(), "Report this to the mod author.");
 		}
 		List<String> after = loadAfter.stream().sorted().distinct().toList();
 		String key = Hashing.sha256(String.join("|", candidate.sha256(), env.minecraftVersion(), env.neoForgeVersion(),
@@ -377,7 +377,7 @@ public final class ModTranslator {
 		// Pre-flight sees the mod as it will load: with the handler methods left out below.
 		FileView translated = name -> overlay.containsKey(name) ? overlay.get(name) : files.read(name);
 		MixinPreflight preflight = new MixinPreflight(env.installedIndex(), env.installed(), classSource(translated), env.untransformable(),
-				env.clientSide(), MixinCompat.missingTargetsFatal(behavior), env.vanilla());
+				env.clientSide(), MixinCompat.missingTargetsFatal(behavior), env.vanilla(), env.descriptor().loaderName());
 		Map<String, MixinConfigFile> configs = new HashMap<>();
 		Set<String> matchedSkips = new HashSet<>();
 		Map<String, Refmap> refmaps = new HashMap<>();
@@ -498,7 +498,7 @@ public final class ModTranslator {
 					.map(f -> f.config() + ":" + relativeMixin(configs.get(f.config()), f.mixin())).distinct()
 					.collect(Collectors.joining("\", \""));
 			throw new TranslationException("Mixin pre-flight failed: " + summary,
-					"Update the mod or ask its author for a NeoForge build. If the affected mixins are cosmetic, add \"skipMixins\": [\""
+					"Update the mod or ask its author for a " + env.descriptor().loaderName() + " build. If the affected mixins are cosmetic, add \"skipMixins\": [\""
 							+ skipHint + "\"] for " + candidate.id() + " in config/fabricated.json.",
 					failures, null);
 		}
@@ -707,7 +707,7 @@ public final class ModTranslator {
 				all.add(mixin);
 			}
 			findings.add(new PreflightFinding(Severity.INFO, configName, header.name.replace('/', '.'), "Its target, " + targets.get(0).replace('/', '.')
-					+ ", is a library class NeoForge loads without mixin support: the interfaces the mixin gives it ("
+					+ ", is a library class " + env.descriptor().loaderName() + " loads without mixin support: the interfaces the mixin gives it ("
 					+ bridge.ducks().stream().map(d -> d.itf().replace('/', '.')).collect(Collectors.joining(", "))
 					+ ") are served by a generated class, which uses the class's fields through reflection, and the mod's uses of them call that class", ""));
 		}
@@ -812,8 +812,8 @@ public final class ModTranslator {
 				if (module == null) continue;
 				found.add(new PreflightFinding(config.plugin() == null && config.required() ? Severity.FAIL : Severity.LEFT_OUT, configName,
 						config.internalName(mixin).replace('/', '.'),
-						"uses " + used.replace('/', '.') + " from " + module + ", a Fabric API module that can't run on NeoForge here",
-						"Use the mod's NeoForge build if it has one."));
+						"uses " + used.replace('/', '.') + " from " + module + ", a Fabric API module that can't run on " + env.descriptor().loaderName() + " here",
+						"Use the mod's " + env.descriptor().loaderName() + " build if it has one."));
 				break;
 			}
 		}
@@ -948,7 +948,7 @@ public final class ModTranslator {
 		Set<String> added = extended.stream().map(e -> e.enumName() + "." + e.name()).collect(Collectors.toSet());
 		if (tweaker.enumExtensions().stream().anyMatch(e -> enumTargets.contains(e.target()) && !added.contains(e.target() + "." + e.constant()))) {
 			throw new TranslationException(candidate.id() + " adds enum constants with Mixin's enum extensions, which need Mixin 0.17.1 or later;"
-					+ " this NeoForge runs Mixin " + env.runtimeMixinVersion(), "Update NeoForge, or use a build of " + candidate.id() + " made for it.");
+					+ " this " + env.descriptor().loaderName() + " runs Mixin " + env.runtimeMixinVersion(), "Update " + env.descriptor().loaderName() + ", or use a build of " + candidate.id() + " made for it.");
 		}
 	}
 
@@ -968,14 +968,14 @@ public final class ModTranslator {
 		boolean fixesOnly = MixinCompat.onlyFixesUpTo(required, running);
 		String severalPoints = fixesOnly ? redirectAtSeveralPoints(config, entries, classes) : null;
 		if (fixesOnly && severalPoints == null) {
-			notes.add("Its mixin config " + configName + " asks for MixinExtras " + required + "; it runs with NeoForge's " + running
+			notes.add("Its mixin config " + configName + " asks for MixinExtras " + required + "; it runs with " + env.descriptor().loaderName() + "'s " + running
 					+ ", as the releases since only fixed bugs its mixins don't meet");
 			return config.requiringMixinExtras(running);
 		}
 		String why = severalPoints != null ? " (" + severalPoints + " has a @Redirect at several injection points, which MixinExtras reads from 0.5.5)" : "";
 		throw new TranslationException(candidate.id() + "'s mixin config " + configName + " requires MixinExtras " + required
-				+ " or later; this NeoForge ships MixinExtras " + running + why,
-				"Update NeoForge if a newer build ships it, or use a build of " + candidate.id() + " made for this one.");
+				+ " or later; this " + env.descriptor().loaderName() + " ships MixinExtras " + running + why,
+				"Update " + env.descriptor().loaderName() + " if a newer build ships it, or use a build of " + candidate.id() + " made for this one.");
 	}
 
 	/**
