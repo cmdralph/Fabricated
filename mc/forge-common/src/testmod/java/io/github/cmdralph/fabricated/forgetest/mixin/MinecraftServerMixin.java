@@ -16,7 +16,7 @@ import net.minecraft.server.MinecraftServer;
  * server tick, whether the server has the interface the test mod's class tweaker injects, whether the test mod's item
  * is still in the registry Forge has frozen and checked by then, whether its item tag's removals applied, whether
  * Fabric's loot table events reached dirt's loot table and drops, and whether Fabric's default attribute event reached a
- * pig's defaults.
+ * cow's defaults.
  */
 @Mixin(MinecraftServer.class)
 public abstract class MinecraftServerMixin {

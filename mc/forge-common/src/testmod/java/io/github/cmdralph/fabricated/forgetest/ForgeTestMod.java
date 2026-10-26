@@ -96,7 +96,7 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 		}
 	}
 
-	/** Whether Fabric's default attribute event changed a pig's defaults ({@link ForgeAttributeTest}; with Fabric API only). */
+	/** Whether Fabric's default attribute event changed a cow's defaults ({@link ForgeAttributeTest}; with Fabric API only). */
 	public static void checkDefaultAttributes() {
 		try {
 			ForgeAttributeTest.check();
