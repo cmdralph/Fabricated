@@ -154,11 +154,18 @@ One entry per working session, newest first: what changed, and how it was verifi
   files declare from its mixin plugin, and its Fabric build registers its events' listeners only from
   `FabricLoader.getEntrypoints`; on Fabricated the storage didn't exist, so Wilder Wild's 26.3 block changes (its
   reinforced deepslate pillar, random ticks for its froglights and firefly bush) were never registered. CORPUS-28's
-  blockstate warning, put down to Wilder Wild before, follows from it (by both mods' source). `FabricLoaderImpl`'s storage and adapter fields now
+  blockstate warning, put down to Wilder Wild before, was this: the corpus run on #145 no longer logs it, nor
+  FrozenLib's lookup error. `FabricLoaderImpl`'s storage and adapter fields now
   work, adding to Fabricated's loader, and Fabricated's containers extend Fabric Loader's `ModContainerImpl`. Tests:
   the runtime used as FrozenLib uses it, the linkage check accepting FrozenLib's call (core and loader API tests
   pass), and a server check on every version: the test mod's mixin plugin adds an entrypoint the same way and its main
   entrypoint runs it.
+- Forge 66 runs Fabric API's advancement events (`forge`, #146): Forge decodes each advancement as an `Optional`
+  (its conditional data), which upstream's loading hook casts to an advancement, so the plan leaves that hook out and
+  the in-game mod's own hook on the same decoding runs upstream's code on the advancement inside, found by reflection
+  as the module is passed through. A version's project names the in-game mod's extra mixin configs
+  (`game_mod_mixins`). Test: the forge test mod sets a vanilla advancement's reward through `MODIFY`, which the server
+  loads on Forge 65 and 66 with Fabric API.
 
 ## 2026-10-25: branch reorganisation, a glowing moving block's outline, 1.21.11 server linkage noise, platform seams
 
