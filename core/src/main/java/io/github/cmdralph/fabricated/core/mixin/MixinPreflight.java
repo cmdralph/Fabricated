@@ -302,8 +302,9 @@ public final class MixinPreflight {
 	 * skip itself with Mixin's warning instead ({@code CAPTURE_FAILSOFT}, {@code require = 0}). Where the locals
 	 * match, nothing changes.</li>
 	 * <li>An injector targeting a lambda ({@code lambda$enclosing$3}) that the game numbers differently (NeoForge's
-	 * 1.21.11 build is compiled from decompiled code, and NeoForge's patches add lambdas): it is pointed at the one
-	 * lambda of the same enclosing method with the same descriptor.</li>
+	 * 1.21.11 build is compiled from decompiled code, and NeoForge's patches add lambdas): it is pointed at the lambda
+	 * created where vanilla's code creates the one named, or else at the one lambda of the same enclosing method with the
+	 * same descriptor.</li>
 	 * <li>A {@code @Redirect}, {@code @ModifyArg}, {@code @ModifyArgs} or {@code @ModifyVariable} whose {@code at} is an
 	 * array of one ({@link #singleInjectionPoints}).</li>
 	 * </ul>
@@ -341,6 +342,12 @@ public final class MixinPreflight {
 			for (MethodNode method : node.methods) {
 				for (AnnotationNode ann : Annotations.all(method)) {
 					if (!isInjector(ann.desc)) continue;
+					// A grouped injector is one of the mod's alternatives: another may name the lambda by this build's number.
+					for (String lambda : grouped(method) ? List.<String>of() : vanillaLambdaRepairs(ann, targets, ctx)) {
+						changed = true;
+						out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@" + simpleName(ann.desc) + " " + method.name
+								+ " targets " + lambda + ", which this game build numbers differently", ""));
+					}
 					for (String lambda : lambdaRepairs(method, ann, targets, ctx)) {
 						changed = true;
 						out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@" + simpleName(ann.desc) + " " + method.name
@@ -547,6 +554,96 @@ public final class MixinPreflight {
 			repaired.add(ref.name() + (ref.desc() != null ? ref.desc() : ""));
 		}
 		return repaired;
+	}
+
+	/**
+	 * Points the selectors of an injector that name a lambda ({@code lambda$enclosing$N}) by vanilla's numbering at the
+	 * lambda this game build creates in its place, when vanilla's code is at hand (VANILLA-1), and returns the selectors'
+	 * original names. NeoForge's patches add lambdas, which numbers the class's later ones otherwise: its {@code Blocks}
+	 * patch makes the powered rail's constructor reference a lambda, so Wilder Wild's hooks into the ice blocks' spawn
+	 * predicates named lambdas of another shape on every version, and a hook into one of the same shape would have
+	 * applied to the wrong lambda without a word (LAMBDA-5). The lambdas the creating method makes are aligned with
+	 * vanilla's by their shape and code ({@link PatchAlignment#places}); a lambda that another lambda creates isn't
+	 * followed, nor one whose place the alignment can't tell.
+	 */
+	private List<String> vanillaLambdaRepairs(AnnotationNode injector, List<ClassNode> targets, Context ctx) {
+		if (!(Annotations.value(injector, "method") instanceof List<?> selectors)) return List.of();
+		List<String> repaired = new ArrayList<>();
+		next:
+		for (int i = 0; i < selectors.size(); i++) {
+			if (!(selectors.get(i) instanceof String raw)) continue;
+			MemberRef ref = MemberRef.parse(ctx.resolve(raw));
+			if (ref.fuzzy() || ref.name() == null || !LAMBDA.matcher(ref.name()).matches()) continue;
+			MethodNode placed = null;
+			for (ClassNode target : targets) {
+				MethodNode here = lambdaInVanillasPlace(target, ref);
+				if (here == null || placed != null && !(placed.name + placed.desc).equals(here.name + here.desc)) continue next;
+				placed = here;
+			}
+			if (placed == null || placed.name.equals(ref.name()) && (ref.desc() == null || placed.desc.equals(ref.desc()))) continue;
+			@SuppressWarnings("unchecked")
+			List<Object> values = (List<Object>) selectors;
+			values.set(i, placed.name + placed.desc);
+			repaired.add(ref.name() + (ref.desc() != null ? ref.desc() : ""));
+		}
+		return repaired;
+	}
+
+	/**
+	 * The lambda of {@code target} that this game build creates where vanilla's version of the class creates the one
+	 * {@code ref} names, or null when that can't be told.
+	 */
+	private MethodNode lambdaInVanillasPlace(ClassNode target, MemberRef ref) {
+		ClassNode original = vanillaClass(target.name);
+		if (original == null) return null;
+		MethodNode lambda = null;
+		for (MethodNode m : original.methods) {
+			if (!m.name.equals(ref.name()) || ref.desc() != null && !m.desc.equals(ref.desc())) continue;
+			if (lambda != null) return null;
+			lambda = m;
+		}
+		if (lambda == null) return null;
+		MethodNode creator = null;
+		for (MethodNode m : original.methods) {
+			if (!createsLambda(m, lambda)) continue;
+			if (creator != null) return null;
+			creator = m;
+		}
+		if (creator == null || LAMBDA.matcher(creator.name).matches()) return null;
+		MethodNode patched = null;
+		for (MethodNode m : target.methods) {
+			if (m.name.equals(creator.name) && m.desc.equals(creator.desc)) patched = m;
+		}
+		if (patched == null) return null;
+		List<CreatedLambda> vanillas = createdLambdas(original, creator);
+		List<CreatedLambda> games = createdLambdas(target, patched);
+		int index = 0;
+		while (index < vanillas.size() && vanillas.get(index).body() != lambda) index++;
+		int[] places = PatchAlignment.places(vanillas.stream().map(CreatedLambda::shape).toArray(String[]::new),
+				games.stream().map(CreatedLambda::shape).toArray(String[]::new));
+		if (index == vanillas.size() || places == null || places[index] < 0) return null;
+		return games.get(places[index]).body();
+	}
+
+	/** A lambda a method creates: its body, and its shape as alignment compares it (the creating instruction's type, its descriptor and code). */
+	private record CreatedLambda(MethodNode body, String shape) {
+	}
+
+	/** The lambdas of {@code owner} that {@code method} creates, in the order it creates them. */
+	private static List<CreatedLambda> createdLambdas(ClassNode owner, MethodNode method) {
+		List<CreatedLambda> created = new ArrayList<>();
+		for (AbstractInsnNode insn : method.instructions) {
+			if (!(insn instanceof InvokeDynamicInsnNode indy)) continue;
+			for (Object arg : indy.bsmArgs) {
+				if (!(arg instanceof Handle h) || !h.getOwner().equals(owner.name) || !LAMBDA.matcher(h.getName()).matches()) continue;
+				for (MethodNode m : owner.methods) {
+					if (m.name.equals(h.getName()) && m.desc.equals(h.getDesc())) {
+						created.add(new CreatedLambda(m, indy.name + indy.desc + " " + m.desc + "\n" + PatchAlignment.code(m)));
+					}
+				}
+			}
+		}
+		return created;
 	}
 
 	/** Whether an {@code @Inject} handler takes a returnable callback info: its target returns a value. */

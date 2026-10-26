@@ -58,6 +58,12 @@ One entry per working session, newest first: what changed, and how it was verifi
   them and lambdas implementing them kept their official names, and Fabric API's resource pack lambda stopped the server
   (AbstractMethodError). A descriptor without Minecraft classes is matched by its owner only, so a mod's `Runnable.run`
   keeps its name. Test: 278 core tests.
+- A hook into a lambda named by vanilla's number takes the lambda NeoForge's build creates in its place (LAMBDA-5):
+  NeoForge's `Blocks` patch makes the powered rail's constructor reference a lambda, so each later lambda of `Blocks`
+  is numbered one more, and Wilder Wild's penguin spawn hooks into the ice blocks' spawn predicates were left out on
+  every version (lambdas of other parameters had their names); a lambda of the same parameters would have taken the
+  hook without a word. With vanilla's code, the lambdas a method creates are aligned with vanilla's by their shape and
+  code. Test: 285 core tests.
 - On Forge 61 to 66, a `@ModifyVariable` taking an argument by its name with `argsOnly` takes its slot instead (ARGS-1):
   SpongePowered's Mixin names arguments `arg` and their slot there, so Fabric API's resource loader hook taking
   `enableProfiling` in `SimpleReloadInstance.create` failed and Forge 65's server timed out on #115; Fabric's Mixin
