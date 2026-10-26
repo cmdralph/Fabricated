@@ -135,6 +135,7 @@ report "the test mod's client-only method was stripped (@Environment)" "grep -q 
 report "the Fabric main entrypoints ran in Forge's registry events" "grep -q 'Fabricated ran the Fabric main entrypoints of [1-9][0-9]* mod(s) on Forge (0 failed)' logs/latest.log 2>/dev/null"
 report "the test mod registered an item (Intermediary names remapped to SRG's)" "grep -q 'FABRICATED-FORGE-TEST registry OK' logs/latest.log 2>/dev/null"
 report "the test mod's item is in the frozen registry at the first tick" "grep -q 'FABRICATED-FORGE-TEST registry entry kept OK' logs/latest.log 2>/dev/null"
+report "MixinExtras ran the test mod's @WrapMethod (nested in the in-game mod)" "grep -q 'FABRICATED-FORGE-TEST MixinExtras OK' logs/latest.log 2>/dev/null"
 report "Fabricated's report names Forge as the loader" "grep -q '^  Forge: ' logs/fabric-bridge-report.txt 2>/dev/null && ! grep -q '^  NeoForge: ' logs/fabric-bridge-report.txt 2>/dev/null"
 
 echo "Server status: $status"
