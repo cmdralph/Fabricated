@@ -4,12 +4,10 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.Reader;
-import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
-import java.security.CodeSource;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -80,14 +78,15 @@ final class IntermediaryMappings {
 	}
 
 	/**
-	 * Candidates, in order: the config value, the {@value #SYSTEM_PROPERTY} system property, {@code <side>-<mc>-mappings.txt}
-	 * next to the game's jar, then in each libraries directory (the {@code libraryDirectory} system property, and the one
-	 * Forge's own loader jar is in) {@code net/minecraft/<side>/<mc>/<side>-<mc>-mappings.txt}, as NeoForge's installer
-	 * names it, and the same with the MCP version after the Minecraft version, as Forge's installers named it up to
-	 * 1.20.1. Forge 61's server installer leaves {@code <side>-<mc>-mappings.tsrg} there instead (the forge branch's
-	 * server smoke), whose format Fabricated doesn't read yet: the error names it.
+	 * Candidates, in order: the config value, the {@value #SYSTEM_PROPERTY} system property, then in each libraries
+	 * directory (the {@code libraryDirectory} system property, and the one the game's files are in: Forge runs its own
+	 * jar among the libraries, {@code net/minecraftforge/forge/<version>/}) {@code net/minecraft/<side>/<mc>/<side>-<mc>-mappings.txt},
+	 * as NeoForge's installer names it, and the same with the MCP version after the Minecraft version, as Forge's
+	 * installers named it up to 1.20.1. Forge 61's server installer leaves {@code <side>-<mc>-mappings.tsrg} there
+	 * instead (TSRG, from Mojang's names to the obfuscated ones; the forge branch's server smoke), which Fabricated doesn't
+	 * read yet: the error names it.
 	 *
-	 * @param gameJar the game's jar as Forge runs it (among the libraries, next to Mojang's mappings), or null
+	 * @param gameJar a file of the game as Forge runs it, or null
 	 */
 	static Path locateMojangMappings(String minecraftVersion, boolean client, String configuredPath, Path gameJar) throws MappingException {
 		List<String> tried = new ArrayList<>();
@@ -102,29 +101,34 @@ final class IntermediaryMappings {
 			}
 		}
 		String side = client ? "client" : "server";
-		Path gameDir = gameJar == null ? null : gameJar.toAbsolutePath().getParent();
-		if (gameDir != null) {
-			Path p = gameDir.resolve(side + "-" + minecraftVersion + "-mappings.txt");
-			if (Files.isRegularFile(p)) return p;
-			tried.add(p.toString());
-		}
 		String mcp = FMLLoader.versionInfo().mcpVersion();
 		List<String> versions = new ArrayList<>(List.of(minecraftVersion));
 		if (mcp != null && !mcp.isBlank()) versions.add(minecraftVersion + "-" + mcp);
-		for (Path libraries : librariesDirectories()) {
+		Set<Path> libraries = librariesDirectories(gameJar);
+		for (Path directory : libraries) {
 			for (String version : versions) {
-				Path p = libraries.resolve("net").resolve("minecraft").resolve(side).resolve(version).resolve(side + "-" + version + "-mappings.txt");
+				Path p = mappings(directory, side, version, "txt");
 				if (Files.isRegularFile(p)) return p;
 				tried.add(p.toString());
 			}
 		}
-		Path tsrg = gameDir == null ? null : gameDir.resolve(side + "-" + minecraftVersion + "-mappings.tsrg");
-		String unreadable = tsrg != null && Files.isRegularFile(tsrg) ? "; Forge's installer left " + tsrg + ", which this Fabricated can't read yet" : "";
+		String unreadable = "";
+		for (Path directory : libraries) {
+			Path tsrg = mappings(directory, side, minecraftVersion, "tsrg");
+			if (Files.isRegularFile(tsrg)) {
+				unreadable = "; Forge's installer left " + tsrg + ", which this Fabricated can't read yet";
+				break;
+			}
+		}
 		throw new MappingException("Mojang's " + side + " mapping file for " + minecraftVersion + " was not found (looked at " + String.join(", ", tried) + ")" + unreadable);
 	}
 
-	/** The libraries directories to look in: the launcher's, as a system property, and the one Forge's loader is in. */
-	private static Set<Path> librariesDirectories() {
+	private static Path mappings(Path libraries, String side, String version, String extension) {
+		return libraries.resolve("net").resolve("minecraft").resolve(side).resolve(version).resolve(side + "-" + version + "-mappings." + extension);
+	}
+
+	/** The libraries directories to look in: the launcher's, as a system property, and the nearest one holding the game's file. */
+	private static Set<Path> librariesDirectories(Path gameJar) {
 		Set<Path> directories = new LinkedHashSet<>();
 		String property = System.getProperty("libraryDirectory");
 		if (property != null && !property.isBlank()) {
@@ -134,17 +138,11 @@ final class IntermediaryMappings {
 				LOGGER.debug("libraryDirectory {} is not a path", property);
 			}
 		}
-		// <libraries>/net/minecraftforge/fmlloader/<version>/fmlloader-<version>.jar
-		try {
-			CodeSource source = FMLLoader.class.getProtectionDomain().getCodeSource();
-			if (source != null && source.getLocation() != null && "file".equals(source.getLocation().getProtocol())) {
-				Path jar = Path.of(source.getLocation().toURI());
-				Path root = jar.getParent();
-				for (int i = 0; i < 4 && root != null; i++) root = root.getParent();
-				if (root != null && Files.isDirectory(root.resolve("net").resolve("minecraft"))) directories.add(root.normalize());
+		for (Path dir = gameJar == null ? null : gameJar.toAbsolutePath().normalize().getParent(); dir != null; dir = dir.getParent()) {
+			if (Files.isDirectory(dir.resolve("net").resolve("minecraft"))) {
+				directories.add(dir);
+				break;
 			}
-		} catch (URISyntaxException | RuntimeException e) {
-			LOGGER.debug("Could not tell the libraries directory from Forge's loader jar", e);
 		}
 		return directories;
 	}
