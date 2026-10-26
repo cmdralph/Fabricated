@@ -1,0 +1,29 @@
+# Fabricated's in-game mod on Minecraft Forge. Its sibling library (the jar you install) loads Fabric mods during discovery.
+modLoader="javafml"
+loaderVersion="[47,)"
+license="GPL-3.0"
+issueTrackerURL="https://github.com/cmdralph/Fabricated/issues"
+
+[[mods]]
+modId="fabricated"
+version="${version}"
+displayName="Fabricated"
+authors="Ralph Turner and Fabricated contributors"
+displayURL="https://github.com/cmdralph/Fabricated"
+description='''
+Loads Fabric mods and libraries on Minecraft Forge (in development: not yet usable).
+'''
+
+[[dependencies.fabricated]]
+modId="forge"
+mandatory=true
+versionRange="${forge_version_range}"
+ordering="NONE"
+side="BOTH"
+
+[[dependencies.fabricated]]
+modId="minecraft"
+mandatory=true
+versionRange="${minecraft_version_range}"
+ordering="NONE"
+side="BOTH"
