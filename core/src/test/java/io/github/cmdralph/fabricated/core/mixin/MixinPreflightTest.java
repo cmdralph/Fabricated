@@ -2,6 +2,7 @@ package io.github.cmdralph.fabricated.core.mixin;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -3023,6 +3024,39 @@ class MixinPreflightTest {
 			} else {
 				assertEquals(1, findings.size(), findings.toString());
 				assertTrue(findings.getFirst().message().contains("applies 1 time(s) where it requires 2: its point does not occur in helper"),
+						findings.getFirst().message());
+			}
+		}
+	}
+
+	@Test
+	void allowCapsInjectionsAsMixinDoes() throws Exception {
+		// ALLOW-1: Fabric API's furnace hook allows one injection; Forge 47's patch makes the call it hooks twice, and
+		// Mixin stops the game ("2 succeeded of 1 allowed"). Here a hook at the head of two methods.
+		for (int allow : new int[] {1, 2}) {
+			byte[] capped = mixin("com/example/mixin/Capped", false, cw -> {
+				MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "h", "(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V", null, null);
+				AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
+				AnnotationVisitor methods = ann.visitArray("method");
+				methods.visit(null, "tick");
+				methods.visit(null, "helper");
+				methods.visitEnd();
+				AnnotationVisitor ats = ann.visitArray("at");
+				AnnotationVisitor at = ats.visitAnnotation(null, "Lorg/spongepowered/asm/mixin/injection/At;");
+				at.visit("value", "HEAD");
+				at.visitEnd();
+				ats.visitEnd();
+				ann.visit("allow", allow);
+				ann.visitEnd();
+				mv.visitEnd();
+			});
+			List<PreflightFinding> findings = run(config(true, "Capped"), null, Map.of("com/example/mixin/Capped", capped), false);
+			if (allow == 2) {
+				assertTrue(findings.isEmpty(), findings.toString());
+			} else {
+				assertEquals(1, findings.size(), findings.toString());
+				assertNotEquals(PreflightFinding.Severity.WARN, findings.getFirst().severity(), findings.toString());
+				assertTrue(findings.getFirst().message().contains("applies 2 time(s) where it allows 1: its point occurs that often in helper, tick"),
 						findings.getFirst().message());
 			}
 		}

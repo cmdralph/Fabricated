@@ -2876,6 +2876,11 @@ public final class MixinPreflight {
 		// REQ-1). Counted only where that can happen and every target is known.
 		int injections = require > 1 && !anyFuzzy ? 0 : -1;
 		List<String> without = new ArrayList<>();
+		// Mixin also caps them at allow (at least require, and one): more is the same critical error as too few, whatever
+		// the config's required (Fabric API's furnace hook on Forge 47, whose patch makes the call it hooks twice, ALLOW-1).
+		int allow = Annotations.value(ann, "allow") instanceof Integer a ? Math.max(Math.max(require, 1), a) : Integer.MAX_VALUE;
+		int allowed = allow < Integer.MAX_VALUE && !anyFuzzy ? 0 : -1;
+		Set<String> with = new TreeSet<>();
 		for (AnnotationNode at : Annotations.list(Annotations.value(ann, "at"))) {
 			String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
 			String rawTarget = Annotations.value(at, "target") instanceof String t ? t : null;
@@ -2892,6 +2897,11 @@ public final class MixinPreflight {
 					int n = expression ? -1 : InjectionPoints.count(point, resolved, ordinal, opcode, range, m);
 					if (n == 0) without.add(m.name);
 					injections = n < 0 ? -1 : injections + n;
+				}
+				if (allowed >= 0) {
+					int n = expression ? -1 : InjectionPoints.count(point, resolved, ordinal, opcode, range, m);
+					if (n > 0) with.add(m.name);
+					allowed = n < 0 ? -1 : allowed + n;
 				}
 				if (v == Verdict.FOUND) verdict = Verdict.FOUND;
 				else if (v == Verdict.MISSING && verdict == Verdict.UNKNOWN) verdict = Verdict.MISSING;
@@ -2911,6 +2921,12 @@ public final class MixinPreflight {
 					return;
 				}
 			}
+		}
+		if (allowed > allow) {
+			ctx.injector(handler, 1, injectorName + " " + handler.name + " applies " + allowed + " time(s) where it allows " + allow
+							+ ": its point occurs that often in " + String.join(", ", with) + " in " + target.name.replace('/', '.'),
+					ctx.changer(true) + " changed " + (with.size() == 1 ? "that method" : "those methods") + "; the mod needs an update or this mixin must be skipped.");
+			return;
 		}
 		if (injections >= 0 && injections < require) {
 			ctx.injector(handler, require, injectorName + " " + handler.name + " applies " + injections + " time(s) where it requires " + require

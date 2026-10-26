@@ -36,6 +36,10 @@ One entry per working session, newest first: what changed, and how it was verifi
   on the biome, as upstream does, and the biome is then sent to clients. The test mod checks a spawn, a temperature and
   (before 26.3) a sky colour on every version. Imported with the repository's script; its re-import also showed NET-7's
   edit to the imported `PacketContext` would be lost, so that edit now lives in each version's overrides.
+- Pre-flight checks an injector's `allow` as well as its `require` (ALLOW-1): Mixin stops the game when an injector
+  applies more often than it allows, whatever the config's `required`. Found by forge-legacy's run with the official
+  Fabric API jar: `fabric-item-api-v1`'s furnace hook allows one injection and Forge 47's patched furnace makes the call
+  twice. Such an injector is now left out (or its mod disabled) with the reason. Test: 274 core tests.
 - Branches, recorded in `PORTING.md` §3 and §4.1: `forge` runs a translated Fabric mod on Forge 61 (1.21.11) too, and
   applies Fabric's class transforms through a ModLauncher transformation service (#87, #90: fourteen server checks on
   Forge 61 and 64 to 66); `forge-legacy` runs one on Forge 47.4.28, remapped to SRG names, its mixin applied (#89: ten
