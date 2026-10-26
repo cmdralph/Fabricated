@@ -5,8 +5,10 @@ import java.io.IOException;
 import java.io.Reader;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
@@ -20,6 +22,9 @@ import java.util.regex.Pattern;
  * overloaded obfuscated names are handled correctly. TSRG gives fields no descriptor: a field whose obfuscated name its
  * class gives no other field is joined on its name, and fields sharing one are told apart by their descriptors in
  * Mojang's names ({@link FieldDescriptors}).
+ *
+ * <p>For Forge on 1.20.1, whose game has Mojang's class names and SRG member names, {@link #composeSrg} takes the
+ * members from MCPConfig's obfuscated → SRG mappings (TSRG v2) instead.
  */
 public final class MappingComposer {
 	private static final Pattern LINE_PREFIX = Pattern.compile("^\\d+:\\d+:");
@@ -74,7 +79,33 @@ public final class MappingComposer {
 	 */
 	public static MappingTable compose(Reader intermediaryTiny, Reader mojangMappings, FieldDescriptors fieldDescriptors)
 			throws IOException, MappingException {
-		Proguard pg = readMojang(mojangMappings, fieldDescriptors);
+		return compose(intermediaryTiny, readMojang(mojangMappings, fieldDescriptors));
+	}
+
+	/**
+	 * Builds the intermediary → runtime table for Forge on 1.20.1, whose game has Mojang's class names and SRG member
+	 * names ({@code m_12345_}, {@code f_12345_}): the members from MCPConfig's obfuscated → SRG mappings in TSRG v2
+	 * ({@code joined.tsrg}, which Forge's installer keeps as {@code mcp_config-<version>-mappings.txt}), the classes from
+	 * Mojang's mappings. A class Mojang's file doesn't name keeps its intermediary name, as with {@link #compose}: a
+	 * server's file names no client class. Without Mojang's mappings the classes take the TSRG file's names, which suits a
+	 * file already in Mojang's class names but not MCPConfig's own ({@code net/minecraft/src/C_1234_}).
+	 *
+	 * @param srgMappings    obfuscated → SRG names in TSRG v2, the first namespace the obfuscated one
+	 * @param mojangMappings Mojang's mappings, ProGuard or TSRG v1, read for the class names only; null to keep the TSRG
+	 *                       file's
+	 */
+	public static MappingTable composeSrg(Reader intermediaryTiny, Reader srgMappings, Reader mojangMappings) throws IOException, MappingException {
+		Proguard srg = readTsrg2(new BufferedReader(srgMappings));
+		if (mojangMappings != null) {
+			Map<String, String> mojangClasses = readMojang(mojangMappings, FieldDescriptors.NONE).classes;
+			srg.classes.clear();
+			srg.classes.putAll(mojangClasses);
+		}
+		return compose(intermediaryTiny, srg);
+	}
+
+	/** Joins Intermediary with runtime names keyed by official ones. */
+	private static MappingTable compose(Reader intermediaryTiny, Proguard pg) throws IOException, MappingException {
 		Map<String, String> classes = new HashMap<>();
 		Map<String, Map<String, String>> members = new HashMap<>();
 		// official class → intermediary class, to translate descriptors for qualified keys
@@ -136,6 +167,50 @@ public final class MappingComposer {
 		br.reset();
 		if (first != null && first.startsWith("tsrg2 ")) throw new MappingException("Mojang's mappings are in TSRG v2, which Fabricated doesn't read");
 		return first != null && !first.contains(" -> ") ? readTsrg(br, fieldDescriptors) : readProguard(br);
+	}
+
+	/**
+	 * TSRG v2 ({@code tsrg2 <namespaces>}, then a name per namespace on class lines and on tab-indented member lines,
+	 * methods with their descriptor in the first namespace's names after the first name, fields with or without one;
+	 * parameter and {@code static} lines indented twice), from the first namespace to the second, as MCPConfig's
+	 * {@code obf srg id}. A field whose obfuscated name its class gives another field, both without descriptors, is left
+	 * out rather than joined to either.
+	 */
+	static Proguard readTsrg2(BufferedReader br) throws IOException, MappingException {
+		String header = br.readLine();
+		String[] namespaces = header == null ? new String[0] : header.strip().split(" ");
+		if (namespaces.length < 3 || !namespaces[0].equals("tsrg2")) throw new MappingException("Not TSRG v2 mappings: the first line is " + header);
+		int names = namespaces.length - 1;
+		Proguard pg = new Proguard();
+		Set<String> sharedFieldNames = new HashSet<>();
+		String currentOfficial = null;
+		String line;
+		int lineNo = 1;
+		while ((line = br.readLine()) != null) {
+			lineNo++;
+			if (line.isBlank() || line.startsWith("\t\t") || line.stripLeading().startsWith("#")) continue;
+			String[] p = line.strip().split(" ");
+			if (!line.startsWith("\t")) {
+				if (p.length != names) throw new MappingException("Malformed class line " + lineNo + ": " + line);
+				pg.classes.put(p[0], p[1]);
+				currentOfficial = p[0];
+				continue;
+			}
+			if (currentOfficial == null) throw new MappingException("Member before any class at line " + lineNo);
+			if (p.length == names) {
+				String key = currentOfficial + "." + p[0];
+				String earlier = pg.fieldsByName.putIfAbsent(key, p[1]);
+				if (earlier != null && !earlier.equals(p[1])) sharedFieldNames.add(key);
+			} else if (p.length == names + 1 && p[1].startsWith("(")) {
+				pg.methods.put(currentOfficial + "." + p[0] + p[1], p[2]);
+			} else if (p.length == names + 1) {
+				pg.fields.put(currentOfficial + "." + p[0] + p[1], p[2]);
+			} else {
+				throw new MappingException("Malformed member line " + lineNo + ": " + line);
+			}
+		}
+		pg.fieldsByName.keySet().removeAll(sharedFieldNames);
+		return pg;
 	}
 
 	/**

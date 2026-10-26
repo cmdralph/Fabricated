@@ -3,7 +3,11 @@ package io.github.cmdralph.fabricated.forgetest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Arrays;
+
 import net.fabricmc.api.DedicatedServerModInitializer;
+import net.fabricmc.api.EnvType;
+import net.fabricmc.api.Environment;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.loader.api.FabricLoader;
 
@@ -25,5 +29,13 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 	@Override
 	public void onInitializeServer() {
 		LOGGER.info("FABRICATED-FORGE-TEST server entrypoint OK");
+		if (Arrays.stream(ForgeTestMod.class.getDeclaredMethods()).noneMatch(m -> m.getName().equals("clientOnly"))) {
+			LOGGER.info("FABRICATED-FORGE-TEST environment strip OK");
+		}
+	}
+
+	/** Reserved for the client: Fabric's environment stripping takes it out of the class on a dedicated server. */
+	@Environment(EnvType.CLIENT)
+	static void clientOnly() {
 	}
 }
