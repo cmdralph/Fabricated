@@ -3,7 +3,7 @@
   "id": "fabricated-forge-testmod",
   "version": "${version}",
   "name": "Fabricated Forge Test Mod",
-  "description": "Exercises Fabricated on Forge in CI: a Fabric mod with entrypoints, a mixin and the Fabric API module Fabricated provides itself, without Fabric API's jar. Not meant for players.",
+  "description": "Exercises Fabricated on Forge in CI: a Fabric mod with entrypoints, a mixin and the Fabric API modules Fabricated provides itself, without Fabric API's jar. Not meant for players.",
   "authors": ["Fabricated contributors"],
   "license": "GPL-3.0",
   "environment": "*",
@@ -16,6 +16,8 @@
   "depends": {
     "fabricloader": ">=0.16.0",
     "minecraft": "${minecraft_version}",
-    "fabric-biome-api-v1": "*"
+    "fabric-biome-api-v1": "*",
+    "fabric-loot-api-v2": "*",
+    "fabric-loot-tables-v1": "*"
   }
 }

@@ -160,6 +160,27 @@ for f in libraries/net/minecraft/server/*/*-mappings.txt; do
 	' "$f" | cut -c1-300
 done
 echo "::endgroup::"
+# The same for the native fabric-loot-api-v2 and fabric-loot-tables-v1 (L4): the members their mixins and builders
+# name, some of which no source at hand showed for 1.20.1 (Forge's patches name them in SRG's names).
+echo "::group::Mojang's names the native loot modules rely on (server mappings)"
+for f in libraries/net/minecraft/server/*/*-mappings.txt; do
+	[ -f "$f" ] || continue
+	awk '
+		BEGIN {
+			want["net.minecraft.world.level.storage.loot.LootTable"] = " pools | functions | randomSequence |getParamSet\\("
+			want["net.minecraft.world.level.storage.loot.LootTable$Builder"] = " pools | functions |withPool\\(|setParamSet\\(|setRandomSequence\\("
+			want["net.minecraft.world.level.storage.loot.LootPool"] = " entries | conditions | functions | rolls | bonusRolls "
+			want["net.minecraft.world.level.storage.loot.LootPool$Builder"] = " entries | conditions | functions |setRolls\\(| add\\(| when\\(| apply\\("
+			want["net.minecraft.world.level.storage.loot.LootDataManager"] = " apply\\(| reload\\("
+			want["net.minecraft.world.level.storage.loot.Deserializers"] = "createLootTableSerializer\\("
+			want["net.minecraft.util.GsonHelper"] = " fromJson\\(com.google.gson.Gson,java.lang.String,java.lang.Class\\)"
+			want["net.minecraft.core.registries.BuiltInRegistries"] = " LOOT_POOL_ENTRY_TYPE "
+		}
+		/^[^ \t#]/ { cls = $1; if (cls in want) print; next }
+		cls in want && $0 ~ want[cls] { print }
+	' "$f" | cut -c1-300
+done
+echo "::endgroup::"
 report() { if eval "$2"; then echo "PASS: $1"; else echo "NOT SEEN: $1"; fi; }
 report "Forge ran Fabricated's mod locator" "grep -qi 'fabricated' logs/debug.log 2>/dev/null && grep -i 'locator' logs/debug.log | grep -qi 'fabricated'"
 report "Forge took Fabricated's language provider" "grep -i -E 'language|lang' logs/debug.log 2>/dev/null | grep -qi 'fabricated'"
@@ -189,6 +210,7 @@ report "the test mod's item is in the frozen registry at the first tick" "grep -
 report "MixinExtras ran the test mod's @WrapMethod (nested in the in-game mod)" "grep -q 'FABRICATED-FORGE-TEST MixinExtras OK' logs/latest.log 2>/dev/null"
 report "the in-game mod's mixin reads tag files' fabric:remove (the in-game mod reobfuscated to SRG's names)" "grep -q 'FABRICATED-FORGE-TEST fabric:remove OK' logs/latest.log 2>/dev/null"
 report "native fabric-biome-api-v1: a spawn and a temperature added to plains reach the biome Forge reads (Forge's biome modifiers)" "grep -q 'FABRICATED-FORGE-TEST biome modifications OK' logs/latest.log 2>/dev/null"
+report "native fabric-loot-api-v2 and fabric-loot-tables-v1: a pool added in MODIFY and a replaced table are in the tables the game keeps, each event seeing its table's source (Forge's pools list)" "grep -q 'FABRICATED-FORGE-TEST loot OK' logs/latest.log 2>/dev/null"
 report "Forge's biome coremod applied (the biome's climate field stayed private)" "! grep -qs 'field_to_method.js function biome' logs/latest.log server.out"
 report "Forge's loading warnings name the Fabric mod that wasn't loaded" "grep -qsE 'ServerModLoader.*: Fabric mod fabricated_forge_unmet 1\\.0\\.0 was not loaded: ' logs/latest.log logs/debug.log"
 report "Fabricated's report names Forge as the loader" "grep -q '^  Forge: ' logs/fabric-bridge-report.txt 2>/dev/null && ! grep -q '^  NeoForge: ' logs/fabric-bridge-report.txt 2>/dev/null"
