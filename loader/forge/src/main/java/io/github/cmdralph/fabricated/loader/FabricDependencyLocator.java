@@ -219,7 +219,7 @@ public final class FabricDependencyLocator extends AbstractJarFileModProvider im
 			// Where a locator could read the game's program arguments is open (docs/PORTING.md §4.1, question 10).
 			Pipeline.Input input = new Pipeline.Input(gameDir, FMLPaths.CONFIGDIR.get(), config, cache, fabricJars, mcVersion, forgeVersion,
 					client, info.namespace(), runtimeMixinVersion(info), mixinExtras, info.mixinLowest(), info.fabricatedVersion(),
-					info.build(), !FMLLoader.isProduction(), gameClasses, List.of(minecraft.getFilePath()), vanilla, fabricatedFiles, untransformable,
+					info.build(), !FMLLoader.isProduction(), gameClasses, ForgeLibraries.gameFiles(minecraft.getFilePath()), vanilla, fabricatedFiles, untransformable,
 					platformPackages, plan, nativeApi, nativeApiInterfaces, forgeMods.mods(), forgeMods.classes(),
 					(mappingsCache, mojangPath) -> IntermediaryMappings.load(mappingsCache, mcVersion, client, mojangPath, minecraft.getFilePath()),
 					new String[0], ForgeDescriptor.INSTANCE);
