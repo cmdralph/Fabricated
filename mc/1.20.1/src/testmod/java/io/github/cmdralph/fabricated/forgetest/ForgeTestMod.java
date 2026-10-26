@@ -32,6 +32,11 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 	public void onInitialize() {
 		String version = FabricLoader.getInstance().getModContainer(MOD_ID).map(c -> c.getMetadata().getVersion().getFriendlyString()).orElse("none");
 		LOGGER.info("FABRICATED-FORGE-TEST main entrypoint OK (version {}, Fabric Loader sees {} mods)", version, FabricLoader.getInstance().getAllMods().size());
+		// Vanilla's resources are the minecraft container's too: Fabric API's resource loader reads vanilla's en_us.json
+		// there as the game boots.
+		if (FabricLoader.getInstance().getModContainer("minecraft").flatMap(c -> c.findPath("/assets/minecraft/lang/en_us.json")).isPresent()) {
+			LOGGER.info("FABRICATED-FORGE-TEST game resources OK");
+		}
 		try {
 			class_2960 id = new class_2960(MOD_ID, ITEM_PATH);
 			class_2378<class_1792> items = class_7923.field_41178;

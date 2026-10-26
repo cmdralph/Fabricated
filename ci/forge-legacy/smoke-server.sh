@@ -153,6 +153,7 @@ report "the test mod's client-only method was stripped (@Environment)" "grep -q 
 report "the Fabric main entrypoints ran in Forge's registry events" "grep -q 'Fabricated ran the Fabric main entrypoints of [1-9][0-9]* mod(s) on Forge (0 failed)' logs/latest.log 2>/dev/null"
 report "the test mod registered an item (Intermediary names remapped to SRG's)" "grep -q 'FABRICATED-FORGE-TEST registry OK' logs/latest.log 2>/dev/null"
 report "the test mod read a private field its access widener opens (Intermediary names remapped to SRG's)" "grep -q 'FABRICATED-FORGE-TEST access widener OK' logs/latest.log 2>/dev/null"
+report "the minecraft mod container holds vanilla's resources (its en_us.json)" "grep -q 'FABRICATED-FORGE-TEST game resources OK' logs/latest.log 2>/dev/null"
 report "the test mod's item is in the frozen registry at the first tick" "grep -q 'FABRICATED-FORGE-TEST registry entry kept OK' logs/latest.log 2>/dev/null"
 report "MixinExtras ran the test mod's @WrapMethod (nested in the in-game mod)" "grep -q 'FABRICATED-FORGE-TEST MixinExtras OK' logs/latest.log 2>/dev/null"
 report "Forge's loading warnings name the Fabric mod that wasn't loaded" "grep -qsE 'ServerModLoader.*: Fabric mod fabricated_forge_unmet 1\\.0\\.0 was not loaded: ' logs/latest.log logs/debug.log"
