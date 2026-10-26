@@ -3060,6 +3060,28 @@ class MixinPreflightTest {
 						findings.getFirst().message());
 			}
 		}
+
+		// Mixin keeps the selectors in a set: LambDynamicLights names its hook twice, by its Intermediary and its Mojang
+		// name, which are one once remapped, and Mixin injects once.
+		byte[] twice = mixin("com/example/mixin/Twice", false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "h", "(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V", null, null);
+			AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "tick");
+			methods.visit(null, "tick");
+			methods.visitEnd();
+			AnnotationVisitor ats = ann.visitArray("at");
+			AnnotationVisitor at = ats.visitAnnotation(null, "Lorg/spongepowered/asm/mixin/injection/At;");
+			at.visit("value", "HEAD");
+			at.visitEnd();
+			ats.visitEnd();
+			ann.visit("allow", 1);
+			ann.visit("require", 1);
+			ann.visitEnd();
+			mv.visitEnd();
+		});
+		List<PreflightFinding> once = run(config(true, "Twice"), null, Map.of("com/example/mixin/Twice", twice), false);
+		assertTrue(once.isEmpty(), once.toString());
 	}
 
 	@Test

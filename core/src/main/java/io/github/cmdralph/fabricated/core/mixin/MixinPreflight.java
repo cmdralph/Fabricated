@@ -2800,9 +2800,14 @@ public final class MixinPreflight {
 		String lastSelector = null;
 		String lastName = null;
 		String lastDesc = null;
+		// Mixin keeps an injector's selectors in a set (its TargetSelectors), so a selector given twice selects its method
+		// once: LambDynamicLights names a hook by its Intermediary and its Mojang name, both Mojang's once remapped.
+		Set<String> seenSelectors = new HashSet<>();
 		for (Object o : selectors) {
 			if (!(o instanceof String raw)) continue;
-			MemberRef ref = MemberRef.parse(ctx.resolve(raw));
+			String resolvedSelector = ctx.resolve(raw);
+			if (!seenSelectors.add(resolvedSelector)) continue;
+			MemberRef ref = MemberRef.parse(resolvedSelector);
 			if (ref.fuzzy() || ref.name() == null) {
 				anyFuzzy = true;
 				continue;
