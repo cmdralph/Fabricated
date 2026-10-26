@@ -15,8 +15,8 @@ tasks.named('processResources', ProcessResources) {
 }
 
 // mc/common's stand-ins for other mods' plugin interfaces name 1.21's classes (Identifier); this version's test mod uses
-// none of them.
-sourceSets.testmodstubs.java.srcDirs = []
+// none of them, but stand-ins for the game classes it names in Intermediary's names, as a Fabric mod does.
+sourceSets.testmodstubs.java.srcDirs = [file('src/testmodstubs/java')]
 
 // --- The language provider (docs/PORTING.md §4.1, as on the forge branch) ------------------------------------------
 // Forge loads language providers into its plugin layer, which sees neither Fabricated's discovery (the service layer)
