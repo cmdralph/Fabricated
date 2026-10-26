@@ -8,6 +8,7 @@ import org.slf4j.LoggerFactory;
 
 import io.github.cmdralph.fabricated.core.runtime.EntrypointRunner;
 import io.github.cmdralph.fabricated.forge.loot.LootCompat;
+import io.github.cmdralph.fabricated.forge.objectbuilder.DefaultAttributeModify;
 import io.github.cmdralph.fabricated.loader.FabricatedState;
 import io.github.cmdralph.fabricated.loader.ForgeLoaderHooks;
 import net.fabricmc.api.DedicatedServerModInitializer;
@@ -58,6 +59,8 @@ public final class FabricatedMod {
 			LOGGER.warn("Fabricated's discovery did not run; Fabric mods are not loaded");
 			return;
 		}
+		// Fabric API's default attribute event, passed through, in Forge's attribute modification (see DefaultAttributeModify).
+		DefaultAttributeModify.register();
 		for (String text : ForgeLoaderHooks.notLoaded()) {
 			LoadingWarnings.add(new ModLoadingWarning(context.getContainer().getModInfo(), ModLoadingStage.CONSTRUCT, AS_IS, text));
 		}
