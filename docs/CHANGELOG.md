@@ -64,10 +64,10 @@ One entry per working session, newest first: what changed, and how it was verifi
   26.x corpus's remaining errors were traced to the mods themselves: FrozenLib's "Unable to read config entry" on a
   fresh config directory (CORPUS-27) and Wilder Wild 26.3's reinforced deepslate blockstate without its mixin
   (CORPUS-28). Forge 47's biome coremod failing with Fabric API installed is recorded for L4 in the roadmap.
-- `fabric-dimensions-v1` on both Forge branches. On Forge 61 to 66 it loads without its DataFixerUpper mixins (forge
-  #140). On Forge 47 it is native (forge-legacy #141): a Fabric teleport goes through Forge's teleporter without the
-  End's platform or credits, and Forge's own lenient codec stands in for upstream's codec hook. With Fabric API, no
-  module of 0.92.12 is disabled on Forge 47 any more. On Forge 64 to 66, `fabric-object-builder-api-v1` and, with it,
+- No Fabric API module disabled on either Forge branch any more. `fabric-dimensions-v1` loads on Forge 61 to 66
+  without its DataFixerUpper mixins (forge #140), and is native on Forge 47 (forge-legacy #141): a Fabric teleport goes
+  through Forge's teleporter without the End's platform or credits, and Forge's own lenient codec stands in for
+  upstream's codec hook; with Fabric API, no module of 0.92.12 is disabled on Forge 47 any more. On Forge 64 to 66, `fabric-object-builder-api-v1` and, with it,
   `fabric-data-attachment-api-v1` load (forge #142): Forge's attribute builder keeps its entries in a map of its own,
   so upstream's accessor is left out, and the in-game mod gives the attribute copy Forge's constructor and runs
   `FabricDefaultAttributeRegistry.MODIFY` in Forge's attribute modification event (upstream's hook fired at bootstrap
