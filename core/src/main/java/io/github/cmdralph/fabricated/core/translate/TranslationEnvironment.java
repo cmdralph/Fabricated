@@ -59,7 +59,7 @@ public record TranslationEnvironment(
 	 * The format of cached translations. Builds of Fabricated differ in {@link #fabricatedBuild}, so a change to what
 	 * translating produces needs no bump; one to how an entry is read back (the overlay's layout, its metadata) does.
 	 */
-	public static final int TRANSLATION_SCHEMA = 38;
+	public static final int TRANSLATION_SCHEMA = 39;
 
 	/** Namespace Fabric mods are distributed in. */
 	public enum Namespace {

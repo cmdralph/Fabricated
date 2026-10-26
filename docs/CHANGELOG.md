@@ -58,6 +58,11 @@ One entry per working session, newest first: what changed, and how it was verifi
   them and lambdas implementing them kept their official names, and Fabric API's resource pack lambda stopped the server
   (AbstractMethodError). A descriptor without Minecraft classes is matched by its owner only, so a mod's `Runnable.run`
   keeps its name. Test: 278 core tests.
+- FINAL-1's `final` is removed at class load instead of by an access transformer line (FINAL-2): Forge 47 makes
+  `Ingredient.toNetwork` final with its own access transformer, and the engine refused the mod's `-f` next to Forge's
+  `+f`, so Forge 47's Fabric API server exited at start on forge-legacy's run on #125. The translation's metadata lists
+  the methods (schema 39); `FabricClassTransforms` clears the flag after the platform's access transformers have run.
+  Test: 286 core tests.
 - Branches (`PORTING.md` §4.1 and §7): with the official Fabric API jar passed through, the server starts on Forge 61,
   64, 65 and 66 (`forge`, #122; Forge 66's plan leaves out the loot and advancement API's loading hooks, which cast
   the `Optional` Forge 66 decodes) and on Forge 47 (`forge-legacy`, #123; its plan leaves out registry sync's
