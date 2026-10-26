@@ -20,8 +20,12 @@ import io.github.cmdralph.fabricated.core.json.JsonException;
 import io.github.cmdralph.fabricated.core.mixin.Refmap;
 
 import org.objectweb.asm.ClassReader;
+import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.ClassWriter;
+import org.objectweb.asm.Handle;
+import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.commons.ClassRemapper;
+import org.objectweb.asm.commons.MethodRemapper;
 
 /**
  * Produces the remapped contents of a Fabric jar. Pure bytecode processing: no class is ever loaded.
@@ -84,10 +88,33 @@ public final class JarRemapper {
 		try {
 			ClassReader reader = new ClassReader(data);
 			ClassWriter writer = new ClassWriter(0);
-			reader.accept(new ClassRemapper(writer, remapper), 0);
+			reader.accept(new LambdaAwareRemapper(writer, remapper), 0);
 			return writer.toByteArray();
 		} catch (RuntimeException e) {
 			throw new MappingException("Failed to remap " + nameForErrors + ": " + e, e);
+		}
+	}
+
+	/**
+	 * A class remapper that names a lambda's method by the functional interface it implements, which ASM's hands the
+	 * remapper without the interface or the method's descriptor (PLAIN-1).
+	 */
+	private static final class LambdaAwareRemapper extends ClassRemapper {
+		private final IntermediaryRemapper names;
+
+		LambdaAwareRemapper(ClassVisitor next, IntermediaryRemapper names) {
+			super(next, names);
+			this.names = names;
+		}
+
+		@Override
+		protected MethodVisitor createMethodRemapper(MethodVisitor methodVisitor) {
+			return new MethodRemapper(api, methodVisitor, names) {
+				@Override
+				public void visitInvokeDynamicInsn(String name, String descriptor, Handle bootstrap, Object... arguments) {
+					super.visitInvokeDynamicInsn(names.mapLambdaMethodName(name, descriptor, bootstrap, arguments), descriptor, bootstrap, arguments);
+				}
+			};
 		}
 	}
 

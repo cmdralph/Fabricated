@@ -49,6 +49,30 @@ One entry per working session, newest first: what changed, and how it was verifi
   runs, applies none there and drops such a mixin whole with an error line, which happened to four Fabric API 0.92
   mixins while the report said the modules loaded in full. The rest of such a mixin now applies, and the report names
   what doesn't. Mixin from 0.8.6, on NeoForge and Forge 61 to 66, is not affected. Test: 277 core tests.
+- On Forge, an `@Inject` into a constructor follows SpongePowered's Mixin (CTOR-2): it takes such a hook only at a
+  return or, from 0.8.6, at a point marked `unsafe`, where Fabric's takes any point after `super()`. A point after the
+  constructor's `super()` call is marked `unsafe` on Forge 61 to 66, so fabric-command-api-v2's hook into `Commands`
+  applies instead of hanging Forge 61's server; on Forge 47 such an injector is left out. Test: 279 core tests.
+- On Forge 47, the methods Intermediary leaves under their official names take SRG's names too (PLAIN-1): 230 on
+  1.20.1, among them the functional interfaces' `open`, `createMenu`, `accept` and `codec`. Calls to them, overrides of
+  them and lambdas implementing them kept their official names, and Fabric API's resource pack lambda stopped the server
+  (AbstractMethodError). A descriptor without Minecraft classes is matched by its owner only, so a mod's `Runnable.run`
+  keeps its name. Test: 278 core tests.
+- On Forge 47, a mixin's shadow of a value an anonymous class captures, or of its outer instance, finds it under
+  javac's name (CAPTURE-3): SRG names those fields as any other (`f_143670_`), and Forge's build of a class it patches is
+  recompiled, which names them `val$entity` and `this$0`. Vanilla's class, from Forge's installed game, tells such a
+  shadow by its synthetic field. Fabric API's interaction events were disabled for it on #113. Test: 281 core tests.
+- Pre-flight reads the field or method an `@Accessor` or `@Invoker` without a value names as Mixin's `AccessorName`
+  does (ACC-2): a name all in upper case keeps its case. It read Fabric API registry sync's `setX_SIDE_LENGTH` as
+  `x_SIDE_LENGTH`, missed the refmap's `X_SIDE_LENGTH` and disabled the module on Forge 47 (forge-legacy's run on
+  #113). The same accessor in any mod was judged alike on NeoForge. Test: 280 core tests.
+- PLAIN-1 covers refmaps and annotation strings too: a method reference with its owner and descriptor whose name
+  Intermediary leaves takes SRG's name. Fabric API's transfer refmap names `DispenseItemBehavior.dispense` (SRG's
+  `m_6115_`) as `DropperBlockMixin`'s `@At` target, which Forge 47's pre-flight left out on #113. Checked on Fabric API
+  0.92.12's 57 refmaps with 1.20.1's Intermediary and `joined.tsrg`: that target is the only one. Test: 280 core tests.
+- LEVEL-1 and INTERFACE-1 read the running Mixin's release without its build metadata: Forge reports
+  `0.8.5+Jenkins-b310.git-…`, which the table of SpongePowered's releases didn't match, so forge-legacy's run on
+  #113 still had Mixin drop the four interface mixins. Test: 277 core tests.
 - Branches, recorded in `PORTING.md` §3 and §4.1: `forge` runs a translated Fabric mod on Forge 61 (1.21.11) too, and
   applies Fabric's class transforms through a ModLauncher transformation service (#87, #90: fourteen server checks on
   Forge 61 and 64 to 66); `forge-legacy` runs one on Forge 47.4.28, remapped to SRG names, its mixin applied (#89: ten

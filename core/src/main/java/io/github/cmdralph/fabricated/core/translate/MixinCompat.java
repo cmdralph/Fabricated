@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import io.github.cmdralph.fabricated.core.mixin.MixinPreflight.ConstructorInjects;
 import io.github.cmdralph.fabricated.fabricloader.version.VersionParser;
 import net.fabricmc.loader.api.SemanticVersion;
 import net.fabricmc.loader.api.Version;
@@ -46,16 +47,17 @@ public final class MixinCompat {
 	private static final Version LAST_FIX_RELEASE = parse("0.5.5");
 	/**
 	 * What SpongePowered's own Mixin releases take, from their sources (Forge 47 runs 0.8.5, Forge 61 to 66 run 0.8.7):
-	 * the last compatibility level ({@code JAVA_n}) of their CompatibilityLevel enums (LEVEL-1), and whether they apply
-	 * injectors in interface mixins (INTERFACE-1), which came with 0.8.6.
+	 * the last compatibility level ({@code JAVA_n}) of their CompatibilityLevel enums (LEVEL-1), whether they apply
+	 * injectors in interface mixins (INTERFACE-1), which came with 0.8.6, and where they take an {@code @Inject} into a
+	 * constructor (CTOR-2: {@code Injector.checkTargetForNode}, with {@code InjectionPointData}'s {@code unsafe} from 0.8.6).
 	 */
-	private record Upstream(int lastLevel, boolean interfaceInjectors) {
+	private record Upstream(int lastLevel, boolean interfaceInjectors, ConstructorInjects constructorInjects) {
 	}
 
 	private static final Map<String, Upstream> UPSTREAM = Map.of(
-			"0.8.5", new Upstream(18, false),
-			"0.8.6", new Upstream(21, true),
-			"0.8.7", new Upstream(21, true));
+			"0.8.5", new Upstream(18, false, ConstructorInjects.RETURNS_ONLY),
+			"0.8.6", new Upstream(21, true, ConstructorInjects.UNSAFE_POINTS),
+			"0.8.7", new Upstream(21, true, ConstructorInjects.UNSAFE_POINTS));
 	private static final Pattern LEVEL = Pattern.compile("JAVA_(\\d{1,3})");
 
 	private MixinCompat() {
@@ -131,8 +133,26 @@ public final class MixinCompat {
 		return upstream == null || upstream.interfaceInjectors();
 	}
 
+	/**
+	 * SpongePowered's release the running Mixin is, by its version without build metadata (Forge 47 reports
+	 * {@code 0.8.5+Jenkins-b310.git-155314e6...}), or null. Fabric's Mixin carries the upstream release it is based on in
+	 * its metadata ({@code 0.17.4+mixin.0.8.7}), which isn't the release that runs.
+	 */
+	/** Where the running Mixin takes an {@code @Inject} into a constructor; {@link ConstructorInjects#AFTER_DELEGATE} for a version not known here. */
+	public static ConstructorInjects constructorInjects(String runtimeMixinVersion) {
+		Upstream upstream = upstream(runtimeMixinVersion);
+		return upstream == null ? ConstructorInjects.AFTER_DELEGATE : upstream.constructorInjects();
+	}
+
 	private static Upstream upstream(String runtimeMixinVersion) {
-		return runtimeMixinVersion == null ? null : UPSTREAM.get(runtimeMixinVersion.trim());
+		if (runtimeMixinVersion == null) return null;
+		String version = runtimeMixinVersion.trim();
+		int plus = version.indexOf('+');
+		if (plus >= 0) {
+			if (version.startsWith("mixin.", plus + 1)) return null;
+			version = version.substring(0, plus);
+		}
+		return UPSTREAM.get(version);
 	}
 
 	/**
