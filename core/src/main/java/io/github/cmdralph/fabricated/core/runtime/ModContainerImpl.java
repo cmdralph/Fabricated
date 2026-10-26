@@ -16,9 +16,10 @@ import net.fabricmc.loader.api.metadata.ModOrigin;
 
 /**
  * {@link ModContainer} for Fabric mods and, with builtin metadata, for NeoForge mods, Minecraft and Java.
- * Root paths are read-only zip file systems opened on first use.
+ * Root paths are read-only zip file systems opened on first use. It is Fabric Loader's internal container class too, as
+ * mods test containers against it before adding entrypoints to Fabric Loader's storage (LOADER-4).
  */
-public final class ModContainerImpl implements ModContainer {
+public final class ModContainerImpl extends net.fabricmc.loader.impl.ModContainerImpl {
 	private final ModMetadata metadata;
 	private final List<Path> sources;
 	private final ModOrigin origin;

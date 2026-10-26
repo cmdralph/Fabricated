@@ -186,12 +186,30 @@ class LinkageCheckerTest {
 				caller("u/A", "net/fabricmc/loader/api/FabricLoader", "getInstance", "()Lnet/fabricmc/loader/api/FabricLoader;", false)));
 		TranslatedMod internals = mod(dir, "internals-user", TestJars.create().bytes("u/B.class",
 				caller("u/B", "net/fabricmc/loader/impl/ModContainerImpl", "create", "()V", false)));
-		// FrozenLib's entrypoint injector names these internals, from a mixin plugin: they must link (AT-1's pass).
+		// FrozenLib's entrypoint injector names these internals, from a mixin plugin: they must link (AT-1's pass), and
+		// its call adding an entrypoint to Fabric Loader's storage too (LOADER-4).
 		ClassWriter metadata = new ClassWriter(0);
 		metadata.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, "u/Metadata", null, "java/lang/Object",
 				new String[] {"net/fabricmc/loader/impl/metadata/EntrypointMetadata"});
 		metadata.visitEnd();
-		TranslatedMod injector = mod(dir, "injector", TestJars.create().bytes("u/Metadata.class", metadata.toByteArray()));
+		ClassWriter adder = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		adder.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, "u/Adder", null, "java/lang/Object", null);
+		MethodVisitor add = adder.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "run",
+				"(Lnet/fabricmc/loader/impl/entrypoint/EntrypointStorage;Lnet/fabricmc/loader/impl/ModContainerImpl;)V", null, null);
+		add.visitCode();
+		add.visitVarInsn(Opcodes.ALOAD, 0);
+		add.visitVarInsn(Opcodes.ALOAD, 1);
+		add.visitLdcInsn("frozenlib:events");
+		add.visitInsn(Opcodes.ACONST_NULL);
+		add.visitInsn(Opcodes.ACONST_NULL);
+		add.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "net/fabricmc/loader/impl/entrypoint/EntrypointStorage", "add",
+				"(Lnet/fabricmc/loader/impl/ModContainerImpl;Ljava/lang/String;Lnet/fabricmc/loader/impl/metadata/EntrypointMetadata;Ljava/util/Map;)V", false);
+		add.visitInsn(Opcodes.RETURN);
+		add.visitMaxs(0, 0);
+		add.visitEnd();
+		adder.visitEnd();
+		TranslatedMod injector = mod(dir, "injector", TestJars.create().bytes("u/Metadata.class", metadata.toByteArray())
+				.bytes("u/Adder.class", adder.toByteArray()));
 		LinkageAnalysis analysis = new LinkageAnalysis(new TranslationCache(dir.resolve("game"), true, true), ArchiveLimits.DEFAULTS, false);
 
 		Map<String, List<String>> issues = analysis.analyse(List.of(api, internals, injector), ClassBytesSource.EMPTY, Map::of, "loader");
