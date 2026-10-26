@@ -131,8 +131,20 @@ public final class MixinCompat {
 		return upstream == null || upstream.interfaceInjectors();
 	}
 
+	/**
+	 * SpongePowered's release the running Mixin is, by its version without build metadata (Forge 47 reports
+	 * {@code 0.8.5+Jenkins-b310.git-155314e6...}), or null. Fabric's Mixin carries the upstream release it is based on in
+	 * its metadata ({@code 0.17.4+mixin.0.8.7}), which isn't the release that runs.
+	 */
 	private static Upstream upstream(String runtimeMixinVersion) {
-		return runtimeMixinVersion == null ? null : UPSTREAM.get(runtimeMixinVersion.trim());
+		if (runtimeMixinVersion == null) return null;
+		String version = runtimeMixinVersion.trim();
+		int plus = version.indexOf('+');
+		if (plus >= 0) {
+			if (version.startsWith("mixin.", plus + 1)) return null;
+			version = version.substring(0, plus);
+		}
+		return UPSTREAM.get(version);
 	}
 
 	/**

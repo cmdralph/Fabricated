@@ -49,6 +49,9 @@ One entry per working session, newest first: what changed, and how it was verifi
   runs, applies none there and drops such a mixin whole with an error line, which happened to four Fabric API 0.92
   mixins while the report said the modules loaded in full. The rest of such a mixin now applies, and the report names
   what doesn't. Mixin from 0.8.6, on NeoForge and Forge 61 to 66, is not affected. Test: 277 core tests.
+- LEVEL-1 and INTERFACE-1 read the running Mixin's release without its build metadata: Forge reports
+  `0.8.5+Jenkins-b310.git-…`, which the table of SpongePowered's releases didn't match, so forge-legacy's run on
+  #113 still had Mixin drop the four interface mixins. Test: 277 core tests.
 - Branches, recorded in `PORTING.md` §3 and §4.1: `forge` runs a translated Fabric mod on Forge 61 (1.21.11) too, and
   applies Fabric's class transforms through a ModLauncher transformation service (#87, #90: fourteen server checks on
   Forge 61 and 64 to 66); `forge-legacy` runs one on Forge 47.4.28, remapped to SRG names, its mixin applied (#89: ten
