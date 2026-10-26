@@ -45,7 +45,7 @@ import io.github.cmdralph.fabricated.fabricloader.version.VersionParser;
 import net.fabricmc.loader.api.VersionParsingException;
 import net.minecraftforge.fml.loading.FMLLoader;
 import net.minecraftforge.fml.loading.FMLPaths;
-import net.minecraftforge.fml.loading.moddiscovery.AbstractModProvider;
+import net.minecraftforge.fml.loading.moddiscovery.AbstractJarFileModProvider;
 import net.minecraftforge.fml.loading.moddiscovery.ModFileParser;
 import net.minecraftforge.forgespi.language.IModInfo;
 import net.minecraftforge.forgespi.locating.IDependencyLocator;
@@ -62,13 +62,21 @@ import net.minecraftforge.forgespi.locating.ModFileFactory;
  * Fabric mods that weren't loaded are in the log and Fabricated's report (Forge's warnings screen follows, F3 step 5).
  * In a development workspace, where the in-game mod is a mod of its own, it isn't handed over again.
  */
-public final class FabricDependencyLocator extends AbstractModProvider implements IDependencyLocator {
+public final class FabricDependencyLocator extends AbstractJarFileModProvider implements IDependencyLocator {
 	private static final Logger LOGGER = LoggerFactory.getLogger("Fabricated");
 	private static final Pattern VERSION_IN_NAME = Pattern.compile("\\d+\\.\\d+\\.\\d+");
 
 	@Override
 	public String name() {
 		return ModIds.FABRICATED;
+	}
+
+	/**
+	 * Forge 47 leaves this to each provider (Forge 61's base class has it): no arguments are read. The class scan of the
+	 * files it hands over, which finds the in-game mod's {@code @Mod} class, is {@link AbstractJarFileModProvider}'s.
+	 */
+	@Override
+	public void initArguments(Map<String, ?> arguments) {
 	}
 
 	@Override
