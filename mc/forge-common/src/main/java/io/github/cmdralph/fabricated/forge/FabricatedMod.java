@@ -7,6 +7,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.github.cmdralph.fabricated.core.runtime.EntrypointRunner;
+import io.github.cmdralph.fabricated.forge.loot.LootCompat;
 import io.github.cmdralph.fabricated.loader.FabricatedState;
 import io.github.cmdralph.fabricated.loader.ForgeLoaderHooks;
 import net.fabricmc.api.DedicatedServerModInitializer;
@@ -26,8 +27,9 @@ import net.minecraftforge.registries.RegistryManager;
  * Fabricated's in-game mod on Minecraft Forge, shared by every project of the forge branch. It runs the Fabric mods'
  * entrypoints once discovery has handed Forge their files (docs/PORTING.md §4.1): the pre-launch ones as the mod is
  * constructed, the main and dedicated server ones as registries open. The client ones (in Minecraft's constructor) and
- * Fabric API on Forge's events follow. It also adds the Fabric mods discovery didn't load to Forge's loading warnings,
- * which Forge reads once every mod has loaded: the server logs them, the client shows them on its warnings screen.
+ * the rest of Fabric API on Forge's events follow (its loot API is native: {@code forge.loot}). It also adds the Fabric
+ * mods discovery didn't load to Forge's loading warnings, which Forge reads once every mod has loaded: the server logs
+ * them, the client shows them on its warnings screen.
  *
  * <p>Fabric mods register their content directly from their initializers. Forge opens vanilla's registries for its
  * registration events only ({@code UNFREEZE_DATA}, then {@code LOAD_REGISTRIES}), and each registry it manages only for
@@ -49,6 +51,8 @@ public final class FabricatedMod {
 	private boolean initialized;
 
 	public FabricatedMod(FMLJavaModLoadingContext context) {
+		// Native fabric-loot-api-v3 on Forge's loot table loading (see LootBridge).
+		LootCompat.register();
 		FabricatedState state = FabricatedState.get();
 		if (state == null) {
 			LOGGER.warn("Fabricated's discovery did not run; Fabric mods are not loaded");

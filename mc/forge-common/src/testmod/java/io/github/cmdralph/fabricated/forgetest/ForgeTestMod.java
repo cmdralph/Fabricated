@@ -15,6 +15,7 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -22,8 +23,8 @@ import net.minecraft.world.item.Items;
 
 /**
  * The forge branch's Fabric test mod (docs/PORTING.md §4.1, F3 step 3): its entrypoints and its mixin each log a line
- * the server smoke looks for (ci/forge/smoke-server.sh). It uses Fabric Loader's API only, as Fabric API isn't on Forge
- * yet.
+ * the server smoke looks for (ci/forge/smoke-server.sh). It uses Fabric Loader's API and, of Fabric API, only the loot
+ * module Fabricated ships itself ({@link ForgeLootTest}), so it runs without Fabric API's jar.
  */
 public final class ForgeTestMod implements ModInitializer, DedicatedServerModInitializer {
 	public static final String MOD_ID = "fabricated-forge-testmod";
@@ -48,6 +49,11 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 		} catch (RuntimeException | LinkageError e) {
 			LOGGER.error("FABRICATED-FORGE-TEST registry failed", e);
 		}
+		try {
+			ForgeLootTest.register();
+		} catch (RuntimeException | LinkageError e) {
+			LOGGER.warn("FABRICATED-FORGE-TEST loot listeners not registered", e);
+		}
 	}
 
 	@Override
@@ -70,6 +76,15 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 			LOGGER.info("FABRICATED-FORGE-TEST tag removal OK");
 		} else {
 			LOGGER.warn("FABRICATED-FORGE-TEST tag removal not applied: stone is in the tag {}, dirt (fabric:remove) {}, gravel (remove) {}", stone, dirt, gravel);
+		}
+	}
+
+	/** Whether Fabric's loot table events changed dirt's loot table and drops ({@link ForgeLootTest}), once the server ticks. */
+	public static void checkLoot(MinecraftServer server) {
+		try {
+			ForgeLootTest.check(server.overworld());
+		} catch (RuntimeException | LinkageError e) {
+			LOGGER.warn("FABRICATED-FORGE-TEST loot check failed", e);
 		}
 	}
 

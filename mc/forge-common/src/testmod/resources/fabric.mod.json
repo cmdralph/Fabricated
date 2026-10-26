@@ -3,7 +3,7 @@
   "id": "fabricated-forge-testmod",
   "version": "${version}",
   "name": "Fabricated Forge Test Mod",
-  "description": "Exercises Fabricated on Forge in CI: a Fabric mod with entrypoints and a mixin, without Fabric API. Not meant for players.",
+  "description": "Exercises Fabricated on Forge in CI: a Fabric mod with entrypoints and a mixin, using only the Fabric API modules Fabricated ships (the loot API). Not meant for players.",
   "authors": ["Fabricated contributors"],
   "license": "GPL-3.0",
   "environment": "*",
