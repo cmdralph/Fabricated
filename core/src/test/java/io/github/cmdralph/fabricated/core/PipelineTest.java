@@ -342,6 +342,10 @@ class PipelineTest {
 			assertEquals(82, ((Number) pack.get("min_format")).intValue());
 			assertEquals(2048, ((Number) pack.get("max_format")).intValue());
 		}
+		// The report names the platform's loader.
+		List<String> environment = result.report().render().lines().map(String::strip).toList();
+		assertTrue(environment.stream().anyMatch(l -> l.startsWith("Forge:")) && environment.stream().noneMatch(l -> l.startsWith("NeoForge:")),
+				result.report().render());
 	}
 
 	/** {@code in} with another platform's descriptor. */
