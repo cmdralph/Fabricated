@@ -64,6 +64,16 @@ One entry per working session, newest first: what changed, and how it was verifi
   26.x corpus's remaining errors were traced to the mods themselves: FrozenLib's "Unable to read config entry" on a
   fresh config directory (CORPUS-27) and Wilder Wild 26.3's reinforced deepslate blockstate without its mixin
   (CORPUS-28). Forge 47's biome coremod failing with Fabric API installed is recorded for L4 in the roadmap.
+- No Fabric API module disabled on either Forge branch any more. `fabric-dimensions-v1` loads on Forge 61 to 66
+  without its DataFixerUpper mixins (forge #140), and is native on Forge 47 (forge-legacy #141): a Fabric teleport goes
+  through Forge's teleporter without the End's platform or credits, and Forge's own lenient codec stands in for
+  upstream's codec hook; with Fabric API, no module of 0.92.12 is disabled on Forge 47 any more. On Forge 64 to 66, `fabric-object-builder-api-v1` and, with it,
+  `fabric-data-attachment-api-v1` load (forge #142): Forge's attribute builder keeps its entries in a map of its own,
+  so upstream's accessor is left out, and the in-game mod gives the attribute copy Forge's constructor and runs
+  `FabricDefaultAttributeRegistry.MODIFY` in Forge's attribute modification event (upstream's hook fired at bootstrap
+  on Forge, before any listener existed); a cow's armor set through MODIFY is what the game reads. Content registries
+  (Forge 64 to 66) and data generation (Forge 61 to 66) load without the hooks Forge's code can't take (forge #144):
+  with the official Fabric API jar, no module is disabled on any Forge version Fabricated targets.
 - Native loot modules on both Forge branches. On Forge 61 to 66, `fabric-loot-api-v3` and `fabric-api-base` (forge
   #137, a port of `main`'s): Fabric's loot table events run from Forge's loot table event, and from a hook into the
   registry decode on Forge 66, whose loot skip is gone; the in-game mod's mixins use no MixinExtras sugar, after its
