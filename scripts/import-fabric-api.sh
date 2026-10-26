@@ -7,7 +7,7 @@
 # A ":api" suffix imports only the module's public API (net/fabricmc/fabric/api/**); Fabricated then
 # provides the implementation itself on NeoForge events instead of upstream's mixins.
 # Files in <destination-dir>-overrides/java are copied over the imported ones afterwards.
-# Example: scripts/import-fabric-api.sh 0.164.0+26.3 mc/26.3/src/fabricapi fabric-api-base fabric-lifecycle-events-v1:api
+# Example: scripts/import-fabric-api.sh 0.164.0+26.3 mc/neoforge/26.3/src/fabricapi fabric-api-base fabric-lifecycle-events-v1:api
 set -euo pipefail
 
 if [ "$#" -lt 3 ]; then

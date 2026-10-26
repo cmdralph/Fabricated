@@ -1,8 +1,9 @@
 # Fabricated: engineering memory
 
 This file is the starting point for anyone (human or agent) working on Fabricated. **Read it first, then
-[`roadmap.md`](roadmap.md).** It holds the architecture map, the rules the code follows and the commands to run
-before committing. The longer design documents remain the reference for details:
+[`roadmap.md`](roadmap.md)** (the next release's goals come first there). It holds the architecture map, the rules the
+code follows and the commands to run before committing. [`README.md`](README.md) says which document holds what and
+when it changes. The longer design documents remain the reference for details:
 [`ARCHITECTURE.md`](ARCHITECTURE.md) (pipeline, isolation, caching, security), [`RESEARCH.md`](RESEARCH.md) (verified
 facts about NeoForge, FML and Fabric), [`COMPATIBILITY.md`](COMPATIBILITY.md) (what works, per version and module),
 [`API.md`](API.md) (Fabricated's public API), [`CHANGELOG.md`](CHANGELOG.md) (each session's changes and how they were
@@ -11,14 +12,18 @@ verified), [`PORTING.md`](PORTING.md) (the 1.20.1 and Forge evaluation and the b
 
 ## Working rules
 
-- **Branches** (the owner's decisions, 2026-10-21 and 2026-10-25): `main` is NeoForge 1.21.11 to 26.3 and the active
-  branch; every fix and feature lands there first, by pull request from the working branch `claude/dev`. `forge` is
-  Minecraft Forge for the versions `main` covers, and `forge-legacy` is Forge for 1.20.1 and other legacy versions
-  (NeoForge needs no legacy branch); both are in scaffolding (compile-only projects building in their own CI, for pull
-  requests to them), worked on from `claude/forge` and `claude/forge-legacy` by pull request. Shared modules (`core`, `api`,
-  `fabric-loader-api`) change only on `main`; a branch takes them by merging `main`, never by cherry-picking, and adds
-  only files of its own (`PORTING.md` §1). 1.20.1 targets Forge 47.4, modern Forge builds with ForgeGradle, and CI on
-  the secondary branches runs for pull requests only: decisions D1 to D6 in `RESEARCH.md` §8, with the build paths.
+- **Branches** (the owner's decisions, 2026-10-21, 2026-10-25 and 2026-10-26): one working branch, `claude/dev`, holds
+  every platform: `mc/<platform>/<version>` and `loader/<platform>` for `neoforge`, `forge` and `forge-legacy`, next to
+  the shared modules. It is merged by pull request into all three release branches, which therefore hold the same
+  tree: `main` (NeoForge 1.21.11 to 26.3, the primary platform), `forge` (Minecraft Forge 61 to 66 for the same
+  versions) and `forge-legacy` (Forge 47 for 1.20.1; NeoForge needs no legacy branch). A branch differs only in the CI
+  that builds it (`build.yml`, `build-forge.yml`, `build-forge-legacy.yml`), the jars it stands for in a release and its
+  README (`docs/readme/<branch>.md`, which `branch-readme.yml` copies to the branch's `.github/README.md`: `claude/dev`
+  never holds that file). Every change goes to all three as one pull request each, from the same `claude/dev` head, and
+  each merges once its own CI is green; `claude/dev` is never reset to a release branch. All three targets move
+  together: a change to shared code is checked on every platform's CI, and a platform's port of a feature follows in
+  the same pass where its API allows. 1.20.1 targets Forge 47.4, modern Forge builds with ForgeGradle, and secondary
+  branches' CI runs for pull requests only: decisions D1 to D6 in `RESEARCH.md` §8, with the build paths.
 - **Shared modules stay Java 17** (the owner's decision D2, 2026-10-21): `core`, `api` and `fabric-loader-api` compile
   their main code with `release = 17`, so the build rejects what 1.20.1's Java 17 can't load. Not available there: a
   `List`'s `getFirst`/`getLast`/`removeFirst`/`addFirst` (Java 21's sequenced collections: use `get(0)`,
@@ -29,7 +34,7 @@ verified), [`PORTING.md`](PORTING.md) (the 1.20.1 and Forge evaluation and the b
 - **Verify, never assume.** A Minecraft, NeoForge, FML or Fabric API class, method or field is used only after
   reading it: in this repository, in the NeoForge sources for that line (`neoforged/NeoForge` branches `1.21.11`,
   `26.1.x`, `26.2.x`, `26.3.x`; the Minecraft code NeoForge changes is in `patches/`), or in the Fabric API sources
-  at the tag this version's plan names (`fabricApiVersion` in `mc/<version>/src/fabricated/resources/META-INF/fabricated/fabric-api-plan.json`).
+  at the tag this version's plan names (`fabricApiVersion` in `mc/neoforge/<version>/src/fabricated/resources/META-INF/fabricated/fabric-api-plan.json`).
   Signatures differ between versions (Fabric's renderer API changed between 26.2 and 26.3, for example). Anything
   that can't be checked is marked `UNVERIFIED` in `roadmap.md`.
 - **Behaviour changes only fix a proven defect.** The commit message names the file, the failure and why tests
@@ -43,7 +48,7 @@ verified), [`PORTING.md`](PORTING.md) (the 1.20.1 and Forge evaluation and the b
   `fabric-bridge-report.txt`, `COMPATIBILITY.md` and `roadmap.md`, not stubbed.
 - **Pull requests are merged once CI is green on their final commit** (the owner's standing decision, 2026-10-19):
   drive the PR to green, merge it with a merge commit whose title is a Conventional Commit summarising the pull
-  request, then continue on the same branch from the new `main`.
+  request, then continue on `claude/dev`. Never force-push or reset a branch without the owner's say.
 - **One pull request per pass, not per change** (the owner's decision, 2026-10-20): commit and push to the working
   branch as work goes; while no pull request is open, a push builds nothing, so run CI on the branch by hand
   (`workflow_dispatch`) whenever game-facing work needs it. Open the pull request when the whole pass is done.
@@ -55,9 +60,10 @@ verified), [`PORTING.md`](PORTING.md) (the 1.20.1 and Forge evaluation and the b
 | What | Command | Where it runs |
 |---|---|---|
 | Minecraft-independent modules and all unit tests | `./gradlew -Pfabricated.coreOnly=true build` | anywhere (Maven Central only) |
-| One version's jar and the test mods | `./gradlew :mc:26.2:fabricatedJar :mc:26.2:testmods` | needs `maven.neoforged.net`, Mojang and `maven.fabricmc.net` |
-| Everything | `./gradlew build` | same |
-| Real server / client with the test mods | `ci/smoke-server.sh`, `ci/smoke-client.sh` | CI (HeadlessMC + Xvfb for the client) |
+| One version's jar and the test mods | `./gradlew :mc:neoforge-26.2:fabricatedJar :mc:neoforge-26.2:testmods` | needs `maven.neoforged.net`, Mojang and `maven.fabricmc.net` |
+| Another platform's version | `./gradlew -Pfabricated.platforms=forge --configure-on-demand :mc:forge-26.2:fabricatedJar` (`forge-legacy`: `:mc:forge-legacy-1.20.1`) | needs the platform's maven and Mojang |
+| Everything on NeoForge | `./gradlew build` | same |
+| Real server / client with the test mods | `ci/neoforge/smoke-server.sh`, `ci/neoforge/smoke-client.sh` | CI (HeadlessMC + Xvfb for the client) |
 
 **Cloud sandbox limit.** The Claude Code cloud container blocks `maven.neoforged.net`, Mojang and
 `maven.fabricmc.net`, so only the `coreOnly` build runs there. The Minecraft modules compile, and their mixins
@@ -98,8 +104,8 @@ NeoForge mods read them (mod properties, and namespaced ones as file and entry k
 (`FabricatedMod`) then runs the Fabric entrypoints. `main` runs on the first `RegisterEvent` after the attribute
 registry's (registries are open then). `client` runs in `Minecraft`'s constructor (`MinecraftEntrypointsMixin`), and
 `server` after `main` on a dedicated server. When a Fabric mod calls the Fabric API, the call goes either to a
-module Fabricated vendors and bridges to NeoForge events ("native", `mc/<version>/src/fabricapi` plus the bridges in
-`mc/common*`) or to the module's upstream code from the player's Fabric API jar ("pass-through"), whose mixins
+module Fabricated vendors and bridges to NeoForge events ("native", `mc/neoforge/<version>/src/fabricapi` plus the bridges in
+`mc/neoforge/common*`) or to the module's upstream code from the player's Fabric API jar ("pass-through"), whose mixins
 passed pre-flight. Calls to the Fabric Loader API go to core's `FabricLoaderRuntime`.
 
 Fabric code also sees NeoForge's own mods, as built-in mod containers (`NeoForgeMods`, loader): the ones NeoForge
@@ -124,12 +130,12 @@ are not among them, so pre-flight of mixins into the game is unchanged by what e
 fabric-loader-api   (Fabric Loader's public API, Apache-2.0; no deps)
 api                 (Fabricated's public API for NeoForge mods; no deps)
 core  ──api──► fabric-loader-api, api       (pure Java, release 17; compileOnly ASM)
-mc/<version>        (one Gradle project per Minecraft version, MDG)
+mc/neoforge/<version>        (one Gradle project per Minecraft version, MDG)
   ├─ source set loader  = loader/common + loader/neoforge ──► core   (FML SPI only; early-services class loader)
   ├─ source set main    = in-game NeoForge mod  ──compileOnly──► loader output, core
-  │     sources: mc/<v>/src/main/java + mc/<v>/src/fabricapi/java (vendored native Fabric API modules)
-  │              + the folders the version's `shared_sources` lists: mc/common (all), mc/common26 (26.x),
-  │                mc/common26early (26.1.2, 26.2), mc/common26late (26.2, 26.3)
+  │     sources: mc/neoforge/<version>/src/main/java + mc/neoforge/<version>/src/fabricapi/java (vendored native Fabric API modules)
+  │              + the folders the version's `shared_sources` lists: mc/neoforge/common (all), mc/neoforge/common26 (26.x),
+  │                mc/neoforge/common26early (26.1.2, 26.2), mc/neoforge/common26late (26.2, 26.3)
   │     26.x only, compileOnly: fabric-renderer-api-v1's jar (pass-through module, typed calls)
   ├─ source sets testmod, testmodbroken, testmodfrapi (26.x)  ──compileOnly──► main output, fabric-loader-api, api
   └─ fabricatedJar = loader classes + core + fabric-loader-api + api + META-INF/fabricated/game-mod.jar (main)
@@ -144,18 +150,18 @@ reaches `loader` and `core` through NeoForge's parent class loader at runtime (`
 
 The prompt that started the 2026-10-19 session described `api/` as "Fabric API surface re-implementations". It
 isn't: `api/` is Fabricated's own small public API (see `API.md`). The Fabric API re-implementations are the
-vendored modules in `mc/<version>/src/fabricapi` and the bridges in `mc/common*`.
+vendored modules in `mc/neoforge/<version>/src/fabricapi` and the bridges in `mc/neoforge/common*`.
 
 ### The version seam
 
 | Seam | How | Type-safe? |
 |---|---|---|
 | Which code a version gets | Gradle source directories (the version's `shared_sources` property, read by `mc/mc.gradle`): each version compiles only its own and the shared folders it lists | compile-time |
-| Which loader a version builds for | The version's `platform` property (default `neoforge`): `mc/platform-<platform>.gradle` (build plugin, mod descriptor, `gameDependencies`) and `loader/<loader_dir>` (discovery services; `loader_dir` defaults to the platform) next to `loader/common`. `main` has NeoForge's only; the `forge` and `forge-legacy` branches add theirs | compile-time |
+| Which loader a version builds for | The folder its project is in, `mc/<platform>/<version>` (`neoforge`, `forge` or `forge-legacy`): `mc/platform-<platform>.gradle` (build plugin, mod descriptor, `gameDependencies`) and `loader/<platform>` (discovery services) next to `loader/common`. Every branch holds every platform; `-Pfabricated.platforms` picks which a build configures (NeoForge's by default) | compile-time |
 | Discovery services → FML | `META-INF/services` in the `loader` source set: `IModFileCandidateLocator`, `IDependencyLocator`, `IModLanguageLoader`, `ClassProcessor` | compile-time against FML SPI |
 | Version facts → core | `META-INF/fabricated/version.properties` (generated: Minecraft version, namespace, Mixin versions) and `fabric-api-plan.json` (data, per version) | data, validated when parsed |
 | Discovery → in-game mod | `FabricatedState.get()` (a `volatile` static in `loader`, published once discovery ends) | compile-time |
-| In-game mod → pass-through Fabric API modules | 26.x renderer API: typed calls, compiled against the module's own jar, in classes loaded only when the module is (`FabricBlockRendering`). Model loading formats: the same, against compile-only stand-ins in Mojang's names on 1.21.11 (`FabricModelFormats`, shared; `mc/1.21.11/src/fabricapistubs`). Other modules: `Class.forName` + `MethodHandle`s, because their jars are not compile dependencies (and 1.21.11's use intermediary names): `HudBridge`, `ScreenRenderBridge`, `FabricSoundStreams`, `FabricResourceConditions` (shared), `PictureInPictureBridge`, `FabricExtraModels` (shared), `HudRenderCallbackBridge`, `FabricFluidTint` (1.21.11), `FabricAdvancementReload` (26.3) | typed / reflective |
+| In-game mod → pass-through Fabric API modules | 26.x renderer API: typed calls, compiled against the module's own jar, in classes loaded only when the module is (`FabricBlockRendering`). Model loading formats: the same, against compile-only stand-ins in Mojang's names on 1.21.11 (`FabricModelFormats`, shared; `mc/neoforge/1.21.11/src/fabricapistubs`). Other modules: `Class.forName` + `MethodHandle`s, because their jars are not compile dependencies (and 1.21.11's use intermediary names): `HudBridge`, `ScreenRenderBridge`, `FabricSoundStreams`, `FabricResourceConditions` (shared), `PictureInPictureBridge`, `FabricExtraModels` (shared), `HudRenderCallbackBridge`, `FabricFluidTint` (1.21.11), `FabricAdvancementReload` (26.3) | typed / reflective |
 | Fabric mods → Fabricated | mixins and class tweakers, applied by FML; Fabric's injected interfaces added by `FabricClassProcessor` at class load | bytecode |
 
 ### Mixins
@@ -207,7 +213,7 @@ and `altModelBlockRenderer(ao, cull, BlockColors)`.
 Indigo, the reference renderer, already loads on 26.x and already is an `int[]`-backed, stride-encoded quad
 emitter. Fabricated therefore doesn't duplicate it. A second renderer would add thousands of lines with no
 user-visible gain. What was missing is the seam between FRAPI and the places NeoForge draws blocks. All of it goes
-through `FabricBlockRendering` (`mc/common26/.../rendering`), which with `FrapiDefaults` and the mixins of
+through `FabricBlockRendering` (`mc/neoforge/common26/.../rendering`), which with `FrapiDefaults` and the mixins of
 `fabricated-renderer.mixins.json` is the only code that names the renderer API's types:
 
 - **The decision.** `FabricBlockRendering.draws(model)` is true when the model's class implements `emitQuads` itself:
@@ -229,7 +235,7 @@ through `FabricBlockRendering` (`mc/common26/.../rendering`), which with `FrapiD
   `collectParts` call there (26.1.2: `BlockFeatureRenderer.renderBreakingBlockModelSubmits`; 26.2, 26.3:
   `LevelRenderer.submitBlockDestroyAnimation`) and adds a Fabric model's emitted quads, turned back into vanilla
   quads, as one part. The overlay itself is unchanged.
-- **1.21.11: parts made from a Fabric model's quads.** `mc/1.21.11/.../rendering/FabricBlockRendering` draws Fabric
+- **1.21.11: parts made from a Fabric model's quads.** `mc/neoforge/1.21.11/.../rendering/FabricBlockRendering` draws Fabric
   models through Fabric's renderer only in the chunk sections NeoForge compiles (`SectionCompilerMixin`, which also
   skips collecting their parts there). Everywhere else, NeoForge's level-aware `collectParts` (declared on
   `BlockStateModel` by `BlockStateModelMixin`, for a model that doesn't implement it) gives a Fabric model parts made
@@ -270,8 +276,8 @@ breaking overlay) through Fabric's renderer. On NeoForge that would drop level-a
 3. **Emitters and Fabric block renderers are thread-confined.** One per thread and use (`ThreadLocal`), bound to a
    section or a frame's buffers only for the duration of one call, never shared, never stored in a static field. Indigo's
    block renderer captures its thread's light cache when it is made, so sharing one across threads is a bug.
-4. **Version-agnostic FRAPI code lives in `mc/common26`** behind the narrow seam above. Version-specific code goes in
-   `mc/<version>` with a one-line comment naming the API difference that forces it. 1.21.11 needs its own work (see
+4. **Version-agnostic FRAPI code lives in `mc/neoforge/common26`** behind the narrow seam above. Version-specific code goes in
+   `mc/neoforge/<version>` with a one-line comment naming the API difference that forces it. 1.21.11 needs its own work (see
    `roadmap.md`).
 5. **Every cache has an explicit lifecycle tied to what it caches.** A cache keyed by a `Class` is a `ClassValue`
    (class lifetime, no pinning). A cache of baked models, sprites or atlases is cleared in a reload listener, or it

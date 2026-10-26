@@ -1,7 +1,7 @@
-// Shared build logic for every Minecraft version project (mc/<version>/build.gradle applies this). What is specific
-// to the mod loader the target runs on is in mc/platform-<platform>.gradle (the version's `platform` property,
-// NeoForge's by default), which this applies once the source sets exist, and the loader classes in
-// loader/<loader_dir> (next to the shared ones in loader/common): a branch for another loader adds its own.
+// Shared build logic for every Minecraft version project (mc/<platform>/<version>/build.gradle applies this). What is
+// specific to the mod loader the target runs on is in mc/platform-<platform>.gradle, which this applies once the source
+// sets exist, and the loader classes in loader/<platform> (next to the shared ones in loader/common). The platform is
+// the folder the version's folder is in: neoforge, forge or forge-legacy.
 //
 // Each version project produces build/libs/fabricated-<version>+mc<minecraft>.jar in the root project:
 //   - the "loader" source set (the loader's discovery services) plus :core and :fabric-loader-api, which run
@@ -42,41 +42,46 @@ repositories {
     }
 }
 
-// Source shared between versions, in mc/<name>, as the version's `shared_sources` property lists them: every version
-// (common), 26.x (common26: unobfuscated, with one Fabric API surface), 26.1.2 and 26.2 (common26early: 26.3 changed the
-// APIs that code uses), and 26.2 and 26.3 (common26late).
+// Source shared between one platform's versions, in mc/<platform>/<name>, as the version's `shared_sources`
+// property lists them. NeoForge's: every version (common), 26.x (common26: unobfuscated, with one Fabric API
+// surface), 26.1.2 and 26.2 (common26early: 26.3 changed the APIs that code uses), and 26.2 and 26.3
+// (common26late). Forge's are named alike.
+def platform = projectDir.parentFile.name
+if (!(platform in ['neoforge', 'forge', 'forge-legacy'])) {
+    throw new GradleException("${projectDir} is not in a platform's folder: mc/neoforge, mc/forge or mc/forge-legacy")
+}
 ext.sharedSources = (project.shared_sources as String).split(',')*.trim().findAll { it }
-def platform = project.findProperty('platform') ?: 'neoforge'
-def loaderDir = project.findProperty('loader_dir') ?: platform
+        .collect { "mc/${platform}/${it}" }
 
 sourceSets {
     loader {
         java.srcDir rootProject.file('loader/common/src/main/java')
-        java.srcDir rootProject.file("loader/${loaderDir}/src/main/java")
-        resources.srcDir rootProject.file("loader/${loaderDir}/src/main/resources")
+        java.srcDir rootProject.file("loader/${platform}/src/main/java")
+        resources.srcDir rootProject.file("loader/${platform}/src/main/resources")
         resources.srcDir 'src/fabricated/resources'
     }
     main {
-        java.srcDirs = ['src/main/java', 'src/fabricapi/java'] + sharedSources.collect { rootProject.file("mc/$it/src/main/java") }
-        resources.srcDirs = ['src/main/resources'] + sharedSources.collect { rootProject.file("mc/$it/src/main/resources") }
+        java.srcDirs = ['src/main/java', 'src/fabricapi/java'] + sharedSources.collect { rootProject.file("$it/src/main/java") }
+        resources.srcDirs = ['src/main/resources'] + sharedSources.collect { rootProject.file("$it/src/main/resources") }
     }
     testmod {
         sharedSources.each {
-            java.srcDir rootProject.file("mc/$it/src/testmod/java")
-            resources.srcDir rootProject.file("mc/$it/src/testmod/resources")
+            java.srcDir rootProject.file("$it/src/testmod/java")
+            resources.srcDir rootProject.file("$it/src/testmod/resources")
         }
     }
+    // Test sources every platform shares, in mc/shared: the broken test mods,
     testmodbroken {
-        java.srcDir rootProject.file('mc/common/src/testmodbroken/java')
+        java.srcDir rootProject.file('mc/shared/src/testmodbroken/java')
     }
-    // Stand-ins for other mods' plugin interfaces, which the test mod compiles against; never packaged.
+    // stand-ins for other mods' plugin interfaces, which the test mod compiles against (never packaged),
     testmodstubs {
-        java.srcDir rootProject.file('mc/common/src/testmodstubs/java')
+        java.srcDir rootProject.file('mc/shared/src/testmodstubs/java')
     }
-    // Stand-ins for the APIs of Fabric libraries Fabricated bridges when a mod brings them (Team Reborn's energy API);
-    // never packaged: the bridge loads only when the library is present.
+    // and stand-ins for the APIs of Fabric libraries Fabricated bridges when a mod brings them (Team Reborn's energy
+    // API), never packaged: the bridge loads only when the library is present.
     integrationstubs {
-        java.srcDir rootProject.file('mc/common/src/integrationstubs/java')
+        java.srcDir rootProject.file('mc/shared/src/integrationstubs/java')
     }
 }
 
@@ -270,7 +275,7 @@ def brokenJars = brokenMods.collect { name, classes ->
             from(sourceSets.testmodbroken.output.classesDirs) { include(classes) }
             dependsOn tasks.named('compileTestmodbrokenJava')
         }
-        from(rootProject.file("mc/common/src/testmodbroken/resources/${name}")) {
+        from(rootProject.file("mc/shared/src/testmodbroken/resources/${name}")) {
             filesMatching('fabric.mod.json') { expand(expandProps) }
         }
     }
@@ -283,9 +288,9 @@ tasks.register('testmods') {
     dependsOn brokenJars
 }
 
-// --- A Fabric mod using Fabric's renderer API, for the client smoke test with Fabric API (ci/smoke-client.sh) ----------
+// --- A Fabric mod using Fabric's renderer API, for the client smoke test with Fabric API (ci/neoforge/smoke-client.sh)
 // The first shared source folder that has one (26.x's), or the version's own.
-def frapiTestmodDir = sharedSources.collect { rootProject.file("mc/$it/src/testmodfrapi") }.find { it.isDirectory() } ?: file('src/testmodfrapi')
+def frapiTestmodDir = sharedSources.collect { rootProject.file("$it/src/testmodfrapi") }.find { it.isDirectory() } ?: file('src/testmodfrapi')
 sourceSets {
     testmodfrapi {
         // Set, not added to Gradle's default (src/testmodfrapi), which on 1.21.11 is the same folder.

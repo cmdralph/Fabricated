@@ -1,12 +1,12 @@
 # Compatibility
 
-Everything in this file comes from CI runs on a real NeoForge dedicated server (`ci/smoke-server.sh`) and a
-real NeoForge client (`ci/smoke-client.sh`), not from expectations. CI starts each version many times (up to five
+Everything in this file comes from CI runs on a real NeoForge dedicated server (`ci/neoforge/smoke-server.sh`) and a
+real NeoForge client (`ci/neoforge/smoke-client.sh`), not from expectations. CI starts each version many times (up to five
 server runs, and up to nine client runs on 1.21.11 or twelve on 26.x, all in `.github/workflows/build.yml`); these
 three are the base of this file:
 
-1. **Test mods only**: Fabricated plus the Fabric test mods in `mc/common/src/testmod*`. This is a pass/fail
-   gate.
+1. **Test mods only**: Fabricated plus the Fabric test mods in `mc/neoforge/common/src/testmod` and
+   `mc/shared/src/testmodbroken`. This is a pass/fail gate.
 2. **With the official Fabric API jar** added: the server must start (a gate), and the energy bridge check must
    pass where CI finds Team Reborn's energy library for the version; the other checks are informational. The
    resulting `fabric-bridge-report.txt` is kept as a CI artifact
@@ -39,7 +39,7 @@ reported, naming the dependency; a mod with an impossible mixin is caught by pre
 entrypoint throws is isolated while the server keeps running; Fabricated's public API answers and its
 after-initializers callback runs; a client-only interface listed in `@EnvironmentInterface` is stripped on the
 server; and no test mod check reports a failure. The others cover the native Fabric API modules (described in
-their sections below) and fixes the roadmap lists, each named in `ci/smoke-server.sh` by its finding. The client checks: the client starts and joins a singleplayer world, the `main` and
+their sections below) and fixes the roadmap lists, each named in `ci/neoforge/smoke-server.sh` by its finding. The client checks: the client starts and joins a singleplayer world, the `main` and
 `client` entrypoints run, the client-side native modules work, including a networking round trip and a
 configuration task with the integrated server, an extended menu opens with its data, a Mod Menu config screen
 factory is registered with NeoForge, and no test mod check reports a failure.
