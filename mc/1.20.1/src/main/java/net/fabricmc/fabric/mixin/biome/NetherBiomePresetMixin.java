@@ -31,9 +31,12 @@ import net.fabricmc.fabric.impl.biome.NetherBiomeData;
 
 // The anonymous class can't be named in code: the method is named with its descriptor (Fabricated, L4 on Forge 47), for
 // Mixin's annotation processor to find its SRG name ("apply" is the game's own name, which SRG renames) in the mappings.
+// Not required (Fabricated): whether the processor maps an anonymous class's method is unverified, and upstream's copy of
+// this hook, passed through, was already left out on Forge 47 (pre-flight found no "apply" there); without it modded
+// Nether biomes are missing from the multi-noise preset, as before, instead of the game stopping.
 @Mixin(targets = "net.minecraft.world.level.biome.MultiNoiseBiomeSourceParameterList$Preset$1")
 public class NetherBiomePresetMixin {
-	@Inject(method = "apply(Ljava/util/function/Function;)Lnet/minecraft/world/level/biome/Climate$ParameterList;", at = @At("RETURN"), cancellable = true)
+	@Inject(method = "apply(Ljava/util/function/Function;)Lnet/minecraft/world/level/biome/Climate$ParameterList;", at = @At("RETURN"), cancellable = true, require = 0)
 	public <T> void apply(Function<ResourceKey<Biome>, T> function, CallbackInfoReturnable<Climate.ParameterList<T>> cir) {
 		cir.setReturnValue(NetherBiomeData.withModdedBiomeEntries(cir.getReturnValue(), function));
 	}
