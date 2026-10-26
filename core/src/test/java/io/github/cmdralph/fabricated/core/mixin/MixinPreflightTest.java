@@ -3127,6 +3127,82 @@ class MixinPreflightTest {
 		}
 	}
 
+	@Test
+	void anInjectIntoAConstructorAfterItsSuperCallIsMarkedUnsafeWhereMixinWantsThat() throws Exception {
+		// CTOR-1: fabric-command-api-v2 hooks a call in Commands' constructor, after super(); Fabric's Mixin takes that,
+		// SpongePowered's 0.8.7 (Forge 61 to 66) only at a return or a point marked unsafe, and stopped the server. 0.8.5
+		// (Forge 47) has no unsafe points: the injector is left out there.
+		String owner = "net/minecraft/world/Built";
+		ClassWriter target = new ClassWriter(0);
+		target.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, owner, null, "java/lang/Object", null);
+		MethodVisitor init = target.visitMethod(Opcodes.ACC_PUBLIC, "<init>", "()V", null, null);
+		init.visitVarInsn(Opcodes.ALOAD, 0);
+		init.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false);
+		init.visitVarInsn(Opcodes.ALOAD, 0);
+		init.visitMethodInsn(Opcodes.INVOKEVIRTUAL, owner, "setup", "()V", false);
+		init.visitInsn(Opcodes.RETURN);
+		init.visitMaxs(1, 1);
+		init.visitEnd();
+		MethodVisitor setup = target.visitMethod(Opcodes.ACC_PUBLIC, "setup", "()V", null, null);
+		setup.visitInsn(Opcodes.RETURN);
+		setup.visitMaxs(0, 1);
+		setup.visitEnd();
+		target.visitEnd();
+		ClassIndex game = new ClassIndex(Map.of(TARGET, targetClass(), owner, target.toByteArray())::get);
+
+		ClassWriter cw = new ClassWriter(0);
+		cw.visit(Opcodes.V17, Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, "com/example/mixin/Hook", null, "java/lang/Object", null);
+		AnnotationVisitor m = cw.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false);
+		AnnotationVisitor values = m.visitArray("value");
+		values.visit(null, Type.getObjectType(owner));
+		values.visitEnd();
+		m.visitEnd();
+		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "afterSetup", "(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V", null, null);
+		AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
+		AnnotationVisitor methods = ann.visitArray("method");
+		methods.visit(null, "<init>");
+		methods.visitEnd();
+		AnnotationVisitor ats = ann.visitArray("at");
+		AnnotationVisitor at = ats.visitAnnotation(null, "Lorg/spongepowered/asm/mixin/injection/At;");
+		at.visit("value", "INVOKE");
+		at.visit("target", "L" + owner + ";setup()V");
+		at.visitEnd();
+		ats.visitEnd();
+		ann.visitEnd();
+		mv.visitEnd();
+		cw.visitEnd();
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Hook"));
+
+		for (MixinPreflight.ConstructorInjects rule : MixinPreflight.ConstructorInjects.values()) {
+			Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Hook", cw.toByteArray()));
+			MixinPreflight preflight = new MixinPreflight(game, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true,
+					ClassBytesSource.EMPTY, "Forge", true, rule);
+			List<PreflightFinding> notes = new ArrayList<>();
+			Map<String, byte[]> repaired = preflight.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
+			repaired.forEach((path, bytes) -> mod.put(path.substring(0, path.length() - ".class".length()), bytes));
+			List<PreflightFinding> findings = preflight.check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+			switch (rule) {
+				case AFTER_DELEGATE -> {
+					assertTrue(repaired.isEmpty() && findings.isEmpty(), rule + ": " + notes + findings);
+				}
+				case UNSAFE_POINTS -> {
+					assertTrue(findings.isEmpty(), rule + ": " + findings);
+					ClassNode node = new ClassNode();
+					new ClassReader(repaired.get("com/example/mixin/Hook.class")).accept(node, 0);
+					AnnotationNode point = Annotations.list(Annotations.value(Annotations.find(node.methods.getFirst(), INJECT), "at")).getFirst();
+					assertEquals(true, Annotations.value(point, "unsafe"), "marked unsafe");
+					assertTrue(notes.stream().anyMatch(n -> n.message().contains("after its super() call")), notes.toString());
+				}
+				case RETURNS_ONLY -> {
+					assertTrue(repaired.isEmpty(), "0.8.5 takes no unsafe: " + notes);
+					assertEquals(1, findings.size(), findings.toString());
+					assertEquals(PreflightFinding.Severity.LEFT_OUT, findings.getFirst().severity(), findings.toString());
+					assertTrue(findings.getFirst().message().contains("which Forge's Mixin takes only at a return (Fabric's Mixin"), findings.getFirst().message());
+				}
+			}
+		}
+	}
+
 	/** A MixinExtras expression handler on tick() whose @Definition names {@code type} or {@code method}. */
 	private static void expression(ClassWriter cw, String handler, Type type, String method) {
 		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, handler, "(Z)Z", null, null);

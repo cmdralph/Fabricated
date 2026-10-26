@@ -235,6 +235,30 @@ final class InjectionPoints {
 	}
 
 	/**
+	 * The indexes of the instructions a call, field or construction point picks in {@code method} (each one it matches in
+	 * the slice, or the ordinal-th), or null where they aren't found here: another point, a fuzzy target, a slice that
+	 * couldn't be evaluated.
+	 */
+	static List<Integer> indexes(String point, String target, int ordinal, int opcode, Range range, MethodNode method) {
+		if (target == null || range == Range.UNEVALUATED || method.instructions == null) return null;
+		if (!point.equals("INVOKE") && !point.equals("INVOKE_ASSIGN") && !point.equals("INVOKE_STRING") && !point.equals("FIELD") && !point.equals("NEW")) {
+			return null;
+		}
+		MemberRef ref = MemberRef.parse(target);
+		if (ref.fuzzy()) return null;
+		List<Integer> picked = new ArrayList<>();
+		int seen = 0;
+		for (int i = Math.max(range.start(), 0); i <= Math.min(range.end(), method.instructions.size() - 1); i++) {
+			AbstractInsnNode insn = method.instructions.get(i);
+			if (opcode >= 0 && insn.getOpcode() != opcode) continue;
+			if (!matchesInsn(point, ref, insn)) continue;
+			if (ordinal < 0 || seen == ordinal) picked.add(i);
+			seen++;
+		}
+		return picked;
+	}
+
+	/**
 	 * A {@code @WrapOperation} handler takes the wrapped call's receiver (unless static) and arguments, then the
 	 * {@code Operation}. Returns why that does not fit any matching call or constructor, or null when it does (or
 	 * cannot be judged).

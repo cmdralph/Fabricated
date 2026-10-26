@@ -22,6 +22,7 @@ import io.github.cmdralph.fabricated.core.metadata.ContactInformationImpl.Person
 import io.github.cmdralph.fabricated.core.metadata.FabricModJsonParser;
 import io.github.cmdralph.fabricated.core.metadata.FabricModMetadata;
 import io.github.cmdralph.fabricated.core.mixin.MixinConfigFile;
+import io.github.cmdralph.fabricated.core.mixin.MixinPreflight;
 import io.github.cmdralph.fabricated.core.mixin.PreflightFinding;
 import net.fabricmc.loader.api.metadata.ContactInformation;
 import net.fabricmc.loader.api.metadata.ModEnvironment;
@@ -243,6 +244,11 @@ class TranslateHelpersTest {
 		assertTrue(MixinCompat.interfaceInjectors("0.8.7"), "Forge 61 to 66");
 		assertTrue(MixinCompat.interfaceInjectors("0.17.4+mixin.0.8.7"), "Fabric's Mixin");
 		assertTrue(MixinCompat.interfaceInjectors(null));
+
+		// CTOR-1: where an @Inject into a constructor goes.
+		assertEquals(MixinPreflight.ConstructorInjects.RETURNS_ONLY, MixinCompat.constructorInjects("0.8.5+Jenkins-b310.git-1"), "Forge 47");
+		assertEquals(MixinPreflight.ConstructorInjects.UNSAFE_POINTS, MixinCompat.constructorInjects("0.8.7+Jenkins-b321.git-4"), "Forge 61 to 66");
+		assertEquals(MixinPreflight.ConstructorInjects.AFTER_DELEGATE, MixinCompat.constructorInjects("0.17.4+mixin.0.8.7"), "Fabric's Mixin");
 
 		assertEquals(25, MixinCompat.compatibilityLevel(" java_25 "), "as Mixin reads it");
 		assertEquals(8, MixinCompat.compatibilityLevel("JAVA_8"));

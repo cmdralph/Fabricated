@@ -128,6 +128,18 @@ public final class MixinPreflight {
 	private final boolean missingTargetsFatal;
 	/** Whether the running Mixin applies injectors in interface mixins (INTERFACE-1: Forge 47's doesn't). */
 	private final boolean interfaceInjectors;
+	/** Where the running Mixin takes an {@code @Inject} into a constructor (CTOR-1). */
+	private final ConstructorInjects constructorInjects;
+
+	/** Where the running Mixin takes an {@code @Inject} into a constructor (CTOR-1). */
+	public enum ConstructorInjects {
+		/** Anywhere after the call to the delegate constructor, as Fabric's Mixin does; not judged. */
+		AFTER_DELEGATE,
+		/** At a return, or at a point marked {@code unsafe} (SpongePowered's 0.8.6 and 0.8.7). */
+		UNSAFE_POINTS,
+		/** At a return only (SpongePowered's 0.8.5, whose points take no {@code unsafe}). */
+		RETURNS_ONLY
+	}
 	/** The platform's loader, as messages name it ({@code NeoForge}, {@code Forge}). */
 	private final String loader;
 	/** Vanilla's code of the game, or {@link ClassBytesSource#EMPTY} (VANILLA-1). */
@@ -175,7 +187,16 @@ public final class MixinPreflight {
 	 */
 	public MixinPreflight(ClassIndex game, InstalledClasses installed, ClassBytesSource modClasses, ClassBytesSource untransformable,
 			boolean clientSide, boolean missingTargetsFatal, ClassBytesSource vanilla, String loader, boolean interfaceInjectors) {
+		this(game, installed, modClasses, untransformable, clientSide, missingTargetsFatal, vanilla, loader, interfaceInjectors,
+				ConstructorInjects.AFTER_DELEGATE);
+	}
+
+	/** @param constructorInjects where the running Mixin takes an {@code @Inject} into a constructor (CTOR-1) */
+	public MixinPreflight(ClassIndex game, InstalledClasses installed, ClassBytesSource modClasses, ClassBytesSource untransformable,
+			boolean clientSide, boolean missingTargetsFatal, ClassBytesSource vanilla, String loader, boolean interfaceInjectors,
+			ConstructorInjects constructorInjects) {
 		this.interfaceInjectors = interfaceInjectors;
+		this.constructorInjects = constructorInjects;
 		this.game = game;
 		this.installed = installed;
 		this.modClasses = modClasses;
@@ -310,6 +331,10 @@ public final class MixinPreflight {
 						changed = true;
 						out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@" + simpleName(ann.desc) + " " + method.name
 								+ " targets " + lambda + ", which this game build numbers differently", ""));
+					}
+					for (String marked : constructorPointRepairs(method, ann, targets, ctx)) {
+						changed = true;
+						out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@Inject " + method.name + " injects into " + marked, ""));
 					}
 					if (softenLocalCapture(ann)) {
 						changed = true;
@@ -922,6 +947,97 @@ public final class MixinPreflight {
 			target.methods.stream().filter(m -> ref.matchesMethod(m.name, m.desc)).findFirst().ifPresent(methods::add);
 		}
 		return methods;
+	}
+
+	/**
+	 * The first point of an {@code @Inject} into a constructor that SpongePowered's Mixin rejects (CTOR-1: it throws as it
+	 * applies the mixin, whatever the config's {@code required}): any but a return that isn't marked {@code unsafe}, or,
+	 * on 0.8.5, any but a return. Null when it takes them all, or on Fabric's Mixin.
+	 */
+	private String constructorPointRejected(AnnotationNode injector, List<MethodNode> matched) {
+		if (constructorInjects == ConstructorInjects.AFTER_DELEGATE || !injector.desc.equals(INJECT)
+				|| matched.stream().noneMatch(m -> m.name.equals("<init>"))) return null;
+		for (AnnotationNode at : Annotations.list(Annotations.value(injector, "at"))) {
+			String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
+			if (RETURN_POINTS.contains(point)) continue;
+			if (constructorInjects == ConstructorInjects.UNSAFE_POINTS && Boolean.TRUE.equals(Annotations.value(at, "unsafe"))) continue;
+			return point;
+		}
+		return null;
+	}
+
+	/** Points an {@code @Inject} into a constructor may take anywhere on SpongePowered's Mixin: its returns (CTOR-1). */
+	private static final Set<String> RETURN_POINTS = Set.of("RETURN", "TAIL");
+	/** Points whose instructions pre-flight finds, so it can tell whether they follow the delegate constructor call. */
+	private static final Set<String> PLACED_POINTS = Set.of("INVOKE", "INVOKE_ASSIGN", "INVOKE_STRING", "FIELD", "NEW");
+
+	/**
+	 * Marks {@code unsafe} the points of an {@code @Inject} into a constructor that SpongePowered's Mixin takes only so
+	 * marked (CTOR-1): any but a return, where Fabric's Mixin takes any point after the call to the delegate constructor
+	 * ({@code super(...)} or {@code this(...)}). A point is marked when every instruction it picks in every constructor
+	 * selected follows that call, which gives Fabric's behaviour: fabric-command-api-v2's hook into {@code Commands}'
+	 * constructor, which stopped Forge 61's server. Returns a description of each point marked.
+	 */
+	private List<String> constructorPointRepairs(MethodNode handler, AnnotationNode injector, List<ClassNode> targets, Context ctx) {
+		if (constructorInjects != ConstructorInjects.UNSAFE_POINTS || !injector.desc.equals(INJECT)) return List.of();
+		List<AnnotationNode> slices = Annotations.list(Annotations.value(injector, "slice"));
+		List<String> marked = new ArrayList<>();
+		for (AnnotationNode at : Annotations.list(Annotations.value(injector, "at"))) {
+			String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
+			if (!PLACED_POINTS.contains(point) || Boolean.TRUE.equals(Annotations.value(at, "unsafe"))) continue;
+			String target = Annotations.value(at, "target") instanceof String t ? ctx.resolve(t) : null;
+			int ordinal = Annotations.value(at, "ordinal") instanceof Integer i ? i : -1;
+			int opcode = Annotations.value(at, "opcode") instanceof Integer i ? i : -1;
+			AnnotationNode slice = InjectionPoints.sliceFor(at, slices);
+			boolean picked = false;
+			boolean afterDelegate = true;
+			String where = null;
+			for (ClassNode t : targets) {
+				for (MethodNode m : selectedMethods(injector, t, ctx)) {
+					if (!m.name.equals("<init>")) continue;
+					int delegate = delegateCall(m, t);
+					Range range = slice == null ? Range.ALL : InjectionPoints.sliceRange(slice, m, ctx);
+					List<Integer> at2 = InjectionPoints.indexes(point, target, ordinal, opcode, range, m);
+					if (delegate < 0 || at2 == null) {
+						afterDelegate = false;
+						continue;
+					}
+					for (int i : at2) {
+						picked = true;
+						afterDelegate &= i > delegate;
+					}
+					where = t.name.replace('/', '.');
+				}
+			}
+			if (!picked || !afterDelegate) continue;
+			Annotations.put(at, "unsafe", true);
+			marked.add("the constructor of " + where + " at @At(\"" + point + "\"" + (target != null ? ", target=\"" + target + "\"" : "")
+					+ ") after its super() call, which " + loader + "'s Mixin takes only at a point marked unsafe; it is so marked, as Fabric's Mixin takes it");
+		}
+		return marked;
+	}
+
+	/**
+	 * The index of a constructor's call to its delegate constructor ({@code super(...)} or {@code this(...)}): the first
+	 * {@code INVOKESPECIAL <init>} of its class or superclass that doesn't initialise an instance the constructor makes
+	 * itself ({@code new}); -1 when there is none.
+	 */
+	private static int delegateCall(MethodNode constructor, ClassNode owner) {
+		Map<String, Integer> made = new HashMap<>();
+		for (int i = 0; i < constructor.instructions.size(); i++) {
+			AbstractInsnNode insn = constructor.instructions.get(i);
+			if (insn instanceof TypeInsnNode type && type.getOpcode() == Opcodes.NEW) {
+				made.merge(type.desc, 1, Integer::sum);
+			} else if (insn instanceof MethodInsnNode call && call.getOpcode() == Opcodes.INVOKESPECIAL && call.name.equals("<init>")) {
+				Integer pending = made.get(call.owner);
+				if (pending != null && pending > 0) {
+					made.put(call.owner, pending - 1);
+				} else if (call.owner.equals(owner.name) || call.owner.equals(owner.superName)) {
+					return i;
+				}
+			}
+		}
+		return -1;
 	}
 
 	/**
@@ -2895,6 +3011,15 @@ public final class MixinPreflight {
 			ctx.injector(handler, require, injectorName + " handler " + handler.name + " captures the local variable " + ambiguous
 							+ " by its type, which " + matched.get(0).name + " in " + target.name.replace('/', '.') + " has more than one of there",
 					ctx.changer(true) + " added a local of that type; the mod needs an update or this mixin must be skipped.");
+			return;
+		}
+
+		String constructorPoint = constructorPointRejected(ann, matched);
+		if (constructorPoint != null) {
+			ctx.injector(handler, 1, injectorName + " " + handler.name + " injects into the constructor of " + target.name.replace('/', '.') + " at @At(\""
+							+ constructorPoint + "\"), which " + loader + "'s Mixin takes only at a return"
+							+ (constructorInjects == ConstructorInjects.UNSAFE_POINTS ? " or a point marked unsafe" : "") + " (Fabric's Mixin takes any point after super())",
+					"The feature this hook serves doesn't work on this " + loader + ".");
 			return;
 		}
 

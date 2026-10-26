@@ -49,6 +49,10 @@ One entry per working session, newest first: what changed, and how it was verifi
   runs, applies none there and drops such a mixin whole with an error line, which happened to four Fabric API 0.92
   mixins while the report said the modules loaded in full. The rest of such a mixin now applies, and the report names
   what doesn't. Mixin from 0.8.6, on NeoForge and Forge 61 to 66, is not affected. Test: 277 core tests.
+- On Forge, an `@Inject` into a constructor follows SpongePowered's Mixin (CTOR-1): it takes such a hook only at a
+  return or, from 0.8.6, at a point marked `unsafe`, where Fabric's takes any point after `super()`. A point after the
+  constructor's `super()` call is marked `unsafe` on Forge 61 to 66, so fabric-command-api-v2's hook into `Commands`
+  applies instead of hanging Forge 61's server; on Forge 47 such an injector is left out. Test: 279 core tests.
 - On Forge 47, the methods Intermediary leaves under their official names take SRG's names too (PLAIN-1): 230 on
   1.20.1, among them the functional interfaces' `open`, `createMenu`, `accept` and `codec`. Calls to them, overrides of
   them and lambdas implementing them kept their official names, and Fabric API's resource pack lambda stopped the server
