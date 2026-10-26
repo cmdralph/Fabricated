@@ -6,6 +6,11 @@
       "version": "1.0.5",
       "reason": "Shipped by Fabricated (vendored from upstream); every Fabric API module builds on it."
     },
+    "fabric-data-generation-api-v1": {
+      "plan": "passthrough",
+      "skipMixins": ["fabric-data-generation-api-v1.mixins.json:TagAppenderMixin$ProvidedTagBuilder1Mixin"],
+      "reason": "Mods' runtime code references its classes; its hooks act only when the fabric-api.datagen property is set. Its tag appender mixin adds a removal method Forge's own tag appender already declares, which Mixin refuses without @Overwrite, so it is left out. Pre-flight disabled the module (and every mod referencing it). Lost, in data generation only: removing entries through a Fabric tag appender doesn't work."
+    },
     "fabric-dimensions-v1": {
       "plan": "passthrough",
       "skipMixins": ["fabric-dimensions-v1.mixins.json:V2832Mixin", "fabric-dimensions-v1.mixins.json:TaggedChoiceMixin", "fabric-dimensions-v1.mixins.json:TaggedChoiceTaggedChoiceTypeMixin"],
