@@ -70,6 +70,20 @@ jobs:
           export PATH="$JAVA_HOME_17_X64/bin:$PATH"
           forge=$(sed -n 's/^forge_version=//p' "mc/${{ matrix.minecraft }}/gradle.properties")
           ci/forge-legacy/smoke-server.sh "${{ matrix.minecraft }}" "$forge" "$RUNNER_TEMP/server"
+      # The official Fabric API jar (downloaded here in CI, never by Fabricated) with every module passed through: what
+      # loads on Forge 47 and what pre-flight disables, for L4's choice of native modules. Informational.
+      - name: Server with Fabricated and Fabric API (informational)
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        run: |
+          export PATH="$JAVA_HOME_17_X64/bin:$PATH"
+          forge=$(sed -n 's/^forge_version=//p' "mc/${{ matrix.minecraft }}/gradle.properties")
+          fabric_api=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["fabricApiVersion"])' \
+            "mc/${{ matrix.minecraft }}/src/fabricated/resources/META-INF/fabricated/fabric-api-plan.json")
+          mkdir -p "$RUNNER_TEMP/extra"
+          curl -fsSL --retry 4 -o "$RUNNER_TEMP/extra/fabric-api.jar" \
+            "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api/${fabric_api}/fabric-api-${fabric_api}.jar"
+          ci/forge-legacy/smoke-server.sh "${{ matrix.minecraft }}" "$forge" "$RUNNER_TEMP/server-fapi" "$RUNNER_TEMP/extra"
       - name: Upload Fabricated jar
         uses: actions/upload-artifact@v4
         with:

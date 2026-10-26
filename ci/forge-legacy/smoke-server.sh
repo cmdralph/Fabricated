@@ -5,14 +5,16 @@
 # mod, whether the translated test mod loaded, ran its entrypoints and had its mixin applied in SRG's names, and whether
 # Forge's loading warnings name a Fabric mod that wasn't loaded.
 #
-# Usage: ci/forge-legacy/smoke-server.sh <minecraft-version> <forge-version, Minecraft's included> <work-dir>
-# Exit status: the server must start; the checks are reported (until L3's discovery is settled).
+# Usage: ci/forge-legacy/smoke-server.sh <minecraft-version> <forge-version, Minecraft's included> <work-dir> [extra-mods-dir]
+# Exit status: the server must start; the checks are reported (until L3's discovery is settled). With extra-mods-dir
+# (the official Fabric API jar), its jars join the mods folder.
 # Expects: build/libs/fabricated-forge-*+mc<minecraft-version>.jar and mc/<minecraft-version>/build/testmods/fabricated-testmod.jar
 set -euo pipefail
 
 mc="$1"
 forge="$2"
 work="$3"
+extra="${4:-}"
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 timeout_seconds="${SMOKE_TIMEOUT:-600}"
 
@@ -34,6 +36,9 @@ cat > unmet/fabric.mod.json <<'JSON'
 {"schemaVersion": 1, "id": "fabricated_forge_unmet", "version": "1.0.0", "depends": {"fabricated_forge_missing": "*"}}
 JSON
 jar --create --file mods/fabricated-forge-unmet.jar -C unmet fabric.mod.json
+if [ -n "$extra" ] && [ -d "$extra" ]; then
+	cp "$extra"/*.jar mods/ 2>/dev/null || true
+fi
 ls -1 mods
 echo "eula=true" > eula.txt
 cat > server.properties <<'PROPS'
