@@ -62,6 +62,33 @@ final class PatchAlignment {
 	}
 
 	/**
+	 * For each of {@code a}'s tokens, the index of the token of {@code b} it is aligned with, matched from the front and
+	 * from the back as instructions are: -1 for none, {@link #UNCERTAIN} where the two alignments disagree. Null when the
+	 * differing middle part is too large.
+	 */
+	static int[] places(String[] a, String[] b) {
+		int[] front = match(a, b);
+		int[] back = match(reversed(a), reversed(b));
+		if (front == null || back == null) return null;
+		int[] places = new int[a.length];
+		for (int k = 0; k < a.length; k++) {
+			int r = back[a.length - 1 - k];
+			int fromBack = r >= 0 ? b.length - 1 - r : -1;
+			places[k] = front[k] == fromBack ? front[k] : UNCERTAIN;
+		}
+		return places;
+	}
+
+	/** A method's instructions as they are compared, one per line. */
+	static String code(MethodNode method) {
+		StringBuilder code = new StringBuilder();
+		for (AbstractInsnNode insn : method.instructions) {
+			if (insn.getOpcode() >= 0) code.append(token(insn)).append('\n');
+		}
+		return code.toString();
+	}
+
+	/**
 	 * The index in the patched method of vanilla's instruction at {@code vanillaIndex}; -1 when the patch changed it,
 	 * {@link #UNCERTAIN} when that can't be told.
 	 */
