@@ -49,6 +49,11 @@ One entry per working session, newest first: what changed, and how it was verifi
   runs, applies none there and drops such a mixin whole with an error line, which happened to four Fabric API 0.92
   mixins while the report said the modules loaded in full. The rest of such a mixin now applies, and the report names
   what doesn't. Mixin from 0.8.6, on NeoForge and Forge 61 to 66, is not affected. Test: 277 core tests.
+- On Forge 47, the methods Intermediary leaves under their official names take SRG's names too (PLAIN-1): 230 on
+  1.20.1, among them the functional interfaces' `open`, `createMenu`, `accept` and `codec`. Calls to them, overrides of
+  them and lambdas implementing them kept their official names, and Fabric API's resource pack lambda stopped the server
+  (AbstractMethodError). A descriptor without Minecraft classes is matched by its owner only, so a mod's `Runnable.run`
+  keeps its name. Test: 278 core tests.
 - LEVEL-1 and INTERFACE-1 read the running Mixin's release without its build metadata: Forge reports
   `0.8.5+Jenkins-b310.git-…`, which the table of SpongePowered's releases didn't match, so forge-legacy's run on
   #113 still had Mixin drop the four interface mixins. Test: 277 core tests.
