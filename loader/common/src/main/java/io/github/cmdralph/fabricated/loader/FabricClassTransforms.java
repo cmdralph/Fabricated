@@ -1,6 +1,8 @@
 package io.github.cmdralph.fabricated.loader;
 
 import java.util.List;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.function.BiConsumer;
 
 import org.objectweb.asm.Opcodes;
@@ -34,7 +36,16 @@ public final class FabricClassTransforms {
 
 	/** Whether {@link #beforeMixin} may change the class (internal name). */
 	public static boolean transformsBeforeMixin(FabricatedState state, String internalName) {
-		return state.environmentClasses().contains(internalName) || state.injectedInterfaces().containsKey(internalName);
+		return state.environmentClasses().contains(internalName) || state.injectedInterfaces().containsKey(internalName)
+				|| state.overridableMethods().containsKey(internalName);
+	}
+
+	/** Every class {@link #beforeMixin} may change, for a platform that names its targets up front. */
+	public static Set<String> classesBeforeMixin(FabricatedState state) {
+		Set<String> classes = new TreeSet<>(state.environmentClasses());
+		classes.addAll(state.injectedInterfaces().keySet());
+		classes.addAll(state.overridableMethods().keySet());
+		return classes;
 	}
 
 	/** Whether {@link #declareDefaultBridges} may change the class (internal name). */
@@ -42,7 +53,11 @@ public final class FabricClassTransforms {
 		return state.defaultBridges().containsKey(internalName);
 	}
 
-	/** Strips the other side's members and adds injected interfaces; whether the class changed. */
+	/**
+	 * Strips the other side's members, adds injected interfaces and removes {@code final} from the methods Fabric mods
+	 * override where only the platform's build declares it (FINAL-2; the platform's own access transformers have run by
+	 * then); whether the class changed.
+	 */
 	public static boolean beforeMixin(FabricatedState state, ClassNode node, BiConsumer<String, String> audit) {
 		boolean changed = false;
 		if (state.environmentClasses().contains(node.name) && EnvironmentStripper.strip(node, state.runtime().getEnvironmentType())) {
@@ -60,6 +75,13 @@ public final class FabricClassTransforms {
 			node.interfaces.add(injection.interfaceName());
 			if (node.signature != null) node.signature += "L" + injection.genericSignature() + ";";
 			audit.accept("fabricated:inject_interface", injection.interfaceName());
+			changed = true;
+		}
+		Set<String> overridable = state.overridableMethods().getOrDefault(node.name, Set.of());
+		for (MethodNode method : node.methods) {
+			if ((method.access & Opcodes.ACC_FINAL) == 0 || !overridable.contains(method.name + method.desc)) continue;
+			method.access &= ~Opcodes.ACC_FINAL;
+			audit.accept("fabricated:overridable", method.name);
 			changed = true;
 		}
 		return changed;

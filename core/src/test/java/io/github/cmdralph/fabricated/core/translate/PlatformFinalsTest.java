@@ -21,7 +21,7 @@ class PlatformFinalsTest {
 	private static final String OTHER = "net/minecraft/world/item/Item";
 
 	@Test
-	void aGameMethodTheModOverridesIsMadeOverridableWhereOnlyThePlatformDeclaresItFinal() throws Exception {
+	void aGameMethodTheModOverridesIsFoundWhereOnlyThePlatformDeclaresItFinal() throws Exception {
 		// FINAL-1: Forge 47 makes Ingredient.toNetwork final; Fabric API's recipe API overrides it, as vanilla's isn't.
 		ClassIndex game = new ClassIndex(Map.of(
 				GAME, gameClass(GAME, Opcodes.ACC_PUBLIC | Opcodes.ACC_FINAL, Opcodes.ACC_PROTECTED | Opcodes.ACC_FINAL),
@@ -40,8 +40,7 @@ class PlatformFinalsTest {
 		List<String> notes = new ArrayList<>();
 		Set<String> lines = ModTranslator.platformFinals(mod.keySet(), mod::get, game, vanilla::get, "Forge", notes);
 
-		assertEquals(Set.of("public-f net.minecraft.world.item.crafting.Ingredient toNetwork(Ljava/lang/Object;)V",
-				"protected-f net.minecraft.world.item.crafting.Ingredient check(I)Z"), lines, "each keeps its access");
+		assertEquals(Set.of(GAME + " toNetwork(Ljava/lang/Object;)V", GAME + " check(I)Z"), lines);
 		assertEquals(2, notes.size(), notes.toString());
 		assertTrue(notes.stream().allMatch(n -> n.contains("which Forge declares final and vanilla doesn't")), notes.toString());
 
