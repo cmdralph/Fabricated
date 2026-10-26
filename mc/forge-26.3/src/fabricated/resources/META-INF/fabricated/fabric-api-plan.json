@@ -10,6 +10,11 @@
       "plan": "passthrough",
       "skipMixins": ["fabric-loot-api-v3.mixins.json:ResourceManagerRegistryLoadTaskMixin"],
       "reason": "Forge 66 decodes loot tables as Optional<LootTable> (its conditional loot tables), which upstream's loading hook casts to LootTable and stops data pack loading: the loot table replace and modify events don't run until a native loot module on Forge's LootTableLoadEvent replaces it."
+    },
+    "fabric-tag-api-v1": {
+      "plan": "passthrough",
+      "skipMixins": ["fabric-tag-api-v1.mixins.json:TagFileMixin#remove", "fabric-tag-api-v1.mixins.json:TagFileMixin#modifyCodec", "fabric-tag-api-v1.mixins.json:TagLoaderMixin#removeTagRemovalReferenceOnReplace", "fabric-tag-api-v1.mixins.json:TagLoaderMixin#loadRemoveEntries", "fabric-tag-api-v1.mixins.json:TagLoaderMixin#scopeIdToTryBuildTag", "fabric-tag-api-v1.mixins.json:TagLoaderMixin#addTagRemovalReferencesToDependencySorter", "fabric-tag-api-v1.mixins.json:TagLoaderMixin#removeEntriesFromTags", "fabric-tag-api-v1.mixins.json:TagLoaderMixin#removeTagRemovalReferencesWhenFinished"],
+      "reason": "Forge's tag files already have a remove list, which its tag loader applies, and upstream's FabricTagFile.remove() reads it: upstream's own list conflicts with Forge's, and its tag loader hooks, which apply that list, are left out with it. Fabricated adds fabric:remove entries to Forge's list instead (the in-game mod's TagFileRemoveMixin)."
     }
   }
 }

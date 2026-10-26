@@ -77,7 +77,16 @@ tasks.register('forgeClasspathReport') {
     }
 }
 
+// --- The in-game mod's own mixins -----------------------------------------------------------------------------------
+// Forge runs the game in Mojang's names, as the in-game mod compiles, so its mixins need no refmap; Forge reads a mod's
+// mixin configs from its manifest.
+def gameModMixins = 'fabricated-forge.mixins.json'
+
 afterEvaluate {
+    tasks.named('gameModJar', Jar) {
+        manifest.attributes('MixinConfigs': gameModMixins)
+    }
+
     def fabricatedJar = tasks.named('fabricatedJar', Jar) {
         // Named apart from the NeoForge jar of the same Minecraft version: here, once mc/mc.gradle has registered the
         // task, as its own configuration would otherwise set the name back.
@@ -129,6 +138,12 @@ afterEvaluate {
                 name
             }
             def implementation = provided(provider, 'lang-provider.jar', 'net.minecraftforge.forgespi.language.IModLanguageProvider')
+            // The in-game mod's mixin configs, named in its manifest, are in its jar.
+            def gameMod = parts['game-mod.jar']
+            def configs = (new java.util.jar.Manifest(new ByteArrayInputStream(gameMod['META-INF/MANIFEST.MF'] ?: new byte[0])).mainAttributes
+                    .getValue('MixinConfigs') ?: '').split(',')*.trim().findAll { it }
+            if (configs != [gameModMixins]) throw new GradleException("game-mod.jar's manifest names the mixin configs ${configs}, not [${gameModMixins}]")
+            configs.each { if (!gameMod.containsKey(it)) throw new GradleException("game-mod.jar has no mixin config ${it}") }
             // Forge finds the Fabricated jar in the mods folder by these (ModDirTransformerDiscoverer), and ModLauncher loads
             // the transformation service from it.
             def locators = ['net.minecraftforge.forgespi.locating.IModLocator', 'net.minecraftforge.forgespi.locating.IDependencyLocator',
@@ -142,7 +157,7 @@ afterEvaluate {
                     if (shared) throw new GradleException("${names[i]} and ${names[j]} share packages: ${shared.sort()}")
                 }
             }
-            logger.lifecycle("Forge layout: ${names.collect { "$it (${packages(parts[it]).size()} packages)" }.join(', ')}; language provider $implementation; locators $locators")
+            logger.lifecycle("Forge layout: ${names.collect { "$it (${packages(parts[it]).size()} packages)" }.join(', ')}; language provider $implementation; locators $locators; in-game mixins $configs")
         }
     }
     tasks.named('check') { dependsOn checkJar }

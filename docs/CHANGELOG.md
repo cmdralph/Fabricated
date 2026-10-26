@@ -58,6 +58,19 @@ One entry per working session, newest first: what changed, and how it was verifi
   them and lambdas implementing them kept their official names, and Fabric API's resource pack lambda stopped the server
   (AbstractMethodError). A descriptor without Minecraft classes is matched by its owner only, so a mod's `Runnable.run`
   keeps its name. Test: 278 core tests.
+- FINAL-2 is verified on Forge 47 (forge-legacy #125): no access transformer error, the server reaches "Done" and all
+  38 Fabric API modules' main entrypoints run, the recipe API's included. The Forge branches' transformation services
+  target every class the shared class transforms change (`classesBeforeMixin`; forge #128, forge-legacy #125). The
+  26.x corpus's remaining errors were traced to the mods themselves: FrozenLib's "Unable to read config entry" on a
+  fresh config directory (CORPUS-27) and Wilder Wild 26.3's reinforced deepslate blockstate without its mixin
+  (CORPUS-28). Forge 47's biome coremod failing with Fabric API installed is recorded for L4 in the roadmap.
+- A mixin member left out by name takes the class's stores to its field with it (SKIP-1). Left in, Mixin pointed them
+  at the target's field of that name: fabric-tag-api-v1's `TagFileMixin` initialises its own `remove` list, and with
+  the field left out the empty list was written over the platform's `remove` after the record's constructor set it, so
+  with Fabric API's tag module passed through neither `fabric:remove` nor NeoForge's (or Forge's) `remove` took
+  anything out of a tag. Found by forge-legacy's Fabric API run on #132. In a constructor the initialiser's whole
+  statement goes, as Mixin refuses an initialiser that doesn't end in its field's store; elsewhere the store becomes
+  pops of its operands. The test mod checks both removals on every version. Test: 288 core tests.
 - FINAL-1's `final` is removed at class load instead of by an access transformer line (FINAL-2): Forge 47 makes
   `Ingredient.toNetwork` final with its own access transformer, and the engine refused the mod's `-f` next to Forge's
   `+f`, so Forge 47's Fabric API server exited at start on forge-legacy's run on #125. The translation's metadata lists
