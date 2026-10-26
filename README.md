@@ -18,6 +18,18 @@ It's built to be:
 > loads, but many Fabric mods still patch code that NeoForge changed and are disabled before they run. Read
 > [What works today](#what-works-today) before relying on it.
 
+**Platforms and branches.** NeoForge is the supported platform, and this README is about it. Builds for Minecraft
+Forge are experimental previews for dedicated servers, each with a README of its own on its branch:
+
+| Branch | Platform | Minecraft | Jars |
+|---|---|---|---|
+| [`main`](https://github.com/cmdralph/Fabricated/tree/main) | NeoForge | 1.21.11, 26.1.2, 26.2, 26.3 | `fabricated-<version>+mc<minecraft>.jar` |
+| [`forge`](https://github.com/cmdralph/Fabricated/tree/forge) | Minecraft Forge 61 to 66 (experimental) | 1.21.11, 26.1.2, 26.2, 26.3 | `fabricated-forge-<version>+mc<minecraft>.jar` |
+| [`forge-legacy`](https://github.com/cmdralph/Fabricated/tree/forge-legacy) | Forge 47 (experimental) | 1.20.1 | `fabricated-forge-<version>+mc1.20.1.jar` |
+
+Every branch holds the same code, with one folder per platform and version. A branch differs in the platform its CI
+builds and in its README.
+
 ---
 
 ## What works today
@@ -185,7 +197,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). In short:
 
 ```bash
 ./gradlew -Pfabricated.coreOnly=true build          # unit tests, no Minecraft needed
-./gradlew :mc:26.2:fabricatedJar :mc:26.2:testmods   # build/libs/fabricated-0.5.0+mc26.2.jar
+./gradlew :mc:neoforge-26.2:fabricatedJar :mc:neoforge-26.2:testmods   # build/libs/fabricated-0.5.0+mc26.2.jar
 ```
 
 ## Design and research
