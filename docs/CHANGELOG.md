@@ -18,6 +18,15 @@ One entry per working session, newest first: what changed, and how it was verifi
   release branch merged back while it moves on does (two merge bases, a conflict, no CI).
 - **CI-1** (`FINDINGS.md`): three of the Forge smoke scripts' informational checks read a line in `debug.log` as NOT SEEN
   when `grep -q` ended their pipeline under pipefail, which is why they changed between runs of the same code.
+- **PLAT-4** (`FINDINGS.md`): on Forge, Fabricated widened fields Forge's own coremod needs private, as it knew only
+  NeoForge's list. Reproduced first, with the Forge test mods' access wideners opening `BucketItem`'s fluid: Forge 61
+  and 66 failed to load `BucketItem` and the servers exited; Forge 47 skipped its redirect. Each platform's descriptor
+  now holds its list (NeoForge's, Forge 61 to 66's, Forge 47's in SRG's names), and the converter's warnings name the
+  platform's loader.
+- Verification: core's tests pass locally (the converter's new case among them). On `6db114a` (manual runs 40385962374
+  and 40385967190) both Forge servers start on all five versions, the field stays private with no transformer error,
+  and no check fails: 46 to 48 checks on Forge 61 to 66, whose only lines not seen are the checks that apply to other
+  versions, and 56 on Forge 47, every one of them in both runs (CI-1 brought back the language provider's).
 
 ## 2026-10-26: one working branch, one folder per platform
 

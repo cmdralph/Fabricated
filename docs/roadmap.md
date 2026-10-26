@@ -53,7 +53,7 @@ regression on NeoForge. Each item is done when its CI check is; the tracks below
 |---|---|---|
 | All | One working branch and one folder per platform, every branch holding the same tree. | Done (#156 to #158) |
 | All | Each Fabric API module's status on every platform in `COMPATIBILITY.md`, so the platforms can be compared. | Done for the servers (*Fabric API modules on Forge*); the Forge clients follow their CI runs |
-| All | The engine's platform facts from the platform: the fields its coremods keep private (PLAT-4). | In progress |
+| All | The engine's platform facts from the platform: the fields its coremods keep private (PLAT-4). | Done (PLAT-4, checked on all five Forge versions) |
 | NeoForge (`main`) | The open corpus findings (below) that a generic fix covers. `preLaunch` right after FML's mixin bootstrap (*Loader and translation*, next). ARCH-1: pre-flight's repair families out of `MixinPreflight`, with no change in behaviour. | Open |
 | Forge 61 to 66 (`forge`) | Fabric mods' client entrypoints and a client run in CI. Entity and interaction events native on Forge's events, as `main` has them on NeoForge's (F4). The server runs made gates once their checks hold on every version. | Open; the checks' run-to-run noise is fixed (CI-1) |
 | Forge 47 (`forge-legacy`) | Fabric's networking on `SimpleChannel` and its storages on Forge 47's capabilities, then client entrypoints and a client run in CI (L4, `PORTING.md` §7). | Open |
