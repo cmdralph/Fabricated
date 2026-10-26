@@ -107,7 +107,7 @@ Fabricated/
 ```
 
 * **Output:** one jar per MC version, `fabricated-<version>+mc<mc>.jar`. `core`, `loader`, `fabric-loader-api` and `api` are shaded in, all under the Fabricated-owned package `io.github.cmdralph.fabricated.*`, so they can't clash with anything. The `fabric-loader-api` types keep their original `net.fabricmc.*` package names because Fabric mods link against them.
-* **No preprocessor** (no Stonecutter/Manifold). Version differences live in each `mc/<ver>` directory; code shared by every version lives once in `mc/common`, by all 26.x versions in `mc/common26`, by 26.1.2 and 26.2 in `mc/common26early`, and by 26.2 and 26.3 in `mc/common26late` (see `sharedSources` in `mc/mc.gradle`).
+* **No preprocessor** (no Stonecutter/Manifold). Version differences live in each `mc/neoforge/<version>` directory; code shared by every version lives once in `mc/neoforge/common`, by all 26.x versions in `mc/neoforge/common26`, by 26.1.2 and 26.2 in `mc/neoforge/common26early`, and by 26.2 and 26.3 in `mc/neoforge/common26late` (see `sharedSources` in `mc/mc.gradle`).
 * `core`, `api` and `fabric-loader-api` target Java 17 bytecode so the *same* compiled classes run on every line, and on Minecraft 1.20.1 (`RESEARCH.md` §8, D2).
 
 ---
@@ -264,7 +264,7 @@ The same on all four versions unless a row says otherwise.
 | `fabric-data-generation-api-v1` | **Pass-through** | mods' runtime code references its classes (Wover's entrypoints load its tag providers, DATAGEN-1); its hooks act only when the `fabric-api.datagen` property is set |
 | `fabric-gametest-api-v1`, `fabric-client-gametest-api-v1` | **Unsupported** | development-time only |
 
-This table summarises data (`mc/<ver>/src/fabricated/resources/META-INF/fabricated/fabric-api-plan.json`: each
+This table summarises data (`mc/neoforge/<version>/src/fabricated/resources/META-INF/fabricated/fabric-api-plan.json`: each
 module's `plan`, `reason` and `skipMixins`), not code, so it can change per MC version without code changes.
 
 ### 6.3 Bridges between Fabric's systems and NeoForge's
@@ -344,13 +344,13 @@ A unit test remaps the same input twice and compares SHA-256.
 
 ## 9. Per-version abstraction
 
-There is no adapter interface: each version is its own Gradle project (`mc/<ver>`), and what differs between
+There is no adapter interface: each version is its own Gradle project (`mc/neoforge/<version>`), and what differs between
 versions is decided at compile time by which source folders it compiles, plus two data files.
 
-* **Code.** `sharedSources` in `mc/mc.gradle` adds `mc/common` to every version, `mc/common26` to all 26.x
-  versions, and `mc/common26early` / `mc/common26late` to the pairs that share an API. A version's own folder holds
+* **Code.** `sharedSources` in `mc/mc.gradle` adds `mc/neoforge/common` to every version, `mc/neoforge/common26` to all 26.x
+  versions, and `mc/neoforge/common26early` / `mc/neoforge/common26late` to the pairs that share an API. A version's own folder holds
   only what differs (renamed Minecraft or NeoForge classes). The vendored native Fabric API modules are per version
-  (`mc/<ver>/src/fabricapi`), because upstream's sources differ per version.
+  (`mc/neoforge/<version>/src/fabricapi`), because upstream's sources differ per version.
 * **Data.** `META-INF/fabricated/fabric-api-plan.json` (per version: which Fabric API modules are native,
   pass-through or unsupported, and which upstream mixins to skip) and the generated `version.properties` (Minecraft
   version, mapping namespace, Mixin versions, Fabricated's version and build digest). Core reads the plan and `loader`'s `FabricatedInfo` the properties, each validated when parsed. Facts about other
@@ -365,7 +365,7 @@ versions is decided at compile time by which source folders it compiles, plus tw
   names already carry the mod's id. Mixins only giving a library class the mod's interfaces become generated classes
   the mod calls instead (`LibraryBridges`).
 * Everything Minecraft-agnostic stays in `core`/`loader`. The full seam table is in [`claude.md`](claude.md).
-* **Adding a version** (summarised from `CONTRIBUTING.md`): copy the nearest `mc/<ver>` directory, set
+* **Adding a version** (summarised from `CONTRIBUTING.md`): copy the nearest `mc/neoforge/<version>` directory, set
   `minecraft_version`/`neo_version` in its `gradle.properties`, add it to `settings.gradle` and the CI matrix, fix
   compile errors (usually renamed MC/NeoForge classes), adjust `fabric-api-plan.json`, and run the test mods. No core
   changes are expected.
@@ -455,7 +455,7 @@ Unknown keys produce a warning. Invalid values fall back to defaults with a warn
 ## 16. Testing and CI
 
 * **Unit (core, runs anywhere):** metadata parsing/translation, version predicates, id normalisation, dependency resolution, archive safety (crafted malicious zips generated in-test), Tiny/ProGuard parsing and composition, remapping (incl. determinism), refmap rewriting, AW/CT→AT, pre-flight verifier (synthetic target/mixin classes generated with ASM), cache integrity, config validation, report rendering. **No third-party binaries are committed.** Fixtures are generated in tests.
-* **Integration (per MC version, CI):** no `gameTestServer` run. A real NeoForge dedicated server starts with the in-repo test mods (`ci/smoke-server.sh`: entrypoints, the Fabric Loader API, registries, mixins, access wideners, the native Fabric API modules, commands, and the isolation of a missing dependency, an impossible mixin and a throwing entrypoint), plus a client started headlessly under Xvfb (`ci/smoke-client.sh`) that joins a singleplayer world and exits.
+* **Integration (per MC version, CI):** no `gameTestServer` run. A real NeoForge dedicated server starts with the in-repo test mods (`ci/neoforge/smoke-server.sh`: entrypoints, the Fabric Loader API, registries, mixins, access wideners, the native Fabric API modules, commands, and the isolation of a missing dependency, an impossible mixin and a throwing entrypoint), plus a client started headlessly under Xvfb (`ci/neoforge/smoke-client.sh`) that joins a singleplayer world and exits.
 * **Real-mod smoke (CI only):** Fabric mods from Modrinth (`ci/mod-corpus.txt`, `ci/mod-corpus-advanced.txt` and projects named in the workflow), fetched by **CI** (never by Fabricated) with `ci/fetch-corpus.py`: each project's newest build for the version unless a Modrinth version id is named (the plugin hosts' are), each file checked against the SHA-512 Modrinth lists. Results feed `docs/COMPATIBILITY.md`.
 * **GitHub Actions:** a `core` job (JDK 21: the Minecraft-independent modules' build and unit tests), then a matrix `{1.21.11: JDK 21, 26.1.2: JDK 25, 26.2: JDK 25, 26.3: JDK 25}` (the JDK the game runs on). Steps: build Fabricated and the test mods, then the server and client runs, gates and informational ones. A version whose NeoForge line is in beta is marked `experimental` (`continue-on-error`); none is now, 26.3 having left beta.
 

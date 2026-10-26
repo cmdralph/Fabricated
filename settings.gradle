@@ -7,11 +7,11 @@ pluginManagement {
         }
     }
     plugins {
+        // Each platform's build plugin (docs/PORTING.md §1). NeoForge's projects (mc/neoforge).
         id 'net.neoforged.moddev' version providers.gradleProperty('moddevgradle_version').get()
-        // The branches' build plugins, pinned here with main's so a branch never edits this file (docs/PORTING.md §1);
-        // main applies neither. forge-legacy's 1.20.1 project: ModDevGradle's plugin for Forge up to 1.20.1 (same jar).
+        // Forge up to 1.20.1 (mc/forge-legacy): ModDevGradle's legacyforge plugin, from the same jar.
         id 'net.neoforged.moddev.legacyforge' version providers.gradleProperty('moddevgradle_version').get()
-        // The forge branch's projects (Minecraft Forge 61 and later).
+        // Minecraft Forge 61 and later (mc/forge).
         id 'net.minecraftforge.gradle' version providers.gradleProperty('forgegradle_version').get()
     }
 }
@@ -27,13 +27,27 @@ include 'fabric-loader-api'
 include 'api'
 include 'core'
 
-// The Minecraft projects need maven.neoforged.net and Mojang's servers. Pass
-// -Pfabricated.coreOnly=true to build and test only the Minecraft-independent modules.
+// The Minecraft projects need their platform's maven and Mojang's servers. Pass -Pfabricated.coreOnly=true to build
+// and test only the Minecraft-independent modules.
 def coreOnly = providers.gradleProperty('fabricated.coreOnly').map { it.toBoolean() }.getOrElse(false)
+// Each platform's versions are in mc/<platform>/<version>, as the project :mc:<platform>-<version>. Only the platforms
+// -Pfabricated.platforms names (comma-separated, or "all") are configured, NeoForge's by default: a build configures
+// one platform's plugin, as each branch's CI builds one platform.
+def platforms = ['neoforge', 'forge', 'forge-legacy']
+def selected = providers.gradleProperty('fabricated.platforms').getOrElse('neoforge').split(',')*.trim().findAll { it }
+if (selected == ['all']) selected = platforms
+def unknown = selected - platforms
+if (unknown) {
+    throw new GradleException("Unknown platforms in fabricated.platforms: ${unknown.join(', ')}" +
+            " (known: ${platforms.join(', ')}, all)")
+}
 if (!coreOnly) {
-    file('mc').eachDir { dir ->
-        if (new File(dir, 'build.gradle').isFile()) {
-            include "mc:${dir.name}"
+    selected.each { platform ->
+        file("mc/${platform}").eachDir { dir ->
+            if (new File(dir, 'build.gradle').isFile()) {
+                include "mc:${platform}-${dir.name}"
+                project(":mc:${platform}-${dir.name}").projectDir = dir
+            }
         }
     }
 }

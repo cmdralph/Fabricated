@@ -1,4 +1,4 @@
-// Minecraft Forge's part of the build for a Minecraft version project (mc/mc.gradle applies this for platform=forge):
+// Minecraft Forge's part of the build for a Minecraft version project in mc/forge (mc/mc.gradle applies this):
 // ForgeGradle's settings, the in-game mod's mods.toml, and how a source set gets the game to compile against.
 
 def forgeArtifact = "net.minecraftforge:forge:${project.minecraft_version}-${project.forge_version}"
@@ -42,9 +42,9 @@ ext.gameDependencies = { SourceSet sourceSet ->
 }
 
 // Stand-ins for the Fabric API modules Fabricated passes through on Forge that the test mod uses (the shared sources'
-// src/testmodstubs, 26.x's object builder module), next to mc/common's: compiled against, never packaged. They name
+// src/testmodstubs, 26.x's object builder module), next to mc/shared's: compiled against, never packaged. They name
 // the vendored fabric-api-base's types, in the in-game mod.
-sharedSources.each { sourceSets.testmodstubs.java.srcDir rootProject.file("mc/$it/src/testmodstubs/java") }
+sharedSources.each { sourceSets.testmodstubs.java.srcDir rootProject.file("$it/src/testmodstubs/java") }
 dependencies {
     testmodstubsCompileOnly sourceSets.main.output
 }

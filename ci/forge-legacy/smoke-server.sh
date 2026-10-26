@@ -8,7 +8,7 @@
 # Usage: ci/forge-legacy/smoke-server.sh <minecraft-version> <forge-version, Minecraft's included> <work-dir> [extra-mods-dir]
 # Exit status: the server must start; the checks are reported (until L3's discovery is settled). With extra-mods-dir
 # (the official Fabric API jar), its jars join the mods folder.
-# Expects: build/libs/fabricated-forge-*+mc<minecraft-version>.jar and mc/<minecraft-version>/build/testmods/fabricated-testmod.jar
+# Expects: build/libs/fabricated-forge-*+mc<minecraft-version>.jar and mc/forge-legacy/<minecraft-version>/build/testmods/fabricated-testmod.jar
 set -euo pipefail
 
 mc="$1"
@@ -29,7 +29,7 @@ echo "::endgroup::"
 
 mkdir -p mods
 cp "$root"/build/libs/fabricated-forge-*+mc"$mc".jar mods/
-cp "$root"/mc/"$mc"/build/testmods/fabricated-testmod.jar mods/
+cp "$root"/mc/forge-legacy/"$mc"/build/testmods/fabricated-testmod.jar mods/
 # A Fabric mod whose dependency is missing: Fabricated doesn't load it, and Forge's loading warnings name it.
 mkdir unmet
 cat > unmet/fabric.mod.json <<'JSON'

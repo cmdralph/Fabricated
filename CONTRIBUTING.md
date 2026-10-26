@@ -5,17 +5,23 @@ follows, and step-by-step instructions for adding a new Minecraft version.
 
 ## Project layout
 
+Every branch holds the same tree, with one folder per mod loader and Minecraft version; the branches differ in which
+platform their CI builds and releases (`main`: NeoForge, `forge`: Minecraft Forge 61 to 66, `forge-legacy`: Forge 47).
+
 | Path | What it is | Depends on Minecraft? |
 |---|---|---|
 | `fabric-loader-api/` | Fabric Loader's public API (Apache-2.0, see `NOTICE`) plus clean-room version/predicate/language-adapter implementations | No |
+| `api/` | Fabricated's public API, what NeoForge and Fabric mods may compile against (`docs/API.md`) | No |
 | `core/` | Everything that can be tested without a game: archive safety, `fabric.mod.json`, dependency resolution, remapping, access widener → access transformer, mixin pre-flight, linkage checks, package guard, cache, config, report, Fabric Loader runtime, and the discovery `Pipeline` | No |
-| `loader/` | NeoForge discovery services (compiled into each version's jar): candidate/dependency locators, language loader, mod container, interface injection | FML only |
-| `mc/common/` | The in-game NeoForge mod (entrypoints, `/fabricated`) and the CI test mods, shared by every version | Yes |
-| `mc/common26/`, `mc/common26early/`, `mc/common26late/` | Code shared by all 26.x versions, by 26.1.2 and 26.2 only, and by 26.2 and 26.3 only | Yes |
-| `mc/<version>/` | One Gradle project per Minecraft version: properties, vendored native Fabric API modules (`src/fabricapi`), the Fabric API plan (`src/fabricated/resources/META-INF/fabricated/fabric-api-plan.json`) and any version-specific code (`src/main/java`) | Yes |
-| `ci/` | CI scripts (the real NeoForge server smoke test) | - |
+| `loader/common/` | Loader code every platform shares: Fabric's class transforms, the vanilla game jar, proposed jars, resource bundles | No |
+| `loader/<platform>/` | A platform's discovery services, compiled into each of its versions' jars: `neoforge` (candidate and dependency locators, language loader, mod container), `forge` (Forge 61 to 66's locators, language provider, transformation service), `forge-legacy` (Forge 47's) | The platform's loader only |
+| `mc/<platform>/<version>/` | One Gradle project per platform and Minecraft version, `:mc:<platform>-<version>`: properties, vendored native Fabric API modules (`src/fabricapi`), the Fabric API plan (`src/fabricated/resources/META-INF/fabricated/fabric-api-plan.json`), version-specific code (`src/main/java`) and the version's test mod | Yes |
+| `mc/<platform>/common*/` | Code a platform's versions share, as each version's `shared_sources` lists it: NeoForge's `common` (the in-game mod, `/fabricated`, the test mod) for every version, `common26` for all 26.x versions, `common26early` for 26.1.2 and 26.2, `common26late` for 26.2 and 26.3; Forge's `common`, `common26`, `common26early` likewise | Yes |
+| `mc/shared/` | Test sources every platform uses: the broken test mods and stand-ins for other mods' APIs | - |
+| `mc/mc.gradle`, `mc/platform-<platform>.gradle` | The build shared by every version, and each platform's part of it | - |
+| `ci/<platform>/` | Each platform's server (and NeoForge's client) smoke test; `ci/` holds the shared helpers and the mod corpus lists | - |
 | `scripts/` | Maintenance scripts (importing Fabric API modules) | - |
-| `docs/` | Research, architecture and compatibility notes | - |
+| `docs/` | Research, architecture and compatibility notes; `docs/readme/` holds each branch's README | - |
 
 ## Building and testing
 
@@ -26,20 +32,27 @@ automatically if it is not installed.
 # Minecraft-independent modules and all unit tests (fast, no NeoForge downloads)
 ./gradlew -Pfabricated.coreOnly=true build
 
-# One Minecraft version: the jar players install, plus the Fabric test mods
-./gradlew :mc:26.2:fabricatedJar :mc:26.2:testmods
-# -> build/libs/fabricated-<version>+mc26.2.jar and mc/26.2/build/testmods/*.jar
+# One Minecraft version on NeoForge: the jar players install, plus the Fabric test mods
+./gradlew :mc:neoforge-26.2:fabricatedJar :mc:neoforge-26.2:testmods
+# -> build/libs/fabricated-<version>+mc26.2.jar and mc/neoforge/26.2/build/testmods/*.jar
 
-# Everything
+# The other platforms: a build configures NeoForge's projects unless -Pfabricated.platforms names others
+./gradlew -Pfabricated.platforms=forge --configure-on-demand :mc:forge-26.2:fabricatedJar
+./gradlew -Pfabricated.platforms=forge-legacy --configure-on-demand :mc:forge-legacy-1.20.1:fabricatedJar
+# -> build/libs/fabricated-forge-<version>+mc26.2.jar, build/libs/fabricated-forge-<version>+mc1.20.1.jar
+
+# Everything on NeoForge
 ./gradlew build
 
 # Real server smoke test (downloads NeoForge's installer; needs network)
-ci/smoke-server.sh 26.2 26.2.0.90 /tmp/fabricated-server
+ci/neoforge/smoke-server.sh 26.2 26.2.0.90 /tmp/fabricated-server
 ```
 
-CI (`.github/workflows/build.yml`) runs the unit tests, then builds every version, boots a real NeoForge
+Each branch's CI builds its platform: `build.yml` (`main`), `build-forge.yml` (`forge`) and `build-forge-legacy.yml`
+(`forge-legacy`), each for pull requests to its branch, skipping changes to other platforms' folders alone. NeoForge's
+(`.github/workflows/build.yml`) runs the unit tests, then builds every version, boots a real NeoForge
 dedicated server with the test mods (and again with the official Fabric API jar), and starts a real NeoForge
-client headlessly into a singleplayer world (`ci/smoke-client.sh`; needs Xvfb, and `gh` to fetch
+client headlessly into a singleplayer world (`ci/neoforge/smoke-client.sh`; needs Xvfb, and `gh` to fetch
 mc-runtime-test). Every version's job is a gate; a version whose NeoForge line is still in beta would be marked
 experimental (best-effort) in the matrix.
 
@@ -73,22 +86,22 @@ Example: adding `26.4` once NeoForge supports it.
    (`git ls-remote --tags https://github.com/FabricMC/fabric | grep +26.4`). Record them in `docs/RESEARCH.md`.
 2. **Check the FML SPI.** Diff `neoforgespi/locating`, `neoforgespi/language`, `neoforgespi/transformation`
    and `fml/jarcontents` against the previous FML version. If they changed, update `loader/` first.
-3. **Create the project.** Copy the closest existing directory, e.g. `cp -r mc/26.3 mc/26.4`, then edit
-   `mc/26.4/gradle.properties`: `minecraft_version`, `neoforge_version`, `java_version`,
+3. **Create the project.** Copy the closest existing directory, e.g. `cp -r mc/neoforge/26.3 mc/neoforge/26.4`, then edit
+   `mc/neoforge/26.4/gradle.properties`: `minecraft_version`, `neoforge_version`, `java_version`,
    `neoforge_version_range`, `minecraft_version_range`. Use `namespace=OFFICIAL` for unobfuscated versions.
    `settings.gradle` picks the directory up automatically.
 4. **Vendor the native Fabric API modules** from the new Fabric API tag:
    ```bash
-   rm -rf mc/26.4/src/fabricapi
-   scripts/import-fabric-api.sh 0.170.0+26.4 mc/26.4/src/fabricapi \
-       $(sed -n 's/^modules=//p' mc/26.3/src/fabricapi/UPSTREAM.properties)
+   rm -rf mc/neoforge/26.4/src/fabricapi
+   scripts/import-fabric-api.sh 0.170.0+26.4 mc/neoforge/26.4/src/fabricapi \
+       $(sed -n 's/^modules=//p' mc/neoforge/26.3/src/fabricapi/UPSTREAM.properties)
    ```
    Pass every module in one call: `UPSTREAM.properties` records the list of the last import, and the next
    update reads it from there. Review the diff.
-5. **Update the Fabric API plan** in `mc/26.4/src/fabricated/resources/META-INF/fabricated/fabric-api-plan.json`:
+5. **Update the Fabric API plan** in `mc/neoforge/26.4/src/fabricated/resources/META-INF/fabricated/fabric-api-plan.json`:
    set `fabricApiVersion` and every module version from Fabric API's `gradle.properties` at that tag. Add new
    modules, defaulting to `passthrough`.
-6. **Fix compile errors** in `mc/26.4/src/main/java` (version-specific code) and the shared `mc/common*` directories.
+6. **Fix compile errors** in `mc/neoforge/26.4/src/main/java` (version-specific code) and the shared `mc/neoforge/common*` directories.
    If shared code no longer compiles on all versions, move the differing part into each version's
    `src/main/java` rather than adding conditionals.
 7. **Add the version to CI** (`.github/workflows/build.yml` matrix) and run the smoke test.
