@@ -2,6 +2,7 @@ package io.github.cmdralph.fabricated.loader;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.Reader;
 import java.nio.charset.StandardCharsets;
@@ -9,10 +10,17 @@ import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
+
+import org.objectweb.asm.ClassReader;
+import org.objectweb.asm.ClassVisitor;
+import org.objectweb.asm.FieldVisitor;
+import org.objectweb.asm.Opcodes;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,10 +35,10 @@ import net.minecraftforge.fml.loading.FMLLoader;
 
 /**
  * Builds the intermediary → Mojang table for obfuscated Minecraft versions (1.21.11) entirely offline: Fabric's
- * Intermediary (bundled, CC0) composed with Mojang's mapping file that the Forge installer left among the libraries.
- * Nothing is downloaded and Mojang's mappings are never redistributed. The composed table is cached, keyed by the
- * hashes of both inputs. Where Forge 61's installer puts the file is UNVERIFIED (docs/PORTING.md §4.1, question 3):
- * the places looked at are listed when it isn't found.
+ * Intermediary (bundled, CC0) composed with Mojang's mappings, which Forge 61's installer leaves among the libraries
+ * as TSRG ({@link ForgeLibraries}). Nothing is downloaded and Mojang's mappings are never redistributed. TSRG gives
+ * fields no descriptors, so fields sharing an obfuscated name are told apart by their descriptors in the installed
+ * game in Mojang's names ({@code -official.jar}). The composed table is cached, keyed by the hashes of both inputs.
  */
 final class IntermediaryMappings {
 	private static final Logger LOGGER = LoggerFactory.getLogger("Fabricated");
@@ -61,9 +69,11 @@ final class IntermediaryMappings {
 			throw new MappingException("this Fabricated build does not include Intermediary mappings for " + minecraftVersion);
 		}
 		MappingTable table;
+		Path official = mojang.resolveSibling(mojang.getFileName().toString().replace("-mappings.tsrg", "-official.jar"));
 		try (Reader tiny = new InputStreamReader(new ByteArrayInputStream(intermediary), StandardCharsets.UTF_8);
-				Reader proguard = Files.newBufferedReader(mojang, StandardCharsets.UTF_8)) {
-			table = MappingComposer.compose(tiny, proguard);
+				Reader mappings = Files.newBufferedReader(mojang, StandardCharsets.UTF_8);
+				ZipFile game = mojang.toString().endsWith(".tsrg") && Files.isRegularFile(official) ? new ZipFile(official.toFile()) : null) {
+			table = MappingComposer.compose(tiny, mappings, game == null ? MappingComposer.FieldDescriptors.NONE : fieldDescriptors(game));
 		}
 		if (table.classCount() == 0) {
 			throw new MappingException("the composed mapping table is empty; " + mojang + " does not match Minecraft " + minecraftVersion);
@@ -79,16 +89,13 @@ final class IntermediaryMappings {
 
 	/**
 	 * Candidates, in order: the config value, the {@value #SYSTEM_PROPERTY} system property, then in each libraries
-	 * directory (the {@code libraryDirectory} system property, and the one the game's files are in: Forge runs its own
-	 * jar among the libraries, {@code net/minecraftforge/forge/<version>/}) {@code net/minecraft/<side>/<mc>/<side>-<mc>-mappings.txt},
-	 * as NeoForge's installer names it, and the same with the MCP version after the Minecraft version, as Forge's
-	 * installers named it up to 1.20.1. Forge 61's server installer leaves {@code <side>-<mc>-mappings.tsrg} there
-	 * instead (TSRG, from Mojang's names to the obfuscated ones; the forge branch's server smoke), which Fabricated doesn't
-	 * read yet: the error names it.
+	 * directory ({@link ForgeLibraries#directories}) {@code net/minecraft/<side>/<mc>/<side>-<mc>-mappings.txt}, as
+	 * NeoForge's installer names it, the same with the MCP version after the Minecraft version, as Forge's installers
+	 * named it up to 1.20.1, and {@code <side>-<mc>-mappings.tsrg}, as Forge 61's installer leaves it.
 	 *
-	 * @param gameJar a file of the game as Forge runs it, or null
+	 * @param gameFile a file of the game as Forge runs it, or null
 	 */
-	static Path locateMojangMappings(String minecraftVersion, boolean client, String configuredPath, Path gameJar) throws MappingException {
+	static Path locateMojangMappings(String minecraftVersion, boolean client, String configuredPath, Path gameFile) throws MappingException {
 		List<String> tried = new ArrayList<>();
 		for (String candidate : new String[] {configuredPath, System.getProperty(SYSTEM_PROPERTY)}) {
 			if (candidate == null || candidate.isBlank()) continue;
@@ -100,50 +107,45 @@ final class IntermediaryMappings {
 				tried.add(candidate + " (not a valid path)");
 			}
 		}
-		String side = client ? "client" : "server";
 		String mcp = FMLLoader.versionInfo().mcpVersion();
-		List<String> versions = new ArrayList<>(List.of(minecraftVersion));
-		if (mcp != null && !mcp.isBlank()) versions.add(minecraftVersion + "-" + mcp);
-		Set<Path> libraries = librariesDirectories(gameJar);
-		for (Path directory : libraries) {
-			for (String version : versions) {
-				Path p = mappings(directory, side, version, "txt");
+		for (Path libraries : ForgeLibraries.directories(gameFile)) {
+			List<Path> candidates = new ArrayList<>(List.of(ForgeLibraries.gameFile(libraries, client, minecraftVersion, "mappings.txt")));
+			if (mcp != null && !mcp.isBlank()) candidates.add(ForgeLibraries.gameFile(libraries, client, minecraftVersion + "-" + mcp, "mappings.txt"));
+			candidates.add(ForgeLibraries.gameFile(libraries, client, minecraftVersion, "mappings.tsrg"));
+			for (Path p : candidates) {
 				if (Files.isRegularFile(p)) return p;
 				tried.add(p.toString());
 			}
 		}
-		String unreadable = "";
-		for (Path directory : libraries) {
-			Path tsrg = mappings(directory, side, minecraftVersion, "tsrg");
-			if (Files.isRegularFile(tsrg)) {
-				unreadable = "; Forge's installer left " + tsrg + ", which this Fabricated can't read yet";
-				break;
-			}
-		}
-		throw new MappingException("Mojang's " + side + " mapping file for " + minecraftVersion + " was not found (looked at " + String.join(", ", tried) + ")" + unreadable);
+		throw new MappingException("Mojang's " + (client ? "client" : "server") + " mapping file for " + minecraftVersion + " was not found (looked at "
+				+ String.join(", ", tried) + ")");
 	}
 
-	private static Path mappings(Path libraries, String side, String version, String extension) {
-		return libraries.resolve("net").resolve("minecraft").resolve(side).resolve(version).resolve(side + "-" + version + "-mappings." + extension);
+	/** The fields' descriptors in the game in Mojang's names, read a class at a time as the composer asks. */
+	private static MappingComposer.FieldDescriptors fieldDescriptors(ZipFile game) {
+		Map<String, Map<String, String>> classes = new HashMap<>();
+		return (owner, name) -> {
+			Map<String, String> fields = classes.get(owner);
+			if (fields == null) classes.put(owner, fields = fields(game, owner));
+			return fields.get(name);
+		};
 	}
 
-	/** The libraries directories to look in: the launcher's, as a system property, and the nearest one holding the game's file. */
-	private static Set<Path> librariesDirectories(Path gameJar) {
-		Set<Path> directories = new LinkedHashSet<>();
-		String property = System.getProperty("libraryDirectory");
-		if (property != null && !property.isBlank()) {
-			try {
-				directories.add(Path.of(property).toAbsolutePath().normalize());
-			} catch (InvalidPathException e) {
-				LOGGER.debug("libraryDirectory {} is not a path", property);
-			}
+	private static Map<String, String> fields(ZipFile game, String owner) throws IOException {
+		ZipEntry entry = game.getEntry(owner + ".class");
+		if (entry == null) return Map.of();
+		byte[] data;
+		try (InputStream in = game.getInputStream(entry)) {
+			data = in.readAllBytes();
 		}
-		for (Path dir = gameJar == null ? null : gameJar.toAbsolutePath().normalize().getParent(); dir != null; dir = dir.getParent()) {
-			if (Files.isDirectory(dir.resolve("net").resolve("minecraft"))) {
-				directories.add(dir);
-				break;
+		Map<String, String> fields = new HashMap<>();
+		new ClassReader(data).accept(new ClassVisitor(Opcodes.ASM9) {
+			@Override
+			public FieldVisitor visitField(int access, String name, String descriptor, String signature, Object value) {
+				fields.put(name, descriptor);
+				return null;
 			}
-		}
-		return directories;
+		}, ClassReader.SKIP_CODE | ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
+		return fields;
 	}
 }
