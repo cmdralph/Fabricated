@@ -58,6 +58,10 @@ One entry per working session, newest first: what changed, and how it was verifi
   them and lambdas implementing them kept their official names, and Fabric API's resource pack lambda stopped the server
   (AbstractMethodError). A descriptor without Minecraft classes is matched by its owner only, so a mod's `Runnable.run`
   keeps its name. Test: 278 core tests.
+- Branches (`PORTING.md` §4.1 and §7): with the official Fabric API jar passed through, the server starts on Forge 61,
+  64, 65 and 66 (`forge`, #122; Forge 66's plan leaves out the loot and advancement API's loading hooks, which cast
+  the `Optional` Forge 66 decodes) and on Forge 47 (`forge-legacy`, #123; its plan leaves out registry sync's
+  `SaveLoadingMixin`, and the Fabric mods' dynamic registries join Forge's list of data pack registries).
 - A Fabric mod's class overriding a game method the platform declares final and vanilla doesn't loads (FINAL-1): Forge
   47 makes `Ingredient.toNetwork` final, which Fabric API's recipe API overrides in `CustomIngredientImpl`, and its
   entrypoint failed with IncompatibleClassChangeError on forge-legacy's run on #123. The mod's access transformer

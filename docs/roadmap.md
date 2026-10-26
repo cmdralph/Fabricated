@@ -23,8 +23,12 @@ handled safely, no network access, original jars never changed, and no code that
   on Forge 61 (1.21.11) and 64 to 66 (26.x) a translated Fabric mod is discovered, loads, runs its main and server
   entrypoints in Forge's registry events with the registries open, registers an item that stays in the frozen registry,
   has its mixins applied, its injected interfaces added and its other side's members stripped, and the report names
-  Forge (#85, #87, #90, #95, #96, #99: 18 server checks on each version; `PORTING.md` §4.1). Next: the client's
-  entrypoints, default bridges after Mixin, warnings (step 5), then Fabric API on Forge's events (EventBus 7).
+  Forge (#85, #87, #90, #95, #96, #99: 18 server checks on each version; `PORTING.md` §4.1). With the official
+  Fabric API jar passed through, the server starts on all four (#122): Forge 64 and 65 once ARGS-1 took a
+  `@ModifyVariable`'s argument by its slot, Forge 66 once its plan left out the loot and advancement API's loading hooks,
+  which cast what Forge 66 decodes as an `Optional` (its conditional data); seven modules load without some of their
+  mixins, where Forge's code differs. Next: native modules on Forge's events where `main` has them on NeoForge's (loot,
+  advancements, entity and interaction events), the client's entrypoints.
 - **`forge-legacy`:** Minecraft Forge for 1.20.1 (Forge 47.4) and other legacy versions, built with ModDevGradle's
   `legacyforge`. L3's server smoke passes on Forge 47.4.28, a gate since #97: a translated Fabric mod is discovered,
   remapped to the names Forge runs the game with (Mojang's classes, SRG's members, composed from the files Forge's
@@ -32,8 +36,13 @@ handled safely, no network access, original jars never changed, and no code that
   registers an item by Intermediary names, reads a private field its access widener opens, has its mixins applied (one
   through MixinExtras 0.5.5, which Fabricated nests for Forge 47, which ships none), its injected interfaces added and
   its other side's members stripped (#88, #89, #92, #93, #97, #98, #100: 19 checks; [`PORTING.md`](PORTING.md) §3 and
-  §7). Next: the native Fabric API 0.92.12 modules (the old capability system, `SimpleChannel`) and Forge 47's events
-  (L4). NeoForge needs no legacy branch.
+  §7). With the official Fabric API 0.92.12 jar passed through, the server starts on Forge 47 (#123): 38 modules'
+  main entrypoints run, after PLAIN-1, CTOR-2, ACC-2, CAPTURE-3, LOCAL-3 and ARGS-1 on `main`, and the branch's plan
+  leaving out registry sync's `SaveLoadingMixin`, which replaced Forge's list of data pack registries (its biome and
+  structure modifiers) with vanilla's; the Fabric mods' dynamic registries are added to Forge's list instead. The recipe
+  API's entrypoint failed on a method Forge 47 made final (FINAL-1 on `main`). Next: the native Fabric API 0.92.12
+  modules (biomes, which Forge 47's field-to-method coremod needs private, the old capability system, `SimpleChannel`)
+  and Forge 47's events (L4). NeoForge needs no legacy branch.
 - **Decided** (`RESEARCH.md` §8): Forge 47.4 for 1.20.1, the shared modules kept loadable on Java 17, ForgeGradle for
   modern Forge, CI for pull requests only. L1, the behaviour-neutral seams on `main`: Java 17 for the shared modules
   (their main code compiles at release 17), the loader split (`loader/common`, `loader/neoforge`), the build split
