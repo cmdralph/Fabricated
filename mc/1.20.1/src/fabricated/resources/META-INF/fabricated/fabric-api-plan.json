@@ -3,8 +3,19 @@
   "modules": {
     "fabric-registry-sync-v0": {
       "plan": "passthrough",
-      "skipMixins": ["fabric-registry-sync-v0.mixins.json:SaveLoadingMixin"],
+      "skipMixins": [
+        "fabric-registry-sync-v0.mixins.json:SaveLoadingMixin"
+      ],
       "reason": "Forge 47 loads the data pack registries from its own list, which upstream's mixin replaced with vanilla's and the Fabric mods', losing Forge's biome and structure modifiers: Fabricated adds the Fabric mods' dynamic registries to Forge's list instead."
+    },
+    "fabric-tag-api-v1": {
+      "plan": "passthrough",
+      "skipMixins": [
+        "fabric-tag-api-v1.mixins.json:TagFileMixin#remove",
+        "fabric-tag-api-v1.mixins.json:TagFileMixin#modifyCodec",
+        "fabric-tag-api-v1.mixins.json:TagGroupLoaderMixin"
+      ],
+      "reason": "Forge 47's tag files already have a remove list, which its tag loader applies, and upstream's FabricTagFile.remove() reads it: upstream's own list conflicts with Forge's, and its tag loader hooks, which apply that list, are left out with it. Tag files' fabric:remove entries are not read on Forge 47 yet; Forge's remove entries are."
     }
   }
 }
