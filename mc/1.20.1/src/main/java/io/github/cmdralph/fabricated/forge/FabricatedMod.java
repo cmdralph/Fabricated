@@ -1,5 +1,6 @@
 package io.github.cmdralph.fabricated.forge;
 
+import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -20,6 +21,7 @@ import net.minecraftforge.fml.ModLoadingWarning;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 import net.minecraftforge.fml.loading.FMLLoader;
+import net.minecraftforge.registries.DataPackRegistriesHooks;
 import net.minecraftforge.registries.ForgeRegistries;
 import net.minecraftforge.registries.ForgeRegistry;
 import net.minecraftforge.registries.RegisterEvent;
@@ -48,6 +50,8 @@ public final class FabricatedMod {
 	private static final Logger LOGGER = LoggerFactory.getLogger("Fabricated");
 	/** A warning's message pattern, which Forge formats with the mod, the stage, then the warning's arguments: the first argument as is. */
 	private static final String AS_IS = "{2}";
+	/** Fabric API's dynamic registry API, which a Fabric mod's registries are registered through. */
+	private static final String DYNAMIC_REGISTRIES = "net.fabricmc.fabric.api.event.registry.DynamicRegistries";
 
 	private boolean attributesRegistered;
 	private boolean initialized;
@@ -105,6 +109,43 @@ public final class FabricatedMod {
 			opened.forEach(ForgeRegistry::freeze);
 		}
 		report(state, failures, "main");
+		addDynamicRegistries();
+	}
+
+	/**
+	 * Adds the dynamic registries the Fabric mods registered (through Fabric API's {@code DynamicRegistries}) to the data
+	 * pack registries Forge loads. Upstream's registry sync makes {@code WorldLoader} load its own list, vanilla's and the
+	 * Fabric mods', in place of Forge's, which lost Forge's biome and structure modifiers ("Missing registry:
+	 * forge:biome_modifier"); Fabricated's Fabric API plan leaves that mixin out, so Forge's list takes the Fabric mods'
+	 * registries instead. Forge fills it from its own event, which comes before the Fabric initializers, and keeps it
+	 * private. A registry Forge's list has already (vanilla's) isn't added twice.
+	 */
+	private static void addDynamicRegistries() {
+		List<?> fabric;
+		try {
+			fabric = (List<?>) Class.forName(DYNAMIC_REGISTRIES, true, FabricatedMod.class.getClassLoader()).getMethod("getDynamicRegistries").invoke(null);
+		} catch (ClassNotFoundException e) {
+			return; // no Fabric API
+		} catch (ReflectiveOperationException | LinkageError | ClassCastException e) {
+			LOGGER.error("Couldn't read the Fabric mods' dynamic registries; they won't load", e);
+			return;
+		}
+		try {
+			Field field = DataPackRegistriesHooks.class.getDeclaredField("DATA_PACK_REGISTRIES");
+			field.setAccessible(true);
+			@SuppressWarnings("unchecked")
+			List<Object> forge = (List<Object>) field.get(null);
+			int added = 0;
+			for (Object registry : fabric) {
+				if (!forge.contains(registry)) {
+					forge.add(registry);
+					added++;
+				}
+			}
+			LOGGER.info("Fabricated added {} Fabric dynamic registr{} to Forge's data pack registries", added, added == 1 ? "y" : "ies");
+		} catch (ReflectiveOperationException | RuntimeException e) {
+			LOGGER.error("Couldn't add the Fabric mods' dynamic registries to Forge's; they won't load", e);
+		}
 	}
 
 	private static void report(FabricatedState state, List<EntrypointRunner.Failure> failures, String phase) {
