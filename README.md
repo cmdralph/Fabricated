@@ -202,7 +202,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). In short:
 
 ## Design and research
 
-- [docs/roadmap.md](docs/roadmap.md): the roadmap (tracks, what is next), findings log, test matrices and what is still unverified.
+- [docs/roadmap.md](docs/roadmap.md): the roadmap (the platforms' parity, the tracks, what is next), the open findings, test matrices and what is still unverified.
+- [docs/FINDINGS.md](docs/FINDINGS.md): every fixed finding, with its cause and how its fix was verified.
 - [docs/CHANGELOG.md](docs/CHANGELOG.md): what each working session changed, and how it was verified.
 - [docs/MIXINS.md](docs/MIXINS.md): every mixin Fabricated applies, with its target and injection point.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how the pipeline, isolation, caching and security work.

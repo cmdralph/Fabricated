@@ -13,15 +13,16 @@ platform. This branch builds and tests the Forge targets, and its releases' `fab
 
 | Minecraft | Forge | Java | Fabric mods use | CI on this branch |
 |---|---|---|---|---|
-| 1.21.11 | 61.2.4 | 21 | Intermediary names (remapped at load) | Builds; server runs informational |
-| 26.1.2 | 64.1.5 | 25 | Mojang names (no remapping) | Builds; server runs informational |
-| 26.2 | 65.1.5 | 25 | Mojang names (no remapping) | Builds; server runs informational |
-| 26.3 | 66.1.0 | 25 | Mojang names (no remapping) | Builds; server runs informational |
+| 1.21.11 | 61.2.4 | 21 | Intermediary names (remapped at load) | Builds; both server runs must pass |
+| 26.1.2 | 64.1.5 | 25 | Mojang names (no remapping) | Builds; both server runs must pass |
+| 26.2 | 65.1.5 | 25 | Mojang names (no remapping) | Builds; both server runs must pass |
+| 26.3 | 66.1.0 | 25 | Mojang names (no remapping) | Builds; both server runs must pass |
 
 ### What CI checks
 
 CI starts a dedicated server on each version twice: once with the test mod, and once more with the official Fabric
-API jar.
+API jar. Each run is a gate: the server must start and every check that applies to the run must pass (a few checks
+need Fabric API or a 26.x version). Three lines read from Forge's debug log are only reported.
 
 On each run, the server checks that:
 - a translated Fabric mod is discovered and loads;
@@ -29,6 +30,7 @@ On each run, the server checks that:
 - it registers an item that stays in the frozen registry;
 - its mixins are applied, its injected interfaces are added, and its other side's members are stripped;
 - Forge's loading warnings name a Fabric mod that wasn't loaded;
+- an access widener leaves private a field Forge's coremod reads through a getter, and the report says so;
 - the report names Forge as the loader.
 
 **With the official Fabric API jar**, the server starts on all four versions and no Fabric API module is turned off.
@@ -51,7 +53,6 @@ Some modules load without the mixins that Forge's code can't take.
 - **Clients.** Fabric mods' client entrypoints don't run on Forge, and CI starts no Forge client.
 - **Native modules.** Fabric API modules that need a native port on Forge's events, such as entity and interaction
   events, pass through from the Fabric API jar, without the hooks Forge's code can't take.
-- **Gates.** The server runs are informational: a failing check is reported but doesn't fail CI.
 
 ## Installing (for testing)
 
@@ -86,7 +87,7 @@ CI is `.github/workflows/build-forge.yml` with `ci/forge/smoke-server.sh`. The p
 
 - [`docs/PORTING.md`](/docs/PORTING.md) §4 and §7: the Forge port's design and its steps (F1 to F4).
 - [`docs/roadmap.md`](/docs/roadmap.md): where the `forge` track stands and what comes next.
-- [`docs/COMPATIBILITY.md`](/docs/COMPATIBILITY.md): what works on NeoForge, per version and per Fabric API module.
+- [`docs/COMPATIBILITY.md`](/docs/COMPATIBILITY.md): what works, per version and per Fabric API module, with a table for the Forge builds.
 - [`README.md`](/README.md): Fabricated's main README (NeoForge).
 
 ## License

@@ -268,7 +268,8 @@ public final class ModTranslator {
 						AccessWidenerFile parsed = AccessWidenerParser.parse(text);
 						checkNamespace(parsed.namespace(), candidate);
 						checkEnumExtensions(parsed, candidate, enumEntries, enumTargets);
-						AccessTransformerConverter.Result at = AccessTransformerConverter.convert(parsed, env.game());
+						AccessTransformerConverter.Result at = AccessTransformerConverter.convert(parsed, env.game(),
+								env.descriptor().privateFields(), env.descriptor().loaderName());
 						notes.addAll(at.warnings());
 						injections = at.injectedInterfaces();
 						atLines = at.lineCount();

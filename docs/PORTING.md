@@ -1,7 +1,7 @@
 # Fabricated beyond modern NeoForge: the 1.20.1 and Forge evaluation
 
 Status: **in progress**: both Forge targets run the game on dedicated servers, `forge` at F4 and `forge-legacy` at L4
-(§7; `roadmap.md`'s platform track has the detail). Written 2026-10-21; the owner's decisions are in §8 and
+(§7 has the detail; `roadmap.md`'s parity table compares the platforms). Written 2026-10-21; the owner's decisions are in §8 and
 `RESEARCH.md` §8. Of §6's seams on `main`, items 1 to 3 and the trigger part of 4 are done. NeoForge stays the primary
 platform: Minecraft 1.21.11, 26.1.2, 26.2 and 26.3, all four on stable NeoForge lines. This document
 says what of the engine carries over to Minecraft Forge for 1.20.1 and other legacy versions (branch
@@ -371,6 +371,41 @@ the abstractions below are added when the branch work starts (owner decision D2 
 | L4 Native Fabric API | Lifecycle, registries, networking on `SimpleChannel`, resource loader, events, transfer on `LazyOptional` capabilities, the old renderer API; client smoke with HeadlessMC and mc-runtime-test. First, from the informational run with the official Fabric API 0.92.12 jar (#107: 36 modules load, 13 client-only are skipped): pre-flight disables registry sync (`DebugLevelSource` fields), both loot modules (`LootTable.pools` is a `List` on Forge), interaction events, dimensions (`changeDimension` takes an `ITeleporter`) and tags, so those come first; the server then stopped on the furnace hook (ALLOW-1, fixed in `core`). | Server and client smoke gates green; Fabric API 0.92.12 boots. |
 | L5 Corpus and stabilisation | 1.20.1 corpus from Modrinth; pre-flight repairs against Forge 47's patches, vanilla code through MCPConfig; Fabric's Mixin fork features measured (R2). | Release criteria met (to be set with the owner, as for `main`). |
 
+**Where it stands.** Minecraft Forge for 1.20.1 (Forge 47.4) and other legacy versions, built with ModDevGradle's
+`legacyforge`. L3's server smoke passes on Forge 47.4.28, a gate since #97: a translated Fabric mod is discovered,
+remapped to the names Forge runs the game with (Mojang's classes, SRG's members, composed from the files Forge's
+installer leaves), loads, runs its main and server entrypoints in Forge's registry events with the registries open,
+registers an item by Intermediary names, reads a private field its access widener opens, has its mixins applied (one
+through MixinExtras 0.5.5, which Fabricated nests for Forge 47, which ships none), its injected interfaces added and
+its other side's members stripped (#88, #89, #92, #93, #97, #98, #100: 19 checks; §3 and
+§7). With the official Fabric API 0.92.12 jar passed through, the server starts on Forge 47 (#123): 38 modules'
+main entrypoints run, after PLAIN-1, CTOR-2, ACC-2, CAPTURE-3, LOCAL-3 and ARGS-1 on `main`, and the branch's plan
+leaving out registry sync's `SaveLoadingMixin`, which replaced Forge's list of data pack registries (its biome and
+structure modifiers) with vanilla's; the Fabric mods' dynamic registries are added to Forge's list instead. With
+FINAL-1 and FINAL-2 on `main` the recipe API's entrypoint runs too: all 38 modules' main entrypoints (#125). The
+minecraft mod container holds vanilla's resources (#130), and the tag API loads (#131) and reads tag files'
+`fabric:remove` (#132). With #132 the in-game mod is reobfuscated to SRG's names and has mixins of its own, with the
+refmap Mixin's annotation processor writes: the base of every native module (L4). The first, `fabric-biome-api-v1`
+on Forge 47's biome modifiers (#135, a port of BIOME-1), applies Fabric's biome changes where Forge reads them, and
+Forge's field-to-method coremod applies again (upstream's access widener had opened `Biome.climateSettings`, which
+the coremod needs private, so its whole biome transform failed while Fabric API was installed): a spawn and a
+temperature added to plains reach the biome Forge reads, with and without Fabric API. `fabric-loot-api-v2` and
+`fabric-loot-tables-v1` are native since #138, with `fabric-api-base` (they were disabled: Forge 47's loot pools are
+a list): Fabric's loot events run where `LootDataManager` applies the parsed tables, and the test mod's pools added
+through both versions and its replaced table are in the tables the game keeps, each event seeing its table's
+source. `fabric-dimensions-v1` is native since #141: Forge 47 moved vanilla's dimension change into its own
+`changeDimension`, which takes a teleporter, so the End hook gives a Fabric teleport a teleporter that asks for no
+portal and isn't vanilla's (no obsidian platform, no credits leaving the End), and upstream's codec hook is left to
+Forge's own lenient codec (its fix for MC-197860). An armor stand teleported to the End lands at its target with no
+platform built, with and without Fabric API, and with Fabric API every module of 0.92.12 loads. Fabric mods' fluids
+have Forge fluid types since #151 (the forge branch's port): Forge 47's `travel` moved an entity in any mod fluid as
+in water, so a Fabric fluid that isn't water leaves it to move as through air. The test mod registers two fluid
+families in Intermediary's names, and both runs report their types registered under their ids, lava's light, the
+block's description id, water to entities only where tagged, and a pig falling through the other. The in-game mod's
+MixinExtras injectors now have their targets in the refmap too (MixinExtras' annotation processor beside Mixin's,
+which left `travel` in Mojang's name at first), and Forge's own members are marked unremapped. Next: the old
+capability system and `SimpleChannel`. NeoForge needs no legacy branch.
+
 ### forge
 
 | Phase | Work | Exit criterion |
@@ -381,6 +416,45 @@ the abstractions below are added when the branch work starts (owner decision D2 
 | F3 Discovery and translation | forgespi 8 adapter (shared design with L3; designed in §4.1, in the order given there); descriptor writer; class transforms. | Server smoke on one version. Steps 1 to 4 done (#85, #87, #90, #95, #96, #99): 18 server checks on Forge 61 and 64 to 66, the main and server entrypoints in Forge's registry events with an item registered and kept. Step 5 done (#102): a Fabric mod that wasn't loaded is named in Forge's loading warnings (19 checks). The client's entrypoints follow. |
 | F4 Bridges | Native Fabric API modules against EventBus 7, old capabilities, `ChannelBuilder` networking, `AddGuiOverlayLayersEvent`. First, from the informational runs with the official Fabric API jars (#108): Forge 61 to 66 run SpongePowered's Mixin 0.8.7, which stopped Forge 64 to 66 on Fabric API's JAVA_25 level (LEVEL-1, fixed in `core`); Forge 61 stopped at bootstrap on the furnace hook, as Forge 47 did (ALLOW-1, fixed in `core`). Pre-flight disables dimensions (`TaggedChoice` is a library class there), tags and datagen (methods Forge's patches add), and on 26.x object builder (Forge changed `AttributeSupplier.Builder`'s field), data attachment (needs it) and content registries (Forge's fluid hooks), so those come first. | Server and client smoke gates on every version. |
 | F5 Corpus | As L5. | Release criteria. |
+
+**Where it stands.** Minecraft Forge 61 to 66 for the versions `main` covers, built with ForgeGradle. F3 steps 1 to 4 done:
+on Forge 61 (1.21.11) and 64 to 66 (26.x) a translated Fabric mod is discovered, loads, runs its main and server
+entrypoints in Forge's registry events with the registries open, registers an item that stays in the frozen registry,
+has its mixins applied, its injected interfaces added and its other side's members stripped, and the report names
+Forge (#85, #87, #90, #95, #96, #99: 18 server checks on each version; §4.1). With the official
+Fabric API jar passed through, the server starts on all four (#122): Forge 64 and 65 once ARGS-1 took a
+`@ModifyVariable`'s argument by its slot, Forge 66 once its plan left out the loot and advancement API's loading hooks,
+which cast what Forge 66 decodes as an `Optional` (its conditional data); seven modules load without some of their
+mixins, where Forge's code differs. The tag API loads too since #134 (it was disabled: Forge's `TagFile` has its own
+`remove`): the plans leave out the members `main` leaves out on NeoForge, and the in-game mod's first mixin reads tag
+files' `fabric:remove` into Forge's list, checked with and without Fabric API (one more module's entrypoint runs on
+Forge 61 and 66). `fabric-loot-api-v3` is native on all four since #137 (a port of `main`'s, with `fabric-api-base`
+native too, which its events need without a Fabric API jar): Fabric's loot table events run from Forge's
+`LootTableLoadEvent` on Forge 61 to 65 and from a hook into the registry decode on Forge 66, whose loot skip is
+gone; a test mod's pool added in `MODIFY` reaches dirt's table, with and without Fabric API. The in-game mod's own
+mixins use no MixinExtras sugar: without Fabric API, Forge's MixinExtras couldn't load the Mixin class `@Local`
+needs and the server didn't start (caught on #137's first run). `fabric-dimensions-v1` loads since #140: the plans
+leave out its DataFixerUpper mixins, which Forge loads without mixin support, and `V2832Mixin`, which casts to the
+interface they add. `fabric-object-builder-api-v1` loads on Forge 64 to 66 since #142, and
+`fabric-data-attachment-api-v1` with it: Forge keeps an attribute builder's entries in a map of its own, so the plans
+leave out upstream's accessor of vanilla's, and a pseudo mixin in the in-game mod copies an entity type's defaults
+for `FabricDefaultAttributeRegistry.MODIFY` with Forge's constructor. MODIFY runs in Forge's attribute modification
+event: upstream's hook fired as the built-in registries froze, which Forge does at bootstrap, before any Fabric mod
+had registered a listener. A cow's armor set through MODIFY is what the game reads on all three (with Fabric API).
+Content registries (Forge 64 to 66) and data generation (all four) load since #144, without the hooks Forge's code
+can't take: content registries' four swimming hooks (Forge decides swimming from fluid types), and data generation's
+mixins that add methods Forge's classes already declare or hook block loot iteration Forge replaced, lost in data
+generation only. With the official Fabric API jar, no module is disabled on any of the four any more. Fabric API's
+advancement events run on Forge 66 since #146: the in-game mod wraps Forge's conditional decoding of each advancement
+and runs upstream's code on the advancement inside (upstream's hook, which casts what Forge decodes, stays left out);
+a vanilla advancement's reward set through `MODIFY` is what the server loads on Forge 65 and 66 (with Fabric API).
+Fabric mods' fluids have Forge fluid types since #147 (a port of `main`'s): Forge throws "Mod fluids must override
+getFluidType" for any fluid without one, which every Fabric fluid is, so the in-game mod gives each family one,
+registered under its source's id and read from Fabric's attributes and the fluid's tags, and an entity moves through a
+Fabric fluid that isn't water as through air, as on Fabric (Forge moved it as through lava). Its check passes in both
+runs on all four, with Fabric API once HIDE-1 on `main` renamed `fabric-entity-events-v1`'s private `self()`, which
+had hidden Forge's `IForgeLivingEntity.self()` from every mob. Next: native modules on Forge's events where `main` has
+them on NeoForge's (entity and interaction events), the client's entrypoints.
 
 Order: `main` first, always. L1 serves both branches; after it, L2 to L5 and F2 to F5 can proceed in either order
 or in parallel, as the owner sets priorities. The two branches' adapters share their shape (forgespi 7 and 8 have

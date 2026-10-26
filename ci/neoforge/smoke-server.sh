@@ -26,6 +26,14 @@ echo "::endgroup::"
 mkdir -p mods config
 cp "$root"/build/libs/fabricated-*+mc"$mc".jar mods/
 cp "$root"/mc/neoforge/"$mc"/build/testmods/*.jar mods/
+# Two Fabric mods that depend on each other, as Fabric allows: the loader's sorter refuses a cycle of load orderings, so
+# Fabricated leaves one of theirs out (ORDER-1), and the server must still start.
+mkdir -p cycle
+for self in a b; do
+	other=$([ "$self" = a ] && echo b || echo a)
+	printf '{"schemaVersion": 1, "id": "fabricated_cycle_%s", "version": "1.0.0", "depends": {"fabricated_cycle_%s": "*"}}\n' "$self" "$other" > cycle/fabric.mod.json
+	jar --create --file "mods/fabricated-cycle-$self.jar" -C cycle fabric.mod.json
+done
 if [ -n "$extra" ] && [ -d "$extra" ]; then
 	cp "$extra"/*.jar mods/ 2>/dev/null || true
 fi
@@ -110,6 +118,7 @@ check() {
 }
 [ "$status" = "started" ] && echo "PASS: server started" || { echo "FAIL: server did not start ($status)"; fail=1; required_fail=1; }
 check "FABRICATED-TEST main entrypoint OK" server.out "main entrypoint ran"
+check "fabricated_cycle_b doesn.t load after fabricated_cycle_a" logs/fabric-bridge-report.txt "two Fabric mods that depend on each other load, one ordering of their cycle left out (ORDER-1)"
 check "FABRICATED-TEST loader api OK" server.out "Fabric Loader API works"
 check "FABRICATED-TEST custom entrypoint OK" server.out "custom entrypoint resolved"
 check "FABRICATED-TEST added entrypoint OK" server.out "an entrypoint a mixin plugin added to Fabric Loader's internal storage resolves, as FrozenLib's do (LOADER-4)"
