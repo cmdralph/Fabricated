@@ -348,6 +348,26 @@ class PipelineTest {
 				result.report().render());
 	}
 
+	/** On another platform, the report's reasons and suggestions name its loader where they named NeoForge (PLAT-3). */
+	@Test
+	void reasonsAndSuggestionsNameThePlatformsLoader(@TempDir Path game) throws Exception {
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		Path sodium = TestJars.create().fabricModJson(TestJars.modJson("sodium", "0.9.2", "\"name\":\"Sodium\"")).write(mods.resolve("sodium.jar"));
+		Path needy = TestJars.create().fabricModJson(TestJars.modJson("needy", "1.0.0", "\"depends\":{\"absent-lib\":\"*\"}"))
+				.write(mods.resolve("needy.jar"));
+
+		Pipeline.Result result = Pipeline.run(withDescriptor(input(game, List.of(sodium, needy), Namespace.OFFICIAL, Map.of(), null, List.of()),
+				PlatformDescriptor.FORGE));
+
+		Report.ModRow row = result.report().mods().stream().filter(r -> r.id().equals("sodium")).findFirst().orElseThrow();
+		assertTrue(row.detail().startsWith("its Fabric build can't run on Forge: "), row.detail());
+		assertEquals("Install Sodium for Forge instead (from the same download page).", row.suggestion());
+		Report.ModRow missing = result.report().mods().stream().filter(r -> r.id().equals("needy")).findFirst().orElseThrow();
+		assertEquals("Install absent-lib (a Fabric or Forge build) or remove needy.", missing.suggestion());
+		// The compatibility plan's own reasons are NeoForge's data; nothing else names NeoForge.
+		assertFalse(result.report().render().replace(row.detail(), "").contains("NeoForge"), result.report().render());
+	}
+
 	/** {@code in} with another platform's descriptor. */
 	private static Pipeline.Input withDescriptor(Pipeline.Input in, PlatformDescriptor descriptor) throws Exception {
 		java.lang.reflect.RecordComponent[] parts = Pipeline.Input.class.getRecordComponents();
@@ -1136,6 +1156,43 @@ class PipelineTest {
 	}
 
 	@Test
+	void aFabricJarsNeoForgeBuildsLootModifiersAreTurnedOffUnlessItUsesPortingLib(@TempDir Path game) throws Exception {
+		// CORPUS-23: Artifacts' Fabric jar carries its NeoForge build's global loot modifiers, whose types only that build
+		// registers; NeoForge reads them from any jar, Fabric reads none.
+		String modifier = "data/artifacts/loot_modifiers/inject/archaeology/desert_pyramid.json";
+		String list = "data/neoforge/loot_modifiers/global_loot_modifiers.json";
+		String table = "data/artifacts/loot_table/chests/cellar.json";
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		Path artifacts = TestJars.create().fabricModJson(TestJars.modJson("artifacts", "1.0", ""))
+				.text(modifier, "{\"type\": \"artifacts:replace_with_lootable\", \"conditions\": []}")
+				.text(list, "{\"replace\": false, \"entries\": [\"artifacts:inject/archaeology/desert_pyramid\"]}")
+				.text(table, "{\"pools\": []}")
+				.write(mods.resolve("artifacts.jar"));
+		// Porting Lib reads them on Fabric, from the same folder: a mod using it keeps its own.
+		String kept = "data/create/loot_modifiers/crushing_wheel.json";
+		Path create = TestJars.create().fabricModJson(TestJars.modJson("create", "1.0", "\"depends\":{\"porting_lib_loot\":\"*\"}"))
+				.text(kept, "{\"type\": \"create:crushing\"}")
+				.write(mods.resolve("create.jar"));
+		Path portingLib = TestJars.create().fabricModJson(TestJars.modJson("porting_lib_loot", "1.0", "")).write(mods.resolve("porting_lib_loot.jar"));
+		Pipeline.Result result = Pipeline.run(input(game, List.of(artifacts, create, portingLib), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
+
+		Pipeline.LoadedMod translated = result.mods().stream().filter(m -> m.translated().candidate().id().equals("artifacts")).findFirst().orElseThrow();
+		try (SafeArchive overlay = SafeArchive.open(translated.translated().overlay(), ArchiveLimits.DEFAULTS)) {
+			Object never = List.of(Map.of("type", "neoforge:never"));
+			assertEquals(Map.of("neoforge:conditions", never), Json.parseObject(overlay.readText(modifier)), "skipped on every NeoForge version");
+			// 1.21.11 reads the list itself and names no modifier of the mod's; 26.x skips it as a modifier of its own.
+			assertEquals(Map.of("neoforge:conditions", never, "replace", false, "entries", List.of()), Json.parseObject(overlay.readText(list)));
+			assertNull(overlay.read(table), "a loot table is the jar's own");
+		}
+		assertTrue(translated.translated().notes().stream().anyMatch(n -> n.startsWith("2 NeoForge global loot modifier file(s)")),
+				translated.translated().notes().toString());
+		Pipeline.LoadedMod withPortingLib = result.mods().stream().filter(m -> m.translated().candidate().id().equals("create")).findFirst().orElseThrow();
+		try (SafeArchive overlay = SafeArchive.open(withPortingLib.translated().overlay(), ArchiveLimits.DEFAULTS)) {
+			assertNull(overlay.read(kept), "Porting Lib's modifier is the jar's own");
+		}
+	}
+
+	@Test
 	void aModNeedingANewerMixinExtrasIsDisabledUnlessTheReleasesSinceOnlyFixedBugs(@TempDir Path game) throws Exception {
 		// MIXEXT-1: Freecam's 1.21.11 build asks for MixinExtras 0.5.5, NeoForge 21.11 ships 0.5.3 (the test input's), and
 		// MixinExtras stopped the game reading the config. A config may take the setting from its parent. MIXEXT-2: 0.5.4 and
@@ -1541,7 +1598,7 @@ class PipelineTest {
 		Pipeline.Result result = Pipeline.run(input(game, List.of(jar), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
 		String report = result.report().render();
 		assertTrue(result.runtime().isModLoaded("partial-mod"), report);
-		assertTrue(report.contains(Pipeline.LEFT_OUT_SECTION), report);
+		assertTrue(report.contains(Pipeline.leftOutSection("NeoForge")), report);
 		assertTrue(report.contains("partial-mod: LEFT_OUT [partial.mixins.json com.partial.mixin.Broken]"), report);
 		assertTrue(report.contains("partial-mod: LEFT_OUT [partial.mixins.json com.partial.mixin.Stateless]"), report);
 		Report.ModRow row = result.report().mods().stream().filter(r -> r.id().equals("partial-mod")).findFirst().orElseThrow();
