@@ -15,6 +15,9 @@ One entry per working session, newest first: what changed, and how it was verifi
 - Fabric's class transforms (environment stripping, injected interfaces, default bridges) move from NeoForge's class
   processors into `FabricClassTransforms` in `loader/common`, which the processors call, so the forge branch's
   transformation service applies the same code (F3 step 4). No change in behaviour.
+- The report names the platform's loader (`PlatformDescriptor.loaderName()`): on Forge its environment line said
+  "NeoForge: 61.2.4" and, without mappings, it told players to reinstall NeoForge (the forge branch's server smoke).
+  The rest of its messages and pre-flight's still name NeoForge (roadmap PLAT-3).
 
 ## 2026-10-25: branch reorganisation, a glowing moving block's outline, 1.21.11 server linkage noise, platform seams
 
