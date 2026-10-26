@@ -4,7 +4,7 @@
     "fabric-advancement-api-v1": {
       "plan": "passthrough",
       "skipMixins": ["fabric-advancement-api-v1.mixins.json:ResourceManagerRegistryLoadTaskMixin"],
-      "reason": "Forge 66 decodes advancements as Optional<Advancement> (its conditional data), which upstream's loading hook casts to Advancement and stops data pack loading: the advancement modify event doesn't run until a native module on Forge's events replaces it."
+      "reason": "Forge 66 decodes advancements as Optional<Advancement> (its conditional data), which upstream's loading hook casts to Advancement and stops data pack loading: the in-game mod's hook on the same decoding runs upstream's REPLACE and MODIFY on the advancement inside instead."
     },
     "fabric-api-base": {
       "plan": "native",
