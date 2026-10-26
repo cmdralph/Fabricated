@@ -1,0 +1,223 @@
+name: Release
+
+# Builds a release's jars from pinned commits, by hand only: NeoForge's from main, Forge's from forge and Forge 1.20.1's
+# from forge-legacy, each with the build its own branch's CI uses, from an empty Gradle cache. Mode "build" (the
+# default) only builds the jars and lists their checksums, for review before anything is published; "draft" also creates
+# a draft release, and "publish" a published one. GitHub creates the tag at main's pinned commit when the release is
+# published; no tag is pushed from a working copy. The notes are docs/releases/<tag>.md at that commit, followed by the
+# commits each jar was built from and the jars' SHA-256 checksums.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag, v<fabricated_version> with an optional pre-release suffix (v0.4.0-alpha)
+        required: true
+      mode:
+        description: build (jars and checksums only), draft or publish
+        type: choice
+        options: [build, draft, publish]
+        default: build
+      neoforge_ref:
+        description: Branch or full commit SHA for NeoForge's jars
+        default: main
+      forge_ref:
+        description: Branch or full commit SHA for Forge's jars
+        default: forge
+      forge_legacy_ref:
+        description: Branch or full commit SHA for Forge 1.20.1's jar
+        default: forge-legacy
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  refs:
+    name: Pin the commits
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.pin.outputs.version }}
+      neoforge: ${{ steps.pin.outputs.neoforge }}
+      forge: ${{ steps.pin.outputs.forge }}
+      forge_legacy: ${{ steps.pin.outputs.forge_legacy }}
+    steps:
+      - name: Check the tag and resolve the refs
+        id: pin
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+          MODE: ${{ inputs.mode }}
+          NEOFORGE_REF: ${{ inputs.neoforge_ref }}
+          FORGE_REF: ${{ inputs.forge_ref }}
+          FORGE_LEGACY_REF: ${{ inputs.forge_legacy_ref }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$TAG" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)(-[0-9A-Za-z.]+)?$ ]]; then
+            echo "::error::'$TAG' is not v<major>.<minor>.<patch>, with an optional -suffix"
+            exit 1
+          fi
+          echo "version=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
+          # A full SHA is taken as given; anything else is a branch, resolved once so every job builds the same commit.
+          resolve() {
+            if [[ "$1" =~ ^[0-9a-f]{40}$ ]]; then
+              gh api "repos/$GITHUB_REPOSITORY/commits/$1" --jq .sha
+            else
+              gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$1" --jq .object.sha
+            fi
+          }
+          neoforge=$(resolve "$NEOFORGE_REF")
+          {
+            echo "neoforge=$neoforge"
+            echo "forge=$(resolve "$FORGE_REF")"
+            echo "forge_legacy=$(resolve "$FORGE_LEGACY_REF")"
+          } >> "$GITHUB_OUTPUT"
+          if [ "$MODE" != build ]; then
+            if [ "$GITHUB_REF" != refs/heads/main ]; then
+              echo "::error::A release is created only by main's copy of this workflow"
+              exit 1
+            fi
+            if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" > /dev/null 2>&1; then
+              echo "::error::The tag $TAG already exists"
+              exit 1
+            fi
+            if ! gh api "repos/$GITHUB_REPOSITORY/contents/docs/releases/$TAG.md?ref=$neoforge" > /dev/null 2>&1; then
+              echo "::error::docs/releases/$TAG.md is missing at $neoforge"
+              exit 1
+            fi
+          fi
+
+  build:
+    name: ${{ matrix.platform }} ${{ matrix.minecraft }}
+    needs: refs
+    runs-on: ubuntu-latest
+    # The Gradle cache is off, so ForgeGradle's Mavenizer and NeoForge's setup run in full.
+    timeout-minutes: 60
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - { platform: NeoForge, minecraft: "1.21.11", commit: neoforge, java: 25, jar: fabricated, tasks: ":mc:1.21.11:fabricatedJar" }
+          - { platform: NeoForge, minecraft: "26.1.2", commit: neoforge, java: 25, jar: fabricated, tasks: ":mc:26.1.2:fabricatedJar" }
+          - { platform: NeoForge, minecraft: "26.2", commit: neoforge, java: 25, jar: fabricated, tasks: ":mc:26.2:fabricatedJar" }
+          - { platform: NeoForge, minecraft: "26.3", commit: neoforge, java: 25, jar: fabricated, tasks: ":mc:26.3:fabricatedJar" }
+          - { platform: Forge, minecraft: "1.21.11", commit: forge, java: 25, jar: fabricated-forge, tasks: "--configure-on-demand :mc:forge-1.21.11:fabricatedJar :mc:forge-1.21.11:checkForgeJar" }
+          - { platform: Forge, minecraft: "26.1.2", commit: forge, java: 25, jar: fabricated-forge, tasks: "--configure-on-demand :mc:forge-26.1.2:fabricatedJar :mc:forge-26.1.2:checkForgeJar" }
+          - { platform: Forge, minecraft: "26.2", commit: forge, java: 25, jar: fabricated-forge, tasks: "--configure-on-demand :mc:forge-26.2:fabricatedJar :mc:forge-26.2:checkForgeJar" }
+          - { platform: Forge, minecraft: "26.3", commit: forge, java: 25, jar: fabricated-forge, tasks: "--configure-on-demand :mc:forge-26.3:fabricatedJar :mc:forge-26.3:checkForgeJar" }
+          - { platform: Forge, minecraft: "1.20.1", commit: forge_legacy, java: 17, jar: fabricated-forge, tasks: "--configure-on-demand :mc:1.20.1:fabricatedJar :mc:1.20.1:checkForgeJar" }
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.refs.outputs[matrix.commit] }}
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          # Gradle runs on 21, the last listed; the other is the toolchain the version builds or runs Mavenizer with.
+          java-version: |
+            ${{ matrix.java }}
+            21
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-disabled: true
+      - name: Check the version
+        env:
+          EXPECTED: ${{ needs.refs.outputs.version }}
+        run: |
+          version=$(sed -n 's/^fabricated_version=//p' gradle.properties)
+          if [ "$version" != "$EXPECTED" ]; then
+            echo "::error::$(git rev-parse --short HEAD) builds $version; the tag names $EXPECTED"
+            exit 1
+          fi
+      - name: Build the jar
+        run: ./gradlew ${{ matrix.tasks }} --stacktrace
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jar-${{ matrix.jar }}-${{ matrix.minecraft }}
+          path: build/libs/${{ matrix.jar }}-${{ needs.refs.outputs.version }}+mc${{ matrix.minecraft }}.jar
+          if-no-files-found: error
+
+  release:
+    name: Checksums and release
+    needs: [refs, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.refs.outputs.neoforge }}
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: jar-*
+          path: dist
+          merge-multiple: true
+      - name: Check the jars, write the checksums and the notes
+        env:
+          TAG: ${{ inputs.tag }}
+          VERSION: ${{ needs.refs.outputs.version }}
+          NEOFORGE_REF: ${{ inputs.neoforge_ref }}
+          FORGE_REF: ${{ inputs.forge_ref }}
+          FORGE_LEGACY_REF: ${{ inputs.forge_legacy_ref }}
+          NEOFORGE: ${{ needs.refs.outputs.neoforge }}
+          FORGE: ${{ needs.refs.outputs.forge }}
+          FORGE_LEGACY: ${{ needs.refs.outputs.forge_legacy }}
+        run: |
+          set -euo pipefail
+          jars=()
+          for minecraft in 1.21.11 26.1.2 26.2 26.3; do jars+=("fabricated-$VERSION+mc$minecraft.jar"); done
+          for minecraft in 1.21.11 26.1.2 26.2 26.3 1.20.1; do jars+=("fabricated-forge-$VERSION+mc$minecraft.jar"); done
+          for jar in "${jars[@]}"; do
+            [ -f "dist/$jar" ] || { echo "::error::$jar was not built"; exit 1; }
+          done
+          if [ "$(ls dist | wc -l)" -ne "${#jars[@]}" ]; then
+            echo "::error::dist holds more than the release's jars: $(ls dist | tr '\n' ' ')"
+            exit 1
+          fi
+          (cd dist && sha256sum "${jars[@]}" > SHA256SUMS.txt)
+          commit() { echo "[\`${1:0:10}\`]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/commit/$1)"; }
+          {
+            if [ -f "docs/releases/$TAG.md" ]; then cat "docs/releases/$TAG.md"; echo; fi
+            echo "## Builds"
+            echo
+            echo "Built by [the release workflow]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID) from:"
+            echo
+            echo "| Jars | Branch | Commit |"
+            echo "|---|---|---|"
+            echo "| \`fabricated-$VERSION+mc{1.21.11,26.1.2,26.2,26.3}.jar\` (NeoForge) | \`$NEOFORGE_REF\` | $(commit "$NEOFORGE") |"
+            echo "| \`fabricated-forge-$VERSION+mc{1.21.11,26.1.2,26.2,26.3}.jar\` (Forge 61, 64, 65, 66) | \`$FORGE_REF\` | $(commit "$FORGE") |"
+            echo "| \`fabricated-forge-$VERSION+mc1.20.1.jar\` (Forge 47) | \`$FORGE_LEGACY_REF\` | $(commit "$FORGE_LEGACY") |"
+            echo
+            echo "SHA-256 (also in \`SHA256SUMS.txt\`):"
+            echo
+            echo '```'
+            cat dist/SHA256SUMS.txt
+            echo '```'
+          } > notes.md
+          cat notes.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-files
+          path: |
+            dist/
+            notes.md
+          if-no-files-found: error
+      - name: Create the release
+        if: ${{ inputs.mode != 'build' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+          MODE: ${{ inputs.mode }}
+          TARGET: ${{ needs.refs.outputs.neoforge }}
+        run: |
+          set -euo pipefail
+          args=(--repo "$GITHUB_REPOSITORY" --target "$TARGET" --title "Fabricated $TAG" --notes-file notes.md)
+          case "$TAG" in *-*) args+=(--prerelease) ;; esac
+          [ "$MODE" = publish ] || args+=(--draft)
+          gh release create "$TAG" "${args[@]}" dist/*.jar dist/SHA256SUMS.txt

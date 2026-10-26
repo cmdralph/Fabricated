@@ -109,6 +109,20 @@ Run the game with the Fabric mod, then open an issue with:
 - the mod name, version and download link (no jar attachments),
 - `logs/fabric-bridge-report.txt` and `logs/latest.log`.
 
+## Releasing
+
+A release is cut by hand with the Release workflow (`.github/workflows/release.yml`), run from `main`. It builds
+NeoForge's jars from `main`, Forge's from `forge` and Forge 1.20.1's from `forge-legacy`, at commits it pins when it
+starts, from an empty Gradle cache.
+
+1. Merge `main` into `forge` and `forge-legacy`, so the three branches carry the same shared code, and check that
+   `fabricated_version` in `gradle.properties` is the release's version on all three.
+2. Write the notes as `docs/releases/<tag>.md` (for example `docs/releases/v0.4.0-alpha.md`) and merge them into
+   `main`. The workflow appends the commits each jar was built from and the jars' SHA-256 checksums.
+3. Run the workflow with mode `build`, and check the jars and checksums in the run's summary.
+4. Run it again with mode `draft` or `publish`. A tag with a suffix (`-alpha`) makes a pre-release. GitHub creates the
+   tag at `main`'s pinned commit when the release is published; no tag is pushed from a working copy.
+
 ## Licensing
 
 Fabricated is licensed under GPL-3.0. Contributions are accepted under the same license. Only copy code whose

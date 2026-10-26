@@ -881,6 +881,12 @@ MixinExtras has NeoForge's jar, and a NeoForge mod nested in another jar has tha
   method, calling NeoForge's default, unless a mixin declares it (Fabricated's own do for some of Fabric API's). The JVM can't choose between two such defaults and throws
   (`IncompatibleClassChangeError: Conflicting default methods`); Entity Culling 1.11's `getRenderBoundingBox` on block
   entity renderers was one.
+- A mixin's private method with the name and descriptor of a default method its target inherits from NeoForge's
+  interfaces (`ILivingEntityExtension.self()` on `LivingEntity`) gets another name, with its calls in the mixin, and the
+  report notes it (HIDE-1). Under its own name it hid the default from the target's subclasses, and NeoForge's calls of
+  it on them threw (`AbstractMethodError`): Mixin renames such a `@Unique` method only where the target class declares
+  the method itself. Fabric API's entity events module has one (`fabric-entity-events-v1`, native on NeoForge; passed
+  through on the forge branch, where every mob in a fluid met it).
 - `PlayerList.getPlayers()` follows the list in the field, as in vanilla. NeoForge returns an unmodifiable view made
   when the player list is constructed, so a mod whose mixin replaces the list (written for vanilla, where both are one
   object) would leave it on the old, empty list, and an integrated server finding no player stays paused. The view is
