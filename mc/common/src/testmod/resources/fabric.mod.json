@@ -22,6 +22,7 @@
       "io.github.cmdralph.fabricated.testmod.ItemApiTest",
       "io.github.cmdralph.fabricated.testmod.InteractionTest",
       "io.github.cmdralph.fabricated.testmod.LootTest",
+      "io.github.cmdralph.fabricated.testmod.TagRemovalTest",
       "io.github.cmdralph.fabricated.testmod.ContentRegistriesTest",
       "io.github.cmdralph.fabricated.testmod.TransferTest",
       "io.github.cmdralph.fabricated.testmod.FluidTest",
