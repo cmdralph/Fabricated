@@ -32,6 +32,10 @@ One entry per working session, newest first: what changed, and how it was verifi
   workflow built from `main`, `forge` and `forge-legacy` as they stood after #153, #154 and #155. The README's status
   line and `ARCHITECTURE.md`'s version follow.
 
+## Released: v0.4.0-alpha
+
+The entries from here down are in v0.4.0-alpha (its notes: [`releases/v0.4.0-alpha.md`](releases/v0.4.0-alpha.md)).
+
 ## 2026-10-26: a release workflow, and v0.4.0-alpha's notes
 
 - `.github/workflows/release.yml` cuts a release by hand: it pins `main`, `forge` and `forge-legacy` (or given commits)

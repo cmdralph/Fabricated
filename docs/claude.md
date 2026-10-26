@@ -1,8 +1,9 @@
 # Fabricated: engineering memory
 
 This file is the starting point for anyone (human or agent) working on Fabricated. **Read it first, then
-[`roadmap.md`](roadmap.md).** It holds the architecture map, the rules the code follows and the commands to run
-before committing. The longer design documents remain the reference for details:
+[`roadmap.md`](roadmap.md)** (the next release's goals come first there). It holds the architecture map, the rules the
+code follows and the commands to run before committing. [`README.md`](README.md) says which document holds what and
+when it changes. The longer design documents remain the reference for details:
 [`ARCHITECTURE.md`](ARCHITECTURE.md) (pipeline, isolation, caching, security), [`RESEARCH.md`](RESEARCH.md) (verified
 facts about NeoForge, FML and Fabric), [`COMPATIBILITY.md`](COMPATIBILITY.md) (what works, per version and module),
 [`API.md`](API.md) (Fabricated's public API), [`CHANGELOG.md`](CHANGELOG.md) (each session's changes and how they were

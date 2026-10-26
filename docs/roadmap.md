@@ -13,6 +13,19 @@ system, with no dependency but the official Fabric API jar. The aim is the best 
 maintainable way to do this, held to the rules in `claude.md`: every claim checked against source or CI, untrusted jars
 handled safely, no network access, original jars never changed, and no code that a CI check doesn't exercise.
 
+## Next release: v0.5.0
+
+v0.4.0-alpha (`releases/v0.4.0-alpha.md`) shipped NeoForge's four versions and the Forge builds as server previews.
+v0.5.0 is where the Forge targets get Fabric mods' client side and the platforms' coverage becomes comparable, with no
+regression on NeoForge. Each item is done when its CI check is; the tracks below hold the detail.
+
+| Platform | Goals |
+|---|---|
+| All | One working branch and one folder per platform, every branch holding the same tree (done: `CHANGELOG.md`, 2026-10-26). Each Fabric API module's status on every platform in `COMPATIBILITY.md`, so the platforms can be compared. |
+| NeoForge (`main`) | The open corpus findings (below) that a generic fix covers. `preLaunch` right after FML's mixin bootstrap (*Loader and translation*, next). ARCH-1: pre-flight's repair families out of `MixinPreflight`, with no change in behaviour. |
+| Forge 61 to 66 (`forge`) | Fabric mods' client entrypoints and a client run in CI. Entity and interaction events native on Forge's events, as `main` has them on NeoForge's (F4). The server runs made gates once their checks hold on every version. |
+| Forge 47 (`forge-legacy`) | Fabric's networking on `SimpleChannel` and its storages on Forge 47's capabilities, then client entrypoints and a client run in CI (L4, `PORTING.md` §7). |
+
 ## Tracks
 
 ### Platforms (branches)
