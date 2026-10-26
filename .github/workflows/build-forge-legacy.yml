@@ -1,12 +1,27 @@
 name: Build forge-legacy
 
-# The forge-legacy branch's own build: pull requests to the branch only (owner decision D6); main's build.yml builds
-# NeoForge's targets for main. With a server smoke on Forge 47 that must start the server; its other checks are
-# reported (docs/PORTING.md §7).
+# The forge-legacy branch's build of Forge 1.20.1 (mc/forge-legacy, the project :mc:forge-legacy-1.20.1): pull requests
+# to the branch only (owner decision D6). Every branch holds every platform; main's build.yml builds NeoForge's. With a
+# server smoke on Forge 47 that must start the server; its other checks are reported (docs/PORTING.md §7). Changes to
+# documentation alone build nothing, nor do changes to another platform's folders alone.
 on:
   pull_request:
     branches: [forge-legacy]
-    paths-ignore: ['docs/**', '**.md']
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
+      - 'mc/neoforge/**'
+      - 'mc/forge/**'
+      - 'mc/platform-neoforge.gradle'
+      - 'mc/platform-forge.gradle'
+      - 'loader/neoforge/**'
+      - 'loader/forge/**'
+      - 'ci/neoforge/**'
+      - 'ci/forge/**'
+      - '.github/workflows/build.yml'
+      - '.github/workflows/build-forge.yml'
+      - '.github/workflows/release.yml'
+      - '.github/workflows/branch-readme.yml'
   workflow_dispatch:
 
 permissions:
@@ -51,24 +66,24 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Newest Forge builds for ${{ matrix.minecraft }} (informational)
         run: |
-          pinned=$(sed -n 's/^forge_version=//p' "mc/${{ matrix.minecraft }}/gradle.properties")
+          pinned=$(sed -n 's/^forge_version=//p' "mc/forge-legacy/${{ matrix.minecraft }}/gradle.properties")
           newest=$(curl -fsS https://maven.minecraftforge.net/net/minecraftforge/forge/maven-metadata.xml \
             | grep -o "<version>${{ matrix.minecraft }}-[^<]*" | sed 's/<version>//' | tail -n 5 | tr '\n' ' ') || true
           echo "Pinned: $pinned. Newest published: ${newest:-unknown}" | tee -a "$GITHUB_STEP_SUMMARY"
       # Only the requested project and what it depends on are configured, not main's NeoForge projects.
       - name: Forge libraries on the compile classpath (informational)
-        run: ./gradlew --configure-on-demand :mc:${{ matrix.minecraft }}:forgeClasspathReport || true
+        run: ./gradlew -Pfabricated.platforms=forge-legacy --configure-on-demand :mc:forge-legacy-${{ matrix.minecraft }}:forgeClasspathReport || true
       - name: Build Fabricated and the test mod
-        run: ./gradlew --configure-on-demand :mc:${{ matrix.minecraft }}:fabricatedJar :mc:${{ matrix.minecraft }}:testmodJar --stacktrace
+        run: ./gradlew -Pfabricated.platforms=forge-legacy --configure-on-demand :mc:forge-legacy-${{ matrix.minecraft }}:fabricatedJar :mc:forge-legacy-${{ matrix.minecraft }}:testmodJar --stacktrace
       - name: Check the jar's layout for Forge
-        run: ./gradlew --configure-on-demand :mc:${{ matrix.minecraft }}:checkForgeJar --stacktrace
+        run: ./gradlew -Pfabricated.platforms=forge-legacy --configure-on-demand :mc:forge-legacy-${{ matrix.minecraft }}:checkForgeJar --stacktrace
       # The game on this branch: what Forge 47 makes of the jar and of the translated test mod. The server must start
       # (#93's first run showed a registration failure stopping it, under a green job); the checks are reported.
       - name: Server with Fabricated (must start)
         run: |
           # Forge 47 runs on Java 17.
           export PATH="$JAVA_HOME_17_X64/bin:$PATH"
-          forge=$(sed -n 's/^forge_version=//p' "mc/${{ matrix.minecraft }}/gradle.properties")
+          forge=$(sed -n 's/^forge_version=//p' "mc/forge-legacy/${{ matrix.minecraft }}/gradle.properties")
           ci/forge-legacy/smoke-server.sh "${{ matrix.minecraft }}" "$forge" "$RUNNER_TEMP/server"
       # The official Fabric API jar (downloaded here in CI, never by Fabricated) with every module passed through: what
       # loads on Forge 47 and what pre-flight disables, for L4's choice of native modules. Informational.
@@ -77,9 +92,9 @@ jobs:
         continue-on-error: true
         run: |
           export PATH="$JAVA_HOME_17_X64/bin:$PATH"
-          forge=$(sed -n 's/^forge_version=//p' "mc/${{ matrix.minecraft }}/gradle.properties")
+          forge=$(sed -n 's/^forge_version=//p' "mc/forge-legacy/${{ matrix.minecraft }}/gradle.properties")
           fabric_api=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["fabricApiVersion"])' \
-            "mc/${{ matrix.minecraft }}/src/fabricated/resources/META-INF/fabricated/fabric-api-plan.json")
+            "mc/forge-legacy/${{ matrix.minecraft }}/src/fabricated/resources/META-INF/fabricated/fabric-api-plan.json")
           mkdir -p "$RUNNER_TEMP/extra"
           curl -fsSL --retry 4 -o "$RUNNER_TEMP/extra/fabric-api.jar" \
             "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api/${fabric_api}/fabric-api-${fabric_api}.jar"

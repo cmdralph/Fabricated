@@ -58,7 +58,7 @@ final class ForgeMods {
 		List<Pipeline.NeoForgeMod> mods = new ArrayList<>();
 		List<InstalledClasses.Jar> jars = new ArrayList<>(first);
 		for (IModFile file : files) {
-			List<IModInfo> infos = modInfos(file);
+			List<IModInfo> infos = file.getModInfos();
 			for (IModInfo mod : infos) {
 				if (mod.getModId().equals("minecraft")) continue;
 				mods.add(new Pipeline.NeoForgeMod(mod.getModId(), mod.getVersion().toString(), mod.getDisplayName(), plain(mod.getModProperties()),
@@ -89,15 +89,6 @@ final class ForgeMods {
 			}
 		}
 		return new Found(mods, new InstalledClasses(jars));
-	}
-
-	/**
-	 * A file's mods; none for a file without mod metadata. Forge 47's {@code ModFile.getModInfos()} fails on such a file
-	 * (Forge's own language and library jars: javafml, mclanguage, lowcode, fmlcore), which FML's code filters out by
-	 * {@code getModFileInfo() != null} first; Forge 61's doesn't (#89's server smoke).
-	 */
-	static List<IModInfo> modInfos(IModFile file) {
-		return file.getModFileInfo() == null ? List.of() : file.getModInfos();
 	}
 
 	static boolean contains(SecureJar jar, String path) {

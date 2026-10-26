@@ -4,19 +4,15 @@ import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.LinkedHashSet;
-import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
 /**
- * Where Forge 47's installer leaves the game and its mappings, as its install profile names them (Forge's 1.20.1
- * {@code build.gradle}; which launchers keep them is UNVERIFIED, docs/PORTING.md §3.1): in
- * {@code <libraries>/net/minecraft/<side>/<mc>-<mcp>/}, {@code <side>-<mc>-<mcp>-mappings.txt} is Mojang's mappings
- * (ProGuard) and {@code -srg.jar} vanilla's classes in the names Forge runs them with (Mojang's classes, SRG members); in
- * {@code <libraries>/de/oceanlabs/mcp/mcp_config/<mc>-<mcp>/}, {@code mcp_config-<mc>-<mcp>-mappings.txt} is MCPConfig's
- * obfuscated → SRG mappings (TSRG v2). The {@code minecraft} mod file is that {@code -srg.jar}, in a union with the
- * installer's {@code -extra.jar} beside it, which holds vanilla's resources (assets and data) and no class (the logs of
- * forge-legacy's server smoke on #125).
+ * Where Forge's installer leaves the game (docs/PORTING.md §4.1, read in the forge branch's server smoke): in
+ * {@code <libraries>/net/minecraft/<side>/<mc>/}, {@code <side>-<mc>-unpacked.jar} is vanilla as Mojang's bundler holds
+ * it (obfuscated on 1.21.11, in Mojang's names on 26.x), and on 1.21.11 {@code -official.jar} is vanilla in Mojang's
+ * names and {@code -mappings.tsrg} Mojang's mappings. Forge's own jar is among the same libraries, and is the path of
+ * the {@code minecraft} mod file.
  */
 final class ForgeLibraries {
 	private ForgeLibraries() {
@@ -48,33 +44,17 @@ final class ForgeLibraries {
 		return libraries.resolve("net").resolve("minecraft").resolve(side).resolve(version).resolve(side + "-" + version + "-" + suffix);
 	}
 
-	/** {@code <libraries>/de/oceanlabs/mcp/mcp_config/<version>/mcp_config-<version>-<suffix>}. */
-	static Path mcpConfigFile(Path libraries, String version, String suffix) {
-		return libraries.resolve("de").resolve("oceanlabs").resolve("mcp").resolve("mcp_config").resolve(version).resolve("mcp_config-" + version + "-" + suffix);
-	}
-
-	/** Vanilla's classes in the names Forge runs them with, as the installer left them: {@code <side>-<mc>-<mcp>-srg.jar}. */
-	static Optional<Path> vanillaInRuntimeNames(Path gameFile, boolean client, String minecraftAndMcpVersion) {
+	/**
+	 * Vanilla in Mojang's names, as the installer left it: {@code -official.jar}, and where the game isn't obfuscated
+	 * (26.x) {@code -unpacked.jar}.
+	 */
+	static Optional<Path> vanillaInMojangNames(Path gameFile, boolean client, String version, boolean obfuscated) {
 		for (Path libraries : directories(gameFile)) {
-			Path srg = gameFile(libraries, client, minecraftAndMcpVersion, "srg.jar");
-			if (Files.isRegularFile(srg)) return Optional.of(srg);
+			Path official = gameFile(libraries, client, version, "official.jar");
+			if (Files.isRegularFile(official)) return Optional.of(official);
+			Path unpacked = gameFile(libraries, client, version, "unpacked.jar");
+			if (!obfuscated && Files.isRegularFile(unpacked)) return Optional.of(unpacked);
 		}
 		return Optional.empty();
-	}
-
-	/**
-	 * The files of the game a Fabric mod reads through the {@code minecraft} mod container: the {@code minecraft} mod
-	 * file's jar and, when it is the installer's {@code -srg.jar}, the {@code -extra.jar} beside it, which holds vanilla's
-	 * resources. Fabric API's resource loader reads vanilla's {@code en_us.json} there as the game boots; without it the
-	 * server's language had no strings. Both are files, as a Fabric mod expects of the game's origin.
-	 */
-	static List<Path> gameFiles(Path gameFile) {
-		Path name = gameFile.getFileName();
-		String file = name == null ? "" : name.toString();
-		if (file.endsWith("-srg.jar")) {
-			Path extra = gameFile.resolveSibling(file.substring(0, file.length() - "srg.jar".length()) + "extra.jar");
-			if (Files.isRegularFile(extra)) return List.of(gameFile, extra);
-		}
-		return List.of(gameFile);
 	}
 }

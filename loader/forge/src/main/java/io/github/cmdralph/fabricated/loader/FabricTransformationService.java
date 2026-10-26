@@ -13,8 +13,7 @@ import cpw.mods.modlauncher.api.ITransformer;
 import io.github.cmdralph.fabricated.core.metadata.ModIds;
 
 /**
- * Fabricated's transformation service on Forge (the forge branch's, F3 step 4: Forge 47's ModLauncher 10.0 has the same
- * API and asks for transformers after the scan too; docs/PORTING.md §4.1). ModLauncher loads it from the
+ * Fabricated's transformation service on Forge (docs/PORTING.md §4.1, F3 step 4). ModLauncher loads it from the
  * Fabricated jar in the mods folder (its service file) into the service layer, next to the locators, and asks it for
  * transformers once FML's mod scan, and so Fabricated's discovery, is done: it gives one that applies
  * {@link FabricClassTransforms#beforeMixin} to the classes discovery named (Fabric mods' classes with {@code @Environment}
