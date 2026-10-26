@@ -6,8 +6,9 @@
 # that wasn't loaded.
 #
 # Usage: ci/forge/smoke-server.sh <minecraft-version> <forge-version> <work-dir> [extra-mods-dir]
-# Exit status: the server must start; the checks are reported (until F3's discovery is settled). With extra-mods-dir
-# (the official Fabric API jar), its jars join the mods folder.
+# Exit status: the server must start, and every check that applies to the run must pass; the lines read from debug.log,
+# which Forge's debug output words as it likes, are only reported. With extra-mods-dir (the official Fabric API jar), its
+# jars join the mods folder.
 # Expects: build/libs/fabricated-forge-*+mc<minecraft-version>.jar and mc/forge/<minecraft-version>/build/testmods/fabricated-testmod.jar
 set -euo pipefail
 
@@ -128,31 +129,37 @@ echo "::endgroup::"
 # A pipeline's last grep reads all its input (no -q): under pipefail, -q's exit at the first match can kill the grep
 # feeding it with SIGPIPE, and a line that is there reads as not seen.
 report() { if eval "$2"; then echo "PASS: $1"; else echo "NOT SEEN: $1"; fi; }
+failed=0
+check() { if eval "$2"; then echo "PASS: $1"; else echo "FAIL: $1"; failed=1; fi; }
 report "Forge ran Fabricated's mod locator" "grep -qi 'fabricated' logs/debug.log 2>/dev/null && grep -i 'locator' logs/debug.log | grep -i 'fabricated' > /dev/null"
 report "Forge took Fabricated's language provider" "grep -i -E 'language|lang' logs/debug.log 2>/dev/null | grep -i 'fabricated' > /dev/null"
-report "Fabricated's discovery ran" "grep -q 'Fabricated discovery finished' logs/latest.log 2>/dev/null"
-report "Fabricated handed Forge the translated test mod" "grep -q 'Fabricated handed Forge [1-9]' logs/latest.log 2>/dev/null"
-report "Forge constructed Fabricated's in-game mod" "grep -q 'Fabricated ran the Fabric pre-launch entrypoints' logs/latest.log 2>/dev/null"
-report "the in-game mod's resources load (its pack.mcmeta)" "! grep -q 'Missing metadata in pack mod:fabricated\$' logs/latest.log 2>/dev/null"
-report "the test mod's resources load (Forge reads no pack without metadata)" "grep -q 'FABRICATED-FORGE-TEST main entrypoint OK' logs/latest.log 2>/dev/null && ! grep -q 'Missing metadata in pack mod:fabricated_forge_testmod' logs/latest.log 2>/dev/null"
-report "the test mod's main entrypoint ran" "grep -q 'FABRICATED-FORGE-TEST main entrypoint OK' logs/latest.log 2>/dev/null"
-report "the test mod's server entrypoint ran" "grep -q 'FABRICATED-FORGE-TEST server entrypoint OK' logs/latest.log 2>/dev/null"
-report "the test mod's mixin applied (Mixin read the overlay's MixinConfigs)" "grep -q 'FABRICATED-FORGE-TEST mixin OK' logs/latest.log 2>/dev/null"
-report "Forge took Fabricated's transformation service" "grep -q 'Fabricated transforms [1-9][0-9]* class(es) for Fabric mods before Mixin' logs/latest.log 2>/dev/null"
-report "the test mod's injected interface is on MinecraftServer (inject-interface)" "grep -q 'FABRICATED-FORGE-TEST injected interface OK' logs/latest.log 2>/dev/null"
-report "the test mod's client-only method was stripped (@Environment)" "grep -q 'FABRICATED-FORGE-TEST environment strip OK' logs/latest.log 2>/dev/null"
+check "Fabricated's discovery ran" "grep -q 'Fabricated discovery finished' logs/latest.log 2>/dev/null"
+check "Fabricated handed Forge the translated test mod" "grep -q 'Fabricated handed Forge [1-9]' logs/latest.log 2>/dev/null"
+check "Forge constructed Fabricated's in-game mod" "grep -q 'Fabricated ran the Fabric pre-launch entrypoints' logs/latest.log 2>/dev/null"
+check "the in-game mod's resources load (its pack.mcmeta)" "! grep -q 'Missing metadata in pack mod:fabricated\$' logs/latest.log 2>/dev/null"
+check "the test mod's resources load (Forge reads no pack without metadata)" "grep -q 'FABRICATED-FORGE-TEST main entrypoint OK' logs/latest.log 2>/dev/null && ! grep -q 'Missing metadata in pack mod:fabricated_forge_testmod' logs/latest.log 2>/dev/null"
+check "the test mod's main entrypoint ran" "grep -q 'FABRICATED-FORGE-TEST main entrypoint OK' logs/latest.log 2>/dev/null"
+check "the test mod's server entrypoint ran" "grep -q 'FABRICATED-FORGE-TEST server entrypoint OK' logs/latest.log 2>/dev/null"
+check "the test mod's mixin applied (Mixin read the overlay's MixinConfigs)" "grep -q 'FABRICATED-FORGE-TEST mixin OK' logs/latest.log 2>/dev/null"
+check "Forge took Fabricated's transformation service" "grep -q 'Fabricated transforms [1-9][0-9]* class(es) for Fabric mods before Mixin' logs/latest.log 2>/dev/null"
+check "the test mod's injected interface is on MinecraftServer (inject-interface)" "grep -q 'FABRICATED-FORGE-TEST injected interface OK' logs/latest.log 2>/dev/null"
+check "the test mod's client-only method was stripped (@Environment)" "grep -q 'FABRICATED-FORGE-TEST environment strip OK' logs/latest.log 2>/dev/null"
 report "Forge added MixinExtras for the test mod" "grep -i 'mixinextras' logs/debug.log 2>/dev/null | grep -i -E 'select|load|add' > /dev/null"
-report "the Fabric main entrypoints ran in Forge's registry events" "grep -q 'Fabricated ran the Fabric main entrypoints of [1-9][0-9]* mod(s) on Forge (0 failed)' logs/latest.log 2>/dev/null"
-report "the test mod registered an item" "grep -q 'FABRICATED-FORGE-TEST registry OK' logs/latest.log 2>/dev/null"
-report "the test mod's item is in the frozen registry at the first tick" "grep -q 'FABRICATED-FORGE-TEST registry entry kept OK' logs/latest.log 2>/dev/null"
-report "tag files' fabric:remove and Forge's remove both take entries out of a tag (the in-game mod's mixin)" "grep -q 'FABRICATED-FORGE-TEST tag removal OK' logs/latest.log 2>/dev/null"
-report "native fabric-loot-api-v3: Fabric's loot table events change dirt's loot table and drops on Forge's loot loading" "grep -q 'FABRICATED-FORGE-TEST loot OK' logs/latest.log 2>/dev/null"
-report "fabric-object-builder-api-v1 (with Fabric API, 26.x): a cow's default armor set through FabricDefaultAttributeRegistry.MODIFY is what the game reads (Forge's attribute modification event)" "grep -q 'FABRICATED-FORGE-TEST default attributes OK' logs/latest.log 2>/dev/null"
-report "fabric-advancement-api-v1 (with Fabric API, 26.2 and 26.3): a vanilla advancement's reward set through AdvancementEvents.MODIFY is what the server loads (on Forge 66 through the in-game mod's hook on Forge's conditional decoding)" "grep -q 'FABRICATED-FORGE-TEST advancement modify OK' logs/latest.log 2>/dev/null"
-report "a Fabric mod's fluids have Forge fluid types (the in-game mod's, registered under their ids), and a pig falls through one that isn't water as through air" "grep -q 'FABRICATED-FORGE-TEST fluid types OK' logs/latest.log 2>/dev/null"
-report "Forge's loading warnings name the Fabric mod that wasn't loaded" "grep -qsE 'ServerModLoader.*: Fabric mod fabricated_forge_unmet 1\\.0\\.0 was not loaded: ' logs/latest.log logs/debug.log"
-report "an access widener leaves a field private that Forge's coremod reads through a getter: the test mod's BucketItem.content (PLAT-4)" "grep -q 'BucketItem.content must stay private on Forge' logs/fabric-bridge-report.txt 2>/dev/null && ! grep -qsE 'Field (net/minecraft/world/item/BucketItem\.)?content is not private' logs/latest.log server.out"
-report "Fabricated's report names Forge as the loader" "grep -q '^  Forge: ' logs/fabric-bridge-report.txt 2>/dev/null && ! grep -q '^  NeoForge: ' logs/fabric-bridge-report.txt 2>/dev/null"
+check "the Fabric main entrypoints ran in Forge's registry events" "grep -q 'Fabricated ran the Fabric main entrypoints of [1-9][0-9]* mod(s) on Forge (0 failed)' logs/latest.log 2>/dev/null"
+check "the test mod registered an item" "grep -q 'FABRICATED-FORGE-TEST registry OK' logs/latest.log 2>/dev/null"
+check "the test mod's item is in the frozen registry at the first tick" "grep -q 'FABRICATED-FORGE-TEST registry entry kept OK' logs/latest.log 2>/dev/null"
+check "tag files' fabric:remove and Forge's remove both take entries out of a tag (the in-game mod's mixin)" "grep -q 'FABRICATED-FORGE-TEST tag removal OK' logs/latest.log 2>/dev/null"
+check "native fabric-loot-api-v3: Fabric's loot table events change dirt's loot table and drops on Forge's loot loading" "grep -q 'FABRICATED-FORGE-TEST loot OK' logs/latest.log 2>/dev/null"
+if [ -n "$extra" ] && [[ "$mc" == 26.* ]]; then
+	check "fabric-object-builder-api-v1 (with Fabric API, 26.x): a cow's default armor set through FabricDefaultAttributeRegistry.MODIFY is what the game reads (Forge's attribute modification event)" "grep -q 'FABRICATED-FORGE-TEST default attributes OK' logs/latest.log 2>/dev/null"
+fi
+if [ -n "$extra" ] && { [ "$mc" = 26.2 ] || [ "$mc" = 26.3 ]; }; then
+	check "fabric-advancement-api-v1 (with Fabric API, 26.2 and 26.3): a vanilla advancement's reward set through AdvancementEvents.MODIFY is what the server loads (on Forge 66 through the in-game mod's hook on Forge's conditional decoding)" "grep -q 'FABRICATED-FORGE-TEST advancement modify OK' logs/latest.log 2>/dev/null"
+fi
+check "a Fabric mod's fluids have Forge fluid types (the in-game mod's, registered under their ids), and a pig falls through one that isn't water as through air" "grep -q 'FABRICATED-FORGE-TEST fluid types OK' logs/latest.log 2>/dev/null"
+check "Forge's loading warnings name the Fabric mod that wasn't loaded" "grep -qsE 'ServerModLoader.*: Fabric mod fabricated_forge_unmet 1\\.0\\.0 was not loaded: ' logs/latest.log logs/debug.log"
+check "an access widener leaves a field private that Forge's coremod reads through a getter: the test mod's BucketItem.content (PLAT-4)" "grep -q 'BucketItem.content must stay private on Forge' logs/fabric-bridge-report.txt 2>/dev/null && ! grep -qsE 'Field (net/minecraft/world/item/BucketItem\.)?content is not private' logs/latest.log server.out"
+check "Fabricated's report names Forge as the loader" "grep -q '^  Forge: ' logs/fabric-bridge-report.txt 2>/dev/null && ! grep -q '^  NeoForge: ' logs/fabric-bridge-report.txt 2>/dev/null"
 
 echo "Server status: $status"
-[ "$status" = "started" ]
+[ "$status" = "started" ] && [ "$failed" = 0 ]

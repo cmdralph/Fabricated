@@ -953,8 +953,8 @@ The `forge` and `forge-legacy` branches build Fabricated for Minecraft Forge 61 
 start one with the test mod and one with the official Fabric API jar too. This table is the second run's
 `fabric-bridge-report.txt`, from the runs on `claude/dev` at `8359033` (#157 and #158, 2026-10-26): Fabric API
 0.141.6+1.21.11, 0.155.3+26.1.2, 0.161.0+26.2, 0.164.0+26.3 and 0.92.12+1.20.1, on Forge 61.2.4, 64.1.5, 65.1.5,
-66.1.0 and 47.4.28. The server starts in every run, and no module is disabled. The Forge 47 run is a gate, the others
-are informational.
+66.1.0 and 47.4.28. The server starts in every run, and no module is disabled. Both runs are now gates on every Forge
+version.
 
 How to read it: as the NeoForge table, and
 

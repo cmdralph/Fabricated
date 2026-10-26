@@ -13,11 +13,13 @@ comes from it. NeoForge has no 1.20.1 line to support, so this is the only legac
 
 | Minecraft | Forge | Java | Fabric mods use | CI on this branch |
 |---|---|---|---|---|
-| 1.20.1 | 47.4.28 | 17 | Intermediary names, remapped to Mojang's class names and SRG's member names | Builds; the server must start, and the other checks are reported |
+| 1.20.1 | 47.4.28 | 17 | Intermediary names, remapped to Mojang's class names and SRG's member names | Builds; both server runs must pass |
 
 ### What CI checks
 
 CI starts a dedicated server twice: once with the test mod, and once more with the official Fabric API 0.92.12 jar.
+Each run is a gate: the server must start and every check must pass. Two lines read from Forge's debug log are only
+reported.
 
 On each run, the server checks that:
 - a translated Fabric mod is discovered, remapped to the names Forge runs the game with, and loads. Those names are

@@ -3,6 +3,17 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-10-26: Forge's server runs as gates
+
+- Both server runs on every Forge version are gates now, the one with Fabric API included, as v0.5.0's goals set once
+  their checks held: after CI-1 and PLAT-4, every check passed in both runs on all five versions (manual runs
+  40385962374 and 40385967190), and the only lines not seen were checks that apply elsewhere. Those now run only where
+  they apply: the default attributes check with Fabric API on 26.x, the advancement check with Fabric API on 26.2 and
+  26.3. A check that applies and fails fails the run, as a server that doesn't start does. The lines read from Forge's
+  debug log (its mod locator, its language provider, MixinExtras on Forge 61 to 66) stay reported only, as Forge words
+  its debug output as it likes.
+- The Forge READMEs, the roadmap's parity table and `COMPATIBILITY.md` describe the runs as gates.
+
 ## 2026-10-26: the project rethought, a parity table, Forge's own private fields
 
 - **The roadmap looks forward only.** Its findings log had grown to four fifths of its 240,000 characters: the fixed

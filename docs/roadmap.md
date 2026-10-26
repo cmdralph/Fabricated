@@ -40,8 +40,8 @@ needs to know of a platform is its `PlatformDescriptor`. NeoForge is the support
    (PLAT-3, PLAT-4).
 4. **Evidence or `UNVERIFIED`.** A status comes from a CI check. A check that can change between runs of the same code
    is a defect of the check (CI-1), not noise to read past.
-5. **Gates grow.** A platform's checks become gates once they hold on every version; Forge 61 to 66's server runs are
-   next.
+5. **Gates grow.** A platform's checks become gates once they hold on every version, as Forge's server runs did once
+   CI-1 and PLAT-4 were fixed; the Forge clients' runs come next.
 
 ## Next release: v0.5.0
 
@@ -55,7 +55,7 @@ regression on NeoForge. Each item is done when its CI check is; the tracks below
 | All | Each Fabric API module's status on every platform in `COMPATIBILITY.md`, so the platforms can be compared. | Done for the servers (*Fabric API modules on Forge*); the Forge clients follow their CI runs |
 | All | The engine's platform facts from the platform: the fields its coremods keep private (PLAT-4). | Done (PLAT-4, checked on all five Forge versions) |
 | NeoForge (`main`) | The open corpus findings (below) that a generic fix covers. `preLaunch` right after FML's mixin bootstrap (*Loader and translation*, next). ARCH-1: pre-flight's repair families out of `MixinPreflight`, with no change in behaviour. | Open |
-| Forge 61 to 66 (`forge`) | Fabric mods' client entrypoints and a client run in CI. Entity and interaction events native on Forge's events, as `main` has them on NeoForge's (F4). The server runs made gates once their checks hold on every version. | Open; the checks' run-to-run noise is fixed (CI-1) |
+| Forge 61 to 66 (`forge`) | Fabric mods' client entrypoints and a client run in CI. Entity and interaction events native on Forge's events, as `main` has them on NeoForge's (F4). The server runs made gates once their checks hold on every version. | Server runs gated (with Fabric API too); the client is open |
 | Forge 47 (`forge-legacy`) | Fabric's networking on `SimpleChannel` and its storages on Forge 47's capabilities, then client entrypoints and a client run in CI (L4, `PORTING.md` §7). | Open |
 
 ## Tracks
@@ -77,7 +77,7 @@ each Fabric API module's status per platform in [`COMPATIBILITY.md`](COMPATIBILI
 | Bridges to the platform | fluid types, storages and energy with capabilities, plugins of other mods, custom values, renderer API | fluid types, tags' `fabric:remove`, default attributes (Forge 64 to 66), advancement events (Forge 65 and 66) | fluid types, tags' `fabric:remove` |
 | Networking | native, on NeoForge's payloads | upstream's module, unchecked | upstream's module, unchecked |
 | Rendering (renderer API, models, Sodium and Iris for NeoForge) | yes | no client yet | no client yet |
-| CI | server and client runs gated, and checks in the Fabric API runs; corpus runs informational | server runs informational | server run gated |
+| CI | server and client runs gated, and checks in the Fabric API runs; corpus runs informational | both server runs gated | both server runs gated |
 | Releases | supported | experimental | experimental |
 
 - **`main`:** NeoForge for 1.21.11, 26.1.2, 26.2 and 26.3, every line stable (NeoForge tagged `26.3.0-stable`; CI

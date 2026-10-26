@@ -1,9 +1,10 @@
 name: Build forge-legacy
 
 # The forge-legacy branch's build of Forge 1.20.1 (mc/forge-legacy, the project :mc:forge-legacy-1.20.1): pull requests
-# to the branch only (owner decision D6). Every branch holds every platform; main's build.yml builds NeoForge's. With a
-# server smoke on Forge 47 that must start the server; its other checks are reported (docs/PORTING.md §7). Changes to
-# documentation alone build nothing, nor do changes to another platform's folders alone.
+# to the branch only (owner decision D6). Every branch holds every platform; main's build.yml builds NeoForge's. Two
+# server smokes on Forge 47, with the test mod and with Fabric API too, each a gate: the server must start and every
+# check pass (docs/PORTING.md §7). Changes to documentation alone build nothing, nor do changes to another platform's
+# folders alone.
 on:
   pull_request:
     branches: [forge-legacy]
@@ -78,18 +79,17 @@ jobs:
       - name: Check the jar's layout for Forge
         run: ./gradlew -Pfabricated.platforms=forge-legacy --configure-on-demand :mc:forge-legacy-${{ matrix.minecraft }}:checkForgeJar --stacktrace
       # The game on this branch: what Forge 47 makes of the jar and of the translated test mod. The server must start
-      # (#93's first run showed a registration failure stopping it, under a green job); the checks are reported.
-      - name: Server with Fabricated (must start)
+      # and every check pass (#93's first run showed a registration failure stopping it, under a green job).
+      - name: Server with Fabricated (must pass)
         run: |
           # Forge 47 runs on Java 17.
           export PATH="$JAVA_HOME_17_X64/bin:$PATH"
           forge=$(sed -n 's/^forge_version=//p' "mc/forge-legacy/${{ matrix.minecraft }}/gradle.properties")
           ci/forge-legacy/smoke-server.sh "${{ matrix.minecraft }}" "$forge" "$RUNNER_TEMP/server"
       # The official Fabric API jar (downloaded here in CI, never by Fabricated) with every module passed through: what
-      # loads on Forge 47 and what pre-flight disables, for L4's choice of native modules. Informational.
-      - name: Server with Fabricated and Fabric API (informational)
+      # loads on Forge 47 and what pre-flight disables, for L4's choice of native modules. A gate like the first run.
+      - name: Server with Fabricated and Fabric API (must pass)
         if: ${{ !cancelled() }}
-        continue-on-error: true
         run: |
           export PATH="$JAVA_HOME_17_X64/bin:$PATH"
           forge=$(sed -n 's/^forge_version=//p' "mc/forge-legacy/${{ matrix.minecraft }}/gradle.properties")
