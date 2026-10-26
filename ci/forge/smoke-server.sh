@@ -83,8 +83,13 @@ echo "::endgroup::"
 echo "::group::Server output (tail)"
 tail -n 120 server.out || true
 echo "::endgroup::"
+# Mixin's notice for each config without minVersion is an ERROR line that changes nothing; it filled this group.
 echo "::group::First errors in the log"
-grep -n -m 60 -E "/(ERROR|FATAL)\]|Exception|Caused by" logs/latest.log 2>/dev/null || true
+{ grep -n -E "/(ERROR|FATAL)\]|Exception|Caused by" logs/latest.log 2>/dev/null | grep -v 'does not specify "minVersion"' | head -n 60; } || true
+echo "::endgroup::"
+echo "::group::Mixin failures in the logs"
+grep -h -m 20 -E "InjectionError|Invalid(Injection|Mixin|Accessor)Exception|MixinApplyError|MixinInitialisationError|Mixin apply for mod .* failed" \
+	logs/latest.log logs/debug.log 2>/dev/null | cut -c1-600 || true
 echo "::endgroup::"
 for report in crash-reports/*.txt; do
 	[ -f "$report" ] || continue
