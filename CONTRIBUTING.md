@@ -124,17 +124,19 @@ Run the game with the Fabric mod, then open an issue with:
 
 ## Releasing
 
-A release is cut by hand with the Release workflow (`.github/workflows/release.yml`), run from `main`. It builds
-NeoForge's jars from `main`, Forge's from `forge` and Forge 1.20.1's from `forge-legacy`, at commits it pins when it
-starts, from an empty Gradle cache.
+A release is cut by hand with the Release workflow (`.github/workflows/release.yml`), run from `main`. Every branch
+holds every platform, so it builds all nine jars (NeoForge's four, Forge 61 to 66's four, Forge 47's) from one commit
+it pins when it starts, `main`'s by default, each with the build its platform's CI uses, from an empty Gradle cache. A
+failed build is tried once more (a platform's maven can time out), and every build runs to the end.
 
-1. Merge `main` into `forge` and `forge-legacy`, so the three branches carry the same shared code, and check that
-   `fabricated_version` in `gradle.properties` is the release's version on all three.
+1. Merge `claude/dev` into `main`, `forge` and `forge-legacy`, each with its CI green, so the three hold the same tree,
+   and check that `fabricated_version` in `gradle.properties` is the release's version.
 2. Write the notes as `docs/releases/<tag>.md` (for example `docs/releases/v0.4.0-alpha.md`) and merge them into
-   `main`. The workflow appends the commits each jar was built from and the jars' SHA-256 checksums.
+   `main`. They become the release's text, so links are full URLs (a relative link resolves against the release page).
+   The workflow appends the commit the jars were built from and the jars' SHA-256 checksums.
 3. Run the workflow with mode `build`, and check the jars and checksums in the run's summary.
 4. Run it again with mode `draft` or `publish`. A tag with a suffix (`-alpha`) makes a pre-release. GitHub creates the
-   tag at `main`'s pinned commit when the release is published; no tag is pushed from a working copy.
+   tag at the pinned commit when the release is published; no tag is pushed from a working copy.
 
 ## Licensing
 
