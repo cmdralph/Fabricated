@@ -14,9 +14,9 @@ It's built to be:
 - **Safe.** Mod jars are treated as untrusted input. Fabricated never runs mod code while translating, never
   modifies your mod jars, never touches the network, and has no telemetry.
 
-> **Status: alpha (0.4.0 in development).** Nearly every Fabric API module loads, but many Fabric mods still
-> patch code that NeoForge changed and are disabled before they run. Read [What works today](#what-works-today)
-> before relying on it.
+> **Status: alpha (0.5.0 in development; the latest release is v0.4.0-alpha).** Nearly every Fabric API module
+> loads, but many Fabric mods still patch code that NeoForge changed and are disabled before they run. Read
+> [What works today](#what-works-today) before relying on it.
 
 ---
 
@@ -185,7 +185,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). In short:
 
 ```bash
 ./gradlew -Pfabricated.coreOnly=true build          # unit tests, no Minecraft needed
-./gradlew :mc:26.2:fabricatedJar :mc:26.2:testmods   # build/libs/fabricated-0.4.0+mc26.2.jar
+./gradlew :mc:26.2:fabricatedJar :mc:26.2:testmods   # build/libs/fabricated-0.5.0+mc26.2.jar
 ```
 
 ## Design and research

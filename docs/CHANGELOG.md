@@ -3,6 +3,12 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-10-26: development of 0.5.0
+
+- `fabricated_version` is 0.5.0 on all three branches, once v0.4.0-alpha's draft release held the jars the release
+  workflow built from `main`, `forge` and `forge-legacy` as they stood after #153, #154 and #155. The README's status
+  line and `ARCHITECTURE.md`'s version follow.
+
 ## 2026-10-26: a release workflow, and v0.4.0-alpha's notes
 
 - `.github/workflows/release.yml` cuts a release by hand: it pins `main`, `forge` and `forge-legacy` (or given commits)
