@@ -166,6 +166,24 @@ One entry per working session, newest first: what changed, and how it was verifi
   as the module is passed through. A version's project names the in-game mod's extra mixin configs
   (`game_mod_mixins`). Test: the forge test mod sets a vanilla advancement's reward through `MODIFY`, which the server
   loads on Forge 65 and 66 with Fabric API.
+- A mixin's private method no longer hides a default method its target inherits (HIDE-1, #150). Mixin renames a
+  `@Unique` method only where the target class declares it, so `fabric-entity-events-v1`'s private `self()` helper,
+  merged into `LivingEntity` as it was, left every mob without Forge's `IForgeLivingEntity.self()` (an
+  `AbstractMethodError` in the Fabric API runs of forge #147, whose pig met Forge's fluid hooks); NeoForge's
+  `ILivingEntityExtension.self()` is a default the same way. Translation renames such a method, with its calls in the
+  mixin and the classes nested in it, and notes it. Tests: unit tests with the JVM's behaviour before and after, an
+  end-to-end translation test (313 core and loader API tests), and a gated server check on every version ("hidden
+  default OK"): the test mod gives `LivingEntity` the same helper and calls NeoForge's `self()` on a pig.
+- Fabric mods' fluids get Forge fluid types on Forge 61 to 66 (`forge`, #147) and Forge 47 (`forge-legacy`, #151): Forge
+  throws "Mod fluids must override getFluidType" for any fluid without one, which every Fabric fluid is. The in-game mod
+  gives each family one, registered under its source's id and read from Fabric's attributes (Fabric API's transfer
+  module when present) and, for entities, from the fluid's tags; an entity moves through a Fabric fluid that isn't water
+  as through air, as on Fabric. On Forge 61 to 66 the test mod's check passes in both runs (#147, with HIDE-1 merged
+  in). On Forge 47 both runs report the test mod's two families' types (the test mod registers them in Intermediary's
+  names, with new stand-ins); the in-game mod's MixinExtras injectors now have their targets in the refmap (MixinExtras'
+  annotation processor beside Mixin's), and Forge's own members are marked unremapped.
+- Recorded, not changed: Wilder Wild's 1.21.11 models name a texture `bminecraft:lock/sand` and read an undeclared
+  `#texture` (CORPUS-30), which the 1.21.11 advanced client logs.
 
 ## 2026-10-25: branch reorganisation, a glowing moving block's outline, 1.21.11 server linkage noise, platform seams
 
