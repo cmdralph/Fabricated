@@ -19,8 +19,9 @@ import org.spongepowered.asm.mixin.extensibility.IMixinConfigPlugin;
 import org.spongepowered.asm.mixin.extensibility.IMixinInfo;
 
 /**
- * The test mod's mixin config plugin: checks that Fabric's start-up order held (its language adapter ran first). It
- * loads no game class (not even through {@code TestMod}): Mixin is still starting.
+ * The test mod's mixin config plugin: checks that Fabric's start-up order held (its language adapter ran first), and
+ * adds an entrypoint to Fabric Loader's storage as FrozenLib's plugin does ({@link AddedEntrypoint}). It loads no game
+ * class (not even through {@code TestMod}): Mixin is still starting.
  */
 public final class TestMixinPlugin implements IMixinConfigPlugin {
 	private static final Logger LOGGER = LoggerFactory.getLogger(TestMixinPlugin.class);
@@ -29,6 +30,7 @@ public final class TestMixinPlugin implements IMixinConfigPlugin {
 	public void onLoad(String mixinPackage) {
 		boolean created = "created".equals(System.getProperty(EarlyAdapter.PROPERTY));
 		LOGGER.info("FABRICATED-TEST early language adapter {}", created ? "OK" : "FAILED (not created before the mod's mixin plugin loaded)");
+		AddedEntrypoint.add();
 	}
 
 	@Override

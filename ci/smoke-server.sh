@@ -112,6 +112,7 @@ check() {
 check "FABRICATED-TEST main entrypoint OK" server.out "main entrypoint ran"
 check "FABRICATED-TEST loader api OK" server.out "Fabric Loader API works"
 check "FABRICATED-TEST custom entrypoint OK" server.out "custom entrypoint resolved"
+check "FABRICATED-TEST added entrypoint OK" server.out "an entrypoint a mixin plugin added to Fabric Loader's internal storage resolves, as FrozenLib's do (LOADER-4)"
 check "FABRICATED-TEST classpath scan OK" server.out "classpath scan finds a Fabric mod's package directory (SCAN-1)"
 check "FABRICATED-TEST class resources OK" server.out "a mod's class finds another jar's file, as on Fabric (RES-1)"
 check "FABRICATED-TEST registry OK" server.out "direct registry registration works"

@@ -5,6 +5,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -20,6 +21,7 @@ import java.util.function.Supplier;
 import io.github.cmdralph.fabricated.core.metadata.FabricModMetadata.EntrypointSpec;
 import io.github.cmdralph.fabricated.fabricloader.DefaultLanguageAdapter;
 import io.github.cmdralph.fabricated.fabricloader.FabricLoaderImpl;
+import io.github.cmdralph.fabricated.fabricloader.LoaderInternals;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.loader.api.EntrypointException;
 import net.fabricmc.loader.api.FabricLoader;
@@ -32,9 +34,10 @@ import net.fabricmc.loader.api.entrypoint.EntrypointContainer;
 
 /**
  * Fabricated's implementation of {@link FabricLoader}: mod lookup (Fabric mods, NeoForge mods and
- * built-ins), entrypoints, language adapters, the object share and the mapping resolver.
+ * built-ins), entrypoints, language adapters, the object share and the mapping resolver, and what Fabric Loader's
+ * internals mods use do ({@link LoaderInternals}).
  */
-public final class FabricLoaderRuntime implements FabricLoader {
+public final class FabricLoaderRuntime implements FabricLoader, LoaderInternals {
 	/** An entrypoint declaration bound to the mod that declared it. */
 	public record Declared(ModContainerImpl mod, String key, EntrypointSpec spec) {
 	}
@@ -182,6 +185,23 @@ public final class FabricLoaderRuntime implements FabricLoader {
 				entrypoints.computeIfAbsent(e.getKey(), k -> new ArrayList<>()).add(new Declared(mod, e.getKey(), spec));
 			}
 		}
+	}
+
+	/**
+	 * Adds an entrypoint a mod declares at run time, through Fabric Loader's internal storage (LOADER-4: FrozenLib adds
+	 * those its {@code frozenlib.json} files declare, and registers the listeners of its events from them).
+	 */
+	@Override
+	public synchronized void addEntrypoint(ModContainer mod, String key, String adapter, String value) {
+		if (!(mod instanceof ModContainerImpl impl) || !modsById.containsValue(impl)) {
+			throw new IllegalArgumentException("Not a mod Fabricated loaded: " + mod);
+		}
+		entrypoints.computeIfAbsent(key, k -> new ArrayList<>()).add(new Declared(impl, key, new EntrypointSpec(adapter, value)));
+	}
+
+	@Override
+	public Map<String, LanguageAdapter> languageAdapters() {
+		return Collections.unmodifiableMap(adapters);
 	}
 
 	/** Registers language adapters declared by a mod ({@code languageAdapters} in fabric.mod.json). */
