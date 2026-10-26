@@ -43,9 +43,12 @@ handled safely, no network access, original jars never changed, and no code that
   for `FabricDefaultAttributeRegistry.MODIFY` with Forge's constructor. MODIFY runs in Forge's attribute modification
   event: upstream's hook fired as the built-in registries froze, which Forge does at bootstrap, before any Fabric mod
   had registered a listener. A cow's armor set through MODIFY is what the game reads on all three (with Fabric API).
-  Next: native modules on Forge's events where `main` has them on NeoForge's (advancements on Forge 66, entity and
-  interaction events), the modules still disabled (content registries on 26.x, data generation), the client's
-  entrypoints.
+  Content registries (Forge 64 to 66) and data generation (all four) load since #144, without the hooks Forge's code
+  can't take: content registries' four swimming hooks (Forge decides swimming from fluid types), and data generation's
+  mixins that add methods Forge's classes already declare or hook block loot iteration Forge replaced, lost in data
+  generation only. With the official Fabric API jar, no module is disabled on any of the four any more. Next: native
+  modules on Forge's events where `main` has them on NeoForge's (advancements on Forge 66, entity and interaction
+  events), Fabric fluids' Forge fluid types, the client's entrypoints.
 - **`forge-legacy`:** Minecraft Forge for 1.20.1 (Forge 47.4) and other legacy versions, built with ModDevGradle's
   `legacyforge`. L3's server smoke passes on Forge 47.4.28, a gate since #97: a translated Fabric mod is discovered,
   remapped to the names Forge runs the game with (Mojang's classes, SRG's members, composed from the files Forge's
