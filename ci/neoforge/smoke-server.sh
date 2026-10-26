@@ -125,6 +125,7 @@ check "FABRICATED-TEST added entrypoint OK" server.out "an entrypoint a mixin pl
 check "FABRICATED-TEST classpath scan OK" server.out "classpath scan finds a Fabric mod's package directory (SCAN-1)"
 check "FABRICATED-TEST class resources OK" server.out "a mod's class finds another jar's file, as on Fabric (RES-1)"
 check "FABRICATED-TEST registry OK" server.out "direct registry registration works"
+check "FABRICATED-TEST content built at bootstrap registered OK" server.out "content built during vanilla's bootstrap is registered by the main initializer, as BetterNether's entity types are (CORPUS-31)"
 check "FABRICATED-TEST late registry OK" server.out "a registry vanilla's code adds while mods start joins the root registry (REG-3)"
 check "FABRICATED-TEST early registry writes OK" server.out "vanilla's code writes to built-in registries before NeoForge's registration events, as Wover does (REG-3)"
 check "FABRICATED-TEST immutable pack sources OK" server.out "NeoForge adds its pack finders to sources a mod left immutable, as FrozenLib does (PACK-1)"
