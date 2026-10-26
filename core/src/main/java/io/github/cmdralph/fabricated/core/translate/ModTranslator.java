@@ -92,6 +92,21 @@ public final class ModTranslator {
 	private static final byte[] NO_BIOME_MODIFIER = "{\"type\": \"neoforge:add_features\", \"biomes\": [], \"features\": [], \"step\": \"vegetal_decoration\"}\n"
 			.getBytes(StandardCharsets.UTF_8);
 	private static final byte[] NO_STRUCTURE_MODIFIER = "{\"type\": \"neoforge:clear_spawns\", \"structures\": []}\n".getBytes(StandardCharsets.UTF_8);
+	/** NeoForge's global loot modifiers: on 1.21.11 those its list (below) names, on 26.x every file. */
+	private static final Pattern LOOT_MODIFIER = Pattern.compile("(^|.*/)data/[^/]+/loot_modifiers/.+\\.json");
+	private static final String LOOT_MODIFIER_LIST = "data/neoforge/loot_modifiers/global_loot_modifiers.json";
+	/**
+	 * A data file NeoForge skips, on every version: its condition, {@code neoforge:never}, holds on none (read in NeoForge's
+	 * {@code SimpleJsonResourceReloadListener} patch, 1.21.11 to 26.3, which logs a skipped file at debug level).
+	 */
+	private static final byte[] NO_LOOT_MODIFIER = "{\"neoforge:conditions\": [{\"type\": \"neoforge:never\"}]}\n".getBytes(StandardCharsets.UTF_8);
+	/**
+	 * The list 1.21.11 reads every modifier it names from (its {@code LootModifierManager}, not through the conditions,
+	 * and taking a name the scan skipped as a file without data): naming none, layered over the other packs' lists. 26.x
+	 * reads it as a modifier of its own, which the condition skips.
+	 */
+	private static final byte[] NO_LOOT_MODIFIER_LIST = "{\"neoforge:conditions\": [{\"type\": \"neoforge:never\"}], \"replace\": false, \"entries\": []}\n"
+			.getBytes(StandardCharsets.UTF_8);
 	private static final Pattern INTERMEDIARY_CLASS = Pattern.compile("net/minecraft/class_\\d+(\\$.*)?");
 
 	/** Heap a translation may count on, in MiB: a quarter of the maximum, shared by all translations at once. */
@@ -180,6 +195,10 @@ public final class ModTranslator {
 
 				int conditioned = 0;
 				int modifiers = 0;
+				int lootModifiers = 0;
+				// Porting Lib reads global loot modifiers on Fabric, from the same folder: its mods keep theirs.
+				boolean portingLib = candidate.metadata().getDependencies().stream()
+						.anyMatch(d -> d.getKind().isPositive() && d.getModId().startsWith("porting_lib"));
 				for (String name : view != null ? view.keySet() : archive.entryNames()) {
 					// The mod's own pack.mcmeta, and its built-in packs' (resourcepacks/<name>/pack.mcmeta, Tectonic's, PACK-4).
 					if (name.equals(PACK_METADATA) || name.endsWith("/" + PACK_METADATA)) {
@@ -199,6 +218,13 @@ public final class ModTranslator {
 						modifiers++;
 						continue;
 					}
+					// CORPUS-23: so are its NeoForge build's global loot modifiers, which NeoForge reads from any jar. Fabric reads
+					// none (Artifacts' types, which only its NeoForge build registers, failed to decode on every NeoForge version).
+					if (!portingLib && LOOT_MODIFIER.matcher(name).matches()) {
+						overlay.put(name, name.endsWith(LOOT_MODIFIER_LIST) ? NO_LOOT_MODIFIER_LIST : NO_LOOT_MODIFIER);
+						lootModifiers++;
+						continue;
+					}
 					byte[] data = view != null ? view.get(name) : archive.read(name);
 					byte[] fabricData = data == null ? null : withoutNeoForgeConditions(data);
 					if (fabricData == null) continue;
@@ -210,6 +236,9 @@ public final class ModTranslator {
 				}
 				if (modifiers > 0) {
 					notes.add(modifiers + " NeoForge biome or structure modifier(s) (its NeoForge build's), which Fabric ignores; turned off");
+				}
+				if (lootModifiers > 0) {
+					notes.add(lootModifiers + " NeoForge global loot modifier file(s) (its NeoForge build's), which Fabric ignores; turned off");
 				}
 
 				List<InjectedInterface> injections = List.of();
