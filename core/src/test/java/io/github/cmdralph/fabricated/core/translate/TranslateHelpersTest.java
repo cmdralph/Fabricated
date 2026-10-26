@@ -86,6 +86,8 @@ class TranslateHelpersTest {
 		assertEquals(toml, PlatformDescriptor.FORGE.write(spec));
 		assertEquals(Map.of("MixinConfigs", "my.mixins.json,my.client.mixins.json"), PlatformDescriptor.FORGE.manifestAttributes(spec));
 		assertFalse(PlatformDescriptor.FORGE.enumExtensions());
+		assertTrue(new String(PlatformDescriptor.FORGE.packMetadata(spec), java.nio.charset.StandardCharsets.UTF_8).contains("\"description\": \"My Mod\""));
+		assertEquals(null, PlatformDescriptor.NEOFORGE.packMetadata(spec), "NeoForge makes a mod's pack metadata itself");
 		assertEquals(Map.of(), PlatformDescriptor.FORGE.manifestAttributes(new ModsTomlWriter.Spec("my_mod", "1.0.0", "My Mod", "", List.of(), List.of(),
 				List.of(), null, null, null, List.of(), false, false, List.of(), Map.of(), Map.of())), "no MixinConfigs without mixin configs");
 	}

@@ -337,6 +337,10 @@ class PipelineTest {
 			String manifest = overlay.readText("META-INF/MANIFEST.MF");
 			assertTrue(manifest.contains("MixinConfigs: good.mixins.json"), manifest);
 			assertTrue(manifest.contains("Fabricated-Translated-Mod: good_mod"), manifest);
+			Map<?, ?> pack = (Map<?, ?>) io.github.cmdralph.fabricated.core.json.Json.parseObject(overlay.readText("pack.mcmeta")).get("pack");
+			assertEquals("Good Mod", pack.get("description"), "Forge reads no mod pack without metadata");
+			assertEquals(82, ((Number) pack.get("min_format")).intValue());
+			assertEquals(2048, ((Number) pack.get("max_format")).intValue());
 		}
 	}
 
