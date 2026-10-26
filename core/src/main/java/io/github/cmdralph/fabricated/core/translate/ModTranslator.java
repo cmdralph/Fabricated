@@ -270,6 +270,10 @@ public final class ModTranslator {
 					atLines += widened.size();
 				}
 
+				// The game methods the mod's classes override that the platform made final, made overridable at class load (FINAL-2).
+				Set<String> overridable = platformFinals(remapped != null ? remapped.keySet() : archive.classEntryNames(), files, env.game(),
+						env.vanilla(), env.descriptor().loaderName(), notes);
+
 				for (InjectedInterface ii : injections) {
 					addBridges(DefaultBridge.of(ii.target(), List.of(ii.interfaceName()), classes), List.of(ii.interfaceName()), bridges, notes);
 				}
@@ -311,11 +315,12 @@ public final class ModTranslator {
 				meta.put("injectedInterfaces", injections.stream().map(ModTranslator::injectionToJson).toList());
 				meta.put("defaultBridges", bridges.stream().map(ModTranslator::bridgeToJson).toList());
 				meta.put("environmentClasses", List.copyOf(environmentClasses));
+				meta.put("overridableMethods", List.copyOf(overridable));
 				meta.put("installedClasses", installedClasses);
 				TranslationCache.Entry entry = cache.store(entryName, outputs, meta);
 				Path jar = remapped != null ? entry.file(REMAPPED) : candidate.path();
 				return new TranslatedMod(candidate, neoId, jar, entry.file(OVERLAY), List.copyOf(findings), atLines,
-						List.copyOf(notes), injections, List.copyOf(bridges), environmentClasses, false, millis);
+						List.copyOf(notes), injections, List.copyOf(bridges), environmentClasses, overridable, false, millis);
 			} catch (ArchiveException e) {
 				throw new TranslationException("The jar is unsafe or corrupt: " + e.getMessage(), "Re-download the mod from its official page.");
 			} catch (MappingException e) {
@@ -364,6 +369,73 @@ public final class ModTranslator {
 	}
 
 	/**
+	 * The game methods the mod's classes override where the platform's class declares them final and vanilla's doesn't
+	 * (the class's internal name, a space, the method's name and descriptor), with a note for each (FINAL-1). On Fabric
+	 * the game is vanilla's: Forge 47 makes {@code Ingredient.toNetwork} final, which Fabric API's recipe API overrides in
+	 * its {@code CustomIngredientImpl}, and loading that class failed (IncompatibleClassChangeError), with every custom
+	 * ingredient. Class loading removes the {@code final} (FINAL-2): an access transformer line can't, as Forge 47's own
+	 * access transformer adds it, and the engine refuses one file's {@code -f} next to another's {@code +f}. A method
+	 * final in vanilla too is left as it is, as is every method where vanilla's code isn't at hand.
+	 */
+	static Set<String> platformFinals(Collection<String> entries, FileView files, ClassIndex game, ClassBytesSource vanilla, String loader,
+			List<String> notes) throws ArchiveException {
+		if (game == null || vanilla == ClassBytesSource.EMPTY) return Set.of();
+		Map<String, String> supers = new HashMap<>();
+		Map<String, List<String>> overridable = new LinkedHashMap<>();
+		for (String name : entries) {
+			if (!name.endsWith(".class") || name.startsWith("META-INF/")) continue;
+			byte[] data = files.read(name);
+			if (data == null) continue;
+			ClassReader reader = new ClassReader(data);
+			String internal = reader.getClassName();
+			supers.put(internal, reader.getSuperName());
+			List<String> methods = new ArrayList<>();
+			reader.accept(new ClassVisitor(Opcodes.ASM9) {
+				@Override
+				public MethodVisitor visitMethod(int access, String methodName, String descriptor, String signature, String[] exceptions) {
+					if ((access & (Opcodes.ACC_STATIC | Opcodes.ACC_PRIVATE)) == 0 && !methodName.startsWith("<")) methods.add(methodName + descriptor);
+					return null;
+				}
+			}, ClassReader.SKIP_CODE | ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
+			if (!methods.isEmpty()) overridable.put(internal, methods);
+		}
+		Set<String> lines = new TreeSet<>();
+		for (Map.Entry<String, List<String>> e : overridable.entrySet()) {
+			for (String method : e.getValue()) {
+				String owner = supers.get(e.getKey());
+				// Up through the mod's own classes to the game's, then through the game's to the first declaring the method.
+				while (owner != null && supers.containsKey(owner)) owner = supers.get(owner);
+				while (owner != null) {
+					ClassIndex.ClassInfo info = game.get(owner);
+					if (info == null) break;
+					Integer access = info.methodAccess(method);
+					if (access != null) {
+						if ((access & Opcodes.ACC_FINAL) != 0 && (access & (Opcodes.ACC_STATIC | Opcodes.ACC_PRIVATE)) == 0 && !finalInVanilla(vanilla, owner, method)) {
+							if (lines.add(owner + " " + method)) {
+								notes.add(e.getKey().replace('/', '.') + " overrides " + owner.replace('/', '.') + "." + method.substring(0, method.indexOf('('))
+										+ ", which " + loader + " declares final and vanilla doesn't; made overridable at class load");
+							}
+						}
+						break;
+					}
+					owner = info.superName();
+				}
+			}
+		}
+		return lines;
+	}
+
+	/** Whether vanilla's class declares the method final, or doesn't declare it (nothing tells it isn't final there). */
+	private static boolean finalInVanilla(ClassBytesSource vanilla, String owner, String method) {
+		ClassNode node = vanilla.readNode(owner, ClassReader.SKIP_CODE);
+		if (node == null) return true;
+		for (MethodNode m : node.methods) {
+			if ((m.name + m.desc).equals(method)) return (m.access & Opcodes.ACC_FINAL) != 0;
+		}
+		return true;
+	}
+
+	/**
 	 * Puts the mod's classes that use members NeoForge renamed (see {@link PlatformRenames}), with the references
 	 * renamed, into {@code target}, and those reading resources through a class, with the reads made to look beyond the
 	 * mod's module as on Fabric ({@link ResourceLookups}); returns how many used renamed members.
@@ -384,7 +456,7 @@ public final class ModTranslator {
 
 	/** Reads an entry of the mod being translated (remapped when applicable). */
 	@FunctionalInterface
-	private interface FileView {
+	interface FileView {
 		byte[] read(String name) throws ArchiveException;
 	}
 
@@ -1126,10 +1198,12 @@ public final class ModTranslator {
 		}
 		Set<String> environmentClasses = new TreeSet<>();
 		if (meta.get("environmentClasses") instanceof List<?> list) list.forEach(o -> environmentClasses.add(String.valueOf(o)));
+		Set<String> overridable = new TreeSet<>();
+		if (meta.get("overridableMethods") instanceof List<?> list) list.forEach(o -> overridable.add(String.valueOf(o)));
 		int at = meta.get("accessTransformers") instanceof Number n ? n.intValue() : 0;
 		Path jar = env.namespace() == Namespace.INTERMEDIARY ? entry.file(REMAPPED) : candidate.path();
 		return new TranslatedMod(candidate, neoId, jar, entry.file(OVERLAY), List.copyOf(findings), at, List.copyOf(notes),
-				List.copyOf(injections), List.copyOf(bridges), Set.copyOf(environmentClasses), true, 0);
+				List.copyOf(injections), List.copyOf(bridges), Set.copyOf(environmentClasses), Set.copyOf(overridable), true, 0);
 	}
 
 	private static Map<String, Object> findingToJson(PreflightFinding f) {

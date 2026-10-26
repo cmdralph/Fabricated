@@ -199,6 +199,7 @@ public final class Pipeline {
 	 *                           it from any thread)
 	 * @param defaultBridges     the default method bridges of {@code mods}, by target class (immutable)
 	 * @param environmentClasses the classes of {@code mods} with {@code @Environment} annotations (immutable)
+	 * @param overridableMethods the game methods {@code mods} override that the platform made final, by class (immutable)
 	 */
 	public record Result(
 			FabricatedConfig config,
@@ -206,6 +207,7 @@ public final class Pipeline {
 			Map<String, List<InjectedInterface>> injectedInterfaces,
 			Map<String, List<DefaultBridge>> defaultBridges,
 			Set<String> environmentClasses,
+			Map<String, Set<String>> overridableMethods,
 			FabricLoaderRuntime runtime,
 			Map<String, ModContainerImpl> containers,
 			Report report,
@@ -213,8 +215,8 @@ public final class Pipeline {
 
 		Result(FabricatedConfig config, List<LoadedMod> mods, FabricLoaderRuntime runtime, Map<String, ModContainerImpl> containers,
 				Report report, Set<String> dependencyFailures) {
-			this(config, List.copyOf(mods), injectedInterfacesOf(mods), defaultBridgesOf(mods), environmentClassesOf(mods), runtime, containers,
-					report, dependencyFailures);
+			this(config, List.copyOf(mods), injectedInterfacesOf(mods), defaultBridgesOf(mods), environmentClassesOf(mods),
+					overridableMethodsOf(mods), runtime, containers, report, dependencyFailures);
 		}
 
 		/**
@@ -253,6 +255,18 @@ public final class Pipeline {
 			Set<String> classes = new HashSet<>();
 			for (LoadedMod mod : mods) classes.addAll(mod.translated().environmentClasses());
 			return Set.copyOf(classes);
+		}
+
+		private static Map<String, Set<String>> overridableMethodsOf(List<LoadedMod> mods) {
+			Map<String, Set<String>> methods = new HashMap<>();
+			for (LoadedMod mod : mods) {
+				for (String entry : mod.translated().overridableMethods()) {
+					int space = entry.indexOf(' ');
+					methods.computeIfAbsent(entry.substring(0, space), k -> new HashSet<>()).add(entry.substring(space + 1));
+				}
+			}
+			methods.replaceAll((owner, set) -> Set.copyOf(set));
+			return Map.copyOf(methods);
 		}
 	}
 

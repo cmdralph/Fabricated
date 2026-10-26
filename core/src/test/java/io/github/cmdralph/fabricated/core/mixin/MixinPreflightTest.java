@@ -3726,6 +3726,93 @@ class MixinPreflightTest {
 				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new java.util.ArrayList<>()).isEmpty());
 	}
 
+	@Test
+	void aLambdaNamedByVanillasNumberingIsTheOneCreatedInItsPlace() throws Exception {
+		// LAMBDA-5: NeoForge's Blocks patch makes the powered rail's constructor reference a lambda, so each later lambda
+		// of Blocks is numbered one more; Wilder Wild's hooks into the ice blocks' spawn predicates name vanilla's numbers.
+		// Where a lambda of the same shape has the name, the hook would apply to it without a word.
+		Map<String, byte[]> vanilla = Map.of(TARGET, lambdaCreatingTarget(1, 2, 2, 3));
+		ClassIndex neoForge = new ClassIndex(Map.of(TARGET, lambdaCreatingTarget(99, 1, 2, 2, 3))::get);
+		String handlerDesc = "(I" + "Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;)V";
+		byte[] original = mixin("com/example/mixin/Spawn", false, cw -> {
+			for (String[] hook : new String[][] {{"ice", "lambda$static$3"}, {"packedIce", "lambda$static$0(I)Z"}}) {
+				MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, hook[0], handlerDesc, null, null);
+				AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
+				AnnotationVisitor methods = ann.visitArray("method");
+				methods.visit(null, hook[1]);
+				methods.visitEnd();
+				AnnotationVisitor ats = ann.visitArray("at");
+				AnnotationVisitor at = ats.visitAnnotation(null, AT);
+				at.visit("value", "HEAD");
+				at.visitEnd();
+				ats.visitEnd();
+				ann.visitEnd();
+				mv.visitCode();
+				mv.visitInsn(Opcodes.RETURN);
+				mv.visitMaxs(0, 2);
+				mv.visitEnd();
+			}
+		});
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Spawn", original));
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Spawn"));
+		assertEquals(List.of(), preflight(neoForge, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()),
+				"the names fit lambdas of the same shape");
+		assertTrue(preflight(neoForge, mod::get, ClassBytesSource.EMPTY, false)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty(), "without vanilla's code, nothing tells");
+
+		List<PreflightFinding> notes = new ArrayList<>();
+		Map<String, byte[]> repaired = new MixinPreflight(neoForge, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, vanilla::get)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
+		assertEquals(2, notes.size(), notes.toString());
+		assertTrue(notes.stream().allMatch(n -> n.message().contains("which this game build numbers differently")), notes.toString());
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired.get("com/example/mixin/Spawn.class")).accept(node, 0);
+		Map<String, Object> selected = new HashMap<>();
+		for (MethodNode m : node.methods) {
+			AnnotationNode inject = Annotations.find(m, INJECT);
+			if (inject != null) selected.put(m.name, Annotations.value(inject, "method"));
+		}
+		assertEquals(List.of("lambda$static$4(I)Z"), selected.get("ice"), "vanilla's last lambda, after the one the patch added");
+		assertEquals(List.of("lambda$static$1(I)Z"), selected.get("packedIce"));
+
+		// A lambda the patch changed has no place in vanilla's order: it is left to the other checks.
+		ClassIndex changed = new ClassIndex(Map.of(TARGET, lambdaCreatingTarget(99, 1, 2, 2, 7))::get);
+		List<PreflightFinding> none = new ArrayList<>();
+		new MixinPreflight(changed, InstalledClasses.NONE, Map.of("com/example/mixin/Spawn", original)::get, ClassBytesSource.EMPTY, false, true, vanilla::get)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), none);
+		assertTrue(none.stream().noneMatch(n -> n.message().contains("lambda$static$3")), none.toString());
+	}
+
+	/**
+	 * {@link #TARGET} whose static initializer creates a lambda {@code lambda$static$N} for each constant, in order, each
+	 * an {@code IntPredicate} body {@code (I)Z} returning its constant.
+	 */
+	private static byte[] lambdaCreatingTarget(int... constants) {
+		ClassWriter cw = new ClassWriter(0);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		Handle metafactory = new Handle(Opcodes.H_INVOKESTATIC, "java/lang/invoke/LambdaMetafactory", "metafactory",
+				"(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodType;"
+						+ "Ljava/lang/invoke/MethodHandle;Ljava/lang/invoke/MethodType;)Ljava/lang/invoke/CallSite;", false);
+		MethodVisitor clinit = cw.visitMethod(Opcodes.ACC_STATIC, "<clinit>", "()V", null, null);
+		clinit.visitCode();
+		for (int n = 0; n < constants.length; n++) {
+			clinit.visitInvokeDynamicInsn("test", "()Ljava/util/function/IntPredicate;", metafactory, Type.getType("(I)Z"),
+					new Handle(Opcodes.H_INVOKESTATIC, TARGET, "lambda$static$" + n, "(I)Z", false), Type.getType("(I)Z"));
+			clinit.visitInsn(Opcodes.POP);
+			MethodVisitor body = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, "lambda$static$" + n, "(I)Z", null, null);
+			body.visitCode();
+			body.visitIntInsn(Opcodes.BIPUSH, constants[n]);
+			body.visitInsn(Opcodes.IRETURN);
+			body.visitMaxs(1, 1);
+			body.visitEnd();
+		}
+		clinit.visitInsn(Opcodes.RETURN);
+		clinit.visitMaxs(1, 0);
+		clinit.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
 	/** An accessor interface on {@link #TARGET} with one non-static {@code @Invoker} method. */
 	private static byte[] invokerInterface(String name, String method, String desc) {
 		ClassWriter cw = new ClassWriter(0);

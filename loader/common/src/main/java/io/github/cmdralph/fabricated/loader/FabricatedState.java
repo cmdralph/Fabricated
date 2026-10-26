@@ -111,6 +111,11 @@ public final class FabricatedState {
 		return result.defaultBridges();
 	}
 
+	/** Game methods Fabric mods override that the platform made final (name and descriptor), by class (FINAL-2). */
+	public Map<String, Set<String>> overridableMethods() {
+		return result.overridableMethods();
+	}
+
 	/** Writes {@code logs/fabric-bridge-report.txt}; failures are logged, never thrown. */
 	public void writeReport() {
 		try {

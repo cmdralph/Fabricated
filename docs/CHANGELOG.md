@@ -58,6 +58,25 @@ One entry per working session, newest first: what changed, and how it was verifi
   them and lambdas implementing them kept their official names, and Fabric API's resource pack lambda stopped the server
   (AbstractMethodError). A descriptor without Minecraft classes is matched by its owner only, so a mod's `Runnable.run`
   keeps its name. Test: 278 core tests.
+- FINAL-1's `final` is removed at class load instead of by an access transformer line (FINAL-2): Forge 47 makes
+  `Ingredient.toNetwork` final with its own access transformer, and the engine refused the mod's `-f` next to Forge's
+  `+f`, so Forge 47's Fabric API server exited at start on forge-legacy's run on #125. The translation's metadata lists
+  the methods (schema 39); `FabricClassTransforms` clears the flag after the platform's access transformers have run.
+  Test: 286 core tests.
+- Branches (`PORTING.md` §4.1 and §7): with the official Fabric API jar passed through, the server starts on Forge 61,
+  64, 65 and 66 (`forge`, #122; Forge 66's plan leaves out the loot and advancement API's loading hooks, which cast
+  the `Optional` Forge 66 decodes) and on Forge 47 (`forge-legacy`, #123; its plan leaves out registry sync's
+  `SaveLoadingMixin`, and the Fabric mods' dynamic registries join Forge's list of data pack registries).
+- A Fabric mod's class overriding a game method the platform declares final and vanilla doesn't loads (FINAL-1): Forge
+  47 makes `Ingredient.toNetwork` final, which Fabric API's recipe API overrides in `CustomIngredientImpl`, and its
+  entrypoint failed with IncompatibleClassChangeError on forge-legacy's run on #123. The mod's access transformer
+  removes that `final`, with vanilla's code telling which methods the platform made final. Test: 286 core tests.
+- A hook into a lambda named by vanilla's number takes the lambda NeoForge's build creates in its place (LAMBDA-5):
+  NeoForge's `Blocks` patch makes the powered rail's constructor reference a lambda, so each later lambda of `Blocks`
+  is numbered one more, and Wilder Wild's penguin spawn hooks into the ice blocks' spawn predicates were left out on
+  every version (lambdas of other parameters had their names); a lambda of the same parameters would have taken the
+  hook without a word. With vanilla's code, the lambdas a method creates are aligned with vanilla's by their shape and
+  code. Test: 285 core tests.
 - On Forge 61 to 66, a `@ModifyVariable` taking an argument by its name with `argsOnly` takes its slot instead (ARGS-1):
   SpongePowered's Mixin names arguments `arg` and their slot there, so Fabric API's resource loader hook taking
   `enableProfiling` in `SimpleReloadInstance.create` failed and Forge 65's server timed out on #115; Fabric's Mixin
