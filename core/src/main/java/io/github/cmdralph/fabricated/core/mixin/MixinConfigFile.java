@@ -73,6 +73,14 @@ public record MixinConfigFile(
 				overwritesRequireAnnotations);
 	}
 
+	/** This config declaring compatibility level {@code level} ({@code compatibilityLevel}, e.g. {@code JAVA_21}). */
+	public MixinConfigFile withCompatibilityLevel(String level) {
+		Map<String, Object> copy = new LinkedHashMap<>(tree);
+		copy.put("compatibilityLevel", level);
+		return new MixinConfigFile(copy, mixinPackage, common, client, server, refmap, required, plugin, defaultRequire, parent,
+				overwritesRequireAnnotations);
+	}
+
 	private static String optString(Map<String, Object> tree, String key) throws JsonException {
 		Object v = tree.get(key);
 		if (v == null) return null;
