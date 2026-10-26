@@ -45,10 +45,17 @@ public final class MixinCompat {
 	private static final Version BEFORE_FIX_RELEASES = parse("0.5.3");
 	private static final Version LAST_FIX_RELEASE = parse("0.5.5");
 	/**
-	 * The last compatibility level ({@code JAVA_n}) of SpongePowered's own Mixin releases, from their CompatibilityLevel
-	 * enums (LEVEL-1): Forge 47 runs 0.8.5, Forge 61 to 66 run 0.8.7.
+	 * What SpongePowered's own Mixin releases take, from their sources (Forge 47 runs 0.8.5, Forge 61 to 66 run 0.8.7):
+	 * the last compatibility level ({@code JAVA_n}) of their CompatibilityLevel enums (LEVEL-1), and whether they apply
+	 * injectors in interface mixins (INTERFACE-1), which came with 0.8.6.
 	 */
-	private static final Map<String, Integer> UPSTREAM_LAST_LEVEL = Map.of("0.8.5", 18, "0.8.6", 21, "0.8.7", 21);
+	private record Upstream(int lastLevel, boolean interfaceInjectors) {
+	}
+
+	private static final Map<String, Upstream> UPSTREAM = Map.of(
+			"0.8.5", new Upstream(18, false),
+			"0.8.6", new Upstream(21, true),
+			"0.8.7", new Upstream(21, true));
 	private static final Pattern LEVEL = Pattern.compile("JAVA_(\\d{1,3})");
 
 	private MixinCompat() {
@@ -110,8 +117,22 @@ public final class MixinCompat {
 	 * {@code 0.17.4+mixin.0.8.7}), isn't limited here.
 	 */
 	public static int lastCompatibilityLevel(String runtimeMixinVersion) {
-		Integer level = runtimeMixinVersion == null ? null : UPSTREAM_LAST_LEVEL.get(runtimeMixinVersion.trim());
-		return level == null ? 0 : level;
+		Upstream upstream = upstream(runtimeMixinVersion);
+		return upstream == null ? 0 : upstream.lastLevel();
+	}
+
+	/**
+	 * Whether the running Mixin applies injectors in interface mixins and takes their non-public methods (INTERFACE-1).
+	 * SpongePowered's 0.8.5, which Forge 47 runs, drops such a mixin whole, logging an error; from 0.8.6 Mixin applies
+	 * them, as Fabric's does. True for a version not known here.
+	 */
+	public static boolean interfaceInjectors(String runtimeMixinVersion) {
+		Upstream upstream = upstream(runtimeMixinVersion);
+		return upstream == null || upstream.interfaceInjectors();
+	}
+
+	private static Upstream upstream(String runtimeMixinVersion) {
+		return runtimeMixinVersion == null ? null : UPSTREAM.get(runtimeMixinVersion.trim());
 	}
 
 	/**

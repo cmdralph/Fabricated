@@ -126,6 +126,8 @@ public final class MixinPreflight {
 	private final ClassBytesSource untransformable;
 	private final boolean clientSide;
 	private final boolean missingTargetsFatal;
+	/** Whether the running Mixin applies injectors in interface mixins (INTERFACE-1: Forge 47's doesn't). */
+	private final boolean interfaceInjectors;
 	/** The platform's loader, as messages name it ({@code NeoForge}, {@code Forge}). */
 	private final String loader;
 	/** Vanilla's code of the game, or {@link ClassBytesSource#EMPTY} (VANILLA-1). */
@@ -164,6 +166,16 @@ public final class MixinPreflight {
 	/** @param loader the platform's loader, as messages name it ({@code NeoForge}, {@code Forge}) */
 	public MixinPreflight(ClassIndex game, InstalledClasses installed, ClassBytesSource modClasses, ClassBytesSource untransformable,
 			boolean clientSide, boolean missingTargetsFatal, ClassBytesSource vanilla, String loader) {
+		this(game, installed, modClasses, untransformable, clientSide, missingTargetsFatal, vanilla, loader, true);
+	}
+
+	/**
+	 * @param interfaceInjectors whether the running Mixin applies injectors in interface mixins and takes their
+	 *                           non-public methods, as it does from 0.8.6 (INTERFACE-1)
+	 */
+	public MixinPreflight(ClassIndex game, InstalledClasses installed, ClassBytesSource modClasses, ClassBytesSource untransformable,
+			boolean clientSide, boolean missingTargetsFatal, ClassBytesSource vanilla, String loader, boolean interfaceInjectors) {
+		this.interfaceInjectors = interfaceInjectors;
 		this.game = game;
 		this.installed = installed;
 		this.modClasses = modClasses;
@@ -2602,14 +2614,26 @@ public final class MixinPreflight {
 				continue;
 			}
 
+			boolean itf = (mixin.access & Opcodes.ACC_INTERFACE) != 0;
 			boolean injector = false;
 			for (AnnotationNode ann : Annotations.all(method)) {
 				if (isInjector(ann.desc)) {
 					injector = true;
+					if (itf && !interfaceInjectors) {
+						ctx.injector(method, 1, "@" + simpleName(ann.desc) + " handler " + method.name + " is an injector in an interface mixin, which "
+										+ loader + "'s Mixin doesn't apply (Mixin does from 0.8.6), so it would drop the whole mixin",
+								"The feature this hook serves doesn't work on this " + loader + ".");
+						break;
+					}
 					checkInjector(mixin, method, ann, target, ctx);
 				}
 			}
-			if (!injector) checkMerged(method, target, ctx);
+			if (!injector && itf && !interfaceInjectors && (method.access & (Opcodes.ACC_PUBLIC | Opcodes.ACC_SYNTHETIC)) == 0) {
+				ctx.classLevel("Method " + method.name + method.desc + " of an interface mixin is not public, which " + loader
+						+ "'s Mixin doesn't take (Mixin does from 0.8.6), so it drops the whole mixin", "The mod needs a build for this " + loader + ".");
+			} else if (!injector) {
+				checkMerged(method, target, ctx);
+			}
 		}
 	}
 
