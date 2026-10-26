@@ -73,7 +73,7 @@ other platforms build on.
 | A `mods/` jar providing a locator joins ModLauncher's service layer and is then left out of normal mod loading; language providers load from the plugin layer and need an `Implementation-Version`. | Forge `1.20.1`: `ModDirTransformerDiscoverer.java:28-33`, `ModsFolderLocator.java:49`, `LanguageLoadingProvider.java:79,97` |
 | Metadata is `META-INF/mods.toml`; dependencies use `mandatory`, not `type`; no `[[mixins]]` (Mixin reads the jar manifest's `MixinConfigs`); `clientSideOnly` and an `accessTransformers` list only from 47.3.25 and 47.4.20. | Forge `ModInfo.java:215`, `ModFileInfo.java`; SpongePowered/Mixin `releases/0.8.5` `MixinPlatformAgentDefault.java:43` |
 | In production, classes have Mojang names and members SRG names (`f_90987_`, `m_…_`); the launch handlers name the domain `srg`. | Forge `CommonClientLaunchHandler.java:20`, its `accesstransformer.cfg`, `FMLLoader.java:163` |
-| The installer leaves MCPConfig in the libraries (`de/oceanlabs/mcp/mcp_config/1.20.1-20230612.114412`, a merged obfuscated→SRG mappings file among them), keyed by obfuscated names as Intermediary is. | Forge `build.gradle:1383-1595` (installer processors). That every launcher keeps the files is UNVERIFIED. |
+| The installer leaves MCPConfig in the libraries (`de/oceanlabs/mcp/mcp_config/1.20.1-20230612.114412`), keyed by obfuscated names as Intermediary is: `mcp_config-<v>-mappings.txt` (MCPConfig's `joined.tsrg`, TSRG v2 `obf srg id`) and `-mappings-merged.txt` (`tsrg2 left right`: Mojang's class names, SRG's member names), the zip itself; and in `net/minecraft/server/<v>/` Mojang's `server-<v>-mappings.txt` (ProGuard), the slim and extra jars and `-srg.jar`, vanilla's classes in the names Forge runs them with. | Forge `build.gradle:1383-1595` (installer processors); the server installer of 47.4.28 (#89's smoke). Other launchers' installs are UNVERIFIED. |
 | Mixin is upstream 0.8.5, not Fabric's fork; MixinExtras is not bundled (mods nest `mixinextras-forge`). Java 17. | Forge `build.gradle:65,167,308` |
 | No JSON enum extensions: only `IExtensibleEnum` with static `create` factories on enums Forge patched. No `ClassProcessor` equivalent: ModLauncher's `ITransformationService` (from `mods/`, explicit targets) or JS coremods. | Forge `IExtensibleEnum.java`, `RuntimeEnumExtender.java`; ModLauncher 10.0.9 `ITransformer.java` |
 | The old capability system (`LazyOptional`, `AttachCapabilitiesEvent`), `SimpleChannel` networking, `forge:conditions` read by serializers rather than codecs; `RegisterEvent` exists. | Forge `1.20.1` sources |
@@ -247,6 +247,28 @@ own jar (`libraries/net/minecraftforge/forge/<version>/`) as its path, so the li
 Fabric mods' entrypoints run as the in-game mod is constructed, not yet where Fabric runs them, and client entrypoints
 don't run. Still open: 6, 8, 9, 10.
 
+**Steps 3 and 4 on all four versions** (#87, #90). On Forge 61 (1.21.11) the test mod is translated through Forge's
+TSRG mappings and Intermediary, which the 1.21.11 build bundles as `main`'s does, and pre-flight reads vanilla from
+`-official.jar`; the smoke's eleven checks pass on Forge 61 and 64 to 66. Step 4: `FabricTransformationService`, which
+ModLauncher loads from the Fabricated jar's service file into the service layer and asks for transformers after FML's
+scan, applies `FabricClassTransforms.beforeMixin` (`loader/common`, shared with NeoForge's class processors) to the
+classes discovery named; on all four versions the test mod's class-tweaker interface is on `MinecraftServer` and its
+client-only method is stripped on the server (fourteen checks). Default bridges (CORPUS-11) are not added on Forge:
+they must come after Mixin, which no transformer from the mods folder does; a launch with classes that need them says
+so.
+
+**What L3's first runs on Forge 47 answered** (#89, Forge 47.4.28, 1.20.1). The forge branch's adapter ports with three
+differences, each found by the server smoke: Forge 47's `AbstractModProvider` implements neither `initArguments` nor
+`scanFile` (the locators extend `AbstractJarFileModProvider`, whose `scanFile` walks a file's classes, which is how FML
+finds the in-game mod's `@Mod`); its `ModFile.getModInfos()` fails on a file without mod metadata (Forge's own language
+and library jars), which FML's code filters out by `getModFileInfo()` first; and its securejarhandler (2.1) takes a
+jar's primary path, where Mixin 0.8.5 reads `MixinConfigs`, from the first path it is given while searching the last
+first (it reads the manifest backwards through `JarInputStream`s), where securemodules takes both from the last. So on
+Forge 47 the overlay comes first and the union file system's filter hides from the other paths each file the overlay
+has. Mojang's server mappings name only the server's classes (5448 of the 7413 MCPConfig names); the composed table has
+all 67,559 members. Mixin 0.8.5 accepts the config's `JAVA_17` (above its highest known level, `JAVA_13`) and logs an
+error for a config without `minVersion`, as 0.8.7 does on Forge 61.
+
 **Questions only a run answers.** (1) Does ForgeGradle's compile classpath hold fmlloader, fmlcore, forgespi,
 modlauncher and securemodules? (2) Do Fabricated's locators run before `ModsFolderLocator` and the jar-in-jar
 locator (the debug lines "Found Mod Locators" and "Trying locator")? (3) On Forge 61, the Mojang mappings file's name
@@ -337,7 +359,7 @@ the abstractions below are added when the branch work starts (owner decision D2 
 | L0 Evaluation (done) | This document; decisions D1 to D6. | Decisions recorded (§8). |
 | L1 Seams on `main` | §6, items 1 to 6, by pull request (items 1 to 3 done, and item 4's trigger; the rest of 4, and 5 and 6, when L3 needs them). | `main` green on all four versions after each; `core` builds at release 17. |
 | L2 Scaffolding | Merge `main` into `forge-legacy`; `mc/1.20.1` on `legacyforge` (R1 settled first); Fabric API 0.92.12 plan (which modules native); compile only. | `:mc:1.20.1:fabricatedJar` builds in CI (done for the project, #71; the Fabric API plan is next). |
-| L3 Discovery and translation | forgespi 7 adapter (locator, dependency locator, language provider, nested jars); Intermediary → SRG composer from MCPConfig; Forge descriptor writer; MixinExtras provision; class transforms through `ITransformationService`. | The test mods' server smoke passes on Forge 47.4 (entrypoints, registries, mixins, access wideners). |
+| L3 Discovery and translation | forgespi 7 adapter (locator, dependency locator, language provider, nested jars); Intermediary → SRG composer from MCPConfig; Forge descriptor writer; MixinExtras provision; class transforms through `ITransformationService`. | The test mods' server smoke passes on Forge 47.4 (entrypoints, registries, mixins, access wideners). In part (#88, #89): the adapter (the forge branch's, ported), `MappingComposer.composeSrg`, `ForgeDescriptor` (Forge's dialect, 1.20.1's `pack_format`); the smoke passes for discovery, translation, the in-game mod, packs, entrypoints and a mixin in SRG names. Still to do: registries and access wideners in the test mod, MixinExtras, the transformation service. |
 | L4 Native Fabric API | Lifecycle, registries, networking on `SimpleChannel`, resource loader, events, transfer on `LazyOptional` capabilities, the old renderer API; client smoke with HeadlessMC and mc-runtime-test. | Server and client smoke gates green; Fabric API 0.92.12 boots. |
 | L5 Corpus and stabilisation | 1.20.1 corpus from Modrinth; pre-flight repairs against Forge 47's patches, vanilla code through MCPConfig; Fabric's Mixin fork features measured (R2). | Release criteria met (to be set with the owner, as for `main`). |
 

@@ -328,7 +328,7 @@ public final class Pipeline {
 
 	private Result run() {
 		report.environment("Minecraft", in.minecraftVersion())
-				.environment("NeoForge", in.neoForgeVersion())
+				.environment(in.descriptor().loaderName(), in.neoForgeVersion())
 				.environment("Side", in.clientSide() ? "client" : "dedicated server")
 				.environment("Fabric mod namespace", in.namespace() == Namespace.INTERMEDIARY ? "intermediary (remapped to Mojang names)" : "Mojang names (no remapping)")
 				.environment("Mixin", in.runtimeMixinVersion())
@@ -360,7 +360,7 @@ public final class Pipeline {
 			} catch (MappingException | IOException e) {
 				for (Candidate c : eligible) {
 					report.mod(new ModRow(c.id(), c.version(), c.origin(), Status.DISABLED, "Minecraft's official mapping file is unavailable: " + e.getMessage(),
-							"Reinstall NeoForge with its installer (it downloads the mapping file), or set \"mojangMappingsPath\" in config/fabricated.json."));
+							"Reinstall " + in.descriptor().loaderName() + " with its installer (it leaves the mapping files among the libraries), or set \"mojangMappingsPath\" in config/fabricated.json."));
 				}
 				eligible = List.of();
 			}
