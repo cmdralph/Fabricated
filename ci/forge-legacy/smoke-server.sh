@@ -104,7 +104,8 @@ for f in libraries/net/minecraft/server/*/*.jar; do
 	[ -f "$f" ] || continue
 	entries=$(unzip -Z1 "$f" 2>/dev/null || true)
 	srg=0
-	if printf '%s\n' "$entries" | grep -q '^net/minecraft/server/MinecraftServer\.class$'; then
+	# A here-string, not a pipe: under pipefail grep -q's early exit fails the pipe's writer.
+	if grep -q '^net/minecraft/server/MinecraftServer\.class$' <<<"$entries"; then
 		srg=$(unzip -p "$f" net/minecraft/server/MinecraftServer.class 2>/dev/null | grep -a -c 'm_5705_' || true)
 	fi
 	echo "-- $f: $(printf '%s\n' "$entries" | grep -c '\.class$') classes; MinecraftServer: $(printf '%s\n' "$entries" | grep -c '^net/minecraft/server/MinecraftServer\.class$'), net/minecraft/world/level/Level: $(printf '%s\n' "$entries" | grep -c '^net/minecraft/world/level/Level\.class$'), m_5705_ in MinecraftServer: $srg"

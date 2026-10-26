@@ -321,7 +321,7 @@ public final class FabricDependencyLocator extends AbstractJarFileModProvider im
 		String version = translated.candidate().metadata().getVersion().getFriendlyString();
 		SecureJar jar = SecureJar.from(secureJar -> new FabricJarMetadata(id, version, secureJar), filter, paths.toArray(Path[]::new));
 		IModFile file = ModFileFactory.FACTORY.build(jar, this, ModFileParser::modsTomlParser);
-		if (file.getModInfos().isEmpty()) throw new IllegalStateException("its generated mods.toml declares no mod");
+		if (ForgeMods.modInfos(file).isEmpty()) throw new IllegalStateException("its generated mods.toml declares no mod");
 		return file;
 	}
 
@@ -357,7 +357,7 @@ public final class FabricDependencyLocator extends AbstractJarFileModProvider im
 
 	private static Optional<IModFile> find(Iterable<IModFile> files, String modId) {
 		for (IModFile file : files) {
-			for (IModInfo info : file.getModInfos()) {
+			for (IModInfo info : ForgeMods.modInfos(file)) {
 				if (info.getModId().equals(modId)) return Optional.of(file);
 			}
 		}
@@ -417,7 +417,7 @@ public final class FabricDependencyLocator extends AbstractJarFileModProvider im
 	}
 
 	private static String ownVersion(IModFile file) {
-		for (IModInfo mod : file.getModInfos()) {
+		for (IModInfo mod : ForgeMods.modInfos(file)) {
 			if (mod.getModId().startsWith("mixinextras")) return mod.getVersion().toString();
 		}
 		String fromManifest = file.getSecureJar().moduleDataProvider().getManifest().getMainAttributes().getValue("Implementation-Version");
