@@ -18,6 +18,11 @@ One entry per working session, newest first: what changed, and how it was verifi
 - The report names the platform's loader (`PlatformDescriptor.loaderName()`): on Forge its environment line said
   "NeoForge: 61.2.4" and, without mappings, it told players to reinstall NeoForge (the forge branch's server smoke).
   The rest of its messages and pre-flight's still name NeoForge (roadmap PLAT-3).
+- Branches, recorded in `PORTING.md` §3 and §4.1: `forge` runs a translated Fabric mod on Forge 61 (1.21.11) too, and
+  applies Fabric's class transforms through a ModLauncher transformation service (#87, #90: fourteen server checks on
+  Forge 61 and 64 to 66); `forge-legacy` runs one on Forge 47.4.28, remapped to SRG names, its mixin applied (#89: ten
+  checks), after three Forge 47 differences the smoke found (providers' `scanFile`, file infos, securejarhandler's
+  primary path).
 
 ## 2026-10-25: branch reorganisation, a glowing moving block's outline, 1.21.11 server linkage noise, platform seams
 
