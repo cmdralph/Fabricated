@@ -318,7 +318,7 @@ public final class Pipeline {
 		list.add(new Builtin("fabricloader", FABRIC_LOADER_COMPAT_VERSION, "Fabric Loader (provided by Fabricated)", List.of("fabric-loader")));
 		list.add(new Builtin(ModIds.FABRICATED, in.fabricatedVersion(), "Fabricated", List.of()));
 		if (in.mixinExtrasVersion() != null) {
-			list.add(new Builtin("mixinextras", in.mixinExtrasVersion(), "MixinExtras (provided by NeoForge)", List.of("mixin_extras")));
+			list.add(new Builtin("mixinextras", in.mixinExtrasVersion(), "MixinExtras (provided by " + in.descriptor().loaderName() + ")", List.of("mixin_extras")));
 		}
 		for (FabricApiPlan.Module m : in.fabricApiPlan().modules().values()) {
 			if (m.plan() == FabricApiPlan.Plan.NATIVE) list.add(new Builtin(m.id(), m.version(), m.id() + " (provided by Fabricated)", List.of()));
@@ -340,7 +340,7 @@ public final class Pipeline {
 				.environment("Fabric Loader API", FABRIC_LOADER_COMPAT_VERSION);
 		config.warnings().forEach(w -> report.line("Configuration warnings", w));
 
-		CandidateScanner.Result scan = new CandidateScanner(in.cache(), config.limits()).scan(in.fabricJars());
+		CandidateScanner.Result scan = new CandidateScanner(in.cache(), config.limits(), in.descriptor().loaderName()).scan(in.fabricJars());
 		scan.rejected().forEach(r -> report.mod(new ModRow(r.origin(), "", "", Status.REJECTED, r.reason(), "Make sure this is an unmodified Fabric mod jar for this Minecraft version.")));
 		scan.notes().forEach(n -> report.line("Discovery notes", n));
 		List<Candidate> eligible = filter(scan.candidates());
@@ -484,6 +484,7 @@ public final class Pipeline {
 
 	/** Candidates that should load, reporting the others. */
 	private List<Candidate> filter(List<Candidate> candidates) {
+		String loader = in.descriptor().loaderName();
 		Map<String, String> builtinNames = new HashMap<>();
 		for (Builtin b : builtins) builtinNames.put(b.id(), b.name());
 		List<Candidate> eligible = new ArrayList<>();
@@ -506,27 +507,27 @@ public final class Pipeline {
 			NeoForgeMod neo = neoMods.get(neoId);
 			if (neo != null && neo.id().equals(neoId)) {
 				report.mod(new ModRow(c.id(), c.version(), c.origin(), Status.SKIPPED,
-						"a NeoForge build of this mod is installed (" + neo.displayName() + " " + neo.version() + "); using it instead",
-						"Remove the NeoForge build to use the Fabric one."));
+						"a " + loader + " build of this mod is installed (" + neo.displayName() + " " + neo.version() + "); using it instead",
+						"Remove the " + loader + " build to use the Fabric one."));
 				continue;
 			}
 			if (neo != null) {
 				report.mod(new ModRow(c.id(), c.version(), c.origin(), Status.SKIPPED,
-						"NeoForge mod " + neo.displayName() + " " + neo.version() + " provides it", ""));
+						loader + " mod " + neo.displayName() + " " + neo.version() + " provides it", ""));
 				continue;
 			}
 			CompatPlan.Entry known = COMPAT.entry(c.id());
 			String neoForgeBuildOnly = known.neoForgeBuildOnly();
 			if (neoForgeBuildOnly != null && !config.override(c.id()).loadUnsupported()) {
-				report.mod(new ModRow(c.id(), c.version(), c.origin(), Status.DISABLED, "its Fabric build can't run on NeoForge: " + neoForgeBuildOnly,
-						known.suggestion() != null ? known.suggestion() : "Install " + c.metadata().getName() + " for NeoForge instead (from the same download page)."));
+				report.mod(new ModRow(c.id(), c.version(), c.origin(), Status.DISABLED, "its Fabric build can't run on " + loader + ": " + neoForgeBuildOnly,
+						known.suggestion() != null ? known.suggestion() : "Install " + c.metadata().getName() + " for " + loader + " instead (from the same download page)."));
 				continue;
 			}
 			// Even on request: the pair is broken whatever the player accepts.
 			String pairing = notWithNeoForge(known);
 			if (pairing != null) {
 				report.mod(new ModRow(c.id(), c.version(), c.origin(), Status.DISABLED, "its Fabric build can't run next to " + pairing,
-						"Use the NeoForge builds of both, or the Fabric builds of both."));
+						"Use the " + loader + " builds of both, or the Fabric builds of both."));
 				continue;
 			}
 			if (neoForgeBuildOnly != null) report.line("Unsupported mods loaded on request (loadUnsupported)", c.id() + ": " + neoForgeBuildOnly);
@@ -546,7 +547,7 @@ public final class Pipeline {
 			Candidate clash = byNeoId.putIfAbsent(neoId, c);
 			if (clash != null) {
 				report.mod(new ModRow(c.id(), c.version(), c.origin(), Status.DISABLED,
-						"its NeoForge mod id '" + neoId + "' is also the id of Fabric mod " + clash.id() + " (" + clash.origin() + "), and NeoForge cannot load both",
+						"its " + loader + " mod id '" + neoId + "' is also the id of Fabric mod " + clash.id() + " (" + clash.origin() + "), and " + loader + " cannot load both",
 						"Remove one of the two mods."));
 				continue;
 			}
@@ -559,7 +560,7 @@ public final class Pipeline {
 	private String notWithNeoForge(CompatPlan.Entry known) {
 		for (Map.Entry<String, String> pair : known.notWithNeoForge().entrySet()) {
 			NeoForgeMod neo = neoMods.get(ModIds.toNeoForgeId(pair.getKey()));
-			if (neo != null) return "the NeoForge mod " + neo.displayName() + " " + neo.version() + ": " + pair.getValue();
+			if (neo != null) return "the " + in.descriptor().loaderName() + " mod " + neo.displayName() + " " + neo.version() + ": " + pair.getValue();
 		}
 		return null;
 	}
@@ -570,14 +571,14 @@ public final class Pipeline {
 			return "only for the " + c.metadata().getEnvironment().name().toLowerCase(Locale.ROOT) + " side";
 		}
 		FabricApiPlan.Module module = plan.module(c.id());
-		if (module != null && module.plan() == FabricApiPlan.Plan.UNSUPPORTED) return "Fabric API module not supported on NeoForge: " + module.reason();
+		if (module != null && module.plan() == FabricApiPlan.Plan.UNSUPPORTED) return "Fabric API module not supported on " + in.descriptor().loaderName() + ": " + module.reason();
 		if (module != null && module.plan() == FabricApiPlan.Plan.NATIVE) return "replaced by Fabricated's native implementation";
 		if (builtinNames.containsKey(c.id())) return "already provided by " + builtinNames.get(c.id());
 		return null;
 	}
 
 	private DependencyResolver resolver() {
-		DependencyResolver resolver = new DependencyResolver();
+		DependencyResolver resolver = new DependencyResolver(in.descriptor().loaderName());
 		for (Builtin b : builtins) {
 			resolver.builtin(b.id(), parseVersion(b.version()), b.name());
 			for (String alias : b.aliases()) resolver.builtin(alias, parseVersion(b.version()), b.name());
@@ -590,12 +591,13 @@ public final class Pipeline {
 	/** What to tell the player when a dependency on {@code id} is missing. */
 	private Map<String, String> missingHints() {
 		Map<String, String> hints = new HashMap<>();
-		String fapiHint = "Install Fabric API " + plan.fabricApiVersion() + " (the official Fabric jar) in the mods folder; Fabricated loads the parts that work on NeoForge.";
+		String loader = in.descriptor().loaderName();
+		String fapiHint = "Install Fabric API " + plan.fabricApiVersion() + " (the official Fabric jar) in the mods folder; Fabricated loads the parts that work on " + loader + ".";
 		hints.put("fabric-api", fapiHint);
 		hints.put("fabric", fapiHint);
 		for (FabricApiPlan.Module m : plan.modules().values()) {
 			if (m.plan() == FabricApiPlan.Plan.UNSUPPORTED) {
-				hints.put(m.id(), "The Fabric API module " + m.id() + " cannot run on NeoForge (" + m.reason() + "); this mod cannot be used with Fabricated.");
+				hints.put(m.id(), "The Fabric API module " + m.id() + " cannot run on " + loader + " (" + m.reason() + "); this mod cannot be used with Fabricated.");
 			} else if (m.plan() != FabricApiPlan.Plan.NATIVE) {
 				hints.put(m.id(), fapiHint);
 			}
@@ -840,7 +842,7 @@ public final class Pipeline {
 		if (rounds.resolution != null) {
 			rounds.resolution.warnings().forEach(w -> report.line("Dependency warnings", w));
 			rounds.resolution.crossLoaderLinks().forEach((id, targets) -> report.line("Cross-loader dependencies",
-					id + " uses NeoForge build(s) of " + targets + "; this usually works for multi-loader libraries but is not guaranteed"));
+					id + " uses " + in.descriptor().loaderName() + " build(s) of " + targets + "; this usually works for multi-loader libraries but is not guaranteed"));
 		}
 
 		// Built-ins first: a Fabric mod's "provides" never shadows Minecraft, Fabricated or a native module.
@@ -915,25 +917,29 @@ public final class Pipeline {
 	 * The report section of the mixins (or their failing injectors) left out of loaded mods: NeoForge's code differs
 	 * where they hook in, and the mod loads without them (LEAVE-1).
 	 */
-	static final String LEFT_OUT_SECTION = "Mixins left out (NeoForge's code differs where they hook in)";
+	/** The report's section for the mixins pre-flight left out. */
+	static String leftOutSection(String loader) {
+		return "Mixins left out (" + loader + "'s code differs where they hook in)";
+	}
 
 	private void reportLoaded(TranslatedMod t, Long millis, PackageGuard.Decision decision, List<String> linkageIssues) {
 		Candidate c = t.candidate();
+		String loader = in.descriptor().loaderName();
 		long leftOut = t.findings().stream().filter(f -> f.severity() == Severity.LEFT_OUT).map(f -> f.config() + " " + f.mixin()).distinct().count();
 		String detail = (millis == null ? "cached" : "translated in " + millis + " ms")
 				+ (t.accessTransformers() > 0 ? ", " + t.accessTransformers() + " access transformer(s)" : "")
 				+ (t.injectedInterfaces().isEmpty() ? "" : ", " + t.injectedInterfaces().size() + " injected interface(s)")
 				+ (leftOut == 0 ? "" : ", " + leftOut + " mixin(s) left out in whole or in part, so the features they hook in for don't work (see "
-						+ LEFT_OUT_SECTION + ")");
+						+ leftOutSection(loader) + ")");
 		report.mod(new ModRow(c.id(), c.version(), c.origin(), Status.LOADED, detail, ""));
 		for (PreflightFinding f : t.findings()) {
 			String line = c.id() + ": " + f + (f.suggestion().isEmpty() ? "" : " - " + f.suggestion());
-			report.line(f.severity() == Severity.LEFT_OUT ? LEFT_OUT_SECTION : "Mixin pre-flight warnings", line);
+			report.line(f.severity() == Severity.LEFT_OUT ? leftOutSection(loader) : "Mixin pre-flight warnings", line);
 		}
 		for (String n : t.notes()) report.line("Translation notes", c.id() + ": " + n);
 		FabricApiPlan.Module planned = plan.module(c.id());
 		if (planned != null && !planned.skipMixins().isEmpty()) {
-			report.line("Fabric API mixins skipped (conflict with NeoForge)", c.id() + ": " + planned.skipMixins()
+			report.line("Fabric API mixins skipped (conflict with " + loader + ")", c.id() + ": " + planned.skipMixins()
 					+ (planned.reason().isEmpty() ? "" : " - " + planned.reason()));
 		}
 		if (decision != null) decision.notes().forEach(n -> report.line("Package guard", c.id() + " " + n));
