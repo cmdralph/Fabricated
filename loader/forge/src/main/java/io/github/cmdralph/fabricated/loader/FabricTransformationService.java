@@ -46,8 +46,7 @@ public final class FabricTransformationService implements ITransformationService
 			LOGGER.warn("{} class(es) need default method bridges for the interfaces Fabric mods add, which Fabricated can't add on Forge yet: {}",
 					state.defaultBridges().size(), String.join(", ", new TreeSet<>(state.defaultBridges().keySet())));
 		}
-		Set<String> classes = new TreeSet<>(state.environmentClasses());
-		classes.addAll(state.injectedInterfaces().keySet());
+		Set<String> classes = FabricClassTransforms.classesBeforeMixin(state);
 		if (classes.isEmpty()) return List.of();
 		LOGGER.info("Fabricated transforms {} class(es) for Fabric mods before Mixin", classes.size());
 		return List.of(new FabricClassTransformer(classes));
