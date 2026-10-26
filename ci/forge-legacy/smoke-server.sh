@@ -188,8 +188,6 @@ for f in libraries/net/minecraft/server/*/*-mappings.txt; do
 	[ -f "$f" ] || continue
 	awk '
 		BEGIN {
-			want["net.minecraft.resources.RegistryCodecs"] = "Codec "
-			want["net.minecraft.resources.ResourceKey"] = " codec\\("
 			want["net.minecraft.world.entity.Entity"] = " findDimensionEntryPoint\\(| changeDimension\\(| moveTo\\(double,double,double,float,float\\)| setDeltaMovement\\(net| setYHeadRot\\(| getXRot\\(| level\\(\\)"
 			want["net.minecraft.server.level.ServerPlayer"] = " findDimensionEntryPoint\\(| changeDimension\\(| connection -> "
 			want["net.minecraft.server.network.ServerGamePacketListenerImpl"] = " teleport\\(double,double,double,float,float\\)"

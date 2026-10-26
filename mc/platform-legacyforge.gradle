@@ -32,8 +32,7 @@ def gameModMixins = [
         // Native fabric-loot-api-v2's and fabric-loot-tables-v1's (upstream's, in one package): the builder mixins, and
         // the loot tables' events from the loot data manager's apply.
         'fabricated-loot.mixins.json',
-        // Native fabric-dimensions-v1's: upstream's teleport target hook, its End hook on Forge's teleporter, and the
-        // fail-soft dimensions codec.
+        // Native fabric-dimensions-v1's: upstream's teleport target hook, and its End hook on Forge's teleporter.
         'fabricated-dimension.mixins.json']
 dependencies {
     annotationProcessor "org.spongepowered:mixin:${project.mixin_processor_version}:processor"
