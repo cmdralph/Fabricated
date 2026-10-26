@@ -1,11 +1,13 @@
 package io.github.cmdralph.fabricated.forgetest.mixin;
 
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
+import io.github.cmdralph.fabricated.forgetest.ForgeBiomeTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeTestMarker;
 import io.github.cmdralph.fabricated.forgetest.ForgeTestMod;
 import net.minecraft.class_1792;
@@ -13,6 +15,7 @@ import net.minecraft.class_1799;
 import net.minecraft.class_1802;
 import net.minecraft.class_2378;
 import net.minecraft.class_2960;
+import net.minecraft.class_5455;
 import net.minecraft.class_6862;
 import net.minecraft.class_7923;
 import net.minecraft.server.MinecraftServer;
@@ -22,12 +25,16 @@ import net.minecraft.server.MinecraftServer;
  * runs the game with: logs after the first server tick. The method is named in Intermediary's names, as a Fabric mod for
  * 1.20.1 names it (its refmap would), {@code method_3748} being {@code tickServer}; Fabricated remaps it to SRG's
  * {@code m_5705_}. {@code MinecraftServer} keeps its name in every namespace. By then Forge has frozen the registries
- * and checked them, and the test mod's item must still be there, and the data packs' tags are bound.
+ * and checked them, and the test mod's item must still be there, the data packs' tags are bound, and Forge has applied
+ * its biome modifiers ({@code method_30611} is {@code registryAccess()}).
  */
 @Mixin(MinecraftServer.class)
 public abstract class MinecraftServerMixin {
 	@Unique
 	private static boolean fabricatedForgeTest$logged;
+
+	@Shadow
+	public abstract class_5455.class_6890 method_30611();
 
 	@Inject(method = "method_3748", at = @At("TAIL"))
 	private void fabricatedForgeTest$afterTick(CallbackInfo ci) {
@@ -50,6 +57,8 @@ public abstract class MinecraftServerMixin {
 				ForgeTestMod.LOGGER.warn("FABRICATED-FORGE-TEST fabric:remove: the tag is loaded {}, stone is in it {}, dirt is in it {}",
 						items.method_40266(tag).isPresent(), stone, dirt);
 			}
+			class_5455 registries = method_30611();
+			ForgeBiomeTest.check(registries);
 		}
 	}
 }

@@ -8,6 +8,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.github.cmdralph.fabricated.core.runtime.EntrypointRunner;
+import io.github.cmdralph.fabricated.forge.biome.BiomeCompat;
 import io.github.cmdralph.fabricated.loader.FabricatedState;
 import io.github.cmdralph.fabricated.loader.ForgeLoaderHooks;
 import net.fabricmc.api.DedicatedServerModInitializer;
@@ -57,12 +58,15 @@ public final class FabricatedMod {
 	private boolean initialized;
 
 	public FabricatedMod() {
+		FMLJavaModLoadingContext context = FMLJavaModLoadingContext.get();
+		// First: this mod's data pack declares a biome modifier of the type it registers, which must exist even when
+		// Fabricated stops below, or worlds fail to load.
+		BiomeCompat.register(context.getModEventBus());
 		FabricatedState state = FabricatedState.get();
 		if (state == null) {
 			LOGGER.warn("Fabricated's discovery did not run; Fabric mods are not loaded");
 			return;
 		}
-		FMLJavaModLoadingContext context = FMLJavaModLoadingContext.get();
 		for (String text : ForgeLoaderHooks.notLoaded()) {
 			ModLoader.get().addWarning(new ModLoadingWarning(context.getContainer().getModInfo(), ModLoadingStage.CONSTRUCT, AS_IS, text));
 		}
