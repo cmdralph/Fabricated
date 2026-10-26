@@ -257,8 +257,10 @@ public final class ModTranslator {
 						List.copyOf(md.getLicense()), url(md.getContact().get("homepage").orElse(null), "homepage", notes),
 						url(md.getContact().get("issues").orElse(null), "issues", notes), md.getIconPath(256).filter(archive::contains).orElse(null), mixinSpecs,
 						overlay.containsKey(AT_PATH), overlay.containsKey(EnumExtensions.PATH), after, modProperties(md, notes), options(md));
-				overlay.put(ModsTomlWriter.PATH, ModsTomlWriter.write(spec).getBytes(StandardCharsets.UTF_8));
-				overlay.put("META-INF/MANIFEST.MF", overlayManifest(neoId));
+				overlay.put(env.descriptor().path(), env.descriptor().write(spec).getBytes(StandardCharsets.UTF_8));
+				overlay.put("META-INF/MANIFEST.MF", overlayManifest(neoId, env.descriptor().manifestAttributes(spec)));
+				byte[] packMetadata = env.descriptor().packMetadata(spec);
+				if (packMetadata != null && !overlay.containsKey(PACK_METADATA) && !archive.contains(PACK_METADATA)) overlay.put(PACK_METADATA, packMetadata);
 
 				Map<String, byte[]> outputs = new LinkedHashMap<>();
 				outputs.put(OVERLAY, jarBytes(overlay));
@@ -622,7 +624,7 @@ public final class ModTranslator {
 	/**
 	 * {@code skip} plus the enum mixins whose constants NeoForge's loader adds instead, from the mod's enum extension
 	 * file ({@link EnumExtensions}); their entries go to {@code enumEntries}, and the enums of every enum mixin to
-	 * {@code enumTargets}. An enum mixin into one of NeoForge's
+	 * {@code enumTargets} (only those, on a platform without enum extension files). An enum mixin into one of NeoForge's
 	 * extensible enums that the file can't carry becomes, where it can, an ordinary mixin adding its constants
 	 * ({@link EnumValuesMixins}), put in {@code overlay} with the delegate classes its constants' bodies become.
 	 */
@@ -638,6 +640,7 @@ public final class ModTranslator {
 			new ClassReader(data).accept(node, ClassReader.SKIP_FRAMES);
 			String target = EnumExtensions.target(node);
 			if (target != null) enumTargets.add(target);
+			if (!env.descriptor().enumExtensions()) continue;
 			ClassNode targetNode = target == null ? null : env.installedIndex().readNode(target);
 			List<EnumExtensions.Entry> entries = target == null ? null : EnumExtensions.of(node, targetNode, modId);
 			if (entries == null) {
@@ -1018,10 +1021,12 @@ public final class ModTranslator {
 		return refmaps;
 	}
 
-	private static byte[] overlayManifest(String neoId) {
+	/** The overlay's manifest: Fabricated's own attribute, then those the platform's descriptor needs. */
+	private static byte[] overlayManifest(String neoId, Map<String, String> platform) {
 		Manifest manifest = new Manifest();
 		manifest.getMainAttributes().put(Attributes.Name.MANIFEST_VERSION, "1.0");
 		manifest.getMainAttributes().putValue("Fabricated-Translated-Mod", neoId);
+		platform.forEach(manifest.getMainAttributes()::putValue);
 		try {
 			ByteArrayOutputStream out = new ByteArrayOutputStream();
 			manifest.write(out);

@@ -92,7 +92,7 @@ is the same code base two years older (no `clientSideOnly`, no `accessTransforme
 | Subsystem | Carries over | Needs |
 |---|---|---|
 | Archive sandbox, cache, JSON, metadata, dependency resolution, Fabric Loader API, linkage check | as is | Java 17 class files. |
-| Remapping | the machinery | A second target namespace: Mojang class names with SRG member names. Intermediary → SRG is Intermediary inverted, composed with MCPConfig's merged obfuscated → SRG file; `MappingResolver` reports `srg` as the runtime namespace. Access transformers come out in SRG member names. |
+| Remapping | the machinery | A second target namespace: Mojang class names with SRG member names. `MappingComposer.composeSrg` (in): Intermediary joined on obfuscated names with MCPConfig's obfuscated → SRG file in TSRG v2 for the members and with Mojang's mappings for the class names; every one of 1.20.1's 68,666 Intermediary members maps. Still to do: `MappingResolver` reports `srg` as the runtime namespace; access transformers come out in SRG member names. |
 | Vanilla code for pre-flight (VANILLA-1, VANILLA-2) | `OfficialClasses`' design | The same remapper with MCPConfig's SRG names instead of ProGuard's. |
 | Mixin pre-flight and repairs | the checker and every generic repair | Platform facts as data: no behaviour levels (upstream 0.8.5), Forge's patch names and hooks instead of NeoForge's, and a gate on what the running MixinExtras supports (pre-flight assumes MixinExtras today). Fabric mods built against Fabric's Mixin fork may use what upstream 0.8.5 lacks: an open question, answerable only with a corpus (risk R2). |
 | MixinExtras | | Provided by Fabricated: kept when a Fabric mod nests it (today it is dropped because NeoForge has one), else bundled. |
@@ -177,10 +177,11 @@ GAME(PLUGIN, SERVICE): plugin-layer code can't see service-layer classes. The la
   manifest. Fabricated's `IDependencyLocator` returns it; it loads in GAME as type MOD and holds
   `FabricModContainer`, which sees fmlcore (PLUGIN) and `FabricatedState` (SERVICE).
 - **Translated mods**: `new ModFile(SecureJar.from(metadata, filter, jar, ..., overlay), this,
-  ModFileParser::modsTomlParser)` with the overlay **last**: for files the first path wins, but the manifest and
-  primary path come from the last, and Mixin reads `MixinConfigs` from the primary path. So the filter hides, on the
-  jar's path, every entry the overlay replaces. `ModJarMetadata`'s constructor is package-private: Fabricated needs
-  its own `JarMetadata`.
+  ModFileParser::modsTomlParser)` with the overlay **last**: securemodules' union file system searches its last path
+  first ("later elements are first in search order", `UnionFileSystem`), and the manifest and primary path come from
+  the last too, so the overlay's files win without a filter hiding the jar's (an earlier version of this bullet said
+  the first path wins; corrected after reading the source). Mixin reads `MixinConfigs` from the overlay's manifest
+  (verified, below). `ModJarMetadata`'s constructor is package-private: Fabricated has its own `JarMetadata`.
 - The three parts share no package (GAME's automatic modules read every module).
 
 Fallbacks, both read in source: return the language jar as a PLUGIN `Resource` from
@@ -214,6 +215,37 @@ dependency locator, `ForgeMods` and mappings. (4) The transformation service. (5
 Compile-only CI covers compilation, the layer separation (the source sets' classpaths enforce it), checks on the
 built jar (nested manifests, service files, no shared packages) and unit tests of the transformer and of the overlay
 order; everything else needs a server smoke.
+
+**What the first runs answered** (the `forge` branch's CI, 2026-10-25). (1) ForgeGradle's loader classpath holds
+fmlcore and fmlloader (`<mc>-<forge>`), forgespi 8.0.0, modlauncher 10.2.6, securemodules 2.2.24, Mixin 0.8.7 and
+MixinExtras 0.5.4 (#79). Booting a Forge server with the Fabricated jar on Forge 61, 64, 65 and 66 (#82): (2) Forge
+lists Fabricated's mod and dependency locators before its own (`Found Mod Locators : (fabricated:…),(mods folder:null),…`,
+`Found Dependency Locators : (fabricated:…),(JarInJar:null)`); (4) it takes the language provider from the cache as a
+`LANGPROVIDER` file and reads its version (`Found language provider fabricated, version 0.4.0+mc…`); the in-game mod the
+dependency locator hands it loads from the cache and `javafml` constructs it. The service jar is listed once per
+service, and the module finder ignores the duplicates, as read. (7) Forge's jar-in-jar locator finds its
+`mixinextras-forge` option but loads nothing while no file declares `MixinConfigs`. The in-game mod still lacks a
+`pack.mcmeta` ("Missing metadata in pack mod:fabricated"), since given one (#83).
+
+**What step 3's runs answered** (#85, runs 40246417333, 40247170411 and 40247865746). On Forge 64, 65 and 66 the server
+smoke's Fabric test mod (no Fabric API: entrypoints and a `MinecraftServer` mixin) is found, translated and handed to
+Forge as a mod file; Forge reads the overlay's generated `mods.toml` (`PlatformDescriptor.FORGE`) and the language
+provider attaches the mod's container; its main and server entrypoints run from the in-game mod, and (5) its mixin
+applies, Mixin having read the overlay's `MixinConfigs`. (7) Forge's jar-in-jar locator then adds its
+`mixinextras-forge`. Mixin 0.8.7 logs that the config's `JAVA_21` is above the highest level it knows (`JAVA_13`) and
+sets it anyway, and logs an error for a config without `minVersion` (most Fabric configs). What the runs found broken,
+and fixed: Forge reads every container's `contextExtension` as it makes it the active one (`ModLoadingContext`), so
+Fabric mods' containers must set it (on the branch); a dependency without `versionRange` reads as Maven's range for
+`""`, which holds no version, so `ModSorter` finds the translated mods' optional dependency on Fabricated unsupported
+(the Forge dialect writes `versionRange="*"`); and Forge reads no mod's pack without `pack.mcmeta` ("Missing data
+pack"), where NeoForge makes one (`PlatformDescriptor.packMetadata`). (3) On Forge 61 the server installer leaves in
+`libraries/net/minecraft/server/1.21.11/` the bundler jar, `-unpacked.jar` (vanilla, obfuscated), `-official.jar`
+(vanilla in Mojang's names, 7163 classes) and `-mappings.tsrg`: TSRG v1 from Mojang's names to the obfuscated ones,
+method descriptors in Mojang's names, fields without descriptors, so fields sharing an obfuscated name in a class
+are told apart through `-official.jar` (`MappingComposer.FieldDescriptors`). Forge's `minecraft` mod file has Forge's
+own jar (`libraries/net/minecraftforge/forge/<version>/`) as its path, so the libraries are found from there. The
+Fabric mods' entrypoints run as the in-game mod is constructed, not yet where Fabric runs them, and client entrypoints
+don't run. Still open: 6, 8, 9, 10.
 
 **Questions only a run answers.** (1) Does ForgeGradle's compile classpath hold fmlloader, fmlcore, forgespi,
 modlauncher and securemodules? (2) Do Fabricated's locators run before `ModsFolderLocator` and the jar-in-jar
@@ -286,7 +318,13 @@ the abstractions below are added when the branch work starts (owner decision D2 
    platform's package prefixes and provided libraries, who provides MixinExtras, the data-pack keys, the Mixin facts
    (absorbing `mixin.*` from `version.properties`), the loader hook map, the rename table and the coremod-private
    fields, plus the runtime namespace. Two small interfaces where data isn't enough: the descriptor writer and the
-   enum extension strategy. A second `MappingSupplier` for SRG.
+   enum extension strategy. A second `MappingSupplier` for SRG. The descriptor part is in (F3 needs it):
+   `PlatformDescriptor` in `core` gives the descriptor's path, its writer, the overlay manifest's extra attributes
+   and whether the platform reads enum extension files; the loader passes it in `Pipeline.Input`, NeoForge's being
+   `PlatformDescriptor.NEOFORGE` (today's `ModsTomlWriter`), Forge's `PlatformDescriptor.FORGE` (for both Forge
+   branches: `META-INF/mods.toml` with `mandatory` dependencies, mixin configs in the manifest's `MixinConfigs`, no
+   enum extensions). `NestedNeoForgeJars` takes the nested jars' descriptor path the same way. The rest follows as
+   each branch needs it.
 6. **Tests that name NeoForge** (`NestedNeoForgeJarsTest`, `MultiLoaderJarsTest`, `PlatformRenamesTest`, …) run
    against the NeoForge profile, so a branch can run them against its own.
 

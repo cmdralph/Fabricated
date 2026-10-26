@@ -55,6 +55,44 @@ class TranslateHelpersTest {
 	}
 
 	/**
+	 * Forge refuses a dependency without {@code mandatory} (Forge 47's and 66's {@code ModInfo}), reads mixin configs from
+	 * the manifest and access transformers from their default path, and has no enum extension files.
+	 */
+	@Test
+	void writesForgesDialect() {
+		ModsTomlWriter.Spec spec = new ModsTomlWriter.Spec("my_mod", "1.0.0", "My Mod", "", List.of(), List.of(), List.of("MIT"), null, null, null,
+				List.of(new ModsTomlWriter.MixinConfigSpec("my.mixins.json", "0.17.4"), new ModsTomlWriter.MixinConfigSpec("my.client.mixins.json", "0.17.4")),
+				true, true, List.of("other"), Map.of("jade", Map.of("fastScroll", true)), Map.of());
+		String toml = ModsTomlWriter.writeForge(spec);
+
+		CommentedConfig file = new TomlParser().parse(toml);
+		assertEquals("fabricated", file.get("modLoader"));
+		Config mod = file.<List<Config>>get("mods").getFirst();
+		assertEquals("my_mod", mod.get("modId"));
+		assertFalse(mod.contains("enumExtensions"), toml);
+		assertFalse(file.contains("mixins"), toml);
+		assertFalse(file.contains("accessTransformers"), "Forge reads META-INF/accesstransformer.cfg by default: " + toml);
+		assertEquals(Map.of("fastScroll", true), table(file.get(List.of("modproperties", "my_mod", "jade"))));
+		List<Config> dependencies = file.get(List.of("dependencies", "my_mod"));
+		assertEquals(List.of(ModIds.FABRICATED, "other"), dependencies.stream().map(d -> d.<String>get("modId")).toList());
+		for (Config dependency : dependencies) {
+			assertEquals(Boolean.FALSE, dependency.get("mandatory"), toml);
+			assertEquals("*", dependency.get("versionRange"), "Forge's default range holds no version: " + toml);
+			assertEquals("AFTER", dependency.get("ordering"));
+			assertFalse(dependency.contains("type"), toml);
+		}
+
+		assertEquals(ModsTomlWriter.FORGE_PATH, PlatformDescriptor.FORGE.path());
+		assertEquals(toml, PlatformDescriptor.FORGE.write(spec));
+		assertEquals(Map.of("MixinConfigs", "my.mixins.json,my.client.mixins.json"), PlatformDescriptor.FORGE.manifestAttributes(spec));
+		assertFalse(PlatformDescriptor.FORGE.enumExtensions());
+		assertTrue(new String(PlatformDescriptor.FORGE.packMetadata(spec), java.nio.charset.StandardCharsets.UTF_8).contains("\"description\": \"My Mod\""));
+		assertEquals(null, PlatformDescriptor.NEOFORGE.packMetadata(spec), "NeoForge makes a mod's pack metadata itself");
+		assertEquals(Map.of(), PlatformDescriptor.FORGE.manifestAttributes(new ModsTomlWriter.Spec("my_mod", "1.0.0", "My Mod", "", List.of(), List.of(),
+				List.of(), null, null, null, List.of(), false, false, List.of(), Map.of(), Map.of())), "no MixinConfigs without mixin configs");
+	}
+
+	/**
 	 * NeoForge's loader refuses a version not starting with a digit, and stops the launch; a Fabric library's
 	 * {@code animated-gif-lib-1.7} did (run 381).
 	 */
