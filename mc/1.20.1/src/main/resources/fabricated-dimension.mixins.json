@@ -1,0 +1,14 @@
+{
+  "required": true,
+  "minVersion": "0.8.5",
+  "package": "net.fabricmc.fabric.mixin.dimension",
+  "compatibilityLevel": "JAVA_17",
+  "refmap": "fabricated-forge.refmap.json",
+  "mixins": [
+    "EntityMixin",
+    "RegistryCodecsMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

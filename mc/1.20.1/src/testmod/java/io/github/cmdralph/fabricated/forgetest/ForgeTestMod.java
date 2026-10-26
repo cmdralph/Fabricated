@@ -18,9 +18,9 @@ import net.minecraft.class_7923;
 /**
  * The forge-legacy branch's Fabric test mod (docs/PORTING.md §7, L3): its entrypoints and its mixin each log a line the
  * server smoke looks for (ci/forge-legacy/smoke-server.sh). It uses Fabric Loader's API, and of Fabric API only the
- * modules Fabricated provides itself (fabric-biome-api-v1, fabric-loot-api-v2 and fabric-loot-tables-v1), as the smoke
- * runs without Fabric API's jar too, and names the game's classes as a Fabric mod for 1.20.1 does, in Intermediary's
- * names (the stand-ins in src/testmodstubs), which Fabricated remaps to Forge 47's.
+ * modules Fabricated provides itself (fabric-biome-api-v1, fabric-dimensions-v1, fabric-loot-api-v2 and
+ * fabric-loot-tables-v1), as the smoke runs without Fabric API's jar too, and names the game's classes as a Fabric mod
+ * for 1.20.1 does, in Intermediary's names (the stand-ins in src/testmodstubs), which Fabricated remaps to Forge 47's.
  */
 public final class ForgeTestMod implements ModInitializer, DedicatedServerModInitializer {
 	public static final String MOD_ID = "fabricated-forge-testmod";

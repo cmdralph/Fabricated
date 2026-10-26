@@ -11,6 +11,11 @@
       "version": "13.0.15",
       "reason": "Shipped by Fabricated: upstream's API and biome source mixins, with biome modifications applied as a Forge biome modifier. Upstream's access widener opens the biome's climate field, which Forge's coremod needs private to point reads of a biome's climate and effects at its modified info, so with the module passed through the coremod failed and no biome modifier's climate or effects reached the game; upstream's modifications also replace biome fields Forge no longer reads."
     },
+    "fabric-dimensions-v1": {
+      "plan": "native",
+      "version": "2.1.55",
+      "reason": "Shipped by Fabricated: upstream's API, its teleport target hook and its fail-soft dimensions codec. Forge 47 moved vanilla's dimension change, whose reads of the End's key upstream's hook redirected, into its changeDimension with a teleporter and a lambda that teleporter calls, so passed through the module failed pre-flight: a Fabric teleport now hands Forge's dimension change a teleporter that asks for no portal and isn't vanilla's, which leaves out the End's obsidian platform and a player's credits on leaving the End, as upstream does. Upstream's DataFixerUpper mixins (Schema2832Mixin, TaggedChoiceMixin, TaggedChoiceTypeMixin) are not shipped: Forge 47 loads DataFixerUpper without mixin support. Lost: upgrading a world whose dimensions use a chunk generator type no installed mod registers fails in DataFixerUpper as it does without Fabric API (UNVERIFIED whether Forge's own handling covers it)."
+    },
     "fabric-loot-api-v2": {
       "plan": "native",
       "version": "1.2.3",
