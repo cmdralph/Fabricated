@@ -3061,14 +3061,14 @@ class MixinPreflightTest {
 			}
 		}
 
-		// Mixin keeps the selectors in a set: LambDynamicLights names its hook twice, by its Intermediary and its Mojang
-		// name, which are one once remapped, and Mixin injects once.
+		// Mixin keys the targets by method: LambDynamicLights names its hook twice, by its Intermediary and its Mojang
+		// name, which select one method once remapped, and Mixin injects once.
 		byte[] twice = mixin("com/example/mixin/Twice", false, cw -> {
 			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "h", "(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V", null, null);
 			AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
 			AnnotationVisitor methods = ann.visitArray("method");
 			methods.visit(null, "tick");
-			methods.visit(null, "tick");
+			methods.visit(null, "tick()V");
 			methods.visitEnd();
 			AnnotationVisitor ats = ann.visitArray("at");
 			AnnotationVisitor at = ats.visitAnnotation(null, "Lorg/spongepowered/asm/mixin/injection/At;");
