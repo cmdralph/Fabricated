@@ -12,12 +12,14 @@ import net.minecraftforge.fluids.FluidType;
 
 /**
  * A Fabric mod's fluid has a fluid type: Forge looks up vanilla's types for a fluid whose class doesn't name one, and
- * throws for any other fluid (see {@link FabricFluidType}). The fluid keeps the answer, so this runs once per fluid.
+ * throws for any other fluid (see {@link FabricFluidType}). The fluid keeps the answer, so this runs once per fluid. The
+ * method and the call are Forge's, which keep their names in SRG's: neither is remapped.
  */
 @Mixin(Fluid.class)
 abstract class FluidTypeMixin {
 	@WrapOperation(method = "getFluidType", at = @At(value = "INVOKE",
-			target = "Lnet/minecraftforge/common/ForgeHooks;getVanillaFluidType(Lnet/minecraft/world/level/material/Fluid;)Lnet/minecraftforge/fluids/FluidType;"))
+			target = "Lnet/minecraftforge/common/ForgeHooks;getVanillaFluidType(Lnet/minecraft/world/level/material/Fluid;)Lnet/minecraftforge/fluids/FluidType;"),
+			remap = false)
 	private FluidType fabricated$fabricFluidType(Fluid fluid, Operation<FluidType> vanillaType) {
 		FluidType type = FabricFluidType.forFluid(fluid);
 		return type != null ? type : vanillaType.call(fluid);
