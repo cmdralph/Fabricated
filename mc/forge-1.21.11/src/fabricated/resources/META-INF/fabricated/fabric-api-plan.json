@@ -6,6 +6,11 @@
       "version": "1.0.5",
       "reason": "Shipped by Fabricated (vendored from upstream); every Fabric API module builds on it."
     },
+    "fabric-dimensions-v1": {
+      "plan": "passthrough",
+      "skipMixins": ["fabric-dimensions-v1.mixins.json:V2832Mixin", "fabric-dimensions-v1.mixins.json:TaggedChoiceMixin", "fabric-dimensions-v1.mixins.json:TaggedChoiceTaggedChoiceTypeMixin"],
+      "reason": "Forge loads DataFixerUpper outside the layers Mixin transforms, so upstream's TaggedChoiceMixin and TaggedChoiceTaggedChoiceTypeMixin would never apply, and V2832Mixin, which casts DataFixerUpper's tagged choice type to the interface they add, would fail when the data fixers are built: the three are left out and the rest of the module loads. Lost: upgrading a world whose dimensions use a chunk generator type no installed mod registers fails in DataFixerUpper as it does without Fabric API (UNVERIFIED whether Forge's own handling covers it)."
+    },
     "fabric-loot-api-v3": {
       "plan": "native",
       "version": "2.0.20",
