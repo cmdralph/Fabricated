@@ -34,6 +34,11 @@ public interface PlatformDescriptor {
 	 */
 	PlatformDescriptor FORGE = new PlatformDescriptor() {
 		@Override
+		public String loaderName() {
+			return "Forge";
+		}
+
+		@Override
 		public String path() {
 			return ModsTomlWriter.FORGE_PATH;
 		}
@@ -68,6 +73,11 @@ public interface PlatformDescriptor {
 			return (Json.write(Map.of("pack", pack), true) + "\n").getBytes(StandardCharsets.UTF_8);
 		}
 	};
+
+	/** The loader's name as players know it, for Fabricated's report: {@code NeoForge} by default. */
+	default String loaderName() {
+		return "NeoForge";
+	}
 
 	/** Where the platform's loader reads a mod's descriptor in its jar. */
 	String path();
