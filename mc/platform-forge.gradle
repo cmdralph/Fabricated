@@ -98,9 +98,10 @@ tasks.register('forgeClasspathReport') {
 
 // --- The in-game mod's own mixins -----------------------------------------------------------------------------------
 // Forge runs the game in Mojang's names, as the in-game mod compiles, so its mixins need no refmap; Forge reads a mod's
-// mixin configs from its manifest: Fabricated's own, upstream's loot mixins (fabric-loot-api-v3, native) and the loot
-// module's hooks into Forge's loot table loading.
-def gameModMixins = ['fabricated-forge.mixins.json', 'fabricated-loot.mixins.json', 'fabricated-forge-loot.mixins.json']
+// mixin configs from its manifest: Fabricated's own, upstream's loot mixins (fabric-loot-api-v3, native), the loot
+// module's hooks into Forge's loot table loading, and those a version's project names (game_mod_mixins).
+def gameModMixins = ['fabricated-forge.mixins.json', 'fabricated-loot.mixins.json', 'fabricated-forge-loot.mixins.json'] +
+        (project.findProperty('game_mod_mixins') ?: '').toString().split(',')*.trim().findAll { it }
 
 afterEvaluate {
     tasks.named('gameModJar', Jar) {

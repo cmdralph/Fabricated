@@ -25,7 +25,8 @@ import net.minecraft.world.item.Items;
  * The forge branch's Fabric test mod (docs/PORTING.md §4.1, F3 step 3): its entrypoints and its mixin each log a line
  * the server smoke looks for (ci/forge/smoke-server.sh). It uses Fabric Loader's API and, of Fabric API, only the loot
  * module Fabricated ships itself ({@link ForgeLootTest}), so it runs without Fabric API's jar; with it, it also tries the
- * object builder module's default attribute event ({@link ForgeAttributeTest}).
+ * object builder module's default attribute event ({@link ForgeAttributeTest}) and the advancement module's modify event
+ * ({@link ForgeAdvancementTest}).
  */
 public final class ForgeTestMod implements ModInitializer, DedicatedServerModInitializer {
 	public static final String MOD_ID = "fabricated-forge-testmod";
@@ -60,6 +61,13 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 				ForgeAttributeTest.register();
 			} catch (RuntimeException | LinkageError e) {
 				LOGGER.warn("FABRICATED-FORGE-TEST default attribute listener not registered", e);
+			}
+		}
+		if (FabricLoader.getInstance().isModLoaded("fabric-advancement-api-v1")) {
+			try {
+				ForgeAdvancementTest.register();
+			} catch (RuntimeException | LinkageError e) {
+				LOGGER.warn("FABRICATED-FORGE-TEST advancement listener not registered", e);
 			}
 		}
 	}
@@ -102,6 +110,15 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 			ForgeAttributeTest.check();
 		} catch (RuntimeException | LinkageError e) {
 			LOGGER.warn("FABRICATED-FORGE-TEST default attribute check failed", e);
+		}
+	}
+
+	/** Whether Fabric's advancement modify event changed a vanilla advancement ({@link ForgeAdvancementTest}; with Fabric API only). */
+	public static void checkAdvancements(MinecraftServer server) {
+		try {
+			ForgeAdvancementTest.check(server);
+		} catch (RuntimeException | LinkageError e) {
+			LOGGER.warn("FABRICATED-FORGE-TEST advancement check failed", e);
 		}
 	}
 
