@@ -785,6 +785,9 @@ class PipelineTest {
 		assertTrue(result.without(Set.of("mod-a", "mod-b")).injectedInterfaces().isEmpty());
 		assertEquals(1, result.defaultBridges().get("net/minecraft/world/Thing").size(), "a bridge two mods need is declared once");
 		assertTrue(result.without(Set.of("mod-a", "mod-b")).defaultBridges().isEmpty());
+		// FINAL-2: the methods made overridable at class load, by class, each once.
+		assertEquals(Map.of("net/minecraft/world/Thing", Set.of("check()Z")), result.overridableMethods());
+		assertTrue(result.without(Set.of("mod-a", "mod-b")).overridableMethods().isEmpty());
 		// Read from any class-loading thread: never changed after it is published.
 		assertThrows(UnsupportedOperationException.class, () -> kept.injectedInterfaces().get("net/minecraft/world/Thing").clear());
 		assertThrows(UnsupportedOperationException.class, () -> kept.injectedInterfaces().clear());
@@ -813,7 +816,8 @@ class PipelineTest {
 		Candidate c = new Candidate(file, id + "-hash", FabricModJsonParser.parse(json), id + ".jar", null, 0, List.of(), Set.of());
 		InjectedInterface injection = new InjectedInterface("net/minecraft/world/Thing", iface, iface, false, 1);
 		TranslatedMod mod = new TranslatedMod(c, id.replace('-', '_'), file, file, List.of(), 0, List.of(), List.of(injection),
-				List.of(new DefaultBridge("net/minecraft/world/Thing", "net/minecraft/world/Extension", "size", "()I")), Set.of(environmentClass), false, 0);
+				List.of(new DefaultBridge("net/minecraft/world/Thing", "net/minecraft/world/Extension", "size", "()I")), Set.of(environmentClass),
+				Set.of("net/minecraft/world/Thing check()Z"), false, 0);
 		return new Pipeline.LoadedMod(mod, PackageGuard.Decision.NONE, List.of());
 	}
 

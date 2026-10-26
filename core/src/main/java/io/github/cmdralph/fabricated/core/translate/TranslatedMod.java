@@ -22,6 +22,9 @@ import io.github.cmdralph.fabricated.core.resolve.Candidate;
  * @param defaultBridges     methods to declare on game classes at class load, where an interface the mod adds brings a
  *                           default method the class already has from another interface
  * @param environmentClasses classes (internal names) with Fabric's {@code @Environment} annotations, stripped at class load
+ * @param overridableMethods game methods the mod's classes override that the platform declares final and vanilla doesn't
+ *                           (the class's internal name, a space, the method's name and descriptor), made overridable at
+ *                           class load (FINAL-2)
  * @param cacheHit           whether the outputs came from the cache
  * @param millis             translation time (0 on cache hit)
  */
@@ -36,6 +39,7 @@ public record TranslatedMod(
 		List<InjectedInterface> injectedInterfaces,
 		List<DefaultBridge> defaultBridges,
 		Set<String> environmentClasses,
+		Set<String> overridableMethods,
 		boolean cacheHit,
 		long millis) {
 }
