@@ -1,10 +1,25 @@
 {
   "fabricApiVersion": "0.92.12+1.20.1",
   "modules": {
+    "fabric-api-base": {
+      "plan": "native",
+      "version": "0.4.32",
+      "reason": "Shipped by Fabricated (vendored from upstream); every Fabric API module builds on it, the native ones too. Its package net.fabricmc.fabric.api.util is split with fabric-content-registries-v0, whose two interfaces there (Block2ObjectMap, Item2ObjectMap) Fabricated ships with it, as the in-game mod's packages are taken out of Fabric jars."
+    },
     "fabric-biome-api-v1": {
       "plan": "native",
       "version": "13.0.15",
       "reason": "Shipped by Fabricated: upstream's API and biome source mixins, with biome modifications applied as a Forge biome modifier. Upstream's access widener opens the biome's climate field, which Forge's coremod needs private to point reads of a biome's climate and effects at its modified info, so with the module passed through the coremod failed and no biome modifier's climate or effects reached the game; upstream's modifications also replace biome fields Forge no longer reads."
+    },
+    "fabric-loot-api-v2": {
+      "plan": "native",
+      "version": "1.2.3",
+      "reason": "Shipped by Fabricated: upstream's API and builder mixins. Forge 47 keeps a loot table's pools in a list, which upstream's accessor and table copy read as an array, so passed through the module failed pre-flight. The loot table events run from Fabricated's hook on the loot data manager's apply, as vanilla receives the parsed tables (after Forge's loot table event), and a table's source is decided from Forge's packs (mods' data is built in) instead of fabric-resource-loader-v0's."
+    },
+    "fabric-loot-tables-v1": {
+      "plan": "native",
+      "version": "1.1.47",
+      "reason": "Shipped by Fabricated: upstream's deprecated API over fabric-loot-api-v2's events, its initializer run by the in-game mod. Its loot table mixin read the pools as an array, which Forge 47 keeps in a list (passed through, pre-flight disabled it), and Forge's own public LootPool.getRolls() implements its pool getter of the same name."
     },
     "fabric-registry-sync-v0": {
       "plan": "passthrough",

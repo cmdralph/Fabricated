@@ -13,6 +13,7 @@ import io.github.cmdralph.fabricated.loader.FabricatedState;
 import io.github.cmdralph.fabricated.loader.ForgeLoaderHooks;
 import net.fabricmc.api.DedicatedServerModInitializer;
 import net.fabricmc.api.ModInitializer;
+import net.fabricmc.fabric.impl.loot.table.LootTablesV1Init;
 import net.fabricmc.loader.api.entrypoint.PreLaunchEntrypoint;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraftforge.eventbus.api.EventPriority;
@@ -70,6 +71,9 @@ public final class FabricatedMod {
 		for (String text : ForgeLoaderHooks.notLoaded()) {
 			ModLoader.get().addWarning(new ModLoadingWarning(context.getContainer().getModInfo(), ModLoadingStage.CONSTRUCT, AS_IS, text));
 		}
+		// Native fabric-loot-tables-v1's own initializer (a native module has no entrypoints): its loot table events
+		// listen to fabric-loot-api-v2's before the Fabric mods register theirs.
+		new LootTablesV1Init().onInitialize();
 		EntrypointRunner runner = new EntrypointRunner(state.runtime(), new EntrypointRunner.ContextHook() {
 			@Override
 			public void enter(String modId) {
