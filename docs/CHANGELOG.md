@@ -40,6 +40,10 @@ One entry per working session, newest first: what changed, and how it was verifi
   applies more often than it allows, whatever the config's `required`. Found by forge-legacy's run with the official
   Fabric API jar: `fabric-item-api-v1`'s furnace hook allows one injection and Forge 47's patched furnace makes the call
   twice. Such an injector is now left out (or its mod disabled) with the reason. Test: 274 core tests.
+- A mixin config declaring a compatibility level the running Mixin doesn't know declares the last one it knows
+  (LEVEL-1). Found by forge's run with the official Fabric API jar: Fabric API for 26.x declares JAVA_25, Forge 64 to
+  66 run Mixin 0.8.7, whose levels end at JAVA_21, and Mixin stopped the server reading the config. Mixin only logs a
+  mixin class compiled for a newer Java. NeoForge's Mixin is not affected. Test: 276 core tests.
 - Branches, recorded in `PORTING.md` §3 and §4.1: `forge` runs a translated Fabric mod on Forge 61 (1.21.11) too, and
   applies Fabric's class transforms through a ModLauncher transformation service (#87, #90: fourteen server checks on
   Forge 61 and 64 to 66); `forge-legacy` runs one on Forge 47.4.28, remapped to SRG names, its mixin applied (#89: ten

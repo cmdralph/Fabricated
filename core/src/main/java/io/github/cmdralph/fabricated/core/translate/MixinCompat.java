@@ -2,6 +2,10 @@ package io.github.cmdralph.fabricated.core.translate;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import io.github.cmdralph.fabricated.fabricloader.version.VersionParser;
 import net.fabricmc.loader.api.SemanticVersion;
@@ -40,6 +44,12 @@ public final class MixinCompat {
 	/** The MixinExtras release NeoForge 21.11 ships, and the last of those after it that only fixed bugs (MIXEXT-2). */
 	private static final Version BEFORE_FIX_RELEASES = parse("0.5.3");
 	private static final Version LAST_FIX_RELEASE = parse("0.5.5");
+	/**
+	 * The last compatibility level ({@code JAVA_n}) of SpongePowered's own Mixin releases, from their CompatibilityLevel
+	 * enums (LEVEL-1): Forge 47 runs 0.8.5, Forge 61 to 66 run 0.8.7.
+	 */
+	private static final Map<String, Integer> UPSTREAM_LAST_LEVEL = Map.of("0.8.5", 18, "0.8.6", 21, "0.8.7", 21);
+	private static final Pattern LEVEL = Pattern.compile("JAVA_(\\d{1,3})");
 
 	private MixinCompat() {
 	}
@@ -91,6 +101,27 @@ public final class MixinCompat {
 	public static boolean supportsEnumExtensions(String runtimeMixinVersion) {
 		int plus = runtimeMixinVersion.indexOf('+');
 		return parse(plus >= 0 ? runtimeMixinVersion.substring(0, plus) : runtimeMixinVersion).compareTo(ENUM_EXTENSIONS) >= 0;
+	}
+
+	/**
+	 * The last compatibility level ({@code JAVA_n}) the running Mixin knows, or 0 when it isn't known here. Mixin stops the
+	 * game reading a config that declares a level it doesn't know (LEVEL-1). SpongePowered's own releases, which Forge runs
+	 * (a plain version, e.g. {@code 0.8.7}), are known up to 0.8.7; Fabric's Mixin, which NeoForge runs (e.g.
+	 * {@code 0.17.4+mixin.0.8.7}), isn't limited here.
+	 */
+	public static int lastCompatibilityLevel(String runtimeMixinVersion) {
+		Integer level = runtimeMixinVersion == null ? null : UPSTREAM_LAST_LEVEL.get(runtimeMixinVersion.trim());
+		return level == null ? 0 : level;
+	}
+
+	/**
+	 * The Java release of a mixin config's {@code compatibilityLevel} as Mixin reads it ({@code JAVA_n}, case and
+	 * surrounding blanks ignored), or 0 when it sets none or another value.
+	 */
+	public static int compatibilityLevel(Object declared) {
+		if (!(declared instanceof String s)) return 0;
+		Matcher m = LEVEL.matcher(s.trim().toUpperCase(Locale.ROOT));
+		return m.matches() ? Integer.parseInt(m.group(1)) : 0;
 	}
 
 	/**
