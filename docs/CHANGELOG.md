@@ -58,6 +58,11 @@ One entry per working session, newest first: what changed, and how it was verifi
   them and lambdas implementing them kept their official names, and Fabric API's resource pack lambda stopped the server
   (AbstractMethodError). A descriptor without Minecraft classes is matched by its owner only, so a mod's `Runnable.run`
   keeps its name. Test: 278 core tests.
+- On Forge 61 to 66, a `@ModifyVariable` taking an argument by its name with `argsOnly` takes its slot instead (ARGS-1):
+  SpongePowered's Mixin names arguments `arg` and their slot there, so Fabric API's resource loader hook taking
+  `enableProfiling` in `SimpleReloadInstance.create` failed and Forge 65's server timed out on #115; Fabric's Mixin
+  takes argument names from 0.17.0. The slot comes from the game's or vanilla's local variable names, else from the
+  only argument of the handler's type; otherwise pre-flight reports the injector. Test: 284 core tests.
 - A `@Local(name = ...)` finds a local a recompiled build names otherwise (LOCAL-3): Fabric API's lifecycle hook takes
   `@Local(name = "level") ServerLevel` at `ServerLevel.close()` in `MinecraftServer.stopServer`, which Forge 64's build,
   recompiled from decompiled source, names `levelx`, the method declaring another `level` before it; MixinExtras found
