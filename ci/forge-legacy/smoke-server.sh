@@ -129,6 +129,37 @@ for f in libraries/net/minecraft/server/*/*.jar; do
 	echo "-- $f: $(printf '%s\n' "$entries" | grep -c '\.class$') classes; MinecraftServer: $(printf '%s\n' "$entries" | grep -c '^net/minecraft/server/MinecraftServer\.class$'), net/minecraft/world/level/Level: $(printf '%s\n' "$entries" | grep -c '^net/minecraft/world/level/Level\.class$'), m_5705_ in MinecraftServer: $srg"
 done
 echo "::endgroup::"
+# The Mojang names the native fabric-biome-api-v1 relies on (L4) that no source at hand showed for 1.20.1, as the
+# installer's copy of Mojang's mappings has them: a class, then its members of those names.
+echo "::group::Mojang's names the native biome module relies on (server mappings)"
+for f in libraries/net/minecraft/server/*/*-mappings.txt; do
+	[ -f "$f" ] || continue
+	awk '
+		BEGIN {
+			want["net.minecraft.world.level.levelgen.NoiseChunk"] = "<init>\\(|cachedClimateSampler\\("
+			want["net.minecraft.world.level.levelgen.RandomState"] = "<init>\\(| sampler( |\\()"
+			want["net.minecraft.world.level.levelgen.synth.ImprovedNoise"] = "<init>\\(| noise\\(double,double,double\\)"
+			want["net.minecraft.world.level.biome.BiomeSource"] = "possibleBiomes"
+			want["net.minecraft.world.level.biome.TheEndBiomeSource"] = " CODEC | create\\(|getNoiseBiome\\(|<init>\\("
+			want["net.minecraft.world.level.biome.MultiNoiseBiomeSourceParameterList$Preset"] = "usedBiomes"
+			want["net.minecraft.world.level.biome.MultiNoiseBiomeSourceParameterList$Preset$1"] = " apply\\("
+			want["net.minecraft.world.level.biome.Climate$ParameterList"] = " values\\("
+			want["net.minecraft.world.level.biome.Climate$TargetPoint"] = "\\(\\) -> "
+			want["net.minecraft.world.level.levelgen.placement.PlacedFeature"] = "getFeatures\\("
+			want["net.minecraft.core.HolderGetter"] = " get\\(|getOrThrow\\("
+			want["net.minecraft.core.HolderLookup$Provider"] = "lookupOrThrow"
+			want["net.minecraft.resources.RegistryOps"] = "retrieveGetter"
+			want["net.minecraft.world.level.biome.Biome"] = "getBaseTemperature|getMobSettings| climateSettings | specialEffects "
+			want["net.minecraft.world.level.biome.BiomeSpecialEffects$Builder"] = "grassColorModifier\\("
+			want["net.minecraft.world.level.biome.MobSpawnSettings$Builder"] = "creatureGenerationProbability\\(|addMobCharge\\("
+			want["net.minecraft.world.level.levelgen.structure.Structure"] = " biomes\\("
+			want["net.minecraft.world.level.dimension.LevelStem"] = " NETHER | END | generator\\("
+		}
+		/^[^ \t#]/ { cls = $1; if (cls in want) print; next }
+		cls in want && $0 ~ want[cls] { print }
+	' "$f" | cut -c1-300
+done
+echo "::endgroup::"
 report() { if eval "$2"; then echo "PASS: $1"; else echo "NOT SEEN: $1"; fi; }
 report "Forge ran Fabricated's mod locator" "grep -qi 'fabricated' logs/debug.log 2>/dev/null && grep -i 'locator' logs/debug.log | grep -qi 'fabricated'"
 report "Forge took Fabricated's language provider" "grep -i -E 'language|lang' logs/debug.log 2>/dev/null | grep -qi 'fabricated'"
@@ -157,6 +188,8 @@ report "the minecraft mod container holds vanilla's resources (its en_us.json)" 
 report "the test mod's item is in the frozen registry at the first tick" "grep -q 'FABRICATED-FORGE-TEST registry entry kept OK' logs/latest.log 2>/dev/null"
 report "MixinExtras ran the test mod's @WrapMethod (nested in the in-game mod)" "grep -q 'FABRICATED-FORGE-TEST MixinExtras OK' logs/latest.log 2>/dev/null"
 report "the in-game mod's mixin reads tag files' fabric:remove (the in-game mod reobfuscated to SRG's names)" "grep -q 'FABRICATED-FORGE-TEST fabric:remove OK' logs/latest.log 2>/dev/null"
+report "native fabric-biome-api-v1: a spawn and a temperature added to plains reach the biome Forge reads (Forge's biome modifiers)" "grep -q 'FABRICATED-FORGE-TEST biome modifications OK' logs/latest.log 2>/dev/null"
+report "Forge's biome coremod applied (the biome's climate field stayed private)" "! grep -qs 'field_to_method.js function biome' logs/latest.log server.out"
 report "Forge's loading warnings name the Fabric mod that wasn't loaded" "grep -qsE 'ServerModLoader.*: Fabric mod fabricated_forge_unmet 1\\.0\\.0 was not loaded: ' logs/latest.log logs/debug.log"
 report "Fabricated's report names Forge as the loader" "grep -q '^  Forge: ' logs/fabric-bridge-report.txt 2>/dev/null && ! grep -q '^  NeoForge: ' logs/fabric-bridge-report.txt 2>/dev/null"
 

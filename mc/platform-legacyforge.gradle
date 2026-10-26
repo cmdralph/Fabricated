@@ -17,19 +17,25 @@ tasks.named('processResources', ProcessResources) {
 // mc/common's stand-ins for other mods' plugin interfaces name 1.21's classes (Identifier); this version's test mod uses
 // none of them, but stand-ins for the game classes it names in Intermediary's names, as a Fabric mod does.
 sourceSets.testmodstubs.java.srcDirs = [file('src/testmodstubs/java')]
+// It also uses Fabric API's biome module, which Fabricated provides itself (in the in-game mod, in Mojang's names), in
+// Intermediary's names as a Fabric mod is compiled against Fabric API: those stand-ins come first.
+sourceSets.testmod.compileClasspath = sourceSets.testmodstubs.output + sourceSets.testmod.compileClasspath
 
 // --- The in-game mod in Forge 47's names -----------------------------------------------------------------------------
 // Forge 1.20.1 runs the game with SRG's member names. The in-game mod compiles against Mojang's: the copy nested in the
 // Fabricated jar is reobfuscated (below), and the refmap of its mixins, which Mixin's annotation processor writes, names
-// their targets in SRG's. Forge reads a mod's mixin configs from its manifest.
-def gameModMixins = 'fabricated-forge.mixins.json'
+// their targets in SRG's. Forge reads a mod's mixin configs from its manifest. All of them share the one refmap.
+def gameModMixins = [
+        'fabricated-forge.mixins.json',
+        // Native fabric-biome-api-v1's biome source mixins (upstream's) and the accessors its modifications use.
+        'fabricated-biome.mixins.json']
 dependencies {
     annotationProcessor "org.spongepowered:mixin:${project.mixin_processor_version}:processor"
     // The in-game mod's own mixins use MixinExtras' injectors, which the nested mixinextras-forge (below) provides.
     compileOnly "io.github.llamalad7:mixinextras-common:${project.mixinextras_version}"
 }
 def gameModRefmap = mixin.add(sourceSets.main, 'fabricated-forge.refmap.json')
-mixin.config(gameModMixins)
+gameModMixins.each { mixin.config(it) }
 
 // --- MixinExtras for Fabric mods --------------------------------------------------------------------------------------
 // Fabric Loader ships MixinExtras and Forge 47 doesn't. Its Forge build, a game library that starts MixinExtras from its
@@ -104,7 +110,7 @@ afterEvaluate {
         from(configurations.nestedMixinExtras) { into 'META-INF/jarjar' }
         from(mixinExtrasJarJar)
         from(gameModRefmap)
-        manifest.attributes('MixinConfigs': gameModMixins)
+        manifest.attributes('MixinConfigs': gameModMixins.join(','))
     }
     // ModDevGradle moves the jar as built (Mojang's names) to build/devlibs and writes the reobfuscated one here.
     def reobfGameModJar = obfuscation.reobfuscate(tasks.named('gameModJar'), sourceSets.main) {
@@ -172,16 +178,28 @@ afterEvaluate {
                     'cpw.mods.modlauncher.api.ITransformationService']
                     .collect { provided(outer, 'The Fabricated jar', it) }
 
-            // The in-game mod's mixins: Forge reads their configs from its manifest, and Mixin their targets' SRG names from
-            // the refmap a config names.
+            // The in-game mod's mixins: Forge reads their configs from its manifest (a config it doesn't name never loads),
+            // and Mixin their targets' SRG names from the refmap a config names. What the refmap maps, by mixin, is logged.
             def gameMod = parts['game-mod.jar']
             def gameModManifest = new java.util.jar.Manifest(new ByteArrayInputStream(gameMod['META-INF/MANIFEST.MF'] ?: new byte[0])).mainAttributes
             def mixinConfigs = (gameModManifest.getValue('MixinConfigs') ?: '').split(',')*.trim().findAll { it }
             if (!mixinConfigs) throw new GradleException('game-mod.jar names no MixinConfigs')
+            def unnamed = gameMod.keySet().findAll { !it.contains('/') && it.endsWith('.mixins.json') } - mixinConfigs
+            if (unnamed) throw new GradleException("game-mod.jar's MixinConfigs doesn't name ${unnamed.sort()}")
+            def refmaps = [] as Set
             mixinConfigs.each { name ->
                 if (gameMod[name] == null) throw new GradleException("game-mod.jar's MixinConfigs names $name, which it doesn't have")
-                def refmap = new groovy.json.JsonSlurper().parseText(new String(gameMod[name], "UTF-8")).refmap
-                if (refmap && !gameMod.containsKey(refmap)) throw new GradleException("game-mod.jar's $name names the refmap $refmap, which it doesn't have")
+                def config = new groovy.json.JsonSlurper().parseText(new String(gameMod[name], "UTF-8"))
+                if (config.refmap && !gameMod.containsKey(config.refmap)) throw new GradleException("game-mod.jar's $name names the refmap ${config.refmap}, which it doesn't have")
+                if (config.refmap) refmaps << config.refmap
+                (config.mixins ?: []).each { mixinName ->
+                    def classFile = "${config['package']}.${mixinName}".replace('.', '/') + '.class'
+                    if (!gameMod.containsKey(classFile)) throw new GradleException("game-mod.jar's $name lists the mixin $mixinName, which it doesn't have")
+                }
+            }
+            refmaps.each { refmap ->
+                def mappings = new groovy.json.JsonSlurper().parseText(new String(gameMod[refmap], "UTF-8")).mappings ?: [:]
+                logger.lifecycle("Refmap $refmap: ${mappings.collect { owner, members -> "${owner.substring(owner.lastIndexOf('/') + 1)} (${members.size()})" }.sort().join(', ')}")
             }
 
             def names = parts.keySet() as List

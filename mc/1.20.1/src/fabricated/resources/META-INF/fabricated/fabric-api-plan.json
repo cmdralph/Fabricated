@@ -1,6 +1,11 @@
 {
   "fabricApiVersion": "0.92.12+1.20.1",
   "modules": {
+    "fabric-biome-api-v1": {
+      "plan": "native",
+      "version": "13.0.15",
+      "reason": "Shipped by Fabricated: upstream's API and biome source mixins, with biome modifications applied as a Forge biome modifier. Upstream's access widener opens the biome's climate field, which Forge's coremod needs private to point reads of a biome's climate and effects at its modified info, so with the module passed through the coremod failed and no biome modifier's climate or effects reached the game; upstream's modifications also replace biome fields Forge no longer reads."
+    },
     "fabric-registry-sync-v0": {
       "plan": "passthrough",
       "skipMixins": [
