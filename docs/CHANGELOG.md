@@ -58,6 +58,12 @@ One entry per working session, newest first: what changed, and how it was verifi
   them and lambdas implementing them kept their official names, and Fabric API's resource pack lambda stopped the server
   (AbstractMethodError). A descriptor without Minecraft classes is matched by its owner only, so a mod's `Runnable.run`
   keeps its name. Test: 278 core tests.
+- FINAL-2 is verified on Forge 47 (forge-legacy #125): no access transformer error, the server reaches "Done" and all
+  38 Fabric API modules' main entrypoints run, the recipe API's included. The Forge branches' transformation services
+  target every class the shared class transforms change (`classesBeforeMixin`; forge #128, forge-legacy #125). The
+  26.x corpus's remaining errors were traced to the mods themselves: FrozenLib's "Unable to read config entry" on a
+  fresh config directory (CORPUS-27) and Wilder Wild 26.3's reinforced deepslate blockstate without its mixin
+  (CORPUS-28). Forge 47's biome coremod failing with Fabric API installed is recorded for L4 in the roadmap.
 - FINAL-1's `final` is removed at class load instead of by an access transformer line (FINAL-2): Forge 47 makes
   `Ingredient.toNetwork` final with its own access transformer, and the engine refused the mod's `-f` next to Forge's
   `+f`, so Forge 47's Fabric API server exited at start on forge-legacy's run on #125. The translation's metadata lists
