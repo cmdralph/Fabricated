@@ -20,16 +20,20 @@ handled safely, no network access, original jars never changed, and no code that
 - **`main`:** NeoForge for 1.21.11, 26.1.2, 26.2 and 26.3, every line stable (NeoForge tagged `26.3.0-stable`; CI
   pins 26.3.0.95 and no version is experimental any more).
 - **`forge`:** Minecraft Forge 61 to 66 for the versions `main` covers, built with ForgeGradle. F3 steps 1 to 4 done:
-  on Forge 61 (1.21.11) and 64 to 66 (26.x) a translated Fabric mod is discovered, loads, runs its entrypoints, has
-  its mixins applied, its injected interfaces added and its other side's members stripped (#85, #87, #90; `PORTING.md`
-  §4.1). Next: entrypoints where Fabric runs them and the client's, default bridges after Mixin, warnings (step 5),
-  then Fabric API on Forge's events (EventBus 7).
+  on Forge 61 (1.21.11) and 64 to 66 (26.x) a translated Fabric mod is discovered, loads, runs its main and server
+  entrypoints in Forge's registry events with the registries open, registers an item that stays in the frozen registry,
+  has its mixins applied, its injected interfaces added and its other side's members stripped, and the report names
+  Forge (#85, #87, #90, #95, #96, #99: 18 server checks on each version; `PORTING.md` §4.1). Next: the client's
+  entrypoints, default bridges after Mixin, warnings (step 5), then Fabric API on Forge's events (EventBus 7).
 - **`forge-legacy`:** Minecraft Forge for 1.20.1 (Forge 47.4) and other legacy versions, built with ModDevGradle's
-  `legacyforge`. L3 in part: on Forge 47.4.28 a translated Fabric mod is discovered, remapped to the names Forge runs the
-  game with (Mojang's classes, SRG's members, composed from the files Forge's installer leaves), loads, runs its
-  entrypoints and has its mixins applied (#88, #89; [`PORTING.md`](PORTING.md) §3). Next: registries and access wideners
-  in the test mod, MixinExtras (Forge 47 has none), the transformation service, then the native Fabric API 0.92.12 modules
-  (the old capability system, `SimpleChannel`) and Forge 47's events. NeoForge needs no legacy branch.
+  `legacyforge`. L3's server smoke passes on Forge 47.4.28, a gate since #97: a translated Fabric mod is discovered,
+  remapped to the names Forge runs the game with (Mojang's classes, SRG's members, composed from the files Forge's
+  installer leaves), loads, runs its main and server entrypoints in Forge's registry events with the registries open,
+  registers an item by Intermediary names, reads a private field its access widener opens, has its mixins applied (one
+  through MixinExtras 0.5.5, which Fabricated nests for Forge 47, which ships none), its injected interfaces added and
+  its other side's members stripped (#88, #89, #92, #93, #97, #98, #100: 19 checks; [`PORTING.md`](PORTING.md) §3 and
+  §7). Next: the native Fabric API 0.92.12 modules (the old capability system, `SimpleChannel`) and Forge 47's events
+  (L4). NeoForge needs no legacy branch.
 - **Decided** (`RESEARCH.md` §8): Forge 47.4 for 1.20.1, the shared modules kept loadable on Java 17, ForgeGradle for
   modern Forge, CI for pull requests only. L1, the behaviour-neutral seams on `main`: Java 17 for the shared modules
   (their main code compiles at release 17), the loader split (`loader/common`, `loader/neoforge`), the build split
