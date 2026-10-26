@@ -162,10 +162,7 @@ class RemapTest {
 		// method for it; SRG names it m_247679_. Fabric API's lambda implementing it stopped Forge 47's server
 		// (AbstractMethodError). Here d.run()V is a Minecraft method SRG renames too, whose descriptor names no Minecraft
 		// class: a mod's Runnable.run keeps its name.
-		String tiny = TINY + "CLASS\tc\tnet/minecraft/class_4\nCLASS\td\tnet/minecraft/class_5\n";
-		String tsrg2 = TSRG2 + "c net/minecraft/src/C_4_ 4\n\topen (Ljava/lang/String;)La; m_247679_ 247679\n"
-				+ "d net/minecraft/src/C_5_ 5\n\trun ()V m_99_ 99\n";
-		MappingTable t = MappingComposer.composeSrg(new StringReader(tiny), new StringReader(tsrg2), null);
+		MappingTable t = plainSrgTable();
 		String supplier = "net/minecraft/class_4";
 		String openDesc = "(Ljava/lang/String;)Lnet/minecraft/class_1;";
 		assertEquals("m_247679_", t.mapPlainMethod(supplier, "open", openDesc), "the owner's own");
@@ -216,6 +213,33 @@ class RemapTest {
 			if (insn instanceof InvokeDynamicInsnNode indy) calls.add("lambda " + indy.name);
 		}
 		assertEquals(List.of("net/minecraft/src/C_4_.m_247679_", "net/minecraft/src/C_5_.m_99_", "lambda m_247679_"), calls);
+	}
+
+	@Test
+	void aRefmapNamesAMethodIntermediaryLeavesUnderItsOfficialNameBySrgs() throws Exception {
+		// PLAIN-1: Fabric API's transfer refmap gives DropperBlockMixin's @At target as
+		// Lnet/minecraft/class_2357;dispense(...), a name Intermediary leaves and SRG renames (m_6115_). Under that name no
+		// call occurs on Forge 47, whose pre-flight left the hook out.
+		MappingTable t = plainSrgTable();
+		String target = "Lnet/minecraft/class_4;open(Ljava/lang/String;)Lnet/minecraft/class_1;";
+		String refmap = "{\"mappings\":{\"mod/DropperMixin\":{\"open\":\"" + target + "\",\"run\":\"Lnet/minecraft/class_5;run()V\","
+				+ "\"tick\":\"Lnet/minecraft/class_4;tick()V\"}}}";
+		String remapped = new String(new JarRemapper(t).remapRefmap(refmap.getBytes(StandardCharsets.UTF_8), "test"), StandardCharsets.UTF_8);
+		assertTrue(remapped.contains("\"Lnet/minecraft/src/C_4_;m_247679_(Ljava/lang/String;)Lnet/minecraft/src/C_1_;\""), remapped);
+		assertTrue(remapped.contains("\"Lnet/minecraft/src/C_5_;m_99_()V\""), "the owner's own, whatever its descriptor: " + remapped);
+		assertTrue(remapped.contains("\"Lnet/minecraft/src/C_4_;tick()V\""), "a name SRG doesn't rename stays: " + remapped);
+		assertTrue(remapped.contains("\"open\":"), "keys are the mod's names: " + remapped);
+		assertEquals("@At(target=\"Lnet/minecraft/src/C_4_;m_247679_(Ljava/lang/String;)Lnet/minecraft/src/C_1_;\")",
+				new TokenRemapper(t).remap("@At(target=\"" + target + "\")"), "the same in an annotation's string");
+		assertTrue(new TokenRemapper(table()).remap(target).contains(";open(Ljava/lang/String;)"), "Mojang's names keep official ones");
+	}
+
+	/** Intermediary and SRG names for PLAIN-1: c.open and d.run, which Intermediary leaves under their official names. */
+	private static MappingTable plainSrgTable() throws Exception {
+		String tiny = TINY + "CLASS\tc\tnet/minecraft/class_4\nCLASS\td\tnet/minecraft/class_5\n";
+		String tsrg2 = TSRG2 + "c net/minecraft/src/C_4_ 4\n\topen (Ljava/lang/String;)La; m_247679_ 247679\n"
+				+ "d net/minecraft/src/C_5_ 5\n\trun ()V m_99_ 99\n";
+		return MappingComposer.composeSrg(new StringReader(tiny), new StringReader(tsrg2), null);
 	}
 
 	@Test

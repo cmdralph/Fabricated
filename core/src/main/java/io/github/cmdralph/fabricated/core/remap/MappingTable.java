@@ -139,6 +139,11 @@ public final class MappingTable {
 		return index;
 	}
 
+	/** Whether this table has methods Intermediary leaves under their official names (Forge 47's, PLAIN-1). */
+	public boolean hasPlainMembers() {
+		return !plainMembers.isEmpty();
+	}
+
 	/** Flat member lookup only; {@code null} if the name is unknown or ambiguous. */
 	public String mapMemberFlat(String name) {
 		return flatMembers.get(name);

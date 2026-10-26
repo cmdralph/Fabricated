@@ -58,6 +58,10 @@ One entry per working session, newest first: what changed, and how it was verifi
   them and lambdas implementing them kept their official names, and Fabric API's resource pack lambda stopped the server
   (AbstractMethodError). A descriptor without Minecraft classes is matched by its owner only, so a mod's `Runnable.run`
   keeps its name. Test: 278 core tests.
+- PLAIN-1 covers refmaps and annotation strings too: a method reference with its owner and descriptor whose name
+  Intermediary leaves takes SRG's name. Fabric API's transfer refmap names `DispenseItemBehavior.dispense` (SRG's
+  `m_6115_`) as `DropperBlockMixin`'s `@At` target, which Forge 47's pre-flight left out on #113. Checked on Fabric API
+  0.92.12's 57 refmaps with 1.20.1's Intermediary and `joined.tsrg`: that target is the only one. Test: 280 core tests.
 - LEVEL-1 and INTERFACE-1 read the running Mixin's release without its build metadata: Forge reports
   `0.8.5+Jenkins-b310.git-…`, which the table of SpongePowered's releases didn't match, so forge-legacy's run on
   #113 still had Mixin drop the four interface mixins. Test: 277 core tests.
