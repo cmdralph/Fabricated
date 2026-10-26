@@ -156,6 +156,7 @@ report "the test mod read a private field its access widener opens (Intermediary
 report "the minecraft mod container holds vanilla's resources (its en_us.json)" "grep -q 'FABRICATED-FORGE-TEST game resources OK' logs/latest.log 2>/dev/null"
 report "the test mod's item is in the frozen registry at the first tick" "grep -q 'FABRICATED-FORGE-TEST registry entry kept OK' logs/latest.log 2>/dev/null"
 report "MixinExtras ran the test mod's @WrapMethod (nested in the in-game mod)" "grep -q 'FABRICATED-FORGE-TEST MixinExtras OK' logs/latest.log 2>/dev/null"
+report "the in-game mod's mixin reads tag files' fabric:remove (the in-game mod reobfuscated to SRG's names)" "grep -q 'FABRICATED-FORGE-TEST fabric:remove OK' logs/latest.log 2>/dev/null"
 report "Forge's loading warnings name the Fabric mod that wasn't loaded" "grep -qsE 'ServerModLoader.*: Fabric mod fabricated_forge_unmet 1\\.0\\.0 was not loaded: ' logs/latest.log logs/debug.log"
 report "Fabricated's report names Forge as the loader" "grep -q '^  Forge: ' logs/fabric-bridge-report.txt 2>/dev/null && ! grep -q '^  NeoForge: ' logs/fabric-bridge-report.txt 2>/dev/null"
 
