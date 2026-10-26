@@ -19,13 +19,17 @@ handled safely, no network access, original jars never changed, and no code that
 
 - **`main`:** NeoForge for 1.21.11, 26.1.2, 26.2 and 26.3, every line stable (NeoForge tagged `26.3.0-stable`; CI
   pins 26.3.0.95 and no version is experimental any more).
-- **`forge`:** Minecraft Forge 61 to 66 for the versions `main` covers, built with ForgeGradle; scaffolding:
-  `mc/forge-1.21.11` (Forge 61.2.4) compiles in the branch's CI (#72). Next: 26.x, a forgespi 8 adapter, and bridges
-  rewritten for EventBus 7 (`PORTING.md` §4).
-- **`forge-legacy`:** Minecraft Forge for 1.20.1 (Forge 47.4) and other legacy versions; scaffolding: `mc/1.20.1` on
-  ModDevGradle's `legacyforge` (Forge 47.4.28) compiles in the branch's CI (#71) ([`PORTING.md`](PORTING.md)). About 80 % of `core` and the Fabric Loader API carry over; the platform layer
-  (discovery on forgespi 7, Mojang class names with SRG member names, Forge's `mods.toml`, MixinExtras provision, class
-  transforms through ModLauncher) and the native Fabric API modules are new. NeoForge needs no legacy branch.
+- **`forge`:** Minecraft Forge 61 to 66 for the versions `main` covers, built with ForgeGradle. F3 steps 1 to 4 done:
+  on Forge 61 (1.21.11) and 64 to 66 (26.x) a translated Fabric mod is discovered, loads, runs its entrypoints, has
+  its mixins applied, its injected interfaces added and its other side's members stripped (#85, #87, #90; `PORTING.md`
+  §4.1). Next: entrypoints where Fabric runs them and the client's, default bridges after Mixin, warnings (step 5),
+  then Fabric API on Forge's events (EventBus 7).
+- **`forge-legacy`:** Minecraft Forge for 1.20.1 (Forge 47.4) and other legacy versions, built with ModDevGradle's
+  `legacyforge`. L3 in part: on Forge 47.4.28 a translated Fabric mod is discovered, remapped to the names Forge runs the
+  game with (Mojang's classes, SRG's members, composed from the files Forge's installer leaves), loads, runs its
+  entrypoints and has its mixins applied (#88, #89; [`PORTING.md`](PORTING.md) §3). Next: registries and access wideners
+  in the test mod, MixinExtras (Forge 47 has none), the transformation service, then the native Fabric API 0.92.12 modules
+  (the old capability system, `SimpleChannel`) and Forge 47's events. NeoForge needs no legacy branch.
 - **Decided** (`RESEARCH.md` §8): Forge 47.4 for 1.20.1, the shared modules kept loadable on Java 17, ForgeGradle for
   modern Forge, CI for pull requests only. L1, the behaviour-neutral seams on `main`: Java 17 for the shared modules
   (their main code compiles at release 17), the loader split (`loader/common`, `loader/neoforge`), the build split
@@ -435,6 +439,7 @@ crash in run 229).
 | CORPUS-23 | P3 | Fabric jars carrying their NeoForge build's loot modifiers (Artifacts) | NeoForge reads global loot modifiers from any jar, and Artifacts' Fabric jar carries its NeoForge build's, whose types only that build registers: on 1.21.11 `LootModifierManager` fails to decode them ("Unknown registry key ... neoforge:global_loot_modifier_serializers: artifacts:replace_wi..."), on 26.1.2 they fail to parse as entries of the data-pack registry (72 errors on a client, 138 on a server; run 40232960184). Fabric ignores the files, so nothing works differently, but the errors bury real ones. | Open: as for MODIFIER-1's biome modifiers, each file would become a loot modifier that changes nothing; on 26.x every file is a registry entry that must decode, so that needs a modifier type NeoForge registers on each version (verified in its source) and a CI check. Read in NeoForge's source: `neoforge:add_table` with `"table": "minecraft:empty"` adds nothing and decodes on every version (1.21.11 to 26.2 require `conditions`, 26.3 reads an optional `condition` and ignores the rest); files are read from `data/<namespace>/loot_modifiers/`, on 1.21.11 through the `neoforge:loot_modifiers/global_loot_modifiers.json` list, which must stay a list. Not done: Porting Lib's loot modifiers read the same folder on Fabric, so replacing every file there could break a Porting Lib mod (Create's stack); the fix needs to tell those apart first. |
 | CORPUS-25 | P3 | Terralith (26.3 server corpus, every run since at least run 420) | About 130 warnings per server run from NeoForge's `ModifiableBiomeInfo`: "Cannot modify spawn settings of biome terralith:alpha_islands, found unexpected attribute modifier OverrideModifier[]" (the first of them; runs 40241680133 and 40244234167). NeoForge 26.3 refuses to modify the spawns of a biome whose `natural_mob_spawns` attribute uses a modifier other than `overlay` (`ModifiableBiomeInfo`, read in its source), so biome modifiers can't add spawns to those biomes. | Open, likely Terralith's: the count fits every Terralith biome declaring an `override` modifier, which would warn on NeoForge without Fabricated too; UNVERIFIED, as Terralith's 26.x data isn't in its public repository. |
 | CORPUS-24 | — | Ledger (advanced corpus servers, every 26.x version) | Exposed logs "NOT NULL constraint failed: players.player_name" for `INSERT INTO players (first_join, last_join, player_id)` (run 40237889272: Ledger 1.3.22 on 26.1.2). The stack runs from Ledger's `DatabaseManager.insertActions` through `getOrCreatePlayerId`, which inserts a player row with its UUID alone for an action's source player who never joined; only Ledger's join handler writes the name (read in its source, 1.3.25 the same). Ledger takes any player as an action's source, fake players included, and the test mod's Fabric fake player (`InteractionTest`) breaks and uses blocks on every server smoke: the same happens on Fabric. | Closed: not Fabricated's (Ledger's, met through the test mod's fake player). |
+| PLAT-3 | P3 | core (`MixinPreflight`, `Pipeline`, `ModTranslator`, `CandidateScanner`) | About 70 of the report's and pre-flight's messages name NeoForge ("which NeoForge reduced to a call to", "Install the NeoForge build of the mod"), which on the Forge branches reads wrong. The report's environment line and the mapping advice name the platform's loader since `PlatformDescriptor.loaderName()`. | Open: thread the loader's name through the rest when a Forge branch shows them to players (its warnings screen, F3 step 5). |
 
 ## Compatibility test matrix (renderer and model APIs)
 
