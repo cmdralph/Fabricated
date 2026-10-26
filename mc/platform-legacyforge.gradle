@@ -116,8 +116,9 @@ afterEvaluate {
         // task, as its own configuration would otherwise set the name back.
         archiveBaseName = 'fabricated-forge'
         from(langProviderJar) { into 'META-INF/fabricated' }
-        // mc/mc.gradle nests the in-game mod as built: the reobfuscated copy is nested instead.
-        exclude { FileTreeElement e -> e.relativePath.pathString == 'META-INF/fabricated/game-mod.jar' && e.file.parentFile.name == 'devlibs' }
+        // mc/mc.gradle nests the in-game mod as built: the reobfuscated copy is nested instead. An exclusion sees a file's
+        // path in its source (a single file's name), not where it goes.
+        exclude { FileTreeElement e -> e.name == 'game-mod.jar' && e.file.parentFile.name == 'devlibs' }
         from(reobfGameModJar) { into 'META-INF/fabricated' }
     }
 
