@@ -18,6 +18,17 @@ final class ForgeDescriptor implements PlatformDescriptor {
 	/** Minecraft 1.20.1's resource and data pack format. */
 	static final int PACK_FORMAT = 15;
 	static final PlatformDescriptor INSTANCE = new ForgeDescriptor();
+	private static final Map<String, String> PRIVATE_FIELDS = Map.of(
+			"net/minecraft/world/level/biome/Biome f_47437_", "getModifiedClimateSettings",
+			"net/minecraft/world/level/biome/Biome f_47443_", "getModifiedSpecialEffects",
+			"net/minecraft/world/level/levelgen/structure/Structure f_226555_", "getModifiedStructureSettings",
+			"net/minecraft/world/effect/MobEffectInstance f_19502_", "m_19544_",
+			"net/minecraft/world/level/block/LiquidBlock f_54689_", "getFluid",
+			"net/minecraft/world/item/BucketItem f_40687_", "getFluid",
+			"net/minecraft/world/level/block/StairBlock f_56858_", "getModelBlock",
+			"net/minecraft/world/level/block/StairBlock f_56859_", "getModelState",
+			"net/minecraft/world/level/block/FlowerPotBlock f_53525_", "m_53560_",
+			"net/minecraft/world/item/ItemStack f_41589_", "m_41720_");
 
 	private ForgeDescriptor() {
 	}
@@ -45,6 +56,16 @@ final class ForgeDescriptor implements PlatformDescriptor {
 	@Override
 	public boolean enumExtensions() {
 		return FORGE.enumExtensions();
+	}
+
+	/**
+	 * The fields Forge 47's {@code field_to_method.js} coremod redirects to a getter, in SRG's names as Forge 47 runs the
+	 * game (read in Forge 47.4's sources): its {@code redirectFieldToMethod} needs them private, as Forge 61 to 66's
+	 * transformer does (PLAT-4).
+	 */
+	@Override
+	public Map<String, String> privateFields() {
+		return PRIVATE_FIELDS;
 	}
 
 	@Override
