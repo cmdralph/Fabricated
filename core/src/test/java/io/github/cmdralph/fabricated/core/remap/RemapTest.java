@@ -21,11 +21,14 @@ import org.junit.jupiter.api.io.TempDir;
 import org.objectweb.asm.AnnotationVisitor;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassWriter;
+import org.objectweb.asm.Handle;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
+import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.FieldInsnNode;
+import org.objectweb.asm.tree.InvokeDynamicInsnNode;
 import org.objectweb.asm.tree.LdcInsnNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
@@ -151,6 +154,92 @@ class RemapTest {
 		MappingException malformed = assertThrows(MappingException.class,
 				() -> MappingComposer.composeSrg(new StringReader(TINY), new StringReader("tsrg2 obf srg id\na net/minecraft/src/C_1_\n"), null));
 		assertTrue(malformed.getMessage().startsWith("Malformed class line 2"), malformed.getMessage());
+	}
+
+	@Test
+	void joinsTheMethodsIntermediaryLeavesUnderTheirOfficialNamesToSrgs() throws Exception {
+		// PLAIN-1: Intermediary leaves Pack.ResourcesSupplier.open (official c.open, unobfuscated) as it is, and lists no
+		// method for it; SRG names it m_247679_. Fabric API's lambda implementing it stopped Forge 47's server
+		// (AbstractMethodError). Here d.run()V is a Minecraft method SRG renames too, whose descriptor names no Minecraft
+		// class: a mod's Runnable.run keeps its name.
+		MappingTable t = plainSrgTable();
+		String supplier = "net/minecraft/class_4";
+		String openDesc = "(Ljava/lang/String;)Lnet/minecraft/class_1;";
+		assertEquals("m_247679_", t.mapPlainMethod(supplier, "open", openDesc), "the owner's own");
+		assertEquals("m_247679_", t.mapPlainMethod("mod/Supplier", "open", openDesc), "an override in a mod's class, by a descriptor naming Minecraft's class");
+		assertEquals("m_99_", t.mapPlainMethod("net/minecraft/class_5", "run", "()V"));
+		assertNull(t.mapPlainMethod("mod/Task", "run", "()V"), "a descriptor of the JDK's types alone is judged by its owner");
+		assertNull(t.mapPlainMethod(supplier, "e", "()V"), "an obfuscated name Intermediary renames isn't one");
+		assertNull(table().mapPlainMethod(supplier, "open", openDesc), "Mojang's names keep official ones: NeoForge's table has none");
+		assertEquals("m_247679_", MappingTable.deserialize(t.serialize()).mapPlainMethod(supplier, "open", openDesc), "cached with the table");
+
+		ClassWriter cw = new ClassWriter(0);
+		cw.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, "mod/Supplier", null, "java/lang/Object", new String[] {supplier, "java/lang/Runnable"});
+		MethodVisitor open = cw.visitMethod(Opcodes.ACC_PUBLIC, "open", openDesc, null, null);
+		open.visitInsn(Opcodes.ACONST_NULL);
+		open.visitInsn(Opcodes.ARETURN);
+		open.visitMaxs(1, 2);
+		open.visitEnd();
+		MethodVisitor run = cw.visitMethod(Opcodes.ACC_PUBLIC, "run", "()V", null, null);
+		run.visitInsn(Opcodes.RETURN);
+		run.visitMaxs(0, 1);
+		run.visitEnd();
+		MethodVisitor use = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "use", "(L" + supplier + ";Lnet/minecraft/class_5;)L" + supplier + ";", null, null);
+		use.visitVarInsn(Opcodes.ALOAD, 0);
+		use.visitLdcInsn("id");
+		use.visitMethodInsn(Opcodes.INVOKEINTERFACE, supplier, "open", openDesc, true);
+		use.visitInsn(Opcodes.POP);
+		use.visitVarInsn(Opcodes.ALOAD, 1);
+		use.visitMethodInsn(Opcodes.INVOKEINTERFACE, "net/minecraft/class_5", "run", "()V", true);
+		Handle metafactory = new Handle(Opcodes.H_INVOKESTATIC, "java/lang/invoke/LambdaMetafactory", "metafactory",
+				"(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodType;"
+						+ "Ljava/lang/invoke/MethodHandle;Ljava/lang/invoke/MethodType;)Ljava/lang/invoke/CallSite;", false);
+		use.visitInvokeDynamicInsn("open", "()L" + supplier + ";", metafactory, Type.getMethodType(openDesc),
+				new Handle(Opcodes.H_INVOKESTATIC, "mod/Supplier", "lambda$use$0", openDesc, false), Type.getMethodType(openDesc));
+		use.visitInsn(Opcodes.ARETURN);
+		use.visitMaxs(2, 2);
+		use.visitEnd();
+		cw.visitEnd();
+
+		ClassNode node = new ClassNode();
+		new ClassReader(new JarRemapper(t).remapClass(cw.toByteArray(), "test")).accept(node, 0);
+		List<String> declared = node.methods.stream().map(m -> m.name).toList();
+		assertTrue(declared.contains("m_247679_"), "the override takes SRG's name: " + declared);
+		assertTrue(declared.contains("run"), "Runnable.run keeps its name: " + declared);
+		MethodNode remappedUse = node.methods.stream().filter(m -> m.name.equals("use")).findFirst().orElseThrow();
+		List<String> calls = new ArrayList<>();
+		for (AbstractInsnNode insn : remappedUse.instructions) {
+			if (insn instanceof MethodInsnNode call) calls.add(call.owner + "." + call.name);
+			if (insn instanceof InvokeDynamicInsnNode indy) calls.add("lambda " + indy.name);
+		}
+		assertEquals(List.of("net/minecraft/src/C_4_.m_247679_", "net/minecraft/src/C_5_.m_99_", "lambda m_247679_"), calls);
+	}
+
+	@Test
+	void aRefmapNamesAMethodIntermediaryLeavesUnderItsOfficialNameBySrgs() throws Exception {
+		// PLAIN-1: Fabric API's transfer refmap gives DropperBlockMixin's @At target as
+		// Lnet/minecraft/class_2357;dispense(...), a name Intermediary leaves and SRG renames (m_6115_). Under that name no
+		// call occurs on Forge 47, whose pre-flight left the hook out.
+		MappingTable t = plainSrgTable();
+		String target = "Lnet/minecraft/class_4;open(Ljava/lang/String;)Lnet/minecraft/class_1;";
+		String refmap = "{\"mappings\":{\"mod/DropperMixin\":{\"open\":\"" + target + "\",\"run\":\"Lnet/minecraft/class_5;run()V\","
+				+ "\"tick\":\"Lnet/minecraft/class_4;tick()V\"}}}";
+		String remapped = new String(new JarRemapper(t).remapRefmap(refmap.getBytes(StandardCharsets.UTF_8), "test"), StandardCharsets.UTF_8);
+		assertTrue(remapped.contains("\"Lnet/minecraft/src/C_4_;m_247679_(Ljava/lang/String;)Lnet/minecraft/src/C_1_;\""), remapped);
+		assertTrue(remapped.contains("\"Lnet/minecraft/src/C_5_;m_99_()V\""), "the owner's own, whatever its descriptor: " + remapped);
+		assertTrue(remapped.contains("\"Lnet/minecraft/src/C_4_;tick()V\""), "a name SRG doesn't rename stays: " + remapped);
+		assertTrue(remapped.contains("\"open\":"), "keys are the mod's names: " + remapped);
+		assertEquals("@At(target=\"Lnet/minecraft/src/C_4_;m_247679_(Ljava/lang/String;)Lnet/minecraft/src/C_1_;\")",
+				new TokenRemapper(t).remap("@At(target=\"" + target + "\")"), "the same in an annotation's string");
+		assertTrue(new TokenRemapper(table()).remap(target).contains(";open(Ljava/lang/String;)"), "Mojang's names keep official ones");
+	}
+
+	/** Intermediary and SRG names for PLAIN-1: c.open and d.run, which Intermediary leaves under their official names. */
+	private static MappingTable plainSrgTable() throws Exception {
+		String tiny = TINY + "CLASS\tc\tnet/minecraft/class_4\nCLASS\td\tnet/minecraft/class_5\n";
+		String tsrg2 = TSRG2 + "c net/minecraft/src/C_4_ 4\n\topen (Ljava/lang/String;)La; m_247679_ 247679\n"
+				+ "d net/minecraft/src/C_5_ 5\n\trun ()V m_99_ 99\n";
+		return MappingComposer.composeSrg(new StringReader(tiny), new StringReader(tsrg2), null);
 	}
 
 	@Test

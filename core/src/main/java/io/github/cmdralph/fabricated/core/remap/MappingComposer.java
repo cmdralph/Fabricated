@@ -101,11 +101,19 @@ public final class MappingComposer {
 			srg.classes.clear();
 			srg.classes.putAll(mojangClasses);
 		}
-		return compose(intermediaryTiny, srg);
+		return compose(intermediaryTiny, srg, true);
 	}
 
 	/** Joins Intermediary with runtime names keyed by official ones. */
 	private static MappingTable compose(Reader intermediaryTiny, Proguard pg) throws IOException, MappingException {
+		return compose(intermediaryTiny, pg, false);
+	}
+
+	/**
+	 * @param plain whether the runtime renames methods Intermediary leaves under their official names, as SRG does (PLAIN-1):
+	 *              their official name, which Fabric mods use, is then joined to the runtime one too
+	 */
+	private static MappingTable compose(Reader intermediaryTiny, Proguard pg, boolean plain) throws IOException, MappingException {
 		Map<String, String> classes = new HashMap<>();
 		Map<String, Map<String, String>> members = new HashMap<>();
 		// official class → intermediary class, to translate descriptors for qualified keys
@@ -155,7 +163,36 @@ public final class MappingComposer {
 			members.computeIfAbsent(intermediaryName, k -> new HashMap<>())
 					.put(intermediaryOwner + "." + intermediaryName + intermediaryDesc, mojang);
 		}
-		return MappingTable.fromMembers(classes, members);
+		MappingTable table = MappingTable.fromMembers(classes, members);
+		return plain ? table.withPlainMembers(plainMethods(memberLines, pg, officialToIntermediary)) : table;
+	}
+
+	/**
+	 * The methods Intermediary leaves under their official names, which the runtime renames: those the runtime file names
+	 * and Intermediary doesn't, under a name Intermediary renames nowhere (an override of a renamed method shares its
+	 * obfuscated name, and Intermediary lists the method only where it is first declared). Keyed by intermediary owner,
+	 * name and descriptor (PLAIN-1: {@code Pack$ResourcesSupplier.open}, which SRG names {@code m_247679_}).
+	 */
+	private static Map<String, String> plainMethods(List<String[]> memberLines, Proguard pg, Map<String, String> officialToIntermediary) {
+		Set<String> listed = new HashSet<>();
+		Set<String> renamed = new HashSet<>();
+		for (String[] p : memberLines) {
+			if (!p[0].equals("METHOD")) continue;
+			listed.add(p[1] + "." + p[3] + p[2]);
+			if (!p[3].equals(p[4])) renamed.add(p[3]);
+		}
+		Map<String, String> plain = new HashMap<>();
+		for (Map.Entry<String, String> e : pg.methods.entrySet()) {
+			String key = e.getKey();
+			int paren = key.indexOf('(');
+			int dot = key.lastIndexOf('.', paren);
+			String owner = key.substring(0, dot);
+			String name = key.substring(dot + 1, paren);
+			if (name.equals(e.getValue()) || name.startsWith("<") || renamed.contains(name) || listed.contains(key)) continue;
+			plain.put(officialToIntermediary.getOrDefault(owner, owner) + "." + name + remapDescriptor(key.substring(paren), officialToIntermediary),
+					e.getValue());
+		}
+		return plain;
 	}
 
 	/** Mojang's mappings in either format: TSRG v1's lines have no {@code " -> "}, ProGuard's do. */
