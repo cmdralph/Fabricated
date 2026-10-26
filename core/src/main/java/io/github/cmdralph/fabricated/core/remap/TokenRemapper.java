@@ -9,11 +9,16 @@ import java.util.regex.Pattern;
  *
  * <p>Only exact intermediary tokens are touched ({@code net/minecraft/class_N[$class_M...]} in slash or
  * dot form, and {@code method_N}/{@code field_N}/{@code comp_N} bounded by non-identifier characters),
- * so ordinary text is left alone.
+ * so ordinary text is left alone. So is a method reference with its owner and descriptor whose name Intermediary leaves
+ * under its official name and the runtime renames (PLAIN-1: Fabric API's transfer refmap names
+ * {@code Lnet/minecraft/class_2357;dispense(...)}, SRG's {@code m_6115_}).
  */
 public final class TokenRemapper {
 	private static final Pattern CLASS_TOKEN = Pattern.compile("net([/.])minecraft\\1class_\\d+(?:\\$class_\\d+)*");
 	private static final Pattern MEMBER_TOKEN = Pattern.compile("(?<![A-Za-z0-9_$])(?:method|field|comp)_\\d+(?![A-Za-z0-9_])");
+	/** {@code Lowner;name(desc)} with a Minecraft owner, as refmaps and {@code @At} targets name a method. */
+	private static final Pattern METHOD_REFERENCE = Pattern.compile("L(net/minecraft/class_\\d+(?:\\$class_\\d+)*);"
+			+ "([A-Za-z_$][A-Za-z0-9_$]*)(\\((?:\\[*(?:[ZBCSIJFD]|L[^;()]+;))*\\)\\[*(?:[ZBCSIJFDV]|L[^;()]+;))");
 
 	private final MappingTable table;
 
@@ -24,6 +29,8 @@ public final class TokenRemapper {
 	public String remap(String s) {
 		if (s == null || s.indexOf('_') < 0) return s;
 		String result = s;
+		// Before the class tokens: the methods are keyed by their intermediary owner and descriptor.
+		if (table.hasPlainMembers() && result.indexOf('(') >= 0) result = remapPlainMethods(result);
 		if (result.contains("class_")) {
 			Matcher m = CLASS_TOKEN.matcher(result);
 			StringBuilder sb = new StringBuilder(result.length());
@@ -48,5 +55,19 @@ public final class TokenRemapper {
 			result = sb.toString();
 		}
 		return result;
+	}
+
+	private String remapPlainMethods(String s) {
+		Matcher m = METHOD_REFERENCE.matcher(s);
+		StringBuilder sb = null;
+		int copied = 0;
+		while (m.find()) {
+			String plain = table.mapPlainMethod(m.group(1), m.group(2), m.group(3));
+			if (plain == null) continue;
+			if (sb == null) sb = new StringBuilder(s.length());
+			sb.append(s, copied, m.start(2)).append(plain);
+			copied = m.end(2);
+		}
+		return sb == null ? s : sb.append(s, copied, s.length()).toString();
 	}
 }
