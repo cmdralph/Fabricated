@@ -58,6 +58,12 @@ One entry per working session, newest first: what changed, and how it was verifi
   them and lambdas implementing them kept their official names, and Fabric API's resource pack lambda stopped the server
   (AbstractMethodError). A descriptor without Minecraft classes is matched by its owner only, so a mod's `Runnable.run`
   keeps its name. Test: 278 core tests.
+- A `@Local(name = ...)` finds a local a recompiled build names otherwise (LOCAL-3): Fabric API's lifecycle hook takes
+  `@Local(name = "level") ServerLevel` at `ServerLevel.close()` in `MinecraftServer.stopServer`, which Forge 64's build,
+  recompiled from decompiled source, names `levelx`, the method declaring another `level` before it; MixinExtras found
+  no such local in scope and Forge 64's server stopped on #115. Where exactly one local of the type is in scope at the
+  injection point, its name is added to the `@Local`'s; otherwise pre-flight reports the name as out of scope there
+  (it took the name as present when the method declared it anywhere). Test: 283 core tests.
 - PLAIN-1 joins a method whose official name Intermediary renames elsewhere, where the descriptor differs: three
   unrelated `get(F)` methods Intermediary renames kept `IoSupplier.get()` (SRG's `m_247737_`) out of the table, and
   Fabric API's resource pack stopped Forge 47's server on #116 (NoSuchMethodError). 77 more methods on 1.20.1, mostly
