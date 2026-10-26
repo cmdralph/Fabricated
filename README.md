@@ -42,7 +42,7 @@ that NeoForge has already changed. Fabricated handles this per module:
   `fabric-object-builder-api-v1`, `fabric-item-api-v1`, `fabric-block-api-v1`,
   `fabric-events-interaction-v0`, `fabric-loot-api-v3`, `fabric-content-registries-v0`,
   `fabric-transfer-api-v1`, `fabric-api-lookup-api-v1`, `fabric-menu-api-v1` (`fabric-screen-handler-api-v1`
-  on 1.21.11) and `fabric-crash-report-info-v1`, plus `fabric-biome-api-v1` on 26.3.
+  on 1.21.11), `fabric-biome-api-v1` and `fabric-crash-report-info-v1`.
 - **Pass-through**: the module is loaded from the official Fabric API jar you install. Fabricated checks
   every mixin against NeoForge's code before loading it ("mixin pre-flight"). Modules whose mixins can't
   apply are disabled, along with every mod that requires them, with an explanation.
