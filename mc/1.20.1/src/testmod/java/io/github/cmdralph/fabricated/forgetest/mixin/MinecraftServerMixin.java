@@ -8,13 +8,17 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import io.github.cmdralph.fabricated.forgetest.ForgeBiomeTest;
+import io.github.cmdralph.fabricated.forgetest.ForgeDimensionTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeTestMarker;
 import io.github.cmdralph.fabricated.forgetest.ForgeTestMod;
 import net.minecraft.class_1792;
 import net.minecraft.class_1799;
 import net.minecraft.class_1802;
+import net.minecraft.class_1937;
 import net.minecraft.class_2378;
 import net.minecraft.class_2960;
+import net.minecraft.class_3218;
+import net.minecraft.class_5321;
 import net.minecraft.class_5455;
 import net.minecraft.class_6862;
 import net.minecraft.class_7923;
@@ -26,7 +30,8 @@ import net.minecraft.server.MinecraftServer;
  * 1.20.1 names it (its refmap would), {@code method_3748} being {@code tickServer}; Fabricated remaps it to SRG's
  * {@code m_5705_}. {@code MinecraftServer} keeps its name in every namespace. By then Forge has frozen the registries
  * and checked them, and the test mod's item must still be there, the data packs' tags are bound, and Forge has applied
- * its biome modifiers ({@code method_30611} is {@code registryAccess()}).
+ * its biome modifiers ({@code method_30611} is {@code registryAccess()}). The test mod then teleports an entity to the End
+ * ({@code method_30002} is {@code overworld()}, {@code method_3847} {@code getLevel(ResourceKey)}).
  */
 @Mixin(MinecraftServer.class)
 public abstract class MinecraftServerMixin {
@@ -35,6 +40,12 @@ public abstract class MinecraftServerMixin {
 
 	@Shadow
 	public abstract class_5455.class_6890 method_30611();
+
+	@Shadow
+	public abstract class_3218 method_30002();
+
+	@Shadow
+	public abstract class_3218 method_3847(class_5321<class_1937> key);
 
 	@Inject(method = "method_3748", at = @At("TAIL"))
 	private void fabricatedForgeTest$afterTick(CallbackInfo ci) {
@@ -59,6 +70,7 @@ public abstract class MinecraftServerMixin {
 			}
 			class_5455 registries = method_30611();
 			ForgeBiomeTest.check(registries);
+			ForgeDimensionTest.check(method_30002(), method_3847(class_1937.field_25181));
 		}
 	}
 }

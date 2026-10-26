@@ -17,8 +17,8 @@ tasks.named('processResources', ProcessResources) {
 // mc/common's stand-ins for other mods' plugin interfaces name 1.21's classes (Identifier); this version's test mod uses
 // none of them, but stand-ins for the game classes it names in Intermediary's names, as a Fabric mod does.
 sourceSets.testmodstubs.java.srcDirs = [file('src/testmodstubs/java')]
-// It also uses Fabric API's biome and loot modules, which Fabricated provides itself (in the in-game mod, in Mojang's
-// names), in Intermediary's names as a Fabric mod is compiled against Fabric API: those stand-ins come first.
+// It also uses Fabric API's biome, loot and dimensions modules, which Fabricated provides itself (in the in-game mod, in
+// Mojang's names), in Intermediary's names as a Fabric mod is compiled against Fabric API: those stand-ins come first.
 sourceSets.testmod.compileClasspath = sourceSets.testmodstubs.output + sourceSets.testmod.compileClasspath
 
 // --- The in-game mod in Forge 47's names -----------------------------------------------------------------------------
@@ -31,7 +31,9 @@ def gameModMixins = [
         'fabricated-biome.mixins.json',
         // Native fabric-loot-api-v2's and fabric-loot-tables-v1's (upstream's, in one package): the builder mixins, and
         // the loot tables' events from the loot data manager's apply.
-        'fabricated-loot.mixins.json']
+        'fabricated-loot.mixins.json',
+        // Native fabric-dimensions-v1's: upstream's teleport target hook, and its End hook on Forge's teleporter.
+        'fabricated-dimension.mixins.json']
 dependencies {
     annotationProcessor "org.spongepowered:mixin:${project.mixin_processor_version}:processor"
     // The in-game mod's own mixins use MixinExtras' injectors, which the nested mixinextras-forge (below) provides.

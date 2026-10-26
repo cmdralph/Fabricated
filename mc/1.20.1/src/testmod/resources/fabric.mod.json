@@ -17,6 +17,7 @@
     "fabricloader": ">=0.16.0",
     "minecraft": "${minecraft_version}",
     "fabric-biome-api-v1": "*",
+    "fabric-dimensions-v1": "*",
     "fabric-loot-api-v2": "*",
     "fabric-loot-tables-v1": "*"
   }
