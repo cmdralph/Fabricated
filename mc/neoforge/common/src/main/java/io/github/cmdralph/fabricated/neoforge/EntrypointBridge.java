@@ -51,6 +51,8 @@ public final class EntrypointBridge {
 	private static final String MESSAGE = "§e[Fabricated]§r {0}";
 	/** The bridge whose client entrypoints are still to run. */
 	private static volatile EntrypointBridge pendingClient;
+	/** Set once Fabric mods' main entrypoints have run. */
+	private static volatile boolean mainEntrypointsRan;
 
 	private final FabricatedState state;
 	private final Dist dist;
@@ -100,21 +102,29 @@ public final class EntrypointBridge {
 		failures.addAll(runner.run("preLaunch", PreLaunchEntrypoint.class, PreLaunchEntrypoint::onPreLaunch));
 		if (dist.isClient()) {
 			mainWithClient = !DatagenModLoader.isRunningDataGen();
-			if (!mainWithClient) failures.addAll(runner.run("main", ModInitializer.class, ModInitializer::onInitialize));
+			if (!mainWithClient) runMain();
 			nanos = System.nanoTime() - start;
 			pendingClient = this;
 			return;
 		}
-		failures.addAll(runner.run("main", ModInitializer.class, ModInitializer::onInitialize));
+		runMain();
 		failures.addAll(runner.run("server", DedicatedServerModInitializer.class, DedicatedServerModInitializer::onInitializeServer));
 		nanos = System.nanoTime() - start;
 		finish();
 	}
 
-	/** Whether the main entrypoints are still to run, in {@code Minecraft}'s constructor. */
+	private void runMain() {
+		failures.addAll(runner.run("main", ModInitializer.class, ModInitializer::onInitialize));
+		mainEntrypointsRan = true;
+	}
+
+	/**
+	 * Whether Fabric mods' main entrypoints are still to run: from the game's start, through vanilla's bootstrap, which
+	 * freezes the registries before any mod is constructed (CORPUS-31), to NeoForge's registration events on a dedicated
+	 * server, or {@code Minecraft}'s constructor on a client. On Fabric, Fabric API leaves the registries open until then.
+	 */
 	public static boolean mainEntrypointsPending() {
-		EntrypointBridge bridge = pendingClient;
-		return bridge != null && bridge.mainWithClient;
+		return !mainEntrypointsRan && FabricatedState.get() != null;
 	}
 
 	/** Runs the main and client entrypoints (once); called from {@code Minecraft}'s constructor where Fabric Loader runs them. */
@@ -133,7 +143,7 @@ public final class EntrypointBridge {
 		// snapshot it restores on leaving a server.
 		GameData.unfreezeData();
 		try {
-			if (mainWithClient) failures.addAll(runner.run("main", ModInitializer.class, ModInitializer::onInitialize));
+			if (mainWithClient) runMain();
 			failures.addAll(runner.run("client", ClientModInitializer.class, ClientModInitializer::onInitializeClient));
 			registerLate();
 		} finally {

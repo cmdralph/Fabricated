@@ -175,6 +175,7 @@ public final class TestMod implements ModInitializer, DedicatedServerModInitiali
 		if (BuiltInRegistries.ITEM.getKey(item).equals(ITEM_ID)) {
 			LOGGER.info("FABRICATED-TEST registry OK");
 		}
+		BootstrapContent.register();
 		lateRegistry();
 		creativeTab(item);
 

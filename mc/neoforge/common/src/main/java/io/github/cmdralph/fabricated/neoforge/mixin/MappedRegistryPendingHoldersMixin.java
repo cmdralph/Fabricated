@@ -15,11 +15,13 @@ import net.minecraft.core.Holder;
 import net.minecraft.core.MappedRegistry;
 
 /**
- * On a client, Fabric mods' main entrypoints run in {@code Minecraft}'s constructor (CORPUS-16), after NeoForge's
- * freeze before {@code Minecraft} exists. A mod whose content is built before then (a class initialized early, as
- * BetterNether's entity types are) registers it only there, so at that freeze its intrusive holders are not registered
- * yet, and vanilla's check fails the game. While the main entrypoints are still to run, that freeze leaves them out of
- * the check and keeps them for the registration; the freeze after the entrypoints checks them as vanilla does.
+ * A Fabric mod whose content is built before its main entrypoint runs (a class initialized early, as BetterNether's
+ * entity types are) registers it only there, and Fabric API leaves the registries open until then. NeoForge freezes them
+ * earlier: during vanilla's bootstrap, before any mod is constructed (CORPUS-31), and on a client before
+ * {@code Minecraft} exists, whose constructor runs the main entrypoints (CORPUS-16). At those freezes the content's
+ * intrusive holders are not registered yet, and vanilla's check fails the game. While the main entrypoints are still to
+ * run, a freeze leaves them out of the check and keeps them for the registration; the freeze after the entrypoints
+ * checks them as vanilla does.
  */
 @Mixin(MappedRegistry.class)
 abstract class MappedRegistryPendingHoldersMixin<T> {
