@@ -17,7 +17,12 @@ One entry per working session, newest first: what changed, and how it was verifi
   transformation service applies the same code (F3 step 4). No change in behaviour.
 - The report names the platform's loader (`PlatformDescriptor.loaderName()`): on Forge its environment line said
   "NeoForge: 61.2.4" and, without mappings, it told players to reinstall NeoForge (the forge branch's server smoke).
-  The rest of its messages and pre-flight's still name NeoForge (roadmap PLAT-3).
+  Its other messages and pre-flight's name it too (PLAT-3): about sixty reasons, suggestions and notes said NeoForge
+  whatever the platform. They read as before on NeoForge; those about NeoForge itself or its data (the compatibility
+  plan's reasons, a NeoForge build's sections that translation leaves out, NeoForge's extensible enums) keep its
+  name. Tests: a report through Forge's descriptor, a missing target class with the loader named Forge (272 core tests).
+- owo-lib's roadmap row (CORPUS-20) was stale: the corpus shows it loaded on every version since LEAVE-3 and LIB-1b,
+  with the mixins NeoForge's code can't take left out.
 - Branches, recorded in `PORTING.md` §3 and §4.1: `forge` runs a translated Fabric mod on Forge 61 (1.21.11) too, and
   applies Fabric's class transforms through a ModLauncher transformation service (#87, #90: fourteen server checks on
   Forge 61 and 64 to 66); `forge-legacy` runs one on Forge 47.4.28, remapped to SRG names, its mixin applied (#89: ten

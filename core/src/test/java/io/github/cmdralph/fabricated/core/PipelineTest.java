@@ -348,6 +348,26 @@ class PipelineTest {
 				result.report().render());
 	}
 
+	/** On another platform, the report's reasons and suggestions name its loader where they named NeoForge (PLAT-3). */
+	@Test
+	void reasonsAndSuggestionsNameThePlatformsLoader(@TempDir Path game) throws Exception {
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		Path sodium = TestJars.create().fabricModJson(TestJars.modJson("sodium", "0.9.2", "\"name\":\"Sodium\"")).write(mods.resolve("sodium.jar"));
+		Path needy = TestJars.create().fabricModJson(TestJars.modJson("needy", "1.0.0", "\"depends\":{\"absent-lib\":\"*\"}"))
+				.write(mods.resolve("needy.jar"));
+
+		Pipeline.Result result = Pipeline.run(withDescriptor(input(game, List.of(sodium, needy), Namespace.OFFICIAL, Map.of(), null, List.of()),
+				PlatformDescriptor.FORGE));
+
+		Report.ModRow row = result.report().mods().stream().filter(r -> r.id().equals("sodium")).findFirst().orElseThrow();
+		assertTrue(row.detail().startsWith("its Fabric build can't run on Forge: "), row.detail());
+		assertEquals("Install Sodium for Forge instead (from the same download page).", row.suggestion());
+		Report.ModRow missing = result.report().mods().stream().filter(r -> r.id().equals("needy")).findFirst().orElseThrow();
+		assertEquals("Install absent-lib (a Fabric or Forge build) or remove needy.", missing.suggestion());
+		// The compatibility plan's own reasons are NeoForge's data; nothing else names NeoForge.
+		assertFalse(result.report().render().replace(row.detail(), "").contains("NeoForge"), result.report().render());
+	}
+
 	/** {@code in} with another platform's descriptor. */
 	private static Pipeline.Input withDescriptor(Pipeline.Input in, PlatformDescriptor descriptor) throws Exception {
 		java.lang.reflect.RecordComponent[] parts = Pipeline.Input.class.getRecordComponents();
@@ -1541,7 +1561,7 @@ class PipelineTest {
 		Pipeline.Result result = Pipeline.run(input(game, List.of(jar), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
 		String report = result.report().render();
 		assertTrue(result.runtime().isModLoaded("partial-mod"), report);
-		assertTrue(report.contains(Pipeline.LEFT_OUT_SECTION), report);
+		assertTrue(report.contains(Pipeline.leftOutSection("NeoForge")), report);
 		assertTrue(report.contains("partial-mod: LEFT_OUT [partial.mixins.json com.partial.mixin.Broken]"), report);
 		assertTrue(report.contains("partial-mod: LEFT_OUT [partial.mixins.json com.partial.mixin.Stateless]"), report);
 		Report.ModRow row = result.report().mods().stream().filter(r -> r.id().equals("partial-mod")).findFirst().orElseThrow();

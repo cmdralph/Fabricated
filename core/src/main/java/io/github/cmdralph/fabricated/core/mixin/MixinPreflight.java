@@ -126,6 +126,8 @@ public final class MixinPreflight {
 	private final ClassBytesSource untransformable;
 	private final boolean clientSide;
 	private final boolean missingTargetsFatal;
+	/** The platform's loader, as messages name it ({@code NeoForge}, {@code Forge}). */
+	private final String loader;
 	/** Vanilla's code of the game, or {@link ClassBytesSource#EMPTY} (VANILLA-1). */
 	private final ClassBytesSource vanilla;
 	private final Map<String, Optional<ClassNode>> vanillaCache = new HashMap<>();
@@ -156,6 +158,12 @@ public final class MixinPreflight {
 	 */
 	public MixinPreflight(ClassIndex game, InstalledClasses installed, ClassBytesSource modClasses, ClassBytesSource untransformable,
 			boolean clientSide, boolean missingTargetsFatal, ClassBytesSource vanilla) {
+		this(game, installed, modClasses, untransformable, clientSide, missingTargetsFatal, vanilla, "NeoForge");
+	}
+
+	/** @param loader the platform's loader, as messages name it ({@code NeoForge}, {@code Forge}) */
+	public MixinPreflight(ClassIndex game, InstalledClasses installed, ClassBytesSource modClasses, ClassBytesSource untransformable,
+			boolean clientSide, boolean missingTargetsFatal, ClassBytesSource vanilla, String loader) {
 		this.game = game;
 		this.installed = installed;
 		this.modClasses = modClasses;
@@ -163,6 +171,7 @@ public final class MixinPreflight {
 		this.clientSide = clientSide;
 		this.missingTargetsFatal = missingTargetsFatal;
 		this.vanilla = vanilla;
+		this.loader = loader;
 	}
 
 	/**
@@ -180,7 +189,7 @@ public final class MixinPreflight {
 			Set<String> stateless = node == null || selfContained ? Set.of()
 					: statelessHandlers(modClasses.readNode(internal, ClassReader.SKIP_FRAMES));
 			Context ctx = new Context(configName, internal.replace('/', '.'), config, refmap, hasPlugin, selfContained,
-					selfContained && addsFields(node), stateless, out, null);
+					selfContained && addsFields(node), stateless, out, null, loader);
 			if (node == null) {
 				ctx.classLevel("Mixin class " + ctx.mixinDotted() + " listed in " + configName + " is missing from the mod jar",
 						"The mod jar is incomplete or corrupted; re-download it.");
@@ -260,7 +269,7 @@ public final class MixinPreflight {
 			String internal = config.internalName(mixin);
 			ClassNode node = modClasses.readNode(internal, 0);
 			if (node == null) continue;
-			Context ctx = new Context(configName, internal.replace('/', '.'), config, refmap, false, false, false, Set.of(), out, null);
+			Context ctx = new Context(configName, internal.replace('/', '.'), config, refmap, false, false, false, Set.of(), out, null, loader);
 			independent.put(node, independentHandlers(node));
 			boolean changed = singleInjectionPoints(node);
 			for (String moved : anonymousTargetRepairs(node, ctx)) {
@@ -293,7 +302,7 @@ public final class MixinPreflight {
 					if (softenLocalCapture(ann)) {
 						changed = true;
 						out.add(new PreflightFinding(Severity.INFO, configName, ctx.mixinDotted(), "@Inject " + method.name
-								+ " captures local variables; if NeoForge's code has other locals there, it is skipped instead of crashing", ""));
+								+ " captures local variables; if " + loader + "'s code has other locals there, it is skipped instead of crashing", ""));
 					}
 					// A group's alternative for Fabric Loader's hook too: the other alternatives are for other loaders' hooks.
 					if (targets.size() == 1) {
@@ -378,7 +387,7 @@ public final class MixinPreflight {
 					}
 					out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), kind + " " + method.name + method.desc
 							+ " already exists " + (madePublic ? "" : "publicly ") + "in " + targets.get(0).name.replace('/', '.')
-							+ " (added by NeoForge or this Minecraft version); the mixin uses that method instead of generating one"
+							+ " (added by " + loader + " or this Minecraft version); the mixin uses that method instead of generating one"
 							+ (madePublic ? ", made public for it" : ""), ""));
 				} else if (accessor != null) {
 					String field = capturedFieldRepair(method, accessor, targets, ctx);
@@ -595,8 +604,8 @@ public final class MixinPreflight {
 					bridges.add(HandlerBridges.insertedParameterBridge(mixin.name, handler, injector, captured, Type.getArgumentTypes(chosen.desc).length,
 							overload, inserted, HandlerBridges.freeName(mixin, bridges, handler.name + "$fabricated")));
 				}
-				how = localsGone ? ", which NeoForge reduced to a call to " : replacement != null ? ", which NeoForge deprecated for "
-						: split ? ", the code of which there NeoForge split off into " : ", whose code NeoForge moved into ";
+				how = localsGone ? ", which " + loader + " reduced to a call to " : replacement != null ? ", which " + loader + " deprecated for "
+						: split ? ", the code of which there " + loader + " split off into " : ", whose code " + loader + " moved into ";
 			} else {
 				// The injection points exist, but in a constructor nothing calls any more: its end is the end of the one it calls.
 				overload = keptConstructorDelegate(chosen, target);
@@ -607,7 +616,7 @@ public final class MixinPreflight {
 							|| !takesExactly(handler, chosen)) continue;
 					bridges.add(HandlerBridges.bridge(mixin.name, handler, injector, chosen, overload, HandlerBridges.freeName(mixin, bridges, handler.name + "$fabricated")));
 				}
-				how = ", which NeoForge keeps only to call ";
+				how = ", which " + loader + " keeps only to call ";
 			}
 			@SuppressWarnings("unchecked")
 			List<Object> values = (List<Object>) selectors;
@@ -944,7 +953,7 @@ public final class MixinPreflight {
 				int now = matching(patched, point, ref, opcode).indexOf(place);
 				if (now < 0 || now == ordinal) continue;
 				Annotations.put(at, "ordinal", now);
-				moved.add(what + "has ordinal " + now + " in this game build, as NeoForge's patches add or replace others; the injection point is pointed there");
+				moved.add(what + "has ordinal " + now + " in this game build, as " + loader + "'s patches add or replace others; the injection point is pointed there");
 				continue;
 			}
 			boolean pointOnly = injector.desc.equals(INJECT) || injector.desc.equals(MODIFY_EXPRESSION_VALUE);
@@ -962,7 +971,7 @@ public final class MixinPreflight {
 			}
 			Annotations.put(at, "target", "L" + replacement.owner + ";" + replacement.name + replacement.desc);
 			Annotations.put(at, "ordinal", now);
-			moved.add(what + "NeoForge's patch replaced with a call of " + replacement.name + replacement.desc + ", taking one more argument (ordinal " + now
+			moved.add(what + loader + "'s patch replaced with a call of " + replacement.name + replacement.desc + ", taking one more argument (ordinal " + now
 					+ " here); the injection point is pointed there" + (pointOnly ? "" : ", through a bridge handler"));
 		}
 		return moved;
@@ -1018,7 +1027,7 @@ public final class MixinPreflight {
 				if (ordinal < 0) continue;
 				Annotations.put(local, "ordinal", ordinal);
 				named.add("the local of type " + params[p].getClassName() + " by its type, of which " + patched.name + " in "
-						+ target.name.replace('/', '.') + " has more than one there, NeoForge's patch having added one; vanilla's is the one with ordinal "
+						+ target.name.replace('/', '.') + " has more than one there, " + loader + "'s patch having added one; vanilla's is the one with ordinal "
 						+ ordinal + " here, and the @Local names it");
 			}
 		}
@@ -1202,7 +1211,7 @@ public final class MixinPreflight {
 				for (int i = 0; i + 1 < at.values.size(); i += 2) {
 					if ("target".equals(at.values.get(i))) at.values.set(i + 1, "L" + leading.owner + ";" + leading.name + leading.desc);
 				}
-				moved.add(owner.replace('/', '.') + "." + name + desc + ", which this game build makes through NeoForge's "
+				moved.add(owner.replace('/', '.') + "." + name + desc + ", which this game build makes through " + loader + "'s "
 						+ leading.owner.replace('/', '.') + "." + leading.name + leading.desc + "; the injection point is pointed at that call");
 				continue;
 			}
@@ -1233,12 +1242,12 @@ public final class MixinPreflight {
 			}
 			String via = pointOnly || overload.equals(desc) ? "" : ", through a bridge handler";
 			if (hook != null) {
-				moved.add(owner.replace('/', '.') + "." + name + original + ", which this game build makes inside NeoForge's hook "
+				moved.add(owner.replace('/', '.') + "." + name + original + ", which this game build makes inside " + loader + "'s hook "
 						+ callOwner.replace('/', '.') + "." + callName + overload + "; the injection point is pointed at the hook's call" + via);
 				continue;
 			}
 			if (replacement != null) {
-				moved.add(owner.replace('/', '.') + "." + name + desc + ", which NeoForge deprecated: this game build calls its replacement "
+				moved.add(owner.replace('/', '.') + "." + name + desc + ", which " + loader + " deprecated: this game build calls its replacement "
 						+ callOwner.replace('/', '.') + "." + callName + overload + " instead; the injection point is pointed there" + via);
 				continue;
 			}
@@ -1553,7 +1562,7 @@ public final class MixinPreflight {
 			@SuppressWarnings("unchecked")
 			List<Object> values = (List<Object>) selectors;
 			values.set(i, split.name + split.desc);
-			moved.add(from.name + from.desc + ", the code of which there NeoForge split off into " + split.name + split.desc
+			moved.add(from.name + from.desc + ", the code of which there " + loader + " split off into " + split.name + split.desc
 					+ "; the injector is pointed there");
 		}
 		return moved;
@@ -2183,24 +2192,24 @@ public final class MixinPreflight {
 	 * @param owner         the installed mod the target belongs to, or {@code null} for a game class
 	 */
 	record Context(String configName, String mixinDotted, MixinConfigFile config, Refmap refmap, boolean hasPlugin,
-			boolean selfContained, boolean addsFields, Set<String> stateless, List<PreflightFinding> out, String owner) {
+			boolean selfContained, boolean addsFields, Set<String> stateless, List<PreflightFinding> out, String owner, String loader) {
 		String resolve(String selector) {
 			return refmap.resolve(mixinDotted.replace('.', '/'), selector);
 		}
 
 		Context withOwner(String owner) {
-			return new Context(configName, mixinDotted, config, refmap, hasPlugin, selfContained, addsFields, stateless, out, owner);
+			return new Context(configName, mixinDotted, config, refmap, hasPlugin, selfContained, addsFields, stateless, out, owner, loader);
 		}
 
-		/** What changed the target since the mod was built: NeoForge or this Minecraft version, or this version of the mod. */
+		/** What changed the target since the mod was built: the loader or this Minecraft version, or this version of the mod. */
 		String changer(boolean sentenceStart) {
-			if (owner == null) return "NeoForge or this Minecraft version";
+			if (owner == null) return loader + " or this Minecraft version";
 			return (sentenceStart ? "This" : "this") + " version of " + owner;
 		}
 
-		/** Whose code the target is: NeoForge's (and Minecraft's), or the installed mod's. */
+		/** Whose code the target is: the loader's (and Minecraft's), or the installed mod's. */
 		String platform() {
-			return owner == null ? "NeoForge" : owner;
+			return owner == null ? loader : owner;
 		}
 
 		/** A problem that makes Mixin reject the whole mixin; fatal when the config is required, unless it can be left out. */
@@ -2267,14 +2276,14 @@ public final class MixinPreflight {
 				if (!isGame && owner == null) installedRead.putIfAbsent(target, "");
 				if (pseudo) continue;
 				if (isGame && missingTargetsFatal) {
-					ctx.classLevel("Target class " + target.replace('/', '.') + " does not exist in this Minecraft/NeoForge version",
-							"The mod was likely built for a different Minecraft version, or NeoForge removed this class.");
+					ctx.classLevel("Target class " + target.replace('/', '.') + " does not exist in this Minecraft/" + loader + " version",
+							"The mod was likely built for a different Minecraft version, or " + loader + " removed this class.");
 				} else if (isGame) {
 					ctx.out().add(new PreflightFinding(Severity.WARN, ctx.configName(), ctx.mixinDotted(), "Target class " + target.replace('/', '.')
-							+ " does not exist in this Minecraft/NeoForge version (or on this side); Mixin skips it", ""));
+							+ " does not exist in this Minecraft/" + loader + " version (or on this side); Mixin skips it", ""));
 				} else if (isUntransformable(target)) {
-					ctx.classLevel("Target class " + target.replace('/', '.') + " is a library class that NeoForge loads without mixin support, so this mixin would silently never apply",
-							"Ask the mod author for a NeoForge version, or skip this mixin in config/fabricated.json if the feature is optional.");
+					ctx.classLevel("Target class " + target.replace('/', '.') + " is a library class that " + loader + " loads without mixin support, so this mixin would silently never apply",
+							"Ask the mod author for a " + loader + " version, or skip this mixin in config/fabricated.json if the feature is optional.");
 				} else {
 					ctx.info("Target " + target.replace('/', '.') + " is not a class of Minecraft or of an installed mod, so it was not verified");
 				}
@@ -2448,7 +2457,7 @@ public final class MixinPreflight {
 	/** Whether pre-flight finds nothing but notes in {@code mixin} against {@code target}. */
 	private boolean fits(ClassNode mixin, ClassNode target, Context ctx) {
 		List<PreflightFinding> found = new ArrayList<>();
-		checkMembers(mixin, target, new Context(ctx.configName(), ctx.mixinDotted(), ctx.config(), ctx.refmap(), false, false, false, Set.of(), found, null));
+		checkMembers(mixin, target, new Context(ctx.configName(), ctx.mixinDotted(), ctx.config(), ctx.refmap(), false, false, false, Set.of(), found, null, loader));
 		return found.stream().allMatch(f -> f.severity() == Severity.INFO);
 	}
 
@@ -2806,7 +2815,7 @@ public final class MixinPreflight {
 		if (ann.desc.equals(INJECT) && !anyFuzzy && !acceptsCallbackSignature(handler, ann, matched)) {
 			ctx.classLevel(injectorName + " handler " + handler.name + Type.getMethodDescriptor(Type.getReturnType(handler.desc), handlerArgs(handler).toArray(Type[]::new))
 							+ " does not match the parameters of " + matched.get(0).name + matched.get(0).desc + " in " + target.name.replace('/', '.'),
-					(ctx.owner() == null ? "NeoForge's build of Minecraft declares this method with different parameters (often a lambda whose captured values are ordered differently)"
+					(ctx.owner() == null ? loader + "'s build of Minecraft declares this method with different parameters (often a lambda whose captured values are ordered differently)"
 							: ctx.changer(true) + " declares this method with different parameters") + "; the mod needs an update or this mixin must be skipped.");
 			return;
 		}
@@ -2821,7 +2830,7 @@ public final class MixinPreflight {
 		if (ann.desc.equals(WRAP_METHOD) && !anyFuzzy && !acceptsWrapperSignature(handler, matched)) {
 			ctx.classLevel(injectorName + " handler " + handler.name + Type.getMethodDescriptor(Type.getReturnType(handler.desc), handlerArgs(handler).toArray(Type[]::new))
 							+ " does not match the parameters of " + matched.get(0).name + matched.get(0).desc + " in " + target.name.replace('/', '.'),
-					(ctx.owner() == null ? "NeoForge's build of Minecraft declares this method with different parameters"
+					(ctx.owner() == null ? loader + "'s build of Minecraft declares this method with different parameters"
 							: ctx.changer(true) + " declares this method with different parameters") + "; the mod needs an update or this mixin must be skipped.");
 			return;
 		}
@@ -2829,7 +2838,7 @@ public final class MixinPreflight {
 		if (ann.desc.equals(MODIFY_VARIABLE) && !anyFuzzy && !acceptsModifierSignature(handler, matched)) {
 			ctx.classLevel(injectorName + " handler " + handler.name + Type.getMethodDescriptor(Type.getReturnType(handler.desc), handlerArgs(handler).toArray(Type[]::new))
 							+ " does not match the parameters of " + matched.get(0).name + matched.get(0).desc + " in " + target.name.replace('/', '.'),
-					(ctx.owner() == null ? "NeoForge's build of Minecraft declares this method with different parameters"
+					(ctx.owner() == null ? loader + "'s build of Minecraft declares this method with different parameters"
 							: ctx.changer(true) + " declares this method with different parameters") + "; the mod needs an update or this mixin must be skipped.");
 			return;
 		}
@@ -2898,7 +2907,7 @@ public final class MixinPreflight {
 				String mismatch = InjectionPoints.wrappedArityMismatch(handler, point, ctx.resolve(rawTarget), matched);
 				if (mismatch != null) {
 					ctx.classLevel(injectorName + " handler " + handler.name + " " + mismatch + " in " + matched.get(0).name,
-							(ctx.owner() == null ? "NeoForge's build of Minecraft" : ctx.changer(true)) + " calls this with different arguments; the mod needs an update or this handler must be skipped.");
+							(ctx.owner() == null ? loader + "'s build of Minecraft" : ctx.changer(true)) + " calls this with different arguments; the mod needs an update or this handler must be skipped.");
 					return;
 				}
 			}
