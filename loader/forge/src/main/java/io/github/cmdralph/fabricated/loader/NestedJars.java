@@ -24,10 +24,15 @@ final class NestedJars {
 
 	/** The path of a nested jar in the cache, copied there if it isn't yet. */
 	static Path extract(String name) throws IOException {
+		FabricatedConfig config = FabricatedConfig.load(FMLPaths.CONFIGDIR.get());
+		return extract(name, new TranslationCache(FMLPaths.GAMEDIR.get(), config.cacheEnabled(), config.verifyIntegrity()));
+	}
+
+	/** The path of a nested jar in {@code cache}, copied there if it isn't yet. */
+	static Path extract(String name, TranslationCache cache) throws IOException {
 		byte[] data = FabricatedInfo.readOptional(name);
 		if (data == null) throw new IOException("The Fabricated jar is missing " + name);
-		FabricatedConfig config = FabricatedConfig.load(FMLPaths.CONFIGDIR.get());
-		Path path = new TranslationCache(FMLPaths.GAMEDIR.get(), config.cacheEnabled(), config.verifyIntegrity()).storeNested(data);
+		Path path = cache.storeNested(data);
 		if (!Files.isRegularFile(path)) throw new IOException("Could not extract " + name);
 		return path;
 	}

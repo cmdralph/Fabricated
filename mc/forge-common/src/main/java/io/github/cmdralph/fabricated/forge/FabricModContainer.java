@@ -15,6 +15,9 @@ import net.minecraftforge.forgespi.language.ModFileScanData;
 public final class FabricModContainer extends ModContainer {
 	public FabricModContainer(IModInfo info, ModFileScanData scan, ModuleLayer gameLayer) {
 		super(info);
+		// What ModLoadingContext hands the mod's code while the container is active: Fabric mods have no FML context
+		// (Forge's own containers give theirs), and Forge reads this for every container, so it mustn't be unset.
+		this.contextExtension = () -> null;
 		String moduleName = info.getOwningFile().moduleName();
 		if (ForgeLoaderHooks.attach(info.getModId(), gameLayer, moduleName).isEmpty()) {
 			throw new ModLoadingException(info, ModLoadingStage.CONSTRUCT, "fml.modloading.failedtoloadmodclass",

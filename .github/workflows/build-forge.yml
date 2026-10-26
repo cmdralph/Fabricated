@@ -59,12 +59,12 @@ jobs:
       # Only the requested project and what it depends on are configured, not main's NeoForge projects.
       - name: Forge libraries on the compile classpath (informational)
         run: ./gradlew --configure-on-demand :mc:forge-${{ matrix.minecraft }}:forgeClasspathReport || true
-      - name: Build Fabricated
-        run: ./gradlew --configure-on-demand :mc:forge-${{ matrix.minecraft }}:fabricatedJar --stacktrace
+      - name: Build Fabricated and the test mod
+        run: ./gradlew --configure-on-demand :mc:forge-${{ matrix.minecraft }}:fabricatedJar :mc:forge-${{ matrix.minecraft }}:testmodJar --stacktrace
       - name: Check the jar's layout for Forge
         run: ./gradlew --configure-on-demand :mc:forge-${{ matrix.minecraft }}:checkForgeJar --stacktrace
-      # The first run of the game on this branch (docs/PORTING.md §4.1): what Forge makes of the jar's layout. Reported,
-      # not gated, until F3's discovery and a test mod are in.
+      # The game on this branch (docs/PORTING.md §4.1): what Forge makes of the jar's layout and of the translated test
+      # mod. Reported, not gated, until F3's discovery is settled.
       - name: Server with Fabricated (informational)
         continue-on-error: true
         run: |
