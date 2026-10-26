@@ -160,6 +160,7 @@ check "FABRICATED-TEST content registries OK" server.out "native content registr
 check "FABRICATED-TEST biome modifications OK" server.out "native biome api: an added mob spawn and a climate change reach the biome NeoForge reads (before 26.3: an environment attribute too, and the biome is sent to clients) (BIOME-1)"
 check "FABRICATED-TEST transfer OK" server.out "native transfer: item and fluid storages over vanilla blocks and in items, transaction abort and commit"
 check "FABRICATED-TEST fluid types OK" server.out "Fabric fluids: a registered NeoForge fluid type per family, named and lit from Fabric's attributes, water-like by tag; placed in the world; entities move through an untagged one as through air"
+check "FABRICATED-TEST hidden default OK" server.out "a mixin's private self() doesn't hide the default self() LivingEntity inherits from NeoForge from its subclasses (HIDE-1)"
 check "FABRICATED-TEST commands OK" server.out "/fabricated why, disable and enable from the console"
 check "FABRICATED-TEST api OK" server.out "public API: Fabricated detected, mod and module status, after-entrypoints callback"
 check "FABRICATED-TEST environment stripping OK" server.out "@EnvironmentInterface: a client-only interface is stripped on the dedicated server"
