@@ -26,7 +26,7 @@ import net.minecraft.world.item.Items;
  * the server smoke looks for (ci/forge/smoke-server.sh). It uses Fabric Loader's API and, of Fabric API, only the loot
  * module Fabricated ships itself ({@link ForgeLootTest}), so it runs without Fabric API's jar; with it, it also tries the
  * object builder module's default attribute event ({@link ForgeAttributeTest}) and the advancement module's modify event
- * ({@link ForgeAdvancementTest}).
+ * ({@link ForgeAdvancementTest}). Its fluids are written as Fabric mods write theirs ({@link ForgeFluidTest}).
  */
 public final class ForgeTestMod implements ModInitializer, DedicatedServerModInitializer {
 	public static final String MOD_ID = "fabricated-forge-testmod";
@@ -55,6 +55,11 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 			ForgeLootTest.register();
 		} catch (RuntimeException | LinkageError e) {
 			LOGGER.warn("FABRICATED-FORGE-TEST loot listeners not registered", e);
+		}
+		try {
+			ForgeFluidTest.register();
+		} catch (RuntimeException | LinkageError e) {
+			LOGGER.warn("FABRICATED-FORGE-TEST fluids not registered", e);
 		}
 		if (FabricLoader.getInstance().isModLoaded("fabric-object-builder-api-v1")) {
 			try {
@@ -101,6 +106,15 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 			ForgeLootTest.check(server.overworld());
 		} catch (RuntimeException | LinkageError e) {
 			LOGGER.warn("FABRICATED-FORGE-TEST loot check failed", e);
+		}
+	}
+
+	/** Whether the test mod's fluids have Forge fluid types and leave entities alone ({@link ForgeFluidTest}). */
+	public static void checkFluids(MinecraftServer server) {
+		try {
+			ForgeFluidTest.check(server.overworld());
+		} catch (RuntimeException | LinkageError e) {
+			LOGGER.warn("FABRICATED-FORGE-TEST fluid check failed", e);
 		}
 	}
 
