@@ -3,7 +3,7 @@
   "package": "io.github.cmdralph.fabricated.testmod.mixin",
   "plugin": "io.github.cmdralph.fabricated.testmod.TestMixinPlugin",
   "compatibilityLevel": "JAVA_21",
-  "mixins": ["MinecraftServerMixin", "PackRepositoryMixin", "PlayerListMixin", "RegistryDataLoaderMixin"],
+  "mixins": ["LivingEntityMixin", "MinecraftServerMixin", "PackRepositoryMixin", "PlayerListMixin", "RegistryDataLoaderMixin"],
   "client": ["client.MinecraftStopMixin", "client.MinecraftEarlyReloadListenerMixin"],
   "injectors": {
     "defaultRequire": 1
