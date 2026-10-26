@@ -227,6 +227,28 @@ class TranslateHelpersTest {
 	}
 
 	@Test
+	void knowsWhatSpongePoweredMixinReleasesTake() {
+		// LEVEL-1: from the CompatibilityLevel enums of Mixin 0.8.5, 0.8.6 and 0.8.7.
+		assertEquals(18, MixinCompat.lastCompatibilityLevel("0.8.5"), "Forge 47");
+		assertEquals(21, MixinCompat.lastCompatibilityLevel("0.8.7"), "Forge 61 to 66");
+		assertEquals(0, MixinCompat.lastCompatibilityLevel("0.17.4+mixin.0.8.7"), "Fabric's Mixin isn't limited here");
+		assertEquals(0, MixinCompat.lastCompatibilityLevel("0.8.8"), "a later release isn't known");
+		assertEquals(0, MixinCompat.lastCompatibilityLevel(null));
+
+		// INTERFACE-1: injectors in interface mixins came with 0.8.6.
+		assertFalse(MixinCompat.interfaceInjectors("0.8.5"), "Forge 47");
+		assertTrue(MixinCompat.interfaceInjectors("0.8.7"), "Forge 61 to 66");
+		assertTrue(MixinCompat.interfaceInjectors("0.17.4+mixin.0.8.7"), "Fabric's Mixin");
+		assertTrue(MixinCompat.interfaceInjectors(null));
+
+		assertEquals(25, MixinCompat.compatibilityLevel(" java_25 "), "as Mixin reads it");
+		assertEquals(8, MixinCompat.compatibilityLevel("JAVA_8"));
+		assertEquals(0, MixinCompat.compatibilityLevel("JAVA_LATEST"));
+		assertEquals(0, MixinCompat.compatibilityLevel(null));
+		assertEquals(0, MixinCompat.compatibilityLevel(25));
+	}
+
+	@Test
 	void parsesSkipMixinOverrides() throws Exception {
 		MixinConfigFile cfg = MixinConfigFile.parse("{\"package\":\"com.example.mixin\",\"mixins\":[\"A\",\"B\"],\"client\":[\"C\"]}");
 		ModTranslator.Skips skips = ModTranslator.skipsFor("x.mixins.json", cfg, Set.of("A", "x.mixins.json:C", "other.json:B", "Missing", "B#handler", "A#ignored"));

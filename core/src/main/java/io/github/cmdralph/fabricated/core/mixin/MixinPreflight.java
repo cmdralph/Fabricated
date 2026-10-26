@@ -126,6 +126,8 @@ public final class MixinPreflight {
 	private final ClassBytesSource untransformable;
 	private final boolean clientSide;
 	private final boolean missingTargetsFatal;
+	/** Whether the running Mixin applies injectors in interface mixins (INTERFACE-1: Forge 47's doesn't). */
+	private final boolean interfaceInjectors;
 	/** The platform's loader, as messages name it ({@code NeoForge}, {@code Forge}). */
 	private final String loader;
 	/** Vanilla's code of the game, or {@link ClassBytesSource#EMPTY} (VANILLA-1). */
@@ -164,6 +166,16 @@ public final class MixinPreflight {
 	/** @param loader the platform's loader, as messages name it ({@code NeoForge}, {@code Forge}) */
 	public MixinPreflight(ClassIndex game, InstalledClasses installed, ClassBytesSource modClasses, ClassBytesSource untransformable,
 			boolean clientSide, boolean missingTargetsFatal, ClassBytesSource vanilla, String loader) {
+		this(game, installed, modClasses, untransformable, clientSide, missingTargetsFatal, vanilla, loader, true);
+	}
+
+	/**
+	 * @param interfaceInjectors whether the running Mixin applies injectors in interface mixins and takes their
+	 *                           non-public methods, as it does from 0.8.6 (INTERFACE-1)
+	 */
+	public MixinPreflight(ClassIndex game, InstalledClasses installed, ClassBytesSource modClasses, ClassBytesSource untransformable,
+			boolean clientSide, boolean missingTargetsFatal, ClassBytesSource vanilla, String loader, boolean interfaceInjectors) {
+		this.interfaceInjectors = interfaceInjectors;
 		this.game = game;
 		this.installed = installed;
 		this.modClasses = modClasses;
@@ -2602,14 +2614,26 @@ public final class MixinPreflight {
 				continue;
 			}
 
+			boolean itf = (mixin.access & Opcodes.ACC_INTERFACE) != 0;
 			boolean injector = false;
 			for (AnnotationNode ann : Annotations.all(method)) {
 				if (isInjector(ann.desc)) {
 					injector = true;
+					if (itf && !interfaceInjectors) {
+						ctx.injector(method, 1, "@" + simpleName(ann.desc) + " handler " + method.name + " is an injector in an interface mixin, which "
+										+ loader + "'s Mixin doesn't apply (Mixin does from 0.8.6), so it would drop the whole mixin",
+								"The feature this hook serves doesn't work on this " + loader + ".");
+						break;
+					}
 					checkInjector(mixin, method, ann, target, ctx);
 				}
 			}
-			if (!injector) checkMerged(method, target, ctx);
+			if (!injector && itf && !interfaceInjectors && (method.access & (Opcodes.ACC_PUBLIC | Opcodes.ACC_SYNTHETIC)) == 0) {
+				ctx.classLevel("Method " + method.name + method.desc + " of an interface mixin is not public, which " + loader
+						+ "'s Mixin doesn't take (Mixin does from 0.8.6), so it drops the whole mixin", "The mod needs a build for this " + loader + ".");
+			} else if (!injector) {
+				checkMerged(method, target, ctx);
+			}
 		}
 	}
 
@@ -2792,7 +2816,10 @@ public final class MixinPreflight {
 			}
 			for (MethodNode m : target.methods) {
 				if (!ref.matchesMethod(m.name, m.desc)) continue;
-				matched.add(m);
+				// Mixin keys an injector's targets by method (InjectionInfo.prepare), so a method that several selectors
+				// name is injected once: LambDynamicLights names a hook by its Intermediary and its Mojang name, which
+				// select the same method once remapped.
+				if (!matched.contains(m)) matched.add(m);
 				// As Mixin: a selector without a descriptor (or quantifier) picks the first method of that name only.
 				if (ref.desc() == null) break;
 			}
@@ -2876,6 +2903,11 @@ public final class MixinPreflight {
 		// REQ-1). Counted only where that can happen and every target is known.
 		int injections = require > 1 && !anyFuzzy ? 0 : -1;
 		List<String> without = new ArrayList<>();
+		// Mixin also caps them at allow (at least require, and one): more is the same critical error as too few, whatever
+		// the config's required (Fabric API's furnace hook on Forge 47, whose patch makes the call it hooks twice, ALLOW-1).
+		int allow = Annotations.value(ann, "allow") instanceof Integer a ? Math.max(Math.max(require, 1), a) : Integer.MAX_VALUE;
+		int allowed = allow < Integer.MAX_VALUE && !anyFuzzy ? 0 : -1;
+		Set<String> with = new TreeSet<>();
 		for (AnnotationNode at : Annotations.list(Annotations.value(ann, "at"))) {
 			String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
 			String rawTarget = Annotations.value(at, "target") instanceof String t ? t : null;
@@ -2892,6 +2924,11 @@ public final class MixinPreflight {
 					int n = expression ? -1 : InjectionPoints.count(point, resolved, ordinal, opcode, range, m);
 					if (n == 0) without.add(m.name);
 					injections = n < 0 ? -1 : injections + n;
+				}
+				if (allowed >= 0) {
+					int n = expression ? -1 : InjectionPoints.count(point, resolved, ordinal, opcode, range, m);
+					if (n > 0) with.add(m.name);
+					allowed = n < 0 ? -1 : allowed + n;
 				}
 				if (v == Verdict.FOUND) verdict = Verdict.FOUND;
 				else if (v == Verdict.MISSING && verdict == Verdict.UNKNOWN) verdict = Verdict.MISSING;
@@ -2911,6 +2948,12 @@ public final class MixinPreflight {
 					return;
 				}
 			}
+		}
+		if (allowed > allow) {
+			ctx.injector(handler, 1, injectorName + " " + handler.name + " applies " + allowed + " time(s) where it allows " + allow
+							+ ": its point occurs that often in " + String.join(", ", with) + " in " + target.name.replace('/', '.'),
+					ctx.changer(true) + " changed " + (with.size() == 1 ? "that method" : "those methods") + "; the mod needs an update or this mixin must be skipped.");
+			return;
 		}
 		if (injections >= 0 && injections < require) {
 			ctx.injector(handler, require, injectorName + " " + handler.name + " applies " + injections + " time(s) where it requires " + require
