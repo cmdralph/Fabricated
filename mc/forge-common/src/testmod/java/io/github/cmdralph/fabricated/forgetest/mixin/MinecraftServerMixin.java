@@ -14,7 +14,8 @@ import net.minecraft.server.MinecraftServer;
 /**
  * Proves Forge's Mixin applies a translated Fabric mod's mixins (from the overlay's MixinConfigs): logs after the first
  * server tick, whether the server has the interface the test mod's class tweaker injects, whether the test mod's item
- * is still in the registry Forge has frozen and checked by then, and whether its item tag's removals applied.
+ * is still in the registry Forge has frozen and checked by then, whether its item tag's removals applied, and whether
+ * Fabric's loot table events reached dirt's loot table and drops.
  */
 @Mixin(MinecraftServer.class)
 public abstract class MinecraftServerMixin {
@@ -31,6 +32,7 @@ public abstract class MinecraftServerMixin {
 				ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST registry entry kept OK");
 			}
 			ForgeTestMod.checkTagRemoval();
+			ForgeTestMod.checkLoot((MinecraftServer) (Object) this);
 		}
 	}
 }

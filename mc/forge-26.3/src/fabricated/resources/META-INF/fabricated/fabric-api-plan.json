@@ -6,10 +6,15 @@
       "skipMixins": ["fabric-advancement-api-v1.mixins.json:ResourceManagerRegistryLoadTaskMixin"],
       "reason": "Forge 66 decodes advancements as Optional<Advancement> (its conditional data), which upstream's loading hook casts to Advancement and stops data pack loading: the advancement modify event doesn't run until a native module on Forge's events replaces it."
     },
+    "fabric-api-base": {
+      "plan": "native",
+      "version": "2.0.6",
+      "reason": "Shipped by Fabricated (vendored from upstream); every Fabric API module builds on it."
+    },
     "fabric-loot-api-v3": {
-      "plan": "passthrough",
-      "skipMixins": ["fabric-loot-api-v3.mixins.json:ResourceManagerRegistryLoadTaskMixin"],
-      "reason": "Forge 66 decodes loot tables as Optional<LootTable> (its conditional loot tables), which upstream's loading hook casts to LootTable and stops data pack loading: the loot table replace and modify events don't run until a native loot module on Forge's LootTableLoadEvent replaces it."
+      "plan": "native",
+      "version": "4.0.9",
+      "reason": "Shipped by Fabricated: upstream's builder and drop mixins as they are, its loading hook replaced by one on Forge 66's registry loading task, which decodes loot tables as Optional<LootTable> (its conditional loot tables) and drops what Forge's LootTableLoadEvent returns."
     },
     "fabric-tag-api-v1": {
       "plan": "passthrough",

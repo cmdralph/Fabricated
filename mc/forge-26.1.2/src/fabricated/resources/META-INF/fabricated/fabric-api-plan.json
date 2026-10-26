@@ -1,6 +1,16 @@
 {
   "fabricApiVersion": "0.155.3+26.1.2",
   "modules": {
+    "fabric-api-base": {
+      "plan": "native",
+      "version": "2.0.3",
+      "reason": "Shipped by Fabricated (vendored from upstream); every Fabric API module builds on it."
+    },
+    "fabric-loot-api-v3": {
+      "plan": "native",
+      "version": "3.0.12",
+      "reason": "Shipped by Fabricated: upstream's builder and drop mixins as they are, its loading hook replaced by Forge's LootTableLoadEvent (upstream's conflicts with Forge's loot loading)."
+    },
     "fabric-tag-api-v1": {
       "plan": "passthrough",
       "skipMixins": ["fabric-tag-api-v1.mixins.json:TagFileMixin#remove", "fabric-tag-api-v1.mixins.json:TagFileMixin#modifyCodec", "fabric-tag-api-v1.mixins.json:TagLoaderMixin#removeTagRemovalReferenceOnReplace", "fabric-tag-api-v1.mixins.json:TagLoaderMixin#loadRemoveEntries", "fabric-tag-api-v1.mixins.json:TagLoaderMixin#scopeIdToTryBuildTag", "fabric-tag-api-v1.mixins.json:TagLoaderMixin#addTagRemovalReferencesToDependencySorter", "fabric-tag-api-v1.mixins.json:TagLoaderMixin#removeEntriesFromTags", "fabric-tag-api-v1.mixins.json:TagLoaderMixin#removeTagRemovalReferencesWhenFinished"],
