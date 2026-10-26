@@ -197,9 +197,13 @@ public final class FabricDependencyLocator extends AbstractModProvider implement
 			byte[] planJson = FabricatedInfo.readOptional("fabric-api-plan.json");
 			if (planJson == null) throw new IllegalStateException("This Fabricated build is missing its fabric-api-plan.json");
 			plan = FabricApiPlan.parse(new String(planJson, StandardCharsets.UTF_8));
+			// Forge's installer leaves vanilla in Mojang's names among the libraries (ForgeLibraries); else NeoForge's layout.
+			Optional<Path> installedVanilla = fabricJars.isEmpty() ? Optional.empty()
+					: ForgeLibraries.vanillaInMojangNames(minecraft.getFilePath(), client, mcVersion, info.namespace() == Namespace.INTERMEDIARY);
 			Pipeline.VanillaGame vanilla = fabricJars.isEmpty() ? Pipeline.VanillaGame.NONE
+					: installedVanilla.isPresent() ? vanillaGame(installedVanilla.get(), vanillaJars)
 					: VanillaGameJar.find(minecraft.getFilePath(), mcVersion, client, cache, vanillaJars);
-			if (info.namespace() == Namespace.INTERMEDIARY && vanilla.classes() != ClassBytesSource.EMPTY) {
+			if (installedVanilla.isEmpty() && info.namespace() == Namespace.INTERMEDIARY && vanilla.classes() != ClassBytesSource.EMPTY) {
 				// 1.21.11's game jar is obfuscated: read in Mojang's names through the mappings Forge's installer left (VANILLA-2).
 				vanilla = new Pipeline.VanillaGame(new OfficialClasses(vanilla.classes(), () -> {
 					try {
@@ -329,6 +333,18 @@ public final class FabricDependencyLocator extends AbstractModProvider implement
 	private static String baseName(Path jar) {
 		String name = jar.toString().replace('\\', '/');
 		return name.length() > 1 && name.startsWith("/") ? name.substring(1) : name;
+	}
+
+	/** Vanilla's classes from the game jar Forge's installer left in Mojang's names, its archive added to {@code opened}. */
+	private static Pipeline.VanillaGame vanillaGame(Path jar, List<SafeArchive> opened) {
+		try {
+			SafeArchive archive = SafeArchive.open(jar, ArchiveLimits.DEFAULTS);
+			opened.add(archive);
+			if (!archive.contains("net/minecraft/server/MinecraftServer.class")) return new Pipeline.VanillaGame(ClassBytesSource.EMPTY, "not found: " + jar + " isn't a game jar");
+			return new Pipeline.VanillaGame(name -> archive.read(name + ".class"), jar + " (Forge's installed game, in Mojang's names)");
+		} catch (IOException e) {
+			return new Pipeline.VanillaGame(ClassBytesSource.EMPTY, "not found: " + jar + " can't be read: " + e.getMessage());
+		}
 	}
 
 	/** The module layers a class's layer reads, itself included; the boot layer when the class is in none. */

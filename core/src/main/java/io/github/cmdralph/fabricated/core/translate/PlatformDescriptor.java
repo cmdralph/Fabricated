@@ -1,7 +1,11 @@
 package io.github.cmdralph.fabricated.core.translate;
 
+import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.stream.Collectors;
+
+import io.github.cmdralph.fabricated.core.json.Json;
 
 /**
  * How the platform's loader learns of a translated Fabric mod (docs/PORTING.md §6 item 5): where it reads a mod's
@@ -49,6 +53,20 @@ public interface PlatformDescriptor {
 		public boolean enumExtensions() {
 			return false;
 		}
+
+		/**
+		 * Forge reads no mod's pack without metadata ("Missing metadata in pack mod:...", then "Missing data pack", in the
+		 * forge branch's server smoke on Forge 64 to 66), where NeoForge makes one: the formats are those Fabricated's own
+		 * in-game mod on Forge declares, whose pack loads on Forge 61 to 66.
+		 */
+		@Override
+		public byte[] packMetadata(ModsTomlWriter.Spec spec) {
+			Map<String, Object> pack = new LinkedHashMap<>();
+			pack.put("description", spec.displayName());
+			pack.put("min_format", 82);
+			pack.put("max_format", 2048);
+			return (Json.write(Map.of("pack", pack), true) + "\n").getBytes(StandardCharsets.UTF_8);
+		}
 	};
 
 	/** Where the platform's loader reads a mod's descriptor in its jar. */
@@ -65,5 +83,13 @@ public interface PlatformDescriptor {
 	/** Whether the platform's loader adds enum constants from the file a descriptor names (ENUM-1). */
 	default boolean enumExtensions() {
 		return true;
+	}
+
+	/**
+	 * The {@code pack.mcmeta} a mod whose jar has none is given, as Fabric API's resource loader gives every mod's
+	 * resources one on Fabric; null when the platform's loader makes its own (NeoForge).
+	 */
+	default byte[] packMetadata(ModsTomlWriter.Spec spec) {
+		return null;
 	}
 }
