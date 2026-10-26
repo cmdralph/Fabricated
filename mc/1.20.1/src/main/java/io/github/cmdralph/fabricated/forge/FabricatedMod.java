@@ -9,6 +9,7 @@ import org.slf4j.LoggerFactory;
 
 import io.github.cmdralph.fabricated.core.runtime.EntrypointRunner;
 import io.github.cmdralph.fabricated.forge.biome.BiomeCompat;
+import io.github.cmdralph.fabricated.forge.fluid.FabricFluidType;
 import io.github.cmdralph.fabricated.loader.FabricatedState;
 import io.github.cmdralph.fabricated.loader.ForgeLoaderHooks;
 import net.fabricmc.api.DedicatedServerModInitializer;
@@ -113,6 +114,8 @@ public final class FabricatedMod {
 			} else {
 				LOGGER.warn("Fabric client entrypoints don't run on Forge yet");
 			}
+			// Each Fabric fluid family's Forge fluid type, which Forge asks every fluid for (see FabricFluidType).
+			FabricFluidType.registerAll();
 		} finally {
 			opened.forEach(ForgeRegistry::freeze);
 		}
