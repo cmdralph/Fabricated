@@ -8,11 +8,13 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import io.github.cmdralph.fabricated.forgetest.ForgeTestMarker;
 import io.github.cmdralph.fabricated.forgetest.ForgeTestMod;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.server.MinecraftServer;
 
 /**
  * Proves Forge's Mixin applies a translated Fabric mod's mixins (from the overlay's MixinConfigs): logs after the first
- * server tick, and whether the server has the interface the test mod's class tweaker injects.
+ * server tick, whether the server has the interface the test mod's class tweaker injects, and whether the test mod's item
+ * is still in the registry Forge has frozen and checked by then.
  */
 @Mixin(MinecraftServer.class)
 public abstract class MinecraftServerMixin {
@@ -25,6 +27,9 @@ public abstract class MinecraftServerMixin {
 			fabricatedForgeTest$logged = true;
 			ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST mixin OK");
 			if ((Object) this instanceof ForgeTestMarker) ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST injected interface OK");
+			if (ForgeTestMod.testItem != null && BuiltInRegistries.ITEM.getValue(ForgeTestMod.ITEM_ID) == ForgeTestMod.testItem) {
+				ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST registry entry kept OK");
+			}
 		}
 	}
 }
