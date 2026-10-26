@@ -68,8 +68,9 @@ One entry per working session, newest first: what changed, and how it was verifi
   at the target's field of that name: fabric-tag-api-v1's `TagFileMixin` initialises its own `remove` list, and with
   the field left out the empty list was written over the platform's `remove` after the record's constructor set it, so
   with Fabric API's tag module passed through neither `fabric:remove` nor NeoForge's (or Forge's) `remove` took
-  anything out of a tag. Found by forge-legacy's Fabric API run on #132. The test mod checks both removals on every
-  version. Test: 288 core tests.
+  anything out of a tag. Found by forge-legacy's Fabric API run on #132. In a constructor the initialiser's whole
+  statement goes, as Mixin refuses an initialiser that doesn't end in its field's store; elsewhere the store becomes
+  pops of its operands. The test mod checks both removals on every version. Test: 288 core tests.
 - FINAL-1's `final` is removed at class load instead of by an access transformer line (FINAL-2): Forge 47 makes
   `Ingredient.toNetwork` final with its own access transformer, and the engine refused the mod's `-f` next to Forge's
   `+f`, so Forge 47's Fabric API server exited at start on forge-legacy's run on #125. The translation's metadata lists

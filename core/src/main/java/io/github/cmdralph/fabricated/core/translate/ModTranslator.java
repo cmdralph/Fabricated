@@ -34,9 +34,23 @@ import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.commons.ClassRemapper;
 import org.objectweb.asm.commons.Remapper;
+import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.AnnotationNode;
 import org.objectweb.asm.tree.ClassNode;
+import org.objectweb.asm.tree.FieldInsnNode;
+import org.objectweb.asm.tree.IincInsnNode;
+import org.objectweb.asm.tree.InsnList;
+import org.objectweb.asm.tree.InsnNode;
+import org.objectweb.asm.tree.JumpInsnNode;
+import org.objectweb.asm.tree.LabelNode;
+import org.objectweb.asm.tree.LineNumberNode;
+import org.objectweb.asm.tree.LocalVariableNode;
+import org.objectweb.asm.tree.LookupSwitchInsnNode;
+import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
+import org.objectweb.asm.tree.TableSwitchInsnNode;
+import org.objectweb.asm.tree.TryCatchBlockNode;
+import org.objectweb.asm.tree.VarInsnNode;
 
 import io.github.cmdralph.fabricated.core.accesswidener.AccessTransformerConverter;
 import io.github.cmdralph.fabricated.core.accesswidener.AccessWidenerException;
@@ -999,9 +1013,9 @@ public final class ModTranslator {
 	/**
 	 * {@code data} without the methods and fields named in {@code names} (a method name with its descriptor removes only
 	 * that method); the names found are removed from {@code missing}. The class's stores to a field it leaves out go
-	 * with the field, its initialiser's among them: Mixin would point them at the target's field of that name, and write
-	 * there, a constructor's initialiser after the target's own assignment (fabric-tag-api-v1's {@code remove}, whose
-	 * empty list then replaced the platform's own list of a tag file's removals).
+	 * with the field, its initialiser among them (see {@link #withoutStores}): Mixin would point them at the target's
+	 * field of that name, and write there, a constructor's initialiser after the target's own assignment
+	 * (fabric-tag-api-v1's {@code remove}, whose empty list then replaced the platform's own list of a tag file's removals).
 	 */
 	static byte[] withoutMembers(byte[] data, Set<String> names, Set<String> missing) {
 		ClassReader reader = new ClassReader(data);
@@ -1010,10 +1024,12 @@ public final class ModTranslator {
 		Set<String> removedFields = new HashSet<>();
 		reader.accept(new ClassVisitor(Opcodes.ASM9, writer) {
 			private String className;
+			private String superName;
 
 			@Override
 			public void visit(int version, int access, String name, String signature, String superName, String[] interfaces) {
 				className = name;
+				this.superName = superName;
 				super.visit(version, access, name, signature, superName, interfaces);
 			}
 
@@ -1026,18 +1042,13 @@ public final class ModTranslator {
 					return null;
 				}
 				MethodVisitor kept = super.visitMethod(access, name, descriptor, signature, exceptions);
+				// The class reader visits the fields first: the set is complete.
 				if (kept == null || removedFields.isEmpty()) return kept;
-				return new MethodVisitor(Opcodes.ASM9, kept) {
+				return new MethodNode(Opcodes.ASM9, access, name, descriptor, signature, exceptions) {
 					@Override
-					public void visitFieldInsn(int opcode, String owner, String field, String fieldDescriptor) {
-						boolean store = opcode == Opcodes.PUTFIELD || opcode == Opcodes.PUTSTATIC;
-						if (!store || !owner.equals(className) || !removedFields.contains(field + ":" + fieldDescriptor)) {
-							super.visitFieldInsn(opcode, owner, field, fieldDescriptor);
-							return;
-						}
-						// The value, then (for an instance field) the object: the stack as the store would have left it.
-						super.visitInsn(fieldDescriptor.equals("J") || fieldDescriptor.equals("D") ? Opcodes.POP2 : Opcodes.POP);
-						if (opcode == Opcodes.PUTFIELD) super.visitInsn(Opcodes.POP);
+					public void visitEnd() {
+						withoutStores(this, className, superName, removedFields);
+						accept(kept);
 					}
 				};
 			}
@@ -1051,6 +1062,98 @@ public final class ModTranslator {
 			}
 		}, 0);
 		return writer.toByteArray();
+	}
+
+	/**
+	 * {@code method} of class {@code owner} without its stores to {@code fields} ({@code name:descriptor}). In a
+	 * constructor, a field initialiser's whole statement goes, from the {@code this} it loads after the call to the
+	 * superclass's constructor or the previous field store, to its store: Mixin reads a mixin's initialisers as such
+	 * statements, and refuses one ending other than in a field store. Anywhere else, and where the statement isn't plain
+	 * (it reads a local or a parameter, jumps out, or a jump or handler leads into it), the store becomes pops of its
+	 * operands, which leave the stack as the store would have.
+	 */
+	static void withoutStores(MethodNode method, String owner, String superName, Set<String> fields) {
+		boolean constructor = method.name.equals("<init>");
+		// Where the statement that the next field store ends begins: set once the superclass's constructor has run.
+		AbstractInsnNode statement = null;
+		for (AbstractInsnNode insn : method.instructions.toArray()) {
+			if (constructor && insn instanceof MethodInsnNode call && call.getOpcode() == Opcodes.INVOKESPECIAL && call.name.equals("<init>")
+					&& statement == null && (call.owner.equals(superName) || call.owner.equals(owner))) {
+				statement = insn.getNext();
+				continue;
+			}
+			if (!(insn instanceof FieldInsnNode store) || (store.getOpcode() != Opcodes.PUTFIELD && store.getOpcode() != Opcodes.PUTSTATIC)) continue;
+			AbstractInsnNode next = insn.getNext();
+			if (store.owner.equals(owner) && fields.contains(store.name + ":" + store.desc)
+					&& !(constructor && statement != null && store.getOpcode() == Opcodes.PUTFIELD && removeStatement(method, statement, store))) {
+				InsnList pops = new InsnList();
+				pops.add(new InsnNode(store.desc.equals("J") || store.desc.equals("D") ? Opcodes.POP2 : Opcodes.POP));
+				if (store.getOpcode() == Opcodes.PUTFIELD) pops.add(new InsnNode(Opcodes.POP));
+				method.instructions.insert(store, pops);
+				method.instructions.remove(store);
+			}
+			if (statement != null && store.getOpcode() == Opcodes.PUTFIELD) statement = next;
+		}
+	}
+
+	/** Removes the statement from {@code start} to {@code store} if it is a plain field initialiser; whether it did. */
+	private static boolean removeStatement(MethodNode method, AbstractInsnNode start, FieldInsnNode store) {
+		List<AbstractInsnNode> statement = new ArrayList<>();
+		Set<LabelNode> labels = new HashSet<>();
+		for (AbstractInsnNode insn = start; insn != store; insn = insn.getNext()) {
+			if (insn == null) return false;
+			statement.add(insn);
+			if (insn instanceof LabelNode label) labels.add(label);
+		}
+		AbstractInsnNode first = statement.stream().filter(insn -> insn.getOpcode() >= 0).findFirst().orElse(null);
+		if (!(first instanceof VarInsnNode load) || load.getOpcode() != Opcodes.ALOAD || load.var != 0) return false;
+		for (AbstractInsnNode insn : statement) {
+			int opcode = insn.getOpcode();
+			if (insn instanceof VarInsnNode local && (opcode != Opcodes.ALOAD || local.var != 0)) return false;
+			if (insn instanceof IincInsnNode || insn instanceof TableSwitchInsnNode || insn instanceof LookupSwitchInsnNode) return false;
+			if (insn instanceof JumpInsnNode jump && !labels.contains(jump.label)) return false;
+			// A chained assignment, or a statement that ends before its store.
+			if (opcode == Opcodes.DUP_X1 || opcode == Opcodes.DUP_X2 || opcode == Opcodes.DUP2_X1 || opcode == Opcodes.DUP2_X2
+					|| (opcode >= Opcodes.IRETURN && opcode <= Opcodes.RETURN) || opcode == Opcodes.ATHROW || opcode == Opcodes.RET) {
+				return false;
+			}
+		}
+		for (TryCatchBlockNode block : method.tryCatchBlocks) {
+			if (labels.contains(block.start) || labels.contains(block.end) || labels.contains(block.handler)) return false;
+		}
+		// Nothing outside may jump into it; the labels something outside names (a line number, a local's range) stay.
+		Set<LabelNode> named = new HashSet<>();
+		for (AbstractInsnNode insn = method.instructions.getFirst(); insn != null; insn = insn.getNext()) {
+			if (insn == start) {
+				insn = store;
+				continue;
+			}
+			List<LabelNode> targets = new ArrayList<>();
+			if (insn instanceof JumpInsnNode jump) targets.add(jump.label);
+			if (insn instanceof TableSwitchInsnNode table) {
+				targets.add(table.dflt);
+				targets.addAll(table.labels);
+			}
+			if (insn instanceof LookupSwitchInsnNode lookup) {
+				targets.add(lookup.dflt);
+				targets.addAll(lookup.labels);
+			}
+			for (LabelNode target : targets) {
+				if (labels.contains(target)) return false;
+			}
+			if (insn instanceof LineNumberNode line) named.add(line.start);
+		}
+		if (method.localVariables != null) {
+			for (LocalVariableNode local : method.localVariables) {
+				named.add(local.start);
+				named.add(local.end);
+			}
+		}
+		for (AbstractInsnNode insn : statement) {
+			if (!(insn instanceof LabelNode label && named.contains(label))) method.instructions.remove(insn);
+		}
+		method.instructions.remove(store);
+		return true;
 	}
 
 	private static ClassBytesSource classSource(FileView files) {
