@@ -13,6 +13,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -29,6 +30,7 @@ import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.ClassNode;
+import org.objectweb.asm.tree.MethodInsnNode;
 
 import io.github.cmdralph.fabricated.api.FabricApiModule;
 import io.github.cmdralph.fabricated.api.FabricMod;
@@ -1426,6 +1428,72 @@ class PipelineTest {
 			assertEquals(List.of(expected), translated.defaultBridges(), result.report().render());
 			assertEquals(List.of(expected), result.defaultBridges().get(renderer));
 		}
+	}
+
+	@Test
+	void aMixinsPrivateMethodHidingAnInheritedDefaultIsRenamed(@TempDir Path game) throws Exception {
+		// HIDE-1: fabric-entity-events-v1 gives LivingEntity a private self(), which hid Forge's default self() from mobs.
+		String living = "net/minecraft/world/Living";
+		String extension = "net/neoforged/neoforge/common/LivingExtension";
+		String self = "()L" + living + ";";
+		String mixin = "com/hide/mixin/LivingMixin";
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		Path jar = TestJars.create().fabricModJson(TestJars.modJson("hide", "1.0", "\"mixins\":[\"hide.mixins.json\"]"))
+				.text("hide.mixins.json", "{\"required\":true,\"package\":\"com.hide.mixin\",\"mixins\":[\"LivingMixin\"]}")
+				.bytes(mixin + ".class", selfMixin(mixin, living, self))
+				.write(mods.resolve("hide.jar"));
+		ClassWriter cw = new ClassWriter(0);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, living, null, "java/lang/Object", new String[] {extension});
+		cw.visitEnd();
+		Map<String, byte[]> gameClasses = Map.of(TARGET, targetClass(), extension, itf(extension, List.of(), "self" + self, null), living, cw.toByteArray());
+
+		Pipeline.Result result = Pipeline.run(input(game, List.of(jar), Namespace.OFFICIAL, gameClasses, null));
+		TranslatedMod translated = result.mods().getFirst().translated();
+		String renamed = "self$fabricated$" + Integer.toHexString(mixin.hashCode());
+		assertTrue(translated.notes().stream().anyMatch(n -> n.contains(renamed) && n.contains("HIDE-1")), translated.notes().toString());
+		try (SafeArchive overlay = SafeArchive.open(translated.overlay(), ArchiveLimits.DEFAULTS)) {
+			ClassNode node = new ClassNode();
+			new ClassReader(overlay.read(mixin + ".class")).accept(node, 0);
+			assertEquals(List.of("<init>", renamed, "use"), node.methods.stream().map(m -> m.name).toList());
+			MethodInsnNode call = (MethodInsnNode) Arrays.stream(node.methods.get(2).instructions.toArray())
+					.filter(MethodInsnNode.class::isInstance).findFirst().orElseThrow();
+			assertEquals(renamed, call.name, "the mixin's call of it follows");
+		}
+	}
+
+	/** A mixin into {@code target} with a private {@code self()} ({@code self} its descriptor) and a method calling it. */
+	private static byte[] selfMixin(String name, String target, String self) {
+		ClassWriter cw = new ClassWriter(0);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, name, null, "java/lang/Object", null);
+		AnnotationVisitor mixin = cw.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false);
+		AnnotationVisitor values = mixin.visitArray("value");
+		values.visit(null, Type.getObjectType(target));
+		values.visitEnd();
+		mixin.visitEnd();
+		MethodVisitor init = cw.visitMethod(Opcodes.ACC_PRIVATE, "<init>", "()V", null, null);
+		init.visitCode();
+		init.visitVarInsn(Opcodes.ALOAD, 0);
+		init.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false);
+		init.visitInsn(Opcodes.RETURN);
+		init.visitMaxs(1, 1);
+		init.visitEnd();
+		MethodVisitor helper = cw.visitMethod(Opcodes.ACC_PRIVATE, "self", self, null, null);
+		helper.visitAnnotation("Lorg/spongepowered/asm/mixin/Unique;", false).visitEnd();
+		helper.visitCode();
+		helper.visitInsn(Opcodes.ACONST_NULL);
+		helper.visitInsn(Opcodes.ARETURN);
+		helper.visitMaxs(1, 1);
+		helper.visitEnd();
+		MethodVisitor use = cw.visitMethod(Opcodes.ACC_PRIVATE, "use", "()V", null, null);
+		use.visitCode();
+		use.visitVarInsn(Opcodes.ALOAD, 0);
+		use.visitMethodInsn(Opcodes.INVOKESPECIAL, name, "self", self, false);
+		use.visitInsn(Opcodes.POP);
+		use.visitInsn(Opcodes.RETURN);
+		use.visitMaxs(1, 1);
+		use.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
 	}
 
 	/** An interface with these superinterfaces, a default method ({@code name + descriptor}) if any, and an {@code @Mixin} target if any. */

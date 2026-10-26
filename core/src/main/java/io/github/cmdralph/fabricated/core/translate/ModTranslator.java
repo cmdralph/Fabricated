@@ -581,11 +581,14 @@ public final class ModTranslator {
 			if (!skip.isEmpty() || rewritten) {
 				overlay.put(entry.config(), config.withoutMixins(skip).getBytes(StandardCharsets.UTF_8));
 			}
-			// The interfaces the kept mixins add to their targets.
 			for (String mixin : config.mixinsFor(env.clientSide())) {
 				ClassNode node = skip.contains(mixin) ? null : classes.apply(config.internalName(mixin));
-				if (node == null || node.interfaces.isEmpty()) continue;
-				for (String target : mixinTargets(node)) addBridges(DefaultBridge.of(target, node.interfaces, classes), node.interfaces, bridges, notes);
+				if (node == null) continue;
+				List<String> targets = mixinTargets(node);
+				renameHidingMethods(node, targets, classes, entries, translated, overlay, notes);
+				// The interfaces the kept mixins add to their targets.
+				if (node.interfaces.isEmpty()) continue;
+				for (String target : targets) addBridges(DefaultBridge.of(target, node.interfaces, classes), node.interfaces, bridges, notes);
 			}
 			specs.add(new ModsTomlWriter.MixinConfigSpec(entry.config(), behavior));
 		}
@@ -627,6 +630,27 @@ public final class ModTranslator {
 		}
 		computed.forEach((owner, owned) -> EnumExtensions.argumentsClasses(owner, owned).forEach((name, bytes) -> overlay.put(name + ".class", bytes)));
 		return specs;
+	}
+
+	/**
+	 * Renames a kept mixin's private methods that would hide a default method its targets inherit (HIDE-1, see
+	 * {@link HiddenDefaults}), in the mixin and the classes nested in it.
+	 */
+	private static void renameHidingMethods(ClassNode mixin, List<String> targets, Function<String, ClassNode> classes, Collection<String> entries,
+			FileView files, Map<String, byte[]> overlay, List<String> notes) throws ArchiveException {
+		Map<String, String> renames = HiddenDefaults.renames(mixin, targets, classes);
+		if (renames.isEmpty()) return;
+		String nested = mixin.name + "$";
+		for (String name : entries) {
+			if (!name.endsWith(".class")) continue;
+			String className = name.substring(0, name.length() - ".class".length());
+			if (!className.equals(mixin.name) && !className.startsWith(nested)) continue;
+			byte[] data = files.read(name);
+			byte[] rewritten = data == null ? null : HiddenDefaults.rewrite(data, mixin.name, renames);
+			if (rewritten != null) overlay.put(name, rewritten);
+		}
+		renames.forEach((key, renamed) -> notes.add("Mixin " + mixin.name.replace('/', '.') + "'s private method " + key
+				+ " renamed " + renamed + ": under its own name it would hide the default method of that name its target inherits (HIDE-1)"));
 	}
 
 	private static void leaveOutHandlers(Map<String, Set<String>> handlers, FileView files, Map<String, byte[]> overlay) throws ArchiveException {
