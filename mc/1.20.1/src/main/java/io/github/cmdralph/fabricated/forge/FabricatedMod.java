@@ -29,11 +29,12 @@ import net.minecraftforge.registries.RegistryManager;
  *
  * <p>Fabric mods register their content directly from their initializers. Forge 47 opens vanilla's registries for its
  * registration events only ({@code UNFREEZE_DATA}, then {@code LOAD_REGISTRIES}), and each registry it manages only for
- * that registry's own event, which it posts in vanilla's order of registries (the attribute registry after blocks and
- * items, but before many others). The initializers run in the event after the attribute registry's, as every mod has
- * registered its attributes by then, Forge's own among them, which the attribute builders Forge patches include (a Fabric
- * initializer building an entity's attributes needs them), with every registry Forge manages for vanilla opened for as
- * long as they run.
+ * that registry's own event; the others are locked, those whose event hasn't come yet too (the item registry, the first
+ * time this ran, its vanilla view locked since Forge's vanilla snapshot). The initializers run in the event after the
+ * attribute registry's, as every mod has registered its attributes by then, Forge's own among them, which the attribute
+ * builders Forge patches include (a Fabric initializer building an entity's attributes needs them), with every other
+ * registry Forge manages for vanilla opened for as long as they run, then locked as Forge leaves a registry after its
+ * event; Forge opens each again for its own event.
  */
 @Mod(FabricatedMod.MOD_ID)
 public final class FabricatedMod {
@@ -65,16 +66,17 @@ public final class FabricatedMod {
 				attributesRegistered = true;
 			} else if (attributesRegistered) {
 				initialized = true;
-				initialize(state, runner);
+				initialize(state, runner, event.getForgeRegistry());
 			}
 		});
 	}
 
-	private static void initialize(FabricatedState state, EntrypointRunner runner) {
+	/** @param current the registry whose event this is, which Forge opened and locks after it (null if Forge doesn't manage it) */
+	private static void initialize(FabricatedState state, EntrypointRunner runner, Object current) {
 		List<ForgeRegistry<?>> opened = new ArrayList<>();
 		for (ResourceLocation key : RegistryManager.getVanillaRegistryKeys()) {
 			ForgeRegistry<?> registry = RegistryManager.ACTIVE.getRegistry(key);
-			if (registry != null && registry.isLocked()) {
+			if (registry != null && registry != current) {
 				registry.unfreeze();
 				opened.add(registry);
 			}
@@ -88,7 +90,6 @@ public final class FabricatedMod {
 				LOGGER.warn("Fabric client entrypoints don't run on Forge yet");
 			}
 		} finally {
-			// As Forge leaves them after their own events.
 			opened.forEach(ForgeRegistry::freeze);
 		}
 		report(state, failures, "main");
