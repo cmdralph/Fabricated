@@ -44,12 +44,16 @@ handled safely, no network access, original jars never changed, and no code that
   main entrypoints run, after PLAIN-1, CTOR-2, ACC-2, CAPTURE-3, LOCAL-3 and ARGS-1 on `main`, and the branch's plan
   leaving out registry sync's `SaveLoadingMixin`, which replaced Forge's list of data pack registries (its biome and
   structure modifiers) with vanilla's; the Fabric mods' dynamic registries are added to Forge's list instead. With
-  FINAL-1 and FINAL-2 on `main` the recipe API's entrypoint runs too: all 38 modules' main entrypoints (#125). Next:
-  the native Fabric API 0.92.12 modules and Forge 47's events (L4). Biomes first: upstream's access widener opens
-  `Biome.climateSettings`, which Forge 47's field-to-method coremod needs private, so the coremod's whole biome
-  transform fails and Forge's biome modifiers' climate and special effects changes don't apply while Fabric API is
-  installed (every run with it logs the error). Then the old capability system and `SimpleChannel`. NeoForge needs
-  no legacy branch.
+  FINAL-1 and FINAL-2 on `main` the recipe API's entrypoint runs too: all 38 modules' main entrypoints (#125). The
+  minecraft mod container holds vanilla's resources (#130), and the tag API loads (#131) and reads tag files'
+  `fabric:remove` (#132). With #132 the in-game mod is reobfuscated to SRG's names and has mixins of its own, with the
+  refmap Mixin's annotation processor writes: the base of every native module (L4). The first, `fabric-biome-api-v1`
+  on Forge 47's biome modifiers (#135, a port of BIOME-1), applies Fabric's biome changes where Forge reads them, and
+  Forge's field-to-method coremod applies again (upstream's access widener had opened `Biome.climateSettings`, which
+  the coremod needs private, so its whole biome transform failed while Fabric API was installed): a spawn and a
+  temperature added to plains reach the biome Forge reads, with and without Fabric API. Next: native loot tables and
+  dimensions (both disabled: Forge 47's loot pools are a list, and its `changeDimension` takes a teleporter), then the
+  old capability system and `SimpleChannel`. NeoForge needs no legacy branch.
 - **Decided** (`RESEARCH.md` §8): Forge 47.4 for 1.20.1, the shared modules kept loadable on Java 17, ForgeGradle for
   modern Forge, CI for pull requests only. L1, the behaviour-neutral seams on `main`: Java 17 for the shared modules
   (their main code compiles at release 17), the loader split (`loader/common`, `loader/neoforge`), the build split

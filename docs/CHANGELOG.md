@@ -67,7 +67,9 @@ One entry per working session, newest first: what changed, and how it was verifi
 - SKIP-1 is verified: main's tag removal check passes on all four versions with Fabric API (#133), Forge 47's Fabric
   API run reads `fabric:remove` (forge-legacy #132, whose in-game mod is now reobfuscated to SRG's names and has mixins
   of its own), and Fabric API's tag module loads on Forge 61 to 66 with both removals applied (forge #134, the forge
-  branch's first in-game mixin).
+  branch's first in-game mixin). On Forge 47, `fabric-biome-api-v1` is native on Forge's biome modifiers (forge-legacy
+  #135, a port of BIOME-1): Fabric's biome changes reach the biome Forge reads, and Forge's field-to-method coremod,
+  which failed while Fabric API was installed, applies again.
 - A mixin member left out by name takes the class's stores to its field with it (SKIP-1). Left in, Mixin pointed them
   at the target's field of that name: fabric-tag-api-v1's `TagFileMixin` initialises its own `remove` list, and with
   the field left out the empty list was written over the platform's `remove` after the record's constructor set it, so
