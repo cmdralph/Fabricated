@@ -18,6 +18,34 @@ tasks.named('processResources', ProcessResources) {
 // none of them, but stand-ins for the game classes it names in Intermediary's names, as a Fabric mod does.
 sourceSets.testmodstubs.java.srcDirs = [file('src/testmodstubs/java')]
 
+// --- MixinExtras for Fabric mods --------------------------------------------------------------------------------------
+// Fabric Loader ships MixinExtras and Forge 47 doesn't. Its Forge build, a game library that starts MixinExtras from its
+// own mixin config's plugin, is nested in the in-game mod with the metadata of Forge's jar-in-jar locator, which reads the
+// files Fabricated's dependency locator hands Forge and adds the newest nested copy. Discovery reads the same metadata to
+// tell pre-flight which version runs.
+configurations {
+    nestedMixinExtras { transitive = false }
+}
+dependencies {
+    nestedMixinExtras "io.github.llamalad7:mixinextras-forge:${project.mixinextras_version}"
+    testmodCompileOnly "io.github.llamalad7:mixinextras-common:${project.mixinextras_version}"
+}
+def mixinExtrasJarJar = tasks.register('mixinExtrasJarJar') {
+    def version = project.mixinextras_version
+    def out = layout.buildDirectory.dir('jarjar')
+    inputs.property('version', version)
+    outputs.dir(out)
+    doLast {
+        def file = out.get().file('META-INF/jarjar/metadata.json').asFile
+        file.parentFile.mkdirs()
+        file.text = groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson([jars: [[
+                identifier: [group: 'io.github.llamalad7', artifact: 'mixinextras-forge'],
+                version: [range: "[${version},)", artifactVersion: version],
+                path: "META-INF/jarjar/mixinextras-forge-${version}.jar",
+                isObfuscated: false]]])) + '\n'
+    }
+}
+
 // --- The language provider (docs/PORTING.md §4.1, as on the forge branch) ------------------------------------------
 // Forge loads language providers into its plugin layer, which sees neither Fabricated's discovery (the service layer)
 // nor the game: the provider is a jar of its own, nested in the Fabricated jar, and compiles against the two Forge
@@ -59,6 +87,10 @@ tasks.register('forgeClasspathReport') {
 }
 
 afterEvaluate {
+    tasks.named('gameModJar', Jar) {
+        from(configurations.nestedMixinExtras) { into 'META-INF/jarjar' }
+        from(mixinExtrasJarJar)
+    }
     def fabricatedJar = tasks.named('fabricatedJar', Jar) {
         // Named apart from the NeoForge jar of the same Minecraft version: here, once mc/mc.gradle has registered the
         // task, as its own configuration would otherwise set the name back.
