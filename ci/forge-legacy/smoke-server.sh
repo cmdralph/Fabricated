@@ -2,7 +2,8 @@
 # The forge-legacy branch's server smoke (docs/PORTING.md §7, L3), the forge branch's ported to Forge 47: installs a
 # Minecraft Forge dedicated server, adds the Fabricated jar and the branch's Fabric test mod, boots it and reports what
 # Forge made of them: whether it ran Fabricated's locators, took the nested language provider and constructed the in-game
-# mod, and whether the translated test mod loaded, ran its entrypoints and had its mixin applied in SRG's names.
+# mod, whether the translated test mod loaded, ran its entrypoints and had its mixin applied in SRG's names, and whether
+# Forge's loading warnings name a Fabric mod that wasn't loaded.
 #
 # Usage: ci/forge-legacy/smoke-server.sh <minecraft-version> <forge-version, Minecraft's included> <work-dir>
 # Exit status: the server must start; the checks are reported (until L3's discovery is settled).
@@ -27,6 +28,12 @@ echo "::endgroup::"
 mkdir -p mods
 cp "$root"/build/libs/fabricated-forge-*+mc"$mc".jar mods/
 cp "$root"/mc/"$mc"/build/testmods/fabricated-testmod.jar mods/
+# A Fabric mod whose dependency is missing: Fabricated doesn't load it, and Forge's loading warnings name it.
+mkdir unmet
+cat > unmet/fabric.mod.json <<'JSON'
+{"schemaVersion": 1, "id": "fabricated_forge_unmet", "version": "1.0.0", "depends": {"fabricated_forge_missing": "*"}}
+JSON
+jar --create --file mods/fabricated-forge-unmet.jar -C unmet fabric.mod.json
 ls -1 mods
 echo "eula=true" > eula.txt
 cat > server.properties <<'PROPS'
@@ -137,6 +144,7 @@ report "the test mod registered an item (Intermediary names remapped to SRG's)" 
 report "the test mod read a private field its access widener opens (Intermediary names remapped to SRG's)" "grep -q 'FABRICATED-FORGE-TEST access widener OK' logs/latest.log 2>/dev/null"
 report "the test mod's item is in the frozen registry at the first tick" "grep -q 'FABRICATED-FORGE-TEST registry entry kept OK' logs/latest.log 2>/dev/null"
 report "MixinExtras ran the test mod's @WrapMethod (nested in the in-game mod)" "grep -q 'FABRICATED-FORGE-TEST MixinExtras OK' logs/latest.log 2>/dev/null"
+report "Forge's loading warnings name the Fabric mod that wasn't loaded" "grep -qsE 'ServerModLoader.*: Fabric mod fabricated_forge_unmet 1\\.0\\.0 was not loaded: ' logs/latest.log logs/debug.log"
 report "Fabricated's report names Forge as the loader" "grep -q '^  Forge: ' logs/fabric-bridge-report.txt 2>/dev/null && ! grep -q '^  NeoForge: ' logs/fabric-bridge-report.txt 2>/dev/null"
 
 echo "Server status: $status"
