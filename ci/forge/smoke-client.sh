@@ -29,7 +29,15 @@ echo "::group::Install Forge $mc-$forge (client)"
 echo '{"profiles":{}}' > minecraft/launcher_profiles.json
 curl -fsSL --retry 4 -o installer.jar "https://maven.minecraftforge.net/net/minecraftforge/forge/${mc}-${forge}/forge-${mc}-${forge}-installer.jar"
 java -jar installer.jar --installClient minecraft > installer.log 2>&1 || { tail -n 60 installer.log; exit 1; }
-ls minecraft/versions
+# The installer leaves the vanilla version's jar but not its version file, which HeadlessMC reads as the Forge
+# version's parent: it comes from Mojang's version manifest.
+if [ ! -f "minecraft/versions/$mc/$mc.json" ]; then
+	url=$(curl -fsSL --retry 4 https://piston-meta.mojang.com/mc/game/version_manifest_v2.json \
+		| python3 -c 'import json, sys; print(next(v["url"] for v in json.load(sys.stdin)["versions"] if v["id"] == sys.argv[1]))' "$mc")
+	mkdir -p "minecraft/versions/$mc"
+	curl -fsSL --retry 4 -o "minecraft/versions/$mc/$mc.json" "$url"
+fi
+ls minecraft/versions minecraft/versions/"$mc"
 echo "::endgroup::"
 
 echo "::group::Get HeadlessMC and mc-runtime-test"
