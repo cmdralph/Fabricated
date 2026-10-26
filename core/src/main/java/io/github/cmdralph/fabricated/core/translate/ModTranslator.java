@@ -998,26 +998,55 @@ public final class ModTranslator {
 
 	/**
 	 * {@code data} without the methods and fields named in {@code names} (a method name with its descriptor removes only
-	 * that method); the names found are removed from {@code missing}.
+	 * that method); the names found are removed from {@code missing}. The class's stores to a field it leaves out go
+	 * with the field, its initialiser's among them: Mixin would point them at the target's field of that name, and write
+	 * there, a constructor's initialiser after the target's own assignment (fabric-tag-api-v1's {@code remove}, whose
+	 * empty list then replaced the platform's own list of a tag file's removals).
 	 */
 	static byte[] withoutMembers(byte[] data, Set<String> names, Set<String> missing) {
 		ClassReader reader = new ClassReader(data);
 		// A fresh constant pool, so nothing the removed members referred to is left behind (see withDependents).
 		ClassWriter writer = new ClassWriter(0);
+		Set<String> removedFields = new HashSet<>();
 		reader.accept(new ClassVisitor(Opcodes.ASM9, writer) {
+			private String className;
+
+			@Override
+			public void visit(int version, int access, String name, String signature, String superName, String[] interfaces) {
+				className = name;
+				super.visit(version, access, name, signature, superName, interfaces);
+			}
+
 			@Override
 			public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
 				String exact = name + descriptor;
-				if (!names.contains(name) && !names.contains(exact)) return super.visitMethod(access, name, descriptor, signature, exceptions);
-				missing.remove(name);
-				missing.remove(exact);
-				return null;
+				if (names.contains(name) || names.contains(exact)) {
+					missing.remove(name);
+					missing.remove(exact);
+					return null;
+				}
+				MethodVisitor kept = super.visitMethod(access, name, descriptor, signature, exceptions);
+				if (kept == null || removedFields.isEmpty()) return kept;
+				return new MethodVisitor(Opcodes.ASM9, kept) {
+					@Override
+					public void visitFieldInsn(int opcode, String owner, String field, String fieldDescriptor) {
+						boolean store = opcode == Opcodes.PUTFIELD || opcode == Opcodes.PUTSTATIC;
+						if (!store || !owner.equals(className) || !removedFields.contains(field + ":" + fieldDescriptor)) {
+							super.visitFieldInsn(opcode, owner, field, fieldDescriptor);
+							return;
+						}
+						// The value, then (for an instance field) the object: the stack as the store would have left it.
+						super.visitInsn(fieldDescriptor.equals("J") || fieldDescriptor.equals("D") ? Opcodes.POP2 : Opcodes.POP);
+						if (opcode == Opcodes.PUTFIELD) super.visitInsn(Opcodes.POP);
+					}
+				};
 			}
 
 			@Override
 			public FieldVisitor visitField(int access, String name, String descriptor, String signature, Object value) {
 				if (!names.contains(name)) return super.visitField(access, name, descriptor, signature, value);
 				missing.remove(name);
+				removedFields.add(name + ":" + descriptor);
 				return null;
 			}
 		}, 0);
