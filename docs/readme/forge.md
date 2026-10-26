@@ -28,6 +28,9 @@ On each run, the server checks that:
 - a translated Fabric mod is discovered and loads;
 - its main and server entrypoints run in Forge's registry events, with the registries open;
 - it registers an item that stays in the frozen registry;
+- content it builds during the game's bootstrap, before any mod is constructed, waits for its main entrypoint to
+  register it, as on Fabric (CORPUS-31);
+- two Fabric mods that depend on each other load, with one ordering of their cycle left out (ORDER-1);
 - its mixins are applied, its injected interfaces are added, and its other side's members are stripped;
 - Forge's loading warnings name a Fabric mod that wasn't loaded;
 - an access widener leaves private a field Forge's coremod reads through a getter, and the report says so;

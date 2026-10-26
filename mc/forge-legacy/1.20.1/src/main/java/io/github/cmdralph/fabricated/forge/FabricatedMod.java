@@ -109,6 +109,7 @@ public final class FabricatedMod {
 		List<EntrypointRunner.Failure> failures = new ArrayList<>();
 		try {
 			failures.addAll(runner.run("main", ModInitializer.class, ModInitializer::onInitialize));
+			MainEntrypoints.markRan();
 			if (FMLLoader.getDist().isDedicatedServer()) {
 				failures.addAll(runner.run("server", DedicatedServerModInitializer.class, DedicatedServerModInitializer::onInitializeServer));
 			} else {
