@@ -234,11 +234,30 @@ class RemapTest {
 		assertTrue(new TokenRemapper(table()).remap(target).contains(";open(Ljava/lang/String;)"), "Mojang's names keep official ones");
 	}
 
-	/** Intermediary and SRG names for PLAIN-1: c.open and d.run, which Intermediary leaves under their official names. */
+	@Test
+	void anOfficialNameIntermediaryRenamesWithAnotherDescriptorIsJoinedToo() throws Exception {
+		// PLAIN-1: Intermediary renames three unrelated get(F) methods on 1.20.1, which kept IoSupplier.get() (SRG's
+		// m_247737_) out of the table; Fabric API's resource pack calling it stopped Forge 47's server (NoSuchMethodError).
+		// An override of a renamed method shares its name and descriptor, and stays out (references to it go by the
+		// intermediary name).
+		MappingTable t = plainSrgTable();
+		assertEquals("m_247737_", t.mapPlainMethod("net/minecraft/class_6", "get", "()Ljava/lang/Object;"));
+		assertEquals("m_60_", t.mapMemberFlat("method_60"), "the renamed get(F)F maps by its intermediary name");
+		assertNull(t.mapPlainMethod("net/minecraft/class_8", "get", "(F)F"), "an override of the renamed get(F)F isn't joined");
+	}
+
+	/**
+	 * Intermediary and SRG names for PLAIN-1: c.open, d.run and e.get(), which Intermediary leaves under their official
+	 * names, f.get(F)F, which it renames, and g's override of that.
+	 */
 	private static MappingTable plainSrgTable() throws Exception {
-		String tiny = TINY + "CLASS\tc\tnet/minecraft/class_4\nCLASS\td\tnet/minecraft/class_5\n";
+		String tiny = TINY + "CLASS\tc\tnet/minecraft/class_4\nCLASS\td\tnet/minecraft/class_5\nCLASS\te\tnet/minecraft/class_6\n"
+				+ "CLASS\tf\tnet/minecraft/class_7\nCLASS\tg\tnet/minecraft/class_8\nMETHOD\tf\t(F)F\tget\tmethod_60\n";
 		String tsrg2 = TSRG2 + "c net/minecraft/src/C_4_ 4\n\topen (Ljava/lang/String;)La; m_247679_ 247679\n"
-				+ "d net/minecraft/src/C_5_ 5\n\trun ()V m_99_ 99\n";
+				+ "d net/minecraft/src/C_5_ 5\n\trun ()V m_99_ 99\n"
+				+ "e net/minecraft/src/C_6_ 6\n\tget ()Ljava/lang/Object; m_247737_ 247737\n"
+				+ "f net/minecraft/src/C_7_ 7\n\tget (F)F m_60_ 60\n"
+				+ "g net/minecraft/src/C_8_ 8\n\tget (F)F m_60_ 60\n";
 		return MappingComposer.composeSrg(new StringReader(tiny), new StringReader(tsrg2), null);
 	}
 
