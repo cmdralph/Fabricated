@@ -52,6 +52,11 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 			LOGGER.error("FABRICATED-FORGE-TEST registry failed", e);
 		}
 		try {
+			ForgeBootstrapContent.register();
+		} catch (RuntimeException | LinkageError e) {
+			LOGGER.error("FABRICATED-FORGE-TEST content built at bootstrap failed", e);
+		}
+		try {
 			ForgeLootTest.register();
 		} catch (RuntimeException | LinkageError e) {
 			LOGGER.warn("FABRICATED-FORGE-TEST loot listeners not registered", e);

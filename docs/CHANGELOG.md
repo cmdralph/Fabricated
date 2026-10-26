@@ -3,6 +3,20 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-10-26: content built before the main entrypoints, on every platform
+
+- **CORPUS-31** (`FINDINGS.md`): since the advanced corpus picked up BetterX's 26.302.0 builds, its 26.3 server and
+  client stopped at the game's bootstrap, at an entity type BetterNether builds before its main entrypoint registers it.
+  Fabric API leaves the registries open until the initializers have run; NeoForge and Forge freeze them during the
+  bootstrap, before any mod is constructed, and check the content waiting for its registration. HOLD-1 kept that
+  content for one later freeze on NeoForge clients only. Now the main entrypoints count as still to run from the
+  game's start on NeoForge, and the Forge ports get the same through two mixins, one of them on Forge's own registry
+  wrapper, whose `freeze` replaces vanilla's.
+- Verification: a reproduction in every test mod, content built as the bootstrap freezes the registries and registered
+  by the main initializer, stopped every gated run on all three platforms before the fix (manual runs 40396396049,
+  40397083895 and 40397088976). The smoke scripts now check that content is registered; with Fabric API on Forge, whose
+  registry sync moves the bootstrap's freeze, the run accepts that no freeze came before the main initializer.
+
 ## 2026-10-26: Fabric mods that depend on each other
 
 - **ORDER-1** (`FINDINGS.md`), reported on Forge 47 ("Mod Sorting failed", "Detected Cycles"): every translated mod's
