@@ -23,6 +23,11 @@ final class ForgeDescriptor implements PlatformDescriptor {
 	}
 
 	@Override
+	public String loaderName() {
+		return FORGE.loaderName();
+	}
+
+	@Override
 	public String path() {
 		return FORGE.path();
 	}

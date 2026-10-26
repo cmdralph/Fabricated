@@ -1,8 +1,8 @@
 name: Build forge-legacy
 
 # The forge-legacy branch's own build: pull requests to the branch only (owner decision D6); main's build.yml builds
-# NeoForge's targets for main. With a server smoke on Forge 47, reported until L3's discovery is settled
-# (docs/PORTING.md §7).
+# NeoForge's targets for main. With a server smoke on Forge 47 that must start the server; its other checks are
+# reported (docs/PORTING.md §7).
 on:
   pull_request:
     branches: [forge-legacy]
@@ -62,10 +62,9 @@ jobs:
         run: ./gradlew --configure-on-demand :mc:${{ matrix.minecraft }}:fabricatedJar :mc:${{ matrix.minecraft }}:testmodJar --stacktrace
       - name: Check the jar's layout for Forge
         run: ./gradlew --configure-on-demand :mc:${{ matrix.minecraft }}:checkForgeJar --stacktrace
-      # The game on this branch: what Forge 47 makes of the jar and of the translated test mod. Reported, not gated,
-      # until L3's discovery is settled.
-      - name: Server with Fabricated (informational)
-        continue-on-error: true
+      # The game on this branch: what Forge 47 makes of the jar and of the translated test mod. The server must start
+      # (#93's first run showed a registration failure stopping it, under a green job); the checks are reported.
+      - name: Server with Fabricated (must start)
         run: |
           # Forge 47 runs on Java 17.
           export PATH="$JAVA_HOME_17_X64/bin:$PATH"
