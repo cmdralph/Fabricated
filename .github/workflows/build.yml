@@ -598,6 +598,25 @@ jobs:
         if: ${{ !cancelled() && steps.advanced.outcome == 'success' }}
         continue-on-error: true
         run: ci/neoforge/smoke-server.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/server-advanced" "$RUNNER_TEMP/advanced" || true
+      # CORPUS-32: what vanilla's BuiltInRegistries.freeze does, to a frozen registry too, and what Wover runs there.
+      - name: Classes behind CORPUS-32 (informational, 26.3)
+        if: ${{ !cancelled() && steps.advanced.outcome == 'success' && matrix.minecraft == '26.3' }}
+        continue-on-error: true
+        run: |
+          game=$(find "$RUNNER_TEMP/server-advanced/libraries" -name 'minecraft-server-patched-*.jar' | head -n 1)
+          echo "::group::BuiltInRegistries and MappedRegistry in $(basename "$game")"
+          javap -p -c -classpath "$game" net.minecraft.core.registries.BuiltInRegistries \
+            | awk '/ (bootStrap|freeze|createContents|bindBootstrappedTagsToEmpty)\(/,/^$/' || true
+          javap -p -c -classpath "$game" net.minecraft.core.MappedRegistry \
+            | awk '/ (bindAllTagsToEmpty|validateWrite|freeze)\(/,/^$/' || true
+          echo "::endgroup::"
+          for jar in "$RUNNER_TEMP"/advanced/wover*.jar; do
+            for cls in $(unzip -Z1 "$jar" | grep -E '(BuiltInRegistriesFreezeMixin|DefinitionEventsImpl|CreativeTabManagerImpl)[^/]*\.class$'); do
+              echo "::group::$(basename "$jar") $cls"
+              javap -p -c -v -classpath "$jar" "$(echo "${cls%.class}" | tr / .)" | grep -vE '^ +#[0-9]+ = ' | head -n 250 || true
+              echo "::endgroup::"
+            done
+          done
       - name: Client with the advanced mod corpus (informational)
         if: ${{ !cancelled() && steps.advanced.outcome == 'success' }}
         continue-on-error: true
