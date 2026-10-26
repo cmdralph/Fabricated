@@ -19,23 +19,39 @@ import java.util.TreeMap;
  * almost every member. The few intermediary names that map to more than one runtime name are kept in
  * {@link #qualifiedMembers} keyed by {@code owner.name(desc)} (all in intermediary) and are absent
  * from {@link #flatMembers}.
+ *
+ * <p>{@link #plainMembers} holds the methods Intermediary leaves under their official names (unobfuscated there: a
+ * functional interface's {@code open}, {@code createMenu}), which SRG renames all the same (PLAIN-1): only Forge
+ * 47's table has them, keyed like the qualified members.
  */
 public final class MappingTable {
 	private static final int MAGIC = 0x46424D54; // "FBMT"
-	private static final int FORMAT = 1;
+	private static final int FORMAT = 2;
 
 	private final Map<String, String> classes;
 	private final Map<String, String> flatMembers;
 	private final Map<String, String> qualifiedMembers;
+	private final Map<String, String> plainMembers;
+	/**
+	 * {@link #plainMembers} by {@code name+desc}, for a descriptor that names a Minecraft class, to their runtime name when
+	 * it is the same for every owner.
+	 */
+	private volatile Map<String, String> plainByNameAndDesc;
 	private volatile Map<String, String> inverseClasses;
 	/** Qualified members by {@code name+desc}, to their runtime name when it is the same for every owner. */
 	private volatile Map<String, String> byNameAndDesc;
 
 	public MappingTable(Map<String, String> classes, Map<String, String> flatMembers, Map<String, String> qualifiedMembers) {
+		this(classes, flatMembers, qualifiedMembers, Map.of());
+	}
+
+	public MappingTable(Map<String, String> classes, Map<String, String> flatMembers, Map<String, String> qualifiedMembers,
+			Map<String, String> plainMembers) {
 		// Hash maps for lookups; serialize() sorts, so the cached form stays deterministic.
 		this.classes = Map.copyOf(classes);
 		this.flatMembers = Map.copyOf(flatMembers);
 		this.qualifiedMembers = Map.copyOf(qualifiedMembers);
+		this.plainMembers = Map.copyOf(plainMembers);
 	}
 
 	/** Maps an internal class name ({@code a/b/C}); unknown names are returned unchanged. */
@@ -90,6 +106,44 @@ public final class MappingTable {
 		return index;
 	}
 
+	/**
+	 * The runtime name of a method Intermediary leaves under its official name and SRG renames (PLAIN-1), or null: the
+	 * owner's own, else, where the descriptor names a Minecraft class, the one every owner of that name and descriptor
+	 * gives it, which an override in a mod's class takes. A descriptor of the JDK's and libraries' types alone is judged
+	 * by its owner only: a mod's {@code run()V} implementing {@link Runnable} keeps its name.
+	 *
+	 * @param owner intermediary internal name of the owner, as the instruction or declaration names it
+	 * @param desc  intermediary descriptor
+	 */
+	public String mapPlainMethod(String owner, String name, String desc) {
+		if (plainMembers.isEmpty() || desc == null) return null;
+		String own = owner != null ? plainMembers.get(owner + "." + name + desc) : null;
+		if (own != null || !desc.contains("Lnet/minecraft/")) return own;
+		String shared = plainByNameAndDesc().get(name + desc);
+		return shared == null || shared.isEmpty() ? null : shared;
+	}
+
+	private Map<String, String> plainByNameAndDesc() {
+		Map<String, String> index = plainByNameAndDesc;
+		if (index == null) {
+			Map<String, String> built = new HashMap<>();
+			for (Map.Entry<String, String> e : plainMembers.entrySet()) {
+				String member = e.getKey().substring(e.getKey().lastIndexOf('.') + 1);
+				if (!member.contains("Lnet/minecraft/")) continue;
+				// An empty value marks a name and descriptor that map differently for different owners.
+				built.merge(member, e.getValue(), (a, b) -> a.equals(b) ? a : "");
+			}
+			index = built;
+			plainByNameAndDesc = index;
+		}
+		return index;
+	}
+
+	/** Whether this table has methods Intermediary leaves under their official names (Forge 47's, PLAIN-1). */
+	public boolean hasPlainMembers() {
+		return !plainMembers.isEmpty();
+	}
+
 	/** Flat member lookup only; {@code null} if the name is unknown or ambiguous. */
 	public String mapMemberFlat(String name) {
 		return flatMembers.get(name);
@@ -100,7 +154,12 @@ public final class MappingTable {
 	}
 
 	public int memberCount() {
-		return flatMembers.size() + qualifiedMembers.size();
+		return flatMembers.size() + qualifiedMembers.size() + plainMembers.size();
+	}
+
+	/** This table with the methods Intermediary leaves under their official names, keyed like the qualified ones (PLAIN-1). */
+	MappingTable withPlainMembers(Map<String, String> plain) {
+		return new MappingTable(classes, flatMembers, qualifiedMembers, plain);
 	}
 
 	/** Builds a table from per-member mappings, separating ambiguous names. */
@@ -128,6 +187,7 @@ public final class MappingTable {
 			writeMap(out, classes);
 			writeMap(out, flatMembers);
 			writeMap(out, qualifiedMembers);
+			writeMap(out, plainMembers);
 			out.flush();
 			return bytes.toByteArray();
 		} catch (IOException e) {
@@ -143,8 +203,9 @@ public final class MappingTable {
 		Map<String, String> classes = readMap(in);
 		Map<String, String> flat = readMap(in);
 		Map<String, String> qualified = readMap(in);
+		Map<String, String> plain = readMap(in);
 		if (in.available() != 0) throw new IOException("Trailing data in mapping table");
-		return new MappingTable(classes, flat, qualified);
+		return new MappingTable(classes, flat, qualified, plain);
 	}
 
 	private static void writeMap(DataOutputStream out, Map<String, String> map) throws IOException {

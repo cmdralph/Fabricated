@@ -407,7 +407,7 @@ public final class ModTranslator {
 		FileView translated = name -> overlay.containsKey(name) ? overlay.get(name) : files.read(name);
 		MixinPreflight preflight = new MixinPreflight(env.installedIndex(), env.installed(), classSource(translated), env.untransformable(),
 				env.clientSide(), MixinCompat.missingTargetsFatal(behavior), env.vanilla(), env.descriptor().loaderName(),
-				MixinCompat.interfaceInjectors(env.runtimeMixinVersion()));
+				MixinCompat.interfaceInjectors(env.runtimeMixinVersion()), MixinCompat.constructorInjects(env.runtimeMixinVersion()));
 		Map<String, MixinConfigFile> configs = new HashMap<>();
 		Set<String> matchedSkips = new HashSet<>();
 		Map<String, Refmap> refmaps = new HashMap<>();

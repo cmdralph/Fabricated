@@ -2,6 +2,8 @@ package io.github.cmdralph.fabricated.core.remap;
 
 import java.util.regex.Pattern;
 
+import org.objectweb.asm.Handle;
+import org.objectweb.asm.Type;
 import org.objectweb.asm.commons.Remapper;
 
 /**
@@ -37,6 +39,11 @@ public final class IntermediaryRemapper extends Remapper {
 
 	@Override
 	public String mapMethodName(String owner, String name, String descriptor) {
+		if (!isIntermediaryMember(name)) {
+			// A method Intermediary leaves under its official name, which the runtime renames (SRG, PLAIN-1).
+			String plain = table.mapPlainMethod(owner, name, descriptor);
+			if (plain != null) return plain;
+		}
 		return mapMember(owner, name, descriptor);
 	}
 
@@ -64,6 +71,24 @@ public final class IntermediaryRemapper extends Remapper {
 		if (!isIntermediaryMember(name)) return name;
 		String flat = table.mapMemberFlat(name);
 		return flat != null ? flat : name;
+	}
+
+	/**
+	 * The name a lambda or method reference implements, from its {@code invokedynamic}: for {@code LambdaMetafactory}, a
+	 * method of the functional interface it returns, which may be one Intermediary leaves under its official name and the
+	 * runtime renames (PLAIN-1: Fabric API's {@code factory -> new FabricModResourcePack(...)} implements
+	 * {@code Pack.ResourcesSupplier.open}, SRG's {@code m_247679_}); else as {@link #mapInvokeDynamicMethodName}.
+	 */
+	public String mapLambdaMethodName(String name, String descriptor, Handle bootstrap, Object[] arguments) {
+		if (!isIntermediaryMember(name) && bootstrap.getOwner().equals("java/lang/invoke/LambdaMetafactory") && arguments.length > 0
+				&& arguments[0] instanceof Type sam && sam.getSort() == Type.METHOD) {
+			Type returned = Type.getReturnType(descriptor);
+			if (returned.getSort() == Type.OBJECT) {
+				String plain = table.mapPlainMethod(returned.getInternalName(), name, sam.getDescriptor());
+				if (plain != null) return plain;
+			}
+		}
+		return name;
 	}
 
 	/** String constants and annotation strings: rewrite intermediary tokens only. */

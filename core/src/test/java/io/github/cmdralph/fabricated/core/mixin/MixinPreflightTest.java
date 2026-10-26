@@ -2121,6 +2121,93 @@ class MixinPreflightTest {
 	}
 
 	@Test
+	void shadowsOfCapturedValuesInSrgNamesFindThemUnderJavacsNames() throws Exception {
+		// CAPTURE-3: Fabric API's interaction hook into ServerGamePacketListenerImpl$1 shadows the entity it captures and its
+		// outer instance, which SRG names as any field (f_143670_); Forge 47's build, recompiled, has javac's val$entity
+		// and this$0. Vanilla's class marks SRG's synthetic.
+		String outer = "net/minecraft/server/Listener";
+		String anonymous = outer + "$1";
+		String entity = "Ljava/lang/Integer;";
+		String listener = "L" + outer + ";";
+		java.util.function.BiFunction<String[], Integer, byte[]> handler = (names, access) -> {
+			ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+			cw.visit(Opcodes.V17, Opcodes.ACC_FINAL, anonymous, null, "java/lang/Object", null);
+			cw.visitOuterClass(outer, "handle", "()V");
+			cw.visitInnerClass(anonymous, null, null, Opcodes.ACC_FINAL);
+			cw.visitField(Opcodes.ACC_FINAL | access, names[0], entity, null, null).visitEnd();
+			cw.visitField(Opcodes.ACC_FINAL | Opcodes.ACC_SYNTHETIC, names[1], listener, null, null).visitEnd();
+			MethodVisitor interact = cw.visitMethod(Opcodes.ACC_PUBLIC, "interact", "()V", null, null);
+			interact.visitCode();
+			interact.visitVarInsn(Opcodes.ALOAD, 0);
+			interact.visitFieldInsn(Opcodes.GETFIELD, anonymous, names[0], entity);
+			interact.visitInsn(Opcodes.POP);
+			interact.visitInsn(Opcodes.RETURN);
+			interact.visitMaxs(0, 0);
+			interact.visitEnd();
+			cw.visitEnd();
+			return cw.toByteArray();
+		};
+		ClassWriter outerClass = new ClassWriter(0);
+		outerClass.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, outer, null, "java/lang/Object", null);
+		outerClass.visitInnerClass(anonymous, null, null, Opcodes.ACC_FINAL);
+		outerClass.visitEnd();
+		ClassIndex forge = new ClassIndex(Map.of(outer, outerClass.toByteArray(),
+				anonymous, handler.apply(new String[] {"val$entity", "this$0"}, Opcodes.ACC_SYNTHETIC))::get);
+
+		ClassWriter mixin = new ClassWriter(0);
+		mixin.visit(Opcodes.V17, Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, "com/example/mixin/Interact", null, "java/lang/Object", null);
+		AnnotationVisitor m = mixin.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false);
+		AnnotationVisitor targets = m.visitArray("targets");
+		targets.visit(null, anonymous);
+		targets.visitEnd();
+		m.visitEnd();
+		mixin.visitField(0, "f_10_", entity, null, null).visitAnnotation(SHADOW, false).visitEnd();
+		mixin.visitField(0, "f_11_", listener, null, null).visitAnnotation(SHADOW, false).visitEnd();
+		MethodVisitor mv = mixin.visitMethod(Opcodes.ACC_PRIVATE, "onInteract", "(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V", null, null);
+		AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
+		AnnotationVisitor methods = ann.visitArray("method");
+		methods.visit(null, "interact()V");
+		methods.visitEnd();
+		AnnotationVisitor ats = ann.visitArray("at");
+		AnnotationVisitor at = ats.visitAnnotation(null, AT);
+		at.visit("value", "HEAD");
+		at.visitEnd();
+		ats.visitEnd();
+		ann.visitEnd();
+		mv.visitCode();
+		mv.visitVarInsn(Opcodes.ALOAD, 0);
+		mv.visitFieldInsn(Opcodes.GETFIELD, "com/example/mixin/Interact", "f_10_", entity);
+		mv.visitInsn(Opcodes.POP);
+		mv.visitInsn(Opcodes.RETURN);
+		mv.visitMaxs(1, 2);
+		mv.visitEnd();
+		mixin.visitEnd();
+		byte[] mixinBytes = mixin.toByteArray();
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Interact"));
+
+		// Without vanilla's class, a shadow in SRG's names can't be told for a captured value.
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Interact", mixinBytes));
+		assertTrue(preflight(forge, mod::get, ClassBytesSource.EMPTY, false).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty());
+		// Nor where vanilla's field is one the class declares.
+		Map<String, byte[]> declared = Map.of(anonymous, handler.apply(new String[] {"f_10_", "f_11_"}, 0));
+		assertTrue(new MixinPreflight(forge, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, declared::get)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty());
+
+		Map<String, byte[]> vanilla = Map.of(anonymous, handler.apply(new String[] {"f_10_", "f_11_"}, Opcodes.ACC_SYNTHETIC));
+		List<PreflightFinding> notes = new ArrayList<>();
+		byte[] repaired = new MixinPreflight(forge, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, vanilla::get)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes).get("com/example/mixin/Interact.class");
+		assertNotNull(repaired, notes.toString());
+		assertTrue(notes.getFirst().message().contains("names the values it captures otherwise in this game build {f_10_=val$entity, f_11_=this$0}"),
+				notes.toString());
+		ClassNode renamed = new ClassNode();
+		new ClassReader(repaired).accept(renamed, 0);
+		assertEquals(List.of("val$entity", "this$0"), renamed.fields.stream().map(f -> f.name).toList());
+		mod.put("com/example/mixin/Interact", repaired);
+		assertTrue(preflight(forge, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty());
+	}
+
+	@Test
 	void aLocalTakenByTypeWhereNeoForgesPatchAddedOneOfThatTypeIsNamedByVanillasStore() throws Exception {
 		// LOCAL-2: Ledger's item pickup hooks take the stack (@Local ItemStack) at Inventory.add in ItemEntity.playerTouch,
 		// where NeoForge's patch also keeps a copy of it for its pickup event: two locals of the type in scope there. Here
@@ -3127,6 +3214,82 @@ class MixinPreflightTest {
 		}
 	}
 
+	@Test
+	void anInjectIntoAConstructorAfterItsSuperCallIsMarkedUnsafeWhereMixinWantsThat() throws Exception {
+		// CTOR-2: fabric-command-api-v2 hooks a call in Commands' constructor, after super(); Fabric's Mixin takes that,
+		// SpongePowered's 0.8.7 (Forge 61 to 66) only at a return or a point marked unsafe, and stopped the server. 0.8.5
+		// (Forge 47) has no unsafe points: the injector is left out there.
+		String owner = "net/minecraft/world/Built";
+		ClassWriter target = new ClassWriter(0);
+		target.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, owner, null, "java/lang/Object", null);
+		MethodVisitor init = target.visitMethod(Opcodes.ACC_PUBLIC, "<init>", "()V", null, null);
+		init.visitVarInsn(Opcodes.ALOAD, 0);
+		init.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false);
+		init.visitVarInsn(Opcodes.ALOAD, 0);
+		init.visitMethodInsn(Opcodes.INVOKEVIRTUAL, owner, "setup", "()V", false);
+		init.visitInsn(Opcodes.RETURN);
+		init.visitMaxs(1, 1);
+		init.visitEnd();
+		MethodVisitor setup = target.visitMethod(Opcodes.ACC_PUBLIC, "setup", "()V", null, null);
+		setup.visitInsn(Opcodes.RETURN);
+		setup.visitMaxs(0, 1);
+		setup.visitEnd();
+		target.visitEnd();
+		ClassIndex game = new ClassIndex(Map.of(TARGET, targetClass(), owner, target.toByteArray())::get);
+
+		ClassWriter cw = new ClassWriter(0);
+		cw.visit(Opcodes.V17, Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, "com/example/mixin/Hook", null, "java/lang/Object", null);
+		AnnotationVisitor m = cw.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false);
+		AnnotationVisitor values = m.visitArray("value");
+		values.visit(null, Type.getObjectType(owner));
+		values.visitEnd();
+		m.visitEnd();
+		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "afterSetup", "(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V", null, null);
+		AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
+		AnnotationVisitor methods = ann.visitArray("method");
+		methods.visit(null, "<init>");
+		methods.visitEnd();
+		AnnotationVisitor ats = ann.visitArray("at");
+		AnnotationVisitor at = ats.visitAnnotation(null, "Lorg/spongepowered/asm/mixin/injection/At;");
+		at.visit("value", "INVOKE");
+		at.visit("target", "L" + owner + ";setup()V");
+		at.visitEnd();
+		ats.visitEnd();
+		ann.visitEnd();
+		mv.visitEnd();
+		cw.visitEnd();
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Hook"));
+
+		for (MixinPreflight.ConstructorInjects rule : MixinPreflight.ConstructorInjects.values()) {
+			Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Hook", cw.toByteArray()));
+			MixinPreflight preflight = new MixinPreflight(game, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true,
+					ClassBytesSource.EMPTY, "Forge", true, rule);
+			List<PreflightFinding> notes = new ArrayList<>();
+			Map<String, byte[]> repaired = preflight.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
+			repaired.forEach((path, bytes) -> mod.put(path.substring(0, path.length() - ".class".length()), bytes));
+			List<PreflightFinding> findings = preflight.check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+			switch (rule) {
+				case AFTER_DELEGATE -> {
+					assertTrue(repaired.isEmpty() && findings.isEmpty(), rule + ": " + notes + findings);
+				}
+				case UNSAFE_POINTS -> {
+					assertTrue(findings.isEmpty(), rule + ": " + findings);
+					ClassNode node = new ClassNode();
+					new ClassReader(repaired.get("com/example/mixin/Hook.class")).accept(node, 0);
+					AnnotationNode point = Annotations.list(Annotations.value(Annotations.find(node.methods.getFirst(), INJECT), "at")).getFirst();
+					assertEquals(true, Annotations.value(point, "unsafe"), "marked unsafe");
+					assertTrue(notes.stream().anyMatch(n -> n.message().contains("after its super() call")), notes.toString());
+				}
+				case RETURNS_ONLY -> {
+					assertTrue(repaired.isEmpty(), "0.8.5 takes no unsafe: " + notes);
+					assertEquals(1, findings.size(), findings.toString());
+					assertEquals(PreflightFinding.Severity.LEFT_OUT, findings.getFirst().severity(), findings.toString());
+					assertTrue(findings.getFirst().message().contains("which Forge's Mixin takes only at a return (Fabric's Mixin"), findings.getFirst().message());
+				}
+			}
+		}
+	}
+
 	/** A MixinExtras expression handler on tick() whose @Definition names {@code type} or {@code method}. */
 	private static void expression(ClassWriter cw, String handler, Type type, String method) {
 		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, handler, "(Z)Z", null, null);
@@ -3738,6 +3901,13 @@ class MixinPreflightTest {
 		assertTrue(MemberRef.parse("foo(I)").matchesMethod("foo", "(I)Z"), "descriptor without return type");
 		assertEquals("foo", MixinPreflight.inferAccessorName("getFoo"));
 		assertEquals("URL", MixinPreflight.inferAccessorName("getURL"));
+		// As Mixin's AccessorName: a name all in upper case keeps its case, any other has its first letter lowered. Fabric
+		// API's registry sync sets DebugLevelSource's constants through setX_SIDE_LENGTH, which pre-flight read as
+		// x_SIDE_LENGTH and so disabled the module (forge-legacy's run on #113).
+		assertEquals("X_SIDE_LENGTH", MixinPreflight.inferAccessorName("setX_SIDE_LENGTH"));
+		assertEquals("uRLFoo", MixinPreflight.inferAccessorName("getURLFoo"));
+		assertEquals("A", MixinPreflight.inferAccessorName("isA"));
+		assertNull(MixinPreflight.inferAccessorName("get_foo"));
 		assertEquals("doThing", MixinPreflight.inferInvokerName("callDoThing"));
 		assertEquals("<init>", MixinPreflight.inferInvokerName("newThing"));
 	}
