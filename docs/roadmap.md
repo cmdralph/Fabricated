@@ -69,7 +69,7 @@ each Fabric API module's status per platform in [`COMPATIBILITY.md`](COMPATIBILI
 |---|---|---|---|
 | Minecraft versions | 1.21.11, 26.1.2, 26.2, 26.3 | 1.21.11, 26.1.2, 26.2, 26.3 | 1.20.1 |
 | Discovery, translation, the cache, the report | yes | yes | yes, members remapped from Intermediary to SRG |
-| Main and server entrypoints, registries open | yes; content built before them waits for them (HOLD-1, CORPUS-31) | yes, in Forge's registry events; content built before them waits for them (CORPUS-31) | yes, in Forge's registry events; content built before them waits for them (CORPUS-31) |
+| Main and server entrypoints, registries open | yes; content built before them waits for them (HOLD-1, CORPUS-31), and the built-in registries' freeze comes after them (CORPUS-32) | yes, in Forge's registry events; content built before them waits for them (CORPUS-31), and the built-in registries' freeze comes after them (CORPUS-32) | yes, in Forge's registry events; content built before them waits for them (CORPUS-31), and the built-in registries' freeze comes after them (CORPUS-32) |
 | Client entrypoints | yes | no | no |
 | Mixins (pre-flight, its repairs, hooks left out), access wideners, injected interfaces, `@Environment` stripping | yes | yes | yes, with MixinExtras nested in the in-game mod |
 | Official Fabric API jar | every module loads, server and client | every module loads on the server | every module loads on the server |
