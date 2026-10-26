@@ -49,6 +49,11 @@ public final class LootBridge {
 		reloadingManager = new WeakReference<>(manager);
 	}
 
+	/** The resource manager of the reload that started last, or none. */
+	public static ResourceManager reloadingManager() {
+		return reloadingManager.get();
+	}
+
 	/** From Fabricated's hook: the registries the reload's loot tables are read with, which Fabric's events take. */
 	public static void loadingRegistries(HolderLookup.Provider registries) {
 		loadingRegistries = registries;
