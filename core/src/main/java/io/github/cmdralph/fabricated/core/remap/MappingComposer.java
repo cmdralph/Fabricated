@@ -169,9 +169,11 @@ public final class MappingComposer {
 
 	/**
 	 * The methods Intermediary leaves under their official names, which the runtime renames: those the runtime file names
-	 * and Intermediary doesn't, under a name Intermediary renames nowhere (an override of a renamed method shares its
-	 * obfuscated name, and Intermediary lists the method only where it is first declared). Keyed by intermediary owner,
-	 * name and descriptor (PLAIN-1: {@code Pack$ResourcesSupplier.open}, which SRG names {@code m_247679_}).
+	 * and Intermediary doesn't, under a name and descriptor Intermediary renames nowhere (an override of a renamed method
+	 * shares its obfuscated name and descriptor, and Intermediary lists the method only where it is first declared; three
+	 * unrelated {@code get(F)} methods it renames leave {@code IoSupplier.get()}, SRG's {@code m_247737_}, to this table).
+	 * Keyed by intermediary owner, name and descriptor (PLAIN-1: {@code Pack$ResourcesSupplier.open}, which SRG names
+	 * {@code m_247679_}).
 	 */
 	private static Map<String, String> plainMethods(List<String[]> memberLines, Proguard pg, Map<String, String> officialToIntermediary) {
 		Set<String> listed = new HashSet<>();
@@ -179,7 +181,7 @@ public final class MappingComposer {
 		for (String[] p : memberLines) {
 			if (!p[0].equals("METHOD")) continue;
 			listed.add(p[1] + "." + p[3] + p[2]);
-			if (!p[3].equals(p[4])) renamed.add(p[3]);
+			if (!p[3].equals(p[4])) renamed.add(p[3] + p[2]);
 		}
 		Map<String, String> plain = new HashMap<>();
 		for (Map.Entry<String, String> e : pg.methods.entrySet()) {
@@ -188,7 +190,7 @@ public final class MappingComposer {
 			int dot = key.lastIndexOf('.', paren);
 			String owner = key.substring(0, dot);
 			String name = key.substring(dot + 1, paren);
-			if (name.equals(e.getValue()) || name.startsWith("<") || renamed.contains(name) || listed.contains(key)) continue;
+			if (name.equals(e.getValue()) || name.startsWith("<") || renamed.contains(name + key.substring(paren)) || listed.contains(key)) continue;
 			plain.put(officialToIntermediary.getOrDefault(owner, owner) + "." + name + remapDescriptor(key.substring(paren), officialToIntermediary),
 					e.getValue());
 		}
