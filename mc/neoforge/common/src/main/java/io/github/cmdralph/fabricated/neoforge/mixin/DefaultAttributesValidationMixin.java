@@ -9,9 +9,9 @@ import io.github.cmdralph.fabricated.neoforge.EntrypointBridge;
 import net.minecraft.world.entity.ai.attributes.DefaultAttributes;
 
 /**
- * Leaves the check that every living entity type has attributes, which only logs, to the registries' freeze after a
- * client's main entrypoints (ATTR-1): NeoForge's first freeze comes before them (CORPUS-16), and logged an error for
- * each entity type whose mod registers its attributes there, as Fabric mods do. The freeze after them checks.
+ * Leaves the check that every living entity type has attributes, which only logs, to the registries' freeze after Fabric
+ * mods' main entrypoints (ATTR-1): on a client, NeoForge's first freeze comes before them (CORPUS-16), and logged an
+ * error for each entity type whose mod registers its attributes there, as Fabric mods do. The freeze after them checks.
  */
 @Mixin(DefaultAttributes.class)
 abstract class DefaultAttributesValidationMixin {
