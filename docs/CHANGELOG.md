@@ -23,6 +23,11 @@ One entry per working session, newest first: what changed, and how it was verifi
   name. Tests: a report through Forge's descriptor, a missing target class with the loader named Forge (272 core tests).
 - owo-lib's roadmap row (CORPUS-20) was stale: the corpus shows it loaded on every version since LEAVE-3 and LIB-1b,
   with the mixins NeoForge's code can't take left out.
+- A Fabric jar's NeoForge-build global loot modifiers are turned off (CORPUS-23): Artifacts' failed to decode on every
+  NeoForge version, 72 to 144 errors a 26.1.2 run, though Fabric reads none. Each file gets a `neoforge:never` condition,
+  which NeoForge skips on 1.21.11 to 26.3, and 1.21.11's list names none of them; a mod depending on Porting Lib, which
+  reads the same folder on Fabric, keeps its own. Recorded, not changed: vanilla's pack metadata errors for two 1.21.11
+  mods' packs, which NeoForge loads anyway (CORPUS-26). Test: 273 core tests.
 - Branches, recorded in `PORTING.md` §3 and §4.1: `forge` runs a translated Fabric mod on Forge 61 (1.21.11) too, and
   applies Fabric's class transforms through a ModLauncher transformation service (#87, #90: fourteen server checks on
   Forge 61 and 64 to 66); `forge-legacy` runs one on Forge 47.4.28, remapped to SRG names, its mixin applied (#89: ten
