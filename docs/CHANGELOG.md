@@ -37,9 +37,9 @@ One entry per working session, newest first: what changed, and how it was verifi
   (before 26.3) a sky colour on every version. Imported with the repository's script; its re-import also showed NET-7's
   edit to the imported `PacketContext` would be lost, so that edit now lives in each version's overrides.
 - Pre-flight checks an injector's `allow` as well as its `require` (ALLOW-1): Mixin stops the game when an injector
-  applies more often than it allows, whatever the config's `required`. Found by forge-legacy's run with the official
-  Fabric API jar: `fabric-item-api-v1`'s furnace hook allows one injection and Forge 47's patched furnace makes the call
-  twice. Such an injector is now left out (or its mod disabled) with the reason. Test: 274 core tests.
+  applies more often than it allows, whatever the config's `required`. Found by the Forge branches' runs with the official
+  Fabric API jar: `fabric-item-api-v1`'s furnace hook allows one injection and the patched furnace of Forge 47 and 61
+  makes the call twice. Such an injector is now left out (or its mod disabled) with the reason. Test: 274 core tests.
 - A mixin config declaring a compatibility level the running Mixin doesn't know declares the last one it knows
   (LEVEL-1). Found by forge's run with the official Fabric API jar: Fabric API for 26.x declares JAVA_25, Forge 64 to
   66 run Mixin 0.8.7, whose levels end at JAVA_21, and Mixin stopped the server reading the config. Mixin only logs a
