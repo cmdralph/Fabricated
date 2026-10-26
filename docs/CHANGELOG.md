@@ -64,6 +64,10 @@ One entry per working session, newest first: what changed, and how it was verifi
   26.x corpus's remaining errors were traced to the mods themselves: FrozenLib's "Unable to read config entry" on a
   fresh config directory (CORPUS-27) and Wilder Wild 26.3's reinforced deepslate blockstate without its mixin
   (CORPUS-28). Forge 47's biome coremod failing with Fabric API installed is recorded for L4 in the roadmap.
+- `fabric-dimensions-v1` on both Forge branches. On Forge 61 to 66 it loads without its DataFixerUpper mixins (forge
+  #140). On Forge 47 it is native (forge-legacy #141): a Fabric teleport goes through Forge's teleporter without the
+  End's platform or credits, and Forge's own lenient codec stands in for upstream's codec hook. With Fabric API, no
+  module of 0.92.12 is disabled on Forge 47 any more.
 - Native loot modules on both Forge branches. On Forge 61 to 66, `fabric-loot-api-v3` and `fabric-api-base` (forge
   #137, a port of `main`'s): Fabric's loot table events run from Forge's loot table event, and from a hook into the
   registry decode on Forge 66, whose loot skip is gone; the in-game mod's mixins use no MixinExtras sugar, after its

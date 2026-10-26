@@ -35,9 +35,11 @@ handled safely, no network access, original jars never changed, and no code that
   `LootTableLoadEvent` on Forge 61 to 65 and from a hook into the registry decode on Forge 66, whose loot skip is
   gone; a test mod's pool added in `MODIFY` reaches dirt's table, with and without Fabric API. The in-game mod's own
   mixins use no MixinExtras sugar: without Fabric API, Forge's MixinExtras couldn't load the Mixin class `@Local`
-  needs and the server didn't start (caught on #137's first run). Next: native modules on Forge's events where `main`
-  has them on NeoForge's (advancements on Forge 66, entity and interaction events), the modules still disabled
-  (dimensions, content registries, object builder on 26.x), the client's entrypoints.
+  needs and the server didn't start (caught on #137's first run). `fabric-dimensions-v1` loads since #140: the plans
+  leave out its DataFixerUpper mixins, which Forge loads without mixin support, and `V2832Mixin`, which casts to the
+  interface they add. Next: native modules on Forge's events where `main` has them on NeoForge's (advancements on
+  Forge 66, entity and interaction events), the modules still disabled (object builder, content registries and data
+  generation on 26.x), the client's entrypoints.
 - **`forge-legacy`:** Minecraft Forge for 1.20.1 (Forge 47.4) and other legacy versions, built with ModDevGradle's
   `legacyforge`. L3's server smoke passes on Forge 47.4.28, a gate since #97: a translated Fabric mod is discovered,
   remapped to the names Forge runs the game with (Mojang's classes, SRG's members, composed from the files Forge's
@@ -60,8 +62,12 @@ handled safely, no network access, original jars never changed, and no code that
   `fabric-loot-tables-v1` are native since #138, with `fabric-api-base` (they were disabled: Forge 47's loot pools are
   a list): Fabric's loot events run where `LootDataManager` applies the parsed tables, and the test mod's pools added
   through both versions and its replaced table are in the tables the game keeps, each event seeing its table's
-  source. Next: dimensions (disabled: Forge 47's `changeDimension` takes a teleporter), then the old capability system
-  and `SimpleChannel`. NeoForge needs no legacy branch.
+  source. `fabric-dimensions-v1` is native since #141: Forge 47 moved vanilla's dimension change into its own
+  `changeDimension`, which takes a teleporter, so the End hook gives a Fabric teleport a teleporter that asks for no
+  portal and isn't vanilla's (no obsidian platform, no credits leaving the End), and upstream's codec hook is left to
+  Forge's own lenient codec (its fix for MC-197860). An armor stand teleported to the End lands at its target with no
+  platform built, with and without Fabric API, and with Fabric API every module of 0.92.12 loads. Next: the old
+  capability system and `SimpleChannel`. NeoForge needs no legacy branch.
 - **Decided** (`RESEARCH.md` §8): Forge 47.4 for 1.20.1, the shared modules kept loadable on Java 17, ForgeGradle for
   modern Forge, CI for pull requests only. L1, the behaviour-neutral seams on `main`: Java 17 for the shared modules
   (their main code compiles at release 17), the loader split (`loader/common`, `loader/neoforge`), the build split
