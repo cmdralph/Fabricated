@@ -73,12 +73,12 @@ public record DefaultBridge(String target, String owner, String name, String des
 		return bridges;
 	}
 
-	private static ClassNode superclass(ClassNode node, Function<String, ClassNode> classes) {
+	static ClassNode superclass(ClassNode node, Function<String, ClassNode> classes) {
 		return node.superName == null ? null : classes.apply(node.superName);
 	}
 
 	/** Collects the default methods of {@code itf} and its superinterfaces, each where it is declared first going up. */
-	private static void defaults(String itf, Function<String, ClassNode> classes, Map<String, String> defaults, Set<String> hierarchy) {
+	static void defaults(String itf, Function<String, ClassNode> classes, Map<String, String> defaults, Set<String> hierarchy) {
 		if (!hierarchy.add(itf)) return;
 		ClassNode node = classes.apply(itf);
 		if (node == null) return;
