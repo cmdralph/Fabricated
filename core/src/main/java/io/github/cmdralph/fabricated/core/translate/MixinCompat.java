@@ -48,16 +48,19 @@ public final class MixinCompat {
 	/**
 	 * What SpongePowered's own Mixin releases take, from their sources (Forge 47 runs 0.8.5, Forge 61 to 66 run 0.8.7):
 	 * the last compatibility level ({@code JAVA_n}) of their CompatibilityLevel enums (LEVEL-1), whether they apply
-	 * injectors in interface mixins (INTERFACE-1), which came with 0.8.6, and where they take an {@code @Inject} into a
-	 * constructor (CTOR-2: {@code Injector.checkTargetForNode}, with {@code InjectionPointData}'s {@code unsafe} from 0.8.6).
+	 * injectors in interface mixins (INTERFACE-1), which came with 0.8.6, where they take an {@code @Inject} into a
+	 * constructor (CTOR-2: {@code Injector.checkTargetForNode}, with {@code InjectionPointData}'s {@code unsafe} from 0.8.6),
+	 * and whether they know a method's arguments by their names where a {@code @ModifyVariable} takes arguments only (ARGS-1:
+	 * {@code LocalVariableDiscriminator.Context} names them {@code arg} and their slot; Fabric's Mixin takes their names
+	 * from 0.17.0).
 	 */
-	private record Upstream(int lastLevel, boolean interfaceInjectors, ConstructorInjects constructorInjects) {
+	private record Upstream(int lastLevel, boolean interfaceInjectors, ConstructorInjects constructorInjects, boolean argumentNames) {
 	}
 
 	private static final Map<String, Upstream> UPSTREAM = Map.of(
-			"0.8.5", new Upstream(18, false, ConstructorInjects.RETURNS_ONLY),
-			"0.8.6", new Upstream(21, true, ConstructorInjects.UNSAFE_POINTS),
-			"0.8.7", new Upstream(21, true, ConstructorInjects.UNSAFE_POINTS));
+			"0.8.5", new Upstream(18, false, ConstructorInjects.RETURNS_ONLY, false),
+			"0.8.6", new Upstream(21, true, ConstructorInjects.UNSAFE_POINTS, false),
+			"0.8.7", new Upstream(21, true, ConstructorInjects.UNSAFE_POINTS, false));
 	private static final Pattern LEVEL = Pattern.compile("JAVA_(\\d{1,3})");
 
 	private MixinCompat() {
@@ -133,17 +136,26 @@ public final class MixinCompat {
 		return upstream == null || upstream.interfaceInjectors();
 	}
 
-	/**
-	 * SpongePowered's release the running Mixin is, by its version without build metadata (Forge 47 reports
-	 * {@code 0.8.5+Jenkins-b310.git-155314e6...}), or null. Fabric's Mixin carries the upstream release it is based on in
-	 * its metadata ({@code 0.17.4+mixin.0.8.7}), which isn't the release that runs.
-	 */
 	/** Where the running Mixin takes an {@code @Inject} into a constructor; {@link ConstructorInjects#AFTER_DELEGATE} for a version not known here. */
 	public static ConstructorInjects constructorInjects(String runtimeMixinVersion) {
 		Upstream upstream = upstream(runtimeMixinVersion);
 		return upstream == null ? ConstructorInjects.AFTER_DELEGATE : upstream.constructorInjects();
 	}
 
+	/**
+	 * Whether the running Mixin knows a method's arguments by their names where a {@code @ModifyVariable} takes arguments
+	 * only (ARGS-1): SpongePowered's names them {@code arg} and their slot. True for a version not known here.
+	 */
+	public static boolean argumentNames(String runtimeMixinVersion) {
+		Upstream upstream = upstream(runtimeMixinVersion);
+		return upstream == null || upstream.argumentNames();
+	}
+
+	/**
+	 * SpongePowered's release the running Mixin is, by its version without build metadata (Forge 47 reports
+	 * {@code 0.8.5+Jenkins-b310.git-155314e6...}), or null. Fabric's Mixin carries the upstream release it is based on in
+	 * its metadata ({@code 0.17.4+mixin.0.8.7}), which isn't the release that runs.
+	 */
 	private static Upstream upstream(String runtimeMixinVersion) {
 		if (runtimeMixinVersion == null) return null;
 		String version = runtimeMixinVersion.trim();
