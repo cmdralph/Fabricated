@@ -15,7 +15,10 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
+import net.minecraft.tags.TagKey;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 
 /**
  * The forge branch's Fabric test mod (docs/PORTING.md §4.1, F3 step 3): its entrypoints and its mixin each log a line
@@ -28,6 +31,8 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 	public static final Identifier ITEM_ID = Identifier.fromNamespaceAndPath(MOD_ID, "test_item");
 	/** The item {@link #onInitialize} registers, as Fabric mods register theirs: straight into the registry. */
 	public static Item testItem;
+	/** Lists stone, dirt and gravel, and removes dirt in Fabric's {@code fabric:remove} and gravel in Forge's {@code remove}. */
+	private static final TagKey<Item> REMOVAL = TagKey.create(Registries.ITEM, Identifier.fromNamespaceAndPath(MOD_ID, "removal"));
 
 	@Override
 	public void onInitialize() {
@@ -50,6 +55,21 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 		LOGGER.info("FABRICATED-FORGE-TEST server entrypoint OK");
 		if (Arrays.stream(ForgeTestMod.class.getDeclaredMethods()).noneMatch(m -> m.getName().equals("clientOnly"))) {
 			LOGGER.info("FABRICATED-FORGE-TEST environment strip OK");
+		}
+	}
+
+	/**
+	 * Whether both removals in the test mod's item tag took their entry out (once tags are loaded): Fabric's, which the
+	 * in-game mod reads into Forge's list, and Forge's own, which Fabric API's tag module, passed through, must leave alone.
+	 */
+	public static void checkTagRemoval() {
+		boolean stone = new ItemStack(Items.STONE).is(REMOVAL);
+		boolean dirt = new ItemStack(Items.DIRT).is(REMOVAL);
+		boolean gravel = new ItemStack(Items.GRAVEL).is(REMOVAL);
+		if (stone && !dirt && !gravel) {
+			LOGGER.info("FABRICATED-FORGE-TEST tag removal OK");
+		} else {
+			LOGGER.warn("FABRICATED-FORGE-TEST tag removal not applied: stone is in the tag {}, dirt (fabric:remove) {}, gravel (remove) {}", stone, dirt, gravel);
 		}
 	}
 

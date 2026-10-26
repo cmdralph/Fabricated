@@ -1,4 +1,10 @@
 {
   "fabricApiVersion": "0.161.0+26.2",
-  "modules": {}
+  "modules": {
+    "fabric-tag-api-v1": {
+      "plan": "passthrough",
+      "skipMixins": ["fabric-tag-api-v1.mixins.json:TagFileMixin#remove", "fabric-tag-api-v1.mixins.json:TagFileMixin#modifyCodec", "fabric-tag-api-v1.mixins.json:TagLoaderMixin#removeTagRemovalReferenceOnReplace", "fabric-tag-api-v1.mixins.json:TagLoaderMixin#loadRemoveEntries", "fabric-tag-api-v1.mixins.json:TagLoaderMixin#scopeIdToTryBuildTag", "fabric-tag-api-v1.mixins.json:TagLoaderMixin#addTagRemovalReferencesToDependencySorter", "fabric-tag-api-v1.mixins.json:TagLoaderMixin#removeEntriesFromTags", "fabric-tag-api-v1.mixins.json:TagLoaderMixin#removeTagRemovalReferencesWhenFinished"],
+      "reason": "Forge's tag files already have a remove list, which its tag loader applies, and upstream's FabricTagFile.remove() reads it: upstream's own list conflicts with Forge's, and its tag loader hooks, which apply that list, are left out with it. Fabricated adds fabric:remove entries to Forge's list instead (the in-game mod's TagFileRemoveMixin)."
+    }
+  }
 }
