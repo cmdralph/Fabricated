@@ -38,6 +38,8 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 			testItem = class_2378.method_10230(items, id, new class_1792(new class_1792.class_1793()));
 			if (id.equals(items.method_10221(testItem))) {
 				LOGGER.info("FABRICATED-FORGE-TEST registry OK");
+				// Item.maxStackSize is private: reading it fails to link unless the access widener reached Forge.
+				if (testItem.field_8013 == 64) LOGGER.info("FABRICATED-FORGE-TEST access widener OK");
 			} else {
 				LOGGER.error("FABRICATED-FORGE-TEST registry gave the item another key: {}", items.method_10221(testItem));
 			}
