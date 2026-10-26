@@ -18,13 +18,18 @@ import net.minecraft.world.entity.item.ItemEntity;
 public final class ForgeBootstrapContent {
 	private static final Identifier ID = Identifier.fromNamespaceAndPath(ForgeTestMod.MOD_ID, "bootstrap_entity");
 	private static EntityType<ItemEntity> type;
+	private static boolean mainInitializerRan;
 
 	private ForgeBootstrapContent() {
 	}
 
-	/** Called as vanilla's bootstrap freezes the registries: the type's intrusive holder waits for its registration. */
+	/**
+	 * Called as the registries are frozen: during vanilla's bootstrap, the type's intrusive holder waits for its
+	 * registration. Nothing is built at a freeze after the main initializer, where Fabric API's registry sync, passed
+	 * through, moves the bootstrap's.
+	 */
 	public static void build() {
-		if (type == null) {
+		if (type == null && !mainInitializerRan) {
 			type = EntityType.Builder.<ItemEntity>of(ItemEntity::new, MobCategory.MISC).noSave().noSummon()
 					.build(ResourceKey.create(Registries.ENTITY_TYPE, ID));
 		}
@@ -32,8 +37,9 @@ public final class ForgeBootstrapContent {
 
 	/** Called from the main initializer: registers the type, as BetterNether's does. */
 	static void register() {
+		mainInitializerRan = true;
 		if (type == null) {
-			ForgeTestMod.LOGGER.error("FABRICATED-FORGE-TEST content built at bootstrap FAILED: vanilla's bootstrap did not build it");
+			ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST content built at bootstrap: none, as no freeze came before the main initializers");
 			return;
 		}
 		Registry.register(BuiltInRegistries.ENTITY_TYPE, ID, type);

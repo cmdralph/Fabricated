@@ -13,19 +13,26 @@ import net.minecraft.class_7923;
  */
 public final class ForgeBootstrapContent {
 	private static class_1792 item;
+	private static boolean mainInitializerRan;
 
 	private ForgeBootstrapContent() {
 	}
 
-	/** Called as vanilla's bootstrap freezes the registries: the item's intrusive holder waits for its registration. */
+	/**
+	 * Called as the registries are frozen: during vanilla's bootstrap, the item's intrusive holder waits for its
+	 * registration. Nothing is built at a freeze after the main initializer, where Fabric API's registry sync, passed
+	 * through, moves the bootstrap's (seen on the reproduction's run with Fabric API, where building it there failed:
+	 * "Registry is already frozen").
+	 */
 	public static void build() {
-		if (item == null) item = new class_1792(new class_1792.class_1793());
+		if (item == null && !mainInitializerRan) item = new class_1792(new class_1792.class_1793());
 	}
 
 	/** Called from the main initializer: registers the item, as BetterNether registers its entity types. */
 	static void register() {
+		mainInitializerRan = true;
 		if (item == null) {
-			ForgeTestMod.LOGGER.error("FABRICATED-FORGE-TEST content built at bootstrap FAILED: vanilla's bootstrap did not build it");
+			ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST content built at bootstrap: none, as no freeze came before the main initializers");
 			return;
 		}
 		class_2960 id = new class_2960(ForgeTestMod.MOD_ID, "bootstrap_item");
