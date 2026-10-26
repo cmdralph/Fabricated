@@ -37,6 +37,14 @@ cat > unmet/fabric.mod.json <<'JSON'
 {"schemaVersion": 1, "id": "fabricated_forge_unmet", "version": "1.0.0", "depends": {"fabricated_forge_missing": "*"}}
 JSON
 jar --create --file mods/fabricated-forge-unmet.jar -C unmet fabric.mod.json
+# Two Fabric mods that depend on each other, as Fabric allows: the loader's sorter refuses a cycle of load orderings, so
+# Fabricated leaves one of theirs out (ORDER-1), and the server must still start.
+mkdir -p cycle
+for self in a b; do
+	other=$([ "$self" = a ] && echo b || echo a)
+	printf '{"schemaVersion": 1, "id": "fabricated_cycle_%s", "version": "1.0.0", "depends": {"fabricated_cycle_%s": "*"}}\n' "$self" "$other" > cycle/fabric.mod.json
+	jar --create --file "mods/fabricated-cycle-$self.jar" -C cycle fabric.mod.json
+done
 if [ -n "$extra" ] && [ -d "$extra" ]; then
 	cp "$extra"/*.jar mods/ 2>/dev/null || true
 fi
@@ -159,6 +167,7 @@ fi
 check "a Fabric mod's fluids have Forge fluid types (the in-game mod's, registered under their ids), and a pig falls through one that isn't water as through air" "grep -q 'FABRICATED-FORGE-TEST fluid types OK' logs/latest.log 2>/dev/null"
 check "Forge's loading warnings name the Fabric mod that wasn't loaded" "grep -qsE 'ServerModLoader.*: Fabric mod fabricated_forge_unmet 1\\.0\\.0 was not loaded: ' logs/latest.log logs/debug.log"
 check "an access widener leaves a field private that Forge's coremod reads through a getter: the test mod's BucketItem.content (PLAT-4)" "grep -q 'BucketItem.content must stay private on Forge' logs/fabric-bridge-report.txt 2>/dev/null && ! grep -qsE 'Field (net/minecraft/world/item/BucketItem\.)?content is not private' logs/latest.log server.out"
+check "two Fabric mods that depend on each other load, one ordering of their cycle left out (ORDER-1)" "grep -q 'fabricated_cycle_b doesn.t load after fabricated_cycle_a' logs/fabric-bridge-report.txt 2>/dev/null"
 check "Fabricated's report names Forge as the loader" "grep -q '^  Forge: ' logs/fabric-bridge-report.txt 2>/dev/null && ! grep -q '^  NeoForge: ' logs/fabric-bridge-report.txt 2>/dev/null"
 
 echo "Server status: $status"

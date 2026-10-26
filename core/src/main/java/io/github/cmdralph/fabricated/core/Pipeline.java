@@ -46,6 +46,7 @@ import io.github.cmdralph.fabricated.core.resolve.CandidateScanner;
 import io.github.cmdralph.fabricated.core.resolve.CompatPlan;
 import io.github.cmdralph.fabricated.core.resolve.DependencyResolver;
 import io.github.cmdralph.fabricated.core.resolve.FabricApiPlan;
+import io.github.cmdralph.fabricated.core.resolve.LoadOrderings;
 import io.github.cmdralph.fabricated.core.runtime.FabricLoaderRuntime;
 import io.github.cmdralph.fabricated.core.runtime.MappingResolvers;
 import io.github.cmdralph.fabricated.core.runtime.ModContainerImpl;
@@ -632,6 +633,8 @@ public final class Pipeline {
 		Map<String, List<String>> linkage = Map.of();
 		/** Compat patches that applied in the last round, by target mod id. */
 		Map<String, List<AppliedPatch>> patches = Map.of();
+		/** The last round's load orderings left out to break a cycle (ORDER-1). */
+		List<LoadOrderings.LeftOut> orderingsLeftOut = List.of();
 		DependencyResolver.Result resolution;
 
 		/** Every Fabric jar found, loading or not: what a mod that isn't loading would have provided. */
@@ -672,6 +675,8 @@ public final class Pipeline {
 		/** Translates in parallel; failures are dropped. Returns the translated mods in resolution order. */
 		private List<TranslatedMod> translate(List<Candidate> mods, ModTranslator translator, Map<String, List<String>> aliases) {
 			Map<String, String> providerOf = providerOf(mods, aliases);
+			LoadOrderings.Result orderings = LoadOrderings.withoutCycles(fabricOrderings(mods, providerOf));
+			orderingsLeftOut = orderings.leftOut();
 			patches = patchesFor(mods);
 			Map<String, List<AppliedPatch>> applied = patches;
 			Map<String, TranslatedMod> results = new ConcurrentHashMap<>();
@@ -681,7 +686,7 @@ public final class Pipeline {
 					FabricApiPlan.Module module = plan.module(c.id());
 					results.put(c.id(), translator.translate(c, effectiveOverride(config, plan, c, applied.getOrDefault(c.id(), List.of())),
 							module != null ? Set.copyOf(module.skipMixins()) : Set.of(),
-							loadAfter(c, providerOf)));
+							loadAfter(c, providerOf, orderings.after().get(c.id()))));
 				} catch (TranslationException e) {
 					failures.put(c, e);
 				} catch (StackOverflowError e) {
@@ -827,19 +832,37 @@ public final class Pipeline {
 		return providerOf;
 	}
 
-	/** NeoForge ids the mod's overlay should order it after: its present dependencies, Fabric or NeoForge. */
-	private List<String> loadAfter(Candidate c, Map<String, String> providerOf) {
-		List<String> after = new ArrayList<>();
-		for (ModDependency dep : c.metadata().getDependencies()) {
-			if (dep.getKind() != ModDependency.Kind.DEPENDS && dep.getKind() != ModDependency.Kind.RECOMMENDS) continue;
-			String id = dep.getModId();
-			String provider = providerOf.get(id);
-			if (provider != null) {
-				if (!provider.equals(c.id())) after.add(ModIds.toNeoForgeId(provider));
-			} else {
-				NeoForgeMod neo = neoMods.getOrDefault(id, neoMods.get(ModIds.toNeoForgeId(id)));
-				if (neo != null) after.add(neo.id());
+	/** Whether a mod's overlay orders it after the target of this dependency, when present. */
+	private static boolean ordersAfter(ModDependency dep) {
+		return dep.getKind() == ModDependency.Kind.DEPENDS || dep.getKind() == ModDependency.Kind.RECOMMENDS;
+	}
+
+	/** The translated Fabric mods each mod depends on or recommends, by their Fabric ids, cycles included. */
+	private static Map<String, List<String>> fabricOrderings(List<Candidate> mods, Map<String, String> providerOf) {
+		Map<String, List<String>> after = new LinkedHashMap<>();
+		for (Candidate c : mods) {
+			List<String> ids = new ArrayList<>();
+			for (ModDependency dep : c.metadata().getDependencies()) {
+				String provider = ordersAfter(dep) ? providerOf.get(dep.getModId()) : null;
+				if (provider != null && !provider.equals(c.id())) ids.add(provider);
 			}
+			after.put(c.id(), ids);
+		}
+		return after;
+	}
+
+	/**
+	 * NeoForge ids the mod's overlay should order it after: the Fabric mods it depends on, less the orderings left out to
+	 * break a cycle (ORDER-1), and its present NeoForge dependencies.
+	 */
+	private List<String> loadAfter(Candidate c, Map<String, String> providerOf, List<String> fabricAfter) {
+		List<String> after = new ArrayList<>();
+		for (String id : fabricAfter) after.add(ModIds.toNeoForgeId(id));
+		for (ModDependency dep : c.metadata().getDependencies()) {
+			if (!ordersAfter(dep) || providerOf.containsKey(dep.getModId())) continue;
+			String id = dep.getModId();
+			NeoForgeMod neo = neoMods.getOrDefault(id, neoMods.get(ModIds.toNeoForgeId(id)));
+			if (neo != null) after.add(neo.id());
 		}
 		return after;
 	}
@@ -855,6 +878,10 @@ public final class Pipeline {
 		}
 		if (rounds.resolution != null) {
 			rounds.resolution.warnings().forEach(w -> report.line("Dependency warnings", w));
+			for (LoadOrderings.LeftOut o : rounds.orderingsLeftOut) {
+				report.line("Load order", o.mod() + " doesn't load after " + o.after() + ", which it depends on: they depend on each other,"
+						+ " directly or through other mods, which Fabric allows and " + in.descriptor().loaderName() + " refuses (ORDER-1)");
+			}
 			rounds.resolution.crossLoaderLinks().forEach((id, targets) -> report.line("Cross-loader dependencies",
 					id + " uses " + in.descriptor().loaderName() + " build(s) of " + targets + "; this usually works for multi-loader libraries but is not guaranteed"));
 		}

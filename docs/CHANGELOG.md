@@ -3,6 +3,16 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-10-26: Fabric mods that depend on each other
+
+- **ORDER-1** (`FINDINGS.md`), reported on Forge 47 ("Mod Sorting failed", "Detected Cycles"): every translated mod's
+  descriptor ordered it after each Fabric mod it depends on, so two mods depending on each other, which Fabric allows,
+  made a cycle every platform's sorter refuses, and the game stopped. Fabricated now leaves out one ordering of each
+  cycle, found by a depth-first walk over the Fabric mods' orderings, and the report names it under *Load order*.
+- Verification: `LoadOrderingsTest` and `PipelineTest`'s new case pass with core's whole suite (321 tests); the new
+  Pipeline case failed before the fix, its descriptors holding both cycles. Each platform's server smoke loads two Fabric
+  mods that depend on each other and must start.
+
 ## 2026-10-26: Forge's server runs as gates
 
 - Both server runs on every Forge version are gates now, the one with Fabric API included, as v0.5.0's goals set once
