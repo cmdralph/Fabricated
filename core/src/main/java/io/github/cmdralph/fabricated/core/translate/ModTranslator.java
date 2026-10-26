@@ -406,7 +406,8 @@ public final class ModTranslator {
 		// Pre-flight sees the mod as it will load: with the handler methods left out below.
 		FileView translated = name -> overlay.containsKey(name) ? overlay.get(name) : files.read(name);
 		MixinPreflight preflight = new MixinPreflight(env.installedIndex(), env.installed(), classSource(translated), env.untransformable(),
-				env.clientSide(), MixinCompat.missingTargetsFatal(behavior), env.vanilla(), env.descriptor().loaderName());
+				env.clientSide(), MixinCompat.missingTargetsFatal(behavior), env.vanilla(), env.descriptor().loaderName(),
+				MixinCompat.interfaceInjectors(env.runtimeMixinVersion()));
 		Map<String, MixinConfigFile> configs = new HashMap<>();
 		Set<String> matchedSkips = new HashSet<>();
 		Map<String, Refmap> refmaps = new HashMap<>();
@@ -432,6 +433,7 @@ public final class ModTranslator {
 				MixinConfigFile parent = parentData != null ? MixinConfigFile.parse(new String(parentData, StandardCharsets.UTF_8)) : null;
 				MixinConfigFile asked = config;
 				config = checkMixinExtras(candidate, entry.config(), config, parent, entries, classes, notes);
+				config = checkCompatibilityLevel(entry.config(), config, notes);
 				rewritten = config != asked;
 				if (parent != null) config = config.inheriting(parent);
 				if (config.refmap() != null) {
@@ -1005,6 +1007,21 @@ public final class ModTranslator {
 		throw new TranslationException(candidate.id() + "'s mixin config " + configName + " requires MixinExtras " + required
 				+ " or later; this " + env.descriptor().loaderName() + " ships MixinExtras " + running + why,
 				"Update " + env.descriptor().loaderName() + " if a newer build ships it, or use a build of " + candidate.id() + " made for this one.");
+	}
+
+	/**
+	 * A mixin config declaring a compatibility level the running Mixin doesn't know would stop the game as Mixin reads it
+	 * (LEVEL-1: Fabric API for 26.x declares JAVA_25; Forge 64 to 66 run Mixin 0.8.7, whose levels end at JAVA_21). It
+	 * declares the last that Mixin knows instead: Mixin checks the language features a mixin uses against the level, and
+	 * only logs a mixin class compiled for a newer Java. Returns the config as it will load.
+	 */
+	private MixinConfigFile checkCompatibilityLevel(String configName, MixinConfigFile config, List<String> notes) {
+		int last = MixinCompat.lastCompatibilityLevel(env.runtimeMixinVersion());
+		int declared = MixinCompat.compatibilityLevel(config.tree().get("compatibilityLevel"));
+		if (last == 0 || declared <= last) return config;
+		notes.add("Its mixin config " + configName + " declares compatibility level JAVA_" + declared + ", which " + env.descriptor().loaderName()
+				+ "'s Mixin " + env.runtimeMixinVersion() + " doesn't know; it loads at JAVA_" + last + ", the last that Mixin knows");
+		return config.withCompatibilityLevel("JAVA_" + last);
 	}
 
 	/**
