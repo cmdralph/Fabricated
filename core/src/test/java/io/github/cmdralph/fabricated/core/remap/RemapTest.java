@@ -61,8 +61,96 @@ class RemapTest {
 			"net.minecraft.world.Entity$Removal -> b$a:",
 			"");
 
+	/** {@link #PROGUARD} in TSRG v1, as Forge 61's installer writes Mojang's mappings: fields without descriptors. */
+	static final String TSRG = String.join("\n",
+			"net/minecraft/world/Level a",
+			"\towner c",
+			"\tcount c",
+			"\taddEntity (Lnet/minecraft/world/Entity;)V d",
+			"\tentityAt (I)Lnet/minecraft/world/Entity; d",
+			"net/minecraft/world/Entity b",
+			"\ttick ()V e",
+			"net/minecraft/world/Entity$Removal b$a",
+			"");
+
+	/**
+	 * MCPConfig's obfuscated → SRG names in TSRG v2 for the same game: SRG class names, a parameter and a static marker
+	 * under methods, fields sharing an obfuscated name with their descriptors.
+	 */
+	static final String TSRG2 = String.join("\n",
+			"tsrg2 obf srg id",
+			"a net/minecraft/src/C_1_ 1",
+			"\tc Lb; f_10_ 10",
+			"\tc I f_11_ 11",
+			"\td (Lb;)V m_20_ 20",
+			"\t\t0 o p_20_0_ 0",
+			"\td (I)Lb; m_21_ 21",
+			"\t\tstatic",
+			"b net/minecraft/src/C_2_ 2",
+			"\te ()V m_22_ 22",
+			"\tf f_12_ 12",
+			"\tg f_13_ 13",
+			"\tg f_14_ 14",
+			"b$a net/minecraft/src/C_3_ 3",
+			"");
+
 	static MappingTable table() throws Exception {
 		return MappingComposer.compose(new StringReader(TINY), new StringReader(PROGUARD));
+	}
+
+	@Test
+	void composesIntermediaryWithForgesTsrg() throws Exception {
+		Map<String, String> types = Map.of("net/minecraft/world/Level.owner", "Lnet/minecraft/world/Entity;", "net/minecraft/world/Level.count", "I");
+		MappingComposer.FieldDescriptors descriptors = (owner, name) -> types.get(owner + "." + name);
+		assertArrayEquals(table().serialize(), MappingComposer.compose(new StringReader(TINY), new StringReader(TSRG), descriptors).serialize(),
+				"the same table as from Mojang's ProGuard file");
+		String obfuscatedDescriptors = TSRG.replace("(Lnet/minecraft/world/Entity;)V", "(Lb;)V").replace("(I)Lnet/minecraft/world/Entity;", "(I)Lb;");
+		assertArrayEquals(table().serialize(), MappingComposer.compose(new StringReader(TINY), new StringReader(obfuscatedDescriptors), descriptors).serialize(),
+				"method descriptors in the obfuscated names read the same");
+
+		// Without the fields' descriptors, the two sharing the obfuscated name c are left out; a field with a name of its own isn't.
+		String tiny = TINY + "FIELD\tb\tZ\tf\tfield_12\n";
+		MappingTable withoutDescriptors = MappingComposer.compose(new StringReader(tiny), new StringReader(TSRG.replace("\ttick", "\tremoved f\n\ttick")));
+		assertNull(withoutDescriptors.mapMemberFlat("field_10"));
+		assertNull(withoutDescriptors.mapMemberFlat("field_11"));
+		assertEquals("removed", withoutDescriptors.mapMemberFlat("field_12"));
+		assertEquals("addEntity", withoutDescriptors.mapMemberFlat("method_20"));
+		assertEquals("net/minecraft/world/Entity$Removal", withoutDescriptors.mapClass("net/minecraft/class_2$class_3"));
+		MappingException v2 = assertThrows(MappingException.class, () -> MappingComposer.compose(new StringReader(TINY), new StringReader("tsrg2 left right\n")));
+		assertTrue(v2.getMessage().contains("TSRG v2"), v2.getMessage());
+	}
+
+	@Test
+	void composesIntermediaryWithMcpConfigsSrgNames() throws Exception {
+		String tiny = TINY + "FIELD\tb\tZ\tf\tfield_12\nFIELD\tb\tI\tg\tfield_13\nFIELD\tb\tJ\tg\tfield_14\n";
+		MappingTable t = MappingComposer.composeSrg(new StringReader(tiny), new StringReader(TSRG2), new StringReader(PROGUARD));
+		assertEquals("net/minecraft/world/Level", t.mapClass("net/minecraft/class_1"), "Mojang's class names");
+		assertEquals("net/minecraft/world/Entity$Removal", t.mapClass("net/minecraft/class_2$class_3"));
+		assertEquals("f_10_", t.mapMemberFlat("field_10"), "fields sharing an obfuscated name are joined by descriptor");
+		assertEquals("f_11_", t.mapMemberFlat("field_11"));
+		assertEquals("f_12_", t.mapMemberFlat("field_12"), "a field without a descriptor is joined on its name");
+		assertNull(t.mapMemberFlat("field_13"), "fields sharing an obfuscated name without descriptors are left out");
+		assertNull(t.mapMemberFlat("field_14"));
+		assertEquals("m_20_", t.mapMemberFlat("method_20"), "overloaded obfuscated method names are joined by descriptor");
+		assertEquals("m_21_", t.mapMemberFlat("method_21"));
+		assertEquals("m_22_", t.mapMemberFlat("method_22"));
+		assertEquals("net/minecraft/class_1", t.unmapClass("net/minecraft/world/Level"));
+
+		// A server's Mojang file names no client class: such a class keeps its intermediary name, its members still map.
+		String server = PROGUARD.replace("net.minecraft.world.Entity$Removal -> b$a:\n", "");
+		MappingTable onServer = MappingComposer.composeSrg(new StringReader(tiny), new StringReader(TSRG2), new StringReader(server));
+		assertEquals("net/minecraft/class_2$class_3", onServer.mapClass("net/minecraft/class_2$class_3"));
+		assertEquals("m_22_", onServer.mapMemberFlat("method_22"));
+
+		MappingTable srgClasses = MappingComposer.composeSrg(new StringReader(tiny), new StringReader(TSRG2), null);
+		assertEquals("net/minecraft/src/C_1_", srgClasses.mapClass("net/minecraft/class_1"), "without Mojang's file, the TSRG file's class names");
+		assertEquals("m_20_", srgClasses.mapMemberFlat("method_20"));
+
+		MappingException v1 = assertThrows(MappingException.class, () -> MappingComposer.composeSrg(new StringReader(TINY), new StringReader(TSRG), null));
+		assertTrue(v1.getMessage().startsWith("Not TSRG v2"), v1.getMessage());
+		MappingException malformed = assertThrows(MappingException.class,
+				() -> MappingComposer.composeSrg(new StringReader(TINY), new StringReader("tsrg2 obf srg id\na net/minecraft/src/C_1_\n"), null));
+		assertTrue(malformed.getMessage().startsWith("Malformed class line 2"), malformed.getMessage());
 	}
 
 	@Test

@@ -1,7 +1,8 @@
 name: Build forge-legacy
 
 # The forge-legacy branch's own build: pull requests to the branch only (owner decision D6); main's build.yml builds
-# NeoForge's targets for main. Compile only until the branch runs the game (docs/PORTING.md §7, L2).
+# NeoForge's targets for main. With a server smoke on Forge 47, reported until L3's discovery is settled
+# (docs/PORTING.md §7).
 on:
   pull_request:
     branches: [forge-legacy]
@@ -55,8 +56,21 @@ jobs:
             | grep -o "<version>${{ matrix.minecraft }}-[^<]*" | sed 's/<version>//' | tail -n 5 | tr '\n' ' ') || true
           echo "Pinned: $pinned. Newest published: ${newest:-unknown}" | tee -a "$GITHUB_STEP_SUMMARY"
       # Only the requested project and what it depends on are configured, not main's NeoForge projects.
-      - name: Build Fabricated
-        run: ./gradlew --configure-on-demand :mc:${{ matrix.minecraft }}:fabricatedJar --stacktrace
+      - name: Forge libraries on the compile classpath (informational)
+        run: ./gradlew --configure-on-demand :mc:${{ matrix.minecraft }}:forgeClasspathReport || true
+      - name: Build Fabricated and the test mod
+        run: ./gradlew --configure-on-demand :mc:${{ matrix.minecraft }}:fabricatedJar :mc:${{ matrix.minecraft }}:testmodJar --stacktrace
+      - name: Check the jar's layout for Forge
+        run: ./gradlew --configure-on-demand :mc:${{ matrix.minecraft }}:checkForgeJar --stacktrace
+      # The game on this branch: what Forge 47 makes of the jar and of the translated test mod. Reported, not gated,
+      # until L3's discovery is settled.
+      - name: Server with Fabricated (informational)
+        continue-on-error: true
+        run: |
+          # Forge 47 runs on Java 17.
+          export PATH="$JAVA_HOME_17_X64/bin:$PATH"
+          forge=$(sed -n 's/^forge_version=//p' "mc/${{ matrix.minecraft }}/gradle.properties")
+          ci/forge-legacy/smoke-server.sh "${{ matrix.minecraft }}" "$forge" "$RUNNER_TEMP/server"
       - name: Upload Fabricated jar
         uses: actions/upload-artifact@v4
         with:

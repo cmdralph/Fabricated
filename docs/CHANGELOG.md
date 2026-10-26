@@ -3,6 +3,19 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-10-26: Intermediary to SRG names for Forge on 1.20.1, shared class transforms
+
+- `MappingComposer.composeSrg` builds the table for Forge 47 (`forge-legacy`, L3), whose game has Mojang's class
+  names and SRG member names: members from MCPConfig's obfuscated → SRG mappings in TSRG v2 (`joined.tsrg`, which
+  Forge's installer keeps as `mcp_config-<version>-mappings.txt`), classes from Mojang's mappings; a class Mojang's
+  file doesn't name keeps its intermediary name, as on a 1.21.11 server. Checked on 1.20.1's Intermediary and
+  MCPConfig's `joined.tsrg`: all 68,666 Intermediary members map (the few names Intermediary gives two fields, and
+  record components, through the owner and descriptor). Unit tests for descriptors, a shared field name without
+  them, a server's file and malformed input.
+- Fabric's class transforms (environment stripping, injected interfaces, default bridges) move from NeoForge's class
+  processors into `FabricClassTransforms` in `loader/common`, which the processors call, so the forge branch's
+  transformation service applies the same code (F3 step 4). No change in behaviour.
+
 ## 2026-10-25: branch reorganisation, a glowing moving block's outline, 1.21.11 server linkage noise, platform seams
 
 **Plan.** The owner renamed the working branch to `claude/dev` and replaced `1.20.1-legacy` with `forge-legacy` (Forge
@@ -39,6 +52,34 @@ updated README and `.claude/settings.json`. Then two items from the rendering tr
   Mixin merges without the prefix, so ShulkerBoxTooltip's ender chest hook no longer disables it on 26.x.
 - The build declares Fabric's exclusive repository before the platform's, so the `forge` branch's 26.x projects
   configure (#75).
+- CAPTURE-2: when an anonymous class captures several values of one type under other names in NeoForge's build,
+  pre-flight tells them apart by their place in vanilla's class, checked against the order each method reads them
+  in, so Ledger's and malilib's hooks into `ChestBlock`'s menu provider can apply on 1.21.11.
+- LOCAL-2: an `@Local` taken by type where NeoForge's patch added a local of that type gets the ordinal of vanilla's
+  local, found as the one whose store aligns with vanilla's code (Ledger's item pickup logging, Puzzles Lib's fog
+  hook).
+- Forge's dialect, from the forge branch's first runs with a translated Fabric mod (#85): each dependency has
+  `versionRange="*"`, as Forge reads a missing range as Maven's range for `""`, which holds no version (checked with
+  Maven's `VersionRange`); and `PlatformDescriptor.packMetadata` gives a translated mod a `pack.mcmeta` on Forge, which
+  reads no mod's pack without one, where NeoForge makes one (null for NeoForge). Unit tests for both.
+- `MappingComposer` reads Mojang's mappings in TSRG v1 too, as Forge 61's installer keeps them (descriptors in Mojang's
+  names, fields without descriptors): fields sharing an obfuscated name in a class are told apart by descriptors the
+  caller gives (`FieldDescriptors`; on Forge, from the installed game in Mojang's names). `RemapTest` composes the
+  same table from TSRG as from ProGuard.
+- PORTING §4.1: what F3 step 3's runs answered (on Forge 64 to 66 a translated Fabric mod loads, runs its entrypoints
+  and has its mixin applied; Forge 61's mapping files and game jars), and the union file system's search order
+  corrected. Roadmap: CORPUS-23 (what a fix needs, and why it waits) and CORPUS-25 (Terralith's spawn settings).
+- The platform profile's descriptor part (`PORTING.md` §6 item 5): `PlatformDescriptor` decides where a translated
+  mod's descriptor goes, how it reads, what the overlay's manifest adds and whether enum extension files are used;
+  NeoForge's is today's `neoforge.mods.toml`, so nothing changes on `main`. `PlatformDescriptor.FORGE`, for both
+  Forge branches, writes `META-INF/mods.toml` in Forge's dialect (read in Forge 47's and 66's `ModInfo` and
+  `ModFile`): each dependency states `mandatory`, which Forge refuses a dependency without, the mixin configs go in
+  the manifest's `MixinConfigs`, and there are no `[[mixins]]`, enum extensions or `[[accessTransformers]]` (Forge
+  reads `META-INF/accesstransformer.cfg` by default). `PipelineTest` translates with it.
+- CORPUS-24, closed: Ledger's "NOT NULL constraint failed: players.player_name" on the 26.x advanced servers is
+  Ledger's own, met through the test mod's Fabric fake player (read in its source and the logged stack).
+- F3 design for modern Forge recorded in `PORTING.md` §4.1, and the branches' first F3 step: a plugin-layer language
+  provider nested in the `forge` jar, compile only (on `claude/forge`).
 - The 26.x note on NeoForge's translucent outline pass is corrected: NeoForge decides it from the model's
   context-free material flags (not its parts), which Fabric's contract makes correct everywhere; a candidate for
   accuracy, not a fault.
