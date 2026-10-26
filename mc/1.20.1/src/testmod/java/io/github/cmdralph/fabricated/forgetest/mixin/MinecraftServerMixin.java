@@ -6,6 +6,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
+import io.github.cmdralph.fabricated.forgetest.ForgeTestMarker;
 import io.github.cmdralph.fabricated.forgetest.ForgeTestMod;
 import net.minecraft.server.MinecraftServer;
 
@@ -25,6 +26,7 @@ public abstract class MinecraftServerMixin {
 		if (!fabricatedForgeTest$logged) {
 			fabricatedForgeTest$logged = true;
 			ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST mixin OK");
+			if ((Object) this instanceof ForgeTestMarker) ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST injected interface OK");
 		}
 	}
 }

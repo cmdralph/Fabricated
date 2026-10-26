@@ -1,0 +1,2 @@
+classTweaker v1 named
+inject-interface net/minecraft/server/MinecraftServer io/github/cmdralph/fabricated/forgetest/ForgeTestMarker

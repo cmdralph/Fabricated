@@ -110,8 +110,10 @@ afterEvaluate {
                 name
             }
             def implementation = provided(provider, 'lang-provider.jar', 'net.minecraftforge.forgespi.language.IModLanguageProvider')
-            // Forge finds the Fabricated jar in the mods folder by these (ModDirTransformerDiscoverer).
-            def locators = ['net.minecraftforge.forgespi.locating.IModLocator', 'net.minecraftforge.forgespi.locating.IDependencyLocator']
+            // Forge finds the Fabricated jar in the mods folder by these (ModDirTransformerDiscoverer), and ModLauncher loads
+            // the transformation service from it.
+            def locators = ['net.minecraftforge.forgespi.locating.IModLocator', 'net.minecraftforge.forgespi.locating.IDependencyLocator',
+                    'cpw.mods.modlauncher.api.ITransformationService']
                     .collect { provided(outer, 'The Fabricated jar', it) }
 
             def names = parts.keySet() as List
