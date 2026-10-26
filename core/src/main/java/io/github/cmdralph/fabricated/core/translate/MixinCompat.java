@@ -49,7 +49,7 @@ public final class MixinCompat {
 	 * What SpongePowered's own Mixin releases take, from their sources (Forge 47 runs 0.8.5, Forge 61 to 66 run 0.8.7):
 	 * the last compatibility level ({@code JAVA_n}) of their CompatibilityLevel enums (LEVEL-1), whether they apply
 	 * injectors in interface mixins (INTERFACE-1), which came with 0.8.6, and where they take an {@code @Inject} into a
-	 * constructor (CTOR-1: {@code Injector.checkTargetForNode}, with {@code InjectionPointData}'s {@code unsafe} from 0.8.6).
+	 * constructor (CTOR-2: {@code Injector.checkTargetForNode}, with {@code InjectionPointData}'s {@code unsafe} from 0.8.6).
 	 */
 	private record Upstream(int lastLevel, boolean interfaceInjectors, ConstructorInjects constructorInjects) {
 	}

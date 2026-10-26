@@ -128,10 +128,10 @@ public final class MixinPreflight {
 	private final boolean missingTargetsFatal;
 	/** Whether the running Mixin applies injectors in interface mixins (INTERFACE-1: Forge 47's doesn't). */
 	private final boolean interfaceInjectors;
-	/** Where the running Mixin takes an {@code @Inject} into a constructor (CTOR-1). */
+	/** Where the running Mixin takes an {@code @Inject} into a constructor (CTOR-2). */
 	private final ConstructorInjects constructorInjects;
 
-	/** Where the running Mixin takes an {@code @Inject} into a constructor (CTOR-1). */
+	/** Where the running Mixin takes an {@code @Inject} into a constructor (CTOR-2). */
 	public enum ConstructorInjects {
 		/** Anywhere after the call to the delegate constructor, as Fabric's Mixin does; not judged. */
 		AFTER_DELEGATE,
@@ -191,7 +191,7 @@ public final class MixinPreflight {
 				ConstructorInjects.AFTER_DELEGATE);
 	}
 
-	/** @param constructorInjects where the running Mixin takes an {@code @Inject} into a constructor (CTOR-1) */
+	/** @param constructorInjects where the running Mixin takes an {@code @Inject} into a constructor (CTOR-2) */
 	public MixinPreflight(ClassIndex game, InstalledClasses installed, ClassBytesSource modClasses, ClassBytesSource untransformable,
 			boolean clientSide, boolean missingTargetsFatal, ClassBytesSource vanilla, String loader, boolean interfaceInjectors,
 			ConstructorInjects constructorInjects) {
@@ -950,7 +950,7 @@ public final class MixinPreflight {
 	}
 
 	/**
-	 * The first point of an {@code @Inject} into a constructor that SpongePowered's Mixin rejects (CTOR-1: it throws as it
+	 * The first point of an {@code @Inject} into a constructor that SpongePowered's Mixin rejects (CTOR-2: it throws as it
 	 * applies the mixin, whatever the config's {@code required}): any but a return that isn't marked {@code unsafe}, or,
 	 * on 0.8.5, any but a return. Null when it takes them all, or on Fabric's Mixin.
 	 */
@@ -966,14 +966,14 @@ public final class MixinPreflight {
 		return null;
 	}
 
-	/** Points an {@code @Inject} into a constructor may take anywhere on SpongePowered's Mixin: its returns (CTOR-1). */
+	/** Points an {@code @Inject} into a constructor may take anywhere on SpongePowered's Mixin: its returns (CTOR-2). */
 	private static final Set<String> RETURN_POINTS = Set.of("RETURN", "TAIL");
 	/** Points whose instructions pre-flight finds, so it can tell whether they follow the delegate constructor call. */
 	private static final Set<String> PLACED_POINTS = Set.of("INVOKE", "INVOKE_ASSIGN", "INVOKE_STRING", "FIELD", "NEW");
 
 	/**
 	 * Marks {@code unsafe} the points of an {@code @Inject} into a constructor that SpongePowered's Mixin takes only so
-	 * marked (CTOR-1): any but a return, where Fabric's Mixin takes any point after the call to the delegate constructor
+	 * marked (CTOR-2): any but a return, where Fabric's Mixin takes any point after the call to the delegate constructor
 	 * ({@code super(...)} or {@code this(...)}). A point is marked when every instruction it picks in every constructor
 	 * selected follows that call, which gives Fabric's behaviour: fabric-command-api-v2's hook into {@code Commands}'
 	 * constructor, which stopped Forge 61's server. Returns a description of each point marked.
@@ -2876,20 +2876,22 @@ public final class MixinPreflight {
 		return null;
 	}
 
-	/** {@code getFooBar} -> {@code fooBar} for the first matching prefix followed by an upper-case letter. */
+	/**
+	 * {@code getFooBar} -> {@code fooBar} for the first matching prefix followed by an upper-case letter, as Mixin's
+	 * {@code AccessorInfo.AccessorName} inflects it: a name all in upper case keeps its case ({@code getURL} ->
+	 * {@code URL}, {@code setX_SIDE_LENGTH} -> {@code X_SIDE_LENGTH}), any other has its first letter lowered
+	 * ({@code getURLFoo} -> {@code uRLFoo}).
+	 */
 	private static String nameAfterPrefix(String method, String... prefixes) {
 		for (String prefix : prefixes) {
-			if (method.length() > prefix.length() && method.startsWith(prefix) && Character.isUpperCase(method.charAt(prefix.length()))) {
-				return decapitalize(method.substring(prefix.length()));
+			if (method.length() > prefix.length() && method.startsWith(prefix)) {
+				char first = method.charAt(prefix.length());
+				if (first < 'A' || first > 'Z') continue;
+				String name = method.substring(prefix.length());
+				return name.toUpperCase(Locale.ROOT).equals(name) ? name : Character.toLowerCase(first) + name.substring(1);
 			}
 		}
 		return null;
-	}
-
-	private static String decapitalize(String s) {
-		// Mixin keeps all-caps names (e.g. "getURL" -> "URL") as they are.
-		if (s.length() > 1 && Character.isUpperCase(s.charAt(1))) return s;
-		return Character.toLowerCase(s.charAt(0)) + s.substring(1);
 	}
 
 	/** Whether {@code handler} is in a named injector group ({@code @Group}), whose members Mixin checks together. */

@@ -245,7 +245,7 @@ class TranslateHelpersTest {
 		assertTrue(MixinCompat.interfaceInjectors("0.17.4+mixin.0.8.7"), "Fabric's Mixin");
 		assertTrue(MixinCompat.interfaceInjectors(null));
 
-		// CTOR-1: where an @Inject into a constructor goes.
+		// CTOR-2: where an @Inject into a constructor goes.
 		assertEquals(MixinPreflight.ConstructorInjects.RETURNS_ONLY, MixinCompat.constructorInjects("0.8.5+Jenkins-b310.git-1"), "Forge 47");
 		assertEquals(MixinPreflight.ConstructorInjects.UNSAFE_POINTS, MixinCompat.constructorInjects("0.8.7+Jenkins-b321.git-4"), "Forge 61 to 66");
 		assertEquals(MixinPreflight.ConstructorInjects.AFTER_DELEGATE, MixinCompat.constructorInjects("0.17.4+mixin.0.8.7"), "Fabric's Mixin");

@@ -49,7 +49,7 @@ One entry per working session, newest first: what changed, and how it was verifi
   runs, applies none there and drops such a mixin whole with an error line, which happened to four Fabric API 0.92
   mixins while the report said the modules loaded in full. The rest of such a mixin now applies, and the report names
   what doesn't. Mixin from 0.8.6, on NeoForge and Forge 61 to 66, is not affected. Test: 277 core tests.
-- On Forge, an `@Inject` into a constructor follows SpongePowered's Mixin (CTOR-1): it takes such a hook only at a
+- On Forge, an `@Inject` into a constructor follows SpongePowered's Mixin (CTOR-2): it takes such a hook only at a
   return or, from 0.8.6, at a point marked `unsafe`, where Fabric's takes any point after `super()`. A point after the
   constructor's `super()` call is marked `unsafe` on Forge 61 to 66, so fabric-command-api-v2's hook into `Commands`
   applies instead of hanging Forge 61's server; on Forge 47 such an injector is left out. Test: 279 core tests.
@@ -58,6 +58,10 @@ One entry per working session, newest first: what changed, and how it was verifi
   them and lambdas implementing them kept their official names, and Fabric API's resource pack lambda stopped the server
   (AbstractMethodError). A descriptor without Minecraft classes is matched by its owner only, so a mod's `Runnable.run`
   keeps its name. Test: 278 core tests.
+- Pre-flight reads the field or method an `@Accessor` or `@Invoker` without a value names as Mixin's `AccessorName`
+  does (ACC-2): a name all in upper case keeps its case. It read Fabric API registry sync's `setX_SIDE_LENGTH` as
+  `x_SIDE_LENGTH`, missed the refmap's `X_SIDE_LENGTH` and disabled the module on Forge 47 (forge-legacy's run on
+  #113). The same accessor in any mod was judged alike on NeoForge. Test: 280 core tests.
 - PLAIN-1 covers refmaps and annotation strings too: a method reference with its owner and descriptor whose name
   Intermediary leaves takes SRG's name. Fabric API's transfer refmap names `DispenseItemBehavior.dispense` (SRG's
   `m_6115_`) as `DropperBlockMixin`'s `@At` target, which Forge 47's pre-flight left out on #113. Checked on Fabric API

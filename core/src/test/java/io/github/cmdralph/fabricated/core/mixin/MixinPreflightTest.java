@@ -3129,7 +3129,7 @@ class MixinPreflightTest {
 
 	@Test
 	void anInjectIntoAConstructorAfterItsSuperCallIsMarkedUnsafeWhereMixinWantsThat() throws Exception {
-		// CTOR-1: fabric-command-api-v2 hooks a call in Commands' constructor, after super(); Fabric's Mixin takes that,
+		// CTOR-2: fabric-command-api-v2 hooks a call in Commands' constructor, after super(); Fabric's Mixin takes that,
 		// SpongePowered's 0.8.7 (Forge 61 to 66) only at a return or a point marked unsafe, and stopped the server. 0.8.5
 		// (Forge 47) has no unsafe points: the injector is left out there.
 		String owner = "net/minecraft/world/Built";
@@ -3814,6 +3814,13 @@ class MixinPreflightTest {
 		assertTrue(MemberRef.parse("foo(I)").matchesMethod("foo", "(I)Z"), "descriptor without return type");
 		assertEquals("foo", MixinPreflight.inferAccessorName("getFoo"));
 		assertEquals("URL", MixinPreflight.inferAccessorName("getURL"));
+		// As Mixin's AccessorName: a name all in upper case keeps its case, any other has its first letter lowered. Fabric
+		// API's registry sync sets DebugLevelSource's constants through setX_SIDE_LENGTH, which pre-flight read as
+		// x_SIDE_LENGTH and so disabled the module (forge-legacy's run on #113).
+		assertEquals("X_SIDE_LENGTH", MixinPreflight.inferAccessorName("setX_SIDE_LENGTH"));
+		assertEquals("uRLFoo", MixinPreflight.inferAccessorName("getURLFoo"));
+		assertEquals("A", MixinPreflight.inferAccessorName("isA"));
+		assertNull(MixinPreflight.inferAccessorName("get_foo"));
 		assertEquals("doThing", MixinPreflight.inferInvokerName("callDoThing"));
 		assertEquals("<init>", MixinPreflight.inferInvokerName("newThing"));
 	}
