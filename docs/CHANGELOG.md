@@ -3,6 +3,19 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-10-26: the built-in registries' freeze after the main entrypoints, on every platform
+
+- **CORPUS-32** (`FINDINGS.md`): past CORPUS-31, the advanced 26.3 corpus stopped at BetterNether's and BetterEnd's main
+  entrypoints: Wover makes its item definitions in a mixin into `BuiltInRegistries.freeze`, which Fabric API runs after the
+  initializers, and NeoForge and Forge run during the bootstrap, so subscribing to them threw. Now the bootstrap freezes the
+  registries without running `freeze`, and `freeze` runs at the platform's first freeze after the main entrypoints, on
+  NeoForge and on both Forge ports.
+- Verification: the test mods log when their mixin into `freeze` runs. Before the fix it ran before the main initializers on
+  every gated run but Forge 47's with Fabric API (manual runs 40412219630, 40412223343 and 40412227160); after it, after
+  them on every one (runs 40412785689, 40413572254 and 40413576589). The advanced 26.3 corpus's server starts and its client
+  reaches a world. The test mods now build their bootstrap content as the registries' contents are created, so the
+  CORPUS-31 check no longer depends on where the freeze runs, and the step that printed the game's classes for this is gone.
+
 ## 2026-10-26: content built before the main entrypoints, on every platform
 
 - **CORPUS-31** (`FINDINGS.md`): since the advanced corpus picked up BetterX's 26.302.0 builds, its 26.3 server and

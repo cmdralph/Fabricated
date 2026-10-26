@@ -3,7 +3,7 @@
   "minVersion": "0.8",
   "package": "io.github.cmdralph.fabricated.forge.mixin",
   "compatibilityLevel": "JAVA_21",
-  "mixins": ["DefaultAttributeCopyMixin", "FluidTypeMixin", "LivingEntityFluidTravelMixin", "MappedRegistryPendingHoldersMixin", "NamespacedWrapperPendingHoldersMixin", "TagFileRemoveMixin"],
+  "mixins": ["DefaultAttributeCopyMixin", "FluidTypeMixin", "LivingEntityFluidTravelMixin", "MappedRegistryPendingHoldersMixin", "NamespacedWrapperPendingHoldersMixin", "BuiltInRegistriesFreezeMixin", "BuiltInRegistriesInvoker", "GameDataFreezeMixin", "TagFileRemoveMixin"],
   "injectors": {
     "defaultRequire": 1
   }

@@ -9,6 +9,9 @@
     "LivingEntityFluidTravelMixin",
     "MappedRegistryPendingHoldersMixin",
     "NamespacedWrapperPendingHoldersMixin",
+    "BuiltInRegistriesFreezeMixin",
+    "BuiltInRegistriesInvoker",
+    "GameDataFreezeMixin",
     "TagFileRemoveMixin"
   ],
   "injectors": {
