@@ -157,7 +157,7 @@ check "the Fabric main entrypoints ran in Forge's registry events" "grep -q 'Fab
 check "the test mod registered an item" "grep -q 'FABRICATED-FORGE-TEST registry OK' logs/latest.log 2>/dev/null"
 # With Fabric API, its registry sync (passed through) moves the bootstrap's freeze after the main initializers.
 if [ -n "$extra" ]; then
-	check "content built during vanilla's bootstrap is registered by the main initializer, or no freeze comes before it (Fabric API's registry sync)" "grep -qE 'FABRICATED-FORGE-TEST content built at bootstrap (registered OK|: none)' logs/latest.log 2>/dev/null"
+	check "content built during vanilla's bootstrap is registered by the main initializer, or no freeze comes before it (Fabric API's registry sync)" "grep -qE 'FABRICATED-FORGE-TEST content built at bootstrap( registered OK|: none)' logs/latest.log 2>/dev/null"
 else
 	check "content built during vanilla's bootstrap is registered by the main initializer, as BetterNether's entity types are (CORPUS-31)" "grep -q 'FABRICATED-FORGE-TEST content built at bootstrap registered OK' logs/latest.log 2>/dev/null"
 fi
