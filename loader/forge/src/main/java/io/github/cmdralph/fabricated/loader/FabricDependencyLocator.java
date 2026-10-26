@@ -236,7 +236,7 @@ public final class FabricDependencyLocator extends AbstractJarFileModProvider im
 			String id = translated.candidate().id();
 			try {
 				handed.add(modFile(translated, mod.packages()));
-			} catch (RuntimeException e) {
+			} catch (IOException | RuntimeException e) {
 				// Fabric code mustn't see it as loaded, or run its entrypoints, when Forge won't load its classes.
 				LOGGER.error("Forge did not accept the translated Fabric mod {}", id, e);
 				refused.add(id);
@@ -295,13 +295,25 @@ public final class FabricDependencyLocator extends AbstractJarFileModProvider im
 	}
 
 	/**
-	 * A translated mod as a Forge mod file: its jar with the overlay last, whose files win, and which gives the module its
-	 * manifest (Mixin reads the {@code MixinConfigs} the descriptor puts there) and the file its path. Other mods' part of
-	 * a package split with this one come first (one module has the whole package), and the files the package guard
-	 * leaves out are hidden.
+	 * A translated mod as a Forge mod file: its jar overlaid with the generated files. Forge 47's securejarhandler takes
+	 * a jar's primary path, whose manifest Mixin reads ({@code MixinConfigs}, Mixin's {@code SecureJarResource}), from
+	 * the first path it is given, and searches the last path first (#89's server smoke: the test mod's mixin config was
+	 * never read with the overlay last, where Forge 61's securemodules takes both from the last path). So the overlay
+	 * comes first, and the filter hides from the other paths each file the overlay has, which the overlay then gives.
+	 * Other mods' part of a package split with this one come next (one module has the whole package), then the jar; the
+	 * files the package guard leaves out are hidden.
 	 */
-	private IModFile modFile(TranslatedMod translated, PackageGuard.Decision packages) {
+	private IModFile modFile(TranslatedMod translated, PackageGuard.Decision packages) throws IOException {
+		Path overlay = translated.overlay().toAbsolutePath().normalize();
+		Set<String> overlaid = new HashSet<>();
+		try (SafeArchive archive = SafeArchive.open(overlay, ArchiveLimits.DEFAULTS)) {
+			for (String name : archive.entryNames()) {
+				if (!name.endsWith("/")) overlaid.add(name);
+			}
+		}
+		String overlayBase = baseName(overlay);
 		List<Path> paths = new ArrayList<>();
+		paths.add(overlay);
 		Map<String, Set<String>> borrowed = new HashMap<>();
 		packages.borrowed().forEach((jar, files) -> {
 			Path path = jar.toAbsolutePath().normalize();
@@ -309,10 +321,10 @@ public final class FabricDependencyLocator extends AbstractJarFileModProvider im
 			borrowed.put(baseName(path), files);
 		});
 		paths.add(translated.jar().toAbsolutePath().normalize());
-		paths.add(translated.overlay().toAbsolutePath().normalize());
-		boolean filtered = !borrowed.isEmpty() || !packages.excludedPackages().isEmpty() || !packages.hiddenFiles().isEmpty();
 		// The union file system's filter gets a path relative to one of the jars (a directory's ending in '/') and that jar.
-		BiPredicate<String, String> filter = !filtered ? null : (path, base) -> {
+		BiPredicate<String, String> filter = (path, base) -> {
+			if (base.equals(overlayBase)) return !packages.hides(path);
+			if (!path.endsWith("/") && overlaid.contains(path)) return false;
 			Set<String> files = borrowed.get(base);
 			if (files != null) return path.endsWith("/") || files.contains(path);
 			return !packages.hides(path);
