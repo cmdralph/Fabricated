@@ -42,6 +42,16 @@ public final class DependencyResolver {
 	private final Map<String, Provider> neoForgeMods = new HashMap<>();
 	/** Versions of the mods installed for the other side only, by id. */
 	private final Map<String, List<Version>> otherSide = new HashMap<>();
+	private final String loader;
+
+	public DependencyResolver() {
+		this("NeoForge");
+	}
+
+	/** @param loader the platform's loader, as reasons and suggestions name it ({@code NeoForge}, {@code Forge}) */
+	public DependencyResolver(String loader) {
+		this.loader = loader;
+	}
 
 	/** Registers a built-in provider (Minecraft, Java, Fabric Loader, native Fabric API modules). */
 	public DependencyResolver builtin(String id, Version version, String description) {
@@ -51,7 +61,7 @@ public final class DependencyResolver {
 
 	/** Registers a loaded NeoForge mod. */
 	public DependencyResolver neoForgeMod(String id, Version version, String displayName) {
-		neoForgeMods.put(id, new Provider(id, version, displayName + " (NeoForge mod)", true));
+		neoForgeMods.put(id, new Provider(id, version, displayName + " (" + loader + " mod)", true));
 		return this;
 	}
 
@@ -102,7 +112,7 @@ public final class DependencyResolver {
 							} else {
 								problem = "requires " + describe(dep) + ", which is not installed";
 								suggestion = missingHints.getOrDefault(dep.getModId(),
-										"Install " + dep.getModId() + " (a Fabric or NeoForge build) or remove " + c.id() + ".");
+										"Install " + dep.getModId() + " (a Fabric or " + loader + " build) or remove " + c.id() + ".");
 							}
 							break;
 						}

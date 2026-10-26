@@ -92,6 +92,21 @@ public final class ModTranslator {
 	private static final byte[] NO_BIOME_MODIFIER = "{\"type\": \"neoforge:add_features\", \"biomes\": [], \"features\": [], \"step\": \"vegetal_decoration\"}\n"
 			.getBytes(StandardCharsets.UTF_8);
 	private static final byte[] NO_STRUCTURE_MODIFIER = "{\"type\": \"neoforge:clear_spawns\", \"structures\": []}\n".getBytes(StandardCharsets.UTF_8);
+	/** NeoForge's global loot modifiers: on 1.21.11 those its list (below) names, on 26.x every file. */
+	private static final Pattern LOOT_MODIFIER = Pattern.compile("(^|.*/)data/[^/]+/loot_modifiers/.+\\.json");
+	private static final String LOOT_MODIFIER_LIST = "data/neoforge/loot_modifiers/global_loot_modifiers.json";
+	/**
+	 * A data file NeoForge skips, on every version: its condition, {@code neoforge:never}, holds on none (read in NeoForge's
+	 * {@code SimpleJsonResourceReloadListener} patch, 1.21.11 to 26.3, which logs a skipped file at debug level).
+	 */
+	private static final byte[] NO_LOOT_MODIFIER = "{\"neoforge:conditions\": [{\"type\": \"neoforge:never\"}]}\n".getBytes(StandardCharsets.UTF_8);
+	/**
+	 * The list 1.21.11 reads every modifier it names from (its {@code LootModifierManager}, not through the conditions,
+	 * and taking a name the scan skipped as a file without data): naming none, layered over the other packs' lists. 26.x
+	 * reads it as a modifier of its own, which the condition skips.
+	 */
+	private static final byte[] NO_LOOT_MODIFIER_LIST = "{\"neoforge:conditions\": [{\"type\": \"neoforge:never\"}], \"replace\": false, \"entries\": []}\n"
+			.getBytes(StandardCharsets.UTF_8);
 	private static final Pattern INTERMEDIARY_CLASS = Pattern.compile("net/minecraft/class_\\d+(\\$.*)?");
 
 	/** Heap a translation may count on, in MiB: a quarter of the maximum, shared by all translations at once. */
@@ -118,7 +133,7 @@ public final class ModTranslator {
 	public TranslatedMod translate(Candidate candidate, ModOverride override, Set<String> plannedSkips, List<String> loadAfter) throws TranslationException {
 		String neoId = ModIds.toNeoForgeId(candidate.id());
 		if (ModIds.RESERVED.contains(neoId)) {
-			throw new TranslationException("Mod id '" + candidate.id() + "' cannot be used on NeoForge", "Report this to the mod author.");
+			throw new TranslationException("Mod id '" + candidate.id() + "' cannot be used on " + env.descriptor().loaderName(), "Report this to the mod author.");
 		}
 		List<String> after = loadAfter.stream().sorted().distinct().toList();
 		String key = Hashing.sha256(String.join("|", candidate.sha256(), env.minecraftVersion(), env.neoForgeVersion(),
@@ -180,6 +195,10 @@ public final class ModTranslator {
 
 				int conditioned = 0;
 				int modifiers = 0;
+				int lootModifiers = 0;
+				// Porting Lib reads global loot modifiers on Fabric, from the same folder: its mods keep theirs.
+				boolean portingLib = candidate.metadata().getDependencies().stream()
+						.anyMatch(d -> d.getKind().isPositive() && d.getModId().startsWith("porting_lib"));
 				for (String name : view != null ? view.keySet() : archive.entryNames()) {
 					// The mod's own pack.mcmeta, and its built-in packs' (resourcepacks/<name>/pack.mcmeta, Tectonic's, PACK-4).
 					if (name.equals(PACK_METADATA) || name.endsWith("/" + PACK_METADATA)) {
@@ -199,6 +218,13 @@ public final class ModTranslator {
 						modifiers++;
 						continue;
 					}
+					// CORPUS-23: so are its NeoForge build's global loot modifiers, which NeoForge reads from any jar. Fabric reads
+					// none (Artifacts' types, which only its NeoForge build registers, failed to decode on every NeoForge version).
+					if (!portingLib && LOOT_MODIFIER.matcher(name).matches()) {
+						overlay.put(name, name.endsWith(LOOT_MODIFIER_LIST) ? NO_LOOT_MODIFIER_LIST : NO_LOOT_MODIFIER);
+						lootModifiers++;
+						continue;
+					}
 					byte[] data = view != null ? view.get(name) : archive.read(name);
 					byte[] fabricData = data == null ? null : withoutNeoForgeConditions(data);
 					if (fabricData == null) continue;
@@ -210,6 +236,9 @@ public final class ModTranslator {
 				}
 				if (modifiers > 0) {
 					notes.add(modifiers + " NeoForge biome or structure modifier(s) (its NeoForge build's), which Fabric ignores; turned off");
+				}
+				if (lootModifiers > 0) {
+					notes.add(lootModifiers + " NeoForge global loot modifier file(s) (its NeoForge build's), which Fabric ignores; turned off");
 				}
 
 				List<InjectedInterface> injections = List.of();
@@ -377,7 +406,7 @@ public final class ModTranslator {
 		// Pre-flight sees the mod as it will load: with the handler methods left out below.
 		FileView translated = name -> overlay.containsKey(name) ? overlay.get(name) : files.read(name);
 		MixinPreflight preflight = new MixinPreflight(env.installedIndex(), env.installed(), classSource(translated), env.untransformable(),
-				env.clientSide(), MixinCompat.missingTargetsFatal(behavior), env.vanilla());
+				env.clientSide(), MixinCompat.missingTargetsFatal(behavior), env.vanilla(), env.descriptor().loaderName());
 		Map<String, MixinConfigFile> configs = new HashMap<>();
 		Set<String> matchedSkips = new HashSet<>();
 		Map<String, Refmap> refmaps = new HashMap<>();
@@ -498,7 +527,7 @@ public final class ModTranslator {
 					.map(f -> f.config() + ":" + relativeMixin(configs.get(f.config()), f.mixin())).distinct()
 					.collect(Collectors.joining("\", \""));
 			throw new TranslationException("Mixin pre-flight failed: " + summary,
-					"Update the mod or ask its author for a NeoForge build. If the affected mixins are cosmetic, add \"skipMixins\": [\""
+					"Update the mod or ask its author for a " + env.descriptor().loaderName() + " build. If the affected mixins are cosmetic, add \"skipMixins\": [\""
 							+ skipHint + "\"] for " + candidate.id() + " in config/fabricated.json.",
 					failures, null);
 		}
@@ -707,7 +736,7 @@ public final class ModTranslator {
 				all.add(mixin);
 			}
 			findings.add(new PreflightFinding(Severity.INFO, configName, header.name.replace('/', '.'), "Its target, " + targets.get(0).replace('/', '.')
-					+ ", is a library class NeoForge loads without mixin support: the interfaces the mixin gives it ("
+					+ ", is a library class " + env.descriptor().loaderName() + " loads without mixin support: the interfaces the mixin gives it ("
 					+ bridge.ducks().stream().map(d -> d.itf().replace('/', '.')).collect(Collectors.joining(", "))
 					+ ") are served by a generated class, which uses the class's fields through reflection, and the mod's uses of them call that class", ""));
 		}
@@ -812,8 +841,8 @@ public final class ModTranslator {
 				if (module == null) continue;
 				found.add(new PreflightFinding(config.plugin() == null && config.required() ? Severity.FAIL : Severity.LEFT_OUT, configName,
 						config.internalName(mixin).replace('/', '.'),
-						"uses " + used.replace('/', '.') + " from " + module + ", a Fabric API module that can't run on NeoForge here",
-						"Use the mod's NeoForge build if it has one."));
+						"uses " + used.replace('/', '.') + " from " + module + ", a Fabric API module that can't run on " + env.descriptor().loaderName() + " here",
+						"Use the mod's " + env.descriptor().loaderName() + " build if it has one."));
 				break;
 			}
 		}
@@ -948,7 +977,7 @@ public final class ModTranslator {
 		Set<String> added = extended.stream().map(e -> e.enumName() + "." + e.name()).collect(Collectors.toSet());
 		if (tweaker.enumExtensions().stream().anyMatch(e -> enumTargets.contains(e.target()) && !added.contains(e.target() + "." + e.constant()))) {
 			throw new TranslationException(candidate.id() + " adds enum constants with Mixin's enum extensions, which need Mixin 0.17.1 or later;"
-					+ " this NeoForge runs Mixin " + env.runtimeMixinVersion(), "Update NeoForge, or use a build of " + candidate.id() + " made for it.");
+					+ " this " + env.descriptor().loaderName() + " runs Mixin " + env.runtimeMixinVersion(), "Update " + env.descriptor().loaderName() + ", or use a build of " + candidate.id() + " made for it.");
 		}
 	}
 
@@ -968,14 +997,14 @@ public final class ModTranslator {
 		boolean fixesOnly = MixinCompat.onlyFixesUpTo(required, running);
 		String severalPoints = fixesOnly ? redirectAtSeveralPoints(config, entries, classes) : null;
 		if (fixesOnly && severalPoints == null) {
-			notes.add("Its mixin config " + configName + " asks for MixinExtras " + required + "; it runs with NeoForge's " + running
+			notes.add("Its mixin config " + configName + " asks for MixinExtras " + required + "; it runs with " + env.descriptor().loaderName() + "'s " + running
 					+ ", as the releases since only fixed bugs its mixins don't meet");
 			return config.requiringMixinExtras(running);
 		}
 		String why = severalPoints != null ? " (" + severalPoints + " has a @Redirect at several injection points, which MixinExtras reads from 0.5.5)" : "";
 		throw new TranslationException(candidate.id() + "'s mixin config " + configName + " requires MixinExtras " + required
-				+ " or later; this NeoForge ships MixinExtras " + running + why,
-				"Update NeoForge if a newer build ships it, or use a build of " + candidate.id() + " made for this one.");
+				+ " or later; this " + env.descriptor().loaderName() + " ships MixinExtras " + running + why,
+				"Update " + env.descriptor().loaderName() + " if a newer build ships it, or use a build of " + candidate.id() + " made for this one.");
 	}
 
 	/**
