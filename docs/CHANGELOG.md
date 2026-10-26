@@ -3,6 +3,19 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-10-26: a release workflow, and v0.4.0-alpha's notes
+
+- `.github/workflows/release.yml` cuts a release by hand: it pins `main`, `forge` and `forge-legacy` (or given commits)
+  when it starts and builds the nine jars each branch's CI builds (NeoForge's four from `main`, Forge 61, 64, 65 and 66
+  from `forge`, Forge 47 from `forge-legacy`), from an empty Gradle cache. It checks that each commit builds the tag's
+  version and that exactly the nine jars came out, then writes their SHA-256 checksums and appends the commits and
+  checksums to the notes. Mode `build`, the default, stops there, for review; `draft` and `publish` create the release,
+  and GitHub creates the tag at `main`'s pinned commit when it is published. Only `main`'s copy creates a release, and
+  never over an existing tag. The previous releases' jars were uploaded by hand. The steps are in `CONTRIBUTING.md`.
+- `docs/releases/v0.4.0-alpha.md`: the notes for everything since v0.3.0-alpha, from this file and the roadmap.
+- Verification: the workflow parses, each of its scripts passes `bash -n`, and the notes step ran locally on placeholder
+  jars. Its first run in `build` mode is recorded in the next entry.
+
 ## 2026-10-26: Intermediary to SRG names for Forge on 1.20.1, shared class transforms
 
 - `MappingComposer.composeSrg` builds the table for Forge 47 (`forge-legacy`, L3), whose game has Mojang's class
