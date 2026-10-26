@@ -45,6 +45,17 @@ updated README and `.claude/settings.json`. Then two items from the rendering tr
 - LOCAL-2: an `@Local` taken by type where NeoForge's patch added a local of that type gets the ordinal of vanilla's
   local, found as the one whose store aligns with vanilla's code (Ledger's item pickup logging, Puzzles Lib's fog
   hook).
+- Forge's dialect, from the forge branch's first runs with a translated Fabric mod (#85): each dependency has
+  `versionRange="*"`, as Forge reads a missing range as Maven's range for `""`, which holds no version (checked with
+  Maven's `VersionRange`); and `PlatformDescriptor.packMetadata` gives a translated mod a `pack.mcmeta` on Forge, which
+  reads no mod's pack without one, where NeoForge makes one (null for NeoForge). Unit tests for both.
+- `MappingComposer` reads Mojang's mappings in TSRG v1 too, as Forge 61's installer keeps them (descriptors in Mojang's
+  names, fields without descriptors): fields sharing an obfuscated name in a class are told apart by descriptors the
+  caller gives (`FieldDescriptors`; on Forge, from the installed game in Mojang's names). `RemapTest` composes the
+  same table from TSRG as from ProGuard.
+- PORTING §4.1: what F3 step 3's runs answered (on Forge 64 to 66 a translated Fabric mod loads, runs its entrypoints
+  and has its mixin applied; Forge 61's mapping files and game jars), and the union file system's search order
+  corrected. Roadmap: CORPUS-23 (what a fix needs, and why it waits) and CORPUS-25 (Terralith's spawn settings).
 - The platform profile's descriptor part (`PORTING.md` §6 item 5): `PlatformDescriptor` decides where a translated
   mod's descriptor goes, how it reads, what the overlay's manifest adds and whether enum extension files are used;
   NeoForge's is today's `neoforge.mods.toml`, so nothing changes on `main`. `PlatformDescriptor.FORGE`, for both

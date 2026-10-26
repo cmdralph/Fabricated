@@ -77,9 +77,11 @@ public final class ModsTomlWriter {
 
 	/**
 	 * The descriptor in Forge's dialect, read in Forge 47's and 66's {@code ModInfo} and {@code ModFile}: each dependency
-	 * states {@code mandatory}, without which Forge refuses the file; the mixin configs are in the manifest's
-	 * {@code MixinConfigs} ({@link PlatformDescriptor#FORGE}) as Forge has no {@code [[mixins]]}; there are no enum
-	 * extension files; and Forge reads {@code META-INF/accesstransformer.cfg} unless told otherwise.
+	 * states {@code mandatory}, without which Forge refuses the file, and a version range, as Forge's default is Maven's
+	 * range for {@code ""}, which holds no version, so its {@code ModSorter} finds an installed dependency unsupported
+	 * (the forge branch's server smoke); the mixin configs are in the manifest's {@code MixinConfigs}
+	 * ({@link PlatformDescriptor#FORGE}) as Forge has no {@code [[mixins]]}; there are no enum extension files; and Forge
+	 * reads {@code META-INF/accesstransformer.cfg} unless told otherwise.
 	 */
 	public static String writeForge(Spec spec) {
 		return write(spec, true);
@@ -137,6 +139,8 @@ public final class ModsTomlWriter {
 			kv(sb, "modId", id);
 			if (forge) {
 				sb.append("mandatory=false\n");
+				// Maven's "*" is a range of every version.
+				kv(sb, "versionRange", "*");
 			} else {
 				kv(sb, "type", "optional");
 			}

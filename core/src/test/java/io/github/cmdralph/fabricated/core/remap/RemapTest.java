@@ -61,8 +61,42 @@ class RemapTest {
 			"net.minecraft.world.Entity$Removal -> b$a:",
 			"");
 
+	/** {@link #PROGUARD} in TSRG v1, as Forge 61's installer writes Mojang's mappings: fields without descriptors. */
+	static final String TSRG = String.join("\n",
+			"net/minecraft/world/Level a",
+			"\towner c",
+			"\tcount c",
+			"\taddEntity (Lnet/minecraft/world/Entity;)V d",
+			"\tentityAt (I)Lnet/minecraft/world/Entity; d",
+			"net/minecraft/world/Entity b",
+			"\ttick ()V e",
+			"net/minecraft/world/Entity$Removal b$a",
+			"");
+
 	static MappingTable table() throws Exception {
 		return MappingComposer.compose(new StringReader(TINY), new StringReader(PROGUARD));
+	}
+
+	@Test
+	void composesIntermediaryWithForgesTsrg() throws Exception {
+		Map<String, String> types = Map.of("net/minecraft/world/Level.owner", "Lnet/minecraft/world/Entity;", "net/minecraft/world/Level.count", "I");
+		MappingComposer.FieldDescriptors descriptors = (owner, name) -> types.get(owner + "." + name);
+		assertArrayEquals(table().serialize(), MappingComposer.compose(new StringReader(TINY), new StringReader(TSRG), descriptors).serialize(),
+				"the same table as from Mojang's ProGuard file");
+		String obfuscatedDescriptors = TSRG.replace("(Lnet/minecraft/world/Entity;)V", "(Lb;)V").replace("(I)Lnet/minecraft/world/Entity;", "(I)Lb;");
+		assertArrayEquals(table().serialize(), MappingComposer.compose(new StringReader(TINY), new StringReader(obfuscatedDescriptors), descriptors).serialize(),
+				"method descriptors in the obfuscated names read the same");
+
+		// Without the fields' descriptors, the two sharing the obfuscated name c are left out; a field with a name of its own isn't.
+		String tiny = TINY + "FIELD\tb\tZ\tf\tfield_12\n";
+		MappingTable withoutDescriptors = MappingComposer.compose(new StringReader(tiny), new StringReader(TSRG.replace("\ttick", "\tremoved f\n\ttick")));
+		assertNull(withoutDescriptors.mapMemberFlat("field_10"));
+		assertNull(withoutDescriptors.mapMemberFlat("field_11"));
+		assertEquals("removed", withoutDescriptors.mapMemberFlat("field_12"));
+		assertEquals("addEntity", withoutDescriptors.mapMemberFlat("method_20"));
+		assertEquals("net/minecraft/world/Entity$Removal", withoutDescriptors.mapClass("net/minecraft/class_2$class_3"));
+		MappingException v2 = assertThrows(MappingException.class, () -> MappingComposer.compose(new StringReader(TINY), new StringReader("tsrg2 left right\n")));
+		assertTrue(v2.getMessage().contains("TSRG v2"), v2.getMessage());
 	}
 
 	@Test

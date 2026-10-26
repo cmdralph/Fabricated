@@ -13,16 +13,33 @@ import java.util.regex.Pattern;
  * Builds the intermediary → Mojang table for an obfuscated Minecraft version from
  * <ul>
  *   <li>Fabric's Intermediary in Tiny v1 format ({@code official → intermediary}), and</li>
- *   <li>Mojang's official mappings in ProGuard format ({@code mojang → official}).</li>
+ *   <li>Mojang's official mappings ({@code mojang → official}), in ProGuard format as Mojang publishes them (and
+ *   NeoForge's installer keeps them), or in TSRG v1 as Forge 61's installer leaves them.</li>
  * </ul>
  * Members are joined on {@code (official owner, official name, official descriptor)}, so ProGuard's
- * overloaded obfuscated names are handled correctly.
+ * overloaded obfuscated names are handled correctly. TSRG gives fields no descriptor: a field whose obfuscated name its
+ * class gives no other field is joined on its name, and fields sharing one are told apart by their descriptors in
+ * Mojang's names ({@link FieldDescriptors}).
  */
 public final class MappingComposer {
 	private static final Pattern LINE_PREFIX = Pattern.compile("^\\d+:\\d+:");
 	private static final Pattern LINE_SUFFIX = Pattern.compile("\\):\\d+(?::\\d+)?$");
 
+	/** How far ahead the format is looked for: past the comments a ProGuard file starts with. */
+	private static final int FORMAT_LOOKAHEAD = 1 << 16;
+
 	private MappingComposer() {
+	}
+
+	/**
+	 * The descriptor, in Mojang's names, of one of the game's fields in Mojang's names (its owner and name); null when
+	 * unknown. Only TSRG needs it, for the fields whose obfuscated name another field of their class has.
+	 */
+	@FunctionalInterface
+	public interface FieldDescriptors {
+		FieldDescriptors NONE = (mojangOwner, mojangName) -> null;
+
+		String of(String mojangOwner, String mojangName) throws IOException;
 	}
 
 	/** Parsed ProGuard mappings keyed by official names. */
@@ -38,10 +55,26 @@ public final class MappingComposer {
 		/** officialOwner + "." + officialName + officialDesc → mojang name. */
 		final Map<String, String> fields = new HashMap<>();
 		final Map<String, String> methods = new HashMap<>();
+		/** officialOwner + "." + officialName → mojang name, for fields TSRG gives without a descriptor. */
+		final Map<String, String> fieldsByName = new HashMap<>();
+
+		String field(String officialOwner, String officialName, String officialDesc) {
+			String byDescriptor = fields.get(officialOwner + "." + officialName + officialDesc);
+			return byDescriptor != null ? byDescriptor : fieldsByName.get(officialOwner + "." + officialName);
+		}
 	}
 
-	public static MappingTable compose(Reader intermediaryTiny, Reader mojangProguard) throws IOException, MappingException {
-		Proguard pg = readProguard(mojangProguard);
+	public static MappingTable compose(Reader intermediaryTiny, Reader mojangMappings) throws IOException, MappingException {
+		return compose(intermediaryTiny, mojangMappings, FieldDescriptors.NONE);
+	}
+
+	/**
+	 * @param mojangMappings   Mojang's mappings, ProGuard or TSRG v1 (told apart by their first line)
+	 * @param fieldDescriptors the descriptors of fields sharing an obfuscated name, for TSRG
+	 */
+	public static MappingTable compose(Reader intermediaryTiny, Reader mojangMappings, FieldDescriptors fieldDescriptors)
+			throws IOException, MappingException {
+		Proguard pg = readMojang(mojangMappings, fieldDescriptors);
 		Map<String, String> classes = new HashMap<>();
 		Map<String, Map<String, String>> members = new HashMap<>();
 		// official class → intermediary class, to translate descriptors for qualified keys
@@ -84,8 +117,7 @@ public final class MappingComposer {
 			String desc = p[2];
 			String officialName = p[3];
 			String intermediaryName = p[4];
-			String key = owner + "." + officialName + desc;
-			String mojang = p[0].equals("FIELD") ? pg.fields.get(key) : pg.methods.get(key);
+			String mojang = p[0].equals("FIELD") ? pg.field(owner, officialName, desc) : pg.methods.get(owner + "." + officialName + desc);
 			if (mojang == null || mojang.equals(intermediaryName)) continue;
 			String intermediaryOwner = officialToIntermediary.getOrDefault(owner, owner);
 			String intermediaryDesc = remapDescriptor(desc, officialToIntermediary);
@@ -93,6 +125,69 @@ public final class MappingComposer {
 					.put(intermediaryOwner + "." + intermediaryName + intermediaryDesc, mojang);
 		}
 		return MappingTable.fromMembers(classes, members);
+	}
+
+	/** Mojang's mappings in either format: TSRG v1's lines have no {@code " -> "}, ProGuard's do. */
+	static Proguard readMojang(Reader reader, FieldDescriptors fieldDescriptors) throws IOException, MappingException {
+		BufferedReader br = new BufferedReader(reader);
+		br.mark(FORMAT_LOOKAHEAD);
+		String first = br.readLine();
+		while (first != null && (first.isBlank() || first.stripLeading().startsWith("#"))) first = br.readLine();
+		br.reset();
+		if (first != null && first.startsWith("tsrg2 ")) throw new MappingException("Mojang's mappings are in TSRG v2, which Fabricated doesn't read");
+		return first != null && !first.contains(" -> ") ? readTsrg(br, fieldDescriptors) : readProguard(br);
+	}
+
+	/**
+	 * TSRG v1 ({@code mojang official} class lines, then tab-indented {@code mojang official} field lines and
+	 * {@code mojang descriptor official} method lines), as Forge 61's installer writes Mojang's mappings. Method
+	 * descriptors are taken to official names whichever names they use: Mojang's classes are in packages and the
+	 * obfuscated ones aren't, and the classes the obfuscation kept have the same name in both.
+	 */
+	static Proguard readTsrg(BufferedReader br, FieldDescriptors fieldDescriptors) throws IOException, MappingException {
+		Proguard pg = new Proguard();
+		// official owner → official field name → Mojang names (more than one where the obfuscation reused the name)
+		Map<String, Map<String, List<String>>> rawFields = new HashMap<>();
+		List<String[]> rawMethods = new ArrayList<>();
+		String currentOfficial = null;
+		String line;
+		int lineNo = 0;
+		while ((line = br.readLine()) != null) {
+			lineNo++;
+			if (line.isBlank() || line.stripLeading().startsWith("#")) continue;
+			String[] p = line.strip().split(" ");
+			if (!Character.isWhitespace(line.charAt(0))) {
+				if (p.length != 2) throw new MappingException("Malformed class line " + lineNo + ": " + line);
+				pg.classes.put(p[1], p[0]);
+				pg.mojangToOfficial.put(p[0], p[1]);
+				currentOfficial = p[1];
+				continue;
+			}
+			if (currentOfficial == null) throw new MappingException("Member before any class at line " + lineNo);
+			if (p.length == 2) {
+				rawFields.computeIfAbsent(currentOfficial, k -> new HashMap<>()).computeIfAbsent(p[1], k -> new ArrayList<>()).add(p[0]);
+			} else if (p.length == 3 && p[1].startsWith("(")) {
+				rawMethods.add(new String[] {currentOfficial, p[2], p[1], p[0]});
+			} else {
+				throw new MappingException("Malformed member line " + lineNo + ": " + line);
+			}
+		}
+		for (String[] m : rawMethods) pg.methods.put(m[0] + "." + m[1] + remapDescriptor(m[2], pg.mojangToOfficial), m[3]);
+		for (Map.Entry<String, Map<String, List<String>>> owner : rawFields.entrySet()) {
+			String officialOwner = owner.getKey();
+			for (Map.Entry<String, List<String>> field : owner.getValue().entrySet()) {
+				List<String> mojangNames = field.getValue();
+				if (mojangNames.size() == 1) {
+					pg.fieldsByName.put(officialOwner + "." + field.getKey(), mojangNames.get(0));
+					continue;
+				}
+				for (String mojangName : mojangNames) {
+					String desc = fieldDescriptors.of(pg.classes.getOrDefault(officialOwner, officialOwner), mojangName);
+					if (desc != null) pg.fields.put(officialOwner + "." + field.getKey() + remapDescriptor(desc, pg.mojangToOfficial), mojangName);
+				}
+			}
+		}
+		return pg;
 	}
 
 	static Proguard readProguard(Reader reader) throws IOException, MappingException {
