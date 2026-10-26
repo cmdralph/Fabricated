@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # The forge branch's server smoke (docs/PORTING.md §4.1 and §7, F3): installs a Minecraft Forge dedicated server, adds
 # the Fabricated jar and the branch's Fabric test mod, boots it and reports what Forge made of them: whether it ran
-# Fabricated's locators, took the nested language provider and constructed the in-game mod, and whether the translated
-# test mod loaded, ran its entrypoints and had its mixin applied.
+# Fabricated's locators, took the nested language provider and constructed the in-game mod, whether the translated
+# test mod loaded, ran its entrypoints and had its mixin applied, and whether Forge's loading warnings name a Fabric mod
+# that wasn't loaded.
 #
 # Usage: ci/forge/smoke-server.sh <minecraft-version> <forge-version> <work-dir>
 # Exit status: the server must start; the checks are reported (until F3's discovery is settled).
@@ -27,6 +28,12 @@ echo "::endgroup::"
 mkdir -p mods
 cp "$root"/build/libs/fabricated-forge-*+mc"$mc".jar mods/
 cp "$root"/mc/forge-"$mc"/build/testmods/fabricated-testmod.jar mods/
+# A Fabric mod whose dependency is missing: Fabricated doesn't load it, and Forge's loading warnings name it.
+mkdir unmet
+cat > unmet/fabric.mod.json <<'JSON'
+{"schemaVersion": 1, "id": "fabricated_forge_unmet", "version": "1.0.0", "depends": {"fabricated_forge_missing": "*"}}
+JSON
+jar --create --file mods/fabricated-forge-unmet.jar -C unmet fabric.mod.json
 ls -1 mods
 echo "eula=true" > eula.txt
 cat > server.properties <<'PROPS'
@@ -125,6 +132,7 @@ report "Forge added MixinExtras for the test mod" "grep -i 'mixinextras' logs/de
 report "the Fabric main entrypoints ran in Forge's registry events" "grep -q 'Fabricated ran the Fabric main entrypoints of [1-9][0-9]* mod(s) on Forge (0 failed)' logs/latest.log 2>/dev/null"
 report "the test mod registered an item" "grep -q 'FABRICATED-FORGE-TEST registry OK' logs/latest.log 2>/dev/null"
 report "the test mod's item is in the frozen registry at the first tick" "grep -q 'FABRICATED-FORGE-TEST registry entry kept OK' logs/latest.log 2>/dev/null"
+report "Forge's loading warnings name the Fabric mod that wasn't loaded" "grep -qsE 'ServerModLoader.*: Fabric mod fabricated_forge_unmet 1\\.0\\.0 was not loaded: ' logs/latest.log logs/debug.log"
 report "Fabricated's report names Forge as the loader" "grep -q '^  Forge: ' logs/fabric-bridge-report.txt 2>/dev/null && ! grep -q '^  NeoForge: ' logs/fabric-bridge-report.txt 2>/dev/null"
 
 echo "Server status: $status"
