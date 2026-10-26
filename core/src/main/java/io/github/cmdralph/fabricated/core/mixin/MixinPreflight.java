@@ -130,6 +130,8 @@ public final class MixinPreflight {
 	private final boolean interfaceInjectors;
 	/** Where the running Mixin takes an {@code @Inject} into a constructor (CTOR-2). */
 	private final ConstructorInjects constructorInjects;
+	/** Whether the running Mixin knows arguments by their names where a {@code @ModifyVariable} takes arguments only (ARGS-1). */
+	private final boolean argumentNames;
 
 	/** Where the running Mixin takes an {@code @Inject} into a constructor (CTOR-2). */
 	public enum ConstructorInjects {
@@ -195,8 +197,20 @@ public final class MixinPreflight {
 	public MixinPreflight(ClassIndex game, InstalledClasses installed, ClassBytesSource modClasses, ClassBytesSource untransformable,
 			boolean clientSide, boolean missingTargetsFatal, ClassBytesSource vanilla, String loader, boolean interfaceInjectors,
 			ConstructorInjects constructorInjects) {
+		this(game, installed, modClasses, untransformable, clientSide, missingTargetsFatal, vanilla, loader, interfaceInjectors,
+				constructorInjects, true);
+	}
+
+	/**
+	 * @param argumentNames whether the running Mixin knows a method's arguments by their names where a
+	 *                      {@code @ModifyVariable} takes arguments only, as Fabric's does from 0.17.0 (ARGS-1)
+	 */
+	public MixinPreflight(ClassIndex game, InstalledClasses installed, ClassBytesSource modClasses, ClassBytesSource untransformable,
+			boolean clientSide, boolean missingTargetsFatal, ClassBytesSource vanilla, String loader, boolean interfaceInjectors,
+			ConstructorInjects constructorInjects, boolean argumentNames) {
 		this.interfaceInjectors = interfaceInjectors;
 		this.constructorInjects = constructorInjects;
+		this.argumentNames = argumentNames;
 		this.game = game;
 		this.installed = installed;
 		this.modClasses = modClasses;
@@ -331,6 +345,10 @@ public final class MixinPreflight {
 						changed = true;
 						out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@" + simpleName(ann.desc) + " " + method.name
 								+ " targets " + lambda + ", which this game build numbers differently", ""));
+					}
+					for (String named : argumentNameRepairs(method, ann, targets, ctx)) {
+						changed = true;
+						out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@ModifyVariable " + method.name + " takes " + named, ""));
 					}
 					for (String marked : constructorPointRepairs(method, ann, targets, ctx)) {
 						changed = true;
@@ -952,6 +970,102 @@ public final class MixinPreflight {
 			target.methods.stream().filter(m -> ref.matchesMethod(m.name, m.desc)).findFirst().ifPresent(methods::add);
 		}
 		return methods;
+	}
+
+	/**
+	 * Gives a {@code @ModifyVariable} taking a method's argument by its name, with {@code argsOnly}, the argument's slot
+	 * instead, where the running Mixin doesn't know arguments by their names (ARGS-1: SpongePowered's names them {@code arg}
+	 * and their slot, so Fabric API's resource loader hook taking {@code enableProfiling} in
+	 * {@code SimpleReloadInstance.create} failed on Forge 65; Fabric's Mixin takes their names from 0.17.0). The argument is
+	 * the one of that name in the target method's local variable table, or in vanilla's, or else the only one of the
+	 * handler's type; it must be the same slot in every target. Returns a description of each.
+	 */
+	private List<String> argumentNameRepairs(MethodNode handler, AnnotationNode injector, List<ClassNode> targets, Context ctx) {
+		if (argumentNames || !injector.desc.equals(MODIFY_VARIABLE) || !Boolean.TRUE.equals(Annotations.value(injector, "argsOnly"))
+				|| !(Annotations.value(injector, "name") instanceof List<?> names) || names.isEmpty()
+				|| Annotations.value(injector, "index") != null || Annotations.value(injector, "ordinal") != null) return List.of();
+		Type type = Type.getReturnType(handler.desc);
+		Integer slot = null;
+		for (ClassNode target : targets) {
+			List<MethodNode> methods = selectedMethods(injector, target, ctx);
+			if (methods.isEmpty()) return List.of();
+			ClassNode original = vanillaClass(target.name);
+			for (MethodNode m : methods) {
+				Integer found = argumentSlot(m, names, type);
+				MethodNode before = found == null && original != null ? declared(original, m.name, m.desc) : null;
+				if (before != null) found = argumentSlot(before, names, type);
+				if (found == null) found = onlyArgumentOfType(m, type);
+				if (found == null || slot != null && !slot.equals(found)) return List.of();
+				slot = found;
+			}
+		}
+		if (slot == null) return List.of();
+		removeValue(injector, "name");
+		Annotations.put(injector, "index", slot);
+		return List.of("the argument " + names.get(0) + " by its name, which " + loader + "'s Mixin doesn't know; it takes the argument's slot, "
+				+ slot + ", instead");
+	}
+
+	/** Removes an annotation's value. */
+	private static void removeValue(AnnotationNode annotation, String key) {
+		if (annotation.values == null) return;
+		for (int i = 0; i + 1 < annotation.values.size(); i += 2) {
+			if (key.equals(annotation.values.get(i))) {
+				annotation.values.remove(i + 1);
+				annotation.values.remove(i);
+				return;
+			}
+		}
+	}
+
+	/** The slot of the method's argument that its local variable table names one of {@code names}, of {@code type}; null when none. */
+	private static Integer argumentSlot(MethodNode method, List<?> names, Type type) {
+		if (method.localVariables == null) return null;
+		int end = argumentsEnd(method);
+		for (LocalVariableNode lv : method.localVariables) {
+			if (lv.index < end && names.contains(lv.name) && lv.desc.equals(type.getDescriptor()) && isArgumentSlot(method, lv.index)) return lv.index;
+		}
+		return null;
+	}
+
+	/** The slot of the method's only argument of {@code type}; null when it has none or several. */
+	private static Integer onlyArgumentOfType(MethodNode method, Type type) {
+		Integer found = null;
+		int slot = (method.access & Opcodes.ACC_STATIC) != 0 ? 0 : 1;
+		for (Type arg : Type.getArgumentTypes(method.desc)) {
+			if (arg.equals(type)) {
+				if (found != null) return null;
+				found = slot;
+			}
+			slot += arg.getSize();
+		}
+		return found;
+	}
+
+	/** The first slot after the method's arguments. */
+	private static int argumentsEnd(MethodNode method) {
+		return ((method.access & Opcodes.ACC_STATIC) != 0 ? 0 : 1) + (Type.getArgumentsAndReturnSizes(method.desc) >> 2) - 1;
+	}
+
+	/** Whether a slot is where one of the method's arguments starts (not {@code this}, nor the second half of a long or double). */
+	private static boolean isArgumentSlot(MethodNode method, int index) {
+		int slot = (method.access & Opcodes.ACC_STATIC) != 0 ? 0 : 1;
+		for (Type arg : Type.getArgumentTypes(method.desc)) {
+			if (slot == index) return true;
+			slot += arg.getSize();
+		}
+		return false;
+	}
+
+	/**
+	 * The name a {@code @ModifyVariable} taking arguments only asks for, where the running Mixin doesn't know arguments by
+	 * their names (ARGS-1) and no repair gave it the slot instead; null otherwise.
+	 */
+	private String argumentNameRejected(AnnotationNode injector) {
+		if (argumentNames || !injector.desc.equals(MODIFY_VARIABLE) || !Boolean.TRUE.equals(Annotations.value(injector, "argsOnly"))
+				|| Annotations.value(injector, "index") != null || Annotations.value(injector, "ordinal") != null
+				|| !(Annotations.value(injector, "name") instanceof List<?> names) || names.isEmpty()) return null;
+		return String.valueOf(names.get(0));
 	}
 
 	/**
@@ -3157,6 +3271,14 @@ public final class MixinPreflight {
 			return;
 		}
 
+		String argument = argumentNameRejected(ann);
+		if (argument != null) {
+			ctx.injector(handler, require, injectorName + " " + handler.name + " takes the argument " + argument + " of " + matched.get(0).name + " in "
+							+ target.name.replace('/', '.') + " by its name, which " + loader + "'s Mixin doesn't know (it names arguments arg and their slot;"
+							+ " Fabric's Mixin takes their names from 0.17.0)",
+					"The feature this hook serves doesn't work on this " + loader + ".");
+			return;
+		}
 		String constructorPoint = constructorPointRejected(ann, matched);
 		if (constructorPoint != null) {
 			ctx.injector(handler, 1, injectorName + " " + handler.name + " injects into the constructor of " + target.name.replace('/', '.') + " at @At(\""

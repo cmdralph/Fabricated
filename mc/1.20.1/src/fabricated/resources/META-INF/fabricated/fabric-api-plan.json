@@ -1,1 +1,10 @@
-{"fabricApiVersion": "0.92.12+1.20.1", "modules": {}}
+{
+  "fabricApiVersion": "0.92.12+1.20.1",
+  "modules": {
+    "fabric-registry-sync-v0": {
+      "plan": "passthrough",
+      "skipMixins": ["fabric-registry-sync-v0.mixins.json:SaveLoadingMixin"],
+      "reason": "Forge 47 loads the data pack registries from its own list, which upstream's mixin replaced with vanilla's and the Fabric mods', losing Forge's biome and structure modifiers: Fabricated adds the Fabric mods' dynamic registries to Forge's list instead."
+    }
+  }
+}
