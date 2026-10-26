@@ -3511,6 +3511,14 @@ class MixinPreflightTest {
 		assertEquals(Severity.WARN, lenient.check("test.mixins.json", MixinConfigFile.parse(config(true, "Missing")), Refmap.EMPTY, Set.of()).getFirst().severity());
 		byte[] pseudo = mixin("com/example/mixin/PseudoMissing", true, cw -> { });
 		assertTrue(run(config(true, "PseudoMissing"), null, Map.of("com/example/mixin/PseudoMissing", pseudo), false).isEmpty());
+		// The messages name the platform's loader (PLAT-3).
+		PreflightFinding onNeoForge = run(config(true, "Missing"), null, Map.of("com/example/mixin/Missing", missing), false).getFirst();
+		assertTrue(onNeoForge.message().contains("this Minecraft/NeoForge version"), onNeoForge.message());
+		PreflightFinding onForge = new MixinPreflight(new ClassIndex(Map.of(TARGET, targetClass())::get), InstalledClasses.NONE,
+				Map.of("com/example/mixin/Missing", missing)::get, ClassBytesSource.EMPTY, false, true, ClassBytesSource.EMPTY, "Forge")
+				.check("test.mixins.json", MixinConfigFile.parse(config(true, "Missing")), Refmap.EMPTY, Set.of()).getFirst();
+		assertTrue(onForge.message().contains("this Minecraft/Forge version"), onForge.message());
+		assertTrue(onForge.suggestion().contains("or Forge removed this class"), onForge.suggestion());
 	}
 
 	@Test

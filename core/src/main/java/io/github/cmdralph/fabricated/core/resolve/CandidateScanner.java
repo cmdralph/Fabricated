@@ -32,10 +32,17 @@ public final class CandidateScanner {
 
 	private final TranslationCache cache;
 	private final ArchiveLimits limits;
+	private final String loader;
 
 	public CandidateScanner(TranslationCache cache, ArchiveLimits limits) {
+		this(cache, limits, "NeoForge");
+	}
+
+	/** @param loader the platform's loader, as notes name it ({@code NeoForge}, {@code Forge}) */
+	public CandidateScanner(TranslationCache cache, ArchiveLimits limits, String loader) {
 		this.cache = cache;
 		this.limits = limits;
+		this.loader = loader;
 	}
 
 	/** A jar that could not be used, with a human-readable reason. */
@@ -141,7 +148,7 @@ public final class CandidateScanner {
 				packages.add(slash < 0 ? "" : name.substring(0, slash));
 			}
 			if (PlatformLibraries.PROVIDED_IDS.contains(metadata.getId())) {
-				notes.add(origin + " bundles " + metadata.getId() + ", which NeoForge already provides; the bundled copy is not loaded");
+				notes.add(origin + " bundles " + metadata.getId() + ", which " + loader + " already provides; the bundled copy is not loaded");
 				return null;
 			}
 			if (depth < limits.maxNestingDepth()) {
