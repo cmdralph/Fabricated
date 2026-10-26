@@ -368,6 +368,11 @@ public final class MixinPreflight {
 							out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@" + simpleName(ann.desc) + " " + method.name
 									+ " captures " + local, ""));
 						}
+						for (String local : namedLocalRepairs(method, ann, targets.get(0), ctx)) {
+							changed = true;
+							out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@" + simpleName(ann.desc) + " " + method.name
+									+ " captures " + local, ""));
+						}
 						for (String moved : overloadRepairs(node, method, ann, targets.get(0), ctx, bridges)) {
 							changed = true;
 							out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@" + simpleName(ann.desc) + " " + method.name
@@ -1160,6 +1165,117 @@ public final class MixinPreflight {
 			}
 		}
 		return named;
+	}
+
+	/**
+	 * Adds this build's name to each {@code @Local(name = ...)} none of whose names a local of its type has in scope at the
+	 * injection point, where exactly one local of that type is in scope there, the one MixinExtras would take by the type
+	 * alone (LOCAL-3: Fabric API's lifecycle hook takes {@code @Local(name = "level") ServerLevel} at
+	 * {@code ServerLevel.close()} in {@code MinecraftServer.stopServer}, a variable Forge 64's build, recompiled from
+	 * decompiled source, names {@code levelx}, the method declaring another {@code level} before it). MixinExtras takes
+	 * any of a {@code @Local}'s names, so where one of the mod's is in scope it still is. Only for an injector with one
+	 * {@code @At} naming a call, field access or construction, outside a slice, in methods with local variable names.
+	 * Returns a description of each.
+	 */
+	private static List<String> namedLocalRepairs(MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx) {
+		if (Annotations.value(injector, "slice") != null) return List.of();
+		List<MethodNode> methods = selectedMethods(injector, target, ctx);
+		if (methods.isEmpty()) return List.of();
+		List<String> added = new ArrayList<>();
+		Type[] params = Type.getArgumentTypes(handler.desc);
+		for (int p = 0; p < params.length; p++) {
+			String desc = params[p].getDescriptor();
+			if (desc.startsWith("Lcom/llamalad7/mixinextras/sugar/ref/")) continue;
+			for (AnnotationNode local : Annotations.ofParameter(handler, p)) {
+				if (!local.desc.equals(LOCAL) || !(Annotations.value(local, "name") instanceof List<?> names) || names.isEmpty()
+						|| Annotations.value(local, "index") != null || Annotations.value(local, "ordinal") != null) continue;
+				String found = null;
+				boolean failed = false;
+				methods:
+				for (MethodNode m : methods) {
+					List<Integer> positions = pointPositions(injector, m, ctx);
+					if (positions == null || positions.isEmpty() || m.localVariables == null || m.localVariables.isEmpty()) {
+						failed = true;
+						break;
+					}
+					for (int i : positions) {
+						List<LocalVariableNode> inScope = inScope(m, i, desc);
+						if (inScope.stream().anyMatch(lv -> names.contains(lv.name))) continue;
+						Set<String> named = new HashSet<>();
+						Set<Integer> slots = new HashSet<>();
+						for (LocalVariableNode lv : inScope) {
+							named.add(lv.name);
+							slots.add(lv.index);
+						}
+						String name = named.size() == 1 && slots.size() == 1 ? named.iterator().next() : null;
+						if (name == null || found != null && !found.equals(name)) {
+							failed = true;
+							break methods;
+						}
+						found = name;
+					}
+				}
+				if (failed || found == null) continue;
+				List<Object> extended = new ArrayList<>(names);
+				extended.add(found);
+				Annotations.put(local, "name", extended);
+				added.add("the local " + names.get(0) + " of type " + params[p].getClassName() + ", which " + methods.get(0).name + " in "
+						+ target.name.replace('/', '.') + " names " + found + " where the injector applies; the @Local takes that name too");
+			}
+		}
+		return added;
+	}
+
+	/**
+	 * The first name a handler's {@code @Local(name = ...)} asks for that no local has in scope at an instruction the
+	 * injector's point picks, in a method that declares one of its names elsewhere: MixinExtras looks among the locals in
+	 * scope there. Only for an injector with one {@code @At} naming a call, field access or construction, as
+	 * {@link #pointPositions} finds them; null otherwise.
+	 */
+	private static String namedLocalOutOfScope(MethodNode handler, AnnotationNode injector, List<MethodNode> targets, Context ctx) {
+		Type[] params = Type.getArgumentTypes(handler.desc);
+		for (int p = 0; p < params.length; p++) {
+			for (AnnotationNode local : Annotations.ofParameter(handler, p)) {
+				if (!local.desc.equals(LOCAL) || !(Annotations.value(local, "name") instanceof List<?> names) || names.isEmpty()) continue;
+				for (MethodNode m : targets) {
+					if (m.localVariables == null || m.localVariables.stream().noneMatch(lv -> names.contains(lv.name))) continue;
+					List<Integer> positions = pointPositions(injector, m, ctx);
+					if (positions == null) continue;
+					for (int i : positions) {
+						if (m.localVariables.stream().noneMatch(lv -> names.contains(lv.name) && m.instructions.indexOf(lv.start) <= i
+								&& i < m.instructions.indexOf(lv.end))) return String.valueOf(names.get(0));
+					}
+				}
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * The instructions an injector's single {@code @At} naming a call, field access or construction picks in a method, with
+	 * its {@code ordinal} and {@code opcode}; null for any other point, several, or a fuzzy target.
+	 */
+	private static List<Integer> pointPositions(AnnotationNode injector, MethodNode method, Context ctx) {
+		List<AnnotationNode> ats = Annotations.list(Annotations.value(injector, "at"));
+		if (ats.size() != 1) return null;
+		AnnotationNode at = ats.get(0);
+		String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
+		if (!List.of("INVOKE", "FIELD", "NEW").contains(point) || !(Annotations.value(at, "target") instanceof String raw)) return null;
+		MemberRef ref = MemberRef.parse(ctx.resolve(raw));
+		if (ref.fuzzy()) return null;
+		List<Integer> positions = matching(method, point, ref, Annotations.value(at, "opcode") instanceof Integer o ? o : -1);
+		int ordinal = Annotations.value(at, "ordinal") instanceof Integer n ? n : -1;
+		if (ordinal >= 0) positions = ordinal < positions.size() ? List.of(positions.get(ordinal)) : List.of();
+		return positions;
+	}
+
+	/** The locals of type {@code desc} in scope at the instruction at {@code index}. */
+	private static List<LocalVariableNode> inScope(MethodNode method, int index, String desc) {
+		List<LocalVariableNode> found = new ArrayList<>();
+		for (LocalVariableNode lv : method.localVariables) {
+			if (lv.desc.equals(desc) && method.instructions.indexOf(lv.start) <= index && index < method.instructions.indexOf(lv.end)) found.add(lv);
+		}
+		return found;
 	}
 
 	/**
@@ -3023,6 +3139,13 @@ public final class MixinPreflight {
 		if (missingLocal != null) {
 			ctx.injector(handler, require, injectorName + " handler " + handler.name + " captures the local variable " + missingLocal + ", which "
 							+ matched.get(0).name + " in " + target.name.replace('/', '.') + " does not declare",
+					ctx.changer(true) + " changed the method body; the mod needs an update or this mixin must be skipped.");
+			return;
+		}
+		String outOfScope = slices.isEmpty() ? namedLocalOutOfScope(handler, ann, matched, ctx) : null;
+		if (outOfScope != null) {
+			ctx.injector(handler, require, injectorName + " handler " + handler.name + " captures the local variable " + outOfScope + ", which "
+							+ matched.get(0).name + " in " + target.name.replace('/', '.') + " doesn't have in scope where the injector applies",
 					ctx.changer(true) + " changed the method body; the mod needs an update or this mixin must be skipped.");
 			return;
 		}

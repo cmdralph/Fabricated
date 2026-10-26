@@ -2290,6 +2290,102 @@ class MixinPreflightTest {
 	}
 
 	@Test
+	void aLocalTakenByNameFindsItUnderTheNameARecompiledBuildGivesIt() throws Exception {
+		// LOCAL-3: Fabric API's lifecycle hook takes @Local(name = "level") ServerLevel at ServerLevel.close() in
+		// MinecraftServer.stopServer; Forge 64's build, recompiled from decompiled source, names that loop's variable levelx,
+		// as the method declares another level before it. MixinExtras looks among the locals in scope at the call.
+		String level = "Ljava/lang/String;";
+		java.util.function.Function<Boolean, byte[]> target = second -> {
+			ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+			cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+			MethodVisitor stop = cw.visitMethod(Opcodes.ACC_PUBLIC, "stop", "()V", null, null);
+			org.objectweb.asm.Label start = new org.objectweb.asm.Label();
+			org.objectweb.asm.Label saveStart = new org.objectweb.asm.Label();
+			org.objectweb.asm.Label saveEnd = new org.objectweb.asm.Label();
+			org.objectweb.asm.Label closeStart = new org.objectweb.asm.Label();
+			org.objectweb.asm.Label end = new org.objectweb.asm.Label();
+			stop.visitCode();
+			stop.visitLabel(start);
+			stop.visitVarInsn(Opcodes.ALOAD, 0);
+			stop.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "overworld", "()" + level, false);
+			stop.visitVarInsn(Opcodes.ASTORE, 1);
+			stop.visitLabel(saveStart);
+			stop.visitVarInsn(Opcodes.ALOAD, 1);
+			stop.visitMethodInsn(Opcodes.INVOKESTATIC, TARGET, "save", "(" + level + ")V", false);
+			stop.visitLabel(saveEnd);
+			stop.visitVarInsn(Opcodes.ALOAD, 0);
+			stop.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "overworld", "()" + level, false);
+			stop.visitVarInsn(Opcodes.ASTORE, 1);
+			if (second) {
+				stop.visitVarInsn(Opcodes.ALOAD, 0);
+				stop.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "overworld", "()" + level, false);
+				stop.visitVarInsn(Opcodes.ASTORE, 2);
+			}
+			stop.visitLabel(closeStart);
+			stop.visitVarInsn(Opcodes.ALOAD, 1);
+			stop.visitMethodInsn(Opcodes.INVOKESTATIC, TARGET, "close", "(" + level + ")V", false);
+			stop.visitInsn(Opcodes.RETURN);
+			stop.visitLabel(end);
+			stop.visitLocalVariable("this", "L" + TARGET + ";", null, start, end, 0);
+			stop.visitLocalVariable("level", level, null, saveStart, saveEnd, 1);
+			stop.visitLocalVariable("levelx", level, null, closeStart, end, 1);
+			if (second) stop.visitLocalVariable("other", level, null, closeStart, end, 2);
+			stop.visitMaxs(0, 0);
+			stop.visitEnd();
+			cw.visitEnd();
+			return cw.toByteArray();
+		};
+		byte[] mixin = mixin("com/example/mixin/Unload", false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "onUnload", "(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;" + level + ")V", null, null);
+			AnnotationVisitor local = mv.visitParameterAnnotation(1, "Lcom/llamalad7/mixinextras/sugar/Local;", false);
+			AnnotationVisitor names = local.visitArray("name");
+			names.visit(null, "level");
+			names.visitEnd();
+			local.visitEnd();
+			AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "stop");
+			methods.visitEnd();
+			AnnotationVisitor ats = ann.visitArray("at");
+			AnnotationVisitor at = ats.visitAnnotation(null, AT);
+			at.visit("value", "INVOKE");
+			at.visit("target", "L" + TARGET + ";close(" + level + ")V");
+			at.visitEnd();
+			ats.visitEnd();
+			ann.visitEnd();
+			mv.visitCode();
+			mv.visitInsn(Opcodes.RETURN);
+			mv.visitMaxs(0, 3);
+			mv.visitEnd();
+		});
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Unload"));
+		ClassIndex forge = new ClassIndex(Map.of(TARGET, target.apply(false))::get);
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Unload", mixin));
+		List<PreflightFinding> found = preflight(forge, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(found.stream().anyMatch(f -> f.message().contains("captures the local variable level, which stop in")
+				&& f.message().contains("doesn't have in scope where the injector applies")), found.toString());
+
+		List<PreflightFinding> notes = new ArrayList<>();
+		byte[] repaired = preflight(forge, mod::get, ClassBytesSource.EMPTY, false).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes)
+				.get("com/example/mixin/Unload.class");
+		assertNotNull(repaired, notes.toString());
+		assertTrue(notes.getFirst().message().contains("the local level of type java.lang.String, which stop in " + TARGET.replace('/', '.')
+				+ " names levelx where the injector applies; the @Local takes that name too"), notes.toString());
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired).accept(node, 0);
+		MethodNode handler = node.methods.stream().filter(m -> m.name.equals("onUnload")).findFirst().orElseThrow();
+		assertEquals(List.of("level", "levelx"), Annotations.value(Annotations.ofParameter(handler, 1).getFirst(), "name"));
+		mod.put("com/example/mixin/Unload", repaired);
+		assertTrue(preflight(forge, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty());
+
+		// Two of the type in scope there: which one is meant can't be told, and the injector is reported.
+		ClassIndex two = new ClassIndex(Map.of(TARGET, target.apply(true))::get);
+		Map<String, byte[]> original = Map.of("com/example/mixin/Unload", mixin);
+		assertTrue(preflight(two, original::get, ClassBytesSource.EMPTY, false).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty());
+		assertFalse(preflight(two, original::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty());
+	}
+
+	@Test
 	void anInjectionAtACallMadeThroughNeoForgesExtensionsIsPointedAtTheCallLeadingThere() throws Exception {
 		// HOOK-3: Ledger logs blocks an explosion removes at BlockBehaviour.onExplosionHit's setBlock, which NeoForge's build
 		// makes through BlockState.onBlockExploded, a default method of its extension interfaces.
