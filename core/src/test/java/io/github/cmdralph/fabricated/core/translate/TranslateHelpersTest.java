@@ -77,6 +77,7 @@ class TranslateHelpersTest {
 		assertEquals(List.of(ModIds.FABRICATED, "other"), dependencies.stream().map(d -> d.<String>get("modId")).toList());
 		for (Config dependency : dependencies) {
 			assertEquals(Boolean.FALSE, dependency.get("mandatory"), toml);
+			assertEquals("*", dependency.get("versionRange"), "Forge's default range holds no version: " + toml);
 			assertEquals("AFTER", dependency.get("ordering"));
 			assertFalse(dependency.contains("type"), toml);
 		}
