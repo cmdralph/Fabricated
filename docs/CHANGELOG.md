@@ -58,6 +58,10 @@ One entry per working session, newest first: what changed, and how it was verifi
   them and lambdas implementing them kept their official names, and Fabric API's resource pack lambda stopped the server
   (AbstractMethodError). A descriptor without Minecraft classes is matched by its owner only, so a mod's `Runnable.run`
   keeps its name. Test: 278 core tests.
+- On Forge 47, a mixin's shadow of a value an anonymous class captures, or of its outer instance, finds it under
+  javac's name (CAPTURE-3): SRG names those fields as any other (`f_143670_`), and Forge's build of a class it patches is
+  recompiled, which names them `val$entity` and `this$0`. Vanilla's class, from Forge's installed game, tells such a
+  shadow by its synthetic field. Fabric API's interaction events were disabled for it on #113. Test: 281 core tests.
 - Pre-flight reads the field or method an `@Accessor` or `@Invoker` without a value names as Mixin's `AccessorName`
   does (ACC-2): a name all in upper case keeps its case. It read Fabric API registry sync's `setX_SIDE_LENGTH` as
   `x_SIDE_LENGTH`, missed the refmap's `X_SIDE_LENGTH` and disabled the module on Forge 47 (forge-legacy's run on

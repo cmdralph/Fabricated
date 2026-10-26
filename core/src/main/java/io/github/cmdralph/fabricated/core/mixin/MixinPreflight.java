@@ -2494,21 +2494,28 @@ public final class MixinPreflight {
 	 * under another name: the one captured value of the same type there (CAPTURE-1), or, of several, the one in the place
 	 * the shadow's has among vanilla's of that type in {@code original}, the class the mixin names in vanilla's code
 	 * ({@link #inVanillasOrder}, CAPTURE-2). NeoForge's 1.21.11 build names them after its own parameter names
-	 * (recompiled from decompiled source; inferred from Polymer's {@code val$registryKey} missing there). Empty when every
-	 * shadow is there, null when one's new name can't be told (none of its type, several that vanilla's class doesn't
-	 * tell apart, or one another shadow has).
+	 * (recompiled from decompiled source; inferred from Polymer's {@code val$registryKey} missing there). A shadow in SRG's
+	 * names is one of them where vanilla's class declares it synthetic, and takes a synthetic field of its type: Forge
+	 * 47's build, recompiled too, names them as javac does (Fabric API's interaction hook shadows {@code f_143670_} of
+	 * {@code ServerGamePacketListenerImpl$1}, there {@code val$entity}; CAPTURE-3). Empty when every shadow is there, null
+	 * when one's new name can't be told (none of its type, several that vanilla's class doesn't tell apart, or one
+	 * another shadow has).
 	 */
 	private static Map<String, String> capturedRenames(ClassNode mixin, ClassNode target, ClassNode original) {
 		Map<String, String> renames = new TreeMap<>();
 		Set<String> kept = new HashSet<>();
 		for (FieldNode field : mixin.fields) {
-			if (!field.name.startsWith("val$") || Annotations.find(field, SHADOW) == null) continue;
+			if (Annotations.find(field, SHADOW) == null) continue;
+			// SRG names a captured value, and the outer instance, as it does any field (f_143670_), where Mojang's names
+			// are javac's (val$entity, this$0): vanilla's class marks it synthetic (CAPTURE-3).
+			boolean javacNamed = field.name.startsWith("val$");
+			if (!javacNamed && !synthetic(original, field.desc).contains(field.name)) continue;
 			if (target.fields.stream().anyMatch(f -> f.name.equals(field.name) && f.desc.equals(field.desc))) {
 				kept.add(field.name);
 				continue;
 			}
-			List<String> sameType = captured(target, field.desc);
-			String renamed = sameType.size() == 1 ? sameType.get(0) : inVanillasOrder(field.name, field.desc, sameType, target, original);
+			List<String> sameType = javacNamed ? captured(target, field.desc) : synthetic(target, field.desc);
+			String renamed = sameType.size() == 1 ? sameType.get(0) : inVanillasOrder(field.name, field.desc, javacNamed, sameType, target, original);
 			if (renamed == null) return null;
 			renames.put(field.name, renamed);
 		}
@@ -2522,16 +2529,27 @@ public final class MixinPreflight {
 	}
 
 	/**
+	 * A class's synthetic instance fields of one type, in the order it declares them: an anonymous class's captured values
+	 * and outer instance, whatever their names. Empty without the class.
+	 */
+	private static List<String> synthetic(ClassNode type, String desc) {
+		if (type == null) return List.of();
+		return type.fields.stream().filter(f -> (f.access & (Opcodes.ACC_SYNTHETIC | Opcodes.ACC_STATIC)) == Opcodes.ACC_SYNTHETIC && f.desc.equals(desc))
+				.map(f -> f.name).toList();
+	}
+
+	/**
 	 * Which of {@code target}'s captured values of a type is vanilla's {@code name}, when it captures several (Ledger's and
 	 * malilib's hooks into {@code ChestBlock}'s menu provider shadow the two chest block entities it captures): the one in
 	 * the place {@code name} has among {@code original}'s of the type. The order javac declares captured values in follows
 	 * the class's code, which a recompiled build keeps; as that is inferred, not read, the place is taken only when
 	 * {@code original} captures as many of the type and every method both classes declare reads them in the same order,
-	 * matched by place, with at least one such read. Null otherwise, or without vanilla's class.
+	 * matched by place, with at least one such read. Null otherwise, or without vanilla's class. {@code javacNamed}: the
+	 * values go by javac's names ({@code val$name}) in both classes, else by vanilla's synthetic fields under SRG's.
 	 */
-	private static String inVanillasOrder(String name, String desc, List<String> sameType, ClassNode target, ClassNode original) {
+	private static String inVanillasOrder(String name, String desc, boolean javacNamed, List<String> sameType, ClassNode target, ClassNode original) {
 		if (original == null || sameType.size() < 2) return null;
-		List<String> originals = captured(original, desc);
+		List<String> originals = javacNamed ? captured(original, desc) : synthetic(original, desc);
 		int place = originals.indexOf(name);
 		if (place < 0 || originals.size() != sameType.size()) return null;
 		Map<String, String> byPlace = new HashMap<>();
