@@ -15,8 +15,7 @@ import net.minecraft.class_7923;
  * run; Forge 47 freezes them during the bootstrap. An item here, which has an intrusive holder as an entity type does.
  *
  * <p>Fabric API also moves the built-in registries' freeze ({@code BuiltInRegistries.freeze}) after the main
- * initializers, where Wover makes the item definitions BetterEnd's main initializer subscribes to (CORPUS-32). On Forge
- * that is still to be done: the freeze is only reported.
+ * initializers, where Wover makes the item definitions BetterEnd's main initializer subscribes to (CORPUS-32).
  */
 public final class ForgeBootstrapContent {
 	// Not ForgeTestMod's logger: the registries' freeze may come during vanilla's bootstrap, before the mod is constructed.
