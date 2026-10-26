@@ -88,7 +88,7 @@ echo "::group::First errors in the log"
 { grep -n -E "/(ERROR|FATAL)\]|Exception|Caused by" logs/latest.log 2>/dev/null | grep -v 'does not specify "minVersion"' | head -n 60; } || true
 echo "::endgroup::"
 echo "::group::Mixin failures in the logs"
-grep -h -m 20 -E "InjectionError|Invalid(Injection|Mixin|Accessor)Exception|MixinApplyError|MixinInitialisationError|Mixin apply for mod .* failed" \
+grep -h -m 20 -E "InjectionError|Invalid[A-Za-z]*Exception|MixinApplyError|MixinInitialisationError|Mixin apply for mod .* failed" \
 	logs/latest.log logs/debug.log 2>/dev/null | cut -c1-600 || true
 echo "::endgroup::"
 for report in crash-reports/*.txt; do
