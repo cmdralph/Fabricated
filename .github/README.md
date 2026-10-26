@@ -1,0 +1,89 @@
+<!-- Copied from docs/readme/forge-legacy.md by .github/workflows/branch-readme.yml: edit that file, on claude/dev. -->
+
+# Fabricated for Forge 1.20.1
+
+> **This is the `forge-legacy` branch:** Fabricated for **Minecraft Forge 47.4** (Minecraft 1.20.1). It is an
+> **experimental preview for dedicated servers**. NeoForge is Fabricated's supported platform: see
+> [`main`](https://github.com/cmdralph/Fabricated/tree/main). For Forge on Minecraft 1.21.11 and 26.x, see
+> [`forge`](https://github.com/cmdralph/Fabricated/tree/forge).
+
+Fabricated loads Fabric mods and libraries next to Forge mods. Every branch holds the same code, with one folder per
+platform. This branch builds and tests the Forge 1.20.1 target, and its releases' `fabricated-forge-*+mc1.20.1.jar`
+comes from it. NeoForge has no 1.20.1 line to support, so this is the only legacy branch.
+
+## Status
+
+| Minecraft | Forge | Java | Fabric mods use | CI on this branch |
+|---|---|---|---|---|
+| 1.20.1 | 47.4.28 | 17 | Intermediary names, remapped to Mojang's class names and SRG's member names | Builds; the server must start, and the other checks are reported |
+
+### What CI checks
+
+CI starts a dedicated server twice: once with the test mod, and once more with the official Fabric API 0.92.12 jar.
+
+On each run, the server checks that:
+- a translated Fabric mod is discovered, remapped to the names Forge runs the game with, and loads. Those names are
+  composed from the files Forge's installer leaves, so nothing is downloaded.
+- its main and server entrypoints run in Forge's registry events, with the registries open;
+- it registers an item by Intermediary names;
+- it reads a private field its access widener opens;
+- its mixins are applied, including one through MixinExtras 0.5.5, which Fabricated ships for Forge 47 because Forge
+  47 has none;
+- its injected interfaces are added, and its other side's members are stripped.
+
+**With the official Fabric API jar,** the server starts and every module of Fabric API 0.92.12 loads.
+
+**Native on Forge 47:**
+- `fabric-api-base`.
+- `fabric-biome-api-v1`: Fabric's biome changes are applied through Forge's biome modifiers.
+- `fabric-loot-api-v2` and `fabric-loot-tables-v1`: Fabric's loot events run on Forge's list of loot pools.
+- `fabric-dimensions-v1`: a Fabric teleport goes through Forge's teleporter, with no portal built.
+
+**Bridged to Forge's own systems:**
+- **Tag files:** their `fabric:remove` entries are read into Forge's list.
+- **Fluids:** Fabric mods' fluids get Forge fluid types. An entity moves through a Fabric fluid that isn't water as
+  through air, as on Fabric.
+
+## Not supported yet
+
+- **Clients.** Fabric mods' client entrypoints don't run, and CI starts no client.
+- **Capabilities and networking.** Forge 47's old capability system and `SimpleChannel` networking are next on the
+  [roadmap](/docs/roadmap.md).
+
+## Installing (for testing)
+
+1. Install Forge 47.4 for Minecraft 1.20.1, with the official installer.
+2. Download `fabricated-forge-<version>+mc1.20.1.jar` from the
+   [releases](https://github.com/cmdralph/Fabricated/releases).
+3. Check the jar against the release's `SHA256SUMS.txt`.
+4. Put the jar in the `mods` folder with your Fabric mods for 1.20.1. If they need Fabric API, add the official
+   Fabric API jar for 1.20.1.
+
+Fabricated never downloads anything and never modifies your mod jars. `logs/fabric-bridge-report.txt` says what loaded
+and why anything didn't.
+
+## Building
+
+```bash
+./gradlew -Pfabricated.coreOnly=true build                    # unit tests, no Minecraft needed
+./gradlew -Pfabricated.platforms=forge-legacy --configure-on-demand :mc:forge-legacy-1.20.1:fabricatedJar
+# -> build/libs/fabricated-forge-<version>+mc1.20.1.jar
+```
+
+The Forge 47 code is in:
+- `loader/forge-legacy`: Forge 47's discovery services.
+- `mc/forge-legacy/1.20.1`: the in-game mod, reobfuscated to SRG's names, and the test mod in Intermediary's names.
+
+The build uses ModDevGradle's `legacyforge` plugin (`mc/platform-forge-legacy.gradle`). CI is
+`.github/workflows/build-forge-legacy.yml` with `ci/forge-legacy/smoke-server.sh`. The project's layout and rules are in
+[`CONTRIBUTING.md`](/CONTRIBUTING.md).
+
+## Documentation
+
+- [`docs/PORTING.md`](/docs/PORTING.md) §3 and §7: the 1.20.1 port's design and its steps (L1 to L4).
+- [`docs/roadmap.md`](/docs/roadmap.md): where the `forge-legacy` track stands and what comes next.
+- [`README.md`](/README.md): Fabricated's main README (NeoForge).
+
+## License
+
+GPL-3.0, see [LICENSE](/LICENSE). Third-party material is listed in [NOTICE](/NOTICE).
