@@ -3,6 +3,39 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-10-26: one working branch, one folder per platform
+
+- The owner's decision: `claude/dev` is the only working branch and holds every platform; it is merged into `main`,
+  `forge` and `forge-legacy` alike, so the three hold the same tree and differ in the CI that builds them and their
+  README. `claude/dev` took both Forge branches in by merge. Both had added their discovery services as
+  `loader/forge`: the `forge` branch's stay there, `forge-legacy`'s (Forge 47's) are in `loader/forge-legacy`.
+- One folder per platform and Minecraft version: `mc/neoforge/<version>`, `mc/forge/<version>` and
+  `mc/forge-legacy/1.20.1`, the projects `:mc:<platform>-<version>`, with each platform's shared sources beside them
+  (`mc/neoforge/common*`, `mc/forge/common*`) and the test sources every platform uses in `mc/shared` (the broken test
+  mods, the stand-ins for other mods' APIs). The platform is the folder a version is in, so the `platform` and
+  `loader_dir` properties are gone, and `legacyforge` is `forge-legacy` everywhere but ModDevGradle's plugin id. CI's
+  scripts are in `ci/<platform>`.
+- `settings.gradle` configures the platforms `-Pfabricated.platforms` names (`neoforge` by default, a list, or `all`),
+  so a build applies one platform's plugin. Each branch's workflow builds its platform and skips a change to other
+  platforms' folders alone. The release workflow builds all nine jars from one commit.
+- `forge` and `forge-legacy` show their own README: `docs/readme/<branch>.md`, which `branch-readme.yml` copies to the
+  branch's `.github/README.md` (GitHub shows it before the root README, which stays `main`'s). The root README lists
+  the three branches. `CONTRIBUTING.md`, `claude.md` and `PORTING.md` §1 and §5 describe the new model.
+- Verification: `settings.gradle` lists `:mc:neoforge-1.21.11` to `:mc:neoforge-26.3` by default and
+  `:mc:forge-legacy-1.20.1` with `-Pfabricated.platforms=forge-legacy`, refuses an unknown platform, and with `all`
+  reaches `:mc:forge-1.21.11`, whose ForgeGradle setup needs a download the cloud sandbox blocks. Compiling and running
+  each platform is left to its branch's CI on the pull requests.
+
+## 2026-10-26: development of 0.5.0
+
+- `fabricated_version` is 0.5.0 on all three branches, once v0.4.0-alpha's draft release held the jars the release
+  workflow built from `main`, `forge` and `forge-legacy` as they stood after #153, #154 and #155. The README's status
+  line and `ARCHITECTURE.md`'s version follow.
+
+## Released: v0.4.0-alpha
+
+The entries from here down are in v0.4.0-alpha (its notes: [`releases/v0.4.0-alpha.md`](releases/v0.4.0-alpha.md)).
+
 ## 2026-10-26: a release workflow, and v0.4.0-alpha's notes
 
 - `.github/workflows/release.yml` cuts a release by hand: it pins `main`, `forge` and `forge-legacy` (or given commits)
