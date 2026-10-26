@@ -67,7 +67,11 @@ One entry per working session, newest first: what changed, and how it was verifi
 - `fabric-dimensions-v1` on both Forge branches. On Forge 61 to 66 it loads without its DataFixerUpper mixins (forge
   #140). On Forge 47 it is native (forge-legacy #141): a Fabric teleport goes through Forge's teleporter without the
   End's platform or credits, and Forge's own lenient codec stands in for upstream's codec hook. With Fabric API, no
-  module of 0.92.12 is disabled on Forge 47 any more.
+  module of 0.92.12 is disabled on Forge 47 any more. On Forge 64 to 66, `fabric-object-builder-api-v1` and, with it,
+  `fabric-data-attachment-api-v1` load (forge #142): Forge's attribute builder keeps its entries in a map of its own,
+  so upstream's accessor is left out, and the in-game mod gives the attribute copy Forge's constructor and runs
+  `FabricDefaultAttributeRegistry.MODIFY` in Forge's attribute modification event (upstream's hook fired at bootstrap
+  on Forge, before any listener existed); a cow's armor set through MODIFY is what the game reads.
 - Native loot modules on both Forge branches. On Forge 61 to 66, `fabric-loot-api-v3` and `fabric-api-base` (forge
   #137, a port of `main`'s): Fabric's loot table events run from Forge's loot table event, and from a hook into the
   registry decode on Forge 66, whose loot skip is gone; the in-game mod's mixins use no MixinExtras sugar, after its

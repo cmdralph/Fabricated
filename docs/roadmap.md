@@ -37,9 +37,15 @@ handled safely, no network access, original jars never changed, and no code that
   mixins use no MixinExtras sugar: without Fabric API, Forge's MixinExtras couldn't load the Mixin class `@Local`
   needs and the server didn't start (caught on #137's first run). `fabric-dimensions-v1` loads since #140: the plans
   leave out its DataFixerUpper mixins, which Forge loads without mixin support, and `V2832Mixin`, which casts to the
-  interface they add. Next: native modules on Forge's events where `main` has them on NeoForge's (advancements on
-  Forge 66, entity and interaction events), the modules still disabled (object builder, content registries and data
-  generation on 26.x), the client's entrypoints.
+  interface they add. `fabric-object-builder-api-v1` loads on Forge 64 to 66 since #142, and
+  `fabric-data-attachment-api-v1` with it: Forge keeps an attribute builder's entries in a map of its own, so the plans
+  leave out upstream's accessor of vanilla's, and a pseudo mixin in the in-game mod copies an entity type's defaults
+  for `FabricDefaultAttributeRegistry.MODIFY` with Forge's constructor. MODIFY runs in Forge's attribute modification
+  event: upstream's hook fired as the built-in registries froze, which Forge does at bootstrap, before any Fabric mod
+  had registered a listener. A cow's armor set through MODIFY is what the game reads on all three (with Fabric API).
+  Next: native modules on Forge's events where `main` has them on NeoForge's (advancements on Forge 66, entity and
+  interaction events), the modules still disabled (content registries on 26.x, data generation), the client's
+  entrypoints.
 - **`forge-legacy`:** Minecraft Forge for 1.20.1 (Forge 47.4) and other legacy versions, built with ModDevGradle's
   `legacyforge`. L3's server smoke passes on Forge 47.4.28, a gate since #97: a translated Fabric mod is discovered,
   remapped to the names Forge runs the game with (Mojang's classes, SRG's members, composed from the files Forge's
