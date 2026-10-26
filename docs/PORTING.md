@@ -92,7 +92,7 @@ is the same code base two years older (no `clientSideOnly`, no `accessTransforme
 | Subsystem | Carries over | Needs |
 |---|---|---|
 | Archive sandbox, cache, JSON, metadata, dependency resolution, Fabric Loader API, linkage check | as is | Java 17 class files. |
-| Remapping | the machinery | A second target namespace: Mojang class names with SRG member names. Intermediary → SRG is Intermediary inverted, composed with MCPConfig's merged obfuscated → SRG file; `MappingResolver` reports `srg` as the runtime namespace. Access transformers come out in SRG member names. |
+| Remapping | the machinery | A second target namespace: Mojang class names with SRG member names. `MappingComposer.composeSrg` (in): Intermediary joined on obfuscated names with MCPConfig's obfuscated → SRG file in TSRG v2 for the members and with Mojang's mappings for the class names; every one of 1.20.1's 68,666 Intermediary members maps. Still to do: `MappingResolver` reports `srg` as the runtime namespace; access transformers come out in SRG member names. |
 | Vanilla code for pre-flight (VANILLA-1, VANILLA-2) | `OfficialClasses`' design | The same remapper with MCPConfig's SRG names instead of ProGuard's. |
 | Mixin pre-flight and repairs | the checker and every generic repair | Platform facts as data: no behaviour levels (upstream 0.8.5), Forge's patch names and hooks instead of NeoForge's, and a gate on what the running MixinExtras supports (pre-flight assumes MixinExtras today). Fabric mods built against Fabric's Mixin fork may use what upstream 0.8.5 lacks: an open question, answerable only with a corpus (risk R2). |
 | MixinExtras | | Provided by Fabricated: kept when a Fabric mod nests it (today it is dropped because NeoForge has one), else bundled. |
