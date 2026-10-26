@@ -12,6 +12,7 @@ import io.github.cmdralph.fabricated.forge.loot.LootCompat;
 import io.github.cmdralph.fabricated.forge.objectbuilder.DefaultAttributeModify;
 import io.github.cmdralph.fabricated.loader.FabricatedState;
 import io.github.cmdralph.fabricated.loader.ForgeLoaderHooks;
+import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.api.DedicatedServerModInitializer;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.loader.api.entrypoint.PreLaunchEntrypoint;
@@ -28,10 +29,12 @@ import net.minecraftforge.registries.RegistryManager;
 /**
  * Fabricated's in-game mod on Minecraft Forge, shared by every project of the forge branch. It runs the Fabric mods'
  * entrypoints once discovery has handed Forge their files (docs/PORTING.md §4.1): the pre-launch ones as the mod is
- * constructed, the main and dedicated server ones as registries open. The client ones (in Minecraft's constructor) and
- * the rest of Fabric API on Forge's events follow (its loot API is native: {@code forge.loot}). It also adds the Fabric
- * mods discovery didn't load to Forge's loading warnings, which Forge reads once every mod has loaded: the server logs
- * them, the client shows them on its warnings screen.
+ * constructed, the main ones as registries open, then the dedicated server or the client ones. Fabric Loader runs every
+ * initializer from {@code Minecraft}'s constructor on a client, the game instance set, and so does Forge's mod loading
+ * there ({@code ClientModLoader.begin}), so the client ones run right after the main ones, with the registries still
+ * open. The rest of Fabric API on Forge's events follows (its loot API is native: {@code forge.loot}). It also adds the
+ * Fabric mods discovery didn't load to Forge's loading warnings, which Forge reads once every mod has loaded: the server
+ * logs them, the client shows them on its warnings screen.
  *
  * <p>Fabric mods register their content directly from their initializers. Forge opens vanilla's registries for its
  * registration events only ({@code UNFREEZE_DATA}, then {@code LOAD_REGISTRIES}), and each registry it manages only for
@@ -97,13 +100,15 @@ public final class FabricatedMod {
 			}
 		}
 		List<EntrypointRunner.Failure> failures = new ArrayList<>();
+		boolean server = FMLLoader.getDist().isDedicatedServer();
+		if (!server) state.runtime().setGameInstance(ClientSupport.gameInstance());
 		try {
 			failures.addAll(runner.run("main", ModInitializer.class, ModInitializer::onInitialize));
 			MainEntrypoints.markRan();
-			if (FMLLoader.getDist().isDedicatedServer()) {
+			if (server) {
 				failures.addAll(runner.run("server", DedicatedServerModInitializer.class, DedicatedServerModInitializer::onInitializeServer));
 			} else {
-				LOGGER.warn("Fabric client entrypoints don't run on Forge yet");
+				failures.addAll(runner.run("client", ClientModInitializer.class, ClientModInitializer::onInitializeClient));
 			}
 			// Each Fabric fluid family's Forge fluid type, which Forge asks every fluid for (see FabricFluidType).
 			FabricFluidType.registerAll();
