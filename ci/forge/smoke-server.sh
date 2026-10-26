@@ -155,12 +155,9 @@ check "the test mod's client-only method was stripped (@Environment)" "grep -q '
 report "Forge added MixinExtras for the test mod" "grep -i 'mixinextras' logs/debug.log 2>/dev/null | grep -i -E 'select|load|add' > /dev/null"
 check "the Fabric main entrypoints ran in Forge's registry events" "grep -q 'Fabricated ran the Fabric main entrypoints of [1-9][0-9]* mod(s) on Forge (0 failed)' logs/latest.log 2>/dev/null"
 check "the test mod registered an item" "grep -q 'FABRICATED-FORGE-TEST registry OK' logs/latest.log 2>/dev/null"
-# With Fabric API, its registry sync (passed through) moves the bootstrap's freeze after the main initializers.
-if [ -n "$extra" ]; then
-	check "content built during vanilla's bootstrap is registered by the main initializer, or no freeze comes before it (Fabric API's registry sync)" "grep -qE 'FABRICATED-FORGE-TEST content built at bootstrap( registered OK|: none)' logs/latest.log 2>/dev/null"
-else
-	check "content built during vanilla's bootstrap is registered by the main initializer, as BetterNether's entity types are (CORPUS-31)" "grep -q 'FABRICATED-FORGE-TEST content built at bootstrap registered OK' logs/latest.log 2>/dev/null"
-fi
+check "content built during vanilla's bootstrap is registered by the main initializer, as BetterNether's entity types are (CORPUS-31)" "grep -q 'FABRICATED-FORGE-TEST content built at bootstrap registered OK' logs/latest.log 2>/dev/null"
+# Reported only: CORPUS-32 is still open on Forge, where only Fabric API's registry sync, passed through, may move the freeze.
+report "the built-in registries' freeze runs after the main initializers, where Wover makes the item definitions BetterEnd's subscribes to (CORPUS-32)" "grep -q 'FABRICATED-FORGE-TEST built-in registries frozen after the main initializers OK' logs/latest.log 2>/dev/null"
 check "the test mod's item is in the frozen registry at the first tick" "grep -q 'FABRICATED-FORGE-TEST registry entry kept OK' logs/latest.log 2>/dev/null"
 check "tag files' fabric:remove and Forge's remove both take entries out of a tag (the in-game mod's mixin)" "grep -q 'FABRICATED-FORGE-TEST tag removal OK' logs/latest.log 2>/dev/null"
 check "native fabric-loot-api-v3: Fabric's loot table events change dirt's loot table and drops on Forge's loot loading" "grep -q 'FABRICATED-FORGE-TEST loot OK' logs/latest.log 2>/dev/null"
