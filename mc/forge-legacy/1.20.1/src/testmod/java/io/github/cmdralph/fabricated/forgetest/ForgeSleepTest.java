@@ -18,11 +18,10 @@ import net.minecraft.class_3218;
  * The forge-legacy test mod's part for fabric-entity-events-v1's sleep events (with Fabric API's jar only): an armor
  * stand sleeps on a hay block that an {@code ALLOW_BED} listener admits as a bed, as a Fabric mod's sleeping bag would
  * be. The hay block must stay hay as the stand lies down ({@code method_18403}) and wakes up ({@code method_18400}), the
- * occupation event must fire as it lies down, and the stand's bed orientation ({@code method_18401}) must be the one
- * the {@code MODIFY_SLEEPING_DIRECTION} listener gives (SLEEP-1). Not as it wakes up: upstream's hooks into
- * {@code stopSleeping}'s lambda, which stand a bed in for the admitted block there, name the lambda as vanilla's SRG
- * names it, and are left out on Forge 47, whose patched class names it otherwise (LAMBDA-6, open), so Forge's bed
- * check passes the hay block by without asking for its occupation.
+ * occupation event must fire both times, and the stand's bed orientation ({@code method_18401}) must be the one the
+ * {@code MODIFY_SLEEPING_DIRECTION} listener gives (SLEEP-1). As it wakes up, upstream's hooks into {@code stopSleeping}'s
+ * lambda stand a bed in for the hay block, which Forge 47's patched class names otherwise than vanilla's SRG name
+ * (LAMBDA-6).
  */
 public final class ForgeSleepTest {
 	private static final Set<String> SEEN = ConcurrentHashMap.newKeySet();
@@ -65,7 +64,7 @@ public final class ForgeSleepTest {
 		if (orientation != class_2350.field_11034) failed.add("the bed orientation is " + orientation + ", not MODIFY_SLEEPING_DIRECTION's east");
 		sleeper.method_18400();
 		if (!level.method_8320(pos).method_27852(class_2246.field_10359)) failed.add("waking up turned the hay block into " + level.method_8320(pos));
-		for (String event : List.of("start", "occupied", "stop")) {
+		for (String event : List.of("start", "occupied", "stop", "unoccupied")) {
 			if (!SEEN.contains(event)) failed.add("no " + event + " event");
 		}
 		level.method_8652(pos, class_2246.field_10124.method_9564(), 3);

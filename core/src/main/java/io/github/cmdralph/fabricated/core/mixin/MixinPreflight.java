@@ -568,9 +568,14 @@ public final class MixinPreflight {
 	 * original names. NeoForge's patches add lambdas, which numbers the class's later ones otherwise: its {@code Blocks}
 	 * patch makes the powered rail's constructor reference a lambda, so Wilder Wild's hooks into the ice blocks' spawn
 	 * predicates named lambdas of another shape on every version, and a hook into one of the same shape would have
-	 * applied to the wrong lambda without a word (LAMBDA-5). The lambdas the creating method makes are aligned with
+	 * applied to the wrong lambda without a word (LAMBDA-5). Forge 47 names vanilla's lambdas by their SRG names, which
+	 * its patched classes, compiled from Forge's sources, don't keep: theirs carry javac's names, so a hook naming
+	 * vanilla's ({@code m_289088_}) found nothing (LAMBDA-6). The lambdas the creating method makes are aligned with
 	 * vanilla's by their shape and code ({@link PatchAlignment#places}); a lambda that another lambda creates isn't
-	 * followed, nor one whose place the alignment can't tell.
+	 * followed, nor one whose place the alignment can't tell. A lambda of vanilla's under its SRG name, which no lambda
+	 * of this build carries, is also found where Forge changed its code or what it captures: by its place where the
+	 * creating method makes lambdas of the same interfaces in the same order in vanilla's class and in this build's, or
+	 * as the one lambda of its interface and signature there; and in a lambda found so in its turn.
 	 */
 	private List<String> vanillaLambdaRepairs(AnnotationNode injector, List<ClassNode> targets, Context ctx) {
 		if (!(Annotations.value(injector, "method") instanceof List<?> selectors)) return List.of();
@@ -579,7 +584,9 @@ public final class MixinPreflight {
 		for (int i = 0; i < selectors.size(); i++) {
 			if (!(selectors.get(i) instanceof String raw)) continue;
 			MemberRef ref = MemberRef.parse(ctx.resolve(raw));
-			if (ref.fuzzy() || ref.name() == null || !LAMBDA.matcher(ref.name()).matches()) continue;
+			if (ref.fuzzy() || ref.name() == null || ref.name().startsWith("<")) continue;
+			// A name of another form is followed only where this build lacks it: a lambda of vanilla's under its SRG name.
+			if (!LAMBDA.matcher(ref.name()).matches() && targets.stream().anyMatch(t -> hasMethod(t, ref))) continue;
 			MethodNode placed = null;
 			for (ClassNode target : targets) {
 				MethodNode here = lambdaInVanillasPlace(target, ref);
@@ -608,17 +615,30 @@ public final class MixinPreflight {
 			if (lambda != null) return null;
 			lambda = m;
 		}
-		if (lambda == null) return null;
+		if (lambda == null || !isLambdaBody(lambda)) return null;
+		return lambdaPlace(original, target, lambda, !LAMBDA.matcher(ref.name()).matches(), 0);
+	}
+
+	/**
+	 * The lambda of {@code target} in the place of vanilla's {@code lambda} in {@code original}, or null when that can't
+	 * be told. Only a lambda {@code renamed} (vanilla's under its SRG name, LAMBDA-6) is found by its interface alone or
+	 * in a lambda that another lambda creates, a few levels deep.
+	 */
+	private MethodNode lambdaPlace(ClassNode original, ClassNode target, MethodNode lambda, boolean renamed, int depth) {
 		MethodNode creator = null;
 		for (MethodNode m : original.methods) {
 			if (!createsLambda(m, lambda)) continue;
 			if (creator != null) return null;
 			creator = m;
 		}
-		if (creator == null || LAMBDA.matcher(creator.name).matches()) return null;
+		if (creator == null) return null;
 		MethodNode patched = null;
-		for (MethodNode m : target.methods) {
-			if (m.name.equals(creator.name) && m.desc.equals(creator.desc)) patched = m;
+		if (!isLambdaBody(creator)) {
+			for (MethodNode m : target.methods) {
+				if (m.name.equals(creator.name) && m.desc.equals(creator.desc)) patched = m;
+			}
+		} else if (renamed && depth < 3) {
+			patched = lambdaPlace(original, target, creator, true, depth + 1);
 		}
 		if (patched == null) return null;
 		List<CreatedLambda> vanillas = createdLambdas(original, creator);
@@ -627,12 +647,31 @@ public final class MixinPreflight {
 		while (index < vanillas.size() && vanillas.get(index).body() != lambda) index++;
 		int[] places = PatchAlignment.places(vanillas.stream().map(CreatedLambda::shape).toArray(String[]::new),
 				games.stream().map(CreatedLambda::shape).toArray(String[]::new));
-		if (index == vanillas.size() || places == null || places[index] < 0) return null;
-		return games.get(places[index]).body();
+		if (index == vanillas.size()) return null;
+		if (places != null && places[index] >= 0) return games.get(places[index]).body();
+		if (!renamed) return null;
+		if (vanillas.stream().map(CreatedLambda::face).toList().equals(games.stream().map(CreatedLambda::face).toList())) return games.get(index).body();
+		CreatedLambda only = onlyOfInterface(games, vanillas.get(index).face());
+		return onlyOfInterface(vanillas, vanillas.get(index).face()) != null && only != null ? only.body() : null;
 	}
 
-	/** A lambda a method creates: its body, and its shape as alignment compares it (the creating instruction's type, its descriptor and code). */
-	private record CreatedLambda(MethodNode body, String shape) {
+	/** The one lambda of {@code lambdas} with {@code face}, or null when there are none or several. */
+	private static CreatedLambda onlyOfInterface(List<CreatedLambda> lambdas, String face) {
+		CreatedLambda only = null;
+		for (CreatedLambda lambda : lambdas) {
+			if (!lambda.face().equals(face)) continue;
+			if (only != null) return null;
+			only = lambda;
+		}
+		return only;
+	}
+
+	/**
+	 * A lambda a method creates: its body, its face (the interface, its method and the signature it takes there, which
+	 * values the lambda captures leave alone) and its shape as alignment compares it (the creating instruction's type,
+	 * its descriptor and code).
+	 */
+	private record CreatedLambda(MethodNode body, String face, String shape) {
 	}
 
 	/** The lambdas of {@code owner} that {@code method} creates, in the order it creates them. */
@@ -641,15 +680,34 @@ public final class MixinPreflight {
 		for (AbstractInsnNode insn : method.instructions) {
 			if (!(insn instanceof InvokeDynamicInsnNode indy)) continue;
 			for (Object arg : indy.bsmArgs) {
-				if (!(arg instanceof Handle h) || !h.getOwner().equals(owner.name) || !LAMBDA.matcher(h.getName()).matches()) continue;
+				if (!(arg instanceof Handle h) || !h.getOwner().equals(owner.name)) continue;
 				for (MethodNode m : owner.methods) {
-					if (m.name.equals(h.getName()) && m.desc.equals(h.getDesc())) {
-						created.add(new CreatedLambda(m, indy.name + indy.desc + " " + m.desc + "\n" + PatchAlignment.code(m)));
+					if (m.name.equals(h.getName()) && m.desc.equals(h.getDesc()) && isLambdaBody(m)) {
+						Object instantiated = indy.bsmArgs.length > 2 ? indy.bsmArgs[2] : m.desc;
+						created.add(new CreatedLambda(m, Type.getReturnType(indy.desc) + "." + indy.name + instantiated,
+								indy.name + indy.desc + " " + m.desc + "\n" + PatchAlignment.code(m)));
 					}
 				}
 			}
 		}
 		return created;
+	}
+
+	/**
+	 * Whether a method an {@code invokedynamic} names is a lambda's body: named as javac names one, or synthetic, as a
+	 * lambda renamed by obfuscation and SRG's names is ({@code m_289088_} on Forge 47; LAMBDA-6). A method reference
+	 * names a method of the class's own, which isn't synthetic.
+	 */
+	private static boolean isLambdaBody(MethodNode method) {
+		return LAMBDA.matcher(method.name).matches() || (method.access & Opcodes.ACC_SYNTHETIC) != 0;
+	}
+
+	/** Whether {@code owner} has a method {@code ref} names (by its descriptor too, where it has one). */
+	private static boolean hasMethod(ClassNode owner, MemberRef ref) {
+		for (MethodNode m : owner.methods) {
+			if (m.name.equals(ref.name()) && (ref.desc() == null || m.desc.equals(ref.desc()))) return true;
+		}
+		return false;
 	}
 
 	/** Whether an {@code @Inject} handler takes a returnable callback info: its target returns a value. */
