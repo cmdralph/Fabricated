@@ -129,7 +129,9 @@ check() {
 	if grep -q -- "$1" "$log" client.out 2>/dev/null; then echo "PASS: $2"; else echo "FAIL: $2 (missing '$1')"; fail=1; fi
 }
 [ "$status" -eq 0 ] && echo "PASS: client exited normally" || { echo "FAIL: client exit status $status"; fail=1; }
-check "Successfully finished." "the client joined a singleplayer world (mc-runtime-test)"
+# mc-runtime-test logs "Successfully finished." where it runs no game tests, or "Running game tests..." first (as its
+# 1.20.1 build does), and exits with -1 if one fails: either line with a normal exit means the world was reached.
+check "Successfully finished\.\|Running game tests\.\.\." "the client joined a singleplayer world (mc-runtime-test)"
 check "Fabricated ran the Fabric main entrypoints of [1-9][0-9]* mod(s) on Forge (0 failed)" "the Fabric main and client entrypoints ran in Forge's registry events"
 check "FABRICATED-FORGE-TEST main entrypoint OK" "the test mod's main entrypoint ran on the client"
 check "FABRICATED-FORGE-TEST client entrypoint OK" "its client entrypoint ran after the main one, as on Fabric"
