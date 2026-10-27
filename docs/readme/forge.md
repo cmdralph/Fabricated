@@ -61,6 +61,8 @@ Some modules load without the mixins that Forge's code can't take.
 - **Fluids:** Fabric mods' fluids get Forge fluid types. An entity moves through a Fabric fluid that isn't water as
   through air, as on Fabric.
 - **Block colours:** on 1.21.11, Fabric's colour provider registry reads Forge's own map of block colours.
+- **Block dust:** on 1.21.11, Fabric's block dust tint event is asked where Forge decides whether a block's breaking
+  particles are tinted.
 - **Commands:** Fabric mods' commands, registered through Fabric API's event, reach the server.
 
 ## Not supported yet
