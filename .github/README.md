@@ -46,7 +46,8 @@ client must join a singleplayer world and quit normally, and it checks that:
 - the item, the content built during the bootstrap (CORPUS-31) and the built-in registries' freeze (CORPUS-32) behave
   as on the server.
 
-**With the official Fabric API jar,** the server starts and every module of Fabric API 0.92.12 loads.
+**With the official Fabric API jar,** the server starts and every module of Fabric API 0.92.12 loads. A client started
+with it reaches a world too; that run is only reported for now.
 
 **Native on Forge 47:**
 - `fabric-api-base`.
@@ -61,8 +62,8 @@ client must join a singleplayer world and quit normally, and it checks that:
 
 ## Not supported yet
 
-- **Fabric API on clients.** CI starts no client with the official Fabric API jar, so its client modules (rendering,
-  key bindings, HUD and screens) are unchecked on Forge 47.
+- **Fabric's rendering and model loading modules.** With the Fabric API jar, `fabric-rendering-v1` (its block colour
+  hook) and `fabric-model-loading-api-v1` (a model loader hook) are turned off, and the modules that need them.
 - **Capabilities and networking.** Forge 47's old capability system and `SimpleChannel` networking are next on the
   [roadmap](/docs/roadmap.md).
 
