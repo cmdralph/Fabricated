@@ -3,9 +3,9 @@
 # Fabricated for Minecraft Forge
 
 > **This is the `forge` branch:** Fabricated for **Minecraft Forge 61 to 66** (Minecraft 1.21.11, 26.1.2, 26.2 and
-> 26.3). It is an **experimental preview for dedicated servers**. NeoForge is Fabricated's supported platform: see
-> [`main`](https://github.com/cmdralph/Fabricated/tree/main). For Forge on Minecraft 1.20.1, see
-> [`forge-legacy`](https://github.com/cmdralph/Fabricated/tree/forge-legacy).
+> 26.3). It is an **experimental preview**: dedicated servers, and clients that run Fabric mods' client entrypoints.
+> NeoForge is Fabricated's supported platform: see [`main`](https://github.com/cmdralph/Fabricated/tree/main). For
+> Forge on Minecraft 1.20.1, see [`forge-legacy`](https://github.com/cmdralph/Fabricated/tree/forge-legacy).
 
 Fabricated loads Fabric mods and libraries next to Forge mods. Every branch holds the same code, with one folder per
 platform. This branch builds and tests the Forge targets, and its releases' `fabricated-forge-*` jars for Forge 61 to
@@ -15,10 +15,10 @@ platform. This branch builds and tests the Forge targets, and its releases' `fab
 
 | Minecraft | Forge | Java | Fabric mods use | CI on this branch |
 |---|---|---|---|---|
-| 1.21.11 | 61.2.4 | 21 | Intermediary names (remapped at load) | Builds; both server runs must pass |
-| 26.1.2 | 64.1.5 | 25 | Mojang names (no remapping) | Builds; both server runs must pass |
-| 26.2 | 65.1.5 | 25 | Mojang names (no remapping) | Builds; both server runs must pass |
-| 26.3 | 66.1.0 | 25 | Mojang names (no remapping) | Builds; both server runs must pass |
+| 1.21.11 | 61.2.4 | 21 | Intermediary names (remapped at load) | Builds; both server runs and the client run must pass |
+| 26.1.2 | 64.1.5 | 25 | Mojang names (no remapping) | Builds; both server runs and the client run must pass |
+| 26.2 | 65.1.5 | 25 | Mojang names (no remapping) | Builds; both server runs and the client run must pass |
+| 26.3 | 66.1.0 | 25 | Mojang names (no remapping) | Builds; both server runs and the client run must pass |
 
 ### What CI checks
 
@@ -39,6 +39,14 @@ On each run, the server checks that:
 - an access widener leaves private a field Forge's coremod reads through a getter, and the report says so;
 - the report names Forge as the loader.
 
+CI then starts a client on each version with the test mod, headlessly, with HeadlessMC and mc-runtime-test. This run
+is a gate too: the client must join a singleplayer world and quit normally, and it checks that:
+- the test mod's main entrypoint and then its client entrypoint run in Forge's registry events, with the registries
+  open, as Fabric runs them;
+- Fabric Loader's game instance is the `Minecraft` instance when the client entrypoints run;
+- the item, the content built during the bootstrap (CORPUS-31) and the built-in registries' freeze (CORPUS-32) behave
+  as on the server.
+
 **With the official Fabric API jar**, the server starts on all four versions and no Fabric API module is turned off.
 Some modules load without the mixins that Forge's code can't take.
 
@@ -56,7 +64,8 @@ Some modules load without the mixins that Forge's code can't take.
 
 ## Not supported yet
 
-- **Clients.** Fabric mods' client entrypoints don't run on Forge, and CI starts no Forge client.
+- **Fabric API on clients.** CI starts no Forge client with the official Fabric API jar, so its client modules
+  (rendering, key bindings, HUD and screens) are unchecked on Forge.
 - **Native modules.** Fabric API modules that need a native port on Forge's events, such as entity and interaction
   events, pass through from the Fabric API jar, without the hooks Forge's code can't take.
 
