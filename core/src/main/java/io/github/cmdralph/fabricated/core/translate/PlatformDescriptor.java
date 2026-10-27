@@ -67,12 +67,15 @@ public interface PlatformDescriptor {
 		}
 
 		/**
-		 * None: Forge's in-game mod provides neither Forge Config API Port's API nor Mod Menu's, so their Fabric jars load
-		 * as other mods do (REPL-1); the port then keeps its own copy of NeoForge's config classes, which Forge lacks.
+		 * Mod Menu's only: Forge's in-game mod provides neither its API nor Forge Config API Port's, and Forge Config API
+		 * Port's Fabric jar loads as other mods do, with its own copy of NeoForge's config classes, which Forge lacks
+		 * (REPL-1). Mod Menu's stays out as before: Forge lists mods and their config screens itself, and Mod Menu's hooks
+		 * into the title screen, which Forge patches, stopped the Forge 66 client once it loaded.
 		 */
 		@Override
 		public Map<String, String> replacedMods() {
-			return Map.of();
+			return Map.of("modmenu", "Forge lists mods and their config screens itself; Mod Menu's Fabric build, which hooks the screens Forge"
+					+ " patches, isn't loaded on Forge, and its API isn't provided");
 		}
 
 		/**
@@ -100,9 +103,10 @@ public interface PlatformDescriptor {
 	};
 
 	/**
-	 * Fabric mods whose API Fabricated's in-game mod on this platform provides itself, by id, each with the report's line:
-	 * their jar isn't loaded, and they are provided at its version. NeoForge's by default (Forge Config API Port's Fabric
-	 * API on NeoForge's config system, which the port copies; Mod Menu's API in NeoForge's mod list).
+	 * Fabric mods Fabricated leaves out on this platform, by id, each with the report's line: their jar isn't loaded, and
+	 * mods requiring them resolve at its version. NeoForge's by default, whose in-game mod provides their API (Forge
+	 * Config API Port's Fabric API on NeoForge's config system, which the port copies; Mod Menu's API in NeoForge's mod
+	 * list).
 	 */
 	default Map<String, String> replacedMods() {
 		return Map.of(

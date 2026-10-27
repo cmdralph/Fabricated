@@ -363,8 +363,8 @@ class PipelineTest {
 	}
 
 	/**
-	 * Forge Config API Port and Mod Menu are replaced only where the platform's in-game mod provides their API
-	 * (NeoForge's); on Forge their jars load as other mods do (REPL-1).
+	 * Forge Config API Port is replaced only where the platform's in-game mod provides its API (NeoForge's); on Forge its
+	 * jar loads as other mods do (REPL-1). Mod Menu's stays out on both.
 	 */
 	@Test
 	void modsTheInGameModProvidesAreReplacedOnlyOnItsPlatform(@TempDir Path game) throws Exception {
@@ -378,11 +378,12 @@ class PipelineTest {
 			assertTrue(neoForge.report().mods().stream().anyMatch(r -> r.id().equals(id) && r.status() == Report.Status.SKIPPED), id);
 			assertTrue(neoForge.mods().stream().noneMatch(m -> m.translated().candidate().id().equals(id)), id);
 		}
+		// On Forge the port loads; Mod Menu stays out, Forge listing mods itself.
 		Pipeline.Result forge = Pipeline.run(withDescriptor(input(game, List.of(port, menu), Namespace.OFFICIAL, Map.of(), null, List.of()),
 				PlatformDescriptor.FORGE));
-		for (String id : List.of("forgeconfigapiport", "modmenu")) {
-			assertTrue(forge.mods().stream().anyMatch(m -> m.translated().candidate().id().equals(id)), forge.report().render());
-		}
+		assertTrue(forge.mods().stream().anyMatch(m -> m.translated().candidate().id().equals("forgeconfigapiport")), forge.report().render());
+		assertTrue(forge.report().mods().stream().anyMatch(r -> r.id().equals("modmenu") && r.status() == Report.Status.SKIPPED), forge.report().render());
+		assertTrue(forge.mods().stream().noneMatch(m -> m.translated().candidate().id().equals("modmenu")), forge.report().render());
 	}
 
 	/**
