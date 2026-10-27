@@ -55,12 +55,21 @@ if (!(platform in ['neoforge', 'forge', 'forge-legacy'])) {
 ext.sharedSources = (project.shared_sources as String).split(',')*.trim().findAll { it }
         .collect { it.contains('/') ? it : "mc/${platform}/${it}" }
 
+// NeoForge's loader classes come in two variants, as the version's `loader_variant` property names it: those of FML 10
+// and later, on FML's own jar contents and class processors (loader/neoforge/src/fml, the default), and those of NeoForge
+// 21.1's FML 4, which runs on ModLauncher (loader/neoforge/src/modlauncher). The rest of loader/neoforge is both's.
+def loaderVariant = project.findProperty('loader_variant') ?: (platform == 'neoforge' ? 'fml' : null)
+
 sourceSets {
     loader {
         java.srcDir rootProject.file('loader/common/src/main/java')
         java.srcDir rootProject.file("loader/${platform}/src/main/java")
         if (platform != 'neoforge') java.srcDir rootProject.file('loader/forge-shared/src/main/java')
         resources.srcDir rootProject.file("loader/${platform}/src/main/resources")
+        if (loaderVariant) {
+            java.srcDir rootProject.file("loader/${platform}/src/${loaderVariant}/java")
+            resources.srcDir rootProject.file("loader/${platform}/src/${loaderVariant}/resources")
+        }
         resources.srcDir 'src/fabricated/resources'
     }
     main {

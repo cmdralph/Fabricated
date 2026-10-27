@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -43,9 +44,6 @@ import io.github.cmdralph.fabricated.core.translate.TranslationEnvironment.Names
 import io.github.cmdralph.fabricated.fabricloader.version.VersionParser;
 import net.fabricmc.loader.api.VersionParsingException;
 import net.neoforged.fml.ModLoadingIssue;
-import net.neoforged.fml.jarcontents.JarContents;
-import net.neoforged.fml.jarmoduleinfo.JarModuleInfo;
-import net.neoforged.fml.loading.FMLLoader;
 import net.neoforged.fml.loading.FMLPaths;
 import net.neoforged.neoforgespi.language.IModInfo;
 import net.neoforged.neoforgespi.locating.IDependencyLocator;
@@ -92,9 +90,8 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 
 	private void run(List<IModFile> loadedMods, IDiscoveryPipeline pipeline) throws IOException, JsonException {
 		FabricatedInfo info = FabricatedInfo.get();
-		FMLLoader fml = FMLLoader.getCurrent();
-		String mcVersion = fml.getVersionInfo().mcVersion();
-		String neoVersion = fml.getVersionInfo().neoForgeVersion();
+		String mcVersion = Fml.minecraftVersion();
+		String neoVersion = Fml.neoForgeVersion();
 		List<Path> fabricJars = FabricCandidateLocator.claimed();
 
 		if (!info.supports(mcVersion)) {
@@ -103,19 +100,18 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 			return;
 		}
 
-		Path gameDir = fml.getGameDir();
+		Path gameDir = Fml.gameDir();
 		Path logsDir = gameDir.resolve("logs");
-		boolean client = fml.getDist().isClient();
+		boolean client = Fml.client();
 
 		IModFile minecraft = find(loadedMods, "minecraft")
 				.orElseThrow(() -> new IllegalStateException("NeoForge did not provide the minecraft mod file"));
-		JarContents mcContents = minecraft.getContents();
 		// NeoForge's own classes are the platform's too: the extension interfaces it gives game classes (whose default
 		// methods an interface a Fabric mod adds may collide with, CORPUS-11) are in its jar, not the game's.
-		JarContents neoForgeContents = find(loadedMods, "neoforge").map(IModFile::getContents).orElse(null);
+		IModFile neoForge = find(loadedMods, "neoforge").orElse(null);
 		ClassBytesSource gameClasses = name -> {
-			byte[] data = mcContents.readFile(name + ".class");
-			return data != null || neoForgeContents == null ? data : neoForgeContents.readFile(name + ".class");
+			byte[] data = Fml.read(minecraft, name + ".class");
+			return data != null || neoForge == null ? data : Fml.read(neoForge, name + ".class");
 		};
 
 		FabricatedConfig config = FabricatedConfig.load(FMLPaths.CONFIGDIR.get());
@@ -131,7 +127,7 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 		// fail later with a ClassCastException or a missing behaviour.
 		ClassLoader platformLoader = FabricDependencyLocator.class.getClassLoader();
 		ClassBytesSource untransformable = name -> {
-			if (mcContents.containsFile(name + ".class")) return null;
+			if (Fml.contains(minecraft, name + ".class")) return null;
 			try (var stream = platformLoader.getResourceAsStream(name + ".class")) {
 				return stream == null ? null : stream.readAllBytes();
 			}
@@ -141,7 +137,7 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 		Set<String> platformPackages = new HashSet<>();
 		if (!fabricJars.isEmpty()) {
 			for (IModFile file : loadedMods) {
-				for (String pkg : JarModuleInfo.scanModulePackages(file.getContents())) platformPackages.add(pkg.replace('.', '/'));
+				for (String pkg : Fml.packages(file)) platformPackages.add(pkg.replace('.', '/'));
 			}
 			for (Module module : ModuleLayer.boot().modules()) {
 				ModuleDescriptor d = module.getDescriptor();
@@ -181,9 +177,9 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 				nativeApi = name -> archive.read(name + ".class");
 				fabricApi = List.of(new InstalledClasses.Jar("Fabric API", name -> archive.contains(name + ".class"), nativeApi));
 			} else if (devGameMod.isPresent()) {
-				JarContents devContents = devGameMod.get().getContents();
-				nativeApi = name -> devContents.readFile(name + ".class");
-				fabricApi = List.of(new InstalledClasses.Jar("Fabric API", name -> devContents.containsFile(name + ".class"), nativeApi));
+				IModFile devFile = devGameMod.get();
+				nativeApi = name -> Fml.read(devFile, name + ".class");
+				fabricApi = List.of(new InstalledClasses.Jar("Fabric API", name -> Fml.contains(devFile, name + ".class"), nativeApi));
 			}
 
 			// Fabric mixins may target the classes of Fabricated's Fabric API and of the NeoForge mods (an addon's mod).
@@ -206,10 +202,10 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 				}), vanilla.location() + ", in Mojang's names through its mappings");
 			}
 			Pipeline.Input input = new Pipeline.Input(gameDir, FMLPaths.CONFIGDIR.get(), config, cache, fabricJars, mcVersion, neoVersion,
-					client, info.namespace(), runtimeMixinVersion(info), mixinExtrasVersion(loadedMods), info.mixinLowest(), info.fabricatedVersion(), info.build(), !fml.isProduction(), gameClasses, List.of(minecraft.getFilePath()), vanilla, fabricatedFiles, untransformable,
+					client, info.namespace(), runtimeMixinVersion(info), mixinExtrasVersion(loadedMods), info.mixinLowest(), info.fabricatedVersion(), info.build(), !Fml.production(), gameClasses, List.of(minecraft.getFilePath()), vanilla, fabricatedFiles, untransformable,
 					platformPackages, plan, nativeApi, nativeApiInterfaces, neoForgeMods.mods(), neoForgeMods.classes(),
 					(mappingsCache, mojangPath) -> IntermediaryMappings.load(mappingsCache, mcVersion, client, mojangPath),
-					fml.getProgramArgs().getArguments(), PlatformDescriptor.NEOFORGE);
+					Fml.programArgs(), PlatformDescriptor.NEOFORGE);
 
 			result = Pipeline.run(input);
 		} finally {
@@ -227,14 +223,13 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 		Set<String> refused = new HashSet<>();
 		for (Pipeline.LoadedMod mod : result.mods()) {
 			PackageGuard.Decision packages = mod.packages();
-			JarContents.PathFilter filter = packages.excludedPackages().isEmpty() && packages.hiddenFiles().isEmpty() ? null : path -> !packages.hides(path);
-			List<JarContents.FilteredPath> paths = new ArrayList<>(List.of(
-					new JarContents.FilteredPath(mod.translated().jar(), filter),
-					new JarContents.FilteredPath(mod.translated().overlay(), filter)));
+			Predicate<String> filter = packages.excludedPackages().isEmpty() && packages.hiddenFiles().isEmpty() ? null : path -> !packages.hides(path);
+			List<FilteredPath> paths = new ArrayList<>(List.of(
+					new FilteredPath(mod.translated().jar(), filter),
+					new FilteredPath(mod.translated().overlay(), filter)));
 			// Other mods' part of a package split with this one: one module has the whole package.
-			packages.borrowed().forEach((jar, files) -> paths.add(new JarContents.FilteredPath(jar, files::contains)));
-			JarContents contents = JarContents.ofFilteredPaths(paths);
-			Optional<IModFile> added = pipeline.addJarContent(contents, attributes, IncompatibleFileReporting.ERROR);
+			packages.borrowed().forEach((jar, files) -> paths.add(new FilteredPath(jar, files::contains)));
+			Optional<IModFile> added = Fml.addModFile(pipeline, paths, attributes);
 			if (added.isEmpty()) {
 				// Fabric code mustn't see it as loaded, or run its entrypoints, when NeoForge won't load its classes.
 				String id = mod.translated().candidate().id();
@@ -346,15 +341,14 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 	static String mixinExtrasVersion(List<IModFile> files) {
 		String newest = null;
 		for (IModFile file : files) {
-			JarContents contents = file.getContents();
 			String version = null;
 			try {
-				byte[] jarJar = contents.readFile("META-INF/jarjar/metadata.json");
+				byte[] jarJar = Fml.read(file, "META-INF/jarjar/metadata.json");
 				if (jarJar != null) version = PlatformLibraries.nestedMixinExtras(new String(jarJar, StandardCharsets.UTF_8));
 			} catch (IOException | JsonException e) {
 				LOGGER.debug("Could not read the nested jars of {}", file.getFileName(), e);
 			}
-			if (version == null && contents.containsFile("com/llamalad7/mixinextras/MixinExtrasBootstrap.class")) version = ownVersion(file);
+			if (version == null && Fml.contains(file, "com/llamalad7/mixinextras/MixinExtrasBootstrap.class")) version = ownVersion(file);
 			if (version != null && (newest == null || newer(version, newest))) newest = version;
 		}
 		if (newest != null) return newest;
@@ -366,7 +360,7 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 		for (IModInfo mod : file.getModInfos()) {
 			if (mod.getModId().startsWith("mixinextras")) return mod.getVersion().toString();
 		}
-		String fromManifest = file.getContents().getManifest().getMainAttributes().getValue("Implementation-Version");
+		String fromManifest = Fml.manifest(file).getMainAttributes().getValue("Implementation-Version");
 		if (fromManifest != null) return fromManifest;
 		Matcher fromName = VERSION_IN_NAME.matcher(file.getFileName());
 		return fromName.find() ? fromName.group() : null;
