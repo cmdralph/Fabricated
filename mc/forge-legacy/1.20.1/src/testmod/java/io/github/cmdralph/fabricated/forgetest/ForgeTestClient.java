@@ -9,7 +9,8 @@ import net.minecraft.class_310;
 /**
  * The test mod's client entrypoint, which Fabric Loader runs from {@code Minecraft}'s constructor ({@code class_310})
  * after the main ones, the game instance set: each logs a line the client smoke looks for
- * (ci/forge-legacy/smoke-client.sh).
+ * (ci/forge-legacy/smoke-client.sh). With Fabric API's networking module it also starts a networking round trip with
+ * the integrated server ({@link ForgeNetworkingClient}).
  */
 @Environment(EnvType.CLIENT)
 public final class ForgeTestClient implements ClientModInitializer {
@@ -23,6 +24,13 @@ public final class ForgeTestClient implements ClientModInitializer {
 			ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST client game instance OK");
 		} else {
 			ForgeTestMod.LOGGER.error("FABRICATED-FORGE-TEST client game instance is {}, not the Minecraft instance", instance);
+		}
+		if (FabricLoader.getInstance().isModLoaded("fabric-networking-api-v1")) {
+			try {
+				ForgeNetworkingClient.register();
+			} catch (RuntimeException | LinkageError e) {
+				ForgeTestMod.LOGGER.error("FABRICATED-FORGE-TEST networking client receiver not registered", e);
+			}
 		}
 	}
 }

@@ -413,8 +413,9 @@ loads there since COLOR-1, its colour provider lookup reading Forge's maps by re
 SHADER-1, which its shader hooks met on Forge 47; particles (an accessor to a map whose type Forge changed) is disabled.
 Model loading loads since CTOR-4: Forge's Mixin 0.8.5 takes a hook into a constructor only at a return, so pre-flight
 turns one at a call into a MixinExtras wrapper of that call, which also applies Fabric API's hook into `Commands`'
-constructor, so Fabric mods' commands register (checked with Fabric API, on the server and the client). Next: the old
-capability system and `SimpleChannel`. NeoForge needs no legacy branch.
+constructor, so Fabric mods' commands register (checked with Fabric API, on the server and the client). Fabric's
+networking needs no `SimpleChannel` port: with Fabric API, a ping the client sends on a channel as it joins comes back
+from the integrated server (run 40459233646). Next: the old capability system. NeoForge needs no legacy branch.
 
 ### forge
 

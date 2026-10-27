@@ -57,7 +57,7 @@ regression on NeoForge. Each item is done when its CI check is; the tracks below
 | All | The engine's platform facts from the platform: the fields its coremods keep private (PLAT-4). | Done (PLAT-4, checked on all five Forge versions) |
 | NeoForge (`main`) | The open corpus findings (below) that a generic fix covers. `preLaunch` right after FML's mixin bootstrap (*Loader and translation*, next). ARCH-1: pre-flight's repair families out of `MixinPreflight`, with no change in behaviour. | Open |
 | Forge 61 to 66 (`forge`) | Fabric mods' client entrypoints and a client run in CI. Entity and interaction events native on Forge's events, as `main` has them on NeoForge's (F4). The server runs made gates once their checks hold on every version. | Server runs gated (with Fabric API too); client entrypoints done, with a gated client run (REG-5 fixed on the way); entity and interaction events open |
-| Forge 47 (`forge-legacy`) | Fabric's networking on `SimpleChannel` and its storages on Forge 47's capabilities, then client entrypoints and a client run in CI (L4, `PORTING.md` §7). | Client entrypoints done, with a gated client run; networking and storages open |
+| Forge 47 (`forge-legacy`) | Fabric's networking through Forge 47's network stack and its storages on Forge 47's capabilities, then client entrypoints and a client run in CI (L4, `PORTING.md` §7). | Client entrypoints done, with a gated client run; networking checked (upstream's module carries a channel's packets both ways, no `SimpleChannel` port needed); storages open |
 
 ## Tracks
 
@@ -76,7 +76,7 @@ each Fabric API module's status per platform in [`COMPATIBILITY.md`](COMPATIBILI
 | Official Fabric API jar | every module loads, server and client | every module loads, server and client | every module loads on the server; the client reaches a world with it, with particles disabled |
 | Native Fabric API modules | 17 | 2 (`fabric-api-base`, `fabric-loot-api-v3`) | 5 (`fabric-api-base`, biome, both loot modules, dimensions) |
 | Bridges to the platform | fluid types, storages and energy with capabilities, plugins of other mods, custom values, renderer API | fluid types, tags' `fabric:remove`, default attributes (Forge 64 to 66), advancement events (Forge 65 and 66) | fluid types, tags' `fabric:remove` |
-| Networking | native, on NeoForge's payloads | upstream's module, unchecked | upstream's module, unchecked |
+| Networking | native, on NeoForge's payloads | upstream's module: a payload round trip with the integrated server (checked with Fabric API) | upstream's module: a channel round trip with the integrated server (checked with Fabric API) |
 | Rendering (renderer API, models, Sodium and Iris for NeoForge) | yes | upstream's modules: Indigo builds chunk sections on all four (SUPER-1, LOCAL-4), and Fabric's colour providers are read from Forge's map (COLOR-1) | upstream's renderer API, Indigo, `fabric-rendering-v1` and model loading load, with Fabric's colour providers read from Forge's maps (COLOR-1) and model loading's constructor hook wrapped (CTOR-4); particles are disabled |
 | CI | server and client runs gated, and checks in the Fabric API runs; corpus runs informational | both server runs and the client run with the test mod gated; the client run with Fabric API informational | both server runs and the client run with the test mod gated; the client run with Fabric API informational |
 | Releases | supported | experimental | experimental |
@@ -84,7 +84,7 @@ each Fabric API module's status per platform in [`COMPATIBILITY.md`](COMPATIBILI
 - **`main`:** NeoForge for 1.21.11, 26.1.2, 26.2 and 26.3, every line stable (NeoForge tagged `26.3.0-stable`; CI
   pins 26.3.0.95 and no version is experimental any more).
 - **Next** (the v0.5.0 table above): on `forge`, entity and interaction events on Forge's events; on `forge-legacy`,
-  networking on `SimpleChannel` and storages on Forge 47's capabilities, then particles on its client;
+  storages on Forge 47's capabilities, then particles on its client;
   on both, the client run with the Fabric API jar made a gate once it has held for a while.
 - **Decided** (`RESEARCH.md` §8): Forge 47.4 for 1.20.1, the shared modules kept loadable on Java 17, ForgeGradle for
   modern Forge, CI for pull requests only. L1, the behaviour-neutral seams on `main`: Java 17 for the shared modules

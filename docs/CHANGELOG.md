@@ -3,6 +3,17 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-10-27: Fabric networking checked on every Forge version
+
+- Fabricated passes `fabric-networking-api-v1` through on Forge, and nothing checked that a Fabric mod's packets get
+  through Forge's network stack. With Fabric API, the test mods now register a payload (Forge 61 to 66, in that
+  version's payload type registry) or a channel (Forge 47, in 1.20.1's buffers). The client sends a ping as it joins
+  the integrated server, the server answers with the value plus one, and the client logs the answer.
+- It works on all five without a change: Forge 47 needs no `SimpleChannel` port for Fabric's networking, so the
+  roadmap's Forge 47 goal is down to storages on its capabilities.
+- Verification: build-forge run 40459230700 and build-forge-legacy run 40459233646 on `27c44e6` pass the round trip on
+  all five Forge versions, with every gated check passing.
+
 ## 2026-10-27: Fabric mods' commands on every Forge version, and hooks into constructors on Forge 47
 
 - **CTOR-4** (Forge 47): SpongePowered's Mixin 0.8.5 takes an `@Inject` into a constructor only at a return, so
