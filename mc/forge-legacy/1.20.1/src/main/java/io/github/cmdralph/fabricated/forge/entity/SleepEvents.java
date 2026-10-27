@@ -6,27 +6,43 @@ import net.fabricmc.fabric.api.entity.event.v1.EntitySleepEvents;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.BedBlock;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraftforge.common.MinecraftForge;
+import net.minecraftforge.event.entity.player.SleepingTimeCheckEvent;
+import net.minecraftforge.eventbus.api.Event;
+import net.minecraftforge.eventbus.api.EventPriority;
 
 /**
  * Fabric API's bed occupation and sleeping direction events (fabric-entity-events-v1, passed through) where Forge 47
- * decides them (SLEEP-1), as on Forge 61 to 66. Forge's {@code LivingEntity} asks the bed's state ({@code BlockState.setBedOccupied},
- * {@code getBedDirection}) where vanilla sets the occupied property and asks {@code BedBlock}, which upstream's hooks
- * look for, so the plan leaves those two hooks out and {@code LivingEntitySleepMixin} runs the events at Forge's calls.
+ * decides them (SLEEP-1), as on Forge 61 to 66, and its sleep time event where Forge 47 asks its own (SLEEP-2). Forge's
+ * {@code LivingEntity} asks the bed's state ({@code BlockState.setBedOccupied}, {@code getBedDirection}) where vanilla
+ * sets the occupied property and asks {@code BedBlock}, which upstream's hooks look for, so the plan leaves those two
+ * hooks out and {@code LivingEntitySleepMixin} runs the events at Forge's calls.
  *
  * <p>Upstream's hook that lets {@code ALLOW_BED} admit any block still applies: it stands a red bed in for the block in
  * the state {@code startSleeping} and {@code stopSleeping} check, so their bed checks pass, and its own occupation hook
  * read the real block again before setting anything. Forge's {@code setBedOccupied} on that stand-in set a red bed in
  * the world in the admitted block's place; {@link #setBedOccupied} sets the real block's state instead.
+ *
+ * <p>Upstream asks {@code ALLOW_SLEEP_TIME} where vanilla checks {@code Level.isDay()}, as a player tries to sleep and
+ * as a sleeping one ticks. Forge 47 checks its {@code SleepingTimeCheckEvent} there instead, which falls back to that
+ * check, so the plan leaves upstream's two hooks out and {@link #register} answers Forge's event from Fabric's.
  */
 public final class SleepEvents {
 	/** Fabric API's entity events module is installed. Its classes are only touched then. */
 	private static final boolean ENABLED = FabricLoader.getInstance().isModLoaded("fabric-entity-events-v1");
 
 	private SleepEvents() {
+	}
+
+	/** Called once: Fabric's sleep time event answers Forge's, last, as Forge mods' own answers come first. */
+	public static void register() {
+		if (ENABLED) MinecraftForge.EVENT_BUS.addListener(EventPriority.LOWEST, false, SleepingTimeCheckEvent.class, Upstream::sleepingTimeCheck);
 	}
 
 	/**
@@ -65,6 +81,20 @@ public final class SleepEvents {
 				// Upstream's widening for modded beds that don't answer the event.
 				level.setBlock(pos, bed.setValue(BedBlock.OCCUPIED, occupied), 3);
 			}
+		}
+
+		/**
+		 * Fabric's {@code ALLOW_SLEEP_TIME}, with vanilla's answer (not day), in place of the day check Forge's
+		 * event falls back to: only when no Forge mod has answered, and a sleeping position is known, as upstream
+		 * asks.
+		 */
+		static void sleepingTimeCheck(SleepingTimeCheckEvent event) {
+			if (event.getResult() != Event.Result.DEFAULT) return;
+			BlockPos pos = event.getSleepingLocation().orElse(null);
+			if (pos == null) return;
+			Player player = event.getEntity();
+			InteractionResult result = EntitySleepEvents.ALLOW_SLEEP_TIME.invoker().allowSleepTime(player, pos, !player.level().isDay());
+			if (result != InteractionResult.PASS) event.setResult(result.consumesAction() ? Event.Result.ALLOW : Event.Result.DENY);
 		}
 
 		static Direction sleepingDirection(LivingEntity sleeper, Direction forge) {

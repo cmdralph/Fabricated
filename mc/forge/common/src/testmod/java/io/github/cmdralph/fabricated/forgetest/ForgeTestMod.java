@@ -29,9 +29,9 @@ import net.minecraft.world.item.Items;
  * module Fabricated ships itself ({@link ForgeLootTest}), so it runs without Fabric API's jar; with it, it also tries the
  * object builder module's default attribute event ({@link ForgeAttributeTest}), the advancement module's modify event
  * ({@link ForgeAdvancementTest}), the command module's registration event ({@link ForgeCommandTest}), a networking
- * round trip ({@link ForgeNetworkingTest}), the interaction module's block break events ({@link ForgeBlockBreakTest}),
- * the entity events module's sleep events ({@link ForgeSleepTest}) and storages reaching Forge's capabilities
- * ({@link ForgeTransferTest}). Its fluids are written as Fabric mods write theirs ({@link ForgeFluidTest}).
+ * round trip ({@link ForgeNetworkingTest}), the interaction module's block break events ({@link ForgeBlockBreakTest})
+ * and use and attack callbacks ({@link ForgeInteractionTest}), the entity events module's sleep events
+ * ({@link ForgeSleepTest}) and storages reaching Forge's capabilities ({@link ForgeTransferTest}). Its fluids are written as Fabric mods write theirs ({@link ForgeFluidTest}).
  */
 public final class ForgeTestMod implements ModInitializer, DedicatedServerModInitializer {
 	public static final String MOD_ID = "fabricated-forge-testmod";
@@ -102,8 +102,9 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 		if (FabricLoader.getInstance().isModLoaded("fabric-events-interaction-v0")) {
 			try {
 				ForgeBlockBreakTest.register();
+				ForgeInteractionTest.register();
 			} catch (RuntimeException | LinkageError e) {
-				LOGGER.warn("FABRICATED-FORGE-TEST block break listeners not registered", e);
+				LOGGER.warn("FABRICATED-FORGE-TEST interaction listeners not registered", e);
 			}
 		}
 		if (FabricLoader.getInstance().isModLoaded("fabric-entity-events-v1")) {
@@ -209,6 +210,29 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 			ForgeBlockBreakTest.check(server.overworld());
 		} catch (RuntimeException | LinkageError e) {
 			LOGGER.warn("FABRICATED-FORGE-TEST block break check failed", e);
+		}
+	}
+
+	/**
+	 * Whether Fabric's use and attack callbacks are asked, and their answers honoured, as a player uses and attacks blocks,
+	 * items and entities ({@link ForgeInteractionTest}; with Fabric API only).
+	 */
+	public static void checkInteractions(MinecraftServer server) {
+		if (!FabricLoader.getInstance().isModLoaded("fabric-events-interaction-v0")) return;
+		try {
+			ForgeInteractionTest.check(server.overworld());
+		} catch (RuntimeException | LinkageError e) {
+			LOGGER.warn("FABRICATED-FORGE-TEST interaction check failed", e);
+		}
+	}
+
+	/** The rest of {@link #checkInteractions}, at every later server tick until it has run. */
+	public static void tickInteractions(MinecraftServer server) {
+		if (!FabricLoader.getInstance().isModLoaded("fabric-events-interaction-v0")) return;
+		try {
+			ForgeInteractionTest.tick(server.overworld());
+		} catch (RuntimeException | LinkageError e) {
+			LOGGER.warn("FABRICATED-FORGE-TEST interaction check failed", e);
 		}
 	}
 

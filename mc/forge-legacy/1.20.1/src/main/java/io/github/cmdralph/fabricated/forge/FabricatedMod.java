@@ -9,6 +9,7 @@ import org.slf4j.LoggerFactory;
 
 import io.github.cmdralph.fabricated.core.runtime.EntrypointRunner;
 import io.github.cmdralph.fabricated.forge.biome.BiomeCompat;
+import io.github.cmdralph.fabricated.forge.entity.SleepEvents;
 import io.github.cmdralph.fabricated.forge.fluid.FabricFluidType;
 import io.github.cmdralph.fabricated.forge.transfer.TransferBridge;
 import io.github.cmdralph.fabricated.loader.FabricatedState;
@@ -79,6 +80,8 @@ public final class FabricatedMod {
 		}
 		// Fabric storages and Forge's item and fluid handlers on blocks, each seen by the other side's code.
 		if (FabricLoader.getInstance().isModLoaded("fabric-transfer-api-v1")) TransferBridge.register();
+		// Fabric's sleep time event where Forge asks its own.
+		SleepEvents.register();
 		// Native fabric-loot-tables-v1's own initializer (a native module has no entrypoints): its loot table events
 		// listen to fabric-loot-api-v2's before the Fabric mods register theirs.
 		new LootTablesV1Init().onInitialize();

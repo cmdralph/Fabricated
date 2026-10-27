@@ -3,6 +3,25 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-10-27: Fabric's use and attack callbacks on Forge, and its sleep time event on Forge 47
+
+- **SLEEP-2** (Forge 47): Fabric API asks `EntitySleepEvents.ALLOW_SLEEP_TIME` by redirecting the day check as a player
+  tries to sleep and as a sleeping one ticks. Forge 47's patches replace both calls with its `SleepingTimeCheckEvent`,
+  which checks the time only when no listener answers, so pre-flight left upstream's two hooks out and a Fabric mod
+  letting players sleep in the daytime was never asked. The in-game mod now answers Forge's event from Fabric's, last,
+  when no Forge mod has, and the plan skips upstream's two hooks. Fabric API for 1.21.11 and later has no such event:
+  the bed rule, an environment attribute, decides when players may sleep.
+- Fabric's use and attack callbacks (`UseItemCallback`, `UseBlockCallback`, `UseEntityCallback`, `AttackBlockCallback`,
+  `AttackEntityCallback`) are asked through Forge's own interaction code on all five Forge versions, and their answers
+  hold. Upstream's hooks apply as they are (pre-flight already renames the captured value the entity hook shadows), so
+  nothing is bridged. The test mods' fake player uses an item, a block and an armor stand, and attacks the block and the
+  stand, with Fabric API. A server without players ticks no chunk's entities at its first tick, so the armor stand's
+  part waits for the test site's chunk, forced, to tick them.
+- The Forge storage checks' descriptions name the tank item checks they also run.
+- Verification: build-forge-legacy run 40536945888 and build-forge run 40536950507 on `a6e851f` pass, with the
+  interaction check on every Forge version's server and client with Fabric API, and the daytime sleep on Forge 47's.
+  The hooks left out and repaired are the ones before, but for SLEEP-2's two on Forge 47, now skipped by the plan.
+
 ## 2026-10-27: Fabric storages and Forge's item and fluid handlers on Forge
 
 - Fabric mods' item and fluid storages and Forge mods' item and fluid handlers see each other on blocks on all five

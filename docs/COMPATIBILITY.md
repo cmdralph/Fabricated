@@ -1060,7 +1060,14 @@ by the server runs (the colours and screen input by the client runs):
 - **Beds:** a block `EntitySleepEvents.ALLOW_BED` admits stays as it is while an entity sleeps on it, and the occupation
   and sleeping direction events run as it lies down and wakes up (all five, with Fabric API, server and client; on
   Forge 47 as it wakes up since LAMBDA-6). Forge sets a bed's occupation through its own `setBedOccupied`, on the red
-  bed upstream's hook stands in for the block, so the in-game mod sets the block's own (SLEEP-1).
+  bed upstream's hook stands in for the block, so the in-game mod sets the block's own (SLEEP-1). On Forge 47 a player
+  may sleep in the daytime `EntitySleepEvents.ALLOW_SLEEP_TIME` allows (with Fabric API, server and client): Forge 47
+  checks its own sleep time event where upstream's hooks look for the day check, so the in-game mod answers it from
+  Fabric's (SLEEP-2). Fabric API for 1.21.11 and later has no such event.
+- **Use and attack:** a player's uses of an item, a block and an entity, and its attacks on a block and an entity, ask
+  `UseItemCallback`, `UseBlockCallback`, `UseEntityCallback`, `AttackBlockCallback` and `AttackEntityCallback` through
+  Forge's own code, and a refusal holds (all five, with Fabric API, server and client). Upstream's hooks apply as they
+  are, pre-flight renaming the captured value the entity hook shadows.
 - **Screen input:** a click and a key press on a screen, and their releases, ask `ScreenMouseEvents` and
   `ScreenKeyboardEvents` (Forge 47, with Fabric API, client run). Forge 47's patch made the mouse lambdas take `this` and
   reordered the key lambda's captured values; pre-flight bridges upstream's hooks into both (LAMBDA-7).
