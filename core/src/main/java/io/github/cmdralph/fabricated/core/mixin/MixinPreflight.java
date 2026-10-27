@@ -42,8 +42,10 @@ import org.objectweb.asm.tree.FieldInsnNode;
 import org.objectweb.asm.tree.FieldNode;
 import org.objectweb.asm.tree.IincInsnNode;
 import org.objectweb.asm.tree.InnerClassNode;
+import org.objectweb.asm.tree.IntInsnNode;
 import org.objectweb.asm.tree.InvokeDynamicInsnNode;
 import org.objectweb.asm.tree.JumpInsnNode;
+import org.objectweb.asm.tree.LdcInsnNode;
 import org.objectweb.asm.tree.LocalVariableNode;
 import org.objectweb.asm.tree.LookupSwitchInsnNode;
 import org.objectweb.asm.tree.MethodInsnNode;
@@ -961,11 +963,14 @@ public final class MixinPreflight {
 	 * by their first use in it, which NeoForge's patches change (Wover's hook into {@code WorldLoader}'s registry load,
 	 * FrozenLib's into {@code RegistryDataLoader}'s; LAMBDA-3). The bridge passes each of the handler's parameters the
 	 * lambda's of its type: in order, when the handler's types occur in the lambda's that way only once; otherwise by
-	 * type, where a type the lambda has more than once is only passed to a parameter the handler never uses. A method
-	 * NeoForge gave more parameters gets the same bridge, in order only (Ledger's hooks into {@code FireBlock.checkBurnOut},
-	 * which takes a face too; SIG-1). Returns a description of the bridged method.
+	 * type, where a type the lambda has more than once is only passed to a parameter the handler never uses; otherwise by
+	 * how vanilla's lambda and this build's use them ({@link #byUse}). A method NeoForge gave more parameters gets the
+	 * same bridge, in order only (Ledger's hooks into {@code FireBlock.checkBurnOut}, which takes a face too; SIG-1). Where
+	 * the running Mixin refuses a static handler on a method that takes {@code this}, and this build's lambda takes it
+	 * where vanilla's doesn't, the bridge takes {@code this} (Forge 47's {@code MouseHandler}, whose patch reads the
+	 * client in its screen lambdas; LAMBDA-7). Returns a description of the bridged method.
 	 */
-	private static List<String> capturedValueRepairs(ClassNode mixin, MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx,
+	private List<String> capturedValueRepairs(ClassNode mixin, MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx,
 			List<MethodNode> bridges) {
 		if (!injector.desc.equals(INJECT) || Annotations.value(injector, "locals") != null || (mixin.access & Opcodes.ACC_INTERFACE) != 0
 				|| !(Annotations.value(injector, "method") instanceof List<?> selectors) || selectors.size() != 1
@@ -974,39 +979,163 @@ public final class MixinPreflight {
 		if (methods.size() != 1 || methods.get(0).name.startsWith("<")) return List.of();
 		MethodNode lambda = methods.get(0);
 		boolean isLambda = LAMBDA.matcher(lambda.name).matches();
+		boolean handlerStatic = (handler.access & Opcodes.ACC_STATIC) != 0;
+		boolean lambdaStatic = (lambda.access & Opcodes.ACC_STATIC) != 0;
+		boolean takesThis = handlerStatic && !lambdaStatic && exactStaticInjects;
 		Type[] own = Type.getArgumentTypes(handler.desc);
-		if (own.length < 2 || !isCallbackInfo(own[own.length - 1])
-				|| (handler.access & Opcodes.ACC_STATIC) != (lambda.access & Opcodes.ACC_STATIC)) return List.of();
+		if (own.length < 2 || !isCallbackInfo(own[own.length - 1]) || handlerStatic != lambdaStatic && !takesThis) return List.of();
 		List<Type> wanted = List.of(own).subList(0, own.length - 1);
 		List<Type> captured = List.of(Type.getArgumentTypes(lambda.desc));
 		// A patch captures a value or two more; a lambda taking many more is more likely another one under that name.
-		if (wanted.equals(captured) || captured.size() > wanted.size() + 2) return List.of();
+		if (wanted.equals(captured) && !takesThis || captured.size() > wanted.size() + 2) return List.of();
 		int[] from = inOrder(wanted, captured);
 		if (from == null && isLambda) from = byType(handler, wanted, captured);
+		if (from == null && isLambda) from = byUse(vanillaLambdaTaking(target.name, wanted, lambda), lambda, wanted, captured);
 		if (from == null) return List.of();
 
 		List<Type> params = new ArrayList<>(captured);
 		params.add(own[own.length - 1]);
-		MethodNode bridge = HandlerBridges.bridgeMethod(handler, HandlerBridges.freeName(mixin, bridges, handler.name + "$fabricated"), params,
+		MethodNode bridge = HandlerBridges.bridgeMethod(lambdaStatic, HandlerBridges.freeName(mixin, bridges, handler.name + "$fabricated"), params,
 				Type.getReturnType(handler.desc));
 		int stack = 0;
-		if ((handler.access & Opcodes.ACC_STATIC) == 0) {
+		if (!handlerStatic) {
 			bridge.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
 			stack++;
 		}
 		for (int index : from) {
-			bridge.instructions.add(new VarInsnNode(params.get(index).getOpcode(Opcodes.ILOAD), HandlerBridges.slotOf(handler, params, index)));
+			bridge.instructions.add(new VarInsnNode(params.get(index).getOpcode(Opcodes.ILOAD), HandlerBridges.slotOf(lambdaStatic, params, index)));
 			stack += params.get(index).getSize();
 		}
-		bridge.instructions.add(new VarInsnNode(Opcodes.ALOAD, HandlerBridges.slotOf(handler, params, params.size() - 1)));
+		bridge.instructions.add(new VarInsnNode(Opcodes.ALOAD, HandlerBridges.slotOf(lambdaStatic, params, params.size() - 1)));
 		HandlerBridges.callHandler(bridge, mixin.name, handler, stack + 1);
 		@SuppressWarnings("unchecked")
 		List<Object> values = (List<Object>) selectors;
 		values.set(0, lambda.name + lambda.desc);
 		HandlerBridges.moveInjector(handler, injector, bridge);
 		bridges.add(bridge);
+		if (wanted.equals(captured)) {
+			return List.of(lambda.name + lambda.desc + ", which this game build declares taking this, where " + loader
+					+ "'s Mixin refuses a static handler; a bridge taking this calls the handler");
+		}
 		return List.of(lambda.name + lambda.desc + (isLambda ? ", whose captured values this game build passes in another order or with more"
-				: ", which this game build declares with more parameters") + "; a bridge passes the handler the ones it takes");
+				: ", which this game build declares with more parameters") + (takesThis ? ", taking this" : "")
+				+ "; a bridge passes the handler the ones it takes");
+	}
+
+	/**
+	 * Vanilla's lambda in {@code owner} taking {@code params} and returning what {@code lambda} returns, when it has one
+	 * only; null otherwise, or without vanilla's class.
+	 */
+	private MethodNode vanillaLambdaTaking(String owner, List<Type> params, MethodNode lambda) {
+		ClassNode original = vanillaClass(owner);
+		if (original == null) return null;
+		String desc = Type.getMethodDescriptor(Type.getReturnType(lambda.desc), params.toArray(Type[]::new));
+		MethodNode only = null;
+		for (MethodNode m : original.methods) {
+			if (!m.desc.equals(desc) || !isLambdaBody(m)) continue;
+			if (only != null) return null;
+			only = m;
+		}
+		return only;
+	}
+
+	/**
+	 * Where each of {@code wanted}, the parameters of {@code vanilla}'s lambda, is in {@code captured}, this build's
+	 * {@code lambda}'s, by how the two bodies use them: a type each has once is placed by type; one they have more than once,
+	 * where the same use of it is in both (passed as the same argument of the same call, or compared with the same
+	 * constant) and in no other parameter of that type of this build's (Forge 47's {@code KeyboardHandler.keyPress}
+	 * lambda, whose patch reordered the screen and the result array around four {@code int}s; LAMBDA-7). Null unless every
+	 * parameter is placed, one to one.
+	 */
+	private static int[] byUse(MethodNode vanilla, MethodNode lambda, List<Type> wanted, List<Type> captured) {
+		if (vanilla == null || wanted.size() != captured.size()) return null;
+		List<Set<String>> before = parameterUses(vanilla);
+		List<Set<String>> after = parameterUses(lambda);
+		int[] from = new int[wanted.size()];
+		boolean[] taken = new boolean[captured.size()];
+		for (int i = 0; i < wanted.size(); i++) {
+			Type type = wanted.get(i);
+			boolean once = Collections.frequency(wanted, type) == 1 && Collections.frequency(captured, type) == 1;
+			int found = -1;
+			for (int j = 0; j < captured.size(); j++) {
+				if (!captured.get(j).equals(type) || !once && Collections.disjoint(before.get(i), after.get(j))) continue;
+				if (found >= 0) return null;
+				found = j;
+			}
+			if (found < 0 || taken[found]) return null;
+			taken[found] = true;
+			from[i] = found;
+		}
+		return from;
+	}
+
+	/**
+	 * For each parameter of {@code method}, the uses of its value seen where it is loaded right before what takes it: an
+	 * argument of a call (its opcode, {@code owner.name desc} and the argument's place) or an operand of a comparison, with
+	 * the other operand where that is a constant. A parameter the method stores to has none.
+	 */
+	private static List<Set<String>> parameterUses(MethodNode method) {
+		Type[] args = Type.getArgumentTypes(method.desc);
+		Map<Integer, Integer> bySlot = new HashMap<>();
+		int slot = (method.access & Opcodes.ACC_STATIC) != 0 ? 0 : 1;
+		for (int i = 0; i < args.length; i++) {
+			bySlot.put(slot, i);
+			slot += args[i].getSize();
+		}
+		for (AbstractInsnNode insn : method.instructions) {
+			if (insn instanceof VarInsnNode v && v.getOpcode() >= Opcodes.ISTORE && v.getOpcode() <= Opcodes.ASTORE) bySlot.remove(v.var);
+			if (insn instanceof IincInsnNode inc) bySlot.remove(inc.var);
+		}
+		List<Set<String>> uses = new ArrayList<>();
+		for (int i = 0; i < args.length; i++) uses.add(new HashSet<>());
+		for (AbstractInsnNode insn : method.instructions) {
+			String use;
+			int operands;
+			if (insn instanceof MethodInsnNode call) {
+				use = call.getOpcode() + " " + call.owner + "." + call.name + call.desc;
+				operands = Type.getArgumentTypes(call.desc).length + (call.getOpcode() == Opcodes.INVOKESTATIC ? 0 : 1);
+			} else if (insn instanceof JumpInsnNode jump && jump.getOpcode() >= Opcodes.IFEQ && jump.getOpcode() <= Opcodes.IF_ACMPNE) {
+				use = Integer.toString(jump.getOpcode());
+				operands = jump.getOpcode() >= Opcodes.IF_ICMPEQ ? 2 : 1;
+			} else {
+				continue;
+			}
+			AbstractInsnNode[] pushed = pushedBefore(insn, operands);
+			for (int n = 0; n < operands; n++) {
+				if (!(pushed[n] instanceof VarInsnNode load) || load.getOpcode() > Opcodes.ALOAD || !bySlot.containsKey(load.var)) continue;
+				String other = operands == 2 && !(insn instanceof MethodInsnNode) ? " " + constant(pushed[1 - n]) : "";
+				uses.get(bySlot.get(load.var)).add(use + " #" + n + other);
+			}
+		}
+		return uses;
+	}
+
+	/**
+	 * The instructions pushing the last of {@code operands} values {@code insn} takes, each a load or a constant right before
+	 * it (null where another instruction pushes it, and for those before).
+	 */
+	private static AbstractInsnNode[] pushedBefore(AbstractInsnNode insn, int operands) {
+		AbstractInsnNode[] pushed = new AbstractInsnNode[operands];
+		AbstractInsnNode at = insn.getPrevious();
+		for (int n = operands - 1; n >= 0; n--) {
+			while (at != null && at.getOpcode() < 0) at = at.getPrevious();
+			if (at == null || !(at instanceof VarInsnNode v && v.getOpcode() <= Opcodes.ALOAD) && constant(at) == null) break;
+			pushed[n] = at;
+			at = at.getPrevious();
+		}
+		return pushed;
+	}
+
+	/** The value an instruction pushing a constant pushes, as text; null for another instruction. */
+	private static String constant(AbstractInsnNode insn) {
+		if (insn == null) return null;
+		int op = insn.getOpcode();
+		if (op == Opcodes.ACONST_NULL) return "null";
+		if (op >= Opcodes.ICONST_M1 && op <= Opcodes.ICONST_5) return Integer.toString(op - Opcodes.ICONST_0);
+		if (op >= Opcodes.LCONST_0 && op <= Opcodes.DCONST_1) return "const" + op;
+		if (insn instanceof IntInsnNode push && (op == Opcodes.BIPUSH || op == Opcodes.SIPUSH)) return Integer.toString(push.operand);
+		if (insn instanceof LdcInsnNode ldc) return String.valueOf(ldc.cst);
+		return null;
 	}
 
 	/** Where each of {@code wanted} is in {@code captured}, taken in order, when they occur in it that way only once; else null. */
