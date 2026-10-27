@@ -16,8 +16,8 @@ import net.minecraft.server.MinecraftServer;
  * server tick, whether the server has the interface the test mod's class tweaker injects, whether the test mod's item
  * is still in the registry Forge has frozen and checked by then, whether its item tag's removals applied, whether
  * Fabric's loot table events reached dirt's loot table and drops, whether Fabric's default attribute event reached a
- * cow's defaults, whether Fabric's advancement modify event reached a vanilla advancement, and whether its fluids have
- * fluid types.
+ * cow's defaults, whether Fabric's advancement modify event reached a vanilla advancement, whether its fluids have
+ * fluid types, and on a client whether Fabric's colour provider registry finds the game's block colours.
  */
 @Mixin(MinecraftServer.class)
 public abstract class MinecraftServerMixin {
@@ -38,6 +38,7 @@ public abstract class MinecraftServerMixin {
 			ForgeTestMod.checkDefaultAttributes();
 			ForgeTestMod.checkAdvancements((MinecraftServer) (Object) this);
 			ForgeTestMod.checkFluids((MinecraftServer) (Object) this);
+			ForgeTestMod.checkColors();
 		}
 	}
 }

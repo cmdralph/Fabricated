@@ -83,6 +83,19 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 		}
 	}
 
+	/**
+	 * Whether Fabric's colour provider registry answers from the game's block colours ({@link ForgeColorTest}), on a client
+	 * with Fabric API's rendering module.
+	 */
+	public static void checkColors() {
+		if (FabricLoader.getInstance().getEnvironmentType() != EnvType.CLIENT || !FabricLoader.getInstance().isModLoaded("fabric-rendering-v1")) return;
+		try {
+			ForgeColorTest.check();
+		} catch (RuntimeException | LinkageError e) {
+			LOGGER.warn("FABRICATED-FORGE-TEST colour provider check failed", e);
+		}
+	}
+
 	/** Reserved for the client: Fabric's environment stripping takes it out of the class on a dedicated server. */
 	@Environment(EnvType.CLIENT)
 	static void clientOnly() {
