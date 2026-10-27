@@ -253,6 +253,11 @@ class TranslateHelpersTest {
 		assertFalse(MixinCompat.argumentNames("0.8.5+Jenkins-b310.git-1"), "Forge 47");
 		assertFalse(MixinCompat.argumentNames("0.8.7+Jenkins-b321.git-4"), "Forge 61 to 66");
 		assertTrue(MixinCompat.argumentNames("0.17.4+mixin.0.8.7"), "Fabric's Mixin");
+		// LAMBDA-6: whether an @Inject handler must be static exactly where its target is.
+		assertTrue(MixinCompat.exactStaticInjects("0.8.5+Jenkins-b310.git-1"), "Forge 47");
+		assertFalse(MixinCompat.exactStaticInjects("0.8.7+Jenkins-b321.git-4"), "Forge 61 to 66");
+		assertFalse(MixinCompat.exactStaticInjects("0.17.4+mixin.0.8.7"), "Fabric's Mixin");
+		assertFalse(MixinCompat.exactStaticInjects(null));
 		// SUPER-1: whether a detached mixin's calls to an interface's super method are rebound to the target.
 		assertTrue(MixinCompat.rebindsInterfaceSuperCalls("0.8.5+Jenkins-b310.git-1"), "Forge 47");
 		assertTrue(MixinCompat.rebindsInterfaceSuperCalls("0.8.7+Jenkins-b321.git-4"), "Forge 61 to 66");

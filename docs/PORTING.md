@@ -416,9 +416,12 @@ in-game mod registers Fabric's factories and their sprite sets through the engin
 dust tint event where Forge decides the tint, which replaced the check upstream's hook looks for. A factory the test
 mod registers is found by the engine, with its sprite in the particle atlas, with and without Fabric API, and with
 Fabric API no module is disabled on the client any more (run 40463821244).
-Forge 47 needs the same block break and bed bridges as Forge 61 to 66 (BREAK-1, SLEEP-1); hooks into lambdas of the
-classes it patched are left out, as its patched classes name their lambdas otherwise than vanilla's SRG names (LAMBDA-6,
-open).
+Forge 47 needs the same block break and bed bridges as Forge 61 to 66 (BREAK-1, SLEEP-1). Its patched classes are
+compiled from Forge's sources, so their lambdas carry javac's names where Fabric mods name vanilla's by their SRG names:
+pre-flight finds the lambda Forge's class creates in vanilla's place (LAMBDA-6), which applies Fabric API's hooks into
+waking up from a bed and into loot tables' conditions. Its Mixin, 0.8.5, refuses a static `@Inject` handler on a method
+that takes `this`, which the later releases take, so the hooks into the two mouse lambdas Forge's patch made take `this`
+are left out, and those into the key lambda whose captured values it reordered (LAMBDA-7, open).
 Model loading loads since CTOR-4: Forge's Mixin 0.8.5 takes a hook into a constructor only at a return, so pre-flight
 turns one at a call into a MixinExtras wrapper of that call, which also applies Fabric API's hook into `Commands`'
 constructor, so Fabric mods' commands register (checked with Fabric API, on the server and the client). Fabric's

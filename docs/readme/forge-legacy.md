@@ -68,8 +68,7 @@ with it reaches a world with every module loaded too; that run is only reported 
 - **Block breaking:** Fabric's block break events fire where Forge breaks a player's block, and a Fabric mod that
   refuses a break keeps the block.
 - **Beds:** Fabric's bed occupation and sleeping direction events run where Forge handles beds, and a block a Fabric
-  mod admits as a bed stays that block while an entity sleeps on it. The occupation event doesn't run yet as an
-  entity wakes up from such a block that isn't a bed (LAMBDA-6).
+  mod admits as a bed stays that block while an entity sleeps on it and as it wakes up.
 
 ## Not supported yet
 
