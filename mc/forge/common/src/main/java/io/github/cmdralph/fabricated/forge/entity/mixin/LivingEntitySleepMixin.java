@@ -16,12 +16,13 @@ import net.minecraft.world.level.block.state.BlockState;
 
 /**
  * Runs Fabric's bed occupation and sleeping direction events at Forge's calls ({@link SleepEvents}): its
- * {@code setBedOccupied} as an entity lies down ({@code startSleeping}) and wakes up (the lambda of
- * {@code stopSleeping}, whose number differs between versions), and its answer to {@code getBedOrientation}.
+ * {@code setBedOccupied} as an entity lies down ({@code startSleeping}, named alone: it answers whether the entity lay
+ * down on Forge 66, nothing before) and wakes up (the lambda of {@code stopSleeping}, whose number differs between
+ * versions), and its answer to {@code getBedOrientation}.
  */
 @Mixin(LivingEntity.class)
 abstract class LivingEntitySleepMixin {
-	@WrapOperation(method = {"startSleeping(Lnet/minecraft/core/BlockPos;)V", "/^lambda\\$stopSleeping\\$\\d+$/"},
+	@WrapOperation(method = {"startSleeping", "/^lambda\\$stopSleeping\\$\\d+$/"},
 			at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/block/state/BlockState;setBedOccupied(Lnet/minecraft/world/level/Level;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/entity/LivingEntity;Z)V"),
 			require = 2)
 	private void fabricated$setBedOccupied(BlockState state, Level level, BlockPos pos, LivingEntity sleeper, boolean occupied,
