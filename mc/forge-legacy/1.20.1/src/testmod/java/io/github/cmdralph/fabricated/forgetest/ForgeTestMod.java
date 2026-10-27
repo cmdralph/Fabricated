@@ -18,10 +18,10 @@ import net.minecraft.class_7923;
 /**
  * The forge-legacy branch's Fabric test mod (docs/PORTING.md §7, L3): its entrypoints and its mixin each log a line the
  * server smoke looks for (ci/forge-legacy/smoke-server.sh). It uses Fabric Loader's API, and of Fabric API only the
- * modules Fabricated provides itself (fabric-biome-api-v1, fabric-dimensions-v1, fabric-loot-api-v2 and
- * fabric-loot-tables-v1), as the smoke runs without Fabric API's jar too. It registers fluids as Fabric mods do, and
- * names the game's classes as a Fabric mod for 1.20.1 does, in Intermediary's names (the stand-ins in src/testmodstubs),
- * which Fabricated remaps to Forge 47's.
+ * modules Fabricated provides itself (fabric-biome-api-v1, fabric-dimensions-v1, fabric-loot-api-v2,
+ * fabric-loot-tables-v1 and fabric-particles-v1), as the smoke runs without Fabric API's jar too. It registers fluids
+ * as Fabric mods do, and names the game's classes as a Fabric mod for 1.20.1 does, in Intermediary's names (the
+ * stand-ins in src/testmodstubs), which Fabricated remaps to Forge 47's.
  */
 public final class ForgeTestMod implements ModInitializer, DedicatedServerModInitializer {
 	public static final String MOD_ID = "fabricated-forge-testmod";
@@ -78,6 +78,11 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 		} catch (RuntimeException | LinkageError e) {
 			LOGGER.error("FABRICATED-FORGE-TEST command registration failed", e);
 		}
+		try {
+			ForgeParticleTest.register();
+		} catch (RuntimeException | LinkageError e) {
+			LOGGER.error("FABRICATED-FORGE-TEST particle type registration failed", e);
+		}
 		if (FabricLoader.getInstance().isModLoaded("fabric-networking-api-v1")) {
 			try {
 				ForgeNetworkingTest.register();
@@ -105,6 +110,19 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 			ForgeColorTest.check();
 		} catch (RuntimeException | LinkageError e) {
 			LOGGER.warn("FABRICATED-FORGE-TEST colour provider check failed", e);
+		}
+	}
+
+	/**
+	 * Whether the particle engine finds the test mod's particle factory and loads its sprites
+	 * ({@link ForgeParticleClient}), on a client.
+	 */
+	public static void checkParticles() {
+		if (FabricLoader.getInstance().getEnvironmentType() != EnvType.CLIENT || ForgeParticleTest.sparkle == null) return;
+		try {
+			ForgeParticleClient.check();
+		} catch (RuntimeException | LinkageError e) {
+			LOGGER.warn("FABRICATED-FORGE-TEST particle check failed", e);
 		}
 	}
 
