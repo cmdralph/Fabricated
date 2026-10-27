@@ -25,8 +25,9 @@ import net.minecraft.world.item.Items;
  * The forge branch's Fabric test mod (docs/PORTING.md §4.1, F3 step 3): its entrypoints and its mixin each log a line
  * the server smoke looks for (ci/forge/smoke-server.sh). It uses Fabric Loader's API and, of Fabric API, only the loot
  * module Fabricated ships itself ({@link ForgeLootTest}), so it runs without Fabric API's jar; with it, it also tries the
- * object builder module's default attribute event ({@link ForgeAttributeTest}) and the advancement module's modify event
- * ({@link ForgeAdvancementTest}). Its fluids are written as Fabric mods write theirs ({@link ForgeFluidTest}).
+ * object builder module's default attribute event ({@link ForgeAttributeTest}), the advancement module's modify event
+ * ({@link ForgeAdvancementTest}) and the command module's registration event ({@link ForgeCommandTest}). Its fluids are
+ * written as Fabric mods write theirs ({@link ForgeFluidTest}).
  */
 public final class ForgeTestMod implements ModInitializer, DedicatedServerModInitializer {
 	public static final String MOD_ID = "fabricated-forge-testmod";
@@ -78,6 +79,13 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 				ForgeAdvancementTest.register();
 			} catch (RuntimeException | LinkageError e) {
 				LOGGER.warn("FABRICATED-FORGE-TEST advancement listener not registered", e);
+			}
+		}
+		if (FabricLoader.getInstance().isModLoaded("fabric-command-api-v2")) {
+			try {
+				ForgeCommandTest.register();
+			} catch (RuntimeException | LinkageError e) {
+				LOGGER.warn("FABRICATED-FORGE-TEST command listener not registered", e);
 			}
 		}
 	}
@@ -138,6 +146,16 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 			ForgeAdvancementTest.check(server);
 		} catch (RuntimeException | LinkageError e) {
 			LOGGER.warn("FABRICATED-FORGE-TEST advancement check failed", e);
+		}
+	}
+
+	/** Whether a command registered through Fabric's command event is in the server's dispatcher ({@link ForgeCommandTest}; with Fabric API only). */
+	public static void checkCommands(MinecraftServer server) {
+		if (!FabricLoader.getInstance().isModLoaded("fabric-command-api-v2")) return;
+		try {
+			ForgeCommandTest.check(server);
+		} catch (RuntimeException | LinkageError e) {
+			LOGGER.warn("FABRICATED-FORGE-TEST command check failed", e);
 		}
 	}
 
