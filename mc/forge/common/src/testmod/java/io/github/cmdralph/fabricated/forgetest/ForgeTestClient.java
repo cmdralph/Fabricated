@@ -9,7 +9,8 @@ import net.minecraft.client.Minecraft;
 /**
  * The test mod's client entrypoint, which Fabric Loader runs from {@code Minecraft}'s constructor after the main ones,
  * the game instance set: each logs a line the client smoke looks for (ci/forge/smoke-client.sh). With Fabric API's
- * networking module it also starts a networking round trip with the integrated server ({@link ForgeNetworkingClient}).
+ * networking module it also starts a networking round trip with the integrated server ({@link ForgeNetworkingClient}),
+ * and with its particles module too, on Forge 61, a check of the block dust tint event ({@link ForgeParticleTintTest}).
  */
 @Environment(EnvType.CLIENT)
 public final class ForgeTestClient implements ClientModInitializer {
@@ -29,6 +30,13 @@ public final class ForgeTestClient implements ClientModInitializer {
 				ForgeNetworkingClient.register();
 			} catch (RuntimeException | LinkageError e) {
 				ForgeTestMod.LOGGER.warn("FABRICATED-FORGE-TEST networking client receiver not registered", e);
+			}
+		}
+		if (FabricLoader.getInstance().isModLoaded("fabric-particles-v1") && FabricLoader.getInstance().isModLoaded("fabric-networking-api-v1")) {
+			try {
+				ForgeParticleTintTest.register();
+			} catch (RuntimeException | LinkageError e) {
+				ForgeTestMod.LOGGER.warn("FABRICATED-FORGE-TEST block dust tint callback not registered", e);
 			}
 		}
 	}
