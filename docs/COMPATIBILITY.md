@@ -952,7 +952,7 @@ The `forge` and `forge-legacy` branches build Fabricated for Minecraft Forge 61 
 `docs/readme/`). CI runs dedicated servers there: `ci/forge/smoke-server.sh` and `ci/forge-legacy/smoke-server.sh`
 start one with the test mod and one with the official Fabric API jar too, and `smoke-client.sh` starts a client the same
 two ways (with Fabric API, informational). This table is the two runs with Fabric API, the server's and the client's
-`fabric-bridge-report.txt`, from the runs on `claude/dev` at `b2ae04e` (40501049571, and 40501046056 for Forge 47),
+`fabric-bridge-report.txt`, from the runs on `claude/dev` at `6ee91f6` (40508578596, and 40508573809 for Forge 47),
 2026-10-27: Fabric API 0.141.6+1.21.11, 0.155.3+26.1.2, 0.161.0+26.2, 0.164.0+26.3 and 0.92.12+1.20.1, on Forge 61.2.4,
 64.1.5, 65.1.5, 66.1.0 and 47.4.28. Each cell is the more limited of the two: a module with client hooks
 can load on the server and lose hooks, or be turned off, on the client. The server starts and the client reaches a world
@@ -1006,7 +1006,7 @@ How to read it: as the NeoForge table, and
 | fabric-menu-api-v1 | — | loads | loads | loads | — |
 | fabric-message-api-v1 | loads | loads | loads | loads | loads |
 | fabric-mining-level-api-v1 | — | — | — | — | loads |
-| fabric-model-loading-api-v1 | loads | loads | loads | loads | loads, part |
+| fabric-model-loading-api-v1 | loads | loads | loads | loads | loads |
 | fabric-models-v0 | — | — | — | — | loads |
 | fabric-networking-api-v1 | loads | loads | loads | loads | loads |
 | fabric-networking-v0 | — | — | — | — | loads |
@@ -1064,6 +1064,9 @@ by the server runs (the colours and screen input by the client runs):
 - **Screen input:** a click and a key press on a screen, and their releases, ask `ScreenMouseEvents` and
   `ScreenKeyboardEvents` (Forge 47, with Fabric API, client run). Forge 47's patch made the mouse lambdas take `this` and
   reordered the key lambda's captured values; pre-flight bridges upstream's hooks into both (LAMBDA-7).
+- **Model baking:** a model loading plugin's before-bake and after-bake modifiers see the models baked (Forge 47, with
+  Fabric API, client run). Forge 47 moved the bake's code into an overload that also takes the sprite getter, where
+  pre-flight moves upstream's hooks, its before-bake variable modifier too (MODEL-3).
 
 ## Fabric mods tested
 
