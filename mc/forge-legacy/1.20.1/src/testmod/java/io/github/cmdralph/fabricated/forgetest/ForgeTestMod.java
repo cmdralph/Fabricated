@@ -24,8 +24,9 @@ import net.minecraft.class_7923;
  * fabric-loot-tables-v1 and fabric-particles-v1), as the smoke runs without Fabric API's jar too. It registers fluids
  * as Fabric mods do, and names the game's classes as a Fabric mod for 1.20.1 does, in Intermediary's names (the
  * stand-ins in src/testmodstubs), which Fabricated remaps to Forge 47's. With Fabric API's jar it also tries modules that
- * jar provides: the command, networking, block break ({@link ForgeBlockBreakTest}) and sleep ({@link ForgeSleepTest})
- * events, and storages reaching Forge's capabilities ({@link ForgeTransferTest}).
+ * jar provides: the command, networking, block break ({@link ForgeBlockBreakTest}), use and attack
+ * ({@link ForgeInteractionTest}) and sleep ({@link ForgeSleepTest}) events, and storages reaching Forge's capabilities
+ * ({@link ForgeTransferTest}).
  */
 public final class ForgeTestMod implements ModInitializer, DedicatedServerModInitializer {
 	public static final String MOD_ID = "fabricated-forge-testmod";
@@ -109,6 +110,13 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 				LOGGER.error("FABRICATED-FORGE-TEST networking receiver not registered", e);
 			}
 		}
+		if (FabricLoader.getInstance().isModLoaded("fabric-events-interaction-v0")) {
+			try {
+				ForgeInteractionTest.register();
+			} catch (RuntimeException | LinkageError e) {
+				LOGGER.error("FABRICATED-FORGE-TEST interaction listeners not registered", e);
+			}
+		}
 	}
 
 	@Override
@@ -128,6 +136,29 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 	static class_2338 testSite(class_3218 level, int dx, int y, int dz) {
 		class_2338 spawn = level.method_43126();
 		return new class_2338(spawn.method_10263() + dx, y, spawn.method_10260() + dz);
+	}
+
+	/**
+	 * Whether Fabric's use and attack callbacks are asked, and their answers honoured, as a player uses and attacks blocks,
+	 * items and entities ({@link ForgeInteractionTest}; with Fabric API only), at the first server tick.
+	 */
+	public static void checkInteractions(class_3218 level) {
+		if (!FabricLoader.getInstance().isModLoaded("fabric-events-interaction-v0")) return;
+		try {
+			ForgeInteractionTest.check(level);
+		} catch (RuntimeException | LinkageError e) {
+			LOGGER.warn("FABRICATED-FORGE-TEST interaction check failed", e);
+		}
+	}
+
+	/** The rest of {@link #checkInteractions}, at every later server tick until it has run. */
+	public static void tickInteractions(class_3218 level) {
+		if (!FabricLoader.getInstance().isModLoaded("fabric-events-interaction-v0")) return;
+		try {
+			ForgeInteractionTest.tick(level);
+		} catch (RuntimeException | LinkageError e) {
+			LOGGER.warn("FABRICATED-FORGE-TEST interaction check failed", e);
+		}
 	}
 
 	/**
