@@ -57,11 +57,14 @@ with it reaches a world too; that run is only reported for now.
 - **Tag files:** their `fabric:remove` entries are read into Forge's list.
 - **Fluids:** Fabric mods' fluids get Forge fluid types. An entity moves through a Fabric fluid that isn't water as
   through air, as on Fabric.
+- **Block and item colours:** Fabric's colour provider registry reads Forge's own maps of block and item colours.
 
 ## Not supported yet
 
-- **Fabric's rendering and model loading modules.** With the Fabric API jar, `fabric-rendering-v1` (its block colour
-  hook) and `fabric-model-loading-api-v1` (a model loader hook) are turned off, and the modules that need them.
+- **Fabric's model loading and particles modules.** With the Fabric API jar, `fabric-model-loading-api-v1` (a hook into
+  the model loader's constructor that Forge 47's Mixin can't take) and `fabric-particles-v1` (an accessor to the
+  particle providers' map, whose type Forge changed) are turned off on the client, and `fabric-models-v0` with model
+  loading.
 - **Capabilities and networking.** Forge 47's old capability system and `SimpleChannel` networking are next on the
   [roadmap](/docs/roadmap.md).
 

@@ -951,22 +951,21 @@ modules that cascade from it.
 The `forge` and `forge-legacy` branches build Fabricated for Minecraft Forge 61 to 66 and Forge 47 (their READMEs,
 `docs/readme/`). CI runs dedicated servers there: `ci/forge/smoke-server.sh` and `ci/forge-legacy/smoke-server.sh`
 start one with the test mod and one with the official Fabric API jar too, and `smoke-client.sh` starts a client the same
-two ways (with Fabric API, informational). This table is the second server run's
-`fabric-bridge-report.txt`, from the runs on `claude/dev` at `8359033` (#157 and #158, 2026-10-26): Fabric API
-0.141.6+1.21.11, 0.155.3+26.1.2, 0.161.0+26.2, 0.164.0+26.3 and 0.92.12+1.20.1, on Forge 61.2.4, 64.1.5, 65.1.5,
-66.1.0 and 47.4.28. The server starts in every run, and no module is disabled. Both runs are now gates on every Forge
-version. The client-only modules' cells are the second client run's report, from the runs on `claude/dev` at `cd3e633`
-(40433805134 and 40433807263, 2026-10-27), where the client reaches a world on all five.
+two ways (with Fabric API, informational). This table is the two runs with Fabric API, the server's and the client's
+`fabric-bridge-report.txt`, from the runs on `claude/dev` at `8d652ce` (40449926126) and `6254b9d` (40448563135,
+Forge 47), 2026-10-27: Fabric API 0.141.6+1.21.11, 0.155.3+26.1.2, 0.161.0+26.2, 0.164.0+26.3 and 0.92.12+1.20.1, on
+Forge 61.2.4, 64.1.5, 65.1.5, 66.1.0 and 47.4.28. Each cell is the more limited of the two: a module with client hooks
+can load on the server and lose hooks, or be turned off, on the client. The server starts and the client reaches a world
+in every run, and both server runs and the client run with the test mod are gates on every Forge version.
 
 How to read it: as the NeoForge table, and
 
 - **loads, part**: the module loads without some of its hooks, ones its plan leaves out where Forge's code differs or
   ones pre-flight finds Forge's code can't take (LEAVE-1). The report names each, with what is lost.
-- **disabled**: client-only, and the client run turns it off (the game goes on without it). On Forge 61 and 47,
-  `fabric-rendering-v1`'s `BlockColorsMixin` reads the block colour list Forge replaced, so pre-flight disables it, and
-  with it the modules that need it (on Forge 61 the renderer API, Indigo and model loading; on Forge 47 the
-  deprecated `fabric-rendering-v0` and `fabric-renderer-registries-v1`). On Forge 47 model loading is disabled on its
-  own, at a hook into the model loader Forge changed, and `fabric-models-v0` with it.
+- **disabled**: the client run turns it off (the game goes on without it); the server loads it where it isn't
+  client-only. On Forge 47, `fabric-model-loading-api-v1` hooks into `ModelBakery`'s constructor at a call, where
+  Forge's Mixin 0.8.5 takes only a return, and `fabric-models-v0` needs it; `fabric-particles-v1`'s accessor to the
+  particle providers' map expects vanilla's type, which Forge changed.
 
 | Module | 1.21.11 (Forge 61) | 26.1.2 (Forge 64) | 26.2 (Forge 65) | 26.3 (Forge 66) | 1.20.1 (Forge 47) |
 |---|---|---|---|---|---|
@@ -1008,22 +1007,22 @@ How to read it: as the NeoForge table, and
 | fabric-menu-api-v1 | — | loads | loads | loads | — |
 | fabric-message-api-v1 | loads | loads | loads | loads | loads |
 | fabric-mining-level-api-v1 | — | — | — | — | loads |
-| fabric-model-loading-api-v1 | disabled | loads | loads | loads | disabled |
+| fabric-model-loading-api-v1 | loads | loads | loads | loads | disabled |
 | fabric-models-v0 | — | — | — | — | disabled |
 | fabric-networking-api-v1 | loads | loads | loads | loads | loads |
 | fabric-networking-v0 | — | — | — | — | loads |
 | fabric-object-builder-api-v1 | loads, part | loads, part | loads, part | loads, part | loads |
-| fabric-particles-v1 | loads | loads | loads | loads | loads |
+| fabric-particles-v1 | loads, part | loads | loads | loads | disabled |
 | fabric-permission-api-v1 | — | loads | loads | loads | — |
 | fabric-recipe-api-v1 | loads | loads | loads | loads | loads |
 | fabric-registry-sync-v0 | loads, part | loads, part | loads, part | loads, part | loads, part |
-| fabric-renderer-api-v1 | disabled | loads, part | loads, part | loads, part | loads, part |
-| fabric-renderer-indigo | disabled | loads | loads | loads | loads, part |
-| fabric-renderer-registries-v1 | — | — | — | — | disabled |
+| fabric-renderer-api-v1 | loads, part | loads, part | loads, part | loads, part | loads, part |
+| fabric-renderer-indigo | loads, part | loads | loads | loads | loads, part |
+| fabric-renderer-registries-v1 | — | — | — | — | loads |
 | fabric-rendering-data-attachment-v1 | — | — | — | — | loads |
-| fabric-rendering-fluids-v1 | loads | loads | loads | loads | loads |
-| fabric-rendering-v0 | — | — | — | — | disabled |
-| fabric-rendering-v1 | disabled | loads | loads | loads | disabled |
+| fabric-rendering-fluids-v1 | loads, part | loads, part | loads, part | loads, part | loads, part |
+| fabric-rendering-v0 | — | — | — | — | loads |
+| fabric-rendering-v1 | loads, part | loads | loads | loads | loads, part |
 | fabric-resource-conditions-api-v1 | loads, part | loads | loads | loads, part | loads, part |
 | fabric-resource-loader-v0 | loads | loads | loads | loads | loads |
 | fabric-resource-loader-v1 | loads, part | loads, part | loads, part | loads, part | — |
@@ -1035,7 +1034,8 @@ How to read it: as the NeoForge table, and
 | fabric-transfer-api-v1 | loads | loads | loads | loads | loads |
 | fabric-transitive-access-wideners-v1 | loads | loads | loads | loads | loads |
 
-On top of the modules, the in-game mod bridges these to Forge, each checked by the server runs:
+On top of the modules, the in-game mod bridges these to Forge, each checked by the server runs (the colours by the
+client runs):
 
 - **Tags:** tag files' `fabric:remove` entries are read into Forge's own removal list, with and without Fabric API (all
   five).
@@ -1045,6 +1045,10 @@ On top of the modules, the in-game mod bridges these to Forge, each checked by t
   cow's armor set through it is what the game reads (Forge 64 to 66, with Fabric API).
 - **Advancements:** a vanilla advancement's reward set through `AdvancementEvents.MODIFY` is what the server loads
   (Forge 65 and 66, with Fabric API; on Forge 66 through a hook on Forge's conditional decoding).
+- **Colours:** Fabric's colour provider registry reads Forge's own map of block colours (Forge 61), and of block and
+  item colours (Forge 47), by registry holder, where upstream's lookup reads the list by id Forge replaced (COLOR-1).
+  It finds grass's provider and none for stone (Forge 61 and 47, with Fabric API). Forge 64 to 66 keep vanilla's list,
+  which upstream's lookup reads as it is.
 
 ## Fabric mods tested
 

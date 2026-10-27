@@ -32,8 +32,9 @@ import net.minecraft.server.MinecraftServer;
  * {@code m_5705_}. {@code MinecraftServer} keeps its name in every namespace. By then Forge has frozen the registries
  * and checked them, and the test mod's item must still be there, the data packs' tags are bound, and Forge has applied
  * its biome modifiers ({@code method_30611} is {@code registryAccess()}). The test mod then teleports an entity to the End
- * ({@code method_30002} is {@code overworld()}, {@code method_3847} {@code getLevel(ResourceKey)}), and checks the
- * fluid types of the fluids it registered.
+ * ({@code method_30002} is {@code overworld()}, {@code method_3847} {@code getLevel(ResourceKey)}), checks the fluid
+ * types of the fluids it registered, and on a client whether Fabric's colour provider registry finds the game's block
+ * colours.
  */
 @Mixin(MinecraftServer.class)
 public abstract class MinecraftServerMixin {
@@ -74,6 +75,7 @@ public abstract class MinecraftServerMixin {
 			ForgeBiomeTest.check(registries);
 			ForgeDimensionTest.check(method_30002(), method_3847(class_1937.field_25181));
 			ForgeFluidTest.check(method_30002());
+			ForgeTestMod.checkColors();
 		}
 	}
 }

@@ -8,8 +8,8 @@
     },
     "fabric-data-generation-api-v1": {
       "plan": "passthrough",
-      "skipMixins": ["fabric-data-generation-api-v1.mixins.json:TagAppenderMixin$ProvidedTagBuilder1Mixin"],
-      "reason": "Mods' runtime code references its classes; its hooks act only when the fabric-api.datagen property is set. Its tag appender mixin adds a removal method Forge's own tag appender already declares, which Mixin refuses without @Overwrite, so it is left out. Pre-flight disabled the module (and every mod referencing it). Lost, in data generation only: removing entries through a Fabric tag appender doesn't work."
+      "skipMixins": ["fabric-data-generation-api-v1.mixins.json:TagAppenderMixin$ProvidedTagBuilder1Mixin", "fabric-data-generation-api-v1.client.mixins.json:ModelProviderItemInfoCollectorMixin#filterItemsForProcessingMod(Ljava/util/Map;Ljava/lang/Object;Lcom/llamalad7/mixinextras/injector/wrapoperation/Operation;)Z"],
+      "reason": "Mods' runtime code references its classes; its hooks act only when the fabric-api.datagen property is set. Its tag appender mixin adds a removal method Forge's own tag appender already declares, which Mixin refuses without @Overwrite, so it is left out. Its client item definition collector mixin wraps a lookup in a lambda of finalizeAndValidate that Forge's build doesn't have, so that one handler is left out. Pre-flight disabled the module (and every mod referencing it). Lost, in data generation only: removing entries through a Fabric tag appender doesn't work, and a Fabric model provider also writes item definitions for block items of other mods, and of blocks it gave no block state."
     },
     "fabric-dimensions-v1": {
       "plan": "passthrough",
@@ -25,6 +25,11 @@
       "plan": "passthrough",
       "skipMixins": ["fabric-rendering-fluids-v1.mixins.json:LiquidBlockRendererMixin#modifyOverlaySprite", "fabric-rendering-fluids-v1.mixins.json:LiquidBlockRendererMixin#modifyNonOverlayCheck"],
       "reason": "Upstream's MixinExtras expression for the overlay sprite (modifyOverlaySprite) matches nothing in Forge 61's patched LiquidBlockRenderer.tesselate, which Mixin treats as a critical failure when the class loads: every client with the Fabric API jar crashed at the first resource reload (run 40427976979). Why it matches nothing is UNVERIFIED: the definitions it names occur there, which is all pre-flight can check. It is left out with modifyNonOverlayCheck, which reads the flag only modifyOverlaySprite sets. Lost: a Fabric fluid render handler's overlay sprite on the sides of a fluid next to glass or leaves; Forge's own overlay drawing stays."
+    },
+    "fabric-rendering-v1": {
+      "plan": "passthrough",
+      "skipMixins": ["fabric-rendering-v1.mixins.json:BlockColorsMixin#get", "fabric-rendering-v1.mixins.json:BlockColorsMixin#blockColors"],
+      "reason": "Forge 61 keeps block colour providers in a map by registry holder under the name of vanilla's IdMapper by block id, which upstream's colour provider lookup shadows: Fabricated's in-game mod looks providers up in Forge's map instead of upstream's method (COLOR-1)."
     },
     "fabric-tag-api-v1": {
       "plan": "passthrough",
