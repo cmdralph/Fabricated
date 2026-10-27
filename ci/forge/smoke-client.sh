@@ -148,6 +148,7 @@ if [ -n "$extra" ]; then
 	check "FABRICATED-FORGE-TEST block break events OK" "fabric-events-interaction-v0 (with Fabric API): a fake player's breaks on the integrated server fire PlayerBlockBreakEvents, and a BEFORE refusal keeps the block (BREAK-1)"
 	check "FABRICATED-FORGE-TEST interaction events OK" "fabric-events-interaction-v0 (with Fabric API): on the integrated server, a fake player's uses and attacks ask the use and attack callbacks, and their answers hold"
 	check "FABRICATED-FORGE-TEST sleep events OK" "fabric-entity-events-v1 (with Fabric API): on the integrated server, a hay block EntitySleepEvents.ALLOW_BED admits stays hay while an armor stand sleeps on it (SLEEP-1)"
+	check "FABRICATED-FORGE-TEST damage events OK" "fabric-entity-events-v1 (with Fabric API): on the integrated server, an entity hurt asks ALLOW_DAMAGE, whose refusal holds, and fires AFTER_DAMAGE (DAMAGE-1)"
 	check "FABRICATED-FORGE-TEST storages OK" "fabric-transfer-api-v1 (with Fabric API): on the integrated server, a Fabric mod's storages, on blocks and in tank items, are Forge's capabilities and a Forge mod's handlers Fabric's storages"
 fi
 if [ -n "$extra" ] && [ "$mc" = 1.21.11 ]; then
