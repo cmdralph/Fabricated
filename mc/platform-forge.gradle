@@ -49,6 +49,12 @@ dependencies {
     testmodstubsCompileOnly sourceSets.main.output
 }
 
+// Pass-through Fabric API modules the in-game mod and the test mod call (mc.gradle compiles 26.x against their jars,
+// 1.21.11 against src/fabricapistubs): the interaction events module, whose block break events Forge's block breaking
+// fires through the in-game mod (BREAK-1), and the entity events module, whose sleep events Forge's bed handling fires
+// through it (SLEEP-1).
+ext.passThroughCompileModules = ['fabric-events-interaction-v0', 'fabric-entity-events-v1']
+
 expandProps.forge_version_range = project.forge_version_range
 
 tasks.named('processResources', ProcessResources) {
@@ -99,8 +105,10 @@ tasks.register('forgeClasspathReport') {
 // --- The in-game mod's own mixins -----------------------------------------------------------------------------------
 // Forge runs the game in Mojang's names, as the in-game mod compiles, so its mixins need no refmap; Forge reads a mod's
 // mixin configs from its manifest: Fabricated's own, upstream's loot mixins (fabric-loot-api-v3, native), the loot
-// module's hooks into Forge's loot table loading, and those a version's project names (game_mod_mixins).
-def gameModMixins = ['fabricated-forge.mixins.json', 'fabricated-loot.mixins.json', 'fabricated-forge-loot.mixins.json'] +
+// module's hooks into Forge's loot table loading, Fabric's block break events in Forge's block breaking (BREAK-1), its
+// sleep events in Forge's bed handling (SLEEP-1), and those a version's project names (game_mod_mixins).
+def gameModMixins = ['fabricated-forge.mixins.json', 'fabricated-loot.mixins.json', 'fabricated-forge-loot.mixins.json',
+        'fabricated-forge-interaction.mixins.json', 'fabricated-forge-entity.mixins.json'] +
         (project.findProperty('game_mod_mixins') ?: '').toString().split(',')*.trim().findAll { it }
 
 afterEvaluate {

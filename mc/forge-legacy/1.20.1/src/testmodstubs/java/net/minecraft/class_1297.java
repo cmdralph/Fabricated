@@ -6,7 +6,7 @@ package net.minecraft;
  * {@code discard()}, {@code method_5773} {@code tick()}, {@code method_23318} {@code getY()}.
  */
 public abstract class class_1297 {
-	private class_1297() {
+	class_1297() {
 	}
 
 	public void method_5808(double x, double y, double z, float yRot, float xRot) {

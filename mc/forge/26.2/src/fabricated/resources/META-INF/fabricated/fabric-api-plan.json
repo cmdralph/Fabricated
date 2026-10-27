@@ -21,6 +21,16 @@
       "skipMixins": ["fabric-dimensions-v1.mixins.json:V2832Mixin", "fabric-dimensions-v1.mixins.json:TaggedChoiceMixin", "fabric-dimensions-v1.mixins.json:TaggedChoiceTaggedChoiceTypeMixin"],
       "reason": "Forge loads DataFixerUpper outside the layers Mixin transforms, so upstream's TaggedChoiceMixin and TaggedChoiceTaggedChoiceTypeMixin would never apply, and V2832Mixin, which casts DataFixerUpper's tagged choice type to the interface they add, would fail when the data fixers are built: the three are left out and the rest of the module loads. Lost: upgrading a world whose dimensions use a chunk generator type no installed mod registers fails in DataFixerUpper as it does without Fabric API (UNVERIFIED whether Forge's own handling covers it)."
     },
+    "fabric-entity-events-v1": {
+      "plan": "passthrough",
+      "skipMixins": ["fabric-entity-events-v1.mixins.json:LivingEntityMixin#onGetSleepingDirection", "fabric-entity-events-v1.mixins.json:LivingEntityMixin#setOccupiedState"],
+      "reason": "Forge's LivingEntity asks the bed's state (BlockState.setBedOccupied, getBedDirection) where vanilla sets the occupied property and asks BedBlock, which upstream's occupation and sleeping direction hooks look for, so pre-flight left them out: SET_BED_OCCUPATION_STATE and MODIFY_SLEEPING_DIRECTION never ran, and the red bed upstream's ALLOW_BED hook stands in for an admitted block in startSleeping and stopSleeping reached Forge's setBedOccupied, which set a red bed in the world in the block's place. Fabricated's in-game mod runs both events at Forge's calls and sets the occupied state of the block that is there (SLEEP-1)."
+    },
+    "fabric-events-interaction-v0": {
+      "plan": "passthrough",
+      "skipMixins": ["fabric-events-interaction-v0.mixins.json:ServerPlayerGameModeMixin#breakBlock", "fabric-events-interaction-v0.mixins.json:ServerPlayerGameModeMixin#onBlockBroken"],
+      "reason": "Forge's destroyBlock no longer calls Block.playerWillDestroy and Block.destroy itself, where upstream's hooks fire PlayerBlockBreakEvents.BEFORE and AFTER: both moved into a private removeBlock Forge added, so pre-flight left the two hooks out and the events never ran when a player broke a block (a mod refusing a break, or acting on one, saw nothing). Fabricated's in-game mod fires them at the same points of Forge's method instead, BEFORE (with CANCELED when refused) once the game's checks pass and AFTER once removeBlock removed the block, before the drops (BREAK-1)."
+    },
     "fabric-loot-api-v3": {
       "plan": "native",
       "version": "3.0.17",

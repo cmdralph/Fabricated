@@ -11,8 +11,10 @@ import net.fabricmc.api.Environment;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.class_1792;
+import net.minecraft.class_2338;
 import net.minecraft.class_2378;
 import net.minecraft.class_2960;
+import net.minecraft.class_3218;
 import net.minecraft.class_7923;
 
 /**
@@ -21,7 +23,9 @@ import net.minecraft.class_7923;
  * modules Fabricated provides itself (fabric-biome-api-v1, fabric-dimensions-v1, fabric-loot-api-v2,
  * fabric-loot-tables-v1 and fabric-particles-v1), as the smoke runs without Fabric API's jar too. It registers fluids
  * as Fabric mods do, and names the game's classes as a Fabric mod for 1.20.1 does, in Intermediary's names (the
- * stand-ins in src/testmodstubs), which Fabricated remaps to Forge 47's.
+ * stand-ins in src/testmodstubs), which Fabricated remaps to Forge 47's. With Fabric API's jar it also tries modules that
+ * jar provides: the command, networking, block break ({@link ForgeBlockBreakTest}) and sleep ({@link ForgeSleepTest})
+ * events.
  */
 public final class ForgeTestMod implements ModInitializer, DedicatedServerModInitializer {
 	public static final String MOD_ID = "fabricated-forge-testmod";
@@ -83,6 +87,16 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 		} catch (RuntimeException | LinkageError e) {
 			LOGGER.error("FABRICATED-FORGE-TEST particle type registration failed", e);
 		}
+		try {
+			ForgeBlockBreakTest.register();
+		} catch (RuntimeException | LinkageError e) {
+			LOGGER.error("FABRICATED-FORGE-TEST block break listeners not registered", e);
+		}
+		try {
+			ForgeSleepTest.register();
+		} catch (RuntimeException | LinkageError e) {
+			LOGGER.error("FABRICATED-FORGE-TEST sleep listeners not registered", e);
+		}
 		if (FabricLoader.getInstance().isModLoaded("fabric-networking-api-v1")) {
 			try {
 				ForgeNetworkingTest.register();
@@ -98,6 +112,17 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 		if (Arrays.stream(ForgeTestMod.class.getDeclaredMethods()).noneMatch(m -> m.getName().equals("clientOnly"))) {
 			LOGGER.info("FABRICATED-FORGE-TEST environment strip OK");
 		}
+	}
+
+	/**
+	 * Where a check at the first server tick builds: {@code dx} and {@code dz} blocks from the overworld's spawn
+	 * ({@code method_43126}), at height {@code y}. The spawn's chunks are generated before that tick; a chunk elsewhere is
+	 * generated in it, which on a client whose spawn lay far from the origin held the integrated server up for seconds,
+	 * past the end of the run.
+	 */
+	static class_2338 testSite(class_3218 level, int dx, int y, int dz) {
+		class_2338 spawn = level.method_43126();
+		return new class_2338(spawn.method_10263() + dx, y, spawn.method_10260() + dz);
 	}
 
 	/**

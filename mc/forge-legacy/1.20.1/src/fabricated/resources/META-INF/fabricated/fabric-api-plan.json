@@ -16,6 +16,16 @@
       "version": "2.1.55",
       "reason": "Shipped by Fabricated: upstream's API and its teleport target hook. Forge 47 moved vanilla's dimension change, whose reads of the End's key upstream's hook redirected, into its changeDimension with a teleporter and a lambda that teleporter calls, so passed through the module failed pre-flight: a Fabric teleport now hands Forge's dimension change a teleporter that asks for no portal and isn't vanilla's, which leaves out the End's obsidian platform and a player's credits on leaving the End, as upstream does. Upstream's codec hook (RegistryCodecsMixin), which makes the dimensions in level.dat skip one that no longer decodes, is not shipped: Forge 47 replaces the same map codec with its own lenient one (its fix for MC-197860), keeping the entries that decode. Nor are upstream's DataFixerUpper mixins (Schema2832Mixin, TaggedChoiceMixin, TaggedChoiceTypeMixin): Forge 47 loads DataFixerUpper without mixin support. Lost: upgrading a world whose dimensions use a chunk generator type no installed mod registers fails in DataFixerUpper as it does without Fabric API (UNVERIFIED whether Forge's own handling covers it)."
     },
+    "fabric-entity-events-v1": {
+      "plan": "passthrough",
+      "skipMixins": ["fabric-entity-events-v1.mixins.json:LivingEntityMixin#onGetSleepingDirection", "fabric-entity-events-v1.mixins.json:LivingEntityMixin#setOccupiedState"],
+      "reason": "Forge's LivingEntity asks the bed's state (BlockState.setBedOccupied, getBedDirection) where vanilla sets the occupied property and asks BedBlock, which upstream's occupation and sleeping direction hooks look for, so pre-flight left them out: SET_BED_OCCUPATION_STATE and MODIFY_SLEEPING_DIRECTION never ran, and the red bed upstream's ALLOW_BED hook stands in for an admitted block in startSleeping reached Forge's setBedOccupied, which set a red bed in the world in the block's place. Fabricated's in-game mod runs both events at Forge's calls and sets the occupied state of the block that is there (SLEEP-1, as on Forge 61 to 66)."
+    },
+    "fabric-events-interaction-v0": {
+      "plan": "passthrough",
+      "skipMixins": ["fabric-events-interaction-v0.mixins.json:ServerPlayerInteractionManagerMixin#breakBlock", "fabric-events-interaction-v0.mixins.json:ServerPlayerInteractionManagerMixin#onBlockBroken"],
+      "reason": "Forge's destroyBlock no longer calls Block.playerWillDestroy and Block.destroy itself, where upstream's hooks fire PlayerBlockBreakEvents.BEFORE and AFTER: both moved into a private removeBlock Forge added, so the two hooks found nothing to apply to (pre-flight only warned, as they capture locals) and the events never ran when a player broke a block. Fabricated's in-game mod fires them at the same points of Forge's method instead, BEFORE (with CANCELED when refused) once the game's checks pass and AFTER once removeBlock removed the block, before the drops (BREAK-1, as on Forge 61 to 66)."
+    },
     "fabric-loot-api-v2": {
       "plan": "native",
       "version": "1.2.3",
