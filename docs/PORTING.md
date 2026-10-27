@@ -416,7 +416,9 @@ in-game mod registers Fabric's factories and their sprite sets through the engin
 dust tint event where Forge decides the tint, which replaced the check upstream's hook looks for. A factory the test
 mod registers is found by the engine, with its sprite in the particle atlas, with and without Fabric API, and with
 Fabric API no module is disabled on the client any more (run 40463821244).
-Forge 47 needs the same block break and bed bridges as Forge 61 to 66 (BREAK-1, SLEEP-1). Its patched classes are
+Forge 47 needs the same block break and bed bridges as Forge 61 to 66 (BREAK-1, SLEEP-1), and Fabric's sleep time
+event answers Forge 47's own, which replaced the day check upstream's hooks look for (SLEEP-2). Fabric's use and attack
+callbacks need no bridge: upstream's hooks apply, as on Forge 61 to 66. Its patched classes are
 compiled from Forge's sources, so their lambdas carry javac's names where Fabric mods name vanilla's by their SRG names:
 pre-flight finds the lambda Forge's class creates in vanilla's place (LAMBDA-6), which applies Fabric API's hooks into
 waking up from a bed and into loot tables' conditions. Its Mixin, 0.8.5, refuses a static `@Inject` handler on a method
@@ -503,7 +505,8 @@ check, so the in-game mod asks Fabric's event there, as Forge 47's module does (
 and on Forge 47, Forge's `destroyBlock` and its bed handling don't make the calls upstream's block break and bed hooks
 look for, so the in-game mod fires Fabric's block break events and asks its bed occupation and sleeping direction
 events at Forge's calls (BREAK-1, SLEEP-1; without that, a block a Fabric mod admitted as a bed became a red bed). Its
-hooks use no MixinExtras sugar, which Forge's Mixin can't serve without Fabric API installed.
+hooks use no MixinExtras sugar, which Forge's Mixin can't serve without Fabric API installed. Fabric's use and attack
+callbacks need no bridge: upstream's hooks apply to Forge's interaction code, as the test mod checks on all four.
 
 Order: `main` first, always. L1 serves both branches; after it, L2 to L5 and F2 to F5 can proceed in either order
 or in parallel, as the owner sets priorities. The two branches' adapters share their shape (forgespi 7 and 8 have
