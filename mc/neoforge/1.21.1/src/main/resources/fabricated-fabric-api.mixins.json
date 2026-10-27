@@ -1,0 +1,17 @@
+{
+  "required": true,
+  "package": "net.fabricmc.fabric.mixin.networking.accessor",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "EntityTrackerAccessor",
+    "ServerChunkLoadingManagerAccessor",
+    "ServerCommonNetworkHandlerAccessor",
+    "ServerLoginNetworkHandlerAccessor"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  },
+  "overwrites": {
+    "requireAnnotations": true
+  }
+}

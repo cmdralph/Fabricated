@@ -1,0 +1,19 @@
+{
+  "required": true,
+  "package": "net.fabricmc.fabric.mixin.object.builder",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "AbstractBlockAccessor",
+    "AbstractBlockSettingsAccessor"
+  ],
+  "client": [
+    "client.ModelPredicateProviderRegistryAccessor",
+    "client.ModelPredicateProviderRegistrySpecificAccessor"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  },
+  "overwrites": {
+    "requireAnnotations": true
+  }
+}
