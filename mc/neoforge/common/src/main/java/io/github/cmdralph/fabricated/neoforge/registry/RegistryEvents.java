@@ -11,6 +11,7 @@ import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 
+import io.github.cmdralph.fabricated.neoforge.GameCompat;
 import net.fabricmc.fabric.api.event.Event;
 import net.fabricmc.fabric.api.event.EventFactory;
 import net.fabricmc.fabric.api.event.registry.RegistryEntryAddedCallback;
@@ -85,7 +86,7 @@ public final class RegistryEvents<T> implements ListenableRegistry<T> {
 	}
 
 	private void onAdd(Registry<T> registry, int id, ResourceKey<T> key, T value) {
-		if (!this.restoring) this.addEvent.invoker().onEntryAdded(id, key.identifier(), value);
+		if (!this.restoring) this.addEvent.invoker().onEntryAdded(id, GameCompat.location(key), value);
 	}
 
 	private synchronized void onClear(Registry<T> registry, boolean full) {

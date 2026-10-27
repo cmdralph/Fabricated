@@ -9,6 +9,7 @@ import java.util.function.Consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.github.cmdralph.fabricated.neoforge.GameCompat;
 import net.fabricmc.fabric.api.event.registry.DynamicRegistrySetupCallback;
 import net.fabricmc.fabric.api.event.registry.RegistryEntryAddedCallback;
 import net.fabricmc.fabric.impl.registry.sync.DynamicRegistryViewImpl;
@@ -34,8 +35,8 @@ public final class DynamicRegistrySetup {
 	/** A callback a mod registered on the view, to be replayed for the registry's existing entries. */
 	public record Recorded<T>(Registry<T> registry, RegistryEntryAddedCallback<T> callback) {
 		void replay() {
-			for (Holder.Reference<T> holder : this.registry.listElements().toList()) {
-				this.callback.onEntryAdded(this.registry.getId(holder.value()), holder.key().identifier(), holder.value());
+			for (Holder.Reference<T> holder : GameCompat.elements(this.registry).toList()) {
+				this.callback.onEntryAdded(this.registry.getId(holder.value()), GameCompat.location(holder.key()), holder.value());
 			}
 		}
 	}
@@ -44,7 +45,7 @@ public final class DynamicRegistrySetup {
 		Map<ResourceKey<? extends Registry<?>>, Registry<?>> registries = new LinkedHashMap<>();
 		access.registries().forEach(entry -> {
 			// Static registries are covered by RegistryEntryAddedCallback; the view is about the dynamic ones.
-			if (!BuiltInRegistries.REGISTRY.containsKey(entry.key().identifier())) registries.put(entry.key(), entry.value());
+			if (!BuiltInRegistries.REGISTRY.containsKey(GameCompat.location(entry.key()))) registries.put(entry.key(), entry.value());
 		});
 		List<Recorded<?>> recorded = new ArrayList<>();
 		try {

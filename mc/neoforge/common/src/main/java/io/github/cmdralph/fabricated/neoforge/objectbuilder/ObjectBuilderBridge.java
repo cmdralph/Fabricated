@@ -16,6 +16,7 @@ import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.github.cmdralph.fabricated.neoforge.GameCompat;
 import net.minecraft.core.Holder;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.entity.Entity;
@@ -245,7 +246,7 @@ public final class ObjectBuilderBridge {
 
 	/** Hands NeoForge every attribute that {@code after} adds to or changes from {@code before}. */
 	private static void apply(EntityAttributeModificationEvent event, EntityType<? extends LivingEntity> type, AttributeSupplier before, AttributeSupplier after) {
-		BuiltInRegistries.ATTRIBUTE.listElements().forEach(attribute -> {
+		GameCompat.elements(BuiltInRegistries.ATTRIBUTE).forEach(attribute -> {
 			Holder<Attribute> holder = attribute;
 			if (!after.hasAttribute(holder)) return;
 			double value = after.getBaseValue(holder);
