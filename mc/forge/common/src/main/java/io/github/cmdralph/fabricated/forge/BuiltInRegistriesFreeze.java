@@ -4,6 +4,7 @@ import io.github.cmdralph.fabricated.forge.mixin.BuiltInRegistriesInvoker;
 import net.minecraft.core.MappedRegistry;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraftforge.registries.GameData;
 
 /**
  * Runs the built-in registries' freeze ({@code BuiltInRegistries.freeze}) after Fabric mods' main entrypoints, as on
@@ -13,7 +14,9 @@ import net.minecraft.core.registries.BuiltInRegistries;
  *
  * <p>While the main entrypoints are still to run, the bootstrap freezes the registries as {@code freeze} does, without
  * running it, so Forge finds them frozen as it expects. {@code freeze} runs as Forge's freeze after the entrypoints
- * starts, over the registries Forge opened for its registration events, and Forge's freeze then takes them frozen.
+ * starts, over the registries opened as Forge opens them for its registration events ({@code GameData.unfreezeData}):
+ * on a client some vanilla registry is frozen again by then, whose tags {@code freeze} can't bind (found on Forge 61's
+ * client run). Forge's freeze then takes them frozen.
  */
 public final class BuiltInRegistriesFreeze {
 	/** Set while the bootstrap's {@code freeze} waits for the main entrypoints. */
@@ -42,6 +45,7 @@ public final class BuiltInRegistriesFreeze {
 	public static void beforeFreezeData() {
 		if (!deferred || MainEntrypoints.pending()) return;
 		deferred = false;
+		GameData.unfreezeData();
 		BuiltInRegistriesInvoker.fabricated$freeze();
 	}
 }
