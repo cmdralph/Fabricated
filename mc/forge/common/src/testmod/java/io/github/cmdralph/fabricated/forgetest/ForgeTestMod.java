@@ -10,12 +10,14 @@ import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.loader.api.FabricLoader;
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -26,8 +28,10 @@ import net.minecraft.world.item.Items;
  * the server smoke looks for (ci/forge/smoke-server.sh). It uses Fabric Loader's API and, of Fabric API, only the loot
  * module Fabricated ships itself ({@link ForgeLootTest}), so it runs without Fabric API's jar; with it, it also tries the
  * object builder module's default attribute event ({@link ForgeAttributeTest}), the advancement module's modify event
- * ({@link ForgeAdvancementTest}), the command module's registration event ({@link ForgeCommandTest}) and a networking
- * round trip ({@link ForgeNetworkingTest}). Its fluids are written as Fabric mods write theirs ({@link ForgeFluidTest}).
+ * ({@link ForgeAdvancementTest}), the command module's registration event ({@link ForgeCommandTest}), a networking
+ * round trip ({@link ForgeNetworkingTest}), the interaction module's block break events ({@link ForgeBlockBreakTest})
+ * and the entity events module's sleep events ({@link ForgeSleepTest}). Its fluids are written as Fabric mods write
+ * theirs ({@link ForgeFluidTest}).
  */
 public final class ForgeTestMod implements ModInitializer, DedicatedServerModInitializer {
 	public static final String MOD_ID = "fabricated-forge-testmod";
@@ -95,6 +99,20 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 				LOGGER.warn("FABRICATED-FORGE-TEST networking receiver not registered", e);
 			}
 		}
+		if (FabricLoader.getInstance().isModLoaded("fabric-events-interaction-v0")) {
+			try {
+				ForgeBlockBreakTest.register();
+			} catch (RuntimeException | LinkageError e) {
+				LOGGER.warn("FABRICATED-FORGE-TEST block break listeners not registered", e);
+			}
+		}
+		if (FabricLoader.getInstance().isModLoaded("fabric-entity-events-v1")) {
+			try {
+				ForgeSleepTest.register();
+			} catch (RuntimeException | LinkageError e) {
+				LOGGER.warn("FABRICATED-FORGE-TEST sleep listeners not registered", e);
+			}
+		}
 	}
 
 	@Override
@@ -118,6 +136,16 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 		} else {
 			LOGGER.warn("FABRICATED-FORGE-TEST tag removal not applied: stone is in the tag {}, dirt (fabric:remove) {}, gravel (remove) {}", stone, dirt, gravel);
 		}
+	}
+
+	/**
+	 * Where a check at the first server tick builds: {@code dx} and {@code dz} blocks from the overworld's spawn, 30 below
+	 * the top of the world. The spawn's chunks are generated before that tick; a chunk elsewhere is generated in it, which
+	 * on a client whose spawn lay far from the origin held the integrated server up for seconds, past the end of the run.
+	 */
+	static BlockPos testSite(ServerLevel level, int dx, int dz) {
+		BlockPos spawn = level.getRespawnData().pos();
+		return new BlockPos(spawn.getX() + dx, level.getMaxY() - 30, spawn.getZ() + dz);
 	}
 
 	/** Whether Fabric's loot table events changed dirt's loot table and drops ({@link ForgeLootTest}), once the server ticks. */
@@ -163,6 +191,32 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 			ForgeCommandTest.check(server);
 		} catch (RuntimeException | LinkageError e) {
 			LOGGER.warn("FABRICATED-FORGE-TEST command check failed", e);
+		}
+	}
+
+	/**
+	 * Whether Fabric's block break events fire, and a refusal holds, as a player breaks blocks ({@link ForgeBlockBreakTest};
+	 * with Fabric API only).
+	 */
+	public static void checkBlockBreaks(MinecraftServer server) {
+		if (!FabricLoader.getInstance().isModLoaded("fabric-events-interaction-v0")) return;
+		try {
+			ForgeBlockBreakTest.check(server.overworld());
+		} catch (RuntimeException | LinkageError e) {
+			LOGGER.warn("FABRICATED-FORGE-TEST block break check failed", e);
+		}
+	}
+
+	/**
+	 * Whether a block Fabric's sleep events admit as a bed survives an entity sleeping on it, and the occupation and
+	 * orientation events run ({@link ForgeSleepTest}; with Fabric API only).
+	 */
+	public static void checkSleeping(MinecraftServer server) {
+		if (!FabricLoader.getInstance().isModLoaded("fabric-entity-events-v1")) return;
+		try {
+			ForgeSleepTest.check(server.overworld());
+		} catch (RuntimeException | LinkageError e) {
+			LOGGER.warn("FABRICATED-FORGE-TEST sleep check failed", e);
 		}
 	}
 

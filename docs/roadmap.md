@@ -75,7 +75,7 @@ each Fabric API module's status per platform in [`COMPATIBILITY.md`](COMPATIBILI
 | Mixins (pre-flight, its repairs, hooks left out), access wideners, injected interfaces, `@Environment` stripping | yes | yes | yes, with MixinExtras nested in the in-game mod, which also carries Fabric mods' hooks at a call in a constructor (CTOR-4) |
 | Official Fabric API jar | every module loads, server and client | every module loads, server and client | every module loads, server and client |
 | Native Fabric API modules | 17 | 2 (`fabric-api-base`, `fabric-loot-api-v3`) | 6 (`fabric-api-base`, biome, both loot modules, dimensions, particles) |
-| Bridges to the platform | fluid types, storages and energy with capabilities, plugins of other mods, custom values, renderer API | fluid types, tags' `fabric:remove`, default attributes (Forge 64 to 66), advancement events (Forge 65 and 66) | fluid types, tags' `fabric:remove` |
+| Bridges to the platform | fluid types, storages and energy with capabilities, plugins of other mods, custom values, renderer API | fluid types, tags' `fabric:remove`, default attributes (Forge 64 to 66), advancement events (Forge 65 and 66), block break and sleep events (BREAK-1, SLEEP-1) | fluid types, tags' `fabric:remove`, block break and sleep events (BREAK-1, SLEEP-1) |
 | Networking | native, on NeoForge's payloads | upstream's module: a payload round trip with the integrated server (checked with Fabric API) | upstream's module: a channel round trip with the integrated server (checked with Fabric API) |
 | Rendering (renderer API, models, Sodium and Iris for NeoForge) | yes | upstream's modules: Indigo builds chunk sections on all four (SUPER-1, LOCAL-4), Fabric's colour providers are read from Forge's map (COLOR-1), and Fabric's block dust tint event is asked where Forge 61 decides the tint (PART-2) | upstream's renderer API, Indigo, `fabric-rendering-v1` and model loading load, with Fabric's colour providers read from Forge's maps (COLOR-1) and model loading's constructor hook wrapped (CTOR-4); particles Fabricated's own, on Forge's particle engine (PART-1) |
 | CI | server and client runs gated, and checks in the Fabric API runs; corpus runs informational | both server runs and the client run with the test mod gated; the client run with Fabric API informational | both server runs and the client run with the test mod gated; the client run with Fabric API informational |
@@ -83,9 +83,10 @@ each Fabric API module's status per platform in [`COMPATIBILITY.md`](COMPATIBILI
 
 - **`main`:** NeoForge for 1.21.11, 26.1.2, 26.2 and 26.3, every line stable (NeoForge tagged `26.3.0-stable`; CI
   pins 26.3.0.95 and no version is experimental any more).
-- **Next** (the v0.5.0 table above): on `forge`, entity and interaction events on Forge's events; on `forge-legacy`,
-  storages on Forge 47's capabilities, then model loading's one baking hook left out on its client; on both, the client
-  run with the Fabric API jar made a gate once it has held for a while.
+- **Next** (the v0.5.0 table above): on `forge-legacy`, LAMBDA-6 (hooks into lambdas of the classes Forge 47 patched),
+  then storages on its capabilities and model loading's one baking hook left out on its client; on `forge`, the rest of
+  the entity and interaction events' hooks Forge's code doesn't take (block breaking and beds are bridged since BREAK-1
+  and SLEEP-1); on both, the client run with the Fabric API jar made a gate once it has held for a while.
 - **Decided** (`RESEARCH.md` §8): Forge 47.4 for 1.20.1, the shared modules kept loadable on Java 17, ForgeGradle for
   modern Forge, CI for pull requests only. L1, the behaviour-neutral seams on `main`: Java 17 for the shared modules
   (their main code compiles at release 17), the loader split (`loader/common`, `loader/neoforge`), the build split
@@ -295,6 +296,7 @@ with its cause, why the tests missed it and its fix, in the change that fixes it
 
 | ID | Sev | Location | Issue | Status |
 |---|---|---|---|---|
+| LAMBDA-6 | P2 on Forge 47 with Fabric mods | core pre-flight's lambda lookup | A Fabric mod's hook into a lambda of a class Forge 47 patched names the lambda as vanilla's SRG names it (`m_289088_`), where Forge's patched class, compiled from its own sources, names it after its method (`lambda$checkBedExists$9`), so pre-flight leaves the hook out: five of Fabric API 0.92.12's (the run on `9f36f23`, 40463821244), among them `fabric-entity-events-v1`'s `ALLOW_BED` check of a sleeping entity's bed and its hooks into `stopSleeping`'s lambda, so an entity wakes from a block `ALLOW_BED` admits without `SET_BED_OCCUPATION_STATE` (SLEEP-1's Forge 47 test leaves that event out), and `fabric-screen-api-v1`'s, `fabric-resource-conditions-api-v1`'s and `fabric-data-generation-api-v1`'s. | Find the lambda by vanilla's: its enclosing method and descriptor in vanilla's SRG class, matched to the patched class's lambdas of that method, as LAMBDA-5 does for renumbered ones. |
 | CI-2 | P3, UNVERIFIED | `ci/neoforge/smoke-server.sh`, `ci/neoforge/smoke-client.sh` ("a test mod check reported a failure") | The failure path prints the failed checks with `grep ... \| head -n 5` under `set -euo pipefail`: with more failed lines than `grep`'s buffer holds, `head`'s exit can kill `grep` with SIGPIPE and stop the script before its remaining diagnostics (CI-1's pattern). The run fails either way. | No run has had that many failed lines; fix with the next change to these scripts. |
 | PLAT-2 | P3, UNVERIFIED | core `PlatformLibraries` | Other prefixes also cover whole library families (`org/lwjgl/`, `io/netty/`), of which the platform may ship some modules only: a mod nesting another module (LWJGL's NanoVG, say) would lose it, as PLAT-1 did. No case seen yet. | Check each prefix against the packages the platform really has (the loader computes them), and keep a prefix only where the family is complete. |
 | FC-5 | P3 | `TranslationCache.verifyIntegrity` | Hashes are memoised by file metadata. On Windows the key is size and mtime only, and `entry.json` itself isn't hashed. | Needs a decision on cost: re-hashing every launch versus trusting metadata. |
