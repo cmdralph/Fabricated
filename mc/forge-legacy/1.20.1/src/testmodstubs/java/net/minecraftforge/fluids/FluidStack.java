@@ -4,6 +4,8 @@ import net.minecraft.class_3611;
 
 /** {@code FluidStack}. */
 public class FluidStack {
+	public static FluidStack EMPTY;
+
 	public FluidStack(class_3611 fluid, int amount) {
 		throw new AssertionError("stand-in");
 	}

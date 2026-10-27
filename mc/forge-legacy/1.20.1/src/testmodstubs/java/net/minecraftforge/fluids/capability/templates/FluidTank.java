@@ -14,7 +14,32 @@ public class FluidTank implements IFluidHandler {
 	}
 
 	@Override
+	public int getTanks() {
+		throw new AssertionError("stand-in");
+	}
+
+	@Override
+	public FluidStack getFluidInTank(int tank) {
+		throw new AssertionError("stand-in");
+	}
+
+	@Override
+	public int getTankCapacity(int tank) {
+		throw new AssertionError("stand-in");
+	}
+
+	@Override
+	public boolean isFluidValid(int tank, FluidStack stack) {
+		throw new AssertionError("stand-in");
+	}
+
+	@Override
 	public int fill(FluidStack resource, FluidAction action) {
+		throw new AssertionError("stand-in");
+	}
+
+	@Override
+	public FluidStack drain(FluidStack resource, FluidAction action) {
 		throw new AssertionError("stand-in");
 	}
 

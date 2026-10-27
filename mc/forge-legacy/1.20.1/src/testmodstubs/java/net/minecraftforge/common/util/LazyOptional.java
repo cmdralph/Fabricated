@@ -11,6 +11,14 @@ public final class LazyOptional<T> {
 		throw new AssertionError("stand-in");
 	}
 
+	public static <T> LazyOptional<T> empty() {
+		throw new AssertionError("stand-in");
+	}
+
+	public boolean isPresent() {
+		throw new AssertionError("stand-in");
+	}
+
 	public <X> LazyOptional<X> cast() {
 		throw new AssertionError("stand-in");
 	}
