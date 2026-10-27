@@ -3,9 +3,9 @@
 # Fabricated for Forge 1.20.1
 
 > **This is the `forge-legacy` branch:** Fabricated for **Minecraft Forge 47.4** (Minecraft 1.20.1). It is an
-> **experimental preview for dedicated servers**. NeoForge is Fabricated's supported platform: see
-> [`main`](https://github.com/cmdralph/Fabricated/tree/main). For Forge on Minecraft 1.21.11 and 26.x, see
-> [`forge`](https://github.com/cmdralph/Fabricated/tree/forge).
+> **experimental preview**: dedicated servers, and clients that run Fabric mods' client entrypoints. NeoForge is
+> Fabricated's supported platform: see [`main`](https://github.com/cmdralph/Fabricated/tree/main). For Forge on
+> Minecraft 1.21.11 and 26.x, see [`forge`](https://github.com/cmdralph/Fabricated/tree/forge).
 
 Fabricated loads Fabric mods and libraries next to Forge mods. Every branch holds the same code, with one folder per
 platform. This branch builds and tests the Forge 1.20.1 target, and its releases' `fabricated-forge-*+mc1.20.1.jar`
@@ -15,7 +15,7 @@ comes from it. NeoForge has no 1.20.1 line to support, so this is the only legac
 
 | Minecraft | Forge | Java | Fabric mods use | CI on this branch |
 |---|---|---|---|---|
-| 1.20.1 | 47.4.28 | 17 | Intermediary names, remapped to Mojang's class names and SRG's member names | Builds; both server runs must pass |
+| 1.20.1 | 47.4.28 | 17 | Intermediary names, remapped to Mojang's class names and SRG's member names | Builds; both server runs and the client run must pass |
 
 ### What CI checks
 
@@ -38,6 +38,14 @@ On each run, the server checks that:
   47 has none;
 - its injected interfaces are added, and its other side's members are stripped.
 
+CI then starts a client with the test mod, headlessly, with HeadlessMC and mc-runtime-test. This run is a gate too: the
+client must join a singleplayer world and quit normally, and it checks that:
+- the test mod's main entrypoint and then its client entrypoint run in Forge's registry events, with the registries
+  open, as Fabric runs them;
+- Fabric Loader's game instance is the `Minecraft` instance when the client entrypoints run;
+- the item, the content built during the bootstrap (CORPUS-31) and the built-in registries' freeze (CORPUS-32) behave
+  as on the server.
+
 **With the official Fabric API jar,** the server starts and every module of Fabric API 0.92.12 loads.
 
 **Native on Forge 47:**
@@ -53,7 +61,8 @@ On each run, the server checks that:
 
 ## Not supported yet
 
-- **Clients.** Fabric mods' client entrypoints don't run, and CI starts no client.
+- **Fabric API on clients.** CI starts no client with the official Fabric API jar, so its client modules (rendering,
+  key bindings, HUD and screens) are unchecked on Forge 47.
 - **Capabilities and networking.** Forge 47's old capability system and `SimpleChannel` networking are next on the
   [roadmap](/docs/roadmap.md).
 
