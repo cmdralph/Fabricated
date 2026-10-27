@@ -1087,13 +1087,32 @@ by the server runs (the colours and screen input by the client runs):
   Fabric API, client run). Forge 47 moved the bake's code into an overload that also takes the sprite getter, where
   pre-flight moves upstream's hooks, its before-bake variable modifier too (MODEL-3).
 
+What else differs on Forge, for Fabric mods in general:
+
+- **Loading errors:** when Forge refuses a mod file or a dependency is missing, it loads only Minecraft and Forge to show
+  the error. Fabricated then leaves the game's classes alone, so Forge's own error is what the player sees (LOADERR-1).
+  Forge itself refuses two Fabric jars in the corpus: JEI's on Forge 61 to 66 (its module-info) and YACL 3.6.6's on
+  Forge 47 (its `mods.toml`). Their Forge builds work.
+- **Jars built for Fabric and NeoForge at once** list their nested jars for NeoForge too. Fabricated hides that list
+  from Forge's jar-in-jar locator and reads the jar itself, so each nested mod loads once, translated (JIJ-1).
+- **MixinExtras** is 0.5.5 on every Forge version: the in-game mod nests it, and Forge's jar-in-jar locator picks it over
+  the 0.5.4 Forge 61 to 66 offer (MIXEXT-3).
+- **Forge Config API Port**'s Fabric build loads, with its own copies of NeoForge's config classes, which Forge lacks
+  (REPL-1, PLAT-5). **Mod Menu**'s Fabric build isn't loaded on Forge, which lists mods and their config screens itself;
+  its API isn't provided there.
+- **Enum extensions:** a Fabric mod adding enum constants with Mixin's enum extensions (Farmer's Delight Refabricated)
+  is disabled on Forge 61 to 66, whose Mixin 0.8.7 predates them (CORPUS-36).
+- **The corpus runs** reach the game on every Forge version since LOADERR-1: 85 to 104 Fabric mods load on the Forge 64
+  to 66 servers and 135 on Forge 47's, 104 to 151 on the clients (runs 40570195894 and 40570200260). They stop later,
+  on what *Findings* in [roadmap.md](roadmap.md#findings) lists (PRE-18, CORPUS-33).
+
 ## Fabric mods tested
 
 CI checks Fabricated's own test mods as gates on every version. Real mods run in these CI runs too, downloaded from
 Modrinth in CI (never redistributed):
 
 - **A corpus of popular Fabric mods** (`ci/mod-corpus.txt`: libraries, interface, rendering, performance and content
-  mods, with their dependencies), on a server and a client, on every version. Informational: each run's report lists
+  mods, with their dependencies), on a server and a client, on every version, Forge's too. Informational: each run's report lists
   which load and why the others are disabled. Known problems are tracked as CORPUS-n in
   [roadmap.md](roadmap.md#findings), and fixed ones in [FINDINGS.md](FINDINGS.md).
 - **An advanced corpus of Fabric mods with deep hooks** (`ci/mod-corpus-advanced.txt`: world generation, gameplay

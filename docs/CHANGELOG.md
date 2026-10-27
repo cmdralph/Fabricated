@@ -3,6 +3,46 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-10-27: Forge development sped up, and the Forge corpus runs reaching the game
+
+- **Shared Forge code:** the discovery classes both Forge loaders had in two identical copies (the class transformer and
+  the transformation service, the translated jars' module metadata, the jar reader, the loader hooks, the nested jar
+  reader) and the language provider live once in `loader/forge-shared`, which both platforms read, as `mc/forge-shared`
+  does for the in-game mod. The quick check counts it as both Forge platforms'. Behaviour-neutral: Gradle found both
+  platforms' jars up to date after the move.
+- **The Forge corpus runs tested nothing of Fabricated's:** every Forge corpus server and client but Forge 64's stopped
+  on an injected interface, because Forge was in its error state. A check for that (LAYER-1: each injected interface
+  looked up among the game layer's modules, a warning where none or several have its package) found the cause:
+  - **LOADERR-1:** with a loading error Forge loads only Minecraft and Forge, and Fabricated still transformed the
+    game's classes, crashing in Forge's place. Fabricated now leaves them alone, so Forge's own error shows. The two
+    Fabric jars Forge itself refuses (JEI's on Forge 61 to 66, YACL's on Forge 47) are left out of the corpus runs.
+  - **JIJ-1:** Forge's jar-in-jar locator added the NeoForge-listed nested jars of translated Fabric jars a second
+    time, untranslated: Forge 64's game layer failed to resolve. A translated jar now hides that list from Forge; the
+    Forge test mods nest a jar listed both ways, gated on both platforms.
+  - **MIXEXT-3:** discovery missed the MixinExtras Forge 61 to 66 offer, so mods depending on it were disabled; the
+    in-game mod now nests 0.5.5 on every Forge version, from one shared script.
+  - **REPL-1:** Forge Config API Port's Fabric jar was left out on Forge too, where nothing provides its API; it loads
+    now. Mod Menu's stays out on Forge (its title screen hook stopped the Forge 66 client), with a report line that
+    says so.
+- Past those, the corpus runs reach the game (85 to 151 Fabric mods load, where Forge loaded only itself) and the next
+  stops, fixed here and checked locally:
+  - **PLAT-5:** core counted NeoForge's whole namespace as every platform's, so the port's copies of NeoForge's config
+    classes were left out on Forge. The platform loader's own packages are now the platform descriptor's.
+  - **PRE-17:** a variable modifier at a load of a local of a type the method no longer loads (Puzzles Lib's break
+    speed hook, in a method Forge 47 reduced to a call) passed pre-flight and stopped the Forge 47 server. It is now
+    left out. Moving it to the method Forge replaced it with is open (PRE-19).
+  - **LINK-2:** a mixin adding an interface only a mod that isn't loading has (Porting Lib's base module on the
+    Forge 47 client) left the game unable to define its target. Its mod is now disabled with the reason, plugin or not.
+    Decided here: the mod is disabled even when its config's plugin might skip that mixin, as the alternative is a
+    game that doesn't start; leaving out only the mixin is open (LINK-3).
+- Open, in the roadmap: the `@Local` hooks of ImmediatelyFast and Mod Menu that pre-flight lets through on the Forge 65
+  and 66 clients (PRE-18), and Forge 61 to 66's retyped `featuresPerStep`, which lithostitched and Fabric API's biome
+  modifications write (CORPUS-33).
+- Verification: the core build and its tests (`MixinPreflightTest`, `PipelineTest`, `PlatformLibrariesTest`); local
+  Forge 66 and Forge 47 server smokes after each change, with and without Fabric API (27, 35, 34 and 40 checks);
+  build-forge run 40570195894 and build-forge-legacy run 40570200260 on `d43a19e`, with their corpus logs. The full
+  matrix runs on this task's pull request.
+
 ## 2026-10-27: the design rethought against its goals, and CI in two tiers
 
 - The design and the way it is worked on, checked against the four goals (light, robust, safe, fast) for drift,
