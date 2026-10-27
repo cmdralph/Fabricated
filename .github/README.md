@@ -67,6 +67,11 @@ with it reaches a world with every module loaded too; that run is only reported 
 - **Hooks into constructors:** Forge 47's Mixin takes a hook into a constructor only at its end, so Fabricated turns a
   Fabric mod's hook at a call there into a wrapper of that call: Fabric mods' commands register, and Fabric's model
   loading runs.
+- **Block breaking:** Fabric's block break events fire where Forge breaks a player's block, and a Fabric mod that
+  refuses a break keeps the block.
+- **Beds:** Fabric's bed occupation and sleeping direction events run where Forge handles beds, and a block a Fabric
+  mod admits as a bed stays that block while an entity sleeps on it. The occupation event doesn't run yet as an
+  entity wakes up from such a block that isn't a bed (LAMBDA-6).
 
 ## Not supported yet
 
