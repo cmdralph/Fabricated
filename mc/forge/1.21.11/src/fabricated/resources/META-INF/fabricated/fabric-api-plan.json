@@ -21,6 +21,11 @@
       "version": "2.0.20",
       "reason": "Shipped by Fabricated: upstream's builder and drop mixins as they are, its loading hook replaced by Forge's LootTableLoadEvent (upstream's conflicts with Forge's loot loading)."
     },
+    "fabric-particles-v1": {
+      "plan": "passthrough",
+      "skipMixins": ["fabric-particles-v1.client.mixins.json:TerrainParticleMixin#removeUntintableParticles"],
+      "reason": "Forge 61 replaced the grass check in TerrainParticle's constructor, which upstream's block dust tint hook looks for, with its block extensions' areBreakingParticlesTinted, so pre-flight left the hook out and ParticleRenderEvents.ALLOW_BLOCK_DUST_TINT never ran: Fabricated's in-game mod asks the event where Forge decides the tint instead (PART-2)."
+    },
     "fabric-rendering-fluids-v1": {
       "plan": "passthrough",
       "skipMixins": ["fabric-rendering-fluids-v1.mixins.json:LiquidBlockRendererMixin#modifyOverlaySprite", "fabric-rendering-fluids-v1.mixins.json:LiquidBlockRendererMixin#modifyNonOverlayCheck"],

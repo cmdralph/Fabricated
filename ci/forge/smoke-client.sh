@@ -148,5 +148,6 @@ if [ -n "$extra" ]; then
 fi
 if [ -n "$extra" ] && [ "$mc" = 1.21.11 ]; then
 	check "FABRICATED-FORGE-TEST colour providers OK" "fabric-rendering-v1 (with Fabric API, 1.21.11): its colour provider registry finds grass's provider in Forge's block colours, and none for stone (COLOR-1)"
+	check "FABRICATED-FORGE-TEST block dust tint event OK" "fabric-particles-v1 (with Fabric API, 1.21.11): a stone particle made as the client joins asks ParticleRenderEvents.ALLOW_BLOCK_DUST_TINT, where Forge decides the tint (PART-2)"
 fi
 exit "$fail"
