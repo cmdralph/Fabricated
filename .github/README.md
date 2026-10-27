@@ -62,11 +62,10 @@ Some modules load without the mixins that Forge's code can't take.
 - **Advancements:** Fabric's advancement events run, on Forge 66.
 - **Fluids:** Fabric mods' fluids get Forge fluid types. An entity moves through a Fabric fluid that isn't water as
   through air, as on Fabric.
+- **Block colours:** on 1.21.11, Fabric's colour provider registry reads Forge's own map of block colours.
 
 ## Not supported yet
 
-- **Fabric's rendering modules on Forge 61.** With the Fabric API jar, `fabric-rendering-v1` is turned off on 1.21.11
-  (its block colour hook reads a list Forge replaced), and the renderer API, Indigo and model loading with it.
 - **Native modules.** Fabric API modules that need a native port on Forge's events, such as entity and interaction
   events, pass through from the Fabric API jar, without the hooks Forge's code can't take.
 
