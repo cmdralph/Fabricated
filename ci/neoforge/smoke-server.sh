@@ -12,6 +12,8 @@ neo="$2"
 work="$3"
 extra="${4:-}"
 root="$(cd "$(dirname "$0")/../.." && pwd)"
+# shellcheck source=ci/install-cache.sh
+source "$root/ci/install-cache.sh"
 timeout_seconds="${SMOKE_TIMEOUT:-900}"
 
 rm -rf "$work"
@@ -19,8 +21,11 @@ mkdir -p "$work"
 cd "$work"
 
 echo "::group::Install NeoForge $neo"
-curl -fsSL --retry 4 -o installer.jar "https://maven.neoforged.net/releases/net/neoforged/neoforge/${neo}/neoforge-${neo}-installer.jar"
-java -jar installer.jar --installServer . > installer.log 2>&1 || { cat installer.log; exit 1; }
+install_server() {
+	curl -fsSL --retry 4 -o installer.jar "https://maven.neoforged.net/releases/net/neoforged/neoforge/${neo}/neoforge-${neo}-installer.jar"
+	java -jar installer.jar --installServer . > installer.log 2>&1 || { cat installer.log; exit 1; }
+}
+cached_install "neoforge-server-$neo" . install_server
 echo "::endgroup::"
 
 mkdir -p mods config

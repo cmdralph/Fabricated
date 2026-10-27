@@ -16,6 +16,8 @@ forge="$2"
 work="$3"
 extra="${4:-}"
 root="$(cd "$(dirname "$0")/../.." && pwd)"
+# shellcheck source=ci/install-cache.sh
+source "$root/ci/install-cache.sh"
 timeout_seconds="${SMOKE_TIMEOUT:-900}"
 hmc_version="2.10.0"
 mcrt_version="4.5.2"
@@ -25,18 +27,21 @@ mkdir -p "$work/HeadlessMC" "$work/run/mods" "$work/run/config" "$work/minecraft
 cd "$work"
 
 echo "::group::Install Forge $mc-$forge (client)"
-# The installer only checks that a launcher profile file exists.
-echo '{"profiles":{}}' > minecraft/launcher_profiles.json
-curl -fsSL --retry 4 -o installer.jar "https://maven.minecraftforge.net/net/minecraftforge/forge/${mc}-${forge}/forge-${mc}-${forge}-installer.jar"
-java -jar installer.jar --installClient minecraft > installer.log 2>&1 || { tail -n 60 installer.log; exit 1; }
-# The installer leaves the vanilla version's jar but not its version file, which HeadlessMC reads as the Forge
-# version's parent: it comes from Mojang's version manifest.
-if [ ! -f "minecraft/versions/$mc/$mc.json" ]; then
-	url=$(curl -fsSL --retry 4 https://piston-meta.mojang.com/mc/game/version_manifest_v2.json \
-		| python3 -c 'import json, sys; print(next(v["url"] for v in json.load(sys.stdin)["versions"] if v["id"] == sys.argv[1]))' "$mc")
-	mkdir -p "minecraft/versions/$mc"
-	curl -fsSL --retry 4 -o "minecraft/versions/$mc/$mc.json" "$url"
-fi
+install_client() {
+	# The installer only checks that a launcher profile file exists.
+	echo '{"profiles":{}}' > minecraft/launcher_profiles.json
+	curl -fsSL --retry 4 -o installer.jar "https://maven.minecraftforge.net/net/minecraftforge/forge/${mc}-${forge}/forge-${mc}-${forge}-installer.jar"
+	java -jar installer.jar --installClient minecraft > installer.log 2>&1 || { tail -n 60 installer.log; exit 1; }
+	# The installer leaves the vanilla version's jar but not its version file, which HeadlessMC reads as the Forge
+	# version's parent: it comes from Mojang's version manifest.
+	if [ ! -f "minecraft/versions/$mc/$mc.json" ]; then
+		url=$(curl -fsSL --retry 4 https://piston-meta.mojang.com/mc/game/version_manifest_v2.json \
+			| python3 -c 'import json, sys; print(next(v["url"] for v in json.load(sys.stdin)["versions"] if v["id"] == sys.argv[1]))' "$mc")
+		mkdir -p "minecraft/versions/$mc"
+		curl -fsSL --retry 4 -o "minecraft/versions/$mc/$mc.json" "$url"
+	fi
+}
+cached_install "forge-client-$forge" minecraft install_client
 ls minecraft/versions minecraft/versions/"$mc"
 echo "::endgroup::"
 
