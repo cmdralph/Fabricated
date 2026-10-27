@@ -202,7 +202,7 @@ writes `net.minecraft:<side>:<mc>:official` jars), and any change to it goes to 
 |---|---|---|
 | `FabricCandidateLocator` | `FabricModLocator implements IModLocator`: lists Fabric jars (no `META-INF/mods.toml`), returns the language provider's `ModFile` | small rewrite |
 | `FabricDependencyLocator` | same name: the `Pipeline.Input` assembly carries over; the glue (`FMLLoader` facts, `SecureJar` for `JarContents`, platform packages from the BOOT and SERVICE layers, warnings through `FabricatedState`, MixinExtras as data) is rewritten | about 40% rewritten |
-| `FabricLanguageLoader` | `FabricLanguageProvider` (new `langprovider` source set) and `FabricModContainer` (`mc/forge/common`) | rewrite |
+| `FabricLanguageLoader` | `FabricLanguageProvider` (new `langprovider` source set) and `FabricModContainer` (`mc/forge-shared`) | rewrite |
 | `FabricModContainer` | extends fmlcore's `ModContainer` (`matches`, `getMod`) | simpler rewrite |
 | `FabricClassProcessor` | `FabricTransformationService` and an `ITransformer<ClassNode>`; the `ClassNode` code carries over | new wrapper |
 | `DefaultBridgeProcessor` | the same transformer, before Mixin: Mixin replaces a target method its mixin also declares, unless `requireOverwriteAnnotations` or `@Intrinsic`; whether that changes the bridges' meaning is unverified | needs a test |
@@ -291,7 +291,8 @@ providers)? (10) Where can a locator read the program arguments?
 names its own). Each applies its platform's build plugin (`net.neoforged.moddev`, `net.minecraftforge.gradle` or
 `net.neoforged.moddev.legacyforge`) and the shared `mc/mc.gradle`. That script takes the platform from the folder,
 and the shared source folders from the version's `shared_sources` property, under `mc/<platform>/` (NeoForge's
-`common`, `common26`, `common26early`, `common26late`). It applies `mc/platform-<platform>.gradle` (the plugin's
+`common`, `common26`, `common26early`, `common26late`), or from the repository root for an entry with a slash
+(`mc/forge-shared`, the code both Forge platforms compile as it is). It applies `mc/platform-<platform>.gradle` (the plugin's
 settings, the mod descriptor, `gameDependencies`), builds the in-game mod as `game-mod.jar` and merges `loader`
 (`loader/common` and `loader/<platform>`), `core`, `api` and `fabric-loader-api` into `fabricatedJar` (§6, items 2
 and 3). The test sources every platform shares are in `mc/shared`. NeoForge's CI step conditions still name versions,

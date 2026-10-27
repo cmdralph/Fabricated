@@ -45,13 +45,14 @@ repositories {
 // Source shared between one platform's versions, in mc/<platform>/<name>, as the version's `shared_sources`
 // property lists them. NeoForge's: every version (common), 26.x (common26: unobfuscated, with one Fabric API
 // surface), 26.1.2 and 26.2 (common26early: 26.3 changed the APIs that code uses), and 26.2 and 26.3
-// (common26late). Forge's are named alike.
+// (common26late). Forge's are named alike. An entry with a slash is a path from the repository root, for a folder two
+// platforms share: mc/forge-shared holds the code Forge 61 to 66 and Forge 47 both compile as it is.
 def platform = projectDir.parentFile.name
 if (!(platform in ['neoforge', 'forge', 'forge-legacy'])) {
     throw new GradleException("${projectDir} is not in a platform's folder: mc/neoforge, mc/forge or mc/forge-legacy")
 }
 ext.sharedSources = (project.shared_sources as String).split(',')*.trim().findAll { it }
-        .collect { "mc/${platform}/${it}" }
+        .collect { it.contains('/') ? it : "mc/${platform}/${it}" }
 
 sourceSets {
     loader {

@@ -3,8 +3,9 @@
 a push, from the paths it changed (one per line on stdin).
 
 A platform whose files changed gets one version: the version whose folder alone changed (mc/<platform>/<version>/),
-else its newest. A change to shared code (core, api, loader/common, the build) builds NeoForge's newest, the supported
-platform; the full matrix on the pull request covers the rest. Documentation builds nothing.
+else its newest; mc/forge-shared is both Forge platforms'. A change to shared code (core, api, loader/common, the
+build) builds NeoForge's newest, the supported platform; the full matrix on the pull request covers the rest.
+Documentation builds nothing.
 
 Prints a JSON list of {"platform", "minecraft", "loader", "java"} for a matrix's include, read from each version's
 gradle.properties. Usage: git diff --name-only A B | ci/changed-targets.py [repository root]
@@ -34,12 +35,14 @@ def versions(root, platform):
     return sorted(folders, key=lambda v: tuple(int(n) for n in v.split(".")))
 
 
-def platform_of(path):
-    """The platform a path belongs to alone, or None for shared code."""
+def platforms_of(path):
+    """The platforms a path belongs to alone (both Forge platforms for mc/forge-shared), or None for shared code."""
+    if path.startswith("mc/forge-shared/"):
+        return ("forge", "forge-legacy")
     for platform in PLATFORMS:
         if (path.startswith((f"mc/{platform}/", f"loader/{platform}/", f"ci/{platform}/"))
                 or path in (f"mc/platform-{platform}.gradle", f".github/workflows/{WORKFLOW[platform]}")):
-            return platform
+            return (platform,)
     return None
 
 
@@ -52,11 +55,11 @@ def targets(root, paths):
     for path in paths:
         if is_docs(path):
             continue
-        platform = platform_of(path) or "neoforge"
         parts = path.split("/")
-        known = versions(root, platform)
-        version = parts[2] if len(parts) > 3 and parts[0] == "mc" and parts[1] == platform and parts[2] in known else None
-        touched.setdefault(platform, set()).add(version)
+        for platform in platforms_of(path) or ("neoforge",):
+            known = versions(root, platform)
+            version = parts[2] if len(parts) > 3 and parts[0] == "mc" and parts[1] == platform and parts[2] in known else None
+            touched.setdefault(platform, set()).add(version)
     result = []
     for platform in PLATFORMS:
         if platform not in touched:
