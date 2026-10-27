@@ -6,11 +6,16 @@ import java.util.Set;
 
 import org.jspecify.annotations.Nullable;
 
+import net.fabricmc.fabric.api.transfer.v1.context.ContainerItemContext;
 import net.fabricmc.fabric.api.transfer.v1.fluid.FluidStorage;
 import net.fabricmc.fabric.api.transfer.v1.fluid.FluidVariant;
+import net.fabricmc.fabric.api.transfer.v1.fluid.base.EmptyItemFluidStorage;
+import net.fabricmc.fabric.api.transfer.v1.fluid.base.FullItemFluidStorage;
 import net.fabricmc.fabric.api.transfer.v1.item.ItemStorage;
 import net.fabricmc.fabric.api.transfer.v1.item.ItemVariant;
+import net.fabricmc.fabric.api.transfer.v1.item.base.SingleStackStorage;
 import net.fabricmc.fabric.api.transfer.v1.storage.Storage;
+import net.fabricmc.fabric.api.transfer.v1.storage.base.SingleVariantItemStorage;
 import net.fabricmc.fabric.api.transfer.v1.storage.base.SingleVariantStorage;
 import net.fabricmc.fabric.api.transfer.v1.transaction.Transaction;
 import net.fabricmc.loader.api.FabricLoader;
@@ -22,6 +27,7 @@ import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Block;
@@ -34,9 +40,12 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.material.Fluids;
 import net.minecraftforge.common.capabilities.Capability;
 import net.minecraftforge.common.capabilities.ForgeCapabilities;
+import net.minecraftforge.common.capabilities.ICapabilityProvider;
 import net.minecraftforge.common.util.LazyOptional;
+import net.minecraftforge.event.AttachCapabilitiesEvent;
 import net.minecraftforge.fluids.FluidStack;
 import net.minecraftforge.fluids.capability.IFluidHandler;
+import net.minecraftforge.fluids.capability.IFluidHandlerItem;
 import net.minecraftforge.fluids.capability.templates.FluidTank;
 import net.minecraftforge.items.IItemHandler;
 import net.minecraftforge.items.ItemStackHandler;
@@ -49,7 +58,10 @@ import net.minecraftforge.items.ItemStackHandler;
  * offers Forge's own {@code ItemStackHandler} and {@code FluidTank} through its capabilities, as a Forge mod does, which
  * Fabric's code reaches through {@code ItemStorage.SIDED} and {@code FluidStorage.SIDED}: an aborted transaction leaves
  * the handler as it was, two insertions in one transaction take no more than the slots hold together, and a committed
- * one fills them.
+ * one fills them. Items the same way: Forge's code fills and drains this mod's cell, which becomes another item when
+ * full, and its gauge, which keeps its fluid as damage, through {@code FLUID_HANDLER_ITEM}, the gauge's own stack showing
+ * the change, and Fabric's code fills and drains a Forge mod's cell through {@code FluidStorage.ITEM}, an aborted
+ * transaction leaving it as it was.
  */
 public final class ForgeTransferTest {
 	/** A namespace no Fabric mod has: the bridge tells Forge mods' blocks from Fabric mods' by namespace. */
@@ -85,6 +97,11 @@ public final class ForgeTransferTest {
 		private static Block forgeBlock;
 		static BlockEntityType<FabricStorageEntity> fabricType;
 		static BlockEntityType<ForgeHandlerEntity> forgeType;
+		private static Item fabricCell;
+		private static Item fabricWaterCell;
+		private static Item fabricGauge;
+		static Item forgeCell;
+		static Item forgeWaterCell;
 
 		private WithTransferApi() {
 		}
@@ -100,6 +117,24 @@ public final class ForgeTransferTest {
 					blockEntity instanceof FabricStorageEntity entity ? entity.items : null, fabricBlock);
 			FluidStorage.SIDED.registerForBlocks((level, pos, state, blockEntity, side) ->
 					blockEntity instanceof FabricStorageEntity entity ? entity.fluids : null, fabricBlock);
+			fabricCell = item(Identifier.fromNamespaceAndPath(ForgeTestMod.MOD_ID, "cell"), new Item.Properties());
+			fabricWaterCell = item(Identifier.fromNamespaceAndPath(ForgeTestMod.MOD_ID, "water_cell"), new Item.Properties());
+			fabricGauge = item(Identifier.fromNamespaceAndPath(ForgeTestMod.MOD_ID, "gauge"), new Item.Properties().durability(1000));
+			forgeCell = item(Identifier.fromNamespaceAndPath(FORGE_NAMESPACE, "handler_cell"), new Item.Properties());
+			forgeWaterCell = item(Identifier.fromNamespaceAndPath(FORGE_NAMESPACE, "handler_water_cell"), new Item.Properties());
+			// As a Forge mod gives its items' stacks a capability.
+			AttachCapabilitiesEvent.ItemStacks.BUS.addListener(event -> {
+				ItemStack stack = event.getObject();
+				if (stack.is(forgeCell) || stack.is(forgeWaterCell)) event.addCapability(Identifier.fromNamespaceAndPath(FORGE_NAMESPACE, "cell"), new CellHandler(stack));
+			});
+			FluidStorage.ITEM.registerForItems((stack, context) -> new EmptyItemFluidStorage(context, fabricWaterCell, Fluids.WATER, 81000), fabricCell);
+			FluidStorage.ITEM.registerForItems((stack, context) -> new FullItemFluidStorage(context, fabricCell, FluidVariant.of(Fluids.WATER), 81000), fabricWaterCell);
+			FluidStorage.ITEM.registerForItems((stack, context) -> new GaugeStorage(context), fabricGauge);
+		}
+
+		private static Item item(Identifier id, Item.Properties properties) {
+			ResourceKey<Item> key = ResourceKey.create(Registries.ITEM, id);
+			return Registry.register(BuiltInRegistries.ITEM, key, new Item(properties.setId(key)));
 		}
 
 		private static Block block(Identifier id, BlockEntityType.BlockEntitySupplier<?> entity) {
@@ -125,6 +160,8 @@ public final class ForgeTransferTest {
 			}
 			level.setBlockAndUpdate(fabricPos, Blocks.AIR.defaultBlockState());
 			level.setBlockAndUpdate(forgePos, Blocks.AIR.defaultBlockState());
+			forgeSeesFabricItems(failed);
+			fabricSeesForgeItems(failed);
 			if (failed.isEmpty()) {
 				ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST storages OK");
 			} else {
@@ -211,6 +248,196 @@ public final class ForgeTransferTest {
 				}
 				if (entity.tank.getFluidAmount() != 1100) failed.add("an aborted extraction left " + entity.tank.getFluidAmount() + " mB in the tank");
 			}
+		}
+
+		/** Forge's code, as a Forge mod's machine filling and draining an item in its slot, on the Fabric mod's items. */
+		private static void forgeSeesFabricItems(List<String> failed) {
+			IFluidHandlerItem cell = new ItemStack(fabricCell).getCapability(ForgeCapabilities.FLUID_HANDLER_ITEM).resolve().orElse(null);
+			if (cell == null) {
+				failed.add("no fluid handler capability for the Fabric mod's cell");
+			} else {
+				int filled = cell.fill(new FluidStack(Fluids.WATER, 1000), IFluidHandler.FluidAction.SIMULATE);
+				if (filled != 1000 || !cell.getContainer().is(fabricCell)) failed.add("a simulated fill of the cell filled " + filled + " mB and made it " + cell.getContainer().getItem());
+				filled = cell.fill(new FluidStack(Fluids.WATER, 1000), IFluidHandler.FluidAction.EXECUTE);
+				if (filled != 1000 || !cell.getContainer().is(fabricWaterCell)) failed.add("filling the cell filled " + filled + " mB and made it " + cell.getContainer().getItem());
+				FluidStack drained = cell.drain(1000, IFluidHandler.FluidAction.EXECUTE);
+				if (drained.getAmount() != 1000 || !cell.getContainer().is(fabricCell)) failed.add("draining the full cell gave " + drained.getAmount() + " mB and made it " + cell.getContainer().getItem());
+			}
+			ItemStack gaugeStack = new ItemStack(fabricGauge);
+			IFluidHandlerItem gauge = gaugeStack.getCapability(ForgeCapabilities.FLUID_HANDLER_ITEM).resolve().orElse(null);
+			if (gauge == null) {
+				failed.add("no fluid handler capability for the Fabric mod's gauge");
+			} else {
+				int filled = gauge.fill(new FluidStack(Fluids.WATER, 250), IFluidHandler.FluidAction.EXECUTE);
+				if (filled != 250 || gauge.getContainer() != gaugeStack || gaugeStack.getDamageValue() != 250) {
+					failed.add("filling the gauge filled " + filled + " mB, its own stack showing " + gaugeStack.getDamageValue());
+				}
+				FluidStack held = gauge.getFluidInTank(0);
+				if (held.getAmount() != 250 || held.getFluid() != Fluids.WATER) failed.add("the gauge's tank shows " + held.getAmount() + " mB");
+				filled = gauge.fill(new FluidStack(Fluids.WATER, 900), IFluidHandler.FluidAction.SIMULATE);
+				if (filled != 750 || gaugeStack.getDamageValue() != 250) failed.add("a simulated fill of 900 mB filled " + filled + ", the gauge showing " + gaugeStack.getDamageValue());
+				FluidStack drained = gauge.drain(new FluidStack(Fluids.WATER, 250), IFluidHandler.FluidAction.EXECUTE);
+				// Back to no damage, which the item's own components hold: the stack's patch is empty again.
+				if (drained.getAmount() != 250 || gaugeStack.getDamageValue() != 0 || !gaugeStack.getComponentsPatch().isEmpty()) {
+					failed.add("draining 250 mB gave " + drained.getAmount() + ", the gauge showing " + gaugeStack.getDamageValue() + " and " + gaugeStack.getComponentsPatch());
+				}
+			}
+			if (new ItemStack(ForgeTestMod.testItem).getCapability(ForgeCapabilities.FLUID_HANDLER_ITEM).isPresent()) {
+				failed.add("the Fabric mod's item without a fluid storage has a fluid handler");
+			}
+		}
+
+		/** Fabric's code, as a Fabric mod's machine with a slot, on the Forge mod's cell. */
+		private static void fabricSeesForgeItems(List<String> failed) {
+			ContainerItemContext context = ContainerItemContext.ofSingleSlot(new MachineSlot(new ItemStack(forgeCell)));
+			Storage<FluidVariant> cell = context.find(FluidStorage.ITEM);
+			if (cell == null) {
+				failed.add("Fabric's item lookup found nothing for the Forge mod's cell");
+				return;
+			}
+			FluidVariant water = FluidVariant.of(Fluids.WATER);
+			try (Transaction transaction = Transaction.openOuter()) {
+				long inserted = cell.insert(water, 81000, transaction);
+				if (inserted != 81000 || context.getItemVariant().getItem() != forgeWaterCell) {
+					failed.add("filling the Forge mod's cell took " + inserted + " droplets and made it " + context.getItemVariant().getItem());
+				}
+			}
+			if (context.getItemVariant().getItem() != forgeCell) failed.add("an aborted fill left the cell " + context.getItemVariant().getItem());
+			try (Transaction transaction = Transaction.openOuter()) {
+				long inserted = cell.insert(water, 40500, transaction);
+				if (inserted != 0) failed.add("half a bucket went into the cell, which takes a bucket");
+				cell.insert(water, 81000, transaction);
+				transaction.commit();
+			}
+			if (context.getItemVariant().getItem() != forgeWaterCell) failed.add("a committed fill left the cell " + context.getItemVariant().getItem());
+			Storage<FluidVariant> full = context.find(FluidStorage.ITEM);
+			try (Transaction transaction = Transaction.openOuter()) {
+				long extracted = full == null ? 0 : full.extract(water, 81000, transaction);
+				if (extracted != 81000) failed.add("draining the full cell gave " + extracted + " droplets");
+				transaction.commit();
+			}
+			if (context.getItemVariant().getItem() != forgeCell) failed.add("a committed drain left the cell " + context.getItemVariant().getItem());
+		}
+	}
+
+	/** The Forge mod's cell handler, a bucket of water or none, as Forge mods' own fluid items: filling or draining swaps the item. */
+	static final class CellHandler implements IFluidHandlerItem, ICapabilityProvider {
+		private final LazyOptional<IFluidHandlerItem> capability = LazyOptional.of(() -> this);
+		private ItemStack container;
+
+		CellHandler(ItemStack container) {
+			this.container = container;
+		}
+
+		private boolean full() {
+			return container.is(WithTransferApi.forgeWaterCell);
+		}
+
+		@Override
+		public ItemStack getContainer() {
+			return container;
+		}
+
+		@Override
+		public int getTanks() {
+			return 1;
+		}
+
+		@Override
+		public FluidStack getFluidInTank(int tank) {
+			return full() ? new FluidStack(Fluids.WATER, 1000) : FluidStack.EMPTY;
+		}
+
+		@Override
+		public int getTankCapacity(int tank) {
+			return 1000;
+		}
+
+		@Override
+		public boolean isFluidValid(int tank, FluidStack stack) {
+			return stack.getFluid() == Fluids.WATER;
+		}
+
+		@Override
+		public int fill(FluidStack resource, FluidAction action) {
+			if (full() || container.getCount() != 1 || resource.getFluid() != Fluids.WATER || resource.getAmount() < 1000) return 0;
+			if (action.execute()) container = new ItemStack(WithTransferApi.forgeWaterCell);
+			return 1000;
+		}
+
+		@Override
+		public FluidStack drain(FluidStack resource, FluidAction action) {
+			return resource.getFluid() == Fluids.WATER ? drain(resource.getAmount(), action) : FluidStack.EMPTY;
+		}
+
+		@Override
+		public FluidStack drain(int maxDrain, FluidAction action) {
+			if (!full() || container.getCount() != 1 || maxDrain < 1000) return FluidStack.EMPTY;
+			if (action.execute()) container = new ItemStack(WithTransferApi.forgeCell);
+			return new FluidStack(Fluids.WATER, 1000);
+		}
+
+		@Override
+		public <T> LazyOptional<T> getCapability(Capability<T> capability, @Nullable Direction side) {
+			return capability == ForgeCapabilities.FLUID_HANDLER_ITEM ? this.capability.cast() : LazyOptional.empty();
+		}
+	}
+
+	/** A Fabric mod's machine slot, holding a stack. */
+	static final class MachineSlot extends SingleStackStorage {
+		private ItemStack stack;
+
+		MachineSlot(ItemStack stack) {
+			this.stack = stack;
+		}
+
+		@Override
+		protected ItemStack getStack() {
+			return stack;
+		}
+
+		@Override
+		protected void setStack(ItemStack stack) {
+			this.stack = stack;
+		}
+	}
+
+	/** This mod's gauge storage: up to a bucket of water, a millibucket for each point of the item's damage. */
+	static final class GaugeStorage extends SingleVariantItemStorage<FluidVariant> {
+		GaugeStorage(ContainerItemContext context) {
+			super(context);
+		}
+
+		@Override
+		protected FluidVariant getBlankResource() {
+			return FluidVariant.blank();
+		}
+
+		@Override
+		protected FluidVariant getResource(ItemVariant item) {
+			return item.toStack().getDamageValue() > 0 ? FluidVariant.of(Fluids.WATER) : FluidVariant.blank();
+		}
+
+		@Override
+		protected long getAmount(ItemVariant item) {
+			return item.toStack().getDamageValue() * 81L;
+		}
+
+		@Override
+		protected long getCapacity(FluidVariant variant) {
+			return 81000;
+		}
+
+		@Override
+		protected ItemVariant getUpdatedVariant(ItemVariant item, FluidVariant resource, long amount) {
+			ItemStack stack = item.toStack();
+			stack.setDamageValue((int) (amount / 81));
+			return ItemVariant.of(stack);
+		}
+
+		@Override
+		protected boolean canInsert(FluidVariant resource) {
+			return resource.equals(FluidVariant.of(Fluids.WATER));
 		}
 	}
 
