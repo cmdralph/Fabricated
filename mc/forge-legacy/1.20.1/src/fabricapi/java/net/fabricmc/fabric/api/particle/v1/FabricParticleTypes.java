@@ -74,12 +74,23 @@ public final class FabricParticleTypes {
 	 * @param factory	 A factory for serializing packet data and string command parameters into a particle effect.
 	 */
 	public static <T extends ParticleOptions> ParticleType<T> complex(boolean alwaysSpawn, ParticleOptions.Deserializer<T> factory) {
-		return new ParticleType<T>(alwaysSpawn, factory) {
-			@Override
-			public Codec<T> codec() {
-				//TODO fix me
-				return null;
-			}
-		};
+		return new ComplexParticleType<>(alwaysSpawn, factory);
+	}
+
+	/**
+	 * Fabricated: upstream's anonymous subclass of {@code ParticleType}, named. Built in CI, Java 17's javac rejected the
+	 * anonymous class ("variable o is already defined in constructor"), whose constructor it gives the superclass
+	 * constructor's parameters.
+	 */
+	private static final class ComplexParticleType<T extends ParticleOptions> extends ParticleType<T> {
+		private ComplexParticleType(boolean alwaysSpawn, ParticleOptions.Deserializer<T> factory) {
+			super(alwaysSpawn, factory);
+		}
+
+		@Override
+		public Codec<T> codec() {
+			//TODO fix me
+			return null;
+		}
 	}
 }
