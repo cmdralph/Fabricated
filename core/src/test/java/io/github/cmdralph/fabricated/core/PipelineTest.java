@@ -169,6 +169,18 @@ class PipelineTest {
 		return cw.toByteArray();
 	}
 
+	/** A mixin as {@link #mixinClass(String, String)} that adds {@code iface} to its target. */
+	private static byte[] mixinImplementing(String name, String iface) {
+		ClassWriter cw = new ClassWriter(0);
+		new ClassReader(mixinClass(name, "tick")).accept(new org.objectweb.asm.ClassVisitor(Opcodes.ASM9, cw) {
+			@Override
+			public void visit(int version, int access, String className, String signature, String superName, String[] interfaces) {
+				super.visit(version, access, className, signature, superName, new String[] {iface});
+			}
+		}, 0);
+		return cw.toByteArray();
+	}
+
 	/**
 	 * A mixin as {@link #mixinClass(String, String, String)} that also adds an interface to its target, which the mod's
 	 * code may cast to: a failure in it can't be left out (LEAVE-1), so it disables the mod.
@@ -348,6 +360,51 @@ class PipelineTest {
 		List<String> environment = result.report().render().lines().map(String::strip).toList();
 		assertTrue(environment.stream().anyMatch(l -> l.startsWith("Forge:")) && environment.stream().noneMatch(l -> l.startsWith("NeoForge:")),
 				result.report().render());
+	}
+
+	/**
+	 * Forge Config API Port is replaced only where the platform's in-game mod provides its API (NeoForge's); on Forge its
+	 * jar loads as other mods do (REPL-1). Mod Menu's stays out on both.
+	 */
+	@Test
+	void modsTheInGameModProvidesAreReplacedOnlyOnItsPlatform(@TempDir Path game) throws Exception {
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		Path port = TestJars.create().fabricModJson(TestJars.modJson("forgeconfigapiport", "26.1.5", "\"name\":\"Forge Config API Port\""))
+				.write(mods.resolve("port.jar"));
+		Path menu = TestJars.create().fabricModJson(TestJars.modJson("modmenu", "20.0.3", "\"name\":\"Mod Menu\"")).write(mods.resolve("menu.jar"));
+
+		Pipeline.Result neoForge = Pipeline.run(input(game, List.of(port, menu), Namespace.OFFICIAL, Map.of(), null, List.of()));
+		for (String id : List.of("forgeconfigapiport", "modmenu")) {
+			assertTrue(neoForge.report().mods().stream().anyMatch(r -> r.id().equals(id) && r.status() == Report.Status.SKIPPED), id);
+			assertTrue(neoForge.mods().stream().noneMatch(m -> m.translated().candidate().id().equals(id)), id);
+		}
+		// On Forge the port loads; Mod Menu stays out, Forge listing mods itself.
+		Pipeline.Result forge = Pipeline.run(withDescriptor(input(game, List.of(port, menu), Namespace.OFFICIAL, Map.of(), null, List.of()),
+				PlatformDescriptor.FORGE));
+		assertTrue(forge.mods().stream().anyMatch(m -> m.translated().candidate().id().equals("forgeconfigapiport")), forge.report().render());
+		assertTrue(forge.report().mods().stream().anyMatch(r -> r.id().equals("modmenu") && r.status() == Report.Status.SKIPPED), forge.report().render());
+		assertTrue(forge.mods().stream().noneMatch(m -> m.translated().candidate().id().equals("modmenu")), forge.report().render());
+	}
+
+	/**
+	 * PLAT-5: NeoForge's namespace is NeoForge's, whose copies a Fabric mod brings are left out for its classes; Forge has
+	 * none of it, so there Forge Config API Port's copies of NeoForge's config classes stay the mod's.
+	 */
+	@Test
+	void neoForgesPackagesAreThePlatformsOnlyOnNeoForge(@TempDir Path game) throws Exception {
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		String copy = "net/neoforged/neoforge/common/ModConfigSpec";
+		Path port = TestJars.create().fabricModJson(TestJars.modJson("config-port", "1.0", ""))
+				.bytes(copy + ".class", TestJars.emptyClass(copy, "java/lang/Object"))
+				.write(mods.resolve("port.jar"));
+		String note = "bundles package net.neoforged.neoforge.common, which the platform already provides";
+
+		Pipeline.Result neoForge = Pipeline.run(input(game, List.of(port), Namespace.OFFICIAL, Map.of(), null, List.of()));
+		assertTrue(neoForge.report().render().contains(note), neoForge.report().render());
+		Pipeline.Result forge = Pipeline.run(withDescriptor(input(game, List.of(port), Namespace.OFFICIAL, Map.of(), null, List.of()),
+				PlatformDescriptor.FORGE));
+		assertTrue(forge.mods().stream().anyMatch(m -> m.translated().candidate().id().equals("config-port")), forge.report().render());
+		assertFalse(forge.report().render().contains(note), forge.report().render());
 	}
 
 	/** On another platform, the report's reasons and suggestions name its loader where they named NeoForge (PLAT-3). */
@@ -1003,6 +1060,46 @@ class PipelineTest {
 		Pipeline.Result skipped = Pipeline.run(input(game, List.of(lib, user, guarded), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
 		assertEquals(Set.of("guarded-mod", "user-mod"), skipped.mods().stream().map(m -> m.translated().candidate().id()).collect(Collectors.toSet()),
 				skipped.report().render());
+	}
+
+	/**
+	 * LINK-2: a mixin adding an interface only a Fabric mod that isn't loading has (Porting Lib's base module's texture
+	 * mixin on Forge 47 clients, whose interface is its extensions module's) leaves the game unable to define its target,
+	 * required or not and whatever its config's plugin: the mod is disabled with the reason.
+	 */
+	@Test
+	void aMixinAddingAnInterfaceOfAModThatIsNotLoadingDisablesItsMod(@TempDir Path game) throws Exception {
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		String api = "com/lib/Extensions";
+		Path lib = TestJars.create().fabricModJson(TestJars.modJson("lib-mod", "1.0", "\"mixins\":[\"lib.mixins.json\"]"))
+				.text("lib.mixins.json", "{\"required\":true,\"package\":\"com.lib.mixin\",\"mixins\":[\"BrokenMixin\"]}")
+				.bytes("com/lib/mixin/BrokenMixin.class", duckMixinClass("com/lib/mixin/BrokenMixin", "methodTheGameDoesNotHave"))
+				.bytes(api + ".class", TestJars.emptyClass(api, "java/lang/Object"))
+				.write(mods.resolve("lib.jar"));
+		Path withPlugin = TestJars.create().fabricModJson(TestJars.modJson("base-mod", "1.0", "\"mixins\":[\"base.mixins.json\"]"))
+				.text("base.mixins.json", "{\"required\":true,\"package\":\"com.base.mixin\",\"plugin\":\"com.base.Plugin\",\"mixins\":[\"TextureMixin\"]}")
+				.bytes("com/base/mixin/TextureMixin.class", mixinImplementing("com/base/mixin/TextureMixin", api))
+				.bytes("com/base/Plugin.class", TestJars.emptyClass("com/base/Plugin", "java/lang/Object"))
+				.write(mods.resolve("base.jar"));
+		Path optional = TestJars.create().fabricModJson(TestJars.modJson("optional-mod", "1.0", "\"mixins\":[\"optional.mixins.json\"]"))
+				.text("optional.mixins.json", "{\"package\":\"com.optional.mixin\",\"mixins\":[\"TextureMixin\"]}")
+				.bytes("com/optional/mixin/TextureMixin.class", mixinImplementing("com/optional/mixin/TextureMixin", api))
+				.write(mods.resolve("optional.jar"));
+		Path own = TestJars.create().fabricModJson(TestJars.modJson("own-mod", "1.0", "\"mixins\":[\"own.mixins.json\"]"))
+				.text("own.mixins.json", "{\"package\":\"com.own.mixin\",\"plugin\":\"com.own.Plugin\",\"mixins\":[\"TextureMixin\"]}")
+				.bytes("com/own/mixin/TextureMixin.class", mixinImplementing("com/own/mixin/TextureMixin", "com/own/Extensions"))
+				.bytes("com/own/Extensions.class", TestJars.emptyClass("com/own/Extensions", "java/lang/Object"))
+				.bytes("com/own/Plugin.class", TestJars.emptyClass("com/own/Plugin", "java/lang/Object"))
+				.write(mods.resolve("own.jar"));
+		Pipeline.Result result = Pipeline.run(input(game, List.of(lib, withPlugin, optional, own), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
+
+		Set<String> loaded = result.mods().stream().map(m -> m.translated().candidate().id()).collect(Collectors.toSet());
+		assertEquals(Set.of("own-mod"), loaded, "an interface of the mod's own loads: " + result.report().render());
+		for (String id : List.of("base-mod", "optional-mod")) {
+			Report.ModRow row = result.report().mods().stream().filter(r -> r.id().equals(id)).findFirst().orElseThrow();
+			assertEquals(Report.Status.DISABLED, row.status());
+			assertTrue(row.detail().contains("adds an interface to its targets -> needs class com.lib.Extensions of lib-mod, which isn't loading"), row.detail());
+		}
 	}
 
 	@Test

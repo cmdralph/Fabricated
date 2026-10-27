@@ -1,0 +1,33 @@
+// MixinExtras for Fabric mods on both Forge platforms (mc/platform-forge.gradle and mc/platform-forge-legacy.gradle
+// apply this). Fabric Loader ships MixinExtras 0.5.x; Forge 47 has none, and Forge 61 to 66 offer 0.5.4 through their
+// jar-in-jar locator once a mod file declares mixin configs. Its Forge build, a game library that starts MixinExtras
+// from its own mixin config's plugin, is nested in the in-game mod with the metadata of Forge's jar-in-jar locator,
+// which reads the files Fabricated's dependency locator hands Forge and adds the newest copy any of them nests or Forge
+// offers. Discovery reads the same metadata to tell pre-flight which version runs.
+configurations {
+    nestedMixinExtras { transitive = false }
+}
+dependencies {
+    nestedMixinExtras "io.github.llamalad7:mixinextras-forge:${project.mixinextras_version}"
+}
+def mixinExtrasJarJar = tasks.register('mixinExtrasJarJar') {
+    def version = project.mixinextras_version
+    def out = layout.buildDirectory.dir('jarjar')
+    inputs.property('version', version)
+    outputs.dir(out)
+    doLast {
+        def file = out.get().file('META-INF/jarjar/metadata.json').asFile
+        file.parentFile.mkdirs()
+        file.text = groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson([jars: [[
+                identifier: [group: 'io.github.llamalad7', artifact: 'mixinextras-forge'],
+                version: [range: "[${version},)", artifactVersion: version],
+                path: "META-INF/jarjar/mixinextras-forge-${version}.jar",
+                isObfuscated: false]]])) + '\n'
+    }
+}
+afterEvaluate {
+    tasks.named('gameModJar', Jar) {
+        from(configurations.nestedMixinExtras) { into 'META-INF/jarjar' }
+        from(mixinExtrasJarJar)
+    }
+}

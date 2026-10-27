@@ -174,7 +174,7 @@ vendored modules in `mc/neoforge/<version>/src/fabricapi` and the bridges in `mc
 
 | Seam | How | Type-safe? |
 |---|---|---|
-| Which code a version gets | Gradle source directories (the version's `shared_sources` property, read by `mc/mc.gradle`): each version compiles only its own and the shared folders it lists | compile-time |
+| Which code a version gets | Gradle source directories (the version's `shared_sources` property, read by `mc/mc.gradle`): each version compiles only its own and the shared folders it lists, under `mc/<platform>/` or, for an entry with a slash, from the repository root (`mc/forge-shared`: what Forge 61 to 66 and Forge 47 compile as it is) | compile-time |
 | Which loader a version builds for | The folder its project is in, `mc/<platform>/<version>` (`neoforge`, `forge` or `forge-legacy`): `mc/platform-<platform>.gradle` (build plugin, mod descriptor, `gameDependencies`) and `loader/<platform>` (discovery services) next to `loader/common`. Every branch holds every platform; `-Pfabricated.platforms` picks which a build configures (NeoForge's by default) | compile-time |
 | Discovery services → FML | `META-INF/services` in the `loader` source set: `IModFileCandidateLocator`, `IDependencyLocator`, `IModLanguageLoader`, `ClassProcessor` | compile-time against FML SPI |
 | Version facts → core | `META-INF/fabricated/version.properties` (generated: Minecraft version, namespace, Mixin versions) and `fabric-api-plan.json` (data, per version) | data, validated when parsed |

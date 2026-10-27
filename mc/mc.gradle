@@ -1,7 +1,8 @@
 // Shared build logic for every Minecraft version project (mc/<platform>/<version>/build.gradle applies this). What is
 // specific to the mod loader the target runs on is in mc/platform-<platform>.gradle, which this applies once the source
-// sets exist, and the loader classes in loader/<platform> (next to the shared ones in loader/common). The platform is
-// the folder the version's folder is in: neoforge, forge or forge-legacy.
+// sets exist, and the loader classes in loader/<platform> (next to the shared ones in loader/common, and in
+// loader/forge-shared for both Forge platforms). The platform is the folder the version's folder is in: neoforge, forge
+// or forge-legacy.
 //
 // Each version project produces build/libs/fabricated-<version>+mc<minecraft>.jar in the root project:
 //   - the "loader" source set (the loader's discovery services) plus :core and :fabric-loader-api, which run
@@ -45,18 +46,20 @@ repositories {
 // Source shared between one platform's versions, in mc/<platform>/<name>, as the version's `shared_sources`
 // property lists them. NeoForge's: every version (common), 26.x (common26: unobfuscated, with one Fabric API
 // surface), 26.1.2 and 26.2 (common26early: 26.3 changed the APIs that code uses), and 26.2 and 26.3
-// (common26late). Forge's are named alike.
+// (common26late). Forge's are named alike. An entry with a slash is a path from the repository root, for a folder two
+// platforms share: mc/forge-shared holds the code Forge 61 to 66 and Forge 47 both compile as it is.
 def platform = projectDir.parentFile.name
 if (!(platform in ['neoforge', 'forge', 'forge-legacy'])) {
     throw new GradleException("${projectDir} is not in a platform's folder: mc/neoforge, mc/forge or mc/forge-legacy")
 }
 ext.sharedSources = (project.shared_sources as String).split(',')*.trim().findAll { it }
-        .collect { "mc/${platform}/${it}" }
+        .collect { it.contains('/') ? it : "mc/${platform}/${it}" }
 
 sourceSets {
     loader {
         java.srcDir rootProject.file('loader/common/src/main/java')
         java.srcDir rootProject.file("loader/${platform}/src/main/java")
+        if (platform != 'neoforge') java.srcDir rootProject.file('loader/forge-shared/src/main/java')
         resources.srcDir rootProject.file("loader/${platform}/src/main/resources")
         resources.srcDir 'src/fabricated/resources'
     }
@@ -259,6 +262,28 @@ def testmodJar = tasks.register('testmodJar', Jar) {
     archiveFileName = 'fabricated-testmod.jar'
     destinationDirectory = testmodsDir
     from sourceSets.testmod.output
+}
+
+// Forge: a Fabric mod the test mod nests twice over, as a jar built for Fabric and NeoForge at once nests its libraries
+// (LambDynamicLights): in META-INF/jars, listed by fabric.mod.json and by a NeoForge jar-in-jar list. Forge's jar-in-jar
+// locator must leave it to Fabricated, which translates it (JIJ-1); the nested mod checks it loaded once.
+if (platform != 'neoforge') {
+    sourceSets {
+        testmodnested {
+            java.srcDir rootProject.file('mc/forge-shared/src/testmodnested/java')
+            resources.srcDir rootProject.file('mc/forge-shared/src/testmodnested/resources')
+            compileClasspath = sourceSets.testmod.compileClasspath
+        }
+    }
+    def nestedTestmodJar = tasks.register('nestedTestmodJar', Jar) {
+        archiveFileName = 'fabricated-forge-nested.jar'
+        destinationDirectory = layout.buildDirectory.dir('testmodnested')
+        from sourceSets.testmodnested.output
+    }
+    testmodJar.configure {
+        from(nestedTestmodJar) { into 'META-INF/jars' }
+        from(rootProject.file('mc/forge-shared/src/testmodnested/jarjar')) { into 'META-INF/jarjar' }
+    }
 }
 
 def brokenMods = [

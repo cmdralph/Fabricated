@@ -62,6 +62,9 @@ tasks.named('processResources', ProcessResources) {
     filesMatching('META-INF/mods.toml') { expand(expandProps) }
 }
 
+// --- MixinExtras for Fabric mods: nested in the in-game mod (mc/forge-mixinextras.gradle) --------------------------
+apply from: rootProject.file('mc/forge-mixinextras.gradle')
+
 // --- The language provider (docs/PORTING.md §4.1) ----------------------------------------------------------------
 // Forge loads language providers into its plugin layer, which sees neither Fabricated's discovery (the service layer)
 // nor the game: the provider is a jar of its own, nested in the Fabricated jar, and compiles against the two Forge
@@ -69,8 +72,8 @@ tasks.named('processResources', ProcessResources) {
 def pluginLayerApis = ~/(forgespi|fmlcore)-.+\.jar/
 sourceSets {
     langprovider {
-        java.srcDirs = [rootProject.file('loader/forge/src/langprovider/java')]
-        resources.srcDirs = [rootProject.file('loader/forge/src/langprovider/resources')]
+        java.srcDirs = [rootProject.file('loader/forge-shared/src/langprovider/java')]
+        resources.srcDirs = [rootProject.file('loader/forge-shared/src/langprovider/resources')]
         compileClasspath = configurations.loaderCompileClasspath.filter { it.name ==~ pluginLayerApis }
     }
 }

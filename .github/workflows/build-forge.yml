@@ -44,9 +44,15 @@ on:
       - '.github/workflows/release.yml'
       - '.github/workflows/branch-readme.yml'
   workflow_dispatch:
+    inputs:
+      extended:
+        description: Also the mod corpus on a server and a client (informational)
+        type: boolean
+        default: false
 
 env:
   GAME_RUNS: ${{ github.event_name != 'push' || github.ref_type == 'tag' }}
+  EXTENDED: ${{ github.ref_type == 'tag' || inputs.extended == true }}
 
 permissions:
   contents: read
@@ -148,6 +154,54 @@ jobs:
           if [ "${{ matrix.minecraft }}" != "1.21.11" ]; then export JAVA_HOME="$JAVA_HOME_25_X64"; export PATH="$JAVA_HOME/bin:$PATH"; fi
           forge=$(sed -n 's/^forge_version=//p' "mc/forge/${{ matrix.minecraft }}/gradle.properties")
           ci/forge/smoke-client.sh "${{ matrix.minecraft }}" "$forge" "$RUNNER_TEMP/client-fapi" "$RUNNER_TEMP/extra"
+      # Popular Fabric mods from Modrinth (ci/mod-corpus.txt, downloaded here in CI and checked against Modrinth's
+      # SHA-512) with Fabric API, as build.yml runs them on NeoForge: which load on Forge, which are disabled and why.
+      # Informational, with "extended" or on a release tag; a mod whose initializer throws is disabled, not fatal.
+      - name: Fetch the mod corpus
+        id: corpus
+        if: ${{ env.EXTENDED == 'true' && !cancelled() }}
+        continue-on-error: true
+        run: |
+          python3 ci/fetch-corpus.py "${{ matrix.minecraft }}" "$RUNNER_TEMP/corpus" | tee "$RUNNER_TEMP/corpus.txt"
+          # Left out: jars Forge refuses before Fabricated runs, which put it in its error state (LOADERR-1): JEI's Fabric
+          # build, whose module-info names packages it lacks (JEI has a Forge build).
+          rm -f "$RUNNER_TEMP"/corpus/jei-*-fabric-*.jar
+          cp "$RUNNER_TEMP/extra/fabric-api.jar" "$RUNNER_TEMP/corpus/"
+      - name: Server with the mod corpus (informational)
+        if: ${{ !cancelled() && steps.corpus.outcome == 'success' }}
+        continue-on-error: true
+        env:
+          SMOKE_ON_ENTRYPOINT_FAILURE: disable
+        run: |
+          [ "${{ matrix.minecraft }}" = "1.21.11" ] || export PATH="$JAVA_HOME_25_X64/bin:$PATH"
+          forge=$(sed -n 's/^forge_version=//p' "mc/forge/${{ matrix.minecraft }}/gradle.properties")
+          ci/forge/smoke-server.sh "${{ matrix.minecraft }}" "$forge" "$RUNNER_TEMP/server-corpus" "$RUNNER_TEMP/corpus" > "$RUNNER_TEMP/server-corpus.out" 2>&1 || true
+          ci/corpus-summary.sh "$RUNNER_TEMP/server-corpus" "server with the corpus"
+      - name: Client with the mod corpus (informational)
+        if: ${{ !cancelled() && steps.corpus.outcome == 'success' }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SMOKE_ON_ENTRYPOINT_FAILURE: disable
+        run: |
+          if [ "${{ matrix.minecraft }}" != "1.21.11" ]; then export JAVA_HOME="$JAVA_HOME_25_X64"; export PATH="$JAVA_HOME/bin:$PATH"; fi
+          forge=$(sed -n 's/^forge_version=//p' "mc/forge/${{ matrix.minecraft }}/gradle.properties")
+          SMOKE_TIMEOUT=600 ci/forge/smoke-client.sh "${{ matrix.minecraft }}" "$forge" "$RUNNER_TEMP/client-corpus" "$RUNNER_TEMP/corpus" > "$RUNNER_TEMP/client-corpus.out" 2>&1 || true
+          ci/corpus-summary.sh "$RUNNER_TEMP/client-corpus/run" "client with the corpus"
+      - name: Upload mod corpus logs and reports
+        if: ${{ !cancelled() && steps.corpus.outcome == 'success' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: corpus-forge-${{ matrix.minecraft }}
+          path: |
+            ${{ runner.temp }}/corpus.txt
+            ${{ runner.temp }}/server-corpus.out
+            ${{ runner.temp }}/server-corpus/logs
+            ${{ runner.temp }}/server-corpus/crash-reports
+            ${{ runner.temp }}/client-corpus.out
+            ${{ runner.temp }}/client-corpus/run/logs
+            ${{ runner.temp }}/client-corpus/run/crash-reports
+          if-no-files-found: ignore
       - name: Upload Fabricated jar
         uses: actions/upload-artifact@v4
         with:

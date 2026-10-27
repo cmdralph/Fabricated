@@ -34,6 +34,12 @@ cached_install "forge-legacy-server-$forge" . install_server
 echo "::endgroup::"
 
 mkdir -p mods
+# SMOKE_ON_ENTRYPOINT_FAILURE: Fabricated's onEntrypointFailure for the run ("disable" lets a corpus run go on past a
+# mod whose initializer throws); unset, the default ("error") stands, as in the gated runs.
+if [ -n "${SMOKE_ON_ENTRYPOINT_FAILURE:-}" ]; then
+	mkdir -p config
+	printf '{ "schema": 1, "onEntrypointFailure": "%s" }\n' "$SMOKE_ON_ENTRYPOINT_FAILURE" > config/fabricated.json
+fi
 cp "$root"/build/libs/fabricated-forge-*+mc"$mc".jar mods/
 cp "$root"/mc/forge-legacy/"$mc"/build/testmods/fabricated-testmod.jar mods/
 # A Fabric mod whose dependency is missing: Fabricated doesn't load it, and Forge's loading warnings name it.
@@ -259,6 +265,7 @@ check "the test mod's server entrypoint ran" "grep -q 'FABRICATED-FORGE-TEST ser
 check "the test mod's mixin applied (its Intermediary method name remapped to SRG's)" "grep -q 'FABRICATED-FORGE-TEST mixin OK' logs/latest.log 2>/dev/null"
 check "Forge took Fabricated's transformation service" "grep -q 'Fabricated transforms [1-9][0-9]* class(es) for Fabric mods before Mixin' logs/latest.log 2>/dev/null"
 check "the test mod's injected interface is on MinecraftServer (inject-interface)" "grep -q 'FABRICATED-FORGE-TEST injected interface OK' logs/latest.log 2>/dev/null"
+check "a mod nested with a NeoForge jar-in-jar list too loads once, translated: Forge's jar-in-jar locator leaves it alone (JIJ-1)" "grep -q 'FABRICATED-FORGE-TEST nested jar loaded once OK' logs/latest.log 2>/dev/null"
 check "the test mod's client-only method was stripped (@Environment)" "grep -q 'FABRICATED-FORGE-TEST environment strip OK' logs/latest.log 2>/dev/null"
 check "the Fabric main entrypoints ran in Forge's registry events" "grep -q 'Fabricated ran the Fabric main entrypoints of [1-9][0-9]* mod(s) on Forge (0 failed)' logs/latest.log 2>/dev/null"
 check "the test mod registered an item (Intermediary names remapped to SRG's)" "grep -q 'FABRICATED-FORGE-TEST registry OK' logs/latest.log 2>/dev/null"
