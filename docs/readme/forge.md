@@ -47,7 +47,8 @@ is a gate too: the client must join a singleplayer world and quit normally, and 
 
 **With the official Fabric API jar**, the server starts on all four versions and no Fabric API module is turned off. A
 client started with it reaches a world on all four too; that run is only reported for now.
-Some modules load without the mixins that Forge's code can't take.
+Some modules load without the mixins that Forge's code can't take. Fabric's use and attack callbacks need no port: a
+Fabric mod refusing a player's use or attack of an item, a block or an entity is heard, as CI checks.
 
 **Native on Forge:**
 - `fabric-api-base`.
@@ -76,8 +77,9 @@ Some modules load without the mixins that Forge's code can't take.
 
 - **Item storages in items.** A Fabric mod's item storage in an item (a backpack's) and Forge's item handler on a stack
   don't see each other yet; fluids in items do.
-- **Native modules.** Fabric API modules that need a native port on Forge's events, such as entity and interaction
-  events, pass through from the Fabric API jar, without the hooks Forge's code can't take.
+- **Native modules.** Fabric API modules that need a native port on Forge's events, such as entity events, pass
+  through from the Fabric API jar, without the hooks Forge's code can't take: on Forge 64, the one behind Fabric's
+  after-damage event.
 
 ## Installing (for testing)
 
