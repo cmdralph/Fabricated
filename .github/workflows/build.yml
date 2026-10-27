@@ -1,28 +1,12 @@
 name: Build and test
 
-# A branch with a pull request is built once, as the pull request (merged with its base): a push event too would build
-# every commit twice. Every branch holds every platform; this builds NeoForge's targets (mc/neoforge), for pushes and
-# pull requests to main. The forge and forge-legacy branches build their platform through their own workflow, for pull
-# requests to them only (owner decision D6). Changes to documentation alone build nothing (the game runs check code, not
-# prose), nor do changes to another platform's folders alone.
+# The full matrix for NeoForge's targets (mc/neoforge): every version built and its gates run on a dedicated server and a
+# client, for pull requests to main, release tags (v*) and by hand. Each push to a working branch gets the quick check
+# instead (check.yml); Forge's targets have their own workflows. A push to main is a merge whose pull request already
+# passed this, so it only builds: that keeps main's Gradle caches, which pull requests read, current. The informational
+# runs (the newest NeoForge build, other mods' Fabric builds, the mod corpora) run on release tags and by hand with
+# "extended". Changes to documentation alone build nothing, nor do changes to another platform's folders alone.
 on:
-  push:
-    branches: [main]
-    paths-ignore:
-      - 'docs/**'
-      - '**.md'
-      - 'mc/forge/**'
-      - 'mc/forge-legacy/**'
-      - 'mc/platform-forge.gradle'
-      - 'mc/platform-forge-legacy.gradle'
-      - 'loader/forge/**'
-      - 'loader/forge-legacy/**'
-      - 'ci/forge/**'
-      - 'ci/forge-legacy/**'
-      - '.github/workflows/build-forge.yml'
-      - '.github/workflows/build-forge-legacy.yml'
-      - '.github/workflows/release.yml'
-      - '.github/workflows/branch-readme.yml'
   pull_request:
     branches: [main]
     paths-ignore:
@@ -38,9 +22,38 @@ on:
       - 'ci/forge-legacy/**'
       - '.github/workflows/build-forge.yml'
       - '.github/workflows/build-forge-legacy.yml'
+      - '.github/workflows/check.yml'
+      - '.github/workflows/release.yml'
+      - '.github/workflows/branch-readme.yml'
+  push:
+    branches: [main]
+    tags: ['v*']
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
+      - 'mc/forge/**'
+      - 'mc/forge-legacy/**'
+      - 'mc/platform-forge.gradle'
+      - 'mc/platform-forge-legacy.gradle'
+      - 'loader/forge/**'
+      - 'loader/forge-legacy/**'
+      - 'ci/forge/**'
+      - 'ci/forge-legacy/**'
+      - '.github/workflows/build-forge.yml'
+      - '.github/workflows/build-forge-legacy.yml'
+      - '.github/workflows/check.yml'
       - '.github/workflows/release.yml'
       - '.github/workflows/branch-readme.yml'
   workflow_dispatch:
+    inputs:
+      extended:
+        description: Also the informational runs (newest NeoForge build, other mods' builds, the mod corpora)
+        type: boolean
+        default: false
+
+env:
+  GAME_RUNS: ${{ github.event_name != 'push' || github.ref_type == 'tag' }}
+  EXTENDED: ${{ github.ref_type == 'tag' || inputs.extended == true }}
 
 permissions:
   contents: read
@@ -131,6 +144,7 @@ jobs:
       - name: Select Java ${{ matrix.java }} for the server
         run: echo "JAVA_HOME=$JAVA_HOME_${{ matrix.java }}_X64" >> "$GITHUB_ENV" && echo "$JAVA_HOME_${{ matrix.java }}_X64/bin" >> "$GITHUB_PATH"
       - name: Server smoke test (test mods only)
+        if: ${{ env.GAME_RUNS == 'true' }}
         run: ci/neoforge/smoke-server.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/server"
       - name: Upload server logs and report
         if: ${{ !cancelled() }}
@@ -145,7 +159,7 @@ jobs:
       # NeoForge's internals change between builds of one Minecraft version, and Fabricated accepts every build of it,
       # so the test mods also boot on the newest build (informational: it can break for reasons of its own).
       - name: Server smoke test on the newest NeoForge build (informational)
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        if: ${{ env.EXTENDED == 'true' && !cancelled() && steps.build.outcome == 'success' }}
         continue-on-error: true
         run: |
           pinned="${{ matrix.neoforge }}"
@@ -161,7 +175,7 @@ jobs:
       # report, which lists every pass-through module and mixin pre-flight result. The server must start;
       # the other checks in this run are informational.
       - name: Server smoke test with Fabric API (server must start)
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        if: ${{ env.GAME_RUNS == 'true' && !cancelled() && steps.build.outcome == 'success' }}
         run: |
           mkdir -p "$RUNNER_TEMP/extra"
           curl -fsSL --retry 4 -o "$RUNNER_TEMP/extra/fabric-api.jar" \
@@ -177,7 +191,7 @@ jobs:
           cp "$RUNNER_TEMP"/energy/*.jar "$RUNNER_TEMP/extra/" 2>/dev/null || true
           ci/neoforge/smoke-server.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/server-fapi" "$RUNNER_TEMP/extra"
       - name: Energy bridge with Team Reborn's library
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        if: ${{ env.GAME_RUNS == 'true' && !cancelled() && steps.build.outcome == 'success' }}
         run: |
           # Also recorded for the summary step at the end of the log.
           if ! ls "$RUNNER_TEMP"/energy/*.jar >/dev/null 2>&1; then
@@ -204,10 +218,10 @@ jobs:
       # Client: a real NeoForge client started headlessly (Xvfb), which joins a singleplayer world.
       # 26.3+ open their window with SDL3 over EGL, which needs Mesa's EGL library (not on the runner image).
       - name: Install Mesa EGL for the client
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        if: ${{ env.GAME_RUNS == 'true' && !cancelled() && steps.build.outcome == 'success' }}
         run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends libegl1 libegl-mesa0 libgl1-mesa-dri
       - name: Client smoke test (test mods, singleplayer world)
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        if: ${{ env.GAME_RUNS == 'true' && !cancelled() && steps.build.outcome == 'success' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -227,7 +241,7 @@ jobs:
       # The same client with the official Fabric API jar: shows which client-side modules load and whether the game
       # still reaches a world. Informational until every client module is accounted for.
       - name: Client smoke test with Fabric API (informational)
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        if: ${{ env.GAME_RUNS == 'true' && !cancelled() && steps.build.outcome == 'success' }}
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
@@ -242,7 +256,7 @@ jobs:
       # A Fabric model (its own emitQuads) must be drawn in the world: Fabricated sends it through Fabric's renderer when
       # its chunk section is meshed. This check is a gate, unlike the run above.
       - name: Fabric renderer API and model formats (26.x)
-        if: ${{ !cancelled() && steps.build.outcome == 'success' && startsWith(matrix.minecraft, '26.') }}
+        if: ${{ env.GAME_RUNS == 'true' && !cancelled() && steps.build.outcome == 'success' && startsWith(matrix.minecraft, '26.') }}
         run: |
           log="$RUNNER_TEMP/client-fapi/run/logs/latest.log"
           failed=0
@@ -276,7 +290,7 @@ jobs:
       # layer, one added last), a screen's init and draw events fired (the draw event from NeoForge's screen render
       # events) and its client commands registered on joining the world. A gate.
       - name: Fabric API client modules (26.x)
-        if: ${{ !cancelled() && steps.build.outcome == 'success' && startsWith(matrix.minecraft, '26.') }}
+        if: ${{ env.GAME_RUNS == 'true' && !cancelled() && steps.build.outcome == 'success' && startsWith(matrix.minecraft, '26.') }}
         run: |
           log="$RUNNER_TEMP/client-fapi/run/logs/latest.log"
           failed=0
@@ -303,7 +317,7 @@ jobs:
       # mod's Fabric deserializer, the baked extra models reach the model manager (CORPUS-6), and Fabric block models,
       # alone and inside a vanilla multipart model, are meshed into chunk sections. A gate.
       - name: Fabric model loading and renderer APIs (1.21.11)
-        if: ${{ !cancelled() && steps.build.outcome == 'success' && matrix.minecraft == '1.21.11' }}
+        if: ${{ env.GAME_RUNS == 'true' && !cancelled() && steps.build.outcome == 'success' && matrix.minecraft == '1.21.11' }}
         run: |
           log="$RUNNER_TEMP/client-fapi/run/logs/latest.log"
           failed=0
@@ -332,7 +346,7 @@ jobs:
       # one: Fabricated registers Indigo once the client initializers ran, and Sodium draws a Fabric block model from the
       # parts Fabricated makes from its quads. Informational until it has passed.
       - name: Client with Sodium for NeoForge (informational, 1.21.11)
-        if: ${{ !cancelled() && steps.build.outcome == 'success' && matrix.minecraft == '1.21.11' }}
+        if: ${{ env.EXTENDED == 'true' && !cancelled() && steps.build.outcome == 'success' && matrix.minecraft == '1.21.11' }}
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
@@ -365,7 +379,7 @@ jobs:
       # mod for Fabric's renderer API: Sodium meshes the world through its own Fabric renderer, which must draw Fabric
       # models, and Fabric API's default renderer must stand down for it.
       - name: Client smoke test with Sodium and Iris for NeoForge (26.x)
-        if: ${{ !cancelled() && steps.build.outcome == 'success' && startsWith(matrix.minecraft, '26.') }}
+        if: ${{ env.GAME_RUNS == 'true' && !cancelled() && steps.build.outcome == 'success' && startsWith(matrix.minecraft, '26.') }}
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
@@ -376,7 +390,7 @@ jobs:
           SMOKE_TIMEOUT=480 ci/neoforge/smoke-client.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/client-sodium" "$RUNNER_TEMP/extra-sodium" || true
           grep -A200 "== " "$RUNNER_TEMP/client-sodium/run/logs/fabric-bridge-report.txt" || true
       - name: Fabric models under Sodium (26.x)
-        if: ${{ !cancelled() && steps.build.outcome == 'success' && startsWith(matrix.minecraft, '26.') }}
+        if: ${{ env.GAME_RUNS == 'true' && !cancelled() && steps.build.outcome == 'success' && startsWith(matrix.minecraft, '26.') }}
         env:
           MC: ${{ matrix.minecraft }}
         run: |
@@ -406,7 +420,7 @@ jobs:
       # The same mods with a shader pack (ci/neoforge/smoke-client.sh writes a minimal one): Iris's pipeline, with its extended
       # vertex format, under the Fabric models Sodium's Fabric renderer meshes. Informational until it has passed.
       - name: Client with Sodium, Iris and a shader pack (informational, 26.x)
-        if: ${{ !cancelled() && steps.build.outcome == 'success' && startsWith(matrix.minecraft, '26.') }}
+        if: ${{ env.EXTENDED == 'true' && !cancelled() && steps.build.outcome == 'success' && startsWith(matrix.minecraft, '26.') }}
         continue-on-error: true
         run: |
           if ! ls "$RUNNER_TEMP"/extra-sodium/iris*.jar >/dev/null 2>&1; then
@@ -418,7 +432,7 @@ jobs:
       # The Fabric builds of Sodium and Iris, loaded on request (loadUnsupported) with Fabric API and the renderer API
       # test mod: informational, it records what breaks for the rendering-pipeline track (docs/roadmap.md).
       - name: Client with the Fabric builds of Sodium and Iris (informational, 26.x)
-        if: ${{ !cancelled() && steps.build.outcome == 'success' && startsWith(matrix.minecraft, '26.') }}
+        if: ${{ env.EXTENDED == 'true' && !cancelled() && steps.build.outcome == 'success' && startsWith(matrix.minecraft, '26.') }}
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
@@ -434,7 +448,7 @@ jobs:
       # mixins into Sodium are checked against Sodium for NeoForge's classes (R3), and they use Sodium's API from its
       # NeoForge build. The Fabric build of Sodium they depend on is skipped for the NeoForge one. Informational.
       - name: Client with Sodium for NeoForge and Fabric Sodium addons (informational, 26.x)
-        if: ${{ !cancelled() && steps.build.outcome == 'success' && startsWith(matrix.minecraft, '26.') }}
+        if: ${{ env.EXTENDED == 'true' && !cancelled() && steps.build.outcome == 'success' && startsWith(matrix.minecraft, '26.') }}
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
@@ -471,7 +485,7 @@ jobs:
       # The Fabric-only Polyfrost stack (OneConfig, PolyPlus): no NeoForge build exists, so Fabricated is its only way
       # to NeoForge. Modrinth slugs and builds per version are UNVERIFIED; a missing one is reported and skipped.
       - name: Client with OneConfig and PolyPlus (informational)
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        if: ${{ env.EXTENDED == 'true' && !cancelled() && steps.build.outcome == 'success' }}
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
@@ -502,7 +516,7 @@ jobs:
       # mod's plugins declared the Fabric way (as entrypoints, and WTHIT's plugin file): each must construct and call
       # its plugin.
       - name: Plugins for the NeoForge builds of other mods
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        if: ${{ env.GAME_RUNS == 'true' && !cancelled() && steps.build.outcome == 'success' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -534,7 +548,7 @@ jobs:
       # SHA-512), loaded together with Fabric API: shows which load, which are disabled and why. Informational.
       - name: Fetch the mod corpus
         id: corpus
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        if: ${{ env.EXTENDED == 'true' && !cancelled() && steps.build.outcome == 'success' }}
         continue-on-error: true
         run: |
           python3 ci/fetch-corpus.py "${{ matrix.minecraft }}" "$RUNNER_TEMP/corpus" | tee "$RUNNER_TEMP/corpus.txt"
@@ -585,7 +599,7 @@ jobs:
       # the main corpus did.
       - name: Fetch the advanced mod corpus
         id: advanced
-        if: ${{ !cancelled() }}
+        if: ${{ env.EXTENDED == 'true' && !cancelled() }}
         continue-on-error: true
         run: |
           python3 ci/fetch-corpus.py "${{ matrix.minecraft }}" "$RUNNER_TEMP/advanced" fabric $(sed -e '/^#/d' -e '/^$/d' ci/mod-corpus-advanced.txt) \
