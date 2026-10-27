@@ -273,6 +273,10 @@ check "Forge's loading warnings name the Fabric mod that wasn't loaded" "grep -q
 check "an access widener leaves a field private that Forge's coremod reads through a getter: the test mod's BucketItem fluid (PLAT-4)" "grep -q 'BucketItem.f_40687_ must stay private on Forge' logs/fabric-bridge-report.txt 2>/dev/null && ! grep -qs 'field_to_method.js function bucketitem' logs/latest.log server.out"
 check "two Fabric mods that depend on each other load, one ordering of their cycle left out (ORDER-1)" "grep -q 'fabricated_cycle_b doesn.t load after fabricated_cycle_a' logs/fabric-bridge-report.txt 2>/dev/null"
 check "Fabricated's report names Forge as the loader" "grep -q '^  Forge: ' logs/fabric-bridge-report.txt 2>/dev/null && ! grep -q '^  NeoForge: ' logs/fabric-bridge-report.txt 2>/dev/null"
+check "the test mod's @Inject at a call in Commands' constructor ran, which Forge 47's Mixin takes only at a return (CTOR-4)" "grep -q 'FABRICATED-FORGE-TEST constructor hook OK' logs/latest.log 2>/dev/null"
+if [ -n "$extra" ]; then
+	check "fabric-command-api-v2 (with Fabric API): a command registered through CommandRegistrationCallback is in the server's dispatcher, its hook into Commands' constructor applied (CTOR-4)" "grep -q 'FABRICATED-FORGE-TEST Fabric command registered OK' logs/latest.log 2>/dev/null"
+fi
 check "vanilla's check of the built-in registries, which Fabric API moves to the server's start, passes over Forge's empty registries (REG-6)" "! grep -qs 'was empty after loading' logs/latest.log server.out"
 
 echo "Server status: $status"
