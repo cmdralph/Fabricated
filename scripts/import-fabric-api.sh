@@ -44,9 +44,13 @@ done
 git -C "$work/fabric" sparse-checkout set --no-cone "${patterns[@]}"
 git -C "$work/fabric" checkout --quiet
 
-# The sources as upstream writes them, then (with --yarn) migrated into $dest.
+# The sources as upstream writes them, then (with --yarn) migrated into $dest. keep.txt lists the files that go to $dest:
+# a ":api" module's public API only. With --yarn, its other sources are migrated too, so the names its API uses from
+# them (an accessor mixin's methods, which the migration renames after their fields) change with them.
 imported="$work/imported"
+keep="$work/keep.txt"
 mkdir -p "$imported"
+: > "$keep"
 for spec in "$@"; do
 	module="${spec%%:api}"
 	found=0
@@ -54,15 +58,19 @@ for spec in "$@"; do
 		src="$work/fabric/$module/src/$part/java"
 		[ -d "$src" ] || continue
 		if [ "$spec" != "$module" ]; then
-			if [ -d "$src/net/fabricmc/fabric/api" ]; then
+			[ -d "$src/net/fabricmc/fabric/api" ] || continue
+			(cd "$src" && find net/fabricmc/fabric/api -type f) >> "$keep"
+			if [ -n "$yarn" ]; then
+				cp -R "$src/." "$imported/"
+			else
 				mkdir -p "$imported/net/fabricmc/fabric/api"
 				cp -R "$src/net/fabricmc/fabric/api/." "$imported/net/fabricmc/fabric/api/"
-				found=1
 			fi
 		else
+			(cd "$src" && find . -type f | sed 's|^\./||') >> "$keep"
 			cp -R "$src/." "$imported/"
-			found=1
 		fi
+		found=1
 	done
 	if [ "$found" -eq 0 ]; then
 		echo "module $module not found at $tag" >&2
@@ -102,7 +110,7 @@ if [ -n "$yarn" ]; then
 fi
 
 mkdir -p "$dest/java"
-cp -R "$imported/." "$dest/java/"
+tar -C "$imported" -cf - -T "$keep" | tar -C "$dest/java" -xf -
 
 # Files Fabricated had to adapt (e.g. an API default method relying on a module it doesn't provide) live in
 # <destination>-overrides/java and replace the imported copies.
