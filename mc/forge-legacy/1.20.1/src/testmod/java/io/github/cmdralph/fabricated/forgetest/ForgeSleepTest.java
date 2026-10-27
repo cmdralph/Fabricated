@@ -5,6 +5,9 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
+import com.mojang.datafixers.util.Either;
+
+import net.fabricmc.fabric.api.entity.FakePlayer;
 import net.fabricmc.fabric.api.entity.event.v1.EntitySleepEvents;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.class_1269;
@@ -21,7 +24,9 @@ import net.minecraft.class_3218;
  * occupation event must fire both times, and the stand's bed orientation ({@code method_18401}) must be the one the
  * {@code MODIFY_SLEEPING_DIRECTION} listener gives (SLEEP-1). As it wakes up, upstream's hooks into {@code stopSleeping}'s
  * lambda stand a bed in for the hay block, which Forge 47's patched class names otherwise than vanilla's SRG name
- * (LAMBDA-6).
+ * (LAMBDA-6). Then a fake player goes to sleep on the same block ({@code method_7269}) in the daytime, which an
+ * {@code ALLOW_SLEEP_TIME} listener allows: it must be asked, where Forge 47 asks its own sleep time event, and the
+ * game must let the player sleep (SLEEP-2). Fabric's fake players never lie down, so the game's answer is the check.
  */
 public final class ForgeSleepTest {
 	private static final Set<String> SEEN = ConcurrentHashMap.newKeySet();
@@ -48,6 +53,11 @@ public final class ForgeSleepTest {
 		EntitySleepEvents.STOP_SLEEPING.register((entity, sleepingPos) -> {
 			if (sleepingPos.equals(bed)) SEEN.add("stop");
 		});
+		EntitySleepEvents.ALLOW_SLEEP_TIME.register((player, sleepingPos, vanillaResult) -> {
+			if (!(player instanceof FakePlayer) || !sleepingPos.equals(bed)) return class_1269.field_5811;
+			SEEN.add("sleep time");
+			return class_1269.field_5812;
+		});
 	}
 
 	/** At the first server tick, on the overworld. */
@@ -67,6 +77,11 @@ public final class ForgeSleepTest {
 		for (String event : List.of("start", "occupied", "stop", "unoccupied")) {
 			if (!SEEN.contains(event)) failed.add("no " + event + " event");
 		}
+		FakePlayer player = FakePlayer.get(level);
+		player.method_5808(pos.method_10263() + 1.5, pos.method_10264() + 1, pos.method_10260() + 0.5, 0, 0);
+		Either<?, ?> slept = player.method_7269(pos);
+		if (slept.right().isEmpty()) failed.add("the game didn't let the fake player sleep at the time ALLOW_SLEEP_TIME allows: " + slept);
+		if (!SEEN.contains("sleep time")) failed.add("ALLOW_SLEEP_TIME wasn't asked as the fake player tried to sleep");
 		level.method_8652(pos, class_2246.field_10124.method_9564(), 3);
 		if (failed.isEmpty()) {
 			ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST sleep events OK");
