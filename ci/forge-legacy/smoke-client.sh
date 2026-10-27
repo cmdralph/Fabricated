@@ -150,6 +150,7 @@ else
 fi
 check "FABRICATED-FORGE-TEST constructor hook OK" "the test mod's @Inject at a call in Commands' constructor ran, which Forge 47's Mixin takes only at a return (CTOR-4)"
 if [ -n "$extra" ]; then
+	check "FABRICATED-FORGE-TEST networking round trip OK" "fabric-networking-api-v1 (with Fabric API): a ping the client sends on a channel as it joins comes back from the integrated server with the server's answer"
 	check "FABRICATED-FORGE-TEST Fabric command registered OK" "fabric-command-api-v2 (with Fabric API): a command registered through CommandRegistrationCallback is in the integrated server's dispatcher (CTOR-4)"
 	check "FABRICATED-FORGE-TEST colour providers OK" "fabric-rendering-v1 (with Fabric API): its colour provider registry finds grass's provider in Forge's block colours, and none for stone (COLOR-1)"
 fi
