@@ -17,7 +17,6 @@ import io.github.cmdralph.fabricated.core.Pipeline;
 import io.github.cmdralph.fabricated.core.api.FabricatedApiImpl;
 import io.github.cmdralph.fabricated.core.accesswidener.AccessWidenerFile.InjectedInterface;
 import io.github.cmdralph.fabricated.core.config.FabricatedConfig;
-import io.github.cmdralph.fabricated.core.mixin.RestoredFields;
 import io.github.cmdralph.fabricated.core.report.Report;
 import io.github.cmdralph.fabricated.core.runtime.FabricLoaderRuntime;
 import io.github.cmdralph.fabricated.core.runtime.ModContainerImpl;
@@ -115,11 +114,6 @@ public final class FabricatedState {
 	/** Game methods Fabric mods override that the platform made final (name and descriptor), by class (FINAL-2). */
 	public Map<String, Set<String>> overridableMethods() {
 		return result.overridableMethods();
-	}
-
-	/** Fields Fabricated's own mixins restore, to declare before Mixin, by class (COLOR-1; empty where Mixin finds them). */
-	public Map<String, List<RestoredFields.Field>> fieldsBeforeMixin() {
-		return result.fieldsBeforeMixin();
 	}
 
 	/** Writes {@code logs/fabric-bridge-report.txt}; failures are logged, never thrown. */

@@ -33,10 +33,7 @@ def gameModMixins = [
         // the loot tables' events from the loot data manager's apply.
         'fabricated-loot.mixins.json',
         // Native fabric-dimensions-v1's: upstream's teleport target hook, and its End hook on Forge's teleporter.
-        'fabricated-dimension.mixins.json',
-        // Vanilla's maps of block and item colour providers by id, which Forge replaced and Fabric API's colour
-        // provider registry reads (fabric-rendering-v1).
-        'fabricated-forge-color.mixins.json']
+        'fabricated-dimension.mixins.json']
 dependencies {
     annotationProcessor "org.spongepowered:mixin:${project.mixin_processor_version}:processor"
     // The in-game mod's own mixins use MixinExtras' injectors, which the nested mixinextras-forge (below) provides. Its

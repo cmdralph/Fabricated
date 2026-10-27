@@ -53,19 +53,16 @@ public final class MixinCompat {
 	 * and whether they know a method's arguments by their names where a {@code @ModifyVariable} takes arguments only (ARGS-1:
 	 * {@code LocalVariableDiscriminator.Context} names them {@code arg} and their slot; Fabric's Mixin takes their names
 	 * from 0.17.0). All three rebind a detached mixin's calls to an interface's super method (SUPER-1:
-	 * {@code MixinTargetContext.updateStaticBinding}, which Fabric's Mixin stopped doing for interfaces in 0.15.0), and
-	 * look for a {@code @Shadow} field among the target's own fields only (COLOR-1: {@code MixinApplicatorStandard.apply}
-	 * attaches every mixin of a class, finding its shadows, before it applies any, which is when a mixin adds its fields;
-	 * Fabric's Mixin also looks among the fields of the mixins attached before, read in its 0.17.5 source).
+	 * {@code MixinTargetContext.updateStaticBinding}, which Fabric's Mixin stopped doing for interfaces in 0.15.0).
 	 */
 	private record Upstream(int lastLevel, boolean interfaceInjectors, ConstructorInjects constructorInjects, boolean argumentNames,
-			boolean rebindsInterfaceSuperCalls, boolean shadowsMissAddedFields) {
+			boolean rebindsInterfaceSuperCalls) {
 	}
 
 	private static final Map<String, Upstream> UPSTREAM = Map.of(
-			"0.8.5", new Upstream(18, false, ConstructorInjects.RETURNS_ONLY, false, true, true),
-			"0.8.6", new Upstream(21, true, ConstructorInjects.UNSAFE_POINTS, false, true, true),
-			"0.8.7", new Upstream(21, true, ConstructorInjects.UNSAFE_POINTS, false, true, true));
+			"0.8.5", new Upstream(18, false, ConstructorInjects.RETURNS_ONLY, false, true),
+			"0.8.6", new Upstream(21, true, ConstructorInjects.UNSAFE_POINTS, false, true),
+			"0.8.7", new Upstream(21, true, ConstructorInjects.UNSAFE_POINTS, false, true));
 	private static final Pattern LEVEL = Pattern.compile("JAVA_(\\d{1,3})");
 
 	private MixinCompat() {
@@ -163,16 +160,6 @@ public final class MixinCompat {
 	public static boolean rebindsInterfaceSuperCalls(String runtimeMixinVersion) {
 		Upstream upstream = upstream(runtimeMixinVersion);
 		return upstream != null && upstream.rebindsInterfaceSuperCalls();
-	}
-
-	/**
-	 * Whether the running Mixin misses a {@code @Shadow} field that another mixin adds to the class (COLOR-1):
-	 * SpongePowered's releases do, so the platform's loader declares the fields Fabricated's own mixins restore before
-	 * Mixin runs. False for a version not known here.
-	 */
-	public static boolean shadowsMissAddedFields(String runtimeMixinVersion) {
-		Upstream upstream = upstream(runtimeMixinVersion);
-		return upstream != null && upstream.shadowsMissAddedFields();
 	}
 
 	/**
