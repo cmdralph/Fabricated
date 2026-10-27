@@ -33,6 +33,16 @@
       ],
       "reason": "Forge 47 loads the data pack registries from its own list, which upstream's mixin replaced with vanilla's and the Fabric mods', losing Forge's biome and structure modifiers: Fabricated adds the Fabric mods' dynamic registries to Forge's list instead."
     },
+    "fabric-rendering-v1": {
+      "plan": "passthrough",
+      "skipMixins": [
+        "fabric-rendering-v1.mixins.json:BlockColorsMixin#get",
+        "fabric-rendering-v1.mixins.json:BlockColorsMixin#f_92571_",
+        "fabric-rendering-v1.mixins.json:ItemColorsMixin#get",
+        "fabric-rendering-v1.mixins.json:ItemColorsMixin#f_92674_"
+      ],
+      "reason": "Forge 47 keeps block and item colour providers in maps by registry holder under the names of vanilla's IdMappers by id, which upstream's colour provider lookups shadow (in SRG's names here): Fabricated's in-game mod looks providers up in Forge's maps instead of upstream's methods (COLOR-1)."
+    },
     "fabric-tag-api-v1": {
       "plan": "passthrough",
       "skipMixins": [
