@@ -51,9 +51,10 @@ dependencies {
 
 // Pass-through Fabric API modules the in-game mod and the test mod call (mc.gradle compiles 26.x against their jars,
 // 1.21.11 against src/fabricapistubs): the interaction events module, whose block break events Forge's block breaking
-// fires through the in-game mod (BREAK-1), and the entity events module, whose sleep events Forge's bed handling fires
-// through it (SLEEP-1).
-ext.passThroughCompileModules = ['fabric-events-interaction-v0', 'fabric-entity-events-v1']
+// fires through the in-game mod (BREAK-1), the entity events module, whose sleep events Forge's bed handling fires
+// through it (SLEEP-1), and the transfer and lookup modules, whose storages the in-game mod bridges to Forge's
+// capabilities (TransferBridge).
+ext.passThroughCompileModules = ['fabric-events-interaction-v0', 'fabric-entity-events-v1', 'fabric-transfer-api-v1', 'fabric-api-lookup-api-v1']
 
 expandProps.forge_version_range = project.forge_version_range
 
