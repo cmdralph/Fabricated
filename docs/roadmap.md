@@ -44,11 +44,69 @@ needs to know of a platform is its `PlatformDescriptor`. NeoForge is the support
    CI-1 and PLAT-4 were fixed. The Forge clients' runs held on every
    version before they reached a pull request, so they went in as gates.
 
+## Rethink, 2026-10-27: the design against its four goals
+
+Fabricated is meant to run Fabric mods on NeoForge and Forge faster, lighter, more stably and more securely than
+Sinytra Connector. This pass checked the design and the way it is worked on against those four goals, for drift,
+over-engineering and dead ends, without redesigning what holds.
+
+- **Light** (no dependency but Fabric API's jar, translation cached): holds. The engine has no runtime dependency and
+  a jar is translated once, keyed by its content and what it was checked against. The drift is in the process: three
+  pull requests and three CI runs for every change, and one fact written into five documents.
+- **Robust** (a broken mod is isolated, the game never crashes for it): holds, and most of the work went here.
+  Pre-flight leaves out the hooks a platform's code can't take and disables a mod only when its own code depends on
+  them (LEAVE-1). The risk is growth: `MixinPreflight` and its repair families gain a case with most findings (ARCH-1,
+  task 4).
+- **Safe** (jars are untrusted, no network, no telemetry): holds (`SafeArchive`, SEC-1 to SEC-5; only CI downloads
+  mods). No change.
+- **Fast** (startup and runtime): the cache makes a second start cheap, but the first start and the hot paths are not
+  measured (PERF-1, PERF-2). No speed work until a measurement says where.
+
+What changes, and why:
+
+1. **One pull request per task, into `main`**, instead of one per release branch and pass. The three branches hold the
+   same tree, so their three pull requests checked the same code three times. `forge` and `forge-legacy` get the head
+   at a release, for their README and their jars.
+2. **CI in two tiers.** A quick check on each push (`check.yml`: the unit tests, and one version of each platform the
+   push changed booted on a server); the full matrix on the task's pull request, on release tags and by hand. The
+   informational runs (the corpora, other mods' Fabric builds, the newest NeoForge build) wait for `extended`: their
+   results move slowly and matter at a release. On `main`'s run 40518340743 a NeoForge job took 16 to 25 minutes, the
+   gates about seven of them. A push to `main` only builds, so `main`'s Gradle caches stay current for pull requests,
+   and a job installs the game once for all its runs.
+3. **Local verification first.** The container reaches the game's mavens (an older note here said it couldn't), so a
+   version's jars, its test mods and a server smoke run locally before a push. NeoForge 26.2 and 26.3 are the
+   exception (*Unverified and blockers*).
+4. **Forge parity through Fabric API's own modules and targeted bridges**, not ports of NeoForge's native modules.
+   Upstream's modules load on Forge; where Forge's patched code doesn't take one of their hooks, the in-game mod fires
+   the event from Forge's code (BREAK-1, SLEEP-1, SLEEP-2, DAMAGE-1). That costs less and keeps the platform folders
+   thin. Task 2 continues this, and code a second platform needs moves to `mc/forge/common` or the engine.
+5. **Test stand-ins only for what a check calls.** 1.21.11's Fabric API stand-ins and 1.20.1's Intermediary-named
+   stubs grow by the members a check uses, no more.
+6. **Documentation per task, not per change:** one CHANGELOG entry per task; this file and the parity table change
+   when a row moves.
+
+Unchanged: the engine and platform split, the platform descriptor, the cache, the security model. Noted and out of
+this pass's scope: the stale remote branches `claude/forge` and `claude/forge-legacy` (deleting them is the owner's
+call, at the cleanup), and cache eviction under GitHub's 10 GB limit, as each of `main`'s jobs saves a Gradle entry of
+about 750 MB (to watch on the first runs).
+
 ## Next release: v0.5.0
 
 v0.4.0-alpha (`releases/v0.4.0-alpha.md`) shipped NeoForge's four versions and the Forge builds as server previews.
 v0.5.0 is where the Forge targets get Fabric mods' client side and the platforms' coverage becomes comparable, with no
 regression on NeoForge. Each item is done when its CI check is; the tracks below hold the detail.
+
+The owner's plan to v0.5.0-alpha, in order (2026-10-27):
+
+1. Rethink the design and make CI cheaper (above). Done once its pull request's full matrix is green.
+2. Faster Forge development: Forge 61 to 66 and Forge 47 nearer NeoForge's coverage, first where the most Fabric mods
+   are blocked, sharing code through the engine so the platform folders stay thin.
+3. Minecraft 1.21.1: NeoForge 21.1 first, then Forge if it fits cleanly, on 1.21.11's Intermediary path, in the CI
+   matrix with the same test mods.
+4. Cleanup, once: dead code, duplicated logic, stale workarounds, unused configuration, outdated documents, the module
+   and package structure (ARCH-1), with the public API kept or its breaks documented.
+5. Release v0.5.0-alpha: documents and versions, the full matrix green on every branch and version, the tag and notes
+   for NeoForge, Forge and Forge 47 (a draft for the owner to publish).
 
 | Platform | Goals | Status |
 |---|---|---|
@@ -56,7 +114,7 @@ regression on NeoForge. Each item is done when its CI check is; the tracks below
 | All | Each Fabric API module's status on every platform in `COMPATIBILITY.md`, so the platforms can be compared. | Done: the Forge table (*Fabric API modules on Forge*) is the more limited of the server and client runs with Fabric API on every version |
 | All | The engine's platform facts from the platform: the fields its coremods keep private (PLAT-4). | Done (PLAT-4, checked on all five Forge versions) |
 | NeoForge (`main`) | The open corpus findings (below) that a generic fix covers. `preLaunch` right after FML's mixin bootstrap (*Loader and translation*, next). ARCH-1: pre-flight's repair families out of `MixinPreflight`, with no change in behaviour. | Open |
-| Forge 61 to 66 (`forge`) | Fabric mods' client entrypoints and a client run in CI. Entity and interaction events native on Forge's events, as `main` has them on NeoForge's (F4). The server runs made gates once their checks hold on every version. | Server runs gated (with Fabric API too); client entrypoints done, with a gated client run (REG-5 fixed on the way); interaction events checked, with no bridge needed; entity events open where Forge 64's damage code and Brigadier don't take upstream's hooks |
+| Forge 61 to 66 (`forge`) | Fabric mods' client entrypoints and a client run in CI. Entity and interaction events native on Forge's events, as `main` has them on NeoForge's (F4). The server runs made gates once their checks hold on every version. | Server runs gated (with Fabric API too); client entrypoints done, with a gated client run (REG-5 fixed on the way); interaction events checked, with no bridge needed; entity events bridged where Forge's code doesn't take upstream's hooks (DAMAGE-1), but for the effect events' hook into Brigadier |
 | Forge 47 (`forge-legacy`) | Fabric's networking through Forge 47's network stack and its storages on Forge 47's capabilities, then client entrypoints and a client run in CI (L4, `PORTING.md` §7). | Client entrypoints done, with a gated client run; networking checked (upstream's module carries a channel's packets both ways, no `SimpleChannel` port needed); storages on blocks and fluid storages in items bridged to Forge 47's capabilities, checked |
 
 ## Tracks
@@ -75,7 +133,7 @@ each Fabric API module's status per platform in [`COMPATIBILITY.md`](COMPATIBILI
 | Mixins (pre-flight, its repairs, hooks left out), access wideners, injected interfaces, `@Environment` stripping | yes | yes | yes, with MixinExtras nested in the in-game mod, which also carries Fabric mods' hooks at a call in a constructor (CTOR-4); hooks into lambdas of the classes Forge patched found by vanilla's SRG names (LAMBDA-6), and bridged where Forge's patch made them take `this` or reordered their values (LAMBDA-7) |
 | Official Fabric API jar | every module loads, server and client | every module loads, server and client | every module loads, server and client |
 | Native Fabric API modules | 17 | 2 (`fabric-api-base`, `fabric-loot-api-v3`) | 6 (`fabric-api-base`, biome, both loot modules, dimensions, particles) |
-| Bridges to the platform | fluid types, storages and energy with capabilities, plugins of other mods, custom values, renderer API | fluid types, storages with capabilities (on blocks, fluids in items), tags' `fabric:remove`, default attributes (Forge 64 to 66), advancement events (Forge 65 and 66), block break and sleep events (BREAK-1, SLEEP-1) | fluid types, storages with capabilities (on blocks, fluids in items), tags' `fabric:remove`, block break and sleep events (BREAK-1, SLEEP-1, SLEEP-2) |
+| Bridges to the platform | fluid types, storages and energy with capabilities, plugins of other mods, custom values, renderer API | fluid types, storages with capabilities (on blocks, fluids in items), tags' `fabric:remove`, default attributes (Forge 64 to 66), advancement events (Forge 65 and 66), block break, sleep and after-damage events (BREAK-1, SLEEP-1, DAMAGE-1) | fluid types, storages with capabilities (on blocks, fluids in items), tags' `fabric:remove`, block break and sleep events (BREAK-1, SLEEP-1, SLEEP-2) |
 | Networking | native, on NeoForge's payloads | upstream's module: a payload round trip with the integrated server (checked with Fabric API) | upstream's module: a channel round trip with the integrated server (checked with Fabric API) |
 | Rendering (renderer API, models, Sodium and Iris for NeoForge) | yes | upstream's modules: Indigo builds chunk sections on all four (SUPER-1, LOCAL-4), Fabric's colour providers are read from Forge's map (COLOR-1), and Fabric's block dust tint event is asked where Forge 61 decides the tint (PART-2) | upstream's renderer API, Indigo, `fabric-rendering-v1` and model loading load, with Fabric's colour providers read from Forge's maps (COLOR-1), model loading's constructor hook wrapped (CTOR-4) and its before-bake hook moved to the overload Forge's code went to (MODEL-3); particles Fabricated's own, on Forge's particle engine (PART-1) |
 | CI | server and client runs gated, and checks in the Fabric API runs; corpus runs informational | both server runs and the client run with the test mod gated; the client run with Fabric API informational | both server runs and the client run with the test mod gated; the client run with Fabric API informational |
@@ -83,11 +141,11 @@ each Fabric API module's status per platform in [`COMPATIBILITY.md`](COMPATIBILI
 
 - **`main`:** NeoForge for 1.21.11, 26.1.2, 26.2 and 26.3, every line stable (NeoForge tagged `26.3.0-stable`; CI
   pins 26.3.0.95 and no version is experimental any more).
-- **Next** (the v0.5.0 table above): on `forge`, the rest of the entity events' hooks Forge's code doesn't take, the
-  damage event's on Forge 64 (`ServerLivingEntityEvents.AFTER_DAMAGE`) and the effect events' hook into Brigadier,
-  which Forge loads without mixins (block breaking and beds are bridged since BREAK-1 and SLEEP-1, and the use and
-  attack callbacks need no bridge); on both, item storages in items (a backpack's) with Forge's item handlers on
-  stacks, and the client run with the Fabric API jar made a gate once it has held for a while.
+- **Next** (the v0.5.0 table above): on `forge`, the last entity events' hook Forge's code doesn't take, the effect
+  events' hook into Brigadier, which Forge loads without mixins (block breaking, beds and the after-damage event are
+  bridged since BREAK-1, SLEEP-1 and DAMAGE-1, and the use and attack callbacks need no bridge); on both, item storages
+  in items (a backpack's) with Forge's item handlers on stacks, and the client run with the Fabric API jar made a gate
+  once it has held for a while.
 - **Decided** (`RESEARCH.md` §8): Forge 47.4 for 1.20.1, the shared modules kept loadable on Java 17, ForgeGradle for
   modern Forge, CI for pull requests only. L1, the behaviour-neutral seams on `main`: Java 17 for the shared modules
   (their main code compiles at release 17), the loader split (`loader/common`, `loader/neoforge`), the build split
@@ -288,6 +346,9 @@ NeoForge already cover those users.
   overhead, drift from the design): SEC-1 to SEC-4, CACHE-1, CACHE-2, BRIDGE-1 and BRIDGE-2 fixed, SEC-5, PERF-1,
   PERF-2, CACHE-3 and ARCH-1 open; the design documents corrected where the code had moved on. CI no longer runs the
   game matrix for a change to documentation alone, and each job has a time limit.
+- **Done (2026-10-27):** CI in two tiers: a quick check on each push, the full matrix on pull requests to `main`,
+  release tags and by hand, the informational runs with `extended`; a push to `main` only builds; a job installs the
+  game once for all its runs (*Rethink*, item 2).
 - **Next:** the gates listed in the rendering-pipeline plan; checks for what the corpus mods do in the world.
 
 ## Findings
@@ -359,8 +420,10 @@ open (see *Unverified and blockers*).
 
 ## Unverified and blockers
 
-- **The local sandbox can't build the Minecraft modules** (`maven.neoforged.net`, Mojang and `maven.fabricmc.net`
-  are blocked), so everything game-facing is verified only in CI.
+- **NeoForge 26.2 and 26.3 don't build locally**: NeoForge's source transformer (JST 2.0.10) never applies an access
+  transformer line to an anonymous class, here NeoForge's own `HolderSet$1 contents()`, and recompiling the game fails
+  (26.1.2 makes the method public with a source patch instead). CI builds both from the same inputs; why it differs is
+  UNVERIFIED. Locally, verify on 1.21.11 or 26.1.2, and let the quick check build 26.2 and 26.3.
 - **Renderer API gate: passes** on 26.1.2, 26.2 and 26.3 (runs 236 and 237), and on 1.21.11 for chunk sections (runs
   365 and 366). On 26.3 the log shows the pre-flight
   moving `ModelBakeryMixin#onReturnInit` to NeoForge's constructor, then `frapi emitQuads called (level

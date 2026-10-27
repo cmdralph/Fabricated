@@ -340,10 +340,10 @@ the abstractions below are added when the branch work starts (owner decision D2 
    FRAPI test mod's folder on the first shared folder that has one. Checked behaviour-neutral by printing every
    version project's source sets, declared dependencies and placeholders before and after: only the loader's
    folders differ.
-4. **CI per branch** (the trigger part done): `build.yml` builds pull requests to `main` only, so a branch's pull
-   requests run the branch's own workflow (D6). Still to do, when a branch first runs the game in CI (L3, F3): the
-   matrix read from `ci/targets.json` (`fromJSON`), the smoke scripts taking the loader and installer as parameters,
-   each version's server checks in `ci/checks/<mc>.txt`.
+4. **CI per platform** (done; reworked on 2026-10-27): each platform has its own workflow (`build.yml`,
+   `build-forge.yml`, `build-forge-legacy.yml`), run on pull requests to `main` for the platforms a change touched,
+   with a quick check on each push (`check.yml`, `ci/changed-targets.py`). The smoke scripts take the loader version as
+   a parameter; the matrix stays in each workflow, as the platforms' steps differ.
 5. **A platform profile** (data, per target, part of the cache key): the descriptor path and dialect, the
    platform's package prefixes and provided libraries, who provides MixinExtras, the data-pack keys, the Mixin facts
    (absorbing `mixin.*` from `version.properties`), the loader hook map, the rename table and the coremod-private
@@ -507,6 +507,9 @@ look for, so the in-game mod fires Fabric's block break events and asks its bed 
 events at Forge's calls (BREAK-1, SLEEP-1; without that, a block a Fabric mod admitted as a bed became a red bed). Its
 hooks use no MixinExtras sugar, which Forge's Mixin can't serve without Fabric API installed. Fabric's use and attack
 callbacks need no bridge: upstream's hooks apply to Forge's interaction code, as the test mod checks on all four.
+Forge 61's and 64's `hurtServer` drop vanilla's copy of the damage before blocking, which upstream's after-damage hook
+reads (by name on Forge 64, where it was left out, and by position on Forge 61, where it read the damage a shield
+blocked), so the in-game mod fires that event there (DAMAGE-1).
 
 Order: `main` first, always. L1 serves both branches; after it, L2 to L5 and F2 to F5 can proceed in either order
 or in parallel, as the owner sets priorities. The two branches' adapters share their shape (forgespi 7 and 8 have
@@ -520,7 +523,7 @@ the same locator interfaces), so the second one is a port of the first.
 | R2 | Fabric mods for 1.20.1 were built against Fabric's Mixin fork (0.12.5 to 0.15.5); upstream 0.8.5 may lack what they use. | Measure on the corpus in L5; pre-flight reports the gap per mod rather than crashing. |
 | R3 | Discovery: the locator jar leaves normal mod loading, and a language provider must sit in the plugin layer; how a single download carries all three parts is UNVERIFIED. | A layout for Forge 61 to 66 read through in source, with two fallbacks (§4.1); prototyped in F3 (and L3) before the bridges. |
 | R4 | SRG names: every name-bearing data file (access transformers, refmaps, rename tables) must target members by SRG name. | One mapping table drives all of them, as Intermediary → Mojang does today. |
-| R5 | CI cost: every target adds about 25 minutes per run. | Branch CI runs only for pull requests to that branch (D6); docs-only changes build nothing. |
+| R5 | CI cost: every target adds about 25 minutes per run. | A quick check of one version per touched platform on each push, the full matrix on the task's pull request to `main` (2026-10-27, replacing D6); docs-only changes build nothing. |
 
 Decisions (the owner's, 2026-10-21; D3 and D4 delegated, both provisional until the phase that fixes them):
 
@@ -534,4 +537,5 @@ Decisions (the owner's, 2026-10-21; D3 and D4 delegated, both provisional until 
 - **D5:** modern Forge builds with ForgeGradle (7.0.40, pinned in `settings.gradle`: Gradle 9.3 or later; builds on
   9.7.0, #72).
 - **D6:** CI runs on secondary branches for pull requests only; a push builds only `main` (already so in
-  `build.yml`).
+  `build.yml`). Replaced on 2026-10-27: one pull request per task into `main` runs every touched platform's full
+  matrix, and each push to a working branch gets the quick check (`claude.md`, *Working rules*).

@@ -48,8 +48,10 @@ automatically if it is not installed.
 ci/neoforge/smoke-server.sh 26.2 26.2.0.90 /tmp/fabricated-server
 ```
 
-Each branch's CI builds its platform: `build.yml` (`main`), `build-forge.yml` (`forge`) and `build-forge-legacy.yml`
-(`forge-legacy`), each for pull requests to its branch, skipping changes to other platforms' folders alone. NeoForge's
+Each platform has its CI: `build.yml` (NeoForge), `build-forge.yml` (Forge 61 to 66) and `build-forge-legacy.yml`
+(Forge 47), each for pull requests to `main`, release tags and by hand, skipping changes to other platforms' folders
+alone; each push to a working branch gets the quick check (`check.yml`: unit tests and one version per platform it
+changed, on a server). NeoForge's
 (`.github/workflows/build.yml`) runs the unit tests, then builds every version, boots a real NeoForge
 dedicated server with the test mods (and again with the official Fabric API jar), and starts a real NeoForge
 client headlessly into a singleplayer world (`ci/neoforge/smoke-client.sh`; needs Xvfb, and `gh` to fetch

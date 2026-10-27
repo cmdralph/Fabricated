@@ -17,6 +17,8 @@ forge="$2"
 work="$3"
 extra="${4:-}"
 root="$(cd "$(dirname "$0")/../.." && pwd)"
+# shellcheck source=ci/install-cache.sh
+source "$root/ci/install-cache.sh"
 timeout_seconds="${SMOKE_TIMEOUT:-600}"
 
 rm -rf "$work"
@@ -24,8 +26,11 @@ mkdir -p "$work"
 cd "$work"
 
 echo "::group::Install Forge $mc-$forge"
-curl -fsSL --retry 4 -o installer.jar "https://maven.minecraftforge.net/net/minecraftforge/forge/${mc}-${forge}/forge-${mc}-${forge}-installer.jar"
-java -jar installer.jar --installServer . > installer.log 2>&1 || { tail -n 60 installer.log; exit 1; }
+install_server() {
+	curl -fsSL --retry 4 -o installer.jar "https://maven.minecraftforge.net/net/minecraftforge/forge/${mc}-${forge}/forge-${mc}-${forge}-installer.jar"
+	java -jar installer.jar --installServer . > installer.log 2>&1 || { tail -n 60 installer.log; exit 1; }
+}
+cached_install "forge-server-$forge" . install_server
 echo "::endgroup::"
 
 mkdir -p mods
@@ -171,6 +176,7 @@ if [ -n "$extra" ]; then
 	check "fabric-events-interaction-v0 (with Fabric API): a fake player's breaks through destroyBlock fire PlayerBlockBreakEvents BEFORE, CANCELED and AFTER, and a BEFORE refusal keeps the block (BREAK-1)" "grep -q 'FABRICATED-FORGE-TEST block break events OK' logs/latest.log 2>/dev/null"
 	check "fabric-events-interaction-v0 (with Fabric API): a fake player's uses of an item, a block and an entity, and its attacks on a block and an entity, through the game's own code ask UseItemCallback, UseBlockCallback, UseEntityCallback, AttackBlockCallback and AttackEntityCallback, and their answers hold" "grep -q 'FABRICATED-FORGE-TEST interaction events OK' logs/latest.log 2>/dev/null"
 	check "fabric-entity-events-v1 (with Fabric API): a hay block EntitySleepEvents.ALLOW_BED admits stays hay while an armor stand sleeps on it, and the occupation and orientation events run (SLEEP-1)" "grep -q 'FABRICATED-FORGE-TEST sleep events OK' logs/latest.log 2>/dev/null"
+	check "fabric-entity-events-v1 (with Fabric API): an entity hurt through the game's own hurtServer asks ServerLivingEntityEvents.ALLOW_DAMAGE, whose refusal holds, and fires AFTER_DAMAGE with the damage dealt and taken (DAMAGE-1)" "grep -q 'FABRICATED-FORGE-TEST damage events OK' logs/latest.log 2>/dev/null"
 	check "fabric-transfer-api-v1 (with Fabric API): a Fabric mod's item and fluid storages are Forge's ITEM_HANDLER and FLUID_HANDLER capabilities of its block entity, and a Forge mod's ItemStackHandler and FluidTank Fabric's storages, moved only once a transaction commits; a Fabric mod's tank items are Forge's FLUID_HANDLER_ITEM and a Forge mod's Fabric's FluidStorage.ITEM" "grep -q 'FABRICATED-FORGE-TEST storages OK' logs/latest.log 2>/dev/null"
 fi
 check "a Fabric mod's fluids have Forge fluid types (the in-game mod's, registered under their ids), and a pig falls through one that isn't water as through air" "grep -q 'FABRICATED-FORGE-TEST fluid types OK' logs/latest.log 2>/dev/null"

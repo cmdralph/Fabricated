@@ -20,8 +20,8 @@ import net.minecraft.server.MinecraftServer;
  * fluid types, on a client whether Fabric's colour provider registry finds the game's block colours, whether a command
  * registered through Fabric's command event is in the server's dispatcher, whether Fabric's block break events fire as
  * a player breaks blocks, whether its use and attack callbacks are asked as a player uses and attacks things (an entity
- * at a later tick), whether a block Fabric's sleep events admit as a bed survives being slept on, and whether Fabric's
- * storages and Forge's handlers see each other.
+ * at a later tick), whether a block Fabric's sleep events admit as a bed survives being slept on, whether Fabric's
+ * damage events are asked as an entity is hurt, and whether Fabric's storages and Forge's handlers see each other.
  */
 @Mixin(MinecraftServer.class)
 public abstract class MinecraftServerMixin {
@@ -47,6 +47,7 @@ public abstract class MinecraftServerMixin {
 			ForgeTestMod.checkBlockBreaks((MinecraftServer) (Object) this);
 			ForgeTestMod.checkInteractions((MinecraftServer) (Object) this);
 			ForgeTestMod.checkSleeping((MinecraftServer) (Object) this);
+			ForgeTestMod.checkDamage((MinecraftServer) (Object) this);
 			ForgeTestMod.checkStorages((MinecraftServer) (Object) this);
 		} else {
 			ForgeTestMod.tickInteractions((MinecraftServer) (Object) this);

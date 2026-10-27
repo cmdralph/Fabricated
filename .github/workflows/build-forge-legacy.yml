@@ -1,13 +1,13 @@
 name: Build forge-legacy
 
-# The forge-legacy branch's build of Forge 1.20.1 (mc/forge-legacy, the project :mc:forge-legacy-1.20.1): pull requests
-# to the branch only (owner decision D6). Every branch holds every platform; main's build.yml builds NeoForge's. Two
-# server smokes on Forge 47, with the test mod and with Fabric API too, each a gate: the server must start and every
-# check pass (docs/PORTING.md §7). Changes to documentation alone build nothing, nor do changes to another platform's
-# folders alone.
+# The full matrix for Forge 47 for 1.20.1 (mc/forge-legacy, the project :mc:forge-legacy-1.20.1): built, then a
+# dedicated server and a client with the test mod, and again with Fabric API, each a gate but the client with Fabric
+# API. It runs as build.yml does: for pull requests to main, release tags (v*) and by hand, with the quick check
+# (check.yml) on each push to a working branch; a push to main only builds, which keeps main's Gradle caches current.
+# Changes to documentation alone build nothing, nor do changes to another platform's folders alone.
 on:
   pull_request:
-    branches: [forge-legacy]
+    branches: [main]
     paths-ignore:
       - 'docs/**'
       - '**.md'
@@ -21,9 +21,32 @@ on:
       - 'ci/forge/**'
       - '.github/workflows/build.yml'
       - '.github/workflows/build-forge.yml'
+      - '.github/workflows/check.yml'
+      - '.github/workflows/release.yml'
+      - '.github/workflows/branch-readme.yml'
+  push:
+    branches: [main]
+    tags: ['v*']
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
+      - 'mc/neoforge/**'
+      - 'mc/forge/**'
+      - 'mc/platform-neoforge.gradle'
+      - 'mc/platform-forge.gradle'
+      - 'loader/neoforge/**'
+      - 'loader/forge/**'
+      - 'ci/neoforge/**'
+      - 'ci/forge/**'
+      - '.github/workflows/build.yml'
+      - '.github/workflows/build-forge.yml'
+      - '.github/workflows/check.yml'
       - '.github/workflows/release.yml'
       - '.github/workflows/branch-readme.yml'
   workflow_dispatch:
+
+env:
+  GAME_RUNS: ${{ github.event_name != 'push' || github.ref_type == 'tag' }}
 
 permissions:
   contents: read
@@ -81,6 +104,7 @@ jobs:
       # The game on this branch: what Forge 47 makes of the jar and of the translated test mod. The server must start
       # and every check pass (#93's first run showed a registration failure stopping it, under a green job).
       - name: Server with Fabricated (must pass)
+        if: ${{ env.GAME_RUNS == 'true' }}
         run: |
           # Forge 47 runs on Java 17.
           export PATH="$JAVA_HOME_17_X64/bin:$PATH"
@@ -89,7 +113,7 @@ jobs:
       # The official Fabric API jar (downloaded here in CI, never by Fabricated) with every module passed through: what
       # loads on Forge 47 and what pre-flight disables, for L4's choice of native modules. A gate like the first run.
       - name: Server with Fabricated and Fabric API (must pass)
-        if: ${{ !cancelled() }}
+        if: ${{ env.GAME_RUNS == 'true' && !cancelled() }}
         run: |
           export PATH="$JAVA_HOME_17_X64/bin:$PATH"
           forge=$(sed -n 's/^forge_version=//p' "mc/forge-legacy/${{ matrix.minecraft }}/gradle.properties")
@@ -102,10 +126,10 @@ jobs:
       # The client (docs/PORTING.md §7, L4): a Forge 47 client with the test mod reaches a singleplayer world through
       # mc-runtime-test, and the Fabric client entrypoints run after the main ones. A gate like the server runs.
       - name: Install Mesa EGL for the client
-        if: ${{ !cancelled() }}
+        if: ${{ env.GAME_RUNS == 'true' && !cancelled() }}
         run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends libegl1 libegl-mesa0 libgl1-mesa-dri
       - name: Client with Fabricated (must pass)
-        if: ${{ !cancelled() }}
+        if: ${{ env.GAME_RUNS == 'true' && !cancelled() }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -116,7 +140,7 @@ jobs:
       # The client with the official Fabric API jar the server run downloaded: which of its client modules load on
       # Forge, and whether the client still reaches a world with them. Informational until it holds.
       - name: Client with Fabricated and Fabric API (informational)
-        if: ${{ !cancelled() }}
+        if: ${{ env.GAME_RUNS == 'true' && !cancelled() }}
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}

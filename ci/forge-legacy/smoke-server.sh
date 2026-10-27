@@ -17,6 +17,8 @@ forge="$2"
 work="$3"
 extra="${4:-}"
 root="$(cd "$(dirname "$0")/../.." && pwd)"
+# shellcheck source=ci/install-cache.sh
+source "$root/ci/install-cache.sh"
 timeout_seconds="${SMOKE_TIMEOUT:-600}"
 
 rm -rf "$work"
@@ -24,8 +26,11 @@ mkdir -p "$work"
 cd "$work"
 
 echo "::group::Install Forge $forge"
-curl -fsSL --retry 4 -o installer.jar "https://maven.minecraftforge.net/net/minecraftforge/forge/${forge}/forge-${forge}-installer.jar"
-java -jar installer.jar --installServer . > installer.log 2>&1 || { tail -n 60 installer.log; exit 1; }
+install_server() {
+	curl -fsSL --retry 4 -o installer.jar "https://maven.minecraftforge.net/net/minecraftforge/forge/${forge}/forge-${forge}-installer.jar"
+	java -jar installer.jar --installServer . > installer.log 2>&1 || { tail -n 60 installer.log; exit 1; }
+}
+cached_install "forge-legacy-server-$forge" . install_server
 echo "::endgroup::"
 
 mkdir -p mods
