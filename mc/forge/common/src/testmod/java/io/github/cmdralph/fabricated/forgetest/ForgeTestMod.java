@@ -26,8 +26,9 @@ import net.minecraft.world.item.Items;
  * the server smoke looks for (ci/forge/smoke-server.sh). It uses Fabric Loader's API and, of Fabric API, only the loot
  * module Fabricated ships itself ({@link ForgeLootTest}), so it runs without Fabric API's jar; with it, it also tries the
  * object builder module's default attribute event ({@link ForgeAttributeTest}), the advancement module's modify event
- * ({@link ForgeAdvancementTest}), the command module's registration event ({@link ForgeCommandTest}) and a networking
- * round trip ({@link ForgeNetworkingTest}). Its fluids are written as Fabric mods write theirs ({@link ForgeFluidTest}).
+ * ({@link ForgeAdvancementTest}), the command module's registration event ({@link ForgeCommandTest}), a networking
+ * round trip ({@link ForgeNetworkingTest}) and the interaction module's block break events ({@link ForgeBlockBreakTest}).
+ * Its fluids are written as Fabric mods write theirs ({@link ForgeFluidTest}).
  */
 public final class ForgeTestMod implements ModInitializer, DedicatedServerModInitializer {
 	public static final String MOD_ID = "fabricated-forge-testmod";
@@ -93,6 +94,13 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 				ForgeNetworkingTest.register();
 			} catch (RuntimeException | LinkageError e) {
 				LOGGER.warn("FABRICATED-FORGE-TEST networking receiver not registered", e);
+			}
+		}
+		if (FabricLoader.getInstance().isModLoaded("fabric-events-interaction-v0")) {
+			try {
+				ForgeBlockBreakTest.register();
+			} catch (RuntimeException | LinkageError e) {
+				LOGGER.warn("FABRICATED-FORGE-TEST block break listeners not registered", e);
 			}
 		}
 	}
@@ -163,6 +171,19 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 			ForgeCommandTest.check(server);
 		} catch (RuntimeException | LinkageError e) {
 			LOGGER.warn("FABRICATED-FORGE-TEST command check failed", e);
+		}
+	}
+
+	/**
+	 * Whether Fabric's block break events fire, and a refusal holds, as a player breaks blocks ({@link ForgeBlockBreakTest};
+	 * with Fabric API only).
+	 */
+	public static void checkBlockBreaks(MinecraftServer server) {
+		if (!FabricLoader.getInstance().isModLoaded("fabric-events-interaction-v0")) return;
+		try {
+			ForgeBlockBreakTest.check(server.overworld());
+		} catch (RuntimeException | LinkageError e) {
+			LOGGER.warn("FABRICATED-FORGE-TEST block break check failed", e);
 		}
 	}
 

@@ -17,8 +17,9 @@ import net.minecraft.server.MinecraftServer;
  * is still in the registry Forge has frozen and checked by then, whether its item tag's removals applied, whether
  * Fabric's loot table events reached dirt's loot table and drops, whether Fabric's default attribute event reached a
  * cow's defaults, whether Fabric's advancement modify event reached a vanilla advancement, whether its fluids have
- * fluid types, on a client whether Fabric's colour provider registry finds the game's block colours, and whether a
- * command registered through Fabric's command event is in the server's dispatcher.
+ * fluid types, on a client whether Fabric's colour provider registry finds the game's block colours, whether a
+ * command registered through Fabric's command event is in the server's dispatcher, and whether Fabric's block break
+ * events fire as a player breaks blocks.
  */
 @Mixin(MinecraftServer.class)
 public abstract class MinecraftServerMixin {
@@ -41,6 +42,7 @@ public abstract class MinecraftServerMixin {
 			ForgeTestMod.checkFluids((MinecraftServer) (Object) this);
 			ForgeTestMod.checkColors();
 			ForgeTestMod.checkCommands((MinecraftServer) (Object) this);
+			ForgeTestMod.checkBlockBreaks((MinecraftServer) (Object) this);
 		}
 	}
 }
