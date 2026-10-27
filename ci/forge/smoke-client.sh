@@ -146,6 +146,7 @@ if [ -n "$extra" ]; then
 	check "FABRICATED-FORGE-TEST networking round trip OK" "fabric-networking-api-v1 (with Fabric API): a payload the client sends as it joins comes back from the integrated server with the server's answer"
 	check "FABRICATED-FORGE-TEST Fabric command registered OK" "fabric-command-api-v2 (with Fabric API): a command registered through CommandRegistrationCallback is in the integrated server's dispatcher (CTOR-2)"
 	check "FABRICATED-FORGE-TEST block break events OK" "fabric-events-interaction-v0 (with Fabric API): a fake player's breaks on the integrated server fire PlayerBlockBreakEvents, and a BEFORE refusal keeps the block (BREAK-1)"
+	check "FABRICATED-FORGE-TEST interaction events OK" "fabric-events-interaction-v0 (with Fabric API): on the integrated server, a fake player's uses and attacks ask the use and attack callbacks, and their answers hold"
 	check "FABRICATED-FORGE-TEST sleep events OK" "fabric-entity-events-v1 (with Fabric API): on the integrated server, a hay block EntitySleepEvents.ALLOW_BED admits stays hay while an armor stand sleeps on it (SLEEP-1)"
 	check "FABRICATED-FORGE-TEST storages OK" "fabric-transfer-api-v1 (with Fabric API): on the integrated server, a Fabric mod's storages, on blocks and in tank items, are Forge's capabilities and a Forge mod's handlers Fabric's storages"
 fi
