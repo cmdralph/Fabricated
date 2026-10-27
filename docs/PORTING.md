@@ -408,8 +408,11 @@ entrypoints run since `bd45389` (the forge branch's port), right after the main 
 client run with HeadlessMC and mc-runtime-test is a gate (`ci/forge-legacy/smoke-client.sh`): the client joins a
 singleplayer world, and the test mod's client entrypoint runs after its main one with Fabric Loader's game instance
 set. mc-runtime-test's 1.20.1 build runs the game tests it finds before quitting, and exits with an error if one
-fails. With the official Fabric API jar too, the client reaches a world (an informational run), with `fabric-rendering-v1`
-and model loading disabled. Next: the old capability system and `SimpleChannel`. NeoForge needs no legacy branch.
+fails. With the official Fabric API jar too, the client reaches a world (an informational run). `fabric-rendering-v1`
+loads there since COLOR-1, its colour provider lookup reading Forge's maps by registry holder, past CTOR-3, PRE-16 and
+SHADER-1, which its shader hooks met on Forge 47; model loading (a hook into `ModelBakery`'s constructor that Forge's
+Mixin 0.8.5 takes only at a return) and particles (an accessor to a map whose type Forge changed) are disabled. Next:
+the old capability system and `SimpleChannel`. NeoForge needs no legacy branch.
 
 ### forge
 
@@ -467,8 +470,10 @@ order after the main one, the game instance, and the server runs' registry, CORP
 runs found REG-5, a crash CORPUS-32's late freeze caused on every Forge 61 to 66 client. Next: native modules on
 Forge's events where `main` has them on NeoForge's (entity and interaction events). A second client run, with the
 official Fabric API jar, is informational: it found FLUID-3 (Forge 61), NET-8 and SUPER-1 (Forge 64 to 66), and with
-them fixed the client reaches a world on all four. `fabric-rendering-v1` is disabled on Forge 61 (its block colour hook
-reads the list Forge replaced), and the renderer modules with it; on Forge 64 to 66 Indigo draws Fabric models.
+them fixed the client reaches a world on all four. On Forge 61 `fabric-rendering-v1` and the renderer modules load
+since COLOR-1 (the colour provider lookup reads Forge's map by registry holder) and LOCAL-4 (Indigo's capture of
+vanilla's map of buffers by layer), as on Forge 64 to 66, where Indigo draws Fabric models since SUPER-1; on all four
+the data generation module loads on the client since DATAGEN-2.
 
 Order: `main` first, always. L1 serves both branches; after it, L2 to L5 and F2 to F5 can proceed in either order
 or in parallel, as the owner sets priorities. The two branches' adapters share their shape (forgespi 7 and 8 have
