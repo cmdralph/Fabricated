@@ -26,6 +26,11 @@
       "version": "1.1.47",
       "reason": "Shipped by Fabricated: upstream's deprecated API over fabric-loot-api-v2's events, its initializer run by the in-game mod. Its loot table mixin read the pools as an array, which Forge 47 keeps in a list (passed through, pre-flight disabled it), and Forge's own public LootPool.getRolls() implements its pool getter of the same name."
     },
+    "fabric-particles-v1": {
+      "plan": "native",
+      "version": "1.1.3",
+      "reason": "Shipped by Fabricated: upstream's API, its hook that registers Fabric's particle factories once vanilla's are in, and its block dust tint event, asked where Forge 47 decides the tint (its block extensions' areBreakingParticlesTinted replaced vanilla's grass check, which upstream's hook looked for). Forge 47 keeps the particle engine's factories in a map by the type's id, which upstream's accessor read as a map by raw id, so passed through the module failed pre-flight on the client and Fabric mods' particles had no factories: Fabric's factories and their sprite sets are registered through the engine's own methods, where Forge registers its mods' (PART-1)."
+    },
     "fabric-registry-sync-v0": {
       "plan": "passthrough",
       "skipMixins": [
