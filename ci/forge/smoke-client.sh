@@ -108,6 +108,10 @@ log=run/logs/latest.log
 echo "::group::Client output (tail)"
 tail -n 200 client.out || true
 echo "::endgroup::"
+# The job log keeps the client output's end only: the game log's errors and warnings, by logger, from the start.
+echo "::group::Errors and warnings in the game log"
+python3 -I "$root/ci/log-digest.py" "$log" || true
+echo "::endgroup::"
 if [ "$status" -ne 0 ]; then
 	echo "::group::First errors in the game log"
 	grep -n -m 80 -E "/(ERROR|FATAL)\]|Exception|Caused by" "$log" || true
