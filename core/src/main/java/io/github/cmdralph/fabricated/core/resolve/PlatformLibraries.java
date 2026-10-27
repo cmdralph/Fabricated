@@ -66,13 +66,30 @@ public final class PlatformLibraries {
 	 */
 	public static String nestedMixinExtras(String jarJarMetadata) throws JsonException {
 		for (Object jar : Json.asList(Json.parseObject(jarJarMetadata).get("jars"))) {
-			if (!(jar instanceof Map<?, ?> entry) || !(entry.get("identifier") instanceof Map<?, ?> id)
-					|| !(entry.get("version") instanceof Map<?, ?> version)) continue;
-			if ("io.github.llamalad7".equals(id.get("group")) && id.get("artifact") instanceof String artifact
-					&& artifact.startsWith("mixinextras") && version.get("artifactVersion") instanceof String v) {
-				return v;
-			}
+			String version = mixinExtrasVersion(jar);
+			if (version != null) return version;
 		}
 		return null;
+	}
+
+	/**
+	 * The version of MixinExtras Forge offers its jar-in-jar locator from its own libraries, from its loader's
+	 * {@code jarjar_options.json} (Forge 61 and later list {@code mixinextras-forge} there, which the locator adds once a
+	 * mod file declares mixin configs), or {@code null} when it offers none.
+	 */
+	public static String offeredMixinExtras(String jarJarOptions) throws JsonException {
+		for (Object option : Json.asList(Json.parseObject(jarJarOptions).get("options"))) {
+			String version = option instanceof Map<?, ?> entry ? mixinExtrasVersion(entry.get("meta")) : null;
+			if (version != null) return version;
+		}
+		return null;
+	}
+
+	/** The version of a jar-in-jar entry (identifier and version) that is MixinExtras, else null. */
+	private static String mixinExtrasVersion(Object jar) {
+		if (!(jar instanceof Map<?, ?> entry) || !(entry.get("identifier") instanceof Map<?, ?> id)
+				|| !(entry.get("version") instanceof Map<?, ?> version)) return null;
+		return "io.github.llamalad7".equals(id.get("group")) && id.get("artifact") instanceof String artifact
+				&& artifact.startsWith("mixinextras") && version.get("artifactVersion") instanceof String v ? v : null;
 	}
 }

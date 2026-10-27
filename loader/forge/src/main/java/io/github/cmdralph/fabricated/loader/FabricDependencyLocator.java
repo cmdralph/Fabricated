@@ -1,6 +1,7 @@
 package io.github.cmdralph.fabricated.loader;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.lang.module.ModuleDescriptor;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -27,6 +28,7 @@ import cpw.mods.jarhandling.SecureJar;
 import io.github.cmdralph.fabricated.api.internal.ApiHolder;
 import io.github.cmdralph.fabricated.core.Pipeline;
 import io.github.cmdralph.fabricated.core.api.FabricatedApiImpl;
+import io.github.cmdralph.fabricated.core.archive.ArchiveException;
 import io.github.cmdralph.fabricated.core.archive.ArchiveLimits;
 import io.github.cmdralph.fabricated.core.archive.SafeArchive;
 import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
@@ -70,6 +72,8 @@ import net.minecraftforge.forgespi.locating.ModFileFactory;
 public final class FabricDependencyLocator extends AbstractModProvider implements IDependencyLocator {
 	private static final Logger LOGGER = LoggerFactory.getLogger("Fabricated");
 	private static final Pattern VERSION_IN_NAME = Pattern.compile("\\d+\\.\\d+\\.\\d+");
+	/** Bounds the read of Forge's jar-in-jar options, a few hundred bytes. */
+	private static final int MAX_OPTIONS_BYTES = 1 << 20;
 
 	@Override
 	public String name() {
@@ -165,6 +169,10 @@ public final class FabricDependencyLocator extends AbstractModProvider implement
 		List<SafeArchive> vanillaJars = new ArrayList<>();
 		// Closed once the pipeline is done with it, however it ends.
 		try (SafeArchive archive = gameModJar == null ? null : SafeArchive.open(gameModJar, ArchiveLimits.DEFAULTS)) {
+			// Forge offers its jar-in-jar locator MixinExtras from its own libraries, and the in-game mod nests a newer one;
+			// the locator adds the newest of those and of the copies other files nest, once a file declares mixin configs.
+			String mixinExtras = newest(newest(mixinExtrasVersion(loadedMods), archive == null ? null : nestedMixinExtras(archive)),
+					offeredMixinExtras());
 			if (archive != null) {
 				for (String name : archive.classEntryNames()) {
 					int slash = name.lastIndexOf('/');
@@ -217,7 +225,7 @@ public final class FabricDependencyLocator extends AbstractModProvider implement
 			}
 			// Where a locator could read the game's program arguments is open (docs/PORTING.md §4.1, question 10).
 			Pipeline.Input input = new Pipeline.Input(gameDir, FMLPaths.CONFIGDIR.get(), config, cache, fabricJars, mcVersion, forgeVersion,
-					client, info.namespace(), runtimeMixinVersion(info), mixinExtrasVersion(loadedMods), info.mixinLowest(), info.fabricatedVersion(),
+					client, info.namespace(), runtimeMixinVersion(info), mixinExtras, info.mixinLowest(), info.fabricatedVersion(),
 					info.build(), !FMLLoader.isProduction(), gameClasses, List.of(minecraft.getFilePath()), vanilla, fabricatedFiles, untransformable,
 					platformPackages, plan, nativeApi, nativeApiInterfaces, forgeMods.mods(), forgeMods.classes(),
 					(mappingsCache, mojangPath) -> IntermediaryMappings.load(mappingsCache, mcVersion, client, mojangPath, minecraft.getFilePath()),
@@ -404,9 +412,9 @@ public final class FabricDependencyLocator extends AbstractModProvider implement
 	}
 
 	/**
-	 * The MixinExtras version Forge runs: the newest that a discovered file nests (Forge nests {@code mixinextras-forge}
-	 * in its own jar, and its jar-in-jar locator adds the newest nested copy once a file declares mixin configs) or is
-	 * (its mod metadata, else its manifest, else its file name); else from its classes' module; null when not found.
+	 * The newest MixinExtras version a discovered file nests (Forge's jar-in-jar locator adds the newest nested copy once
+	 * a file declares mixin configs) or is (its mod metadata, else its manifest, else its file name); else from its
+	 * classes' module; null when not found.
 	 */
 	static String mixinExtrasVersion(Iterable<IModFile> files) {
 		String newest = null;
@@ -425,6 +433,44 @@ public final class FabricDependencyLocator extends AbstractModProvider implement
 		if (newest != null) return newest;
 		// Not a discovered file: a library on Forge's own layers.
 		return classVersion("com.llamalad7.mixinextras.MixinExtrasBootstrap");
+	}
+
+	/** The MixinExtras version {@code jar} nests for Forge's jar-in-jar locator, or null. */
+	private static String nestedMixinExtras(SafeArchive jar) {
+		try {
+			byte[] jarJar = jar.read("META-INF/jarjar/metadata.json");
+			return jarJar == null ? null : PlatformLibraries.nestedMixinExtras(new String(jarJar, StandardCharsets.UTF_8));
+		} catch (ArchiveException | JsonException e) {
+			LOGGER.debug("Could not read the in-game mod's nested jars", e);
+			return null;
+		}
+	}
+
+	/**
+	 * The MixinExtras version Forge offers its jar-in-jar locator from its own libraries: its loader's
+	 * {@code jarjar_options.json} lists {@code mixinextras-forge} (Forge 61 and later), which discovery saw neither nested
+	 * in a file nor on its own layers (MIXEXT-3). Null when Forge offers none.
+	 */
+	private static String offeredMixinExtras() {
+		for (ModuleLayer layer : layersOf(FabricDependencyLocator.class)) {
+			Optional<Module> loader = layer.findModule("net.minecraftforge.fmlloader");
+			if (loader.isEmpty()) continue;
+			try (InputStream options = loader.get().getResourceAsStream("/jarjar_options.json")) {
+				String offered = options == null ? null
+						: PlatformLibraries.offeredMixinExtras(new String(options.readNBytes(MAX_OPTIONS_BYTES), StandardCharsets.UTF_8));
+				LOGGER.debug("Forge's jar-in-jar options offer MixinExtras {}", offered);
+				return offered;
+			} catch (IOException | JsonException e) {
+				LOGGER.debug("Could not read Forge's jar-in-jar options", e);
+				return null;
+			}
+		}
+		return null;
+	}
+
+	private static String newest(String a, String b) {
+		if (a == null) return b;
+		return b == null || !newer(b, a) ? a : b;
 	}
 
 	private static String ownVersion(IModFile file) {

@@ -3,9 +3,9 @@
 a push, from the paths it changed (one per line on stdin).
 
 A platform whose files changed gets one version: the version whose folder alone changed (mc/<platform>/<version>/),
-else its newest; mc/forge-shared and loader/forge-shared are both Forge platforms'. A change to shared code (core,
-api, loader/common, the build) builds NeoForge's newest, the supported platform; the full matrix on the pull request
-covers the rest. Documentation builds nothing.
+else its newest; mc/forge-shared, loader/forge-shared and mc/forge-mixinextras.gradle are both Forge platforms'. A
+change to shared code (core, api, loader/common, the build) builds NeoForge's newest, the supported platform; the full
+matrix on the pull request covers the rest. Documentation builds nothing.
 
 Prints a JSON list of {"platform", "minecraft", "loader", "java"} for a matrix's include, read from each version's
 gradle.properties. Usage: git diff --name-only A B | ci/changed-targets.py [repository root]
@@ -38,7 +38,7 @@ def versions(root, platform):
 def platforms_of(path):
     """The platforms a path belongs to alone (both Forge platforms for the forge-shared folders), or None for shared
     code."""
-    if path.startswith(("mc/forge-shared/", "loader/forge-shared/")):
+    if path.startswith(("mc/forge-shared/", "loader/forge-shared/")) or path == "mc/forge-mixinextras.gradle":
         return ("forge", "forge-legacy")
     for platform in PLATFORMS:
         if (path.startswith((f"mc/{platform}/", f"loader/{platform}/", f"ci/{platform}/"))
