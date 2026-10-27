@@ -799,7 +799,13 @@ public final class MixinPreflight {
 			List<MethodNode> bridges) {
 		if (!(Annotations.value(injector, "method") instanceof List<?> selectors)) return List.of();
 		List<AnnotationNode> ats = Annotations.list(Annotations.value(injector, "at"));
-		if (ats.isEmpty() || injector.desc.equals(MODIFY_VARIABLE) || Annotations.value(injector, "locals") != null) return List.of();
+		if (ats.isEmpty() || Annotations.value(injector, "locals") != null) return List.of();
+		// A variable modifier moves only where it picks its local by type alone, among the locals, which the other method's
+		// code decides as the method's did: Fabric API's before-bake model hook, whose ModelBakerImpl.bake Forge 47 split
+		// off into an overload taking the sprite getter (MODEL-3). By its slot, its place, its name or among the
+		// parameters, it could pick another value there.
+		if (injector.desc.equals(MODIFY_VARIABLE) && (Annotations.value(injector, "index") != null || Annotations.value(injector, "ordinal") != null
+				|| Annotations.value(injector, "name") != null || Boolean.TRUE.equals(Annotations.value(injector, "argsOnly")))) return List.of();
 		// An @Inject handler takes the callback info only, or (bridged below) the target's parameters before it.
 		boolean takesParameters = false;
 		if (injector.desc.equals(INJECT)) {
