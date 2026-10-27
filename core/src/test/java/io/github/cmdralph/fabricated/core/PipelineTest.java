@@ -30,6 +30,7 @@ import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.ClassNode;
+import org.objectweb.asm.tree.FieldNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 
 import io.github.cmdralph.fabricated.api.FabricApiModule;
@@ -44,6 +45,7 @@ import io.github.cmdralph.fabricated.core.cache.TranslationCache;
 import io.github.cmdralph.fabricated.core.config.FabricatedConfig;
 import io.github.cmdralph.fabricated.core.json.Json;
 import io.github.cmdralph.fabricated.core.metadata.FabricModJsonParser;
+import io.github.cmdralph.fabricated.core.mixin.RestoredFields;
 import io.github.cmdralph.fabricated.core.remap.MappingComposer;
 import io.github.cmdralph.fabricated.core.remap.MappingTable;
 import io.github.cmdralph.fabricated.core.report.Report;
@@ -776,7 +778,7 @@ class PipelineTest {
 	void resultWithoutRefusedModsInjectsNothingOfTheirs(@TempDir Path dir) throws Exception {
 		Pipeline.LoadedMod a = loadedMod(dir, "mod-a", "com/a/Iface", "com/a/ClientThing");
 		Pipeline.LoadedMod b = loadedMod(dir, "mod-b", "com/b/Iface", "com/b/ClientThing");
-		Pipeline.Result result = new Pipeline.Result(null, List.of(a, b), null, Map.of(), null, Set.of());
+		Pipeline.Result result = new Pipeline.Result(null, List.of(a, b), Map.of(), null, Map.of(), null, Set.of());
 		assertEquals(List.of("com/a/Iface", "com/b/Iface"), interfacesOf(result, "net/minecraft/world/Thing"));
 		assertEquals(Set.of("com/a/ClientThing", "com/b/ClientThing"), result.environmentClasses());
 
@@ -1391,6 +1393,49 @@ class PipelineTest {
 		String findings = result.mods().stream().filter(m -> m.translated().candidate().id().equals("pip-user")).findFirst().orElseThrow()
 				.translated().findings().toString();
 		assertTrue(findings.contains("fabricated$own") && !findings.contains("renderers"), findings);
+	}
+
+	@Test
+	void aRestoredFieldBesideThePlatformsOfItsNameIsTheGamesAndDeclaredBeforeSpongePoweredsMixin(@TempDir Path game) throws Exception {
+		// COLOR-1: Forge replaced vanilla's IdMapper of block colours with a map of its own under the same name; Fabricated's
+		// mixin restores vanilla's beside it, which Fabric API's shadows. Mixin finds fields by name and descriptor.
+		String own = "io/github/cmdralph/fabricated/forge/mixin/RestoringMixin";
+		ClassWriter restoring = new ClassWriter(0);
+		restoring.visit(Opcodes.V21, Opcodes.ACC_ABSTRACT, own, null, "java/lang/Object", null);
+		AnnotationVisitor target = restoring.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false).visitArray("value");
+		target.visit(null, Type.getObjectType(TARGET));
+		target.visitEnd();
+		restoring.visitField(Opcodes.ACC_PRIVATE, "count", "Ljava/util/Map;", "Ljava/util/Map<Ljava/lang/String;Ljava/lang/Integer;>;", null).visitEnd();
+		restoring.visitEnd();
+		TestJars.create().text("fabricated.mixins.json", "{\"package\":\"io.github.cmdralph.fabricated.forge.mixin\",\"client\":[\"RestoringMixin\"]}")
+				.bytes(own + ".class", restoring.toByteArray()).write(game.resolve("fabricated.jar"));
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		Path user = TestJars.create().fabricModJson(TestJars.modJson("colors-user", "1.0", "\"mixins\":[\"colors.mixins.json\"]"))
+				.text("colors.mixins.json", "{\"required\":true,\"package\":\"com.colors.mixin\",\"mixins\":[\"Uses\"]}")
+				.bytes("com/colors/mixin/Uses.class", shadowing("com/colors/mixin/Uses", "count", "Ljava/util/Map;"))
+				.write(mods.resolve("user.jar"));
+
+		Pipeline.Result forge = Pipeline.run(withDescriptor(input(game, List.of(user), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null, List.of(),
+				InstalledClasses.NONE, ClassBytesSource.EMPTY, "0.8.7+Jenkins-b321.git-4", "0.8.7"), PlatformDescriptor.FORGE));
+		String findings = forge.mods().stream().filter(m -> m.translated().candidate().id().equals("colors-user")).findFirst().orElseThrow()
+				.translated().findings().toString();
+		assertFalse(findings.contains("count"), findings);
+		assertEquals(Map.of(TARGET, List.of(new RestoredFields.Field(Opcodes.ACC_PRIVATE, "count", "Ljava/util/Map;",
+				"Ljava/util/Map<Ljava/lang/String;Ljava/lang/Integer;>;"))), forge.fieldsBeforeMixin());
+		// Fabric's Mixin finds the fields earlier mixins add: nothing is declared ahead of it.
+		Pipeline.Result neoForge = Pipeline.run(input(game, List.of(user), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
+		assertTrue(neoForge.mods().stream().anyMatch(m -> m.translated().candidate().id().equals("colors-user")), neoForge.report().render());
+		assertTrue(neoForge.fieldsBeforeMixin().isEmpty());
+	}
+
+	@Test
+	void restoredFieldsAreDeclaredWhereTheClassHasNoneOfTheirNameAndDescriptor() {
+		ClassNode node = new ClassNode();
+		node.fields.add(new FieldNode(Opcodes.ACC_PRIVATE | Opcodes.ACC_FINAL, "colors", "Ljava/util/Map;", null, null));
+		RestoredFields.Field ids = new RestoredFields.Field(Opcodes.ACC_PRIVATE, "colors", "Lnet/minecraft/core/IdMapper;", null);
+		assertTrue(RestoredFields.declare(node, List.of(ids)));
+		assertEquals(List.of("Ljava/util/Map;", "Lnet/minecraft/core/IdMapper;"), node.fields.stream().map(f -> f.desc).toList());
+		assertFalse(RestoredFields.declare(node, List.of(ids)), "declared once");
 	}
 
 	/** A mixin into {@link #TARGET} shadowing one field. */

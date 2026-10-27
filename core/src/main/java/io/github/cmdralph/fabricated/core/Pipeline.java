@@ -53,6 +53,7 @@ import io.github.cmdralph.fabricated.core.runtime.ModContainerImpl;
 import io.github.cmdralph.fabricated.core.translate.DefaultBridge;
 import io.github.cmdralph.fabricated.core.translate.JarClassSource;
 import io.github.cmdralph.fabricated.core.translate.LinkageAnalysis;
+import io.github.cmdralph.fabricated.core.translate.MixinCompat;
 import io.github.cmdralph.fabricated.core.metadata.ModIds;
 import io.github.cmdralph.fabricated.core.translate.ModTranslator;
 import io.github.cmdralph.fabricated.core.translate.PackageGuard;
@@ -201,6 +202,9 @@ public final class Pipeline {
 	 * @param defaultBridges     the default method bridges of {@code mods}, by target class (immutable)
 	 * @param environmentClasses the classes of {@code mods} with {@code @Environment} annotations (immutable)
 	 * @param overridableMethods the game methods {@code mods} override that the platform made final, by class (immutable)
+	 * @param fieldsBeforeMixin  the fields Fabricated's own mixins restore, by class, which the platform's loader declares
+	 *                           before Mixin runs, as the running Mixin wouldn't find them for the Fabric mods' mixins that
+	 *                           shadow them ({@link MixinCompat#shadowsMissAddedFields}; immutable, empty elsewhere)
 	 */
 	public record Result(
 			FabricatedConfig config,
@@ -209,15 +213,16 @@ public final class Pipeline {
 			Map<String, List<DefaultBridge>> defaultBridges,
 			Set<String> environmentClasses,
 			Map<String, Set<String>> overridableMethods,
+			Map<String, List<RestoredFields.Field>> fieldsBeforeMixin,
 			FabricLoaderRuntime runtime,
 			Map<String, ModContainerImpl> containers,
 			Report report,
 			Set<String> dependencyFailures) {
 
-		Result(FabricatedConfig config, List<LoadedMod> mods, FabricLoaderRuntime runtime, Map<String, ModContainerImpl> containers,
-				Report report, Set<String> dependencyFailures) {
+		Result(FabricatedConfig config, List<LoadedMod> mods, Map<String, List<RestoredFields.Field>> fieldsBeforeMixin, FabricLoaderRuntime runtime,
+				Map<String, ModContainerImpl> containers, Report report, Set<String> dependencyFailures) {
 			this(config, List.copyOf(mods), injectedInterfacesOf(mods), defaultBridgesOf(mods), environmentClassesOf(mods),
-					overridableMethodsOf(mods), runtime, containers, report, dependencyFailures);
+					overridableMethodsOf(mods), fieldsBeforeMixin, runtime, containers, report, dependencyFailures);
 		}
 
 		/**
@@ -226,7 +231,7 @@ public final class Pipeline {
 		 */
 		public Result without(Set<String> fabricIds) {
 			List<LoadedMod> kept = mods.stream().filter(m -> !fabricIds.contains(m.translated().candidate().id())).toList();
-			return new Result(config, kept, runtime, containers, report, dependencyFailures);
+			return new Result(config, kept, fieldsBeforeMixin, runtime, containers, report, dependencyFailures);
 		}
 
 		private static Map<String, List<InjectedInterface>> injectedInterfacesOf(List<LoadedMod> mods) {
@@ -304,6 +309,8 @@ public final class Pipeline {
 	private final List<Candidate> otherSide = new ArrayList<>();
 	/** Compat patches already reported as ignored ("mod target"): patches are worked out again every round. */
 	private final Set<String> ignoredPatches = new HashSet<>();
+	/** The result's {@link Result#fieldsBeforeMixin}: found with the Fabric mods to check. */
+	private Map<String, List<RestoredFields.Field>> fieldsBeforeMixin = Map.of();
 
 	private Pipeline(Input in) {
 		this.in = in;
@@ -384,8 +391,11 @@ public final class Pipeline {
 				mappingTable != null ? MappingResolvers.intermediary(mappingTable) : MappingResolvers.identity(), in::launchArguments);
 		if (eligible.isEmpty()) return assemble(runtime, new Rounds());
 
-		// The game as Fabricated's own mixins leave it: with the vanilla fields they restore, which Fabric mods use (PIP-1).
-		ClassBytesSource gameClasses = RestoredFields.over(in.gameClasses(), in.fabricatedFiles());
+		// The game as Fabricated's own mixins leave it: with the vanilla fields they restore, which Fabric mods use (PIP-1,
+		// COLOR-1). Where the running Mixin wouldn't find them for a Fabric mod's shadow, the loader declares them first.
+		Map<String, List<RestoredFields.Field>> restored = RestoredFields.of(in.fabricatedFiles());
+		if (MixinCompat.shadowsMissAddedFields(in.runtimeMixinVersion())) fieldsBeforeMixin = restored;
+		ClassBytesSource gameClasses = RestoredFields.over(in.gameClasses(), restored);
 		ClassIndex game = new ClassIndex(gameClasses);
 		// Mixins into the Fabric mods' classes are checked too, against those classes as they will load: on 1.21.11
 		// remapped from intermediary names, as translating each mod remaps it.
@@ -934,7 +944,7 @@ public final class Pipeline {
 		}
 
 		in.cache().notes().forEach(n -> report.line("Cache", n));
-		return new Result(config, loaded, runtime, containers, report, Set.copyOf(rounds.dependencyFailures));
+		return new Result(config, loaded, fieldsBeforeMixin, runtime, containers, report, Set.copyOf(rounds.dependencyFailures));
 	}
 
 	/**

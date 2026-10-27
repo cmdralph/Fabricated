@@ -16,6 +16,7 @@ import org.objectweb.asm.tree.VarInsnNode;
 
 import io.github.cmdralph.fabricated.core.accesswidener.AccessWidenerFile.InjectedInterface;
 import io.github.cmdralph.fabricated.core.bytecode.EnvironmentStripper;
+import io.github.cmdralph.fabricated.core.mixin.RestoredFields;
 import io.github.cmdralph.fabricated.core.translate.DefaultBridge;
 
 /**
@@ -25,7 +26,9 @@ import io.github.cmdralph.fabricated.core.translate.DefaultBridge;
  *   <li>the members of Fabric mods' classes that {@code @Environment} reserves for the other side are stripped;</li>
  *   <li>class-tweaker {@code inject-interface} directives are applied: the interface is added to the target class, and
  *       to its generic signature so reflection sees the parameterised type. Mods implement the interface's methods
- *       through their own mixins, as on Fabric.</li>
+ *       through their own mixins, as on Fabric;</li>
+ *   <li>under SpongePowered's Mixin, the fields Fabricated's own mixins restore are declared, so Fabric mods' mixins
+ *       find them as the game's.</li>
  * </ul>
  * After Mixin, {@link DefaultBridge}s are declared ({@link #declareDefaultBridges}). Each change is reported to an audit
  * consumer as an activity and its detail.
@@ -37,7 +40,7 @@ public final class FabricClassTransforms {
 	/** Whether {@link #beforeMixin} may change the class (internal name). */
 	public static boolean transformsBeforeMixin(FabricatedState state, String internalName) {
 		return state.environmentClasses().contains(internalName) || state.injectedInterfaces().containsKey(internalName)
-				|| state.overridableMethods().containsKey(internalName);
+				|| state.overridableMethods().containsKey(internalName) || state.fieldsBeforeMixin().containsKey(internalName);
 	}
 
 	/** Every class {@link #beforeMixin} may change, for a platform that names its targets up front. */
@@ -45,6 +48,7 @@ public final class FabricClassTransforms {
 		Set<String> classes = new TreeSet<>(state.environmentClasses());
 		classes.addAll(state.injectedInterfaces().keySet());
 		classes.addAll(state.overridableMethods().keySet());
+		classes.addAll(state.fieldsBeforeMixin().keySet());
 		return classes;
 	}
 
@@ -54,9 +58,10 @@ public final class FabricClassTransforms {
 	}
 
 	/**
-	 * Strips the other side's members, adds injected interfaces and removes {@code final} from the methods Fabric mods
+	 * Strips the other side's members, adds injected interfaces, removes {@code final} from the methods Fabric mods
 	 * override where only the platform's build declares it (FINAL-2; the platform's own access transformers have run by
-	 * then); whether the class changed.
+	 * then) and declares the fields Fabricated's own mixins restore where the running Mixin wouldn't find them for a
+	 * Fabric mod's shadow (COLOR-1; the restoring mixin's initialiser still sets them); whether the class changed.
 	 */
 	public static boolean beforeMixin(FabricatedState state, ClassNode node, BiConsumer<String, String> audit) {
 		boolean changed = false;
@@ -82,6 +87,11 @@ public final class FabricClassTransforms {
 			if ((method.access & Opcodes.ACC_FINAL) == 0 || !overridable.contains(method.name + method.desc)) continue;
 			method.access &= ~Opcodes.ACC_FINAL;
 			audit.accept("fabricated:overridable", method.name);
+			changed = true;
+		}
+		List<RestoredFields.Field> restored = state.fieldsBeforeMixin().getOrDefault(node.name, List.of());
+		if (!restored.isEmpty() && RestoredFields.declare(node, restored)) {
+			audit.accept("fabricated:restored_field", restored.stream().map(RestoredFields.Field::name).toList().toString());
 			changed = true;
 		}
 		return changed;

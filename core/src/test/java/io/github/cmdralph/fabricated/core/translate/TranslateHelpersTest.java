@@ -258,6 +258,11 @@ class TranslateHelpersTest {
 		assertTrue(MixinCompat.rebindsInterfaceSuperCalls("0.8.7+Jenkins-b321.git-4"), "Forge 61 to 66");
 		assertFalse(MixinCompat.rebindsInterfaceSuperCalls("0.17.4+mixin.0.8.7"), "Fabric's Mixin, from 0.15.0");
 		assertFalse(MixinCompat.rebindsInterfaceSuperCalls(null));
+		// COLOR-1: whether a mixin's shadow misses the fields other mixins add to the class.
+		assertTrue(MixinCompat.shadowsMissAddedFields("0.8.5+Jenkins-b310.git-1"), "Forge 47");
+		assertTrue(MixinCompat.shadowsMissAddedFields("0.8.7+Jenkins-b321.git-4"), "Forge 61 to 66");
+		assertFalse(MixinCompat.shadowsMissAddedFields("0.17.4+mixin.0.8.7"), "Fabric's Mixin");
+		assertFalse(MixinCompat.shadowsMissAddedFields(null));
 
 		assertEquals(25, MixinCompat.compatibilityLevel(" java_25 "), "as Mixin reads it");
 		assertEquals(8, MixinCompat.compatibilityLevel("JAVA_8"));
