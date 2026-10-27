@@ -21,7 +21,9 @@ import net.minecraft.class_7923;
  * modules Fabricated provides itself (fabric-biome-api-v1, fabric-dimensions-v1, fabric-loot-api-v2,
  * fabric-loot-tables-v1 and fabric-particles-v1), as the smoke runs without Fabric API's jar too. It registers fluids
  * as Fabric mods do, and names the game's classes as a Fabric mod for 1.20.1 does, in Intermediary's names (the
- * stand-ins in src/testmodstubs), which Fabricated remaps to Forge 47's.
+ * stand-ins in src/testmodstubs), which Fabricated remaps to Forge 47's. With Fabric API's jar it also tries modules that
+ * jar provides: the command, networking, block break ({@link ForgeBlockBreakTest}) and sleep ({@link ForgeSleepTest})
+ * events.
  */
 public final class ForgeTestMod implements ModInitializer, DedicatedServerModInitializer {
 	public static final String MOD_ID = "fabricated-forge-testmod";
@@ -82,6 +84,16 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 			ForgeParticleTest.register();
 		} catch (RuntimeException | LinkageError e) {
 			LOGGER.error("FABRICATED-FORGE-TEST particle type registration failed", e);
+		}
+		try {
+			ForgeBlockBreakTest.register();
+		} catch (RuntimeException | LinkageError e) {
+			LOGGER.error("FABRICATED-FORGE-TEST block break listeners not registered", e);
+		}
+		try {
+			ForgeSleepTest.register();
+		} catch (RuntimeException | LinkageError e) {
+			LOGGER.error("FABRICATED-FORGE-TEST sleep listeners not registered", e);
 		}
 		if (FabricLoader.getInstance().isModLoaded("fabric-networking-api-v1")) {
 			try {
