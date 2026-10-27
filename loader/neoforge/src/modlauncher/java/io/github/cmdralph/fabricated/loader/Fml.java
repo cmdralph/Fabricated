@@ -37,6 +37,11 @@ final class Fml {
 		return FMLLoader.versionInfo().neoForgeVersion();
 	}
 
+	/** Minecraft's version with the NeoForm build the installer made the game from, as in its libraries' folder names. */
+	static String minecraftAndNeoFormVersion() {
+		return FMLLoader.versionInfo().mcAndNeoFormVersion();
+	}
+
 	static Path gameDir() {
 		return FMLLoader.getGamePath();
 	}

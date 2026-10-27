@@ -76,7 +76,9 @@ final class IntermediaryMappings {
 
 	/**
 	 * Candidates, in order: the config value, the {@value #SYSTEM_PROPERTY} system property, and the
-	 * NeoForge installer's location {@code <libraries>/net/minecraft/<side>/<mc>/<side>-<mc>-mappings.txt}.
+	 * NeoForge installer's location {@code <libraries>/net/minecraft/<side>/<mc>/<side>-<mc>-mappings.txt}, or with the
+	 * NeoForm build after the Minecraft version ({@code <mc>-<neoform>}) where the installer names the folder so (NeoForge
+	 * 21.1).
 	 */
 	static Path locateMojangMappings(String minecraftVersion, boolean client, String configuredPath) throws MappingException {
 		List<String> tried = new ArrayList<>();
@@ -91,12 +93,16 @@ final class IntermediaryMappings {
 			}
 		}
 		String side = client ? "client" : "server";
-		try {
-			Path p = LibraryFinder.findPathForMaven("net.minecraft", side, "txt", "mappings", minecraftVersion);
-			if (Files.isRegularFile(p)) return p;
-			tried.add(p.toString());
-		} catch (IllegalStateException e) {
-			tried.add("(libraries directory unknown: " + e.getMessage() + ")");
+		String withNeoForm = Fml.minecraftAndNeoFormVersion();
+		for (String version : withNeoForm.equals(minecraftVersion) ? List.of(minecraftVersion) : List.of(minecraftVersion, withNeoForm)) {
+			try {
+				Path p = LibraryFinder.findPathForMaven("net.minecraft", side, "txt", "mappings", version);
+				if (Files.isRegularFile(p)) return p;
+				tried.add(p.toString());
+			} catch (IllegalStateException e) {
+				tried.add("(libraries directory unknown: " + e.getMessage() + ")");
+				break;
+			}
 		}
 		throw new MappingException("Mojang's " + side + " mapping file for " + minecraftVersion + " was not found (looked at " + String.join(", ", tried) + ")");
 	}
