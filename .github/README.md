@@ -49,7 +49,8 @@ client must join a singleplayer world and quit normally, and it checks that:
   the particle atlas (PART-1).
 
 **With the official Fabric API jar,** the server starts and every module of Fabric API 0.92.12 loads. A client started
-with it reaches a world with every module loaded too; that run is only reported for now.
+with it reaches a world with every module loaded too; that run is only reported for now. Fabric's networking needs no
+port: Fabric API's module carries a Fabric mod's packets through Forge 47's network stack, as CI checks.
 
 **Native on Forge 47:**
 - `fabric-api-base`.
@@ -71,12 +72,15 @@ with it reaches a world with every module loaded too; that run is only reported 
   refuses a break keeps the block.
 - **Beds:** Fabric's bed occupation and sleeping direction events run where Forge handles beds, and a block a Fabric
   mod admits as a bed stays that block while an entity sleeps on it and as it wakes up.
+- **Storages:** a Fabric mod's item and fluid storages are the item and fluid handlers of its block entity, which Forge
+  mods' hoppers and pipes reach, and a Forge mod's handlers are storages to Fabric mods. A Forge handler moves items
+  only once Fabric's transaction commits. Tank items cross both ways too: a Forge mod's machine fills a Fabric mod's,
+  and a Fabric mod's machine a Forge mod's.
 
 ## Not supported yet
 
-- **Capabilities.** Fabric's storages on Forge 47's old capability system are next on the
-  [roadmap](/docs/roadmap.md). Fabric's networking needs no port: Fabric API's module carries a Fabric mod's packets
-  through Forge 47's network stack, as CI checks.
+- **Item storages in items.** A Fabric mod's item storage in an item (a backpack's) and Forge's item handler on a stack
+  don't see each other yet; fluids in items do. They're next on the [roadmap](/docs/roadmap.md).
 
 ## Installing (for testing)
 
