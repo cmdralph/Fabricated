@@ -3,6 +3,20 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-10-27: Fabric's screen mouse and key events on the Forge 47 client
+
+- **LAMBDA-7** (Forge 47): Forge's patch made the lambdas a screen's clicks and releases run in take `this`, where
+  Mixin 0.8.5 refuses Fabric API's static handlers, and reordered the key lambda's captured values around four `int`s,
+  so pre-flight left out `fabric-screen-api-v1`'s eight hooks there and `ScreenMouseEvents` and `ScreenKeyboardEvents`
+  never ran. Pre-flight now bridges them: a bridge that takes `this` calls a static handler where the running Mixin
+  refuses it, and values of one type are placed by how vanilla's lambda and Forge's use each.
+- The Forge 47 test mod sends a click and a key press, and their releases, through the game's own handlers once a screen
+  ticks; its listeners refuse them, and with Fabric API all four events must be asked.
+- With Fabric API, no hook of `fabric-screen-api-v1` is left out on the Forge 47 client any more (`COMPATIBILITY.md`).
+- Verification: build-forge-legacy run 40501046056, build-forge run 40501049571 and build run 40501052876 on `b2ae04e`
+  pass, with the screen check on Forge 47's client, which now leaves out 27 hooks instead of 35. Forge 61 to 66 and
+  NeoForge leave out and repair exactly the hooks they did on `1c6acbe`.
+
 ## 2026-10-27: Hooks into the lambdas of Forge 47's patched classes
 
 - **LAMBDA-6** (Forge 47): Forge's patched classes are compiled from its sources, so their lambdas carry javac's names

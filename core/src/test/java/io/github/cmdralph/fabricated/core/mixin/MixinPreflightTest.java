@@ -930,6 +930,145 @@ class MixinPreflightTest {
 		assertTrue(preflight(flagged, prefixRepaired::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty());
 	}
 
+	@Test
+	void aStaticHandlerOnALambdaThatTakesThisGetsABridgeTakingThisWhereMixinRefusesIt() throws Exception {
+		// LAMBDA-7: Forge 47's MouseHandler reads the client in its screen lambdas, so they take this where vanilla's are
+		// static; SpongePowered's 0.8.5 refuses fabric-screen-api-v1's static handlers there, 0.8.6 on take them.
+		Type string = Type.getType(String.class);
+		String desc = Type.getMethodDescriptor(Type.VOID_TYPE, string);
+		ClassIndex game = new ClassIndex(Map.of(TARGET, lambdaClass("lambda$load$1", desc, false, mv -> mv.visitInsn(Opcodes.RETURN)))::get);
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Captures"));
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Captures", capturingMixin(List.of(string), 0)));
+		java.util.function.Function<Boolean, MixinPreflight> forge = exact -> new MixinPreflight(game, InstalledClasses.NONE, mod::get,
+				ClassBytesSource.EMPTY, false, true, ClassBytesSource.EMPTY, "Forge", !exact, exact ? MixinPreflight.ConstructorInjects.RETURNS_ONLY
+						: MixinPreflight.ConstructorInjects.UNSAFE_POINTS, false, exact);
+		assertTrue(forge.apply(false).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty(), "0.8.7 takes it");
+		assertTrue(forge.apply(false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty());
+
+		List<PreflightFinding> notes = new ArrayList<>();
+		byte[] repaired = forge.apply(true).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes).get("com/example/mixin/Captures.class");
+		assertNotNull(repaired, notes.toString());
+		assertTrue(notes.getFirst().message().contains("h targets lambda$load$1" + desc + ", which this game build declares taking this"), notes.toString());
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired).accept(node, 0);
+		MethodNode bridge = node.methods.stream().filter(mn -> mn.name.equals("h$fabricated")).findFirst().orElseThrow();
+		assertEquals(0, bridge.access & Opcodes.ACC_STATIC, "the bridge takes this");
+		assertEquals(desc.replace(")V", CALLBACK_INFO + ")V"), bridge.desc);
+		List<Integer> loads = new ArrayList<>();
+		for (AbstractInsnNode insn : bridge.instructions) {
+			if (insn instanceof VarInsnNode v) loads.add(v.var);
+		}
+		assertEquals(List.of(1, 2), loads, "the handler gets the bridge's parameters, not this");
+		defineMixin(repaired);
+		mod.put("com/example/mixin/Captures", repaired);
+		List<PreflightFinding> after = forge.apply(true).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(after.isEmpty(), after.toString());
+	}
+
+	@Test
+	void capturedValuesOfOneTypeAreToldApartByHowVanillasLambdaUsesThem() throws Exception {
+		// LAMBDA-7: Forge 47's KeyboardHandler.keyPress lambda takes the result array before the screen, where vanilla's
+		// takes the screen first; the handler uses all four ints, which no order or type tells apart. Here this build's
+		// lambda also takes the key after the scancode: only what each is used for places them.
+		Type screen = Type.getType(String.class);
+		Type flags = Type.getType(boolean[].class);
+		Type i = Type.INT_TYPE;
+		String vanillaDesc = Type.getMethodDescriptor(Type.VOID_TYPE, i, screen, flags, i, i, i);
+		String forgeDesc = Type.getMethodDescriptor(Type.VOID_TYPE, i, flags, screen, i, i, i);
+		ClassIndex game = new ClassIndex(Map.of(TARGET, lambdaClass("lambda$keyPress$5", forgeDesc, true, mv -> keyPressBody(mv, 1, 2, 4, 3, 5)))::get);
+		Map<String, byte[]> vanilla = Map.of(TARGET, lambdaClass("m_260734_", vanillaDesc, true, mv -> keyPressBody(mv, 2, 1, 3, 4, 5)));
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Captures"));
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Captures", mixin("com/example/mixin/Captures", false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "h", vanillaDesc.replace(")V", CALLBACK_INFO + ")V"), null, null);
+			AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "lambda$keyPress$5");
+			methods.visitEnd();
+			AnnotationVisitor ats = ann.visitArray("at");
+			AnnotationVisitor at = ats.visitAnnotation(null, "Lorg/spongepowered/asm/mixin/injection/At;");
+			at.visit("value", "HEAD");
+			at.visitEnd();
+			ats.visitEnd();
+			ann.visitEnd();
+			mv.visitCode();
+			for (int slot : new int[] {0, 3, 4, 5}) {
+				mv.visitVarInsn(Opcodes.ILOAD, slot);
+				mv.visitInsn(Opcodes.POP);
+			}
+			mv.visitInsn(Opcodes.RETURN);
+			mv.visitMaxs(1, 7);
+			mv.visitEnd();
+		})));
+		assertTrue(new MixinPreflight(game, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, ClassBytesSource.EMPTY)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty(), "without vanilla's lambda, not known");
+
+		List<PreflightFinding> notes = new ArrayList<>();
+		byte[] repaired = new MixinPreflight(game, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, vanilla::get)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes).get("com/example/mixin/Captures.class");
+		assertNotNull(repaired, notes.toString());
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired).accept(node, 0);
+		MethodNode bridge = node.methods.stream().filter(mn -> mn.name.equals("h$fabricated")).findFirst().orElseThrow();
+		assertEquals(forgeDesc.replace(")V", CALLBACK_INFO + ")V"), bridge.desc);
+		List<Integer> loads = new ArrayList<>();
+		for (AbstractInsnNode insn : bridge.instructions) {
+			if (insn instanceof VarInsnNode v) loads.add(v.var);
+		}
+		assertEquals(List.of(0, 2, 1, 4, 3, 5, 6), loads, "the screen, the array, the key and the scancode where the handler takes them");
+		defineMixin(repaired);
+		mod.put("com/example/mixin/Captures", repaired);
+		List<PreflightFinding> after = new MixinPreflight(game, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, vanilla::get)
+				.check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(after.isEmpty(), after.toString());
+	}
+
+	/**
+	 * A key lambda's body as vanilla's and Forge 47's are: unless the action (slot 0) is 1, it stores into the array at
+	 * {@code array} what {@code Hooks.keyPressed} answers for the screen at {@code screen} and the key, scancode and
+	 * modifiers at the slots given.
+	 */
+	private static void keyPressBody(MethodVisitor mv, int array, int screen, int key, int scancode, int modifiers) {
+		Label skip = new Label();
+		mv.visitVarInsn(Opcodes.ILOAD, 0);
+		mv.visitInsn(Opcodes.ICONST_1);
+		mv.visitJumpInsn(Opcodes.IF_ICMPEQ, skip);
+		mv.visitVarInsn(Opcodes.ALOAD, array);
+		mv.visitInsn(Opcodes.ICONST_0);
+		mv.visitVarInsn(Opcodes.ALOAD, screen);
+		mv.visitVarInsn(Opcodes.ILOAD, key);
+		mv.visitVarInsn(Opcodes.ILOAD, scancode);
+		mv.visitVarInsn(Opcodes.ILOAD, modifiers);
+		mv.visitMethodInsn(Opcodes.INVOKESTATIC, "com/example/Hooks", "keyPressed", "(Ljava/lang/String;III)Z", false);
+		mv.visitInsn(Opcodes.BASTORE);
+		mv.visitLabel(skip);
+		mv.visitInsn(Opcodes.RETURN);
+	}
+
+	/** {@link #TARGET} with a synthetic private method {@code name} of descriptor {@code desc}, static or taking {@code this}, and {@code body}. */
+	private static byte[] lambdaClass(String name, String desc, boolean isStatic, Consumer<MethodVisitor> body) {
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_SYNTHETIC | (isStatic ? Opcodes.ACC_STATIC : 0), name, desc, null, null);
+		mv.visitCode();
+		body.accept(mv);
+		mv.visitMaxs(0, 0);
+		mv.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	/** Defines the repaired {@code com.example.mixin.Captures} in a class loader of its own, which verifies it. */
+	private void defineMixin(byte[] bytes) throws Exception {
+		ClassLoader loader = new ClassLoader(getClass().getClassLoader()) {
+			@Override
+			protected Class<?> findClass(String name) throws ClassNotFoundException {
+				if (!name.equals("com.example.mixin.Captures")) throw new ClassNotFoundException(name);
+				return defineClass(name, bytes, 0, bytes.length);
+			}
+		};
+		Class.forName("com.example.mixin.Captures", true, loader);
+	}
+
 	/** {@link #TARGET} whose static {@code main} calls the static {@code owner.name(false)}, of descriptor {@code desc}. */
 	private static byte[] mainCalling(String owner, String name, String desc) {
 		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);

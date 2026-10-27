@@ -4,6 +4,7 @@
   "package": "io.github.cmdralph.fabricated.forgetest.mixin",
   "compatibilityLevel": "JAVA_17",
   "mixins": ["BuiltInRegistriesMixin", "CommandsMixin", "MinecraftServerMixin", "MinecraftServerWrapMixin"],
+  "client": ["MouseHandlerInvoker"],
   "injectors": {
     "defaultRequire": 1
   },

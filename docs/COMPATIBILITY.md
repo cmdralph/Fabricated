@@ -952,7 +952,7 @@ The `forge` and `forge-legacy` branches build Fabricated for Minecraft Forge 61 
 `docs/readme/`). CI runs dedicated servers there: `ci/forge/smoke-server.sh` and `ci/forge-legacy/smoke-server.sh`
 start one with the test mod and one with the official Fabric API jar too, and `smoke-client.sh` starts a client the same
 two ways (with Fabric API, informational). This table is the two runs with Fabric API, the server's and the client's
-`fabric-bridge-report.txt`, from the runs on `claude/dev` at `1c6acbe` (40493632747, and 40493629134 for Forge 47),
+`fabric-bridge-report.txt`, from the runs on `claude/dev` at `b2ae04e` (40501049571, and 40501046056 for Forge 47),
 2026-10-27: Fabric API 0.141.6+1.21.11, 0.155.3+26.1.2, 0.161.0+26.2, 0.164.0+26.3 and 0.92.12+1.20.1, on Forge 61.2.4,
 64.1.5, 65.1.5, 66.1.0 and 47.4.28. Each cell is the more limited of the two: a module with client hooks
 can load on the server and lose hooks, or be turned off, on the client. The server starts and the client reaches a world
@@ -1025,7 +1025,7 @@ How to read it: as the NeoForge table, and
 | fabric-resource-conditions-api-v1 | loads, part | loads | loads | loads, part | loads, part |
 | fabric-resource-loader-v0 | loads | loads | loads | loads | loads |
 | fabric-resource-loader-v1 | loads, part | loads, part | loads, part | loads, part | — |
-| fabric-screen-api-v1 | loads, part | loads, part | loads, part | loads, part | loads, part |
+| fabric-screen-api-v1 | loads, part | loads, part | loads, part | loads, part | loads |
 | fabric-screen-handler-api-v1 | loads | — | — | — | loads |
 | fabric-serialization-api-v1 | loads | loads | loads | loads | — |
 | fabric-sound-api-v1 | loads | loads | loads | loads | loads, part |
@@ -1034,7 +1034,7 @@ How to read it: as the NeoForge table, and
 | fabric-transitive-access-wideners-v1 | loads | loads | loads | loads | loads |
 
 On top of the modules, the in-game mod bridges these to Forge, or makes Fabric API's hooks for them apply, each checked
-by the server runs (the colours by the client runs):
+by the server runs (the colours and screen input by the client runs):
 
 - **Tags:** tag files' `fabric:remove` entries are read into Forge's own removal list, with and without Fabric API (all
   five).
@@ -1061,6 +1061,9 @@ by the server runs (the colours by the client runs):
   and sleeping direction events run as it lies down and wakes up (all five, with Fabric API, server and client; on
   Forge 47 as it wakes up since LAMBDA-6). Forge sets a bed's occupation through its own `setBedOccupied`, on the red
   bed upstream's hook stands in for the block, so the in-game mod sets the block's own (SLEEP-1).
+- **Screen input:** a click and a key press on a screen, and their releases, ask `ScreenMouseEvents` and
+  `ScreenKeyboardEvents` (Forge 47, with Fabric API, client run). Forge 47's patch made the mouse lambdas take `this` and
+  reordered the key lambda's captured values; pre-flight bridges upstream's hooks into both (LAMBDA-7).
 
 ## Fabric mods tested
 
