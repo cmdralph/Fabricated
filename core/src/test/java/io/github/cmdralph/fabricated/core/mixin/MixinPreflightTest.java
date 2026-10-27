@@ -816,6 +816,90 @@ class MixinPreflightTest {
 	}
 
 	@Test
+	void aVariableModifierByTypeMovesToTheOverloadTheMethodPassesItsParametersTo() throws Exception {
+		// MODEL-3: Fabric API's before-bake model hook, a @ModifyVariable at the model ModelBakerImpl.bake gets, which Forge 47
+		// moved into an overload that also takes the sprite getter. The handler takes bake's parameters after the model.
+		String two = "(Ljava/lang/String;Ljava/lang/Integer;)Ljava/lang/Object;";
+		String three = "(Ljava/lang/String;Ljava/lang/Integer;Ljava/util/function/Function;)Ljava/lang/Object;";
+		ClassWriter target = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		target.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		target.visitField(Opcodes.ACC_PRIVATE | Opcodes.ACC_FINAL, "sprites", "Ljava/util/function/Function;", null, null).visitEnd();
+		MethodVisitor bake = target.visitMethod(Opcodes.ACC_PUBLIC, "bake", two, null, null);
+		bake.visitCode();
+		bake.visitVarInsn(Opcodes.ALOAD, 0);
+		bake.visitVarInsn(Opcodes.ALOAD, 1);
+		bake.visitVarInsn(Opcodes.ALOAD, 2);
+		bake.visitVarInsn(Opcodes.ALOAD, 0);
+		bake.visitFieldInsn(Opcodes.GETFIELD, TARGET, "sprites", "Ljava/util/function/Function;");
+		bake.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "bake", three, false);
+		bake.visitInsn(Opcodes.ARETURN);
+		bake.visitMaxs(0, 0);
+		bake.visitEnd();
+		MethodVisitor withSprites = target.visitMethod(Opcodes.ACC_PUBLIC, "bake", three, null, null);
+		withSprites.visitCode();
+		withSprites.visitVarInsn(Opcodes.ALOAD, 0);
+		withSprites.visitVarInsn(Opcodes.ALOAD, 1);
+		withSprites.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "getModel", "(Ljava/lang/String;)Ljava/lang/Object;", false);
+		withSprites.visitVarInsn(Opcodes.ASTORE, 4);
+		withSprites.visitVarInsn(Opcodes.ALOAD, 4);
+		withSprites.visitInsn(Opcodes.ARETURN);
+		withSprites.visitMaxs(0, 0);
+		withSprites.visitEnd();
+		MethodVisitor getModel = target.visitMethod(Opcodes.ACC_PUBLIC, "getModel", "(Ljava/lang/String;)Ljava/lang/Object;", null, null);
+		getModel.visitCode();
+		getModel.visitInsn(Opcodes.ACONST_NULL);
+		getModel.visitInsn(Opcodes.ARETURN);
+		getModel.visitMaxs(0, 0);
+		getModel.visitEnd();
+		target.visitEnd();
+		ClassIndex forge = new ClassIndex(Map.of(TARGET, target.toByteArray())::get);
+		java.util.function.Function<Integer, byte[]> hook = ordinal -> mixin("com/example/mixin/Bake", false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "before", "(Ljava/lang/Object;Ljava/lang/String;Ljava/lang/Integer;)Ljava/lang/Object;", null, null);
+			AnnotationVisitor ann = mv.visitAnnotation(MODIFY_VARIABLE, true);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "bake");
+			methods.visitEnd();
+			AnnotationVisitor ats = ann.visitArray("at");
+			AnnotationVisitor at = ats.visitAnnotation(null, AT);
+			at.visit("value", "INVOKE_ASSIGN");
+			at.visit("target", "L" + TARGET + ";getModel(Ljava/lang/String;)Ljava/lang/Object;");
+			at.visitEnd();
+			ats.visitEnd();
+			if (ordinal != null) ann.visit("ordinal", ordinal);
+			ann.visitEnd();
+			mv.visitCode();
+			mv.visitVarInsn(Opcodes.ALOAD, 1);
+			mv.visitInsn(Opcodes.ARETURN);
+			mv.visitMaxs(1, 4);
+			mv.visitEnd();
+		});
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Bake"));
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Bake", hook.apply(null)));
+		assertFalse(preflight(forge, mod::get, ClassBytesSource.EMPTY, true).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty(),
+				"the model is assigned in the overload only");
+
+		List<PreflightFinding> notes = new ArrayList<>();
+		byte[] repaired = preflight(forge, mod::get, ClassBytesSource.EMPTY, true).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes)
+				.get("com/example/mixin/Bake.class");
+		assertNotNull(repaired, notes.toString());
+		assertTrue(notes.getFirst().message().contains("before targets bake" + two), notes.toString());
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired).accept(node, 0);
+		MethodNode bridge = node.methods.stream().filter(m -> m.name.equals("before$fabricated")).findFirst().orElseThrow();
+		assertEquals("(Ljava/lang/Object;Ljava/lang/String;Ljava/lang/Integer;Ljava/util/function/Function;)Ljava/lang/Object;", bridge.desc,
+				"the bridge takes the overload's parameters, and passes the handler bake's");
+		defineMixin("com.example.mixin.Bake", repaired);
+		mod.put("com/example/mixin/Bake", repaired);
+		List<PreflightFinding> after = preflight(forge, mod::get, ClassBytesSource.EMPTY, true).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(after.isEmpty(), after.toString());
+
+		Map<String, byte[]> byOrdinal = Map.of("com/example/mixin/Bake", hook.apply(0));
+		List<PreflightFinding> ordinalNotes = new ArrayList<>();
+		preflight(forge, byOrdinal::get, ClassBytesSource.EMPTY, true).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), ordinalNotes);
+		assertTrue(ordinalNotes.stream().noneMatch(n -> n.message().contains("targets bake")), "by its place among the locals, it stays: " + ordinalNotes);
+	}
+
+	@Test
 	void anExpressionModifierMovesToAnOverloadTakingMoreArguments() throws Exception {
 		// PRE-13: Polymer modifies the codecs vanilla's custom payload packets make with CustomPacketPayload.codec(fallback,
 		// types); NeoForge's patches call codec(fallback, types, protocol, flow) in both places.
@@ -1059,14 +1143,19 @@ class MixinPreflightTest {
 
 	/** Defines the repaired {@code com.example.mixin.Captures} in a class loader of its own, which verifies it. */
 	private void defineMixin(byte[] bytes) throws Exception {
+		defineMixin("com.example.mixin.Captures", bytes);
+	}
+
+	/** Defines the repaired mixin {@code className} in a class loader of its own, which verifies it. */
+	private void defineMixin(String className, byte[] bytes) throws Exception {
 		ClassLoader loader = new ClassLoader(getClass().getClassLoader()) {
 			@Override
 			protected Class<?> findClass(String name) throws ClassNotFoundException {
-				if (!name.equals("com.example.mixin.Captures")) throw new ClassNotFoundException(name);
+				if (!name.equals(className)) throw new ClassNotFoundException(name);
 				return defineClass(name, bytes, 0, bytes.length);
 			}
 		};
-		Class.forName("com.example.mixin.Captures", true, loader);
+		Class.forName(className, true, loader);
 	}
 
 	/** {@link #TARGET} whose static {@code main} calls the static {@code owner.name(false)}, of descriptor {@code desc}. */

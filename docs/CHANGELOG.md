@@ -3,6 +3,20 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-10-27: Fabric's before-bake model modifiers on the Forge 47 client
+
+- **MODEL-3** (Forge 47): Forge moved the code of the model baker's `bake` into an overload that also takes the sprite
+  getter, and pre-flight moved the hooks whose points went there but not a variable modifier, so
+  `fabric-model-loading-api-v1`'s before-bake hook was left out and `ModelModifier.BEFORE_BAKE` never ran. A variable
+  modifier that picks its local by type now moves too.
+- The Forge 47 test mod registers a model loading plugin whose before-bake and after-bake modifiers must both see the
+  models baked, with Fabric API.
+- With Fabric API, Fabric API's model loading module loads whole on the Forge 47 client (`COMPATIBILITY.md`).
+- Verification: build-forge-legacy run 40508573809, build-forge run 40508578596 and build run 40508582533 on `6ee91f6`
+  pass, with the model check on Forge 47's client, which now leaves out 26 hooks instead of 27. Forge 61 to 66 and
+  NeoForge leave out and repair exactly the hooks they did on `b2ae04e`; NeoForge's informational client runs vary in
+  checks that vary between runs on their own (the advanced corpus client on 1.21.11, the Sodium clients on 26.1.2).
+
 ## 2026-10-27: Fabric's screen mouse and key events on the Forge 47 client
 
 - **LAMBDA-7** (Forge 47): Forge's patch made the lambdas a screen's clicks and releases run in take `this`, where
