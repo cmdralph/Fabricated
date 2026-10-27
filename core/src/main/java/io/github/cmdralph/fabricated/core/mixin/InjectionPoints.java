@@ -200,6 +200,24 @@ final class InjectionPoints {
 		return false;
 	}
 
+	/**
+	 * Whether a {@code LOAD} or {@code STORE} point of a local of {@code type} whose slot isn't known can pick an
+	 * instruction in the slice: Mixin's {@code BeforeLoadLocal} and {@code AfterStoreLocal} match only the loads or stores
+	 * with that type's opcode (or the point's {@code opcode}), so a slice with no more of them than the point's ordinal
+	 * can't match (PRE-17: Puzzles Lib's break speed hook modifies a float where {@code Player.getDestroySpeed} loads it,
+	 * a method Forge 47 reduced to a call of {@code getDigSpeed}, which has no float). An int's increment counts as a store.
+	 */
+	static boolean accessesAnyLocal(boolean load, Type type, int opcode, int ordinal, Range range, MethodNode method) {
+		int wanted = opcode >= 0 ? opcode : type.getOpcode(load ? Opcodes.ILOAD : Opcodes.ISTORE);
+		int seen = 0;
+		int last = Math.min(range.end(), method.instructions.size() - 1);
+		for (int i = Math.max(range.start(), 0); i <= last; i++) {
+			AbstractInsnNode insn = method.instructions.get(i);
+			if (insn.getOpcode() == wanted || !load && wanted == Opcodes.ISTORE && insn instanceof IincInsnNode) seen++;
+		}
+		return seen > Math.max(ordinal, 0);
+	}
+
 	/** {@link #count}'s answer for a point the method has where the injections it makes there aren't counted. */
 	static final int PRESENT = -2;
 

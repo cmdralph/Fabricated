@@ -3813,7 +3813,12 @@ public final class MixinPreflight {
 				Verdict v = expression ? InjectionPoints.evaluateExpression(handler, m, ctx) : InjectionPoints.evaluate(point, resolved, ordinal, opcode, range, m);
 				if (v != Verdict.MISSING && ann.desc.equals(MODIFY_VARIABLE) && (point.equals("LOAD") || point.equals("STORE")) && range != Range.UNEVALUATED) {
 					int slot = modifiedSlot(handler, ann, m);
-					if (slot >= 0) v = InjectionPoints.accessesLocal(point.equals("LOAD"), Type.getArgumentTypes(handler.desc)[0], slot, ordinal, range, m) ? Verdict.FOUND : Verdict.MISSING;
+					Type variable = Type.getReturnType(handler.desc);
+					if (slot >= 0) {
+						v = InjectionPoints.accessesLocal(point.equals("LOAD"), Type.getArgumentTypes(handler.desc)[0], slot, ordinal, range, m) ? Verdict.FOUND : Verdict.MISSING;
+					} else if (variable.getSort() != Type.VOID && !InjectionPoints.accessesAnyLocal(point.equals("LOAD"), variable, opcode, ordinal, range, m)) {
+						v = Verdict.MISSING;
+					}
 				}
 				if (injections >= 0) {
 					int n = expression ? -1 : InjectionPoints.count(point, resolved, ordinal, opcode, range, m);
