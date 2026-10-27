@@ -2370,6 +2370,53 @@ class MixinPreflightTest {
 	}
 
 	@Test
+	void aVariableModifierOfAnArgumentAtItsStoreFailsWhereTheMethodNoLongerStoresIt() throws Exception {
+		// PRE-16: Fabric API's shader import hook modifies an import's name where vanilla stores it back into its argument
+		// (@ModifyVariable(at = @At("STORE"), argsOnly = true)); Forge 47's patch looks the import up without that store,
+		// though the method still stores other locals.
+		java.util.function.Function<Boolean, byte[]> target = patched -> {
+			ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+			cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+			MethodVisitor load = cw.visitMethod(Opcodes.ACC_PUBLIC, "loadImport", "(ZLjava/lang/String;)Ljava/lang/String;", null, null);
+			load.visitCode();
+			load.visitVarInsn(Opcodes.ALOAD, 2);
+			load.visitMethodInsn(Opcodes.INVOKESTATIC, TARGET, "normalize", "(Ljava/lang/String;)Ljava/lang/String;", false);
+			load.visitVarInsn(Opcodes.ASTORE, patched ? 3 : 2);
+			load.visitVarInsn(Opcodes.ALOAD, patched ? 3 : 2);
+			load.visitInsn(Opcodes.ARETURN);
+			load.visitMaxs(0, 0);
+			load.visitEnd();
+			cw.visitEnd();
+			return cw.toByteArray();
+		};
+		byte[] mixin = mixin("com/example/mixin/Imports", false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "modifyImportId", "(Ljava/lang/String;Z)Ljava/lang/String;", null, null);
+			AnnotationVisitor ann = mv.visitAnnotation(MODIFY_VARIABLE, true);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "loadImport");
+			methods.visitEnd();
+			AnnotationVisitor at = ann.visitAnnotation("at", AT);
+			at.visit("value", "STORE");
+			at.visitEnd();
+			ann.visit("ordinal", 0);
+			ann.visit("argsOnly", true);
+			ann.visitEnd();
+			mv.visitCode();
+			mv.visitVarInsn(Opcodes.ALOAD, 1);
+			mv.visitInsn(Opcodes.ARETURN);
+			mv.visitMaxs(1, 3);
+			mv.visitEnd();
+		});
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Imports"));
+		Map<String, byte[]> mod = Map.of("com/example/mixin/Imports", mixin);
+		List<PreflightFinding> found = preflight(new ClassIndex(Map.of(TARGET, target.apply(true))::get), mod::get, ClassBytesSource.EMPTY, false)
+				.check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(found.stream().anyMatch(f -> f.message().contains("expects @At(\"STORE\"), which does not occur")), found.toString());
+		assertTrue(preflight(new ClassIndex(Map.of(TARGET, target.apply(false))::get), mod::get, ClassBytesSource.EMPTY, false)
+				.check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty());
+	}
+
+	@Test
 	void anArgumentModifierWithAnInstanceHandlerBeforeTheDelegateConstructorCallFails() throws Exception {
 		// CTOR-3: Fabric API's shader program hook modifies vanilla's ResourceLocation construction in ShaderInstance's
 		// constructor, which Forge 47's patch moved into the arguments of a this(...) call: Mixin takes only a static

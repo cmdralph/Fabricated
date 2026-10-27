@@ -3493,6 +3493,10 @@ public final class MixinPreflight {
 				boolean expression = point.equals("MIXINEXTRAS:EXPRESSION");
 				String resolved = rawTarget == null ? null : ctx.resolve(rawTarget);
 				Verdict v = expression ? InjectionPoints.evaluateExpression(handler, m, ctx) : InjectionPoints.evaluate(point, resolved, ordinal, opcode, range, m);
+				if (v != Verdict.MISSING && ann.desc.equals(MODIFY_VARIABLE) && (point.equals("LOAD") || point.equals("STORE")) && range != Range.UNEVALUATED) {
+					int slot = modifiedSlot(handler, ann, m);
+					if (slot >= 0) v = InjectionPoints.accessesLocal(point.equals("LOAD"), Type.getArgumentTypes(handler.desc)[0], slot, ordinal, range, m) ? Verdict.FOUND : Verdict.MISSING;
+				}
 				if (injections >= 0) {
 					int n = expression ? -1 : InjectionPoints.count(point, resolved, ordinal, opcode, range, m);
 					if (n == 0) without.add(m.name);
@@ -3533,6 +3537,30 @@ public final class MixinPreflight {
 							+ ": its point does not occur in " + String.join(", ", new TreeSet<>(without)) + " in " + target.name.replace('/', '.'),
 					ctx.changer(true) + " changed " + (without.size() == 1 ? "that method" : "those methods") + "; the mod needs an update or this mixin must be skipped.");
 		}
+	}
+
+	/**
+	 * The slot of the local a {@code @ModifyVariable} modifies in {@code method}, where its annotation alone tells it: its
+	 * {@code index}, or with {@code argsOnly} the argument of the handler's type it names by its ordinal (the only one of
+	 * that type without one), as Mixin's discriminator takes them; -1 otherwise (a name, or a local Mixin finds by the
+	 * local variable table). A {@code LOAD} or {@code STORE} point then picks that slot's loads or stores only (PRE-16:
+	 * Fabric API's shader import hook modifies an import's name where vanilla stores it back into its argument, a store
+	 * Forge 47's patch removed, and pre-flight took any store in the method for it).
+	 */
+	private static int modifiedSlot(MethodNode handler, AnnotationNode injector, MethodNode method) {
+		Type[] handlerArgs = Type.getArgumentTypes(handler.desc);
+		if (handlerArgs.length == 0 || Annotations.value(injector, "name") != null) return -1;
+		if (Annotations.value(injector, "index") instanceof Integer index && index >= 0) return index;
+		if (!Boolean.TRUE.equals(Annotations.value(injector, "argsOnly"))) return -1;
+		int ordinal = Annotations.value(injector, "ordinal") instanceof Integer o ? o : -1;
+		int slot = (method.access & Opcodes.ACC_STATIC) != 0 ? 0 : 1;
+		List<Integer> matching = new ArrayList<>();
+		for (Type arg : Type.getArgumentTypes(method.desc)) {
+			if (arg.equals(handlerArgs[0])) matching.add(slot);
+			slot += arg.getSize();
+		}
+		if (ordinal >= 0) return ordinal < matching.size() ? matching.get(ordinal) : -1;
+		return matching.size() == 1 ? matching.get(0) : -1;
 	}
 
 	/**
