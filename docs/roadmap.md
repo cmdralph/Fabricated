@@ -44,11 +44,69 @@ needs to know of a platform is its `PlatformDescriptor`. NeoForge is the support
    CI-1 and PLAT-4 were fixed. The Forge clients' runs held on every
    version before they reached a pull request, so they went in as gates.
 
+## Rethink, 2026-10-27: the design against its four goals
+
+Fabricated is meant to run Fabric mods on NeoForge and Forge faster, lighter, more stably and more securely than
+Sinytra Connector. This pass checked the design and the way it is worked on against those four goals, for drift,
+over-engineering and dead ends, without redesigning what holds.
+
+- **Light** (no dependency but Fabric API's jar, translation cached): holds. The engine has no runtime dependency and
+  a jar is translated once, keyed by its content and what it was checked against. The drift is in the process: three
+  pull requests and three CI runs for every change, and one fact written into five documents.
+- **Robust** (a broken mod is isolated, the game never crashes for it): holds, and most of the work went here.
+  Pre-flight leaves out the hooks a platform's code can't take and disables a mod only when its own code depends on
+  them (LEAVE-1). The risk is growth: `MixinPreflight` and its repair families gain a case with most findings (ARCH-1,
+  task 4).
+- **Safe** (jars are untrusted, no network, no telemetry): holds (`SafeArchive`, SEC-1 to SEC-5; only CI downloads
+  mods). No change.
+- **Fast** (startup and runtime): the cache makes a second start cheap, but the first start and the hot paths are not
+  measured (PERF-1, PERF-2). No speed work until a measurement says where.
+
+What changes, and why:
+
+1. **One pull request per task, into `main`**, instead of one per release branch and pass. The three branches hold the
+   same tree, so their three pull requests checked the same code three times. `forge` and `forge-legacy` get the head
+   at a release, for their README and their jars.
+2. **CI in two tiers.** A quick check on each push (`check.yml`: the unit tests, and one version of each platform the
+   push changed booted on a server); the full matrix on the task's pull request, on release tags and by hand. The
+   informational runs (the corpora, other mods' Fabric builds, the newest NeoForge build) wait for `extended`: their
+   results move slowly and matter at a release. On `main`'s run 40518340743 a NeoForge job took 16 to 25 minutes, the
+   gates about seven of them. A push to `main` only builds, so `main`'s Gradle caches stay current for pull requests,
+   and a job installs the game once for all its runs.
+3. **Local verification first.** The container reaches the game's mavens (an older note here said it couldn't), so a
+   version's jars, its test mods and a server smoke run locally before a push. NeoForge 26.2 and 26.3 are the
+   exception (*Unverified and blockers*).
+4. **Forge parity through Fabric API's own modules and targeted bridges**, not ports of NeoForge's native modules.
+   Upstream's modules load on Forge; where Forge's patched code doesn't take one of their hooks, the in-game mod fires
+   the event from Forge's code (BREAK-1, SLEEP-1, SLEEP-2, DAMAGE-1). That costs less and keeps the platform folders
+   thin. Task 2 continues this, and code a second platform needs moves to `mc/forge/common` or the engine.
+5. **Test stand-ins only for what a check calls.** 1.21.11's Fabric API stand-ins and 1.20.1's Intermediary-named
+   stubs grow by the members a check uses, no more.
+6. **Documentation per task, not per change:** one CHANGELOG entry per task; this file and the parity table change
+   when a row moves.
+
+Unchanged: the engine and platform split, the platform descriptor, the cache, the security model. Noted and out of
+this pass's scope: the stale remote branches `claude/forge` and `claude/forge-legacy` (deleting them is the owner's
+call, at the cleanup), and cache eviction under GitHub's 10 GB limit, as each of `main`'s jobs saves a Gradle entry of
+about 750 MB (to watch on the first runs).
+
 ## Next release: v0.5.0
 
 v0.4.0-alpha (`releases/v0.4.0-alpha.md`) shipped NeoForge's four versions and the Forge builds as server previews.
 v0.5.0 is where the Forge targets get Fabric mods' client side and the platforms' coverage becomes comparable, with no
 regression on NeoForge. Each item is done when its CI check is; the tracks below hold the detail.
+
+The owner's plan to v0.5.0-alpha, in order (2026-10-27):
+
+1. Rethink the design and make CI cheaper (above). Done once its pull request's full matrix is green.
+2. Faster Forge development: Forge 61 to 66 and Forge 47 nearer NeoForge's coverage, first where the most Fabric mods
+   are blocked, sharing code through the engine so the platform folders stay thin.
+3. Minecraft 1.21.1: NeoForge 21.1 first, then Forge if it fits cleanly, on 1.21.11's Intermediary path, in the CI
+   matrix with the same test mods.
+4. Cleanup, once: dead code, duplicated logic, stale workarounds, unused configuration, outdated documents, the module
+   and package structure (ARCH-1), with the public API kept or its breaks documented.
+5. Release v0.5.0-alpha: documents and versions, the full matrix green on every branch and version, the tag and notes
+   for NeoForge, Forge and Forge 47 (a draft for the owner to publish).
 
 | Platform | Goals | Status |
 |---|---|---|
@@ -288,6 +346,9 @@ NeoForge already cover those users.
   overhead, drift from the design): SEC-1 to SEC-4, CACHE-1, CACHE-2, BRIDGE-1 and BRIDGE-2 fixed, SEC-5, PERF-1,
   PERF-2, CACHE-3 and ARCH-1 open; the design documents corrected where the code had moved on. CI no longer runs the
   game matrix for a change to documentation alone, and each job has a time limit.
+- **Done (2026-10-27):** CI in two tiers: a quick check on each push, the full matrix on pull requests to `main`,
+  release tags and by hand, the informational runs with `extended`; a push to `main` only builds; a job installs the
+  game once for all its runs (*Rethink*, item 2).
 - **Next:** the gates listed in the rendering-pipeline plan; checks for what the corpus mods do in the world.
 
 ## Findings
@@ -359,8 +420,10 @@ open (see *Unverified and blockers*).
 
 ## Unverified and blockers
 
-- **The local sandbox can't build the Minecraft modules** (`maven.neoforged.net`, Mojang and `maven.fabricmc.net`
-  are blocked), so everything game-facing is verified only in CI.
+- **NeoForge 26.2 and 26.3 don't build locally**: NeoForge's source transformer (JST 2.0.10) never applies an access
+  transformer line to an anonymous class, here NeoForge's own `HolderSet$1 contents()`, and recompiling the game fails
+  (26.1.2 makes the method public with a source patch instead). CI builds both from the same inputs; why it differs is
+  UNVERIFIED. Locally, verify on 1.21.11 or 26.1.2, and let the quick check build 26.2 and 26.3.
 - **Renderer API gate: passes** on 26.1.2, 26.2 and 26.3 (runs 236 and 237), and on 1.21.11 for chunk sections (runs
   365 and 366). On 26.3 the log shows the pre-flight
   moving `ModelBakeryMixin#onReturnInit` to NeoForge's constructor, then `frapi emitQuads called (level

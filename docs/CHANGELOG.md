@@ -3,6 +3,34 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-10-27: the design rethought against its goals, and CI in two tiers
+
+- The design and the way it is worked on, checked against the four goals (light, robust, safe, fast) for drift,
+  over-engineering and dead ends: `roadmap.md`, *Rethink*. The engine holds; what changes is the process around it,
+  and Forge parity keeps to Fabric API's own modules with targeted bridges rather than ports of NeoForge's native
+  modules.
+- **One pull request per task, into `main`** (the owner's decision), replacing one pull request per release branch and
+  pass and decision D6. `forge` and `forge-legacy` get the same head at a release. Decided here: those two merges go
+  by pull request without a CI run of their own, as `main`'s pull request already ran their full matrix on that code.
+- **A quick check on each push** (`check.yml`): the unit tests and, for each platform the push changed, one version
+  built and booted on a server with the test mods. `ci/changed-targets.py` picks the version from the changed paths:
+  the version whose folder alone changed, else the platform's newest; shared code boots NeoForge's newest. Its Gradle
+  cache entries stay on the working branch, which the next push reads.
+- **The full matrix** (`build.yml`, `build-forge.yml`, `build-forge-legacy.yml`) runs on pull requests to `main`, on
+  release tags (`v*`) and by hand, each for the platforms a change touched; the Forge workflows ran on pull requests
+  to their branches before. A push to `main` only builds, which keeps `main`'s Gradle caches current for pull
+  requests. NeoForge's informational runs (the newest NeoForge build, other mods' Fabric builds, Polyfrost, the two
+  corpora) run on release tags and by hand with `extended`; every gate still runs on each pull request.
+- **A job installs the game once** (`ci/install-cache.sh`): the first run of a version keeps its pristine install and
+  the job's later runs copy it instead of running the official installer again. Locally, a Forge 66 server run took 50
+  seconds with the installer and 28 with the copy, passing the same 26 checks.
+- `claude.md` holds the new workflow (local first, push in batches, the full matrix once per task) and corrects the
+  old note that the container can't reach the game's mavens. NeoForge 26.2 and 26.3 still don't build locally: JST
+  2.0.10 never applies an access transformer to an anonymous class, here NeoForge's own `HolderSet$1 contents()`. CI
+  builds them, for a reason still UNVERIFIED.
+- Verification: `actionlint` on every workflow, `bash -n` on the scripts, `ci/changed-targets.py` on sample path sets,
+  two local Forge 66 server smokes sharing one install. The full matrix runs on this task's pull request.
+
 ## 2026-10-27: Fabric's after-damage event on Forge 61 and 64
 
 - **DAMAGE-1** (Forge 61, 64): Fabric API fires `ServerLivingEntityEvents.AFTER_DAMAGE` at the end of `hurtServer`,
@@ -13,7 +41,8 @@ One entry per working session, newest first: what changed, and how it was verifi
   66 keep the copy, and upstream's hook applies there.
 - The forge test mod hurts a pig wearing a helmet twice: `ALLOW_DAMAGE` refuses the first hit, whose damage must not
   reach the pig, and the second, a falling block's, must fire `AFTER_DAMAGE` with 2.0 dealt and 1.5 taken.
-- Verification: build-forge run 40544079471 on `1f6d837`.
+- Verification: build-forge run 40544079471 on `1f6d837`: `damage events OK` on every version's server and client with
+  Fabric API, and no failed check.
 
 ## 2026-10-27: Fabric's use and attack callbacks on Forge, and its sleep time event on Forge 47
 
