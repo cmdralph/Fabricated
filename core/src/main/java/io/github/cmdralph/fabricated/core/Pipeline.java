@@ -638,7 +638,7 @@ public final class Pipeline {
 			Map<String, List<String>> aliases = new HashMap<>();
 			config.overrides().forEach((id, o) -> aliases.put(id, o.aliases()));
 			Map<String, String> hints = missingHints();
-			PackageGuard packageGuard = new PackageGuard(config.limits());
+			PackageGuard packageGuard = new PackageGuard(config.limits(), in.descriptor().providedPackages());
 			// Every round either removes at least one mod or finishes, so this bound is never the limiting factor.
 			for (int round = 0; round <= eligible.size() + 1; round++) {
 				List<Candidate> active = eligible.stream().filter(c -> !dropped.containsKey(c.id())).toList();

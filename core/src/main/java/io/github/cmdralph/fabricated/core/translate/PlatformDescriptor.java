@@ -2,6 +2,7 @@ package io.github.cmdralph.fabricated.core.translate;
 
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -75,6 +76,15 @@ public interface PlatformDescriptor {
 		}
 
 		/**
+		 * None beyond the packages the loader reads from Forge's layers and mod files: Forge has none of NeoForge's,
+		 * which Forge Config API Port's Fabric jar copies and needs (PLAT-5).
+		 */
+		@Override
+		public List<String> providedPackages() {
+			return List.of();
+		}
+
+		/**
 		 * Forge reads no mod's pack without metadata ("Missing metadata in pack mod:...", then "Missing data pack", in the
 		 * forge branch's server smoke on Forge 64 to 66), where NeoForge makes one: the formats are those Fabricated's own
 		 * in-game mod on Forge declares, whose pack loads on Forge 61 to 66.
@@ -98,6 +108,15 @@ public interface PlatformDescriptor {
 		return Map.of(
 				"forgeconfigapiport", "Fabricated provides Forge Config API Port's Fabric API on NeoForge's own config system, which the port copies",
 				"modmenu", "Fabricated shows the config screens Fabric mods offer through Mod Menu's API in NeoForge's mod list");
+	}
+
+	/**
+	 * Package prefixes (internal form) the platform's loader owns besides the libraries every platform provides
+	 * ({@code PlatformLibraries.PROVIDED_PACKAGES}) and the packages the loader reads from the platform's layers: a Fabric
+	 * mod's copy of a package there is left out for the platform's. NeoForge's by default, its whole namespace.
+	 */
+	default List<String> providedPackages() {
+		return List.of("net/neoforged/");
 	}
 
 	/** The loader's name as players know it, for Fabricated's report: {@code NeoForge} by default. */

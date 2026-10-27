@@ -8,9 +8,10 @@ import io.github.cmdralph.fabricated.core.json.Json;
 import io.github.cmdralph.fabricated.core.json.JsonException;
 
 /**
- * Libraries that NeoForge and Minecraft already provide. Fabric mods frequently nest or shade copies of
- * them; loading a second copy into the module layer would be a fatal split package, so bundled copies
- * are dropped and the platform's version is used instead.
+ * Libraries that every platform (NeoForge, Forge) and Minecraft already provide. Fabric mods frequently nest or shade
+ * copies of them; loading a second copy into the module layer would be a fatal split package, so bundled copies are
+ * dropped and the platform's version is used instead. The platform loader's own packages are the platform
+ * descriptor's ({@code PlatformDescriptor.providedPackages}).
  */
 public final class PlatformLibraries {
 	/** Fabric ids (from Loom-generated metadata or real mods) that the platform provides. */
@@ -45,7 +46,6 @@ public final class PlatformLibraries {
 			// NeoForge ships night-config's core and TOML modules only: a mod's JSON or YAML module is its own.
 			"com/electronwill/nightconfig/core/",
 			"com/electronwill/nightconfig/toml/",
-			"net/neoforged/",
 			"cpw/mods/",
 			"joptsimple/");
 

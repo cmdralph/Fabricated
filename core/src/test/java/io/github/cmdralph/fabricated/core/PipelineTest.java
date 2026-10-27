@@ -385,6 +385,27 @@ class PipelineTest {
 		}
 	}
 
+	/**
+	 * PLAT-5: NeoForge's namespace is NeoForge's, whose copies a Fabric mod brings are left out for its classes; Forge has
+	 * none of it, so there Forge Config API Port's copies of NeoForge's config classes stay the mod's.
+	 */
+	@Test
+	void neoForgesPackagesAreThePlatformsOnlyOnNeoForge(@TempDir Path game) throws Exception {
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		String copy = "net/neoforged/neoforge/common/ModConfigSpec";
+		Path port = TestJars.create().fabricModJson(TestJars.modJson("config-port", "1.0", ""))
+				.bytes(copy + ".class", TestJars.emptyClass(copy, "java/lang/Object"))
+				.write(mods.resolve("port.jar"));
+		String note = "bundles package net.neoforged.neoforge.common, which the platform already provides";
+
+		Pipeline.Result neoForge = Pipeline.run(input(game, List.of(port), Namespace.OFFICIAL, Map.of(), null, List.of()));
+		assertTrue(neoForge.report().render().contains(note), neoForge.report().render());
+		Pipeline.Result forge = Pipeline.run(withDescriptor(input(game, List.of(port), Namespace.OFFICIAL, Map.of(), null, List.of()),
+				PlatformDescriptor.FORGE));
+		assertTrue(forge.mods().stream().anyMatch(m -> m.translated().candidate().id().equals("config-port")), forge.report().render());
+		assertFalse(forge.report().render().contains(note), forge.report().render());
+	}
+
 	/** On another platform, the report's reasons and suggestions name its loader where they named NeoForge (PLAT-3). */
 	@Test
 	void reasonsAndSuggestionsNameThePlatformsLoader(@TempDir Path game) throws Exception {
