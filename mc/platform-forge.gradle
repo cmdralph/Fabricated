@@ -69,8 +69,8 @@ tasks.named('processResources', ProcessResources) {
 def pluginLayerApis = ~/(forgespi|fmlcore)-.+\.jar/
 sourceSets {
     langprovider {
-        java.srcDirs = [rootProject.file('loader/forge/src/langprovider/java')]
-        resources.srcDirs = [rootProject.file('loader/forge/src/langprovider/resources')]
+        java.srcDirs = [rootProject.file('loader/forge-shared/src/langprovider/java')]
+        resources.srcDirs = [rootProject.file('loader/forge-shared/src/langprovider/resources')]
         compileClasspath = configurations.loaderCompileClasspath.filter { it.name ==~ pluginLayerApis }
     }
 }

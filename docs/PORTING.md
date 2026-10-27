@@ -294,7 +294,8 @@ and the shared source folders from the version's `shared_sources` property, unde
 `common`, `common26`, `common26early`, `common26late`), or from the repository root for an entry with a slash
 (`mc/forge-shared`, the code both Forge platforms compile as it is). It applies `mc/platform-<platform>.gradle` (the plugin's
 settings, the mod descriptor, `gameDependencies`), builds the in-game mod as `game-mod.jar` and merges `loader`
-(`loader/common` and `loader/<platform>`), `core`, `api` and `fabric-loader-api` into `fabricatedJar` (§6, items 2
+(`loader/common` and `loader/<platform>`, and `loader/forge-shared` for both Forge platforms: the discovery classes and
+the language provider they share as they are), `core`, `api` and `fabric-loader-api` into `fabricatedJar` (§6, items 2
 and 3). The test sources every platform shares are in `mc/shared`. NeoForge's CI step conditions still name versions,
 and its matrix, installers (`neoforge-<v>-installer.jar`), HeadlessMC launch names and mc-runtime-test assets are
 NeoForge's.

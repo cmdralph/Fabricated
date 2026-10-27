@@ -1,7 +1,8 @@
 // Shared build logic for every Minecraft version project (mc/<platform>/<version>/build.gradle applies this). What is
 // specific to the mod loader the target runs on is in mc/platform-<platform>.gradle, which this applies once the source
-// sets exist, and the loader classes in loader/<platform> (next to the shared ones in loader/common). The platform is
-// the folder the version's folder is in: neoforge, forge or forge-legacy.
+// sets exist, and the loader classes in loader/<platform> (next to the shared ones in loader/common, and in
+// loader/forge-shared for both Forge platforms). The platform is the folder the version's folder is in: neoforge, forge
+// or forge-legacy.
 //
 // Each version project produces build/libs/fabricated-<version>+mc<minecraft>.jar in the root project:
 //   - the "loader" source set (the loader's discovery services) plus :core and :fabric-loader-api, which run
@@ -58,6 +59,7 @@ sourceSets {
     loader {
         java.srcDir rootProject.file('loader/common/src/main/java')
         java.srcDir rootProject.file("loader/${platform}/src/main/java")
+        if (platform != 'neoforge') java.srcDir rootProject.file('loader/forge-shared/src/main/java')
         resources.srcDir rootProject.file("loader/${platform}/src/main/resources")
         resources.srcDir 'src/fabricated/resources'
     }
