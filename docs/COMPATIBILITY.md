@@ -950,18 +950,23 @@ modules that cascade from it.
 
 The `forge` and `forge-legacy` branches build Fabricated for Minecraft Forge 61 to 66 and Forge 47 (their READMEs,
 `docs/readme/`). CI runs dedicated servers there: `ci/forge/smoke-server.sh` and `ci/forge-legacy/smoke-server.sh`
-start one with the test mod and one with the official Fabric API jar too. Their client runs (`smoke-client.sh`) have
-the test mod only. This table is the second run's
+start one with the test mod and one with the official Fabric API jar too, and `smoke-client.sh` starts a client the same
+two ways (with Fabric API, informational). This table is the second server run's
 `fabric-bridge-report.txt`, from the runs on `claude/dev` at `8359033` (#157 and #158, 2026-10-26): Fabric API
 0.141.6+1.21.11, 0.155.3+26.1.2, 0.161.0+26.2, 0.164.0+26.3 and 0.92.12+1.20.1, on Forge 61.2.4, 64.1.5, 65.1.5,
 66.1.0 and 47.4.28. The server starts in every run, and no module is disabled. Both runs are now gates on every Forge
-version.
+version. The client-only modules' cells are the second client run's report, from the runs on `claude/dev` at `cd3e633`
+(40433805134 and 40433807263, 2026-10-27), where the client reaches a world on all five.
 
 How to read it: as the NeoForge table, and
 
 - **loads, part**: the module loads without some of its hooks, ones its plan leaves out where Forge's code differs or
   ones pre-flight finds Forge's code can't take (LEAVE-1). The report names each, with what is lost.
-- **client**: client-only. No Forge client runs in CI with Fabric API yet, so its status on the client is unknown.
+- **disabled**: client-only, and the client run turns it off (the game goes on without it). On Forge 61 and 47,
+  `fabric-rendering-v1`'s `BlockColorsMixin` reads the block colour list Forge replaced, so pre-flight disables it, and
+  with it the modules that need it (on Forge 61 the renderer API, Indigo and model loading; on Forge 47 the
+  deprecated `fabric-rendering-v0` and `fabric-renderer-registries-v1`). On Forge 47 model loading is disabled on its
+  own, at a hook into the model loader Forge changed, and `fabric-models-v0` with it.
 
 | Module | 1.21.11 (Forge 61) | 26.1.2 (Forge 64) | 26.2 (Forge 65) | 26.3 (Forge 66) | 1.20.1 (Forge 47) |
 |---|---|---|---|---|---|
@@ -972,8 +977,8 @@ How to read it: as the NeoForge table, and
 | fabric-block-api-v1 | loads | loads | loads | loads | loads |
 | fabric-block-getter-api-v2 | — | loads | loads | loads | — |
 | fabric-block-view-api-v2 | loads | — | — | — | loads |
-| fabric-blockrenderlayer-v1 | — | — | — | — | client |
-| fabric-client-tags-api-v1 | — | — | — | — | client |
+| fabric-blockrenderlayer-v1 | — | — | — | — | loads |
+| fabric-client-tags-api-v1 | — | — | — | — | loads |
 | fabric-command-api-v1 | — | — | — | — | loads |
 | fabric-command-api-v2 | loads | loads | loads | loads | loads, part |
 | fabric-commands-v0 | — | — | — | — | loads |
@@ -993,9 +998,9 @@ How to read it: as the NeoForge table, and
 | fabric-game-rule-api-v1 | loads | loads | loads | loads | loads |
 | fabric-item-api-v1 | loads, part | loads, part | loads, part | loads, part | loads, part |
 | fabric-item-group-api-v1 | loads | — | — | — | loads |
-| fabric-key-binding-api-v1 | client | — | — | — | client |
-| fabric-key-mapping-api-v1 | — | client | client | client | — |
-| fabric-keybindings-v0 | — | — | — | — | client |
+| fabric-key-binding-api-v1 | loads | — | — | — | loads |
+| fabric-key-mapping-api-v1 | — | loads | loads | loads | — |
+| fabric-keybindings-v0 | — | — | — | — | loads |
 | fabric-lifecycle-events-v1 | loads, part | loads, part | loads, part | loads, part | loads, part |
 | fabric-loot-api-v2 | loads | — | — | — | native |
 | fabric-loot-api-v3 | native | native | native | native | — |
@@ -1003,8 +1008,8 @@ How to read it: as the NeoForge table, and
 | fabric-menu-api-v1 | — | loads | loads | loads | — |
 | fabric-message-api-v1 | loads | loads | loads | loads | loads |
 | fabric-mining-level-api-v1 | — | — | — | — | loads |
-| fabric-model-loading-api-v1 | client | client | client | client | client |
-| fabric-models-v0 | — | — | — | — | client |
+| fabric-model-loading-api-v1 | disabled | loads | loads | loads | disabled |
+| fabric-models-v0 | — | — | — | — | disabled |
 | fabric-networking-api-v1 | loads | loads | loads | loads | loads |
 | fabric-networking-v0 | — | — | — | — | loads |
 | fabric-object-builder-api-v1 | loads, part | loads, part | loads, part | loads, part | loads |
@@ -1012,20 +1017,20 @@ How to read it: as the NeoForge table, and
 | fabric-permission-api-v1 | — | loads | loads | loads | — |
 | fabric-recipe-api-v1 | loads | loads | loads | loads | loads |
 | fabric-registry-sync-v0 | loads, part | loads, part | loads, part | loads, part | loads, part |
-| fabric-renderer-api-v1 | client | client | client | client | client |
-| fabric-renderer-indigo | client | client | client | client | client |
-| fabric-renderer-registries-v1 | — | — | — | — | client |
+| fabric-renderer-api-v1 | disabled | loads, part | loads, part | loads, part | loads, part |
+| fabric-renderer-indigo | disabled | loads | loads | loads | loads, part |
+| fabric-renderer-registries-v1 | — | — | — | — | disabled |
 | fabric-rendering-data-attachment-v1 | — | — | — | — | loads |
 | fabric-rendering-fluids-v1 | loads | loads | loads | loads | loads |
-| fabric-rendering-v0 | — | — | — | — | client |
-| fabric-rendering-v1 | client | client | client | client | client |
+| fabric-rendering-v0 | — | — | — | — | disabled |
+| fabric-rendering-v1 | disabled | loads | loads | loads | disabled |
 | fabric-resource-conditions-api-v1 | loads, part | loads | loads | loads, part | loads, part |
 | fabric-resource-loader-v0 | loads | loads | loads | loads | loads |
 | fabric-resource-loader-v1 | loads, part | loads, part | loads, part | loads, part | — |
-| fabric-screen-api-v1 | client | client | client | client | client |
+| fabric-screen-api-v1 | loads, part | loads, part | loads, part | loads, part | loads, part |
 | fabric-screen-handler-api-v1 | loads | — | — | — | loads |
 | fabric-serialization-api-v1 | loads | loads | loads | loads | — |
-| fabric-sound-api-v1 | client | client | client | client | client |
+| fabric-sound-api-v1 | loads | loads | loads | loads | loads, part |
 | fabric-tag-api-v1 | loads, part | loads, part | loads, part | loads, part | loads, part |
 | fabric-transfer-api-v1 | loads | loads | loads | loads | loads |
 | fabric-transitive-access-wideners-v1 | loads | loads | loads | loads | loads |
