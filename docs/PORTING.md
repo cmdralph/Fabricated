@@ -425,7 +425,9 @@ that takes `this`, which the later releases take: Fabric API's hooks into the tw
 vanilla's order, placed by their use in vanilla's lambda (LAMBDA-7), so Fabric's screen mouse and key events run.
 Model loading loads since CTOR-4: Forge's Mixin 0.8.5 takes a hook into a constructor only at a return, so pre-flight
 turns one at a call into a MixinExtras wrapper of that call, which also applies Fabric API's hook into `Commands`'
-constructor, so Fabric mods' commands register (checked with Fabric API, on the server and the client). Fabric's
+constructor, so Fabric mods' commands register (checked with Fabric API, on the server and the client). Forge 47 moved
+the code of the model baker's `bake` into an overload that also takes the sprite getter; pre-flight moves Fabric API's
+before-bake hook, a variable modifier picking its local by type, there as it moves the others (MODEL-3). Fabric's
 networking needs no `SimpleChannel` port: with Fabric API, a ping the client sends on a channel as it joins comes back
 from the integrated server (run 40459233646). Next: the old capability system. NeoForge needs no legacy branch.
 
