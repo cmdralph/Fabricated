@@ -149,6 +149,7 @@ else
 	echo "PASS: vanilla's check of the built-in registries, which Fabric API moves to the client's start, passes over Forge's empty registries (REG-6)"
 fi
 check "FABRICATED-FORGE-TEST constructor hook OK" "the test mod's @Inject at a call in Commands' constructor ran, which Forge 47's Mixin takes only at a return (CTOR-4)"
+check "FABRICATED-FORGE-TEST particles OK" "native fabric-particles-v1: the particle engine finds the test mod's factory, kept by the type's id as Forge keeps them, and its sprite provider holds its sprite in the particle atlas (PART-1)"
 if [ -n "$extra" ]; then
 	check "FABRICATED-FORGE-TEST networking round trip OK" "fabric-networking-api-v1 (with Fabric API): a ping the client sends on a channel as it joins comes back from the integrated server with the server's answer"
 	check "FABRICATED-FORGE-TEST Fabric command registered OK" "fabric-command-api-v2 (with Fabric API): a command registered through CommandRegistrationCallback is in the integrated server's dispatcher (CTOR-4)"
