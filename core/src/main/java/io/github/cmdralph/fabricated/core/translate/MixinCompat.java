@@ -52,17 +52,20 @@ public final class MixinCompat {
 	 * constructor (CTOR-2: {@code Injector.checkTargetForNode}, with {@code InjectionPointData}'s {@code unsafe} from 0.8.6),
 	 * and whether they know a method's arguments by their names where a {@code @ModifyVariable} takes arguments only (ARGS-1:
 	 * {@code LocalVariableDiscriminator.Context} names them {@code arg} and their slot; Fabric's Mixin takes their names
-	 * from 0.17.0). All three rebind a detached mixin's calls to an interface's super method (SUPER-1:
-	 * {@code MixinTargetContext.updateStaticBinding}, which Fabric's Mixin stopped doing for interfaces in 0.15.0).
+	 * from 0.17.0), and whether they refuse an {@code @Inject} whose handler is static where its target isn't (LAMBDA-6:
+	 * {@code CallbackInjector.sanityCheck} has the modifiers match exactly on 0.8.5; from 0.8.6, as in Fabric's Mixin, it
+	 * refuses only a handler that isn't static on a static target). All three rebind a detached mixin's calls to an
+	 * interface's super method (SUPER-1: {@code MixinTargetContext.updateStaticBinding}, which Fabric's Mixin stopped doing
+	 * for interfaces in 0.15.0).
 	 */
 	private record Upstream(int lastLevel, boolean interfaceInjectors, ConstructorInjects constructorInjects, boolean argumentNames,
-			boolean rebindsInterfaceSuperCalls) {
+			boolean exactStaticInjects, boolean rebindsInterfaceSuperCalls) {
 	}
 
 	private static final Map<String, Upstream> UPSTREAM = Map.of(
-			"0.8.5", new Upstream(18, false, ConstructorInjects.RETURNS_ONLY, false, true),
-			"0.8.6", new Upstream(21, true, ConstructorInjects.UNSAFE_POINTS, false, true),
-			"0.8.7", new Upstream(21, true, ConstructorInjects.UNSAFE_POINTS, false, true));
+			"0.8.5", new Upstream(18, false, ConstructorInjects.RETURNS_ONLY, false, true, true),
+			"0.8.6", new Upstream(21, true, ConstructorInjects.UNSAFE_POINTS, false, false, true),
+			"0.8.7", new Upstream(21, true, ConstructorInjects.UNSAFE_POINTS, false, false, true));
 	private static final Pattern LEVEL = Pattern.compile("JAVA_(\\d{1,3})");
 
 	private MixinCompat() {
@@ -151,6 +154,15 @@ public final class MixinCompat {
 	public static boolean argumentNames(String runtimeMixinVersion) {
 		Upstream upstream = upstream(runtimeMixinVersion);
 		return upstream == null || upstream.argumentNames();
+	}
+
+	/**
+	 * Whether the running Mixin refuses an {@code @Inject} whose handler is static where its target isn't (LAMBDA-6):
+	 * SpongePowered's 0.8.5, which Forge 47 runs, does. False for a version not known here.
+	 */
+	public static boolean exactStaticInjects(String runtimeMixinVersion) {
+		Upstream upstream = upstream(runtimeMixinVersion);
+		return upstream != null && upstream.exactStaticInjects();
 	}
 
 	/**

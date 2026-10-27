@@ -109,6 +109,12 @@ public final class MixinPreflight {
 	private static final Set<String> SINGLE_POINT_INJECTORS = Set.of(REDIRECT, MODIFY_VARIABLE, "Lorg/spongepowered/asm/mixin/injection/ModifyArg;",
 			"Lorg/spongepowered/asm/mixin/injection/ModifyArgs;");
 	private static final String MODIFY_CONSTANT = "Lorg/spongepowered/asm/mixin/injection/ModifyConstant;";
+	/**
+	 * The injectors Mixin refuses with a handler that isn't static on a static target ({@code Injector.checkTargetModifiers},
+	 * before they inject or at each point); MixinExtras' don't check.
+	 */
+	private static final Set<String> STATIC_TARGET_CHECKED = Set.of(INJECT, MODIFY_CONSTANT, "Lorg/spongepowered/asm/mixin/injection/ModifyArg;",
+			"Lorg/spongepowered/asm/mixin/injection/ModifyArgs;");
 	static final String OPERATION = "Lcom/llamalad7/mixinextras/injector/wrapoperation/Operation;";
 	/** The name prefix javac gives the fields holding the local variables an anonymous or local class captures. */
 	private static final String CAPTURED_PREFIX = "val$";
@@ -132,6 +138,8 @@ public final class MixinPreflight {
 	private final ConstructorInjects constructorInjects;
 	/** Whether the running Mixin knows arguments by their names where a {@code @ModifyVariable} takes arguments only (ARGS-1). */
 	private final boolean argumentNames;
+	/** Whether the running Mixin refuses an {@code @Inject} whose handler is static where its target isn't (LAMBDA-6: Forge 47's does). */
+	private final boolean exactStaticInjects;
 
 	/** Where the running Mixin takes an {@code @Inject} into a constructor (CTOR-2). */
 	public enum ConstructorInjects {
@@ -208,9 +216,22 @@ public final class MixinPreflight {
 	public MixinPreflight(ClassIndex game, InstalledClasses installed, ClassBytesSource modClasses, ClassBytesSource untransformable,
 			boolean clientSide, boolean missingTargetsFatal, ClassBytesSource vanilla, String loader, boolean interfaceInjectors,
 			ConstructorInjects constructorInjects, boolean argumentNames) {
+		this(game, installed, modClasses, untransformable, clientSide, missingTargetsFatal, vanilla, loader, interfaceInjectors,
+				constructorInjects, argumentNames, false);
+	}
+
+	/**
+	 * @param exactStaticInjects whether the running Mixin refuses an {@code @Inject} whose handler is static where its
+	 *                           target isn't, as SpongePowered's 0.8.5 does (LAMBDA-6); every Mixin refuses one that isn't
+	 *                           static where its target is
+	 */
+	public MixinPreflight(ClassIndex game, InstalledClasses installed, ClassBytesSource modClasses, ClassBytesSource untransformable,
+			boolean clientSide, boolean missingTargetsFatal, ClassBytesSource vanilla, String loader, boolean interfaceInjectors,
+			ConstructorInjects constructorInjects, boolean argumentNames, boolean exactStaticInjects) {
 		this.interfaceInjectors = interfaceInjectors;
 		this.constructorInjects = constructorInjects;
 		this.argumentNames = argumentNames;
+		this.exactStaticInjects = exactStaticInjects;
 		this.game = game;
 		this.installed = installed;
 		this.modClasses = modClasses;
@@ -570,7 +591,8 @@ public final class MixinPreflight {
 	 * predicates named lambdas of another shape on every version, and a hook into one of the same shape would have
 	 * applied to the wrong lambda without a word (LAMBDA-5). Forge 47 names vanilla's lambdas by their SRG names, which
 	 * its patched classes, compiled from Forge's sources, don't keep: theirs carry javac's names, so a hook naming
-	 * vanilla's ({@code m_289088_}) found nothing (LAMBDA-6). The lambdas the creating method makes are aligned with
+	 * vanilla's ({@code m_289088_}) found nothing, or another lambda, which Forge's build named as vanilla's where javac
+	 * numbered it as Mojang's names number vanilla's (LAMBDA-6). The lambdas the creating method makes are aligned with
 	 * vanilla's by their shape and code ({@link PatchAlignment#places}); a lambda that another lambda creates isn't
 	 * followed, nor one whose place the alignment can't tell. A lambda of vanilla's under its SRG name, which no lambda
 	 * of this build carries, is also found where Forge changed its code or what it captures: by its place where the
@@ -585,8 +607,9 @@ public final class MixinPreflight {
 			if (!(selectors.get(i) instanceof String raw)) continue;
 			MemberRef ref = MemberRef.parse(ctx.resolve(raw));
 			if (ref.fuzzy() || ref.name() == null || ref.name().startsWith("<")) continue;
-			// A name of another form is followed only where this build lacks it: a lambda of vanilla's under its SRG name.
-			if (!LAMBDA.matcher(ref.name()).matches() && targets.stream().anyMatch(t -> hasMethod(t, ref))) continue;
+			// A name of another form is followed where this build lacks it or gives it a lambda of its own: a lambda of
+			// vanilla's under its SRG name, which Forge 47's build gives the lambda its javac numbering names as vanilla's.
+			if (!LAMBDA.matcher(ref.name()).matches() && targets.stream().anyMatch(t -> namesOtherThanLambda(t, ref))) continue;
 			MethodNode placed = null;
 			for (ClassNode target : targets) {
 				MethodNode here = lambdaInVanillasPlace(target, ref);
@@ -667,9 +690,9 @@ public final class MixinPreflight {
 	}
 
 	/**
-	 * A lambda a method creates: its body, its face (the interface, its method and the signature it takes there, which
-	 * values the lambda captures leave alone) and its shape as alignment compares it (the creating instruction's type,
-	 * its descriptor and code).
+	 * A lambda a method creates: its body, its face (whether it is static, the interface, its method and the signature
+	 * it takes there, which values the lambda captures leave alone) and its shape as alignment compares it (the creating
+	 * instruction's type, its descriptor and code).
 	 */
 	private record CreatedLambda(MethodNode body, String face, String shape) {
 	}
@@ -684,7 +707,8 @@ public final class MixinPreflight {
 				for (MethodNode m : owner.methods) {
 					if (m.name.equals(h.getName()) && m.desc.equals(h.getDesc()) && isLambdaBody(m)) {
 						Object instantiated = indy.bsmArgs.length > 2 ? indy.bsmArgs[2] : m.desc;
-						created.add(new CreatedLambda(m, Type.getReturnType(indy.desc) + "." + indy.name + instantiated,
+						String kind = (m.access & Opcodes.ACC_STATIC) != 0 ? "static " : "";
+						created.add(new CreatedLambda(m, kind + Type.getReturnType(indy.desc) + "." + indy.name + instantiated,
 								indy.name + indy.desc + " " + m.desc + "\n" + PatchAlignment.code(m)));
 					}
 				}
@@ -702,10 +726,10 @@ public final class MixinPreflight {
 		return LAMBDA.matcher(method.name).matches() || (method.access & Opcodes.ACC_SYNTHETIC) != 0;
 	}
 
-	/** Whether {@code owner} has a method {@code ref} names (by its descriptor too, where it has one). */
-	private static boolean hasMethod(ClassNode owner, MemberRef ref) {
+	/** Whether {@code owner} has a method {@code ref} names (by its descriptor too, where it has one) that isn't a lambda's body. */
+	private static boolean namesOtherThanLambda(ClassNode owner, MemberRef ref) {
 		for (MethodNode m : owner.methods) {
-			if (m.name.equals(ref.name()) && (ref.desc() == null || m.desc.equals(ref.desc()))) return true;
+			if (m.name.equals(ref.name()) && (ref.desc() == null || m.desc.equals(ref.desc())) && !isLambdaBody(m)) return true;
 		}
 		return false;
 	}
@@ -3521,6 +3545,22 @@ public final class MixinPreflight {
 								+ ", which does not exist in " + target.name.replace('/', '.'),
 						"The method was renamed or removed by " + ctx.changer(false) + ".");
 			}
+			return;
+		}
+		boolean handlerStatic = (handler.access & Opcodes.ACC_STATIC) != 0;
+		for (MethodNode m : anyFuzzy || (mixin.access & Opcodes.ACC_INTERFACE) != 0 ? List.<MethodNode>of() : matched) {
+			// As Mixin: no @Inject, @ModifyArg(s) or @ModifyConstant handler that isn't static takes a static target, and
+			// SpongePowered's 0.8.5 takes an @Inject only where its handler is static exactly where its target is (from
+			// 0.8.6 a static handler takes a method that takes this: Fabric API's furnace hook on Forge 66). An interface
+			// mixin's handlers are static whatever they target. A selector a repair points elsewhere can meet either (LAMBDA-6).
+			boolean targetStatic = (m.access & Opcodes.ACC_STATIC) != 0;
+			boolean refused = targetStatic ? !handlerStatic && STATIC_TARGET_CHECKED.contains(ann.desc)
+					: handlerStatic && exactStaticInjects && ann.desc.equals(INJECT);
+			if (!refused) continue;
+			ctx.classLevel(injectorName + " handler " + handler.name + (handlerStatic ? " is static" : " isn't static") + " where " + m.name + m.desc
+							+ " in " + target.name.replace('/', '.') + (targetStatic ? " is" : " isn't") + ", which Mixin refuses",
+					(ctx.owner() == null ? loader + "'s build of Minecraft declares this method otherwise (often a lambda that takes this where vanilla's doesn't)"
+							: ctx.changer(true) + " declares this method otherwise") + "; the mod needs an update or this mixin must be skipped.");
 			return;
 		}
 		if (ann.desc.equals(INJECT) && !anyFuzzy && !acceptsCallbackSignature(handler, ann, matched)) {
