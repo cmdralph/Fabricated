@@ -128,6 +128,118 @@ final class HandlerBridges {
 	}
 
 	/**
+	 * A {@code @WrapOperation} handler for a call in a constructor that stands in for {@code handler}, an {@code @Inject}
+	 * at that call (CTOR-4): it takes the call's receiver (unless static) and arguments, the {@code Operation}, and, where
+	 * {@code handler} takes them, the constructor's parameters ({@code constructor}), which Mixin passes a wrapper after its
+	 * own. It calls {@code handler} with those and a callback info of its own, then makes the call and returns its result,
+	 * or, with {@code after} ({@code shift = AFTER}), makes the call first.
+	 *
+	 * @param constructor the constructor's parameters where {@code handler} takes them before its callback info, else empty
+	 */
+	static MethodNode constructorCallWrapper(ClassNode mixin, MethodNode handler, Type owner, String callDesc, boolean staticCall,
+			List<Type> constructor, boolean after, List<MethodNode> added) {
+		Type operation = Type.getType(MixinPreflight.OPERATION);
+		Type result = Type.getReturnType(callDesc);
+		List<Type> call = callParameters(owner, callDesc, staticCall);
+		List<Type> params = new ArrayList<>(call);
+		params.add(operation);
+		params.addAll(constructor);
+		MethodNode bridge = bridgeMethod(handler, freeName(mixin, added, handler.name + "$fabricated"), params, result);
+		InsnList code = bridge.instructions;
+		int locals = slotOf(handler, params, params.size());
+		int handlerStack = after ? 0 : callInjectHandler(code, mixin.name, handler, params, call.size() + 1);
+		// operation.call(new Object[] {receiver, arguments...})
+		code.add(new VarInsnNode(Opcodes.ALOAD, slotOf(handler, params, call.size())));
+		code.add(new LdcInsnNode(call.size()));
+		code.add(new TypeInsnNode(Opcodes.ANEWARRAY, "java/lang/Object"));
+		for (int i = 0; i < call.size(); i++) {
+			code.add(new InsnNode(Opcodes.DUP));
+			code.add(new LdcInsnNode(i));
+			code.add(new VarInsnNode(call.get(i).getOpcode(Opcodes.ILOAD), slotOf(handler, params, i)));
+			box(code, call.get(i));
+			code.add(new InsnNode(Opcodes.AASTORE));
+		}
+		code.add(new MethodInsnNode(Opcodes.INVOKEINTERFACE, operation.getInternalName(), "call", "([Ljava/lang/Object;)Ljava/lang/Object;", true));
+		if (result.getSort() == Type.VOID) {
+			code.add(new InsnNode(Opcodes.POP));
+		} else {
+			unbox(code, result);
+		}
+		if (after) {
+			if (result.getSort() != Type.VOID) code.add(new VarInsnNode(result.getOpcode(Opcodes.ISTORE), locals));
+			handlerStack = callInjectHandler(code, mixin.name, handler, params, call.size() + 1);
+			if (result.getSort() != Type.VOID) code.add(new VarInsnNode(result.getOpcode(Opcodes.ILOAD), locals));
+		}
+		code.add(new InsnNode(result.getOpcode(Opcodes.IRETURN)));
+		// Filling the arguments' array: the operation, the array twice, an index and a value of up to two slots.
+		bridge.maxStack = Math.max(handlerStack, 6);
+		bridge.maxLocals = locals + (after ? result.getSize() : 0);
+		return bridge;
+	}
+
+	/**
+	 * Calls {@code handler}, an {@code @Inject} handler, from a bridge: with {@code this} (unless static), the bridge's
+	 * parameters from {@code from} on (the constructor's, where the handler takes them) and a new callback info for the
+	 * constructor, which can't be cancelled. Returns the stack it needs.
+	 */
+	private static int callInjectHandler(InsnList code, String mixin, MethodNode handler, List<Type> params, int from) {
+		boolean isStatic = (handler.access & Opcodes.ACC_STATIC) != 0;
+		int stack = 0;
+		if (!isStatic) {
+			code.add(new VarInsnNode(Opcodes.ALOAD, 0));
+			stack++;
+		}
+		for (int i = from; i < params.size(); i++) {
+			code.add(new VarInsnNode(params.get(i).getOpcode(Opcodes.ILOAD), slotOf(handler, params, i)));
+			stack += params.get(i).getSize();
+		}
+		code.add(new TypeInsnNode(Opcodes.NEW, CALLBACK_INFO));
+		code.add(new InsnNode(Opcodes.DUP));
+		code.add(new LdcInsnNode("<init>"));
+		code.add(new InsnNode(Opcodes.ICONST_0));
+		code.add(new MethodInsnNode(Opcodes.INVOKESPECIAL, CALLBACK_INFO, "<init>", "(Ljava/lang/String;Z)V", false));
+		code.add(new MethodInsnNode(isStatic ? Opcodes.INVOKESTATIC : Opcodes.INVOKESPECIAL, mixin, handler.name, handler.desc, false));
+		return stack + 4;
+	}
+
+	private static final String CALLBACK_INFO = "org/spongepowered/asm/mixin/injection/callback/CallbackInfo";
+
+	/** Turns the {@code Object} on the stack into {@code type}: unboxed for a primitive, else cast. */
+	static void unbox(InsnList code, Type type) {
+		String[] boxed = switch (type.getSort()) {
+			case Type.BOOLEAN -> new String[] {"java/lang/Boolean", "booleanValue"};
+			case Type.CHAR -> new String[] {"java/lang/Character", "charValue"};
+			case Type.BYTE -> new String[] {"java/lang/Byte", "byteValue"};
+			case Type.SHORT -> new String[] {"java/lang/Short", "shortValue"};
+			case Type.INT -> new String[] {"java/lang/Integer", "intValue"};
+			case Type.FLOAT -> new String[] {"java/lang/Float", "floatValue"};
+			case Type.LONG -> new String[] {"java/lang/Long", "longValue"};
+			case Type.DOUBLE -> new String[] {"java/lang/Double", "doubleValue"};
+			default -> null;
+		};
+		if (boxed == null) {
+			code.add(new TypeInsnNode(Opcodes.CHECKCAST, type.getSort() == Type.ARRAY ? type.getDescriptor() : type.getInternalName()));
+			return;
+		}
+		code.add(new TypeInsnNode(Opcodes.CHECKCAST, boxed[0]));
+		code.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL, boxed[0], boxed[1], "()" + type.getDescriptor(), false));
+	}
+
+	/**
+	 * Replaces {@code handler}'s {@code injector} with {@code replacement} on {@code bridge}, in the same list of
+	 * annotations (Mixin's and MixinExtras' injectors are both kept at run time); {@code handler} stays a plain method of
+	 * the mixin, as {@link #moveInjector} leaves it.
+	 */
+	static void replaceInjector(MethodNode handler, AnnotationNode injector, AnnotationNode replacement, MethodNode bridge) {
+		moveInjector(handler, injector, bridge);
+		for (List<AnnotationNode> list : Arrays.asList(bridge.visibleAnnotations, bridge.invisibleAnnotations)) {
+			if (list == null) continue;
+			int at = list.indexOf(injector);
+			if (at >= 0) list.set(at, replacement);
+		}
+	}
+
+	/**
 	 * The types of {@code handler}'s parameters after {@code leading}, which it must start with: MixinExtras sugar
 	 * ({@code @Local}, {@code @Share}, {@code @Cancellable}), which MixinExtras gives a bridge as it would the handler, so
 	 * a bridge takes them too and passes them on. Null when the handler doesn't start with {@code leading}, one of those

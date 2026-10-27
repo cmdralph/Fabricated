@@ -952,7 +952,7 @@ The `forge` and `forge-legacy` branches build Fabricated for Minecraft Forge 61 
 `docs/readme/`). CI runs dedicated servers there: `ci/forge/smoke-server.sh` and `ci/forge-legacy/smoke-server.sh`
 start one with the test mod and one with the official Fabric API jar too, and `smoke-client.sh` starts a client the same
 two ways (with Fabric API, informational). This table is the two runs with Fabric API, the server's and the client's
-`fabric-bridge-report.txt`, from the runs on `claude/dev` at `8d652ce` (40449926126) and `6254b9d` (40448563135,
+`fabric-bridge-report.txt`, from the runs on `claude/dev` at `aac8e1e` (40455404563) and `2e6de46` (40455097129,
 Forge 47), 2026-10-27: Fabric API 0.141.6+1.21.11, 0.155.3+26.1.2, 0.161.0+26.2, 0.164.0+26.3 and 0.92.12+1.20.1, on
 Forge 61.2.4, 64.1.5, 65.1.5, 66.1.0 and 47.4.28. Each cell is the more limited of the two: a module with client hooks
 can load on the server and lose hooks, or be turned off, on the client. The server starts and the client reaches a world
@@ -963,9 +963,8 @@ How to read it: as the NeoForge table, and
 - **loads, part**: the module loads without some of its hooks, ones its plan leaves out where Forge's code differs or
   ones pre-flight finds Forge's code can't take (LEAVE-1). The report names each, with what is lost.
 - **disabled**: the client run turns it off (the game goes on without it); the server loads it where it isn't
-  client-only. On Forge 47, `fabric-model-loading-api-v1` hooks into `ModelBakery`'s constructor at a call, where
-  Forge's Mixin 0.8.5 takes only a return, and `fabric-models-v0` needs it; `fabric-particles-v1`'s accessor to the
-  particle providers' map expects vanilla's type, which Forge changed.
+  client-only. On Forge 47, `fabric-particles-v1`'s accessor to the particle providers' map expects vanilla's type,
+  which Forge changed.
 
 | Module | 1.21.11 (Forge 61) | 26.1.2 (Forge 64) | 26.2 (Forge 65) | 26.3 (Forge 66) | 1.20.1 (Forge 47) |
 |---|---|---|---|---|---|
@@ -979,7 +978,7 @@ How to read it: as the NeoForge table, and
 | fabric-blockrenderlayer-v1 | — | — | — | — | loads |
 | fabric-client-tags-api-v1 | — | — | — | — | loads |
 | fabric-command-api-v1 | — | — | — | — | loads |
-| fabric-command-api-v2 | loads | loads | loads | loads | loads, part |
+| fabric-command-api-v2 | loads | loads | loads | loads | loads |
 | fabric-commands-v0 | — | — | — | — | loads |
 | fabric-containers-v0 | — | — | — | — | loads |
 | fabric-content-registries-v0 | loads | loads, part | loads, part | loads, part | loads, part |
@@ -1007,8 +1006,8 @@ How to read it: as the NeoForge table, and
 | fabric-menu-api-v1 | — | loads | loads | loads | — |
 | fabric-message-api-v1 | loads | loads | loads | loads | loads |
 | fabric-mining-level-api-v1 | — | — | — | — | loads |
-| fabric-model-loading-api-v1 | loads | loads | loads | loads | disabled |
-| fabric-models-v0 | — | — | — | — | disabled |
+| fabric-model-loading-api-v1 | loads | loads | loads | loads | loads, part |
+| fabric-models-v0 | — | — | — | — | loads |
 | fabric-networking-api-v1 | loads | loads | loads | loads | loads |
 | fabric-networking-v0 | — | — | — | — | loads |
 | fabric-object-builder-api-v1 | loads, part | loads, part | loads, part | loads, part | loads |
@@ -1034,8 +1033,8 @@ How to read it: as the NeoForge table, and
 | fabric-transfer-api-v1 | loads | loads | loads | loads | loads |
 | fabric-transitive-access-wideners-v1 | loads | loads | loads | loads | loads |
 
-On top of the modules, the in-game mod bridges these to Forge, each checked by the server runs (the colours by the
-client runs):
+On top of the modules, the in-game mod bridges these to Forge, or makes Fabric API's hooks for them apply, each checked
+by the server runs (the colours by the client runs):
 
 - **Tags:** tag files' `fabric:remove` entries are read into Forge's own removal list, with and without Fabric API (all
   five).
@@ -1049,6 +1048,9 @@ client runs):
   item colours (Forge 47), by registry holder, where upstream's lookup reads the list by id Forge replaced (COLOR-1).
   It finds grass's provider and none for stone (Forge 61 and 47, with Fabric API). Forge 64 to 66 keep vanilla's list,
   which upstream's lookup reads as it is.
+- **Commands:** a command registered through `CommandRegistrationCallback` is in the server's dispatcher (all five, with
+  Fabric API, server and client). Fabric API's hook into `Commands`' constructor applies on Forge 61 to 66 at a point
+  pre-flight marks unsafe (CTOR-2), and on Forge 47, whose Mixin takes none, as a wrapper of the call (CTOR-4).
 
 ## Fabric mods tested
 
