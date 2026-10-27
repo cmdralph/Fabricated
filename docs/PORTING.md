@@ -416,6 +416,9 @@ in-game mod registers Fabric's factories and their sprite sets through the engin
 dust tint event where Forge decides the tint, which replaced the check upstream's hook looks for. A factory the test
 mod registers is found by the engine, with its sprite in the particle atlas, with and without Fabric API, and with
 Fabric API no module is disabled on the client any more (run 40463821244).
+Forge 47 needs the same block break and bed bridges as Forge 61 to 66 (BREAK-1, SLEEP-1); hooks into lambdas of the
+classes it patched are left out, as its patched classes name their lambdas otherwise than vanilla's SRG names (LAMBDA-6,
+open).
 Model loading loads since CTOR-4: Forge's Mixin 0.8.5 takes a hook into a constructor only at a return, so pre-flight
 turns one at a call into a MixinExtras wrapper of that call, which also applies Fabric API's hook into `Commands`'
 constructor, so Fabric mods' commands register (checked with Fabric API, on the server and the client). Fabric's
@@ -484,7 +487,11 @@ vanilla's map of buffers by layer), as on Forge 64 to 66, where Indigo draws Fab
 the data generation module loads on the client since DATAGEN-2, and a command registered through Fabric API's event
 reaches the server's dispatcher (its hook marked unsafe, CTOR-2). Forge 61's `TerrainParticle` decides the tint of a
 block's breaking particles through its block extensions, where upstream's block dust tint hook looks for vanilla's grass
-check, so the in-game mod asks Fabric's event there, as Forge 47's module does (PART-2, run 40465983140).
+check, so the in-game mod asks Fabric's event there, as Forge 47's module does (PART-2, run 40465983140). On all four,
+and on Forge 47, Forge's `destroyBlock` and its bed handling don't make the calls upstream's block break and bed hooks
+look for, so the in-game mod fires Fabric's block break events and asks its bed occupation and sleeping direction
+events at Forge's calls (BREAK-1, SLEEP-1; without that, a block a Fabric mod admitted as a bed became a red bed). Its
+hooks use no MixinExtras sugar, which Forge's Mixin can't serve without Fabric API installed.
 
 Order: `main` first, always. L1 serves both branches; after it, L2 to L5 and F2 to F5 can proceed in either order
 or in parallel, as the owner sets priorities. The two branches' adapters share their shape (forgespi 7 and 8 have

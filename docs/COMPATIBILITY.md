@@ -952,9 +952,9 @@ The `forge` and `forge-legacy` branches build Fabricated for Minecraft Forge 61 
 `docs/readme/`). CI runs dedicated servers there: `ci/forge/smoke-server.sh` and `ci/forge-legacy/smoke-server.sh`
 start one with the test mod and one with the official Fabric API jar too, and `smoke-client.sh` starts a client the same
 two ways (with Fabric API, informational). This table is the two runs with Fabric API, the server's and the client's
-`fabric-bridge-report.txt`, from the runs on `claude/dev` at `aac8e1e` (40455404563) and `9f36f23` (40463821244,
-Forge 47), 2026-10-27: Fabric API 0.141.6+1.21.11, 0.155.3+26.1.2, 0.161.0+26.2, 0.164.0+26.3 and 0.92.12+1.20.1, on
-Forge 61.2.4, 64.1.5, 65.1.5, 66.1.0 and 47.4.28. Each cell is the more limited of the two: a module with client hooks
+`fabric-bridge-report.txt`, from the runs on `claude/dev` at `14a8a38` (40480632085, and 40480636318 for Forge 47),
+2026-10-27: Fabric API 0.141.6+1.21.11, 0.155.3+26.1.2, 0.161.0+26.2, 0.164.0+26.3 and 0.92.12+1.20.1, on Forge 61.2.4,
+64.1.5, 65.1.5, 66.1.0 and 47.4.28. Each cell is the more limited of the two: a module with client hooks
 can load on the server and lose hooks, or be turned off, on the client. The server starts and the client reaches a world
 in every run, and both server runs and the client run with the test mod are gates on every Forge version.
 
@@ -991,7 +991,7 @@ How to read it: as the NeoForge table, and
 | fabric-debug-api-v1 | — | loads | loads | loads | — |
 | fabric-dimensions-v1 | loads, part | loads, part | loads, part | loads, part | native |
 | fabric-entity-events-v1 | loads, part | loads, part | loads, part | loads, part | loads, part |
-| fabric-events-interaction-v0 | loads, part | loads, part | loads, part | loads, part | loads |
+| fabric-events-interaction-v0 | loads, part | loads, part | loads, part | loads, part | loads, part |
 | fabric-events-lifecycle-v0 | — | — | — | — | loads |
 | fabric-game-rule-api-v1 | loads | loads | loads | loads | loads |
 | fabric-item-api-v1 | loads, part | loads, part | loads, part | loads, part | loads, part |
@@ -1054,6 +1054,13 @@ by the server runs (the colours by the client runs):
 - **Commands:** a command registered through `CommandRegistrationCallback` is in the server's dispatcher (all five, with
   Fabric API, server and client). Fabric API's hook into `Commands`' constructor applies on Forge 61 to 66 at a point
   pre-flight marks unsafe (CTOR-2), and on Forge 47, whose Mixin takes none, as a wrapper of the call (CTOR-4).
+- **Block breaking:** `PlayerBlockBreakEvents` fire as a player breaks a block, and a `BEFORE` refusal keeps the block
+  (all five, with Fabric API, server and client). Forge's `destroyBlock` makes the calls upstream's hooks look for in a
+  `removeBlock` of its own, so the in-game mod fires the events there (BREAK-1).
+- **Beds:** a block `EntitySleepEvents.ALLOW_BED` admits stays as it is while an entity sleeps on it, and the occupation
+  and sleeping direction events run (all five, with Fabric API, server and client; on Forge 47 not as the entity wakes
+  up, LAMBDA-6). Forge sets a bed's occupation through its own `setBedOccupied`, on the red bed upstream's hook stands
+  in for the block, so the in-game mod sets the block's own (SLEEP-1).
 
 ## Fabric mods tested
 

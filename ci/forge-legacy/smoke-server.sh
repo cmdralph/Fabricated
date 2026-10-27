@@ -276,6 +276,8 @@ check "Fabricated's report names Forge as the loader" "grep -q '^  Forge: ' logs
 check "the test mod's @Inject at a call in Commands' constructor ran, which Forge 47's Mixin takes only at a return (CTOR-4)" "grep -q 'FABRICATED-FORGE-TEST constructor hook OK' logs/latest.log 2>/dev/null"
 if [ -n "$extra" ]; then
 	check "fabric-command-api-v2 (with Fabric API): a command registered through CommandRegistrationCallback is in the server's dispatcher, its hook into Commands' constructor applied (CTOR-4)" "grep -q 'FABRICATED-FORGE-TEST Fabric command registered OK' logs/latest.log 2>/dev/null"
+	check "fabric-events-interaction-v0 (with Fabric API): a fake player's breaks through destroyBlock fire PlayerBlockBreakEvents BEFORE, CANCELED and AFTER, and a BEFORE refusal keeps the block (BREAK-1)" "grep -q 'FABRICATED-FORGE-TEST block break events OK' logs/latest.log 2>/dev/null"
+	check "fabric-entity-events-v1 (with Fabric API): a hay block EntitySleepEvents.ALLOW_BED admits stays hay while an armor stand sleeps on it, and the occupation and orientation events run as it lies down (SLEEP-1)" "grep -q 'FABRICATED-FORGE-TEST sleep events OK' logs/latest.log 2>/dev/null"
 fi
 check "vanilla's check of the built-in registries, which Fabric API moves to the server's start, passes over Forge's empty registries (REG-6)" "! grep -qs 'was empty after loading' logs/latest.log server.out"
 

@@ -39,7 +39,11 @@ def gameModMixins = [
         'fabricated-particles.mixins.json',
         // The block and item colour lookups Fabric API's colour provider registry calls, on Forge's maps (upstream's read
         // vanilla's, which Forge replaced).
-        'fabricated-forge-color.mixins.json']
+        'fabricated-forge-color.mixins.json',
+        // Fabric API's block break events in Forge's block breaking (BREAK-1), and its sleep events in Forge's bed
+        // handling (SLEEP-1): upstream's hooks look for vanilla's calls, which Forge replaced.
+        'fabricated-forge-interaction.mixins.json',
+        'fabricated-forge-entity.mixins.json']
 dependencies {
     annotationProcessor "org.spongepowered:mixin:${project.mixin_processor_version}:processor"
     // The in-game mod's own mixins use MixinExtras' injectors, which the nested mixinextras-forge (below) provides. Its

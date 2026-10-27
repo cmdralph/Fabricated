@@ -3,6 +3,29 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-10-27: Fabric's block break and sleep events on every Forge version
+
+- **BREAK-1** (Forge 47, 61 to 66): Forge's `destroyBlock` leaves the calls upstream's block break hooks look for to a
+  private `removeBlock`, so `PlayerBlockBreakEvents` never ran with Fabric API: a Fabric mod refusing a break saw
+  nothing and the block broke. The in-game mod now fires the events at the same points of Forge's method, and the plan
+  skips upstream's two hooks.
+- **SLEEP-1** (Forge 47, 61 to 66): a block a Fabric mod admits as a bed (`EntitySleepEvents.ALLOW_BED`) became a red
+  bed as an entity lay down on it: upstream's hook stands a red bed in for the block, and Forge sets the occupation on
+  that stand-in. The in-game mod now sets the occupation of the block that is there and runs Fabric's occupation and
+  sleeping direction events where Forge decides them.
+- The test mods' fake player breaks two blocks, one refused, and an armor stand sleeps on a hay block their listeners
+  admit, with Fabric API, on every Forge version. Local servers showed both defects first on Forge 61 and Forge 47.
+- The test mods' checks at the first server tick build next to the world's spawn (`14a8a38`), whose chunks are
+  generated before that tick, instead of at fixed coordinates: on a Forge 64 client with Fabric API whose spawn lay 500
+  blocks out, generating the chunk the fluid check built in held the integrated server up for 6 s, and the networking
+  round trip missed the end of the run (run 40477583258).
+- **LAMBDA-6**, open: on Forge 47, hooks into lambdas of the classes Forge patched are left out, as those lambdas carry
+  other names than vanilla's SRG ones (five of Fabric API's, among them its hooks into waking up from a bed).
+- Verification: build-forge run 40480632085 and build-forge-legacy run 40480636318 on `14a8a38` pass, with both checks
+  on every version, no check failing in any run, and every module's status the one `COMPATIBILITY.md` lists. The first
+  forms of the hooks failed CI (runs 40471745403 and 40474864505): MixinExtras sugar, which Forge can't serve without
+  Fabric API, and a selector Forge 66's `startSleeping` didn't match.
+
 ## 2026-10-27: Fabric's block dust tint event on the Forge 61 client
 
 - **PART-2** (Forge 61): Forge decides whether a block's breaking particles are tinted through its block extensions'

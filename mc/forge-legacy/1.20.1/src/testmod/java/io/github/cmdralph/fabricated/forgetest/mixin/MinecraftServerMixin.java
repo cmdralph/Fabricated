@@ -8,9 +8,11 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import io.github.cmdralph.fabricated.forgetest.ForgeBiomeTest;
+import io.github.cmdralph.fabricated.forgetest.ForgeBlockBreakTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeCommandTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeDimensionTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeFluidTest;
+import io.github.cmdralph.fabricated.forgetest.ForgeSleepTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeTestMarker;
 import io.github.cmdralph.fabricated.forgetest.ForgeTestMod;
 import net.minecraft.class_1792;
@@ -37,7 +39,8 @@ import net.minecraft.server.MinecraftServer;
  * ({@code method_30002} is {@code overworld()}, {@code method_3847} {@code getLevel(ResourceKey)}), checks the fluid
  * types of the fluids it registered, on a client whether Fabric's colour provider registry finds the game's block
  * colours and the particle engine its particle factory, and with Fabric API whether its command is in the server's
- * dispatcher ({@code method_3734} is {@code getCommands()}).
+ * dispatcher ({@code method_3734} is {@code getCommands()}), whether Fabric's block break events fire as a player breaks
+ * blocks, and whether a block Fabric's sleep events admit as a bed survives being slept on.
  */
 @Mixin(MinecraftServer.class)
 public abstract class MinecraftServerMixin {
@@ -84,6 +87,8 @@ public abstract class MinecraftServerMixin {
 			ForgeTestMod.checkColors();
 			ForgeTestMod.checkParticles();
 			ForgeCommandTest.check(method_3734());
+			ForgeBlockBreakTest.check(method_30002());
+			ForgeSleepTest.check(method_30002());
 		}
 	}
 }
