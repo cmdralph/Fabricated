@@ -12,7 +12,6 @@
     "MappedRegistryMixin",
     "MappedRegistryEarlyWriteMixin",
     "MappedRegistryPendingHoldersMixin",
-    "MappedRegistryFrozenTagsMixin",
     "BuiltInRegistriesFreezeMixin",
     "BuiltInRegistriesInvoker",
     "GameDataFreezeMixin",

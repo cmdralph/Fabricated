@@ -2,9 +2,11 @@ package io.github.cmdralph.fabricated.neoforge.networking;
 
 import java.util.List;
 
+import io.github.cmdralph.fabricated.neoforge.mixin.NetworkRegistryHandlersAccessor;
 import net.fabricmc.fabric.api.networking.v1.ClientboundPlayChannelEvents;
 import net.fabricmc.fabric.impl.networking.PayloadTypeRegistryImpl;
 import net.fabricmc.fabric.impl.networking.server.ServerPlayNetworkAddon;
+import net.minecraft.network.ConnectionProtocol;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
@@ -26,6 +28,12 @@ public final class FabricPayloads {
 	static final PayloadTypeRegistryImpl<FriendlyByteBuf> CLIENTBOUND_CONFIGURATION = PayloadTypeRegistryImpl.CLIENTBOUND_CONFIGURATION;
 
 	private FabricPayloads() {
+	}
+
+	/** Forgets NeoForge's handlers of a payload type registered again (NET-3); NeoForge keeps them beside the registrations. */
+	static void forgetHandlers(ConnectionProtocol protocol, Identifier id) {
+		NetworkRegistryHandlersAccessor.fabricated$serverboundHandlers().get(protocol).remove(id);
+		NetworkRegistryHandlersAccessor.fabricated$clientboundHandlers().get(protocol).remove(id);
 	}
 
 	static void announceChannels(ServerGamePacketListenerImpl listener, ServerPlayNetworkAddon addon, MinecraftServer server, List<Identifier> channels) {

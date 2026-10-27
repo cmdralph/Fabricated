@@ -5,6 +5,7 @@ import java.util.List;
 import net.fabricmc.fabric.api.networking.v1.S2CPlayChannelEvents;
 import net.fabricmc.fabric.impl.networking.PayloadTypeRegistryImpl;
 import net.fabricmc.fabric.impl.networking.server.ServerPlayNetworkAddon;
+import net.minecraft.network.ConnectionProtocol;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
@@ -27,6 +28,10 @@ public final class FabricPayloads {
 	static final PayloadTypeRegistryImpl<FriendlyByteBuf> CLIENTBOUND_CONFIGURATION = PayloadTypeRegistryImpl.CONFIGURATION_S2C;
 
 	private FabricPayloads() {
+	}
+
+	/** NeoForge 21.1 keeps a payload type's handlers in its registration, which is already gone (NET-3). */
+	static void forgetHandlers(ConnectionProtocol protocol, ResourceLocation id) {
 	}
 
 	static void announceChannels(ServerGamePacketListenerImpl listener, ServerPlayNetworkAddon addon, MinecraftServer server, List<ResourceLocation> channels) {

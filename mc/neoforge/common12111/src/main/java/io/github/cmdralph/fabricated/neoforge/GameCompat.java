@@ -6,6 +6,7 @@ import net.minecraft.core.Holder;
 import net.minecraft.core.MappedRegistry;
 import net.minecraft.core.Registry;
 import net.minecraft.resources.Identifier;
+import net.minecraft.resources.RegistryOps;
 import net.minecraft.resources.ResourceKey;
 
 /**
@@ -39,5 +40,13 @@ public final class GameCompat {
 	/** Binds a registry's tags as vanilla's bootstrap freeze does before it freezes the registry: to nothing yet. */
 	public static void bindTagsForFreeze(MappedRegistry<?> registry) {
 		registry.bindAllTagsToEmpty();
+	}
+
+	/** The type of the registries Fabric's resource conditions are evaluated with: the ops' own lookup. */
+	public static final Class<?> CONDITION_REGISTRIES = RegistryOps.RegistryInfoLookup.class;
+
+	/** The registries a decode with these ops sees, as Fabric's resource conditions take them. */
+	public static Object conditionRegistries(RegistryOps<?> ops) {
+		return ops.lookupProvider;
 	}
 }

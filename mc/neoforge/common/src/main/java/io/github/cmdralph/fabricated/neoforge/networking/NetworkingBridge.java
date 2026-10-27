@@ -176,8 +176,7 @@ public final class NetworkingBridge {
 	private static synchronized void registerLate(Phase phase, Identifier id) {
 		if (phase.registered().remove(id)) {
 			NetworkRegistryAccessor.fabricated$registrations().get(phase.protocol()).remove(id);
-			NetworkRegistryAccessor.fabricated$serverboundHandlers().get(phase.protocol()).remove(id);
-			NetworkRegistryAccessor.fabricated$clientboundHandlers().get(phase.protocol()).remove(id);
+			FabricPayloads.forgetHandlers(phase.protocol(), id);
 		}
 		boolean setup = NetworkRegistryAccessor.fabricated$setup();
 		NetworkRegistryAccessor.fabricated$setSetup(false);

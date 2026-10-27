@@ -15,6 +15,7 @@ import com.mojang.serialization.Codec;
 import com.mojang.serialization.DataResult;
 import com.mojang.serialization.DynamicOps;
 
+import io.github.cmdralph.fabricated.neoforge.GameCompat;
 import net.minecraft.resources.Identifier;
 import net.minecraft.resources.RegistryOps;
 
@@ -38,8 +39,10 @@ public final class FabricResourceConditions {
 		try {
 			Class<?> impl = Class.forName("net.fabricmc.fabric.impl.resource.conditions.ResourceConditionsImpl", false,
 					FabricResourceConditions.class.getClassLoader());
+			// The registries' type depends on the version (GameCompat): the handle takes them as an Object.
 			return MethodHandles.publicLookup().findStatic(impl, "applyResourceConditions",
-					MethodType.methodType(boolean.class, JsonObject.class, String.class, Identifier.class, RegistryOps.RegistryInfoLookup.class));
+					MethodType.methodType(boolean.class, JsonObject.class, String.class, Identifier.class, GameCompat.CONDITION_REGISTRIES))
+					.asType(MethodType.methodType(boolean.class, JsonObject.class, String.class, Identifier.class, Object.class));
 		} catch (ClassNotFoundException e) {
 			return null; // fabric-resource-conditions-api-v1 is not installed
 		} catch (ReflectiveOperationException | LinkageError e) {
@@ -73,7 +76,7 @@ public final class FabricResourceConditions {
 	}
 
 	private static boolean matches(JsonObject json, DynamicOps<?> ops) {
-		RegistryOps.@Nullable RegistryInfoLookup registries = ops instanceof RegistryOps<?> registryOps ? registryOps.lookupProvider : null;
+		@Nullable Object registries = ops instanceof RegistryOps<?> registryOps ? GameCompat.conditionRegistries(registryOps) : null;
 		try {
 			return (boolean) APPLY.invokeExact(json, "data", UNKNOWN, registries);
 		} catch (RuntimeException | Error e) {
