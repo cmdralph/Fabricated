@@ -113,6 +113,17 @@ jobs:
           export JAVA_HOME="$JAVA_HOME_17_X64"; export PATH="$JAVA_HOME/bin:$PATH"
           forge=$(sed -n 's/^forge_version=//p' "mc/forge-legacy/${{ matrix.minecraft }}/gradle.properties")
           ci/forge-legacy/smoke-client.sh "${{ matrix.minecraft }}" "$forge" "$RUNNER_TEMP/client"
+      # The client with the official Fabric API jar the server run downloaded: which of its client modules load on
+      # Forge, and whether the client still reaches a world with them. Informational until it holds.
+      - name: Client with Fabricated and Fabric API (informational)
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          export JAVA_HOME="$JAVA_HOME_17_X64"; export PATH="$JAVA_HOME/bin:$PATH"
+          forge=$(sed -n 's/^forge_version=//p' "mc/forge-legacy/${{ matrix.minecraft }}/gradle.properties")
+          ci/forge-legacy/smoke-client.sh "${{ matrix.minecraft }}" "$forge" "$RUNNER_TEMP/client-fapi" "$RUNNER_TEMP/extra"
       - name: Upload Fabricated jar
         uses: actions/upload-artifact@v4
         with:

@@ -52,15 +52,17 @@ public final class MixinCompat {
 	 * constructor (CTOR-2: {@code Injector.checkTargetForNode}, with {@code InjectionPointData}'s {@code unsafe} from 0.8.6),
 	 * and whether they know a method's arguments by their names where a {@code @ModifyVariable} takes arguments only (ARGS-1:
 	 * {@code LocalVariableDiscriminator.Context} names them {@code arg} and their slot; Fabric's Mixin takes their names
-	 * from 0.17.0).
+	 * from 0.17.0). All three rebind a detached mixin's calls to an interface's super method (SUPER-1:
+	 * {@code MixinTargetContext.updateStaticBinding}, which Fabric's Mixin stopped doing for interfaces in 0.15.0).
 	 */
-	private record Upstream(int lastLevel, boolean interfaceInjectors, ConstructorInjects constructorInjects, boolean argumentNames) {
+	private record Upstream(int lastLevel, boolean interfaceInjectors, ConstructorInjects constructorInjects, boolean argumentNames,
+			boolean rebindsInterfaceSuperCalls) {
 	}
 
 	private static final Map<String, Upstream> UPSTREAM = Map.of(
-			"0.8.5", new Upstream(18, false, ConstructorInjects.RETURNS_ONLY, false),
-			"0.8.6", new Upstream(21, true, ConstructorInjects.UNSAFE_POINTS, false),
-			"0.8.7", new Upstream(21, true, ConstructorInjects.UNSAFE_POINTS, false));
+			"0.8.5", new Upstream(18, false, ConstructorInjects.RETURNS_ONLY, false, true),
+			"0.8.6", new Upstream(21, true, ConstructorInjects.UNSAFE_POINTS, false, true),
+			"0.8.7", new Upstream(21, true, ConstructorInjects.UNSAFE_POINTS, false, true));
 	private static final Pattern LEVEL = Pattern.compile("JAVA_(\\d{1,3})");
 
 	private MixinCompat() {
@@ -149,6 +151,15 @@ public final class MixinCompat {
 	public static boolean argumentNames(String runtimeMixinVersion) {
 		Upstream upstream = upstream(runtimeMixinVersion);
 		return upstream == null || upstream.argumentNames();
+	}
+
+	/**
+	 * Whether the running Mixin rebinds a detached mixin's calls to an interface's super method to the target class,
+	 * keeping their interface reference (SUPER-1): SpongePowered's releases do. False for a version not known here.
+	 */
+	public static boolean rebindsInterfaceSuperCalls(String runtimeMixinVersion) {
+		Upstream upstream = upstream(runtimeMixinVersion);
+		return upstream != null && upstream.rebindsInterfaceSuperCalls();
 	}
 
 	/**
