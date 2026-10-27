@@ -1064,6 +1064,14 @@ by the server runs (the colours and screen input by the client runs):
 - **Screen input:** a click and a key press on a screen, and their releases, ask `ScreenMouseEvents` and
   `ScreenKeyboardEvents` (Forge 47, with Fabric API, client run). Forge 47's patch made the mouse lambdas take `this` and
   reordered the key lambda's captured values; pre-flight bridges upstream's hooks into both (LAMBDA-7).
+- **Storages:** a Fabric mod's item and fluid storages are the `ITEM_HANDLER` and `FLUID_HANDLER` capabilities of its
+  block entity, and a Forge mod's `ItemStackHandler` and `FluidTank` are Fabric's storages (all five, with Fabric API,
+  server and client). A Forge handler only simulates until Fabric's outermost transaction commits, so an aborted one
+  never reaches it, and two insertions in one transaction take no more than its slots hold; fluids move in whole
+  millibuckets. On Forge 61 to 66 a fluid carrying data (Fabric's components, Forge's tag) doesn't cross. A Fabric mod's
+  tank item is filled and drained through Forge's `FLUID_HANDLER_ITEM`, its stack changed in place when it stays the
+  same item, and a Forge mod's through `FluidStorage.ITEM`, in Fabric's transaction. Item storages in items (a
+  backpack's) don't cross yet.
 - **Model baking:** a model loading plugin's before-bake and after-bake modifiers see the models baked (Forge 47, with
   Fabric API, client run). Forge 47 moved the bake's code into an overload that also takes the sprite getter, where
   pre-flight moves upstream's hooks, its before-bake variable modifier too (MODEL-3).
