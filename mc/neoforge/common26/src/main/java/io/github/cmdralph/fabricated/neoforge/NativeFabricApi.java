@@ -12,6 +12,7 @@ import io.github.cmdralph.fabricated.neoforge.loot.LootBridge;
 import io.github.cmdralph.fabricated.neoforge.lifecycle.LifecycleBridge;
 import io.github.cmdralph.fabricated.neoforge.networking.NetworkingBridge;
 import io.github.cmdralph.fabricated.neoforge.objectbuilder.ObjectBuilderBridge;
+import io.github.cmdralph.fabricated.neoforge.rendering.FabricBlockRendering;
 import io.github.cmdralph.fabricated.neoforge.rendering.HudBridge;
 import io.github.cmdralph.fabricated.neoforge.rendering.PictureInPictureBridge;
 import io.github.cmdralph.fabricated.neoforge.rendering.ScreenRenderBridge;
@@ -41,6 +42,8 @@ public final class NativeFabricApi {
 		new ApiLookupImpl().onInitialize();
 		TransferBridge.register(modBus);
 		if (dist.isClient()) {
+			// A renderer for Fabric's renderer API, once the initializers had their chance to register one.
+			state.api().afterEntrypoints(FabricBlockRendering::registerFallbackRenderer);
 			ClientHotbarScroll.register();
 			HudBridge.register(modBus);
 			PictureInPictureBridge.register(modBus);
