@@ -3,6 +3,22 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-10-27: Fabric's particles on the Forge 47 client
+
+- **PART-1** (Forge 47): Forge keeps the particle engine's factories by the type's id, where upstream's accessor reads
+  them by raw id, so every client with the Fabric API jar turned `fabric-particles-v1` off. Fabricated now ships the
+  module on Forge 47: upstream's API in Mojang's names, with Fabric's factories and their sprite sets registered through
+  the engine's own methods once vanilla's are in. Forge 47 also replaced the grass check that upstream's block dust tint
+  hook looks for with its own tint check, so the hook wraps Forge's.
+- The Forge 47 test mod registers a particle type and a factory that takes a sprite provider. Both client runs check
+  that the engine finds the factory and that the provider holds the sprite its `particles/sparkle.json` lists.
+- With the Fabric API jar, no module is disabled on Forge 47's client any more (`COMPATIBILITY.md`). Forge 61 makes the
+  same change to the tint check, where pre-flight leaves upstream's hook out: PART-2, open.
+- Verification: build-forge-legacy run 40463821244 on `9f36f23` passes all 94 checks, the particle check in both client
+  runs, and the factory was registered before the particle engine existed. Its pre-flight findings and error digest
+  match the run before but for the particles module. The first run, 40463271569 on `f2c2029`, stopped compiling: Java
+  17's javac rejected upstream's anonymous particle type class, which `9f36f23` names.
+
 ## 2026-10-27: Fabric networking checked on every Forge version
 
 - Fabricated passes `fabric-networking-api-v1` through on Forge, and nothing checked that a Fabric mod's packets get

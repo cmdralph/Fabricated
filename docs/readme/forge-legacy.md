@@ -42,16 +42,20 @@ client must join a singleplayer world and quit normally, and it checks that:
   open, as Fabric runs them;
 - Fabric Loader's game instance is the `Minecraft` instance when the client entrypoints run;
 - the item, the content built during the bootstrap (CORPUS-31) and the built-in registries' freeze (CORPUS-32) behave
-  as on the server.
+  as on the server;
+- the particle factory it registers from its client entrypoint is found by the particle engine, and its sprite is in
+  the particle atlas (PART-1).
 
 **With the official Fabric API jar,** the server starts and every module of Fabric API 0.92.12 loads. A client started
-with it reaches a world too; that run is only reported for now.
+with it reaches a world with every module loaded too; that run is only reported for now.
 
 **Native on Forge 47:**
 - `fabric-api-base`.
 - `fabric-biome-api-v1`: Fabric's biome changes are applied through Forge's biome modifiers.
 - `fabric-loot-api-v2` and `fabric-loot-tables-v1`: Fabric's loot events run on Forge's list of loot pools.
 - `fabric-dimensions-v1`: a Fabric teleport goes through Forge's teleporter, with no portal built.
+- `fabric-particles-v1`: Fabric's particle factories and their sprites go into Forge's particle engine, which keeps
+  them by the particle type's id.
 
 **Bridged to Forge's own systems:**
 - **Tag files:** their `fabric:remove` entries are read into Forge's list.
@@ -64,8 +68,6 @@ with it reaches a world too; that run is only reported for now.
 
 ## Not supported yet
 
-- **Fabric's particles module.** With the Fabric API jar, `fabric-particles-v1` is turned off on the client: its
-  accessor to the particle providers' map expects vanilla's type, which Forge changed.
 - **Capabilities.** Fabric's storages on Forge 47's old capability system are next on the
   [roadmap](/docs/roadmap.md). Fabric's networking needs no port: Fabric API's module carries a Fabric mod's packets
   through Forge 47's network stack, as CI checks.

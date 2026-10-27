@@ -410,7 +410,12 @@ singleplayer world, and the test mod's client entrypoint runs after its main one
 set. mc-runtime-test's 1.20.1 build runs the game tests it finds before quitting, and exits with an error if one
 fails. With the official Fabric API jar too, the client reaches a world (an informational run). `fabric-rendering-v1`
 loads there since COLOR-1, its colour provider lookup reading Forge's maps by registry holder, past CTOR-3, PRE-16 and
-SHADER-1, which its shader hooks met on Forge 47; particles (an accessor to a map whose type Forge changed) is disabled.
+SHADER-1, which its shader hooks met on Forge 47. `fabric-particles-v1` is native since PART-1 (it was disabled:
+Forge 47 keeps the particle engine's factories by the type's id, where upstream's accessor read them by raw id): the
+in-game mod registers Fabric's factories and their sprite sets through the engine's own methods, and asks the block
+dust tint event where Forge decides the tint, which replaced the check upstream's hook looks for. A factory the test
+mod registers is found by the engine, with its sprite in the particle atlas, with and without Fabric API, and with
+Fabric API no module is disabled on the client any more (run 40463821244).
 Model loading loads since CTOR-4: Forge's Mixin 0.8.5 takes a hook into a constructor only at a return, so pre-flight
 turns one at a call into a MixinExtras wrapper of that call, which also applies Fabric API's hook into `Commands`'
 constructor, so Fabric mods' commands register (checked with Fabric API, on the server and the client). Fabric's
