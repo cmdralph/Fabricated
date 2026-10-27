@@ -34,6 +34,9 @@ def gameModMixins = [
         'fabricated-loot.mixins.json',
         // Native fabric-dimensions-v1's: upstream's teleport target hook, and its End hook on Forge's teleporter.
         'fabricated-dimension.mixins.json',
+        // Native fabric-particles-v1's (client): upstream's hook that registers Fabric's particle factories once the
+        // engine's own are in, the accessors its sprite provider reads, and its block dust tint event on Forge's check.
+        'fabricated-particles.mixins.json',
         // The block and item colour lookups Fabric API's colour provider registry calls, on Forge's maps (upstream's read
         // vanilla's, which Forge replaced).
         'fabricated-forge-color.mixins.json']

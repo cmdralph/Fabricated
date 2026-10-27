@@ -952,7 +952,7 @@ The `forge` and `forge-legacy` branches build Fabricated for Minecraft Forge 61 
 `docs/readme/`). CI runs dedicated servers there: `ci/forge/smoke-server.sh` and `ci/forge-legacy/smoke-server.sh`
 start one with the test mod and one with the official Fabric API jar too, and `smoke-client.sh` starts a client the same
 two ways (with Fabric API, informational). This table is the two runs with Fabric API, the server's and the client's
-`fabric-bridge-report.txt`, from the runs on `claude/dev` at `aac8e1e` (40455404563) and `2e6de46` (40455097129,
+`fabric-bridge-report.txt`, from the runs on `claude/dev` at `aac8e1e` (40455404563) and `9f36f23` (40463821244,
 Forge 47), 2026-10-27: Fabric API 0.141.6+1.21.11, 0.155.3+26.1.2, 0.161.0+26.2, 0.164.0+26.3 and 0.92.12+1.20.1, on
 Forge 61.2.4, 64.1.5, 65.1.5, 66.1.0 and 47.4.28. Each cell is the more limited of the two: a module with client hooks
 can load on the server and lose hooks, or be turned off, on the client. The server starts and the client reaches a world
@@ -963,8 +963,8 @@ How to read it: as the NeoForge table, and
 - **loads, part**: the module loads without some of its hooks, ones its plan leaves out where Forge's code differs or
   ones pre-flight finds Forge's code can't take (LEAVE-1). The report names each, with what is lost.
 - **disabled**: the client run turns it off (the game goes on without it); the server loads it where it isn't
-  client-only. On Forge 47, `fabric-particles-v1`'s accessor to the particle providers' map expects vanilla's type,
-  which Forge changed.
+  client-only. No module is disabled on any Forge version: Forge 47's `fabric-particles-v1` was until PART-1, its
+  accessor to the particle providers' map expecting vanilla's type, which Forge changed.
 
 | Module | 1.21.11 (Forge 61) | 26.1.2 (Forge 64) | 26.2 (Forge 65) | 26.3 (Forge 66) | 1.20.1 (Forge 47) |
 |---|---|---|---|---|---|
@@ -1011,7 +1011,7 @@ How to read it: as the NeoForge table, and
 | fabric-networking-api-v1 | loads | loads | loads | loads | loads |
 | fabric-networking-v0 | — | — | — | — | loads |
 | fabric-object-builder-api-v1 | loads, part | loads, part | loads, part | loads, part | loads |
-| fabric-particles-v1 | loads, part | loads | loads | loads | disabled |
+| fabric-particles-v1 | loads, part | loads | loads | loads | native |
 | fabric-permission-api-v1 | — | loads | loads | loads | — |
 | fabric-recipe-api-v1 | loads | loads | loads | loads | loads |
 | fabric-registry-sync-v0 | loads, part | loads, part | loads, part | loads, part | loads, part |
