@@ -264,6 +264,28 @@ def testmodJar = tasks.register('testmodJar', Jar) {
     from sourceSets.testmod.output
 }
 
+// Forge: a Fabric mod the test mod nests twice over, as a jar built for Fabric and NeoForge at once nests its libraries
+// (LambDynamicLights): in META-INF/jars, listed by fabric.mod.json and by a NeoForge jar-in-jar list. Forge's jar-in-jar
+// locator must leave it to Fabricated, which translates it (JIJ-1); the nested mod checks it loaded once.
+if (platform != 'neoforge') {
+    sourceSets {
+        testmodnested {
+            java.srcDir rootProject.file('mc/forge-shared/src/testmodnested/java')
+            resources.srcDir rootProject.file('mc/forge-shared/src/testmodnested/resources')
+            compileClasspath = sourceSets.testmod.compileClasspath
+        }
+    }
+    def nestedTestmodJar = tasks.register('nestedTestmodJar', Jar) {
+        archiveFileName = 'fabricated-forge-nested.jar'
+        destinationDirectory = layout.buildDirectory.dir('testmodnested')
+        from sourceSets.testmodnested.output
+    }
+    testmodJar.configure {
+        from(nestedTestmodJar) { into 'META-INF/jars' }
+        from(rootProject.file('mc/forge-shared/src/testmodnested/jarjar')) { into 'META-INF/jarjar' }
+    }
+}
+
 def brokenMods = [
         'throws'  : ['io/github/cmdralph/fabricated/testmod/broken/ThrowingMod.class'],
         'missing' : [],

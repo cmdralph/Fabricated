@@ -309,7 +309,7 @@ public final class FabricDependencyLocator extends AbstractModProvider implement
 	 * A translated mod as a Forge mod file: its jar with the overlay last, whose files win, and which gives the module its
 	 * manifest (Mixin reads the {@code MixinConfigs} the descriptor puts there) and the file its path. Other mods' part of
 	 * a package split with this one come first (one module has the whole package), and the files the package guard
-	 * leaves out are hidden.
+	 * leaves out are hidden, as is the jar-in-jar list Forge would act on ({@link FabricJars#hiddenFromForge}).
 	 */
 	private IModFile modFile(TranslatedMod translated, PackageGuard.Decision packages) {
 		List<Path> paths = new ArrayList<>();
@@ -321,9 +321,9 @@ public final class FabricDependencyLocator extends AbstractModProvider implement
 		});
 		paths.add(translated.jar().toAbsolutePath().normalize());
 		paths.add(translated.overlay().toAbsolutePath().normalize());
-		boolean filtered = !borrowed.isEmpty() || !packages.excludedPackages().isEmpty() || !packages.hiddenFiles().isEmpty();
 		// The union file system's filter gets a path relative to one of the jars (a directory's ending in '/') and that jar.
-		BiPredicate<String, String> filter = !filtered ? null : (path, base) -> {
+		BiPredicate<String, String> filter = (path, base) -> {
+			if (FabricJars.hiddenFromForge(path)) return false;
 			Set<String> files = borrowed.get(base);
 			if (files != null) return path.endsWith("/") || files.contains(path);
 			return !packages.hides(path);

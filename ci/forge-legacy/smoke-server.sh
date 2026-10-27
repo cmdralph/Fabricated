@@ -265,6 +265,7 @@ check "the test mod's server entrypoint ran" "grep -q 'FABRICATED-FORGE-TEST ser
 check "the test mod's mixin applied (its Intermediary method name remapped to SRG's)" "grep -q 'FABRICATED-FORGE-TEST mixin OK' logs/latest.log 2>/dev/null"
 check "Forge took Fabricated's transformation service" "grep -q 'Fabricated transforms [1-9][0-9]* class(es) for Fabric mods before Mixin' logs/latest.log 2>/dev/null"
 check "the test mod's injected interface is on MinecraftServer (inject-interface)" "grep -q 'FABRICATED-FORGE-TEST injected interface OK' logs/latest.log 2>/dev/null"
+check "a mod nested with a NeoForge jar-in-jar list too loads once, translated: Forge's jar-in-jar locator leaves it alone (JIJ-1)" "grep -q 'FABRICATED-FORGE-TEST nested jar loaded once OK' logs/latest.log 2>/dev/null"
 check "the test mod's client-only method was stripped (@Environment)" "grep -q 'FABRICATED-FORGE-TEST environment strip OK' logs/latest.log 2>/dev/null"
 check "the Fabric main entrypoints ran in Forge's registry events" "grep -q 'Fabricated ran the Fabric main entrypoints of [1-9][0-9]* mod(s) on Forge (0 failed)' logs/latest.log 2>/dev/null"
 check "the test mod registered an item (Intermediary names remapped to SRG's)" "grep -q 'FABRICATED-FORGE-TEST registry OK' logs/latest.log 2>/dev/null"

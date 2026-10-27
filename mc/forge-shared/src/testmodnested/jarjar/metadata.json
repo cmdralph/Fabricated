@@ -1,0 +1,16 @@
+{
+  "jars": [
+    {
+      "identifier": {
+        "group": "io.github.cmdralph.fabricated",
+        "artifact": "fabricated-forge-nested"
+      },
+      "version": {
+        "range": "[1.0.0,)",
+        "artifactVersion": "1.0.0"
+      },
+      "path": "META-INF/jars/fabricated-forge-nested.jar",
+      "isObfuscated": false
+    }
+  ]
+}
