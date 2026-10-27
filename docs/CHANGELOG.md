@@ -3,6 +3,25 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-10-27: Forge clients with the official Fabric API jar
+
+- Both Forge workflows start the client a second time, with the official Fabric API jar the server run downloads. The
+  run is informational. Its first runs found three defects, each stopping a Forge client with Fabric API before or as
+  it reached its world:
+  - **FLUID-3** (Forge 61): Fabric's fluid overlay hook matched nothing in Forge's patched fluid renderer, which Mixin
+    treats as a critical failure at the first resource reload. Forge 61's plan leaves it out.
+  - **NET-8** (Forge 64 to 66): Fabric's networking codec for `minecraft:register` was handed Forge's channel list and
+    the join failed. The in-game mod writes Forge's own payloads with Forge's encoder.
+  - **SUPER-1** (Forge 64 to 66): SpongePowered's Mixin, which Forge runs, rebinds a mixin's call to an interface's
+    default method to the target class when the mixin's superclass isn't the target's, and Fabric's renderer mixin into
+    a record crashed drawing the first block. Core gives such a mixin its target's superclass where SpongePowered's
+    Mixin runs. Fabric's Mixin, which NeoForge runs, fixed the rebinding in 0.15.0.
+- **LOG-1**: the in-game mod's loot mixin config asks for a `minVersion`, so Mixin no longer logs an error for it.
+- The client-only modules' cells in `COMPATIBILITY.md`'s Forge table come from the new run.
+- Verification: in runs 40433805134 and 40433807263 on `cd3e633`, the client with the Fabric API jar reaches a world and
+  passes every check on all five Forge versions (on Forge 61 to 66 it crashed or never joined in run 40427976979), and
+  every gated server and client check passes as before. `DetachedSupersTest` and core's whole suite pass (306 tests).
+
 ## 2026-10-27: Fabric mods' client entrypoints on Forge, with a client run in CI
 
 - Fabric mods' client entrypoints run on Forge 61 to 66 and on Forge 47: in Forge's registry events, right after the

@@ -53,7 +53,7 @@ regression on NeoForge. Each item is done when its CI check is; the tracks below
 | Platform | Goals | Status |
 |---|---|---|
 | All | One working branch and one folder per platform, every branch holding the same tree. | Done (#156 to #158) |
-| All | Each Fabric API module's status on every platform in `COMPATIBILITY.md`, so the platforms can be compared. | Done for the servers (*Fabric API modules on Forge*); the Forge clients follow a client run with Fabric API |
+| All | Each Fabric API module's status on every platform in `COMPATIBILITY.md`, so the platforms can be compared. | Done for the servers (*Fabric API modules on Forge*), and for the client-only modules from the Forge client runs with Fabric API |
 | All | The engine's platform facts from the platform: the fields its coremods keep private (PLAT-4). | Done (PLAT-4, checked on all five Forge versions) |
 | NeoForge (`main`) | The open corpus findings (below) that a generic fix covers. `preLaunch` right after FML's mixin bootstrap (*Loader and translation*, next). ARCH-1: pre-flight's repair families out of `MixinPreflight`, with no change in behaviour. | Open |
 | Forge 61 to 66 (`forge`) | Fabric mods' client entrypoints and a client run in CI. Entity and interaction events native on Forge's events, as `main` has them on NeoForge's (F4). The server runs made gates once their checks hold on every version. | Server runs gated (with Fabric API too); client entrypoints done, with a gated client run (REG-5 fixed on the way); entity and interaction events open |
@@ -73,19 +73,19 @@ each Fabric API module's status per platform in [`COMPATIBILITY.md`](COMPATIBILI
 | Main and server entrypoints, registries open | yes; content built before them waits for them (HOLD-1, CORPUS-31), and the built-in registries' freeze comes after them (CORPUS-32) | yes, in Forge's registry events; content built before them waits for them (CORPUS-31), and the built-in registries' freeze comes after them (CORPUS-32) | yes, in Forge's registry events; content built before them waits for them (CORPUS-31), and the built-in registries' freeze comes after them (CORPUS-32) |
 | Client entrypoints | yes | yes, right after the main ones in Forge's registry events, registries open | yes, right after the main ones in Forge's registry events, registries open |
 | Mixins (pre-flight, its repairs, hooks left out), access wideners, injected interfaces, `@Environment` stripping | yes | yes | yes, with MixinExtras nested in the in-game mod |
-| Official Fabric API jar | every module loads, server and client | every module loads on the server | every module loads on the server |
+| Official Fabric API jar | every module loads, server and client | every module loads on the server; the client reaches a world with it, with `fabric-rendering-v1` and the renderer modules disabled on Forge 61 | every module loads on the server; the client reaches a world with it, with `fabric-rendering-v1` and model loading disabled |
 | Native Fabric API modules | 17 | 2 (`fabric-api-base`, `fabric-loot-api-v3`) | 5 (`fabric-api-base`, biome, both loot modules, dimensions) |
 | Bridges to the platform | fluid types, storages and energy with capabilities, plugins of other mods, custom values, renderer API | fluid types, tags' `fabric:remove`, default attributes (Forge 64 to 66), advancement events (Forge 65 and 66) | fluid types, tags' `fabric:remove` |
 | Networking | native, on NeoForge's payloads | upstream's module, unchecked | upstream's module, unchecked |
-| Rendering (renderer API, models, Sodium and Iris for NeoForge) | yes | no: the client reaches a world, with no Fabric rendering module checked | no: the client reaches a world, with no Fabric rendering module checked |
-| CI | server and client runs gated, and checks in the Fabric API runs; corpus runs informational | both server runs and a client run (test mod only) gated | both server runs and a client run (test mod only) gated |
+| Rendering (renderer API, models, Sodium and Iris for NeoForge) | yes | upstream's modules: Indigo draws Fabric models on Forge 64 to 66 (SUPER-1); disabled on Forge 61 | upstream's renderer API and Indigo load; `fabric-rendering-v1` and model loading are disabled |
+| CI | server and client runs gated, and checks in the Fabric API runs; corpus runs informational | both server runs and the client run with the test mod gated; the client run with Fabric API informational | both server runs and the client run with the test mod gated; the client run with Fabric API informational |
 | Releases | supported | experimental | experimental |
 
 - **`main`:** NeoForge for 1.21.11, 26.1.2, 26.2 and 26.3, every line stable (NeoForge tagged `26.3.0-stable`; CI
   pins 26.3.0.95 and no version is experimental any more).
 - **Next** (the v0.5.0 table above): on `forge`, entity and interaction events on Forge's events; on `forge-legacy`,
-  networking on `SimpleChannel` and storages on Forge 47's capabilities; on both, a client run with the official Fabric
-  API jar, informational at first.
+  networking on `SimpleChannel` and storages on Forge 47's capabilities; on both, `fabric-rendering-v1`'s block colour hook
+  on Forge 61 and 47, and the client run with the Fabric API jar made a gate once it has held for a while.
 - **Decided** (`RESEARCH.md` §8): Forge 47.4 for 1.20.1, the shared modules kept loadable on Java 17, ForgeGradle for
   modern Forge, CI for pull requests only. L1, the behaviour-neutral seams on `main`: Java 17 for the shared modules
   (their main code compiles at release 17), the loader split (`loader/common`, `loader/neoforge`), the build split
