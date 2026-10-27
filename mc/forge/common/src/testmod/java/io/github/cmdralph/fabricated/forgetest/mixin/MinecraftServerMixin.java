@@ -44,6 +44,7 @@ public abstract class MinecraftServerMixin {
 			ForgeTestMod.checkCommands((MinecraftServer) (Object) this);
 			ForgeTestMod.checkBlockBreaks((MinecraftServer) (Object) this);
 			ForgeTestMod.checkSleeping((MinecraftServer) (Object) this);
+			ForgeTestMod.checkStorages((MinecraftServer) (Object) this);
 		}
 	}
 }

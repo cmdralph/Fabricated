@@ -25,7 +25,7 @@ import net.minecraft.class_7923;
  * as Fabric mods do, and names the game's classes as a Fabric mod for 1.20.1 does, in Intermediary's names (the
  * stand-ins in src/testmodstubs), which Fabricated remaps to Forge 47's. With Fabric API's jar it also tries modules that
  * jar provides: the command, networking, block break ({@link ForgeBlockBreakTest}) and sleep ({@link ForgeSleepTest})
- * events.
+ * events, and storages reaching Forge's capabilities ({@link ForgeTransferTest}).
  */
 public final class ForgeTestMod implements ModInitializer, DedicatedServerModInitializer {
 	public static final String MOD_ID = "fabricated-forge-testmod";
@@ -96,6 +96,11 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 			ForgeSleepTest.register();
 		} catch (RuntimeException | LinkageError e) {
 			LOGGER.error("FABRICATED-FORGE-TEST sleep listeners not registered", e);
+		}
+		try {
+			ForgeTransferTest.register();
+		} catch (RuntimeException | LinkageError e) {
+			LOGGER.error("FABRICATED-FORGE-TEST storage blocks not registered", e);
 		}
 		if (FabricLoader.getInstance().isModLoaded("fabric-networking-api-v1")) {
 			try {

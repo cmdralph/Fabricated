@@ -10,11 +10,13 @@ import io.github.cmdralph.fabricated.core.runtime.EntrypointRunner;
 import io.github.cmdralph.fabricated.forge.fluid.FabricFluidType;
 import io.github.cmdralph.fabricated.forge.loot.LootCompat;
 import io.github.cmdralph.fabricated.forge.objectbuilder.DefaultAttributeModify;
+import io.github.cmdralph.fabricated.forge.transfer.TransferBridge;
 import io.github.cmdralph.fabricated.loader.FabricatedState;
 import io.github.cmdralph.fabricated.loader.ForgeLoaderHooks;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.api.DedicatedServerModInitializer;
 import net.fabricmc.api.ModInitializer;
+import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.loader.api.entrypoint.PreLaunchEntrypoint;
 import net.minecraftforge.fml.ModLoadingStage;
 import net.minecraftforge.fml.ModLoadingWarning;
@@ -65,6 +67,8 @@ public final class FabricatedMod {
 		}
 		// Fabric API's default attribute event, passed through, in Forge's attribute modification (see DefaultAttributeModify).
 		DefaultAttributeModify.register();
+		// Fabric storages and Forge's item and fluid handlers on blocks, each seen by the other side's code.
+		if (FabricLoader.getInstance().isModLoaded("fabric-transfer-api-v1")) TransferBridge.register();
 		for (String text : ForgeLoaderHooks.notLoaded()) {
 			LoadingWarnings.add(new ModLoadingWarning(context.getContainer().getModInfo(), ModLoadingStage.CONSTRUCT, AS_IS, text));
 		}

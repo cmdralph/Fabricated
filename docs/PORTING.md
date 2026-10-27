@@ -429,7 +429,10 @@ constructor, so Fabric mods' commands register (checked with Fabric API, on the 
 the code of the model baker's `bake` into an overload that also takes the sprite getter; pre-flight moves Fabric API's
 before-bake hook, a variable modifier picking its local by type, there as it moves the others (MODEL-3). Fabric's
 networking needs no `SimpleChannel` port: with Fabric API, a ping the client sends on a channel as it joins comes back
-from the integrated server (run 40459233646). Next: the old capability system. NeoForge needs no legacy branch.
+from the integrated server (run 40459233646). Fabric's storages reach Forge 47's old capabilities on blocks and fluid
+storages in items, both ways: a Forge handler, which moves at once or simulates, seen as a Fabric storage only simulates
+until the outermost transaction commits, and an item's handler and storage change the item by replacing it, as both
+sides' own do. Next: item storages in items. NeoForge needs no legacy branch.
 
 ### forge
 
@@ -473,6 +476,9 @@ generation only. With the official Fabric API jar, no module is disabled on any 
 advancement events run on Forge 66 since #146: the in-game mod wraps Forge's conditional decoding of each advancement
 and runs upstream's code on the advancement inside (upstream's hook, which casts what Forge decodes, stays left out);
 a vanilla advancement's reward set through `MODIFY` is what the server loads on Forge 65 and 66 (with Fabric API).
+Fabric's storages reach Forge's capabilities on blocks and fluid storages in items on all four, both ways, as on Forge
+47; a fluid carrying data doesn't cross, as Fabric's variants carry components where Forge's stacks carry a tag, and a
+tank item's stack is changed in place through a patch of its components.
 Fabric mods' fluids have Forge fluid types since #147 (a port of `main`'s): Forge throws "Mod fluids must override
 getFluidType" for any fluid without one, which every Fabric fluid is, so the in-game mod gives each family one,
 registered under its source's id and read from Fabric's attributes and the fluid's tags, and an entity moves through a

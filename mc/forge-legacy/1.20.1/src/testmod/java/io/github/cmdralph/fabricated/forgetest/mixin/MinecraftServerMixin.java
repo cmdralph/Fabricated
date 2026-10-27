@@ -13,6 +13,7 @@ import io.github.cmdralph.fabricated.forgetest.ForgeCommandTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeDimensionTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeFluidTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeSleepTest;
+import io.github.cmdralph.fabricated.forgetest.ForgeTransferTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeTestMarker;
 import io.github.cmdralph.fabricated.forgetest.ForgeTestMod;
 import net.minecraft.class_1792;
@@ -89,6 +90,7 @@ public abstract class MinecraftServerMixin {
 			ForgeCommandTest.check(method_3734());
 			ForgeBlockBreakTest.check(method_30002());
 			ForgeSleepTest.check(method_30002());
+			ForgeTransferTest.check(method_30002());
 		}
 	}
 }
