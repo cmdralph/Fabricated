@@ -98,7 +98,8 @@ regression on NeoForge. Each item is done when its CI check is; the tracks below
 
 The owner's plan to v0.5.0-alpha, in order (2026-10-27):
 
-1. Rethink the design and make CI cheaper (above). Done once its pull request's full matrix is green.
+1. Rethink the design and make CI cheaper (above). Done (#207): a NeoForge job takes 7.5 minutes on a pull request,
+   against 16 to 25.
 2. Faster Forge development: Forge 61 to 66 and Forge 47 nearer NeoForge's coverage, first where the most Fabric mods
    are blocked, sharing code through the engine so the platform folders stay thin.
 3. Minecraft 1.21.1: NeoForge 21.1 first, then Forge if it fits cleanly, on 1.21.11's Intermediary path, in the CI
