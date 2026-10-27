@@ -2291,6 +2291,197 @@ class MixinPreflightTest {
 	}
 
 	@Test
+	void aLocalTakenByTypeAndOrdinalWhereThePatchAddedOneOfThatTypeBeforeItGetsVanillasOrdinal() throws Exception {
+		// LOCAL-4: Indigo takes @Local(ordinal = 0) Map in SectionCompiler.compile, vanilla's map of buffers by layer, where
+		// Forge 61's patch first keeps the section's model data in a map: ordinal 0 here is the patch's.
+		String map = "Ljava/util/Map;";
+		java.util.function.Function<Boolean, byte[]> target = patched -> {
+			ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+			cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+			MethodVisitor compile = cw.visitMethod(Opcodes.ACC_PUBLIC, "compile", "()V", null, null);
+			org.objectweb.asm.Label start = new org.objectweb.asm.Label();
+			org.objectweb.asm.Label dataStart = new org.objectweb.asm.Label();
+			org.objectweb.asm.Label buffersStart = new org.objectweb.asm.Label();
+			org.objectweb.asm.Label end = new org.objectweb.asm.Label();
+			int buffers = patched ? 2 : 1;
+			compile.visitCode();
+			compile.visitLabel(start);
+			if (patched) {
+				compile.visitVarInsn(Opcodes.ALOAD, 0);
+				compile.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "modelData", "()" + map, false);
+				compile.visitVarInsn(Opcodes.ASTORE, 1);
+				compile.visitLabel(dataStart);
+			}
+			compile.visitVarInsn(Opcodes.ALOAD, 0);
+			compile.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "buffers", "()" + map, false);
+			compile.visitVarInsn(Opcodes.ASTORE, buffers);
+			compile.visitLabel(buffersStart);
+			compile.visitMethodInsn(Opcodes.INVOKESTATIC, TARGET, "positions", "()V", false);
+			compile.visitInsn(Opcodes.RETURN);
+			compile.visitLabel(end);
+			compile.visitLocalVariable("this", "L" + TARGET + ";", null, start, end, 0);
+			if (patched) compile.visitLocalVariable("modelData", map, null, dataStart, end, 1);
+			compile.visitLocalVariable("buffers", map, null, buffersStart, end, buffers);
+			compile.visitMaxs(0, 0);
+			compile.visitEnd();
+			cw.visitEnd();
+			return cw.toByteArray();
+		};
+		byte[] mixin = mixin("com/example/mixin/Build", false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "build", "(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;" + map + ")V", null, null);
+			AnnotationVisitor local = mv.visitParameterAnnotation(1, "Lcom/llamalad7/mixinextras/sugar/Local;", false);
+			local.visit("ordinal", 0);
+			local.visitEnd();
+			AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "compile");
+			methods.visitEnd();
+			AnnotationVisitor ats = ann.visitArray("at");
+			AnnotationVisitor at = ats.visitAnnotation(null, AT);
+			at.visit("value", "INVOKE");
+			at.visit("target", "L" + TARGET + ";positions()V");
+			at.visitEnd();
+			ats.visitEnd();
+			ann.visitEnd();
+			mv.visitCode();
+			mv.visitInsn(Opcodes.RETURN);
+			mv.visitMaxs(0, 3);
+			mv.visitEnd();
+		});
+		Map<String, byte[]> vanilla = Map.of(TARGET, target.apply(false));
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Build", mixin));
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Build"));
+		ClassIndex forge = new ClassIndex(Map.of(TARGET, target.apply(true))::get);
+		// A capture by its ordinal is valid as it stands: only vanilla's code tells it names the wrong local.
+		assertTrue(preflight(forge, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty());
+		List<PreflightFinding> notes = new ArrayList<>();
+		byte[] repaired = new MixinPreflight(forge, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, vanilla::get)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes).get("com/example/mixin/Build.class");
+		assertNotNull(repaired, notes.toString());
+		assertTrue(notes.getFirst().message().contains("with ordinal 0, vanilla's, which has ordinal 1"), notes.toString());
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired).accept(node, 0);
+		MethodNode handler = node.methods.stream().filter(m -> m.name.equals("build")).findFirst().orElseThrow();
+		assertEquals(1, Annotations.value(Annotations.ofParameter(handler, 1).getFirst(), "ordinal"), "vanilla's map, not the patch's");
+		// Where the build declares vanilla's locals alone, the ordinal stays.
+		ClassIndex unpatched = new ClassIndex(vanilla::get);
+		assertTrue(new MixinPreflight(unpatched, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, vanilla::get)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty());
+	}
+
+	@Test
+	void aVariableModifierOfAnArgumentAtItsStoreFailsWhereTheMethodNoLongerStoresIt() throws Exception {
+		// PRE-16: Fabric API's shader import hook modifies an import's name where vanilla stores it back into its argument
+		// (@ModifyVariable(at = @At("STORE"), argsOnly = true)); Forge 47's patch looks the import up without that store,
+		// though the method still stores other locals.
+		java.util.function.Function<Boolean, byte[]> target = patched -> {
+			ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+			cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+			MethodVisitor load = cw.visitMethod(Opcodes.ACC_PUBLIC, "loadImport", "(ZLjava/lang/String;)Ljava/lang/String;", null, null);
+			load.visitCode();
+			load.visitVarInsn(Opcodes.ALOAD, 2);
+			load.visitMethodInsn(Opcodes.INVOKESTATIC, TARGET, "normalize", "(Ljava/lang/String;)Ljava/lang/String;", false);
+			load.visitVarInsn(Opcodes.ASTORE, patched ? 3 : 2);
+			load.visitVarInsn(Opcodes.ALOAD, patched ? 3 : 2);
+			load.visitInsn(Opcodes.ARETURN);
+			load.visitMaxs(0, 0);
+			load.visitEnd();
+			cw.visitEnd();
+			return cw.toByteArray();
+		};
+		byte[] mixin = mixin("com/example/mixin/Imports", false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "modifyImportId", "(Ljava/lang/String;Z)Ljava/lang/String;", null, null);
+			AnnotationVisitor ann = mv.visitAnnotation(MODIFY_VARIABLE, true);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "loadImport");
+			methods.visitEnd();
+			AnnotationVisitor at = ann.visitAnnotation("at", AT);
+			at.visit("value", "STORE");
+			at.visitEnd();
+			ann.visit("ordinal", 0);
+			ann.visit("argsOnly", true);
+			ann.visitEnd();
+			mv.visitCode();
+			mv.visitVarInsn(Opcodes.ALOAD, 1);
+			mv.visitInsn(Opcodes.ARETURN);
+			mv.visitMaxs(1, 3);
+			mv.visitEnd();
+		});
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Imports"));
+		Map<String, byte[]> mod = Map.of("com/example/mixin/Imports", mixin);
+		List<PreflightFinding> found = preflight(new ClassIndex(Map.of(TARGET, target.apply(true))::get), mod::get, ClassBytesSource.EMPTY, false)
+				.check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(found.stream().anyMatch(f -> f.message().contains("expects @At(\"STORE\"), which does not occur")), found.toString());
+		assertTrue(preflight(new ClassIndex(Map.of(TARGET, target.apply(false))::get), mod::get, ClassBytesSource.EMPTY, false)
+				.check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty());
+	}
+
+	@Test
+	void anArgumentModifierWithAnInstanceHandlerBeforeTheDelegateConstructorCallFails() throws Exception {
+		// CTOR-3: Fabric API's shader program hook modifies vanilla's ResourceLocation construction in ShaderInstance's
+		// constructor, which Forge 47's patch moved into the arguments of a this(...) call: Mixin takes only a static
+		// handler there.
+		java.util.function.Function<Boolean, byte[]> target = patched -> {
+			ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+			cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+			MethodVisitor named = cw.visitMethod(Opcodes.ACC_PUBLIC, "<init>", "(Ljava/lang/String;)V", null, null);
+			named.visitCode();
+			named.visitVarInsn(Opcodes.ALOAD, 0);
+			if (patched) {
+				named.visitVarInsn(Opcodes.ALOAD, 1);
+				named.visitMethodInsn(Opcodes.INVOKESTATIC, TARGET, "location", "(Ljava/lang/String;)Ljava/lang/Object;", false);
+				named.visitMethodInsn(Opcodes.INVOKESPECIAL, TARGET, "<init>", "(Ljava/lang/Object;)V", false);
+			} else {
+				named.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false);
+				named.visitVarInsn(Opcodes.ALOAD, 1);
+				named.visitMethodInsn(Opcodes.INVOKESTATIC, TARGET, "location", "(Ljava/lang/String;)Ljava/lang/Object;", false);
+				named.visitInsn(Opcodes.POP);
+			}
+			named.visitInsn(Opcodes.RETURN);
+			named.visitMaxs(0, 0);
+			named.visitEnd();
+			if (patched) {
+				MethodVisitor located = cw.visitMethod(Opcodes.ACC_PUBLIC, "<init>", "(Ljava/lang/Object;)V", null, null);
+				located.visitCode();
+				located.visitVarInsn(Opcodes.ALOAD, 0);
+				located.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false);
+				located.visitInsn(Opcodes.RETURN);
+				located.visitMaxs(0, 0);
+				located.visitEnd();
+			}
+			cw.visitEnd();
+			return cw.toByteArray();
+		};
+		java.util.function.Function<Boolean, byte[]> modifier = isStatic -> mixin("com/example/mixin/Program", false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE | (isStatic ? Opcodes.ACC_STATIC : 0), "modifyId", "(Ljava/lang/String;)Ljava/lang/String;", null, null);
+			AnnotationVisitor ann = mv.visitAnnotation("Lorg/spongepowered/asm/mixin/injection/ModifyArg;", true);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "<init>");
+			methods.visitEnd();
+			AnnotationVisitor at = ann.visitAnnotation("at", AT);
+			at.visit("value", "INVOKE");
+			at.visit("target", "L" + TARGET + ";location(Ljava/lang/String;)Ljava/lang/Object;");
+			at.visitEnd();
+			ann.visitEnd();
+			mv.visitCode();
+			mv.visitVarInsn(Opcodes.ALOAD, isStatic ? 0 : 1);
+			mv.visitInsn(Opcodes.ARETURN);
+			mv.visitMaxs(1, 2);
+			mv.visitEnd();
+		});
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Program"));
+		ClassIndex forge = new ClassIndex(Map.of(TARGET, target.apply(true))::get);
+		List<PreflightFinding> found = preflight(forge, Map.of("com/example/mixin/Program", modifier.apply(false))::get, ClassBytesSource.EMPTY, false)
+				.check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(found.stream().anyMatch(f -> f.message().contains("before its this() or super() call, where Mixin takes only a static handler")), found.toString());
+		// A static handler, or the point after super(), as vanilla has it, is fine.
+		assertTrue(preflight(forge, Map.of("com/example/mixin/Program", modifier.apply(true))::get, ClassBytesSource.EMPTY, false)
+				.check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty());
+		assertTrue(preflight(new ClassIndex(Map.of(TARGET, target.apply(false))::get), Map.of("com/example/mixin/Program", modifier.apply(false))::get,
+				ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty());
+	}
+
+	@Test
 	void anArgumentTakenByNameIsTakenByItsSlotWhereMixinDoesntKnowArgumentNames() throws Exception {
 		// ARGS-1: Fabric API's resource loader hook takes @ModifyVariable(argsOnly = true, name = "enableProfiling") in
 		// SimpleReloadInstance.create; SpongePowered's Mixin (Forge 61 to 66) names arguments arg and their slot there, so

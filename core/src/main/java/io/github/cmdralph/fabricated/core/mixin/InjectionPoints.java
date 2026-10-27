@@ -11,12 +11,14 @@ import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.AnnotationNode;
 import org.objectweb.asm.tree.FieldInsnNode;
+import org.objectweb.asm.tree.IincInsnNode;
 import org.objectweb.asm.tree.IntInsnNode;
 import org.objectweb.asm.tree.InvokeDynamicInsnNode;
 import org.objectweb.asm.tree.LdcInsnNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
 import org.objectweb.asm.tree.TypeInsnNode;
+import org.objectweb.asm.tree.VarInsnNode;
 
 import io.github.cmdralph.fabricated.core.bytecode.Annotations;
 import io.github.cmdralph.fabricated.core.mixin.MixinPreflight.Context;
@@ -178,6 +180,24 @@ final class InjectionPoints {
 		}
 		int n = count(point, target, ordinal, opcode, range, method);
 		return n == 0 ? Verdict.MISSING : n > 0 || n == PRESENT ? Verdict.FOUND : Verdict.UNKNOWN;
+	}
+
+	/**
+	 * Whether a {@code LOAD} or {@code STORE} point of a local of {@code type} in {@code slot} picks an instruction in the
+	 * slice: a load or store of that type into the slot (an int's increment counts as a store), the ordinal-th of them
+	 * with an ordinal, as Mixin's {@code BeforeLoadLocal} and {@code AfterStoreLocal} match them.
+	 */
+	static boolean accessesLocal(boolean load, Type type, int slot, int ordinal, Range range, MethodNode method) {
+		int opcode = type.getOpcode(load ? Opcodes.ILOAD : Opcodes.ISTORE);
+		int seen = 0;
+		int last = Math.min(range.end(), method.instructions.size() - 1);
+		for (int i = Math.max(range.start(), 0); i <= last; i++) {
+			AbstractInsnNode insn = method.instructions.get(i);
+			boolean match = insn instanceof VarInsnNode var && var.getOpcode() == opcode && var.var == slot
+					|| !load && opcode == Opcodes.ISTORE && insn instanceof IincInsnNode inc && inc.var == slot;
+			if (match && (ordinal < 0 || seen++ == ordinal)) return true;
+		}
+		return false;
 	}
 
 	/** {@link #count}'s answer for a point the method has where the injections it makes there aren't counted. */

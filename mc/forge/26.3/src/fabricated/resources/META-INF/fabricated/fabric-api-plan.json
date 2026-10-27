@@ -18,8 +18,8 @@
     },
     "fabric-data-generation-api-v1": {
       "plan": "passthrough",
-      "skipMixins": ["fabric-data-generation-api-v1.mixins.json:TagBuilderMixin", "fabric-data-generation-api-v1.mixins.json:loot.BlockLootSubProviderMixin"],
-      "reason": "Mods' runtime code references its classes; its hooks act only when the fabric-api.datagen property is set. Its tag builder mixin adds removal methods Forge's tag builder already declares, which Mixin refuses without @Overwrite, and its block loot mixin hooks vanilla's iteration over every block, which Forge replaced, so both are left out. Pre-flight disabled the module (and every mod referencing it). Lost, in data generation only: removing entries through a Fabric tag builder doesn't work, and vanilla's block loot provider isn't limited to vanilla's blocks."
+      "skipMixins": ["fabric-data-generation-api-v1.mixins.json:TagBuilderMixin", "fabric-data-generation-api-v1.mixins.json:loot.BlockLootSubProviderMixin", "fabric-data-generation-api-v1.client.mixins.json:ModelProviderItemInfoCollectorMixin#filterItemsForProcessingMod(Ljava/util/Map;Ljava/lang/Object;Lcom/llamalad7/mixinextras/injector/wrapoperation/Operation;)Z"],
+      "reason": "Mods' runtime code references its classes; its hooks act only when the fabric-api.datagen property is set. Its tag builder mixin adds removal methods Forge's tag builder already declares, which Mixin refuses without @Overwrite, and its block loot mixin hooks vanilla's iteration over every block, which Forge replaced, so both are left out. Its client item definition collector mixin wraps the second map lookup in a lambda of finalizeAndValidate, a lookup Forge's lambda of that name doesn't make, so that one handler is left out. Pre-flight disabled the module (and every mod referencing it). Lost, in data generation only: removing entries through a Fabric tag builder doesn't work, and vanilla's block loot provider isn't limited to vanilla's blocks, and a Fabric model provider also writes item definitions for block items of other mods, and of blocks it gave no block state."
     },
     "fabric-dimensions-v1": {
       "plan": "passthrough",

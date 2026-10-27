@@ -3,6 +3,36 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-10-27: Fabric's rendering modules on Forge clients with the Fabric API jar
+
+- **COLOR-1** (Forge 61 and 47): pre-flight disabled `fabric-rendering-v1` on every client with the Fabric API jar, and
+  the modules needing it (the renderer API, Indigo and model loading on Forge 61; the deprecated rendering and renderer
+  registry modules on Forge 47). Forge keeps colour providers in a map by registry holder under the name of vanilla's
+  list by id, which upstream's colour provider lookup shadows. As on NeoForge 1.21.11, the plans leave that lookup out
+  and the in-game mods add one reading Forge's map (block colours on Forge 61, block and item colours on Forge 47). The
+  test mods check that Fabric's registry finds grass's provider and none for stone.
+- With the module loading, the clients met four defects, each fixed in turn:
+  - **LOCAL-4** (Forge 61): Indigo's `@Local(ordinal = 0) Map` named a map Forge's patch adds before vanilla's, and the
+    first chunk section crashed. An `@Local` by type and ordinal now names vanilla's local of that ordinal.
+  - **CTOR-3** (Forge 47): a `@ModifyArg` with an instance handler landed before a `this(...)` call Forge's patch added,
+    which Mixin refuses at launch. Pre-flight reports such `@ModifyArg`, `@ModifyArgs` and `@Redirect` points.
+  - **PRE-16** (Forge 47): pre-flight took a `@ModifyVariable`'s `STORE` point as present wherever the method stored any
+    local. Where the annotation names the local's slot, the point now picks that slot's loads or stores only.
+  - **SHADER-1** (Forge 47): Forge 47 resolves the namespaces of shader programs, their stages and imports itself, and
+    upstream's rewrite of a stage's name added the namespace again. Forge 47's plan leaves both shader mixins out.
+- **DATAGEN-2** (Forge 61 to 66): the data generation module's client mixin wraps a map lookup in a lambda Forge's build
+  lacks or makes without it, and pre-flight disabled the module on every client with Fabric API. The plans leave out
+  that one handler; its hooks act only in data generation.
+- `COMPATIBILITY.md`'s Forge table is now the more limited of the server and client runs with Fabric API on the current
+  head, so a module that loads on the server but loses hooks or is turned off on the client shows it. Every module loads
+  on Forge 61 to 66; on Forge 47 the client turns off model loading (a constructor hook Mixin 0.8.5 can't take),
+  `fabric-models-v0` with it, and particles (an accessor to a map whose type Forge changed).
+- Verification: the colour check passes on Forge 61 (runs 40440936469 and 40449926126) and Forge 47 (40448563135), and
+  in 40449926126 (`8d652ce`) and 40448563135 (`6254b9d`) every server and client check passes on all five Forge
+  versions, the client with the Fabric API jar reaching a world on each. LOCAL-4 is verified in 40442885891, CTOR-3 in
+  40442888840 and PRE-16 in 40445904919, each getting the Forge client past the defect; NeoForge's runs on the core
+  changes' heads (40442891137 and 40445910558) pass as before. Core's whole suite passes (309 tests).
+
 ## 2026-10-27: Forge clients with the official Fabric API jar
 
 - Both Forge workflows start the client a second time, with the official Fabric API jar the server run downloads. The
