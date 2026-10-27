@@ -163,6 +163,9 @@ jobs:
         continue-on-error: true
         run: |
           python3 ci/fetch-corpus.py "${{ matrix.minecraft }}" "$RUNNER_TEMP/corpus" | tee "$RUNNER_TEMP/corpus.txt"
+          # Left out: jars Forge refuses before Fabricated runs, which put it in its error state (LOADERR-1): JEI's Fabric
+          # build, whose module-info names packages it lacks (JEI has a Forge build).
+          rm -f "$RUNNER_TEMP"/corpus/jei-*-fabric-*.jar
           cp "$RUNNER_TEMP/extra/fabric-api.jar" "$RUNNER_TEMP/corpus/"
       - name: Server with the mod corpus (informational)
         if: ${{ !cancelled() && steps.corpus.outcome == 'success' }}
