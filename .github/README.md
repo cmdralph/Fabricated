@@ -60,13 +60,14 @@ with it reaches a world too; that run is only reported for now.
 - **Fluids:** Fabric mods' fluids get Forge fluid types. An entity moves through a Fabric fluid that isn't water as
   through air, as on Fabric.
 - **Block and item colours:** Fabric's colour provider registry reads Forge's own maps of block and item colours.
+- **Hooks into constructors:** Forge 47's Mixin takes a hook into a constructor only at its end, so Fabricated turns a
+  Fabric mod's hook at a call there into a wrapper of that call: Fabric mods' commands register, and Fabric's model
+  loading runs.
 
 ## Not supported yet
 
-- **Fabric's model loading and particles modules.** With the Fabric API jar, `fabric-model-loading-api-v1` (a hook into
-  the model loader's constructor that Forge 47's Mixin can't take) and `fabric-particles-v1` (an accessor to the
-  particle providers' map, whose type Forge changed) are turned off on the client, and `fabric-models-v0` with model
-  loading.
+- **Fabric's particles module.** With the Fabric API jar, `fabric-particles-v1` is turned off on the client: its
+  accessor to the particle providers' map expects vanilla's type, which Forge changed.
 - **Capabilities and networking.** Forge 47's old capability system and `SimpleChannel` networking are next on the
   [roadmap](/docs/roadmap.md).
 
