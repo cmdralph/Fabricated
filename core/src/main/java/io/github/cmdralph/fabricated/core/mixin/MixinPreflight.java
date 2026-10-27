@@ -1182,6 +1182,46 @@ public final class MixinPreflight {
 		return null;
 	}
 
+	/**
+	 * The injectors Mixin refuses with a handler that isn't static at a constructor's instruction up to its call to the
+	 * delegate constructor, where the instance doesn't exist yet ({@code Injector.checkTargetForNode}, the same in
+	 * SpongePowered's Mixin and Fabric's), with the points pre-flight finds for each: a call, and for a redirect a field
+	 * access too (a redirected construction takes another path).
+	 */
+	private static final Map<String, Set<String>> STATIC_BEFORE_DELEGATE = Map.of(
+			"Lorg/spongepowered/asm/mixin/injection/ModifyArg;", Set.of("INVOKE"),
+			"Lorg/spongepowered/asm/mixin/injection/ModifyArgs;", Set.of("INVOKE"),
+			REDIRECT, Set.of("INVOKE", "FIELD"));
+
+	/**
+	 * The point of an injector whose handler isn't static that picks, in a constructor of {@code owner}, an instruction up
+	 * to its call to the delegate constructor ({@code super(...)} or {@code this(...)}), which Mixin refuses ("handler before
+	 * this() invocation must be static", {@link #STATIC_BEFORE_DELEGATE}) wherever it is required (CTOR-3: Fabric API's
+	 * shader program hook modifies vanilla's {@code ResourceLocation} construction in {@code ShaderInstance}'s constructor,
+	 * which Forge 47's patch moved into the arguments of a {@code this(...)} call). Null when there is none.
+	 */
+	private static String beforeDelegateRejected(MethodNode handler, AnnotationNode injector, ClassNode owner, List<MethodNode> matched, Context ctx) {
+		Set<String> points = STATIC_BEFORE_DELEGATE.get(injector.desc);
+		if (points == null || (handler.access & Opcodes.ACC_STATIC) != 0 || matched.stream().noneMatch(m -> m.name.equals("<init>"))) return null;
+		List<AnnotationNode> slices = Annotations.list(Annotations.value(injector, "slice"));
+		for (AnnotationNode at : Annotations.list(Annotations.value(injector, "at"))) {
+			String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
+			if (!points.contains(point)) continue;
+			String target = Annotations.value(at, "target") instanceof String t ? ctx.resolve(t) : null;
+			int ordinal = Annotations.value(at, "ordinal") instanceof Integer i ? i : -1;
+			int opcode = Annotations.value(at, "opcode") instanceof Integer i ? i : -1;
+			AnnotationNode slice = InjectionPoints.sliceFor(at, slices);
+			for (MethodNode m : matched) {
+				if (!m.name.equals("<init>")) continue;
+				int delegate = delegateCall(m, owner);
+				List<Integer> picked = delegate < 0 ? null
+						: InjectionPoints.indexes(point, target, ordinal, opcode, slice == null ? Range.ALL : InjectionPoints.sliceRange(slice, m, ctx), m);
+				if (picked != null && picked.stream().anyMatch(i -> i <= delegate)) return point;
+			}
+		}
+		return null;
+	}
+
 	/** Points an {@code @Inject} into a constructor may take anywhere on SpongePowered's Mixin: its returns (CTOR-2). */
 	private static final Set<String> RETURN_POINTS = Set.of("RETURN", "TAIL");
 	/** Points whose instructions pre-flight finds, so it can tell whether they follow the delegate constructor call. */
@@ -1329,8 +1369,12 @@ public final class MixinPreflight {
 	 * one whose store is one of vanilla's instructions, or a parameter, when exactly one of those in scope is, as vanilla
 	 * had one of the type there for the capture to work at all. Its ordinal among the locals of the type in scope
 	 * (parameters first, by slot, as {@link #ordinalAt} counts) must be the same at every instruction the point picks.
-	 * Only for an injector with one {@code @At} naming a call, field access or construction, outside a slice, into one
-	 * method vanilla declares, as {@link #ambiguousLocal} judges them. Returns a description of each.
+	 * An {@code @Local} by type with an ordinal names vanilla's local of that ordinal among vanilla's of the type, which
+	 * gets its ordinal here where the patch added one before it (LOCAL-4: Fabric API's Indigo takes {@code @Local(ordinal
+	 * = 0) Map} in {@code SectionCompiler.compile}, vanilla's map of buffers by layer, where Forge 61's patch first keeps
+	 * the section's model data in a map). Only for an injector with one {@code @At} naming a call, field access or
+	 * construction, outside a slice, into one method vanilla declares, as {@link #ambiguousLocal} judges them. Returns a
+	 * description of each.
 	 */
 	private List<String> vanillaLocalRepairs(MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx) {
 		if (Annotations.value(injector, "slice") != null) return List.of();
@@ -1356,8 +1400,9 @@ public final class MixinPreflight {
 		Type[] params = Type.getArgumentTypes(handler.desc);
 		for (int p = 0; p < params.length; p++) {
 			for (AnnotationNode local : Annotations.ofParameter(handler, p)) {
+				Object given = Annotations.value(local, "ordinal");
 				if (!local.desc.equals(LOCAL) || Annotations.value(local, "name") != null || Annotations.value(local, "index") != null
-						|| Annotations.value(local, "ordinal") != null || Boolean.TRUE.equals(Annotations.value(local, "argsOnly"))
+						|| given != null && !(given instanceof Integer) || Boolean.TRUE.equals(Annotations.value(local, "argsOnly"))
 						|| params[p].getDescriptor().startsWith("Lcom/llamalad7/mixinextras/sugar/ref/")) continue;
 				if (vanillaPlaces == null) {
 					PatchAlignment alignment = PatchAlignment.of(before, patched);
@@ -1366,6 +1411,15 @@ public final class MixinPreflight {
 					for (int i = 0; i < before.instructions.size(); i++) {
 						if (alignment.placeOf(i) >= 0) vanillaPlaces.add(alignment.placeOf(i));
 					}
+				}
+				if (given instanceof Integer vanillas) {
+					int ordinal = vanillasNthLocalOrdinal(patched, params[p].getDescriptor(), positions, vanillaPlaces, vanillas);
+					if (ordinal < 0 || ordinal == vanillas) continue;
+					Annotations.put(local, "ordinal", ordinal);
+					named.add("the local of type " + params[p].getClassName() + " with ordinal " + vanillas + ", vanilla's, which has ordinal " + ordinal
+							+ " in " + patched.name + " in " + target.name.replace('/', '.') + " there, " + loader + "'s patch having added one of the type"
+							+ " before it; the @Local names it");
+					continue;
 				}
 				int ordinal = vanillasLocalOrdinal(patched, params[p].getDescriptor(), positions, vanillaPlaces);
 				if (ordinal < 0) continue;
@@ -1509,6 +1563,30 @@ public final class MixinPreflight {
 				}
 			}
 			if (inScope.size() < 2 || vanillas != 1) return -1;
+			int ordinal = inScope.headSet(chosen).size();
+			if (found >= 0 && found != ordinal) return -1;
+			found = ordinal;
+		}
+		return found;
+	}
+
+	/**
+	 * The ordinal, among the locals of type {@code desc} in scope (parameters first, by slot), of the one with ordinal
+	 * {@code nth} among those of them that are vanilla's ({@link #isVanillasLocal}), the same at each of {@code positions};
+	 * -1 when fewer than {@code nth + 1} of them are vanilla's at one of them.
+	 */
+	private static int vanillasNthLocalOrdinal(MethodNode method, String desc, List<Integer> positions, Set<Integer> vanillaPlaces, int nth) {
+		int found = -1;
+		for (int i : positions) {
+			TreeSet<Integer> inScope = new TreeSet<>();
+			TreeSet<Integer> vanillas = new TreeSet<>();
+			for (LocalVariableNode lv : method.localVariables) {
+				if (!lv.desc.equals(desc) || method.instructions.indexOf(lv.start) > i || i >= method.instructions.indexOf(lv.end)) continue;
+				inScope.add(lv.index);
+				if (isVanillasLocal(method, lv, vanillaPlaces)) vanillas.add(lv.index);
+			}
+			if (vanillas.size() <= nth) return -1;
+			int chosen = vanillas.stream().skip(nth).findFirst().orElseThrow();
 			int ordinal = inScope.headSet(chosen).size();
 			if (found >= 0 && found != ordinal) return -1;
 			found = ordinal;
@@ -3384,6 +3462,14 @@ public final class MixinPreflight {
 					"The feature this hook serves doesn't work on this " + loader + ".");
 			return;
 		}
+		String beforeDelegate = beforeDelegateRejected(handler, ann, target, matched, ctx);
+		if (beforeDelegate != null) {
+			ctx.injector(handler, 1, injectorName + " " + handler.name + " takes a point in the constructor of " + target.name.replace('/', '.') + " at @At(\""
+							+ beforeDelegate + "\") before its this() or super() call, where Mixin takes only a static handler: " + ctx.changer(false)
+							+ " moved the point there",
+					"The feature this hook serves doesn't work on this " + loader + ".");
+			return;
+		}
 
 		// Mixin counts an injector's injections in all its target methods against require: a method that lost its point
 		// can leave too few, though the point is found in another (FrozenLib's, where NeoForge moved a call into a lambda,
@@ -3407,6 +3493,10 @@ public final class MixinPreflight {
 				boolean expression = point.equals("MIXINEXTRAS:EXPRESSION");
 				String resolved = rawTarget == null ? null : ctx.resolve(rawTarget);
 				Verdict v = expression ? InjectionPoints.evaluateExpression(handler, m, ctx) : InjectionPoints.evaluate(point, resolved, ordinal, opcode, range, m);
+				if (v != Verdict.MISSING && ann.desc.equals(MODIFY_VARIABLE) && (point.equals("LOAD") || point.equals("STORE")) && range != Range.UNEVALUATED) {
+					int slot = modifiedSlot(handler, ann, m);
+					if (slot >= 0) v = InjectionPoints.accessesLocal(point.equals("LOAD"), Type.getArgumentTypes(handler.desc)[0], slot, ordinal, range, m) ? Verdict.FOUND : Verdict.MISSING;
+				}
 				if (injections >= 0) {
 					int n = expression ? -1 : InjectionPoints.count(point, resolved, ordinal, opcode, range, m);
 					if (n == 0) without.add(m.name);
@@ -3447,6 +3537,30 @@ public final class MixinPreflight {
 							+ ": its point does not occur in " + String.join(", ", new TreeSet<>(without)) + " in " + target.name.replace('/', '.'),
 					ctx.changer(true) + " changed " + (without.size() == 1 ? "that method" : "those methods") + "; the mod needs an update or this mixin must be skipped.");
 		}
+	}
+
+	/**
+	 * The slot of the local a {@code @ModifyVariable} modifies in {@code method}, where its annotation alone tells it: its
+	 * {@code index}, or with {@code argsOnly} the argument of the handler's type it names by its ordinal (the only one of
+	 * that type without one), as Mixin's discriminator takes them; -1 otherwise (a name, or a local Mixin finds by the
+	 * local variable table). A {@code LOAD} or {@code STORE} point then picks that slot's loads or stores only (PRE-16:
+	 * Fabric API's shader import hook modifies an import's name where vanilla stores it back into its argument, a store
+	 * Forge 47's patch removed, and pre-flight took any store in the method for it).
+	 */
+	private static int modifiedSlot(MethodNode handler, AnnotationNode injector, MethodNode method) {
+		Type[] handlerArgs = Type.getArgumentTypes(handler.desc);
+		if (handlerArgs.length == 0 || Annotations.value(injector, "name") != null) return -1;
+		if (Annotations.value(injector, "index") instanceof Integer index && index >= 0) return index;
+		if (!Boolean.TRUE.equals(Annotations.value(injector, "argsOnly"))) return -1;
+		int ordinal = Annotations.value(injector, "ordinal") instanceof Integer o ? o : -1;
+		int slot = (method.access & Opcodes.ACC_STATIC) != 0 ? 0 : 1;
+		List<Integer> matching = new ArrayList<>();
+		for (Type arg : Type.getArgumentTypes(method.desc)) {
+			if (arg.equals(handlerArgs[0])) matching.add(slot);
+			slot += arg.getSize();
+		}
+		if (ordinal >= 0) return ordinal < matching.size() ? matching.get(ordinal) : -1;
+		return matching.size() == 1 ? matching.get(0) : -1;
 	}
 
 	/**

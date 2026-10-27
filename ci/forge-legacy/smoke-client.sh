@@ -143,4 +143,7 @@ check "FABRICATED-FORGE-TEST client game instance OK" "Fabric Loader's game inst
 check "FABRICATED-FORGE-TEST registry OK" "the test mod registered an item on the client"
 check "FABRICATED-FORGE-TEST content built at bootstrap registered OK" "content built during vanilla's bootstrap is registered by the main initializer (CORPUS-31)"
 check "FABRICATED-FORGE-TEST built-in registries frozen after the main initializers OK" "the built-in registries' freeze runs after the main initializers (CORPUS-32)"
+if [ -n "$extra" ]; then
+	check "FABRICATED-FORGE-TEST colour providers OK" "fabric-rendering-v1 (with Fabric API): its colour provider registry finds grass's provider in Forge's block colours, and none for stone (COLOR-1)"
+fi
 exit "$fail"
