@@ -62,7 +62,13 @@
       "plan": "passthrough"
     },
     "fabric-dimensions-v1": {
-      "plan": "passthrough"
+      "plan": "passthrough",
+      "skipMixins": [
+        "fabric-dimensions-v1.mixins.json:TaggedChoiceMixin",
+        "fabric-dimensions-v1.mixins.json:TaggedChoiceTypeMixin",
+        "fabric-dimensions-v1.mixins.json:Schema2832Mixin"
+      ],
+      "reason": "DataFixerUpper is a library NeoForge loads without mixin support, so the safety net for worlds that reference a removed modded dimension is not available."
     },
     "fabric-entity-events-v1": {
       "plan": "native",
@@ -153,7 +159,12 @@
       "plan": "passthrough"
     },
     "fabric-resource-conditions-api-v1": {
-      "plan": "passthrough"
+      "plan": "passthrough",
+      "skipMixins": [
+        "fabric-resource-conditions-api-v1.mixins.json:JsonDataLoaderMixin",
+        "fabric-resource-conditions-api-v1.mixins.json:RegistryLoaderMixin"
+      ],
+      "reason": "NeoForge decides whether data files and registry entries load with its own conditions: Fabricated evaluates fabric:load_conditions there, with upstream's conditions, instead of upstream's mixins on the code NeoForge rewrote."
     },
     "fabric-resource-loader-v0": {
       "plan": "native",
@@ -172,7 +183,13 @@
       "plan": "passthrough"
     },
     "fabric-tag-api-v1": {
-      "plan": "passthrough"
+      "plan": "passthrough",
+      "skipMixins": [
+        "fabric-tag-api-v1.mixins.json:TagFileMixin#remove",
+        "fabric-tag-api-v1.mixins.json:TagFileMixin#modifyCodec",
+        "fabric-tag-api-v1.mixins.json:TagGroupLoaderMixin"
+      ],
+      "reason": "NeoForge tag files already have a remove list, which NeoForge applies: Fabricated adds fabric:remove entries to it instead of upstream's own removal handling."
     },
     "fabric-transfer-api-v1": {
       "plan": "native",

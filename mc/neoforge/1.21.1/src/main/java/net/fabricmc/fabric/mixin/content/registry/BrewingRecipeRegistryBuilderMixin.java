@@ -45,11 +45,11 @@ public abstract class BrewingRecipeRegistryBuilderMixin implements FabricBrewing
 
 	@Shadow
 	@Final
-	private List<PotionBrewing.Mix<Item>> itemRecipes;
+	private List<PotionBrewing.Mix<Item>> containerMixes;
 
 	@Shadow
 	@Final
-	private List<PotionBrewing.Mix<Potion>> potionRecipes;
+	private List<PotionBrewing.Mix<Potion>> potionMixes;
 
 	@Inject(method = "build", at = @At("HEAD"))
 	private void build(CallbackInfoReturnable<PotionBrewing> cir) {
@@ -61,14 +61,14 @@ public abstract class BrewingRecipeRegistryBuilderMixin implements FabricBrewing
 		if (input.isEnabled(this.enabledFeatures) && output.isEnabled(this.enabledFeatures)) {
 			expectPotion(input);
 			expectPotion(output);
-			this.itemRecipes.add(new PotionBrewing.Mix<>(input.builtInRegistryHolder(), ingredient, output.builtInRegistryHolder()));
+			this.containerMixes.add(new PotionBrewing.Mix<>(input.builtInRegistryHolder(), ingredient, output.builtInRegistryHolder()));
 		}
 	}
 
 	@Override
 	public void registerPotionRecipe(Holder<Potion> input, Ingredient ingredient, Holder<Potion> output) {
 		if (input.value().isEnabled(this.enabledFeatures) && output.value().isEnabled(this.enabledFeatures)) {
-			this.potionRecipes.add(new PotionBrewing.Mix<>(input, ingredient, output));
+			this.potionMixes.add(new PotionBrewing.Mix<>(input, ingredient, output));
 		}
 	}
 
