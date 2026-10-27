@@ -19,7 +19,8 @@ It's built to be:
 > [What works today](#what-works-today) before relying on it.
 
 **Platforms and branches.** NeoForge is the supported platform, and this README is about it. Builds for Minecraft
-Forge are experimental previews for dedicated servers, each with a README of its own on its branch:
+Forge are experimental previews, for dedicated servers and for clients that run Fabric mods' client entrypoints, each
+with a README of its own on its branch:
 
 | Branch | Platform | Minecraft | Jars |
 |---|---|---|---|

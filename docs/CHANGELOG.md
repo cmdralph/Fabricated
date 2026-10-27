@@ -3,6 +3,24 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-10-27: Fabric mods' client entrypoints on Forge, with a client run in CI
+
+- Fabric mods' client entrypoints run on Forge 61 to 66 and on Forge 47: in Forge's registry events, right after the
+  main entrypoints, with the registries still open, as Fabric runs them after the main ones. Fabric Loader's game
+  instance is the `Minecraft` instance by then, since Forge starts loading mods inside its constructor.
+- Both Forge branches start a client in CI, a gate on all five versions (`smoke-client.sh`): HeadlessMC starts the Forge
+  client headlessly with the test mod, mc-runtime-test's Forge build joins a singleplayer world and quits, and the run
+  checks the client entrypoint, its order after the main one, the game instance, and the server runs' registry,
+  CORPUS-31 and CORPUS-32 checks. The step prints a digest of the game log's errors and warnings.
+- **REG-5** (`FINDINGS.md`): the first client runs found that CORPUS-32's late freeze crashed every Forge 61 to 66
+  client with a Fabric mod while mods finished loading ("Registry is already frozen"), on `forge` since #166. The late
+  freeze now opens the registries first, as Forge does before its own registry work.
+- Verification: on `0c18ee3`, build-forge run 40423879536 and build-forge-legacy run 40423882886 pass every server and
+  client check on all five versions; before the fix, every Forge 61 to 66 client crashed (run 40421970060). On
+  `888a88a` (runs 40425756894 and 40425759555, green) the clients' digests hold no error from Fabricated: Forge's DNS
+  hook, the offline account, the dummy assets' missing sounds, the test mod's fluid block without models, and Mixin's
+  notice that the in-game mod's `fabricated-loot.mixins.json` gives no `minVersion`.
+
 ## 2026-10-26: the built-in registries' freeze after the main entrypoints, on every platform
 
 - **CORPUS-32** (`FINDINGS.md`): past CORPUS-31, the advanced 26.3 corpus stopped at BetterNether's and BetterEnd's main

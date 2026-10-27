@@ -99,6 +99,19 @@ jobs:
           curl -fsSL --retry 4 -o "$RUNNER_TEMP/extra/fabric-api.jar" \
             "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api/${fabric_api}/fabric-api-${fabric_api}.jar"
           ci/forge/smoke-server.sh "${{ matrix.minecraft }}" "$forge" "$RUNNER_TEMP/server-fapi" "$RUNNER_TEMP/extra"
+      # The client (docs/PORTING.md §7, F4): a Forge client with the test mod reaches a singleplayer world through
+      # mc-runtime-test, and the Fabric client entrypoints run after the main ones. A gate like the server runs.
+      - name: Install Mesa EGL for the client
+        if: ${{ !cancelled() }}
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends libegl1 libegl-mesa0 libgl1-mesa-dri
+      - name: Client with Fabricated (must pass)
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "${{ matrix.minecraft }}" != "1.21.11" ]; then export JAVA_HOME="$JAVA_HOME_25_X64"; export PATH="$JAVA_HOME/bin:$PATH"; fi
+          forge=$(sed -n 's/^forge_version=//p' "mc/forge/${{ matrix.minecraft }}/gradle.properties")
+          ci/forge/smoke-client.sh "${{ matrix.minecraft }}" "$forge" "$RUNNER_TEMP/client"
       - name: Upload Fabricated jar
         uses: actions/upload-artifact@v4
         with:

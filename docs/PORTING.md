@@ -368,7 +368,7 @@ the abstractions below are added when the branch work starts (owner decision D2 
 | L1 Seams on `main` | §6, items 1 to 6, by pull request (items 1 to 3 done, and item 4's trigger; the rest of 4, and 5 and 6, when L3 needs them). | `main` green on all four versions after each; `core` builds at release 17. |
 | L2 Scaffolding | Merge `main` into `forge-legacy`; `mc/forge-legacy/1.20.1` on `legacyforge` (R1 settled first); Fabric API 0.92.12 plan (which modules native); compile only. | `:mc:forge-legacy-1.20.1:fabricatedJar` builds in CI (done for the project, #71; the Fabric API plan is next). |
 | L3 Discovery and translation | forgespi 7 adapter (locator, dependency locator, language provider, nested jars); Intermediary → SRG composer from MCPConfig; Forge descriptor writer; MixinExtras provision; class transforms through `ITransformationService`. | The test mods' server smoke passes on Forge 47.4 (entrypoints, registries, mixins, access wideners). Done (#88, #89, #92, #93, #97, #98, #100): the adapter (the forge branch's, ported), `MappingComposer.composeSrg`, `ForgeDescriptor` (Forge's dialect, 1.20.1's `pack_format`, Forge as the report's loader), the transformation service, the main and server entrypoints in Forge's registry events with the registries open, MixinExtras 0.5.5 nested in the in-game mod for Forge's jar-in-jar locator. The gated smoke passes 20 checks: discovery, translation, the in-game mod, packs, entrypoints, an item registered by Intermediary names and kept after freezing, a private field read through the access widener, a mixin in SRG names, a `@WrapMethod`, an injected interface, a stripped client method, and Forge's loading warnings naming a Fabric mod that wasn't loaded (#103). |
-| L4 Native Fabric API | Lifecycle, registries, networking on `SimpleChannel`, resource loader, events, transfer on `LazyOptional` capabilities, the old renderer API; client smoke with HeadlessMC and mc-runtime-test. First, from the informational run with the official Fabric API 0.92.12 jar (#107: 36 modules load, 13 client-only are skipped): pre-flight disables registry sync (`DebugLevelSource` fields), both loot modules (`LootTable.pools` is a `List` on Forge), interaction events, dimensions (`changeDimension` takes an `ITeleporter`) and tags, so those come first; the server then stopped on the furnace hook (ALLOW-1, fixed in `core`). | Server and client smoke gates green; Fabric API 0.92.12 boots. |
+| L4 Native Fabric API | Lifecycle, registries, networking on `SimpleChannel`, resource loader, events, transfer on `LazyOptional` capabilities, the old renderer API; client smoke with HeadlessMC and mc-runtime-test (done, `bd45389`). First, from the informational run with the official Fabric API 0.92.12 jar (#107: 36 modules load, 13 client-only are skipped): pre-flight disables registry sync (`DebugLevelSource` fields), both loot modules (`LootTable.pools` is a `List` on Forge), interaction events, dimensions (`changeDimension` takes an `ITeleporter`) and tags, so those come first; the server then stopped on the furnace hook (ALLOW-1, fixed in `core`). | Server and client smoke gates green; Fabric API 0.92.12 boots. |
 | L5 Corpus and stabilisation | 1.20.1 corpus from Modrinth; pre-flight repairs against Forge 47's patches, vanilla code through MCPConfig; Fabric's Mixin fork features measured (R2). | Release criteria met (to be set with the owner, as for `main`). |
 
 **Where it stands.** Minecraft Forge for 1.20.1 (Forge 47.4) and other legacy versions, built with ModDevGradle's
@@ -403,8 +403,12 @@ in water, so a Fabric fluid that isn't water leaves it to move as through air. T
 families in Intermediary's names, and both runs report their types registered under their ids, lava's light, the
 block's description id, water to entities only where tagged, and a pig falling through the other. The in-game mod's
 MixinExtras injectors now have their targets in the refmap too (MixinExtras' annotation processor beside Mixin's,
-which left `travel` in Mojang's name at first), and Forge's own members are marked unremapped. Next: the old
-capability system and `SimpleChannel`. NeoForge needs no legacy branch.
+which left `travel` in Mojang's name at first), and Forge's own members are marked unremapped. Fabric mods' client
+entrypoints run since `bd45389` (the forge branch's port), right after the main ones in Forge's registry events, and a
+client run with HeadlessMC and mc-runtime-test is a gate (`ci/forge-legacy/smoke-client.sh`): the client joins a
+singleplayer world, and the test mod's client entrypoint runs after its main one with Fabric Loader's game instance
+set. mc-runtime-test's 1.20.1 build runs the game tests it finds before quitting, and exits with an error if one
+fails. Next: the old capability system and `SimpleChannel`. NeoForge needs no legacy branch.
 
 ### forge
 
@@ -413,7 +417,7 @@ capability system and `SimpleChannel`. NeoForge needs no legacy branch.
 | F0 Evaluation (done) | This document; decision D5. | Decided: ForgeGradle. |
 | F1 Seams on `main` | The same as L1, plus nothing Forge-only: EventBus 7 bridges live in the branch's `mc/*`. The branches' build plugins are pinned in `main`'s `settings.gradle` (done). | |
 | F2 Scaffolding | ForgeGradle build for 1.21.11 (Forge 61) and 26.x (64 to 66); compile only. | Jars build in CI (done: 1.21.11, #72; 26.x, #74). |
-| F3 Discovery and translation | forgespi 8 adapter (shared design with L3; designed in §4.1, in the order given there); descriptor writer; class transforms. | Server smoke on one version. Steps 1 to 4 done (#85, #87, #90, #95, #96, #99): 18 server checks on Forge 61 and 64 to 66, the main and server entrypoints in Forge's registry events with an item registered and kept. Step 5 done (#102): a Fabric mod that wasn't loaded is named in Forge's loading warnings (19 checks). The client's entrypoints follow. |
+| F3 Discovery and translation | forgespi 8 adapter (shared design with L3; designed in §4.1, in the order given there); descriptor writer; class transforms. | Server smoke on one version. Steps 1 to 4 done (#85, #87, #90, #95, #96, #99): 18 server checks on Forge 61 and 64 to 66, the main and server entrypoints in Forge's registry events with an item registered and kept. Step 5 done (#102): a Fabric mod that wasn't loaded is named in Forge's loading warnings (19 checks). The client's entrypoints run since `86360bc`, with a gated client run. |
 | F4 Bridges | Native Fabric API modules against EventBus 7, old capabilities, `ChannelBuilder` networking, `AddGuiOverlayLayersEvent`. First, from the informational runs with the official Fabric API jars (#108): Forge 61 to 66 run SpongePowered's Mixin 0.8.7, which stopped Forge 64 to 66 on Fabric API's JAVA_25 level (LEVEL-1, fixed in `core`); Forge 61 stopped at bootstrap on the furnace hook, as Forge 47 did (ALLOW-1, fixed in `core`). Pre-flight disables dimensions (`TaggedChoice` is a library class there), tags and datagen (methods Forge's patches add), and on 26.x object builder (Forge changed `AttributeSupplier.Builder`'s field), data attachment (needs it) and content registries (Forge's fluid hooks), so those come first. | Server and client smoke gates on every version. |
 | F5 Corpus | As L5. | Release criteria. |
 
@@ -453,8 +457,15 @@ getFluidType" for any fluid without one, which every Fabric fluid is, so the in-
 registered under its source's id and read from Fabric's attributes and the fluid's tags, and an entity moves through a
 Fabric fluid that isn't water as through air, as on Fabric (Forge moved it as through lava). Its check passes in both
 runs on all four, with Fabric API once HIDE-1 on `main` renamed `fabric-entity-events-v1`'s private `self()`, which
-had hidden Forge's `IForgeLivingEntity.self()` from every mob. Next: native modules on Forge's events where `main` has
-them on NeoForge's (entity and interaction events), the client's entrypoints.
+had hidden Forge's `IForgeLivingEntity.self()` from every mob. Fabric mods' client entrypoints run since `86360bc`, in
+Forge's registry events right after the main ones, with the registries still open and Fabric Loader's game instance
+set: Forge starts loading mods inside `Minecraft`'s constructor, so the instance exists by then. A client run is a gate
+on all four versions (`ci/forge/smoke-client.sh`): HeadlessMC starts the Forge client headlessly with the test mod,
+mc-runtime-test's Forge build joins a singleplayer world and quits, and the run checks the client entrypoint, its
+order after the main one, the game instance, and the server runs' registry, CORPUS-31 and CORPUS-32 checks. Its first
+runs found REG-5, a crash CORPUS-32's late freeze caused on every Forge 61 to 66 client. Next: native modules on
+Forge's events where `main` has them on NeoForge's (entity and interaction events), and a client run with the official
+Fabric API jar.
 
 Order: `main` first, always. L1 serves both branches; after it, L2 to L5 and F2 to F5 can proceed in either order
 or in parallel, as the owner sets priorities. The two branches' adapters share their shape (forgespi 7 and 8 have
