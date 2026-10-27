@@ -45,7 +45,8 @@ is a gate too: the client must join a singleplayer world and quit normally, and 
 - the item, the content built during the bootstrap (CORPUS-31) and the built-in registries' freeze (CORPUS-32) behave
   as on the server.
 
-**With the official Fabric API jar**, the server starts on all four versions and no Fabric API module is turned off.
+**With the official Fabric API jar**, the server starts on all four versions and no Fabric API module is turned off. A
+client started with it reaches a world on all four too; that run is only reported for now.
 Some modules load without the mixins that Forge's code can't take.
 
 **Native on Forge:**
@@ -62,8 +63,8 @@ Some modules load without the mixins that Forge's code can't take.
 
 ## Not supported yet
 
-- **Fabric API on clients.** CI starts no Forge client with the official Fabric API jar, so its client modules
-  (rendering, key bindings, HUD and screens) are unchecked on Forge.
+- **Fabric's rendering modules on Forge 61.** With the Fabric API jar, `fabric-rendering-v1` is turned off on 1.21.11
+  (its block colour hook reads a list Forge replaced), and the renderer API, Indigo and model loading with it.
 - **Native modules.** Fabric API modules that need a native port on Forge's events, such as entity and interaction
   events, pass through from the Fabric API jar, without the hooks Forge's code can't take.
 

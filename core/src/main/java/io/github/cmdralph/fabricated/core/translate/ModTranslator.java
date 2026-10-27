@@ -587,6 +587,7 @@ public final class ModTranslator {
 				if (node == null) continue;
 				List<String> targets = mixinTargets(node);
 				renameHidingMethods(node, targets, classes, entries, translated, overlay, notes);
+				if (MixinCompat.rebindsInterfaceSuperCalls(env.runtimeMixinVersion())) alignDetachedSuper(node, targets, classes, translated, overlay, notes);
 				// The interfaces the kept mixins add to their targets.
 				if (node.interfaces.isEmpty()) continue;
 				for (String target : targets) addBridges(DefaultBridge.of(target, node.interfaces, classes), node.interfaces, bridges, notes);
@@ -652,6 +653,23 @@ public final class ModTranslator {
 		}
 		renames.forEach((key, renamed) -> notes.add("Mixin " + mixin.name.replace('/', '.') + "'s private method " + key
 				+ " renamed " + renamed + ": under its own name it would hide the default method of that name its target inherits (HIDE-1)"));
+	}
+
+	/**
+	 * Gives a kept mixin its target's superclass where Mixin would rebind its calls to an interface's super method to the
+	 * target (SUPER-1, see {@link DetachedSupers}).
+	 */
+	private static void alignDetachedSuper(ClassNode mixin, List<String> targets, Function<String, ClassNode> classes, FileView files,
+			Map<String, byte[]> overlay, List<String> notes) throws ArchiveException {
+		String superName = DetachedSupers.alignedSuperclass(mixin, targets, classes);
+		if (superName == null) return;
+		String name = mixin.name + ".class";
+		byte[] data = files.read(name);
+		if (data == null) return;
+		overlay.put(name, DetachedSupers.rewrite(data, superName));
+		notes.add("Mixin " + mixin.name.replace('/', '.') + " extends " + superName.replace('/', '.') + ", as its target does, instead of "
+				+ mixin.superName.replace('/', '.') + ": the running Mixin would otherwise call its target where it calls an interface's"
+				+ " default as its super (SUPER-1)");
 	}
 
 	private static void leaveOutHandlers(Map<String, Set<String>> handlers, FileView files, Map<String, byte[]> overlay) throws ArchiveException {
