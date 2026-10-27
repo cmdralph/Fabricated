@@ -64,6 +64,10 @@ Some modules load without the mixins that Forge's code can't take.
 - **Block dust:** on 1.21.11, Fabric's block dust tint event is asked where Forge decides whether a block's breaking
   particles are tinted.
 - **Commands:** Fabric mods' commands, registered through Fabric API's event, reach the server.
+- **Block breaking:** Fabric's block break events fire where Forge breaks a player's block, and a Fabric mod that
+  refuses a break keeps the block.
+- **Beds:** Fabric's bed occupation and sleeping direction events run where Forge handles beds, and a block a Fabric
+  mod admits as a bed stays that block while an entity sleeps on it.
 
 ## Not supported yet
 
