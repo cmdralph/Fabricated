@@ -345,13 +345,23 @@ final class HandlerBridges {
 
 	/** An empty bridge with {@code handler}'s access (static or not) and the given signature. */
 	static MethodNode bridgeMethod(MethodNode handler, String name, List<Type> params, Type result) {
-		return new MethodNode(Opcodes.ACC_PRIVATE | (handler.access & Opcodes.ACC_STATIC), name,
+		return bridgeMethod((handler.access & Opcodes.ACC_STATIC) != 0, name, params, result);
+	}
+
+	/** An empty bridge, static or taking {@code this}, with the given signature. */
+	static MethodNode bridgeMethod(boolean isStatic, String name, List<Type> params, Type result) {
+		return new MethodNode(Opcodes.ACC_PRIVATE | (isStatic ? Opcodes.ACC_STATIC : 0), name,
 				Type.getMethodDescriptor(result, params.toArray(Type[]::new)), null, null);
 	}
 
-	/** The local variable slot of the bridge's parameter at {@code index}. */
+	/** The local variable slot of the bridge's parameter at {@code index}, for a bridge with {@code handler}'s access. */
 	static int slotOf(MethodNode handler, List<Type> params, int index) {
-		int slot = (handler.access & Opcodes.ACC_STATIC) != 0 ? 0 : 1;
+		return slotOf((handler.access & Opcodes.ACC_STATIC) != 0, params, index);
+	}
+
+	/** The local variable slot of the parameter at {@code index} of a method, static or taking {@code this}, taking {@code params}. */
+	static int slotOf(boolean isStatic, List<Type> params, int index) {
+		int slot = isStatic ? 0 : 1;
 		for (int i = 0; i < index; i++) slot += params.get(i).getSize();
 		return slot;
 	}
@@ -377,7 +387,7 @@ final class HandlerBridges {
 		bridge.instructions.add(new MethodInsnNode(isStatic ? Opcodes.INVOKESTATIC : Opcodes.INVOKESPECIAL, mixin, handler.name, handler.desc, false));
 		bridge.instructions.add(new InsnNode(Type.getReturnType(handler.desc).getOpcode(Opcodes.IRETURN)));
 		bridge.maxStack = Math.max(stack, Type.getReturnType(handler.desc).getSize());
-		bridge.maxLocals = slotOf(handler, List.of(Type.getArgumentTypes(bridge.desc)), Type.getArgumentTypes(bridge.desc).length);
+		bridge.maxLocals = slotOf((bridge.access & Opcodes.ACC_STATIC) != 0, List.of(Type.getArgumentTypes(bridge.desc)), Type.getArgumentTypes(bridge.desc).length);
 	}
 
 	/**
