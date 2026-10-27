@@ -24,9 +24,9 @@ import net.minecraft.class_3218;
  */
 public final class ForgeBlockBreakTest {
 	private static final Set<String> SEEN = ConcurrentHashMap.newKeySet();
-	/** The lower block, which {@code BEFORE} refuses; the upper one is right above. */
-	private static final class_2338 REFUSED = new class_2338(28, 284, 20);
-	private static final class_2338 BROKEN = new class_2338(28, 285, 20);
+	/** The lower block, which {@code BEFORE} refuses, and the upper one, right above. Set by {@link #check}. */
+	private static volatile class_2338 refused;
+	private static volatile class_2338 broken;
 
 	private ForgeBlockBreakTest() {
 	}
@@ -35,35 +35,39 @@ public final class ForgeBlockBreakTest {
 	static void register() {
 		if (!FabricLoader.getInstance().isModLoaded("fabric-events-interaction-v0")) return;
 		PlayerBlockBreakEvents.BEFORE.register((level, player, pos, state, blockEntity) -> {
-			if (!pos.equals(REFUSED)) return true;
+			if (!pos.equals(refused)) return true;
 			SEEN.add("before");
 			return false;
 		});
 		PlayerBlockBreakEvents.CANCELED.register((level, player, pos, state, blockEntity) -> {
-			if (pos.equals(REFUSED)) SEEN.add("canceled");
+			if (pos.equals(refused)) SEEN.add("canceled");
 		});
 		PlayerBlockBreakEvents.AFTER.register((level, player, pos, state, blockEntity) -> {
-			if (pos.equals(BROKEN) && state.method_27852(class_2246.field_10340)) SEEN.add("after");
+			if (pos.equals(broken) && state.method_27852(class_2246.field_10340)) SEEN.add("after");
 		});
 	}
 
 	/** At the first server tick, on the overworld. */
 	public static void check(class_3218 level) {
 		if (!FabricLoader.getInstance().isModLoaded("fabric-events-interaction-v0")) return;
+		class_2338 lower = ForgeTestMod.testSite(level, 12, 284, 4);
+		class_2338 upper = ForgeTestMod.testSite(level, 12, 285, 4);
+		refused = lower;
+		broken = upper;
 		List<String> failed = new ArrayList<>();
-		level.method_8652(REFUSED, class_2246.field_10340.method_9564(), 3);
-		level.method_8652(BROKEN, class_2246.field_10340.method_9564(), 3);
+		level.method_8652(lower, class_2246.field_10340.method_9564(), 3);
+		level.method_8652(upper, class_2246.field_10340.method_9564(), 3);
 		FakePlayer player = FakePlayer.get(level);
 		player.method_6122(class_1268.field_5808, class_1799.field_8037);
-		if (player.field_13974.method_14266(REFUSED)) failed.add("destroyBlock broke the block BEFORE refused");
-		if (!level.method_8320(REFUSED).method_27852(class_2246.field_10340)) failed.add("the block BEFORE refused is gone");
-		if (!player.field_13974.method_14266(BROKEN)) failed.add("destroyBlock didn't break the other block");
-		if (!level.method_8320(BROKEN).method_26215()) failed.add("the other block is still there");
+		if (player.field_13974.method_14266(lower)) failed.add("destroyBlock broke the block BEFORE refused");
+		if (!level.method_8320(lower).method_27852(class_2246.field_10340)) failed.add("the block BEFORE refused is gone");
+		if (!player.field_13974.method_14266(upper)) failed.add("destroyBlock didn't break the other block");
+		if (!level.method_8320(upper).method_26215()) failed.add("the other block is still there");
 		for (String event : List.of("before", "canceled", "after")) {
 			if (!SEEN.contains(event)) failed.add("no " + event.toUpperCase(Locale.ROOT) + " event");
 		}
-		level.method_8652(REFUSED, class_2246.field_10124.method_9564(), 3);
-		level.method_8652(BROKEN, class_2246.field_10124.method_9564(), 3);
+		level.method_8652(lower, class_2246.field_10124.method_9564(), 3);
+		level.method_8652(upper, class_2246.field_10124.method_9564(), 3);
 		if (failed.isEmpty()) {
 			ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST block break events OK");
 		} else {

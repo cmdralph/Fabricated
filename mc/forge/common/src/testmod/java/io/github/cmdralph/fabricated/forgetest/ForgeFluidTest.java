@@ -70,7 +70,7 @@ public final class ForgeFluidTest {
 		if (dryWater || !wetWater) failed.add("water to entities: untagged " + dryWater + ", tagged " + wetWater);
 
 		// Placing liquid blocks updates their neighbours, which asks Forge's fluid interactions about them (their type).
-		BlockPos bottom = new BlockPos(20, level.getMaxY() - 30, 20);
+		BlockPos bottom = ForgeTestMod.testSite(level, 4, 4);
 		for (int i = 0; i < 8; i++) level.setBlockAndUpdate(bottom.above(i), dry.block.defaultBlockState());
 		EntityType<?> pigType = BuiltInRegistries.ENTITY_TYPE.getValue(Identifier.withDefaultNamespace("pig"));
 		if (!(pigType.create(level, EntitySpawnReason.TRIGGERED) instanceof LivingEntity pig)) {

@@ -73,9 +73,10 @@ public final class ForgeFluidTest {
 		if (!Boolean.FALSE.equals(dryWater) || !Boolean.TRUE.equals(wetWater)) failed.add("water to entities: untagged " + dryWater + ", tagged " + wetWater);
 
 		// Placing liquid blocks updates their neighbours, which asks Forge's fluid interactions about them (their type).
-		int x = 20;
-		int y = 280;
-		int z = 20;
+		class_2338 bottom = ForgeTestMod.testSite(level, 4, 280, 4);
+		int x = bottom.method_10263();
+		int y = bottom.method_10264();
+		int z = bottom.method_10260();
 		for (int i = 0; i < 8; i++) level.method_8652(new class_2338(x, y + i, z), dry.block.method_9564(), 3);
 		class_2378<class_1299<?>> entityTypes = class_7923.field_41177;
 		class_1297 pig = entityTypes.method_10223(new class_2960("minecraft", "pig")).method_5883(level);

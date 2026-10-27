@@ -26,8 +26,8 @@ import net.minecraft.class_3218;
  */
 public final class ForgeSleepTest {
 	private static final Set<String> SEEN = ConcurrentHashMap.newKeySet();
-	/** The hay block the listeners admit as a bed. */
-	private static final class_2338 BED = new class_2338(24, 284, 24);
+	/** The hay block the listeners admit as a bed. Set by {@link #check}. */
+	private static volatile class_2338 bed;
 
 	private ForgeSleepTest() {
 	}
@@ -36,37 +36,39 @@ public final class ForgeSleepTest {
 	static void register() {
 		if (!FabricLoader.getInstance().isModLoaded("fabric-entity-events-v1")) return;
 		EntitySleepEvents.ALLOW_BED.register((entity, sleepingPos, state, vanillaResult) ->
-				sleepingPos.equals(BED) ? class_1269.field_5812 : class_1269.field_5811);
+				sleepingPos.equals(bed) ? class_1269.field_5812 : class_1269.field_5811);
 		EntitySleepEvents.SET_BED_OCCUPATION_STATE.register((entity, sleepingPos, bedState, occupied) -> {
-			if (sleepingPos.equals(BED) && bedState.method_27852(class_2246.field_10359)) SEEN.add(occupied ? "occupied" : "unoccupied");
+			if (sleepingPos.equals(bed) && bedState.method_27852(class_2246.field_10359)) SEEN.add(occupied ? "occupied" : "unoccupied");
 			return false;
 		});
 		EntitySleepEvents.MODIFY_SLEEPING_DIRECTION.register((entity, sleepingPos, sleepingDirection) ->
-				sleepingPos.equals(BED) ? class_2350.field_11034 : sleepingDirection);
+				sleepingPos.equals(bed) ? class_2350.field_11034 : sleepingDirection);
 		EntitySleepEvents.START_SLEEPING.register((entity, sleepingPos) -> {
-			if (sleepingPos.equals(BED)) SEEN.add("start");
+			if (sleepingPos.equals(bed)) SEEN.add("start");
 		});
 		EntitySleepEvents.STOP_SLEEPING.register((entity, sleepingPos) -> {
-			if (sleepingPos.equals(BED)) SEEN.add("stop");
+			if (sleepingPos.equals(bed)) SEEN.add("stop");
 		});
 	}
 
 	/** At the first server tick, on the overworld. */
 	public static void check(class_3218 level) {
 		if (!FabricLoader.getInstance().isModLoaded("fabric-entity-events-v1")) return;
+		class_2338 pos = ForgeTestMod.testSite(level, 8, 284, 8);
+		bed = pos;
 		List<String> failed = new ArrayList<>();
-		level.method_8652(BED, class_2246.field_10359.method_9564(), 3);
-		class_1531 sleeper = new class_1531(level, BED.method_10263() + 0.5, BED.method_10264() + 1, BED.method_10260() + 0.5);
-		sleeper.method_18403(BED);
-		if (!level.method_8320(BED).method_27852(class_2246.field_10359)) failed.add("lying down turned the hay block into " + level.method_8320(BED));
+		level.method_8652(pos, class_2246.field_10359.method_9564(), 3);
+		class_1531 sleeper = new class_1531(level, pos.method_10263() + 0.5, pos.method_10264() + 1, pos.method_10260() + 0.5);
+		sleeper.method_18403(pos);
+		if (!level.method_8320(pos).method_27852(class_2246.field_10359)) failed.add("lying down turned the hay block into " + level.method_8320(pos));
 		class_2350 orientation = sleeper.method_18401();
 		if (orientation != class_2350.field_11034) failed.add("the bed orientation is " + orientation + ", not MODIFY_SLEEPING_DIRECTION's east");
 		sleeper.method_18400();
-		if (!level.method_8320(BED).method_27852(class_2246.field_10359)) failed.add("waking up turned the hay block into " + level.method_8320(BED));
+		if (!level.method_8320(pos).method_27852(class_2246.field_10359)) failed.add("waking up turned the hay block into " + level.method_8320(pos));
 		for (String event : List.of("start", "occupied", "stop")) {
 			if (!SEEN.contains(event)) failed.add("no " + event + " event");
 		}
-		level.method_8652(BED, class_2246.field_10124.method_9564(), 3);
+		level.method_8652(pos, class_2246.field_10124.method_9564(), 3);
 		if (failed.isEmpty()) {
 			ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST sleep events OK");
 		} else {

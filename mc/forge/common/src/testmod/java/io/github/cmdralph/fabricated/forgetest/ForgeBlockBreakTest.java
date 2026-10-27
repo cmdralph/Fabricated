@@ -46,7 +46,7 @@ public final class ForgeBlockBreakTest {
 
 	/** At the first server tick, on the overworld. */
 	public static void check(ServerLevel level) {
-		BlockPos lower = new BlockPos(28, level.getMaxY() - 30, 20);
+		BlockPos lower = ForgeTestMod.testSite(level, 12, 4);
 		BlockPos upper = lower.above();
 		refused = lower;
 		List<String> failed = new ArrayList<>();

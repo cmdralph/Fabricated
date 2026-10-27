@@ -46,7 +46,7 @@ public final class ForgeSleepTest {
 
 	/** At the first server tick, on the overworld. */
 	public static void check(ServerLevel level) {
-		BlockPos pos = new BlockPos(24, level.getMaxY() - 30, 24);
+		BlockPos pos = ForgeTestMod.testSite(level, 8, 8);
 		bed = pos;
 		List<String> failed = new ArrayList<>();
 		level.setBlockAndUpdate(pos, Blocks.HAY_BLOCK.defaultBlockState());

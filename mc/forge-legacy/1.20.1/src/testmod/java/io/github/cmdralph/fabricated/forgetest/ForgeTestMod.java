@@ -11,8 +11,10 @@ import net.fabricmc.api.Environment;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.class_1792;
+import net.minecraft.class_2338;
 import net.minecraft.class_2378;
 import net.minecraft.class_2960;
+import net.minecraft.class_3218;
 import net.minecraft.class_7923;
 
 /**
@@ -110,6 +112,17 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 		if (Arrays.stream(ForgeTestMod.class.getDeclaredMethods()).noneMatch(m -> m.getName().equals("clientOnly"))) {
 			LOGGER.info("FABRICATED-FORGE-TEST environment strip OK");
 		}
+	}
+
+	/**
+	 * Where a check at the first server tick builds: {@code dx} and {@code dz} blocks from the overworld's spawn
+	 * ({@code method_43126}), at height {@code y}. The spawn's chunks are generated before that tick; a chunk elsewhere is
+	 * generated in it, which on a client whose spawn lay far from the origin held the integrated server up for seconds,
+	 * past the end of the run.
+	 */
+	static class_2338 testSite(class_3218 level, int dx, int y, int dz) {
+		class_2338 spawn = level.method_43126();
+		return new class_2338(spawn.method_10263() + dx, y, spawn.method_10260() + dz);
 	}
 
 	/**
