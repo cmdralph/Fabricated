@@ -69,6 +69,10 @@ if [ -n "$extra" ] && [ -d "$extra" ]; then
 	# still logged.
 	printf '[client]\nshowLoadWarnings = false\n' > run/config/forge-client.toml
 fi
+# SMOKE_ON_ENTRYPOINT_FAILURE: as in the server smoke, Fabricated's onEntrypointFailure for a corpus run.
+if [ -n "${SMOKE_ON_ENTRYPOINT_FAILURE:-}" ]; then
+	printf '{ "schema": 1, "onEntrypointFailure": "%s" }\n' "$SMOKE_ON_ENTRYPOINT_FAILURE" > run/config/fabricated.json
+fi
 ls -1 run/mods
 cat > run/options.txt <<'OPTS'
 onboardAccessibility:false

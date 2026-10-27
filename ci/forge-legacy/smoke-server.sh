@@ -34,6 +34,12 @@ cached_install "forge-legacy-server-$forge" . install_server
 echo "::endgroup::"
 
 mkdir -p mods
+# SMOKE_ON_ENTRYPOINT_FAILURE: Fabricated's onEntrypointFailure for the run ("disable" lets a corpus run go on past a
+# mod whose initializer throws); unset, the default ("error") stands, as in the gated runs.
+if [ -n "${SMOKE_ON_ENTRYPOINT_FAILURE:-}" ]; then
+	mkdir -p config
+	printf '{ "schema": 1, "onEntrypointFailure": "%s" }\n' "$SMOKE_ON_ENTRYPOINT_FAILURE" > config/fabricated.json
+fi
 cp "$root"/build/libs/fabricated-forge-*+mc"$mc".jar mods/
 cp "$root"/mc/forge-legacy/"$mc"/build/testmods/fabricated-testmod.jar mods/
 # A Fabric mod whose dependency is missing: Fabricated doesn't load it, and Forge's loading warnings name it.
