@@ -5,6 +5,7 @@ import java.util.function.Consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.github.cmdralph.fabricated.neoforge.GameCompat;
 import net.fabricmc.fabric.impl.registry.sync.RegistryAttributeImpl;
 import net.minecraft.core.MappedRegistry;
 import net.minecraft.core.Registry;
@@ -88,7 +89,7 @@ public final class RegistrySyncBridge {
 		Registry<?> root = BuiltInRegistries.REGISTRY;
 		if (registrationOpen && root instanceof MappedRegistry<?> mapped) {
 			synchronized (RegistrySyncBridge.class) {
-				mapped.unfreeze(false);
+				GameCompat.unfreeze(mapped);
 				rootOpened = true;
 			}
 		} else if (!registrationOpen) {
@@ -108,10 +109,10 @@ public final class RegistrySyncBridge {
 	public static synchronized void openForEarlyWrite(MappedRegistry<?> registry) {
 		if (registrationEnded) return;
 		if (registry == BuiltInRegistries.REGISTRY) {
-			registry.unfreeze(false);
+			GameCompat.unfreeze(registry);
 			rootOpened = true;
-		} else if (!registrationOpen && BuiltInRegistries.REGISTRY.getValue(registry.key().identifier()) == registry) {
-			registry.unfreeze(false);
+		} else if (!registrationOpen && GameCompat.value(BuiltInRegistries.REGISTRY, GameCompat.location(registry.key())) == registry) {
+			GameCompat.unfreeze(registry);
 		}
 	}
 
@@ -124,19 +125,19 @@ public final class RegistrySyncBridge {
 
 	/** Called when Fabric code adds {@code SYNCED} to a registry's attributes. */
 	public static void markSynced(ResourceKey<?> key) {
-		Registry<?> registry = BuiltInRegistries.REGISTRY.getValue(key.identifier());
+		Registry<?> registry = GameCompat.value(BuiltInRegistries.REGISTRY, GameCompat.location(key));
 		if (registry != null) markSynced(registry);
 	}
 
 	private static void markSynced(Registry<?> registry) {
 		if (!registry.doesSync() && !NeoForgeRegistryInternals.setSync(registry)) {
-			LOGGER.warn("Registry {} is marked SYNCED by a Fabric mod, but NeoForge could not be told to sync it", registry.key().identifier());
+			LOGGER.warn("Registry {} is marked SYNCED by a Fabric mod, but NeoForge could not be told to sync it", GameCompat.location(registry.key()));
 		}
 	}
 
 	/** Whether NeoForge syncs the (static) registry with this key to clients. */
 	public static boolean syncedByNeoForge(ResourceKey<?> key) {
-		Registry<?> registry = BuiltInRegistries.REGISTRY.getValue(key.identifier());
+		Registry<?> registry = GameCompat.value(BuiltInRegistries.REGISTRY, GameCompat.location(key));
 		return registry != null && registry.doesSync();
 	}
 }

@@ -3,6 +3,7 @@ package io.github.cmdralph.fabricated.neoforge;
 import java.util.stream.Stream;
 
 import net.minecraft.core.Holder;
+import net.minecraft.core.MappedRegistry;
 import net.minecraft.core.Registry;
 import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
@@ -23,5 +24,20 @@ public final class GameCompat {
 	/** A registry's entries. */
 	public static <T> Stream<Holder.Reference<T>> elements(Registry<T> registry) {
 		return registry.listElements();
+	}
+
+	/** A registry's entry with this id, or null. */
+	public static <T> T value(Registry<T> registry, Identifier id) {
+		return registry.getValue(id);
+	}
+
+	/** Opens a frozen registry for writing again, keeping its tags. */
+	public static void unfreeze(MappedRegistry<?> registry) {
+		registry.unfreeze(false);
+	}
+
+	/** Binds a registry's tags as vanilla's bootstrap freeze does before it freezes the registry: to nothing yet. */
+	public static void bindTagsForFreeze(MappedRegistry<?> registry) {
+		registry.bindAllTagsToEmpty();
 	}
 }

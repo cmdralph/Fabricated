@@ -3,6 +3,7 @@ package io.github.cmdralph.fabricated.neoforge.loot;
 import java.lang.ref.WeakReference;
 import java.util.Optional;
 
+import io.github.cmdralph.fabricated.neoforge.GameCompat;
 import net.fabricmc.fabric.api.loot.v3.FabricLootTableBuilder;
 import net.fabricmc.fabric.api.loot.v3.LootTableEvents;
 import net.fabricmc.fabric.api.loot.v3.LootTableSource;
@@ -35,7 +36,7 @@ import net.neoforged.neoforge.event.LootTableLoadEvent;
  * </ul>
  */
 public final class LootBridge {
-	private static final FileToIdConverter LOOT_TABLES = FileToIdConverter.registry(Registries.LOOT_TABLE);
+	private static final FileToIdConverter LOOT_TABLES = FileToIdConverter.json(Registries.elementsDirPath(Registries.LOOT_TABLE));
 	private static volatile WeakReference<ResourceManager> reloadingManager = new WeakReference<>(null);
 	/** Held while mods' handlers modify a table. */
 	private static final Object HANDLERS = new Object();
@@ -55,7 +56,7 @@ public final class LootBridge {
 	/** From Fabricated's hook: the reload's loot table registry is complete. */
 	public static void allLoaded(ResourceManager manager, Registry<LootTable> registry) {
 		LootTableEvents.ALL_LOADED.invoker().onLootTablesLoaded(manager, registry);
-		registry.listElements().forEach(reference -> LootCompat.setHolder(reference.value(), reference));
+		GameCompat.elements(registry).forEach(reference -> LootCompat.setHolder(reference.value(), reference));
 	}
 
 	private static void onLoad(LootTableLoadEvent event) {

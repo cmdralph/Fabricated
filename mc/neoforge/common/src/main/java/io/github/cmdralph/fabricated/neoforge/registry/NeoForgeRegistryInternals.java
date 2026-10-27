@@ -13,6 +13,7 @@ import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.github.cmdralph.fabricated.neoforge.GameCompat;
 import net.minecraft.core.Registry;
 import net.minecraft.resources.RegistryDataLoader;
 import net.minecraft.resources.ResourceKey;
@@ -60,7 +61,7 @@ public final class NeoForgeRegistryInternals {
 			SET_SYNC.invoke(registry, true);
 			return true;
 		} catch (ReflectiveOperationException | RuntimeException e) {
-			LOGGER.warn("Could not mark registry {} as synced", registry.key().identifier(), e);
+			LOGGER.warn("Could not mark registry {} as synced", GameCompat.location(registry.key()), e);
 			return false;
 		}
 	}
@@ -104,7 +105,7 @@ public final class NeoForgeRegistryInternals {
 
 	private static void add(@Nullable Registries registries, RegistryDataLoader.RegistryData<?> data, String what) {
 		if (registries == null) {
-			throw new UnsupportedOperationException("This NeoForge version does not let Fabricated add " + what + " (registry " + data.key().identifier() + ")");
+			throw new UnsupportedOperationException("This NeoForge version does not let Fabricated add " + what + " (registry " + GameCompat.location(data.key()) + ")");
 		}
 		registries.data().add(data);
 		if (registries.keys() != null) registries.keys().add(data.key());
@@ -143,7 +144,7 @@ public final class NeoForgeRegistryInternals {
 	}
 
 	private static List<String> keys(List<RegistryDataLoader.RegistryData<?>> registries) {
-		return registries.stream().map(data -> data.key().identifier().toString()).toList();
+		return registries.stream().map(data -> GameCompat.location(data.key()).toString()).toList();
 	}
 
 	/** The loader's list field, if NeoForge captures it in {@code capture} (and so loads from it). */

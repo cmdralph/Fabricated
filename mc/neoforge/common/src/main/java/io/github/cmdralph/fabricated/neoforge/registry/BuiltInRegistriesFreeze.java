@@ -1,6 +1,7 @@
 package io.github.cmdralph.fabricated.neoforge.registry;
 
 import io.github.cmdralph.fabricated.neoforge.EntrypointBridge;
+import io.github.cmdralph.fabricated.neoforge.GameCompat;
 import io.github.cmdralph.fabricated.neoforge.mixin.BuiltInRegistriesInvoker;
 import net.minecraft.core.MappedRegistry;
 import net.minecraft.core.Registry;
@@ -36,7 +37,7 @@ public final class BuiltInRegistriesFreeze {
 		((MappedRegistry<?>) BuiltInRegistries.REGISTRY).freeze();
 		for (Registry<?> registry : BuiltInRegistries.REGISTRY) {
 			MappedRegistry<?> mapped = (MappedRegistry<?>) registry;
-			mapped.bindAllTagsToEmpty();
+			GameCompat.bindTagsForFreeze(mapped);
 			mapped.freeze();
 		}
 		deferred = true;

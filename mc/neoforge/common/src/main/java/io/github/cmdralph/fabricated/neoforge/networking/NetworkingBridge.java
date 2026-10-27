@@ -210,8 +210,7 @@ public final class NetworkingBridge {
 			if (s != null && c != null) {
 				// NeoForge keeps one codec per payload id; Fabric allows one per direction (see ClientboundCodecs).
 				if (s.codec() != c.codec()) ClientboundCodecs.put(phase.protocol(), id, c.codec());
-				if (play) registrar.playBidirectional(s.type(), s.codec(), serverHandler, clientHandler);
-				else registrar.configurationBidirectional(s.type(), s.codec(), serverHandler, clientHandler);
+				FabricPayloads.bidirectional(registrar, play, s.type(), s.codec(), serverHandler, clientHandler);
 			} else if (s != null) {
 				if (play) registrar.playToServer(s.type(), s.codec(), serverHandler);
 				else registrar.configurationToServer(s.type(), s.codec(), serverHandler);
