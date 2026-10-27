@@ -169,6 +169,18 @@ class PipelineTest {
 		return cw.toByteArray();
 	}
 
+	/** A mixin as {@link #mixinClass(String, String)} that adds {@code iface} to its target. */
+	private static byte[] mixinImplementing(String name, String iface) {
+		ClassWriter cw = new ClassWriter(0);
+		new ClassReader(mixinClass(name, "tick")).accept(new org.objectweb.asm.ClassVisitor(Opcodes.ASM9, cw) {
+			@Override
+			public void visit(int version, int access, String className, String signature, String superName, String[] interfaces) {
+				super.visit(version, access, className, signature, superName, new String[] {iface});
+			}
+		}, 0);
+		return cw.toByteArray();
+	}
+
 	/**
 	 * A mixin as {@link #mixinClass(String, String, String)} that also adds an interface to its target, which the mod's
 	 * code may cast to: a failure in it can't be left out (LEAVE-1), so it disables the mod.
@@ -1026,6 +1038,46 @@ class PipelineTest {
 		Pipeline.Result skipped = Pipeline.run(input(game, List.of(lib, user, guarded), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
 		assertEquals(Set.of("guarded-mod", "user-mod"), skipped.mods().stream().map(m -> m.translated().candidate().id()).collect(Collectors.toSet()),
 				skipped.report().render());
+	}
+
+	/**
+	 * LINK-2: a mixin adding an interface only a Fabric mod that isn't loading has (Porting Lib's base module's texture
+	 * mixin on Forge 47 clients, whose interface is its extensions module's) leaves the game unable to define its target,
+	 * required or not and whatever its config's plugin: the mod is disabled with the reason.
+	 */
+	@Test
+	void aMixinAddingAnInterfaceOfAModThatIsNotLoadingDisablesItsMod(@TempDir Path game) throws Exception {
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		String api = "com/lib/Extensions";
+		Path lib = TestJars.create().fabricModJson(TestJars.modJson("lib-mod", "1.0", "\"mixins\":[\"lib.mixins.json\"]"))
+				.text("lib.mixins.json", "{\"required\":true,\"package\":\"com.lib.mixin\",\"mixins\":[\"BrokenMixin\"]}")
+				.bytes("com/lib/mixin/BrokenMixin.class", duckMixinClass("com/lib/mixin/BrokenMixin", "methodTheGameDoesNotHave"))
+				.bytes(api + ".class", TestJars.emptyClass(api, "java/lang/Object"))
+				.write(mods.resolve("lib.jar"));
+		Path withPlugin = TestJars.create().fabricModJson(TestJars.modJson("base-mod", "1.0", "\"mixins\":[\"base.mixins.json\"]"))
+				.text("base.mixins.json", "{\"required\":true,\"package\":\"com.base.mixin\",\"plugin\":\"com.base.Plugin\",\"mixins\":[\"TextureMixin\"]}")
+				.bytes("com/base/mixin/TextureMixin.class", mixinImplementing("com/base/mixin/TextureMixin", api))
+				.bytes("com/base/Plugin.class", TestJars.emptyClass("com/base/Plugin", "java/lang/Object"))
+				.write(mods.resolve("base.jar"));
+		Path optional = TestJars.create().fabricModJson(TestJars.modJson("optional-mod", "1.0", "\"mixins\":[\"optional.mixins.json\"]"))
+				.text("optional.mixins.json", "{\"package\":\"com.optional.mixin\",\"mixins\":[\"TextureMixin\"]}")
+				.bytes("com/optional/mixin/TextureMixin.class", mixinImplementing("com/optional/mixin/TextureMixin", api))
+				.write(mods.resolve("optional.jar"));
+		Path own = TestJars.create().fabricModJson(TestJars.modJson("own-mod", "1.0", "\"mixins\":[\"own.mixins.json\"]"))
+				.text("own.mixins.json", "{\"package\":\"com.own.mixin\",\"plugin\":\"com.own.Plugin\",\"mixins\":[\"TextureMixin\"]}")
+				.bytes("com/own/mixin/TextureMixin.class", mixinImplementing("com/own/mixin/TextureMixin", "com/own/Extensions"))
+				.bytes("com/own/Extensions.class", TestJars.emptyClass("com/own/Extensions", "java/lang/Object"))
+				.bytes("com/own/Plugin.class", TestJars.emptyClass("com/own/Plugin", "java/lang/Object"))
+				.write(mods.resolve("own.jar"));
+		Pipeline.Result result = Pipeline.run(input(game, List.of(lib, withPlugin, optional, own), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
+
+		Set<String> loaded = result.mods().stream().map(m -> m.translated().candidate().id()).collect(Collectors.toSet());
+		assertEquals(Set.of("own-mod"), loaded, "an interface of the mod's own loads: " + result.report().render());
+		for (String id : List.of("base-mod", "optional-mod")) {
+			Report.ModRow row = result.report().mods().stream().filter(r -> r.id().equals(id)).findFirst().orElseThrow();
+			assertEquals(Report.Status.DISABLED, row.status());
+			assertTrue(row.detail().contains("adds an interface to its targets -> needs class com.lib.Extensions of lib-mod, which isn't loading"), row.detail());
+		}
 	}
 
 	@Test

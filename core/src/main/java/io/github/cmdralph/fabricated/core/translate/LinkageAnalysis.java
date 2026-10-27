@@ -75,12 +75,13 @@ public final class LinkageAnalysis {
 		}
 	}
 
-	/** Ends an issue of a required mixin that calls into a Fabric mod that isn't loading (see {@link #isUnloadedUse}). */
+	/** Ends an issue of a mixin that needs a Fabric mod that isn't loading (see {@link #isUnloadedUse}). */
 	private static final String UNLOADED = ", which isn't loading";
 
 	/**
-	 * Whether a linkage issue is a required mixin calling into a class only a Fabric mod that isn't loading has: Mixin
-	 * can't find that class while it applies the mixin, which stops the game.
+	 * Whether a linkage issue is a required mixin calling into a class only a Fabric mod that isn't loading has, or a
+	 * mixin adding such an interface to its targets: Mixin can't find that class while it applies the mixin, or the
+	 * game can't define the target then, which stops the game.
 	 */
 	public static boolean isUnloadedUse(String issue) {
 		return issue.endsWith(UNLOADED) && issue.contains(" -> needs class ");
@@ -117,8 +118,8 @@ public final class LinkageAnalysis {
 	}
 
 	/**
-	 * {@link #analyse(List, ClassBytesSource, Supplier, String)}, also finding the required mixins that call into a
-	 * Fabric mod that isn't loading ({@link #isUnloadedUse}).
+	 * {@link #analyse(List, ClassBytesSource, Supplier, String)}, also finding the mixins that need a Fabric mod that
+	 * isn't loading ({@link #isUnloadedUse}).
 	 *
 	 * @param unloaded       packages that only Fabric mods that aren't loading have, each with one such mod's id
 	 *                       ({@code setFingerprint} must cover them)
@@ -255,7 +256,11 @@ public final class LinkageAnalysis {
 	/**
 	 * The required mixins (their config required, without a plugin that could skip them) that call a method of, or use
 	 * a field of, a class only a Fabric mod that isn't loading has: Mixin looks that class up while it applies the
-	 * mixin, and stops the game when it can't find it (Continuity's mixin into the renderer API, run 362).
+	 * mixin, and stops the game when it can't find it (Continuity's mixin into the renderer API, run 362). And any
+	 * mixin adding such an interface to its targets (LINK-2): Mixin only warns that it can't load the interface, and the
+	 * game then can't define the target class, whether the config is required or not (Porting Lib's base module's
+	 * texture mixin on Forge 47 clients, whose interface is its extensions module's). Its config's plugin could skip it,
+	 * but where it doesn't the game can't start, while the mod disabled says why and loads once the other one does.
 	 */
 	private void unloadedUses(TranslatedMod mod, SafeArchive archive, SafeArchive overlay, Map<String, String> unloaded, Predicate<String> exists,
 			List<String> out) throws ArchiveException {
@@ -271,26 +276,47 @@ public final class LinkageAnalysis {
 			} catch (JsonException e) {
 				continue; // translation reported it
 			}
-			if (!config.required() || config.plugin() != null) continue;
+			boolean strict = config.required() && config.plugin() == null;
 			for (String mixin : config.mixinsFor(clientSide)) {
 				String name = config.internalName(mixin);
 				byte[] data = overlay.contains(name + ".class") ? overlay.read(name + ".class") : archive.read(name + ".class");
-				String owner = data == null ? null : unloadedOwner(data, unloaded, exists);
+				ClassNode node = data == null ? null : readNode(data);
+				if (node == null) continue;
+				String owner = strict ? unloadedOwner(node, unloaded, exists) : null;
 				if (owner != null) {
 					out.add(name.replace('/', '.') + " -> needs class " + owner.replace('/', '.') + " of " + unloaded.get(packageOf(owner)) + UNLOADED);
+					continue;
+				}
+				String added = unloadedInterface(node, unloaded, exists);
+				if (added != null) {
+					out.add(name.replace('/', '.') + " adds an interface to its targets -> needs class " + added.replace('/', '.') + " of "
+							+ unloaded.get(packageOf(added)) + UNLOADED);
 				}
 			}
 		}
 	}
 
-	/** The first class a mixin's code calls into or reads from that only a mod that isn't loading has, or null. */
-	private static String unloadedOwner(byte[] data, Map<String, String> unloaded, Predicate<String> exists) {
+	/** The mixin's class, or null when it can't be read (translation reported that). */
+	private static ClassNode readNode(byte[] data) {
 		ClassNode node = new ClassNode();
 		try {
 			new ClassReader(data).accept(node, ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
 		} catch (RuntimeException | StackOverflowError e) {
-			return null; // translation reported an unreadable class
+			return null;
 		}
+		return node;
+	}
+
+	/** The first interface a mixin adds to its targets that only a mod that isn't loading has, or null. */
+	private static String unloadedInterface(ClassNode node, Map<String, String> unloaded, Predicate<String> exists) {
+		for (String added : node.interfaces) {
+			if (unloaded.containsKey(packageOf(added)) && !exists.test(added)) return added;
+		}
+		return null;
+	}
+
+	/** The first class a mixin's code calls into or reads from that only a mod that isn't loading has, or null. */
+	private static String unloadedOwner(ClassNode node, Map<String, String> unloaded, Predicate<String> exists) {
 		for (MethodNode method : node.methods) {
 			for (AbstractInsnNode insn : method.instructions) {
 				String owner = insn instanceof MethodInsnNode m ? m.owner : insn instanceof FieldInsnNode f ? f.owner : null;

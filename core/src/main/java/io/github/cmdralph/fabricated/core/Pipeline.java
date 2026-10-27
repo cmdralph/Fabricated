@@ -738,7 +738,7 @@ public final class Pipeline {
 				String unloadedUse = issues.stream().filter(LinkageAnalysis::isUnloadedUse).findFirst().orElse(null);
 				if (unloadedUse != null) {
 					// Mixin would stop the game applying it, whatever strictLinkage says.
-					this.dropped.put(t.candidate().id(), new Drop("a required mixin uses a mod that isn't loading: " + unloadedUse,
+					this.dropped.put(t.candidate().id(), new Drop("a mixin uses a mod that isn't loading: " + unloadedUse,
 							"See why that mod isn't loading in this report; this one can load once it does.", t.candidate()));
 					dropped = true;
 					continue;
