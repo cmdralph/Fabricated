@@ -48,7 +48,9 @@ client must join a singleplayer world and quit normally, and it checks that:
 
 **With the official Fabric API jar,** the server starts and every module of Fabric API 0.92.12 loads. A client started
 with it reaches a world with every module loaded too; that run is only reported for now. Fabric's networking needs no
-port: Fabric API's module carries a Fabric mod's packets through Forge 47's network stack, as CI checks.
+port: Fabric API's module carries a Fabric mod's packets through Forge 47's network stack, as CI checks. Nor do
+Fabric's use and attack callbacks: a Fabric mod refusing a player's use or attack of an item, a block or an entity is
+heard, as CI checks.
 
 **Native on Forge 47:**
 - `fabric-api-base`.
@@ -69,7 +71,8 @@ port: Fabric API's module carries a Fabric mod's packets through Forge 47's netw
 - **Block breaking:** Fabric's block break events fire where Forge breaks a player's block, and a Fabric mod that
   refuses a break keeps the block.
 - **Beds:** Fabric's bed occupation and sleeping direction events run where Forge handles beds, and a block a Fabric
-  mod admits as a bed stays that block while an entity sleeps on it and as it wakes up.
+  mod admits as a bed stays that block while an entity sleeps on it and as it wakes up. Fabric's sleep time event
+  decides, where Forge asks its own, whether a player may sleep at that hour.
 - **Storages:** a Fabric mod's item and fluid storages are the item and fluid handlers of its block entity, which Forge
   mods' hoppers and pipes reach, and a Forge mod's handlers are storages to Fabric mods. A Forge handler moves items
   only once Fabric's transaction commits. Tank items cross both ways too: a Forge mod's machine fills a Fabric mod's,
