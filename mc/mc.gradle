@@ -55,6 +55,26 @@ if (!(platform in ['neoforge', 'forge', 'forge-legacy'])) {
 ext.sharedSources = (project.shared_sources as String).split(',')*.trim().findAll { it }
         .collect { it.contains('/') ? it : "mc/${platform}/${it}" }
 
+// Classes the shared sources name that this version's game names otherwise, as `renamed_classes` lists them (old=new,
+// comma-separated): Minecraft 1.21.1's ResourceLocation, which 1.21.11 renamed Identifier. Such a version compiles a copy
+// of the shared Java sources with each name replaced, as a whole word (imports, descriptors in strings and comments
+// alike), so the sources stay the later versions' own; the compiler checks the rest of what they call.
+def renamedClasses = (project.findProperty('renamed_classes') ?: '').split(',')*.trim().findAll { it }.collectEntries {
+    def pair = it.split('=')*.trim()
+    if (pair.size() != 2 || pair.any { !(it ==~ /[A-Za-z_][A-Za-z0-9_]*/) }) throw new GradleException("renamed_classes: '${it}' isn't old=new")
+    [(pair[0]): pair[1]]
+}
+def sharedJava = { String sourceSet ->
+    def dirs = sharedSources.collect { rootProject.file("$it/src/$sourceSet/java") }
+    if (renamedClasses.isEmpty()) return dirs
+    tasks.register("renamedShared${sourceSet.capitalize()}Java", Sync) {
+        from(dirs)
+        into(layout.buildDirectory.dir("generated/renamed/${sourceSet}"))
+        inputs.property('renamedClasses', renamedClasses)
+        filter { String line -> renamedClasses.inject(line) { l, e -> l.replaceAll("\\b${e.key}\\b", e.value) } }
+    }
+}
+
 // NeoForge's loader classes come in two variants, as the version's `loader_variant` property names it: those of FML 10
 // and later, on FML's own jar contents and class processors (loader/neoforge/src/fml, the default), and those of NeoForge
 // 21.1's FML 4, which runs on ModLauncher (loader/neoforge/src/modlauncher). The rest of loader/neoforge is both's.
@@ -73,14 +93,13 @@ sourceSets {
         resources.srcDir 'src/fabricated/resources'
     }
     main {
-        java.srcDirs = ['src/main/java', 'src/fabricapi/java'] + sharedSources.collect { rootProject.file("$it/src/main/java") }
+        java.srcDirs = ['src/main/java', 'src/fabricapi/java']
+        java.srcDir sharedJava('main')
         resources.srcDirs = ['src/main/resources'] + sharedSources.collect { rootProject.file("$it/src/main/resources") }
     }
     testmod {
-        sharedSources.each {
-            java.srcDir rootProject.file("$it/src/testmod/java")
-            resources.srcDir rootProject.file("$it/src/testmod/resources")
-        }
+        java.srcDir sharedJava('testmod')
+        sharedSources.each { resources.srcDir rootProject.file("$it/src/testmod/resources") }
     }
     // Test sources every platform shares, in mc/shared: the broken test mods,
     testmodbroken {
