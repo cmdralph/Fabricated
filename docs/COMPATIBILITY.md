@@ -1048,6 +1048,9 @@ by the server runs (the colours by the client runs):
   item colours (Forge 47), by registry holder, where upstream's lookup reads the list by id Forge replaced (COLOR-1).
   It finds grass's provider and none for stone (Forge 61 and 47, with Fabric API). Forge 64 to 66 keep vanilla's list,
   which upstream's lookup reads as it is.
+- **Networking:** a payload (Forge 61 to 66) or a channel's buffer (Forge 47) the client sends as it joins comes back
+  from the integrated server with its answer, through Fabric API's module on Forge's network stack (all five, with
+  Fabric API, client run).
 - **Commands:** a command registered through `CommandRegistrationCallback` is in the server's dispatcher (all five, with
   Fabric API, server and client). Fabric API's hook into `Commands`' constructor applies on Forge 61 to 66 at a point
   pre-flight marks unsafe (CTOR-2), and on Forge 47, whose Mixin takes none, as a wrapper of the call (CTOR-4).

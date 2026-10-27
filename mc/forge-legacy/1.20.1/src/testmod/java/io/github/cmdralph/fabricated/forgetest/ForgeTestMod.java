@@ -78,6 +78,13 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 		} catch (RuntimeException | LinkageError e) {
 			LOGGER.error("FABRICATED-FORGE-TEST command registration failed", e);
 		}
+		if (FabricLoader.getInstance().isModLoaded("fabric-networking-api-v1")) {
+			try {
+				ForgeNetworkingTest.register();
+			} catch (RuntimeException | LinkageError e) {
+				LOGGER.error("FABRICATED-FORGE-TEST networking receiver not registered", e);
+			}
+		}
 	}
 
 	@Override
