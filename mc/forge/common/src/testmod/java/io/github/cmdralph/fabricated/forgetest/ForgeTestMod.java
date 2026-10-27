@@ -26,8 +26,8 @@ import net.minecraft.world.item.Items;
  * the server smoke looks for (ci/forge/smoke-server.sh). It uses Fabric Loader's API and, of Fabric API, only the loot
  * module Fabricated ships itself ({@link ForgeLootTest}), so it runs without Fabric API's jar; with it, it also tries the
  * object builder module's default attribute event ({@link ForgeAttributeTest}), the advancement module's modify event
- * ({@link ForgeAdvancementTest}) and the command module's registration event ({@link ForgeCommandTest}). Its fluids are
- * written as Fabric mods write theirs ({@link ForgeFluidTest}).
+ * ({@link ForgeAdvancementTest}), the command module's registration event ({@link ForgeCommandTest}) and a networking
+ * round trip ({@link ForgeNetworkingTest}). Its fluids are written as Fabric mods write theirs ({@link ForgeFluidTest}).
  */
 public final class ForgeTestMod implements ModInitializer, DedicatedServerModInitializer {
 	public static final String MOD_ID = "fabricated-forge-testmod";
@@ -86,6 +86,13 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 				ForgeCommandTest.register();
 			} catch (RuntimeException | LinkageError e) {
 				LOGGER.warn("FABRICATED-FORGE-TEST command listener not registered", e);
+			}
+		}
+		if (FabricLoader.getInstance().isModLoaded("fabric-networking-api-v1")) {
+			try {
+				ForgeNetworkingTest.register();
+			} catch (RuntimeException | LinkageError e) {
+				LOGGER.warn("FABRICATED-FORGE-TEST networking receiver not registered", e);
 			}
 		}
 	}
