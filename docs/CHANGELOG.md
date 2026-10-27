@@ -3,6 +3,34 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-10-27: Fabric mods' commands on every Forge version, and hooks into constructors on Forge 47
+
+- **CTOR-4** (Forge 47): SpongePowered's Mixin 0.8.5 takes an `@Inject` into a constructor only at a return, so
+  pre-flight left out Fabric API's hook into `Commands`' constructor, which fires `CommandRegistrationCallback`: no
+  Fabric mod's command was registered on Forge 47. Model loading's hook into `ModelBakery`'s constructor disabled
+  `fabric-model-loading-api-v1`, and `fabric-models-v0` with it. Where the running Mixin takes only returns, such a
+  hook at a plain call now becomes a MixinExtras `@WrapOperation` of that call, which runs the handler with the
+  constructor's parameters just before the call (or just after it, for `shift = AFTER`).
+- Fabric commands are now checked on all five Forge versions: with Fabric API, the test mods register a command
+  through the event, and the server and client runs check that the server's dispatcher has it. On Forge 61 to 66 the
+  hook applies at the point pre-flight marks unsafe (CTOR-2). On Forge 47 the test mod also hooks `Commands`'
+  constructor itself, with and without Fabric API.
+- **REG-6** (Forge 47): Fabric API moves vanilla's check of the built-in registries to the server's or client's start,
+  where it also saw Forge's own registries, and every run with Fabric API logged two "Registry 'forge:…' was empty
+  after loading" errors. The check now passes over empty registries Forge manages, and both smoke scripts check that
+  none is reported.
+- `COMPATIBILITY.md`: on Forge 47, `fabric-command-api-v2` loads whole, model loading loads with one baking hook left
+  out, and `fabric-models-v0` loads. Only particles is still off on the client.
+- Verification:
+  - Build-forge-legacy run 40455097129 on `2e6de46`: all 91 checks pass, the CTOR-4 and command checks among them.
+    The client with the Fabric API jar reaches a world with model loading, and Forge's loading warnings drop from
+    three to one.
+  - Run 40453946866 on `ed94021` shows no empty-registry error, and its error digest otherwise matches the run before.
+  - Build-forge run 40455404563 on `aac8e1e` passes the command check on Forge 61 to 66, server and client, with every
+    earlier check passing.
+  - `MixinPreflightTest` runs the generated wrapper against stand-ins for the callback info and `Operation`, and core's
+    whole suite passes (310 tests).
+
 ## 2026-10-27: Fabric's rendering modules on Forge clients with the Fabric API jar
 
 - **COLOR-1** (Forge 61 and 47): pre-flight disabled `fabric-rendering-v1` on every client with the Fabric API jar, and
