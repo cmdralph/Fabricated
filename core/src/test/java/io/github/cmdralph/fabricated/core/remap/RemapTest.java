@@ -35,6 +35,7 @@ import org.objectweb.asm.tree.MethodNode;
 
 import io.github.cmdralph.fabricated.core.archive.ArchiveLimits;
 import io.github.cmdralph.fabricated.core.archive.SafeArchive;
+import io.github.cmdralph.fabricated.core.mixin.Refmap;
 import io.github.cmdralph.fabricated.core.testutil.TestJars;
 
 class RemapTest {
@@ -232,6 +233,21 @@ class RemapTest {
 		assertEquals("@At(target=\"Lnet/minecraft/src/C_4_;m_247679_(Ljava/lang/String;)Lnet/minecraft/src/C_1_;\")",
 				new TokenRemapper(t).remap("@At(target=\"" + target + "\")"), "the same in an annotation's string");
 		assertTrue(new TokenRemapper(table()).remap(target).contains(";open(Ljava/lang/String;)"), "Mojang's names keep official ones");
+	}
+
+	@Test
+	void aRefmapKeyNamingAnIntermediaryMethodIsRewrittenAsTheAnnotationIs() throws Exception {
+		// REMAP-3: Fabric API's screen hooks name MouseHandler's lambdas as method_1611([ZLnet/minecraft/client/gui/screen/Screen;DDI)V,
+		// with Yarn's names in the descriptor, which the refmap resolves. The annotation's string became m_168078_(...),
+		// which the refmap's key, left as written, didn't match: the selector was read as it stood.
+		MappingTable t = plainSrgTable();
+		String selector = "method_60([ZLnet/minecraft/client/gui/screen/Screen;DDI)V";
+		String refmap = "{\"mappings\":{\"mod/MouseMixin\":{\"" + selector + "\":\"Lnet/minecraft/class_7;method_60(F)F\",\"open\":\"Lnet/minecraft/class_4;tick()V\"}}}";
+		Refmap remapped = Refmap.parse(new String(new JarRemapper(t).remapRefmap(refmap.getBytes(StandardCharsets.UTF_8), "test"), StandardCharsets.UTF_8));
+		String annotation = new TokenRemapper(t).remap(selector);
+		assertEquals("m_60_([ZLnet/minecraft/client/gui/screen/Screen;DDI)V", annotation);
+		assertEquals("Lnet/minecraft/src/C_7_;m_60_(F)F", remapped.resolve("mod/MouseMixin", annotation), "the annotation's selector finds its entry");
+		assertEquals("Lnet/minecraft/src/C_4_;tick()V", remapped.resolve("mod/MouseMixin", "open"), "a key in the mod's names stays");
 	}
 
 	@Test

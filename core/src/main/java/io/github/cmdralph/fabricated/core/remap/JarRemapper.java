@@ -123,7 +123,12 @@ public final class JarRemapper {
 		return remapper.map(internal) + ".class";
 	}
 
-	/** Rewrites every string value of a refmap (keys are mod-side names and stay as they are). */
+	/**
+	 * Rewrites every string of a refmap. Its keys are the selectors as the mod's annotations write them, which mostly
+	 * name members by the mod's own names; one naming a member by its intermediary name ({@code method_1611(...)} with
+	 * the mod's names in its descriptor, as Fabric API's hooks into lambdas do) is rewritten as the annotation is, or
+	 * the annotation's rewritten selector found no entry and was read as it stood, descriptor and all (REMAP-3).
+	 */
 	public byte[] remapRefmap(byte[] data, String nameForErrors) throws MappingException {
 		try {
 			Object tree = Json.parse(new String(data, StandardCharsets.UTF_8), Refmap.MAX_LENGTH, Json.DEFAULT_MAX_DEPTH);
@@ -137,7 +142,7 @@ public final class JarRemapper {
 		if (node instanceof String s) return tokens.remap(s);
 		if (node instanceof Map<?, ?> map) {
 			Map<String, Object> copy = new LinkedHashMap<>();
-			for (Map.Entry<?, ?> e : map.entrySet()) copy.put(String.valueOf(e.getKey()), remapJsonValues(e.getValue()));
+			for (Map.Entry<?, ?> e : map.entrySet()) copy.put(tokens.remap(String.valueOf(e.getKey())), remapJsonValues(e.getValue()));
 			return copy;
 		}
 		if (node instanceof List<?> list) {
