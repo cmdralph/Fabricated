@@ -1,6 +1,7 @@
 package io.github.cmdralph.fabricated.loader;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
 
@@ -8,6 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import cpw.mods.modlauncher.api.IEnvironment;
+import cpw.mods.modlauncher.api.IModuleLayerManager;
 import cpw.mods.modlauncher.api.ITransformationService;
 import cpw.mods.modlauncher.api.ITransformer;
 import io.github.cmdralph.fabricated.core.metadata.ModIds;
@@ -23,6 +25,7 @@ import io.github.cmdralph.fabricated.core.metadata.ModIds;
  */
 public final class FabricTransformationService implements ITransformationService {
 	private static final Logger LOGGER = LoggerFactory.getLogger("Fabricated");
+	private volatile IEnvironment environment;
 
 	@Override
 	public String name() {
@@ -31,10 +34,17 @@ public final class FabricTransformationService implements ITransformationService
 
 	@Override
 	public void initialize(IEnvironment environment) {
+		this.environment = environment;
 	}
 
 	@Override
 	public void onLoad(IEnvironment env, Set<String> otherServices) {
+	}
+
+	/** The game's module layer, once ModLauncher has built it. */
+	private Optional<ModuleLayer> gameLayer() {
+		IEnvironment env = environment;
+		return env == null ? Optional.empty() : env.findModuleLayerManager().flatMap(m -> m.getLayer(IModuleLayerManager.Layer.GAME));
 	}
 
 	@Override
@@ -49,6 +59,6 @@ public final class FabricTransformationService implements ITransformationService
 		Set<String> classes = FabricClassTransforms.classesBeforeMixin(state);
 		if (classes.isEmpty()) return List.of();
 		LOGGER.info("Fabricated transforms {} class(es) for Fabric mods before Mixin", classes.size());
-		return List.of(new FabricClassTransformer(classes));
+		return List.of(new FabricClassTransformer(classes, this::gameLayer));
 	}
 }

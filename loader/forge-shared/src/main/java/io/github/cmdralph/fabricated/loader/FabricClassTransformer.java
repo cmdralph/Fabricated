@@ -1,6 +1,9 @@
 package io.github.cmdralph.fabricated.loader;
 
+import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 import org.objectweb.asm.tree.ClassNode;
@@ -18,15 +21,26 @@ import cpw.mods.modlauncher.api.TransformerVoteResult;
 final class FabricClassTransformer implements ITransformer<ClassNode> {
 	private static final Logger LOGGER = LoggerFactory.getLogger("Fabricated");
 	private final Set<Target> targets;
+	private final Supplier<Optional<ModuleLayer>> gameLayer;
+	private final AtomicBoolean layerChecked = new AtomicBoolean();
 
-	/** @param classes internal names */
-	FabricClassTransformer(Set<String> classes) {
+	/**
+	 * @param classes   internal names
+	 * @param gameLayer the game's module layer, once ModLauncher has built it ({@link GameLayerCheck})
+	 */
+	FabricClassTransformer(Set<String> classes, Supplier<Optional<ModuleLayer>> gameLayer) {
 		this.targets = classes.stream().map(Target::targetClass).collect(Collectors.toUnmodifiableSet());
+		this.gameLayer = gameLayer;
 	}
 
 	@Override
 	public ClassNode transform(ClassNode input, ITransformerVotingContext context) {
 		FabricatedState state = FabricatedState.get();
+		if (state != null && !layerChecked.get()) {
+			gameLayer.get().ifPresent(game -> {
+				if (layerChecked.compareAndSet(false, true)) GameLayerCheck.run(game, state.injectedInterfaces());
+			});
+		}
 		// A target that doesn't exist reaches a transformer as an empty node.
 		if (state != null && input.name != null) {
 			FabricClassTransforms.beforeMixin(state, input, (activity, detail) -> LOGGER.debug("{} in {}: {}", activity, input.name, detail));
