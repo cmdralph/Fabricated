@@ -410,9 +410,11 @@ singleplayer world, and the test mod's client entrypoint runs after its main one
 set. mc-runtime-test's 1.20.1 build runs the game tests it finds before quitting, and exits with an error if one
 fails. With the official Fabric API jar too, the client reaches a world (an informational run). `fabric-rendering-v1`
 loads there since COLOR-1, its colour provider lookup reading Forge's maps by registry holder, past CTOR-3, PRE-16 and
-SHADER-1, which its shader hooks met on Forge 47; model loading (a hook into `ModelBakery`'s constructor that Forge's
-Mixin 0.8.5 takes only at a return) and particles (an accessor to a map whose type Forge changed) are disabled. Next:
-the old capability system and `SimpleChannel`. NeoForge needs no legacy branch.
+SHADER-1, which its shader hooks met on Forge 47; particles (an accessor to a map whose type Forge changed) is disabled.
+Model loading loads since CTOR-4: Forge's Mixin 0.8.5 takes a hook into a constructor only at a return, so pre-flight
+turns one at a call into a MixinExtras wrapper of that call, which also applies Fabric API's hook into `Commands`'
+constructor, so Fabric mods' commands register (checked with Fabric API, on the server and the client). Next: the old
+capability system and `SimpleChannel`. NeoForge needs no legacy branch.
 
 ### forge
 
@@ -473,7 +475,8 @@ official Fabric API jar, is informational: it found FLUID-3 (Forge 61), NET-8 an
 them fixed the client reaches a world on all four. On Forge 61 `fabric-rendering-v1` and the renderer modules load
 since COLOR-1 (the colour provider lookup reads Forge's map by registry holder) and LOCAL-4 (Indigo's capture of
 vanilla's map of buffers by layer), as on Forge 64 to 66, where Indigo draws Fabric models since SUPER-1; on all four
-the data generation module loads on the client since DATAGEN-2.
+the data generation module loads on the client since DATAGEN-2, and a command registered through Fabric API's event
+reaches the server's dispatcher (its hook marked unsafe, CTOR-2).
 
 Order: `main` first, always. L1 serves both branches; after it, L2 to L5 and F2 to F5 can proceed in either order
 or in parallel, as the owner sets priorities. The two branches' adapters share their shape (forgespi 7 and 8 have
