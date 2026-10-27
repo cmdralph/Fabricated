@@ -271,14 +271,6 @@ public final class Pipeline {
 		}
 	}
 
-	/**
-	 * Fabric mods whose API Fabricated provides itself, by id: their jar isn't loaded, and they are provided at its
-	 * version, so the mods requiring them resolve as they would on Fabric.
-	 */
-	private static final Map<String, String> REPLACED = Map.of(
-			"forgeconfigapiport", "Fabricated provides Forge Config API Port's Fabric API on NeoForge's own config system, which the port copies",
-			"modmenu", "Fabricated shows the config screens Fabric mods offer through Mod Menu's API in NeoForge's mod list");
-
 	/** What is known about other people's Fabric mods (a mod's NeoForge build, when installed, is used before this is looked at). */
 	private static final CompatPlan COMPAT = CompatPlan.builtin();
 
@@ -512,7 +504,8 @@ public final class Pipeline {
 				report.mod(new ModRow(c.id(), c.version(), c.origin(), Status.SKIPPED, skipped, ""));
 				continue;
 			}
-			String replacement = REPLACED.get(c.id());
+			// A mod whose API the platform's in-game mod provides: the mods requiring it resolve as they would on Fabric.
+			String replacement = in.descriptor().replacedMods().get(c.id());
 			if (replacement != null) {
 				builtins.add(new Builtin(c.id(), c.version(), replacement, List.of()));
 				report.mod(new ModRow(c.id(), c.version(), c.origin(), Status.SKIPPED, replacement, ""));

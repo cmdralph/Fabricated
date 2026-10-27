@@ -350,6 +350,29 @@ class PipelineTest {
 				result.report().render());
 	}
 
+	/**
+	 * Forge Config API Port and Mod Menu are replaced only where the platform's in-game mod provides their API
+	 * (NeoForge's); on Forge their jars load as other mods do (REPL-1).
+	 */
+	@Test
+	void modsTheInGameModProvidesAreReplacedOnlyOnItsPlatform(@TempDir Path game) throws Exception {
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		Path port = TestJars.create().fabricModJson(TestJars.modJson("forgeconfigapiport", "26.1.5", "\"name\":\"Forge Config API Port\""))
+				.write(mods.resolve("port.jar"));
+		Path menu = TestJars.create().fabricModJson(TestJars.modJson("modmenu", "20.0.3", "\"name\":\"Mod Menu\"")).write(mods.resolve("menu.jar"));
+
+		Pipeline.Result neoForge = Pipeline.run(input(game, List.of(port, menu), Namespace.OFFICIAL, Map.of(), null, List.of()));
+		for (String id : List.of("forgeconfigapiport", "modmenu")) {
+			assertTrue(neoForge.report().mods().stream().anyMatch(r -> r.id().equals(id) && r.status() == Report.Status.SKIPPED), id);
+			assertTrue(neoForge.mods().stream().noneMatch(m -> m.translated().candidate().id().equals(id)), id);
+		}
+		Pipeline.Result forge = Pipeline.run(withDescriptor(input(game, List.of(port, menu), Namespace.OFFICIAL, Map.of(), null, List.of()),
+				PlatformDescriptor.FORGE));
+		for (String id : List.of("forgeconfigapiport", "modmenu")) {
+			assertTrue(forge.mods().stream().anyMatch(m -> m.translated().candidate().id().equals(id)), forge.report().render());
+		}
+	}
+
 	/** On another platform, the report's reasons and suggestions name its loader where they named NeoForge (PLAT-3). */
 	@Test
 	void reasonsAndSuggestionsNameThePlatformsLoader(@TempDir Path game) throws Exception {

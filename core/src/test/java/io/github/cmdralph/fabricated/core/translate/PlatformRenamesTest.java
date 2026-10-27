@@ -46,7 +46,7 @@ class PlatformRenamesTest {
 
 	@Test
 	void renamesTheConfigTypesFml12Renamed() {
-		PlatformRenames renames = PlatformRenames.of(Map.of(TYPE, enumWith("LOCAL", "CLIENT", "SYNCED", "STARTUP"))::get, NO_GAME);
+		PlatformRenames renames = PlatformRenames.of(Map.of(TYPE, enumWith("LOCAL", "CLIENT", "SYNCED", "STARTUP"))::get, NO_GAME, true);
 		ClassNode node = new ClassNode();
 		new ClassReader(renames.apply(user())).accept(node, 0);
 		FieldInsnNode read = (FieldInsnNode) node.methods.getFirst().instructions.getFirst();
@@ -55,7 +55,7 @@ class PlatformRenamesTest {
 
 	@Test
 	void leavesModsAloneWhereTheOldNamesExist() {
-		PlatformRenames renames = PlatformRenames.of(Map.of(TYPE, enumWith("COMMON", "CLIENT", "SERVER", "STARTUP"))::get, NO_GAME);
+		PlatformRenames renames = PlatformRenames.of(Map.of(TYPE, enumWith("COMMON", "CLIENT", "SERVER", "STARTUP"))::get, NO_GAME, true);
 		assertNull(renames.apply(user()));
 	}
 
@@ -194,9 +194,15 @@ class PlatformRenamesTest {
 		return cw.toByteArray();
 	}
 
+	/** On Forge the port's own jar loads, with its own screen taking the id, and Fabricated's factories aren't there (REPL-1). */
+	@Test
+	void forgeConfigApiPortScreensAreLeftAloneWhereThePlatformDoesNotProvideThePort() {
+		assertNull(PlatformRenames.of(Map.<String, byte[]>of()::get, NO_GAME, false).apply(screenUser()));
+	}
+
 	@Test
 	void forgeConfigApiPortScreensGetTheModsContainer() throws Exception {
-		byte[] adapted = PlatformRenames.of(Map.<String, byte[]>of()::get, NO_GAME).apply(screenUser());
+		byte[] adapted = PlatformRenames.of(Map.<String, byte[]>of()::get, NO_GAME, true).apply(screenUser());
 		Map<String, byte[]> classes = new java.util.HashMap<>(platform());
 		classes.put("com/example/Screens", adapted);
 		ClassLoader loader = new ClassLoader(null) {
@@ -307,7 +313,7 @@ class PlatformRenamesTest {
 	@Test
 	void aCreativeTabSubclassCallingVanillasConstructorGetsNeoForgesWithABuilder() throws Exception {
 		Map<String, byte[]> classes = game(false);
-		byte[] adapted = PlatformRenames.of(ClassBytesSource.EMPTY, new ClassIndex(classes::get)).apply(tabSubclass());
+		byte[] adapted = PlatformRenames.of(ClassBytesSource.EMPTY, new ClassIndex(classes::get), true).apply(tabSubclass());
 		assertNotNull(adapted);
 		classes.put("com/example/Tab", adapted);
 		ClassLoader loader = new ClassLoader(null) {
@@ -335,6 +341,6 @@ class PlatformRenamesTest {
 
 	@Test
 	void leavesCreativeTabsAloneWhereVanillasConstructorExists() {
-		assertNull(PlatformRenames.of(ClassBytesSource.EMPTY, new ClassIndex(game(true)::get)).apply(tabSubclass()));
+		assertNull(PlatformRenames.of(ClassBytesSource.EMPTY, new ClassIndex(game(true)::get), true).apply(tabSubclass()));
 	}
 }

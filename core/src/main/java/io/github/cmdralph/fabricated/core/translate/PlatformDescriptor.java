@@ -66,6 +66,15 @@ public interface PlatformDescriptor {
 		}
 
 		/**
+		 * None: Forge's in-game mod provides neither Forge Config API Port's API nor Mod Menu's, so their Fabric jars load
+		 * as other mods do (REPL-1); the port then keeps its own copy of NeoForge's config classes, which Forge lacks.
+		 */
+		@Override
+		public Map<String, String> replacedMods() {
+			return Map.of();
+		}
+
+		/**
 		 * Forge reads no mod's pack without metadata ("Missing metadata in pack mod:...", then "Missing data pack", in the
 		 * forge branch's server smoke on Forge 64 to 66), where NeoForge makes one: the formats are those Fabricated's own
 		 * in-game mod on Forge declares, whose pack loads on Forge 61 to 66.
@@ -79,6 +88,17 @@ public interface PlatformDescriptor {
 			return (Json.write(Map.of("pack", pack), true) + "\n").getBytes(StandardCharsets.UTF_8);
 		}
 	};
+
+	/**
+	 * Fabric mods whose API Fabricated's in-game mod on this platform provides itself, by id, each with the report's line:
+	 * their jar isn't loaded, and they are provided at its version. NeoForge's by default (Forge Config API Port's Fabric
+	 * API on NeoForge's config system, which the port copies; Mod Menu's API in NeoForge's mod list).
+	 */
+	default Map<String, String> replacedMods() {
+		return Map.of(
+				"forgeconfigapiport", "Fabricated provides Forge Config API Port's Fabric API on NeoForge's own config system, which the port copies",
+				"modmenu", "Fabricated shows the config screens Fabric mods offer through Mod Menu's API in NeoForge's mod list");
+	}
 
 	/** The loader's name as players know it, for Fabricated's report: {@code NeoForge} by default. */
 	default String loaderName() {

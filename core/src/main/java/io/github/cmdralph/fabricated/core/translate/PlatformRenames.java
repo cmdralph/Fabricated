@@ -57,17 +57,22 @@ final class PlatformRenames {
 	private final Map<String, Map<String, String>> active;
 	/** Whether the game's creative tab has NeoForge's constructor taking a builder, and not vanilla's. */
 	private final boolean tabBuilders;
+	/** Whether the port's screens get Fabricated's factories, which the platform's in-game mod has when it provides the port. */
+	private final boolean portScreens;
 
-	private PlatformRenames(Map<String, Map<String, String>> active, boolean tabBuilders) {
+	private PlatformRenames(Map<String, Map<String, String>> active, boolean tabBuilders, boolean portScreens) {
 		this.active = active;
 		this.tabBuilders = tabBuilders;
+		this.portScreens = portScreens;
 	}
 
 	/**
 	 * The renames the platform's classes call for: an old field missing there, its new one present; and the
-	 * adaptations the game's classes do.
+	 * adaptations the game's classes do. {@code portScreens}: whether the platform's in-game mod provides Forge Config
+	 * API Port's API, and so the factories its screens are adapted to (NeoForge's; on Forge the port's own jar loads,
+	 * with its own screen: REPL-1).
 	 */
-	static PlatformRenames of(ClassBytesSource platform, ClassIndex game) {
+	static PlatformRenames of(ClassBytesSource platform, ClassIndex game, boolean portScreens) {
 		Map<String, Map<String, String>> active = new HashMap<>();
 		KNOWN.forEach((owner, renames) -> {
 			ClassNode node = platform.readNode(owner, ClassReader.SKIP_CODE);
@@ -81,14 +86,14 @@ final class PlatformRenames {
 		ClassIndex.ClassInfo tab = game.get(CREATIVE_TAB);
 		boolean tabBuilders = tab != null && tab.methodAccess("<init>" + BUILDER_CONSTRUCTOR) != null
 				&& tab.methodAccess("<init>" + VANILLA_TAB_ARGUMENTS + "V") == null;
-		return new PlatformRenames(Map.copyOf(active), tabBuilders);
+		return new PlatformRenames(Map.copyOf(active), tabBuilders, portScreens);
 	}
 
 	/** {@code classFile} with the renames and adaptations applied, or null when it uses none of those members. */
 	byte[] apply(byte[] classFile) {
 		String text = new String(classFile, StandardCharsets.ISO_8859_1);
 		boolean renames = active.keySet().stream().anyMatch(text::contains);
-		boolean screens = text.contains(CONFIGURATION_SCREEN) && text.contains(PORT_CONSTRUCTOR);
+		boolean screens = portScreens && text.contains(CONFIGURATION_SCREEN) && text.contains(PORT_CONSTRUCTOR);
 		boolean tabs = tabBuilders && text.contains(VANILLA_TAB_ARGUMENTS);
 		if (!renames && !screens && !tabs) return null;
 		boolean[] changed = {false};
