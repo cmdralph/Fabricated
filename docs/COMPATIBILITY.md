@@ -952,7 +952,7 @@ The `forge` and `forge-legacy` branches build Fabricated for Minecraft Forge 61 
 `docs/readme/`). CI runs dedicated servers there: `ci/forge/smoke-server.sh` and `ci/forge-legacy/smoke-server.sh`
 start one with the test mod and one with the official Fabric API jar too, and `smoke-client.sh` starts a client the same
 two ways (with Fabric API, informational). This table is the two runs with Fabric API, the server's and the client's
-`fabric-bridge-report.txt`, from the runs on `claude/dev` at `14a8a38` (40480632085, and 40480636318 for Forge 47),
+`fabric-bridge-report.txt`, from the runs on `claude/dev` at `1c6acbe` (40493632747, and 40493629134 for Forge 47),
 2026-10-27: Fabric API 0.141.6+1.21.11, 0.155.3+26.1.2, 0.161.0+26.2, 0.164.0+26.3 and 0.92.12+1.20.1, on Forge 61.2.4,
 64.1.5, 65.1.5, 66.1.0 and 47.4.28. Each cell is the more limited of the two: a module with client hooks
 can load on the server and lose hooks, or be turned off, on the client. The server starts and the client reaches a world
@@ -1058,9 +1058,9 @@ by the server runs (the colours by the client runs):
   (all five, with Fabric API, server and client). Forge's `destroyBlock` makes the calls upstream's hooks look for in a
   `removeBlock` of its own, so the in-game mod fires the events there (BREAK-1).
 - **Beds:** a block `EntitySleepEvents.ALLOW_BED` admits stays as it is while an entity sleeps on it, and the occupation
-  and sleeping direction events run (all five, with Fabric API, server and client; on Forge 47 not as the entity wakes
-  up, LAMBDA-6). Forge sets a bed's occupation through its own `setBedOccupied`, on the red bed upstream's hook stands
-  in for the block, so the in-game mod sets the block's own (SLEEP-1).
+  and sleeping direction events run as it lies down and wakes up (all five, with Fabric API, server and client; on
+  Forge 47 as it wakes up since LAMBDA-6). Forge sets a bed's occupation through its own `setBedOccupied`, on the red
+  bed upstream's hook stands in for the block, so the in-game mod sets the block's own (SLEEP-1).
 
 ## Fabric mods tested
 
