@@ -29,9 +29,9 @@ import net.minecraft.world.item.Items;
  * module Fabricated ships itself ({@link ForgeLootTest}), so it runs without Fabric API's jar; with it, it also tries the
  * object builder module's default attribute event ({@link ForgeAttributeTest}), the advancement module's modify event
  * ({@link ForgeAdvancementTest}), the command module's registration event ({@link ForgeCommandTest}), a networking
- * round trip ({@link ForgeNetworkingTest}), the interaction module's block break events ({@link ForgeBlockBreakTest})
- * and the entity events module's sleep events ({@link ForgeSleepTest}). Its fluids are written as Fabric mods write
- * theirs ({@link ForgeFluidTest}).
+ * round trip ({@link ForgeNetworkingTest}), the interaction module's block break events ({@link ForgeBlockBreakTest}),
+ * the entity events module's sleep events ({@link ForgeSleepTest}) and storages reaching Forge's capabilities
+ * ({@link ForgeTransferTest}). Its fluids are written as Fabric mods write theirs ({@link ForgeFluidTest}).
  */
 public final class ForgeTestMod implements ModInitializer, DedicatedServerModInitializer {
 	public static final String MOD_ID = "fabricated-forge-testmod";
@@ -112,6 +112,11 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 			} catch (RuntimeException | LinkageError e) {
 				LOGGER.warn("FABRICATED-FORGE-TEST sleep listeners not registered", e);
 			}
+		}
+		try {
+			ForgeTransferTest.register();
+		} catch (RuntimeException | LinkageError e) {
+			LOGGER.warn("FABRICATED-FORGE-TEST storage blocks not registered", e);
 		}
 	}
 
@@ -217,6 +222,18 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 			ForgeSleepTest.check(server.overworld());
 		} catch (RuntimeException | LinkageError e) {
 			LOGGER.warn("FABRICATED-FORGE-TEST sleep check failed", e);
+		}
+	}
+
+	/**
+	 * Whether a Fabric mod's storages are Forge's capabilities and a Forge mod's handlers Fabric's storages
+	 * ({@link ForgeTransferTest}; with Fabric API only).
+	 */
+	public static void checkStorages(MinecraftServer server) {
+		try {
+			ForgeTransferTest.check(server.overworld());
+		} catch (RuntimeException | LinkageError e) {
+			LOGGER.warn("FABRICATED-FORGE-TEST storage check failed", e);
 		}
 	}
 

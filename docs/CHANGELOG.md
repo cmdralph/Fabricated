@@ -3,6 +3,37 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-10-27: Fabric storages and Forge's item and fluid handlers on Forge
+
+- Fabric mods' item and fluid storages and Forge mods' item and fluid handlers see each other on blocks on all five
+  Forge versions, as `main`'s bridge has them on NeoForge: a Fabric mod's block entity has Forge's `ITEM_HANDLER` and
+  `FLUID_HANDLER` capabilities, from Fabric's whole lookup, and Fabric's lookups fall back to the capabilities of a
+  Forge mod's block entity. Each side answers for its own mods' blocks, told apart by namespace.
+- Forge's handlers move at once or only simulate; Fabric's storages move in transactions that may be undone. A Forge
+  handler seen as a Fabric storage simulates while a transaction is open and moves once the outermost one commits, so
+  an aborted transaction never reaches a Forge mod's machine; items a handler then refuses are dropped at its block and
+  logged. A Fabric storage seen as a Forge handler runs each call in a transaction of its own. Fluids move in whole
+  millibuckets; on Forge 61 to 66 a fluid carrying data (Fabric's components, Forge's tag) doesn't cross.
+- Fluid storages in items cross too: a Fabric mod's tank item has Forge's `FLUID_HANDLER_ITEM` capability, and
+  `FluidStorage.ITEM` falls back to a Forge mod's item's. Forge's handler acts on the stack it belongs to, Fabric's
+  storage on an item in a context, so the capability's context is a slot holding that stack: when Fabric's storage
+  leaves the same item with other data, the data is written into the stack, as Forge's own tank handlers change it in
+  place, and another item (an empty cell for a full one) becomes the handler's container. The other way, Forge's
+  handler acts on a copy of one of the context's items, and the copy it leaves replaces that item in the transaction; a
+  change that doesn't show in the item is refused, as a fluid kept in Forge's capability data would be lost.
+- The Forge test mods check both ways with Fabric API: Forge's code fills and drains a Fabric mod's storages through
+  the capabilities, and Fabric's code reaches a Forge mod's `ItemStackHandler` and `FluidTank` through the lookups, an
+  aborted transaction leaving them as they were and two insertions in one transaction taking no more than the slots
+  hold. For items, Forge's code fills and drains a Fabric mod's cell, which becomes another item when full, and its
+  gauge, which keeps its fluid as damage, its own stack showing the change; Fabric's code fills and drains a Forge mod's
+  cell in a machine's slot, an aborted transaction leaving it as it was. The first form of the Forge 47 check stopped
+  the server without Fabric API at its first tick (locally): the JVM's verifier loaded Fabric's `Storage` for the test
+  class's lookup providers. The test mods name Fabric's transfer API only in a class they load once the module is there.
+- Verification: build-forge-legacy run 40518392639, build-forge run 40518397685 and build run 40518403486 on `e798dbc`
+  pass, with the storage check on every Forge version's server and client with Fabric API; build-forge-legacy run
+  40524838775 and build-forge run 40524844590 on `3a21a84` pass with the item checks added. The hooks left out and
+  repaired are the ones before.
+
 ## 2026-10-27: Fabric's before-bake model modifiers on the Forge 47 client
 
 - **MODEL-3** (Forge 47): Forge moved the code of the model baker's `bake` into an overload that also takes the sprite

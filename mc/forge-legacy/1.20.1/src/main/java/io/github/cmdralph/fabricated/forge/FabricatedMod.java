@@ -10,12 +10,14 @@ import org.slf4j.LoggerFactory;
 import io.github.cmdralph.fabricated.core.runtime.EntrypointRunner;
 import io.github.cmdralph.fabricated.forge.biome.BiomeCompat;
 import io.github.cmdralph.fabricated.forge.fluid.FabricFluidType;
+import io.github.cmdralph.fabricated.forge.transfer.TransferBridge;
 import io.github.cmdralph.fabricated.loader.FabricatedState;
 import io.github.cmdralph.fabricated.loader.ForgeLoaderHooks;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.api.DedicatedServerModInitializer;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.impl.loot.table.LootTablesV1Init;
+import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.loader.api.entrypoint.PreLaunchEntrypoint;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraftforge.eventbus.api.EventPriority;
@@ -75,6 +77,8 @@ public final class FabricatedMod {
 		for (String text : ForgeLoaderHooks.notLoaded()) {
 			ModLoader.get().addWarning(new ModLoadingWarning(context.getContainer().getModInfo(), ModLoadingStage.CONSTRUCT, AS_IS, text));
 		}
+		// Fabric storages and Forge's item and fluid handlers on blocks, each seen by the other side's code.
+		if (FabricLoader.getInstance().isModLoaded("fabric-transfer-api-v1")) TransferBridge.register();
 		// Native fabric-loot-tables-v1's own initializer (a native module has no entrypoints): its loot table events
 		// listen to fabric-loot-api-v2's before the Fabric mods register theirs.
 		new LootTablesV1Init().onInitialize();
