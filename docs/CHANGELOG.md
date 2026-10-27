@@ -3,6 +3,19 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-10-27: Fabric's block dust tint event on the Forge 61 client
+
+- **PART-2** (Forge 61): Forge decides whether a block's breaking particles are tinted through its block extensions'
+  `areBreakingParticlesTinted`, where upstream's block dust tint hook looks for vanilla's grass check, so pre-flight
+  left the hook out and `ParticleRenderEvents.ALLOW_BLOCK_DUST_TINT` never ran. The plan now leaves that hook out, and
+  the in-game mod asks the event where Forge decides the tint, as Forge 47's module does. Forge 64 to 66 keep vanilla's
+  check, where upstream's hook applies.
+- The Forge 61 test mod registers a tint listener, and its client makes a stone particle as it joins: with Fabric API
+  the listener must be asked.
+- Verification: build-forge run 40465983140 on `40b2277` passes the check on Forge 61's client with Fabric API, with no
+  check failing in any of the four versions' runs, and every module's status on Forge 61 to 66 is the one
+  `COMPATIBILITY.md` lists. The NeoForge build, which compiles the same stand-ins, passes in build run 40465987692.
+
 ## 2026-10-27: Fabric's particles on the Forge 47 client
 
 - **PART-1** (Forge 47): Forge keeps the particle engine's factories by the type's id, where upstream's accessor reads

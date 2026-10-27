@@ -341,10 +341,12 @@ if (project.namespace == 'OFFICIAL') {
             java.srcDir 'src/fabricapistubs/java'
         }
     }
-    // The stand-ins name Fabric API's TriState, which Fabricated ships itself (fabric-api-base, in src/fabricapi).
+    // The stand-ins name Fabric API's TriState and Event, which Fabricated ships itself (fabric-api-base, in
+    // src/fabricapi).
     tasks.named('compileFabricapistubsJava') {
         source files('src/fabricapi/java/net/fabricmc/fabric/api/util/TriState.java',
-                'src/fabricapi/java/net/fabricmc/fabric/api/util/BooleanFunction.java')
+                'src/fabricapi/java/net/fabricmc/fabric/api/util/BooleanFunction.java',
+                'src/fabricapi/java/net/fabricmc/fabric/api/event/Event.java')
     }
     gameDependencies(sourceSets.fabricapistubs)
     dependencies {

@@ -482,7 +482,9 @@ them fixed the client reaches a world on all four. On Forge 61 `fabric-rendering
 since COLOR-1 (the colour provider lookup reads Forge's map by registry holder) and LOCAL-4 (Indigo's capture of
 vanilla's map of buffers by layer), as on Forge 64 to 66, where Indigo draws Fabric models since SUPER-1; on all four
 the data generation module loads on the client since DATAGEN-2, and a command registered through Fabric API's event
-reaches the server's dispatcher (its hook marked unsafe, CTOR-2).
+reaches the server's dispatcher (its hook marked unsafe, CTOR-2). Forge 61's `TerrainParticle` decides the tint of a
+block's breaking particles through its block extensions, where upstream's block dust tint hook looks for vanilla's grass
+check, so the in-game mod asks Fabric's event there, as Forge 47's module does (PART-2, run 40465983140).
 
 Order: `main` first, always. L1 serves both branches; after it, L2 to L5 and F2 to F5 can proceed in either order
 or in parallel, as the owner sets priorities. The two branches' adapters share their shape (forgespi 7 and 8 have
