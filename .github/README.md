@@ -68,8 +68,9 @@ with it reaches a world too; that run is only reported for now.
 
 - **Fabric's particles module.** With the Fabric API jar, `fabric-particles-v1` is turned off on the client: its
   accessor to the particle providers' map expects vanilla's type, which Forge changed.
-- **Capabilities and networking.** Forge 47's old capability system and `SimpleChannel` networking are next on the
-  [roadmap](/docs/roadmap.md).
+- **Capabilities.** Fabric's storages on Forge 47's old capability system are next on the
+  [roadmap](/docs/roadmap.md). Fabric's networking needs no port: Fabric API's module carries a Fabric mod's packets
+  through Forge 47's network stack, as CI checks.
 
 ## Installing (for testing)
 
