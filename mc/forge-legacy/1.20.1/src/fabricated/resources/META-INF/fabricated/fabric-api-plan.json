@@ -39,9 +39,11 @@
         "fabric-rendering-v1.mixins.json:BlockColorsMixin#get",
         "fabric-rendering-v1.mixins.json:BlockColorsMixin#f_92571_",
         "fabric-rendering-v1.mixins.json:ItemColorsMixin#get",
-        "fabric-rendering-v1.mixins.json:ItemColorsMixin#f_92674_"
+        "fabric-rendering-v1.mixins.json:ItemColorsMixin#f_92674_",
+        "fabric-rendering-v1.mixins.json:shader.ShaderProgramMixin",
+        "fabric-rendering-v1.mixins.json:shader.ShaderProgramImportProcessorMixin"
       ],
-      "reason": "Forge 47 keeps block and item colour providers in maps by registry holder under the names of vanilla's IdMappers by id, which upstream's colour provider lookups shadow (in SRG's names here): Fabricated's in-game mod looks providers up in Forge's maps instead of upstream's methods (COLOR-1)."
+      "reason": "Forge 47 keeps block and item colour providers in maps by registry holder under the names of vanilla's IdMappers by id, which upstream's colour provider lookups shadow (in SRG's names here): Fabricated's in-game mod looks providers up in Forge's maps instead of upstream's methods (COLOR-1). Forge 47 also resolves a core shader program's namespace, and its stages' and imports' (ShaderInstance's constructor by ResourceLocation, ForgeHooksClient.getShaderImportLocation), where upstream's shader mixins rewrite the same names for Fabric's shader programs: applied on top of Forge's, the stage rewrite doubled the namespace (forge:forge:shaders/core/...), and the client stopped at its first resource reload. Fabric's namespaced shader programs load through Forge's resolution instead."
     },
     "fabric-tag-api-v1": {
       "plan": "passthrough",
