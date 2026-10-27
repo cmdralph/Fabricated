@@ -4112,11 +4112,251 @@ class MixinPreflightTest {
 		assertTrue(none.stream().noneMatch(n -> n.message().contains("lambda$static$3")), none.toString());
 	}
 
+	@Test
+	void aLambdaNamedByVanillasSrgNameIsTheOneForgesPatchedClassCreatesInItsPlace() throws Exception {
+		// LAMBDA-6: Forge 47 names vanilla's lambdas by their SRG names (m_289088_), which its patched classes, compiled
+		// from Forge's sources, don't keep: theirs carry javac's names, numbered after the lambdas the patch adds.
+		Map<String, byte[]> vanilla = Map.of(TARGET, lambdaCreatingTarget(n -> "m_" + (1000 + n) + "_", 1, 2, 3));
+		ClassIndex forge = new ClassIndex(Map.of(TARGET, lambdaCreatingTarget(n -> "lambda$static$" + n, 99, 1, 2, 3))::get);
+		String handlerDesc = "(I" + "Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;)V";
+		byte[] original = mixin("com/example/mixin/Bed", false, cw -> {
+			for (String[] hook : new String[][] {{"third", "m_1002_"}, {"first", "m_1000_(I)Z"}}) {
+				MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, hook[0], handlerDesc, null, null);
+				AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
+				AnnotationVisitor methods = ann.visitArray("method");
+				methods.visit(null, hook[1]);
+				methods.visitEnd();
+				AnnotationVisitor ats = ann.visitArray("at");
+				AnnotationVisitor at = ats.visitAnnotation(null, AT);
+				at.visit("value", "HEAD");
+				at.visitEnd();
+				ats.visitEnd();
+				ann.visitEnd();
+				mv.visitCode();
+				mv.visitInsn(Opcodes.RETURN);
+				mv.visitMaxs(0, 2);
+				mv.visitEnd();
+			}
+		});
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Bed", original));
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Bed"));
+		assertTrue(preflight(forge, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).stream()
+				.anyMatch(f -> f.message().contains("m_1002_, which does not exist")), "Forge's class has no method of vanilla's name");
+		assertTrue(preflight(forge, mod::get, ClassBytesSource.EMPTY, false)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty(), "without vanilla's code, nothing tells");
+
+		List<PreflightFinding> notes = new ArrayList<>();
+		Map<String, byte[]> repaired = new MixinPreflight(forge, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, vanilla::get)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
+		assertEquals(2, notes.size(), notes.toString());
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired.get("com/example/mixin/Bed.class")).accept(node, 0);
+		Map<String, Object> selected = new HashMap<>();
+		for (MethodNode m : node.methods) {
+			AnnotationNode inject = Annotations.find(m, INJECT);
+			if (inject != null) selected.put(m.name, Annotations.value(inject, "method"));
+		}
+		assertEquals(List.of("lambda$static$3(I)Z"), selected.get("third"), "vanilla's last lambda, after the one the patch added");
+		assertEquals(List.of("lambda$static$1(I)Z"), selected.get("first"));
+		mod.put("com/example/mixin/Bed", repaired.get("com/example/mixin/Bed.class"));
+		assertTrue(preflight(forge, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).stream()
+				.noneMatch(f -> f.message().contains("does not exist")));
+
+		// A lambda of that name the build has in vanilla's place is the one meant: nothing is moved.
+		ClassIndex kept = new ClassIndex(Map.of(TARGET, lambdaCreatingTarget(n -> "m_" + (1000 + n) + "_", 1, 2, 3))::get);
+		List<PreflightFinding> none = new ArrayList<>();
+		new MixinPreflight(kept, InstalledClasses.NONE, Map.of("com/example/mixin/Bed", original)::get, ClassBytesSource.EMPTY, false, true, vanilla::get)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), none);
+		assertTrue(none.stream().noneMatch(n -> n.message().contains("numbers differently")), none.toString());
+
+		// Forge changed the lambda's code (checkBedExists asks isBed): it is the one lambda of its interface and
+		// descriptor the method makes, in vanilla's class and in Forge's.
+		byte[] first = mixin("com/example/mixin/Bed", false, cw -> inject(cw, "h", "m_1000_", "HEAD", null, 1, null));
+		Map<String, byte[]> single = Map.of(TARGET, lambdaCreatingTarget(n -> "m_" + (1000 + n) + "_", 5));
+		List<PreflightFinding> patched = new ArrayList<>();
+		Map<String, byte[]> moved = new MixinPreflight(new ClassIndex(Map.of(TARGET, lambdaCreatingTarget(n -> "lambda$static$" + n, 6))::get),
+				InstalledClasses.NONE, Map.of("com/example/mixin/Bed", first)::get, ClassBytesSource.EMPTY, false, true, single::get)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), patched);
+		assertEquals(1, patched.size(), patched.toString());
+		ClassNode movedNode = new ClassNode();
+		new ClassReader(moved.get("com/example/mixin/Bed.class")).accept(movedNode, 0);
+		assertEquals(List.of("lambda$static$0(I)Z"), Annotations.value(Annotations.find(movedNode.methods.getFirst(), INJECT), "method"));
+		// Forge changed both lambdas (MouseHandler's press and release): the method makes the same kinds in the same order.
+		byte[] second = mixin("com/example/mixin/Bed", false, cw -> inject(cw, "h", "m_1001_", "HEAD", null, 1, null));
+		Map<String, byte[]> pair = Map.of(TARGET, lambdaCreatingTarget(n -> "m_" + (1000 + n) + "_", 5, 6));
+		List<PreflightFinding> both = new ArrayList<>();
+		Map<String, byte[]> byPlace = new MixinPreflight(new ClassIndex(Map.of(TARGET, lambdaCreatingTarget(n -> "lambda$static$" + n, 7, 8))::get),
+				InstalledClasses.NONE, Map.of("com/example/mixin/Bed", second)::get, ClassBytesSource.EMPTY, false, true, pair::get)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), both);
+		assertEquals(1, both.size(), both.toString());
+		ClassNode byPlaceNode = new ClassNode();
+		new ClassReader(byPlace.get("com/example/mixin/Bed.class")).accept(byPlaceNode, 0);
+		assertEquals(List.of("lambda$static$1(I)Z"), Annotations.value(Annotations.find(byPlaceNode.methods.getFirst(), INJECT), "method"));
+		// With two of them in Forge's class where vanilla's makes one, which one it is can't be told.
+		List<PreflightFinding> two = new ArrayList<>();
+		new MixinPreflight(new ClassIndex(Map.of(TARGET, lambdaCreatingTarget(n -> "lambda$static$" + n, 6, 7))::get), InstalledClasses.NONE,
+				Map.of("com/example/mixin/Bed", first)::get, ClassBytesSource.EMPTY, false, true, single::get)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), two);
+		assertTrue(two.isEmpty(), two.toString());
+
+		// A lambda another lambda creates (TagsProvider's in its run lambda) is found in its creator's place, here with
+		// Forge's creator making one more lambda before it.
+		byte[] nestedHook = mixin("com/example/mixin/Bed", false, cw -> inject(cw, "h", "m_3_", "HEAD", null, 1, null));
+		Map<String, byte[]> nestedVanilla = Map.of(TARGET, nestedLambdaTarget("m_2_", "m_3_", false));
+		List<PreflightFinding> nested = new ArrayList<>();
+		Map<String, byte[]> nestedRepaired = new MixinPreflight(
+				new ClassIndex(Map.of(TARGET, nestedLambdaTarget("lambda$m_1_$0", "lambda$m_1_$2", true))::get), InstalledClasses.NONE,
+				Map.of("com/example/mixin/Bed", nestedHook)::get, ClassBytesSource.EMPTY, false, true, nestedVanilla::get)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), nested);
+		assertEquals(1, nested.size(), nested.toString());
+		ClassNode nestedNode = new ClassNode();
+		new ClassReader(nestedRepaired.get("com/example/mixin/Bed.class")).accept(nestedNode, 0);
+		assertEquals(List.of("lambda$m_1_$2(I)Z"), Annotations.value(Annotations.find(nestedNode.methods.getFirst(), INJECT), "method"));
+
+		// Forge's build gives vanilla's SRG name to the lambda javac numbered as Mojang's names number vanilla's, here the
+		// one its patch added (MouseHandler's m_168078_): the name is followed to vanilla's lambda all the same.
+		Map<String, byte[]> twoVanilla = Map.of(TARGET, lambdaCreatingTarget(n -> "m_" + (1000 + n) + "_", 1, 2));
+		ClassIndex renamed = new ClassIndex(Map.of(TARGET, lambdaCreatingTarget(n -> n == 0 ? "m_1000_" : "lambda$static$" + n, 99, 1, 2))::get);
+		byte[] firstHook = mixin("com/example/mixin/Bed", false, cw -> inject(cw, "h", "m_1000_", "HEAD", null, 1, null));
+		List<PreflightFinding> repointed = new ArrayList<>();
+		Map<String, byte[]> repointedClass = new MixinPreflight(renamed, InstalledClasses.NONE, Map.of("com/example/mixin/Bed", firstHook)::get,
+				ClassBytesSource.EMPTY, false, true, twoVanilla::get).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), repointed);
+		assertEquals(1, repointed.size(), repointed.toString());
+		ClassNode repointedNode = new ClassNode();
+		new ClassReader(repointedClass.get("com/example/mixin/Bed.class")).accept(repointedNode, 0);
+		assertEquals(List.of("lambda$static$1(I)Z"), Annotations.value(Annotations.find(repointedNode.methods.getFirst(), INJECT), "method"));
+
+		// Vanilla's lambda is static, Forge's takes this (its patch calls Forge's hooks there): they aren't the same lambda.
+		List<PreflightFinding> instance = new ArrayList<>();
+		new MixinPreflight(new ClassIndex(Map.of(TARGET, oneLambdaTarget("lambda$m_5_$0", false))::get), InstalledClasses.NONE,
+				Map.of("com/example/mixin/Bed", firstHook)::get, ClassBytesSource.EMPTY, false, true, Map.of(TARGET, oneLambdaTarget("m_1000_", true))::get)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), instance);
+		assertTrue(instance.isEmpty(), instance.toString());
+	}
+
+	@Test
+	void anInjectorWhoseHandlerIsStaticWhereItsTargetIsntIsReported() throws Exception {
+		// LAMBDA-6: Mixin refuses an @Inject whose handler isn't static where its target is, and stops the game.
+		Map<String, byte[]> mod = Map.of("com/example/mixin/Bed", mixin("com/example/mixin/Bed", false, cw -> inject(cw, "h", "m_1000_", "HEAD", null, 1, null)));
+		List<PreflightFinding> findings = preflight(new ClassIndex(Map.of(TARGET, oneLambdaTarget("m_1000_", true))::get), mod::get, ClassBytesSource.EMPTY, false)
+				.check("test.mixins.json", MixinConfigFile.parse(config(true, "Bed")), Refmap.EMPTY, Set.of());
+		assertTrue(findings.stream().anyMatch(f -> f.message().contains("@Inject handler h isn't static where m_1000_(I)Z")), findings.toString());
+
+		// A static handler on a method that takes this: SpongePowered's 0.8.5 (Forge 47) refuses it; from 0.8.6, as in
+		// Fabric's Mixin, it applies (Fabric API's furnace hook on Forge 66, whose consumeFuel takes this).
+		Map<String, byte[]> staticHook = Map.of("com/example/mixin/Bed", mixin("com/example/mixin/Bed", false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "h", "(ILorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;)V",
+					null, null);
+			AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "m_1000_");
+			methods.visitEnd();
+			AnnotationVisitor ats = ann.visitArray("at");
+			AnnotationVisitor at = ats.visitAnnotation(null, "Lorg/spongepowered/asm/mixin/injection/At;");
+			at.visit("value", "HEAD");
+			at.visitEnd();
+			ats.visitEnd();
+			ann.visitEnd();
+			mv.visitEnd();
+		}));
+		ClassIndex instanceTarget = new ClassIndex(Map.of(TARGET, oneLambdaTarget("m_1000_", false))::get);
+		List<PreflightFinding> on085 = new MixinPreflight(instanceTarget, InstalledClasses.NONE, staticHook::get, ClassBytesSource.EMPTY, false, true,
+				ClassBytesSource.EMPTY, "Forge", false, MixinPreflight.ConstructorInjects.RETURNS_ONLY, false, true)
+				.check("test.mixins.json", MixinConfigFile.parse(config(true, "Bed")), Refmap.EMPTY, Set.of());
+		assertTrue(on085.stream().anyMatch(f -> f.message().contains("@Inject handler h is static where m_1000_(I)Z")), on085.toString());
+		List<PreflightFinding> on087 = new MixinPreflight(instanceTarget, InstalledClasses.NONE, staticHook::get, ClassBytesSource.EMPTY, false, true,
+				ClassBytesSource.EMPTY, "Forge", true, MixinPreflight.ConstructorInjects.UNSAFE_POINTS, false, false)
+				.check("test.mixins.json", MixinConfigFile.parse(config(true, "Bed")), Refmap.EMPTY, Set.of());
+		assertTrue(on087.isEmpty(), on087.toString());
+	}
+
+	/**
+	 * {@link #TARGET} whose {@code m_5_()V} creates one {@code IntPredicate} lambda {@code name}, static or taking
+	 * {@code this}.
+	 */
+	private static byte[] oneLambdaTarget(String name, boolean isStatic) {
+		ClassWriter cw = new ClassWriter(0);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		Handle metafactory = new Handle(Opcodes.H_INVOKESTATIC, "java/lang/invoke/LambdaMetafactory", "metafactory",
+				"(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodType;"
+						+ "Ljava/lang/invoke/MethodHandle;Ljava/lang/invoke/MethodType;)Ljava/lang/invoke/CallSite;", false);
+		MethodVisitor creator = cw.visitMethod(Opcodes.ACC_PUBLIC, "m_5_", "()V", null, null);
+		creator.visitCode();
+		if (!isStatic) creator.visitVarInsn(Opcodes.ALOAD, 0);
+		creator.visitInvokeDynamicInsn("test", isStatic ? "()Ljava/util/function/IntPredicate;" : "(L" + TARGET + ";)Ljava/util/function/IntPredicate;",
+				metafactory, Type.getType("(I)Z"), new Handle(isStatic ? Opcodes.H_INVOKESTATIC : Opcodes.H_INVOKESPECIAL, TARGET, name, "(I)Z", false),
+				Type.getType("(I)Z"));
+		creator.visitInsn(Opcodes.POP);
+		creator.visitInsn(Opcodes.RETURN);
+		creator.visitMaxs(1, 1);
+		creator.visitEnd();
+		MethodVisitor body = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_SYNTHETIC | (isStatic ? Opcodes.ACC_STATIC : 0), name, "(I)Z", null, null);
+		body.visitCode();
+		body.visitInsn(Opcodes.ICONST_1);
+		body.visitInsn(Opcodes.IRETURN);
+		body.visitMaxs(1, 2);
+		body.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	/**
+	 * {@link #TARGET} whose {@code m_1_()V} creates a {@code Runnable} lambda {@code outer}, which creates an
+	 * {@code IntPredicate} lambda {@code inner}, after a {@code Supplier} lambda {@code lambda$m_1_$1} when {@code extra}.
+	 */
+	private static byte[] nestedLambdaTarget(String outer, String inner, boolean extra) {
+		ClassWriter cw = new ClassWriter(0);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		Handle metafactory = new Handle(Opcodes.H_INVOKESTATIC, "java/lang/invoke/LambdaMetafactory", "metafactory",
+				"(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodType;"
+						+ "Ljava/lang/invoke/MethodHandle;Ljava/lang/invoke/MethodType;)Ljava/lang/invoke/CallSite;", false);
+		MethodVisitor m1 = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "m_1_", "()V", null, null);
+		m1.visitCode();
+		m1.visitInvokeDynamicInsn("run", "()Ljava/lang/Runnable;", metafactory, Type.getType("()V"),
+				new Handle(Opcodes.H_INVOKESTATIC, TARGET, outer, "()V", false), Type.getType("()V"));
+		m1.visitInsn(Opcodes.POP);
+		m1.visitInsn(Opcodes.RETURN);
+		m1.visitMaxs(1, 0);
+		m1.visitEnd();
+		MethodVisitor out = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, outer, "()V", null, null);
+		out.visitCode();
+		if (extra) {
+			out.visitInvokeDynamicInsn("get", "()Ljava/util/function/Supplier;", metafactory, Type.getType("()Ljava/lang/Object;"),
+					new Handle(Opcodes.H_INVOKESTATIC, TARGET, "lambda$m_1_$1", "()Ljava/lang/Object;", false), Type.getType("()Ljava/lang/Object;"));
+			out.visitInsn(Opcodes.POP);
+			MethodVisitor supplier = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, "lambda$m_1_$1", "()Ljava/lang/Object;", null, null);
+			supplier.visitCode();
+			supplier.visitInsn(Opcodes.ACONST_NULL);
+			supplier.visitInsn(Opcodes.ARETURN);
+			supplier.visitMaxs(1, 0);
+			supplier.visitEnd();
+		}
+		out.visitInvokeDynamicInsn("test", "()Ljava/util/function/IntPredicate;", metafactory, Type.getType("(I)Z"),
+				new Handle(Opcodes.H_INVOKESTATIC, TARGET, inner, "(I)Z", false), Type.getType("(I)Z"));
+		out.visitInsn(Opcodes.POP);
+		out.visitInsn(Opcodes.RETURN);
+		out.visitMaxs(1, 0);
+		out.visitEnd();
+		MethodVisitor in = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, inner, "(I)Z", null, null);
+		in.visitCode();
+		in.visitInsn(Opcodes.ICONST_1);
+		in.visitInsn(Opcodes.IRETURN);
+		in.visitMaxs(1, 1);
+		in.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
 	/**
 	 * {@link #TARGET} whose static initializer creates a lambda {@code lambda$static$N} for each constant, in order, each
 	 * an {@code IntPredicate} body {@code (I)Z} returning its constant.
 	 */
 	private static byte[] lambdaCreatingTarget(int... constants) {
+		return lambdaCreatingTarget(n -> "lambda$static$" + n, constants);
+	}
+
+	/** {@link #lambdaCreatingTarget(int...)} with the {@code N}th lambda named {@code name.apply(N)}. */
+	private static byte[] lambdaCreatingTarget(java.util.function.IntFunction<String> name, int... constants) {
 		ClassWriter cw = new ClassWriter(0);
 		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
 		Handle metafactory = new Handle(Opcodes.H_INVOKESTATIC, "java/lang/invoke/LambdaMetafactory", "metafactory",
@@ -4126,9 +4366,9 @@ class MixinPreflightTest {
 		clinit.visitCode();
 		for (int n = 0; n < constants.length; n++) {
 			clinit.visitInvokeDynamicInsn("test", "()Ljava/util/function/IntPredicate;", metafactory, Type.getType("(I)Z"),
-					new Handle(Opcodes.H_INVOKESTATIC, TARGET, "lambda$static$" + n, "(I)Z", false), Type.getType("(I)Z"));
+					new Handle(Opcodes.H_INVOKESTATIC, TARGET, name.apply(n), "(I)Z", false), Type.getType("(I)Z"));
 			clinit.visitInsn(Opcodes.POP);
-			MethodVisitor body = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, "lambda$static$" + n, "(I)Z", null, null);
+			MethodVisitor body = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, name.apply(n), "(I)Z", null, null);
 			body.visitCode();
 			body.visitIntInsn(Opcodes.BIPUSH, constants[n]);
 			body.visitInsn(Opcodes.IRETURN);

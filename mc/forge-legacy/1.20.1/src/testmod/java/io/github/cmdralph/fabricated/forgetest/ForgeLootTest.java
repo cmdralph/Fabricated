@@ -9,6 +9,7 @@ import net.fabricmc.fabric.api.loot.v1.FabricLootSupplier;
 import net.fabricmc.fabric.api.loot.v1.event.LootTableLoadingCallback;
 import net.fabricmc.fabric.api.loot.v2.LootTableEvents;
 import net.fabricmc.fabric.api.loot.v2.LootTableSource;
+import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.class_1802;
 import net.minecraft.class_2960;
 import net.minecraft.class_52;
@@ -24,19 +25,25 @@ import net.minecraft.class_79;
  * deprecated v1 event (its builders' methods called by upstream's names, which their own return type keeps out of
  * Intermediary's), must be in the table the game keeps, and the test mod's own table, replaced in REPLACE, must be the
  * replacement; each event must see where its table came from (vanilla's data, a mod's, a replacement). The tables are
- * read once all have loaded, through the v1 API, whose mixins read Forge's list too. Fabric API's loot classes and the
- * game's are named as a Fabric mod for 1.20.1 names them (the stand-ins in src/testmodstubs).
+ * read once all have loaded, through the v1 API, whose mixins read Forge's list too. With Fabric API's resource
+ * conditions module, a table of the test mod's whose {@code fabric:load_conditions} name a mod that isn't there must not
+ * load: upstream's hook into the loot data manager's parsing lambda, which Forge 47's class names otherwise, checks
+ * them (LAMBDA-6). Fabric API's loot classes and the game's are named as a Fabric mod for 1.20.1 names them (the
+ * stand-ins in src/testmodstubs).
  */
 public final class ForgeLootTest {
 	private static final class_2960 DIRT = new class_2960("minecraft", "blocks/dirt");
 	/** The test mod's table (in its data), which REPLACE swaps for one without pools. */
 	private static final class_2960 REPLACED = new class_2960(ForgeTestMod.MOD_ID, "fabric_replace");
+	/** The test mod's table whose load conditions fail, which must not load with Fabric API's resource conditions module. */
+	private static final class_2960 CONDITIONED = new class_2960(ForgeTestMod.MOD_ID, "fabric_conditioned");
 
 	private static int dirtPools = -1;
 	private static LootTableSource dirtReplaceSource;
 	private static LootTableSource dirtModifySource;
 	private static LootTableSource ownReplaceSource;
 	private static LootTableSource ownModifySource;
+	private static boolean conditionedLoaded;
 	private static boolean logged;
 
 	private ForgeLootTest() {
@@ -78,6 +85,8 @@ public final class ForgeLootTest {
 					tableBuilder.method_336(class_55.method_347().method_351(class_77.method_411(class_1802.field_20391)));
 				} else if (REPLACED.equals(id)) {
 					ownModifySource = source;
+				} else if (CONDITIONED.equals(id)) {
+					conditionedLoaded = true;
 				}
 			} catch (RuntimeException | LinkageError e) {
 				ForgeTestMod.LOGGER.warn("FABRICATED-FORGE-TEST loot: MODIFY failed for {}", id, e);
@@ -117,6 +126,13 @@ public final class ForgeLootTest {
 			ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST loot OK");
 		} else {
 			ForgeTestMod.LOGGER.warn("FABRICATED-FORGE-TEST loot: not in the tables the game keeps: {}", failed);
+		}
+		if (FabricLoader.getInstance().isModLoaded("fabric-resource-conditions-api-v1")) {
+			if (conditionedLoaded) {
+				ForgeTestMod.LOGGER.warn("FABRICATED-FORGE-TEST loot conditions: a table whose fabric:load_conditions fail was loaded");
+			} else {
+				ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST loot conditions OK");
+			}
 		}
 	}
 }

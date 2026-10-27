@@ -3,6 +3,29 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-10-27: Hooks into the lambdas of Forge 47's patched classes
+
+- **LAMBDA-6** (Forge 47): Forge's patched classes are compiled from its sources, so their lambdas carry javac's names
+  where Fabric mods name vanilla's by their SRG names, and pre-flight left such hooks out. It now finds the lambda
+  Forge's class creates in vanilla's place, through vanilla's SRG class. With Fabric API, an entity waking from a block
+  `ALLOW_BED` admits now gets the occupation event, a loot table's `fabric:load_conditions` are checked, and the screen
+  tick events and data generation's tag hooks apply: the server leaves out 17 hooks instead of 21.
+- **REMAP-3** (Forge 47): a refmap's keys kept the intermediary names translation rewrote in the annotations, so
+  selectors carrying the mod's names in their descriptor resolved to nothing (Fabric API's mouse and key hooks).
+- The first form of LAMBDA-6 with REMAP-3 stopped the Forge 47 client with Fabric API as it started (run
+  40486499715): the mouse hooks resolved to Forge's lambdas of vanilla's SRG names, which take `this`, and Mixin 0.8.5
+  refused their static handlers. Pre-flight now checks a handler's static modifier as the running Mixin does and leaves
+  out a hook it would refuse; Mixin 0.8.6 on, and Fabric's, take a static `@Inject` handler on a method that takes
+  `this` (Fabric API's furnace hook on Forge 66).
+- The Forge 47 test mod checks that a loot table whose conditions fail doesn't load, and that the hay block is
+  unoccupied once the armor stand wakes.
+- **LAMBDA-7**, open: on the Forge 47 client, Fabric's screen mouse and key events stay left out, as Forge's patch made
+  the mouse lambdas take `this` and reordered the key lambda's captured values.
+- Verification: build-forge-legacy run 40493629134, build-forge run 40493632747 and build run 40493637403 on `1c6acbe`
+  pass, with both new checks on Forge 47 with Fabric API, the Forge 47 client with Fabric API passing, and Forge 61
+  to 66 and NeoForge leaving out the hooks they did. Locally the Forge 47, 61 and 66 servers with Fabric API matched
+  the runs before but for the hooks LAMBDA-6 applies.
+
 ## 2026-10-27: Fabric's block break and sleep events on every Forge version
 
 - **BREAK-1** (Forge 47, 61 to 66): Forge's `destroyBlock` leaves the calls upstream's block break hooks look for to a
