@@ -507,6 +507,9 @@ look for, so the in-game mod fires Fabric's block break events and asks its bed 
 events at Forge's calls (BREAK-1, SLEEP-1; without that, a block a Fabric mod admitted as a bed became a red bed). Its
 hooks use no MixinExtras sugar, which Forge's Mixin can't serve without Fabric API installed. Fabric's use and attack
 callbacks need no bridge: upstream's hooks apply to Forge's interaction code, as the test mod checks on all four.
+Forge 61's and 64's `hurtServer` drop vanilla's copy of the damage before blocking, which upstream's after-damage hook
+reads (by name on Forge 64, where it was left out, and by position on Forge 61, where it read the damage a shield
+blocked), so the in-game mod fires that event there (DAMAGE-1).
 
 Order: `main` first, always. L1 serves both branches; after it, L2 to L5 and F2 to F5 can proceed in either order
 or in parallel, as the owner sets priorities. The two branches' adapters share their shape (forgespi 7 and 8 have

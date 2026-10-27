@@ -1064,6 +1064,10 @@ by the server runs (the colours and screen input by the client runs):
   may sleep in the daytime `EntitySleepEvents.ALLOW_SLEEP_TIME` allows (with Fabric API, server and client): Forge 47
   checks its own sleep time event where upstream's hooks look for the day check, so the in-game mod answers it from
   Fabric's (SLEEP-2). Fabric API for 1.21.11 and later has no such event.
+- **Damage:** an entity hurt through the game's own `hurtServer` asks `ServerLivingEntityEvents.ALLOW_DAMAGE`, whose
+  refusal holds, and fires `AFTER_DAMAGE` with the damage it was dealt and the damage it took (Forge 61 to 66, with
+  Fabric API, server and client; Fabric API 0.92.12 has no `AFTER_DAMAGE`). Forge 61's and 64's `hurtServer` drop the
+  copy of the dealt damage upstream's hook reads, so the in-game mod fires the event there (DAMAGE-1).
 - **Use and attack:** a player's uses of an item, a block and an entity, and its attacks on a block and an entity, ask
   `UseItemCallback`, `UseBlockCallback`, `UseEntityCallback`, `AttackBlockCallback` and `AttackEntityCallback` through
   Forge's own code, and a refusal holds (all five, with Fabric API, server and client). Upstream's hooks apply as they

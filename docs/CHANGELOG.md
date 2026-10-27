@@ -3,6 +3,18 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-10-27: Fabric's after-damage event on Forge 61 and 64
+
+- **DAMAGE-1** (Forge 61, 64): Fabric API fires `ServerLivingEntityEvents.AFTER_DAMAGE` at the end of `hurtServer`,
+  reading the damage dealt from vanilla's copy of it before blocking, which Forge 61's and 64's patches drop. On Forge
+  64 upstream names the copy, so the hook was left out and the event never ran. On Forge 61 it takes the second float
+  local, there the damage a shield blocked, so the event reported that as the damage dealt. The plans now skip the
+  hook, and a mixin of the in-game mod fires the event with the damage `applyItemBlocking` is asked about. Forge 65 and
+  66 keep the copy, and upstream's hook applies there.
+- The forge test mod hurts a pig wearing a helmet twice: `ALLOW_DAMAGE` refuses the first hit, whose damage must not
+  reach the pig, and the second, a falling block's, must fire `AFTER_DAMAGE` with 2.0 dealt and 1.5 taken.
+- Verification: build-forge run 40544079471 on `1f6d837`.
+
 ## 2026-10-27: Fabric's use and attack callbacks on Forge, and its sleep time event on Forge 47
 
 - **SLEEP-2** (Forge 47): Fabric API asks `EntitySleepEvents.ALLOW_SLEEP_TIME` by redirecting the day check as a player
