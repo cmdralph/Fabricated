@@ -3,6 +3,19 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-10-28: Sharing packs with Sinytra's ecosystem (task 3 of the v0.5.x update)
+
+- **The specification, rechecked** against what packs hold (roadmap, *Rethink, 2026-10-28*): Fabricated replaces
+  Sinytra Connector and shares packs with its libraries. Who owns what, in one table: Connector and a second Fabricated
+  jar refused; Forgified Fabric API's modules (and those NeoForge mods bundle) theirs; Fabric Loader's API always
+  Fabricated's; Kotlin the platform's; Connector placeholders loaded as the Fabric mods they are.
+- **Considered and not done:** running beside Connector, keeping Fabricated's modules over Forgified Fabric API's,
+  requiring Forgified Fabric API, patching its behaviour where it differs (PROVIDER-5).
+- **Noted for the Forge branches:** their loaders still have to call the shared provider policy and refusals; whether
+  Forge 47 packs mix Connector or Forgified Fabric API with Fabricated is UNVERIFIED.
+- **Corrected:** the roadmap's statements of the one-tree model (its vision, the 2026-10-27 rethink's first item, the
+  parity table), now each platform's own branch. No code changed.
+
 ## 2026-10-28: Coexistence fixes and refusals (task 4 of the v0.5.x update)
 
 - **The reference pack** (the owner's 1.21.1 log, report and mod list: Forgified Fabric API, Sodium and about 130
