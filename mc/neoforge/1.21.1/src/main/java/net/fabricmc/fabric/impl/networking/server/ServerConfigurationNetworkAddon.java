@@ -13,7 +13,7 @@ import net.fabricmc.fabric.api.networking.v1.PacketSender;
 import net.fabricmc.fabric.api.networking.v1.ServerConfigurationNetworking;
 import net.fabricmc.fabric.impl.networking.ChanneledNetworkAddon;
 import net.fabricmc.fabric.impl.networking.PayloadTypeRegistryImpl;
-import net.fabricmc.fabric.mixin.networking.accessor.ServerCommonPacketListenerImplAccessor;
+import net.fabricmc.fabric.mixin.networking.accessor.ServerCommonNetworkHandlerAccessor;
 
 /** Configuration-phase networking state of one connection. */
 public final class ServerConfigurationNetworkAddon extends ChanneledNetworkAddon<ServerConfigurationNetworking.ConfigurationPacketHandler<?>> {
@@ -44,7 +44,7 @@ public final class ServerConfigurationNetworkAddon extends ChanneledNetworkAddon
 	}
 
 	public MinecraftServer server() {
-		return ((ServerCommonPacketListenerImplAccessor) this.listener).getServer();
+		return ((ServerCommonNetworkHandlerAccessor) this.listener).getServer();
 	}
 
 	/** Dispatches a payload NeoForge decoded on the network thread (as Fabric documents for this phase). */

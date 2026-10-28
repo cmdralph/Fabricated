@@ -4,7 +4,7 @@ import org.spongepowered.asm.mixin.Mixin;
 
 import io.github.cmdralph.fabricated.neoforge.networking.NetworkingBridge;
 import net.fabricmc.fabric.api.networking.v1.FabricServerConfigurationNetworkHandler;
-import net.fabricmc.fabric.mixin.networking.accessor.ServerCommonPacketListenerImplAccessor;
+import net.fabricmc.fabric.mixin.networking.accessor.ServerCommonNetworkHandlerAccessor;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ConfigurationTask;
 import net.minecraft.server.network.ServerConfigurationPacketListenerImpl;
@@ -24,7 +24,7 @@ abstract class ServerConfigurationPacketListenerImplMixin implements FabricServe
 	@Override
 	public void completeTask(ConfigurationTask.Type key) {
 		ServerConfigurationPacketListenerImpl listener = (ServerConfigurationPacketListenerImpl) (Object) this;
-		MinecraftServer server = ((ServerCommonPacketListenerImplAccessor) listener).getServer();
+		MinecraftServer server = ((ServerCommonNetworkHandlerAccessor) listener).getServer();
 		// Fabric mods finish tasks from configuration handlers, which run on the network thread; the next task must start
 		// on the server thread (vanilla's spawn preparation loads chunks).
 		if (server.isSameThread()) {
