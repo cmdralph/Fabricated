@@ -24,4 +24,10 @@ public interface FabricLauncher {
 	 * them to {@code allowedPrefixes}.
 	 */
 	void addToClassPath(Path path, String... allowedPrefixes);
+
+	/**
+	 * Loads a class with the game's class loader, without initializing it, as Fabric Loader's Knot does (OneConfig loads
+	 * the entrypoint of a jar it added to the class path so).
+	 */
+	Class<?> loadIntoTarget(String name) throws ClassNotFoundException;
 }

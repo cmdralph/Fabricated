@@ -1024,6 +1024,25 @@ code can do without that mixin:
 A mod disabled this way can still be loaded without the mixin, by naming it in `skipMixins` in
 `config/fabricated.json` (the report's suggestion gives the exact entry).
 
+What this can't match of Fabric, seen in the owner's reference pack (2026-10-28):
+
+- **A field NeoForge retyped.** NeoForge makes `KeyMapping.MAP` its own `KeyMappingLookup`, not vanilla's `Map`, so an
+  accessor to it as a `Map` is left out, and the mod's call to it throws `NoSuchMethodError`. OneConfig's keybind
+  registry accessor (`oneconfig$map`) is one: OneConfig catches it, warns that its keybinds may shadow Minecraft's, and
+  goes on. Mixin's "Renaming @Accessor method ..." lines for OneConfig's other static accessors are Mixin's own
+  naming of static interface accessors, as on Fabric.
+- **Interfaces a mod adds to a library class.** adventure-platform-fabric gives authlib's `GameProfile` Adventure's
+  `Identity` and Brigadier's `CommandSyntaxException` its `ComponentMessageThrowable`; NeoForge loads those classes
+  without mixin support, and the mod's API casts to the interfaces, so it is disabled. Its other mixins then don't
+  apply either, among them the one giving Minecraft's `Component` Adventure's `ComponentLike`: a mod calling
+  `Component.asComponent()` throws `NoSuchMethodError` there (OneConfig's chat handling). Naming those two mixins in
+  `skipMixins` loads adventure-platform-fabric, its `identity(GameProfile)` and command-exception helpers then
+  throwing `ClassCastException` where called. (LIB-1 serves such a mixin only when the interfaces are the mod's own.)
+- **A jar a mod adds to the class path, in a package a mod's module has.** NeoForge's module class loader looks for a
+  class in a package a module has only in that module, so OneConfig's Mod Menu API shim, in a package of OneConfig's
+  own, doesn't load; Fabricated provides Mod Menu's API itself. Fabric Loader's `loadIntoTarget`, which OneConfig
+  loads it with, is provided.
+
 ### What this means for Fabric mods
 
 A Fabric mod works today if it needs only the Fabric Loader API and the **native** or **loads** modules
