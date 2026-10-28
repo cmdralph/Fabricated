@@ -62,9 +62,9 @@ public final class FabricCandidateLocator implements IModFileCandidateLocator {
 			// Not a zip or unreadable: leave it to NeoForge, which reports broken files itself.
 			return false;
 		}
-		if (MultiLoaderJars.forNeoForge(jar, ArchiveLimits.DEFAULTS)) return false;
-		LOGGER.info("Fabricated loads {} as a Fabric mod: it declares a NeoForge mod too, but no class of it for NeoForge to start (MULTI-1)",
-				jar.getFileName());
+		String reason = MultiLoaderJars.fabricReason(jar, ArchiveLimits.DEFAULTS);
+		if (reason == null) return false;
+		LOGGER.info("Fabricated loads {} as a Fabric mod: {}", jar.getFileName(), reason);
 		return true;
 	}
 

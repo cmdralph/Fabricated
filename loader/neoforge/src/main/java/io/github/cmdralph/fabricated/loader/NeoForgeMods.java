@@ -1,6 +1,7 @@
 package io.github.cmdralph.fabricated.loader;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -53,12 +54,14 @@ final class NeoForgeMods {
 	static Found of(List<IModFile> files, boolean nested, List<InstalledClasses.Jar> first) {
 		List<Pipeline.NeoForgeMod> mods = new ArrayList<>();
 		List<InstalledClasses.Jar> jars = new ArrayList<>(first);
+		TomlParser parser = new TomlParser();
 		for (IModFile file : files) {
 			List<IModInfo> infos = file.getModInfos();
+			Map<String, List<String>> provides = infos.isEmpty() ? Map.of() : provides(file, parser);
 			for (IModInfo mod : infos) {
 				if (mod.getModId().equals("minecraft")) continue;
-				mods.add(new Pipeline.NeoForgeMod(mod.getModId(), mod.getVersion().toString(), mod.getDisplayName(), plain(mod.getModProperties()),
-						List.of(file.getFilePath())));
+				mods.add(new Pipeline.NeoForgeMod(mod.getModId(), mod.getVersion().toString(), mod.getDisplayName(),
+						withProvides(plain(mod.getModProperties()), provides.getOrDefault(mod.getModId(), List.of())), List.of(file.getFilePath())));
 			}
 			if (!infos.isEmpty() && infos.stream().noneMatch(mod -> GAME.contains(mod.getModId()))) {
 				jars.add(new InstalledClasses.Jar(infos.getFirst().getDisplayName(), name -> Fml.contains(file, name + ".class"),
@@ -66,7 +69,6 @@ final class NeoForgeMods {
 			}
 		}
 		if (!nested) return new Found(mods, InstalledClasses.NONE);
-		TomlParser parser = new TomlParser();
 		for (IModFile file : files) {
 			Path path = file.getFilePath();
 			if (!Fml.contains(file, NestedNeoForgeJars.METADATA) || !Files.isRegularFile(path)) continue;
@@ -102,9 +104,45 @@ final class NeoForgeMods {
 			Object properties = toml.get(List.of("modproperties", id));
 			// Its jar is inside the container, which NeoForge extracts later: to Fabric code, the container is its root.
 			mods.add(new Pipeline.NeoForgeMod(id, version.equals(JAR_VERSION) ? jarVersion : version, name,
-					properties instanceof UnmodifiableConfig config ? plain(config.valueMap()) : Map.of(), List.of(container)));
+					withProvides(properties instanceof UnmodifiableConfig config ? plain(config.valueMap()) : Map.of(), strings(mod.get("provides"))),
+					List.of(container)));
 		}
 		return mods;
+	}
+
+	/**
+	 * The ids each mod of a mod file says it provides ({@code provides} in its mods.toml entry). NeoForge itself ignores
+	 * the key; Forgified Fabric API lists its modules' Fabric ids and the umbrella's {@code fabric} and {@code fabric-api}
+	 * there, which Fabric mods depend on.
+	 */
+	private static Map<String, List<String>> provides(IModFile file, TomlParser parser) {
+		Map<String, List<String>> provides = new LinkedHashMap<>();
+		try {
+			byte[] toml = Fml.read(file, NestedNeoForgeJars.MODS_TOML);
+			if (toml == null || toml.length > NestedNeoForgeJars.MAX_TEXT_BYTES) return provides;
+			if (!(parser.parse(new String(toml, StandardCharsets.UTF_8)).get("mods") instanceof List<?> declared)) return provides;
+			for (Object entry : declared) {
+				if (entry instanceof UnmodifiableConfig mod && mod.get("modId") instanceof String id) provides.put(id, strings(mod.get("provides")));
+			}
+		} catch (IOException | ParsingException e) {
+			// NeoForge reports a broken mods.toml itself.
+			LOGGER.debug("Could not read the mods.toml of {}", file.getFileName(), e);
+		}
+		return provides;
+	}
+
+	private static List<String> strings(Object value) {
+		return value instanceof List<?> list ? list.stream().filter(String.class::isInstance).map(String.class::cast).toList() : List.of();
+	}
+
+	/** The mod's properties with the ids it provides added to those it lists as Fabric's provides, if any. */
+	private static Map<String, Object> withProvides(Map<String, Object> properties, List<String> provides) {
+		if (provides.isEmpty()) return properties;
+		Map<String, Object> merged = new LinkedHashMap<>(properties);
+		List<Object> ids = new ArrayList<>(merged.get(Pipeline.NeoForgeMod.PROVIDES) instanceof List<?> listed ? listed : List.of());
+		for (String id : provides) if (!ids.contains(id)) ids.add(id);
+		merged.put(Pipeline.NeoForgeMod.PROVIDES, ids);
+		return merged;
 	}
 
 	/** Mod properties as plain values: TOML tables become maps; values TOML has and JSON hasn't (dates) become strings. */

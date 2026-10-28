@@ -1651,6 +1651,24 @@ class PipelineTest {
 		assertTrue(report.contains("a NeoForge build of this mod is installed"), report);
 	}
 
+	/**
+	 * Forgified Fabric API's version carries build metadata with a '+' of its own, which Fabric's SemVer refuses; it
+	 * still satisfies a version range, and the ids its mods.toml provides ({@code fabric}) satisfy dependencies too.
+	 */
+	@Test
+	void aNeoForgeBuildOfFabricApiSatisfiesRangesAndItsProvidedIds(@TempDir Path game) throws Exception {
+		Path ranged = TestJars.create().fabricModJson(TestJars.modJson("ranged", "1.0", "\"depends\":{\"fabric-api\":\">=0.100.0\"}"))
+				.write(game.resolve("mods/ranged.jar"));
+		Path legacy = TestJars.create().fabricModJson(TestJars.modJson("legacy", "1.0", "\"depends\":{\"fabric\":\"*\"}"))
+				.write(game.resolve("mods/legacy.jar"));
+		List<Pipeline.NeoForgeMod> neoForge = List.of(new Pipeline.NeoForgeMod("fabric_api", "0.116.15+2.3.6+1.21.1", "Forgified Fabric API",
+				Map.of(Pipeline.NeoForgeMod.PROVIDES, List.of("fabric", "fabric-api")), List.of()));
+		Pipeline.Result result = Pipeline.run(input(game, List.of(ranged, legacy), Namespace.OFFICIAL, Map.of(), null, neoForge));
+		assertEquals(Set.of("ranged", "legacy"), result.mods().stream().map(m -> m.translated().candidate().id()).collect(Collectors.toSet()),
+				result.report().render());
+		assertEquals("0.116.15+2.3.6+1.21.1", result.runtime().getModContainer("fabric-api").orElseThrow().getMetadata().getVersion().getFriendlyString());
+	}
+
 	/** Fabric Loader gives every mod a root, and mods take the first without checking (OneConfig's list of mods, POLY-1). */
 	@Test
 	void builtInModsHaveTheRootOfWhatProvidesThem(@TempDir Path game) throws Exception {

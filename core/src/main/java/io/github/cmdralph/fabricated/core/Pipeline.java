@@ -62,8 +62,10 @@ import io.github.cmdralph.fabricated.core.translate.TranslatedMod;
 import io.github.cmdralph.fabricated.core.translate.TranslationEnvironment;
 import io.github.cmdralph.fabricated.core.translate.TranslationEnvironment.Namespace;
 import io.github.cmdralph.fabricated.core.translate.TranslationException;
+import io.github.cmdralph.fabricated.fabricloader.version.SemanticVersionImpl;
 import io.github.cmdralph.fabricated.fabricloader.version.VersionParser;
 import net.fabricmc.api.EnvType;
+import net.fabricmc.loader.api.SemanticVersion;
 import net.fabricmc.loader.api.Version;
 import net.fabricmc.loader.api.VersionParsingException;
 import net.fabricmc.loader.api.metadata.CustomValue;
@@ -96,7 +98,7 @@ public final class Pipeline {
 	 */
 	public record NeoForgeMod(String id, String version, String displayName, Map<String, Object> properties, List<Path> files) {
 		/** The mod property listing the Fabric mod ids a NeoForge mod provides (Sodium provides Indium). */
-		static final String PROVIDES = "fabric:provides";
+		public static final String PROVIDES = "fabric:provides";
 
 		public NeoForgeMod {
 			properties = Collections.unmodifiableMap(new LinkedHashMap<>(properties));
@@ -1013,9 +1015,27 @@ public final class Pipeline {
 		runtime.addMod(new ModContainerImpl(md, files, origin, null, List.of(), runtime, null), aliases);
 	}
 
-	private static Version parseVersion(String version) {
+	/**
+	 * A platform's or a NeoForge mod's version, as Fabric code compares it. A NeoForge mod's version may carry build
+	 * metadata with a '+' of its own (Forgified Fabric API's {@code 0.116.15+2.3.6+1.21.1}), which Fabric's SemVer
+	 * refuses, leaving a plain string no version range matches. Build metadata never orders versions, so such a version
+	 * compares by what comes before its first '+', and keeps the rest as its build metadata.
+	 */
+	static Version parseVersion(String version) {
+		String text = version == null || version.isEmpty() ? "0" : version;
 		try {
-			return VersionParser.parse(version == null || version.isEmpty() ? "0" : version, false);
+			Version parsed = VersionParser.parse(text, false);
+			int plus = text.indexOf('+');
+			if (parsed instanceof SemanticVersion || plus <= 0) return parsed;
+			SemanticVersion head;
+			try {
+				head = VersionParser.parseSemantic(text.substring(0, plus));
+			} catch (VersionParsingException e) {
+				return parsed;
+			}
+			int[] components = new int[head.getVersionComponentCount()];
+			for (int i = 0; i < components.length; i++) components[i] = head.getVersionComponent(i);
+			return new SemanticVersionImpl(components, head.getPrereleaseKey().orElse(null), text.substring(plus + 1));
 		} catch (VersionParsingException e) {
 			throw new IllegalArgumentException("Unparseable version " + version, e);
 		}
