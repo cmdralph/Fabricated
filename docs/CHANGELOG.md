@@ -3,6 +3,14 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-10-28: v0.5.1-alpha (task 6 of the v0.5.x update)
+
+- **Version 0.5.1** (the owner's choice: a patch release of v0.5.0-alpha), API 1.1.0 as T1 made it.
+- **Release notes:** `docs/releases/v0.5.1-alpha.md`. README (its status, Connector refused), ARCHITECTURE (the
+  version) and the roadmap (the update's plan, in *Next release*) say so.
+- **Then:** the Forge branches are synced with `main` for their jars, the full matrix with the extended runs goes on
+  every branch and version, the release workflow builds the jars without publishing, and the owner decides the tag.
+
 ## 2026-10-28: Cleanup (task 5 of the v0.5.x update)
 
 - **Duplicated logic merged:** `Pipeline`'s two maps of NeoForge mods by id now share one rule, the newest copy of a

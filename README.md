@@ -14,7 +14,7 @@ It's built to be:
 - **Safe.** Mod jars are treated as untrusted input. Fabricated never runs mod code while translating, never
   modifies your mod jars, never touches the network, and has no telemetry.
 
-> **Status: alpha (v0.5.0-alpha).** Nearly every Fabric API module
+> **Status: alpha (v0.5.1-alpha).** Nearly every Fabric API module
 > loads, but many Fabric mods still patch code that NeoForge changed and are disabled before they run. Read
 > [What works today](#what-works-today) before relying on it.
 
@@ -72,7 +72,9 @@ Loot table events, content registries and Fabric's transfer API work too. Per-mo
 **Forgified Fabric API and Sodium for NeoForge** can share the game with Fabricated. A Fabric API module another mod
 provides (Forgified Fabric API's modules, the ones Sodium bundles) is that mod's: Fabricated's own copy stands down and
 Fabric mods use the provider's. Fabric Loader's API is always Fabricated's: another jar's copy (Forgified Fabric Loader)
-is left out as NeoForge reads it. The report says who provides what. Details in [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md#mods-that-bring-fabric-api-or-fabric-loader).
+is left out as NeoForge reads it. The report says who provides what. **Sinytra Connector** can't run beside
+Fabricated (both load Fabric mods): with both installed, or two Fabricated jars, the launch stops with an error naming
+them. Details in [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md#mods-that-bring-fabric-api-or-fabric-loader).
 
 Fabric mods can also reach and integrate with NeoForge mods: a Fabric mod's plugins for JEI, REI, Jade, WTHIT and
 Simple Voice Chat are found by those mods' NeoForge builds (EMI's are converted too, untested in CI), its config
@@ -205,7 +207,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). In short:
 
 ```bash
 ./gradlew -Pfabricated.coreOnly=true build          # unit tests, no Minecraft needed
-./gradlew :mc:neoforge-26.2:fabricatedJar :mc:neoforge-26.2:testmods   # build/libs/fabricated-0.5.0+mc26.2.jar
+./gradlew :mc:neoforge-26.2:fabricatedJar :mc:neoforge-26.2:testmods   # build/libs/fabricated-0.5.1+mc26.2.jar
 ```
 
 ## Design and research
