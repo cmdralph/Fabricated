@@ -3,7 +3,8 @@
 # boots it, and checks that Fabric mods load and that broken Fabric mods are isolated.
 #
 # Usage: ci/neoforge/smoke-server.sh <minecraft-version> <neoforge-version> <work-dir> [extra-mods-dir]
-# Exit status: every check must pass; with extra-mods-dir, only the server start must succeed.
+# Exit status: every check must pass; with extra-mods-dir, only the server start must succeed, unless it holds the mods
+# ci/neoforge/standins.py writes, whose checks gate too.
 # Expects: build/libs/fabricated-*+mc<minecraft-version>.jar and mc/neoforge/<minecraft-version>/build/testmods/*.jar
 set -euo pipefail
 
@@ -29,7 +30,8 @@ cached_install "neoforge-server-$neo" . install_server
 echo "::endgroup::"
 
 mkdir -p mods config
-cp "$root"/build/libs/fabricated-*+mc"$mc".jar mods/
+# Not fabricated-forge-*: a local build of every platform has those in build/libs too.
+cp "$root"/build/libs/fabricated-[0-9]*+mc"$mc".jar mods/
 cp "$root"/mc/neoforge/"$mc"/build/testmods/*.jar mods/
 # Two Fabric mods that depend on each other, as Fabric allows: the loader's sorter refuses a cycle of load orderings, so
 # Fabricated leaves one of theirs out (ORDER-1), and the server must still start.
@@ -189,13 +191,42 @@ check "fabricated-testmod-missing" logs/fabric-bridge-report.txt "missing depend
 check "fabricated-library-that-does-not-exist" logs/fabric-bridge-report.txt "missing dependency named"
 check "LEFT_OUT .*ImpossibleMixin.*fabricatedMethodThatDoesNotExist" logs/fabric-bridge-report.txt "impossible mixin caught by pre-flight and left out"
 check "intentional failure for Fabricated CI" logs/fabric-bridge-report.txt "throwing entrypoint isolated"
+# The mods ci/neoforge/standins.py writes, which share the game with Fabricated: every check gates their run.
+standins=false
+if [ -n "$extra" ] && [ -f "$extra/standin-forgified-fabric-api.jar" ]; then
+	standins=true
+	check '+standin  \[Stand-in Fabric API Base\]' logs/fabric-bridge-report.txt "a Fabric API module another mod provides is that mod's, and Fabricated's copy stands down (PROVIDER-1)"
+	check '+standin  \[Stand-in fabric-' logs/fabric-bridge-report.txt "so is one a mod nests, with Fabricated's mixins for it"
+	check "standin-loader.jar has its own copy of Fabric Loader's API, which is left out" logs/fabric-bridge-report.txt "another jar's copy of Fabric Loader's API is left out, with its service file (PROVIDER-2)"
+	check "Using standin_lib 1.1.0" logs/fabric-bridge-report.txt "of two versions of a library Fabric mods nest, the newer loads"
+	# A second launch, up to the end of discovery: every translation comes from the cache.
+	if [ "$status" = "started" ]; then
+		cp logs/fabric-bridge-report.txt fabric-bridge-report-cold.txt
+		exec 3<>console
+		./run.sh nogui < console > server-warm.out 2>&1 &
+		pid=$!
+		for _ in $(seq 1 60); do grep -q "Fabricated discovery finished" server-warm.out 2>/dev/null && break; kill -0 "$pid" 2>/dev/null || break; sleep 2; done
+		sleep 2
+		# run.sh starts Java as its child.
+		pkill -P "$pid" 2>/dev/null || true
+		kill "$pid" 2>/dev/null || true
+		wait "$pid" 2>/dev/null || true
+		exec 3>&-
+		echo "Discovery: cold $(grep -o 'discovery finished in [0-9]* ms' server.out | head -1), warm $(grep -o 'discovery finished in [0-9]* ms' server-warm.out | head -1)"
+		if grep -q "Fabricated discovery finished" server-warm.out && ! grep -q "translated in" logs/fabric-bridge-report.txt; then
+			echo "PASS: a second launch takes every translation from the cache"
+		else
+			echo "FAIL: a second launch takes every translation from the cache"; { grep "translated in" logs/fabric-bridge-report.txt || true; }; fail=1
+		fi
+	fi
+fi
 # The test mods log "FABRICATED-TEST ... FAILED" when one of their own checks fails.
 if grep -q "FABRICATED-TEST .*FAILED" server.out; then
 	echo "FAIL: a test mod check reported a failure:"; { grep -m 5 "FABRICATED-TEST .*FAILED" server.out || true; }; fail=1
 else
 	echo "PASS: no test mod check reported a failure"
 fi
-if [ -n "$extra" ]; then
+if [ -n "$extra" ] && ! $standins; then
 	[ "$fail" -ne 0 ] && echo "NOTE: failures other than the server start are informational in this run."
 	exit "$required_fail"
 fi
