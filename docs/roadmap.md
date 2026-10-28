@@ -18,9 +18,10 @@ The same engine runs on Minecraft Forge, from the same tree, as experimental pre
 
 ## How the project fits together
 
-Rethought on 2026-10-26, when the three platforms came onto one working branch.
+Rethought on 2026-10-26, when the three platforms came onto one working branch, and on 2026-10-28, when each went to
+a branch of its own (*Decisions, 2026-10-28*).
 
-**One engine, three platforms, one tree.** Whatever can be decided without running the game is the engine, and every
+**One engine, three platforms, a branch each.** Whatever can be decided without running the game is the engine, and every
 platform shares it: `core` (archive safety, metadata, dependency resolution, remapping, access wideners, mixin
 pre-flight and its repairs, the linkage check, the cache, the report), `fabric-loader-api`, `api` and `loader/common`.
 A platform adds only what its loader decides: its discovery services (`loader/<platform>`) and, per Minecraft version,
@@ -89,6 +90,34 @@ Unchanged: the engine and platform split, the platform descriptor, the cache, th
 this pass's scope: the stale remote branches `claude/forge` and `claude/forge-legacy` (deleted at the cleanup, with
 the owner's approval), and cache eviction under GitHub's 10 GB limit, as each of `main`'s jobs saves a Gradle entry of
 about 750 MB (to watch on the first runs).
+
+## Decisions, 2026-10-28: sharing the game with Forgified Fabric API
+
+A v0.5.0-alpha pack stopped before any mod ran: Forgified Fabric API's module jars and Fabricated's in-game mod both
+had `net.fabricmc.fabric.api.screenhandler.v1` (PROVIDER-1). Packs mix Fabricated with Sinytra's ports and with
+NeoForge mods that bundle Fabric API modules, so every package Fabricated adds now has one owner, decided before FML
+builds the module layer, and a conflict is resolved or explained, never left to a `ResolutionException`. The owner's
+decisions:
+
+- **Fabric API modules: yield to theirs.** A module another mod provides is that mod's, and Fabricated's native copy
+  stands down with its mixins and bridges (PROVIDER-1). The alternative, keeping Fabricated's and leaving theirs out,
+  would change another mod's jar and break the NeoForge mods built against it.
+- **Fabric Loader's API: always Fabricated's.** Another jar's copy is left out as FML reads it (PROVIDER-2):
+  Fabricated's runtime knows every Fabric and NeoForge mod, and the mods built against Forgified Fabric Loader use
+  only its public API.
+- **Kotlin** is the platform's, as any library: Kotlin for Forge's copy wins over the one Fabric Language Kotlin
+  bundles (`PackageGuard`, unchanged).
+
+Noted, out of this task's scope: a second Fabricated build in the same mods folder (an older version, or another
+platform's) is not detected (DUP-1, *Findings*).
+
+**Branches** (task 2 of the v0.5.x update, the owner's request): `main` is NeoForge's branch, with the shared engine;
+Forge 61 to 66 and Forge 47 are each on their own branch only (`forge`, `forge-legacy`), with the same folder
+structure. Shared changes go to `main` and reach the Forge branches by merge (`scripts/sync-platform-branch.sh`), so
+the engine stays one; a Forge branch is never merged back. A Forge branch's CI runs on pull requests into it, and the
+release workflow builds each platform's jars from its own branch. What it costs: a shared change needs a sync pull
+request per Forge branch before it ships there, and `forge-shared` is kept on both Forge branches by hand. No branch
+was deleted.
 
 ## Next release: v0.5.0
 
@@ -406,6 +435,8 @@ with its cause, why the tests missed it and its fix, in the change that fixes it
 | CORPUS-45 | P0 on NeoForge 21.1 clients with LambDynamicLights, UNVERIFIED cause | LambDynamicLights' `CommonLevelRendererMixin` (`lambdynlights_runtime`) | The 1.21.1 corpus client stops as Mixin applies its `@ModifyReturnValue` on `LevelRenderer.getLightColor`: the handler fits the three-argument overload, but Mixin applied it to the two-argument one (run 40683010866). Upstream's selector names the three-argument overload with its descriptor, and NeoForge 21.1 doesn't patch either; what made it match the other is UNVERIFIED (the job log's tail holds no pre-flight report for it). | A known limit of v0.5.0-alpha: needs a run that keeps the client's report. |
 | CORPUS-46 | P0 on NeoForge 21.1 (advanced corpus), UNVERIFIED cause | 1.21.1 advanced corpus server and client | Past CORPUS-43 both get through module resolution, then stop: the client with an `InvocationTargetException` from its main class, the server without an error in the log's last lines (run 40683010866). | A known limit of v0.5.0-alpha: needs the runs' full logs. |
 | CORPUS-47 | P2 on NeoForge 21.1 clients with OneConfig (informational run) | adventure-platform-fabric, OneConfig's `Mixin_ChatReceiveEvent` | Pre-flight refuses adventure-platform-fabric's mixins into library classes (`GameProfile`, `CommandSyntaxException`), and OneConfig's chat mixin then can't find its `FabricClientAudiences`: the client stops at `Initializing game` (run 40683010866). Whether the linkage check should have left OneConfig's mixin out, as CORPUS-15 does for a mod that didn't load, is UNVERIFIED. | Open. |
+| PROVIDER-3 | P0 for affected packs (rare) | `ModContainerImpl.getRootPaths` (a mod providing `fabric-resource-loader`: Forgified Fabric API) | A Fabric jar's built-in pack whose `pack.mcmeta` keeps its NeoForge build's `neoforge:overlays` with a condition type only that build registers: Fabricated's own resource loader reads the overlay's copy without those sections (PACK-4), but Forgified Fabric API reads the mod's own files through its container's root paths, NeoForge refuses the metadata, and Forgified Fabric API's `registerBuiltinResourcePacks` passes the null pack on: the server stopped (CI on #217, 26.1.2 and 26.2, the test mod's fixture). | Open, T4: a container's root paths show the files translation rewrote (a copy of the jar with them, for the mods whose overlay rewrites resources). The real-mod CI run leaves the test mods out until then. |
+| DUP-1 | P2 | `FabricCandidateLocator` (two Fabricated jars in one mods folder) | Two builds of Fabricated in the mods folder (an older version kept by mistake, or a Forge build beside the NeoForge one) are not detected; what then runs depends on class loading order (a local 1.21.11 run with a stale Forge build beside the NeoForge one started; UNVERIFIED in general). | Open: detect another Fabricated build and refuse it with a message naming both files. |
 | PLAT-2 | P3, UNVERIFIED | core `PlatformLibraries` | Other prefixes also cover whole library families (`org/lwjgl/`, `io/netty/`), of which the platform may ship some modules only: a mod nesting another module (LWJGL's NanoVG, say) would lose it, as PLAT-1 did. No case seen yet. | Check each prefix against the packages the platform really has (the loader computes them), and keep a prefix only where the family is complete. |
 | FC-5 | P3 | `TranslationCache.verifyIntegrity` | Hashes are memoised by file metadata. On Windows the key is size and mtime only, and `entry.json` itself isn't hashed. | Needs a decision on cost: re-hashing every launch versus trusting metadata. |
 | FC-6 | P3 | `TranslationCache.store` | Two cold launches of the same side that share one game directory race on delete-then-move. | Needs a cross-process file lock. Rare. |

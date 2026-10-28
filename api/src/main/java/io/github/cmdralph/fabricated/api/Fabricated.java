@@ -19,7 +19,7 @@ public final class Fabricated {
 	/** Fabricated's mod id, on NeoForge and in Fabric's {@code FabricLoader}. */
 	public static final String MOD_ID = "fabricated";
 	/** The API version this code was compiled against; compare with {@link FabricatedApi#apiVersion()} at runtime. */
-	public static final String API_VERSION = "1.0.0";
+	public static final String API_VERSION = "1.1.0";
 
 	private Fabricated() {
 	}

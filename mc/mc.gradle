@@ -245,8 +245,50 @@ def downloadIntermediary = tasks.register('downloadIntermediary') {
     }
 }
 
+// --- Which Fabric API module each part of the in-game mod serves (core's NativeModules) --------------------
+// When another mod provides a module (Forgified Fabric API, Sodium's bundled modules), Fabricated's part of it stands
+// down: so every Fabric API package of the in-game mod must be in the version's native-modules.json, and every mixin of
+// a config in Fabricated's own packages in mixin-modules.json.
+def checkNativeModules = tasks.register('checkNativeModules') {
+    def index = file('src/fabricated/resources/META-INF/fabricated/native-modules.json')
+    def classDirs = sourceSets.main.output.classesDirs
+    def resourcesDir = sourceSets.main.output.resourcesDir
+    dependsOn tasks.named('classes')
+    inputs.files(classDirs)
+    inputs.file(index).optional()
+    onlyIf { index.exists() }
+    doLast {
+        def slurper = new groovy.json.JsonSlurper()
+        def indexed = slurper.parse(index).modules.values().flatten() as Set
+        def missing = new TreeSet()
+        classDirs.each { dir ->
+            if (!dir.isDirectory()) return
+            dir.eachFileRecurse(groovy.io.FileType.FILES) { f ->
+                def path = dir.toPath().relativize(f.toPath()).toString().replace('\\', '/')
+                if (path.startsWith('net/fabricmc/fabric/') && path.endsWith('.class')) {
+                    def pkg = path.substring(0, path.lastIndexOf('/'))
+                    if (!indexed.contains(pkg)) missing << "package ${pkg} (re-run scripts/native-module-index.py)"
+                }
+            }
+        }
+        def modulesFile = new File(resourcesDir, 'META-INF/fabricated/mixin-modules.json')
+        def mapping = modulesFile.exists() ? slurper.parse(modulesFile) : [configs: [:], mixins: [:]]
+        resourcesDir.eachFileMatch(~/.*\.mixins\.json/) { configFile ->
+            def config = slurper.parse(configFile)
+            if (mapping.configs.containsKey(configFile.name) || (config.package ?: '').startsWith('net.fabricmc.fabric.')) return
+            ((config.mixins ?: []) + (config.client ?: []) + (config.server ?: [])).each { mixin ->
+                if (!mapping.mixins.containsKey(mixin)) missing << "mixin ${configFile.name}:${mixin} (add it to mixin-modules.json)"
+            }
+        }
+        if (!missing.isEmpty()) {
+            throw new GradleException("Parts of the in-game mod no Fabric API module is assigned to:\n  " + missing.join('\n  '))
+        }
+    }
+}
+
 // --- The in-game mod ----------------------------------------------------------------------------------
 def gameModJar = tasks.register('gameModJar', Jar) {
+    dependsOn checkNativeModules
     archiveFileName = 'game-mod.jar'
     destinationDirectory = layout.buildDirectory.dir('gamemod')
     from sourceSets.main.output

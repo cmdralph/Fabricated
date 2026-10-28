@@ -6,14 +6,14 @@ changes. Every working session updates `roadmap.md` and `CHANGELOG.md`.
 | Document | What it holds | Update it when |
 |---|---|---|
 | [`../README.md`](../README.md) | NeoForge users' guide: installing, what works, troubleshooting, the config file. It is `main`'s README | What players see changes |
-| [`readme/forge.md`](readme/forge.md), [`readme/forge-legacy.md`](readme/forge-legacy.md) | The `forge` and `forge-legacy` branches' READMEs, which `branch-readme.yml` copies to each branch's `.github/README.md` | That platform's status changes |
+| The `forge` and `forge-legacy` branches' `README.md` and `docs/FORGE.md` / `docs/FORGE-LEGACY.md` | Each Forge platform's guide and what works there, on its own branch | That platform's status changes |
 | [`../CONTRIBUTING.md`](../CONTRIBUTING.md) | The project's layout, building and testing, the code rules, adding a Minecraft version, releasing | The layout, the build or the release steps change |
 | [`claude.md`](claude.md) | The working rules, the branch model and a map of the code, for whoever works on it | A rule, the branch model or a seam changes |
 | [`roadmap.md`](roadmap.md) | The next release's goals, how the project fits together, the platforms' parity, where each track stands and what comes next, the open findings, what is unverified | Every session |
 | [`FINDINGS.md`](FINDINGS.md) | Every fixed finding: its cause, why the tests missed it, the fix and how it was verified | A finding is fixed (it moves here from `roadmap.md`) |
 | [`CHANGELOG.md`](CHANGELOG.md) | What each working session changed and how it was verified, newest first, with the release each entry is in | Every session |
 | [`releases/`](releases) | Each release's notes, which the release workflow publishes | A release is cut |
-| [`COMPATIBILITY.md`](COMPATIBILITY.md) | What works, per Minecraft version and per Fabric API module, on NeoForge and on Forge, from CI | A CI run shows a change |
+| [`COMPATIBILITY.md`](COMPATIBILITY.md) | What works, per Minecraft version and per Fabric API module, on NeoForge, from CI | A CI run shows a change |
 | [`MIXINS.md`](MIXINS.md) | Every mixin Fabricated applies, with its target and injection point | A mixin config changes |
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | How translation, isolation, caching and security work | The design changes |
 | [`API.md`](API.md) | Fabricated's public API for NeoForge and Fabric mods | The API changes |
