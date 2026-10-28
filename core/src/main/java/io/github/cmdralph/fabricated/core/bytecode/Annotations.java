@@ -15,6 +15,21 @@ public final class Annotations {
 	private Annotations() {
 	}
 
+	/**
+	 * Whether a class file's bytes hold {@code descriptor} (a byte search, no parsing): a class without it can't carry
+	 * the annotation, so only the others need reading.
+	 */
+	public static boolean mentions(byte[] classFile, byte[] descriptor) {
+		outer:
+		for (int i = 0; i <= classFile.length - descriptor.length; i++) {
+			for (int j = 0; j < descriptor.length; j++) {
+				if (classFile[i + j] != descriptor[j]) continue outer;
+			}
+			return true;
+		}
+		return false;
+	}
+
 	/** The first annotation with {@code desc} in {@code first}, then in {@code second}; either list may be null. */
 	public static AnnotationNode find(List<AnnotationNode> first, List<AnnotationNode> second, String desc) {
 		AnnotationNode a = find(first, desc);

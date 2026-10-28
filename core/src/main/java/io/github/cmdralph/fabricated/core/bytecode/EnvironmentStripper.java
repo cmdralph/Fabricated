@@ -25,14 +25,7 @@ public final class EnvironmentStripper {
 
 	/** Whether a class file may carry the annotations (a byte search, no parsing): only those need {@link #strip}. */
 	public static boolean mayNeedStripping(byte[] classFile) {
-		outer:
-		for (int i = 0; i <= classFile.length - MARKER.length; i++) {
-			for (int j = 0; j < MARKER.length; j++) {
-				if (classFile[i + j] != MARKER[j]) continue outer;
-			}
-			return true;
-		}
-		return false;
+		return Annotations.mentions(classFile, MARKER);
 	}
 
 	/** Strips {@code node} for {@code side}; returns whether anything was removed. */
