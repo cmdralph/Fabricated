@@ -167,7 +167,8 @@ public class FabricBlockSettings extends BlockBehaviour.Properties {
 		return this;
 	}
 
-	// Fabricated: upstream's lightLevel alias of luminance takes the name luminance has in Mojang's names.
+	// Fabricated: upstream's luminance override takes its Mojang name, lightLevel, which upstream's lightLevel alias has
+	// too; luminance itself is among Fabric's names below.
 
 	@Deprecated
 	@Override
@@ -443,6 +444,11 @@ public class FabricBlockSettings extends BlockBehaviour.Properties {
 	// Fabricated: upstream's methods under Fabric's own names. They return FabricBlockSettings, so no vanilla method's
 	// descriptor matches them and each keeps its Fabric name in Intermediary, where mods call it (CORPUS-39); each
 	// does what the override under Mojang's name above does.
+
+	@Deprecated
+	public FabricBlockSettings luminance(ToIntFunction<BlockState> luminanceFunction) {
+		return lightLevel(luminanceFunction);
+	}
 
 	@Deprecated
 	public FabricBlockSettings noCollision() {
