@@ -568,6 +568,39 @@ class PipelineTest {
 		assertTrue(row.detail().contains("drawSections, which does not exist in net.example.sodium.Renderer"), row.detail());
 	}
 
+	/**
+	 * Code calling a class only an installed NeoForge mod has (Forgified Fabric API's modules, a multi-loader library's
+	 * NeoForge build) links: the linkage check counts the installed mods' classes (PROVIDER-1).
+	 */
+	@Test
+	void codeUsingAnInstalledModsClassLinks(@TempDir Path game) throws Exception {
+		String helper = "net/fabricmc/fabric/api/client/keybinding/v1/KeyBindingHelper";
+		String draw = "register(Ljava/lang/Object;)V";
+		Path user = TestJars.create().fabricModJson(TestJars.modJson("user", "1.0", ""))
+				.bytes("com/user/Keys.class", caller("com/user/Keys", helper, draw))
+				.write(Files.createDirectories(game.resolve("mods")).resolve("user.jar"));
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, helper, null, "java/lang/Object", null);
+		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC, "register", "(Ljava/lang/Object;)V", null, null);
+		mv.visitCode();
+		mv.visitInsn(Opcodes.RETURN);
+		mv.visitMaxs(0, 2);
+		mv.visitEnd();
+		cw.visitEnd();
+		Map<String, byte[]> provider = Map.of(helper, cw.toByteArray());
+		InstalledClasses installed = new InstalledClasses(List.of(new InstalledClasses.Jar("Forgified Fabric Key Binding API", provider::containsKey, provider::get)));
+
+		Pipeline.Result result = Pipeline.run(input(game, List.of(user), Namespace.OFFICIAL, Map.of(), null, List.of(), installed));
+		assertEquals(List.of("user"), result.mods().stream().map(m -> m.translated().candidate().id()).toList(), result.report().render());
+		assertFalse(result.report().render().contains("missing class"), result.report().render());
+
+		Path without = Files.createDirectories(game.resolve("other"));
+		Pipeline.Result missing = Pipeline.run(input(without, List.of(Files.copy(user, Files.createDirectories(without.resolve("mods")).resolve("user.jar"))),
+				Namespace.OFFICIAL, Map.of(), null));
+		assertTrue(missing.report().render().contains("com.user.Keys -> missing class net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper"),
+				missing.report().render());
+	}
+
 	/** A mixin into a mod that isn't installed isn't verified, and is checked once that mod is installed. */
 	@Test
 	void mixinsIntoAModInstalledLaterAreCheckedThen(@TempDir Path game) throws Exception {

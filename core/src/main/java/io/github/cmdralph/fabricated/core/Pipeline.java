@@ -760,14 +760,15 @@ public final class Pipeline {
 			LinkageAnalysis analysis = new LinkageAnalysis(in.cache(), config.limits(), in.clientSide());
 			Map<String, String> unloaded = unloadedPackages(ordered);
 			// What the analysis reads: every mod's translated classes (which an override or another Fabricated build
-			// changes, not the jar), and the NeoForge mods whose classes count as present.
+			// changes, not the jar), and the NeoForge mods whose classes count as present: a Fabric API module another
+			// mod provides is that mod's classes (PROVIDER-1), as are a multi-loader library's.
 			String fingerprint = Hashing.sha256(ordered.stream().map(this::translatedClasses).sorted().collect(Collectors.joining(","))
 					+ "|" + in.minecraftVersion() + "|" + in.neoForgeVersion() + "|" + plan.fabricApiVersion() + "|" + in.fabricatedVersion()
 					+ "|" + in.fabricatedBuild() + "|" + String.join(",", new TreeSet<>(unloaded.keySet()))
 					+ "|" + in.neoForgeMods().stream().map(m -> m.id() + "@" + m.version()).sorted().collect(Collectors.joining(",")));
 			try (JarClassSource jars = new JarClassSource(ordered, config.limits())) {
-				linkage = analysis.analyse(ordered, in.gameClasses().or(in.nativeApiClasses()).or(jars), in.nativeApiInterfaces(), fingerprint,
-						unloaded, name -> in.installedClasses().owner(name) != null);
+				linkage = analysis.analyse(ordered, in.gameClasses().or(in.nativeApiClasses()).or(jars).or(in.installedClasses()),
+						in.nativeApiInterfaces(), fingerprint, unloaded, name -> in.installedClasses().owner(name) != null);
 			}
 			boolean dropped = false;
 			for (TranslatedMod t : ordered) {

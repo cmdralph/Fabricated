@@ -199,6 +199,11 @@ if [ -n "$extra" ] && [ -f "$extra/standin-forgified-fabric-api.jar" ]; then
 	check '+standin  \[Stand-in fabric-' logs/fabric-bridge-report.txt "so is one a mod nests, with Fabricated's mixins for it"
 	check "standin-loader.jar has its own copy of Fabric Loader's API, which is left out" logs/fabric-bridge-report.txt "another jar's copy of Fabric Loader's API is left out, with its service file (PROVIDER-2)"
 	check "Using standin_lib 1.1.0" logs/fabric-bridge-report.txt "of two versions of a library Fabric mods nest, the newer loads"
+	if grep -q "== Linkage warnings" logs/fabric-bridge-report.txt; then
+		echo "FAIL: the linkage check counts the classes of the modules other mods provide"; { sed -n '/== Linkage warnings/,/^$/p' logs/fabric-bridge-report.txt | head -5; }; fail=1
+	else
+		echo "PASS: the linkage check counts the classes of the modules other mods provide"
+	fi
 	# A second launch, up to the end of discovery: every translation comes from the cache.
 	if [ "$status" = "started" ]; then
 		cp logs/fabric-bridge-report.txt fabric-bridge-report-cold.txt

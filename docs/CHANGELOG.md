@@ -16,7 +16,9 @@ One entry per working session, newest first: what changed, and how it was verifi
 - **Fixed** (each in `FINDINGS.md`): PROVIDER-1 (a module another mod provides is that mod's; Fabricated's copy stands
   down with its mixins and bridges), PROVIDER-2 (another jar's copy of Fabric Loader's API is left out as FML reads
   it), VER-2 and DEP-1 (`1d4699d`: Forgified Fabric API's version and its umbrella's `provides` satisfy Fabric mods'
-  dependencies), NAME-1 (translated jars named after their mod in FML's logs, not `remapped.jar`). A jar whose NeoForge
+  dependencies), NAME-1 (translated jars named after their mod in FML's logs, not `remapped.jar`), LINK-4 (the linkage
+  check now counts installed NeoForge mods' classes: the owner's report warned of classes Forgified Fabric API has, and
+  with PROVIDER-1 a Fabric API module from the official jar would have been dropped for one). A jar whose NeoForge
   metadata is a placeholder for Sinytra Connector (`connector:placeholder`) is loaded as the Fabric mod it is.
 - **API 1.1.0:** `FabricApiModule.Status.PROVIDED_BY_MOD` (`docs/API.md`); no other change.
 - **Checked, no change needed:** Continuity's Fabric jar carries such a placeholder (read in its source) and loads as
@@ -29,7 +31,7 @@ One entry per working session, newest first: what changed, and how it was verifi
   second launch that must take every translation from the cache); a server run with the newest Forgified Fabric API,
   Kotlin for Forge and Fabric Language Kotlin (the server must start); a 1.21.1 client run with Forgified Fabric API
   and Sodium (informational).
-- **Verified locally:** core tests (328); the in-game mods and test mods of 1.21.1, 1.21.11 and 26.1.2; their server
+- **Verified locally:** core tests (329); the in-game mods and test mods of 1.21.1, 1.21.11 and 26.1.2; their server
   smoke runs with and without the stand-ins, every check passing. 26.2 and 26.3 build only in CI (*Unverified and
   blockers*); their `native-modules.json` were written from v0.5.0's in-game mods and are checked by the build.
 - **Noted, open:** DUP-1 (two Fabricated builds in one mods folder go undetected).
