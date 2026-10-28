@@ -17,6 +17,8 @@ forge="$2"
 work="$3"
 extra="${4:-}"
 root="$(cd "$(dirname "$0")/../.." && pwd)"
+# shellcheck source=ci/install-cache.sh
+source "$root/ci/install-cache.sh"
 timeout_seconds="${SMOKE_TIMEOUT:-600}"
 
 rm -rf "$work"
@@ -24,11 +26,20 @@ mkdir -p "$work"
 cd "$work"
 
 echo "::group::Install Forge $mc-$forge"
-curl -fsSL --retry 4 -o installer.jar "https://maven.minecraftforge.net/net/minecraftforge/forge/${mc}-${forge}/forge-${mc}-${forge}-installer.jar"
-java -jar installer.jar --installServer . > installer.log 2>&1 || { tail -n 60 installer.log; exit 1; }
+install_server() {
+	curl -fsSL --retry 4 -o installer.jar "https://maven.minecraftforge.net/net/minecraftforge/forge/${mc}-${forge}/forge-${mc}-${forge}-installer.jar"
+	java -jar installer.jar --installServer . > installer.log 2>&1 || { tail -n 60 installer.log; exit 1; }
+}
+cached_install "forge-server-$forge" . install_server
 echo "::endgroup::"
 
 mkdir -p mods
+# SMOKE_ON_ENTRYPOINT_FAILURE: Fabricated's onEntrypointFailure for the run ("disable" lets a corpus run go on past a
+# mod whose initializer throws); unset, the default ("error") stands, as in the gated runs.
+if [ -n "${SMOKE_ON_ENTRYPOINT_FAILURE:-}" ]; then
+	mkdir -p config
+	printf '{ "schema": 1, "onEntrypointFailure": "%s" }\n' "$SMOKE_ON_ENTRYPOINT_FAILURE" > config/fabricated.json
+fi
 cp "$root"/build/libs/fabricated-forge-*+mc"$mc".jar mods/
 cp "$root"/mc/forge/"$mc"/build/testmods/fabricated-testmod.jar mods/
 # A Fabric mod whose dependency is missing: Fabricated doesn't load it, and Forge's loading warnings name it.
@@ -116,24 +127,6 @@ echo "::endgroup::"
 echo "::group::Fabricated's report (logs/fabric-bridge-report.txt)"
 cat logs/fabric-bridge-report.txt 2>/dev/null || echo "(none)"
 echo "::endgroup::"
-# Where the installer left Mojang's mappings and the vanilla jar (docs/PORTING.md §4.1, question 3).
-echo "::group::libraries/net/minecraft"
-find libraries/net/minecraft -maxdepth 4 2>/dev/null | sort | head -n 60 || true
-# The mapping file's format, and which names the installer's game jars use (MinecraftServer keeps its name everywhere;
-# Level is obfuscated in the vanilla jar).
-for f in libraries/net/minecraft/server/"$mc"/*-mappings.*; do
-	[ -f "$f" ] || continue
-	echo "-- $f (first lines, and methods whose descriptors name classes: which names they use)"
-	head -n 8 "$f" | cut -c1-200
-	grep -m 6 -E $'^\t[^ ]+ \([^)]*L[a-z]' "$f" | cut -c1-200 || true
-	grep -m 3 -E '^net/minecraft/server/MinecraftServer ' "$f" | cut -c1-200 || true
-done
-for f in libraries/net/minecraft/server/"$mc"/*.jar; do
-	[ -f "$f" ] || continue
-	entries=$(unzip -Z1 "$f" 2>/dev/null || true)
-	echo "-- $f: $(printf '%s\n' "$entries" | grep -c '\.class$') classes; MinecraftServer: $(printf '%s\n' "$entries" | grep -c '^net/minecraft/server/MinecraftServer\.class$'), net/minecraft/world/level/Level: $(printf '%s\n' "$entries" | grep -c '^net/minecraft/world/level/Level\.class$')"
-done
-echo "::endgroup::"
 # A pipeline's last grep reads all its input (no -q): under pipefail, -q's exit at the first match can kill the grep
 # feeding it with SIGPIPE, and a line that is there reads as not seen.
 report() { if eval "$2"; then echo "PASS: $1"; else echo "NOT SEEN: $1"; fi; }
@@ -151,6 +144,7 @@ check "the test mod's server entrypoint ran" "grep -q 'FABRICATED-FORGE-TEST ser
 check "the test mod's mixin applied (Mixin read the overlay's MixinConfigs)" "grep -q 'FABRICATED-FORGE-TEST mixin OK' logs/latest.log 2>/dev/null"
 check "Forge took Fabricated's transformation service" "grep -q 'Fabricated transforms [1-9][0-9]* class(es) for Fabric mods before Mixin' logs/latest.log 2>/dev/null"
 check "the test mod's injected interface is on MinecraftServer (inject-interface)" "grep -q 'FABRICATED-FORGE-TEST injected interface OK' logs/latest.log 2>/dev/null"
+check "a mod nested with a NeoForge jar-in-jar list too loads once, translated: Forge's jar-in-jar locator leaves it alone (JIJ-1)" "grep -q 'FABRICATED-FORGE-TEST nested jar loaded once OK' logs/latest.log 2>/dev/null"
 check "the test mod's client-only method was stripped (@Environment)" "grep -q 'FABRICATED-FORGE-TEST environment strip OK' logs/latest.log 2>/dev/null"
 report "Forge added MixinExtras for the test mod" "grep -i 'mixinextras' logs/debug.log 2>/dev/null | grep -i -E 'select|load|add' > /dev/null"
 check "the Fabric main entrypoints ran in Forge's registry events" "grep -q 'Fabricated ran the Fabric main entrypoints of [1-9][0-9]* mod(s) on Forge (0 failed)' logs/latest.log 2>/dev/null"
@@ -171,6 +165,7 @@ if [ -n "$extra" ]; then
 	check "fabric-events-interaction-v0 (with Fabric API): a fake player's breaks through destroyBlock fire PlayerBlockBreakEvents BEFORE, CANCELED and AFTER, and a BEFORE refusal keeps the block (BREAK-1)" "grep -q 'FABRICATED-FORGE-TEST block break events OK' logs/latest.log 2>/dev/null"
 	check "fabric-events-interaction-v0 (with Fabric API): a fake player's uses of an item, a block and an entity, and its attacks on a block and an entity, through the game's own code ask UseItemCallback, UseBlockCallback, UseEntityCallback, AttackBlockCallback and AttackEntityCallback, and their answers hold" "grep -q 'FABRICATED-FORGE-TEST interaction events OK' logs/latest.log 2>/dev/null"
 	check "fabric-entity-events-v1 (with Fabric API): a hay block EntitySleepEvents.ALLOW_BED admits stays hay while an armor stand sleeps on it, and the occupation and orientation events run (SLEEP-1)" "grep -q 'FABRICATED-FORGE-TEST sleep events OK' logs/latest.log 2>/dev/null"
+	check "fabric-entity-events-v1 (with Fabric API): an entity hurt through the game's own hurtServer asks ServerLivingEntityEvents.ALLOW_DAMAGE, whose refusal holds, and fires AFTER_DAMAGE with the damage dealt and taken (DAMAGE-1)" "grep -q 'FABRICATED-FORGE-TEST damage events OK' logs/latest.log 2>/dev/null"
 	check "fabric-transfer-api-v1 (with Fabric API): a Fabric mod's item and fluid storages are Forge's ITEM_HANDLER and FLUID_HANDLER capabilities of its block entity, and a Forge mod's ItemStackHandler and FluidTank Fabric's storages, moved only once a transaction commits; a Fabric mod's tank items are Forge's FLUID_HANDLER_ITEM and a Forge mod's Fabric's FluidStorage.ITEM" "grep -q 'FABRICATED-FORGE-TEST storages OK' logs/latest.log 2>/dev/null"
 fi
 check "a Fabric mod's fluids have Forge fluid types (the in-game mod's, registered under their ids), and a pig falls through one that isn't water as through air" "grep -q 'FABRICATED-FORGE-TEST fluid types OK' logs/latest.log 2>/dev/null"

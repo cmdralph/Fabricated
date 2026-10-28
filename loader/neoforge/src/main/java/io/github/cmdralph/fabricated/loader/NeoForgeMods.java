@@ -21,7 +21,6 @@ import io.github.cmdralph.fabricated.core.archive.ArchiveLimits;
 import io.github.cmdralph.fabricated.core.bytecode.InstalledClasses;
 import io.github.cmdralph.fabricated.core.json.JsonException;
 import io.github.cmdralph.fabricated.core.resolve.NestedNeoForgeJars;
-import net.neoforged.fml.jarcontents.JarContents;
 import net.neoforged.neoforgespi.language.IModInfo;
 import net.neoforged.neoforgespi.locating.IModFile;
 
@@ -62,16 +61,15 @@ final class NeoForgeMods {
 						List.of(file.getFilePath())));
 			}
 			if (!infos.isEmpty() && infos.stream().noneMatch(mod -> GAME.contains(mod.getModId()))) {
-				JarContents contents = file.getContents();
-				jars.add(new InstalledClasses.Jar(infos.getFirst().getDisplayName(), name -> contents.containsFile(name + ".class"),
-						name -> contents.readFile(name + ".class")));
+				jars.add(new InstalledClasses.Jar(infos.getFirst().getDisplayName(), name -> Fml.contains(file, name + ".class"),
+						name -> Fml.read(file, name + ".class")));
 			}
 		}
 		if (!nested) return new Found(mods, InstalledClasses.NONE);
 		TomlParser parser = new TomlParser();
 		for (IModFile file : files) {
 			Path path = file.getFilePath();
-			if (!file.getContents().containsFile(NestedNeoForgeJars.METADATA) || !Files.isRegularFile(path)) continue;
+			if (!Fml.contains(file, NestedNeoForgeJars.METADATA) || !Files.isRegularFile(path)) continue;
 			try {
 				for (NestedNeoForgeJars.ModsToml toml : NestedNeoForgeJars.read(path, ArchiveLimits.DEFAULTS)) {
 					List<Pipeline.NeoForgeMod> declared = declared(parser.parse(toml.text()), toml.jarVersion(), path);

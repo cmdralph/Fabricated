@@ -47,6 +47,7 @@
     "LivingEntityFluidTravelMixin",
     "FluidTypeMixin",
     "NetworkRegistryAccessor",
+    "NetworkRegistryHandlersAccessor",
     "NetworkRegistryUnregisteredPayloadMixin",
     "VanillaNamespacePayloadMixin",
     "NetworkRegistryMixin",

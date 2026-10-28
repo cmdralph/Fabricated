@@ -946,7 +946,7 @@ class MixinPreflightTest {
 		assertTrue(notes.getFirst().message().contains("through an overload with 2 more arguments, codec" + neoForge), notes.toString());
 		mod.put("com/example/mixin/Payloads", repaired.get("com/example/mixin/Payloads.class"));
 		assertTrue(preflight(neoForgeGame, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty());
-		assertFalse(MixinPreflight.appendsArguments(vanilla, "(Ljava/lang/String;Ljava/util/List;Ljava/lang/String;)Ljava/lang/Object;"), "only after the named call's parameters");
+		assertFalse(CallRepairs.appendsArguments(vanilla, "(Ljava/lang/String;Ljava/util/List;Ljava/lang/String;)Ljava/lang/Object;"), "only after the named call's parameters");
 	}
 
 	@Test
@@ -1428,14 +1428,14 @@ class MixinPreflightTest {
 		ClassNode camera = new ClassNode();
 		camera.name = TARGET;
 		camera.methods.add(forwarder(Opcodes.ALOAD, 0, Opcodes.FLOAD, 1, Opcodes.FLOAD, 2, Opcodes.FCONST_0, -1));
-		assertEquals(-1, MixinPreflight.insertedArgument("(FF)V", "(FFF)V"));
-		assertEquals(2, MixinPreflight.insertedArgument(camera, "setRotation", "(FF)V", "(FFF)V"));
+		assertEquals(-1, CallRepairs.insertedArgument("(FF)V", "(FFF)V"));
+		assertEquals(2, CallRepairs.insertedArgument(camera, "setRotation", "(FF)V", "(FFF)V"));
 
 		camera.methods.set(0, forwarder(Opcodes.ALOAD, 0, Opcodes.FCONST_0, -1, Opcodes.FLOAD, 1, Opcodes.FLOAD, 2));
-		assertEquals(0, MixinPreflight.insertedArgument(camera, "setRotation", "(FF)V", "(FFF)V"), "the default first");
+		assertEquals(0, CallRepairs.insertedArgument(camera, "setRotation", "(FF)V", "(FFF)V"), "the default first");
 		camera.methods.set(0, forwarder(Opcodes.ALOAD, 0, Opcodes.FLOAD, 2, Opcodes.FLOAD, 1, Opcodes.FCONST_0, -1));
-		assertEquals(-1, MixinPreflight.insertedArgument(camera, "setRotation", "(FF)V", "(FFF)V"), "its parameters out of order");
-		assertEquals(-1, MixinPreflight.insertedArgument(new ClassNode(), "setRotation", "(FF)V", "(FFF)V"), "no such method");
+		assertEquals(-1, CallRepairs.insertedArgument(camera, "setRotation", "(FF)V", "(FFF)V"), "its parameters out of order");
+		assertEquals(-1, CallRepairs.insertedArgument(new ClassNode(), "setRotation", "(FF)V", "(FFF)V"), "no such method");
 	}
 
 	/** {@code Camera.setRotation(FF)} forwarding to {@code setRotation(FFF)} with these (opcode, operand) pushes; -1: none. */
@@ -2645,6 +2645,83 @@ class MixinPreflightTest {
 	}
 
 	@Test
+	void aVariableModifierAtALoadFailsWhereTheMethodLoadsNoLocalOfItsType() throws Exception {
+		// PRE-17: Puzzles Lib's break speed hook modifies the speed, a float, at its second load after the onGround() call in
+		// Player.getDestroySpeed, by its ordinal among the float locals; Forge 47 reduced the method to a call of
+		// getDigSpeed, which loads no float, so the slice runs from the method's head (its start is gone, as in Mixin) and
+		// Mixin found nothing there.
+		java.util.function.Function<Boolean, byte[]> target = patched -> {
+			ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+			cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+			MethodVisitor speed = cw.visitMethod(Opcodes.ACC_PUBLIC, "getDestroySpeed", "(Ljava/lang/Object;)F", null, null);
+			speed.visitCode();
+			if (patched) {
+				speed.visitVarInsn(Opcodes.ALOAD, 0);
+				speed.visitVarInsn(Opcodes.ALOAD, 1);
+				speed.visitInsn(Opcodes.ACONST_NULL);
+				speed.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "getDigSpeed", "(Ljava/lang/Object;Ljava/lang/Object;)F", false);
+			} else {
+				speed.visitInsn(Opcodes.FCONST_1);
+				speed.visitVarInsn(Opcodes.FSTORE, 2);
+				speed.visitVarInsn(Opcodes.ALOAD, 0);
+				speed.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "onGround", "()Z", false);
+				speed.visitInsn(Opcodes.POP);
+				speed.visitVarInsn(Opcodes.FLOAD, 2);
+				speed.visitInsn(Opcodes.POP);
+				speed.visitVarInsn(Opcodes.FLOAD, 2);
+			}
+			speed.visitInsn(Opcodes.FRETURN);
+			speed.visitMaxs(0, 0);
+			speed.visitEnd();
+			MethodVisitor dig = cw.visitMethod(Opcodes.ACC_PUBLIC, "getDigSpeed", "(Ljava/lang/Object;Ljava/lang/Object;)F", null, null);
+			dig.visitCode();
+			dig.visitInsn(Opcodes.FCONST_1);
+			dig.visitInsn(Opcodes.FRETURN);
+			dig.visitMaxs(0, 0);
+			dig.visitEnd();
+			MethodVisitor onGround = cw.visitMethod(Opcodes.ACC_PUBLIC, "onGround", "()Z", null, null);
+			onGround.visitCode();
+			onGround.visitInsn(Opcodes.ICONST_1);
+			onGround.visitInsn(Opcodes.IRETURN);
+			onGround.visitMaxs(0, 0);
+			onGround.visitEnd();
+			cw.visitEnd();
+			return cw.toByteArray();
+		};
+		byte[] mixin = mixin("com/example/mixin/BreakSpeed", false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC, "getDestroySpeed", "(FLjava/lang/Object;)F", null, null);
+			AnnotationVisitor ann = mv.visitAnnotation(MODIFY_VARIABLE, true);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "getDestroySpeed");
+			methods.visitEnd();
+			AnnotationVisitor at = ann.visitAnnotation("at", AT);
+			at.visit("value", "LOAD");
+			at.visit("ordinal", 1);
+			at.visitEnd();
+			AnnotationVisitor slice = ann.visitAnnotation("slice", "Lorg/spongepowered/asm/mixin/injection/Slice;");
+			AnnotationVisitor from = slice.visitAnnotation("from", AT);
+			from.visit("value", "INVOKE");
+			from.visit("target", "L" + TARGET + ";onGround()Z");
+			from.visitEnd();
+			slice.visitEnd();
+			ann.visit("ordinal", 0);
+			ann.visitEnd();
+			mv.visitCode();
+			mv.visitVarInsn(Opcodes.FLOAD, 1);
+			mv.visitInsn(Opcodes.FRETURN);
+			mv.visitMaxs(1, 3);
+			mv.visitEnd();
+		});
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "BreakSpeed"));
+		Map<String, byte[]> mod = Map.of("com/example/mixin/BreakSpeed", mixin);
+		List<PreflightFinding> found = preflight(new ClassIndex(Map.of(TARGET, target.apply(true))::get), mod::get, ClassBytesSource.EMPTY, false)
+				.check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(found.stream().anyMatch(f -> f.message().contains("expects @At(\"LOAD\", ordinal=1), which does not occur")), found.toString());
+		assertTrue(preflight(new ClassIndex(Map.of(TARGET, target.apply(false))::get), mod::get, ClassBytesSource.EMPTY, false)
+				.check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty(), "vanilla's method loads the float twice after onGround()");
+	}
+
+	@Test
 	void anArgumentModifierWithAnInstanceHandlerBeforeTheDelegateConstructorCallFails() throws Exception {
 		// CTOR-3: Fabric API's shader program hook modifies vanilla's ResourceLocation construction in ShaderInstance's
 		// constructor, which Forge 47's patch moved into the arguments of a this(...) call: Mixin takes only a static
@@ -3328,13 +3405,13 @@ class MixinPreflightTest {
 
 	@Test
 	void theAddedArgumentOfACallIsToldApartByType() {
-		assertEquals(1, MixinPreflight.insertedArgument("(I)V", "(ILjava/lang/String;)V"));
-		assertEquals(0, MixinPreflight.insertedArgument("(I)V", "(Ljava/lang/String;I)V"));
-		assertEquals(1, MixinPreflight.insertedArgument("(ILjava/lang/String;)Z", "(IJLjava/lang/String;)Z"));
-		assertEquals(-1, MixinPreflight.insertedArgument("(I)V", "(II)V"), "either int may be the added one");
-		assertEquals(-1, MixinPreflight.insertedArgument("(I)V", "(IJ)Z"), "another result");
-		assertEquals(-1, MixinPreflight.insertedArgument("(I)V", "(IJJ)V"));
-		assertEquals(-1, MixinPreflight.insertedArgument("(I)V", "(J)V"));
+		assertEquals(1, CallRepairs.insertedArgument("(I)V", "(ILjava/lang/String;)V"));
+		assertEquals(0, CallRepairs.insertedArgument("(I)V", "(Ljava/lang/String;I)V"));
+		assertEquals(1, CallRepairs.insertedArgument("(ILjava/lang/String;)Z", "(IJLjava/lang/String;)Z"));
+		assertEquals(-1, CallRepairs.insertedArgument("(I)V", "(II)V"), "either int may be the added one");
+		assertEquals(-1, CallRepairs.insertedArgument("(I)V", "(IJ)Z"), "another result");
+		assertEquals(-1, CallRepairs.insertedArgument("(I)V", "(IJJ)V"));
+		assertEquals(-1, CallRepairs.insertedArgument("(I)V", "(J)V"));
 	}
 
 	/** Defines the given classes (internal names) itself, before asking the test's class loader. */

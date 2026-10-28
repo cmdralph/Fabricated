@@ -1,12 +1,13 @@
 // Shared build logic for every Minecraft version project (mc/<platform>/<version>/build.gradle applies this). What is
 // specific to the mod loader the target runs on is in mc/platform-<platform>.gradle, which this applies once the source
-// sets exist, and the loader classes in loader/<platform> (next to the shared ones in loader/common). The platform is
-// the folder the version's folder is in: neoforge, forge or forge-legacy.
+// sets exist, and the loader classes in loader/<platform> (next to the shared ones in loader/common, and in
+// loader/forge-shared for both Forge platforms). The platform is the folder the version's folder is in: neoforge, forge
+// or forge-legacy.
 //
 // Each version project produces build/libs/fabricated-<version>+mc<minecraft>.jar in the root project:
 //   - the "loader" source set (the loader's discovery services) plus :core and :fabric-loader-api, which run
 //     in the loader's early-services class loader, and
-//   - META-INF/fabricated/game-mod.jar, Fabricated's in-game NeoForge mod (main source set: common code,
+//   - META-INF/fabricated/game-mod.jar, Fabricated's in-game mod (main source set: common code,
 //     version-specific code and the native Fabric API modules).
 // It also builds the Fabric test mods used by the CI smoke test (build/testmods).
 
@@ -43,45 +44,76 @@ repositories {
 }
 
 // Source shared between one platform's versions, in mc/<platform>/<name>, as the version's `shared_sources`
-// property lists them. NeoForge's: every version (common), 26.x (common26: unobfuscated, with one Fabric API
-// surface), 26.1.2 and 26.2 (common26early: 26.3 changed the APIs that code uses), and 26.2 and 26.3
-// (common26late). Forge's are named alike.
+// property lists them. NeoForge's: every version (common), 1.21.1 and 1.21.11 (common121), 1.21.11 and later
+// (common12111), 26.x (common26: unobfuscated, with one Fabric API surface), 26.1.2 and 26.2 (common26early: 26.3
+// changed the APIs that code uses), and 26.2 and 26.3 (common26late). Forge's are named alike. An entry with a slash is a path from the repository root, for a folder two
+// platforms share: mc/forge-shared holds the code Forge 61 to 66 and Forge 47 both compile as it is.
 def platform = projectDir.parentFile.name
 if (!(platform in ['neoforge', 'forge', 'forge-legacy'])) {
     throw new GradleException("${projectDir} is not in a platform's folder: mc/neoforge, mc/forge or mc/forge-legacy")
 }
 ext.sharedSources = (project.shared_sources as String).split(',')*.trim().findAll { it }
-        .collect { "mc/${platform}/${it}" }
+        .collect { it.contains('/') ? it : "mc/${platform}/${it}" }
+
+// Classes the shared sources name that this version's game names otherwise, as `renamed_classes` lists them (old=new,
+// comma-separated): Minecraft 1.21.1's ResourceLocation, which 1.21.11 renamed Identifier. Such a version compiles a copy
+// of the shared Java sources with each name replaced, as a whole word (imports, descriptors in strings and comments
+// alike), so the sources stay the later versions' own; the compiler checks the rest of what they call. The test sources
+// every platform shares (mc/shared) are copied alike.
+def renamedClasses = (project.findProperty('renamed_classes') ?: '').split(',')*.trim().findAll { it }.collectEntries {
+    def pair = it.split('=')*.trim()
+    if (pair.size() != 2 || pair.any { !(it ==~ /[A-Za-z_][A-Za-z0-9_]*/) }) throw new GradleException("renamed_classes: '${it}' isn't old=new")
+    [(pair[0]): pair[1]]
+}
+def renamedJava = { String sourceSet, List<File> dirs ->
+    if (renamedClasses.isEmpty()) return dirs
+    tasks.register("renamedShared${sourceSet.capitalize()}Java", Sync) {
+        from(dirs)
+        into(layout.buildDirectory.dir("generated/renamed/${sourceSet}"))
+        inputs.property('renamedClasses', renamedClasses)
+        filter { String line -> renamedClasses.inject(line) { l, e -> l.replaceAll("\\b${e.key}\\b", e.value) } }
+    }
+}
+def sharedJava = { String sourceSet -> renamedJava(sourceSet, sharedSources.collect { rootProject.file("$it/src/$sourceSet/java") }) }
+
+// NeoForge's loader classes come in two variants, as the version's `loader_variant` property names it: those of FML 10
+// and later, on FML's own jar contents and class processors (loader/neoforge/src/fml, the default), and those of NeoForge
+// 21.1's FML 4, which runs on ModLauncher (loader/neoforge/src/modlauncher). The rest of loader/neoforge is both's.
+def loaderVariant = project.findProperty('loader_variant') ?: (platform == 'neoforge' ? 'fml' : null)
 
 sourceSets {
     loader {
         java.srcDir rootProject.file('loader/common/src/main/java')
         java.srcDir rootProject.file("loader/${platform}/src/main/java")
+        if (platform != 'neoforge') java.srcDir rootProject.file('loader/forge-shared/src/main/java')
         resources.srcDir rootProject.file("loader/${platform}/src/main/resources")
+        if (loaderVariant) {
+            java.srcDir rootProject.file("loader/${platform}/src/${loaderVariant}/java")
+            resources.srcDir rootProject.file("loader/${platform}/src/${loaderVariant}/resources")
+        }
         resources.srcDir 'src/fabricated/resources'
     }
     main {
-        java.srcDirs = ['src/main/java', 'src/fabricapi/java'] + sharedSources.collect { rootProject.file("$it/src/main/java") }
+        java.srcDirs = ['src/main/java', 'src/fabricapi/java']
+        java.srcDir sharedJava('main')
         resources.srcDirs = ['src/main/resources'] + sharedSources.collect { rootProject.file("$it/src/main/resources") }
     }
     testmod {
-        sharedSources.each {
-            java.srcDir rootProject.file("$it/src/testmod/java")
-            resources.srcDir rootProject.file("$it/src/testmod/resources")
-        }
+        java.srcDir sharedJava('testmod')
+        sharedSources.each { resources.srcDir rootProject.file("$it/src/testmod/resources") }
     }
     // Test sources every platform shares, in mc/shared: the broken test mods,
     testmodbroken {
-        java.srcDir rootProject.file('mc/shared/src/testmodbroken/java')
+        java.srcDir renamedJava('testmodbroken', [rootProject.file('mc/shared/src/testmodbroken/java')])
     }
     // stand-ins for other mods' plugin interfaces, which the test mod compiles against (never packaged),
     testmodstubs {
-        java.srcDir rootProject.file('mc/shared/src/testmodstubs/java')
+        java.srcDir renamedJava('testmodstubs', [rootProject.file('mc/shared/src/testmodstubs/java')])
     }
     // and stand-ins for the APIs of Fabric libraries Fabricated bridges when a mod brings them (Team Reborn's energy
     // API), never packaged: the bridge loads only when the library is present.
     integrationstubs {
-        java.srcDir rootProject.file('mc/shared/src/integrationstubs/java')
+        java.srcDir renamedJava('integrationstubs', [rootProject.file('mc/shared/src/integrationstubs/java')])
     }
 }
 
@@ -123,6 +155,10 @@ ext.expandProps = [
         minecraft_version      : mcVersion,
         minecraft_version_range: project.minecraft_version_range,
         aw_header              : project.aw_header,
+        // The resource loader module the test mod uses: v1, or v0 where Fabric API has no v1 yet (1.21.1).
+        resource_loader_module : project.findProperty('testmod_resource_loader') ?: 'fabric-resource-loader-v1',
+        // The formats in the test mod's built-in pack.mcmeta: a range from 1.21.9, a single pack_format before.
+        pack_formats           : project.findProperty('testmod_pack_formats') ?: '"min_format": 82, "max_format": 2048',
 ]
 
 // The platform: its build plugin's settings, its mod descriptor, and gameDependencies(sourceSet), which gives a source
@@ -152,7 +188,7 @@ tasks.named('processResources', ProcessResources) {
 
 tasks.named('processTestmodResources', ProcessResources) {
     inputs.properties(expandProps)
-    filesMatching(['fabric.mod.json', '*.accesswidener']) { expand(expandProps) }
+    filesMatching(['fabric.mod.json', '*.accesswidener', 'resourcepacks/*/pack.mcmeta']) { expand(expandProps) }
 }
 
 // --- Generated build facts ---------------------------------------------------------------------------
@@ -261,6 +297,28 @@ def testmodJar = tasks.register('testmodJar', Jar) {
     from sourceSets.testmod.output
 }
 
+// Forge: a Fabric mod the test mod nests twice over, as a jar built for Fabric and NeoForge at once nests its libraries
+// (LambDynamicLights): in META-INF/jars, listed by fabric.mod.json and by a NeoForge jar-in-jar list. Forge's jar-in-jar
+// locator must leave it to Fabricated, which translates it (JIJ-1); the nested mod checks it loaded once.
+if (platform != 'neoforge') {
+    sourceSets {
+        testmodnested {
+            java.srcDir rootProject.file('mc/forge-shared/src/testmodnested/java')
+            resources.srcDir rootProject.file('mc/forge-shared/src/testmodnested/resources')
+            compileClasspath = sourceSets.testmod.compileClasspath
+        }
+    }
+    def nestedTestmodJar = tasks.register('nestedTestmodJar', Jar) {
+        archiveFileName = 'fabricated-forge-nested.jar'
+        destinationDirectory = layout.buildDirectory.dir('testmodnested')
+        from sourceSets.testmodnested.output
+    }
+    testmodJar.configure {
+        from(nestedTestmodJar) { into 'META-INF/jars' }
+        from(rootProject.file('mc/forge-shared/src/testmodnested/jarjar')) { into 'META-INF/jarjar' }
+    }
+}
+
 def brokenMods = [
         'throws'  : ['io/github/cmdralph/fabricated/testmod/broken/ThrowingMod.class'],
         'missing' : [],
@@ -312,7 +370,8 @@ def frapiTestmodJar = tasks.register('testmodFrapiJar', Jar) {
     destinationDirectory = testmodsDir
     from sourceSets.testmodfrapi.output
 }
-tasks.named('testmods') { dependsOn frapiTestmodJar }
+// Not where the version has none: NeoForge would report the empty jar as a broken mod file.
+if (frapiTestmodDir.isDirectory()) tasks.named('testmods') { dependsOn frapiTestmodJar }
 
 // --- Pass-through Fabric API modules, at compile time only -------------------------------------------------
 // The player's Fabric API jar provides these modules at runtime; Fabricated never ships them. Code that uses one

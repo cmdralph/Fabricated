@@ -5,9 +5,11 @@ import java.nio.file.FileSystem;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.spi.FileSystemProvider;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import net.fabricmc.loader.api.ModContainer;
@@ -56,7 +58,7 @@ public final class ModContainerImpl extends net.fabricmc.loader.impl.ModContaine
 		if (overlay == null) return Optional.empty();
 		if (overlayRoot == null) {
 			try {
-				overlayRoot = FileSystems.newFileSystem(overlay, (ClassLoader) null).getRootDirectories().iterator().next();
+				overlayRoot = openZip(overlay).getRootDirectories().iterator().next();
 			} catch (IOException | RuntimeException e) {
 				return Optional.empty(); // a missing overlay changes nothing
 			}
@@ -79,7 +81,7 @@ public final class ModContainerImpl extends net.fabricmc.loader.impl.ModContaine
 					opened.add(source);
 				} else if (Files.isRegularFile(source)) {
 					try {
-						FileSystem fs = FileSystems.newFileSystem(source, (ClassLoader) null);
+						FileSystem fs = openZip(source);
 						opened.add(fs.getRootDirectories().iterator().next());
 					} catch (IOException | RuntimeException e) {
 						// A mod whose jar cannot be opened simply has no browsable roots.
@@ -89,6 +91,18 @@ public final class ModContainerImpl extends net.fabricmc.loader.impl.ModContaine
 			roots = List.copyOf(opened);
 		}
 		return roots;
+	}
+
+	/**
+	 * The jar as the JDK's zip file system, whose paths give the {@code jar:file:} URLs classpath scanners read (SCAN-1).
+	 * Asking the installed providers in turn would hand it to the first that takes any file, which on NeoForge 21.1 is
+	 * its jar handler's union file system, with URLs nothing outside that loader opens.
+	 */
+	private static FileSystem openZip(Path jar) throws IOException {
+		for (FileSystemProvider provider : FileSystemProvider.installedProviders()) {
+			if ("jar".equalsIgnoreCase(provider.getScheme())) return provider.newFileSystem(jar, Map.of());
+		}
+		return FileSystems.newFileSystem(jar, (ClassLoader) null);
 	}
 
 	@Override

@@ -1,12 +1,13 @@
 name: Build forge
 
-# The forge branch's build of Minecraft Forge's targets (mc/forge, the projects :mc:forge-<version>): pull requests to
-# the branch only (owner decision D6). Every branch holds every platform; main's build.yml builds NeoForge's. Two server
-# smokes per version, with the test mod and with Fabric API too, each a gate: the server must start and every check that
-# applies pass. Changes to documentation alone build nothing, nor do changes to another platform's folders alone.
+# The full matrix for Forge 61 to 66 (mc/forge, the projects :mc:forge-<version>): built, then a dedicated server and a
+# client with the test mod, and again with Fabric API, each a gate but the client with Fabric API. It runs as build.yml
+# does: for pull requests to main, release tags (v*) and by hand, with the quick check (check.yml) on each push to a
+# working branch; a push to main only builds, which keeps main's Gradle caches current. Changes to documentation alone
+# build nothing, nor do changes to another platform's folders alone.
 on:
   pull_request:
-    branches: [forge]
+    branches: [main]
     paths-ignore:
       - 'docs/**'
       - '**.md'
@@ -20,9 +21,38 @@ on:
       - 'ci/forge-legacy/**'
       - '.github/workflows/build.yml'
       - '.github/workflows/build-forge-legacy.yml'
+      - '.github/workflows/check.yml'
+      - '.github/workflows/release.yml'
+      - '.github/workflows/branch-readme.yml'
+  push:
+    branches: [main]
+    tags: ['v*']
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
+      - 'mc/neoforge/**'
+      - 'mc/forge-legacy/**'
+      - 'mc/platform-neoforge.gradle'
+      - 'mc/platform-forge-legacy.gradle'
+      - 'loader/neoforge/**'
+      - 'loader/forge-legacy/**'
+      - 'ci/neoforge/**'
+      - 'ci/forge-legacy/**'
+      - '.github/workflows/build.yml'
+      - '.github/workflows/build-forge-legacy.yml'
+      - '.github/workflows/check.yml'
       - '.github/workflows/release.yml'
       - '.github/workflows/branch-readme.yml'
   workflow_dispatch:
+    inputs:
+      extended:
+        description: Also the mod corpus on a server and a client (informational)
+        type: boolean
+        default: false
+
+env:
+  GAME_RUNS: ${{ github.event_name != 'push' || github.ref_type == 'tag' }}
+  EXTENDED: ${{ github.ref_type == 'tag' || inputs.extended == true }}
 
 permissions:
   contents: read
@@ -81,6 +111,7 @@ jobs:
       # The game on this branch (docs/PORTING.md §4.1): what Forge makes of the jar's layout and of the translated test
       # mod. The server must start and every check that applies pass.
       - name: Server with Fabricated (must pass)
+        if: ${{ env.GAME_RUNS == 'true' }}
         run: |
           # Forge 61 (1.21.11) runs on Java 21, Forge 64 to 66 (26.x) on Java 25.
           [ "${{ matrix.minecraft }}" = "1.21.11" ] || export PATH="$JAVA_HOME_25_X64/bin:$PATH"
@@ -89,7 +120,7 @@ jobs:
       # The official Fabric API jar (downloaded here in CI, never by Fabricated) with every module passed through: what
       # loads on Forge and what pre-flight disables, for F4's choice of native modules. A gate like the first run.
       - name: Server with Fabricated and Fabric API (must pass)
-        if: ${{ !cancelled() }}
+        if: ${{ env.GAME_RUNS == 'true' && !cancelled() }}
         run: |
           [ "${{ matrix.minecraft }}" = "1.21.11" ] || export PATH="$JAVA_HOME_25_X64/bin:$PATH"
           forge=$(sed -n 's/^forge_version=//p' "mc/forge/${{ matrix.minecraft }}/gradle.properties")
@@ -102,10 +133,10 @@ jobs:
       # The client (docs/PORTING.md §7, F4): a Forge client with the test mod reaches a singleplayer world through
       # mc-runtime-test, and the Fabric client entrypoints run after the main ones. A gate like the server runs.
       - name: Install Mesa EGL for the client
-        if: ${{ !cancelled() }}
+        if: ${{ env.GAME_RUNS == 'true' && !cancelled() }}
         run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends libegl1 libegl-mesa0 libgl1-mesa-dri
       - name: Client with Fabricated (must pass)
-        if: ${{ !cancelled() }}
+        if: ${{ env.GAME_RUNS == 'true' && !cancelled() }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -115,7 +146,7 @@ jobs:
       # The client with the official Fabric API jar the server run downloaded: which of its client modules load on
       # Forge, and whether the client still reaches a world with them. Informational until it holds.
       - name: Client with Fabricated and Fabric API (informational)
-        if: ${{ !cancelled() }}
+        if: ${{ env.GAME_RUNS == 'true' && !cancelled() }}
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
@@ -123,6 +154,54 @@ jobs:
           if [ "${{ matrix.minecraft }}" != "1.21.11" ]; then export JAVA_HOME="$JAVA_HOME_25_X64"; export PATH="$JAVA_HOME/bin:$PATH"; fi
           forge=$(sed -n 's/^forge_version=//p' "mc/forge/${{ matrix.minecraft }}/gradle.properties")
           ci/forge/smoke-client.sh "${{ matrix.minecraft }}" "$forge" "$RUNNER_TEMP/client-fapi" "$RUNNER_TEMP/extra"
+      # Popular Fabric mods from Modrinth (ci/mod-corpus.txt, downloaded here in CI and checked against Modrinth's
+      # SHA-512) with Fabric API, as build.yml runs them on NeoForge: which load on Forge, which are disabled and why.
+      # Informational, with "extended" or on a release tag; a mod whose initializer throws is disabled, not fatal.
+      - name: Fetch the mod corpus
+        id: corpus
+        if: ${{ env.EXTENDED == 'true' && !cancelled() }}
+        continue-on-error: true
+        run: |
+          python3 ci/fetch-corpus.py "${{ matrix.minecraft }}" "$RUNNER_TEMP/corpus" | tee "$RUNNER_TEMP/corpus.txt"
+          # Left out: jars Forge refuses before Fabricated runs, which put it in its error state (CORPUS-34): JEI's Fabric
+          # build, whose module-info names packages it lacks (JEI has a Forge build).
+          rm -f "$RUNNER_TEMP"/corpus/jei-*-fabric-*.jar
+          cp "$RUNNER_TEMP/extra/fabric-api.jar" "$RUNNER_TEMP/corpus/"
+      - name: Server with the mod corpus (informational)
+        if: ${{ !cancelled() && steps.corpus.outcome == 'success' }}
+        continue-on-error: true
+        env:
+          SMOKE_ON_ENTRYPOINT_FAILURE: disable
+        run: |
+          [ "${{ matrix.minecraft }}" = "1.21.11" ] || export PATH="$JAVA_HOME_25_X64/bin:$PATH"
+          forge=$(sed -n 's/^forge_version=//p' "mc/forge/${{ matrix.minecraft }}/gradle.properties")
+          ci/forge/smoke-server.sh "${{ matrix.minecraft }}" "$forge" "$RUNNER_TEMP/server-corpus" "$RUNNER_TEMP/corpus" > "$RUNNER_TEMP/server-corpus.out" 2>&1 || true
+          ci/corpus-summary.sh "$RUNNER_TEMP/server-corpus" "server with the corpus"
+      - name: Client with the mod corpus (informational)
+        if: ${{ !cancelled() && steps.corpus.outcome == 'success' }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SMOKE_ON_ENTRYPOINT_FAILURE: disable
+        run: |
+          if [ "${{ matrix.minecraft }}" != "1.21.11" ]; then export JAVA_HOME="$JAVA_HOME_25_X64"; export PATH="$JAVA_HOME/bin:$PATH"; fi
+          forge=$(sed -n 's/^forge_version=//p' "mc/forge/${{ matrix.minecraft }}/gradle.properties")
+          SMOKE_TIMEOUT=600 ci/forge/smoke-client.sh "${{ matrix.minecraft }}" "$forge" "$RUNNER_TEMP/client-corpus" "$RUNNER_TEMP/corpus" > "$RUNNER_TEMP/client-corpus.out" 2>&1 || true
+          ci/corpus-summary.sh "$RUNNER_TEMP/client-corpus/run" "client with the corpus"
+      - name: Upload mod corpus logs and reports
+        if: ${{ !cancelled() && steps.corpus.outcome == 'success' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: corpus-forge-${{ matrix.minecraft }}
+          path: |
+            ${{ runner.temp }}/corpus.txt
+            ${{ runner.temp }}/server-corpus.out
+            ${{ runner.temp }}/server-corpus/logs
+            ${{ runner.temp }}/server-corpus/crash-reports
+            ${{ runner.temp }}/client-corpus.out
+            ${{ runner.temp }}/client-corpus/run/logs
+            ${{ runner.temp }}/client-corpus/run/crash-reports
+          if-no-files-found: ignore
       - name: Upload Fabricated jar
         uses: actions/upload-artifact@v4
         with:

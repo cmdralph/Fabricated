@@ -22,7 +22,7 @@
       "suggestion": "Use Essential's NeoForge build if Essential offers one for this Minecraft version (essential.gg); its Fabric build can't run here."
     },
     "malilib": {
-      "neoForgeBuildOnly": "malilib adds its picture-in-picture renderers through the GUI renderer's map of renderers, which NeoForge replaced with renderer pools on every version, and calls that accessor while the game starts, so the game stops (CI, run 357)",
+      "neoForgeBuildOnly": "malilib adds its picture-in-picture renderers through the GUI renderer's map of renderers, which NeoForge replaced with renderer pools on every version, so the game stopped as it started (CI, run 357). Fabricated restores that map (PIP-1), but malilib and the mods that need it are not verified on it yet",
       "suggestion": "Remove malilib and the mods that need it (Tweakeroo, MiniHUD, Litematica), or use NeoForge builds of them where their authors offer some."
     },
     "wthit": {

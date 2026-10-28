@@ -2,7 +2,7 @@
 
 Everything in this file comes from CI runs on a real NeoForge dedicated server (`ci/neoforge/smoke-server.sh`) and a
 real NeoForge client (`ci/neoforge/smoke-client.sh`), not from expectations. CI starts each version many times (up to five
-server runs, and up to nine client runs on 1.21.11 or twelve on 26.x, all in `.github/workflows/build.yml`); these
+server runs, and up to seven client runs on 1.21.1, eight on 1.21.11 or eleven on 26.x, all in `.github/workflows/build.yml`); these
 three are the base of this file:
 
 1. **Test mods only**: Fabricated plus the Fabric test mods in `mc/neoforge/common/src/testmod` and
@@ -24,6 +24,7 @@ is the measured state. The experimental Forge builds have their own table,
 
 | Minecraft | NeoForge | Fabric API tested | Test mods | Server boots with Fabric API |
 |---|---|---|---|---|
+| 1.21.1 | 21.1.265 | 0.116.17+1.21.1 | ✅ every server and client check | ✅ boots, all test-mod checks still pass |
 | 1.21.11 | 21.11.45 | 0.141.6+1.21.11 | ✅ every server and client check | ✅ boots, all test-mod checks still pass |
 | 26.1.2 | 26.1.2.116 | 0.155.3+26.1.2 | ✅ every server and client check | ✅ boots, all test-mod checks still pass |
 | 26.2 | 26.2.0.90 | 0.161.0+26.2 | ✅ every server and client check | ✅ boots, all test-mod checks still pass |
@@ -47,7 +48,7 @@ factory is registered with NeoForge, and no test mod check reports a failure.
 
 CI also starts the client with the full Fabric API jar. The run itself is informational, but the checks CI then makes
 in its log are gates: Fabric's renderer API, model formats and client modules on 26.x, model loading and the renderer
-API on 1.21.11. It joins its world and passes every client check on all four versions. On 26.x every Fabric API
+API on 1.21.11. It joins its world and passes every client check on every version. On 26.x every Fabric API
 module loads on the client, the renderer API, Indigo and model loading included, and on 1.21.11 too. That run checks on
 1.21.11 that a model file of a Fabric type is read by its Fabric deserializer and that Fabric block models are drawn in
 chunk sections. On the dedicated server no Fabric API module is disabled.
@@ -67,51 +68,93 @@ How to read the table:
 - **unsupported**: deliberately not loaded.
 - **—**: the module doesn't exist in that Fabric API version.
 
-| Module | 1.21.11 | 26.1.2 | 26.2 | 26.3 |
-|---|---|---|---|---|
-| fabric-api-base | native | native | native | native |
-| fabric-crash-report-info-v1 | native | native | native | native |
-| fabric-biome-api-v1 | native (see below) | native | native | native |
-| fabric-block-getter-api-v2 / block-view-api-v2 | loads | loads | loads | loads |
-| fabric-message-api-v1 | loads | loads | loads | loads |
-| fabric-rendering-fluids-v1 | loads | loads | loads | loads |
-| fabric-serialization-api-v1 | loads | loads | loads | loads |
-| fabric-transitive-access-wideners-v1 | loads | loads | loads | loads |
-| fabric-game-rule-api-v1 | loads | loads | loads | loads |
-| fabric-permission-api-v1 | — | loads | loads | loads |
-| fabric-lifecycle-events-v1 | native | native | native | native |
-| fabric-networking-api-v1 | native | native | native | native |
-| fabric-registry-sync-v0 | native | native | native | native |
-| fabric-resource-loader-v1 | native | native | native | native |
-| fabric-resource-loader-v0 | loads | loads | loads | loads |
-| fabric-item-api-v1 | native | native | native | native |
-| fabric-block-api-v1 | native | native | native | native |
-| fabric-transfer-api-v1 | native | native | native | native |
-| fabric-content-registries-v0 | native | native | native | native |
-| fabric-object-builder-api-v1 | native | native | native | native |
-| fabric-entity-events-v1 | native | native | native | native |
-| fabric-events-interaction-v0 | native | native | native | native |
-| fabric-dimensions-v1 | loads | loads | loads | loads |
-| fabric-loot-api-v3 | native | native | native | native |
-| fabric-resource-conditions-api-v1 | loads | loads | loads | loads |
-| fabric-tag-api-v1 | loads | loads | loads | loads |
-| fabric-advancement-api-v1 | — | — | loads | loads |
-| fabric-menu-api-v1 / screen-handler-api-v1 | native | native | native | native |
-| fabric-api-lookup-api-v1 | native | native | native | native |
-| fabric-command-api-v2 | loads | loads | loads | loads |
-| fabric-convention-tags-v2 (and v1) | loads | loads | loads | loads |
-| fabric-data-attachment-api-v1 | loads | loads | loads | loads |
-| fabric-particles-v1 | loads | loads | loads | loads |
-| fabric-recipe-api-v1 | loads | loads | loads | loads |
-| fabric-creative-tab-api-v1 / item-group-api-v1 | loads | loads | loads | loads |
-| fabric-debug-api-v1 | — | loads | loads | loads |
-| fabric-key-mapping-api-v1 / key-binding-api-v1, screen-api-v1, rendering-v1, sound-api-v1, model-loading-api-v1 | client | client | client | client |
-| fabric-rendering-v1 on the client | loads (see below) | loads (see below) | loads (see below) | loads (see below) |
-| fabric-screen-api-v1, sound-api-v1 on the client | loads (see below) | loads (see below) | loads (see below) | loads (see below) |
-| fabric-model-loading-api-v1 on the client | loads (see below) | loads (see below) | loads (see below) | loads (see below) |
-| fabric-renderer-api-v1, fabric-renderer-indigo | client (see below) | client (see below) | client (see below) | client (see below) |
-| fabric-data-generation-api-v1 (its classes; it generates nothing unless `fabric-api.datagen` is set; its tag appender mixins, and on 26.3 its loot sub-provider mixins, are left out) | loads | loads | loads | loads |
-| fabric-gametest-api-v1, client-gametest | unsupported | unsupported | unsupported | unsupported |
+| Module | 1.21.1 | 1.21.11 | 26.1.2 | 26.2 | 26.3 |
+|---|---|---|---|---|---|
+| fabric-api-base | native | native | native | native | native |
+| fabric-crash-report-info-v1 | native | native | native | native | native |
+| fabric-biome-api-v1 | native | native (see below) | native | native | native |
+| fabric-block-getter-api-v2 / block-view-api-v2 | loads | loads | loads | loads | loads |
+| fabric-message-api-v1 | loads | loads | loads | loads | loads |
+| fabric-rendering-fluids-v1 | loads | loads | loads | loads | loads |
+| fabric-serialization-api-v1 | — | loads | loads | loads | loads |
+| fabric-transitive-access-wideners-v1 | loads | loads | loads | loads | loads |
+| fabric-game-rule-api-v1 | loads | loads | loads | loads | loads |
+| fabric-permission-api-v1 | — | — | loads | loads | loads |
+| fabric-lifecycle-events-v1 | native | native | native | native | native |
+| fabric-networking-api-v1 | native | native | native | native | native |
+| fabric-registry-sync-v0 | native | native | native | native | native |
+| fabric-resource-loader-v1 | — | native | native | native | native |
+| fabric-resource-loader-v0 | native | loads | loads | loads | loads |
+| fabric-item-api-v1 | native | native | native | native | native |
+| fabric-block-api-v1 | native | native | native | native | native |
+| fabric-transfer-api-v1 | native | native | native | native | native |
+| fabric-content-registries-v0 | native | native | native | native | native |
+| fabric-object-builder-api-v1 | native | native | native | native | native |
+| fabric-entity-events-v1 | native | native | native | native | native |
+| fabric-events-interaction-v0 | native | native | native | native | native |
+| fabric-dimensions-v1 | loads | loads | loads | loads | loads |
+| fabric-loot-api-v3 | native (v2 loads too) | native | native | native | native |
+| fabric-resource-conditions-api-v1 | loads | loads | loads | loads | loads |
+| fabric-tag-api-v1 | loads | loads | loads | loads | loads |
+| fabric-advancement-api-v1 | — | — | — | loads | loads |
+| fabric-menu-api-v1 / screen-handler-api-v1 | native | native | native | native | native |
+| fabric-api-lookup-api-v1 | native | native | native | native | native |
+| fabric-command-api-v2 | loads | loads | loads | loads | loads |
+| fabric-convention-tags-v2 (and v1) | loads | loads | loads | loads | loads |
+| fabric-data-attachment-api-v1 | loads | loads | loads | loads | loads |
+| fabric-particles-v1 | native | loads | loads | loads | loads |
+| fabric-recipe-api-v1 | loads (see below) | loads | loads | loads | loads |
+| fabric-creative-tab-api-v1 / item-group-api-v1 | loads | loads | loads | loads | loads |
+| fabric-debug-api-v1 | — | — | loads | loads | loads |
+| fabric-key-mapping-api-v1 / key-binding-api-v1, screen-api-v1, rendering-v1, sound-api-v1, model-loading-api-v1 | client | client | client | client | client |
+| fabric-rendering-v1 on the client | loads (see below) | loads (see below) | loads (see below) | loads (see below) | loads (see below) |
+| fabric-screen-api-v1, sound-api-v1 on the client | loads (see below) | loads (see below) | loads (see below) | loads (see below) | loads (see below) |
+| fabric-model-loading-api-v1 on the client | loads (see below) | loads (see below) | loads (see below) | loads (see below) | loads (see below) |
+| fabric-renderer-api-v1, fabric-renderer-indigo | loads, not in chunk sections (FRAPI-5) | client (see below) | client (see below) | client (see below) | client (see below) |
+| fabric-data-generation-api-v1 (its classes; it generates nothing unless `fabric-api.datagen` is set; its tag appender mixins, and on 26.3 its loot sub-provider mixins, are left out) | loads | loads | loads | loads | loads |
+| fabric-gametest-api-v1, client-gametest | unsupported | unsupported | unsupported | unsupported | unsupported |
+
+### Minecraft 1.21.1
+
+1.21.1 runs Fabric API 0.116.17 on NeoForge 21.1, whose FML still runs on ModLauncher (Fabricated's `modlauncher`
+loader variant). Fabric mods use Intermediary names, remapped at load as on 1.21.11. The 18 native modules are the
+ones that exist in 0.116 (`fabric-resource-loader-v0` stands for v1, which 0.116 doesn't have) and
+`fabric-particles-v1`, with these differences from later versions:
+
+- **Storages and energy**: NeoForge 21.1 has the item, fluid and energy handler capabilities of before its transfer
+  API, so the bridge is the Forge one, ported (`ItemHandler`, `FluidHandler` and `EnergyStorage` capabilities, both
+  ways on blocks, fluid and energy storages in items both ways). Fluid data components cross. Items in items
+  (`ItemStorage.ITEM`) aren't bridged on this version, as on Forge.
+- **Fuel**: `FuelRegistry.INSTANCE` (0.116 has no fuel events) answers through NeoForge's furnace fuel data map and
+  its burn time event; tags first, then items, and vanilla's non-flammable wood exclusion applies.
+- **Biomes**: NeoForge 21.1's biome info holds the special effects, so its own check sends a biome a Fabric
+  modification changed to clients.
+- **Client entrypoints**: NeoForge 21.1 loads mods inside `Minecraft`'s constructor, so Fabric's main and client
+  entrypoints run right after it has (REG-7), where later versions run them at the game thread.
+- **Particles** (native): NeoForge 21.1 keys the particle engine's providers by id, as Forge 47 does, so Fabricated
+  ships the module (PART-3): factories and their sprite sets are registered through the engine's own methods, and
+  the block dust tint event is asked where NeoForge decides the tint.
+- **Colours and shaders**: NeoForge 21.1 keeps block and item colours in maps, so Fabric's colour lookups read them
+  (COLOR-2), and it resolves the namespace of a core shader program, its stages and imports itself, so upstream's
+  two shader hooks are left out (SHADER-2).
+- **Fabric's renderer API**: it loads, with Indigo, but Fabric models that aren't vanilla adapters aren't drawn in
+  chunk sections yet (FRAPI-5).
+- **Entity data serializers**: 0.116 has no registry for them, so Fabric mods register through vanilla's
+  `EntityDataSerializers.registerSerializer`, which NeoForge 21.1 refuses for mods. Fabricated registers such a
+  serializer in NeoForge's synced registry instead, named after the mod and the order it registers in (CORPUS-41).
+- **0.116's object builder**: `FabricBlockSettings` has both `create()` and `of()` (CORPUS-39), and vanilla's block
+  entity type builder, which exists only on 1.21.1, has Fabric's `build()` (CORPUS-40).
+- **Libraries**: NeoForge 21.1's launcher ships libraries later versions don't, checker-qual among them; a Fabric mod's
+  copy of one of their packages is left out for the platform's, as for the other platform libraries (CORPUS-43).
+- **Left out by pre-flight** (with Fabric API installed, the module loads without it): `fabric-recipe-api-v1`'s
+  hook on the ingredient network codec, whose call NeoForge replaced with its own custom ingredient codec, so clients
+  receive a Fabric custom ingredient as the items it matches (UNVERIFIED in a client run); `fabric-data-generation-api-v1`'s
+  tag provider hook, as on later versions; and on the client, where NeoForge changed the code they hook: Indigo's chunk section hook
+  (FRAPI-5), `fabric-model-loading-api-v1`'s hook on baking a model another model needs,
+  `fabric-rendering-fluids-v1`'s same-fluid, overlay and block checks, `fabric-sound-api-v1`'s audio stream hook (as
+  on every version) and `fabric-block-view-api-v2`'s render data in chunk sections.
+- The plan's other skips (tag files' `fabric:remove`, the dimensions module's DataFixerUpper mixins, resource
+  conditions' loaders) are 1.21.11's.
 
 ### Why modules are disabled
 
@@ -181,8 +224,8 @@ failures fall into a few groups:
   object-builder, loads now.
 
 Each of these crashed the server at some point during development: they are the reason the pre-flight checks
-exist. Now each is a clear line in the report, and the server starts with the complete Fabric API jar on all
-four versions; on 26.x no Fabric API module is disabled any more.
+exist. Now each is a clear line in the report, and the server starts with the complete Fabric API jar on
+every version; on 26.x no Fabric API module is disabled any more.
 
 ### Native `fabric-lifecycle-events-v1`
 
@@ -277,7 +320,7 @@ Differences from upstream:
   pack screen. `ALWAYS_ENABLED` packs are required on both sides.
 - Fabric's `/datapack` protections for its internal packs don't apply; NeoForge's own rules do.
 
-CI checks, on all four versions: listener ordering (including an ordering against a vanilla listener), the
+CI checks, on every version: listener ordering (including an ordering against a vanilla listener), the
 shared reload state, a listener factory, the data store read back through `MinecraftServer`, a `DEFAULT_ENABLED`
 built-in data pack being enabled and loaded, and the listener running again after `/reload`. Client listeners
 are checked by the client CI run (a client resource listener runs while the client starts).
@@ -310,7 +353,7 @@ Differences from upstream:
   reflection. If a NeoForge build lacks them, the affected call fails with a clear message instead of the game
   failing to start.
 
-CI checks, on all four versions: a new synced registry created and filled from a Fabric initializer (with the
+CI checks, on every version: a new synced registry created and filled from a Fabric initializer (with the
 entry-added callback and an alias), and a synced data-pack registry loaded from a data pack and seen by a
 `DynamicRegistrySetupCallback`. Id remapping on joining a server needs a client and isn't tested in CI yet.
 
@@ -332,7 +375,8 @@ events from NeoForge's entity events. All of them are server-side, as upstream.
 | `EntitySleepEvents.ALLOW_SLEEPING`, `STOP_SLEEPING` (players), `ALLOW_SETTING_SPAWN` | `CanPlayerSleepEvent`, `PlayerWakeUpEvent`, `PlayerSetSpawnEvent` | |
 | **Not fired**: `EntityElytraEvents`, the other sleep events | none | NeoForge has no matching hook |
 
-CI checks, on all four versions: mob effect add and remove, damage, and death events for a mob, in order.
+CI checks, on every version: damage and death events for a mob, in order; mob effect add and remove on 1.21.11 and
+26.x, and on 1.21.1, whose Fabric API (0.116) has no mob effect events, mob conversion instead.
 
 ### Native `fabric-object-builder-api-v1`
 
@@ -347,8 +391,8 @@ what Fabric initializers registered.
 | `FabricDefaultAttributeRegistry.MODIFY` (26.x; not in the 1.21.11 API) | `EntityAttributeModificationEvent` | runs once, after registration, as upstream; attribute registrations made later are ignored with a warning |
 | `FabricEntityType.Builder` (`createLiving`, `createMob`, `alwaysUpdateVelocity`, `canPotentiallyExecuteCommands`) | NeoForge's own `EntityType.Builder` methods | default attributes and spawn placements are taken when the type is built |
 | Spawn placements | `RegisterSpawnPlacementsEvent` (replace) | |
-| `FabricEntityDataRegistry` (`FabricTrackedDataRegistry` on 1.21.11) | NeoForge's `ENTITY_DATA_SERIALIZERS` registry | NeoForge keeps the ids in step between server and client; register from an initializer |
-| `FabricBlockEntityTypeBuilder`, `FabricBlockEntityType.addValidBlock` (`addSupportedBlock` on 1.21.11) | NeoForge's op-only constructor; a larger copy of the valid-block set | |
+| `FabricEntityDataRegistry` (`FabricTrackedDataRegistry` on 1.21.11); on 1.21.1, which has neither, vanilla's `EntityDataSerializers.registerSerializer` | NeoForge's `ENTITY_DATA_SERIALIZERS` registry | NeoForge keeps the ids in step between server and client; register from an initializer. On 1.21.1 a mod's serializer is named after the mod and the order it registers in (CORPUS-41) |
+| `FabricBlockEntityTypeBuilder`, `FabricBlockEntityType.addValidBlock` (`addSupportedBlock` on 1.21.1 and 1.21.11), `FabricBlockEntityType.Builder.build()` on vanilla's builder (1.21.1) | NeoForge's op-only constructor; a larger copy of the valid-block set; vanilla's `build` without a data fixer type | |
 | `WoodTypeBuilder`, `BlockSetTypeBuilder`, `PoiHelper` / `PointOfInterestHelper` | vanilla, unchanged | Fabricated's access transformer opens `PoiTypes.register` and `SpawnPlacements.register`, which the API calls. A type registered through `PoiTypes.register` (this helper, WorldWeaver) has its states mapped once, though NeoForge maps them as the type is registered and vanilla then again (POI-1) |
 | `TradeOfferHelper` (1.21.11) | `VillagerTradesEvent`, `WandererTradesEvent` | NeoForge rebuilds the tables on every data load, so registrations are replayed each time. In rebalanced-trade worlds, additions for professions without their own rebalanced table use the normal ones |
 | **Not used**: `MinecartComparatorLogicRegistry` | none | registrations are kept, but detector rails ignore them (NeoForge has no hook) |
@@ -358,7 +402,7 @@ sign-editing mixins are not shipped: NeoForge resolves modded wood types' textur
 itself, except on 1.21.11, where the plain (not hanging) sign screen shows a missing texture for modded wood
 types.
 
-CI checks, on all four versions: a mob type built with `createMob` gets its default attributes, the `MODIFY`
+CI checks, on every version: a mob type built with `createMob` gets its default attributes, the `MODIFY`
 change (26.x), its spawn placement and the velocity flag; an entity data serializer gets an id; a block entity type
 gets the op-only flag and an added block. On 1.21.11, also a villager trade added through `TradeOfferHelper`.
 
@@ -379,7 +423,7 @@ NeoForge's block hooks.
 A Fabric block class compiled against Fabricated's development setup (as Fabricated's own test mod is) must override
 `getAppearance` itself, because the compiler sees both defaults; already-compiled Fabric mods are unaffected.
 
-CI checks, on all four versions: the trapdoor tag, appearance through Fabric's interface, and on 26.x the properties
+CI checks, on every version: the trapdoor tag, appearance through Fabric's interface, and on 26.x the properties
 id; on 26.2 and 26.3 also enchanting power and the fluid flow event.
 
 ### Native `fabric-item-api-v1`
@@ -404,7 +448,7 @@ overrides of `FabricItem` take effect wherever NeoForge asks.
 | `FabricComponentMapBuilder`, `FabricTooltipFlag`, `Properties.itemId`/`modelId` | added by Fabricated's mixins | NeoForge already gives the builder `get` |
 | `EnchantmentEvents.MODIFY` (and `MODIFY_WITH_LOOKUP` on 26.x), 26.3's `BlockTransformerEvents.MODIFY` and `BlockTransformerHelper` | Fabricated's hook where vanilla reads each data pack registry entry, as upstream | a changed entry is sent to clients in full |
 
-CI checks, on all four versions: equipment slot, crafting remainder, the allow-enchanting event, custom damage
+CI checks, on every version: equipment slot, crafting remainder, the allow-enchanting event, custom damage
 (through a player), a default component change, the creator mod and an enchantment modified as it loads; on 26.x
 also the item id; on 26.3 also a registered block transform and one added by the modify event.
 
@@ -434,14 +478,14 @@ On the client, NeoForge fires these events while it builds the interaction packe
 interaction is still sent to the server, where the callbacks run again. Upstream sends it only when the client
 result consumes the action.
 
-CI checks, on all four versions, with a Fabric fake player on the server: every server-side callback above is
+CI checks, on every version, with a Fabric fake player on the server: every server-side callback above is
 called and its result honoured (use item, use block, block use-item-on and use-without-item, item use and use-on,
 attack block, attack entity, use entity, break before/canceled/after, pick item), and the fake player is a NeoForge
 fake player. The client mixins are applied when the client starts.
 
 ### Native `fabric-loot-api-v3`
 
-Upstream's loot builder, accessor and drop mixins pass pre-flight on all four versions, so Fabricated ships them
+Upstream's loot builder, accessor and drop mixins pass pre-flight on every version, so Fabricated ships them
 unchanged (with the public API). Only its hook into loot table loading conflicts with NeoForge, which rewrote that
 code; Fabricated replaces it:
 
@@ -455,7 +499,7 @@ code; Fabricated replaces it:
 On 26.3, NeoForge's event offers the loading context only as a `HolderGetter.Provider`: the registry lookup Fabric's
 events receive there can get entries and tags (loot tables included) but lists none.
 
-CI checks, on all four versions: dirt's table is modified with source `VANILLA`, `REPLACE` and `ALL_LOADED` run, and
+CI checks, on every version: dirt's table is modified with source `VANILLA`, `REPLACE` and `ALL_LOADED` run, and
 dirt's drops contain the added pool's diamond and the drop listener's emerald.
 
 ### Native `fabric-content-registries-v0`
@@ -474,7 +518,7 @@ code they rely on, Fabricated bridges the gap:
 
 On 26.3, composting, stripping and fuel are data-driven in vanilla, and Fabric API has no registries for them.
 
-CI checks, on all four versions: a flammable block, a waxable pair and a custom game event's vibration frequency take
+CI checks, on every version: a flammable block, a waxable pair and a custom game event's vibration frequency take
 effect; up to 26.2 also a compostable item, a strippable block and a fuel value.
 
 ### Native `fabric-biome-api-v1`
@@ -546,7 +590,7 @@ unit: neither API fixes an exchange rate. Without the library nothing of this lo
 On 1.21.11, `FluidVariantRendering`'s default sprites and colours come from NeoForge's fluid client extensions instead
 of `fabric-rendering-fluids-v1`'s registry.
 
-CI checks, on all four versions: a chest found through `ItemStorage.SIDED` keeps its items when a transaction is
+CI checks, on every version: a chest found through `ItemStorage.SIDED` keeps its items when a transaction is
 aborted and changes when one commits; a full water cauldron empties when a bucket of water is extracted; a Fabric
 storage used through NeoForge's capability and a NeoForge handler used through `ItemStorage.SIDED` follow aborts,
 nested commits and commits; fluids move in whole millibuckets only; NeoForge code fills a Fabric mod's fluid cell
@@ -585,7 +629,7 @@ entity would hang where it is, and lava's on 1.21.11), and an item falls through
 - A fluid registered after the registry events (from a client initializer, say) gets an unregistered type when first
   asked, without client extensions.
 
-CI checks, on all four versions: two test fluids, one tagged `minecraft:water`; a family's source and flowing fluid
+CI checks, on every version: two test fluids, one tagged `minecraft:water`; a family's source and flowing fluid
 share one type, registered under the source's id, with the block's light and name, water-like only for the tagged
 one; a placed fluid block asks NeoForge's fluid interactions about itself without crashing; a pig falls through a
 column of the untagged fluid as through air.
@@ -918,7 +962,7 @@ A mod disabled this way can still be loaded without the mixin, by naming it in `
 ### What this means for Fabric mods
 
 A Fabric mod works today if it needs only the Fabric Loader API and the **native** or **loads** modules
-above (the item, block, entity and loot modules are native on all four versions), and its own mixins pass
+above (the item, block, entity and loot modules are native on every version), and its own mixins pass
 pre-flight or can be left out (LEAVE-1 above).
 
 ### Planned work, in order of impact
@@ -930,21 +974,21 @@ modules that cascade from it.
    for injected interfaces, `fabric-convention-tags-v2`/`v1`).
 2. ✅ `fabric-networking-api-v1` on 26.x (done). Its dependants now load or fail on their own mixins
    (particles, recipe-api). Ported to 1.21.11 as well.
-3. ✅ `fabric-resource-loader-v1` on all four versions (done). Unblocked the v0 API, creative-tab /
+3. ✅ `fabric-resource-loader-v1` on every version (done). Unblocked the v0 API, creative-tab /
    item-group and, on 26.2, advancement-api. tag-api, loot-api and resource-conditions then failed on their own
    mixins (see above; all three load or are native now).
-4. ✅ `fabric-registry-sync-v0` on all four versions (done). Unblocked debug-api on 26.x. object-builder
+4. ✅ `fabric-registry-sync-v0` on every version (done). Unblocked debug-api on 26.x. object-builder
    then failed on its own mixins (native since step 6).
-5. ✅ `fabric-entity-events-v1` on all four versions (done).
-6. ✅ `fabric-object-builder-api-v1` on all four versions (done). Unblocked `fabric-data-attachment-api-v1`.
-7. ✅ `fabric-item-api-v1` and `fabric-block-api-v1` on all four versions (done). The modules that build on them
+5. ✅ `fabric-entity-events-v1` on every version (done).
+6. ✅ `fabric-object-builder-api-v1` on every version (done). Unblocked `fabric-data-attachment-api-v1`.
+7. ✅ `fabric-item-api-v1` and `fabric-block-api-v1` on every version (done). The modules that build on them
    (transfer, content registries) then failed on their own mixins (native since steps 10 and 11).
-8. ✅ `fabric-events-interaction-v0` on all four versions (done).
-9. ✅ `fabric-loot-api-v3` on all four versions (done).
-10. ✅ `fabric-content-registries-v0` on all four versions (done).
-11. ✅ `fabric-transfer-api-v1` and `fabric-api-lookup-api-v1` on all four versions (done).
+8. ✅ `fabric-events-interaction-v0` on every version (done).
+9. ✅ `fabric-loot-api-v3` on every version (done).
+10. ✅ `fabric-content-registries-v0` on every version (done).
+11. ✅ `fabric-transfer-api-v1` and `fabric-api-lookup-api-v1` on every version (done).
 12. ✅ The bridge between Fabric storages and NeoForge's item and fluid capabilities (done).
-13. ✅ `fabric-menu-api-v1` / `fabric-screen-handler-api-v1` on all four versions (done).
+13. ✅ `fabric-menu-api-v1` / `fabric-screen-handler-api-v1` on every version (done).
 
 ## Fabric API modules on Forge (experimental)
 
@@ -1064,6 +1108,10 @@ by the server runs (the colours and screen input by the client runs):
   may sleep in the daytime `EntitySleepEvents.ALLOW_SLEEP_TIME` allows (with Fabric API, server and client): Forge 47
   checks its own sleep time event where upstream's hooks look for the day check, so the in-game mod answers it from
   Fabric's (SLEEP-2). Fabric API for 1.21.11 and later has no such event.
+- **Damage:** an entity hurt through the game's own `hurtServer` asks `ServerLivingEntityEvents.ALLOW_DAMAGE`, whose
+  refusal holds, and fires `AFTER_DAMAGE` with the damage it was dealt and the damage it took (Forge 61 to 66, with
+  Fabric API, server and client; Fabric API 0.92.12 has no `AFTER_DAMAGE`). Forge 61's and 64's `hurtServer` drop the
+  copy of the dealt damage upstream's hook reads, so the in-game mod fires the event there (DAMAGE-1).
 - **Use and attack:** a player's uses of an item, a block and an entity, and its attacks on a block and an entity, ask
   `UseItemCallback`, `UseBlockCallback`, `UseEntityCallback`, `AttackBlockCallback` and `AttackEntityCallback` through
   Forge's own code, and a refusal holds (all five, with Fabric API, server and client). Upstream's hooks apply as they
@@ -1083,18 +1131,39 @@ by the server runs (the colours and screen input by the client runs):
   Fabric API, client run). Forge 47 moved the bake's code into an overload that also takes the sprite getter, where
   pre-flight moves upstream's hooks, its before-bake variable modifier too (MODEL-3).
 
+What else differs on Forge, for Fabric mods in general:
+
+- **Loading errors:** when Forge refuses a mod file or a dependency is missing, it loads only Minecraft and Forge to show
+  the error. Fabricated then leaves the game's classes alone, so Forge's own error is what the player sees (LOADERR-1).
+  Forge itself refuses two Fabric jars in the corpus: JEI's on Forge 61 to 66 (its module-info) and YACL 3.6.6's on
+  Forge 47 (its `mods.toml`). Their Forge builds work.
+- **Jars built for Fabric and NeoForge at once** list their nested jars for NeoForge too. Fabricated hides that list
+  from Forge's jar-in-jar locator and reads the jar itself, so each nested mod loads once, translated (JIJ-1).
+- **MixinExtras** is 0.5.5 on every Forge version: the in-game mod nests it, and Forge's jar-in-jar locator picks it over
+  the 0.5.4 Forge 61 to 66 offer (MIXEXT-3).
+- **Forge Config API Port**'s Fabric build loads, with its own copies of NeoForge's config classes, which Forge lacks
+  (REPL-1, PLAT-5). **Mod Menu**'s Fabric build isn't loaded on Forge, which lists mods and their config screens itself;
+  its API isn't provided there.
+- **Enum extensions:** a Fabric mod adding enum constants with Mixin's enum extensions (Farmer's Delight Refabricated)
+  is disabled on Forge 61 to 66, whose Mixin 0.8.7 predates them (CORPUS-36).
+- **The corpus runs** reach the game on every Forge version since LOADERR-1: 85 to 104 Fabric mods load on the Forge 64
+  to 66 servers and 135 on Forge 47's, 104 to 151 on the clients (runs 40570195894 and 40570200260). They stop later,
+  on what *Findings* in [roadmap.md](roadmap.md#findings) lists (PRE-18, CORPUS-33).
+
 ## Fabric mods tested
 
 CI checks Fabricated's own test mods as gates on every version. Real mods run in these CI runs too, downloaded from
 Modrinth in CI (never redistributed):
 
 - **A corpus of popular Fabric mods** (`ci/mod-corpus.txt`: libraries, interface, rendering, performance and content
-  mods, with their dependencies), on a server and a client, on every version. Informational: each run's report lists
+  mods, with their dependencies), on a server and a client, on every version, Forge's too. Informational: each run's report lists
   which load and why the others are disabled. Known problems are tracked as CORPUS-n in
   [roadmap.md](roadmap.md#findings), and fixed ones in [FINDINGS.md](FINDINGS.md).
 - **An advanced corpus of Fabric mods with deep hooks** (`ci/mod-corpus-advanced.txt`: world generation, gameplay
   systems, camera, sound, replays, server tools), on a server and a client of its own, so that one stopping the game
   can't hide the main corpus's results. Informational, as the main corpus is.
+- **On 1.21.1** both corpora still stop (runs 40683010866 and 40691316584): the main server at Moonlight (CORPUS-44),
+  the main client at LambDynamicLights (CORPUS-45), the advanced runs past module resolution (CORPUS-46).
 - **Sodium and Iris for NeoForge** with Fabric API and the renderer test mod on 26.x: gated (see *Renderer mods*).
   Their Fabric builds run with `loadUnsupported`, informational: since the constructor repair they reach a world and
   mesh Fabric models on 26.1.2 and 26.3.

@@ -1,7 +1,7 @@
 # Fabricated
 
 Fabricated is a NeoForge mod that loads **Fabric mods and libraries on NeoForge**, for Minecraft
-**1.21.11, 26.1.2, 26.2 and 26.3**. Put Fabricated and your Fabric mods in the `mods` folder, and they load
+**1.21.1, 1.21.11, 26.1.2, 26.2 and 26.3**. Put Fabricated and your Fabric mods in the `mods` folder, and they load
 next to your NeoForge mods.
 
 It's built to be:
@@ -14,7 +14,7 @@ It's built to be:
 - **Safe.** Mod jars are treated as untrusted input. Fabricated never runs mod code while translating, never
   modifies your mod jars, never touches the network, and has no telemetry.
 
-> **Status: alpha (0.5.0 in development; the latest release is v0.4.0-alpha).** Nearly every Fabric API module
+> **Status: alpha (v0.5.0-alpha).** Nearly every Fabric API module
 > loads, but many Fabric mods still patch code that NeoForge changed and are disabled before they run. Read
 > [What works today](#what-works-today) before relying on it.
 
@@ -24,7 +24,7 @@ with a README of its own on its branch:
 
 | Branch | Platform | Minecraft | Jars |
 |---|---|---|---|
-| [`main`](https://github.com/cmdralph/Fabricated/tree/main) | NeoForge | 1.21.11, 26.1.2, 26.2, 26.3 | `fabricated-<version>+mc<minecraft>.jar` |
+| [`main`](https://github.com/cmdralph/Fabricated/tree/main) | NeoForge | 1.21.1, 1.21.11, 26.1.2, 26.2, 26.3 | `fabricated-<version>+mc<minecraft>.jar` |
 | [`forge`](https://github.com/cmdralph/Fabricated/tree/forge) | Minecraft Forge 61 to 66 (experimental) | 1.21.11, 26.1.2, 26.2, 26.3 | `fabricated-forge-<version>+mc<minecraft>.jar` |
 | [`forge-legacy`](https://github.com/cmdralph/Fabricated/tree/forge-legacy) | Forge 47 (experimental) | 1.20.1 | `fabricated-forge-<version>+mc1.20.1.jar` |
 
@@ -41,6 +41,7 @@ wideners, mixins, and the isolation of broken mods (for example a missing depend
 
 | Minecraft | NeoForge | Java | Fabric mods use | Status |
 |---|---|---|---|---|
+| 1.21.1 | 21.1.265 | 21 | Intermediary names (remapped at load) | ✅ test mods pass; Fabric renderer API models aren't drawn in chunk sections yet |
 | 1.21.11 | 21.11.45 | 21 | Intermediary names (remapped at load) | ✅ test mods pass |
 | 26.1.2 | 26.1.2.116 | 25 | Mojang names (no remapping) | ✅ test mods pass |
 | 26.2 | 26.2.0.90 | 25 | Mojang names (no remapping) | ✅ test mods pass |
@@ -51,11 +52,11 @@ that NeoForge has already changed. Fabricated handles this per module:
 
 - **Native**: Fabricated ships the module itself. Today that is `fabric-api-base`,
   `fabric-lifecycle-events-v1`, `fabric-networking-api-v1` (login queries excepted),
-  `fabric-resource-loader-v1`, `fabric-registry-sync-v0`, `fabric-entity-events-v1`,
-  `fabric-object-builder-api-v1`, `fabric-item-api-v1`, `fabric-block-api-v1`,
+  `fabric-resource-loader-v1` (`fabric-resource-loader-v0` on 1.21.1), `fabric-registry-sync-v0`,
+  `fabric-entity-events-v1`, `fabric-object-builder-api-v1`, `fabric-item-api-v1`, `fabric-block-api-v1`,
   `fabric-events-interaction-v0`, `fabric-loot-api-v3`, `fabric-content-registries-v0`,
   `fabric-transfer-api-v1`, `fabric-api-lookup-api-v1`, `fabric-menu-api-v1` (`fabric-screen-handler-api-v1`
-  on 1.21.11), `fabric-biome-api-v1` and `fabric-crash-report-info-v1`.
+  on 1.21.1 and 1.21.11), `fabric-biome-api-v1`, `fabric-crash-report-info-v1`, and on 1.21.1 `fabric-particles-v1`.
 - **Pass-through**: the module is loaded from the official Fabric API jar you install. Fabricated checks
   every mixin against NeoForge's code before loading it ("mixin pre-flight"). Modules whose mixins can't
   apply are disabled, along with every mod that requires them, with an explanation.
@@ -68,9 +69,10 @@ reload listeners, built-in packs, their own registries, items and blocks using F
 entities with default attributes, block entity types, data attachments or Fabric's interaction events. 
 Loot table events, content registries and Fabric's transfer API work too. Per-module details are in [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md).
 
-Fabric mods can also reach and integrate with NeoForge mods: a Fabric mod's plugins for JEI, REI, Jade and EMI are
-found by those mods' NeoForge builds, its config screen opens from NeoForge's mod list, and its mixins into an
-installed NeoForge mod are checked before the game starts.
+Fabric mods can also reach and integrate with NeoForge mods: a Fabric mod's plugins for JEI, REI, Jade, WTHIT and
+Simple Voice Chat are found by those mods' NeoForge builds (EMI's are converted too, untested in CI), its config
+screen opens from NeoForge's mod list, and its mixins into an installed NeoForge mod are checked before the game
+starts.
 
 ## What it does not support
 
@@ -100,9 +102,9 @@ installed NeoForge mod are checked before the game starts.
    that work on NeoForge.
 5. Start the game. Open `logs/fabric-bridge-report.txt` to see what loaded and why anything didn't.
 
-On **1.21.11**, Fabric mods use Fabric's Intermediary names, so Fabricated remaps them to Mojang's names on
-first load. It needs Mojang's mapping file, which the NeoForge installer already downloads. Nothing is
-fetched at runtime.
+On **1.21.1 and 1.21.11**, Fabric mods use Fabric's Intermediary names, so Fabricated remaps them to Mojang's
+names on first load. It needs Mojang's mapping file, which the NeoForge installer already downloads. Nothing
+is fetched at runtime.
 
 If a mod exists for both loaders, Fabricated uses the NeoForge version: NeoForge cannot load two mods
 with the same id. Remove the NeoForge jar to use the Fabric one.
@@ -156,7 +158,7 @@ warning in the report, so a bad config never crashes the game.
 
 | Setting | Effect |
 |---|---|
-| `onEntrypointFailure` | `error` (default): an exception in a Fabric initializer stops on NeoForge's error screen. `disable`: the mod is marked failed, its other entrypoints are skipped, and loading continues. Content it registered before failing stays registered. |
+| `onEntrypointFailure` | `error` (default): an exception in a Fabric initializer stops on NeoForge's error screen. `disable`: the mod is marked failed, its other entrypoints are skipped, and loading continues. Content it registered before failing stays registered; content it built but never registered is dropped, with an error naming it, so it can't stop the registries' freeze. |
 | `strictDependencies` | `true`: a Fabric mod with unmet dependencies stops the game on the error screen instead of being skipped. |
 | `strictLinkage` | `true`: also disable mods (not only Fabric API modules) that reference Minecraft code missing at runtime. |
 | `cache.*` | Translation cache in `.fabricated/cache` in the game directory. Entries are hash-checked before use and deleted after `maxUnusedLaunches` launches without use. |
@@ -168,13 +170,12 @@ warning in the report, so a bad config never crashes the game.
 | `mods.<id>.ignorePreflight` | Load the mod even if mixin pre-flight fails. It may crash. Use for testing only. |
 | `mods.<id>.ignoreHints` | Ignore the mod's own `custom.fabricated` hints (see [docs/API.md](docs/API.md)). |
 | `mods.<id>.loadUnsupported` | Load a mod whose Fabric build Fabricated refuses (the Fabric builds of Sodium and Iris) anyway. Expect it to misbehave; this exists for testing support for it. |
-| `mojangMappingsPath` | 1.21.11 only: path to Mojang's mapping file if NeoForge's installer didn't leave one. |
+| `mojangMappingsPath` | 1.21.1 and 1.21.11 only: path to Mojang's mapping file if NeoForge's installer didn't leave one. |
 
 ## Known limitations
 
 - **Fabric API coverage** is the main limit. See [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) for the
-  per-module status on each Minecraft version. The roadmap is at the end of
-  that file.
+  per-module status on each Minecraft version. What is planned is in [docs/roadmap.md](docs/roadmap.md).
 - **Mixin pre-flight is conservative.** It only reports what it can prove from bytecode. A mixin it can't
   evaluate (wildcard selectors, unusual injection points, a target in another Fabric mod) loads normally. If
   that mixin later fails, Mixin's own crash report names the Fabric mod. Mixins into Minecraft, Fabric API and

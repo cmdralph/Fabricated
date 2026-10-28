@@ -93,7 +93,7 @@ final class HandlerBridges {
 	 */
 	static MethodNode wrapperBridge(ClassNode mixin, MethodNode handler, Type owner, String desc, String overload, int inserted, boolean staticCall,
 			List<MethodNode> extra) {
-		Type operation = Type.getType(MixinPreflight.OPERATION);
+		Type operation = Type.getType(MixinNames.OPERATION);
 		List<Type> expected = callParameters(owner, desc, staticCall);
 		expected.add(operation);
 		List<Type> sugar = sugarAfter(handler, expected);
@@ -138,7 +138,7 @@ final class HandlerBridges {
 	 */
 	static MethodNode constructorCallWrapper(ClassNode mixin, MethodNode handler, Type owner, String callDesc, boolean staticCall,
 			List<Type> constructor, boolean after, List<MethodNode> added) {
-		Type operation = Type.getType(MixinPreflight.OPERATION);
+		Type operation = Type.getType(MixinNames.OPERATION);
 		Type result = Type.getReturnType(callDesc);
 		List<Type> call = callParameters(owner, callDesc, staticCall);
 		List<Type> params = new ArrayList<>(call);
@@ -284,7 +284,7 @@ final class HandlerBridges {
 
 	/** {@code (Operation original, T value, Object[] args) -> original.call(args with value inserted at index)}. */
 	static MethodNode argumentInserter(String name, Type value, int index) {
-		Type operation = Type.getType(MixinPreflight.OPERATION);
+		Type operation = Type.getType(MixinNames.OPERATION);
 		MethodNode lambda = new MethodNode(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, name,
 				Type.getMethodDescriptor(Type.getType(Object.class), operation, value, Type.getType(Object[].class)), null, null);
 		int args = 1 + value.getSize();
@@ -399,9 +399,9 @@ final class HandlerBridges {
 	 */
 	static void moveInjector(MethodNode handler, AnnotationNode injector, MethodNode bridge) {
 		handler.access = handler.access & ~(Opcodes.ACC_PUBLIC | Opcodes.ACC_PROTECTED) | Opcodes.ACC_PRIVATE;
-		if (Annotations.find(handler, MixinPreflight.UNIQUE) == null) {
+		if (Annotations.find(handler, MixinNames.UNIQUE) == null) {
 			if (handler.visibleAnnotations == null) handler.visibleAnnotations = new ArrayList<>();
-			handler.visibleAnnotations.add(new AnnotationNode(MixinPreflight.UNIQUE));
+			handler.visibleAnnotations.add(new AnnotationNode(MixinNames.UNIQUE));
 		}
 		if (handler.visibleAnnotations != null && handler.visibleAnnotations.remove(injector)) {
 			bridge.visibleAnnotations = new ArrayList<>(List.of(injector));

@@ -3,8 +3,8 @@
 # Mods that replace the renderer (Sodium, Iris) are not listed: their Fabric builds can't run on NeoForge, and CI
 # runs their NeoForge builds next to Fabric API separately.
 # Nor are jars that are NeoForge mods too: NeoForge loads those itself (Zoomify's "universal" jar, which then needs
-# Kotlin for Forge). Nor mods that can't run on NeoForge by design (CORPUS-13): malilib, and with it Tweakeroo and
-# MiniHUD, reads a field NeoForge replaced while the game starts, and WTHIT's Fabric build refuses NeoForge.
+# Kotlin for Forge). Nor malilib, with Tweakeroo and MiniHUD: the compatibility plan refuses them until a run of their
+# own verifies them on the map Fabricated restores (PIP-1, CORPUS-13). Nor WTHIT's Fabric build, which refuses NeoForge.
 
 # Libraries
 architectury-api

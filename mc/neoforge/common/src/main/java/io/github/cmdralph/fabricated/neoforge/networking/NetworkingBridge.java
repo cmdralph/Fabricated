@@ -14,11 +14,11 @@ import org.slf4j.LoggerFactory;
 import io.github.cmdralph.fabricated.neoforge.mixin.NetworkRegistryAccessor;
 import net.fabricmc.fabric.api.networking.v1.EntityTrackingEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerConfigurationConnectionEvents;
+import net.fabricmc.fabric.api.networking.v1.ServerConfigurationNetworking;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.impl.networking.PayloadTypeRegistryImpl;
 import net.fabricmc.fabric.impl.networking.server.ServerNetworkingImpl;
 import net.fabricmc.fabric.impl.networking.server.ServerPlayNetworkAddon;
-import net.fabricmc.fabric.mixin.networking.accessor.ServerCommonPacketListenerImplAccessor;
 import net.minecraft.network.ConnectionProtocol;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.PacketFlow;
@@ -116,12 +116,12 @@ public final class NetworkingBridge {
 
 	/** Called when a connection closes during configuration (see {@code ServerCommonPacketListenerDisconnectMixin}). */
 	public static void onConfigurationDisconnect(ServerConfigurationPacketListenerImpl listener) {
-		ServerConfigurationConnectionEvents.DISCONNECT.invoker().onConfigureDisconnect(listener, ((ServerCommonPacketListenerImplAccessor) listener).getServer());
+		ServerConfigurationConnectionEvents.DISCONNECT.invoker().onConfigureDisconnect(listener, ServerConfigurationNetworking.getServer(listener));
 	}
 
 	private static void configure(RegisterConfigurationTasksEvent event) {
 		if (!(event.getListener() instanceof ServerConfigurationPacketListenerImpl listener)) return;
-		MinecraftServer server = ((ServerCommonPacketListenerImplAccessor) listener).getServer();
+		MinecraftServer server = ServerConfigurationNetworking.getServer(listener);
 		CURRENT_TASKS.put(listener, event);
 		try {
 			ServerConfigurationConnectionEvents.BEFORE_CONFIGURE.invoker().onSendConfiguration(listener, server);
@@ -176,8 +176,7 @@ public final class NetworkingBridge {
 	private static synchronized void registerLate(Phase phase, Identifier id) {
 		if (phase.registered().remove(id)) {
 			NetworkRegistryAccessor.fabricated$registrations().get(phase.protocol()).remove(id);
-			NetworkRegistryAccessor.fabricated$serverboundHandlers().get(phase.protocol()).remove(id);
-			NetworkRegistryAccessor.fabricated$clientboundHandlers().get(phase.protocol()).remove(id);
+			FabricPayloads.forgetHandlers(phase.protocol(), id);
 		}
 		boolean setup = NetworkRegistryAccessor.fabricated$setup();
 		NetworkRegistryAccessor.fabricated$setSetup(false);
@@ -210,8 +209,7 @@ public final class NetworkingBridge {
 			if (s != null && c != null) {
 				// NeoForge keeps one codec per payload id; Fabric allows one per direction (see ClientboundCodecs).
 				if (s.codec() != c.codec()) ClientboundCodecs.put(phase.protocol(), id, c.codec());
-				if (play) registrar.playBidirectional(s.type(), s.codec(), serverHandler, clientHandler);
-				else registrar.configurationBidirectional(s.type(), s.codec(), serverHandler, clientHandler);
+				FabricPayloads.bidirectional(registrar, play, s.type(), s.codec(), serverHandler, clientHandler);
 			} else if (s != null) {
 				if (play) registrar.playToServer(s.type(), s.codec(), serverHandler);
 				else registrar.configurationToServer(s.type(), s.codec(), serverHandler);

@@ -15,18 +15,20 @@ verified), [`PORTING.md`](PORTING.md) (the 1.20.1 and Forge evaluation and the b
 - **Branches** (the owner's decisions, 2026-10-21, 2026-10-25 and 2026-10-26): one working branch, `claude/dev`, holds
   every platform: `mc/<platform>/<version>` and `loader/<platform>` for `neoforge`, `forge` and `forge-legacy`, next to
   the shared modules. It is merged by pull request into all three release branches, which therefore hold the same
-  tree: `main` (NeoForge 1.21.11 to 26.3, the primary platform), `forge` (Minecraft Forge 61 to 66 for the same
+  tree: `main` (NeoForge 1.21.1 to 26.3, the primary platform), `forge` (Minecraft Forge 61 to 66 for the same
   versions) and `forge-legacy` (Forge 47 for 1.20.1; NeoForge needs no legacy branch). A branch differs only in the CI
   that builds it (`build.yml`, `build-forge.yml`, `build-forge-legacy.yml`), the jars it stands for in a release and its
   README (`docs/readme/<branch>.md`, which `branch-readme.yml` copies to the branch's `.github/README.md`: `claude/dev`
-  never holds that file). Every change goes to all three as one pull request each, from the same `claude/dev` head, and
-  each merges once its own CI is green; `claude/dev` is never reset to a release branch. A release branch receives
+  never holds that file). Each task goes to `main` as one pull request, whose full matrix builds every platform the
+  task touched (the owner's decision, 2026-10-27); at a release, `forge` and `forge-legacy` get the same head by pull
+  request, its code already checked. `claude/dev` is never reset to a release branch. A release branch receives
   nothing else but `branch-readme.yml`'s commits, and is never merged back into `claude/dev`: that would bring its
   `.github/README.md` along, and a release branch merged back while it moves on gives the next pull request two merge
   bases, which GitHub reports as a conflict and on which no CI runs (#157's first head did). All three targets move
   together: a change to shared code is checked on every platform's CI, and a platform's port of a feature follows in
-  the same pass where its API allows. 1.20.1 targets Forge 47.4, modern Forge builds with ForgeGradle, and secondary
-  branches' CI runs for pull requests only: decisions D1 to D6 in `RESEARCH.md` §8, with the build paths.
+  the same pass where its API allows. 1.20.1 targets Forge 47.4 and modern Forge builds with ForgeGradle: decisions D1
+  to D6 in `RESEARCH.md` §8, with the build paths (D6's CI on the secondary branches' own pull requests gave way to the
+  one pull request into `main` on 2026-10-27).
 - **Shared modules stay Java 17** (the owner's decision D2, 2026-10-21): `core`, `api` and `fabric-loader-api` compile
   their main code with `release = 17`, so the build rejects what 1.20.1's Java 17 can't load. Not available there: a
   `List`'s `getFirst`/`getLast`/`removeFirst`/`addFirst` (Java 21's sequenced collections: use `get(0)`,
@@ -45,16 +47,18 @@ verified), [`PORTING.md`](PORTING.md) (the 1.20.1 and Forge evaluation and the b
 - **Commits batch a concern, not a file** (the owner's decision, 2026-10-21): related changes (a fix with its tests
   and docs, a round of core bytecode work, the CI changes of a pass) go in one commit, made once they are done and
   checked, not after each edit. The subject is a strict Conventional Commit, `type(scope): summary` (`fix(preflight):`,
-  `feat(core):`, `fix(security):`, `ci:`, `docs:`); the body says why, and for a fix, why the tests missed it. Each
-  push starts a CI run of about 25 minutes per version, so a round's commits go up in one push.
+  `feat(core):`, `fix(security):`, `ci:`, `docs:`); the body says why, and for a fix, why the tests missed it.
 - **No placeholders** in merged code (`CONTRIBUTING.md`): an unsupported feature is reported in
   `fabric-bridge-report.txt`, `COMPATIBILITY.md` and `roadmap.md`, not stubbed.
 - **Pull requests are merged once CI is green on their final commit** (the owner's standing decision, 2026-10-19):
   drive the PR to green, merge it with a merge commit whose title is a Conventional Commit summarising the pull
   request, then continue on `claude/dev`. Never force-push or reset a branch without the owner's say.
-- **One pull request per pass, not per change** (the owner's decision, 2026-10-20): commit and push to the working
-  branch as work goes; while no pull request is open, a push builds nothing, so run CI on the branch by hand
-  (`workflow_dispatch`) whenever game-facing work needs it. Open the pull request when the whole pass is done.
+- **Local first, one pull request per task** (the owner's decision, 2026-10-27, replacing one pull request per pass
+  and per branch): verify locally (the `coreOnly` build, the touched version's jars and test mods, a local server
+  smoke where it helps: *Building and verifying*), commit in logical steps and push in batches. Each push gets the
+  quick check (`check.yml`, about five minutes). The full matrix runs once a task is done, on its pull request into
+  `main`, and before a release; by hand (`workflow_dispatch`, with `extended` for the informational runs) only when a
+  task needs that evidence. Never push just to see CI, and no polishing rounds: cleanup is a task of its own.
 - **Lightweight and readable over clever.** No abstraction without a second user, no dead code, no duplicated
   utilities. A refactor must measurably reduce coupling or duplication.
 
@@ -63,18 +67,28 @@ verified), [`PORTING.md`](PORTING.md) (the 1.20.1 and Forge evaluation and the b
 | What | Command | Where it runs |
 |---|---|---|
 | Minecraft-independent modules and all unit tests | `./gradlew -Pfabricated.coreOnly=true build` | anywhere (Maven Central only) |
-| One version's jar and the test mods | `./gradlew :mc:neoforge-26.2:fabricatedJar :mc:neoforge-26.2:testmods` | needs `maven.neoforged.net`, Mojang and `maven.fabricmc.net` |
-| Another platform's version | `./gradlew -Pfabricated.platforms=forge --configure-on-demand :mc:forge-26.2:fabricatedJar` (`forge-legacy`: `:mc:forge-legacy-1.20.1`) | needs the platform's maven and Mojang |
+| One version's jar and the test mods | `./gradlew :mc:neoforge-26.1.2:fabricatedJar :mc:neoforge-26.1.2:testmods` | needs `maven.neoforged.net`, Mojang and `maven.fabricmc.net` |
+| Another platform's version | `./gradlew -Pfabricated.platforms=forge --configure-on-demand :mc:forge-26.2:fabricatedJar :mc:forge-26.2:testmodJar` (`forge-legacy`: `:mc:forge-legacy-1.20.1`) | needs the platform's maven and Mojang |
 | Everything on NeoForge | `./gradlew build` | same |
-| Real server / client with the test mods | `ci/neoforge/smoke-server.sh`, `ci/neoforge/smoke-client.sh` | CI (HeadlessMC + Xvfb for the client) |
+| A real server with the test mods | `ci/<platform>/smoke-server.sh <minecraft> <loader version> <work dir>` (on the game's Java) | locally or CI |
+| A real client with the test mods | `ci/<platform>/smoke-client.sh` (same arguments) | CI (HeadlessMC, Xvfb and `gh`) |
 
-**Cloud sandbox limit.** The Claude Code cloud container blocks `maven.neoforged.net`, Mojang and
-`maven.fabricmc.net`, so only the `coreOnly` build runs there. The Minecraft modules compile, and their mixins
-apply, only in GitHub Actions (`.github/workflows/build.yml`). The loop is: run the `coreOnly` build locally, push,
-and read the CI job logs. `compileJava` doesn't check mixin targets or injection points; those fail when the game
-applies them, which the CI server and client runs do for every commit of a pull request (built once, as the pull
-request; pushes to other branches build only on `main`). A change to documentation alone (`docs/`, `*.md`) builds
-nothing.
+**Local builds.** The cloud container reaches `maven.neoforged.net`, `maven.minecraftforge.net`, Mojang and
+`maven.fabricmc.net` (checked on 2026-10-27; a session whose network policy blocks them can run only the `coreOnly`
+build). Forge 47 and Forge 61, 64 and 66 and NeoForge 1.21.11 and 26.1.2 have been built locally, and a server smoke
+runs locally on the game's Java (`/root/.gradle/jdks` holds 25, `/usr/lib/jvm` 21). NeoForge 26.2 and 26.3 don't build
+locally: NeoForge's source transformer (JST 2.0.10) doesn't apply NeoForge's access transformer line for the anonymous
+class `HolderSet$1`, and recompiling the game fails, while CI builds both (why CI differs is UNVERIFIED); the quick
+check covers them. `compileJava` doesn't check mixin targets or injection points: those fail when the game applies
+them, which a server or client run shows. A change to documentation alone (`docs/`, `*.md`) builds nothing in CI.
+
+**CI** (`.github/workflows`): the quick check (`check.yml`) on each push to a working branch runs the unit tests and,
+for each platform the push changed, one version built and booted on a server with the test mods
+(`ci/changed-targets.py` picks it; shared code boots NeoForge's newest). The full matrix (`build.yml` for NeoForge,
+`build-forge.yml`, `build-forge-legacy.yml`) runs on pull requests to `main`, release tags and by hand, for the
+platforms a change touched; a push to `main` (a merge) only builds, to keep `main`'s Gradle caches current. The
+informational runs below run on release tags and by hand with `extended`. A job installs the game once and its later
+runs copy that install (`ci/install-cache.sh`).
 
 **What CI proves, per version** (`.github/workflows/build.yml`):
 1. Unit tests (core, fabric-loader-api, api).
@@ -83,7 +97,8 @@ nothing.
    then again with Fabric API. On 26.x that second run also loads the renderer API test mod, and a gate checks that
    Fabric block models are drawn in chunk sections (also inside a vanilla multipart model), as moving blocks and with
    the breaking overlay, and that Fabric's and NeoForge's custom model formats both load.
-4. A corpus of popular Fabric mods from Modrinth (informational).
+4. A corpus of popular Fabric mods from Modrinth, other mods' Fabric builds and the newest NeoForge build
+   (informational, with `extended`).
 
 ## Architecture
 
@@ -137,7 +152,8 @@ mc/neoforge/<version>        (one Gradle project per Minecraft version, MDG)
   ├─ source set loader  = loader/common + loader/neoforge ──► core   (FML SPI only; early-services class loader)
   ├─ source set main    = in-game NeoForge mod  ──compileOnly──► loader output, core
   │     sources: mc/neoforge/<version>/src/main/java + mc/neoforge/<version>/src/fabricapi/java (vendored native Fabric API modules)
-  │              + the folders the version's `shared_sources` lists: mc/neoforge/common (all), mc/neoforge/common26 (26.x),
+  │              + the folders the version's `shared_sources` lists: mc/neoforge/common (all; renamed for 1.21.1),
+  │                mc/neoforge/common121 (1.21.1, 1.21.11), mc/neoforge/common12111 (1.21.11, 26.x), mc/neoforge/common26 (26.x),
   │                mc/neoforge/common26early (26.1.2, 26.2), mc/neoforge/common26late (26.2, 26.3)
   │     26.x only, compileOnly: fabric-renderer-api-v1's jar (pass-through module, typed calls)
   ├─ source sets testmod, testmodbroken, testmodfrapi (26.x)  ──compileOnly──► main output, fabric-loader-api, api
@@ -159,7 +175,7 @@ vendored modules in `mc/neoforge/<version>/src/fabricapi` and the bridges in `mc
 
 | Seam | How | Type-safe? |
 |---|---|---|
-| Which code a version gets | Gradle source directories (the version's `shared_sources` property, read by `mc/mc.gradle`): each version compiles only its own and the shared folders it lists | compile-time |
+| Which code a version gets | Gradle source directories (the version's `shared_sources` property, read by `mc/mc.gradle`): each version compiles only its own and the shared folders it lists, under `mc/<platform>/` or, for an entry with a slash, from the repository root (`mc/forge-shared`: what Forge 61 to 66 and Forge 47 compile as it is) | compile-time |
 | Which loader a version builds for | The folder its project is in, `mc/<platform>/<version>` (`neoforge`, `forge` or `forge-legacy`): `mc/platform-<platform>.gradle` (build plugin, mod descriptor, `gameDependencies`) and `loader/<platform>` (discovery services) next to `loader/common`. Every branch holds every platform; `-Pfabricated.platforms` picks which a build configures (NeoForge's by default) | compile-time |
 | Discovery services → FML | `META-INF/services` in the `loader` source set: `IModFileCandidateLocator`, `IDependencyLocator`, `IModLanguageLoader`, `ClassProcessor` | compile-time against FML SPI |
 | Version facts → core | `META-INF/fabricated/version.properties` (generated: Minecraft version, namespace, Mixin versions) and `fabric-api-plan.json` (data, per version) | data, validated when parsed |
@@ -173,8 +189,7 @@ All Fabricated-owned mixin configs use `"required": true` and `"defaultRequire":
 point fails at startup, in CI. Three injections set `require = 0` on purpose, each with a fallback:
 `MinecraftEntrypointsMixin` (client entrypoints before `Thread.currentThread()`, with a `TAIL` fallback),
 `MinecraftStartedMixin` (`CLIENT_STARTED` as `run()` starts, else on the first client tick), and
-`ChunkGeneratorFeaturesMixin` (only needed while NeoForge's `refreshFeaturesPerStep`, present on all four lines,
-exists). The full inventory (target, injector, point and versions of every mixin) is in [`MIXINS.md`](MIXINS.md).
+`ChunkGeneratorFeaturesMixin` (only needed while NeoForge's `refreshFeaturesPerStep` exists). The full inventory (target, injector, point and versions of every mixin) is in [`MIXINS.md`](MIXINS.md).
 
 ### Threading model
 

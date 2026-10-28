@@ -14,7 +14,7 @@
 | fabricmc.net posts for [1.21.11](https://fabricmc.net/2025/12/05/12111.html), [26.1](https://fabricmc.net/2026/03/14/261.html), [Removing Obfuscation](https://fabricmc.net/2025/10/31/obfuscation.html); neoforged.net posts for [21.11](https://neoforged.net/news/21.11release/) and [26.1](https://neoforged.net/news/26.1release/) | Release-level facts (Java version, obfuscation removal) | Primary, but read through search summaries because the sandbox can't fetch these sites directly |
 | Third-party guides and trackers (server hosts, CurseForge listings) | Only for build numbers that git can't give (latest 26.3 beta build) | Secondary, marked *unverified* |
 
-**Sandbox limitation:** this development container's network policy blocks `maven.neoforged.net`, `maven.fabricmc.net`, `meta.fabricmc.net`, Mojang's launcher/piston hosts, and `api.modrinth.com`. GitHub, Maven Central and the Gradle Plugin Portal are reachable. As a result:
+**Sandbox limitation** (at the time of this research; since 2026-10-27 the container reaches the game's mavens and Mojang, see `claude.md`, *Local builds*): this development container's network policy blocked `maven.neoforged.net`, `maven.fabricmc.net`, `meta.fabricmc.net`, Mojang's launcher/piston hosts, and `api.modrinth.com`. GitHub, Maven Central and the Gradle Plugin Portal were reachable. As a result:
 * Exact *latest* NeoForge build numbers per line couldn't be read from the NeoForged Maven. The git branch/tag data is authoritative for the **line** and its toolchain, but not for the newest build number.
 * The NeoForge-dependent Gradle modules can't be built inside this container until those hosts are allowed (see §7). GitHub Actions CI is unaffected.
 
@@ -210,7 +210,7 @@ The owner's decisions after the platform evaluation. The evidence for each fact 
 | D3 | Native Fabric API modules on 1.20.1 (delegated): **`main`'s native set where Fabric API 0.92.12 has the module**, the rest passed through as on `main`; the list is fixed in phase L2 against the 1.20.1 corpus. | Which bridges the branch writes first. |
 | D4 | 1.20.1 release criteria (delegated): **the gates `main` has**: the test mods' server and client smoke, the client module gate, Fabric API 0.92.12 booting, and corpus runs where no client or server crashes and every mod left out is reported with its reason. | When `forge-legacy`'s 1.20.1 target leaves its evaluation and stabilisation phases. |
 | D5 | **Modern Forge builds with ForgeGradle** (version to verify against Gradle 9.7 when the `forge` branch starts). | ModDevGradle supports NeoForge, and Forge only up to 1.20.1 through `legacyforge`. |
-| D6 | **CI on secondary branches runs for pull requests only.** A push builds only `main`; work on `forge` and `forge-legacy` is built when a pull request targets them (`.github/workflows/build.yml`: `push: branches: [main]`, `pull_request` for any base). | Runner time: each game target costs about 25 minutes per run. |
+| D6 | **CI on secondary branches runs for pull requests only** (replaced on 2026-10-27 by one pull request per task into `main`, with a quick check on each push). A push builds only `main`; work on `forge` and `forge-legacy` is built when a pull request targets them (`.github/workflows/build.yml`: `push: branches: [main]`, `pull_request` for any base). | Runner time: each game target costs about 25 minutes per run. |
 
 **Build paths.**
 

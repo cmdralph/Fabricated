@@ -38,7 +38,7 @@
     "fabricated-test": ["io.github.cmdralph.fabricated.testmod.TestMod${'$'}CustomEntrypoint"],
     "modmenu": ["io.github.cmdralph.fabricated.testmod.ModMenuEntry"],
     "jei_mod_plugin": ["io.github.cmdralph.fabricated.testmod.plugin.OtherModPlugins${'$'}Jei"],
-    "rei_common": ["io.github.cmdralph.fabricated.testmod.plugin.OtherModPlugins${'$'}Rei"],
+    "rei_common": ["io.github.cmdralph.fabricated.testmod.plugin.ReiPlugin"],
     "jade": [
       "io.github.cmdralph.fabricated.testmod.plugin.OtherModPlugins${'$'}Jade",
       "io.github.cmdralph.fabricated.testmod.plugin.OtherModPlugins${'$'}JadeHolder::INSTANCE"
@@ -56,7 +56,7 @@
     "fabric-api-base": "*",
     "fabric-lifecycle-events-v1": "*",
     "fabric-networking-api-v1": "*",
-    "fabric-resource-loader-v1": "*",
+    "${resource_loader_module}": "*",
     "fabric-registry-sync-v0": "*",
     "fabric-entity-events-v1": "*",
     "fabric-object-builder-api-v1": "*",

@@ -28,7 +28,7 @@ public final class FabricModContainer extends ModContainer {
 				.markerType(IModBusEvent.class)
 				.allowPerPhasePost()
 				.build();
-		String moduleName = info.getOwningFile().getFile().getId();
+		String moduleName = Fml.moduleName(info.getOwningFile().getFile());
 		ClassLoader loader = layer.findModule(moduleName).map(Module::getClassLoader)
 				.orElseThrow(() -> new ModLoadingException(ModLoadingIssue.error("§e[Fabricated]§r {0}",
 						"Module " + moduleName + " for Fabric mod " + info.getModId() + " is not in the game layer").withAffectedMod(info)));

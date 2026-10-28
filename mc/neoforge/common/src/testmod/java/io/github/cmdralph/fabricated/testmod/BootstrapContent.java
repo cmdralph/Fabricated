@@ -35,8 +35,8 @@ public final class BootstrapContent {
 	/** Called as vanilla's bootstrap has created the registries' contents: the type's intrusive holder waits for its registration. */
 	public static void build() {
 		if (type == null) {
-			type = EntityType.Builder.<ItemEntity>of(ItemEntity::new, MobCategory.MISC).noSave().noSummon()
-					.build(ResourceKey.create(Registries.ENTITY_TYPE, ID));
+			type = TestCompat.build(EntityType.Builder.<ItemEntity>of(ItemEntity::new, MobCategory.MISC).noSave().noSummon(),
+					ResourceKey.create(Registries.ENTITY_TYPE, ID));
 		}
 	}
 
