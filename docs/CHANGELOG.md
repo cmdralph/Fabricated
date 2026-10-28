@@ -3,6 +3,33 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-10-28: The 1.21.1 corpus before v0.5.0
+
+- **Extended runs on `main` before the release** (`b409300`): NeoForge 40625072551, Forge 40625075054, Forge 47
+  40625077485, all green (the corpus runs are informational). Their corpus summaries showed the 1.21.1 corpus servers
+  stopping; the other versions' were as before.
+- **The owner's decision:** fix the 1.21.1 corpus first, in its own pull request, then release.
+- **Fixed** (each with its cause in `FINDINGS.md`):
+  - **CORPUS-39:** `FabricBlockSettings.create()` was missing on 1.21.1 (TechReborn, Traveler's Backpack): task 3
+    had merged it into `of()`, but both keep Fabric's own names in Intermediary.
+  - **CORPUS-40:** vanilla's block entity type builder (1.21.1 only) lacked Fabric's injected `build()` (Farmer's
+    Delight).
+  - **CORPUS-41:** NeoForge 21.1 refuses mods' calls to vanilla's `EntityDataSerializers.registerSerializer`, which
+    Fabric mods for 1.21.1 make, having no Fabric registry (Moonlight, Friends and Foes): such a call now registers
+    the serializer in NeoForge's synced registry.
+  - **CORPUS-42:** content a Fabric mod built before its entrypoint failed stopped the registries' freeze (every
+    NeoForge version): once an entrypoint has failed, the leftover holders are dropped with an error naming them.
+  - **CORPUS-43:** on NeoForge 21.1 a Fabric mod shading checker-qual's annotations (Axiom) stopped module resolution:
+    the packages of every ModLauncher layer the game reads now count as the platform's.
+- **Noted, open:** HOLD-2 (the Forge ports have no CORPUS-42 drop yet), SER-1 (NeoForge 21.11 refuses vanilla's
+  serializer registration too; no Fabric mod for 1.21.11 has been seen calling it).
+- Decided here: CORPUS-41's hook stays 1.21.1's (SER-1); CORPUS-42 drops holders only after an entrypoint failure, so
+  content never registered without one still fails as on Fabric.
+- Verification: NeoForge 1.21.1, 1.21.11 and 26.1.2 compile; the 1.21.1 and 1.21.11 server smokes pass locally (60
+  of 60 checks), the 1.21.1 test mod now checking `create()`, the builder's `build()` and a serializer registered
+  through vanilla's method. CORPUS-42 and CORPUS-43 were reproduced locally first (a throwing test mod that builds a
+  fluid; a jar shading a checker-qual annotation): each stopped the 1.21.1 server without its fix and starts with it.
+
 ## 2026-10-28: Cleanup before v0.5.0
 
 - **Pre-flight's structure (ARCH-1):** the injector repairs run from one ordered table, and the repair families are

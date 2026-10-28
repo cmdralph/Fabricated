@@ -158,7 +158,7 @@ warning in the report, so a bad config never crashes the game.
 
 | Setting | Effect |
 |---|---|
-| `onEntrypointFailure` | `error` (default): an exception in a Fabric initializer stops on NeoForge's error screen. `disable`: the mod is marked failed, its other entrypoints are skipped, and loading continues. Content it registered before failing stays registered. |
+| `onEntrypointFailure` | `error` (default): an exception in a Fabric initializer stops on NeoForge's error screen. `disable`: the mod is marked failed, its other entrypoints are skipped, and loading continues. Content it registered before failing stays registered; content it built but never registered is dropped, with an error naming it, so it can't stop the registries' freeze. |
 | `strictDependencies` | `true`: a Fabric mod with unmet dependencies stops the game on the error screen instead of being skipped. |
 | `strictLinkage` | `true`: also disable mods (not only Fabric API modules) that reference Minecraft code missing at runtime. |
 | `cache.*` | Translation cache in `.fabricated/cache` in the game directory. Entries are hash-checked before use and deleted after `maxUnusedLaunches` launches without use. |

@@ -139,6 +139,13 @@ ones that exist in 0.116 (`fabric-resource-loader-v0` stands for v1, which 0.116
   two shader hooks are left out (SHADER-2).
 - **Fabric's renderer API**: it loads, with Indigo, but Fabric models that aren't vanilla adapters aren't drawn in
   chunk sections yet (FRAPI-5).
+- **Entity data serializers**: 0.116 has no registry for them, so Fabric mods register through vanilla's
+  `EntityDataSerializers.registerSerializer`, which NeoForge 21.1 refuses for mods. Fabricated registers such a
+  serializer in NeoForge's synced registry instead, named after the mod and the order it registers in (CORPUS-41).
+- **0.116's object builder**: `FabricBlockSettings` has both `create()` and `of()` (CORPUS-39), and vanilla's block
+  entity type builder, which exists only on 1.21.1, has Fabric's `build()` (CORPUS-40).
+- **Libraries**: NeoForge 21.1's launcher ships libraries later versions don't, checker-qual among them; a Fabric mod's
+  copy of one of their packages is left out for the platform's, as for the other platform libraries (CORPUS-43).
 - **Left out by pre-flight** (with Fabric API installed, the module loads without it): `fabric-recipe-api-v1`'s
   hook on the ingredient network codec, whose call NeoForge replaced with its own custom ingredient codec, so clients
   receive a Fabric custom ingredient as the items it matches (UNVERIFIED in a client run); `fabric-data-generation-api-v1`'s
@@ -384,8 +391,8 @@ what Fabric initializers registered.
 | `FabricDefaultAttributeRegistry.MODIFY` (26.x; not in the 1.21.11 API) | `EntityAttributeModificationEvent` | runs once, after registration, as upstream; attribute registrations made later are ignored with a warning |
 | `FabricEntityType.Builder` (`createLiving`, `createMob`, `alwaysUpdateVelocity`, `canPotentiallyExecuteCommands`) | NeoForge's own `EntityType.Builder` methods | default attributes and spawn placements are taken when the type is built |
 | Spawn placements | `RegisterSpawnPlacementsEvent` (replace) | |
-| `FabricEntityDataRegistry` (`FabricTrackedDataRegistry` on 1.21.11) | NeoForge's `ENTITY_DATA_SERIALIZERS` registry | NeoForge keeps the ids in step between server and client; register from an initializer |
-| `FabricBlockEntityTypeBuilder`, `FabricBlockEntityType.addValidBlock` (`addSupportedBlock` on 1.21.11) | NeoForge's op-only constructor; a larger copy of the valid-block set | |
+| `FabricEntityDataRegistry` (`FabricTrackedDataRegistry` on 1.21.11); on 1.21.1, which has neither, vanilla's `EntityDataSerializers.registerSerializer` | NeoForge's `ENTITY_DATA_SERIALIZERS` registry | NeoForge keeps the ids in step between server and client; register from an initializer. On 1.21.1 a mod's serializer is named after the mod and the order it registers in (CORPUS-41) |
+| `FabricBlockEntityTypeBuilder`, `FabricBlockEntityType.addValidBlock` (`addSupportedBlock` on 1.21.1 and 1.21.11), `FabricBlockEntityType.Builder.build()` on vanilla's builder (1.21.1) | NeoForge's op-only constructor; a larger copy of the valid-block set; vanilla's `build` without a data fixer type | |
 | `WoodTypeBuilder`, `BlockSetTypeBuilder`, `PoiHelper` / `PointOfInterestHelper` | vanilla, unchanged | Fabricated's access transformer opens `PoiTypes.register` and `SpawnPlacements.register`, which the API calls. A type registered through `PoiTypes.register` (this helper, WorldWeaver) has its states mapped once, though NeoForge maps them as the type is registered and vanilla then again (POI-1) |
 | `TradeOfferHelper` (1.21.11) | `VillagerTradesEvent`, `WandererTradesEvent` | NeoForge rebuilds the tables on every data load, so registrations are replayed each time. In rebalanced-trade worlds, additions for professions without their own rebalanced table use the normal ones |
 | **Not used**: `MinecartComparatorLogicRegistry` | none | registrations are kept, but detector rails ignore them (NeoForge has no hook) |
