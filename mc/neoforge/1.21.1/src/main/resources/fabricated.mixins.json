@@ -18,6 +18,7 @@
     "DefaultAttributesValidationMixin",
     "PackRepositorySourcesMixin",
     "EntityTypeBuilderMixin",
+    "EntityDataSerializersMixin",
     "BlockEntityTypeMixin",
     "BlockEntityTypeBuilderMixin",
     "PoiTypesMixin",
