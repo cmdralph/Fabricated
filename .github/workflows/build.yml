@@ -108,8 +108,8 @@ jobs:
           - minecraft: "1.21.1"
             fabric_api: "0.116.17+1.21.1"
             neoforge: "21.1.265"
-            # The newest builds for the version until a first run gives ids to pin.
-            plugin_hosts: "jei rei jade wthit simple-voice-chat"
+            # Modrinth version ids of the mods reading plugins (REI 16 names its common plugins REIServerPlugin).
+            plugin_hosts: "jei@pWGmsnGm rei@b8gfS9Je jade@eYz2YBGT wthit@IeXnWQRE simple-voice-chat@BdfNq5zU"
             java: 21
             experimental: false
           - minecraft: "1.21.11"
