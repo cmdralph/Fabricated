@@ -27,3 +27,22 @@ subprojects {
         }
     }
 }
+
+// The engine's projects: built with Java 21, their main code loadable on Java 17, for the 1.20.1 branch
+// (docs/PORTING.md, D2); tests may use newer APIs.
+configure(subprojects.findAll { it.path in [':core', ':api', ':fabric-loader-api'] }) {
+    plugins.withType(JavaPlugin).configureEach {
+        java.toolchain.languageVersion = JavaLanguageVersion.of(21)
+        tasks.withType(JavaCompile).configureEach {
+            options.release = name == 'compileJava' ? 17 : 21
+        }
+        repositories {
+            mavenCentral()
+        }
+        dependencies {
+            testImplementation platform("org.junit:junit-bom:${junit_version}")
+            testImplementation 'org.junit.jupiter:junit-jupiter'
+            testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+        }
+    }
+}

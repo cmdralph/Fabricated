@@ -864,16 +864,23 @@ some of its modules (Sodium for NeoForge). Fabricated now shares the game with t
 Fabric API keeps `net.fabricmc.fabric.api.util` in two modules (`fabric-api-base` and
 `fabric-content-registries-v0`); a module layer allows one, and Forgified Fabric API puts it in `fabric-api-base`, so
 Fabricated counts it there too. A provider's module is used as it is: what it lacks, a Fabric mod's linkage warnings
-name. Sinytra Connector itself next to Fabricated is not supported (two Fabric loaders in one game). Open: with
-Forgified Fabric API's resource loader, a Fabric jar's built-in pack whose `pack.mcmeta` keeps its NeoForge build's
-conditions of a type only that build registers stops the game in Forgified Fabric API's code (PROVIDER-3). In a development
-workspace the in-game mod's own copies can't be left out; the report says so.
+name, and what it does differently is its own. Forgified Fabric API's networking refuses a payload in the `minecraft`
+namespace, as NeoForge does, where Fabricated's own networking takes it (NET-4): with it installed, a Fabric mod
+registering one fails its initializer and the report marks it failed (the test mod's payload on 1.21.1; BetterEnd's
+ritual update UNVERIFIED, PROVIDER-5). Mods read a Fabric mod's files through its
+container as NeoForge reads them, with the NeoForge sections translation leaves out of its `pack.mcmeta` and data files
+(PROVIDER-3). In a development workspace the in-game mod's own copies can't be left out; the report says so.
+
+**Sinytra Connector beside Fabricated is refused**, as is a second Fabricated jar: the launch stops with an error naming
+the jars, and Fabricated loads no Fabric mod (two loaders of Fabric mods can't share them; of two Fabricated jars, the
+platform would run one by load order, DUP-1). Remove one of them from the mods folder.
 
 CI checks this on every version with stand-ins built from Fabricated's own jar (`ci/neoforge/standins.py`: a module
 provided straight and nested, a copy of Fabric Loader's API with its language loader service, two versions of a nested
-library; every check gates), and with the newest Forgified Fabric API, Kotlin for Forge and Fabric Language Kotlin from
-Modrinth on a server without the test mods (the server must start) and Forgified Fabric API with Sodium on a 1.21.1
-client (informational).
+library; every check gates); with the newest Forgified Fabric API, Kotlin for Forge and Fabric Language Kotlin from
+Modrinth on a server with the test mods (the server must start and, with Forgified Fabric API's resource loader, take
+the test mod's built-in pack); with Forgified Fabric API and Sodium on a 1.21.1 client (informational); and with a
+stand-in for Connector and a second Fabricated jar, each of which must stop the launch with Fabricated's error.
 
 ### Fabric Loader
 
@@ -928,7 +935,10 @@ MixinExtras has NeoForge's jar, and a NeoForge mod nested in another jar has tha
   registries do; an entry a mod registers in a vanilla registry before NeoForge's registration events is accepted, as
   on Fabric (REG-3: Wover, BetterX's library).
 - A mod whose required mixin (in a required config without a plugin) calls into a Fabric mod that isn't loading is
-  disabled, with the reason: Mixin would stop the game looking for that mod's class while applying it.
+  disabled, with the reason: Mixin would stop the game looking for that mod's class while applying it. Such a mixin in
+  another config (not required, or with a plugin) is left out instead, and the mod loads without it: Mixin would stop
+  the game the same way unless the plugin skipped it (OneConfig's chat mixin, which needs adventure-platform-fabric,
+  CORPUS-47). The report lists it under *Mixins left out (they need a Fabric mod that isn't loading)*.
 - Mods detect Fabricated with `FabricLoader.getInstance().isModLoaded("fabricated")`; see [API.md](API.md).
 - `mixinextras` is provided at the version NeoForge runs, as Fabric Loader provides its own, so mods requiring it
   load (copies nested in mod jars are dropped for NeoForge's).

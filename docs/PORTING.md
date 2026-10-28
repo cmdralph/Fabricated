@@ -287,8 +287,8 @@ providers)? (10) Where can a locator read the program arguments?
 ## 5. Build and CI
 
 **Today.** `settings.gradle` includes every `mc/<platform>/<version>` with a `build.gradle` as the project
-`:mc:<platform>-<version>`, for the platforms `-Pfabricated.platforms` names (NeoForge's by default; each branch's CI
-names its own). Each applies its platform's build plugin (`net.neoforged.moddev`, `net.minecraftforge.gradle` or
+`:mc:<platform>-<version>`, for the platforms the branch holds (`main` NeoForge's, `forge` and `forge-legacy` theirs;
+`-Pfabricated.platforms` picks among them). Each applies its platform's build plugin (`net.neoforged.moddev`, `net.minecraftforge.gradle` or
 `net.neoforged.moddev.legacyforge`) and the shared `mc/mc.gradle`. That script takes the platform from the folder,
 and the shared source folders from the version's `shared_sources` property, under `mc/<platform>/` (NeoForge's
 `common`, `common121`, `common12111`, `common26`, `common26early`, `common26late`), or from the repository root for an entry with a slash
@@ -343,9 +343,9 @@ the abstractions below are added when the branch work starts (owner decision D2 
    FRAPI test mod's folder on the first shared folder that has one. Checked behaviour-neutral by printing every
    version project's source sets, declared dependencies and placeholders before and after: only the loader's
    folders differ.
-4. **CI per platform** (done; reworked on 2026-10-27): each platform has its own workflow (`build.yml`,
-   `build-forge.yml`, `build-forge-legacy.yml`), run on pull requests to `main` for the platforms a change touched,
-   with a quick check on each push (`check.yml`, `ci/changed-targets.py`). The smoke scripts take the loader version as
+4. **CI per platform** (done; reworked on 2026-10-27 and 2026-10-28): each platform has its own workflow on its own
+   branch (`build.yml` on `main`, `build-forge.yml` on `forge`, `build-forge-legacy.yml` on `forge-legacy`), run on
+   pull requests into that branch, with a quick check on each push (`check.yml`, `ci/changed-targets.py`). The smoke scripts take the loader version as
    a parameter; the matrix stays in each workflow, as the platforms' steps differ.
 5. **A platform profile** (data, per target, part of the cache key): the descriptor path and dialect, the
    platform's package prefixes and provided libraries, who provides MixinExtras, the data-pack keys, the Mixin facts

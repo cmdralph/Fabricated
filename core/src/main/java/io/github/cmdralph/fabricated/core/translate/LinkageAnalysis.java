@@ -11,6 +11,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import io.github.cmdralph.fabricated.core.archive.ArchiveException;
 import io.github.cmdralph.fabricated.core.archive.ArchiveLimits;
@@ -77,6 +79,10 @@ public final class LinkageAnalysis {
 
 	/** Ends an issue of a mixin that needs a Fabric mod that isn't loading (see {@link #isUnloadedUse}). */
 	private static final String UNLOADED = ", which isn't loading";
+	/** Ends an issue of a mixin to leave out (see {@link #leftOutMixin}). */
+	private static final String LEFT_OUT = ", which isn't loading; Mixin would stop the game applying it, so it is left out";
+	/** A mixin to leave out: its {@code skipMixins} entry ({@code <config>:<mixin>}), then the issue. */
+	private static final Pattern LEFT_OUT_ISSUE = Pattern.compile("\\[([^\\]]+)] .*");
 
 	/**
 	 * Whether a linkage issue is a required mixin calling into a class only a Fabric mod that isn't loading has, or a
@@ -85,6 +91,17 @@ public final class LinkageAnalysis {
 	 */
 	public static boolean isUnloadedUse(String issue) {
 		return issue.endsWith(UNLOADED) && issue.contains(" -> needs class ");
+	}
+
+	/**
+	 * The {@code skipMixins} entry of a mixin to leave out, or null: one that calls into a class only a Fabric mod that
+	 * isn't loading has, in a config that isn't required or has a plugin. Mixin can't find the class while it applies the
+	 * mixin, which stops the game whether the config is required or not; the plugin would skip it, or the game stops.
+	 */
+	public static String leftOutMixin(String issue) {
+		if (!issue.endsWith(LEFT_OUT)) return null;
+		Matcher m = LEFT_OUT_ISSUE.matcher(issue);
+		return m.matches() ? m.group(1) : null;
 	}
 
 	/** Whether a linkage issue is a missing piece of Fabric Loader (as reported by {@link LinkageChecker.Issue}). */
@@ -132,7 +149,7 @@ public final class LinkageAnalysis {
 		LinkageChecker checker = null;
 		ClassIndex index = null;
 		for (TranslatedMod mod : mods) {
-			String blob = "linkage-" + Hashing.sha256("v7|" + mod.candidate().sha256() + "|" + setFingerprint + "|" + (clientSide ? "c" : "s")).substring(0, 40) + ".json";
+			String blob = "linkage-" + Hashing.sha256("v8|" + mod.candidate().sha256() + "|" + setFingerprint + "|" + (clientSide ? "c" : "s")).substring(0, 40) + ".json";
 			List<String> issues = readCached(blob);
 			if (issues == null) {
 				// Built only when some result is not cached: it reads every mod's classes once.
@@ -256,7 +273,10 @@ public final class LinkageAnalysis {
 	/**
 	 * The required mixins (their config required, without a plugin that could skip them) that call a method of, or use
 	 * a field of, a class only a Fabric mod that isn't loading has: Mixin looks that class up while it applies the
-	 * mixin, and stops the game when it can't find it (Continuity's mixin into the renderer API, run 362). And any
+	 * mixin, and stops the game when it can't find it (Continuity's mixin into the renderer API, run 362). Such a mixin
+	 * in another config is left out ({@link #leftOutMixin}): Mixin stops the game the same way, whether the config is
+	 * required or not, unless its plugin skips it (OneConfig's chat mixin, which needs adventure-platform-fabric,
+	 * CORPUS-47). And any
 	 * mixin adding such an interface to its targets (LINK-2): Mixin only warns that it can't load the interface, and the
 	 * game then can't define the target class, whether the config is required or not (Porting Lib's base module's
 	 * texture mixin on Forge 47 clients, whose interface is its extensions module's). Its config's plugin could skip it,
@@ -282,9 +302,10 @@ public final class LinkageAnalysis {
 				byte[] data = overlay.contains(name + ".class") ? overlay.read(name + ".class") : archive.read(name + ".class");
 				ClassNode node = data == null ? null : readNode(data);
 				if (node == null) continue;
-				String owner = strict ? unloadedOwner(node, unloaded, exists) : null;
+				String owner = unloadedOwner(node, unloaded, exists);
 				if (owner != null) {
-					out.add(name.replace('/', '.') + " -> needs class " + owner.replace('/', '.') + " of " + unloaded.get(packageOf(owner)) + UNLOADED);
+					String issue = name.replace('/', '.') + " -> needs class " + owner.replace('/', '.') + " of " + unloaded.get(packageOf(owner));
+					out.add(strict ? issue + UNLOADED : "[" + entry.config() + ":" + mixin + "] " + issue + LEFT_OUT);
 					continue;
 				}
 				String added = unloadedInterface(node, unloaded, exists);

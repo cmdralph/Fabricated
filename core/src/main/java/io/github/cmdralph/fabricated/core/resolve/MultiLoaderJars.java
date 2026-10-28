@@ -9,6 +9,7 @@ import java.util.regex.Pattern;
 
 import io.github.cmdralph.fabricated.core.archive.ArchiveLimits;
 import io.github.cmdralph.fabricated.core.archive.SafeArchive;
+import io.github.cmdralph.fabricated.core.bytecode.Annotations;
 import io.github.cmdralph.fabricated.core.json.Json;
 import io.github.cmdralph.fabricated.core.json.JsonException;
 
@@ -35,19 +36,11 @@ public final class MultiLoaderJars {
 	}
 
 	/**
-	 * Whether NeoForge should load the jar as its own mod: it has NeoForge's metadata, and also Fabric's only when the
-	 * NeoForge side starts something of its own (a class with NeoForge's {@code @Mod}, or a language loader other than
-	 * Java's) or the Fabric side nothing (no entrypoints: the same mixins load either way). An unreadable jar is left to
-	 * NeoForge, which reports it.
-	 */
-	public static boolean forNeoForge(Path jar, ArchiveLimits limits) {
-		return fabricReason(jar, limits) == null;
-	}
-
-	/**
 	 * Why a jar with NeoForge's metadata is a Fabric mod ({@link #KEPT_METADATA}, {@link #PLACEHOLDER}), or null when
-	 * NeoForge should load it ({@link #forNeoForge}); a jar without NeoForge's metadata is a Fabric mod with no reason
-	 * to give.
+	 * NeoForge should load it as its own mod: it has Fabric's metadata too only when the NeoForge side starts something
+	 * of its own (a class with NeoForge's {@code @Mod}, or a language loader other than Java's) or the Fabric side
+	 * nothing (no entrypoints: the same mixins load either way). An unreadable jar is left to NeoForge, which reports it;
+	 * a jar without NeoForge's metadata is a Fabric mod with no reason to give.
 	 */
 	public static String fabricReason(Path jar, ArchiveLimits limits) {
 		try (SafeArchive archive = SafeArchive.open(jar, limits)) {
@@ -58,7 +51,8 @@ public final class MultiLoaderJars {
 			if (!JAVA_MOD_LOADER.matcher(modsToml).find()) return null;
 			if (!hasEntrypoints(archive.readText("fabric.mod.json"))) return null;
 			for (String name : archive.classEntryNames()) {
-				if (contains(archive.read(name), MOD_ANNOTATION)) return null;
+				byte[] data = archive.read(name);
+				if (data != null && Annotations.mentions(data, MOD_ANNOTATION)) return null;
 			}
 			return KEPT_METADATA;
 		} catch (IOException | RuntimeException e) {
@@ -74,17 +68,5 @@ public final class MultiLoaderJars {
 		} catch (JsonException e) {
 			return false;
 		}
-	}
-
-	private static boolean contains(byte[] data, byte[] needle) {
-		if (data == null) return false;
-		outer:
-		for (int i = 0; i <= data.length - needle.length; i++) {
-			for (int j = 0; j < needle.length; j++) {
-				if (data[i + j] != needle[j]) continue outer;
-			}
-			return true;
-		}
-		return false;
 	}
 }
