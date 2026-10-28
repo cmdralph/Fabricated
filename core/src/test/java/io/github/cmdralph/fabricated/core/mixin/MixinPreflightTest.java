@@ -946,7 +946,7 @@ class MixinPreflightTest {
 		assertTrue(notes.getFirst().message().contains("through an overload with 2 more arguments, codec" + neoForge), notes.toString());
 		mod.put("com/example/mixin/Payloads", repaired.get("com/example/mixin/Payloads.class"));
 		assertTrue(preflight(neoForgeGame, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty());
-		assertFalse(MixinPreflight.appendsArguments(vanilla, "(Ljava/lang/String;Ljava/util/List;Ljava/lang/String;)Ljava/lang/Object;"), "only after the named call's parameters");
+		assertFalse(CallRepairs.appendsArguments(vanilla, "(Ljava/lang/String;Ljava/util/List;Ljava/lang/String;)Ljava/lang/Object;"), "only after the named call's parameters");
 	}
 
 	@Test
@@ -1428,14 +1428,14 @@ class MixinPreflightTest {
 		ClassNode camera = new ClassNode();
 		camera.name = TARGET;
 		camera.methods.add(forwarder(Opcodes.ALOAD, 0, Opcodes.FLOAD, 1, Opcodes.FLOAD, 2, Opcodes.FCONST_0, -1));
-		assertEquals(-1, MixinPreflight.insertedArgument("(FF)V", "(FFF)V"));
-		assertEquals(2, MixinPreflight.insertedArgument(camera, "setRotation", "(FF)V", "(FFF)V"));
+		assertEquals(-1, CallRepairs.insertedArgument("(FF)V", "(FFF)V"));
+		assertEquals(2, CallRepairs.insertedArgument(camera, "setRotation", "(FF)V", "(FFF)V"));
 
 		camera.methods.set(0, forwarder(Opcodes.ALOAD, 0, Opcodes.FCONST_0, -1, Opcodes.FLOAD, 1, Opcodes.FLOAD, 2));
-		assertEquals(0, MixinPreflight.insertedArgument(camera, "setRotation", "(FF)V", "(FFF)V"), "the default first");
+		assertEquals(0, CallRepairs.insertedArgument(camera, "setRotation", "(FF)V", "(FFF)V"), "the default first");
 		camera.methods.set(0, forwarder(Opcodes.ALOAD, 0, Opcodes.FLOAD, 2, Opcodes.FLOAD, 1, Opcodes.FCONST_0, -1));
-		assertEquals(-1, MixinPreflight.insertedArgument(camera, "setRotation", "(FF)V", "(FFF)V"), "its parameters out of order");
-		assertEquals(-1, MixinPreflight.insertedArgument(new ClassNode(), "setRotation", "(FF)V", "(FFF)V"), "no such method");
+		assertEquals(-1, CallRepairs.insertedArgument(camera, "setRotation", "(FF)V", "(FFF)V"), "its parameters out of order");
+		assertEquals(-1, CallRepairs.insertedArgument(new ClassNode(), "setRotation", "(FF)V", "(FFF)V"), "no such method");
 	}
 
 	/** {@code Camera.setRotation(FF)} forwarding to {@code setRotation(FFF)} with these (opcode, operand) pushes; -1: none. */
@@ -3405,13 +3405,13 @@ class MixinPreflightTest {
 
 	@Test
 	void theAddedArgumentOfACallIsToldApartByType() {
-		assertEquals(1, MixinPreflight.insertedArgument("(I)V", "(ILjava/lang/String;)V"));
-		assertEquals(0, MixinPreflight.insertedArgument("(I)V", "(Ljava/lang/String;I)V"));
-		assertEquals(1, MixinPreflight.insertedArgument("(ILjava/lang/String;)Z", "(IJLjava/lang/String;)Z"));
-		assertEquals(-1, MixinPreflight.insertedArgument("(I)V", "(II)V"), "either int may be the added one");
-		assertEquals(-1, MixinPreflight.insertedArgument("(I)V", "(IJ)Z"), "another result");
-		assertEquals(-1, MixinPreflight.insertedArgument("(I)V", "(IJJ)V"));
-		assertEquals(-1, MixinPreflight.insertedArgument("(I)V", "(J)V"));
+		assertEquals(1, CallRepairs.insertedArgument("(I)V", "(ILjava/lang/String;)V"));
+		assertEquals(0, CallRepairs.insertedArgument("(I)V", "(Ljava/lang/String;I)V"));
+		assertEquals(1, CallRepairs.insertedArgument("(ILjava/lang/String;)Z", "(IJLjava/lang/String;)Z"));
+		assertEquals(-1, CallRepairs.insertedArgument("(I)V", "(II)V"), "either int may be the added one");
+		assertEquals(-1, CallRepairs.insertedArgument("(I)V", "(IJ)Z"), "another result");
+		assertEquals(-1, CallRepairs.insertedArgument("(I)V", "(IJJ)V"));
+		assertEquals(-1, CallRepairs.insertedArgument("(I)V", "(J)V"));
 	}
 
 	/** Defines the given classes (internal names) itself, before asking the test's class loader. */
