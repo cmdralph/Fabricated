@@ -17,6 +17,7 @@ import org.slf4j.LoggerFactory;
 import io.github.cmdralph.fabricated.core.archive.AtomicFiles;
 import io.github.cmdralph.fabricated.core.archive.DeterministicJarWriter;
 import io.github.cmdralph.fabricated.core.archive.Hashing;
+import io.github.cmdralph.fabricated.core.resolve.ConflictingJars;
 
 /**
  * Keeps Fabric Loader's API single-sourced: Fabricated's own copy is the one the game loads, always (the provider policy
@@ -35,7 +36,7 @@ final class FabricLoaderApiCopies {
 	 * A file every Fabricated build has (any platform, any version): such a jar is left as FML reads it, its copy of the
 	 * API being the one that stays.
 	 */
-	static final String MARKER = "io/github/cmdralph/fabricated/loader/FabricatedInfo.class";
+	static final String MARKER = ConflictingJars.FABRICATED_MARKER;
 	/** The most a jar's copy without the API may hold ({@link #store}); a larger one is left to FML. */
 	static final long MAX_COPY_BYTES = 64L << 20;
 	private static final String SERVICES = "META-INF/services/";

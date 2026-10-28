@@ -39,6 +39,7 @@ import net.minecraft.world.item.CreativeModeTab;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.neoforged.fml.ModList;
 import net.neoforged.neoforge.common.CreativeModeTabRegistry;
 
 /**
@@ -144,10 +145,10 @@ public final class TestMod implements ModInitializer, DedicatedServerModInitiali
 		} catch (ClassNotFoundException | LinkageError e) {
 			LOGGER.error("FABRICATED-TEST environment stripping FAILED", e);
 		}
-		// Fabricated's public API, and detecting Fabricated through Fabric's API. With ci/neoforge/standins.py's mods,
-		// fabric-api-base is another mod's (PROVIDER-1).
+		// Fabricated's public API, and detecting Fabricated through Fabric's API. With ci/neoforge/standins.py's mods or
+		// Forgified Fabric API, fabric-api-base is another mod's (PROVIDER-1).
 		Fabricated.get().ifPresent(api -> api.afterEntrypoints(() -> {
-			FabricApiModule.Status base = FabricLoader.getInstance().isModLoaded("standin_forgified_fabric_api") ? FabricApiModule.Status.PROVIDED_BY_MOD
+			FabricApiModule.Status base = providedByAnotherMod("fabric-api-base") ? FabricApiModule.Status.PROVIDED_BY_MOD
 					: FabricApiModule.Status.NATIVE;
 			boolean ok = FabricLoader.getInstance().isModLoaded(Fabricated.MOD_ID) && api.entrypointsComplete()
 					&& api.isFabricModLoaded("fabricated-testmod")
@@ -286,6 +287,14 @@ public final class TestMod implements ModInitializer, DedicatedServerModInitiali
 	}
 
 	/** A class's module: unnamed, or its name and whether it opens the class's package to every module. */
+	/**
+	 * Whether a NeoForge mod provides the Fabric API module (Forgified Fabric API's, or ci/neoforge/standins.py's), which
+	 * is then its and not Fabricated's: asked of NeoForge, not of Fabricated.
+	 */
+	static boolean providedByAnotherMod(String module) {
+		return ModList.get().isLoaded(module.replace('-', '_'));
+	}
+
 	private static String openness(Class<?> type) {
 		Module module = type.getModule();
 		if (!module.isNamed()) return "unnamed";

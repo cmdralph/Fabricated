@@ -33,7 +33,8 @@ public final class FabricLoaderApiReader implements IModFileReader {
 	@Override
 	public IModFile read(JarContents jar, ModFileDiscoveryAttributes attributes) {
 		try {
-			if (jar.containsFile(FabricLoaderApiCopies.MARKER)) return null;
+			// Standing down (Sinytra Connector, whose own copy its code needs, or another Fabricated jar): left as it is.
+			if (FabricCandidateLocator.refusal() != null || jar.containsFile(FabricLoaderApiCopies.MARKER)) return null;
 			List<String> paths = new ArrayList<>();
 			boolean[] hasApi = {false};
 			jar.visitContent((path, resource) -> {

@@ -3,6 +3,37 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-10-28: Coexistence fixes and refusals (task 4 of the v0.5.x update)
+
+- **The reference pack** (the owner's 1.21.1 log, report and mod list: Forgified Fabric API, Sodium and about 130
+  Fabric mods): it stopped on PROVIDER-1's `ResolutionException`, fixed in T1. Of its seven disabled mods, five were the version and
+  `fabric` dependency checks T1 fixed (VER-2, DEP-1); adventure-platform-fabric (mixins into library classes NeoForge
+  loads without mixin support) and languagereload (a `@Redirect` whose call NeoForge's build doesn't make) stay
+  disabled, each explained in the report with a fix to try. The pack itself was not run here.
+- **Fixed** (each in `FINDINGS.md`): PROVIDER-3 (a Fabric mod's container shows its files as NeoForge reads them, so
+  Forgified Fabric API's resource loader no longer stops the server on a built-in pack with its NeoForge build's
+  sections), PROVIDER-4 (the API read `NATIVE` for a module another mod provides when a skipped copy came first in the
+  report), DUP-1 (a second Fabricated jar is refused).
+- **The reference pack's next stop, fixed (CORPUS-47, UNVERIFIED on the real mods until the extended run):** OneConfig's
+  chat mixin needs adventure-platform-fabric, which OneConfig nests and pre-flight disables, and Mixin stopped CI's
+  Polyfrost client attaching it (run 40683010866). A mixin that calls into a class of a Fabric mod that isn't loading is
+  now left out of a config that isn't required or has a plugin (Mixin's attach error stops the game for any config):
+  its mod is translated again without it, and the report lists it under *Mixins left out (they need a Fabric mod that
+  isn't loading)*. A required config without a plugin still disables its mod (CORPUS-15).
+- **The owner's decision, done:** Sinytra Connector beside Fabricated is refused with an error naming both jars, and
+  Fabricated loads no Fabric mod (roadmap, *Decisions, 2026-10-28*). **Decided, not asked:** a second Fabricated jar is
+  refused the same way; the shared detection is in core (`ConflictingJars`) for the Forge branches' next sync.
+- **Noted, not Fabricated's:** PROVIDER-5, Forgified Fabric API's networking refusing a payload in the `minecraft`
+  namespace (NET-4), which failed the test mod's initializer on CI's 1.21.1 client run with it and so skipped the test
+  mod's client entrypoints. The test mods now skip that case (and NET-3's) when another mod provides networking, and
+  the smoke checks print `SKIP` for a check a test mod reports as skipped.
+- **CI:** the server run with the real Forgified Fabric API keeps the test mods again and must take the test mod's
+  built-in pack; a server run per version with a stand-in for Connector, and one with a second Fabricated jar, must
+  each stop with Fabricated's error.
+- **Verified locally:** core tests; 1.21.1, 1.21.11 and 26.1.2's jars and test mods build; the 1.21.1 server smoke run
+  passes every check; the Connector and second-jar refusals stop the launch with the error on 1.21.1 (FML 4) and
+  26.1.2 (FML 11). The real Forgified Fabric API runs are CI's only.
+
 ## 2026-10-28: A branch per platform (task 2 of the v0.5.x update)
 
 - **The owner's request:** `main` is NeoForge's branch with the shared engine; Forge and Forge 47 code each live only

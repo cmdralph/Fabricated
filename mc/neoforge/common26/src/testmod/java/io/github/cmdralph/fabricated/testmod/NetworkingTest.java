@@ -15,6 +15,9 @@ import net.minecraft.resources.Identifier;
 
 /** 26.x part of the CI test mod: exercises Fabricated's native fabric-networking-api-v1. */
 public final class NetworkingTest implements ModInitializer {
+	/** Whether Fabricated's networking is the one running, not another mod's (Forgified Fabric API's). */
+	static final boolean OWN = !TestMod.providedByAnotherMod("fabric-networking-api-v1");
+	static final String ANOTHER_MODS = "fabric-networking-api-v1 is another mod's";
 	private static boolean lateRegistered;
 	private static volatile boolean contextEncodeReported;
 
@@ -99,9 +102,12 @@ public final class NetworkingTest implements ModInitializer {
 			if (payload.value() == MenuTest.OPEN_REQUEST) MenuTest.open(context.player());
 			else context.responseSender().sendPacket(new Ping(payload.value() + 1));
 		});
-		PayloadTypeRegistry.serverboundPlay().register(VanillaPing.TYPE, VanillaPing.CODEC);
-		PayloadTypeRegistry.clientboundPlay().register(VanillaPing.TYPE, VanillaPing.CODEC);
-		ServerPlayNetworking.registerGlobalReceiver(VanillaPing.TYPE, (payload, context) -> context.responseSender().sendPacket(new VanillaPing(payload.value() + 1)));
+		// What NeoForge refuses and Fabricated's networking handles (NET-3, NET-4) is another provider's to handle.
+		if (OWN) {
+			PayloadTypeRegistry.serverboundPlay().register(VanillaPing.TYPE, VanillaPing.CODEC);
+			PayloadTypeRegistry.clientboundPlay().register(VanillaPing.TYPE, VanillaPing.CODEC);
+			ServerPlayNetworking.registerGlobalReceiver(VanillaPing.TYPE, (payload, context) -> context.responseSender().sendPacket(new VanillaPing(payload.value() + 1)));
+		}
 		PayloadTypeRegistry.clientboundPlay().register(ContextPing.TYPE, ContextPing.CODEC);
 		ServerPlayConnectionEvents.JOIN.register((listener, sender, server) -> {
 			TestMod.LOGGER.info("FABRICATED-TEST networking join event (packet context: {})", ContextPing.describe(((PacketContextProvider) listener).getPacketContext()));
@@ -112,6 +118,10 @@ public final class NetworkingTest implements ModInitializer {
 		}
 		// As Ledger registers its payload types: as the server starts, which upstream accepts.
 		ServerLifecycleEvents.SERVER_STARTING.register(server -> {
+			if (!OWN) {
+				TestMod.LOGGER.info("FABRICATED-TEST late payload type registration SKIPPED: {}", ANOTHER_MODS);
+				return;
+			}
 			if (lateRegistered) return; // a second world in the same game
 			lateRegistered = true;
 			PayloadTypeRegistry.serverboundPlay().register(LatePing.TYPE, LatePing.CODEC);

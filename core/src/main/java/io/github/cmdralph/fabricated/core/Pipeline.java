@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
@@ -278,6 +279,8 @@ public final class Pipeline {
 
 	/** What is known about other people's Fabric mods (a mod's NeoForge build, when installed, is used before this is looked at). */
 	private static final CompatPlan COMPAT = CompatPlan.builtin();
+	/** The report's section of the mixins the linkage analysis left out. */
+	private static final String NEEDING_UNLOADED = "Mixins left out (they need a Fabric mod that isn't loading)";
 
 	/** A mod the platform provides (Minecraft, Java, Fabric Loader, Fabricated, native Fabric API modules). */
 	private record Builtin(String id, String version, String name, List<String> aliases) {
@@ -659,6 +662,8 @@ public final class Pipeline {
 		final Map<String, Long> translatedThisLaunch = new HashMap<>();
 		/** Mods the resolver disabled for unmet dependencies (strictDependencies turns these into errors). */
 		final Set<String> dependencyFailures = new TreeSet<>();
+		/** Mixins the linkage analysis leaves out, by mod id: each one's {@code skipMixins} entry and why. */
+		final Map<String, Map<String, String>> leftOutMixins = new TreeMap<>();
 		List<TranslatedMod> translated = List.of();
 		Map<String, PackageGuard.Decision> decisions = Map.of();
 		Map<String, List<String>> linkage = Map.of();
@@ -715,9 +720,12 @@ public final class Pipeline {
 			mods.parallelStream().forEach(c -> {
 				try {
 					FabricApiPlan.Module module = plan.module(c.id());
-					results.put(c.id(), translator.translate(c, effectiveOverride(config, plan, c, applied.getOrDefault(c.id(), List.of())),
-							module != null ? Set.copyOf(module.skipMixins()) : Set.of(),
-							loadAfter(c, providerOf, orderings.after().get(c.id()))));
+					Set<String> leftOut = leftOutMixins.getOrDefault(c.id(), Map.of()).keySet();
+					// Fabricated's skips, unlike the player's, are never reported as matching no mixin.
+					Set<String> planned = new TreeSet<>(leftOut);
+					if (module != null) planned.addAll(module.skipMixins());
+					results.put(c.id(), translator.translate(c, withSkips(effectiveOverride(config, plan, c, applied.getOrDefault(c.id(), List.of())), leftOut),
+							Set.copyOf(planned), loadAfter(c, providerOf, orderings.after().get(c.id()))));
 				} catch (TranslationException e) {
 					failures.put(c, e);
 				} catch (StackOverflowError e) {
@@ -755,7 +763,10 @@ public final class Pipeline {
 			}
 		}
 
-		/** Linkage analysis on the final set; returns whether it disabled a mod (then another round runs). */
+		/**
+		 * Linkage analysis on the final set; returns whether another round runs: it disabled a mod, or found mixins to
+		 * leave out, which the next round translates their mods without.
+		 */
 		private boolean analyseLinkage(List<TranslatedMod> ordered) {
 			LinkageAnalysis analysis = new LinkageAnalysis(in.cache(), config.limits(), in.clientSide());
 			Map<String, String> unloaded = unloadedPackages(ordered);
@@ -774,6 +785,17 @@ public final class Pipeline {
 			for (TranslatedMod t : ordered) {
 				List<String> issues = linkage.get(t.neoForgeId());
 				if (issues == null) continue;
+				Map<String, String> leaveOut = new TreeMap<>();
+				for (String issue : issues) {
+					String skip = LinkageAnalysis.leftOutMixin(issue);
+					if (skip != null) leaveOut.put(skip, issue);
+				}
+				Map<String, String> already = leftOutMixins.computeIfAbsent(t.candidate().id(), k -> new TreeMap<>());
+				if (!already.keySet().containsAll(leaveOut.keySet())) {
+					already.putAll(leaveOut);
+					dropped = true;
+					continue;
+				}
 				String unloadedUse = issues.stream().filter(LinkageAnalysis::isUnloadedUse).findFirst().orElse(null);
 				if (unloadedUse != null) {
 					// Mixin would stop the game applying it, whatever strictLinkage says.
@@ -929,7 +951,8 @@ public final class Pipeline {
 			Candidate c = t.candidate();
 			if (!finalIds.contains(c.id())) continue;
 			PackageGuard.Decision decision = rounds.decisions.get(t.neoForgeId());
-			reportLoaded(t, rounds.translatedThisLaunch.get(c.id()), decision, rounds.linkage.get(t.neoForgeId()));
+			reportLoaded(t, rounds.translatedThisLaunch.get(c.id()), decision, rounds.linkage.get(t.neoForgeId()),
+					rounds.leftOutMixins.getOrDefault(c.id(), Map.of()));
 
 			ModOrigin origin = c.parentId() == null
 					? new ModContainerImpl.Origin(ModOrigin.Kind.PATH, List.of(c.path()), null, null)
@@ -995,7 +1018,8 @@ public final class Pipeline {
 		return "Mixins left out (" + loader + "'s code differs where they hook in)";
 	}
 
-	private void reportLoaded(TranslatedMod t, Long millis, PackageGuard.Decision decision, List<String> linkageIssues) {
+	/** @param leftOutMixins the mixins the linkage analysis left out of the mod, each with why */
+	private void reportLoaded(TranslatedMod t, Long millis, PackageGuard.Decision decision, List<String> linkageIssues, Map<String, String> leftOutMixins) {
 		Candidate c = t.candidate();
 		String loader = in.descriptor().loaderName();
 		long leftOut = t.findings().stream().filter(f -> f.severity() == Severity.LEFT_OUT).map(f -> f.config() + " " + f.mixin()).distinct().count();
@@ -1003,12 +1027,15 @@ public final class Pipeline {
 				+ (t.accessTransformers() > 0 ? ", " + t.accessTransformers() + " access transformer(s)" : "")
 				+ (t.injectedInterfaces().isEmpty() ? "" : ", " + t.injectedInterfaces().size() + " injected interface(s)")
 				+ (leftOut == 0 ? "" : ", " + leftOut + " mixin(s) left out in whole or in part, so the features they hook in for don't work (see "
-						+ leftOutSection(loader) + ")");
+						+ leftOutSection(loader) + ")")
+				+ (leftOutMixins.isEmpty() ? "" : ", " + leftOutMixins.size() + " mixin(s) left out that need a Fabric mod that isn't loading (see "
+						+ NEEDING_UNLOADED + ")");
 		report.mod(new ModRow(c.id(), c.version(), c.origin(), Status.LOADED, detail, ""));
 		for (PreflightFinding f : t.findings()) {
 			String line = c.id() + ": " + f + (f.suggestion().isEmpty() ? "" : " - " + f.suggestion());
 			report.line(f.severity() == Severity.LEFT_OUT ? leftOutSection(loader) : "Mixin pre-flight warnings", line);
 		}
+		leftOutMixins.values().forEach(issue -> report.line(NEEDING_UNLOADED, c.id() + ": " + issue.substring(issue.indexOf("] ") + 2)));
 		for (String n : t.notes()) report.line("Translation notes", c.id() + ": " + n);
 		FabricApiPlan.Module planned = plan.module(c.id());
 		if (planned != null && !planned.skipMixins().isEmpty()) {
@@ -1030,6 +1057,15 @@ public final class Pipeline {
 		if (skip.equals(user.skipMixins())) return user;
 		return new FabricatedConfig.ModOverride(user.disabled(), Set.copyOf(skip), user.skipEntrypoints(), user.aliases(), user.ignorePreflight(),
 				user.ignoreHints(), user.loadUnsupported());
+	}
+
+	/** The override with more mixins to skip. */
+	private static FabricatedConfig.ModOverride withSkips(FabricatedConfig.ModOverride o, Set<String> skips) {
+		if (o.skipMixins().containsAll(skips)) return o;
+		Set<String> all = new TreeSet<>(o.skipMixins());
+		all.addAll(skips);
+		return new FabricatedConfig.ModOverride(o.disabled(), Set.copyOf(all), o.skipEntrypoints(), o.aliases(), o.ignorePreflight(), o.ignoreHints(),
+				o.loadUnsupported());
 	}
 
 	/**

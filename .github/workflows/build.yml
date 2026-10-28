@@ -210,11 +210,26 @@ jobs:
           mkdir -p "$RUNNER_TEMP/standins"
           python3 -I ci/neoforge/standins.py build/libs/fabricated-[0-9]*+mc${{ matrix.minecraft }}.jar "$RUNNER_TEMP/standins"
           ci/neoforge/smoke-server.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/server-standins" "$RUNNER_TEMP/standins"
+      # Sinytra Connector (a stand-in with its mod id) or a second Fabricated jar in the mods folder: the launch must
+      # stop with Fabricated's error naming them, as two loaders of Fabric mods can't share them (DUP-1).
+      - name: Server refusing Sinytra Connector and a second Fabricated jar
+        if: ${{ env.GAME_RUNS == 'true' && !cancelled() && steps.build.outcome == 'success' }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/refuse-connector/src/META-INF" "$RUNNER_TEMP/refuse-twice"
+          printf 'modLoader = "lowcodefml"\nloaderVersion = "[1,)"\nlicense = "GPL-3.0-only"\n[[mods]]\nmodId = "connector"\nversion = "1.0.0"\n' \
+              > "$RUNNER_TEMP/refuse-connector/src/META-INF/neoforge.mods.toml"
+          jar --create --file "$RUNNER_TEMP/refuse-connector/connector-standin.jar" -C "$RUNNER_TEMP/refuse-connector/src" META-INF/neoforge.mods.toml
+          cp build/libs/fabricated-[0-9]*+mc${{ matrix.minecraft }}.jar "$RUNNER_TEMP/refuse-twice/fabricated-0.0.1+mc${{ matrix.minecraft }}.jar"
+          SMOKE_TESTMODS=none SMOKE_TIMEOUT=300 SMOKE_EXPECT_REFUSAL="Sinytra Connector (connector-standin.jar)" \
+              ci/neoforge/smoke-server.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/server-refuse-connector" "$RUNNER_TEMP/refuse-connector"
+          SMOKE_TESTMODS=none SMOKE_TIMEOUT=300 SMOKE_EXPECT_REFUSAL="2 Fabricated jars (fabricated-0.0.1+mc${{ matrix.minecraft }}.jar" \
+              ci/neoforge/smoke-server.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/server-refuse-twice" "$RUNNER_TEMP/refuse-twice"
       # The real ones, newest builds from Modrinth (downloaded here in CI): Forgified Fabric API (its module jars nested,
       # with Forgified Fabric Loader) where it has a build for the version, Kotlin for Forge with Fabric Language
       # Kotlin, which bundle different Kotlin versions. The server must start, as no package two mods share may stop
-      # it. Without the test mods: Forgified Fabric API's resource loader stops the game on their built-in pack, whose
-      # NeoForge sections Fabricated's own resource loader leaves out (PROVIDER-3, open).
+      # it; the test mods' other checks are evidence, as the modules are then Forgified Fabric API's. With its resource
+      # loader, the test mod's built-in pack must be registered: its pack.mcmeta keeps a NeoForge build's sections,
+      # which its container must show left out, as NeoForge reads it (PROVIDER-3).
       - name: Server with Forgified Fabric API and both Kotlin languages (server must start)
         if: ${{ env.GAME_RUNS == 'true' && !cancelled() && steps.build.outcome == 'success' }}
         run: |
@@ -222,8 +237,16 @@ jobs:
           python3 ci/fetch-corpus.py "${{ matrix.minecraft }}" "$RUNNER_TEMP/coexist" neoforge forgified-fabric-api kotlin-for-forge || true
           python3 ci/fetch-corpus.py "${{ matrix.minecraft }}" "$RUNNER_TEMP/coexist" fabric fabric-language-kotlin || true
           ls "$RUNNER_TEMP/coexist" | tee "$RUNNER_TEMP/summary-coexist.txt"
-          SMOKE_TESTMODS=none ci/neoforge/smoke-server.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/server-coexist" "$RUNNER_TEMP/coexist"
-          sed -n '/== Fabric API modules provided by other mods ==/,/^$/p;/== Fabric Loader API ==/,/^$/p' "$RUNNER_TEMP/server-coexist/logs/fabric-bridge-report.txt" | tee -a "$RUNNER_TEMP/summary-coexist.txt" || true
+          ci/neoforge/smoke-server.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/server-coexist" "$RUNNER_TEMP/coexist"
+          report="$RUNNER_TEMP/server-coexist/logs/fabric-bridge-report.txt"
+          sed -n '/== Fabric API modules provided by other mods ==/,/^$/p;/== Fabric Loader API ==/,/^$/p' "$report" | tee -a "$RUNNER_TEMP/summary-coexist.txt" || true
+          if sed -n '/== Fabric API modules provided by other mods ==/,/^$/p' "$report" | grep -q "fabric-resource-loader"; then
+            if grep -m 1 "FABRICATED-TEST builtin pack registered" "$RUNNER_TEMP/server-coexist/server.out"; then
+              echo "PASS: Forgified Fabric API's resource loader took the test mod's built-in pack (PROVIDER-3)" | tee -a "$RUNNER_TEMP/summary-coexist.txt"
+            else
+              echo "::error::Forgified Fabric API's resource loader: the test mod's built-in pack was not registered (PROVIDER-3)"; exit 1
+            fi
+          fi
       - name: Upload coexisting mods' run logs and reports
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
