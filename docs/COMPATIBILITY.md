@@ -864,13 +864,16 @@ some of its modules (Sodium for NeoForge). Fabricated now shares the game with t
 Fabric API keeps `net.fabricmc.fabric.api.util` in two modules (`fabric-api-base` and
 `fabric-content-registries-v0`); a module layer allows one, and Forgified Fabric API puts it in `fabric-api-base`, so
 Fabricated counts it there too. A provider's module is used as it is: what it lacks, a Fabric mod's linkage warnings
-name. Sinytra Connector itself next to Fabricated is not supported (two Fabric loaders in one game). In a development
+name. Sinytra Connector itself next to Fabricated is not supported (two Fabric loaders in one game). Open: with
+Forgified Fabric API's resource loader, a Fabric jar's built-in pack whose `pack.mcmeta` keeps its NeoForge build's
+conditions of a type only that build registers stops the game in Forgified Fabric API's code (PROVIDER-3). In a development
 workspace the in-game mod's own copies can't be left out; the report says so.
 
 CI checks this on every version with stand-ins built from Fabricated's own jar (`ci/neoforge/standins.py`: a module
 provided straight and nested, a copy of Fabric Loader's API with its language loader service, two versions of a nested
 library; every check gates), and with the newest Forgified Fabric API, Kotlin for Forge and Fabric Language Kotlin from
-Modrinth on a server (the server must start) and Forgified Fabric API with Sodium on a 1.21.1 client (informational).
+Modrinth on a server without the test mods (the server must start) and Forgified Fabric API with Sodium on a 1.21.1
+client (informational).
 
 ### Fabric Loader
 

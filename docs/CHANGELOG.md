@@ -34,7 +34,10 @@ One entry per working session, newest first: what changed, and how it was verifi
 - **Verified locally:** core tests (329); the in-game mods and test mods of 1.21.1, 1.21.11 and 26.1.2; their server
   smoke runs with and without the stand-ins, every check passing. 26.2 and 26.3 build only in CI (*Unverified and
   blockers*); their `native-modules.json` were written from v0.5.0's in-game mods and are checked by the build.
-- **Noted, open:** DUP-1 (two Fabricated builds in one mods folder go undetected).
+- **CI on #217:** the real Forgified Fabric API (26.1.2, 26.2) was taken for the provider of its modules, with no
+  package conflict, and then stopped the server in its own resource loader, on the test mod's built-in pack
+  (PROVIDER-3, open for T4); that run now leaves the test mods out.
+- **Noted, open:** PROVIDER-3, DUP-1 (two Fabricated builds in one mods folder go undetected).
 
 ## 2026-10-28: The 1.21.1 corpus before v0.5.0
 

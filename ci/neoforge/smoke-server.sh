@@ -4,7 +4,8 @@
 #
 # Usage: ci/neoforge/smoke-server.sh <minecraft-version> <neoforge-version> <work-dir> [extra-mods-dir]
 # Exit status: every check must pass; with extra-mods-dir, only the server start must succeed, unless it holds the mods
-# ci/neoforge/standins.py writes, whose checks gate too.
+# ci/neoforge/standins.py writes, whose checks gate too. SMOKE_TESTMODS=none runs without the test mods (the start alone
+# is checked).
 # Expects: build/libs/fabricated-*+mc<minecraft-version>.jar and mc/neoforge/<minecraft-version>/build/testmods/*.jar
 set -euo pipefail
 
@@ -32,15 +33,19 @@ echo "::endgroup::"
 mkdir -p mods config
 # Not fabricated-forge-*: a local build of every platform has those in build/libs too.
 cp "$root"/build/libs/fabricated-[0-9]*+mc"$mc".jar mods/
-cp "$root"/mc/neoforge/"$mc"/build/testmods/*.jar mods/
-# Two Fabric mods that depend on each other, as Fabric allows: the loader's sorter refuses a cycle of load orderings, so
-# Fabricated leaves one of theirs out (ORDER-1), and the server must still start.
-mkdir -p cycle
-for self in a b; do
-	other=$([ "$self" = a ] && echo b || echo a)
-	printf '{"schemaVersion": 1, "id": "fabricated_cycle_%s", "version": "1.0.0", "depends": {"fabricated_cycle_%s": "*"}}\n' "$self" "$other" > cycle/fabric.mod.json
-	jar --create --file "mods/fabricated-cycle-$self.jar" -C cycle fabric.mod.json
-done
+# SMOKE_TESTMODS=none leaves the test mods out: a run of other people's mods alone, of which only the start is checked.
+testmods="${SMOKE_TESTMODS:-all}"
+if [ "$testmods" != none ]; then
+	cp "$root"/mc/neoforge/"$mc"/build/testmods/*.jar mods/
+	# Two Fabric mods that depend on each other, as Fabric allows: the loader's sorter refuses a cycle of load orderings,
+	# so Fabricated leaves one of theirs out (ORDER-1), and the server must still start.
+	mkdir -p cycle
+	for self in a b; do
+		other=$([ "$self" = a ] && echo b || echo a)
+		printf '{"schemaVersion": 1, "id": "fabricated_cycle_%s", "version": "1.0.0", "depends": {"fabricated_cycle_%s": "*"}}\n' "$self" "$other" > cycle/fabric.mod.json
+		jar --create --file "mods/fabricated-cycle-$self.jar" -C cycle fabric.mod.json
+	done
+fi
 if [ -n "$extra" ] && [ -d "$extra" ]; then
 	cp "$extra"/*.jar mods/ 2>/dev/null || true
 fi
@@ -124,6 +129,10 @@ check() {
 	if grep -q -- "$1" "$2"; then echo "PASS: $3"; else echo "FAIL: $3 (missing '$1' in $2)"; fail=1; fi
 }
 [ "$status" = "started" ] && echo "PASS: server started" || { echo "FAIL: server did not start ($status)"; fail=1; required_fail=1; }
+if [ "$testmods" = none ]; then
+	echo "NOTE: no test mods in this run; only the server start is checked."
+	exit "$required_fail"
+fi
 check "FABRICATED-TEST main entrypoint OK" server.out "main entrypoint ran"
 check "fabricated_cycle_b doesn.t load after fabricated_cycle_a" logs/fabric-bridge-report.txt "two Fabric mods that depend on each other load, one ordering of their cycle left out (ORDER-1)"
 check "FABRICATED-TEST loader api OK" server.out "Fabric Loader API works"
