@@ -10,6 +10,7 @@ import io.github.cmdralph.fabricated.neoforge.networking.NetworkingBridge;
 import io.github.cmdralph.fabricated.neoforge.objectbuilder.ObjectBuilderBridge;
 import io.github.cmdralph.fabricated.neoforge.rendering.FabricFluidClientExtensions;
 import io.github.cmdralph.fabricated.neoforge.resource.ResourceLoaderBridge;
+import io.github.cmdralph.fabricated.neoforge.transfer.TransferBridge;
 import net.fabricmc.fabric.impl.content.registry.FuelRegistryImpl;
 import net.fabricmc.fabric.impl.lookup.ApiLookupImpl;
 import net.fabricmc.fabric.impl.object.builder.TradeOfferInternals;
@@ -32,6 +33,7 @@ public final class NativeFabricApi {
 		// fabric-api-lookup-api-v1's own initializer (it only registers a check at server start).
 		new ApiLookupImpl().onInitialize();
 		ItemApiBridge.register(modBus, dist);
+		TransferBridge.register(modBus);
 		FuelRegistryImpl.registerBurnTimes();
 		if (dist.isClient()) {
 			// NeoForge draws fluids through their types' client extensions on this version.
