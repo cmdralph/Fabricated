@@ -23,6 +23,7 @@
     "BlockMixin",
     "BlockStateMixin",
     "ItemMixin",
+    "ItemPropertiesMixin",
     "ItemStackMixin",
     "TooltipFlagMixin",
     "DataComponentMapBuilderMixin",
