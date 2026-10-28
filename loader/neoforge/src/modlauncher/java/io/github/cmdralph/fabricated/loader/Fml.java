@@ -76,6 +76,22 @@ final class Fml {
 		}
 	}
 
+	/**
+	 * The loader the game's class loader hands a class to when no module has its package: ModLauncher makes it, for every
+	 * layer it builds, its boot layer's loader, which holds the launcher's libraries (read in ModLauncher's {@code
+	 * ModuleLayerHandler}). Vanilla reaches the packages their modules don't export through it: Gson's
+	 * {@code com.google.gson.internal}, whose {@code Streams} reads a player's stats (GSON-1).
+	 */
+	static ClassLoader gameFallback(ClassLoader game) {
+		Launcher launcher = Launcher.INSTANCE;
+		if (launcher == null) return game.getParent();
+		return launcher.findLayerManager()
+				.flatMap(manager -> manager.getLayer(IModuleLayerManager.Layer.BOOT))
+				.flatMap(layer -> layer.modules().stream().findFirst())
+				.map(Module::getClassLoader)
+				.orElse(game.getParent());
+	}
+
 	/** The game's program arguments: none, as a locator can't read them here. */
 	static String[] programArgs() {
 		return new String[0];

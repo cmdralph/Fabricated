@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "id": "fabricated-testmod-shade",
+  "version": "${version}",
+  "name": "Fabricated Test: a library shading part of Gson"
+}

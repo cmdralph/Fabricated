@@ -159,6 +159,8 @@ check "FABRICATED-TEST custom entrypoint OK" server.out "custom entrypoint resol
 check "FABRICATED-TEST added entrypoint OK" server.out "an entrypoint a mixin plugin added to Fabric Loader's internal storage resolves, as FrozenLib's do (LOADER-4)"
 check "FABRICATED-TEST classpath scan OK" server.out "classpath scan finds a Fabric mod's package directory (SCAN-1)"
 check "FABRICATED-TEST class resources OK" server.out "a mod's class finds another jar's file, as on Fabric (RES-1)"
+check "FABRICATED-TEST vanilla stats read OK" server.out "vanilla reads a player's stats with Gson's internal parser, beside a Fabric jar shading part of Gson (GSON-1)"
+check "fabricated-testmod-shade bundles package com.google.gson.internal, which the platform already provides" logs/fabric-bridge-report.txt "a Fabric jar's copy of a launcher library's package is left out for the platform's (GSON-1)"
 check "FABRICATED-TEST registry OK" server.out "direct registry registration works"
 check "FABRICATED-TEST content built at bootstrap registered OK" server.out "content built during vanilla's bootstrap is registered by the main initializer, as BetterNether's entity types are (CORPUS-31)"
 check "FABRICATED-TEST built-in registries frozen after the main initializers OK" server.out "a Fabric mod's mixin into the built-in registries' freeze runs after the main initializers, where Wover makes the item definitions BetterEnd's subscribes to (CORPUS-32)"

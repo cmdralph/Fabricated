@@ -53,6 +53,14 @@ final class Fml {
 		return List.of(ModuleLayer.boot());
 	}
 
+	/**
+	 * The loader the game's class loader hands a class to when no module has its package: FML makes it the loader's
+	 * parent (read in FML 10 to 12's {@code FMLLoader}).
+	 */
+	static ClassLoader gameFallback(ClassLoader game) {
+		return game.getParent();
+	}
+
 	/** The game's program arguments. */
 	static String[] programArgs() {
 		return FMLLoader.getCurrent().getProgramArgs().getArguments();
