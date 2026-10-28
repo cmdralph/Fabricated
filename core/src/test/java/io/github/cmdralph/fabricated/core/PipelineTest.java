@@ -568,6 +568,39 @@ class PipelineTest {
 		assertTrue(row.detail().contains("drawSections, which does not exist in net.example.sodium.Renderer"), row.detail());
 	}
 
+	/**
+	 * Code calling a class only an installed NeoForge mod has (Forgified Fabric API's modules, a multi-loader library's
+	 * NeoForge build) links: the linkage check counts the installed mods' classes (PROVIDER-1).
+	 */
+	@Test
+	void codeUsingAnInstalledModsClassLinks(@TempDir Path game) throws Exception {
+		String helper = "net/fabricmc/fabric/api/client/keybinding/v1/KeyBindingHelper";
+		String draw = "register(Ljava/lang/Object;)V";
+		Path user = TestJars.create().fabricModJson(TestJars.modJson("user", "1.0", ""))
+				.bytes("com/user/Keys.class", caller("com/user/Keys", helper, draw))
+				.write(Files.createDirectories(game.resolve("mods")).resolve("user.jar"));
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, helper, null, "java/lang/Object", null);
+		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC, "register", "(Ljava/lang/Object;)V", null, null);
+		mv.visitCode();
+		mv.visitInsn(Opcodes.RETURN);
+		mv.visitMaxs(0, 2);
+		mv.visitEnd();
+		cw.visitEnd();
+		Map<String, byte[]> provider = Map.of(helper, cw.toByteArray());
+		InstalledClasses installed = new InstalledClasses(List.of(new InstalledClasses.Jar("Forgified Fabric Key Binding API", provider::containsKey, provider::get)));
+
+		Pipeline.Result result = Pipeline.run(input(game, List.of(user), Namespace.OFFICIAL, Map.of(), null, List.of(), installed));
+		assertEquals(List.of("user"), result.mods().stream().map(m -> m.translated().candidate().id()).toList(), result.report().render());
+		assertFalse(result.report().render().contains("missing class"), result.report().render());
+
+		Path without = Files.createDirectories(game.resolve("other"));
+		Pipeline.Result missing = Pipeline.run(input(without, List.of(Files.copy(user, Files.createDirectories(without.resolve("mods")).resolve("user.jar"))),
+				Namespace.OFFICIAL, Map.of(), null));
+		assertTrue(missing.report().render().contains("com.user.Keys -> missing class net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper"),
+				missing.report().render());
+	}
+
 	/** A mixin into a mod that isn't installed isn't verified, and is checked once that mod is installed. */
 	@Test
 	void mixinsIntoAModInstalledLaterAreCheckedThen(@TempDir Path game) throws Exception {
@@ -833,7 +866,7 @@ class PipelineTest {
 	void resultWithoutRefusedModsInjectsNothingOfTheirs(@TempDir Path dir) throws Exception {
 		Pipeline.LoadedMod a = loadedMod(dir, "mod-a", "com/a/Iface", "com/a/ClientThing");
 		Pipeline.LoadedMod b = loadedMod(dir, "mod-b", "com/b/Iface", "com/b/ClientThing");
-		Pipeline.Result result = new Pipeline.Result(null, List.of(a, b), null, Map.of(), null, Set.of());
+		Pipeline.Result result = new Pipeline.Result(null, List.of(a, b), null, Map.of(), null, Set.of(), Set.of());
 		assertEquals(List.of("com/a/Iface", "com/b/Iface"), interfacesOf(result, "net/minecraft/world/Thing"));
 		assertEquals(Set.of("com/a/ClientThing", "com/b/ClientThing"), result.environmentClasses());
 
@@ -906,7 +939,7 @@ class PipelineTest {
 				(cache, path) -> new Pipeline.Mappings(table, "test-hash")));
 		assertEquals(1, result.mods().size(), result.report().render());
 		Path remapped = result.mods().getFirst().translated().jar();
-		assertTrue(remapped.toString().endsWith("remapped.jar"));
+		assertEquals("old_mod.jar", remapped.getFileName().toString(), "named after the mod, as the platform's logs name it");
 		try (SafeArchive archive = SafeArchive.open(remapped, ArchiveLimits.DEFAULTS)) {
 			ClassNode node = new ClassNode();
 			new ClassReader(archive.read("com/old/Caller.class")).accept(node, 0);
@@ -1649,6 +1682,47 @@ class PipelineTest {
 		String report = result.report().render();
 		assertTrue(report.contains("NeoForge cannot load both"), report);
 		assertTrue(report.contains("a NeoForge build of this mod is installed"), report);
+	}
+
+	/**
+	 * Forgified Fabric API's version carries build metadata with a '+' of its own, which Fabric's SemVer refuses; it
+	 * still satisfies a version range, and the ids its mods.toml provides ({@code fabric}) satisfy dependencies too.
+	 */
+	@Test
+	void aNeoForgeBuildOfFabricApiSatisfiesRangesAndItsProvidedIds(@TempDir Path game) throws Exception {
+		Path ranged = TestJars.create().fabricModJson(TestJars.modJson("ranged", "1.0", "\"depends\":{\"fabric-api\":\">=0.100.0\"}"))
+				.write(game.resolve("mods/ranged.jar"));
+		Path legacy = TestJars.create().fabricModJson(TestJars.modJson("legacy", "1.0", "\"depends\":{\"fabric\":\"*\"}"))
+				.write(game.resolve("mods/legacy.jar"));
+		List<Pipeline.NeoForgeMod> neoForge = List.of(new Pipeline.NeoForgeMod("fabric_api", "0.116.15+2.3.6+1.21.1", "Forgified Fabric API",
+				Map.of(Pipeline.NeoForgeMod.PROVIDES, List.of("fabric", "fabric-api")), List.of()));
+		Pipeline.Result result = Pipeline.run(input(game, List.of(ranged, legacy), Namespace.OFFICIAL, Map.of(), null, neoForge));
+		assertEquals(Set.of("ranged", "legacy"), result.mods().stream().map(m -> m.translated().candidate().id()).collect(Collectors.toSet()),
+				result.report().render());
+		assertEquals("0.116.15+2.3.6+1.21.1", result.runtime().getModContainer("fabric-api").orElseThrow().getMetadata().getVersion().getFriendlyString());
+	}
+
+	/**
+	 * A native module another mod provides (Forgified Fabric API's, Sodium's bundled fabric-api-base) is that mod's:
+	 * Fabricated's copy stands down, the provider satisfies dependencies on it, and the official jar's copy is skipped.
+	 */
+	@Test
+	void aNativeModuleAnotherModProvidesIsThatModsOnly(@TempDir Path game) throws Exception {
+		Path user = TestJars.create().fabricModJson(TestJars.modJson("user", "1.0", "\"depends\":{\"fabric-api-base\":\">=0.4\"}"))
+				.write(game.resolve("mods/user.jar"));
+		Path official = TestJars.create().fabricModJson(TestJars.modJson("fabric-api-base", "0.4.42", "")).write(game.resolve("mods/base.jar"));
+		List<Pipeline.NeoForgeMod> neoForge = List.of(new Pipeline.NeoForgeMod("fabric_api_base", "0.4.42+d1308ded19",
+				"Forgified Fabric API Base", Map.of(), List.of()));
+		Pipeline.Result result = Pipeline.run(input(game, List.of(user, official), Namespace.OFFICIAL, Map.of(), null, neoForge));
+		assertEquals(List.of("user"), result.mods().stream().map(m -> m.translated().candidate().id()).toList(), result.report().render());
+		List<Report.ModRow> rows = result.report().mods().stream().filter(r -> r.id().equals("fabric-api-base")).toList();
+		assertEquals(List.of(Report.Status.SKIPPED, Report.Status.PROVIDED_BY_MOD), rows.stream().map(Report.ModRow::status).toList());
+		assertTrue(rows.get(0).detail().contains("a NeoForge build of this mod is installed"), rows.get(0).detail());
+		assertEquals("Forgified Fabric API Base", rows.get(1).source());
+		assertTrue(result.report().mods().stream().noneMatch(r -> r.status() == Report.Status.PROVIDED_NATIVELY), result.report().render());
+		assertEquals("Forgified Fabric API Base", result.runtime().getModContainer("fabric-api-base").orElseThrow().getMetadata().getName());
+		assertEquals(Map.of("fabric-api-base", "fabric_api_base"), Pipeline.providedElsewhere(FabricApiPlan.parse(PLAN), neoForge).entrySet().stream()
+				.collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().id())));
 	}
 
 	/** Fabric Loader gives every mod a root, and mods take the first without checking (OneConfig's list of mods, POLY-1). */

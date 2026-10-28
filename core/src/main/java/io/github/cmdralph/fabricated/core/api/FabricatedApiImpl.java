@@ -63,7 +63,7 @@ public final class FabricatedApiImpl implements FabricatedApi {
 				case LOADED -> failed.contains(row.id()) ? FabricMod.Status.FAILED : FabricMod.Status.LOADED;
 				case DISABLED -> FabricMod.Status.DISABLED;
 				case SKIPPED -> FabricMod.Status.SKIPPED;
-				case REJECTED, PROVIDED_NATIVELY -> null;
+				case REJECTED, PROVIDED_NATIVELY, PROVIDED_BY_MOD -> null;
 			};
 			if (status == null) continue;
 			String name = runtime.getModContainer(row.id()).map(c -> c.getMetadata().getName()).orElse(row.id());
@@ -84,6 +84,10 @@ public final class FabricatedApiImpl implements FabricatedApi {
 		List<FabricApiModule> modules = new ArrayList<>();
 		for (FabricApiPlan.Module m : plan.modules().values()) {
 			Report.ModRow row = rows.get(m.id());
+			if (row != null && row.status() == Report.Status.PROVIDED_BY_MOD) {
+				modules.add(new FabricApiModule(m.id(), FabricApiModule.Status.PROVIDED_BY_MOD, row.version(), "provided by " + row.source()));
+				continue;
+			}
 			modules.add(switch (m.plan()) {
 				case NATIVE -> new FabricApiModule(m.id(), FabricApiModule.Status.NATIVE, m.version(), m.reason());
 				case UNSUPPORTED -> new FabricApiModule(m.id(), FabricApiModule.Status.UNSUPPORTED, "", m.reason());

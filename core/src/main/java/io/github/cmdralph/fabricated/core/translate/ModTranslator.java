@@ -90,8 +90,18 @@ import net.fabricmc.loader.api.metadata.CustomValue;
  * mod code is loaded or run.
  */
 public final class ModTranslator {
-	public static final String OVERLAY = "overlay.jar";
-	public static final String REMAPPED = "remapped.jar";
+	/** The overlay's file name in a mod's cache entry. */
+	static String overlay(String neoId) {
+		return neoId + "-overlay.jar";
+	}
+
+	/**
+	 * The remapped jar's file name in a mod's cache entry: named after the mod, as the platform's logs name a mod file
+	 * by its first jar's name.
+	 */
+	static String remapped(String neoId) {
+		return neoId + ".jar";
+	}
 	public static final String AT_PATH = "META-INF/accesstransformer.cfg";
 	static final String PACK_METADATA = "pack.mcmeta";
 	/** The key NeoForge reads a data file's or entry's conditions from; Fabric reads none there. */
@@ -160,7 +170,7 @@ public final class ModTranslator {
 		String entryName = TranslationCache.entryName(neoId, key);
 
 		Optional<TranslationCache.Entry> hit = env.namespace() == Namespace.INTERMEDIARY
-				? cache.lookup(entryName, OVERLAY, REMAPPED) : cache.lookup(entryName, OVERLAY);
+				? cache.lookup(entryName, overlay(neoId), remapped(neoId)) : cache.lookup(entryName, overlay(neoId));
 		if (hit.isPresent() && installedUnchanged(hit.get())) {
 			return fromCache(candidate, neoId, hit.get());
 		}
@@ -311,8 +321,8 @@ public final class ModTranslator {
 				if (packMetadata != null && !overlay.containsKey(PACK_METADATA) && !archive.contains(PACK_METADATA)) overlay.put(PACK_METADATA, packMetadata);
 
 				Map<String, byte[]> outputs = new LinkedHashMap<>();
-				outputs.put(OVERLAY, jarBytes(overlay));
-				if (remapped != null) outputs.put(REMAPPED, jarBytes(remapped));
+				outputs.put(overlay(neoId), jarBytes(overlay));
+				if (remapped != null) outputs.put(remapped(neoId), jarBytes(remapped));
 
 				long millis = (System.nanoTime() - start) / 1_000_000;
 				Map<String, Object> meta = new LinkedHashMap<>();
@@ -333,8 +343,8 @@ public final class ModTranslator {
 				meta.put("overridableMethods", List.copyOf(overridable));
 				meta.put("installedClasses", installedClasses);
 				TranslationCache.Entry entry = cache.store(entryName, outputs, meta);
-				Path jar = remapped != null ? entry.file(REMAPPED) : candidate.path();
-				return new TranslatedMod(candidate, neoId, jar, entry.file(OVERLAY), List.copyOf(findings), atLines,
+				Path jar = remapped != null ? entry.file(remapped(neoId)) : candidate.path();
+				return new TranslatedMod(candidate, neoId, jar, entry.file(overlay(neoId)), List.copyOf(findings), atLines,
 						List.copyOf(notes), injections, List.copyOf(bridges), environmentClasses, overridable, false, millis);
 			} catch (ArchiveException e) {
 				throw new TranslationException("The jar is unsafe or corrupt: " + e.getMessage(), "Re-download the mod from its official page.");
@@ -1376,8 +1386,8 @@ public final class ModTranslator {
 		Set<String> overridable = new TreeSet<>();
 		if (meta.get("overridableMethods") instanceof List<?> list) list.forEach(o -> overridable.add(String.valueOf(o)));
 		int at = meta.get("accessTransformers") instanceof Number n ? n.intValue() : 0;
-		Path jar = env.namespace() == Namespace.INTERMEDIARY ? entry.file(REMAPPED) : candidate.path();
-		return new TranslatedMod(candidate, neoId, jar, entry.file(OVERLAY), List.copyOf(findings), at, List.copyOf(notes),
+		Path jar = env.namespace() == Namespace.INTERMEDIARY ? entry.file(remapped(neoId)) : candidate.path();
+		return new TranslatedMod(candidate, neoId, jar, entry.file(overlay(neoId)), List.copyOf(findings), at, List.copyOf(notes),
 				List.copyOf(injections), List.copyOf(bridges), Set.copyOf(environmentClasses), Set.copyOf(overridable), true, 0);
 	}
 
