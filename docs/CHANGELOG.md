@@ -3,6 +3,19 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-10-28: v0.5.1-alpha carries the follow-up's fixes (task 4 of the v0.5.1-alpha follow-up)
+
+- **The owner's decision:** the world-join crash made the v0.5.1-alpha draft unusable for real packs, so its fixes ship
+  in the same release, rebuilt, rather than a later one. The version is 0.5.1 again on `main` (it was 0.6.0 since
+  #228) until the release is published; 0.6.0's development resumes after it. README, ARCHITECTURE and the roadmap say
+  so.
+- **Release notes** (`releases/v0.5.1-alpha.md`): GSON-1 and PKG-5, Fabric Loader's `loadIntoTarget`, Fabricated's file
+  by name, the Forge builds' class-path fix (GSON-2) and OneConfig's differences under the known limits.
+- **GSON-2, read in the Forge launchers:** Forge 47's ModLauncher (10.0.9) makes the game loader's fallback its boot
+  layer's loader, as NeoForge 21.1's does, so its builds had GSON-1. Forge 61 to 66's (10.2.6) leaves the fallback
+  unset, and a class no module has is looked for in every parent layer's loader, which `ProposedJars` also cut off.
+  The Forge branches' sync passes ModLauncher's boot layer loader on both.
+
 ## 2026-10-28: Fabricated's file by name in a crash report (task 3 of the v0.5.1-alpha follow-up)
 
 - **Fabricated's in-game mod** showed in a crash report's mod list as its cached file, a SHA-256
