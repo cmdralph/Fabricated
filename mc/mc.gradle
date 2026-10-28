@@ -370,7 +370,8 @@ def frapiTestmodJar = tasks.register('testmodFrapiJar', Jar) {
     destinationDirectory = testmodsDir
     from sourceSets.testmodfrapi.output
 }
-tasks.named('testmods') { dependsOn frapiTestmodJar }
+// Not where the version has none (1.21.1): NeoForge would report the empty jar as a broken mod file.
+if (frapiTestmodDir.isDirectory()) tasks.named('testmods') { dependsOn frapiTestmodJar }
 
 // --- Pass-through Fabric API modules, at compile time only -------------------------------------------------
 // The player's Fabric API jar provides these modules at runtime; Fabricated never ships them. Code that uses one

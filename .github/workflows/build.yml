@@ -105,6 +105,13 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - minecraft: "1.21.1"
+            fabric_api: "0.116.17+1.21.1"
+            neoforge: "21.1.265"
+            # The newest builds for the version until a first run gives ids to pin.
+            plugin_hosts: "jei rei jade wthit simple-voice-chat"
+            java: 21
+            experimental: false
           - minecraft: "1.21.11"
             fabric_api: "0.141.6+1.21.11"
             neoforge: "21.11.45"
