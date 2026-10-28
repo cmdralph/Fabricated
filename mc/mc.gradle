@@ -7,7 +7,7 @@
 // Each version project produces build/libs/fabricated-<version>+mc<minecraft>.jar in the root project:
 //   - the "loader" source set (the loader's discovery services) plus :core and :fabric-loader-api, which run
 //     in the loader's early-services class loader, and
-//   - META-INF/fabricated/game-mod.jar, Fabricated's in-game NeoForge mod (main source set: common code,
+//   - META-INF/fabricated/game-mod.jar, Fabricated's in-game mod (main source set: common code,
 //     version-specific code and the native Fabric API modules).
 // It also builds the Fabric test mods used by the CI smoke test (build/testmods).
 

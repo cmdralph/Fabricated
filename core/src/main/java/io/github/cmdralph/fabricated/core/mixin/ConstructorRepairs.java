@@ -84,7 +84,7 @@ final class ConstructorRepairs extends PreflightPart {
 	 * selected follows that call, which gives Fabric's behaviour: fabric-command-api-v2's hook into {@code Commands}'
 	 * constructor, which stopped Forge 61's server. Returns a description of each point marked.
 	 */
-	List<String> constructorPointRepairs(MethodNode handler, AnnotationNode injector, List<ClassNode> targets, Context ctx) {
+	List<String> constructorPointRepairs(AnnotationNode injector, List<ClassNode> targets, Context ctx) {
 		if (constructorInjects != ConstructorInjects.UNSAFE_POINTS || !injector.desc.equals(MixinNames.INJECT)) return List.of();
 		List<AnnotationNode> slices = Annotations.list(Annotations.value(injector, "slice"));
 		List<String> marked = new ArrayList<>();

@@ -197,7 +197,7 @@ final class MixinRepairs extends PreflightPart {
 					(s, lambda) -> s.named() + " targets " + lambda + ", which this game build numbers differently"),
 			RepairStep.warn(RepairScope.ANY, s -> locals.argumentNameRepairs(s.handler(), s.injector(), s.targets(), s.ctx()),
 					(s, named) -> "@ModifyVariable " + s.handler().name + " takes " + named),
-			RepairStep.warn(RepairScope.ANY, s -> constructors.constructorPointRepairs(s.handler(), s.injector(), s.targets(), s.ctx()),
+			RepairStep.warn(RepairScope.ANY, s -> constructors.constructorPointRepairs(s.injector(), s.targets(), s.ctx()),
 					(s, marked) -> "@Inject " + s.handler().name + " injects into " + marked),
 			RepairStep.warn(RepairScope.ANY, s -> constructors.constructorCallWrappers(s.mixin(), s.handler(), s.injector(), s.targets(), s.ctx(), s.bridges()),
 					(s, wrapped) -> "@Inject " + s.handler().name + " injects into " + wrapped),

@@ -215,14 +215,9 @@ public final class FabricFluidType extends FluidType {
 		return water();
 	}
 
-	// Hydrating a block (farmland): NeoForge dropped the fluid's position from this method on 26.3, so both forms are
-	// declared, and each overrides NeoForge's on the versions that have it.
-
+	/** Hydrating a block (farmland). */
+	@Override
 	public boolean canHydrate(FluidState state, BlockGetter level, BlockPos pos, BlockState block, BlockPos blockPos) {
-		return water();
-	}
-
-	public boolean canHydrate(FluidState state, BlockGetter level, BlockState block, BlockPos blockPos) {
 		return water();
 	}
 
