@@ -22,7 +22,7 @@ import io.github.cmdralph.fabricated.core.accesswidener.AccessWidenerFile.Inject
  * Whether each interface Fabric mods inject into game classes is a class of the game's module layers, checked once they
  * exist (the first class Fabricated transforms). An interface that no module has, or whose package two modules have
  * (the package's classes then load from one of them only), fails the game class it is injected into when that class
- * loads, as Forge's corpus runs did (ForgeTestMarker, FabricBlockGetter, FabricRegistry: LAYER-1). Each such interface is
+ * loads, as Forge's corpus runs did (ForgeTestMarker, FabricBlockGetter, FabricRegistry: LOADERR-1). Each such interface is
  * logged with the modules that have its package and whether each has the class, which the crash doesn't say.
  */
 final class GameLayerCheck {

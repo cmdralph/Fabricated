@@ -3,6 +3,38 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-10-28: Cleanup before v0.5.0
+
+- **Pre-flight's structure (ARCH-1):** the injector repairs run from one ordered table, and the repair families are
+  classes of their own (`LambdaRepairs`, `OverloadRepairs`, `CallRepairs`, `ConstructorRepairs`, `LocalRepairs`,
+  `MixinRepairs` for the class-level and member repairs) over the run's shared lookups (`PreflightClasses`,
+  `PreflightPart`). `MixinPreflight` (4,075 lines, now 1,175) keeps the checker and its public API; no behaviour
+  change.
+- **Duplicated sources merged** (about 3,700 lines): NeoForge 1.21.1's and 1.21.11's identical sources move to a new
+  shared folder, `mc/neoforge/common121` (transfer, networking, loot, biome and content registry code, NeoForge
+  mixins, test-mod parts: 58 files, both versions compiling to the same classes); biome and login sources whose copies
+  together covered an existing shared folder move there; Forge's `BlockBreakEvents` and `ForgeMods` move to
+  `mc/forge-shared` and `loader/forge-shared`. What a new kind of shared folder would merge (the loot mixins Forge and
+  NeoForge both have, `fabricapi-overrides`) is noted in the roadmap.
+- **Dead code and stale configuration:** the unread `fabric_loader_api_version` property (CFG-2), an unused
+  parameter, a `canHydrate` form NeoForge 21.1 doesn't have; comments that described research-era placeholders,
+  files that don't exist or the wrong folders.
+- **CI:** the corpus client no longer runs Xaero's World Map apart (CORPUS-2 is fixed); the smoke scripts print
+  failed checks without a pipe into `head` (CI-2); the Forge smoke servers no longer dump the installer's layout and
+  the Mojang names the native modules were checked against.
+- **Documents** brought up to date with the code: 1.21.1 in the current-state claims (ARCHITECTURE, PORTING,
+  COMPATIBILITY, claude.md), the layout tree, the config parser and logging, the crash attribution Fabricated doesn't
+  do, MIXINS.md's configs and counts for every version, the Forge READMEs' folders, the jar counts, NOTICE's paths and
+  bundled Intermediary versions, the API jar (not attached to releases). The compatibility plan's reason for malilib
+  says PIP-1 restores the map it uses.
+- Decided here: the retired config keys stay accepted and ignored at 0.5.0, so older configs don't warn. Forge 47's
+  fluid storages keep no component guard on purpose: its fluids and Fabric's variants both carry NBT, which
+  `FluidUnits` translates (Forge 61 to 66's guard exists because components can't be).
+- Verification: core's build and its 322 tests; NeoForge 1.21.1, 1.21.11 and 26.1.2 and Forge 1.21.11, 26.1.2 and
+  1.20.1 compile locally, and javap of every class of NeoForge 1.21.1 and 1.21.11 matches before and after the
+  `common121` move. NeoForge 26.2 and 26.3 don't build in this container (*Unverified*); the pull request's full
+  matrix covers every version.
+
 ## 2026-10-28: Minecraft 1.21.1 on NeoForge 21.1
 
 - **The owner's decision:** the whole 1.21.1 NeoForge target before the release (server, client, bridges, corpus),
@@ -52,8 +84,11 @@ One entry per working session, newest first: what changed, and how it was verifi
 - Verification: core's tests; local server smokes, all 60 checks: 1.21.1 without and with Fabric API 0.116.17 (25
   Fabric mods loaded, 18 modules native), 1.21.11 and 26.1.2 after the shared changes. Local 1.21.1 client smokes,
   all 36 checks, without and with Fabric API 0.116.17 (34 Fabric mods loaded, none disabled; the colour and HUD checks
-  pass). CI's first 1.21.1 run (40606962688) found REG-7 and the REI plugin's interface; the corpus on 1.21.1 is CI's,
-  on this task's pull request.
+  pass). CI's first 1.21.1 run (40606962688) found REG-7 and the REI plugin's interface. The pull request's full
+  matrix on `26d3c4a` (#209): build run 40612982248 (every NeoForge version), build-forge run 40612982336 (after one
+  re-run of Forge 26.2's job, whose client timed out setting up its window in Forge's early display) and
+  build-forge-legacy run 40612982268, all green. The corpus has not run on 1.21.1 yet: pull requests skip it (it
+  runs with `extended`).
 
 ## 2026-10-27: Forge development sped up, and the Forge corpus runs reaching the game
 

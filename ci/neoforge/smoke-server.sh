@@ -191,7 +191,7 @@ check "LEFT_OUT .*ImpossibleMixin.*fabricatedMethodThatDoesNotExist" logs/fabric
 check "intentional failure for Fabricated CI" logs/fabric-bridge-report.txt "throwing entrypoint isolated"
 # The test mods log "FABRICATED-TEST ... FAILED" when one of their own checks fails.
 if grep -q "FABRICATED-TEST .*FAILED" server.out; then
-	echo "FAIL: a test mod check reported a failure:"; grep "FABRICATED-TEST .*FAILED" server.out | head -n 5; fail=1
+	echo "FAIL: a test mod check reported a failure:"; { grep -m 5 "FABRICATED-TEST .*FAILED" server.out || true; }; fail=1
 else
 	echo "PASS: no test mod check reported a failure"
 fi

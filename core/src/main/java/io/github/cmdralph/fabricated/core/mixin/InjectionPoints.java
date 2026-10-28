@@ -305,7 +305,7 @@ final class InjectionPoints {
 		Type[] args = Type.getArgumentTypes(handler.desc);
 		int taken = -1;
 		for (int i = 0; i < args.length; i++) {
-			if (args[i].getDescriptor().equals(MixinPreflight.OPERATION)) {
+			if (args[i].getDescriptor().equals(MixinNames.OPERATION)) {
 				taken = i;
 				break;
 			}

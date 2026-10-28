@@ -1,6 +1,6 @@
 name: Release
 
-# Builds a release's jars from one pinned commit, by hand only: every branch holds every platform, so NeoForge's four
+# Builds a release's jars from one pinned commit, by hand only: every branch holds every platform, so NeoForge's five
 # jars, Forge's four and Forge 1.20.1's come from the same tree, each with the build its platform's CI uses, from an
 # empty Gradle cache. Mode "build" (the default) only builds the jars and lists their checksums, for review before
 # anything is published; "draft" also creates a draft release, and "publish" a published one. GitHub creates the tag at

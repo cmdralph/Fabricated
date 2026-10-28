@@ -207,7 +207,7 @@ public record FabricatedConfig(
 	/**
 	 * Disables a Fabric mod in {@code configDir}'s config file (or enables it again), for the next launch: what
 	 * {@code /fabricated disable} and {@code enable} do. The other settings stay as they were; the file is written back
-	 * in Fabricated's own layout, without comments (its documentation lives beside it, in {@code fabricated.json.md}).
+	 * in Fabricated's own layout, without comments (the README documents the settings).
 	 *
 	 * @throws JsonException when the file isn't a config object to change; it is then left as it is
 	 */

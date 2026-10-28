@@ -115,21 +115,21 @@ jobs:
           - minecraft: "1.21.11"
             fabric_api: "0.141.6+1.21.11"
             neoforge: "21.11.45"
-            # Modrinth version ids of the mods reading plugins (no WTHIT build for 26.3).
+            # Modrinth version ids of the mods reading plugins.
             plugin_hosts: "jei@Sb3olMoE rei@p0bsGl2I jade@LDFqgwEA wthit@9kLa6aJn simple-voice-chat@q4sBpZd2"
             java: 21
             experimental: false
           - minecraft: "26.1.2"
             fabric_api: "0.155.3+26.1.2"
             neoforge: "26.1.2.116"
-            # Modrinth version ids of the mods reading plugins (no WTHIT build for 26.3).
+            # Modrinth version ids of the mods reading plugins.
             plugin_hosts: "jei@NiYfNYIM rei@isd1MxO2 jade@Pr1h4azo wthit@86roxNra simple-voice-chat@ux2lghIT"
             java: 25
             experimental: false
           - minecraft: "26.2"
             fabric_api: "0.161.0+26.2"
             neoforge: "26.2.0.90"
-            # Modrinth version ids of the mods reading plugins (no WTHIT build for 26.3).
+            # Modrinth version ids of the mods reading plugins.
             plugin_hosts: "jei@JMEYi0NN rei@BoY0Dky0 jade@GBES6etT wthit@nYkvtEUa simple-voice-chat@xNwwyLuz"
             java: 25
             experimental: false
@@ -597,25 +597,9 @@ jobs:
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
-        # CORPUS-2: Xaero's World Map stops the client on its first tick, so it runs alone below and the other mods
-        # reach a world here.
         run: |
-          mkdir -p "$RUNNER_TEMP/corpus-client"
-          cp "$RUNNER_TEMP/corpus/"*.jar "$RUNNER_TEMP/corpus-client/"
-          worldmap=$(sed -n 's/^xaeros-world-map: .* (\(.*\))$/\1/p' "$RUNNER_TEMP/corpus.txt")
-          if [ -n "$worldmap" ]; then rm -f "$RUNNER_TEMP/corpus-client/$worldmap"; fi
-          SMOKE_TIMEOUT=600 ci/neoforge/smoke-client.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/client-corpus" "$RUNNER_TEMP/corpus-client" || true
+          SMOKE_TIMEOUT=600 ci/neoforge/smoke-client.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/client-corpus" "$RUNNER_TEMP/corpus" || true
           grep -A400 "== " "$RUNNER_TEMP/client-corpus/run/logs/fabric-bridge-report.txt" || true
-      - name: Client with Xaero's World Map alone (informational, CORPUS-2)
-        if: ${{ !cancelled() && steps.corpus.outcome == 'success' }}
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          mkdir -p "$RUNNER_TEMP/extra-worldmap"
-          python3 ci/fetch-corpus.py "${{ matrix.minecraft }}" "$RUNNER_TEMP/extra-worldmap" fabric xaeros-world-map
-          cp "$RUNNER_TEMP/extra/fabric-api.jar" "$RUNNER_TEMP/extra-worldmap/"
-          SMOKE_TIMEOUT=420 ci/neoforge/smoke-client.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/client-worldmap" "$RUNNER_TEMP/extra-worldmap" || true
       # malilib (MiniHUD's and Tweakeroo's library) adds its picture-in-picture renderers through the GUI renderer's map
       # NeoForge replaced, which Fabricated restores (PIP-1). On its own, with the compatibility plan's refusal lifted,
       # until it is verified.
@@ -686,7 +670,7 @@ jobs:
           [ -f viewers.txt ] && { echo "== viewers fetched"; cat viewers.txt; }
           [ -f "$RUNNER_TEMP/summary-advanced.txt" ] && { echo "== advanced corpus fetched"; cut -c1-200 "$RUNNER_TEMP/summary-advanced.txt"; }
           [ -f "$RUNNER_TEMP/summary-neoforge-data.txt" ] && { echo "== NeoForge biome and structure modifiers in the advanced corpus's Fabric jars"; head -40 "$RUNNER_TEMP/summary-neoforge-data.txt"; }
-          for run in client client-fapi client-sodium client-shaders client-sodium-fabric client-sodium-addons client-viewers client-polyfrost client-corpus client-worldmap client-malilib client-advanced; do
+          for run in client client-fapi client-sodium client-shaders client-sodium-fabric client-sodium-addons client-viewers client-polyfrost client-corpus client-malilib client-advanced; do
             log="$RUNNER_TEMP/$run/run/logs/latest.log"
             if [ ! -f "$log" ]; then
               # The game never started (the launcher stopped first): what the launcher said last.

@@ -174,8 +174,7 @@ warning in the report, so a bad config never crashes the game.
 ## Known limitations
 
 - **Fabric API coverage** is the main limit. See [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) for the
-  per-module status on each Minecraft version. The roadmap is at the end of
-  that file.
+  per-module status on each Minecraft version. What is planned is in [docs/roadmap.md](docs/roadmap.md).
 - **Mixin pre-flight is conservative.** It only reports what it can prove from bytecode. A mixin it can't
   evaluate (wildcard selectors, unusual injection points, a target in another Fabric mod) loads normally. If
   that mixin later fails, Mixin's own crash report names the Fabric mod. Mixins into Minecraft, Fabric API and

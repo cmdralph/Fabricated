@@ -7,7 +7,7 @@
 // Each version project produces build/libs/fabricated-<version>+mc<minecraft>.jar in the root project:
 //   - the "loader" source set (the loader's discovery services) plus :core and :fabric-loader-api, which run
 //     in the loader's early-services class loader, and
-//   - META-INF/fabricated/game-mod.jar, Fabricated's in-game NeoForge mod (main source set: common code,
+//   - META-INF/fabricated/game-mod.jar, Fabricated's in-game mod (main source set: common code,
 //     version-specific code and the native Fabric API modules).
 // It also builds the Fabric test mods used by the CI smoke test (build/testmods).
 
@@ -44,9 +44,9 @@ repositories {
 }
 
 // Source shared between one platform's versions, in mc/<platform>/<name>, as the version's `shared_sources`
-// property lists them. NeoForge's: every version (common), 26.x (common26: unobfuscated, with one Fabric API
-// surface), 26.1.2 and 26.2 (common26early: 26.3 changed the APIs that code uses), and 26.2 and 26.3
-// (common26late). Forge's are named alike. An entry with a slash is a path from the repository root, for a folder two
+// property lists them. NeoForge's: every version (common), 1.21.1 and 1.21.11 (common121), 1.21.11 and later
+// (common12111), 26.x (common26: unobfuscated, with one Fabric API surface), 26.1.2 and 26.2 (common26early: 26.3
+// changed the APIs that code uses), and 26.2 and 26.3 (common26late). Forge's are named alike. An entry with a slash is a path from the repository root, for a folder two
 // platforms share: mc/forge-shared holds the code Forge 61 to 66 and Forge 47 both compile as it is.
 def platform = projectDir.parentFile.name
 if (!(platform in ['neoforge', 'forge', 'forge-legacy'])) {

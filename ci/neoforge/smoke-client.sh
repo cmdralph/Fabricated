@@ -257,7 +257,7 @@ check "FABRICATED-TEST environment stripping OK" "@EnvironmentInterface kept on 
 grep -h -m 1 -o "FABRICATED-TEST library modules: .*" "$log" 2>/dev/null || true
 # The test mods log "FABRICATED-TEST ... FAILED" when one of their own checks fails.
 if grep -q "FABRICATED-TEST .*FAILED" "$log" client.out 2>/dev/null; then
-	echo "FAIL: a test mod check reported a failure:"; grep -h "FABRICATED-TEST .*FAILED" "$log" client.out 2>/dev/null | head -n 5; fail=1
+	echo "FAIL: a test mod check reported a failure:"; { grep -h -m 5 "FABRICATED-TEST .*FAILED" "$log" client.out 2>/dev/null || true; }; fail=1
 else
 	echo "PASS: no test mod check reported a failure"
 fi
