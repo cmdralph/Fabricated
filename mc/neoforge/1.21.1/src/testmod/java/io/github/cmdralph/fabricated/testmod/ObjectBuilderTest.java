@@ -33,6 +33,7 @@ import net.minecraft.world.entity.ai.village.poi.PoiTypes;
 import net.minecraft.world.entity.npc.VillagerProfession;
 import net.minecraft.world.entity.npc.VillagerTrades;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.SoundType;
 import net.minecraft.world.level.block.entity.BarrelBlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.levelgen.Heightmap;
@@ -68,8 +69,9 @@ public final class ObjectBuilderTest implements ModInitializer {
 		// Vanilla's builder has Fabric's build() through interface injection (1.21.1 only).
 		BlockEntityType<BarrelBlockEntity> builtBlockEntity = Registry.register(BuiltInRegistries.BLOCK_ENTITY_TYPE, id("test_block_entity_builder"),
 				BlockEntityType.Builder.of(BarrelBlockEntity::new, stone).build());
-		// Mods call both of Fabric's factories by their own names (CORPUS-39).
-		boolean blockSettings = FabricBlockSettings.create() != null && FabricBlockSettings.of() != null;
+		// Mods call Fabric's factories and setters by Fabric's own names (CORPUS-39).
+		boolean blockSettings = FabricBlockSettings.of() != null
+				&& FabricBlockSettings.create().requiresTool().sounds(SoundType.STONE).hardness(2.0F).resistance(6.0F).nonOpaque() != null;
 		// Fabric mods register serializers through vanilla's method, which NeoForge refuses for mods (CORPUS-41).
 		EntityDataSerializer<Integer> serializer = EntityDataSerializer.forValueType(ByteBufCodecs.VAR_INT);
 		EntityDataSerializers.registerSerializer(serializer);

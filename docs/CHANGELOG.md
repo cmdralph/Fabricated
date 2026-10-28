@@ -21,6 +21,17 @@ One entry per working session, newest first: what changed, and how it was verifi
     NeoForge version): once an entrypoint has failed, the leftover holders are dropped with an error naming them.
   - **CORPUS-43:** on NeoForge 21.1 a Fabric mod shading checker-qual's annotations (Axiom) stopped module resolution:
     the packages of every ModLauncher layer the game reads now count as the platform's.
+- **Merged (#211, `8970aab`), then the extended run again** (40683010866, green): CORPUS-41 to 43 cleared (Moonlight
+  and Friends and Foes register their serializers; the leftover holder is dropped, with its error; the advanced
+  server resolves its modules). Loading now went further and showed the next layer.
+- **The owner's decision on that layer:** one bounded round, then the release whatever the next run shows.
+  - **Fixed:** the rest of CORPUS-39, my incomplete fix: `FabricBlockSettings`' 26 setters under Fabric's own names
+    (`requiresTool()`, `sounds(...)` and the others), found by comparing every public method of the native modules'
+    classes with the official 0.116.17 jar.
+  - **Known limits of v0.5.0-alpha**, open in the roadmap: CORPUS-44 (Moonlight needs an internal class of Fabric
+    API's resource loader; the 1.21.1 corpus server stops), CORPUS-45 (a LambDynamicLights hook applied to the wrong
+    `getLightColor` overload stops the 1.21.1 corpus client; cause UNVERIFIED), CORPUS-46 (the 1.21.1 advanced runs
+    stop past module resolution; cause UNVERIFIED), CORPUS-47 (the 1.21.1 OneConfig client).
 - **Noted, open:** HOLD-2 (the Forge ports have no CORPUS-42 drop yet), SER-1 (NeoForge 21.11 refuses vanilla's
   serializer registration too; no Fabric mod for 1.21.11 has been seen calling it).
 - Decided here: CORPUS-41's hook stays 1.21.1's (SER-1); CORPUS-42 drops holders only after an entrypoint failure, so
@@ -29,6 +40,8 @@ One entry per working session, newest first: what changed, and how it was verifi
   of 60 checks), the 1.21.1 test mod now checking `create()`, the builder's `build()` and a serializer registered
   through vanilla's method. CORPUS-42 and CORPUS-43 were reproduced locally first (a throwing test mod that builds a
   fluid; a jar shading a checker-qual annotation): each stopped the 1.21.1 server without its fix and starts with it.
+  #211's full matrix on `962ba0e` (run 40681622872) was green. For the setters: the API comparison, then the 1.21.1
+  server smoke locally (60 of 60, the test mod calling some of them).
 
 ## 2026-10-28: Cleanup before v0.5.0
 

@@ -1162,6 +1162,8 @@ Modrinth in CI (never redistributed):
 - **An advanced corpus of Fabric mods with deep hooks** (`ci/mod-corpus-advanced.txt`: world generation, gameplay
   systems, camera, sound, replays, server tools), on a server and a client of its own, so that one stopping the game
   can't hide the main corpus's results. Informational, as the main corpus is.
+- **On 1.21.1** both corpora still stop (run 40683010866): the main server at Moonlight (CORPUS-44), the main client
+  at LambDynamicLights (CORPUS-45), the advanced runs past module resolution (CORPUS-46).
 - **Sodium and Iris for NeoForge** with Fabric API and the renderer test mod on 26.x: gated (see *Renderer mods*).
   Their Fabric builds run with `loadUnsupported`, informational: since the constructor repair they reach a world and
   mesh Fabric models on 26.1.2 and 26.3.
