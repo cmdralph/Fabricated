@@ -107,6 +107,11 @@ public final class TranslationCache {
 		public Path file(String fileName) {
 			return dir.resolve(fileName);
 		}
+
+		/** Whether the entry holds the file (lookup verified every file it lists). */
+		public boolean has(String fileName) {
+			return metadata.get("files") instanceof Map<?, ?> files && files.containsKey(fileName);
+		}
 	}
 
 	/** Directory-safe entry name: {@code <modid>-<first 40 hex of key>}. */

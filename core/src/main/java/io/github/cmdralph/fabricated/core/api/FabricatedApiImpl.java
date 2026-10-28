@@ -79,8 +79,12 @@ public final class FabricatedApiImpl implements FabricatedApi {
 
 	@Override
 	public List<FabricApiModule> fabricApiModules() {
+		// A module another mod provides has a row saying so, which may follow one for the copy that was skipped for it.
 		Map<String, Report.ModRow> rows = new HashMap<>();
-		for (Report.ModRow row : report.mods()) rows.putIfAbsent(row.id(), row);
+		for (Report.ModRow row : report.mods()) {
+			if (row.status() == Report.Status.PROVIDED_BY_MOD) rows.put(row.id(), row);
+			else rows.putIfAbsent(row.id(), row);
+		}
 		List<FabricApiModule> modules = new ArrayList<>();
 		for (FabricApiPlan.Module m : plan.modules().values()) {
 			Report.ModRow row = rows.get(m.id());

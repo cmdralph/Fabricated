@@ -96,12 +96,13 @@ public final class ModTranslator {
 	}
 
 	/**
-	 * The remapped jar's file name in a mod's cache entry: named after the mod, as the platform's logs name a mod file
-	 * by its first jar's name.
+	 * The mod's own jar as translated (remapped, or with translation's rewrites of its files) in its cache entry: named
+	 * after the mod, as the platform's logs name a mod file by its first jar's name.
 	 */
 	static String remapped(String neoId) {
 		return neoId + ".jar";
 	}
+
 	public static final String AT_PATH = "META-INF/accesstransformer.cfg";
 	static final String PACK_METADATA = "pack.mcmeta";
 	/** The key NeoForge reads a data file's or entry's conditions from; Fabric reads none there. */
@@ -217,6 +218,8 @@ public final class ModTranslator {
 						enumTargets, classes, bridges, notes, widened);
 				if (!enumEntries.isEmpty()) overlay.put(EnumExtensions.PATH, EnumExtensions.json(enumEntries).getBytes(StandardCharsets.UTF_8));
 
+				// The mod's own files translation rewrites (not the ones it adds).
+				Set<String> rewritten = new TreeSet<>();
 				int conditioned = 0;
 				int modifiers = 0;
 				int lootModifiers = 0;
@@ -230,6 +233,7 @@ public final class ModTranslator {
 						byte[] fabricPackMetadata = packMetadata == null ? null : withoutNeoForgeSections(packMetadata);
 						if (fabricPackMetadata == null) continue;
 						overlay.put(name, fabricPackMetadata);
+						rewritten.add(name);
 						notes.add("Its " + name + " has sections for NeoForge (its NeoForge build's), which Fabric ignores; left out");
 						continue;
 					}
@@ -239,6 +243,7 @@ public final class ModTranslator {
 					Matcher modifier = NEOFORGE_MODIFIER.matcher(name);
 					if (modifier.matches()) {
 						overlay.put(name, modifier.group(2).equals("biome_modifier") ? NO_BIOME_MODIFIER : NO_STRUCTURE_MODIFIER);
+						rewritten.add(name);
 						modifiers++;
 						continue;
 					}
@@ -246,6 +251,7 @@ public final class ModTranslator {
 					// none (Artifacts' types, which only its NeoForge build registers, failed to decode on every NeoForge version).
 					if (!portingLib && LOOT_MODIFIER.matcher(name).matches()) {
 						overlay.put(name, name.endsWith(LOOT_MODIFIER_LIST) ? NO_LOOT_MODIFIER_LIST : NO_LOOT_MODIFIER);
+						rewritten.add(name);
 						lootModifiers++;
 						continue;
 					}
@@ -253,6 +259,7 @@ public final class ModTranslator {
 					byte[] fabricData = data == null ? null : withoutNeoForgeConditions(data);
 					if (fabricData == null) continue;
 					overlay.put(name, fabricData);
+					rewritten.add(name);
 					conditioned++;
 				}
 				if (conditioned > 0) {
@@ -320,9 +327,17 @@ public final class ModTranslator {
 				byte[] packMetadata = env.descriptor().packMetadata(spec);
 				if (packMetadata != null && !overlay.containsKey(PACK_METADATA) && !archive.contains(PACK_METADATA)) overlay.put(PACK_METADATA, packMetadata);
 
+				// The mod's jar holds those rewrites too: other mods read its files through its container's root paths
+				// (Forgified Fabric API's resource loader, PROVIDER-3) and must see what NeoForge does. Unremapped, that's a
+				// copy, made only for the mods whose files translation rewrites.
+				Map<String, byte[]> ownJar = remapped;
+				if (!rewritten.isEmpty()) {
+					if (ownJar == null) ownJar = JarRemapper.unsignedCopy(archive);
+					for (String name : rewritten) ownJar.put(name, overlay.get(name));
+				}
 				Map<String, byte[]> outputs = new LinkedHashMap<>();
 				outputs.put(overlay(neoId), jarBytes(overlay));
-				if (remapped != null) outputs.put(remapped(neoId), jarBytes(remapped));
+				if (ownJar != null) outputs.put(remapped(neoId), jarBytes(ownJar));
 
 				long millis = (System.nanoTime() - start) / 1_000_000;
 				Map<String, Object> meta = new LinkedHashMap<>();
@@ -343,7 +358,7 @@ public final class ModTranslator {
 				meta.put("overridableMethods", List.copyOf(overridable));
 				meta.put("installedClasses", installedClasses);
 				TranslationCache.Entry entry = cache.store(entryName, outputs, meta);
-				Path jar = remapped != null ? entry.file(remapped(neoId)) : candidate.path();
+				Path jar = ownJar != null ? entry.file(remapped(neoId)) : candidate.path();
 				return new TranslatedMod(candidate, neoId, jar, entry.file(overlay(neoId)), List.copyOf(findings), atLines,
 						List.copyOf(notes), injections, List.copyOf(bridges), environmentClasses, overridable, false, millis);
 			} catch (ArchiveException e) {
@@ -1386,7 +1401,7 @@ public final class ModTranslator {
 		Set<String> overridable = new TreeSet<>();
 		if (meta.get("overridableMethods") instanceof List<?> list) list.forEach(o -> overridable.add(String.valueOf(o)));
 		int at = meta.get("accessTransformers") instanceof Number n ? n.intValue() : 0;
-		Path jar = env.namespace() == Namespace.INTERMEDIARY ? entry.file(remapped(neoId)) : candidate.path();
+		Path jar = entry.has(remapped(neoId)) ? entry.file(remapped(neoId)) : candidate.path();
 		return new TranslatedMod(candidate, neoId, jar, entry.file(overlay(neoId)), List.copyOf(findings), at, List.copyOf(notes),
 				List.copyOf(injections), List.copyOf(bridges), Set.copyOf(environmentClasses), Set.copyOf(overridable), true, 0);
 	}

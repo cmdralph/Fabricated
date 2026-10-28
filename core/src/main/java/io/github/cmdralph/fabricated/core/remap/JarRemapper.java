@@ -153,6 +153,18 @@ public final class JarRemapper {
 		return node;
 	}
 
+	/** The jar's files unchanged, but for its signatures, which a copy with changed files can't keep either. */
+	public static Map<String, byte[]> unsignedCopy(SafeArchive archive) throws ArchiveException {
+		Map<String, byte[]> out = new LinkedHashMap<>();
+		for (String name : archive.entryNames()) {
+			if (archive.isDirectory(name) || isSignatureFile(name)) continue;
+			byte[] data = archive.read(name);
+			if (data == null) continue;
+			out.put(name, name.equals("META-INF/MANIFEST.MF") ? cleanManifest(data) : data);
+		}
+		return out;
+	}
+
 	static boolean isSignatureFile(String name) {
 		if (!name.startsWith("META-INF/") || name.indexOf('/', "META-INF/".length()) >= 0) return false;
 		String upper = name.toUpperCase(Locale.ROOT);

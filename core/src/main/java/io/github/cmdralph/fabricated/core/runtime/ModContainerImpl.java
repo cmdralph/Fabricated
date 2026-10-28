@@ -51,8 +51,9 @@ public final class ModContainerImpl extends net.fabricmc.loader.impl.ModContaine
 
 	/**
 	 * A directory of the mod's overlay, when it has one there: its files take priority over the mod's own, as NeoForge
-	 * reads the mod's (a built-in pack's data without its NeoForge build's conditions, PACK-2). The root paths stay the
-	 * mod's own files, which mods walk.
+	 * reads the mod's (a built-in pack's data without its NeoForge build's conditions, PACK-2). The root paths are the
+	 * mod's own jar as translated, which mods walk: it holds the overlay's rewrites of the mod's files (PROVIDER-3), not
+	 * the files translation generated for NeoForge.
 	 */
 	public synchronized Optional<Path> overlayDirectory(String path) {
 		if (overlay == null) return Optional.empty();
