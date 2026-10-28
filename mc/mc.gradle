@@ -58,14 +58,14 @@ ext.sharedSources = (project.shared_sources as String).split(',')*.trim().findAl
 // Classes the shared sources name that this version's game names otherwise, as `renamed_classes` lists them (old=new,
 // comma-separated): Minecraft 1.21.1's ResourceLocation, which 1.21.11 renamed Identifier. Such a version compiles a copy
 // of the shared Java sources with each name replaced, as a whole word (imports, descriptors in strings and comments
-// alike), so the sources stay the later versions' own; the compiler checks the rest of what they call.
+// alike), so the sources stay the later versions' own; the compiler checks the rest of what they call. The test sources
+// every platform shares (mc/shared) are copied alike.
 def renamedClasses = (project.findProperty('renamed_classes') ?: '').split(',')*.trim().findAll { it }.collectEntries {
     def pair = it.split('=')*.trim()
     if (pair.size() != 2 || pair.any { !(it ==~ /[A-Za-z_][A-Za-z0-9_]*/) }) throw new GradleException("renamed_classes: '${it}' isn't old=new")
     [(pair[0]): pair[1]]
 }
-def sharedJava = { String sourceSet ->
-    def dirs = sharedSources.collect { rootProject.file("$it/src/$sourceSet/java") }
+def renamedJava = { String sourceSet, List<File> dirs ->
     if (renamedClasses.isEmpty()) return dirs
     tasks.register("renamedShared${sourceSet.capitalize()}Java", Sync) {
         from(dirs)
@@ -74,6 +74,7 @@ def sharedJava = { String sourceSet ->
         filter { String line -> renamedClasses.inject(line) { l, e -> l.replaceAll("\\b${e.key}\\b", e.value) } }
     }
 }
+def sharedJava = { String sourceSet -> renamedJava(sourceSet, sharedSources.collect { rootProject.file("$it/src/$sourceSet/java") }) }
 
 // NeoForge's loader classes come in two variants, as the version's `loader_variant` property names it: those of FML 10
 // and later, on FML's own jar contents and class processors (loader/neoforge/src/fml, the default), and those of NeoForge
@@ -103,16 +104,16 @@ sourceSets {
     }
     // Test sources every platform shares, in mc/shared: the broken test mods,
     testmodbroken {
-        java.srcDir rootProject.file('mc/shared/src/testmodbroken/java')
+        java.srcDir renamedJava('testmodbroken', [rootProject.file('mc/shared/src/testmodbroken/java')])
     }
     // stand-ins for other mods' plugin interfaces, which the test mod compiles against (never packaged),
     testmodstubs {
-        java.srcDir rootProject.file('mc/shared/src/testmodstubs/java')
+        java.srcDir renamedJava('testmodstubs', [rootProject.file('mc/shared/src/testmodstubs/java')])
     }
     // and stand-ins for the APIs of Fabric libraries Fabricated bridges when a mod brings them (Team Reborn's energy
     // API), never packaged: the bridge loads only when the library is present.
     integrationstubs {
-        java.srcDir rootProject.file('mc/shared/src/integrationstubs/java')
+        java.srcDir renamedJava('integrationstubs', [rootProject.file('mc/shared/src/integrationstubs/java')])
     }
 }
 
@@ -154,6 +155,10 @@ ext.expandProps = [
         minecraft_version      : mcVersion,
         minecraft_version_range: project.minecraft_version_range,
         aw_header              : project.aw_header,
+        // The resource loader module the test mod uses: v1, or v0 where Fabric API has no v1 yet (1.21.1).
+        resource_loader_module : project.findProperty('testmod_resource_loader') ?: 'fabric-resource-loader-v1',
+        // The formats in the test mod's built-in pack.mcmeta: a range from 1.21.9, a single pack_format before.
+        pack_formats           : project.findProperty('testmod_pack_formats') ?: '"min_format": 82, "max_format": 2048',
 ]
 
 // The platform: its build plugin's settings, its mod descriptor, and gameDependencies(sourceSet), which gives a source
@@ -183,7 +188,7 @@ tasks.named('processResources', ProcessResources) {
 
 tasks.named('processTestmodResources', ProcessResources) {
     inputs.properties(expandProps)
-    filesMatching(['fabric.mod.json', '*.accesswidener']) { expand(expandProps) }
+    filesMatching(['fabric.mod.json', '*.accesswidener', 'resourcepacks/*/pack.mcmeta']) { expand(expandProps) }
 }
 
 // --- Generated build facts ---------------------------------------------------------------------------

@@ -56,7 +56,7 @@
     "fabric-api-base": "*",
     "fabric-lifecycle-events-v1": "*",
     "fabric-networking-api-v1": "*",
-    "fabric-resource-loader-v1": "*",
+    "${resource_loader_module}": "*",
     "fabric-registry-sync-v0": "*",
     "fabric-entity-events-v1": "*",
     "fabric-object-builder-api-v1": "*",

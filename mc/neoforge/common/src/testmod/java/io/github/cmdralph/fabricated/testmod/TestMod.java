@@ -80,8 +80,8 @@ public final class TestMod implements ModInitializer, DedicatedServerModInitiali
 	private static boolean addRegistry(String name) {
 		ResourceKey<Registry<String>> key = ResourceKey.createRegistryKey(Identifier.fromNamespaceAndPath("fabricated_testmod", name));
 		try {
-			Registry.register((Registry) BuiltInRegistries.REGISTRY, key.identifier(), new MappedRegistry<>(key, Lifecycle.stable()));
-			return BuiltInRegistries.REGISTRY.containsKey(key.identifier());
+			Registry.register((Registry) BuiltInRegistries.REGISTRY, TestCompat.location(key), new MappedRegistry<>(key, Lifecycle.stable()));
+			return BuiltInRegistries.REGISTRY.containsKey(TestCompat.location(key));
 		} catch (RuntimeException e) {
 			LOGGER.error("FABRICATED-TEST registry {} FAILED", name, e);
 			return false;
@@ -171,7 +171,7 @@ public final class TestMod implements ModInitializer, DedicatedServerModInitiali
 		// The entrypoint the mod's mixin plugin added to Fabric Loader's storage, as FrozenLib adds its own (LOADER-4).
 		loader.getEntrypoints(AddedEntrypoint.KEY, Runnable.class).forEach(Runnable::run);
 
-		Item item = Registry.register(BuiltInRegistries.ITEM, ITEM_ID, new Item(new Item.Properties().setId(ResourceKey.create(Registries.ITEM, ITEM_ID))));
+		Item item = Registry.register(BuiltInRegistries.ITEM, ITEM_ID, new Item(TestCompat.withId(new Item.Properties(), ResourceKey.create(Registries.ITEM, ITEM_ID))));
 		if (BuiltInRegistries.ITEM.getKey(item).equals(ITEM_ID)) {
 			LOGGER.info("FABRICATED-TEST registry OK");
 		}
@@ -202,7 +202,7 @@ public final class TestMod implements ModInitializer, DedicatedServerModInitiali
 		// Damage types in the mod's data and in its built-in pack, under conditions only a NeoForge build would read
 		// (neoforge:false), which Fabric ignores (DATA-1, PACK-2).
 		ServerLifecycleEvents.SERVER_STARTED.register(server -> {
-			var damageTypes = server.registryAccess().lookupOrThrow(Registries.DAMAGE_TYPE);
+			var damageTypes = TestCompat.registry(server.registryAccess(), Registries.DAMAGE_TYPE);
 			if (damageTypes.containsKey(Identifier.fromNamespaceAndPath("fabricated_testmod", "conditioned"))) {
 				LOGGER.info("FABRICATED-TEST data without NeoForge conditions OK");
 			}
@@ -262,7 +262,7 @@ public final class TestMod implements ModInitializer, DedicatedServerModInitiali
 		ServerLifecycleEvents.SERVER_STARTED.register(server -> {
 			List<CreativeModeTab> sorted = CreativeModeTabRegistry.getSortedCreativeModeTabs();
 			int index = sorted.indexOf(tab);
-			int spawnEggs = sorted.indexOf(BuiltInRegistries.CREATIVE_MODE_TAB.getValue(Identifier.withDefaultNamespace("spawn_eggs")));
+			int spawnEggs = sorted.indexOf(TestCompat.value(BuiltInRegistries.CREATIVE_MODE_TAB, Identifier.withDefaultNamespace("spawn_eggs")));
 			if (spawnEggs >= 0 && index > spawnEggs) LOGGER.info("FABRICATED-TEST creative tab order OK");
 			else LOGGER.error("FABRICATED-TEST creative tab order FAILED: the test tab is at {}, the spawn eggs at {}", index, spawnEggs);
 		});
