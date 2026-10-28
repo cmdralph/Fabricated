@@ -281,6 +281,33 @@ jobs:
         run: |
           set -o pipefail
           ci/neoforge/smoke-client.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/client" | tee "$RUNNER_TEMP/summary-client.txt"
+      # The same client joining a world beside Fabric libraries that bundle a library the platform already provides:
+      # the test mods' shade jar (part of Gson, which the launcher's libraries have) and Fabric Language Kotlin (Kotlin,
+      # which Kotlin for Forge has), downloaded from Modrinth where they have builds for the version. Each package must
+      # be the platform's alone (the Fabric jars' copies left out), and vanilla must still read Gson's internal parser
+      # (GSON-1).
+      - name: Client with libraries the platform already provides (Gson, Kotlin; joins a world)
+        if: ${{ env.GAME_RUNS == 'true' && !cancelled() && steps.build.outcome == 'success' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -o pipefail
+          mkdir -p "$RUNNER_TEMP/provided"
+          cp mc/neoforge/${{ matrix.minecraft }}/build/testmods/fabricated-testmod-shade.jar "$RUNNER_TEMP/provided/"
+          python3 ci/fetch-corpus.py "${{ matrix.minecraft }}" "$RUNNER_TEMP/provided" neoforge kotlin-for-forge || true
+          python3 ci/fetch-corpus.py "${{ matrix.minecraft }}" "$RUNNER_TEMP/provided" fabric fabric-language-kotlin || true
+          ls "$RUNNER_TEMP/provided"
+          ci/neoforge/smoke-client.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/client-provided" "$RUNNER_TEMP/provided" | tee "$RUNNER_TEMP/summary-provided.txt"
+          report="$RUNNER_TEMP/client-provided/run/logs/fabric-bridge-report.txt"
+          need() {
+            if grep -qF -- "$1" "$report"; then echo "PASS: $2"; else echo "::error::FAIL: $2 (no \"$1\" in the report)"; exit 1; fi
+          }
+          need "fabricated-testmod-shade bundles package com.google.gson.internal, which the platform already provides" "the shade jar's copy of Gson's package is left out for the platform's"
+          if ls "$RUNNER_TEMP/provided" | grep -qi '^kotlinforforge' && ls "$RUNNER_TEMP/provided" | grep -qi '^fabric-language-kotlin'; then
+            need "kotlin-stdlib bundles package kotlin, which the platform already provides" "Fabric Language Kotlin's copy of Kotlin's packages is left out for Kotlin for Forge's"
+          else
+            echo "NOTE: Kotlin for Forge or Fabric Language Kotlin has no build for ${{ matrix.minecraft }}; only Gson is checked"
+          fi
       - name: Upload client logs and report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
@@ -291,6 +318,9 @@ jobs:
             ${{ runner.temp }}/client/run/crash-reports
             ${{ runner.temp }}/client/client.out
             ${{ runner.temp }}/client/thread-dump.txt
+            ${{ runner.temp }}/client-provided/run/logs
+            ${{ runner.temp }}/client-provided/run/crash-reports
+            ${{ runner.temp }}/client-provided/client.out
           if-no-files-found: ignore
       # The same client with the official Fabric API jar: shows which client-side modules load and whether the game
       # still reaches a world. Informational until every client module is accounted for.

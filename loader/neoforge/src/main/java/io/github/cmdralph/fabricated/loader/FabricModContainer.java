@@ -33,7 +33,7 @@ public final class FabricModContainer extends ModContainer {
 				.orElseThrow(() -> new ModLoadingException(ModLoadingIssue.error("§e[Fabricated]§r {0}",
 						"Module " + moduleName + " for Fabric mod " + info.getModId() + " is not in the game layer").withAffectedMod(info)));
 		state.fabricContainer(info.getModId()).ifPresent(container -> state.runtime().setClassLoader(container, loader));
-		ProposedJars.install(loader);
+		ProposedJars.install(loader, Fml.gameFallback(loader));
 	}
 
 	@Override

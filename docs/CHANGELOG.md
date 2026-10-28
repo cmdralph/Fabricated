@@ -3,6 +3,28 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-10-28: Vanilla can't read Gson's internals on 1.21.1 (task 1 of the v0.5.1-alpha follow-up)
+
+- **The owner's report** (the reference pack on v0.5.1-alpha): joining a world crashed the integrated server with
+  "NoClassDefFoundError: com/google/gson/internal/Streams" in vanilla's `ServerStatsCounter.parseLocal`, and OneConfig
+  hit the same reading JSON.
+- **Cause (GSON-1):** not the package guard, as suspected: it already leaves a Fabric jar's copy of a platform package
+  out for every layer the game reads (on NeoForge 21.1 ModLauncher's boot, service and plugin layers), unexported
+  packages included, and the pack's report shows no Gson package taken. Gson's module doesn't export
+  `com.google.gson.internal`, so NeoForge 21.1's game class loader hands its classes to its fallback, which ModLauncher
+  makes the loader of the launcher's libraries; LOADER-2's loader (jars mods add to the class path) replaced that
+  fallback with one going to the game loader's parent. Since v0.4.0, on NeoForge 21.1 only (FML 10 to 12 make the
+  fallback the parent).
+- **Fix:** the loader goes in front of the fallback each platform names (`Fml.gameFallback`). The Forge branches have
+  the same call to fix at their next sync (GSON-2, roadmap).
+- **Tests:** every server and client run of the test mods reads a player's stats file the way vanilla does, beside a
+  new test jar that shades part of Gson (`fabricated-testmod-shade`), whose package the server run requires left out;
+  a new client run joins a world with that jar, Kotlin for Forge and Fabric Language Kotlin, and requires Fabric
+  Language Kotlin's copy of Kotlin left out for Kotlin for Forge's (gated, where both have builds).
+- **Verified:** locally, the stats read failed on the 1.21.1 server with the owner's error before the fix and passes
+  after; the 1.21.1 and 26.1.2 servers pass every check (63). The new client run, Kotlin for Forge and Fabric Language
+  Kotlin in CI.
+
 ## 2026-10-28: Start of 0.6.0, toward 0.6.0-beta (end of task 6)
 
 - **v0.5.1-alpha** is a draft release (the owner's choice), built by the release workflow from `main` at `7163547`

@@ -1,11 +1,15 @@
 package io.github.cmdralph.fabricated.testmod;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Modifier;
 import java.net.JarURLConnection;
 import java.net.URI;
 import java.net.URL;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
 import java.util.ResourceBundle;
@@ -125,6 +129,32 @@ public final class TestMod implements ModInitializer, DedicatedServerModInitiali
 		}
 	}
 
+	/**
+	 * GSON-1: vanilla reading a player's stats, as it does when the player joins a world they played before. Its parser is
+	 * in a package Gson's module doesn't export ({@code com.google.gson.internal}), which the game's class loader finds
+	 * through its fallback, the loader of the launcher's libraries; a Fabric jar's copy of that package mustn't take it
+	 * either (the test mods' shade jar has one).
+	 */
+	private static void vanillaStatsRead(net.minecraft.server.MinecraftServer server) {
+		try {
+			Path file = Files.createTempFile("fabricated-stats", ".json");
+			Files.writeString(file, "{\"stats\":{}}");
+			// (MinecraftServer, File) up to 1.21.11, (MinecraftServer, Path) on 26.x.
+			for (Constructor<?> constructor : net.minecraft.stats.ServerStatsCounter.class.getConstructors()) {
+				if (constructor.getParameterCount() != 2) continue;
+				Class<?> type = constructor.getParameterTypes()[1];
+				constructor.newInstance(server, type == File.class ? file.toFile() : file);
+				LOGGER.info("FABRICATED-TEST vanilla stats read OK");
+				return;
+			}
+			LOGGER.error("FABRICATED-TEST vanilla stats read FAILED: no ServerStatsCounter constructor");
+		} catch (java.lang.reflect.InvocationTargetException e) {
+			LOGGER.error("FABRICATED-TEST vanilla stats read FAILED: {}", e.getCause().toString());
+		} catch (IOException | ReflectiveOperationException | LinkageError e) {
+			LOGGER.error("FABRICATED-TEST vanilla stats read FAILED: {}", e.toString());
+		}
+	}
+
 	@Override
 	public void onInitialize() {
 		LOGGER.info("FABRICATED-TEST main entrypoint OK");
@@ -204,6 +234,7 @@ public final class TestMod implements ModInitializer, DedicatedServerModInitiali
 			}
 		});
 		ServerLifecycleEvents.SERVER_STOPPING.register(server -> LOGGER.info("FABRICATED-TEST lifecycle server stopping OK"));
+		ServerLifecycleEvents.SERVER_STARTED.register(TestMod::vanillaStatsRead);
 		// Damage types in the mod's data and in its built-in pack, under conditions only a NeoForge build would read
 		// (neoforge:false), which Fabric ignores (DATA-1, PACK-2).
 		ServerLifecycleEvents.SERVER_STARTED.register(server -> {
