@@ -3,6 +3,79 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-10-28: v0.5.1-alpha (task 6 of the v0.5.x update)
+
+- **Version 0.5.1** (the owner's choice: a patch release of v0.5.0-alpha), API 1.1.0 as T1 made it.
+- **Release notes:** `docs/releases/v0.5.1-alpha.md`. README (its status, Connector refused), ARCHITECTURE (the
+  version) and the roadmap (the update's plan, in *Next release*) say so.
+- **Then:** the Forge branches are synced with `main` for their jars, the full matrix with the extended runs goes on
+  every branch and version, the release workflow builds the jars without publishing, and the owner decides the tag.
+
+## 2026-10-28: Cleanup (task 5 of the v0.5.x update)
+
+- **Duplicated logic merged:** `Pipeline`'s two maps of NeoForge mods by id now share one rule, the newest copy of a
+  mod (as NeoForge loads), where `providedElsewhere` had kept the first it met; one byte search for an annotation
+  descriptor (`Annotations.mentions`) where `EnvironmentStripper` and `MultiLoaderJars` each had one; the engine
+  modules' Java 21 toolchain, Java 17 target, repository and JUnit setup in one block of the root build, where `core`,
+  `api` and `fabric-loader-api` each repeated it.
+- **Dead code:** `MultiLoaderJars.forNeoForge`, which only its tests called (they ask `fabricReason`); 1.21.1's own
+  copy of the login listener accessor, which made its shared login code cast to an accessor it didn't apply (MIX-2,
+  found completing `MIXINS.md`).
+- **Outdated docs:** `claude.md` and `PORTING.md` described the one-tree model (building a Forge version on `main`, the
+  Forge workflows on pull requests to `main`, every branch holding every platform) and the test-mod and pass-through
+  compile setup per version; the roadmap called CACHE-3 and ARCH-1 open and listed cross-platform copies to merge that
+  now live on separate branches. `MIXINS.md`, which lists every mixin, was about 60 short: completed, with
+  `scripts/check-mixin-inventory.py`, which the core CI job runs, so a mixin added without its row fails.
+- **Checked, kept:** `ChunkGeneratorFeaturesMixin` (NeoForge declares `refreshFeaturesPerStep` on all five versions);
+  the Forge conditions in the shared build files and core's Forge descriptor and helpers (the Forge branches use them,
+  and a sync would delete what `main` deletes); the fluid render helpers' one shared handle (merging them would couple
+  two classes for three lines); access widener `transitive` flags and the retired config keys (roadmap, *Noted at the
+  cleanup*). No public API change (`docs/API.md` unchanged).
+
+## 2026-10-28: Sharing packs with Sinytra's ecosystem (task 3 of the v0.5.x update)
+
+- **The specification, rechecked** against what packs hold (roadmap, *Rethink, 2026-10-28*): Fabricated replaces
+  Sinytra Connector and shares packs with its libraries. Who owns what, in one table: Connector and a second Fabricated
+  jar refused; Forgified Fabric API's modules (and those NeoForge mods bundle) theirs; Fabric Loader's API always
+  Fabricated's; Kotlin the platform's; Connector placeholders loaded as the Fabric mods they are.
+- **Considered and not done:** running beside Connector, keeping Fabricated's modules over Forgified Fabric API's,
+  requiring Forgified Fabric API, patching its behaviour where it differs (PROVIDER-5).
+- **Noted for the Forge branches:** their loaders still have to call the shared provider policy and refusals; whether
+  Forge 47 packs mix Connector or Forgified Fabric API with Fabricated is UNVERIFIED.
+- **Corrected:** the roadmap's statements of the one-tree model (its vision, the 2026-10-27 rethink's first item, the
+  parity table), now each platform's own branch. No code changed.
+
+## 2026-10-28: Coexistence fixes and refusals (task 4 of the v0.5.x update)
+
+- **The reference pack** (the owner's 1.21.1 log, report and mod list: Forgified Fabric API, Sodium and about 130
+  Fabric mods): it stopped on PROVIDER-1's `ResolutionException`, fixed in T1. Of its seven disabled mods, five were the version and
+  `fabric` dependency checks T1 fixed (VER-2, DEP-1); adventure-platform-fabric (mixins into library classes NeoForge
+  loads without mixin support) and languagereload (a `@Redirect` whose call NeoForge's build doesn't make) stay
+  disabled, each explained in the report with a fix to try. The pack itself was not run here.
+- **Fixed** (each in `FINDINGS.md`): PROVIDER-3 (a Fabric mod's container shows its files as NeoForge reads them, so
+  Forgified Fabric API's resource loader no longer stops the server on a built-in pack with its NeoForge build's
+  sections), PROVIDER-4 (the API read `NATIVE` for a module another mod provides when a skipped copy came first in the
+  report), DUP-1 (a second Fabricated jar is refused).
+- **The reference pack's next stop, fixed (CORPUS-47, UNVERIFIED on the real mods until the extended run):** OneConfig's
+  chat mixin needs adventure-platform-fabric, which OneConfig nests and pre-flight disables, and Mixin stopped CI's
+  Polyfrost client attaching it (run 40683010866). A mixin that calls into a class of a Fabric mod that isn't loading is
+  now left out of a config that isn't required or has a plugin (Mixin's attach error stops the game for any config):
+  its mod is translated again without it, and the report lists it under *Mixins left out (they need a Fabric mod that
+  isn't loading)*. A required config without a plugin still disables its mod (CORPUS-15).
+- **The owner's decision, done:** Sinytra Connector beside Fabricated is refused with an error naming both jars, and
+  Fabricated loads no Fabric mod (roadmap, *Decisions, 2026-10-28*). **Decided, not asked:** a second Fabricated jar is
+  refused the same way; the shared detection is in core (`ConflictingJars`) for the Forge branches' next sync.
+- **Noted, not Fabricated's:** PROVIDER-5, Forgified Fabric API's networking refusing a payload in the `minecraft`
+  namespace (NET-4), which failed the test mod's initializer on CI's 1.21.1 client run with it and so skipped the test
+  mod's client entrypoints. The test mods now skip that case (and NET-3's) when another mod provides networking, and
+  the smoke checks print `SKIP` for a check a test mod reports as skipped.
+- **CI:** the server run with the real Forgified Fabric API keeps the test mods again and must take the test mod's
+  built-in pack; a server run per version with a stand-in for Connector, and one with a second Fabricated jar, must
+  each stop with Fabricated's error.
+- **Verified locally:** core tests; 1.21.1, 1.21.11 and 26.1.2's jars and test mods build; the 1.21.1 server smoke run
+  passes every check; the Connector and second-jar refusals stop the launch with the error on 1.21.1 (FML 4) and
+  26.1.2 (FML 11). The real Forgified Fabric API runs are CI's only.
+
 ## 2026-10-28: A branch per platform (task 2 of the v0.5.x update)
 
 - **The owner's request:** `main` is NeoForge's branch with the shared engine; Forge and Forge 47 code each live only

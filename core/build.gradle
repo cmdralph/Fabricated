@@ -4,19 +4,6 @@ plugins {
     id 'java-library'
 }
 
-java {
-    toolchain.languageVersion = JavaLanguageVersion.of(21)
-}
-
-tasks.withType(JavaCompile).configureEach {
-    // Main code stays loadable on Java 17, for the 1.20.1 branch (docs/PORTING.md, D2); tests may use newer APIs.
-    options.release = name == 'compileJava' ? 17 : 21
-}
-
-repositories {
-    mavenCentral()
-}
-
 dependencies {
     api project(':fabric-loader-api')
     api project(':api')
@@ -30,7 +17,4 @@ dependencies {
     testImplementation "org.ow2.asm:asm-commons:${asm_version}"
     // The TOML parser NeoForge reads mods.toml with (3.8.3 on 1.21.11 and 26.1.2, 3.9.0 on 26.2 and 26.3).
     testImplementation 'com.electronwill.night-config:toml:3.8.3'
-    testImplementation platform("org.junit:junit-bom:${junit_version}")
-    testImplementation 'org.junit.jupiter:junit-jupiter'
-    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }

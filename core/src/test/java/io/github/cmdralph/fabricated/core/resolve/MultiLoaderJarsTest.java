@@ -20,6 +20,11 @@ class MultiLoaderJarsTest {
 	private static final String ENTRYPOINTS = "\"entrypoints\":{\"main\":[\"com.example.Init\"]}";
 	private static final String JAVA_MOD = "modLoader = \"javafml\"\nloaderVersion = \"[1,)\"\n[[mods]]\nmodId = \"example\"\n";
 
+	/** Whether NeoForge loads the jar as its own mod. */
+	private static boolean forNeoForge(Path jar, ArchiveLimits limits) {
+		return MultiLoaderJars.fabricReason(jar, limits) == null;
+	}
+
 	@Test
 	void aFabricBuildThatKeptItsNeoForgeBuildsMetadataIsFabrics(@TempDir Path dir) throws Exception {
 		// MULTI-1: Do a Barrel Roll's 26.x Fabric jars declare a NeoForge mod, with no class for NeoForge to start.
@@ -27,7 +32,7 @@ class MultiLoaderJarsTest {
 				.text(MultiLoaderJars.MODS_TOML, JAVA_MOD)
 				.bytes("com/example/Init.class", TestJars.emptyClass("com/example/Init", "java/lang/Object"))
 				.write(dir.resolve("fabric-build.jar"));
-		assertFalse(MultiLoaderJars.forNeoForge(jar, ArchiveLimits.DEFAULTS));
+		assertFalse(forNeoForge(jar, ArchiveLimits.DEFAULTS));
 	}
 
 	@Test
@@ -39,7 +44,7 @@ class MultiLoaderJarsTest {
 				.bytes("com/example/NeoForgeInit.class", modClass("com/example/NeoForgeInit"))
 				.write(dir.resolve("placeholder.jar"));
 		assertEquals(MultiLoaderJars.PLACEHOLDER, MultiLoaderJars.fabricReason(jar, ArchiveLimits.DEFAULTS));
-		assertFalse(MultiLoaderJars.forNeoForge(jar, ArchiveLimits.DEFAULTS));
+		assertFalse(forNeoForge(jar, ArchiveLimits.DEFAULTS));
 	}
 
 	@Test
@@ -49,20 +54,20 @@ class MultiLoaderJarsTest {
 				.bytes("com/example/Init.class", TestJars.emptyClass("com/example/Init", "java/lang/Object"))
 				.bytes("com/example/NeoForgeInit.class", modClass("com/example/NeoForgeInit"))
 				.write(dir.resolve("multi-loader.jar"));
-		assertTrue(MultiLoaderJars.forNeoForge(withModClass, ArchiveLimits.DEFAULTS));
+		assertTrue(forNeoForge(withModClass, ArchiveLimits.DEFAULTS));
 
 		Path mixinsOnly = TestJars.create().fabricModJson(TestJars.modJson("example", "1.0", ""))
 				.text(MultiLoaderJars.MODS_TOML, JAVA_MOD)
 				.write(dir.resolve("mixins-only.jar"));
-		assertTrue(MultiLoaderJars.forNeoForge(mixinsOnly, ArchiveLimits.DEFAULTS), "the same mixins load either way");
+		assertTrue(forNeoForge(mixinsOnly, ArchiveLimits.DEFAULTS), "the same mixins load either way");
 
 		Path otherLoader = TestJars.create().fabricModJson(TestJars.modJson("example", "1.0", ENTRYPOINTS))
 				.text(MultiLoaderJars.MODS_TOML, "modLoader = \"kotlinforforge\"\nloaderVersion = \"[5,)\"\n")
 				.write(dir.resolve("kotlin.jar"));
-		assertTrue(MultiLoaderJars.forNeoForge(otherLoader, ArchiveLimits.DEFAULTS), "another language loader starts it");
+		assertTrue(forNeoForge(otherLoader, ArchiveLimits.DEFAULTS), "another language loader starts it");
 
 		Path fabricOnly = TestJars.create().fabricModJson(TestJars.modJson("example", "1.0", ENTRYPOINTS)).write(dir.resolve("fabric.jar"));
-		assertFalse(MultiLoaderJars.forNeoForge(fabricOnly, ArchiveLimits.DEFAULTS));
+		assertFalse(forNeoForge(fabricOnly, ArchiveLimits.DEFAULTS));
 	}
 
 	/** A class with NeoForge's {@code @Mod("example")}. */
@@ -82,6 +87,6 @@ class MultiLoaderJarsTest {
 		Path jar = TestJars.create().fabricModJson(TestJars.modJson("example", "1.0", ENTRYPOINTS))
 				.text(MultiLoaderJars.MODS_TOML, "\n".repeat(200_000) + JAVA_MOD)
 				.write(dir.resolve("blank-lines.jar"));
-		assertTimeoutPreemptively(Duration.ofSeconds(10), () -> assertFalse(MultiLoaderJars.forNeoForge(jar, ArchiveLimits.DEFAULTS)));
+		assertTimeoutPreemptively(Duration.ofSeconds(10), () -> assertFalse(forNeoForge(jar, ArchiveLimits.DEFAULTS)));
 	}
 }
