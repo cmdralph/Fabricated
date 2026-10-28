@@ -44,8 +44,10 @@ final class NeoForgeMods {
 	 * @param classes   their jars' classes, which Fabric mixins may target
 	 * @param providers the packages of each mod file and nested mod jar (only read when the mods nested in the files
 	 *                  are), with the first mod it declares: what other mods' packages Fabricated's own mustn't clash with
+	 * @param libraryPackages the packages of the libraries nested in the files (read with the nested mods), which no
+	 *                  Fabric jar may split or shadow: on 26.x Kotlin for Forge's Kotlin, in FML's plugin loader
 	 */
-	record Found(List<Pipeline.NeoForgeMod> mods, InstalledClasses classes, List<Provider> providers) {
+	record Found(List<Pipeline.NeoForgeMod> mods, InstalledClasses classes, List<Provider> providers, Set<String> libraryPackages) {
 	}
 
 	/**
@@ -84,12 +86,15 @@ final class NeoForgeMods {
 				if (nested && !declared.isEmpty()) providers.add(new Provider(declared.getFirst(), file.getFileName(), internal(Fml.packages(file))));
 			}
 		}
-		if (!nested) return new Found(mods, InstalledClasses.NONE, List.of());
+		if (!nested) return new Found(mods, InstalledClasses.NONE, List.of(), Set.of());
+		Set<String> libraryPackages = new HashSet<>();
 		for (IModFile file : files) {
 			Path path = file.getFilePath();
 			if (!Fml.contains(file, NestedNeoForgeJars.METADATA) || !Files.isRegularFile(path)) continue;
 			try {
-				for (NestedNeoForgeJars.ModsToml toml : NestedNeoForgeJars.read(path, ArchiveLimits.DEFAULTS)) {
+				NestedNeoForgeJars.Contents nestedJars = NestedNeoForgeJars.readAll(path, ArchiveLimits.DEFAULTS);
+				libraryPackages.addAll(nestedJars.libraryPackages());
+				for (NestedNeoForgeJars.ModsToml toml : nestedJars.mods()) {
 					List<Pipeline.NeoForgeMod> declared = declared(parser.parse(toml.text()), toml.jarVersion(), path);
 					mods.addAll(declared);
 					if (declared.isEmpty() || toml.classes().isEmpty()) continue;
@@ -103,7 +108,7 @@ final class NeoForgeMods {
 				LOGGER.warn("Could not read the mods nested in {}: {}", file.getFileName(), e.toString());
 			}
 		}
-		return new Found(mods, new InstalledClasses(jars), providers);
+		return new Found(mods, new InstalledClasses(jars), providers, Set.copyOf(libraryPackages));
 	}
 
 	private static Set<String> internal(Set<String> dottedPackages) {

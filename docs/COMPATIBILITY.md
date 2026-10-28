@@ -858,8 +858,9 @@ some of its modules (Sodium for NeoForge). Fabricated now shares the game with t
   copy of such a jar without those packages, under `.fabricated/loader-api/` (the original is never changed). The
   report lists each such jar under *Fabric Loader API*. (PROVIDER-2)
 - **Kotlin:** with Kotlin for Forge installed, its Kotlin is the one loaded, and the copy Fabric Language Kotlin
-  bundles is left out the same way, package by package (on NeoForge 21.1 Kotlin for Forge's Kotlin is on the
-  launcher's plugin layer), so each Kotlin package has one provider; CI joins a world with both. A Fabric mod built
+  bundles is left out the same way, package by package (Kotlin for Forge's Kotlin is on the launcher's plugin layer on
+  NeoForge 21.1, in FML's plugin loader on 21.11 and 26.x), so each Kotlin package has one provider; CI joins a world
+  with both. A Fabric mod built
   against a newer Kotlin than Kotlin for Forge ships gets a linkage warning naming what it lacks.
 
 Fabric API keeps `net.fabricmc.fabric.api.util` in two modules (`fabric-api-base` and
@@ -934,9 +935,10 @@ MixinExtras has NeoForge's jar, and a NeoForge mod nested in another jar has tha
   (LOADER-2), after the classes the game finds there without it: those of the packages the launcher's libraries don't
   export, such as Gson's `com.google.gson.internal`, through which vanilla reads a player's stats (GSON-1).
 - A Fabric jar's copy of a package the platform already has is left out, and the platform's copy is used: NeoForge's
-  and Minecraft's, the launcher's libraries' (Gson, Guava, checker-qual) and every module layer the game reads (on
-  NeoForge 21.1 the launcher's boot, service and plugin layers; on 26.x the JVM's boot layer), unexported packages
-  included. The report lists each under *Package guard*. Mods can add entrypoints to Fabric Loader's internal storage as on Fabric
+  and Minecraft's, the launcher's libraries' (Gson, Guava, checker-qual), every module layer the game reads (on
+  NeoForge 21.1 the launcher's boot, service and plugin layers; on 21.11 and 26.x the JVM's boot layer), unexported
+  packages included, and the libraries NeoForge mods nest, which FML 10 and later load in their plugin loader when a
+  language provider brings them (PKG-5). The report lists each under *Package guard*. Mods can add entrypoints to Fabric Loader's internal storage as on Fabric
   (LOADER-4): `FabricLoaderImpl`'s `entrypointStorage` and `adapterMap` fields, which they read by reflection, work, and
   every container is Fabric Loader's `ModContainerImpl`, which mods test for first; what they add is returned by
   `FabricLoader.getEntrypoints` after the entrypoints the mods' metadata declares (FrozenLib's `frozenlib.json`

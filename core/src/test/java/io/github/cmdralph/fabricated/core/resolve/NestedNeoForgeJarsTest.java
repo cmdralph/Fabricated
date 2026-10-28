@@ -66,6 +66,36 @@ class NestedNeoForgeJarsTest {
 		assertNull(NestedNeoForgeJars.readClass(service, found.get(1).chain(), "net/caffeinemc/Renderer", ArchiveLimits.DEFAULTS));
 	}
 
+	/** Kotlin for Forge: its language provider nests Kotlin's libraries, which NeoForge loads above the game's mods. */
+	@Test
+	void readsThePackagesOfTheNestedLibraries(@TempDir Path dir) throws Exception {
+		byte[] coroutines = TestJars.create()
+				.bytes("kotlinx/coroutines/Job.class", TestJars.emptyClass("kotlinx/coroutines/Job", "java/lang/Object"))
+				.bytes("META-INF/versions/9/module-info.class", new byte[0])
+				.toBytes();
+		byte[] stdlib = TestJars.create()
+				.bytes("kotlin/Unit.class", TestJars.emptyClass("kotlin/Unit", "java/lang/Object"))
+				.bytes("kotlin/collections/ArraysKt.class", TestJars.emptyClass("kotlin/collections/ArraysKt", "java/lang/Object"))
+				.text(NestedNeoForgeJars.METADATA, jarJar("META-INF/jarjar/coroutines.jar"))
+				.bytes("META-INF/jarjar/coroutines.jar", coroutines)
+				.toBytes();
+		byte[] mod = TestJars.create()
+				.text("META-INF/neoforge.mods.toml", TOML.formatted("kotlinforforge"))
+				.bytes("thedarkcolour/kotlinforforge/KotlinForForge.class", TestJars.emptyClass("thedarkcolour/kotlinforforge/KotlinForForge", "java/lang/Object"))
+				.toBytes();
+		Path root = TestJars.create()
+				.text(NestedNeoForgeJars.METADATA, jarJar("META-INF/jarjar/stdlib.jar", "META-INF/jarjar/mod.jar"))
+				.bytes("META-INF/jarjar/stdlib.jar", stdlib)
+				.bytes("META-INF/jarjar/mod.jar", mod)
+				.write(dir.resolve("kotlinforforge-all.jar"));
+
+		NestedNeoForgeJars.Contents contents = NestedNeoForgeJars.readAll(root, ArchiveLimits.DEFAULTS);
+
+		assertEquals(Set.of("kotlin", "kotlin/collections", "kotlinx/coroutines"), contents.libraryPackages(), "a mod jar's packages are its mod's");
+		assertEquals(List.of("kotlinforforge-all.jar!/META-INF/jarjar/mod.jar"), contents.mods().stream().map(NestedNeoForgeJars.ModsToml::origin).toList());
+		assertEquals(contents.mods(), NestedNeoForgeJars.read(root, ArchiveLimits.DEFAULTS));
+	}
+
 	@Test
 	void nestsNoDeeperThanTheLimits(@TempDir Path dir) throws Exception {
 		byte[] level2 = TestJars.create().text("META-INF/neoforge.mods.toml", TOML.formatted("level2")).toBytes();

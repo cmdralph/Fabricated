@@ -17,13 +17,19 @@ One entry per working session, newest first: what changed, and how it was verifi
   fallback the parent).
 - **Fix:** the loader goes in front of the fallback each platform names (`Fml.gameFallback`). The Forge branches have
   the same call to fix at their next sync (GSON-2, roadmap).
+- **Kotlin (PKG-5), found by the new client run:** on NeoForge 21.11 and 26.x every Kotlin package loaded twice,
+  Kotlin for Forge's (2.4.0, which FML 10 and later load with its language provider in their plugin loader, no module
+  layer) and Fabric Language Kotlin's (2.4.21, in the game's loader). The package guard didn't read the libraries
+  NeoForge mods nest. It now does: their packages are the platform's, and a Fabric jar's copy is left out, with a line
+  in the report. NeoForge 21.1 was right already (Kotlin for Forge's Kotlin is on a module layer there).
 - **Tests:** every server and client run of the test mods reads a player's stats file the way vanilla does, beside a
   new test jar that shades part of Gson (`fabricated-testmod-shade`), whose package the server run requires left out;
   a new client run joins a world with that jar, Kotlin for Forge and Fabric Language Kotlin, and requires Fabric
   Language Kotlin's copy of Kotlin left out for Kotlin for Forge's (gated, where both have builds).
 - **Verified:** locally, the stats read failed on the 1.21.1 server with the owner's error before the fix and passes
-  after; the 1.21.1 and 26.1.2 servers pass every check (63). The new client run, Kotlin for Forge and Fabric Language
-  Kotlin in CI.
+  after; the 1.21.1 and 26.1.2 servers pass every check (63). For PKG-5, a stand-in NeoForge mod nesting a library
+  (which FML 11 lists among its plugins) beside a Fabric jar bundling its package: the Fabric copy is left out on 26.1.2
+  and on 1.21.1, every check passing (63). The new client run, Kotlin for Forge and Fabric Language Kotlin in CI.
 
 ## 2026-10-28: Start of 0.6.0, toward 0.6.0-beta (end of task 6)
 

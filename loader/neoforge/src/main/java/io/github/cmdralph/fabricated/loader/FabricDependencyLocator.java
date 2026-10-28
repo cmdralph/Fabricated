@@ -234,8 +234,13 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 			} else if (devGameMod.isPresent() && !Pipeline.providedElsewhere(plan, neoMods).isEmpty()) {
 				providerNotes.add("Other mods provide Fabric API modules, but the in-game mod of a development workspace can't leave its own copies out");
 			}
-			// What NeoForge's jar-in-jar locator adds isn't among the files this locator is handed on FML 10 and later.
-			if (!fabricJars.isEmpty()) neoForgeMods.providers().forEach(p -> platformPackages.addAll(p.packages()));
+			// What NeoForge's jar-in-jar locator adds isn't among the files this locator is handed on FML 10 and later: the
+			// nested mods, and the nested libraries, which FML may load above the game's loader (Kotlin for Forge's Kotlin,
+			// in its plugin loader, which is no module layer).
+			if (!fabricJars.isEmpty()) {
+				neoForgeMods.providers().forEach(p -> platformPackages.addAll(p.packages()));
+				platformPackages.addAll(neoForgeMods.libraryPackages());
+			}
 
 			Pipeline.VanillaGame vanilla = fabricJars.isEmpty() ? Pipeline.VanillaGame.NONE
 					: VanillaGameJar.find(minecraft.getFilePath(), mcVersion, client, cache, vanillaJars);
