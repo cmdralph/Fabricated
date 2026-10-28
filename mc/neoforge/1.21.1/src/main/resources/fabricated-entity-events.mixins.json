@@ -1,0 +1,18 @@
+{
+  "required": true,
+  "package": "net.fabricmc.fabric.mixin.entity.event",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "MobEntityMixin",
+    "MooshroomEntityMixin",
+    "PigEntityMixin",
+    "TadpoleEntityMixin",
+    "VillagerEntityMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  },
+  "overwrites": {
+    "requireAnnotations": true
+  }
+}

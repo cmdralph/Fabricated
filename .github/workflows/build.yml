@@ -105,6 +105,13 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - minecraft: "1.21.1"
+            fabric_api: "0.116.17+1.21.1"
+            neoforge: "21.1.265"
+            # Modrinth version ids of the mods reading plugins (REI 16 names its common plugins REIServerPlugin).
+            plugin_hosts: "jei@pWGmsnGm rei@b8gfS9Je jade@eYz2YBGT wthit@IeXnWQRE simple-voice-chat@BdfNq5zU"
+            java: 21
+            experimental: false
           - minecraft: "1.21.11"
             fabric_api: "0.141.6+1.21.11"
             neoforge: "21.11.45"
@@ -251,8 +258,8 @@ jobs:
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
-        # On 26.x the test mod for Fabric's renderer API joins this run (it needs the renderer API, which only the
-        # Fabric API jar provides).
+        # Where the version has one, the test mod for Fabric API's client modules joins this run (it needs modules only
+        # the Fabric API jar provides: the renderer API, or on 1.21.1 fabric-rendering-v1).
         run: |
           mkdir -p "$RUNNER_TEMP/extra-client"
           cp "$RUNNER_TEMP/extra/fabric-api.jar" "$RUNNER_TEMP/extra-client/"
@@ -317,6 +324,28 @@ jobs:
           check "client stopping OK" "Fabric's CLIENT_STOPPING fired as the game stopped"
           if [ "$failed" = 1 ]; then
             grep -n -m 40 -E "testmod_frapi|HudBridge|ScreenRenderBridge|/(ERROR|FATAL)\]" "$log" || true
+            exit 1
+          fi
+      # Fabric API's client modules on 1.21.1, passed through from the Fabric API jar: color providers the test mod
+      # registers for its block and item must be the game's colors, and what Fabric's lookups return (they read
+      # NeoForge's maps), and its HUD callback must be called. A gate.
+      - name: Fabric API client modules (1.21.1)
+        if: ${{ env.GAME_RUNS == 'true' && !cancelled() && steps.build.outcome == 'success' && matrix.minecraft == '1.21.1' }}
+        run: |
+          log="$RUNNER_TEMP/client-fapi/run/logs/latest.log"
+          failed=0
+          check() {
+            if grep -h "FABRICATED-TEST $1" "$log"; then
+              echo "PASS: $2"
+            else
+              echo "::error::FAIL: $2 (no \"$1\" line)"
+              failed=1
+            fi
+          }
+          check "colors OK" "Fabric color providers for a block and an item are the game's colors and Fabric's lookups return them"
+          check "hud callback OK" "Fabric's HUD callback was called as the HUD was drawn"
+          if [ "$failed" = 1 ]; then
+            grep -n -m 40 -E "testmod-frapi|fabric-rendering-v1|/(ERROR|FATAL)\]" "$log" || true
             exit 1
           fi
       # Fabric's model loading and renderer APIs on 1.21.11: a model file of a Fabric type must be read by the test

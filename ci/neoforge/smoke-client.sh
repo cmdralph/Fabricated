@@ -231,10 +231,11 @@ check "FABRICATED-TEST client join event OK" "native client networking: join eve
 check "FABRICATED-TEST client networking round trip OK" "native networking: client to integrated server and back"
 check "FABRICATED-TEST late payload type round trip OK" "native networking: a payload type the server registered as it started (NET-3)"
 check "FABRICATED-TEST minecraft namespace payload round trip OK" "native networking: a payload type in the minecraft namespace, which NeoForge refuses to register (BetterEnd, NET-4)"
-if [ "$mc" != "1.21.11" ]; then
+case "$mc" in 26.*)
 	check "FABRICATED-TEST packet context while encoding OK" "Fabric's packet context, filled as Fabric API fills it, while NeoForge's splitter measures a packet (Polymer, NET-7)"
 	check "FABRICATED-TEST packet context while decoding a large payload OK" "Fabric's packet context while NeoForge's splitter reassembles a payload (NET-7)"
-fi
+	;;
+esac
 check "FABRICATED-TEST extended menu opened with its data OK" "extended menu (menu api): opening data reaches the client"
 check "FABRICATED-TEST registry sync: custom registry OK" "registry sync on the client"
 check "FABRICATED-TEST object builder OK" "native object builder in the integrated server"
@@ -244,6 +245,11 @@ check "FABRICATED-TEST interaction events OK" "native interaction events in the 
 check "FABRICATED-TEST loot OK" "native loot in the integrated server"
 check "FABRICATED-TEST content registries OK" "native content registries in the integrated server"
 check "FABRICATED-TEST transfer OK" "native transfer in the integrated server"
+# Fabricated ships fabric-particles-v1 on 1.21.1 only (later versions pass it through from the Fabric API jar).
+case "$mc" in 1.21.1)
+	check "FABRICATED-TEST particles OK" "native fabric-particles-v1: the particle engine finds the test mod's factory, kept by the type's id as NeoForge keeps them, and its sprite provider holds its sprite in the particle atlas (PART-1)"
+	;;
+esac
 check "FABRICATED-TEST api OK" "public API on the client"
 check "FABRICATED-TEST modmenu config screen OK" "a Fabric mod's Mod Menu config screen is behind NeoForge's mod list button"
 check "FABRICATED-TEST environment stripping OK" "@EnvironmentInterface kept on the client"

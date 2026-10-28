@@ -24,6 +24,7 @@ is the measured state. The experimental Forge builds have their own table,
 
 | Minecraft | NeoForge | Fabric API tested | Test mods | Server boots with Fabric API |
 |---|---|---|---|---|
+| 1.21.1 | 21.1.265 | 0.116.17+1.21.1 | ✅ every server and client check | ✅ boots, all test-mod checks still pass |
 | 1.21.11 | 21.11.45 | 0.141.6+1.21.11 | ✅ every server and client check | ✅ boots, all test-mod checks still pass |
 | 26.1.2 | 26.1.2.116 | 0.155.3+26.1.2 | ✅ every server and client check | ✅ boots, all test-mod checks still pass |
 | 26.2 | 26.2.0.90 | 0.161.0+26.2 | ✅ every server and client check | ✅ boots, all test-mod checks still pass |
@@ -67,51 +68,86 @@ How to read the table:
 - **unsupported**: deliberately not loaded.
 - **—**: the module doesn't exist in that Fabric API version.
 
-| Module | 1.21.11 | 26.1.2 | 26.2 | 26.3 |
-|---|---|---|---|---|
-| fabric-api-base | native | native | native | native |
-| fabric-crash-report-info-v1 | native | native | native | native |
-| fabric-biome-api-v1 | native (see below) | native | native | native |
-| fabric-block-getter-api-v2 / block-view-api-v2 | loads | loads | loads | loads |
-| fabric-message-api-v1 | loads | loads | loads | loads |
-| fabric-rendering-fluids-v1 | loads | loads | loads | loads |
-| fabric-serialization-api-v1 | loads | loads | loads | loads |
-| fabric-transitive-access-wideners-v1 | loads | loads | loads | loads |
-| fabric-game-rule-api-v1 | loads | loads | loads | loads |
-| fabric-permission-api-v1 | — | loads | loads | loads |
-| fabric-lifecycle-events-v1 | native | native | native | native |
-| fabric-networking-api-v1 | native | native | native | native |
-| fabric-registry-sync-v0 | native | native | native | native |
-| fabric-resource-loader-v1 | native | native | native | native |
-| fabric-resource-loader-v0 | loads | loads | loads | loads |
-| fabric-item-api-v1 | native | native | native | native |
-| fabric-block-api-v1 | native | native | native | native |
-| fabric-transfer-api-v1 | native | native | native | native |
-| fabric-content-registries-v0 | native | native | native | native |
-| fabric-object-builder-api-v1 | native | native | native | native |
-| fabric-entity-events-v1 | native | native | native | native |
-| fabric-events-interaction-v0 | native | native | native | native |
-| fabric-dimensions-v1 | loads | loads | loads | loads |
-| fabric-loot-api-v3 | native | native | native | native |
-| fabric-resource-conditions-api-v1 | loads | loads | loads | loads |
-| fabric-tag-api-v1 | loads | loads | loads | loads |
-| fabric-advancement-api-v1 | — | — | loads | loads |
-| fabric-menu-api-v1 / screen-handler-api-v1 | native | native | native | native |
-| fabric-api-lookup-api-v1 | native | native | native | native |
-| fabric-command-api-v2 | loads | loads | loads | loads |
-| fabric-convention-tags-v2 (and v1) | loads | loads | loads | loads |
-| fabric-data-attachment-api-v1 | loads | loads | loads | loads |
-| fabric-particles-v1 | loads | loads | loads | loads |
-| fabric-recipe-api-v1 | loads | loads | loads | loads |
-| fabric-creative-tab-api-v1 / item-group-api-v1 | loads | loads | loads | loads |
-| fabric-debug-api-v1 | — | loads | loads | loads |
-| fabric-key-mapping-api-v1 / key-binding-api-v1, screen-api-v1, rendering-v1, sound-api-v1, model-loading-api-v1 | client | client | client | client |
-| fabric-rendering-v1 on the client | loads (see below) | loads (see below) | loads (see below) | loads (see below) |
-| fabric-screen-api-v1, sound-api-v1 on the client | loads (see below) | loads (see below) | loads (see below) | loads (see below) |
-| fabric-model-loading-api-v1 on the client | loads (see below) | loads (see below) | loads (see below) | loads (see below) |
-| fabric-renderer-api-v1, fabric-renderer-indigo | client (see below) | client (see below) | client (see below) | client (see below) |
-| fabric-data-generation-api-v1 (its classes; it generates nothing unless `fabric-api.datagen` is set; its tag appender mixins, and on 26.3 its loot sub-provider mixins, are left out) | loads | loads | loads | loads |
-| fabric-gametest-api-v1, client-gametest | unsupported | unsupported | unsupported | unsupported |
+| Module | 1.21.1 | 1.21.11 | 26.1.2 | 26.2 | 26.3 |
+|---|---|---|---|---|---|
+| fabric-api-base | native | native | native | native | native |
+| fabric-crash-report-info-v1 | native | native | native | native | native |
+| fabric-biome-api-v1 | native | native (see below) | native | native | native |
+| fabric-block-getter-api-v2 / block-view-api-v2 | loads | loads | loads | loads | loads |
+| fabric-message-api-v1 | loads | loads | loads | loads | loads |
+| fabric-rendering-fluids-v1 | loads | loads | loads | loads | loads |
+| fabric-serialization-api-v1 | — | loads | loads | loads | loads |
+| fabric-transitive-access-wideners-v1 | loads | loads | loads | loads | loads |
+| fabric-game-rule-api-v1 | loads | loads | loads | loads | loads |
+| fabric-permission-api-v1 | — | — | loads | loads | loads |
+| fabric-lifecycle-events-v1 | native | native | native | native | native |
+| fabric-networking-api-v1 | native | native | native | native | native |
+| fabric-registry-sync-v0 | native | native | native | native | native |
+| fabric-resource-loader-v1 | — | native | native | native | native |
+| fabric-resource-loader-v0 | native | loads | loads | loads | loads |
+| fabric-item-api-v1 | native | native | native | native | native |
+| fabric-block-api-v1 | native | native | native | native | native |
+| fabric-transfer-api-v1 | native | native | native | native | native |
+| fabric-content-registries-v0 | native | native | native | native | native |
+| fabric-object-builder-api-v1 | native | native | native | native | native |
+| fabric-entity-events-v1 | native | native | native | native | native |
+| fabric-events-interaction-v0 | native | native | native | native | native |
+| fabric-dimensions-v1 | loads | loads | loads | loads | loads |
+| fabric-loot-api-v3 | native (v2 loads too) | native | native | native | native |
+| fabric-resource-conditions-api-v1 | loads | loads | loads | loads | loads |
+| fabric-tag-api-v1 | loads | loads | loads | loads | loads |
+| fabric-advancement-api-v1 | — | — | — | loads | loads |
+| fabric-menu-api-v1 / screen-handler-api-v1 | native | native | native | native | native |
+| fabric-api-lookup-api-v1 | native | native | native | native | native |
+| fabric-command-api-v2 | loads | loads | loads | loads | loads |
+| fabric-convention-tags-v2 (and v1) | loads | loads | loads | loads | loads |
+| fabric-data-attachment-api-v1 | loads | loads | loads | loads | loads |
+| fabric-particles-v1 | native | loads | loads | loads | loads |
+| fabric-recipe-api-v1 | loads (see below) | loads | loads | loads | loads |
+| fabric-creative-tab-api-v1 / item-group-api-v1 | loads | loads | loads | loads | loads |
+| fabric-debug-api-v1 | — | — | loads | loads | loads |
+| fabric-key-mapping-api-v1 / key-binding-api-v1, screen-api-v1, rendering-v1, sound-api-v1, model-loading-api-v1 | client | client | client | client | client |
+| fabric-rendering-v1 on the client | loads (see below) | loads (see below) | loads (see below) | loads (see below) | loads (see below) |
+| fabric-screen-api-v1, sound-api-v1 on the client | loads (see below) | loads (see below) | loads (see below) | loads (see below) | loads (see below) |
+| fabric-model-loading-api-v1 on the client | loads (see below) | loads (see below) | loads (see below) | loads (see below) | loads (see below) |
+| fabric-renderer-api-v1, fabric-renderer-indigo | loads, not in chunk sections (FRAPI-5) | client (see below) | client (see below) | client (see below) | client (see below) |
+| fabric-data-generation-api-v1 (its classes; it generates nothing unless `fabric-api.datagen` is set; its tag appender mixins, and on 26.3 its loot sub-provider mixins, are left out) | loads | loads | loads | loads | loads |
+| fabric-gametest-api-v1, client-gametest | unsupported | unsupported | unsupported | unsupported | unsupported |
+
+### Minecraft 1.21.1
+
+1.21.1 runs Fabric API 0.116.17 on NeoForge 21.1, whose FML still runs on ModLauncher (Fabricated's `modlauncher`
+loader variant). Fabric mods use Intermediary names, remapped at load as on 1.21.11. The 18 native modules are the
+ones that exist in 0.116 (`fabric-resource-loader-v0` stands for v1, which 0.116 doesn't have) and
+`fabric-particles-v1`, with these differences from later versions:
+
+- **Storages and energy**: NeoForge 21.1 has the item, fluid and energy handler capabilities of before its transfer
+  API, so the bridge is the Forge one, ported (`ItemHandler`, `FluidHandler` and `EnergyStorage` capabilities, both
+  ways on blocks, fluid and energy storages in items both ways). Fluid data components cross. Items in items
+  (`ItemStorage.ITEM`) aren't bridged on this version, as on Forge.
+- **Fuel**: `FuelRegistry.INSTANCE` (0.116 has no fuel events) answers through NeoForge's furnace fuel data map and
+  its burn time event; tags first, then items, and vanilla's non-flammable wood exclusion applies.
+- **Biomes**: NeoForge 21.1's biome info holds the special effects, so its own check sends a biome a Fabric
+  modification changed to clients.
+- **Client entrypoints**: NeoForge 21.1 loads mods inside `Minecraft`'s constructor, so Fabric's main and client
+  entrypoints run right after it has (REG-7), where later versions run them at the game thread.
+- **Particles** (native): NeoForge 21.1 keys the particle engine's providers by id, as Forge 47 does, so Fabricated
+  ships the module (PART-3): factories and their sprite sets are registered through the engine's own methods, and
+  the block dust tint event is asked where NeoForge decides the tint.
+- **Colours and shaders**: NeoForge 21.1 keeps block and item colours in maps, so Fabric's colour lookups read them
+  (COLOR-2), and it resolves the namespace of a core shader program, its stages and imports itself, so upstream's
+  two shader hooks are left out (SHADER-2).
+- **Fabric's renderer API**: it loads, with Indigo, but Fabric models that aren't vanilla adapters aren't drawn in
+  chunk sections yet (FRAPI-5).
+- **Left out by pre-flight** (with Fabric API installed, the module loads without it): `fabric-recipe-api-v1`'s
+  hook on the ingredient network codec, whose call NeoForge replaced with its own custom ingredient codec, so clients
+  receive a Fabric custom ingredient as the items it matches (UNVERIFIED in a client run); `fabric-data-generation-api-v1`'s
+  tag provider hook, as on later versions; and on the client, where NeoForge changed the code they hook: Indigo's chunk section hook
+  (FRAPI-5), `fabric-model-loading-api-v1`'s hook on baking a model another model needs,
+  `fabric-rendering-fluids-v1`'s same-fluid, overlay and block checks, `fabric-sound-api-v1`'s audio stream hook (as
+  on every version) and `fabric-block-view-api-v2`'s render data in chunk sections.
+- The plan's other skips (tag files' `fabric:remove`, the dimensions module's DataFixerUpper mixins, resource
+  conditions' loaders) are 1.21.11's.
 
 ### Why modules are disabled
 

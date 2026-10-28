@@ -13,7 +13,6 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.tags.TagKey;
-import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.level.block.Block;
@@ -64,13 +63,15 @@ public final class FluidTest implements ModInitializer {
 		if (type.getLightLevel() != 15) failed.add("light " + type.getLightLevel());
 		if (!type.getDescriptionId().equals(dry.block.getDescriptionId())) failed.add("description id " + type.getDescriptionId());
 		if (!type.getDescription().getString().equals(dry.block.getName().getString())) failed.add("name " + type.getDescription().getString());
-		if (type.getIsWaterLike() || !wet.source.getFluidType().getIsWaterLike()) failed.add("water-like: untagged " + type.getIsWaterLike() + ", tagged " + wet.source.getFluidType().getIsWaterLike());
+		if (TestCompat.waterLike(type) || !TestCompat.waterLike(wet.source.getFluidType())) {
+			failed.add("water-like: untagged " + TestCompat.waterLike(type) + ", tagged " + TestCompat.waterLike(wet.source.getFluidType()));
+		}
 
 		// Placing a liquid block asks NeoForge's fluid interactions about it, which ask for its type.
-		BlockPos bottom = new BlockPos(20, level.getMaxY() - 30, 20);
+		BlockPos bottom = new BlockPos(20, TestCompat.maxY(level) - 30, 20);
 		for (int i = 0; i < 8; i++) level.setBlockAndUpdate(bottom.above(i), dry.block.defaultBlockState());
-		EntityType<?> pigType = BuiltInRegistries.ENTITY_TYPE.getValue(Identifier.withDefaultNamespace("pig"));
-		if (!(pigType.create(level, EntitySpawnReason.TRIGGERED) instanceof LivingEntity pig)) {
+		EntityType<?> pigType = TestCompat.value(BuiltInRegistries.ENTITY_TYPE, Identifier.withDefaultNamespace("pig"));
+		if (!(TestCompat.create(pigType, level) instanceof LivingEntity pig)) {
 			failed.add("could not create a pig");
 			return;
 		}
@@ -100,7 +101,7 @@ public final class FluidTest implements ModInitializer {
 			source = Registry.register(BuiltInRegistries.FLUID, id, new TestFluid.Source(this));
 			flowing = Registry.register(BuiltInRegistries.FLUID, Identifier.fromNamespaceAndPath("fabricated_testmod", name + "_flowing"), new TestFluid.Flowing(this));
 			ResourceKey<Block> key = ResourceKey.create(Registries.BLOCK, id);
-			block = Registry.register(BuiltInRegistries.BLOCK, key, FluidTestCompat.liquidBlock(source, BlockBehaviour.Properties.ofFullCopy(properties).setId(key)));
+			block = Registry.register(BuiltInRegistries.BLOCK, key, FluidTestCompat.liquidBlock(source, TestCompat.withId(BlockBehaviour.Properties.ofFullCopy(properties), key)));
 		}
 	}
 }

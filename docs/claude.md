@@ -152,7 +152,8 @@ mc/neoforge/<version>        (one Gradle project per Minecraft version, MDG)
   ├─ source set loader  = loader/common + loader/neoforge ──► core   (FML SPI only; early-services class loader)
   ├─ source set main    = in-game NeoForge mod  ──compileOnly──► loader output, core
   │     sources: mc/neoforge/<version>/src/main/java + mc/neoforge/<version>/src/fabricapi/java (vendored native Fabric API modules)
-  │              + the folders the version's `shared_sources` lists: mc/neoforge/common (all), mc/neoforge/common26 (26.x),
+  │              + the folders the version's `shared_sources` lists: mc/neoforge/common (all; renamed for 1.21.1),
+  │                mc/neoforge/common12111 (1.21.11, 26.x), mc/neoforge/common26 (26.x),
   │                mc/neoforge/common26early (26.1.2, 26.2), mc/neoforge/common26late (26.2, 26.3)
   │     26.x only, compileOnly: fabric-renderer-api-v1's jar (pass-through module, typed calls)
   ├─ source sets testmod, testmodbroken, testmodfrapi (26.x)  ──compileOnly──► main output, fabric-loader-api, api

@@ -163,7 +163,12 @@ else
 fi
 check "FABRICATED-TEST registry sync: custom registry OK" server.out "native registry sync: custom registry, entry callback, attributes, NeoForge sync flag"
 check "registry sync state: alias=true, dynamic=1, setupCallback=1" server.out "native registry sync: alias, synced dynamic registry, setup callback"
-check "entity events seen:.*allow_add,after_add,before_remove" server.out "native entity events: mob effects"
+if [ "$mc" = "1.21.1" ]; then
+	# Fabric API 0.116 (1.21.1) has no mob effect events; its mob conversion event is tested instead.
+	check "FABRICATED-TEST entity events: mob conversion OK" server.out "native entity events: mob conversion"
+else
+	check "entity events seen:.*allow_add,after_add,before_remove" server.out "native entity events: mob effects"
+fi
 check "entity events seen:.*allow_damage,after_damage" server.out "native entity events: damage"
 check "entity events seen:.*allow_death,after_death$" server.out "native entity events: death (no AFTER_DAMAGE for the killing hit)"
 check "FABRICATED-TEST object builder OK" server.out "native object builder: attributes, attribute modification, spawn placement, entity data serializer, block entity types"
