@@ -21,10 +21,18 @@ import net.neoforged.neoforge.registries.RegisterEvent;
  * NeoForge's: additions, removals, replacements, then post-processing after everything.
  */
 public final class BiomeCompat {
+	/** False when another mod provides fabric-biome-api-v1, and applies Fabric's modifications itself. */
+	private static volatile boolean modifies;
+
 	private BiomeCompat() {
 	}
 
-	public static void register(IEventBus modBus) {
+	/**
+	 * @param modifies whether the modifier applies Fabric's modifications; it is registered either way, as Fabricated's
+	 *                 data pack declares it
+	 */
+	public static void register(IEventBus modBus, boolean modifies) {
+		BiomeCompat.modifies = modifies;
 		modBus.addListener(RegisterEvent.class, event -> event.register(NeoForgeRegistries.Keys.BIOME_MODIFIER_SERIALIZERS,
 				helper -> helper.register(Identifier.fromNamespaceAndPath("fabricated", "fabric_biome_api"), FabricBiomeModifier.CODEC)));
 	}
@@ -43,7 +51,7 @@ public final class BiomeCompat {
 				case MODIFY -> ModificationPhase.REPLACEMENTS;
 				case AFTER_EVERYTHING -> ModificationPhase.POST_PROCESSING;
 			};
-			if (fabricPhase != null) BiomeModificationImpl.INSTANCE.modify(registries, biome, fabricPhase, builder);
+			if (fabricPhase != null && modifies) BiomeModificationImpl.INSTANCE.modify(registries, biome, fabricPhase, builder);
 		}
 
 		@Override

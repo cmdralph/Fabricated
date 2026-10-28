@@ -144,13 +144,17 @@ public final class TestMod implements ModInitializer, DedicatedServerModInitiali
 		} catch (ClassNotFoundException | LinkageError e) {
 			LOGGER.error("FABRICATED-TEST environment stripping FAILED", e);
 		}
-		// Fabricated's public API, and detecting Fabricated through Fabric's API.
+		// Fabricated's public API, and detecting Fabricated through Fabric's API. With ci/neoforge/standins.py's mods,
+		// fabric-api-base is another mod's (PROVIDER-1).
 		Fabricated.get().ifPresent(api -> api.afterEntrypoints(() -> {
+			FabricApiModule.Status base = FabricLoader.getInstance().isModLoaded("standin_forgified_fabric_api") ? FabricApiModule.Status.PROVIDED_BY_MOD
+					: FabricApiModule.Status.NATIVE;
 			boolean ok = FabricLoader.getInstance().isModLoaded(Fabricated.MOD_ID) && api.entrypointsComplete()
 					&& api.isFabricModLoaded("fabricated-testmod")
-					&& api.fabricApiModule("fabric-api-base").map(m -> m.status() == FabricApiModule.Status.NATIVE).orElse(false);
+					&& api.fabricApiModule("fabric-api-base").map(m -> m.status() == base && m.isAvailable()).orElse(false);
 			if (ok) LOGGER.info("FABRICATED-TEST api OK");
-			else LOGGER.error("FABRICATED-TEST api FAILED: {}", api.fabricMod("fabricated-testmod"));
+			else LOGGER.error("FABRICATED-TEST api FAILED: {}, fabric-api-base {} (expected {})", api.fabricMod("fabricated-testmod"),
+					api.fabricApiModule("fabric-api-base"), base);
 			if (FabricLoader.getInstance().getEnvironmentType() == EnvType.CLIENT && ModMenuEntry.registered()) {
 				LOGGER.info("FABRICATED-TEST modmenu config screen OK");
 			}

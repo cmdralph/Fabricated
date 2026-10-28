@@ -1,5 +1,6 @@
 package io.github.cmdralph.fabricated.core.resolve;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -26,6 +27,18 @@ class MultiLoaderJarsTest {
 				.text(MultiLoaderJars.MODS_TOML, JAVA_MOD)
 				.bytes("com/example/Init.class", TestJars.emptyClass("com/example/Init", "java/lang/Object"))
 				.write(dir.resolve("fabric-build.jar"));
+		assertFalse(MultiLoaderJars.forNeoForge(jar, ArchiveLimits.DEFAULTS));
+	}
+
+	@Test
+	void aConnectorPlaceholderIsAFabricMod(@TempDir Path dir) throws Exception {
+		// Continuity's NeoForge jar: its Fabric build, with NeoForge metadata telling NeoForge users to install Connector.
+		// A class with NeoForge's @Mod doesn't change that: the placeholder says the NeoForge side isn't the mod.
+		Path jar = TestJars.create().fabricModJson(TestJars.modJson("example", "1.0", ENTRYPOINTS))
+				.text(MultiLoaderJars.MODS_TOML, JAVA_MOD.replace("[[mods]]", "[properties]\n\"connector:placeholder\" = true\n\n[[mods]]"))
+				.bytes("com/example/NeoForgeInit.class", modClass("com/example/NeoForgeInit"))
+				.write(dir.resolve("placeholder.jar"));
+		assertEquals(MultiLoaderJars.PLACEHOLDER, MultiLoaderJars.fabricReason(jar, ArchiveLimits.DEFAULTS));
 		assertFalse(MultiLoaderJars.forNeoForge(jar, ArchiveLimits.DEFAULTS));
 	}
 

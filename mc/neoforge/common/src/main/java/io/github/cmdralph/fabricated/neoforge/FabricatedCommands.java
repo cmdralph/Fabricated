@@ -105,6 +105,7 @@ final class FabricatedCommands {
 			case DISABLED -> "disabled";
 			case REJECTED -> "rejected";
 			case PROVIDED_NATIVELY -> "provided by Fabricated";
+			case PROVIDED_BY_MOD -> "provided by " + row.source();
 			case SKIPPED -> "skipped";
 		};
 		return row.id() + (row.version().isEmpty() ? "" : " " + row.version()) + ": " + outcome
@@ -116,7 +117,8 @@ final class FabricatedCommands {
 		Report report = state.report();
 		return "Fabricated: " + report.count(Report.Status.LOADED) + " Fabric mod(s) loaded, "
 				+ report.count(Report.Status.DISABLED) + " disabled, " + report.count(Report.Status.REJECTED) + " rejected, "
-				+ report.count(Report.Status.PROVIDED_NATIVELY) + " Fabric API module(s) provided natively. "
+				+ report.count(Report.Status.PROVIDED_NATIVELY) + " Fabric API module(s) provided natively, "
+				+ report.count(Report.Status.PROVIDED_BY_MOD) + " by other mods. "
 				+ "Details: logs/" + Report.FILE_NAME;
 	}
 }

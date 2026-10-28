@@ -1,0 +1,121 @@
+{
+  "fabricApiVersion": "0.161.0+26.2",
+  "modules": {
+    "fabric-api-base": [
+      "net/fabricmc/fabric/api/event",
+      "net/fabricmc/fabric/api/util",
+      "net/fabricmc/fabric/impl/base/event",
+      "net/fabricmc/fabric/impl/base/toposort"
+    ],
+    "fabric-api-lookup-api-v1": [
+      "net/fabricmc/fabric/api/lookup/v1",
+      "net/fabricmc/fabric/api/lookup/v1/block",
+      "net/fabricmc/fabric/api/lookup/v1/custom",
+      "net/fabricmc/fabric/api/lookup/v1/entity",
+      "net/fabricmc/fabric/api/lookup/v1/item",
+      "net/fabricmc/fabric/impl/lookup",
+      "net/fabricmc/fabric/impl/lookup/block",
+      "net/fabricmc/fabric/impl/lookup/custom",
+      "net/fabricmc/fabric/impl/lookup/entity",
+      "net/fabricmc/fabric/impl/lookup/item",
+      "net/fabricmc/fabric/mixin/lookup"
+    ],
+    "fabric-biome-api-v1": [
+      "net/fabricmc/fabric/api/biome/v1",
+      "net/fabricmc/fabric/impl/biome",
+      "net/fabricmc/fabric/impl/biome/modification",
+      "net/fabricmc/fabric/mixin/biome"
+    ],
+    "fabric-block-api-v1": [
+      "net/fabricmc/fabric/api/block/v1"
+    ],
+    "fabric-content-registries-v0": [
+      "net/fabricmc/fabric/api/registry",
+      "net/fabricmc/fabric/api/registry/fluid",
+      "net/fabricmc/fabric/impl/content/registry",
+      "net/fabricmc/fabric/impl/content/registry/fluid",
+      "net/fabricmc/fabric/impl/content/registry/util",
+      "net/fabricmc/fabric/mixin/content/registry",
+      "net/fabricmc/fabric/mixin/content/registry/fluid"
+    ],
+    "fabric-crash-report-info-v1": [],
+    "fabric-entity-events-v1": [
+      "net/fabricmc/fabric/api/entity/event/v1",
+      "net/fabricmc/fabric/api/entity/event/v1/effect"
+    ],
+    "fabric-events-interaction-v0": [
+      "net/fabricmc/fabric/api/block",
+      "net/fabricmc/fabric/api/entity",
+      "net/fabricmc/fabric/api/event/client/player",
+      "net/fabricmc/fabric/api/event/player",
+      "net/fabricmc/fabric/impl/event/interaction"
+    ],
+    "fabric-item-api-v1": [
+      "net/fabricmc/fabric/api/client/item/v1",
+      "net/fabricmc/fabric/api/item/v1",
+      "net/fabricmc/fabric/impl/item"
+    ],
+    "fabric-lifecycle-events-v1": [
+      "net/fabricmc/fabric/api/client/event/lifecycle/v1",
+      "net/fabricmc/fabric/api/event/lifecycle/v1",
+      "net/fabricmc/fabric/impl/event/lifecycle"
+    ],
+    "fabric-loot-api-v3": [
+      "net/fabricmc/fabric/api/loot/v3",
+      "net/fabricmc/fabric/impl/loot",
+      "net/fabricmc/fabric/mixin/loot"
+    ],
+    "fabric-menu-api-v1": [
+      "net/fabricmc/fabric/api/menu/v1"
+    ],
+    "fabric-networking-api-v1": [
+      "net/fabricmc/fabric/api/client/networking/v1",
+      "net/fabricmc/fabric/api/networking/v1",
+      "net/fabricmc/fabric/api/networking/v1/context",
+      "net/fabricmc/fabric/impl/networking",
+      "net/fabricmc/fabric/impl/networking/client",
+      "net/fabricmc/fabric/impl/networking/context",
+      "net/fabricmc/fabric/impl/networking/server",
+      "net/fabricmc/fabric/mixin/networking/accessor"
+    ],
+    "fabric-object-builder-api-v1": [
+      "net/fabricmc/fabric/api/object/builder/v1/block/entity",
+      "net/fabricmc/fabric/api/object/builder/v1/block/type",
+      "net/fabricmc/fabric/api/object/builder/v1/entity",
+      "net/fabricmc/fabric/api/object/builder/v1/world/poi",
+      "net/fabricmc/fabric/impl/object/builder",
+      "net/fabricmc/fabric/mixin/object/builder"
+    ],
+    "fabric-registry-sync-v0": [
+      "net/fabricmc/fabric/api/event/registry",
+      "net/fabricmc/fabric/impl/registry/sync",
+      "net/fabricmc/fabric/mixin/registry/sync"
+    ],
+    "fabric-resource-loader-v1": [
+      "net/fabricmc/fabric/api/resource/v1",
+      "net/fabricmc/fabric/api/resource/v1/pack",
+      "net/fabricmc/fabric/api/resource/v1/reloader",
+      "net/fabricmc/fabric/impl/resource",
+      "net/fabricmc/fabric/impl/resource/pack"
+    ],
+    "fabric-transfer-api-v1": [
+      "net/fabricmc/fabric/api/transfer/v1",
+      "net/fabricmc/fabric/api/transfer/v1/client/fluid",
+      "net/fabricmc/fabric/api/transfer/v1/context",
+      "net/fabricmc/fabric/api/transfer/v1/fluid",
+      "net/fabricmc/fabric/api/transfer/v1/fluid/base",
+      "net/fabricmc/fabric/api/transfer/v1/item",
+      "net/fabricmc/fabric/api/transfer/v1/item/base",
+      "net/fabricmc/fabric/api/transfer/v1/storage",
+      "net/fabricmc/fabric/api/transfer/v1/storage/base",
+      "net/fabricmc/fabric/api/transfer/v1/transaction",
+      "net/fabricmc/fabric/api/transfer/v1/transaction/base",
+      "net/fabricmc/fabric/impl/transfer",
+      "net/fabricmc/fabric/impl/transfer/context",
+      "net/fabricmc/fabric/impl/transfer/fluid",
+      "net/fabricmc/fabric/impl/transfer/item",
+      "net/fabricmc/fabric/impl/transfer/transaction",
+      "net/fabricmc/fabric/mixin/transfer"
+    ]
+  }
+}

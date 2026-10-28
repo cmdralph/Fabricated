@@ -835,6 +835,46 @@ and older) run Fabric mods with, which 26.x doesn't have (OBF-1: Modrinth lists 
   exists; Fabric API delays that freeze until after the client initializers. The 1.21.11 advanced corpus client stopped
   at bootstrap (CORPUS-21).
 
+### Mods that bring Fabric API or Fabric Loader
+
+NeoForge loads each package from one module only, so a package two mods both carry stops the game before any mod runs
+(a `ResolutionException`). Some NeoForge mods carry Fabric API's or Fabric Loader's packages: Forgified Fabric API
+(Sinytra's port, one NeoForge mod per Fabric API module, with Forgified Fabric Loader nested), and mods that bundle
+some of its modules (Sodium for NeoForge). Fabricated now shares the game with them, by one rule for each:
+
+- **A Fabric API module another mod provides is that mod's.** A NeoForge mod provides a module when its id is the
+  module's (`fabric_screen_handler_api_v1`), when its `mods.toml` lists the module under `provides`, or when its jar
+  has one of the module's packages. For a native module, Fabricated's own copy stands down: its packages leave the
+  in-game mod, and so do the mixins and mixin configs serving it (`META-INF/fabricated/mixin-modules.json`) and its
+  NeoForge bridges, so no event fires twice. For a module loaded from Fabric API's jar, the jar's copy is left out
+  (the platform's copy of a package is the one used, as for any Fabric jar). Fabric mods then use the provider's
+  module, whose ids and versions satisfy their dependencies; the report lists it under *Fabric API modules provided by
+  other mods*, the API as `PROVIDED_BY_MOD` (API 1.1.0), and the parts left out under *Fabric API providers*.
+  (PROVIDER-1)
+- **Fabric Loader's API is Fabricated's, always.** Another jar's copy of `net.fabricmc.loader` and `net.fabricmc.api`
+  (Forgified Fabric Loader) is left out of it as NeoForge reads it, with the service files that name its classes; the
+  rest of the jar loads as it would. Mods built against that copy use Fabric Loader's public API, which Fabricated
+  implements, and see Fabricated's mod list, NeoForge mods included. On NeoForge 21.11 and 26.x, NeoForge is handed a
+  copy of such a jar without those packages, under `.fabricated/loader-api/` (the original is never changed). The
+  report lists each such jar under *Fabric Loader API*. (PROVIDER-2)
+- **Kotlin:** with Kotlin for Forge installed, its Kotlin is the one loaded, and the copy Fabric Language Kotlin
+  bundles is left out the same way. A Fabric mod built against a newer Kotlin than Kotlin for Forge ships gets a
+  linkage warning naming what it lacks.
+
+Fabric API keeps `net.fabricmc.fabric.api.util` in two modules (`fabric-api-base` and
+`fabric-content-registries-v0`); a module layer allows one, and Forgified Fabric API puts it in `fabric-api-base`, so
+Fabricated counts it there too. A provider's module is used as it is: what it lacks, a Fabric mod's linkage warnings
+name. Sinytra Connector itself next to Fabricated is not supported (two Fabric loaders in one game). Open: with
+Forgified Fabric API's resource loader, a Fabric jar's built-in pack whose `pack.mcmeta` keeps its NeoForge build's
+conditions of a type only that build registers stops the game in Forgified Fabric API's code (PROVIDER-3). In a development
+workspace the in-game mod's own copies can't be left out; the report says so.
+
+CI checks this on every version with stand-ins built from Fabricated's own jar (`ci/neoforge/standins.py`: a module
+provided straight and nested, a copy of Fabric Loader's API with its language loader service, two versions of a nested
+library; every check gates), and with the newest Forgified Fabric API, Kotlin for Forge and Fabric Language Kotlin from
+Modrinth on a server without the test mods (the server must start) and Forgified Fabric API with Sodium on a 1.21.1
+client (informational).
+
 ### Fabric Loader
 
 Fabricated reports itself as Fabric Loader 0.20.1, whose public API is 0.19.5's, unchanged (since this pass; it

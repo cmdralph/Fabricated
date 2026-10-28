@@ -228,6 +228,42 @@ jobs:
             ${{ runner.temp }}/server-fapi/logs
             ${{ runner.temp }}/server-fapi/server.out
           if-no-files-found: ignore
+      # Mods that share the game with Fabricated, as stand-ins built from Fabricated's own jar (ci/neoforge/standins.py):
+      # a Fabric API module another NeoForge mod provides, straight and nested, with a copy of Fabric Loader's API as
+      # Forgified Fabric Loader ships it (PROVIDER-1, PROVIDER-2), and two versions of a nested library. Every check
+      # gates, and a second launch must take every translation from the cache.
+      - name: Server with stand-ins for coexisting mods
+        if: ${{ env.GAME_RUNS == 'true' && !cancelled() && steps.build.outcome == 'success' }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/standins"
+          python3 -I ci/neoforge/standins.py build/libs/fabricated-[0-9]*+mc${{ matrix.minecraft }}.jar "$RUNNER_TEMP/standins"
+          ci/neoforge/smoke-server.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/server-standins" "$RUNNER_TEMP/standins"
+      # The real ones, newest builds from Modrinth (downloaded here in CI): Forgified Fabric API (its module jars nested,
+      # with Forgified Fabric Loader) where it has a build for the version, Kotlin for Forge with Fabric Language
+      # Kotlin, which bundle different Kotlin versions. The server must start, as no package two mods share may stop
+      # it. Without the test mods: Forgified Fabric API's resource loader stops the game on their built-in pack, whose
+      # NeoForge sections Fabricated's own resource loader leaves out (PROVIDER-3, open).
+      - name: Server with Forgified Fabric API and both Kotlin languages (server must start)
+        if: ${{ env.GAME_RUNS == 'true' && !cancelled() && steps.build.outcome == 'success' }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/coexist"
+          python3 ci/fetch-corpus.py "${{ matrix.minecraft }}" "$RUNNER_TEMP/coexist" neoforge forgified-fabric-api kotlin-for-forge || true
+          python3 ci/fetch-corpus.py "${{ matrix.minecraft }}" "$RUNNER_TEMP/coexist" fabric fabric-language-kotlin || true
+          ls "$RUNNER_TEMP/coexist" | tee "$RUNNER_TEMP/summary-coexist.txt"
+          SMOKE_TESTMODS=none ci/neoforge/smoke-server.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/server-coexist" "$RUNNER_TEMP/coexist"
+          sed -n '/== Fabric API modules provided by other mods ==/,/^$/p;/== Fabric Loader API ==/,/^$/p' "$RUNNER_TEMP/server-coexist/logs/fabric-bridge-report.txt" | tee -a "$RUNNER_TEMP/summary-coexist.txt" || true
+      - name: Upload coexisting mods' run logs and reports
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-coexist-${{ matrix.minecraft }}
+          path: |
+            ${{ runner.temp }}/server-standins/logs
+            ${{ runner.temp }}/server-standins/server.out
+            ${{ runner.temp }}/server-standins/server-warm.out
+            ${{ runner.temp }}/server-coexist/logs
+            ${{ runner.temp }}/server-coexist/server.out
+          if-no-files-found: ignore
       # Client: a real NeoForge client started headlessly (Xvfb), which joins a singleplayer world.
       # 26.3+ open their window with SDL3 over EGL, which needs Mesa's EGL library (not on the runner image).
       - name: Install Mesa EGL for the client
@@ -399,6 +435,24 @@ jobs:
               "FABRICATED-TEST frapi nested terrain OK .*LevelSlice" "FABRICATED-TEST frapi level-aware default OK"; do
             if grep -h -m 1 "$check" "$log"; then echo "PASS: $check"; else echo "::warning::Sodium 1.21.11: no \"$check\" line"; fi
           done
+      # The pair whose shared package once stopped the game on 1.21.1 (PROVIDER-1): Forgified Fabric API's modules and
+      # Sodium for NeoForge, with Fabric API's official jar for Fabricated's Fabric mods.
+      - name: Client with Forgified Fabric API and Sodium for NeoForge (informational, 1.21.1)
+        if: ${{ env.GAME_RUNS == 'true' && !cancelled() && steps.build.outcome == 'success' && matrix.minecraft == '1.21.1' }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/extra-coexist"
+          python3 ci/fetch-corpus.py "${{ matrix.minecraft }}" "$RUNNER_TEMP/extra-coexist" neoforge forgified-fabric-api sodium || true
+          cp "$RUNNER_TEMP/extra/fabric-api.jar" "$RUNNER_TEMP/extra-coexist/"
+          ls "$RUNNER_TEMP/extra-coexist"
+          SMOKE_TIMEOUT=480 ci/neoforge/smoke-client.sh "${{ matrix.minecraft }}" "${{ matrix.neoforge }}" "$RUNNER_TEMP/client-coexist" "$RUNNER_TEMP/extra-coexist" || true
+          report="$RUNNER_TEMP/client-coexist/run/logs/fabric-bridge-report.txt"
+          sed -n '/== Fabric API modules provided by other mods ==/,/^$/p;/== Fabric Loader API ==/,/^$/p;/== Fabric API providers ==/,/^$/p' "$report" || true
+          if grep -q "ResolutionException" "$RUNNER_TEMP/client-coexist/run/logs/latest.log" "$RUNNER_TEMP/client-coexist/client.out" 2>/dev/null; then
+            echo "::error::Forgified Fabric API and Sodium 1.21.1: a module layer refused a package two mods share"
+          fi
       - name: Upload Fabric API client run logs and report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
@@ -409,6 +463,9 @@ jobs:
             ${{ runner.temp }}/client-fapi/run/crash-reports
             ${{ runner.temp }}/client-fapi/client.out
             ${{ runner.temp }}/client-fapi/thread-dump.txt
+            ${{ runner.temp }}/client-coexist/run/logs
+            ${{ runner.temp }}/client-coexist/run/crash-reports
+            ${{ runner.temp }}/client-coexist/client.out
           if-no-files-found: ignore
       # Sodium and Iris for NeoForge (downloaded here from Modrinth, never redistributed) with Fabric API and the test
       # mod for Fabric's renderer API: Sodium meshes the world through its own Fabric renderer, which must draw Fabric
@@ -661,6 +718,7 @@ jobs:
           # A log's errors as the game ran, with the stacks of the most frequent: a mod that loads may still fail when its code runs.
           digest() { python3 ci/log-digest.py "$1" || true; }
           [ -f "$RUNNER_TEMP/summary-energy.txt" ] && { echo "== summary-energy"; cut -c1-300 "$RUNNER_TEMP/summary-energy.txt"; }
+          [ -f "$RUNNER_TEMP/summary-coexist.txt" ] && { echo "== summary-coexist (Forgified Fabric API, Kotlin)"; cut -c1-300 "$RUNNER_TEMP/summary-coexist.txt"; }
           # The gated client's failed checks, when it has any (the job log may no longer hold them).
           grep -q "^FAIL" "$RUNNER_TEMP/summary-client.txt" 2>/dev/null && { echo "== summary-client"; grep "^FAIL" "$RUNNER_TEMP/summary-client.txt" | head -40 | cut -c1-300; }
           for f in summary-newest summary-viewers; do
@@ -670,7 +728,7 @@ jobs:
           [ -f viewers.txt ] && { echo "== viewers fetched"; cat viewers.txt; }
           [ -f "$RUNNER_TEMP/summary-advanced.txt" ] && { echo "== advanced corpus fetched"; cut -c1-200 "$RUNNER_TEMP/summary-advanced.txt"; }
           [ -f "$RUNNER_TEMP/summary-neoforge-data.txt" ] && { echo "== NeoForge biome and structure modifiers in the advanced corpus's Fabric jars"; head -40 "$RUNNER_TEMP/summary-neoforge-data.txt"; }
-          for run in client client-fapi client-sodium client-shaders client-sodium-fabric client-sodium-addons client-viewers client-polyfrost client-corpus client-malilib client-advanced; do
+          for run in client client-fapi client-coexist client-sodium client-shaders client-sodium-fabric client-sodium-addons client-viewers client-polyfrost client-corpus client-malilib client-advanced; do
             log="$RUNNER_TEMP/$run/run/logs/latest.log"
             if [ ! -f "$log" ]; then
               # The game never started (the launcher stopped first): what the launcher said last.

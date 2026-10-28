@@ -50,7 +50,7 @@ hmc.assets.dummy=true
 PROPS
 echo "::endgroup::"
 
-cp "$root"/build/libs/fabricated-*+mc"$mc".jar run/mods/
+cp "$root"/build/libs/fabricated-[0-9]*+mc"$mc".jar run/mods/
 # Only the working test mod: the deliberately broken ones would put NeoForge's warning screen in front of the game.
 cp "$root"/mc/neoforge/"$mc"/build/testmods/fabricated-testmod.jar run/mods/
 if [ -n "$extra" ] && [ -d "$extra" ]; then

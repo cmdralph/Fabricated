@@ -21,10 +21,17 @@ public record FabricApiModule(String id, Status status, String version, String r
 		/** Would load from Fabric API, but no Fabric API jar provides it. */
 		NOT_INSTALLED,
 		/** Never available with Fabricated (it would replace parts of the game NeoForge owns). */
-		UNSUPPORTED
+		UNSUPPORTED,
+		/**
+		 * Provided by another installed mod (Forgified Fabric API, or a mod bundling the module, as Sodium does); only one
+		 * copy of a module can load, so Fabricated's own stands down.
+		 *
+		 * @since API 1.1
+		 */
+		PROVIDED_BY_MOD
 	}
 
 	public boolean isAvailable() {
-		return status == Status.NATIVE || status == Status.LOADED;
+		return status == Status.NATIVE || status == Status.LOADED || status == Status.PROVIDED_BY_MOD;
 	}
 }
