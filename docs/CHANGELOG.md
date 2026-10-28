@@ -3,6 +3,39 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-10-28: Minecraft 1.21.1 on NeoForge 21.1
+
+- **The owner's decision:** the whole 1.21.1 NeoForge target before the release (server, client, bridges, corpus),
+  rather than a server preview.
+- **A loader for NeoForge 21.1:** its FML 4 still runs on ModLauncher, so NeoForge's loader classes come in two
+  variants (`loader/neoforge/src/fml` and `src/modlauncher`, each behind an `Fml` facade), chosen by the version's
+  `loader_variant`. Mojang's mappings are found where NeoForge 21.1's installer leaves them (a NeoForm-versioned
+  folder).
+- **The in-game mod for 1.21.1:** the shared code builds for it through a renamed copy (`renamed_classes`:
+  `Identifier=ResourceLocation`) and small version helpers; what only 1.21.11 and later need moved to
+  `mc/neoforge/common12111`, and 1.21.1 has its own versions of the hooks whose targets differ. Fabric API 0.116.17
+  with 17 native modules (`fabric-resource-loader-v0` for v1), fuel through NeoForge 21.1's data map and burn time
+  event, and the plan skips of 1.21.11.
+- **Storage and energy bridges** on NeoForge 21.1's handler capabilities: the Forge bridge, ported, with fluid data
+  components crossing both ways and Team Reborn's energy API on blocks and in items. Decided here: items in items stay
+  unbridged on this version, as on Forge.
+- Defects the port found, fixed:
+  - **SCAN-2:** classpath scans got `union:` URLs from NeoForge 21.1's jar handler; mod jars now open as the JDK's
+    zip file system, and Fabric mods' directories are answered first.
+  - A connection closed during configuration crashed the 1.21.1 server: the networking bridge named 1.21.11's
+    accessor; it now asks Fabric API's `ServerConfigurationNetworking.getServer`.
+  - Fabric's item settings weren't applied to `Item.Properties` on 1.21.1 (`NoSuchMethodError`).
+- **The test mod on 1.21.1:** the shared parts through `TestCompat`, 1.21.1 versions of the parts whose Fabric API
+  differs, and the same log lines, so the smoke scripts stay one; they check mob conversion where 0.116 has no effect
+  events. The test mod's resource loader dependency and its built-in pack's formats are build properties.
+- **CI:** 1.21.1 joins NeoForge's full matrix and the release. Decided here: the mods reading plugins take their
+  newest 1.21.1 builds until the first run gives ids to pin.
+- Decided here: **Forge for 1.21.1 is not in this release.** It is Forge 52, an older FML and ModLauncher than the
+  Forge 61 to 66 the `forge` folder targets, so it would need a loader variant and an in-game mod of its own.
+- Verification: core's tests; local server smokes, all 60 checks: 1.21.1 without and with Fabric API 0.116.17 (26
+  Fabric mods loaded), 1.21.11 and 26.1.2 after the shared changes. The client runs and the corpus on 1.21.1 are CI's,
+  on this task's pull request.
+
 ## 2026-10-27: Forge development sped up, and the Forge corpus runs reaching the game
 
 - **Shared Forge code:** the discovery classes both Forge loaders had in two identical copies (the class transformer and

@@ -291,8 +291,9 @@ providers)? (10) Where can a locator read the program arguments?
 names its own). Each applies its platform's build plugin (`net.neoforged.moddev`, `net.minecraftforge.gradle` or
 `net.neoforged.moddev.legacyforge`) and the shared `mc/mc.gradle`. That script takes the platform from the folder,
 and the shared source folders from the version's `shared_sources` property, under `mc/<platform>/` (NeoForge's
-`common`, `common26`, `common26early`, `common26late`), or from the repository root for an entry with a slash
-(`mc/forge-shared`, the code both Forge platforms compile as it is). It applies `mc/platform-<platform>.gradle` (the plugin's
+`common`, `common12111`, `common26`, `common26early`, `common26late`), or from the repository root for an entry with a slash
+(`mc/forge-shared`, the code both Forge platforms compile as it is); a version whose game classes have older names
+compiles a renamed copy of them (`renamed_classes`, 1.21.1's `Identifier=ResourceLocation`). It applies `mc/platform-<platform>.gradle` (the plugin's
 settings, the mod descriptor, `gameDependencies`), builds the in-game mod as `game-mod.jar` and merges `loader`
 (`loader/common` and `loader/<platform>`, and `loader/forge-shared` for both Forge platforms: the discovery classes and
 the language provider they share as they are), `core`, `api` and `fabric-loader-api` into `fabricatedJar` (§6, items 2

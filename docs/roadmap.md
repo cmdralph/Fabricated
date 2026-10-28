@@ -107,7 +107,12 @@ The owner's plan to v0.5.0-alpha, in order (2026-10-27):
    LINK-2). The corpus servers and clients now load 85 to 151 Fabric mods on Forge 64 to 66 and 47, where Forge loaded
    only itself; the next stops are PRE-18 and CORPUS-33 (*Findings*).
 3. Minecraft 1.21.1: NeoForge 21.1 first, then Forge if it fits cleanly, on 1.21.11's Intermediary path, in the CI
-   matrix with the same test mods.
+   matrix with the same test mods. The owner chose the whole NeoForge target before the release (server, client,
+   bridges, corpus) over a server preview. NeoForge 21.1 is done in this task's pull request: a loader variant for its
+   FML 4 on ModLauncher, Fabric API 0.116.17 with 17 native modules, the storage and energy bridges on its handler
+   capabilities, every server check with and without Fabric API, and a matrix job like the other versions'. Forge
+   for 1.21.1 doesn't fit cleanly and is not in this release: it is Forge 52, an older FML and ModLauncher than the
+   Forge 61 to 66 the `forge` folder targets, so it would need a loader variant and an in-game mod of its own.
 4. Cleanup, once: dead code, duplicated logic, stale workarounds, unused configuration, outdated documents, the module
    and package structure (ARCH-1), with the public API kept or its breaks documented.
 5. Release v0.5.0-alpha: documents and versions, the full matrix green on every branch and version, the tag and notes
@@ -131,7 +136,7 @@ each Fabric API module's status per platform in [`COMPATIBILITY.md`](COMPATIBILI
 
 | Capability | NeoForge (`main`) | Forge 61 to 66 (`forge`) | Forge 47 (`forge-legacy`) |
 |---|---|---|---|
-| Minecraft versions | 1.21.11, 26.1.2, 26.2, 26.3 | 1.21.11, 26.1.2, 26.2, 26.3 | 1.20.1 |
+| Minecraft versions | 1.21.1, 1.21.11, 26.1.2, 26.2, 26.3 | 1.21.11, 26.1.2, 26.2, 26.3 | 1.20.1 |
 | Discovery, translation, the cache, the report | yes | yes, from the discovery code both Forge loaders share (`loader/forge-shared`); a translated jar's NeoForge jar-in-jar list hidden from Forge (JIJ-1), and the game's classes left alone while Forge shows a loading error (LOADERR-1) | yes, members remapped from Intermediary to SRG; the same shared code and fixes |
 | Main and server entrypoints, registries open | yes; content built before them waits for them (HOLD-1, CORPUS-31), and the built-in registries' freeze comes after them (CORPUS-32) | yes, in Forge's registry events; content built before them waits for them (CORPUS-31), and the built-in registries' freeze comes after them (CORPUS-32) | yes, in Forge's registry events; content built before them waits for them (CORPUS-31), and the built-in registries' freeze comes after them (CORPUS-32) |
 | Client entrypoints | yes | yes, right after the main ones in Forge's registry events, registries open | yes, right after the main ones in Forge's registry events, registries open |

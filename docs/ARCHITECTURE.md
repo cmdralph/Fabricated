@@ -87,16 +87,21 @@ Fabricated/
 ├── fabric-loader-api/       Binary-compatible `net.fabricmc.loader.api.*` and `net.fabricmc.api.*`
 │                            types (Apache-2.0, from Fabric Loader; NOTICE attribution), with SemVer and
 │                            version-predicate parsing
-├── loader/                  FML-facing glue, compiled once against FML 10.0.36 SPI (identical through 12.x)
-│                            FabricCandidateLocator, FabricDependencyLocator, FabricLanguageLoader,
-│                            FabricModContainer, FabricClassProcessor (interface injection, @Environment stripping)
+├── loader/                  Platform-facing glue: common/ (every platform), neoforge/ (FabricCandidateLocator,
+│                            FabricDependencyLocator, FabricLanguageLoader, FabricModContainer, FabricClassProcessor:
+│                            interface injection, @Environment stripping), in two variants: src/fml for FML 10 to 12
+│                            (1.21.11, 26.x), src/modlauncher for NeoForge 21.1's FML 4 on ModLauncher (1.21.1),
+│                            each behind its own Fml facade; forge/, forge-legacy/ and forge-shared/ for Forge
 ├── api/                     Fabricated's own small public API for NeoForge mods (see API.md)
 ├── mc/
 │   ├── mc.gradle            Shared build logic: source sets, shared source folders, jars, test mods
 │   ├── common/              Code every version compiles: bridges, mixins, the test mods (src/testmod)
+│   ├── common12111/         Code 1.21.11 and all 26.x compile (NeoForge's transfer API bridges, hooks
+│   │                        whose targets differ on NeoForge 21.1)
 │   ├── common26/            Code all 26.x versions compile (renderer API terrain bridge, 26.x mixins)
 │   ├── common26early/       Code 26.1.2 and 26.2 compile
 │   ├── common26late/        Code 26.2 and 26.3 compile
+│   ├── 1.21.1/              ... for 1.21.1 (Java 21): Fabric API 0.116, handler capability bridges
 │   ├── 1.21.11/             What only 1.21.11 has: vendored native Fabric API modules (src/fabricapi),
 │   │                        fabric-api-plan.json, version-specific bridges (Java 21)
 │   ├── 26.1.2/              ... for 26.1.2 (Java 25)
@@ -107,7 +112,7 @@ Fabricated/
 ```
 
 * **Output:** one jar per MC version, `fabricated-<version>+mc<mc>.jar`. `core`, `loader`, `fabric-loader-api` and `api` are shaded in, all under the Fabricated-owned package `io.github.cmdralph.fabricated.*`, so they can't clash with anything. The `fabric-loader-api` types keep their original `net.fabricmc.*` package names because Fabric mods link against them.
-* **No preprocessor** (no Stonecutter/Manifold). Version differences live in each `mc/neoforge/<version>` directory; code shared by every version lives once in `mc/neoforge/common`, by all 26.x versions in `mc/neoforge/common26`, by 26.1.2 and 26.2 in `mc/neoforge/common26early`, and by 26.2 and 26.3 in `mc/neoforge/common26late` (see `sharedSources` in `mc/mc.gradle`).
+* **No preprocessor** (no Stonecutter/Manifold). Version differences live in each `mc/neoforge/<version>` directory; code shared by every version lives once in `mc/neoforge/common`, by 1.21.11 and all 26.x in `mc/neoforge/common12111`, by all 26.x versions in `mc/neoforge/common26`, by 26.1.2 and 26.2 in `mc/neoforge/common26early`, and by 26.2 and 26.3 in `mc/neoforge/common26late` (see `sharedSources` in `mc/mc.gradle`).
 * `core`, `api` and `fabric-loader-api` target Java 17 bytecode so the *same* compiled classes run on every line, and on Minecraft 1.20.1 (`RESEARCH.md` §8, D2).
 
 ---
@@ -347,9 +352,12 @@ A unit test remaps the same input twice and compares SHA-256.
 There is no adapter interface: each version is its own Gradle project (`mc/neoforge/<version>`), and what differs between
 versions is decided at compile time by which source folders it compiles, plus two data files.
 
-* **Code.** `sharedSources` in `mc/mc.gradle` adds `mc/neoforge/common` to every version, `mc/neoforge/common26` to all 26.x
-  versions, and `mc/neoforge/common26early` / `mc/neoforge/common26late` to the pairs that share an API. A version's own folder holds
-  only what differs (renamed Minecraft or NeoForge classes). The vendored native Fabric API modules are per version
+* **Code.** `sharedSources` in `mc/mc.gradle` adds `mc/neoforge/common` to every version, `mc/neoforge/common12111` to
+  1.21.11 and 26.x, `mc/neoforge/common26` to all 26.x versions, and `mc/neoforge/common26early` / `mc/neoforge/common26late` to the pairs that share an API. A version's own folder holds
+  only what differs (renamed Minecraft or NeoForge classes). Shared code calls the game by 1.21.11's names; a version
+  whose names are older lists the renames in its `renamed_classes` property (1.21.1: `Identifier=ResourceLocation`), and
+  the build compiles a renamed copy of the shared folders for it. Small per-version helpers (`GameCompat`, the test
+  mod's `TestCompat`) hold the calls whose signatures changed. The vendored native Fabric API modules are per version
   (`mc/neoforge/<version>/src/fabricapi`), because upstream's sources differ per version.
 * **Data.** `META-INF/fabricated/fabric-api-plan.json` (per version: which Fabric API modules are native,
   pass-through or unsupported, and which upstream mixins to skip) and the generated `version.properties` (Minecraft
