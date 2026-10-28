@@ -14,7 +14,7 @@ before they run (mixin pre-flight against NeoForge's patched code), and connecte
 system, with no dependency but the official Fabric API jar. The aim is the best structured, lightest and most
 maintainable way to do this, held to the rules in `claude.md`: every claim checked against source or CI, untrusted jars
 handled safely, no network access, original jars never changed, and no code that a CI check doesn't exercise.
-The same engine runs on Minecraft Forge, from the same tree, as experimental previews.
+The same engine runs on Minecraft Forge, from each Forge platform's own branch, as experimental previews.
 
 ## How the project fits together
 
@@ -65,9 +65,9 @@ over-engineering and dead ends, without redesigning what holds.
 
 What changes, and why:
 
-1. **One pull request per task, into `main`**, instead of one per release branch and pass. The three branches hold the
-   same tree, so their three pull requests checked the same code three times. `forge` and `forge-legacy` get the head
-   at a release, for their README and their jars.
+1. **One pull request per task, into `main`**, instead of one per release branch and pass. The three branches held the
+   same tree, so their three pull requests checked the same code three times. (Superseded on 2026-10-28: each platform
+   has its own branch, and a shared change reaches `forge` and `forge-legacy` by a sync pull request, *Branches*.)
 2. **CI in two tiers.** A quick check on each push (`check.yml`: the unit tests, and one version of each platform the
    push changed booted on a server); the full matrix on the task's pull request, on release tags and by hand. The
    informational runs (the corpora, other mods' Fabric builds, the newest NeoForge build) wait for `extended`: their
@@ -90,6 +90,48 @@ Unchanged: the engine and platform split, the platform descriptor, the cache, th
 this pass's scope: the stale remote branches `claude/forge` and `claude/forge-legacy` (deleted at the cleanup, with
 the owner's approval), and cache eviction under GitHub's 10 GB limit, as each of `main`'s jobs saves a Gradle entry of
 about 750 MB (to watch on the first runs).
+
+## Rethink, 2026-10-28: sharing packs with Sinytra's ecosystem
+
+The owner's report showed what packs really hold: Fabricated next to Forgified Fabric API, Sodium's NeoForge build,
+Kotlin for Forge and NeoForge mods that bundle Fabric API modules, built by players who moved from Sinytra Connector.
+This pass checked the specification against that, for what Fabricated owns, what it yields and what it refuses.
+The four goals still decide: a pack must start (stable), nothing it loads is trusted (secure), and Fabricated adds
+nothing it doesn't need (light).
+
+**What Fabricated is beside that ecosystem: Connector's replacement, and a neighbour of its libraries.**
+
+| Piece | Fabricated's part | Why |
+|---|---|---|
+| Sinytra Connector | Refused: the launch stops with an error naming both jars | Two loaders of Fabric mods can't share them; neither knows the other's mods. Decided 2026-10-28. |
+| Forgified Fabric API (and NeoForge mods bundling Fabric API modules) | Each module it provides is its own; Fabricated's copy stands down, with its mixins and bridges | Its modules are NeoForge mods that NeoForge mods are built against; leaving them out would break those. What it does differently is its own (PROVIDER-5). |
+| Forgified Fabric Loader (Fabric Loader's API in another jar) | Always Fabricated's; the other copy is left out as FML reads it | Fabricated's runtime knows every Fabric and NeoForge mod; mods use only the public API. |
+| Kotlin for Forge with Fabric Language Kotlin | Kotlin for Forge's Kotlin, as any platform library | One copy of a package per layer. |
+| Multi-loader jars whose NeoForge side is a placeholder for Connector | Loaded as the Fabric mods they are | Only Connector, or Fabricated, loads them. |
+| A second Fabricated jar | Refused, as Connector is | The platform would run one by load order (DUP-1). |
+
+**What changes:** nothing in the engine's shape. Every package Fabricated adds has one owner, decided before FML builds
+the module layer (T1); a conflict is resolved or the affected mod is disabled and explained, and a
+`ResolutionException` reaching a player is a bug. The checks: CI runs the real Forgified Fabric API with the test mods
+on every NeoForge version it has a build for, and stand-ins for the rest (`ci/neoforge/standins.py`, the refusals).
+
+**Considered and not done:**
+
+- *Running beside Connector*, each loader taking some Fabric mods: every mod would need an owner, and mods of one
+  loader would not see the other's. The error is cheaper and clearer.
+- *Keeping Fabricated's modules and leaving Forgified Fabric API's out*: it changes other mods' jars and breaks the
+  NeoForge mods built against them.
+- *Shipping or requiring Forgified Fabric API*: heavier, and Fabricated's own modules already cover the Fabric mods it
+  runs alone.
+- *Patching Forgified Fabric API's behaviour* where it differs from Fabricated's (its networking refusing `minecraft`
+  payloads, PROVIDER-5): it is that mod's code, and the decision is to yield to it.
+
+**Noted for the Forge branches** (their next sync): the provider policy and the refusals are in the shared engine
+(`NativeModules`, `PackageGuard`, `ConflictingJars`), but each Forge loader still has to call them. Connector and
+Forgified Fabric API also exist for Forge 47 (1.20.1); whether packs there mix them with Fabricated is UNVERIFIED.
+
+**The branch model supersedes item 1 of 2026-10-27:** each platform has its own branch (*Branches*, below), so a
+shared change reaches `forge` and `forge-legacy` by a sync merge, not at the release.
 
 ## Decisions, 2026-10-28: sharing the game with Forgified Fabric API
 
@@ -161,8 +203,8 @@ The owner's plan to v0.5.0-alpha, in order (2026-10-27):
 
 | Platform | Goals | Status |
 |---|---|---|
-| All | One working branch and one folder per platform, every branch holding the same tree. | Done (#156 to #158) |
-| All | Each Fabric API module's status on every platform in `COMPATIBILITY.md`, so the platforms can be compared. | Done: the Forge table (*Fabric API modules on Forge*) is the more limited of the server and client runs with Fabric API on every version |
+| All | A branch per platform, each with the shared engine and its own platform's folders (*Branches*). | Done (#218 to #220) |
+| All | Each Fabric API module's status on every platform, so the platforms can be compared: NeoForge's in `COMPATIBILITY.md`, the Forge platforms' in `docs/FORGE.md` and `docs/FORGE-LEGACY.md` on their branches. | Done: the Forge tables are the more limited of the server and client runs with Fabric API on every version |
 | All | The engine's platform facts from the platform: the fields its coremods keep private (PLAT-4). | Done (PLAT-4, checked on all five Forge versions) |
 | NeoForge (`main`) | The open corpus findings (below) that a generic fix covers. `preLaunch` right after FML's mixin bootstrap (*Loader and translation*, next). ARCH-1 is done (task 4). | Open |
 | Forge 61 to 66 (`forge`) | Fabric mods' client entrypoints and a client run in CI. Entity and interaction events native on Forge's events, as `main` has them on NeoForge's (F4). The server runs made gates once their checks hold on every version. | Server runs gated (with Fabric API too); client entrypoints done, with a gated client run (REG-5 fixed on the way); interaction events checked, with no bridge needed; entity events bridged where Forge's code doesn't take upstream's hooks (DAMAGE-1), but for the effect events' hook into Brigadier; the corpus runs reach the game since LOADERR-1 (85 to 123 Fabric mods load) |
