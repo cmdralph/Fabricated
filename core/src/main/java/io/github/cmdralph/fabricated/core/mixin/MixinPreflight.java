@@ -18,6 +18,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.function.BiFunction;
 import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -364,105 +365,7 @@ public final class MixinPreflight {
 			List<MethodNode> bridges = new ArrayList<>();
 			for (MethodNode method : node.methods) {
 				for (AnnotationNode ann : Annotations.all(method)) {
-					if (!isInjector(ann.desc)) continue;
-					// A grouped injector is one of the mod's alternatives: another may name the lambda by this build's number.
-					for (String lambda : grouped(method) ? List.<String>of() : vanillaLambdaRepairs(ann, targets, ctx)) {
-						changed = true;
-						out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@" + simpleName(ann.desc) + " " + method.name
-								+ " targets " + lambda + ", which this game build numbers differently", ""));
-					}
-					for (String lambda : lambdaRepairs(method, ann, targets, ctx)) {
-						changed = true;
-						out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@" + simpleName(ann.desc) + " " + method.name
-								+ " targets " + lambda + ", which this game build numbers differently", ""));
-					}
-					for (String named : argumentNameRepairs(method, ann, targets, ctx)) {
-						changed = true;
-						out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@ModifyVariable " + method.name + " takes " + named, ""));
-					}
-					for (String marked : constructorPointRepairs(method, ann, targets, ctx)) {
-						changed = true;
-						out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@Inject " + method.name + " injects into " + marked, ""));
-					}
-					for (String wrapped : constructorCallWrappers(node, method, ann, targets, ctx, bridges)) {
-						changed = true;
-						out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@Inject " + method.name + " injects into " + wrapped, ""));
-					}
-					// Wrapped, the handler is a plain method of the mixin: its injector is done with.
-					if (!Annotations.all(method).contains(ann)) continue;
-					if (softenLocalCapture(ann)) {
-						changed = true;
-						out.add(new PreflightFinding(Severity.INFO, configName, ctx.mixinDotted(), "@Inject " + method.name
-								+ " captures local variables; if " + loader + "'s code has other locals there, it is skipped instead of crashing", ""));
-					}
-					// A group's alternative for Fabric Loader's hook too: the other alternatives are for other loaders' hooks.
-					if (targets.size() == 1) {
-						for (String moved : loaderHookRepairs(ann, targets.get(0), ctx)) {
-							changed = true;
-							out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@" + simpleName(ann.desc) + " " + method.name
-									+ " expects a call to " + moved, ""));
-						}
-					}
-					// A grouped injector is one of the mod's alternatives for code that differs: pointing it elsewhere could make
-					// more of the group apply than the group allows.
-					if (targets.size() == 1 && !grouped(method)) {
-						for (String pinned : overloadByParameters(method, ann, targets.get(0), ctx)) {
-							changed = true;
-							out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@" + simpleName(ann.desc) + " " + method.name
-									+ " targets " + pinned + ", which this game build declares after another overload; it is pinned to that one", ""));
-						}
-						for (String moved : vanillaPointRepairs(node, method, ann, targets.get(0), ctx, bridges)) {
-							changed = true;
-							out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@" + simpleName(ann.desc) + " " + method.name
-									+ " expects " + moved, ""));
-						}
-						if (!Annotations.all(method).contains(ann)) continue;
-						for (String local : vanillaLocalRepairs(method, ann, targets.get(0), ctx)) {
-							changed = true;
-							out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@" + simpleName(ann.desc) + " " + method.name
-									+ " captures " + local, ""));
-						}
-						for (String local : namedLocalRepairs(method, ann, targets.get(0), ctx)) {
-							changed = true;
-							out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@" + simpleName(ann.desc) + " " + method.name
-									+ " captures " + local, ""));
-						}
-						for (String moved : overloadRepairs(node, method, ann, targets.get(0), ctx, bridges)) {
-							changed = true;
-							out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@" + simpleName(ann.desc) + " " + method.name
-									+ " targets " + moved, ""));
-						}
-						// A repair that bridged the handler moved the injector onto the bridge: it is done with.
-						if (!Annotations.all(method).contains(ann)) continue;
-						for (String moved : constantSplitRepairs(node, method, ann, targets.get(0), ctx)) {
-							changed = true;
-							out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@ModifyConstant " + method.name
-									+ " targets " + moved, ""));
-						}
-						for (String moved : subtypeCallRepairs(ann, targets.get(0), ctx)) {
-							changed = true;
-							out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@" + simpleName(ann.desc) + " " + method.name
-									+ " expects a call to " + moved, ""));
-						}
-						for (String lambda : lambdaCallRepairs(ann, method, targets.get(0), ctx)) {
-							changed = true;
-							out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@" + simpleName(ann.desc) + " " + method.name
-									+ " expects a call " + lambda, ""));
-						}
-						for (String moved : insertedArgumentRepairs(node, method, ann, targets.get(0), ctx, bridges)) {
-							changed = true;
-							out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@" + simpleName(ann.desc) + " " + method.name
-									+ " expects a call to " + moved, ""));
-						}
-						if (!Annotations.all(method).contains(ann)) continue;
-						List<String> captured = capturedValueRepairs(node, method, ann, targets.get(0), ctx, bridges);
-						// Where the parameters can't be matched by type (one the method has twice), in order, around one added.
-						for (String lambda : captured.isEmpty() ? addedParameterRepairs(node, method, ann, targets.get(0), ctx, bridges) : captured) {
-							changed = true;
-							out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@" + simpleName(ann.desc) + " " + method.name
-									+ " targets " + lambda, ""));
-						}
-					}
+					if (isInjector(ann.desc) && repairInjector(new RepairSite(node, method, ann, targets, ctx, bridges), out)) changed = true;
 				}
 				if ((node.access & Opcodes.ACC_INTERFACE) == 0 || (method.access & Opcodes.ACC_STATIC) != 0) continue;
 				AnnotationNode accessor = Annotations.find(method, ACCESSOR);
@@ -505,6 +408,135 @@ public final class MixinPreflight {
 			if (changed) repaired.put(internal + ".class", write(node));
 		}
 		return repaired;
+	}
+
+	/**
+	 * One injector the repairs look at: the mixin, the injector's handler and annotation, the mixin's targets, the
+	 * mixin's context, and the bridges repairs make for it (added to the mixin once all its injectors are done).
+	 */
+	record RepairSite(ClassNode mixin, MethodNode handler, AnnotationNode injector, List<ClassNode> targets, Context ctx,
+			List<MethodNode> bridges) {
+		/** The mixin's one target, for the steps that only run where it has one. */
+		ClassNode target() {
+			return targets.get(0);
+		}
+
+		/** The injector as the report names it ({@code @Inject handler}). */
+		String named() {
+			return "@" + simpleName(injector.desc) + " " + handler.name;
+		}
+
+		/** Whether a repair moved the injector off its handler (onto a bridge, or wrapped it): it is done with then. */
+		boolean moved() {
+			return !Annotations.all(handler).contains(injector);
+		}
+	}
+
+	/** A repair of one injector: what it moved, each named for the report, or nothing where it changed nothing. */
+	@FunctionalInterface
+	interface InjectorRepair {
+		List<String> repair(RepairSite site);
+	}
+
+	/** The injectors a repair step looks at. */
+	private enum RepairScope {
+		ANY,
+		/**
+		 * Not one of a group's alternatives: each is the mod's alternative for code that differs, and pointing one
+		 * elsewhere could make more of the group apply than it allows, or another may already name this build's code.
+		 */
+		UNGROUPED,
+		/** A mixin with one target. */
+		ONE_TARGET,
+		ONE_TARGET_UNGROUPED;
+
+		boolean covers(RepairSite site) {
+			boolean ungrouped = this == ANY || this == ONE_TARGET || !grouped(site.handler());
+			return ungrouped && (this == ANY || this == UNGROUPED || site.targets().size() == 1);
+		}
+	}
+
+	/**
+	 * A step of {@link #injectorRepairs}: a repair, the injectors it looks at and how the report names each move; or,
+	 * without a repair, a stop once an earlier step has moved the injector off its handler.
+	 */
+	private record RepairStep(RepairScope scope, Severity severity, InjectorRepair repair, BiFunction<RepairSite, String, String> message) {
+		static RepairStep warn(RepairScope scope, InjectorRepair repair, BiFunction<RepairSite, String, String> message) {
+			return new RepairStep(scope, Severity.WARN, repair, message);
+		}
+
+		static RepairStep stopIfMoved() {
+			return new RepairStep(RepairScope.ANY, Severity.INFO, null, null);
+		}
+	}
+
+	/**
+	 * The injector repairs, in the order they run. A step sees what the earlier ones made of the injector; once one has
+	 * moved it off its handler, the next stop ends the injector's repairs. A new repair goes where what it repairs can
+	 * only be seen once the earlier ones are done, with a stop after it if it can move the injector.
+	 */
+	private final List<RepairStep> injectorRepairs = List.of(
+			RepairStep.warn(RepairScope.UNGROUPED, s -> vanillaLambdaRepairs(s.injector(), s.targets(), s.ctx()),
+					(s, lambda) -> s.named() + " targets " + lambda + ", which this game build numbers differently"),
+			RepairStep.warn(RepairScope.ANY, s -> lambdaRepairs(s.handler(), s.injector(), s.targets(), s.ctx()),
+					(s, lambda) -> s.named() + " targets " + lambda + ", which this game build numbers differently"),
+			RepairStep.warn(RepairScope.ANY, s -> argumentNameRepairs(s.handler(), s.injector(), s.targets(), s.ctx()),
+					(s, named) -> "@ModifyVariable " + s.handler().name + " takes " + named),
+			RepairStep.warn(RepairScope.ANY, s -> constructorPointRepairs(s.handler(), s.injector(), s.targets(), s.ctx()),
+					(s, marked) -> "@Inject " + s.handler().name + " injects into " + marked),
+			RepairStep.warn(RepairScope.ANY, s -> constructorCallWrappers(s.mixin(), s.handler(), s.injector(), s.targets(), s.ctx(), s.bridges()),
+					(s, wrapped) -> "@Inject " + s.handler().name + " injects into " + wrapped),
+			// Wrapped, the handler is a plain method of the mixin.
+			RepairStep.stopIfMoved(),
+			new RepairStep(RepairScope.ANY, Severity.INFO, s -> softenLocalCapture(s.injector()) ? List.of("") : List.of(),
+					(s, none) -> "@Inject " + s.handler().name + " captures local variables; if " + s.ctx().loader()
+							+ "'s code has other locals there, it is skipped instead of crashing"),
+			// A group's alternative for Fabric Loader's hook too: the other alternatives are for other loaders' hooks.
+			RepairStep.warn(RepairScope.ONE_TARGET, s -> loaderHookRepairs(s.injector(), s.target(), s.ctx()),
+					(s, moved) -> s.named() + " expects a call to " + moved),
+			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> overloadByParameters(s.handler(), s.injector(), s.target(), s.ctx()),
+					(s, pinned) -> s.named() + " targets " + pinned + ", which this game build declares after another overload; it is pinned to that one"),
+			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> vanillaPointRepairs(s.mixin(), s.handler(), s.injector(), s.target(), s.ctx(), s.bridges()),
+					(s, moved) -> s.named() + " expects " + moved),
+			RepairStep.stopIfMoved(),
+			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> vanillaLocalRepairs(s.handler(), s.injector(), s.target(), s.ctx()),
+					(s, local) -> s.named() + " captures " + local),
+			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> namedLocalRepairs(s.handler(), s.injector(), s.target(), s.ctx()),
+					(s, local) -> s.named() + " captures " + local),
+			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> overloadRepairs(s.mixin(), s.handler(), s.injector(), s.target(), s.ctx(), s.bridges()),
+					(s, moved) -> s.named() + " targets " + moved),
+			// A repair that bridged the handler moved the injector onto the bridge.
+			RepairStep.stopIfMoved(),
+			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> constantSplitRepairs(s.mixin(), s.handler(), s.injector(), s.target(), s.ctx()),
+					(s, moved) -> "@ModifyConstant " + s.handler().name + " targets " + moved),
+			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> subtypeCallRepairs(s.injector(), s.target(), s.ctx()),
+					(s, moved) -> s.named() + " expects a call to " + moved),
+			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> lambdaCallRepairs(s.injector(), s.handler(), s.target(), s.ctx()),
+					(s, lambda) -> s.named() + " expects a call " + lambda),
+			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> insertedArgumentRepairs(s.mixin(), s.handler(), s.injector(), s.target(), s.ctx(), s.bridges()),
+					(s, moved) -> s.named() + " expects a call to " + moved),
+			RepairStep.stopIfMoved(),
+			// Where the parameters can't be matched by type (one the method has twice), in order, around one added.
+			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> {
+				List<String> captured = capturedValueRepairs(s.mixin(), s.handler(), s.injector(), s.target(), s.ctx(), s.bridges());
+				return captured.isEmpty() ? addedParameterRepairs(s.mixin(), s.handler(), s.injector(), s.target(), s.ctx(), s.bridges()) : captured;
+			}, (s, lambda) -> s.named() + " targets " + lambda));
+
+	/** Runs {@link #injectorRepairs} on one injector, reporting each move; returns whether any changed the mixin. */
+	private boolean repairInjector(RepairSite site, List<PreflightFinding> out) {
+		boolean changed = false;
+		for (RepairStep step : injectorRepairs) {
+			if (step.repair() == null) {
+				if (site.moved()) break;
+				continue;
+			}
+			if (!step.scope().covers(site)) continue;
+			for (String item : step.repair().repair(site)) {
+				changed = true;
+				out.add(new PreflightFinding(step.severity(), site.ctx().configName(), site.ctx().mixinDotted(), step.message().apply(site, item), ""));
+			}
+		}
+		return changed;
 	}
 
 	private static byte[] write(ClassNode node) {
