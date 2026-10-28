@@ -62,6 +62,7 @@
     "client.ClientConfigurationPacketListenerImplMixin",
     "client.KeyMappingAccessor",
     "client.MinecraftEntrypointsMixin",
+    "client.MinecraftModLoadingEntrypointsMixin",
     "client.MinecraftStartedMixin",
     "client.MinecraftStoppingMixin",
     "client.LiquidBlockTintMixin",
