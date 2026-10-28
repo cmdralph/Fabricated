@@ -203,6 +203,8 @@ public final class Pipeline {
 	 * @param defaultBridges     the default method bridges of {@code mods}, by target class (immutable)
 	 * @param environmentClasses the classes of {@code mods} with {@code @Environment} annotations (immutable)
 	 * @param overridableMethods the game methods {@code mods} override that the platform made final, by class (immutable)
+	 * @param providedElsewhere  the Fabric API modules another mod provides ({@link #providedElsewhere}): Fabricated's own
+	 *                           copies of these stand down
 	 */
 	public record Result(
 			FabricatedConfig config,
@@ -214,12 +216,13 @@ public final class Pipeline {
 			FabricLoaderRuntime runtime,
 			Map<String, ModContainerImpl> containers,
 			Report report,
-			Set<String> dependencyFailures) {
+			Set<String> dependencyFailures,
+			Set<String> providedElsewhere) {
 
 		Result(FabricatedConfig config, List<LoadedMod> mods, FabricLoaderRuntime runtime, Map<String, ModContainerImpl> containers,
-				Report report, Set<String> dependencyFailures) {
+				Report report, Set<String> dependencyFailures, Set<String> providedElsewhere) {
 			this(config, List.copyOf(mods), injectedInterfacesOf(mods), defaultBridgesOf(mods), environmentClassesOf(mods),
-					overridableMethodsOf(mods), runtime, containers, report, dependencyFailures);
+					overridableMethodsOf(mods), runtime, containers, report, dependencyFailures, Set.copyOf(providedElsewhere));
 		}
 
 		/**
@@ -228,7 +231,7 @@ public final class Pipeline {
 		 */
 		public Result without(Set<String> fabricIds) {
 			List<LoadedMod> kept = mods.stream().filter(m -> !fabricIds.contains(m.translated().candidate().id())).toList();
-			return new Result(config, kept, runtime, containers, report, dependencyFailures);
+			return new Result(config, kept, runtime, containers, report, dependencyFailures, providedElsewhere);
 		}
 
 		private static Map<String, List<InjectedInterface>> injectedInterfacesOf(List<LoadedMod> mods) {
@@ -293,6 +296,8 @@ public final class Pipeline {
 	private final List<NeoForgeMod> neoForgeMods;
 	/** NeoForge mods by id, and by the NeoForge form of each id they provide. */
 	private final Map<String, NeoForgeMod> neoMods = new LinkedHashMap<>();
+	/** The plan's Fabric API modules another mod provides ({@link #providedElsewhere}). */
+	private final Map<String, NeoForgeMod> providedElsewhere;
 	private final List<Builtin> builtins;
 	/** Fabric mods installed for the other side only: a dependency on one is no requirement here, as on Fabric. */
 	private final List<Candidate> otherSide = new ArrayList<>();
@@ -313,14 +318,35 @@ public final class Pipeline {
 		for (NeoForgeMod m : neoForgeMods) {
 			for (String alias : m.provides()) neoMods.putIfAbsent(ModIds.toNeoForgeId(alias), m);
 		}
-		this.builtins = new ArrayList<>(builtins(in));
+		this.providedElsewhere = providedElsewhere(plan, neoForgeMods);
+		this.builtins = new ArrayList<>(builtins(in, providedElsewhere.keySet()));
+	}
+
+	/**
+	 * The plan's Fabric API modules another mod provides, by module id: a mod whose id is the module's (Forgified Fabric
+	 * API's modules, Sodium's bundled ones) or that lists the module among the ids it provides. That mod provides the
+	 * module, as only one copy of its packages can load, and Fabricated's own copy of a native module stands down: the
+	 * platform glue leaves its classes, mixins and bridges out.
+	 */
+	public static Map<String, NeoForgeMod> providedElsewhere(FabricApiPlan plan, List<NeoForgeMod> neoForgeMods) {
+		Map<String, NeoForgeMod> byNeoId = new LinkedHashMap<>();
+		for (NeoForgeMod m : neoForgeMods) byNeoId.putIfAbsent(m.id(), m);
+		for (NeoForgeMod m : neoForgeMods) {
+			for (String alias : m.provides()) byNeoId.putIfAbsent(ModIds.toNeoForgeId(alias), m);
+		}
+		Map<String, NeoForgeMod> provided = new LinkedHashMap<>();
+		for (FabricApiPlan.Module module : plan.modules().values()) {
+			NeoForgeMod provider = byNeoId.get(ModIds.toNeoForgeId(module.id()));
+			if (provider != null) provided.put(module.id(), provider);
+		}
+		return provided;
 	}
 
 	public static Result run(Input in) {
 		return new Pipeline(in).run();
 	}
 
-	private static List<Builtin> builtins(Input in) {
+	private static List<Builtin> builtins(Input in, Set<String> providedElsewhere) {
 		List<Builtin> list = new ArrayList<>();
 		list.add(new Builtin("minecraft", in.minecraftVersion(), "Minecraft", List.of()));
 		list.add(new Builtin("java", Integer.toString(Runtime.version().feature()), "Java " + Runtime.version().feature(), List.of()));
@@ -330,7 +356,9 @@ public final class Pipeline {
 			list.add(new Builtin("mixinextras", in.mixinExtrasVersion(), "MixinExtras (provided by " + in.descriptor().loaderName() + ")", List.of("mixin_extras")));
 		}
 		for (FabricApiPlan.Module m : in.fabricApiPlan().modules().values()) {
-			if (m.plan() == FabricApiPlan.Plan.NATIVE) list.add(new Builtin(m.id(), m.version(), m.id() + " (provided by Fabricated)", List.of()));
+			if (m.plan() == FabricApiPlan.Plan.NATIVE && !providedElsewhere.contains(m.id())) {
+				list.add(new Builtin(m.id(), m.version(), m.id() + " (provided by Fabricated)", List.of()));
+			}
 		}
 		return List.copyOf(list);
 	}
@@ -354,7 +382,13 @@ public final class Pipeline {
 		scan.notes().forEach(n -> report.line("Discovery notes", n));
 		List<Candidate> eligible = filter(scan.candidates());
 		for (FabricApiPlan.Module m : plan.modules().values()) {
-			if (m.plan() == FabricApiPlan.Plan.NATIVE) report.mod(new ModRow(m.id(), m.version(), "Fabricated", Status.PROVIDED_NATIVELY, "", ""));
+			NeoForgeMod provider = providedElsewhere.get(m.id());
+			if (provider != null) {
+				report.mod(new ModRow(m.id(), provider.version(), provider.displayName(), Status.PROVIDED_BY_MOD, m.plan() == FabricApiPlan.Plan.NATIVE
+						? "Fabricated's own copy of this module stands down: only one copy of its packages can load" : "", ""));
+			} else if (m.plan() == FabricApiPlan.Plan.NATIVE) {
+				report.mod(new ModRow(m.id(), m.version(), "Fabricated", Status.PROVIDED_NATIVELY, "", ""));
+			}
 		}
 
 		MappingTable mappingTable = null;
@@ -582,7 +616,9 @@ public final class Pipeline {
 		}
 		FabricApiPlan.Module module = plan.module(c.id());
 		if (module != null && module.plan() == FabricApiPlan.Plan.UNSUPPORTED) return "Fabric API module not supported on " + in.descriptor().loaderName() + ": " + module.reason();
-		if (module != null && module.plan() == FabricApiPlan.Plan.NATIVE) return "replaced by Fabricated's native implementation";
+		if (module != null && module.plan() == FabricApiPlan.Plan.NATIVE && !providedElsewhere.containsKey(c.id())) {
+			return "replaced by Fabricated's native implementation";
+		}
 		if (builtinNames.containsKey(c.id())) return "already provided by " + builtinNames.get(c.id());
 		return null;
 	}
@@ -929,7 +965,7 @@ public final class Pipeline {
 		}
 
 		in.cache().notes().forEach(n -> report.line("Cache", n));
-		return new Result(config, loaded, runtime, containers, report, Set.copyOf(rounds.dependencyFailures));
+		return new Result(config, loaded, runtime, containers, report, Set.copyOf(rounds.dependencyFailures), providedElsewhere.keySet());
 	}
 
 	/**

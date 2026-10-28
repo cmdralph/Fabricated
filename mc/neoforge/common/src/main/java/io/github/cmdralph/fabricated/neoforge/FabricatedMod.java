@@ -28,17 +28,18 @@ public final class FabricatedMod {
 	private static final Logger LOGGER = LoggerFactory.getLogger("Fabricated");
 
 	public FabricatedMod(IEventBus modBus, Dist dist) {
-		// First: this mod's data pack declares a biome modifier of the type it registers (26.3), which must exist even
-		// when Fabricated stops below, or worlds fail to load.
-		BiomeCompat.register(modBus);
 		FabricatedState state = FabricatedState.get();
+		// First: this mod's data pack declares a biome modifier of the type it registers, which must exist even when
+		// Fabricated stops below, or worlds fail to load.
+		BiomeCompat.register(modBus, state != null && !state.providedElsewhere("fabric-biome-api-v1"));
 		if (state == null) {
 			LOGGER.warn("Fabricated's discovery did not run; Fabric mods are not loaded (see the warnings above in the log)");
 			return;
 		}
 		EntrypointBridge entrypoints = new EntrypointBridge(state, dist);
-		// Native fabric-registry-sync-v0, first: it tracks the RegisterEvent window the initializers below run in.
-		RegistrySyncBridge.register(modBus, dist, problem -> {
+		// Native fabric-registry-sync-v0, first: it tracks the RegisterEvent window the initializers below run in (also
+		// when another mod provides the module: vanilla code Fabric mods run writes to registries in that window).
+		RegistrySyncBridge.register(modBus, dist, !state.providedElsewhere("fabric-registry-sync-v0"), problem -> {
 			state.report().line("Registries", problem);
 			state.writeReport();
 		});

@@ -53,12 +53,14 @@ public final class RegistrySyncBridge {
 	 * Must be registered before Fabric initializers are hooked to {@code RegisterEvent}, so the registration window is
 	 * known to be open when they run.
 	 *
-	 * @param problems receives one line per problem worth a place in the report
+	 * @param fabricApi false when another mod provides fabric-registry-sync-v0: only the registration window is tracked
+	 *                  then (for {@link #openForEarlyWrite}), and Fabric's API is that mod's
+	 * @param problems  receives one line per problem worth a place in the report
 	 */
 	@SuppressWarnings({"unchecked", "rawtypes"})
-	public static void register(IEventBus modBus, Dist dist, Consumer<String> problems) {
+	public static void register(IEventBus modBus, Dist dist, boolean fabricApi, Consumer<String> problems) {
 		modBus.addListener(EventPriority.HIGHEST, RegisterEvent.class, e -> {
-			if (!syncedCallbackAdded) {
+			if (fabricApi && !syncedCallbackAdded) {
 				syncedCallbackAdded = true;
 				// A registry Fabric code marked SYNCED before registering it (FabricRegistryBuilder does) gets NeoForge's
 				// flag. Added here and not in the constructor: FML constructs mods in parallel, and the root registry's
@@ -77,6 +79,7 @@ public final class RegistrySyncBridge {
 			// A parallel event: freezing a vanilla registry belongs on the main thread.
 			e.enqueueWork(RegistrySyncBridge::closeRoot);
 		});
+		if (!fabricApi) return;
 		// NeoForge's own data-pack registries come after a mod may have replaced the loader's lists (REG-4).
 		modBus.addListener(FMLLoadCompleteEvent.class, e -> e.enqueueWork(NeoForgeRegistryInternals::syncLoaderLists));
 		NeoForge.EVENT_BUS.addListener(ServerAboutToStartEvent.class, e -> DynamicRegistrySetup.fire(e.getServer().registryAccess(), "server", problems));

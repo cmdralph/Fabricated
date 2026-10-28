@@ -1,5 +1,6 @@
 package io.github.cmdralph.fabricated.loader;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.lang.module.ModuleDescriptor;
 import java.nio.charset.StandardCharsets;
@@ -8,10 +9,15 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.regex.Matcher;
@@ -24,6 +30,7 @@ import io.github.cmdralph.fabricated.api.internal.ApiHolder;
 import io.github.cmdralph.fabricated.core.Pipeline;
 import io.github.cmdralph.fabricated.core.api.FabricatedApiImpl;
 import io.github.cmdralph.fabricated.core.archive.ArchiveLimits;
+import io.github.cmdralph.fabricated.core.archive.DeterministicJarWriter;
 import io.github.cmdralph.fabricated.core.archive.SafeArchive;
 import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
 import io.github.cmdralph.fabricated.core.bytecode.InstalledClasses;
@@ -31,11 +38,14 @@ import io.github.cmdralph.fabricated.core.cache.TranslationCache;
 import io.github.cmdralph.fabricated.core.config.FabricatedConfig;
 import io.github.cmdralph.fabricated.core.json.JsonException;
 import io.github.cmdralph.fabricated.core.metadata.ModIds;
+import io.github.cmdralph.fabricated.core.mixin.MixinConfigFile;
 import io.github.cmdralph.fabricated.core.mixin.PreflightFinding;
 import io.github.cmdralph.fabricated.core.remap.MappingException;
 import io.github.cmdralph.fabricated.core.remap.OfficialClasses;
 import io.github.cmdralph.fabricated.core.report.Report;
 import io.github.cmdralph.fabricated.core.resolve.FabricApiPlan;
+import io.github.cmdralph.fabricated.core.resolve.NativeModules;
+import io.github.cmdralph.fabricated.core.resolve.NestedNeoForgeJars;
 import io.github.cmdralph.fabricated.core.resolve.PlatformLibraries;
 import io.github.cmdralph.fabricated.core.translate.LinkageAnalysis;
 import io.github.cmdralph.fabricated.core.translate.PackageGuard;
@@ -150,6 +160,11 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 		List<InstalledClasses.Jar> fabricApi = List.of();
 		// Interfaces the in-game mod's mixins add to game classes (Fabric API's injected interfaces).
 		Supplier<Map<String, List<String>>> nativeApiInterfaces = Map::of;
+		// The packages of the native modules other mods provide, left out of the in-game mod (filled below, before the
+		// pipeline reads any class): pre-flight then sees the provider's classes, as the game will.
+		Set<String> standingDown = new HashSet<>();
+		NativeModules.StandDown standDown = null;
+		Overlay gameModOverlay = null;
 		FabricApiPlan plan;
 		Pipeline.Result result;
 		// Vanilla's game jar, which pre-flight reads to tell where NeoForge's patches moved an injection point (VANILLA-1),
@@ -158,10 +173,6 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 		// Closed once the pipeline is done with it, however it ends.
 		try (SafeArchive archive = gameModJar == null ? null : SafeArchive.open(gameModJar, ArchiveLimits.DEFAULTS)) {
 			if (archive != null) {
-				for (String name : archive.classEntryNames()) {
-					int slash = name.lastIndexOf('/');
-					if (slash > 0) platformPackages.add(name.substring(0, slash));
-				}
 				// Only needed when some linkage result isn't cached.
 				nativeApiInterfaces = () -> {
 					Map<String, List<String>> interfaces = new HashMap<>();
@@ -176,8 +187,9 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 					}
 					return interfaces;
 				};
-				nativeApi = name -> archive.read(name + ".class");
-				fabricApi = List.of(new InstalledClasses.Jar("Fabric API", name -> archive.contains(name + ".class"), nativeApi));
+				nativeApi = name -> standingDown.contains(packageOf(name)) ? null : archive.read(name + ".class");
+				fabricApi = List.of(new InstalledClasses.Jar("Fabric API", name -> !standingDown.contains(packageOf(name)) && archive.contains(name + ".class"),
+						nativeApi));
 			} else if (devGameMod.isPresent()) {
 				IModFile devFile = devGameMod.get();
 				nativeApi = name -> Fml.read(devFile, name + ".class");
@@ -190,6 +202,35 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 			byte[] planJson = FabricatedInfo.readOptional("fabric-api-plan.json");
 			if (planJson == null) throw new IllegalStateException("This Fabricated build is missing its fabric-api-plan.json");
 			plan = FabricApiPlan.parse(new String(planJson, StandardCharsets.UTF_8));
+
+			// The provider policy: a Fabric API module another mod brings is that mod's, and Fabricated's own part of it
+			// stands down, as only one copy of its packages can load (core's NativeModules).
+			List<String> providerNotes = new ArrayList<>();
+			List<Pipeline.NeoForgeMod> neoMods = neoForgeMods.mods();
+			if (archive != null) {
+				byte[] index = FabricatedInfo.readOptional(NativeModules.INDEX);
+				NativeModules nativeModules = index == null ? NativeModules.NONE : NativeModules.parse(new String(index, StandardCharsets.UTF_8),
+						archive.contains(NativeModules.MIXIN_MODULES) ? archive.readText(NativeModules.MIXIN_MODULES) : null);
+				neoMods = providingByPackages(neoForgeMods, nativeModules, providerNotes);
+				Map<String, Pipeline.NeoForgeMod> provided = Pipeline.providedElsewhere(plan, neoMods);
+				Map<String, MixinConfigFile> configs = new LinkedHashMap<>();
+				for (String name : archive.entryNames()) {
+					if (name.indexOf('/') < 0 && name.endsWith(".mixins.json")) configs.put(name, MixinConfigFile.parse(archive.readText(name)));
+				}
+				standDown = nativeModules.standDown(provided.keySet(), configs);
+				standingDown.addAll(standDown.packages());
+				standDown.unmapped().forEach(m -> providerNotes.add("Fabricated's mixin " + m + " says no module it serves; it stays"));
+				if (!standDown.isEmpty()) gameModOverlay = gameModOverlay(archive, configs, standDown, cache);
+				for (String name : archive.classEntryNames()) {
+					String pkg = packageOf(name);
+					if (!pkg.isEmpty() && !standingDown.contains(pkg)) platformPackages.add(pkg);
+				}
+			} else if (devGameMod.isPresent() && !Pipeline.providedElsewhere(plan, neoMods).isEmpty()) {
+				providerNotes.add("Other mods provide Fabric API modules, but the in-game mod of a development workspace can't leave its own copies out");
+			}
+			// What NeoForge's jar-in-jar locator adds isn't among the files this locator is handed on FML 10 and later.
+			if (!fabricJars.isEmpty()) neoForgeMods.providers().forEach(p -> platformPackages.addAll(p.packages()));
+
 			Pipeline.VanillaGame vanilla = fabricJars.isEmpty() ? Pipeline.VanillaGame.NONE
 					: VanillaGameJar.find(minecraft.getFilePath(), mcVersion, client, cache, vanillaJars);
 			if (info.namespace() == Namespace.INTERMEDIARY && vanilla.classes() != ClassBytesSource.EMPTY) {
@@ -205,11 +246,17 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 			}
 			Pipeline.Input input = new Pipeline.Input(gameDir, FMLPaths.CONFIGDIR.get(), config, cache, fabricJars, mcVersion, neoVersion,
 					client, info.namespace(), runtimeMixinVersion(info), mixinExtrasVersion(loadedMods), info.mixinLowest(), info.fabricatedVersion(), info.build(), !Fml.production(), gameClasses, List.of(minecraft.getFilePath()), vanilla, fabricatedFiles, untransformable,
-					platformPackages, plan, nativeApi, nativeApiInterfaces, neoForgeMods.mods(), neoForgeMods.classes(),
+					platformPackages, plan, nativeApi, nativeApiInterfaces, neoMods, neoForgeMods.classes(),
 					(mappingsCache, mojangPath) -> IntermediaryMappings.load(mappingsCache, mcVersion, client, mojangPath),
 					Fml.programArgs(), PlatformDescriptor.NEOFORGE);
 
 			result = Pipeline.run(input);
+			FabricLoaderApiCopies.notes().forEach(n -> result.report().line("Fabric Loader API", n));
+			providerNotes.forEach(n -> result.report().line("Fabric API providers", n));
+			if (standDown != null && !standDown.isEmpty()) {
+				result.report().line("Fabric API providers", "Fabricated's in-game mod leaves out " + standDown.packages().size()
+						+ " package(s) of the modules other mods provide, the mixin configs " + standDown.mixinConfigs() + " and the mixins " + standDown.mixins());
+			}
 		} finally {
 			closeAll(vanillaJars);
 		}
@@ -245,8 +292,17 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 			state = new FabricatedState(result.without(refused), logsDir, api);
 			FabricatedState.set(state);
 		}
-		if (addGameMod) {
+		if (addGameMod && gameModOverlay == null) {
 			pipeline.addPath(gameModJar, attributes, IncompatibleFileReporting.ERROR);
+		} else if (addGameMod) {
+			// Without the packages, mixin configs and mixins of the modules other mods provide: the overlay holds the
+			// mods.toml and mixin configs that no longer name them.
+			Set<String> leftOut = standingDown;
+			Set<String> replaced = gameModOverlay.files();
+			Predicate<String> keeps = path -> !replaced.contains(path) && !leftOut.contains(packageOf(path));
+			if (Fml.addModFile(pipeline, List.of(new FilteredPath(gameModJar, keeps), new FilteredPath(gameModOverlay.path(), null)), attributes).isEmpty()) {
+				LOGGER.error("NeoForge did not accept Fabricated's in-game mod; see the lines above");
+			}
 		}
 
 		int quietFabricApi = 0;
@@ -287,6 +343,64 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 		cache.finish(config.maxUnusedLaunches());
 		for (String note : cache.notes().subList(reported, cache.notes().size())) result.report().line("Cache", note);
 		state.writeReport();
+	}
+
+	/** The package (internal form) of a class's internal name or of a file's path; empty for the root. */
+	private static String packageOf(String name) {
+		int slash = name.lastIndexOf('/');
+		return slash > 0 ? name.substring(0, slash) : "";
+	}
+
+	/**
+	 * The NeoForge mods, each also providing the native modules whose packages its jar has under another id (a mod
+	 * bundling a Fabric API module): only one copy of a package can load, so that mod provides the module.
+	 */
+	private static List<Pipeline.NeoForgeMod> providingByPackages(NeoForgeMods.Found found, NativeModules modules, List<String> notes) {
+		Map<Pipeline.NeoForgeMod, Set<String>> extra = new IdentityHashMap<>();
+		for (NeoForgeMods.Provider provider : found.providers()) {
+			for (String pkg : new TreeSet<>(provider.packages())) {
+				String module = modules.owner(pkg);
+				if (module == null || ModIds.toNeoForgeId(module).equals(provider.mod().id()) || provider.mod().provides().contains(module)) continue;
+				if (extra.computeIfAbsent(provider.mod(), k -> new LinkedHashSet<>()).add(module)) {
+					notes.add(provider.origin() + " has the package " + pkg + " of " + module + ": " + provider.mod().displayName() + " provides that module");
+				}
+			}
+		}
+		if (extra.isEmpty()) return found.mods();
+		List<Pipeline.NeoForgeMod> mods = new ArrayList<>();
+		for (Pipeline.NeoForgeMod mod : found.mods()) {
+			Set<String> more = extra.get(mod);
+			if (more == null) {
+				mods.add(mod);
+				continue;
+			}
+			Set<String> ids = new LinkedHashSet<>(mod.provides());
+			ids.addAll(more);
+			Map<String, Object> properties = new LinkedHashMap<>(mod.properties());
+			properties.put(Pipeline.NeoForgeMod.PROVIDES, List.copyOf(ids));
+			mods.add(new Pipeline.NeoForgeMod(mod.id(), mod.version(), mod.displayName(), properties, mod.files()));
+		}
+		return mods;
+	}
+
+	/**
+	 * The files of the in-game mod that change when parts of it stand down, in a jar served before its own.
+	 *
+	 * @param files the paths it holds, which the in-game mod's own jar no longer serves
+	 */
+	private record Overlay(Path path, Set<String> files) {
+	}
+
+	/** The in-game mod's mods.toml without the mixin configs that stand down, and its other configs without the mixins that do. */
+	private static Overlay gameModOverlay(SafeArchive archive, Map<String, MixinConfigFile> configs, NativeModules.StandDown standDown,
+			TranslationCache cache) throws IOException {
+		Map<String, byte[]> files = new TreeMap<>();
+		String modsToml = NestedNeoForgeJars.MODS_TOML;
+		files.put(modsToml, NativeModules.withoutMixinConfigs(archive.readText(modsToml), standDown.mixinConfigs()).getBytes(StandardCharsets.UTF_8));
+		standDown.mixins().forEach((config, mixins) -> files.put(config, configs.get(config).withoutMixins(mixins).getBytes(StandardCharsets.UTF_8)));
+		ByteArrayOutputStream out = new ByteArrayOutputStream();
+		DeterministicJarWriter.write(out, files);
+		return new Overlay(cache.storeNested(out.toByteArray()), Set.copyOf(files.keySet()));
 	}
 
 	private static Optional<IModFile> find(List<IModFile> files, String modId) {

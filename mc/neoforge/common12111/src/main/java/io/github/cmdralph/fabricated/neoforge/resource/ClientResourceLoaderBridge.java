@@ -27,8 +27,15 @@ public final class ClientResourceLoaderBridge {
 		modBus.addListener(EventPriority.LOWEST, AddClientReloadListenersEvent.class, event -> {
 			ResourceRegistry registry = ResourceRegistry.of(PackType.CLIENT_RESOURCES);
 			ReloadListeners.apply(event, null, registry.listeners(), registry.orderings(), ClientReloadAliases.ALIASES, problems);
-			addEarlyListeners(event);
 		});
+	}
+
+	/**
+	 * Adds the listeners {@link #holdBack} held back, after Fabric's (registered first, at the same priority). Always
+	 * registered: holding back is vanilla behaviour Fabric mods rely on, whoever provides the resource loader module.
+	 */
+	public static void registerEarlyListeners(IEventBus modBus) {
+		modBus.addListener(EventPriority.LOWEST, AddClientReloadListenersEvent.class, ClientResourceLoaderBridge::addEarlyListeners);
 	}
 
 	/**
