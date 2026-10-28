@@ -139,9 +139,11 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 			for (IModFile file : loadedMods) {
 				for (String pkg : Fml.packages(file)) platformPackages.add(pkg.replace('.', '/'));
 			}
-			for (Module module : ModuleLayer.boot().modules()) {
-				ModuleDescriptor d = module.getDescriptor();
-				if (d != null) d.packages().forEach(p -> platformPackages.add(p.replace('.', '/')));
+			for (ModuleLayer layer : Fml.platformLayers()) {
+				for (Module module : layer.modules()) {
+					ModuleDescriptor d = module.getDescriptor();
+					if (d != null) d.packages().forEach(p -> platformPackages.add(p.replace('.', '/')));
+				}
 			}
 		}
 		ClassBytesSource nativeApi = ClassBytesSource.EMPTY;

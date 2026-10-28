@@ -49,6 +49,11 @@ final class Fml {
 	}
 
 	/** The game's program arguments. */
+	/** The module layers besides the mod files' whose packages a Fabric mod mustn't split: the JVM's boot layer. */
+	static List<ModuleLayer> platformLayers() {
+		return List.of(ModuleLayer.boot());
+	}
+
 	static String[] programArgs() {
 		return FMLLoader.getCurrent().getProgramArgs().getArguments();
 	}

@@ -3,6 +3,7 @@ package io.github.cmdralph.fabricated.loader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -14,6 +15,8 @@ import java.util.jar.Manifest;
 import cpw.mods.jarhandling.JarContents;
 import cpw.mods.jarhandling.JarContentsBuilder;
 import cpw.mods.jarhandling.SecureJar;
+import cpw.mods.modlauncher.Launcher;
+import cpw.mods.modlauncher.api.IModuleLayerManager;
 import net.neoforged.fml.loading.FMLLoader;
 import net.neoforged.neoforgespi.locating.IDiscoveryPipeline;
 import net.neoforged.neoforgespi.locating.IModFile;
@@ -52,6 +55,25 @@ final class Fml {
 
 	static boolean production() {
 		return FMLLoader.isProduction();
+	}
+
+	/**
+	 * The module layers besides the mod files' whose packages a Fabric mod mustn't split: the JVM's boot layer and every
+	 * ModLauncher layer the game's layer reads. ModLauncher's boot layer holds the game's libraries, which on NeoForge 21.1
+	 * include checker-qual, whose annotations some Fabric mods shade (CORPUS-43).
+	 */
+	static List<ModuleLayer> platformLayers() {
+		List<ModuleLayer> layers = new ArrayList<>(List.of(ModuleLayer.boot()));
+		Launcher launcher = Launcher.INSTANCE;
+		if (launcher != null) launcher.findLayerManager().ifPresent(manager -> addParents(manager, IModuleLayerManager.Layer.GAME, layers));
+		return layers;
+	}
+
+	private static void addParents(IModuleLayerManager manager, IModuleLayerManager.Layer layer, List<ModuleLayer> out) {
+		for (IModuleLayerManager.Layer parent : layer.getParent()) {
+			manager.getLayer(parent).filter(found -> !out.contains(found)).ifPresent(out::add);
+			addParents(manager, parent, out);
+		}
 	}
 
 	/** The game's program arguments: none, as a locator can't read them here. */
