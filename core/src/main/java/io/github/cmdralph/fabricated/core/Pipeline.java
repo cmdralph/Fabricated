@@ -313,14 +313,9 @@ public final class Pipeline {
 		this.plan = in.fabricApiPlan();
 		this.report = new Report(in.fabricatedVersion());
 		this.side = in.clientSide() ? EnvType.CLIENT : EnvType.SERVER;
-		// A mod file may nest a copy of a mod found elsewhere: NeoForge loads the newest.
-		Map<String, NeoForgeMod> byId = new LinkedHashMap<>();
-		for (NeoForgeMod m : in.neoForgeMods()) byId.merge(m.id(), m, (a, b) -> parseVersion(b.version()).compareTo(parseVersion(a.version())) > 0 ? b : a);
+		Map<String, NeoForgeMod> byId = newestById(in.neoForgeMods());
 		this.neoForgeMods = List.copyOf(byId.values());
-		neoMods.putAll(byId);
-		for (NeoForgeMod m : neoForgeMods) {
-			for (String alias : m.provides()) neoMods.putIfAbsent(ModIds.toNeoForgeId(alias), m);
-		}
+		neoMods.putAll(withProvides(byId));
 		this.providedElsewhere = providedElsewhere(plan, neoForgeMods);
 		this.builtins = new ArrayList<>(builtins(in, providedElsewhere.keySet()));
 	}
@@ -332,17 +327,29 @@ public final class Pipeline {
 	 * platform glue leaves its classes, mixins and bridges out.
 	 */
 	public static Map<String, NeoForgeMod> providedElsewhere(FabricApiPlan plan, List<NeoForgeMod> neoForgeMods) {
-		Map<String, NeoForgeMod> byNeoId = new LinkedHashMap<>();
-		for (NeoForgeMod m : neoForgeMods) byNeoId.putIfAbsent(m.id(), m);
-		for (NeoForgeMod m : neoForgeMods) {
-			for (String alias : m.provides()) byNeoId.putIfAbsent(ModIds.toNeoForgeId(alias), m);
-		}
+		Map<String, NeoForgeMod> byNeoId = withProvides(newestById(neoForgeMods));
 		Map<String, NeoForgeMod> provided = new LinkedHashMap<>();
 		for (FabricApiPlan.Module module : plan.modules().values()) {
 			NeoForgeMod provider = byNeoId.get(ModIds.toNeoForgeId(module.id()));
 			if (provider != null) provided.put(module.id(), provider);
 		}
 		return provided;
+	}
+
+	/** Each NeoForge mod by id: a mod file may nest a copy of a mod found elsewhere, and NeoForge loads the newest. */
+	private static Map<String, NeoForgeMod> newestById(List<NeoForgeMod> mods) {
+		Map<String, NeoForgeMod> byId = new LinkedHashMap<>();
+		for (NeoForgeMod m : mods) byId.merge(m.id(), m, (a, b) -> parseVersion(b.version()).compareTo(parseVersion(a.version())) > 0 ? b : a);
+		return byId;
+	}
+
+	/** The mods by id and by the ids they provide (NeoForge ids), an id a mod has taking precedence over a provided one. */
+	private static Map<String, NeoForgeMod> withProvides(Map<String, NeoForgeMod> byId) {
+		Map<String, NeoForgeMod> all = new LinkedHashMap<>(byId);
+		for (NeoForgeMod m : byId.values()) {
+			for (String alias : m.provides()) all.putIfAbsent(ModIds.toNeoForgeId(alias), m);
+		}
+		return all;
 	}
 
 	public static Result run(Input in) {

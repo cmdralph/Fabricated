@@ -68,7 +68,7 @@ verified), [`PORTING.md`](PORTING.md) (the 1.20.1 and Forge evaluation and the p
 |---|---|---|
 | Minecraft-independent modules and all unit tests | `./gradlew -Pfabricated.coreOnly=true build` | anywhere (Maven Central only) |
 | One version's jar and the test mods | `./gradlew :mc:neoforge-26.1.2:fabricatedJar :mc:neoforge-26.1.2:testmods` | needs `maven.neoforged.net`, Mojang and `maven.fabricmc.net` |
-| Another platform's version | `./gradlew -Pfabricated.platforms=forge --configure-on-demand :mc:forge-26.2:fabricatedJar :mc:forge-26.2:testmodJar` (`forge-legacy`: `:mc:forge-legacy-1.20.1`) | needs the platform's maven and Mojang |
+| A Forge platform's version | on that platform's branch (`forge`, `forge-legacy`), as its README says | needs the platform's maven and Mojang |
 | Everything on NeoForge | `./gradlew build` | same |
 | A real server with the test mods | `ci/<platform>/smoke-server.sh <minecraft> <loader version> <work dir>` (on the game's Java) | locally or CI |
 | A real client with the test mods | `ci/<platform>/smoke-client.sh` (same arguments) | CI (HeadlessMC, Xvfb and `gh`) |
@@ -84,9 +84,9 @@ them, which a server or client run shows. A change to documentation alone (`docs
 
 **CI** (`.github/workflows`): the quick check (`check.yml`) on each push to a working branch runs the unit tests and,
 for each platform the push changed, one version built and booted on a server with the test mods
-(`ci/changed-targets.py` picks it; shared code boots NeoForge's newest). The full matrix (`build.yml` for NeoForge,
-`build-forge.yml`, `build-forge-legacy.yml`) runs on pull requests to `main`, release tags and by hand, for the
-platforms a change touched; a push to `main` (a merge) only builds, to keep `main`'s Gradle caches current. The
+(`ci/changed-targets.py` picks it; shared code boots the branch's platform). The full matrix (`build.yml`, NeoForge's,
+on `main`; each Forge branch runs its own `build-forge*.yml` on pull requests into it) runs on pull requests to `main`,
+release tags and by hand; a push to `main` (a merge) only builds, to keep `main`'s Gradle caches current. The
 informational runs below run on release tags and by hand with `extended`. A job installs the game once and its later
 runs copy that install (`ci/install-cache.sh`).
 
@@ -155,8 +155,9 @@ mc/neoforge/<version>        (one Gradle project per Minecraft version, MDG)
   │              + the folders the version's `shared_sources` lists: mc/neoforge/common (all; renamed for 1.21.1),
   │                mc/neoforge/common121 (1.21.1, 1.21.11), mc/neoforge/common12111 (1.21.11, 26.x), mc/neoforge/common26 (26.x),
   │                mc/neoforge/common26early (26.1.2, 26.2), mc/neoforge/common26late (26.2, 26.3)
-  │     26.x only, compileOnly: fabric-renderer-api-v1's jar (pass-through module, typed calls)
-  ├─ source sets testmod, testmodbroken, testmodfrapi (26.x)  ──compileOnly──► main output, fabric-loader-api, api
+  │     compileOnly: the jars of fabric-renderer-api-v1 and fabric-model-loading-api-v1 on 26.x (pass-through modules,
+  │       typed calls); stand-ins in Mojang's names on 1.21.1 and 1.21.11 (src/fabricapistubs)
+  ├─ source sets testmod, testmodbroken, testmodfrapi  ──compileOnly──► main output, fabric-loader-api, api
   └─ fabricatedJar = loader classes + core + fabric-loader-api + api + META-INF/fabricated/game-mod.jar (main)
 ```
 
@@ -176,7 +177,7 @@ vendored modules in `mc/neoforge/<version>/src/fabricapi` and the bridges in `mc
 | Seam | How | Type-safe? |
 |---|---|---|
 | Which code a version gets | Gradle source directories (the version's `shared_sources` property, read by `mc/mc.gradle`): each version compiles only its own and the shared folders it lists, under `mc/<platform>/` or, for an entry with a slash, from the repository root (`mc/forge-shared`: what Forge 61 to 66 and Forge 47 compile as it is) | compile-time |
-| Which loader a version builds for | The folder its project is in, `mc/<platform>/<version>` (`neoforge`, `forge` or `forge-legacy`): `mc/platform-<platform>.gradle` (build plugin, mod descriptor, `gameDependencies`) and `loader/<platform>` (discovery services) next to `loader/common`. Every branch holds every platform; `-Pfabricated.platforms` picks which a build configures (NeoForge's by default) | compile-time |
+| Which loader a version builds for | The folder its project is in, `mc/<platform>/<version>` (`neoforge`, `forge` or `forge-legacy`): `mc/platform-<platform>.gradle` (build plugin, mod descriptor, `gameDependencies`) and `loader/<platform>` (discovery services) next to `loader/common`. A branch holds its own platform's folders (`main` NeoForge's); `-Pfabricated.platforms` picks among them (all it holds by default) | compile-time |
 | Discovery services → FML | `META-INF/services` in the `loader` source set: `IModFileCandidateLocator`, `IDependencyLocator`, `IModLanguageLoader`, `ClassProcessor` | compile-time against FML SPI |
 | Version facts → core | `META-INF/fabricated/version.properties` (generated: Minecraft version, namespace, Mixin versions) and `fabric-api-plan.json` (data, per version) | data, validated when parsed |
 | Discovery → in-game mod | `FabricatedState.get()` (a `volatile` static in `loader`, published once discovery ends) | compile-time |

@@ -439,19 +439,19 @@ NeoForge already cover those users.
   these modules don't have yet.
 - **Done (health pass after PR #64):** a review of the whole engine on four fronts (stability, untrusted input,
   overhead, drift from the design): SEC-1 to SEC-4, CACHE-1, CACHE-2, BRIDGE-1 and BRIDGE-2 fixed, SEC-5, PERF-1,
-  PERF-2, CACHE-3 and ARCH-1 open; the design documents corrected where the code had moved on. CI no longer runs the
+  PERF-2, CACHE-3 and ARCH-1 open then (CACHE-3 and ARCH-1 since fixed, `FINDINGS.md`); the design documents
+  corrected where the code had moved on. CI no longer runs the
   game matrix for a change to documentation alone, and each job has a time limit.
 - **Done (2026-10-27):** CI in two tiers: a quick check on each push, the full matrix on pull requests to `main`,
   release tags and by hand, the informational runs with `extended`; a push to `main` only builds; a job installs the
   game once for all its runs (*Rethink*, item 2).
 - **Next:** the gates listed in the rendering-pipeline plan; checks for what the corpus mods do in the world.
-- **Noted at the cleanup (task 4), for later:** copies only a new kind of shared folder would merge: the loot mixins
-  Forge and NeoForge both have per version (about 875 lines; folders shared across platforms per version range), the
-  `fabricapi-overrides` copied between versions (about 875; `import-fabric-api.sh` copies each version's alone), the
-  biome and particle code Forge 47 and NeoForge 1.21.x both have (needs `renamed_classes` the other way), and the
-  stand-ins in Forge's `src/fabricapistubs`; `FabricDependencyLocator`'s runs both Forge loaders have alike (about 300
-  lines, around platform calls that differ). The Forge projects set up NeoForge's broken and renderer test-mod source
-  sets they never build (`mc/mc.gradle`). Access widener records keep a `transitive` flag nothing acts on (every
+- **Noted at the cleanup (task 4), for later:** the `fabricapi-overrides` copied between versions (about 875 lines;
+  `import-fabric-api.sh` copies each version's alone, so identical copies need shared-overrides support there). Copies
+  across platforms (the loot mixins Forge and NeoForge both have, the biome and particle code Forge 47 and NeoForge
+  1.21.x share) stay per branch since each platform has its own (*Branches*); `FabricDependencyLocator`'s runs both
+  Forge loaders have alike, the stand-ins in Forge's `src/fabricapistubs` and the test-mod source sets the Forge
+  projects set up but never build are the Forge branches' to merge. Access widener records keep a `transitive` flag nothing acts on (every
   access transformer applies to every mod). The retired config keys (`logLevel`, `preferNativeNeoForgeMods`,
   `preferFabric`) stay accepted and ignored at 0.5.0, so older configs don't warn. Flashback's refusal
   (`compat-plan.json`, CORPUS-21) rests on NeoForge's bootstrap registry freeze, which CORPUS-32 moved after the

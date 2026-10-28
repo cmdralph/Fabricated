@@ -3,6 +3,25 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-10-28: Cleanup (task 5 of the v0.5.x update)
+
+- **Duplicated logic merged:** `Pipeline`'s two maps of NeoForge mods by id now share one rule, the newest copy of a
+  mod (as NeoForge loads), where `providedElsewhere` had kept the first it met; one byte search for an annotation
+  descriptor (`Annotations.mentions`) where `EnvironmentStripper` and `MultiLoaderJars` each had one; the engine
+  modules' Java 21 toolchain, Java 17 target, repository and JUnit setup in one block of the root build, where `core`,
+  `api` and `fabric-loader-api` each repeated it.
+- **Dead code:** `MultiLoaderJars.forNeoForge`, which only its tests called (they ask `fabricReason`).
+- **Outdated docs:** `claude.md` and `PORTING.md` described the one-tree model (building a Forge version on `main`, the
+  Forge workflows on pull requests to `main`, every branch holding every platform) and the test-mod and pass-through
+  compile setup per version; the roadmap called CACHE-3 and ARCH-1 open and listed cross-platform copies to merge that
+  now live on separate branches. `MIXINS.md`, which lists every mixin, was about 60 short: completed, with
+  `scripts/check-mixin-inventory.py`, which the core CI job runs, so a mixin added without its row fails.
+- **Checked, kept:** `ChunkGeneratorFeaturesMixin` (NeoForge declares `refreshFeaturesPerStep` on all five versions);
+  the Forge conditions in the shared build files and core's Forge descriptor and helpers (the Forge branches use them,
+  and a sync would delete what `main` deletes); the fluid render helpers' one shared handle (merging them would couple
+  two classes for three lines); access widener `transitive` flags and the retired config keys (roadmap, *Noted at the
+  cleanup*). No public API change (`docs/API.md` unchanged).
+
 ## 2026-10-28: Sharing packs with Sinytra's ecosystem (task 3 of the v0.5.x update)
 
 - **The specification, rechecked** against what packs hold (roadmap, *Rethink, 2026-10-28*): Fabricated replaces

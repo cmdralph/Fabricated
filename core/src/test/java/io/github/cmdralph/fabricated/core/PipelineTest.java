@@ -1768,6 +1768,10 @@ class PipelineTest {
 				"the provider's row wins over the skipped copy's");
 		assertEquals(Map.of("fabric-api-base", "fabric_api_base"), Pipeline.providedElsewhere(FabricApiPlan.parse(PLAN), neoForge).entrySet().stream()
 				.collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().id())));
+		// Of two copies of the provider (one nested in another mod's jar), the newest, which NeoForge loads.
+		List<Pipeline.NeoForgeMod> twice = List.of(new Pipeline.NeoForgeMod("fabric_api_base", "0.4.30", "Older Base", Map.of(), List.of()),
+				neoForge.getFirst());
+		assertEquals("Forgified Fabric API Base", Pipeline.providedElsewhere(FabricApiPlan.parse(PLAN), twice).get("fabric-api-base").displayName());
 	}
 
 	/** Fabric Loader gives every mod a root, and mods take the first without checking (OneConfig's list of mods, POLY-1). */
