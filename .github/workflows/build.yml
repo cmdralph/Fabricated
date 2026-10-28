@@ -52,6 +52,9 @@ jobs:
           distribution: temurin
           java-version: 21
       - uses: gradle/actions/setup-gradle@v4
+      # docs/MIXINS.md lists every mixin: one added without its row fails here.
+      - name: Every mixin has its row in docs/MIXINS.md
+        run: python3 -I scripts/check-mixin-inventory.py
       - name: Build and test Minecraft-independent modules
         run: ./gradlew -Pfabricated.coreOnly=true build --stacktrace
       - name: Upload test reports

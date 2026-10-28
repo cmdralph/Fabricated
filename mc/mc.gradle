@@ -437,9 +437,9 @@ if (project.namespace == 'OFFICIAL') {
                 'fabric-rendering-v1', 'fabric-screen-api-v1', 'fabric-command-api-v2'])
     }
 } else {
-    // 1.21.11's Fabric API jars use intermediary names, so the few pass-through members Fabricated and its test mods call
-    // are compiled against stand-ins that declare them in Mojang's names, as the remapped modules have them at runtime.
-    // Never packaged.
+    // 1.21.1's and 1.21.11's Fabric API jars use intermediary names, so the few pass-through members Fabricated and its
+    // test mods call are compiled against stand-ins that declare them in Mojang's names, as the remapped modules have
+    // them at runtime. Never packaged.
     sourceSets {
         fabricapistubs {
             java.srcDir 'src/fabricapistubs/java'
