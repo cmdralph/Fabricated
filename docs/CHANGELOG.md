@@ -32,6 +32,11 @@ One entry per working session, newest first: what changed, and how it was verifi
     API's resource loader; the 1.21.1 corpus server stops), CORPUS-45 (a LambDynamicLights hook applied to the wrong
     `getLightColor` overload stops the 1.21.1 corpus client; cause UNVERIFIED), CORPUS-46 (the 1.21.1 advanced runs
     stop past module resolution; cause UNVERIFIED), CORPUS-47 (the 1.21.1 OneConfig client).
+- **The final extended run** (#213 merged as `bf3f49a`; run 40691316584, green): Traveler's Backpack loads;
+  TechReborn stopped at one more `FabricBlockSettings` name, `luminance(ToIntFunction)`, which my comparison by name
+  and parameter count had missed. Added, and the comparison redone by exact descriptor (nothing else missing). The
+  1.21.1 corpus server still stops at Moonlight (CORPUS-44) and the client at LambDynamicLights (CORPUS-45), as
+  recorded; no further extended round, as decided.
 - **Noted, open:** HOLD-2 (the Forge ports have no CORPUS-42 drop yet), SER-1 (NeoForge 21.11 refuses vanilla's
   serializer registration too; no Fabric mod for 1.21.11 has been seen calling it).
 - Decided here: CORPUS-41's hook stays 1.21.1's (SER-1); CORPUS-42 drops holders only after an entrypoint failure, so

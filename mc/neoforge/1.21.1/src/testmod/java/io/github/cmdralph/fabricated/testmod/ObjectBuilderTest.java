@@ -71,7 +71,7 @@ public final class ObjectBuilderTest implements ModInitializer {
 				BlockEntityType.Builder.of(BarrelBlockEntity::new, stone).build());
 		// Mods call Fabric's factories and setters by Fabric's own names (CORPUS-39).
 		boolean blockSettings = FabricBlockSettings.of() != null
-				&& FabricBlockSettings.create().requiresTool().sounds(SoundType.STONE).hardness(2.0F).resistance(6.0F).nonOpaque() != null;
+				&& FabricBlockSettings.create().requiresTool().sounds(SoundType.STONE).hardness(2.0F).resistance(6.0F).nonOpaque().luminance(state -> 7) != null;
 		// Fabric mods register serializers through vanilla's method, which NeoForge refuses for mods (CORPUS-41).
 		EntityDataSerializer<Integer> serializer = EntityDataSerializer.forValueType(ByteBufCodecs.VAR_INT);
 		EntityDataSerializers.registerSerializer(serializer);
