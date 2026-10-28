@@ -121,12 +121,26 @@ echo "::group::fabric-bridge-report.txt"
 cat logs/fabric-bridge-report.txt || echo "(report missing)"
 echo "::endgroup::"
 
+# SMOKE_EXPECT_REFUSAL: the launch must stop, with this text in the server's output (Fabricated refusing Sinytra
+# Connector or a second Fabricated jar beside it).
+if [ -n "${SMOKE_EXPECT_REFUSAL:-}" ]; then
+	if [ "$status" != started ] && grep -qF -- "$SMOKE_EXPECT_REFUSAL" server.out; then
+		echo "PASS: the launch stopped with: $(grep -hF -m 1 -- "$SMOKE_EXPECT_REFUSAL" server.out | cut -c1-400)"
+		exit 0
+	fi
+	echo "FAIL: the launch should have stopped with '$SMOKE_EXPECT_REFUSAL' (status $status)"
+	exit 1
+fi
+
 # With extra mods (the official Fabric API jar), only "the server starts" is required: the other checks are
 # evidence for the report, since Fabric API's pass-through modules may legitimately change what loads.
 fail=0
 required_fail=0
+# A test mod check another mod's module answers for logs "<check> SKIPPED: <why>" in place of "<check> OK".
 check() {
-	if grep -q -- "$1" "$2"; then echo "PASS: $3"; else echo "FAIL: $3 (missing '$1' in $2)"; fail=1; fi
+	if grep -q -- "$1" "$2"; then echo "PASS: $3"
+	elif [ "${1% OK}" != "$1" ] && grep -q -- "${1% OK} SKIPPED" "$2"; then echo "SKIP: $3 ($(grep -m 1 -o -- "${1% OK} SKIPPED.*" "$2"))"
+	else echo "FAIL: $3 (missing '$1' in $2)"; fail=1; fi
 }
 [ "$status" = "started" ] && echo "PASS: server started" || { echo "FAIL: server did not start ($status)"; fail=1; required_fail=1; }
 if [ "$testmods" = none ]; then

@@ -27,7 +27,8 @@ public final class FabricLoaderApiReader implements IModFileReader {
 	@Override
 	public IModFile read(JarContents jar, ModFileDiscoveryAttributes attributes) {
 		try {
-			if (jar.findFile(FabricLoaderApiCopies.MARKER).isPresent() || !hasApi(jar)) return null;
+			// Standing down (Sinytra Connector, whose own copy its code needs, or another Fabricated jar): left as it is.
+			if (FabricCandidateLocator.refusal() != null || jar.findFile(FabricLoaderApiCopies.MARKER).isPresent() || !hasApi(jar)) return null;
 			Map<String, List<String>> services = new LinkedHashMap<>();
 			for (SecureJar.Provider provider : jar.getMetaInfServices()) services.put(provider.serviceName(), provider.providers());
 			Set<String> servicesLeftOut = FabricLoaderApiCopies.servicesLeftOut(services);

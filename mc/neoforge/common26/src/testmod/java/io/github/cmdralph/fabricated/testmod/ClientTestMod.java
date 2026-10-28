@@ -49,9 +49,13 @@ public final class ClientTestMod implements ClientModInitializer {
 
 		ClientConfigurationNetworking.registerGlobalReceiver(ConfigurationTest.Request.TYPE,
 				(payload, context) -> context.responseSender().sendPacket(new ConfigurationTest.Reply(7)));
-		ClientPlayNetworking.registerGlobalReceiver(NetworkingTest.VanillaPing.TYPE, (payload, context) -> {
-			if (payload.value() == 12) TestMod.LOGGER.info("FABRICATED-TEST minecraft namespace payload round trip OK");
-		});
+		if (NetworkingTest.OWN) {
+			ClientPlayNetworking.registerGlobalReceiver(NetworkingTest.VanillaPing.TYPE, (payload, context) -> {
+				if (payload.value() == 12) TestMod.LOGGER.info("FABRICATED-TEST minecraft namespace payload round trip OK");
+			});
+		} else {
+			TestMod.LOGGER.info("FABRICATED-TEST minecraft namespace payload round trip SKIPPED: {}", NetworkingTest.ANOTHER_MODS);
+		}
 		ClientPlayNetworking.registerGlobalReceiver(NetworkingTest.ContextPing.TYPE, (payload, context) -> {
 			if (payload.data().length == NetworkingTest.ContextPing.SIZE && payload.decodedWithContext()) {
 				TestMod.LOGGER.info("FABRICATED-TEST packet context while decoding a large payload OK");
@@ -73,7 +77,7 @@ public final class ClientTestMod implements ClientModInitializer {
 		}
 		ClientTickEvents.END_CLIENT_TICK.register(client -> {
 			// Once the server has announced it receives the payload (NET-4).
-			if (!vanillaPingSent && client.player != null && client.player.tickCount > 40 && ClientPlayNetworking.canSend(NetworkingTest.VanillaPing.TYPE)) {
+			if (NetworkingTest.OWN && !vanillaPingSent && client.player != null && client.player.tickCount > 40 && ClientPlayNetworking.canSend(NetworkingTest.VanillaPing.TYPE)) {
 				vanillaPingSent = true;
 				ClientPlayNetworking.send(new NetworkingTest.VanillaPing(11));
 			}
@@ -91,6 +95,10 @@ public final class ClientTestMod implements ClientModInitializer {
 				TestMod.LOGGER.error("FABRICATED-TEST client cannot send the ping payload to the server");
 			}
 			// The type the integrated server registered as it started, after NeoForge's registration event (NET-3).
+			if (!NetworkingTest.OWN) {
+				TestMod.LOGGER.info("FABRICATED-TEST late payload type round trip SKIPPED: {}", NetworkingTest.ANOTHER_MODS);
+				return;
+			}
 			if (!ClientPlayNetworking.getGlobalReceivers().contains(NetworkingTest.LatePing.TYPE.id())) {
 				ClientPlayNetworking.registerGlobalReceiver(NetworkingTest.LatePing.TYPE, (payload, context) -> {
 					if (payload.value() == 8) TestMod.LOGGER.info("FABRICATED-TEST late payload type round trip OK");

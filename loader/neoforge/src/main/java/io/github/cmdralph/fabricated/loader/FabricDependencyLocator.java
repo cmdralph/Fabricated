@@ -66,8 +66,9 @@ import net.neoforged.neoforgespi.locating.ModFileDiscoveryAttributes;
  * Runs Fabricated's discovery pipeline after NeoForge's own dependency locators (the mods those add, such as jar-in-jar
  * ones, are read by {@link NeoForgeMods}), then hands every translated Fabric mod to NeoForge as an ordinary mod file:
  * the (remapped) jar overlaid with the generated metadata, with split-package conflicts filtered out. Anything that
- * goes wrong here disables Fabric support for this launch with a warning; apart from {@code strictDependencies}, it
- * never stops the game.
+ * goes wrong here disables Fabric support for this launch with a warning; apart from {@code strictDependencies}, and
+ * Sinytra Connector or a second Fabricated jar in the mods folder ({@link FabricCandidateLocator#refusal}), it never
+ * stops the game.
  */
 public final class FabricDependencyLocator implements IDependencyLocator {
 	private static final Logger LOGGER = LoggerFactory.getLogger("Fabricated");
@@ -99,6 +100,11 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 	}
 
 	private void run(List<IModFile> loadedMods, IDiscoveryPipeline pipeline) throws IOException, JsonException {
+		String refusal = FabricCandidateLocator.refusal();
+		if (refusal != null) {
+			pipeline.addIssue(ModLoadingIssue.error(MESSAGE, refusal));
+			return;
+		}
 		FabricatedInfo info = FabricatedInfo.get();
 		String mcVersion = Fml.minecraftVersion();
 		String neoVersion = Fml.neoForgeVersion();

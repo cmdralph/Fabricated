@@ -49,6 +49,7 @@ import io.github.cmdralph.fabricated.core.remap.MappingTable;
 import io.github.cmdralph.fabricated.core.report.Report;
 import io.github.cmdralph.fabricated.core.resolve.Candidate;
 import io.github.cmdralph.fabricated.core.resolve.FabricApiPlan;
+import io.github.cmdralph.fabricated.core.runtime.ModContainerImpl;
 import io.github.cmdralph.fabricated.core.testutil.TestEnumBodies;
 import io.github.cmdralph.fabricated.core.testutil.TestEnums;
 import io.github.cmdralph.fabricated.core.testutil.TestJars;
@@ -1062,7 +1063,7 @@ class PipelineTest {
 	 * with the reason. With a plugin, which can skip it, the mod loads.
 	 */
 	@Test
-	void aRequiredMixinUsingAModThatIsNotLoadingDisablesItsMod(@TempDir Path game) throws Exception {
+	void aRequiredMixinUsingAModThatIsNotLoadingDisablesItsModAndAnotherIsLeftOut(@TempDir Path game) throws Exception {
 		Path mods = Files.createDirectories(game.resolve("mods"));
 		String api = "com/lib/Api";
 		// The library fails pre-flight (its mixin injects into a method the game doesn't have), so it isn't loading.
@@ -1080,18 +1081,39 @@ class PipelineTest {
 				.bytes("com/guarded/mixin/UsesMixin.class", mixinCalling("com/guarded/mixin/UsesMixin", api))
 				.bytes("com/guarded/Plugin.class", TestJars.emptyClass("com/guarded/Plugin", "java/lang/Object"))
 				.write(mods.resolve("guarded.jar"));
-		Pipeline.Result result = Pipeline.run(input(game, List.of(lib, user, guarded), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
+		// CORPUS-47: OneConfig's chat mixin needs adventure-platform-fabric, which it nests and pre-flight disables.
+		Path loose = TestJars.create().fabricModJson(TestJars.modJson("loose-mod", "1.0", "\"mixins\":[\"loose.mixins.json\"]"))
+				.text("loose.mixins.json", "{\"package\":\"com.loose.mixin\",\"mixins\":[\"UsesMixin\",\"KeptMixin\"]}")
+				.bytes("com/loose/mixin/UsesMixin.class", mixinCalling("com/loose/mixin/UsesMixin", api))
+				.bytes("com/loose/mixin/KeptMixin.class", mixinClass("com/loose/mixin/KeptMixin", "tick"))
+				.write(mods.resolve("loose.jar"));
+		Pipeline.Result result = Pipeline.run(input(game, List.of(lib, user, guarded, loose), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
 
 		Set<String> loaded = result.mods().stream().map(m -> m.translated().candidate().id()).collect(Collectors.toSet());
-		assertEquals(Set.of("guarded-mod"), loaded, result.report().render());
+		assertEquals(Set.of("guarded-mod", "loose-mod"), loaded, result.report().render());
 		Report.ModRow row = result.report().mods().stream().filter(r -> r.id().equals("user-mod")).findFirst().orElseThrow();
 		assertEquals(Report.Status.DISABLED, row.status());
 		assertTrue(row.detail().contains("com.user.mixin.UsesMixin -> needs class com.lib.Api of lib-mod, which isn't loading"), row.detail());
+		// Mixin stops the game applying such a mixin, required or not, unless a plugin skips it: it is left out.
+		for (String id : List.of("guarded-mod", "loose-mod")) {
+			Pipeline.LoadedMod mod = result.mods().stream().filter(m -> m.translated().candidate().id().equals(id)).findFirst().orElseThrow();
+			String config = id.substring(0, id.indexOf('-')) + ".mixins.json";
+			try (SafeArchive overlay = SafeArchive.open(mod.translated().overlay(), ArchiveLimits.DEFAULTS)) {
+				String mixins = String.valueOf(Json.parseObject(overlay.readText(config)).get("mixins"));
+				assertFalse(mixins.contains("UsesMixin"), mixins);
+				if (id.equals("loose-mod")) assertTrue(mixins.contains("KeptMixin"), "only that mixin goes: " + mixins);
+			}
+		}
+		String rendered = result.report().render();
+		assertTrue(rendered.contains("loose-mod: com.loose.mixin.UsesMixin -> needs class com.lib.Api of lib-mod, which isn't loading; Mixin would stop"
+				+ " the game applying it, so it is left out"), rendered);
+		assertTrue(result.report().mods().stream().filter(r -> r.id().equals("loose-mod")).findFirst().orElseThrow().detail()
+				.contains("1 mixin(s) left out that need a Fabric mod that isn't loading"), rendered);
 
 		// Skipping that mixin changes the mod's translation, not its jar: the analysis cached for the jar is not reused.
 		Files.writeString(game.resolve("config/fabricated.json"), "{\"schema\":1,\"mods\":{\"user-mod\":{\"skipMixins\":[\"user.mixins.json:UsesMixin\"]}}}");
-		Pipeline.Result skipped = Pipeline.run(input(game, List.of(lib, user, guarded), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
-		assertEquals(Set.of("guarded-mod", "user-mod"), skipped.mods().stream().map(m -> m.translated().candidate().id()).collect(Collectors.toSet()),
+		Pipeline.Result skipped = Pipeline.run(input(game, List.of(lib, user, guarded, loose), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
+		assertEquals(Set.of("guarded-mod", "user-mod", "loose-mod"), skipped.mods().stream().map(m -> m.translated().candidate().id()).collect(Collectors.toSet()),
 				skipped.report().render());
 	}
 
@@ -1278,7 +1300,8 @@ class PipelineTest {
 				.text(builtinMetadata, "{\"pack\": {\"pack_format\": 48}, \"neoforge:overlays\": {\"entries\": [{\"directory\": \"increased_height\","
 						+ " \"neoforge:conditions\": [{\"type\": \"tectonic:config\"}]}]}}")
 				.write(mods.resolve("tectonic.jar"));
-		Pipeline.Result result = Pipeline.run(input(game, List.of(tectonic), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
+		Pipeline.Input firstLaunch = input(game, List.of(tectonic), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null);
+		Pipeline.Result result = Pipeline.run(firstLaunch);
 
 		try (SafeArchive overlay = SafeArchive.open(result.mods().getFirst().translated().overlay(), ArchiveLimits.DEFAULTS)) {
 			assertEquals(Map.of("type", "lithostitched:add_features"), Json.parseObject(overlay.readText(modifier)));
@@ -1289,6 +1312,25 @@ class PipelineTest {
 					Json.parseObject(overlay.readText(biomeModifier)), "the NeoForge build's biome modifier is turned off");
 			assertEquals(Map.of("type", "neoforge:clear_spawns", "structures", List.of()), Json.parseObject(overlay.readText(structureModifier)));
 		}
+		// PROVIDER-3: its container shows its files as NeoForge reads them, to mods reading them through it (Forgified
+		// Fabric API's resource loader), from a copy of its jar: the jar itself is left as it is.
+		assertContainerShowsTheRewrites(result, builtinMetadata, plain);
+		try (SafeArchive original = SafeArchive.open(tectonic, ArchiveLimits.DEFAULTS)) {
+			assertTrue(original.readText(builtinMetadata).contains("neoforge:overlays"), "the mod's jar is never changed");
+		}
+		firstLaunch.cache().finish(5);
+		Pipeline.Result again = Pipeline.run(input(game, List.of(tectonic), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
+		assertTrue(again.mods().getFirst().translated().cacheHit());
+		assertContainerShowsTheRewrites(again, builtinMetadata, plain);
+	}
+
+	private static void assertContainerShowsTheRewrites(Pipeline.Result result, String builtinMetadata, String plain) throws Exception {
+		ModContainerImpl container = result.containers().get("tectonic");
+		assertEquals(Json.parseObject("{\"pack\": {\"pack_format\": 48}}"),
+				Json.parseObject(Files.readString(container.findPath(builtinMetadata).orElseThrow())));
+		assertEquals(Json.parseObject("{\"amplitudes\": [1.0]}"), Json.parseObject(Files.readString(container.findPath(plain).orElseThrow())));
+		assertTrue(container.findPath("META-INF/neoforge.mods.toml").isEmpty() && container.findPath("META-INF/mods.toml").isEmpty(),
+				"not the files translation generated for the platform");
 	}
 
 	@Test

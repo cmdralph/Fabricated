@@ -206,8 +206,11 @@ cat run/logs/fabric-bridge-report.txt || echo "(report missing)"
 echo "::endgroup::"
 
 fail=0
+# A test mod check another mod's module answers for logs "<check> SKIPPED: <why>" in place of "<check> OK".
 check() {
-	if grep -q -- "$1" "$log" client.out 2>/dev/null; then echo "PASS: $2"; else echo "FAIL: $2 (missing '$1')"; fail=1; fi
+	if grep -q -- "$1" "$log" client.out 2>/dev/null; then echo "PASS: $2"
+	elif [ "${1% OK}" != "$1" ] && grep -q -- "${1% OK} SKIPPED" "$log" client.out 2>/dev/null; then echo "SKIP: $2 ($(grep -h -m 1 -o -- "${1% OK} SKIPPED.*" "$log" client.out 2>/dev/null | head -1))"
+	else echo "FAIL: $2 (missing '$1')"; fail=1; fi
 }
 [ "$status" -eq 0 ] && echo "PASS: client exited normally" || { echo "FAIL: client exit status $status"; fail=1; }
 check "Successfully finished." "client joined a singleplayer world (mc-runtime-test)"
