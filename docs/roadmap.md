@@ -164,7 +164,16 @@ release workflow builds each platform's jars from its own branch. What it costs:
 request per Forge branch before it ships there, and `forge-shared` is kept on both Forge branches by hand. No branch
 was deleted.
 
-## Next release: v0.5.0
+## Next release: v0.5.1-alpha, the v0.5.x update
+
+v0.5.0-alpha (`releases/v0.5.0-alpha.md`) stopped packs that mix Fabricated with Sinytra's mods. The owner's plan for
+its update (2026-10-28), in order: coexistence first (T1, #217: every package one owner, a conflict resolved or
+explained), a branch per platform (T2, #218 to #220), the specification rethought for those packs (T3, #222, *Rethink,
+2026-10-28*), the fixes the owner's reference pack needs (T4, #221), a cleanup (T5, #223), then the release:
+v0.5.1-alpha (the owner's choice of version), with the full matrix on every branch and version, and after it 0.6.0-beta
+with what beta means (*Beta*, to come with that bump).
+
+## v0.5.0
 
 v0.4.0-alpha (`releases/v0.4.0-alpha.md`) shipped NeoForge's four versions and the Forge builds as server previews.
 v0.5.0 is where the Forge targets get Fabric mods' client side and the platforms' coverage becomes comparable, with no
