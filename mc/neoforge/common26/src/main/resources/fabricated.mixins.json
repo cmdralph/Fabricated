@@ -23,6 +23,7 @@
     "BuiltInRegistriesFreezeMixin",
     "BuiltInRegistriesInvoker",
     "GameDataFreezeMixin",
+    "RegistryManagerLateRegistryMixin",
     "DefaultAttributesValidationMixin",
     "PackRepositorySourcesMixin",
     "MobEffectMixin",

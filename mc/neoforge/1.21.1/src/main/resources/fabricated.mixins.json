@@ -15,6 +15,7 @@
     "BuiltInRegistriesFreezeMixin",
     "BuiltInRegistriesInvoker",
     "GameDataFreezeMixin",
+    "RegistryManagerLateRegistryMixin",
     "DefaultAttributesValidationMixin",
     "PackRepositorySourcesMixin",
     "EntityTypeBuilderMixin",

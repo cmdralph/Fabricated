@@ -10,6 +10,27 @@ One entry per working session, newest first: what changed, and how it was verifi
   version) and the roadmap (the update's plan, in *Next release*) say so.
 - **Then:** the Forge branches are synced with `main` for their jars, the full matrix with the extended runs goes on
   every branch and version, the release workflow builds the jars without publishing, and the owner decides the tag.
+- **The release's runs:** the extended runs on `main` (40762508369), `forge` (40763699822) and `forge-legacy`
+  (40763704487) and the release workflow's build (40763724245, ten jars and their checksums, nothing published) were
+  green. **CORPUS-47 is verified on the real mods:** the 1.21.1 client with OneConfig 1.5.2 and PolyPlus 1.3.15 leaves
+  OneConfig's chat mixin out, with adventure-platform-fabric disabled and explained, and reaches a world (to
+  `FINDINGS.md`). The 1.21.1 corpus runs stop where the release notes say (CORPUS-44, 45; CORPUS-46's cause found:
+  Pehkui's reach mixin finds no target on NeoForge 21.1).
+- **Found by those runs, fixed before the release (the owner's choice):**
+  - **PROVIDER-6:** with Forgified Fabric API, a Fabric initializer making a registry with its `FabricRegistryBuilder`
+    threw, as NeoForge refuses a registry after its new-registry event, and Fabricated runs initializers later than
+    Connector does. NeoForge's check lets one through while a Fabric entrypoint runs (`RegistryManagerLateRegistryMixin`,
+    always on). The test mod makes a registry the builder's way on every run, and the server with Forgified Fabric API
+    requires its registry made; with another mod's registry sync, it checks what mods need of it (made, entries,
+    callback, sync flag), not Fabricated's attributes and aliases.
+  - **DUP-2:** on NeoForge 21.1 a second Fabricated jar ended in a module error after DUP-1's refusal, which CI's check
+    didn't catch (it read the refusal's text). The other Fabricated jars are now claimed and never loaded, and the
+    refusal checks fail on a module error.
+  - **Noted, not fixed (ENTRY-1):** a mod failing its initializer after registering a configuration task can leave a
+    singleplayer join waiting (the test mod's 1.21.1 client with Forgified Fabric API, before PROVIDER-6).
+- **Verified:** locally, the 1.21.1 and 26.1.2 servers with the test mods pass every check, the new one among them,
+  which fails without the fix; both refusals stop the launch with their message and no module error on both versions,
+  where the second-jar one failed on 1.21.1 before. The client path, and Forgified Fabric API itself, in CI.
 
 ## 2026-10-28: Cleanup (task 5 of the v0.5.x update)
 

@@ -58,6 +58,7 @@
     "PoiTypesMixin": [],
     "RegistryDataLoaderEnchantmentMixin": ["fabric-item-api-v1"],
     "RegistryFriendlyByteBufMixin": ["fabric-networking-api-v1"],
+    "RegistryManagerLateRegistryMixin": [],
     "ReloadableResourceManagerMixin": [],
     "ReloadableServerRegistriesMixin": ["fabric-loot-api-v3"],
     "ReloadableServerResourcesMixin": ["fabric-resource-loader-v1", "fabric-resource-loader-v0"],
