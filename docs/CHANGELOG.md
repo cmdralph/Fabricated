@@ -14,8 +14,8 @@ One entry per working session, newest first: what changed, and how it was verifi
 - **The in-game mod for 1.21.1:** the shared code builds for it through a renamed copy (`renamed_classes`:
   `Identifier=ResourceLocation`) and small version helpers; what only 1.21.11 and later need moved to
   `mc/neoforge/common12111`, and 1.21.1 has its own versions of the hooks whose targets differ. Fabric API 0.116.17
-  with 17 native modules (`fabric-resource-loader-v0` for v1), fuel through NeoForge 21.1's data map and burn time
-  event, and the plan skips of 1.21.11.
+  with 18 native modules (`fabric-resource-loader-v0` for v1, and `fabric-particles-v1`, as on Forge 47), fuel through
+  NeoForge 21.1's data map and burn time event, and the plan skips of 1.21.11.
 - **Storage and energy bridges** on NeoForge 21.1's handler capabilities: the Forge bridge, ported, with fluid data
   components crossing both ways and Team Reborn's energy API on blocks and in items. Decided here: items in items stay
   unbridged on this version, as on Forge.
@@ -25,15 +25,34 @@ One entry per working session, newest first: what changed, and how it was verifi
   - A connection closed during configuration crashed the 1.21.1 server: the networking bridge named 1.21.11's
     accessor; it now asks Fabric API's `ServerConfigurationNetworking.getServer`.
   - Fabric's item settings weren't applied to `Item.Properties` on 1.21.1 (`NoSuchMethodError`).
+  - **REG-7:** on the first 1.21.1 client run, Fabric's main and client entrypoints ran at the end of `Minecraft`'s
+    constructor, after the first resource reload's common setup had closed registration ("Registry is already
+    frozen"): NeoForge 21.1 loads mods inside the constructor, so they now run right after it has.
+  - **COLOR-2:** with the Fabric API jar, `fabric-rendering-v1` (and the modules that need it) was off on the 1.21.1
+    client: NeoForge 21.1 keeps block and item colours in maps, as on Forge. The plan leaves out upstream's lookups
+    and the in-game mod reads NeoForge's maps, as on 1.21.11 for blocks.
+  - **SHADER-2:** past COLOR-2, upstream's shader hooks named NeoForge's shaders twice
+    (`neoforge:neoforge:shaders/...`), so the first resource reload failed and the client never reached a world.
+    NeoForge 21.1 resolves shader namespaces itself, as Forge 47 does: the plan leaves the hooks out (SHADER-1).
+  - **PART-3:** with the Fabric API jar, `fabric-particles-v1` was off on the 1.21.1 client: NeoForge 21.1 keys the
+    particle engine's providers by id, as Forge 47 does. Fabricated now ships the module, ported from Forge 47's
+    (PART-1).
 - **The test mod on 1.21.1:** the shared parts through `TestCompat`, 1.21.1 versions of the parts whose Fabric API
   differs, and the same log lines, so the smoke scripts stay one; they check mob conversion where 0.116 has no effect
   events. The test mod's resource loader dependency and its built-in pack's formats are build properties.
-- **CI:** 1.21.1 joins NeoForge's full matrix and the release. Decided here: the mods reading plugins take their
-  newest 1.21.1 builds until the first run gives ids to pin.
+- **CI:** 1.21.1 joins NeoForge's full matrix and the release. The mods reading plugins are pinned to the builds its
+  first run fetched; REI 16 names its common plugins `REIServerPlugin`, so the test mod's REI plugin is a class per
+  version. The client smoke checks the native particles module on 1.21.1, and a gate checks Fabric API's client
+  modules there (colour providers, the HUD callback) in the run with the Fabric API jar.
+- Decided here: **Fabric renderer API models in chunk sections on 1.21.1 come after this task** (FRAPI-5, open):
+  1.21.11's bridge is built on that version's block model parts, so 1.21.1 needs one of its own, measured on its
+  corpus first. The module loads.
 - Decided here: **Forge for 1.21.1 is not in this release.** It is Forge 52, an older FML and ModLauncher than the
   Forge 61 to 66 the `forge` folder targets, so it would need a loader variant and an in-game mod of its own.
-- Verification: core's tests; local server smokes, all 60 checks: 1.21.1 without and with Fabric API 0.116.17 (26
-  Fabric mods loaded), 1.21.11 and 26.1.2 after the shared changes. The client runs and the corpus on 1.21.1 are CI's,
+- Verification: core's tests; local server smokes, all 60 checks: 1.21.1 without and with Fabric API 0.116.17 (25
+  Fabric mods loaded, 18 modules native), 1.21.11 and 26.1.2 after the shared changes. Local 1.21.1 client smokes,
+  all 36 checks, without and with Fabric API 0.116.17 (34 Fabric mods loaded, none disabled; the colour and HUD checks
+  pass). CI's first 1.21.1 run (40606962688) found REG-7 and the REI plugin's interface; the corpus on 1.21.1 is CI's,
   on this task's pull request.
 
 ## 2026-10-27: Forge development sped up, and the Forge corpus runs reaching the game

@@ -13,7 +13,7 @@ import net.minecraft.client.Minecraft;
  * constructor. Later versions load them before the constructor, so {@code MinecraftEntrypointsMixin} runs the
  * entrypoints where Fabric Loader does, at the game thread; on NeoForge 21.1 that point comes before the mods exist, and
  * the constructor's end comes after the first resource reload has started, whose common setup closes registration
- * meanwhile. Here registration is over and that setup not begun, as when later versions run them.
+ * meanwhile (REG-7). Here registration is over and that setup not begun, as when later versions run them.
  */
 @Mixin(Minecraft.class)
 abstract class MinecraftModLoadingEntrypointsMixin {

@@ -41,7 +41,7 @@ wideners, mixins, and the isolation of broken mods (for example a missing depend
 
 | Minecraft | NeoForge | Java | Fabric mods use | Status |
 |---|---|---|---|---|
-| 1.21.1 | 21.1.265 | 21 | Intermediary names (remapped at load) | ✅ server test mods pass; the client run is CI's first on this version |
+| 1.21.1 | 21.1.265 | 21 | Intermediary names (remapped at load) | ✅ test mods pass; Fabric renderer API models aren't drawn in chunk sections yet |
 | 1.21.11 | 21.11.45 | 21 | Intermediary names (remapped at load) | ✅ test mods pass |
 | 26.1.2 | 26.1.2.116 | 25 | Mojang names (no remapping) | ✅ test mods pass |
 | 26.2 | 26.2.0.90 | 25 | Mojang names (no remapping) | ✅ test mods pass |
@@ -56,7 +56,7 @@ that NeoForge has already changed. Fabricated handles this per module:
   `fabric-entity-events-v1`, `fabric-object-builder-api-v1`, `fabric-item-api-v1`, `fabric-block-api-v1`,
   `fabric-events-interaction-v0`, `fabric-loot-api-v3`, `fabric-content-registries-v0`,
   `fabric-transfer-api-v1`, `fabric-api-lookup-api-v1`, `fabric-menu-api-v1` (`fabric-screen-handler-api-v1`
-  on 1.21.1 and 1.21.11), `fabric-biome-api-v1` and `fabric-crash-report-info-v1`.
+  on 1.21.1 and 1.21.11), `fabric-biome-api-v1`, `fabric-crash-report-info-v1`, and on 1.21.1 `fabric-particles-v1`.
 - **Pass-through**: the module is loaded from the official Fabric API jar you install. Fabricated checks
   every mixin against NeoForge's code before loading it ("mixin pre-flight"). Modules whose mixins can't
   apply are disabled, along with every mod that requires them, with an explanation.
