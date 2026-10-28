@@ -245,6 +245,11 @@ check "FABRICATED-TEST interaction events OK" "native interaction events in the 
 check "FABRICATED-TEST loot OK" "native loot in the integrated server"
 check "FABRICATED-TEST content registries OK" "native content registries in the integrated server"
 check "FABRICATED-TEST transfer OK" "native transfer in the integrated server"
+# Fabricated ships fabric-particles-v1 on 1.21.1 only (later versions pass it through from the Fabric API jar).
+case "$mc" in 1.21.1)
+	check "FABRICATED-TEST particles OK" "native fabric-particles-v1: the particle engine finds the test mod's factory, kept by the type's id as NeoForge keeps them, and its sprite provider holds its sprite in the particle atlas (PART-1)"
+	;;
+esac
 check "FABRICATED-TEST api OK" "public API on the client"
 check "FABRICATED-TEST modmenu config screen OK" "a Fabric mod's Mod Menu config screen is behind NeoForge's mod list button"
 check "FABRICATED-TEST environment stripping OK" "@EnvironmentInterface kept on the client"

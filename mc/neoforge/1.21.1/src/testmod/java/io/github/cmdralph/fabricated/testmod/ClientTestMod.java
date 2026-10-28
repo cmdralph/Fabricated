@@ -86,6 +86,7 @@ public final class ClientTestMod implements ClientModInitializer {
 			}
 		});
 		WorldStateReport.register();
+		ParticleClientTest.register();
 		ClientPlayConnectionEvents.JOIN.register((listener, sender, client) -> {
 			TestMod.LOGGER.info("FABRICATED-TEST client join event OK");
 			if (ClientPlayNetworking.canSend(NetworkingTest.Ping.TYPE)) {

@@ -70,6 +70,9 @@ public final class ObjectBuilderTest implements ModInitializer {
 		Block sponge = BuiltInRegistries.BLOCK.get(ResourceLocation.withDefaultNamespace("sponge"));
 		PoiType poi = PointOfInterestHelper.register(id("test_poi"), 1, 1, sponge);
 
+		// A particle type for the native particles module's client check.
+		ParticleTest.register();
+
 		ServerLifecycleEvents.SERVER_STARTED.register(server -> {
 			List<String> failed = new ArrayList<>();
 			if (PoiTypes.forState(sponge.defaultBlockState()).map(holder -> holder.value() != poi).orElse(true)) failed.add("poi");
