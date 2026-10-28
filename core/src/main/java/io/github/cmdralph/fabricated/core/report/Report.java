@@ -24,7 +24,7 @@ public final class Report {
 
 	/** Outcome of one Fabric jar. */
 	public enum Status {
-		LOADED, DISABLED, REJECTED, PROVIDED_NATIVELY, SKIPPED
+		LOADED, DISABLED, REJECTED, PROVIDED_NATIVELY, PROVIDED_BY_MOD, SKIPPED
 	}
 
 	/** One row in the mod table. Line breaks and other control characters (mod-supplied text) become spaces. */
@@ -104,6 +104,7 @@ public final class Report {
 		header(sb, "Summary");
 		sb.append("  Loaded:              ").append(count(Status.LOADED)).append('\n');
 		sb.append("  Provided natively:   ").append(count(Status.PROVIDED_NATIVELY)).append('\n');
+		if (count(Status.PROVIDED_BY_MOD) > 0) sb.append("  Provided by mods:    ").append(count(Status.PROVIDED_BY_MOD)).append('\n');
 		sb.append("  Disabled:            ").append(count(Status.DISABLED)).append('\n');
 		sb.append("  Rejected jars:       ").append(count(Status.REJECTED)).append('\n');
 		sb.append("  Skipped:             ").append(count(Status.SKIPPED)).append('\n');
@@ -142,6 +143,7 @@ public final class Report {
 		return switch (status) {
 			case LOADED -> "Loaded Fabric mods";
 			case PROVIDED_NATIVELY -> "Fabric API modules provided by Fabricated";
+			case PROVIDED_BY_MOD -> "Fabric API modules provided by other mods";
 			case DISABLED -> "Disabled Fabric mods (the game continues without them)";
 			case REJECTED -> "Rejected jars";
 			case SKIPPED -> "Skipped";

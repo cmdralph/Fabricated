@@ -1,10 +1,11 @@
 name: Quick check
 
 # Every push to a working branch: the unit tests, and one version of each platform the push changed built and booted on
-# a dedicated server with the test mods (ci/changed-targets.py picks them; shared code boots NeoForge's newest). About
-# five minutes, against the full matrix's half hour, which runs on pull requests to main, release tags and by hand
-# (build.yml, build-forge.yml, build-forge-legacy.yml). main and the platform branches only receive merges of work that
-# passed the full matrix. Documentation alone builds nothing.
+# a dedicated server with the test mods (ci/changed-targets.py picks them; shared code boots the newest version of the
+# platform the branch holds). About five minutes, against the full matrix's half hour, which runs on pull requests to
+# main (build.yml) and to the platform branches (build-forge.yml on forge, build-forge-legacy.yml on forge-legacy),
+# release tags and by hand. main and the platform branches only receive merges of work that passed the full matrix.
+# Documentation alone builds nothing.
 on:
   push:
     branches-ignore: [main, forge, forge-legacy]
@@ -12,7 +13,6 @@ on:
       - 'docs/**'
       - '**.md'
       - '.github/workflows/release.yml'
-      - '.github/workflows/branch-readme.yml'
 
 permissions:
   contents: read

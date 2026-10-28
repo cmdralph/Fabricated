@@ -6,7 +6,7 @@ Fabricated has a small public API for mods that want to work with the Fabric mod
 - Fabric mods that want to detect Fabricated;
 - how to depend on the API.
 
-The API is part of Fabricated and licensed under GPL-3.0, like the rest of the project. The API has no dependencies: no Minecraft, NeoForge or Fabric types. The same jar works on every Minecraft version Fabricated supports. The API version, currently **1.0.0**, follows semantic versioning on its own, separate from Fabricated's release version.
+The API is part of Fabricated and licensed under GPL-3.0, like the rest of the project. The API has no dependencies: no Minecraft, NeoForge or Fabric types. The same jar works on every Minecraft version Fabricated supports. The API version, currently **1.1.0**, follows semantic versioning on its own, separate from Fabricated's release version.
 
 ## Depending on it
 
@@ -16,7 +16,7 @@ The API is bundled in every Fabricated jar. Compile against it, but never ship i
 dependencies {
     // Not published to a maven yet: build it with ./gradlew :api:jar (api/build/libs), or compile against a
     // Fabricated jar, which bundles it.
-    compileOnly "io.github.cmdralph.fabricated:fabricated-api:1.0.0"
+    compileOnly "io.github.cmdralph.fabricated:fabricated-api:1.1.0"
 }
 ```
 
@@ -86,6 +86,11 @@ To refuse to load with Fabricated versions known not to work, use Fabric's stand
 - `DISABLED`: in the jar, but can't run on NeoForge yet
 - `NOT_INSTALLED`
 - `UNSUPPORTED`
+- `PROVIDED_BY_MOD` (API 1.1.0): another mod provides it (Forgified Fabric API, a module Sodium bundles), and its copy
+  is the one loaded; `reason()` names that mod. Fabricated's own copy of a native module stands down for it
+  ([`COMPATIBILITY.md`](COMPATIBILITY.md#mods-that-bring-fabric-api-or-fabric-loader)).
+
+`isAvailable()` is true for `NATIVE`, `LOADED` and `PROVIDED_BY_MOD`.
 
 Stability rules:
 - Methods may be added to `FabricatedApi` in minor versions, so don't implement it yourself.
