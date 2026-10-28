@@ -370,7 +370,7 @@ def frapiTestmodJar = tasks.register('testmodFrapiJar', Jar) {
     destinationDirectory = testmodsDir
     from sourceSets.testmodfrapi.output
 }
-// Not where the version has none (1.21.1): NeoForge would report the empty jar as a broken mod file.
+// Not where the version has none: NeoForge would report the empty jar as a broken mod file.
 if (frapiTestmodDir.isDirectory()) tasks.named('testmods') { dependsOn frapiTestmodJar }
 
 // --- Pass-through Fabric API modules, at compile time only -------------------------------------------------
