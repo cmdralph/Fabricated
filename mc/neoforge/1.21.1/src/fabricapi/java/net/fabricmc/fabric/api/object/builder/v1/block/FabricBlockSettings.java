@@ -439,4 +439,138 @@ public class FabricBlockSettings extends BlockBehaviour.Properties {
 		((AbstractBlockSettingsAccessor) this).setHasCollision(collidable);
 		return this;
 	}
+
+	// Fabricated: upstream's methods under Fabric's own names. They return FabricBlockSettings, so no vanilla method's
+	// descriptor matches them and each keeps its Fabric name in Intermediary, where mods call it (CORPUS-39); each
+	// does what the override under Mojang's name above does.
+
+	@Deprecated
+	public FabricBlockSettings noCollision() {
+		return noCollission();
+	}
+
+	@Deprecated
+	public FabricBlockSettings nonOpaque() {
+		return noOcclusion();
+	}
+
+	@Deprecated
+	public FabricBlockSettings slipperiness(float value) {
+		return friction(value);
+	}
+
+	@Deprecated
+	public FabricBlockSettings velocityMultiplier(float value) {
+		return speedFactor(value);
+	}
+
+	@Deprecated
+	public FabricBlockSettings jumpVelocityMultiplier(float value) {
+		return jumpFactor(value);
+	}
+
+	@Deprecated
+	public FabricBlockSettings sounds(SoundType group) {
+		return sound(group);
+	}
+
+	@Deprecated
+	public FabricBlockSettings breakInstantly() {
+		return instabreak();
+	}
+
+	@Deprecated
+	public FabricBlockSettings ticksRandomly() {
+		return randomTicks();
+	}
+
+	@Deprecated
+	public FabricBlockSettings dynamicBounds() {
+		return dynamicShape();
+	}
+
+	@Deprecated
+	public FabricBlockSettings dropsNothing() {
+		return noLootTable();
+	}
+
+	@Deprecated
+	public FabricBlockSettings allowsSpawning(BlockBehaviour.StateArgumentPredicate<EntityType<?>> predicate) {
+		return isValidSpawn(predicate);
+	}
+
+	@Deprecated
+	public FabricBlockSettings solidBlock(BlockBehaviour.StatePredicate predicate) {
+		return isRedstoneConductor(predicate);
+	}
+
+	@Deprecated
+	public FabricBlockSettings suffocates(BlockBehaviour.StatePredicate predicate) {
+		return isSuffocating(predicate);
+	}
+
+	@Deprecated
+	public FabricBlockSettings blockVision(BlockBehaviour.StatePredicate predicate) {
+		return isViewBlocking(predicate);
+	}
+
+	@Deprecated
+	public FabricBlockSettings postProcess(BlockBehaviour.StatePredicate predicate) {
+		return hasPostProcess(predicate);
+	}
+
+	@Deprecated
+	public FabricBlockSettings emissiveLighting(BlockBehaviour.StatePredicate predicate) {
+		return emissiveRendering(predicate);
+	}
+
+	@Deprecated
+	public FabricBlockSettings requiresTool() {
+		return requiresCorrectToolForDrops();
+	}
+
+	@Deprecated
+	public FabricBlockSettings hardness(float value) {
+		return destroyTime(value);
+	}
+
+	@Deprecated
+	public FabricBlockSettings resistance(float value) {
+		return explosionResistance(value);
+	}
+
+	@Deprecated
+	public FabricBlockSettings offset(BlockBehaviour.OffsetType offsetType) {
+		return offsetType(offsetType);
+	}
+
+	@Deprecated
+	public FabricBlockSettings noBlockBreakParticles() {
+		return noTerrainParticles();
+	}
+
+	@Deprecated
+	public FabricBlockSettings requires(FeatureFlag... features) {
+		return requiredFeatures(features);
+	}
+
+	@Deprecated
+	public FabricBlockSettings burnable() {
+		return ignitedByLava();
+	}
+
+	@Deprecated
+	public FabricBlockSettings solid() {
+		return forceSolidOn();
+	}
+
+	@Deprecated
+	public FabricBlockSettings notSolid() {
+		return forceSolidOff();
+	}
+
+	@Deprecated
+	public FabricBlockSettings pistonBehavior(PushReaction behavior) {
+		return pushReaction(behavior);
+	}
 }
