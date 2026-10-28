@@ -59,6 +59,7 @@
   },
   "client": [
     "client.BlockColorsLookupMixin",
+    "client.ItemColorsLookupMixin",
     "client.ClientConfigurationPacketListenerImplMixin",
     "client.KeyMappingAccessor",
     "client.MinecraftEntrypointsMixin",

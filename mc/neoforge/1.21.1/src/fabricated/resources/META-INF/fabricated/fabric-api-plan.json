@@ -156,7 +156,16 @@
       "plan": "passthrough"
     },
     "fabric-rendering-v1": {
-      "plan": "passthrough"
+      "plan": "passthrough",
+      "skipMixins": [
+        "fabric-rendering-v1.mixins.json:BlockColorsMixin#get",
+        "fabric-rendering-v1.mixins.json:BlockColorsMixin#blockColors",
+        "fabric-rendering-v1.mixins.json:ItemColorsMixin#get",
+        "fabric-rendering-v1.mixins.json:ItemColorsMixin#itemColors",
+        "fabric-rendering-v1.mixins.json:shader.ShaderProgramMixin",
+        "fabric-rendering-v1.mixins.json:shader.ShaderProgramImportProcessorMixin"
+      ],
+      "reason": "NeoForge keeps block and item colors in maps by block and by item: Fabricated looks colors up there instead of upstream's methods. NeoForge resolves the namespace of a core shader program, its stages and its imports, which upstream's shader mixins add again: Fabric's namespaced shader programs load through NeoForge's resolution."
     },
     "fabric-resource-conditions-api-v1": {
       "plan": "passthrough",
