@@ -3,6 +3,37 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-10-28: Sharing the game with Forgified Fabric API (task 1 of the v0.5.x update)
+
+- **The owner's report:** a v0.5.0-alpha 1.21.1 pack with Forgified Fabric API and Sodium for NeoForge stopped before
+  any mod ran: "ResolutionException: Modules fabricated and fabric_screen_handler_api_v1 export package
+  net.fabricmc.fabric.api.screenhandler.v1 to module bettermounthud".
+- **Reproduced** with stand-ins (a NeoForge mod with that id and package; a plugin library with Fabric Loader's
+  packages): two causes, Fabricated's native Fabric API modules against a NeoForge mod's copy (1.21.1, 1.21.11) and its
+  Fabric Loader API against Forgified Fabric Loader's (1.21.1, with or without Fabric mods).
+- **The owner's decisions** (roadmap, *Decisions, 2026-10-28*): Fabric API modules yield to the mod that provides
+  them; Fabric Loader's API is always Fabricated's.
+- **Fixed** (each in `FINDINGS.md`): PROVIDER-1 (a module another mod provides is that mod's; Fabricated's copy stands
+  down with its mixins and bridges), PROVIDER-2 (another jar's copy of Fabric Loader's API is left out as FML reads
+  it), VER-2 and DEP-1 (`1d4699d`: Forgified Fabric API's version and its umbrella's `provides` satisfy Fabric mods'
+  dependencies), NAME-1 (translated jars named after their mod in FML's logs, not `remapped.jar`). A jar whose NeoForge
+  metadata is a placeholder for Sinytra Connector (`connector:placeholder`) is loaded as the Fabric mod it is.
+- **API 1.1.0:** `FabricApiModule.Status.PROVIDED_BY_MOD` (`docs/API.md`); no other change.
+- **Checked, no change needed:** Continuity's Fabric jar carries such a placeholder (read in its source) and loads as
+  the Fabric mod it is, with or without Forgified Fabric API; LambDynamicLights' jar was not read here (UNVERIFIED).
+  Kotlin for Forge's Kotlin is the platform's, and Fabric Language Kotlin's bundled copy is left out (`PackageGuard`).
+  Discovery: on the stand-in runs 2.2 to 2.8 s cold for 8 translated Fabric mods and 0.6 to 0.9 s warm, every
+  translation from the cache; the report's 3.9 s cold for about 120 mods is about 30 ms a mod.
+- **CI:** a gated server run on every version with `ci/neoforge/standins.py`'s mods (a module provided straight and
+  nested, a copy of Fabric Loader's API with its language loader service, two versions of a nested library, and a
+  second launch that must take every translation from the cache); a server run with the newest Forgified Fabric API,
+  Kotlin for Forge and Fabric Language Kotlin (the server must start); a 1.21.1 client run with Forgified Fabric API
+  and Sodium (informational).
+- **Verified locally:** core tests (328); the in-game mods and test mods of 1.21.1, 1.21.11 and 26.1.2; their server
+  smoke runs with and without the stand-ins, every check passing. 26.2 and 26.3 build only in CI (*Unverified and
+  blockers*); their `native-modules.json` were written from v0.5.0's in-game mods and are checked by the build.
+- **Noted, open:** DUP-1 (two Fabricated builds in one mods folder go undetected).
+
 ## 2026-10-28: The 1.21.1 corpus before v0.5.0
 
 - **Extended runs on `main` before the release** (`b409300`): NeoForge 40625072551, Forge 40625075054, Forge 47

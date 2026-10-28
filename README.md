@@ -69,6 +69,11 @@ reload listeners, built-in packs, their own registries, items and blocks using F
 entities with default attributes, block entity types, data attachments or Fabric's interaction events. 
 Loot table events, content registries and Fabric's transfer API work too. Per-module details are in [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md).
 
+**Forgified Fabric API and Sodium for NeoForge** can share the game with Fabricated. A Fabric API module another mod
+provides (Forgified Fabric API's modules, the ones Sodium bundles) is that mod's: Fabricated's own copy stands down and
+Fabric mods use the provider's. Fabric Loader's API is always Fabricated's: another jar's copy (Forgified Fabric Loader)
+is left out as NeoForge reads it. The report says who provides what. Details in [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md#mods-that-bring-fabric-api-or-fabric-loader).
+
 Fabric mods can also reach and integrate with NeoForge mods: a Fabric mod's plugins for JEI, REI, Jade, WTHIT and
 Simple Voice Chat are found by those mods' NeoForge builds (EMI's are converted too, untested in CI), its config
 screen opens from NeoForge's mod list, and its mixins into an installed NeoForge mod are checked before the game
@@ -186,7 +191,8 @@ warning in the report, so a bad config never crashes the game.
   even if a Fabric access widener asks. Code that reads them directly fails when it runs, and the report
   lists every such case.
 - **JPMS packages.** NeoForge requires every Java package to belong to exactly one mod. Fabric allows
-  sharing, so clashing mods are de-duplicated (identical files) or one is disabled.
+  sharing, so clashing Fabric mods are de-duplicated (identical files) or one is disabled, and a package a NeoForge
+  mod also has is that mod's.
 
 ## For mod developers
 

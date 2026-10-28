@@ -308,6 +308,28 @@ than one of them losing out (`neoforge/transfer`):
 
 **Scope honesty:** the native modules are the ones marked above. Where one falls short of upstream, its plan's `reason` says how (login queries in networking, elytra and most sleep events in entity events, …). Every gap ends up in `docs/COMPATIBILITY.md`.
 
+**Other mods' copies (the provider policy).** A package loads from one module only, so before FML builds the module
+layer every package Fabricated would add has one owner (COMPATIBILITY.md, *Mods that bring Fabric API or Fabric
+Loader*):
+
+* *A Fabric API module another mod provides is that mod's (PROVIDER-1).* `NeoForgeMods` lists the NeoForge mods and the
+  packages of their jars; a mod provides a module by its id, its `provides` or one of the module's packages
+  (`FabricDependencyLocator.providingByPackages`). `Pipeline.providedElsewhere` gives the plan's modules so provided,
+  whose ids then satisfy dependencies and whose rows read `PROVIDED_BY_MOD`. For a native one, core's `NativeModules`
+  says what stands down, from two data files: the version's `native-modules.json` (each native module's packages,
+  written by `scripts/native-module-index.py` from the plan's official Fabric API release; a package Fabric API keeps
+  in two modules is given to one, as Forgified Fabric API does) and the in-game mod's `mixin-modules.json` (the
+  module each of Fabricated's mixins serves; the build's `checkNativeModules` refuses a mixin or package missing from
+  them). The in-game mod is then handed to FML without those packages, with an overlay holding its `mods.toml` and
+  mixin configs without the mixins that stand down, and `NativeFabricApi` registers no bridge of a module another mod
+  provides (`FabricatedState.providedElsewhere`). Code that serves no module (entrypoints, registries, fluid types,
+  vanilla behaviour Fabric mods rely on) always runs.
+* *Fabric Loader's API is Fabricated's (PROVIDER-2).* `FabricLoaderApiReader`, an FML mod file reader ahead of FML's
+  own, reads any jar but a Fabricated build that has `net/fabricmc/loader/` or `net/fabricmc/api/` without them and
+  without the service files naming their classes (`FabricLoaderApiCopies`). On FML 4 the jar's contents are filtered;
+  FML 10 and later load plugin libraries with a plain class loader, which can't filter, so they get a copy of the jar
+  without those files under `.fabricated/loader-api/<sha-256>/`, of the same type.
+
 ---
 
 ## 7. Remapping (1.21.11) and determinism
@@ -418,7 +440,7 @@ versions is decided at compile time by which source folders it compiles, plus tw
 
 * **Root:** `<gameDir>/.fabricated/cache/v1/` (`TranslationCache.LAYOUT_VERSION`), resolved against the real game directory and checked to be inside it; no path component may be a symbolic link.
 * **Key** (`ModTranslator.translate`): a SHA-256 over the input jar's SHA-256, the Minecraft and NeoForge versions, the side, Fabricated's build (its version and a digest of its own classes and data, `fabricated.build` in the `version.properties` that `mc/mc.gradle` generates), the translation schema (`TRANSLATION_SCHEMA`), the mapping table's hash, the running Mixin and MixinExtras versions, the mod's config overrides, the NeoForge ids it loads after, its mixin configs, the packages only unsupported Fabric API modules have, and whether vanilla's code was found. Rebuilding Fabricated from the same sources keeps the digest; any change to its code or data translates every mod again.
-* **Entry:** `entries/<modid>-<first 40 hex of the key>/` holds `overlay.jar` (the generated files of step 5e, with rewritten mixin classes and configs), `remapped.jar` (1.21.11 only; 26.x uses the original jar + overlay with no copy) and `entry.json` (each file's SHA-256, the input hash, versions, side, timings, AT lines, pre-flight findings, notes, and the installed classes pre-flight read, with their fingerprints). Nested jars are stored once as `nested/<sha256>.jar`. Derived data (1.21.11's composed mapping table, linkage results) goes to `blobs/`, each file starting with its content's SHA-256.
+* **Entry:** `entries/<modid>-<first 40 hex of the key>/` holds `<modid>-overlay.jar` (the generated files of step 5e, with rewritten mixin classes and configs), `<modid>.jar` (the remapped jar, on 1.21.1 and 1.21.11; 26.x uses the original jar + overlay with no copy; named after the mod, as FML's logs name a mod file by its first jar) and `entry.json` (each file's SHA-256, the input hash, versions, side, timings, AT lines, pre-flight findings, notes, and the installed classes pre-flight read, with their fingerprints). Nested jars are stored once as `nested/<sha256>.jar`. Derived data (1.21.11's composed mapping table, linkage results) goes to `blobs/`, each file starting with its content's SHA-256.
 * **Integrity:** with `cache.verifyIntegrity` (on by default) each file of an entry is checked against `entry.json` before use, and a blob against its leading hash. A mismatch means it is deleted and rebuilt, and the report notes it. An entry is written to `tmp/` and moved into place atomically.
 * **Skip work:** an unchanged mod costs a lookup and hash checks. File hashes are memoised in `index.json` by path, with the size, modification time and, where the file system has them, change time and file key, and re-hashed when any changes. An entry is translated again when an installed class its pre-flight read has changed.
 * **GC:** entries, nested jars and blobs unused for `cache.maxUnusedLaunches` launches (default 5) are deleted; `index.json` records each one's last use.
