@@ -1,6 +1,7 @@
 package io.github.cmdralph.fabricated.neoforge;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -53,6 +54,8 @@ public final class EntrypointBridge {
 	private static volatile EntrypointBridge pendingClient;
 	/** Set once Fabric mods' main entrypoints have run. */
 	private static volatile boolean mainEntrypointsRan;
+	/** Set once a Fabric mod's entrypoint has failed. */
+	private static volatile boolean entrypointFailed;
 
 	private final FabricatedState state;
 	private final Dist dist;
@@ -99,7 +102,7 @@ public final class EntrypointBridge {
 		});
 
 		FabricTableEntries.recordVanilla();
-		failures.addAll(runner.run("preLaunch", PreLaunchEntrypoint.class, PreLaunchEntrypoint::onPreLaunch));
+		record(runner.run("preLaunch", PreLaunchEntrypoint.class, PreLaunchEntrypoint::onPreLaunch));
 		if (dist.isClient()) {
 			mainWithClient = !DatagenModLoader.isRunningDataGen();
 			if (!mainWithClient) runMain();
@@ -108,14 +111,19 @@ public final class EntrypointBridge {
 			return;
 		}
 		runMain();
-		failures.addAll(runner.run("server", DedicatedServerModInitializer.class, DedicatedServerModInitializer::onInitializeServer));
+		record(runner.run("server", DedicatedServerModInitializer.class, DedicatedServerModInitializer::onInitializeServer));
 		nanos = System.nanoTime() - start;
 		finish();
 	}
 
 	private void runMain() {
-		failures.addAll(runner.run("main", ModInitializer.class, ModInitializer::onInitialize));
+		record(runner.run("main", ModInitializer.class, ModInitializer::onInitialize));
 		mainEntrypointsRan = true;
+	}
+
+	private void record(List<EntrypointRunner.Failure> more) {
+		failures.addAll(more);
+		if (!more.isEmpty()) entrypointFailed = true;
 	}
 
 	/**
@@ -125,6 +133,22 @@ public final class EntrypointBridge {
 	 */
 	public static boolean mainEntrypointsPending() {
 		return !mainEntrypointsRan && FabricatedState.get() != null;
+	}
+
+	/**
+	 * Called as a registry freezes after the main entrypoints, with the intrusive holders nothing registered: whether to
+	 * drop them, so the freeze passes. Only once a Fabric mod's entrypoint has failed (CORPUS-42): content that mod built
+	 * before failing is never registered, and vanilla's check would stop the game for a mod already marked as failed.
+	 * Otherwise vanilla's check stands, as on Fabric.
+	 */
+	public static boolean dropLeftoverHolders(Object registry, Collection<?> holders) {
+		if (!entrypointFailed) return false;
+		String text = registry + " had " + holders.size() + " entr" + (holders.size() == 1 ? "y" : "ies")
+				+ " built but never registered, left by a Fabric mod whose entrypoint failed; dropped so the game can start: " + holders;
+		LOGGER.error("{}", text);
+		FabricatedState state = FabricatedState.get();
+		if (state != null) state.report().line("Entrypoint failures", text);
+		return true;
 	}
 
 	/** Runs the main and client entrypoints (once); called from {@code Minecraft}'s constructor where Fabric Loader runs them. */
@@ -144,7 +168,7 @@ public final class EntrypointBridge {
 		GameData.unfreezeData();
 		try {
 			if (mainWithClient) runMain();
-			failures.addAll(runner.run("client", ClientModInitializer.class, ClientModInitializer::onInitializeClient));
+			record(runner.run("client", ClientModInitializer.class, ClientModInitializer::onInitializeClient));
 			registerLate();
 		} finally {
 			GameData.freezeData();
