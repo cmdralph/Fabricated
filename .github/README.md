@@ -106,11 +106,13 @@ and why anything didn't.
 ```
 
 The Forge 47 code is in:
-- `loader/forge-legacy`: Forge 47's discovery services.
-- `mc/forge-legacy/1.20.1`: the in-game mod, reobfuscated to SRG's names, and the test mod in Intermediary's names.
+- `loader/forge-legacy`: Forge 47's discovery services, with the language provider and the transformation service in
+  `loader/forge-shared`, which Forge 61 to 66 share.
+- `mc/forge-legacy/1.20.1`: the in-game mod, reobfuscated to SRG's names, and the test mod in Intermediary's names,
+  with the code Forge 61 to 66 compile as it is in `mc/forge-shared`.
 
 The build uses ModDevGradle's `legacyforge` plugin (`mc/platform-forge-legacy.gradle`). CI is
-`.github/workflows/build-forge-legacy.yml` with `ci/forge-legacy/smoke-server.sh`. The project's layout and rules are in
+`.github/workflows/build-forge-legacy.yml` with `ci/forge-legacy/smoke-server.sh` and `ci/forge-legacy/smoke-client.sh`. The project's layout and rules are in
 [`CONTRIBUTING.md`](/CONTRIBUTING.md).
 
 ## Documentation
