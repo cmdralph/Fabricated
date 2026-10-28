@@ -98,8 +98,16 @@ public class FabricBlockSettings extends BlockBehaviour.Properties {
 		return new FabricBlockSettings();
 	}
 
-	// Fabricated: upstream's create() and its alias of() both take Mojang's name of(); one method serves both, as both do
-	// the same and a mod's calls to either reach of() once remapped.
+	/**
+	 * @deprecated replace with {@link BlockBehaviour.Properties#of()}
+	 */
+	@Deprecated
+	public static FabricBlockSettings create() {
+		return new FabricBlockSettings();
+	}
+
+	// Fabricated: create() and of() both stay: neither matches a vanilla method's descriptor (they return
+	// FabricBlockSettings), so each keeps Fabric's own name in Intermediary, and mods call both by those names.
 
 	/**
 	 * @deprecated replace with {@link BlockBehaviour.Properties#ofFullCopy(BlockBehaviour)}
@@ -159,7 +167,7 @@ public class FabricBlockSettings extends BlockBehaviour.Properties {
 		return this;
 	}
 
-	// Fabricated: upstream's lightLevel alias of luminance takes the name luminance has in Mojang's names, as above.
+	// Fabricated: upstream's lightLevel alias of luminance takes the name luminance has in Mojang's names.
 
 	@Deprecated
 	@Override

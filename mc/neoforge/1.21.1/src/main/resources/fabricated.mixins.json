@@ -19,6 +19,7 @@
     "PackRepositorySourcesMixin",
     "EntityTypeBuilderMixin",
     "BlockEntityTypeMixin",
+    "BlockEntityTypeBuilderMixin",
     "PoiTypesMixin",
     "BlockMixin",
     "BlockStateMixin",
