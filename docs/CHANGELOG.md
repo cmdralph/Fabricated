@@ -3,6 +3,18 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-10-28: Start of 0.6.0, toward 0.6.0-beta (end of task 6)
+
+- **v0.5.1-alpha** is a draft release (the owner's choice), built by the release workflow from `main` at `7163547`
+  (after #227), `forge` at `aff5b0e` and `forge-legacy` at `5a1ff6a`, for the owner to publish.
+- **Version 0.6.0** in development (`gradle.properties`, README's status, ARCHITECTURE), as 0.5.0's was started.
+- **Beta defined** (roadmap, *Beta: what 0.6.0-beta means*): NeoForge's on every version, the Forge platforms
+  previews; a stability bar (no launch stops for Fabricated, no open P0 or P1 on NeoForge, no open finding on untrusted
+  input, upgrades that keep a game directory, the 1.x API stable); compatibility targets as gates (the test mods, the
+  renderer and Sodium runs, packs with Forgified Fabric API, the corpora, the owner's reference pack); a launch-cost
+  baseline; and ship criteria. What blocks it today: SER-1, CORPUS-44 to 46, FRAPI-5, SEC-5, the informational runs
+  not yet gates, PERF-2. The roadmap's *Next release* says 0.6.0-beta.
+
 ## 2026-10-28: v0.5.1-alpha (task 6 of the v0.5.x update)
 
 - **Version 0.5.1** (the owner's choice: a patch release of v0.5.0-alpha), API 1.1.0 as T1 made it.

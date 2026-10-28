@@ -164,16 +164,70 @@ release workflow builds each platform's jars from its own branch. What it costs:
 request per Forge branch before it ships there, and `forge-shared` is kept on both Forge branches by hand. No branch
 was deleted.
 
-## Next release: v0.5.1-alpha, the v0.5.x update
+## Next release: 0.6.0-beta
 
-v0.5.0-alpha (`releases/v0.5.0-alpha.md`) stopped packs that mix Fabricated with Sinytra's mods. The owner's plan for
-its update (2026-10-28), in order: coexistence first (T1, #217: every package one owner, a conflict resolved or
-explained), a branch per platform (T2, #218 to #220), the specification rethought for those packs (T3, #222, *Rethink,
-2026-10-28*), the fixes the owner's reference pack needs (T4, #221), a cleanup (T5, #223), then the release:
-v0.5.1-alpha (the owner's choice of version), with the full matrix on every branch and version, and after it 0.6.0-beta
-with what beta means (*Beta*, to come with that bump). The release's extended runs (40762508369 on `main`, 40763699822
-on `forge`, 40763704487 on `forge-legacy`) were green and verified CORPUS-47 on the real mods, and found PROVIDER-6 and
-DUP-2; the owner chose to fix them before the release, which is then a draft for the owner to publish.
+v0.5.1-alpha (`releases/v0.5.1-alpha.md`) was the v0.5.x update the owner planned on 2026-10-28: coexistence with
+Sinytra's mods (T1, #217), a branch per platform (T2, #218 to #220), the specification rethought for those packs (T3,
+#222), the reference pack's fixes (T4, #221), a cleanup (T5, #223) and the release (T6): the full matrix on every branch
+and version, then PROVIDER-6 and DUP-2, which its extended runs found, fixed before it (#227, the owner's choice). The
+release workflow made it a draft for the owner to publish. 0.6.0 is in development from then on, toward 0.6.0-beta,
+which the next section defines.
+
+## Beta: what 0.6.0-beta means
+
+Defined on 2026-10-28, with the start of 0.6.0's development. Alpha meant the design could still move under a pack;
+beta means it doesn't: NeoForge's targets are set, and the work to 0.6.0-beta is closing faults and turning the
+informational runs into gates, not adding scope. Anything new that doesn't serve the criteria below goes into a track
+here for after the beta.
+
+**Platforms.** Beta is NeoForge's, on every version CI builds (1.21.1, 1.21.11, 26.1.2, 26.2, 26.3). Forge 61 to 66
+and Forge 47 stay previews: they ship with each release from their own branches, with their gates green, but the beta
+doesn't wait on their findings, and their notes say preview.
+
+**Stability bar.** What a beta promises, on NeoForge:
+
+1. **No launch stops for Fabricated.** A Fabric mod it can't run is disabled before it runs and the report says why,
+   as a module conflict already is (T1). The only launches Fabricated stops are its refusals (Sinytra Connector, a
+   second Fabricated jar), each with an error naming the jars. A mod's own fault, or another mod's module's
+   (PROVIDER-5, PROVIDER-7), is that mod's, and the report names the mod.
+2. **No open P0 or P1 on NeoForge**, by `FINDINGS.md`'s severities, UNVERIFIED ones included: a finding is fixed, or
+   narrowed to "the mod is disabled and the report says why" with the evidence that lowers its severity.
+3. **No open finding on untrusted input.** SEC-5's limits on nested jars hold across all the jars of a launch, not
+   per jar.
+4. **Upgrades don't break a game directory.** A cache from an older build is translated again (the schema is in the
+   cache key), and a retired config key stays accepted and ignored. Both hold today; the beta keeps them as rules.
+5. **The developer API (`docs/API.md`, 1.x) is stable.** A break needs the owner's decision, a major API version and
+   a changelog entry.
+
+**Compatibility targets.** Each one is a CI check on every NeoForge version, as a gate:
+
+| Target | Check | Today |
+|---|---|---|
+| The test mods, with and without Fabric API, server and client | the smoke runs and the Fabric API client modules | gates |
+| Fabric renderer and model APIs; Sodium and Iris for NeoForge | the renderer gates (26.x, 1.21.11) and the Sodium runs | gates, but FRAPI-5 (1.21.1) |
+| Packs sharing the game with Forgified Fabric API and Sodium | the coexisting-mods server; the Polyfrost and Forgified Fabric API clients | the server a gate (with PROVIDER-3's and PROVIDER-6's checks); the clients informational |
+| Popular Fabric mods: the mod corpus and the advanced corpus | each corpus's server and client reach a world, and every mod that doesn't load is named in the report with a reason | informational; 1.21.1's stop (CORPUS-44 to 46) |
+| The owner's reference pack (Forgified Fabric API, Sodium, OneConfig, about 130 Fabric mods, 1.21.1) | boots to the title screen, its report explaining each disabled mod | OneConfig and PolyPlus reach a world (CORPUS-47); the whole pack isn't in CI (UNVERIFIED) |
+
+A run becomes a gate once it holds on two extended runs in a row on the same code (CI-1: a check that can change
+between runs of the same code is a defect of the check).
+
+**Speed and weight.** A launch's cost is measured and kept: a cold and a warm launch per version in *Performance
+baselines*, the warm one with PERF-2's re-reads gone. The beta's numbers become the bar later releases are held to; a
+change costing more than 10% on either says why in its pull request.
+
+**Ship criteria for 0.6.0-beta:**
+
+1. The stability bar holds on `main`'s release head.
+2. Every target above is a gate and green on that head, on every NeoForge version.
+3. The full matrix is green on `main`, `forge` and `forge-legacy`, on two extended runs.
+4. `COMPATIBILITY.md` matches the release head's CI, and the release notes say what changed since v0.5.1-alpha and
+   what to do on upgrade.
+5. The owner chooses the version and approves the tag, as for every release.
+
+**What blocks it today** (2026-10-28): SER-1, CORPUS-44 to 46 and FRAPI-5 (the stability bar); SEC-5; the corpus and
+coexistence clients not yet gates; PERF-2 and the warm-launch baseline. The order to work them in: the 1.21.1 corpus
+stops (CORPUS-44 to 46), SER-1, SEC-5, FRAPI-5, then the gates and the baselines.
 
 ## v0.5.0
 
