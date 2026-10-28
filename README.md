@@ -14,7 +14,7 @@ It's built to be:
 - **Safe.** Mod jars are treated as untrusted input. Fabricated never runs mod code while translating, never
   modifies your mod jars, never touches the network, and has no telemetry.
 
-> **Status: alpha (0.5.0 in development; the latest release is v0.4.0-alpha).** Nearly every Fabric API module
+> **Status: alpha (v0.5.0-alpha).** Nearly every Fabric API module
 > loads, but many Fabric mods still patch code that NeoForge changed and are disabled before they run. Read
 > [What works today](#what-works-today) before relying on it.
 
@@ -69,9 +69,10 @@ reload listeners, built-in packs, their own registries, items and blocks using F
 entities with default attributes, block entity types, data attachments or Fabric's interaction events. 
 Loot table events, content registries and Fabric's transfer API work too. Per-module details are in [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md).
 
-Fabric mods can also reach and integrate with NeoForge mods: a Fabric mod's plugins for JEI, REI, Jade and EMI are
-found by those mods' NeoForge builds, its config screen opens from NeoForge's mod list, and its mixins into an
-installed NeoForge mod are checked before the game starts.
+Fabric mods can also reach and integrate with NeoForge mods: a Fabric mod's plugins for JEI, REI, Jade, WTHIT and
+Simple Voice Chat are found by those mods' NeoForge builds (EMI's are converted too, untested in CI), its config
+screen opens from NeoForge's mod list, and its mixins into an installed NeoForge mod are checked before the game
+starts.
 
 ## What it does not support
 
@@ -157,7 +158,7 @@ warning in the report, so a bad config never crashes the game.
 
 | Setting | Effect |
 |---|---|
-| `onEntrypointFailure` | `error` (default): an exception in a Fabric initializer stops on NeoForge's error screen. `disable`: the mod is marked failed, its other entrypoints are skipped, and loading continues. Content it registered before failing stays registered. |
+| `onEntrypointFailure` | `error` (default): an exception in a Fabric initializer stops on NeoForge's error screen. `disable`: the mod is marked failed, its other entrypoints are skipped, and loading continues. Content it registered before failing stays registered; content it built but never registered is dropped, with an error naming it, so it can't stop the registries' freeze. |
 | `strictDependencies` | `true`: a Fabric mod with unmet dependencies stops the game on the error screen instead of being skipped. |
 | `strictLinkage` | `true`: also disable mods (not only Fabric API modules) that reference Minecraft code missing at runtime. |
 | `cache.*` | Translation cache in `.fabricated/cache` in the game directory. Entries are hash-checked before use and deleted after `maxUnusedLaunches` launches without use. |

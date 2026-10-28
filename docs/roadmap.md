@@ -120,7 +120,10 @@ The owner's plan to v0.5.0-alpha, in order (2026-10-27):
    shared sources in `common121` and other copies merged (about 3,700 lines), the audits' dead code, stale CI steps
    and outdated documents (CHANGELOG). Left for later, as below: the copies a new kind of shared folder would merge.
 5. Release v0.5.0-alpha: documents and versions, the full matrix green on every branch and version, the tag and notes
-   for NeoForge, Forge and Forge 47 (a draft for the owner to publish).
+   for NeoForge, Forge and Forge 47 (a draft for the owner to publish). The extended runs on `main` before it
+   (40625072551, 40625075054, 40625077485) stopped the 1.21.1 corpus servers; the owner chose to fix those first, in
+   their own pull request: CORPUS-39 to 43 (two missing Fabric API methods, NeoForge 21.1 refusing vanilla's serializer
+   registration, content a failed entrypoint left, a library package NeoForge 21.1's launcher ships).
 
 | Platform | Goals | Status |
 |---|---|---|
@@ -395,6 +398,8 @@ with its cause, why the tests missed it and its fix, in the change that fixes it
 | CORPUS-36 | P2 | Farmer's Delight Refabricated (Forge 61 to 66 corpus) | Disabled: it "adds enum constants with Mixin's enum extensions, which need Mixin 0.17.1 or later; this Forge runs Mixin 0.8.7". Forge reads no enum extension file to translate them into (ENUM-1 is NeoForge's). | Not repairable on Forge's Mixin; its Forge build is used. |
 | CORPUS-37 | P2 | Porting Lib's accessors module (Forge 47 corpus: Create Fabric, Farmer's Delight Refabricated) | Pre-flight disables it: accessors of fields Forge 47 retyped (`MinecraftServer.f_129740_`, `PotionBrewing$Mix.f_43532_` and `f_43534_`, and on the client `ParticleEngine.f_107293_`, PART-1's map), and with it the modules and mods needing it (LINK-2 for the base module's texture interface). | Not repaired: whether a bridge can reach each field's new type is UNVERIFIED; the mods' Forge builds are used. |
 | CORPUS-38 | P3, UNVERIFIED | Fabric Language Kotlin (Forge corpus runs) | The linkage check lists `KotlinLanguageAdapter -> missing class net.fabricmc.loader.language.LanguageAdapter`, Fabric Loader's old adapter interface, which Fabricated doesn't provide. Kotlin mods load through its current adapter; whether any mod still names the old one is UNVERIFIED. | Provide the old interface if a mod needs it. |
+| HOLD-2 | P0 on Forge, UNVERIFIED | Forge 61 to 66's and Forge 47's `MappedRegistryPendingHoldersMixin` and `NamespacedWrapperPendingHoldersMixin` | CORPUS-42's drop of the intrusive holders a failed Fabric entrypoint left is NeoForge's only: on Forge, content a mod built before its entrypoint failed would still stop the freeze. No Forge run has shown it. | Port the drop into their shared implementation with the next Forge pass, or once a run shows it. |
+| SER-1 | P0 on NeoForge 21.11, UNVERIFIED trigger | `EntityDataSerializers.registerSerializer` on NeoForge 21.11 (and 26.x, unread) | NeoForge 21.11 refuses mods' calls to vanilla's method as 21.1 does (read in its sources); CORPUS-41's hook is 1.21.1's only, as Fabric API has a serializer registry on 1.21.11 that maps to NeoForge's. Whether any Fabric mod for 1.21.11 still calls vanilla's method is UNVERIFIED. | Move the hook to `common121` once a run shows such a mod. |
 | PLAT-2 | P3, UNVERIFIED | core `PlatformLibraries` | Other prefixes also cover whole library families (`org/lwjgl/`, `io/netty/`), of which the platform may ship some modules only: a mod nesting another module (LWJGL's NanoVG, say) would lose it, as PLAT-1 did. No case seen yet. | Check each prefix against the packages the platform really has (the loader computes them), and keep a prefix only where the family is complete. |
 | FC-5 | P3 | `TranslationCache.verifyIntegrity` | Hashes are memoised by file metadata. On Windows the key is size and mtime only, and `entry.json` itself isn't hashed. | Needs a decision on cost: re-hashing every launch versus trusting metadata. |
 | FC-6 | P3 | `TranslationCache.store` | Two cold launches of the same side that share one game directory race on delete-then-move. | Needs a cross-process file lock. Rare. |

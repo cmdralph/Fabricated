@@ -6,6 +6,7 @@ import java.util.List;
 
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
+import net.fabricmc.fabric.api.object.builder.v1.block.FabricBlockSettings;
 import net.fabricmc.fabric.api.object.builder.v1.block.entity.FabricBlockEntityType;
 import net.fabricmc.fabric.api.object.builder.v1.block.entity.FabricBlockEntityTypeBuilder;
 import net.fabricmc.fabric.api.object.builder.v1.entity.FabricEntityType;
@@ -14,6 +15,9 @@ import net.fabricmc.fabric.api.object.builder.v1.trade.TradeOfferHelper;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
+import net.minecraft.network.codec.ByteBufCodecs;
+import net.minecraft.network.syncher.EntityDataSerializer;
+import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.entity.EntityType;
@@ -35,8 +39,9 @@ import net.minecraft.world.level.levelgen.Heightmap;
 
 /**
  * 1.21.1 part of the CI test mod: exercises Fabricated's native fabric-object-builder-api-v1 (entity type builder with
- * default attributes and a spawn placement, block entity types, villager trades, a point of interest; 0.116 has no
- * entity data serializer registry, and its block entity builder no command flag).
+ * default attributes and a spawn placement, block entity types, also from vanilla's builder through Fabric's build(),
+ * block settings from create() and of(), villager trades, a point of interest, an entity data serializer registered
+ * through vanilla's method, as 0.116 has no registry for them; its block entity builder has no command flag).
  * Everything is checked once the server has started and logged as one marker line.
  */
 public final class ObjectBuilderTest implements ModInitializer {
@@ -60,6 +65,14 @@ public final class ObjectBuilderTest implements ModInitializer {
 				FabricBlockEntityTypeBuilder.create(BarrelBlockEntity::new, stone).build());
 		// Fabricated makes every block entity type Fabric's, as upstream's interface injection does on Fabric.
 		((FabricBlockEntityType) blockEntity).addSupportedBlock(dirt);
+		// Vanilla's builder has Fabric's build() through interface injection (1.21.1 only).
+		BlockEntityType<BarrelBlockEntity> builtBlockEntity = Registry.register(BuiltInRegistries.BLOCK_ENTITY_TYPE, id("test_block_entity_builder"),
+				BlockEntityType.Builder.of(BarrelBlockEntity::new, stone).build());
+		// Mods call both of Fabric's factories by their own names (CORPUS-39).
+		boolean blockSettings = FabricBlockSettings.create() != null && FabricBlockSettings.of() != null;
+		// Fabric mods register serializers through vanilla's method, which NeoForge refuses for mods (CORPUS-41).
+		EntityDataSerializer<Integer> serializer = EntityDataSerializer.forValueType(ByteBufCodecs.VAR_INT);
+		EntityDataSerializers.registerSerializer(serializer);
 
 		// One of the farmer's level-2 trades, offered at level 1 too; NeoForge rebuilds the tables when data loads.
 		VillagerTrades.ItemListing listing = VillagerTrades.TRADES.get(VillagerProfession.FARMER).get(2)[0];
@@ -82,6 +95,10 @@ public final class ObjectBuilderTest implements ModInitializer {
 					|| SpawnPlacements.getHeightmapType(mob) != Heightmap.Types.MOTION_BLOCKING_NO_LEAVES) failed.add("spawn_placement");
 			if (mob.trackDeltas()) failed.add("velocity");
 			if (!blockEntity.isValid(stone.defaultBlockState()) || !blockEntity.isValid(dirt.defaultBlockState())) failed.add("block_entity");
+			if (!builtBlockEntity.isValid(stone.defaultBlockState())) failed.add("block_entity_builder");
+			if (!blockSettings) failed.add("block_settings");
+			int serializerId = EntityDataSerializers.getSerializedId(serializer);
+			if (serializerId < 0 || EntityDataSerializers.getSerializer(serializerId) != serializer) failed.add("data_serializer");
 			if (!Arrays.asList(VillagerTrades.TRADES.get(VillagerProfession.FARMER).get(1)).contains(listing)) failed.add("trades");
 			if (failed.isEmpty()) {
 				TestMod.LOGGER.info("FABRICATED-TEST object builder OK");
