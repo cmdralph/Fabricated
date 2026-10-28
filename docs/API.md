@@ -14,7 +14,8 @@ The API is bundled in every Fabricated jar. Compile against it, but never ship i
 
 ```groovy
 dependencies {
-    // Until the artifact is published, use the fabricated-api jar attached to each GitHub release.
+    // Not published to a maven yet: build it with ./gradlew :api:jar (api/build/libs), or compile against a
+    // Fabricated jar, which bundles it.
     compileOnly "io.github.cmdralph.fabricated:fabricated-api:1.0.0"
 }
 ```

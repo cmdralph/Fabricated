@@ -21,6 +21,25 @@ class PlatformLibrariesTest {
 		assertNull(PlatformLibraries.nestedMixinExtras("{}"));
 	}
 
+	/** Forge 61's fmlloader jarjar_options.json, as it reads (a nested MixinExtras dependency, then the offered jar). */
+	@Test
+	void findsTheMixinExtrasForgeOffers() throws Exception {
+		String options = """
+				{"options": [{
+				  "resource": "com/llamalad7/mixinextras/platform/forge/MixinExtrasConfigPlugin.class",
+				  "layer": "GAMELIBRARY", "id": "mixinextras",
+				  "deps": [{"identifier": {"group": "com.github.LlamaLad7", "artifact": "MixinExtras"},
+				            "version": {"range": "[0.5.4,)", "artifactVersion": "0.5.4"}, "path": "", "isObfuscated": false}],
+				  "meta": {"identifier": {"group": "io.github.llamalad7", "artifact": "mixinextras-forge"},
+				           "version": {"artifactVersion": "0.5.4"}, "path": "", "isObfuscated": false},
+				  "nested": true
+				}]}""";
+		assertEquals("0.5.4", PlatformLibraries.offeredMixinExtras(options));
+		assertNull(PlatformLibraries.offeredMixinExtras("{\"options\": [{\"meta\": {\"identifier\": {\"group\": \"x\", \"artifact\": \"y\"},"
+				+ " \"version\": {\"artifactVersion\": \"1\"}}}]}"));
+		assertNull(PlatformLibraries.offeredMixinExtras("{}"));
+	}
+
 	/** Only what the platform ships: OneConfig's night-config JSON module is not NeoForge's (which has core and TOML). */
 	@Test
 	void providesOnlyThePlatformsModulesOfALibrary() {

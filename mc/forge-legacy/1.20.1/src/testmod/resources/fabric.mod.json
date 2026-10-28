@@ -14,6 +14,7 @@
   },
   "mixins": ["fabricated-forge-testmod.mixins.json"],
   "accessWidener": "fabricated-forge-testmod.classtweaker",
+  "jars": [{"file": "META-INF/jars/fabricated-forge-nested.jar"}],
   "depends": {
     "fabricloader": ">=0.16.0",
     "minecraft": "${minecraft_version}",

@@ -50,7 +50,7 @@ config="fabricated-transfer.mixins.json"
 config="fabricated-renderer.mixins.json"
 requiredMods=["fabric_renderer_api_v1"]
 
-# This Minecraft version's own mixin configs (version_mixin_configs in mc/<version>/gradle.properties):
+# This Minecraft version's own mixin configs (version_mixin_configs in mc/neoforge/<version>/gradle.properties):
 # fabric-biome-api-v1's biome source mixins, unchanged from upstream (with, before 26.3, the accessors Fabricated's
 # modifications on NeoForge's builders use).
 ${version_mixins}
@@ -58,7 +58,7 @@ ${version_mixins}
 [[accessTransformers]]
 file="META-INF/accesstransformer.cfg"
 
-# Access needed only on this Minecraft version (from mc/<version>/src/main/resources).
+# Access needed only on this Minecraft version (from mc/neoforge/<version>/src/main/resources).
 [[accessTransformers]]
 file="META-INF/accesstransformer-version.cfg"
 

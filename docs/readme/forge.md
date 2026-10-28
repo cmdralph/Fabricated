@@ -69,6 +69,8 @@ Fabric mod refusing a player's use or attack of an item, a block or an entity is
   refuses a break keeps the block.
 - **Beds:** Fabric's bed occupation and sleeping direction events run where Forge handles beds, and a block a Fabric
   mod admits as a bed stays that block while an entity sleeps on it.
+- **Damage:** Fabric's after-damage event reports the damage an entity was dealt and took, on Forge 61 and 64 too,
+  whose code drops what Fabric API's hook reads.
 - **Storages:** a Fabric mod's item and fluid storages are the item and fluid handlers of its block entity, which Forge
   mods' hoppers and pipes reach, and a Forge mod's handlers are storages to Fabric mods. A Forge handler moves items
   only once Fabric's transaction commits. Tank items cross both ways too. A fluid carrying data doesn't cross.
@@ -78,8 +80,8 @@ Fabric mod refusing a player's use or attack of an item, a block or an entity is
 - **Item storages in items.** A Fabric mod's item storage in an item (a backpack's) and Forge's item handler on a stack
   don't see each other yet; fluids in items do.
 - **Native modules.** Fabric API modules that need a native port on Forge's events, such as entity events, pass
-  through from the Fabric API jar, without the hooks Forge's code can't take: on Forge 64, the one behind Fabric's
-  after-damage event.
+  through from the Fabric API jar, without the hooks Forge's code can't take: the effect events don't learn which
+  command applied an effect.
 
 ## Installing (for testing)
 
@@ -103,11 +105,12 @@ what loaded and why anything didn't.
 ```
 
 The Forge code is in:
-- `loader/forge`: Forge's discovery services, which are a mod locator, a dependency locator, a language provider and
-  a transformation service.
-- `mc/forge/<version>` and `mc/forge/common*`: the in-game mod and the test mod.
+- `loader/forge`: Forge's discovery services, a mod locator and a dependency locator, with the language provider and
+  the transformation service in `loader/forge-shared`, which Forge 47 shares.
+- `mc/forge/<version>` and `mc/forge/common*`: the in-game mod and the test mod, with the code Forge 47 compiles as it
+  is in `mc/forge-shared`.
 
-CI is `.github/workflows/build-forge.yml` with `ci/forge/smoke-server.sh`. The project's layout and rules are in
+CI is `.github/workflows/build-forge.yml` with `ci/forge/smoke-server.sh` and `ci/forge/smoke-client.sh`. The project's layout and rules are in
 [`CONTRIBUTING.md`](/CONTRIBUTING.md).
 
 ## Documentation

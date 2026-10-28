@@ -3,6 +3,219 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-10-28: The 1.21.1 corpus before v0.5.0
+
+- **Extended runs on `main` before the release** (`b409300`): NeoForge 40625072551, Forge 40625075054, Forge 47
+  40625077485, all green (the corpus runs are informational). Their corpus summaries showed the 1.21.1 corpus servers
+  stopping; the other versions' were as before.
+- **The owner's decision:** fix the 1.21.1 corpus first, in its own pull request, then release.
+- **Fixed** (each with its cause in `FINDINGS.md`):
+  - **CORPUS-39:** `FabricBlockSettings.create()` was missing on 1.21.1 (TechReborn, Traveler's Backpack): task 3
+    had merged it into `of()`, but both keep Fabric's own names in Intermediary.
+  - **CORPUS-40:** vanilla's block entity type builder (1.21.1 only) lacked Fabric's injected `build()` (Farmer's
+    Delight).
+  - **CORPUS-41:** NeoForge 21.1 refuses mods' calls to vanilla's `EntityDataSerializers.registerSerializer`, which
+    Fabric mods for 1.21.1 make, having no Fabric registry (Moonlight, Friends and Foes): such a call now registers
+    the serializer in NeoForge's synced registry.
+  - **CORPUS-42:** content a Fabric mod built before its entrypoint failed stopped the registries' freeze (every
+    NeoForge version): once an entrypoint has failed, the leftover holders are dropped with an error naming them.
+  - **CORPUS-43:** on NeoForge 21.1 a Fabric mod shading checker-qual's annotations (Axiom) stopped module resolution:
+    the packages of every ModLauncher layer the game reads now count as the platform's.
+- **Merged (#211, `8970aab`), then the extended run again** (40683010866, green): CORPUS-41 to 43 cleared (Moonlight
+  and Friends and Foes register their serializers; the leftover holder is dropped, with its error; the advanced
+  server resolves its modules). Loading now went further and showed the next layer.
+- **The owner's decision on that layer:** one bounded round, then the release whatever the next run shows.
+  - **Fixed:** the rest of CORPUS-39, my incomplete fix: `FabricBlockSettings`' 26 setters under Fabric's own names
+    (`requiresTool()`, `sounds(...)` and the others), found by comparing every public method of the native modules'
+    classes with the official 0.116.17 jar.
+  - **Known limits of v0.5.0-alpha**, open in the roadmap: CORPUS-44 (Moonlight needs an internal class of Fabric
+    API's resource loader; the 1.21.1 corpus server stops), CORPUS-45 (a LambDynamicLights hook applied to the wrong
+    `getLightColor` overload stops the 1.21.1 corpus client; cause UNVERIFIED), CORPUS-46 (the 1.21.1 advanced runs
+    stop past module resolution; cause UNVERIFIED), CORPUS-47 (the 1.21.1 OneConfig client).
+- **The final extended run** (#213 merged as `bf3f49a`; run 40691316584, green): Traveler's Backpack loads;
+  TechReborn stopped at one more `FabricBlockSettings` name, `luminance(ToIntFunction)`, which my comparison by name
+  and parameter count had missed. Added, and the comparison redone by exact descriptor (nothing else missing). The
+  1.21.1 corpus server still stops at Moonlight (CORPUS-44) and the client at LambDynamicLights (CORPUS-45), as
+  recorded; no further extended round, as decided.
+- **Noted, open:** HOLD-2 (the Forge ports have no CORPUS-42 drop yet), SER-1 (NeoForge 21.11 refuses vanilla's
+  serializer registration too; no Fabric mod for 1.21.11 has been seen calling it).
+- Decided here: CORPUS-41's hook stays 1.21.1's (SER-1); CORPUS-42 drops holders only after an entrypoint failure, so
+  content never registered without one still fails as on Fabric.
+- Verification: NeoForge 1.21.1, 1.21.11 and 26.1.2 compile; the 1.21.1 and 1.21.11 server smokes pass locally (60
+  of 60 checks), the 1.21.1 test mod now checking `create()`, the builder's `build()` and a serializer registered
+  through vanilla's method. CORPUS-42 and CORPUS-43 were reproduced locally first (a throwing test mod that builds a
+  fluid; a jar shading a checker-qual annotation): each stopped the 1.21.1 server without its fix and starts with it.
+  #211's full matrix on `962ba0e` (run 40681622872) was green. For the setters: the API comparison, then the 1.21.1
+  server smoke locally (60 of 60, the test mod calling some of them).
+
+## 2026-10-28: Cleanup before v0.5.0
+
+- **Pre-flight's structure (ARCH-1):** the injector repairs run from one ordered table, and the repair families are
+  classes of their own (`LambdaRepairs`, `OverloadRepairs`, `CallRepairs`, `ConstructorRepairs`, `LocalRepairs`,
+  `MixinRepairs` for the class-level and member repairs) over the run's shared lookups (`PreflightClasses`,
+  `PreflightPart`). `MixinPreflight` (4,075 lines, now 1,175) keeps the checker and its public API; no behaviour
+  change.
+- **Duplicated sources merged** (about 3,700 lines): NeoForge 1.21.1's and 1.21.11's identical sources move to a new
+  shared folder, `mc/neoforge/common121` (transfer, networking, loot, biome and content registry code, NeoForge
+  mixins, test-mod parts: 58 files, both versions compiling to the same classes); biome and login sources whose copies
+  together covered an existing shared folder move there; Forge's `BlockBreakEvents` and `ForgeMods` move to
+  `mc/forge-shared` and `loader/forge-shared`. What a new kind of shared folder would merge (the loot mixins Forge and
+  NeoForge both have, `fabricapi-overrides`) is noted in the roadmap.
+- **Dead code and stale configuration:** the unread `fabric_loader_api_version` property (CFG-2), an unused
+  parameter, a `canHydrate` form NeoForge 21.1 doesn't have; comments that described research-era placeholders,
+  files that don't exist or the wrong folders.
+- **CI:** the corpus client no longer runs Xaero's World Map apart (CORPUS-2 is fixed); the smoke scripts print
+  failed checks without a pipe into `head` (CI-2); the Forge smoke servers no longer dump the installer's layout and
+  the Mojang names the native modules were checked against.
+- **Documents** brought up to date with the code: 1.21.1 in the current-state claims (ARCHITECTURE, PORTING,
+  COMPATIBILITY, claude.md), the layout tree, the config parser and logging, the crash attribution Fabricated doesn't
+  do, MIXINS.md's configs and counts for every version, the Forge READMEs' folders, the jar counts, NOTICE's paths and
+  bundled Intermediary versions, the API jar (not attached to releases). The compatibility plan's reason for malilib
+  says PIP-1 restores the map it uses.
+- Decided here: the retired config keys stay accepted and ignored at 0.5.0, so older configs don't warn. Forge 47's
+  fluid storages keep no component guard on purpose: its fluids and Fabric's variants both carry NBT, which
+  `FluidUnits` translates (Forge 61 to 66's guard exists because components can't be).
+- Verification: core's build and its 322 tests; NeoForge 1.21.1, 1.21.11 and 26.1.2 and Forge 1.21.11, 26.1.2 and
+  1.20.1 compile locally, and javap of every class of NeoForge 1.21.1 and 1.21.11 matches before and after the
+  `common121` move. NeoForge 26.2 and 26.3 don't build in this container (*Unverified*); the pull request's full
+  matrix covers every version.
+
+## 2026-10-28: Minecraft 1.21.1 on NeoForge 21.1
+
+- **The owner's decision:** the whole 1.21.1 NeoForge target before the release (server, client, bridges, corpus),
+  rather than a server preview.
+- **A loader for NeoForge 21.1:** its FML 4 still runs on ModLauncher, so NeoForge's loader classes come in two
+  variants (`loader/neoforge/src/fml` and `src/modlauncher`, each behind an `Fml` facade), chosen by the version's
+  `loader_variant`. Mojang's mappings are found where NeoForge 21.1's installer leaves them (a NeoForm-versioned
+  folder).
+- **The in-game mod for 1.21.1:** the shared code builds for it through a renamed copy (`renamed_classes`:
+  `Identifier=ResourceLocation`) and small version helpers; what only 1.21.11 and later need moved to
+  `mc/neoforge/common12111`, and 1.21.1 has its own versions of the hooks whose targets differ. Fabric API 0.116.17
+  with 18 native modules (`fabric-resource-loader-v0` for v1, and `fabric-particles-v1`, as on Forge 47), fuel through
+  NeoForge 21.1's data map and burn time event, and the plan skips of 1.21.11.
+- **Storage and energy bridges** on NeoForge 21.1's handler capabilities: the Forge bridge, ported, with fluid data
+  components crossing both ways and Team Reborn's energy API on blocks and in items. Decided here: items in items stay
+  unbridged on this version, as on Forge.
+- Defects the port found, fixed:
+  - **SCAN-2:** classpath scans got `union:` URLs from NeoForge 21.1's jar handler; mod jars now open as the JDK's
+    zip file system, and Fabric mods' directories are answered first.
+  - A connection closed during configuration crashed the 1.21.1 server: the networking bridge named 1.21.11's
+    accessor; it now asks Fabric API's `ServerConfigurationNetworking.getServer`.
+  - Fabric's item settings weren't applied to `Item.Properties` on 1.21.1 (`NoSuchMethodError`).
+  - **REG-7:** on the first 1.21.1 client run, Fabric's main and client entrypoints ran at the end of `Minecraft`'s
+    constructor, after the first resource reload's common setup had closed registration ("Registry is already
+    frozen"): NeoForge 21.1 loads mods inside the constructor, so they now run right after it has.
+  - **COLOR-2:** with the Fabric API jar, `fabric-rendering-v1` (and the modules that need it) was off on the 1.21.1
+    client: NeoForge 21.1 keeps block and item colours in maps, as on Forge. The plan leaves out upstream's lookups
+    and the in-game mod reads NeoForge's maps, as on 1.21.11 for blocks.
+  - **SHADER-2:** past COLOR-2, upstream's shader hooks named NeoForge's shaders twice
+    (`neoforge:neoforge:shaders/...`), so the first resource reload failed and the client never reached a world.
+    NeoForge 21.1 resolves shader namespaces itself, as Forge 47 does: the plan leaves the hooks out (SHADER-1).
+  - **PART-3:** with the Fabric API jar, `fabric-particles-v1` was off on the 1.21.1 client: NeoForge 21.1 keys the
+    particle engine's providers by id, as Forge 47 does. Fabricated now ships the module, ported from Forge 47's
+    (PART-1).
+- **The test mod on 1.21.1:** the shared parts through `TestCompat`, 1.21.1 versions of the parts whose Fabric API
+  differs, and the same log lines, so the smoke scripts stay one; they check mob conversion where 0.116 has no effect
+  events. The test mod's resource loader dependency and its built-in pack's formats are build properties.
+- **CI:** 1.21.1 joins NeoForge's full matrix and the release. The mods reading plugins are pinned to the builds its
+  first run fetched; REI 16 names its common plugins `REIServerPlugin`, so the test mod's REI plugin is a class per
+  version. The client smoke checks the native particles module on 1.21.1, and a gate checks Fabric API's client
+  modules there (colour providers, the HUD callback) in the run with the Fabric API jar.
+- Decided here: **Fabric renderer API models in chunk sections on 1.21.1 come after this task** (FRAPI-5, open):
+  1.21.11's bridge is built on that version's block model parts, so 1.21.1 needs one of its own, measured on its
+  corpus first. The module loads.
+- Decided here: **Forge for 1.21.1 is not in this release.** It is Forge 52, an older FML and ModLauncher than the
+  Forge 61 to 66 the `forge` folder targets, so it would need a loader variant and an in-game mod of its own.
+- Verification: core's tests; local server smokes, all 60 checks: 1.21.1 without and with Fabric API 0.116.17 (25
+  Fabric mods loaded, 18 modules native), 1.21.11 and 26.1.2 after the shared changes. Local 1.21.1 client smokes,
+  all 36 checks, without and with Fabric API 0.116.17 (34 Fabric mods loaded, none disabled; the colour and HUD checks
+  pass). CI's first 1.21.1 run (40606962688) found REG-7 and the REI plugin's interface. The pull request's full
+  matrix on `26d3c4a` (#209): build run 40612982248 (every NeoForge version), build-forge run 40612982336 (after one
+  re-run of Forge 26.2's job, whose client timed out setting up its window in Forge's early display) and
+  build-forge-legacy run 40612982268, all green. The corpus has not run on 1.21.1 yet: pull requests skip it (it
+  runs with `extended`).
+
+## 2026-10-27: Forge development sped up, and the Forge corpus runs reaching the game
+
+- **Shared Forge code:** the discovery classes both Forge loaders had in two identical copies (the class transformer and
+  the transformation service, the translated jars' module metadata, the jar reader, the loader hooks, the nested jar
+  reader) and the language provider live once in `loader/forge-shared`, which both platforms read, as `mc/forge-shared`
+  does for the in-game mod. The quick check counts it as both Forge platforms'. Behaviour-neutral: Gradle found both
+  platforms' jars up to date after the move.
+- **The Forge corpus runs tested nothing of Fabricated's:** every Forge corpus server and client but Forge 64's stopped
+  on an injected interface, because Forge was in its error state. A check for that (LAYER-1: each injected interface
+  looked up among the game layer's modules, a warning where none or several have its package) found the cause:
+  - **LOADERR-1:** with a loading error Forge loads only Minecraft and Forge, and Fabricated still transformed the
+    game's classes, crashing in Forge's place. Fabricated now leaves them alone, so Forge's own error shows. The two
+    Fabric jars Forge itself refuses (JEI's on Forge 61 to 66, YACL's on Forge 47) are left out of the corpus runs.
+  - **JIJ-1:** Forge's jar-in-jar locator added the NeoForge-listed nested jars of translated Fabric jars a second
+    time, untranslated: Forge 64's game layer failed to resolve. A translated jar now hides that list from Forge; the
+    Forge test mods nest a jar listed both ways, gated on both platforms.
+  - **MIXEXT-3:** discovery missed the MixinExtras Forge 61 to 66 offer, so mods depending on it were disabled; the
+    in-game mod now nests 0.5.5 on every Forge version, from one shared script.
+  - **REPL-1:** Forge Config API Port's Fabric jar was left out on Forge too, where nothing provides its API; it loads
+    now. Mod Menu's stays out on Forge (its title screen hook stopped the Forge 66 client), with a report line that
+    says so.
+- Past those, the corpus runs reach the game (85 to 151 Fabric mods load, where Forge loaded only itself) and the next
+  stops, fixed here and checked locally:
+  - **PLAT-5:** core counted NeoForge's whole namespace as every platform's, so the port's copies of NeoForge's config
+    classes were left out on Forge. The platform loader's own packages are now the platform descriptor's.
+  - **PRE-17:** a variable modifier at a load of a local of a type the method no longer loads (Puzzles Lib's break
+    speed hook, in a method Forge 47 reduced to a call) passed pre-flight and stopped the Forge 47 server. It is now
+    left out. Moving it to the method Forge replaced it with is open (PRE-19).
+  - **LINK-2:** a mixin adding an interface only a mod that isn't loading has (Porting Lib's base module on the
+    Forge 47 client) left the game unable to define its target. Its mod is now disabled with the reason, plugin or not.
+    Decided here: the mod is disabled even when its config's plugin might skip that mixin, as the alternative is a
+    game that doesn't start; leaving out only the mixin is open (LINK-3).
+- Open, in the roadmap: the `@Local` hooks of ImmediatelyFast and Mod Menu that pre-flight lets through on the Forge 65
+  and 66 clients (PRE-18), and Forge 61 to 66's retyped `featuresPerStep`, which lithostitched and Fabric API's biome
+  modifications write (CORPUS-33).
+- Verification: the core build and its tests (`MixinPreflightTest`, `PipelineTest`, `PlatformLibrariesTest`); local
+  Forge 66 and Forge 47 server smokes after each change, with and without Fabric API (27, 35, 34 and 40 checks);
+  build-forge run 40570195894 and build-forge-legacy run 40570200260 on `d43a19e`, with their corpus logs. The full
+  matrix runs on this task's pull request.
+
+## 2026-10-27: the design rethought against its goals, and CI in two tiers
+
+- The design and the way it is worked on, checked against the four goals (light, robust, safe, fast) for drift,
+  over-engineering and dead ends: `roadmap.md`, *Rethink*. The engine holds; what changes is the process around it,
+  and Forge parity keeps to Fabric API's own modules with targeted bridges rather than ports of NeoForge's native
+  modules.
+- **One pull request per task, into `main`** (the owner's decision), replacing one pull request per release branch and
+  pass and decision D6. `forge` and `forge-legacy` get the same head at a release. Decided here: those two merges go
+  by pull request without a CI run of their own, as `main`'s pull request already ran their full matrix on that code.
+- **A quick check on each push** (`check.yml`): the unit tests and, for each platform the push changed, one version
+  built and booted on a server with the test mods. `ci/changed-targets.py` picks the version from the changed paths:
+  the version whose folder alone changed, else the platform's newest; shared code boots NeoForge's newest. Its Gradle
+  cache entries stay on the working branch, which the next push reads.
+- **The full matrix** (`build.yml`, `build-forge.yml`, `build-forge-legacy.yml`) runs on pull requests to `main`, on
+  release tags (`v*`) and by hand, each for the platforms a change touched; the Forge workflows ran on pull requests
+  to their branches before. A push to `main` only builds, which keeps `main`'s Gradle caches current for pull
+  requests. NeoForge's informational runs (the newest NeoForge build, other mods' Fabric builds, Polyfrost, the two
+  corpora) run on release tags and by hand with `extended`; every gate still runs on each pull request.
+- **A job installs the game once** (`ci/install-cache.sh`): the first run of a version keeps its pristine install and
+  the job's later runs copy it instead of running the official installer again. Locally, a Forge 66 server run took 50
+  seconds with the installer and 28 with the copy, passing the same 26 checks.
+- `claude.md` holds the new workflow (local first, push in batches, the full matrix once per task) and corrects the
+  old note that the container can't reach the game's mavens. NeoForge 26.2 and 26.3 still don't build locally: JST
+  2.0.10 never applies an access transformer to an anonymous class, here NeoForge's own `HolderSet$1 contents()`. CI
+  builds them, for a reason still UNVERIFIED.
+- Verification: `actionlint` on every workflow, `bash -n` on the scripts, `ci/changed-targets.py` on sample path sets,
+  two local Forge 66 server smokes sharing one install. The full matrix runs on this task's pull request.
+
+## 2026-10-27: Fabric's after-damage event on Forge 61 and 64
+
+- **DAMAGE-1** (Forge 61, 64): Fabric API fires `ServerLivingEntityEvents.AFTER_DAMAGE` at the end of `hurtServer`,
+  reading the damage dealt from vanilla's copy of it before blocking, which Forge 61's and 64's patches drop. On Forge
+  64 upstream names the copy, so the hook was left out and the event never ran. On Forge 61 it takes the second float
+  local, there the damage a shield blocked, so the event reported that as the damage dealt. The plans now skip the
+  hook, and a mixin of the in-game mod fires the event with the damage `applyItemBlocking` is asked about. Forge 65 and
+  66 keep the copy, and upstream's hook applies there.
+- The forge test mod hurts a pig wearing a helmet twice: `ALLOW_DAMAGE` refuses the first hit, whose damage must not
+  reach the pig, and the second, a falling block's, must fire `AFTER_DAMAGE` with 2.0 dealt and 1.5 taken.
+- Verification: build-forge run 40544079471 on `1f6d837`: `damage events OK` on every version's server and client with
+  Fabric API, and no failed check.
+
 ## 2026-10-27: Fabric's use and attack callbacks on Forge, and its sleep time event on Forge 47
 
 - **SLEEP-2** (Forge 47): Fabric API asks `EntitySleepEvents.ALLOW_SLEEP_TIME` by redirecting the day check as a player

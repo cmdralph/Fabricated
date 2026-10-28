@@ -313,7 +313,8 @@ public final class FabricDependencyLocator extends AbstractJarFileModProvider im
 	 * never read with the overlay last, where Forge 61's securemodules takes both from the last path). So the overlay
 	 * comes first, and the filter hides from the other paths each file the overlay has, which the overlay then gives.
 	 * Other mods' part of a package split with this one come next (one module has the whole package), then the jar; the
-	 * files the package guard leaves out are hidden.
+	 * files the package guard leaves out are hidden, as is the jar-in-jar list Forge would act on
+	 * ({@link FabricJars#hiddenFromForge}).
 	 */
 	private IModFile modFile(TranslatedMod translated, PackageGuard.Decision packages) throws IOException {
 		Path overlay = translated.overlay().toAbsolutePath().normalize();
@@ -335,6 +336,7 @@ public final class FabricDependencyLocator extends AbstractJarFileModProvider im
 		paths.add(translated.jar().toAbsolutePath().normalize());
 		// The union file system's filter gets a path relative to one of the jars (a directory's ending in '/') and that jar.
 		BiPredicate<String, String> filter = (path, base) -> {
+			if (FabricJars.hiddenFromForge(path)) return false;
 			if (base.equals(overlayBase)) return !packages.hides(path);
 			if (!path.endsWith("/") && overlaid.contains(path)) return false;
 			Set<String> files = borrowed.get(base);

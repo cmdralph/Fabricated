@@ -17,6 +17,8 @@ forge="$2"
 work="$3"
 extra="${4:-}"
 root="$(cd "$(dirname "$0")/../.." && pwd)"
+# shellcheck source=ci/install-cache.sh
+source "$root/ci/install-cache.sh"
 timeout_seconds="${SMOKE_TIMEOUT:-600}"
 
 rm -rf "$work"
@@ -24,11 +26,20 @@ mkdir -p "$work"
 cd "$work"
 
 echo "::group::Install Forge $forge"
-curl -fsSL --retry 4 -o installer.jar "https://maven.minecraftforge.net/net/minecraftforge/forge/${forge}/forge-${forge}-installer.jar"
-java -jar installer.jar --installServer . > installer.log 2>&1 || { tail -n 60 installer.log; exit 1; }
+install_server() {
+	curl -fsSL --retry 4 -o installer.jar "https://maven.minecraftforge.net/net/minecraftforge/forge/${forge}/forge-${forge}-installer.jar"
+	java -jar installer.jar --installServer . > installer.log 2>&1 || { tail -n 60 installer.log; exit 1; }
+}
+cached_install "forge-legacy-server-$forge" . install_server
 echo "::endgroup::"
 
 mkdir -p mods
+# SMOKE_ON_ENTRYPOINT_FAILURE: Fabricated's onEntrypointFailure for the run ("disable" lets a corpus run go on past a
+# mod whose initializer throws); unset, the default ("error") stands, as in the gated runs.
+if [ -n "${SMOKE_ON_ENTRYPOINT_FAILURE:-}" ]; then
+	mkdir -p config
+	printf '{ "schema": 1, "onEntrypointFailure": "%s" }\n' "$SMOKE_ON_ENTRYPOINT_FAILURE" > config/fabricated.json
+fi
 cp "$root"/build/libs/fabricated-forge-*+mc"$mc".jar mods/
 cp "$root"/mc/forge-legacy/"$mc"/build/testmods/fabricated-testmod.jar mods/
 # A Fabric mod whose dependency is missing: Fabricated doesn't load it, and Forge's loading warnings name it.
@@ -116,120 +127,6 @@ echo "::endgroup::"
 echo "::group::Fabricated's report (logs/fabric-bridge-report.txt)"
 cat logs/fabric-bridge-report.txt 2>/dev/null || echo "(none)"
 echo "::endgroup::"
-# Where the installer left Mojang's and MCPConfig's mappings and the game jars (ForgeLibraries' layout, UNVERIFIED until
-# this run: docs/PORTING.md §3.1).
-echo "::group::libraries/net/minecraft and libraries/de/oceanlabs"
-find libraries/net/minecraft libraries/de/oceanlabs -maxdepth 5 2>/dev/null | sort | head -n 80 || true
-for f in libraries/de/oceanlabs/mcp/mcp_config/*/*.txt libraries/net/minecraft/server/*/*-mappings.txt; do
-	[ -f "$f" ] || continue
-	echo "-- $f (first lines)"
-	head -n 6 "$f" | cut -c1-200
-done
-# Which names the game jars use: MinecraftServer keeps its name everywhere, Level is obfuscated in the vanilla jar, and
-# tickServer is m_5705_ in SRG's names.
-for f in libraries/net/minecraft/server/*/*.jar; do
-	[ -f "$f" ] || continue
-	entries=$(unzip -Z1 "$f" 2>/dev/null || true)
-	srg=0
-	# A here-string, not a pipe: under pipefail grep -q's early exit fails the pipe's writer.
-	if grep -q '^net/minecraft/server/MinecraftServer\.class$' <<<"$entries"; then
-		srg=$(unzip -p "$f" net/minecraft/server/MinecraftServer.class 2>/dev/null | grep -a -c 'm_5705_' || true)
-	fi
-	echo "-- $f: $(printf '%s\n' "$entries" | grep -c '\.class$') classes; MinecraftServer: $(printf '%s\n' "$entries" | grep -c '^net/minecraft/server/MinecraftServer\.class$'), net/minecraft/world/level/Level: $(printf '%s\n' "$entries" | grep -c '^net/minecraft/world/level/Level\.class$'), m_5705_ in MinecraftServer: $srg"
-done
-echo "::endgroup::"
-# The Mojang names the native fabric-biome-api-v1 relies on (L4) that no source at hand showed for 1.20.1, as the
-# installer's copy of Mojang's mappings has them: a class, then its members of those names.
-echo "::group::Mojang's names the native biome module relies on (server mappings)"
-for f in libraries/net/minecraft/server/*/*-mappings.txt; do
-	[ -f "$f" ] || continue
-	awk '
-		BEGIN {
-			want["net.minecraft.world.level.levelgen.NoiseChunk"] = "<init>\\(|cachedClimateSampler\\("
-			want["net.minecraft.world.level.levelgen.RandomState"] = "<init>\\(| sampler( |\\()"
-			want["net.minecraft.world.level.levelgen.synth.ImprovedNoise"] = "<init>\\(| noise\\(double,double,double\\)"
-			want["net.minecraft.world.level.biome.BiomeSource"] = "possibleBiomes"
-			want["net.minecraft.world.level.biome.TheEndBiomeSource"] = " CODEC | create\\(|getNoiseBiome\\(|<init>\\("
-			want["net.minecraft.world.level.biome.MultiNoiseBiomeSourceParameterList$Preset"] = "usedBiomes"
-			want["net.minecraft.world.level.biome.MultiNoiseBiomeSourceParameterList$Preset$1"] = " apply\\("
-			want["net.minecraft.world.level.biome.Climate$ParameterList"] = " values\\("
-			want["net.minecraft.world.level.biome.Climate$TargetPoint"] = "\\(\\) -> "
-			want["net.minecraft.world.level.levelgen.placement.PlacedFeature"] = "getFeatures\\("
-			want["net.minecraft.core.HolderGetter"] = " get\\(|getOrThrow\\("
-			want["net.minecraft.core.HolderLookup$Provider"] = "lookupOrThrow"
-			want["net.minecraft.resources.RegistryOps"] = "retrieveGetter"
-			want["net.minecraft.world.level.biome.Biome"] = "getBaseTemperature|getMobSettings| climateSettings | specialEffects "
-			want["net.minecraft.world.level.biome.BiomeSpecialEffects$Builder"] = "grassColorModifier\\("
-			want["net.minecraft.world.level.biome.MobSpawnSettings$Builder"] = "creatureGenerationProbability\\(|addMobCharge\\("
-			want["net.minecraft.world.level.levelgen.structure.Structure"] = " biomes\\("
-			want["net.minecraft.world.level.dimension.LevelStem"] = " NETHER | END | generator\\("
-		}
-		/^[^ \t#]/ { cls = $1; if (cls in want) print; next }
-		cls in want && $0 ~ want[cls] { print }
-	' "$f" | cut -c1-300
-done
-echo "::endgroup::"
-# The same for the native fabric-loot-api-v2 and fabric-loot-tables-v1 (L4): the members their mixins and builders
-# name, some of which no source at hand showed for 1.20.1 (Forge's patches name them in SRG's names).
-echo "::group::Mojang's names the native loot modules rely on (server mappings)"
-for f in libraries/net/minecraft/server/*/*-mappings.txt; do
-	[ -f "$f" ] || continue
-	awk '
-		BEGIN {
-			want["net.minecraft.world.level.storage.loot.LootTable"] = " pools | functions | randomSequence |getParamSet\\("
-			want["net.minecraft.world.level.storage.loot.LootTable$Builder"] = " pools | functions |withPool\\(|setParamSet\\(|setRandomSequence\\("
-			want["net.minecraft.world.level.storage.loot.LootPool"] = " entries | conditions | functions | rolls | bonusRolls "
-			want["net.minecraft.world.level.storage.loot.LootPool$Builder"] = " entries | conditions | functions |setRolls\\(| add\\(| when\\(| apply\\("
-			want["net.minecraft.world.level.storage.loot.LootDataManager"] = " apply\\(| reload\\("
-			want["net.minecraft.world.level.storage.loot.Deserializers"] = "createLootTableSerializer\\("
-			want["net.minecraft.util.GsonHelper"] = " fromJson\\(com.google.gson.Gson,java.lang.String,java.lang.Class\\)"
-			want["net.minecraft.core.registries.BuiltInRegistries"] = " LOOT_POOL_ENTRY_TYPE "
-		}
-		/^[^ \t#]/ { cls = $1; if (cls in want) print; next }
-		cls in want && $0 ~ want[cls] { print }
-	' "$f" | cut -c1-300
-done
-echo "::endgroup::"
-# The same for the native fabric-dimensions-v1 (L4): the members its port, its mixins and the test mod's stand-ins name
-# in Mojang's names (Forge's patches name them in SRG's names).
-echo "::group::Mojang's names the native dimensions module relies on (server mappings)"
-for f in libraries/net/minecraft/server/*/*-mappings.txt; do
-	[ -f "$f" ] || continue
-	awk '
-		BEGIN {
-			want["net.minecraft.world.entity.Entity"] = " findDimensionEntryPoint\\(| changeDimension\\(| moveTo\\(double,double,double,float,float\\)| setDeltaMovement\\(net| setYHeadRot\\(| getXRot\\(| level\\(\\)"
-			want["net.minecraft.server.level.ServerPlayer"] = " findDimensionEntryPoint\\(| changeDimension\\(| connection -> "
-			want["net.minecraft.server.network.ServerGamePacketListenerImpl"] = " teleport\\(double,double,double,float,float\\)"
-			want["net.minecraft.server.MinecraftServer"] = " getRunningThread\\("
-			want["net.minecraft.world.level.portal.PortalInfo"] = " pos -> | speed -> | yRot -> | xRot -> "
-		}
-		/^[^ \t#]/ { cls = $1; if (cls in want) print; next }
-		cls in want && $0 ~ want[cls] { print }
-	' "$f" | cut -c1-300
-done
-echo "::endgroup::"
-# The same for the test mod's Fabric fluids (fluid types, L4): the members its stand-ins name in Intermediary's names,
-# in Mojang's names with their obfuscated names, to check against Intermediary's.
-echo "::group::Mojang's names the test mod's fluid stand-ins rely on (server mappings)"
-for f in libraries/net/minecraft/server/*/*-mappings.txt; do
-	[ -f "$f" ] || continue
-	awk '
-		BEGIN {
-			want["net.minecraft.world.level.material.Fluid"] = " getBucket\\(| canBeReplacedWith\\(| getTickDelay\\(| getExplosionResistance\\(| createLegacyBlock\\(| isSource\\(| getAmount\\(| isSame\\(| createFluidStateDefinition\\("
-			want["net.minecraft.world.level.material.FlowingFluid"] = " LEVEL | getFlowing\\(\\)| getSource\\(\\)| canConvertToSource\\(| beforeDestroyingBlock\\(| getSlopeFindDistance\\(| getDropOff\\(| getLegacyLevel\\("
-			want["net.minecraft.world.level.block.state.StateHolder"] = " getValue\\(| setValue\\("
-			want["net.minecraft.world.level.block.state.StateDefinition$Builder"] = " add\\("
-			want["net.minecraft.world.level.block.LiquidBlock"] = " LEVEL |<init>"
-			want["net.minecraft.world.level.block.state.BlockBehaviour$Properties"] = " copy\\("
-			want["net.minecraft.world.entity.Entity"] = " tick\\(\\)| getY\\(\\)"
-			want["net.minecraft.world.item.Items"] = " AIR "
-			want["net.minecraft.core.registries.BuiltInRegistries"] = " FLUID "
-		}
-		/^[^ \t#]/ { cls = $1; if (cls in want) print; next }
-		cls in want && $0 ~ want[cls] { print }
-	' "$f" | cut -c1-300
-done
-echo "::endgroup::"
 # A pipeline's last grep reads all its input (no -q): under pipefail, -q's exit at the first match can kill the grep
 # feeding it with SIGPIPE, and a line that is there reads as not seen.
 report() { if eval "$2"; then echo "PASS: $1"; else echo "NOT SEEN: $1"; fi; }
@@ -254,6 +151,7 @@ check "the test mod's server entrypoint ran" "grep -q 'FABRICATED-FORGE-TEST ser
 check "the test mod's mixin applied (its Intermediary method name remapped to SRG's)" "grep -q 'FABRICATED-FORGE-TEST mixin OK' logs/latest.log 2>/dev/null"
 check "Forge took Fabricated's transformation service" "grep -q 'Fabricated transforms [1-9][0-9]* class(es) for Fabric mods before Mixin' logs/latest.log 2>/dev/null"
 check "the test mod's injected interface is on MinecraftServer (inject-interface)" "grep -q 'FABRICATED-FORGE-TEST injected interface OK' logs/latest.log 2>/dev/null"
+check "a mod nested with a NeoForge jar-in-jar list too loads once, translated: Forge's jar-in-jar locator leaves it alone (JIJ-1)" "grep -q 'FABRICATED-FORGE-TEST nested jar loaded once OK' logs/latest.log 2>/dev/null"
 check "the test mod's client-only method was stripped (@Environment)" "grep -q 'FABRICATED-FORGE-TEST environment strip OK' logs/latest.log 2>/dev/null"
 check "the Fabric main entrypoints ran in Forge's registry events" "grep -q 'Fabricated ran the Fabric main entrypoints of [1-9][0-9]* mod(s) on Forge (0 failed)' logs/latest.log 2>/dev/null"
 check "the test mod registered an item (Intermediary names remapped to SRG's)" "grep -q 'FABRICATED-FORGE-TEST registry OK' logs/latest.log 2>/dev/null"

@@ -8,7 +8,8 @@
 ## 0. Goals and non-goals
 
 **Goals**
-* Load as many Fabric mods and libraries as possible on NeoForge **1.21.11, 26.1.2, 26.2 and 26.3** from one codebase.
+* Load as many Fabric mods and libraries as possible on NeoForge **1.21.1, 1.21.11, 26.1.2, 26.2 and 26.3** from one
+  codebase (and, experimentally, on Forge 61 to 66 and Forge 47: [`PORTING.md`](PORTING.md)).
 * Be lightweight: no runtime dependencies beyond what NeoForge ships, and nothing at all without Fabric mods. With them,
   little work on unchanged launches (PERF-2 lists what is still repeated), and per tick only the dispatch of the Fabric
   events Fabricated bridges, without allocation.
@@ -37,7 +38,7 @@
                    │  - Fabric API module plan: native / pass-through / unsupported
                    ▼
               [5] Translator (per mod, cached, deterministic, parallel)
-                   │  a. Remap         (1.21.11: intermediary→Mojang; 26.x: identity)
+                   │  a. Remap         (1.21.1, 1.21.11: intermediary→Mojang; 26.x: identity)
                    │  b. Mixin prep    (refmap remap, config filtering, behaviorVersion)
                    │  c. Pre-flight    (mixin target/injection-point verification vs game bytecode)
                    │  d. AW/CT → AT    (+ interface-injection table)
@@ -45,7 +46,7 @@
                    ▼
               [6] Package guard: JPMS split-package detection & resolution
                    ▼
-              [7] Hand to FML: CompositeJarContents(original-or-remapped jar, overlay)
+              [7] Hand to FML: the original-or-remapped jar's contents, the overlay over them
                    │  FML now applies ATs and mixin configs natively
                    ▼
               [8] Runtime: FabricLanguageLoader ─► FabricModContainer ─► entrypoints
@@ -87,27 +88,36 @@ Fabricated/
 ├── fabric-loader-api/       Binary-compatible `net.fabricmc.loader.api.*` and `net.fabricmc.api.*`
 │                            types (Apache-2.0, from Fabric Loader; NOTICE attribution), with SemVer and
 │                            version-predicate parsing
-├── loader/                  FML-facing glue, compiled once against FML 10.0.36 SPI (identical through 12.x)
-│                            FabricCandidateLocator, FabricDependencyLocator, FabricLanguageLoader,
-│                            FabricModContainer, FabricClassProcessor (interface injection, @Environment stripping)
+├── loader/                  Platform-facing glue: common/ (every platform), neoforge/ (FabricCandidateLocator,
+│                            FabricDependencyLocator, FabricLanguageLoader, FabricModContainer, FabricClassProcessor:
+│                            interface injection, @Environment stripping), in two variants: src/fml for FML 10 to 12
+│                            (1.21.11, 26.x), src/modlauncher for NeoForge 21.1's FML 4 on ModLauncher (1.21.1),
+│                            each behind its own Fml facade; forge/, forge-legacy/ and forge-shared/ for Forge
 ├── api/                     Fabricated's own small public API for NeoForge mods (see API.md)
 ├── mc/
 │   ├── mc.gradle            Shared build logic: source sets, shared source folders, jars, test mods
-│   ├── common/              Code every version compiles: bridges, mixins, the test mods (src/testmod)
-│   ├── common26/            Code all 26.x versions compile (renderer API terrain bridge, 26.x mixins)
-│   ├── common26early/       Code 26.1.2 and 26.2 compile
-│   ├── common26late/        Code 26.2 and 26.3 compile
-│   ├── 1.21.11/             What only 1.21.11 has: vendored native Fabric API modules (src/fabricapi),
-│   │                        fabric-api-plan.json, version-specific bridges (Java 21)
-│   ├── 26.1.2/              ... for 26.1.2 (Java 25)
-│   ├── 26.2/                ... for 26.2   (Java 25)
-│   └── 26.3/                ... for 26.3   (Java 25)
+│   ├── platform-*.gradle    Each platform's part of it (plugin settings, mod descriptor, game dependencies)
+│   ├── shared/              Test sources every platform compiles (broken test mods, stand-ins)
+│   ├── neoforge/
+│   │   ├── common/          Code every NeoForge version compiles: bridges, mixins, the test mods (src/testmod)
+│   │   ├── common121/       Code 1.21.1 and 1.21.11 compile (transfer, networking, loot and biome ports)
+│   │   ├── common12111/     Code 1.21.11 and all 26.x compile (NeoForge's transfer API bridges, hooks
+│   │   │                    whose targets differ on NeoForge 21.1)
+│   │   ├── common26/        Code all 26.x versions compile (renderer API terrain bridge, 26.x mixins)
+│   │   ├── common26early/   Code 26.1.2 and 26.2 compile
+│   │   ├── common26late/    Code 26.2 and 26.3 compile
+│   │   ├── 1.21.1/          What only 1.21.1 has (Java 21): vendored native Fabric API modules (src/fabricapi),
+│   │   │                    fabric-api-plan.json, version-specific bridges; likewise 1.21.11 (Java 21),
+│   │   └── ...              26.1.2, 26.2 and 26.3 (Java 25)
+│   ├── forge/               Forge 61 to 66 (1.21.11 to 26.3), with common/, common26/ and common26early/
+│   ├── forge-legacy/        Forge 47 (1.20.1)
+│   └── forge-shared/        Code both Forge platforms compile as it is
 ├── ci/                      Server, client and mod-corpus smoke tests run by GitHub Actions
 └── docs/                    claude.md (start here), roadmap.md, RESEARCH, ARCHITECTURE, COMPATIBILITY, MIXINS, API
 ```
 
 * **Output:** one jar per MC version, `fabricated-<version>+mc<mc>.jar`. `core`, `loader`, `fabric-loader-api` and `api` are shaded in, all under the Fabricated-owned package `io.github.cmdralph.fabricated.*`, so they can't clash with anything. The `fabric-loader-api` types keep their original `net.fabricmc.*` package names because Fabric mods link against them.
-* **No preprocessor** (no Stonecutter/Manifold). Version differences live in each `mc/neoforge/<version>` directory; code shared by every version lives once in `mc/neoforge/common`, by all 26.x versions in `mc/neoforge/common26`, by 26.1.2 and 26.2 in `mc/neoforge/common26early`, and by 26.2 and 26.3 in `mc/neoforge/common26late` (see `sharedSources` in `mc/mc.gradle`).
+* **No preprocessor** (no Stonecutter/Manifold). Version differences live in each `mc/neoforge/<version>` directory; code shared by every version lives once in `mc/neoforge/common`, by 1.21.1 and 1.21.11 in `mc/neoforge/common121`, by 1.21.11 and all 26.x in `mc/neoforge/common12111`, by all 26.x versions in `mc/neoforge/common26`, by 26.1.2 and 26.2 in `mc/neoforge/common26early`, and by 26.2 and 26.3 in `mc/neoforge/common26late` (see `sharedSources` in `mc/mc.gradle`).
 * `core`, `api` and `fabric-loader-api` target Java 17 bytecode so the *same* compiled classes run on every line, and on Minecraft 1.20.1 (`RESEARCH.md` §8, D2).
 
 ---
@@ -149,8 +159,10 @@ FML treats an unmet *required* dependency as a fatal loading error, which would 
 1. Build the graph over Fabric candidates, NeoForge mods (exposed under their ids), built-ins (`minecraft`, `java`, `fabricloader`, `fabric-api`, every `fabric-*` module id, `neoforge`), and aliases.
 2. Version predicates use Fabric semantics (`>=1.2 <2`, `~1.2`, `^1.2`, `1.2.x`, `*`, arrays as OR).
 3. A mod whose `depends`/`breaks` is unsatisfied is **disabled together with its dependents**, transitively. Each one gets a WARNING `ModLoadingIssue`, e.g. *"`mymod` needs `cloth-config >=15` (found 14.0.2). Install a newer Cloth Config."* `conflicts` produces a warning only, as in Fabric.
-4. `fabricloader` is satisfied by Fabricated's declared compatible Fabric Loader version (configurable). `minecraft` is matched against the running version.
-5. **Native NeoForge mod vs. Fabric mod with the same id:** the NeoForge build is preferred by default and the Fabric jar is skipped with an INFO note. Config can flip this per mod.
+4. `fabricloader` is satisfied by the Fabric Loader version whose public API Fabricated reproduces (0.20.1,
+   `Pipeline.FABRIC_LOADER_COMPAT_VERSION`). `minecraft` is matched against the running version.
+5. **Native NeoForge mod vs. Fabric mod with the same id:** the NeoForge build is used, as NeoForge loads one mod per
+   id; the player removes the NeoForge jar to use the Fabric one.
 6. `strictDependencies=true` in config passes required deps straight to FML instead, for users who prefer a hard stop.
 
 ---
@@ -212,7 +224,8 @@ Each mod's entrypoints run inside a guard that records mod id, entrypoint key, c
 5. **User overrides:** `skipMixins` drops entries from the cached copy of the mixin config JSON, never the original.
    An entry `"config.json:Name#member"` instead writes a copy of that mixin class without the methods or fields of
    that name (a handler, or a `@Shadow` of a field NeoForge replaced) into the overlay jar; pre-flight checks the copy.
-6. **Runtime attribution:** a mixin failure that slips past pre-flight is enriched through `ICrashReportHeader`/`CrashReportCallables` with the owning Fabric mod id and a suggested fix.
+6. **Runtime attribution:** a mixin failure that slips past pre-flight is Mixin's own crash, which names the mixin
+   config; the report (§13) maps each config to its Fabric mod. Fabricated adds nothing to the crash report itself.
 7. **No guessing.** Mixins are rewritten only where the right member is certain: javac's names for synthetic
    members differ in NeoForge's recompiled build while the member is the same, so pre-flight points an
    `@Accessor("val$name")` at the target's only captured field of that type, an injector into `lambda$method$N` at
@@ -240,7 +253,8 @@ Each mod's entrypoints run inside a guard that records mod id, entrypoint key, c
 
 ### 6.2 Module classification
 
-The same on all four versions unless a row says otherwise.
+The same on every version unless a row says otherwise. 1.21.1's Fabric API (0.116) also carries the deprecated modules
+later releases dropped (pass-through), and gets `fabric-particles-v1` natively (PART-3).
 
 | Module (26.x name / 1.21.11 name) | Plan | Bridged onto |
 |---|---|---|
@@ -248,7 +262,7 @@ The same on all four versions unless a row says otherwise.
 | `fabric-lifecycle-events-v1` | **Native** | NeoForge's events: `ServerAboutToStart/Started/Stopping/StoppedEvent`, `ServerTickEvent`, `LevelTickEvent`, `ClientTickEvent`, level, chunk and entity load events, `TagsUpdatedEvent`, … |
 | `fabric-networking-api-v1` | **Native** | NeoForge's payload system (login queries are not supported) |
 | `fabric-registry-sync-v0` | **Native** | NeoForge's registries, which already sync ids to clients |
-| `fabric-resource-loader-v1` | **Native** | NeoForge's reload-listener and pack-finder events |
+| `fabric-resource-loader-v1` (`-v0` on 1.21.1) | **Native** | NeoForge's reload-listener and pack-finder events |
 | `fabric-entity-events-v1` | **Native** | NeoForge's entity events (elytra and most sleep events are not fired) |
 | `fabric-events-interaction-v0` | **Native** | NeoForge's interaction events |
 | `fabric-item-api-v1`, `fabric-block-api-v1` | **Native** | NeoForge's item hooks and events, and its block hooks |
@@ -347,9 +361,12 @@ A unit test remaps the same input twice and compares SHA-256.
 There is no adapter interface: each version is its own Gradle project (`mc/neoforge/<version>`), and what differs between
 versions is decided at compile time by which source folders it compiles, plus two data files.
 
-* **Code.** `sharedSources` in `mc/mc.gradle` adds `mc/neoforge/common` to every version, `mc/neoforge/common26` to all 26.x
-  versions, and `mc/neoforge/common26early` / `mc/neoforge/common26late` to the pairs that share an API. A version's own folder holds
-  only what differs (renamed Minecraft or NeoForge classes). The vendored native Fabric API modules are per version
+* **Code.** `sharedSources` in `mc/mc.gradle` adds `mc/neoforge/common` to every version, `mc/neoforge/common12111` to
+  1.21.11 and 26.x, `mc/neoforge/common26` to all 26.x versions, and `mc/neoforge/common26early` / `mc/neoforge/common26late` to the pairs that share an API. A version's own folder holds
+  only what differs (renamed Minecraft or NeoForge classes). Shared code calls the game by 1.21.11's names; a version
+  whose names are older lists the renames in its `renamed_classes` property (1.21.1: `Identifier=ResourceLocation`), and
+  the build compiles a renamed copy of the shared folders for it. Small per-version helpers (`GameCompat`, the test
+  mod's `TestCompat`) hold the calls whose signatures changed. The vendored native Fabric API modules are per version
   (`mc/neoforge/<version>/src/fabricapi`), because upstream's sources differ per version.
 * **Data.** `META-INF/fabricated/fabric-api-plan.json` (per version: which Fabric API modules are native,
   pass-through or unsupported, and which upstream mixins to skip) and the generated `version.properties` (Minecraft
@@ -360,13 +377,14 @@ versions is decided at compile time by which source folders it compiles, plus tw
   (`MixinPreflight.repairs`: overloads NeoForge reordered or moved code into, constructors NeoForge kept for
   vanilla's signature, calls and constructor calls made through a subtype or given one more argument (through bridge
   handlers that pass a handler's MixinExtras sugar on), renumbered lambdas, calls moved into a lambda of the method, hard local captures, accessors of members
-  NeoForge added), not by per-version tables. Enum mixins into
+  NeoForge added), not by per-version tables. The injector repairs run in one order (`MixinRepairs`), each from its
+  family's class (`LambdaRepairs`, `OverloadRepairs`, `CallRepairs`, `ConstructorRepairs`, `LocalRepairs`). Enum mixins into
   NeoForge's extensible enums become its enum extension entries (`EnumExtensions`), named enums included when their
   names already carry the mod's id. Mixins only giving a library class the mod's interfaces become generated classes
   the mod calls instead (`LibraryBridges`).
 * Everything Minecraft-agnostic stays in `core`/`loader`. The full seam table is in [`claude.md`](claude.md).
 * **Adding a version** (summarised from `CONTRIBUTING.md`): copy the nearest `mc/neoforge/<version>` directory, set
-  `minecraft_version`/`neo_version` in its `gradle.properties`, add it to `settings.gradle` and the CI matrix, fix
+  `minecraft_version`/`neoforge_version` in its `gradle.properties` (`settings.gradle` finds the folder), add it to the CI matrix, fix
   compile errors (usually renamed MC/NeoForge classes), adjust `fabric-api-plan.json`, and run the test mods. No core
   changes are expected.
 
@@ -388,8 +406,8 @@ versions is decided at compile time by which source folders it compiles, plus tw
 | Split package | two mods share `com.foo` | Identical duplicate classes are filtered out. Classes only the later mod has are served by the earlier mod's module (`PackageGuard`, the package's other files added to that module as a filtered path), as Fabric's single class path allows: Kotlin, Compose and MixinSquared jars split packages this way. A service file whose providers go with the package goes too: hidden when that module declares the same service with the same providers, served by it otherwise. A class both have with different bytes (two versions of a library they bundle) is served from the earlier jar, as the first jar on Fabric's class path would be, with a warning in the report. A service that can't follow its providers disables the later mod. | ✅ |
 | Service file naming a missing provider | a shaded library's `META-INF/services` file lists a class its jar doesn't have (or one in a package the platform's copy serves) | Left out of the mod's module, with a report note: a module declares only providers it has, or no mod loads (FML refuses the module before the game starts). On Fabric's class path such a file fails only when the service is loaded. | ✅ |
 | Resources in another jar | a library's native libraries are in a jar without classes (Skiko) | `Class.getResource` in a module searches that module only. The root files of a nested jar without classes are also served by the modules of its parent and of the jars nested beside it, as Fabric's class path finds any jar's; a file a module has itself stays its own. | ✅ |
-| Entrypoint exception | `onInitialize` throws | Default `onEntrypointFailure="error"`: NeoForge's **error screen** lists mod, entrypoint, cause and fix (*"Disable `x` in config/fabricated.json or update it"*). With `"disable"`: the mod is marked failed, its remaining entrypoints are skipped, and loading continues with a warning. Partially registered content may remain, which the report states. | ⚠️ configurable |
-| Mixin apply at runtime | injector fails in a way pre-flight couldn't see | Crash report enriched with the Fabric mod id and fix | ❌ (JVM can't unload) |
+| Entrypoint exception | `onInitialize` throws | Default `onEntrypointFailure="error"`: NeoForge's **error screen** lists mod, entrypoint, cause and fix (*"Disable `x` in config/fabricated.json or update it"*). With `"disable"`: the mod is marked failed, its remaining entrypoints are skipped, and loading continues with a warning. Partially registered content may remain, which the report states; content built but never registered is dropped at the registries' freeze, with an error naming it (CORPUS-42), instead of failing vanilla's holder check. | ⚠️ configurable |
+| Mixin apply at runtime | injector fails in a way pre-flight couldn't see | Mixin's crash names the config; the report maps it to the mod | ❌ (JVM can't unload) |
 
 * All issues go through `ModLoadingIssue` (FML's own screen: warnings are dismissible, errors block with explanation) **and** into `logs/fabric-bridge-report.txt`.
 * **Rule:** anything detectable before mod code runs is isolated. After mod code runs, Fabricated explains the failure instead of crashing raw, and never claims an isolation it can't guarantee.
@@ -407,7 +425,8 @@ versions is decided at compile time by which source folders it compiles, plus tw
 
 ## 12. Configuration (`config/fabricated.json`)
 
-Read during discovery, before NeoForge's config system exists, so it's plain JSON parsed with Gson (already shipped by NeoForge). The file is created with defaults and comments in a sibling `fabricated.json.md`.
+Read during discovery, before NeoForge's config system exists, so it's plain JSON, parsed by core's own `json.Json`
+(no library). The keys are documented in the README's Configuration section.
 
 ```json
 {
@@ -431,7 +450,7 @@ Unknown keys produce a warning. Invalid values fall back to defaults with a warn
 
 * `logs/fabric-bridge-report.txt`, written on every launch and on demand. It contains: environment (MC, NeoForge, FML, Java, Fabricated); per-mod status (loaded/disabled + reason) with source jar, hash, cache hit/miss and timings; the Fabric API module plan; mixin pre-flight results; AW→AT conversions; split-package decisions; config overrides applied; and warnings.
 * `/fabricated report` regenerates the report and prints a summary. It's a server command that needs permission level 2. A client-side command with the same name works for any player on their own client.
-* Logging uses SLF4J with the marker `FABRICATED`.
+* Logging uses SLF4J, through loggers named `Fabricated`.
 
 ## 14. Security model
 
@@ -457,8 +476,8 @@ Unknown keys produce a warning. Invalid values fall back to defaults with a warn
 * **Unit (core, runs anywhere):** metadata parsing/translation, version predicates, id normalisation, dependency resolution, archive safety (crafted malicious zips generated in-test), Tiny/ProGuard parsing and composition, remapping (incl. determinism), refmap rewriting, AW/CT→AT, pre-flight verifier (synthetic target/mixin classes generated with ASM), cache integrity, config validation, report rendering. **No third-party binaries are committed.** Fixtures are generated in tests.
 * **Integration (per MC version, CI):** no `gameTestServer` run. A real NeoForge dedicated server starts with the in-repo test mods (`ci/neoforge/smoke-server.sh`: entrypoints, the Fabric Loader API, registries, mixins, access wideners, the native Fabric API modules, commands, and the isolation of a missing dependency, an impossible mixin and a throwing entrypoint), plus a client started headlessly under Xvfb (`ci/neoforge/smoke-client.sh`) that joins a singleplayer world and exits.
 * **Real-mod smoke (CI only):** Fabric mods from Modrinth (`ci/mod-corpus.txt`, `ci/mod-corpus-advanced.txt` and projects named in the workflow), fetched by **CI** (never by Fabricated) with `ci/fetch-corpus.py`: each project's newest build for the version unless a Modrinth version id is named (the plugin hosts' are), each file checked against the SHA-512 Modrinth lists. Results feed `docs/COMPATIBILITY.md`.
-* **GitHub Actions:** a `core` job (JDK 21: the Minecraft-independent modules' build and unit tests), then a matrix `{1.21.11: JDK 21, 26.1.2: JDK 25, 26.2: JDK 25, 26.3: JDK 25}` (the JDK the game runs on). Steps: build Fabricated and the test mods, then the server and client runs, gates and informational ones. A version whose NeoForge line is in beta is marked `experimental` (`continue-on-error`); none is now, 26.3 having left beta.
+* **GitHub Actions:** a `core` job (JDK 21: the Minecraft-independent modules' build and unit tests), then a matrix `{1.21.1: JDK 21, 1.21.11: JDK 21, 26.1.2: JDK 25, 26.2: JDK 25, 26.3: JDK 25}` (the JDK the game runs on). Steps: build Fabricated and the test mods, then the server and client runs, gates and informational ones. A version whose NeoForge line is in beta is marked `experimental` (`continue-on-error`); none is now, 26.3 having left beta.
 
 ## 17. Licensing
 
-GPL-3.0 for Fabricated. `NOTICE` covers the Fabric Loader API types and vendored Fabric API modules (Apache-2.0, which GPL-3.0 can include) and Intermediary 1.21.11 (CC0). No code from Connector, Launchpad (GPL-3.0), Adapter, FFAPI or Forgified Fabric Loader.
+GPL-3.0 for Fabricated. `NOTICE` covers the Fabric Loader API types and vendored Fabric API modules (Apache-2.0, which GPL-3.0 can include) and the Intermediary mappings bundled for 1.20.1, 1.21.1 and 1.21.11 (CC0). No code from Connector, Launchpad (GPL-3.0), Adapter, FFAPI or Forgified Fabric Loader.

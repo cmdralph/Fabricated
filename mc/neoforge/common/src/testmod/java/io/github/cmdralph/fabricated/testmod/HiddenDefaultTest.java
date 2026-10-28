@@ -8,7 +8,6 @@ import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 
@@ -34,8 +33,8 @@ public final class HiddenDefaultTest implements ModInitializer {
 			TestMod.LOGGER.error("FABRICATED-TEST hidden default FAILED: LivingEntity inherits no default self() from its interfaces");
 			return;
 		}
-		EntityType<?> pigType = BuiltInRegistries.ENTITY_TYPE.getValue(Identifier.withDefaultNamespace("pig"));
-		if (!(pigType.create(server.overworld(), EntitySpawnReason.TRIGGERED) instanceof LivingEntity pig)) {
+		EntityType<?> pigType = TestCompat.value(BuiltInRegistries.ENTITY_TYPE, Identifier.withDefaultNamespace("pig"));
+		if (!(TestCompat.create(pigType, server.overworld()) instanceof LivingEntity pig)) {
 			TestMod.LOGGER.error("FABRICATED-TEST hidden default FAILED: could not create a pig");
 			return;
 		}

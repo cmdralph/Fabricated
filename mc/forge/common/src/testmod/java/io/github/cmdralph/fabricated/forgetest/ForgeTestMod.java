@@ -30,8 +30,9 @@ import net.minecraft.world.item.Items;
  * object builder module's default attribute event ({@link ForgeAttributeTest}), the advancement module's modify event
  * ({@link ForgeAdvancementTest}), the command module's registration event ({@link ForgeCommandTest}), a networking
  * round trip ({@link ForgeNetworkingTest}), the interaction module's block break events ({@link ForgeBlockBreakTest})
- * and use and attack callbacks ({@link ForgeInteractionTest}), the entity events module's sleep events
- * ({@link ForgeSleepTest}) and storages reaching Forge's capabilities ({@link ForgeTransferTest}). Its fluids are written as Fabric mods write theirs ({@link ForgeFluidTest}).
+ * and use and attack callbacks ({@link ForgeInteractionTest}), the entity events module's sleep ({@link ForgeSleepTest})
+ * and damage ({@link ForgeDamageTest}) events, and storages reaching Forge's capabilities ({@link ForgeTransferTest}).
+ * Its fluids are written as Fabric mods write theirs ({@link ForgeFluidTest}).
  */
 public final class ForgeTestMod implements ModInitializer, DedicatedServerModInitializer {
 	public static final String MOD_ID = "fabricated-forge-testmod";
@@ -110,8 +111,9 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 		if (FabricLoader.getInstance().isModLoaded("fabric-entity-events-v1")) {
 			try {
 				ForgeSleepTest.register();
+				ForgeDamageTest.register();
 			} catch (RuntimeException | LinkageError e) {
-				LOGGER.warn("FABRICATED-FORGE-TEST sleep listeners not registered", e);
+				LOGGER.warn("FABRICATED-FORGE-TEST entity event listeners not registered", e);
 			}
 		}
 		try {
@@ -233,6 +235,19 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 			ForgeInteractionTest.tick(server.overworld());
 		} catch (RuntimeException | LinkageError e) {
 			LOGGER.warn("FABRICATED-FORGE-TEST interaction check failed", e);
+		}
+	}
+
+	/**
+	 * Whether Fabric's damage events are asked as an entity is hurt, and a refusal holds ({@link ForgeDamageTest}; with
+	 * Fabric API only).
+	 */
+	public static void checkDamage(MinecraftServer server) {
+		if (!FabricLoader.getInstance().isModLoaded("fabric-entity-events-v1")) return;
+		try {
+			ForgeDamageTest.check(server.overworld());
+		} catch (RuntimeException | LinkageError e) {
+			LOGGER.warn("FABRICATED-FORGE-TEST damage check failed", e);
 		}
 	}
 

@@ -54,6 +54,7 @@
     "FluidTypeMixin",
     "ServerPayloadSendMixin",
     "NetworkRegistryAccessor",
+    "NetworkRegistryHandlersAccessor",
     "NetworkRegistryUnregisteredPayloadMixin",
     "VanillaNamespacePayloadMixin",
     "PacketDecoderContextMixin",

@@ -12,6 +12,8 @@ neo="$2"
 work="$3"
 extra="${4:-}"
 root="$(cd "$(dirname "$0")/../.." && pwd)"
+# shellcheck source=ci/install-cache.sh
+source "$root/ci/install-cache.sh"
 timeout_seconds="${SMOKE_TIMEOUT:-900}"
 
 rm -rf "$work"
@@ -19,8 +21,11 @@ mkdir -p "$work"
 cd "$work"
 
 echo "::group::Install NeoForge $neo"
-curl -fsSL --retry 4 -o installer.jar "https://maven.neoforged.net/releases/net/neoforged/neoforge/${neo}/neoforge-${neo}-installer.jar"
-java -jar installer.jar --installServer . > installer.log 2>&1 || { cat installer.log; exit 1; }
+install_server() {
+	curl -fsSL --retry 4 -o installer.jar "https://maven.neoforged.net/releases/net/neoforged/neoforge/${neo}/neoforge-${neo}-installer.jar"
+	java -jar installer.jar --installServer . > installer.log 2>&1 || { cat installer.log; exit 1; }
+}
+cached_install "neoforge-server-$neo" . install_server
 echo "::endgroup::"
 
 mkdir -p mods config
@@ -158,7 +163,12 @@ else
 fi
 check "FABRICATED-TEST registry sync: custom registry OK" server.out "native registry sync: custom registry, entry callback, attributes, NeoForge sync flag"
 check "registry sync state: alias=true, dynamic=1, setupCallback=1" server.out "native registry sync: alias, synced dynamic registry, setup callback"
-check "entity events seen:.*allow_add,after_add,before_remove" server.out "native entity events: mob effects"
+if [ "$mc" = "1.21.1" ]; then
+	# Fabric API 0.116 (1.21.1) has no mob effect events; its mob conversion event is tested instead.
+	check "FABRICATED-TEST entity events: mob conversion OK" server.out "native entity events: mob conversion"
+else
+	check "entity events seen:.*allow_add,after_add,before_remove" server.out "native entity events: mob effects"
+fi
 check "entity events seen:.*allow_damage,after_damage" server.out "native entity events: damage"
 check "entity events seen:.*allow_death,after_death$" server.out "native entity events: death (no AFTER_DAMAGE for the killing hit)"
 check "FABRICATED-TEST object builder OK" server.out "native object builder: attributes, attribute modification, spawn placement, entity data serializer, block entity types"
@@ -181,7 +191,7 @@ check "LEFT_OUT .*ImpossibleMixin.*fabricatedMethodThatDoesNotExist" logs/fabric
 check "intentional failure for Fabricated CI" logs/fabric-bridge-report.txt "throwing entrypoint isolated"
 # The test mods log "FABRICATED-TEST ... FAILED" when one of their own checks fails.
 if grep -q "FABRICATED-TEST .*FAILED" server.out; then
-	echo "FAIL: a test mod check reported a failure:"; grep "FABRICATED-TEST .*FAILED" server.out | head -n 5; fail=1
+	echo "FAIL: a test mod check reported a failure:"; { grep -m 5 "FABRICATED-TEST .*FAILED" server.out || true; }; fail=1
 else
 	echo "PASS: no test mod check reported a failure"
 fi

@@ -136,7 +136,7 @@ public final class ModTranslator {
 		this.env = env;
 		this.cache = cache;
 		this.limits = limits;
-		this.renames = PlatformRenames.of(env.untransformable(), env.game());
+		this.renames = PlatformRenames.of(env.untransformable(), env.game(), env.descriptor().replacedMods().containsKey("forgeconfigapiport"));
 	}
 
 	/**

@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "fabricated_forge_nested",
+  "version": "1.0.0",
+  "name": "Fabricated Forge Nested Test Mod",
+  "description": "Nested in the Forge test mod as a jar built for Fabric and NeoForge at once nests its libraries. Not meant for players.",
+  "license": "GPL-3.0",
+  "environment": "*",
+  "entrypoints": {
+    "main": ["io.github.cmdralph.fabricated.forgetest.nested.NestedTestMod"]
+  },
+  "depends": {
+    "fabricloader": ">=0.16.0"
+  }
+}

@@ -56,31 +56,11 @@ def gameModRefmap = mixin.add(sourceSets.main, 'fabricated-forge.refmap.json')
 gameModMixins.each { mixin.config(it) }
 
 // --- MixinExtras for Fabric mods --------------------------------------------------------------------------------------
-// Fabric Loader ships MixinExtras and Forge 47 doesn't. Its Forge build, a game library that starts MixinExtras from its
-// own mixin config's plugin, is nested in the in-game mod with the metadata of Forge's jar-in-jar locator, which reads the
-// files Fabricated's dependency locator hands Forge and adds the newest nested copy. Discovery reads the same metadata to
-// tell pre-flight which version runs.
-configurations {
-    nestedMixinExtras { transitive = false }
-}
+// Nested in the in-game mod as on Forge 61 to 66 (mc/forge-mixinextras.gradle); the test mod's @WrapMethod compiles
+// against it.
+apply from: rootProject.file('mc/forge-mixinextras.gradle')
 dependencies {
-    nestedMixinExtras "io.github.llamalad7:mixinextras-forge:${project.mixinextras_version}"
     testmodCompileOnly "io.github.llamalad7:mixinextras-common:${project.mixinextras_version}"
-}
-def mixinExtrasJarJar = tasks.register('mixinExtrasJarJar') {
-    def version = project.mixinextras_version
-    def out = layout.buildDirectory.dir('jarjar')
-    inputs.property('version', version)
-    outputs.dir(out)
-    doLast {
-        def file = out.get().file('META-INF/jarjar/metadata.json').asFile
-        file.parentFile.mkdirs()
-        file.text = groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson([jars: [[
-                identifier: [group: 'io.github.llamalad7', artifact: 'mixinextras-forge'],
-                version: [range: "[${version},)", artifactVersion: version],
-                path: "META-INF/jarjar/mixinextras-forge-${version}.jar",
-                isObfuscated: false]]])) + '\n'
-    }
 }
 
 // --- The language provider (docs/PORTING.md §4.1, as on the forge branch) ------------------------------------------
@@ -90,8 +70,8 @@ def mixinExtrasJarJar = tasks.register('mixinExtrasJarJar') {
 def pluginLayerApis = ~/(forgespi|fmlcore)-.+\.jar/
 sourceSets {
     langprovider {
-        java.srcDirs = [rootProject.file('loader/forge-legacy/src/langprovider/java')]
-        resources.srcDirs = [rootProject.file('loader/forge-legacy/src/langprovider/resources')]
+        java.srcDirs = [rootProject.file('loader/forge-shared/src/langprovider/java')]
+        resources.srcDirs = [rootProject.file('loader/forge-shared/src/langprovider/resources')]
         compileClasspath = configurations.loaderCompileClasspath.filter { it.name ==~ pluginLayerApis }
     }
 }
@@ -125,8 +105,6 @@ tasks.register('forgeClasspathReport') {
 
 afterEvaluate {
     tasks.named('gameModJar', Jar) {
-        from(configurations.nestedMixinExtras) { into 'META-INF/jarjar' }
-        from(mixinExtrasJarJar)
         from(gameModRefmap)
         manifest.attributes('MixinConfigs': gameModMixins.join(','))
     }

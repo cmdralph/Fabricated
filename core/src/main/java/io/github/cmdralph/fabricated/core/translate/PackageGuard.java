@@ -96,9 +96,20 @@ public final class PackageGuard {
 	private static final String SUGGESTION = "Java modules cannot share packages. Remove one of the two mods, or ask the authors to relocate (shade) the shared library.";
 
 	private final ArchiveLimits limits;
+	/** The platform loader's own package prefixes ({@link PlatformDescriptor#providedPackages}). */
+	private final List<String> providedPackages;
 
-	public PackageGuard(ArchiveLimits limits) {
+	public PackageGuard(ArchiveLimits limits, List<String> providedPackages) {
 		this.limits = limits;
+		this.providedPackages = List.copyOf(providedPackages);
+	}
+
+	/** Whether a package (internal form) is among the platform loader's own ({@link #providedPackages}). */
+	private boolean ownedByLoader(String name) {
+		for (String prefix : providedPackages) {
+			if ((name + "/").startsWith(prefix)) return true;
+		}
+		return false;
 	}
 
 	/**
@@ -138,7 +149,7 @@ public final class PackageGuard {
 			for (Map.Entry<String, Map<String, Path>> pkg : contents.packages().entrySet()) {
 				String name = pkg.getKey();
 				String dotted = name.replace('/', '.');
-				if (platformPackages.contains(name) || PlatformLibraries.isProvided(name + "/")) {
+				if (platformPackages.contains(name) || PlatformLibraries.isProvided(name + "/") || ownedByLoader(name)) {
 					excluded.add(name);
 					notes.add("bundles package " + dotted + ", which the platform already provides; using the platform's copy");
 					continue;

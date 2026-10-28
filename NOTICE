@@ -13,16 +13,20 @@ This product includes third-party material:
    implementations; each modified file carries a notice.
 
 2. Fabric API modules shipped natively by Fabricated (net.fabricmc.fabric.*): their public API in
-   mc/<version>/src/fabricapi/, and parts of their implementation and mixins in mc/*/src/main/java/net/fabricmc/.
+   mc/<platform>/<version>/src/fabricapi/, and parts of their implementation and mixins in
+   mc/<platform>/*/src/main/java/net/fabricmc/.
    Copyright FabricMC. Licensed under the Apache License, Version 2.0.
    Source: https://github.com/FabricMC/fabric at the tag and commit recorded in each
-   mc/<version>/src/fabricapi/UPSTREAM.properties. Files Fabricated changed are marked in a comment, or live in
-   mc/<version>/src/fabricapi-overrides/.
+   mc/<platform>/<version>/src/fabricapi/UPSTREAM.properties. Files Fabricated changed are marked in a comment, or
+   live in mc/<platform>/<version>/src/fabricapi-overrides/.
 
-3. Fabric Intermediary mappings for Minecraft 1.21.11, bundled in the 1.21.11 build.
+3. Fabric Intermediary mappings for Minecraft 1.20.1, 1.21.1 and 1.21.11, each bundled in the builds for that
+   version (NeoForge's and Forge's).
    By FabricMC, dedicated to the public domain under CC0 1.0 Universal:
    https://creativecommons.org/publicdomain/zero/1.0/
-   Source: https://github.com/FabricMC/intermediary (commit 916868752f6935dda70c4490404641a701335d81).
+   Source: https://github.com/FabricMC/intermediary (1.20.1 and 1.21.11 at commit
+   916868752f6935dda70c4490404641a701335d81, 1.21.1 at commit 2f69d5496ad149fcbd63cab81bd0e3b33297734c; each
+   version's intermediary_commit property).
 
 For interoperability, com.terraformersmc.modmenu.api.ModMenuApi and ConfigScreenFactory are clean-room interfaces
 with the names and method signatures of Mod Menu's API (https://github.com/TerraformersMC/ModMenu, MIT); no Mod Menu

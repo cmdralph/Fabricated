@@ -1,0 +1,14 @@
+{
+  "net/minecraft/world/level/block/entity/BlockEntityType$Builder": [
+    "net/fabricmc/fabric/api/object/builder/v1/block/entity/FabricBlockEntityType$Builder<T>"
+  ],
+  "net/minecraft/world/item/TooltipFlag": [
+    "net/fabricmc/fabric/api/item/v1/FabricTooltipType"
+  ],
+  "net/minecraft/world/item/Item$Properties": [
+    "net/fabricmc/fabric/api/item/v1/FabricItem$Settings"
+  ],
+  "net/minecraft/world/item/alchemy/PotionBrewing$Builder": [
+    "net/fabricmc/fabric/api/registry/FabricBrewingRecipeRegistryBuilder"
+  ]
+}

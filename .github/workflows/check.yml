@@ -1,0 +1,106 @@
+name: Quick check
+
+# Every push to a working branch: the unit tests, and one version of each platform the push changed built and booted on
+# a dedicated server with the test mods (ci/changed-targets.py picks them; shared code boots NeoForge's newest). About
+# five minutes, against the full matrix's half hour, which runs on pull requests to main, release tags and by hand
+# (build.yml, build-forge.yml, build-forge-legacy.yml). main and the platform branches only receive merges of work that
+# passed the full matrix. Documentation alone builds nothing.
+on:
+  push:
+    branches-ignore: [main, forge, forge-legacy]
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
+      - '.github/workflows/release.yml'
+      - '.github/workflows/branch-readme.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  plan:
+    name: Pick the targets
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      targets: ${{ steps.targets.outputs.targets }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: targets
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          # The push's changes; a new branch (no previous commit) is compared with main.
+          if [ -n "$BEFORE" ] && [ "$BEFORE" != 0000000000000000000000000000000000000000 ] && git fetch -q --depth=1 origin "$BEFORE"; then
+            base="$BEFORE"
+          else
+            git fetch -q --depth=1 origin main && base=FETCH_HEAD
+          fi
+          targets=$(git diff --name-only "$base" HEAD | python3 -I ci/changed-targets.py .)
+          echo "targets=$targets" >> "$GITHUB_OUTPUT"
+          echo "Targets: $targets" | tee -a "$GITHUB_STEP_SUMMARY"
+
+  core:
+    name: Core and unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build and test Minecraft-independent modules
+        run: ./gradlew -Pfabricated.coreOnly=true build --stacktrace
+
+  target:
+    name: ${{ matrix.platform }} ${{ matrix.minecraft }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: plan
+    if: ${{ needs.plan.outputs.targets != '[]' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.targets) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          # Forge 47 runs on 17, ForgeGradle and 26.x on 25, the rest on 21 (the default here).
+          java-version: |
+            17
+            25
+            21
+      # Its own cache entries on the working branch, which the next push reads: main's are keyed by the full matrix's jobs.
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: false
+      - name: Build Fabricated and the test mods
+        run: |
+          project=":mc:${{ matrix.platform }}-${{ matrix.minecraft }}"
+          case "${{ matrix.platform }}" in
+            neoforge) ./gradlew "$project:fabricatedJar" "$project:testmods" --stacktrace \
+                -Porg.gradle.java.installations.fromEnv=JAVA_HOME_21_X64,JAVA_HOME_25_X64 ;;
+            *) ./gradlew -Pfabricated.platforms=${{ matrix.platform }} --configure-on-demand \
+                "$project:fabricatedJar" "$project:testmodJar" --stacktrace ;;
+          esac
+      - name: Server with the test mods (must pass)
+        run: |
+          export PATH="$(printenv JAVA_HOME_${{ matrix.java }}_X64)/bin:$PATH"
+          ci/${{ matrix.platform }}/smoke-server.sh "${{ matrix.minecraft }}" "${{ matrix.loader }}" "$RUNNER_TEMP/server"
+      - name: Upload server logs
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: check-${{ matrix.platform }}-${{ matrix.minecraft }}
+          path: |
+            ${{ runner.temp }}/server/logs
+            ${{ runner.temp }}/server/server.out
+          if-no-files-found: ignore

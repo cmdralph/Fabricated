@@ -1,7 +1,4 @@
 {
-  "net/minecraft/world/effect/MobEffect": [
-    "net/fabricmc/fabric/api/entity/event/v1/effect/FabricMobEffect"
-  ],
   "net/minecraft/world/entity/EntityType$Builder": [
     "net/fabricmc/fabric/api/object/builder/v1/entity/FabricEntityType$Builder<T>"
   ],
@@ -23,16 +20,10 @@
   "net/minecraft/core/component/DataComponentMap$Builder": [
     "net/fabricmc/fabric/api/item/v1/FabricComponentMapBuilder"
   ],
-  "net/minecraft/world/item/TooltipFlag": [
-    "net/fabricmc/fabric/api/item/v1/FabricTooltipFlag"
-  ],
   "net/minecraft/world/level/storage/loot/LootTable$Builder": [
     "net/fabricmc/fabric/api/loot/v3/FabricLootTableBuilder"
   ],
   "net/minecraft/world/level/storage/loot/LootPool$Builder": [
     "net/fabricmc/fabric/api/loot/v3/FabricLootPoolBuilder"
-  ],
-  "net/minecraft/server/packs/resources/Resource": [
-    "net/fabricmc/fabric/api/resource/v1/FabricResource"
   ]
 }
