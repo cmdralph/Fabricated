@@ -1721,6 +1721,9 @@ class PipelineTest {
 		assertEquals("Forgified Fabric API Base", rows.get(1).source());
 		assertTrue(result.report().mods().stream().noneMatch(r -> r.status() == Report.Status.PROVIDED_NATIVELY), result.report().render());
 		assertEquals("Forgified Fabric API Base", result.runtime().getModContainer("fabric-api-base").orElseThrow().getMetadata().getName());
+		FabricatedApiImpl api = new FabricatedApiImpl("0.5.0", FabricApiPlan.parse(PLAN), result.report(), result.runtime(), true);
+		assertEquals(FabricApiModule.Status.PROVIDED_BY_MOD, api.fabricApiModule("fabric-api-base").orElseThrow().status(),
+				"the provider's row wins over the skipped copy's");
 		assertEquals(Map.of("fabric-api-base", "fabric_api_base"), Pipeline.providedElsewhere(FabricApiPlan.parse(PLAN), neoForge).entrySet().stream()
 				.collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().id())));
 	}
