@@ -2,10 +2,11 @@
 """The quick check's targets (.github/workflows/check.yml): which platform and Minecraft version to build and boot for
 a push, from the paths it changed (one per line on stdin).
 
-A platform whose files changed gets one version: the version whose folder alone changed (mc/<platform>/<version>/),
-else its newest; mc/forge-shared, loader/forge-shared and mc/forge-mixinextras.gradle are both Forge platforms'. A
-change to shared code (core, api, loader/common, the build) builds NeoForge's newest, the supported platform; the full
-matrix on the pull request covers the rest. Documentation builds nothing.
+A branch holds one platform's folders (main NeoForge's, forge and forge-legacy theirs). A platform whose files changed
+gets one version: the version whose folder alone changed (mc/<platform>/<version>/), else its newest; mc/forge-shared,
+loader/forge-shared and mc/forge-mixinextras.gradle are both Forge platforms'. A change to shared code (core, api,
+loader/common, the build) builds the newest version of each platform the branch holds; the full matrix on the pull
+request covers the rest. A platform the branch doesn't hold (its files deleted) builds nothing, nor does documentation.
 
 Prints a JSON list of {"platform", "minecraft", "loader", "java"} for a matrix's include, read from each version's
 gradle.properties. Usage: git diff --name-only A B | ci/changed-targets.py [repository root]
@@ -52,12 +53,15 @@ def is_docs(path):
 
 
 def targets(root, paths):
+    held = [platform for platform in PLATFORMS if versions(root, platform)]
     touched = {}  # platform -> the version folders changed under mc/<platform>/ (None: some other file of it)
     for path in paths:
         if is_docs(path):
             continue
         parts = path.split("/")
-        for platform in platforms_of(path) or ("neoforge",):
+        for platform in platforms_of(path) or held:
+            if platform not in held:
+                continue
             known = versions(root, platform)
             version = parts[2] if len(parts) > 3 and parts[0] == "mc" and parts[1] == platform and parts[2] in known else None
             touched.setdefault(platform, set()).add(version)

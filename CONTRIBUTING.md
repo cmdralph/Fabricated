@@ -5,8 +5,10 @@ follows, and step-by-step instructions for adding a new Minecraft version.
 
 ## Project layout
 
-Every branch holds the same tree, with one folder per mod loader and Minecraft version; the branches differ in which
-platform their CI builds and releases (`main`: NeoForge, `forge`: Minecraft Forge 61 to 66, `forge-legacy`: Forge 47).
+Each platform is on its own branch, with the same folder structure: `main` holds the shared engine and NeoForge,
+`forge` the shared engine and Minecraft Forge 61 to 66, `forge-legacy` the shared engine and Forge 47. Shared changes go
+to `main` and reach the platform branches by merge (`scripts/sync-platform-branch.sh`); Forge work goes to its branch
+directly. This is `main`'s tree:
 
 | Path | What it is | Depends on Minecraft? |
 |---|---|---|
@@ -14,14 +16,14 @@ platform their CI builds and releases (`main`: NeoForge, `forge`: Minecraft Forg
 | `api/` | Fabricated's public API, what NeoForge and Fabric mods may compile against (`docs/API.md`) | No |
 | `core/` | Everything that can be tested without a game: archive safety, `fabric.mod.json`, dependency resolution, remapping, access widener → access transformer, mixin pre-flight, linkage checks, package guard, cache, config, report, Fabric Loader runtime, and the discovery `Pipeline` | No |
 | `loader/common/` | Loader code every platform shares: Fabric's class transforms, the vanilla game jar, proposed jars, resource bundles | No |
-| `loader/<platform>/` | A platform's discovery services, compiled into each of its versions' jars: `neoforge` (candidate and dependency locators, language loader, mod container), `forge` (Forge 61 to 66's locators, language provider, transformation service), `forge-legacy` (Forge 47's) | The platform's loader only |
+| `loader/neoforge/` | NeoForge's discovery services, compiled into each of its versions' jars: candidate and dependency locators, the mod file reader for Fabric Loader's API, language loader, mod container (on the Forge branches, `loader/forge` or `loader/forge-legacy`, with `loader/forge-shared`) | The platform's loader only |
 | `mc/<platform>/<version>/` | One Gradle project per platform and Minecraft version, `:mc:<platform>-<version>`: properties, vendored native Fabric API modules (`src/fabricapi`), the Fabric API plan (`src/fabricated/resources/META-INF/fabricated/fabric-api-plan.json`), version-specific code (`src/main/java`) and the version's test mod | Yes |
-| `mc/<platform>/common*/` | Code a platform's versions share, as each version's `shared_sources` lists it: NeoForge's `common` (the in-game mod, `/fabricated`, the test mod) for every version, `common121` for 1.21.1 and 1.21.11, `common12111` for 1.21.11 and all 26.x versions, `common26` for all 26.x versions, `common26early` for 26.1.2 and 26.2, `common26late` for 26.2 and 26.3; Forge's `common`, `common26`, `common26early` likewise | Yes |
+| `mc/<platform>/common*/` | Code a platform's versions share, as each version's `shared_sources` lists it: NeoForge's `common` (the in-game mod, `/fabricated`, the test mod) for every version, `common121` for 1.21.1 and 1.21.11, `common12111` for 1.21.11 and all 26.x versions, `common26` for all 26.x versions, `common26early` for 26.1.2 and 26.2, `common26late` for 26.2 and 26.3 | Yes |
 | `mc/shared/` | Test sources every platform uses: the broken test mods and stand-ins for other mods' APIs | - |
 | `mc/mc.gradle`, `mc/platform-<platform>.gradle` | The build shared by every version, and each platform's part of it | - |
-| `ci/<platform>/` | Each platform's server and client smoke tests; `ci/` holds the shared helpers and the mod corpus lists | - |
-| `scripts/` | Maintenance scripts (importing Fabric API modules) | - |
-| `docs/` | Research, architecture and compatibility notes; `docs/readme/` holds each branch's README | - |
+| `ci/neoforge/` | NeoForge's server and client smoke tests and the coexisting mods' stand-ins; `ci/` holds the shared helpers and the mod corpus lists | - |
+| `scripts/` | Maintenance scripts (importing Fabric API modules, the native modules' index, syncing a platform branch with `main`) | - |
+| `docs/` | Research, architecture and compatibility notes | - |
 
 ## Building and testing
 
@@ -36,10 +38,8 @@ automatically if it is not installed.
 ./gradlew :mc:neoforge-26.2:fabricatedJar :mc:neoforge-26.2:testmods
 # -> build/libs/fabricated-<version>+mc26.2.jar and mc/neoforge/26.2/build/testmods/*.jar
 
-# The other platforms: a build configures NeoForge's projects unless -Pfabricated.platforms names others
-./gradlew -Pfabricated.platforms=forge --configure-on-demand :mc:forge-26.2:fabricatedJar
-./gradlew -Pfabricated.platforms=forge-legacy --configure-on-demand :mc:forge-legacy-1.20.1:fabricatedJar
-# -> build/libs/fabricated-forge-<version>+mc26.2.jar, build/libs/fabricated-forge-<version>+mc1.20.1.jar
+# The Forge platforms build on their branches (forge, forge-legacy), the same way: a build configures the platform
+# folders the branch holds.
 
 # Everything on NeoForge
 ./gradlew build
@@ -48,10 +48,10 @@ automatically if it is not installed.
 ci/neoforge/smoke-server.sh 26.2 26.2.0.90 /tmp/fabricated-server
 ```
 
-Each platform has its CI: `build.yml` (NeoForge), `build-forge.yml` (Forge 61 to 66) and `build-forge-legacy.yml`
-(Forge 47), each for pull requests to `main`, release tags and by hand, skipping changes to other platforms' folders
-alone; each push to a working branch gets the quick check (`check.yml`: unit tests and one version per platform it
-changed, on a server). NeoForge's
+Each platform has its CI on its branch: `build.yml` (NeoForge, for pull requests to `main`), `build-forge.yml` (Forge 61
+to 66, for pull requests to `forge`) and `build-forge-legacy.yml` (Forge 47, for pull requests to `forge-legacy`), also
+on release tags and by hand; each push to a working branch gets the quick check (`check.yml`: unit tests and one
+version of the branch's platform, on a server). NeoForge's
 (`.github/workflows/build.yml`) runs the unit tests, then builds every version, boots a real NeoForge
 dedicated server with the test mods (and again with the official Fabric API jar), and starts a real NeoForge
 client headlessly into a singleplayer world (`ci/neoforge/smoke-client.sh`; needs Xvfb, and `gh` to fetch
@@ -126,19 +126,20 @@ Run the game with the Fabric mod, then open an issue with:
 
 ## Releasing
 
-A release is cut by hand with the Release workflow (`.github/workflows/release.yml`), run from `main`. Every branch
-holds every platform, so it builds all ten jars (NeoForge's five, Forge 61 to 66's four, Forge 47's) from one commit
-it pins when it starts, `main`'s by default, each with the build its platform's CI uses, from an empty Gradle cache. A
-failed build is tried once more (a platform's maven can time out), and every build runs to the end.
+A release is cut by hand with the Release workflow (`.github/workflows/release.yml`), run from `main`. It builds all ten
+jars from three commits it pins when it starts: NeoForge's five from `main`, Forge 61 to 66's four from `forge` and
+Forge 47's from `forge-legacy` (their heads by default), each with the build its platform's CI uses, from an empty
+Gradle cache. A failed build is tried once more (a platform's maven can time out), and every build runs to the end.
 
-1. Merge `claude/dev` into `main`, `forge` and `forge-legacy`, each with its CI green, so the three hold the same tree,
-   and check that `fabricated_version` in `gradle.properties` is the release's version.
+1. Merge the release's work into `main`, then sync `forge` and `forge-legacy` with it
+   (`scripts/sync-platform-branch.sh`, a pull request each), all three with their CI green, and check that
+   `fabricated_version` in `gradle.properties` is the release's version on each.
 2. Write the notes as `docs/releases/<tag>.md` (for example `docs/releases/v0.4.0-alpha.md`) and merge them into
    `main`. They become the release's text, so links are full URLs (a relative link resolves against the release page).
-   The workflow appends the commit the jars were built from and the jars' SHA-256 checksums.
+   The workflow appends the commits the jars were built from and the jars' SHA-256 checksums.
 3. Run the workflow with mode `build`, and check the jars and checksums in the run's summary.
 4. Run it again with mode `draft` or `publish`. A tag with a suffix (`-alpha`) makes a pre-release. GitHub creates the
-   tag at the pinned commit when the release is published; no tag is pushed from a working copy.
+   tag at `main`'s pinned commit when the release is published; no tag is pushed from a working copy.
 
 ## Licensing
 
