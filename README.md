@@ -28,8 +28,8 @@ with a README of its own on its branch:
 | [`forge`](https://github.com/cmdralph/Fabricated/tree/forge) | Minecraft Forge 61 to 66 (experimental) | 1.21.11, 26.1.2, 26.2, 26.3 | `fabricated-forge-<version>+mc<minecraft>.jar` |
 | [`forge-legacy`](https://github.com/cmdralph/Fabricated/tree/forge-legacy) | Forge 47 (experimental) | 1.20.1 | `fabricated-forge-<version>+mc1.20.1.jar` |
 
-Every branch holds the same code, with one folder per platform and version. A branch differs in the platform its CI
-builds and in its README.
+Each platform is on its own branch: `main` holds the shared engine and NeoForge, `forge` and `forge-legacy` the shared
+engine and their own platform, which they get from `main` by merge.
 
 ---
 

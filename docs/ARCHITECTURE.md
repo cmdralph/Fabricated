@@ -9,7 +9,7 @@
 
 **Goals**
 * Load as many Fabric mods and libraries as possible on NeoForge **1.21.1, 1.21.11, 26.1.2, 26.2 and 26.3** from one
-  codebase (and, experimentally, on Forge 61 to 66 and Forge 47: [`PORTING.md`](PORTING.md)).
+  codebase (and, experimentally, on Forge 61 to 66 and Forge 47, on their own branches: [`PORTING.md`](PORTING.md)).
 * Be lightweight: no runtime dependencies beyond what NeoForge ships, and nothing at all without Fabric mods. With them,
   little work on unchanged launches (PERF-2 lists what is still repeated), and per tick only the dispatch of the Fabric
   events Fabricated bridges, without allocation.
@@ -92,7 +92,8 @@ Fabricated/
 │                            FabricDependencyLocator, FabricLanguageLoader, FabricModContainer, FabricClassProcessor:
 │                            interface injection, @Environment stripping), in two variants: src/fml for FML 10 to 12
 │                            (1.21.11, 26.x), src/modlauncher for NeoForge 21.1's FML 4 on ModLauncher (1.21.1),
-│                            each behind its own Fml facade; forge/, forge-legacy/ and forge-shared/ for Forge
+│                            each behind its own Fml facade (the Forge platforms' are on their branches, forge and
+│                            forge-legacy, with the same structure)
 ├── api/                     Fabricated's own small public API for NeoForge mods (see API.md)
 ├── mc/
 │   ├── mc.gradle            Shared build logic: source sets, shared source folders, jars, test mods
@@ -109,9 +110,6 @@ Fabricated/
 │   │   ├── 1.21.1/          What only 1.21.1 has (Java 21): vendored native Fabric API modules (src/fabricapi),
 │   │   │                    fabric-api-plan.json, version-specific bridges; likewise 1.21.11 (Java 21),
 │   │   └── ...              26.1.2, 26.2 and 26.3 (Java 25)
-│   ├── forge/               Forge 61 to 66 (1.21.11 to 26.3), with common/, common26/ and common26early/
-│   ├── forge-legacy/        Forge 47 (1.20.1)
-│   └── forge-shared/        Code both Forge platforms compile as it is
 ├── ci/                      Server, client and mod-corpus smoke tests run by GitHub Actions
 └── docs/                    claude.md (start here), roadmap.md, RESEARCH, ARCHITECTURE, COMPATIBILITY, MIXINS, API
 ```

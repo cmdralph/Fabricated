@@ -2,54 +2,26 @@ name: Build and test
 
 # The full matrix for NeoForge's targets (mc/neoforge): every version built and its gates run on a dedicated server and a
 # client, for pull requests to main, release tags (v*) and by hand. Each push to a working branch gets the quick check
-# instead (check.yml); Forge's targets have their own workflows. A push to main is a merge whose pull request already
-# passed this, so it only builds: that keeps main's Gradle caches, which pull requests read, current. The informational
-# runs (the newest NeoForge build, other mods' Fabric builds, the mod corpora) run on release tags and by hand with
-# "extended". Changes to documentation alone build nothing, nor do changes to another platform's folders alone.
+# instead (check.yml); Forge's targets are on their own branches, forge and forge-legacy, with their own workflows. A
+# push to main is a merge whose pull request already passed this, so it only builds: that keeps main's Gradle caches,
+# which pull requests read, current. The informational runs (the newest NeoForge build, other mods' Fabric builds, the
+# mod corpora) run on release tags and by hand with "extended". Changes to documentation alone build nothing.
 on:
   pull_request:
     branches: [main]
     paths-ignore:
       - 'docs/**'
       - '**.md'
-      - 'mc/forge/**'
-      - 'mc/forge-legacy/**'
-      - 'mc/forge-shared/**'
-      - 'mc/platform-forge.gradle'
-      - 'mc/platform-forge-legacy.gradle'
-      - 'mc/forge-mixinextras.gradle'
-      - 'loader/forge/**'
-      - 'loader/forge-legacy/**'
-      - 'loader/forge-shared/**'
-      - 'ci/forge/**'
-      - 'ci/forge-legacy/**'
-      - '.github/workflows/build-forge.yml'
-      - '.github/workflows/build-forge-legacy.yml'
       - '.github/workflows/check.yml'
       - '.github/workflows/release.yml'
-      - '.github/workflows/branch-readme.yml'
   push:
     branches: [main]
     tags: ['v*']
     paths-ignore:
       - 'docs/**'
       - '**.md'
-      - 'mc/forge/**'
-      - 'mc/forge-legacy/**'
-      - 'mc/forge-shared/**'
-      - 'mc/platform-forge.gradle'
-      - 'mc/platform-forge-legacy.gradle'
-      - 'mc/forge-mixinextras.gradle'
-      - 'loader/forge/**'
-      - 'loader/forge-legacy/**'
-      - 'loader/forge-shared/**'
-      - 'ci/forge/**'
-      - 'ci/forge-legacy/**'
-      - '.github/workflows/build-forge.yml'
-      - '.github/workflows/build-forge-legacy.yml'
       - '.github/workflows/check.yml'
       - '.github/workflows/release.yml'
-      - '.github/workflows/branch-readme.yml'
   workflow_dispatch:
     inputs:
       extended:

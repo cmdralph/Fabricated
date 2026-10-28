@@ -18,9 +18,10 @@ The same engine runs on Minecraft Forge, from the same tree, as experimental pre
 
 ## How the project fits together
 
-Rethought on 2026-10-26, when the three platforms came onto one working branch.
+Rethought on 2026-10-26, when the three platforms came onto one working branch, and on 2026-10-28, when each went to
+a branch of its own (*Decisions, 2026-10-28*).
 
-**One engine, three platforms, one tree.** Whatever can be decided without running the game is the engine, and every
+**One engine, three platforms, a branch each.** Whatever can be decided without running the game is the engine, and every
 platform shares it: `core` (archive safety, metadata, dependency resolution, remapping, access wideners, mixin
 pre-flight and its repairs, the linkage check, the cache, the report), `fabric-loader-api`, `api` and `loader/common`.
 A platform adds only what its loader decides: its discovery services (`loader/<platform>`) and, per Minecraft version,
@@ -109,6 +110,14 @@ decisions:
 
 Noted, out of this task's scope: a second Fabricated build in the same mods folder (an older version, or another
 platform's) is not detected (DUP-1, *Findings*).
+
+**Branches** (task 2 of the v0.5.x update, the owner's request): `main` is NeoForge's branch, with the shared engine;
+Forge 61 to 66 and Forge 47 are each on their own branch only (`forge`, `forge-legacy`), with the same folder
+structure. Shared changes go to `main` and reach the Forge branches by merge (`scripts/sync-platform-branch.sh`), so
+the engine stays one; a Forge branch is never merged back. A Forge branch's CI runs on pull requests into it, and the
+release workflow builds each platform's jars from its own branch. What it costs: a shared change needs a sync pull
+request per Forge branch before it ships there, and `forge-shared` is kept on both Forge branches by hand. No branch
+was deleted.
 
 ## Next release: v0.5.0
 

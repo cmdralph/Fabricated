@@ -3,6 +3,22 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-10-28: A branch per platform (task 2 of the v0.5.x update)
+
+- **The owner's request:** `main` is NeoForge's branch with the shared engine; Forge and Forge 47 code each live only
+  on their own branch, with the same folder structure. This replaces the one tree of 2026-10-26 to 2026-10-27
+  (`claude.md`, *Branches*; roadmap, *Decisions, 2026-10-28*).
+- **`main`:** the Forge platforms' folders, workflows and branch READMEs left (`loader/forge*`, `mc/forge*`,
+  `mc/platform-forge*.gradle`, `mc/forge-mixinextras.gradle`, `ci/forge*`, `build-forge*.yml`, `branch-readme.yml`,
+  `docs/readme/`), and COMPATIBILITY's Forge table moved to the Forge branches' `docs/FORGE.md` and
+  `docs/FORGE-LEGACY.md`. `settings.gradle` configures the platforms whose folders a branch holds; the quick check
+  builds the branch's platform for shared changes; the release workflow builds each platform's jars from its own
+  branch (`main`, `forge`, `forge-legacy`, pinned when it starts); `scripts/sync-platform-branch.sh` merges `main` into
+  a Forge branch, keeping its platform and leaving NeoForge's out.
+- **Decided, not asked:** no branch is deleted; the shared build file (`mc/mc.gradle`) keeps its few Forge conditions,
+  so a sync merge never conflicts on it; `forge-shared` is kept on both Forge branches, and a change to it is made on
+  both.
+
 ## 2026-10-28: Sharing the game with Forgified Fabric API (task 1 of the v0.5.x update)
 
 - **The owner's report:** a v0.5.0-alpha 1.21.1 pack with Forgified Fabric API and Sodium for NeoForge stopped before

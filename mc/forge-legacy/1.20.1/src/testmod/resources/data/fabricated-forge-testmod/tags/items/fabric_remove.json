@@ -1,9 +1,0 @@
-{
-  "values": [
-    "minecraft:stone",
-    "minecraft:dirt"
-  ],
-  "fabric:remove": [
-    "minecraft:dirt"
-  ]
-}
