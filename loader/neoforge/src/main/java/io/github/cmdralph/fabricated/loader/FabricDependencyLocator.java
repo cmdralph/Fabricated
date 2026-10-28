@@ -31,6 +31,7 @@ import io.github.cmdralph.fabricated.core.Pipeline;
 import io.github.cmdralph.fabricated.core.api.FabricatedApiImpl;
 import io.github.cmdralph.fabricated.core.archive.ArchiveLimits;
 import io.github.cmdralph.fabricated.core.archive.DeterministicJarWriter;
+import io.github.cmdralph.fabricated.core.archive.Hashing;
 import io.github.cmdralph.fabricated.core.archive.SafeArchive;
 import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
 import io.github.cmdralph.fabricated.core.bytecode.InstalledClasses;
@@ -433,11 +434,19 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 		}
 	}
 
-	/** Copies the bundled in-game mod into the cache (content-addressed, so it is written once). */
+	/**
+	 * Copies the bundled in-game mod into the cache (an entry keyed by its hash, so it is written once), as
+	 * {@code fabricated.jar}: NeoForge names a mod by its file in its lists (a crash report's), as the translated mods'
+	 * {@code <modid>.jar}.
+	 */
 	private static Path extractGameMod(TranslationCache cache) throws IOException {
 		byte[] data = FabricatedInfo.readOptional(GAME_MOD_RESOURCE);
 		if (data == null) throw new IOException("The Fabricated jar is missing " + GAME_MOD_RESOURCE);
-		Path path = cache.storeNested(data);
+		String name = TranslationCache.entryName(ModIds.FABRICATED, Hashing.sha256(data));
+		String fileName = ModIds.FABRICATED + ".jar";
+		TranslationCache.Entry entry = cache.lookup(name, fileName).orElse(null);
+		if (entry == null) entry = cache.store(name, Map.of(fileName, data), Map.of());
+		Path path = entry.file(fileName);
 		if (!Files.isRegularFile(path)) throw new IOException("Could not extract " + GAME_MOD_RESOURCE);
 		return path;
 	}
