@@ -3,7 +3,7 @@
 Status: **in progress**: both Forge targets run the game on dedicated servers, `forge` at F4 and `forge-legacy` at L4
 (§7 has the detail; `roadmap.md`'s parity table compares the platforms). Written 2026-10-21; the owner's decisions are in §8 and
 `RESEARCH.md` §8. Of §6's seams on `main`, items 1 to 3 and the trigger part of 4 are done. NeoForge stays the primary
-platform: Minecraft 1.21.11, 26.1.2, 26.2 and 26.3, all four on stable NeoForge lines. This document
+platform: Minecraft 1.21.1, 1.21.11, 26.1.2, 26.2 and 26.3, all five on stable NeoForge lines. This document
 says what of the engine carries over to Minecraft Forge for 1.20.1 and other legacy versions (branch
 `forge-legacy`) and for the versions `main` covers (branch `forge`), what the build needs, what must change on `main` first, and in which order the work goes.
 Facts about other projects cite their repository, ref and file; what could not be checked is marked UNVERIFIED.
@@ -12,7 +12,7 @@ Facts about other projects cite their repository, ref and file; what could not b
 
 | Branch | Platform | Phase | Its CI and README |
 |---|---|---|---|
-| `main` | NeoForge 1.21.11, 26.1.2, 26.2, 26.3 | active, the primary platform | `build.yml`; the root `README.md` |
+| `main` | NeoForge 1.21.1, 1.21.11, 26.1.2, 26.2, 26.3 | active, the primary platform | `build.yml`; the root `README.md` |
 | `forge` | Minecraft Forge for the versions `main` covers (Forge 61 for 1.21.11, 64 to 66 for 26.1.2 to 26.3) | F4: native modules on Forge's events (§7) | `build-forge.yml`; `docs/readme/forge.md` |
 | `forge-legacy` | Minecraft Forge for 1.20.1 (Forge 47.4, §3.1) and other legacy versions | L4: native modules on Forge 47's events (§7) | `build-forge-legacy.yml`; `docs/readme/forge-legacy.md` |
 
@@ -291,7 +291,7 @@ providers)? (10) Where can a locator read the program arguments?
 names its own). Each applies its platform's build plugin (`net.neoforged.moddev`, `net.minecraftforge.gradle` or
 `net.neoforged.moddev.legacyforge`) and the shared `mc/mc.gradle`. That script takes the platform from the folder,
 and the shared source folders from the version's `shared_sources` property, under `mc/<platform>/` (NeoForge's
-`common`, `common12111`, `common26`, `common26early`, `common26late`), or from the repository root for an entry with a slash
+`common`, `common121`, `common12111`, `common26`, `common26early`, `common26late`), or from the repository root for an entry with a slash
 (`mc/forge-shared`, the code both Forge platforms compile as it is); a version whose game classes have older names
 compiles a renamed copy of them (`renamed_classes`, 1.21.1's `Identifier=ResourceLocation`). It applies `mc/platform-<platform>.gradle` (the plugin's
 settings, the mod descriptor, `gameDependencies`), builds the in-game mod as `game-mod.jar` and merges `loader`

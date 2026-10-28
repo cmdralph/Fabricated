@@ -105,11 +105,12 @@ what loaded and why anything didn't.
 ```
 
 The Forge code is in:
-- `loader/forge`: Forge's discovery services, which are a mod locator, a dependency locator, a language provider and
-  a transformation service.
-- `mc/forge/<version>` and `mc/forge/common*`: the in-game mod and the test mod.
+- `loader/forge`: Forge's discovery services, a mod locator and a dependency locator, with the language provider and
+  the transformation service in `loader/forge-shared`, which Forge 47 shares.
+- `mc/forge/<version>` and `mc/forge/common*`: the in-game mod and the test mod, with the code Forge 47 compiles as it
+  is in `mc/forge-shared`.
 
-CI is `.github/workflows/build-forge.yml` with `ci/forge/smoke-server.sh`. The project's layout and rules are in
+CI is `.github/workflows/build-forge.yml` with `ci/forge/smoke-server.sh` and `ci/forge/smoke-client.sh`. The project's layout and rules are in
 [`CONTRIBUTING.md`](/CONTRIBUTING.md).
 
 ## Documentation

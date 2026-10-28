@@ -15,7 +15,7 @@ verified), [`PORTING.md`](PORTING.md) (the 1.20.1 and Forge evaluation and the b
 - **Branches** (the owner's decisions, 2026-10-21, 2026-10-25 and 2026-10-26): one working branch, `claude/dev`, holds
   every platform: `mc/<platform>/<version>` and `loader/<platform>` for `neoforge`, `forge` and `forge-legacy`, next to
   the shared modules. It is merged by pull request into all three release branches, which therefore hold the same
-  tree: `main` (NeoForge 1.21.11 to 26.3, the primary platform), `forge` (Minecraft Forge 61 to 66 for the same
+  tree: `main` (NeoForge 1.21.1 to 26.3, the primary platform), `forge` (Minecraft Forge 61 to 66 for the same
   versions) and `forge-legacy` (Forge 47 for 1.20.1; NeoForge needs no legacy branch). A branch differs only in the CI
   that builds it (`build.yml`, `build-forge.yml`, `build-forge-legacy.yml`), the jars it stands for in a release and its
   README (`docs/readme/<branch>.md`, which `branch-readme.yml` copies to the branch's `.github/README.md`: `claude/dev`
@@ -153,7 +153,7 @@ mc/neoforge/<version>        (one Gradle project per Minecraft version, MDG)
   ├─ source set main    = in-game NeoForge mod  ──compileOnly──► loader output, core
   │     sources: mc/neoforge/<version>/src/main/java + mc/neoforge/<version>/src/fabricapi/java (vendored native Fabric API modules)
   │              + the folders the version's `shared_sources` lists: mc/neoforge/common (all; renamed for 1.21.1),
-  │                mc/neoforge/common12111 (1.21.11, 26.x), mc/neoforge/common26 (26.x),
+  │                mc/neoforge/common121 (1.21.1, 1.21.11), mc/neoforge/common12111 (1.21.11, 26.x), mc/neoforge/common26 (26.x),
   │                mc/neoforge/common26early (26.1.2, 26.2), mc/neoforge/common26late (26.2, 26.3)
   │     26.x only, compileOnly: fabric-renderer-api-v1's jar (pass-through module, typed calls)
   ├─ source sets testmod, testmodbroken, testmodfrapi (26.x)  ──compileOnly──► main output, fabric-loader-api, api
@@ -189,8 +189,7 @@ All Fabricated-owned mixin configs use `"required": true` and `"defaultRequire":
 point fails at startup, in CI. Three injections set `require = 0` on purpose, each with a fallback:
 `MinecraftEntrypointsMixin` (client entrypoints before `Thread.currentThread()`, with a `TAIL` fallback),
 `MinecraftStartedMixin` (`CLIENT_STARTED` as `run()` starts, else on the first client tick), and
-`ChunkGeneratorFeaturesMixin` (only needed while NeoForge's `refreshFeaturesPerStep`, present on all four lines,
-exists). The full inventory (target, injector, point and versions of every mixin) is in [`MIXINS.md`](MIXINS.md).
+`ChunkGeneratorFeaturesMixin` (only needed while NeoForge's `refreshFeaturesPerStep` exists). The full inventory (target, injector, point and versions of every mixin) is in [`MIXINS.md`](MIXINS.md).
 
 ### Threading model
 

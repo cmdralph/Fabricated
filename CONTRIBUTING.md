@@ -16,10 +16,10 @@ platform their CI builds and releases (`main`: NeoForge, `forge`: Minecraft Forg
 | `loader/common/` | Loader code every platform shares: Fabric's class transforms, the vanilla game jar, proposed jars, resource bundles | No |
 | `loader/<platform>/` | A platform's discovery services, compiled into each of its versions' jars: `neoforge` (candidate and dependency locators, language loader, mod container), `forge` (Forge 61 to 66's locators, language provider, transformation service), `forge-legacy` (Forge 47's) | The platform's loader only |
 | `mc/<platform>/<version>/` | One Gradle project per platform and Minecraft version, `:mc:<platform>-<version>`: properties, vendored native Fabric API modules (`src/fabricapi`), the Fabric API plan (`src/fabricated/resources/META-INF/fabricated/fabric-api-plan.json`), version-specific code (`src/main/java`) and the version's test mod | Yes |
-| `mc/<platform>/common*/` | Code a platform's versions share, as each version's `shared_sources` lists it: NeoForge's `common` (the in-game mod, `/fabricated`, the test mod) for every version, `common26` for all 26.x versions, `common26early` for 26.1.2 and 26.2, `common26late` for 26.2 and 26.3; Forge's `common`, `common26`, `common26early` likewise | Yes |
+| `mc/<platform>/common*/` | Code a platform's versions share, as each version's `shared_sources` lists it: NeoForge's `common` (the in-game mod, `/fabricated`, the test mod) for every version, `common121` for 1.21.1 and 1.21.11, `common12111` for 1.21.11 and all 26.x versions, `common26` for all 26.x versions, `common26early` for 26.1.2 and 26.2, `common26late` for 26.2 and 26.3; Forge's `common`, `common26`, `common26early` likewise | Yes |
 | `mc/shared/` | Test sources every platform uses: the broken test mods and stand-ins for other mods' APIs | - |
 | `mc/mc.gradle`, `mc/platform-<platform>.gradle` | The build shared by every version, and each platform's part of it | - |
-| `ci/<platform>/` | Each platform's server (and NeoForge's client) smoke test; `ci/` holds the shared helpers and the mod corpus lists | - |
+| `ci/<platform>/` | Each platform's server and client smoke tests; `ci/` holds the shared helpers and the mod corpus lists | - |
 | `scripts/` | Maintenance scripts (importing Fabric API modules) | - |
 | `docs/` | Research, architecture and compatibility notes; `docs/readme/` holds each branch's README | - |
 
@@ -127,7 +127,7 @@ Run the game with the Fabric mod, then open an issue with:
 ## Releasing
 
 A release is cut by hand with the Release workflow (`.github/workflows/release.yml`), run from `main`. Every branch
-holds every platform, so it builds all nine jars (NeoForge's four, Forge 61 to 66's four, Forge 47's) from one commit
+holds every platform, so it builds all ten jars (NeoForge's five, Forge 61 to 66's four, Forge 47's) from one commit
 it pins when it starts, `main`'s by default, each with the build its platform's CI uses, from an empty Gradle cache. A
 failed build is tried once more (a platform's maven can time out), and every build runs to the end.
 
