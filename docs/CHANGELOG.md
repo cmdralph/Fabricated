@@ -26,11 +26,17 @@ One entry per working session, newest first: what changed, and how it was verifi
   - **DUP-2:** on NeoForge 21.1 a second Fabricated jar ended in a module error after DUP-1's refusal, which CI's check
     didn't catch (it read the refusal's text). The other Fabricated jars are now claimed and never loaded, and the
     refusal checks fail on a module error.
+  - **Found by this change's CI (PROVIDER-7, not Fabricated's):** with the test mod's initializers now running beside
+    Forgified Fabric API, its 26.x item API stopped the servers: it answers NeoForge's equipment slot query for an item
+    with Fabric's slot provider by casting the item to an entity. The 26.x test mod skips its item checks when another
+    mod provides that module; recorded in the roadmap.
   - **Noted, not fixed (ENTRY-1):** a mod failing its initializer after registering a configuration task can leave a
     singleplayer join waiting (the test mod's 1.21.1 client with Forgified Fabric API, before PROVIDER-6).
 - **Verified:** locally, the 1.21.1 and 26.1.2 servers with the test mods pass every check, the new one among them,
   which fails without the fix; both refusals stop the launch with their message and no module error on both versions,
-  where the second-jar one failed on 1.21.1 before. The client path, and Forgified Fabric API itself, in CI.
+  where the second-jar one failed on 1.21.1 before. In CI (run 40772701272) every other job passed, the clients' new
+  check and both refusals on all five versions among them; with Forgified Fabric API the test mod's registry is made on
+  1.21.1, 26.1.2 and 26.2, and the 1.21.1 client joins a world and exits normally where it waited before.
 
 ## 2026-10-28: Cleanup (task 5 of the v0.5.x update)
 

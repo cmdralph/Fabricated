@@ -867,7 +867,8 @@ Fabricated counts it there too. A provider's module is used as it is: what it la
 name, and what it does differently is its own. Forgified Fabric API's networking refuses a payload in the `minecraft`
 namespace, as NeoForge does, where Fabricated's own networking takes it (NET-4): with it installed, a Fabric mod
 registering one fails its initializer and the report marks it failed (the test mod's payload on 1.21.1; BetterEnd's
-ritual update UNVERIFIED, PROVIDER-5). Mods read a Fabric mod's files through its
+ritual update UNVERIFIED, PROVIDER-5). On 26.x, its item API throws when NeoForge asks the equipment slot of an item
+with Fabric's equipment slot provider, which stops the game (PROVIDER-7). Mods read a Fabric mod's files through its
 container as NeoForge reads them, with the NeoForge sections translation leaves out of its `pack.mcmeta` and data files
 (PROVIDER-3). A Fabric mod's initializer creates its registries with Forgified Fabric API's `FabricRegistryBuilder` as
 with Fabricated's: NeoForge's check that refuses a registry after its new-registry event, where Fabricated runs Fabric
