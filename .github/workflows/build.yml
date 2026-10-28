@@ -250,6 +250,13 @@ jobs:
               echo "::error::Forgified Fabric API's resource loader: the test mod's built-in pack was not registered (PROVIDER-3)"; exit 1
             fi
           fi
+          if sed -n '/== Fabric API modules provided by other mods ==/,/^$/p' "$report" | grep -q "fabric-registry-sync-v0"; then
+            if grep -m 1 "FABRICATED-TEST registry sync: custom registry OK" "$RUNNER_TEMP/server-coexist/server.out"; then
+              echo "PASS: a Fabric initializer made a registry with Forgified Fabric API's registry sync (PROVIDER-6)" | tee -a "$RUNNER_TEMP/summary-coexist.txt"
+            else
+              echo "::error::Forgified Fabric API's registry sync: the test mod's initializer didn't make its registry (PROVIDER-6)"; exit 1
+            fi
+          fi
       - name: Upload coexisting mods' run logs and reports
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4

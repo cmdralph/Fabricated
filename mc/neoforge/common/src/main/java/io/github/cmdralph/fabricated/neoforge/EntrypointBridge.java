@@ -56,6 +56,8 @@ public final class EntrypointBridge {
 	private static volatile boolean mainEntrypointsRan;
 	/** Set once a Fabric mod's entrypoint has failed. */
 	private static volatile boolean entrypointFailed;
+	/** The thread running a Fabric mod's entrypoint, while one runs. */
+	private static volatile Thread entrypointThread;
 
 	private final FabricatedState state;
 	private final Dist dist;
@@ -85,6 +87,7 @@ public final class EntrypointBridge {
 
 			@Override
 			public void enter(String modId) {
+				entrypointThread = Thread.currentThread();
 				previous = ModLoadingContext.get().getActiveContainer();
 				container(modId).ifPresent(c -> ModLoadingContext.get().setActiveContainer(c));
 				Thread thread = Thread.currentThread();
@@ -98,6 +101,7 @@ public final class EntrypointBridge {
 			public void exit() {
 				ModLoadingContext.get().setActiveContainer(previous);
 				Thread.currentThread().setContextClassLoader(previousLoader);
+				entrypointThread = null;
 			}
 		});
 
@@ -133,6 +137,11 @@ public final class EntrypointBridge {
 	 */
 	public static boolean mainEntrypointsPending() {
 		return !mainEntrypointsRan && FabricatedState.get() != null;
+	}
+
+	/** Whether the calling thread is running a Fabric mod's entrypoint (its initializer, or code it calls). */
+	public static boolean inFabricEntrypoint() {
+		return entrypointThread == Thread.currentThread();
 	}
 
 	/**

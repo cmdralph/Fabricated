@@ -69,6 +69,12 @@ public final class FabricCandidateLocator implements IModFileCandidateLocator {
 		if (refusal != null) {
 			LOGGER.error("Fabricated: {}", refusal);
 			found.clear();
+			// The Fabricated jars the platform hasn't loaded as its services are claimed too, and so never loaded: NeoForge
+			// 21.1 loads one as its service and its mods-folder scan the others as libraries, and a second copy of
+			// Fabricated's module stops the launch with a module error before the refusal shows (DUP-2).
+			for (Path jar : fabricated) {
+				if (!context.isLocated(jar)) context.addLocated(jar);
+			}
 		}
 		found.sort(null);
 		for (Path jar : found) context.addLocated(jar);

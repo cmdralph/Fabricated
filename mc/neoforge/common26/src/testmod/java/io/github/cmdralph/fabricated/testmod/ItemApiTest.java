@@ -38,6 +38,11 @@ import net.neoforged.neoforge.common.util.FakePlayerFactory;
  * its modify event for enchantments as the data pack loads them.
  */
 public final class ItemApiTest implements ModInitializer {
+	/**
+	 * Whether fabric-item-api-v1 is Fabricated's. Forgified Fabric API's, on 26.x, throws when NeoForge asks the slot of
+	 * an item with an equipment slot provider, as this test's item has (PROVIDER-7), which would stop the server.
+	 */
+	private static final boolean OWN = !TestMod.providedByAnotherMod("fabric-item-api-v1");
 	private static final List<EquipmentSlot> DAMAGED_IN = new ArrayList<>();
 	private static volatile @Nullable String sharpnessSource;
 
@@ -80,6 +85,10 @@ public final class ItemApiTest implements ModInitializer {
 		});
 
 		ServerLifecycleEvents.SERVER_STARTED.register(server -> {
+			if (!OWN) {
+				TestMod.LOGGER.info("FABRICATED-TEST item api SKIPPED: fabric-item-api-v1 is another mod's, whose equipment slot hook throws for this item (PROVIDER-7)");
+				return;
+			}
 			ServerLevel level = server.overworld();
 			List<String> failed = new ArrayList<>();
 			ItemStack stack = new ItemStack(item);

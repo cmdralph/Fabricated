@@ -124,6 +124,11 @@ echo "::endgroup::"
 # SMOKE_EXPECT_REFUSAL: the launch must stop, with this text in the server's output (Fabricated refusing Sinytra
 # Connector or a second Fabricated jar beside it).
 if [ -n "${SMOKE_EXPECT_REFUSAL:-}" ]; then
+	# The refusal must be what stops the launch: a module error after it is what the player would see (DUP-2).
+	if grep -q "ResolutionException" server.out; then
+		echo "FAIL: the launch stopped with a module error, not the refusal: $(grep -h -m 1 "ResolutionException" server.out | cut -c1-300)"
+		exit 1
+	fi
 	if [ "$status" != started ] && grep -qF -- "$SMOKE_EXPECT_REFUSAL" server.out; then
 		echo "PASS: the launch stopped with: $(grep -hF -m 1 -- "$SMOKE_EXPECT_REFUSAL" server.out | cut -c1-400)"
 		exit 0
@@ -187,6 +192,7 @@ else
 	echo "FAIL: native resource loader: listener runs again on /reload"; fail=1
 fi
 check "FABRICATED-TEST registry sync: custom registry OK" server.out "native registry sync: custom registry, entry callback, attributes, NeoForge sync flag"
+check "FABRICATED-TEST registry sync: tracked registry OK" server.out "a registry NeoForge tracks, made in a Fabric initializer after NeoForge's NewRegistryEvent, as Forgified Fabric API's builder makes one (PROVIDER-6)"
 check "registry sync state: alias=true, dynamic=1, setupCallback=1" server.out "native registry sync: alias, synced dynamic registry, setup callback"
 if [ "$mc" = "1.21.1" ]; then
 	# Fabric API 0.116 (1.21.1) has no mob effect events; its mob conversion event is tested instead.
