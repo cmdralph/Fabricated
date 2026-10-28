@@ -132,7 +132,7 @@ public final class LinkageAnalysis {
 		LinkageChecker checker = null;
 		ClassIndex index = null;
 		for (TranslatedMod mod : mods) {
-			String blob = "linkage-" + Hashing.sha256("v6|" + mod.candidate().sha256() + "|" + setFingerprint + "|" + (clientSide ? "c" : "s")).substring(0, 40) + ".json";
+			String blob = "linkage-" + Hashing.sha256("v7|" + mod.candidate().sha256() + "|" + setFingerprint + "|" + (clientSide ? "c" : "s")).substring(0, 40) + ".json";
 			List<String> issues = readCached(blob);
 			if (issues == null) {
 				// Built only when some result is not cached: it reads every mod's classes once.

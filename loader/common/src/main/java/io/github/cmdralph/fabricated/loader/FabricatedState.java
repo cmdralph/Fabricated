@@ -97,6 +97,15 @@ public final class FabricatedState {
 		return fabricId == null ? Optional.empty() : Optional.ofNullable(result.containers().get(fabricId));
 	}
 
+	/**
+	 * Whether another mod provides the Fabric API module (its Fabric id, e.g. {@code fabric-networking-api-v1}): then
+	 * that mod's copy is the one loaded, and Fabricated's own part of the module (its packages, mixins and bridges)
+	 * stands down.
+	 */
+	public boolean providedElsewhere(String module) {
+		return result.providedElsewhere().contains(module);
+	}
+
 	/** Classes of loaded Fabric mods with {@code @Environment} annotations (see {@link FabricClassProcessor}). */
 	public Set<String> environmentClasses() {
 		return result.environmentClasses();

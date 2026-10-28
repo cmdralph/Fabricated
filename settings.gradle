@@ -30,16 +30,16 @@ include 'core'
 // The Minecraft projects need their platform's maven and Mojang's servers. Pass -Pfabricated.coreOnly=true to build
 // and test only the Minecraft-independent modules.
 def coreOnly = providers.gradleProperty('fabricated.coreOnly').map { it.toBoolean() }.getOrElse(false)
-// Each platform's versions are in mc/<platform>/<version>, as the project :mc:<platform>-<version>. Only the platforms
-// -Pfabricated.platforms names (comma-separated, or "all") are configured, NeoForge's by default: a build configures
-// one platform's plugin, as each branch's CI builds one platform.
-def platforms = ['neoforge', 'forge', 'forge-legacy']
-def selected = providers.gradleProperty('fabricated.platforms').getOrElse('neoforge').split(',')*.trim().findAll { it }
+// Each platform's versions are in mc/<platform>/<version>, as the project :mc:<platform>-<version>. A branch holds one
+// platform's folders (main NeoForge's, forge and forge-legacy theirs), which are configured; -Pfabricated.platforms
+// (comma-separated) picks among them.
+def platforms = ['neoforge', 'forge', 'forge-legacy'].findAll { file("mc/${it}").isDirectory() }
+def selected = providers.gradleProperty('fabricated.platforms').map { it.split(',')*.trim().findAll { it } }.getOrElse(platforms)
 if (selected == ['all']) selected = platforms
 def unknown = selected - platforms
 if (unknown) {
-    throw new GradleException("Unknown platforms in fabricated.platforms: ${unknown.join(', ')}" +
-            " (known: ${platforms.join(', ')}, all)")
+    throw new GradleException("This branch has no platform ${unknown.join(', ')} in fabricated.platforms" +
+            " (it has ${platforms.join(', ')})")
 }
 if (!coreOnly) {
     selected.each { platform ->

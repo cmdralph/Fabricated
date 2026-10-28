@@ -32,10 +32,11 @@ import io.github.cmdralph.fabricated.core.json.JsonException;
 public final class NestedNeoForgeJars {
 	/** The jar-in-jar list of a NeoForge mod file. */
 	public static final String METADATA = "META-INF/jarjar/metadata.json";
-	private static final String MODS_TOML = "META-INF/neoforge.mods.toml";
+	/** Where a NeoForge mod file declares its mods. */
+	public static final String MODS_TOML = "META-INF/neoforge.mods.toml";
 	private static final String MANIFEST = "META-INF/MANIFEST.MF";
 	/** Bounds each text file read: a mods.toml, a manifest or a jar-in-jar list is a few kilobytes. */
-	private static final int MAX_TEXT_BYTES = 1 << 20;
+	public static final int MAX_TEXT_BYTES = 1 << 20;
 	/** Bounds the nested jars opened for one mod file, at every depth. */
 	private static final int MAX_JARS = 256;
 

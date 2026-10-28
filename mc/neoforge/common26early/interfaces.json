@@ -1,5 +1,0 @@
-{
-  "net/minecraft/world/item/alchemy/PotionBrewing$Builder": [
-    "net/fabricmc/fabric/api/registry/FabricPotionBrewingBuilder"
-  ]
-}
