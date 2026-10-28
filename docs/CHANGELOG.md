@@ -10,7 +10,9 @@ One entry per working session, newest first: what changed, and how it was verifi
   descriptor (`Annotations.mentions`) where `EnvironmentStripper` and `MultiLoaderJars` each had one; the engine
   modules' Java 21 toolchain, Java 17 target, repository and JUnit setup in one block of the root build, where `core`,
   `api` and `fabric-loader-api` each repeated it.
-- **Dead code:** `MultiLoaderJars.forNeoForge`, which only its tests called (they ask `fabricReason`).
+- **Dead code:** `MultiLoaderJars.forNeoForge`, which only its tests called (they ask `fabricReason`); 1.21.1's own
+  copy of the login listener accessor, which made its shared login code cast to an accessor it didn't apply (MIX-2,
+  found completing `MIXINS.md`).
 - **Outdated docs:** `claude.md` and `PORTING.md` described the one-tree model (building a Forge version on `main`, the
   Forge workflows on pull requests to `main`, every branch holding every platform) and the test-mod and pass-through
   compile setup per version; the roadmap called CACHE-3 and ARCH-1 open and listed cross-platform copies to merge that

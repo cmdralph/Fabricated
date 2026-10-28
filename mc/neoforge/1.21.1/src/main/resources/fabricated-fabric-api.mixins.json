@@ -6,7 +6,7 @@
     "EntityTrackerAccessor",
     "ServerChunkLoadingManagerAccessor",
     "ServerCommonNetworkHandlerAccessor",
-    "ServerLoginNetworkHandlerAccessor"
+    "ServerLoginPacketListenerImplAccessor"
   ],
   "injectors": {
     "defaultRequire": 1
