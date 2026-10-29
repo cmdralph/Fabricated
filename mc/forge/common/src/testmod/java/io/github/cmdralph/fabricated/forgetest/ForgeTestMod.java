@@ -3,6 +3,12 @@ package io.github.cmdralph.fabricated.forgetest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.File;
+import java.io.IOException;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.InvocationTargetException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Arrays;
 
 import net.fabricmc.api.DedicatedServerModInitializer;
@@ -154,6 +160,30 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 	static BlockPos testSite(ServerLevel level, int dx, int dz) {
 		BlockPos spawn = level.getRespawnData().pos();
 		return new BlockPos(spawn.getX() + dx, level.getMaxY() - 30, spawn.getZ() + dz);
+	}
+
+	/**
+	 * Whether vanilla reads a player's stats file, as it does when a player joins: its parser is in Gson's
+	 * {@code com.google.gson.internal}, a package Gson's module doesn't export, which the game reaches through the loader
+	 * Fabricated's class path loader goes in front of (GSON-1, GSON-2).
+	 */
+	public static void checkVanillaStats(MinecraftServer server) {
+		try {
+			Path file = Files.createTempFile("fabricated-stats", ".json");
+			Files.writeString(file, "{\"stats\":{}}");
+			// (MinecraftServer, File) up to 1.21.11, (MinecraftServer, Path) on 26.x.
+			for (Constructor<?> constructor : net.minecraft.stats.ServerStatsCounter.class.getConstructors()) {
+				if (constructor.getParameterCount() != 2) continue;
+				constructor.newInstance(server, constructor.getParameterTypes()[1] == File.class ? file.toFile() : file);
+				LOGGER.info("FABRICATED-FORGE-TEST vanilla stats read OK");
+				return;
+			}
+			LOGGER.error("FABRICATED-FORGE-TEST vanilla stats read FAILED: no ServerStatsCounter constructor");
+		} catch (InvocationTargetException e) {
+			LOGGER.error("FABRICATED-FORGE-TEST vanilla stats read FAILED: {}", e.getCause().toString());
+		} catch (IOException | ReflectiveOperationException | LinkageError e) {
+			LOGGER.error("FABRICATED-FORGE-TEST vanilla stats read FAILED: {}", e.toString());
+		}
 	}
 
 	/** Whether Fabric's loot table events changed dirt's loot table and drops ({@link ForgeLootTest}), once the server ticks. */

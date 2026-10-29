@@ -164,14 +164,76 @@ release workflow builds each platform's jars from its own branch. What it costs:
 request per Forge branch before it ships there, and `forge-shared` is kept on both Forge branches by hand. No branch
 was deleted.
 
-## Next release: v0.5.1-alpha, the v0.5.x update
+## Next release: v0.5.1-alpha, rebuilt; then 0.6.0-beta
 
-v0.5.0-alpha (`releases/v0.5.0-alpha.md`) stopped packs that mix Fabricated with Sinytra's mods. The owner's plan for
-its update (2026-10-28), in order: coexistence first (T1, #217: every package one owner, a conflict resolved or
-explained), a branch per platform (T2, #218 to #220), the specification rethought for those packs (T3, #222, *Rethink,
-2026-10-28*), the fixes the owner's reference pack needs (T4, #221), a cleanup (T5, #223), then the release:
-v0.5.1-alpha (the owner's choice of version), with the full matrix on every branch and version, and after it 0.6.0-beta
-with what beta means (*Beta*, to come with that bump).
+v0.5.1-alpha (`releases/v0.5.1-alpha.md`) is the v0.5.x update the owner planned on 2026-10-28: coexistence with
+Sinytra's mods (T1, #217), a branch per platform (T2, #218 to #220), the specification rethought for those packs (T3,
+#222), the reference pack's fixes (T4, #221), a cleanup (T5, #223) and the release (T6): the full matrix on every branch
+and version, then PROVIDER-6 and DUP-2, which its extended runs found, fixed before it (#227, the owner's choice). The
+release workflow made it a draft for the owner to publish, and 0.6.0's development started (#228).
+
+On that draft the owner's reference pack crashed joining a world (GSON-1) and showed more differences from Fabric. The
+owner's follow-up (2026-10-28) asked for the fixes in the same release, as an unusable release shouldn't ship: GSON-1
+and PKG-5 (#229), Fabric Loader's `loadIntoTarget` and OneConfig's differences documented (#230), Fabricated's in-game
+mod by name in a crash report (#231), and the Forge branches synced with GSON-2's fix. So the version is 0.5.1 again until the
+draft is rebuilt and published; 0.6.0's development resumes after it, toward 0.6.0-beta, which the next section
+defines.
+
+## Beta: what 0.6.0-beta means
+
+Defined on 2026-10-28, with the start of 0.6.0's development. Alpha meant the design could still move under a pack;
+beta means it doesn't: NeoForge's targets are set, and the work to 0.6.0-beta is closing faults and turning the
+informational runs into gates, not adding scope. Anything new that doesn't serve the criteria below goes into a track
+here for after the beta.
+
+**Platforms.** Beta is NeoForge's, on every version CI builds (1.21.1, 1.21.11, 26.1.2, 26.2, 26.3). Forge 61 to 66
+and Forge 47 stay previews: they ship with each release from their own branches, with their gates green, but the beta
+doesn't wait on their findings, and their notes say preview.
+
+**Stability bar.** What a beta promises, on NeoForge:
+
+1. **No launch stops for Fabricated.** A Fabric mod it can't run is disabled before it runs and the report says why,
+   as a module conflict already is (T1). The only launches Fabricated stops are its refusals (Sinytra Connector, a
+   second Fabricated jar), each with an error naming the jars. A mod's own fault, or another mod's module's
+   (PROVIDER-5, PROVIDER-7), is that mod's, and the report names the mod.
+2. **No open P0 or P1 on NeoForge**, by `FINDINGS.md`'s severities, UNVERIFIED ones included: a finding is fixed, or
+   narrowed to "the mod is disabled and the report says why" with the evidence that lowers its severity.
+3. **No open finding on untrusted input.** SEC-5's limits on nested jars hold across all the jars of a launch, not
+   per jar.
+4. **Upgrades don't break a game directory.** A cache from an older build is translated again (the schema is in the
+   cache key), and a retired config key stays accepted and ignored. Both hold today; the beta keeps them as rules.
+5. **The developer API (`docs/API.md`, 1.x) is stable.** A break needs the owner's decision, a major API version and
+   a changelog entry.
+
+**Compatibility targets.** Each one is a CI check on every NeoForge version, as a gate:
+
+| Target | Check | Today |
+|---|---|---|
+| The test mods, with and without Fabric API, server and client | the smoke runs and the Fabric API client modules | gates |
+| Fabric renderer and model APIs; Sodium and Iris for NeoForge | the renderer gates (26.x, 1.21.11) and the Sodium runs | gates, but FRAPI-5 (1.21.1) |
+| Packs sharing the game with Forgified Fabric API and Sodium | the coexisting-mods server; the Polyfrost and Forgified Fabric API clients | the server a gate (with PROVIDER-3's and PROVIDER-6's checks); the clients informational |
+| Popular Fabric mods: the mod corpus and the advanced corpus | each corpus's server and client reach a world, and every mod that doesn't load is named in the report with a reason | informational; 1.21.1's stop (CORPUS-44 to 46) |
+| The owner's reference pack (Forgified Fabric API, Sodium, OneConfig, about 130 Fabric mods, 1.21.1) | boots to the title screen, its report explaining each disabled mod | OneConfig and PolyPlus reach a world (CORPUS-47); the whole pack isn't in CI (UNVERIFIED) |
+
+A run becomes a gate once it holds on two extended runs in a row on the same code (CI-1: a check that can change
+between runs of the same code is a defect of the check).
+
+**Speed and weight.** A launch's cost is measured and kept: a cold and a warm launch per version in *Performance
+baselines*, the warm one with PERF-2's re-reads gone. The beta's numbers become the bar later releases are held to; a
+change costing more than 10% on either says why in its pull request.
+
+**Ship criteria for 0.6.0-beta:**
+
+1. The stability bar holds on `main`'s release head.
+2. Every target above is a gate and green on that head, on every NeoForge version.
+3. The full matrix is green on `main`, `forge` and `forge-legacy`, on two extended runs.
+4. `COMPATIBILITY.md` matches the release head's CI, and the release notes say what changed since v0.5.1-alpha and
+   what to do on upgrade.
+5. The owner chooses the version and approves the tag, as for every release.
+
+**What blocks it today** (2026-10-28): SER-1, CORPUS-44 to 46 and FRAPI-5 (the stability bar); SEC-5; the corpus and
+coexistence clients not yet gates; PERF-2 and the warm-launch baseline. The order to work them in: the 1.21.1 corpus
+stops (CORPUS-44 to 46), SER-1, SEC-5, FRAPI-5, then the gates and the baselines.
 
 ## v0.5.0
 
@@ -487,9 +549,13 @@ with its cause, why the tests missed it and its fix, in the change that fixes it
 | SER-1 | P0 on NeoForge 21.11, UNVERIFIED trigger | `EntityDataSerializers.registerSerializer` on NeoForge 21.11 (and 26.x, unread) | NeoForge 21.11 refuses mods' calls to vanilla's method as 21.1 does (read in its sources); CORPUS-41's hook is 1.21.1's only, as Fabric API has a serializer registry on 1.21.11 that maps to NeoForge's. Whether any Fabric mod for 1.21.11 still calls vanilla's method is UNVERIFIED. | Move the hook to `common121` once a run shows such a mod. |
 | CORPUS-44 | P0 on NeoForge 21.1 with Moonlight (1.21.1 corpus server) | `fabric-resource-loader-v0` on 1.21.1 (Fabricated's own, standing for v1) | Moonlight's `FilteredResManagerImpl` uses Fabric API's internal `net.fabricmc.fabric.impl.resource.loader.ModNioResourcePack`, which Fabricated's resource loader doesn't have; the linkage check warns, and the server stops with `ClassNotFoundException` as resources load (run 40683010866). | A known limit of v0.5.0-alpha: provide the class's API on Fabricated's packs, or leave out what needs it. |
 | CORPUS-45 | P0 on NeoForge 21.1 clients with LambDynamicLights, UNVERIFIED cause | LambDynamicLights' `CommonLevelRendererMixin` (`lambdynlights_runtime`) | The 1.21.1 corpus client stops as Mixin applies its `@ModifyReturnValue` on `LevelRenderer.getLightColor`: the handler fits the three-argument overload, but Mixin applied it to the two-argument one (run 40683010866). Upstream's selector names the three-argument overload with its descriptor, and NeoForge 21.1 doesn't patch either; what made it match the other is UNVERIFIED (the job log's tail holds no pre-flight report for it). | A known limit of v0.5.0-alpha: needs a run that keeps the client's report. |
-| CORPUS-46 | P0 on NeoForge 21.1 (advanced corpus), UNVERIFIED cause | 1.21.1 advanced corpus server and client | Past CORPUS-43 both get through module resolution, then stop: the client with an `InvocationTargetException` from its main class, the server without an error in the log's last lines (run 40683010866). | A known limit of v0.5.0-alpha: needs the runs' full logs. |
-| CORPUS-47 | P0 on NeoForge 21.1 clients with OneConfig (the owner's reference pack; informational Polyfrost run) | adventure-platform-fabric, OneConfig's `Mixin_ChatReceiveEvent` (`mixins.oneconfigv1.json`) | Pre-flight refuses adventure-platform-fabric's mixins into library classes (`GameProfile`, `CommandSyntaxException`), so it isn't loading, and Mixin then stops the client at `Initializing game` attaching OneConfig's chat mixin: "ClassNotFoundException: net.kyori.adventure.platform.fabric.FabricClientAudiences" (run 40683010866's crash report). CORPUS-15's check covered required configs without a plugin only, yet Mixin's attach error stops the game for any config. | Fix in task 4, UNVERIFIED on the real mods: the linkage analysis leaves such a mixin out of a config that isn't required or has a plugin (its mod is translated again without it, and the report says so), as `PipelineTest` checks; a required config without a plugin still disables its mod. The extended run's Polyfrost client checks it at the release (T6). |
+| CORPUS-46 | P0 on NeoForge 21.1 (advanced corpus) | Pehkui's `reach.PlayerEntityMixin` (`pehkui.mixins.json`), `MixinPreflight` | Past CORPUS-43 the 1.21.1 advanced corpus server and client stop as Mixin applies Pehkui's reach mixin: "Critical injection failure: Callback method pehkui$attack$distance(D)D ... failed injection check, (0/1) succeeded. Scanned 0 target(s)" (run 40762508369). A required injector that finds no target on NeoForge 21.1, which pre-flight should leave out or disable its mod for; why pre-flight passed it is UNVERIFIED. | A known limit of v0.5.1-alpha. |
+| ENTRY-1 | P2, UNVERIFIED on real mods | `EntrypointBridge` (a mod marked failed) | A Fabric mod whose main initializer fails after it registered a server configuration task can leave a singleplayer player waiting to join: the client initializer, which registers the client's side, doesn't run for a failed mod (the test mod with Forgified Fabric API on 1.21.1 before PROVIDER-6, run 40762508369: "Waiting for player to load" until the run's time limit). The report names the failure, not the wait. | Open: running a failed mod's other entrypoints, or dropping what it registered, each have a cost; to decide. |
 | PROVIDER-5 | — | Forgified Fabric API's `fabric-networking-api-v1` (1.21.1 seen) | With it providing the module, NeoForge refuses a payload type in the `minecraft` namespace, which Fabricated's own networking registers (NET-4): the Fabric mod's initializer throws "Cannot register payload minecraft:... using the domain \"minecraft\"" and it is marked failed (the test mod's payload on the 1.21.1 client run, 40738724928; BetterEnd's ritual update UNVERIFIED). | Not Fabricated's: the module is the provider's (*Decisions, 2026-10-28*). The test mods skip that case when another mod provides networking. |
+| PROVIDER-7 | — | Forgified Fabric API's `fabric-item-api-v1` on 26.x (26.1.2 and 26.2 seen) | Its `IItemExtensionMixin` answers NeoForge's `getEquipmentSlot` for an item with Fabric's equipment slot provider by casting the item to `LivingEntity` (`(LivingEntity) this`, read in its 26.1.2 source), which throws `ClassCastException`: the test mod's item stopped the servers with Forgified Fabric API once PROVIDER-6 let its initializers run (this change's CI, run 40772701272). A Fabric mod's item with an equipment slot provider (`FabricItem.Settings.equipmentSlot`) would stop the game wherever NeoForge asks its slot. | Not Fabricated's: the module is the provider's (*Decisions, 2026-10-28*); worth reporting to Forgified Fabric API (the owner's call). The 26.x test mod skips its item checks when another mod provides the module. |
+| GSON-2 | P0 on Forge 47 | `ProposedJars.install(loader)` on the Forge branches (`ForgeLoaderHooks.attach`) | GSON-1's cause, on Forge 47: its containers call the one-argument `install`, so `ProposedJars` takes the game loader's fallback and goes to the loader's parent, while Forge 47's ModLauncher (10.0.9) makes that fallback its boot layer's loader, as NeoForge 21.1's does (read in its `ModuleLayerHandler`). A local Forge 47 server failed the test mod's stats read with GSON-1's "NoClassDefFoundError: com/google/gson/internal/Streams". Forge 61 to 66 aren't hit: their ModLauncher (10.2.6) leaves the fallback unset, and a local Forge 61 server (1.21.11) read a player's stats with `ProposedJars` installed. | Fixing: the Forge branches' sync for the rebuilt v0.5.1-alpha passes ModLauncher's boot layer loader on both (`forge-shared` stays one), and their test mods read a player's stats as vanilla does; with it, the local Forge 47 and Forge 61 servers pass every check. |
+| KEYMAP-1 | P2 | Fabric mods' accessors to `KeyMapping.MAP` (OneConfig's keybind registry) | NeoForge retyped the field to `KeyMappingLookup`, so a `Map` accessor is left out and its callers throw `NoSuchMethodError` (OneConfig catches it; its keybinds may shadow Minecraft's). | Open: a `Map` view of NeoForge's lookup, served for such an accessor, would match Fabric; built if more mods than OneConfig need it. |
+| CI-3 | P3 (CI only) | The client checks of `.github/workflows/build.yml` and `ci/neoforge/smoke-client.sh`, which read `logs/latest.log` | A client run crossing 00:00 UTC has its log rotated by log4j: the lines before midnight move to `logs/<date>-1.log.gz`, and their checks fail with the lines missing (#230's run 40790221936 on 26.1.2: `model deserializer OK`, `neoforge blockstate type OK`, `key mapping OK`, all in the rotated file). | Open: after the game exits, the smoke script puts the run's rotated logs (oldest first) in front of `latest.log`; the run directory is new each step, so they are this run's. |
 | PLAT-2 | P3, UNVERIFIED | core `PlatformLibraries` | Other prefixes also cover whole library families (`org/lwjgl/`, `io/netty/`), of which the platform may ship some modules only: a mod nesting another module (LWJGL's NanoVG, say) would lose it, as PLAT-1 did. No case seen yet. | Check each prefix against the packages the platform really has (the loader computes them), and keep a prefix only where the family is complete. |
 | FC-5 | P3 | `TranslationCache.verifyIntegrity` | Hashes are memoised by file metadata. On Windows the key is size and mtime only, and `entry.json` itself isn't hashed. | Needs a decision on cost: re-hashing every launch versus trusting metadata. |
 | FC-6 | P3 | `TranslationCache.store` | Two cold launches of the same side that share one game directory race on delete-then-move. | Needs a cross-process file lock. Rare. |

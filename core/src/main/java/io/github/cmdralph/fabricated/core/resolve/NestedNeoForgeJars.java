@@ -27,7 +27,8 @@ import io.github.cmdralph.fabricated.core.json.JsonException;
  * {@code META-INF/jarjar/metadata.json}). NeoForge's discovery finds those mods only after Fabricated's has run, yet
  * Fabric mods may depend on them, be replaced by them, or target their classes with mixins (Sodium for NeoForge nests its
  * mod in a service jar). They are read in place, nothing is extracted. A platform whose mods' descriptor is elsewhere
- * (Forge's {@code META-INF/mods.toml}) names it ({@link #read(Path, ArchiveLimits, String)}).
+ * (Forge's {@code META-INF/mods.toml}) names it ({@link #read(Path, ArchiveLimits, String)}). The nested jars that declare
+ * no mods are libraries, whose packages are the platform's too ({@link #readAll}).
  */
 public final class NestedNeoForgeJars {
 	/** The jar-in-jar list of a NeoForge mod file. */
@@ -52,14 +53,28 @@ public final class NestedNeoForgeJars {
 	public record ModsToml(String origin, String text, String jarVersion, List<String> chain, Set<String> classes) {
 	}
 
+	/**
+	 * Everything a mod file nests.
+	 *
+	 * @param mods            the mods.toml of every nested mod jar, as {@link #read(Path, ArchiveLimits)}
+	 * @param libraryPackages the packages, by internal name, of the nested jars that declare no mods: libraries, which
+	 *                        NeoForge loads beside the mods or in a loader above theirs (on 26.x FML's plugin loader has a
+	 *                        language provider's, such as Kotlin for Forge's Kotlin)
+	 */
+	public record Contents(List<ModsToml> mods, Set<String> libraryPackages) {
+	}
+
 	private final ArchiveLimits limits;
 	private final String descriptor;
 	private final List<ModsToml> found = new ArrayList<>();
+	/** Filled only for {@link #readAll}. */
+	private final Set<String> libraryPackages;
 	private int opened;
 
-	private NestedNeoForgeJars(ArchiveLimits limits, String descriptor) {
+	private NestedNeoForgeJars(ArchiveLimits limits, String descriptor, boolean libraries) {
 		this.limits = limits;
 		this.descriptor = descriptor;
+		this.libraryPackages = libraries ? new HashSet<>() : null;
 	}
 
 	/** The mods.toml and classes of every mod jar nested in {@code jar}, down to the limits' nesting depth. */
@@ -69,12 +84,22 @@ public final class NestedNeoForgeJars {
 
 	/** As {@link #read(Path, ArchiveLimits)}, for a platform reading a mod's descriptor at {@code descriptor}. */
 	public static List<ModsToml> read(Path jar, ArchiveLimits limits, String descriptor) throws IOException, JsonException {
+		return List.copyOf(read(jar, limits, descriptor, false).found);
+	}
+
+	/** The mods and the libraries nested in {@code jar}, down to the limits' nesting depth. */
+	public static Contents readAll(Path jar, ArchiveLimits limits) throws IOException, JsonException {
+		NestedNeoForgeJars reader = read(jar, limits, MODS_TOML, true);
+		return new Contents(List.copyOf(reader.found), Set.copyOf(reader.libraryPackages));
+	}
+
+	private static NestedNeoForgeJars read(Path jar, ArchiveLimits limits, String descriptor, boolean libraries) throws IOException, JsonException {
 		if (Files.size(jar) > limits.maxJarBytes()) throw new IOException(jar + " is larger than " + limits.maxJarBytes() + " bytes");
-		NestedNeoForgeJars reader = new NestedNeoForgeJars(limits, descriptor);
+		NestedNeoForgeJars reader = new NestedNeoForgeJars(limits, descriptor, libraries);
 		try (FileSystem archive = open(jar)) {
 			reader.readNested(archive, String.valueOf(jar.getFileName()), List.of());
 		}
-		return List.copyOf(reader.found);
+		return reader;
 	}
 
 	/**
@@ -117,7 +142,14 @@ public final class NestedNeoForgeJars {
 			nestedChain.add(path);
 			try (FileSystem inner = open(nested)) {
 				String toml = text(inner, descriptor);
-				if (toml != null) found.add(new ModsToml(nestedOrigin, toml, jarVersion(inner, listed), List.copyOf(nestedChain), classes(inner, nestedOrigin)));
+				if (toml != null) {
+					found.add(new ModsToml(nestedOrigin, toml, jarVersion(inner, listed), List.copyOf(nestedChain), classes(inner, nestedOrigin)));
+				} else if (libraryPackages != null) {
+					for (String name : classes(inner, nestedOrigin)) {
+						int slash = name.lastIndexOf('/');
+						if (slash > 0) libraryPackages.add(name.substring(0, slash));
+					}
+				}
 				if (nestedChain.size() < limits.maxNestingDepth()) readNested(inner, nestedOrigin, nestedChain);
 			}
 		}

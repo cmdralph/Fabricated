@@ -14,7 +14,7 @@ import net.minecraft.server.MinecraftServer;
 /**
  * Proves Forge's Mixin applies a translated Fabric mod's mixins (from the overlay's MixinConfigs): logs after the first
  * server tick, whether the server has the interface the test mod's class tweaker injects, whether the test mod's item
- * is still in the registry Forge has frozen and checked by then, whether its item tag's removals applied, whether
+ * is still in the registry Forge has frozen and checked by then, whether vanilla reads a player's stats file (GSON-2), whether its item tag's removals applied, whether
  * Fabric's loot table events reached dirt's loot table and drops, whether Fabric's default attribute event reached a
  * cow's defaults, whether Fabric's advancement modify event reached a vanilla advancement, whether its fluids have
  * fluid types, on a client whether Fabric's colour provider registry finds the game's block colours, whether a command
@@ -38,6 +38,7 @@ public abstract class MinecraftServerMixin {
 				ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST registry entry kept OK");
 			}
 			ForgeTestMod.checkTagRemoval();
+			ForgeTestMod.checkVanillaStats((MinecraftServer) (Object) this);
 			ForgeTestMod.checkLoot((MinecraftServer) (Object) this);
 			ForgeTestMod.checkDefaultAttributes();
 			ForgeTestMod.checkAdvancements((MinecraftServer) (Object) this);
