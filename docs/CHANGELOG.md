@@ -3,6 +3,90 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-10-28: v0.5.1-alpha carries the follow-up's fixes (task 4 of the v0.5.1-alpha follow-up)
+
+- **The owner's decision:** the world-join crash made the v0.5.1-alpha draft unusable for real packs, so its fixes ship
+  in the same release, rebuilt, rather than a later one. The version is 0.5.1 again on `main` (it was 0.6.0 since
+  #228) until the release is published; 0.6.0's development resumes after it. README, ARCHITECTURE and the roadmap say
+  so.
+- **Release notes** (`releases/v0.5.1-alpha.md`): GSON-1 and PKG-5, Fabric Loader's `loadIntoTarget`, Fabricated's file
+  by name, the Forge builds' class-path fix (GSON-2) and OneConfig's differences under the known limits.
+- **GSON-2:** Forge 47's ModLauncher (10.0.9) makes the game loader's fallback its boot layer's loader, as NeoForge
+  21.1's does, so its builds had GSON-1: a local Forge 47 server failed the test mod's stats read with
+  "NoClassDefFoundError: com/google/gson/internal/Streams", and passes with the fix. Forge 61 to 66 aren't hit: their
+  ModLauncher (10.2.6) leaves the fallback unset, and a local Forge 61 server (1.21.11) read the stats without the fix.
+  The Forge branches' sync passes ModLauncher's boot layer loader on both, so `forge-shared` stays one.
+
+## 2026-10-28: Fabricated's file by name in a crash report (task 3 of the v0.5.1-alpha follow-up)
+
+- **Fabricated's in-game mod** showed in a crash report's mod list as its cached file, a SHA-256
+  (`b175323ddb...jar` in the owner's report). It is now a cache entry like the translated mods,
+  `entries/fabricated-<hash>/fabricated.jar`, and NeoForge names it `fabricated.jar`. The old file is cleaned with the
+  cache's unused files.
+- **Left alone, as the owner said:** resource packs' `pack_format` errors, Essential's `UnionFileSystemProvider.delete`
+  error, the missing `ambientsounds` warning and Mixin's "is public and should be specified in value" warnings.
+- **Verified:** locally, the 1.21.1 server: FML logs `Found mod file "fabricated.jar"`, every check passes (63).
+
+## 2026-10-28: OneConfig's mixins against Fabric's behaviour (task 2 of the v0.5.1-alpha follow-up)
+
+- **Checked, as the owner asked:** OneConfig's mixin plugin asks Fabric Loader nothing (it applies every mixin but its
+  toggles), and its config is registered once. Mixin's "Renaming @Accessor method oneconfig$all ..." is Mixin's own
+  naming of static interface accessors, as on Fabric (read in Mixin's `MixinPreProcessorStandard`).
+- **`NoSuchMethodError: KeyMappingRegistryAccessor.oneconfig$map()`:** NeoForge retyped `KeyMapping.MAP` to its
+  `KeyMappingLookup`, so pre-flight leaves the `Map` accessor out (the report's `LEFT_OUT` line). OneConfig catches it
+  and warns. A bridge (a `Map` view of NeoForge's lookup) is noted in the roadmap (KEYMAP-1), not built.
+- **`NoSuchMethodError: Component.asComponent()`:** adventure-platform-fabric gives `Component` Adventure's
+  `ComponentLike` on Fabric. Pre-flight disables it: two of its mixins give library classes NeoForge loads without
+  mixin support (authlib's `GameProfile`, Brigadier's `CommandSyntaxException`) Adventure's interfaces, which its API
+  casts to (LEAVE-1); LIB-1 bridges only a mod's own interfaces. The `skipMixins` the report suggests loads it.
+- **Fabric Loader's `FabricLauncher.loadIntoTarget`** is provided (OneConfig loads its Mod Menu API shim's entrypoint
+  with it; the shim's package is OneConfig's own, so the class still can't load, and Fabricated provides Mod Menu's API
+  itself). `LauncherTest`.
+- **COMPATIBILITY:** what of Fabric's behaviour these can't match, under *Mixins NeoForge's code can't take*.
+- **Verified:** `LauncherTest`; the causes read in the owner's log and report, OneConfig's and adventure-platform-fabric's
+  public sources, and Mixin's. OneConfig itself runs in CI's informational Polyfrost run only (its 1.21.1 log shows the
+  same `oneconfig$map` warning).
+
+## 2026-10-28: Vanilla can't read Gson's internals on 1.21.1 (task 1 of the v0.5.1-alpha follow-up)
+
+- **The owner's report** (the reference pack on v0.5.1-alpha): joining a world crashed the integrated server with
+  "NoClassDefFoundError: com/google/gson/internal/Streams" in vanilla's `ServerStatsCounter.parseLocal`, and OneConfig
+  hit the same reading JSON.
+- **Cause (GSON-1):** not the package guard, as suspected: it already leaves a Fabric jar's copy of a platform package
+  out for every layer the game reads (on NeoForge 21.1 ModLauncher's boot, service and plugin layers), unexported
+  packages included, and the pack's report shows no Gson package taken. Gson's module doesn't export
+  `com.google.gson.internal`, so NeoForge 21.1's game class loader hands its classes to its fallback, which ModLauncher
+  makes the loader of the launcher's libraries; LOADER-2's loader (jars mods add to the class path) replaced that
+  fallback with one going to the game loader's parent. Since v0.4.0, on NeoForge 21.1 only (FML 10 to 12 make the
+  fallback the parent).
+- **Fix:** the loader goes in front of the fallback each platform names (`Fml.gameFallback`). The Forge branches have
+  the same call to fix at their next sync (GSON-2, roadmap).
+- **Kotlin (PKG-5), found by the new client run:** on NeoForge 21.11 and 26.x every Kotlin package loaded twice,
+  Kotlin for Forge's (2.4.0, which FML 10 and later load with its language provider in their plugin loader, no module
+  layer) and Fabric Language Kotlin's (2.4.21, in the game's loader). The package guard didn't read the libraries
+  NeoForge mods nest. It now does: their packages are the platform's, and a Fabric jar's copy is left out, with a line
+  in the report. NeoForge 21.1 was right already (Kotlin for Forge's Kotlin is on a module layer there).
+- **Tests:** every server and client run of the test mods reads a player's stats file the way vanilla does, beside a
+  new test jar that shades part of Gson (`fabricated-testmod-shade`), whose package the server run requires left out;
+  a new client run joins a world with that jar, Kotlin for Forge and Fabric Language Kotlin, and requires Fabric
+  Language Kotlin's copy of Kotlin left out for Kotlin for Forge's (gated, where both have builds).
+- **Verified:** locally, the stats read failed on the 1.21.1 server with the owner's error before the fix and passes
+  after; the 1.21.1 and 26.1.2 servers pass every check (63). For PKG-5, a stand-in NeoForge mod nesting a library
+  (which FML 11 lists among its plugins) beside a Fabric jar bundling its package: the Fabric copy is left out on 26.1.2
+  and on 1.21.1, every check passing (63). The new client run, Kotlin for Forge and Fabric Language Kotlin in CI.
+
+## 2026-10-28: Start of 0.6.0, toward 0.6.0-beta (end of task 6)
+
+- **v0.5.1-alpha** is a draft release (the owner's choice), built by the release workflow from `main` at `7163547`
+  (after #227), `forge` at `aff5b0e` and `forge-legacy` at `5a1ff6a`, for the owner to publish.
+- **Version 0.6.0** in development (`gradle.properties`, README's status, ARCHITECTURE), as 0.5.0's was started.
+- **Beta defined** (roadmap, *Beta: what 0.6.0-beta means*): NeoForge's on every version, the Forge platforms
+  previews; a stability bar (no launch stops for Fabricated, no open P0 or P1 on NeoForge, no open finding on untrusted
+  input, upgrades that keep a game directory, the 1.x API stable); compatibility targets as gates (the test mods, the
+  renderer and Sodium runs, packs with Forgified Fabric API, the corpora, the owner's reference pack); a launch-cost
+  baseline; and ship criteria. What blocks it today: SER-1, CORPUS-44 to 46, FRAPI-5, SEC-5, the informational runs
+  not yet gates, PERF-2. The roadmap's *Next release* says 0.6.0-beta.
+
 ## 2026-10-28: v0.5.1-alpha (task 6 of the v0.5.x update)
 
 - **Version 0.5.1** (the owner's choice: a patch release of v0.5.0-alpha), API 1.1.0 as T1 made it.
@@ -10,6 +94,33 @@ One entry per working session, newest first: what changed, and how it was verifi
   version) and the roadmap (the update's plan, in *Next release*) say so.
 - **Then:** the Forge branches are synced with `main` for their jars, the full matrix with the extended runs goes on
   every branch and version, the release workflow builds the jars without publishing, and the owner decides the tag.
+- **The release's runs:** the extended runs on `main` (40762508369), `forge` (40763699822) and `forge-legacy`
+  (40763704487) and the release workflow's build (40763724245, ten jars and their checksums, nothing published) were
+  green. **CORPUS-47 is verified on the real mods:** the 1.21.1 client with OneConfig 1.5.2 and PolyPlus 1.3.15 leaves
+  OneConfig's chat mixin out, with adventure-platform-fabric disabled and explained, and reaches a world (to
+  `FINDINGS.md`). The 1.21.1 corpus runs stop where the release notes say (CORPUS-44, 45; CORPUS-46's cause found:
+  Pehkui's reach mixin finds no target on NeoForge 21.1).
+- **Found by those runs, fixed before the release (the owner's choice):**
+  - **PROVIDER-6:** with Forgified Fabric API, a Fabric initializer making a registry with its `FabricRegistryBuilder`
+    threw, as NeoForge refuses a registry after its new-registry event, and Fabricated runs initializers later than
+    Connector does. NeoForge's check lets one through while a Fabric entrypoint runs (`RegistryManagerLateRegistryMixin`,
+    always on). The test mod makes a registry the builder's way on every run, and the server with Forgified Fabric API
+    requires its registry made; with another mod's registry sync, it checks what mods need of it (made, entries,
+    callback, sync flag), not Fabricated's attributes and aliases.
+  - **DUP-2:** on NeoForge 21.1 a second Fabricated jar ended in a module error after DUP-1's refusal, which CI's check
+    didn't catch (it read the refusal's text). The other Fabricated jars are now claimed and never loaded, and the
+    refusal checks fail on a module error.
+  - **Found by this change's CI (PROVIDER-7, not Fabricated's):** with the test mod's initializers now running beside
+    Forgified Fabric API, its 26.x item API stopped the servers: it answers NeoForge's equipment slot query for an item
+    with Fabric's slot provider by casting the item to an entity. The 26.x test mod skips its item checks when another
+    mod provides that module; recorded in the roadmap.
+  - **Noted, not fixed (ENTRY-1):** a mod failing its initializer after registering a configuration task can leave a
+    singleplayer join waiting (the test mod's 1.21.1 client with Forgified Fabric API, before PROVIDER-6).
+- **Verified:** locally, the 1.21.1 and 26.1.2 servers with the test mods pass every check, the new one among them,
+  which fails without the fix; both refusals stop the launch with their message and no module error on both versions,
+  where the second-jar one failed on 1.21.1 before. In CI (run 40772701272) every other job passed, the clients' new
+  check and both refusals on all five versions among them; with Forgified Fabric API the test mod's registry is made on
+  1.21.1, 26.1.2 and 26.2, and the 1.21.1 client joins a world and exits normally where it waited before.
 
 ## 2026-10-28: Cleanup (task 5 of the v0.5.x update)
 

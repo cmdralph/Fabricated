@@ -365,6 +365,7 @@ def brokenMods = [
         'throws'  : ['io/github/cmdralph/fabricated/testmod/broken/ThrowingMod.class'],
         'missing' : [],
         'badmixin': ['io/github/cmdralph/fabricated/testmod/broken/mixin/ImpossibleMixin.class'],
+        'shade'   : ['com/google/gson/internal/FabricatedShadedCopy.class'],
 ]
 def brokenJars = brokenMods.collect { name, classes ->
     tasks.register("testmod${name.capitalize()}Jar", Jar) {

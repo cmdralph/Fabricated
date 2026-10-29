@@ -858,8 +858,10 @@ some of its modules (Sodium for NeoForge). Fabricated now shares the game with t
   copy of such a jar without those packages, under `.fabricated/loader-api/` (the original is never changed). The
   report lists each such jar under *Fabric Loader API*. (PROVIDER-2)
 - **Kotlin:** with Kotlin for Forge installed, its Kotlin is the one loaded, and the copy Fabric Language Kotlin
-  bundles is left out the same way. A Fabric mod built against a newer Kotlin than Kotlin for Forge ships gets a
-  linkage warning naming what it lacks.
+  bundles is left out the same way, package by package (Kotlin for Forge's Kotlin is on the launcher's plugin layer on
+  NeoForge 21.1, in FML's plugin loader on 21.11 and 26.x), so each Kotlin package has one provider; CI joins a world
+  with both. A Fabric mod built
+  against a newer Kotlin than Kotlin for Forge ships gets a linkage warning naming what it lacks.
 
 Fabric API keeps `net.fabricmc.fabric.api.util` in two modules (`fabric-api-base` and
 `fabric-content-registries-v0`); a module layer allows one, and Forgified Fabric API puts it in `fabric-api-base`, so
@@ -867,20 +869,27 @@ Fabricated counts it there too. A provider's module is used as it is: what it la
 name, and what it does differently is its own. Forgified Fabric API's networking refuses a payload in the `minecraft`
 namespace, as NeoForge does, where Fabricated's own networking takes it (NET-4): with it installed, a Fabric mod
 registering one fails its initializer and the report marks it failed (the test mod's payload on 1.21.1; BetterEnd's
-ritual update UNVERIFIED, PROVIDER-5). Mods read a Fabric mod's files through its
+ritual update UNVERIFIED, PROVIDER-5). On 26.x, its item API throws when NeoForge asks the equipment slot of an item
+with Fabric's equipment slot provider, which stops the game (PROVIDER-7). Mods read a Fabric mod's files through its
 container as NeoForge reads them, with the NeoForge sections translation leaves out of its `pack.mcmeta` and data files
-(PROVIDER-3). In a development workspace the in-game mod's own copies can't be left out; the report says so.
+(PROVIDER-3). A Fabric mod's initializer creates its registries with Forgified Fabric API's `FabricRegistryBuilder` as
+with Fabricated's: NeoForge's check that refuses a registry after its new-registry event, where Fabricated runs Fabric
+initializers, lets it through while a Fabric entrypoint runs (PROVIDER-6). Forgified Fabric API keeps no registry
+attributes in `RegistryAttributeHolder`, and on 1.21.1 has no registry aliases. In a development workspace the in-game mod's own copies can't be left out; the report says so.
 
 **Sinytra Connector beside Fabricated is refused**, as is a second Fabricated jar: the launch stops with an error naming
 the jars, and Fabricated loads no Fabric mod (two loaders of Fabric mods can't share them; of two Fabricated jars, the
-platform would run one by load order, DUP-1). Remove one of them from the mods folder.
+platform would run one by load order, DUP-1). The other Fabricated jars aren't loaded, so the error is what stops the
+launch, not a module error (DUP-2). Remove one of them from the mods folder.
 
 CI checks this on every version with stand-ins built from Fabricated's own jar (`ci/neoforge/standins.py`: a module
 provided straight and nested, a copy of Fabric Loader's API with its language loader service, two versions of a nested
 library; every check gates); with the newest Forgified Fabric API, Kotlin for Forge and Fabric Language Kotlin from
-Modrinth on a server with the test mods (the server must start and, with Forgified Fabric API's resource loader, take
-the test mod's built-in pack); with Forgified Fabric API and Sodium on a 1.21.1 client (informational); and with a
-stand-in for Connector and a second Fabricated jar, each of which must stop the launch with Fabricated's error.
+Modrinth on a server with the test mods (the server must start; with Forgified Fabric API's resource loader it must
+take the test mod's built-in pack, and with its registry sync the test mod's initializer must make its registry); with
+Forgified Fabric API and Sodium on a 1.21.1 client (informational); and with a stand-in for Connector and a second
+Fabricated jar, each of which must stop the launch with Fabricated's error and no module error. Every server and client
+run also makes a registry the way Forgified Fabric API's builder does, in a Fabric initializer (PROVIDER-6).
 
 ### Fabric Loader
 
@@ -923,7 +932,13 @@ MixinExtras has NeoForge's jar, and a NeoForge mod nested in another jar has tha
   `FabricLauncherBase.getLauncher()` (environment, development flag, runtime namespace) are provided for the mods that
   use them. A jar a mod adds to the class path while running (`addToClassPath`, or the legacy launcher's `propose`,
   through which LuckPerms adds the libraries it downloads) is found for the classes no mod's module has, untransformed
-  (LOADER-2). Mods can add entrypoints to Fabric Loader's internal storage as on Fabric
+  (LOADER-2), after the classes the game finds there without it: those of the packages the launcher's libraries don't
+  export, such as Gson's `com.google.gson.internal`, through which vanilla reads a player's stats (GSON-1).
+- A Fabric jar's copy of a package the platform already has is left out, and the platform's copy is used: NeoForge's
+  and Minecraft's, the launcher's libraries' (Gson, Guava, checker-qual), every module layer the game reads (on
+  NeoForge 21.1 the launcher's boot, service and plugin layers; on 21.11 and 26.x the JVM's boot layer), unexported
+  packages included, and the libraries NeoForge mods nest, which FML 10 and later load in their plugin loader when a
+  language provider brings them (PKG-5). The report lists each under *Package guard*. Mods can add entrypoints to Fabric Loader's internal storage as on Fabric
   (LOADER-4): `FabricLoaderImpl`'s `entrypointStorage` and `adapterMap` fields, which they read by reflection, work, and
   every container is Fabric Loader's `ModContainerImpl`, which mods test for first; what they add is returned by
   `FabricLoader.getEntrypoints` after the entrypoints the mods' metadata declares (FrozenLib's `frozenlib.json`
@@ -1008,6 +1023,25 @@ code can do without that mixin:
 
 A mod disabled this way can still be loaded without the mixin, by naming it in `skipMixins` in
 `config/fabricated.json` (the report's suggestion gives the exact entry).
+
+What this can't match of Fabric, seen in the owner's reference pack (2026-10-28):
+
+- **A field NeoForge retyped.** NeoForge makes `KeyMapping.MAP` its own `KeyMappingLookup`, not vanilla's `Map`, so an
+  accessor to it as a `Map` is left out, and the mod's call to it throws `NoSuchMethodError`. OneConfig's keybind
+  registry accessor (`oneconfig$map`) is one: OneConfig catches it, warns that its keybinds may shadow Minecraft's, and
+  goes on. Mixin's "Renaming @Accessor method ..." lines for OneConfig's other static accessors are Mixin's own
+  naming of static interface accessors, as on Fabric.
+- **Interfaces a mod adds to a library class.** adventure-platform-fabric gives authlib's `GameProfile` Adventure's
+  `Identity` and Brigadier's `CommandSyntaxException` its `ComponentMessageThrowable`; NeoForge loads those classes
+  without mixin support, and the mod's API casts to the interfaces, so it is disabled. Its other mixins then don't
+  apply either, among them the one giving Minecraft's `Component` Adventure's `ComponentLike`: a mod calling
+  `Component.asComponent()` throws `NoSuchMethodError` there (OneConfig's chat handling). Naming those two mixins in
+  `skipMixins` loads adventure-platform-fabric, its `identity(GameProfile)` and command-exception helpers then
+  throwing `ClassCastException` where called. (LIB-1 serves such a mixin only when the interfaces are the mod's own.)
+- **A jar a mod adds to the class path, in a package a mod's module has.** NeoForge's module class loader looks for a
+  class in a package a module has only in that module, so OneConfig's Mod Menu API shim, in a package of OneConfig's
+  own, doesn't load; Fabricated provides Mod Menu's API itself. Fabric Loader's `loadIntoTarget`, which OneConfig
+  loads it with, is provided.
 
 ### What this means for Fabric mods
 
