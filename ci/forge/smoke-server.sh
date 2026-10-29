@@ -153,6 +153,7 @@ check "content built during vanilla's bootstrap is registered by the main initia
 check "the built-in registries' freeze runs after the main initializers, where Wover makes the item definitions BetterEnd's subscribes to (CORPUS-32)" "grep -q 'FABRICATED-FORGE-TEST built-in registries frozen after the main initializers OK' logs/latest.log 2>/dev/null"
 check "the test mod's item is in the frozen registry at the first tick" "grep -q 'FABRICATED-FORGE-TEST registry entry kept OK' logs/latest.log 2>/dev/null"
 check "tag files' fabric:remove and Forge's remove both take entries out of a tag (the in-game mod's mixin)" "grep -q 'FABRICATED-FORGE-TEST tag removal OK' logs/latest.log 2>/dev/null"
+check "vanilla reads a player's stats with Gson's internal parser, a package Gson's module doesn't export (GSON-2)" "grep -q 'FABRICATED-FORGE-TEST vanilla stats read OK' logs/latest.log 2>/dev/null"
 check "native fabric-loot-api-v3: Fabric's loot table events change dirt's loot table and drops on Forge's loot loading" "grep -q 'FABRICATED-FORGE-TEST loot OK' logs/latest.log 2>/dev/null"
 if [ -n "$extra" ] && [[ "$mc" == 26.* ]]; then
 	check "fabric-object-builder-api-v1 (with Fabric API, 26.x): a cow's default armor set through FabricDefaultAttributeRegistry.MODIFY is what the game reads (Forge's attribute modification event)" "grep -q 'FABRICATED-FORGE-TEST default attributes OK' logs/latest.log 2>/dev/null"

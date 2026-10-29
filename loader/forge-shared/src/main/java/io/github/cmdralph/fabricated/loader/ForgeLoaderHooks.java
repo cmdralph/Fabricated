@@ -3,6 +3,9 @@ package io.github.cmdralph.fabricated.loader;
 import java.util.List;
 import java.util.Optional;
 
+import cpw.mods.modlauncher.Launcher;
+import cpw.mods.modlauncher.api.IModuleLayerManager;
+
 /**
  * What the in-game mod's code needs of discovery on Forge (docs/PORTING.md §4.1). The in-game mod is a module of the
  * game layer and discovery's classes are in the service layer, a module of its own, so the package-private parts it
@@ -37,8 +40,25 @@ public final class ForgeLoaderHooks {
 		Optional<ClassLoader> loader = gameLayer.findModule(moduleName).map(Module::getClassLoader);
 		loader.ifPresent(found -> {
 			state.fabricContainer(modId).ifPresent(container -> state.runtime().setClassLoader(container, found));
-			ProposedJars.install(found);
+			ProposedJars.install(found, gameFallback(found));
 		});
 		return loader;
+	}
+
+	/**
+	 * The loader {@link ProposedJars} goes in front of, for the classes of the packages no module of the game's layers
+	 * has: ModLauncher's boot layer's loader, with the launcher's libraries. Forge 47's ModLauncher makes it the game
+	 * loader's fallback, as NeoForge 21.1's does; Forge 61 to 66's leaves the fallback unset and looks in every parent
+	 * layer's loader. Vanilla reaches the packages their modules don't export through it: Gson's
+	 * {@code com.google.gson.internal}, whose {@code Streams} reads a player's stats (GSON-1, GSON-2).
+	 */
+	private static ClassLoader gameFallback(ClassLoader game) {
+		Launcher launcher = Launcher.INSTANCE;
+		if (launcher == null) return game.getParent();
+		return launcher.findLayerManager()
+				.flatMap(manager -> manager.getLayer(IModuleLayerManager.Layer.BOOT))
+				.flatMap(layer -> layer.modules().stream().findFirst())
+				.map(Module::getClassLoader)
+				.orElse(game.getParent());
 	}
 }
