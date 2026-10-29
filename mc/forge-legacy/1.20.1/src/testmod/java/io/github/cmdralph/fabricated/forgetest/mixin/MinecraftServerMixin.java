@@ -38,7 +38,7 @@ import net.minecraft.server.MinecraftServer;
  * and checked them, and the test mod's item must still be there, the data packs' tags are bound, and Forge has applied
  * its biome modifiers ({@code method_30611} is {@code registryAccess()}). The test mod then teleports an entity to the End
  * ({@code method_30002} is {@code overworld()}, {@code method_3847} {@code getLevel(ResourceKey)}), checks the fluid
- * types of the fluids it registered, on a client whether Fabric's colour provider registry finds the game's block
+ * types of the fluids it registered, whether vanilla reads a player's stats file (GSON-2), on a client whether Fabric's colour provider registry finds the game's block
  * colours and the particle engine its particle factory, and with Fabric API whether its command is in the server's
  * dispatcher ({@code method_3734} is {@code getCommands()}), whether Fabric's block break events fire as a player breaks
  * blocks, whether Fabric's use and attack callbacks are asked as a player uses and attacks things (finishing at a later
@@ -86,6 +86,7 @@ public abstract class MinecraftServerMixin {
 			ForgeBiomeTest.check(registries);
 			ForgeDimensionTest.check(method_30002(), method_3847(class_1937.field_25181));
 			ForgeFluidTest.check(method_30002());
+			ForgeTestMod.checkVanillaStats((MinecraftServer) (Object) this);
 			ForgeTestMod.checkColors();
 			ForgeTestMod.checkParticles();
 			ForgeCommandTest.check(method_3734());

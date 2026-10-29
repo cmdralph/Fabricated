@@ -3,6 +3,9 @@ package io.github.cmdralph.fabricated.forgetest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Arrays;
 
 import net.fabricmc.api.DedicatedServerModInitializer;
@@ -15,7 +18,9 @@ import net.minecraft.class_2338;
 import net.minecraft.class_2378;
 import net.minecraft.class_2960;
 import net.minecraft.class_3218;
+import net.minecraft.class_3442;
 import net.minecraft.class_7923;
+import net.minecraft.server.MinecraftServer;
 
 /**
  * The forge-legacy branch's Fabric test mod (docs/PORTING.md §7, L3): its entrypoints and its mixin each log a line the
@@ -158,6 +163,22 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 			ForgeInteractionTest.tick(level);
 		} catch (RuntimeException | LinkageError e) {
 			LOGGER.warn("FABRICATED-FORGE-TEST interaction check failed", e);
+		}
+	}
+
+	/**
+	 * Whether vanilla reads a player's stats file ({@code class_3442}, {@code ServerStatsCounter}), as it does when a player
+	 * joins: its parser is in Gson's {@code com.google.gson.internal}, a package Gson's module doesn't export, which the
+	 * game reaches through the loader Fabricated's class path loader goes in front of (GSON-1, GSON-2).
+	 */
+	public static void checkVanillaStats(MinecraftServer server) {
+		try {
+			Path file = Files.createTempFile("fabricated-stats", ".json");
+			Files.writeString(file, "{\"stats\":{}}");
+			new class_3442(server, file.toFile());
+			LOGGER.info("FABRICATED-FORGE-TEST vanilla stats read OK");
+		} catch (IOException | RuntimeException | LinkageError e) {
+			LOGGER.error("FABRICATED-FORGE-TEST vanilla stats read FAILED: {}", e.toString());
 		}
 	}
 

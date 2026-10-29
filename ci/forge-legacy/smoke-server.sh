@@ -163,6 +163,7 @@ check "the test mod's item is in the frozen registry at the first tick" "grep -q
 check "MixinExtras ran the test mod's @WrapMethod (nested in the in-game mod)" "grep -q 'FABRICATED-FORGE-TEST MixinExtras OK' logs/latest.log 2>/dev/null"
 check "the in-game mod's mixin reads tag files' fabric:remove (the in-game mod reobfuscated to SRG's names)" "grep -q 'FABRICATED-FORGE-TEST fabric:remove OK' logs/latest.log 2>/dev/null"
 check "native fabric-biome-api-v1: a spawn and a temperature added to plains reach the biome Forge reads (Forge's biome modifiers)" "grep -q 'FABRICATED-FORGE-TEST biome modifications OK' logs/latest.log 2>/dev/null"
+check "vanilla reads a player's stats with Gson's internal parser, a package Gson's module doesn't export (GSON-2)" "grep -q 'FABRICATED-FORGE-TEST vanilla stats read OK' logs/latest.log 2>/dev/null"
 check "native fabric-loot-api-v2 and fabric-loot-tables-v1: a pool added in MODIFY and a replaced table are in the tables the game keeps, each event seeing its table's source (Forge's pools list)" "grep -q 'FABRICATED-FORGE-TEST loot OK' logs/latest.log 2>/dev/null"
 check "native fabric-dimensions-v1: an armor stand teleported to the End lands at its target with no obsidian platform built (Forge's teleporter)" "grep -q 'FABRICATED-FORGE-TEST dimensions OK' logs/latest.log 2>/dev/null"
 check "a Fabric mod's fluids have Forge fluid types (the in-game mod's, registered under their ids), and a pig falls through one that isn't water as through air" "grep -q 'FABRICATED-FORGE-TEST fluid types OK' logs/latest.log 2>/dev/null"
