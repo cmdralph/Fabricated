@@ -3,6 +3,26 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-10-28: OneConfig's mixins against Fabric's behaviour (task 2 of the v0.5.1-alpha follow-up)
+
+- **Checked, as the owner asked:** OneConfig's mixin plugin asks Fabric Loader nothing (it applies every mixin but its
+  toggles), and its config is registered once. Mixin's "Renaming @Accessor method oneconfig$all ..." is Mixin's own
+  naming of static interface accessors, as on Fabric (read in Mixin's `MixinPreProcessorStandard`).
+- **`NoSuchMethodError: KeyMappingRegistryAccessor.oneconfig$map()`:** NeoForge retyped `KeyMapping.MAP` to its
+  `KeyMappingLookup`, so pre-flight leaves the `Map` accessor out (the report's `LEFT_OUT` line). OneConfig catches it
+  and warns. A bridge (a `Map` view of NeoForge's lookup) is noted in the roadmap (KEYMAP-1), not built.
+- **`NoSuchMethodError: Component.asComponent()`:** adventure-platform-fabric gives `Component` Adventure's
+  `ComponentLike` on Fabric. Pre-flight disables it: two of its mixins give library classes NeoForge loads without
+  mixin support (authlib's `GameProfile`, Brigadier's `CommandSyntaxException`) Adventure's interfaces, which its API
+  casts to (LEAVE-1); LIB-1 bridges only a mod's own interfaces. The `skipMixins` the report suggests loads it.
+- **Fabric Loader's `FabricLauncher.loadIntoTarget`** is provided (OneConfig loads its Mod Menu API shim's entrypoint
+  with it; the shim's package is OneConfig's own, so the class still can't load, and Fabricated provides Mod Menu's API
+  itself). `LauncherTest`.
+- **COMPATIBILITY:** what of Fabric's behaviour these can't match, under *Mixins NeoForge's code can't take*.
+- **Verified:** `LauncherTest`; the causes read in the owner's log and report, OneConfig's and adventure-platform-fabric's
+  public sources, and Mixin's. OneConfig itself runs in CI's informational Polyfrost run only (its 1.21.1 log shows the
+  same `oneconfig$map` warning).
+
 ## 2026-10-28: Vanilla can't read Gson's internals on 1.21.1 (task 1 of the v0.5.1-alpha follow-up)
 
 - **The owner's report** (the reference pack on v0.5.1-alpha): joining a world crashed the integrated server with

@@ -49,4 +49,9 @@ public abstract class FabricLauncherBase implements FabricLauncher {
 	public void addToClassPath(Path path, String... allowedPrefixes) {
 		FabricLoaderImpl.addToClassPath(path);
 	}
+
+	@Override
+	public Class<?> loadIntoTarget(String name) throws ClassNotFoundException {
+		return Class.forName(name, false, getTargetClassLoader());
+	}
 }
