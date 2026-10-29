@@ -3,6 +3,16 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-10-28: Fabricated's file by name in a crash report (task 3 of the v0.5.1-alpha follow-up)
+
+- **Fabricated's in-game mod** showed in a crash report's mod list as its cached file, a SHA-256
+  (`b175323ddb...jar` in the owner's report). It is now a cache entry like the translated mods,
+  `entries/fabricated-<hash>/fabricated.jar`, and NeoForge names it `fabricated.jar`. The old file is cleaned with the
+  cache's unused files.
+- **Left alone, as the owner said:** resource packs' `pack_format` errors, Essential's `UnionFileSystemProvider.delete`
+  error, the missing `ambientsounds` warning and Mixin's "is public and should be specified in value" warnings.
+- **Verified:** locally, the 1.21.1 server: FML logs `Found mod file "fabricated.jar"`, every check passes (63).
+
 ## 2026-10-28: OneConfig's mixins against Fabric's behaviour (task 2 of the v0.5.1-alpha follow-up)
 
 - **Checked, as the owner asked:** OneConfig's mixin plugin asks Fabric Loader nothing (it applies every mixin but its
