@@ -1,6 +1,6 @@
 # Fabricated — Architecture (Phase 1 proposal)
 
-> Status: **approved in Phase 1 and implemented**; the current version is 0.6.0 (`fabricated_version` in
+> Status: **approved in Phase 1 and implemented**; the current version is 0.5.1 (`fabricated_version` in
 > `gradle.properties`). §6.2 gives each Fabric API module's plan as the version plans hold it today; the measured
 > state for each version is in [`COMPATIBILITY.md`](COMPATIBILITY.md). Facts referenced here are verified in [`RESEARCH.md`](RESEARCH.md).
 > Items marked **[verify-in-build]** were confirmed in loader source code. They still get an automated test in Phase 2 before being relied on.
