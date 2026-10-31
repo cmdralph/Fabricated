@@ -1,4 +1,4 @@
-# Fabricated
+# <img width="35" alt="D · Zipper Block@1x" src="https://github.com/user-attachments/assets/a3720634-2930-4bb3-a060-ec85fe1ddac5" /> Fabricated
 
 Fabricated is a NeoForge mod that loads **Fabric mods and libraries on NeoForge**, for Minecraft
 **1.21.1, 1.21.11, 26.1.2, 26.2 and 26.3**. Put Fabricated and your Fabric mods in the `mods` folder, and they load
