@@ -12,8 +12,6 @@ permissions:
 
 jobs:
   diag:
-    # Off for this push: runs 4 and 5 carry its evidence.
-    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 75
     env:
@@ -28,22 +26,6 @@ jobs:
             25
             21
       - uses: gradle/actions/setup-gradle@v4
-      # Upstream's key binding API as scripts/import-fabric-api.sh would import it next to the modules already imported
-      # (into a copy): the diff shows the files it adds and whether the others come out the same.
-      - name: Upstream's key binding API, imported
-        continue-on-error: true
-        run: |
-          set +e
-          mkdir -p "$RUNNER_TEMP/fapi"
-          cp -R mc/neoforge/1.21.1/src/fabricapi "$RUNNER_TEMP/fapi/fabricapi"
-          cp -R mc/neoforge/1.21.1/src/fabricapi-overrides "$RUNNER_TEMP/fapi/fabricapi-overrides"
-          modules=$(sed -n 's/^modules=//p' mc/neoforge/1.21.1/src/fabricapi/UPSTREAM.properties)
-          JAVA_HOME="$JAVA_HOME_25_X64" scripts/import-fabric-api.sh --yarn 1.21.1+build.3 0.116.17+1.21.1 "$RUNNER_TEMP/fapi/fabricapi" $modules fabric-key-binding-api-v1:api > "$RUNNER_TEMP/import.out" 2>&1
-          echo "import status $?"; tail -n 20 "$RUNNER_TEMP/import.out"
-          echo "=== IMPORT DIFF"
-          diff -ruN mc/neoforge/1.21.1/src/fabricapi "$RUNNER_TEMP/fapi/fabricapi"
-          echo "=== END IMPORT DIFF"
-          true
       - name: Build 1.21.1
         run: ./gradlew :mc:neoforge-1.21.1:fabricatedJar :mc:neoforge-1.21.1:testmods --stacktrace -Porg.gradle.java.installations.fromEnv=JAVA_HOME_21_X64,JAVA_HOME_25_X64
       - name: Fabric API and the corpora
@@ -75,33 +57,20 @@ jobs:
           grep -n -i -E "keybinding|key binding|GameOptions has already" "$log" | cut -c1-400 | head -30
           python3 ci/log-digest.py "$log" | head -120
           true
-      - name: Server with the mod corpus (CORPUS-44)
+      - name: Server with the mod corpus (data packs)
         continue-on-error: true
         run: |
           set +e
           neo=$(sed -n 's/^neoforge_version=//p' mc/neoforge/1.21.1/gradle.properties)
           ci/neoforge/smoke-server.sh "$MC" "$neo" "$RUNNER_TEMP/server-corpus" "$RUNNER_TEMP/corpus" > "$RUNNER_TEMP/server-corpus.out" 2>&1
           echo "=== SERVER-CORPUS status $?"
-          grep -E "^(PASS|FAIL|NOTE)" "$RUNNER_TEMP/server-corpus.out" | cut -c1-300 | head -12
+          grep -E "^(PASS|FAIL|NOTE)" "$RUNNER_TEMP/server-corpus.out" | cut -c1-300 | head -6
           log="$RUNNER_TEMP/server-corpus/logs/latest.log"
-          grep -n -i -E "moonlight|ModNioResourcePack" "$log" | grep -i -E "warn|error|exception|ModNio" | cut -c1-400 | head -20
-          python3 ci/log-digest.py "$log" | head -120
-          ls "$RUNNER_TEMP/server-corpus/crash-reports" 2>/dev/null && head -n 80 "$RUNNER_TEMP"/server-corpus/crash-reports/*.txt
-          true
-      - name: Client with the mod corpus (KEYMAP-2, CORPUS-44, CORPUS-45)
-        continue-on-error: true
-        run: |
-          set +e
-          neo=$(sed -n 's/^neoforge_version=//p' mc/neoforge/1.21.1/gradle.properties)
-          SMOKE_TIMEOUT=600 ci/neoforge/smoke-client.sh "$MC" "$neo" "$RUNNER_TEMP/client-corpus" "$RUNNER_TEMP/corpus" > "$RUNNER_TEMP/client-corpus.out" 2>&1
-          echo "=== CLIENT-CORPUS status $?"
-          grep -E "^(PASS|FAIL|NOTE)|reached its world|crashed|stopping the client" "$RUNNER_TEMP/client-corpus.out" | cut -c1-300 | head -20
-          log="$RUNNER_TEMP/client-corpus/run/logs/latest.log"
-          grep -n -i -E "GameOptions has already|lambdynlights.*(error|fail)|getLightColor|ModNioResourcePack" "$log" | cut -c1-400 | head -20
-          echo "=== CLIENT-CORPUS report"
-          grep -A120 "== " "$RUNNER_TEMP/client-corpus/run/logs/fabric-bridge-report.txt" | cut -c1-400 | head -160
-          python3 ci/log-digest.py "$log" | head -160
-          ls "$RUNNER_TEMP/client-corpus/run/crash-reports" 2>/dev/null && head -n 80 "$RUNNER_TEMP"/client-corpus/run/crash-reports/*.txt
+          echo "=== SERVER-CORPUS datapacks"
+          grep -n -B4 -A80 "Failed to load datapacks" "$log" | cut -c1-500 | head -140
+          echo "=== SERVER-CORPUS ingredients"
+          grep -n -i -E "recipe-api|recipe_api|CustomIngredient|IngredientMixin" "$log" | cut -c1-400 | head -20
+          grep -n -i -E "recipe-api|IngredientMixin|CustomIngredient" "$RUNNER_TEMP/server-corpus/logs/fabric-bridge-report.txt" | cut -c1-500 | head -20
           true
       - name: Server with the advanced corpus (CORPUS-46)
         continue-on-error: true
@@ -110,26 +79,28 @@ jobs:
           neo=$(sed -n 's/^neoforge_version=//p' mc/neoforge/1.21.1/gradle.properties)
           ci/neoforge/smoke-server.sh "$MC" "$neo" "$RUNNER_TEMP/server-advanced" "$RUNNER_TEMP/advanced" > "$RUNNER_TEMP/server-advanced.out" 2>&1
           echo "=== SERVER-ADVANCED status $?"
-          grep -E "^(PASS|FAIL|NOTE)" "$RUNNER_TEMP/server-advanced.out" | cut -c1-300 | head -12
-          grep -n -i -E "server start|Done \(|timed out|stopp" "$RUNNER_TEMP/server-advanced.out" | cut -c1-300 | head -10
-          log="$RUNNER_TEMP/server-advanced/logs/latest.log"
-          tail -n 15 "$log" | cut -c1-300
-          python3 ci/log-digest.py "$log" | head -160
-          ls "$RUNNER_TEMP/server-advanced/crash-reports" 2>/dev/null && head -n 80 "$RUNNER_TEMP"/server-advanced/crash-reports/*.txt
+          grep -n -E "Critical injection|InjectionError|InvalidInjection|Mixin apply|MixinApplyError|Caused by|Exception|Error:" "$RUNNER_TEMP/server-advanced.out" | cut -c1-500 | head -40
+          echo "=== SERVER-ADVANCED stdout tail"
+          grep -v -E "^(PASS|FAIL|NOTE)" "$RUNNER_TEMP/server-advanced.out" | tail -n 120 | cut -c1-400
+          ls "$RUNNER_TEMP/server-advanced/crash-reports" 2>/dev/null && head -n 100 "$RUNNER_TEMP"/server-advanced/crash-reports/*.txt
+          echo "=== SERVER-ADVANCED pre-flight on pehkui"
+          grep -n -i "pehkui" "$RUNNER_TEMP/server-advanced/logs/fabric-bridge-report.txt" | cut -c1-500 | head -30
           true
-      - name: Client with the advanced corpus (CORPUS-46)
+      - name: Client with the mod corpus (KEYMAP-2)
         continue-on-error: true
         run: |
           set +e
           neo=$(sed -n 's/^neoforge_version=//p' mc/neoforge/1.21.1/gradle.properties)
-          SMOKE_TIMEOUT=600 ci/neoforge/smoke-client.sh "$MC" "$neo" "$RUNNER_TEMP/client-advanced" "$RUNNER_TEMP/advanced" > "$RUNNER_TEMP/client-advanced.out" 2>&1
-          echo "=== CLIENT-ADVANCED status $?"
-          grep -E "^(PASS|FAIL|NOTE)|reached its world|crashed|stopping the client" "$RUNNER_TEMP/client-advanced.out" | cut -c1-300 | head -20
-          log="$RUNNER_TEMP/client-advanced/run/logs/latest.log"
-          python3 ci/log-digest.py "$log" | head -160
-          ls "$RUNNER_TEMP/client-advanced/run/crash-reports" 2>/dev/null && head -n 80 "$RUNNER_TEMP"/client-advanced/run/crash-reports/*.txt
+          SMOKE_TIMEOUT=600 ci/neoforge/smoke-client.sh "$MC" "$neo" "$RUNNER_TEMP/client-corpus" "$RUNNER_TEMP/corpus" > "$RUNNER_TEMP/client-corpus.out" 2>&1
+          echo "=== CLIENT-CORPUS status $?"
+          grep -E "^(PASS|FAIL|NOTE)|reached its world|crashed|stopping the client" "$RUNNER_TEMP/client-corpus.out" | cut -c1-300 | head -8
+          log="$RUNNER_TEMP/client-corpus/run/logs/latest.log"
+          grep -n -i -E "GameOptions has already|Failed to load options|Failed to load datapacks" "$log" | cut -c1-400 | head -10
+          echo "=== CLIENT-CORPUS log tail"
+          tail -n 60 "$log" | cut -c1-400
+          ls "$RUNNER_TEMP/client-corpus/run/crash-reports" 2>/dev/null && head -n 80 "$RUNNER_TEMP"/client-corpus/run/crash-reports/*.txt
           true
-  # Forge's facts for CORPUS-33 (the retyped featuresPerStep) and PRE-18 (ImmediatelyFast's @Local hook on Forge 65).
+
   forge:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -139,39 +110,22 @@ jobs:
         with:
           distribution: temurin
           java-version: 25
-      # PRE-18: the two MixinExtras local captures that stopped the Forge 65 and 66 corpus clients, against the classes
-      # they target in vanilla's and Forge's client jars, with the local variable tables.
-      - name: ImmediatelyFast (Forge 65) and Mod Menu (Forge 66) local captures (PRE-18)
+      # Mod Menu parity: where each Forge lets a mod give its config screen to Forge's mod list.
+      - name: Forge's config screen extension point
         continue-on-error: true
         run: |
           set +e
-          probe() {
-            mc=$1; forge=$2; slug=$3; glob=$4
-            echo "######## $slug on Forge $mc-$forge"
-            out="$RUNNER_TEMP/$slug"; mkdir -p "$out/jar" "$out/x"
-            python3 ci/fetch-corpus.py "$mc" "$out/jar" fabric "$slug"
-            j=$(ls "$out"/jar/*.jar | grep -i "$slug" | head -1); echo "== $j"
-            unzip -q -o "$j" -d "$out/x"
-            for n in $(find "$out/x" -name "*.jar" -path "*META-INF/jars*"); do unzip -q -o "$n" -d "$out/x" 2>/dev/null; done
-            mixins=$(find "$out/x" -path "$glob")
-            for c in $mixins; do echo "=== MIXIN $c"; javap -v -p "$c" | grep -v -E "^\s+#[0-9]+ = |^\s+line [0-9]+:|StackMapTable|frame_type|offset_delta|^\s+[0-9]+: [a-z_0-9]+( |$)"; done
-            dir="$RUNNER_TEMP/client-$mc"; mkdir -p "$dir/minecraft"
-            echo '{"profiles":{}}' > "$dir/minecraft/launcher_profiles.json"
-            [ -f "$dir/installer.jar" ] || { curl -fsSL --retry 4 -o "$dir/installer.jar" "https://maven.minecraftforge.net/net/minecraftforge/forge/$mc-$forge/forge-$mc-$forge-installer.jar"; (cd "$dir" && java -jar installer.jar --installClient minecraft > installer.log 2>&1 || tail -n 20 installer.log); }
-            for c in $mixins; do
-              target=$(javap -v -p "$c" | grep -A3 "org.spongepowered.asm.mixin.Mixin(" | grep -o -E "L[a-z][A-Za-z0-9_/\$]+;" | head -1 | sed 's/^L//; s/;$//')
-              methods=$(javap -v -p "$c" | grep -o -E 'method=\["[^"]+"' | sed -E 's/method=\["//; s/"$//; s/\(.*//' | sort -u)
-              echo "== $c targets $target, methods: $methods"
-              for k in $(find "$dir/minecraft" -name "*.jar"); do
-                unzip -Z1 "$k" 2>/dev/null | grep -q "^${target}.class$" || continue
-                f="$out/$(basename "$k").txt"; javap -c -l -p -cp "$k" "${target//\//.}" > "$f"
-                for m in $methods; do
-                  echo "=== $(basename "$k"): $m"
-                  awk -v n="$m" '/^  [a-z].*\(.*\);$/ { show = index($0, " " n "(") > 0 } show' "$f" | grep -v -E "^\s+line [0-9]+:"
-                done
+          for pair in 1.20.1-47.4.28 1.21.11-61.2.4 26.1.2-64.1.5 26.2-65.1.5 26.3-66.1.0; do
+            dir="$RUNNER_TEMP/forge-$pair"; mkdir -p "$dir/minecraft" && cd "$dir"
+            echo '{"profiles":{}}' > minecraft/launcher_profiles.json
+            curl -fsSL --retry 4 -o installer.jar "https://maven.minecraftforge.net/net/minecraftforge/forge/${pair}/forge-${pair}-installer.jar"
+            java -jar installer.jar --installClient minecraft > installer.log 2>&1 || tail -n 20 installer.log
+            echo "######## FORGE $pair"
+            for j in $(find minecraft -name "*.jar"); do
+              for c in $(unzip -Z1 "$j" 2>/dev/null | grep -E "^net/minecraftforge/client/(ConfigScreenHandler|ConfigScreenFactory|gui/ModListScreen|gui/IConfigScreenFactory)[^/]*\.class$|^net/minecraftforge/fml/IExtensionPoint[^/]*\.class$|^net/minecraftforge/fml/ModContainer\.class$"); do
+                n=${c%.class}; echo "-- $(basename "$j") $n"; javap -p -s -cp "$j" "${n//\//.}" | grep -v -E "^\s+descriptor: \(\)V$" | head -40
               done
             done
-          }
-          probe 26.2 65.1.5 immediatelyfast "*map_atlas_generation/MixinGuiGraphicsExtractor*.class"
-          probe 26.3 66.1.0 modmenu "*/MixinTitleScreen*.class"
+            cd "$GITHUB_WORKSPACE"
+          done
           true
