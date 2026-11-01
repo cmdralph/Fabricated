@@ -2,10 +2,11 @@ name: Quick check
 
 # Every push to a working branch: the unit tests, and one version of each platform the push changed built and booted on
 # a dedicated server with the test mods (ci/changed-targets.py picks them; shared code boots the newest version of the
-# platform the branch holds). About five minutes, against the full matrix's half hour, which runs on pull requests to
-# main (build.yml) and to the platform branches (build-forge.yml on forge, build-forge-legacy.yml on forge-legacy),
-# release tags and by hand. main and the platform branches only receive merges of work that passed the full matrix.
-# Documentation alone builds nothing.
+# platform the branch holds). About five minutes, as long as a pull request's full matrix, which runs the versions
+# the change touches in parallel jobs on pull requests to main (build.yml) and to the platform branches
+# (build-forge.yml on forge, build-forge-legacy.yml on forge-legacy), release tags and by hand. main and the platform branches only receive merges of work that passed the full matrix.
+# While the branch has an open pull request into one of them, that pull request's full matrix runs on each push and this
+# check stands down. Documentation alone builds nothing.
 on:
   push:
     branches-ignore: [main, forge, forge-legacy]
@@ -16,6 +17,8 @@ on:
 
 permissions:
   contents: read
+  # Whether the branch has an open pull request (the plan job).
+  pull-requests: read
 
 concurrency:
   group: check-${{ github.ref }}
@@ -28,12 +31,27 @@ jobs:
     timeout-minutes: 5
     outputs:
       targets: ${{ steps.targets.outputs.targets }}
+      covered: ${{ steps.targets.outputs.covered }}
     steps:
       - uses: actions/checkout@v4
       - id: targets
         env:
           BEFORE: ${{ github.event.before }}
+          BRANCH: ${{ github.ref_name }}
+          GH_TOKEN: ${{ github.token }}
         run: |
+          # A pull request into main or a platform branch runs its full matrix on this push. Where GitHub can't be asked,
+          # the check runs.
+          open=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" --state open --json baseRefName \
+            --jq '[.[] | select(.baseRefName == "main" or .baseRefName == "forge" or .baseRefName == "forge-legacy")] | length' \
+            2>/dev/null || echo 0)
+          if [ "${open:-0}" != 0 ]; then
+            echo "targets=[]" >> "$GITHUB_OUTPUT"
+            echo "covered=true" >> "$GITHUB_OUTPUT"
+            echo "$BRANCH has an open pull request, whose full matrix runs on this push: the quick check stands down." \
+              | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
           # The push's changes; a new branch (no previous commit) is compared with main.
           if [ -n "$BEFORE" ] && [ "$BEFORE" != 0000000000000000000000000000000000000000 ] && git fetch -q --depth=1 origin "$BEFORE"; then
             base="$BEFORE"
@@ -48,6 +66,8 @@ jobs:
     name: Core and unit tests
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    needs: plan
+    if: ${{ needs.plan.outputs.covered != 'true' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
