@@ -900,6 +900,82 @@ class MixinPreflightTest {
 	}
 
 	@Test
+	void aConstantThePlatformReplacedIsAMissingPoint() throws Exception {
+		// CORPUS-46: Pehkui's reach hook modifies vanilla's 9.0 in Player.attack (doubleValue=9.0F, as its source writes it),
+		// which NeoForge 21.1's patch replaced with a call to its interaction range: Mixin finds no target and stops the game.
+		ClassIndex neoForge = new ClassIndex(Map.of(TARGET, constantTarget(0.5d))::get);
+		ClassIndex vanilla = new ClassIndex(Map.of(TARGET, constantTarget(9.0d))::get);
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Reach", "Zeros", "Strings"));
+		Map<String, byte[]> mod = Map.of(
+				"com/example/mixin/Reach", constantMixin("com/example/mixin/Reach", "(D)D", "doubleValue=9.0F"),
+				// Not judged: zero's conditional jumps, which Mixin also matches.
+				"com/example/mixin/Zeros", constantMixin("com/example/mixin/Zeros", "(I)I", "intValue=0", "expandZeroConditions=LESS_THAN_ZERO"),
+				"com/example/mixin/Strings", constantMixin("com/example/mixin/Strings", "(Ljava/lang/String;)Ljava/lang/String;", "stringValue=reach"));
+
+		List<PreflightFinding> patched = preflight(neoForge, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertEquals(1, patched.size(), patched.toString());
+		assertTrue(patched.getFirst().mixin().endsWith("Reach") && patched.getFirst().message().contains("expects @At(\"CONSTANT\", args=[doubleValue=9.0F])"),
+				patched.toString());
+		List<PreflightFinding> unpatched = preflight(vanilla, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(unpatched.isEmpty(), unpatched.toString());
+		assertEquals(InjectionPoints.Verdict.UNKNOWN, InjectionPoints.constantPointVerdict(List.of("doubleValue= 9.0"), -1, InjectionPoints.Range.ALL,
+				methodOf(constantTarget(9.0d), "attack")), "Mixin doesn't parse a value with a space");
+		assertEquals(InjectionPoints.Verdict.MISSING, InjectionPoints.constantPointVerdict(List.of("doubleValue=9.0"), 1, InjectionPoints.Range.ALL,
+				methodOf(constantTarget(9.0d), "attack")), "the method has one 9.0");
+	}
+
+	/** {@link #TARGET} with {@code attack(Object)}, which loads {@code reach}, the string "reach" and 0. */
+	private static byte[] constantTarget(double reach) {
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC, "attack", "(Ljava/lang/Object;)V", null, null);
+		mv.visitCode();
+		mv.visitLdcInsn(reach);
+		mv.visitInsn(Opcodes.POP2);
+		mv.visitLdcInsn("reach");
+		mv.visitInsn(Opcodes.POP);
+		mv.visitInsn(Opcodes.ICONST_0);
+		mv.visitInsn(Opcodes.POP);
+		mv.visitInsn(Opcodes.RETURN);
+		mv.visitMaxs(0, 0);
+		mv.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	private static MethodNode methodOf(byte[] bytes, String name) {
+		ClassNode node = new ClassNode();
+		new ClassReader(bytes).accept(node, 0);
+		return node.methods.stream().filter(m -> m.name.equals(name)).findFirst().orElseThrow();
+	}
+
+	/** A mixin whose {@code @ModifyExpressionValue} takes the constant {@code args} name in {@code attack}. */
+	private static byte[] constantMixin(String name, String handlerDesc, String... args) {
+		return mixin(name, false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "modify", handlerDesc, null, null);
+			AnnotationVisitor ann = mv.visitAnnotation("Lcom/llamalad7/mixinextras/injector/ModifyExpressionValue;", false);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "attack(Ljava/lang/Object;)V");
+			methods.visitEnd();
+			AnnotationVisitor ats = ann.visitArray("at");
+			AnnotationVisitor at = ats.visitAnnotation(null, AT);
+			at.visit("value", "CONSTANT");
+			AnnotationVisitor values = at.visitArray("args");
+			for (String arg : args) values.visit(null, arg);
+			values.visitEnd();
+			at.visitEnd();
+			ats.visitEnd();
+			ann.visitEnd();
+			mv.visitCode();
+			Type value = Type.getArgumentTypes(handlerDesc)[0];
+			mv.visitVarInsn(value.getOpcode(Opcodes.ILOAD), 1);
+			mv.visitInsn(value.getOpcode(Opcodes.IRETURN));
+			mv.visitMaxs(value.getSize() + 1, value.getSize() + 1);
+			mv.visitEnd();
+		});
+	}
+
+	@Test
 	void anExpressionModifierMovesToAnOverloadTakingMoreArguments() throws Exception {
 		// PRE-13: Polymer modifies the codecs vanilla's custom payload packets make with CustomPacketPayload.codec(fallback,
 		// types); NeoForge's patches call codec(fallback, types, protocol, flow) in both places.

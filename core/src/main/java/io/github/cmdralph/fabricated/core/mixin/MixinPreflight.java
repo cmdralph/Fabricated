@@ -983,7 +983,9 @@ public final class MixinPreflight extends PreflightPart {
 				Range range = slice == null ? Range.ALL : InjectionPoints.sliceRange(slice, m, ctx);
 				boolean expression = point.equals("MIXINEXTRAS:EXPRESSION");
 				String resolved = rawTarget == null ? null : ctx.resolve(rawTarget);
-				Verdict v = expression ? InjectionPoints.evaluateExpression(handler, m, ctx) : InjectionPoints.evaluate(point, resolved, ordinal, opcode, range, m);
+				Verdict v = expression ? InjectionPoints.evaluateExpression(handler, m, ctx)
+						: point.equals("CONSTANT") ? InjectionPoints.constantPointVerdict(Annotations.value(at, "args"), ordinal, range, m)
+						: InjectionPoints.evaluate(point, resolved, ordinal, opcode, range, m);
 				if (v != Verdict.MISSING && ann.desc.equals(MixinNames.MODIFY_VARIABLE) && (point.equals("LOAD") || point.equals("STORE")) && range != Range.UNEVALUATED) {
 					int slot = modifiedSlot(handler, ann, m);
 					Type variable = Type.getReturnType(handler.desc);
@@ -1009,6 +1011,7 @@ public final class MixinPreflight extends PreflightPart {
 			if (verdict == Verdict.MISSING) {
 				ctx.injector(handler, require, injectorName + " in " + matched.get(0).name + " expects @At(\"" + point + "\""
 								+ (rawTarget != null ? ", target=\"" + ctx.resolve(rawTarget) + "\"" : "")
+								+ (point.equals("CONSTANT") && Annotations.value(at, "args") instanceof List<?> args ? ", args=" + args : "")
 								+ (ordinal >= 0 ? ", ordinal=" + ordinal : "") + "), which does not occur in that method",
 						ctx.changer(true) + " changed the method body; the mod needs an update or this mixin must be skipped.");
 				return;
