@@ -746,7 +746,7 @@ public final class MixinPreflight extends PreflightPart {
 	}
 
 	/** The field type an accessor reads or writes: a getter's return type or a setter's only parameter. */
-	static String accessorFieldDesc(MethodNode method) {
+	public static String accessorFieldDesc(MethodNode method) {
 		Type[] args = Type.getArgumentTypes(method.desc);
 		Type ret = Type.getReturnType(method.desc);
 		if (args.length == 0 && ret.getSort() != Type.VOID) return ret.getDescriptor();
