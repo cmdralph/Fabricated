@@ -19,6 +19,9 @@ root="$(cd "$(dirname "$0")/../.." && pwd)"
 # shellcheck source=ci/install-cache.sh
 source "$root/ci/install-cache.sh"
 timeout_seconds="${SMOKE_TIMEOUT:-900}"
+# A game that reached its world (mc-runtime-test's "Successfully finished.") is stopped by mc-runtime-test; one that
+# hasn't exited this many seconds later is stuck shutting down, and is stopped then, not at the run's time limit.
+exit_timeout="${SMOKE_EXIT_TIMEOUT:-120}"
 hmc_version="2.10.0"
 mcrt_version="4.5.2"
 
@@ -82,13 +85,46 @@ echo "::group::Run client"
 for attempt in 1 2; do
 	status=0
 	started=$SECONDS
-	rm -rf run/logs run/crash-reports client.out stop-reason.txt
+	rm -rf run/logs run/crash-reports client.out stop-reason.txt thread-dump.txt
 	export SDL_VIDEO_FORCE_EGL=1 SDL_VIDEO_X11_FORCE_EGL=1
 	timeout "$timeout_seconds" xvfb-run -a -s "-screen 0 1280x720x24 +extension GLX +render -noreset" java -Dhmc.check.xvfb=true -jar hmc.jar \
 		--command launch "${mc}-forge" -regex --jvm "-Djava.awt.headless=true -DMcRuntimeGameTest=false" \
 		> client.out 2>&1 &
 	client_pid=$!
+	descendants() {
+		for child in $(pgrep -P "$1" || true); do
+			echo "$child"
+			descendants "$child"
+		done
+	}
+	finished_at=""
+	# What every game thread is doing, so a hang can be diagnosed from the log. SIGQUIT makes a JVM print every thread's
+	# stack to its output (client.out) and carry on. Every Java process the launcher started, the game's included; a
+	# shell would quit on it.
+	dump_threads() {
+		for pid in $(descendants "$client_pid"); do
+			if [ "$(cat "/proc/$pid/comm" 2>/dev/null)" = java ]; then kill -QUIT "$pid" 2>/dev/null || true; fi
+		done
+		sleep 3
+		awk '/^Full thread dump/ { dump = 1 } dump' client.out > thread-dump.txt || true
+	}
 	while kill -0 "$client_pid" 2>/dev/null; do
+		# A game stuck shutting down after it reached its world: its threads, then it is stopped, and the run fails as a
+		# timeout would.
+		if [ -z "$finished_at" ] && grep -q "Successfully finished\." client.out run/logs/latest.log 2>/dev/null; then
+			finished_at=$SECONDS
+		fi
+		if [ -n "$finished_at" ] && [ $((SECONDS - finished_at)) -ge "$exit_timeout" ]; then
+			echo "The game reached its world but didn't exit within $exit_timeout seconds; stopping the client."
+			echo "The game didn't exit within $exit_timeout seconds of reaching its world (mc-runtime-test's stop)" > stop-reason.txt
+			dump_threads
+			# The whole tree, the game's JVM included, which would otherwise outlive the launcher into the next run.
+			tree=$(descendants "$client_pid")
+			kill $tree "$client_pid" 2>/dev/null || true
+			sleep 5
+			kill -9 $tree "$client_pid" 2>/dev/null || true
+			break
+		fi
 		stop="Preparing crash report|Game crashed!|Crash report saved to|Failed to wait for future|Mixin prepare for mod .* failed"
 		if grep -qE "$stop" client.out run/logs/latest.log 2>/dev/null; then
 			echo "The game crashed; stopping the client."
@@ -132,6 +168,11 @@ for report in run/crash-reports/*.txt; do
 	head -n 120 "$report"
 	echo "::endgroup::"
 done
+if [ -f thread-dump.txt ]; then
+	echo "::group::Thread dump of a game stuck shutting down (game threads)"
+	awk 'BEGIN { RS = ""; ORS = "\n\n" } /^"(Render thread|Server thread|Netty|Local|IO-Worker|Worker-Main)/' thread-dump.txt || true
+	echo "::endgroup::"
+fi
 echo "::group::fabric-bridge-report.txt"
 cat run/logs/fabric-bridge-report.txt || echo "(report missing)"
 echo "::endgroup::"

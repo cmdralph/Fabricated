@@ -3,6 +3,66 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-01: CI runs what a change touches, in parallel parts (task 2, `main`)
+
+- **The full matrix from what changed** (`ci/changed-targets.py --full`): a pull request runs the versions it touches (a
+  version's own folder that version, shared code all of them), a release tag or a run by hand all of them, and a merge
+  into `main` builds what it changed.
+- **Built once, tested in parts.** `build.yml` builds each version once and tests its jar and test mods in parallel jobs:
+  `server` (the dedicated servers), `client` (the test mods, the platform's libraries and Fabric API, with their gates)
+  and `mods` (Sodium and Iris for NeoForge on 26.x, the plugin hosts); with `extended` the newest NeoForge build joins
+  `server`, the Fabric builds of the difficult mods join `mods`, and a `corpus` part runs both corpora. A job boots the
+  game 8 times at most (16 before), and the version jobs no longer wait for the core job.
+- **The quick check stands down** while the branch has an open pull request into `main`, `forge` or `forge-legacy`
+  (it asks GitHub, and runs when it can't): each push to such a branch ran both before.
+- **A version's pins come from its folder**: the loader version from `gradle.properties`, Fabric API from its
+  `fabric-api-plan.json`, and the NeoForge mods whose plugin loading the client checks from `ci_plugin_hosts` (new);
+  the workflow repeated them. The unused `experimental` matrix flag is gone.
+- **Moved:** 1.21.1's informational client with Forgified Fabric API and Sodium for NeoForge, from every pull request to
+  `extended`.
+- **Decided:** the game installs are not cached across runs. A part installs one side once, in 10 to 25 seconds, and
+  pushes to `main` run no game, so only pull requests would save the installs: an estimated 2 GB each against GitHub's
+  10 GB per repository, enough to evict `main`'s Gradle caches, whose loss costs minutes per job.
+- **Times** (wall time from the run's start to its last job): a pull request's full matrix 5.4 minutes (11.5 before:
+  run 41344142404 against 40795950758 and 41342742615); an extended run 20 minutes (22 before: 41344706881 against
+  40800647792), of which the 26.2 and 26.3 corpus clients spent 10 minutes each waiting at their time limit on
+  CORPUS-48, and with the exit timeout below 14.3 minutes (41347080112, whose parts waited up to 4.7 minutes for
+  runners behind this pull request's own run), those two parts taking 9.7 minutes instead of 18.5 and 15.7. The runner
+  time stays about the same (about 48 job-minutes against 46 on a pull request): the same runs, spread over more jobs. The quick check still takes about 5 minutes on a
+  branch without a pull request, and 6 seconds with one.
+- **A client stuck shutting down is stopped two minutes after it reached its world** (`ci/neoforge/smoke-client.sh`,
+  `SMOKE_EXIT_TIMEOUT`), with its threads dumped and the run failed as a timeout would, not at the run's own limit of
+  10 minutes. Found by the extended run: CORPUS-48 (new, P2), the 26.2 and 26.3 corpus clients' integrated servers
+  waiting in Xaero's World Map's world unload once mc-runtime-test stopped them; in v0.5.1's tag run they exited in
+  about a minute. Whether a player's own quit hangs is UNVERIFIED (task 5).
+- **Verified:** the picker's modes locally on sample changes; both workflows parse and every `steps`, `needs` and
+  `matrix` reference resolves; each step's condition evaluated per version and part; this pull request's full matrix
+  and an extended run by hand, every gate passing (41347057558 and 41347080112 on the last commit); the quick check
+  standing down on this branch's push (run 41344139306); the exit timeout on a simulated game that hangs after its
+  finish line and one that exits, and in CI stopping the 26.3 corpus client 2 minutes after its world, with Xaero's
+  World Map's unload in its thread dump again (41347080112).
+
+## 2026-11-01: The v0.6.0-beta pass starts; the project and the spec rethought (task 1)
+
+- **The owner's brief** (2026-11-01): leave alpha, with every branch and Minecraft version at beta quality, in seven
+  tasks (roadmap, *The v0.6.0-beta pass*). **The owner's decisions:** all three platforms are held to one stability bar,
+  with coverage allowed to differ and what a platform lacks listed as unsupported; Fabric's renderer API keeps Fabric
+  API's renderer, and Fabricated builds the seams; the Fabric builds of Sodium, Iris, Essential, OneConfig and PolyPlus,
+  and mods like them, are made to run rather than refused for being hard.
+- **The rethink** (roadmap): the design holds against its four goals. The gaps found: a Fabric model that throws while
+  drawn stops the game (FRAPI rule 8, new), the CI jobs boot the game up to 16 times each, Forge has no renderer test
+  and no gated client with Fabric API, and the Forge loaders don't call the engine's provider policy and refusals. Every
+  item still experimental has a decision and a task; thirteen informational CI runs each become a gate or go.
+- **The beta, redefined** for every platform: the stability bar (now with isolation after code runs), the
+  compatibility targets per platform, the ship criteria and what blocks it. **Plans:** FRAPI (R1 to R8, task 4) and the
+  difficult mods (task 5), each with its CI gate.
+- **The roadmap** lost its history: the rethinks and decisions of 2026-10-27 and 2026-10-28 and the v0.5.0 plan became
+  *Standing decisions* (what still holds; the reasoning stays in this file's entries). ARCHITECTURE's goals and
+  non-goals and RESEARCH §4 follow decision 3; `claude.md` allows a session's own working branch.
+- **GSON-2** moved to `FINDINGS.md`: the Forge branches fixed it (#233, #234).
+- **Version 0.6.0** in development (`gradle.properties`, README's status, ARCHITECTURE), as v0.5.1-alpha is published.
+- **Verified:** documents and the version only; the `coreOnly` build and its unit tests pass locally.
+
 ## 2026-10-28: v0.5.1-alpha carries the follow-up's fixes (task 4 of the v0.5.1-alpha follow-up)
 
 - **The owner's decision:** the world-join crash made the v0.5.1-alpha draft unusable for real packs, so its fixes ship

@@ -1,6 +1,6 @@
 # Fabricated — Architecture (Phase 1 proposal)
 
-> Status: **approved in Phase 1 and implemented**; the current version is 0.5.1 (`fabricated_version` in
+> Status: **approved in Phase 1 and implemented**; the current version is 0.6.0 (`fabricated_version` in
 > `gradle.properties`). §6.2 gives each Fabric API module's plan as the version plans hold it today; the measured
 > state for each version is in [`COMPATIBILITY.md`](COMPATIBILITY.md). Facts referenced here are verified in [`RESEARCH.md`](RESEARCH.md).
 > Items marked **[verify-in-build]** were confirmed in loader source code. They still get an automated test in Phase 2 before being relied on.
@@ -9,14 +9,18 @@
 
 **Goals**
 * Load as many Fabric mods and libraries as possible on NeoForge **1.21.1, 1.21.11, 26.1.2, 26.2 and 26.3** from one
-  codebase (and, experimentally, on Forge 61 to 66 and Forge 47, on their own branches: [`PORTING.md`](PORTING.md)).
+  codebase, and on Forge 61 to 66 and Forge 47 from their own branches ([`PORTING.md`](PORTING.md)), every platform held
+  to the same stability bar from 0.6.0-beta (`roadmap.md`, *Beta*).
+* Run the Fabric builds Sinytra Connector couldn't: renderer replacements and shader pipelines (Sodium, Iris), mods
+  that load other mods (Essential), Fabric-only interface stacks (OneConfig, PolyPlus), with generic capabilities, and
+  refuse only what can't run safely or correctly, saying why (the owner, 2026-11-01; `roadmap.md`, *Difficult mods*).
 * Be lightweight: no runtime dependencies beyond what NeoForge ships, and nothing at all without Fabric mods. With them,
   little work on unchanged launches (PERF-2 lists what is still repeated), and per tick only the dispatch of the Fabric
   events Fabricated bridges, without allocation.
 * Be robust: an isolatable failure never takes the game down, and every failure is attributed to a mod and explained.
 * Be safe: mod jars are untrusted input, nothing runs during translation, nothing touches the network, no telemetry, and original jars are never modified.
 
-**Non-goals** (see RESEARCH §4): the Fabric builds of rendering-engine replacements (Sodium/Iris; their NeoForge builds work next to Fabric mods on 26.x, see COMPATIBILITY.md), mods depending on Fabric Loader *internals*, heuristic auto-rewriting of mixins, MC versions outside the range, and running ≤1.21.11 Fabric builds on 26.x.
+**Non-goals** (see RESEARCH §4): mods depending on Fabric Loader *internals*, except what a mod in the difficult-mods plan is shown to need (Essential's loader), a second implementation of Fabric's renderer (Fabric API's renders, `roadmap.md`, *FRAPI plan*), heuristic auto-rewriting of mixins, MC versions outside the range, and running ≤1.21.11 Fabric builds on 26.x.
 
 ---
 
