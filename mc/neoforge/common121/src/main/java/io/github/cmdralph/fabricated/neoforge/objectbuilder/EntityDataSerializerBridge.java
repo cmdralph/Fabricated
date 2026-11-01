@@ -9,15 +9,17 @@ import org.jspecify.annotations.Nullable;
 import net.minecraft.core.Registry;
 import net.minecraft.network.syncher.EntityDataSerializer;
 import net.minecraft.network.syncher.EntityDataSerializers;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.neoforged.neoforge.registries.NeoForgeRegistries;
 
 /**
  * Registers a mod's entity data serializer in NeoForge's {@code ENTITY_DATA_SERIALIZERS} registry when it calls
- * vanilla's {@code EntityDataSerializers.registerSerializer} (1.21.1, CORPUS-41). Fabric API 0.116 has no serializer
- * registry, so Fabric mods call vanilla's method, which NeoForge 21.1 refuses for any caller but vanilla's own class.
- * NeoForge's registry is synced by name, so each mod's serializers are named in the order that mod registers them,
- * which is the same on server and client. Vanilla's own calls are left to vanilla, as NeoForge leaves them.
+ * vanilla's {@code EntityDataSerializers.registerSerializer} (1.21.1 and 1.21.11, CORPUS-41 and SER-1). Fabric mods
+ * call vanilla's method, as Fabric allows: on 1.21.1 Fabric API has no serializer registry, and on 1.21.11 its registry
+ * ({@code FabricTrackedDataRegistry}, which Fabricated backs with NeoForge's) is only advised. NeoForge 21.1 and 21.11
+ * refuse that method for any caller but vanilla's own class. NeoForge's registry is synced by name, so each mod's
+ * serializers are named in the order that mod registers them, which is the same on server and client. Vanilla's own
+ * calls are left to vanilla, as NeoForge leaves them.
  *
  * <p>Its own class, not the mixin's: vanilla's static initializer registers through the hook before a mixin's static
  * fields would be set.
@@ -38,7 +40,7 @@ public final class EntityDataSerializerBridge {
 			String namespace = namespace(caller);
 			int index = COUNTS.merge(namespace, 1, Integer::sum) - 1;
 			Registry.register(NeoForgeRegistries.ENTITY_DATA_SERIALIZERS,
-					ResourceLocation.fromNamespaceAndPath(namespace, "fabricated_serializer_" + index), serializer);
+					Identifier.fromNamespaceAndPath(namespace, "fabricated_serializer_" + index), serializer);
 		}
 		return true;
 	}
@@ -53,11 +55,10 @@ public final class EntityDataSerializerBridge {
 				.orElse(null));
 	}
 
-	/** The caller's module name (a Fabric mod's id) as a resource location namespace. */
+	/** The caller's module name (a Fabric mod's id) as an identifier's namespace: only the characters one allows. */
 	private static String namespace(@Nullable Class<?> caller) {
 		String module = caller == null ? null : caller.getModule().getName();
-		if (module == null) return "fabricated";
-		String namespace = module.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9_.-]", "_");
-		return ResourceLocation.isValidNamespace(namespace) ? namespace : "fabricated";
+		if (module == null || module.isEmpty()) return "fabricated";
+		return module.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9_.-]", "_");
 	}
 }

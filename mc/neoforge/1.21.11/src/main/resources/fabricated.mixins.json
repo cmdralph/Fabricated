@@ -21,6 +21,7 @@
     "GameDataFreezeMixin",
     "RegistryManagerLateRegistryMixin",
     "DefaultAttributesValidationMixin",
+    "EntityDataSerializersMixin",
     "PackRepositorySourcesMixin",
     "MobEffectMixin",
     "EntityTypeBuilderMixin",
