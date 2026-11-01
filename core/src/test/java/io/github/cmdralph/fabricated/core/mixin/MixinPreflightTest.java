@@ -2873,6 +2873,107 @@ class MixinPreflightTest {
 	}
 
 	@Test
+	void aLocalArgumentTakenByNameIsTakenByItsSlotWhereMixinDoesntKnowArgumentNames() throws Exception {
+		// PRE-18: ImmediatelyFast's map atlas hook takes @Local(name = "mapRenderState", argsOnly = true) in
+		// GuiGraphicsExtractor.map; MixinExtras finds it with Mixin's discriminator, which on SpongePowered's Mixin (Forge 61
+		// to 66) names arguments arg and their slot, as for ARGS-1, so Forge 65's client stopped with "(0/1) succeeded".
+		String ref = "Lcom/llamalad7/mixinextras/sugar/ref/LocalIntRef;";
+		java.util.function.BiFunction<Boolean, Boolean, byte[]> target = (names, secondState) -> {
+			ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+			cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+			String desc = secondState ? "(Ljava/lang/String;Ljava/lang/String;I)V" : "(Ljava/lang/String;I)V";
+			MethodVisitor map = cw.visitMethod(Opcodes.ACC_PUBLIC, "map", desc, null, null);
+			org.objectweb.asm.Label start = new org.objectweb.asm.Label();
+			org.objectweb.asm.Label end = new org.objectweb.asm.Label();
+			map.visitCode();
+			map.visitLabel(start);
+			map.visitInsn(Opcodes.RETURN);
+			map.visitLabel(end);
+			if (names) {
+				map.visitLocalVariable("this", "L" + TARGET + ";", null, start, end, 0);
+				map.visitLocalVariable("mapRenderState", "Ljava/lang/String;", null, start, end, 1);
+				map.visitLocalVariable("color", "I", null, start, end, 2);
+			}
+			map.visitMaxs(0, 0);
+			map.visitEnd();
+			cw.visitEnd();
+			return cw.toByteArray();
+		};
+		// hook(ci, @Local(argsOnly = true, name = "mapRenderState") String state, @Local(argsOnly = true, name = "color") LocalIntRef color)
+		java.util.function.Function<Boolean, byte[]> mixinOf = secondState -> mixin("com/example/mixin/Atlas", false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "hook", "(" + CALLBACK_INFO + "Ljava/lang/String;" + ref + ")V", null, null);
+			String[][] locals = {{"mapRenderState"}, {"color"}};
+			for (int i = 0; i < locals.length; i++) {
+				AnnotationVisitor sugar = mv.visitParameterAnnotation(i + 1, LOCAL, false);
+				sugar.visit("argsOnly", true);
+				AnnotationVisitor names = sugar.visitArray("name");
+				names.visit(null, locals[i][0]);
+				names.visitEnd();
+				sugar.visitEnd();
+			}
+			AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, secondState ? "map(Ljava/lang/String;Ljava/lang/String;I)V" : "map(Ljava/lang/String;I)V");
+			methods.visitEnd();
+			AnnotationVisitor ats = ann.visitArray("at");
+			AnnotationVisitor at = ats.visitAnnotation(null, AT);
+			at.visit("value", "HEAD");
+			at.visitEnd();
+			ats.visitEnd();
+			ann.visitEnd();
+			mv.visitCode();
+			mv.visitInsn(Opcodes.RETURN);
+			mv.visitMaxs(0, 4);
+			mv.visitEnd();
+		});
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Atlas"));
+		java.util.function.BiFunction<ClassIndex, Map<String, byte[]>, MixinPreflight> forge = (game, mod) -> new MixinPreflight(game,
+				InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, ClassBytesSource.EMPTY, "Forge", true,
+				MixinPreflight.ConstructorInjects.UNSAFE_POINTS, false);
+
+		// Fabric's Mixin knows the names: nothing to do.
+		ClassIndex named = new ClassIndex(Map.of(TARGET, target.apply(true, false))::get);
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Atlas", mixinOf.apply(false)));
+		assertTrue(preflight(named, mod::get, ClassBytesSource.EMPTY, false).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty());
+		assertTrue(preflight(named, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty());
+
+		// SpongePowered's: reported before the repair, taken by their slots after it (a ref of an int finds the int).
+		List<PreflightFinding> before = forge.apply(named, mod).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(before.stream().anyMatch(f -> f.message().contains("captures the argument mapRenderState of map") && f.message().contains("by its name")),
+				before.toString());
+		List<PreflightFinding> notes = new ArrayList<>();
+		byte[] repaired = forge.apply(named, mod).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes).get("com/example/mixin/Atlas.class");
+		assertNotNull(repaired, notes.toString());
+		assertTrue(notes.stream().anyMatch(n -> n.message().contains("@Inject hook captures the argument mapRenderState by its name, which Forge's Mixin doesn't know;"
+				+ " it takes the argument's slot, 1, instead")), notes.toString());
+		assertTrue(notes.stream().anyMatch(n -> n.message().contains("the argument color by its name") && n.message().contains("slot, 2,")), notes.toString());
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired).accept(node, 0);
+		MethodNode hook = node.methods.stream().filter(m -> m.name.equals("hook")).findFirst().orElseThrow();
+		for (int p = 1; p <= 2; p++) {
+			AnnotationNode sugar = Annotations.ofParameter(hook, p).stream().filter(a -> a.desc.equals(LOCAL)).findFirst().orElseThrow();
+			assertEquals(p, Annotations.value(sugar, "index"));
+			assertNull(Annotations.value(sugar, "name"));
+			assertEquals(Boolean.TRUE, Annotations.value(sugar, "argsOnly"));
+		}
+		mod.put("com/example/mixin/Atlas", repaired);
+		assertTrue(forge.apply(named, mod).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty());
+
+		// Without local variable names, the only argument of the type is it, for the String and the int alike.
+		ClassIndex unnamed = new ClassIndex(Map.of(TARGET, target.apply(false, false))::get);
+		Map<String, byte[]> fresh = Map.of("com/example/mixin/Atlas", mixinOf.apply(false));
+		assertNotNull(forge.apply(unnamed, fresh).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).get("com/example/mixin/Atlas.class"));
+		// Two Strings and no names: the int is taken by its slot, the String can't be told, and the hook is reported.
+		ClassIndex two = new ClassIndex(Map.of(TARGET, target.apply(false, true))::get);
+		Map<String, byte[]> twoMod = new HashMap<>(Map.of("com/example/mixin/Atlas", mixinOf.apply(true)));
+		byte[] partly = forge.apply(two, twoMod).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).get("com/example/mixin/Atlas.class");
+		assertNotNull(partly);
+		twoMod.put("com/example/mixin/Atlas", partly);
+		assertTrue(forge.apply(two, twoMod).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).stream()
+				.anyMatch(f -> f.message().contains("captures the argument mapRenderState of map")));
+	}
+
+	@Test
 	void aLocalTakenByNameFindsItUnderTheNameARecompiledBuildGivesIt() throws Exception {
 		// LOCAL-3: Fabric API's lifecycle hook takes @Local(name = "level") ServerLevel at ServerLevel.close() in
 		// MinecraftServer.stopServer; Forge 64's build, recompiled from decompiled source, names that loop's variable levelx,

@@ -239,6 +239,21 @@ public final class MixinPreflight extends PreflightPart {
 	}
 
 	/**
+	 * The name the first MixinExtras {@code @Local(argsOnly = true)} of a handler asks for, where the running Mixin
+	 * doesn't know arguments by their names (PRE-18, as ARGS-1) and no repair gave it the slot instead; null otherwise.
+	 */
+	private String localArgumentNameRejected(MethodNode handler) {
+		if (argumentNames) return null;
+		int params = Type.getArgumentTypes(handler.desc).length;
+		for (int p = 0; p < params; p++) {
+			for (AnnotationNode local : Annotations.ofParameter(handler, p)) {
+				if (LocalRepairs.takesArgumentByName(local)) return String.valueOf(((List<?>) Annotations.value(local, "name")).get(0));
+			}
+		}
+		return null;
+	}
+
+	/**
 	 * The first point of an {@code @Inject} into a constructor that SpongePowered's Mixin rejects (CTOR-2: it throws as it
 	 * applies the mixin, whatever the config's {@code required}): any but a return that isn't marked {@code unsafe}, or,
 	 * on 0.8.5, any but a return. Null when it takes them all, or on Fabric's Mixin.
@@ -919,6 +934,14 @@ public final class MixinPreflight extends PreflightPart {
 			ctx.injector(handler, require, injectorName + " " + handler.name + " takes the argument " + argument + " of " + matched.get(0).name + " in "
 							+ target.name.replace('/', '.') + " by its name, which " + loader + "'s Mixin doesn't know (it names arguments arg and their slot;"
 							+ " Fabric's Mixin takes their names from 0.17.0)",
+					"The feature this hook serves doesn't work on this " + loader + ".");
+			return;
+		}
+		String localArgument = localArgumentNameRejected(handler);
+		if (localArgument != null) {
+			ctx.injector(handler, require, injectorName + " handler " + handler.name + " captures the argument " + localArgument + " of " + matched.get(0).name
+							+ " in " + target.name.replace('/', '.') + " by its name, which " + loader + "'s Mixin doesn't know (it names arguments arg and their"
+							+ " slot; Fabric's Mixin takes their names from 0.17.0)",
 					"The feature this hook serves doesn't work on this " + loader + ".");
 			return;
 		}
