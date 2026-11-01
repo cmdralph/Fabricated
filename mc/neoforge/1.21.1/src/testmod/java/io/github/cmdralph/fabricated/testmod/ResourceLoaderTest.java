@@ -7,6 +7,9 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import com.google.gson.Gson;
+import com.google.gson.JsonElement;
+
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.resource.IdentifiableResourceReloadListener;
@@ -22,6 +25,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.packs.PackType;
 import net.minecraft.server.packs.resources.Resource;
 import net.minecraft.server.packs.resources.ResourceManager;
+import net.minecraft.server.packs.resources.SimpleJsonResourceReloadListener;
 import net.minecraft.util.profiling.ProfilerFiller;
 
 /**
@@ -90,6 +94,11 @@ public final class ResourceLoaderTest implements ModInitializer {
 			}
 		});
 
+		// A data loader of vanilla's JSON kind, which NeoForge 21.1 leaves as vanilla's: with Fabric API's conditions module,
+		// a file whose fabric:load_conditions fail isn't among its data, as on Fabric (CORPUS-49: Moonlight's villager
+		// trades read Supplementaries' trade for a mod that wasn't installed and stopped the server).
+		loader.registerReloadListener(new ConditionedData());
+
 		FabricLoader.getInstance().getModContainer("fabricated-testmod").ifPresent(container -> {
 			if (ResourceManagerHelper.registerBuiltinResourcePack(id("extra"), container, ResourcePackActivationType.DEFAULT_ENABLED)) {
 				TestMod.LOGGER.info("FABRICATED-TEST builtin pack registered");
@@ -100,5 +109,28 @@ public final class ResourceLoaderTest implements ModInitializer {
 			boolean packEnabled = server.getPackRepository().getSelectedIds().contains(id("extra").toString());
 			TestMod.LOGGER.info("FABRICATED-TEST resource loader state: order={}, store={}, builtinPackEnabled={}", orderOk, files, packEnabled);
 		});
+	}
+
+	/** Reads {@code data/fabricated_testmod/fabricated_conditions}: {@code kept} has conditions that hold, {@code dropped} not. */
+	private static final class ConditionedData extends SimpleJsonResourceReloadListener implements IdentifiableResourceReloadListener {
+		ConditionedData() {
+			super(new Gson(), "fabricated_conditions");
+		}
+
+		@Override
+		public ResourceLocation getFabricId() {
+			return id("conditioned_data");
+		}
+
+		@Override
+		protected void apply(Map<ResourceLocation, JsonElement> data, ResourceManager manager, ProfilerFiller profiler) {
+			if (!FabricLoader.getInstance().isModLoaded("fabric-resource-conditions-api-v1")) {
+				TestMod.LOGGER.info("FABRICATED-TEST json loader conditions SKIPPED: fabric-resource-conditions-api-v1 isn't installed");
+			} else if (data.containsKey(id("kept")) && !data.containsKey(id("dropped"))) {
+				TestMod.LOGGER.info("FABRICATED-TEST json loader conditions OK");
+			} else {
+				TestMod.LOGGER.error("FABRICATED-TEST json loader conditions FAILED: the loader read {}", data.keySet());
+			}
+		}
 	}
 }

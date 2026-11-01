@@ -215,8 +215,8 @@ jobs:
           if [ -z "$newest" ] || [ "$newest" = "$pinned" ]; then exit 0; fi
           set -o pipefail
           ci/neoforge/smoke-server.sh "${{ matrix.target.minecraft }}" "$newest" "$RUNNER_TEMP/server-newest" | tee -a "$RUNNER_TEMP/summary-newest.txt"
-      # Boot again with the official Fabric API jar and keep the report, which lists every pass-through module and mixin pre-flight result. The server must start;
-      # the other checks in this run are informational.
+      # Boot again with the official Fabric API jar and keep the report, which lists every pass-through module and mixin pre-flight result. The server must start,
+      # and on 1.21.1 a JSON data loader honour Fabric's load conditions; the other checks in this run are informational.
       - name: Server smoke test with Fabric API (server must start)
         if: ${{ matrix.part == 'server' && !cancelled() && steps.build.outcome == 'success' }}
         run: |
@@ -230,6 +230,13 @@ jobs:
           fi
           cp "$RUNNER_TEMP"/energy/*.jar "$RUNNER_TEMP/extra/" 2>/dev/null || true
           ci/neoforge/smoke-server.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/server-fapi" "$RUNNER_TEMP/extra"
+          # Fabric's load conditions in a data loader of vanilla's JSON kind, which NeoForge 21.1 leaves as vanilla's: the
+          # test mod's file whose conditions fail must not be read (CORPUS-49). A gate.
+          if [ "${{ matrix.target.minecraft }}" = 1.21.1 ] && ! grep -q "FABRICATED-TEST json loader conditions OK" "$RUNNER_TEMP/server-fapi/server.out"; then
+            grep -h "FABRICATED-TEST json loader conditions" "$RUNNER_TEMP/server-fapi/server.out" || true
+            echo "::error::FAIL: a JSON data loader read a file whose fabric:load_conditions fail (CORPUS-49)"
+            exit 1
+          fi
       - name: Energy bridge with Team Reborn's library
         if: ${{ matrix.part == 'server' && !cancelled() && steps.build.outcome == 'success' }}
         run: |
