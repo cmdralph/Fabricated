@@ -50,12 +50,26 @@ public final class OtherModPlugins {
 
 	/**
 	 * A {@code jade} entrypoint naming a field, which Fabric's language adapter allows: Jade for NeoForge only creates
-	 * plugins from classes, so Fabricated leaves this one out there (with a note); Jade's Fabric build takes it.
+	 * plugins from classes, so Fabricated leaves this one out there (with a note); Jade's Fabric build takes it. Its
+	 * plugin is of a class of its own: Jade's Fabric build refuses two plugins of one class, as the corpus client with it
+	 * showed (its client stopped as Jade loaded them).
 	 */
 	public static final class JadeHolder {
-		public static final IWailaPlugin INSTANCE = new Jade();
+		public static final IWailaPlugin INSTANCE = new JadeField();
 
 		private JadeHolder() {
+		}
+	}
+
+	/** {@link JadeHolder#INSTANCE}'s plugin. */
+	public static final class JadeField implements IWailaPlugin {
+		JadeField() {
+			log("jade", "constructed");
+		}
+
+		@Override
+		public void register(IWailaCommonRegistration registration) {
+			log("jade", "called");
 		}
 	}
 
