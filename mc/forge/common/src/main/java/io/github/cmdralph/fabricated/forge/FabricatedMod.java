@@ -2,6 +2,7 @@ package io.github.cmdralph.fabricated.forge;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Consumer;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,6 +24,7 @@ import net.minecraftforge.fml.ModLoadingWarning;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 import net.minecraftforge.fml.loading.FMLLoader;
+import net.minecraftforge.forgespi.language.IModInfo;
 import net.minecraftforge.registries.ForgeRegistries;
 import net.minecraftforge.registries.ForgeRegistry;
 import net.minecraftforge.registries.RegisterEvent;
@@ -72,6 +74,9 @@ public final class FabricatedMod {
 		for (String text : ForgeLoaderHooks.notLoaded()) {
 			LoadingWarnings.add(new ModLoadingWarning(context.getContainer().getModInfo(), ModLoadingStage.CONSTRUCT, AS_IS, text));
 		}
+		// Fabric mods' config screens in Forge's mod list, once their initializers ran.
+		if (!FMLLoader.getDist().isDedicatedServer()) ClientSupport.init(state);
+		IModInfo self = context.getContainer().getModInfo();
 		EntrypointRunner runner = new EntrypointRunner(state.runtime(), new EntrypointRunner.ContextHook() {
 			@Override
 			public void enter(String modId) {
@@ -81,20 +86,27 @@ public final class FabricatedMod {
 			public void exit() {
 			}
 		});
-		report(state, runner.run("preLaunch", PreLaunchEntrypoint.class, PreLaunchEntrypoint::onPreLaunch), "pre-launch");
+		List<EntrypointRunner.Failure> preLaunch = runner.run("preLaunch", PreLaunchEntrypoint.class, PreLaunchEntrypoint::onPreLaunch);
+		report(state, preLaunch, "pre-launch");
 		RegisterEvent.getBus(context.getModBusGroup()).addListener(event -> {
 			if (initialized) return;
 			if (event.getRegistryKey().equals(ForgeRegistries.Keys.ATTRIBUTES)) {
 				attributesRegistered = true;
 			} else if (attributesRegistered) {
 				initialized = true;
-				initialize(state, runner, event.getForgeRegistry());
+				initialize(state, runner, event.getForgeRegistry(), preLaunch,
+						text -> LoadingWarnings.add(new ModLoadingWarning(self, ModLoadingStage.CONSTRUCT, AS_IS, text)));
 			}
 		});
 	}
 
-	/** @param current the registry whose event this is, which Forge opened and locks after it (null if Forge doesn't manage it) */
-	private static void initialize(FabricatedState state, EntrypointRunner runner, Object current) {
+	/**
+	 * @param current   the registry whose event this is, which Forge opened and locks after it (null if Forge doesn't manage it)
+	 * @param preLaunch the pre-launch entrypoints' failures
+	 * @param warning   adds a text to Forge's loading warnings
+	 */
+	private static void initialize(FabricatedState state, EntrypointRunner runner, Object current, List<EntrypointRunner.Failure> preLaunch,
+			Consumer<String> warning) {
 		List<ForgeRegistry<?>> opened = new ArrayList<>();
 		for (var key : RegistryManager.getVanillaRegistryKeys()) {
 			ForgeRegistry<?> registry = RegistryManager.ACTIVE.getRegistry(key);
@@ -120,6 +132,10 @@ public final class FabricatedMod {
 			opened.forEach(ForgeRegistry::freeze);
 		}
 		report(state, failures, "main");
+		// Then the failures in the report and Forge's warnings, and what waited for the initializers (see EntrypointOutcome).
+		List<EntrypointRunner.Failure> all = new ArrayList<>(preLaunch);
+		all.addAll(failures);
+		EntrypointOutcome.complete(state, all, warning);
 	}
 
 	/** Adds a phase's failures, marked at once: the registries freeze before they are reported (see MainEntrypoints). */

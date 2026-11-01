@@ -189,6 +189,8 @@ check "Fabricated ran the Fabric main entrypoints of [1-9][0-9]* mod(s) on Forge
 check "FABRICATED-FORGE-TEST main entrypoint OK" "the test mod's main entrypoint ran on the client"
 check "FABRICATED-FORGE-TEST client entrypoint OK" "its client entrypoint ran after the main one, as on Fabric"
 check "FABRICATED-FORGE-TEST client game instance OK" "Fabric Loader's game instance is the Minecraft instance when the client entrypoints run"
+check "FABRICATED-FORGE-TEST api after entrypoints OK" "Fabricated's API runs what waits for the Fabric initializers once they ran (Fabricated.get().afterEntrypoints)"
+check "FABRICATED-FORGE-TEST modmenu config screen OK" "a Fabric mod's Mod Menu config screen is behind Forge's mod list button, as on NeoForge"
 check "FABRICATED-FORGE-TEST registry OK" "the test mod registered an item on the client"
 check "FABRICATED-FORGE-TEST content built at bootstrap registered OK" "content built during vanilla's bootstrap is registered by the main initializer (CORPUS-31)"
 check "FABRICATED-FORGE-TEST built-in registries frozen after the main initializers OK" "the built-in registries' freeze runs after the main initializers (CORPUS-32)"

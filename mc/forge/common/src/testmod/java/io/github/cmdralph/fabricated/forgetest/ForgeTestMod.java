@@ -11,6 +11,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
 
+import io.github.cmdralph.fabricated.api.FabricMod;
+import io.github.cmdralph.fabricated.api.Fabricated;
 import net.fabricmc.api.DedicatedServerModInitializer;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
@@ -43,6 +45,8 @@ import net.minecraft.world.item.Items;
 public final class ForgeTestMod implements ModInitializer, DedicatedServerModInitializer {
 	public static final String MOD_ID = "fabricated-forge-testmod";
 	public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
+	/** The test mod that fails on purpose, which only the server smoke installs (mc/shared/src/testmodbroken). */
+	private static final String THROWS = "fabricated-testmod-throws";
 	public static final Identifier ITEM_ID = Identifier.fromNamespaceAndPath(MOD_ID, "test_item");
 	/** The item {@link #onInitialize} registers, as Fabric mods register theirs: straight into the registry. */
 	public static Item testItem;
@@ -53,6 +57,15 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 	public void onInitialize() {
 		String version = FabricLoader.getInstance().getModContainer(MOD_ID).map(c -> c.getMetadata().getVersion().getFriendlyString()).orElse("none");
 		LOGGER.info("FABRICATED-FORGE-TEST main entrypoint OK (version {}, Fabric Loader sees {} mods)", version, FabricLoader.getInstance().getAllMods().size());
+		// Fabricated's API on Forge: what waits for the Fabric initializers runs once they have, the mod that fails on
+		// purpose (in the server smoke) known as failed.
+		Fabricated.get().ifPresent(api -> api.afterEntrypoints(() -> {
+			boolean ok = api.entrypointsComplete() && api.isFabricModLoaded(MOD_ID)
+					&& api.fabricMod(THROWS).map(m -> m.status() == FabricMod.Status.FAILED).orElse(true);
+			if (ok) LOGGER.info("FABRICATED-FORGE-TEST api after entrypoints OK");
+			else LOGGER.error("FABRICATED-FORGE-TEST api after entrypoints FAILED: complete {}, {}, {}", api.entrypointsComplete(), api.fabricMod(MOD_ID),
+					api.fabricMod(THROWS));
+		}));
 		try {
 			testItem = Registry.register(BuiltInRegistries.ITEM, ITEM_ID, new Item(new Item.Properties().setId(ResourceKey.create(Registries.ITEM, ITEM_ID))));
 			if (ITEM_ID.equals(BuiltInRegistries.ITEM.getKey(testItem))) {
