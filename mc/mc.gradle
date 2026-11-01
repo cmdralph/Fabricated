@@ -96,6 +96,9 @@ sourceSets {
     main {
         java.srcDirs = ['src/main/java', 'src/fabricapi/java']
         java.srcDir sharedJava('main')
+        // The in-game mod's sources every platform shares, in mc/shared: Mod Menu's API, whose screens each platform's
+        // mod list shows.
+        java.srcDir renamedJava('everyPlatformMain', [rootProject.file('mc/shared/src/main/java')])
         resources.srcDirs = ['src/main/resources'] + sharedSources.collect { rootProject.file("$it/src/main/resources") }
     }
     testmod {
