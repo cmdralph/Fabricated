@@ -44,6 +44,18 @@ jobs:
         run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends libegl1 libegl-mesa0 libgl1-mesa-dri
       - name: Select Java 21 for the game
         run: echo "JAVA_HOME=$JAVA_HOME_21_X64" >> "$GITHUB_ENV" && echo "$JAVA_HOME_21_X64/bin" >> "$GITHUB_PATH"
+      - name: Server with Fabric API (CORPUS-49)
+        continue-on-error: true
+        run: |
+          set +e
+          neo=$(sed -n 's/^neoforge_version=//p' mc/neoforge/1.21.1/gradle.properties)
+          ci/neoforge/smoke-server.sh "$MC" "$neo" "$RUNNER_TEMP/server-fapi" "$RUNNER_TEMP/extra" > "$RUNNER_TEMP/server-fapi.out" 2>&1
+          echo "=== SERVER-FAPI status $?"
+          grep -E "^(PASS|FAIL|NOTE)" "$RUNNER_TEMP/server-fapi.out" | grep -v "^PASS" | cut -c1-300 | head -20
+          grep -h "FABRICATED-TEST json loader conditions\|FAILED" "$RUNNER_TEMP/server-fapi/server.out" | cut -c1-400 | head -10
+          grep -n -i "resource-conditions\|resource.conditions" "$RUNNER_TEMP/server-fapi/logs/fabric-bridge-report.txt" | cut -c1-400 | head -10
+          grep -n -i "Failed to parse resource conditions\|resource conditions" "$RUNNER_TEMP/server-fapi/logs/latest.log" | cut -c1-400 | head -10
+          true
       - name: Server with the mod corpus (data packs)
         continue-on-error: true
         run: |
@@ -54,22 +66,16 @@ jobs:
           grep -E "^(PASS|FAIL|NOTE)" "$RUNNER_TEMP/server-corpus.out" | cut -c1-300 | head -6
           log="$RUNNER_TEMP/server-corpus/logs/latest.log"
           echo "=== SERVER-CORPUS datapacks"
-          grep -n -B4 -A80 "Failed to load datapacks" "$log" | cut -c1-500 | head -140
-          echo "=== SERVER-CORPUS suppsquared files"
+          grep -n -B2 -A30 "Failed to load datapacks" "$log" | cut -c1-500 | head -60
+          grep -n -i "resource conditions" "$log" | cut -c1-400 | head -20
+          echo "=== SERVER-CORPUS mod_loaded condition"
           for j in "$RUNNER_TEMP"/corpus/*.jar; do
-            for f in $(unzip -Z1 "$j" 2>/dev/null | grep -E "^data/.*\.json$"); do
-              if unzip -p "$j" "$f" 2>/dev/null | grep -q "suppsquared:copper_lantern"; then echo "-- $(basename "$j") $f"; unzip -p "$j" "$f" | head -c 1500; echo; fi
+            for c in $(unzip -Z1 "$j" 2>/dev/null | grep -E "\.class$"); do
+              if unzip -p "$j" "$c" 2>/dev/null | grep -a -q "mod_loaded"; then echo "-- $(basename "$j") $c"; fi
             done
-          done 2>/dev/null | head -80
-          echo "=== SERVER-CORPUS NeoForge's JSON listener"
-          for j in $(find "$RUNNER_TEMP/server-corpus" -name "*.jar"); do
-            if unzip -Z1 "$j" 2>/dev/null | grep -q "^net/minecraft/server/packs/resources/SimpleJsonResourceReloadListener.class$"; then
-              echo "-- $j"; javap -c -p -cp "$j" net.minecraft.server.packs.resources.SimpleJsonResourceReloadListener | grep -E "^  [a-z].*\(|invoke|Conditional|ICondition" | head -60
-            fi
-          done
-          echo "=== SERVER-CORPUS ingredients"
-          grep -n -i -E "recipe-api|recipe_api|CustomIngredient|IngredientMixin" "$log" | cut -c1-400 | head -20
-          grep -n -i -E "recipe-api|IngredientMixin|CustomIngredient" "$RUNNER_TEMP/server-corpus/logs/fabric-bridge-report.txt" | cut -c1-500 | head -20
+          done 2>/dev/null | head -20
+          echo "=== SERVER-CORPUS first errors"
+          grep -n -E "/(ERROR|FATAL)\]" "$log" | grep -v "minVersion" | cut -c1-400 | head -30
           true
       - name: Server with the advanced corpus (CORPUS-46)
         continue-on-error: true
@@ -78,46 +84,30 @@ jobs:
           neo=$(sed -n 's/^neoforge_version=//p' mc/neoforge/1.21.1/gradle.properties)
           ci/neoforge/smoke-server.sh "$MC" "$neo" "$RUNNER_TEMP/server-advanced" "$RUNNER_TEMP/advanced" > "$RUNNER_TEMP/server-advanced.out" 2>&1
           echo "=== SERVER-ADVANCED status $?"
-          grep -n -E "Critical injection|InjectionError|InvalidInjection|Mixin apply|MixinApplyError|Caused by|Exception|Error:" "$RUNNER_TEMP/server-advanced.out" | cut -c1-500 | head -40
-          echo "=== SERVER-ADVANCED stdout tail"
-          grep -v -E "^(PASS|FAIL|NOTE)" "$RUNNER_TEMP/server-advanced.out" | tail -n 120 | cut -c1-400
-          ls "$RUNNER_TEMP/server-advanced/crash-reports" 2>/dev/null && head -n 100 "$RUNNER_TEMP"/server-advanced/crash-reports/*.txt
-          echo "=== SERVER-ADVANCED translated reach mixin"
-          for j in $(find "$RUNNER_TEMP/server-advanced/.fabricated" -name "*.jar" 2>/dev/null); do
-            if unzip -Z1 "$j" 2>/dev/null | grep -q "^virtuoel/pehkui/mixin/reach/PlayerEntityMixin.class$"; then
-              echo "-- $j"; d="$RUNNER_TEMP/pehkui-t"; mkdir -p "$d"; (cd "$d" && unzip -o -q "$j" virtuoel/pehkui/mixin/reach/PlayerEntityMixin.class pehkui.mixins.json)
-              javap -v -p "$d/virtuoel/pehkui/mixin/reach/PlayerEntityMixin.class" | grep -E "method=|at=|value=|args=|Utf8 .*(attack|method_|class_|Entity)" | head -20
-              grep -o '"refmap"[^,]*' "$d/pehkui.mixins.json"; grep -o '"plugin"[^,]*' "$d/pehkui.mixins.json"
-            fi
-          done
-          echo "=== SERVER-ADVANCED Player.attack"
-          for j in $(find "$RUNNER_TEMP/server-advanced" -name "*.jar" -path "*librar*"); do
-            if unzip -Z1 "$j" 2>/dev/null | grep -q "^net/minecraft/world/entity/player/Player.class$"; then
-              echo "-- $j"; javap -c -p -cp "$j" net.minecraft.world.entity.player.Player | awk '/ attack\(net.minecraft.world.entity.Entity\)/ { on = 1 } on && /ldc2_w|dconst|invokevirtual.*(Range|Reach|distanceTo|canInteract|isCloseEnough)/ { print } on && /^  [a-z].*\(/ && !/ attack\(/ { on = 0 }' | head -30
-              javap -p -cp "$j" net.minecraft.world.entity.player.Player | grep -E " attack\(" 
-            fi
-          done
-          echo "=== SERVER-ADVANCED pre-flight on pehkui"
-          grep -n -i "pehkui" "$RUNNER_TEMP/server-advanced/logs/fabric-bridge-report.txt" | cut -c1-500 | head -30
+          grep -E "^(PASS|FAIL|NOTE)" "$RUNNER_TEMP/server-advanced.out" | cut -c1-300 | head -6
+          grep -n -E "Critical injection|InjectionError|InvalidInjection|MixinApplyError|Caused by" "$RUNNER_TEMP/server-advanced/server.out" | cut -c1-500 | head -20
+          grep -n -i "CONSTANT" "$RUNNER_TEMP/server-advanced/logs/fabric-bridge-report.txt" | cut -c1-500 | head -20
+          ls "$RUNNER_TEMP/server-advanced/crash-reports" 2>/dev/null && head -n 60 "$RUNNER_TEMP"/server-advanced/crash-reports/*.txt
+          echo "=== SERVER-ADVANCED first errors"
+          grep -n -E "/(ERROR|FATAL)\]" "$RUNNER_TEMP/server-advanced/logs/latest.log" | grep -v "minVersion" | cut -c1-400 | head -30
           true
-      - name: Client with the mod corpus (KEYMAP-2)
+      - name: Client with the mod corpus
         continue-on-error: true
         run: |
           set +e
           neo=$(sed -n 's/^neoforge_version=//p' mc/neoforge/1.21.1/gradle.properties)
           SMOKE_TIMEOUT=300 ci/neoforge/smoke-client.sh "$MC" "$neo" "$RUNNER_TEMP/client-corpus" "$RUNNER_TEMP/corpus" > "$RUNNER_TEMP/client-corpus.out" 2>&1
           echo "=== CLIENT-CORPUS status $?"
-          grep -E "^(PASS|FAIL|NOTE)|reached its world|crashed|stopping the client" "$RUNNER_TEMP/client-corpus.out" | cut -c1-300 | head -8
+          grep -E "^(PASS|FAIL|NOTE)|reached its world|crashed|stopping the client" "$RUNNER_TEMP/client-corpus.out" | cut -c1-300 | head -12
           log="$RUNNER_TEMP/client-corpus/run/logs/latest.log"
-          grep -n -i -E "GameOptions has already|Failed to load options|Failed to load datapacks" "$log" | cut -c1-400 | head -10
-          echo "=== CLIENT-CORPUS threads"
-          grep -c "Full thread dump" "$RUNNER_TEMP/client-corpus/client.out"
-          grep -n -A45 -E '"Render thread"|"Worker-Main-[0-9]+"|"Worker-ResourceReload-[0-9]+"' "$RUNNER_TEMP/client-corpus/client.out" | cut -c1-260 | head -260
-          echo "=== CLIENT-CORPUS client.out tail"
-          tail -n 40 "$RUNNER_TEMP/client-corpus/client.out" | cut -c1-260
+          echo "=== CLIENT-CORPUS crash lines"
+          grep -n -E "Unreported exception|Preparing crash report|Crash report saved|Duplicate plugin|Stopping!|Game crashed|emergency" "$log" | cut -c1-300 | head -20
+          echo "=== CLIENT-CORPUS first dump"
+          out="$RUNNER_TEMP/client-corpus/client.out"
+          awk '/Full thread dump/ { n++ } n == 1' "$out" | grep -v -E '^"(GC|G1|C[12] Comp|VM |Common-Cleaner|Signal|Finalizer|Reference|Notification|Service|Attach|Monitor)|^\s*$|^\s+- (locked|waiting|parking)' | cut -c1-220 | head -400
           echo "=== CLIENT-CORPUS log tail"
-          tail -n 25 "$log" | cut -c1-400
-          ls "$RUNNER_TEMP/client-corpus/run/crash-reports" 2>/dev/null && head -n 80 "$RUNNER_TEMP"/client-corpus/run/crash-reports/*.txt
+          tail -n 15 "$log" | cut -c1-300
+          ls "$RUNNER_TEMP/client-corpus/run/crash-reports" 2>/dev/null && head -n 60 "$RUNNER_TEMP"/client-corpus/run/crash-reports/*.txt
           true
 
 
@@ -130,8 +120,9 @@ jobs:
         with:
           distribution: temurin
           java-version: 25
-      # The refusals on Forge: how each Forge's discovery takes a locator's error, and what a second jar's services do.
-      - name: Forge's discovery errors
+      # Fabric API's client modules on Forge: the screen render events a bridge fires Fabric's drawing events from, and
+      # what Forge does with the HUD.
+      - name: Forge's screen and HUD events
         continue-on-error: true
         run: |
           set +e
@@ -142,12 +133,13 @@ jobs:
             java -jar installer.jar --installClient minecraft > installer.log 2>&1 || tail -n 20 installer.log
             echo "######## FORGE $pair"
             for j in $(find minecraft -name "*.jar"); do
-              for c in $(unzip -Z1 "$j" 2>/dev/null | grep -E "^net/minecraftforge/fml/loading/(EarlyLoadingException|EarlyLoadingException\\\$ExceptionData|moddiscovery/ModDiscoverer|moddiscovery/ModValidator)\.class$|^net/minecraftforge/forgespi/locating/(IModLocator\\\$ModFileOrException|ModFileLoadingException)\.class$"); do
-                n=${c%.class}; echo "-- $(basename "$j") $n"; javap -p -cp "$j" "${n//\//.}" | head -40
-                case "$n" in
-                  */ModDiscoverer) javap -c -p -cp "$j" "${n//\//.}" | grep -E "Exception table|^\s+[0-9]+\s+[0-9]+\s+[0-9]+\s+Class|invokespecial.*EarlyLoadingException|invokevirtual.*(scanMods|getAllData|ex\(\))|invokeinterface.*(scanMods|ex)" | head -40 ;;
-                esac
+              unzip -Z1 "$j" 2>/dev/null | grep -E "^net/minecraftforge/client/(event/[A-Za-z]*(Gui|Overlay|Layer|Hud)[A-Za-z$]*|gui/overlay/[A-Za-z$]*|gui/[A-Za-z]*Layer[A-Za-z$]*)\.class$" | sed "s|^|   $(basename "$j"): |" | head -30
+              for c in $(unzip -Z1 "$j" 2>/dev/null | grep -E "^net/minecraftforge/client/event/ScreenEvent\\\$Render(\\\$Pre|\\\$Post)?\.class$"); do
+                n=${c%.class}; echo "-- $(basename "$j") $n"; javap -p -cp "$j" "${n//\//.}" | head -30
               done
+              if unzip -Z1 "$j" 2>/dev/null | grep -q "^net/minecraft/client/gui/Gui.class$"; then
+                echo "-- $(basename "$j") Gui"; javap -p -cp "$j" net.minecraft.client.gui.Gui | grep -i -E "render|extract|layer|overlay" | head -30
+              fi
             done
             cd "$GITHUB_WORKSPACE"
           done
