@@ -163,7 +163,7 @@ Other loader facts:
 
 ### ❌ NO-GO: will not attempt, documented as unsupported
 
-* The Fabric builds of rendering-engine replacements: **Sodium, Iris**, and OptiFine-likes. (Revised 2026-10-19: their NeoForge builds work next to Fabric mods on 26.x, with Fabric block models meshed by Sodium's own Fabric renderer; see COMPATIBILITY.md.)
+* The Fabric builds of rendering-engine replacements: **Sodium, Iris**, and OptiFine-likes. (Revised 2026-10-19: their NeoForge builds work next to Fabric mods on 26.x, with Fabric block models meshed by Sodium's own Fabric renderer; see COMPATIBILITY.md.) (Revised 2026-11-01, the owner's decision for the beta: their Fabric builds, Essential's and mods like them move into scope, to be made to run with generic capabilities; `roadmap.md`, *Difficult mods*.)
 * Mods that bring their own launch or bootstrap hacks: **Carpet** (deep server internals), **ReplayMod**, **ViaFabricPlus**, and mods using Fabric Loader *internals* (`net.fabricmc.loader.impl.*`), `preLaunch` classloader tricks, or Mixin plugins that reflect into Fabric Loader. (Revised 2026-10-21: Carpet and ReplayMod were assessed as no-go here; both are now in CI's advanced corpus, `ci/mod-corpus-advanced.txt`, and translation now handles two things that stopped them there: Carpet's mixins that only give Brigadier classes its interfaces (LIB-1) and the refmaps of ReplayMod's unlisted mixin configs on 1.21.11 (REMAP-2); see roadmap.md.)
 * Fabric mods built for ≤1.21.11 running on 26.x. Fabric itself requires recompilation, and so does Fabricated.
 * Hybrid servers (Mohist/Arclight) and mobile launchers.

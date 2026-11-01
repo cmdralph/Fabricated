@@ -3,6 +3,27 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-01: The v0.6.0-beta pass starts; the project and the spec rethought (task 1)
+
+- **The owner's brief** (2026-11-01): leave alpha, with every branch and Minecraft version at beta quality, in seven
+  tasks (roadmap, *The v0.6.0-beta pass*). **The owner's decisions:** all three platforms are held to one stability bar,
+  with coverage allowed to differ and what a platform lacks listed as unsupported; Fabric's renderer API keeps Fabric
+  API's renderer, and Fabricated builds the seams; the Fabric builds of Sodium, Iris, Essential, OneConfig and PolyPlus,
+  and mods like them, are made to run rather than refused for being hard.
+- **The rethink** (roadmap): the design holds against its four goals. The gaps found: a Fabric model that throws while
+  drawn stops the game (FRAPI rule 8, new), the CI jobs boot the game up to 16 times each, Forge has no renderer test
+  and no gated client with Fabric API, and the Forge loaders don't call the engine's provider policy and refusals. Every
+  item still experimental has a decision and a task; thirteen informational CI runs each become a gate or go.
+- **The beta, redefined** for every platform: the stability bar (now with isolation after code runs), the
+  compatibility targets per platform, the ship criteria and what blocks it. **Plans:** FRAPI (R1 to R8, task 4) and the
+  difficult mods (task 5), each with its CI gate.
+- **The roadmap** lost its history: the rethinks and decisions of 2026-10-27 and 2026-10-28 and the v0.5.0 plan became
+  *Standing decisions* (what still holds; the reasoning stays in this file's entries). ARCHITECTURE's goals and
+  non-goals and RESEARCH §4 follow decision 3; `claude.md` allows a session's own working branch.
+- **GSON-2** moved to `FINDINGS.md`: the Forge branches fixed it (#233, #234).
+- **Version 0.6.0** in development (`gradle.properties`, README's status, ARCHITECTURE), as v0.5.1-alpha is published.
+- **Verified:** documents and the version only; the `coreOnly` build and its unit tests pass locally.
+
 ## 2026-10-28: v0.5.1-alpha carries the follow-up's fixes (task 4 of the v0.5.1-alpha follow-up)
 
 - **The owner's decision:** the world-join crash made the v0.5.1-alpha draft unusable for real packs, so its fixes ship
