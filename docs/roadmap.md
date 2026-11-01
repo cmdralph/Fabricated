@@ -86,7 +86,7 @@ resume from it.
 | # | Task | Status |
 |---|---|---|
 | 1 | Rethink the project and the spec: the conclusions, the beta criteria, the FRAPI and difficult-mods plans (below) | Done |
-| 2 | CI and workflows: the matrix from what a change touches, caching, fewer game boots per job, with times before and after | Next |
+| 2 | CI and workflows: the matrix from what a change touches, caching, fewer game boots per job, with times before and after | In progress: `main`'s workflows on its pull request; the Forge branches' next |
 | 3 | Parity on every platform and version, and the crashes v0.5 left open | |
 | 4 | Fabric's renderer API on NeoForge and Forge (*FRAPI plan*) | |
 | 5 | General compatibility, the difficult mods' Fabric builds first (*Difficult mods*) | |
@@ -286,11 +286,25 @@ logs become findings, and the corpora grow by the mods they name.
 - **Task 2 (CI).** The baseline: the quick check takes about 5 minutes; a pull request's full NeoForge matrix about 11.5
   minutes of wall time (the core job 1 minute, then five version jobs in parallel taking 7.5 to 10.3 minutes, run
   40795950758); a release tag's extended run about 22 minutes (version jobs of 16 to 21 minutes, run 40800647792).
-  Already there: cancelling stale runs, skipping documentation-only changes, the quick check on each push, the full
-  matrix only on pull requests to `main`, tags and by hand, and one game install per job. Left: the full matrix from
-  what a pull request changed (a version's own folder runs that version's job; shared code runs them all), the same in
-  the Forge workflows, the game and loader installs cached across runs, fewer game boots per job (runs that can share a
-  game), the unused `experimental` flag, and the Forge workflows' times measured.
+  The Forge workflows: a pull request to `forge` about 7.5 minutes (the core job 1.3 minutes, then four version jobs of
+  3.5 to 6 minutes, run 40797440573), to `forge-legacy` about 6 minutes (run 40797453188); their extended runs about 10
+  minutes. Already there: cancelling stale runs, skipping documentation-only changes, the quick check on each push, the
+  full matrix only on pull requests, tags and by hand, and one game install per job.
+  - **Done on `main`'s branch** (its pull request): the full matrix runs the versions a change touches
+    (`ci/changed-targets.py --full`: a version's own folder runs that version, shared code all of them; a tag or a run
+    by hand all of them; a merge into `main` builds what it changed). Each version is built once, and its jar and test
+    mods tested in parallel parts, which cut the game boots per job from up to 16 to 8 at most: `server` (seven
+    launches, eight with `extended`), `client` (three), `mods` (other mods' NeoForge builds: Sodium and Iris on 26.x,
+    the plugin hosts), and with `extended` the informational runs in `mods` (the Fabric builds) and a `corpus` part. The
+    version jobs no longer wait for the core job. The quick check stands down while the branch has a pull request open,
+    whose full matrix covers the push (it ran both on each push before). A version's CI pins are read from its folder
+    (the loader, Fabric API, the plugin hosts), not repeated in the workflow; the unused `experimental` flag is gone.
+  - **Decided:** the game installs are not cached across runs. A part installs one side once (10 to 25 seconds), and
+    pushes to `main` run no game, so only pull requests would save them: an estimated 2 GB per pull request against
+    GitHub's 10 GB per repository, which would evict `main`'s Gradle caches, whose loss costs minutes per job.
+  - **Moved:** 1.21.1's client with Forgified Fabric API and Sodium for NeoForge, informational, from every pull request
+    to `extended` (with the `mods` part's other informational runs).
+  - **Left:** the same in the Forge workflows (their own branches' pull requests), and the times after.
 - **Task 3 (parity).** NeoForge: CORPUS-44, 45 and 46, and SER-1. Forge: PRE-18, CORPUS-33 and HOLD-2; the provider
   policy and the refusals wired into both Forge loaders; the client with Fabric API, and Fabric API's client modules,
   made gates; the last entity events' hook and item storages in items. Each platform's table then lists what is
