@@ -103,6 +103,8 @@ public final class FabricDependencyLocator extends AbstractJarFileModProvider im
 	}
 
 	private void run(Iterable<IModFile> loadedMods, List<IModFile> handed) throws IOException, JsonException {
+		// Sinytra Connector or a second Fabricated jar: the mod locator, which ran first, stopped the launch (ConflictingMods).
+		if (ConflictingMods.refusal(FMLPaths.MODSDIR.get()) != null) return;
 		FabricatedInfo info = FabricatedInfo.get();
 		String mcVersion = FMLLoader.versionInfo().mcVersion();
 		String forgeVersion = FMLLoader.versionInfo().forgeVersion();

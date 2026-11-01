@@ -133,6 +133,20 @@ jobs:
           curl -fsSL --retry 4 -o "$RUNNER_TEMP/extra/fabric-api.jar" \
             "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api/${{ matrix.target.fabric_api }}/fabric-api-${{ matrix.target.fabric_api }}.jar"
           ci/forge-legacy/smoke-server.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/server-fapi" "$RUNNER_TEMP/extra"
+      # Sinytra Connector (a stand-in with its mod id) or a second Fabricated jar in the mods folder: the launch must
+      # stop with Fabricated's error naming them, as on NeoForge: two loaders of Fabric mods can't share them (DUP-1).
+      - name: Server refusing Sinytra Connector and a second Fabricated jar (must pass)
+        if: ${{ env.GAME_RUNS == 'true' && !cancelled() }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/refuse-connector/src/META-INF" "$RUNNER_TEMP/refuse-twice"
+          printf 'modLoader = "lowcodefml"\nloaderVersion = "[1,)"\nlicense = "GPL-3.0-only"\n[[mods]]\nmodId = "connector"\nversion = "1.0.0"\n' \
+              > "$RUNNER_TEMP/refuse-connector/src/META-INF/mods.toml"
+          jar --create --file "$RUNNER_TEMP/refuse-connector/connector-standin.jar" -C "$RUNNER_TEMP/refuse-connector/src" META-INF/mods.toml
+          cp build/libs/fabricated-forge-*+mc${{ matrix.target.minecraft }}.jar "$RUNNER_TEMP/refuse-twice/fabricated-forge-0.0.1+mc${{ matrix.target.minecraft }}.jar"
+          SMOKE_TESTMODS=none SMOKE_TIMEOUT=300 SMOKE_EXPECT_REFUSAL="Sinytra Connector (connector-standin.jar)" \
+              ci/forge-legacy/smoke-server.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/server-refuse-connector" "$RUNNER_TEMP/refuse-connector"
+          SMOKE_TESTMODS=none SMOKE_TIMEOUT=300 SMOKE_EXPECT_REFUSAL="2 Fabricated jars (fabricated-forge-0.0.1+mc${{ matrix.target.minecraft }}.jar" \
+              ci/forge-legacy/smoke-server.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/server-refuse-twice" "$RUNNER_TEMP/refuse-twice"
       # The client (docs/PORTING.md §7, L4): a Forge 47 client with the test mod reaches a singleplayer world through
       # mc-runtime-test, and the Fabric client entrypoints run after the main ones. A gate like the server runs.
       - name: Install Mesa EGL for the client
