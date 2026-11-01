@@ -27,151 +27,72 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Build 1.21.1
         run: ./gradlew :mc:neoforge-1.21.1:fabricatedJar :mc:neoforge-1.21.1:testmods --stacktrace -Porg.gradle.java.installations.fromEnv=JAVA_HOME_21_X64,JAVA_HOME_25_X64
-      - name: Game and NeoForge sources
-        continue-on-error: true
-        run: |
-          set +e
-          find "$HOME/.gradle" mc/neoforge/1.21.1/build build -name "*.jar" 2>/dev/null | grep -i -E "sources" | grep -i -E "neoforge|minecraft" | head -20
-          mkdir -p "$RUNNER_TEMP/src"
-          for src in $(find "$HOME/.gradle" mc/neoforge/1.21.1/build build -name "*.jar" 2>/dev/null | grep -i sources); do
-            if unzip -l "$src" 2>/dev/null | grep -q -E " net/minecraft/client/Minecraft.java$| net/neoforged/neoforge/client/ClientHooks.java$"; then
-              echo "sources jar: $src"
-              (cd "$RUNNER_TEMP/src" && unzip -q -o "$src" 'net/minecraft/client/Minecraft.java' 'net/minecraft/client/Options.java' 'net/minecraft/client/KeyMapping.java' 'net/minecraft/client/renderer/LevelRenderer.java' 'net/neoforged/neoforge/client/loading/ClientModLoader.java' 'net/neoforged/neoforge/client/ClientHooks.java' 'net/neoforged/neoforge/client/event/RegisterKeyMappingsEvent.java' 'net/neoforged/neoforge/client/extensions/IKeyMappingExtension.java' 2>&1 | head -3)
-            fi
-          done
-          # Without a sources jar of the game: decompile nothing, but list the classes' members.
-          if [ ! -f "$RUNNER_TEMP/src/net/minecraft/client/Minecraft.java" ]; then
-            game=$(find "$HOME/.gradle" mc/neoforge/1.21.1/build build -name "*.jar" 2>/dev/null | while read -r j; do unzip -l "$j" 2>/dev/null | grep -q " net/minecraft/client/Minecraft.class$" && echo "$j"; done | head -1)
-            echo "game jar: $game"
-            mkdir -p "$RUNNER_TEMP/cls" && (cd "$RUNNER_TEMP/cls" && unzip -q -o "$game" 'net/minecraft/client/Minecraft.class' 'net/minecraft/client/Options.class' 'net/minecraft/client/KeyMapping.class' 'net/minecraft/client/renderer/LevelRenderer.class')
-            echo "== Minecraft.<init> calls (javap)"
-            javap -c -p -cp "$RUNNER_TEMP/cls" net.minecraft.client.Minecraft | sed -n '/Minecraft(net.minecraft.client.main.GameConfig)/,/^$/p' | grep -E "invoke|putfield" | grep -E "Options|ClientModLoader|ClientHooks|Gui|keyMappings|options" | head -40
-            echo "== Options load methods (javap)"
-            javap -p -cp "$RUNNER_TEMP/cls" net.minecraft.client.Options | grep -E "load|keyMappings"
-            echo "== KeyMapping members (javap)"
-            javap -p -cp "$RUNNER_TEMP/cls" net.minecraft.client.KeyMapping
-            echo "== LevelRenderer.getLightColor overloads, in declaration order (javap)"
-            javap -p -cp "$RUNNER_TEMP/cls" net.minecraft.client.renderer.LevelRenderer | grep -n getLightColor
-          fi
-          cd "$RUNNER_TEMP/src"
-          ls -R "$RUNNER_TEMP/src" | head -30
-          echo "== Minecraft.<init>: options, mod loading, key mappings"
-          grep -n -E "new Options\(|ClientModLoader\.|initClientHooks|RegisterKeyMappings|keyMappings|this\.options = " net/minecraft/client/Minecraft.java
-          echo "== Options: keyMappings, load(), NeoForge hooks"
-          grep -n -E "keyMappings|public void load\(|void load\(|ClientHooks|neoforge|RegisterKeyMappings|public Options\(" net/minecraft/client/Options.java | head -40
-          echo "== ClientModLoader"
-          cat net/neoforged/neoforge/client/loading/ClientModLoader.java | head -200
-          echo "== ClientHooks: key mappings, initClientHooks"
-          grep -n -E "KeyMapping|initClientHooks|RegisterKeyMappingsEvent" -A 12 net/neoforged/neoforge/client/ClientHooks.java | head -120
-          echo "== RegisterKeyMappingsEvent"
-          cat net/neoforged/neoforge/client/event/RegisterKeyMappingsEvent.java
-          echo "== KeyMapping: categories, sorting, MAP"
-          grep -n -E "CATEGORY_SORT_ORDER|compareTo|static final Map|MAP =|ALL =|resetMapping|KeyMappingLookup" net/minecraft/client/KeyMapping.java
-          echo "== LevelRenderer.getLightColor overloads, in declaration order"
-          grep -n -E "getLightColor\(" net/minecraft/client/renderer/LevelRenderer.java
-          echo "== IKeyMappingExtension"
-          grep -n -E "getKey|setKeyModifierAndCode|default|KeyMapping" net/neoforged/neoforge/client/extensions/IKeyMappingExtension.java | head -30
-          true
-      - name: Fabric API sources (key bindings, resource loader)
+      - name: Fabric API's key binding modules, as built
         continue-on-error: true
         run: |
           set +e
           fapi=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["fabricApiVersion"])' mc/neoforge/1.21.1/src/fabricated/resources/META-INF/fabricated/fabric-api-plan.json)
-          mkdir -p "$RUNNER_TEMP/extra" "$RUNNER_TEMP/fapi"
+          mkdir -p "$RUNNER_TEMP/extra" "$RUNNER_TEMP/kb"
           curl -fsSL --retry 4 -o "$RUNNER_TEMP/extra/fabric-api.jar" "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api/${fapi}/fabric-api-${fapi}.jar"
-          cd "$RUNNER_TEMP/fapi"
-          for module in fabric-key-binding-api-v1 fabric-resource-loader-v0; do
+          cd "$RUNNER_TEMP/kb"
+          for module in fabric-key-binding-api-v1 fabric-keybindings-v0; do
             nested=$(unzip -Z1 "$RUNNER_TEMP/extra/fabric-api.jar" | grep "META-INF/jars/${module}-[0-9]")
-            ver=${nested#META-INF/jars/${module}-}; ver=${ver%.jar}
-            echo "== $module $ver"
-            curl -fsSL --retry 4 -o "$module-sources.jar" "https://maven.fabricmc.net/net/fabricmc/fabric-api/${module}/${ver}/${module}-${ver}-sources.jar" || echo "no sources jar"
-            unzip -Z1 "$module-sources.jar"
+            unzip -q -o -j "$RUNNER_TEMP/extra/fabric-api.jar" "$nested" -d . && mkdir -p "$module" && unzip -q -o "$(basename "$nested")" -d "$module"
+            echo "== $module ($nested): files"
+            find "$module" -type f | sort
+            echo "-- fabric.mod.json"; cat "$module/fabric.mod.json"; echo
+            for m in $(find "$module" -maxdepth 1 -name "*.mixins.json"); do echo "-- $m"; cat "$m"; echo; done
+            for c in $(find "$module" -name "*.class" | sort); do
+              echo "-- $c"; javap -c -p -v "$c" | grep -v -E "^\s+(#[0-9]+ = |line [0-9]+:|[0-9]+: (aload|astore|iload|istore|dup|pop|return|areturn|ireturn|iconst|ldc|getstatic|putstatic|getfield|putfield|checkcast|new|goto|if)|StackMapTable|frame_type|offset_delta|locals =|stack =|Start  Length|LineNumberTable|LocalVariableTable|^\s*$)" | head -150
+            done
           done
-          echo "== KeyBindingRegistryImpl"
-          unzip -p fabric-key-binding-api-v1-sources.jar 'net/fabricmc/fabric/impl/client/keybinding/KeyBindingRegistryImpl.java'
-          echo "== key binding mixins"
-          for f in $(unzip -Z1 fabric-key-binding-api-v1-sources.jar | grep -E "mixin/.*\.java$|mixins\.json$"); do echo "-- $f"; unzip -p fabric-key-binding-api-v1-sources.jar "$f"; done
-          echo "== ModNioResourcePack"
-          unzip -p fabric-resource-loader-v0-sources.jar 'net/fabricmc/fabric/impl/resource/loader/ModNioResourcePack.java'
-          echo "== ModResourcePack"
-          unzip -p fabric-resource-loader-v0-sources.jar 'net/fabricmc/fabric/api/resource/ModResourcePack.java'
-      - name: The mods' own code (Moonlight, LambDynamicLights, Pehkui)
+      - name: NeoForge 21.1's KeyMapping and Options
         continue-on-error: true
         run: |
           set +e
-          python3 ci/fetch-corpus.py "$MC" "$RUNNER_TEMP/corpus" > "$RUNNER_TEMP/corpus.txt"
-          python3 ci/fetch-corpus.py "$MC" "$RUNNER_TEMP/pehkui" fabric pehkui
-          cd "$RUNNER_TEMP"
-          moon=$(ls corpus/moonlight*.jar | head -1)
-          echo "== $moon: classes naming ModNioResourcePack"
-          mkdir -p x/moon && unzip -q -o "$moon" -d x/moon
-          grep -rl "ModNioResourcePack" x/moon | head
-          for c in $(grep -rl "ModNioResourcePack" x/moon --include=*.class); do
-            echo "-- $c"; javap -c -p "$c" | grep -n -B 12 -A 6 "ModNioResourcePack"
-          done
-          ldl=$(ls corpus/lambdynamiclights*.jar | head -1)
-          echo "== $ldl"
-          unzip -Z1 "$ldl" | grep -E "jars/|mixins\.json|refmap"
-          mkdir -p x/ldl && unzip -q -o "$ldl" -d x/ldl
-          for j in x/ldl/META-INF/jars/*.jar; do mkdir -p "x/ldl/n/$(basename "$j")" && unzip -q -o "$j" -d "x/ldl/n/$(basename "$j")"; done
-          for c in $(find x/ldl -name "CommonLevelRendererMixin*.class"); do echo "-- $c"; javap -v -p "$c" | grep -n -E "RuntimeVisibleAnnotations|RuntimeInvisibleAnnotations|method=|ModifyReturnValue|getLightColor|method_2379|onGetLightmap|Lnet/minecraft" | head -40; done
-          for m in $(find x/ldl -name "*mixins.json"); do echo "-- $m"; cat "$m"; done
-          for r in $(find x/ldl -name "*refmap*.json"); do echo "-- $r"; python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); [print(k, json.dumps(v, indent=1)) for k,v in d.get("mappings",{}).items() if "LevelRenderer" in k]' "$r"; done
-          pk=$(ls pehkui/pehkui*.jar | head -1)
-          echo "== $pk"
-          mkdir -p x/pk && unzip -q -o "$pk" -d x/pk
-          for c in $(find x/pk -path "*reach/PlayerEntityMixin*.class"); do echo "-- $c"; javap -v -p "$c" | grep -n -E "attack|method=|Inject|ModifyConstant|ModifyExpressionValue|ModifyVariable|At|target|require|Lnet/minecraft|class_|method_" | head -60; done
-          for r in $(find x/pk -maxdepth 1 -name "*refmap*.json"); do echo "-- $r"; python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); [print(k, json.dumps(v, indent=1)) for k,v in d.get("mappings",{}).items() if "reach/PlayerEntityMixin" in k]' "$r"; done
-          grep -n "PlayerEntityMixin" x/pk/*.mixins.json | head
+          game=$(find "$HOME/.gradle" mc/neoforge/1.21.1/build build -name "*.jar" 2>/dev/null | grep -E "21\.1\.|1\.21\.1" | while read -r j; do unzip -Z1 "$j" 2>/dev/null | grep -q "^net/minecraft/client/KeyMapping.class$" && echo "$j"; done | head -3)
+          echo "game jars: $game"
+          g=$(echo "$game" | head -1)
+          mkdir -p "$RUNNER_TEMP/cls" && (cd "$RUNNER_TEMP/cls" && unzip -q -o "$g" 'net/minecraft/client/KeyMapping.class' 'net/minecraft/client/Options.class' 'net/minecraft/client/Minecraft.class')
+          echo "== KeyMapping"; javap -p -cp "$RUNNER_TEMP/cls" net.minecraft.client.KeyMapping
+          echo "== KeyMapping.compareTo"; javap -c -p -cp "$RUNNER_TEMP/cls" net.minecraft.client.KeyMapping | sed -n '/public int compareTo(net.minecraft.client.KeyMapping)/,/^$/p' | head -80
+          echo "== Options: fields and load"; javap -p -cp "$RUNNER_TEMP/cls" net.minecraft.client.Options | grep -E "keyMappings|load|processOptions|save"
+          echo "== Options.load(boolean)"; javap -c -p -cp "$RUNNER_TEMP/cls" net.minecraft.client.Options | sed -n '/public void load(boolean)/,/^$/p' | grep -E "invoke|getfield|putfield|ifeq|ifne" | head -60
+          echo "== Minecraft.<init> order"; javap -c -p -cp "$RUNNER_TEMP/cls" net.minecraft.client.Minecraft | sed -n '/public net.minecraft.client.Minecraft(net.minecraft.client.main.GameConfig)/,/^$/p' | grep -E "Options.\"<init>\"|ClientModLoader|ClientHooks|Gui.\"<init>\"|Options.load" | head -20
+          true
       - name: Install Mesa EGL for the client
         run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends libegl1 libegl-mesa0 libgl1-mesa-dri
       - name: Select Java 21 for the game
         run: echo "JAVA_HOME=$JAVA_HOME_21_X64" >> "$GITHUB_ENV" && echo "$JAVA_HOME_21_X64/bin" >> "$GITHUB_PATH"
-      - name: Client with the corpus, with the full errors
+      - name: Server with the advanced corpus (Pehkui's reach mixin)
         continue-on-error: true
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           set +e
           neo=$(sed -n 's/^neoforge_version=//p' mc/neoforge/1.21.1/gradle.properties)
-          cp "$RUNNER_TEMP/extra/fabric-api.jar" "$RUNNER_TEMP/corpus/"
-          SMOKE_TIMEOUT=600 ci/neoforge/smoke-client.sh "$MC" "$neo" "$RUNNER_TEMP/client-corpus" "$RUNNER_TEMP/corpus" > "$RUNNER_TEMP/client-corpus.out" 2>&1
-          log="$RUNNER_TEMP/client-corpus/run/logs/latest.log"
-          echo "== key binding failures, with their stacks"
-          grep -n -A 40 "GameOptions has already been initialised" "$log" | head -150
-          echo "== the first MixinTransformerError, with its causes"
-          grep -n -m 1 -A 120 "MixinTransformerError" "$log" | grep -E "Error|Exception|Caused by|at org.spongepowered|mixin|Mixin|at net.fabricmc|at io.github.cmdralph" | head -80
-          echo "== every distinct critical mixin error"
-          grep -h -E "Critical injection failure|InvalidInjectionException|InvalidMixinException|MixinApplyError|MixinPreProcessorException" "$log" | sed 's/^.*\]: //' | sort | uniq -c | sort -rn | head -40
-          echo "== the report's lambdynlights lines"
-          grep -n -i "lambdynlights\|comforts" "$RUNNER_TEMP/client-corpus/run/logs/fabric-bridge-report.txt" | head -40
-          echo "== the translated CommonLevelRendererMixin and its refmap"
-          cache="$RUNNER_TEMP/client-corpus/run/.fabricated"
-          find "$cache" -name "*.jar" | head -5
-          for j in $(find "$cache" -name "*.jar"); do
-            if unzip -Z1 "$j" 2>/dev/null | grep -q "CommonLevelRendererMixin"; then
-              echo "-- $j"; mkdir -p "$RUNNER_TEMP/x/t" && unzip -q -o "$j" -d "$RUNNER_TEMP/x/t"
-              javap -v -p $(find "$RUNNER_TEMP/x/t" -name "CommonLevelRendererMixin.class") | grep -n -E "method=|getLightColor|onGetLightmap" | head
-              for r in $(find "$RUNNER_TEMP/x/t" -maxdepth 1 -name "*refmap*.json"); do python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); [print(k, json.dumps(v, indent=1)) for k,v in d.get("mappings",{}).items() if "LevelRenderer" in k]' "$r"; done
+          python3 ci/fetch-corpus.py "$MC" "$RUNNER_TEMP/advanced" fabric $(sed -e '/^#/d' -e '/^$/d' ci/mod-corpus-advanced.txt) > "$RUNNER_TEMP/advanced.txt"
+          cp "$RUNNER_TEMP/extra/fabric-api.jar" "$RUNNER_TEMP/advanced/"
+          cd "$RUNNER_TEMP"
+          pk=$(ls advanced/ | grep -i "^pehkui" | head -1)
+          echo "== $pk"
+          mkdir -p x/pk && unzip -q -o "advanced/$pk" -d x/pk
+          grep -n -E "reach|plugin" x/pk/pehkui.mixins.json | head -20
+          for c in $(find x/pk -path "*reach/PlayerEntityMixin*.class"); do echo "-- $c"; javap -v -p "$c" | grep -n -E "pehkui\\\$attack|method=|Lorg/spongepowered|Lcom/llamalad7|value=|target=|ordinal|doubleValue|require|class_1657|method_7324" | head -60; done
+          plugin=$(find x/pk -name "PehkuiMixinConfigPlugin.class" | head -1)
+          echo "-- $plugin"; javap -c -p "$plugin" | grep -E "ldc|invoke" | grep -i -E "reach|attack|isModLoaded|String|contains|startsWith|getModContainer|bettercombat|combat" | head -60
+          for j in $(ls advanced/*.jar); do
+            if unzip -Z1 "$j" 2>/dev/null | grep -q -i "mixin.*Player.*\.class"; then
+              mkdir -p "x/scan/$(basename "$j")" && unzip -q -o "$j" -d "x/scan/$(basename "$j")" '*.class' 2>/dev/null
             fi
           done
-          echo "== tail of the client's output"
-          tail -n 60 "$RUNNER_TEMP/client-corpus.out"
-      - name: Server with the corpus (Moonlight), with the full error
-        continue-on-error: true
-        run: |
-          set +e
-          neo=$(sed -n 's/^neoforge_version=//p' mc/neoforge/1.21.1/gradle.properties)
-          ci/neoforge/smoke-server.sh "$MC" "$neo" "$RUNNER_TEMP/server-corpus" "$RUNNER_TEMP/corpus" > "$RUNNER_TEMP/server-corpus.out" 2>&1
-          for f in "$RUNNER_TEMP/server-corpus/logs/latest.log" "$RUNNER_TEMP/server-corpus/server.out"; do
-            echo "== $f"; grep -n -B 4 -A 45 "ModNioResourcePack" "$f" | grep -v "^\s*$" | head -120
-          done
-      - name: Server with Pehkui, with pre-flight's report
-        continue-on-error: true
-        run: |
-          set +e
-          neo=$(sed -n 's/^neoforge_version=//p' mc/neoforge/1.21.1/gradle.properties)
-          cp "$RUNNER_TEMP/extra/fabric-api.jar" "$RUNNER_TEMP/pehkui/"
-          ci/neoforge/smoke-server.sh "$MC" "$neo" "$RUNNER_TEMP/server-pehkui" "$RUNNER_TEMP/pehkui" > "$RUNNER_TEMP/server-pehkui.out" 2>&1
-          grep -n -i "pehkui" "$RUNNER_TEMP/server-pehkui/logs/fabric-bridge-report.txt" | grep -i -E "reach|PlayerEntityMixin|LEFT_OUT|disabled" | head -40
-          grep -n -m 1 -B 2 -A 40 "Critical injection failure" "$RUNNER_TEMP/server-pehkui/logs/latest.log" | head -60
+          echo "== other mods' mixins into Player.attack (method_7324)"
+          grep -rl "method_7324" x/scan --include=*.class | head -20
+          cd "$GITHUB_WORKSPACE"
+          ci/neoforge/smoke-server.sh "$MC" "$neo" "$RUNNER_TEMP/server-advanced" "$RUNNER_TEMP/advanced" > "$RUNNER_TEMP/server-advanced.out" 2>&1
+          echo "== the report's Player.attack lines"
+          grep -n -E "attack|reach\.PlayerEntityMixin" "$RUNNER_TEMP/server-advanced/logs/fabric-bridge-report.txt" | cut -c1-400 | head -40
+          echo "== the critical failure"
+          grep -n -m 1 -B 3 -A 30 "Critical injection failure" "$RUNNER_TEMP/server-advanced/logs/latest.log" | grep -v "^\S*\s*at java\|at MC-BOOTSTRAP\|at cpw" | cut -c1-500 | head -50
+          echo "== mixins applied to Player (Mixin's audit)"
+          grep -n "net.minecraft.world.entity.player.Player" "$RUNNER_TEMP/server-advanced/logs/latest.log" | grep -i mixin | cut -c1-300 | head -20
+          tail -n 30 "$RUNNER_TEMP/server-advanced.out" | cut -c1-300
+          true
