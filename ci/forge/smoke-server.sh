@@ -9,6 +9,7 @@
 # Exit status: the server must start, and every check that applies to the run must pass; the lines read from debug.log,
 # which Forge's debug output words as it likes, are only reported. With extra-mods-dir (the official Fabric API jar), its
 # jars join the mods folder.
+# SMOKE_TESTMODS=none leaves the test mods out; SMOKE_EXPECT_REFUSAL (below) expects the launch to stop instead.
 # Expects: build/libs/fabricated-forge-*+mc<minecraft-version>.jar and mc/forge/<minecraft-version>/build/testmods/fabricated-testmod.jar
 set -euo pipefail
 
@@ -39,24 +40,26 @@ mkdir -p mods
 mkdir -p config
 printf '{ "schema": 1, "onEntrypointFailure": "%s" }\n' "${SMOKE_ON_ENTRYPOINT_FAILURE:-disable}" > config/fabricated.json
 cp "$root"/build/libs/fabricated-forge-*+mc"$mc".jar mods/
-cp "$root"/mc/forge/"$mc"/build/testmods/fabricated-testmod.jar mods/
-# mc/shared's test mod that fails on purpose, after leaving an intrusive holder nothing registers: its failure must be
-# isolated, and the registries' freeze after the entrypoints must drop the holder (CORPUS-42, HOLD-2).
-cp "$root"/mc/forge/"$mc"/build/testmods/fabricated-testmod-throws.jar mods/
-# A Fabric mod whose dependency is missing: Fabricated doesn't load it, and Forge's loading warnings name it.
-mkdir unmet
-cat > unmet/fabric.mod.json <<'JSON'
-{"schemaVersion": 1, "id": "fabricated_forge_unmet", "version": "1.0.0", "depends": {"fabricated_forge_missing": "*"}}
-JSON
-jar --create --file mods/fabricated-forge-unmet.jar -C unmet fabric.mod.json
-# Two Fabric mods that depend on each other, as Fabric allows: the loader's sorter refuses a cycle of load orderings, so
-# Fabricated leaves one of theirs out (ORDER-1), and the server must still start.
-mkdir -p cycle
-for self in a b; do
-	other=$([ "$self" = a ] && echo b || echo a)
-	printf '{"schemaVersion": 1, "id": "fabricated_cycle_%s", "version": "1.0.0", "depends": {"fabricated_cycle_%s": "*"}}\n' "$self" "$other" > cycle/fabric.mod.json
-	jar --create --file "mods/fabricated-cycle-$self.jar" -C cycle fabric.mod.json
-done
+if [ "${SMOKE_TESTMODS:-all}" != none ]; then
+	cp "$root"/mc/forge/"$mc"/build/testmods/fabricated-testmod.jar mods/
+	# mc/shared's test mod that fails on purpose, after leaving an intrusive holder nothing registers: its failure must be
+	# isolated, and the registries' freeze after the entrypoints must drop the holder (CORPUS-42, HOLD-2).
+	cp "$root"/mc/forge/"$mc"/build/testmods/fabricated-testmod-throws.jar mods/
+	# A Fabric mod whose dependency is missing: Fabricated doesn't load it, and Forge's loading warnings name it.
+	mkdir unmet
+	cat > unmet/fabric.mod.json <<-'JSON'
+	{"schemaVersion": 1, "id": "fabricated_forge_unmet", "version": "1.0.0", "depends": {"fabricated_forge_missing": "*"}}
+	JSON
+	jar --create --file mods/fabricated-forge-unmet.jar -C unmet fabric.mod.json
+	# Two Fabric mods that depend on each other, as Fabric allows: the loader's sorter refuses a cycle of load orderings, so
+	# Fabricated leaves one of theirs out (ORDER-1), and the server must still start.
+	mkdir -p cycle
+	for self in a b; do
+		other=$([ "$self" = a ] && echo b || echo a)
+		printf '{"schemaVersion": 1, "id": "fabricated_cycle_%s", "version": "1.0.0", "depends": {"fabricated_cycle_%s": "*"}}\n' "$self" "$other" > cycle/fabric.mod.json
+		jar --create --file "mods/fabricated-cycle-$self.jar" -C cycle fabric.mod.json
+	done
+fi
 if [ -n "$extra" ] && [ -d "$extra" ]; then
 	cp "$extra"/*.jar mods/ 2>/dev/null || true
 fi
@@ -119,6 +122,28 @@ for report in crash-reports/*.txt; do
 	head -n 120 "$report"
 	echo "::endgroup::"
 done
+
+# SMOKE_EXPECT_REFUSAL: the launch must stop, Fabricated refusing Sinytra Connector or a second Fabricated jar beside it
+# with an error that holds this text, as on NeoForge.
+if [ -n "${SMOKE_EXPECT_REFUSAL:-}" ]; then
+	# The refusal must be what stops the launch: a module error before it is what the player would see (DUP-2).
+	if grep -qE "ResolutionException|LayerInstantiationException|Duplicate key" server.out; then
+		echo "FAIL: the launch stopped with a module error, not the refusal: $(grep -hE -m 1 "ResolutionException|LayerInstantiationException|Duplicate key" server.out | cut -c1-300)"
+		exit 1
+	fi
+	refusal=$(grep -h -m 1 -oP '\]: Fabricated: \K.*' server.out 2>/dev/null || true)
+	if [ "$status" = started ] || [ -z "$refusal" ] || [[ "$refusal" != *"$SMOKE_EXPECT_REFUSAL"* ]]; then
+		echo "FAIL: the launch should have stopped with '$SMOKE_EXPECT_REFUSAL' (status $status; Fabricated logged: ${refusal:-nothing})"
+		exit 1
+	fi
+	# Forge reads the error's text as a message pattern: its crash report must show it as written.
+	if ! grep -qsF -- "$refusal" crash-reports/*.txt; then
+		echo "FAIL: Forge's loading error doesn't show the refusal as written: $refusal"
+		exit 1
+	fi
+	echo "PASS: the launch stopped with: $refusal"
+	exit 0
+fi
 
 # What Forge made of the Fabricated jar (docs/PORTING.md §4.1, questions 2, 4 and 5). Forge's discovery logs at debug
 # level, which only logs/debug.log keeps.
