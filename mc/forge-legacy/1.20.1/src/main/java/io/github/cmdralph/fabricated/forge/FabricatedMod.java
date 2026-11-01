@@ -120,12 +120,12 @@ public final class FabricatedMod {
 		boolean server = FMLLoader.getDist().isDedicatedServer();
 		if (!server) state.runtime().setGameInstance(ClientSupport.gameInstance());
 		try {
-			failures.addAll(runner.run("main", ModInitializer.class, ModInitializer::onInitialize));
+			record(failures, runner.run("main", ModInitializer.class, ModInitializer::onInitialize));
 			MainEntrypoints.markRan();
 			if (server) {
-				failures.addAll(runner.run("server", DedicatedServerModInitializer.class, DedicatedServerModInitializer::onInitializeServer));
+				record(failures, runner.run("server", DedicatedServerModInitializer.class, DedicatedServerModInitializer::onInitializeServer));
 			} else {
-				failures.addAll(runner.run("client", ClientModInitializer.class, ClientModInitializer::onInitializeClient));
+				record(failures, runner.run("client", ClientModInitializer.class, ClientModInitializer::onInitializeClient));
 			}
 			// Each Fabric fluid family's Forge fluid type, which Forge asks every fluid for (see FabricFluidType).
 			FabricFluidType.registerAll();
@@ -172,7 +172,14 @@ public final class FabricatedMod {
 		}
 	}
 
+	/** Adds a phase's failures, marked at once: the registries freeze before they are reported (see MainEntrypoints). */
+	private static void record(List<EntrypointRunner.Failure> failures, List<EntrypointRunner.Failure> more) {
+		failures.addAll(more);
+		if (!more.isEmpty()) MainEntrypoints.markFailed();
+	}
+
 	private static void report(FabricatedState state, List<EntrypointRunner.Failure> failures, String phase) {
+		if (!failures.isEmpty()) MainEntrypoints.markFailed();
 		for (EntrypointRunner.Failure failure : failures) LOGGER.error("Fabric entrypoint failed: {}", failure.describe(), failure.error());
 		LOGGER.info("Fabricated ran the Fabric {} entrypoints of {} mod(s) on Forge ({} failed)", phase, state.mods().size(), failures.size());
 	}
