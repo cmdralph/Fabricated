@@ -86,7 +86,7 @@ resume from it.
 | # | Task | Status |
 |---|---|---|
 | 1 | Rethink the project and the spec: the conclusions, the beta criteria, the FRAPI and difficult-mods plans (below) | Done |
-| 2 | CI and workflows: the matrix from what a change touches, caching, fewer game boots per job, with times before and after | Next |
+| 2 | CI and workflows: the matrix from what a change touches, caching, fewer game boots per job, with times before and after | In progress: `main`'s workflows on its pull request; the Forge branches' next |
 | 3 | Parity on every platform and version, and the crashes v0.5 left open | |
 | 4 | Fabric's renderer API on NeoForge and Forge (*FRAPI plan*) | |
 | 5 | General compatibility, the difficult mods' Fabric builds first (*Difficult mods*) | |
@@ -286,11 +286,32 @@ logs become findings, and the corpora grow by the mods they name.
 - **Task 2 (CI).** The baseline: the quick check takes about 5 minutes; a pull request's full NeoForge matrix about 11.5
   minutes of wall time (the core job 1 minute, then five version jobs in parallel taking 7.5 to 10.3 minutes, run
   40795950758); a release tag's extended run about 22 minutes (version jobs of 16 to 21 minutes, run 40800647792).
-  Already there: cancelling stale runs, skipping documentation-only changes, the quick check on each push, the full
-  matrix only on pull requests to `main`, tags and by hand, and one game install per job. Left: the full matrix from
-  what a pull request changed (a version's own folder runs that version's job; shared code runs them all), the same in
-  the Forge workflows, the game and loader installs cached across runs, fewer game boots per job (runs that can share a
-  game), the unused `experimental` flag, and the Forge workflows' times measured.
+  The Forge workflows: a pull request to `forge` about 7.5 minutes (the core job 1.3 minutes, then four version jobs of
+  3.5 to 6 minutes, run 40797440573), to `forge-legacy` about 6 minutes (run 40797453188); their extended runs about 10
+  minutes. Already there: cancelling stale runs, skipping documentation-only changes, the quick check on each push, the
+  full matrix only on pull requests, tags and by hand, and one game install per job.
+  - **Done on `main`'s branch** (its pull request): the full matrix runs the versions a change touches
+    (`ci/changed-targets.py --full`: a version's own folder runs that version, shared code all of them; a tag or a run
+    by hand all of them; a merge into `main` builds what it changed). Each version is built once, and its jar and test
+    mods tested in parallel parts, which cut the game boots per job from up to 16 to 8 at most: `server` (seven
+    launches, eight with `extended`), `client` (three), `mods` (other mods' NeoForge builds: Sodium and Iris on 26.x,
+    the plugin hosts), and with `extended` the informational runs in `mods` (the Fabric builds) and a `corpus` part. The
+    version jobs no longer wait for the core job. The quick check stands down while the branch has a pull request open,
+    whose full matrix covers the push (it ran both on each push before). A version's CI pins are read from its folder
+    (the loader, Fabric API, the plugin hosts), not repeated in the workflow; the unused `experimental` flag is gone.
+  - **Decided:** the game installs are not cached across runs. A part installs one side once (10 to 25 seconds), and
+    pushes to `main` run no game, so only pull requests would save them: an estimated 2 GB per pull request against
+    GitHub's 10 GB per repository, which would evict `main`'s Gradle caches, whose loss costs minutes per job.
+  - **Moved:** 1.21.1's client with Forgified Fabric API and Sodium for NeoForge, informational, from every pull request
+    to `extended` (with the `mods` part's other informational runs).
+  - **After** (`main`'s pull request, #236): a pull request's full matrix 5.4 minutes of wall time (the plan job 6
+    seconds, the builds 1.1 to 1.2 minutes, every part done by 5.3 minutes; 48 job-minutes against 46, run
+    41344142404); an extended run 20 minutes (run 41344706881), held by the 26.2 and 26.3 corpus clients at their
+    10-minute limit (CORPUS-48), every other part done by 11 minutes. A client that reached its world and doesn't exit
+    is now stopped 2 minutes later, not at that limit: the next extended run took 14.3 minutes (41347080112, its
+    parts waiting up to 4.7 minutes for runners), the 26.2 and 26.3 corpus parts 9.7 minutes instead of 18.5 and
+    15.7. The quick check stands down in 6 seconds (run 41344139306).
+  - **Left:** the same in the Forge workflows (their own branches' pull requests), and their times after.
 - **Task 3 (parity).** NeoForge: CORPUS-44, 45 and 46, and SER-1. Forge: PRE-18, CORPUS-33 and HOLD-2; the provider
   policy and the refusals wired into both Forge loaders; the client with Fabric API, and Fabric API's client modules,
   made gates; the last entity events' hook and item storages in items. Each platform's table then lists what is
@@ -573,6 +594,7 @@ with its cause, why the tests missed it and its fix, in the change that fixes it
 | CORPUS-44 | P0 on NeoForge 21.1 with Moonlight (1.21.1 corpus server) | `fabric-resource-loader-v0` on 1.21.1 (Fabricated's own, standing for v1) | Moonlight's `FilteredResManagerImpl` uses Fabric API's internal `net.fabricmc.fabric.impl.resource.loader.ModNioResourcePack`, which Fabricated's resource loader doesn't have; the linkage check warns, and the server stops with `ClassNotFoundException` as resources load (run 40683010866). | A known limit of v0.5.0-alpha: provide the class's API on Fabricated's packs, or leave out what needs it. |
 | CORPUS-45 | P0 on NeoForge 21.1 clients with LambDynamicLights, UNVERIFIED cause | LambDynamicLights' `CommonLevelRendererMixin` (`lambdynlights_runtime`) | The 1.21.1 corpus client stops as Mixin applies its `@ModifyReturnValue` on `LevelRenderer.getLightColor`: the handler fits the three-argument overload, but Mixin applied it to the two-argument one (run 40683010866). Upstream's selector names the three-argument overload with its descriptor, and NeoForge 21.1 doesn't patch either; what made it match the other is UNVERIFIED (the job log's tail holds no pre-flight report for it). | A known limit of v0.5.0-alpha: needs a run that keeps the client's report. |
 | CORPUS-46 | P0 on NeoForge 21.1 (advanced corpus) | Pehkui's `reach.PlayerEntityMixin` (`pehkui.mixins.json`), `MixinPreflight` | Past CORPUS-43 the 1.21.1 advanced corpus server and client stop as Mixin applies Pehkui's reach mixin: "Critical injection failure: Callback method pehkui$attack$distance(D)D ... failed injection check, (0/1) succeeded. Scanned 0 target(s)" (run 40762508369). A required injector that finds no target on NeoForge 21.1, which pre-flight should leave out or disable its mod for; why pre-flight passed it is UNVERIFIED. | A known limit of v0.5.1-alpha. |
+| CORPUS-48 | P2 on NeoForge 26.2 and 26.3 clients with Xaero's World Map 1.47.2 (the corpus client), UNVERIFIED for a player's quit | Xaero's World Map's `WorldDataHandler.onServerWorldUnload` | Once the 26.2 and 26.3 corpus clients reached their world, mc-runtime-test's stop halted the integrated server, and its thread waited in `WorldDataHandler.onServerWorldUnload` (`xaeroworldmap@1.47.2`, line 106, from `Level.close` in `MinecraftServer.stopServer`) while the render thread joined it, until the run's 10-minute limit (run 41344706881's thread dump, 26.3; 26.2's client ran as long). In v0.5.1's tag run (40800647792) the same clients exited in about a minute, and the 1.21.11 and 26.1.2 ones exit normally. What it waits on, and whether a player's own quit to the title screen hangs, is UNVERIFIED. | Task 5: reproduce with Xaero's maps alone on 26.3, and read what the unload waits for. The client runs stop such a hang 2 minutes after the world is reached (`SMOKE_EXIT_TIMEOUT`). |
 | ENTRY-1 | P2, UNVERIFIED on real mods | `EntrypointBridge` (a mod marked failed) | A Fabric mod whose main initializer fails after it registered a server configuration task can leave a singleplayer player waiting to join: the client initializer, which registers the client's side, doesn't run for a failed mod (the test mod with Forgified Fabric API on 1.21.1 before PROVIDER-6, run 40762508369: "Waiting for player to load" until the run's time limit). The report names the failure, not the wait. | Open: running a failed mod's other entrypoints, or dropping what it registered, each have a cost; to decide. |
 | PROVIDER-5 | — | Forgified Fabric API's `fabric-networking-api-v1` (1.21.1 seen) | With it providing the module, NeoForge refuses a payload type in the `minecraft` namespace, which Fabricated's own networking registers (NET-4): the Fabric mod's initializer throws "Cannot register payload minecraft:... using the domain \"minecraft\"" and it is marked failed (the test mod's payload on the 1.21.1 client run, 40738724928; BetterEnd's ritual update UNVERIFIED). | Not Fabricated's: the module is the provider's (*Standing decisions*, 2026-10-28). The test mods skip that case when another mod provides networking. |
 | PROVIDER-7 | — | Forgified Fabric API's `fabric-item-api-v1` on 26.x (26.1.2 and 26.2 seen) | Its `IItemExtensionMixin` answers NeoForge's `getEquipmentSlot` for an item with Fabric's equipment slot provider by casting the item to `LivingEntity` (`(LivingEntity) this`, read in its 26.1.2 source), which throws `ClassCastException`: the test mod's item stopped the servers with Forgified Fabric API once PROVIDER-6 let its initializers run (this change's CI, run 40772701272). A Fabric mod's item with an equipment slot provider (`FabricItem.Settings.equipmentSlot`) would stop the game wherever NeoForge asks its slot. | Not Fabricated's: the module is the provider's (*Standing decisions*, 2026-10-28); worth reporting to Forgified Fabric API (the owner's call). The 26.x test mod skips its item checks when another mod provides the module. |
