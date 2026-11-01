@@ -308,7 +308,9 @@ logs become findings, and the corpora grow by the mods they name.
     seconds, the builds 1.1 to 1.2 minutes, every part done by 5.3 minutes; 48 job-minutes against 46, run
     41344142404); an extended run 20 minutes (run 41344706881), held by the 26.2 and 26.3 corpus clients at their
     10-minute limit (CORPUS-48), every other part done by 11 minutes. A client that reached its world and doesn't exit
-    is now stopped 2 minutes later, not at that limit. The quick check stands down in 6 seconds (run 41344139306).
+    is now stopped 2 minutes later, not at that limit: the next extended run took 14.3 minutes (41347080112, its
+    parts waiting up to 4.7 minutes for runners), the 26.2 and 26.3 corpus parts 9.7 minutes instead of 18.5 and
+    15.7. The quick check stands down in 6 seconds (run 41344139306).
   - **Left:** the same in the Forge workflows (their own branches' pull requests), and their times after.
 - **Task 3 (parity).** NeoForge: CORPUS-44, 45 and 46, and SER-1. Forge: PRE-18, CORPUS-33 and HOLD-2; the provider
   policy and the refusals wired into both Forge loaders; the client with Fabric API, and Fabric API's client modules,

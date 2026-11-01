@@ -26,8 +26,9 @@ One entry per working session, newest first: what changed, and how it was verifi
 - **Times** (wall time from the run's start to its last job): a pull request's full matrix 5.4 minutes (11.5 before:
   run 41344142404 against 40795950758 and 41342742615); an extended run 20 minutes (22 before: 41344706881 against
   40800647792), of which the 26.2 and 26.3 corpus clients spent 10 minutes each waiting at their time limit on
-  CORPUS-48, with every other part done by 11 minutes. The runner time stays about the same (about 48 job-minutes
-  against 46 on a pull request): the same runs, spread over more jobs. The quick check still takes about 5 minutes on a
+  CORPUS-48, and with the exit timeout below 14.3 minutes (41347080112, whose parts waited up to 4.7 minutes for
+  runners behind this pull request's own run), those two parts taking 9.7 minutes instead of 18.5 and 15.7. The runner
+  time stays about the same (about 48 job-minutes against 46 on a pull request): the same runs, spread over more jobs. The quick check still takes about 5 minutes on a
   branch without a pull request, and 6 seconds with one.
 - **A client stuck shutting down is stopped two minutes after it reached its world** (`ci/neoforge/smoke-client.sh`,
   `SMOKE_EXIT_TIMEOUT`), with its threads dumped and the run failed as a timeout would, not at the run's own limit of
@@ -36,8 +37,10 @@ One entry per working session, newest first: what changed, and how it was verifi
   about a minute. Whether a player's own quit hangs is UNVERIFIED (task 5).
 - **Verified:** the picker's modes locally on sample changes; both workflows parse and every `steps`, `needs` and
   `matrix` reference resolves; each step's condition evaluated per version and part; this pull request's full matrix
-  and an extended run by hand, every gate passing; the quick check standing down on this branch's push (run
-  41344139306).
+  and an extended run by hand, every gate passing (41347057558 and 41347080112 on the last commit); the quick check
+  standing down on this branch's push (run 41344139306); the exit timeout on a simulated game that hangs after its
+  finish line and one that exits, and in CI stopping the 26.3 corpus client 2 minutes after its world, with Xaero's
+  World Map's unload in its thread dump again (41347080112).
 
 ## 2026-11-01: The v0.6.0-beta pass starts; the project and the spec rethought (task 1)
 
