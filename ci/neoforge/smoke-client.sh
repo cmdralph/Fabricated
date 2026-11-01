@@ -18,6 +18,9 @@ root="$(cd "$(dirname "$0")/../.." && pwd)"
 # shellcheck source=ci/install-cache.sh
 source "$root/ci/install-cache.sh"
 timeout_seconds="${SMOKE_TIMEOUT:-900}"
+# A game that reached its world (mc-runtime-test's "Successfully finished.") is stopped by mc-runtime-test; one that
+# hasn't exited this many seconds later is stuck shutting down, and is stopped then, not at the run's time limit.
+exit_timeout="${SMOKE_EXIT_TIMEOUT:-120}"
 hmc_version="2.10.0"
 mcrt_version="4.5.2"
 
@@ -122,19 +125,40 @@ for attempt in 1 2; do
 		done
 	}
 	dumped=0
+	finished_at=""
+	# What every game thread is doing, so a hang can be diagnosed from the log. SIGQUIT makes a JVM print every thread's
+	# stack to its output (client.out) and carry on; jstack can't attach to the game here ("non existent JVM pid"). Every
+	# Java process the launcher started, the game's included (its command line doesn't carry the launcher's JVM
+	# options); a shell would quit on it.
+	dump_threads() {
+		dumped=1
+		for pid in $(descendants "$client_pid"); do
+			if [ "$(cat "/proc/$pid/comm" 2>/dev/null)" = java ]; then kill -QUIT "$pid" 2>/dev/null || true; fi
+		done
+		sleep 3
+		awk '/^Full thread dump/ { dump = 1 } dump' client.out > thread-dump.txt || true
+	}
 	# The game doesn't exit when no renderer can be created; stop it then instead of waiting for the timeout.
 	while kill -0 "$client_pid" 2>/dev/null; do
-		# Shortly before the timeout, record what every game thread is doing, so a hang can be diagnosed from the log.
+		# Shortly before the timeout, the threads.
 		if [ "$dumped" -eq 0 ] && [ $((SECONDS - started)) -ge $((timeout_seconds - 45)) ]; then
-			dumped=1
-			# SIGQUIT makes a JVM print every thread's stack to its output (client.out) and carry on; jstack can't attach to
-			# the game here ("non existent JVM pid"). Every Java process the launcher started, the game's included (its
-			# command line doesn't carry the launcher's JVM options); a shell would quit on it.
-			for pid in $(descendants "$client_pid"); do
-				if [ "$(cat "/proc/$pid/comm" 2>/dev/null)" = java ]; then kill -QUIT "$pid" 2>/dev/null || true; fi
-			done
-			sleep 3
-			awk '/^Full thread dump/ { dump = 1 } dump' client.out > thread-dump.txt || true
+			dump_threads
+		fi
+		# A game stuck shutting down after it reached its world: its threads, then it is stopped, and the run fails as a
+		# timeout would.
+		if [ -z "$finished_at" ] && grep -q "Successfully finished\." client.out run/logs/latest.log 2>/dev/null; then
+			finished_at=$SECONDS
+		fi
+		if [ -n "$finished_at" ] && [ $((SECONDS - finished_at)) -ge "$exit_timeout" ]; then
+			echo "The game reached its world but didn't exit within $exit_timeout seconds; stopping the client."
+			echo "The game didn't exit within $exit_timeout seconds of reaching its world (mc-runtime-test's stop)" > stop-reason.txt
+			[ "$dumped" -eq 1 ] || dump_threads
+			# The whole tree, the game's JVM included, which would otherwise outlive the launcher into the next run.
+			tree=$(descendants "$client_pid")
+			kill $tree "$client_pid" 2>/dev/null || true
+			sleep 5
+			kill -9 $tree "$client_pid" 2>/dev/null || true
+			break
 		fi
 		# After a crash or a fatal loading error the game shows its error window until closed; stop it once the crash report
 		# is written.
