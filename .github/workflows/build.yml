@@ -451,7 +451,8 @@ jobs:
           fi
       # Fabric API's client modules on 1.21.1, passed through from the Fabric API jar: color providers the test mod
       # registers for its block and item must be the game's colors, and what Fabric's lookups return (they read
-      # NeoForge's maps), and its HUD callback must be called. A gate.
+      # NeoForge's maps), and its HUD callback must be called. Fabricated's own key binding module (KEYMAP-2): the test
+      # mod's key binding must be in the game's options and get the key saved for it. A gate.
       - name: Fabric API client modules (1.21.1)
         if: ${{ matrix.part == 'client' && !cancelled() && steps.build.outcome == 'success' && matrix.target.minecraft == '1.21.1' }}
         run: |
@@ -467,8 +468,10 @@ jobs:
           }
           check "colors OK" "Fabric color providers for a block and an item are the game's colors and Fabric's lookups return them"
           check "hud callback OK" "Fabric's HUD callback was called as the HUD was drawn"
+          check "key binding OK" "a Fabric key binding from the client entrypoint is in the game's options, sorted, and refused twice and late (KEYMAP-2)"
+          check "key binding saved key OK" "the Fabric key binding has the key the options file saved for it"
           if [ "$failed" = 1 ]; then
-            grep -n -m 40 -E "testmod-frapi|fabric-rendering-v1|/(ERROR|FATAL)\]" "$log" || true
+            grep -n -m 40 -E "testmod-frapi|fabric-rendering-v1|keybinding|/(ERROR|FATAL)\]" "$log" || true
             exit 1
           fi
       # Fabric's model loading and renderer APIs on 1.21.11: a model file of a Fabric type must be read by the test

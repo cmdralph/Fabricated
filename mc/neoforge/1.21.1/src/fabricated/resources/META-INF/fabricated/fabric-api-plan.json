@@ -92,7 +92,9 @@
       "plan": "passthrough"
     },
     "fabric-key-binding-api-v1": {
-      "plan": "passthrough"
+      "plan": "native",
+      "version": "1.0.47",
+      "reason": "Shipped by Fabricated: upstream's API, its key bindings registered on NeoForge's key mapping event, where NeoForge mods register theirs. Upstream refuses a key binding once the game's options exist, and NeoForge 21.1 creates them before Fabric mods' client entrypoints run, so passed through, the module failed every client entrypoint that registers one (KEYMAP-2: JEI, Jade, Simple Voice Chat, Entity Culling and five more in the 1.21.1 corpus). NeoForge loads the options again once mods have loaded, which gives each key binding the key the player saved."
     },
     "fabric-keybindings-v0": {
       "plan": "passthrough"
