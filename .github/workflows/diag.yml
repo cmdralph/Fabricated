@@ -55,11 +55,18 @@ jobs:
           log="$RUNNER_TEMP/server-corpus/logs/latest.log"
           echo "=== SERVER-CORPUS datapacks"
           grep -n -B4 -A80 "Failed to load datapacks" "$log" | cut -c1-500 | head -140
-          echo "=== SERVER-CORPUS suppsquared"
-          grep -n -i -E "suppsquared|supplementaries_squared|copper_lantern|Fabric entrypoint|entrypoint failed" "$log" | cut -c1-500 | head -60
-          grep -n -i -E "suppsquared|Entrypoint failures" -A3 "$RUNNER_TEMP/server-corpus/logs/fabric-bridge-report.txt" | cut -c1-500 | head -60
-          j=$(ls "$RUNNER_TEMP"/corpus/*.jar | grep -i -E "squared" | head -1); echo "jar: $j"
-          if [ -n "$j" ]; then unzip -Z1 "$j" | grep -i -E "copper_lantern|fabric.mod.json|\.mixins\.json$" | head -20; unzip -p "$j" fabric.mod.json | head -c 2500; echo; fi
+          echo "=== SERVER-CORPUS suppsquared files"
+          for j in "$RUNNER_TEMP"/corpus/*.jar; do
+            for f in $(unzip -Z1 "$j" 2>/dev/null | grep -E "^data/.*\.json$"); do
+              if unzip -p "$j" "$f" 2>/dev/null | grep -q "suppsquared:copper_lantern"; then echo "-- $(basename "$j") $f"; unzip -p "$j" "$f" | head -c 1500; echo; fi
+            done
+          done 2>/dev/null | head -80
+          echo "=== SERVER-CORPUS NeoForge's JSON listener"
+          for j in $(find "$RUNNER_TEMP/server-corpus" -name "*.jar"); do
+            if unzip -Z1 "$j" 2>/dev/null | grep -q "^net/minecraft/server/packs/resources/SimpleJsonResourceReloadListener.class$"; then
+              echo "-- $j"; javap -c -p -cp "$j" net.minecraft.server.packs.resources.SimpleJsonResourceReloadListener | grep -E "^  [a-z].*\(|invoke|Conditional|ICondition" | head -60
+            fi
+          done
           echo "=== SERVER-CORPUS ingredients"
           grep -n -i -E "recipe-api|recipe_api|CustomIngredient|IngredientMixin" "$log" | cut -c1-400 | head -20
           grep -n -i -E "recipe-api|IngredientMixin|CustomIngredient" "$RUNNER_TEMP/server-corpus/logs/fabric-bridge-report.txt" | cut -c1-500 | head -20
@@ -75,14 +82,21 @@ jobs:
           echo "=== SERVER-ADVANCED stdout tail"
           grep -v -E "^(PASS|FAIL|NOTE)" "$RUNNER_TEMP/server-advanced.out" | tail -n 120 | cut -c1-400
           ls "$RUNNER_TEMP/server-advanced/crash-reports" 2>/dev/null && head -n 100 "$RUNNER_TEMP"/server-advanced/crash-reports/*.txt
-          echo "=== SERVER-ADVANCED pehkui reach mixin"
-          j=$(ls "$RUNNER_TEMP"/advanced/*.jar | grep -i pehkui | head -1); echo "jar: $j"
-          if [ -n "$j" ]; then
-            d="$RUNNER_TEMP/pehkui-x"; mkdir -p "$d" && (cd "$d" && unzip -o -q "$j" 'virtuoel/pehkui/mixin/reach/*' 'pehkui.mixins.json' 'pehkui.refmap.json' 2>/dev/null || true)
-            ls "$d" "$d/virtuoel/pehkui/mixin/reach" 2>/dev/null | head -30
-            javap -v -p "$d/virtuoel/pehkui/mixin/reach/PlayerEntityMixin.class" | grep -v -E "^\s+(line|[0-9]+:)" | head -150
-          fi
-          grep -n -i "reach" "$RUNNER_TEMP/server-advanced/logs/fabric-bridge-report.txt" | cut -c1-600 | head -30
+          echo "=== SERVER-ADVANCED translated reach mixin"
+          for j in $(find "$RUNNER_TEMP/server-advanced/.fabricated" -name "*.jar" 2>/dev/null); do
+            if unzip -Z1 "$j" 2>/dev/null | grep -q "^virtuoel/pehkui/mixin/reach/PlayerEntityMixin.class$"; then
+              echo "-- $j"; d="$RUNNER_TEMP/pehkui-t"; mkdir -p "$d"; (cd "$d" && unzip -o -q "$j" virtuoel/pehkui/mixin/reach/PlayerEntityMixin.class pehkui.mixins.json)
+              javap -v -p "$d/virtuoel/pehkui/mixin/reach/PlayerEntityMixin.class" | grep -E "method=|at=|value=|args=|Utf8 .*(attack|method_|class_|Entity)" | head -20
+              grep -o '"refmap"[^,]*' "$d/pehkui.mixins.json"; grep -o '"plugin"[^,]*' "$d/pehkui.mixins.json"
+            fi
+          done
+          echo "=== SERVER-ADVANCED Player.attack"
+          for j in $(find "$RUNNER_TEMP/server-advanced" -name "*.jar" -path "*librar*"); do
+            if unzip -Z1 "$j" 2>/dev/null | grep -q "^net/minecraft/world/entity/player/Player.class$"; then
+              echo "-- $j"; javap -c -p -cp "$j" net.minecraft.world.entity.player.Player | awk '/ attack\(net.minecraft.world.entity.Entity\)/ { on = 1 } on && /ldc2_w|dconst|invokevirtual.*(Range|Reach|distanceTo|canInteract|isCloseEnough)/ { print } on && /^  [a-z].*\(/ && !/ attack\(/ { on = 0 }' | head -30
+              javap -p -cp "$j" net.minecraft.world.entity.player.Player | grep -E " attack\(" 
+            fi
+          done
           echo "=== SERVER-ADVANCED pre-flight on pehkui"
           grep -n -i "pehkui" "$RUNNER_TEMP/server-advanced/logs/fabric-bridge-report.txt" | cut -c1-500 | head -30
           true
@@ -97,9 +111,44 @@ jobs:
           log="$RUNNER_TEMP/client-corpus/run/logs/latest.log"
           grep -n -i -E "GameOptions has already|Failed to load options|Failed to load datapacks" "$log" | cut -c1-400 | head -10
           echo "=== CLIENT-CORPUS threads"
-          awk 'BEGIN { RS = ""; ORS = "\n\n" } /^"(Render thread|Worker-|Server thread|main|Download|pool)/' "$RUNNER_TEMP/client-corpus/thread-dump.txt" | cut -c1-300 | head -400
+          grep -c "Full thread dump" "$RUNNER_TEMP/client-corpus/client.out"
+          grep -n -A45 -E '"Render thread"|"Worker-Main-[0-9]+"|"Worker-ResourceReload-[0-9]+"' "$RUNNER_TEMP/client-corpus/client.out" | cut -c1-260 | head -260
+          echo "=== CLIENT-CORPUS client.out tail"
+          tail -n 40 "$RUNNER_TEMP/client-corpus/client.out" | cut -c1-260
           echo "=== CLIENT-CORPUS log tail"
           tail -n 25 "$log" | cut -c1-400
           ls "$RUNNER_TEMP/client-corpus/run/crash-reports" 2>/dev/null && head -n 80 "$RUNNER_TEMP"/client-corpus/run/crash-reports/*.txt
           true
 
+
+  forge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 25
+      # The refusals on Forge: how each Forge's discovery takes a locator's error, and what a second jar's services do.
+      - name: Forge's discovery errors
+        continue-on-error: true
+        run: |
+          set +e
+          for pair in 1.20.1-47.4.28 1.21.11-61.2.4 26.1.2-64.1.5 26.2-65.1.5 26.3-66.1.0; do
+            dir="$RUNNER_TEMP/forge-$pair"; mkdir -p "$dir/minecraft" && cd "$dir"
+            echo '{"profiles":{}}' > minecraft/launcher_profiles.json
+            curl -fsSL --retry 4 -o installer.jar "https://maven.minecraftforge.net/net/minecraftforge/forge/${pair}/forge-${pair}-installer.jar"
+            java -jar installer.jar --installClient minecraft > installer.log 2>&1 || tail -n 20 installer.log
+            echo "######## FORGE $pair"
+            for j in $(find minecraft -name "*.jar"); do
+              for c in $(unzip -Z1 "$j" 2>/dev/null | grep -E "^net/minecraftforge/fml/loading/(EarlyLoadingException|EarlyLoadingException\\\$ExceptionData|moddiscovery/ModDiscoverer|moddiscovery/ModValidator)\.class$|^net/minecraftforge/forgespi/locating/(IModLocator\\\$ModFileOrException|ModFileLoadingException)\.class$"); do
+                n=${c%.class}; echo "-- $(basename "$j") $n"; javap -p -cp "$j" "${n//\//.}" | head -40
+                case "$n" in
+                  */ModDiscoverer) javap -c -p -cp "$j" "${n//\//.}" | grep -E "Exception table|^\s+[0-9]+\s+[0-9]+\s+[0-9]+\s+Class|invokespecial.*EarlyLoadingException|invokevirtual.*(scanMods|getAllData|ex\(\))|invokeinterface.*(scanMods|ex)" | head -40 ;;
+                esac
+              done
+            done
+            cd "$GITHUB_WORKSPACE"
+          done
+          true
