@@ -871,7 +871,7 @@ public final class MixinPreflight extends PreflightPart {
 			return;
 		}
 
-		if (ann.desc.equals(MixinNames.MODIFY_VARIABLE) && !anyFuzzy && !acceptsModifierSignature(handler, matched)) {
+		if (MixinNames.VALUE_MODIFIERS.contains(ann.desc) && !anyFuzzy && !acceptsModifierSignature(handler, matched)) {
 			ctx.classLevel(injectorName + " handler " + handler.name + Type.getMethodDescriptor(Type.getReturnType(handler.desc), PreflightAsm.handlerArgs(handler).toArray(Type[]::new))
 							+ " does not match the parameters of " + matched.get(0).name + matched.get(0).desc + " in " + target.name.replace('/', '.'),
 					(ctx.owner() == null ? loader + "'s build of Minecraft declares this method with different parameters"
@@ -1056,11 +1056,13 @@ public final class MixinPreflight extends PreflightPart {
 	}
 
 	/**
-	 * Mixin accepts a {@code @ModifyVariable} handler taking the variable and then the target's first parameters, as
-	 * many as it declares (Mixin's {@code Injector.validateParams}: Balm's takes two of three); anything else is an
-	 * {@code InvalidInjectionException} when the mixin applies, whatever its {@code require} (Farmer's Delight's hook
-	 * into {@code CropBlock.getGrowthSpeed}, whose first parameter NeoForge's build made a block state). Handlers that
-	 * use {@code @Coerce} are left to Mixin.
+	 * Mixin accepts a value modifier's handler ({@link MixinNames#VALUE_MODIFIERS}) taking the value and then the target's
+	 * first parameters, as many as it declares (Mixin's {@code Injector.validateParams}: Balm's {@code @ModifyVariable}
+	 * takes two of three); anything else is an {@code InvalidInjectionException} when the mixin applies, whatever its
+	 * {@code require}, and the whole class fails with it: Farmer's Delight's hook into {@code CropBlock.getGrowthSpeed},
+	 * whose first parameter NeoForge's build made a block state, and LambDynamicLights' {@code @ModifyReturnValue} on the
+	 * overload of {@code LevelRenderer.getLightColor} Mixin picks, which took {@code LevelRenderer} from every mod
+	 * (CORPUS-45). Handlers that use {@code @Coerce} are left to Mixin.
 	 */
 	private static boolean acceptsModifierSignature(MethodNode handler, List<MethodNode> targets) {
 		List<Type> args = PreflightAsm.handlerArgs(handler);

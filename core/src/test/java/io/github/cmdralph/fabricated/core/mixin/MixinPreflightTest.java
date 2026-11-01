@@ -3606,6 +3606,81 @@ class MixinPreflightTest {
 	}
 
 	@Test
+	void aReturnValueModifierIsPinnedToTheOverloadItsHandlerTakesTheParametersOf() throws Exception {
+		// LambDynamicLights' hook into LevelRenderer.getLightColor taking the block state, whose overload without it comes
+		// first: Mixin refuses the handler there, and LevelRenderer fails for every mod (CORPUS-45).
+		ClassWriter target = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		target.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		for (String desc : List.of("(Ljava/lang/Object;Ljava/lang/String;)I", "(Ljava/lang/Object;Ljava/lang/Integer;Ljava/lang/String;)I")) {
+			MethodVisitor light = target.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "light", desc, null, null);
+			light.visitCode();
+			light.visitInsn(Opcodes.ICONST_0);
+			light.visitInsn(Opcodes.IRETURN);
+			light.visitMaxs(0, 0);
+			light.visitEnd();
+		}
+		target.visitEnd();
+		ClassIndex game = new ClassIndex(Map.of(TARGET, target.toByteArray())::get);
+		java.util.function.Function<String, byte[]> modifying = handlerDesc -> mixin("com/example/mixin/Light", false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "h", handlerDesc, null, null);
+			AnnotationVisitor ann = mv.visitAnnotation("Lcom/llamalad7/mixinextras/injector/ModifyReturnValue;", false);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "light");
+			methods.visitEnd();
+			AnnotationVisitor ats = ann.visitArray("at");
+			AnnotationVisitor at = ats.visitAnnotation(null, "Lorg/spongepowered/asm/mixin/injection/At;");
+			at.visit("value", "RETURN");
+			at.visitEnd();
+			ats.visitEnd();
+			ann.visitEnd();
+			mv.visitEnd();
+		});
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Light"));
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Light",
+				modifying.apply("(ILjava/lang/Object;Ljava/lang/Integer;Ljava/lang/String;)I")));
+		List<PreflightFinding> before = preflight(game, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(before.size() == 1 && before.getFirst().message().contains("does not match the parameters of light(Ljava/lang/Object;Ljava/lang/String;)I"),
+				"Mixin picks the overload without the Integer: " + before);
+		List<PreflightFinding> notes = new ArrayList<>();
+		mod.put("com/example/mixin/Light", preflight(game, mod::get, ClassBytesSource.EMPTY, false)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes).get("com/example/mixin/Light.class"));
+		assertTrue(notes.size() == 1 && notes.getFirst().message().contains("targets light(Ljava/lang/Object;Ljava/lang/Integer;Ljava/lang/String;)I")
+				&& notes.getFirst().message().contains("pinned"), notes.toString());
+		List<PreflightFinding> after = preflight(game, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(after.isEmpty(), after.toString());
+		// Taking the first parameter only, the handler suits both: the first stays Mixin's pick. Taking the value alone too.
+		for (String desc : List.of("(ILjava/lang/Object;)I", "(I)I")) {
+			Map<String, byte[]> either = Map.of("com/example/mixin/Light", modifying.apply(desc));
+			List<PreflightFinding> unpinned = new ArrayList<>();
+			preflight(game, either::get, ClassBytesSource.EMPTY, false).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), unpinned);
+			assertTrue(unpinned.isEmpty(), desc + ": " + unpinned);
+			assertTrue(preflight(game, either::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty(), desc);
+		}
+	}
+
+	@Test
+	void aConstantModifierTakingParametersNoTargetHasIsLeftOutWithItsClass() throws Exception {
+		ClassIndex game = new ClassIndex(Map.of(TARGET, overloadedTarget())::get);
+		Map<String, byte[]> mod = Map.of("com/example/mixin/Constants", mixin("com/example/mixin/Constants", false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "h", "(ILjava/lang/String;)I", null, null);
+			AnnotationVisitor ann = mv.visitAnnotation("Lorg/spongepowered/asm/mixin/injection/ModifyConstant;", false);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "tick(I)V");
+			methods.visitEnd();
+			AnnotationVisitor constants = ann.visitArray("constant");
+			AnnotationVisitor constant = constants.visitAnnotation(null, "Lorg/spongepowered/asm/mixin/injection/Constant;");
+			constant.visit("intValue", 0);
+			constant.visitEnd();
+			constants.visitEnd();
+			ann.visitEnd();
+			mv.visitEnd();
+		}));
+		List<PreflightFinding> findings = preflight(game, mod::get, ClassBytesSource.EMPTY, false)
+				.check("test.mixins.json", MixinConfigFile.parse(config(true, "Constants")), Refmap.EMPTY, Set.of());
+		assertTrue(findings.size() == 1 && findings.getFirst().message().contains("does not match the parameters of tick(I)V"), findings.toString());
+	}
+
+	@Test
 	void aWrapMethodWhoseHandlerTakesOtherParametersFails() throws Exception {
 		// NeoForge's build declares the method with other parameters than the vanilla one the handler was written for.
 		ClassWriter target = new ClassWriter(ClassWriter.COMPUTE_MAXS);

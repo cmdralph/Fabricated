@@ -317,6 +317,67 @@ class RemapTest {
 		assertEquals("sleepingPlayers", fields.mapMember("com/mod/mixin/Shadowing", "field_7", "I"));
 	}
 
+	/** Two overloads Intermediary names apart and Mojang's names alike, and a method of their class named once. */
+	private static MappingTable overloadedTable() throws Exception {
+		String tiny = String.join("\n", "v1\tofficial\tintermediary",
+				"CLASS\ta\tnet/minecraft/class_1",
+				"CLASS\tb\tnet/minecraft/class_2",
+				"METHOD\ta\t(Lb;)I\td\tmethod_30",
+				"METHOD\ta\t(Lb;I)I\te\tmethod_31",
+				"METHOD\ta\t()V\tf\tmethod_32",
+				"");
+		String proguard = String.join("\n",
+				"net.minecraft.client.renderer.LevelRenderer -> a:",
+				"    int getLightColor(net.minecraft.core.BlockPos) -> d",
+				"    int getLightColor(net.minecraft.core.BlockPos,int) -> e",
+				"    void tick() -> f",
+				"net.minecraft.core.BlockPos -> b:",
+				"");
+		return MappingComposer.compose(new StringReader(tiny), new StringReader(proguard));
+	}
+
+	@Test
+	void knowsTheMethodsWhoseRuntimeNameAnOverloadShares() throws Exception {
+		MappingTable t = overloadedTable();
+		assertEquals("(Lnet/minecraft/class_2;)I", t.overloadedDescriptor("method_30"));
+		assertEquals("(Lnet/minecraft/class_2;I)I", t.overloadedDescriptor("method_31"));
+		assertNull(t.overloadedDescriptor("method_32"), "tick is its class's only one");
+		assertNull(table().overloadedDescriptor("method_20"), "addEntity and entityAt share an obfuscated name only");
+		assertEquals("(Lnet/minecraft/class_2;I)I", MappingTable.deserialize(t.serialize()).overloadedDescriptor("method_31"));
+	}
+
+	/**
+	 * Fabric Loom names a method by its intermediary name alone where that is unique: LambDynamicLights'
+	 * {@code @ModifyReturnValue(method = "method_23793")} picks the getLightColor taking a block state on Fabric, and must
+	 * pick it remapped too, not the first getLightColor (CORPUS-45).
+	 */
+	@Test
+	void anInjectorSelectorNamingAnOverloadByItsIntermediaryNameKeepsPickingIt() throws Exception {
+		ClassWriter cw = new ClassWriter(0);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, "com/mod/mixin/LightMixin", null, "java/lang/Object", null);
+		MethodVisitor modifier = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "light", "(ILnet/minecraft/class_2;I)I", null, null);
+		AnnotationVisitor returned = modifier.visitAnnotation("Lcom/llamalad7/mixinextras/injector/ModifyReturnValue;", true);
+		AnnotationVisitor methods = returned.visitArray("method");
+		methods.visit(null, "method_31");
+		methods.visit(null, "method_32");
+		methods.visitEnd();
+		returned.visitEnd();
+		modifier.visitEnd();
+		MethodVisitor invoker = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, "callLight", "(Lnet/minecraft/class_2;I)I", null, null);
+		AnnotationVisitor invokes = invoker.visitAnnotation("Lorg/spongepowered/asm/mixin/gen/Invoker;", false);
+		invokes.visit("value", "method_31");
+		invokes.visitEnd();
+		invoker.visitEnd();
+		cw.visitEnd();
+		ClassNode node = new ClassNode();
+		new ClassReader(new JarRemapper(overloadedTable()).remapClass(cw.toByteArray(), "test")).accept(node, 0);
+		MethodNode light = node.methods.stream().filter(m -> m.name.equals("light")).findFirst().orElseThrow();
+		assertEquals(List.of("getLightColor(Lnet/minecraft/core/BlockPos;I)I", "tick"), light.visibleAnnotations.getFirst().values.get(1),
+				"the overload gets its descriptor; tick, its class's only one, stays a name");
+		MethodNode call = node.methods.stream().filter(m -> m.name.equals("callLight")).findFirst().orElseThrow();
+		assertEquals("getLightColor", call.invisibleAnnotations.getFirst().values.get(1), "an invoker names the method alone");
+	}
+
 	@Test
 	void serializationRoundTripsDeterministically() throws Exception {
 		MappingTable t = table();
