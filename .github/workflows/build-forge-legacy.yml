@@ -144,11 +144,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           ci/forge-legacy/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client"
-      # The client with the official Fabric API jar the server run downloaded: which of its client modules load on
-      # Forge, and whether the client still reaches a world with them. Informational until it holds.
-      - name: Client with Fabricated and Fabric API (informational)
+      # The client with the official Fabric API jar the server run downloaded: its client modules load on Forge, and the
+      # client still reaches a world with them. A gate like the other runs since the v0.6.0-beta pass.
+      - name: Client with Fabricated and Fabric API (must pass)
         if: ${{ env.GAME_RUNS == 'true' && !cancelled() }}
-        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
