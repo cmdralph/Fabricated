@@ -20,12 +20,13 @@ verified), [`PORTING.md`](PORTING.md) (the 1.20.1 and Forge evaluation and the p
   `build-forge.yml`), `forge-legacy` the shared engine and Forge 47 for 1.20.1 (`loader/forge-legacy`,
   `mc/forge-legacy`, `ci/forge-legacy`, `build-forge-legacy.yml`); both have a copy of the Forge platforms' shared
   folders (`loader/forge-shared`, `mc/forge-shared`, `mc/forge-mixinextras.gradle`), and their own `README.md` and
-  `docs/FORGE.md` or `docs/FORGE-LEGACY.md` (what works there). NeoForge work and shared work go to `main` from the
-  working branch `claude/dev`, one pull request per task, its full matrix green. Shared changes reach the platform
+  `docs/FORGE.md` or `docs/FORGE-LEGACY.md` (what works there). NeoForge work and shared work go to `main` from a
+  working branch (`claude/dev`, or the session's own `claude/...` branch), one pull request per task, its full matrix
+  green. Shared changes reach the platform
   branches by merge only: `scripts/sync-platform-branch.sh` merges `main` into a working branch made from the platform
   branch, keeping its own platform and leaving NeoForge's out, and a pull request into the platform branch runs its
   matrix. Forge work goes the same way: a working branch from `forge` or `forge-legacy`, a pull request into it. A
-  platform branch is never merged into `main` or `claude/dev` (it would bring its platform along, and two merge bases,
+  platform branch is never merged into `main` or a working branch for it (it would bring its platform along, and two merge bases,
   which GitHub reports as a conflict and on which no CI runs, as #157's first head did), and `forge-shared` changes
   are made on both Forge branches. Before a release every platform branch is synced with `main`. 1.20.1 targets Forge
   47.4 and modern Forge builds with ForgeGradle: decisions D1 to D6 in `RESEARCH.md` §8.
@@ -52,7 +53,7 @@ verified), [`PORTING.md`](PORTING.md) (the 1.20.1 and Forge evaluation and the p
   `fabric-bridge-report.txt`, `COMPATIBILITY.md` and `roadmap.md`, not stubbed.
 - **Pull requests are merged once CI is green on their final commit** (the owner's standing decision, 2026-10-19):
   drive the PR to green, merge it with a merge commit whose title is a Conventional Commit summarising the pull
-  request, then continue on `claude/dev`. Never force-push or reset a branch without the owner's say.
+  request, then continue on the working branch. Never force-push or reset a branch without the owner's say.
 - **Local first, one pull request per task** (the owner's decision, 2026-10-27, replacing one pull request per pass
   and per branch): verify locally (the `coreOnly` build, the touched version's jars and test mods, a local server
   smoke where it helps: *Building and verifying*), commit in logical steps and push in batches. Each push gets the
