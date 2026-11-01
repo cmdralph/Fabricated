@@ -72,12 +72,16 @@ else
 	echo "{ \"schema\": 1, \"logLevel\": \"DEBUG\", \"mods\": $mods_json }" > run/config/fabricated.json
 fi
 cat run/config/fabricated.json
-# A key saved for the FRAPI test mod's key binding, which it must have by the time the game stops (1.21.1, KEYMAP-2).
 cat > run/options.txt <<'OPTS'
 onboardAccessibility:false
 pauseOnLostFocus:false
-key_key.fabricated_testmod_frapi.check:key.keyboard.k
 OPTS
+# On 1.21.1, a key saved for the FRAPI test mod's key binding, which it must have by the time the game stops (KEYMAP-2).
+# The file then names its data version (1.21.1's): without one, the game takes it for a file from before 1.13 and its
+# data fixer reads each key as an LWJGL 2 key code, which fails on a key's name, and the whole file is dropped.
+if [ "$mc" = "1.21.1" ]; then
+	printf '%s\n' "version:3955" "key_key.fabricated_testmod_frapi.check:key.keyboard.k" >> run/options.txt
+fi
 # SMOKE_SHADERS: a minimal shader pack for Iris, enabled from the start. Its terrain program reads block ids, so Iris
 # uses its extended vertex format for the world, which Sodium's chunk meshes (Fabric models included) are written in.
 if [ -n "${SMOKE_SHADERS:-}" ]; then
