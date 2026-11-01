@@ -28,12 +28,32 @@ jobs:
       - name: Build 1.21.1
         run: ./gradlew :mc:neoforge-1.21.1:fabricatedJar :mc:neoforge-1.21.1:testmods --stacktrace -Porg.gradle.java.installations.fromEnv=JAVA_HOME_21_X64,JAVA_HOME_25_X64
       - name: Game and NeoForge sources
+        continue-on-error: true
         run: |
           set +e
           find "$HOME/.gradle" mc/neoforge/1.21.1/build build -name "*.jar" 2>/dev/null | grep -i -E "sources" | grep -i -E "neoforge|minecraft" | head -20
-          src=$(find "$HOME/.gradle" mc/neoforge/1.21.1/build -name "*.jar" 2>/dev/null | grep -i sources | grep -i neoforge | head -1)
-          echo "sources jar: $src"
-          mkdir -p "$RUNNER_TEMP/src" && cd "$RUNNER_TEMP/src" && unzip -q -o "$src" 'net/minecraft/client/Minecraft.java' 'net/minecraft/client/Options.java' 'net/minecraft/client/KeyMapping.java' 'net/minecraft/client/renderer/LevelRenderer.java' 'net/neoforged/neoforge/client/loading/ClientModLoader.java' 'net/neoforged/neoforge/client/ClientHooks.java' 'net/neoforged/neoforge/client/event/RegisterKeyMappingsEvent.java' 2>&1 | head
+          mkdir -p "$RUNNER_TEMP/src"
+          for src in $(find "$HOME/.gradle" mc/neoforge/1.21.1/build build -name "*.jar" 2>/dev/null | grep -i sources); do
+            if unzip -l "$src" 2>/dev/null | grep -q -E " net/minecraft/client/Minecraft.java$| net/neoforged/neoforge/client/ClientHooks.java$"; then
+              echo "sources jar: $src"
+              (cd "$RUNNER_TEMP/src" && unzip -q -o "$src" 'net/minecraft/client/Minecraft.java' 'net/minecraft/client/Options.java' 'net/minecraft/client/KeyMapping.java' 'net/minecraft/client/renderer/LevelRenderer.java' 'net/neoforged/neoforge/client/loading/ClientModLoader.java' 'net/neoforged/neoforge/client/ClientHooks.java' 'net/neoforged/neoforge/client/event/RegisterKeyMappingsEvent.java' 'net/neoforged/neoforge/client/extensions/IKeyMappingExtension.java' 2>&1 | head -3)
+            fi
+          done
+          # Without a sources jar of the game: decompile nothing, but list the classes' members.
+          if [ ! -f "$RUNNER_TEMP/src/net/minecraft/client/Minecraft.java" ]; then
+            game=$(find "$HOME/.gradle" mc/neoforge/1.21.1/build build -name "*.jar" 2>/dev/null | while read -r j; do unzip -l "$j" 2>/dev/null | grep -q " net/minecraft/client/Minecraft.class$" && echo "$j"; done | head -1)
+            echo "game jar: $game"
+            mkdir -p "$RUNNER_TEMP/cls" && (cd "$RUNNER_TEMP/cls" && unzip -q -o "$game" 'net/minecraft/client/Minecraft.class' 'net/minecraft/client/Options.class' 'net/minecraft/client/KeyMapping.class' 'net/minecraft/client/renderer/LevelRenderer.class')
+            echo "== Minecraft.<init> calls (javap)"
+            javap -c -p -cp "$RUNNER_TEMP/cls" net.minecraft.client.Minecraft | sed -n '/Minecraft(net.minecraft.client.main.GameConfig)/,/^$/p' | grep -E "invoke|putfield" | grep -E "Options|ClientModLoader|ClientHooks|Gui|keyMappings|options" | head -40
+            echo "== Options load methods (javap)"
+            javap -p -cp "$RUNNER_TEMP/cls" net.minecraft.client.Options | grep -E "load|keyMappings"
+            echo "== KeyMapping members (javap)"
+            javap -p -cp "$RUNNER_TEMP/cls" net.minecraft.client.KeyMapping
+            echo "== LevelRenderer.getLightColor overloads, in declaration order (javap)"
+            javap -p -cp "$RUNNER_TEMP/cls" net.minecraft.client.renderer.LevelRenderer | grep -n getLightColor
+          fi
+          cd "$RUNNER_TEMP/src"
           ls -R "$RUNNER_TEMP/src" | head -30
           echo "== Minecraft.<init>: options, mod loading, key mappings"
           grep -n -E "new Options\(|ClientModLoader\.|initClientHooks|RegisterKeyMappings|keyMappings|this\.options = " net/minecraft/client/Minecraft.java
@@ -49,7 +69,11 @@ jobs:
           grep -n -E "CATEGORY_SORT_ORDER|compareTo|static final Map|MAP =|ALL =|resetMapping|KeyMappingLookup" net/minecraft/client/KeyMapping.java
           echo "== LevelRenderer.getLightColor overloads, in declaration order"
           grep -n -E "getLightColor\(" net/minecraft/client/renderer/LevelRenderer.java
+          echo "== IKeyMappingExtension"
+          grep -n -E "getKey|setKeyModifierAndCode|default|KeyMapping" net/neoforged/neoforge/client/extensions/IKeyMappingExtension.java | head -30
+          true
       - name: Fabric API sources (key bindings, resource loader)
+        continue-on-error: true
         run: |
           set +e
           fapi=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["fabricApiVersion"])' mc/neoforge/1.21.1/src/fabricated/resources/META-INF/fabricated/fabric-api-plan.json)
@@ -72,6 +96,7 @@ jobs:
           echo "== ModResourcePack"
           unzip -p fabric-resource-loader-v0-sources.jar 'net/fabricmc/fabric/api/resource/ModResourcePack.java'
       - name: The mods' own code (Moonlight, LambDynamicLights, Pehkui)
+        continue-on-error: true
         run: |
           set +e
           python3 ci/fetch-corpus.py "$MC" "$RUNNER_TEMP/corpus" > "$RUNNER_TEMP/corpus.txt"
@@ -103,6 +128,7 @@ jobs:
       - name: Select Java 21 for the game
         run: echo "JAVA_HOME=$JAVA_HOME_21_X64" >> "$GITHUB_ENV" && echo "$JAVA_HOME_21_X64/bin" >> "$GITHUB_PATH"
       - name: Client with the corpus, with the full errors
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -132,6 +158,7 @@ jobs:
           echo "== tail of the client's output"
           tail -n 60 "$RUNNER_TEMP/client-corpus.out"
       - name: Server with the corpus (Moonlight), with the full error
+        continue-on-error: true
         run: |
           set +e
           neo=$(sed -n 's/^neoforge_version=//p' mc/neoforge/1.21.1/gradle.properties)
@@ -140,6 +167,7 @@ jobs:
             echo "== $f"; grep -n -B 4 -A 45 "ModNioResourcePack" "$f" | grep -v "^\s*$" | head -120
           done
       - name: Server with Pehkui, with pre-flight's report
+        continue-on-error: true
         run: |
           set +e
           neo=$(sed -n 's/^neoforge_version=//p' mc/neoforge/1.21.1/gradle.properties)
