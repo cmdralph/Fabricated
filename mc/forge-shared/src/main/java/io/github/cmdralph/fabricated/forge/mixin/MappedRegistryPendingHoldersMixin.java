@@ -14,6 +14,8 @@ import io.github.cmdralph.fabricated.forge.MainEntrypoints;
 import io.github.cmdralph.fabricated.forge.PendingHolders;
 import net.minecraft.core.Holder;
 import net.minecraft.core.MappedRegistry;
+import net.minecraft.core.Registry;
+import net.minecraft.resources.ResourceKey;
 
 /**
  * A Fabric mod whose content is built before its main entrypoint runs (a class initialized early, as BetterNether's
@@ -21,8 +23,9 @@ import net.minecraft.core.MappedRegistry;
  * during vanilla's bootstrap, before any mod is constructed (CORPUS-31): the content's intrusive holders are not
  * registered yet, and the check fails the game. While the main entrypoints are still to run, a freeze leaves them out
  * of the check and keeps them for the registration (Forge keeps the map past a freeze, since it freezes more than
- * once); the freeze after the registration events checks them as vanilla does. Forge's own registries replace this
- * {@code freeze} with theirs, which {@link NamespacedWrapperPendingHoldersMixin} wraps the same way.
+ * once); the freeze after the registration events checks them as vanilla does, unless a Fabric mod's entrypoint failed
+ * (see {@link MainEntrypoints#dropLeftoverHolders}). Forge's own registries replace this {@code freeze} with theirs,
+ * which {@link NamespacedWrapperPendingHoldersMixin} wraps the same way.
  */
 @Mixin(MappedRegistry.class)
 abstract class MappedRegistryPendingHoldersMixin<T> implements PendingHolders {
@@ -31,12 +34,18 @@ abstract class MappedRegistryPendingHoldersMixin<T> implements PendingHolders {
 	@Unique
 	private Map<T, Holder.Reference<T>> fabricated$pendingHolders;
 
+	@Shadow
+	public abstract ResourceKey<? extends Registry<T>> key();
+
 	@Override
 	public void fabricated$keepPendingHolders() {
-		if (unregisteredIntrusiveHolders == null || unregisteredIntrusiveHolders.isEmpty()
-				|| !MainEntrypoints.pending()) return;
-		fabricated$pendingHolders = new IdentityHashMap<>(unregisteredIntrusiveHolders);
-		unregisteredIntrusiveHolders.clear();
+		if (unregisteredIntrusiveHolders == null || unregisteredIntrusiveHolders.isEmpty()) return;
+		if (MainEntrypoints.pending()) {
+			fabricated$pendingHolders = new IdentityHashMap<>(unregisteredIntrusiveHolders);
+			unregisteredIntrusiveHolders.clear();
+		} else if (MainEntrypoints.dropLeftoverHolders(key(), unregisteredIntrusiveHolders.values())) {
+			unregisteredIntrusiveHolders.clear();
+		}
 	}
 
 	@Override
