@@ -3,6 +3,42 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-01: CI runs what a change touches, in parallel parts (task 2, `main`)
+
+- **The full matrix from what changed** (`ci/changed-targets.py --full`): a pull request runs the versions it touches (a
+  version's own folder that version, shared code all of them), a release tag or a run by hand all of them, and a merge
+  into `main` builds what it changed.
+- **Built once, tested in parts.** `build.yml` builds each version once and tests its jar and test mods in parallel jobs:
+  `server` (the dedicated servers), `client` (the test mods, the platform's libraries and Fabric API, with their gates)
+  and `mods` (Sodium and Iris for NeoForge on 26.x, the plugin hosts); with `extended` the newest NeoForge build joins
+  `server`, the Fabric builds of the difficult mods join `mods`, and a `corpus` part runs both corpora. A job boots the
+  game 8 times at most (16 before), and the version jobs no longer wait for the core job.
+- **The quick check stands down** while the branch has an open pull request into `main`, `forge` or `forge-legacy`
+  (it asks GitHub, and runs when it can't): each push to such a branch ran both before.
+- **A version's pins come from its folder**: the loader version from `gradle.properties`, Fabric API from its
+  `fabric-api-plan.json`, and the NeoForge mods whose plugin loading the client checks from `ci_plugin_hosts` (new);
+  the workflow repeated them. The unused `experimental` matrix flag is gone.
+- **Moved:** 1.21.1's informational client with Forgified Fabric API and Sodium for NeoForge, from every pull request to
+  `extended`.
+- **Decided:** the game installs are not cached across runs. A part installs one side once, in 10 to 25 seconds, and
+  pushes to `main` run no game, so only pull requests would save the installs: an estimated 2 GB each against GitHub's
+  10 GB per repository, enough to evict `main`'s Gradle caches, whose loss costs minutes per job.
+- **Times** (wall time from the run's start to its last job): a pull request's full matrix 5.4 minutes (11.5 before:
+  run 41344142404 against 40795950758 and 41342742615); an extended run 20 minutes (22 before: 41344706881 against
+  40800647792), of which the 26.2 and 26.3 corpus clients spent 10 minutes each waiting at their time limit on
+  CORPUS-48, with every other part done by 11 minutes. The runner time stays about the same (about 48 job-minutes
+  against 46 on a pull request): the same runs, spread over more jobs. The quick check still takes about 5 minutes on a
+  branch without a pull request, and 6 seconds with one.
+- **A client stuck shutting down is stopped two minutes after it reached its world** (`ci/neoforge/smoke-client.sh`,
+  `SMOKE_EXIT_TIMEOUT`), with its threads dumped and the run failed as a timeout would, not at the run's own limit of
+  10 minutes. Found by the extended run: CORPUS-48 (new, P2), the 26.2 and 26.3 corpus clients' integrated servers
+  waiting in Xaero's World Map's world unload once mc-runtime-test stopped them; in v0.5.1's tag run they exited in
+  about a minute. Whether a player's own quit hangs is UNVERIFIED (task 5).
+- **Verified:** the picker's modes locally on sample changes; both workflows parse and every `steps`, `needs` and
+  `matrix` reference resolves; each step's condition evaluated per version and part; this pull request's full matrix
+  and an extended run by hand, every gate passing; the quick check standing down on this branch's push (run
+  41344139306).
+
 ## 2026-11-01: The v0.6.0-beta pass starts; the project and the spec rethought (task 1)
 
 - **The owner's brief** (2026-11-01): leave alpha, with every branch and Minecraft version at beta quality, in seven

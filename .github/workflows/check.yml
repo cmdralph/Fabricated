@@ -2,9 +2,9 @@ name: Quick check
 
 # Every push to a working branch: the unit tests, and one version of each platform the push changed built and booted on
 # a dedicated server with the test mods (ci/changed-targets.py picks them; shared code boots the newest version of the
-# platform the branch holds). About five minutes, against the full matrix's half hour, which runs on pull requests to
-# main (build.yml) and to the platform branches (build-forge.yml on forge, build-forge-legacy.yml on forge-legacy),
-# release tags and by hand. main and the platform branches only receive merges of work that passed the full matrix.
+# platform the branch holds). About five minutes, as long as a pull request's full matrix, which runs the versions
+# the change touches in parallel jobs on pull requests to main (build.yml) and to the platform branches
+# (build-forge.yml on forge, build-forge-legacy.yml on forge-legacy), release tags and by hand. main and the platform branches only receive merges of work that passed the full matrix.
 # While the branch has an open pull request into one of them, that pull request's full matrix runs on each push and this
 # check stands down. Documentation alone builds nothing.
 on:
