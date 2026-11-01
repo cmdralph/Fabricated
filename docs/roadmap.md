@@ -86,7 +86,7 @@ resume from it.
 | # | Task | Status |
 |---|---|---|
 | 1 | Rethink the project and the spec: the conclusions, the beta criteria, the FRAPI and difficult-mods plans (below) | Done |
-| 2 | CI and workflows: the matrix from what a change touches, caching, fewer game boots per job, with times before and after | In progress: `main`'s workflows on its pull request; the Forge branches' next |
+| 2 | CI and workflows: the matrix from what a change touches, caching, fewer game boots per job, with times before and after | Done (#236, #237, #238) |
 | 3 | Parity on every platform and version, and the crashes v0.5 left open | |
 | 4 | Fabric's renderer API on NeoForge and Forge (*FRAPI plan*) | |
 | 5 | General compatibility, the difficult mods' Fabric builds first (*Difficult mods*) | |
@@ -311,7 +311,12 @@ logs become findings, and the corpora grow by the mods they name.
     is now stopped 2 minutes later, not at that limit: the next extended run took 14.3 minutes (41347080112, its
     parts waiting up to 4.7 minutes for runners), the 26.2 and 26.3 corpus parts 9.7 minutes instead of 18.5 and
     15.7. The quick check stands down in 6 seconds (run 41344139306).
-  - **Left:** the same in the Forge workflows (their own branches' pull requests), and their times after.
+  - **The Forge branches** (#237 into `forge`, #238 into `forge-legacy`, synced from `main`): the same plan job, the
+    pins from each version's folder, Java selected once, no wait for the core job, and the same exit timeout. Their
+    jobs are not split into parts: a Forge version job boots the game four times (six with `extended`). A pull request
+    to `forge` 5.9 minutes (7.5 before; run 41349136428, of which 2.5 minutes were 26.3's informational classpath
+    report), to `forge-legacy` 7.0 minutes (6 before; run 41349147135, its one version job alone 6.8 minutes, so one
+    run's variance outweighs the core job's minute).
 - **Task 3 (parity).** NeoForge: CORPUS-44, 45 and 46, and SER-1. Forge: PRE-18, CORPUS-33 and HOLD-2; the provider
   policy and the refusals wired into both Forge loaders; the client with Fabric API, and Fabric API's client modules,
   made gates; the last entity events' hook and item storages in items. Each platform's table then lists what is

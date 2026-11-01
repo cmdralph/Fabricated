@@ -3,6 +3,25 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-01: The Forge branches' CI from what a change touches (task 2 done)
+
+- **`forge` and `forge-legacy` synced with `main`** (#237, #238, by `scripts/sync-platform-branch.sh`): the quick
+  check's stand-down, the picker's `--full` and `--all` modes, the docs and version 0.6.0.
+- **Their workflows get `main`'s plan job:** a pull request to `forge` runs the Forge versions it touches, a run by hand
+  all of them, a merge builds what it changed; each version's Forge, Java and Fabric API pins come from its folder
+  instead of reads repeated in each step, Java for the game is selected once, and the version jobs no longer wait for
+  the core job. **Decided:** their jobs stay one per version, not split into parts as on `main`, as each boots the game
+  four times (six with `extended`).
+- **The exit timeout on Forge:** a Forge or Forge 47 client stuck shutting down is stopped 2 minutes after it reached
+  its world, as on `main` (CORPUS-48). Where Forge 47's mc-runtime-test logs only "Running game tests...", it doesn't
+  arm, as before.
+- **Times:** a pull request to `forge` 5.9 minutes (7.5 before: run 41349136428 against 40797440573), to
+  `forge-legacy` 7.0 minutes (6 before: 41349147135 against 40797453188, its one version job alone 6.8 minutes, its
+  build and clients slower than the last run's).
+- **Verified:** the workflow rewrite's replacements each hit as counted, both workflows parse and their `steps`, `needs`
+  and `matrix.target` references resolve, the picker on each branch's tree gives its versions and pins, the exit
+  timeout on a simulated hang and a normal exit; both pull requests' full matrices green.
+
 ## 2026-11-01: CI runs what a change touches, in parallel parts (task 2, `main`)
 
 - **The full matrix from what changed** (`ci/changed-targets.py --full`): a pull request runs the versions it touches (a
