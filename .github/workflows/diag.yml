@@ -1,7 +1,7 @@
 name: Diagnose 1.21.1
 
-# Scratch workflow, removed again before the task's pull request: the evidence task 3 needs for the 1.21.1 findings,
-# printed to the job log (the runner reaches the mavens and Modrinth; the session's container doesn't).
+# Scratch workflow, removed again before the task's pull request: the evidence task 3 needs for the Forge findings,
+# printed to the job log (the runner reaches the mavens; the session's container doesn't).
 on:
   push:
     branches: ['claude/project-thread-9ljb9j']
@@ -11,106 +11,6 @@ permissions:
   contents: read
 
 jobs:
-  diag:
-    runs-on: ubuntu-latest
-    timeout-minutes: 75
-    env:
-      MC: "1.21.1"
-      GH_TOKEN: ${{ github.token }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: |
-            25
-            21
-      - uses: gradle/actions/setup-gradle@v4
-      - name: Build 1.21.1
-        run: ./gradlew :mc:neoforge-1.21.1:fabricatedJar :mc:neoforge-1.21.1:testmods --stacktrace -Porg.gradle.java.installations.fromEnv=JAVA_HOME_21_X64,JAVA_HOME_25_X64
-      - name: Fabric API and the corpora
-        run: |
-          fapi=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["fabricApiVersion"])' mc/neoforge/1.21.1/src/fabricated/resources/META-INF/fabricated/fabric-api-plan.json)
-          mkdir -p "$RUNNER_TEMP/extra"
-          curl -fsSL --retry 4 -o "$RUNNER_TEMP/extra/fabric-api.jar" "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api/${fapi}/fabric-api-${fapi}.jar"
-          python3 ci/fetch-corpus.py "$MC" "$RUNNER_TEMP/corpus" > "$RUNNER_TEMP/corpus.txt" || true
-          cp "$RUNNER_TEMP/extra/fabric-api.jar" "$RUNNER_TEMP/corpus/"
-          python3 ci/fetch-corpus.py "$MC" "$RUNNER_TEMP/advanced" fabric $(sed -e '/^#/d' -e '/^$/d' ci/mod-corpus-advanced.txt) > "$RUNNER_TEMP/advanced.txt" || true
-          cp "$RUNNER_TEMP/extra/fabric-api.jar" "$RUNNER_TEMP/advanced/"
-          mkdir -p "$RUNNER_TEMP/extra-client"
-          cp "$RUNNER_TEMP/extra/fabric-api.jar" "$RUNNER_TEMP/extra-client/"
-          cp mc/neoforge/1.21.1/build/testmods/fabricated-testmod-frapi.jar "$RUNNER_TEMP/extra-client/"
-      - name: Install Mesa EGL for the client
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends libegl1 libegl-mesa0 libgl1-mesa-dri
-      - name: Select Java 21 for the game
-        run: echo "JAVA_HOME=$JAVA_HOME_21_X64" >> "$GITHUB_ENV" && echo "$JAVA_HOME_21_X64/bin" >> "$GITHUB_PATH"
-      - name: Server with Fabric API (CORPUS-49)
-        continue-on-error: true
-        run: |
-          set +e
-          neo=$(sed -n 's/^neoforge_version=//p' mc/neoforge/1.21.1/gradle.properties)
-          ci/neoforge/smoke-server.sh "$MC" "$neo" "$RUNNER_TEMP/server-fapi" "$RUNNER_TEMP/extra" > "$RUNNER_TEMP/server-fapi.out" 2>&1
-          echo "=== SERVER-FAPI status $?"
-          grep -E "^(PASS|FAIL|NOTE)" "$RUNNER_TEMP/server-fapi.out" | grep -v "^PASS" | cut -c1-300 | head -20
-          grep -h "FABRICATED-TEST json loader conditions\|FAILED" "$RUNNER_TEMP/server-fapi/server.out" | cut -c1-400 | head -10
-          grep -n -i "resource-conditions\|resource.conditions" "$RUNNER_TEMP/server-fapi/logs/fabric-bridge-report.txt" | cut -c1-400 | head -10
-          grep -n -i "Failed to parse resource conditions\|resource conditions" "$RUNNER_TEMP/server-fapi/logs/latest.log" | cut -c1-400 | head -10
-          true
-      - name: Server with the mod corpus (data packs)
-        continue-on-error: true
-        run: |
-          set +e
-          neo=$(sed -n 's/^neoforge_version=//p' mc/neoforge/1.21.1/gradle.properties)
-          ci/neoforge/smoke-server.sh "$MC" "$neo" "$RUNNER_TEMP/server-corpus" "$RUNNER_TEMP/corpus" > "$RUNNER_TEMP/server-corpus.out" 2>&1
-          echo "=== SERVER-CORPUS status $?"
-          grep -E "^(PASS|FAIL|NOTE)" "$RUNNER_TEMP/server-corpus.out" | cut -c1-300 | head -6
-          log="$RUNNER_TEMP/server-corpus/logs/latest.log"
-          echo "=== SERVER-CORPUS datapacks"
-          grep -n -B2 -A30 "Failed to load datapacks" "$log" | cut -c1-500 | head -60
-          grep -n -i "resource conditions" "$log" | cut -c1-400 | head -20
-          echo "=== SERVER-CORPUS mod_loaded condition"
-          for j in "$RUNNER_TEMP"/corpus/*.jar; do
-            for c in $(unzip -Z1 "$j" 2>/dev/null | grep -E "\.class$"); do
-              if unzip -p "$j" "$c" 2>/dev/null | grep -a -q "mod_loaded"; then echo "-- $(basename "$j") $c"; fi
-            done
-          done 2>/dev/null | head -20
-          echo "=== SERVER-CORPUS first errors"
-          grep -n -E "/(ERROR|FATAL)\]" "$log" | grep -v "minVersion" | cut -c1-400 | head -30
-          true
-      - name: Server with the advanced corpus (CORPUS-46)
-        continue-on-error: true
-        run: |
-          set +e
-          neo=$(sed -n 's/^neoforge_version=//p' mc/neoforge/1.21.1/gradle.properties)
-          ci/neoforge/smoke-server.sh "$MC" "$neo" "$RUNNER_TEMP/server-advanced" "$RUNNER_TEMP/advanced" > "$RUNNER_TEMP/server-advanced.out" 2>&1
-          echo "=== SERVER-ADVANCED status $?"
-          grep -E "^(PASS|FAIL|NOTE)" "$RUNNER_TEMP/server-advanced.out" | cut -c1-300 | head -6
-          grep -n -E "Critical injection|InjectionError|InvalidInjection|MixinApplyError|Caused by" "$RUNNER_TEMP/server-advanced/server.out" | cut -c1-500 | head -20
-          grep -n -i "CONSTANT" "$RUNNER_TEMP/server-advanced/logs/fabric-bridge-report.txt" | cut -c1-500 | head -20
-          ls "$RUNNER_TEMP/server-advanced/crash-reports" 2>/dev/null && head -n 60 "$RUNNER_TEMP"/server-advanced/crash-reports/*.txt
-          echo "=== SERVER-ADVANCED first errors"
-          grep -n -E "/(ERROR|FATAL)\]" "$RUNNER_TEMP/server-advanced/logs/latest.log" | grep -v "minVersion" | cut -c1-400 | head -30
-          true
-      - name: Client with the mod corpus
-        continue-on-error: true
-        run: |
-          set +e
-          neo=$(sed -n 's/^neoforge_version=//p' mc/neoforge/1.21.1/gradle.properties)
-          SMOKE_TIMEOUT=300 ci/neoforge/smoke-client.sh "$MC" "$neo" "$RUNNER_TEMP/client-corpus" "$RUNNER_TEMP/corpus" > "$RUNNER_TEMP/client-corpus.out" 2>&1
-          echo "=== CLIENT-CORPUS status $?"
-          grep -E "^(PASS|FAIL|NOTE)|reached its world|crashed|stopping the client" "$RUNNER_TEMP/client-corpus.out" | cut -c1-300 | head -12
-          log="$RUNNER_TEMP/client-corpus/run/logs/latest.log"
-          echo "=== CLIENT-CORPUS crash lines"
-          grep -n -E "Unreported exception|Preparing crash report|Crash report saved|Duplicate plugin|Stopping!|Game crashed|emergency" "$log" | cut -c1-300 | head -20
-          echo "=== CLIENT-CORPUS first dump"
-          out="$RUNNER_TEMP/client-corpus/client.out"
-          awk '/Full thread dump/ { n++ } n == 1' "$out" | grep -v -E '^"(GC|G1|C[12] Comp|VM |Common-Cleaner|Signal|Finalizer|Reference|Notification|Service|Attach|Monitor)|^\s*$|^\s+- (locked|waiting|parking)' | cut -c1-220 | head -400
-          echo "=== CLIENT-CORPUS log tail"
-          tail -n 15 "$log" | cut -c1-300
-          ls "$RUNNER_TEMP/client-corpus/run/crash-reports" 2>/dev/null && head -n 60 "$RUNNER_TEMP"/client-corpus/run/crash-reports/*.txt
-          true
-
-
   forge:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -120,27 +20,45 @@ jobs:
         with:
           distribution: temurin
           java-version: 25
-      # Fabric API's client modules on Forge: the screen render events a bridge fires Fabric's drawing events from, and
-      # what Forge does with the HUD.
-      - name: Forge's screen and HUD events
+      # Fabric API's screen input events and JSON load conditions on Forge 61 to 66: Forge's screen input events, the
+      # calls Forge's input handlers make, and Forge's JSON data loader and registry loader.
+      - name: Forge's screen input events and data loaders
         continue-on-error: true
         run: |
           set +e
-          for pair in 1.20.1-47.4.28 1.21.11-61.2.4 26.1.2-64.1.5 26.2-65.1.5 26.3-66.1.0; do
+          for pair in 1.21.11-61.2.4 26.1.2-64.1.5 26.2-65.1.5 26.3-66.1.0; do
             dir="$RUNNER_TEMP/forge-$pair"; mkdir -p "$dir/minecraft" && cd "$dir"
             echo '{"profiles":{}}' > minecraft/launcher_profiles.json
             curl -fsSL --retry 4 -o installer.jar "https://maven.minecraftforge.net/net/minecraftforge/forge/${pair}/forge-${pair}-installer.jar"
             java -jar installer.jar --installClient minecraft > installer.log 2>&1 || tail -n 20 installer.log
-            echo "######## FORGE $pair"
-            for j in $(find minecraft -name "*.jar"); do
-              unzip -Z1 "$j" 2>/dev/null | grep -E "^net/minecraftforge/client/(event/[A-Za-z]*(Gui|Overlay|Layer|Hud)[A-Za-z$]*|gui/overlay/[A-Za-z$]*|gui/[A-Za-z]*Layer[A-Za-z$]*)\.class$" | sed "s|^|   $(basename "$j"): |" | head -30
-              for c in $(unzip -Z1 "$j" 2>/dev/null | grep -E "^net/minecraftforge/client/event/ScreenEvent\\\$Render(\\\$Pre|\\\$Post)?\.class$"); do
-                n=${c%.class}; echo "-- $(basename "$j") $n"; javap -p -cp "$j" "${n//\//.}" | head -30
-              done
-              if unzip -Z1 "$j" 2>/dev/null | grep -q "^net/minecraft/client/gui/Gui.class$"; then
-                echo "-- $(basename "$j") Gui"; javap -p -cp "$j" net.minecraft.client.gui.Gui | grep -i -E "render|extract|layer|overlay" | head -30
-              fi
+            client=$(find minecraft -name "forge-${pair}-client.jar" | head -1)
+            universal=$(find minecraft -name "forge-${pair}-universal.jar" | head -1)
+            cp=$(find minecraft/libraries -name "*.jar" | tr '\n' ':')
+            echo "######## FORGE $pair client=$client universal=$universal"
+            echo "== screen input events"
+            for c in $(unzip -Z1 "$universal" | grep -E '^net/minecraftforge/client/event/ScreenEvent\$(KeyInput|KeyPressed|KeyReleased|CharacterTyped|MouseInput|MouseButtonPressed|MouseButtonReleased|MouseDragged|MouseScrolled)(\$Pre|\$Post)?\.class$'); do
+              n=${c%.class}; javap -p -cp "$universal" "${n//\//.}" | grep -v -E "toString|hashCode|equals|static \{\}|^Compiled" | sed "s|^|  |"
             done
+            echo "== Forge's input handlers' calls"
+            for cls in net.minecraft.client.KeyboardHandler net.minecraft.client.MouseHandler; do
+              javap -c -p -cp "$client:$cp" "$cls" > code.txt 2>&1
+              awk '/^  [a-z].*\(/ { m = $0 } /invoke/ && /(Screen|Forge|Event|Hooks)/ { print m " ||| " $0 }' code.txt \
+                | grep -E "keyPress|charTyped|onButton|handleAccumulatedMovement|onScroll|onMove|lambda" | sed -E 's/ +/ /g' | cut -c1-330 | head -60
+            done
+            echo "== Forge's screen input hooks"
+            for cls in net.minecraftforge.client.ForgeHooksClient net.minecraftforge.client.event.ForgeEventFactoryClient; do
+              javap -c -p -cp "$universal:$client:$cp" "$cls" > hooks.txt 2>&1 || continue
+              awk '/^  [a-z].*\(/ { m = $0; p = (m ~ /onScreen|Screen(Key|Mouse|Char)|ScreenKey|ScreenMouse|ScreenChar/) ; if (p) print "  " m } p && /invoke|ireturn|ifeq|ifne/ { print "      " $0 }' hooks.txt \
+                | sed -E 's/ +/ /g' | cut -c1-260 | head -120
+            done
+            echo "== SimpleJsonResourceReloadListener"
+            javap -c -p -cp "$client:$cp" net.minecraft.server.packs.resources.SimpleJsonResourceReloadListener > sjrrl.txt 2>&1
+            grep -E "^  [a-z].*\(|invoke|getstatic|instanceof|checkcast" sjrrl.txt | sed -E 's/ +/ /g' | cut -c1-260 | head -90
+            echo "== RegistryDataLoader.loadElementFromResource"
+            javap -c -p -cp "$client:$cp" net.minecraft.resources.RegistryDataLoader > rdl.txt 2>&1
+            awk '/^  [a-z].*\(/ { m = $0; p = (m ~ /loadElementFromResource|loadContentsFromManager/) ; if (p) print "  " m } p && /invoke|getstatic|instanceof/ { print "      " $0 }' rdl.txt | sed -E 's/ +/ /g' | cut -c1-260 | head -60
+            echo "== Forge's conditions"
+            unzip -Z1 "$universal" | grep -E "^net/minecraftforge/common/crafting/conditions/[A-Za-z]+\.class$" | head -30
             cd "$GITHUB_WORKSPACE"
           done
           true
