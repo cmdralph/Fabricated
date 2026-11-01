@@ -1,5 +1,6 @@
 package io.github.cmdralph.fabricated.forgetest;
 
+import io.github.cmdralph.fabricated.api.Fabricated;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
@@ -18,6 +19,11 @@ import net.minecraft.class_310;
 public final class ForgeTestClient implements ClientModInitializer {
 	@Override
 	public void onInitializeClient() {
+		// Its Mod Menu entrypoint's screen behind Forge's mod list button, once the initializers ran (see ForgeModMenuEntry).
+		Fabricated.get().ifPresent(api -> api.afterEntrypoints(() -> {
+			if (ForgeModMenuEntry.registered()) ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST modmenu config screen OK");
+			else ForgeTestMod.LOGGER.error("FABRICATED-FORGE-TEST modmenu config screen FAILED: Forge's mod list has no config screen for the test mod");
+		}));
 		ForgeTestMod.LOGGER.info(ForgeTestMod.testItem != null
 				? "FABRICATED-FORGE-TEST client entrypoint OK"
 				: "FABRICATED-FORGE-TEST client entrypoint ran before the main entrypoint");

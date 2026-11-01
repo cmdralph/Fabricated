@@ -8,6 +8,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
 
+import io.github.cmdralph.fabricated.api.FabricMod;
+import io.github.cmdralph.fabricated.api.Fabricated;
 import net.fabricmc.api.DedicatedServerModInitializer;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
@@ -36,6 +38,8 @@ import net.minecraft.server.MinecraftServer;
 public final class ForgeTestMod implements ModInitializer, DedicatedServerModInitializer {
 	public static final String MOD_ID = "fabricated-forge-testmod";
 	public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
+	/** The test mod that fails on purpose, which only the server smoke installs (mc/shared/src/testmodbroken). */
+	private static final String THROWS = "fabricated-testmod-throws";
 	public static final String ITEM_PATH = "test_item";
 	/** The item {@link #onInitialize} registers, as Fabric mods register theirs: straight into the registry. */
 	public static class_1792 testItem;
@@ -44,6 +48,15 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 	public void onInitialize() {
 		String version = FabricLoader.getInstance().getModContainer(MOD_ID).map(c -> c.getMetadata().getVersion().getFriendlyString()).orElse("none");
 		LOGGER.info("FABRICATED-FORGE-TEST main entrypoint OK (version {}, Fabric Loader sees {} mods)", version, FabricLoader.getInstance().getAllMods().size());
+		// Fabricated's API on Forge: what waits for the Fabric initializers runs once they have, the mod that fails on
+		// purpose (in the server smoke) known as failed.
+		Fabricated.get().ifPresent(api -> api.afterEntrypoints(() -> {
+			boolean ok = api.entrypointsComplete() && api.isFabricModLoaded(MOD_ID)
+					&& api.fabricMod(THROWS).map(m -> m.status() == FabricMod.Status.FAILED).orElse(true);
+			if (ok) LOGGER.info("FABRICATED-FORGE-TEST api after entrypoints OK");
+			else LOGGER.error("FABRICATED-FORGE-TEST api after entrypoints FAILED: complete {}, {}, {}", api.entrypointsComplete(), api.fabricMod(MOD_ID),
+					api.fabricMod(THROWS));
+		}));
 		// Vanilla's resources are the minecraft container's too: Fabric API's resource loader reads vanilla's en_us.json
 		// there as the game boots.
 		if (FabricLoader.getInstance().getModContainer("minecraft").flatMap(c -> c.findPath("/assets/minecraft/lang/en_us.json")).isPresent()) {

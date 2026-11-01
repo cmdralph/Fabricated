@@ -155,6 +155,8 @@ check "the test mod's injected interface is on MinecraftServer (inject-interface
 check "a mod nested with a NeoForge jar-in-jar list too loads once, translated: Forge's jar-in-jar locator leaves it alone (JIJ-1)" "grep -q 'FABRICATED-FORGE-TEST nested jar loaded once OK' logs/latest.log 2>/dev/null"
 check "the test mod's client-only method was stripped (@Environment)" "grep -q 'FABRICATED-FORGE-TEST environment strip OK' logs/latest.log 2>/dev/null"
 check "the Fabric main entrypoints ran in Forge's registry events, only the test mod that fails on purpose failing" "grep -q 'Fabricated ran the Fabric main entrypoints of [1-9][0-9]* mod(s) on Forge (1 failed)' logs/latest.log 2>/dev/null"
+check "the failed initializer is in the report, as on NeoForge, and in Forge's loading warnings" "grep -q 'Fabric mod fabricated-testmod-throws: main entrypoint' logs/fabric-bridge-report.txt 2>/dev/null"
+check "Fabricated's API runs what waits for the Fabric initializers once they ran, the failed mod known (Fabricated.get().afterEntrypoints)" "grep -q 'FABRICATED-FORGE-TEST api after entrypoints OK' logs/latest.log 2>/dev/null"
 check "the failing test mod's entrypoint is isolated, its failure logged" "grep -q 'intentional failure for Fabricated CI' logs/latest.log 2>/dev/null"
 check "the holder the failing test mod left is dropped at the registries' freeze, with an error (CORPUS-42, HOLD-2)" "grep -q 'built but never registered, left by a Fabric mod whose entrypoint failed' logs/fabric-bridge-report.txt 2>/dev/null"
 check "the test mod registered an item (Intermediary names remapped to SRG's)" "grep -q 'FABRICATED-FORGE-TEST registry OK' logs/latest.log 2>/dev/null"

@@ -10,7 +10,8 @@
   "entrypoints": {
     "main": ["io.github.cmdralph.fabricated.forgetest.ForgeTestMod"],
     "server": ["io.github.cmdralph.fabricated.forgetest.ForgeTestMod"],
-    "client": ["io.github.cmdralph.fabricated.forgetest.ForgeTestClient"]
+    "client": ["io.github.cmdralph.fabricated.forgetest.ForgeTestClient"],
+    "modmenu": ["io.github.cmdralph.fabricated.forgetest.ForgeModMenuEntry"]
   },
   "mixins": ["fabricated-forge-testmod.mixins.json"],
   "accessWidener": "fabricated-forge-testmod.classtweaker",
