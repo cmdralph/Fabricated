@@ -127,3 +127,64 @@ jobs:
           python3 ci/log-digest.py "$log" | head -160
           ls "$RUNNER_TEMP/client-advanced/run/crash-reports" 2>/dev/null && head -n 80 "$RUNNER_TEMP"/client-advanced/run/crash-reports/*.txt
           true
+  # Forge's facts for CORPUS-33 (the retyped featuresPerStep) and PRE-18 (ImmediatelyFast's @Local hook on Forge 65).
+  forge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 25
+      - name: Forge's ChunkGenerator and lazy classes
+        continue-on-error: true
+        run: |
+          set +e
+          for pair in 1.21.11-61.2.4 26.2-65.1.5 26.3-66.1.0; do
+            dir="$RUNNER_TEMP/forge-$pair"; mkdir -p "$dir" && cd "$dir"
+            curl -fsSL --retry 4 -o installer.jar "https://maven.minecraftforge.net/net/minecraftforge/forge/${pair}/forge-${pair}-installer.jar"
+            java -jar installer.jar --installServer . > installer.log 2>&1 || tail -n 20 installer.log
+            echo "=== FORGE $pair"
+            for j in $(find libraries -name "*.jar"); do
+              unzip -Z1 "$j" 2>/dev/null | grep -q "^net/minecraft/world/level/chunk/ChunkGenerator.class$" && { echo "-- $j"; javap -p -cp "$j" net.minecraft.world.level.chunk.ChunkGenerator | head -30; javap -c -p -cp "$j" net.minecraft.world.level.chunk.ChunkGenerator | grep -n -i -E "featuresPerStep|Lazy" | head -20; }
+              for c in $(unzip -Z1 "$j" 2>/dev/null | grep -E "^net/minecraftforge/common/util/.*Lazy.*\.class$"); do
+                n=${c%.class}; echo "-- $j $n"; javap -p -cp "$j" "${n//\//.}"
+              done
+            done
+            cd "$GITHUB_WORKSPACE"
+          done
+          true
+      - name: ImmediatelyFast's map atlas mixin against Forge 65's client classes (PRE-18)
+        continue-on-error: true
+        run: |
+          set +e
+          python3 ci/fetch-corpus.py 26.2 "$RUNNER_TEMP/if" fabric immediatelyfast
+          j=$(ls "$RUNNER_TEMP"/if/*.jar | grep -i immediatelyfast | head -1); echo "== $j"
+          mkdir -p "$RUNNER_TEMP/ifx" && unzip -q -o "$j" -d "$RUNNER_TEMP/ifx"
+          for c in $(find "$RUNNER_TEMP/ifx" -name "MixinGuiGraphicsExtractor*.class" -path "*map_atlas*"); do
+            echo "-- $c"; javap -v -p "$c" | grep -v -E "^\s+#[0-9]+ = |^\s+line [0-9]+:|StackMapTable|frame_type|offset_delta" | grep -E "Mixin|method=|value=|target=|ordinal|Local|Ref|  (public|private|protected) |argsOnly|index|name=|require|Operation" | head -80
+          done
+          dir="$RUNNER_TEMP/forge-client"; mkdir -p "$dir/minecraft" && cd "$dir"
+          echo '{"profiles":{}}' > minecraft/launcher_profiles.json
+          curl -fsSL --retry 4 -o installer.jar "https://maven.minecraftforge.net/net/minecraftforge/forge/26.2-65.1.5/forge-26.2-65.1.5-installer.jar"
+          java -jar installer.jar --installClient minecraft > installer.log 2>&1 || tail -n 20 installer.log
+          target=$(javap -v -p $(find "$RUNNER_TEMP/ifx" -name "MixinGuiGraphicsExtractor*.class" -path "*map_atlas*" | head -1) | grep -A2 "org.spongepowered.asm.mixin.Mixin(" | grep -o -E "class L[^;]+;" | head -1 | sed 's/^class L//; s/;$//')
+          echo "== target class: $target"
+          for j in $(find minecraft -name "*.jar"); do
+            if unzip -Z1 "$j" 2>/dev/null | grep -q "^${target}.class$"; then
+              echo "-- $j"
+              javap -c -l -p -cp "$j" "${target//\//.}" > "$RUNNER_TEMP/target-$(basename "$j").txt"
+              wc -l "$RUNNER_TEMP/target-$(basename "$j").txt"
+            fi
+          done
+          methods=$(for c in $(find "$RUNNER_TEMP/ifx" -name "MixinGuiGraphicsExtractor*.class" -path "*map_atlas*"); do javap -v -p "$c" | grep -o -E 'method=\["[^"]+"' | sed -E 's/method=\["//; s/"$//'; done | sort -u)
+          echo "== target methods: $methods"
+          for f in "$RUNNER_TEMP"/target-*.txt; do
+            for m in $methods; do
+              name=${m%%(*}
+              echo "=== $f: $m"
+              awk -v n="$name" '/^  [a-z].*[ .]/ { show = index($0, " " n "(") > 0 } show' "$f" | grep -v -E "^\s+line [0-9]+:" | head -120
+            done
+          done
+          true
