@@ -859,15 +859,14 @@ jobs:
           fi
           SMOKE_SHADERS=1 SMOKE_TIMEOUT=480 ci/neoforge/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-shaders" "$RUNNER_TEMP/extra-sodium" || true
           grep -n -m 80 -E "FABRICATED-TEST frapi|[Ss]haderpack|shader pack|Iris|/(ERROR|FATAL)\]" "$RUNNER_TEMP/client-shaders/run/logs/latest.log" || true
-      # The Fabric builds of Sodium and Iris, loaded on request (loadUnsupported) with Fabric API and the renderer API
-      # test mod, on every version Modrinth has them for: informational, it records what breaks for the difficult mods
-      # (task 5, docs/roadmap.md).
-      - name: Client with the Fabric builds of Sodium and Iris (informational)
+      # The Fabric builds of Sodium and Iris, which the compatibility plan loads on NeoForge (task 5, decision 3), with
+      # Fabric API and the renderer API test mod, on every version Modrinth has them for. A gate: every smoke check
+      # passes, both load (Iris's Fabric build but on 1.21.1, where pre-flight refuses its particle hook, which NeoForge's
+      # code doesn't make: docs/COMPATIBILITY.md) and Sodium's renderer draws Fabric's block models.
+      - name: Client with the Fabric builds of Sodium and Iris
         if: ${{ matrix.part == 'mods' && env.EXTENDED == 'true' && !cancelled() && steps.build.outcome == 'success' }}
-        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
-          FABRICATED_MODS: '{"sodium": {"loadUnsupported": true}, "iris": {"loadUnsupported": true}}'
         run: |
           mkdir -p "$RUNNER_TEMP/extra-sodium-fabric"
           python3 ci/fetch-corpus.py "${{ matrix.target.minecraft }}" "$RUNNER_TEMP/extra-sodium-fabric" fabric sodium iris || true
@@ -876,9 +875,21 @@ jobs:
             exit 0
           fi
           cp "$RUNNER_TEMP/extra/fabric-api.jar" mc/neoforge/${{ matrix.target.minecraft }}/build/testmods/fabricated-testmod-frapi.jar "$RUNNER_TEMP/extra-sodium-fabric/"
-          SMOKE_TIMEOUT=480 ci/neoforge/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-sodium-fabric" "$RUNNER_TEMP/extra-sodium-fabric" || true
+          status=0
+          SMOKE_TIMEOUT=480 ci/neoforge/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-sodium-fabric" "$RUNNER_TEMP/extra-sodium-fabric" || status=$?
           grep -A300 "== " "$RUNNER_TEMP/client-sodium-fabric/run/logs/fabric-bridge-report.txt" || true
           grep -n -m 80 -E "FABRICATED-TEST frapi|Sodium|Iris|/(ERROR|FATAL)\]" "$RUNNER_TEMP/client-sodium-fabric/run/logs/latest.log" || true
+          mods="sodium iris"
+          [ "${{ matrix.target.minecraft }}" = "1.21.1" ] && mods="sodium"
+          failed=0
+          ci/neoforge/gate-mods.sh "$RUNNER_TEMP/client-sodium-fabric" "$status" "the Fabric builds of Sodium and Iris" $mods || failed=1
+          if grep -q "Fabric block models are drawn by the renderer net.caffeinemc.mods.sodium" "$RUNNER_TEMP/client-sodium-fabric/run/logs/latest.log"; then
+            echo "PASS: Sodium's renderer draws Fabric's block models"
+          else
+            echo "::error::FAIL: Sodium's renderer doesn't draw Fabric's block models"
+            failed=1
+          fi
+          exit "$failed"
       # Fabric addons of Sodium (Sodium Extra, Reese's Sodium Options) next to Sodium for NeoForge, with Fabric API: their
       # mixins into Sodium are checked against Sodium for NeoForge's classes (R3), and they use Sodium's API from its
       # NeoForge build. The Fabric build of Sodium they depend on is skipped for the NeoForge one. Informational.
@@ -961,28 +972,32 @@ jobs:
           SMOKE_TIMEOUT=600 ci/neoforge/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-corpus" "$RUNNER_TEMP/corpus" || true
           grep -A400 "== " "$RUNNER_TEMP/client-corpus/run/logs/fabric-bridge-report.txt" || true
       # malilib (MiniHUD's and Tweakeroo's library) adds its picture-in-picture renderers through the GUI renderer's map
-      # NeoForge replaced, which Fabricated restores (PIP-1). On its own, with the compatibility plan's refusal lifted,
-      # until it is verified (with the mods part's runs).
-      - name: Client with malilib, MiniHUD, Tweakeroo and Litematica (informational, PIP-1)
+      # NeoForge replaced, which Fabricated restores (PIP-1); the compatibility plan loads it on NeoForge (task 5). A
+      # gate: every smoke check passes and the four load.
+      - name: Client with malilib, MiniHUD, Tweakeroo and Litematica
         if: ${{ matrix.part == 'mods' && env.EXTENDED == 'true' && !cancelled() && steps.build.outcome == 'success' }}
-        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
-          FABRICATED_MODS: '{"malilib": {"loadUnsupported": true}}'
         run: |
           mkdir -p "$RUNNER_TEMP/extra-malilib"
-          python3 ci/fetch-corpus.py "${{ matrix.target.minecraft }}" "$RUNNER_TEMP/extra-malilib" fabric malilib fabric minihud fabric tweakeroo fabric litematica
+          python3 ci/fetch-corpus.py "${{ matrix.target.minecraft }}" "$RUNNER_TEMP/extra-malilib" fabric malilib fabric minihud fabric tweakeroo fabric litematica | tee "$RUNNER_TEMP/summary-malilib.txt"
+          if ! grep -qE "^malilib: [^n]" "$RUNNER_TEMP/summary-malilib.txt"; then
+            echo "Modrinth has no Fabric build of malilib for ${{ matrix.target.minecraft }}: nothing to run"
+            exit 0
+          fi
           cp "$RUNNER_TEMP/extra/fabric-api.jar" "$RUNNER_TEMP/extra-malilib/"
-          SMOKE_TIMEOUT=420 ci/neoforge/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-malilib" "$RUNNER_TEMP/extra-malilib" || true
+          status=0
+          SMOKE_TIMEOUT=420 ci/neoforge/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-malilib" "$RUNNER_TEMP/extra-malilib" || status=$?
+          ci/neoforge/gate-mods.sh "$RUNNER_TEMP/client-malilib" "$status" "malilib and the mods needing it" malilib minihud tweakeroo litematica
       # Essential's Fabric build (its loader, which downloads Essential as the game starts; Fabricated itself never
-      # downloads anything), with its refusal lifted, on its own, launched twice: the first launch's loader downloads
-      # Essential, which Fabricated loads from the second (DOWNLOAD-1, task 5). Informational.
-      - name: Client with Essential's Fabric build (informational)
+      # downloads anything), which the compatibility plan loads on NeoForge (task 5), on its own, launched twice: the
+      # first launch's loader downloads Essential, which Fabricated loads from the second (DOWNLOAD-1). A gate: both
+      # launches pass every smoke check, and Essential loads in the second. Where its loader downloaded nothing (its
+      # server, not Fabricated), the second launch is skipped with a warning.
+      - name: Client with Essential's Fabric build
         if: ${{ matrix.part == 'mods' && env.EXTENDED == 'true' && !cancelled() && steps.build.outcome == 'success' }}
-        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
-          FABRICATED_MODS: '{"essential-container": {"loadUnsupported": true}, "essential-loader": {"loadUnsupported": true}}'
         run: |
           mkdir -p "$RUNNER_TEMP/extra-essential"
           python3 ci/fetch-corpus.py "${{ matrix.target.minecraft }}" "$RUNNER_TEMP/extra-essential" fabric essential | tee "$RUNNER_TEMP/summary-essential.txt" || true
@@ -991,7 +1006,8 @@ jobs:
             exit 0
           fi
           cp "$RUNNER_TEMP/extra/fabric-api.jar" "$RUNNER_TEMP/extra-essential/"
-          SMOKE_TIMEOUT=420 ci/neoforge/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-essential-first" "$RUNNER_TEMP/extra-essential" || true
+          first_status=0
+          SMOKE_TIMEOUT=420 ci/neoforge/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-essential-first" "$RUNNER_TEMP/extra-essential" || first_status=$?
           first="$RUNNER_TEMP/client-essential-first/run"
           echo "-- first launch: what Essential's loader did, and Fabricated's notice"
           grep -n -m 30 -i -E "essential|/(ERROR|FATAL)\]" "$first/logs/latest.log" | grep -v -E "^\S+\s+at " | cut -c1-400 || true
@@ -1006,21 +1022,28 @@ jobs:
             echo
             unzip -l "$jar" | grep -E "META-INF/jars/|mixins[^/]*\.json$|\.accesswidener$" | head -40 || true
           done
-          SMOKE_SEED="$RUNNER_TEMP/seed-essential" SMOKE_TIMEOUT=420 ci/neoforge/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-essential" "$RUNNER_TEMP/extra-essential" || true
+          failed=0
+          ci/neoforge/gate-mods.sh "$RUNNER_TEMP/client-essential-first" "$first_status" "Essential's first launch" essential-container essential-loader || failed=1
+          if ! ls "$RUNNER_TEMP/seed-essential/essential/"Essential*.jar >/dev/null 2>&1; then
+            echo "::warning::Essential's loader downloaded nothing in the first launch (its server): no second launch to gate"
+            exit "$failed"
+          fi
+          status=0
+          SMOKE_SEED="$RUNNER_TEMP/seed-essential" SMOKE_TIMEOUT=420 ci/neoforge/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-essential" "$RUNNER_TEMP/extra-essential" || status=$?
           echo "-- second launch"
           log="$RUNNER_TEMP/client-essential/run/logs/latest.log"
           awk '/^== /{show = /^== (Summary|Disabled|Unsupported|Linkage)/} show' "$RUNNER_TEMP/client-essential/run/logs/fabric-bridge-report.txt" | head -60 | cut -c1-400 || true
           grep -n -m 60 -i -E "essential|/(ERROR|FATAL)\]" "$log" | cut -c1-400 || true
           # What its loader downloaded, and where (its own folder in the game directory).
           find "$RUNNER_TEMP/client-essential/run" -maxdepth 4 -ipath "*essential*" -type f | head -30 || true
-      # Flashback with its refusal lifted, on its own: the refusal rests on a registry freeze CORPUS-32 moved (task 5).
-      # Informational.
-      - name: Client with Flashback (informational)
+          ci/neoforge/gate-mods.sh "$RUNNER_TEMP/client-essential" "$status" "Essential's second launch" essential-container essential-loader essential || failed=1
+          exit "$failed"
+      # Flashback, which the compatibility plan loads on NeoForge (task 5: its refusal rested on a registry freeze REG-8
+      # holds), on its own. A gate: every smoke check passes and Flashback loads.
+      - name: Client with Flashback
         if: ${{ matrix.part == 'mods' && env.EXTENDED == 'true' && !cancelled() && steps.build.outcome == 'success' }}
-        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
-          FABRICATED_MODS: '{"flashback": {"loadUnsupported": true}}'
         run: |
           mkdir -p "$RUNNER_TEMP/extra-flashback"
           python3 ci/fetch-corpus.py "${{ matrix.target.minecraft }}" "$RUNNER_TEMP/extra-flashback" fabric flashback | tee "$RUNNER_TEMP/summary-flashback.txt" || true
@@ -1029,9 +1052,11 @@ jobs:
             exit 0
           fi
           cp "$RUNNER_TEMP/extra/fabric-api.jar" "$RUNNER_TEMP/extra-flashback/"
-          SMOKE_TIMEOUT=420 ci/neoforge/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-flashback" "$RUNNER_TEMP/extra-flashback" || true
+          status=0
+          SMOKE_TIMEOUT=420 ci/neoforge/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-flashback" "$RUNNER_TEMP/extra-flashback" || status=$?
           awk '/^== /{show = /^== (Summary|Disabled|Unsupported|Mixins left out)/} show' "$RUNNER_TEMP/client-flashback/run/logs/fabric-bridge-report.txt" | head -40 | cut -c1-400 || true
           grep -n -m 40 -i -E "flashback|/(ERROR|FATAL)\]" "$RUNNER_TEMP/client-flashback/run/logs/latest.log" | cut -c1-400 || true
+          ci/neoforge/gate-mods.sh "$RUNNER_TEMP/client-flashback" "$status" "Flashback" flashback
       - name: Upload other mods' client logs and reports
         if: ${{ matrix.part == 'mods' && !cancelled() }}
         uses: actions/upload-artifact@v4
