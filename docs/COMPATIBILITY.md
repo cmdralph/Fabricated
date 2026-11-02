@@ -1138,7 +1138,7 @@ tracked:
 | What | Versions | Why | Tracked |
 |---|---|---|---|
 | Fabric's game tests (`fabric-gametest-api-v1`, `client-gametest`) | all | deliberately not loaded: they are development-time tools, not used by mods at runtime | — |
-| Continuity's connected textures | all | Continuity loads, but CI sees no connected texture yet: on 1.21.11 and 26.x its hook adding its sprites to the block atlas is left out; on 1.21.1 its models draw, with vanilla's sprites, and the cause is open | CORPUS-56, task 5 |
+| Continuity's connected textures | all | Continuity loads, but CI sees no connected texture yet: on 1.21.1 a block model throwing inside Continuity's wrapper left Continuity's per-thread state stuck, so that chunk-building thread drew no connected textures for the rest of the session (fixed, to verify: the throw is held until Continuity's call returns); on 1.21.11 and 26.x its sprite hook now applies (CORPUS-51's bridge) and the cause is open | CORPUS-56, task 5 |
 | Data generation's tag appenders (and on 26.3 its loot sub-providers) | all | pre-flight leaves those hooks out where NeoForge's data providers differ; the module's classes load for mods' runtime code (DATAGEN-1), and nothing is generated unless `fabric-api.datagen` is set | — |
 | Fabric storages in items (`ItemStorage.ITEM`) across to NeoForge's item handlers | 1.21.1 | NeoForge 21.1's item handler capability on stacks predates its transfer API, as Forge's | task 5 |
 | A Fabric mod's accessor to a field NeoForge retyped (`KeyMapping.MAP`) | all | NeoForge's field has another type, so the accessor is left out and its callers throw `NoSuchMethodError` | KEYMAP-1, task 5 |

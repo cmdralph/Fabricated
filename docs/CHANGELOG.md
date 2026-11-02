@@ -17,8 +17,8 @@ One entry per working session, newest first: what changed, and how it was verifi
   NeoForge takes no more mods. Fabricated scans the newest jar it left in the game directory with the mods folder's,
   through the same checks, so Essential loads from the next launch, as a regular mod without its automatic updates; a
   jar older than 30 days is reported. A Fabric mod's jar proposed for the class path as the game runs is no longer
-  added untransformed. **Asked:** whether Essential should load this way, have its loader patched, or stay refused
-  (the owner's to decide; it loads this way meanwhile).
+  added untransformed. The owner's decision (2026-11-02): Essential loads this way, from its download in the next
+  launch, rather than with its loader patched or refused.
 - **A mixin that fails as Mixin applies it is left out from the next launch** (APPLY-1, `6dcc942`, `4e375ad`): the
   failing mixin is recorded by mod, jar hash and the launch's builds in `.fabricated/mixin-failures.json` (bounded,
   validated, written atomically, only Mixin's own throwables believed), through Mixin's error handlers, the crash
@@ -63,6 +63,17 @@ One entry per working session, newest first: what changed, and how it was verifi
   Moonlight's fuel data map naming Supplementaries' tags); the system property FML sets for an empty log marker, which
   no logging reads, removed before Fabric mods run (CORPUS-60, Ledger's configuration); a mixin failing in one of the
   game's worker threads recorded for the next launch to leave out, as APPLY-1 records the others (APPLY-2).
+- **Rendering, FRAPI rule 8** (1.21.1, CORPUS-56): a throw inside a model another wraps through Fabric's
+  `ForwardingBakedModel` is held where the wrapper called it until Fabricated's Indigo draw returns, with the
+  transforms the wrapped model left popped, so the wrapper finishes its call; the draw then takes the throw back and
+  NeoForge's renderer draws the block, as before. Continuity wraps every block's model and keeps a per-thread transform
+  active through that call: a wrapped model's throw left it active, and that worker thread drew no connected textures
+  for the rest of the session (R6 saw it 20 ms after the test mod's broken model threw on the same thread). R6's check
+  now wraps glass's model in a phase after every other wrapper, and logs Continuity's state where it sees no connected
+  texture.
+- **Build:** `scripts/check-mixin-inventory.py` also runs the build's rule that each of the game mod's mixins is
+  assigned a Fabric API module (`mixin-modules.json`), which only a platform build found: extended run 41492025138
+  stopped on it, for `UtilMixin`.
 - **CI gates added:** the Sodium and Iris, malilib (with MiniHUD, Tweakeroo and Litematica), Essential (both
   launches) and Flashback clients on every NeoForge version; a mixin failure recorded and left out over three server
   launches; the HUD conditions on 26.x; the test mod's freeze handler first running after the main initializers;
@@ -78,8 +89,8 @@ One entry per working session, newest first: what changed, and how it was verifi
   Fabric build, load it and list them) and how Essential loads; the README and the roadmap's tables say what loads
   where.
 - **Open, in the roadmap's findings:** fixed, to verify: CORPUS-50, CORPUS-59, CORPUS-60, APPLY-2, LAMBDA-9 (Litematica's
-  schematic rendering on 26.2) and LIB-2; CORPUS-61 (a redirect failing in the 1.21.1 advanced corpus server's world
-  generation), CORPUS-56 (Continuity), KEYMAP-1, and the Fabric builds' gaps `COMPATIBILITY.md` lists. On Forge, the refusals
+  schematic rendering on 26.2), LIB-2 and CORPUS-56 on 1.21.1; CORPUS-61 (a redirect failing in the 1.21.1 advanced
+  corpus server's world generation), CORPUS-56 on 1.21.11 and 26.x (Continuity), KEYMAP-1, and the Fabric builds' gaps `COMPATIBILITY.md` lists. On Forge, the refusals
   stay until the Forge sync and its runs.
 - **Verified:** extended runs 41471044589 and 41477591558, every job green on all five NeoForge versions, the
   difficult-mod gates included; the fixes' findings name the run that verified each.
