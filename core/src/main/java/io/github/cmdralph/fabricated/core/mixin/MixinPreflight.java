@@ -457,6 +457,15 @@ public final class MixinPreflight extends PreflightPart {
 		}
 	}
 
+	/**
+	 * Whether Mixin, merging a generated accessor over a method of the same name and descriptor in this target, replaces
+	 * it as it does on Fabric Loader: the target is a Fabric mod's own class (the one Fabric Loader loads), and the
+	 * config doesn't require {@code @Overwrite} on a method that replaces one (Mixin throws then, there too).
+	 */
+	private boolean replacesAsOnFabric(ClassNode target, Context ctx) {
+		return ctx.owner() != null && installed.isFabricMods(target.name) && !ctx.config().overwritesRequireAnnotations();
+	}
+
 	private void checkMixin(ClassNode mixin, Context ctx) {
 		AnnotationNode mixinAnn = Annotations.find(mixin.invisibleAnnotations, mixin.visibleAnnotations, Annotations.MIXIN);
 		if (mixinAnn == null) {
@@ -616,11 +625,19 @@ public final class MixinPreflight extends PreflightPart {
 			AnnotationNode accessor = Annotations.find(method, MixinNames.ACCESSOR);
 			AnnotationNode invoker = accessor == null ? Annotations.find(method, MixinNames.INVOKER) : null;
 			if (accessor != null || invoker != null) {
-				// Mixin generates an instance accessor method in the target; one that already exists there (for
-				// example one NeoForge added) makes Mixin throw when the target class loads. A static accessor or
-				// invoker adds nothing to the target (Mixin rewrites the interface's own method), so a same-named
-				// method there is harmless: typically the very method the invoker calls.
-				if ((method.access & Opcodes.ACC_STATIC) == 0 && PreflightAsm.declares(target, method.name, method.desc)) {
+				// Mixin generates an instance accessor method in the target. One that already exists there replaces the
+				// target's method, or makes Mixin throw where the config requires @Overwrite on a method that replaces
+				// one; in a game class (a method NeoForge added, say) the repairs have made the accessor use it where
+				// they could. A static accessor or invoker adds nothing to the target (Mixin rewrites the interface's
+				// own method), so a same-named method there is harmless: typically the very method the invoker calls.
+				boolean exists = (method.access & Opcodes.ACC_STATIC) == 0 && PreflightAsm.declares(target, method.name, method.desc);
+				if (exists && accessor != null && replacesAsOnFabric(target, ctx)) {
+					// A Fabric mod's own class is the one Fabric Loader loads, where Mixin replaces its method the same
+					// way (Iris's accessor of Sodium's enumClass, named like Sodium's getEnumClass).
+					ctx.info("@Accessor " + method.name + method.desc + " replaces " + ctx.owner() + "'s own method of that name in "
+							+ targetDotted + ", as Mixin does on Fabric Loader");
+					checkAccessor(method, accessor, target, ctx);
+				} else if (exists) {
 					ctx.classLevel((accessor != null ? "@Accessor " : "@Invoker ") + method.name + method.desc + " already exists in "
 									+ targetDotted + " (added by " + ctx.changer(false) + "), so Mixin cannot generate it",
 							"The mod needs an update; until then it cannot load.");

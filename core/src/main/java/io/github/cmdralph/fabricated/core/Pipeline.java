@@ -510,7 +510,7 @@ public final class Pipeline {
 					// Not verified then; translating the mod reports it. Another mod's pre-flight reads this jar's classes.
 					return null;
 				}
-			}, () -> mixinClasses(c, archive.get())));
+			}, () -> mixinClasses(c, archive.get()), true));
 		}
 		return jars;
 	}
