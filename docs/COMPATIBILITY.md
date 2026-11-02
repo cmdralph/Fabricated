@@ -1090,8 +1090,9 @@ MixinExtras has NeoForge's jar, and a NeoForge mod nested in another jar has tha
   method, calling NeoForge's default, unless a mixin declares it (Fabricated's own do for some of Fabric API's). The JVM can't choose between two such defaults and throws
   (`IncompatibleClassChangeError: Conflicting default methods`, or on Java 21 `AbstractMethodError: Receiver class ...
   does not define or inherit an implementation`); Entity Culling's `getRenderBoundingBox` on block entity renderers
-  was one, on 26.3 (1.11) and on 1.21.1, where Fabricated declares such methods since 0.6.0 (CORPUS-63). Only the
-  interfaces the class itself has count: a default it gets from a superclass's interface isn't bridged.
+  was one, on 26.3 (1.11) and on 1.21.1, where Fabricated declares such methods since 0.6.0 (CORPUS-63). A default
+  the class has through a superclass's interface counts too (since 0.6.0, DEFAULT-1): the method then calls the
+  superclass's.
 - A mixin's private method with the name and descriptor of a default method its target inherits from NeoForge's
   interfaces (`ILivingEntityExtension.self()` on `LivingEntity`) gets another name, with its calls in the mixin, and the
   report notes it (HIDE-1). Under its own name it hid the default from the target's subclasses, and NeoForge's calls of

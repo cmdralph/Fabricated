@@ -123,6 +123,15 @@ One entry per working session, newest first: what changed, and how it was verifi
   crashed the 1.21.1 corpus client in its world, on a bed (`AbstractMethodError`, Java 21's error for two such
   defaults). The test mod adds such an interface to `LivingEntity` and calls both defaults on a pig, on every version:
   the bridge itself had never been called in CI.
+- **Default method bridges through a superclass** (DEFAULT-1): a default the class has through a superclass's interface
+  counts too, as `Mob` has NeoForge's `isMultipartEntity()` through `Entity`; only the class's own interfaces did, so
+  such a class got no bridge and either call threw. The method calls the superclass's. The test mod adds such an
+  interface to `Mob` and calls both defaults on a pig, on every version.
+- **Private game fields** (CORPUS-64): a Fabric mod's read of a field NeoForge (or Forge) keeps private, which its access
+  widener can't widen, calls the getter the platform reads it through, as the game's own code does (for
+  `Biome.climateSettings`, the climate after biome modifiers). It threw `IllegalAccessError` where it ran: Fabric
+  Seasons' biome temperature hook crashed the 1.21.1 advanced client in its world. A write still fails, and a mod's
+  mixins into the field's class are left as they are.
 - **Nested jars** (LIMIT-2): jars nested up to eight deep load, where three did; Polymer's bundle nests its modules four
   deep, so its Packet Tweaker was left out and the 1.21.1 advanced client's server crashed as the player joined. The
   per-jar budgets are as they were (1024 jars, the uncompressed size). A config file written with an earlier version's
@@ -160,10 +169,10 @@ One entry per working session, newest first: what changed, and how it was verifi
   where.
 - **Open, in the roadmap's findings:** fixed, to verify: CORPUS-54 on NeoForge (Puzzles Lib's screen effect hook on
   1.21.1), CORPUS-62 (Supplementaries' models through Moonlight's loaders on 1.21.1), CORPUS-63 (default bridges on
-  1.21.1) and LIMIT-2 (Polymer's nested jars); read, to verify: PROVIDER-8 (Forgified Fabric API's modules on 1.21.1,
-  the test mod's skips); open: CORPUS-64 (Fabric Seasons reads a biome's climate, which NeoForge keeps private),
-  CORPUS-48 (Xaero's World Map's world unload, also seen on 1.21.1), KEYMAP-1 (documented), and the Fabric builds' gaps
-  `COMPATIBILITY.md` lists.
+  1.21.1), CORPUS-64 (Fabric Seasons' read of a biome's climate), DEFAULT-1 (a default from a superclass's interface)
+  and LIMIT-2 (Polymer's nested jars); read, to verify: PROVIDER-8 (Forgified Fabric API's modules on 1.21.1, the test
+  mod's skips); open: CORPUS-48 (Xaero's World Map's world unload, also seen on 1.21.1), KEYMAP-1 (documented), and
+  the Fabric builds' gaps `COMPATIBILITY.md` lists.
   On Forge, the refusals stay until the Forge sync and its runs.
 - **Verified:** extended runs 41471044589 and 41477591558, every job green on all five NeoForge versions, the
   difficult-mod gates included, 41512581949, every job green, which verified CORPUS-61, CORPUS-56 on 1.21.11 and 26.x,
