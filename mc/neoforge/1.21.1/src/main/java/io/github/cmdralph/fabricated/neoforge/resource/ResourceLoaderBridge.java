@@ -46,7 +46,12 @@ public final class ResourceLoaderBridge {
 	/** @param problems receives one line per problem worth a place in the report */
 	public static void register(IEventBus modBus, Dist dist, Consumer<String> problems) {
 		NeoForge.EVENT_BUS.addListener(EventPriority.LOWEST, AddReloadListenerEvent.class, event -> {
-			for (IdentifiableResourceReloadListener listener : ResourceManagerHelperImpl.get(PackType.SERVER_DATA).listeners(event.getRegistryAccess(), problems)) {
+			// The reload's lookup, which upstream hands its listeners (the recipe manager's): a tag a listener reads as the
+			// reload runs is there, to be bound as it ends. The registries' own lookups have only the tags of the reload
+			// before, none as the game starts: Moonlight's fuel data map, naming Supplementaries' item tags, stopped the
+			// 1.21.1 corpus from loading its data packs (CORPUS-50).
+			for (IdentifiableResourceReloadListener listener : ResourceManagerHelperImpl.get(PackType.SERVER_DATA)
+					.listeners(event.getServerResources().getRegistryLookup(), problems)) {
 				event.addListener(listener);
 			}
 		});
