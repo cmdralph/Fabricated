@@ -537,6 +537,8 @@ public final class ModTranslator {
 		Map<String, Refmap> refmaps = new HashMap<>();
 		// The mod's interfaces its mixins into library classes gave them, now served by generated classes (LIB-1).
 		Map<String, LibraryBridges.Duck> ducks = new HashMap<>();
+		// Another library's interfaces they gave them, served by adapters the mod's casts wrap the objects in (LIB-2).
+		Map<String, LibraryAdapters.Adapted> adapted = new HashMap<>();
 		Map<String, Integer> implementors = new HashMap<>();
 		// The accessor mixins into library classes that generated classes serve, kept in their configs (LIB-1b).
 		Set<String> servedAccessors = new HashSet<>();
@@ -592,10 +594,10 @@ public final class ModTranslator {
 							"has no method or field " + method + " to leave out", ""));
 				}
 			}
-			Set<String> skip = withDependents(entry.config(), config, wholeSkips, translated, findings, ducks.keySet());
+			Set<String> skip = withDependents(entry.config(), config, wholeSkips, translated, findings, served(ducks, adapted));
 			skip = withEnumExtensions(entry.config(), config, skip, ModIds.toNeoForgeId(candidate.id()), translated, entries, overlay, findings, enumEntries,
 					enumTargets);
-			skip = withLibraryBridges(entry.config(), config, skip, translated, entries, overlay, findings, ducks, implementors, servedAccessors);
+			skip = withLibraryBridges(entry.config(), config, skip, translated, entries, overlay, findings, ducks, adapted, implementors, servedAccessors);
 			overlay.putAll(repairs(preflight, relocated, entry.config(), config, refmap, skip, findings));
 			if (!override.ignorePreflight()) {
 				List<PreflightFinding> checked = new ArrayList<>(relocated.relocated(preflight.check(entry.config(), config, refmap, skip)));
@@ -613,7 +615,7 @@ public final class ModTranslator {
 					else handlers.computeIfAbsent(f.mixin().replace('.', '/') + ".class", k -> new TreeSet<>()).add(f.handler());
 				}
 				leaveOutHandlers(handlers, translated, overlay);
-				if (leftOut.size() > skip.size()) skip = withDependents(entry.config(), config, leftOut, translated, findings, ducks.keySet());
+				if (leftOut.size() > skip.size()) skip = withDependents(entry.config(), config, leftOut, translated, findings, served(ducks, adapted));
 			}
 			if (!skip.isEmpty() || rewritten) {
 				overlay.put(entry.config(), config.withoutMixins(skip).getBytes(StandardCharsets.UTF_8));
@@ -640,6 +642,24 @@ public final class ModTranslator {
 				byte[] data = translated.read(name);
 				byte[] rewritten = data == null ? null : LibraryBridges.rewrite(data, ducks);
 				if (rewritten != null) overlay.put(name, rewritten);
+			}
+		}
+		if (!adapted.isEmpty()) {
+			// The mod's casts to the adapted interfaces and checks against them (the adapters' own code stays as it is).
+			Set<String> adapters = new HashSet<>();
+			adapted.values().forEach(a -> adapters.add(a.adapter() + ".class"));
+			for (String name : entries) {
+				if (!name.endsWith(".class") || name.startsWith("META-INF/") || adapters.contains(name)) continue;
+				byte[] data = translated.read(name);
+				byte[] rewritten = data == null ? null : LibraryAdapters.rewrite(data, adapted);
+				if (rewritten != null) overlay.put(name, rewritten);
+			}
+			for (Map.Entry<String, byte[]> e : List.copyOf(overlay.entrySet())) {
+				// The LIB-1 bridges, which aren't among the mod's entries.
+				if (e.getKey().endsWith("$FabricatedBridge.class") && !entries.contains(e.getKey())) {
+					byte[] rewritten = LibraryAdapters.rewrite(e.getValue(), adapted);
+					if (rewritten != null) overlay.put(e.getKey(), rewritten);
+				}
 			}
 		}
 		installedClasses.putAll(preflight.installedClasses());
@@ -882,8 +902,8 @@ public final class ModTranslator {
 	 * @param implementors how many of the mod's classes implement or extend each interface, filled the first time it is needed
 	 */
 	private Set<String> withLibraryBridges(String configName, MixinConfigFile config, Set<String> skip, FileView files, Collection<String> modEntries,
-			Map<String, byte[]> overlay, List<PreflightFinding> findings, Map<String, LibraryBridges.Duck> ducks, Map<String, Integer> implementors,
-			Set<String> servedAccessors) throws ArchiveException {
+			Map<String, byte[]> overlay, List<PreflightFinding> findings, Map<String, LibraryBridges.Duck> ducks, Map<String, LibraryAdapters.Adapted> adapted,
+			Map<String, Integer> implementors, Set<String> servedAccessors) throws ArchiveException {
 		Set<String> all = skip;
 		ClassIndex libraries = null;
 		for (String mixin : config.mixinsFor(env.clientSide())) {
@@ -903,7 +923,25 @@ public final class ModTranslator {
 					: header.interfaces.isEmpty() ? null : header.interfaces.get(0) + "$FabricatedBridge", files, overlay);
 			LibraryBridges.Bridge bridge = name == null ? null : LibraryBridges.of(data, targets.get(0), library::readNode,
 					itf -> readNode(files, itf + ".class"), itf -> implementors.getOrDefault(itf, 0), name);
-			if (bridge == null) continue;
+			if (bridge == null) {
+				// Interfaces of another library's (Adventure's, given to authlib's GameProfile): an adapter wraps the object (LIB-2).
+				String adapterName = accessor ? null : freeClassName(aroundMixinPackage(config,
+						header.name.substring(header.name.lastIndexOf('/') + 1) + "$FabricatedAdapter"), files, overlay);
+				Set<String> taken = new HashSet<>(ducks.keySet());
+				taken.addAll(adapted.keySet());
+				LibraryAdapters.Adapter adapter = adapterName == null ? null : LibraryAdapters.of(data, targets.get(0), library::readNode, taken, adapterName);
+				if (adapter == null) continue;
+				overlay.put(adapterName + ".class", adapter.bytes());
+				adapter.served().forEach(a -> adapted.put(a.itf(), a));
+				if (all == skip) all = new TreeSet<>(skip);
+				all.add(mixin);
+				findings.add(new PreflightFinding(Severity.INFO, configName, header.name.replace('/', '.'), "Its target, " + targets.get(0).replace('/', '.')
+						+ ", is a library class " + env.descriptor().loaderName() + " loads without mixin support: the interfaces the mixin gives it ("
+						+ adapter.served().stream().map(a -> a.itf().replace('/', '.')).collect(Collectors.joining(", "))
+						+ ") are served by a generated adapter, which the mod's casts of the class's objects to them wrap them in. The objects themselves"
+						+ " don't implement them, so another mod checking one against them sees it doesn't", ""));
+				continue;
+			}
 			overlay.put(name + ".class", bridge.bytes());
 			bridge.ducks().forEach(d -> ducks.put(d.itf(), d));
 			if (accessor) {
@@ -918,6 +956,13 @@ public final class ModTranslator {
 					+ ") are served by a generated class, which uses the class's fields through reflection, and the mod's uses of them call that class", ""));
 		}
 		return all;
+	}
+
+	/** The interfaces LIB-1's bridges and LIB-2's adapters serve. */
+	private static Set<String> served(Map<String, LibraryBridges.Duck> ducks, Map<String, LibraryAdapters.Adapted> adapted) {
+		Set<String> served = new HashSet<>(ducks.keySet());
+		served.addAll(adapted.keySet());
+		return served;
 	}
 
 	/** Whether NeoForge loads the class outside its transforming class loader (a library's, not the game's). */

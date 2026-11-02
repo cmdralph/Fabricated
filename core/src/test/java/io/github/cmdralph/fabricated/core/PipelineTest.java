@@ -1570,6 +1570,54 @@ class PipelineTest {
 	}
 
 	@Test
+	void aModWhoseMixinGivesALibraryClassAnotherLibrarysInterfaceLoadsWithAnAdapter(@TempDir Path game) throws Exception {
+		// LIB-2: adventure-platform-fabric makes authlib's GameProfile an Adventure Identity, an interface of another jar
+		// with default methods, and casts a player's profile to it; pre-flight disabled it, and with it OneConfig's chat event.
+		Map<String, byte[]> classes = TestSources.compile(game.resolve("build"), TestSources.MIXIN_ANNOTATIONS, Map.of(
+				"lib/Profile.java", "package lib; public class Profile { private final java.util.UUID id = java.util.UUID.randomUUID(); public java.util.UUID getId() { return id; } }",
+				"api/Identity.java", "package api; public interface Identity { java.util.UUID uuid(); default Identity identity() { return this; } }",
+				"mod/mixin/ProfileMixin.java", """
+						package mod.mixin;
+						import org.spongepowered.asm.mixin.*;
+						@Mixin(value = lib.Profile.class, remap = false)
+						public abstract class ProfileMixin implements api.Identity {
+							@Shadow public abstract java.util.UUID getId();
+							@Override public java.util.UUID uuid() { return getId(); }
+						}""",
+				"mod/Player.java", "package mod; public class Player { public static api.Identity of(lib.Profile p) { return (api.Identity) (Object) p; } }"));
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		Path api = TestJars.create().fabricModJson(TestJars.modJson("adventure-api", "1.0", ""))
+				.bytes("api/Identity.class", classes.get("api/Identity"))
+				.write(mods.resolve("adventure-api.jar"));
+		Path platform = TestJars.create().fabricModJson(TestJars.modJson("adventure-platform", "1.0", "\"mixins\":[\"adventure.mixins.json\"]"))
+				.text("adventure.mixins.json", "{\"required\":true,\"package\":\"mod.mixin\",\"mixins\":[\"ProfileMixin\"]}")
+				.bytes("mod/mixin/ProfileMixin.class", classes.get("mod/mixin/ProfileMixin"))
+				.bytes("mod/Player.class", classes.get("mod/Player"))
+				.write(mods.resolve("adventure-platform.jar"));
+		// The libraries NeoForge loads without mixin support, and the JDK, as its platform class loader serves them.
+		ClassBytesSource libraries = name -> {
+			if (name.startsWith("lib/")) return classes.get(name);
+			if (!name.startsWith("java/")) return null;
+			try (var in = ClassLoader.getSystemResourceAsStream(name + ".class")) {
+				return in == null ? null : in.readAllBytes();
+			}
+		};
+		Pipeline.Result result = Pipeline.run(input(game, List.of(api, platform), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null, List.of(),
+				InstalledClasses.NONE, libraries));
+
+		assertEquals(Set.of("adventure-api", "adventure-platform"), result.mods().stream().map(m -> m.translated().candidate().id()).collect(Collectors.toSet()),
+				result.report().render());
+		assertTrue(result.report().render().contains("are served by a generated adapter"), result.report().render());
+		Pipeline.LoadedMod loaded = result.mods().stream().filter(m -> m.translated().candidate().id().equals("adventure-platform")).findFirst().orElseThrow();
+		try (SafeArchive overlay = SafeArchive.open(loaded.translated().overlay(), ArchiveLimits.DEFAULTS)) {
+			assertFalse(new String(overlay.read("adventure.mixins.json"), StandardCharsets.UTF_8).contains("ProfileMixin"), "Mixin doesn't apply it");
+			assertNotNull(overlay.read("mod/ProfileMixin$FabricatedAdapter.class"), "outside the mixin package");
+			String player = new String(overlay.read("mod/Player.class"), StandardCharsets.ISO_8859_1);
+			assertTrue(player.contains("mod/ProfileMixin$FabricatedAdapter"), "the mod's cast wraps the profile");
+		}
+	}
+
+	@Test
 	void aBuildForIntermediaryNamesIsDisabledOnAnUnobfuscatedVersion(@TempDir Path game) throws Exception {
 		// OBF-1: Modrinth lists Do a Barrel Roll's 1.21.11 build for 26.2; its mixins name intermediary classes.
 		Path mods = Files.createDirectories(game.resolve("mods"));
