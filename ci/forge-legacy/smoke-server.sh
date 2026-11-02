@@ -7,8 +7,9 @@
 #
 # Usage: ci/forge-legacy/smoke-server.sh <minecraft-version> <forge-version, Minecraft's included> <work-dir> [extra-mods-dir]
 # Exit status: the server must start, and every check must pass; the lines read from debug.log, which Forge's debug
-# output words as it likes, are only reported. With extra-mods-dir (the official Fabric API jar), its jars join the mods
-# folder.
+# output words as it likes, are only reported. With extra-mods-dir, its jars join the mods folder: the official Fabric
+# API jar (fabric-api.jar), whose modules' checks then apply, or the stand-ins ci/forge-legacy/standins.py writes for mods
+# that share the game (standin-forgified-fabric-api.jar), whose checks then apply too.
 # SMOKE_TESTMODS=none leaves the test mods out; SMOKE_EXPECT_REFUSAL (below) expects the launch to stop instead.
 # Expects: build/libs/fabricated-forge-*+mc<minecraft-version>.jar and mc/forge-legacy/<minecraft-version>/build/testmods/fabricated-testmod.jar
 set -euo pipefail
@@ -157,6 +158,13 @@ echo "::endgroup::"
 # feeding it with SIGPIPE, and a line that is there reads as not seen.
 report() { if eval "$2"; then echo "PASS: $1"; else echo "NOT SEEN: $1"; fi; }
 failed=0
+# Which mods the extra folder holds: Fabric API's jar, or the stand-ins for mods that provide Fabric API modules.
+fapi=false
+standins=false
+if [ -n "$extra" ]; then
+	[ -f "$extra/fabric-api.jar" ] && fapi=true
+	[ -f "$extra/standin-forgified-fabric-api.jar" ] && standins=true
+fi
 check() { if eval "$2"; then echo "PASS: $1"; else echo "FAIL: $1"; failed=1; fi; }
 report "Forge ran Fabricated's mod locator" "grep -qi 'fabricated' logs/debug.log 2>/dev/null && grep -i 'locator' logs/debug.log | grep -i 'fabricated' > /dev/null"
 report "Forge took Fabricated's language provider" "grep -i -E 'language|lang' logs/debug.log 2>/dev/null | grep -i 'fabricated' > /dev/null"
@@ -203,7 +211,17 @@ check "an access widener leaves a field private that Forge's coremod reads throu
 check "two Fabric mods that depend on each other load, one ordering of their cycle left out (ORDER-1)" "grep -q 'fabricated_cycle_b doesn.t load after fabricated_cycle_a' logs/fabric-bridge-report.txt 2>/dev/null"
 check "Fabricated's report names Forge as the loader" "grep -q '^  Forge: ' logs/fabric-bridge-report.txt 2>/dev/null && ! grep -q '^  NeoForge: ' logs/fabric-bridge-report.txt 2>/dev/null"
 check "the test mod's @Inject at a call in Commands' constructor ran, which Forge 47's Mixin takes only at a return (CTOR-4)" "grep -q 'FABRICATED-FORGE-TEST constructor hook OK' logs/latest.log 2>/dev/null"
-if [ -n "$extra" ]; then
+if $standins; then
+	# The provider policy (PROVIDER-1), as on NeoForge: another mod's copy of a module is the one loaded, and Fabricated's
+	# part of it (its packages, mixin configs, mixins and Forge hooks) stands down. The nested stand-in is Fabricated's own
+	# copy of fabric-dimensions-v1, so the teleport check above passes through it.
+	check "a Fabric API module another Forge mod provides is that mod's, and Fabricated's copy stands down (PROVIDER-1)" "grep -q '+standin  \[Stand-in Fabric API Base\]' logs/fabric-bridge-report.txt 2>/dev/null"
+	check "so is one a Forge mod nests with Forge's jar-in-jar, with its mixin config and refmap" "grep -q '+standin  \[Stand-in fabric-dimensions-v1\]' logs/fabric-bridge-report.txt 2>/dev/null"
+	check "Fabricated's in-game mod leaves out their packages and the module's mixin config, its manifest no longer naming it" "grep -q 'leaves out [0-9]* package(s) of the modules other mods provide, the mixin configs \[.*fabricated-dimension.mixins.json' logs/fabric-bridge-report.txt 2>/dev/null"
+	check "of two versions of a library Fabric mods nest, the newer loads" "grep -q 'Using standin_lib 1.1.0' logs/fabric-bridge-report.txt 2>/dev/null"
+	check "the linkage check counts the classes of the modules other mods provide" "! grep -q '== Linkage warnings' logs/fabric-bridge-report.txt 2>/dev/null"
+fi
+if $fapi; then
 	check "fabric-command-api-v2 (with Fabric API): a command registered through CommandRegistrationCallback is in the server's dispatcher, its hook into Commands' constructor applied (CTOR-4)" "grep -q 'FABRICATED-FORGE-TEST Fabric command registered OK' logs/latest.log 2>/dev/null"
 	check "fabric-events-interaction-v0 (with Fabric API): a fake player's breaks through destroyBlock fire PlayerBlockBreakEvents BEFORE, CANCELED and AFTER, and a BEFORE refusal keeps the block (BREAK-1)" "grep -q 'FABRICATED-FORGE-TEST block break events OK' logs/latest.log 2>/dev/null"
 	check "fabric-events-interaction-v0 (with Fabric API): a fake player's uses of an item, a block and an entity, and its attacks on a block and an entity, through the game's own code ask UseItemCallback, UseBlockCallback, UseEntityCallback, AttackBlockCallback and AttackEntityCallback, and their answers hold" "grep -q 'FABRICATED-FORGE-TEST interaction events OK' logs/latest.log 2>/dev/null"

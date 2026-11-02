@@ -1,11 +1,17 @@
 package io.github.cmdralph.fabricated.loader;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Map;
 
+import io.github.cmdralph.fabricated.core.archive.DeterministicJarWriter;
+import io.github.cmdralph.fabricated.core.archive.SafeArchive;
 import io.github.cmdralph.fabricated.core.cache.TranslationCache;
 import io.github.cmdralph.fabricated.core.config.FabricatedConfig;
+import io.github.cmdralph.fabricated.core.mixin.MixinConfigFile;
+import io.github.cmdralph.fabricated.core.resolve.NativeModules;
 import net.minecraftforge.fml.loading.FMLPaths;
 
 /**
@@ -34,6 +40,21 @@ final class NestedJars {
 		if (data == null) throw new IOException("The Fabricated jar is missing " + name);
 		Path path = cache.storeNested(data);
 		if (!Files.isRegularFile(path)) throw new IOException("Could not extract " + name);
+		return path;
+	}
+
+	/**
+	 * The in-game mod's jar without what stands down for the modules other mods provide (the provider policy), in the
+	 * cache, content-addressed: Forge reads a mod file, and its mixin configs from the manifest, from one path.
+	 *
+	 * @param configs the in-game mod's mixin configs, by file name
+	 */
+	static Path withoutStandingDown(SafeArchive gameMod, NativeModules.StandDown standDown, Map<String, MixinConfigFile> configs, TranslationCache cache)
+			throws IOException {
+		ByteArrayOutputStream out = new ByteArrayOutputStream();
+		DeterministicJarWriter.write(out, NativeModules.withoutStandingDown(gameMod, standDown, configs));
+		Path path = cache.storeNested(out.toByteArray());
+		if (!Files.isRegularFile(path)) throw new IOException("Could not write the in-game mod without the modules other mods provide");
 		return path;
 	}
 }

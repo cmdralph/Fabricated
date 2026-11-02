@@ -69,10 +69,11 @@ public final class FabricatedMod {
 
 	public FabricatedMod() {
 		FMLJavaModLoadingContext context = FMLJavaModLoadingContext.get();
-		// First: this mod's data pack declares a biome modifier of the type it registers, which must exist even when
-		// Fabricated stops below, or worlds fail to load.
-		BiomeCompat.register(context.getModEventBus());
 		FabricatedState state = FabricatedState.get();
+		// First: this mod's data pack declares a biome modifier of the type it registers, which must exist even when
+		// Fabricated stops below, or worlds fail to load. Each bridge stands down when another mod provides its module
+		// (the provider policy): that mod's copy of the module is the one loaded, and does its own work.
+		BiomeCompat.register(context.getModEventBus(), ours(state, "fabric-biome-api-v1"));
 		if (state == null) {
 			LOGGER.warn("Fabricated's discovery did not run; Fabric mods are not loaded");
 			return;
@@ -81,12 +82,13 @@ public final class FabricatedMod {
 			ModLoader.get().addWarning(new ModLoadingWarning(context.getContainer().getModInfo(), ModLoadingStage.CONSTRUCT, AS_IS, text));
 		}
 		// Fabric storages and Forge's item and fluid handlers on blocks, each seen by the other side's code.
-		if (FabricLoader.getInstance().isModLoaded("fabric-transfer-api-v1")) TransferBridge.register();
+		if (FabricLoader.getInstance().isModLoaded("fabric-transfer-api-v1") && ours(state, "fabric-transfer-api-v1")) TransferBridge.register();
 		// Fabric's sleep time event where Forge asks its own.
-		SleepEvents.register();
+		if (ours(state, "fabric-entity-events-v1")) SleepEvents.register();
 		// Native fabric-loot-tables-v1's own initializer (a native module has no entrypoints): its loot table events
-		// listen to fabric-loot-api-v2's before the Fabric mods register theirs.
-		new LootTablesV1Init().onInitialize();
+		// listen to fabric-loot-api-v2's before the Fabric mods register theirs. Its class leaves the in-game mod with the
+		// module when another mod provides it.
+		if (ours(state, "fabric-loot-tables-v1") && ours(state, "fabric-loot-api-v2")) new LootTablesV1Init().onInitialize();
 		// Fabric mods' config screens in Forge's mod list, once their initializers ran.
 		if (!FMLLoader.getDist().isDedicatedServer()) ClientSupport.init(state);
 		IModInfo self = context.getContainer().getModInfo();
@@ -145,7 +147,7 @@ public final class FabricatedMod {
 			opened.forEach(ForgeRegistry::freeze);
 		}
 		report(state, failures, "main");
-		addDynamicRegistries();
+		if (ours(state, "fabric-registry-sync-v0")) addDynamicRegistries();
 		// Then the failures in the report and Forge's warnings, and what waited for the initializers (see EntrypointOutcome).
 		List<EntrypointRunner.Failure> all = new ArrayList<>(preLaunch);
 		all.addAll(failures);
@@ -186,6 +188,11 @@ public final class FabricatedMod {
 		} catch (ReflectiveOperationException | RuntimeException e) {
 			LOGGER.error("Couldn't add the Fabric mods' dynamic registries to Forge's; they won't load", e);
 		}
+	}
+
+	/** Whether Fabricated's part of a Fabric API module runs: no other mod provides the module (FabricatedState). */
+	private static boolean ours(FabricatedState state, String module) {
+		return state == null || !state.providedElsewhere(module);
 	}
 
 	/** Adds a phase's failures, marked at once: the registries freeze before they are reported (see MainEntrypoints). */

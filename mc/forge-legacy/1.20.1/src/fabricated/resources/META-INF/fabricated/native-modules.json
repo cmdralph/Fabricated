@@ -1,0 +1,39 @@
+{
+  "fabricApiVersion": "0.92.12+1.20.1",
+  "modules": {
+    "fabric-api-base": [
+      "net/fabricmc/fabric/api/event",
+      "net/fabricmc/fabric/api/util",
+      "net/fabricmc/fabric/impl/base/event",
+      "net/fabricmc/fabric/impl/base/toposort"
+    ],
+    "fabric-biome-api-v1": [
+      "net/fabricmc/fabric/api/biome/v1",
+      "net/fabricmc/fabric/impl/biome",
+      "net/fabricmc/fabric/impl/biome/modification",
+      "net/fabricmc/fabric/mixin/biome"
+    ],
+    "fabric-dimensions-v1": [
+      "net/fabricmc/fabric/api/dimension/v1",
+      "net/fabricmc/fabric/impl/dimension",
+      "net/fabricmc/fabric/mixin/dimension"
+    ],
+    "fabric-loot-api-v2": [
+      "net/fabricmc/fabric/api/loot/v2",
+      "net/fabricmc/fabric/impl/loot",
+      "net/fabricmc/fabric/mixin/loot"
+    ],
+    "fabric-loot-tables-v1": [
+      "net/fabricmc/fabric/api/loot/v1",
+      "net/fabricmc/fabric/api/loot/v1/event",
+      "net/fabricmc/fabric/impl/loot/table",
+      "net/fabricmc/fabric/mixin/loot/table"
+    ],
+    "fabric-particles-v1": [
+      "net/fabricmc/fabric/api/client/particle/v1",
+      "net/fabricmc/fabric/api/particle/v1",
+      "net/fabricmc/fabric/impl/client/particle",
+      "net/fabricmc/fabric/mixin/client/particle"
+    ]
+  }
+}
