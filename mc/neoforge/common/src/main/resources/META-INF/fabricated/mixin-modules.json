@@ -95,6 +95,7 @@
     "client.ClientPayloadSendMixin": ["fabric-networking-api-v1"],
     "client.ClientReloadListenerMixin": [],
     "client.ClientVanillaNamespacePayloadMixin": ["fabric-networking-api-v1"],
+    "client.ExtendedBlockModelDeserializerMixin": [],
     "client.GuiRendererPictureInPictureMixin": [],
     "client.ItemColorsLookupMixin": ["fabric-rendering-v1"],
     "client.KeyMappingAccessor": ["fabric-events-interaction-v0"],

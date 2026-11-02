@@ -80,6 +80,7 @@
     "client.ClientVanillaNamespacePayloadMixin",
     "client.SoundEngineStreamMixin",
     "client.ClientChunkCacheMixin",
+    "client.ExtendedBlockModelDeserializerMixin",
     "client.OptionsDefaultPacksMixin"
   ]
 }

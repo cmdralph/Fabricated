@@ -20,9 +20,9 @@ a version's own configs come in through `version_mixin_configs` in its `gradle.p
 
 | Config file | Package | Versions | Sections | defaultRequire | overwrites.requireAnnotations | plugin |
 |---|---|---|---|---|---|---|
-| `mc/neoforge/1.21.1/src/main/resources/fabricated.mixins.json` | `io.github.cmdralph.fabricated.neoforge.mixin` | 1.21.1 | mixins 50, client 16 | 1 | true | `FabricatedMixinPlugin` (creates Fabric language adapters in `onLoad`; filters nothing) |
-| `mc/neoforge/1.21.11/src/main/resources/fabricated.mixins.json` | same | 1.21.11 | mixins 60, client 24 | 1 | true | same |
-| `mc/neoforge/common26/src/main/resources/fabricated.mixins.json` | same | 26.x | mixins 70, client 28 | 1 | true | same |
+| `mc/neoforge/1.21.1/src/main/resources/fabricated.mixins.json` | `io.github.cmdralph.fabricated.neoforge.mixin` | 1.21.1 | mixins 53, client 17 | 1 | true | `FabricatedMixinPlugin` (creates Fabric language adapters in `onLoad`; filters nothing) |
+| `mc/neoforge/1.21.11/src/main/resources/fabricated.mixins.json` | same | 1.21.11 | mixins 63, client 24 | 1 | true | same |
+| `mc/neoforge/common26/src/main/resources/fabricated.mixins.json` | same | 26.x | mixins 73, client 28 | 1 | true | same |
 | `mc/neoforge/1.21.1/src/main/resources/fabricated-biome.mixins.json` | `net.fabricmc.fabric.mixin.biome` | 1.21.1 | mixins 8 | 1 | true | none |
 | `mc/neoforge/1.21.11/src/main/resources/fabricated-biome.mixins.json` | same | 1.21.11 | mixins 10 | 1 | true | none |
 | `mc/neoforge/common26early/src/main/resources/fabricated-biome.mixins.json` | same | 26.1.2, 26.2 | mixins 10 | 1 | true | none |
@@ -385,6 +385,7 @@ Versions: 1.21.1 · package `io.github.cmdralph.fabricated.neoforge.mixin` · re
 | client | client.SoundEngineStreamMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.client.sounds.SoundEngine | @WrapOperation → fabricated$fabricAudioStream | "play" | INVOKE `L…/SoundInstance;getStream(L…/SoundBufferLibrary;L…/Sound;Z)L…/CompletableFuture;` | — | default |
 | client | client.ClientChunkCacheMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.client.multiplayer.ClientChunkCache | @ModifyExpressionValue → fabricated$unloadOutOfRange | "updateViewRadius" | INVOKE `L…/ClientChunkCache$Storage;inRange(II)Z` sugar:@Local LevelChunk | — | default |
 | client | client.ClientChunkCacheMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.client.multiplayer.ClientChunkCache | @Inject → fabricated$unloadReplaced | "replaceWithPacketData" | NEW `L…/LevelChunk` sugar:@Local LevelChunk | — | default |
+| client | client.ExtendedBlockModelDeserializerMixin | 1.21.1 (1.21.1) | neo.client.model.ExtendedBlockModelDeserializer | @WrapOperation → fabricated$leaveFabricModsLoadersToThem (a `loader` NeoForge doesn't know, in a Fabric mod's namespace, is left to that mod's hook, CORPUS-62) | "deserialize(L…/JsonElement;L…/Type;L…/JsonDeserializationContext;)L…/BlockModel;" | INVOKE `L…/ExtendedBlockModelDeserializer;deserializeGeometry(L…/JsonDeserializationContext;L…/JsonObject;)L…/IUnbakedGeometry;` | — | default |
 | client | client.OptionsDefaultPacksMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.client.Options | @Inject → fabricated$defaultEnabledPacks | "loadSelectedResourcePacks(L…/PackRepository;)V" | HEAD | — | default |
 
 ### `mc/neoforge/1.21.11/src/main/resources/fabricated-biome.mixins.json`

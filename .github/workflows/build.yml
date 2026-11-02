@@ -542,8 +542,9 @@ jobs:
           check "hud callback OK" "Fabric's HUD callback was called as the HUD was drawn"
           check "key binding OK" "a Fabric key binding from the client entrypoint is in the game's options, sorted, and refused twice and late (KEYMAP-2)"
           check "key binding saved key OK" "the Fabric key binding has the key the options file saved for it"
+          check "model loader key of a Fabric mod's own OK" "a model whose loader key is in a Fabric mod's namespace deserializes, the key left to the mod as on Fabric, and an unknown NeoForge one still fails (Moonlight's loaders, CORPUS-62)"
           if [ "$failed" = 1 ]; then
-            grep -n -m 40 -E "testmod-frapi|fabric-rendering-v1|keybinding|/(ERROR|FATAL)\]" "$log" || true
+            grep -n -m 40 -E "testmod-frapi|fabric-rendering-v1|keybinding|Model loader|/(ERROR|FATAL)\]" "$log" || true
             exit 1
           fi
       # Fabric's renderer API on 1.21.1 (FRAPI-5): Fabric block models (no vanilla adapter), alone and as a vanilla

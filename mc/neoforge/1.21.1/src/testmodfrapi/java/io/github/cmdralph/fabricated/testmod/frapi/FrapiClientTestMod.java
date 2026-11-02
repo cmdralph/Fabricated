@@ -12,6 +12,7 @@ import java.util.function.Supplier;
 import org.apache.commons.lang3.tuple.Pair;
 import org.jspecify.annotations.Nullable;
 
+import com.google.gson.JsonParseException;
 import com.mojang.blaze3d.platform.InputConstants;
 
 import net.fabricmc.api.ClientModInitializer;
@@ -30,6 +31,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.color.block.BlockColor;
 import net.minecraft.client.color.item.ItemColor;
 import net.minecraft.client.renderer.block.model.BakedQuad;
+import net.minecraft.client.renderer.block.model.BlockModel;
 import net.minecraft.client.renderer.block.model.ItemOverrides;
 import net.minecraft.client.renderer.block.model.ItemTransforms;
 import net.minecraft.client.renderer.chunk.RenderChunkRegion;
@@ -75,6 +77,10 @@ import net.minecraft.world.level.block.state.BlockState;
  *
  * <p>With Continuity installed, glass's model is wrapped after every other wrapper, Continuity's included
  * ({@link ConnectedCheckModel}), to check that its connected textures reach the chunk section.
+ *
+ * <p>A model whose {@code loader} key names a loader in this mod's namespace must deserialize, the key left to the mod
+ * as on Fabric, where the game ignores it (CORPUS-62: Moonlight reads it for Supplementaries' models), and one naming a
+ * loader NeoForge doesn't know in its own namespace must still fail, as on NeoForge.
  */
 public final class FrapiClientTestMod implements ClientModInitializer {
 	private static final ResourceLocation GLASS = ResourceLocation.withDefaultNamespace("glass");
@@ -121,6 +127,7 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 		}
 		ClientLifecycleEvents.CLIENT_STARTED.register(FrapiClientTestMod::checkColors);
 		ClientLifecycleEvents.CLIENT_STARTED.register(FrapiClientTestMod::checkKeyBinding);
+		ClientLifecycleEvents.CLIENT_STARTED.register(FrapiClientTestMod::checkModelLoaderKey);
 		ClientLifecycleEvents.CLIENT_STOPPING.register(client -> {
 			InputConstants.Key saved = InputConstants.getKey("key.keyboard.k");
 			InputConstants.Key bound = KeyBindingHelper.getBoundKeyOf(KEY);
@@ -151,6 +158,26 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 		}
 		if (failed.isEmpty()) FrapiTestMod.LOGGER.info("FABRICATED-TEST key binding OK");
 		else FrapiTestMod.LOGGER.error("FABRICATED-TEST key binding FAILED: {}", String.join("; ", failed));
+	}
+
+	private static void checkModelLoaderKey(Minecraft client) {
+		List<String> failed = new ArrayList<>();
+		// The test mod's id is fabricated-testmod-frapi, so its NeoForge id and its namespace are fabricated_testmod_frapi.
+		for (String loader : List.of("\"fabricated_testmod_frapi:own_loader\"", "{\"id\": \"fabricated_testmod_frapi:own_loader\"}")) {
+			try {
+				BlockModel.fromString("{\"parent\": \"minecraft:block/stone\", \"loader\": " + loader + "}");
+			} catch (RuntimeException e) {
+				failed.add("a model naming its own loader " + loader + " failed: " + e);
+			}
+		}
+		try {
+			BlockModel.fromString("{\"parent\": \"minecraft:block/stone\", \"loader\": \"neoforge:fabricated_no_such_loader\"}");
+			failed.add("a model naming a loader NeoForge doesn't know in its namespace didn't fail");
+		} catch (JsonParseException expected) {
+			// As on NeoForge.
+		}
+		if (failed.isEmpty()) FrapiTestMod.LOGGER.info("FABRICATED-TEST model loader key of a Fabric mod's own OK");
+		else FrapiTestMod.LOGGER.error("FABRICATED-TEST model loader key of a Fabric mod's own FAILED: {}", String.join("; ", failed));
 	}
 
 	private static void checkColors(Minecraft client) {

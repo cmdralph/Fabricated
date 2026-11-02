@@ -159,6 +159,10 @@ ones that exist in 0.116 (`fabric-resource-loader-v0` stands for v1, which 0.116
 - **Model loading's modifiers**: `modifyModelBeforeBake` and `modifyModelAfterBake` run for top-level models (a block
   state's, an item's) but not for a model baked as another's part or parent, as upstream's hook is on an overload
   NeoForge 21.1 doesn't call there (MODEL-4).
+- **A model's `loader` key**: NeoForge 21.1 reads it as the name of one of its geometry loaders and fails a model naming
+  none; on Fabric the game ignores it, and Fabric mods read it in their own hook into vanilla's model deserializer, as
+  Moonlight does for Supplementaries' models. A `loader` NeoForge doesn't know whose namespace is a Fabric mod's id is
+  left to that mod; one NeoForge knows is NeoForge's, and any other unknown loader still fails the model (CORPUS-62).
 - **Entity data serializers**: 0.116 has no registry for them, so Fabric mods register through vanilla's
   `EntityDataSerializers.registerSerializer`, which NeoForge 21.1 refuses for mods. Fabricated registers such a
   serializer in NeoForge's synced registry instead, named after the mod and the order it registers in (CORPUS-41).
@@ -1155,7 +1159,7 @@ tracked:
 | What Sodium's Fabric build meshes the Fabric way: NeoForge's fluid renderers, section geometry from NeoForge mods, model data, position-aware light and culling | all | *Renderer mods* above; the owner chose to list the gaps rather than patch one mod | rendering-pipeline track |
 | Essential's automatic updates (its Fabric build) | all | Essential loads from the launch after its loader's download, as a regular mod | DOWNLOAD-1 |
 | A Fabric mod's hook into the game's options that needs its initializer (Bobby's larger render distance limit) | 1.21.1 | NeoForge 21.1 creates the options before it loads mods, where Fabric creates them after the entrypoints; such a hook that throws then is skipped for that call, with a warning and a report line (ENTRY-2) | — |
-| Supplementaries' models made by Moonlight's model loaders, and its way signs' models | 1.21.1 | NeoForge reads a model's `loader` key as one of its own geometry loaders, where Fabric's game ignores it and Moonlight reads it; the way signs' models Moonlight makes at run time are missing too (cause being read) | CORPUS-62, task 5 |
+| A NeoForge model naming its loader in NeoForge's object form (`"loader": {"id": ...}`), with Moonlight's Fabric build installed | 1.21.1 | Moonlight's hook into vanilla's model deserializer, which NeoForge's runs first, reads `loader` as a string only and fails the model; not seen in the corpus | CORPUS-62 |
 | What Forgified Fabric API's modules do differently from upstream, where it provides them | 1.21.1 seen | a provider's module is used as it is; CI's coexisting client sees several of the test mod's checks fail with them (block, item and transfer APIs, the attack block event, a vibration frequency, a default-enabled built-in pack), being read one by one | PROVIDER-8, task 5 |
 | Hooks pre-flight leaves out where NeoForge's code differs | per mod | each is in the report, with what NeoForge's code lacks and what is lost | LEAVE-1 (above) |
 

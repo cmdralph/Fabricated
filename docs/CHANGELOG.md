@@ -104,6 +104,12 @@ One entry per working session, newest first: what changed, and how it was verifi
   singleplayer and with NeoForge clients). Vanilla's encoder now writes the bytes the splitter measured for such a
   packet; other packets are coded as NeoForge codes them. The test mods send a payload with that codec's shape, which
   every client checks arrives whole.
+- **Models** (CORPUS-62, 1.21.1): a model's `loader` key naming no loader NeoForge knows, in a Fabric mod's namespace,
+  is left to that mod, as on Fabric, where the game ignores it. NeoForge 21.1's deserializer failed such a model after
+  Moonlight's Fabric build had read the key in its hook into vanilla's deserializer, so 18 of Supplementaries' models
+  (rope knots, flower boxes, faucets and others), 23 more and its way signs' were missing on the 1.21.1 corpus client. A
+  loader NeoForge knows is NeoForge's, and any other unknown loader still fails the model. The 1.21.1 renderer test mod
+  checks both forms of the key and an unknown NeoForge loader, in a gate.
 - **Build:** `scripts/check-mixin-inventory.py` also runs the build's rule that each of the game mod's mixins is
   assigned a Fabric API module (`mixin-modules.json`), which only a platform build found: extended run 41492025138
   stopped on it, for `UtilMixin`. CI's mod downloads (`ci/fetch-corpus.py`) try a timeout, a dropped connection or a
@@ -131,9 +137,9 @@ One entry per working session, newest first: what changed, and how it was verifi
   source); `COMPATIBILITY.md` says so. `COMPATIBILITY.md` lists the Fabric builds' gaps (the owner's decision, 2026-11-02: no patch for Sodium's
   Fabric build, load it and list them) and how Essential loads; the README and the roadmap's tables say what loads
   where.
-- **Open, in the roadmap's findings:** fixed, to verify: NET-10 (Cardinal Components API's sync) and CORPUS-54 on
-  NeoForge (Puzzles Lib's screen effect hook on 1.21.1); open: CORPUS-62 (Supplementaries' models through Moonlight's
-  loaders on 1.21.1), PROVIDER-8 (the test mod's checks that fail with Forgified Fabric API's modules on 1.21.1),
+- **Open, in the roadmap's findings:** fixed, to verify: NET-10 (Cardinal Components API's sync), CORPUS-54 on
+  NeoForge (Puzzles Lib's screen effect hook on 1.21.1) and CORPUS-62 (Supplementaries' models through Moonlight's
+  loaders on 1.21.1); open: PROVIDER-8 (the test mod's checks that fail with Forgified Fabric API's modules on 1.21.1),
   KEYMAP-1 (documented), and the Fabric builds' gaps `COMPATIBILITY.md` lists.
   On Forge, the refusals stay until the Forge sync and its runs.
 - **Verified:** extended runs 41471044589 and 41477591558, every job green on all five NeoForge versions, the
