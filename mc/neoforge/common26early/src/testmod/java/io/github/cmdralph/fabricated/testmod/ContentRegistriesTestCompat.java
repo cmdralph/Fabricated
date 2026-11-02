@@ -19,8 +19,12 @@ import net.minecraft.world.level.gameevent.GameEvent;
 
 /** {@link ContentRegistriesTest}'s registrations under this version's API names, and the checks only it has. */
 final class ContentRegistriesTestCompat {
-	/** The checks another mod's fabric-content-registries-v0 answers differently, as its source reads (PROVIDER-8). */
-	static final Map<String, String> PROVIDERS_ANSWERS = Map.of();
+	/**
+	 * The checks another mod's fabric-content-registries-v0 answers differently, as its source reads (PROVIDER-8; on 26.1.2
+	 * and 26.2, PROVIDER-10).
+	 */
+	static final Map<String, String> PROVIDERS_ANSWERS = Map.of("vibration_frequency",
+			"Forgified Fabric API's vibration frequency registry writes vanilla's frequency table, which NeoForge doesn't read: it reads its data map");
 
 	private ContentRegistriesTestCompat() {
 	}

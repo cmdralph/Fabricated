@@ -2,6 +2,7 @@ package io.github.cmdralph.fabricated.testmod;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
@@ -265,11 +266,10 @@ public final class TransferTest implements ModInitializer {
 			chest.clearContent();
 			level.setBlockAndUpdate(CHEST, Blocks.AIR.defaultBlockState());
 			level.setBlockAndUpdate(CAULDRON, Blocks.AIR.defaultBlockState());
-			if (failed.isEmpty()) {
-				TestMod.LOGGER.info("FABRICATED-TEST transfer OK");
-			} else {
-				TestMod.LOGGER.error("FABRICATED-TEST transfer FAILED: {}", failed);
-			}
+			// The provider's answer read in Forgified Fabric API's 26.1.2 and 26.2 sources (PROVIDER-10); its items' fluid
+			// handlers aren't read to the end yet, so those items still fail.
+			TestMod.report("transfer", failed, "fabric-transfer-api-v1", Map.of(
+					"neo_sees_fabric_fluid", "Forgified Fabric API gives a Fabric fluid storage a NeoForge fluid handler on block entities only"));
 		});
 	}
 

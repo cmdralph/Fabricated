@@ -960,7 +960,9 @@ ladder check no longer calls); an attack block callback returning `FAIL` stops t
 breaking, where upstream cancels the left click (a creative player still breaks the block); a Fabric mod's sculk
 sensor frequency has no effect (it writes vanilla's table, NeoForge reads its data map); and a built-in resource pack a
 Fabric mod enables by default is offered but not selected (selected as the options load, which NeoForge 21.1 does
-before mods register their packs). Of the bridges to NeoForge Fabricated's own modules make, it has fewer: NeoForge's
+before mods register their packs). On 26.1.2 and 26.2, read in its sources (PROVIDER-10), the trapdoor tag, the attack
+block result and a vibration frequency do the same, and its transfer bridge gives a Fabric fluid storage a NeoForge
+fluid handler on block entities only; what else fails there with it is still being read. Of the bridges to NeoForge Fabricated's own modules make, it has fewer: NeoForge's
 `supportsEnchantment` doesn't ask Fabric's enchanting event (the enchanting table, anvil, `/enchant` and loot do, as
 upstream), NeoForge's `getCreatorModId` isn't answered from Fabric's `getCreatorNamespace`, and its transfer bridge
 connects Fabric's and NeoForge's storages on block entities only, not a Fabric item's fluid storage to NeoForge, and
@@ -1174,7 +1176,7 @@ tracked:
 | Essential's automatic updates (its Fabric build) | all | Essential loads from the launch after its loader's download, as a regular mod | DOWNLOAD-1 |
 | A Fabric mod's hook into the game's options that needs its initializer (Bobby's larger render distance limit) | 1.21.1 | NeoForge 21.1 creates the options before it loads mods, where Fabric creates them after the entrypoints; such a hook that throws then is skipped for that call, with a warning and a report line (ENTRY-2) | — |
 | A NeoForge model naming its loader in NeoForge's object form (`"loader": {"id": ...}`), with Moonlight's Fabric build installed | 1.21.1 | Moonlight's hook into vanilla's model deserializer, which NeoForge's runs first, reads `loader` as a string only and fails the model; not seen in the corpus | CORPUS-62 |
-| What Forgified Fabric API's modules do differently from upstream, where it provides them | 1.21.1 read | a provider's module is used as it is; on 1.21.1 its trapdoor tag, attack block result, sculk frequencies and default-enabled packs don't take effect, and it makes fewer bridges to NeoForge (enchanting, creator mod, transfer), as listed in *Mods that bring Fabric API or Fabric Loader* above; the test mod skips those checks with it | PROVIDER-8 |
+| What Forgified Fabric API's modules do differently from upstream, where it provides them | 1.21.1 read, 26.1.2 and 26.2 partly | a provider's module is used as it is; on 1.21.1 its trapdoor tag, attack block result, sculk frequencies and default-enabled packs don't take effect (on 26.1.2 and 26.2 the first three too, PROVIDER-10), and it makes fewer bridges to NeoForge (enchanting, creator mod, transfer), as listed in *Mods that bring Fabric API or Fabric Loader* above; the test mod skips those checks with it | PROVIDER-8, PROVIDER-10 |
 | Hooks pre-flight leaves out where NeoForge's code differs | per mod | each is in the report, with what NeoForge's code lacks and what is lost | LEAVE-1 (above) |
 
 ### Planned work, in order of impact

@@ -118,8 +118,9 @@ One entry per working session, newest first: what changed, and how it was verifi
   modules (PROVIDER-9), three checks asked for what only Fabricated's own modules do: the configuration `DISCONNECT`
   check, whose listener on a connection without a channel never reaches the provider's hook (it fires as the
   connection closes, as upstream's does), the networking bridge's log line, and an alias the test only adds to
-  Fabricated's registry sync. Those skip there, saying why. Its 26.1.2 and 26.2 modules' differences are still to read
-  (PROVIDER-10).
+  Fabricated's registry sync. Those skip there, saying why. On 26.1.2 and 26.2 (PROVIDER-10), read in its sources: the
+  trapdoor tag, attack block result and vibration frequency differ as on 1.21.1, and its fluid bridge covers block
+  entities only; the test mod skips those, and the rest of what fails there is still to read.
 - **Default method bridges on NeoForge 21.1** (CORPUS-63): where an interface a Fabric mod's mixin adds to a game class
   brings a second default of a method beside NeoForge's, the class declares the method on 21.1 too, calling NeoForge's,
   as from 21.11 on (CORPUS-11). On 21.1's ModLauncher nothing from the mods folder runs after Mixin: the loader's
@@ -174,7 +175,7 @@ One entry per working session, newest first: what changed, and how it was verifi
   where.
 - **Open, in the roadmap's findings:** fixed, to verify: CORPUS-64 (Fabric Seasons' read of a biome's climate) and
   DEFAULT-1 (a default from a superclass's interface); read, to verify: PROVIDER-9 (three server checks of Fabricated's
-  own modules); open: PROVIDER-10 (Forgified Fabric API's 26.x modules' differences), CORPUS-65 (Farmer's Delight's
+  own modules); partly read: PROVIDER-10 (Forgified Fabric API's 26.x modules' differences), CORPUS-65 (Farmer's Delight's
   recipe book categories on the 1.21.1 client), CORPUS-48 (Xaero's World Map's world unload, also seen on 1.21.1), KEYMAP-1 (documented), and
   the Fabric builds' gaps `COMPATIBILITY.md` lists.
   On Forge, the refusals stay until the Forge sync and its runs.

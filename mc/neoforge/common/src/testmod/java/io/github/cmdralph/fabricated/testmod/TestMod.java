@@ -337,7 +337,7 @@ public final class TestMod implements ModInitializer, DedicatedServerModInitiali
 		if (failed.isEmpty()) {
 			LOGGER.info("FABRICATED-TEST {} OK", check);
 		} else if (providedByAnotherMod(module) && providersAnswers.keySet().containsAll(failed)) {
-			LOGGER.info("FABRICATED-TEST {} SKIPPED: {} is another mod's, which answers {} as its source reads: {} (PROVIDER-8)", check, module, failed,
+			LOGGER.info("FABRICATED-TEST {} SKIPPED: {} is another mod's, which answers {} as its source reads: {} (PROVIDER-8, PROVIDER-10)", check, module, failed,
 					failed.stream().map(providersAnswers::get).collect(Collectors.joining("; ")));
 		} else {
 			LOGGER.error("FABRICATED-TEST {} FAILED: {}", check, failed);
