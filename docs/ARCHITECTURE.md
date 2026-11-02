@@ -152,7 +152,7 @@ The generated overlay `neoforge.mods.toml` uses `modLoader="fabricated"`, so FML
 
 ### 3.3 Nested jars (Fabric jar-in-jar)
 * Extracted **from the validated archive only**, to `<gameDir>/.fabricated/cache/v1/nested/<sha256>.jar` (content-addressed, so it's written once).
-* Max nesting depth is 3. Every level gets the same archive checks.
+* Max nesting depth is 8 (Polymer's bundle nests a library four jars deep, LIMIT-2); a top-level jar's nested jars are bounded in number (1024) and bytes whatever their depth. Every level gets the same archive checks. A `config/fabricated.json` holding an earlier version's default limits, as it wrote them, reads as today's.
 * Nested jars with `fabric.mod.json` become Fabric candidates. For duplicates by id, **highest version wins**, as in Fabric Loader. Fabric API modules nested inside mods are routed to the module plan (§6).
 * A nested jar without `fabric.mod.json` is rejected and reported (Loom gives every nested library one).
 
@@ -466,7 +466,7 @@ Read during discovery, before NeoForge's config system exists, so it's plain JSO
   "strictDependencies": false,
   "cache": { "enabled": true, "verifyIntegrity": true, "maxUnusedLaunches": 5 },
   "limits": { "maxJarBytes": 268435456, "maxEntryBytes": 134217728, "maxTotalUncompressedBytes": 536870912,
-              "maxEntries": 65536, "maxCompressionRatio": 100, "maxNestingDepth": 3 },
+              "maxEntries": 65536, "maxCompressionRatio": 100, "maxNestingDepth": 8 },
   "mods": {
     "examplemod": { "disabled": false, "skipMixins": ["examplemod.mixins.json:client.FooMixin"],
                     "skipEntrypoints": ["client"], "aliases": ["example"] }
