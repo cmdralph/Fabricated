@@ -31,6 +31,9 @@ import zipfile
 MAX_ENTRY = 64 << 20
 MAX_DEPTH = 3
 LINES = 250
+# A line longer than this is printed in pieces of it (a descriptor naming many types), up to PIECES of them.
+WIDTH = 300
+PIECES = 4
 # The jars a NeoForge install loads the game from, the patched ones first: 26.x's minecraft-client-patched jar holds
 # the whole game; 21.1's neoforge client jar holds the classes NeoForge patched over the remapped game jar; NeoForge's
 # own classes (its hooks) come last, from its universal jar.
@@ -148,7 +151,7 @@ def show(title, data, member):
         text = listing
     lines = text.splitlines()
     for line in lines[:LINES]:
-        print("  " + line.rstrip()[:300])
+        emit(line)
     if len(lines) > LINES:
         print(f"  ... {len(lines) - LINES} more line(s)")
 
@@ -197,6 +200,15 @@ def mod_classes(mods, needle):
                     yield where, entry, data_
 
 
+def emit(line):
+    """Prints a line of a listing, a long one in pieces, each after the first indented further."""
+    line = line.rstrip()
+    pieces = [line[i:i + WIDTH] for i in range(0, max(len(line), 1), WIDTH)][:PIECES]
+    print("  " + pieces[0])
+    for piece in pieces[1:]:
+        print("      " + piece)
+
+
 def refs(mods, what, limit):
     """Prints the methods of the mods' classes whose code names `what`, from up to `limit` classes; returns how many."""
     found = 0
@@ -213,7 +225,7 @@ def refs(mods, what, limit):
         for block in blocks[:6]:
             lines = block.splitlines()
             for line in lines[:60]:
-                print("  " + line.rstrip()[:300])
+                emit(line)
             if len(lines) > 60:
                 print(f"  ... {len(lines) - 60} more line(s)")
     if not found:
@@ -290,7 +302,7 @@ def main():
                         if not printed_before(title, data, printed):
                             print(f"-- {title}")
                             for line in data.decode("utf-8", "replace").splitlines()[:LINES]:
-                                print("  " + line.rstrip()[:300])
+                                emit(line)
                         found += 1
         elif kind == "mixins":
             accessors = []
@@ -306,7 +318,7 @@ def main():
                 print(f"-- {entry[:-6]} in {where}, a mixin of {what} (without code)")
                 text = without_code(listing)
                 for line in text.splitlines()[:LINES]:
-                    print("  " + line.rstrip()[:300])
+                    emit(line)
                 if "ACC_INTERFACE" in class_part(listing):
                     accessors.append(entry[:-6])
             # An accessor interface's callers: what the mod does with what it reaches.

@@ -1347,7 +1347,7 @@ jobs:
             shift
             [ -d "$RUNNER_TEMP/$run" ] || return 0
             echo "== $run"
-            python3 -I ci/javap-dump.py "$RUNNER_TEMP/$run" "$@" | cut -c1-300 || true
+            python3 -I ci/javap-dump.py "$RUNNER_TEMP/$run" "$@" | cut -c1-320 || true
           }
           dump client-malilib 'game:net.minecraft.world.item.ItemStack#getTooltipLines'
           # KEYMAP-1: OneConfig's accessor of KeyMapping's key map, which NeoForge retyped, and what its callers do with it.
@@ -1399,7 +1399,10 @@ jobs:
             report="$RUNNER_TEMP/client-malilib/run/logs/fabric-bridge-report.txt"
             if [ -f "$report" ]; then grep -h "MixinLevelRenderer" "$report" | cut -c1-600 | head -10 || true; fi
             if [ -d "$RUNNER_TEMP/client-malilib" ]; then
+              # NeoForge's build has two: their descriptors and flags, and whether one calls the other.
               python3 -I ci/javap-dump.py "$RUNNER_TEMP/client-malilib" 'game:net.minecraft.client.renderer.LevelRenderer#addMainPass' \
-                'vanilla:net.minecraft.client.renderer.LevelRenderer#addMainPass' | grep -E -A1 "^-- | addMainPass\(" | grep -v "^--$" || true
+                | grep -E "^-- | addMainPass\(|descriptor:|flags:|invoke[a-z]+ .*addMainPass|invokedynamic|stack=" | head -40 || true
+              python3 -I ci/javap-dump.py "$RUNNER_TEMP/client-malilib" 'vanilla:net.minecraft.client.renderer.LevelRenderer#addMainPass' \
+                | grep -E -A3 "^-- | addMainPass\(" | grep -v "^--$" || true
             fi
           fi
