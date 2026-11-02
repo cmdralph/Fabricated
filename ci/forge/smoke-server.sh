@@ -200,7 +200,9 @@ if $standins; then
 	check "Fabricated's in-game mod leaves out their packages and the mixin configs of the module, its manifest no longer naming them" "grep -q 'leaves out [0-9]* package(s) of the modules other mods provide, the mixin configs \[.*fabricated-forge-loot.mixins.json' logs/fabric-bridge-report.txt 2>/dev/null"
 	check "Fabricated's hooks into Forge's loot table loading stand down with its copy of the loot module, firing none of its events" "grep -q 'FABRICATED-FORGE-TEST loot left to its provider OK' logs/latest.log 2>/dev/null"
 	check "of two versions of a library Fabric mods nest, the newer loads" "grep -q 'Using standin_lib 1.1.0' logs/fabric-bridge-report.txt 2>/dev/null"
-	check "the linkage check counts the classes of the modules other mods provide" "! grep -q '== Linkage warnings' logs/fabric-bridge-report.txt 2>/dev/null"
+	# Without Fabric API the test mod's checks that need its other modules leave linkage warnings; none may name a class
+	# of the stand-ins'.
+	check "the linkage check counts the classes of the modules other mods provide" "python3 -I '$root/ci/forge/standin-linkage.py' '$extra' logs/fabric-bridge-report.txt"
 else
 	check "native fabric-loot-api-v3: Fabric's loot table events change dirt's loot table and drops on Forge's loot loading" "grep -q 'FABRICATED-FORGE-TEST loot OK' logs/latest.log 2>/dev/null"
 fi
