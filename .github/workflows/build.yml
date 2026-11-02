@@ -1375,23 +1375,18 @@ jobs:
           # APPLY-2: the method the game's worker threads hand what they stop on to, as each version names it.
           dump server-corpus 'game:net.minecraft.Util#onThreadException' 'game:net.minecraft.util.Util#onThreadException'
           if [ "${{ matrix.target.minecraft }}" = "1.21.1" ]; then
-            # The 1.21.1 advanced corpus server waited for its spawn chunks once a mixin failed in a world-gen worker: the
-            # failure in full, and whether Fabricated recorded the mixin for the next launch (APPLY-2).
-            for log in "$RUNNER_TEMP/server-advanced/logs/latest.log"; do
+            # CORPUS-61: Carpet's spawn redirect (the advanced corpus) and Friends & Foes' patrol hook (the corpus), at calls
+            # NeoForge's coremod points at its spawn event's hook: what pre-flight moved, and any failure as Mixin applied them.
+            for side in server-corpus server-advanced; do
+              echo "== $side: CORPUS-61"
+              report="$RUNNER_TEMP/$side/logs/fabric-bridge-report.txt"
+              if [ -f "$report" ]; then grep -h -E "finalizeMobSpawn|code transformers" "$report" | cut -c1-700 | head -6 || true; fi
+              log="$RUNNER_TEMP/$side/logs/latest.log"
               if [ -f "$log" ]; then
                 grep -h -m 3 -o "Critical injection failure.*" "$log" | cut -c1-1500 || true
                 grep -h -m 3 "failed as Mixin applied it" "$log" | cut -c1-700 || true
               fi
             done
-            # CORPUS-60: Ledger's server initializer, past FML's empty log marker property.
-            report="$RUNNER_TEMP/server-advanced/logs/fabric-bridge-report.txt"
-            if [ -f "$report" ]; then grep -h -m 2 "forge.logging.marker" "$report" | cut -c1-400 || true; fi
-            # CORPUS-50: Supplementaries' item tags, read by Moonlight's fuel data map as the corpus server loads its data packs.
-            log="$RUNNER_TEMP/server-corpus/logs/latest.log"
-            if [ -f "$log" ]; then grep -h -m 2 -o "Missing tag: 'supplementaries[^;]*" "$log" | cut -c1-300 || true; fi
-            # CORPUS-59: Cobblemon's client initializer, with its cooking pot screen's frames no longer computed anew (ENV-1).
-            log="$RUNNER_TEMP/client-advanced/run/logs/latest.log"
-            if [ -f "$log" ]; then grep -h -m 3 -E "TransformerClassWriter/\]: Failed to find class|CobblemonFabricClient threw" "$log" | cut -c1-500 || true; fi
           fi
           # LAMBDA-9: Litematica's schematic hooks into LevelRenderer.addMainPass's lambda, which NeoForge 26.2 gives one more
           # value: what pre-flight now reports of them, and addMainPass as NeoForge's and vanilla's code declare it.
