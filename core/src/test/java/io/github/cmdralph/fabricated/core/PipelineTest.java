@@ -1281,6 +1281,57 @@ class PipelineTest {
 	}
 
 	@Test
+	void anEnumMixinsInjectorStaysAMixinWithoutItsConstants(@TempDir Path game) throws Exception {
+		// CORPUS-65: Farmer's Delight's enum mixin into RecipeBookCategories adds an injector besides its constants. The
+		// constants go to the mod's enum extension file; the injector stays in the config, in a mixin that is no longer
+		// an enum (which FML would refuse), and passes pre-flight.
+		String kind = "net/minecraft/world/Kind";
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		Path cooking = TestJars.create().fabricModJson(TestJars.modJson("cooking", "1.0", "\"mixins\":[\"cooking.mixins.json\"]"))
+				.text("cooking.mixins.json", "{\"required\":true,\"package\":\"com.cooking.mixin\",\"mixins\":[\"KindMixin\"]}")
+				.bytes("com/cooking/mixin/KindMixin.class", TestEnums.mixin("com/cooking/mixin/KindMixin", kind, List.of(TestEnums.Constant.plain("COOKING_POT")), cw -> {
+					MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "handler", "()V", null, null);
+					AnnotationVisitor inject = mv.visitAnnotation("Lorg/spongepowered/asm/mixin/injection/Inject;", false);
+					AnnotationVisitor methods = inject.visitArray("method");
+					methods.visit(null, "tick");
+					methods.visitEnd();
+					AnnotationVisitor ats = inject.visitArray("at");
+					AnnotationVisitor at = ats.visitAnnotation(null, "Lorg/spongepowered/asm/mixin/injection/At;");
+					at.visit("value", "HEAD");
+					at.visitEnd();
+					ats.visitEnd();
+					inject.visit("require", 1);
+					inject.visitEnd();
+					mv.visitCode();
+					mv.visitInsn(Opcodes.RETURN);
+					mv.visitMaxs(0, 1);
+					mv.visitEnd();
+				}))
+				.write(mods.resolve("cooking.jar"));
+		Map<String, byte[]> gameClasses = Map.of(TARGET, targetClass(), kind, TestEnums.target(kind, true, List.of("()V"), List.of(), Map.of(), cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC, "tick", "()V", null, null);
+			mv.visitCode();
+			mv.visitInsn(Opcodes.RETURN);
+			mv.visitMaxs(0, 1);
+			mv.visitEnd();
+		}));
+		Pipeline.Result result = Pipeline.run(input(game, List.of(cooking), Namespace.OFFICIAL, gameClasses, null));
+
+		Map<String, Pipeline.LoadedMod> loaded = result.mods().stream().collect(Collectors.toMap(m -> m.translated().candidate().id(), m -> m));
+		assertEquals(Set.of("cooking"), loaded.keySet(), result.report().render());
+		try (SafeArchive overlay = SafeArchive.open(loaded.get("cooking").translated().overlay(), ArchiveLimits.DEFAULTS)) {
+			Map<?, ?> entry = (Map<?, ?>) Json.asList(Json.parseObject(overlay.readText("META-INF/fabricated/enum_extensions.json")).get("entries")).getFirst();
+			assertEquals("COOKING_POT", entry.get("name"));
+			String config = overlay.readText("cooking.mixins.json");
+			assertTrue(config == null || config.contains("KindMixin"), "the mixin stays in its config: " + config);
+			ClassNode kept = new ClassNode();
+			new ClassReader(overlay.read("com/cooking/mixin/KindMixin.class")).accept(kept, ClassReader.SKIP_CODE);
+			assertTrue((kept.access & Opcodes.ACC_ENUM) == 0 && kept.fields.isEmpty(), "no longer an enum, nor its constants");
+			assertEquals(List.of("handler"), kept.methods.stream().map(m -> m.name).toList());
+		}
+	}
+
+	@Test
 	void aClassTweakersEnumConstantsNeoForgeAddsNeedNoNewerMixin(@TempDir Path game) throws Exception {
 		// Farmer's Delight Refabricated on 1.21.11, whose NeoForge runs Mixin 0.16.5: its class tweaker declares the
 		// constants its enum mixins add, which Mixin adds from 0.17.1 only. NeoForge's loader adds those of its extensible

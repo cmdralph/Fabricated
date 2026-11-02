@@ -886,7 +886,8 @@ public final class ModTranslator {
 
 	/**
 	 * {@code skip} plus the enum mixins whose constants NeoForge's loader adds instead, from the mod's enum extension
-	 * file ({@link EnumExtensions}); their entries go to {@code enumEntries}, and the enums of every enum mixin to
+	 * file ({@link EnumExtensions}), but those with other methods, which stay a mixin without the constants (put in
+	 * {@code overlay}); their entries go to {@code enumEntries}, and the enums of every enum mixin to
 	 * {@code enumTargets} (only those, on a platform without enum extension files). An enum mixin into one of NeoForge's
 	 * extensible enums that the file can't carry becomes, where it can, an ordinary mixin adding its constants
 	 * ({@link EnumValuesMixins}), put in {@code overlay} with the delegate classes its constants' bodies become.
@@ -919,12 +920,19 @@ public final class ModTranslator {
 				int first = (int) enumEntries.stream().filter(e -> e.computed() != null && e.computed().owner().equals(owner)).count();
 				entries = EnumExtensions.named(entries, owner, first);
 			}
-			if (all == skip) all = new TreeSet<>(skip);
-			all.add(mixin);
+			// Its other methods (an injector into the enum) stay a mixin, without the constants (CORPUS-65).
+			byte[] rest = EnumExtensions.rest(data);
+			if (rest != null) {
+				overlay.put(config.internalName(mixin) + ".class", rest);
+			} else {
+				if (all == skip) all = new TreeSet<>(skip);
+				all.add(mixin);
+			}
 			enumEntries.addAll(entries);
 			findings.add(new PreflightFinding(Severity.INFO, configName, node.name.replace('/', '.'), "Its constants ("
 					+ entries.stream().map(EnumExtensions.Entry::name).collect(Collectors.joining(", ")) + ") go to one of NeoForge's"
-					+ " extensible enums, " + target.replace('/', '.') + ": NeoForge's loader adds them, from the mod's enum extension file", ""));
+					+ " extensible enums, " + target.replace('/', '.') + ": NeoForge's loader adds them, from the mod's enum extension file"
+					+ (rest != null ? "; its other methods stay a mixin into it" : ""), ""));
 		}
 		return all;
 	}
