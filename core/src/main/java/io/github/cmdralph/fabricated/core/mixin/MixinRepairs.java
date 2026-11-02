@@ -36,8 +36,8 @@ import org.objectweb.asm.tree.MethodNode;
 final class MixinRepairs extends PreflightPart {
 	private final MixinPreflight checker;
 	private final LambdaRepairs lambdas = new LambdaRepairs(classes);
-	private final OverloadRepairs overloads = new OverloadRepairs(classes);
 	private final CallRepairs calls = new CallRepairs(classes);
+	private final OverloadRepairs overloads = new OverloadRepairs(classes, calls);
 	private final ConstructorRepairs constructors = new ConstructorRepairs(classes);
 	private final LocalRepairs locals = new LocalRepairs(classes);
 

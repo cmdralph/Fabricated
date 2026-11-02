@@ -15,6 +15,7 @@ import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.AnnotationNode;
 import org.objectweb.asm.tree.ClassNode;
+import org.objectweb.asm.tree.InvokeDynamicInsnNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
 import org.objectweb.asm.tree.VarInsnNode;
@@ -259,25 +260,12 @@ final class CallRepairs extends PreflightPart {
 				name = ref.name();
 				desc = ref.desc();
 			}
-			String overload = null;
-			boolean named = false;
-			boolean ambiguous = false;
-			boolean staticCall = constructor;
-			int calls = 0;
-			for (MethodNode method : methods) {
-				for (AbstractInsnNode insn : method.instructions) {
-					if (!(insn instanceof MethodInsnNode call) || !call.owner.equals(owner) || !call.name.equals(name)) continue;
-					String callDesc = constructor ? call.desc.substring(0, call.desc.indexOf(')') + 1) + "L" + owner + ";" : call.desc;
-					if (callDesc.equals(desc)) {
-						named = true;
-					} else if (insertedArgument(desc, callDesc) >= 0 || pointOnly && !constructor && appendsArguments(desc, callDesc)) {
-						ambiguous |= overload != null && !overload.equals(callDesc);
-						overload = callDesc;
-						staticCall |= call.getOpcode() == Opcodes.INVOKESTATIC;
-						calls++;
-					}
-				}
-			}
+			Overloads found = overloadsCalled(methods, owner, name, desc, constructor, pointOnly);
+			String overload = found.overload();
+			boolean named = found.named();
+			boolean ambiguous = found.ambiguous();
+			boolean staticCall = found.staticCall();
+			int calls = found.calls();
 			// The call itself, when it is in none of the methods: in a hook of NeoForge's that took it over, a static method
 			// taking its receiver first, handled as a static call of that.
 			MethodInsnNode hook = named || overload != null || constructor ? null : hookCall(methods, owner, name, desc);
@@ -318,7 +306,7 @@ final class CallRepairs extends PreflightPart {
 			}
 			int ordinal = Annotations.value(at, "ordinal") instanceof Integer n ? n : -1;
 			if (named || overload == null || ambiguous || ordinal >= calls) continue;
-			int inserted = insertedArgument(desc, overload);
+			int inserted = hook == null && replacement == null && !constructor ? insertedArgumentOf(owner, name, desc, overload) : insertedArgument(desc, overload);
 			// A hook taking just the call's receiver and arguments takes the handlers as they are.
 			if (!pointOnly && !overload.equals(desc) && !bridgeTo(mixin, handler, injector, owner, desc, overload, inserted, staticCall, bridges)) continue;
 			for (int i = 0; i + 1 < at.values.size(); i += 2) {
@@ -344,6 +332,100 @@ final class CallRepairs extends PreflightPart {
 							+ "; the injection point is pointed there" + via);
 		}
 		return moved;
+	}
+
+	/**
+	 * What {@code methods} make of calls of {@code owner.name}: whether one is the named call ({@code desc}), and the
+	 * overload taking one more argument ({@link #insertedArgumentOf}) they make instead, how often, and whether more than
+	 * one such overload is made. With {@code pointOnly}, any overload taking more after the call's arguments
+	 * ({@link #appendsArguments}) counts. A constructor's calls are compared in the form {@code (args)Lowner;}.
+	 */
+	private Overloads overloadsCalled(List<MethodNode> methods, String owner, String name, String desc, boolean constructor, boolean pointOnly) {
+		String overload = null;
+		boolean named = false;
+		boolean ambiguous = false;
+		boolean staticCall = constructor;
+		int calls = 0;
+		for (MethodNode method : methods) {
+			for (AbstractInsnNode insn : method.instructions) {
+				if (!(insn instanceof MethodInsnNode call) || !call.owner.equals(owner) || !call.name.equals(name)) continue;
+				String callDesc = constructor ? call.desc.substring(0, call.desc.indexOf(')') + 1) + "L" + owner + ";" : call.desc;
+				if (callDesc.equals(desc)) {
+					named = true;
+				} else if ((constructor ? insertedArgument(desc, callDesc) : insertedArgumentOf(owner, name, desc, callDesc)) >= 0
+						|| pointOnly && !constructor && appendsArguments(desc, callDesc)) {
+					ambiguous |= overload != null && !overload.equals(callDesc);
+					overload = callDesc;
+					staticCall |= call.getOpcode() == Opcodes.INVOKESTATIC;
+					calls++;
+				}
+			}
+		}
+		return new Overloads(named, overload, ambiguous, staticCall, calls);
+	}
+
+	/** What {@link #overloadsCalled} found. */
+	private record Overloads(boolean named, String overload, boolean ambiguous, boolean staticCall, int calls) {
+	}
+
+	/**
+	 * {@link #insertedArgument(ClassNode, String, String, String)} for {@code owner}'s method, the class read only where
+	 * the types can't tell: {@code Language.loadFromJson(stream, output)}, which NeoForge passes on to an overload taking
+	 * a second {@code BiConsumer}, for components.
+	 */
+	private int insertedArgumentOf(String owner, String name, String desc, String overload) {
+		int byTypes = insertedArgument(desc, overload);
+		if (byTypes >= 0 || Type.getArgumentTypes(overload).length != Type.getArgumentTypes(desc).length + 1
+				|| !Type.getReturnType(desc).equals(Type.getReturnType(overload))) return byTypes;
+		return insertedArgument(gameTarget(owner), name, desc, overload);
+	}
+
+	/**
+	 * Copies of the injector's points as {@link #insertedArgumentRepairs} would point them in {@code method}: each
+	 * {@code INVOKE} point at a call {@code method} makes only through one overload taking one more argument, at that
+	 * overload's call, when the handler can be bridged to it. {@link OverloadRepairs#overloadRepairs} moves an injector to
+	 * an overload in which its points are found so; the later step makes the move and the bridge. Null when a point can't
+	 * be pointed so, or none needs to be.
+	 */
+	List<AnnotationNode> pointsThroughOverloads(ClassNode mixin, MethodNode handler, AnnotationNode injector, MethodNode method, Context ctx) {
+		boolean pointOnly = injector.desc.equals(MixinNames.INJECT) || injector.desc.equals(MixinNames.MODIFY_EXPRESSION_VALUE);
+		boolean condition = MixinNames.WRAP_WITH_CONDITION.contains(injector.desc);
+		if (!pointOnly && !condition && !injector.desc.equals(MixinNames.REDIRECT) && !injector.desc.equals(MixinNames.WRAP_OPERATION) || Annotations.value(injector, "slice") != null
+				|| (mixin.access & Opcodes.ACC_INTERFACE) != 0) return null;
+		List<AnnotationNode> ats = Annotations.list(Annotations.value(injector, "at"));
+		if (ats.isEmpty() || !pointOnly && ats.size() != 1) return null;
+		List<AnnotationNode> copies = new ArrayList<>();
+		boolean pointed = false;
+		for (AnnotationNode at : ats) {
+			AnnotationNode copy = new AnnotationNode(at.desc);
+			at.accept(copy);
+			copies.add(copy);
+			String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
+			if (!point.equals("INVOKE") || !(Annotations.value(at, "target") instanceof String raw)) continue;
+			MemberRef ref = MemberRef.parse(ctx.resolve(raw));
+			if (ref.fuzzy() || ref.owner() == null || ref.name() == null || ref.desc() == null) continue;
+			Overloads found = overloadsCalled(List.of(method), ref.owner(), ref.name(), ref.desc(), false, pointOnly);
+			if (found.named() || found.overload() == null) continue;
+			int ordinal = Annotations.value(at, "ordinal") instanceof Integer n ? n : -1;
+			if (found.ambiguous() || ordinal >= found.calls()
+					|| !pointOnly && !bridgeable(handler, injector, ref.owner(), ref.desc(), insertedArgumentOf(ref.owner(), ref.name(), ref.desc(), found.overload()),
+							found.staticCall())) return null;
+			Annotations.put(copy, "target", "L" + ref.owner() + ";" + ref.name() + found.overload());
+			pointed = true;
+		}
+		return pointed ? copies : null;
+	}
+
+	/** Whether {@link #bridgeTo} can bridge the handler to the overload, with one more argument at {@code inserted}. */
+	private static boolean bridgeable(MethodNode handler, AnnotationNode injector, String owner, String desc, int inserted, boolean staticCall) {
+		if (inserted < 0) return false;
+		List<Type> call = HandlerBridges.callParameters(Type.getObjectType(owner), desc, staticCall);
+		if (injector.desc.equals(MixinNames.WRAP_OPERATION)) {
+			call.add(Type.getType(MixinNames.OPERATION));
+			return HandlerBridges.sugarAfter(handler, call) != null;
+		}
+		Type result = MixinNames.WRAP_WITH_CONDITION.contains(injector.desc) ? Type.BOOLEAN_TYPE : Type.getReturnType(desc);
+		return HandlerBridges.sugarAfter(handler, call) != null && Type.getReturnType(handler.desc).equals(result);
 	}
 
 	/**
@@ -444,8 +526,9 @@ final class CallRepairs extends PreflightPart {
 			}
 			if (insn instanceof VarInsnNode load && insn.getOpcode() >= Opcodes.ILOAD && insn.getOpcode() <= Opcodes.ALOAD) {
 				pushed.add(!isStatic && load.var == 0 && insn.getOpcode() == Opcodes.ALOAD ? MixinNames.THIS : parameterAt.getOrDefault(load.var, -2));
-			} else if (insn.getOpcode() >= Opcodes.ACONST_NULL && insn.getOpcode() <= Opcodes.LDC) {
-				pushed.add(-1); // a constant
+			} else if (insn.getOpcode() >= Opcodes.ACONST_NULL && insn.getOpcode() <= Opcodes.LDC
+					|| insn instanceof InvokeDynamicInsnNode made && Type.getArgumentTypes(made.desc).length == 0) {
+				pushed.add(-1); // a constant, or a value made from none of the method's (a lambda capturing nothing)
 			} else {
 				return -1; // more than forwarding
 			}

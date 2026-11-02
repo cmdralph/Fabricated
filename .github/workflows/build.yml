@@ -1271,3 +1271,6 @@ jobs:
           dump client-polyfrost 'mixins:net/minecraft/class_304'
           dump client-advanced 'mod:nl.enjarai.doabarrelroll.mixin.client.key.KeyBindingAccessor' \
             'refs:nl/enjarai/doabarrelroll/mixin/client/key/KeyBindingAccessor'
+          # CORPUS-56: Continuity's sprite source hook captures locals in SpriteSourceList.list, which NeoForge 1.21.11 and
+          # 26.x made call an overload.
+          dump client-continuity 'game:net.minecraft.client.renderer.texture.atlas.SpriteSourceList#list' 'mod:*SpriteSourceListMixin#*'

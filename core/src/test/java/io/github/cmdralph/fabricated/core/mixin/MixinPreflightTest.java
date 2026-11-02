@@ -2236,6 +2236,133 @@ class MixinPreflightTest {
 	}
 
 	@Test
+	void aWrapperOfACallTheOverloadMakesThroughAnOverloadMovesWithBoth() throws Exception {
+		// OVERLOAD-1: PolyPlus wraps Language.loadFromJson(stream, output) in ClientLanguage.appendFrom, taking the
+		// resource there and the language code. NeoForge's appendFrom only calls an overload also taking a components map,
+		// whose loop calls loadFromJson's overload also taking a components consumer; loadFromJson(stream, output) passes a
+		// lambda capturing nothing for it (the types can't tell which of the two consumers is the added one).
+		String lang = "net/minecraft/locale/Lang";
+		String read = "(Ljava/lang/String;Ljava/lang/Runnable;)V";
+		String readAll = "(Ljava/lang/String;Ljava/lang/Runnable;Ljava/lang/Runnable;)V";
+		ClassWriter language = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		language.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, lang, null, "java/lang/Object", null);
+		MethodVisitor forward = language.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "read", read, null, null);
+		forward.visitCode();
+		forward.visitVarInsn(Opcodes.ALOAD, 0);
+		forward.visitVarInsn(Opcodes.ALOAD, 1);
+		forward.visitInvokeDynamicInsn("run", "()Ljava/lang/Runnable;", new org.objectweb.asm.Handle(Opcodes.H_INVOKESTATIC, "java/lang/invoke/LambdaMetafactory",
+				"metafactory", "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodType;"
+						+ "Ljava/lang/invoke/MethodHandle;Ljava/lang/invoke/MethodType;)Ljava/lang/invoke/CallSite;", false),
+				org.objectweb.asm.Type.getType("()V"), new org.objectweb.asm.Handle(Opcodes.H_INVOKESTATIC, lang, "lambda$read$0", "()V", false),
+				org.objectweb.asm.Type.getType("()V"));
+		forward.visitMethodInsn(Opcodes.INVOKESTATIC, lang, "read", readAll, false);
+		forward.visitInsn(Opcodes.RETURN);
+		forward.visitMaxs(0, 0);
+		forward.visitEnd();
+		MethodVisitor all = language.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "read", readAll, null, null);
+		all.visitCode();
+		all.visitInsn(Opcodes.RETURN);
+		all.visitMaxs(0, 0);
+		all.visitEnd();
+		language.visitEnd();
+
+		ClassWriter target = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		target.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		MethodVisitor append = target.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_DEPRECATED, "append", "(Ljava/lang/String;Ljava/util/Map;)V", null, null);
+		append.visitCode();
+		append.visitVarInsn(Opcodes.ALOAD, 0);
+		append.visitVarInsn(Opcodes.ALOAD, 1);
+		append.visitTypeInsn(Opcodes.NEW, "java/util/HashMap");
+		append.visitInsn(Opcodes.DUP);
+		append.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/util/HashMap", "<init>", "()V", false);
+		append.visitMethodInsn(Opcodes.INVOKESTATIC, TARGET, "append", "(Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;)V", false);
+		append.visitInsn(Opcodes.RETURN);
+		append.visitMaxs(0, 0);
+		append.visitEnd();
+		MethodVisitor overload = target.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "append", "(Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;)V", null, null);
+		org.objectweb.asm.Label start = new org.objectweb.asm.Label();
+		org.objectweb.asm.Label resourceStart = new org.objectweb.asm.Label();
+		org.objectweb.asm.Label end = new org.objectweb.asm.Label();
+		overload.visitCode();
+		overload.visitLabel(start);
+		overload.visitTypeInsn(Opcodes.NEW, "java/lang/StringBuilder");
+		overload.visitInsn(Opcodes.DUP);
+		overload.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/StringBuilder", "<init>", "()V", false);
+		overload.visitVarInsn(Opcodes.ASTORE, 3);
+		overload.visitLabel(resourceStart);
+		overload.visitVarInsn(Opcodes.ALOAD, 0);
+		overload.visitInsn(Opcodes.ACONST_NULL);
+		overload.visitInsn(Opcodes.ACONST_NULL);
+		overload.visitMethodInsn(Opcodes.INVOKESTATIC, lang, "read", readAll, false);
+		overload.visitInsn(Opcodes.RETURN);
+		overload.visitLabel(end);
+		overload.visitLocalVariable("code", "Ljava/lang/String;", null, start, end, 0);
+		overload.visitLocalVariable("map", "Ljava/util/Map;", null, start, end, 1);
+		overload.visitLocalVariable("components", "Ljava/util/Map;", null, start, end, 2);
+		overload.visitLocalVariable("resource", "Ljava/lang/StringBuilder;", null, resourceStart, end, 3);
+		overload.visitMaxs(0, 0);
+		overload.visitEnd();
+		target.visitEnd();
+		ClassIndex game = new ClassIndex(Map.of(TARGET, target.toByteArray(), lang, language.toByteArray())::get);
+
+		byte[] wrapper = mixin("com/example/mixin/Translations", false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "skipMalformed",
+					"(Ljava/lang/String;Ljava/lang/Runnable;" + OPERATION + "Ljava/lang/String;Ljava/lang/StringBuilder;)V", null, null);
+			AnnotationVisitor code = mv.visitParameterAnnotation(3, "Lcom/llamalad7/mixinextras/sugar/Local;", false);
+			code.visit("argsOnly", true);
+			code.visitEnd();
+			mv.visitParameterAnnotation(4, "Lcom/llamalad7/mixinextras/sugar/Local;", false).visitEnd();
+			AnnotationVisitor ann = mv.visitAnnotation(WRAP_OPERATION, false);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "append");
+			methods.visitEnd();
+			AnnotationVisitor ats = ann.visitArray("at");
+			AnnotationVisitor at = ats.visitAnnotation(null, AT);
+			at.visit("value", "INVOKE");
+			at.visit("target", "L" + lang + ";read" + read);
+			at.visitEnd();
+			ats.visitEnd();
+			ann.visitEnd();
+			mv.visitCode();
+			mv.visitInsn(Opcodes.RETURN);
+			mv.visitMaxs(0, 5);
+			mv.visitEnd();
+		});
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Translations", wrapper));
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Translations"));
+		assertEquals(1, preflight(game, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).size());
+
+		List<PreflightFinding> notes = new ArrayList<>();
+		byte[] repaired = preflight(game, mod::get, ClassBytesSource.EMPTY, false).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes)
+				.get("com/example/mixin/Translations.class");
+		assertNotNull(repaired, notes.toString());
+		assertEquals(2, notes.size(), notes.toString());
+		assertTrue(notes.get(0).message().contains("append(Ljava/lang/String;Ljava/util/Map;)V, whose code NeoForge moved into append(Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;)V"),
+				notes.toString());
+		assertTrue(notes.get(1).message().contains("which this game build makes through an overload with one more argument, read" + readAll), notes.toString());
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired).accept(node, 0);
+		MethodNode bridge = node.methods.stream().filter(m -> m.name.equals("skipMalformed$fabricated")).findFirst().orElseThrow();
+		assertEquals("(Ljava/lang/String;Ljava/lang/Runnable;Ljava/lang/Runnable;" + OPERATION + "Ljava/lang/String;Ljava/lang/StringBuilder;)V", bridge.desc);
+		AnnotationNode moved = Annotations.find(bridge, WRAP_OPERATION);
+		assertNotNull(moved, "the injector moved to the bridge");
+		assertEquals(List.of("append(Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;)V"), Annotations.value(moved, "method"));
+		assertEquals("L" + lang + ";read" + readAll, Annotations.value(Annotations.list(Annotations.value(moved, "at")).getFirst(), "target"));
+		assertEquals(0, Annotations.value(Annotations.ofParameter(bridge, 5).getFirst(), "ordinal"), "the one resource in scope at the call");
+		mod.put("com/example/mixin/Translations", repaired);
+		List<PreflightFinding> after = preflight(game, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(after.isEmpty(), after.toString());
+
+		// Without the class whose method says which consumer is the added one, nothing moves: the injector isn't moved to
+		// an overload where its point can't be pointed.
+		ClassIndex unclear = new ClassIndex(Map.of(TARGET, target.toByteArray())::get);
+		List<PreflightFinding> none = new ArrayList<>();
+		assertTrue(preflight(unclear, Map.of("com/example/mixin/Translations", wrapper)::get, ClassBytesSource.EMPTY, false)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), none).isEmpty(), none.toString());
+		assertEquals(List.of(), none);
+	}
+
+	@Test
 	void anInjectionIntoAMethodNeoForgeDeprecatedIsPointedAtItsReplacement() throws Exception {
 		// DEPRECATED-1: FrozenLib hooks BoneMealItem.growCrop, which NeoForge's build deprecates for applyBonemeal, taking
 		// the player too, and keeps only to call that on a server level (a jump, so no plain overload).

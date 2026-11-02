@@ -29,8 +29,11 @@ import org.objectweb.asm.tree.VarInsnNode;
  * overload NeoForge turned the method into, and a constant NeoForge split into another method.
  */
 final class OverloadRepairs extends PreflightPart {
-	OverloadRepairs(PreflightClasses classes) {
+	private final CallRepairs calls;
+
+	OverloadRepairs(PreflightClasses classes, CallRepairs calls) {
 		super(classes);
+		this.calls = calls;
 	}
 
 	/**
@@ -104,7 +107,10 @@ final class OverloadRepairs extends PreflightPart {
 	 * captured locals aren't (the method only calls the overload now) moves the same way. A handler that takes the
 	 * method's parameters gets them from a bridge taking the overload's, when the method only passes its own parameters
 	 * on with one value it works out ({@link #insertedParameter}, as {@code MappedRegistry.register} with an id). Its
-	 * {@code @Local}s must find their locals in the overload ({@link #localsInOverload}).
+	 * {@code @Local}s must find their locals in the overload ({@link #localsInOverload}). Where the overload makes a call
+	 * the injector names through an overload of that call taking one more argument, the points count as found there as
+	 * {@link CallRepairs#pointsThroughOverloads} would point them, and the call repairs, which run later, point them so
+	 * (OVERLOAD-1).
 	 */
 	List<String> overloadRepairs(ClassNode mixin, MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx,
 			List<MethodNode> bridges) {
@@ -141,6 +147,7 @@ final class OverloadRepairs extends PreflightPart {
 			if (chosen == null) continue;
 			MethodNode overload;
 			String how;
+			List<AnnotationNode> found;
 			Verdict inChosen = InjectionPoints.pointsIn(ats, slices, chosen, ctx);
 			boolean localsGone = inject && inChosen == Verdict.FOUND && MixinPreflight.missingLocal(handler, List.of(chosen)) != null;
 			if (inChosen == Verdict.MISSING || localsGone) {
@@ -150,8 +157,16 @@ final class OverloadRepairs extends PreflightPart {
 				boolean split = overload == null && inChosen == Verdict.MISSING;
 				if (split) overload = splitOff(chosen, target, ats, slices, ctx);
 				if (overload == null || (overload.access & Opcodes.ACC_STATIC) != (chosen.access & Opcodes.ACC_STATIC)
-						|| !split && !Type.getReturnType(overload.desc).equals(Type.getReturnType(chosen.desc))
-						|| InjectionPoints.pointsIn(ats, slices, overload, ctx) != Verdict.FOUND) continue;
+						|| !split && !Type.getReturnType(overload.desc).equals(Type.getReturnType(chosen.desc))) continue;
+				// The points as they are there, or as the call repairs will point them there: NeoForge's overload may make a
+				// call the injector names through an overload of that call taking one more argument too, as
+				// ClientLanguage.appendFrom's, which passes Language.loadFromJson a components consumer (PolyPlus's hooks).
+				// Those repairs then move the points, and bridge the handler; this one can't, as they would bridge it again.
+				found = ats;
+				if (InjectionPoints.pointsIn(ats, slices, overload, ctx) != Verdict.FOUND) {
+					found = split || localsGone || !slices.isEmpty() ? null : calls.pointsThroughOverloads(mixin, handler, injector, overload, ctx);
+					if (found == null || InjectionPoints.pointsIn(found, slices, overload, ctx) != Verdict.FOUND) continue;
+				}
 				// Its callback info must suit the method it moves to: a returnable one only one returning the same. A handler
 				// sharing the mixin's state with others that may stay moves only with them, which this doesn't do (HOOK-2's).
 				if (split && (inject && !Type.getReturnType(overload.desc).equals(Type.getReturnType(chosen.desc))
@@ -161,8 +176,8 @@ final class OverloadRepairs extends PreflightPart {
 				boolean sameParameters = Arrays.equals(Type.getArgumentTypes(chosen.desc), Type.getArgumentTypes(overload.desc));
 				int captured = sameParameters ? -1 : inject ? (takesParameters ? 0 : -1) : capturedFrom(handler, chosen);
 				int inserted = replacement != null ? CallRepairs.insertedArgument(chosen.desc, overload.desc) : insertedParameter(chosen, overload);
-				List<Runnable> locals = LocalRepairs.localsFit(handler, overload) ? List.of() : localsInOverload(handler, overload, inserted, ats, ctx);
-				if (locals == null || captured >= 0 && (inserted < 0 || selectors.size() != 1 || (mixin.access & Opcodes.ACC_INTERFACE) != 0)) continue;
+				List<Runnable> locals = LocalRepairs.localsFit(handler, overload) ? List.of() : localsInOverload(handler, overload, inserted, found, ctx);
+				if (locals == null || captured >= 0 && (found != ats || inserted < 0 || selectors.size() != 1 || (mixin.access & Opcodes.ACC_INTERFACE) != 0)) continue;
 				locals.forEach(Runnable::run);
 				if (captured >= 0) {
 					bridges.add(HandlerBridges.insertedParameterBridge(mixin.name, handler, injector, captured, Type.getArgumentTypes(chosen.desc).length,
