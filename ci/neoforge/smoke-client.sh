@@ -282,6 +282,7 @@ check "FABRICATED-TEST client join event OK" "native client networking: join eve
 check "FABRICATED-TEST client networking round trip OK" "native networking: client to integrated server and back"
 check "FABRICATED-TEST late payload type round trip OK" "native networking: a payload type the server registered as it started (NET-3)"
 check "FABRICATED-TEST minecraft namespace payload round trip OK" "native networking: a payload type in the minecraft namespace, which NeoForge refuses to register (BetterEnd, NET-4)"
+check "FABRICATED-TEST payload encoded once OK" "a payload whose codec empties what it writes arrives whole: encoded once, as on Fabric, where NeoForge's splitter measures it first (Cardinal Components API, NET-10)"
 case "$mc" in 26.*)
 	check "FABRICATED-TEST packet context while encoding OK" "Fabric's packet context, filled as Fabric API fills it, while NeoForge's splitter measures a packet (Polymer, NET-7)"
 	check "FABRICATED-TEST packet context while decoding a large payload OK" "Fabric's packet context while NeoForge's splitter reassembles a payload (NET-7)"

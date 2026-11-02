@@ -60,6 +60,8 @@
     "NetworkRegistryHandlersAccessor",
     "NetworkRegistryUnregisteredPayloadMixin",
     "VanillaNamespacePayloadMixin",
+    "GenericPacketSplitterMeasureMixin",
+    "PacketEncoderMeasuredMixin",
     "PacketDecoderContextMixin",
     "PacketEncoderContextMixin",
     "GenericPacketSplitterContextMixin",

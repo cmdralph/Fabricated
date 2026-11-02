@@ -58,6 +58,7 @@ public final class ClientTestMod implements ClientModInitializer {
 		} else {
 			TestMod.LOGGER.info("FABRICATED-TEST minecraft namespace payload round trip SKIPPED: {}", NetworkingTest.ANOTHER_MODS);
 		}
+		ClientPlayNetworking.registerGlobalReceiver(NetworkingTest.BufferPing.TYPE, (payload, context) -> NetworkingTest.BufferPing.received(payload));
 		ClientPlayNetworking.registerGlobalReceiver(NetworkingTest.Ping.TYPE, (payload, context) -> {
 			if (payload.value() == 42) TestMod.LOGGER.info("FABRICATED-TEST client networking round trip OK");
 		});

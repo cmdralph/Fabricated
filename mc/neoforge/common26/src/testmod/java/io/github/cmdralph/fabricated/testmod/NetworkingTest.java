@@ -1,5 +1,7 @@
 package io.github.cmdralph.fabricated.testmod;
 
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
@@ -94,6 +96,43 @@ public final class NetworkingTest implements ModInitializer {
 		}
 	}
 
+	/**
+	 * A payload carrying a buffer, with a codec writing it as Cardinal Components API's sync payloads do
+	 * ({@code writeBytes(ByteBuf)}, which reads the buffer to its end), so a second encoding of the same packet writes
+	 * an empty buffer. Fabric encodes a packet once; NeoForge's packet splitter encodes it to measure it, before
+	 * vanilla's encoder does (NET-10).
+	 */
+	public record BufferPing(ByteBuf data) implements CustomPacketPayload {
+		public static final int VALUE = 0x5EEDCAFE;
+		public static final Type<BufferPing> TYPE = new Type<>(Identifier.fromNamespaceAndPath("fabricated_testmod", "buffer_ping"));
+		public static final StreamCodec<RegistryFriendlyByteBuf, BufferPing> CODEC = StreamCodec.of((buf, ping) -> {
+			buf.writeVarInt(ping.data().readableBytes());
+			buf.writeBytes(ping.data());
+		}, buf -> {
+			int length = buf.readVarInt();
+			ByteBuf copy = Unpooled.buffer(length, length);
+			buf.readBytes(copy, length);
+			return new BufferPing(copy);
+		});
+
+		@Override
+		public Type<? extends CustomPacketPayload> type() {
+			return TYPE;
+		}
+
+		/** The client's check of what arrived: the four bytes the server sent. */
+		static void received(BufferPing ping) {
+			int bytes = ping.data().readableBytes();
+			if (bytes == Integer.BYTES && ping.data().getInt(ping.data().readerIndex()) == VALUE) {
+				TestMod.LOGGER.info("FABRICATED-TEST payload encoded once OK");
+			} else if (!OWN) {
+				TestMod.LOGGER.info("FABRICATED-TEST payload encoded once SKIPPED: {} ({} of {} bytes arrived)", ANOTHER_MODS, bytes, Integer.BYTES);
+			} else {
+				TestMod.LOGGER.error("FABRICATED-TEST payload encoded once FAILED: {} of {} bytes arrived", bytes, Integer.BYTES);
+			}
+		}
+	}
+
 	@Override
 	public void onInitialize() {
 		PayloadTypeRegistry.serverboundPlay().register(Ping.TYPE, Ping.CODEC);
@@ -109,9 +148,11 @@ public final class NetworkingTest implements ModInitializer {
 			ServerPlayNetworking.registerGlobalReceiver(VanillaPing.TYPE, (payload, context) -> context.responseSender().sendPacket(new VanillaPing(payload.value() + 1)));
 		}
 		PayloadTypeRegistry.clientboundPlay().register(ContextPing.TYPE, ContextPing.CODEC);
+		PayloadTypeRegistry.clientboundPlay().register(BufferPing.TYPE, BufferPing.CODEC);
 		ServerPlayConnectionEvents.JOIN.register((listener, sender, server) -> {
 			TestMod.LOGGER.info("FABRICATED-TEST networking join event (packet context: {})", ContextPing.describe(((PacketContextProvider) listener).getPacketContext()));
 			sender.sendPacket(new ContextPing(new byte[ContextPing.SIZE], false));
+			sender.sendPacket(new BufferPing(Unpooled.copyInt(BufferPing.VALUE)));
 		});
 		if (ServerPlayNetworking.getGlobalReceivers().contains(Ping.TYPE.id())) {
 			TestMod.LOGGER.info("FABRICATED-TEST networking registration OK");

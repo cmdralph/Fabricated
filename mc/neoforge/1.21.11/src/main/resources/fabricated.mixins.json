@@ -54,6 +54,8 @@
     "NetworkRegistryHandlersAccessor",
     "NetworkRegistryUnregisteredPayloadMixin",
     "VanillaNamespacePayloadMixin",
+    "GenericPacketSplitterMeasureMixin",
+    "PacketEncoderMeasuredMixin",
     "NetworkRegistryMixin",
     "MenuProviderMixin",
     "ServerPlayerMenuMixin",
