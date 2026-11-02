@@ -49,14 +49,16 @@ import net.minecraft.world.level.block.state.BlockState;
  * NeoForge's renderer test mod checks them on NeoForge 1.21.11; Forge draws them through upstream's hooks): custom
  * blockstate model types ({@code fabric:type}), one the test block's model, the other the part of the nested test block's
  * vanilla multipart model. Each emits the quads of the vanilla model it wraps, and logs once when a chunk section draws
- * it (vanilla's, or Sodium's), once when it is drawn as a moving block and once with the breaking overlay.
+ * it (vanilla's, or Sodium's), once when it is drawn as a moving block, once with the breaking overlay and once as a
+ * minecart's block (a block drawn as an entity), naming the seam that sent it to Fabric's renderer.
  *
  * <p>Two more Fabric models throw once a vanilla chunk section draws them, after emitting their quads and pushing a
  * transform they never pop (FRAPI rule 8): one the broken test block's model, the other a part of the broken nested
  * test block's multipart model. Each logs when it is then asked for its parts, and the transform logs a failure if any
  * later quad reaches it. They throw only where Fabricated guards the call (its {@code FabricBlockRendering} on the
  * stack), not into another renderer's hooks. A third throws inside a Fabric model wrapping it ({@link WrapperCheckModel}), as
- * Continuity's models wrap others: the throw is the wrapped model's, so the wrapper's class keeps Fabric's renderer.
+ * Continuity's models wrap others: the throw is the wrapped model's, so the wrapper's class keeps Fabric's renderer. A
+ * fourth does the same the first time it is drawn as an entity (the block a minecart carries).
  *
  * <p>The test item's model is wrapped after it is baked ({@link ItemCheckModel}): it adds a layer of quads emitted
  * through Fabric's renderer API, and logs once when Fabric's renderer draws them in the hotbar (a screen), in hand, as a
@@ -72,6 +74,7 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 		CustomUnbakedBlockStateModel.register(Identifier.fromNamespaceAndPath("fabricated_testmod_frapi", "nested_check"), CheckModel.Unbaked.NESTED);
 		CustomUnbakedBlockStateModel.register(Identifier.fromNamespaceAndPath("fabricated_testmod_frapi", "broken_check"), BrokenModel.CODEC);
 		CustomUnbakedBlockStateModel.register(Identifier.fromNamespaceAndPath("fabricated_testmod_frapi", "broken_part_check"), BrokenPartModel.CODEC);
+		CustomUnbakedBlockStateModel.register(Identifier.fromNamespaceAndPath("fabricated_testmod_frapi", "broken_entity_check"), BrokenEntityModel.CODEC);
 		ModelLoadingPlugin.register(plugin -> plugin.modifyItemModelAfterBake().register((model, context) ->
 				context.itemId().equals(FrapiTestMod.FABRIC_ITEM_ID) ? new ItemCheckModel(model) : model));
 		ModelLoadingPlugin.register(plugin -> plugin.modifyBlockModelAfterBake().register((model, context) ->
@@ -99,17 +102,25 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 	}
 
 	/**
-	 * What the game is drawing, by the innermost of its frames on the stack that says: {@code "breaking"} for the breaking
-	 * overlay (a method whose name says so), {@code "moving"} for a moving block (the block feature renderer), or null.
-	 * The level a caller passes doesn't tell: the overlay's is a moving block's render state, and a moving block's parts
-	 * are collected with the client level. This class's own frames don't count.
+	 * What the game is drawing, by the innermost of its frames on the stack that says: {@code "entity"} for a block drawn
+	 * as an entity or on its own (the block renderer's method for it, which the block feature renderer calls for a
+	 * minecart's block), {@code "breaking"} for the breaking overlay (a method whose name says so), {@code "moving"} for a
+	 * moving block (the block feature renderer), or null. The level a caller passes doesn't tell: the overlay's is a
+	 * moving block's render state, and a moving block's parts are collected with the client level. This class's own
+	 * frames don't count.
 	 */
 	private static @Nullable String drawing() {
 		String self = FrapiClientTestMod.class.getName();
 		return StackWalker.getInstance().walk(frames -> frames.filter(frame -> !frame.getClassName().startsWith(self))
-				.map(frame -> frame.getMethodName().contains("Breaking") || frame.getMethodName().contains("DestroyAnimation") ? "breaking"
+				.map(frame -> frame.getMethodName().equals("renderSingleBlock") || frame.getMethodName().equals("renderBlockAsEntity") ? "entity"
+						: frame.getMethodName().contains("Breaking") || frame.getMethodName().contains("DestroyAnimation") ? "breaking"
 						: frame.getClassName().endsWith(".BlockFeatureRenderer") ? "moving" : null)
 				.filter(Objects::nonNull).findFirst().orElse(null));
+	}
+
+	/** Whether a block model is being drawn as an entity, or on its own (see {@link #drawing}). Walks the stack: test code only. */
+	static boolean drawnAsEntity(BlockAndTintGetter level) {
+		return !isSection(level) && "entity".equals(drawing());
 	}
 
 	/**
@@ -119,6 +130,7 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 	private static final class CheckModel implements BlockStateModel, FabricBlockStateModel {
 		private static final AtomicBoolean MOVING = new AtomicBoolean();
 		private static final AtomicBoolean BREAKING = new AtomicBoolean();
+		private static final AtomicBoolean ENTITY = new AtomicBoolean();
 		private final BlockStateModel wrapped;
 		private final String check;
 		private final AtomicBoolean logged = new AtomicBoolean();
@@ -146,12 +158,14 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 				if (!logged.getAndSet(true)) {
 					FrapiTestMod.LOGGER.info("FABRICATED-TEST {} ({} in {} on {}, seam={})", check, state, level.getClass().getName(), Thread.currentThread().getName(), seam());
 				}
-			} else if (!BREAKING.get() || !MOVING.get()) {
+			} else if (!BREAKING.get() || !MOVING.get() || !ENTITY.get()) {
 				String drawing = drawing();
 				if ("breaking".equals(drawing) && !BREAKING.getAndSet(true)) {
-					FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi breaking OK ({} in {})", state, level.getClass().getName());
+					FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi breaking OK ({} in {}, seam={})", state, level.getClass().getName(), seam());
 				} else if ("moving".equals(drawing) && !MOVING.getAndSet(true)) {
-					FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi moving block OK ({} in {})", state, level.getClass().getName());
+					FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi moving block OK ({} in {}, seam={})", state, level.getClass().getName(), seam());
+				} else if ("entity".equals(drawing) && !ENTITY.getAndSet(true)) {
+					FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi entity block OK ({} in {}, seam={})", state, level.getClass().getName(), seam());
 				}
 			}
 		}
@@ -293,9 +307,9 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 	}
 
 	/**
-	 * A Fabric model that throws the first time a vanilla chunk section draws it, after emitting the wrapped model's quads
-	 * and pushing a transform it never pops; it logs once when it is then asked for its parts (its vanilla method). Under
-	 * Sodium (its own chunk sections) it never throws.
+	 * A Fabric model that throws the first time it is drawn where {@link #throwsIn} says (a vanilla chunk section, or as an
+	 * entity), after emitting the wrapped model's quads and pushing a transform it never pops; it logs once when it is
+	 * then asked for its parts (its vanilla method). Under Sodium (its own chunk sections) the section ones never throw.
 	 */
 	private abstract static class ThrowingModel implements BlockStateModel, FabricBlockStateModel {
 		private final BlockStateModel wrapped;
@@ -327,8 +341,7 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 		@Override
 		public void emitQuads(QuadEmitter emitter, BlockAndTintGetter level, BlockPos pos, BlockState state, RandomSource random, Predicate<@Nullable Direction> cullTest) {
 			((FabricBlockStateModel) wrapped).emitQuads(emitter, level, pos, state, random, cullTest);
-			// Only through Fabricated's seam: another mod's renderer hooks (Forgified Fabric API's) aren't Fabricated's to guard.
-			if (!(level instanceof RenderSectionRegion) || threw.get() || !seam().equals("Fabricated") || threw.getAndSet(true)) return;
+			if (threw.get() || !throwsIn(level) || threw.getAndSet(true)) return;
 			AtomicBoolean leaked = new AtomicBoolean();
 			emitter.pushTransform(quad -> {
 				if (!leaked.getAndSet(true)) FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi leaked transform FAILED (a quad after {} threw reached its transform)", name);
@@ -338,16 +351,44 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 			throw new IllegalStateException("FABRICATED-TEST: " + name + " throws on purpose (FRAPI rule 8's check)");
 		}
 
-		/** {@code {"fabric:type": "fabricated_testmod_frapi:broken_check" or "...:broken_part_check", "model": <a variant>}}. */
-		record Unbaked(BlockStateModel.Unbaked model, boolean part) implements CustomUnbakedBlockStateModel {
+		/**
+		 * Whether it throws when drawn with this level (the first time only), and only through Fabricated's seam: another
+		 * mod's renderer hooks (Forgified Fabric API's) aren't Fabricated's to guard.
+		 */
+		abstract boolean throwsIn(BlockAndTintGetter level);
+
+		/** Which of the broken models a blockstate names. */
+		enum Kind {
+			MODEL, PART, ENTITY;
+
+			MapCodec<Unbaked> codec() {
+				return switch (this) {
+					case MODEL -> BrokenModel.CODEC;
+					case PART -> BrokenPartModel.CODEC;
+					case ENTITY -> BrokenEntityModel.CODEC;
+				};
+			}
+
+			static MapCodec<Unbaked> newCodec(Kind kind) {
+				return BlockStateModel.Unbaked.CODEC.fieldOf("model").xmap(model -> new Unbaked(model, kind), Unbaked::model);
+			}
+		}
+
+		/** {@code {"fabric:type": "fabricated_testmod_frapi:broken_check", "...:broken_part_check" or "...:broken_entity_check", "model": <a variant>}}. */
+		record Unbaked(BlockStateModel.Unbaked model, Kind kind) implements CustomUnbakedBlockStateModel {
 			@Override
 			public MapCodec<Unbaked> codec() {
-				return part ? BrokenPartModel.CODEC : BrokenModel.CODEC;
+				return kind.codec();
 			}
 
 			@Override
 			public BlockStateModel bake(ModelBaker baker) {
-				return part ? new BrokenPartModel(model.bake(baker)) : new BrokenModel(model.bake(baker));
+				BlockStateModel baked = model.bake(baker);
+				return switch (kind) {
+					case MODEL -> new BrokenModel(baked);
+					case PART -> new BrokenPartModel(baked);
+					case ENTITY -> new BrokenEntityModel(baked);
+				};
 			}
 
 			@Override
@@ -359,11 +400,15 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 
 	/** The broken test block's model: Fabricated marks its class itself. */
 	private static final class BrokenModel extends ThrowingModel {
-		static final MapCodec<ThrowingModel.Unbaked> CODEC = BlockStateModel.Unbaked.CODEC.fieldOf("model").xmap(model -> new ThrowingModel.Unbaked(model, false),
-				ThrowingModel.Unbaked::model);
+		static final MapCodec<ThrowingModel.Unbaked> CODEC = Kind.newCodec(Kind.MODEL);
 
 		BrokenModel(BlockStateModel wrapped) {
 			super(wrapped, "broken model");
+		}
+
+		@Override
+		boolean throwsIn(BlockAndTintGetter level) {
+			return level instanceof RenderSectionRegion && seam().equals("Fabricated");
 		}
 	}
 
@@ -371,6 +416,11 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 	private static final class BrokenWrappedModel extends ThrowingModel {
 		BrokenWrappedModel(BlockStateModel wrapped) {
 			super(wrapped, "wrapped model");
+		}
+
+		@Override
+		boolean throwsIn(BlockAndTintGetter level) {
+			return level instanceof RenderSectionRegion && seam().equals("Fabricated");
 		}
 	}
 
@@ -411,11 +461,29 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 
 	/** A part of the broken nested test block's multipart model: Fabricated finds its class from the stack trace. */
 	private static final class BrokenPartModel extends ThrowingModel {
-		static final MapCodec<ThrowingModel.Unbaked> CODEC = BlockStateModel.Unbaked.CODEC.fieldOf("model").xmap(model -> new ThrowingModel.Unbaked(model, true),
-				ThrowingModel.Unbaked::model);
+		static final MapCodec<ThrowingModel.Unbaked> CODEC = Kind.newCodec(Kind.PART);
 
 		BrokenPartModel(BlockStateModel wrapped) {
 			super(wrapped, "broken part");
+		}
+
+		@Override
+		boolean throwsIn(BlockAndTintGetter level) {
+			return level instanceof RenderSectionRegion && seam().equals("Fabricated");
+		}
+	}
+
+	/** The model of the block the second minecart carries, which throws when drawn as an entity. */
+	private static final class BrokenEntityModel extends ThrowingModel {
+		static final MapCodec<ThrowingModel.Unbaked> CODEC = Kind.newCodec(Kind.ENTITY);
+
+		BrokenEntityModel(BlockStateModel wrapped) {
+			super(wrapped, "broken entity model");
+		}
+
+		@Override
+		boolean throwsIn(BlockAndTintGetter level) {
+			return drawnAsEntity(level) && seam().equals("Fabricated");
 		}
 	}
 }

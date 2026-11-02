@@ -77,7 +77,10 @@ import net.minecraft.world.level.block.state.BlockState;
 public final class FrapiClientTestMod implements ClientModInitializer {
 	@Override
 	public void onInitializeClient() {
-		LevelRenderEvents.START_MAIN.register(context -> TerrainCheckModel.frames++);
+		LevelRenderEvents.START_MAIN.register(context -> {
+			// Logged once: whether the event fires at all tells an outline not drawn from frames not counted.
+			if (TerrainCheckModel.frames++ == 0) FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi level render events fire (START_MAIN)");
+		});
 		AtomicBoolean wrapped = new AtomicBoolean();
 		ModelLoadingPlugin.register(plugin -> plugin.modifyBlockModelAfterBake().register((model, context) -> {
 			Identifier block = BuiltInRegistries.BLOCK.getKey(context.state().getBlock());
@@ -106,8 +109,9 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 
 	/**
 	 * Which seam sent the block being drawn to Fabric's renderer: {@code "Fabricated"} when the call went through
-	 * Fabricated's {@code FabricBlockRendering} (on Forge, its guard around upstream's hooks), or {@code "other"} (upstream's
-	 * hooks alone, or another mod's). Walks the stack: logged once per check.
+	 * Fabricated's {@code FabricBlockRendering} (on Forge, its guard around upstream's hooks: FRAPI rule 8 on every path,
+	 * so the terrain, moving block, breaking and entity block checks log it), or {@code "other"} (upstream's hooks alone,
+	 * or another mod's). Walks the stack: logged once per check.
 	 */
 	static String seam() {
 		return StackWalker.getInstance().walk(frames -> frames.anyMatch(frame -> frame.getClassName().startsWith("io.github.cmdralph.fabricated.")
@@ -153,14 +157,14 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 				FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi terrain OK ({} in {} on {}, seam={})", state, level.getClass().getName(), Thread.currentThread().getName(),
 						seam());
 			} else if (level instanceof MovingBlockRenderState) {
-				if (!MOVING.getAndSet(true)) FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi moving block OK ({})", state);
+				if (!MOVING.getAndSet(true)) FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi moving block OK ({}, seam={})", state, seam());
 				checkOutline(pos);
 			} else if (level == BlockAndTintGetter.EMPTY && !(BREAKING.get() && ENTITY.get())) {
 				// No level: the breaking overlay, or a minecart's block.
 				if (drawnAsEntity(level)) {
-					if (!ENTITY.getAndSet(true)) FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi entity block OK ({})", state);
+					if (!ENTITY.getAndSet(true)) FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi entity block OK ({}, seam={})", state, seam());
 				} else if (!BREAKING.getAndSet(true)) {
-					FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi breaking OK ({})", state);
+					FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi breaking OK ({}, seam={})", state, seam());
 				}
 			}
 		}

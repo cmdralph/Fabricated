@@ -26,4 +26,7 @@ public interface Renderer {
 
 	void render(ModelBlockRenderer modelRenderer, BlockAndTintGetter blockView, BlockStateModel model, BlockState state, BlockPos pos, PoseStack matrices,
 			BlockVertexConsumerProvider vertexConsumers, boolean cull, long seed, int overlay);
+
+	void render(PoseStack.Pose matrices, BlockVertexConsumerProvider vertexConsumers, BlockStateModel model, float red, float green, float blue, int light, int overlay,
+			BlockAndTintGetter blockView, BlockPos pos, BlockState state);
 }

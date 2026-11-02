@@ -189,6 +189,20 @@ by the server runs (the colours, screens, key mappings and config screens by the
 - **Model baking:** a model loading plugin's before-bake and after-bake modifiers see the models baked (Forge 47, with
   Fabric API, client run). Forge 47 moved the bake's code into an overload that also takes the sprite getter, where
   pre-flight moves upstream's hooks, its before-bake variable modifier too (MODEL-3).
+- **Fabric's renderer API (task 4, R5):** a Fabric block model (one with its own emitter) is drawn in chunk sections,
+  alone and inside a vanilla multipart model, as a falling block, with the breaking overlay and as a minecart's block,
+  and a Fabric item model's quads in the hotbar, the hand, an item frame and on the ground (Forge 61 to 66, with Fabric
+  API, client run; Forge 47 is next). Upstream's hooks send every block through Fabric's renderer, as on Fabric. Forge
+  61 moved the code three of them hook into, so pre-flight leaves out those for moving blocks, the breaking overlay and
+  blocks drawn as entities, and the in-game mod sends a block whose model is a Fabric model, or a multipart or weighted
+  model with one among its parts, to Fabric's renderer there instead; every other block keeps Forge's path. FRAPI rule
+  8: where Fabric's renderer (Indigo) calls a block model's emitter, a Fabric model that throws fails alone (Forge 61 to
+  66). The block is drawn from the model's parts, the failure is logged once and listed in the report, and the model's
+  class is drawn from its parts from then on, but not the class of a model wrapping it (as Continuity's wrap others). A
+  transform it left pushed on the emitter is popped, so it never reaches another block. The renderer test mod checks
+  each of these with a model that throws in a chunk section, as a multipart model's part, as a minecart's block, and
+  inside a model wrapping it. The outline Fabric's renderer draws around a glowing falling block is checked on Forge 65;
+  on Forge 66 it isn't seen yet.
 
 What else differs on Forge, for Fabric mods in general:
 
@@ -230,12 +244,12 @@ instead. Unless a task is named, nothing is planned for them yet.
 
 **Taken on by a later task:**
 
-- **Rendering (task 4, FRAPI).** On Forge 61, Indigo's rendering of a single block and of a block's breaking texture
-  (`BlockRenderDispatcher`), the renderer API's moving blocks and extended block commands (`BlockFeatureRenderer`),
-  one of rendering-v1's GUI renderer hooks (`GuiRenderer.executeDraw`) and its block outline hook (`LevelRenderer`).
-  On Forge 64 to 66, the renderer API's particle sprite for block markers and the in-wall screen effect (`BlockMarker`,
-  `ScreenEffectRenderer`, on Forge 66 `LevelExtractor`). On Forge 47, Indigo's hook into chunk rebuilding and the
-  breaking overlay on renderer API models (`OverlayVertexConsumer`).
+- **Rendering on Forge 47 (task 4, R5).** Indigo's hook into chunk rebuilding and the breaking overlay on renderer API
+  models (`OverlayVertexConsumer`).
+- **Rendering hooks outside the renderer test mod (task 5).** A Fabric model's particle sprite for the screen effect
+  inside a block (`ScreenEffectRenderer`, on Forge 66 `LevelExtractor`; Forge 61 to 66) and for block markers
+  (`BlockMarker`, Forge 64 to 66), one of rendering-v1's GUI renderer hooks (`GuiRenderer.executeDraw`) and its block
+  outline hook (`LevelRenderer`) on Forge 61.
 - **Item storages in items (task 5).** A Fabric mod's item storage in an item (a backpack's) and Forge's item handler on
   a stack don't see each other; fluids in items do (all five).
 - **Effect events' command context (task 5).** The entity events module's effect events don't learn which command
