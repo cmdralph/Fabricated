@@ -46,6 +46,15 @@ One entry per working session, newest first: what changed, and how it was verifi
   platform reduced the method to a call of, where vanilla's code shows the ordinal names the same local there, at
   vanilla's load (PRE-19, Puzzles Lib's break speed hook in Forge 47's `getDigSpeed`; core's tests only, as Forge 47
   doesn't read vanilla's code yet: the Forge sync).
+- **Pre-flight reads the game as NeoForge's coremods leave it** (CORPUS-61): NeoForge changes some game classes as they
+  load, before Mixin applies any mod's mixins. It points each mob's `finalizeSpawn` call in the classes it lists (22 on
+  21.1, 26 from 21.11 on) at `EventHooks.finalizeMobSpawn`, which fires its spawn event, and reads a few fields through
+  its getters. Pre-flight read the patched jar, so it passed hooks at those calls that Mixin then found nothing at:
+  Carpet's in `NaturalSpawner`, which left the 1.21.1 advanced corpus server waiting on its spawn chunks, and Friends &
+  Foes' in `PatrolSpawner`, which crashed the 1.21.1 corpus server. Pre-flight now reads those classes as NeoForge's
+  coremods leave them, with each version's list from NeoForge's sources, and the report says so; HOOK-2 then moves such
+  hooks to the hook's call, an `@Inject` also to a hook taking the call's receiver as a supertype (Friends & Foes'
+  patrol member, as a `Mob`). Core's tests only so far; Forge's coremods are the Forge sync's.
 - **Library classes:** a mixin giving a library class NeoForge loads without mixin support another library's
   interfaces becomes a generated adapter, which the mod's casts of the class's objects to them wrap them in (LIB-2:
   adventure-platform-fabric's `GameProfile` as an Adventure `Identity`, so it loads, and with it OneConfig's chat
@@ -53,7 +62,7 @@ One entry per working session, newest first: what changed, and how it was verifi
 - **Translation:** the members and interfaces Fabric's `@Environment` reserves for the other side are left out as a mod
   is translated (each translation is for one side), keeping the classes' frames, instead of at class load, where
   ModLauncher computed every such class's frames anew and failed on a class an optional mod would provide (ENV-1,
-  CORPUS-59: Cobblemon's cooking pot screen naming JEI's runtime, on 1.21.1).
+  CORPUS-59: Cobblemon's cooking pot screen naming JEI's runtime, on 1.21.1). Verified in extended run 41496005222.
 - **Remapping:** the nested classes of a class Intermediary keeps by name (TOKEN-1: Iris on 1.21.11, ImmediatelyFast on
   1.21.1, CORPUS-52); a library's member for another loader that remapping makes its Fabric member's twin is left out
   (REMAP-4, Elementa in Essential); an accessor Loom named for an intermediary member gets its target written out
@@ -65,7 +74,8 @@ One entry per working session, newest first: what changed, and how it was verifi
   built with the reload's registry lookup, as upstream builds them, so a tag read as the reload runs is there (CORPUS-50,
   Moonlight's fuel data map naming Supplementaries' tags); the system property FML sets for an empty log marker, which
   no logging reads, removed before Fabric mods run (CORPUS-60, Ledger's configuration); a mixin failing in one of the
-  game's worker threads recorded for the next launch to leave out, as APPLY-1 records the others (APPLY-2).
+  game's worker threads recorded for the next launch to leave out, as APPLY-1 records the others (APPLY-2). All three
+  verified in extended run 41496005222.
 - **Rendering, FRAPI rule 8** (CORPUS-56): a throw inside a model another wraps through Fabric's wrapper class
   (`ForwardingBakedModel` on 1.21.1, `WrapperBlockStateModel` on 1.21.11 and 26.x) is held where the wrapper called it
   until Fabricated's draw of the Fabric model returns, with the transforms the wrapped model left popped, so the wrapper
@@ -91,12 +101,15 @@ One entry per working session, newest first: what changed, and how it was verifi
   NeoForge's early window, Essential's loader is DOWNLOAD-1's). Login queries stay unsupported: the configuration
   phase can't stand in for the login phase their main users answer. ENTRY-1: with `"onEntrypointFailure": "disable"`
   a failed mod's other entrypoints stay skipped, as documented; `COMPATIBILITY.md` lists the wait it can cause.
+  A `@Redirect` HOOK-2 moves to a NeoForge hook's call replaces that call, and with it the events the hook fires around
+  it: where the redirect's handler makes the original call itself, as Carpet's does when it doesn't mock a spawn, that
+  call is made through the hook, as NeoForge's own code there does, so other mods still see the spawn event (CORPUS-61).
 - **Docs:** `COMPATIBILITY.md` lists the Fabric builds' gaps (the owner's decision, 2026-11-02: no patch for Sodium's
   Fabric build, load it and list them) and how Essential loads; the README and the roadmap's tables say what loads
   where.
-- **Open, in the roadmap's findings:** fixed, to verify: CORPUS-50, CORPUS-59, CORPUS-60, APPLY-2, LAMBDA-9 (Litematica's
-  schematic rendering on 26.2), LIB-2 and CORPUS-56 on 1.21.11 and 26.x (Continuity); CORPUS-61 (a redirect failing in
-  the 1.21.1 advanced corpus server's world generation), KEYMAP-1, and the Fabric builds' gaps `COMPATIBILITY.md` lists.
+- **Open, in the roadmap's findings:** fixed, to verify: LAMBDA-9 (Litematica's schematic rendering on 26.2), LIB-2,
+  CORPUS-56 on 1.21.11 and 26.x (Continuity) and CORPUS-61 (Carpet's and Friends & Foes' spawn hooks on 1.21.1);
+  KEYMAP-1, and the Fabric builds' gaps `COMPATIBILITY.md` lists.
   On Forge, the refusals stay until the Forge sync and its runs.
 - **Verified:** extended runs 41471044589 and 41477591558, every job green on all five NeoForge versions, the
   difficult-mod gates included; the fixes' findings name the run that verified each.

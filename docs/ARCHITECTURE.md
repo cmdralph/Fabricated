@@ -218,6 +218,12 @@ Each mod's entrypoints run inside a guard that records mod id, entrypoint key, c
    is not judged: Mixin merges every mixin's members into a class before any injector looks for its target. The
    adding mixin's class is recorded with its SHA-256 like the installed classes above.
 
+   The game is also seen as the platform's coremods leave it as it loads, before Mixin applies any mod's mixins
+   (`PlatformCoremods`, CORPUS-61): on NeoForge, each `finalizeSpawn` call in the classes its
+   `finalize_spawn_targets.json` lists is a call of `EventHooks.finalizeMobSpawn`, and the fields its
+   field-to-getter coremod covers are read through their getters. The lists are NeoForge's, per version (none for a
+   version Fabricated doesn't know). Forge's coremods aren't described yet: the Forge sync's work.
+
    Outcome per mixin:
    * A missing target class fails only where Mixin rejects it: in a required config at compatibility level 0.17.4 or later (before that, Mixin skips the target).
    * In a config with a plugin, which may disable mixins at runtime, an injector that would crash the game is **left out** instead: only its handler, as Mixin itself drops an injector that may fail. A problem with the whole mixin leaves out the mixin, with the mixins depending on its interfaces. Mixins the plugin adds at runtime (`getMixins()`, listed in no config) are found among the classes of the config's package, get the same repairs, and are checked the same way; only their failing injectors are left out, since the plugin may never add them.
