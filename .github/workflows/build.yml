@@ -411,8 +411,8 @@ jobs:
               failed=1
             fi
           }
-          check "frapi terrain OK" "a Fabric block model was meshed into a chunk section"
-          check "frapi nested terrain OK" "a Fabric model inside a vanilla multipart model was meshed"
+          check "frapi terrain OK .*seam=Fabricated" "a Fabric block model was meshed into a chunk section, sent to Fabric's renderer by Fabricated's seam"
+          check "frapi nested terrain OK .*seam=Fabricated" "a Fabric model inside a vanilla multipart model was meshed, through Fabricated's seam"
           check "frapi moving block OK" "a falling Fabric block model was drawn as a moving block"
           # 26.1.2 draws no outline around moving blocks.
           if [ "${{ matrix.target.minecraft }}" != "26.1.2" ]; then
@@ -531,8 +531,8 @@ jobs:
             fi
           }
           check "frapi model plugin OK" "a Fabric model loading plugin replaced a block state's model after it was baked"
-          check "frapi terrain OK" "a Fabric block model was meshed into a chunk section"
-          check "frapi nested terrain OK" "a Fabric model inside a vanilla multipart model was meshed"
+          check "frapi terrain OK .*seam=Fabricated" "a Fabric block model was meshed into a chunk section, sent to Fabric's renderer by Fabricated's seam"
+          check "frapi nested terrain OK .*seam=Fabricated" "a Fabric model inside a vanilla multipart model was meshed, through Fabricated's seam"
           check "frapi moving block OK" "a falling Fabric block model was drawn"
           check "frapi piston OK" "a Fabric block model a piston moved was drawn"
           check "frapi breaking OK" "a Fabric block model got the breaking overlay"
@@ -584,8 +584,8 @@ jobs:
           }
           check "model deserializer OK" "a model file of a Fabric type was read by its Fabric deserializer"
           check "extra models handed to the model manager OK" "the baked extra models reached the model manager (upstream's hook can't apply)"
-          check "frapi terrain OK" "a Fabric block model was meshed into a chunk section"
-          check "frapi nested terrain OK" "a Fabric model inside a vanilla multipart model was meshed"
+          check "frapi terrain OK .*seam=Fabricated" "a Fabric block model was meshed into a chunk section, sent to Fabric's renderer by Fabricated's seam"
+          check "frapi nested terrain OK .*seam=Fabricated" "a Fabric model inside a vanilla multipart model was meshed, through Fabricated's seam"
           check "frapi level-aware default OK" "a NeoForge model inside a Fabric model got the chunk section's level from Fabric's renderer"
           check "frapi baked colors OK" "a NeoForge quad's baked colour reached Fabric's renderer"
           check "frapi NeoForge parts OK" "NeoForge's level-aware parts of a Fabric model are made from its quads, baked colour kept"
@@ -749,6 +749,45 @@ jobs:
             awk '/^== /{show = /^== (Summary|Disabled|Rendering)/} show' "$RUNNER_TEMP/client-continuity/run/logs/fabric-bridge-report.txt" | head -80 || true
             exit 1
           fi
+      # R7: Forgified Fabric API's renderer API beside Fabricated's seams, where it has a build for the version, with the
+      # renderer API test mod (and Fabric API's official jar for the modules it doesn't provide). The renderer API is then
+      # Forgified Fabric API's and Fabricated's renderer seams stand down, so no block may come through them (seam=other
+      # on each block the test mod logs), or a Fabric model would be sent to a renderer twice; the test mod's broken models
+      # don't throw there (another mod's renderer isn't Fabricated's to guard). Informational, as the other coexisting
+      # clients.
+      - name: Client with Forgified Fabric API's renderer (informational, 1.21.1 and 26.x)
+        if: ${{ matrix.part == 'mods' && env.EXTENDED == 'true' && !cancelled() && steps.build.outcome == 'success' && matrix.target.minecraft != '1.21.11' }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MC: ${{ matrix.target.minecraft }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/extra-ffapi"
+          python3 ci/fetch-corpus.py "$MC" "$RUNNER_TEMP/extra-ffapi" neoforge forgified-fabric-api | tee "$RUNNER_TEMP/summary-ffapi.txt" || true
+          if ! grep -qE "^forgified-fabric-api: [^n]" "$RUNNER_TEMP/summary-ffapi.txt"; then
+            echo "Modrinth has no Forgified Fabric API build for $MC: nothing to run"
+            exit 0
+          fi
+          cp "$RUNNER_TEMP/extra/fabric-api.jar" "mc/neoforge/$MC/build/testmods/fabricated-testmod-frapi.jar" "$RUNNER_TEMP/extra-ffapi/"
+          SMOKE_TIMEOUT=480 ci/neoforge/smoke-client.sh "$MC" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-ffapi" "$RUNNER_TEMP/extra-ffapi" || true
+          log="$RUNNER_TEMP/client-ffapi/run/logs/latest.log"
+          provided=$(sed -n '/== Fabric API modules provided by other mods ==/,/^$/p' "$RUNNER_TEMP/client-ffapi/run/logs/fabric-bridge-report.txt" || true)
+          echo "$provided"
+          grep -h "FABRICATED-TEST frapi" "$log" || true
+          if ! echo "$provided" | grep -q "fabric-renderer-api-v1"; then
+            echo "::warning::Forgified Fabric API on $MC: the renderer API isn't among the modules it provides here, nothing to check"
+            exit 0
+          fi
+          failed=0
+          if grep -q "FABRICATED-TEST frapi .*seam=Fabricated" "$log"; then
+            echo "::warning::Forgified Fabric API provides the renderer API on $MC, yet a block came through Fabricated's seam"
+            failed=1
+          fi
+          for check in "frapi terrain OK" "frapi nested terrain OK" "frapi moving block OK" "frapi breaking OK"; do
+            if grep -q "FABRICATED-TEST $check" "$log"; then echo "PASS: $check"; else echo "::warning::Forgified Fabric API on $MC: no \"$check\" line"; failed=1; fi
+          done
+          if [ "$failed" = 1 ]; then grep -n -m 60 -E "frapi|[Ff]orgified|/(ERROR|FATAL)\]" "$log" || true; fi
+          exit $failed
       # The same mods with a shader pack (ci/neoforge/smoke-client.sh writes a minimal one): Iris's pipeline, with its extended
       # vertex format, under the Fabric models Sodium's Fabric renderer meshes. Informational until it has passed.
       - name: Client with Sodium, Iris and a shader pack (informational, 26.x)

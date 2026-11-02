@@ -115,6 +115,18 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 		boolean fabricatedTest$marked();
 	}
 
+	/** The class through which Fabricated sends a block to Fabric's renderer, on every version. */
+	private static final String FABRICATED_SEAM = "io.github.cmdralph.fabricated.neoforge.rendering.FabricBlockRendering";
+
+	/**
+	 * Which seam sent the block being drawn to Fabric's renderer: {@code "Fabricated"}, or {@code "other"} when another
+	 * mod's renderer hooks did (a renderer mod, or Forgified Fabric API's, whose renderer API Fabricated's seams stand
+	 * down for). Walks the stack: logged once per check.
+	 */
+	static String seam() {
+		return StackWalker.getInstance().walk(frames -> frames.anyMatch(frame -> frame.getClassName().startsWith(FABRICATED_SEAM))) ? "Fabricated" : "other";
+	}
+
 	/** Whether a level is a chunk section's: vanilla's, or Sodium's when Sodium meshes the world. */
 	static boolean isSection(BlockAndTintGetter level) {
 		return level instanceof RenderSectionRegion || level.getClass().getName().equals("net.caffeinemc.mods.sodium.client.world.LevelSlice");
@@ -167,7 +179,8 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 				emitter.popTransform();
 			}
 			if (isSection(level) && !TERRAIN.getAndSet(true)) {
-				FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi terrain OK ({} in {} on {})", state, level.getClass().getName(), Thread.currentThread().getName());
+				FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi terrain OK ({} in {} on {}, seam={})", state, level.getClass().getName(), Thread.currentThread().getName(),
+						seam());
 				checkQuadMark(level, pos, state, random);
 			} else if (level instanceof MovingBlockRenderState) {
 				if (!MOVING.getAndSet(true)) FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi moving block OK ({})", state);
@@ -323,7 +336,7 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 		public void emitQuads(QuadEmitter emitter, BlockAndTintGetter level, BlockPos pos, BlockState state, RandomSource random, Predicate<@Nullable Direction> cullTest) {
 			super.emitQuads(emitter, level, pos, state, random, cullTest);
 			if (isSection(level) && !TERRAIN.getAndSet(true)) {
-				FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi nested terrain OK ({} on {})", state, Thread.currentThread().getName());
+				FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi nested terrain OK ({} on {}, seam={})", state, Thread.currentThread().getName(), seam());
 			}
 		}
 
@@ -367,7 +380,7 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 		@Override
 		public void emitQuads(QuadEmitter emitter, BlockAndTintGetter level, BlockPos pos, BlockState state, RandomSource random, Predicate<@Nullable Direction> cullTest) {
 			super.emitQuads(emitter, level, pos, state, random, cullTest);
-			if (!throwsIn(level) || threw.getAndSet(true)) return;
+			if (threw.get() || !throwsIn(level) || threw.getAndSet(true)) return;
 			AtomicBoolean leaked = new AtomicBoolean();
 			emitter.pushTransform(quad -> {
 				if (!leaked.getAndSet(true)) FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi leaked transform FAILED (a quad after {} threw reached its transform)", name);
@@ -377,7 +390,10 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 			throw new IllegalStateException("FABRICATED-TEST: " + name + " throws on purpose (FRAPI rule 8's check)");
 		}
 
-		/** Whether it throws when drawn with this level (the first time only). */
+		/**
+		 * Whether it throws when drawn with this level (the first time only), and only through Fabricated's seam: another
+		 * mod's renderer hooks (Forgified Fabric API's) aren't Fabricated's to guard.
+		 */
 		abstract boolean throwsIn(BlockAndTintGetter level);
 
 		@Override
@@ -448,7 +464,7 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 
 		@Override
 		boolean throwsIn(BlockAndTintGetter level) {
-			return level instanceof RenderSectionRegion;
+			return level instanceof RenderSectionRegion && seam().equals("Fabricated");
 		}
 	}
 
@@ -462,7 +478,7 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 
 		@Override
 		boolean throwsIn(BlockAndTintGetter level) {
-			return level instanceof RenderSectionRegion;
+			return level instanceof RenderSectionRegion && seam().equals("Fabricated");
 		}
 	}
 
@@ -476,7 +492,7 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 
 		@Override
 		boolean throwsIn(BlockAndTintGetter level) {
-			return drawnAsEntity(level);
+			return drawnAsEntity(level) && seam().equals("Fabricated");
 		}
 	}
 }

@@ -106,6 +106,18 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 		});
 	}
 
+	/** The class through which Fabricated sends a block to Fabric's renderer, on every version. */
+	private static final String FABRICATED_SEAM = "io.github.cmdralph.fabricated.neoforge.rendering.FabricBlockRendering";
+
+	/**
+	 * Which seam sent the block being drawn to Fabric's renderer: {@code "Fabricated"}, or {@code "other"} when another
+	 * mod's renderer hooks did (a renderer mod, or Forgified Fabric API's, whose renderer API Fabricated's seams stand
+	 * down for). Walks the stack: logged once per check.
+	 */
+	static String seam() {
+		return StackWalker.getInstance().walk(frames -> frames.anyMatch(frame -> frame.getClassName().startsWith(FABRICATED_SEAM))) ? "Fabricated" : "other";
+	}
+
 	/** Whether a level is a chunk section's: vanilla's, or Sodium's when Sodium meshes the world. */
 	static boolean isSection(BlockAndTintGetter level) {
 		return level instanceof RenderSectionRegion || level.getClass().getName().equals("net.caffeinemc.mods.sodium.client.world.LevelSlice");
@@ -183,7 +195,7 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 			}
 			if (isSection(level)) {
 				if (!logged.getAndSet(true)) {
-					FrapiTestMod.LOGGER.info("FABRICATED-TEST {} ({} in {} on {})", check, state, level.getClass().getName(), Thread.currentThread().getName());
+					FrapiTestMod.LOGGER.info("FABRICATED-TEST {} ({} in {} on {}, seam={})", check, state, level.getClass().getName(), Thread.currentThread().getName(), seam());
 				}
 			} else if (!BREAKING.get() || !MOVING.get()) {
 				String drawing = drawing();
@@ -378,7 +390,8 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 		@Override
 		public void emitQuads(QuadEmitter emitter, BlockAndTintGetter level, BlockPos pos, BlockState state, RandomSource random, Predicate<@Nullable Direction> cullTest) {
 			((FabricBlockStateModel) wrapped).emitQuads(emitter, level, pos, state, random, cullTest);
-			if (!(level instanceof RenderSectionRegion) || threw.getAndSet(true)) return;
+			// Only through Fabricated's seam: another mod's renderer hooks (Forgified Fabric API's) aren't Fabricated's to guard.
+			if (!(level instanceof RenderSectionRegion) || threw.get() || !seam().equals("Fabricated") || threw.getAndSet(true)) return;
 			AtomicBoolean leaked = new AtomicBoolean();
 			emitter.pushTransform(quad -> {
 				if (!leaked.getAndSet(true)) FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi leaked transform FAILED (a quad after {} threw reached its transform)", name);
