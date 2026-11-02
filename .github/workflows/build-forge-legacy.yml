@@ -111,11 +111,13 @@ jobs:
       # Only the requested project and what it depends on are configured, not main's NeoForge projects.
       - name: Forge libraries on the compile classpath (informational)
         run: ./gradlew -Pfabricated.platforms=forge-legacy --configure-on-demand :mc:forge-legacy-${{ matrix.target.minecraft }}:forgeClasspathReport || true
-      # With the test mod that fails on purpose (mc/shared/src/testmodbroken), which the server runs beside it (HOLD-2).
+      # With the test mod that fails on purpose (mc/shared/src/testmodbroken), which the server runs beside it (HOLD-2),
+      # and the renderer test mod, reobfuscated to Forge 47's names (testmods builds that copy).
       - name: Build Fabricated and the test mods
         run: >-
           ./gradlew -Pfabricated.platforms=forge-legacy --configure-on-demand :mc:forge-legacy-${{ matrix.target.minecraft }}:fabricatedJar
-          :mc:forge-legacy-${{ matrix.target.minecraft }}:testmodJar :mc:forge-legacy-${{ matrix.target.minecraft }}:testmodThrowsJar --stacktrace
+          :mc:forge-legacy-${{ matrix.target.minecraft }}:testmodJar :mc:forge-legacy-${{ matrix.target.minecraft }}:testmodThrowsJar
+          :mc:forge-legacy-${{ matrix.target.minecraft }}:testmods --stacktrace
       - name: Check the jar's layout for Forge
         run: ./gradlew -Pfabricated.platforms=forge-legacy --configure-on-demand :mc:forge-legacy-${{ matrix.target.minecraft }}:checkForgeJar --stacktrace
       # Forge 47 runs on Java 17 (the version's java_version).
@@ -179,13 +181,17 @@ jobs:
         run: |
           ci/forge-legacy/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client"
       # The client with the official Fabric API jar the server run downloaded: its client modules load on Forge, and the
-      # client still reaches a world with them. A gate like the other runs since the v0.6.0-beta pass.
+      # client still reaches a world with them. The renderer test mod (task 4, R5) joins it, and its checks are the
+      # smoke's. A gate like the other runs since the v0.6.0-beta pass.
       - name: Client with Fabricated and Fabric API (must pass)
         if: ${{ env.GAME_RUNS == 'true' && !cancelled() }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          ci/forge-legacy/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-fapi" "$RUNNER_TEMP/extra"
+          mkdir -p "$RUNNER_TEMP/extra-client"
+          cp "$RUNNER_TEMP/extra/fabric-api.jar" "$RUNNER_TEMP/extra-client/"
+          cp mc/forge-legacy/${{ matrix.target.minecraft }}/build/testmods/fabricated-testmod-frapi.jar "$RUNNER_TEMP/extra-client/"
+          ci/forge-legacy/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-fapi" "$RUNNER_TEMP/extra-client"
       # Popular Fabric mods from Modrinth (ci/mod-corpus.txt, downloaded here in CI and checked against Modrinth's
       # SHA-512) with Fabric API, as build.yml runs them on NeoForge: which load on Forge, which are disabled and why.
       # Informational, with "extended" or on a release tag; a mod whose initializer throws is disabled, not fatal.

@@ -1,0 +1,19 @@
+{
+  "required": true,
+  "minVersion": "0.8.5",
+  "package": "io.github.cmdralph.fabricated.forge.rendering.mixin",
+  "plugin": "io.github.cmdralph.fabricated.forge.rendering.FrapiMixinPlugin",
+  "compatibilityLevel": "JAVA_17",
+  "refmap": "fabricated-forge.refmap.json",
+  "client": [
+    "BlockRenderDispatcherMixin",
+    "FallingBlockRendererMixin",
+    "ForgeHooksClientMixin",
+    "MultiPartBakedModelMixin",
+    "RebuildTaskMixin",
+    "WeightedBakedModelMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
