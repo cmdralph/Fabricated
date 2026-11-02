@@ -399,6 +399,32 @@ class RemapTest {
 	}
 
 	@Test
+	void tokenRemapperMapsTheNestedClassesOfAClassIntermediaryKeepsByName() throws Exception {
+		// TOKEN-1: Mojang's blaze3d classes keep their names in the game's jar, their nested classes don't; Iris's access
+		// widener opens GlStateManager$class_1017, and ImmediatelyFast's a field of such a type.
+		String tiny = TINY + String.join("\n",
+				"CLASS\tcom/mojang/blaze3d/opengl/GlStateManager\tcom/mojang/blaze3d/opengl/GlStateManager",
+				"CLASS\tcom/mojang/blaze3d/opengl/GlStateManager$a\tcom/mojang/blaze3d/opengl/GlStateManager$class_1017",
+				"FIELD\tcom/mojang/blaze3d/opengl/GlStateManager\tLcom/mojang/blaze3d/opengl/GlStateManager$a;\tc\tfield_4900",
+				"");
+		String proguard = PROGUARD + String.join("\n",
+				"com.mojang.blaze3d.opengl.GlStateManager -> com.mojang.blaze3d.opengl.GlStateManager:",
+				"    com.mojang.blaze3d.opengl.GlStateManager$TextureState TEXTURE -> c",
+				"com.mojang.blaze3d.opengl.GlStateManager$TextureState -> com.mojang.blaze3d.opengl.GlStateManager$a:",
+				"");
+		TokenRemapper r = new TokenRemapper(MappingComposer.compose(new StringReader(tiny), new StringReader(proguard)));
+		assertEquals("accessible\tclass\tcom/mojang/blaze3d/opengl/GlStateManager$TextureState",
+				r.remap("accessible\tclass\tcom/mojang/blaze3d/opengl/GlStateManager$class_1017"));
+		assertEquals("accessible\tfield\tcom/mojang/blaze3d/opengl/GlStateManager\tTEXTURE\tLcom/mojang/blaze3d/opengl/GlStateManager$TextureState;",
+				r.remap("accessible\tfield\tcom/mojang/blaze3d/opengl/GlStateManager\tfield_4900\tLcom/mojang/blaze3d/opengl/GlStateManager$class_1017;"),
+				"in a descriptor too");
+		assertEquals("com.mojang.blaze3d.opengl.GlStateManager$TextureState", r.remap("com.mojang.blaze3d.opengl.GlStateManager$class_1017"));
+		assertEquals("(Lnet/minecraft/world/Entity;Lcom/mojang/blaze3d/opengl/GlStateManager$TextureState;)V",
+				r.remap("(Lnet/minecraft/class_2;Lcom/mojang/blaze3d/opengl/GlStateManager$class_1017;)V"));
+		assertEquals("com/example/Thing$class_9", r.remap("com/example/Thing$class_9"), "a class the table doesn't know stays");
+	}
+
+	@Test
 	void remapsBytecodeAnnotationsAndStrings() throws Exception {
 		byte[] input = sampleModClass();
 		byte[] out = new JarRemapper(table()).remapClass(input, "test");
