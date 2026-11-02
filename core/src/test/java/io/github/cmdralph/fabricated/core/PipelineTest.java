@@ -1169,7 +1169,7 @@ class PipelineTest {
 	/**
 	 * LINK-2: a mixin adding an interface only a Fabric mod that isn't loading has (Porting Lib's base module's texture
 	 * mixin on Forge 47 clients, whose interface is its extensions module's) leaves the game unable to define its target,
-	 * required or not and whatever its config's plugin: the mod is disabled with the reason.
+	 * required or not: the mod is disabled with the reason, unless its config's plugin may skip the mixin (LINK-3).
 	 */
 	@Test
 	void aMixinAddingAnInterfaceOfAModThatIsNotLoadingDisablesItsMod(@TempDir Path game) throws Exception {
@@ -1198,12 +1198,20 @@ class PipelineTest {
 		Pipeline.Result result = Pipeline.run(input(game, List.of(lib, withPlugin, optional, own), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
 
 		Set<String> loaded = result.mods().stream().map(m -> m.translated().candidate().id()).collect(Collectors.toSet());
-		assertEquals(Set.of("own-mod"), loaded, "an interface of the mod's own loads: " + result.report().render());
-		for (String id : List.of("base-mod", "optional-mod")) {
-			Report.ModRow row = result.report().mods().stream().filter(r -> r.id().equals(id)).findFirst().orElseThrow();
-			assertEquals(Report.Status.DISABLED, row.status());
-			assertTrue(row.detail().contains("adds an interface to its targets -> needs class com.lib.Extensions of lib-mod, which isn't loading"), row.detail());
+		assertEquals(Set.of("base-mod", "own-mod"), loaded, "an interface of the mod's own loads: " + result.report().render());
+		Report.ModRow row = result.report().mods().stream().filter(r -> r.id().equals("optional-mod")).findFirst().orElseThrow();
+		assertEquals(Report.Status.DISABLED, row.status());
+		assertTrue(row.detail().contains("adds an interface to its targets -> needs class com.lib.Extensions of lib-mod, which isn't loading"), row.detail());
+		// LINK-3: a config's plugin would skip such a mixin at runtime (a compatibility mixin for that mod): it is left out,
+		// as the plugin would leave it, and its mod loads.
+		Pipeline.LoadedMod base = result.mods().stream().filter(m -> m.translated().candidate().id().equals("base-mod")).findFirst().orElseThrow();
+		try (SafeArchive overlay = SafeArchive.open(base.translated().overlay(), ArchiveLimits.DEFAULTS)) {
+			String mixins = String.valueOf(Json.parseObject(overlay.readText("base.mixins.json")).get("mixins"));
+			assertFalse(mixins.contains("TextureMixin"), mixins);
 		}
+		String rendered = result.report().render();
+		assertTrue(rendered.contains("base-mod: com.base.mixin.TextureMixin adds an interface to its targets -> needs class com.lib.Extensions of lib-mod,"
+				+ " which isn't loading; Mixin would stop the game applying it, so it is left out"), rendered);
 	}
 
 	@Test
