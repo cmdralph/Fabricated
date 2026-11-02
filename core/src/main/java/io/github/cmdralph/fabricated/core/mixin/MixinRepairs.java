@@ -63,7 +63,7 @@ final class MixinRepairs extends PreflightPart {
 			String internal = config.internalName(mixin);
 			ClassNode node = modClasses.readNode(internal, 0);
 			if (node == null) continue;
-			Context ctx = new Context(configName, internal.replace('/', '.'), config, refmap, false, false, false, Set.of(), out, null, loader);
+			Context ctx = new Context(configName, internal.replace('/', '.'), config, refmap, false, false, false, Map.of(), Set.of(), out, null, loader);
 			boolean changed = false;
 			for (String moved : anonymousTargetRepairs(node, ctx)) {
 				changed = true;
@@ -604,7 +604,7 @@ final class MixinRepairs extends PreflightPart {
 	/** Whether pre-flight finds nothing but notes in {@code mixin} against {@code target}. */
 	private boolean fits(ClassNode mixin, ClassNode target, Context ctx) {
 		List<PreflightFinding> found = new ArrayList<>();
-		checker.checkMembers(mixin, target, new Context(ctx.configName(), ctx.mixinDotted(), ctx.config(), ctx.refmap(), false, false, false, Set.of(), found, null, loader));
+		checker.checkMembers(mixin, target, new Context(ctx.configName(), ctx.mixinDotted(), ctx.config(), ctx.refmap(), false, false, false, Map.of(), Set.of(), found, null, loader));
 		return found.stream().allMatch(f -> f.severity() == Severity.INFO);
 	}
 }

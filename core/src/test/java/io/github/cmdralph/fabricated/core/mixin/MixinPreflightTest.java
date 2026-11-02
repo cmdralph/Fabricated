@@ -15,6 +15,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import org.junit.jupiter.api.Test;
 import org.objectweb.asm.AnnotationVisitor;
@@ -30,6 +31,7 @@ import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.AnnotationNode;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.FieldInsnNode;
+import org.objectweb.asm.tree.InsnList;
 import org.objectweb.asm.tree.InsnNode;
 import org.objectweb.asm.tree.InvokeDynamicInsnNode;
 import org.objectweb.asm.tree.LdcInsnNode;
@@ -6047,6 +6049,117 @@ class MixinPreflightTest {
 		assertEquals(1, withState.size(), withState.toString());
 		assertEquals(Severity.FAIL, withState.getFirst().severity());
 		assertEquals("broken()V", withState.getFirst().handler());
+	}
+
+	/**
+	 * STATE-1: in a self-contained mixin adding fields, a failing injector goes with the injectors keeping state with it
+	 * in the mixin's own fields, and the others stay: Fabric API's {@code FluidRendererMixin} on NeoForge 1.21.1, whose
+	 * hooks into {@code tesselate} NeoForge's patches rewrote, keeps its hook into the sprite reload, which hands the water
+	 * and lava sprites to Fabric API's fluid handlers. Where the state is shared with code that runs without an injector
+	 * (an {@code @Overwrite}, a method that isn't private, a field that isn't), or with a class nested in the mixin, the
+	 * whole mixin still goes.
+	 */
+	@Test
+	void aFailingInjectorGoesWithTheInjectorsKeepingStateWithItAndTheOthersStay() throws Exception {
+		String name = "com/example/mixin/Fluid";
+		Function<Consumer<ClassWriter>, byte[]> fluid = extra -> mixin(name, false, cw -> {
+			cw.visitField(Opcodes.ACC_PRIVATE | Opcodes.ACC_FINAL, "neighbor", "Ljava/lang/ThreadLocal;", null, null).visitEnd();
+			handlerWithCode(cw, name, "reload", "HEAD", null, false); // applies, uses nothing of the mixin's own
+			handlerWithCode(cw, name, "remember", "INVOKE", "Lnet/minecraft/world/Thing;removed()V", true); // fails
+			handlerWithCode(cw, name, "recall", "INVOKE", "Lnet/minecraft/world/Thing;helper(I)V", true); // applies, shares neighbor
+			handlerWithCode(cw, name, "overlay", "FIELD", "Lnet/minecraft/world/Thing;overlay:I", false); // fails, alone
+			extra.accept(cw);
+		});
+		List<PreflightFinding> findings = run(config(true, "Fluid"), null, Map.of(name, fluid.apply(cw -> { })), false);
+		assertTrue(findings.stream().allMatch(f -> f.severity() == Severity.LEFT_OUT && f.handler() != null), findings.toString());
+		assertEquals(Set.of("remember()V", "recall()V", "overlay()V"), findings.stream().map(PreflightFinding::handler).collect(Collectors.toSet()),
+				"the reload hook stays: " + findings);
+		PreflightFinding together = findings.stream().filter(f -> f.handler().equals("recall()V")).findFirst().orElseThrow();
+		assertEquals("The injector of recall()V goes with that of remember()V, which can't apply: they keep state together in this mixin's field neighbor",
+				together.message());
+		assertEquals(3, findings.size(), findings.toString());
+
+		// The state reaches code running without an injector, or code pre-flight doesn't follow: the whole mixin goes.
+		Map<String, Consumer<ClassWriter>> shared = Map.of(
+				"an @Overwrite", cw -> {
+					MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "helper", "(I)V", null, null);
+					mv.visitAnnotation("Lorg/spongepowered/asm/mixin/Overwrite;", false).visitEnd();
+					readNeighbor(mv, name);
+				},
+				"a method that isn't private", cw -> readNeighbor(cw.visitMethod(Opcodes.ACC_PUBLIC, "read", "()V", null, null), name),
+				"a field that isn't private", cw -> cw.visitField(Opcodes.ACC_PUBLIC, "shown", "I", null, null).visitEnd(),
+				"a class nested in the mixin", cw -> cw.visitInnerClass(name + "$1", null, null, 0));
+		for (Map.Entry<String, Consumer<ClassWriter>> e : shared.entrySet()) {
+			Consumer<ClassWriter> extra = e.getKey().equals("a field that isn't private") ? cw -> {
+				e.getValue().accept(cw);
+				MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "count", "()V", null, null);
+				mv.visitCode();
+				mv.visitVarInsn(Opcodes.ALOAD, 0);
+				mv.visitFieldInsn(Opcodes.GETFIELD, name, "shown", "I");
+				mv.visitInsn(Opcodes.POP);
+				mv.visitVarInsn(Opcodes.ALOAD, 0);
+				mv.visitFieldInsn(Opcodes.GETFIELD, name, "neighbor", "Ljava/lang/ThreadLocal;");
+				mv.visitInsn(Opcodes.POP);
+				mv.visitInsn(Opcodes.RETURN);
+				mv.visitMaxs(1, 1);
+				mv.visitEnd();
+			} : e.getValue();
+			byte[] bytes = fluid.apply(extra);
+			if (e.getKey().equals("a field that isn't private")) bytes = callCountFromRemember(bytes, name);
+			List<PreflightFinding> whole = run(config(true, "Fluid"), null, Map.of(name, bytes), false);
+			assertTrue(whole.stream().anyMatch(f -> f.severity() == Severity.LEFT_OUT && f.handler() == null), e.getKey() + ": " + whole);
+			assertTrue(whole.stream().noneMatch(f -> "recall()V".equals(f.handler())), e.getKey() + ": " + whole);
+		}
+	}
+
+	/** An {@code @Inject} handler with code, using the mixin's {@code neighbor} field where {@code keepsState}. */
+	private static void handlerWithCode(ClassWriter cw, String mixin, String handler, String atValue, String atTarget, boolean keepsState) {
+		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC, handler, "()V", null, null);
+		AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
+		AnnotationVisitor methods = ann.visitArray("method");
+		methods.visit(null, "tick");
+		methods.visitEnd();
+		AnnotationVisitor ats = ann.visitArray("at");
+		AnnotationVisitor at = ats.visitAnnotation(null, AT);
+		at.visit("value", atValue);
+		if (atTarget != null) at.visit("target", atTarget);
+		at.visitEnd();
+		ats.visitEnd();
+		ann.visit("require", 1);
+		ann.visitEnd();
+		if (keepsState) {
+			readNeighbor(mv, mixin);
+			return;
+		}
+		mv.visitCode();
+		mv.visitInsn(Opcodes.RETURN);
+		mv.visitMaxs(0, 1);
+		mv.visitEnd();
+	}
+
+	/** {@code mv}'s code: reads the mixin's {@code neighbor} field. */
+	private static void readNeighbor(MethodVisitor mv, String mixin) {
+		mv.visitCode();
+		mv.visitVarInsn(Opcodes.ALOAD, 0);
+		mv.visitFieldInsn(Opcodes.GETFIELD, mixin, "neighbor", "Ljava/lang/ThreadLocal;");
+		mv.visitInsn(Opcodes.POP);
+		mv.visitInsn(Opcodes.RETURN);
+		mv.visitMaxs(1, 1);
+		mv.visitEnd();
+	}
+
+	/** {@code bytes} with the {@code remember} handler calling the mixin's private {@code count()}. */
+	private static byte[] callCountFromRemember(byte[] bytes, String mixin) {
+		ClassNode node = new ClassNode();
+		new ClassReader(bytes).accept(node, 0);
+		MethodNode remember = node.methods.stream().filter(m -> m.name.equals("remember")).findFirst().orElseThrow();
+		InsnList call = new InsnList();
+		call.add(new VarInsnNode(Opcodes.ALOAD, 0));
+		call.add(new MethodInsnNode(Opcodes.INVOKESPECIAL, mixin, "count", "()V", false));
+		remember.instructions.insert(call);
+		ClassWriter cw = new ClassWriter(0);
+		node.accept(cw);
+		return cw.toByteArray();
 	}
 
 	/**

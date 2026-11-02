@@ -1,12 +1,14 @@
 package io.github.cmdralph.fabricated.core.mixin;
 
 import java.io.IOException;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -32,6 +34,7 @@ import org.objectweb.asm.tree.AnnotationNode;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.FieldInsnNode;
 import org.objectweb.asm.tree.FieldNode;
+import org.objectweb.asm.tree.InnerClassNode;
 import org.objectweb.asm.tree.InvokeDynamicInsnNode;
 import org.objectweb.asm.tree.LocalVariableNode;
 import org.objectweb.asm.tree.MethodInsnNode;
@@ -147,16 +150,19 @@ public final class MixinPreflight extends PreflightPart {
 			String internal = config.internalName(mixin);
 			ClassNode node = modClasses.readNode(internal, ClassReader.SKIP_CODE | ClassReader.SKIP_FRAMES);
 			boolean selfContained = node != null && selfContained(node);
-			Set<String> stateless = node == null || selfContained ? Set.of()
-					: statelessHandlers(modClasses.readNode(internal, ClassReader.SKIP_FRAMES));
-			Context ctx = new Context(configName, internal.replace('/', '.'), config, refmap, hasPlugin, selfContained,
-					selfContained && addsFields(node), stateless, out, null, loader);
+			boolean addsFields = selfContained && addsFields(node);
+			ClassNode code = node != null && (!selfContained || addsFields) ? modClasses.readNode(internal, ClassReader.SKIP_FRAMES) : null;
+			Set<String> stateless = node == null || selfContained ? Set.of() : statelessHandlers(code);
+			Context ctx = new Context(configName, internal.replace('/', '.'), config, refmap, hasPlugin, selfContained, addsFields,
+					addsFields ? stateGroups(code) : Map.of(), stateless, out, null, loader);
 			if (node == null) {
 				ctx.classLevel("Mixin class " + ctx.mixinDotted() + " listed in " + configName + " is missing from the mod jar",
 						"The mod jar is incomplete or corrupted; re-download it.");
 				continue;
 			}
+			int from = out.size();
 			checkMixin(node, ctx);
+			ctx.leaveOutStateGroups(from);
 		}
 		if (hasPlugin && out.stream().anyMatch(f -> f.severity() == Severity.LEFT_OUT)) {
 			out.add(new PreflightFinding(Severity.INFO, configName, null, "This config uses a mixin plugin (" + config.plugin()
@@ -358,6 +364,92 @@ public final class MixinPreflight extends PreflightPart {
 		return independent;
 	}
 
+	/**
+	 * Injectors of one mixin that keep state together: the handlers (name and descriptor) and the mixin's own fields
+	 * (name and descriptor) they share.
+	 */
+	record StateGroup(Set<String> handlers, Set<String> fields) {
+	}
+
+	/**
+	 * For a self-contained mixin that adds fields (STATE-1): each injector's handler (name and descriptor) with the group of
+	 * injectors keeping state together with it, joined by the mixin's own fields they use, themselves or through the
+	 * mixin's methods they call, itself among them. A handler failing goes with its group; the mixin's other injectors share
+	 * none of that state and stay. A handler that isn't in the map takes the whole mixin with it: its group shares a field
+	 * with code that runs without an injector (an {@code @Overwrite}, a method the target or a subclass may call, a field
+	 * other than a private one, which another mixin into the target may shadow), or the mixin has code pre-flight can't
+	 * follow (a handler without code, a class nested in the mixin).
+	 * <p>
+	 * Fabric API's {@code FluidRendererMixin} on NeoForge 1.21.1: of its hooks into {@code tesselate}, which NeoForge's
+	 * patches rewrote, two share a {@code ThreadLocal}, and the rest nothing; its hooks at the start of {@code tesselate}
+	 * and at the end of the sprite reload share nothing either. Leaving the whole mixin out lost the reload's hook, which
+	 * hands the water and lava sprites to Fabric API's fluid handlers, and Sodium's Fabric build crashed on the water
+	 * handler's missing sprite.
+	 */
+	static Map<String, StateGroup> stateGroups(ClassNode mixin) {
+		if (mixin == null) return Map.of();
+		for (InnerClassNode inner : mixin.innerClasses) {
+			if (inner.name.startsWith(mixin.name + "$")) return Map.of();
+		}
+		Set<String> ownFields = new HashSet<>();
+		Set<String> outside = new HashSet<>(); // the fields code other than the injectors may use
+		for (FieldNode field : mixin.fields) {
+			if (Annotations.find(field, MixinNames.SHADOW) != null) continue;
+			ownFields.add(field.name + ":" + field.desc);
+			if ((field.access & Opcodes.ACC_PRIVATE) == 0) outside.add(field.name + ":" + field.desc);
+		}
+		Map<String, MethodNode> ownMethods = new HashMap<>();
+		for (MethodNode method : mixin.methods) {
+			if (Annotations.find(method, MixinNames.SHADOW) == null) ownMethods.put(method.name + method.desc, method);
+		}
+		Set<String> called = new HashSet<>(); // the mixin's methods its other methods call or refer to
+		for (MethodNode method : ownMethods.values()) {
+			if (method.instructions == null) continue;
+			for (AbstractInsnNode insn : method.instructions) {
+				if (insn instanceof MethodInsnNode call && call.owner.equals(mixin.name) && !(call.name + call.desc).equals(method.name + method.desc)) {
+					called.add(call.name + call.desc);
+				} else if (insn instanceof InvokeDynamicInsnNode indy) {
+					for (Object arg : indy.bsmArgs) {
+						if (arg instanceof Handle handle && handle.getOwner().equals(mixin.name)) called.add(handle.getName() + handle.getDesc());
+					}
+				}
+			}
+		}
+		Map<String, Set<String>> used = new LinkedHashMap<>();
+		for (MethodNode method : mixin.methods) {
+			String key = method.name + method.desc;
+			if (!ownMethods.containsKey(key) || method.name.equals("<init>") || method.name.equals("<clinit>")) continue;
+			if (Annotations.all(method).stream().anyMatch(a -> PreflightAsm.isInjector(a.desc))) {
+				if (method.instructions == null || method.instructions.size() == 0) return Map.of(); // no code to judge
+				used.put(key, fieldsUsed(mixin, method, ownFields, ownMethods, new HashSet<>()));
+			} else if ((method.access & Opcodes.ACC_PRIVATE) == 0 || !called.contains(key) || Annotations.find(method, MixinNames.OVERWRITE) != null
+					|| Annotations.find(method, MixinNames.INTRINSIC) != null) {
+				outside.addAll(fieldsUsed(mixin, method, ownFields, ownMethods, new HashSet<>()));
+			}
+		}
+		Map<String, StateGroup> groups = new HashMap<>();
+		Set<String> grouped = new HashSet<>();
+		for (String handler : used.keySet()) {
+			if (grouped.contains(handler)) continue;
+			Set<String> members = new TreeSet<>();
+			Set<String> fields = new TreeSet<>();
+			ArrayDeque<String> next = new ArrayDeque<>(List.of(handler));
+			while (!next.isEmpty()) {
+				String member = next.pop();
+				if (!members.add(member)) continue;
+				fields.addAll(used.get(member));
+				used.forEach((other, theirs) -> {
+					if (!members.contains(other) && !Collections.disjoint(theirs, used.get(member))) next.push(other);
+				});
+			}
+			grouped.addAll(members);
+			if (!Collections.disjoint(fields, outside)) continue;
+			StateGroup group = new StateGroup(Collections.unmodifiableSet(members), Collections.unmodifiableSet(fields));
+			for (String member : members) groups.put(member, group);
+		}
+		return groups;
+	}
+
 	/** The mixin's own fields {@code method} uses, itself or through the mixin's own methods it calls or refers to. */
 	private static Set<String> fieldsUsed(ClassNode mixin, MethodNode method, Set<String> ownFields, Map<String, MethodNode> ownMethods,
 			Set<MethodNode> seen) {
@@ -386,18 +478,20 @@ public final class MixinPreflight extends PreflightPart {
 	 * @param selfContained see {@link #selfContained(ClassNode)}: a failure then leaves the failing injector, or the whole
 	 *                      mixin, out instead of disabling the mod
 	 * @param addsFields    see {@link #addsFields(ClassNode)}: a failing injector of a self-contained mixin then takes the
-	 *                      whole mixin with it
+	 *                      injectors keeping state with it, or the whole mixin, with it
+	 * @param stateGroups   see {@link #stateGroups(ClassNode)}, for a self-contained mixin that adds fields
 	 * @param stateless     see {@link #statelessHandlers(ClassNode)}, for a mixin that isn't self-contained
 	 * @param owner         the installed mod the target belongs to, or {@code null} for a game class
 	 */
 	record Context(String configName, String mixinDotted, MixinConfigFile config, Refmap refmap, boolean hasPlugin,
-			boolean selfContained, boolean addsFields, Set<String> stateless, List<PreflightFinding> out, String owner, String loader) {
+			boolean selfContained, boolean addsFields, Map<String, StateGroup> stateGroups, Set<String> stateless, List<PreflightFinding> out,
+			String owner, String loader) {
 		String resolve(String selector) {
 			return refmap.resolve(mixinDotted.replace('.', '/'), selector);
 		}
 
 		Context withOwner(String owner) {
-			return new Context(configName, mixinDotted, config, refmap, hasPlugin, selfContained, addsFields, stateless, out, owner, loader);
+			return new Context(configName, mixinDotted, config, refmap, hasPlugin, selfContained, addsFields, stateGroups, stateless, out, owner, loader);
 		}
 
 		/** What changed the target since the mod was built: the loader or this Minecraft version, or this version of the mod. */
@@ -437,12 +531,42 @@ public final class MixinPreflight extends PreflightPart {
 		/**
 		 * An injector that can't apply. Where it is required: with a plugin, in a self-contained mixin that adds no
 		 * fields, or with a handler that uses nothing of the mixin's own (LEAVE-3), only it is left out (as a plugin may
-		 * do); in a self-contained mixin that adds fields, the whole mixin is (no handler named); otherwise it is fatal.
+		 * do); in a self-contained mixin that adds fields, it is with the injectors keeping state with it (STATE-1), or the
+		 * whole mixin is (no handler named) where pre-flight can't tell which they are; otherwise it is fatal.
 		 */
 		void injector(MethodNode handler, int require, String message, String suggestion) {
-			Severity severity = require <= 0 ? Severity.WARN : stateless.contains(handler.name + handler.desc) ? Severity.LEFT_OUT : fatal();
-			boolean wholeMixin = severity == Severity.LEFT_OUT && !hasPlugin && addsFields;
-			out.add(new PreflightFinding(severity, configName, mixinDotted, message, suggestion, wholeMixin ? null : handler.name + handler.desc));
+			String key = handler.name + handler.desc;
+			Severity severity = require <= 0 ? Severity.WARN : stateless.contains(key) ? Severity.LEFT_OUT : fatal();
+			boolean wholeMixin = severity == Severity.LEFT_OUT && !hasPlugin && addsFields && !stateGroups.containsKey(key);
+			out.add(new PreflightFinding(severity, configName, mixinDotted, message, suggestion, wholeMixin ? null : key));
+		}
+
+		/**
+		 * The injectors keeping state with those of this mixin left out by the findings from {@code from} on, left out with
+		 * them (STATE-1), unless the whole mixin is.
+		 */
+		void leaveOutStateGroups(int from) {
+			if (!addsFields || hasPlugin || stateGroups.isEmpty()) return;
+			Set<String> failing = new LinkedHashSet<>();
+			for (PreflightFinding f : out.subList(from, out.size())) {
+				if (f.severity() != Severity.LEFT_OUT || !mixinDotted.equals(f.mixin())) continue;
+				if (f.handler() == null) return;
+				failing.add(f.handler());
+			}
+			Map<String, String> goWith = new LinkedHashMap<>();
+			for (String handler : failing) {
+				StateGroup group = stateGroups.get(handler);
+				if (group == null) continue;
+				for (String other : group.handlers()) {
+					if (!failing.contains(other)) goWith.putIfAbsent(other, handler);
+				}
+			}
+			goWith.forEach((other, with) -> {
+				List<String> fields = stateGroups.get(with).fields().stream().map(f -> f.substring(0, f.indexOf(':'))).toList();
+				out.add(new PreflightFinding(Severity.LEFT_OUT, configName, mixinDotted, "The injector of " + other + " goes with that of " + with
+						+ ", which can't apply: they keep state together in this mixin's " + (fields.size() == 1 ? "field " : "fields ")
+						+ String.join(", ", fields), "", other));
+			});
 		}
 
 		/**
