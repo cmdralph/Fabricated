@@ -1,5 +1,6 @@
 package io.github.cmdralph.fabricated.loader;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
@@ -7,6 +8,7 @@ import java.util.function.BiConsumer;
 
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
+import org.objectweb.asm.tree.AnnotationNode;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.InsnList;
 import org.objectweb.asm.tree.InsnNode;
@@ -27,8 +29,11 @@ import io.github.cmdralph.fabricated.core.translate.DefaultBridge;
  *       to its generic signature so reflection sees the parameterised type. Mods implement the interface's methods
  *       through their own mixins, as on Fabric.</li>
  * </ul>
- * After Mixin, {@link DefaultBridge}s are declared ({@link #declareDefaultBridges}). Each change is reported to an audit
- * consumer as an activity and its detail.
+ * After Mixin, {@link DefaultBridge}s are declared ({@link #declareDefaultBridges}). A platform where nothing of
+ * Fabricated's runs after Mixin on every class (NeoForge 21.1's ModLauncher) declares them before Mixin too, for the
+ * classes no mixin targets, and takes them out as Mixin starts on a class it applies mixins to, to declare them again
+ * once it is done ({@link #removeDefaultBridges}). Each change is reported to an audit consumer as an activity and its
+ * detail.
  */
 public final class FabricClassTransforms {
 	private FabricClassTransforms() {
@@ -103,9 +108,35 @@ public final class FabricClassTransforms {
 		return changed;
 	}
 
-	/** {@code public R name(args) { return Owner.super.name(args); }}, with its maxs (it has no branches, so no frames). */
+	/**
+	 * Takes out the class's {@link DefaultBridge} methods declared before Mixin, so its mixins apply to the class without
+	 * them, as where bridges are declared only after Mixin: a mixin declaring such a method adds its own, which Mixin
+	 * would otherwise refuse where the mixin's config requires {@code @Overwrite} to replace a method. Only the methods
+	 * Fabricated made go, by their {@link #BRIDGE_MARKER}. Whether the class changed.
+	 */
+	public static boolean removeDefaultBridges(FabricatedState state, ClassNode node) {
+		List<DefaultBridge> bridges = state.defaultBridges().getOrDefault(node.name, List.of());
+		if (bridges.isEmpty()) return false;
+		return node.methods.removeIf(m -> isBridge(m) && bridges.stream().anyMatch(b -> b.name().equals(m.name) && b.descriptor().equals(m.desc)));
+	}
+
+	/**
+	 * The invisible annotation on the bridge methods Fabricated makes. The JVM and reflection never read invisible
+	 * annotations, and no class of that name exists: it only marks the method for {@link #removeDefaultBridges}.
+	 */
+	static final String BRIDGE_MARKER = "Lio/github/cmdralph/fabricated/loader/DefaultBridgeMethod;";
+
+	private static boolean isBridge(MethodNode method) {
+		return method.invisibleAnnotations != null && method.invisibleAnnotations.stream().anyMatch(a -> BRIDGE_MARKER.equals(a.desc));
+	}
+
+	/**
+	 * {@code public R name(args) { return Owner.super.name(args); }}, with its maxs (it has no branches, so no frames), and
+	 * its {@link #BRIDGE_MARKER}.
+	 */
 	private static MethodNode bridgeMethod(DefaultBridge bridge) {
 		MethodNode method = new MethodNode(Opcodes.ACC_PUBLIC, bridge.name(), bridge.descriptor(), null, null);
+		method.invisibleAnnotations = new ArrayList<>(List.of(new AnnotationNode(BRIDGE_MARKER)));
 		InsnList code = method.instructions;
 		code.add(new VarInsnNode(Opcodes.ALOAD, 0));
 		int slot = 1;

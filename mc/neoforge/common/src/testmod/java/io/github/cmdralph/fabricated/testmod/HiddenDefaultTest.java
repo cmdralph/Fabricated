@@ -53,9 +53,13 @@ public final class HiddenDefaultTest implements ModInitializer {
 		}
 	}
 
-	/** The public default {@code LivingEntity self()} of an interface {@code LivingEntity} implements, or null. */
+	/**
+	 * The public default {@code LivingEntity self()} of an interface {@code LivingEntity} implements, or null; not the one
+	 * of the test mod's own interface ({@link DefaultBridgeTest}).
+	 */
 	private static Method platformSelf() {
 		for (Class<?> itf : LivingEntity.class.getInterfaces()) {
+			if (itf == DefaultBridgeTest.OwnSelf.class) continue;
 			try {
 				Method m = itf.getMethod("self");
 				if (m.isDefault() && m.getReturnType() == LivingEntity.class) return m;
