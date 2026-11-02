@@ -1329,47 +1329,24 @@ jobs:
             echo "== $run"
             python3 -I ci/javap-dump.py "$RUNNER_TEMP/$run" "$@" | cut -c1-300 || true
           }
-          dump client-polyfrost 'mod:org.polyfrost.polydium.mixin.PolydiumMixinPlugin#*' \
-            'mod:org.polyfrost.polydium.mixin.PolydiumMixinPlugin#shouldApplyMixin' \
-            'mod:org.polyfrost.polydium.mixin.PolydiumMixinPlugin#onLoad' \
-            'mod:org.polyfrost.polydium.mixin.PolydiumMixinPlugin#getMixins' \
-            'mod:*MixinFontTextureNodeFreeSpace#class'
-          dump client-corpus 'mod:dev.architectury.mixin.fabric.client.MixinKeyboardHandler#wrapCharTyped*' \
-            'game:net.minecraft.client.KeyboardHandler#*' 'game:net.minecraft.client.KeyboardHandler#lambda$charTyped$*'
           dump client-malilib 'game:net.minecraft.world.item.ItemStack#getTooltipLines'
           # KEYMAP-1: the mods' accessors of KeyMapping's key map, which NeoForge retyped, and what their callers do with it.
           dump client-polyfrost 'mixins:net/minecraft/class_304'
-          # Do a Barrel Roll's camera roll hooks on 1.21.1, which pick Camera.setup's setRotation calls by ordinal: its
-          # mixin's handlers, NeoForge's setup and vanilla's (ffy.a in Mojang's obfuscated names), which VANILLA-1 aligns.
-          if [ "${{ matrix.target.minecraft }}" = "1.21.1" ]; then
-            dump client-advanced 'mod:nl.enjarai.doabarrelroll.mixin.client.roll.CameraMixin#doABarrelRoll$addRoll*' \
-              'game:net.minecraft.client.Camera#setup' 'vanilla:ffy#a'
-          fi
           # CORPUS-56: Continuity's sprite source hook captures locals in SpriteSourceList.list, which NeoForge 1.21.11 and
           # 26.x made call an overload.
           dump client-continuity 'game:net.minecraft.client.renderer.texture.atlas.SpriteSourceList#list' 'mod:*SpriteSourceListMixin#*'
-          # Architectury's hook again, with the code: where NeoForge's charTyped calls Screen.charTyped, if it still does.
-          dump client-corpus 'game:net.minecraft.client.KeyboardHandler#charTyped' 'game:net.neoforged.neoforge.client.ClientHooks#onScreenCharTyped*'
-          # Sodium's Fabric build on 1.21.1: its quad mixins (EncodingFormat.normalFace is null as it re-encodes a quad) and
-          # the constructors NeoForge gave BakedQuad.
-          dump client-sodium-fabric 'mixins:net/minecraft/class_777' 'game:net.minecraft.client.renderer.block.model.BakedQuad#<init>'
-          # Iris's Fabric build on 1.21.11: GlStateManager$TextureState stays private to it. Its access widener, what
-          # Fabricated wrote for it, the report's warnings for it and the class as the game ships it.
-          dump client-sodium-fabric 'file:iris.accesswidener' 'game:com.mojang.blaze3d.opengl.GlStateManager$TextureState#class'
-          # CORPUS-52: ImmediatelyFast's access to GlStateManager.DEPTH on 1.21.1 (the corpus client), the same way.
-          dump client-corpus 'file:immediatelyfast*.accesswidener' 'game:com.mojang.blaze3d.platform.GlStateManager#class'
-          # What Fabricated wrote for a run's GlStateManager lines, whether the jar's descriptor names its file, the
-          # report's warnings for the mod and the log's access transformer lines.
-          widened() {
-            local dir="$RUNNER_TEMP/$1/run"
-            [ -d "$dir/.fabricated/cache" ] || return 0
-            echo "== $1: access transformers for GlStateManager"
-            find "$dir/.fabricated/cache" -name '*.jar' | while read -r jar; do
-              unzip -p "$jar" META-INF/accesstransformer.cfg 2>/dev/null | grep -n GlStateManager | sed "s|^|$(basename "$jar"): |" | head -12
-              unzip -p "$jar" META-INF/neoforge.mods.toml 2>/dev/null | grep -n -i -A2 accessTransformers | sed "s|^|$(basename "$jar") toml: |" | head -6
-            done | grep -i -B1 -A1 "glstatemanager\|$2" | head -40 || true
-            grep -n -E "^  $2: " "$dir/logs/fabric-bridge-report.txt" | head -20 | cut -c1-300 || true
-            grep -n -i -m 20 -E "access ?transformer|IllegalAccessError" "$dir/logs/latest.log" | cut -c1-300 || true
-          }
-          widened client-sodium-fabric iris
-          widened client-corpus immediatelyfast
+          if [ "${{ matrix.target.minecraft }}" = "1.21.1" ]; then
+            # Ledger's anvil hook, which stops the 1.21.1 advanced corpus server as Mixin applies it ("@ModifyArgs injector
+            # ... has an invalid signature"): Mixin's whole message, the handler as the mod ships it and as Fabricated
+            # left it, and the menu's methods as NeoForge's game has them.
+            for log in "$RUNNER_TEMP/server-advanced/server.out" "$RUNNER_TEMP/server-advanced/logs/latest.log"; do
+              if [ -f "$log" ]; then grep -h -m 2 -o "has an invalid signature.*" "$log" | cut -c1-900 || true; fi
+            done
+            dump server-advanced 'mod:*AnvilScreenHandlerMixin#ledgerLogAnvilChange' 'mod:*AnvilScreenHandlerMixin#class' \
+              'game:net.minecraft.world.inventory.AnvilMenu#*'
+            # CORPUS-50: Supplementaries' item tags are missing as the 1.21.1 corpus server loads its data packs. Moonlight
+            # adds the tags it generates in a pack of its own: its and Supplementaries' mixins, and what the report says of them.
+            dump server-corpus 'file:moonlight*.mixins.json' 'file:supplementaries*.mixins.json'
+            grep -h -i -E "moonlight|supplementaries" "$RUNNER_TEMP/server-corpus/logs/fabric-bridge-report.txt" | grep -v -E "declares the service|shares package" | cut -c1-400 | head -60 || true
+            grep -h -i -E "moonlight|supplementaries|dynamic" "$RUNNER_TEMP/server-corpus/logs/latest.log" | grep -v -E "^\s+at " | cut -c1-400 | head -60 || true
+          fi
