@@ -1,9 +1,11 @@
 # Fabricated for Minecraft Forge
 
 > **This is the `forge` branch:** Fabricated for **Minecraft Forge 61 to 66** (Minecraft 1.21.11, 26.1.2, 26.2 and
-> 26.3). It is an **experimental preview**: dedicated servers, and clients that run Fabric mods' client entrypoints.
-> NeoForge is Fabricated's supported platform: see [`main`](https://github.com/cmdralph/Fabricated/tree/main). For
-> Forge on Minecraft 1.20.1, see [`forge-legacy`](https://github.com/cmdralph/Fabricated/tree/forge-legacy).
+> 26.3), on dedicated servers and clients. From 0.6.0-beta Forge is held to the same bar as NeoForge: no launch stop
+> caused by Fabricated and no open P0 or P1 finding (the open ones are in the [roadmap](/docs/roadmap.md#findings)).
+> Coverage differs, and what Forge lacks is listed in [`docs/FORGE.md`](/docs/FORGE.md). For NeoForge, see
+> [`main`](https://github.com/cmdralph/Fabricated/tree/main); for Forge on Minecraft 1.20.1, see
+> [`forge-legacy`](https://github.com/cmdralph/Fabricated/tree/forge-legacy).
 
 Fabricated loads Fabric mods and libraries next to Forge mods. This branch holds the shared engine and the Forge 61 to
 66 platform (`main` holds NeoForge's, `forge-legacy` Forge 47's), with the engine merged in from `main`. It builds and
@@ -13,10 +15,10 @@ tests the Forge targets, and its releases' `fabricated-forge-*` jars for Forge 6
 
 | Minecraft | Forge | Java | Fabric mods use | CI on this branch |
 |---|---|---|---|---|
-| 1.21.11 | 61.2.4 | 21 | Intermediary names (remapped at load) | Builds; both server runs and the client run must pass |
-| 26.1.2 | 64.1.5 | 25 | Mojang names (no remapping) | Builds; both server runs and the client run must pass |
-| 26.2 | 65.1.5 | 25 | Mojang names (no remapping) | Builds; both server runs and the client run must pass |
-| 26.3 | 66.1.0 | 25 | Mojang names (no remapping) | Builds; both server runs and the client run must pass |
+| 1.21.11 | 61.2.4 | 21 | Intermediary names (remapped at load) | Builds; both server runs and both client runs must pass |
+| 26.1.2 | 64.1.5 | 25 | Mojang names (no remapping) | Builds; both server runs and both client runs must pass |
+| 26.2 | 65.1.5 | 25 | Mojang names (no remapping) | Builds; both server runs and both client runs must pass |
+| 26.3 | 66.1.0 | 25 | Mojang names (no remapping) | Builds; both server runs and both client runs must pass |
 
 ### What CI checks
 
@@ -37,26 +39,37 @@ On each run, the server checks that:
 - an access widener leaves private a field Forge's coremod reads through a getter, and the report says so;
 - the report names Forge as the loader.
 
-CI then starts a client on each version with the test mod, headlessly, with HeadlessMC and mc-runtime-test. This run
-is a gate too: the client must join a singleplayer world and quit normally, and it checks that:
+CI then starts a client on each version twice, the same two ways, headlessly, with HeadlessMC and mc-runtime-test.
+Both runs are gates too: the client must join a singleplayer world and quit normally, and it checks that:
 - the test mod's main entrypoint and then its client entrypoint run in Forge's registry events, with the registries
   open, as Fabric runs them;
 - Fabric Loader's game instance is the `Minecraft` instance when the client entrypoints run;
 - the item, the content built during the bootstrap (CORPUS-31) and the built-in registries' freeze (CORPUS-32) behave
-  as on the server.
+  as on the server;
+- a key mapping the test mod registers from its client entrypoint is in the game's options, with the key the options
+  file saves for it (KEYMAP-3), and a world holding its registry entries opens without asking to confirm experimental
+  settings (PACK-5).
 
-**With the official Fabric API jar**, the server starts on all four versions and no Fabric API module is turned off. A
-client started with it reaches a world on all four too; that run is only reported for now.
-Some modules load without the mixins that Forge's code can't take. Fabric's use and attack callbacks need no port: a
-Fabric mod refusing a player's use or attack of an item, a block or an entity is heard, as CI checks.
+**With the official Fabric API jar**, the server starts and the client reaches a world on all four versions, and no
+Fabric API module is turned off. Some modules load without the mixins that Forge's code can't take; `docs/FORGE.md`
+says which, and what Fabricated does in their place. Fabric's use and attack callbacks need no port: a Fabric mod
+refusing a player's use or attack of an item, a block or an entity is heard, as CI checks.
 
 **Native on Forge:**
 - `fabric-api-base`.
 - `fabric-loot-api-v3`: Fabric's loot table events run from Forge's loot loading, or from a hook into the registry
   decode on Forge 66.
+- `fabric-key-mapping-api-v1` (`fabric-key-binding-api-v1` on 1.21.11): Fabric mods' key mappings are registered on
+  Forge's key mapping event. Forge creates the game's options before it loads mods, which upstream's module refuses
+  key mappings after (KEYMAP-3).
 
 **Bridged to Forge's own systems:**
 - **Tag files:** their `fabric:remove` entries go into Forge's remove list.
+- **Registry data:** a Fabric mod's own pack keeps Fabric's known-pack identity, so its worldgen and damage types are
+  stable and a world holding them opens without asking to confirm experimental settings (PACK-5).
+- **Load conditions:** Fabric's `fabric:load_conditions` decide whether a data file or a registry entry loads, through
+  Forge's own conditional decoding on Forge 61.
+- **Biomes:** features Fabric's biome modifications add reach the biomes, in the list type Forge uses.
 - **Default attributes:** changes made through `FabricDefaultAttributeRegistry.MODIFY` reach the game, on Forge 64 to 66.
 - **Advancements:** Fabric's advancement events run, on Forge 66.
 - **Fluids:** Fabric mods' fluids get Forge fluid types. An entity moves through a Fabric fluid that isn't water as
@@ -65,6 +78,11 @@ Fabric mod refusing a player's use or attack of an item, a block or an entity is
 - **Block dust:** on 1.21.11, Fabric's block dust tint event is asked where Forge decides whether a block's breaking
   particles are tinted.
 - **Commands:** Fabric mods' commands, registered through Fabric API's event, reach the server.
+- **Screens:** Fabric's screen drawing events fire from Forge's screen rendering, and its key and mouse events from
+  Forge's screen input hooks, where a Fabric mod's refusal holds.
+- **HUD:** Fabric HUD elements attached around a vanilla element, or replacing or removing it, are drawn from Forge's
+  own HUD layers, which take the place of vanilla's HUD method; on 1.21.11 `HudRenderCallback` fires after them
+  (HUD-2).
 - **Block breaking:** Fabric's block break events fire where Forge breaks a player's block, and a Fabric mod that
   refuses a break keeps the block.
 - **Beds:** Fabric's bed occupation and sleeping direction events run where Forge handles beds, and a block a Fabric
@@ -75,13 +93,21 @@ Fabric mod refusing a player's use or attack of an item, a block or an entity is
   mods' hoppers and pipes reach, and a Forge mod's handlers are storages to Fabric mods. A Forge handler moves items
   only once Fabric's transaction commits. Tank items cross both ways too. A fluid carrying data doesn't cross.
 
-## Not supported yet
+## Not supported on Forge
 
-- **Item storages in items.** A Fabric mod's item storage in an item (a backpack's) and Forge's item handler on a stack
-  don't see each other yet; fluids in items do.
-- **Native modules.** Fabric API modules that need a native port on Forge's events, such as entity events, pass
-  through from the Fabric API jar, without the hooks Forge's code can't take: the effect events don't learn which
-  command applied an effect.
+[`docs/FORGE.md`](/docs/FORGE.md) lists what Fabric mods can't rely on here, under *Unsupported on Forge*, with the
+task that takes each on. The main ones:
+
+- **Rendering hooks Forge's code can't take** (task 4): some of Indigo's and the renderer API's, and on 1.21.11 a GUI
+  renderer hook and the block outline hook of `fabric-rendering-v1`.
+- **Item storages in items** (task 5): a Fabric mod's item storage in an item (a backpack's) and Forge's item handler on
+  a stack don't see each other; fluids in items do.
+- **Fabric mods' own HUD mixins** (task 5): a mixin at one of vanilla's calls inside the HUD method applies but never
+  runs, as Forge draws the HUD from its layers; Fabric API's HUD hooks are bridged (above).
+- **The effect events' command context** (task 5): the entity events module doesn't learn which command applied an
+  effect.
+- **Forgified Fabric API** is refused, as is any jar carrying its own copy of Fabric Loader; task 5 tries letting both
+  run.
 
 ## Installing (for testing)
 
@@ -118,7 +144,7 @@ CI is `.github/workflows/build-forge.yml` with `ci/forge/smoke-server.sh` and `c
 - [`docs/PORTING.md`](/docs/PORTING.md) §4 and §7: the Forge port's design and its steps (F1 to F4).
 - [`docs/roadmap.md`](/docs/roadmap.md): where the `forge` track stands and what comes next.
 - [`docs/FORGE.md`](/docs/FORGE.md): what works on the Forge builds, per version and per Fabric API module.
-- [`docs/COMPATIBILITY.md`](/docs/COMPATIBILITY.md): the same for NeoForge, the supported platform, and the engine's shared behaviour.
+- [`docs/COMPATIBILITY.md`](/docs/COMPATIBILITY.md): the same for NeoForge, and the engine's shared behaviour.
 - [`README.md`](/README.md): Fabricated's main README (NeoForge).
 
 ## License

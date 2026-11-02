@@ -1,23 +1,28 @@
-# Fabric API modules on Forge (experimental)
+# Fabric API modules on Forge
 
 The `forge` and `forge-legacy` branches build Fabricated for Minecraft Forge 61 to 66 and Forge 47 (each branch's
-`README.md`); this table compares both, and each branch holds a copy (`docs/FORGE.md` here, `docs/FORGE-LEGACY.md` on
-`forge-legacy`). NeoForge's tables are in [`COMPATIBILITY.md`](COMPATIBILITY.md). CI runs dedicated servers there: `ci/forge/smoke-server.sh` and `ci/forge-legacy/smoke-server.sh`
-start one with the test mod and one with the official Fabric API jar too, and `smoke-client.sh` starts a client the same
-two ways (with Fabric API, informational). This table is the two runs with Fabric API, the server's and the client's
-`fabric-bridge-report.txt`, from the runs on `claude/dev` at `6ee91f6` (40508578596, and 40508573809 for Forge 47),
-2026-10-27: Fabric API 0.141.6+1.21.11, 0.155.3+26.1.2, 0.161.0+26.2, 0.164.0+26.3 and 0.92.12+1.20.1, on Forge 61.2.4,
-64.1.5, 65.1.5, 66.1.0 and 47.4.28. Each cell is the more limited of the two: a module with client hooks
-can load on the server and lose hooks, or be turned off, on the client. The server starts and the client reaches a world
-in every run, and both server runs and the client run with the test mod are gates on every Forge version.
+`README.md`). From 0.6.0-beta Forge is held to NeoForge's bar: no launch stop caused by Fabricated and no open P0 or P1
+finding (the findings still open are in [roadmap.md](roadmap.md#findings)). Coverage differs, and what Forge lacks is
+listed below under *Unsupported on Forge*, with the task that takes it on where one does. This page compares both
+branches, and each holds a copy (`docs/FORGE.md` on `forge`, `docs/FORGE-LEGACY.md` on `forge-legacy`). NeoForge's
+tables are in [`COMPATIBILITY.md`](COMPATIBILITY.md).
+
+CI runs dedicated servers there: `ci/forge/smoke-server.sh` and `ci/forge-legacy/smoke-server.sh` start one with the
+test mod and one with the official Fabric API jar too, and `smoke-client.sh` starts a client the same two ways. Every
+run is a gate on every Forge version. This table is the two runs with Fabric API, the server's and the client's
+`fabric-bridge-report.txt`, from task 3's pull requests on 2026-11-02 (runs 41382942938 for Forge 61 to 66 and
+41385466464 for Forge 47): Fabric API 0.141.6+1.21.11, 0.155.3+26.1.2, 0.161.0+26.2, 0.164.0+26.3 and 0.92.12+1.20.1,
+on Forge 61.2.4, 64.1.5, 65.1.5, 66.1.0 and 47.4.28. Each cell is the more limited of the two: a module with client
+hooks can load on the server and lose hooks, or be turned off, on the client.
 
 How to read it: as the NeoForge table, and
 
+- **native**: Fabricated ships the module itself, on Forge's events; the official jar's copy isn't loaded.
 - **loads, part**: the module loads without some of its hooks, ones its plan leaves out where Forge's code differs or
-  ones pre-flight finds Forge's code can't take (LEAVE-1). The report names each, with what is lost.
+  ones pre-flight finds Forge's code can't take (LEAVE-1). The report names each; where Fabricated does the hook's
+  work another way, the bullets below say so, and what is lost is under *Unsupported on Forge*.
 - **disabled**: the client run turns it off (the game goes on without it); the server loads it where it isn't
-  client-only. No module is disabled on any Forge version: Forge 47's `fabric-particles-v1` was until PART-1, its
-  accessor to the particle providers' map expecting vanilla's type, which Forge changed.
+  client-only. No module is disabled on any Forge version.
 
 | Module | 1.21.11 (Forge 61) | 26.1.2 (Forge 64) | 26.2 (Forge 65) | 26.3 (Forge 66) | 1.20.1 (Forge 47) |
 |---|---|---|---|---|---|
@@ -49,8 +54,8 @@ How to read it: as the NeoForge table, and
 | fabric-game-rule-api-v1 | loads | loads | loads | loads | loads |
 | fabric-item-api-v1 | loads, part | loads, part | loads, part | loads, part | loads, part |
 | fabric-item-group-api-v1 | loads | — | — | — | loads |
-| fabric-key-binding-api-v1 | loads | — | — | — | loads |
-| fabric-key-mapping-api-v1 | — | loads | loads | loads | — |
+| fabric-key-binding-api-v1 | native | — | — | — | loads |
+| fabric-key-mapping-api-v1 | — | native | native | native | — |
 | fabric-keybindings-v0 | — | — | — | — | loads |
 | fabric-lifecycle-events-v1 | loads, part | loads, part | loads, part | loads, part | loads, part |
 | fabric-loot-api-v2 | loads | — | — | — | native |
@@ -75,7 +80,7 @@ How to read it: as the NeoForge table, and
 | fabric-rendering-fluids-v1 | loads, part | loads, part | loads, part | loads, part | loads, part |
 | fabric-rendering-v0 | — | — | — | — | loads |
 | fabric-rendering-v1 | loads, part | loads | loads | loads | loads, part |
-| fabric-resource-conditions-api-v1 | loads, part | loads | loads | loads, part | loads, part |
+| fabric-resource-conditions-api-v1 | loads, part | loads | loads | loads | loads, part |
 | fabric-resource-loader-v0 | loads | loads | loads | loads | loads |
 | fabric-resource-loader-v1 | loads, part | loads, part | loads, part | loads, part | — |
 | fabric-screen-api-v1 | loads, part | loads, part | loads, part | loads, part | loads |
@@ -86,13 +91,26 @@ How to read it: as the NeoForge table, and
 | fabric-transfer-api-v1 | loads | loads | loads | loads | loads |
 | fabric-transitive-access-wideners-v1 | loads | loads | loads | loads | loads |
 
+
 On top of the modules, the in-game mod bridges these to Forge, or makes Fabric API's hooks for them apply, each checked
-by the server runs (the colours and screen input by the client runs):
+by the server runs (the colours, screens, key mappings and config screens by the client runs):
 
 - **Tags:** tag files' `fabric:remove` entries are read into Forge's own removal list, with and without Fabric API (all
   five).
 - **Fluids:** Fabric mods' fluids get Forge fluid types, and an entity moves through one that isn't water as through
   air, as on Fabric (all five).
+- **Registry data:** a Fabric mod's own pack takes Fabric API's known-pack identity, so its registry entries (worldgen,
+  damage types) are stable, as on Fabric, and a world holding them opens without asking to confirm experimental
+  settings (Forge 61 to 66, server and client; PACK-5). Forge gives mods' packs none, and Forge mods' packs keep that.
+- **Load conditions:** of two advancements (a JSON data loader's files) and two damage types (a data pack registry's
+  entries) with `fabric:load_conditions`, the server loads the ones whose conditions hold and not the others (Forge 61
+  to 66, with Fabric API). Forge 61 decodes registry entries through its own conditional decoder, which the in-game mod
+  hands Fabric's conditions to, and Forge 61's and 66's JSON data loaders hand the data to lambdas taking more values
+  than vanilla's, which pre-flight bridges upstream's hook into (LAMBDA-8).
+- **Biomes:** a feature `BiomeModifications.addFeature` adds to the plains is among their features (Forge 61 to 66, with
+  Fabric API). Upstream rebuilds each generator's feature list, a field Forge retypes, which the in-game mod writes with
+  Forge's type (CORPUS-33). On Forge 47 the module is native: Fabric's changes go through Forge's biome modifiers, and a
+  spawn and a temperature added to the plains reach the biome Forge reads.
 - **Default attributes:** `FabricDefaultAttributeRegistry.MODIFY` runs in Forge's attribute modification event, and a
   cow's armor set through it is what the game reads (Forge 64 to 66, with Fabric API).
 - **Advancements:** a vanilla advancement's reward set through `AdvancementEvents.MODIFY` is what the server loads
@@ -125,37 +143,135 @@ by the server runs (the colours and screen input by the client runs):
   `UseItemCallback`, `UseBlockCallback`, `UseEntityCallback`, `AttackBlockCallback` and `AttackEntityCallback` through
   Forge's own code, and a refusal holds (all five, with Fabric API, server and client). Upstream's hooks apply as they
   are, pre-flight renaming the captured value the entity hook shadows.
-- **Screen input:** a click and a key press on a screen, and their releases, ask `ScreenMouseEvents` and
-  `ScreenKeyboardEvents` (Forge 47, with Fabric API, client run). Forge 47's patch made the mouse lambdas take `this` and
-  reordered the key lambda's captured values; pre-flight bridges upstream's hooks into both (LAMBDA-7).
+- **Screens:** a screen's initialization and drawing events fire, and a key press, a key release, a character typed, a
+  mouse click and its release on a screen ask `ScreenKeyboardEvents` and `ScreenMouseEvents`, whose refusals hold (Forge
+  64 to 66, with Fabric API, client run). Forge calls a screen's input handlers and draws it through hooks of its own,
+  where upstream's wrappers look for vanilla's calls, so the in-game mod wraps the same calls inside Forge's hooks and
+  fires the drawing events from Forge's `ScreenEvent.Render` (SCREEN-1). Forge 61 has the same bridges, which no check
+  runs yet: 1.21.11 has no client test mod for Fabric API's client modules. On Forge 47 a click and a key press, and
+  their releases, ask the same events (with Fabric API, client run): its patch made the mouse lambdas take `this` and
+  reordered the key lambda's captured values, and pre-flight bridges upstream's hooks into both (LAMBDA-7).
+- **HUD:** a Fabric HUD element attached after chat and one attached before the hotbar are drawn (Forge 61 to 66, with
+  Fabric API, client run). Forge 61 to 66 draw the HUD as layers of their own, where upstream's hooks into vanilla's
+  HUD method no longer run, so the in-game mod wraps each of Forge's layers with the Fabric elements attached to,
+  replacing or removing the same vanilla element, vanilla's conditions around it checked first (HUD-2). On Forge 61,
+  the deprecated `HudRenderCallback` fires after Forge's last layer, outside the loading screen. On Forge 47 it is
+  1.20.1's HUD API, and fires from Forge's `RenderGuiEvent.Post`, where Forge's GUI ends its HUD drawing (with Fabric
+  API, client run). Removing Fabric's `info_bar` element also keeps the bar from switching between the experience and
+  the locator bar on Forge 61 to 66, whose layer does both.
+- **Key mappings:** on Forge 61 to 66 the key mapping module (the key binding module on 1.21.11) is native, with Fabric
+  API's jar and without it (client runs). Upstream refuses a key mapping once the game's options exist, which Forge
+  creates before it loads mods, so passed through, it failed every client entrypoint that registers one (KEYMAP-3).
+  Fabricated keeps them until Forge's `RegisterKeyMappingsEvent`, where Forge mods register theirs; Forge then reads
+  the saved keys again. A test key mapping is in the options, sorted after the game's, and bound to the key CI's
+  options file saves for it; a second registration of it, and one after Forge's event, are refused, as upstream refuses
+  them. On Forge 47, Fabric API's module loads as it is.
+- **Config screens:** a Fabric mod's Mod Menu config screen is behind Forge's mod list button, as on NeoForge (all five,
+  client run).
+- **Failed initializers:** a Fabric mod whose entrypoint throws is named in the report and in Forge's loading warnings,
+  and what it built but never registered is dropped at the registries' freeze with an error, where it stopped the
+  freeze (all five, server run; HOLD-2). Fabricated's API runs what waits for the initializers once they ran
+  (`Fabricated.get().afterEntrypoints`).
 - **Storages:** a Fabric mod's item and fluid storages are the `ITEM_HANDLER` and `FLUID_HANDLER` capabilities of its
   block entity, and a Forge mod's `ItemStackHandler` and `FluidTank` are Fabric's storages (all five, with Fabric API,
   server and client). A Forge handler only simulates until Fabric's outermost transaction commits, so an aborted one
   never reaches it, and two insertions in one transaction take no more than its slots hold; fluids move in whole
   millibuckets. On Forge 61 to 66 a fluid carrying data (Fabric's components, Forge's tag) doesn't cross. A Fabric mod's
   tank item is filled and drained through Forge's `FLUID_HANDLER_ITEM`, its stack changed in place when it stays the
-  same item, and a Forge mod's through `FluidStorage.ITEM`, in Fabric's transaction. Item storages in items (a
-  backpack's) don't cross yet.
+  same item, and a Forge mod's through `FluidStorage.ITEM`, in Fabric's transaction.
+- **Fuels and brewing (Forge 47):** an item `FuelRegistry` makes a fuel is one to Forge's furnace, and an awkward potion
+  brewed with an item a `FabricBrewingRecipeRegistry` recipe names gives the recipe's potion (with Fabric API, server
+  and client). Forge's furnace reads its burn times from vanilla's fuel table as tags load, where upstream's hook adding
+  Fabric's fuels is left out with the rest of its furnace mixin, so the in-game mod adds them (FUEL-1). Upstream builds
+  a brewing recipe with vanilla's constructor of a brewing mix, which Forge replaced, so every call threw and failed
+  the initializer making it; the in-game mod builds it with Forge's (BREW-1). The report still lists that call among
+  its linkage warnings.
 - **Model baking:** a model loading plugin's before-bake and after-bake modifiers see the models baked (Forge 47, with
   Fabric API, client run). Forge 47 moved the bake's code into an overload that also takes the sprite getter, where
   pre-flight moves upstream's hooks, its before-bake variable modifier too (MODEL-3).
 
 What else differs on Forge, for Fabric mods in general:
 
-- **Loading errors:** when Forge refuses a mod file or a dependency is missing, it loads only Minecraft and Forge to show
-  the error. Fabricated then leaves the game's classes alone, so Forge's own error is what the player sees (LOADERR-1).
-  Forge itself refuses two Fabric jars in the corpus: JEI's on Forge 61 to 66 (its module-info) and YACL 3.6.6's on
-  Forge 47 (its `mods.toml`). Their Forge builds work.
+- **Covered by Forge itself:** upstream's fix for emerald trades with other mods' villager types, as Forge 61 to 66
+  skip the same check and give no trade for a type without one, and upstream's DataFixerUpper hooks for a dimension
+  whose chunk generator type no mod registers, as Forge's patch to the same schema keeps the generator's data (all
+  five). The report lists those hooks as left out or skipped.
+- **Loading errors:** when Forge refuses a mod file or a dependency is missing, it loads only Minecraft and Forge to
+  show the error. Fabricated then leaves the game's classes alone, so Forge's own error is what the player sees
+  (LOADERR-1). Forge itself refuses two Fabric jars in the corpus: JEI's on Forge 61 to 66 (its module-info) and YACL
+  3.6.6's on Forge 47 (its `mods.toml`). Their Forge builds work.
 - **Jars built for Fabric and NeoForge at once** list their nested jars for NeoForge too. Fabricated hides that list
   from Forge's jar-in-jar locator and reads the jar itself, so each nested mod loads once, translated (JIJ-1).
-- **MixinExtras** is 0.5.5 on every Forge version: the in-game mod nests it, and Forge's jar-in-jar locator picks it over
-  the 0.5.4 Forge 61 to 66 offer (MIXEXT-3).
+- **Other copies of Fabric's parts:** a Fabric API module another Forge mod provides (one bundling Fabric API's modules)
+  is that mod's, and Fabricated's copy, its mixins and its Forge hooks stand down, as on NeoForge (all five, server run
+  with stand-ins; PROVIDER-1). Sinytra Connector and a second Fabricated jar are refused, the launch stopping with
+  Fabricated's reason (DUP-1), and so, at once, is a Forge jar with its own copy of Fabric Loader, beside which Forge
+  can't even build its error screen (all five; PROVIDER-2).
+- **MixinExtras** is 0.5.5 on every Forge version: the in-game mod nests it, and Forge's jar-in-jar locator picks it
+  over the 0.5.4 Forge 61 to 66 offer (MIXEXT-3).
 - **Forge Config API Port**'s Fabric build loads, with its own copies of NeoForge's config classes, which Forge lacks
-  (REPL-1, PLAT-5). **Mod Menu**'s Fabric build isn't loaded on Forge, which lists mods and their config screens itself;
-  its API isn't provided there.
+  (REPL-1, PLAT-5). **Mod Menu**'s Fabric build isn't loaded on Forge, which lists mods itself; Fabric mods' Mod Menu
+  entrypoints give it their config screens (above).
 - **Enum extensions:** a Fabric mod adding enum constants with Mixin's enum extensions (Farmer's Delight Refabricated)
   is disabled on Forge 61 to 66, whose Mixin 0.8.7 predates them (CORPUS-36).
-- **The corpus runs** reach the game on every Forge version since LOADERR-1: 85 to 104 Fabric mods load on the Forge 64
-  to 66 servers and 135 on Forge 47's, 104 to 151 on the clients (runs 40570195894 and 40570200260). They stop later,
-  on what *Findings* in [roadmap.md](roadmap.md#findings) lists (PRE-18, CORPUS-33).
+- **The corpus runs** (informational; extended runs 41385577023 and 41386136422 on task 3's code) load 87 to 106
+  Fabric mods on the Forge 61 to 66 servers and 135 on Forge 47's, 105 to 124 on the Forge 61 to 66 clients and 151 on
+  Forge 47's, then stop before a world, on what *Findings* in [roadmap.md](roadmap.md#findings) lists for task 5: the
+  Forge 61 to 66 clients as the game bootstraps and the Forge 64 to 66 servers as Mixin starts (CORPUS-53), the Forge
+  61 and Forge 47 servers on a corpus mod's hook into `CropBlock.getGrowthSpeed` that pre-flight let through
+  (CORPUS-54), and Forge 47's client on a method the game's class loader can't find (CORPUS-55). The test mods' runs,
+  which are the gates, have none of those mods. Lithostitched and Terralith, which pre-flight disabled until CORPUS-33,
+  load on Forge 61 to 66.
 
+## Unsupported on Forge
+
+What Fabric mods can't rely on there. The report names every hook left out; these are the ones nothing on Forge does
+instead. Unless a task is named, nothing is planned for them yet.
+
+**Taken on by a later task:**
+
+- **Rendering (task 4, FRAPI).** On Forge 61, Indigo's rendering of a single block and of a block's breaking texture
+  (`BlockRenderDispatcher`), the renderer API's moving blocks and extended block commands (`BlockFeatureRenderer`),
+  one of rendering-v1's GUI renderer hooks (`GuiRenderer.executeDraw`) and its block outline hook (`LevelRenderer`).
+  On Forge 64 to 66, the renderer API's particle sprite for block markers and the in-wall screen effect (`BlockMarker`,
+  `ScreenEffectRenderer`, on Forge 66 `LevelExtractor`). On Forge 47, Indigo's hook into chunk rebuilding and the
+  breaking overlay on renderer API models (`OverlayVertexConsumer`).
+- **Item storages in items (task 5).** A Fabric mod's item storage in an item (a backpack's) and Forge's item handler on
+  a stack don't see each other; fluids in items do (all five).
+- **Effect events' command context (task 5).** The entity events module's effect events don't learn which command
+  applied an effect: upstream's hook is in Brigadier, a library Forge loads without mixins (Forge 61 to 66).
+- **Fabric mods' own HUD mixins (task 5).** A Fabric mod's mixin at one of vanilla's calls inside the HUD method
+  (`Gui.render`), or at its end, applies but never runs: Forge 61 to 66 hand the drawing to their layers at its start,
+  and Forge 47's GUI never calls it. Mixins at its start, and into the methods that draw each part, which Forge's
+  layers call, still run. Fabric API's own HUD hooks are bridged (above); task 5 looks at mods' own.
+- **Forgified Fabric API (task 5).** It is refused with any jar carrying its own Fabric Loader (PROVIDER-2, above).
+  Task 5 tries hiding its nested loader so both run, as on NeoForge.
+
+**Not supported on Forge** (Forge's code differs where upstream hooks in):
+
+- **Item API.** A Fabric item's stack-aware recipe remainder (`FabricItem.getRecipeRemainder`) in furnaces, brewing
+  stands and crafting, where Forge's own per-stack remainder hook applies (all five). On Forge 61 to 66,
+  `FabricItem.canBeEnchantedWith` at the enchanting table, where Forge asks its own hook, and
+  `allowContinuingBlockBreaking` as the stack changes while mining (client). On Forge 66, upstream's leave for a Fabric
+  mod's fishing rod to keep its hook out, where Forge checks its own fishing action. On Forge 47, a Fabric item's
+  per-stack attribute modifiers and `isSuitableFor`, where Forge's own per-stack hooks apply.
+- **Content registries.** On Forge 64 to 66, an `EntityFluidInteractionRegistry` behaviour: entities swim, travel,
+  sprint and float a boat in a fluid as its Forge fluid type lets them, which for a Fabric fluid is Fabricated's,
+  treating it as water when it is tagged `minecraft:water` and as air otherwise. On Forge 47, the oxidizable blocks
+  registry, an interface mixin Forge 47's Mixin doesn't apply.
+- **Lifecycle events.** `BLOCK_ENTITY_UNLOAD` doesn't fire for a block entity a chunk drops as it reads it again (Forge
+  61 to 66, server; Forge 47, client); the other block entity and chunk events fire.
+- **Object builder.** A Fabric wood type's sign and hanging sign materials (Forge 61 and 64) and its hanging sign edit
+  screen's texture (Forge 61 to 66).
+- **Registry sync.** Data generation of other mods' dynamic registries (Forge 61 to 66). Forge syncs registry ids
+  itself, and Fabricated runs the built-in registries' freeze after the main initializers (CORPUS-32), where upstream's
+  bootstrap hook did. On Forge 61, and on Forge 47 for item colours and particles too, the remapping of block colours
+  by id, which Forge does its own way; on Forge 47, upgrading a world from before 1.18 with other mods' structures.
+- **Fluid rendering.** A Fabric fluid render handler's overlay sprite on the sides of a fluid beside glass or leaves;
+  Forge's own overlay drawing stays (all five).
+- **Forge 47's interface mixins.** Its Mixin (0.8.5) applies no injector in an interface mixin, so beside the recipe
+  remainder and oxidizable blocks above, `TooltipComponentCallback` (rendering-v1) is lost there.
+- **Sound (Forge 47).** A Fabric sound instance's own audio stream (`FabricSoundInstance.getAudioStream`).
+- **Data generation only.** Removing entries through a Fabric tag appender, Fabric's key sort orders in generated files,
+  and, by version, the advancement builder's Fabric interface and vanilla's block loot provider limited to vanilla's
+  blocks; a Fabric model provider also writes item definitions for other mods' block items.

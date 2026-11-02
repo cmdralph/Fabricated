@@ -102,7 +102,9 @@ final class LambdaRepairs extends PreflightPart {
 	 * followed, nor one whose place the alignment can't tell. A lambda of vanilla's under its SRG name, which no lambda
 	 * of this build carries, is also found where Forge changed its code or what it captures: by its place where the
 	 * creating method makes lambdas of the same interfaces in the same order in vanilla's class and in this build's, or
-	 * as the one lambda of its interface and signature there; and in a lambda found so in its turn.
+	 * as the one lambda of its interface and signature there; and in a lambda found so in its turn. A lambda named as
+	 * javac names it that Forge changed is found by its place in the same way where this build's keeps its name, which a
+	 * hook naming it with vanilla's descriptor then names with this build's (LAMBDA-8).
 	 */
 	List<String> vanillaLambdaRepairs(AnnotationNode injector, List<ClassNode> targets, Context ctx) {
 		if (!(Annotations.value(injector, "method") instanceof List<?> selectors)) return List.of();
@@ -150,7 +152,8 @@ final class LambdaRepairs extends PreflightPart {
 	/**
 	 * The lambda of {@code target} in the place of vanilla's {@code lambda} in {@code original}, or null when that can't
 	 * be told. Only a lambda {@code renamed} (vanilla's under its SRG name, LAMBDA-6) is found by its interface alone or
-	 * in a lambda that another lambda creates, a few levels deep.
+	 * in a lambda that another lambda creates, a few levels deep; another that the patch changed only where it keeps
+	 * vanilla's name in vanilla's place (LAMBDA-8).
 	 */
 	private MethodNode lambdaPlace(ClassNode original, ClassNode target, MethodNode lambda, boolean renamed, int depth) {
 		MethodNode creator = null;
@@ -177,8 +180,16 @@ final class LambdaRepairs extends PreflightPart {
 				games.stream().map(CreatedLambda::shape).toArray(String[]::new));
 		if (index == vanillas.size()) return null;
 		if (places != null && places[index] >= 0) return games.get(places[index]).body();
-		if (!renamed) return null;
-		if (vanillas.stream().map(CreatedLambda::face).toList().equals(games.stream().map(CreatedLambda::face).toList())) return games.get(index).body();
+		boolean sameFaces = vanillas.stream().map(CreatedLambda::face).toList().equals(games.stream().map(CreatedLambda::face).toList());
+		if (!renamed) {
+			// One the patch changed, where the creating method makes lambdas of the same interfaces in the same order and this
+			// build's in vanilla's place keeps vanilla's name: the same lambda, which takes more or other values (Forge 61's
+			// SimpleJsonResourceReloadListener.scanDirectory lambda, which also takes the codec, for Fabric API's resource
+			// conditions, whose hook names vanilla's lambda with its descriptor; LAMBDA-8).
+			MethodNode same = sameFaces && places != null && places[index] == -1 ? games.get(index).body() : null;
+			return same != null && same.name.equals(lambda.name) ? same : null;
+		}
+		if (sameFaces) return games.get(index).body();
 		CreatedLambda only = onlyOfInterface(games, vanillas.get(index).face());
 		return onlyOfInterface(vanillas, vanillas.get(index).face()) != null && only != null ? only.body() : null;
 	}
@@ -263,7 +274,10 @@ final class LambdaRepairs extends PreflightPart {
 	 * same bridge, in order only (Ledger's hooks into {@code FireBlock.checkBurnOut}, which takes a face too; SIG-1). Where
 	 * the running Mixin refuses a static handler on a method that takes {@code this}, and this build's lambda takes it
 	 * where vanilla's doesn't, the bridge takes {@code this} (Forge 47's {@code MouseHandler}, whose patch reads the
-	 * client in its screen lambdas; LAMBDA-7). Returns a description of the bridged method.
+	 * client in its screen lambdas; LAMBDA-7). Where it takes a static handler there, a lambda whose values the build also
+	 * reorders gets the same bridge, which then passes the handler the values only (Forge 66's
+	 * {@code SimpleJsonResourceReloadListener.prepare} lambda, which reads the listener's codec, for Fabric API's resource
+	 * conditions; LAMBDA-8). Returns a description of the bridged method.
 	 */
 	List<String> capturedValueRepairs(ClassNode mixin, MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx,
 			List<MethodNode> bridges) {
@@ -278,7 +292,9 @@ final class LambdaRepairs extends PreflightPart {
 		boolean lambdaStatic = (lambda.access & Opcodes.ACC_STATIC) != 0;
 		boolean takesThis = handlerStatic && !lambdaStatic && exactStaticInjects;
 		Type[] own = Type.getArgumentTypes(handler.desc);
-		if (own.length < 2 || !PreflightAsm.isCallbackInfo(own[own.length - 1]) || handlerStatic != lambdaStatic && !takesThis) return List.of();
+		// No handler that takes this takes a static method. A static one on a method that takes this is bridged where Mixin
+		// refuses it (takesThis) and where the values need placing (LAMBDA-8): the bridge takes this either way.
+		if (own.length < 2 || !PreflightAsm.isCallbackInfo(own[own.length - 1]) || !handlerStatic && lambdaStatic) return List.of();
 		List<Type> wanted = List.of(own).subList(0, own.length - 1);
 		List<Type> captured = List.of(Type.getArgumentTypes(lambda.desc));
 		// A patch captures a value or two more; a lambda taking many more is more likely another one under that name.
@@ -313,7 +329,7 @@ final class LambdaRepairs extends PreflightPart {
 					+ "'s Mixin refuses a static handler; a bridge taking this calls the handler");
 		}
 		return List.of(lambda.name + lambda.desc + (isLambda ? ", whose captured values this game build passes in another order or with more"
-				: ", which this game build declares with more parameters") + (takesThis ? ", taking this" : "")
+				: ", which this game build declares with more parameters") + (handlerStatic && !lambdaStatic ? ", taking this" : "")
 				+ "; a bridge passes the handler the ones it takes");
 	}
 

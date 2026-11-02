@@ -5,6 +5,8 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
+import io.github.cmdralph.fabricated.api.FabricApiModule;
+import io.github.cmdralph.fabricated.api.Fabricated;
 import net.fabricmc.fabric.api.loot.v3.LootTableEvents;
 import net.fabricmc.fabric.api.loot.v3.LootTableSource;
 import net.minecraft.core.BlockPos;
@@ -23,7 +25,10 @@ import net.minecraft.world.level.storage.loot.entries.LootItem;
 /**
  * The test mod's part for Fabricated's native fabric-loot-api-v3 on Forge (F4), as main's LootTest: dirt's loot table
  * gets a diamond pool through MODIFY (and must come from vanilla), a drop listener adds an emerald, and dirt's drops
- * must contain both. Checked at the first server tick (the test mod has no Fabric lifecycle events on Forge).
+ * must contain both. Checked at the first server tick (the test mod has no Fabric lifecycle events on Forge). When
+ * another mod provides the module (the stand-ins' run, ci/forge/standins.py), Fabricated's hooks into Forge's loot table
+ * loading stand down with its copy of the module, so none of the loading events may come from them; the stand-in has no
+ * hooks of its own (the drop event is upstream's mixin's, which the stand-in carries).
  */
 final class ForgeLootTest {
 	private static final ResourceKey<LootTable> DIRT = ResourceKey.create(Registries.LOOT_TABLE, Identifier.withDefaultNamespace("blocks/dirt"));
@@ -51,6 +56,17 @@ final class ForgeLootTest {
 	}
 
 	static void check(ServerLevel level) {
+		boolean providedElsewhere = Fabricated.get().flatMap(api -> api.fabricApiModule("fabric-loot-api-v3"))
+				.map(module -> module.status() == FabricApiModule.Status.PROVIDED_BY_MOD).orElse(false);
+		if (providedElsewhere) {
+			List<String> fired = SEEN.stream().sorted().toList();
+			if (fired.isEmpty()) {
+				ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST loot left to its provider OK");
+			} else {
+				ForgeTestMod.LOGGER.error("FABRICATED-FORGE-TEST loot left to its provider FAILED: another mod provides fabric-loot-api-v3, yet {} fired", fired);
+			}
+			return;
+		}
 		List<String> failed = new ArrayList<>();
 		for (String what : List.of("replace", "modify_vanilla", "all_loaded")) {
 			if (!SEEN.contains(what)) failed.add(what);

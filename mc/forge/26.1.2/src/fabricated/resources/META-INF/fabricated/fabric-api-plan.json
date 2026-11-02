@@ -9,7 +9,7 @@
     "fabric-content-registries-v0": {
       "plan": "passthrough",
       "skipMixins": ["fabric-content-registries-v0.mixins.json:fluid.EntityMixin#checkIfInSwimmableFluid", "fabric-content-registries-v0.mixins.json:fluid.EntityMixin#checkIfUnderSwimmableFluid", "fabric-content-registries-v0.mixins.json:fluid.EntityMixin#checkIfStandingInSwimmableFluid", "fabric-content-registries-v0.mixins.json:fluid.EntityMixin#checkCustomFluids"],
-      "reason": "Forge decides whether an entity swims, and whether it looks crawling, from fluid types (isInWaterOrSwimmable, canStartSwimming), where upstream's hooks into updateSwimming and isVisuallyCrawling look for vanilla's water checks, so pre-flight disabled the module (and every mod needing it): the four are left out and the rest loads. Lost: an entity doesn't swim, or stop looking crawling, in a fluid registered through EntityFluidInteractionRegistry unless Forge's fluid type for it allows swimming (UNVERIFIED which fluid type Forge gives a Fabric fluid)."
+      "reason": "Forge decides whether an entity swims, and whether it looks crawling, from fluid types (isInWaterOrSwimmable, canStartSwimming), where upstream's hooks into updateSwimming and isVisuallyCrawling look for vanilla's water checks, so pre-flight disabled the module (and every mod needing it): the four are left out and the rest loads. Lost: an entity doesn't swim, or stop looking crawling, in a fluid registered through EntityFluidInteractionRegistry unless the fluid's Forge type allows swimming: a Fabric fluid's type is Fabricated's (FabricFluidType), which allows it when the fluid is tagged minecraft:water, and a Forge mod's fluid type decides for its own fluids."
     },
     "fabric-data-generation-api-v1": {
       "plan": "passthrough",
@@ -19,7 +19,7 @@
     "fabric-dimensions-v1": {
       "plan": "passthrough",
       "skipMixins": ["fabric-dimensions-v1.mixins.json:V2832Mixin", "fabric-dimensions-v1.mixins.json:TaggedChoiceMixin", "fabric-dimensions-v1.mixins.json:TaggedChoiceTaggedChoiceTypeMixin"],
-      "reason": "Forge loads DataFixerUpper outside the layers Mixin transforms, so upstream's TaggedChoiceMixin and TaggedChoiceTaggedChoiceTypeMixin would never apply, and V2832Mixin, which casts DataFixerUpper's tagged choice type to the interface they add, would fail when the data fixers are built: the three are left out and the rest of the module loads. Lost: upgrading a world whose dimensions use a chunk generator type no installed mod registers fails in DataFixerUpper as it does without Fabric API (UNVERIFIED whether Forge's own handling covers it)."
+      "reason": "Forge loads DataFixerUpper outside the layers Mixin transforms, so upstream's TaggedChoiceMixin and TaggedChoiceTaggedChoiceTypeMixin would never apply, and V2832Mixin, which casts DataFixerUpper's tagged choice type to the interface they add, would fail when the data fixers are built: the three are left out and the rest of the module loads. Nothing is lost: Forge patches the same schema (V2832) to keep a dimension's generator as it is when its type isn't known (DSL.or with DSL.remainder()), so upgrading a world whose dimensions use a chunk generator type no installed mod registers doesn't fail, which is what upstream's mixins are for (read in Forge 61.2.4, 64.1.5, 65.1.5 and 66.1.0)."
     },
     "fabric-entity-events-v1": {
       "plan": "passthrough",
@@ -31,6 +31,11 @@
       "skipMixins": ["fabric-events-interaction-v0.mixins.json:ServerPlayerGameModeMixin#breakBlock", "fabric-events-interaction-v0.mixins.json:ServerPlayerGameModeMixin#onBlockBroken"],
       "reason": "Forge's destroyBlock no longer calls Block.playerWillDestroy and Block.destroy itself, where upstream's hooks fire PlayerBlockBreakEvents.BEFORE and AFTER: both moved into a private removeBlock Forge added, so pre-flight left the two hooks out and the events never ran when a player broke a block (a mod refusing a break, or acting on one, saw nothing). Fabricated's in-game mod fires them at the same points of Forge's method instead, BEFORE (with CANCELED when refused) once the game's checks pass and AFTER once removeBlock removed the block, before the drops (BREAK-1)."
     },
+    "fabric-key-mapping-api-v1": {
+      "plan": "native",
+      "version": "2.0.4",
+      "reason": "Shipped by Fabricated: upstream's API, its key mappings registered on Forge's key mapping event, where Forge mods register theirs. Upstream refuses a key mapping once the game's options exist, and Forge 64 creates them before it loads mods, the Fabric client entrypoints among them, so passed through, the module failed every client entrypoint that registers one (KEYMAP-3). Forge loads the keys from the options file again once mods have loaded, which gives each key mapping the key the player saved. As upstream, a key mapping registered twice is refused, and so is one registered once Forge's event has added them; its category is sorted into the controls screen's order by upstream's mixin; KeyMappingHelper.getBoundKeyOf reads Forge's getKey, where upstream's accessor mixin reads the field."
+    },
     "fabric-loot-api-v3": {
       "plan": "native",
       "version": "3.0.12",
@@ -40,6 +45,11 @@
       "plan": "passthrough",
       "skipMixins": ["fabric-object-builder-v1.mixins.json:AttributeSupplierBuilderAccessor", "fabric-object-builder-v1.mixins.json:BuiltInRegistriesMixin"],
       "reason": "Forge keeps an attribute builder's entries in a map of its own, where upstream's accessor reads vanilla's ImmutableMap builder, so pre-flight disabled the module (and fabric-data-attachment-api-v1, which needs it). The accessor's one use, copying an entity type's default attributes for FabricDefaultAttributeRegistry.MODIFY, takes Forge's copy constructor from the in-game mod instead. Upstream runs MODIFY as the built-in registries freeze, which Forge does at bootstrap, before any Fabric mod has registered a listener: its hook is left out and the in-game mod runs MODIFY in Forge's EntityAttributeModificationEvent, after every registration and before Forge builds the attributes the game reads."
+    },
+    "fabric-screen-api-v1": {
+      "plan": "passthrough",
+      "skipMixins": ["fabric-screen-api-v1.mixins.json:GameRendererMixin#onExtractGui", "fabric-screen-api-v1.mixins.json:KeyboardHandlerMixin#invokeKeyPressedEvents", "fabric-screen-api-v1.mixins.json:KeyboardHandlerMixin#invokeKeyReleasedEvents", "fabric-screen-api-v1.mixins.json:MouseHandlerMixin#invokeMouseClickedEvents", "fabric-screen-api-v1.mixins.json:MouseHandlerMixin#invokeMousePressedEvents", "fabric-screen-api-v1.mixins.json:MouseHandlerMixin#invokeMouseDragEvents", "fabric-screen-api-v1.mixins.json:KeyboardHandlerMixin#invokeCharTypedEvents"],
+      "reason": "Forge 64's input handlers call a screen's keyPressed, keyReleased, charTyped, mouseClicked, mouseReleased and mouseDragged through Forge's hooks (ForgeHooksClient.onScreenKeyPressed, onScreenKeyReleased, onScreenCharTyped, onScreenMouseDrag, ForgeEventFactoryClient.onScreenMouseClicked, onScreenMouseReleased), and the game renderer draws the screen through Forge's, so upstream's wrappers of the vanilla calls are left out: Fabricated's mixins wrap the same calls inside Forge's hooks (ScreenInputEvents), and its before/after extract events fire from Forge's ScreenEvent.Render (ScreenDrawEvents), as on Fabric (SCREEN-1). The rest of the module, scrolling's wrapper included, is upstream's."
     },
     "fabric-tag-api-v1": {
       "plan": "passthrough",

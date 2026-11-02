@@ -6,7 +6,8 @@
 #
 # Usage: ci/forge/smoke-client.sh <minecraft-version> <forge-version> <work-dir> [extra-mods-dir]
 # Exit status: the client must reach a world and exit normally, and every check must pass. With extra-mods-dir (the
-# official Fabric API jar), its jars join the mods folder.
+# official Fabric API jar, and on 26.x the test mod for Fabric API's client modules, whose checks then apply), its jars
+# join the mods folder.
 # Expects: build/libs/fabricated-forge-*+mc<minecraft-version>.jar and mc/forge/<minecraft-version>/build/testmods/fabricated-testmod.jar,
 # JAVA_HOME pointing at the Java version the game needs, xvfb-run and gh (with GH_TOKEN) on the PATH.
 set -euo pipefail
@@ -80,6 +81,17 @@ cat > run/options.txt <<'OPTS'
 onboardAccessibility:false
 pauseOnLostFocus:false
 OPTS
+# A key saved for the test mod's key mapping, which it must have once the game has started (KEYMAP-3). The file then
+# names the game's data version (its client jar's): without one, the game takes it for a file from before 1.13, whose
+# data fixer reads each key as an LWJGL 2 key code, fails on a key's name, and drops the whole file (as on main).
+# Should the jar not say, the key isn't saved, and the key mapping check fails on it.
+if data_version=$(python3 -I -c 'import json, sys, zipfile; print(json.loads(zipfile.ZipFile(sys.argv[1]).read("version.json"))["world_version"])' \
+		"minecraft/versions/$mc/$mc.jar"); then
+	printf '%s\n' "version:$data_version" "key_key.fabricated_forge_testmod.check:key.keyboard.k" >> run/options.txt
+else
+	echo "::warning::The client jar's data version wasn't read; no key is saved for the test mod's key mapping"
+fi
+cat run/options.txt
 
 echo "::group::Run client"
 for attempt in 1 2; do
@@ -97,11 +109,13 @@ for attempt in 1 2; do
 			descendants "$child"
 		done
 	}
+	dumped=0
 	finished_at=""
 	# What every game thread is doing, so a hang can be diagnosed from the log. SIGQUIT makes a JVM print every thread's
 	# stack to its output (client.out) and carry on. Every Java process the launcher started, the game's included; a
 	# shell would quit on it.
 	dump_threads() {
+		dumped=1
 		for pid in $(descendants "$client_pid"); do
 			if [ "$(cat "/proc/$pid/comm" 2>/dev/null)" = java ]; then kill -QUIT "$pid" 2>/dev/null || true; fi
 		done
@@ -109,6 +123,10 @@ for attempt in 1 2; do
 		awk '/^Full thread dump/ { dump = 1 } dump' client.out > thread-dump.txt || true
 	}
 	while kill -0 "$client_pid" 2>/dev/null; do
+		# Shortly before the timeout, the threads of a game that never got there (as on main).
+		if [ "$dumped" -eq 0 ] && [ $((SECONDS - started)) -ge $((timeout_seconds - 45)) ]; then
+			dump_threads
+		fi
 		# A game stuck shutting down after it reached its world: its threads, then it is stopped, and the run fails as a
 		# timeout would.
 		if [ -z "$finished_at" ] && grep -q "Successfully finished\." client.out run/logs/latest.log 2>/dev/null; then
@@ -117,7 +135,7 @@ for attempt in 1 2; do
 		if [ -n "$finished_at" ] && [ $((SECONDS - finished_at)) -ge "$exit_timeout" ]; then
 			echo "The game reached its world but didn't exit within $exit_timeout seconds; stopping the client."
 			echo "The game didn't exit within $exit_timeout seconds of reaching its world (mc-runtime-test's stop)" > stop-reason.txt
-			dump_threads
+			[ "$dumped" -eq 1 ] || dump_threads
 			# The whole tree, the game's JVM included, which would otherwise outlive the launcher into the next run.
 			tree=$(descendants "$client_pid")
 			kill $tree "$client_pid" 2>/dev/null || true
@@ -169,7 +187,7 @@ for report in run/crash-reports/*.txt; do
 	echo "::endgroup::"
 done
 if [ -f thread-dump.txt ]; then
-	echo "::group::Thread dump of a game stuck shutting down (game threads)"
+	echo "::group::Thread dump of a game stuck before the timeout or shutting down (game threads)"
 	awk 'BEGIN { RS = ""; ORS = "\n\n" } /^"(Render thread|Server thread|Netty|Local|IO-Worker|Worker-Main)/' thread-dump.txt || true
 	echo "::endgroup::"
 fi
@@ -189,7 +207,12 @@ check "Fabricated ran the Fabric main entrypoints of [1-9][0-9]* mod(s) on Forge
 check "FABRICATED-FORGE-TEST main entrypoint OK" "the test mod's main entrypoint ran on the client"
 check "FABRICATED-FORGE-TEST client entrypoint OK" "its client entrypoint ran after the main one, as on Fabric"
 check "FABRICATED-FORGE-TEST client game instance OK" "Fabric Loader's game instance is the Minecraft instance when the client entrypoints run"
+check "FABRICATED-FORGE-TEST api after entrypoints OK" "Fabricated's API runs what waits for the Fabric initializers once they ran (Fabricated.get().afterEntrypoints)"
+check "FABRICATED-FORGE-TEST modmenu config screen OK" "a Fabric mod's Mod Menu config screen is behind Forge's mod list button, as on NeoForge"
 check "FABRICATED-FORGE-TEST registry OK" "the test mod registered an item on the client"
+check "FABRICATED-FORGE-TEST mod pack data is stable OK" "a Fabric mod's registry entries are stable, so creating the world asked nothing (PACK-5)"
+if [ "$mc" = 1.21.11 ]; then keys="key binding" keys_module=fabric-key-binding-api-v1; else keys="key mapping" keys_module=fabric-key-mapping-api-v1; fi
+check "FABRICATED-FORGE-TEST $keys OK" "native $keys_module: a $keys a Fabric mod registers from its client entrypoint is in the game's options, sorted after the game's, refused twice and once Forge's event added it, as upstream, and has the key the options file saved for it (KEYMAP-3)"
 check "FABRICATED-FORGE-TEST content built at bootstrap registered OK" "content built during vanilla's bootstrap is registered by the main initializer (CORPUS-31)"
 check "FABRICATED-FORGE-TEST built-in registries frozen after the main initializers OK" "the built-in registries' freeze runs after the main initializers (CORPUS-32)"
 if [ -n "$extra" ]; then
@@ -201,8 +224,32 @@ if [ -n "$extra" ]; then
 	check "FABRICATED-FORGE-TEST damage events OK" "fabric-entity-events-v1 (with Fabric API): on the integrated server, an entity hurt asks ALLOW_DAMAGE, whose refusal holds, and fires AFTER_DAMAGE (DAMAGE-1)"
 	check "FABRICATED-FORGE-TEST storages OK" "fabric-transfer-api-v1 (with Fabric API): on the integrated server, a Fabric mod's storages, on blocks and in tank items, are Forge's capabilities and a Forge mod's handlers Fabric's storages"
 fi
+# The test mod for Fabric API's client modules (26.x: mc/forge/common26/src/testmodfrapi), where the run has it.
+if [ -n "$extra" ] && [ -f "$extra/fabricated-testmod-frapi.jar" ]; then
+	check "FABRICATED-TEST key mapping OK" "fabric-key-mapping-api-v1 (native, with Fabric API's jar too): the client API test mod's key mapping is in the game's options (KEYMAP-3)"
+	check "FABRICATED-TEST hud element OK" "fabric-rendering-v1 (with Fabric API): a Fabric HUD element added last was drawn"
+	check "FABRICATED-TEST hud element after chat OK" "fabric-rendering-v1 (with Fabric API): a Fabric HUD element attached after chat was drawn, from Forge's HUD layers (HUD-2)"
+	check "FABRICATED-TEST hud element before the hotbar OK" "fabric-rendering-v1 (with Fabric API): a Fabric HUD element attached before the hotbar was drawn, from Forge's hotbar layers (HUD-2)"
+	check "FABRICATED-TEST screen init event OK" "fabric-screen-api-v1 (with Fabric API): a screen's initialization fired Fabric's event"
+	check "FABRICATED-TEST screen draw event OK" "fabric-screen-api-v1 (with Fabric API): a screen's drawing fired Fabric's event, from Forge's screen render events (SCREEN-1)"
+	check "FABRICATED-TEST screen key press event OK" "fabric-screen-api-v1 (with Fabric API): a key press sent to the shown screen asked allowKeyPress, from Forge's hook, and its refusal held (SCREEN-1)"
+	check "FABRICATED-TEST screen key release event OK" "fabric-screen-api-v1 (with Fabric API): a key release sent to the shown screen fired afterKeyRelease, from Forge's hook (SCREEN-1)"
+	check "FABRICATED-TEST screen character event OK" "fabric-screen-api-v1 (with Fabric API): a character typed into the shown screen asked allowCharType, from Forge's hook (SCREEN-1)"
+	check "FABRICATED-TEST screen mouse click event OK" "fabric-screen-api-v1 (with Fabric API): a mouse button pressed over the shown screen asked allowMouseClick, from Forge's event factory (SCREEN-1)"
+	check "FABRICATED-TEST screen mouse release event OK" "fabric-screen-api-v1 (with Fabric API): a mouse button released over the shown screen asked allowMouseRelease, from Forge's event factory (SCREEN-1)"
+	check "FABRICATED-TEST client commands OK" "fabric-command-api-v2 (with Fabric API): Fabric's client commands were registered on joining the world"
+	check "FABRICATED-TEST client stopping OK" "fabric-lifecycle-events-v1 (with Fabric API): CLIENT_STOPPING fired as the game stopped"
+	if [ "$fail" = 1 ]; then
+		echo "::group::The client API test mod's lines in the game log"
+		grep -n -m 60 -E "fabricated-testmod-frapi|FABRICATED-TEST|ScreenInputEvents|ScreenDrawEvents" "$log" || true
+		echo "::endgroup::"
+	fi
+fi
 if [ -n "$extra" ] && [ "$mc" = 1.21.11 ]; then
 	check "FABRICATED-FORGE-TEST colour providers OK" "fabric-rendering-v1 (with Fabric API, 1.21.11): its colour provider registry finds grass's provider in Forge's block colours, and none for stone (COLOR-1)"
 	check "FABRICATED-FORGE-TEST block dust tint event OK" "fabric-particles-v1 (with Fabric API, 1.21.11): a stone particle made as the client joins asks ParticleRenderEvents.ALLOW_BLOCK_DUST_TINT, where Forge decides the tint (PART-2)"
+	check "FABRICATED-FORGE-TEST hud element after chat OK" "fabric-rendering-v1 (with Fabric API, 1.21.11): a Fabric HUD element attached after chat was drawn, from Forge's HUD layers (HUD-2)"
+	check "FABRICATED-FORGE-TEST hud element before the hotbar OK" "fabric-rendering-v1 (with Fabric API, 1.21.11): a Fabric HUD element attached before the hotbar was drawn, from Forge's hotbar layers (HUD-2)"
+	check "FABRICATED-FORGE-TEST hud render callback OK" "fabric-rendering-v1 (with Fabric API, 1.21.11): HudRenderCallback fired after Forge's HUD layers, outside the loading screen (HUD-2)"
 fi
 exit "$fail"

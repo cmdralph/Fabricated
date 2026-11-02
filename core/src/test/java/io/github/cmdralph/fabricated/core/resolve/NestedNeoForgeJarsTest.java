@@ -96,6 +96,34 @@ class NestedNeoForgeJarsTest {
 		assertEquals(contents.mods(), NestedNeoForgeJars.read(root, ArchiveLimits.DEFAULTS));
 	}
 
+	/**
+	 * Forge's mods nest theirs with the same jar-in-jar list, a mod's descriptor at {@code META-INF/mods.toml}: a jar with
+	 * one is a mod, and a jar with NeoForge's alone a library there.
+	 */
+	@Test
+	void readsAPlatformsOwnDescriptorWithTheLibraries(@TempDir Path dir) throws Exception {
+		byte[] module = TestJars.create()
+				.text("META-INF/mods.toml", TOML.formatted("fabric_api_base"))
+				.bytes("net/fabricmc/fabric/api/event/Event.class", TestJars.emptyClass("net/fabricmc/fabric/api/event/Event", "java/lang/Object"))
+				.toBytes();
+		byte[] neoForgeOnly = TestJars.create()
+				.text("META-INF/neoforge.mods.toml", TOML.formatted("other"))
+				.bytes("other/Other.class", TestJars.emptyClass("other/Other", "java/lang/Object"))
+				.toBytes();
+		Path root = TestJars.create()
+				.text(NestedNeoForgeJars.METADATA, jarJar("META-INF/jarjar/module.jar", "META-INF/jarjar/neoforge-only.jar"))
+				.bytes("META-INF/jarjar/module.jar", module)
+				.bytes("META-INF/jarjar/neoforge-only.jar", neoForgeOnly)
+				.write(dir.resolve("forgified-fabric-api.jar"));
+
+		NestedNeoForgeJars.Contents contents = NestedNeoForgeJars.readAll(root, ArchiveLimits.DEFAULTS, "META-INF/mods.toml");
+
+		assertEquals(List.of("forgified-fabric-api.jar!/META-INF/jarjar/module.jar"), contents.mods().stream().map(NestedNeoForgeJars.ModsToml::origin).toList());
+		assertEquals(Set.of("net/fabricmc/fabric/api/event/Event"), contents.mods().get(0).classes());
+		assertEquals(Set.of("other"), contents.libraryPackages());
+		assertEquals(contents.mods(), NestedNeoForgeJars.read(root, ArchiveLimits.DEFAULTS, "META-INF/mods.toml"));
+	}
+
 	@Test
 	void nestsNoDeeperThanTheLimits(@TempDir Path dir) throws Exception {
 		byte[] level2 = TestJars.create().text("META-INF/neoforge.mods.toml", TOML.formatted("level2")).toBytes();

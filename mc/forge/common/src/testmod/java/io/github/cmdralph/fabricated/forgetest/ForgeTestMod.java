@@ -11,6 +11,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
 
+import io.github.cmdralph.fabricated.api.FabricMod;
+import io.github.cmdralph.fabricated.api.Fabricated;
 import net.fabricmc.api.DedicatedServerModInitializer;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
@@ -37,12 +39,16 @@ import net.minecraft.world.item.Items;
  * ({@link ForgeAdvancementTest}), the command module's registration event ({@link ForgeCommandTest}), a networking
  * round trip ({@link ForgeNetworkingTest}), the interaction module's block break events ({@link ForgeBlockBreakTest})
  * and use and attack callbacks ({@link ForgeInteractionTest}), the entity events module's sleep ({@link ForgeSleepTest})
- * and damage ({@link ForgeDamageTest}) events, and storages reaching Forge's capabilities ({@link ForgeTransferTest}).
+ * and damage ({@link ForgeDamageTest}) events, storages reaching Forge's capabilities ({@link ForgeTransferTest}), and the
+ * resource conditions module's load conditions in data files and registry entries ({@link ForgeConditionsTest}), and
+ * the biome module's feature modifications ({@link ForgeBiomeTest}).
  * Its fluids are written as Fabric mods write theirs ({@link ForgeFluidTest}).
  */
 public final class ForgeTestMod implements ModInitializer, DedicatedServerModInitializer {
 	public static final String MOD_ID = "fabricated-forge-testmod";
 	public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
+	/** The test mod that fails on purpose, which only the server smoke installs (mc/shared/src/testmodbroken). */
+	private static final String THROWS = "fabricated-testmod-throws";
 	public static final Identifier ITEM_ID = Identifier.fromNamespaceAndPath(MOD_ID, "test_item");
 	/** The item {@link #onInitialize} registers, as Fabric mods register theirs: straight into the registry. */
 	public static Item testItem;
@@ -53,6 +59,15 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 	public void onInitialize() {
 		String version = FabricLoader.getInstance().getModContainer(MOD_ID).map(c -> c.getMetadata().getVersion().getFriendlyString()).orElse("none");
 		LOGGER.info("FABRICATED-FORGE-TEST main entrypoint OK (version {}, Fabric Loader sees {} mods)", version, FabricLoader.getInstance().getAllMods().size());
+		// Fabricated's API on Forge: what waits for the Fabric initializers runs once they have, the mod that fails on
+		// purpose (in the server smoke) known as failed.
+		Fabricated.get().ifPresent(api -> api.afterEntrypoints(() -> {
+			boolean ok = api.entrypointsComplete() && api.isFabricModLoaded(MOD_ID)
+					&& api.fabricMod(THROWS).map(m -> m.status() == FabricMod.Status.FAILED).orElse(true);
+			if (ok) LOGGER.info("FABRICATED-FORGE-TEST api after entrypoints OK");
+			else LOGGER.error("FABRICATED-FORGE-TEST api after entrypoints FAILED: complete {}, {}, {}", api.entrypointsComplete(), api.fabricMod(MOD_ID),
+					api.fabricMod(THROWS));
+		}));
 		try {
 			testItem = Registry.register(BuiltInRegistries.ITEM, ITEM_ID, new Item(new Item.Properties().setId(ResourceKey.create(Registries.ITEM, ITEM_ID))));
 			if (ITEM_ID.equals(BuiltInRegistries.ITEM.getKey(testItem))) {
@@ -90,6 +105,13 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 				ForgeAdvancementTest.register();
 			} catch (RuntimeException | LinkageError e) {
 				LOGGER.warn("FABRICATED-FORGE-TEST advancement listener not registered", e);
+			}
+		}
+		if (FabricLoader.getInstance().isModLoaded("fabric-biome-api-v1")) {
+			try {
+				ForgeBiomeTest.register();
+			} catch (RuntimeException | LinkageError e) {
+				LOGGER.warn("FABRICATED-FORGE-TEST biome modification not registered", e);
 			}
 		}
 		if (FabricLoader.getInstance().isModLoaded("fabric-command-api-v2")) {
@@ -222,6 +244,40 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 		}
 	}
 
+	/** Whether a Fabric mod's registry entries are stable, as on Fabric ({@link ForgePackTest}, PACK-5). */
+	public static void checkPackData(MinecraftServer server) {
+		try {
+			ForgePackTest.check(server);
+		} catch (RuntimeException | LinkageError e) {
+			LOGGER.warn("FABRICATED-FORGE-TEST mod pack data check failed", e);
+		}
+	}
+
+	/**
+	 * Whether a feature Fabric's biome modifications add to the plains is among their features, as a noise generator reads
+	 * them ({@link ForgeBiomeTest}; with Fabric API only).
+	 */
+	public static void checkBiomes(MinecraftServer server) {
+		try {
+			ForgeBiomeTest.check(server);
+		} catch (RuntimeException | LinkageError e) {
+			LOGGER.warn("FABRICATED-FORGE-TEST biome modification check failed", e);
+		}
+	}
+
+	/**
+	 * Whether the server loaded the data files and registry entries whose Fabric load conditions hold, and not those whose
+	 * conditions fail ({@link ForgeConditionsTest}; with Fabric API only).
+	 */
+	public static void checkConditions(MinecraftServer server) {
+		if (!FabricLoader.getInstance().isModLoaded("fabric-resource-conditions-api-v1")) return;
+		try {
+			ForgeConditionsTest.check(server);
+		} catch (RuntimeException | LinkageError e) {
+			LOGGER.warn("FABRICATED-FORGE-TEST load conditions check failed", e);
+		}
+	}
+
 	/** Whether a command registered through Fabric's command event is in the server's dispatcher ({@link ForgeCommandTest}; with Fabric API only). */
 	public static void checkCommands(MinecraftServer server) {
 		if (!FabricLoader.getInstance().isModLoaded("fabric-command-api-v2")) return;
@@ -316,6 +372,16 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 			ForgeColorTest.check();
 		} catch (RuntimeException | LinkageError e) {
 			LOGGER.warn("FABRICATED-FORGE-TEST colour provider check failed", e);
+		}
+	}
+
+	/** On a client, whether the test mod's key mapping works as on Fabric ({@link ForgeKeyMappingTest}, KEYMAP-3). */
+	public static void checkKeyMapping() {
+		if (FabricLoader.getInstance().getEnvironmentType() != EnvType.CLIENT) return;
+		try {
+			ForgeKeyMappingTest.check();
+		} catch (RuntimeException | LinkageError e) {
+			LOGGER.warn("FABRICATED-FORGE-TEST key mapping check failed", e);
 		}
 	}
 

@@ -1,0 +1,28 @@
+{
+  "_comment": "The Fabric API module each of Fabricated's own mixins serves (NativeModules), on every Forge version of this branch: when another mod provides that module (Forgified Fabric API, a mod bundling its modules), the mixin stands down with Fabricated's part of it. A list names the module under each name it has had; an empty list is a mixin serving no module (loading Fabric mods: registries, fluids, vanilla behaviour Fabric mods rely on), which always applies. A mixin config in a Fabric API package belongs to the module owning the package (fabricated-loot.mixins.json); configs in Fabricated's packages are listed under configs, or each of their mixins under mixins. The build refuses a mixin missing here.",
+  "configs": {
+    "fabricated-forge-advancement.mixins.json": ["fabric-advancement-api-v1"],
+    "fabricated-forge-color.mixins.json": ["fabric-rendering-v1"],
+    "fabricated-forge-conditions.mixins.json": ["fabric-resource-conditions-api-v1"],
+    "fabricated-forge-damage.mixins.json": ["fabric-entity-events-v1"],
+    "fabricated-forge-entity.mixins.json": ["fabric-entity-events-v1"],
+    "fabricated-forge-interaction.mixins.json": ["fabric-events-interaction-v0"],
+    "fabricated-forge-loot.mixins.json": ["fabric-loot-api-v3"],
+    "fabricated-forge-particle.mixins.json": ["fabric-particles-v1"],
+    "fabricated-forge-screen.mixins.json": ["fabric-screen-api-v1"],
+    "fabricated-forge-screen-chars.mixins.json": ["fabric-screen-api-v1"]
+  },
+  "mixins": {
+    "BuiltInRegistriesFreezeMixin": [],
+    "BuiltInRegistriesInvoker": [],
+    "DefaultAttributeCopyMixin": ["fabric-object-builder-api-v1"],
+    "FluidTypeMixin": [],
+    "ForgePayloadEncodeMixin": ["fabric-networking-api-v1"],
+    "GameDataFreezeMixin": [],
+    "LivingEntityFluidTravelMixin": [],
+    "MappedRegistryPendingHoldersMixin": [],
+    "NamespacedWrapperPendingHoldersMixin": [],
+    "ResourcePackLoaderKnownPackMixin": [],
+    "TagFileRemoveMixin": ["fabric-tag-api-v1"]
+  }
+}

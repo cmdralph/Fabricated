@@ -14,14 +14,17 @@ import net.minecraft.server.MinecraftServer;
 /**
  * Proves Forge's Mixin applies a translated Fabric mod's mixins (from the overlay's MixinConfigs): logs after the first
  * server tick, whether the server has the interface the test mod's class tweaker injects, whether the test mod's item
- * is still in the registry Forge has frozen and checked by then, whether vanilla reads a player's stats file (GSON-2), whether its item tag's removals applied, whether
- * Fabric's loot table events reached dirt's loot table and drops, whether Fabric's default attribute event reached a
- * cow's defaults, whether Fabric's advancement modify event reached a vanilla advancement, whether its fluids have
- * fluid types, on a client whether Fabric's colour provider registry finds the game's block colours, whether a command
- * registered through Fabric's command event is in the server's dispatcher, whether Fabric's block break events fire as
- * a player breaks blocks, whether its use and attack callbacks are asked as a player uses and attacks things (an entity
- * at a later tick), whether a block Fabric's sleep events admit as a bed survives being slept on, whether Fabric's
- * damage events are asked as an entity is hurt, and whether Fabric's storages and Forge's handlers see each other.
+ * is still in the registry Forge has frozen and checked by then, whether vanilla reads a player's stats file (GSON-2),
+ * whether its item tag's removals applied, whether Fabric's loot table events reached dirt's loot table and drops,
+ * whether Fabric's default attribute event reached a cow's defaults, whether Fabric's advancement modify event reached
+ * a vanilla advancement, whether Fabric's load conditions kept the data and registry entries whose conditions fail from
+ * loading, whether a Fabric mod's registry entries are stable, whether Fabric's biome modifications reached the plains'
+ * features, whether its fluids have fluid types, on a client whether Fabric's colour provider registry finds the game's
+ * block colours and whether a Fabric key mapping works as on Fabric, whether a command registered through Fabric's
+ * command event is in the server's dispatcher, whether Fabric's block break events fire as a player breaks blocks,
+ * whether its use and attack callbacks are asked as a player uses and attacks things (an entity at a later tick),
+ * whether a block Fabric's sleep events admit as a bed survives being slept on, whether Fabric's damage events are
+ * asked as an entity is hurt, and whether Fabric's storages and Forge's handlers see each other.
  */
 @Mixin(MinecraftServer.class)
 public abstract class MinecraftServerMixin {
@@ -42,8 +45,12 @@ public abstract class MinecraftServerMixin {
 			ForgeTestMod.checkLoot((MinecraftServer) (Object) this);
 			ForgeTestMod.checkDefaultAttributes();
 			ForgeTestMod.checkAdvancements((MinecraftServer) (Object) this);
+			ForgeTestMod.checkConditions((MinecraftServer) (Object) this);
+			ForgeTestMod.checkPackData((MinecraftServer) (Object) this);
+			ForgeTestMod.checkBiomes((MinecraftServer) (Object) this);
 			ForgeTestMod.checkFluids((MinecraftServer) (Object) this);
 			ForgeTestMod.checkColors();
+			ForgeTestMod.checkKeyMapping();
 			ForgeTestMod.checkCommands((MinecraftServer) (Object) this);
 			ForgeTestMod.checkBlockBreaks((MinecraftServer) (Object) this);
 			ForgeTestMod.checkInteractions((MinecraftServer) (Object) this);

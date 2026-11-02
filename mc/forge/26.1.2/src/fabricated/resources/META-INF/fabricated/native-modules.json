@@ -1,0 +1,21 @@
+{
+  "fabricApiVersion": "0.155.3+26.1.2",
+  "modules": {
+    "fabric-api-base": [
+      "net/fabricmc/fabric/api/event",
+      "net/fabricmc/fabric/api/util",
+      "net/fabricmc/fabric/impl/base/event",
+      "net/fabricmc/fabric/impl/base/toposort"
+    ],
+    "fabric-key-mapping-api-v1": [
+      "net/fabricmc/fabric/api/client/keymapping/v1",
+      "net/fabricmc/fabric/impl/client/keymapping",
+      "net/fabricmc/fabric/mixin/client/keymapping"
+    ],
+    "fabric-loot-api-v3": [
+      "net/fabricmc/fabric/api/loot/v3",
+      "net/fabricmc/fabric/impl/loot",
+      "net/fabricmc/fabric/mixin/loot"
+    ]
+  }
+}

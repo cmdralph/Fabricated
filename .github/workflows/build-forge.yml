@@ -112,8 +112,14 @@ jobs:
       # Only Forge's projects are included, and of those only the requested one and what it depends on are configured.
       - name: Forge libraries on the compile classpath (informational)
         run: ./gradlew -Pfabricated.platforms=forge --configure-on-demand :mc:forge-${{ matrix.target.minecraft }}:forgeClasspathReport || true
-      - name: Build Fabricated and the test mod
-        run: ./gradlew -Pfabricated.platforms=forge --configure-on-demand :mc:forge-${{ matrix.target.minecraft }}:fabricatedJar :mc:forge-${{ matrix.target.minecraft }}:testmodJar --stacktrace
+      # With the test mod that fails on purpose (mc/shared/src/testmodbroken), which the server runs beside it (HOLD-2),
+      # and on 26.x the test mod for Fabric API's client modules (mc/forge/common26/src/testmodfrapi), which the client
+      # run with Fabric API loads.
+      - name: Build Fabricated and the test mods
+        run: >-
+          ./gradlew -Pfabricated.platforms=forge --configure-on-demand :mc:forge-${{ matrix.target.minecraft }}:fabricatedJar
+          :mc:forge-${{ matrix.target.minecraft }}:testmodJar :mc:forge-${{ matrix.target.minecraft }}:testmodThrowsJar
+          ${{ startsWith(matrix.target.minecraft, '26.') && format(':mc:forge-{0}:testmodFrapiJar', matrix.target.minecraft) || '' }} --stacktrace
       - name: Check the jar's layout for Forge
         run: ./gradlew -Pfabricated.platforms=forge --configure-on-demand :mc:forge-${{ matrix.target.minecraft }}:checkForgeJar --stacktrace
       # Forge 61 (1.21.11) runs on Java 21, Forge 64 to 66 (26.x) on Java 25 (each version's java_version).
@@ -134,6 +140,37 @@ jobs:
           curl -fsSL --retry 4 -o "$RUNNER_TEMP/extra/fabric-api.jar" \
             "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api/${{ matrix.target.fabric_api }}/fabric-api-${{ matrix.target.fabric_api }}.jar"
           ci/forge/smoke-server.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/server-fapi" "$RUNNER_TEMP/extra"
+      # Mods that share the game with Fabricated, as stand-ins built from Fabricated's own jar (ci/forge/standins.py): a
+      # Fabric API module another Forge mod provides, straight and nested with its mixins, and two versions of a library
+      # Fabric mods nest. Fabricated's part of each module must stand down (PROVIDER-1, as on NeoForge); a gate.
+      - name: Server with stand-ins for coexisting mods (must pass)
+        if: ${{ env.GAME_RUNS == 'true' && !cancelled() }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/standins"
+          python3 -I ci/forge/standins.py build/libs/fabricated-forge-[0-9]*+mc${{ matrix.target.minecraft }}.jar "$RUNNER_TEMP/standins"
+          ci/forge/smoke-server.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/server-standins" "$RUNNER_TEMP/standins"
+      # Sinytra Connector (a stand-in with its mod id), a second Fabricated jar or a jar with its own copy of Fabric Loader
+      # in the mods folder: the launch must stop with Fabricated's error naming them, as on NeoForge: two loaders of Fabric
+      # mods can't share them (DUP-1), nor two copies of Fabric Loader's packages one game (PROVIDER-2).
+      - name: Server refusing Sinytra Connector, a second Fabricated jar and a copy of Fabric Loader (must pass)
+        if: ${{ env.GAME_RUNS == 'true' && !cancelled() }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/refuse-connector/src/META-INF" "$RUNNER_TEMP/refuse-twice"
+          printf 'modLoader = "lowcodefml"\nloaderVersion = "[1,)"\nlicense = "GPL-3.0-only"\n[[mods]]\nmodId = "connector"\nversion = "1.0.0"\n' \
+              > "$RUNNER_TEMP/refuse-connector/src/META-INF/mods.toml"
+          jar --create --file "$RUNNER_TEMP/refuse-connector/connector-standin.jar" -C "$RUNNER_TEMP/refuse-connector/src" META-INF/mods.toml
+          cp build/libs/fabricated-forge-*+mc${{ matrix.target.minecraft }}.jar "$RUNNER_TEMP/refuse-twice/fabricated-forge-0.0.1+mc${{ matrix.target.minecraft }}.jar"
+          SMOKE_TESTMODS=none SMOKE_TIMEOUT=300 SMOKE_EXPECT_REFUSAL="Sinytra Connector (connector-standin.jar)" \
+              ci/forge/smoke-server.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/server-refuse-connector" "$RUNNER_TEMP/refuse-connector"
+          SMOKE_TESTMODS=none SMOKE_TIMEOUT=300 SMOKE_EXPECT_REFUSAL="2 Fabricated jars (fabricated-forge-0.0.1+mc${{ matrix.target.minecraft }}.jar" \
+              ci/forge/smoke-server.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/server-refuse-twice" "$RUNNER_TEMP/refuse-twice"
+          # A jar with its own copy of Fabric Loader, as Forgified Fabric API for 1.20.1 nests one: refused at once, before
+          # Forge builds a layer, where both copies would stop the launch with a module error naming neither (PROVIDER-2).
+          mkdir -p "$RUNNER_TEMP/refuse-loader"
+          python3 -I ci/forge/standins.py build/libs/fabricated-forge-[0-9]*+mc${{ matrix.target.minecraft }}.jar "$RUNNER_TEMP/refuse-loader" own-loader
+          SMOKE_TESTMODS=none SMOKE_TIMEOUT=300 SMOKE_REFUSAL_AT_ONCE=1 \
+              SMOKE_EXPECT_REFUSAL="standin-own-loader.jar (its standin-fabric-loader.jar) has its own copy of Fabric Loader" \
+              ci/forge/smoke-server.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/server-refuse-loader" "$RUNNER_TEMP/refuse-loader"
       # The client (docs/PORTING.md §7, F4): a Forge client with the test mod reaches a singleplayer world through
       # mc-runtime-test, and the Fabric client entrypoints run after the main ones. A gate like the server runs.
       - name: Install Mesa EGL for the client
@@ -145,15 +182,21 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           ci/forge/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client"
-      # The client with the official Fabric API jar the server run downloaded: which of its client modules load on
-      # Forge, and whether the client still reaches a world with them. Informational until it holds.
-      - name: Client with Fabricated and Fabric API (informational)
+      # The client with the official Fabric API jar the server run downloaded: its client modules load on Forge, and the
+      # client still reaches a world with them. On 26.x the test mod for Fabric API's client modules joins it, and its
+      # checks are the smoke's (key mapping, HUD, screen events with their input events, client commands). A gate like
+      # the other runs since the v0.6.0-beta pass.
+      - name: Client with Fabricated and Fabric API (must pass)
         if: ${{ env.GAME_RUNS == 'true' && !cancelled() }}
-        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          ci/forge/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-fapi" "$RUNNER_TEMP/extra"
+          mkdir -p "$RUNNER_TEMP/extra-client"
+          cp "$RUNNER_TEMP/extra/fabric-api.jar" "$RUNNER_TEMP/extra-client/"
+          if [[ "${{ matrix.target.minecraft }}" == 26.* ]]; then
+            cp mc/forge/${{ matrix.target.minecraft }}/build/testmods/fabricated-testmod-frapi.jar "$RUNNER_TEMP/extra-client/"
+          fi
+          ci/forge/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-fapi" "$RUNNER_TEMP/extra-client"
       # Popular Fabric mods from Modrinth (ci/mod-corpus.txt, downloaded here in CI and checked against Modrinth's
       # SHA-512) with Fabric API, as build.yml runs them on NeoForge: which load on Forge, which are disabled and why.
       # Informational, with "extended" or on a release tag; a mod whose initializer throws is disabled, not fatal.

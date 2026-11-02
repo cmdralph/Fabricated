@@ -6,7 +6,10 @@ package io.github.cmdralph.fabricated.forge;
  * whose {@code freeze} replaces vanilla's.
  */
 public interface PendingHolders {
-	/** At a freeze's start: takes the holders out of the check while the main entrypoints are still to run. */
+	/**
+	 * At a freeze's start: takes the holders out of the check while the main entrypoints are still to run, and drops
+	 * them once they have run if one failed (CORPUS-42, HOLD-2).
+	 */
 	void fabricated$keepPendingHolders();
 
 	/** At a freeze's end: puts them back for their registration. */
