@@ -172,17 +172,16 @@ One entry per working session, newest first: what changed, and how it was verifi
   source); `COMPATIBILITY.md` says so. `COMPATIBILITY.md` lists the Fabric builds' gaps (the owner's decision, 2026-11-02: no patch for Sodium's
   Fabric build, load it and list them) and how Essential loads; the README and the roadmap's tables say what loads
   where.
-- **Open, in the roadmap's findings:** fixed, to verify: CORPUS-54 on NeoForge (Puzzles Lib's screen effect hook on
-  1.21.1), CORPUS-62 (Supplementaries' models through Moonlight's loaders on 1.21.1), CORPUS-63 (default bridges on
-  1.21.1), CORPUS-64 (Fabric Seasons' read of a biome's climate), DEFAULT-1 (a default from a superclass's interface)
-  and LIMIT-2 (Polymer's nested jars); read, to verify: PROVIDER-8 (Forgified Fabric API's modules on 1.21.1, the test
-  mod's skips) and PROVIDER-9 (three server checks of Fabricated's own modules); open: PROVIDER-10 (its 26.x modules'
-  differences), CORPUS-48 (Xaero's World Map's world unload, also seen on 1.21.1), KEYMAP-1 (documented), and
+- **Open, in the roadmap's findings:** fixed, to verify: CORPUS-64 (Fabric Seasons' read of a biome's climate) and
+  DEFAULT-1 (a default from a superclass's interface); read, to verify: PROVIDER-9 (three server checks of Fabricated's
+  own modules); open: PROVIDER-10 (Forgified Fabric API's 26.x modules' differences), CORPUS-65 (Farmer's Delight's
+  recipe book categories on the 1.21.1 client), CORPUS-48 (Xaero's World Map's world unload, also seen on 1.21.1), KEYMAP-1 (documented), and
   the Fabric builds' gaps `COMPATIBILITY.md` lists.
   On Forge, the refusals stay until the Forge sync and its runs.
 - **Verified:** extended runs 41471044589 and 41477591558, every job green on all five NeoForge versions, the
   difficult-mod gates included, 41512581949, every job green, which verified CORPUS-61, CORPUS-56 on 1.21.11 and 26.x,
-  LAMBDA-9 and LIB-2, and 41527263549, every job green, which verified NET-10; the fixes' findings name the run that
+  LAMBDA-9 and LIB-2, 41527263549, every job green, which verified NET-10, and 41536167292, every job green, which
+  verified CORPUS-62, CORPUS-63, LIMIT-2, PROVIDER-8 and CORPUS-54 on NeoForge; the fixes' findings name the run that
   verified each.
 
 ## 2026-11-02: Fabric's renderer API, the Forge branches' half (task 4 done)
