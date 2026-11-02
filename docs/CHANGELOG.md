@@ -55,6 +55,8 @@ One entry per working session, newest first: what changed, and how it was verifi
   coremods leave them, with each version's list from NeoForge's sources, and the report says so; HOOK-2 then moves such
   hooks to the hook's call, an `@Inject` also to a hook taking the call's receiver as a supertype (Friends & Foes'
   patrol member, as a `Mob`). Core's tests only so far; Forge's coremods are the Forge sync's.
+- **Linkage:** a mixin adding an interface of a mod that isn't loading, in a config with a plugin, is left out, as the
+  plugin would leave it, instead of disabling its mod (LINK-3); elsewhere it still disables the mod (LINK-2).
 - **Library classes:** a mixin giving a library class NeoForge loads without mixin support another library's
   interfaces becomes a generated adapter, which the mod's casts of the class's objects to them wrap them in (LIB-2:
   adventure-platform-fabric's `GameProfile` as an Adventure `Identity`, so it loads, and with it OneConfig's chat
@@ -104,12 +106,14 @@ One entry per working session, newest first: what changed, and how it was verifi
   A `@Redirect` HOOK-2 moves to a NeoForge hook's call replaces that call, and with it the events the hook fires around
   it: where the redirect's handler makes the original call itself, as Carpet's does when it doesn't mock a spawn, that
   call is made through the hook, as NeoForge's own code there does, so other mods still see the spawn event (CORPUS-61).
-- **Docs:** `COMPATIBILITY.md` lists the Fabric builds' gaps (the owner's decision, 2026-11-02: no patch for Sodium's
+- **Docs:** KEYMAP-1 is P3, not P2: OneConfig's Controls screen mirrors of its keybinds stay registered with
+  Minecraft's keybinds, but NeoForge keeps every binding of a key, so they don't shadow Minecraft's (read in OneConfig's
+  source); `COMPATIBILITY.md` says so. `COMPATIBILITY.md` lists the Fabric builds' gaps (the owner's decision, 2026-11-02: no patch for Sodium's
   Fabric build, load it and list them) and how Essential loads; the README and the roadmap's tables say what loads
   where.
 - **Open, in the roadmap's findings:** fixed, to verify: LAMBDA-9 (Litematica's schematic rendering on 26.2), LIB-2,
   CORPUS-56 on 1.21.11 and 26.x (Continuity) and CORPUS-61 (Carpet's and Friends & Foes' spawn hooks on 1.21.1);
-  KEYMAP-1, and the Fabric builds' gaps `COMPATIBILITY.md` lists.
+  KEYMAP-1 (documented), and the Fabric builds' gaps `COMPATIBILITY.md` lists.
   On Forge, the refusals stay until the Forge sync and its runs.
 - **Verified:** extended runs 41471044589 and 41477591558, every job green on all five NeoForge versions, the
   difficult-mod gates included; the fixes' findings name the run that verified each.

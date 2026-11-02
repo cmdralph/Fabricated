@@ -1109,7 +1109,9 @@ What this can't match of Fabric, seen in the owner's reference pack (2026-10-28)
 - **A field NeoForge retyped.** NeoForge makes `KeyMapping.MAP` its own `KeyMappingLookup`, not vanilla's `Map`, so an
   accessor to it as a `Map` is left out, and the mod's call to it throws `NoSuchMethodError`. OneConfig's keybind
   registry accessor (`oneconfig$map`) is one: OneConfig catches it, warns that its keybinds may shadow Minecraft's, and
-  goes on. Mixin's "Renaming @Accessor method ..." lines for OneConfig's other static accessors are Mixin's own
+  leaves the mirror of each of its keybinds that it adds to the Controls screen registered with Minecraft's keybinds,
+  where on Fabric it takes them out again. They don't shadow Minecraft's own there: NeoForge's lookup keeps every
+  binding of a key, so Minecraft's binding of a key a mirror shares still works (KEYMAP-1). Mixin's "Renaming @Accessor method ..." lines for OneConfig's other static accessors are Mixin's own
   naming of static interface accessors, as on Fabric.
 - **Interfaces a mod adds to a library class.** adventure-platform-fabric gives authlib's `GameProfile` Adventure's
   `Identity` and Brigadier's `CommandSyntaxException` its `ComponentMessageThrowable`, which NeoForge loads without
