@@ -3,6 +3,61 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-02: Fabric's renderer API, the Forge branches' half (task 4 done)
+
+- **Forge 61 to 66** (#244):
+  - **Rule 8 at Indigo's entry points** (`4169249`): upstream's hooks send every block through Fabric's renderer on
+    Forge, with nothing between a Fabric model that throws and the chunk section, entity or overlay it takes down. A
+    model that throws in a chunk section, as a moving block, with the breaking overlay or as an entity's block is now
+    drawn from its parts, and its class from then on (not a wrapper's, FRAPI-7's `FrapiFailures`, now shared by both
+    Forge branches in `mc/forge-shared`), logged once and listed in the report; a transform it left pushed is popped.
+  - **FRAPI-8** (new, P1, Forge 61, `4169249`): Forge 61 moved the code three of upstream's hooks are in, so pre-flight
+    leaves them out and Fabric models drew nothing as moving blocks, with the breaking overlay and as blocks drawn as
+    entities. The in-game mod sends a block whose model is a Fabric model, or a multipart or weighted model with one
+    among its parts, to Fabric's renderer at those three places, through the overloads Forge's own callers use.
+  - **The guards apply only with Fabric's renderer API** (`a46fbae`): Forge loads every config the jar's manifest
+    names, and these name the renderer API's types, so the first run's client without Fabric API crashed loading the
+    first model class they change. A config plugin (`FrapiMixinPlugin`, shared) keeps them out without the module. The
+    two that redirect inside methods upstream overwrites (`BlockStateModelWrapper.update` on 26.x, the breaking
+    overlay on Forge 64) run at priority 1100, as Mixin injects into a method another mixin merged only from a higher
+    priority. The configs serve `fabric-renderer-api-v1` (`ac40036`), so they stand down with it.
+- **Forge 47** (#245):
+  - **FRAPI-9** (new, P1, `b020730`): Fabric block models were invisible on Forge 47, as on NeoForge 21.1 (FRAPI-5):
+    upstream's hooks look for vanilla's calls, and Forge's section compiler and block renderers call its overloads
+    taking model data and a render type. Such a block is drawn through Indigo once, at its first render type: in chunk
+    sections by the terrain context Indigo's own chunk build hook prepares (pre-flight keeps it), and as a falling
+    block, a block a piston moves, with the breaking overlay and through the block renderer's `renderBatched` by
+    Indigo's block context, into Forge's buffer. Items keep Indigo's own hook, and blocks drawn as entities their
+    vanilla quads, as upstream draws them on 1.20.1. Rule 8 as on Forge 61 to 66, Forge's renderer drawing the block
+    from the quads the model gives.
+  - The renderer test mod is written in Mojang's names and reobfuscated to Forge 47's (`71b8be2`: its own remap
+    task, as ModDevGradle's `reobfuscate()` wants a published source set). Its piston moves every four ticks
+    (`e09d37e`): the client draws a block a piston moves only while its section's mesh holds the moving block, and
+    in run 41421652538 every once-a-second move fell in the seconds the client spent meshing the test's section.
+  - **Decided:** upstream's fix for the breaking overlay's flicker on renderer API models (`OverlayVertexConsumer`)
+    stays left out: Forge 47 picks the overlay's direction the same stable way (`stabilizeDirectionGetNearest`, on by
+    default).
+- **CI gates added**, in the client run with Fabric API on every Forge version: the renderer test mod's model plugin;
+  Fabric models in chunk sections, alone and in a multipart model, as a falling block and with the breaking overlay
+  (each with `seam=Fabricated`), as a minecart's block on Forge 61 to 66 and as a block a piston moves on Forge 47;
+  items in the hotbar, in hand, dropped and in an item frame; model files of a Fabric type on 26.x; the glowing falling
+  block's outline on Forge 65 (Forge 66's informational); rule 8's broken models alone, as a part, inside a wrapper
+  and, on Forge 61 to 66, as a minecart's block, each logged once, the wrapper not blamed, the report listing them and
+  no transform leaked.
+- **Workflows** (`main`): `check.yml`'s Forge build also builds the failing test mod the Forge server smoke installs,
+  and `scripts/sync-platform-branch.sh` merges without git's directory rename detection, which took files `main` adds
+  in a platform folder a branch left out at the split for renames into the branch's own folders.
+- **Found, for task 5:** the two guards in upstream's overwritten methods are required injectors, so a mod that
+  overwrites the same method at a priority above 1100 would stop the launch (none known); PACK-6's default-enabled
+  packs on Forge are upstream's own code, unchecked there. **For task 6:** on Forge 47 a Fabric model's first throw
+  in a chunk section held its worker about 1.4 s before rule 8's fallback ran (likely Indigo's crash report for the
+  throw, whose system details query the hardware; not measured), and a model wrapping a broken one throws at each
+  rebuild of its section; and `scripts/check-mixin-inventory.py` finds the Forge configs' mixins missing from
+  `MIXINS.md` (41 on each Forge branch before R5, 59 on `forge` and 47 on `forge-legacy` after), which the Forge
+  workflows don't run.
+- **Verified:** the Forge pull requests' full matrices (41421652876 and 41423804163, every gate on every version), and `main`'s
+  half's last run, 41406901450 (#243, every gate).
+
 ## 2026-11-02: Fabric's renderer API, `main`'s half (task 4)
 
 - **Rule 8 on every NeoForge seam** (R1, `44d841b`): a Fabric block model that throws in a chunk section, as a moving
