@@ -196,6 +196,7 @@ public final class ModTranslator {
 					if (!result.strippedSignatureFiles().isEmpty()) {
 						notes.add("Removed jar signature files (signatures cannot survive remapping): " + result.strippedSignatureFiles());
 					}
+					notes.addAll(result.leftOutMembers());
 				}
 				Map<String, byte[]> view = remapped;
 				// Mixin classes and configs are read several times; reading an entry again would count against the
