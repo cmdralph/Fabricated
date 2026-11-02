@@ -2,6 +2,7 @@ package io.github.cmdralph.fabricated.testmod;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.biome.v1.BiomeModifications;
@@ -24,7 +25,9 @@ import net.minecraft.world.level.biome.Biomes;
  * must reach the biome NeoForge reads. A mob spawn added to plains and a changed temperature (upstream's weather
  * changes read a field NeoForge's coremod keeps private), checked once the server has started; and a sky colour, an
  * environment attribute NeoForge's biome info doesn't hold on this version, the only change to the desert, which must
- * then be sent to clients rather than read from their own copy.
+ * then be sent to clients rather than read from their own copy. Where Forgified Fabric API provides the module, it
+ * changes the desert on the server and leaves it marked as the known pack's, which its 26.1.2 and 26.2 sources read so
+ * (PROVIDER-10).
  */
 public final class BiomeTest implements ModInitializer {
 	// Plains' own is 0.8: close enough to change nothing that generates.
@@ -52,11 +55,9 @@ public final class BiomeTest implements ModInitializer {
 			int sky = desert.getAttributes().applyModifier(EnvironmentAttributes.SKY_COLOR, 0);
 			if (sky != SKY_COLOR) failed.add("sky colour " + Integer.toHexString(sky));
 			if (biomes.registrationInfo(Biomes.DESERT).flatMap(RegistrationInfo::knownPackInfo).isPresent()) failed.add("desert still read from the known pack");
-			if (failed.isEmpty()) {
-				TestMod.LOGGER.info("FABRICATED-TEST biome modifications OK");
-			} else {
-				TestMod.LOGGER.error("FABRICATED-TEST biome modifications FAILED: {}", failed);
-			}
+			TestMod.report("biome modifications", failed, "fabric-biome-api-v1", Map.of("desert still read from the known pack",
+					"Forgified Fabric API's biome modifications change the biome's attributes on the server and keep its known pack, so clients"
+							+ " read their own copy"));
 		});
 	}
 }
