@@ -282,6 +282,10 @@ real server for every version.
 Fabric payload types are registered with NeoForge as optional payloads when NeoForge locks its network registry
 (after every mod initialiser), so they travel through NeoForge's own networking, including its large-payload
 splitting. Play handlers run on the main thread and configuration handlers on the network thread, as in Fabric.
+A packet carrying a Fabric payload is encoded once, as on Fabric: NeoForge's splitter encodes each packet to measure
+it before vanilla's encoder encodes it again, and a codec that empties what it writes, as Cardinal Components API's
+sync payloads' does, sent no data the second time; vanilla's encoder now writes the bytes the splitter measured
+(NET-10). CI's clients check such a payload arrives whole.
 
 | Fabric | NeoForge |
 |---|---|
@@ -1140,7 +1144,6 @@ tracked:
 | What | Versions | Why | Tracked |
 |---|---|---|---|
 | Fabric's game tests (`fabric-gametest-api-v1`, `client-gametest`) | all | deliberately not loaded: they are development-time tools, not used by mods at runtime | — |
-| Continuity's connected textures | 1.21.11, 26.x | Continuity loads, but CI sees no connected texture there yet. A block model throwing inside Continuity's wrapper left Continuity's per-thread state stuck, so that chunk-building thread drew none for the rest of the session: fixed (the throw is held until Continuity's call returns, as on 1.21.1, where CI sees them since), and on 26.2 the state is no longer left stuck. Glass still gets none there: a second cause, being read | CORPUS-56, task 5 |
 | Data generation's tag appenders (and on 26.3 its loot sub-providers) | all | pre-flight leaves those hooks out where NeoForge's data providers differ; the module's classes load for mods' runtime code (DATAGEN-1), and nothing is generated unless `fabric-api.datagen` is set | — |
 | Fabric storages in items (`ItemStorage.ITEM`) across to NeoForge's item handlers | 1.21.1 | NeoForge 21.1's item handler capability on stacks predates its transfer API, as Forge's | task 5 |
 | A Fabric mod's accessor to a field NeoForge retyped (`KeyMapping.MAP`) | all | NeoForge's field has another type, so the accessor is left out and its callers throw `NoSuchMethodError` | KEYMAP-1, task 5 |
@@ -1152,7 +1155,8 @@ tracked:
 | What Sodium's Fabric build meshes the Fabric way: NeoForge's fluid renderers, section geometry from NeoForge mods, model data, position-aware light and culling | all | *Renderer mods* above; the owner chose to list the gaps rather than patch one mod | rendering-pipeline track |
 | Essential's automatic updates (its Fabric build) | all | Essential loads from the launch after its loader's download, as a regular mod | DOWNLOAD-1 |
 | A Fabric mod's hook into the game's options that needs its initializer (Bobby's larger render distance limit) | 1.21.1 | NeoForge 21.1 creates the options before it loads mods, where Fabric creates them after the entrypoints; such a hook that throws then is skipped for that call, with a warning and a report line (ENTRY-2) | — |
-| Litematica's schematic rendering | 26.2 | its hooks into a `LevelRenderer` lambda NeoForge 26.2 gives one more value are left out (fixed in task 5, to verify) | LAMBDA-9, task 5 |
+| Supplementaries' models made by Moonlight's model loaders, and its way signs' models | 1.21.1 | NeoForge reads a model's `loader` key as one of its own geometry loaders, where Fabric's game ignores it and Moonlight reads it; the way signs' models Moonlight makes at run time are missing too (cause being read) | CORPUS-62, task 5 |
+| What Forgified Fabric API's modules do differently from upstream, where it provides them | 1.21.1 seen | a provider's module is used as it is; CI's coexisting client sees several of the test mod's checks fail with them (block, item and transfer APIs, the attack block event, a vibration frequency, a default-enabled built-in pack), being read one by one | PROVIDER-8, task 5 |
 | Hooks pre-flight leaves out where NeoForge's code differs | per mod | each is in the report, with what NeoForge's code lacks and what is lost | LEAVE-1 (above) |
 
 ### Planned work, in order of impact

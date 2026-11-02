@@ -45,7 +45,11 @@ One entry per working session, newest first: what changed, and how it was verifi
   vanilla's descriptor calls (LAMBDA-9, Litematica's schematic rendering on 26.2); a variable modifier that picks its local by its ordinal, at a load of it, moves to the method the
   platform reduced the method to a call of, where vanilla's code shows the ordinal names the same local there, at
   vanilla's load (PRE-19, Puzzles Lib's break speed hook in Forge 47's `getDigSpeed`; core's tests only, as Forge 47
-  doesn't read vanilla's code yet: the Forge sync).
+  doesn't read vanilla's code yet: the Forge sync). A variable modifier picking its local by its type alone, where no
+  target method has a local of that type, is treated as Mixin will treat it: left out with the reason where Mixin
+  would stop the launch, a warning where it would inject nothing (CORPUS-54: Puzzles Lib's screen effect hook, on which
+  the 1.21.1 corpus client crashed in its world, NeoForge keeping the block state in a pair; the Forge corpus's hook
+  into `CropBlock.getGrowthSpeed`). LAMBDA-9 verified in extended run 41512581949.
 - **Pre-flight reads the game as NeoForge's coremods leave it** (CORPUS-61): NeoForge changes some game classes as they
   load, before Mixin applies any mod's mixins. It points each mob's `finalizeSpawn` call in the classes it lists (22 on
   21.1, 26 from 21.11 on) at `EventHooks.finalizeMobSpawn`, which fires its spawn event, and reads a few fields through
@@ -54,13 +58,15 @@ One entry per working session, newest first: what changed, and how it was verifi
   Foes' in `PatrolSpawner`, which crashed the 1.21.1 corpus server. Pre-flight now reads those classes as NeoForge's
   coremods leave them, with each version's list from NeoForge's sources, and the report says so; HOOK-2 then moves such
   hooks to the hook's call, an `@Inject` also to a hook taking the call's receiver as a supertype (Friends & Foes'
-  patrol member, as a `Mob`). Core's tests only so far; Forge's coremods are the Forge sync's.
+  patrol member, as a `Mob`). Verified in extended run 41512581949: both 1.21.1 corpus servers start, with those hooks
+  moved. Forge's coremods are the Forge sync's.
 - **Linkage:** a mixin adding an interface of a mod that isn't loading, in a config with a plugin, is left out, as the
   plugin would leave it, instead of disabling its mod (LINK-3); elsewhere it still disables the mod (LINK-2).
 - **Library classes:** a mixin giving a library class NeoForge loads without mixin support another library's
   interfaces becomes a generated adapter, which the mod's casts of the class's objects to them wrap them in (LIB-2:
   adventure-platform-fabric's `GameProfile` as an Adventure `Identity`, so it loads, and with it OneConfig's chat
   event). The object itself doesn't implement them: `COMPATIBILITY.md` lists what that leaves short of Fabric.
+  Verified in extended run 41512581949, on every version's Polyfrost client.
 - **Translation:** the members and interfaces Fabric's `@Environment` reserves for the other side are left out as a mod
   is translated (each translation is for one side), keeping the classes' frames, instead of at class load, where
   ModLauncher computed every such class's frames anew and failed on a class an optional mod would provide (ENV-1,
@@ -86,11 +92,18 @@ One entry per working session, newest first: what changed, and how it was verifi
   active, and that worker thread drew no connected textures for the rest of the session (R6 saw it 20 ms after the test
   mod's broken model threw on the same thread; on 1.21.11 and 26.2, Continuity's transform still active on that thread
   right after). R6's check now wraps glass's model in a phase after every other wrapper, and logs Continuity's state
-  where it sees no connected texture. Verified on 1.21.1 in extended run 41496005222. On 26.2, in extended run
-  41501863294, Continuity's transform was no longer left active after the test mod's throw, yet R6 saw no quad at all
-  from Continuity's draw of glass: a second cause, still open on 1.21.11 and 26.x. Where it sees no quad, R6's check
-  now counts the quads the model inside Continuity's gives under the same cull test, and the evidence step prints the
-  block models that threw while drawn in Continuity's run, with their stacks and the report's rendering lines.
+  where it sees no connected texture. Verified on 1.21.1 in extended run 41496005222, and on 1.21.11 and 26.x in
+  extended run 41512581949 (R6: 3 of 3 of glass's quads connected on each). Extended run 41501863294 had seen no quad
+  at all from Continuity's draw of glass on 26.2, which didn't recur; where R6 sees none, its check now counts the
+  quads the model inside Continuity's gives under the same cull test, and the evidence step prints the block models
+  that threw while drawn in Continuity's run, with their stacks and the report's rendering lines.
+- **Networking** (NET-10): a packet carrying a Fabric payload is encoded once, as on Fabric. NeoForge's packet splitter
+  encodes each packet to measure it, then vanilla's encoder encodes it again; Cardinal Components API writes a sync
+  payload's buffer in a way that reads it to its end, so the second encoding sent an empty buffer, and every component
+  sync failed on the client (Trinkets on the 1.21.1 corpus client, 19 entity syncs; every Cardinal Components mod, in
+  singleplayer and with NeoForge clients). Vanilla's encoder now writes the bytes the splitter measured for such a
+  packet; other packets are coded as NeoForge codes them. The test mods send a payload with that codec's shape, which
+  every client checks arrives whole.
 - **Build:** `scripts/check-mixin-inventory.py` also runs the build's rule that each of the game mod's mixins is
   assigned a Fabric API module (`mixin-modules.json`), which only a platform build found: extended run 41492025138
   stopped on it, for `UtilMixin`. CI's mod downloads (`ci/fetch-corpus.py`) try a timeout, a dropped connection or a
@@ -118,13 +131,14 @@ One entry per working session, newest first: what changed, and how it was verifi
   source); `COMPATIBILITY.md` says so. `COMPATIBILITY.md` lists the Fabric builds' gaps (the owner's decision, 2026-11-02: no patch for Sodium's
   Fabric build, load it and list them) and how Essential loads; the README and the roadmap's tables say what loads
   where.
-- **Open, in the roadmap's findings:** fixed, to verify: LAMBDA-9 (Litematica's schematic rendering on 26.2), LIB-2
-  and CORPUS-61 (Carpet's and Friends & Foes' spawn hooks on 1.21.1); open: CORPUS-56 on 1.21.11 and 26.x
-  (Continuity's connected textures, its stuck transform fixed and a second cause being read); KEYMAP-1 (documented),
-  and the Fabric builds' gaps `COMPATIBILITY.md` lists.
+- **Open, in the roadmap's findings:** fixed, to verify: NET-10 (Cardinal Components API's sync) and CORPUS-54 on
+  NeoForge (Puzzles Lib's screen effect hook on 1.21.1); open: CORPUS-62 (Supplementaries' models through Moonlight's
+  loaders on 1.21.1), PROVIDER-8 (the test mod's checks that fail with Forgified Fabric API's modules on 1.21.1),
+  KEYMAP-1 (documented), and the Fabric builds' gaps `COMPATIBILITY.md` lists.
   On Forge, the refusals stay until the Forge sync and its runs.
 - **Verified:** extended runs 41471044589 and 41477591558, every job green on all five NeoForge versions, the
-  difficult-mod gates included; the fixes' findings name the run that verified each.
+  difficult-mod gates included, and 41512581949, every job green, which verified CORPUS-61, CORPUS-56 on 1.21.11 and
+  26.x, LAMBDA-9 and LIB-2; the fixes' findings name the run that verified each.
 
 ## 2026-11-02: Fabric's renderer API, the Forge branches' half (task 4 done)
 
