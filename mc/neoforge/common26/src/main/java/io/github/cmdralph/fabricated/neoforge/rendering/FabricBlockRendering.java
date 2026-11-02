@@ -15,6 +15,8 @@ import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 
+import io.github.cmdralph.fabricated.core.runtime.HeldThrows;
+import io.github.cmdralph.fabricated.neoforge.rendering.mixin.MutableQuadViewAccessor;
 import net.fabricmc.fabric.api.client.renderer.v1.Renderer;
 import net.fabricmc.fabric.api.client.renderer.v1.mesh.MutableQuadView;
 import net.fabricmc.fabric.api.client.renderer.v1.mesh.QuadEmitter;
@@ -55,7 +57,10 @@ import net.minecraft.world.level.block.state.BlockState;
  * <p>A Fabric model that throws there fails alone (FRAPI rule 8, {@link FrapiFailures}): the block is drawn by NeoForge
  * instead, as is every model of the class that threw from then on (not of a class wrapping it:
  * {@link FrapiFailures#putDown}), and the thread's Fabric renderer and emitter are replaced (a
- * model that threw may have left a transform pushed on the emitter).
+ * model that threw may have left a transform pushed on the emitter). A throw inside a model another wraps through
+ * Fabric's {@code WrapperBlockStateModel} is held there until the draw here returns ({@link HeldThrows}), so the wrapper
+ * finishes its call: Continuity's keeps a per-thread transform active through it, and a throw unwinding it left that
+ * thread without connected textures for the rest of the session (CORPUS-56).
  *
  * <p>Sections compile on several worker threads at once: the state here is immutable, or confined to one thread.
  */
@@ -151,6 +156,27 @@ public final class FabricBlockRendering {
 	public static boolean collectBreakingParts(BlockStateModel model, BlockAndTintGetter level, BlockPos pos, BlockState state, RandomSource random,
 			List<BlockStateModelPart> parts) {
 		return Frapi.collectBreakingParts(model, level, pos, state, random, parts);
+	}
+
+	/**
+	 * How many quad transforms an emitter holds: Indigo's, which a model wrapping another is given while one of the draws
+	 * here holds throws ({@link HeldThrows#holding}); -1 for any other. Asked where a wrapper calls its wrapped model.
+	 */
+	public static int transforms(QuadEmitter emitter) {
+		return emitter instanceof MutableQuadViewAccessor indigo ? indigo.fabricated$transformStack().size() : -1;
+	}
+
+	/**
+	 * Pops the quad transforms a wrapped model that threw left on the emitter, down to the {@code count} it was given, so
+	 * its wrapper pops its own. Failure path; the draw here replaces the thread's emitter once it returns.
+	 */
+	public static void dropTransforms(QuadEmitter emitter, int count) {
+		if (count < 0 || !(emitter instanceof MutableQuadViewAccessor indigo)) return;
+		try {
+			while (indigo.fabricated$transformStack().size() > count) emitter.popTransform();
+		} catch (RuntimeException e) {
+			// The draw here replaces the emitter: what is left on it goes with it.
+		}
 	}
 
 	/**
@@ -287,21 +313,42 @@ public final class FabricBlockRendering {
 			section.layers = layers;
 			section.startedLayers = startedLayers;
 			section.builders = builders;
+			Throwable thrown = null;
+			Throwable outer = HeldThrows.begin();
 			try {
 				section.renderer.tesselateBlock(section.emitter, x, y, z, level, pos, state, model, seed);
-				return true;
 			} catch (VirtualMachineError e) {
+				HeldThrows.end(outer);
 				throw e;
 			} catch (Throwable t) {
-				SECTION.remove();
-				markBroken(model, t, "a chunk section at " + pos, state);
-				return false;
+				thrown = t;
 			} finally {
 				// The section's buffers are only reachable while it compiles.
 				section.layers = null;
 				section.startedLayers = null;
 				section.builders = null;
 			}
+			thrown = failure(HeldThrows.end(outer), thrown);
+			if (thrown == null) return true;
+			SECTION.remove();
+			markBroken(model, thrown, "a chunk section at " + pos, state);
+			return false;
+		}
+
+		/**
+		 * What a draw threw: the throw held inside a model another wraps ({@link HeldThrows}), where the model whose code
+		 * threw is (what the wrapper threw after it, if anything, is suppressed in it), else what the draw's call threw.
+		 */
+		private static @Nullable Throwable failure(@Nullable Throwable held, @Nullable Throwable thrown) {
+			if (held == null) return thrown;
+			if (thrown != null && thrown != held) {
+				try {
+					held.addSuppressed(thrown);
+				} catch (RuntimeException e) {
+					// A throw suppressing itself: the held one is what counts.
+				}
+			}
+			return held;
 		}
 
 		static boolean tesselateMoving(MovingBlockBuffers buffers, PoseStack.Pose pose, boolean forceTranslucent, int outlineColor,
@@ -316,19 +363,24 @@ public final class FabricBlockRendering {
 			moving.pose = pose;
 			moving.forceTranslucent = forceTranslucent;
 			moving.outlineColor = outlineColor;
+			Throwable thrown = null;
+			Throwable outer = HeldThrows.begin();
 			try {
 				moving.renderer.tesselateBlock(moving.emitter, x, y, z, level, pos, state, model, seed);
-				return true;
 			} catch (VirtualMachineError e) {
+				HeldThrows.end(outer);
 				throw e;
 			} catch (Throwable t) {
-				MOVING.remove();
-				markBroken(model, t, "a moving block at " + pos, state);
-				return false;
+				thrown = t;
 			} finally {
 				moving.buffers = null;
 				moving.pose = null;
 			}
+			thrown = failure(HeldThrows.end(outer), thrown);
+			if (thrown == null) return true;
+			MOVING.remove();
+			markBroken(model, thrown, "a moving block at " + pos, state);
+			return false;
 		}
 
 		static boolean updateEntityBlock(BlockModelRenderState output, Matrix4fc transformation, BlockStateModel model, BlockState state, long seed) {
@@ -337,24 +389,29 @@ public final class FabricBlockRendering {
 				entity = new EntityState(RENDERER);
 				ENTITY.set(entity);
 			}
+			Throwable thrown = null;
+			Throwable outer = HeldThrows.begin();
 			try {
 				// As upstream's hook: no level (an entity's block isn't in one), and Fabric's own translucency check.
 				FabricBlockStateModel fabricModel = (FabricBlockStateModel) model;
 				boolean translucent = fabricModel.hasMaterialFlag(BlockAndTintGetter.EMPTY, BlockPos.ZERO, state, output.scratchRandomSource(seed), BakedQuad.FLAG_TRANSLUCENT);
 				entity.mesh = ((FabricBlockModelRenderState) output).setupMesh(transformation, translucent);
 				fabricModel.emitQuads(entity.emitter, BlockAndTintGetter.EMPTY, BlockPos.ZERO, state, output.scratchRandomSource(seed), NO_CULLING);
-				return true;
 			} catch (VirtualMachineError e) {
+				HeldThrows.end(outer);
 				throw e;
 			} catch (Throwable t) {
-				// The thread's emitter may keep a transform the model pushed. The quads already in the render state's mesh are
-				// dropped when NeoForge fills the state from the model's parts.
-				ENTITY.remove();
-				markBroken(model, t, "an entity (a block it carries or shows)", state);
-				return false;
+				thrown = t;
 			} finally {
 				entity.mesh = null;
 			}
+			thrown = failure(HeldThrows.end(outer), thrown);
+			if (thrown == null) return true;
+			// The thread's emitter may keep a transform the model pushed. The quads already in the render state's mesh are
+			// dropped when NeoForge fills the state from the model's parts.
+			ENTITY.remove();
+			markBroken(model, thrown, "an entity (a block it carries or shows)", state);
+			return false;
 		}
 
 		static boolean collectBreakingParts(BlockStateModel model, BlockAndTintGetter level, BlockPos pos, BlockState state, RandomSource random,
@@ -366,22 +423,43 @@ public final class FabricBlockRendering {
 			}
 			Material.Baked particle = model.particleMaterial(level, pos, state);
 			breaking.sprite = particle.sprite();
+			Throwable thrown;
 			try {
-				// Fabric's renderer API adds FabricBlockStateModel to every block model when the game loads.
-				((FabricBlockStateModel) model).emitQuads(breaking.emitter, level, pos, state, random, NO_CULLING);
+				thrown = emitHolding(model, breaking.emitter, level, pos, state, random);
 				// The overlay is drawn after this returns (the parts are submitted), so the part keeps its own copy.
-				parts.add(new EmittedPart(List.copyOf(breaking.quads), particle));
-				return true;
+				if (thrown == null) parts.add(new EmittedPart(List.copyOf(breaking.quads), particle));
 			} catch (VirtualMachineError e) {
 				throw e;
 			} catch (Throwable t) {
-				BREAKING.remove();
-				markBroken(model, t, "the breaking overlay at " + pos, state);
-				return false;
+				thrown = t;
 			} finally {
 				breaking.quads.clear();
 				breaking.sprite = null;
 			}
+			if (thrown == null) return true;
+			BREAKING.remove();
+			markBroken(model, thrown, "the breaking overlay at " + pos, state);
+			return false;
+		}
+
+		/**
+		 * Emits a Fabric model's quads, holding a throw inside a model another wraps until the call returns
+		 * ({@link HeldThrows}); what the call threw ({@link #failure}), or null.
+		 */
+		private static @Nullable Throwable emitHolding(BlockStateModel model, QuadEmitter emitter, BlockAndTintGetter level, BlockPos pos, BlockState state,
+				RandomSource random) {
+			Throwable thrown = null;
+			Throwable outer = HeldThrows.begin();
+			try {
+				// Fabric's renderer API adds FabricBlockStateModel to every block model when the game loads.
+				((FabricBlockStateModel) model).emitQuads(emitter, level, pos, state, random, NO_CULLING);
+			} catch (VirtualMachineError e) {
+				HeldThrows.end(outer);
+				throw e;
+			} catch (Throwable t) {
+				thrown = t;
+			}
+			return failure(HeldThrows.end(outer), thrown);
 		}
 	}
 

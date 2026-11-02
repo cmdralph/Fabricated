@@ -14,6 +14,8 @@ import org.slf4j.LoggerFactory;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 
+import io.github.cmdralph.fabricated.core.runtime.HeldThrows;
+import io.github.cmdralph.fabricated.neoforge.rendering.mixin.MutableQuadViewAccessor;
 import net.fabricmc.fabric.api.renderer.v1.Renderer;
 import net.fabricmc.fabric.api.renderer.v1.mesh.MutableMesh;
 import net.fabricmc.fabric.api.renderer.v1.mesh.QuadEmitter;
@@ -59,7 +61,10 @@ import net.neoforged.neoforge.client.model.quad.BakedNormals;
  *
  * <p>A Fabric model that throws there fails alone (FRAPI rule 8, {@link FrapiFailures}): the block is drawn by NeoForge
  * instead, from the parts the model's vanilla method gives, as is every model of the class that threw from then on (not
- * of a class wrapping it: {@link FrapiFailures#putDown}).
+ * of a class wrapping it: {@link FrapiFailures#putDown}). A throw inside a model another wraps through Fabric's
+ * {@code WrapperBlockStateModel} is held there until the draw here returns ({@link HeldThrows}), so the wrapper finishes
+ * its call: Continuity's keeps a per-thread transform active through it, and a throw unwinding it left that thread
+ * without connected textures for the rest of the session (CORPUS-56).
  *
  * <p>Sections compile on several worker threads at once: the state here is immutable or per thread, and the renderer
  * keeps its own per-thread state.
@@ -111,6 +116,27 @@ public final class FabricBlockRendering {
 	public static boolean tesselate(BlockRenderDispatcher dispatcher, BlockAndTintGetter level, BlockStateModel model, BlockState state, BlockPos pos,
 			PoseStack poseStack, Function<ChunkSectionLayer, VertexConsumer> buffers, boolean cull) {
 		return Frapi.tesselate(dispatcher, level, model, state, pos, poseStack, buffers, cull);
+	}
+
+	/**
+	 * How many quad transforms an emitter holds: Indigo's, which a model wrapping another is given while one of the draws
+	 * here holds throws ({@link HeldThrows#holding}); -1 for any other. Asked where a wrapper calls its wrapped model.
+	 */
+	public static int transforms(QuadEmitter emitter) {
+		return emitter instanceof MutableQuadViewAccessor indigo ? indigo.fabricated$transformStack().size() : -1;
+	}
+
+	/**
+	 * Pops the quad transforms a wrapped model that threw left on the emitter, down to the {@code count} it was given, so
+	 * its wrapper pops its own. Failure path; the draw here drops the emitter's thread state once it returns.
+	 */
+	public static void dropTransforms(QuadEmitter emitter, int count) {
+		if (count < 0 || !(emitter instanceof MutableQuadViewAccessor indigo)) return;
+		try {
+			while (indigo.fabricated$transformStack().size() > count) emitter.popTransform();
+		} catch (RuntimeException e) {
+			// The draw here drops the emitter: what is left on it goes with it.
+		}
 	}
 
 	/**
@@ -261,17 +287,38 @@ public final class FabricBlockRendering {
 
 		static boolean tesselate(BlockRenderDispatcher dispatcher, BlockAndTintGetter level, BlockStateModel model, BlockState state, BlockPos pos,
 				PoseStack poseStack, Function<ChunkSectionLayer, VertexConsumer> buffers, boolean cull) {
+			Throwable thrown = null;
+			Throwable outer = HeldThrows.begin();
 			try {
 				RENDERER.render(dispatcher.getModelRenderer(), level, model, state, pos, poseStack, buffers::apply, cull, state.getSeed(pos),
 						OverlayTexture.NO_OVERLAY);
-				return true;
 			} catch (VirtualMachineError e) {
+				HeldThrows.end(outer);
 				throw e;
 			} catch (Throwable t) {
-				resetIndigoThread();
-				markBroken(model, t, "a chunk section at " + pos, state);
-				return false;
+				thrown = t;
 			}
+			thrown = failure(HeldThrows.end(outer), thrown);
+			if (thrown == null) return true;
+			resetIndigoThread();
+			markBroken(model, thrown, "a chunk section at " + pos, state);
+			return false;
+		}
+
+		/**
+		 * What a draw threw: the throw held inside a model another wraps ({@link HeldThrows}), where the model whose code
+		 * threw is (what the wrapper threw after it, if anything, is suppressed in it), else what the draw's call threw.
+		 */
+		private static @Nullable Throwable failure(@Nullable Throwable held, @Nullable Throwable thrown) {
+			if (held == null) return thrown;
+			if (thrown != null && thrown != held) {
+				try {
+					held.addSuppressed(thrown);
+				} catch (RuntimeException e) {
+					// A throw suppressing itself: the held one is what counts.
+				}
+			}
+			return held;
 		}
 
 		/**
@@ -307,9 +354,14 @@ public final class FabricBlockRendering {
 			int partsBefore = parts.size();
 			boolean failed = false;
 			try {
-				// Fabric's renderer API adds FabricBlockStateModel to every block model when the game loads.
-				((FabricBlockStateModel) model).emitQuads(mesh.emitter(), level, pos, state, random, NO_CULLING);
-				addParts(mesh, model, parts);
+				Throwable thrown = emitHolding(model, mesh.emitter(), level, pos, state, random);
+				if (thrown == null) {
+					addParts(mesh, model, parts);
+				} else {
+					failed = true;
+					parts.subList(partsBefore, parts.size()).clear();
+					markBroken(model, thrown, "the parts made from its quads at " + pos, state);
+				}
 			} catch (VirtualMachineError e) {
 				throw e;
 			} catch (Throwable t) {
@@ -324,6 +376,26 @@ public final class FabricBlockRendering {
 			}
 			// A model that threw keeps the parts of its vanilla method (the caller adds them).
 			return !failed;
+		}
+
+		/**
+		 * Emits a Fabric model's quads, holding a throw inside a model another wraps until the call returns
+		 * ({@link HeldThrows}); what the call threw ({@link #failure}), or null.
+		 */
+		private static @Nullable Throwable emitHolding(BlockStateModel model, QuadEmitter emitter, BlockAndTintGetter level, BlockPos pos, BlockState state,
+				RandomSource random) {
+			Throwable thrown = null;
+			Throwable outer = HeldThrows.begin();
+			try {
+				// Fabric's renderer API adds FabricBlockStateModel to every block model when the game loads.
+				((FabricBlockStateModel) model).emitQuads(emitter, level, pos, state, random, NO_CULLING);
+			} catch (VirtualMachineError e) {
+				HeldThrows.end(outer);
+				throw e;
+			} catch (Throwable t) {
+				thrown = t;
+			}
+			return failure(HeldThrows.end(outer), thrown);
 		}
 
 		/** The mesh's quads as NeoForge's quads, after the item layer's (whose render type they are drawn in). */

@@ -5,7 +5,9 @@
   "client": [
     "BlockModelPartMixin",
     "BlockStateModelMixin",
-    "LayerRenderStateMixin"
+    "LayerRenderStateMixin",
+    "MutableQuadViewAccessor",
+    "WrapperBlockStateModelMixin"
   ],
   "injectors": {
     "defaultRequire": 1
