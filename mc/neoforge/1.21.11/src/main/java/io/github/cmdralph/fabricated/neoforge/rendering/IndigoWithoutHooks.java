@@ -6,7 +6,6 @@ import net.fabricmc.fabric.api.renderer.v1.Renderer;
 import net.fabricmc.fabric.api.renderer.v1.mesh.MutableMesh;
 import net.fabricmc.fabric.api.renderer.v1.mesh.QuadEmitter;
 import net.fabricmc.fabric.api.renderer.v1.render.BlockVertexConsumerProvider;
-import net.fabricmc.fabric.api.renderer.v1.render.FabricBlockModelRenderer;
 import net.fabricmc.fabric.api.renderer.v1.render.ItemRenderTypeGetter;
 import net.fabricmc.fabric.api.renderer.v1.render.RenderLayerHelper;
 import net.minecraft.client.Minecraft;
@@ -69,7 +68,8 @@ final class IndigoWithoutHooks implements Renderer {
 		float red = (tint >> 16 & 255) / 255.0F;
 		float green = (tint >> 8 & 255) / 255.0F;
 		float blue = (tint & 255) / 255.0F;
-		FabricBlockModelRenderer.render(matrices.last(), RenderLayerHelper.entityDelegate(vertexConsumers), model, red, green, blue, light, overlay, blockView, pos, state);
+		// What FabricBlockModelRenderer.render does, which goes to the registered renderer: this one, so Indigo.
+		indigo.render(matrices.last(), RenderLayerHelper.entityDelegate(vertexConsumers), model, red, green, blue, light, overlay, blockView, pos, state);
 	}
 
 	@Override
