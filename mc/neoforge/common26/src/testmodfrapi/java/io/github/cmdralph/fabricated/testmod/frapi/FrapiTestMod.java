@@ -4,9 +4,12 @@ import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.mojang.brigadier.exceptions.CommandSyntaxException;
+
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
+import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Registry;
@@ -14,6 +17,8 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.decoration.ItemFrame;
@@ -36,6 +41,9 @@ import net.minecraft.world.level.block.state.BlockBehaviour;
  * <p>It also gives the joining player an item whose model is a Fabric model, held in their main hand (drawn in hand and
  * in the hotbar), and puts one in an item frame on the first block and one on the ground beside the frame, which no
  * one can pick up and which never despawns (drawn as an item in a frame and as a dropped item).
+ *
+ * <p>And it summons two minecarts beside the blocks, held in the air: one carrying the first block, one carrying a block
+ * whose Fabric model throws when drawn as an entity (each drawn as a block in an entity).
  */
 public final class FrapiTestMod implements ModInitializer {
 	static final Logger LOGGER = LoggerFactory.getLogger("fabricated-testmod-frapi");
@@ -44,6 +52,8 @@ public final class FrapiTestMod implements ModInitializer {
 	/** Blocks whose Fabric model, or a Fabric part of whose multipart model, throws when drawn (FRAPI rule 8). */
 	static final Identifier BROKEN_BLOCK_ID = Identifier.fromNamespaceAndPath("fabricated_testmod_frapi", "broken_block");
 	static final Identifier BROKEN_NESTED_BLOCK_ID = Identifier.fromNamespaceAndPath("fabricated_testmod_frapi", "broken_nested_block");
+	/** A block only ever shown in a minecart, whose Fabric model throws when drawn as an entity (FRAPI rule 8). */
+	static final Identifier BROKEN_ENTITY_BLOCK_ID = Identifier.fromNamespaceAndPath("fabricated_testmod_frapi", "broken_entity_block");
 	/** A block whose blockstate uses one of NeoForge's blockstate model types, which must still parse with Fabric's model loading. */
 	static final Identifier NEOFORGE_TYPE_BLOCK_ID = Identifier.fromNamespaceAndPath("fabricated_testmod_frapi", "neoforge_type_block");
 	/** An item whose model {@link FrapiClientTestMod} makes a Fabric model. */
@@ -67,6 +77,7 @@ public final class FrapiTestMod implements ModInitializer {
 		Block nestedBlock = register(NESTED_BLOCK_ID);
 		Block brokenBlock = register(BROKEN_BLOCK_ID);
 		Block brokenNestedBlock = register(BROKEN_NESTED_BLOCK_ID);
+		register(BROKEN_ENTITY_BLOCK_ID);
 		ResourceKey<Item> itemKey = ResourceKey.create(Registries.ITEM, FABRIC_ITEM_ID);
 		Item item = Registry.register(BuiltInRegistries.ITEM, itemKey, new Item(new Item.Properties().setId(itemKey)));
 		register(NEOFORGE_TYPE_BLOCK_ID);
@@ -84,6 +95,7 @@ public final class FrapiTestMod implements ModInitializer {
 			level.setBlockAndUpdate(landing.below(), Blocks.STONE.defaultBlockState());
 			LOGGER.info("FABRICATED-TEST frapi block placed at {} (nested model block at {}, broken model blocks above them)", front, nested);
 			placeItems(level, listener.player, item, front, facing);
+			summonMinecarts(server, (ServerLevel) level, nested.relative(facing.getClockWise()));
 		}));
 		ServerTickEvents.END_SERVER_TICK.register(server -> {
 			if (level == null || ticks++ % RENEW_TICKS != 0) return;
@@ -115,6 +127,32 @@ public final class FrapiTestMod implements ModInitializer {
 		drop.setNoGravity(true);
 		world.addFreshEntity(drop);
 		LOGGER.info("FABRICATED-TEST frapi items placed (in hand, in a frame at {}, dropped at {})", framePos, dropPos);
+	}
+
+	/**
+	 * Summons a minecart carrying the terrain block at {@code pos} and one carrying the broken entity block above it, both
+	 * without gravity, so they stay where they are drawn whatever the terrain. Through the summon command, as upstream's
+	 * test of block models in minecarts does.
+	 */
+	private static void summonMinecarts(MinecraftServer server, ServerLevel world, BlockPos pos) {
+		world.setBlockAndUpdate(pos, Blocks.AIR.defaultBlockState());
+		world.setBlockAndUpdate(pos.above(), Blocks.AIR.defaultBlockState());
+		CommandSourceStack console = server.createCommandSourceStack().withLevel(world).withSuppressedOutput();
+		if (summonMinecart(server, console, pos, TERRAIN_BLOCK_ID) && summonMinecart(server, console, pos.above(), BROKEN_ENTITY_BLOCK_ID)) {
+			LOGGER.info("FABRICATED-TEST frapi minecarts summoned at {} (the terrain block) and above it (the broken entity block)", pos);
+		}
+	}
+
+	private static boolean summonMinecart(MinecraftServer server, CommandSourceStack console, BlockPos pos, Identifier block) {
+		String command = "summon minecraft:minecart " + (pos.getX() + 0.5) + " " + pos.getY() + " " + (pos.getZ() + 0.5)
+				+ " {NoGravity:1b,Invulnerable:1b,DisplayState:{Name:\"" + block + "\"}}";
+		try {
+			if (server.getCommands().getDispatcher().execute(command, console) == 1) return true;
+			LOGGER.error("FABRICATED-TEST frapi minecart FAILED (not summoned: {})", command);
+		} catch (CommandSyntaxException e) {
+			LOGGER.error("FABRICATED-TEST frapi minecart FAILED ({}: {})", command, e.getMessage());
+		}
+		return false;
 	}
 
 	private static Block register(Identifier id) {

@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 
+import org.joml.Matrix4fc;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,10 +21,12 @@ import net.fabricmc.fabric.api.client.renderer.v1.mesh.QuadEmitter;
 import net.fabricmc.fabric.api.client.renderer.v1.model.FabricBlockStateModel;
 import net.fabricmc.fabric.api.client.renderer.v1.render.AltModelBlockRenderer;
 import net.fabricmc.fabric.api.client.renderer.v1.render.ChunkSectionLayerHelper;
+import net.fabricmc.fabric.api.client.renderer.v1.render.FabricBlockModelRenderState;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.color.block.BlockColors;
 import net.minecraft.client.renderer.SectionBufferBuilderPack;
 import net.minecraft.client.renderer.block.BlockAndTintGetter;
+import net.minecraft.client.renderer.block.BlockModelRenderState;
 import net.minecraft.client.renderer.block.dispatch.BlockStateModel;
 import net.minecraft.client.renderer.block.dispatch.BlockStateModelPart;
 import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
@@ -39,7 +42,8 @@ import net.minecraft.world.level.block.state.BlockState;
 
 /**
  * Draws the block models only Fabric's renderer API can draw where NeoForge draws blocks: chunk sections, moving blocks
- * (pushed by pistons, falling) and the block breaking overlay.
+ * (pushed by pistons, falling), blocks drawn as entities (a minecart's contents, an enderman's block) and the block
+ * breaking overlay.
  *
  * <p>A model a Fabric mod implements itself (its own {@code emitQuads}) has no geometry NeoForge's block renderer can
  * see, so it was invisible. Upstream sends every block through Fabric's renderer; on NeoForge that would lose what
@@ -129,6 +133,16 @@ public final class FabricBlockRendering {
 	}
 
 	/**
+	 * Fills the render state of a block drawn as an entity (a minecart's contents, an enderman's block, a block display)
+	 * with a Fabric model's quads, as upstream does for every model: into the render state's mesh (Fabric's renderer
+	 * API's), which Fabric's renderer draws once the state is submitted. False if the model threw: NeoForge then fills
+	 * the state from the model's parts, which drops the mesh and the quads already in it.
+	 */
+	public static boolean updateEntityBlock(BlockModelRenderState output, Matrix4fc transformation, BlockStateModel model, BlockState state, long seed) {
+		return Frapi.updateEntityBlock(output, transformation, model, state, seed);
+	}
+
+	/**
 	 * Adds a Fabric model's geometry to the parts the block breaking overlay draws, as one part: the overlay only takes
 	 * parts, and only their shape counts there. False, adding nothing, if the model threw: NeoForge then collects its
 	 * parts.
@@ -211,6 +225,7 @@ public final class FabricBlockRendering {
 		private static final ThreadLocal<SectionState> SECTION = new ThreadLocal<>();
 		private static final ThreadLocal<MovingState> MOVING = new ThreadLocal<>();
 		private static final ThreadLocal<BreakingState> BREAKING = new ThreadLocal<>();
+		private static final ThreadLocal<EntityState> ENTITY = new ThreadLocal<>();
 
 		/**
 		 * Resolved once, when the first block is drawn: renderers register during client initialization (Indigo in its
@@ -327,6 +342,32 @@ public final class FabricBlockRendering {
 			}
 		}
 
+		static boolean updateEntityBlock(BlockModelRenderState output, Matrix4fc transformation, BlockStateModel model, BlockState state, long seed) {
+			EntityState entity = ENTITY.get();
+			if (entity == null) {
+				entity = new EntityState(RENDERER);
+				ENTITY.set(entity);
+			}
+			try {
+				// As upstream's hook: no level (an entity's block isn't in one), and Fabric's own translucency check.
+				FabricBlockStateModel fabricModel = (FabricBlockStateModel) model;
+				boolean translucent = fabricModel.hasMaterialFlag(BlockAndTintGetter.EMPTY, BlockPos.ZERO, state, output.scratchRandomSource(seed), BakedQuad.FLAG_TRANSLUCENT);
+				entity.mesh = ((FabricBlockModelRenderState) output).setupMesh(transformation, translucent);
+				fabricModel.emitQuads(entity.emitter, BlockAndTintGetter.EMPTY, BlockPos.ZERO, state, output.scratchRandomSource(seed), NO_CULLING);
+				return true;
+			} catch (VirtualMachineError e) {
+				throw e;
+			} catch (Throwable t) {
+				// The thread's emitter may keep a transform the model pushed. The quads already in the render state's mesh are
+				// dropped when NeoForge fills the state from the model's parts.
+				ENTITY.remove();
+				markBroken(model, t, "an entity (a block it carries or shows)", state);
+				return false;
+			} finally {
+				entity.mesh = null;
+			}
+		}
+
 		static boolean collectBreakingParts(BlockStateModel model, BlockAndTintGetter level, BlockPos pos, BlockState state, RandomSource random,
 				List<BlockStateModelPart> parts) {
 			BreakingState breaking = BREAKING.get();
@@ -438,6 +479,28 @@ public final class FabricBlockRendering {
 		public void accept(MutableQuadView quad) {
 			// The overlay draws its own texture over the quad's shape: the sprite only completes the vanilla quad.
 			quads.add(quad.toBakedQuad(sprite));
+		}
+	}
+
+	/**
+	 * One thread's emitter for blocks drawn as entities, which copies each finished quad into the mesh of the render state
+	 * being filled. The model emits into this emitter, never into the mesh's own: Fabric's renderer keeps a mesh's emitter
+	 * (and the transforms pushed on it) across clears, so a model that throws with a transform pushed would leave it for
+	 * the next block drawn into that render state.
+	 */
+	private static final class EntityState implements Consumer<MutableQuadView> {
+		final QuadEmitter emitter;
+		@Nullable QuadEmitter mesh;
+
+		EntityState(Renderer renderer) {
+			this.emitter = renderer.quadEmitter(this);
+		}
+
+		/** Quads only arrive during {@code emitQuads}, while the mesh is set. */
+		@Override
+		public void accept(MutableQuadView quad) {
+			mesh.copyFrom(quad);
+			mesh.emit();
 		}
 	}
 

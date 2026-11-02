@@ -101,6 +101,7 @@
     "client.SectionCompilerMixin",
     "client.MovingBlockRenderMixin",
     "client.BlockBreakingRenderMixin",
+    "client.BlockStateModelWrapperMixin",
     "client.GuiRendererPictureInPictureMixin",
     "client.MultiPartModelMixin",
     "client.WeightedVariantsMixin",

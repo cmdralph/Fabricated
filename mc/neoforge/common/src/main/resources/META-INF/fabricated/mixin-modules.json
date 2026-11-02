@@ -81,6 +81,7 @@
     "client.BlockBreakingRenderMixin": ["fabric-renderer-api-v1"],
     "client.BlockColorsLookupMixin": ["fabric-rendering-v1"],
     "client.BlockStateModelUnbakedMixin": ["fabric-model-loading-api-v1"],
+    "client.BlockStateModelWrapperMixin": ["fabric-renderer-api-v1"],
     "client.ClientChunkCacheMixin": ["fabric-lifecycle-events-v1"],
     "client.ClientCommonPacketListenerImplMixin": ["fabric-networking-api-v1"],
     "client.ClientConfigurationPacketListenerImplMixin": ["fabric-networking-api-v1"],

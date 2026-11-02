@@ -22,7 +22,7 @@ a version's own configs come in through `version_mixin_configs` in its `gradle.p
 |---|---|---|---|---|---|---|
 | `mc/neoforge/1.21.1/src/main/resources/fabricated.mixins.json` | `io.github.cmdralph.fabricated.neoforge.mixin` | 1.21.1 | mixins 49, client 15 | 1 | true | `FabricatedMixinPlugin` (creates Fabric language adapters in `onLoad`; filters nothing) |
 | `mc/neoforge/1.21.11/src/main/resources/fabricated.mixins.json` | same | 1.21.11 | mixins 59, client 23 | 1 | true | same |
-| `mc/neoforge/common26/src/main/resources/fabricated.mixins.json` | same | 26.x | mixins 69, client 26 | 1 | true | same |
+| `mc/neoforge/common26/src/main/resources/fabricated.mixins.json` | same | 26.x | mixins 69, client 27 | 1 | true | same |
 | `mc/neoforge/1.21.1/src/main/resources/fabricated-biome.mixins.json` | `net.fabricmc.fabric.mixin.biome` | 1.21.1 | mixins 8 | 1 | true | none |
 | `mc/neoforge/1.21.11/src/main/resources/fabricated-biome.mixins.json` | same | 1.21.11 | mixins 10 | 1 | true | none |
 | `mc/neoforge/common26early/src/main/resources/fabricated-biome.mixins.json` | same | 26.1.2, 26.2 | mixins 10 | 1 | true | none |
@@ -98,7 +98,10 @@ Test-mod configs (not shipped):
   crashed CI on 2026-10-19). `client.ModelManagerExtraModelsMixin` names NeoForge's four-argument `discoverModelDependencies`.
 - **Hot paths:** `client.SectionCompilerMixin` runs for every block of every chunk section, so it is a
   `@WrapWithCondition` (no allocation), not a `@WrapOperation`, whose `Operation.call(Object...)` boxes primitives.
-  `client.MovingBlockRenderMixin` and `client.BlockBreakingRenderMixin` follow the same rule. `client.MultiPartModelMixin`
+  `client.MovingBlockRenderMixin` and `client.BlockBreakingRenderMixin` follow the same rule. `client.BlockStateModelWrapperMixin`
+  runs for every block drawn as an entity (a minecart's, an enderman's, a block display's), every frame: a cancellable
+  `@Inject` at `HEAD`, as upstream's own `submitModel` hook on the same render state is, whose only cost on NeoForge's path
+  is the model-class lookup and the callback object. `client.MultiPartModelMixin`
   and `client.WeightedVariantsMixin` answer from a field after the first question, asked again once after a Fabric model
   class is marked broken (FRAPI rule 8). On 1.21.1 the renderer config's `SectionCompilerMixin` and
   `BlockRenderDispatcherMixin.fabricated$batched` run for every block of every section, once per render type: both read
@@ -927,6 +930,7 @@ Versions: 26.1.2, 26.2, 26.3 · package `io.github.cmdralph.fabricated.neoforge.
 | client | MovingBlockRenderMixin | 26.2, 26.3 (one file each) | n.m.client.renderer.feature.MovingBlockFeatureRenderer | @WrapWithCondition → fabricated$fabricModels | "buildGroup" | INVOKE `L…/ModelBlockRenderer;tesselateBlock(…)V` sugar:@Local(argsOnly = true) FeatureFrameContext, @Local(name = "submit"); extends RenderTypeFeatureRenderer; implements FabricBlockRendering.MovingBlockBuffers | — | default |
 | client | BlockBreakingRenderMixin | 26.1.2 | n.m.client.renderer.feature.BlockFeatureRenderer | @WrapWithCondition → fabricated$fabricModels | "renderBreakingBlockModelSubmits" | INVOKE `L…/BlockStateModel;collectParts(L…/BlockAndTintGetter;L…/BlockPos;L…/BlockState;L…/RandomSource;L…/List;)V` (NeoForge's overload) | — | default |
 | client | BlockBreakingRenderMixin | common26late (26.2,26.3) | n.m.client.renderer.LevelRenderer | @WrapWithCondition → fabricated$fabricModels | "submitBlockDestroyAnimation(L…/PoseStack;L…/SubmitNodeCollector;L…/LevelRenderState;)V" | INVOKE `L…/BlockStateModel;collectParts(L…/BlockAndTintGetter;L…/BlockPos;L…/BlockState;L…/RandomSource;L…/List;)V` (NeoForge's overload) | — | default |
+| client | BlockStateModelWrapperMixin | common26 (26.1.2,26.2,26.3) | n.m.client.renderer.block.model.BlockStateModelWrapper | @Inject → fabricated$fabricModels (a Fabric model fills the render state of a block drawn as an entity with its quads, through Fabric's mesh, instead of NeoForge's parts; upstream's @Overwrite, which takes every model, is left out by the plan); @Shadow model, transformation, updateTints | "update(L…/BlockModelRenderState;L…/BlockState;L…/BlockDisplayContext;J)V" | HEAD cancellable=true | — | default |
 | client | client.GuiRendererPictureInPictureMixin | 26.1.2 | n.m.client.gui.render.GuiRenderer prio=100 | @Inject → fabricated$prepareModRenderer (vanilla's map of picture-in-picture renderers given back, PIP-1); non-@Unique field pictureInPictureRenderers | "preparePictureInPictureState" | HEAD cancellable=true | — | default |
 | client | client.GuiRendererPictureInPictureMixin | 26.1.2 | n.m.client.gui.render.GuiRenderer prio=100 | @Inject → fabricated$closeModRenderers | "close" | TAIL | — | default |
 | client | client.GuiRendererPictureInPictureMixin | common26late (26.2,26.3) | n.m.client.gui.render.GuiRenderer prio=100 | @Inject → fabricated$prepareModRenderer (vanilla's map of picture-in-picture renderers given back, PIP-1); non-@Unique field pictureInPictureRenderers | "preparePictureInPictureState" | HEAD cancellable=true | — | default |
