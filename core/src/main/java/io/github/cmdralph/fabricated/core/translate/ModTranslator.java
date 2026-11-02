@@ -143,6 +143,7 @@ public final class ModTranslator {
 	private final io.github.cmdralph.fabricated.core.archive.ArchiveLimits limits;
 	private final PlatformRenames renames;
 	private final RetypedFields retyped;
+	private final PrivateFieldReads privateReads;
 
 	public ModTranslator(TranslationEnvironment env, TranslationCache cache, io.github.cmdralph.fabricated.core.archive.ArchiveLimits limits) {
 		this.env = env;
@@ -150,6 +151,7 @@ public final class ModTranslator {
 		this.limits = limits;
 		this.renames = PlatformRenames.of(env.untransformable(), env.game(), env.descriptor().replacedMods().containsKey("forgeconfigapiport"));
 		this.retyped = RetypedFields.of(env.game());
+		this.privateReads = PrivateFieldReads.of(env.game(), env.descriptor().privateFields());
 	}
 
 	/**
@@ -221,6 +223,10 @@ public final class ModTranslator {
 				if (!retyped.isEmpty()) {
 					notes.addAll(retyped.apply(remapped != null ? remapped : overlay, remapped != null ? remapped.keySet() : archive.classEntryNames(),
 							collectRefmapPaths(candidate.metadata(), archive), files));
+				}
+				// Reads of the fields the platform keeps private, through its getters (CORPUS-64).
+				if (!privateReads.isEmpty()) {
+					notes.addAll(privateReads.apply(remapped != null ? remapped : overlay, remapped != null ? remapped.keySet() : archive.classEntryNames(), files));
 				}
 				List<ModsTomlWriter.MixinConfigSpec> mixinSpecs = processMixins(candidate, override, plannedSkips, files,
 						remapped != null ? remapped.keySet() : archive.classEntryNames(), overlay, findings, installedClasses, enumEntries,
@@ -1557,7 +1563,7 @@ public final class ModTranslator {
 		return null;
 	}
 
-	private static List<String> mixinTargets(ClassNode mixin) {
+	static List<String> mixinTargets(ClassNode mixin) {
 		AnnotationNode ann = Annotations.find(mixin.invisibleAnnotations, mixin.visibleAnnotations, Annotations.MIXIN);
 		List<String> targets = new ArrayList<>();
 		if (ann == null) return targets;

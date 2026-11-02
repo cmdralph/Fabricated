@@ -141,7 +141,7 @@ public final class AccessTransformerConverter {
 					if (e.access() == Access.ACCESSIBLE && platformPrivate(privateFields, owner, e.owner() + " " + e.name())) {
 						warnings.add("line " + e.line() + ": field " + e.owner() + "." + e.name() + " must stay private on " + loaderName
 								+ " (a " + loaderName + " coremod replaces it with a getter); not widened. "
-								+ "Code reading it directly fails when it runs.");
+								+ "The mod's reads of it call that getter instead; code writing it fails when it runs.");
 						continue;
 					}
 					Target t = targets.computeIfAbsent(ownerDotted + " " + e.name(), k -> new Target());

@@ -196,8 +196,8 @@ warning in the report, so a bad config never crashes the game.
 - **No isolation after mod code runs.** Once a mod's code has run, Java can't unload it. Fabricated then
   explains failures instead of hiding them.
 - **Fields NeoForge requires to stay private** (for example, `Biome.climateSettings`) are never widened,
-  even if a Fabric access widener asks. Code that reads them directly fails when it runs, and the report
-  lists every such case.
+  even if a Fabric access widener asks. A Fabric mod's reads of them call the getter NeoForge reads them through,
+  as the game's own code does; code that writes them fails when it runs. The report lists every such case.
 - **JPMS packages.** NeoForge requires every Java package to belong to exactly one mod. Fabric allows
   sharing, so clashing Fabric mods are de-duplicated (identical files) or one is disabled, and a package a NeoForge
   mod also has is that mod's.
