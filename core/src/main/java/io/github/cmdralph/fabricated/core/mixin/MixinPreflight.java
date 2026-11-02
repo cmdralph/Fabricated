@@ -911,6 +911,19 @@ public final class MixinPreflight extends PreflightPart {
 			return;
 		}
 
+		String unmatched = anyFuzzy ? null : unmatchedArgument(handler, ann, matched);
+		if (unmatched != null) {
+			// Without an ordinal Mixin throws as it applies the mixin, which require doesn't cover (a config that isn't
+			// required survives it); with one the injector injects nothing, which require judges.
+			boolean implicit = !(Annotations.value(ann, "ordinal") instanceof Integer o && o >= 0);
+			ctx.injector(handler, implicit ? (ctx.config().required() ? 1 : 0) : require, injectorName + " " + handler.name + " modifies " + unmatched
+							+ " of " + matched.get(0).name + matched.get(0).desc + " in " + target.name.replace('/', '.') + ", which "
+							+ (matched.size() == 1 ? "that method doesn't have" : "none of those methods has"),
+					(ctx.owner() == null ? loader + "'s build of Minecraft declares this method with different parameters"
+							: ctx.changer(true) + " declares this method with different parameters") + "; the mod needs an update or this mixin must be skipped.");
+			return;
+		}
+
 		if (ann.desc.equals(MixinNames.MODIFY_CONSTANT)) {
 			for (AnnotationNode constant : Annotations.list(Annotations.value(ann, "constant"))) {
 				String expected = InjectionPoints.constantDescription(constant);
@@ -1115,6 +1128,30 @@ public final class MixinPreflight extends PreflightPart {
 			List<Type> params = List.of(Type.getArgumentTypes(target.desc));
 			return captured.size() <= params.size() && params.subList(0, captured.size()).equals(captured);
 		});
+	}
+
+	/**
+	 * The argument a {@code @ModifyVariable} with {@code argsOnly} picks by its handler's type alone (by an ordinal among
+	 * the arguments of that type, or as the only one), where no target method takes it; null where one does, or where the
+	 * handler names the argument or its slot. Mixin's discriminator then looks only at the method's parameters, by their
+	 * exact type. With an ordinal and too few of that type, the injector injects nothing; without one Mixin needs exactly
+	 * one and throws as it applies the mixin ("Found 0 candidate variables but exactly 1 is required"). Architectury's
+	 * char-typed screen hooks modify the {@code GuiEventListener} vanilla's {@code KeyboardHandler.charTyped} lambdas
+	 * take, which NeoForge's 1.21.1 build passes them as a {@code Screen}; Mixin found none (CORPUS-57). A handler can't
+	 * take the {@code Screen} in its place: it may return another listener, which the lambda couldn't hold.
+	 */
+	static String unmatchedArgument(MethodNode handler, AnnotationNode injector, List<MethodNode> targets) {
+		if (!injector.desc.equals(MixinNames.MODIFY_VARIABLE) || targets.isEmpty() || !Boolean.TRUE.equals(Annotations.value(injector, "argsOnly"))
+				|| Annotations.value(injector, "name") != null || Annotations.value(injector, "index") instanceof Integer index && index >= 0
+				|| Boolean.TRUE.equals(Annotations.value(injector, "print"))) return null;
+		Type type = Type.getReturnType(handler.desc);
+		if (type.getSort() == Type.VOID) return null;
+		int ordinal = Annotations.value(injector, "ordinal") instanceof Integer o ? o : -1;
+		for (MethodNode m : targets) {
+			long count = List.of(Type.getArgumentTypes(m.desc)).stream().filter(type::equals).count();
+			if (ordinal >= 0 ? count > ordinal : count == 1) return null;
+		}
+		return ordinal >= 0 ? "argument " + ordinal + " among those of type " + type.getClassName() : "the only argument of type " + type.getClassName();
 	}
 
 	/**

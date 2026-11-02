@@ -3288,6 +3288,71 @@ class MixinPreflightTest {
 	}
 
 	@Test
+	void aVariableModifierOfAnArgumentByItsTypeIsLeftOutWhereTheMethodTakesNoneOfThatType() throws Exception {
+		// CORPUS-57: Architectury's char-typed screen hooks modify the GuiEventListener vanilla's KeyboardHandler.charTyped
+		// lambdas take (@ModifyVariable(at = @At("HEAD"), ordinal = 0, argsOnly = true)); NeoForge's 1.21.1 build passes
+		// them a Screen, and Mixin found no argument of the handler's type ("(0/1) succeeded").
+		String listener = "Lcom/example/Listener;";
+		java.util.function.Function<String, byte[]> target = argument -> {
+			ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+			cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+			MethodVisitor lambda = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, "lambda$charTyped$6",
+					"(" + argument + "II)V", null, null);
+			lambda.visitCode();
+			lambda.visitInsn(Opcodes.RETURN);
+			lambda.visitMaxs(0, 3);
+			lambda.visitEnd();
+			cw.visitEnd();
+			return cw.toByteArray();
+		};
+		java.util.function.BiFunction<Integer, Integer, byte[]> mixin = (ordinal, require) -> mixin("com/example/mixin/Keys", false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "wrapCharTypedFirst", "(" + listener + ")" + listener, null, null);
+			AnnotationVisitor ann = mv.visitAnnotation(MODIFY_VARIABLE, true);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "lambda$charTyped$6");
+			methods.visitEnd();
+			AnnotationVisitor at = ann.visitAnnotation("at", AT);
+			at.visit("value", "HEAD");
+			at.visitEnd();
+			if (ordinal != null) ann.visit("ordinal", ordinal);
+			if (require != null) ann.visit("require", require);
+			ann.visit("argsOnly", true);
+			ann.visitEnd();
+			mv.visitCode();
+			mv.visitVarInsn(Opcodes.ALOAD, 0);
+			mv.visitInsn(Opcodes.ARETURN);
+			mv.visitMaxs(1, 1);
+			mv.visitEnd();
+		});
+		MixinConfigFile required = MixinConfigFile.parse(config(true, "Keys"));
+		MixinConfigFile optional = MixinConfigFile.parse(config(false, "Keys"));
+		java.util.function.BiFunction<byte[], Boolean, List<PreflightFinding>> check = (keys, isRequired) -> {
+			Map<String, byte[]> mod = Map.of("com/example/mixin/Keys", keys);
+			return preflight(new ClassIndex(Map.of(TARGET, target.apply("Lcom/example/Screen;"))::get), mod::get, ClassBytesSource.EMPTY, false)
+					.check("test.mixins.json", isRequired ? required : optional, Refmap.EMPTY, Set.of());
+		};
+
+		// By its ordinal: the injector injects nothing, which its require judges.
+		List<PreflightFinding> found = check.apply(mixin.apply(0, 1), true);
+		assertEquals(1, found.size(), found.toString());
+		assertEquals(Severity.LEFT_OUT, found.get(0).severity(), found.toString());
+		assertEquals("wrapCharTypedFirst(Lcom/example/Listener;)Lcom/example/Listener;", found.get(0).handler());
+		assertTrue(found.get(0).message().contains("modifies argument 0 among those of type com.example.Listener of lambda$charTyped$6"
+				+ "(Lcom/example/Screen;II)V in net.minecraft.world.Thing, which that method doesn't have"), found.toString());
+		assertEquals(Severity.WARN, check.apply(mixin.apply(0, 0), true).get(0).severity(), "not required, nothing fails");
+		// Without one Mixin throws as it applies the mixin, whatever its require: only a config that isn't required survives it.
+		List<PreflightFinding> implicit = check.apply(mixin.apply(null, 0), true);
+		assertEquals(Severity.LEFT_OUT, implicit.get(0).severity(), implicit.toString());
+		assertTrue(implicit.get(0).message().contains("modifies the only argument of type com.example.Listener"), implicit.toString());
+		assertEquals(Severity.WARN, check.apply(mixin.apply(null, 0), false).get(0).severity());
+
+		// Where the method takes the handler's type, as vanilla's lambda does, nothing is reported.
+		Map<String, byte[]> mod = Map.of("com/example/mixin/Keys", mixin.apply(0, 1));
+		assertEquals(List.of(), preflight(new ClassIndex(Map.of(TARGET, target.apply(listener))::get), mod::get, ClassBytesSource.EMPTY, false)
+				.check("test.mixins.json", required, Refmap.EMPTY, Set.of()));
+	}
+
+	@Test
 	void aVariableModifierOfAnArgumentAtItsStoreFailsWhereTheMethodNoLongerStoresIt() throws Exception {
 		// PRE-16: Fabric API's shader import hook modifies an import's name where vanilla stores it back into its argument
 		// (@ModifyVariable(at = @At("STORE"), argsOnly = true)); Forge 47's patch looks the import up without that store,
