@@ -142,6 +142,32 @@ jobs:
           mkdir -p "$RUNNER_TEMP/standins"
           python3 -I ci/forge-legacy/standins.py build/libs/fabricated-forge-[0-9]*+mc${{ matrix.target.minecraft }}.jar "$RUNNER_TEMP/standins"
           ci/forge-legacy/smoke-server.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/server-standins" "$RUNNER_TEMP/standins"
+      # The real Forgified Fabric API for 1.20.1 (from Modrinth, here in CI), which nests its modules and its own Fabric
+      # Loader: what Forge 47 makes of it beside Fabricated. A diagnostic for the provider policy's Fabric Loader half
+      # (PROVIDER-2), to become a gate or go before this change merges.
+      - name: Server with Forgified Fabric API (diagnostic)
+        if: ${{ env.GAME_RUNS == 'true' && !cancelled() }}
+        continue-on-error: true
+        run: |
+          mkdir -p "$RUNNER_TEMP/ffapi"
+          python3 ci/fetch-corpus.py "${{ matrix.target.minecraft }}" "$RUNNER_TEMP/ffapi" forge forgified-fabric-api || true
+          ls -la "$RUNNER_TEMP/ffapi"
+          for f in "$RUNNER_TEMP"/ffapi/*.jar; do
+            echo "== $f"; unzip -p "$f" META-INF/MANIFEST.MF | head -20 || true
+            unzip -p "$f" META-INF/jarjar/metadata.json | python3 -c 'import json,sys; [print(j["identifier"], j["version"], j["path"]) for j in json.load(sys.stdin)["jars"]]' 2>/dev/null | head -80 || true
+            unzip -p "$f" META-INF/mods.toml | head -40 || true
+            # Each nested jar's manifest type and whether it has Fabric Loader's packages.
+            python3 -I -c 'import io,sys,zipfile
+          z = zipfile.ZipFile(sys.argv[1])
+          for n in z.namelist():
+              if n.startswith("META-INF/jarjar/") and n.endswith(".jar"):
+                  i = zipfile.ZipFile(io.BytesIO(z.read(n)))
+                  m = i.read("META-INF/MANIFEST.MF").decode(errors="replace") if "META-INF/MANIFEST.MF" in i.namelist() else ""
+                  t = [l for l in m.splitlines() if l.startswith(("FMLModType", "Automatic-Module-Name"))]
+                  print(n, t, "loader-api" if any(x.startswith("net/fabricmc/loader/") for x in i.namelist()) else "")' "$f" || true
+          done
+          ci/forge-legacy/smoke-server.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/server-ffapi" "$RUNNER_TEMP/ffapi" || true
+          grep -h -m 20 -E "ResolutionException|LayerInstantiationException|reads package|exports package|Duplicate key|FATAL" "$RUNNER_TEMP/server-ffapi/server.out" | cut -c1-500 || true
       # Sinytra Connector (a stand-in with its mod id) or a second Fabricated jar in the mods folder: the launch must
       # stop with Fabricated's error naming them, as on NeoForge: two loaders of Fabric mods can't share them (DUP-1).
       - name: Server refusing Sinytra Connector and a second Fabricated jar (must pass)
