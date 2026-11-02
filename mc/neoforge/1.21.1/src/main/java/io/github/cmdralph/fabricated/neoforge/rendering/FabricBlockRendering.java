@@ -51,7 +51,8 @@ import net.neoforged.neoforge.client.model.data.ModelData;
  * </ul>
  *
  * <p>A Fabric model that throws there fails alone (FRAPI rule 8, {@link FrapiFailures}): the block is drawn by NeoForge
- * instead, from the quads the model gives NeoForge, as is every model of its class from then on.
+ * instead, at each of its render types, from the quads the model gives NeoForge, as is every model of the class that
+ * threw from then on (not of a class wrapping it: {@link FrapiFailures#putDown}).
  *
  * <p>Sections compile on several worker threads at once: the state here is immutable or per thread.
  */
@@ -99,8 +100,9 @@ public final class FabricBlockRendering {
 	/**
 	 * Draws one block of a chunk section whose model {@link #draws} with Fabric's renderer, for the render type NeoForge
 	 * is drawing: the whole block at the first, nothing at the others (its quads went to their layers' buffers then).
-	 * False if the model threw: NeoForge's renderer then draws the block (quads already sent stay in this build of the
-	 * section).
+	 * False if the model threw: NeoForge's renderer then draws the block, at that render type and at its others in this
+	 * compile, even when what threw isn't marked (a model it wraps, {@link FrapiFailures#putDown}); quads already sent stay
+	 * in this build of the section.
 	 *
 	 * @param layers the compile's buffers by layer, which tell one compile from the next
 	 */
@@ -118,13 +120,15 @@ public final class FabricBlockRendering {
 	 * Draws a block whose model {@link #draws} with Fabric's renderer into the buffer NeoForge's renderer gives, as its
 	 * {@code tesselateBlock} would have with the same arguments: the whole block at the model's first render type (or
 	 * with no type, or one the model doesn't have), nothing at its others. False if the model threw: NeoForge's renderer
-	 * then draws the block.
+	 * then draws the block, at that render type and at its others. False too for a chunk section's block whose model threw
+	 * there ({@link #tesselate}): the section compiler's own call then reaches here, and NeoForge's renderer draws it.
 	 *
 	 * @param where where the block is drawn, for the log ("a moving block", ...)
 	 */
 	public static boolean tesselateBlock(BlockAndTintGetter level, BakedModel model, BlockState state, BlockPos pos, PoseStack poseStack, VertexConsumer buffer,
 			boolean cull, RandomSource random, long seed, int overlay, ModelData modelData, @Nullable RenderType renderType, String where) {
-		if (renderType != null && !firstType(model, state, seed, modelData, renderType)) return true;
+		if (level instanceof RenderChunkRegion && Indigo.sectionFellBack(pos)) return false;
+		if (renderType != null && !firstType(model, state, seed, modelData, renderType)) return !Indigo.fellBack(state, pos);
 		return Indigo.tesselateBlock(level, model, state, pos, poseStack, buffer, cull, random, seed, overlay, where);
 	}
 
@@ -231,8 +235,8 @@ public final class FabricBlockRendering {
 	private static final class Indigo {
 		/** Each section worker thread's terrain context, and the compile it is prepared for. */
 		private static final ThreadLocal<Section> SECTION = ThreadLocal.withInitial(Section::new);
-		/** Each thread's context for blocks drawn outside chunk sections. */
-		private static final ThreadLocal<BlockRenderContext> BLOCK = ThreadLocal.withInitial(BlockRenderContext::new);
+		/** Each thread's context for blocks drawn outside chunk sections, and the last of them that threw. */
+		private static final ThreadLocal<Single> BLOCK = ThreadLocal.withInitial(Single::new);
 
 		static boolean tesselate(SectionLayers compiler, Map<RenderType, BufferBuilder> layers, SectionBufferBuilderPack pack, RenderChunkRegion region,
 				BlockState state, BlockPos pos, PoseStack poseStack, BakedModel model) {
@@ -243,25 +247,40 @@ public final class FabricBlockRendering {
 				section.context.prepare(region, layer -> compiler.fabricated$layer(layers, pack, layer));
 				section.layers = layers;
 			} else if (section.block == block) {
-				return true; // the block's next render type: Fabric's renderer drew the whole block at its first
+				// The block's next render type: Fabric's renderer drew the whole block at its first, or threw there and
+				// NeoForge's draws each of them.
+				return !section.fellBack;
 			}
 			section.block = block;
+			section.fellBack = false;
 			try {
 				section.context.tessellateBlock(state, pos, model, poseStack);
 				return true;
 			} catch (VirtualMachineError e) {
 				throw e;
 			} catch (Throwable t) {
-				// The context may hold a transform the model pushed: this thread gets a new one, prepared at its next block.
-				SECTION.remove();
+				// The context may hold a transform the model pushed: a new one, prepared for the rest of this compile.
+				section.context = new TerrainRenderContext();
+				section.context.prepare(region, layer -> compiler.fabricated$layer(layers, pack, layer));
+				section.fellBack = true;
 				untranslate(poseStack, state, region, pos);
 				Frapi.markBroken(model, t, "a chunk section at " + pos, state);
 				return false;
 			}
 		}
 
+		/**
+		 * Whether the block at {@code pos} is the one whose model last threw in this thread's chunk section compile: the
+		 * compiler's own call ({@code renderBatched}) is then NeoForge's renderer drawing it, not Fabric's again.
+		 */
+		static boolean sectionFellBack(BlockPos pos) {
+			Section section = SECTION.get();
+			return section.fellBack && section.layers != null && section.block == pos.asLong();
+		}
+
 		static void endSection() {
 			Section section = SECTION.get();
+			section.fellBack = false;
 			if (section.layers == null) return;
 			section.context.release();
 			section.layers = null;
@@ -269,17 +288,30 @@ public final class FabricBlockRendering {
 
 		static boolean tesselateBlock(BlockAndTintGetter level, BakedModel model, BlockState state, BlockPos pos, PoseStack poseStack, VertexConsumer buffer,
 				boolean cull, RandomSource random, long seed, int overlay, String where) {
+			Single single = BLOCK.get();
+			single.fellBack = null;
 			try {
-				BLOCK.get().render(level, model, state, pos, poseStack, buffer, cull, random, seed, overlay);
+				single.context.render(level, model, state, pos, poseStack, buffer, cull, random, seed, overlay);
 				return true;
 			} catch (VirtualMachineError e) {
 				throw e;
 			} catch (Throwable t) {
-				BLOCK.remove(); // it may hold a transform the model pushed
+				single.context = new BlockRenderContext(); // it may hold a transform the model pushed
+				single.fellBack = state;
+				single.fellBackPos = pos.asLong();
 				untranslate(poseStack, state, level, pos);
 				Frapi.markBroken(model, t, where + " at " + pos, state);
 				return false;
 			}
+		}
+
+		/**
+		 * Whether the block (its state, where it is) is the one whose model last threw at its first render type on this
+		 * thread: NeoForge's renderer then draws its other render types too.
+		 */
+		static boolean fellBack(BlockState state, BlockPos pos) {
+			Single single = BLOCK.get();
+			return single.fellBack == state && single.fellBackPos == pos.asLong();
 		}
 
 		/**
@@ -296,11 +328,25 @@ public final class FabricBlockRendering {
 			poseStack.translate(-offset.x, -offset.y, -offset.z);
 		}
 
-		/** A thread's terrain context, the compile it is prepared for (its buffers by layer) and the last block it drew. */
+		/**
+		 * A thread's terrain context, the compile it is prepared for (its buffers by layer), the last block it drew and
+		 * whether that one threw.
+		 */
 		private static final class Section {
-			final TerrainRenderContext context = new TerrainRenderContext();
+			TerrainRenderContext context = new TerrainRenderContext();
 			@Nullable Map<RenderType, BufferBuilder> layers;
 			long block;
+			boolean fellBack;
+		}
+
+		/**
+		 * A thread's block context, and the last block (its state, where it is) whose model threw at its first render
+		 * type there; a block state lives as long as the game, unlike a model, which a resource reload replaces.
+		 */
+		private static final class Single {
+			BlockRenderContext context = new BlockRenderContext();
+			@Nullable BlockState fellBack;
+			long fellBackPos;
 		}
 	}
 }

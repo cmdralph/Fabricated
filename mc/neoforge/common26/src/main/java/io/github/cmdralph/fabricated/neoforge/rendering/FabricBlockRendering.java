@@ -53,7 +53,8 @@ import net.minecraft.world.level.block.state.BlockState;
  * keeps NeoForge's path.
  *
  * <p>A Fabric model that throws there fails alone (FRAPI rule 8, {@link FrapiFailures}): the block is drawn by NeoForge
- * instead, as is every model of its class from then on, and the thread's Fabric renderer and emitter are replaced (a
+ * instead, as is every model of the class that threw from then on (not of a class wrapping it:
+ * {@link FrapiFailures#putDown}), and the thread's Fabric renderer and emitter are replaced (a
  * model that threw may have left a transform pushed on the emitter).
  *
  * <p>Sections compile on several worker threads at once: the state here is immutable, or confined to one thread.

@@ -58,7 +58,8 @@ import net.neoforged.neoforge.client.model.quad.BakedNormals;
  * </ul>
  *
  * <p>A Fabric model that throws there fails alone (FRAPI rule 8, {@link FrapiFailures}): the block is drawn by NeoForge
- * instead, from the parts the model's vanilla method gives, as is every model of its class from then on.
+ * instead, from the parts the model's vanilla method gives, as is every model of the class that threw from then on (not
+ * of a class wrapping it: {@link FrapiFailures#putDown}).
  *
  * <p>Sections compile on several worker threads at once: the state here is immutable or per thread, and the renderer
  * keeps its own per-thread state.
