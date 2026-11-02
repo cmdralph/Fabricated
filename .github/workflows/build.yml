@@ -848,16 +848,21 @@ jobs:
           SMOKE_SHADERS=1 SMOKE_TIMEOUT=480 ci/neoforge/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-shaders" "$RUNNER_TEMP/extra-sodium" || true
           grep -n -m 80 -E "FABRICATED-TEST frapi|[Ss]haderpack|shader pack|Iris|/(ERROR|FATAL)\]" "$RUNNER_TEMP/client-shaders/run/logs/latest.log" || true
       # The Fabric builds of Sodium and Iris, loaded on request (loadUnsupported) with Fabric API and the renderer API
-      # test mod: informational, it records what breaks for the rendering-pipeline track (docs/roadmap.md).
-      - name: Client with the Fabric builds of Sodium and Iris (informational, 26.x)
-        if: ${{ matrix.part == 'mods' && env.EXTENDED == 'true' && !cancelled() && steps.build.outcome == 'success' && startsWith(matrix.target.minecraft, '26.') }}
+      # test mod, on every version Modrinth has them for: informational, it records what breaks for the difficult mods
+      # (task 5, docs/roadmap.md).
+      - name: Client with the Fabric builds of Sodium and Iris (informational)
+        if: ${{ matrix.part == 'mods' && env.EXTENDED == 'true' && !cancelled() && steps.build.outcome == 'success' }}
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
           FABRICATED_MODS: '{"sodium": {"loadUnsupported": true}, "iris": {"loadUnsupported": true}}'
         run: |
           mkdir -p "$RUNNER_TEMP/extra-sodium-fabric"
-          python3 ci/fetch-corpus.py "${{ matrix.target.minecraft }}" "$RUNNER_TEMP/extra-sodium-fabric" fabric sodium iris
+          python3 ci/fetch-corpus.py "${{ matrix.target.minecraft }}" "$RUNNER_TEMP/extra-sodium-fabric" fabric sodium iris || true
+          if ! ls "$RUNNER_TEMP"/extra-sodium-fabric/sodium*.jar >/dev/null 2>&1; then
+            echo "Modrinth has no Fabric build of Sodium for ${{ matrix.target.minecraft }}: nothing to run"
+            exit 0
+          fi
           cp "$RUNNER_TEMP/extra/fabric-api.jar" mc/neoforge/${{ matrix.target.minecraft }}/build/testmods/fabricated-testmod-frapi.jar "$RUNNER_TEMP/extra-sodium-fabric/"
           SMOKE_TIMEOUT=480 ci/neoforge/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-sodium-fabric" "$RUNNER_TEMP/extra-sodium-fabric" || true
           grep -A300 "== " "$RUNNER_TEMP/client-sodium-fabric/run/logs/fabric-bridge-report.txt" || true
@@ -946,7 +951,7 @@ jobs:
       # malilib (MiniHUD's and Tweakeroo's library) adds its picture-in-picture renderers through the GUI renderer's map
       # NeoForge replaced, which Fabricated restores (PIP-1). On its own, with the compatibility plan's refusal lifted,
       # until it is verified (with the mods part's runs).
-      - name: Client with malilib, MiniHUD and Tweakeroo (informational, PIP-1)
+      - name: Client with malilib, MiniHUD, Tweakeroo and Litematica (informational, PIP-1)
         if: ${{ matrix.part == 'mods' && env.EXTENDED == 'true' && !cancelled() && steps.build.outcome == 'success' }}
         continue-on-error: true
         env:
@@ -954,9 +959,50 @@ jobs:
           FABRICATED_MODS: '{"malilib": {"loadUnsupported": true}}'
         run: |
           mkdir -p "$RUNNER_TEMP/extra-malilib"
-          python3 ci/fetch-corpus.py "${{ matrix.target.minecraft }}" "$RUNNER_TEMP/extra-malilib" fabric malilib fabric minihud fabric tweakeroo
+          python3 ci/fetch-corpus.py "${{ matrix.target.minecraft }}" "$RUNNER_TEMP/extra-malilib" fabric malilib fabric minihud fabric tweakeroo fabric litematica
           cp "$RUNNER_TEMP/extra/fabric-api.jar" "$RUNNER_TEMP/extra-malilib/"
           SMOKE_TIMEOUT=420 ci/neoforge/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-malilib" "$RUNNER_TEMP/extra-malilib" || true
+      # Essential's Fabric build (its loader, which downloads Essential as the game starts; Fabricated itself never
+      # downloads anything), with its refusal lifted, on its own: what its loader reaches for (task 5). Informational.
+      - name: Client with Essential's Fabric build (informational)
+        if: ${{ matrix.part == 'mods' && env.EXTENDED == 'true' && !cancelled() && steps.build.outcome == 'success' }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FABRICATED_MODS: '{"essential-container": {"loadUnsupported": true}, "essential-loader": {"loadUnsupported": true}}'
+        run: |
+          mkdir -p "$RUNNER_TEMP/extra-essential"
+          python3 ci/fetch-corpus.py "${{ matrix.target.minecraft }}" "$RUNNER_TEMP/extra-essential" fabric essential | tee "$RUNNER_TEMP/summary-essential.txt" || true
+          if ! grep -qE "^essential: [^n]" "$RUNNER_TEMP/summary-essential.txt"; then
+            echo "Modrinth has no Fabric build of Essential for ${{ matrix.target.minecraft }}: nothing to run"
+            exit 0
+          fi
+          cp "$RUNNER_TEMP/extra/fabric-api.jar" "$RUNNER_TEMP/extra-essential/"
+          SMOKE_TIMEOUT=420 ci/neoforge/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-essential" "$RUNNER_TEMP/extra-essential" || true
+          log="$RUNNER_TEMP/client-essential/run/logs/latest.log"
+          awk '/^== /{show = /^== (Summary|Disabled|Unsupported|Linkage)/} show' "$RUNNER_TEMP/client-essential/run/logs/fabric-bridge-report.txt" | head -60 | cut -c1-400 || true
+          grep -n -m 60 -i -E "essential|/(ERROR|FATAL)\]" "$log" | cut -c1-400 || true
+          # What its loader downloaded, and where (its own folder in the game directory).
+          find "$RUNNER_TEMP/client-essential/run" -maxdepth 4 -ipath "*essential*" -type f | head -30 || true
+      # Flashback with its refusal lifted, on its own: the refusal rests on a registry freeze CORPUS-32 moved (task 5).
+      # Informational.
+      - name: Client with Flashback (informational)
+        if: ${{ matrix.part == 'mods' && env.EXTENDED == 'true' && !cancelled() && steps.build.outcome == 'success' }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FABRICATED_MODS: '{"flashback": {"loadUnsupported": true}}'
+        run: |
+          mkdir -p "$RUNNER_TEMP/extra-flashback"
+          python3 ci/fetch-corpus.py "${{ matrix.target.minecraft }}" "$RUNNER_TEMP/extra-flashback" fabric flashback | tee "$RUNNER_TEMP/summary-flashback.txt" || true
+          if ! grep -qE "^flashback: [^n]" "$RUNNER_TEMP/summary-flashback.txt"; then
+            echo "Modrinth has no Fabric build of Flashback for ${{ matrix.target.minecraft }}: nothing to run"
+            exit 0
+          fi
+          cp "$RUNNER_TEMP/extra/fabric-api.jar" "$RUNNER_TEMP/extra-flashback/"
+          SMOKE_TIMEOUT=420 ci/neoforge/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-flashback" "$RUNNER_TEMP/extra-flashback" || true
+          awk '/^== /{show = /^== (Summary|Disabled|Unsupported|Mixins left out)/} show' "$RUNNER_TEMP/client-flashback/run/logs/fabric-bridge-report.txt" | head -40 | cut -c1-400 || true
+          grep -n -m 40 -i -E "flashback|/(ERROR|FATAL)\]" "$RUNNER_TEMP/client-flashback/run/logs/latest.log" | cut -c1-400 || true
       - name: Upload other mods' client logs and reports
         if: ${{ matrix.part == 'mods' && !cancelled() }}
         uses: actions/upload-artifact@v4
@@ -988,6 +1034,12 @@ jobs:
             ${{ runner.temp }}/client-malilib/run/logs
             ${{ runner.temp }}/client-malilib/run/crash-reports
             ${{ runner.temp }}/client-malilib/client.out
+            ${{ runner.temp }}/client-essential/run/logs
+            ${{ runner.temp }}/client-essential/run/crash-reports
+            ${{ runner.temp }}/client-essential/client.out
+            ${{ runner.temp }}/client-flashback/run/logs
+            ${{ runner.temp }}/client-flashback/run/crash-reports
+            ${{ runner.temp }}/client-flashback/client.out
           if-no-files-found: ignore
       # Fabric mods with deep hooks (ci/mod-corpus-advanced.txt), on their own: one that stops the game can't hide how
       # the main corpus did.
@@ -1046,7 +1098,7 @@ jobs:
           [ -f viewers.txt ] && { echo "== viewers fetched"; cat viewers.txt; }
           [ -f "$RUNNER_TEMP/summary-advanced.txt" ] && { echo "== advanced corpus fetched"; cut -c1-200 "$RUNNER_TEMP/summary-advanced.txt"; }
           [ -f "$RUNNER_TEMP/summary-neoforge-data.txt" ] && { echo "== NeoForge biome and structure modifiers in the advanced corpus's Fabric jars"; head -40 "$RUNNER_TEMP/summary-neoforge-data.txt"; }
-          for run in client client-fapi client-coexist client-sodium client-shaders client-sodium-fabric client-sodium-addons client-viewers client-polyfrost client-corpus client-malilib client-advanced; do
+          for run in client client-fapi client-coexist client-sodium client-shaders client-sodium-fabric client-sodium-addons client-viewers client-polyfrost client-corpus client-malilib client-essential client-flashback client-advanced; do
             log="$RUNNER_TEMP/$run/run/logs/latest.log"
             if [ ! -f "$log" ]; then
               # The game never started (the launcher stopped first): what the launcher said last.
@@ -1098,7 +1150,7 @@ jobs:
             done
             # A mixin that failed as Mixin applied it, though pre-flight passed it: what Fabricated's report says of it
             # (its notes and repairs), and of the classes those name (other mods' repairs there).
-            failed=$(cat "$RUNNER_TEMP/$run/run/crash-reports"/*.txt 2>/dev/null | grep -o -m 1 -E "in [A-Za-z0-9_./-]+\.json:[A-Za-z0-9_.\$]+ from mod" | head -1 | sed -E 's/^in [^:]+:(.+) from mod$/\1/' || true)
+            failed=$(cat "$RUNNER_TEMP/$run/run/crash-reports"/*.txt 2>/dev/null | grep -o -m 1 -E "(in |from |\[)[A-Za-z0-9_./-]+\.json:[A-Za-z0-9_.\$]+ from mod" | head -1 | sed -E 's/^(in |from |\[)[^:]+:(.+) from mod$/\2/' || true)
             bridge="$RUNNER_TEMP/$run/run/logs/fabric-bridge-report.txt"
             if [ -n "$failed" ] && [ -f "$bridge" ]; then
               echo "-- the report on $failed:"
@@ -1181,3 +1233,26 @@ jobs:
               tail -n 6 "$log" | cut -c1-300
             fi
           done
+      # The bytecode task 5's open findings turn on, for reading (informational; last, so the job log's tail has it): Polydium's font mixin, which stops
+      # 1.21.1 and 1.21.11 as it applies; PolyPlus's and Continuity's handlers capturing locals in methods NeoForge
+      # changed; malilib's tooltip hook by ordinal; OneConfig's key map accessor; Iris's accessor into Sodium's class.
+      - name: Bytecode for task 5's findings (informational)
+        if: ${{ matrix.part == 'mods' && env.EXTENDED == 'true' && !cancelled() && steps.build.outcome == 'success' }}
+        continue-on-error: true
+        run: |
+          dump() {
+            local run=$1
+            shift
+            [ -d "$RUNNER_TEMP/$run" ] || return 0
+            echo "== $run"
+            python3 -I ci/javap-dump.py "$RUNNER_TEMP/$run" "$@" | cut -c1-300 || true
+          }
+          dump client-polyfrost 'mod:*MixinFontTextureNodeFreeSpace' 'file:mixins.polydium.json' \
+            'game:net.minecraft.client.gui.font.FontTexture$Node' 'mod:*MixinClientLanguage' \
+            'game:net.minecraft.client.resources.language.ClientLanguage#appendFrom' 'game:net.minecraft.client.KeyMapping#MAP'
+          dump client-malilib 'mod:fi.dy.masa.malilib.mixin.item.MixinItemStack' \
+            'game:net.minecraft.world.item.ItemStack#addDetailsToTooltip'
+          dump client-continuity 'mod:*SpriteSourceListMixin' 'mod:*AtlasLoaderMixin' \
+            'game:net.minecraft.client.renderer.texture.atlas.SpriteSourceList#list'
+          dump client-sodium-fabric 'file:mixins.iris.compat.sodium.json' 'mod:*EnumOptionBuilderImplAccessor' \
+            'mod:net.caffeinemc.mods.sodium.client.config.builder.EnumOptionBuilderImpl#getEnumClass'
