@@ -112,6 +112,15 @@ final class ContinuityProbe {
 		return sprite == null ? "null" : String.valueOf(sprite);
 	}
 
+	/** The model a wrapper keeps in a field named {@code wrapped} (Fabric's wrapper models, Continuity's), or null. */
+	static Object wrapped(Object model) {
+		try {
+			return field(model, "wrapped");
+		} catch (Throwable t) {
+			return null;
+		}
+	}
+
 	private interface Read {
 		Object get() throws Exception;
 	}

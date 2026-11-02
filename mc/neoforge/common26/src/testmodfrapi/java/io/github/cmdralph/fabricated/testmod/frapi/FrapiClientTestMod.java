@@ -19,6 +19,7 @@ import net.fabricmc.fabric.api.client.model.loading.v1.wrapper.WrapperBlockState
 import net.fabricmc.fabric.api.client.renderer.v1.mesh.QuadEmitter;
 import net.fabricmc.fabric.api.client.renderer.v1.mesh.QuadTransform;
 import net.fabricmc.fabric.api.client.renderer.v1.mesh.QuadView;
+import net.fabricmc.fabric.api.client.renderer.v1.model.FabricBlockStateModel;
 import net.fabricmc.fabric.api.client.renderer.v1.render.FabricLayerRenderState;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
 import net.fabricmc.loader.api.FabricLoader;
@@ -302,7 +303,33 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 				FrapiTestMod.LOGGER.info("FABRICATED-TEST continuity connected textures {} ({} of {} quads off {} at {}, drawn by {})", quads[1] > 0 ? "OK" : "FAILED",
 						quads[1], quads[0], sprite.contents().name(), pos, wrapped.getClass().getName());
 				if (quads[1] == 0) FrapiTestMod.LOGGER.info("FABRICATED-TEST continuity {}", ContinuityProbe.describe(state, sprite));
+				if (quads[0] == 0) FrapiTestMod.LOGGER.info("FABRICATED-TEST continuity no quad reached the check: {}", innerQuads(wrapped, emitter, level, pos, state, random, cullTest));
 			}
+		}
+
+		/**
+		 * How many quads the model inside Continuity's emits here, under the same cull test, none of them drawn: where the
+		 * check saw no quad at all, whether Continuity's transform had any to process (CORPUS-56).
+		 */
+		private static String innerQuads(BlockStateModel model, QuadEmitter emitter, BlockAndTintGetter level, BlockPos pos, BlockState state, RandomSource random,
+				Predicate<@Nullable Direction> cullTest) {
+			Object inner = ContinuityProbe.wrapped(model);
+			if (!(inner instanceof FabricBlockStateModel fabricModel)) {
+				return "the model it wraps is " + (inner == null ? "unreadable" : inner.getClass().getName() + ", not a Fabric block model");
+			}
+			int[] count = new int[1];
+			emitter.pushTransform(quad -> {
+				count[0]++;
+				return false;
+			});
+			try {
+				fabricModel.emitQuads(emitter, level, pos, state, random, cullTest);
+			} catch (RuntimeException | LinkageError e) {
+				return "the model it wraps (" + inner.getClass().getName() + ") threw: " + e;
+			} finally {
+				emitter.popTransform();
+			}
+			return "the model it wraps (" + inner.getClass().getName() + ") emits " + count[0] + " quad(s) here under the same cull test";
 		}
 
 		private static boolean nextToSame(BlockAndTintGetter level, BlockPos pos, BlockState state) {

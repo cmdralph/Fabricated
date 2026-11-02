@@ -1364,9 +1364,15 @@ jobs:
           log="$RUNNER_TEMP/client-continuity/run/logs/latest.log"
           if [ -f "$log" ]; then
             echo "== client-continuity: R6"
-            grep -h -m 8 -E "FABRICATED-TEST (continuity|frapi broken part)" "$log" | cut -c1-2000 || true
+            grep -h -m 10 -E "FABRICATED-TEST (continuity|frapi broken part)" "$log" | cut -c1-2000 || true
             grep -h -m 8 -E "\[[Cc]ontinuity/|Continuity/\]|[Cc]ontinuity.*(WARN|ERROR)" "$log" | cut -c1-600 || true
             awk '/^== Mixin pre-flight failures ==/ { show = 1; next } /^$/ { show = 0 } show' "$RUNNER_TEMP/client-continuity/run/logs/fabric-bridge-report.txt" 2>/dev/null | grep -i -A2 continuity | head -20 | cut -c1-700 || true
+            # Run 673 on 26.2: Continuity's transform was reset again, but the glass gave R6 no quads at all. A throw inside
+            # Continuity's processing, held until its call returned, would do that: the block models that threw while drawn
+            # (the test mod's broken ones among them), each with the stack of what threw, and the report's lines for them.
+            echo "== client-continuity: block models that threw while drawn"
+            grep -h -m 6 -A 14 -E "threw while drawn" "$log" | cut -c1-400 | head -100 || true
+            sed -n '/^== Rendering ==/,/^$/p' "$RUNNER_TEMP/client-continuity/run/logs/fabric-bridge-report.txt" 2>/dev/null | cut -c1-700 | head -12 || true
           fi
           if [ "${{ matrix.target.minecraft }}" = "1.21.1" ]; then
             dump client-continuity 'mod:net.fabricmc.fabric.api.renderer.v1.model.ForwardingBakedModel#emitBlockQuads'
@@ -1399,7 +1405,7 @@ jobs:
           # value: what pre-flight now reports of them, and addMainPass as NeoForge's and vanilla's code declare it.
           if [ "${{ matrix.target.minecraft }}" = "26.2" ]; then
             report="$RUNNER_TEMP/client-malilib/run/logs/fabric-bridge-report.txt"
-            if [ -f "$report" ]; then grep -h "MixinLevelRenderer" "$report" | cut -c1-600 | head -10 || true; fi
+            if [ -f "$report" ]; then grep -h "MixinLevelRenderer" "$report" | cut -c1-1500 | head -10 || true; fi
             if [ -d "$RUNNER_TEMP/client-malilib" ]; then
               # NeoForge's build has two: their descriptors and flags, and whether one calls the other.
               python3 -I ci/javap-dump.py "$RUNNER_TEMP/client-malilib" 'game:net.minecraft.client.renderer.LevelRenderer#addMainPass' \

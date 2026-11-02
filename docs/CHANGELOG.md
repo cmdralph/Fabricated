@@ -86,7 +86,11 @@ One entry per working session, newest first: what changed, and how it was verifi
   active, and that worker thread drew no connected textures for the rest of the session (R6 saw it 20 ms after the test
   mod's broken model threw on the same thread; on 1.21.11 and 26.2, Continuity's transform still active on that thread
   right after). R6's check now wraps glass's model in a phase after every other wrapper, and logs Continuity's state
-  where it sees no connected texture. Verified on 1.21.1 in extended run 41496005222.
+  where it sees no connected texture. Verified on 1.21.1 in extended run 41496005222. On 26.2, in extended run
+  41501863294, Continuity's transform was no longer left active after the test mod's throw, yet R6 saw no quad at all
+  from Continuity's draw of glass: a second cause, still open on 1.21.11 and 26.x. Where it sees no quad, R6's check
+  now counts the quads the model inside Continuity's gives under the same cull test, and the evidence step prints the
+  block models that threw while drawn in Continuity's run, with their stacks and the report's rendering lines.
 - **Build:** `scripts/check-mixin-inventory.py` also runs the build's rule that each of the game mod's mixins is
   assigned a Fabric API module (`mixin-modules.json`), which only a platform build found: extended run 41492025138
   stopped on it, for `UtilMixin`. CI's mod downloads (`ci/fetch-corpus.py`) try a timeout, a dropped connection or a
@@ -114,9 +118,10 @@ One entry per working session, newest first: what changed, and how it was verifi
   source); `COMPATIBILITY.md` says so. `COMPATIBILITY.md` lists the Fabric builds' gaps (the owner's decision, 2026-11-02: no patch for Sodium's
   Fabric build, load it and list them) and how Essential loads; the README and the roadmap's tables say what loads
   where.
-- **Open, in the roadmap's findings:** fixed, to verify: LAMBDA-9 (Litematica's schematic rendering on 26.2), LIB-2,
-  CORPUS-56 on 1.21.11 and 26.x (Continuity) and CORPUS-61 (Carpet's and Friends & Foes' spawn hooks on 1.21.1);
-  KEYMAP-1 (documented), and the Fabric builds' gaps `COMPATIBILITY.md` lists.
+- **Open, in the roadmap's findings:** fixed, to verify: LAMBDA-9 (Litematica's schematic rendering on 26.2), LIB-2
+  and CORPUS-61 (Carpet's and Friends & Foes' spawn hooks on 1.21.1); open: CORPUS-56 on 1.21.11 and 26.x
+  (Continuity's connected textures, its stuck transform fixed and a second cause being read); KEYMAP-1 (documented),
+  and the Fabric builds' gaps `COMPATIBILITY.md` lists.
   On Forge, the refusals stay until the Forge sync and its runs.
 - **Verified:** extended runs 41471044589 and 41477591558, every job green on all five NeoForge versions, the
   difficult-mod gates included; the fixes' findings name the run that verified each.
