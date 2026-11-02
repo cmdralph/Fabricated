@@ -5126,6 +5126,130 @@ class MixinPreflightTest {
 		assertTrue(findings.getFirst().message().contains("MIXINEXTRAS:EXPRESSION"), findings.toString());
 	}
 
+	/**
+	 * CORPUS-51: FrozenLib's entry added event captures vanilla's reference and id in {@code MappedRegistry.register} at
+	 * its return. NeoForge 21.1 reduced that method to a call of an overload taking the id, which keeps the id in a local
+	 * before the reference: Mixin could capture nothing in the method that is left ("Invalid descriptor").
+	 */
+	@Test
+	void aLocalCaptureInAMethodReducedToACallOfItsOverloadMovesThereWithItsLocals() throws Exception {
+		String register = "register(Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;";
+		String withId = "(ILjava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;";
+		String cir = "Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;";
+		// The overload's locals past its parameters: the id (slot 4), then the reference, or with twoReferences a second Object.
+		java.util.function.Function<Boolean, byte[]> target = twoReferences -> {
+			ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+			cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+			MethodVisitor delegate = cw.visitMethod(Opcodes.ACC_PUBLIC, "register", "(Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;", null, null);
+			delegate.visitCode();
+			delegate.visitVarInsn(Opcodes.ALOAD, 0);
+			delegate.visitVarInsn(Opcodes.ALOAD, 0);
+			delegate.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "size", "()I", false);
+			delegate.visitVarInsn(Opcodes.ALOAD, 1);
+			delegate.visitVarInsn(Opcodes.ALOAD, 2);
+			delegate.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "register", withId, false);
+			delegate.visitInsn(Opcodes.ARETURN);
+			delegate.visitMaxs(0, 0);
+			delegate.visitEnd();
+			MethodVisitor overload = cw.visitMethod(Opcodes.ACC_PUBLIC, "register", withId, null, null);
+			overload.visitCode();
+			Label start = new Label();
+			Label idStored = new Label();
+			Label referenceStored = new Label();
+			Label end = new Label();
+			overload.visitLabel(start);
+			overload.visitVarInsn(Opcodes.ILOAD, 1);
+			overload.visitVarInsn(Opcodes.ISTORE, 4);
+			overload.visitLabel(idStored);
+			overload.visitVarInsn(Opcodes.ALOAD, 3);
+			overload.visitVarInsn(Opcodes.ASTORE, 5);
+			if (twoReferences) {
+				overload.visitVarInsn(Opcodes.ALOAD, 3);
+				overload.visitVarInsn(Opcodes.ASTORE, 6);
+			}
+			overload.visitLabel(referenceStored);
+			overload.visitVarInsn(Opcodes.ALOAD, 5);
+			overload.visitInsn(Opcodes.ARETURN);
+			overload.visitLabel(end);
+			overload.visitLocalVariable("this", "L" + TARGET + ";", null, start, end, 0);
+			overload.visitLocalVariable("id", "I", null, start, end, 1);
+			overload.visitLocalVariable("key", "Ljava/lang/String;", null, start, end, 2);
+			overload.visitLocalVariable("value", "Ljava/lang/Object;", null, start, end, 3);
+			overload.visitLocalVariable("i", "I", null, idStored, end, 4);
+			overload.visitLocalVariable("reference", "Ljava/lang/Object;", null, referenceStored, end, 5);
+			if (twoReferences) overload.visitLocalVariable("other", "Ljava/lang/Object;", null, referenceStored, end, 6);
+			overload.visitMaxs(0, 0);
+			overload.visitEnd();
+			MethodVisitor size = cw.visitMethod(Opcodes.ACC_PUBLIC, "size", "()I", null, null);
+			size.visitCode();
+			size.visitInsn(Opcodes.ICONST_0);
+			size.visitInsn(Opcodes.IRETURN);
+			size.visitMaxs(0, 0);
+			size.visitEnd();
+			cw.visitEnd();
+			return cw.toByteArray();
+		};
+		// invokeEntryAddEvent(key, entry, cir, reference, i), as vanilla's locals come: the reference, then the id.
+		String handlerDesc = "(Ljava/lang/String;Ljava/lang/Object;" + cir + "Ljava/lang/Object;I)V";
+		byte[] original = mixin("com/example/mixin/Registry", false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "invokeEntryAddEvent", handlerDesc, null, null);
+			AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, register);
+			methods.visitEnd();
+			AnnotationVisitor ats = ann.visitArray("at");
+			AnnotationVisitor at = ats.visitAnnotation(null, AT);
+			at.visit("value", "RETURN");
+			at.visitEnd();
+			ats.visitEnd();
+			ann.visitEnum("locals", "Lorg/spongepowered/asm/mixin/injection/callback/LocalCapture;", "CAPTURE_FAILEXCEPTION");
+			ann.visitEnd();
+			mv.visitCode();
+			mv.visitInsn(Opcodes.RETURN);
+			mv.visitMaxs(0, 6);
+			mv.visitEnd();
+		});
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Registry"));
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Registry", original));
+		MixinPreflight preflight = preflight(new ClassIndex(Map.of(TARGET, target.apply(false))::get), mod::get, ClassBytesSource.EMPTY, false);
+		List<PreflightFinding> before = preflight.check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(before.stream().anyMatch(f -> f.message().contains("captures local variables of " + register + " in net.minecraft.world.Thing,"
+				+ " which has none past its parameters")), before.toString());
+
+		List<PreflightFinding> notes = new ArrayList<>();
+		byte[] repaired = preflight.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes).get("com/example/mixin/Registry.class");
+		assertTrue(notes.stream().anyMatch(n -> n.message().contains("@Inject invokeEntryAddEvent captures locals in " + register
+				+ ", which NeoForge reduced to a call to register" + withId + "; the injector is pointed there")), notes.toString());
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired).accept(node, 0);
+		MethodNode bridge = node.methods.stream().filter(m -> m.name.equals("invokeEntryAddEvent$fabricated")).findFirst().orElseThrow();
+		// The overload's parameters, the callback info and its locals as Mixin passes them: the id, then the reference.
+		assertEquals("(ILjava/lang/String;Ljava/lang/Object;" + cir + "ILjava/lang/Object;)V", bridge.desc);
+		AnnotationNode inject = Annotations.find(bridge, INJECT);
+		assertEquals(List.of("register" + withId), Annotations.value(inject, "method"));
+		List<String> loads = new ArrayList<>();
+		for (AbstractInsnNode insn : bridge.instructions) {
+			if (insn instanceof VarInsnNode v) loads.add(v.getOpcode() + ":" + v.var);
+		}
+		// this, the key and entry (not the id), the callback info, the reference (slot 6), then the id (slot 5).
+		assertEquals(List.of(Opcodes.ALOAD + ":0", Opcodes.ALOAD + ":2", Opcodes.ALOAD + ":3", Opcodes.ALOAD + ":4", Opcodes.ALOAD + ":6",
+				Opcodes.ILOAD + ":5"), loads);
+		mod.put("com/example/mixin/Registry", repaired);
+		List<PreflightFinding> after = preflight.check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(after.stream().noneMatch(f -> f.message().contains("has none past its parameters")), after.toString());
+
+		// Two locals of the reference's type there: which one vanilla's is can't be told, and the check leaves it out.
+		Map<String, byte[]> unchanged = Map.of("com/example/mixin/Registry", original);
+		MixinPreflight ambiguous = preflight(new ClassIndex(Map.of(TARGET, target.apply(true))::get), unchanged::get, ClassBytesSource.EMPTY, false);
+		List<PreflightFinding> none = new ArrayList<>();
+		Map<String, byte[]> left = ambiguous.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), none);
+		assertTrue(none.stream().noneMatch(n -> n.message().contains("captures locals in")), none.toString());
+		Map<String, byte[]> softened = Map.of("com/example/mixin/Registry", left.getOrDefault("com/example/mixin/Registry.class", original));
+		List<PreflightFinding> refused = preflight(new ClassIndex(Map.of(TARGET, target.apply(true))::get), softened::get, ClassBytesSource.EMPTY, false)
+				.check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(refused.stream().anyMatch(f -> f.message().contains("which has none past its parameters")), refused.toString());
+	}
+
 	@Test
 	void aLocalCapturedByTypeMustBeTheOnlyOneOfThatType() throws Exception {
 		java.util.function.IntFunction<byte[]> target = locals -> {

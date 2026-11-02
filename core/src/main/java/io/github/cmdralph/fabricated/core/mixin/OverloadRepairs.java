@@ -206,6 +206,109 @@ final class OverloadRepairs extends PreflightPart {
 	}
 
 	/**
+	 * Points an {@code @Inject} that captures locals ({@code locals}) in a method NeoForge reduced to a call of an
+	 * overload taking one more parameter ({@link #insertedParameter}) at that overload, through a bridge taking the
+	 * overload's parameters, the callback info and its locals there as Mixin passes them
+	 * ({@link HandlerBridges#capturedLocalsBridge}). The method has no locals left past its parameters, so Mixin can't
+	 * capture any there and throws ("Invalid descriptor") whatever the capture mode. Each local the handler captures must
+	 * be the overload's one local of its type in scope at each instruction the point picks, among locals whose slots
+	 * follow one another from the first past the parameters (what Mixin sees in a slot no local is named for is unknown).
+	 * FrozenLib's entry added event in {@code MappedRegistry.register} (CORPUS-51), whose NeoForge 21.1 overload takes the
+	 * id and keeps it in a local before the reference, where vanilla's has the reference first; Continuity's emissive
+	 * sprites in {@code SpriteSourceList.list} (NeoForge 1.21.11 and 26.x). The capture mode stays as it is (the soften
+	 * step made it skip itself where the locals differ). Returns a description of the move, or nothing.
+	 */
+	List<String> capturedLocalsRepairs(ClassNode mixin, MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx,
+			List<MethodNode> bridges) {
+		if (!injector.desc.equals(MixinNames.INJECT) || Annotations.value(injector, "locals") == null || (mixin.access & Opcodes.ACC_INTERFACE) != 0
+				|| Annotations.value(injector, "slice") != null || !(Annotations.value(injector, "method") instanceof List<?> selectors)
+				|| selectors.size() != 1 || !(selectors.get(0) instanceof String raw) || hasParameterAnnotations(handler)) return List.of();
+		MemberRef ref = MemberRef.parse(ctx.resolve(raw));
+		if (ref.fuzzy() || ref.name() == null) return List.of();
+		MethodNode chosen = null;
+		for (MethodNode m : target.methods) {
+			if (ref.matchesMethod(m.name, m.desc)) {
+				chosen = m;
+				break;
+			}
+		}
+		if (chosen == null || chosen.maxLocals > firstLocalSlot(chosen)) return List.of();
+		// The handler takes the method's parameters, the callback info and the locals it captures.
+		Type[] own = Type.getArgumentTypes(chosen.desc);
+		Type[] args = Type.getArgumentTypes(handler.desc);
+		if (args.length <= own.length + 1 || !Arrays.equals(Arrays.copyOf(args, own.length), own) || !PreflightAsm.isCallbackInfo(args[own.length])
+				|| Type.getReturnType(handler.desc) != Type.VOID_TYPE) return List.of();
+		MethodNode overload = calledOverload(chosen, target);
+		if (overload == null) return List.of();
+		int inserted = insertedParameter(chosen, overload);
+		List<AnnotationNode> ats = Annotations.list(Annotations.value(injector, "at"));
+		if (inserted < 0 || InjectionPoints.pointsIn(ats, List.of(), overload, ctx) != Verdict.FOUND) return List.of();
+		List<Integer> positions = pointPositions(ats, overload, ctx);
+		if (positions == null) return List.of();
+		List<Type> locals = null;
+		for (int position : positions) {
+			List<Type> there = localsAt(overload, position);
+			if (there == null || locals != null && !locals.equals(there)) return List.of();
+			locals = there;
+		}
+		List<Type> captured = List.of(args).subList(own.length + 1, args.length);
+		int[] picked = new int[captured.size()];
+		int last = -1;
+		for (int i = 0; i < captured.size(); i++) {
+			Type type = captured.get(i);
+			if (locals.stream().filter(type::equals).count() != 1 || captured.stream().filter(type::equals).count() != 1) return List.of();
+			picked[i] = locals.indexOf(type);
+			last = Math.max(last, picked[i]);
+		}
+		bridges.add(HandlerBridges.capturedLocalsBridge(mixin.name, handler, injector, overload, inserted, locals.subList(0, last + 1), picked,
+				HandlerBridges.freeName(mixin, bridges, handler.name + "$fabricated")));
+		@SuppressWarnings("unchecked")
+		List<Object> values = (List<Object>) selectors;
+		values.set(0, overload.name + overload.desc);
+		return List.of(chosen.name + chosen.desc + ", which " + loader + " reduced to a call to " + overload.name + overload.desc
+				+ "; the injector is pointed there, taking its locals as they are there");
+	}
+
+	/** Whether any parameter of {@code handler} carries an annotation (MixinExtras sugar, {@code @Coerce}). */
+	private static boolean hasParameterAnnotations(MethodNode handler) {
+		for (int i = 0; i < Type.getArgumentTypes(handler.desc).length; i++) {
+			if (!Annotations.ofParameter(handler, i).isEmpty()) return true;
+		}
+		return false;
+	}
+
+	/** The first local variable slot past {@code method}'s parameters (and {@code this}). */
+	static int firstLocalSlot(MethodNode method) {
+		int slot = (method.access & Opcodes.ACC_STATIC) != 0 ? 0 : 1;
+		for (Type t : Type.getArgumentTypes(method.desc)) slot += t.getSize();
+		return slot;
+	}
+
+	/**
+	 * The types of {@code method}'s locals past its parameters in scope at the instruction at {@code position}, by slot,
+	 * as a capturing handler takes them; null without a local variable table, or where two locals share a slot there or
+	 * a slot before the last is no named local's.
+	 */
+	private static List<Type> localsAt(MethodNode method, int position) {
+		if (method.localVariables == null || method.localVariables.isEmpty()) return null;
+		int first = firstLocalSlot(method);
+		java.util.TreeMap<Integer, LocalVariableNode> bySlot = new java.util.TreeMap<>();
+		for (LocalVariableNode lv : method.localVariables) {
+			if (lv.index < first || method.instructions.indexOf(lv.start) > position || position >= method.instructions.indexOf(lv.end)) continue;
+			if (bySlot.put(lv.index, lv) != null) return null;
+		}
+		List<Type> types = new ArrayList<>();
+		int next = first;
+		for (var e : bySlot.entrySet()) {
+			if (e.getKey() != next) return null;
+			Type type = Type.getType(e.getValue().desc);
+			types.add(type);
+			next += type.getSize();
+		}
+		return types;
+	}
+
+	/**
 	 * Points a {@code @ModifyConstant} whose constants are in none of the methods it targets at the code NeoForge's
 	 * patches split off from one ({@link #splitOff}), when they all are there: Carpet's update flag in
 	 * {@code Level.setBlock}, now in {@code markAndNotifyBlock} (SPLIT-2). Only a handler taking the constant alone moves

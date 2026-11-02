@@ -447,6 +447,33 @@ final class HandlerBridges {
 	}
 
 	/**
+	 * A handler for a local-capturing {@code @Inject} at {@code overload} instead of the method that only calls it with one
+	 * value inserted among its own parameters (at {@code inserted}): it takes the overload's parameters, the callback info
+	 * and {@code locals}, the overload's first locals there as Mixin passes them, and calls {@code handler} with the
+	 * method's parameters (all but the inserted one), the callback info and, for each local {@code handler} captures, the
+	 * one of {@code locals} at its index in {@code picked}. The injector annotation moves to it; {@code handler} stays a
+	 * plain method of the mixin.
+	 */
+	static MethodNode capturedLocalsBridge(String mixin, MethodNode handler, AnnotationNode injector, MethodNode overload, int inserted, List<Type> locals,
+			int[] picked, String name) {
+		List<Type> overloadParams = List.of(Type.getArgumentTypes(overload.desc));
+		Type callbackInfo = Type.getArgumentTypes(handler.desc)[overloadParams.size() - 1];
+		List<Type> params = new ArrayList<>(overloadParams);
+		params.add(callbackInfo);
+		params.addAll(locals);
+		MethodNode bridge = bridgeMethod(handler, name, params, Type.VOID_TYPE);
+		int stack = loadAllBut(bridge, handler, params.subList(0, overloadParams.size() + 1), inserted);
+		for (int p : picked) {
+			int index = overloadParams.size() + 1 + p;
+			bridge.instructions.add(new VarInsnNode(params.get(index).getOpcode(Opcodes.ILOAD), slotOf(handler, params, index)));
+			stack += params.get(index).getSize();
+		}
+		callHandler(bridge, mixin, handler, stack);
+		moveInjector(handler, injector, bridge);
+		return bridge;
+	}
+
+	/**
 	 * A handler for {@code injector} at {@code canonical} instead of {@code delegate}: it takes {@code canonical}'s
 	 * parameters and the callback info, and calls {@code handler} with {@code delegate}'s (the same values, see
 	 * {@link #forwardsItsParameters}) and the callback info. The injector annotation moves to it; {@code handler} stays a

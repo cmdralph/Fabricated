@@ -2,6 +2,7 @@ package io.github.cmdralph.fabricated.core.mixin;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -888,6 +889,16 @@ public final class MixinPreflight extends PreflightPart {
 			return;
 		}
 
+		if (ann.desc.equals(MixinNames.INJECT) && !anyFuzzy && capturesWithoutLocals(mixin, handler, ann, matched, ctx)) {
+			// Mixin throws as it applies the mixin, which require doesn't cover (a config that isn't required survives it).
+			ctx.injector(handler, ctx.config().required() ? 1 : 0, injectorName + " handler " + handler.name + " captures local variables of "
+							+ matched.get(0).name + matched.get(0).desc + " in " + target.name.replace('/', '.') + ", which has none past its parameters:"
+							+ " Mixin rejects its descriptor whatever the capture mode",
+					(ctx.owner() == null ? loader + "'s build of Minecraft reduced this method to a call" : ctx.changer(true) + " changed this method")
+							+ "; the mod needs an update or this mixin must be skipped.");
+			return;
+		}
+
 		if (ann.desc.equals(MixinNames.WRAP_METHOD) && matched.stream().allMatch(m -> (m.access & Opcodes.ACC_ABSTRACT) != 0)) {
 			// MixinExtras throws while preparing the injector, which require doesn't cover (a config that isn't required survives it).
 			ctx.injector(handler, ctx.config().required() ? 1 : 0, injectorName + " targets " + matched.get(0).name + matched.get(0).desc
@@ -1109,6 +1120,29 @@ public final class MixinPreflight extends PreflightPart {
 			if (List.of(Type.getArgumentTypes(target.desc)).equals(wanted)) return true;
 		}
 		return false;
+	}
+
+	/**
+	 * Whether an {@code @Inject} capturing locals ({@code locals}, its handler taking more than the target's parameters and
+	 * the callback info) has one target method, with its injection points, and that method has no local variable past its
+	 * parameters: Mixin can capture none there and, the handler's descriptor not being the plain one, throws "Invalid
+	 * descriptor" whatever the capture mode, unless the mixin has a {@code @Surrogate} of that descriptor. NeoForge 21.1
+	 * reduced {@code MappedRegistry.register} to a call of an overload taking the id, so FrozenLib's entry added event
+	 * stopped the advanced corpus server (CORPUS-51) where {@code OverloadRepairs.capturedLocalsRepairs} can't move it.
+	 */
+	private static boolean capturesWithoutLocals(ClassNode mixin, MethodNode handler, AnnotationNode inject, List<MethodNode> targets, Context ctx) {
+		if (Annotations.value(inject, "locals") == null || targets.size() != 1) return false;
+		MethodNode target = targets.get(0);
+		Type[] own = Type.getArgumentTypes(target.desc);
+		List<Type> args = PreflightAsm.handlerArgs(handler);
+		if (args == null || args.size() <= own.length + 1 || !PreflightAsm.isCallbackInfo(args.get(own.length))) return false;
+		if (target.maxLocals > OverloadRepairs.firstLocalSlot(target)) return false;
+		List<AnnotationNode> ats = Annotations.list(Annotations.value(inject, "at"));
+		if (ats.isEmpty() || InjectionPoints.pointsIn(ats, Annotations.list(Annotations.value(inject, "slice")), target, ctx) != Verdict.FOUND) return false;
+		Type[] plain = Arrays.copyOf(own, own.length + 1);
+		plain[own.length] = args.get(own.length);
+		String surrogate = Type.getMethodDescriptor(Type.VOID_TYPE, plain);
+		return mixin.methods.stream().noneMatch(m -> m.name.equals(handler.name) && m.desc.equals(surrogate));
 	}
 
 	/**
