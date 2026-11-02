@@ -228,7 +228,8 @@ fi
 if [ -n "$extra" ] && [ -f "$extra/fabricated-testmod-frapi.jar" ]; then
 	check "FABRICATED-TEST key mapping OK" "fabric-key-mapping-api-v1 (native, with Fabric API's jar too): the client API test mod's key mapping is in the game's options (KEYMAP-3)"
 	check "FABRICATED-TEST hud element OK" "fabric-rendering-v1 (with Fabric API): a Fabric HUD element added last was drawn"
-	check "FABRICATED-TEST hud element after chat OK" "fabric-rendering-v1 (with Fabric API): a Fabric HUD element attached after chat was drawn"
+	check "FABRICATED-TEST hud element after chat OK" "fabric-rendering-v1 (with Fabric API): a Fabric HUD element attached after chat was drawn, from Forge's HUD layers (HUD-2)"
+	check "FABRICATED-TEST hud element before the hotbar OK" "fabric-rendering-v1 (with Fabric API): a Fabric HUD element attached before the hotbar was drawn, from Forge's hotbar layers (HUD-2)"
 	check "FABRICATED-TEST screen init event OK" "fabric-screen-api-v1 (with Fabric API): a screen's initialization fired Fabric's event"
 	check "FABRICATED-TEST screen draw event OK" "fabric-screen-api-v1 (with Fabric API): a screen's drawing fired Fabric's event, from Forge's screen render events (SCREEN-1)"
 	check "FABRICATED-TEST screen key press event OK" "fabric-screen-api-v1 (with Fabric API): a key press sent to the shown screen asked allowKeyPress, from Forge's hook, and its refusal held (SCREEN-1)"
@@ -247,5 +248,8 @@ fi
 if [ -n "$extra" ] && [ "$mc" = 1.21.11 ]; then
 	check "FABRICATED-FORGE-TEST colour providers OK" "fabric-rendering-v1 (with Fabric API, 1.21.11): its colour provider registry finds grass's provider in Forge's block colours, and none for stone (COLOR-1)"
 	check "FABRICATED-FORGE-TEST block dust tint event OK" "fabric-particles-v1 (with Fabric API, 1.21.11): a stone particle made as the client joins asks ParticleRenderEvents.ALLOW_BLOCK_DUST_TINT, where Forge decides the tint (PART-2)"
+	check "FABRICATED-FORGE-TEST hud element after chat OK" "fabric-rendering-v1 (with Fabric API, 1.21.11): a Fabric HUD element attached after chat was drawn, from Forge's HUD layers (HUD-2)"
+	check "FABRICATED-FORGE-TEST hud element before the hotbar OK" "fabric-rendering-v1 (with Fabric API, 1.21.11): a Fabric HUD element attached before the hotbar was drawn, from Forge's hotbar layers (HUD-2)"
+	check "FABRICATED-FORGE-TEST hud render callback OK" "fabric-rendering-v1 (with Fabric API, 1.21.11): HudRenderCallback fired after Forge's HUD layers, outside the loading screen (HUD-2)"
 fi
 exit "$fail"

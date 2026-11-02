@@ -12,6 +12,7 @@ import io.github.cmdralph.fabricated.forge.fluid.FabricFluidType;
 import io.github.cmdralph.fabricated.forge.keymapping.KeyMappingBridge;
 import io.github.cmdralph.fabricated.forge.loot.LootCompat;
 import io.github.cmdralph.fabricated.forge.objectbuilder.DefaultAttributeModify;
+import io.github.cmdralph.fabricated.forge.rendering.HudBridge;
 import io.github.cmdralph.fabricated.forge.screen.ScreenDrawEvents;
 import io.github.cmdralph.fabricated.forge.transfer.TransferBridge;
 import io.github.cmdralph.fabricated.loader.FabricatedState;
@@ -82,6 +83,8 @@ public final class FabricatedMod {
 			ClientSupport.init(state);
 			// Fabric API's screen drawing events, from Forge's (see ScreenDrawEvents; its input events: ScreenInputEvents).
 			if (ours(state, "fabric-screen-api-v1")) ScreenDrawEvents.register();
+			// Fabric API's HUD elements around vanilla's, from Forge's HUD layers (see HudBridge).
+			if (ours(state, "fabric-rendering-v1")) HudBridge.register();
 			// Native key mappings (key bindings on Forge 61), registered on Forge's key mapping event (see KeyMappingBridge).
 			if (ours(state, KeyMappingBridge.MODULE)) KeyMappingBridge.register();
 		}

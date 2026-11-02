@@ -26,15 +26,16 @@ import net.minecraft.resources.Identifier;
  * Fabric API's client modules on Forge 64 to 66, as most mods with a client use them, checked as NeoForge's client test
  * mod checks them: a key mapping in the game's options (key mapping API, which Fabricated ships, KEYMAP-3: the forge
  * test mod checks it further), and the modules the Fabric API jar provides: HUD elements drawn (rendering API: one
- * attached after a vanilla element, one added last), a screen's initialization and drawing events (screen API, whose
- * drawing events Fabricated fires from Forge's screen render events) and its input events ({@link ScreenInputCheck},
- * which Fabricated fires from Forge's screen input hooks), the client commands' registration on joining a world
- * (command API), and the lifecycle API's client stopping event. A HUD element is reported the first time it is drawn,
- * as the world's loading screen may still hide the HUD for a while after joining, and as not drawn when the game stops.
+ * attached after chat and one before the hotbar, which Fabricated draws from Forge's HUD layers, HUD-2, and one added
+ * last), a screen's initialization and drawing events (screen API, whose drawing events Fabricated fires from Forge's
+ * screen render events) and its input events ({@link ScreenInputCheck}, which Fabricated fires from Forge's screen
+ * input hooks), the client commands' registration on joining a world (command API), and the lifecycle API's client
+ * stopping event. A HUD element is reported the first time it is drawn, as the world's loading screen may still hide
+ * the HUD for a while after joining, and as not drawn when the game stops.
  */
 public final class ClientApiTestMod implements ClientModInitializer {
 	static final Logger LOGGER = LoggerFactory.getLogger("fabricated-testmod-frapi");
-	private static final List<String> HUD_CHECKS = List.of("hud element", "hud element after chat");
+	private static final List<String> HUD_CHECKS = List.of("hud element", "hud element after chat", "hud element before the hotbar");
 	private final Set<String> drawn = new HashSet<>();
 	private final ScreenInputCheck input = new ScreenInputCheck();
 	private boolean screenInitialized;
@@ -53,6 +54,8 @@ public final class ClientApiTestMod implements ClientModInitializer {
 		HudElementRegistry.addLast(Identifier.fromNamespaceAndPath("fabricated_testmod_frapi", "check"), (graphics, deltaTracker) -> drawn("hud element"));
 		HudElementRegistry.attachElementAfter(VanillaHudElements.CHAT, Identifier.fromNamespaceAndPath("fabricated_testmod_frapi", "after_chat"),
 				(graphics, deltaTracker) -> drawn("hud element after chat"));
+		HudElementRegistry.attachElementBefore(VanillaHudElements.HOTBAR, Identifier.fromNamespaceAndPath("fabricated_testmod_frapi", "before_hotbar"),
+				(graphics, deltaTracker) -> drawn("hud element before the hotbar"));
 		ClientLifecycleEvents.CLIENT_STOPPING.register(client -> {
 			LOGGER.info("FABRICATED-TEST client stopping OK");
 			for (String check : HUD_CHECKS) {
