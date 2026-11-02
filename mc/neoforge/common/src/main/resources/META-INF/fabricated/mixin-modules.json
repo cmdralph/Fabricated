@@ -17,6 +17,7 @@
     "ChunkGeneratorFeaturesMixin": ["fabric-biome-api-v1"],
     "ConditionalOpsMixin": ["fabric-resource-conditions-api-v1"],
     "ConnectionMixin": ["fabric-networking-api-v1"],
+    "CrashReportMixin": [],
     "DataComponentMapBuilderMixin": ["fabric-item-api-v1"],
     "DefaultAttributesValidationMixin": [],
     "EnchantmentBuilderMixin": ["fabric-item-api-v1"],
