@@ -897,6 +897,21 @@ jobs:
             failed=1
           fi
           exit "$failed"
+      # The same Fabric builds with CI's shader pack (ci/neoforge/smoke-client.sh writes a minimal one): Iris's pipeline,
+      # with its extended vertex format, over Sodium's Fabric renderer and the Fabric models it meshes. Not on 1.21.1,
+      # where Iris's Fabric build doesn't load. Informational until it holds on two extended runs in a row (CI-1).
+      - name: Client with the Fabric builds of Sodium and Iris and a shader pack (informational)
+        if: ${{ matrix.part == 'mods' && env.EXTENDED == 'true' && !cancelled() && steps.build.outcome == 'success' && matrix.target.minecraft != '1.21.1' }}
+        continue-on-error: true
+        run: |
+          if ! ls "$RUNNER_TEMP"/extra-sodium-fabric/iris*.jar >/dev/null 2>&1; then
+            echo "Modrinth has no Fabric build of Iris for ${{ matrix.target.minecraft }}: nothing to run"
+            exit 0
+          fi
+          status=0
+          SMOKE_SHADERS=1 SMOKE_TIMEOUT=480 ci/neoforge/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-shaders-fabric" "$RUNNER_TEMP/extra-sodium-fabric" || status=$?
+          echo "smoke-client.sh exit status: $status"
+          grep -n -m 80 -E "FABRICATED-TEST frapi|[Ss]haderpack|shader pack|Iris|/(ERROR|FATAL)\]" "$RUNNER_TEMP/client-shaders-fabric/run/logs/latest.log" || true
       # Fabric addons of Sodium (Sodium Extra, Reese's Sodium Options) next to Sodium for NeoForge, with Fabric API: their
       # mixins into Sodium are checked against Sodium for NeoForge's classes (R3), and they use Sodium's API from its
       # NeoForge build. The Fabric build of Sodium they depend on is skipped for the NeoForge one. Informational.
@@ -1083,6 +1098,9 @@ jobs:
             ${{ runner.temp }}/client-sodium-fabric/run/logs
             ${{ runner.temp }}/client-sodium-fabric/run/crash-reports
             ${{ runner.temp }}/client-sodium-fabric/client.out
+            ${{ runner.temp }}/client-shaders-fabric/run/logs
+            ${{ runner.temp }}/client-shaders-fabric/run/crash-reports
+            ${{ runner.temp }}/client-shaders-fabric/client.out
             ${{ runner.temp }}/client-sodium-addons/run/logs
             ${{ runner.temp }}/client-sodium-addons/run/crash-reports
             ${{ runner.temp }}/client-sodium-addons/client.out
@@ -1159,7 +1177,7 @@ jobs:
           [ -f viewers.txt ] && { echo "== viewers fetched"; cat viewers.txt; }
           [ -f "$RUNNER_TEMP/summary-advanced.txt" ] && { echo "== advanced corpus fetched"; cut -c1-200 "$RUNNER_TEMP/summary-advanced.txt"; }
           [ -f "$RUNNER_TEMP/summary-neoforge-data.txt" ] && { echo "== NeoForge biome and structure modifiers in the advanced corpus's Fabric jars"; head -40 "$RUNNER_TEMP/summary-neoforge-data.txt"; }
-          for run in client client-fapi client-coexist client-sodium client-shaders client-sodium-fabric client-sodium-addons client-viewers client-polyfrost client-corpus client-malilib client-essential client-flashback client-advanced; do
+          for run in client client-fapi client-coexist client-sodium client-shaders client-sodium-fabric client-shaders-fabric client-sodium-addons client-viewers client-polyfrost client-corpus client-malilib client-essential client-flashback client-advanced; do
             log="$RUNNER_TEMP/$run/run/logs/latest.log"
             if [ ! -f "$log" ]; then
               # The game never started (the launcher stopped first): what the launcher said last.
@@ -1171,7 +1189,7 @@ jobs:
             # The test mod's own failed checks and its informational lines (far up the log by now).
             grep -h -m 12 -E "FABRICATED-TEST (.*FAILED|library modules|networking join event)" "$log" | cut -c1-400 || true
             # Whether Iris loaded the shader pack, and drew with it (Iris's own lines).
-            if [ "$run" = client-shaders ]; then
+            if [ "$run" = client-shaders ] || [ "$run" = client-shaders-fabric ]; then
               grep -h -m 8 -i -E "shaderpack|shaders are disabled|shader rendering pipeline" "$log" | cut -c1-300 || true
             fi
             # NeoForge's loading warnings (the runs with extra mods don't show them on a screen).
