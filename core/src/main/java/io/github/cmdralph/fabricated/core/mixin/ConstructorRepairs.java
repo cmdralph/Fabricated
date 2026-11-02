@@ -271,8 +271,10 @@ final class ConstructorRepairs extends PreflightPart {
 	}
 
 	/**
-	 * Whether {@code constructor} is {@code this(its parameters in order, then constants)}: the other constructor gets
-	 * exactly what it got, plus defaults.
+	 * Whether {@code constructor} is {@code this(its parameters in order, then defaults)}: the other constructor gets
+	 * exactly what it got, plus defaults. A default is a constant, a static field or what a static method returns
+	 * without arguments: NeoForge keeps {@code ClientLanguage}'s vanilla constructor as {@code this(storage, rtl,
+	 * Map.of())} (every version), so owo-lib's hook at its end never ran and left owo's text map unset (CTOR-6).
 	 */
 	static boolean forwardsItsParameters(MethodNode constructor, MethodNode delegate) {
 		Type[] own = Type.getArgumentTypes(constructor.desc);
@@ -295,7 +297,8 @@ final class ConstructorRepairs extends PreflightPart {
 		for (int i = 1 + own.length; i < code.size() - 2; i++) {
 			int op = code.get(i).getOpcode();
 			boolean constant = op >= Opcodes.ACONST_NULL && op <= Opcodes.DCONST_1 || op == Opcodes.BIPUSH || op == Opcodes.SIPUSH
-					|| op == Opcodes.LDC || op == Opcodes.GETSTATIC;
+					|| op == Opcodes.LDC || op == Opcodes.GETSTATIC
+					|| op == Opcodes.INVOKESTATIC && Type.getArgumentTypes(((MethodInsnNode) code.get(i)).desc).length == 0;
 			if (!constant) return false;
 		}
 		return code.get(code.size() - 2) instanceof MethodInsnNode call && call.getOpcode() == Opcodes.INVOKESPECIAL && call.desc.equals(delegate.desc)

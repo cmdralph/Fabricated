@@ -483,11 +483,40 @@ final class MixinRepairs extends PreflightPart {
 			@SuppressWarnings("unchecked")
 			List<Object> values = (List<Object>) names;
 			values.set(i, raw.indexOf('/') >= 0 ? match.name : match.name.replace('/', '.'));
+			int repointed = repointSelectors(mixin, target, match.name, ctx);
 			moved.add(target.replace('/', '.') + " doesn't fit the mixin in this game build, whose anonymous classes are numbered differently; "
 					+ match.name.replace('/', '.') + " does" + (matchRenames.isEmpty() ? "" : ", naming the values it captures otherwise " + matchRenames)
-					+ ", and the mixin is pointed there");
+					+ ", and the mixin is pointed there" + (repointed == 0 ? "" : ", with the " + repointed + " selector(s) of its injectors naming "
+					+ target.replace('/', '.') + " as their owner"));
 		}
 		return moved;
+	}
+
+	/**
+	 * Points the selectors of {@code mixin}'s injectors that name {@code from} as their owner at {@code to}, the class
+	 * the mixin was pointed at instead of {@code from} ({@link #anonymousTargetRepairs}), and returns how many it pointed.
+	 * Mixin refuses a selector whose owner isn't one of the mixin's targets ("specifies a target class ..., which is not
+	 * supported"), and a Fabric mod's refmap names the owner of each method it maps: Polymer's hook into a stream codec
+	 * of {@code ByteBufCodecs}, moved from {@code $15} to {@code $24} on 1.21.1, stopped the game at bootstrap (ANON-2).
+	 * A selector read through the refmap is written out in full, as the refmap has it, with the new owner.
+	 */
+	private static int repointSelectors(ClassNode mixin, String from, String to, Context ctx) {
+		int pointed = 0;
+		for (MethodNode method : mixin.methods) {
+			for (AnnotationNode ann : Annotations.all(method)) {
+				if (!PreflightAsm.isInjector(ann.desc) || !(Annotations.value(ann, "method") instanceof List<?> selectors)) continue;
+				@SuppressWarnings("unchecked")
+				List<Object> values = (List<Object>) selectors;
+				for (int i = 0; i < values.size(); i++) {
+					if (!(values.get(i) instanceof String raw)) continue;
+					MemberRef ref = MemberRef.parse(ctx.resolve(raw));
+					if (ref.fuzzy() || ref.name() == null || !from.equals(ref.owner())) continue;
+					values.set(i, "L" + to + ";" + ref.name() + (ref.desc() == null ? "" : ref.desc()));
+					pointed++;
+				}
+			}
+		}
+		return pointed;
 	}
 
 	/**

@@ -885,6 +885,103 @@ class MixinPreflightTest {
 				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty(), "vanilla has the constructor it calls");
 	}
 
+	/**
+	 * {@link #TARGET} as NeoForge makes {@code ClientLanguage}: vanilla's constructor {@code <init>(Ljava/util/Map;Z)V},
+	 * deprecated and declared first, as {@code this(storage, rtl, Map.of())}, or, with {@code fromParameter}, passing a
+	 * value it works out from its storage ({@code Map.copyOf(storage)}); the other one takes NeoForge's component map.
+	 */
+	private static byte[] keptWithEmptyMap(boolean fromParameter) {
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		MethodVisitor kept = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_DEPRECATED, "<init>", "(Ljava/util/Map;Z)V", null, null);
+		kept.visitAnnotation("Ljava/lang/Deprecated;", true).visitEnd();
+		kept.visitCode();
+		kept.visitVarInsn(Opcodes.ALOAD, 0);
+		kept.visitVarInsn(Opcodes.ALOAD, 1);
+		kept.visitVarInsn(Opcodes.ILOAD, 2);
+		if (fromParameter) {
+			kept.visitVarInsn(Opcodes.ALOAD, 1);
+			kept.visitMethodInsn(Opcodes.INVOKESTATIC, "java/util/Map", "copyOf", "(Ljava/util/Map;)Ljava/util/Map;", true);
+		} else {
+			kept.visitMethodInsn(Opcodes.INVOKESTATIC, "java/util/Map", "of", "()Ljava/util/Map;", true);
+		}
+		kept.visitMethodInsn(Opcodes.INVOKESPECIAL, TARGET, "<init>", "(Ljava/util/Map;ZLjava/util/Map;)V", false);
+		kept.visitInsn(Opcodes.RETURN);
+		kept.visitMaxs(0, 0);
+		kept.visitEnd();
+		MethodVisitor full = cw.visitMethod(Opcodes.ACC_PRIVATE, "<init>", "(Ljava/util/Map;ZLjava/util/Map;)V", null, null);
+		full.visitCode();
+		full.visitVarInsn(Opcodes.ALOAD, 0);
+		full.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false);
+		full.visitInsn(Opcodes.RETURN);
+		full.visitMaxs(0, 0);
+		full.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	/** owo-lib's {@code TranslationStorageMixin.onInit}: an {@code @Inject} at the end of {@code <init>}, taking vanilla's parameters. */
+	private static void injectAtTheEndOfTheLanguagesConstructor(ClassWriter cw) {
+		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "onInit", "(Ljava/util/Map;ZLorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V", null, null);
+		AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
+		AnnotationVisitor methods = ann.visitArray("method");
+		methods.visit(null, "<init>");
+		methods.visitEnd();
+		AnnotationVisitor ats = ann.visitArray("at");
+		AnnotationVisitor at = ats.visitAnnotation(null, "Lorg/spongepowered/asm/mixin/injection/At;");
+		at.visit("value", "TAIL");
+		at.visitEnd();
+		ats.visitEnd();
+		ann.visitEnd();
+		mv.visitCode();
+		mv.visitInsn(Opcodes.RETURN);
+		mv.visitMaxs(0, 4);
+		mv.visitEnd();
+	}
+
+	@Test
+	void anInjectionAtTheEndOfAConstructorNeoForgeKeptWithAnEmptyMapMovesThroughABridge() throws Exception {
+		// CTOR-6: NeoForge builds ClientLanguage with the constructor taking its component map; vanilla's, kept as
+		// this(storage, rtl, Map.of()), never runs, so owo-lib's text map stayed null and the 1.21.1 corpus client crashed.
+		java.util.function.Supplier<Map<String, byte[]>> mod = () -> new HashMap<>(Map.of("com/example/mixin/Language",
+				mixin("com/example/mixin/Language", false, MixinPreflightTest::injectAtTheEndOfTheLanguagesConstructor)));
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Language"));
+		ClassIndex neoForge = new ClassIndex(Map.of(TARGET, keptWithEmptyMap(false))::get);
+		List<PreflightFinding> notes = new ArrayList<>();
+
+		Map<String, byte[]> classes = mod.get();
+		Map<String, byte[]> repaired = preflight(neoForge, classes::get, ClassBytesSource.EMPTY, false)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
+
+		assertEquals(Set.of("com/example/mixin/Language.class"), repaired.keySet(), notes.toString());
+		assertTrue(notes.stream().anyMatch(n -> n.message().contains("which NeoForge keeps only to call <init>(Ljava/util/Map;ZLjava/util/Map;)V")),
+				notes.toString());
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired.get("com/example/mixin/Language.class")).accept(node, 0);
+		MethodNode bridge = node.methods.stream().filter(m -> m.name.equals("onInit$fabricated")).findFirst().orElseThrow();
+		assertEquals("(Ljava/util/Map;ZLjava/util/Map;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V", bridge.desc);
+		assertEquals(List.of("<init>(Ljava/util/Map;ZLjava/util/Map;)V"), Annotations.value(bridge.invisibleAnnotations.getFirst(), "method"));
+		// The bridge passes the storage, the flag and the callback info on, skipping the component map.
+		List<Integer> loads = new ArrayList<>();
+		for (AbstractInsnNode insn : bridge.instructions) {
+			if (insn instanceof VarInsnNode load) loads.add(load.var);
+		}
+		assertEquals(List.of(0, 1, 2, 4), loads);
+		classes.put("com/example/mixin/Language", repaired.get("com/example/mixin/Language.class"));
+		assertTrue(preflight(neoForge, classes::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of())
+				.stream().noneMatch(f -> f.severity() != Severity.INFO), "the bridge fits the constructor it moved to");
+
+		// A constructor passing a value it works out from its parameters doesn't hand the other one exactly what it got.
+		Map<String, byte[]> worked = mod.get();
+		ClassIndex copying = new ClassIndex(Map.of(TARGET, keptWithEmptyMap(true))::get);
+		for (byte[] bytes : preflight(copying, worked::get, ClassBytesSource.EMPTY, false)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).values()) {
+			ClassNode unmoved = new ClassNode();
+			new ClassReader(bytes).accept(unmoved, 0);
+			assertTrue(unmoved.methods.stream().noneMatch(m -> m.name.equals("onInit$fabricated")), "no bridge for a worked-out value");
+		}
+	}
+
 	/** A member named as mixins name what they add ({@code modid$name}) may come from another mod's mixin: not judged. */
 	@Test
 	void membersAnotherModsMixinMayAddAreNotJudged() throws Exception {
@@ -3036,6 +3133,25 @@ class MixinPreflightTest {
 				+ "differently; net.minecraft.world.Codecs$2 does"), notes.toString());
 		mod.put("com/example/mixin/Registry", repaired.get("com/example/mixin/Registry.class"));
 		assertTrue(preflight(game, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty());
+
+		// ANON-2: a refmap names the selector's owner, the class the mixin no longer targets, which Mixin refuses; the
+		// selector is written out with the class it was pointed at.
+		Refmap owned = Refmap.parse("{\"mappings\":{\"com/example/mixin/Registry\":{\"encode(Ljava/lang/Integer;)V\":"
+				+ "\"L" + outer + "$1;encode(Ljava/lang/Integer;)V\"}}}");
+		Map<String, byte[]> ownedMod = new HashMap<>(Map.of("com/example/mixin/Registry", mixin.toByteArray()));
+		List<PreflightFinding> ownedNotes = new ArrayList<>();
+		byte[] ownedRepaired = preflight(game, ownedMod::get, ClassBytesSource.EMPTY, false)
+				.repairs("test.mixins.json", config, owned, Set.of(), ownedNotes).get("com/example/mixin/Registry.class");
+		assertNotNull(ownedRepaired, ownedNotes.toString());
+		assertTrue(ownedNotes.getFirst().message().endsWith("with the 1 selector(s) of its injectors naming net.minecraft.world.Codecs$1 as their owner"),
+				ownedNotes.toString());
+		ClassNode ownedNode = new ClassNode();
+		new ClassReader(ownedRepaired).accept(ownedNode, 0);
+		AnnotationNode ownedInject = ownedNode.methods.stream().filter(method -> method.name.equals("onEncode")).findFirst().orElseThrow().invisibleAnnotations.getFirst();
+		assertEquals(List.of("L" + outer + "$2;encode(Ljava/lang/Integer;)V"), Annotations.value(ownedInject, "method"));
+		assertEquals(List.of(outer + "$2"), Annotations.value(ownedNode.invisibleAnnotations.getFirst(), "targets"));
+		ownedMod.put("com/example/mixin/Registry", ownedRepaired);
+		assertTrue(preflight(game, ownedMod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, owned, Set.of()).isEmpty());
 
 		// Two that fit: which one the mod meant can't be told.
 		ClassIndex twice = new ClassIndex(Map.of(outer, outerClass.apply(3), outer + "$1", anonymous.apply(outer + "$1", "(Ljava/lang/String;)V"),
