@@ -3,6 +3,109 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-02: Fabric's renderer API, `main`'s half (task 4)
+
+- **Rule 8 on every NeoForge seam** (R1, `44d841b`): a Fabric block model that throws in a chunk section, as a moving
+  block, with the breaking overlay, as an entity's block or while its parts are made from its quads is drawn by
+  NeoForge's renderer from then on, logged once and listed in the report, naming its mod; the transform it left pushed
+  reaches no other block.
+  - **FRAPI-7** (new, P2, `46383c0`): the throw was put down to every model whose emitter was on the stack, so a model
+    wrapping a broken one was marked too. In R6's Continuity run the renderer test mod's broken part, which Continuity's
+    `CtmBakedModel` wraps, switched off all of Continuity's models for the session. The throw now goes to the emitter
+    call nearest it (core's `ThrowSite`), and a wrapper keeps Fabric's renderer. On 1.21.1 (`dd65318`) NeoForge's
+    fallback for such a block went back through Fabricated's `renderBatched` seam to Fabric's renderer, and a block's
+    later render types drew it again; each thread now remembers the block that fell back.
+- **FRAPI-5** (P1, 1.21.1, `9e3a1f0`, R2): Fabric models were invisible on 1.21.1. They are drawn through Indigo in
+  chunk sections, as falling blocks and blocks a piston moves, with the breaking overlay and through `renderBatched`,
+  alone or in a vanilla multipart or weighted model.
+- **Fabric item models** (R3, `eaf35e7`): checked in the hotbar, in hand, dropped and in item frames on every version;
+  no fix needed.
+- **FRAPI-6** (new, P1, 26.x, `8f114da`, R4): upstream's overwrite of `BlockStateModelWrapper.update` sent every block
+  drawn as an entity through Fabric's renderer, unguarded, and emptied every vanilla and NeoForge block's parts there.
+  It is left out; Fabricated fills the state from Fabric models only.
+- **PACK-6** (new, P1, `fb872ff`): a built-in resource pack a Fabric mod enables by default was never switched on
+  (NeoForge has no such default). It is switched on the first time it is offered, remembered in upstream's
+  `data/fabricDefaultResourcePacks.dat`, as on Fabric. `fb872ff`'s message says Continuity's packs are such packs: they
+  aren't (they are normal packs the player switches on), corrected in `522c4f1`.
+- **Continuity in CI** (R6, `a8f1c38`, informational, every version it has a build for): its default pack selected as a
+  player would (`SMOKE_RESOURCE_PACKS`), a glass wall placed, and the test mod checks the glass's quads leave glass's
+  sprite. No connected textures seen yet (run 41404975032): on 1.21.1 Continuity's `CtmBakedModel` draws the glass
+  through Fabricated's seam with vanilla's sprite; on 1.21.11 and 26.x its sprite hook is left out and the check sees
+  vanilla's glass model (CORPUS-56).
+- **Forgified Fabric API's renderer beside Fabricated's seams** (R7, `a8fbe84`, extended runs, informational): every
+  block the test mod logs names the seam that sent it to Fabric's renderer. With Forgified Fabric API's renderer,
+  Fabricated's seams stand down on 1.21.1, 26.1.2 and 26.2 (extended run 41400541531; no 1.21.11 or 26.3 build).
+- **Found, for task 5:** MODEL-4 (1.21.1's model modifiers skip a model baked as another's part or parent) and
+  CORPUS-56 (no connected textures from Continuity on any version; its sprite hook left out on 1.21.11 and 26.x).
+- **Decided:** 26.x's breaking overlay hands Fabric models `Blocks.AIR` and `BlockPos.ZERO`, as upstream does (its own
+  TODO): parity, no fix. R8 (level-aware material flags) stays a candidate. On 1.21.1 a minecart's block comes from
+  vanilla's quads, as upstream draws it on Fabric. R6 and R7 stay informational until CI-1's rule makes them gates.
+- **Rule 7** (allocation): R2's seams take Indigo's contexts from thread-locals and allocate nothing per block. R4's
+  `@Inject` at the head of `BlockStateModelWrapper.update` is cancellable, so Mixin passes each call a new
+  `CallbackInfo`, for every block drawn as an entity, Fabric model or not: one small object a call that doesn't escape
+  the handler, which C2's escape analysis can remove once the handler is inlined (not measured); NeoForge's path
+  otherwise reads the model class's `ClassValue` entry only. FRAPI-7's and PACK-6's code runs on the failure path and
+  once per pack load; 1.21.1's memo of the block that fell back is a field write per Fabric block and a thread-local
+  read at a block's later render types, and allocates only when a model throws.
+- **CI gates added** (every NeoForge version unless said): the renderer test mod on 1.21.1; items; the broken models
+  alone, as a part, inside a wrapper and (26.x) as a minecart's block; minecarts' blocks (26.x); `seam=Fabricated` on
+  the terrain checks; the default-enabled pack. Core: `ThrowSiteTest`, `DefaultPackTrackerTest`.
+- **Verified:** core's 368 tests locally, with `ThrowSiteTest` and `DefaultPackTrackerTest`; the mixin inventory check;
+  run 41404975032, every gate but 1.21.1's wrapped model fallback (fixed in `dd65318`); R6's and R7's results in their
+  bullets. This pull request's final full matrix is cited in task 4's checkpoint, after the Forge branches.
+
+## 2026-11-02: Parity, the Forge branches' half (task 3 done)
+
+- **`forge` and `forge-legacy` synced with `main`** (#240, #241): the engine's PRE-18, CORPUS-33 and LAMBDA-8 fixes,
+  checked on Forge where a run reaches them: CORPUS-33 by a Fabric biome modification on Forge 61 to 66 (and
+  lithostitched and Terralith loading in the corpus), LAMBDA-8 by load conditions in a JSON data loader on Forge 61 and
+  66.
+- **Both Forge branches:**
+  - **HOLD-2:** content a failed Fabric entrypoint built no longer stops the registries' freeze, and the drop writes
+    the report, which Forge has no later write for.
+  - **The provider policy and the refusals:** a Fabric API module another Forge mod provides is that mod's, and
+    Fabricated's copy, its mixins and its bridges stand down (PROVIDER-1). Sinytra Connector and a second Fabricated
+    jar stop the launch with Fabricated's error (DUP-1), and so does a jar carrying its own copy of Fabric Loader, as
+    Forgified Fabric API does (PROVIDER-2), at once, as beside such a copy Forge can't build its error screen.
+  - **As on NeoForge:** Fabric mods' Mod Menu config screens behind Forge's mod list button, Fabricated's
+    `afterEntrypoints` (it never ran on Forge), entrypoint failures in the report and Forge's loading warnings.
+- **Forge 61 to 66:**
+  - **PACK-5** (new, P2): a world holding a Fabric mod's registry data asked to confirm experimental settings, as Forge
+    gives mods' packs no known-pack identity; a Fabric mod's pack now takes Fabric API's.
+  - **KEYMAP-3** (new, P1): Fabric API's key mapping module refused every key mapping, as Forge creates the game's
+    options before mods load, so a Fabric mod registering one lost its client side. The module is native, its key
+    mappings registered on Forge's event with the keys the player saved.
+  - **HUD-2** (new, P1): Fabric HUD elements attached around a vanilla element, or replacing it, were never drawn, as
+    Forge draws the HUD from layers of its own; the in-game mod wraps those layers.
+  - **SCREEN-1** (P1): Fabric's screen input and drawing events fire from Forge's screen hooks.
+  - **Load conditions on Forge 61:** Forge's conditional decoder also drops a registry entry whose Fabric conditions
+    fail.
+- **Forge 47:**
+  - **FUEL-1** (new, P1): Fabric's fuels didn't burn, as the hook adding them to vanilla's fuel table, which Forge
+    reads, was left out with the rest of upstream's furnace mixin; the in-game mod adds them.
+  - **BREW-1** (new, P1): every `FabricBrewingRecipeRegistry` call threw `NoSuchMethodError`, failing the calling mod's
+    initializer, as Forge 47 replaced vanilla's constructor of a brewing mix; the in-game mod builds each with Forge's.
+  - **HUD-2:** `HudRenderCallback` fires from Forge's `RenderGuiEvent.Post`, as Forge's GUI never calls vanilla's HUD
+    method.
+- **CI gates added** on every Forge version: both client runs (the client with Fabric API was informational), a
+  stand-ins server and a refusal server, load conditions, a biome modification, the failing test mod's dropped holder,
+  the test mod's key mapping, its registry data's lifecycle and, on 1.21.11 and 1.20.1, HUD checks; on 26.x a client
+  test mod for Fabric API's client modules (key mapping, HUD, screens with synthetic input, client commands,
+  lifecycle); on 1.20.1 a fuel and a brewing recipe.
+- **Docs:** `docs/FORGE.md` and `docs/FORGE-LEGACY.md` drop "experimental", take their module tables from the green
+  runs, say which run checks each bridge on which versions, and list what is unsupported on Forge, with the task that
+  takes each on: rendering hooks Forge's code can't take (task 4), item storages in items, the effect events' command
+  context, Fabric mods' own HUD mixins, which apply to vanilla's HUD method but never run, and Forgified Fabric API
+  (task 5), and what Forge's code rules out (interface mixins on Forge 47, some item, lifecycle and object builder
+  hooks). The plans' last UNVERIFIED notes are resolved from Forge's sources.
+- **Found, for task 5:** CORPUS-53 (the Forge 61 to 66 corpus clients stop as the game bootstraps, as in v0.5.1),
+  CORPUS-54 (a corpus mod's crop growth hook pre-flight passes, on Forge 61 and 47), CORPUS-55 (Forge 47's corpus
+  client), and HUD-3 (NeoForge's HUD wrapping misses vanilla's conditions around three elements). PRE-18's end-to-end
+  check on Forge waits behind CORPUS-53.
+- **Decided:** the owner chose to refuse Forgified Fabric API on Forge now and try coexisting in task 5 (2026-11-02).
+- **Verified:** the Forge pull requests' full matrices (runs 41382942938 and 41385466464, every gate on every
+  version) and extended runs (41385577023 and 41386136422, the corpus runs informational).
+
 ## 2026-11-02: Parity, `main`'s half (task 3)
 
 - **NeoForge 21.1:**
