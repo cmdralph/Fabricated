@@ -1126,6 +1126,155 @@ class MixinPreflightTest {
 	}
 
 	@Test
+	void aStaticHandlerOnAReorderedLambdaThatTakesThisGetsABridgeWhereMixinTakesStaticHandlers() throws Exception {
+		// LAMBDA-8: Forge 66's SimpleJsonResourceReloadListener.prepare lambda reads the listener's codec, so it takes this,
+		// and captures the id before the map, where vanilla's is static and takes the map first. Fabric API's resource
+		// conditions hook it with a static handler, which Forge's Mixin 0.8.7 takes on a method that takes this; the values
+		// still need placing.
+		Type map = Type.getType(Map.class);
+		Type string = Type.getType(String.class);
+		Type object = Type.getType(Object.class);
+		String forgeDesc = Type.getMethodDescriptor(Type.VOID_TYPE, string, map, object);
+		ClassIndex game = new ClassIndex(Map.of(TARGET, lambdaClass("lambda$prepare$0", forgeDesc, false, mv -> mv.visitInsn(Opcodes.RETURN)))::get);
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Captures"));
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Captures", capturingMixin("lambda$prepare$0", List.of(map, string, object), 2)));
+		java.util.function.Supplier<MixinPreflight> forge = () -> new MixinPreflight(game, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false,
+				true, ClassBytesSource.EMPTY, "Forge", true, MixinPreflight.ConstructorInjects.UNSAFE_POINTS, false, false);
+		List<PreflightFinding> before = forge.get().check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(before.stream().anyMatch(f -> f.message().contains("does not match the parameters of lambda$prepare$0")), before.toString());
+
+		List<PreflightFinding> notes = new ArrayList<>();
+		byte[] repaired = forge.get().repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes).get("com/example/mixin/Captures.class");
+		assertNotNull(repaired, notes.toString());
+		assertTrue(notes.getFirst().message().contains("h targets lambda$prepare$0" + forgeDesc + ", whose captured values this game build passes in another order or with more, taking this"),
+				notes.toString());
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired).accept(node, 0);
+		MethodNode bridge = node.methods.stream().filter(mn -> mn.name.equals("h$fabricated")).findFirst().orElseThrow();
+		assertEquals(0, bridge.access & Opcodes.ACC_STATIC, "the bridge takes this, as the lambda does");
+		assertEquals(forgeDesc.replace(")V", CALLBACK_INFO + ")V"), bridge.desc);
+		List<Integer> loads = new ArrayList<>();
+		for (AbstractInsnNode insn : bridge.instructions) {
+			if (insn instanceof VarInsnNode v) loads.add(v.var);
+		}
+		assertEquals(List.of(2, 1, 3, 4), loads, "the static handler gets the map, the id and the value, not this");
+		defineMixin(repaired);
+		mod.put("com/example/mixin/Captures", repaired);
+		List<PreflightFinding> after = forge.get().check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(after.isEmpty(), after.toString());
+	}
+
+	@Test
+	void aHookNamingALambdaWithVanillasDescriptorFindsTheOneThePatchChangedInItsPlace() throws Exception {
+		// LAMBDA-8: Forge 61's SimpleJsonResourceReloadListener.scanDirectory lambda also takes the codec, which it reads,
+		// and captures the id before the map; Fabric API's resource conditions hook names vanilla's lambda with vanilla's
+		// descriptor (its refmap's), which no method of this build has.
+		Type map = Type.getType(Map.class);
+		Type string = Type.getType(String.class);
+		Type list = Type.getType(List.class);
+		Type object = Type.getType(Object.class);
+		String vanillaDesc = Type.getMethodDescriptor(Type.VOID_TYPE, map, string, object);
+		String forgeDesc = Type.getMethodDescriptor(Type.VOID_TYPE, list, string, map, object);
+		Map<String, byte[]> vanilla = Map.of(TARGET, scanningTarget("lambda$scan$0", vanillaDesc));
+		ClassIndex forge = new ClassIndex(Map.of(TARGET, scanningTarget("lambda$scan$0", forgeDesc))::get);
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Captures"));
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Captures", capturingMixin("lambda$scan$0" + vanillaDesc, List.of(map, string, object), 2)));
+		List<PreflightFinding> before = preflight(forge, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(before.stream().anyMatch(f -> f.message().contains("which does not exist")), before.toString());
+		assertTrue(preflight(forge, mod::get, ClassBytesSource.EMPTY, false).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty(),
+				"without vanilla's code, nothing tells which lambda it was");
+
+		List<PreflightFinding> notes = new ArrayList<>();
+		byte[] repaired = new MixinPreflight(forge, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, vanilla::get)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes).get("com/example/mixin/Captures.class");
+		assertNotNull(repaired, notes.toString());
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired).accept(node, 0);
+		MethodNode bridge = node.methods.stream().filter(mn -> mn.name.equals("h$fabricated")).findFirst().orElseThrow();
+		assertEquals(List.of("lambda$scan$0" + forgeDesc), Annotations.value(Annotations.find(bridge, INJECT), "method"));
+		List<Integer> loads = new ArrayList<>();
+		for (AbstractInsnNode insn : bridge.instructions) {
+			if (insn instanceof VarInsnNode v) loads.add(v.var);
+		}
+		assertEquals(List.of(2, 1, 3, 4), loads, "the map, the id and the value, without the codec");
+		defineMixin(repaired);
+		mod.put("com/example/mixin/Captures", repaired);
+		List<PreflightFinding> after = new MixinPreflight(forge, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, vanilla::get)
+				.check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(after.isEmpty(), after.toString());
+
+		// Where this build's lambda in that place has another name, it may be another lambda: left to the other checks.
+		ClassIndex renumbered = new ClassIndex(Map.of(TARGET, scanningTarget("lambda$scan$2", forgeDesc))::get);
+		Map<String, byte[]> original = Map.of("com/example/mixin/Captures", capturingMixin("lambda$scan$0" + vanillaDesc, List.of(map, string, object), 2));
+		assertTrue(new MixinPreflight(renumbered, InstalledClasses.NONE, original::get, ClassBytesSource.EMPTY, false, true, vanilla::get)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty());
+	}
+
+	/**
+	 * {@link #TARGET} whose static {@code scan(Map, String, List)} parses a value and hands it to two lambdas, as
+	 * {@code SimpleJsonResourceReloadListener.scanDirectory} does: a consumer {@code first} of descriptor {@code desc},
+	 * whose captured values are the first parameters of {@code desc} (taken from the method's in their order of type: the
+	 * map, the id, the list), which puts the value in the map, and an error logger {@code lambda$scan$1(String, Object)}.
+	 */
+	private static byte[] scanningTarget(String first, String desc) {
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		Handle metafactory = new Handle(Opcodes.H_INVOKESTATIC, "java/lang/invoke/LambdaMetafactory", "metafactory",
+				"(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodType;"
+						+ "Ljava/lang/invoke/MethodHandle;Ljava/lang/invoke/MethodType;)Ljava/lang/invoke/CallSite;", false);
+		Type consumed = Type.getType("(Ljava/lang/Object;)V");
+		Type[] captured = Type.getArgumentTypes(desc);
+		MethodVisitor scan = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "scan", "(Ljava/util/Map;Ljava/lang/String;Ljava/util/List;)V", null, null);
+		scan.visitCode();
+		scan.visitInsn(Opcodes.ACONST_NULL);
+		for (int n = 0; n < captured.length - 1; n++) {
+			String type = captured[n].getDescriptor();
+			scan.visitVarInsn(Opcodes.ALOAD, type.equals("Ljava/util/Map;") ? 0 : type.equals("Ljava/lang/String;") ? 1 : 2);
+		}
+		String capturing = Type.getMethodDescriptor(Type.getType(java.util.function.Consumer.class), java.util.Arrays.copyOf(captured, captured.length - 1));
+		scan.visitInvokeDynamicInsn("accept", capturing, metafactory, consumed, new Handle(Opcodes.H_INVOKESTATIC, TARGET, first, desc, false), consumed);
+		scan.visitInsn(Opcodes.POP);
+		scan.visitVarInsn(Opcodes.ALOAD, 1);
+		scan.visitInvokeDynamicInsn("accept", "(Ljava/lang/String;)Ljava/util/function/Consumer;", metafactory, consumed,
+				new Handle(Opcodes.H_INVOKESTATIC, TARGET, "lambda$scan$1", "(Ljava/lang/String;Ljava/lang/Object;)V", false), consumed);
+		scan.visitInsn(Opcodes.POP);
+		scan.visitInsn(Opcodes.POP);
+		scan.visitInsn(Opcodes.RETURN);
+		scan.visitMaxs(0, 0);
+		scan.visitEnd();
+		MethodVisitor body = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, first, desc, null, null);
+		body.visitCode();
+		int slot = 0;
+		int mapSlot = -1;
+		int idSlot = -1;
+		for (Type t : captured) {
+			if (t.getDescriptor().equals("Ljava/util/Map;")) mapSlot = slot;
+			if (t.getDescriptor().equals("Ljava/lang/String;")) idSlot = slot;
+			if (t.getDescriptor().equals("Ljava/util/List;")) {
+				body.visitVarInsn(Opcodes.ALOAD, slot);
+				body.visitMethodInsn(Opcodes.INVOKEINTERFACE, "java/util/List", "size", "()I", true);
+				body.visitInsn(Opcodes.POP);
+			}
+			slot++;
+		}
+		body.visitVarInsn(Opcodes.ALOAD, mapSlot);
+		body.visitVarInsn(Opcodes.ALOAD, idSlot);
+		body.visitVarInsn(Opcodes.ALOAD, captured.length - 1);
+		body.visitMethodInsn(Opcodes.INVOKEINTERFACE, "java/util/Map", "put", "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;", true);
+		body.visitInsn(Opcodes.POP);
+		body.visitInsn(Opcodes.RETURN);
+		body.visitMaxs(0, 0);
+		body.visitEnd();
+		MethodVisitor error = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, "lambda$scan$1", "(Ljava/lang/String;Ljava/lang/Object;)V", null, null);
+		error.visitCode();
+		error.visitInsn(Opcodes.RETURN);
+		error.visitMaxs(0, 0);
+		error.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	@Test
 	void capturedValuesOfOneTypeAreToldApartByHowVanillasLambdaUsesThem() throws Exception {
 		// LAMBDA-7: Forge 47's KeyboardHandler.keyPress lambda takes the result array before the screen, where vanilla's
 		// takes the screen first; the handler uses all four ints, which no order or type tells apart. Here this build's
