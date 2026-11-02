@@ -57,12 +57,21 @@ final class MixinRepairs extends PreflightPart {
 			ClassNode node = modClasses.readNode(internal, 0);
 			if (node == null) continue;
 			Context ctx = new Context(configName, internal.replace('/', '.'), config, refmap, false, false, false, Set.of(), out, null, loader);
-			independent.put(node, MixinPreflight.independentHandlers(node));
-			boolean changed = singleInjectionPoints(node);
+			boolean changed = false;
 			for (String moved : anonymousTargetRepairs(node, ctx)) {
 				changed = true;
 				out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "Target class " + moved, ""));
 			}
+			// Before anything that reads the handlers' descriptors.
+			List<String> named = MixinPreflight.targetsOf(node, ctx);
+			int retargeted = named.size() == 1 ? SelfTypeRepairs.retarget(node, named.get(0)) : 0;
+			if (retargeted > 0) {
+				changed = true;
+				out.add(new PreflightFinding(Severity.INFO, configName, ctx.mixinDotted(), retargeted + " descriptor(s) of the mixin name its own class "
+						+ "where Mixin needs its target's; they name " + named.get(0).replace('/', '.') + ", as Fabric's Mixin does as it merges a mixin", ""));
+			}
+			independent.put(node, MixinPreflight.independentHandlers(node));
+			changed |= singleInjectionPoints(node);
 			List<ClassNode> targets = new ArrayList<>();
 			for (String target : MixinPreflight.targetsOf(node, ctx)) {
 				ClassNode targetNode = gameTarget(target);

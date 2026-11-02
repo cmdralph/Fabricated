@@ -29,7 +29,10 @@ import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.AnnotationNode;
 import org.objectweb.asm.tree.ClassNode;
+import org.objectweb.asm.tree.FieldInsnNode;
 import org.objectweb.asm.tree.InsnNode;
+import org.objectweb.asm.tree.InvokeDynamicInsnNode;
+import org.objectweb.asm.tree.LdcInsnNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
 import org.objectweb.asm.tree.VarInsnNode;
@@ -153,6 +156,162 @@ class MixinPreflightTest {
 		assertEquals(Severity.INFO, findings.stream().filter(f -> f.mixin().endsWith("Elsewhere")).findFirst().orElseThrow().severity());
 		// What the result depends on: the installed class it read, and the target no installed jar has (yet).
 		assertEquals(Map.of(renderer, Hashing.sha256(rendererClass), "net/example/other/Thing", ""), preflight.installedClasses());
+	}
+
+	/**
+	 * An accessor named like a method its target already has replaces that method as Mixin merges it, as on Fabric
+	 * Loader, where a Fabric mod's own class is the same (Iris's accessor of Sodium's {@code enumClass}, named like
+	 * Sodium's {@code getEnumClass}). Not where the config requires {@code @Overwrite} on a method that replaces one
+	 * (Mixin throws then, there too), nor in a class that isn't a Fabric mod's own (a NeoForge mod's).
+	 */
+	@Test
+	void anAccessorNamedLikeAFabricModsOwnMethodReplacesItAsOnFabric() throws Exception {
+		String builder = "net/example/sodium/EnumOptionBuilderImpl";
+		ClassWriter cw = new ClassWriter(0);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, builder, null, "java/lang/Object", null);
+		cw.visitField(Opcodes.ACC_PRIVATE, "enumClass", "Ljava/lang/Class;", null, null).visitEnd();
+		MethodVisitor existing = cw.visitMethod(0, "getEnumClass", "()Ljava/lang/Class;", null, null);
+		existing.visitCode();
+		existing.visitInsn(Opcodes.ACONST_NULL);
+		existing.visitInsn(Opcodes.ARETURN);
+		existing.visitMaxs(1, 1);
+		existing.visitEnd();
+		cw.visitEnd();
+		byte[] builderClass = cw.toByteArray();
+		ClassWriter mw = new ClassWriter(0);
+		mw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT | Opcodes.ACC_INTERFACE, "com/example/mixin/BuilderAccessor", null,
+				"java/lang/Object", null);
+		AnnotationVisitor m = mw.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false);
+		AnnotationVisitor targets = m.visitArray("value");
+		targets.visit(null, Type.getObjectType(builder));
+		targets.visitEnd();
+		m.visitEnd();
+		MethodVisitor getter = mw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, "getEnumClass", "()Ljava/lang/Class;", null, null);
+		AnnotationVisitor accessor = getter.visitAnnotation("Lorg/spongepowered/asm/mixin/gen/Accessor;", true);
+		accessor.visit("value", "enumClass");
+		accessor.visitEnd();
+		getter.visitEnd();
+		mw.visitEnd();
+		Map<String, byte[]> mod = Map.of("com/example/mixin/BuilderAccessor", mw.toByteArray());
+		String lenient = config(true, "BuilderAccessor");
+		String strict = "{\"required\":true,\"package\":\"com.example.mixin\",\"mixins\":[\"BuilderAccessor\"],\"overwrites\":{\"requireAnnotations\":true}}";
+		java.util.function.BiFunction<Boolean, String, List<PreflightFinding>> run = (fabric, config) -> {
+			InstalledClasses installed = new InstalledClasses(List.of(new InstalledClasses.Jar("Sodium", builder::equals,
+					name -> name.equals(builder) ? builderClass : null, List::of, fabric)));
+			try {
+				return new MixinPreflight(new ClassIndex(installed), installed, mod::get, ClassBytesSource.EMPTY, true, true, ClassBytesSource.EMPTY)
+						.check("test.mixins.json", MixinConfigFile.parse(config), Refmap.EMPTY, Set.of());
+			} catch (Exception e) {
+				throw new RuntimeException(e);
+			}
+		};
+
+		List<PreflightFinding> replaced = run.apply(true, lenient);
+		assertEquals(1, replaced.size(), replaced.toString());
+		assertEquals(Severity.INFO, replaced.getFirst().severity());
+		assertTrue(replaced.getFirst().message().contains("replaces Sodium's own method of that name"), replaced.getFirst().message());
+
+		List<PreflightFinding> required = run.apply(true, strict);
+		assertTrue(required.stream().anyMatch(f -> f.severity() != Severity.INFO && f.message().contains("already exists")), required.toString());
+
+		List<PreflightFinding> neoForgeMods = run.apply(false, lenient);
+		assertTrue(neoForgeMods.stream().anyMatch(f -> f.severity() != Severity.INFO && f.message().contains("already exists")), neoForgeMods.toString());
+	}
+
+	/**
+	 * Polydium's font texture mixin keeps two nodes in {@code @Unique} fields typed with the mixin class, and its
+	 * {@code @WrapOperation} handler takes two of them: the Mixin NeoForge runs leaves those descriptors as they are (the
+	 * mixin has no inner classes, its target no mixin superclass), and the handler failed its check, stopping the game.
+	 * They name the target, as Fabric's Mixin does since 0.17.1, with the code's references to them (SELF-1); an
+	 * accessor interface, and a mixin with several targets, are left as they are.
+	 */
+	@Test
+	void descriptorsNamingTheMixinClassNameItsTarget() throws Exception {
+		String self = "com/example/mixin/Node";
+		String selfDesc = "L" + self + ";";
+		byte[] node = mixin(self, false, cw -> {
+			FieldVisitor left = cw.visitField(Opcodes.ACC_PRIVATE, "left", selfDesc, null, null);
+			left.visitAnnotation("Lorg/spongepowered/asm/mixin/Unique;", false).visitEnd();
+			left.visitEnd();
+			MethodVisitor track = cw.visitMethod(Opcodes.ACC_PRIVATE, "trackLeft", "(" + selfDesc + selfDesc + ")V", null, null);
+			track.visitCode();
+			track.visitVarInsn(Opcodes.ALOAD, 0);
+			track.visitVarInsn(Opcodes.ALOAD, 1);
+			track.visitFieldInsn(Opcodes.PUTFIELD, self, "left", selfDesc);
+			track.visitVarInsn(Opcodes.ALOAD, 0);
+			track.visitInvokeDynamicInsn("get", "(" + selfDesc + ")Ljava/util/function/Supplier;",
+					new Handle(Opcodes.H_INVOKESTATIC, "java/lang/invoke/LambdaMetafactory", "metafactory",
+							"(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodType;"
+									+ "Ljava/lang/invoke/MethodHandle;Ljava/lang/invoke/MethodType;)Ljava/lang/invoke/CallSite;", false),
+					Type.getType("()Ljava/lang/Object;"), new Handle(Opcodes.H_INVOKEVIRTUAL, self, "lambda$trackLeft$0", "()" + selfDesc, false),
+					Type.getType("()" + selfDesc));
+			track.visitInsn(Opcodes.POP);
+			track.visitLdcInsn(Type.getType("[" + selfDesc));
+			track.visitInsn(Opcodes.POP);
+			track.visitInsn(Opcodes.RETURN);
+			track.visitLocalVariable("node", selfDesc, null, new Label(), new Label(), 1);
+			track.visitMaxs(2, 3);
+			track.visitEnd();
+			MethodVisitor lambda = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_SYNTHETIC, "lambda$trackLeft$0", "()" + selfDesc, null, null);
+			lambda.visitCode();
+			lambda.visitVarInsn(Opcodes.ALOAD, 0);
+			lambda.visitFieldInsn(Opcodes.GETFIELD, self, "left", selfDesc);
+			lambda.visitInsn(Opcodes.ARETURN);
+			lambda.visitMaxs(1, 1);
+			lambda.visitEnd();
+		});
+		// Several targets: Mixin names each where it merges the mixin into it.
+		ClassWriter both = new ClassWriter(0);
+		both.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, "com/example/mixin/Both", null, "java/lang/Object", null);
+		AnnotationVisitor m = both.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false);
+		AnnotationVisitor values = m.visitArray("value");
+		values.visit(null, Type.getObjectType(TARGET));
+		values.visit(null, Type.getObjectType(THING));
+		values.visitEnd();
+		m.visitEnd();
+		both.visitField(Opcodes.ACC_PRIVATE, "other", "Lcom/example/mixin/Both;", null, null).visitEnd();
+		both.visitEnd();
+		// An accessor interface: Mixin generates its methods in the target, or rewrites them in place.
+		ClassWriter get = new ClassWriter(0);
+		get.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT | Opcodes.ACC_INTERFACE, "com/example/mixin/Get", null, "java/lang/Object", null);
+		AnnotationVisitor getMixin = get.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false);
+		AnnotationVisitor getTargets = getMixin.visitArray("value");
+		getTargets.visit(null, Type.getObjectType(TARGET));
+		getTargets.visitEnd();
+		getMixin.visitEnd();
+		MethodVisitor getter = get.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, "next", "()Lcom/example/mixin/Get;", null, null);
+		getter.visitAnnotation("Lorg/spongepowered/asm/mixin/gen/Accessor;", true).visitEnd();
+		getter.visitEnd();
+		get.visitEnd();
+		Map<String, byte[]> mod = Map.of(self, node, "com/example/mixin/Both", both.toByteArray(), "com/example/mixin/Get", get.toByteArray());
+		ClassIndex game = new ClassIndex(Map.of(TARGET, targetClass())::get);
+		List<PreflightFinding> notes = new ArrayList<>();
+		Map<String, byte[]> repaired = preflight(game, mod::get, ClassBytesSource.EMPTY, false)
+				.repairs("test.mixins.json", MixinConfigFile.parse(config(true, "Node", "Both", "Get")), Refmap.EMPTY, Set.of(), notes);
+
+		assertEquals(Set.of(self + ".class"), repaired.keySet(), notes.toString());
+		assertTrue(notes.stream().anyMatch(f -> f.severity() == Severity.INFO && f.message().startsWith("9 descriptor(s) of the mixin name its own class")
+				&& f.message().contains("they name net.minecraft.world.Thing")), notes.toString());
+		ClassNode out = new ClassNode();
+		new ClassReader(repaired.get(self + ".class")).accept(out, 0);
+		String real = "L" + TARGET + ";";
+		assertEquals(self, out.name, "the mixin keeps its own name");
+		assertEquals(real, out.fields.getFirst().desc);
+		MethodNode track = out.methods.stream().filter(mn -> mn.name.equals("trackLeft")).findFirst().orElseThrow();
+		assertEquals("(" + real + real + ")V", track.desc);
+		assertEquals(real, track.localVariables.getFirst().desc);
+		FieldInsnNode put = (FieldInsnNode) java.util.Arrays.stream(track.instructions.toArray()).filter(i -> i instanceof FieldInsnNode).findFirst().orElseThrow();
+		assertEquals(self, put.owner, "owners are left to Mixin");
+		assertEquals(real, put.desc);
+		InvokeDynamicInsnNode indy = (InvokeDynamicInsnNode) java.util.Arrays.stream(track.instructions.toArray())
+				.filter(i -> i instanceof InvokeDynamicInsnNode).findFirst().orElseThrow();
+		assertEquals("(" + real + ")Ljava/util/function/Supplier;", indy.desc);
+		assertEquals("()" + real, ((Handle) indy.bsmArgs[1]).getDesc());
+		assertEquals(self, ((Handle) indy.bsmArgs[1]).getOwner());
+		assertEquals("()" + real, ((Type) indy.bsmArgs[2]).getDescriptor());
+		LdcInsnNode ldc = (LdcInsnNode) java.util.Arrays.stream(track.instructions.toArray()).filter(i -> i instanceof LdcInsnNode).findFirst().orElseThrow();
+		assertEquals("[" + real, ((Type) ldc.cst).getDescriptor());
+		assertEquals("()" + real, out.methods.stream().filter(mn -> mn.name.startsWith("lambda$")).findFirst().orElseThrow().desc);
 	}
 
 	@Test
