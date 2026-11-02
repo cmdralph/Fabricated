@@ -12,10 +12,12 @@ import io.github.cmdralph.fabricated.forgetest.ForgeBlockBreakTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeCommandTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeDimensionTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeFluidTest;
+import io.github.cmdralph.fabricated.forgetest.ForgeFuelTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeSleepTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeTransferTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeTestMarker;
 import io.github.cmdralph.fabricated.forgetest.ForgeTestMod;
+import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.class_1792;
 import net.minecraft.class_1799;
 import net.minecraft.class_1802;
@@ -42,7 +44,8 @@ import net.minecraft.server.MinecraftServer;
  * colours and the particle engine its particle factory, and with Fabric API whether its command is in the server's
  * dispatcher ({@code method_3734} is {@code getCommands()}), whether Fabric's block break events fire as a player breaks
  * blocks, whether Fabric's use and attack callbacks are asked as a player uses and attacks things (finishing at a later
- * tick), and whether a block Fabric's sleep events admit as a bed survives being slept on.
+ * tick), whether a block Fabric's sleep events admit as a bed survives being slept on, and whether the furnace takes the
+ * test item Fabric's fuel registry made a fuel.
  */
 @Mixin(MinecraftServer.class)
 public abstract class MinecraftServerMixin {
@@ -94,6 +97,7 @@ public abstract class MinecraftServerMixin {
 			ForgeTestMod.checkInteractions(method_30002());
 			ForgeSleepTest.check(method_30002());
 			ForgeTransferTest.check(method_30002());
+			if (ForgeTestMod.testItem != null && FabricLoader.getInstance().isModLoaded("fabric-content-registries-v0")) ForgeFuelTest.check();
 		} else {
 			ForgeTestMod.tickInteractions(method_30002());
 		}

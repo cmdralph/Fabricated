@@ -135,6 +135,13 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 				LOGGER.error("FABRICATED-FORGE-TEST interaction listeners not registered", e);
 			}
 		}
+		if (testItem != null && FabricLoader.getInstance().isModLoaded("fabric-content-registries-v0")) {
+			try {
+				ForgeFuelTest.register();
+			} catch (RuntimeException | LinkageError e) {
+				LOGGER.error("FABRICATED-FORGE-TEST fuel not registered", e);
+			}
+		}
 	}
 
 	@Override

@@ -11,6 +11,11 @@
       "version": "13.0.15",
       "reason": "Shipped by Fabricated: upstream's API and biome source mixins, with biome modifications applied as a Forge biome modifier. Upstream's access widener opens the biome's climate field, which Forge's coremod needs private to point reads of a biome's climate and effects at its modified info, so with the module passed through the coremod failed and no biome modifier's climate or effects reached the game; upstream's modifications also replace biome fields Forge no longer reads."
     },
+    "fabric-content-registries-v0": {
+      "plan": "passthrough",
+      "skipMixins": ["fabric-content-registries-v0.mixins.json:AbstractFurnaceBlockEntityMixin#canUseAsFuelRedirect", "fabric-content-registries-v0.mixins.json:AbstractFurnaceBlockEntityMixin#getFuelTimeRedirect"],
+      "reason": "Forge 47's furnace asks its own burn times (ForgeHooks.getBurnTime) where vanilla's isFuel and getBurnDuration build the fuel table, which upstream's two redirects look for, so pre-flight left the whole mixin out and a fuel added through FuelRegistry never burned (FUEL-1). Forge reads its burn times from vanilla's fuel table as the data packs' tags load, and upstream's hook adding Fabric's fuels to that table stays: the redirects are left out, as Forge's calls already read the table the hook fills."
+    },
     "fabric-dimensions-v1": {
       "plan": "native",
       "version": "2.1.55",
