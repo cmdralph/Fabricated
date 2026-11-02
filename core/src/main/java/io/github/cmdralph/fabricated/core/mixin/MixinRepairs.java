@@ -248,6 +248,8 @@ final class MixinRepairs extends PreflightPart {
 					(s, moved) -> s.named() + " targets " + moved),
 			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> overloads.capturedLocalsRepairs(s.mixin(), s.handler(), s.injector(), s.target(), s.ctx(), s.bridges()),
 					(s, moved) -> s.named() + " captures locals in " + moved),
+			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> overloads.abandonedMethodWrappers(s.mixin(), s.handler(), s.injector(), s.target(), s.ctx(), s.bridges()),
+					(s, wrapped) -> s.named() + " targets " + wrapped),
 			// A repair that bridged the handler moved the injector onto the bridge.
 			RepairStep.stopIfMoved(),
 			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> overloads.constantSplitRepairs(s.mixin(), s.handler(), s.injector(), s.target(), s.ctx()),

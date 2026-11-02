@@ -982,6 +982,177 @@ class MixinPreflightTest {
 		}
 	}
 
+	private static final String CRAFTING_HELPER = "net/neoforged/neoforge/common/crafting/CraftingHelper";
+	private static final String CODEC_DESC = "(Z)Ljava/util/List;";
+
+	/**
+	 * {@link #TARGET} as {@code Ingredient}: a private static {@code codec(boolean)} its static initializer calls twice, as
+	 * vanilla has it; or, {@code neoForge}, deprecated, with the initializer calling {@code CraftingHelper}'s instead, or
+	 * ({@code stillCalled}) calling both.
+	 */
+	private static byte[] ingredientLike(boolean neoForge, boolean stillCalled) {
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_FINAL, TARGET, null, "java/lang/Object", null);
+		cw.visitField(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC | Opcodes.ACC_FINAL, "CODEC", "Ljava/util/List;", null, null).visitEnd();
+		cw.visitField(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC | Opcodes.ACC_FINAL, "CODEC_NONEMPTY", "Ljava/util/List;", null, null).visitEnd();
+		MethodVisitor clinit = cw.visitMethod(Opcodes.ACC_STATIC, "<clinit>", "()V", null, null);
+		clinit.visitCode();
+		for (String[] field : new String[][] {{"CODEC", "1"}, {"CODEC_NONEMPTY", "0"}}) {
+			clinit.visitInsn(field[1].equals("1") ? Opcodes.ICONST_1 : Opcodes.ICONST_0);
+			clinit.visitMethodInsn(Opcodes.INVOKESTATIC, neoForge ? CRAFTING_HELPER : TARGET, neoForge ? "makeIngredientCodec" : "codec", CODEC_DESC, false);
+			clinit.visitFieldInsn(Opcodes.PUTSTATIC, TARGET, field[0], "Ljava/util/List;");
+		}
+		if (stillCalled) {
+			clinit.visitInsn(Opcodes.ICONST_0);
+			clinit.visitMethodInsn(Opcodes.INVOKESTATIC, TARGET, "codec", CODEC_DESC, false);
+			clinit.visitInsn(Opcodes.POP);
+		}
+		clinit.visitInsn(Opcodes.RETURN);
+		clinit.visitMaxs(0, 0);
+		clinit.visitEnd();
+		MethodVisitor codec = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | (neoForge ? Opcodes.ACC_DEPRECATED : 0), "codec", CODEC_DESC, null, null);
+		if (neoForge) codec.visitAnnotation("Ljava/lang/Deprecated;", true).visitEnd();
+		codec.visitCode();
+		codec.visitMethodInsn(Opcodes.INVOKESTATIC, "java/util/List", "of", "()Ljava/util/List;", true);
+		codec.visitInsn(Opcodes.ARETURN);
+		codec.visitMaxs(0, 0);
+		codec.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	/**
+	 * Fabric API 1.21.1's {@code IngredientMixin.injectCodec}: at the return of {@code codec(boolean)}, cancellable, it
+	 * sets the return value to a list of the flag and what the method returned.
+	 */
+	private static void injectAtTheCodecsReturn(ClassWriter cw) {
+		String cir = "org/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable";
+		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "injectCodec", "(ZL" + cir + ";)V", null, null);
+		AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
+		AnnotationVisitor methods = ann.visitArray("method");
+		methods.visit(null, "codec");
+		methods.visitEnd();
+		AnnotationVisitor ats = ann.visitArray("at");
+		AnnotationVisitor at = ats.visitAnnotation(null, AT);
+		at.visit("value", "RETURN");
+		at.visitEnd();
+		ats.visitEnd();
+		ann.visit("cancellable", true);
+		ann.visitEnd();
+		mv.visitCode();
+		mv.visitVarInsn(Opcodes.ALOAD, 1);
+		mv.visitVarInsn(Opcodes.ILOAD, 0);
+		mv.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/Boolean", "valueOf", "(Z)Ljava/lang/Boolean;", false);
+		mv.visitVarInsn(Opcodes.ALOAD, 1);
+		mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, cir, "getReturnValue", "()Ljava/lang/Object;", false);
+		mv.visitMethodInsn(Opcodes.INVOKESTATIC, "java/util/List", "of", "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/util/List;", true);
+		mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, cir, "setReturnValue", "(Ljava/lang/Object;)V", false);
+		mv.visitInsn(Opcodes.RETURN);
+		mv.visitMaxs(4, 2);
+		mv.visitEnd();
+	}
+
+	/** Mixin's returnable callback info, as far as a handler and a bridge use it. */
+	private static byte[] callbackInfoReturnableStub() {
+		String cir = "org/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable";
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, cir, null, "java/lang/Object", null);
+		cw.visitField(Opcodes.ACC_PRIVATE, "value", "Ljava/lang/Object;", null, null).visitEnd();
+		MethodVisitor init = cw.visitMethod(Opcodes.ACC_PUBLIC, "<init>", "(Ljava/lang/String;ZLjava/lang/Object;)V", null, null);
+		init.visitCode();
+		init.visitVarInsn(Opcodes.ALOAD, 0);
+		init.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false);
+		init.visitVarInsn(Opcodes.ALOAD, 0);
+		init.visitVarInsn(Opcodes.ALOAD, 3);
+		init.visitFieldInsn(Opcodes.PUTFIELD, cir, "value", "Ljava/lang/Object;");
+		init.visitInsn(Opcodes.RETURN);
+		init.visitMaxs(0, 0);
+		init.visitEnd();
+		MethodVisitor get = cw.visitMethod(Opcodes.ACC_PUBLIC, "getReturnValue", "()Ljava/lang/Object;", null, null);
+		get.visitCode();
+		get.visitVarInsn(Opcodes.ALOAD, 0);
+		get.visitFieldInsn(Opcodes.GETFIELD, cir, "value", "Ljava/lang/Object;");
+		get.visitInsn(Opcodes.ARETURN);
+		get.visitMaxs(0, 0);
+		get.visitEnd();
+		MethodVisitor set = cw.visitMethod(Opcodes.ACC_PUBLIC, "setReturnValue", "(Ljava/lang/Object;)V", null, null);
+		set.visitCode();
+		set.visitVarInsn(Opcodes.ALOAD, 0);
+		set.visitVarInsn(Opcodes.ALOAD, 1);
+		set.visitFieldInsn(Opcodes.PUTFIELD, cir, "value", "Ljava/lang/Object;");
+		set.visitInsn(Opcodes.RETURN);
+		set.visitMaxs(0, 0);
+		set.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	@Test
+	void anInjectionAtTheReturnOfAMethodNeoForgeNoLongerCallsWrapsTheCallItMakesInstead() throws Exception {
+		// DEPRECATED-2: NeoForge 21.1 builds Ingredient's codecs with CraftingHelper.makeIngredientCodec, where vanilla's
+		// static initializer calls Ingredient.codec(boolean), which it keeps, deprecated, and never calls: Fabric API's
+		// hook at that method's return, which adds Fabric's custom ingredients to the codec, never ran.
+		String name = "com/example/mixin/Ingredients";
+		Map<String, byte[]> mod = new HashMap<>(Map.of(name, mixin(name, false, MixinPreflightTest::injectAtTheCodecsReturn)));
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Ingredients"));
+		ClassIndex neoForge = new ClassIndex(Map.of(TARGET, ingredientLike(true, false))::get);
+		Map<String, byte[]> vanilla = Map.of(TARGET, ingredientLike(false, false));
+		List<PreflightFinding> notes = new ArrayList<>();
+
+		Map<String, byte[]> repaired = new MixinPreflight(neoForge, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, vanilla::get)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
+
+		assertEquals(Set.of(name + ".class"), repaired.keySet(), notes.toString());
+		assertTrue(notes.stream().anyMatch(n -> n.severity() == Severity.WARN && n.message().contains("codec" + CODEC_DESC
+				+ ", which NeoForge deprecated and no longer calls: where vanilla's class calls it (<clinit>()V), NeoForge's calls "
+				+ CRAFTING_HELPER.replace('/', '.') + ".makeIngredientCodec" + CODEC_DESC)), notes.toString());
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired.get(name + ".class")).accept(node, 0);
+		MethodNode handler = node.methods.stream().filter(m -> m.name.equals("injectCodec")).findFirst().orElseThrow();
+		assertTrue(Annotations.all(handler).stream().noneMatch(a -> a.desc.equals(INJECT)), "the injector moved to the bridge");
+		MethodNode bridge = node.methods.stream().filter(m -> m.name.equals("injectCodec$fabricated")).findFirst().orElseThrow();
+		assertEquals("(Z" + OPERATION + ")Ljava/util/List;", bridge.desc);
+		AnnotationNode wrapper = Annotations.all(bridge).stream().filter(a -> a.desc.equals(WRAP_OPERATION)).findFirst().orElseThrow();
+		assertEquals(List.of("<clinit>()V"), Annotations.value(wrapper, "method"));
+		assertEquals("L" + CRAFTING_HELPER + ";makeIngredientCodec" + CODEC_DESC,
+				Annotations.value(Annotations.list(Annotations.value(wrapper, "at")).getFirst(), "target"));
+		mod.put(name, repaired.get(name + ".class"));
+		assertTrue(new MixinPreflight(neoForge, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, vanilla::get)
+				.check("test.mixins.json", config, Refmap.EMPTY, Set.of()).stream().noneMatch(f -> f.severity() != Severity.INFO));
+
+		// The bridge hands the handler the call's result as at the method's return, and returns what it set.
+		ClassWriter operation = new ClassWriter(0);
+		String operationName = OPERATION.substring(1, OPERATION.length() - 1);
+		operation.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_INTERFACE | Opcodes.ACC_ABSTRACT, operationName, null, "java/lang/Object", null);
+		operation.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT | Opcodes.ACC_VARARGS, "call", "([Ljava/lang/Object;)Ljava/lang/Object;", null, null).visitEnd();
+		operation.visitEnd();
+		ClassLoader loader = new BytesClassLoader(Map.of(name, repaired.get(name + ".class"), operationName, operation.toByteArray(),
+				"org/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable", callbackInfoReturnableStub()));
+		Class<?> mixin = loader.loadClass(name.replace('/', '.'));
+		Class<?> operationType = loader.loadClass(operationName.replace('/', '.'));
+		List<Object> passed = new ArrayList<>();
+		Object original = java.lang.reflect.Proxy.newProxyInstance(loader, new Class<?>[] {operationType}, (proxy, method, args) -> {
+			passed.addAll(java.util.Arrays.asList((Object[]) args[0]));
+			return List.of("neoforge");
+		});
+		java.lang.reflect.Method call = mixin.getDeclaredMethod("injectCodec$fabricated", boolean.class, operationType);
+		call.setAccessible(true);
+		assertEquals(List.of(false, List.of("neoforge")), call.invoke(null, false, original));
+		assertEquals(List.of(false), passed, "the call gets its own arguments");
+
+		// Where the class still calls the method, or vanilla's class isn't at hand, the injector stays.
+		for (Map<String, byte[]> otherVanilla : List.of(vanilla, Map.<String, byte[]>of())) {
+			ClassIndex game = new ClassIndex(Map.of(TARGET, ingredientLike(true, otherVanilla == vanilla))::get);
+			Map<String, byte[]> fresh = Map.of(name, mixin(name, false, MixinPreflightTest::injectAtTheCodecsReturn));
+			for (byte[] bytes : new MixinPreflight(game, InstalledClasses.NONE, fresh::get, ClassBytesSource.EMPTY, false, true, otherVanilla::get)
+					.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).values()) {
+				ClassNode kept = new ClassNode();
+				new ClassReader(bytes).accept(kept, 0);
+				assertTrue(kept.methods.stream().noneMatch(m -> m.name.equals("injectCodec$fabricated")), "no wrapper");
+			}
+		}
+	}
+
 	/** A member named as mixins name what they add ({@code modid$name}) may come from another mod's mixin: not judged. */
 	@Test
 	void membersAnotherModsMixinMayAddAreNotJudged() throws Exception {

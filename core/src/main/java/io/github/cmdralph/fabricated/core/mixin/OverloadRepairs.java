@@ -16,12 +16,16 @@ import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.AnnotationNode;
 import org.objectweb.asm.tree.ClassNode;
+import org.objectweb.asm.tree.InsnList;
+import org.objectweb.asm.tree.InsnNode;
 import org.objectweb.asm.tree.JumpInsnNode;
+import org.objectweb.asm.tree.LdcInsnNode;
 import org.objectweb.asm.tree.LocalVariableNode;
 import org.objectweb.asm.tree.LookupSwitchInsnNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
 import org.objectweb.asm.tree.TableSwitchInsnNode;
+import org.objectweb.asm.tree.TypeInsnNode;
 import org.objectweb.asm.tree.VarInsnNode;
 
 /**
@@ -284,6 +288,184 @@ final class OverloadRepairs extends PreflightPart {
 		values.set(0, overload.name + overload.desc);
 		return List.of(chosen.name + chosen.desc + ", which " + loader + " reduced to a call to " + overload.name + overload.desc
 				+ "; the injector is pointed there, taking its locals as they are there");
+	}
+
+	/**
+	 * Turns an {@code @Inject} at the returns of a private static method that NeoForge deprecated and no longer calls into
+	 * a wrapper ({@code @WrapOperation}) of the call NeoForge makes in its place, where vanilla's class calls it: the
+	 * handler gets the call's result in a returnable callback info, as at the method's return, and the call returns what
+	 * it leaves there. NeoForge 21.1 builds {@code Ingredient}'s codecs with {@code CraftingHelper.makeIngredientCodec}
+	 * where vanilla's static initializer calls {@code Ingredient.codec(boolean)}, which it keeps, deprecated, and never
+	 * calls ("We take over the codec creation entirely"), so Fabric API's recipe API, whose hook at that method's return
+	 * adds Fabric's custom ingredients ({@code fabric:type}) to the codec, never ran, and no recipe using one loaded
+	 * (Farmer's Delight's and Tech Reborn's on the 1.21.1 corpus server; DEPRECATED-2).
+	 * <p>
+	 * Only where nothing else can call the method (private, and neither its class nor that class's nest members call it
+	 * any more), the method returns a reference, and each of vanilla's callers makes, in NeoForge's build, as many calls
+	 * of one other static method with the method's descriptor as it made of the method, and no other new call of that
+	 * descriptor. The callers are static, as the handler is. Returns a description of the change, or nothing.
+	 */
+	List<String> abandonedMethodWrappers(ClassNode mixin, MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx,
+			List<MethodNode> bridges) {
+		if (!injector.desc.equals(MixinNames.INJECT) || (mixin.access & Opcodes.ACC_INTERFACE) != 0 || (handler.access & Opcodes.ACC_STATIC) == 0
+				|| Annotations.value(injector, "locals") != null || Annotations.value(injector, "slice") != null || Annotations.value(injector, "target") != null
+				|| Annotations.value(injector, "constraints") != null || !(Annotations.value(injector, "method") instanceof List<?> selectors)
+				|| selectors.size() != 1 || !(selectors.get(0) instanceof String raw) || hasParameterAnnotations(handler)
+				|| Type.getReturnType(handler.desc) != Type.VOID_TYPE) return List.of();
+		List<AnnotationNode> ats = Annotations.list(Annotations.value(injector, "at"));
+		if (ats.isEmpty()) return List.of();
+		for (AnnotationNode at : ats) {
+			String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
+			if (!point.equals("RETURN") || at.values == null || at.values.size() != 2) return List.of(); // every return, nothing else
+		}
+		MemberRef ref = MemberRef.parse(ctx.resolve(raw));
+		if (ref.fuzzy() || ref.name() == null) return List.of();
+		MethodNode method = null;
+		for (MethodNode m : target.methods) {
+			if (ref.matchesMethod(m.name, m.desc)) {
+				method = m;
+				break;
+			}
+		}
+		if (method == null || (method.access & (Opcodes.ACC_STATIC | Opcodes.ACC_PRIVATE)) != (Opcodes.ACC_STATIC | Opcodes.ACC_PRIVATE)) return List.of();
+		Type result = Type.getReturnType(method.desc);
+		if (result.getSort() != Type.OBJECT && result.getSort() != Type.ARRAY) return List.of();
+		// The handler takes the callback info, or the method's parameters and it.
+		Type[] args = Type.getArgumentTypes(handler.desc);
+		Type[] params = Type.getArgumentTypes(method.desc);
+		if (args.length == 0 || !args[args.length - 1].getDescriptor().equals(MixinNames.CALLBACK_INFO_RETURNABLE)
+				|| args.length != 1 && !Arrays.equals(Arrays.copyOf(args, args.length - 1), params)) return List.of();
+		boolean deprecated = (method.access & Opcodes.ACC_DEPRECATED) != 0 || Annotations.find(method, "Ljava/lang/Deprecated;") != null;
+		ClassNode vanilla = vanillaClass(target.name);
+		MethodNode vanillaMethod = vanilla == null ? null : PreflightAsm.declared(vanilla, method.name, method.desc);
+		if (!deprecated || vanillaMethod == null || (vanillaMethod.access & Opcodes.ACC_DEPRECATED) != 0
+				|| Annotations.find(vanillaMethod, "Ljava/lang/Deprecated;") != null || target.nestHostClass != null) return List.of();
+		List<ClassNode> nest = new ArrayList<>(List.of(target));
+		if (target.nestMembers != null) {
+			for (String member : target.nestMembers) {
+				ClassNode node = gameTarget(member);
+				if (node == null) return List.of(); // a nest member's code unknown: it may call the method
+				nest.add(node);
+			}
+		}
+		for (ClassNode node : nest) {
+			if (calls(node, target.name, method.name, method.desc) > 0) return List.of();
+		}
+		// Each of vanilla's callers, and what NeoForge's build calls there instead.
+		List<String> callers = new ArrayList<>();
+		String replacement = null;
+		for (MethodNode caller : vanilla.methods) {
+			int made = calls(caller, vanilla.name, method.name, method.desc);
+			if (made == 0) continue;
+			MethodNode patched = PreflightAsm.declared(target, caller.name, caller.desc);
+			if (patched == null || (patched.access & Opcodes.ACC_STATIC) == 0) return List.of();
+			java.util.Map<String, Integer> before = callsOfDescriptor(caller, method.desc);
+			java.util.Map<String, Integer> after = callsOfDescriptor(patched, method.desc);
+			before.merge(vanilla.name + "." + method.name, -made, Integer::sum);
+			String added = null;
+			for (var e : after.entrySet()) {
+				int extra = e.getValue() - before.getOrDefault(e.getKey(), 0);
+				if (extra < 0) return List.of(); // a call of that descriptor vanilla makes there is gone too
+				if (extra == 0) continue;
+				if (added != null || extra != made) return List.of();
+				added = e.getKey();
+			}
+			for (var e : before.entrySet()) {
+				if (e.getValue() > after.getOrDefault(e.getKey(), 0)) return List.of();
+			}
+			if (added == null || replacement != null && !replacement.equals(added)) return List.of();
+			replacement = added;
+			callers.add(patched.name + patched.desc);
+		}
+		if (replacement == null) return List.of();
+		int dot = replacement.lastIndexOf('.');
+		String owner = replacement.substring(0, dot);
+		String name = replacement.substring(dot + 1);
+		if (owner.equals(target.name) && name.equals(method.name)) return List.of();
+		// The wrapper: (the call's arguments, the operation) -> its result, as the handler leaves it.
+		List<Type> wrapperParams = new ArrayList<>(List.of(params));
+		wrapperParams.add(Type.getType(MixinNames.OPERATION));
+		MethodNode bridge = HandlerBridges.bridgeMethod(true, HandlerBridges.freeName(mixin, bridges, handler.name + "$fabricated"), wrapperParams, result);
+		InsnList code = bridge.instructions;
+		int operation = HandlerBridges.slotOf(true, wrapperParams, params.length);
+		int resultSlot = HandlerBridges.slotOf(true, wrapperParams, wrapperParams.size());
+		code.add(new VarInsnNode(Opcodes.ALOAD, operation));
+		code.add(new LdcInsnNode(params.length));
+		code.add(new TypeInsnNode(Opcodes.ANEWARRAY, "java/lang/Object"));
+		for (int i = 0; i < params.length; i++) {
+			code.add(new InsnNode(Opcodes.DUP));
+			code.add(new LdcInsnNode(i));
+			code.add(new VarInsnNode(params[i].getOpcode(Opcodes.ILOAD), HandlerBridges.slotOf(true, wrapperParams, i)));
+			HandlerBridges.box(code, params[i]);
+			code.add(new InsnNode(Opcodes.AASTORE));
+		}
+		code.add(new MethodInsnNode(Opcodes.INVOKEINTERFACE, Type.getType(MixinNames.OPERATION).getInternalName(), "call", "([Ljava/lang/Object;)Ljava/lang/Object;", true));
+		// new CallbackInfoReturnable(name, cancellable, result), kept in a local
+		String cir = Type.getType(MixinNames.CALLBACK_INFO_RETURNABLE).getInternalName();
+		code.add(new VarInsnNode(Opcodes.ASTORE, resultSlot));
+		code.add(new TypeInsnNode(Opcodes.NEW, cir));
+		code.add(new InsnNode(Opcodes.DUP));
+		code.add(new LdcInsnNode(method.name));
+		code.add(new InsnNode(Boolean.TRUE.equals(Annotations.value(injector, "cancellable")) ? Opcodes.ICONST_1 : Opcodes.ICONST_0));
+		code.add(new VarInsnNode(Opcodes.ALOAD, resultSlot));
+		code.add(new MethodInsnNode(Opcodes.INVOKESPECIAL, cir, "<init>", "(Ljava/lang/String;ZLjava/lang/Object;)V", false));
+		code.add(new VarInsnNode(Opcodes.ASTORE, resultSlot + 1));
+		int stack = 0;
+		if (args.length > 1) {
+			for (int i = 0; i < params.length; i++) {
+				code.add(new VarInsnNode(params[i].getOpcode(Opcodes.ILOAD), HandlerBridges.slotOf(true, wrapperParams, i)));
+				stack += params[i].getSize();
+			}
+		}
+		code.add(new VarInsnNode(Opcodes.ALOAD, resultSlot + 1));
+		code.add(new MethodInsnNode(Opcodes.INVOKESTATIC, mixin.name, handler.name, handler.desc, false));
+		code.add(new VarInsnNode(Opcodes.ALOAD, resultSlot + 1));
+		code.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL, cir, "getReturnValue", "()Ljava/lang/Object;", false));
+		code.add(new TypeInsnNode(Opcodes.CHECKCAST, result.getSort() == Type.ARRAY ? result.getDescriptor() : result.getInternalName()));
+		code.add(new InsnNode(Opcodes.ARETURN));
+		// Filling the arguments' array (the operation, the array twice, an index and a value of up to two slots), making
+		// the callback info (two references, a name, a flag, the result) or passing the handler its arguments.
+		bridge.maxStack = Math.max(6, Math.max(5, stack + 1));
+		bridge.maxLocals = resultSlot + 2;
+		AnnotationNode wrapper = new AnnotationNode(MixinNames.WRAP_OPERATION);
+		Annotations.put(wrapper, "method", new ArrayList<>(callers));
+		AnnotationNode wrappedAt = new AnnotationNode(MixinNames.AT);
+		Annotations.put(wrappedAt, "value", "INVOKE");
+		Annotations.put(wrappedAt, "target", "L" + owner + ";" + name + method.desc);
+		Annotations.put(wrapper, "at", new ArrayList<>(List.of(wrappedAt)));
+		if (Annotations.value(injector, "remap") != null) Annotations.put(wrapper, "remap", Annotations.value(injector, "remap"));
+		HandlerBridges.replaceInjector(handler, injector, wrapper, bridge);
+		bridges.add(bridge);
+		return List.of(method.name + method.desc + ", which " + loader + " deprecated and no longer calls: where vanilla's class calls it ("
+				+ String.join(", ", callers) + "), " + loader + "'s calls " + owner.replace('/', '.') + "." + name + method.desc
+				+ "; the injector wraps that call, handing the handler its result as at the method's return");
+	}
+
+	/** How many calls of {@code owner.name desc} {@code node}'s methods make. */
+	private static int calls(ClassNode node, String owner, String name, String desc) {
+		int count = 0;
+		for (MethodNode m : node.methods) count += calls(m, owner, name, desc);
+		return count;
+	}
+
+	/** How many calls of {@code owner.name desc} {@code method} makes. */
+	private static int calls(MethodNode method, String owner, String name, String desc) {
+		int count = 0;
+		for (AbstractInsnNode insn : method.instructions) {
+			if (insn instanceof MethodInsnNode call && call.owner.equals(owner) && call.name.equals(name) && call.desc.equals(desc)) count++;
+		}
+		return count;
+	}
+
+	/** The static calls of methods with descriptor {@code desc} {@code method} makes, counted by {@code owner.name}. */
+	private static java.util.Map<String, Integer> callsOfDescriptor(MethodNode method, String desc) {
+		java.util.Map<String, Integer> found = new java.util.TreeMap<>();
+		for (AbstractInsnNode insn : method.instructions) {
+			if (insn instanceof MethodInsnNode call && call.getOpcode() == Opcodes.INVOKESTATIC && call.desc.equals(desc)) {
+				found.merge(call.owner + "." + call.name, 1, Integer::sum);
+			}
+		}
+		return found;
 	}
 
 	/** Whether any parameter of {@code handler} carries an annotation (MixinExtras sugar, {@code @Coerce}). */
