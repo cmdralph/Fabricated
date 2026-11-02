@@ -792,13 +792,14 @@ Model loading works as on 26.x: plugins, model modifiers, extra models and Fabri
 hands the baked extra models to the model manager can't apply to NeoForge's 1.21.11 build (it looks for a local Mixin
 doesn't find there), so Fabricated hands them over from NeoForge's bake event call.
 
-### Renderer mods: Sodium and Iris (26.x)
+### Renderer mods: Sodium and Iris
 
-Use the NeoForge builds of Sodium and Iris. Their Fabric builds are disabled with a message: Sodium's would mesh
-NeoForge's models, fluids and lighting the Fabric way and drop the geometry NeoForge mods add to chunks, and Iris's
-needs Sodium's Fabric build. The mixed pairs are refused even with `loadUnsupported`: Iris's Fabric build next to
-Sodium for NeoForge, and Sodium's Fabric build next to Iris for NeoForge, as each hooks classes only its own partner
-build has (their fluid renderers). Sodium for NeoForge carries its own implementation of Fabric's renderer API and switches
+Both builds of Sodium and Iris load: their NeoForge builds, and on NeoForge their Fabric builds too (below). Where a
+NeoForge build exists, prefer it: Sodium's Fabric build meshes NeoForge's models, fluids and lighting the Fabric way.
+The mixed pairs are refused even with `loadUnsupported`: Iris's Fabric build next to Sodium for NeoForge, and Sodium's
+Fabric build next to Iris for NeoForge, as each hooks classes only its own partner build has (their fluid renderers).
+
+**Their NeoForge builds** (26.x). Sodium for NeoForge carries its own implementation of Fabric's renderer API and switches
 it on whenever Fabric API's renderer module is loaded, which Fabricated with the Fabric API jar provides. It then meshes
 every block through that renderer, so Fabric block models show in the world. Fabricated's part:
 
@@ -823,6 +824,28 @@ the client initializers ran, Fabricated registers Indigo's renderer when none re
 own hooks stay off then), and Sodium draws a Fabric block model from the parts Fabricated makes from its quads.
 CI's informational 1.21.11 run with Sodium for NeoForge saw the test model and the multipart part with it meshed in
 Sodium's own section level (run 374; run 372, without the fallback, had no parts).
+
+**Their Fabric builds** (NeoForge, every version; refused on Forge until a Forge run gates them, `docs/FORGE.md`).
+Sodium's Fabric build loads by default, and Iris's with it on 1.21.11 and 26.x. CI runs them with Fabric API and the
+renderer test mod on every version Modrinth has them for, as a gate: the client reaches a world, every renderer check
+passes under them, and Sodium's renderer draws the Fabric block models. The same client with CI's minimal shader pack
+is informational. On 1.21.1 Iris's Fabric build is disabled before it runs, with the reason: pre-flight finds that
+its particle hook, a `@Redirect` of a read of `ParticleEngine.RENDER_ORDER`, has nothing to redirect in NeoForge
+21.1's `render`.
+What Fabricated changed for them: pre-flight moves Sodium's quad hook to the constructor NeoForge 21.1's baking calls
+(CTOR-5), keeps Fabric API's fluid sprite hook where a sibling hook fails (STATE-1, which Sodium's water needs), pins
+Sodium's hook to the overload it takes beside Indigo's overwrite (OVERLOAD-2), maps Iris's access widener entries for
+`GlStateManager`'s nested classes (TOKEN-1) and lets Iris's accessor replace Sodium's own method, as on Fabric.
+
+Their gaps, which Sodium for NeoForge's own platform code answers and its Fabric build answers the Fabric way (the
+owner's decision, 2026-11-02: no patch for one mod, the gaps listed):
+
+- Fluids are drawn through Fabric API's fluid render handlers, not NeoForge's fluid type extensions, so a NeoForge
+  mod's custom fluid rendering is not used (Fabricated has no bridge yet; planned).
+- Geometry NeoForge mods add to chunk sections (`AddSectionGeometryEvent`) isn't drawn.
+- NeoForge's model data, position-aware light emission, `hidesNeighborFace` face culling and baked colours in
+  immediate mode are not applied to what Sodium's Fabric build meshes.
+- None of these is checked in CI with a NeoForge mod in view (UNVERIFIED how each looks).
 
 ### Plugins for recipe viewers, tooltip mods and Simple Voice Chat
 
@@ -855,28 +878,36 @@ Lithium for NeoForge `lithium:options` from the file. No key of NeoForge's own h
 it. Nulls are left out, as TOML has none. Unit tests read the generated file with night-config, the parser NeoForge
 uses, and find each value where those mods look.
 
-### Fabric builds that can't run on NeoForge
+### Fabric builds Fabricated refuses, and those it lifted the refusal of
 
-A few mods' Fabric builds can't work on NeoForge whatever Fabricated does; these facts are data (core's
-`compat-plan.json`). Such a build is disabled with the reason and what to do instead, and the mods that need it with
-it; `loadUnsupported` loads it anyway, for testing.
+Some mods' Fabric builds are refused on a loader where they can't run, or aren't verified yet; these facts are data
+(core's `compat-plan.json`). Such a build is disabled with the reason and what to do instead, and the mods that need it
+with it; `loadUnsupported` loads it anyway, for testing. A refusal is lifted on a loader once CI's run of that mod is a
+gate there (the owner's decision 3 of the beta pass): on NeoForge it is lifted for Sodium, Iris, Essential, malilib and
+Flashback; on Forge they stay refused, with "isn't supported on Forge" in the report.
 
 A build for another Minecraft version that Fabricated can tell can't run is disabled too, with the build to install:
 on 26.x, one whose mixins name intermediary classes (`net.minecraft.class_1234`), the names obfuscated versions (1.21.11
 and older) run Fabric mods with, which 26.x doesn't have (OBF-1: Modrinth lists some 1.21.11 builds for 26.x too).
 
-- **Sodium and Iris**: their NeoForge builds are used (see *Renderer mods* above).
-- **Essential** (`essential-container`, and `essential-loader`, which partner mods nest): its Fabric build is a loader
-  that downloads Essential when the game starts and adds it to Fabric Loader's internal mod list, class loader and
-  Mixin's processor (read in Essential Loader's source), none of which exist on NeoForge. Essential has NeoForge
-  builds for some versions.
+- **Sodium and Iris**: loaded on NeoForge, with the gaps in *Renderer mods* above.
+- **Essential** (`essential-container`, and `essential-loader`, which partner mods nest): its Fabric build is a loader.
+  As the game starts it downloads Essential into the game directory's `essential` folder and adds it to Fabric
+  Loader's internal mod list, class loader and Mixin's processor (read in Essential Loader's source), none of which
+  exist on NeoForge, and by then NeoForge takes no more mods. On NeoForge Fabricated loads the newest jar it
+  downloaded, from the next launch on, through the same checks as the mods folder's (DOWNLOAD-1): the first launch
+  runs without Essential, the second with it. Essential's loader then finds Essential among the mods and lets it load
+  as a regular mod, so Essential's automatic updates don't run; a jar older than 30 days is reported with a loading
+  warning (update it by deleting it, or with Essential's own build where one exists). Pre-flight reads Essential's
+  relocated MixinExtras as MixinExtras' own (MIXEXT-4). CI gates both launches on every version.
 - **malilib** (and with it Tweakeroo, MiniHUD and Litematica): it adds its picture-in-picture renderers through a map
-  NeoForge replaced with renderer pools on every version, and calls that accessor while the game starts (CORPUS-13).
-- **WTHIT**: its Fabric build refuses NeoForge itself; its NeoForge build is the one to use.
+  NeoForge replaced with renderer pools on every version, which Fabricated restores (PIP-1). Loaded on NeoForge, the
+  four gated on every version.
+- **WTHIT**: its Fabric build refuses NeoForge itself; its NeoForge build is the one to use. Refused everywhere.
 - **Flashback**: its mixin into `MappedRegistry.freeze` starts Flashback on the first registry freeze, and its start-up
   registers a key binding through the client. NeoForge freezes the registries at bootstrap and again before the client
-  exists; Fabric API delays that freeze until after the client initializers. The 1.21.11 advanced corpus client stopped
-  at bootstrap (CORPUS-21).
+  exists, where Fabric API delays the freeze until after the initializers; Fabricated holds a Fabric mod's freeze
+  handlers in every freeze before the main entrypoints (REG-8). Loaded on NeoForge, gated on every version.
 
 ### Mods that bring Fabric API or Fabric Loader
 
@@ -1100,13 +1131,17 @@ tracked:
 | What | Versions | Why | Tracked |
 |---|---|---|---|
 | Fabric's game tests (`fabric-gametest-api-v1`, `client-gametest`) | all | deliberately not loaded: they are development-time tools, not used by mods at runtime | — |
-| Model loading's modifiers for a model baked as another's part or parent | 1.21.1 | upstream's hook is on an overload NeoForge 21.1's baker doesn't call there | MODEL-4, task 5 |
 | Continuity's connected textures | all | Continuity loads, but CI sees no connected texture yet: on 1.21.11 and 26.x its hook adding its sprites to the block atlas is left out; on 1.21.1 its models draw, with vanilla's sprites, and the cause is open | CORPUS-56, task 5 |
 | Data generation's tag appenders (and on 26.3 its loot sub-providers) | all | pre-flight leaves those hooks out where NeoForge's data providers differ; the module's classes load for mods' runtime code (DATAGEN-1), and nothing is generated unless `fabric-api.datagen` is set | — |
 | Fabric storages in items (`ItemStorage.ITEM`) across to NeoForge's item handlers | 1.21.1 | NeoForge 21.1's item handler capability on stacks predates its transfer API, as Forge's | task 5 |
 | A Fabric mod's accessor to a field NeoForge retyped (`KeyMapping.MAP`) | all | NeoForge's field has another type, so the accessor is left out and its callers throw `NoSuchMethodError` | KEYMAP-1, task 5 |
 | A mixin adding interfaces to a library class NeoForge loads without mixin support | all | Mixin can't reach such a class; the mod is disabled, or loads without the mixin by `skipMixins` | LEAVE-1 (above) |
-| The Fabric builds in *Fabric builds that can't run on NeoForge* | as listed | as listed there | task 5 (Essential, Sodium and Iris first) |
+| WTHIT's Fabric build, and the mixed renderer pairs | all | as listed in *Fabric builds Fabricated refuses* | — |
+| Iris's Fabric build | 1.21.1 | its particle hook needs a field read NeoForge 21.1's particle engine doesn't make | — |
+| What Sodium's Fabric build meshes the Fabric way: NeoForge's fluid renderers, section geometry from NeoForge mods, model data, position-aware light and culling | all | *Renderer mods* above; the owner chose to list the gaps rather than patch one mod | rendering-pipeline track |
+| Essential's automatic updates (its Fabric build) | all | Essential loads from the launch after its loader's download, as a regular mod | DOWNLOAD-1 |
+| A Fabric mod's hook into the game's options that needs its initializer (Bobby's larger render distance limit) | 1.21.1 | NeoForge 21.1 creates the options before it loads mods, where Fabric creates them after the entrypoints; such a hook that throws then is skipped for that call, with a warning and a report line (ENTRY-2) | — |
+| Litematica's schematic rendering | 26.2 | its hooks into a `LevelRenderer` lambda NeoForge 26.2 declares otherwise are left out | LAMBDA-9, task 5 |
 | Hooks pre-flight leaves out where NeoForge's code differs | per mod | each is in the report, with what NeoForge's code lacks and what is lost | LEAVE-1 (above) |
 
 ### Planned work, in order of impact

@@ -3,6 +3,67 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-02: compatibility, the difficult mods' Fabric builds first (task 5, `main`'s half)
+
+- **The difficult mods' Fabric builds load on NeoForge** (the owner's decision 3, 2026-11-01): Sodium, Iris, Essential
+  (its container and loader), malilib and Flashback load by default (`8cf0106`). A compatibility plan entry now names
+  the loaders its refusal is lifted on (`runsOn`); on the others it stands, and the report says the build "isn't
+  supported on" that loader. On Forge they stay refused until a Forge run gates them. The mixed renderer pairs and
+  WTHIT stay refused everywhere. Their CI runs load them as players will, without `loadUnsupported`, and are gates
+  (`547e2c6`): every smoke check passes, each mod is among the loaded Fabric mods, and Sodium's renderer draws Fabric's
+  block models. Iris's Fabric build is gated where pre-flight lets it load (not 1.21.1, whose particle hook it can't
+  take). A run with CI's shader pack over the Fabric builds is new, informational.
+- **Essential's Fabric build** (DOWNLOAD-1, `8bc321a`): its loader downloads Essential as the game starts, when
+  NeoForge takes no more mods. Fabricated scans the newest jar it left in the game directory with the mods folder's,
+  through the same checks, so Essential loads from the next launch, as a regular mod without its automatic updates; a
+  jar older than 30 days is reported. A Fabric mod's jar proposed for the class path as the game runs is no longer
+  added untransformed. **Asked:** whether Essential should load this way, have its loader patched, or stay refused
+  (the owner's to decide; it loads this way meanwhile).
+- **A mixin that fails as Mixin applies it is left out from the next launch** (APPLY-1, `6dcc942`, `4e375ad`): the
+  failing mixin is recorded by mod, jar hash and the launch's builds in `.fabricated/mixin-failures.json` (bounded,
+  validated, written atomically, only Mixin's own throwables believed), through Mixin's error handlers, the crash
+  report and mod loading's errors. The first launch still stops.
+- **Pre-flight and its repairs**, each from a stop or a lost hook the runs showed: a required soft local capture
+  (LOCAL-5, Debugify); an accessor named like a Fabric mod's own method replaces it, as on Fabric (ACC-3, Iris's
+  Sodium options); a mixin's own type in its descriptors becomes its target, as Fabric's Mixin does (SELF-1,
+  Polydium), but not in an enum mixin (SELF-2, Flashback); a method NeoForge moved into an overload calling through one
+  (OVERLOAD-1, PolyPlus's language hooks); vanilla's constructor NeoForge keeps for a flag it added (CTOR-5, Sodium's
+  quads on 1.21.1) or for defaults a static method gives (CTOR-6, owo-lib); a variable modifier of an argument no
+  target takes (CORPUS-57, Architectury); a local capture out of a method NeoForge reduced to a call of its overload
+  (CORPUS-51, FrozenLib); an injector pinned to the one overload its handler takes (OVERLOAD-2, Sodium beside Indigo);
+  a relocated MixinExtras read as MixinExtras' own (MIXEXT-4, Essential; `d7a1e6c`'s message says MIXEXT-3); only the
+  injectors sharing state with a failing one left out (STATE-1, Fabric API's fluid sprites); a call wrapper taking the
+  method's first parameters or coercing the receiver (MODEL-4, Fabric's model modifiers on 1.21.1); a selector naming
+  the anonymous class ANON-1 moved a mixin from (ANON-2, Polymer); an `@Inject` at the returns of a private method
+  NeoForge deprecated and no longer calls (DEPRECATED-2, every recipe with a Fabric custom ingredient on 1.21.1); a
+  call NeoForge gave an argument between instructions its patch repeats (VANILLA-3, Do a Barrel Roll's camera on
+  1.21.1); and a Fabric mod's hook into the game's options that throws before the entrypoints, which NeoForge 21.1
+  creates before it loads mods, is skipped for that call with a warning (ENTRY-2, Bobby); a `@ModifyArgs` into a lambda
+  NeoForge's build gives one more value gets a bridge, and one whose handler fits no target is left out before Mixin
+  could stop the launch (CORPUS-58, Ledger's anvil hook).
+- **Remapping:** the nested classes of a class Intermediary keeps by name (TOKEN-1: Iris on 1.21.11, ImmediatelyFast on
+  1.21.1, CORPUS-52); a library's member for another loader that remapping makes its Fabric member's twin is left out
+  (REMAP-4, Elementa in Essential); an accessor Loom named for an intermediary member gets its target written out
+  (ACC-4, Do a Barrel Roll's key mixins).
+- **Runtime:** Fabric mods' registry freeze handlers are held in every freeze before their main entrypoints (REG-8,
+  Flashback); Fabric API's untracked listener marker (NET-9, Flashback); Fabric item models when Indigo stands down
+  without a renderer (FRAPI-10, Sodium for NeoForge on 1.21.11); Fabric HUD elements only where vanilla draws the
+  element they're attached to, the hidden GUI read where 26.2 moved it (HUD-3).
+- **CI gates added:** the Sodium and Iris, malilib (with MiniHUD, Tweakeroo and Litematica), Essential (both
+  launches) and Flashback clients on every NeoForge version; a mixin failure recorded and left out over three server
+  launches; the HUD conditions on 26.x; the test mod's freeze handler first running after the main initializers;
+  Fabric's custom ingredients in 1.21.1's recipe codec. The 1.21.1 test piston moves every four ticks (`688dea3`), as
+  Forge 47's does. The evidence step (`ci/javap-dump.py`, new) prints the bytecode open findings turn on.
+- **Docs:** `COMPATIBILITY.md` lists the Fabric builds' gaps (the owner's decision, 2026-11-02: no patch for Sodium's
+  Fabric build, load it and list them) and how Essential loads; the README and the roadmap's tables say what loads
+  where.
+- **Open, in the roadmap's findings:** CORPUS-50 (Supplementaries' item tags on the 1.21.1 corpus server), CORPUS-59
+  (Cobblemon's client initializer on the 1.21.1 advanced corpus client), LAMBDA-9 (Litematica's schematic rendering on
+  26.2), CORPUS-56 (Continuity), KEYMAP-1, and the Fabric builds' gaps `COMPATIBILITY.md` lists. On Forge, the refusals
+  stay until the Forge sync and its runs.
+- **Verified:** extended runs 41471044589 and 41477591558, every job green on all five NeoForge versions, the
+  difficult-mod gates included; the fixes' findings name the run that verified each.
+
 ## 2026-11-02: Fabric's renderer API, the Forge branches' half (task 4 done)
 
 - **Forge 61 to 66** (#244):

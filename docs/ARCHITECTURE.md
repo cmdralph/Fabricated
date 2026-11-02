@@ -395,8 +395,9 @@ versions is decided at compile time by which source folders it compiles, plus tw
 * **Data.** `META-INF/fabricated/fabric-api-plan.json` (per version: which Fabric API modules are native,
   pass-through or unsupported, and which upstream mixins to skip) and the generated `version.properties` (Minecraft
   version, mapping namespace, Mixin versions, Fabricated's version and build digest). Core reads the plan and `loader`'s `FabricatedInfo` the properties, each validated when parsed. Facts about other
-  people's mods are core's `compat-plan.json` (`CompatPlan`): Fabric builds that can't run on NeoForge, and Fabric
-  builds that can't run next to a NeoForge mod; a unit test parses the shipped file.
+  people's mods are core's `compat-plan.json` (`CompatPlan`): Fabric builds refused on a loader (`neoForgeBuildOnly`,
+  lifted on the loaders an entry's `runsOn` names), and Fabric builds that can't run next to a NeoForge mod; a unit
+  test parses the shipped file.
 * **Mixin differences in Fabric mods** are repaired by core's pre-flight against the running game's bytecode
   (`MixinPreflight.repairs`: overloads NeoForge reordered or moved code into, constructors NeoForge kept for
   vanilla's signature, calls and constructor calls made through a subtype or given one more argument (through bridge
