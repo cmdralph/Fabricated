@@ -12,7 +12,7 @@ failed=0
 if [ "$status" -eq 0 ]; then
 	echo "PASS: $what: every smoke check"
 else
-	echo "::error::FAIL: $what: a smoke check failed (exit status $status; its FAIL lines are above)"
+	echo "::error::FAIL: $what: a smoke check failed (exit status $status; its FAIL lines are above, and in $dir/checks-failed.txt)"
 	failed=1
 fi
 for id in "$@"; do
@@ -20,6 +20,7 @@ for id in "$@"; do
 		echo "PASS: $what: $id loaded"
 	else
 		echo "::error::FAIL: $what: $id didn't load (the report's Disabled and Skipped sections say why)"
+		echo "FAIL: $id didn't load" >> "$dir/checks-failed.txt"
 		failed=1
 	fi
 done

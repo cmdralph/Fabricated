@@ -245,13 +245,20 @@ cat run/logs/fabric-bridge-report.txt || echo "(report missing)"
 echo "::endgroup::"
 
 fail=0
+# The failed checks are kept in the work directory too: a job's log keeps only its last lines, and CI's last step prints
+# them from there.
+rm -f checks-failed.txt
+failed() {
+	echo "FAIL: $1" | tee -a checks-failed.txt
+	fail=1
+}
 # A test mod check another mod's module answers for logs "<check> SKIPPED: <why>" in place of "<check> OK".
 check() {
 	if grep -q -- "$1" "$log" client.out 2>/dev/null; then echo "PASS: $2"
 	elif [ "${1% OK}" != "$1" ] && grep -q -- "${1% OK} SKIPPED" "$log" client.out 2>/dev/null; then echo "SKIP: $2 ($(grep -h -m 1 -o -- "${1% OK} SKIPPED.*" "$log" client.out 2>/dev/null | head -1))"
-	else echo "FAIL: $2 (missing '$1')"; fail=1; fi
+	else failed "$2 (missing '$1')"; fi
 }
-[ "$status" -eq 0 ] && echo "PASS: client exited normally" || { echo "FAIL: client exit status $status"; fail=1; }
+[ "$status" -eq 0 ] && echo "PASS: client exited normally" || failed "client exit status $status"
 check "Successfully finished." "client joined a singleplayer world (mc-runtime-test)"
 check "player list was replaced after NeoForge made its view" "getPlayers() follows a player list a mod replaced (the test mod replaces it, as the Polyfrost stack does)"
 check "FABRICATED-TEST main entrypoint OK" "main entrypoint ran on the client"
@@ -303,7 +310,7 @@ check "FABRICATED-TEST environment stripping OK" "@EnvironmentInterface kept on 
 grep -h -m 1 -o "FABRICATED-TEST library modules: .*" "$log" 2>/dev/null || true
 # The test mods log "FABRICATED-TEST ... FAILED" when one of their own checks fails.
 if grep -q "FABRICATED-TEST .*FAILED" "$log" client.out 2>/dev/null; then
-	echo "FAIL: a test mod check reported a failure:"; { grep -h -m 5 "FABRICATED-TEST .*FAILED" "$log" client.out 2>/dev/null || true; }; fail=1
+	failed "a test mod check reported a failure:"; { grep -h -m 5 "FABRICATED-TEST .*FAILED" "$log" client.out 2>/dev/null || true; } | tee -a checks-failed.txt
 else
 	echo "PASS: no test mod check reported a failure"
 fi

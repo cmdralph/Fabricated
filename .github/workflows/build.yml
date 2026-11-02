@@ -1185,6 +1185,8 @@ jobs:
               continue
             fi
             echo "== $run"
+            # The smoke checks that failed (the step's own lines may be gone from the job's log by now).
+            [ -f "$RUNNER_TEMP/$run/checks-failed.txt" ] && cut -c1-400 "$RUNNER_TEMP/$run/checks-failed.txt" | head -20
             grep -h -m 20 -E "FABRICATED-TEST frapi|Caused by|Exception in|crash report|Fabric API's own renderer|drawn by the renderer" "$log" || true
             # The test mod's own failed checks and its informational lines (far up the log by now).
             grep -h -m 12 -E "FABRICATED-TEST (.*FAILED|library modules|networking join event)" "$log" | cut -c1-400 || true
