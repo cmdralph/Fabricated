@@ -219,7 +219,9 @@ if $standins; then
 	check "so is one a Forge mod nests with Forge's jar-in-jar, with its mixin config and refmap" "grep -q '+standin  \[Stand-in fabric-dimensions-v1\]' logs/fabric-bridge-report.txt 2>/dev/null"
 	check "Fabricated's in-game mod leaves out their packages and the module's mixin config, its manifest no longer naming it" "grep -q 'leaves out [0-9]* package(s) of the modules other mods provide, the mixin configs \[.*fabricated-dimension.mixins.json' logs/fabric-bridge-report.txt 2>/dev/null"
 	check "of two versions of a library Fabric mods nest, the newer loads" "grep -q 'Using standin_lib 1.1.0' logs/fabric-bridge-report.txt 2>/dev/null"
-	check "the linkage check counts the classes of the modules other mods provide" "! grep -q '== Linkage warnings' logs/fabric-bridge-report.txt 2>/dev/null"
+	# Without Fabric API the test mod's checks that need its other modules leave linkage warnings; none may name a class
+	# of the stand-ins'.
+	check "the linkage check counts the classes of the modules other mods provide" "python3 -I '$root/ci/forge-legacy/standin-linkage.py' '$extra' logs/fabric-bridge-report.txt"
 fi
 if $fapi; then
 	check "fabric-command-api-v2 (with Fabric API): a command registered through CommandRegistrationCallback is in the server's dispatcher, its hook into Commands' constructor applied (CTOR-4)" "grep -q 'FABRICATED-FORGE-TEST Fabric command registered OK' logs/latest.log 2>/dev/null"
