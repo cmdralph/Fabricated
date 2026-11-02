@@ -16,7 +16,9 @@ import net.minecraft.server.MinecraftServer;
  * server tick, whether the server has the interface the test mod's class tweaker injects, whether the test mod's item
  * is still in the registry Forge has frozen and checked by then, whether vanilla reads a player's stats file (GSON-2), whether its item tag's removals applied, whether
  * Fabric's loot table events reached dirt's loot table and drops, whether Fabric's default attribute event reached a
- * cow's defaults, whether Fabric's advancement modify event reached a vanilla advancement, whether its fluids have
+ * cow's defaults, whether Fabric's advancement modify event reached a vanilla advancement, whether Fabric's load
+ * conditions kept the data and registry entries whose conditions fail from loading, whether Fabric's biome
+ * modifications reached the overworld's generator, whether its fluids have
  * fluid types, on a client whether Fabric's colour provider registry finds the game's block colours, whether a command
  * registered through Fabric's command event is in the server's dispatcher, whether Fabric's block break events fire as
  * a player breaks blocks, whether its use and attack callbacks are asked as a player uses and attacks things (an entity
@@ -42,6 +44,8 @@ public abstract class MinecraftServerMixin {
 			ForgeTestMod.checkLoot((MinecraftServer) (Object) this);
 			ForgeTestMod.checkDefaultAttributes();
 			ForgeTestMod.checkAdvancements((MinecraftServer) (Object) this);
+			ForgeTestMod.checkConditions((MinecraftServer) (Object) this);
+			ForgeTestMod.checkBiomes((MinecraftServer) (Object) this);
 			ForgeTestMod.checkFluids((MinecraftServer) (Object) this);
 			ForgeTestMod.checkColors();
 			ForgeTestMod.checkCommands((MinecraftServer) (Object) this);

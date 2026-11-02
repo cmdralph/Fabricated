@@ -39,7 +39,9 @@ import net.minecraft.world.item.Items;
  * ({@link ForgeAdvancementTest}), the command module's registration event ({@link ForgeCommandTest}), a networking
  * round trip ({@link ForgeNetworkingTest}), the interaction module's block break events ({@link ForgeBlockBreakTest})
  * and use and attack callbacks ({@link ForgeInteractionTest}), the entity events module's sleep ({@link ForgeSleepTest})
- * and damage ({@link ForgeDamageTest}) events, and storages reaching Forge's capabilities ({@link ForgeTransferTest}).
+ * and damage ({@link ForgeDamageTest}) events, storages reaching Forge's capabilities ({@link ForgeTransferTest}), and the
+ * resource conditions module's load conditions in data files and registry entries ({@link ForgeConditionsTest}), and
+ * the biome module's feature modifications ({@link ForgeBiomeTest}).
  * Its fluids are written as Fabric mods write theirs ({@link ForgeFluidTest}).
  */
 public final class ForgeTestMod implements ModInitializer, DedicatedServerModInitializer {
@@ -103,6 +105,13 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 				ForgeAdvancementTest.register();
 			} catch (RuntimeException | LinkageError e) {
 				LOGGER.warn("FABRICATED-FORGE-TEST advancement listener not registered", e);
+			}
+		}
+		if (FabricLoader.getInstance().isModLoaded("fabric-biome-api-v1")) {
+			try {
+				ForgeBiomeTest.register();
+			} catch (RuntimeException | LinkageError e) {
+				LOGGER.warn("FABRICATED-FORGE-TEST biome modification not registered", e);
 			}
 		}
 		if (FabricLoader.getInstance().isModLoaded("fabric-command-api-v2")) {
@@ -232,6 +241,31 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 			ForgeAdvancementTest.check(server);
 		} catch (RuntimeException | LinkageError e) {
 			LOGGER.warn("FABRICATED-FORGE-TEST advancement check failed", e);
+		}
+	}
+
+	/**
+	 * Whether a feature Fabric's biome modifications add to the plains is among their features as the overworld's generator
+	 * reads them ({@link ForgeBiomeTest}; with Fabric API only).
+	 */
+	public static void checkBiomes(MinecraftServer server) {
+		try {
+			ForgeBiomeTest.check(server);
+		} catch (RuntimeException | LinkageError e) {
+			LOGGER.warn("FABRICATED-FORGE-TEST biome modification check failed", e);
+		}
+	}
+
+	/**
+	 * Whether the server loaded the data files and registry entries whose Fabric load conditions hold, and not those whose
+	 * conditions fail ({@link ForgeConditionsTest}; with Fabric API only).
+	 */
+	public static void checkConditions(MinecraftServer server) {
+		if (!FabricLoader.getInstance().isModLoaded("fabric-resource-conditions-api-v1")) return;
+		try {
+			ForgeConditionsTest.check(server);
+		} catch (RuntimeException | LinkageError e) {
+			LOGGER.warn("FABRICATED-FORGE-TEST load conditions check failed", e);
 		}
 	}
 
