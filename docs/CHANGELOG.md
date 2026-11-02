@@ -115,12 +115,26 @@ One entry per working session, newest first: what changed, and how it was verifi
   frequencies and default-enabled packs don't take effect on NeoForge 21.1, and it makes fewer bridges to NeoForge
   (enchanting, creator mod, transfer). `COMPATIBILITY.md` lists them. The test mod skips those items, naming the
   provider's answer, only where that module is another mod's; any other failure still fails.
+- **Default method bridges on NeoForge 21.1** (CORPUS-63): where an interface a Fabric mod's mixin adds to a game class
+  brings a second default of a method beside NeoForge's, the class declares the method on 21.1 too, calling NeoForge's,
+  as from 21.11 on (CORPUS-11). On 21.1's ModLauncher nothing from the mods folder runs after Mixin: the loader's
+  transformer declares the bridges before it, and a Mixin extension takes them out as Mixin starts on a class it
+  applies mixins to and declares them again after, where no mixin declared the method. Without one, Entity Culling
+  crashed the 1.21.1 corpus client in its world, on a bed (`AbstractMethodError`, Java 21's error for two such
+  defaults). The test mod adds such an interface to `LivingEntity` and calls both defaults on a pig, on every version:
+  the bridge itself had never been called in CI.
+- **Nested jars** (LIMIT-2): jars nested up to eight deep load, where three did; Polymer's bundle nests its modules four
+  deep, so its Packet Tweaker was left out and the 1.21.1 advanced client's server crashed as the player joined. The
+  per-jar budgets are as they were (1024 jars, the uncompressed size). A config file written with an earlier version's
+  defaults reads as today's; a limit the user changed is kept.
 - **Build:** `scripts/check-mixin-inventory.py` also runs the build's rule that each of the game mod's mixins is
   assigned a Fabric API module (`mixin-modules.json`), which only a platform build found: extended run 41492025138
   stopped on it, for `UtilMixin`. CI's mod downloads (`ci/fetch-corpus.py`) try a timeout, a dropped connection or a
   server error again, three times at most: extended run 41501863294 lost five gates' mods to slow answers from Modrinth.
   The test mod's client block entity check also reports as the client stops, for a client that quit in the tick it left
-  its world in (that run's Sodium client on 26.2 reported neither way).
+  its world in (that run's Sodium client on 26.2 reported neither way). The log digest prints the first stack of each
+  kind of linkage error (`AbstractMethodError`, `IllegalAccessError` and the like), however rarely it was logged:
+  CORPUS-63's interface was cut from its one line.
 - **CI gates added:** the Sodium and Iris, malilib (with MiniHUD, Tweakeroo and Litematica), Essential (both
   launches) and Flashback clients on every NeoForge version; a mixin failure recorded and left out over three server
   launches; the HUD conditions on 26.x; the test mod's freeze handler first running after the main initializers;
@@ -137,19 +151,24 @@ One entry per working session, newest first: what changed, and how it was verifi
   A `@Redirect` HOOK-2 moves to a NeoForge hook's call replaces that call, and with it the events the hook fires around
   it: where the redirect's handler makes the original call itself, as Carpet's does when it doesn't mock a spawn, that
   call is made through the hook, as NeoForge's own code there does, so other mods still see the spawn event (CORPUS-61).
+  LIMIT-2: the default nesting depth of a mod jar's nested jars is 8, where it was 3, a safety limit raised as Polymer
+  needs 4; the jar count and size budgets that bound a jar's whole tree stay.
 - **Docs:** KEYMAP-1 is P3, not P2: OneConfig's Controls screen mirrors of its keybinds stay registered with
   Minecraft's keybinds, but NeoForge keeps every binding of a key, so they don't shadow Minecraft's (read in OneConfig's
   source); `COMPATIBILITY.md` says so. `COMPATIBILITY.md` lists the Fabric builds' gaps (the owner's decision, 2026-11-02: no patch for Sodium's
   Fabric build, load it and list them) and how Essential loads; the README and the roadmap's tables say what loads
   where.
-- **Open, in the roadmap's findings:** fixed, to verify: NET-10 (Cardinal Components API's sync), CORPUS-54 on
-  NeoForge (Puzzles Lib's screen effect hook on 1.21.1) and CORPUS-62 (Supplementaries' models through Moonlight's
-  loaders on 1.21.1); read, to verify: PROVIDER-8 (Forgified Fabric API's modules on 1.21.1, the test mod's skips);
-  open: KEYMAP-1 (documented), and the Fabric builds' gaps `COMPATIBILITY.md` lists.
+- **Open, in the roadmap's findings:** fixed, to verify: CORPUS-54 on NeoForge (Puzzles Lib's screen effect hook on
+  1.21.1), CORPUS-62 (Supplementaries' models through Moonlight's loaders on 1.21.1), CORPUS-63 (default bridges on
+  1.21.1) and LIMIT-2 (Polymer's nested jars); read, to verify: PROVIDER-8 (Forgified Fabric API's modules on 1.21.1,
+  the test mod's skips); open: CORPUS-64 (Fabric Seasons reads a biome's climate, which NeoForge keeps private),
+  CORPUS-48 (Xaero's World Map's world unload, also seen on 1.21.1), KEYMAP-1 (documented), and the Fabric builds' gaps
+  `COMPATIBILITY.md` lists.
   On Forge, the refusals stay until the Forge sync and its runs.
 - **Verified:** extended runs 41471044589 and 41477591558, every job green on all five NeoForge versions, the
-  difficult-mod gates included, and 41512581949, every job green, which verified CORPUS-61, CORPUS-56 on 1.21.11 and
-  26.x, LAMBDA-9 and LIB-2; the fixes' findings name the run that verified each.
+  difficult-mod gates included, 41512581949, every job green, which verified CORPUS-61, CORPUS-56 on 1.21.11 and 26.x,
+  LAMBDA-9 and LIB-2, and 41527263549, every job green, which verified NET-10; the fixes' findings name the run that
+  verified each.
 
 ## 2026-11-02: Fabric's renderer API, the Forge branches' half (task 4 done)
 
