@@ -114,7 +114,12 @@ One entry per working session, newest first: what changed, and how it was verifi
   coexisting client were read in its source, and each is its own: its trapdoor tag, attack block result, sculk
   frequencies and default-enabled packs don't take effect on NeoForge 21.1, and it makes fewer bridges to NeoForge
   (enchanting, creator mod, transfer). `COMPATIBILITY.md` lists them. The test mod skips those items, naming the
-  provider's answer, only where that module is another mod's; any other failure still fails.
+  provider's answer, only where that module is another mod's; any other failure still fails. On the servers with its
+  modules (PROVIDER-9), three checks asked for what only Fabricated's own modules do: the configuration `DISCONNECT`
+  check, whose listener on a connection without a channel never reaches the provider's hook (it fires as the
+  connection closes, as upstream's does), the networking bridge's log line, and an alias the test only adds to
+  Fabricated's registry sync. Those skip there, saying why. Its 26.1.2 and 26.2 modules' differences are still to read
+  (PROVIDER-10).
 - **Default method bridges on NeoForge 21.1** (CORPUS-63): where an interface a Fabric mod's mixin adds to a game class
   brings a second default of a method beside NeoForge's, the class declares the method on 21.1 too, calling NeoForge's,
   as from 21.11 on (CORPUS-11). On 21.1's ModLauncher nothing from the mods folder runs after Mixin: the loader's
@@ -171,7 +176,8 @@ One entry per working session, newest first: what changed, and how it was verifi
   1.21.1), CORPUS-62 (Supplementaries' models through Moonlight's loaders on 1.21.1), CORPUS-63 (default bridges on
   1.21.1), CORPUS-64 (Fabric Seasons' read of a biome's climate), DEFAULT-1 (a default from a superclass's interface)
   and LIMIT-2 (Polymer's nested jars); read, to verify: PROVIDER-8 (Forgified Fabric API's modules on 1.21.1, the test
-  mod's skips); open: CORPUS-48 (Xaero's World Map's world unload, also seen on 1.21.1), KEYMAP-1 (documented), and
+  mod's skips) and PROVIDER-9 (three server checks of Fabricated's own modules); open: PROVIDER-10 (its 26.x modules'
+  differences), CORPUS-48 (Xaero's World Map's world unload, also seen on 1.21.1), KEYMAP-1 (documented), and
   the Fabric builds' gaps `COMPATIBILITY.md` lists.
   On Forge, the refusals stay until the Forge sync and its runs.
 - **Verified:** extended runs 41471044589 and 41477591558, every job green on all five NeoForge versions, the

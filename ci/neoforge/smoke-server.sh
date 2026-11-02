@@ -147,6 +147,8 @@ check() {
 	elif [ "${1% OK}" != "$1" ] && grep -q -- "${1% OK} SKIPPED" "$2"; then echo "SKIP: $3 ($(grep -m 1 -o -- "${1% OK} SKIPPED.*" "$2"))"
 	else echo "FAIL: $3 (missing '$1' in $2)"; fail=1; fi
 }
+# Whether another mod (Forgified Fabric API) provides a Fabric API module: the test mod's checks of it say so as they skip.
+provided() { grep -q -- "FABRICATED-TEST .* SKIPPED: $1 is another mod's" server.out; }
 [ "$status" = "started" ] && echo "PASS: server started" || { echo "FAIL: server did not start ($status)"; fail=1; required_fail=1; }
 if [ "$testmods" = none ]; then
 	echo "NOTE: no test mods in this run; only the server start is checked."
@@ -185,7 +187,11 @@ check "FABRICATED-TEST lifecycle tags loaded OK" server.out "native lifecycle: T
 check "FABRICATED-TEST block entity events OK" server.out "native lifecycle: a block entity loads when placed and unloads when broken"
 check "FABRICATED-TEST networking registration OK" server.out "native networking: receiver registered"
 check "FABRICATED-TEST configuration disconnect OK" server.out "native networking: DISCONNECT for a connection closed during configuration"
-check "Registered [0-9]* Fabric payload type" server.out "native networking: payloads handed to NeoForge"
+if provided fabric-networking-api-v1; then
+	echo "SKIP: native networking: payloads handed to NeoForge (fabric-networking-api-v1 is another mod's: Fabricated's networking bridge, which logs this, stands down for it, PROVIDER-9)"
+else
+	check "Registered [0-9]* Fabric payload type" server.out "native networking: payloads handed to NeoForge"
+fi
 check "FABRICATED-TEST late payload type registration OK" server.out "native networking: a payload type registered as the server starts (Ledger, NET-3)"
 check "FABRICATED-TEST resource reload listener OK (2 data file" server.out "native resource loader: listener, shared state and built-in pack data"
 check "resource loader state: order=true, store=2, builtinPackEnabled=true" server.out "native resource loader: ordering, data store and built-in pack"
@@ -196,7 +202,14 @@ else
 fi
 check "FABRICATED-TEST registry sync: custom registry OK" server.out "native registry sync: custom registry, entry callback, attributes, NeoForge sync flag"
 check "FABRICATED-TEST registry sync: tracked registry OK" server.out "a registry NeoForge tracks, made in a Fabric initializer after NeoForge's NewRegistryEvent, as Forgified Fabric API's builder makes one (PROVIDER-6)"
-check "registry sync state: alias=true, dynamic=1, setupCallback=1" server.out "native registry sync: alias, synced dynamic registry, setup callback"
+# Another mod's registry sync gets no alias from the test mod, whose check of aliases skips (PROVIDER-9).
+if provided fabric-registry-sync-v0; then
+	sync_alias=false; sync_label="native registry sync: synced dynamic registry, setup callback (aliases skipped: fabric-registry-sync-v0 is another mod's, PROVIDER-9)"
+else
+	sync_alias=true; sync_label="native registry sync: alias, synced dynamic registry, setup callback"
+fi
+check "registry sync state: alias=$sync_alias, dynamic=1, setupCallback=1" server.out "$sync_label"
+grep -q "registry sync state: alias=$sync_alias, dynamic=1, setupCallback=1" server.out || grep -m 1 -o "FABRICATED-TEST registry sync state: .*" server.out || true
 if [ "$mc" = "1.21.1" ]; then
 	# Fabric API 0.116 (1.21.1) has no mob effect events; its mob conversion event is tested instead.
 	check "FABRICATED-TEST entity events: mob conversion OK" server.out "native entity events: mob conversion"
