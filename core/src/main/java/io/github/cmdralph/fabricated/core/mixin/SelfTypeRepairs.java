@@ -31,7 +31,11 @@ import org.objectweb.asm.tree.TypeInsnNode;
  * <p>
  * Only for a class mixin with one target (Mixin merges a mixin with several into each, under each one's name), and only
  * the mixin's own type: another mixin's stands for whichever class of the target's hierarchy that one targets, which
- * Mixin resolves as it applies. Owners are left to Mixin, which renames those whatever its version.
+ * Mixin resolves as it applies. Owners are left to Mixin, which renames those whatever its version. Never for an enum
+ * mixin: Mixin's enum extensions (0.17.1 on) know its constants, {@code values()} and {@code valueOf} by the mixin's own
+ * type, and a constant named with the target's is a public static field Mixin refuses (Flashback's texture format
+ * mixin on 26.x, SELF-2); where the running Mixin is older, the enum's constants come from NeoForge's enum extensions
+ * or not at all, as {@code ModTranslator} decides.
  */
 final class SelfTypeRepairs {
 	private SelfTypeRepairs() {
@@ -41,10 +45,10 @@ final class SelfTypeRepairs {
 	 * Names {@code target} where the descriptors of a class mixin with that one target name the mixin itself: its
 	 * fields' and methods' (with their local variables'), and those of the field accesses, calls, method handles, class
 	 * constants and arrays its code has. Returns how many it renamed; none for an interface (an accessor mixin, whose
-	 * methods Mixin generates or rewrites in place).
+	 * methods Mixin generates or rewrites in place) or an enum mixin (SELF-2).
 	 */
 	static int retarget(ClassNode mixin, String target) {
-		if ((mixin.access & Opcodes.ACC_INTERFACE) != 0 || target.equals(mixin.name)) return 0;
+		if ((mixin.access & (Opcodes.ACC_INTERFACE | Opcodes.ACC_ENUM)) != 0 || target.equals(mixin.name)) return 0;
 		Retyper retyper = new Retyper(mixin.name, target);
 		for (FieldNode field : mixin.fields) {
 			String desc = retyper.single(field.desc);

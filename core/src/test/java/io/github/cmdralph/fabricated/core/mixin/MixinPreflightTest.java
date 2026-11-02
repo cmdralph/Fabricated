@@ -223,7 +223,8 @@ class MixinPreflightTest {
 	 * {@code @WrapOperation} handler takes two of them: the Mixin NeoForge runs leaves those descriptors as they are (the
 	 * mixin has no inner classes, its target no mixin superclass), and the handler failed its check, stopping the game.
 	 * They name the target, as Fabric's Mixin does since 0.17.1, with the code's references to them (SELF-1); an
-	 * accessor interface, and a mixin with several targets, are left as they are.
+	 * accessor interface, a mixin with several targets, and an enum mixin (whose constants Mixin's enum extensions know by
+	 * the mixin's type, SELF-2) are left as they are.
 	 */
 	@Test
 	void descriptorsNamingTheMixinClassNameItsTarget() throws Exception {
@@ -283,11 +284,32 @@ class MixinPreflightTest {
 		getter.visitAnnotation("Lorg/spongepowered/asm/mixin/gen/Accessor;", true).visitEnd();
 		getter.visitEnd();
 		get.visitEnd();
-		Map<String, byte[]> mod = Map.of(self, node, "com/example/mixin/Both", both.toByteArray(), "com/example/mixin/Get", get.toByteArray());
+		// An enum mixin adding a constant (Flashback's texture format one): Mixin's enum extensions know the constant,
+		// values() and valueOf by the mixin's own type.
+		String kind = "com/example/mixin/Kind";
+		ClassWriter enumMixin = new ClassWriter(0);
+		enumMixin.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_FINAL | Opcodes.ACC_SUPER | Opcodes.ACC_ENUM, kind,
+				"Ljava/lang/Enum<L" + kind + ";>;", "java/lang/Enum", null);
+		AnnotationVisitor enumAnn = enumMixin.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false);
+		AnnotationVisitor enumTargets = enumAnn.visitArray("value");
+		enumTargets.visit(null, Type.getObjectType(TARGET));
+		enumTargets.visitEnd();
+		enumAnn.visitEnd();
+		enumMixin.visitField(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC | Opcodes.ACC_FINAL | Opcodes.ACC_ENUM, "EXTRA", "L" + kind + ";", null, null).visitEnd();
+		enumMixin.visitField(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_FINAL | Opcodes.ACC_SYNTHETIC, "$VALUES", "[L" + kind + ";", null, null).visitEnd();
+		MethodVisitor enumValues = enumMixin.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "values", "()[L" + kind + ";", null, null);
+		enumValues.visitCode();
+		enumValues.visitFieldInsn(Opcodes.GETSTATIC, kind, "$VALUES", "[L" + kind + ";");
+		enumValues.visitInsn(Opcodes.ARETURN);
+		enumValues.visitMaxs(1, 0);
+		enumValues.visitEnd();
+		enumMixin.visitEnd();
+		Map<String, byte[]> mod = Map.of(self, node, "com/example/mixin/Both", both.toByteArray(), "com/example/mixin/Get", get.toByteArray(),
+				kind, enumMixin.toByteArray());
 		ClassIndex game = new ClassIndex(Map.of(TARGET, targetClass())::get);
 		List<PreflightFinding> notes = new ArrayList<>();
 		Map<String, byte[]> repaired = preflight(game, mod::get, ClassBytesSource.EMPTY, false)
-				.repairs("test.mixins.json", MixinConfigFile.parse(config(true, "Node", "Both", "Get")), Refmap.EMPTY, Set.of(), notes);
+				.repairs("test.mixins.json", MixinConfigFile.parse(config(true, "Node", "Both", "Get", "Kind")), Refmap.EMPTY, Set.of(), notes);
 
 		assertEquals(Set.of(self + ".class"), repaired.keySet(), notes.toString());
 		assertTrue(notes.stream().anyMatch(f -> f.severity() == Severity.INFO && f.message().startsWith("9 descriptor(s) of the mixin name its own class")
