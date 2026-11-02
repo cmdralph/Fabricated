@@ -4380,6 +4380,105 @@ class MixinPreflightTest {
 				.check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty(), "vanilla's method loads the float twice after onGround()");
 	}
 
+	/** CORPUS-54's game classes: vanilla's screen effect method, NeoForge's, and NeoForge's with locals pre-flight can't type. */
+	private enum ScreenEffectBuild {
+		VANILLA, NEOFORGE, NEOFORGE_WITHOUT_TABLE, NEOFORGE_WITH_AN_UNTYPED_LOCAL
+	}
+
+	/**
+	 * ScreenEffectRenderer.renderScreenEffect, a String standing in for the block state: vanilla's stores the state it
+	 * draws; NeoForge's keeps the state and its position in a pair (a List here), casting the state out of it where it
+	 * draws it, and stores no state. Both keep a local variable table, as NeoForge's build of the game does; one of
+	 * NeoForge's has none, as Mojang ships the game, and one also stores a value read from an array without a table
+	 * entry for it.
+	 */
+	private static byte[] screenEffect(ScreenEffectBuild build) {
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		MethodVisitor m = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "renderScreenEffect", "(Ljava/lang/Object;Ljava/lang/Object;)V", null, null);
+		m.visitCode();
+		Label start = new Label();
+		Label stored = new Label();
+		Label end = new Label();
+		m.visitLabel(start);
+		m.visitVarInsn(Opcodes.ALOAD, 0);
+		if (build == ScreenEffectBuild.VANILLA) {
+			m.visitMethodInsn(Opcodes.INVOKESTATIC, TARGET, "viewBlockingState", "(Ljava/lang/Object;)Ljava/lang/String;", false);
+			m.visitVarInsn(Opcodes.ASTORE, 2);
+			m.visitLabel(stored);
+			m.visitVarInsn(Opcodes.ALOAD, 2);
+		} else {
+			m.visitMethodInsn(Opcodes.INVOKESTATIC, TARGET, "overlayBlock", "(Ljava/lang/Object;)Ljava/util/List;", false);
+			m.visitVarInsn(Opcodes.ASTORE, 2);
+			m.visitLabel(stored);
+			if (build == ScreenEffectBuild.NEOFORGE_WITH_AN_UNTYPED_LOCAL) {
+				m.visitVarInsn(Opcodes.ALOAD, 1);
+				m.visitTypeInsn(Opcodes.CHECKCAST, "[Ljava/lang/String;");
+				m.visitInsn(Opcodes.ICONST_0);
+				m.visitInsn(Opcodes.AALOAD);
+				m.visitVarInsn(Opcodes.ASTORE, 3);
+			}
+			m.visitVarInsn(Opcodes.ALOAD, 2);
+			m.visitInsn(Opcodes.ICONST_0);
+			m.visitMethodInsn(Opcodes.INVOKEINTERFACE, "java/util/List", "get", "(I)Ljava/lang/Object;", true);
+			m.visitTypeInsn(Opcodes.CHECKCAST, "java/lang/String");
+		}
+		m.visitMethodInsn(Opcodes.INVOKESTATIC, TARGET, "renderTex", "(Ljava/lang/String;)V", false);
+		m.visitInsn(Opcodes.RETURN);
+		m.visitLabel(end);
+		if (build != ScreenEffectBuild.NEOFORGE_WITHOUT_TABLE) {
+			m.visitLocalVariable("p_110719_", "Ljava/lang/Object;", null, start, end, 0);
+			m.visitLocalVariable("p_110720_", "Ljava/lang/Object;", null, start, end, 1);
+			if (build == ScreenEffectBuild.VANILLA) m.visitLocalVariable("blockstate", "Ljava/lang/String;", null, stored, end, 2);
+			else m.visitLocalVariable("overlay", "Ljava/util/List;", null, stored, end, 2);
+		}
+		m.visitMaxs(0, 0);
+		m.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	@Test
+	void aVariableModifierByTypeFailsWhereTheMethodHasNoLocalOfThatType() throws Exception {
+		// CORPUS-54: Puzzles Lib's screen effect hook modifies, as the only local of its type, the block state vanilla's
+		// ScreenEffectRenderer.renderScreenEffect stores; NeoForge's 1.21.1 build keeps it in a pair instead, Mixin found no
+		// candidate at any store, and the corpus client stopped as Mixin applied the hook.
+		byte[] mixin = mixin("com/example/mixin/ScreenEffect", false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "renderScreenEffect", "(Ljava/lang/String;Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/String;", null, null);
+			AnnotationVisitor ann = mv.visitAnnotation(MODIFY_VARIABLE, true);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "renderScreenEffect");
+			methods.visitEnd();
+			AnnotationVisitor at = ann.visitAnnotation("at", AT);
+			at.visit("value", "STORE");
+			at.visitEnd();
+			ann.visitEnd();
+			mv.visitCode();
+			mv.visitVarInsn(Opcodes.ALOAD, 0);
+			mv.visitInsn(Opcodes.ARETURN);
+			mv.visitMaxs(1, 3);
+			mv.visitEnd();
+		});
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "ScreenEffect"));
+		Map<String, byte[]> mod = Map.of("com/example/mixin/ScreenEffect", mixin);
+		Function<ScreenEffectBuild, List<PreflightFinding>> check = build -> {
+			try {
+				return preflight(new ClassIndex(Map.of(TARGET, screenEffect(build))::get), mod::get, ClassBytesSource.EMPTY, false)
+						.check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+			} catch (Exception e) {
+				throw new AssertionError(e);
+			}
+		};
+		List<PreflightFinding> found = check.apply(ScreenEffectBuild.NEOFORGE);
+		assertTrue(found.stream().anyMatch(f -> f.message().contains("renderScreenEffect modifies a local of type java.lang.String in renderScreenEffect(Ljava/lang/Object;Ljava/lang/Object;)V"
+				+ " in net.minecraft.world.Thing, which that method doesn't have")), found.toString());
+		assertTrue(check.apply(ScreenEffectBuild.VANILLA).isEmpty(), "vanilla's method stores the state");
+		// Where Mixin would type a local itself, pre-flight doesn't judge: no table, or a value stored without a table entry
+		// whose type the code doesn't show.
+		assertTrue(check.apply(ScreenEffectBuild.NEOFORGE_WITHOUT_TABLE).isEmpty());
+		assertTrue(check.apply(ScreenEffectBuild.NEOFORGE_WITH_AN_UNTYPED_LOCAL).isEmpty());
+	}
+
 	/** PRE-19's game classes: vanilla's, Forge 47's, and Forge 47's with a float local of the patch's before vanilla's. */
 	private enum BreakSpeedBuild {
 		VANILLA, FORGE, FORGE_WITH_A_FLOAT_FIRST

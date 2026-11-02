@@ -34,11 +34,19 @@ import org.objectweb.asm.tree.AnnotationNode;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.FieldInsnNode;
 import org.objectweb.asm.tree.FieldNode;
+import org.objectweb.asm.tree.FrameNode;
 import org.objectweb.asm.tree.InnerClassNode;
 import org.objectweb.asm.tree.InvokeDynamicInsnNode;
+import org.objectweb.asm.tree.LabelNode;
+import org.objectweb.asm.tree.LdcInsnNode;
+import org.objectweb.asm.tree.LineNumberNode;
 import org.objectweb.asm.tree.LocalVariableNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
+import org.objectweb.asm.tree.MultiANewArrayInsnNode;
+import org.objectweb.asm.tree.TryCatchBlockNode;
+import org.objectweb.asm.tree.TypeInsnNode;
+import org.objectweb.asm.tree.VarInsnNode;
 
 /**
  * Static verification of a mixin config against the runtime game bytecode, before any mod code runs.
@@ -1068,6 +1076,20 @@ public final class MixinPreflight extends PreflightPart {
 			return;
 		}
 
+		String absentType = anyFuzzy ? null : absentLocalType(handler, ann, matched, target.name);
+		if (absentType != null) {
+			// At a LOAD or STORE the point matches nothing, which require judges; elsewhere Mixin's discriminator throws as
+			// the injector applies (without an ordinal) or finds nothing (with one), as for unmatchedArgument.
+			boolean loadOrStore = Annotations.list(Annotations.value(ann, "at")).stream()
+					.anyMatch(at -> Annotations.value(at, "value") instanceof String v && (v.equalsIgnoreCase("LOAD") || v.equalsIgnoreCase("STORE")));
+			boolean implicit = !(Annotations.value(ann, "ordinal") instanceof Integer o && o >= 0);
+			ctx.injector(handler, implicit && !loadOrStore ? (ctx.config().required() ? 1 : 0) : require, injectorName + " " + handler.name
+							+ " modifies a local of type " + absentType + " in " + matched.get(0).name + matched.get(0).desc + " in " + target.name.replace('/', '.')
+							+ ", which " + (matched.size() == 1 ? "that method doesn't have" : "none of those methods has"),
+					(ctx.owner() == null ? loader + "'s build of Minecraft" : ctx.changer(true)) + " changed the method body; the mod needs an update or this mixin must be skipped.");
+			return;
+		}
+
 		if (ann.desc.equals(MixinNames.MODIFY_CONSTANT)) {
 			for (AnnotationNode constant : Annotations.list(Annotations.value(ann, "constant"))) {
 				String expected = InjectionPoints.constantDescription(constant);
@@ -1319,6 +1341,137 @@ public final class MixinPreflight extends PreflightPart {
 			if (ordinal >= 0 ? count > ordinal : count == 1) return null;
 		}
 		return ordinal >= 0 ? "argument " + ordinal + " among those of type " + type.getClassName() : "the only argument of type " + type.getClassName();
+	}
+
+	/**
+	 * The type of the local a {@code @ModifyVariable} picks by its type alone (as the only local of that type where it
+	 * applies, or by an ordinal among them) where no target method can have a local of that type anywhere, as Mixin
+	 * sees its locals ({@link #noLocalOfType}); null where one may, where the handler names the local or its slot, or
+	 * where it looks only at the arguments ({@link #unmatchedArgument}). Mixin's discriminator then finds no candidate
+	 * at any point: at a {@code LOAD} or {@code STORE} the point matches nothing ("has invalid IMPLICIT discriminator
+	 * ... Found 0 candidate variables but exactly 1 is required"). Puzzles Lib's screen effect hook modifies the block
+	 * state vanilla's {@code ScreenEffectRenderer.renderScreenEffect} stores; NeoForge's 1.21.1 build keeps the state and
+	 * its position in a pair instead, and the 1.21.1 corpus client stopped as Mixin applied it (CORPUS-54). Only
+	 * reference types are judged: a primitive local's type isn't read off the code as plainly.
+	 */
+	static String absentLocalType(MethodNode handler, AnnotationNode injector, List<MethodNode> targets, String owner) {
+		if (!injector.desc.equals(MixinNames.MODIFY_VARIABLE) || targets.isEmpty() || Boolean.TRUE.equals(Annotations.value(injector, "argsOnly"))
+				|| Annotations.value(injector, "name") != null || Annotations.value(injector, "index") instanceof Integer index && index >= 0
+				|| Boolean.TRUE.equals(Annotations.value(injector, "print"))) return null;
+		Type type = Type.getReturnType(handler.desc);
+		if (type.getSort() != Type.OBJECT && type.getSort() != Type.ARRAY) return null;
+		for (MethodNode m : targets) {
+			if (!noLocalOfType(type, m, owner)) return null;
+		}
+		return type.getClassName();
+	}
+
+	/**
+	 * Whether no local of the reference type {@code type} can be among {@code method}'s locals as Mixin builds them
+	 * ({@code Locals.getLocalsAt}): from its arguments, its local variable table, and, where that table doesn't cover a
+	 * slot, a table Mixin generates from the values the code stores. So the arguments and the table must name none of
+	 * that type, and each value stored in a local must have a type read off the instruction that makes it (a call, a
+	 * field read, a cast, a new object, a constant, another local the table types, a caught exception), never that
+	 * type, and one type per slot (Mixin's generated table merges a slot's types into their common superclass). False
+	 * where that can't be shown: no local variable table (as Mojang ships the game), a value made otherwise.
+	 */
+	static boolean noLocalOfType(Type type, MethodNode method, String owner) {
+		if (method.instructions == null || method.instructions.size() == 0 || method.localVariables == null || method.localVariables.isEmpty()) return false;
+		if (List.of(Type.getArgumentTypes(method.desc)).contains(type)) return false;
+		for (LocalVariableNode local : method.localVariables) {
+			if (local.desc.equals(type.getDescriptor())) return false;
+		}
+		Map<AbstractInsnNode, String> handlers = new HashMap<>();
+		for (TryCatchBlockNode block : method.tryCatchBlocks) {
+			String caught = block.type == null ? "java/lang/Throwable" : block.type;
+			String previous = handlers.putIfAbsent(block.handler, caught);
+			if (previous != null && !previous.equals(caught)) handlers.put(block.handler, null);
+		}
+		boolean isStatic = (method.access & Opcodes.ACC_STATIC) != 0;
+		int argSlots = isStatic ? 0 : 1;
+		for (Type arg : Type.getArgumentTypes(method.desc)) argSlots += arg.getSize();
+		Map<Integer, Type> slotTypes = new HashMap<>();
+		for (int i = 0; i < method.instructions.size(); i++) {
+			AbstractInsnNode insn = method.instructions.get(i);
+			if (insn.getOpcode() != Opcodes.ASTORE) continue;
+			int slot = ((VarInsnNode) insn).var;
+			Type stored = storedType(method, i, owner, isStatic, argSlots, handlers);
+			if (stored == null || stored.equals(type)) return false;
+			if (stored.getSort() == Type.VOID) continue; // null
+			Type before = slotTypes.putIfAbsent(slot, stored);
+			if (before != null && !before.equals(stored)) return false;
+		}
+		return true;
+	}
+
+	/**
+	 * The type of the value the {@code ASTORE} at {@code index} stores, read off the instruction right before it (none
+	 * in between but line numbers); {@code VOID} for null, null where it can't be read off that plainly.
+	 */
+	private static Type storedType(MethodNode method, int index, String owner, boolean isStatic, int argSlots, Map<AbstractInsnNode, String> handlers) {
+		AbstractInsnNode producer = method.instructions.get(index).getPrevious();
+		while (producer instanceof LineNumberNode) producer = producer.getPrevious();
+		if (producer instanceof FrameNode) {
+			// A caught exception, stored where its handler starts.
+			AbstractInsnNode label = producer.getPrevious();
+			while (label instanceof LineNumberNode) label = label.getPrevious();
+			String caught = label instanceof LabelNode ? handlers.get(label) : null;
+			return caught == null ? null : Type.getObjectType(caught);
+		}
+		if (producer instanceof LabelNode) {
+			String caught = handlers.get(producer);
+			return caught == null ? null : Type.getObjectType(caught);
+		}
+		if (producer == null) return null;
+		switch (producer.getOpcode()) {
+			case Opcodes.ACONST_NULL:
+				return Type.VOID_TYPE;
+			case Opcodes.INVOKEVIRTUAL:
+			case Opcodes.INVOKESTATIC:
+			case Opcodes.INVOKEINTERFACE:
+				return Type.getReturnType(((MethodInsnNode) producer).desc);
+			case Opcodes.INVOKESPECIAL: {
+				MethodInsnNode call = (MethodInsnNode) producer;
+				return call.name.equals("<init>") ? Type.getObjectType(call.owner) : Type.getReturnType(call.desc);
+			}
+			case Opcodes.INVOKEDYNAMIC:
+				return Type.getReturnType(((InvokeDynamicInsnNode) producer).desc);
+			case Opcodes.GETFIELD:
+			case Opcodes.GETSTATIC:
+				return Type.getType(((FieldInsnNode) producer).desc);
+			case Opcodes.CHECKCAST:
+				return Type.getObjectType(((TypeInsnNode) producer).desc);
+			case Opcodes.ANEWARRAY:
+				return Type.getType("[" + Type.getObjectType(((TypeInsnNode) producer).desc).getDescriptor());
+			case Opcodes.MULTIANEWARRAY:
+				return Type.getType(((MultiANewArrayInsnNode) producer).desc);
+			case Opcodes.LDC: {
+				Object constant = ((LdcInsnNode) producer).cst;
+				if (constant instanceof String) return Type.getType(String.class);
+				if (constant instanceof Type t) return Type.getObjectType(t.getSort() == Type.METHOD ? "java/lang/invoke/MethodType" : "java/lang/Class");
+				if (constant instanceof Handle) return Type.getObjectType("java/lang/invoke/MethodHandle");
+				return null;
+			}
+			case Opcodes.ALOAD: {
+				int slot = ((VarInsnNode) producer).var;
+				int at = method.instructions.indexOf(producer);
+				for (LocalVariableNode local : method.localVariables) {
+					if (local.index == slot && method.instructions.indexOf(local.start) <= at && method.instructions.indexOf(local.end) > at) {
+						return Type.getType(local.desc);
+					}
+				}
+				if (!isStatic && slot == 0) return Type.getObjectType(owner);
+				if (slot >= argSlots) return null;
+				int arg = isStatic ? 0 : 1;
+				for (Type argType : Type.getArgumentTypes(method.desc)) {
+					if (arg == slot) return argType;
+					arg += argType.getSize();
+				}
+				return null;
+			}
+			default:
+				return null;
+		}
 	}
 
 	/**
