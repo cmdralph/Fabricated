@@ -14,6 +14,7 @@
     "MinecraftServerMixin",
     "PlayerListViewMixin",
     "ChunkGeneratorFeaturesMixin",
+    "CrashReportMixin",
     "ReloadableServerResourcesMixin",
     "ResourceMixin",
     "MappedRegistryMixin",

@@ -33,6 +33,7 @@ import io.github.cmdralph.fabricated.core.metadata.CustomValueImpl;
 import io.github.cmdralph.fabricated.core.metadata.FabricModMetadata;
 import io.github.cmdralph.fabricated.core.metadata.FabricModMetadata.EntrypointSpec;
 import io.github.cmdralph.fabricated.core.mixin.MixinConfigFile;
+import io.github.cmdralph.fabricated.core.mixin.MixinFailures;
 import io.github.cmdralph.fabricated.core.mixin.PreflightFinding;
 import io.github.cmdralph.fabricated.core.mixin.PreflightFinding.Severity;
 import io.github.cmdralph.fabricated.core.mixin.RestoredFields;
@@ -281,6 +282,8 @@ public final class Pipeline {
 	private static final CompatPlan COMPAT = CompatPlan.builtin();
 	/** The report's section of the mixins the linkage analysis left out. */
 	private static final String NEEDING_UNLOADED = "Mixins left out (they need a Fabric mod that isn't loading)";
+	/** The report's section of the mixins left out as they failed in the last launch, as Mixin applied them (APPLY-1). */
+	static final String FAILED_LAST_LAUNCH = "Mixins left out (they failed as Mixin applied them in the last launch)";
 
 	/** A mod the platform provides (Minecraft, Java, Fabric Loader, Fabricated, native Fabric API modules). */
 	private record Builtin(String id, String version, String name, List<String> aliases) {
@@ -306,6 +309,8 @@ public final class Pipeline {
 	private final List<Candidate> otherSide = new ArrayList<>();
 	/** Compat patches already reported as ignored ("mod target"): patches are worked out again every round. */
 	private final Set<String> ignoredPatches = new HashSet<>();
+	/** The mixins that failed as Mixin applied them in an earlier launch, by Fabric mod id: each one's {@code skipMixins} entry and why. */
+	private final Map<String, Map<String, String>> failedLastLaunch = new HashMap<>();
 
 	private Pipeline(Input in) {
 		this.in = in;
@@ -356,6 +361,15 @@ public final class Pipeline {
 		return new Pipeline(in).run();
 	}
 
+	/**
+	 * Where this launch records a Fabric mod's mixin that fails as Mixin applies it, for the next to leave out
+	 * (APPLY-1): the platform's glue records it as the launch stops; {@link #run} reads it.
+	 */
+	public static MixinFailures.Log mixinFailures(Input in) {
+		return new MixinFailures.Log(MixinFailures.file(in.gameDir()),
+				new MixinFailures.Launch(in.fabricatedVersion(), in.fabricatedBuild(), in.minecraftVersion(), in.neoForgeVersion()));
+	}
+
 	private static List<Builtin> builtins(Input in, Set<String> providedElsewhere) {
 		List<Builtin> list = new ArrayList<>();
 		list.add(new Builtin("minecraft", in.minecraftVersion(), "Minecraft", List.of()));
@@ -391,6 +405,7 @@ public final class Pipeline {
 		scan.rejected().forEach(r -> report.mod(new ModRow(r.origin(), "", "", Status.REJECTED, r.reason(), "Make sure this is an unmodified Fabric mod jar for this Minecraft version.")));
 		scan.notes().forEach(n -> report.line("Discovery notes", n));
 		List<Candidate> eligible = filter(scan.candidates());
+		loadMixinFailures(scan.candidates());
 		for (FabricApiPlan.Module m : plan.modules().values()) {
 			NeoForgeMod provider = providedElsewhere.get(m.id());
 			if (provider != null) {
@@ -644,6 +659,20 @@ public final class Pipeline {
 		return resolver;
 	}
 
+	/**
+	 * The mixins that failed as Mixin applied them in an earlier launch, with this launch's builds and the mods' jars
+	 * (APPLY-1): each translation leaves them out.
+	 */
+	private void loadMixinFailures(List<Candidate> scanned) {
+		Map<String, String> jars = new HashMap<>();
+		for (Candidate c : scanned) jars.put(c.id(), c.sha256());
+		List<String> notes = new ArrayList<>();
+		for (MixinFailures.Failure f : mixinFailures(in).load(jars, notes)) {
+			failedLastLaunch.computeIfAbsent(f.mod(), k -> new TreeMap<>()).put(f.mixin(), f.reason());
+		}
+		notes.forEach(n -> report.line(FAILED_LAST_LAUNCH, n));
+	}
+
 	/** What to tell the player when a dependency on {@code id} is missing. */
 	private Map<String, String> missingHints() {
 		Map<String, String> hints = new HashMap<>();
@@ -727,7 +756,8 @@ public final class Pipeline {
 			mods.parallelStream().forEach(c -> {
 				try {
 					FabricApiPlan.Module module = plan.module(c.id());
-					Set<String> leftOut = leftOutMixins.getOrDefault(c.id(), Map.of()).keySet();
+					Set<String> leftOut = new TreeSet<>(leftOutMixins.getOrDefault(c.id(), Map.of()).keySet());
+					leftOut.addAll(failedLastLaunch.getOrDefault(c.id(), Map.of()).keySet());
 					// Fabricated's skips, unlike the player's, are never reported as matching no mixin.
 					Set<String> planned = new TreeSet<>(leftOut);
 					if (module != null) planned.addAll(module.skipMixins());
@@ -1029,6 +1059,7 @@ public final class Pipeline {
 	private void reportLoaded(TranslatedMod t, Long millis, PackageGuard.Decision decision, List<String> linkageIssues, Map<String, String> leftOutMixins) {
 		Candidate c = t.candidate();
 		String loader = in.descriptor().loaderName();
+		Map<String, String> failed = failedLastLaunch.getOrDefault(c.id(), Map.of());
 		long leftOut = t.findings().stream().filter(f -> f.severity() == Severity.LEFT_OUT).map(f -> f.config() + " " + f.mixin()).distinct().count();
 		String detail = (millis == null ? "cached" : "translated in " + millis + " ms")
 				+ (t.accessTransformers() > 0 ? ", " + t.accessTransformers() + " access transformer(s)" : "")
@@ -1036,13 +1067,18 @@ public final class Pipeline {
 				+ (leftOut == 0 ? "" : ", " + leftOut + " mixin(s) left out in whole or in part, so the features they hook in for don't work (see "
 						+ leftOutSection(loader) + ")")
 				+ (leftOutMixins.isEmpty() ? "" : ", " + leftOutMixins.size() + " mixin(s) left out that need a Fabric mod that isn't loading (see "
-						+ NEEDING_UNLOADED + ")");
+						+ NEEDING_UNLOADED + ")")
+				+ (failed.isEmpty() ? "" : ", " + failed.size() + " mixin(s) left out that failed as Mixin applied them in the last launch (see "
+						+ FAILED_LAST_LAUNCH + ")");
 		report.mod(new ModRow(c.id(), c.version(), c.origin(), Status.LOADED, detail, ""));
 		for (PreflightFinding f : t.findings()) {
 			String line = c.id() + ": " + f + (f.suggestion().isEmpty() ? "" : " - " + f.suggestion());
 			report.line(f.severity() == Severity.LEFT_OUT ? leftOutSection(loader) : "Mixin pre-flight warnings", line);
 		}
 		leftOutMixins.values().forEach(issue -> report.line(NEEDING_UNLOADED, c.id() + ": " + issue.substring(issue.indexOf("] ") + 2)));
+		failed.forEach((mixin, why) -> report.line(FAILED_LAST_LAUNCH, c.id() + ": " + mixin + " failed as Mixin applied it in the last launch ("
+				+ why + "). It is left out until this mod's jar, Fabricated, Minecraft or " + loader + " changes; delete .fabricated/"
+				+ MixinFailures.FILE_NAME + " to try it again, and report it to Fabricated with this report."));
 		for (String n : t.notes()) report.line("Translation notes", c.id() + ": " + n);
 		FabricApiPlan.Module planned = plan.module(c.id());
 		if (planned != null && !planned.skipMixins().isEmpty()) {

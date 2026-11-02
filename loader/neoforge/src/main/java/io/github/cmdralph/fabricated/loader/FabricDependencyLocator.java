@@ -37,6 +37,7 @@ import io.github.cmdralph.fabricated.core.config.FabricatedConfig;
 import io.github.cmdralph.fabricated.core.json.JsonException;
 import io.github.cmdralph.fabricated.core.metadata.ModIds;
 import io.github.cmdralph.fabricated.core.mixin.MixinConfigFile;
+import io.github.cmdralph.fabricated.core.mixin.MixinFailures;
 import io.github.cmdralph.fabricated.core.mixin.PreflightFinding;
 import io.github.cmdralph.fabricated.core.remap.MappingException;
 import io.github.cmdralph.fabricated.core.remap.OfficialClasses;
@@ -171,6 +172,7 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 		Overlay gameModOverlay = null;
 		FabricApiPlan plan;
 		Pipeline.Result result;
+		MixinFailures.Log mixinFailures;
 		// Vanilla's game jar, which pre-flight reads to tell where NeoForge's patches moved an injection point (VANILLA-1),
 		// only where its names are the game's.
 		List<SafeArchive> vanillaJars = new ArrayList<>();
@@ -260,6 +262,7 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 					Fml.programArgs(), PlatformDescriptor.NEOFORGE);
 
 			result = Pipeline.run(input);
+			mixinFailures = Pipeline.mixinFailures(input);
 			FabricLoaderApiCopies.notes().forEach(n -> result.report().line("Fabric Loader API", n));
 			providerNotes.forEach(n -> result.report().line("Fabric API providers", n));
 			if (standDown != null && !standDown.isEmpty()) {
@@ -273,7 +276,7 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 		// Fabric entrypoints run when Fabricated's in-game mod loads: always in development, else when there is anything Fabric.
 		boolean addGameMod = gameModJar != null && (!result.mods().isEmpty() || !fabricJars.isEmpty());
 		FabricatedApiImpl api = new FabricatedApiImpl(info.fabricatedVersion(), plan, result.report(), result.runtime(), devGameMod.isPresent() || addGameMod);
-		FabricatedState state = new FabricatedState(result, logsDir, api);
+		FabricatedState state = new FabricatedState(result, logsDir, api, mixinFailures);
 		FabricatedState.set(state);
 		ApiHolder.install(api);
 
@@ -298,7 +301,7 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 		}
 		if (!refused.isEmpty()) {
 			// Nor may its interfaces be injected into game classes: they would fail to load, with the class missing.
-			state = new FabricatedState(result.without(refused), logsDir, api);
+			state = new FabricatedState(result.without(refused), logsDir, api, mixinFailures);
 			FabricatedState.set(state);
 		}
 		if (addGameMod && gameModOverlay == null) {

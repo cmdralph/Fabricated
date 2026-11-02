@@ -286,6 +286,13 @@ jobs:
               ci/neoforge/smoke-server.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/server-refuse-connector" "$RUNNER_TEMP/refuse-connector"
           SMOKE_TESTMODS=none SMOKE_TIMEOUT=300 SMOKE_EXPECT_REFUSAL="2 Fabricated jars (fabricated-0.0.1+mc${{ matrix.target.minecraft }}.jar" \
               ci/neoforge/smoke-server.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/server-refuse-twice" "$RUNNER_TEMP/refuse-twice"
+      # The safety net for a Fabric mod's mixin that fails as Mixin applies it, which pre-flight passed (APPLY-1): with
+      # pre-flight's findings ignored for the impossible-mixin test mod, each of its two mixins stops a launch and is
+      # recorded (one through Mixin's error handlers, one an injector's critical failure past them), the next launch
+      # leaves it out and says so, and the third starts.
+      - name: Server leaving out a mixin that failed as Mixin applied it in the last launch
+        if: ${{ matrix.part == 'server' && !cancelled() && steps.build.outcome == 'success' }}
+        run: ci/neoforge/smoke-apply-failure.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/server-apply-failure"
       # The real ones, newest builds from Modrinth (downloaded here in CI): Forgified Fabric API (its module jars nested,
       # with Forgified Fabric Loader) where it has a build for the version, Kotlin for Forge with Fabric Language
       # Kotlin, which bundle different Kotlin versions. The server must start, as no package two mods share may stop
@@ -327,6 +334,9 @@ jobs:
             ${{ runner.temp }}/server-standins/server-warm.out
             ${{ runner.temp }}/server-coexist/logs
             ${{ runner.temp }}/server-coexist/server.out
+            ${{ runner.temp }}/server-apply-failure/logs
+            ${{ runner.temp }}/server-apply-failure/server-*.out
+            ${{ runner.temp }}/server-apply-failure/.fabricated/mixin-failures.json
           if-no-files-found: ignore
       # Client: a real NeoForge client started headlessly (Xvfb), which joins a singleplayer world.
       # 26.3+ open their window with SDL3 over EGL, which needs Mesa's EGL library (not on the runner image).

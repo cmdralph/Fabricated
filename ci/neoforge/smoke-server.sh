@@ -221,6 +221,7 @@ check "FABRICATED-TEST environment stripping OK" server.out "@EnvironmentInterfa
 check "fabricated-testmod-missing" logs/fabric-bridge-report.txt "missing dependency reported"
 check "fabricated-library-that-does-not-exist" logs/fabric-bridge-report.txt "missing dependency named"
 check "LEFT_OUT .*ImpossibleMixin.*fabricatedMethodThatDoesNotExist" logs/fabric-bridge-report.txt "impossible mixin caught by pre-flight and left out"
+check "LEFT_OUT .*UnmatchedCallMixin.*fabricatedCallThatIsNeverMade" logs/fabric-bridge-report.txt "mixin at a call its method never makes caught by pre-flight and left out"
 check "intentional failure for Fabricated CI" logs/fabric-bridge-report.txt "throwing entrypoint isolated"
 check "built but never registered, left by a Fabric mod whose entrypoint failed" logs/fabric-bridge-report.txt "the holder the throwing mod left is dropped at the registries' freeze, with an error (CORPUS-42)"
 # The mods ci/neoforge/standins.py writes, which share the game with Fabricated: every check gates their run.

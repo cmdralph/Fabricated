@@ -37,6 +37,7 @@ import io.github.cmdralph.fabricated.api.FabricMod;
 import io.github.cmdralph.fabricated.core.accesswidener.AccessWidenerFile.InjectedInterface;
 import io.github.cmdralph.fabricated.core.api.FabricatedApiImpl;
 import io.github.cmdralph.fabricated.core.archive.ArchiveLimits;
+import io.github.cmdralph.fabricated.core.archive.Hashing;
 import io.github.cmdralph.fabricated.core.archive.SafeArchive;
 import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
 import io.github.cmdralph.fabricated.core.bytecode.InstalledClasses;
@@ -44,6 +45,7 @@ import io.github.cmdralph.fabricated.core.cache.TranslationCache;
 import io.github.cmdralph.fabricated.core.config.FabricatedConfig;
 import io.github.cmdralph.fabricated.core.json.Json;
 import io.github.cmdralph.fabricated.core.metadata.FabricModJsonParser;
+import io.github.cmdralph.fabricated.core.mixin.MixinFailures;
 import io.github.cmdralph.fabricated.core.remap.MappingComposer;
 import io.github.cmdralph.fabricated.core.remap.MappingTable;
 import io.github.cmdralph.fabricated.core.report.Report;
@@ -1991,6 +1993,49 @@ class PipelineTest {
 			new ClassReader(overlay.read("com/partial/mixin/Stateless.class")).accept(stateless, 0);
 			assertTrue(stateless.methods.stream().noneMatch(m -> m.name.equals("handler")), "its failing injector is left out");
 		}
+	}
+
+	/**
+	 * A mixin that failed as Mixin applied it in the last launch, which pre-flight passed, is left out of its config
+	 * the next (APPLY-1); the report says so, in the mod's row too. Once the mod's jar changes it is tried again.
+	 */
+	@Test
+	void aMixinThatFailedAsMixinAppliedItIsLeftOutTheNextLaunch(@TempDir Path game) throws Exception {
+		Path jar = TestJars.create().fabricModJson(TestJars.modJson("failing-mod", "1.0", "\"mixins\":[\"failing.mixins.json\"]"))
+				.text("failing.mixins.json", "{\"required\":true,\"package\":\"com.failing.mixin\",\"mixins\":[\"Works\",\"Failed\"]}")
+				.bytes("com/failing/mixin/Works.class", mixinClass("com/failing/mixin/Works", "tick"))
+				.bytes("com/failing/mixin/Failed.class", mixinClass("com/failing/mixin/Failed", "tick"))
+				.write(game.resolve("mods/failing.jar"));
+		Pipeline.Input in = input(game, List.of(jar), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null);
+		List<String> notes = new ArrayList<>();
+		assertTrue(Pipeline.mixinFailures(in).record(new MixinFailures.Failure("failing-mod", Hashing.sha256(jar), "failing.mixins.json:Failed",
+				"InvalidInjectionException: it failed"), notes), notes.toString());
+
+		Pipeline.Result result = Pipeline.run(in);
+		String report = result.report().render();
+		assertTrue(result.runtime().isModLoaded("failing-mod"), report);
+		assertTrue(report.contains(Pipeline.FAILED_LAST_LAUNCH), report);
+		assertTrue(report.contains("failing-mod: failing.mixins.json:Failed failed as Mixin applied it in the last launch (InvalidInjectionException: it failed)"),
+				report);
+		Report.ModRow row = result.report().mods().stream().filter(r -> r.id().equals("failing-mod")).findFirst().orElseThrow();
+		assertTrue(row.detail().contains("1 mixin(s) left out that failed as Mixin applied them in the last launch"), row.detail());
+		assertFalse(report.contains("names no mixin of this mod"), report);
+		try (SafeArchive overlay = SafeArchive.open(result.mods().getFirst().translated().overlay(), ArchiveLimits.DEFAULTS)) {
+			String config = new String(overlay.read("failing.mixins.json"), StandardCharsets.UTF_8);
+			assertTrue(config.contains("Works") && !config.contains("Failed"), config);
+		}
+
+		// Another jar of the mod: the mixin is tried again, and the record goes.
+		TestJars.create().fabricModJson(TestJars.modJson("failing-mod", "1.1", "\"mixins\":[\"failing.mixins.json\"]"))
+				.text("failing.mixins.json", "{\"required\":true,\"package\":\"com.failing.mixin\",\"mixins\":[\"Works\",\"Failed\"]}")
+				.bytes("com/failing/mixin/Works.class", mixinClass("com/failing/mixin/Works", "tick"))
+				.bytes("com/failing/mixin/Failed.class", mixinClass("com/failing/mixin/Failed", "tick"))
+				.write(jar);
+		result = Pipeline.run(input(game, List.of(jar), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
+		assertFalse(result.report().render().contains(Pipeline.FAILED_LAST_LAUNCH), result.report().render());
+		assertFalse(Files.exists(MixinFailures.file(game)));
+		Report.ModRow again = result.report().mods().stream().filter(r -> r.id().equals("failing-mod")).findFirst().orElseThrow();
+		assertFalse(again.detail().contains("failed as Mixin applied them"), again.detail());
 	}
 
 	@Test
