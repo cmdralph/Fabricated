@@ -58,8 +58,9 @@ dependencies {
 ext.passThroughCompileModules = ['fabric-events-interaction-v0', 'fabric-entity-events-v1', 'fabric-transfer-api-v1', 'fabric-api-lookup-api-v1',
         'fabric-screen-api-v1']
 // The Fabric API modules the client test mod (src/testmodfrapi, 26.x) calls beyond mc.gradle's own list: the lifecycle
-// events, which NeoForge's in-game mod ships and Forge passes through.
-ext.passThroughTestmodfrapiModules = ['fabric-lifecycle-events-v1']
+// events and networking (the renderer test's server side places its blocks as a player joins), which NeoForge's in-game
+// mod ships and Forge passes through.
+ext.passThroughTestmodfrapiModules = ['fabric-lifecycle-events-v1', 'fabric-networking-api-v1']
 
 expandProps.forge_version_range = project.forge_version_range
 

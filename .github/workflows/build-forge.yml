@@ -113,13 +113,13 @@ jobs:
       - name: Forge libraries on the compile classpath (informational)
         run: ./gradlew -Pfabricated.platforms=forge --configure-on-demand :mc:forge-${{ matrix.target.minecraft }}:forgeClasspathReport || true
       # With the test mod that fails on purpose (mc/shared/src/testmodbroken), which the server runs beside it (HOLD-2),
-      # and on 26.x the test mod for Fabric API's client modules (mc/forge/common26/src/testmodfrapi), which the client
-      # run with Fabric API loads.
+      # and the test mod for Fabric API's client modules and renderer (src/testmodfrapi: mc/forge/common26's on 26.x, the
+      # version's own on 1.21.11), which the client run with Fabric API loads.
       - name: Build Fabricated and the test mods
         run: >-
           ./gradlew -Pfabricated.platforms=forge --configure-on-demand :mc:forge-${{ matrix.target.minecraft }}:fabricatedJar
           :mc:forge-${{ matrix.target.minecraft }}:testmodJar :mc:forge-${{ matrix.target.minecraft }}:testmodThrowsJar
-          ${{ startsWith(matrix.target.minecraft, '26.') && format(':mc:forge-{0}:testmodFrapiJar', matrix.target.minecraft) || '' }} --stacktrace
+          :mc:forge-${{ matrix.target.minecraft }}:testmodFrapiJar --stacktrace
       - name: Check the jar's layout for Forge
         run: ./gradlew -Pfabricated.platforms=forge --configure-on-demand :mc:forge-${{ matrix.target.minecraft }}:checkForgeJar --stacktrace
       # Forge 61 (1.21.11) runs on Java 21, Forge 64 to 66 (26.x) on Java 25 (each version's java_version).
@@ -193,9 +193,8 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/extra-client"
           cp "$RUNNER_TEMP/extra/fabric-api.jar" "$RUNNER_TEMP/extra-client/"
-          if [[ "${{ matrix.target.minecraft }}" == 26.* ]]; then
-            cp mc/forge/${{ matrix.target.minecraft }}/build/testmods/fabricated-testmod-frapi.jar "$RUNNER_TEMP/extra-client/"
-          fi
+          # The renderer test mod (task 4, R5) on every version, with the client API checks on 26.x.
+          cp mc/forge/${{ matrix.target.minecraft }}/build/testmods/fabricated-testmod-frapi.jar "$RUNNER_TEMP/extra-client/"
           ci/forge/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-fapi" "$RUNNER_TEMP/extra-client"
       # Popular Fabric mods from Modrinth (ci/mod-corpus.txt, downloaded here in CI and checked against Modrinth's
       # SHA-512) with Fabric API, as build.yml runs them on NeoForge: which load on Forge, which are disabled and why.

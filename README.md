@@ -92,14 +92,19 @@ refusing a player's use or attack of an item, a block or an entity is heard, as 
 - **Storages:** a Fabric mod's item and fluid storages are the item and fluid handlers of its block entity, which Forge
   mods' hoppers and pipes reach, and a Forge mod's handlers are storages to Fabric mods. A Forge handler moves items
   only once Fabric's transaction commits. Tank items cross both ways too. A fluid carrying data doesn't cross.
+- **Fabric's renderer API:** Fabric block models are drawn in the world, as moving blocks, with the breaking overlay
+  and as an entity's block, and Fabric item models wherever items are drawn; on 1.21.11 Fabricated sends the three
+  that Forge's code moved to Fabric's renderer itself. A Fabric model that throws while drawn fails alone: it is drawn
+  from its parts and named once in the log and the report (FRAPI rule 8).
 
 ## Not supported on Forge
 
 [`docs/FORGE.md`](/docs/FORGE.md) lists what Fabric mods can't rely on here, under *Unsupported on Forge*, with the
 task that takes each on. The main ones:
 
-- **Rendering hooks Forge's code can't take** (task 4): some of Indigo's and the renderer API's, and on 1.21.11 a GUI
-  renderer hook and the block outline hook of `fabric-rendering-v1`.
+- **Rendering hooks Forge's code can't take** (task 5): a Fabric model's particle sprite for the screen effect inside
+  a block and for block markers, and on 1.21.11 a GUI renderer hook and the block outline hook of
+  `fabric-rendering-v1`.
 - **Item storages in items** (task 5): a Fabric mod's item storage in an item (a backpack's) and Forge's item handler on
   a stack don't see each other; fluids in items do.
 - **Fabric mods' own HUD mixins** (task 5): a mixin at one of vanilla's calls inside the HUD method applies but never
