@@ -2363,6 +2363,96 @@ class MixinPreflightTest {
 	}
 
 	@Test
+	void aHandlerInARegistrysFreezeReturnsAtOnceInAFreezeBeforeTheMainEntrypoints() throws Exception {
+		// REG-8: Flashback's @Inject at freeze's HEAD calls Flashback while the registry isn't frozen, which starts it; at
+		// NeoForge's bootstrap freeze its start-up found no client. On Fabric no freeze comes before Fabric mods' main
+		// entrypoints.
+		String registry = "net/minecraft/core/MappedRegistry";
+		String callback = "Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;";
+		ClassWriter target = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		target.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, registry, null, "java/lang/Object", null);
+		target.visitField(Opcodes.ACC_PRIVATE, "frozen", "Z", null, null).visitEnd();
+		for (String[] method : new String[][] {{"freeze", "()Lnet/minecraft/core/Registry;"}, {"size", "()I"}}) {
+			MethodVisitor mv = target.visitMethod(Opcodes.ACC_PUBLIC, method[0], method[1], null, null);
+			mv.visitCode();
+			mv.visitInsn(method[0].equals("size") ? Opcodes.ICONST_0 : Opcodes.ACONST_NULL);
+			mv.visitInsn(method[0].equals("size") ? Opcodes.IRETURN : Opcodes.ARETURN);
+			mv.visitMaxs(0, 0);
+			mv.visitEnd();
+		}
+		target.visitEnd();
+		ClassIndex game = new ClassIndex(Map.of(registry, target.toByteArray())::get);
+
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, "com/example/mixin/Lenient", null, "java/lang/Object", null);
+		AnnotationVisitor m = cw.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false);
+		AnnotationVisitor values = m.visitArray("value");
+		values.visit(null, Type.getObjectType(registry));
+		values.visitEnd();
+		m.visitEnd();
+		cw.visitField(Opcodes.ACC_PRIVATE, "frozen", "Z", null, null).visitAnnotation(SHADOW, false).visitEnd();
+		for (String[] handler : new String[][] {{"onFreeze", "freeze", callback}, {"onSize", "size", callback}}) {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC, handler[0], "(" + handler[2] + ")V", null, null);
+			AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, handler[1]);
+			methods.visitEnd();
+			AnnotationVisitor ats = ann.visitArray("at");
+			ats.visitAnnotation(null, AT).visit("value", "HEAD");
+			ats.visitEnd();
+			ann.visitEnd();
+			mv.visitCode();
+			// if (!this.frozen) count(); as Flashback's handler reads its registry's field first
+			org.objectweb.asm.Label done = new org.objectweb.asm.Label();
+			mv.visitVarInsn(Opcodes.ALOAD, 0);
+			mv.visitFieldInsn(Opcodes.GETFIELD, "com/example/mixin/Lenient", "frozen", "Z");
+			mv.visitJumpInsn(Opcodes.IFNE, done);
+			mv.visitMethodInsn(Opcodes.INVOKESTATIC, "com/example/Mod", "start", "()V", false);
+			mv.visitLabel(done);
+			mv.visitInsn(Opcodes.RETURN);
+			mv.visitMaxs(0, 0);
+			mv.visitEnd();
+		}
+		cw.visitEnd();
+		byte[] lenient = cw.toByteArray();
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Lenient", lenient));
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Lenient"));
+
+		List<PreflightFinding> notes = new ArrayList<>();
+		byte[] repaired = preflight(game, mod::get, ClassBytesSource.EMPTY, false).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes)
+				.get("com/example/mixin/Lenient.class");
+		assertNotNull(repaired, notes.toString());
+		assertEquals(1, notes.size(), notes.toString());
+		assertEquals(PreflightFinding.Severity.INFO, notes.get(0).severity());
+		assertTrue(notes.get(0).message().startsWith("@Inject onFreeze runs as a registry freezes"), notes.toString());
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired).accept(node, 0);
+		MethodNode onFreeze = node.methods.stream().filter(mn -> mn.name.equals("onFreeze")).findFirst().orElseThrow();
+		AbstractInsnNode first = onFreeze.instructions.getFirst();
+		while (first.getOpcode() < 0) first = first.getNext();
+		assertTrue(first instanceof MethodInsnNode call && call.owner.equals("io/github/cmdralph/fabricated/loader/EarlyFreeze")
+				&& call.name.equals("running") && call.desc.equals("()Z"), "the check comes first");
+		assertEquals(Opcodes.IFEQ, first.getNext().getOpcode());
+		assertEquals(Opcodes.RETURN, first.getNext().getNext().getOpcode());
+		MethodNode onSize = node.methods.stream().filter(mn -> mn.name.equals("onSize")).findFirst().orElseThrow();
+		for (AbstractInsnNode insn : onSize.instructions) {
+			assertFalse(insn instanceof MethodInsnNode call && call.owner.equals("io/github/cmdralph/fabricated/loader/EarlyFreeze"), "only freeze's handler");
+		}
+		// The frames still fit the code: the JVM verifies the class as it initialises it.
+		ClassLoader loader = new ClassLoader(getClass().getClassLoader()) {
+			@Override
+			protected Class<?> findClass(String name) throws ClassNotFoundException {
+				if (!name.equals("com.example.mixin.Lenient")) throw new ClassNotFoundException(name);
+				return defineClass(name, repaired, 0, repaired.length);
+			}
+		};
+		Class.forName("com.example.mixin.Lenient", true, loader);
+		mod.put("com/example/mixin/Lenient", repaired);
+		List<PreflightFinding> after = preflight(game, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(after.isEmpty(), after.toString());
+	}
+
+	@Test
 	void anInjectionIntoAMethodNeoForgeDeprecatedIsPointedAtItsReplacement() throws Exception {
 		// DEPRECATED-1: FrozenLib hooks BoneMealItem.growCrop, which NeoForge's build deprecates for applyBonemeal, taking
 		// the player too, and keeps only to call that on a server level (a jump, so no plain overload).

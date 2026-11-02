@@ -17,12 +17,19 @@ import io.github.cmdralph.fabricated.core.mixin.MixinPreflight.Context;
 
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.Opcodes;
+import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.AnnotationNode;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.FieldInsnNode;
 import org.objectweb.asm.tree.FieldNode;
+import org.objectweb.asm.tree.FrameNode;
 import org.objectweb.asm.tree.InnerClassNode;
+import org.objectweb.asm.tree.InsnList;
+import org.objectweb.asm.tree.InsnNode;
+import org.objectweb.asm.tree.JumpInsnNode;
+import org.objectweb.asm.tree.LabelNode;
+import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
 
 /**
@@ -31,7 +38,7 @@ import org.objectweb.asm.tree.MethodNode;
  * family's class: lambdas ({@link LambdaRepairs}), overloads ({@link OverloadRepairs}), calls ({@link CallRepairs}),
  * constructors ({@link ConstructorRepairs}), locals and arguments ({@link LocalRepairs}); the class-level and member
  * repairs (injection points made single, anonymous classes, accessors and shadows of captured variables, accessors of
- * methods the game declares) are here.
+ * methods the game declares) are here, and the guard of a registry freeze handler ({@link #earlyFreezeGuard}).
  */
 final class MixinRepairs extends PreflightPart {
 	private final MixinPreflight checker;
@@ -200,6 +207,10 @@ final class MixinRepairs extends PreflightPart {
 	 * only be seen once the earlier ones are done, with a stop after it if it can move the injector.
 	 */
 	private final List<RepairStep> injectorRepairs = List.of(
+			new RepairStep(RepairScope.ONE_TARGET, Severity.INFO, s -> earlyFreezeGuard(s.mixin(), s.handler(), s.injector(), s.target(), s.ctx()),
+					(s, none) -> "@Inject " + s.handler().name + " runs as a registry freezes, which " + s.ctx().loader() + " also does before"
+							+ " Fabric mods' main entrypoints (at bootstrap, and on a client before the game's client exists); it returns at once"
+							+ " in those freezes, which Fabric doesn't have (Fabric API freezes the registries after the entrypoints)"),
 			RepairStep.warn(RepairScope.UNGROUPED, s -> lambdas.vanillaLambdaRepairs(s.injector(), s.targets(), s.ctx()),
 					(s, lambda) -> s.named() + " targets " + lambda + ", which this game build numbers differently"),
 			RepairStep.warn(RepairScope.ANY, s -> LambdaRepairs.lambdaRepairs(s.handler(), s.injector(), s.targets(), s.ctx()),
@@ -248,6 +259,44 @@ final class MixinRepairs extends PreflightPart {
 				List<String> captured = lambdas.capturedValueRepairs(s.mixin(), s.handler(), s.injector(), s.target(), s.ctx(), s.bridges());
 				return captured.isEmpty() ? LambdaRepairs.addedParameterRepairs(s.mixin(), s.handler(), s.injector(), s.target(), s.ctx(), s.bridges()) : captured;
 			}, (s, lambda) -> s.named() + " targets " + lambda));
+
+	/** The registry class the platform freezes before Fabric mods' main entrypoints (REG-8). */
+	static final String MAPPED_REGISTRY = "net/minecraft/core/MappedRegistry";
+	static final String FREEZE = "freeze()Lnet/minecraft/core/Registry;";
+	/** The in-game check of a freeze before the main entrypoints (the loader's {@code EarlyFreeze}, on every platform). */
+	static final String EARLY_FREEZE = "io/github/cmdralph/fabricated/loader/EarlyFreeze";
+
+	/**
+	 * Gives an {@code @Inject} handler into {@code MappedRegistry.freeze} a check that returns at once while the platform
+	 * freezes the registries before Fabric mods' main entrypoints (REG-8). On Fabric no freeze comes before them: Fabric
+	 * API moves vanilla's bootstrap freeze after them (on a client, after the client entrypoints too), so no Fabric mod's
+	 * handler ever runs before its mod started. NeoForge and Forge freeze at bootstrap, before any mod is constructed (the
+	 * in-game mod freezes there as vanilla does), and NeoForge again on a client before the game's client exists, where
+	 * the main entrypoints run; a handler that reaches its mod there (Flashback's, which starts Flashback, whose start-up
+	 * registers key bindings through the client) failed the game's bootstrap. Returns one item when it added the check,
+	 * none otherwise.
+	 */
+	static List<String> earlyFreezeGuard(ClassNode mixin, MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx) {
+		if (!MixinNames.INJECT.equals(injector.desc) || !MAPPED_REGISTRY.equals(target.name)) return List.of();
+		// Class files before Java 6 have no stack map frames, which the check's jump would need here.
+		if ((mixin.version & 0xFFFF) < Opcodes.V1_6) return List.of();
+		if (handler.instructions.size() == 0 || Type.getReturnType(handler.desc) != Type.VOID_TYPE) return List.of();
+		if (PreflightAsm.selectedMethods(injector, target, ctx).stream().noneMatch(m -> FREEZE.equals(m.name + m.desc))) return List.of();
+		// A frame where the handler's code starts already (a loop at its start) stays the one there, after the check.
+		AbstractInsnNode first = handler.instructions.getFirst();
+		while (first != null && first.getOpcode() < 0 && !(first instanceof FrameNode)) first = first.getNext();
+		LabelNode run = new LabelNode();
+		InsnList check = new InsnList();
+		check.add(new MethodInsnNode(Opcodes.INVOKESTATIC, EARLY_FREEZE, "running", "()Z", false));
+		check.add(new JumpInsnNode(Opcodes.IFEQ, run));
+		check.add(new InsnNode(Opcodes.RETURN));
+		check.add(run);
+		// The frame the method starts with (its parameters, an empty stack), which the frames after it are relative to.
+		if (!(first instanceof FrameNode)) check.add(new FrameNode(Opcodes.F_SAME, 0, null, 0, null));
+		handler.instructions.insert(check);
+		handler.maxStack = Math.max(handler.maxStack, 1);
+		return List.of("");
+	}
 
 	/** Runs {@link #injectorRepairs} on one injector, reporting each move; returns whether any changed the mixin. */
 	private boolean repairInjector(RepairSite site, List<PreflightFinding> out) {
