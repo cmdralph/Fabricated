@@ -12,6 +12,7 @@ import io.github.cmdralph.fabricated.core.runtime.EntrypointRunner;
 import io.github.cmdralph.fabricated.forge.biome.BiomeCompat;
 import io.github.cmdralph.fabricated.forge.entity.SleepEvents;
 import io.github.cmdralph.fabricated.forge.fluid.FabricFluidType;
+import io.github.cmdralph.fabricated.forge.rendering.HudRenderCallbackBridge;
 import io.github.cmdralph.fabricated.forge.transfer.TransferBridge;
 import io.github.cmdralph.fabricated.loader.FabricatedState;
 import io.github.cmdralph.fabricated.loader.ForgeLoaderHooks;
@@ -91,6 +92,8 @@ public final class FabricatedMod {
 		if (ours(state, "fabric-loot-tables-v1") && ours(state, "fabric-loot-api-v2")) new LootTablesV1Init().onInitialize();
 		// Fabric mods' config screens in Forge's mod list, once their initializers ran.
 		if (!FMLLoader.getDist().isDedicatedServer()) ClientSupport.init(state);
+		// Fabric API's HUD callback, from Forge's HUD drawing (see HudRenderCallbackBridge).
+		if (!FMLLoader.getDist().isDedicatedServer() && ours(state, "fabric-rendering-v1")) HudRenderCallbackBridge.register();
 		IModInfo self = context.getContainer().getModInfo();
 		EntrypointRunner runner = new EntrypointRunner(state.runtime(), new EntrypointRunner.ContextHook() {
 			@Override

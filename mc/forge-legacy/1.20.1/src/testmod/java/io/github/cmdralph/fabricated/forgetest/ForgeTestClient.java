@@ -12,8 +12,9 @@ import net.minecraft.class_310;
  * after the main ones, the game instance set: each logs a line the client smoke looks for
  * (ci/forge-legacy/smoke-client.sh). It registers the factory of the test mod's particle type
  * ({@link ForgeParticleClient}), and with Fabric API's networking module it also starts a networking round trip with
- * the integrated server ({@link ForgeNetworkingClient}); with its model loading and screen modules, it checks the model
- * bake events ({@link ForgeModelClient}) and the screen mouse and key events ({@link ForgeScreenClient}).
+ * the integrated server ({@link ForgeNetworkingClient}); with its model loading, screen and rendering modules, it checks
+ * the model bake events ({@link ForgeModelClient}), the screen mouse and key events ({@link ForgeScreenClient}) and the
+ * HUD callback ({@link ForgeHudClient}).
  */
 @Environment(EnvType.CLIENT)
 public final class ForgeTestClient implements ClientModInitializer {
@@ -59,6 +60,13 @@ public final class ForgeTestClient implements ClientModInitializer {
 				ForgeScreenClient.register();
 			} catch (RuntimeException | LinkageError e) {
 				ForgeTestMod.LOGGER.error("FABRICATED-FORGE-TEST screen listeners not registered", e);
+			}
+		}
+		if (FabricLoader.getInstance().isModLoaded("fabric-rendering-v1")) {
+			try {
+				ForgeHudClient.register();
+			} catch (RuntimeException | LinkageError e) {
+				ForgeTestMod.LOGGER.error("FABRICATED-FORGE-TEST HUD callback not registered", e);
 			}
 		}
 	}
