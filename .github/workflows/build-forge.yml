@@ -112,12 +112,13 @@ jobs:
       # Only Forge's projects are included, and of those only the requested one and what it depends on are configured.
       - name: Forge libraries on the compile classpath (informational)
         run: ./gradlew -Pfabricated.platforms=forge --configure-on-demand :mc:forge-${{ matrix.target.minecraft }}:forgeClasspathReport || true
-      # On 26.x also the test mod for Fabric API's client modules (mc/forge/common26/src/testmodfrapi), which the client
+      # With the test mod that fails on purpose (mc/shared/src/testmodbroken), which the server runs beside it (HOLD-2),
+      # and on 26.x the test mod for Fabric API's client modules (mc/forge/common26/src/testmodfrapi), which the client
       # run with Fabric API loads.
       - name: Build Fabricated and the test mods
         run: >-
           ./gradlew -Pfabricated.platforms=forge --configure-on-demand :mc:forge-${{ matrix.target.minecraft }}:fabricatedJar
-          :mc:forge-${{ matrix.target.minecraft }}:testmodJar
+          :mc:forge-${{ matrix.target.minecraft }}:testmodJar :mc:forge-${{ matrix.target.minecraft }}:testmodThrowsJar
           ${{ startsWith(matrix.target.minecraft, '26.') && format(':mc:forge-{0}:testmodFrapiJar', matrix.target.minecraft) || '' }} --stacktrace
       - name: Check the jar's layout for Forge
         run: ./gradlew -Pfabricated.platforms=forge --configure-on-demand :mc:forge-${{ matrix.target.minecraft }}:checkForgeJar --stacktrace
