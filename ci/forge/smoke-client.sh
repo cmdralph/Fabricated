@@ -98,11 +98,13 @@ for attempt in 1 2; do
 			descendants "$child"
 		done
 	}
+	dumped=0
 	finished_at=""
 	# What every game thread is doing, so a hang can be diagnosed from the log. SIGQUIT makes a JVM print every thread's
 	# stack to its output (client.out) and carry on. Every Java process the launcher started, the game's included; a
 	# shell would quit on it.
 	dump_threads() {
+		dumped=1
 		for pid in $(descendants "$client_pid"); do
 			if [ "$(cat "/proc/$pid/comm" 2>/dev/null)" = java ]; then kill -QUIT "$pid" 2>/dev/null || true; fi
 		done
@@ -110,6 +112,10 @@ for attempt in 1 2; do
 		awk '/^Full thread dump/ { dump = 1 } dump' client.out > thread-dump.txt || true
 	}
 	while kill -0 "$client_pid" 2>/dev/null; do
+		# Shortly before the timeout, the threads of a game that never got there (as on main).
+		if [ "$dumped" -eq 0 ] && [ $((SECONDS - started)) -ge $((timeout_seconds - 45)) ]; then
+			dump_threads
+		fi
 		# A game stuck shutting down after it reached its world: its threads, then it is stopped, and the run fails as a
 		# timeout would.
 		if [ -z "$finished_at" ] && grep -q "Successfully finished\." client.out run/logs/latest.log 2>/dev/null; then
@@ -118,7 +124,7 @@ for attempt in 1 2; do
 		if [ -n "$finished_at" ] && [ $((SECONDS - finished_at)) -ge "$exit_timeout" ]; then
 			echo "The game reached its world but didn't exit within $exit_timeout seconds; stopping the client."
 			echo "The game didn't exit within $exit_timeout seconds of reaching its world (mc-runtime-test's stop)" > stop-reason.txt
-			dump_threads
+			[ "$dumped" -eq 1 ] || dump_threads
 			# The whole tree, the game's JVM included, which would otherwise outlive the launcher into the next run.
 			tree=$(descendants "$client_pid")
 			kill $tree "$client_pid" 2>/dev/null || true
@@ -170,7 +176,7 @@ for report in run/crash-reports/*.txt; do
 	echo "::endgroup::"
 done
 if [ -f thread-dump.txt ]; then
-	echo "::group::Thread dump of a game stuck shutting down (game threads)"
+	echo "::group::Thread dump of a game stuck before the timeout or shutting down (game threads)"
 	awk 'BEGIN { RS = ""; ORS = "\n\n" } /^"(Render thread|Server thread|Netty|Local|IO-Worker|Worker-Main)/' thread-dump.txt || true
 	echo "::endgroup::"
 fi
