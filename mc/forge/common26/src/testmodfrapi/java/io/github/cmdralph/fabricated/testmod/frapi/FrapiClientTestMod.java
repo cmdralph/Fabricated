@@ -17,6 +17,7 @@ import net.fabricmc.fabric.api.client.model.loading.v1.UnbakedModelDeserializer;
 import net.fabricmc.fabric.api.client.model.loading.v1.wrapper.WrapperBlockStateModel;
 import net.fabricmc.fabric.api.client.renderer.v1.mesh.QuadEmitter;
 import net.fabricmc.fabric.api.client.renderer.v1.mesh.QuadView;
+import net.fabricmc.fabric.api.client.renderer.v1.model.FabricBlockStateModel;
 import net.fabricmc.fabric.api.client.renderer.v1.render.FabricLayerRenderState;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
 import net.fabricmc.loader.api.FabricLoader;
@@ -228,7 +229,8 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 				super.emitQuads(emitter, level, pos, state, random, cullTest);
 				return;
 			}
-			TextureAtlasSprite sprite = wrapped.particleMaterial(level, pos, state).sprite();
+			// Fabric's level-aware particle material (NeoForge has its own of the same shape; Forge's takes model data).
+			TextureAtlasSprite sprite = ((FabricBlockStateModel) wrapped).particleMaterial(level, pos, state).sprite();
 			int[] quads = new int[2];
 			emitter.pushTransform(quad -> {
 				quads[0]++;
