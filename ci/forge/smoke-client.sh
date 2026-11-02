@@ -6,7 +6,8 @@
 #
 # Usage: ci/forge/smoke-client.sh <minecraft-version> <forge-version> <work-dir> [extra-mods-dir]
 # Exit status: the client must reach a world and exit normally, and every check must pass. With extra-mods-dir (the
-# official Fabric API jar), its jars join the mods folder.
+# official Fabric API jar, and on 26.x the test mod for Fabric API's client modules, whose checks then apply), its jars
+# join the mods folder.
 # Expects: build/libs/fabricated-forge-*+mc<minecraft-version>.jar and mc/forge/<minecraft-version>/build/testmods/fabricated-testmod.jar,
 # JAVA_HOME pointing at the Java version the game needs, xvfb-run and gh (with GH_TOKEN) on the PATH.
 set -euo pipefail
@@ -202,6 +203,26 @@ if [ -n "$extra" ]; then
 	check "FABRICATED-FORGE-TEST sleep events OK" "fabric-entity-events-v1 (with Fabric API): on the integrated server, a hay block EntitySleepEvents.ALLOW_BED admits stays hay while an armor stand sleeps on it (SLEEP-1)"
 	check "FABRICATED-FORGE-TEST damage events OK" "fabric-entity-events-v1 (with Fabric API): on the integrated server, an entity hurt asks ALLOW_DAMAGE, whose refusal holds, and fires AFTER_DAMAGE (DAMAGE-1)"
 	check "FABRICATED-FORGE-TEST storages OK" "fabric-transfer-api-v1 (with Fabric API): on the integrated server, a Fabric mod's storages, on blocks and in tank items, are Forge's capabilities and a Forge mod's handlers Fabric's storages"
+fi
+# The test mod for Fabric API's client modules (26.x: mc/forge/common26/src/testmodfrapi), where the run has it.
+if [ -n "$extra" ] && [ -f "$extra/fabricated-testmod-frapi.jar" ]; then
+	check "FABRICATED-TEST key mapping OK" "fabric-key-mapping-api-v1 (with Fabric API): a Fabric key mapping is in the game's options"
+	check "FABRICATED-TEST hud element OK" "fabric-rendering-v1 (with Fabric API): a Fabric HUD element added last was drawn"
+	check "FABRICATED-TEST hud element after chat OK" "fabric-rendering-v1 (with Fabric API): a Fabric HUD element attached after chat was drawn"
+	check "FABRICATED-TEST screen init event OK" "fabric-screen-api-v1 (with Fabric API): a screen's initialization fired Fabric's event"
+	check "FABRICATED-TEST screen draw event OK" "fabric-screen-api-v1 (with Fabric API): a screen's drawing fired Fabric's event, from Forge's screen render events (SCREEN-1)"
+	check "FABRICATED-TEST screen key press event OK" "fabric-screen-api-v1 (with Fabric API): a key press sent to the shown screen asked allowKeyPress, from Forge's hook, and its refusal held (SCREEN-1)"
+	check "FABRICATED-TEST screen key release event OK" "fabric-screen-api-v1 (with Fabric API): a key release sent to the shown screen fired afterKeyRelease, from Forge's hook (SCREEN-1)"
+	check "FABRICATED-TEST screen character event OK" "fabric-screen-api-v1 (with Fabric API): a character typed into the shown screen asked allowCharType, from Forge's hook (SCREEN-1)"
+	check "FABRICATED-TEST screen mouse click event OK" "fabric-screen-api-v1 (with Fabric API): a mouse button pressed over the shown screen asked allowMouseClick, from Forge's event factory (SCREEN-1)"
+	check "FABRICATED-TEST screen mouse release event OK" "fabric-screen-api-v1 (with Fabric API): a mouse button released over the shown screen asked allowMouseRelease, from Forge's event factory (SCREEN-1)"
+	check "FABRICATED-TEST client commands OK" "fabric-command-api-v2 (with Fabric API): Fabric's client commands were registered on joining the world"
+	check "FABRICATED-TEST client stopping OK" "fabric-lifecycle-events-v1 (with Fabric API): CLIENT_STOPPING fired as the game stopped"
+	if [ "$fail" = 1 ]; then
+		echo "::group::The client API test mod's lines in the game log"
+		grep -n -m 60 -E "fabricated-testmod-frapi|FABRICATED-TEST|ScreenInputEvents|ScreenDrawEvents" "$log" || true
+		echo "::endgroup::"
+	fi
 fi
 if [ -n "$extra" ] && [ "$mc" = 1.21.11 ]; then
 	check "FABRICATED-FORGE-TEST colour providers OK" "fabric-rendering-v1 (with Fabric API, 1.21.11): its colour provider registry finds grass's provider in Forge's block colours, and none for stone (COLOR-1)"

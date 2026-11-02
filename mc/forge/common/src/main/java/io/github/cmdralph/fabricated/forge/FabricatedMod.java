@@ -11,6 +11,7 @@ import io.github.cmdralph.fabricated.core.runtime.EntrypointRunner;
 import io.github.cmdralph.fabricated.forge.fluid.FabricFluidType;
 import io.github.cmdralph.fabricated.forge.loot.LootCompat;
 import io.github.cmdralph.fabricated.forge.objectbuilder.DefaultAttributeModify;
+import io.github.cmdralph.fabricated.forge.screen.ScreenDrawEvents;
 import io.github.cmdralph.fabricated.forge.transfer.TransferBridge;
 import io.github.cmdralph.fabricated.loader.FabricatedState;
 import io.github.cmdralph.fabricated.loader.ForgeLoaderHooks;
@@ -74,8 +75,12 @@ public final class FabricatedMod {
 		for (String text : ForgeLoaderHooks.notLoaded()) {
 			LoadingWarnings.add(new ModLoadingWarning(context.getContainer().getModInfo(), ModLoadingStage.CONSTRUCT, AS_IS, text));
 		}
-		// Fabric mods' config screens in Forge's mod list, once their initializers ran.
-		if (!FMLLoader.getDist().isDedicatedServer()) ClientSupport.init(state);
+		if (!FMLLoader.getDist().isDedicatedServer()) {
+			// Fabric mods' config screens in Forge's mod list, once their initializers ran.
+			ClientSupport.init(state);
+			// Fabric API's screen drawing events, from Forge's (see ScreenDrawEvents; its input events: ScreenInputEvents).
+			ScreenDrawEvents.register();
+		}
 		IModInfo self = context.getContainer().getModInfo();
 		EntrypointRunner runner = new EntrypointRunner(state.runtime(), new EntrypointRunner.ContextHook() {
 			@Override

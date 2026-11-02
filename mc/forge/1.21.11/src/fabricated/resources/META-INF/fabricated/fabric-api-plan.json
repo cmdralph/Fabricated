@@ -46,6 +46,11 @@
       "skipMixins": ["fabric-rendering-v1.mixins.json:BlockColorsMixin#get", "fabric-rendering-v1.mixins.json:BlockColorsMixin#blockColors"],
       "reason": "Forge 61 keeps block colour providers in a map by registry holder under the name of vanilla's IdMapper by block id, which upstream's colour provider lookup shadows: Fabricated's in-game mod looks providers up in Forge's map instead of upstream's method (COLOR-1)."
     },
+    "fabric-screen-api-v1": {
+      "plan": "passthrough",
+      "skipMixins": ["fabric-screen-api-v1.mixins.json:GameRendererMixin#onRenderScreen", "fabric-screen-api-v1.mixins.json:KeyboardHandlerMixin#invokeKeyPressedEvents", "fabric-screen-api-v1.mixins.json:KeyboardHandlerMixin#invokeKeyReleasedEvents", "fabric-screen-api-v1.mixins.json:MouseHandlerMixin#invokeMouseClickedEvents", "fabric-screen-api-v1.mixins.json:MouseHandlerMixin#invokeMousePressedEvents", "fabric-screen-api-v1.mixins.json:MouseHandlerMixin#invokeMouseDragEvents"],
+      "reason": "Forge 61's input handlers call a screen's keyPressed, keyReleased, mouseClicked, mouseReleased and mouseDragged through Forge's hooks (ForgeHooksClient.onScreenKeyPressed, onScreenKeyReleased, onScreenMouseDrag, ForgeEventFactoryClient.onScreenMouseClicked, onScreenMouseReleased), and the game renderer draws the screen through Forge's, so upstream's wrappers of the vanilla calls are left out: Fabricated's mixins wrap the same calls inside Forge's hooks (ScreenInputEvents), and its before/after render events fire from Forge's ScreenEvent.Render (ScreenDrawEvents), as on Fabric (SCREEN-1). The rest of the module, scrolling's wrapper included, is upstream's."
+    },
     "fabric-tag-api-v1": {
       "plan": "passthrough",
       "skipMixins": ["fabric-tag-api-v1.mixins.json:TagFileMixin#remove", "fabric-tag-api-v1.mixins.json:TagFileMixin#modifyCodec", "fabric-tag-api-v1.mixins.json:TagLoaderMixin#loadRemoveEntries", "fabric-tag-api-v1.mixins.json:TagLoaderMixin#scopeIdAroundOrderByDependencies", "fabric-tag-api-v1.mixins.json:TagLoaderMixin#addTagRemovalReferencesToDependencySorter", "fabric-tag-api-v1.mixins.json:TagLoaderMixin#removeEntriesFromTags", "fabric-tag-api-v1.mixins.json:TagLoaderMixin#removeTagRemovalReferencesWhenFinished"],
