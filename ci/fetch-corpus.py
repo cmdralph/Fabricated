@@ -13,7 +13,10 @@ Usage: ci/fetch-corpus.py <minecraft-version> <out-dir> [<loader> <project>[@<ve
 import hashlib
 import json
 import os
+import socket
 import sys
+import time
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -24,9 +27,23 @@ HEADERS = {"User-Agent": "cmdralph/Fabricated CI (github.com/cmdralph/Fabricated
 MAX_BYTES = 256 << 20
 
 
+ATTEMPTS = 4
+
+
 def get(url):
-    with urllib.request.urlopen(urllib.request.Request(url, headers=HEADERS), timeout=60) as response:
-        return response.read(MAX_BYTES + 1)
+    """The response's body. A timeout, a dropped connection or a server error (429, 5xx) is tried again, after 2, 4
+    and 8 seconds: one slow answer from Modrinth left a gate without its mods (extended run 41501863294)."""
+    for attempt in range(ATTEMPTS):
+        try:
+            with urllib.request.urlopen(urllib.request.Request(url, headers=HEADERS), timeout=60) as response:
+                return response.read(MAX_BYTES + 1)
+        except urllib.error.HTTPError as e:
+            if attempt + 1 == ATTEMPTS or e.code != 429 and e.code < 500:
+                raise
+        except (urllib.error.URLError, TimeoutError, socket.timeout, ConnectionError):
+            if attempt + 1 == ATTEMPTS:
+                raise
+        time.sleep(2 << attempt)
 
 
 def newest(project, mc, loader):

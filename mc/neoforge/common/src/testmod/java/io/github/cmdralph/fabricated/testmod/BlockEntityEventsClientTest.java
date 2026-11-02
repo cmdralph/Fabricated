@@ -6,13 +6,17 @@ import java.util.Set;
 
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientBlockEntityEvents;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.minecraft.client.Minecraft;
 import net.minecraft.world.level.block.entity.BlockEntity;
 
 /**
  * Client half of {@link BlockEntityEventsTest}: once the client has left its world (mc-runtime-test disconnects
  * before quitting), every block entity it loaded, the chest next to the player at least, has been unloaded. NeoForge
- * posts no unload for the block entities of a level the client drops.
+ * posts no unload for the block entities of a level the client drops. Checked at the end of the tick the client left
+ * its world in, or as it stops, for a client that quit before that tick ended (run 673's Sodium client on 26.2 reported
+ * neither way).
  */
 public final class BlockEntityEventsClientTest implements ClientModInitializer {
 	@Override
@@ -26,15 +30,18 @@ public final class BlockEntityEventsClientTest implements ClientModInitializer {
 			loads[0]++;
 		});
 		ClientBlockEntityEvents.BLOCK_ENTITY_UNLOAD.register((blockEntity, level) -> loaded.remove(blockEntity));
-		// The end of the tick in which the client dropped its level.
-		ClientTickEvents.END_CLIENT_TICK.register(client -> {
-			if (reported[0] || client.level != null || loads[0] == 0) return;
-			reported[0] = true;
-			if (loaded.isEmpty()) {
-				TestMod.LOGGER.info("FABRICATED-TEST client block entity events OK ({} loaded and unloaded)", loads[0]);
-			} else {
-				TestMod.LOGGER.error("FABRICATED-TEST client block entity events FAILED: {} loaded, {} never unloaded", loads[0], loaded.size());
-			}
-		});
+		// The end of the tick in which the client dropped its level, or the client stopping after it dropped it.
+		ClientTickEvents.END_CLIENT_TICK.register(client -> report(client, loaded, loads[0], reported, "tick"));
+		ClientLifecycleEvents.CLIENT_STOPPING.register(client -> report(client, loaded, loads[0], reported, "stopping"));
+	}
+
+	private static void report(Minecraft client, Set<BlockEntity> loaded, int loads, boolean[] reported, String when) {
+		if (reported[0] || client.level != null || loads == 0) return;
+		reported[0] = true;
+		if (loaded.isEmpty()) {
+			TestMod.LOGGER.info("FABRICATED-TEST client block entity events OK ({} loaded and unloaded, seen at the client's {})", loads, when);
+		} else {
+			TestMod.LOGGER.error("FABRICATED-TEST client block entity events FAILED: {} loaded, {} never unloaded", loads, loaded.size());
+		}
 	}
 }

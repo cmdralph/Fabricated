@@ -89,7 +89,10 @@ One entry per working session, newest first: what changed, and how it was verifi
   where it sees no connected texture. Verified on 1.21.1 in extended run 41496005222.
 - **Build:** `scripts/check-mixin-inventory.py` also runs the build's rule that each of the game mod's mixins is
   assigned a Fabric API module (`mixin-modules.json`), which only a platform build found: extended run 41492025138
-  stopped on it, for `UtilMixin`.
+  stopped on it, for `UtilMixin`. CI's mod downloads (`ci/fetch-corpus.py`) try a timeout, a dropped connection or a
+  server error again, three times at most: extended run 41501863294 lost five gates' mods to slow answers from Modrinth.
+  The test mod's client block entity check also reports as the client stops, for a client that quit in the tick it left
+  its world in (that run's Sodium client on 26.2 reported neither way).
 - **CI gates added:** the Sodium and Iris, malilib (with MiniHUD, Tweakeroo and Litematica), Essential (both
   launches) and Flashback clients on every NeoForge version; a mixin failure recorded and left out over three server
   launches; the HUD conditions on 26.x; the test mod's freeze handler first running after the main initializers;

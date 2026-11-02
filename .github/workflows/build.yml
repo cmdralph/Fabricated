@@ -1335,9 +1335,9 @@ jobs:
       # The bytecode task 5's open findings turn on, for reading (informational; last, so the job log's tail has it):
       # Polydium's mixin plugin and its font mixin (whose handler, typed with the mixin class, stops 1.21.1 and 1.21.11
       # as Mixin applies it); Architectury's keyboard hook into a lambda of KeyboardHandler.charTyped, which Mixin finds
-      # no target for on 1.21.1 (the corpus); malilib's tooltip hooks; the key map accessors (KEYMAP-1); Sodium's and
-      # Iris's Fabric builds' quad and access findings. Members only, and a class that is the same as one printed (a
-      # translation in several cache jars) once.
+      # no target for on 1.21.1 (the corpus); malilib's tooltip hooks; how the Sodium and Iris gate's clients leave their
+      # world; Sodium's and Iris's Fabric builds' quad and access findings. Members only, and a class that is the same as
+      # one printed (a translation in several cache jars) once.
       - name: Bytecode for task 5's findings (informational)
         if: ${{ (matrix.part == 'mods' || matrix.part == 'corpus') && env.EXTENDED == 'true' && !cancelled() && steps.build.outcome == 'success' }}
         continue-on-error: true
@@ -1350,8 +1350,15 @@ jobs:
             python3 -I ci/javap-dump.py "$RUNNER_TEMP/$run" "$@" | cut -c1-320 || true
           }
           dump client-malilib 'game:net.minecraft.world.item.ItemStack#getTooltipLines'
-          # KEYMAP-1: OneConfig's accessor of KeyMapping's key map, which NeoForge retyped, and what its callers do with it.
-          dump client-polyfrost 'mod:org.polyfrost.oneconfig.internal.mixin.keybind.KeyMappingRegistryAccessor#*' 'refs:KeyMappingRegistryAccessor'
+          # The Sodium and Iris gate's client block entity check, which run 673's Sodium client on 26.2 reported neither way:
+          # how each of its clients left its world and stopped.
+          for run in client-sodium-fabric client-shaders-fabric; do
+            log="$RUNNER_TEMP/$run/run/logs/latest.log"
+            if [ -f "$log" ]; then
+              echo "== $run: leaving its world"
+              grep -h -E "client block entity events|Successfully finished|Stopping!|[Dd]isconnect|Saving and pausing|left the game" "$log" | tail -8 | cut -c1-300 || true
+            fi
+          done
           # CORPUS-56: R6's result (far up the log by now), with Continuity's state where it saw no connected texture, and
           # what pre-flight left out of Continuity; on 1.21.1, the wrapper method a wrapped model's throw is held in.
           log="$RUNNER_TEMP/client-continuity/run/logs/latest.log"
