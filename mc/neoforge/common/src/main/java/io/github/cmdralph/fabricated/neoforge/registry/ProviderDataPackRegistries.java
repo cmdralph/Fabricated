@@ -1,5 +1,6 @@
 package io.github.cmdralph.fabricated.neoforge.registry;
 
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
@@ -14,10 +15,10 @@ import org.slf4j.LoggerFactory;
 import io.github.cmdralph.fabricated.core.metadata.ModIds;
 import io.github.cmdralph.fabricated.neoforge.GameCompat;
 import net.minecraft.resources.RegistryDataLoader;
+import net.neoforged.bus.api.Event;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.ModList;
 import net.neoforged.fml.ModLoadingContext;
-import net.neoforged.neoforge.registries.DataPackRegistryEvent;
 
 /**
  * The data-pack registries Fabric initializers make through another mod's {@code fabric-registry-sync-v0}
@@ -29,11 +30,13 @@ import net.neoforged.neoforge.registries.DataPackRegistryEvent;
  * registries it names that NeoForge doesn't have yet are added as NeoForge adds them from its event. Its 26.x builds
  * hand a late registry to NeoForge themselves, so NeoForge has every one they name.
  *
- * <p>The event's list and its processing are NeoForge internals, reached by reflection; where they aren't there, the
- * report says the registries weren't added.
+ * <p>The event, its list and its processing are NeoForge's, reached by reflection: NeoForge 26.3 has no
+ * {@code DataPackRegistryEvent} in that package (nor Forgified Fabric API a build for it), and nothing is asked there. Where the event is there but its list or processing
+ * isn't, the report says the registries weren't added.
  */
 public final class ProviderDataPackRegistries {
 	private static final Logger LOGGER = LoggerFactory.getLogger("Fabricated");
+	private static final String EVENT_CLASS = "net.neoforged.neoforge.registries.DataPackRegistryEvent$NewRegistry";
 	private static final String DATA_CLASS = "net.neoforged.neoforge.registries.DataPackRegistryEvent$DataPackRegistryData";
 
 	private ProviderDataPackRegistries() {
@@ -48,15 +51,24 @@ public final class ProviderDataPackRegistries {
 	public static List<String> addLate(String module, Consumer<String> problems) {
 		Optional<? extends ModContainer> provider = ModList.get().getModContainerById(ModIds.toNeoForgeId(module));
 		if (provider.isEmpty() || provider.get().getEventBus() == null) return List.of();
+		ClassLoader loader = ProviderDataPackRegistries.class.getClassLoader();
+		Class<?> eventClass;
 		try {
-			Field listField = DataPackRegistryEvent.NewRegistry.class.getDeclaredField("registryDataList");
+			eventClass = Class.forName(EVENT_CLASS, false, loader);
+		} catch (ClassNotFoundException e) {
+			return List.of(); // not on this NeoForge (26.3)
+		}
+		try {
+			Field listField = eventClass.getDeclaredField("registryDataList");
 			listField.setAccessible(true);
-			Method process = DataPackRegistryEvent.NewRegistry.class.getDeclaredMethod("process");
+			Method process = eventClass.getDeclaredMethod("process");
 			process.setAccessible(true);
-			Method loaderData = Class.forName(DATA_CLASS, false, DataPackRegistryEvent.class.getClassLoader()).getDeclaredMethod("loaderData");
+			Method loaderData = Class.forName(DATA_CLASS, false, loader).getDeclaredMethod("loaderData");
 			loaderData.setAccessible(true);
+			Constructor<?> constructor = eventClass.getDeclaredConstructor();
+			constructor.setAccessible(true);
 
-			DataPackRegistryEvent.NewRegistry event = new DataPackRegistryEvent.NewRegistry();
+			Event event = (Event) constructor.newInstance();
 			ModContainer previous = ModLoadingContext.get().getActiveContainer();
 			ModLoadingContext.get().setActiveContainer(provider.get());
 			try {
