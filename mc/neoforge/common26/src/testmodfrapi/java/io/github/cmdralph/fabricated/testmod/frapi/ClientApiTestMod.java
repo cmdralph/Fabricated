@@ -1,5 +1,6 @@
 package io.github.cmdralph.fabricated.testmod.frapi;
 
+import java.lang.reflect.Field;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
@@ -19,6 +20,7 @@ import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.Options;
 import net.minecraft.resources.Identifier;
 
 /**
@@ -36,6 +38,7 @@ import net.minecraft.resources.Identifier;
  */
 public final class ClientApiTestMod implements ClientModInitializer {
 	private static final List<String> HUD_CHECKS = List.of("hud element", "hud element after chat");
+	private static final Field HIDE_GUI = hideGuiField();
 	private final Set<String> drawn = new HashSet<>();
 	private boolean screenInitialized;
 	private boolean screenDrawn;
@@ -57,11 +60,11 @@ public final class ClientApiTestMod implements ClientModInitializer {
 		});
 		HudElementRegistry.addLast(Identifier.fromNamespaceAndPath("fabricated_testmod_frapi", "check"), (graphics, deltaTracker) -> drawn("hud element"));
 		HudElementRegistry.attachElementAfter(VanillaHudElements.CHAT, Identifier.fromNamespaceAndPath("fabricated_testmod_frapi", "after_chat"), (graphics, deltaTracker) -> {
-			if (Minecraft.getInstance().options.hideGui) drawnWhereVanillaIsnt.add("chat, with the GUI hidden");
+			if (guiHidden(Minecraft.getInstance())) drawnWhereVanillaIsnt.add("chat, with the GUI hidden");
 			else drawn("hud element after chat");
 		});
 		HudElementRegistry.attachElementAfter(VanillaHudElements.SLEEP, Identifier.fromNamespaceAndPath("fabricated_testmod_frapi", "after_sleep"), (graphics, deltaTracker) -> {
-			if (Minecraft.getInstance().options.hideGui) hiddenFrames++;
+			if (guiHidden(Minecraft.getInstance())) hiddenFrames++;
 		});
 		HudElementRegistry.attachElementAfter(VanillaHudElements.HEALTH_BAR, Identifier.fromNamespaceAndPath("fabricated_testmod_frapi", "after_health"), (graphics, deltaTracker) -> {
 			Minecraft client = Minecraft.getInstance();
@@ -102,17 +105,57 @@ public final class ClientApiTestMod implements ClientModInitializer {
 	private void hideTheGuiAWhile(Minecraft client) {
 		int tick = client.player.tickCount;
 		if (hiddenFrom < 0) {
-			if (!drawn.contains("hud element after chat") || client.options.hideGui) return;
+			if (!drawn.contains("hud element after chat") || guiHidden(client)) return;
 			hiddenFrom = tick;
-			client.options.hideGui = true;
+			hideGui(client, true);
 			return;
 		}
 		if (tick < hiddenFrom + 40) return;
-		client.options.hideGui = false;
+		hideGui(client, false);
 		hidingDone = true;
 		if (hiddenFrames == 0) report(false, "hud conditions", "no frame drawn while the GUI was hidden");
 		else if (!drawnWhereVanillaIsnt.isEmpty()) report(false, "hud conditions", "drawn after " + String.join("; after ", drawnWhereVanillaIsnt));
 		else report(true, "hud conditions", null);
+	}
+
+	/**
+	 * Whether the player hid the GUI (F1): the options' {@code hideGui} up to 26.1, the game's {@code Hud}'s from 26.2,
+	 * read reflectively as this mod is built once for every 26.x version.
+	 */
+	private static boolean guiHidden(Minecraft client) {
+		try {
+			if (HIDE_GUI != null) return HIDE_GUI.getBoolean(client.options);
+			Object hud = hud(client);
+			return (boolean) hud.getClass().getMethod("isHidden").invoke(hud);
+		} catch (ReflectiveOperationException e) {
+			throw new IllegalStateException("Can't read whether the GUI is hidden", e);
+		}
+	}
+
+	private static void hideGui(Minecraft client, boolean hidden) {
+		try {
+			if (HIDE_GUI != null) {
+				HIDE_GUI.setBoolean(client.options, hidden);
+			} else if (guiHidden(client) != hidden) {
+				Object hud = hud(client);
+				hud.getClass().getMethod("toggle").invoke(hud);
+			}
+		} catch (ReflectiveOperationException e) {
+			throw new IllegalStateException("Can't hide the GUI", e);
+		}
+	}
+
+	private static Object hud(Minecraft client) throws ReflectiveOperationException {
+		Object gui = client.gui;
+		return gui.getClass().getField("hud").get(gui);
+	}
+
+	private static Field hideGuiField() {
+		try {
+			return Options.class.getField("hideGui");
+		} catch (NoSuchFieldException e) {
+			return null;
+		}
 	}
 
 	private void drawn(String check) {

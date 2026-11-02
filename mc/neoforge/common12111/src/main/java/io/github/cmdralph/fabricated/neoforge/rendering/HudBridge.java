@@ -102,11 +102,11 @@ public final class HudBridge {
 			GuiLayer spectator = hud.wrap(SPECTATOR_MENU, vanilla);
 			GuiLayer hotbar = hud.wrap(HOTBAR, vanilla);
 			return (graphics, deltaTracker) -> {
-				Minecraft minecraft = Minecraft.getInstance();
-				if (minecraft.options.hideGui) {
+				if (HudCompat.guiHidden()) {
 					vanilla.render(graphics, deltaTracker);
 					return;
 				}
+				Minecraft minecraft = Minecraft.getInstance();
 				boolean spectating = minecraft.gameMode != null && minecraft.gameMode.getPlayerMode() == GameType.SPECTATOR;
 				(spectating ? spectator : hotbar).render(graphics, deltaTracker);
 			};
@@ -116,7 +116,7 @@ public final class HudBridge {
 
 	/**
 	 * Whether vanilla draws the element of NeoForge's {@code layer} this frame, where upstream's hook sits: its condition
-	 * in NeoForge's {@code Gui.registerVanillaLayers} (the GUI shown; for the health, armour, food and air bars, a game
+	 * in NeoForge's {@code registerVanillaLayers} ({@code Gui}'s, from 26.2 {@code Hud}'s) (the GUI shown; for the health, armour, food and air bars, a game
 	 * mode the player can be hurt in), and for three layers the one NeoForge checks inside them, around vanilla's call.
 	 */
 	private static BooleanSupplier shown(Identifier layer) {
@@ -138,7 +138,7 @@ public final class HudBridge {
 	}
 
 	private static boolean guiShown() {
-		return !Minecraft.getInstance().options.hideGui;
+		return !HudCompat.guiHidden();
 	}
 
 	/** Whether the player's game mode is spectator ({@code asPlayer}: and the player is one). */
