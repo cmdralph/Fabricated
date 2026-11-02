@@ -44,7 +44,8 @@ final class EntrypointOutcome {
 			LOGGER.error("{}", text, e);
 			warning.accept(text);
 		});
-		// Rewritten when loading completes; written now too, in case the game stops before that.
+		// Written now, as nothing on Forge writes it once loading completes; a holder dropped at the freeze after the
+		// entrypoints writes it again (MainEntrypoints).
 		if (!failures.isEmpty()) state.writeReport();
 	}
 }
