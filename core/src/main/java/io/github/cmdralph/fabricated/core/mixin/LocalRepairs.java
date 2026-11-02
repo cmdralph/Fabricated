@@ -428,7 +428,7 @@ final class LocalRepairs extends PreflightPart {
 	 * of vanilla's instructions ({@code vanillaPlaces}, their places in this build's method), not one NeoForge's patch put
 	 * there.
 	 */
-	private static boolean isVanillasLocal(MethodNode method, LocalVariableNode local, Set<Integer> vanillaPlaces) {
+	static boolean isVanillasLocal(MethodNode method, LocalVariableNode local, Set<Integer> vanillaPlaces) {
 		AbstractInsnNode store = local.start.getPrevious();
 		while (store != null && store.getOpcode() < 0) store = store.getPrevious();
 		if (store == null) {

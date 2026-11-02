@@ -2,8 +2,10 @@ package io.github.cmdralph.fabricated.core.mixin;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.TreeSet;
 import java.util.function.Predicate;
 
@@ -136,7 +138,8 @@ final class OverloadRepairs extends PreflightPart {
 		// A variable modifier moves only where it picks its local by type alone, among the locals, which the other method's
 		// code decides as the method's did: Fabric API's before-bake model hook, whose ModelBakerImpl.bake Forge 47 split
 		// off into an overload taking the sprite getter (MODEL-3). By its slot, its place, its name or among the
-		// parameters, it could pick another value there.
+		// parameters, it could pick another value there; by its place at a load of it, vanilla's code decides
+		// ({@link #variableByOrdinalRepairs}, PRE-19).
 		if (injector.desc.equals(MixinNames.MODIFY_VARIABLE) && (Annotations.value(injector, "index") != null || Annotations.value(injector, "ordinal") != null
 				|| Annotations.value(injector, "name") != null || Boolean.TRUE.equals(Annotations.value(injector, "argsOnly")))) return List.of();
 		// An @Inject handler takes the callback info only, or (bridged below) the target's parameters before it.
@@ -288,6 +291,166 @@ final class OverloadRepairs extends PreflightPart {
 		values.set(0, overload.name + overload.desc);
 		return List.of(chosen.name + chosen.desc + ", which " + loader + " reduced to a call to " + overload.name + overload.desc
 				+ "; the injector is pointed there, taking its locals as they are there");
+	}
+
+	/**
+	 * Points a {@code @ModifyVariable} that picks its local by its place among the locals of its type ({@code ordinal})
+	 * at a load of it ({@code @At("LOAD")}), in a method the platform reduced to a call of a method taking one more
+	 * parameter, at that method, where vanilla's version of the method (VANILLA-1) shows the move keeps what the mod
+	 * hooks: Puzzles Lib's break speed hook modifies the speed, the first float, at its second load after the
+	 * {@code onGround()} call in {@code Player.getDestroySpeed}, which Forge 47 deprecated for {@code getDigSpeed(state,
+	 * pos)} and keeps only to call it (PRE-19). The other method's code could have locals of that type first, or more
+	 * loads of the local (LOCAL-4), so vanilla's code aligned with it ({@link PatchAlignment}) must show:
+	 * <ul>
+	 * <li>the parameter it adds isn't of that type, and at the load the hook applies at, the local the ordinal picks among
+	 * those its local variable table has in scope there (Mixin's way, parameters first, by slot) is the one it picks among
+	 * vanilla's ({@link LocalRepairs#isVanillasLocal}): the patch added none of the type before it;</li>
+	 * <li>each of vanilla's loads of that local the point could pick is still there, a load of the local the ordinal picks,
+	 * and the slice's ends are vanilla's;</li>
+	 * <li>with the point's ordinal, the load it picks in vanilla's code; the ordinal changes where the patch loads the
+	 * local before it (Forge 47 passes the speed to its break speed event before returning it). Without one, the patch
+	 * may add no load of it, which the hook would modify too.</li>
+	 * </ul>
+	 * The handler takes the parameters before the added one alone, if any, and no MixinExtras sugar. Without vanilla's
+	 * code or a local variable table there, nothing moves. Returns a description of the move, or nothing.
+	 */
+	List<String> variableByOrdinalRepairs(MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx) {
+		if (!injector.desc.equals(MixinNames.MODIFY_VARIABLE) || !(Annotations.value(injector, "ordinal") instanceof Integer ordinal) || ordinal < 0
+				|| Annotations.value(injector, "index") != null || Annotations.value(injector, "name") != null
+				|| Boolean.TRUE.equals(Annotations.value(injector, "argsOnly")) || !(Annotations.value(injector, "method") instanceof List<?> selectors)
+				|| selectors.size() != 1 || !(selectors.get(0) instanceof String raw) || hasParameterAnnotations(handler)) return List.of();
+		List<AnnotationNode> ats = Annotations.list(Annotations.value(injector, "at"));
+		if (ats.size() != 1) return List.of();
+		AnnotationNode at = ats.get(0);
+		String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
+		if (!point.equals("LOAD") || Annotations.value(at, "opcode") != null || Annotations.value(at, "shift") != null || Annotations.value(at, "by") != null) {
+			return List.of();
+		}
+		Type value = Type.getReturnType(handler.desc);
+		Type[] args = Type.getArgumentTypes(handler.desc);
+		if (value.getSort() == Type.VOID || args.length == 0 || !args[0].equals(value)) return List.of();
+		MemberRef ref = MemberRef.parse(ctx.resolve(raw));
+		if (ref.fuzzy() || ref.name() == null) return List.of();
+		MethodNode chosen = null;
+		for (MethodNode m : target.methods) {
+			if (ref.matchesMethod(m.name, m.desc)) {
+				chosen = m;
+				break;
+			}
+		}
+		if (chosen == null) return List.of();
+		AnnotationNode slice = InjectionPoints.sliceFor(at, Annotations.list(Annotations.value(injector, "slice")));
+		int pointOrdinal = Annotations.value(at, "ordinal") instanceof Integer n ? n : -1;
+		InjectionPoints.Range inChosen = slice == null ? InjectionPoints.Range.ALL : InjectionPoints.sliceRange(slice, chosen, ctx);
+		// The method must have lost the point: no load of the type there (PRE-17).
+		if (inChosen == InjectionPoints.Range.UNEVALUATED || InjectionPoints.accessesAnyLocal(true, value, -1, pointOrdinal, inChosen, chosen)) return List.of();
+		MethodNode overload = calledOverload(chosen, target);
+		int inserted = overload == null ? -1 : insertedParameter(chosen, overload);
+		boolean replaced = false;
+		if (overload == null) {
+			overload = replacementOf(chosen, target);
+			inserted = overload == null ? -1 : CallRepairs.insertedArgument(chosen.desc, overload.desc);
+			replaced = true;
+		}
+		if (overload == null || inserted < 0 || (overload.access & Opcodes.ACC_STATIC) != (chosen.access & Opcodes.ACC_STATIC)
+				|| Type.getArgumentTypes(overload.desc)[inserted].equals(value) || overload.localVariables == null || overload.localVariables.isEmpty()
+				|| capturedPrefix(handler, chosen) > inserted) return List.of();
+		ClassNode original = vanillaClass(target.name);
+		MethodNode before = original == null ? null : PreflightAsm.declared(original, chosen.name, chosen.desc);
+		PatchAlignment alignment = before == null ? null : PatchAlignment.of(before, overload);
+		if (alignment == null) return List.of();
+		InjectionPoints.Range inVanilla = slice == null ? InjectionPoints.Range.ALL : InjectionPoints.sliceRange(slice, before, ctx);
+		InjectionPoints.Range inOverload = slice == null ? InjectionPoints.Range.ALL : InjectionPoints.sliceRange(slice, overload, ctx);
+		if (inVanilla == InjectionPoints.Range.UNEVALUATED || inOverload == InjectionPoints.Range.UNEVALUATED) return List.of();
+		if (slice != null && (Annotations.value(slice, "from") != null && alignment.placeOf(inVanilla.start()) != inOverload.start()
+				|| Annotations.value(slice, "to") != null && alignment.placeOf(inVanilla.end()) != inOverload.end())) return List.of();
+
+		// Where Mixin applies the hook in the other method: the loads of the local the ordinal picks at each.
+		int opcode = value.getOpcode(Opcodes.ILOAD);
+		List<Integer> matched = new ArrayList<>();
+		for (int i = Math.max(inOverload.start(), 0); i <= Math.min(inOverload.end(), overload.instructions.size() - 1); i++) {
+			if (!(overload.instructions.get(i) instanceof VarInsnNode load) || load.getOpcode() != opcode) continue;
+			int slot = nthLocalOfType(overload, value, ordinal, i, null);
+			if (slot == AMBIGUOUS) return List.of();
+			if (slot == load.var) matched.add(i);
+		}
+		// Vanilla's local: the slot of vanilla's loads aligned with those.
+		int[] vanillaAt = new int[overload.instructions.size()];
+		Arrays.fill(vanillaAt, -1);
+		Set<Integer> vanillaPlaces = new HashSet<>();
+		for (int i = 0; i < before.instructions.size(); i++) {
+			int place = alignment.placeOf(i);
+			if (place < 0) continue;
+			vanillaAt[place] = i;
+			vanillaPlaces.add(place);
+		}
+		int vanillaSlot = -1;
+		for (int i : matched) {
+			if (vanillaAt[i] < 0) continue;
+			int slot = ((VarInsnNode) before.instructions.get(vanillaAt[i])).var;
+			if (vanillaSlot >= 0 && vanillaSlot != slot) return List.of();
+			vanillaSlot = slot;
+		}
+		if (vanillaSlot < 0) return List.of();
+		// Each of vanilla's loads of it the point could pick is still one Mixin picks.
+		List<Integer> vanillas = new ArrayList<>();
+		for (int i = Math.max(inVanilla.start(), 0); i <= Math.min(inVanilla.end(), before.instructions.size() - 1); i++) {
+			if (!(before.instructions.get(i) instanceof VarInsnNode load) || load.getOpcode() != opcode || load.var != vanillaSlot) continue;
+			int place = alignment.placeOf(i);
+			if (place < 0 || !matched.contains(place)) return List.of();
+			vanillas.add(place);
+		}
+		List<Integer> applied;
+		int newOrdinal = pointOrdinal;
+		if (pointOrdinal >= 0) {
+			if (pointOrdinal >= vanillas.size()) return List.of();
+			applied = List.of(vanillas.get(pointOrdinal));
+			newOrdinal = matched.indexOf(applied.get(0));
+		} else {
+			if (matched.size() != vanillas.size()) return List.of();
+			applied = matched;
+		}
+		for (int i : applied) {
+			int slot = nthLocalOfType(overload, value, ordinal, i, null);
+			if (slot < 0 || slot != nthLocalOfType(overload, value, ordinal, i, vanillaPlaces)) return List.of();
+		}
+		@SuppressWarnings("unchecked")
+		List<Object> values = (List<Object>) selectors;
+		values.set(0, overload.name + overload.desc);
+		String repointed = "";
+		if (newOrdinal != pointOrdinal) {
+			Annotations.put(at, "ordinal", newOrdinal);
+			repointed = ", at its load with ordinal " + newOrdinal + " there, vanilla's with ordinal " + pointOrdinal + " (" + loader
+					+ "'s code loads it before)";
+		}
+		return List.of(chosen.name + chosen.desc + ", which " + loader + (replaced ? " deprecated for " : " reduced to a call to ") + overload.name
+				+ overload.desc + "; the injector is pointed there" + repointed + ", the local of type " + value.getClassName() + " with ordinal " + ordinal
+				+ " being vanilla's there");
+	}
+
+	/** {@link #nthLocalOfType}'s answer where two locals share a slot at the instruction. */
+	private static final int AMBIGUOUS = -2;
+
+	/**
+	 * The slot of the local with ordinal {@code ordinal} among the locals of {@code type} that {@code method}'s local
+	 * variable table has in scope at the instruction at {@code position}, counted as Mixin counts them for a variable
+	 * modifier (all of them by slot, {@code this} and the parameters first, a match only past {@code this}); with
+	 * {@code vanillaPlaces}, among vanilla's locals alone ({@link LocalRepairs#isVanillasLocal}). -1 for none,
+	 * {@link #AMBIGUOUS} where two locals share a slot there.
+	 */
+	private static int nthLocalOfType(MethodNode method, Type type, int ordinal, int position, Set<Integer> vanillaPlaces) {
+		java.util.TreeMap<Integer, LocalVariableNode> bySlot = new java.util.TreeMap<>();
+		for (LocalVariableNode lv : method.localVariables) {
+			if (method.instructions.indexOf(lv.start) > position || position >= method.instructions.indexOf(lv.end)) continue;
+			if (bySlot.put(lv.index, lv) != null) return AMBIGUOUS;
+		}
+		int base = (method.access & Opcodes.ACC_STATIC) != 0 ? 0 : 1;
+		int seen = 0;
+		for (LocalVariableNode lv : bySlot.values()) {
+			if (!lv.desc.equals(type.getDescriptor()) || vanillaPlaces != null && !LocalRepairs.isVanillasLocal(method, lv, vanillaPlaces)) continue;
+			if (seen++ == ordinal) return lv.index >= base ? lv.index : -1;
+		}
+		return -1;
 	}
 
 	/**

@@ -42,7 +42,10 @@ One entry per working session, newest first: what changed, and how it was verifi
   NeoForge's build gives one more value gets a bridge, and one whose handler fits no target is left out before Mixin
   could stop the launch (CORPUS-58, Ledger's anvil hook); a lambda named as vanilla names it whose creating method the
   patch gave a parameter is found in vanilla's place, as the one method of that name (LAMBDA-9, Litematica's schematic
-  rendering on 26.2).
+  rendering on 26.2); a variable modifier that picks its local by its ordinal, at a load of it, moves to the method the
+  platform reduced the method to a call of, where vanilla's code shows the ordinal names the same local there, at
+  vanilla's load (PRE-19, Puzzles Lib's break speed hook in Forge 47's `getDigSpeed`; core's tests only, as Forge 47
+  doesn't read vanilla's code yet: the Forge sync).
 - **Library classes:** a mixin giving a library class NeoForge loads without mixin support another library's
   interfaces becomes a generated adapter, which the mod's casts of the class's objects to them wrap them in (LIB-2:
   adventure-platform-fabric's `GameProfile` as an Adventure `Identity`, so it loads, and with it OneConfig's chat

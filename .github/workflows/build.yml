@@ -1361,6 +1361,14 @@ jobs:
           fi
           if [ "${{ matrix.target.minecraft }}" = "1.21.1" ]; then
             dump client-continuity 'mod:net.fabricmc.fabric.api.renderer.v1.model.ForwardingBakedModel#emitBlockQuads'
+            # The client with Forgified Fabric API and Sodium: which Fabric API modules Forgified Fabric API provides there,
+            # and what Fabricated's own left out for them, so the test mod's failed checks can be told apart (its modules or
+            # Fabricated's); the step's own print is far up the log by now.
+            report="$RUNNER_TEMP/client-coexist/run/logs/fabric-bridge-report.txt"
+            if [ -f "$report" ]; then
+              echo "== client-coexist: Fabric API providers"
+              sed -n '/== Fabric API modules provided by other mods ==/,/^$/p;/== Fabric API providers ==/,/^$/p' "$report" | cut -c1-900 | head -80 || true
+            fi
           fi
           # APPLY-2: the method the game's worker threads hand what they stop on to, as each version names it.
           dump server-corpus 'game:net.minecraft.Util#onThreadException' 'game:net.minecraft.util.Util#onThreadException'

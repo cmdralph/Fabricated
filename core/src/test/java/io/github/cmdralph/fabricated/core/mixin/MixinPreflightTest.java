@@ -4226,6 +4226,183 @@ class MixinPreflightTest {
 				.check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty(), "vanilla's method loads the float twice after onGround()");
 	}
 
+	/** PRE-19's game classes: vanilla's, Forge 47's, and Forge 47's with a float local of the patch's before vanilla's. */
+	private enum BreakSpeedBuild {
+		VANILLA, FORGE, FORGE_WITH_A_FLOAT_FIRST
+	}
+
+	private static final String SPEED = "(Ljava/lang/String;)F";
+	private static final String DIG_SPEED = "(Ljava/lang/String;Ljava/lang/Integer;)F";
+
+	/**
+	 * Player.getDestroySpeed as vanilla has it (its speed in a float, divided where the player is off the ground, then
+	 * returned; no local variable table, as Mojang ships it), or as Forge 47 has it: deprecated, calling getDigSpeed with
+	 * a position, whose code is vanilla's but for the break speed event the speed goes through before it is returned.
+	 */
+	private static byte[] breakSpeedTarget(BreakSpeedBuild build) {
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		boolean forge = build != BreakSpeedBuild.VANILLA;
+		MethodVisitor speed = cw.visitMethod(Opcodes.ACC_PUBLIC | (forge ? Opcodes.ACC_DEPRECATED : 0), "getDestroySpeed", SPEED, null, null);
+		speed.visitCode();
+		if (forge) {
+			speed.visitVarInsn(Opcodes.ALOAD, 0);
+			speed.visitVarInsn(Opcodes.ALOAD, 1);
+			speed.visitInsn(Opcodes.ACONST_NULL);
+			speed.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "getDigSpeed", DIG_SPEED, false);
+			speed.visitInsn(Opcodes.FRETURN);
+		} else {
+			breakSpeedBody(speed, 2, -1, false);
+		}
+		speed.visitMaxs(0, 0);
+		speed.visitEnd();
+		if (forge) {
+			MethodVisitor dig = cw.visitMethod(Opcodes.ACC_PUBLIC, "getDigSpeed", DIG_SPEED, null, null);
+			dig.visitCode();
+			boolean extra = build == BreakSpeedBuild.FORGE_WITH_A_FLOAT_FIRST;
+			breakSpeedBody(dig, extra ? 4 : 3, extra ? 3 : -1, true);
+			dig.visitMaxs(0, 0);
+			dig.visitEnd();
+		}
+		for (String[] method : new String[][] {{"base", SPEED}, {"bonus", "()F"}, {"onGround", "()Z"}}) {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC, method[0], method[1], null, null);
+			mv.visitCode();
+			mv.visitInsn(method[1].endsWith("Z") ? Opcodes.ICONST_1 : Opcodes.FCONST_1);
+			mv.visitInsn(method[1].endsWith("Z") ? Opcodes.IRETURN : Opcodes.FRETURN);
+			mv.visitMaxs(0, 0);
+			mv.visitEnd();
+		}
+		MethodVisitor event = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "breakSpeed", "(Ljava/lang/Object;Ljava/lang/String;FLjava/lang/Integer;)F", null, null);
+		event.visitCode();
+		event.visitVarInsn(Opcodes.FLOAD, 2);
+		event.visitInsn(Opcodes.FRETURN);
+		event.visitMaxs(0, 0);
+		event.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	/** The speed's code, its float in {@code slot}; Forge's with its event and a local variable table, after a float of its own in {@code extra}. */
+	private static void breakSpeedBody(MethodVisitor mv, int slot, int extra, boolean forge) {
+		org.objectweb.asm.Label start = new org.objectweb.asm.Label();
+		org.objectweb.asm.Label extraStart = new org.objectweb.asm.Label();
+		org.objectweb.asm.Label speedStart = new org.objectweb.asm.Label();
+		org.objectweb.asm.Label onGround = new org.objectweb.asm.Label();
+		org.objectweb.asm.Label end = new org.objectweb.asm.Label();
+		mv.visitLabel(start);
+		if (extra >= 0) {
+			mv.visitVarInsn(Opcodes.ALOAD, 0);
+			mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "bonus", "()F", false);
+			mv.visitVarInsn(Opcodes.FSTORE, extra);
+			mv.visitLabel(extraStart);
+		}
+		mv.visitVarInsn(Opcodes.ALOAD, 0);
+		mv.visitVarInsn(Opcodes.ALOAD, 1);
+		mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "base", SPEED, false);
+		mv.visitVarInsn(Opcodes.FSTORE, slot);
+		mv.visitLabel(speedStart);
+		mv.visitVarInsn(Opcodes.ALOAD, 0);
+		mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "onGround", "()Z", false);
+		mv.visitJumpInsn(Opcodes.IFNE, onGround);
+		mv.visitVarInsn(Opcodes.FLOAD, slot);
+		mv.visitLdcInsn(5.0F);
+		mv.visitInsn(Opcodes.FDIV);
+		mv.visitVarInsn(Opcodes.FSTORE, slot);
+		mv.visitLabel(onGround);
+		if (forge) {
+			mv.visitVarInsn(Opcodes.ALOAD, 0);
+			mv.visitVarInsn(Opcodes.ALOAD, 1);
+			mv.visitVarInsn(Opcodes.FLOAD, slot);
+			mv.visitVarInsn(Opcodes.ALOAD, 2);
+			mv.visitMethodInsn(Opcodes.INVOKESTATIC, TARGET, "breakSpeed", "(Ljava/lang/Object;Ljava/lang/String;FLjava/lang/Integer;)F", false);
+			mv.visitVarInsn(Opcodes.FSTORE, slot);
+		}
+		mv.visitVarInsn(Opcodes.FLOAD, slot);
+		mv.visitInsn(Opcodes.FRETURN);
+		mv.visitLabel(end);
+		if (forge) {
+			mv.visitLocalVariable("this", "L" + TARGET + ";", null, start, end, 0);
+			mv.visitLocalVariable("state", "Ljava/lang/String;", null, start, end, 1);
+			mv.visitLocalVariable("pos", "Ljava/lang/Integer;", null, start, end, 2);
+			if (extra >= 0) mv.visitLocalVariable("bonus", "F", null, extraStart, end, extra);
+			mv.visitLocalVariable("f", "F", null, speedStart, end, slot);
+		}
+	}
+
+	/** Puzzles Lib's break speed hook: the first float, at its second load after onGround() (any of them with a negative {@code loadOrdinal}). */
+	private static byte[] breakSpeedHook(int loadOrdinal) {
+		return mixin("com/example/mixin/BreakSpeed", false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC, "getDestroySpeed", "(FLjava/lang/String;)F", null, null);
+			AnnotationVisitor ann = mv.visitAnnotation(MODIFY_VARIABLE, true);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "getDestroySpeed");
+			methods.visitEnd();
+			AnnotationVisitor at = ann.visitAnnotation("at", AT);
+			at.visit("value", "LOAD");
+			if (loadOrdinal >= 0) at.visit("ordinal", loadOrdinal);
+			at.visitEnd();
+			AnnotationVisitor slice = ann.visitAnnotation("slice", "Lorg/spongepowered/asm/mixin/injection/Slice;");
+			AnnotationVisitor from = slice.visitAnnotation("from", AT);
+			from.visit("value", "INVOKE");
+			from.visit("target", "L" + TARGET + ";onGround()Z");
+			from.visitEnd();
+			slice.visitEnd();
+			ann.visit("ordinal", 0);
+			ann.visitEnd();
+			mv.visitCode();
+			mv.visitVarInsn(Opcodes.FLOAD, 1);
+			mv.visitInsn(Opcodes.FRETURN);
+			mv.visitMaxs(1, 3);
+			mv.visitEnd();
+		});
+	}
+
+	@Test
+	void aVariableModifierByOrdinalMovesToTheMethodTheDeprecatedOneCallsAtVanillasLoad() throws Exception {
+		// PRE-19: Puzzles Lib's break speed hook (PRE-17) moves to getDigSpeed, the method Forge 47 deprecated
+		// getDestroySpeed for, where vanilla's code shows the first float is vanilla's speed there. Forge's code passes the
+		// speed to its event before returning it, so vanilla's second load after onGround() is the third there.
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "BreakSpeed"));
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/BreakSpeed", breakSpeedHook(1)));
+		Map<String, byte[]> vanilla = Map.of(TARGET, breakSpeedTarget(BreakSpeedBuild.VANILLA));
+		ClassIndex forge = new ClassIndex(Map.of(TARGET, breakSpeedTarget(BreakSpeedBuild.FORGE))::get);
+		assertFalse(preflight(forge, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty());
+		// Without vanilla's code, which load and which float the hook meant can't be told.
+		assertTrue(preflight(forge, mod::get, ClassBytesSource.EMPTY, false).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty());
+
+		List<PreflightFinding> notes = new ArrayList<>();
+		byte[] repaired = new MixinPreflight(forge, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, vanilla::get)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes).get("com/example/mixin/BreakSpeed.class");
+		assertNotNull(repaired, notes.toString());
+		assertTrue(notes.getFirst().message().contains("getDestroySpeed" + SPEED + ", which NeoForge deprecated for getDigSpeed" + DIG_SPEED
+				+ "; the injector is pointed there, at its load with ordinal 2 there, vanilla's with ordinal 1"), notes.toString());
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired).accept(node, 0);
+		MethodNode handler = node.methods.stream().filter(m -> m.name.equals("getDestroySpeed")).findFirst().orElseThrow();
+		AnnotationNode injector = Annotations.find(handler, MODIFY_VARIABLE);
+		assertEquals(List.of("getDigSpeed" + DIG_SPEED), Annotations.value(injector, "method"));
+		assertEquals(2, Annotations.value(Annotations.list(Annotations.value(injector, "at")).getFirst(), "ordinal"), "vanilla's return, not the event's argument");
+		assertEquals(0, Annotations.value(injector, "ordinal"));
+		mod.put("com/example/mixin/BreakSpeed", repaired);
+		assertTrue(preflight(forge, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty());
+	}
+
+	@Test
+	void aVariableModifierByOrdinalStaysWhereThePatchAddsALocalOfItsTypeOrALoadOfIt() throws Exception {
+		// PRE-19's limits: where the other method has a float of the patch's first, the hook's ordinal names that one; where
+		// the hook takes every load after onGround(), Forge's event argument would be one more.
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "BreakSpeed"));
+		Map<String, byte[]> vanilla = Map.of(TARGET, breakSpeedTarget(BreakSpeedBuild.VANILLA));
+		Map<String, byte[]> secondLoad = Map.of("com/example/mixin/BreakSpeed", breakSpeedHook(1));
+		ClassIndex floatFirst = new ClassIndex(Map.of(TARGET, breakSpeedTarget(BreakSpeedBuild.FORGE_WITH_A_FLOAT_FIRST))::get);
+		assertTrue(new MixinPreflight(floatFirst, InstalledClasses.NONE, secondLoad::get, ClassBytesSource.EMPTY, false, true, vanilla::get)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty());
+		Map<String, byte[]> everyLoad = Map.of("com/example/mixin/BreakSpeed", breakSpeedHook(-1));
+		ClassIndex forge = new ClassIndex(Map.of(TARGET, breakSpeedTarget(BreakSpeedBuild.FORGE))::get);
+		assertTrue(new MixinPreflight(forge, InstalledClasses.NONE, everyLoad::get, ClassBytesSource.EMPTY, false, true, vanilla::get)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty());
+	}
+
 	@Test
 	void anArgumentModifierWithAnInstanceHandlerBeforeTheDelegateConstructorCallFails() throws Exception {
 		// CTOR-3: Fabric API's shader program hook modifies vanilla's ResourceLocation construction in ShaderInstance's
