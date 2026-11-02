@@ -1354,17 +1354,33 @@ jobs:
           # 26.x made call an overload.
           dump client-continuity 'game:net.minecraft.client.renderer.texture.atlas.SpriteSourceList#list' 'mod:*SpriteSourceListMixin#*'
           if [ "${{ matrix.target.minecraft }}" = "1.21.1" ]; then
-            # Ledger's anvil hook, which stops the 1.21.1 advanced corpus server as Mixin applies it ("@ModifyArgs injector
-            # ... has an invalid signature"): Mixin's whole message, the handler as the mod ships it and as Fabricated
-            # left it, and the menu's methods as NeoForge's game has them.
+            # CORPUS-58: what pre-flight now does with Ledger's anvil hook on the 1.21.1 advanced corpus server, and Mixin's
+            # message if it still refuses it.
             for log in "$RUNNER_TEMP/server-advanced/server.out" "$RUNNER_TEMP/server-advanced/logs/latest.log"; do
               if [ -f "$log" ]; then grep -h -m 2 -o "has an invalid signature.*" "$log" | cut -c1-900 || true; fi
             done
-            dump server-advanced 'mod:*AnvilScreenHandlerMixin#ledgerLogAnvilChange' 'mod:*AnvilScreenHandlerMixin#class' \
-              'game:net.minecraft.world.inventory.AnvilMenu#*'
-            # CORPUS-50: Supplementaries' item tags are missing as the 1.21.1 corpus server loads its data packs. Moonlight
-            # adds the tags it generates in a pack of its own: its and Supplementaries' mixins, and what the report says of them.
-            dump server-corpus 'file:moonlight*.mixins.json' 'file:supplementaries*.mixins.json'
-            grep -h -i -E "moonlight|supplementaries" "$RUNNER_TEMP/server-corpus/logs/fabric-bridge-report.txt" | grep -v -E "declares the service|shares package" | cut -c1-400 | head -60 || true
-            grep -h -i -E "moonlight|supplementaries|dynamic" "$RUNNER_TEMP/server-corpus/logs/latest.log" | grep -v -E "^\s+at " | cut -c1-400 | head -60 || true
+            report="$RUNNER_TEMP/server-advanced/logs/fabric-bridge-report.txt"
+            if [ -f "$report" ]; then grep -h "AnvilScreenHandlerMixin" "$report" | cut -c1-500 | head -10 || true; fi
+            # CORPUS-50: Supplementaries' item tags are missing as the 1.21.1 corpus server loads its data packs, though
+            # Moonlight generates Supplementaries' dynamic pack: the tag files in the jars, what the dynamic pack holds,
+            # and the log's lines around the missing tags.
+            dump server-corpus 'file:data/supplementaries/tags/*/timber_frames.json' 'file:data/supplementaries/tags/*/presents.json' \
+              'file:data/supplementaries/tags/*/flags.json'
+            if [ -d "$RUNNER_TEMP/server-corpus/dynamic-data-pack-cache" ]; then
+              echo "== the dynamic pack's files"
+              find "$RUNNER_TEMP/server-corpus/dynamic-data-pack-cache" -type f | sed "s|$RUNNER_TEMP/server-corpus/||" | grep -i "tags" | head -40 || true
+              find "$RUNNER_TEMP/server-corpus/dynamic-data-pack-cache" -type f | wc -l
+            fi
+            log="$RUNNER_TEMP/server-corpus/logs/latest.log"
+            if [ -f "$log" ]; then grep -h -B3 -m 3 -E "Missing tag|Couldn't load tag" "$log" | grep -v -E "^\s+at " | cut -c1-600 || true; fi
+            # CORPUS-59: Cobblemon's client initializer fails on the 1.21.1 advanced corpus client as the class writer
+            # computes a transformed class's frames: the class and the frames' stack.
+            log="$RUNNER_TEMP/client-advanced/run/logs/latest.log"
+            if [ -f "$log" ]; then grep -h -A45 -m 1 "TransformerClassWriter/\]: Failed to find class" "$log" | cut -c1-300 || true; fi
+          fi
+          # LAMBDA-9: Litematica's schematic hooks into LevelRenderer.addMainPass's lambda, left out on 26.2: its handlers,
+          # and the lambdas as NeoForge's and vanilla's code have them.
+          if [ "${{ matrix.target.minecraft }}" = "26.2" ]; then
+            dump client-malilib 'mod:fi.dy.masa.litematica.mixin.render.MixinLevelRenderer#litematica_renderMainSection*' \
+              'game:net.minecraft.client.renderer.LevelRenderer#lambda$addMainPass$*' 'vanilla:net.minecraft.client.renderer.LevelRenderer#lambda$addMainPass$*'
           fi
