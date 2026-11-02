@@ -21,8 +21,8 @@ import net.neoforged.neoforge.event.AddPackFindersEvent;
  * initializers that run later are still found.
  *
  * <p>Activation: {@code ALWAYS_ENABLED} packs are required (cannot be turned off); {@code DEFAULT_ENABLED} data
- * packs are added to new worlds automatically. Default-enabled client resource packs are not switched on
- * automatically (upstream patches the options screen for that); players enable them in the pack screen.
+ * packs are added to new worlds automatically, and {@code DEFAULT_ENABLED} resource packs are switched on the first
+ * time they are offered ({@link DefaultResourcePacks}).
  */
 final class BuiltinPacks {
 	private static final Logger LOGGER = LoggerFactory.getLogger("Fabricated");

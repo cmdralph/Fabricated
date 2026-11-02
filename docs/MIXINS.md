@@ -20,9 +20,9 @@ a version's own configs come in through `version_mixin_configs` in its `gradle.p
 
 | Config file | Package | Versions | Sections | defaultRequire | overwrites.requireAnnotations | plugin |
 |---|---|---|---|---|---|---|
-| `mc/neoforge/1.21.1/src/main/resources/fabricated.mixins.json` | `io.github.cmdralph.fabricated.neoforge.mixin` | 1.21.1 | mixins 49, client 15 | 1 | true | `FabricatedMixinPlugin` (creates Fabric language adapters in `onLoad`; filters nothing) |
-| `mc/neoforge/1.21.11/src/main/resources/fabricated.mixins.json` | same | 1.21.11 | mixins 59, client 23 | 1 | true | same |
-| `mc/neoforge/common26/src/main/resources/fabricated.mixins.json` | same | 26.x | mixins 69, client 27 | 1 | true | same |
+| `mc/neoforge/1.21.1/src/main/resources/fabricated.mixins.json` | `io.github.cmdralph.fabricated.neoforge.mixin` | 1.21.1 | mixins 49, client 16 | 1 | true | `FabricatedMixinPlugin` (creates Fabric language adapters in `onLoad`; filters nothing) |
+| `mc/neoforge/1.21.11/src/main/resources/fabricated.mixins.json` | same | 1.21.11 | mixins 59, client 24 | 1 | true | same |
+| `mc/neoforge/common26/src/main/resources/fabricated.mixins.json` | same | 26.x | mixins 69, client 28 | 1 | true | same |
 | `mc/neoforge/1.21.1/src/main/resources/fabricated-biome.mixins.json` | `net.fabricmc.fabric.mixin.biome` | 1.21.1 | mixins 8 | 1 | true | none |
 | `mc/neoforge/1.21.11/src/main/resources/fabricated-biome.mixins.json` | same | 1.21.11 | mixins 10 | 1 | true | none |
 | `mc/neoforge/common26early/src/main/resources/fabricated-biome.mixins.json` | same | 26.1.2, 26.2 | mixins 10 | 1 | true | none |
@@ -373,6 +373,7 @@ Versions: 1.21.1 · package `io.github.cmdralph.fabricated.neoforge.mixin` · re
 | client | client.SoundEngineStreamMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.client.sounds.SoundEngine | @WrapOperation → fabricated$fabricAudioStream | "play" | INVOKE `L…/SoundInstance;getStream(L…/SoundBufferLibrary;L…/Sound;Z)L…/CompletableFuture;` | — | default |
 | client | client.ClientChunkCacheMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.client.multiplayer.ClientChunkCache | @ModifyExpressionValue → fabricated$unloadOutOfRange | "updateViewRadius" | INVOKE `L…/ClientChunkCache$Storage;inRange(II)Z` sugar:@Local LevelChunk | — | default |
 | client | client.ClientChunkCacheMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.client.multiplayer.ClientChunkCache | @Inject → fabricated$unloadReplaced | "replaceWithPacketData" | NEW `L…/LevelChunk` sugar:@Local LevelChunk | — | default |
+| client | client.OptionsDefaultPacksMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.client.Options | @Inject → fabricated$defaultEnabledPacks | "loadSelectedResourcePacks(L…/PackRepository;)V" | HEAD | — | default |
 
 ### `mc/neoforge/1.21.11/src/main/resources/fabricated-biome.mixins.json`
 
@@ -557,6 +558,7 @@ Versions: 1.21.11 · package `io.github.cmdralph.fabricated.neoforge.mixin` · r
 | client | client.SoundEngineStreamMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.client.sounds.SoundEngine | @WrapOperation → fabricated$fabricAudioStream | "play" | INVOKE `L…/SoundInstance;getStream(L…/SoundBufferLibrary;L…/Sound;Z)L…/CompletableFuture;` | — | default |
 | client | ClientChunkCacheMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.client.multiplayer.ClientChunkCache | @ModifyExpressionValue → fabricated$unloadOutOfRange | "updateViewRadius" | INVOKE `L…/ClientChunkCache$Storage;inRange(II)Z` sugar:@Local LevelChunk | — | default |
 | client | ClientChunkCacheMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.client.multiplayer.ClientChunkCache | @Inject → fabricated$unloadReplaced | "replaceWithPacketData" | NEW `L…/LevelChunk` sugar:@Local LevelChunk | — | default |
+| client | OptionsDefaultPacksMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.client.Options | @Inject → fabricated$defaultEnabledPacks | "loadSelectedResourcePacks(L…/PackRepository;)V" | HEAD | — | default |
 | client | client.ModelManagerExtraModelsMixin | common12111 (1.21.11,26.1.2,26.2,26.3) | n.m.client.resources.model.ModelManager | @Inject → fabricated$fabricExtraModels | "discoverModelDependencies(…, StandaloneModelLoader$LoadedModels)" (NeoForge's four-argument overload) | INVOKE `L…/ModelDiscovery;resolve()L…/Map;` | — | default |
 | client | client.UnbakedModelParserMixin | common12111 (1.21.11,26.1.2,26.2,26.3) | neo.client.model.UnbakedModelParser$Deserializer | @Inject → fabricated$fabricTypes | "deserialize(L…/JsonElement;L…/Type;L…/JsonDeserializationContext;)L…/UnbakedModel;" | HEAD cancellable=true | — | default |
 | client | client.BlockStateModelUnbakedMixin | 1.21.11 (1.21.11) | n.m.client.renderer.block.model.BlockStateModel$Unbaked | @ModifyExpressionValue → fabricated$fabricTypes | "<clinit>" | INVOKE `L…/Codec;flatComapMap(…)L…/Codec;` slice from PUTSTATIC `HARDCODED_WEIGHTED_CODEC` | — | default |
@@ -925,6 +927,7 @@ Versions: 26.1.2, 26.2, 26.3 · package `io.github.cmdralph.fabricated.neoforge.
 | client | client.ParticleResourcesMixin | common12111 (1.21.11,26.1.2,26.2,26.3) | n.m.client.particle.ParticleResources | no injectors; non-@Unique fields providers | | | | |
 | client | ClientChunkCacheMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.client.multiplayer.ClientChunkCache | @ModifyExpressionValue → fabricated$unloadOutOfRange | "updateViewRadius" | INVOKE `L…/ClientChunkCache$Storage;inRange(II)Z` sugar:@Local LevelChunk | — | default |
 | client | ClientChunkCacheMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.client.multiplayer.ClientChunkCache | @Inject → fabricated$unloadReplaced | "replaceWithPacketData" | NEW `L…/LevelChunk` sugar:@Local LevelChunk | — | default |
+| client | OptionsDefaultPacksMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.client.Options | @Inject → fabricated$defaultEnabledPacks | "loadSelectedResourcePacks(L…/PackRepository;)V" | HEAD | — | default |
 | client | SectionCompilerMixin | common26 (26.1.2,26.2,26.3) | n.m.client.renderer.chunk.SectionCompiler | @WrapWithCondition → fabricated$fabricModels | "compile(L…/SectionPos;L…/RenderSectionRegion;L…/VertexSorting;L…/SectionBufferBuilderPack;L…/List;)L…/SectionCompiler$Results;" | INVOKE `L…/ModelBlockRenderer;tesselateBlock(…)V` sugar:@Local(argsOnly = true),@Local(name = "startedLayers"); implements FabricBlockRendering.SectionLayers | — | default |
 | client | MovingBlockRenderMixin | 26.1.2 | n.m.client.renderer.feature.BlockFeatureRenderer | @WrapWithCondition → fabricated$fabricModels | "renderMovingBlockSubmits" | INVOKE `L…/ModelBlockRenderer;tesselateBlock(…)V` sugar:@Local(argsOnly = true) BufferSource, OptionsRenderState, @Local(name = "poseStack"); implements FabricBlockRendering.MovingBlockBuffers | — | default |
 | client | MovingBlockRenderMixin | 26.2, 26.3 (one file each) | n.m.client.renderer.feature.MovingBlockFeatureRenderer | @WrapWithCondition → fabricated$fabricModels | "buildGroup" | INVOKE `L…/ModelBlockRenderer;tesselateBlock(…)V` sugar:@Local(argsOnly = true) FeatureFrameContext, @Local(name = "submit"); extends RenderTypeFeatureRenderer; implements FabricBlockRendering.MovingBlockBuffers | — | default |

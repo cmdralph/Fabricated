@@ -107,6 +107,7 @@
     "client.WeightedVariantsMixin",
     "client.UnbakedModelParserMixin",
     "client.BlockStateModelUnbakedMixin",
-    "client.ClientChunkCacheMixin"
+    "client.ClientChunkCacheMixin",
+    "client.OptionsDefaultPacksMixin"
   ]
 }

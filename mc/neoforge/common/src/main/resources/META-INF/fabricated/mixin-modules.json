@@ -107,6 +107,7 @@
     "client.MovingBlockRenderMixin": ["fabric-renderer-api-v1"],
     "client.MultiPartModelMixin": ["fabric-renderer-api-v1"],
     "client.MultiPlayerGameModeMixin": ["fabric-events-interaction-v0"],
+    "client.OptionsDefaultPacksMixin": ["fabric-resource-loader-v1", "fabric-resource-loader-v0"],
     "client.ParticleResourcesMixin": ["fabric-particles-v1"],
     "client.SectionCompilerMixin": ["fabric-renderer-api-v1"],
     "client.SoundEngineStreamMixin": ["fabric-sound-api-v1"],

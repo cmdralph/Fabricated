@@ -323,18 +323,27 @@ A mod that adds a pack source the vanilla way, replacing the repository's source
 (FrozenLib's resource pack API), keeps it: the set is made mutable again before NeoForge adds its own pack finders
 (PACK-1).
 
+`DEFAULT_ENABLED` built-in **resource** packs are switched on as upstream switches them on: the first time the client
+is offered each, and only then, so a pack the player turned off stays off, and a pack whose mod was removed is
+switched on again when it comes back (PACK-6). Which packs were offered before is kept in upstream's own file,
+`data/fabricDefaultResourcePacks.dat` in the game directory, so an instance moved between Fabric and Fabricated keeps
+the player's choices. NeoForge itself has no such default; Continuity's connected textures come from such a pack.
+Upstream adds the packs as the options load; Fabricated adds them as the client applies the options to its pack
+repository, which by then has found every pack.
+
 Differences from upstream:
 
 - An ordering that names a listener nobody registered is skipped (logged at debug level). An ordering that would
   create a cycle is skipped with a warning in the report, where NeoForge would otherwise stop the game.
-- `DEFAULT_ENABLED` built-in **data** packs are enabled in new worlds. `DEFAULT_ENABLED` built-in **resource**
-  packs are not switched on automatically (upstream patches the options for this); players enable them in the
-  pack screen. `ALWAYS_ENABLED` packs are required on both sides.
+- `DEFAULT_ENABLED` built-in **data** packs are enabled in new worlds. `ALWAYS_ENABLED` packs are required on both
+  sides.
 - Fabric's `/datapack` protections for its internal packs don't apply; NeoForge's own rules do.
 
 CI checks, on every version: listener ordering (including an ordering against a vanilla listener), the
 shared reload state, a listener factory, the data store read back through `MinecraftServer`, a `DEFAULT_ENABLED`
-built-in data pack being enabled and loaded, and the listener running again after `/reload`. Client listeners
+built-in data pack being enabled and loaded, a `DEFAULT_ENABLED` built-in resource pack being switched on in a new
+game directory and its resources loaded, and the listener running again after `/reload`. Core's
+`DefaultPackTrackerTest` checks upstream's rule and file format. Client listeners
 are checked by the client CI run (a client resource listener runs while the client starts).
 
 ### Native `fabric-registry-sync-v0`
