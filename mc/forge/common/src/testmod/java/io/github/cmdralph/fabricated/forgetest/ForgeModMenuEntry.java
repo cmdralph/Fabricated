@@ -14,8 +14,9 @@ public final class ForgeModMenuEntry implements ModMenuApi {
 	}
 
 	/**
-	 * Client only: whether Forge's mod list has this mod's config screen. Forge 66 made {@code ModList}'s methods static,
-	 * where Forge 61 to 65 reach them through {@code ModList.get()}, so the container is looked up by reflection.
+	 * Client only: whether Forge's mod list has this mod's config screen. Forge 64 and later (Minecraft 26.x) made
+	 * {@code ModList}'s methods static, where Forge 61 reaches them through {@code ModList.get()}, so the container is
+	 * looked up by reflection.
 	 */
 	static boolean registered() {
 		try {

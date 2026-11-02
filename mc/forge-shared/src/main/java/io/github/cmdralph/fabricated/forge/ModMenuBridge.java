@@ -72,8 +72,9 @@ final class ModMenuBridge {
 	}
 
 	/**
-	 * {@code ModList.getModContainerById} as {@code (String)Optional}: Forge 66 made {@code ModList}'s methods static, where
-	 * Forge 47 to 65 reach them through {@code ModList.get()}, so neither call compiles on both.
+	 * {@code ModList.getModContainerById} as {@code (String)Optional}: Forge 64 and later (Minecraft 26.x) made
+	 * {@code ModList}'s methods static, where Forge 47 and 61 reach them through {@code ModList.get()}, so neither call
+	 * compiles on both.
 	 */
 	private static MethodHandle containerById() {
 		try {
