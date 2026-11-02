@@ -1186,6 +1186,16 @@ jobs:
                 { state = 0 }
                 /\/(ERROR|FATAL)\]/ && !/[Nn]arrator|flite|401|TargetDataLine/ { if (n == 6) exit; n++; print substr($0, 1, 300); state = 1 }
               ' "$log"
+              # The innermost cause of the first exception that stopped the game, with its frames (a chunk build's, say,
+              # whose crash report holds none when vanilla's trimming of it fails).
+              awk '
+                /Reported exception thrown|Chunk build failed|Unreported exception thrown|Exception in thread/ { armed = 1 }
+                armed && /^Caused by:/ && !/401|flite|TargetDataLine/ { cause = $0; frames = ""; n = 0; inside = 1; next }
+                inside && /^[ \t]+at / { if (n++ < 20) frames = frames "\n" substr($0, 1, 220); next }
+                inside && /^[ \t]+\.\.\. [0-9]+ more/ { next }
+                inside { inside = 0; if (cause != "" && !/^Caused by:/) { found = 1; exit } }
+                END { if (cause != "") print "-- innermost cause:\n" substr(cause, 1, 300) frames }
+              ' "$log" | head -24 || true
               # An exception that left the game's main thread goes to the console only.
               grep -h -m 2 -A 8 "^Exception in thread" "$RUNNER_TEMP/$run/client.out" 2>/dev/null | cut -c1-250 || true
               # Which thread ended the game, and from where (the test mod's shutdown hook), without the JDK's own frames.
@@ -1283,11 +1293,20 @@ jobs:
           # Iris's Fabric build on 1.21.11: GlStateManager$TextureState stays private to it. Its access widener, what
           # Fabricated wrote for it, the report's warnings for it and the class as the game ships it.
           dump client-sodium-fabric 'file:iris.accesswidener' 'game:com.mojang.blaze3d.opengl.GlStateManager$TextureState#class'
-          if [ -d "$RUNNER_TEMP/client-sodium-fabric/run/.fabricated/cache" ]; then
-            find "$RUNNER_TEMP/client-sodium-fabric/run/.fabricated/cache" -name '*.jar' | while read -r jar; do
+          # CORPUS-52: ImmediatelyFast's access to GlStateManager.DEPTH on 1.21.1 (the corpus client), the same way.
+          dump client-corpus 'file:immediatelyfast*.accesswidener' 'game:com.mojang.blaze3d.platform.GlStateManager#class'
+          # What Fabricated wrote for a run's GlStateManager lines, whether the jar's descriptor names its file, the
+          # report's warnings for the mod and the log's access transformer lines.
+          widened() {
+            local dir="$RUNNER_TEMP/$1/run"
+            [ -d "$dir/.fabricated/cache" ] || return 0
+            echo "== $1: access transformers for GlStateManager"
+            find "$dir/.fabricated/cache" -name '*.jar' | while read -r jar; do
               unzip -p "$jar" META-INF/accesstransformer.cfg 2>/dev/null | grep -n GlStateManager | sed "s|^|$(basename "$jar"): |" | head -12
               unzip -p "$jar" META-INF/neoforge.mods.toml 2>/dev/null | grep -n -i -A2 accessTransformers | sed "s|^|$(basename "$jar") toml: |" | head -6
-            done | grep -i -B1 -A1 "glstatemanager\|iris" | head -40 || true
-            grep -n -E "^  iris: " "$RUNNER_TEMP/client-sodium-fabric/run/logs/fabric-bridge-report.txt" | head -20 | cut -c1-300 || true
-            grep -n -i -m 20 -E "access ?transformer" "$RUNNER_TEMP/client-sodium-fabric/run/logs/latest.log" | cut -c1-300 || true
-          fi
+            done | grep -i -B1 -A1 "glstatemanager\|$2" | head -40 || true
+            grep -n -E "^  $2: " "$dir/logs/fabric-bridge-report.txt" | head -20 | cut -c1-300 || true
+            grep -n -i -m 20 -E "access ?transformer|IllegalAccessError" "$dir/logs/latest.log" | cut -c1-300 || true
+          }
+          widened client-sodium-fabric iris
+          widened client-corpus immediatelyfast

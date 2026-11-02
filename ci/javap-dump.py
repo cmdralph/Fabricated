@@ -7,7 +7,7 @@ Usage: ci/javap-dump.py <client or server work directory> <spec>...
   game:<class>[#member]   the class (or its members of that name) in the game's patched jars
   mod:<class>[#member]    the class in the mods' jars and Fabricated's translations; <class> may be *Name, any
                           class of that simple name
-  file:<path>             a text file at that path in the mods' jars (a mixin config, say)
+  file:<path>             a text file at that path in the mods' jars (a mixin config, say; * and ? match as in a glob)
   mixins:<class>          the mixins in the mods' jars (as they ship) that target the class (internal name)
   refs:<text>             the methods of the mods' classes (as they ship) whose code names the text (a class's
                           internal name, say), up to 8 classes
@@ -15,6 +15,7 @@ A member is a name, a name's start followed by * (lambda$charTyped$*), "class" (
 its inner classes, its @Mixin) or * (every member's declaration and descriptor, without code). A class or file that is
 the same as one already printed is named, not printed again (the same translation in several cache jars).
 """
+import fnmatch
 import glob
 import hashlib
 import io
@@ -279,8 +280,8 @@ def main():
                         if not printed_before(title, data, printed):
                             show(title, data, member)
                         found += 1
-                    elif kind == "file" and entry == what:
-                        title = f"{what} in {where}{label}"
+                    elif kind == "file" and fnmatch.fnmatchcase(entry, what):
+                        title = f"{entry} in {where}{label}"
                         data = read()
                         if not printed_before(title, data, printed):
                             print(f"-- {title}")
