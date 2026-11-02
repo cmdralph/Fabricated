@@ -245,8 +245,8 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 	}
 
 	/**
-	 * Whether a feature Fabric's biome modifications add to the plains is among their features as the overworld's generator
-	 * reads them ({@link ForgeBiomeTest}; with Fabric API only).
+	 * Whether a feature Fabric's biome modifications add to the plains is among their features, as a noise generator reads
+	 * them ({@link ForgeBiomeTest}; with Fabric API only).
 	 */
 	public static void checkBiomes(MinecraftServer server) {
 		try {
