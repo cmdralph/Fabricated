@@ -1332,8 +1332,12 @@ jobs:
           dump client-malilib 'game:net.minecraft.world.item.ItemStack#getTooltipLines'
           # KEYMAP-1: the mods' accessors of KeyMapping's key map, which NeoForge retyped, and what their callers do with it.
           dump client-polyfrost 'mixins:net/minecraft/class_304'
-          dump client-advanced 'mod:nl.enjarai.doabarrelroll.mixin.client.key.KeyBindingAccessor' \
-            'refs:nl/enjarai/doabarrelroll/mixin/client/key/KeyBindingAccessor'
+          # Do a Barrel Roll's camera roll hooks on 1.21.1, which pick Camera.setup's setRotation calls by ordinal: its
+          # mixin's handlers, NeoForge's setup and vanilla's (ffy.a in Mojang's obfuscated names), which VANILLA-1 aligns.
+          if [ "${{ matrix.target.minecraft }}" = "1.21.1" ]; then
+            dump client-advanced 'mod:nl.enjarai.doabarrelroll.mixin.client.roll.CameraMixin#doABarrelRoll$addRoll*' \
+              'game:net.minecraft.client.Camera#setup' 'vanilla:ffy#a'
+          fi
           # CORPUS-56: Continuity's sprite source hook captures locals in SpriteSourceList.list, which NeoForge 1.21.11 and
           # 26.x made call an overload.
           dump client-continuity 'game:net.minecraft.client.renderer.texture.atlas.SpriteSourceList#list' 'mod:*SpriteSourceListMixin#*'

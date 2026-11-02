@@ -5,6 +5,8 @@ mod's jar. Reads jars in memory with size caps and hands javap one class file at
 
 Usage: ci/javap-dump.py <client or server work directory> <spec>...
   game:<class>[#member]   the class (or its members of that name) in the game's patched jars
+  vanilla:<class>[#member] the class in vanilla's game jar, which pre-flight reads (VANILLA-1): before 26.1 in
+                          Mojang's obfuscated names (Camera is ffy on 1.21.1)
   mod:<class>[#member]    the class in the mods' jars and Fabricated's translations; <class> may be *Name, any
                           class of that simple name
   file:<path>             a text file at that path in the mods' jars (a mixin config, say; * and ? match as in a glob)
@@ -251,6 +253,7 @@ def main():
     for pattern in GAME_JARS:
         game += sorted(glob.glob(os.path.join(work, "minecraft", "libraries", pattern), recursive=True))
         game += sorted(glob.glob(os.path.join(work, "libraries", pattern), recursive=True))
+    vanilla = sorted(glob.glob(os.path.join(work, "minecraft", "versions", "*", "*.jar"))) + sorted(glob.glob(os.path.join(work, "versions", "*", "*.jar")))
     mods = sorted(glob.glob(os.path.join(work, "run", "mods", "*.jar"))) + sorted(glob.glob(os.path.join(work, "mods", "*.jar")))
     translated = []
     for cache in (os.path.join(work, "run", ".fabricated", "cache"), os.path.join(work, ".fabricated", "cache")):
@@ -260,12 +263,13 @@ def main():
         kind, _, what = spec.partition(":")
         cls, _, member = what.partition("#")
         found = 0
-        if kind == "game":
-            for jar in game:
+        if kind in ("game", "vanilla"):
+            for jar in game if kind == "game" else vanilla:
                 data = read_jar(jar)
                 for where, entry, read in entries(os.path.basename(jar), data) if data else ():
                     if matches(entry, cls):
-                        show(f"{cls} in the game's {where}" + (f", member {member}" if member else ""), read(), member)
+                        whose = "the game's" if kind == "game" else "vanilla's"
+                        show(f"{cls} in {whose} {where}" + (f", member {member}" if member else ""), read(), member)
                         found += 1
                         break
                 if found:
@@ -312,7 +316,8 @@ def main():
             refs(mods, what, 8)
             found = 1  # refs says so itself
         if not found:
-            print(f"-- {spec}: not found in {len(game) if kind == 'game' else len(mods) + len(translated)} jar(s)")
+            count = len(game) if kind == "game" else len(vanilla) if kind == "vanilla" else len(mods) + len(translated)
+            print(f"-- {spec}: not found in {count} jar(s)")
 
 
 if __name__ == "__main__":
