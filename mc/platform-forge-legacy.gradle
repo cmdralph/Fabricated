@@ -132,13 +132,24 @@ afterEvaluate {
     // classes its models extend are too many for Intermediary stand-ins. Forge 47 runs the game in SRG's member names, so
     // the jar CI installs is reobfuscated, as the in-game mod is; Fabricated reads a Fabric mod through Intermediary's
     // mappings, which leave names in no Intermediary namespace as they are. The jar as built goes to build/devlibs.
+    // The task is registered as ModDevGradle's reobfuscate() registers its own, without what that adds to the source
+    // set's published variants: the test mod has none (reobfuscate() fails on a source set without them) and is never
+    // published. Its class comes from the plugin's class loader, which a script applied with `apply from` can't name.
     if (sourceSets.testmodfrapi.java.srcDirs.any { it.isDirectory() }) {
         def frapiTestmodJar = tasks.named('testmodFrapiJar', Jar) {
             destinationDirectory = layout.buildDirectory.dir('devlibs')
         }
-        def reobfFrapiTestmodJar = obfuscation.reobfuscate(frapiTestmodJar, sourceSets.testmodfrapi) {
+        def remapJarType = obfuscation.getClass().classLoader.loadClass('net.neoforged.moddevgradle.legacyforge.tasks.RemapJar')
+        def reobfFrapiTestmodJar = tasks.register('reobfTestmodFrapiJar', remapJarType) {
+            group = 'verification'
+            description = "Reobfuscates the renderer test mod to Forge's runtime names"
+            input.set(frapiTestmodJar.flatMap { it.archiveFile })
             archiveFileName = 'fabricated-testmod-frapi.jar'
             destinationDirectory = layout.buildDirectory.dir('testmods')
+            // The classes the test mod's classes extend (the game's, and the stand-ins of Fabric API's), so that the
+            // methods which override theirs are renamed with them.
+            libraries.from(sourceSets.testmodfrapi.compileClasspath)
+            obfuscation.configureNamedToSrgOperation(remapOperation)
         }
         tasks.named('testmods') { dependsOn reobfFrapiTestmodJar }
     }
