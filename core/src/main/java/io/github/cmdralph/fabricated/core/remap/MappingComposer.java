@@ -163,8 +163,41 @@ public final class MappingComposer {
 			members.computeIfAbsent(intermediaryName, k -> new HashMap<>())
 					.put(intermediaryOwner + "." + intermediaryName + intermediaryDesc, mojang);
 		}
-		MappingTable table = MappingTable.fromMembers(classes, members);
+		MappingTable table = MappingTable.fromMembers(classes, members).withOverloadedMethods(overloadedMethods(memberLines, pg, officialToIntermediary));
 		return plain ? table.withPlainMembers(plainMethods(memberLines, pg, officialToIntermediary)) : table;
+	}
+
+	/**
+	 * The methods Intermediary names apart whose runtime name their class gives another method too, by intermediary name,
+	 * to their intermediary descriptor: {@code LevelRenderer.getLightColor}'s two overloads are {@code method_23794} and
+	 * {@code method_23793}, so a mixin selector naming one without a descriptor, as Fabric Loom writes it where the name
+	 * alone is unique, picks it on Fabric and the first {@code getLightColor} once remapped (CORPUS-45). The runtime file
+	 * lists every method of a class, overrides too; Intermediary lists one where it is first declared. A name Intermediary
+	 * gives methods of different descriptors (an override with a narrower return type) is left out.
+	 */
+	private static Map<String, String> overloadedMethods(List<String[]> memberLines, Proguard pg, Map<String, String> officialToIntermediary) {
+		// official owner -> runtime name -> how many of the owner's methods it names
+		Map<String, Map<String, Integer>> named = new HashMap<>();
+		for (Map.Entry<String, String> e : pg.methods.entrySet()) {
+			String key = e.getKey();
+			String owner = key.substring(0, key.lastIndexOf('.', key.indexOf('(')));
+			named.computeIfAbsent(owner, k -> new HashMap<>()).merge(e.getValue(), 1, Integer::sum);
+		}
+		Map<String, String> descriptors = new HashMap<>();
+		Set<String> ambiguous = new HashSet<>();
+		Set<String> shared = new HashSet<>();
+		for (String[] p : memberLines) {
+			if (!p[0].equals("METHOD")) continue;
+			String before = descriptors.putIfAbsent(p[4], p[2]);
+			if (before != null && !before.equals(p[2])) ambiguous.add(p[4]);
+			String runtime = pg.methods.get(p[1] + "." + p[3] + p[2]);
+			if (runtime != null && !runtime.startsWith("<") && named.getOrDefault(p[1], Map.of()).getOrDefault(runtime, 0) > 1) shared.add(p[4]);
+		}
+		Map<String, String> overloaded = new HashMap<>();
+		for (String name : shared) {
+			if (!ambiguous.contains(name)) overloaded.put(name, remapDescriptor(descriptors.get(name), officialToIntermediary));
+		}
+		return overloaded;
 	}
 
 	/**

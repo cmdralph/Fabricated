@@ -69,6 +69,66 @@ final class InjectionPoints {
 		return ordinal >= count ? Verdict.MISSING : Verdict.FOUND;
 	}
 
+	/**
+	 * Whether a {@code CONSTANT} point, with the {@code args} Mixin's {@code BeforeConstant} reads, picks an instruction in
+	 * the slice: the constant (the ordinal-th with an ordinal), as Mixin matches it. A constant the platform's patch
+	 * replaced leaves the injector nothing (CORPUS-46: Pehkui's reach hook modifies vanilla's 9.0 in
+	 * {@code Player.attack}, which NeoForge 21.1 replaced with its interaction range). {@link Verdict#UNKNOWN} for what
+	 * pre-flight doesn't judge: no value, {@code expandZeroConditions}, an argument it doesn't know, a value Mixin's
+	 * strict parsing might read otherwise.
+	 */
+	static Verdict constantPointVerdict(Object args, int ordinal, Range range, MethodNode method) {
+		if (!(args instanceof List<?> list) || method.instructions == null) return Verdict.UNKNOWN;
+		Object wanted = null;
+		boolean nullValue = false;
+		for (Object entry : list) {
+			if (!(entry instanceof String arg)) return Verdict.UNKNOWN;
+			int eq = arg.indexOf('=');
+			String key = eq < 0 ? arg : arg.substring(0, eq);
+			String value = eq < 0 ? "" : arg.substring(eq + 1);
+			// Mixin neither trims arguments nor parses numbers with spaces around them.
+			boolean numeric = !value.isEmpty() && value.equals(value.strip());
+			try {
+				switch (key) {
+					case "nullValue" -> nullValue = Boolean.parseBoolean(value);
+					case "intValue" -> wanted = numeric ? Integer.valueOf(value) : null;
+					case "longValue" -> wanted = numeric ? Long.valueOf(value) : null;
+					case "floatValue" -> wanted = numeric && plainDecimal(value) ? Float.valueOf(value) : null;
+					case "doubleValue" -> wanted = numeric && plainDecimal(value) ? Double.valueOf(value) : null;
+					case "stringValue" -> wanted = value;
+					case "classValue" -> wanted = value.isEmpty() ? null : Type.getObjectType(value.replace('.', '/'));
+					case "log" -> {
+					}
+					default -> {
+						return Verdict.UNKNOWN;
+					}
+				}
+			} catch (NumberFormatException e) {
+				return Verdict.UNKNOWN;
+			}
+			if (wanted == null && !nullValue && !key.equals("log")) return Verdict.UNKNOWN;
+		}
+		if (wanted == null && !nullValue) return Verdict.UNKNOWN;
+		int countInMethod = 0;
+		int countInRange = 0;
+		for (int i = 0; i < method.instructions.size(); i++) {
+			AbstractInsnNode insn = method.instructions.get(i);
+			Object value = constantOf(insn);
+			boolean match = nullValue ? insn.getOpcode() == Opcodes.ACONST_NULL : value != null && value.equals(wanted);
+			if (!match) continue;
+			countInMethod++;
+			if (i >= range.start() && i <= range.end()) countInRange++;
+		}
+		if (countInMethod == 0 || ordinal >= countInMethod) return Verdict.MISSING;
+		if (range == Range.UNEVALUATED) return Verdict.UNKNOWN;
+		return countInRange == 0 || ordinal >= countInRange ? Verdict.MISSING : Verdict.FOUND;
+	}
+
+	/** A decimal number, with an optional exponent and type suffix, as both Mixin's parser and Java's read alike. */
+	private static boolean plainDecimal(String value) {
+		return value.matches("[+-]?(\\d+\\.?\\d*|\\.\\d+)([eE][+-]?\\d+)?[fFdD]?");
+	}
+
 	/** The constant an instruction pushes (boxed as {@code @Constant} stores it), or null. */
 	static Object constantOf(AbstractInsnNode insn) {
 		int op = insn.getOpcode();
@@ -92,7 +152,8 @@ final class InjectionPoints {
 			int opcode = Annotations.value(at, "opcode") instanceof Integer n ? n : -1;
 			AnnotationNode slice = sliceFor(at, slices);
 			Range range = slice == null ? Range.ALL : sliceRange(slice, method, ctx);
-			Verdict v = evaluate(point, rawTarget == null ? null : ctx.resolve(rawTarget), ordinal, opcode, range, method);
+			Verdict v = point.equals("CONSTANT") ? constantPointVerdict(Annotations.value(at, "args"), ordinal, range, method)
+					: evaluate(point, rawTarget == null ? null : ctx.resolve(rawTarget), ordinal, opcode, range, method);
 			if (v == Verdict.MISSING) return Verdict.MISSING;
 			if (v == Verdict.UNKNOWN) result = Verdict.UNKNOWN;
 		}

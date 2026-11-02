@@ -12,6 +12,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.jar.Attributes;
 import java.util.jar.Manifest;
+import java.util.regex.Pattern;
 
 import io.github.cmdralph.fabricated.core.archive.ArchiveException;
 import io.github.cmdralph.fabricated.core.archive.SafeArchive;
@@ -19,11 +20,13 @@ import io.github.cmdralph.fabricated.core.json.Json;
 import io.github.cmdralph.fabricated.core.json.JsonException;
 import io.github.cmdralph.fabricated.core.mixin.Refmap;
 
+import org.objectweb.asm.AnnotationVisitor;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.Handle;
 import org.objectweb.asm.MethodVisitor;
+import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.commons.ClassRemapper;
 import org.objectweb.asm.commons.MethodRemapper;
 
@@ -32,7 +35,8 @@ import org.objectweb.asm.commons.MethodRemapper;
  *
  * <ul>
  *   <li>{@code .class} files are rewritten with {@link IntermediaryRemapper}; frames are copied, not
- *       recomputed, because renaming does not change stack shapes.</li>
+ *       recomputed, because renaming does not change stack shapes. A mixin injector's selector naming a method by its
+ *       intermediary name alone gets the method's descriptor where its runtime name is shared ({@link SelectorPins}).</li>
  *   <li>Refmaps and service files have intermediary tokens rewritten.</li>
  *   <li>Signature files are removed (a remapped jar cannot keep valid signatures) and per-entry digest
  *       sections are dropped from the manifest.</li>
@@ -40,10 +44,15 @@ import org.objectweb.asm.commons.MethodRemapper;
  * </ul>
  */
 public final class JarRemapper {
+	private static final Pattern INTERMEDIARY_METHOD = Pattern.compile("method_\\d+");
+	private static final List<String> INJECTOR_PACKAGES = List.of("Lorg/spongepowered/asm/mixin/injection/", "Lcom/llamalad7/mixinextras/injector/");
+
+	private final MappingTable table;
 	private final IntermediaryRemapper remapper;
 	private final TokenRemapper tokens;
 
 	public JarRemapper(MappingTable table) {
+		this.table = table;
 		this.remapper = new IntermediaryRemapper(table);
 		this.tokens = remapper.tokens();
 	}
@@ -88,7 +97,8 @@ public final class JarRemapper {
 		try {
 			ClassReader reader = new ClassReader(data);
 			ClassWriter writer = new ClassWriter(0);
-			reader.accept(new LambdaAwareRemapper(writer, remapper), 0);
+			ClassVisitor remapping = new LambdaAwareRemapper(writer, remapper);
+			reader.accept(table.hasOverloadedMethods() ? new SelectorPins(remapping, table) : remapping, 0);
 			return writer.toByteArray();
 		} catch (RuntimeException e) {
 			throw new MappingException("Failed to remap " + nameForErrors + ": " + e, e);
@@ -115,6 +125,55 @@ public final class JarRemapper {
 					super.visitInvokeDynamicInsn(names.mapLambdaMethodName(name, descriptor, bootstrap, arguments), descriptor, bootstrap, arguments);
 				}
 			};
+		}
+	}
+
+	/**
+	 * Gives a mixin injector's selector that names a method by its intermediary name alone that method's descriptor, where
+	 * its runtime name is one its class gives an overload too ({@link MappingTable#overloadedDescriptor}), before the
+	 * class is remapped: Fabric Loom writes the name alone where it is unique, as LambDynamicLights'
+	 * {@code @ModifyReturnValue(method = "method_23793")}, which picks {@code LevelRenderer.getLightColor} taking a block
+	 * state on Fabric and, remapped to a bare {@code getLightColor}, the first of that name, its handler refused for the
+	 * whole class (CORPUS-45). Anything else, an accessor's or invoker's name among them, is left as it is.
+	 */
+	private static final class SelectorPins extends ClassVisitor {
+		private final MappingTable table;
+
+		SelectorPins(ClassVisitor next, MappingTable table) {
+			super(Opcodes.ASM9, next);
+			this.table = table;
+		}
+
+		@Override
+		public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
+			MethodVisitor method = super.visitMethod(access, name, descriptor, signature, exceptions);
+			if (method == null) return null;
+			return new MethodVisitor(api, method) {
+				@Override
+				public AnnotationVisitor visitAnnotation(String annotation, boolean visible) {
+					AnnotationVisitor values = super.visitAnnotation(annotation, visible);
+					if (values == null || INJECTOR_PACKAGES.stream().noneMatch(annotation::startsWith)) return values;
+					return new AnnotationVisitor(api, values) {
+						@Override
+						public AnnotationVisitor visitArray(String attribute) {
+							AnnotationVisitor selectors = super.visitArray(attribute);
+							if (selectors == null || !"method".equals(attribute)) return selectors;
+							return new AnnotationVisitor(api, selectors) {
+								@Override
+								public void visit(String unnamed, Object value) {
+									super.visit(unnamed, value instanceof String selector ? pinned(selector) : value);
+								}
+							};
+						}
+					};
+				}
+			};
+		}
+
+		private String pinned(String selector) {
+			if (!INTERMEDIARY_METHOD.matcher(selector).matches()) return selector;
+			String desc = table.overloadedDescriptor(selector);
+			return desc == null ? selector : selector + desc;
 		}
 	}
 

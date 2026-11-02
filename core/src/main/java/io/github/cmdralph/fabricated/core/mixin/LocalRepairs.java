@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.function.Predicate;
 
 import io.github.cmdralph.fabricated.core.bytecode.Annotations;
 import io.github.cmdralph.fabricated.core.mixin.MixinPreflight.Context;
@@ -42,25 +43,100 @@ final class LocalRepairs extends PreflightPart {
 				|| !(Annotations.value(injector, "name") instanceof List<?> names) || names.isEmpty()
 				|| Annotations.value(injector, "index") != null || Annotations.value(injector, "ordinal") != null) return List.of();
 		Type type = Type.getReturnType(handler.desc);
-		Integer slot = null;
-		for (ClassNode target : targets) {
-			List<MethodNode> methods = PreflightAsm.selectedMethods(injector, target, ctx);
-			if (methods.isEmpty()) return List.of();
-			ClassNode original = vanillaClass(target.name);
-			for (MethodNode m : methods) {
-				Integer found = argumentSlot(m, names, type);
-				MethodNode before = found == null && original != null ? PreflightAsm.declared(original, m.name, m.desc) : null;
-				if (before != null) found = argumentSlot(before, names, type);
-				if (found == null) found = onlyArgumentOfType(m, type);
-				if (found == null || slot != null && !slot.equals(found)) return List.of();
-				slot = found;
-			}
-		}
+		Integer slot = argumentSlotInEvery(injector, targets, names, type.getDescriptor()::equals, type, ctx);
 		if (slot == null) return List.of();
 		removeValue(injector, "name");
 		Annotations.put(injector, "index", slot);
-		return List.of("the argument " + names.get(0) + " by its name, which " + loader + "'s Mixin doesn't know; it takes the argument's slot, "
-				+ slot + ", instead");
+		return List.of(takesSlot(names, slot));
+	}
+
+	/**
+	 * Gives each MixinExtras {@code @Local(argsOnly = true, name = ...)} a handler takes the argument's slot instead, where
+	 * the running Mixin doesn't know arguments by their names: MixinExtras finds the argument with Mixin's local variable
+	 * discriminator, which on SpongePowered's Mixin names arguments {@code arg} and their slot, as for ARGS-1 (PRE-18:
+	 * ImmediatelyFast's map atlas hook takes {@code @Local(name = "mapRenderState", argsOnly = true)} in
+	 * {@code GuiGraphicsExtractor.map}, which failed on Forge 65 with "(0/1) succeeded", as ARGS-1's hook had). The
+	 * argument is found as {@link #argumentNameRepairs} finds it: by its name in the target's local variable table or
+	 * vanilla's, or else the only argument of the type the local holds (not for a {@code LocalRef}, whose type is in its
+	 * signature). Returns a description of each.
+	 */
+	List<String> localArgumentNameRepairs(MethodNode handler, AnnotationNode injector, List<ClassNode> targets, Context ctx) {
+		if (argumentNames) return List.of();
+		List<String> repaired = new ArrayList<>();
+		Type[] params = Type.getArgumentTypes(handler.desc);
+		for (int p = 0; p < params.length; p++) {
+			for (AnnotationNode local : Annotations.ofParameter(handler, p)) {
+				if (!takesArgumentByName(local)) continue;
+				List<?> names = (List<?>) Annotations.value(local, "name");
+				Type held = heldType(params[p]);
+				Predicate<String> accepts = held != null ? held.getDescriptor()::equals
+						: desc -> desc.startsWith("L") || desc.startsWith("[");
+				Integer slot = argumentSlotInEvery(injector, targets, names, accepts, held, ctx);
+				if (slot == null) continue;
+				removeValue(local, "name");
+				Annotations.put(local, "index", slot);
+				repaired.add(takesSlot(names, slot));
+			}
+		}
+		return repaired;
+	}
+
+	/** Whether an annotation is an {@code @Local(argsOnly = true)} taking the argument only by its name. */
+	static boolean takesArgumentByName(AnnotationNode local) {
+		return local.desc.equals(MixinNames.LOCAL) && Boolean.TRUE.equals(Annotations.value(local, "argsOnly"))
+				&& Annotations.value(local, "name") instanceof List<?> names && !names.isEmpty()
+				&& Annotations.value(local, "index") == null && Annotations.value(local, "ordinal") == null;
+	}
+
+	/**
+	 * The type of the local a handler parameter captures: the parameter's own type, or the one a MixinExtras ref of a
+	 * primitive holds; null for a {@code LocalRef}, which holds any reference type.
+	 */
+	private static Type heldType(Type param) {
+		String desc = param.getDescriptor();
+		if (!desc.startsWith(SUGAR_REFS)) return param;
+		return switch (desc.substring(SUGAR_REFS.length())) {
+			case "LocalBooleanRef;" -> Type.BOOLEAN_TYPE;
+			case "LocalByteRef;" -> Type.BYTE_TYPE;
+			case "LocalCharRef;" -> Type.CHAR_TYPE;
+			case "LocalShortRef;" -> Type.SHORT_TYPE;
+			case "LocalIntRef;" -> Type.INT_TYPE;
+			case "LocalLongRef;" -> Type.LONG_TYPE;
+			case "LocalFloatRef;" -> Type.FLOAT_TYPE;
+			case "LocalDoubleRef;" -> Type.DOUBLE_TYPE;
+			default -> null;
+		};
+	}
+
+	private static final String SUGAR_REFS = "Lcom/llamalad7/mixinextras/sugar/ref/";
+
+	/**
+	 * The slot of the argument {@code names} names in every method the injector selects in every target: by its name in
+	 * the method's local variable table, or in vanilla's version of it, or else the only argument of {@code type} (none
+	 * when {@code type} is null); null unless it is the same slot everywhere.
+	 */
+	private Integer argumentSlotInEvery(AnnotationNode injector, List<ClassNode> targets, List<?> names, Predicate<String> accepts,
+			Type type, Context ctx) {
+		Integer slot = null;
+		for (ClassNode target : targets) {
+			List<MethodNode> methods = PreflightAsm.selectedMethods(injector, target, ctx);
+			if (methods.isEmpty()) return null;
+			ClassNode original = vanillaClass(target.name);
+			for (MethodNode m : methods) {
+				Integer found = argumentSlot(m, names, accepts);
+				MethodNode before = found == null && original != null ? PreflightAsm.declared(original, m.name, m.desc) : null;
+				if (before != null) found = argumentSlot(before, names, accepts);
+				if (found == null && type != null) found = onlyArgumentOfType(m, type);
+				if (found == null || slot != null && !slot.equals(found)) return null;
+				slot = found;
+			}
+		}
+		return slot;
+	}
+
+	private String takesSlot(List<?> names, int slot) {
+		return "the argument " + names.get(0) + " by its name, which " + loader + "'s Mixin doesn't know; it takes the argument's slot, "
+				+ slot + ", instead";
 	}
 
 	/** Removes an annotation's value. */
@@ -75,12 +151,12 @@ final class LocalRepairs extends PreflightPart {
 		}
 	}
 
-	/** The slot of the method's argument that its local variable table names one of {@code names}, of {@code type}; null when none. */
-	private static Integer argumentSlot(MethodNode method, List<?> names, Type type) {
+	/** The slot of the method's argument that its local variable table names one of {@code names}, of a type {@code accepts}; null when none. */
+	private static Integer argumentSlot(MethodNode method, List<?> names, Predicate<String> accepts) {
 		if (method.localVariables == null) return null;
 		int end = argumentsEnd(method);
 		for (LocalVariableNode lv : method.localVariables) {
-			if (lv.index < end && names.contains(lv.name) && lv.desc.equals(type.getDescriptor()) && isArgumentSlot(method, lv.index)) return lv.index;
+			if (lv.index < end && names.contains(lv.name) && accepts.test(lv.desc) && isArgumentSlot(method, lv.index)) return lv.index;
 		}
 		return null;
 	}
@@ -381,7 +457,8 @@ final class LocalRepairs extends PreflightPart {
 
 	/**
 	 * Whether the handler's {@code @Local}s still find what they captured in {@code method}: each must be an
-	 * {@code @Local(argsOnly = true)} of a type exactly one of {@code method}'s parameters has (other locals differ).
+	 * {@code @Local(argsOnly = true)} of a type exactly one of {@code method}'s parameters has (other locals differ), and
+	 * one given a slot must find that parameter there.
 	 */
 	static boolean localsFit(MethodNode handler, MethodNode method) {
 		Type[] types = Type.getArgumentTypes(handler.desc);
@@ -390,10 +467,21 @@ final class LocalRepairs extends PreflightPart {
 			for (AnnotationNode a : Annotations.ofParameter(handler, i)) {
 				if (!a.desc.equals(MixinNames.LOCAL)) continue;
 				Type local = types[i];
-				if (!Boolean.TRUE.equals(Annotations.value(a, "argsOnly")) || local.getDescriptor().startsWith("Lcom/llamalad7/mixinextras/sugar/ref/")
+				if (!Boolean.TRUE.equals(Annotations.value(a, "argsOnly")) || local.getDescriptor().startsWith(SUGAR_REFS)
 						|| params.stream().filter(local::equals).count() != 1) return false;
+				if (Annotations.value(a, "index") instanceof Integer slot && !local.equals(argumentAt(method, slot))) return false;
 			}
 		}
 		return true;
+	}
+
+	/** The type of the method's argument that starts at a slot; null when none does. */
+	private static Type argumentAt(MethodNode method, int index) {
+		int slot = (method.access & Opcodes.ACC_STATIC) != 0 ? 0 : 1;
+		for (Type arg : Type.getArgumentTypes(method.desc)) {
+			if (slot == index) return arg;
+			slot += arg.getSize();
+		}
+		return null;
 	}
 }

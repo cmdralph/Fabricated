@@ -23,15 +23,20 @@ import java.util.TreeMap;
  * <p>{@link #plainMembers} holds the methods Intermediary leaves under their official names (unobfuscated there: a
  * functional interface's {@code open}, {@code createMenu}), which SRG renames all the same (PLAIN-1): only Forge
  * 47's table has them, keyed like the qualified members.
+ *
+ * <p>{@link #overloadedMethods} holds, by intermediary name, the descriptor (in intermediary) of the methods whose runtime
+ * name their class gives another method too: a mixin selector naming one by its intermediary name alone, as Fabric Loom
+ * writes them, picks it on Fabric and the first of that name at runtime (CORPUS-45).
  */
 public final class MappingTable {
 	private static final int MAGIC = 0x46424D54; // "FBMT"
-	private static final int FORMAT = 2;
+	private static final int FORMAT = 3;
 
 	private final Map<String, String> classes;
 	private final Map<String, String> flatMembers;
 	private final Map<String, String> qualifiedMembers;
 	private final Map<String, String> plainMembers;
+	private final Map<String, String> overloadedMethods;
 	/**
 	 * {@link #plainMembers} by {@code name+desc}, for a descriptor that names a Minecraft class, to their runtime name when
 	 * it is the same for every owner.
@@ -47,11 +52,17 @@ public final class MappingTable {
 
 	public MappingTable(Map<String, String> classes, Map<String, String> flatMembers, Map<String, String> qualifiedMembers,
 			Map<String, String> plainMembers) {
+		this(classes, flatMembers, qualifiedMembers, plainMembers, Map.of());
+	}
+
+	private MappingTable(Map<String, String> classes, Map<String, String> flatMembers, Map<String, String> qualifiedMembers,
+			Map<String, String> plainMembers, Map<String, String> overloadedMethods) {
 		// Hash maps for lookups; serialize() sorts, so the cached form stays deterministic.
 		this.classes = Map.copyOf(classes);
 		this.flatMembers = Map.copyOf(flatMembers);
 		this.qualifiedMembers = Map.copyOf(qualifiedMembers);
 		this.plainMembers = Map.copyOf(plainMembers);
+		this.overloadedMethods = Map.copyOf(overloadedMethods);
 	}
 
 	/** Maps an internal class name ({@code a/b/C}); unknown names are returned unchanged. */
@@ -144,6 +155,20 @@ public final class MappingTable {
 		return !plainMembers.isEmpty();
 	}
 
+	/**
+	 * The intermediary descriptor of the method of that intermediary name, when its class gives another method its runtime
+	 * name (overloads Intermediary names apart), or null: such a method needs its descriptor in a selector to stay the one
+	 * the selector picks.
+	 */
+	public String overloadedDescriptor(String intermediaryName) {
+		return overloadedMethods.get(intermediaryName);
+	}
+
+	/** Whether any method's runtime name is shared by an overload Intermediary names apart. */
+	public boolean hasOverloadedMethods() {
+		return !overloadedMethods.isEmpty();
+	}
+
 	/** Flat member lookup only; {@code null} if the name is unknown or ambiguous. */
 	public String mapMemberFlat(String name) {
 		return flatMembers.get(name);
@@ -159,7 +184,12 @@ public final class MappingTable {
 
 	/** This table with the methods Intermediary leaves under their official names, keyed like the qualified ones (PLAIN-1). */
 	MappingTable withPlainMembers(Map<String, String> plain) {
-		return new MappingTable(classes, flatMembers, qualifiedMembers, plain);
+		return new MappingTable(classes, flatMembers, qualifiedMembers, plain, overloadedMethods);
+	}
+
+	/** This table with the methods whose runtime name an overload shares, by intermediary name, to their descriptor. */
+	MappingTable withOverloadedMethods(Map<String, String> overloaded) {
+		return new MappingTable(classes, flatMembers, qualifiedMembers, plainMembers, overloaded);
 	}
 
 	/** Builds a table from per-member mappings, separating ambiguous names. */
@@ -188,6 +218,7 @@ public final class MappingTable {
 			writeMap(out, flatMembers);
 			writeMap(out, qualifiedMembers);
 			writeMap(out, plainMembers);
+			writeMap(out, overloadedMethods);
 			out.flush();
 			return bytes.toByteArray();
 		} catch (IOException e) {
@@ -204,8 +235,9 @@ public final class MappingTable {
 		Map<String, String> flat = readMap(in);
 		Map<String, String> qualified = readMap(in);
 		Map<String, String> plain = readMap(in);
+		Map<String, String> overloaded = readMap(in);
 		if (in.available() != 0) throw new IOException("Trailing data in mapping table");
-		return new MappingTable(classes, flat, qualified, plain);
+		return new MappingTable(classes, flat, qualified, plain, overloaded);
 	}
 
 	private static void writeMap(DataOutputStream out, Map<String, String> map) throws IOException {

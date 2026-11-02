@@ -142,12 +142,14 @@ public final class ModTranslator {
 	private final TranslationCache cache;
 	private final io.github.cmdralph.fabricated.core.archive.ArchiveLimits limits;
 	private final PlatformRenames renames;
+	private final RetypedFields retyped;
 
 	public ModTranslator(TranslationEnvironment env, TranslationCache cache, io.github.cmdralph.fabricated.core.archive.ArchiveLimits limits) {
 		this.env = env;
 		this.cache = cache;
 		this.limits = limits;
 		this.renames = PlatformRenames.of(env.untransformable(), env.game(), env.descriptor().replacedMods().containsKey("forgeconfigapiport"));
+		this.retyped = RetypedFields.of(env.game());
 	}
 
 	/**
@@ -213,6 +215,12 @@ public final class ModTranslator {
 				Set<DefaultBridge> bridges = new LinkedHashSet<>();
 				Function<String, ClassNode> classes = classLookup(name -> overlay.containsKey(name) ? overlay.get(name) : files.read(name));
 				Set<String> widened = new TreeSet<>();
+				// Fields the platform retyped, as the mod's classes and mixins reach them (CORPUS-33); before pre-flight,
+				// which then sees the mod's accessors of them as they will load.
+				if (!retyped.isEmpty()) {
+					notes.addAll(retyped.apply(remapped != null ? remapped : overlay, remapped != null ? remapped.keySet() : archive.classEntryNames(),
+							collectRefmapPaths(candidate.metadata(), archive), files));
+				}
 				List<ModsTomlWriter.MixinConfigSpec> mixinSpecs = processMixins(candidate, override, plannedSkips, files,
 						remapped != null ? remapped.keySet() : archive.classEntryNames(), overlay, findings, installedClasses, enumEntries,
 						enumTargets, classes, bridges, notes, widened);
