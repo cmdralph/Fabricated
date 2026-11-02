@@ -131,10 +131,21 @@ public final class FabricBlockRendering {
 	 * they ran), so Fabric mods' meshes and emitters, and Fabric block models, work. Indigo stands down for any mod saying
 	 * it contains a Fabric renderer ({@code fabric-renderer-api-v1:contains_renderer}), and a NeoForge mod can say so of
 	 * a build without one (Sodium for NeoForge on 1.21.11, read in its source), which left Fabric's renderer API with
-	 * none. Indigo's own hooks stay off; Fabricated's don't need them. Does nothing without the renderer API.
+	 * none. Indigo's own hooks stay off; Fabricated's don't need them, and what of Indigo needs them works without them
+	 * ({@link IndigoWithoutHooks}). Does nothing without the renderer API.
 	 */
 	public static void registerFallbackRenderer() {
 		if (ENABLED) RendererFallback.register();
+	}
+
+	/** A mesh of the registered renderer, for an item layer's emitter under {@link IndigoWithoutHooks}. */
+	public static MutableMesh fallbackMesh() {
+		return Renderer.get().mutableMesh();
+	}
+
+	/** The mesh's quads as NeoForge's quads, added to an item layer's (see {@link FallbackLayerMesh}). */
+	public static void addItemQuads(MutableMesh mesh, List<BakedQuad> quads) {
+		Frapi.addItemQuads(mesh, quads);
 	}
 
 	/** Names Fabric's renderer API, so loaded only when called; apart from {@link Frapi}, which keeps the renderer it first finds. */
@@ -156,8 +167,9 @@ public final class FabricBlockRendering {
 				logger.warn("Fabric's renderer API has no renderer, and Fabric API's own renderer isn't installed: Fabric block models stay invisible ({})", e.toString());
 				return;
 			}
-			Renderer.register(indigo);
-			logger.warn("No Fabric renderer registered although a mod says it contains one: Fabric API's own renderer (Indigo) is used, without its own hooks");
+			Renderer.register(new IndigoWithoutHooks(indigo));
+			logger.warn("No Fabric renderer registered although a mod says it contains one: Fabric API's own renderer (Indigo) is used, without its own hooks"
+					+ " (Fabric item models' emitted quads are drawn in their layer's render type)");
 		}
 	}
 
@@ -312,6 +324,13 @@ public final class FabricBlockRendering {
 			}
 			// A model that threw keeps the parts of its vanilla method (the caller adds them).
 			return !failed;
+		}
+
+		/** The mesh's quads as NeoForge's quads, after the item layer's (whose render type they are drawn in). */
+		static void addItemQuads(MutableMesh mesh, List<BakedQuad> quads) {
+			// As the block models' quads: an item model's sprites come from the block atlas, as upstream's ModelHelper has them.
+			SpriteFinder sprites = ((FabricSpriteAtlasTexture) Minecraft.getInstance().getAtlasManager().getAtlasOrThrow(AtlasIds.BLOCKS)).spriteFinder();
+			mesh.forEach(quad -> quads.add(withNeoForgeData(quad, quad.toBakedQuad(sprites.find(quad)))));
 		}
 
 		/** The mesh's quads as NeoForge's quads, a part for each render layer they name (null: the block's own). */

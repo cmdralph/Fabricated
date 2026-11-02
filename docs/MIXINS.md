@@ -438,6 +438,8 @@ Versions: 1.21.11 · package `io.github.cmdralph.fabricated.neoforge.rendering.m
 |---|---|---|---|---|---|---|---|---|
 | client | BlockModelPartMixin | 1.21.11 (1.21.11) | n.m.client.renderer.block.model.BlockModelPart (interface) | no injectors; extends FabricBlockModelPart; adds default emitQuads (FrapiDefaults: a part without its own keeps NeoForge's ambient occlusion) | | | | |
 | client | BlockStateModelMixin | 1.21.11 (1.21.11) | n.m.client.renderer.block.model.BlockStateModel (interface) | no injectors; extends FabricBlockStateModel, BlockStateModelExtension; adds default emitQuads (FrapiDefaults: the parts NeoForge's level-aware collectParts gives) and default collectParts (NeoForge's level-aware one: a Fabric model's parts made from the quads it emits) | | | | |
+| client | LayerRenderStateMixin | 1.21.11 (1.21.11) | n.m.client.renderer.item.ItemStackRenderState$LayerRenderState | @Inject → fabricated$clearMesh | "clear()V" | RETURN | — | default |
+| client | LayerRenderStateMixin | 1.21.11 (1.21.11) | n.m.client.renderer.item.ItemStackRenderState$LayerRenderState | @Inject → fabricated$drawMesh | "submit" | HEAD | — | default |
 
 ### `mc/neoforge/1.21.11/src/main/resources/fabricated-transfer.mixins.json`
 
