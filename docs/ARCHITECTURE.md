@@ -411,7 +411,7 @@ versions is decided at compile time by which source folders it compiles, plus tw
   NeoForge added), not by per-version tables. The injector repairs run in one order (`MixinRepairs`), each from its
   family's class (`LambdaRepairs`, `OverloadRepairs`, `CallRepairs`, `ConstructorRepairs`, `LocalRepairs`). Enum mixins into
   NeoForge's extensible enums become its enum extension entries (`EnumExtensions`), named enums included when their
-  names already carry the mod's id. Mixins only giving a library class the mod's interfaces become generated classes
+  names already carry the mod's id; their other methods stay an ordinary mixin without the constants. Mixins only giving a library class the mod's interfaces become generated classes
   the mod calls instead (`LibraryBridges`).
 * Everything Minecraft-agnostic stays in `core`/`loader`. The full seam table is in [`claude.md`](claude.md).
 * **Adding a version** (summarised from `CONTRIBUTING.md`): copy the nearest `mc/neoforge/<version>` directory, set

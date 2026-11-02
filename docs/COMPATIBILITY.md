@@ -961,8 +961,11 @@ breaking, where upstream cancels the left click (a creative player still breaks 
 sensor frequency has no effect (it writes vanilla's table, NeoForge reads its data map); and a built-in resource pack a
 Fabric mod enables by default is offered but not selected (selected as the options load, which NeoForge 21.1 does
 before mods register their packs). On 26.1.2 and 26.2, read in its sources (PROVIDER-10), the trapdoor tag, the attack
-block result and a vibration frequency do the same, and its transfer bridge gives a Fabric fluid storage a NeoForge
-fluid handler on block entities only; what else fails there with it is still being read. Of the bridges to NeoForge Fabricated's own modules make, it has fewer: NeoForge's
+block result and a vibration frequency do the same; its transfer bridge gives a Fabric fluid storage a NeoForge fluid
+handler on block entities only, its combined item providers answer nothing while NeoForge asks an item for its fluid
+handler (its own lock against recursion), and its view of a NeoForge item's fluid handler answers an insert in
+NeoForge's millibuckets, not Fabric's droplets; and a Fabric biome modification changes the biome on the server but
+leaves it marked as the known pack's, so clients read their own copy without the change (a sky colour, say). Of the bridges to NeoForge Fabricated's own modules make, it has fewer: NeoForge's
 `supportsEnchantment` doesn't ask Fabric's enchanting event (the enchanting table, anvil, `/enchant` and loot do, as
 upstream), NeoForge's `getCreatorModId` isn't answered from Fabric's `getCreatorNamespace`, and its transfer bridge
 connects Fabric's and NeoForge's storages on block entities only, not a Fabric item's fluid storage to NeoForge, and
@@ -971,8 +974,11 @@ handler moves the fluid when a nested transaction commits, even if the outer one
 container as NeoForge reads them, with the NeoForge sections translation leaves out of its `pack.mcmeta` and data files
 (PROVIDER-3). A Fabric mod's initializer creates its registries with Forgified Fabric API's `FabricRegistryBuilder` as
 with Fabricated's: NeoForge's check that refuses a registry after its new-registry event, where Fabricated runs Fabric
-initializers, lets it through while a Fabric entrypoint runs (PROVIDER-6). Forgified Fabric API keeps no registry
-attributes in `RegistryAttributeHolder`, and on 1.21.1 has no registry aliases. In a development workspace the in-game mod's own copies can't be left out; the report says so.
+initializers, lets it through while a Fabric entrypoint runs (PROVIDER-6). A data-pack registry a Fabric mod's
+initializer makes with its `DynamicRegistries` on 1.21.1, which it hands NeoForge only in an event that fired before
+Fabric initializers run, is handed to NeoForge once they have run, with the registries it named in that event
+(PROVIDER-11, to verify). Forgified Fabric API keeps no registry attributes in `RegistryAttributeHolder`, and on 1.21.1
+has no registry aliases. In a development workspace the in-game mod's own copies can't be left out; the report says so.
 
 **Sinytra Connector beside Fabricated is refused**, as is a second Fabricated jar: the launch stops with an error naming
 the jars, and Fabricated loads no Fabric mod (two loaders of Fabric mods can't share them; of two Fabricated jars, the
@@ -1067,14 +1073,17 @@ MixinExtras has NeoForge's jar, and a NeoForge mod nested in another jar has tha
   `LOCAL` and `SYNCED` (the port keeps the old names), a mod's references to the old names are renamed. The port's `ConfigurationScreen` takes a mod id where NeoForge's takes the mod's container, so a mod creating one passes its container instead.
 - Class tweakers v2 load: their `extend-enum` lines only declare the constants a mod's enum mixins add, which Mixin
   adds itself (0.17.1 or later, so on 26.x; not to NeoForge's own extensible enums).
-- An enum mixin that only adds constants to one of NeoForge's extensible enums (which NeoForge lets only its own enum
+- An enum mixin that adds constants to one of NeoForge's extensible enums (which NeoForge lets only its own enum
   extensions change: FML refuses an enum mixin into one) becomes an enum extension NeoForge's loader applies, when each
   constant's name starts with the
-  mod's id (Farmer's Delight's recipe book type). Constant arguments are written into the extension; arguments the
+  mod's id (Farmer's Delight's recipe book type and categories). Its other methods, such as an injector into the enum,
+  stay an ordinary mixin without the constants (CORPUS-65), when they use nothing of the enum mixin but its constants
+  and its own methods. Constant arguments are written into the extension; arguments the
   mixin computes when the class loads (a registered object, a static array) come from a method Fabricated generates
   next to the mod's mixins, which runs the mixin's code for them when NeoForge adds the constant (ENUM-3). Where
   NeoForge reserves the mixin's constructor for one taking suppliers (`Raid.RaiderType`, which Friends and Foes extends
-  with its raiders), the values are handed over in suppliers. Code that branches, uses local variables, or reads the
+  with its raiders), the values are handed over in suppliers, of the type the constructor's signature names; an array
+  where it takes a supplier of a list (`RecipeBookCategories`' item icons) as a list of its elements. Code that branches, uses local variables, or reads the
   mixin's or the enum's own members isn't moved, and its enum mixin disables the mod, with the reason, as other enum
   mixins into those enums do.
 - An enum mixin into one of NeoForge's extensible enums that the enum extension file can't carry (a constant named
@@ -1176,7 +1185,7 @@ tracked:
 | Essential's automatic updates (its Fabric build) | all | Essential loads from the launch after its loader's download, as a regular mod | DOWNLOAD-1 |
 | A Fabric mod's hook into the game's options that needs its initializer (Bobby's larger render distance limit) | 1.21.1 | NeoForge 21.1 creates the options before it loads mods, where Fabric creates them after the entrypoints; such a hook that throws then is skipped for that call, with a warning and a report line (ENTRY-2) | — |
 | A NeoForge model naming its loader in NeoForge's object form (`"loader": {"id": ...}`), with Moonlight's Fabric build installed | 1.21.1 | Moonlight's hook into vanilla's model deserializer, which NeoForge's runs first, reads `loader` as a string only and fails the model; not seen in the corpus | CORPUS-62 |
-| What Forgified Fabric API's modules do differently from upstream, where it provides them | 1.21.1 read, 26.1.2 and 26.2 partly | a provider's module is used as it is; on 1.21.1 its trapdoor tag, attack block result, sculk frequencies and default-enabled packs don't take effect (on 26.1.2 and 26.2 the first three too, PROVIDER-10), and it makes fewer bridges to NeoForge (enchanting, creator mod, transfer), as listed in *Mods that bring Fabric API or Fabric Loader* above; the test mod skips those checks with it | PROVIDER-8, PROVIDER-10 |
+| What Forgified Fabric API's modules do differently from upstream, where it provides them | read on 1.21.1, 26.1.2 and 26.2 | a provider's module is used as it is; on 1.21.1 its trapdoor tag, attack block result, sculk frequencies and default-enabled packs don't take effect (on 26.1.2 and 26.2 the first three too, and a biome modification doesn't reach clients, PROVIDER-10), and it makes fewer bridges to NeoForge (enchanting, creator mod, transfer), as listed in *Mods that bring Fabric API or Fabric Loader* above; the test mod skips those checks with it | PROVIDER-8, PROVIDER-10 |
 | Hooks pre-flight leaves out where NeoForge's code differs | per mod | each is in the report, with what NeoForge's code lacks and what is lost | LEAVE-1 (above) |
 
 ### Planned work, in order of impact

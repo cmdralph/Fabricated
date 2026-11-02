@@ -119,8 +119,10 @@ One entry per working session, newest first: what changed, and how it was verifi
   check, whose listener on a connection without a channel never reaches the provider's hook (it fires as the
   connection closes, as upstream's does), the networking bridge's log line, and an alias the test only adds to
   Fabricated's registry sync. Those skip there, saying why. On 26.1.2 and 26.2 (PROVIDER-10), read in its sources: the
-  trapdoor tag, attack block result and vibration frequency differ as on 1.21.1, and its fluid bridge covers block
-  entities only; the test mod skips those, and the rest of what fails there is still to read.
+  trapdoor tag, attack block result and vibration frequency differ as on 1.21.1; its fluid bridge covers block entities
+  only, its combined item providers answer nothing while NeoForge asks an item for its fluid handler, and its view of a
+  NeoForge item's fluid handler answers an insert in millibuckets; and a biome modification stays on the server, the
+  biome still marked as the known pack's, so clients read their own copy. The test mod skips those items there.
 - **Default method bridges on NeoForge 21.1** (CORPUS-63): where an interface a Fabric mod's mixin adds to a game class
   brings a second default of a method beside NeoForge's, the class declares the method on 21.1 too, calling NeoForge's,
   as from 21.11 on (CORPUS-11). On 21.1's ModLauncher nothing from the mods folder runs after Mixin: the loader's
@@ -138,6 +140,20 @@ One entry per working session, newest first: what changed, and how it was verifi
   `Biome.climateSettings`, the climate after biome modifiers). It threw `IllegalAccessError` where it ran: Fabric
   Seasons' biome temperature hook crashed the 1.21.1 advanced client in its world. A write still fails, and a mod's
   mixins into the field's class are left as they are.
+- **Enum mixins with other members** (CORPUS-65): an enum mixin into one of NeoForge's extensible enums with methods
+  besides its constants, as Farmer's Delight's into `RecipeBookCategories` with an injector into `getCategories`, puts
+  its constants in the mod's enum extension file and stays an ordinary mixin with the other methods, which FML doesn't
+  refuse, when they use nothing of the enum mixin but its constants, each other and the enum's own methods. Pre-flight
+  had disabled Farmer's Delight on the 1.21.1 corpus client. A computed argument goes in a supplier only of the type the
+  allowed constructor's generic signature names, and an array as a list where it takes a supplier of a list of its
+  elements (the categories' icons): ENUM-3 read only the erased descriptor, and would have handed that constructor a
+  supplier of the array, which fails as the recipe book draws its tabs.
+- **Forgified Fabric API's data-pack registries** (PROVIDER-11, 1.21.1): a registry a Fabric mod makes with its
+  `DynamicRegistries` was never loaded or synced: it hands them to NeoForge only in NeoForge's new data-pack registry
+  event, which fires before Fabricated runs Fabric initializers. Once they have run, the provider's module is asked
+  again, with a new event to its own mod bus, and NeoForge gets the registries it names that it doesn't have yet.
+  Found by PROVIDER-9's check in extended run 41539993361. Read beside it, UNVERIFIED (PROVIDER-12): on a 1.21.1 client
+  three of its modules subscribe from their own entrypoints to NeoForge events that have fired by then.
 - **Nested jars** (LIMIT-2): jars nested up to eight deep load, where three did; Polymer's bundle nests its modules four
   deep, so its Packet Tweaker was left out and the 1.21.1 advanced client's server crashed as the player joined. The
   per-jar budgets are as they were (1024 jars, the uncompressed size). A config file written with an earlier version's
@@ -147,7 +163,10 @@ One entry per working session, newest first: what changed, and how it was verifi
   stopped on it, for `UtilMixin`. CI's mod downloads (`ci/fetch-corpus.py`) try a timeout, a dropped connection or a
   server error again, three times at most: extended run 41501863294 lost five gates' mods to slow answers from Modrinth.
   The test mod's client block entity check also reports as the client stops, for a client that quit in the tick it left
-  its world in (that run's Sodium client on 26.2 reported neither way). The log digest prints the first stack of each
+  its world in (that run's Sodium client on 26.2 reported neither way), and, for a client still in its world as it
+  stops, once the world it drops after `CLIENT_STOPPING` has unloaded its block entities (extended run 41539993361's
+  Sodium client on 26.1.2, the run's one failure). The smoke scripts print up to 20 failed test mod checks, not 5, which
+  had hidden the biome check of the 26.x runs with Forgified Fabric API. The log digest prints the first stack of each
   kind of linkage error (`AbstractMethodError`, `IllegalAccessError` and the like), however rarely it was logged:
   CORPUS-63's interface was cut from its one line.
 - **CI gates added:** the Sodium and Iris, malilib (with MiniHUD, Tweakeroo and Litematica), Essential (both
@@ -173,17 +192,18 @@ One entry per working session, newest first: what changed, and how it was verifi
   source); `COMPATIBILITY.md` says so. `COMPATIBILITY.md` lists the Fabric builds' gaps (the owner's decision, 2026-11-02: no patch for Sodium's
   Fabric build, load it and list them) and how Essential loads; the README and the roadmap's tables say what loads
   where.
-- **Open, in the roadmap's findings:** fixed, to verify: CORPUS-64 (Fabric Seasons' read of a biome's climate) and
-  DEFAULT-1 (a default from a superclass's interface); read, to verify: PROVIDER-9 (three server checks of Fabricated's
-  own modules); partly read: PROVIDER-10 (Forgified Fabric API's 26.x modules' differences), CORPUS-65 (Farmer's Delight's
-  recipe book categories on the 1.21.1 client), CORPUS-48 (Xaero's World Map's world unload, also seen on 1.21.1), KEYMAP-1 (documented), and
-  the Fabric builds' gaps `COMPATIBILITY.md` lists.
+- **Open, in the roadmap's findings:** fixed, to verify: CORPUS-65 (Farmer's Delight's recipe book categories on the
+  1.21.1 client) and PROVIDER-11 (Forgified Fabric API's data-pack registries on 1.21.1); read, to verify: PROVIDER-10
+  (Forgified Fabric API's 26.x modules' differences); UNVERIFIED: PROVIDER-12 (its 1.21.1 modules' events on a client);
+  CI's: CORPUS-66 (the 1.21.1 advanced client waits on Origins' origin screen); partly read: CORPUS-48 (Xaero's World
+  Map's world unload, also seen on 1.21.1), KEYMAP-1 (documented), and the Fabric builds' gaps `COMPATIBILITY.md` lists.
   On Forge, the refusals stay until the Forge sync and its runs.
 - **Verified:** extended runs 41471044589 and 41477591558, every job green on all five NeoForge versions, the
   difficult-mod gates included, 41512581949, every job green, which verified CORPUS-61, CORPUS-56 on 1.21.11 and 26.x,
   LAMBDA-9 and LIB-2, 41527263549, every job green, which verified NET-10, and 41536167292, every job green, which
-  verified CORPUS-62, CORPUS-63, LIMIT-2, PROVIDER-8 and CORPUS-54 on NeoForge; the fixes' findings name the run that
-  verified each.
+  verified CORPUS-62, CORPUS-63, LIMIT-2, PROVIDER-8 and CORPUS-54 on NeoForge, and 41539993361, whose one failure was
+  the test mod's client block entity check (above), which verified DEFAULT-1 on all five versions, CORPUS-64 and
+  PROVIDER-9; the fixes' findings name the run that verified each.
 
 ## 2026-11-02: Fabric's renderer API, the Forge branches' half (task 4 done)
 
