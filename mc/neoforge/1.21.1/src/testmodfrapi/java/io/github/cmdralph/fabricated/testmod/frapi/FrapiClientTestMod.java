@@ -87,6 +87,8 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 			"key.categories.fabricated_testmod_frapi");
 	// Render thread only.
 	private static boolean hudDrawn;
+	private static final ResourceLocation STONE = ResourceLocation.withDefaultNamespace("block/stone");
+	private static final AtomicBoolean partSeen = new AtomicBoolean();
 	private static String keyFailure;
 
 	@Override
@@ -161,6 +163,10 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 	 * of the test item's (its inventory model, top-level too).
 	 */
 	private static @Nullable BakedModel fabricModels(@Nullable BakedModel model, ModelModifier.AfterBake.Context context) {
+		// MODEL-4: a model baked by its id, as a block state's variant (the test blocks' stone), passes the modifiers too.
+		if (STONE.equals(context.resourceId()) && model != null && partSeen.compareAndSet(false, true)) {
+			FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi model plugin part OK ({} after it was baked as a block state's part)", STONE);
+		}
 		ModelResourceLocation id = context.topLevelId();
 		if (model == null || id == null || !id.id().getNamespace().equals(FrapiTestMod.NAMESPACE)) return model;
 		if (id.variant().equals("inventory")) return id.id().getPath().equals("fabric_item") ? new ItemCheckModel(model) : model;

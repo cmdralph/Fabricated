@@ -165,7 +165,7 @@ final class CallRepairs extends PreflightPart {
 			if (replacement == null) continue;
 			int inserted = insertedArgument(owner, ref.name(), ref.desc(), replacement.desc);
 			if (!pointOnly && !bridgeTo(mixin, handler, injector, ref.owner(), ref.desc(), replacement.desc, inserted, replacement.getOpcode() == Opcodes.INVOKESTATIC,
-					bridges)) continue;
+					List.of(patched), bridges)) continue;
 			int now = 0;
 			for (AbstractInsnNode insn = patched.instructions.getFirst(); insn != replacement; insn = insn.getNext()) {
 				if (insn instanceof MethodInsnNode call && call.owner.equals(replacement.owner) && call.name.equals(replacement.name) && call.desc.equals(replacement.desc)) now++;
@@ -201,15 +201,33 @@ final class CallRepairs extends PreflightPart {
 	 * at {@code inserted}, and moves the injector onto it. Whether it could.
 	 */
 	private static boolean bridgeTo(ClassNode mixin, MethodNode handler, AnnotationNode injector, String owner, String desc, String overload, int inserted,
-			boolean staticCall, List<MethodNode> bridges) {
+			boolean staticCall, List<MethodNode> methods, List<MethodNode> bridges) {
 		Type ownerType = Type.getObjectType(owner);
-		MethodNode bridge = injector.desc.equals(MixinNames.WRAP_OPERATION) ? HandlerBridges.wrapperBridge(mixin, handler, ownerType, desc, overload, inserted, staticCall, bridges)
+		List<Type> method = sharedParameters(methods);
+		MethodNode bridge = injector.desc.equals(MixinNames.WRAP_OPERATION)
+				? HandlerBridges.wrapperBridge(mixin, handler, ownerType, desc, overload, inserted, staticCall, method, bridges)
 				: HandlerBridges.callBridge(mixin, handler, ownerType, desc, overload, inserted, staticCall,
-						MixinNames.WRAP_WITH_CONDITION.contains(injector.desc) ? Type.BOOLEAN_TYPE : Type.getReturnType(desc), bridges);
+						MixinNames.WRAP_WITH_CONDITION.contains(injector.desc) ? Type.BOOLEAN_TYPE : Type.getReturnType(desc), method, bridges);
 		if (bridge == null) return false;
 		HandlerBridges.moveInjector(handler, injector, bridge);
 		bridges.add(bridge);
 		return true;
+	}
+
+	/** The parameters {@code methods} start with alike: those a handler may take after its own, as Mixin passes them. */
+	static List<Type> sharedParameters(List<MethodNode> methods) {
+		List<Type> shared = null;
+		for (MethodNode method : methods) {
+			List<Type> params = List.of(Type.getArgumentTypes(method.desc));
+			if (shared == null) {
+				shared = params;
+				continue;
+			}
+			int same = 0;
+			while (same < shared.size() && same < params.size() && shared.get(same).equals(params.get(same))) same++;
+			shared = shared.subList(0, same);
+		}
+		return shared == null ? List.of() : shared;
 	}
 
 	/**
@@ -219,8 +237,10 @@ final class CallRepairs extends PreflightPart {
 	 * The handler of an {@code @Inject} or {@code @ModifyExpressionValue} doesn't see the arguments, so its {@code INVOKE}
 	 * point also moves to an overload that takes more after them ({@link #appendsArguments}). One of a
 	 * {@code @Redirect}, {@code @WrapWithCondition} or {@code @WrapOperation} that takes exactly the call's receiver and
-	 * arguments (and the {@code Operation}), and then any MixinExtras sugar, gets a bridge taking the overload's, which calls it without the added
-	 * argument; for {@code @WrapOperation}, with an {@code Operation} that puts it back when the original call is made.
+	 * arguments (one {@code @Coerce}d to a supertype too) and the {@code Operation}, then any of the target method's first
+	 * parameters and MixinExtras sugar ({@link HandlerBridges#sugarAfter}), gets a bridge taking the overload's, which calls
+	 * it without the added argument; for {@code @WrapOperation}, with an {@code Operation} that puts it back when the
+	 * original call is made.
 	 * A {@code NEW} point selecting a constructor by its descriptor is moved the same way, to a constructor taking one
 	 * more argument (NeoForge's patches give records components): its handlers take the arguments, as a static call's.
 	 * An {@code INVOKE} point at a call NeoForge's patches moved into a hook of theirs moves to the hook's call
@@ -308,7 +328,7 @@ final class CallRepairs extends PreflightPart {
 			if (named || overload == null || ambiguous || ordinal >= calls) continue;
 			int inserted = hook == null && replacement == null && !constructor ? insertedArgumentOf(owner, name, desc, overload) : insertedArgument(desc, overload);
 			// A hook taking just the call's receiver and arguments takes the handlers as they are.
-			if (!pointOnly && !overload.equals(desc) && !bridgeTo(mixin, handler, injector, owner, desc, overload, inserted, staticCall, bridges)) continue;
+			if (!pointOnly && !overload.equals(desc) && !bridgeTo(mixin, handler, injector, owner, desc, overload, inserted, staticCall, methods, bridges)) continue;
 			for (int i = 0; i + 1 < at.values.size(); i += 2) {
 				if ("target".equals(at.values.get(i))) at.values.set(i + 1, constructor ? overload : "L" + callOwner + ";" + callName + overload);
 			}
@@ -409,7 +429,7 @@ final class CallRepairs extends PreflightPart {
 			int ordinal = Annotations.value(at, "ordinal") instanceof Integer n ? n : -1;
 			if (found.ambiguous() || ordinal >= found.calls()
 					|| !pointOnly && !bridgeable(handler, injector, ref.owner(), ref.desc(), insertedArgumentOf(ref.owner(), ref.name(), ref.desc(), found.overload()),
-							found.staticCall())) return null;
+							found.staticCall(), List.of(Type.getArgumentTypes(method.desc)))) return null;
 			Annotations.put(copy, "target", "L" + ref.owner() + ";" + ref.name() + found.overload());
 			pointed = true;
 		}
@@ -417,15 +437,16 @@ final class CallRepairs extends PreflightPart {
 	}
 
 	/** Whether {@link #bridgeTo} can bridge the handler to the overload, with one more argument at {@code inserted}. */
-	private static boolean bridgeable(MethodNode handler, AnnotationNode injector, String owner, String desc, int inserted, boolean staticCall) {
+	private static boolean bridgeable(MethodNode handler, AnnotationNode injector, String owner, String desc, int inserted, boolean staticCall,
+			List<Type> method) {
 		if (inserted < 0) return false;
 		List<Type> call = HandlerBridges.callParameters(Type.getObjectType(owner), desc, staticCall);
 		if (injector.desc.equals(MixinNames.WRAP_OPERATION)) {
 			call.add(Type.getType(MixinNames.OPERATION));
-			return HandlerBridges.sugarAfter(handler, call) != null;
+			return HandlerBridges.sugarAfter(handler, call, method) != null;
 		}
 		Type result = MixinNames.WRAP_WITH_CONDITION.contains(injector.desc) ? Type.BOOLEAN_TYPE : Type.getReturnType(desc);
-		return HandlerBridges.sugarAfter(handler, call) != null && Type.getReturnType(handler.desc).equals(result);
+		return HandlerBridges.sugarAfter(handler, call, method) != null && Type.getReturnType(handler.desc).equals(result);
 	}
 
 	/**

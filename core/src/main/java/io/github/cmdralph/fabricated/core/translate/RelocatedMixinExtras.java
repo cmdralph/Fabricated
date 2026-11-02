@@ -21,7 +21,7 @@ import org.objectweb.asm.commons.Remapper;
 
 /**
  * Pre-flight's view of mixins that use a copy of MixinExtras their mod relocated into its own package: Essential's, in
- * {@code gg/essential/lib/mixinextras}, which its copy registers with Mixin as it starts (MIXEXT-3). Pre-flight knows
+ * {@code gg/essential/lib/mixinextras}, which its copy registers with Mixin as it starts (MIXEXT-4). Pre-flight knows
  * MixinExtras' injectors and sugar by MixinExtras' own package, so it judged such a mixin's {@code @WrapWithCondition}
  * as no injector and its {@code @Local} parameters as the handler's own. Essential's screen drawing hooks on 26.1.2
  * capture the arguments of a call NeoForge's code no longer makes in a group that needs one of them to apply; pre-flight

@@ -188,6 +188,11 @@ final class OverloadRepairs extends PreflightPart {
 				boolean sameParameters = Arrays.equals(Type.getArgumentTypes(chosen.desc), Type.getArgumentTypes(overload.desc));
 				int captured = sameParameters ? -1 : inject ? (takesParameters ? 0 : -1) : capturedFrom(handler, chosen);
 				int inserted = replacement != null ? CallRepairs.insertedArgument(chosen.desc, overload.desc) : insertedParameter(chosen, overload);
+				// A handler taking the first of the method's parameters after its own (Mixin passes it as many as it takes) gets
+				// the overload's first: they must be the method's, before the one the overload adds (Fabric API's before-bake
+				// model hook takes the model's id so, which NeoForge 21.1's overload takes first too, MODEL-4).
+				int prefix = inject || captured >= 0 || sameParameters ? 0 : capturedPrefix(handler, chosen);
+				if (prefix > 0 && inserted < prefix) continue;
 				List<Runnable> locals = LocalRepairs.localsFit(handler, overload) ? List.of() : localsInOverload(handler, overload, inserted, found, ctx);
 				if (locals == null || captured >= 0 && (found != ats || inserted < 0 || selectors.size() != 1 || (mixin.access & Opcodes.ACC_INTERFACE) != 0)) continue;
 				locals.forEach(Runnable::run);
@@ -512,6 +517,24 @@ final class OverloadRepairs extends PreflightPart {
 		List<Type> params = List.of(Type.getArgumentTypes(method.desc));
 		if (args == null || params.isEmpty() || args.size() <= params.size()) return -1;
 		return args.subList(args.size() - params.size(), args.size()).equals(params) ? args.size() - params.size() : -1;
+	}
+
+	/**
+	 * How many of {@code method}'s first parameters a handler that isn't an {@code @Inject}'s may take after its own,
+	 * before any MixinExtras sugar, as Mixin passes them: the most its own end with, which may count some of its own too
+	 * (never too few). 0 when they end with none.
+	 */
+	private static int capturedPrefix(MethodNode handler, MethodNode method) {
+		Type[] own = Type.getArgumentTypes(handler.desc);
+		List<Type> args = new ArrayList<>();
+		for (int i = 0; i < own.length; i++) {
+			if (Annotations.ofParameter(handler, i).stream().noneMatch(a -> a.desc.startsWith("Lcom/llamalad7/mixinextras/sugar/"))) args.add(own[i]);
+		}
+		List<Type> params = List.of(Type.getArgumentTypes(method.desc));
+		for (int k = Math.min(params.size(), args.size()); k > 0; k--) {
+			if (args.subList(args.size() - k, args.size()).equals(params.subList(0, k))) return k;
+		}
+		return 0;
 	}
 
 	/**

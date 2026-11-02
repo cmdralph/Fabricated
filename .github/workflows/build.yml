@@ -556,6 +556,7 @@ jobs:
             fi
           }
           check "frapi model plugin OK" "a Fabric model loading plugin replaced a block state's model after it was baked"
+          check "frapi model plugin part OK" "a Fabric model loading plugin saw a model baked as a block state's part after it was baked (MODEL-4)"
           check "frapi terrain OK .*seam=Fabricated" "a Fabric block model was meshed into a chunk section, sent to Fabric's renderer by Fabricated's seam"
           check "frapi nested terrain OK .*seam=Fabricated" "a Fabric model inside a vanilla multipart model was meshed, through Fabricated's seam"
           check "frapi moving block OK" "a falling Fabric block model was drawn"

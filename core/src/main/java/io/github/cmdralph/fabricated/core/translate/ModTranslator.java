@@ -525,7 +525,7 @@ public final class ModTranslator {
 		List<ModsTomlWriter.MixinConfigSpec> specs = new ArrayList<>();
 		// Pre-flight sees the mod as it will load: with the handler methods left out below.
 		FileView translated = name -> overlay.containsKey(name) ? overlay.get(name) : files.read(name);
-		// Pre-flight reads mixins using a MixinExtras their mod relocated with MixinExtras' own names (MIXEXT-3).
+		// Pre-flight reads mixins using a MixinExtras their mod relocated with MixinExtras' own names (MIXEXT-4).
 		RelocatedMixinExtras relocated = new RelocatedMixinExtras();
 		MixinPreflight preflight = new MixinPreflight(env.installedIndex(), env.installed(), relocated.view(classSource(translated)), env.untransformable(),
 				env.clientSide(), MixinCompat.missingTargetsFatal(behavior), env.vanilla(), env.descriptor().loaderName(),
@@ -707,7 +707,7 @@ public final class ModTranslator {
 				+ " default as its super (SUPER-1)");
 	}
 
-	/** Pre-flight's repairs of a config's mixins, and its notes on them, with the mod's relocated MixinExtras names (MIXEXT-3). */
+	/** Pre-flight's repairs of a config's mixins, and its notes on them, with the mod's relocated MixinExtras names (MIXEXT-4). */
 	private static Map<String, byte[]> repairs(MixinPreflight preflight, RelocatedMixinExtras relocated, String configName, MixinConfigFile config,
 			Refmap refmap, Set<String> skip, List<PreflightFinding> findings) {
 		int from = findings.size();

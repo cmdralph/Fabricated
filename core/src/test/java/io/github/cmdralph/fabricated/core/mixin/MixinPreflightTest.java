@@ -13,6 +13,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -2346,6 +2347,100 @@ class MixinPreflightTest {
 		MethodNode handler = node.methods.stream().filter(m -> m.name.equals("explodePost")).findFirst().orElseThrow();
 		assertEquals(1, Annotations.value(Annotations.ofParameter(handler, 1).getFirst(), "ordinal"), "the second list in scope, not the blocks'");
 		assertTrue(node.methods.stream().noneMatch(m -> m.name.contains("$fabricated")), "no bridge");
+	}
+
+	/**
+	 * MODEL-4: Fabric API's before- and after-bake model hook wraps {@code bakeUncached(model, state)} in
+	 * {@code ModelBakerImpl.bake(id, state)}, taking the id, the first of the method's parameters. NeoForge 21.1's
+	 * {@code bake(id, state)} only calls an overload also taking the sprite getter, which calls {@code bakeUncached}'s
+	 * overload also taking it; the two-argument {@code bakeUncached} passes the baker's own getter. The wrapper moves to
+	 * the overload, which takes the id first too, and wraps the other call through a bridge.
+	 */
+	@Test
+	void aWrapperTakingTheFirstOfTheMethodsParametersMovesWithTheOverloadThatTakesThemFirstToo() throws Exception {
+		String function = "Ljava/util/function/Function;";
+		String bake = "(Ljava/lang/String;Ljava/lang/Integer;)Ljava/lang/Object;";
+		String bakeAll = "(Ljava/lang/String;Ljava/lang/Integer;" + function + ")Ljava/lang/Object;";
+		String uncached = "(Ljava/lang/Number;Ljava/lang/Integer;)Ljava/lang/Object;";
+		String uncachedAll = "(Ljava/lang/Number;Ljava/lang/Integer;" + function + ")Ljava/lang/Object;";
+		ClassWriter target = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		target.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		target.visitField(Opcodes.ACC_PRIVATE | Opcodes.ACC_FINAL, "sprites", function, null, null).visitEnd();
+		BiConsumer<String[], Integer> forwarding = (names, parameters) -> {
+			MethodVisitor mv = target.visitMethod(Opcodes.ACC_PUBLIC, names[0], names[1], null, null);
+			mv.visitCode();
+			for (int i = 0; i <= parameters; i++) mv.visitVarInsn(Opcodes.ALOAD, i);
+			mv.visitVarInsn(Opcodes.ALOAD, 0);
+			mv.visitFieldInsn(Opcodes.GETFIELD, TARGET, "sprites", function);
+			mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, names[0], names[2], false);
+			mv.visitInsn(Opcodes.ARETURN);
+			mv.visitMaxs(0, 0);
+			mv.visitEnd();
+		};
+		forwarding.accept(new String[] {"bake", bake, bakeAll}, 2);
+		MethodVisitor all = target.visitMethod(Opcodes.ACC_PUBLIC, "bake", bakeAll, null, null);
+		all.visitCode();
+		all.visitVarInsn(Opcodes.ALOAD, 0);
+		all.visitInsn(Opcodes.ACONST_NULL);
+		all.visitTypeInsn(Opcodes.CHECKCAST, "java/lang/Number");
+		all.visitVarInsn(Opcodes.ALOAD, 2);
+		all.visitVarInsn(Opcodes.ALOAD, 3);
+		all.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "bakeUncached", uncachedAll, false);
+		all.visitInsn(Opcodes.ARETURN);
+		all.visitMaxs(0, 0);
+		all.visitEnd();
+		forwarding.accept(new String[] {"bakeUncached", uncached, uncachedAll}, 2);
+		MethodVisitor uncachedCode = target.visitMethod(Opcodes.ACC_PUBLIC, "bakeUncached", uncachedAll, null, null);
+		uncachedCode.visitCode();
+		uncachedCode.visitInsn(Opcodes.ACONST_NULL);
+		uncachedCode.visitInsn(Opcodes.ARETURN);
+		uncachedCode.visitMaxs(0, 0);
+		uncachedCode.visitEnd();
+		target.visitEnd();
+		ClassIndex game = new ClassIndex(Map.of(TARGET, target.toByteArray())::get);
+
+		byte[] wrapper = mixin("com/example/mixin/Baker", false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "wrapInnerBake",
+					"(Ljava/lang/Object;Ljava/lang/Number;Ljava/lang/Integer;" + OPERATION + "Ljava/lang/String;)Ljava/lang/Object;", null, null);
+			mv.visitParameterAnnotation(0, "Lorg/spongepowered/asm/mixin/injection/Coerce;", false).visitEnd();
+			AnnotationVisitor ann = mv.visitAnnotation(WRAP_OPERATION, false);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "bake" + bake);
+			methods.visitEnd();
+			AnnotationVisitor ats = ann.visitArray("at");
+			AnnotationVisitor at = ats.visitAnnotation(null, AT);
+			at.visit("value", "INVOKE");
+			at.visit("target", "L" + TARGET + ";bakeUncached" + uncached);
+			at.visitEnd();
+			ats.visitEnd();
+			ann.visitEnd();
+			mv.visitCode();
+			mv.visitInsn(Opcodes.ACONST_NULL);
+			mv.visitInsn(Opcodes.ARETURN);
+			mv.visitMaxs(1, 6);
+			mv.visitEnd();
+		});
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Baker", wrapper));
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Baker"));
+		assertEquals(1, preflight(game, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).size());
+
+		List<PreflightFinding> notes = new ArrayList<>();
+		byte[] repaired = preflight(game, mod::get, ClassBytesSource.EMPTY, false).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes)
+				.get("com/example/mixin/Baker.class");
+		assertNotNull(repaired, notes.toString());
+		assertEquals(2, notes.size(), notes.toString());
+		assertTrue(notes.get(0).message().contains("bake" + bake + ", whose code NeoForge moved into bake" + bakeAll), notes.toString());
+		assertTrue(notes.get(1).message().contains("which this game build makes through an overload with one more argument, bakeUncached" + uncachedAll), notes.toString());
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired).accept(node, 0);
+		MethodNode bridge = node.methods.stream().filter(m -> m.name.equals("wrapInnerBake$fabricated")).findFirst().orElseThrow();
+		assertEquals("(Ljava/lang/Object;Ljava/lang/Number;Ljava/lang/Integer;" + function + OPERATION + "Ljava/lang/String;)Ljava/lang/Object;", bridge.desc,
+				"the id still taken from the method's parameters, first in the overload too");
+		assertTrue(Annotations.ofParameter(bridge, 0).stream().anyMatch(a -> a.desc.equals("Lorg/spongepowered/asm/mixin/injection/Coerce;")),
+				"the baker coerced as the handler coerces it");
+		mod.put("com/example/mixin/Baker", repaired);
+		List<PreflightFinding> after = preflight(game, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(after.isEmpty(), after.toString());
 	}
 
 	@Test
