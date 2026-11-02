@@ -40,7 +40,17 @@ One entry per working session, newest first: what changed, and how it was verifi
   1.21.1); and a Fabric mod's hook into the game's options that throws before the entrypoints, which NeoForge 21.1
   creates before it loads mods, is skipped for that call with a warning (ENTRY-2, Bobby); a `@ModifyArgs` into a lambda
   NeoForge's build gives one more value gets a bridge, and one whose handler fits no target is left out before Mixin
-  could stop the launch (CORPUS-58, Ledger's anvil hook).
+  could stop the launch (CORPUS-58, Ledger's anvil hook); a lambda named as vanilla names it whose creating method the
+  patch gave a parameter is found in vanilla's place, as the one method of that name (LAMBDA-9, Litematica's schematic
+  rendering on 26.2).
+- **Library classes:** a mixin giving a library class NeoForge loads without mixin support another library's
+  interfaces becomes a generated adapter, which the mod's casts of the class's objects to them wrap them in (LIB-2:
+  adventure-platform-fabric's `GameProfile` as an Adventure `Identity`, so it loads, and with it OneConfig's chat
+  event). The object itself doesn't implement them: `COMPATIBILITY.md` lists what that leaves short of Fabric.
+- **Translation:** the members and interfaces Fabric's `@Environment` reserves for the other side are left out as a mod
+  is translated (each translation is for one side), keeping the classes' frames, instead of at class load, where
+  ModLauncher computed every such class's frames anew and failed on a class an optional mod would provide (ENV-1,
+  CORPUS-59: Cobblemon's cooking pot screen naming JEI's runtime, on 1.21.1).
 - **Remapping:** the nested classes of a class Intermediary keeps by name (TOKEN-1: Iris on 1.21.11, ImmediatelyFast on
   1.21.1, CORPUS-52); a library's member for another loader that remapping makes its Fabric member's twin is left out
   (REMAP-4, Elementa in Essential); an accessor Loom named for an intermediary member gets its target written out
@@ -48,18 +58,28 @@ One entry per working session, newest first: what changed, and how it was verifi
 - **Runtime:** Fabric mods' registry freeze handlers are held in every freeze before their main entrypoints (REG-8,
   Flashback); Fabric API's untracked listener marker (NET-9, Flashback); Fabric item models when Indigo stands down
   without a renderer (FRAPI-10, Sodium for NeoForge on 1.21.11); Fabric HUD elements only where vanilla draws the
-  element they're attached to, the hidden GUI read where 26.2 moved it (HUD-3).
+  element they're attached to, the hidden GUI read where 26.2 moved it (HUD-3); on 1.21.1, Fabric reload listeners
+  built with the reload's registry lookup, as upstream builds them, so a tag read as the reload runs is there (CORPUS-50,
+  Moonlight's fuel data map naming Supplementaries' tags); the system property FML sets for an empty log marker, which
+  no logging reads, removed before Fabric mods run (CORPUS-60, Ledger's configuration); a mixin failing in one of the
+  game's worker threads recorded for the next launch to leave out, as APPLY-1 records the others (APPLY-2).
 - **CI gates added:** the Sodium and Iris, malilib (with MiniHUD, Tweakeroo and Litematica), Essential (both
   launches) and Flashback clients on every NeoForge version; a mixin failure recorded and left out over three server
   launches; the HUD conditions on 26.x; the test mod's freeze handler first running after the main initializers;
   Fabric's custom ingredients in 1.21.1's recipe codec. The 1.21.1 test piston moves every four ticks (`688dea3`), as
   Forge 47's does. The evidence step (`ci/javap-dump.py`, new) prints the bytecode open findings turn on.
+- **Decided** (each mine to make by the brief, logged here): `preLaunch` stays first of the entrypoints, right before
+  `main`, instead of moving to the game's start: there NeoForge hasn't built the mods' containers, which set the class
+  loaders their classes load with, and the mods it was for gain nothing (Sodium's driver checks would still follow
+  NeoForge's early window, Essential's loader is DOWNLOAD-1's). Login queries stay unsupported: the configuration
+  phase can't stand in for the login phase their main users answer. ENTRY-1: with `"onEntrypointFailure": "disable"`
+  a failed mod's other entrypoints stay skipped, as documented; `COMPATIBILITY.md` lists the wait it can cause.
 - **Docs:** `COMPATIBILITY.md` lists the Fabric builds' gaps (the owner's decision, 2026-11-02: no patch for Sodium's
   Fabric build, load it and list them) and how Essential loads; the README and the roadmap's tables say what loads
   where.
-- **Open, in the roadmap's findings:** CORPUS-50 (Supplementaries' item tags on the 1.21.1 corpus server), CORPUS-59
-  (Cobblemon's client initializer on the 1.21.1 advanced corpus client), LAMBDA-9 (Litematica's schematic rendering on
-  26.2), CORPUS-56 (Continuity), KEYMAP-1, and the Fabric builds' gaps `COMPATIBILITY.md` lists. On Forge, the refusals
+- **Open, in the roadmap's findings:** fixed, to verify: CORPUS-50, CORPUS-59, CORPUS-60, APPLY-2, LAMBDA-9 (Litematica's
+  schematic rendering on 26.2) and LIB-2; CORPUS-61 (a redirect failing in the 1.21.1 advanced corpus server's world
+  generation), CORPUS-56 (Continuity), KEYMAP-1, and the Fabric builds' gaps `COMPATIBILITY.md` lists. On Forge, the refusals
   stay until the Forge sync and its runs.
 - **Verified:** extended runs 41471044589 and 41477591558, every job green on all five NeoForge versions, the
   difficult-mod gates included; the fixes' findings name the run that verified each.

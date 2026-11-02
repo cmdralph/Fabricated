@@ -197,7 +197,9 @@ failures fall into a few groups:
   (`fabric-api-plan.json`) leaves out those mixins and the mixin that depends on them, so the rest of the
   module loads; only the safety net for worlds that reference a removed modded dimension is missing. A Fabric
   mod's mixin into such a class that only gives it one of the mod's interfaces (Carpet's into Brigadier's command
-  nodes, to remove a script's commands) is replaced by a generated class serving the interface (LIB-1).
+  nodes, to remove a script's commands) is replaced by a generated class serving the interface (LIB-1); one giving it
+  another library's interfaces with the class's public methods (adventure-platform-fabric's into authlib's
+  `GameProfile`) by an adapter the mod's casts wrap the object in (LIB-2).
 - **NeoForge changed a field's type**: an `@Accessor` must read a field of exactly its type. Upstream's
   `fabric-object-builder-api-v1` (26.x) read `AttributeSupplier.Builder.builder` as an `ImmutableMap.Builder`,
   which NeoForge replaced; it is native now (see below).
@@ -971,8 +973,10 @@ Fabricated reports itself as Fabric Loader 0.20.1, whose public API is 0.19.5's,
 reported 0.19.5, so mods declaring a newer loader were refused). The public `net.fabricmc.loader.api` is complete: entrypoints (including custom ones and language adapters such as
 Kotlin's), mod containers and metadata, versions and predicates, the object share, and the mapping resolver
 (intermediary to Mojang names on 1.21.11). As on Fabric, every declared language adapter is created before any Fabric
-mod's mixin plugin loads (some mods declare one only to run code that early). `preLaunch` entrypoints still run later
-than on Fabric: right before `main`.
+mod's mixin plugin loads (some mods declare one only to run code that early). `preLaunch` entrypoints run later than
+on Fabric: first of the entrypoints, right before `main`, where NeoForge has built the mods' containers (Fabric runs
+them before the game's classes load). That stays so for the beta (task 5): Sodium's driver checks there would come
+after NeoForge's early window made its GL context either way.
 
 Every mod has a root path, as on Fabric (mods take the first without checking): Minecraft's is the game's file, Java's
 its home, the mods Fabricated provides (Fabric Loader, the native Fabric API modules) have Fabricated's in-game mod,
@@ -1000,8 +1004,10 @@ MixinExtras has NeoForge's jar, and a NeoForge mod nested in another jar has tha
   constructor; Ledger's, as the server starts) is registered with NeoForge then, as upstream accepts it at any time
   (NET-3). An id a NeoForge mod already registered stays the NeoForge mod's.
 - `@Environment` and `@EnvironmentInterface` are applied as Fabric Loader applies them: members and interfaces for
-  the other side are stripped when the class loads, so a common class implementing a client-only interface loads on
-  a dedicated server.
+  the other side are stripped, so a common class implementing a client-only interface loads on a dedicated server.
+  The stripping is done as the mod is translated for its side, with the classes' frames as they were (ENV-1): at
+  class load, ModLauncher would compute them anew, which fails for a class naming an optional mod's that isn't
+  installed.
 - Of Fabric Loader's internals, `FabricLoaderImpl.INSTANCE` (its public API methods) and
   `FabricLauncherBase.getLauncher()` (environment, development flag, runtime namespace) are provided for the mods that
   use them. A jar a mod adds to the class path while running (`addToClassPath`, or the legacy launcher's `propose`,
@@ -1106,12 +1112,13 @@ What this can't match of Fabric, seen in the owner's reference pack (2026-10-28)
   goes on. Mixin's "Renaming @Accessor method ..." lines for OneConfig's other static accessors are Mixin's own
   naming of static interface accessors, as on Fabric.
 - **Interfaces a mod adds to a library class.** adventure-platform-fabric gives authlib's `GameProfile` Adventure's
-  `Identity` and Brigadier's `CommandSyntaxException` its `ComponentMessageThrowable`; NeoForge loads those classes
-  without mixin support, and the mod's API casts to the interfaces, so it is disabled. Its other mixins then don't
-  apply either, among them the one giving Minecraft's `Component` Adventure's `ComponentLike`: a mod calling
-  `Component.asComponent()` throws `NoSuchMethodError` there (OneConfig's chat handling). Naming those two mixins in
-  `skipMixins` loads adventure-platform-fabric, its `identity(GameProfile)` and command-exception helpers then
-  throwing `ClassCastException` where called. (LIB-1 serves such a mixin only when the interfaces are the mod's own.)
+  `Identity` and Brigadier's `CommandSyntaxException` its `ComponentMessageThrowable`, which NeoForge loads without
+  mixin support. Since task 5 (LIB-2) a generated adapter stands in for each: the mod's casts of a profile to
+  `Identity` (a player's identity) wrap it in an adapter that answers the mixin's methods and forwards the profile's
+  own, so adventure-platform-fabric loads, and with it OneConfig's chat event. What stays short of Fabric: the profile
+  itself still isn't an `Identity`, so code outside adventure-platform-fabric checking one against the interface sees
+  it isn't, and Adventure's own check of a command's exception doesn't see a `ComponentMessageThrowable` (its message
+  is shown as plain text); two casts of one profile give equal adapters, not the same object.
 - **A jar a mod adds to the class path, in a package a mod's module has.** NeoForge's module class loader looks for a
   class in a package a module has only in that module, so OneConfig's Mod Menu API shim, in a package of OneConfig's
   own, doesn't load; Fabricated provides Mod Menu's API itself. Fabric Loader's `loadIntoTarget`, which OneConfig
@@ -1135,13 +1142,15 @@ tracked:
 | Data generation's tag appenders (and on 26.3 its loot sub-providers) | all | pre-flight leaves those hooks out where NeoForge's data providers differ; the module's classes load for mods' runtime code (DATAGEN-1), and nothing is generated unless `fabric-api.datagen` is set | — |
 | Fabric storages in items (`ItemStorage.ITEM`) across to NeoForge's item handlers | 1.21.1 | NeoForge 21.1's item handler capability on stacks predates its transfer API, as Forge's | task 5 |
 | A Fabric mod's accessor to a field NeoForge retyped (`KeyMapping.MAP`) | all | NeoForge's field has another type, so the accessor is left out and its callers throw `NoSuchMethodError` | KEYMAP-1, task 5 |
-| A mixin adding interfaces to a library class NeoForge loads without mixin support | all | Mixin can't reach such a class; the mod is disabled, or loads without the mixin by `skipMixins` | LEAVE-1 (above) |
+| A mixin adding interfaces to a library class NeoForge loads without mixin support, beyond LIB-1's and LIB-2's | all | Mixin can't reach such a class; one with state of its own, or injectors, disables its mod, or loads without the mixin by `skipMixins`. Where an adapter serves one (LIB-2), only the mod's own casts wrap the object: another mod's check against the interface doesn't see it | LEAVE-1, LIB-2 (above) |
+| A failed mod's other entrypoints, with `"onEntrypointFailure": "disable"` | all | skipped, as the setting says: a server configuration task the failed mod registered can then leave a player waiting to join, its client side never registered | ENTRY-1 (decided) |
+| Login queries (`ServerLoginNetworking`, `ClientLoginNetworking`) | all | NeoForge has no hook in the login phase; their receivers are never called (*Networking*) | decided, task 5 |
 | WTHIT's Fabric build, and the mixed renderer pairs | all | as listed in *Fabric builds Fabricated refuses* | — |
 | Iris's Fabric build | 1.21.1 | its particle hook needs a field read NeoForge 21.1's particle engine doesn't make | — |
 | What Sodium's Fabric build meshes the Fabric way: NeoForge's fluid renderers, section geometry from NeoForge mods, model data, position-aware light and culling | all | *Renderer mods* above; the owner chose to list the gaps rather than patch one mod | rendering-pipeline track |
 | Essential's automatic updates (its Fabric build) | all | Essential loads from the launch after its loader's download, as a regular mod | DOWNLOAD-1 |
 | A Fabric mod's hook into the game's options that needs its initializer (Bobby's larger render distance limit) | 1.21.1 | NeoForge 21.1 creates the options before it loads mods, where Fabric creates them after the entrypoints; such a hook that throws then is skipped for that call, with a warning and a report line (ENTRY-2) | — |
-| Litematica's schematic rendering | 26.2 | its hooks into a `LevelRenderer` lambda NeoForge 26.2 declares otherwise are left out | LAMBDA-9, task 5 |
+| Litematica's schematic rendering | 26.2 | its hooks into a `LevelRenderer` lambda NeoForge 26.2 gives one more value are left out (fixed in task 5, to verify) | LAMBDA-9, task 5 |
 | Hooks pre-flight leaves out where NeoForge's code differs | per mod | each is in the report, with what NeoForge's code lacks and what is lost | LEAVE-1 (above) |
 
 ### Planned work, in order of impact
