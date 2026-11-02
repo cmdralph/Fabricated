@@ -47,6 +47,7 @@ import io.github.cmdralph.fabricated.core.resolve.FabricApiPlan;
 import io.github.cmdralph.fabricated.core.resolve.NativeModules;
 import io.github.cmdralph.fabricated.core.resolve.NestedNeoForgeJars;
 import io.github.cmdralph.fabricated.core.resolve.PlatformLibraries;
+import io.github.cmdralph.fabricated.core.runtime.PlatformProperties;
 import io.github.cmdralph.fabricated.core.translate.LinkageAnalysis;
 import io.github.cmdralph.fabricated.core.translate.PackageGuard;
 import io.github.cmdralph.fabricated.core.translate.PlatformDescriptor;
@@ -282,6 +283,11 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 		ApiHolder.install(api);
 		// Fabric mods' handlers in a registry's freeze wait for their main entrypoints, as on Fabric (REG-8).
 		if (devGameMod.isPresent() || addGameMod) EarlyFreeze.holdUntilMainEntrypoints();
+		// Before any Fabric mod's code runs: the property FML sets for no log marker, which Fabric mods can't read (CORPUS-60).
+		if ((devGameMod.isPresent() || addGameMod) && PlatformProperties.dropEmptyLogMarker()) {
+			result.report().line("Launch", "Removed the system property " + PlatformProperties.EMPTY_LOG_MARKER + ", which FML sets for an empty"
+					+ " log marker and nothing reads; a Fabric mod reading every system property as a dotted path stops on it");
+		}
 
 		ModFileDiscoveryAttributes attributes = ModFileDiscoveryAttributes.DEFAULT.withDependencyLocator(this);
 		Set<String> refused = new HashSet<>();
