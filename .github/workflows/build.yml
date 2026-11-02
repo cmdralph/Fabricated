@@ -1401,6 +1401,10 @@ jobs:
                 grep -h -m 3 "failed as Mixin applied it" "$log" | cut -c1-700 || true
               fi
             done
+            # CORPUS-65: Farmer's Delight's enum mixin into RecipeBookCategories, which the corpus client neither makes an
+            # enum extension nor a values mixin: its constants as its class initializer makes them, and the enum's constructors.
+            dump client-corpus 'mod:vectorwing.farmersdelight.common.mixin.refabricated.RecipeBookCategoriesMixin#<clinit>' \
+              'mod:vectorwing.farmersdelight.common.mixin.refabricated.RecipeBookCategoriesMixin#*' 'game:net.minecraft.client.RecipeBookCategories#RecipeBookCategories'
           fi
           # LAMBDA-9: Litematica's schematic hooks into LevelRenderer.addMainPass's lambda, which NeoForge 26.2 gives one more
           # value: what pre-flight now reports of them, and addMainPass as NeoForge's and vanilla's code declare it.

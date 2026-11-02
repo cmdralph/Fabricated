@@ -13,8 +13,9 @@ Usage: ci/javap-dump.py <client or server work directory> <spec>...
   mixins:<class>          the mixins in the mods' jars (as they ship) that target the class (internal name)
   refs:<text>             the methods of the mods' classes (as they ship) whose code names the text (a class's
                           internal name, say), up to 8 classes
-A member is a name, a name's start followed by * (lambda$charTyped$*), "class" (the class's header and attributes:
-its inner classes, its @Mixin) or * (every member's declaration and descriptor, without code). A class or file that is
+A member is a name (a constructor's is its class's simple name, the static initializer's <clinit>), a name's start
+followed by * (lambda$charTyped$*), "class" (the class's header and attributes: its inner classes, its @Mixin) or *
+(every member's declaration and descriptor, without code). A class or file that is
 the same as one already printed is named, not printed again (the same translation in several cache jars).
 """
 import fnmatch
@@ -66,8 +67,11 @@ def javap(data, verbose=True):
 
 
 def member_name(declaration):
-    """The name a javap declaration line declares: a method's (a constructor's simple class name) or a field's."""
+    """The name a javap declaration line declares: a method's (a constructor's simple class name, a static initializer's
+    <clinit>) or a field's."""
     line = declaration.strip()
+    if line == "static {};":
+        return "<clinit>"
     method = re.search(r"([\w$.<>]+)\(", line)
     if method:
         return method.group(1).rsplit(".", 1)[-1]
