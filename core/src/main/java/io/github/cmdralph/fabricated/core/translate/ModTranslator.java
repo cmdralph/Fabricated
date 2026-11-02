@@ -525,7 +525,9 @@ public final class ModTranslator {
 		List<ModsTomlWriter.MixinConfigSpec> specs = new ArrayList<>();
 		// Pre-flight sees the mod as it will load: with the handler methods left out below.
 		FileView translated = name -> overlay.containsKey(name) ? overlay.get(name) : files.read(name);
-		MixinPreflight preflight = new MixinPreflight(env.installedIndex(), env.installed(), classSource(translated), env.untransformable(),
+		// Pre-flight reads mixins using a MixinExtras their mod relocated with MixinExtras' own names (MIXEXT-3).
+		RelocatedMixinExtras relocated = new RelocatedMixinExtras();
+		MixinPreflight preflight = new MixinPreflight(env.installedIndex(), env.installed(), relocated.view(classSource(translated)), env.untransformable(),
 				env.clientSide(), MixinCompat.missingTargetsFatal(behavior), env.vanilla(), env.descriptor().loaderName(),
 				MixinCompat.interfaceInjectors(env.runtimeMixinVersion()), MixinCompat.constructorInjects(env.runtimeMixinVersion()),
 				MixinCompat.argumentNames(env.runtimeMixinVersion()), MixinCompat.exactStaticInjects(env.runtimeMixinVersion()));
@@ -593,9 +595,9 @@ public final class ModTranslator {
 			skip = withEnumExtensions(entry.config(), config, skip, ModIds.toNeoForgeId(candidate.id()), translated, entries, overlay, findings, enumEntries,
 					enumTargets);
 			skip = withLibraryBridges(entry.config(), config, skip, translated, entries, overlay, findings, ducks, implementors, servedAccessors);
-			overlay.putAll(preflight.repairs(entry.config(), config, refmap, skip, findings));
+			overlay.putAll(repairs(preflight, relocated, entry.config(), config, refmap, skip, findings));
 			if (!override.ignorePreflight()) {
-				List<PreflightFinding> checked = new ArrayList<>(preflight.check(entry.config(), config, refmap, skip));
+				List<PreflightFinding> checked = new ArrayList<>(relocated.relocated(preflight.check(entry.config(), config, refmap, skip)));
 				// Their targets are library classes, which Mixin never applies them to: the generated classes stand in.
 				checked.removeIf(f -> servedAccessors.contains(f.mixin()));
 				checked.addAll(unsupportedModuleUses(entry.config(), config, skip, translated));
@@ -627,7 +629,7 @@ public final class ModTranslator {
 			}
 			specs.add(new ModsTomlWriter.MixinConfigSpec(entry.config(), behavior));
 		}
-		pluginMixins(entries, configs, refmaps, preflight, !override.ignorePreflight(), translated, overlay, findings);
+		pluginMixins(entries, configs, refmaps, preflight, relocated, !override.ignorePreflight(), translated, overlay, findings);
 		if (!ducks.isEmpty()) {
 			// The mod's uses of the interfaces, and the bridges' own (one may use another's), call the bridges.
 			Set<String> classesToRewrite = new LinkedHashSet<>(entries);
@@ -705,6 +707,15 @@ public final class ModTranslator {
 				+ " default as its super (SUPER-1)");
 	}
 
+	/** Pre-flight's repairs of a config's mixins, and its notes on them, with the mod's relocated MixinExtras names (MIXEXT-3). */
+	private static Map<String, byte[]> repairs(MixinPreflight preflight, RelocatedMixinExtras relocated, String configName, MixinConfigFile config,
+			Refmap refmap, Set<String> skip, List<PreflightFinding> findings) {
+		int from = findings.size();
+		Map<String, byte[]> repaired = preflight.repairs(configName, config, refmap, skip, findings);
+		relocated.relocateFindings(findings, from);
+		return relocated.relocated(repaired);
+	}
+
 	private static void leaveOutHandlers(Map<String, Set<String>> handlers, FileView files, Map<String, byte[]> overlay) throws ArchiveException {
 		for (Map.Entry<String, Set<String>> h : handlers.entrySet()) {
 			byte[] mixin = files.read(h.getKey());
@@ -721,8 +732,8 @@ public final class ModTranslator {
 	 * side, say) are not reported: the plugin may well never add it.
 	 */
 	private static void pluginMixins(Collection<String> entries, Map<String, MixinConfigFile> configs, Map<String, Refmap> refmaps,
-			MixinPreflight preflight, boolean check, FileView files, Map<String, byte[]> overlay, List<PreflightFinding> findings)
-			throws ArchiveException {
+			MixinPreflight preflight, RelocatedMixinExtras relocated, boolean check, FileView files, Map<String, byte[]> overlay,
+			List<PreflightFinding> findings) throws ArchiveException {
 		Set<String> listed = new HashSet<>();
 		for (MixinConfigFile config : configs.values()) {
 			for (String mixin : config.allMixins()) listed.add(config.internalName(mixin) + ".class");
@@ -739,10 +750,10 @@ public final class ModTranslator {
 			}
 			if (unlisted.isEmpty()) continue;
 			MixinConfigFile added = config.listing(unlisted);
-			overlay.putAll(preflight.repairs(e.getKey(), added, refmaps.get(e.getKey()), Set.of(), findings));
+			overlay.putAll(repairs(preflight, relocated, e.getKey(), added, refmaps.get(e.getKey()), Set.of(), findings));
 			if (!check) continue;
 			Map<String, Set<String>> handlers = new TreeMap<>();
-			for (PreflightFinding f : preflight.check(e.getKey(), added, refmaps.get(e.getKey()), Set.of())) {
+			for (PreflightFinding f : relocated.relocated(preflight.check(e.getKey(), added, refmaps.get(e.getKey()), Set.of()))) {
 				if (f.severity() != Severity.LEFT_OUT || f.handler() == null) continue;
 				findings.add(f);
 				handlers.computeIfAbsent(f.mixin().replace('.', '/') + ".class", k -> new TreeSet<>()).add(f.handler());
