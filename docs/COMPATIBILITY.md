@@ -327,7 +327,7 @@ A mod that adds a pack source the vanilla way, replacing the repository's source
 is offered each, and only then, so a pack the player turned off stays off, and a pack whose mod was removed is
 switched on again when it comes back (PACK-6). Which packs were offered before is kept in upstream's own file,
 `data/fabricDefaultResourcePacks.dat` in the game directory, so an instance moved between Fabric and Fabricated keeps
-the player's choices. NeoForge itself has no such default; Continuity's connected textures come from such a pack.
+the player's choices. NeoForge itself has no such default.
 Upstream adds the packs as the options load; Fabricated adds them as the client applies the options to its pack
 repository, which by then has found every pack.
 

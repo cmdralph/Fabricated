@@ -8,9 +8,8 @@ import net.minecraft.server.packs.repository.PackRepository;
 
 /**
  * A built-in resource pack a Fabric mod enables by default (ResourceLoaderTest's {@code extra_assets}) is switched on
- * the first time the client is offered it, as Fabric API does on Fabric, and its resources load. Continuity's connected
- * textures come from such a pack. CI starts each client in a new game directory, where the pack is offered for the
- * first time.
+ * the first time the client is offered it, as Fabric API does on Fabric, and its resources load. CI starts each client
+ * in a new game directory, where the pack is offered for the first time.
  */
 public final class DefaultResourcePackTest implements ClientModInitializer {
 	private static final String PACK = "fabricated_testmod:extra_assets";

@@ -720,8 +720,9 @@ jobs:
       # R6: Continuity, a real consumer of Fabric's renderer API (connected textures), its Fabric build from Modrinth where
       # it has one for the version, with Fabric API and the renderer API test mod. The test mod puts a glass wall above its
       # blocks and wraps glass's model after Continuity's, and logs whether the quads a chunk section gets for it are off
-      # glass's own sprite, as the connected textures of Continuity's default resource pack are. Informational until it
-      # holds on two extended runs in a row (CI-1's rule).
+      # glass's own sprite, as the connected textures of Continuity's default resource pack are. Continuity registers that
+      # pack as one the player switches on (NORMAL), so the run selects it in the options, as a player would.
+      # Informational until it holds on two extended runs in a row (CI-1's rule).
       - name: Client with Continuity (informational)
         if: ${{ matrix.part == 'mods' && !cancelled() && steps.build.outcome == 'success' }}
         continue-on-error: true
@@ -736,7 +737,7 @@ jobs:
             exit 0
           fi
           cp "$RUNNER_TEMP/extra/fabric-api.jar" "mc/neoforge/$MC/build/testmods/fabricated-testmod-frapi.jar" "$RUNNER_TEMP/extra-continuity/"
-          SMOKE_TIMEOUT=480 ci/neoforge/smoke-client.sh "$MC" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-continuity" "$RUNNER_TEMP/extra-continuity" || true
+          SMOKE_RESOURCE_PACKS='"continuity:default"' SMOKE_TIMEOUT=480 ci/neoforge/smoke-client.sh "$MC" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-continuity" "$RUNNER_TEMP/extra-continuity" || true
           log="$RUNNER_TEMP/client-continuity/run/logs/latest.log"
           grep -h "FABRICATED-TEST continuity" "$log" || true
           # Which resource packs the game loaded: Continuity's default one must be among them.
