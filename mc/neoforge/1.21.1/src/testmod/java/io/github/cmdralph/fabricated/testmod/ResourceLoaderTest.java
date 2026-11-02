@@ -103,6 +103,10 @@ public final class ResourceLoaderTest implements ModInitializer {
 			if (ResourceManagerHelper.registerBuiltinResourcePack(id("extra"), container, ResourcePackActivationType.DEFAULT_ENABLED)) {
 				TestMod.LOGGER.info("FABRICATED-TEST builtin pack registered");
 			}
+			// A resource pack enabled by default: the client switches it on the first time (DefaultResourcePackTest).
+			if (!ResourceManagerHelper.registerBuiltinResourcePack(id("extra_assets"), container, ResourcePackActivationType.DEFAULT_ENABLED)) {
+				TestMod.LOGGER.error("FABRICATED-TEST builtin resource pack registration FAILED");
+			}
 		});
 
 		ServerLifecycleEvents.SERVER_STARTED.register(server -> {

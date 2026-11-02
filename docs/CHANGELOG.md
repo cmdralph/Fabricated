@@ -3,6 +3,57 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-02: Fabric's renderer API, `main`'s half (task 4)
+
+- **Rule 8 on every NeoForge seam** (R1, `44d841b`): a Fabric block model that throws in a chunk section, as a moving
+  block, with the breaking overlay, as an entity's block or while its parts are made from its quads is drawn by
+  NeoForge's renderer from then on, logged once and listed in the report, naming its mod; the transform it left pushed
+  reaches no other block.
+  - **FRAPI-7** (new, P2, `46383c0`): the throw was put down to every model whose emitter was on the stack, so a model
+    wrapping a broken one was marked too. In R6's Continuity run the renderer test mod's broken part, which Continuity's
+    `CtmBakedModel` wraps, switched off all of Continuity's models for the session. The throw now goes to the emitter
+    call nearest it (core's `ThrowSite`), and a wrapper keeps Fabric's renderer. On 1.21.1 (`dd65318`) NeoForge's
+    fallback for such a block went back through Fabricated's `renderBatched` seam to Fabric's renderer, and a block's
+    later render types drew it again; each thread now remembers the block that fell back.
+- **FRAPI-5** (P1, 1.21.1, `9e3a1f0`, R2): Fabric models were invisible on 1.21.1. They are drawn through Indigo in
+  chunk sections, as falling blocks and blocks a piston moves, with the breaking overlay and through `renderBatched`,
+  alone or in a vanilla multipart or weighted model.
+- **Fabric item models** (R3, `eaf35e7`): checked in the hotbar, in hand, dropped and in item frames on every version;
+  no fix needed.
+- **FRAPI-6** (new, P1, 26.x, `8f114da`, R4): upstream's overwrite of `BlockStateModelWrapper.update` sent every block
+  drawn as an entity through Fabric's renderer, unguarded, and emptied every vanilla and NeoForge block's parts there.
+  It is left out; Fabricated fills the state from Fabric models only.
+- **PACK-6** (new, P1, `fb872ff`): a built-in resource pack a Fabric mod enables by default was never switched on
+  (NeoForge has no such default). It is switched on the first time it is offered, remembered in upstream's
+  `data/fabricDefaultResourcePacks.dat`, as on Fabric. `fb872ff`'s message says Continuity's packs are such packs: they
+  aren't (they are normal packs the player switches on), corrected in `522c4f1`.
+- **Continuity in CI** (R6, `a8f1c38`, informational, every version it has a build for): its default pack selected as a
+  player would (`SMOKE_RESOURCE_PACKS`), a glass wall placed, and the test mod checks the glass's quads leave glass's
+  sprite. No connected textures seen yet (run 41404975032): on 1.21.1 Continuity's `CtmBakedModel` draws the glass
+  through Fabricated's seam with vanilla's sprite; on 1.21.11 and 26.x its sprite hook is left out and the check sees
+  vanilla's glass model (CORPUS-56).
+- **Forgified Fabric API's renderer beside Fabricated's seams** (R7, `a8fbe84`, extended runs, informational): every
+  block the test mod logs names the seam that sent it to Fabric's renderer. With Forgified Fabric API's renderer,
+  Fabricated's seams stand down on 1.21.1, 26.1.2 and 26.2 (extended run 41400541531; no 1.21.11 or 26.3 build).
+- **Found, for task 5:** MODEL-4 (1.21.1's model modifiers skip a model baked as another's part or parent) and
+  CORPUS-56 (no connected textures from Continuity on any version; its sprite hook left out on 1.21.11 and 26.x).
+- **Decided:** 26.x's breaking overlay hands Fabric models `Blocks.AIR` and `BlockPos.ZERO`, as upstream does (its own
+  TODO): parity, no fix. R8 (level-aware material flags) stays a candidate. On 1.21.1 a minecart's block comes from
+  vanilla's quads, as upstream draws it on Fabric. R6 and R7 stay informational until CI-1's rule makes them gates.
+- **Rule 7** (allocation): R2's seams take Indigo's contexts from thread-locals and allocate nothing per block. R4's
+  `@Inject` at the head of `BlockStateModelWrapper.update` is cancellable, so Mixin passes each call a new
+  `CallbackInfo`, for every block drawn as an entity, Fabric model or not: one small object a call that doesn't escape
+  the handler, which C2's escape analysis can remove once the handler is inlined (not measured); NeoForge's path
+  otherwise reads the model class's `ClassValue` entry only. FRAPI-7's and PACK-6's code runs on the failure path and
+  once per pack load; 1.21.1's memo of the block that fell back is a field write per Fabric block and a thread-local
+  read at a block's later render types, and allocates only when a model throws.
+- **CI gates added** (every NeoForge version unless said): the renderer test mod on 1.21.1; items; the broken models
+  alone, as a part, inside a wrapper and (26.x) as a minecart's block; minecarts' blocks (26.x); `seam=Fabricated` on
+  the terrain checks; the default-enabled pack. Core: `ThrowSiteTest`, `DefaultPackTrackerTest`.
+- **Verified:** core's 368 tests locally, with `ThrowSiteTest` and `DefaultPackTrackerTest`; the mixin inventory check;
+  run 41404975032, every gate but 1.21.1's wrapped model fallback (fixed in `dd65318`); R6's and R7's results in their
+  bullets. This pull request's final full matrix is cited in task 4's checkpoint, after the Forge branches.
+
 ## 2026-11-02: Parity, the Forge branches' half (task 3 done)
 
 - **`forge` and `forge-legacy` synced with `main`** (#240, #241): the engine's PRE-18, CORPUS-33 and LAMBDA-8 fixes,

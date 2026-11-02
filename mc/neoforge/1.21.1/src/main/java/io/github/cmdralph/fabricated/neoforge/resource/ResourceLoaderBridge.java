@@ -63,8 +63,8 @@ public final class ResourceLoaderBridge {
 	/**
 	 * Offers the built-in packs Fabric mods register to every pack repository NeoForge builds; the list is read when the
 	 * repository scans, so packs registered by initializers that run later are still found. {@code ALWAYS_ENABLED} packs are
-	 * required; {@code DEFAULT_ENABLED} data packs are added to new worlds automatically. Default-enabled client resource
-	 * packs are not switched on automatically (upstream patches the options screen for that).
+	 * required; {@code DEFAULT_ENABLED} data packs are added to new worlds automatically, and {@code DEFAULT_ENABLED}
+	 * resource packs are switched on the first time they are offered ({@code DefaultResourcePacks}).
 	 */
 	private static void onAddPackFinders(AddPackFindersEvent event) {
 		PackType type = event.getPackType();

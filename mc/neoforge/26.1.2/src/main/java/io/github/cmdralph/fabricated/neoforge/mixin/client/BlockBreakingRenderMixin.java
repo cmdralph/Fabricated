@@ -27,7 +27,7 @@ abstract class BlockBreakingRenderMixin {
 	private boolean fabricated$fabricModels(BlockStateModel model, BlockAndTintGetter level, BlockPos pos, BlockState state, RandomSource random,
 			List<BlockStateModelPart> parts) {
 		if (!FabricBlockRendering.draws(model)) return true;
-		FabricBlockRendering.collectBreakingParts(model, level, pos, state, random, parts);
-		return false;
+		// A model that threw gives NeoForge its parts instead (FRAPI rule 8).
+		return !FabricBlockRendering.collectBreakingParts(model, level, pos, state, random, parts);
 	}
 }

@@ -1,0 +1,6 @@
+{
+  "pack": {
+    "description": "Fabricated test mod built-in resource pack, enabled by default",
+    ${resource_pack_formats}
+  }
+}

@@ -82,6 +82,11 @@ OPTS
 if [ "$mc" = "1.21.1" ]; then
 	printf '%s\n' "version:3955" "key_key.fabricated_testmod_frapi.check:key.keyboard.k" >> run/options.txt
 fi
+# SMOKE_RESOURCE_PACKS: resource packs selected from the start, as a player selects them in the pack screen: a JSON
+# list's items ('"continuity:default"').
+if [ -n "${SMOKE_RESOURCE_PACKS:-}" ]; then
+	printf 'resourcePacks:[%s]\n' "$SMOKE_RESOURCE_PACKS" >> run/options.txt
+fi
 # SMOKE_SHADERS: a minimal shader pack for Iris, enabled from the start. Its terrain program reads block ids, so Iris
 # uses its extended vertex format for the world, which Sodium's chunk meshes (Fabric models included) are written in.
 if [ -n "${SMOKE_SHADERS:-}" ]; then
@@ -259,6 +264,7 @@ check "FABRICATED-TEST block entity events OK" "native lifecycle in the integrat
 check "FABRICATED-TEST client resource reload listener OK" "native client resource reload listener"
 check "FABRICATED-TEST late vanilla reload listener OK" "a reload listener registered the vanilla way after NeoForge sorted them (OneConfig)"
 check "FABRICATED-TEST early reload listener OK" "a reload listener registered the vanilla way from Minecraft's constructor, before NeoForge's event"
+check "FABRICATED-TEST builtin resource pack enabled by default OK" "a built-in resource pack a Fabric mod enables by default is switched on the first time, as Fabric API does, and its resources load (PACK-6)"
 check "FABRICATED-TEST configuration task OK" "Fabric configuration task with the integrated server"
 check "FABRICATED-TEST client join event OK" "native client networking: join event"
 check "FABRICATED-TEST client networking round trip OK" "native networking: client to integrated server and back"

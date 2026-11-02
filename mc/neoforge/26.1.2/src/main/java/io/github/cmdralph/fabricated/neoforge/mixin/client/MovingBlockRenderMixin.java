@@ -52,9 +52,14 @@ abstract class MovingBlockRenderMixin implements FabricBlockRendering.MovingBloc
 			@Local(name = "poseStack") PoseStack poseStack) {
 		if (!FabricBlockRendering.draws(model)) return true;
 		fabricated$bufferSource = bufferSource;
-		FabricBlockRendering.tesselateMoving(this, poseStack.last(), false, 0, options.ambientOcclusion, Minecraft.getInstance().getBlockColors(),
-				x, y, z, level, pos, state, model, seed);
-		fabricated$bufferSource = null;
-		return false;
+		boolean drawn;
+		try {
+			drawn = FabricBlockRendering.tesselateMoving(this, poseStack.last(), false, 0, options.ambientOcclusion, Minecraft.getInstance().getBlockColors(),
+					x, y, z, level, pos, state, model, seed);
+		} finally {
+			fabricated$bufferSource = null;
+		}
+		// A model that threw is drawn by NeoForge instead (FRAPI rule 8).
+		return !drawn;
 	}
 }

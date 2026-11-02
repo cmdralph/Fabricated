@@ -1,7 +1,10 @@
 package io.github.cmdralph.fabricated.testmod.frapi;
 
 import java.util.ArrayList;
+import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Predicate;
@@ -13,14 +16,25 @@ import com.mojang.serialization.MapCodec;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.model.loading.v1.CustomUnbakedBlockStateModel;
+import net.fabricmc.fabric.api.client.model.loading.v1.ModelLoadingPlugin;
+import net.fabricmc.fabric.api.client.model.loading.v1.ModelModifier;
 import net.fabricmc.fabric.api.renderer.v1.mesh.QuadEmitter;
 import net.fabricmc.fabric.api.renderer.v1.mesh.QuadTransform;
+import net.fabricmc.fabric.api.renderer.v1.mesh.QuadView;
 import net.fabricmc.fabric.api.renderer.v1.model.FabricBlockStateModel;
+import net.fabricmc.fabric.api.renderer.v1.render.FabricLayerRenderState;
+import net.fabricmc.fabric.api.renderer.v1.render.ItemRenderTypeGetter;
+import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.client.renderer.Sheets;
 import net.minecraft.client.renderer.block.model.BakedQuad;
 import net.minecraft.client.renderer.block.model.BlockModelPart;
 import net.minecraft.client.renderer.block.model.BlockStateModel;
 import net.minecraft.client.renderer.chunk.RenderSectionRegion;
+import net.minecraft.client.renderer.item.ItemModel;
+import net.minecraft.client.renderer.item.ItemModelResolver;
+import net.minecraft.client.renderer.item.ItemStackRenderState;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.client.resources.model.ModelBaker;
 import net.minecraft.core.BlockPos;
@@ -28,8 +42,12 @@ import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.RandomSource;
+import net.minecraft.world.entity.ItemOwner;
+import net.minecraft.world.item.ItemDisplayContext;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.BlockAndTintGetter;
 import net.minecraft.world.level.EmptyBlockAndTintGetter;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.neoforge.client.model.DelegateBlockStateModel;
 
@@ -40,6 +58,19 @@ import net.neoforged.neoforge.client.model.DelegateBlockStateModel;
  * Fabricated's NeoForge-aware default, and logs once when a chunk section draws it (vanilla's, or Sodium's), once when it
  * is drawn as a moving block and once with the breaking overlay. Once a world is loaded, the parts NeoForge's renderers
  * get from the test block's model are checked to be made from its quads, with NeoForge's baked colour kept (1.21.11).
+ *
+ * <p>Two more Fabric models throw once a vanilla chunk section draws them, after emitting their quads and pushing a
+ * transform they never pop (FRAPI rule 8): one the broken test block's model, the other a part of the broken nested
+ * test block's multipart model. Each logs when NeoForge's renderer then asks it for its parts, and the transform logs a
+ * failure if any later quad reaches it. A third throws inside a Fabric model wrapping it ({@link WrapperCheckModel}), as
+ * Continuity's models wrap others: the throw is the wrapped model's, so the wrapper's class keeps Fabric's renderer.
+ *
+ * <p>The test item's model is wrapped after it is baked ({@link ItemCheckModel}): it adds a layer of quads emitted
+ * through Fabric's renderer API, and logs once when Fabric's renderer draws them in the hotbar (a screen), in hand, as a
+ * dropped item and in an item frame ({@link FrapiTestMod} puts it in each).
+ *
+ * <p>With Continuity installed, glass's model is wrapped after every other wrapper, Continuity's included
+ * ({@link ConnectedCheckModel}), to check that its connected textures reach the chunk section.
  */
 public final class FrapiClientTestMod implements ClientModInitializer {
 	/**
@@ -60,12 +91,35 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 	public void onInitializeClient() {
 		CustomUnbakedBlockStateModel.register(Identifier.fromNamespaceAndPath("fabricated_testmod_frapi", "terrain_check"), CheckModel.Unbaked.TERRAIN);
 		CustomUnbakedBlockStateModel.register(Identifier.fromNamespaceAndPath("fabricated_testmod_frapi", "nested_check"), CheckModel.Unbaked.NESTED);
+		CustomUnbakedBlockStateModel.register(Identifier.fromNamespaceAndPath("fabricated_testmod_frapi", "broken_check"), BrokenModel.CODEC);
+		CustomUnbakedBlockStateModel.register(Identifier.fromNamespaceAndPath("fabricated_testmod_frapi", "broken_part_check"), BrokenPartModel.CODEC);
+		ModelLoadingPlugin.register(plugin -> plugin.modifyItemModelAfterBake().register((model, context) ->
+				context.itemId().equals(FrapiTestMod.FABRIC_ITEM_ID) ? new ItemCheckModel(model) : model));
+		ModelLoadingPlugin.register(plugin -> plugin.modifyBlockModelAfterBake().register((model, context) ->
+				BuiltInRegistries.BLOCK.getKey(context.state().getBlock()).equals(FrapiTestMod.WRAPPED_BROKEN_BLOCK_ID)
+						? new WrapperCheckModel(new BrokenWrappedModel(model)) : model));
+		if (FabricLoader.getInstance().isModLoaded("continuity")) {
+			ModelLoadingPlugin.register(plugin -> plugin.modifyBlockModelAfterBake().register(ModelModifier.WRAP_LAST_PHASE, (model, context) ->
+					context.state().is(Blocks.GLASS) ? new ConnectedCheckModel(model) : model));
+		}
 		ClientTickEvents.END_CLIENT_TICK.register(client -> {
 			if (client.level != null && !partsChecked) {
 				partsChecked = true;
 				checkNeoForgeParts(client);
 			}
 		});
+	}
+
+	/** The class through which Fabricated sends a block to Fabric's renderer, on every version. */
+	private static final String FABRICATED_SEAM = "io.github.cmdralph.fabricated.neoforge.rendering.FabricBlockRendering";
+
+	/**
+	 * Which seam sent the block being drawn to Fabric's renderer: {@code "Fabricated"}, or {@code "other"} when another
+	 * mod's renderer hooks did (a renderer mod, or Forgified Fabric API's, whose renderer API Fabricated's seams stand
+	 * down for). Walks the stack: logged once per check.
+	 */
+	static String seam() {
+		return StackWalker.getInstance().walk(frames -> frames.anyMatch(frame -> frame.getClassName().startsWith(FABRICATED_SEAM))) ? "Fabricated" : "other";
 	}
 
 	/** Whether a level is a chunk section's: vanilla's, or Sodium's when Sodium meshes the world. */
@@ -145,7 +199,7 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 			}
 			if (isSection(level)) {
 				if (!logged.getAndSet(true)) {
-					FrapiTestMod.LOGGER.info("FABRICATED-TEST {} ({} in {} on {})", check, state, level.getClass().getName(), Thread.currentThread().getName());
+					FrapiTestMod.LOGGER.info("FABRICATED-TEST {} ({} in {} on {}, seam={})", check, state, level.getClass().getName(), Thread.currentThread().getName(), seam());
 				}
 			} else if (!BREAKING.get() || !MOVING.get()) {
 				String drawing = drawing();
@@ -183,6 +237,117 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 		}
 	}
 
+	/**
+	 * Glass's model as Continuity left it (R6), wrapped after it: the first time a chunk section draws a glass block next
+	 * to another, it logs whether any quad the model emitted is off glass's own sprite, as a connected texture's is
+	 * (Continuity's default resource pack gives glass one), and which model it wraps. NeoForge's renderers get the
+	 * wrapped model's parts.
+	 */
+	private static final class ConnectedCheckModel implements BlockStateModel, FabricBlockStateModel {
+		private static final AtomicBoolean LOGGED = new AtomicBoolean();
+		/** How far a texture coordinate may stray outside a sprite and still be on it (float rounding). */
+		private static final float EPSILON = 1.0E-5F;
+		private final BlockStateModel wrapped;
+
+		ConnectedCheckModel(BlockStateModel wrapped) {
+			this.wrapped = wrapped;
+		}
+
+		@Override
+		public void collectParts(RandomSource random, List<BlockModelPart> parts) {
+			wrapped.collectParts(random, parts);
+		}
+
+		@Override
+		public TextureAtlasSprite particleIcon() {
+			return wrapped.particleIcon();
+		}
+
+		@Override
+		public void emitQuads(QuadEmitter emitter, BlockAndTintGetter level, BlockPos pos, BlockState state, RandomSource random, Predicate<@Nullable Direction> cullTest) {
+			FabricBlockStateModel fabricModel = (FabricBlockStateModel) wrapped;
+			if (LOGGED.get() || !isSection(level) || !nextToSame(level, pos, state)) {
+				fabricModel.emitQuads(emitter, level, pos, state, random, cullTest);
+				return;
+			}
+			TextureAtlasSprite sprite = wrapped.particleIcon();
+			int[] quads = new int[2];
+			emitter.pushTransform(quad -> {
+				quads[0]++;
+				if (offSprite(quad, sprite)) quads[1]++;
+				return true;
+			});
+			try {
+				fabricModel.emitQuads(emitter, level, pos, state, random, cullTest);
+			} finally {
+				emitter.popTransform();
+			}
+			if (!LOGGED.getAndSet(true)) {
+				FrapiTestMod.LOGGER.info("FABRICATED-TEST continuity connected textures {} ({} of {} quads off {} at {}, drawn by {})", quads[1] > 0 ? "OK" : "FAILED",
+						quads[1], quads[0], sprite.contents().name(), pos, wrapped.getClass().getName());
+			}
+		}
+
+		private static boolean nextToSame(BlockAndTintGetter level, BlockPos pos, BlockState state) {
+			for (Direction direction : Direction.values()) {
+				if (level.getBlockState(pos.relative(direction)).is(state.getBlock())) return true;
+			}
+			return false;
+		}
+
+		private static boolean offSprite(QuadView quad, TextureAtlasSprite sprite) {
+			for (int i = 0; i < 4; i++) {
+				float u = quad.u(i);
+				float v = quad.v(i);
+				if (u < sprite.getU0() - EPSILON || u > sprite.getU1() + EPSILON || v < sprite.getV0() - EPSILON || v > sprite.getV1() + EPSILON) return true;
+			}
+			return false;
+		}
+	}
+
+	/**
+	 * The test item's model, as Fabric mods write one: after the item model it wraps, it adds a layer whose quads (a
+	 * cube's faces) it emits through Fabric's renderer API, which only Fabric's renderer draws. For each place the item
+	 * is shown in (a screen, a hand, the ground, an item frame) the layer gets a render type getter Fabric's renderer
+	 * asks as it draws those quads, which logs once and keeps the layer's render type.
+	 */
+	private static final class ItemCheckModel implements ItemModel {
+		private static final Map<ItemDisplayContext, ItemRenderTypeGetter> GETTERS = getters();
+		private final ItemModel wrapped;
+
+		ItemCheckModel(ItemModel wrapped) {
+			this.wrapped = wrapped;
+		}
+
+		@Override
+		public void update(ItemStackRenderState state, ItemStack stack, ItemModelResolver resolver, ItemDisplayContext displayContext, @Nullable ClientLevel level,
+				@Nullable ItemOwner owner, int seed) {
+			wrapped.update(state, stack, resolver, displayContext, level, owner, seed);
+			ItemStackRenderState.LayerRenderState layer = state.newLayer();
+			layer.setRenderType(Sheets.cutoutBlockSheet());
+			FabricLayerRenderState fabricLayer = (FabricLayerRenderState) (Object) layer;
+			ItemRenderTypeGetter getter = GETTERS.get(displayContext);
+			if (getter != null) fabricLayer.setRenderTypeGetter(getter);
+			QuadEmitter emitter = fabricLayer.emitter();
+			for (Direction face : Direction.values()) emitter.square(face, 0.25F, 0.25F, 0.75F, 0.75F, 0.25F).emit();
+		}
+
+		private static Map<ItemDisplayContext, ItemRenderTypeGetter> getters() {
+			Map<ItemDisplayContext, String> where = Map.of(ItemDisplayContext.GUI, "screen", ItemDisplayContext.FIRST_PERSON_RIGHT_HAND, "hand",
+					ItemDisplayContext.FIRST_PERSON_LEFT_HAND, "hand", ItemDisplayContext.GROUND, "dropped", ItemDisplayContext.FIXED, "frame");
+			Map<String, AtomicBoolean> logged = new HashMap<>();
+			Map<ItemDisplayContext, ItemRenderTypeGetter> getters = new EnumMap<>(ItemDisplayContext.class);
+			where.forEach((displayContext, name) -> {
+				AtomicBoolean once = logged.computeIfAbsent(name, key -> new AtomicBoolean());
+				getters.put(displayContext, (atlas, sectionLayer) -> {
+					if (!once.getAndSet(true)) FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi item {} OK (its emitted quads drawn {}, {} atlas)", name, displayContext, atlas);
+					return null;
+				});
+			});
+			return getters;
+		}
+	}
+
 	/** A NeoForge model with no {@code emitQuads} of its own, whose parts depend on the level. */
 	private static final class LevelAwareModel extends DelegateBlockStateModel {
 		private static final AtomicBoolean TERRAIN = new AtomicBoolean();
@@ -195,6 +360,134 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 		public void collectParts(BlockAndTintGetter level, BlockPos pos, BlockState state, RandomSource random, List<BlockModelPart> parts) {
 			if (isSection(level) && !TERRAIN.getAndSet(true)) FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi level-aware default OK ({})", state);
 			super.collectParts(level, pos, state, random, parts);
+		}
+	}
+
+	/**
+	 * A Fabric model that throws the first time a vanilla chunk section draws it, after emitting the wrapped model's quads
+	 * and pushing a transform it never pops; it logs once when NeoForge's renderer then asks it for its parts (its
+	 * vanilla method, which Fabricated's default calls once Fabric's renderer no longer draws it). Under Sodium (its own
+	 * chunk sections) it never throws.
+	 */
+	private abstract static class ThrowingModel implements BlockStateModel, FabricBlockStateModel {
+		private final BlockStateModel wrapped;
+		private final String name;
+		private final AtomicBoolean threw = new AtomicBoolean();
+		private final AtomicBoolean fellBack = new AtomicBoolean();
+
+		ThrowingModel(BlockStateModel wrapped, String name) {
+			this.wrapped = wrapped;
+			this.name = name;
+		}
+
+		/** Whether it threw (it throws once). */
+		boolean threw() {
+			return threw.get();
+		}
+
+		@Override
+		public void collectParts(RandomSource random, List<BlockModelPart> parts) {
+			if (threw.get() && !fellBack.getAndSet(true)) FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi {} fallback OK", name);
+			wrapped.collectParts(random, parts);
+		}
+
+		@Override
+		public TextureAtlasSprite particleIcon() {
+			return wrapped.particleIcon();
+		}
+
+		@Override
+		public void emitQuads(QuadEmitter emitter, BlockAndTintGetter level, BlockPos pos, BlockState state, RandomSource random, Predicate<@Nullable Direction> cullTest) {
+			((FabricBlockStateModel) wrapped).emitQuads(emitter, level, pos, state, random, cullTest);
+			// Only through Fabricated's seam: another mod's renderer hooks (Forgified Fabric API's) aren't Fabricated's to guard.
+			if (!(level instanceof RenderSectionRegion) || threw.get() || !seam().equals("Fabricated") || threw.getAndSet(true)) return;
+			AtomicBoolean leaked = new AtomicBoolean();
+			emitter.pushTransform(quad -> {
+				if (!leaked.getAndSet(true)) FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi leaked transform FAILED (a quad after {} threw reached its transform)", name);
+				return true;
+			});
+			FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi {} threw ({} at {} on {})", name, state, pos, Thread.currentThread().getName());
+			throw new IllegalStateException("FABRICATED-TEST: " + name + " throws on purpose (FRAPI rule 8's check)");
+		}
+
+		/** {@code {"fabric:type": "fabricated_testmod_frapi:broken_check" or "...:broken_part_check", "model": <a variant>}}. */
+		record Unbaked(BlockStateModel.Unbaked model, boolean part) implements CustomUnbakedBlockStateModel {
+			@Override
+			public MapCodec<Unbaked> codec() {
+				return part ? BrokenPartModel.CODEC : BrokenModel.CODEC;
+			}
+
+			@Override
+			public BlockStateModel bake(ModelBaker baker) {
+				return part ? new BrokenPartModel(model.bake(baker)) : new BrokenModel(model.bake(baker));
+			}
+
+			@Override
+			public void resolveDependencies(Resolver resolver) {
+				model.resolveDependencies(resolver);
+			}
+		}
+	}
+
+	/** The broken test block's model: Fabricated marks its class itself. */
+	private static final class BrokenModel extends ThrowingModel {
+		static final MapCodec<ThrowingModel.Unbaked> CODEC = BlockStateModel.Unbaked.CODEC.fieldOf("model").xmap(model -> new ThrowingModel.Unbaked(model, false),
+				ThrowingModel.Unbaked::model);
+
+		BrokenModel(BlockStateModel wrapped) {
+			super(wrapped, "broken model");
+		}
+	}
+
+	/** The model a {@link WrapperCheckModel} wraps on the wrapped broken test block: its throw is its own, not the wrapper's. */
+	private static final class BrokenWrappedModel extends ThrowingModel {
+		BrokenWrappedModel(BlockStateModel wrapped) {
+			super(wrapped, "wrapped model");
+		}
+	}
+
+	/**
+	 * A Fabric model wrapping another Fabric model, as Continuity's connected texture models wrap the models they are
+	 * given: its own {@code emitQuads} emits what the model it wraps emits, by calling that model's, and its parts are
+	 * that model's. On the wrapped broken test block it wraps one that throws (FRAPI rule 8): the throw is put down to the
+	 * wrapped model, so this class keeps Fabric's renderer. Logs once when Fabricated calls its emitter for a chunk
+	 * section after the model it wraps threw (to draw it, or to make its parts from its quads).
+	 */
+	private static final class WrapperCheckModel implements BlockStateModel, FabricBlockStateModel {
+		private static final AtomicBoolean KEPT = new AtomicBoolean();
+		private final ThrowingModel wrapped;
+
+		WrapperCheckModel(ThrowingModel wrapped) {
+			this.wrapped = wrapped;
+		}
+
+		@Override
+		public void collectParts(RandomSource random, List<BlockModelPart> parts) {
+			wrapped.collectParts(random, parts);
+		}
+
+		@Override
+		public TextureAtlasSprite particleIcon() {
+			return wrapped.particleIcon();
+		}
+
+		@Override
+		public void emitQuads(QuadEmitter emitter, BlockAndTintGetter level, BlockPos pos, BlockState state, RandomSource random, Predicate<@Nullable Direction> cullTest) {
+			boolean afterThrow = wrapped.threw();
+			wrapped.emitQuads(emitter, level, pos, state, random, cullTest);
+			if (afterThrow && level instanceof RenderSectionRegion && !KEPT.get() && seam().equals("Fabricated") && !KEPT.getAndSet(true)) {
+				FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi wrapper kept OK (Fabricated still calls its emitter, at {}, after the model it wraps threw)", pos);
+			}
+		}
+	}
+
+	/** A part of the broken nested test block's multipart model: Fabricated finds its class from the stack trace. */
+	private static final class BrokenPartModel extends ThrowingModel {
+		static final MapCodec<ThrowingModel.Unbaked> CODEC = BlockStateModel.Unbaked.CODEC.fieldOf("model").xmap(model -> new ThrowingModel.Unbaked(model, true),
+				ThrowingModel.Unbaked::model);
+
+		BrokenPartModel(BlockStateModel wrapped) {
+			super(wrapped, "broken part");
 		}
 	}
 }

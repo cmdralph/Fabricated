@@ -23,9 +23,6 @@ import net.fabricmc.fabric.api.renderer.v1.model.SpriteFinder;
 import net.fabricmc.fabric.api.renderer.v1.sprite.FabricSpriteAtlasTexture;
 import net.fabricmc.fabric.api.util.TriState;
 import net.fabricmc.loader.api.FabricLoader;
-import net.minecraft.CrashReport;
-import net.minecraft.CrashReportCategory;
-import net.minecraft.ReportedException;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.block.BlockRenderDispatcher;
 import net.minecraft.client.renderer.block.model.BakedQuad;
@@ -60,6 +57,10 @@ import net.neoforged.neoforge.client.model.quad.BakedNormals;
  * renderer on 1.21.11), a Fabric model's parts are made from the quads it emits.</li>
  * </ul>
  *
+ * <p>A Fabric model that throws there fails alone (FRAPI rule 8, {@link FrapiFailures}): the block is drawn by NeoForge
+ * instead, from the parts the model's vanilla method gives, as is every model of the class that threw from then on (not
+ * of a class wrapping it: {@link FrapiFailures#putDown}).
+ *
  * <p>Sections compile on several worker threads at once: the state here is immutable or per thread, and the renderer
  * keeps its own per-thread state.
  */
@@ -72,29 +73,44 @@ public final class FabricBlockRendering {
 
 	/**
 	 * A vanilla model made of other models (multipart, weighted variants), which Fabricated's mixins let say whether one
-	 * of them is drawn by Fabric's renderer. The answer is kept in the model, which a resource reload replaces.
+	 * of them is drawn by Fabric's renderer, or broken. The answer is kept in the model, which a resource reload replaces,
+	 * for one {@link FrapiFailures#generation()}.
 	 */
 	public interface Composite {
-		boolean fabricated$hasFabricPart();
+		/** {@link FrapiFailures#NONE}, {@link FrapiFailures#FABRIC} or {@link FrapiFailures#BROKEN}, from {@link #state(List)}. */
+		int fabricated$state();
+
+		/** The models it is made of (any its state selects). Asked on the failure path only. */
+		List<BlockStateModel> fabricated$parts();
 	}
 
 	/** Whether this block model is drawn by Fabric's renderer instead of NeoForge's. */
 	public static boolean draws(BlockStateModel model) {
-		return ENABLED && Frapi.isFabricModel(model);
+		return state(model) == FrapiFailures.FABRIC;
 	}
 
-	/** Whether any of a composite model's parts is drawn by Fabric's renderer. */
-	public static boolean anyDrawn(List<BlockStateModel> models) {
-		for (BlockStateModel model : models) {
-			if (draws(model)) return true;
+	/** Whether Fabric's renderer draws this model, or would if drawing it hadn't thrown ({@link FrapiFailures}). */
+	public static int state(BlockStateModel model) {
+		return ENABLED ? Frapi.state(model) : FrapiFailures.NONE;
+	}
+
+	/** A composite model's state, from its parts' (a composite keeps it: see {@link Composite}). */
+	public static int state(List<BlockStateModel> parts) {
+		int state = FrapiFailures.NONE;
+		for (BlockStateModel part : parts) {
+			state = FrapiFailures.combine(state, state(part));
+			if (state == FrapiFailures.BROKEN) break;
 		}
-		return false;
+		return state;
 	}
 
-	/** Draws one block of a chunk section, as NeoForge's block renderer would have with the same arguments. */
-	public static void tesselate(BlockRenderDispatcher dispatcher, BlockAndTintGetter level, BlockStateModel model, BlockState state, BlockPos pos,
+	/**
+	 * Draws one block of a chunk section, as NeoForge's block renderer would have with the same arguments. False if the
+	 * model threw: NeoForge's renderer then draws the block (quads already sent stay in this build of the section).
+	 */
+	public static boolean tesselate(BlockRenderDispatcher dispatcher, BlockAndTintGetter level, BlockStateModel model, BlockState state, BlockPos pos,
 			PoseStack poseStack, Function<ChunkSectionLayer, VertexConsumer> buffers, boolean cull) {
-		Frapi.tesselate(dispatcher, level, model, state, pos, poseStack, buffers, cull);
+		return Frapi.tesselate(dispatcher, level, model, state, pos, poseStack, buffers, cull);
 	}
 
 	/**
@@ -119,15 +135,6 @@ public final class FabricBlockRendering {
 	 */
 	public static void registerFallbackRenderer() {
 		if (ENABLED) RendererFallback.register();
-	}
-
-	private static ReportedException crash(Throwable t, String what, BlockState state, BlockPos pos, BlockStateModel model) {
-		CrashReport report = CrashReport.forThrowable(t, what);
-		CrashReportCategory category = report.addCategory("Block model being drawn");
-		category.setDetail("Block", state);
-		category.setDetail("Position", pos);
-		category.setDetail("Model class", model.getClass().getName());
-		return new ReportedException(report);
 	}
 
 	/** Names Fabric's renderer API, so loaded only when called; apart from {@link Frapi}, which keeps the renderer it first finds. */
@@ -159,29 +166,33 @@ public final class FabricBlockRendering {
 		private static final Logger LOGGER = LoggerFactory.getLogger("Fabricated");
 		/** The registered renderer. Null if Fabric's renderer API has none (Indigo disabled and no other renderer). */
 		private static final @Nullable Renderer RENDERER = findRenderer();
+		/** Fabric's block model method, the frame a model's throw shows. */
+		private static final String EMIT = "emitQuads";
+		/** Indigo's per-thread context for terrain-like rendering, which a model that threw may have left a transform in. */
+		private static final String INDIGO_TERRAIN_CONTEXT = "net.fabricmc.fabric.impl.client.indigo.renderer.render.TerrainLikeRenderContext";
 		/**
-		 * Whether a model class implements {@code emitQuads} itself. Vanilla's model classes get upstream's equivalent
-		 * of NeoForge's path (its own mixins), and models without an implementation use the interface's default, which
-		 * only draws the parts NeoForge's renderer also sees: neither needs Fabric's renderer.
+		 * Whether a model class implements {@code emitQuads} itself, and whether that threw. Vanilla's model classes get
+		 * upstream's equivalent of NeoForge's path (its own mixins), and models without an implementation use the
+		 * interface's default, which only draws the parts NeoForge's renderer also sees: neither needs Fabric's renderer.
 		 */
-		private static final ClassValue<Boolean> FABRIC_MODEL = new ClassValue<>() {
+		private static final ClassValue<FrapiFailures.ModelClass> MODEL_CLASSES = new ClassValue<>() {
 			@Override
-			protected Boolean computeValue(Class<?> type) {
+			protected FrapiFailures.ModelClass computeValue(Class<?> type) {
 				Class<?> owner;
 				try {
-					owner = type.getMethod("emitQuads", QuadEmitter.class, BlockAndTintGetter.class, BlockPos.class, BlockState.class,
+					owner = type.getMethod(EMIT, QuadEmitter.class, BlockAndTintGetter.class, BlockPos.class, BlockState.class,
 							RandomSource.class, Predicate.class).getDeclaringClass();
 				} catch (NoSuchMethodException e) {
-					return false; // not a FabricBlockStateModel: Fabric's renderer API didn't apply to this class
+					return FrapiFailures.ModelClass.NOT_FABRIC; // not a FabricBlockStateModel: Fabric's renderer API didn't apply to this class
 				} catch (LinkageError e) {
 					// getMethod resolves the types every public method names: one from a mod that isn't installed throws. Asked
 					// while a chunk section compiles, so it must not escape; the class keeps NeoForge's renderer.
 					LOGGER.warn("Block models of class {} are left to NeoForge's renderer: a type their methods name is missing ({})", type.getName(), e.toString());
-					return false;
+					return FrapiFailures.ModelClass.NOT_FABRIC;
 				}
-				boolean fabricModel = owner != FabricBlockStateModel.class && !owner.getName().startsWith("net.minecraft.");
-				if (fabricModel) LOGGER.debug("Block models of class {} are drawn with Fabric's renderer", type.getName());
-				return fabricModel;
+				if (owner == FabricBlockStateModel.class || owner.getName().startsWith("net.minecraft.")) return FrapiFailures.ModelClass.NOT_FABRIC;
+				LOGGER.debug("Block models of class {} are drawn with Fabric's renderer", type.getName());
+				return new FrapiFailures.ModelClass(true, owner.getName());
 			}
 		};
 		/** A model's parts hold all its quads: NeoForge's renderer culls each face itself. */
@@ -204,19 +215,65 @@ public final class FabricBlockRendering {
 			}
 		}
 
-		static boolean isFabricModel(BlockStateModel model) {
-			return RENDERER != null && (FABRIC_MODEL.get(model.getClass()) || model instanceof Composite composite && composite.fabricated$hasFabricPart());
+		static int state(BlockStateModel model) {
+			if (RENDERER == null) return FrapiFailures.NONE;
+			FrapiFailures.ModelClass type = MODEL_CLASSES.get(model.getClass());
+			if (type.fabric()) return type.broken() ? FrapiFailures.BROKEN : FrapiFailures.FABRIC;
+			return model instanceof Composite composite ? composite.fabricated$state() : FrapiFailures.NONE;
 		}
 
-		static void tesselate(BlockRenderDispatcher dispatcher, BlockAndTintGetter level, BlockStateModel model, BlockState state, BlockPos pos,
+		/**
+		 * Marks what threw broken: the model's class if it is a Fabric model, or its Fabric parts in a composite, as the
+		 * stack trace puts the throw down to them ({@link FrapiFailures#putDown}: not a wrapper, when a model it wraps threw).
+		 */
+		static void markBroken(BlockStateModel model, Throwable error, String where, BlockState state) {
+			List<BlockStateModel> fabricModels = new ArrayList<>();
+			fabricModels(model, fabricModels, 0);
+			FrapiFailures.putDown(model, fabricModels, MODEL_CLASSES, EMIT, error, where, state);
+		}
+
+		/** The Fabric models a model is, or is made of (through nested composites, to a depth no vanilla model reaches). */
+		private static void fabricModels(BlockStateModel model, List<BlockStateModel> out, int depth) {
+			if (MODEL_CLASSES.get(model.getClass()).fabric()) {
+				out.add(model);
+			} else if (model instanceof Composite composite && depth < 8) {
+				List<BlockStateModel> parts;
+				try {
+					parts = composite.fabricated$parts();
+				} catch (RuntimeException | LinkageError e) {
+					return; // a part selector that throws: the parts found elsewhere are marked
+				}
+				for (BlockStateModel part : parts) fabricModels(part, out, depth + 1);
+			}
+		}
+
+		static boolean tesselate(BlockRenderDispatcher dispatcher, BlockAndTintGetter level, BlockStateModel model, BlockState state, BlockPos pos,
 				PoseStack poseStack, Function<ChunkSectionLayer, VertexConsumer> buffers, boolean cull) {
 			try {
 				RENDERER.render(dispatcher.getModelRenderer(), level, model, state, pos, poseStack, buffers::apply, cull, state.getSeed(pos),
 						OverlayTexture.NO_OVERLAY);
-			} catch (VirtualMachineError | ReportedException e) {
+				return true;
+			} catch (VirtualMachineError e) {
 				throw e;
 			} catch (Throwable t) {
-				throw crash(t, "Tesselating block model with Fabric's renderer", state, pos, model);
+				resetIndigoThread();
+				markBroken(model, t, "a chunk section at " + pos, state);
+				return false;
+			}
+		}
+
+		/**
+		 * Drops this thread's Indigo context for terrain-like rendering when Indigo is the renderer: a model that threw may
+		 * have left a transform pushed on its emitter, which would apply to every block the thread draws next. Indigo makes
+		 * a new one when next asked. Failure path only; another renderer keeps its own state.
+		 */
+		private static void resetIndigoThread() {
+			if (!RENDERER.getClass().getName().startsWith("net.fabricmc.fabric.impl.client.indigo.")) return;
+			try {
+				Object pool = Class.forName(INDIGO_TERRAIN_CONTEXT, false, RENDERER.getClass().getClassLoader()).getField("POOL").get(null);
+				if (pool instanceof ThreadLocal<?> threadLocal) threadLocal.remove();
+			} catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
+				LOGGER.debug("Could not reset Indigo's context on {} ({})", Thread.currentThread().getName(), e.toString());
 			}
 		}
 
@@ -232,21 +289,29 @@ public final class FabricBlockRendering {
 			}
 			// Nested when a model's emitQuads asks another model for its parts (a NeoForge model wrapping a Fabric one):
 			// that one gets a mesh of its own.
-			MutableMesh mesh = collecting.models.isEmpty() ? collecting.mesh : RENDERER.mutableMesh();
+			boolean outermost = collecting.models.isEmpty();
+			MutableMesh mesh = outermost ? collecting.mesh : RENDERER.mutableMesh();
 			collecting.models.add(model);
+			int partsBefore = parts.size();
+			boolean failed = false;
 			try {
 				// Fabric's renderer API adds FabricBlockStateModel to every block model when the game loads.
 				((FabricBlockStateModel) model).emitQuads(mesh.emitter(), level, pos, state, random, NO_CULLING);
 				addParts(mesh, model, parts);
-			} catch (VirtualMachineError | ReportedException e) {
+			} catch (VirtualMachineError e) {
 				throw e;
 			} catch (Throwable t) {
-				throw crash(t, "Making block model parts from a Fabric model's quads", state, pos, model);
+				failed = true;
+				parts.subList(partsBefore, parts.size()).clear();
+				markBroken(model, t, "the parts made from its quads at " + pos, state);
 			} finally {
 				collecting.models.removeLast();
 				mesh.clear();
+				// The thread's mesh may hold a transform the model pushed: the next block gets a new one.
+				if (failed && outermost) COLLECTING.remove();
 			}
-			return true;
+			// A model that threw keeps the parts of its vanilla method (the caller adds them).
+			return !failed;
 		}
 
 		/** The mesh's quads as NeoForge's quads, a part for each render layer they name (null: the block's own). */

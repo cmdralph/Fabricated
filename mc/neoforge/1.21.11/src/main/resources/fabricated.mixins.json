@@ -93,6 +93,7 @@
     "client.MultiPartModelMixin",
     "client.SectionCompilerMixin",
     "client.WeightedVariantsMixin",
-    "client.GuiRendererPictureInPictureMixin"
+    "client.GuiRendererPictureInPictureMixin",
+    "client.OptionsDefaultPacksMixin"
   ]
 }

@@ -75,6 +75,7 @@
     "client.ClientPayloadSendMixin",
     "client.ClientVanillaNamespacePayloadMixin",
     "client.SoundEngineStreamMixin",
-    "client.ClientChunkCacheMixin"
+    "client.ClientChunkCacheMixin",
+    "client.OptionsDefaultPacksMixin"
   ]
 }

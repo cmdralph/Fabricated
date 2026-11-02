@@ -48,7 +48,8 @@ factory is registered with NeoForge, and no test mod check reports a failure.
 
 CI also starts the client with the full Fabric API jar. The run itself is informational, but the checks CI then makes
 in its log are gates: Fabric's renderer API, model formats and client modules on 26.x, model loading and the renderer
-API on 1.21.11. It joins its world and passes every client check on every version. On 26.x every Fabric API
+API on 1.21.11, the renderer API and client modules on 1.21.1. It joins its world and passes every client check on every
+version. On 26.x every Fabric API
 module loads on the client, the renderer API, Indigo and model loading included, and on 1.21.11 too. That run checks on
 1.21.11 that a model file of a Fabric type is read by its Fabric deserializer and that Fabric block models are drawn in
 chunk sections. On the dedicated server no Fabric API module is disabled.
@@ -111,7 +112,7 @@ How to read the table:
 | fabric-rendering-v1 on the client | loads (see below) | loads (see below) | loads (see below) | loads (see below) | loads (see below) |
 | fabric-screen-api-v1, sound-api-v1 on the client | loads (see below) | loads (see below) | loads (see below) | loads (see below) | loads (see below) |
 | fabric-model-loading-api-v1 on the client | loads (see below) | loads (see below) | loads (see below) | loads (see below) | loads (see below) |
-| fabric-renderer-api-v1, fabric-renderer-indigo | loads, not in chunk sections (FRAPI-5) | client (see below) | client (see below) | client (see below) | client (see below) |
+| fabric-renderer-api-v1, fabric-renderer-indigo | client (see below) | client (see below) | client (see below) | client (see below) | client (see below) |
 | fabric-data-generation-api-v1 (its classes; it generates nothing unless `fabric-api.datagen` is set; its tag appender mixins, and on 26.3 its loot sub-provider mixins, are left out) | loads | loads | loads | loads | loads |
 | fabric-gametest-api-v1, client-gametest | unsupported | unsupported | unsupported | unsupported | unsupported |
 
@@ -147,8 +148,17 @@ ones that exist in 0.116 (`fabric-resource-loader-v0` stands for v1, which 0.116
 - **Fabric API's internal pack class**: mods that tell Fabric mods' packs apart by
   `net.fabricmc.fabric.impl.resource.loader.ModNioResourcePack` (Moonlight) find a stand-in no pack is, as NeoForge
   builds every mod's packs itself (CORPUS-44).
-- **Fabric's renderer API**: it loads, with Indigo, but Fabric models that aren't vanilla adapters aren't drawn in
-  chunk sections yet (FRAPI-5).
+- **Fabric's renderer API**: it loads, with Indigo, and a Fabric model that isn't a vanilla adapter (its own
+  `emitBlockQuads`), alone or among the parts of a vanilla multipart or weighted model, is drawn by Indigo where NeoForge
+  21.1 draws blocks: in chunk sections, as a falling block or one a piston moves, with the breaking overlay and through
+  the block renderer's `renderBatched`, once per block at its first render type, as upstream draws it on Fabric
+  (FRAPI-5). Indigo's own hooks there miss NeoForge's code and are left out. A block a minecart carries comes from
+  vanilla's quads, as upstream draws it on Fabric too, so a model with only Fabric quads isn't drawn there. Fabric item
+  models are drawn in the hotbar, in hand, dropped and in item frames. CI checks each of these, and that a model that
+  throws fails alone (see the renderer API's section below).
+- **Model loading's modifiers**: `modifyModelBeforeBake` and `modifyModelAfterBake` run for top-level models (a block
+  state's, an item's) but not for a model baked as another's part or parent, as upstream's hook is on an overload
+  NeoForge 21.1 doesn't call there (MODEL-4).
 - **Entity data serializers**: 0.116 has no registry for them, so Fabric mods register through vanilla's
   `EntityDataSerializers.registerSerializer`, which NeoForge 21.1 refuses for mods. Fabricated registers such a
   serializer in NeoForge's synced registry instead, named after the mod and the order it registers in (CORPUS-41).
@@ -159,8 +169,9 @@ ones that exist in 0.116 (`fabric-resource-loader-v0` stands for v1, which 0.116
 - **Left out by pre-flight** (with Fabric API installed, the module loads without it): `fabric-recipe-api-v1`'s
   hook on the ingredient network codec, whose call NeoForge replaced with its own custom ingredient codec, so clients
   receive a Fabric custom ingredient as the items it matches (UNVERIFIED in a client run); `fabric-data-generation-api-v1`'s
-  tag provider hook, as on later versions; and on the client, where NeoForge changed the code they hook: Indigo's chunk section hook
-  (FRAPI-5), `fabric-model-loading-api-v1`'s hook on baking a model another model needs,
+  tag provider hook, as on later versions; and on the client, where NeoForge changed the code they hook: Indigo's chunk
+  section and block renderer hooks (Fabricated draws through Indigo instead, FRAPI-5), `fabric-model-loading-api-v1`'s
+  hook on baking a model another model needs (MODEL-4),
   `fabric-rendering-fluids-v1`'s same-fluid, overlay and block checks, `fabric-sound-api-v1`'s audio stream hook (as
   on every version) and `fabric-block-view-api-v2`'s render data in chunk sections.
 - The plan's other skips (tag files' `fabric:remove`, the dimensions module's DataFixerUpper mixins, resource
@@ -323,18 +334,27 @@ A mod that adds a pack source the vanilla way, replacing the repository's source
 (FrozenLib's resource pack API), keeps it: the set is made mutable again before NeoForge adds its own pack finders
 (PACK-1).
 
+`DEFAULT_ENABLED` built-in **resource** packs are switched on as upstream switches them on: the first time the client
+is offered each, and only then, so a pack the player turned off stays off, and a pack whose mod was removed is
+switched on again when it comes back (PACK-6). Which packs were offered before is kept in upstream's own file,
+`data/fabricDefaultResourcePacks.dat` in the game directory, so an instance moved between Fabric and Fabricated keeps
+the player's choices. NeoForge itself has no such default.
+Upstream adds the packs as the options load; Fabricated adds them as the client applies the options to its pack
+repository, which by then has found every pack.
+
 Differences from upstream:
 
 - An ordering that names a listener nobody registered is skipped (logged at debug level). An ordering that would
   create a cycle is skipped with a warning in the report, where NeoForge would otherwise stop the game.
-- `DEFAULT_ENABLED` built-in **data** packs are enabled in new worlds. `DEFAULT_ENABLED` built-in **resource**
-  packs are not switched on automatically (upstream patches the options for this); players enable them in the
-  pack screen. `ALWAYS_ENABLED` packs are required on both sides.
+- `DEFAULT_ENABLED` built-in **data** packs are enabled in new worlds. `ALWAYS_ENABLED` packs are required on both
+  sides.
 - Fabric's `/datapack` protections for its internal packs don't apply; NeoForge's own rules do.
 
 CI checks, on every version: listener ordering (including an ordering against a vanilla listener), the
 shared reload state, a listener factory, the data store read back through `MinecraftServer`, a `DEFAULT_ENABLED`
-built-in data pack being enabled and loaded, and the listener running again after `/reload`. Client listeners
+built-in data pack being enabled and loaded, a `DEFAULT_ENABLED` built-in resource pack being switched on in a new
+game directory and its resources loaded, and the listener running again after `/reload`. Core's
+`DefaultPackTrackerTest` checks upstream's rule and file format. Client listeners
 are checked by the client CI run (a client resource listener runs while the client starts).
 
 ### Native `fabric-registry-sync-v0`
@@ -723,6 +743,15 @@ overload), a mesh model using sprites from outside the block atlas is not reject
 follows the code into NeoForge's overload. On 26.1.2 and 26.2 the block overlay seen from inside a block uses the
 block's plain particle sprite.
 
+A Fabric block model that throws while it is drawn (in a chunk section, as a moving block, with the breaking overlay,
+as a block an entity carries, or while its parts are made from its quads) fails alone, on every version: that block is
+drawn by NeoForge's renderer, from the parts the model gives it, as is every model of its class from then on, and the
+failure is logged once and listed in the report under *Rendering*, naming the mod (FRAPI rule 8). The throw is put down
+to the model whose code threw: a Fabric model wrapping another, as Continuity's wrap the models they are given, isn't
+marked when the model it wraps throws, so its other blocks keep Fabric's renderer, and NeoForge's draws that block each
+time it throws (FRAPI-7). CI checks a broken model alone, as a multipart model's part, inside a wrapper and, on 26.x, as
+a minecart's block, on every version.
+
 Model loading loads too: its plugins, model modifiers and extra models work, with the extra models added to
 NeoForge's model discovery by Fabricated (NeoForge rewrote the code upstream hooks). Fabric's custom model formats
 work next to NeoForge's: a model file with a `fabric:type` goes to the deserializer a Fabric mod registered with
@@ -1071,7 +1100,8 @@ tracked:
 | What | Versions | Why | Tracked |
 |---|---|---|---|
 | Fabric's game tests (`fabric-gametest-api-v1`, `client-gametest`) | all | deliberately not loaded: they are development-time tools, not used by mods at runtime | — |
-| Fabric models that aren't vanilla adapters, in chunk sections | 1.21.1 | Indigo's chunk section hook is left out (NeoForge 21.1's `renderBatched` takes model data and a render type), and Fabricated has no bridge there yet; NeoForge's own models are unaffected | FRAPI-5, task 4 |
+| Model loading's modifiers for a model baked as another's part or parent | 1.21.1 | upstream's hook is on an overload NeoForge 21.1's baker doesn't call there | MODEL-4, task 5 |
+| Continuity's connected textures | all | Continuity loads, but CI sees no connected texture yet: on 1.21.11 and 26.x its hook adding its sprites to the block atlas is left out; on 1.21.1 its models draw, with vanilla's sprites, and the cause is open | CORPUS-56, task 5 |
 | Data generation's tag appenders (and on 26.3 its loot sub-providers) | all | pre-flight leaves those hooks out where NeoForge's data providers differ; the module's classes load for mods' runtime code (DATAGEN-1), and nothing is generated unless `fabric-api.datagen` is set | — |
 | Fabric storages in items (`ItemStorage.ITEM`) across to NeoForge's item handlers | 1.21.1 | NeoForge 21.1's item handler capability on stacks predates its transfer API, as Forge's | task 5 |
 | A Fabric mod's accessor to a field NeoForge retyped (`KeyMapping.MAP`) | all | NeoForge's field has another type, so the accessor is left out and its callers throw `NoSuchMethodError` | KEYMAP-1, task 5 |
