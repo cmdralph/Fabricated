@@ -228,13 +228,15 @@ final class ConstructorRepairs extends PreflightPart {
 	/**
 	 * The constructor {@code constructor} hands everything to, when it is vanilla's signature as NeoForge keeps it: its
 	 * body is {@code this(...)} (vanilla's arguments plus NeoForge's defaults) and nothing after it, and it is marked
-	 * deprecated or passes its own parameters followed by constants for parameters of NeoForge's types (as
-	 * {@code BakedQuad}'s, a record NeoForge added components to). The game's own code calls the other constructor, so
-	 * an injection at the end of this one would never run, while the end of the other one is the same moment for both.
-	 * Null for any other constructor: vanilla's own delegating constructors (an injection there is meant for that one
-	 * only) are never deprecated and pass no NeoForge types.
+	 * deprecated, or passes its own parameters followed by constants for parameters of NeoForge's types (as
+	 * {@code BakedQuad}'s on 26.x, a record NeoForge added components to), or for parameters of a constructor vanilla's
+	 * class doesn't have ({@code vanilla}, when known: 1.21.1's {@code BakedQuad}, whose vanilla constructor NeoForge
+	 * keeps as {@code this(..., true)} for its ambient occlusion flag, CTOR-5). The game's own code calls the other
+	 * constructor, so an injection at the end of this one would never run, while the end of the other one is the same
+	 * moment for both. Null for any other constructor: vanilla's own delegating constructors (an injection there is
+	 * meant for that one only) are never deprecated, pass no NeoForge types and call a constructor vanilla has.
 	 */
-	static MethodNode keptConstructorDelegate(MethodNode constructor, ClassNode target) {
+	static MethodNode keptConstructorDelegate(MethodNode constructor, ClassNode target, ClassNode vanilla) {
 		if (!constructor.name.equals("<init>")) return null;
 		MethodNode delegate = thisCall(constructor, target);
 		if (delegate == null) return null;
@@ -244,6 +246,9 @@ final class ConstructorRepairs extends PreflightPart {
 		int own = Type.getArgumentTypes(constructor.desc).length;
 		boolean neoForgeAdded = false;
 		for (int i = own; i < all.length; i++) neoForgeAdded |= all[i].getSort() == Type.OBJECT && all[i].getInternalName().startsWith("net/neoforged/");
+		// Vanilla's class has this constructor and not the one it calls: the platform added that one.
+		neoForgeAdded |= vanilla != null && PreflightAsm.declared(vanilla, "<init>", constructor.desc) != null
+				&& PreflightAsm.declared(vanilla, "<init>", delegate.desc) == null;
 		return neoForgeAdded && forwardsItsParameters(constructor, delegate) ? delegate : null;
 	}
 

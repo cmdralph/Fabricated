@@ -771,6 +771,95 @@ class MixinPreflightTest {
 				"a delegate appending vanilla types may be vanilla's own");
 	}
 
+	/**
+	 * {@link #TARGET} as NeoForge 21.1 makes {@code BakedQuad}: vanilla's constructor {@code <init>(I)V} kept, not
+	 * deprecated, as {@code this(i, true)} for a primitive flag NeoForge added ({@code delegating}); or as vanilla has it,
+	 * the one constructor ({@code delegating} false), with {@code <init>(IZ)V} too if {@code both}.
+	 */
+	private static byte[] keptWithFlag(boolean delegating, boolean both) {
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		MethodVisitor kept = cw.visitMethod(Opcodes.ACC_PUBLIC, "<init>", "(I)V", null, null);
+		kept.visitCode();
+		kept.visitVarInsn(Opcodes.ALOAD, 0);
+		if (delegating) {
+			kept.visitVarInsn(Opcodes.ILOAD, 1);
+			kept.visitInsn(Opcodes.ICONST_1);
+			kept.visitMethodInsn(Opcodes.INVOKESPECIAL, TARGET, "<init>", "(IZ)V", false);
+		} else {
+			kept.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false);
+		}
+		kept.visitInsn(Opcodes.RETURN);
+		kept.visitMaxs(0, 0);
+		kept.visitEnd();
+		if (delegating || both) {
+			MethodVisitor added = cw.visitMethod(Opcodes.ACC_PUBLIC, "<init>", "(IZ)V", null, null);
+			added.visitCode();
+			added.visitVarInsn(Opcodes.ALOAD, 0);
+			added.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false);
+			added.visitInsn(Opcodes.RETURN);
+			added.visitMaxs(0, 0);
+			added.visitEnd();
+		}
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	/** Sodium's {@code BakedQuadMixin} on 1.21.1: an {@code @Inject} at the end of {@code <init>(I)V} taking its parameter. */
+	private static void injectTakingTheFlaglessParameters(ClassWriter cw) {
+		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "init", "(ILorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V", null, null);
+		AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
+		AnnotationVisitor methods = ann.visitArray("method");
+		methods.visit(null, "<init>(I)V");
+		methods.visitEnd();
+		AnnotationVisitor ats = ann.visitArray("at");
+		AnnotationVisitor at = ats.visitAnnotation(null, "Lorg/spongepowered/asm/mixin/injection/At;");
+		at.visit("value", "RETURN");
+		at.visitEnd();
+		ats.visitEnd();
+		ann.visitEnd();
+		mv.visitCode();
+		mv.visitInsn(Opcodes.RETURN);
+		mv.visitMaxs(0, 3);
+		mv.visitEnd();
+	}
+
+	@Test
+	void anInjectionAtTheEndOfAConstructorNeoForgeKeptForAFlagItAddedMovesWhereVanillaShowsIt() throws Exception {
+		// CTOR-5: NeoForge 21.1 bakes quads with the constructor taking its ambient occlusion flag; vanilla's, kept as
+		// this(..., true), never runs for them, so Sodium's quad properties were never computed (an NPE drawing items).
+		java.util.function.Supplier<Map<String, byte[]>> mod = () -> new HashMap<>(Map.of("com/example/mixin/Quad",
+				mixin("com/example/mixin/Quad", false, MixinPreflightTest::injectTakingTheFlaglessParameters)));
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Quad"));
+		ClassIndex neoForge = new ClassIndex(Map.of(TARGET, keptWithFlag(true, false))::get);
+		Map<String, byte[]> vanilla = Map.of(TARGET, keptWithFlag(false, false));
+		List<PreflightFinding> notes = new ArrayList<>();
+
+		Map<String, byte[]> classes = mod.get();
+		Map<String, byte[]> repaired = new MixinPreflight(neoForge, InstalledClasses.NONE, classes::get, ClassBytesSource.EMPTY, false, true, vanilla::get)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
+
+		assertEquals(Set.of("com/example/mixin/Quad.class"), repaired.keySet(), notes.toString());
+		assertTrue(notes.getFirst().message().contains("which NeoForge keeps only to call <init>(IZ)V"), notes.toString());
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired.get("com/example/mixin/Quad.class")).accept(node, 0);
+		MethodNode bridge = node.methods.stream().filter(m -> m.name.equals("init$fabricated")).findFirst().orElseThrow();
+		assertEquals("(IZLorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V", bridge.desc);
+		assertEquals(List.of("<init>(IZ)V"), Annotations.value(bridge.invisibleAnnotations.getFirst(), "method"));
+		classes.put("com/example/mixin/Quad", repaired.get("com/example/mixin/Quad.class"));
+		assertTrue(new MixinPreflight(neoForge, InstalledClasses.NONE, classes::get, ClassBytesSource.EMPTY, false, true, vanilla::get)
+				.check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty());
+
+		// Without vanilla's class, or where vanilla has both constructors (its own delegation), the injector stays.
+		Map<String, byte[]> unknown = mod.get();
+		assertTrue(preflight(neoForge, unknown::get, ClassBytesSource.EMPTY, false)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty(), "a primitive flag alone may be vanilla's own");
+		Map<String, byte[]> vanillaBoth = Map.of(TARGET, keptWithFlag(false, true));
+		Map<String, byte[]> own = mod.get();
+		assertTrue(new MixinPreflight(neoForge, InstalledClasses.NONE, own::get, ClassBytesSource.EMPTY, false, true, vanillaBoth::get)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty(), "vanilla has the constructor it calls");
+	}
+
 	/** A member named as mixins name what they add ({@code modid$name}) may come from another mod's mixin: not judged. */
 	@Test
 	void membersAnotherModsMixinMayAddAreNotJudged() throws Exception {

@@ -187,7 +187,7 @@ final class OverloadRepairs extends PreflightPart {
 						: split ? ", the code of which there " + loader + " split off into " : ", whose code " + loader + " moved into ";
 			} else {
 				// The injection points exist, but in a constructor nothing calls any more: its end is the end of the one it calls.
-				overload = ConstructorRepairs.keptConstructorDelegate(chosen, target);
+				overload = ConstructorRepairs.keptConstructorDelegate(chosen, target, vanillaClass(target.name));
 				if (overload == null || !slices.isEmpty() || !ConstructorRepairs.atEndOnly(ats) || !LocalRepairs.localsFit(handler, overload)) continue;
 				if (takesParameters) {
 					// The handler gets the constructor's own parameters from a bridge taking all of the other one's.
