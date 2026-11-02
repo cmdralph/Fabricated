@@ -3833,7 +3833,9 @@ class MixinPreflightTest {
 			methods.visit(null, "tick");
 			methods.visitEnd();
 			AnnotationVisitor ats = ann.visitArray("at");
-			ats.visitAnnotation(null, "Lorg/spongepowered/asm/mixin/injection/At;").visit("value", "HEAD");
+			AnnotationVisitor at = ats.visitAnnotation(null, "Lorg/spongepowered/asm/mixin/injection/At;");
+			at.visit("value", "HEAD");
+			at.visitEnd();
 			ats.visitEnd();
 			ann.visitEnum("locals", "Lorg/spongepowered/asm/mixin/injection/callback/LocalCapture;", "CAPTURE_FAILHARD");
 			ann.visit("require", 1);
@@ -3850,6 +3852,54 @@ class MixinPreflightTest {
 		assertEquals("CAPTURE_FAILSOFT", ((String[]) Annotations.value(inject, "locals"))[1]);
 		assertEquals(0, Annotations.value(inject, "require"));
 		assertEquals(Severity.INFO, notes.getFirst().severity(), notes.toString());
+	}
+
+	/**
+	 * Debugify's container screen mixin on 1.21.1: its capture fails soft, but its config requires each injection, so
+	 * where NeoForge's patch added a local Mixin skipped it and then stopped the game for the injection it missed.
+	 * It is no longer required; one that isn't required already is left as it is.
+	 */
+	@Test
+	void aSoftLocalCaptureThatIsRequiredIsNoLongerRequired() throws Exception {
+		ClassIndex game = new ClassIndex(Map.of(TARGET, targetClass())::get);
+		java.util.function.Function<Integer, byte[]> capturing = require -> mixin("com/example/mixin/Capturing", false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "h", "(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;I)V", null, null);
+			AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "tick");
+			methods.visitEnd();
+			AnnotationVisitor ats = ann.visitArray("at");
+			AnnotationVisitor at = ats.visitAnnotation(null, "Lorg/spongepowered/asm/mixin/injection/At;");
+			at.visit("value", "HEAD");
+			at.visitEnd();
+			ats.visitEnd();
+			ann.visitEnum("locals", "Lorg/spongepowered/asm/mixin/injection/callback/LocalCapture;", "CAPTURE_FAILSOFT");
+			if (require != null) ann.visit("require", require);
+			ann.visitEnd();
+			mv.visitEnd();
+		});
+		String requiring = "{\"required\":true,\"package\":\"com.example.mixin\",\"mixins\":[\"Capturing\"],\"injectors\":{\"defaultRequire\":1}}";
+		for (String config : List.of(requiring, config(true, "Capturing"))) {
+			for (Integer require : java.util.Arrays.asList(null, 1, 0)) {
+				boolean required = require == null ? config.equals(requiring) : require > 0;
+				List<PreflightFinding> notes = new ArrayList<>();
+				byte[] repaired = preflight(game, Map.of("com/example/mixin/Capturing", capturing.apply(require))::get, ClassBytesSource.EMPTY, false)
+						.repairs("test.mixins.json", MixinConfigFile.parse(config), Refmap.EMPTY, Set.of(), notes).get("com/example/mixin/Capturing.class");
+				String what = "require " + require + " in " + config;
+				if (!required) {
+					assertNull(repaired, what);
+					assertTrue(notes.isEmpty(), what + ": " + notes);
+					continue;
+				}
+				assertNotNull(repaired, what + ": " + notes);
+				ClassNode node = new ClassNode();
+				new ClassReader(repaired).accept(node, 0);
+				AnnotationNode inject = node.methods.stream().filter(m -> m.name.equals("h")).findFirst().orElseThrow().invisibleAnnotations.getFirst();
+				assertEquals("CAPTURE_FAILSOFT", ((String[]) Annotations.value(inject, "locals"))[1], what);
+				assertEquals(0, Annotations.value(inject, "require"), what);
+				assertEquals(Severity.INFO, notes.getFirst().severity(), what + ": " + notes);
+			}
+		}
 	}
 
 	@Test
@@ -5643,7 +5693,9 @@ class MixinPreflightTest {
 			methods.visit(null, "helper");
 			methods.visitEnd();
 			AnnotationVisitor ats = ann.visitArray("at");
-			ats.visitAnnotation(null, "Lorg/spongepowered/asm/mixin/injection/At;").visit("value", "HEAD");
+			AnnotationVisitor at = ats.visitAnnotation(null, "Lorg/spongepowered/asm/mixin/injection/At;");
+			at.visit("value", "HEAD");
+			at.visitEnd();
 			ats.visitEnd();
 			ann.visitEnd();
 			mv.visitEnd();

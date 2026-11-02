@@ -205,7 +205,8 @@ final class MixinRepairs extends PreflightPart {
 					(s, wrapped) -> "@Inject " + s.handler().name + " injects into " + wrapped),
 			// Wrapped, the handler is a plain method of the mixin.
 			RepairStep.stopIfMoved(),
-			new RepairStep(RepairScope.ANY, Severity.INFO, s -> LocalRepairs.softenLocalCapture(s.injector()) ? List.of("") : List.of(),
+			new RepairStep(RepairScope.ANY, Severity.INFO, s -> LocalRepairs.softenLocalCapture(s.injector(),
+					PreflightAsm.grouped(s.handler()) ? 0 : s.ctx().config().defaultRequire()) ? List.of("") : List.of(),
 					(s, none) -> "@Inject " + s.handler().name + " captures local variables; if " + s.ctx().loader()
 							+ "'s code has other locals there, it is skipped instead of crashing"),
 			// A group's alternative for Fabric Loader's hook too: the other alternatives are for other loaders' hooks.
