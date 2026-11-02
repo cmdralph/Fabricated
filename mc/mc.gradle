@@ -162,6 +162,8 @@ ext.expandProps = [
         resource_loader_module : project.findProperty('testmod_resource_loader') ?: 'fabric-resource-loader-v1',
         // The formats in the test mod's built-in pack.mcmeta: a range from 1.21.9, a single pack_format before.
         pack_formats           : project.findProperty('testmod_pack_formats') ?: '"min_format": 82, "max_format": 2048',
+        // The same for its built-in resource pack: resource packs take their own formats (a range from 65, 1.21.9's).
+        resource_pack_formats  : project.findProperty('testmod_resource_pack_formats') ?: '"min_format": 65, "max_format": 2048',
 ]
 
 // The platform: its build plugin's settings, its mod descriptor, and gameDependencies(sourceSet), which gives a source

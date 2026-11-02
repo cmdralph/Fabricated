@@ -55,7 +55,10 @@ def gameModMixins = [
         'fabricated-forge-entity.mixins.json',
         // Fabric API's fuels in vanilla's fuel table, which Forge's burn times read (FUEL-1), and its brewing recipes
         // built with Forge's constructor of a brewing mix (BREW-1).
-        'fabricated-forge-content.mixins.json']
+        'fabricated-forge-content.mixins.json',
+        // Fabric's renderer API in Forge's chunk section compiler and block renderers (task 4, R5), with FRAPI rule 8's
+        // guard: only with Fabric API's renderer installed (its plugin).
+        'fabricated-forge-frapi.mixins.json']
 dependencies {
     annotationProcessor "org.spongepowered:mixin:${project.mixin_processor_version}:processor"
     // The in-game mod's own mixins use MixinExtras' injectors, which the nested mixinextras-forge (below) provides. Its
@@ -124,6 +127,31 @@ afterEvaluate {
     def reobfGameModJar = obfuscation.reobfuscate(tasks.named('gameModJar'), sourceSets.main) {
         archiveFileName = 'game-mod.jar'
         destinationDirectory = layout.buildDirectory.dir('gamemod-srg')
+    }
+    // The renderer test mod (mc/mc.gradle) is compiled in Mojang's names: Fabric API 0.92's renderer types and the game
+    // classes its models extend are too many for Intermediary stand-ins. Forge 47 runs the game in SRG's member names, so
+    // the jar CI installs is reobfuscated, as the in-game mod is; Fabricated reads a Fabric mod through Intermediary's
+    // mappings, which leave names in no Intermediary namespace as they are. The jar as built goes to build/devlibs.
+    // The task is registered as ModDevGradle's reobfuscate() registers its own, without what that adds to the source
+    // set's published variants: the test mod has none (reobfuscate() fails on a source set without them) and is never
+    // published. Its class comes from the plugin's class loader, which a script applied with `apply from` can't name.
+    if (sourceSets.testmodfrapi.java.srcDirs.any { it.isDirectory() }) {
+        def frapiTestmodJar = tasks.named('testmodFrapiJar', Jar) {
+            destinationDirectory = layout.buildDirectory.dir('devlibs')
+        }
+        def remapJarType = obfuscation.getClass().classLoader.loadClass('net.neoforged.moddevgradle.legacyforge.tasks.RemapJar')
+        def reobfFrapiTestmodJar = tasks.register('reobfTestmodFrapiJar', remapJarType) {
+            group = 'verification'
+            description = "Reobfuscates the renderer test mod to Forge's runtime names"
+            input.set(frapiTestmodJar.flatMap { it.archiveFile })
+            archiveFileName = 'fabricated-testmod-frapi.jar'
+            destinationDirectory = layout.buildDirectory.dir('testmods')
+            // The classes the test mod's classes extend (the game's, and the stand-ins of Fabric API's), so that the
+            // methods which override theirs are renamed with them.
+            libraries.from(sourceSets.testmodfrapi.compileClasspath)
+            obfuscation.configureNamedToSrgOperation(remapOperation)
+        }
+        tasks.named('testmods') { dependsOn reobfFrapiTestmodJar }
     }
     def fabricatedJar = tasks.named('fabricatedJar', Jar) {
         // Named apart from the NeoForge jar of the same Minecraft version: here, once mc/mc.gradle has registered the

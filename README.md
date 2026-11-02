@@ -89,14 +89,17 @@ checks.
   of vanilla's HUD method (HUD-2).
 - **Model baking:** a model loading plugin's before-bake and after-bake modifiers see the models baked, in the bake
   method Forge 47 added.
+- **Fabric's renderer API:** Fabric block models are drawn in the world, as falling blocks, as blocks a piston moves
+  and with the breaking overlay, and Fabric item models wherever items are drawn. Upstream's hooks miss Forge 47's
+  chunk section compiler and block renderers, so Fabricated has Fabric's renderer draw those blocks itself. A Fabric
+  model that throws while drawn fails alone: Forge's renderer draws it from the quads it gives, and it is named once in
+  the log and the report (FRAPI rule 8). Blocks drawn as entities keep their vanilla quads, as on Fabric for 1.20.1.
 
 ## Not supported on Forge
 
 [`docs/FORGE-LEGACY.md`](/docs/FORGE-LEGACY.md) lists what Fabric mods can't rely on here, under *Unsupported on
 Forge*, with the task that takes each on. The main ones:
 
-- **Rendering hooks Forge's code can't take** (task 4): Indigo's hook into chunk rebuilding and the breaking overlay
-  on renderer API models.
 - **Item storages in items** (task 5): a Fabric mod's item storage in an item (a backpack's) and Forge's item handler on
   a stack don't see each other; fluids in items do.
 - **Fabric mods' own HUD mixins** (task 5): a mixin into vanilla's HUD method applies but never runs, as Forge's GUI

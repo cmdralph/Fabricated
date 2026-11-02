@@ -6,7 +6,7 @@
 #
 # Usage: ci/forge-legacy/smoke-client.sh <minecraft-version> <forge-version> <work-dir> [extra-mods-dir]
 # Exit status: the client must reach a world and exit normally, and every check must pass. With extra-mods-dir (the
-# official Fabric API jar), its jars join the mods folder.
+# official Fabric API jar, and the renderer test mod, whose checks then apply), its jars join the mods folder.
 # Expects: build/libs/fabricated-forge-*+mc<minecraft-version>.jar and
 # mc/forge-legacy/<minecraft-version>/build/testmods/fabricated-testmod.jar,
 # JAVA_HOME pointing at the Java version the game needs, xvfb-run and gh (with GH_TOKEN) on the PATH.
@@ -215,5 +215,66 @@ if [ -n "$extra" ]; then
 	check "FABRICATED-FORGE-TEST model bake events OK" "fabric-model-loading-api-v1 (with Fabric API): a model loading plugin's before-bake and after-bake modifiers see the models baked, whose code Forge moved into an overload taking the sprite getter (MODEL-3)"
 	check "FABRICATED-FORGE-TEST screen mouse and key events OK" "fabric-screen-api-v1 (with Fabric API): a click and a key press on a screen, and their releases, ask ScreenMouseEvents and ScreenKeyboardEvents, whose hooks Forge's mouse and key lambdas take through bridges (LAMBDA-7)"
 	check "FABRICATED-FORGE-TEST hud render callback OK" "fabric-rendering-v1 (with Fabric API): HudRenderCallback fired from Forge's HUD drawing, which takes the place of vanilla's method upstream fires it from (HUD-2)"
+fi
+# Fabric's renderer API (task 4, R5): the renderer test mod's blocks and item. Upstream's hooks miss Forge 47's chunk
+# section compiler and block renderers, so Fabricated's send each block through Fabric's renderer (Indigo), with FRAPI
+# rule 8's guard (seam=Fabricated): in chunk sections, as a falling block, as a block a piston moves and with the
+# breaking overlay. Items are drawn by Indigo's own item hook. A Fabric model that throws there (alone, as a multipart
+# model's part, or inside a model wrapping it) fails alone: Forge's renderer draws it from its quads, its failure is
+# logged once and listed in the report, a wrapper whose wrapped model threw isn't blamed, and the transform it left
+# pushed never reaches another block. Gates.
+if [ -n "$extra" ] && [ -f "$extra/fabricated-testmod-frapi.jar" ]; then
+	frapi_fail=$fail
+	fail=0
+	check "FABRICATED-TEST frapi model plugin OK" "fabric-model-loading-api-v1 (with Fabric API): the renderer test mod's model plugin put a Fabric model in place of a baked block model"
+	check "FABRICATED-TEST frapi terrain OK .*seam=Fabricated" "fabric-renderer-api-v1 (with Fabric API): a Fabric block model was meshed into a chunk section, through Fabricated's hook"
+	check "FABRICATED-TEST frapi nested terrain OK .*seam=Fabricated" "fabric-renderer-api-v1 (with Fabric API): a Fabric model inside a vanilla multipart model was meshed, through Fabricated's hook"
+	check "FABRICATED-TEST frapi moving block OK .*seam=Fabricated" "fabric-renderer-api-v1 (with Fabric API): a falling Fabric block model was drawn as a moving block, through Fabricated's hook"
+	check "FABRICATED-TEST frapi piston OK .*seam=Fabricated" "fabric-renderer-api-v1 (with Fabric API): a Fabric block model a piston moved was drawn, through Fabricated's hook"
+	check "FABRICATED-TEST frapi breaking OK .*seam=Fabricated" "fabric-renderer-api-v1 (with Fabric API): a Fabric block model got the breaking overlay, through Fabricated's hook"
+	check "FABRICATED-TEST frapi item screen OK" "fabric-renderer-api-v1 (with Fabric API): a Fabric item model's quads were drawn in the hotbar"
+	check "FABRICATED-TEST frapi item hand OK" "fabric-renderer-api-v1 (with Fabric API): a Fabric item model's quads were drawn in the player's hand"
+	check "FABRICATED-TEST frapi item dropped OK" "fabric-renderer-api-v1 (with Fabric API): a Fabric item model's quads were drawn as a dropped item"
+	check "FABRICATED-TEST frapi item frame OK" "fabric-renderer-api-v1 (with Fabric API): a Fabric item model's quads were drawn in an item frame"
+	check "FABRICATED-TEST frapi broken model fallback OK" "FRAPI rule 8: a Fabric model that threw in a chunk section was drawn by Forge's renderer"
+	check "FABRICATED-TEST frapi broken part fallback OK" "FRAPI rule 8: a multipart model whose Fabric part threw was drawn by Forge's renderer"
+	check "FABRICATED-TEST frapi wrapped model fallback OK" "FRAPI rule 8: a block whose Fabric model wraps one that threw was drawn by Forge's renderer that time"
+	check "FABRICATED-TEST frapi wrapper kept OK" "FRAPI rule 8: a Fabric model wrapping one that threw kept Fabric's renderer, the throw being the wrapped model's (Continuity)"
+	for model in BrokenModel BrokenPartModel; do
+		count=$(grep -c "Fabric block models of class [^ ]*\$$model (.*) threw while drawn in" "$log" || true)
+		if [ "$count" = 1 ]; then
+			echo "PASS: FRAPI rule 8: the failure of $model was logged once"
+		else
+			echo "FAIL: FRAPI rule 8: the failure of $model was logged $count times, not once"
+			fail=1
+		fi
+	done
+	count=$(grep -c "A model wrapped by a Fabric block model of class [^ ]*\$WrapperCheckModel (.*) threw while drawn in" "$log" || true)
+	if [ "$count" = 1 ]; then
+		echo "PASS: FRAPI rule 8: the wrapped model's failure was logged once, naming its wrapper"
+	else
+		echo "FAIL: FRAPI rule 8: the wrapped model's failure was logged $count times, not once"
+		fail=1
+	fi
+	if grep -q "Fabric block models of class [^ ]*\$WrapperCheckModel (" "$log"; then
+		echo "FAIL: FRAPI rule 8: the wrapper's class was marked broken for a throw of the model it wraps"
+		fail=1
+	fi
+	if grep -q "threw while drawn in" run/logs/fabric-bridge-report.txt 2>/dev/null; then
+		echo "PASS: FRAPI rule 8: the report lists the failures"
+	else
+		echo "FAIL: FRAPI rule 8: the report doesn't list the broken models' failures"
+		fail=1
+	fi
+	if grep -q "FABRICATED-TEST frapi leaked transform FAILED" "$log"; then
+		echo "FAIL: FRAPI rule 8: a transform a broken model left pushed reached another block"
+		fail=1
+	fi
+	if [ "$fail" = 1 ]; then
+		echo "::group::The renderer test mod's lines in the game log"
+		grep -n -m 80 -E "FABRICATED-TEST (frapi|model)|FabricBlockRendering|fabricated-forge-frapi|threw while drawn in|Fabric block models|fabric-renderer|indigo|Indigo|/(ERROR|FATAL)\]" "$log" || true
+		echo "::endgroup::"
+	fi
+	if [ "$frapi_fail" = 1 ]; then fail=1; fi
 fi
 exit "$fail"
