@@ -105,7 +105,19 @@ public final class NativeModules {
 			List<String> modules = configModules.containsKey(name) ? configModules.get(name)
 					: owner(mixinPackage) != null ? List.of(owner(mixinPackage)) : null;
 			if (modules != null) {
-				if (modules.stream().anyMatch(provided::contains)) droppedConfigs.add(name);
+				if (modules.stream().anyMatch(provided::contains)) {
+					droppedConfigs.add(name);
+					continue;
+				}
+				// A mixin in a sub-package another module owns stands down with that module: Forge 47's loot config, in
+				// fabric-loot-api-v2's package, has fabric-loot-tables-v1's mixins in its table package.
+				Set<String> dropped = new LinkedHashSet<>();
+				for (String mixin : config.getValue().allMixins()) {
+					String internal = config.getValue().internalName(mixin);
+					String owner = internal.lastIndexOf('/') > 0 ? owner(internal.substring(0, internal.lastIndexOf('/'))) : null;
+					if (owner != null && provided.contains(owner)) dropped.add(mixin);
+				}
+				if (!dropped.isEmpty()) droppedMixins.put(name, dropped);
 				continue;
 			}
 			// A config of Fabricated's own package: each of its mixins says what it serves.

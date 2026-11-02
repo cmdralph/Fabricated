@@ -182,4 +182,22 @@ class NativeModulesTest {
 		DeterministicJarWriter.write(out, files);
 		assertTrue(out.size() > 0);
 	}
+
+	/** A config in one module's package may list mixins of another's sub-package: those stand down with that module alone. */
+	@Test
+	void aMixinInAnotherModulesSubPackageStandsDownWithIt() throws Exception {
+		NativeModules modules = NativeModules.parse("""
+				{"modules": {"fabric-loot-api-v2": ["net/fabricmc/fabric/mixin/loot"], "fabric-loot-tables-v1": ["net/fabricmc/fabric/mixin/loot/table"]}}""", null);
+		Map<String, MixinConfigFile> configs = Map.of("fabricated-loot.mixins.json", MixinConfigFile.parse("""
+				{"package": "net.fabricmc.fabric.mixin.loot", "mixins": ["LootPoolAccessor", "table.LootPoolMixin", "table.LootTableMixin"]}"""));
+
+		NativeModules.StandDown tablesOnly = modules.standDown(Set.of("fabric-loot-tables-v1"), configs);
+		assertEquals(Set.of(), tablesOnly.mixinConfigs());
+		assertEquals(Map.of("fabricated-loot.mixins.json", Set.of("table.LootPoolMixin", "table.LootTableMixin")), tablesOnly.mixins());
+		assertEquals(Set.of("net/fabricmc/fabric/mixin/loot/table"), tablesOnly.packages());
+
+		NativeModules.StandDown both = modules.standDown(Set.of("fabric-loot-tables-v1", "fabric-loot-api-v2"), configs);
+		assertEquals(Set.of("fabricated-loot.mixins.json"), both.mixinConfigs());
+		assertEquals(Map.of(), both.mixins());
+	}
 }
