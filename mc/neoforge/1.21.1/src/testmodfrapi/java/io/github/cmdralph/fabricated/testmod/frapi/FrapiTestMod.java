@@ -35,8 +35,8 @@ import net.minecraft.world.level.block.state.properties.BlockStateProperties;
  * and one whose vanilla multipart model has a Fabric model as its part, so the client meshes them into a chunk section,
  * and above them the two blocks whose Fabric models throw ({@link FrapiClientTestMod}). Then, until the game stops, it
  * keeps a copy of the first block falling beside them (drawn as a falling block), a sticky piston pushing and pulling
- * another copy behind them (drawn as a block a piston moves) and the first block breaking (drawn with the breaking
- * overlay). Behind the first block goes a block whose Fabric model wraps one that throws, as Continuity's models wrap
+ * another copy behind them (drawn as a block a piston moves, every few ticks: {@link #PISTON_TICKS}) and the first
+ * block breaking (drawn with the breaking overlay). Behind the first block goes a block whose Fabric model wraps one that throws, as Continuity's models wrap
  * others; it is put back every other renewal, so its chunk section is meshed again after the wrapped model threw.
  *
  * <p>It also gives the joining player an item whose model is a Fabric model, held in their main hand (drawn in hand and
@@ -47,8 +47,16 @@ import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 public final class FrapiTestMod implements ModInitializer {
 	static final Logger LOGGER = LoggerFactory.getLogger("fabricated-testmod-frapi");
 	static final String NAMESPACE = "fabricated_testmod_frapi";
-	/** Ticks between two falling blocks, two piston moves, and two renewals of the breaking progress (which the client drops when stale). */
+	/** Ticks between two falling blocks and two renewals of the breaking progress (which the client drops when stale). */
 	private static final int RENEW_TICKS = 20;
+	/**
+	 * Ticks between two moves of the piston, a little more than one move takes (three ticks). The client draws a block a
+	 * piston moves only while its mesh of the chunk section holds the piston's moving block (from the section's rebuild
+	 * after the move starts to the one after it ends), and it stays in the world for a few seconds only, the first ones
+	 * spent building sections, the broken models' throws among them: with a move a second, run 41466902004 drew none, as
+	 * Forge 47's run 41421652538 did.
+	 */
+	private static final int PISTON_TICKS = 4;
 	/** The id of the breaking entity: one no entity has, so every player is sent the progress. */
 	private static final int BREAKER_ID = Integer.MIN_VALUE;
 	/** How far each falling copy falls: into view, onto a support at eye level, whatever the terrain around the player. */
@@ -105,14 +113,18 @@ public final class FrapiTestMod implements ModInitializer {
 			if (FabricLoader.getInstance().isModLoaded("continuity")) placeGlass(level, front.above(2), facing.getClockWise());
 		}));
 		ServerTickEvents.END_SERVER_TICK.register(server -> {
-			if (level == null || ticks++ % RENEW_TICKS != 0) return;
+			if (level == null) return;
+			int tick = ticks++;
+			if (tick % PISTON_TICKS == 0) {
+				// Powered every other time: the sticky piston pushes its block up, then pulls it back.
+				boolean powered = level.getBlockState(pistonPower).is(Blocks.REDSTONE_BLOCK);
+				level.setBlockAndUpdate(pistonPower, powered ? Blocks.AIR.defaultBlockState() : Blocks.REDSTONE_BLOCK.defaultBlockState());
+			}
+			if (tick % RENEW_TICKS != 0) return;
 			level.destroyBlockProgress(BREAKER_ID, breaking, 5);
 			// Cleared each time (the last copy landed in it), so every copy falls the whole way.
 			for (int i = 0; i <= FALL_HEIGHT; i++) level.setBlockAndUpdate(landing.above(i), Blocks.AIR.defaultBlockState());
 			FallingBlockEntity.fall(level, landing.above(FALL_HEIGHT), terrainBlock.defaultBlockState());
-			// Powered every other time: the sticky piston pushes its block up, then pulls it back.
-			boolean powered = level.getBlockState(pistonPower).is(Blocks.REDSTONE_BLOCK);
-			level.setBlockAndUpdate(pistonPower, powered ? Blocks.AIR.defaultBlockState() : Blocks.REDSTONE_BLOCK.defaultBlockState());
 			// Taken away and put back in turn: its chunk section is meshed again, with it, after the wrapped model threw.
 			level.setBlockAndUpdate(wrapped, level.getBlockState(wrapped).is(wrappedBlock) ? Blocks.AIR.defaultBlockState() : wrappedBlock.defaultBlockState());
 		});
