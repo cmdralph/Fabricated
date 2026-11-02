@@ -21,8 +21,10 @@ import net.fabricmc.fabric.api.client.model.loading.v1.ModelLoadingPlugin;
 import net.fabricmc.fabric.api.client.model.loading.v1.ModelModifier;
 import net.fabricmc.fabric.api.client.rendering.v1.ColorProviderRegistry;
 import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
+import net.fabricmc.fabric.api.renderer.v1.mesh.MutableQuadView;
 import net.fabricmc.fabric.api.renderer.v1.model.FabricBakedModel;
 import net.fabricmc.fabric.api.renderer.v1.render.RenderContext;
+import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.color.block.BlockColor;
@@ -37,6 +39,7 @@ import net.minecraft.client.resources.model.ModelResourceLocation;
 import net.minecraft.client.resources.model.MultiPartBakedModel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.item.ItemStack;
@@ -68,8 +71,13 @@ import net.minecraft.world.level.block.state.BlockState;
  * <p>The test item's model is a Fabric model too ({@link ItemCheckModel}): it emits the vanilla item model's quads, and
  * logs once when it is drawn in the hotbar (a screen), in hand, as a dropped item and in an item frame
  * ({@link FrapiTestMod} puts it in each).
+ *
+ * <p>With Continuity installed, glass's model is wrapped after every other wrapper, Continuity's included
+ * ({@link ConnectedCheckModel}), to check that its connected textures reach the chunk section.
  */
 public final class FrapiClientTestMod implements ClientModInitializer {
+	private static final ResourceLocation GLASS = ResourceLocation.withDefaultNamespace("glass");
+
 	private static final int BLOCK_COLOR = 0x3366CC;
 	private static final int ITEM_COLOR = 0xCC6633;
 	private static final BlockColor BLOCK_PROVIDER = (state, level, pos, tintIndex) -> BLOCK_COLOR;
@@ -98,6 +106,9 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 			}
 		});
 		ModelLoadingPlugin.register(context -> context.modifyModelAfterBake().register(FrapiClientTestMod::fabricModels));
+		if (FabricLoader.getInstance().isModLoaded("continuity")) {
+			ModelLoadingPlugin.register(context -> context.modifyModelAfterBake().register(ModelModifier.WRAP_LAST_PHASE, FrapiClientTestMod::connectedCheck));
+		}
 		ClientLifecycleEvents.CLIENT_STARTED.register(FrapiClientTestMod::checkColors);
 		ClientLifecycleEvents.CLIENT_STARTED.register(FrapiClientTestMod::checkKeyBinding);
 		ClientLifecycleEvents.CLIENT_STOPPING.register(client -> {
@@ -165,6 +176,12 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 					Pair.of(state -> true, new BrokenPartModel(model))));
 			default -> model;
 		};
+	}
+
+	/** Wraps glass's block state model (its only one: glass has no properties), not its item's, after every other wrapper. */
+	private static @Nullable BakedModel connectedCheck(@Nullable BakedModel model, ModelModifier.AfterBake.Context context) {
+		ModelResourceLocation id = context.topLevelId();
+		return model != null && id != null && id.id().equals(GLASS) && id.variant().isEmpty() ? new ConnectedCheckModel(model) : model;
 	}
 
 	/**
@@ -271,6 +288,67 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 			} else if ("falling".equals(drawing) && !FALLING.getAndSet(true)) {
 				FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi moving block OK ({} in {})", state, level.getClass().getName());
 			}
+		}
+	}
+
+	/**
+	 * Glass's model as Continuity left it (R6), wrapped after it: the first time a chunk section draws a glass block next
+	 * to another, it logs whether any quad the model emitted is off glass's own sprite, as a connected texture's is
+	 * (Continuity's default resource pack gives glass one), and which model it wraps. Vanilla's renderer gets the wrapped
+	 * model's quads.
+	 */
+	private static final class ConnectedCheckModel extends FabricModel {
+		private static final AtomicBoolean LOGGED = new AtomicBoolean();
+		/** How far a texture coordinate may stray outside a sprite and still be on it (float rounding). */
+		private static final float EPSILON = 1.0E-5F;
+
+		ConnectedCheckModel(BakedModel wrapped) {
+			super(wrapped);
+		}
+
+		@Override
+		public List<BakedQuad> getQuads(@Nullable BlockState state, @Nullable Direction direction, RandomSource random) {
+			return wrapped.getQuads(state, direction, random);
+		}
+
+		@Override
+		public void emitBlockQuads(BlockAndTintGetter level, BlockState state, BlockPos pos, Supplier<RandomSource> randomSupplier, RenderContext context) {
+			if (LOGGED.get() || !(level instanceof RenderChunkRegion) || !nextToSame(level, pos, state)) {
+				emitWrapped(level, state, pos, randomSupplier, context);
+				return;
+			}
+			TextureAtlasSprite sprite = wrapped.getParticleIcon();
+			int[] quads = new int[2];
+			context.pushTransform(quad -> {
+				quads[0]++;
+				if (offSprite(quad, sprite)) quads[1]++;
+				return true;
+			});
+			try {
+				emitWrapped(level, state, pos, randomSupplier, context);
+			} finally {
+				context.popTransform();
+			}
+			if (!LOGGED.getAndSet(true)) {
+				FrapiTestMod.LOGGER.info("FABRICATED-TEST continuity connected textures {} ({} of {} quads off {} at {}, drawn by {})", quads[1] > 0 ? "OK" : "FAILED",
+						quads[1], quads[0], sprite.contents().name(), pos, wrapped.getClass().getName());
+			}
+		}
+
+		private static boolean nextToSame(BlockAndTintGetter level, BlockPos pos, BlockState state) {
+			for (Direction direction : Direction.values()) {
+				if (level.getBlockState(pos.relative(direction)).is(state.getBlock())) return true;
+			}
+			return false;
+		}
+
+		private static boolean offSprite(MutableQuadView quad, TextureAtlasSprite sprite) {
+			for (int i = 0; i < 4; i++) {
+				float u = quad.u(i);
+				float v = quad.v(i);
+				if (u < sprite.getU0() - EPSILON || u > sprite.getU1() + EPSILON || v < sprite.getV0() - EPSILON || v > sprite.getV1() + EPSILON) return true;
+			}
+			return false;
 		}
 	}
 

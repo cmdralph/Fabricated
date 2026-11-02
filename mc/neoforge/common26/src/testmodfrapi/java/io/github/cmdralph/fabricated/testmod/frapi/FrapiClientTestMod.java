@@ -13,12 +13,15 @@ import com.mojang.serialization.MapCodec;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.model.loading.v1.CustomUnbakedBlockStateModel;
 import net.fabricmc.fabric.api.client.model.loading.v1.ModelLoadingPlugin;
+import net.fabricmc.fabric.api.client.model.loading.v1.ModelModifier;
 import net.fabricmc.fabric.api.client.model.loading.v1.UnbakedModelDeserializer;
 import net.fabricmc.fabric.api.client.model.loading.v1.wrapper.WrapperBlockStateModel;
 import net.fabricmc.fabric.api.client.renderer.v1.mesh.QuadEmitter;
 import net.fabricmc.fabric.api.client.renderer.v1.mesh.QuadTransform;
+import net.fabricmc.fabric.api.client.renderer.v1.mesh.QuadView;
 import net.fabricmc.fabric.api.client.renderer.v1.render.FabricLayerRenderState;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
+import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.renderer.block.BlockAndTintGetter;
 import net.minecraft.client.renderer.block.MovingBlockRenderState;
@@ -28,6 +31,7 @@ import net.minecraft.client.renderer.chunk.RenderSectionRegion;
 import net.minecraft.client.renderer.item.ItemModel;
 import net.minecraft.client.renderer.item.ItemModelResolver;
 import net.minecraft.client.renderer.item.ItemStackRenderState;
+import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.client.resources.model.ModelBaker;
 import net.minecraft.client.resources.model.UnbakedModel;
 import net.minecraft.client.resources.model.geometry.BakedQuad;
@@ -40,6 +44,7 @@ import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.ItemOwner;
 import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.neoforge.client.model.DelegateBlockStateModel;
 import net.neoforged.neoforge.client.model.block.CompositeBlockModel;
@@ -67,6 +72,9 @@ import net.neoforged.neoforge.client.model.block.CompositeBlockModel;
  * <p>The test item's model is wrapped after it is baked ({@link ItemCheckModel}): it adds a layer of quads emitted
  * through Fabric's renderer API, and logs once when it emits them for the hotbar (a screen), a hand, a dropped item and
  * an item frame ({@link FrapiTestMod} puts it in each).
+ *
+ * <p>With Continuity installed, glass's model is wrapped after every other wrapper, Continuity's included
+ * ({@link ConnectedCheckModel}), to check that its connected textures reach the chunk section.
  */
 public final class FrapiClientTestMod implements ClientModInitializer {
 	@Override
@@ -86,6 +94,10 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 		}));
 		ModelLoadingPlugin.register(plugin -> plugin.modifyItemModelAfterBake().register((model, context) ->
 				context.itemId().equals(FrapiTestMod.FABRIC_ITEM_ID) ? new ItemCheckModel(model) : model));
+		if (FabricLoader.getInstance().isModLoaded("continuity")) {
+			ModelLoadingPlugin.register(plugin -> plugin.modifyBlockModelAfterBake().register(ModelModifier.WRAP_LAST_PHASE, (model, context) ->
+					context.state().is(Blocks.GLASS) ? new ConnectedCheckModel(model) : model));
+		}
 		CustomUnbakedBlockStateModel.register(Identifier.fromNamespaceAndPath("fabricated_testmod_frapi", "nested_check"), NestedCheckModel.Unbaked.CODEC);
 		CustomUnbakedBlockStateModel.register(Identifier.fromNamespaceAndPath("fabricated_testmod_frapi", "broken_check"), BrokenModel.CODEC);
 		CustomUnbakedBlockStateModel.register(Identifier.fromNamespaceAndPath("fabricated_testmod_frapi", "broken_part_check"), BrokenPartModel.CODEC);
@@ -227,6 +239,61 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 			if (where != null && !LOGGED.get(where).getAndSet(true)) {
 				FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi item {} OK (quads emitted for {})", where, displayContext);
 			}
+		}
+	}
+
+	/**
+	 * Glass's model as Continuity left it (R6), wrapped after it: the first time a chunk section draws a glass block next
+	 * to another, it logs whether any quad the model emitted is off glass's own sprite, as a connected texture's is
+	 * (Continuity's default resource pack gives glass one), and which model it wraps.
+	 */
+	private static final class ConnectedCheckModel extends WrapperBlockStateModel {
+		private static final AtomicBoolean LOGGED = new AtomicBoolean();
+		/** How far a texture coordinate may stray outside a sprite and still be on it (float rounding). */
+		private static final float EPSILON = 1.0E-5F;
+
+		ConnectedCheckModel(BlockStateModel wrapped) {
+			super(wrapped);
+		}
+
+		@Override
+		public void emitQuads(QuadEmitter emitter, BlockAndTintGetter level, BlockPos pos, BlockState state, RandomSource random, Predicate<@Nullable Direction> cullTest) {
+			if (LOGGED.get() || !isSection(level) || !nextToSame(level, pos, state)) {
+				super.emitQuads(emitter, level, pos, state, random, cullTest);
+				return;
+			}
+			TextureAtlasSprite sprite = wrapped.particleMaterial(level, pos, state).sprite();
+			int[] quads = new int[2];
+			emitter.pushTransform(quad -> {
+				quads[0]++;
+				if (offSprite(quad, sprite)) quads[1]++;
+				return true;
+			});
+			try {
+				super.emitQuads(emitter, level, pos, state, random, cullTest);
+			} finally {
+				emitter.popTransform();
+			}
+			if (!LOGGED.getAndSet(true)) {
+				FrapiTestMod.LOGGER.info("FABRICATED-TEST continuity connected textures {} ({} of {} quads off {} at {}, drawn by {})", quads[1] > 0 ? "OK" : "FAILED",
+						quads[1], quads[0], sprite.contents().name(), pos, wrapped.getClass().getName());
+			}
+		}
+
+		private static boolean nextToSame(BlockAndTintGetter level, BlockPos pos, BlockState state) {
+			for (Direction direction : Direction.values()) {
+				if (level.getBlockState(pos.relative(direction)).is(state.getBlock())) return true;
+			}
+			return false;
+		}
+
+		private static boolean offSprite(QuadView quad, TextureAtlasSprite sprite) {
+			for (int i = 0; i < 4; i++) {
+				float u = quad.u(i);
+				float v = quad.v(i);
+				if (u < sprite.getU0() - EPSILON || u > sprite.getU1() + EPSILON || v < sprite.getV0() - EPSILON || v > sprite.getV1() + EPSILON) return true;
+			}
+			return false;
 		}
 	}
 

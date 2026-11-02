@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
+import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Registry;
@@ -39,7 +40,8 @@ import net.minecraft.world.level.block.state.properties.BlockStateProperties;
  *
  * <p>It also gives the joining player an item whose model is a Fabric model, held in their main hand (drawn in hand and
  * in the hotbar), and puts one in an item frame on the first block and one on the ground beside the frame, which no
- * one can pick up and which never despawns (drawn as an item in a frame and as a dropped item).
+ * one can pick up and which never despawns (drawn as an item in a frame and as a dropped item). With Continuity installed,
+ * a glass wall goes above the blocks, for its connected textures.
  */
 public final class FrapiTestMod implements ModInitializer {
 	static final Logger LOGGER = LoggerFactory.getLogger("fabricated-testmod-frapi");
@@ -92,6 +94,7 @@ public final class FrapiTestMod implements ModInitializer {
 			LOGGER.info("FABRICATED-TEST frapi block placed at {} (nested model block at {}, broken model blocks above them, piston at {})", front, nested,
 					pistonPower.above());
 			placeItems(level, listener.player, front, facing);
+			if (FabricLoader.getInstance().isModLoaded("continuity")) placeGlass(level, front.above(2), facing.getClockWise());
 		}));
 		ServerTickEvents.END_SERVER_TICK.register(server -> {
 			if (level == null || ticks++ % RENEW_TICKS != 0) return;
@@ -125,6 +128,17 @@ public final class FrapiTestMod implements ModInitializer {
 		drop.setNoGravity(true);
 		world.addFreshEntity(drop);
 		LOGGER.info("FABRICATED-TEST frapi items placed (in hand, in a frame at {}, dropped at {})", framePos, dropPos);
+	}
+
+	/**
+	 * With Continuity installed (R6): a wall of glass two blocks wide and two high above the test blocks, which
+	 * Continuity's default resource pack draws with connected textures ({@link FrapiClientTestMod} checks they are).
+	 */
+	private static void placeGlass(ServerLevel world, BlockPos corner, Direction across) {
+		for (int up = 0; up < 2; up++) {
+			for (int side = 0; side < 2; side++) world.setBlockAndUpdate(corner.above(up).relative(across, side), Blocks.GLASS.defaultBlockState());
+		}
+		LOGGER.info("FABRICATED-TEST continuity glass placed at {}", corner);
 	}
 
 	private static Block register(String path) {

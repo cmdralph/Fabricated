@@ -12,6 +12,8 @@ public interface ModelLoadingPlugin {
 	void initialize(Context pluginContext);
 
 	interface Context {
+		Event<ModelModifier.AfterBakeBlock> modifyBlockModelAfterBake();
+
 		Event<ModelModifier.AfterBakeItem> modifyItemModelAfterBake();
 	}
 }

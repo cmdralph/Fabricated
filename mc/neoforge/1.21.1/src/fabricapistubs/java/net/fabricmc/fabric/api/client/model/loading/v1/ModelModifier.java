@@ -11,6 +11,9 @@ import net.minecraft.resources.ResourceLocation;
  * names.
  */
 public final class ModelModifier {
+	/** The phase after every other wrapper's (Fabric's {@code fabric:wrap_last}). */
+	public static final ResourceLocation WRAP_LAST_PHASE = ResourceLocation.fromNamespaceAndPath("fabric", "wrap_last");
+
 	private ModelModifier() {
 	}
 

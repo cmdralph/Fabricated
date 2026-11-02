@@ -717,6 +717,38 @@ jobs:
             grep -n -m 60 -E "frapi|Indigo|sodium|Sodium|iris|Iris|/(ERROR|FATAL)\]" "$log" || true
             exit 1
           fi
+      # R6: Continuity, a real consumer of Fabric's renderer API (connected textures), its Fabric build from Modrinth where
+      # it has one for the version, with Fabric API and the renderer API test mod. The test mod puts a glass wall above its
+      # blocks and wraps glass's model after Continuity's, and logs whether the quads a chunk section gets for it are off
+      # glass's own sprite, as the connected textures of Continuity's default resource pack are. Informational until it
+      # holds on two extended runs in a row (CI-1's rule).
+      - name: Client with Continuity (informational)
+        if: ${{ matrix.part == 'mods' && !cancelled() && steps.build.outcome == 'success' }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MC: ${{ matrix.target.minecraft }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/extra-continuity"
+          python3 ci/fetch-corpus.py "$MC" "$RUNNER_TEMP/extra-continuity" fabric continuity | tee "$RUNNER_TEMP/summary-continuity.txt" || true
+          if ! grep -qE "^continuity: [^n]" "$RUNNER_TEMP/summary-continuity.txt"; then
+            echo "Modrinth has no Continuity build for $MC: nothing to run"
+            exit 0
+          fi
+          cp "$RUNNER_TEMP/extra/fabric-api.jar" "mc/neoforge/$MC/build/testmods/fabricated-testmod-frapi.jar" "$RUNNER_TEMP/extra-continuity/"
+          SMOKE_TIMEOUT=480 ci/neoforge/smoke-client.sh "$MC" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-continuity" "$RUNNER_TEMP/extra-continuity" || true
+          log="$RUNNER_TEMP/client-continuity/run/logs/latest.log"
+          grep -h "FABRICATED-TEST continuity" "$log" || true
+          # Which resource packs the game loaded: Continuity's default one must be among them.
+          grep -h -m 2 "Reloading ResourceManager" "$log" || true
+          if grep -q "FABRICATED-TEST continuity connected textures OK" "$log"; then
+            echo "PASS: Continuity's connected textures reached a chunk section through Fabric's renderer"
+          else
+            echo "::warning::Continuity on $MC: no connected textures seen in a chunk section (informational)"
+            grep -n -m 60 -E "[Cc]ontinuity|frapi|/(ERROR|FATAL)\]" "$log" || true
+            awk '/^== /{show = /^== (Summary|Disabled|Rendering)/} show' "$RUNNER_TEMP/client-continuity/run/logs/fabric-bridge-report.txt" | head -80 || true
+            exit 1
+          fi
       # The same mods with a shader pack (ci/neoforge/smoke-client.sh writes a minimal one): Iris's pipeline, with its extended
       # vertex format, under the Fabric models Sodium's Fabric renderer meshes. Informational until it has passed.
       - name: Client with Sodium, Iris and a shader pack (informational, 26.x)

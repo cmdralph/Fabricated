@@ -10,6 +10,11 @@ import net.minecraft.core.Direction;
 
 /** Compile-time stand-in: the members of Fabric API's 1.21.11 interface that Fabricated and its test mod read. */
 public interface QuadView {
+	/** The vertex's texture coordinates in the atlas. */
+	float u(int vertexIndex);
+
+	float v(int vertexIndex);
+
 	int color(int vertexIndex);
 
 	boolean hasNormal(int vertexIndex);

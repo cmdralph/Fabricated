@@ -9,6 +9,7 @@ import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
+import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -43,7 +44,8 @@ import net.minecraft.world.level.block.state.BlockBehaviour;
  * one can pick up and which never despawns (drawn as an item in a frame and as a dropped item).
  *
  * <p>And it summons two minecarts beside the blocks, held in the air: one carrying the first block, one carrying a block
- * whose Fabric model throws when drawn as an entity (each drawn as a block in an entity).
+ * whose Fabric model throws when drawn as an entity (each drawn as a block in an entity). With Continuity installed, a
+ * glass wall goes above the blocks, for its connected textures.
  */
 public final class FrapiTestMod implements ModInitializer {
 	static final Logger LOGGER = LoggerFactory.getLogger("fabricated-testmod-frapi");
@@ -96,6 +98,7 @@ public final class FrapiTestMod implements ModInitializer {
 			LOGGER.info("FABRICATED-TEST frapi block placed at {} (nested model block at {}, broken model blocks above them)", front, nested);
 			placeItems(level, listener.player, item, front, facing);
 			summonMinecarts(server, (ServerLevel) level, nested.relative(facing.getClockWise()));
+			if (FabricLoader.getInstance().isModLoaded("continuity")) placeGlass(level, front.above(2), facing.getClockWise());
 		}));
 		ServerTickEvents.END_SERVER_TICK.register(server -> {
 			if (level == null || ticks++ % RENEW_TICKS != 0) return;
@@ -130,6 +133,17 @@ public final class FrapiTestMod implements ModInitializer {
 	}
 
 	/**
+	 * With Continuity installed (R6): a wall of glass two blocks wide and two high above the test blocks, which
+	 * Continuity's default resource pack draws with connected textures ({@link FrapiClientTestMod} checks they are).
+	 */
+	private static void placeGlass(Level world, BlockPos corner, Direction across) {
+		for (int up = 0; up < 2; up++) {
+			for (int side = 0; side < 2; side++) world.setBlockAndUpdate(corner.above(up).relative(across, side), Blocks.GLASS.defaultBlockState());
+		}
+		LOGGER.info("FABRICATED-TEST continuity glass placed at {}", corner);
+	}
+
+	/**
 	 * Summons a minecart carrying the terrain block at {@code pos} and one carrying the broken entity block above it, both
 	 * without gravity, so they stay where they are drawn whatever the terrain. Through the summon command, as upstream's
 	 * test of block models in minecarts does.
@@ -144,8 +158,9 @@ public final class FrapiTestMod implements ModInitializer {
 	}
 
 	private static boolean summonMinecart(MinecraftServer server, CommandSourceStack console, BlockPos pos, Identifier block) {
+		// The block's id under both keys: 26.3 reads it from "id", 26.1.2 and 26.2 from "Name", and each ignores the other.
 		String command = "summon minecraft:minecart " + (pos.getX() + 0.5) + " " + pos.getY() + " " + (pos.getZ() + 0.5)
-				+ " {NoGravity:1b,Invulnerable:1b,DisplayState:{Name:\"" + block + "\"}}";
+				+ " {NoGravity:1b,Invulnerable:1b,DisplayState:{Name:\"" + block + "\",id:\"" + block + "\"}}";
 		try {
 			if (server.getCommands().getDispatcher().execute(command, console) == 1) return true;
 			LOGGER.error("FABRICATED-TEST frapi minecart FAILED (not summoned: {})", command);
