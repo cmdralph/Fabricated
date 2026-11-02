@@ -2431,7 +2431,7 @@ class MixinPreflightTest {
 		AbstractInsnNode first = onFreeze.instructions.getFirst();
 		while (first.getOpcode() < 0) first = first.getNext();
 		assertTrue(first instanceof MethodInsnNode call && call.owner.equals("io/github/cmdralph/fabricated/loader/EarlyFreeze")
-				&& call.name.equals("running") && call.desc.equals("()Z"), "the check comes first");
+				&& call.name.equals("beforeMainEntrypoints") && call.desc.equals("()Z"), "the check comes first");
 		assertEquals(Opcodes.IFEQ, first.getNext().getOpcode());
 		assertEquals(Opcodes.RETURN, first.getNext().getNext().getOpcode());
 		MethodNode onSize = node.methods.stream().filter(mn -> mn.name.equals("onSize")).findFirst().orElseThrow();

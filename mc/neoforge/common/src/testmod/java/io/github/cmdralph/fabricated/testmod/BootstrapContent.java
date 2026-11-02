@@ -49,14 +49,15 @@ public final class BootstrapContent {
 
 	/**
 	 * Called as a registry is frozen, from a mixin into {@code MappedRegistry.freeze}, as Flashback's (REG-8): on Fabric no
-	 * registry freezes before the main initializers, where NeoForge freezes them at bootstrap and on a client before the
-	 * game's client exists. Logs once.
+	 * registry freezes before the main initializers, where NeoForge freezes them at bootstrap, the root as it adds its
+	 * registries and after an early write, and on a client all of them before the game's client exists. Logs once, with
+	 * where the freeze came from if it was too early.
 	 */
 	public static void registryFreezing() {
 		if (registryFreezeSeen) return;
 		registryFreezeSeen = true;
 		if (mainInitializerRan) LOGGER.info("FABRICATED-TEST registry freeze handler after the main initializers OK");
-		else LOGGER.error("FABRICATED-TEST registry freeze handler before the main initializers FAILED");
+		else LOGGER.error("FABRICATED-TEST registry freeze handler before the main initializers FAILED", new Throwable("the freeze"));
 	}
 
 	/** Called from the main initializer: registers the type, as BetterNether's does. */

@@ -14,6 +14,7 @@ import org.slf4j.LoggerFactory;
 import io.github.cmdralph.fabricated.core.config.FabricatedConfig;
 import io.github.cmdralph.fabricated.core.runtime.EntrypointRunner;
 import io.github.cmdralph.fabricated.core.metadata.ModIds;
+import io.github.cmdralph.fabricated.loader.EarlyFreeze;
 import io.github.cmdralph.fabricated.loader.FabricatedState;
 import io.github.cmdralph.fabricated.neoforge.fluid.FabricFluidType;
 import io.github.cmdralph.fabricated.neoforge.item.CreativeTabOrder;
@@ -123,6 +124,7 @@ public final class EntrypointBridge {
 	private void runMain() {
 		record(runner.run("main", ModInitializer.class, ModInitializer::onInitialize));
 		mainEntrypointsRan = true;
+		EarlyFreeze.mainEntrypointsRan();
 	}
 
 	private void record(List<EntrypointRunner.Failure> more) {

@@ -209,8 +209,8 @@ final class MixinRepairs extends PreflightPart {
 	private final List<RepairStep> injectorRepairs = List.of(
 			new RepairStep(RepairScope.ONE_TARGET, Severity.INFO, s -> earlyFreezeGuard(s.mixin(), s.handler(), s.injector(), s.target(), s.ctx()),
 					(s, none) -> "@Inject " + s.handler().name + " runs as a registry freezes, which " + s.ctx().loader() + " also does before"
-							+ " Fabric mods' main entrypoints (at bootstrap, and on a client before the game's client exists); it returns at once"
-							+ " in those freezes, which Fabric doesn't have (Fabric API freezes the registries after the entrypoints)"),
+							+ " Fabric mods' main entrypoints (at bootstrap, among others); it returns at once in those freezes, which Fabric"
+							+ " doesn't have (Fabric API freezes the registries after the entrypoints)"),
 			RepairStep.warn(RepairScope.UNGROUPED, s -> lambdas.vanillaLambdaRepairs(s.injector(), s.targets(), s.ctx()),
 					(s, lambda) -> s.named() + " targets " + lambda + ", which this game build numbers differently"),
 			RepairStep.warn(RepairScope.ANY, s -> LambdaRepairs.lambdaRepairs(s.handler(), s.injector(), s.targets(), s.ctx()),
@@ -267,14 +267,14 @@ final class MixinRepairs extends PreflightPart {
 	static final String EARLY_FREEZE = "io/github/cmdralph/fabricated/loader/EarlyFreeze";
 
 	/**
-	 * Gives an {@code @Inject} handler into {@code MappedRegistry.freeze} a check that returns at once while the platform
-	 * freezes the registries before Fabric mods' main entrypoints (REG-8). On Fabric no freeze comes before them: Fabric
-	 * API moves vanilla's bootstrap freeze after them (on a client, after the client entrypoints too), so no Fabric mod's
-	 * handler ever runs before its mod started. NeoForge and Forge freeze at bootstrap, before any mod is constructed (the
-	 * in-game mod freezes there as vanilla does), and NeoForge again on a client before the game's client exists, where
-	 * the main entrypoints run; a handler that reaches its mod there (Flashback's, which starts Flashback, whose start-up
-	 * registers key bindings through the client) failed the game's bootstrap. Returns one item when it added the check,
-	 * none otherwise.
+	 * Gives an {@code @Inject} handler into {@code MappedRegistry.freeze} a check that returns at once while Fabric mods'
+	 * main entrypoints are still to run (REG-8). On Fabric no freeze comes before them: Fabric API moves vanilla's
+	 * bootstrap freeze after them (on a client, after the client entrypoints too), so no Fabric mod's handler ever runs
+	 * before its mod started. NeoForge and Forge freeze at bootstrap, before any mod is constructed (the in-game mod
+	 * freezes there as vanilla does), and NeoForge again before the main entrypoints: the root, as it adds its registries,
+	 * and on a client every registry before the game's client exists. A handler that reaches its mod there (Flashback's,
+	 * which starts Flashback, whose start-up registers key bindings through the client) failed the game's bootstrap.
+	 * Returns one item when it added the check, none otherwise.
 	 */
 	static List<String> earlyFreezeGuard(ClassNode mixin, MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx) {
 		if (!MixinNames.INJECT.equals(injector.desc) || !MAPPED_REGISTRY.equals(target.name)) return List.of();
@@ -287,7 +287,7 @@ final class MixinRepairs extends PreflightPart {
 		while (first != null && first.getOpcode() < 0 && !(first instanceof FrameNode)) first = first.getNext();
 		LabelNode run = new LabelNode();
 		InsnList check = new InsnList();
-		check.add(new MethodInsnNode(Opcodes.INVOKESTATIC, EARLY_FREEZE, "running", "()Z", false));
+		check.add(new MethodInsnNode(Opcodes.INVOKESTATIC, EARLY_FREEZE, "beforeMainEntrypoints", "()Z", false));
 		check.add(new JumpInsnNode(Opcodes.IFEQ, run));
 		check.add(new InsnNode(Opcodes.RETURN));
 		check.add(run);

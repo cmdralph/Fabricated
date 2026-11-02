@@ -1,6 +1,5 @@
 package io.github.cmdralph.fabricated.neoforge.registry;
 
-import io.github.cmdralph.fabricated.loader.EarlyFreeze;
 import io.github.cmdralph.fabricated.neoforge.EntrypointBridge;
 import io.github.cmdralph.fabricated.neoforge.GameCompat;
 import io.github.cmdralph.fabricated.neoforge.mixin.BuiltInRegistriesInvoker;
@@ -19,8 +18,7 @@ import net.minecraft.core.registries.BuiltInRegistries;
  * running it, so NeoForge finds them frozen as it expects. {@code freeze} runs in NeoForge's first freeze after the
  * entrypoints ({@code GameData.freezeData}), over the registries NeoForge opened for them; NeoForge's own freeze then
  * doesn't bind the tags of a registry it froze again, which it already bound. Fabric mods' handlers in
- * {@code MappedRegistry.freeze} don't run in a freeze before the main entrypoints: the bootstrap's, and NeoForge's on a
- * client before {@code Minecraft} exists ({@link EarlyFreeze}, REG-8).
+ * {@code MappedRegistry.freeze} don't run in any freeze before the main entrypoints ({@code EarlyFreeze}, REG-8).
  */
 public final class BuiltInRegistriesFreeze {
 	/** Set while the bootstrap's {@code freeze} waits for the main entrypoints. */
@@ -37,27 +35,19 @@ public final class BuiltInRegistriesFreeze {
 	 */
 	public static boolean deferBootstrapFreeze() {
 		if (!EntrypointBridge.mainEntrypointsPending()) return false;
-		// Fabric mods' freeze handlers stand by (REG-8): on Fabric no freeze comes before their main entrypoints.
-		EarlyFreeze.run(() -> {
-			((MappedRegistry<?>) BuiltInRegistries.REGISTRY).freeze();
-			for (Registry<?> registry : BuiltInRegistries.REGISTRY) {
-				MappedRegistry<?> mapped = (MappedRegistry<?>) registry;
-				GameCompat.bindTagsForFreeze(mapped);
-				mapped.freeze();
-			}
-		});
+		((MappedRegistry<?>) BuiltInRegistries.REGISTRY).freeze();
+		for (Registry<?> registry : BuiltInRegistries.REGISTRY) {
+			MappedRegistry<?> mapped = (MappedRegistry<?>) registry;
+			GameCompat.bindTagsForFreeze(mapped);
+			mapped.freeze();
+		}
 		deferred = true;
 		return true;
 	}
 
 	/** Runs NeoForge's freeze, after {@code freeze} if it waits and the main entrypoints have run. */
 	public static void freezeData(Runnable neoForge) {
-		if (EntrypointBridge.mainEntrypointsPending()) {
-			// On a client, before Minecraft exists: Fabric mods' freeze handlers stand by (REG-8).
-			EarlyFreeze.run(neoForge);
-			return;
-		}
-		if (!deferred) {
+		if (!deferred || EntrypointBridge.mainEntrypointsPending()) {
 			neoForge.run();
 			return;
 		}

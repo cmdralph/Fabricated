@@ -279,6 +279,8 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 		FabricatedState state = new FabricatedState(result, logsDir, api, mixinFailures);
 		FabricatedState.set(state);
 		ApiHolder.install(api);
+		// Fabric mods' handlers in a registry's freeze wait for their main entrypoints, as on Fabric (REG-8).
+		if (devGameMod.isPresent() || addGameMod) EarlyFreeze.holdUntilMainEntrypoints();
 
 		ModFileDiscoveryAttributes attributes = ModFileDiscoveryAttributes.DEFAULT.withDependencyLocator(this);
 		Set<String> refused = new HashSet<>();
