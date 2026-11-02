@@ -9,7 +9,7 @@
     "fabric-content-registries-v0": {
       "plan": "passthrough",
       "skipMixins": ["fabric-content-registries-v0.mixins.json:fluid.EntityMixin#checkIfInSwimmableFluid", "fabric-content-registries-v0.mixins.json:fluid.EntityMixin#checkIfUnderSwimmableFluid", "fabric-content-registries-v0.mixins.json:fluid.EntityMixin#checkIfStandingInSwimmableFluid", "fabric-content-registries-v0.mixins.json:fluid.EntityMixin#checkCustomFluids"],
-      "reason": "Forge decides whether an entity swims, and whether it looks crawling, from fluid types (isInWaterOrSwimmable, canStartSwimming), where upstream's hooks into updateSwimming and isVisuallyCrawling look for vanilla's water checks, so pre-flight disabled the module (and every mod needing it): the four are left out and the rest loads. Lost: an entity doesn't swim, or stop looking crawling, in a fluid registered through EntityFluidInteractionRegistry unless Forge's fluid type for it allows swimming (UNVERIFIED which fluid type Forge gives a Fabric fluid)."
+      "reason": "Forge decides whether an entity swims, and whether it looks crawling, from fluid types (isInWaterOrSwimmable, canStartSwimming), where upstream's hooks into updateSwimming and isVisuallyCrawling look for vanilla's water checks, so pre-flight disabled the module (and every mod needing it): the four are left out and the rest loads. Lost: an entity doesn't swim, or stop looking crawling, in a fluid registered through EntityFluidInteractionRegistry unless the fluid's Forge type allows swimming: a Fabric fluid's type is Fabricated's (FabricFluidType), which allows it when the fluid is tagged minecraft:water, and a Forge mod's fluid type decides for its own fluids."
     },
     "fabric-data-generation-api-v1": {
       "plan": "passthrough",
@@ -19,7 +19,7 @@
     "fabric-dimensions-v1": {
       "plan": "passthrough",
       "skipMixins": ["fabric-dimensions-v1.mixins.json:V2832Mixin", "fabric-dimensions-v1.mixins.json:TaggedChoiceMixin", "fabric-dimensions-v1.mixins.json:TaggedChoiceTaggedChoiceTypeMixin"],
-      "reason": "Forge loads DataFixerUpper outside the layers Mixin transforms, so upstream's TaggedChoiceMixin and TaggedChoiceTaggedChoiceTypeMixin would never apply, and V2832Mixin, which casts DataFixerUpper's tagged choice type to the interface they add, would fail when the data fixers are built: the three are left out and the rest of the module loads. Lost: upgrading a world whose dimensions use a chunk generator type no installed mod registers fails in DataFixerUpper as it does without Fabric API (UNVERIFIED whether Forge's own handling covers it)."
+      "reason": "Forge loads DataFixerUpper outside the layers Mixin transforms, so upstream's TaggedChoiceMixin and TaggedChoiceTaggedChoiceTypeMixin would never apply, and V2832Mixin, which casts DataFixerUpper's tagged choice type to the interface they add, would fail when the data fixers are built: the three are left out and the rest of the module loads. Nothing is lost: Forge patches the same schema (V2832) to keep a dimension's generator as it is when its type isn't known (DSL.or with DSL.remainder()), so upgrading a world whose dimensions use a chunk generator type no installed mod registers doesn't fail, which is what upstream's mixins are for (read in Forge 61.2.4, 64.1.5, 65.1.5 and 66.1.0)."
     },
     "fabric-entity-events-v1": {
       "plan": "passthrough",
