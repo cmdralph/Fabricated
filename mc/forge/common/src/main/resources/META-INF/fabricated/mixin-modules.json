@@ -6,6 +6,8 @@
     "fabricated-forge-conditions.mixins.json": ["fabric-resource-conditions-api-v1"],
     "fabricated-forge-damage.mixins.json": ["fabric-entity-events-v1"],
     "fabricated-forge-entity.mixins.json": ["fabric-entity-events-v1"],
+    "fabricated-forge-frapi.mixins.json": ["fabric-renderer-api-v1"],
+    "fabricated-forge-frapi-breaking.mixins.json": ["fabric-renderer-api-v1"],
     "fabricated-forge-interaction.mixins.json": ["fabric-events-interaction-v0"],
     "fabricated-forge-loot.mixins.json": ["fabric-loot-api-v3"],
     "fabricated-forge-particle.mixins.json": ["fabric-particles-v1"],
