@@ -1348,8 +1348,8 @@ jobs:
             python3 -I ci/javap-dump.py "$RUNNER_TEMP/$run" "$@" | cut -c1-300 || true
           }
           dump client-malilib 'game:net.minecraft.world.item.ItemStack#getTooltipLines'
-          # KEYMAP-1: the mods' accessors of KeyMapping's key map, which NeoForge retyped, and what their callers do with it.
-          dump client-polyfrost 'mixins:net/minecraft/class_304'
+          # KEYMAP-1: OneConfig's accessor of KeyMapping's key map, which NeoForge retyped, and what its callers do with it.
+          dump client-polyfrost 'mod:org.polyfrost.oneconfig.internal.mixin.keybind.KeyMappingRegistryAccessor#*' 'refs:KeyMappingRegistryAccessor'
           # CORPUS-56: Continuity's sprite source hook captures locals in SpriteSourceList.list, which NeoForge 1.21.11 and
           # 26.x made call an overload.
           dump client-continuity 'game:net.minecraft.client.renderer.texture.atlas.SpriteSourceList#list' 'mod:*SpriteSourceListMixin#*'
@@ -1378,9 +1378,13 @@ jobs:
             log="$RUNNER_TEMP/client-advanced/run/logs/latest.log"
             if [ -f "$log" ]; then grep -h -A45 -m 1 "TransformerClassWriter/\]: Failed to find class" "$log" | cut -c1-300 || true; fi
           fi
-          # LAMBDA-9: Litematica's schematic hooks into LevelRenderer.addMainPass's lambda, left out on 26.2: its handlers,
-          # and the lambdas as NeoForge's and vanilla's code have them.
+          # LAMBDA-9: Litematica's schematic hooks into LevelRenderer.addMainPass's lambda, which NeoForge 26.2 gives one more
+          # value: what pre-flight now reports of them, and addMainPass as NeoForge's and vanilla's code declare it.
           if [ "${{ matrix.target.minecraft }}" = "26.2" ]; then
-            dump client-malilib 'mod:fi.dy.masa.litematica.mixin.render.MixinLevelRenderer#litematica_renderMainSection*' \
-              'game:net.minecraft.client.renderer.LevelRenderer#lambda$addMainPass$*' 'vanilla:net.minecraft.client.renderer.LevelRenderer#lambda$addMainPass$*'
+            report="$RUNNER_TEMP/client-malilib/run/logs/fabric-bridge-report.txt"
+            if [ -f "$report" ]; then grep -h "MixinLevelRenderer" "$report" | cut -c1-600 | head -10 || true; fi
+            if [ -d "$RUNNER_TEMP/client-malilib" ]; then
+              python3 -I ci/javap-dump.py "$RUNNER_TEMP/client-malilib" 'game:net.minecraft.client.renderer.LevelRenderer#addMainPass' \
+                'vanilla:net.minecraft.client.renderer.LevelRenderer#addMainPass' | grep -E -A1 "^-- | addMainPass\(" | grep -v "^--$" || true
+            fi
           fi
