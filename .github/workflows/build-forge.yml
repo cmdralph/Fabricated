@@ -193,9 +193,8 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/extra-client"
           cp "$RUNNER_TEMP/extra/fabric-api.jar" "$RUNNER_TEMP/extra-client/"
-          if [[ "${{ matrix.target.minecraft }}" == 26.* ]]; then
-            cp mc/forge/${{ matrix.target.minecraft }}/build/testmods/fabricated-testmod-frapi.jar "$RUNNER_TEMP/extra-client/"
-          fi
+          # The renderer test mod (task 4, R5) on every version, with the client API checks on 26.x.
+          cp mc/forge/${{ matrix.target.minecraft }}/build/testmods/fabricated-testmod-frapi.jar "$RUNNER_TEMP/extra-client/"
           ci/forge/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-fapi" "$RUNNER_TEMP/extra-client"
       # Popular Fabric mods from Modrinth (ci/mod-corpus.txt, downloaded here in CI and checked against Modrinth's
       # SHA-512) with Fabric API, as build.yml runs them on NeoForge: which load on Forge, which are disabled and why.

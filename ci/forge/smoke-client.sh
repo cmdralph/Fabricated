@@ -225,7 +225,7 @@ if [ -n "$extra" ]; then
 	check "FABRICATED-FORGE-TEST storages OK" "fabric-transfer-api-v1 (with Fabric API): on the integrated server, a Fabric mod's storages, on blocks and in tank items, are Forge's capabilities and a Forge mod's handlers Fabric's storages"
 fi
 # The test mod for Fabric API's client modules (26.x: mc/forge/common26/src/testmodfrapi), where the run has it.
-if [ -n "$extra" ] && [ -f "$extra/fabricated-testmod-frapi.jar" ]; then
+if [ -n "$extra" ] && [ -f "$extra/fabricated-testmod-frapi.jar" ] && [ "$mc" != 1.21.11 ]; then
 	check "FABRICATED-TEST key mapping OK" "fabric-key-mapping-api-v1 (native, with Fabric API's jar too): the client API test mod's key mapping is in the game's options (KEYMAP-3)"
 	check "FABRICATED-TEST hud element OK" "fabric-rendering-v1 (with Fabric API): a Fabric HUD element added last was drawn"
 	check "FABRICATED-TEST hud element after chat OK" "fabric-rendering-v1 (with Fabric API): a Fabric HUD element attached after chat was drawn, from Forge's HUD layers (HUD-2)"
@@ -244,6 +244,29 @@ if [ -n "$extra" ] && [ -f "$extra/fabricated-testmod-frapi.jar" ]; then
 		grep -n -m 60 -E "fabricated-testmod-frapi|FABRICATED-TEST|ScreenInputEvents|ScreenDrawEvents" "$log" || true
 		echo "::endgroup::"
 	fi
+fi
+# Fabric's renderer API (task 4, R5): the renderer test mod's blocks and item, drawn through upstream's hooks, which
+# take Forge's code where they can. What each draws is seen here first (informational), before it is a gate.
+seen() {
+	if grep -q -- "$1" "$log" 2>/dev/null; then echo "SEEN: $2"; else echo "NOT SEEN: $2 (no '$1')"; fi
+}
+if [ -n "$extra" ] && [ -f "$extra/fabricated-testmod-frapi.jar" ]; then
+	echo "::group::Fabric's renderer API on Forge (informational)"
+	seen "FABRICATED-TEST frapi terrain OK" "a Fabric block model was meshed into a chunk section"
+	seen "FABRICATED-TEST frapi nested terrain OK" "a Fabric model inside a vanilla multipart model was meshed"
+	seen "FABRICATED-TEST frapi moving block OK" "a falling Fabric block model was drawn as a moving block"
+	seen "FABRICATED-TEST frapi breaking OK" "a Fabric block model got the breaking overlay"
+	seen "FABRICATED-TEST frapi item screen OK" "a Fabric item model's quads, in the hotbar"
+	seen "FABRICATED-TEST frapi item hand OK" "a Fabric item model's quads, in the player's hand"
+	seen "FABRICATED-TEST frapi item dropped OK" "a Fabric item model's quads, as a dropped item"
+	seen "FABRICATED-TEST frapi item frame OK" "a Fabric item model's quads, in an item frame"
+	if [ "$mc" != 1.21.11 ]; then
+		seen "FABRICATED-TEST frapi moving block outline OK" "a glowing falling Fabric block model's outline was drawn by Fabric's renderer (not on 26.1.2)"
+		seen "FABRICATED-TEST frapi entity block OK" "a Fabric block model carried by a minecart was drawn as the minecart's block"
+		seen "FABRICATED-TEST model deserializer OK" "a model file of a Fabric type was read by its Fabric deserializer"
+	fi
+	grep -n -m 60 -E "FABRICATED-TEST (frapi|model)|fabric-renderer|indigo|Indigo|/(ERROR|FATAL)\]" "$log" || true
+	echo "::endgroup::"
 fi
 if [ -n "$extra" ] && [ "$mc" = 1.21.11 ]; then
 	check "FABRICATED-FORGE-TEST colour providers OK" "fabric-rendering-v1 (with Fabric API, 1.21.11): its colour provider registry finds grass's provider in Forge's block colours, and none for stone (COLOR-1)"
