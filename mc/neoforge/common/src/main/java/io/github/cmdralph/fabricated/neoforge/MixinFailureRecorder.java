@@ -2,6 +2,9 @@ package io.github.cmdralph.fabricated.neoforge;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import net.neoforged.fml.ModLoader;
+import net.neoforged.fml.ModLoadingIssue;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.spongepowered.asm.mixin.FabricUtil;
@@ -17,8 +20,9 @@ import io.github.cmdralph.fabricated.loader.FabricatedState;
  * Records a Fabric mod's mixin that fails as Mixin applies it, which pre-flight passed, for the next launch to leave
  * out (APPLY-1, core's {@link MixinFailures}). Mixin reports most failures through its error handlers, where
  * {@link Handler} sees them; an injector's critical failure ({@code InjectionError}) bypasses them, and is read off the
- * throwable as the game stops: from its crash report ({@code CrashReportMixin}) or, where it stops the game before
- * Minecraft makes one, from the thread's uncaught exception. Nothing here changes what Mixin does with a failure.
+ * throwable as the game stops: from its crash report ({@code CrashReportMixin}), with mod loading's errors when the game
+ * stops as mods load ({@link #recordLoadingErrors}), or, where it stops the game before Minecraft makes one, from the
+ * thread's uncaught exception. Nothing here changes what Mixin does with a failure.
  */
 public final class MixinFailureRecorder {
 	private static final Logger LOGGER = LoggerFactory.getLogger("Fabricated");
@@ -42,6 +46,23 @@ public final class MixinFailureRecorder {
 				thrown.printStackTrace(System.err);
 			}
 		});
+	}
+
+	/**
+	 * Records from the causes of mod loading's errors so far. NeoForge's crash report for a mod loading that failed holds
+	 * a placeholder exception, the failures being its errors' causes ({@code CrashReportExtender.dumpModLoadingCrashReport}):
+	 * an injector's critical failure as a mod's constructor loads the class reaches the report only that way, as on
+	 * NeoForge 1.21.11 and 26.x's dedicated servers, where Fabricated's own constructor loads {@code MinecraftServer}.
+	 * Never throws.
+	 */
+	public static void recordLoadingErrors() {
+		try {
+			for (ModLoadingIssue issue : ModLoader.getLoadingErrors()) {
+				if (issue.cause() != null) record(issue.cause());
+			}
+		} catch (RuntimeException | LinkageError e) {
+			LOGGER.debug("Could not read mod loading's errors", e);
+		}
 	}
 
 	/** Records the mixin a throwable (or one it holds) says failed, if it is a Fabric mod's. Never throws. */

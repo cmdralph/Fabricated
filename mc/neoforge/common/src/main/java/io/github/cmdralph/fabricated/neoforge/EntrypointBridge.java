@@ -206,6 +206,8 @@ public final class EntrypointBridge {
 							: "The mod was marked as failed and the game continues; parts of it may not work.");
 			LOGGER.error("{}", text, failure.error());
 			state.report().line("Entrypoint failures", text);
+			// A mixin that failed as Mixin applied it to a class the entrypoint loaded: left out from the next launch on (APPLY-1).
+			MixinFailureRecorder.record(failure.error());
 			ModLoadingIssue issue = (policy == FabricatedConfig.EntrypointFailure.ERROR
 					? ModLoadingIssue.error(MESSAGE, text)
 					: ModLoadingIssue.warning(MESSAGE, text)).withCause(failure.error());
