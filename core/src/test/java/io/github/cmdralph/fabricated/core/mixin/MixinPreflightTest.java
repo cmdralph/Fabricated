@@ -1883,6 +1883,37 @@ class MixinPreflightTest {
 		assertTrue(after.isEmpty(), after.toString());
 	}
 
+	@Test
+	void aHookNamingALambdaFindsItInTheMethodThePatchKeepsVanillasOneToCall() throws Exception {
+		// LAMBDA-9 as NeoForge 26.2 has it: LevelRenderer keeps an addMainPass with vanilla's descriptor beside the one
+		// taking the model view matrix (two of that name), and the lambda is in the second. Here the kept scan(Map, String)
+		// only calls scan(Map, String, List) with no list.
+		Type map = Type.getType(Map.class);
+		Type string = Type.getType(String.class);
+		Type list = Type.getType(List.class);
+		Type object = Type.getType(Object.class);
+		String vanillaScan = "(Ljava/util/Map;Ljava/lang/String;)V";
+		String vanillaDesc = Type.getMethodDescriptor(Type.VOID_TYPE, map, string, object);
+		String patchedDesc = Type.getMethodDescriptor(Type.VOID_TYPE, list, string, map, object);
+		Map<String, byte[]> vanilla = Map.of(TARGET, scanningTarget("lambda$scan$0", vanillaDesc, vanillaScan));
+		ClassIndex game = new ClassIndex(Map.of(TARGET, scanningTarget("lambda$scan$0", patchedDesc, "(Ljava/util/Map;Ljava/lang/String;Ljava/util/List;)V",
+				vanillaScan))::get);
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Captures"));
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Captures", capturingMixin("lambda$scan$0" + vanillaDesc, List.of(map, string, object), 2)));
+		List<PreflightFinding> notes = new ArrayList<>();
+		byte[] repaired = new MixinPreflight(game, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, vanilla::get)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes).get("com/example/mixin/Captures.class");
+		assertNotNull(repaired, notes.toString());
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired).accept(node, 0);
+		MethodNode bridge = node.methods.stream().filter(mn -> mn.name.equals("h$fabricated")).findFirst().orElseThrow();
+		assertEquals(List.of("lambda$scan$0" + patchedDesc), Annotations.value(Annotations.find(bridge, INJECT), "method"));
+		mod.put("com/example/mixin/Captures", repaired);
+		List<PreflightFinding> after = new MixinPreflight(game, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, vanilla::get)
+				.check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(after.isEmpty(), after.toString());
+	}
+
 	/**
 	 * {@link #TARGET} whose static {@code scan(Map, String, List)} parses a value and hands it to two lambdas, as
 	 * {@code SimpleJsonResourceReloadListener.scanDirectory} does: a consumer {@code first} of descriptor {@code desc},
@@ -1895,8 +1926,28 @@ class MixinPreflightTest {
 
 	/** {@link #scanningTarget(String, String)} with {@code scan} of descriptor {@code scanDesc}, its parameters still the map, the id, the list. */
 	private static byte[] scanningTarget(String first, String desc, String scanDesc) {
+		return scanningTarget(first, desc, scanDesc, null);
+	}
+
+	/**
+	 * {@link #scanningTarget(String, String, String)} with another {@code scan} of descriptor {@code keptDesc} (the map
+	 * and the id) that only calls the first with no list, as a patch keeps vanilla's method beside the one it gave a
+	 * parameter; none with null.
+	 */
+	private static byte[] scanningTarget(String first, String desc, String scanDesc, String keptDesc) {
 		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
 		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		if (keptDesc != null) {
+			MethodVisitor kept = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "scan", keptDesc, null, null);
+			kept.visitCode();
+			kept.visitVarInsn(Opcodes.ALOAD, 0);
+			kept.visitVarInsn(Opcodes.ALOAD, 1);
+			kept.visitInsn(Opcodes.ACONST_NULL);
+			kept.visitMethodInsn(Opcodes.INVOKESTATIC, TARGET, "scan", scanDesc, false);
+			kept.visitInsn(Opcodes.RETURN);
+			kept.visitMaxs(0, 0);
+			kept.visitEnd();
+		}
 		Handle metafactory = new Handle(Opcodes.H_INVOKESTATIC, "java/lang/invoke/LambdaMetafactory", "metafactory",
 				"(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodType;"
 						+ "Ljava/lang/invoke/MethodHandle;Ljava/lang/invoke/MethodType;)Ljava/lang/invoke/CallSite;", false);

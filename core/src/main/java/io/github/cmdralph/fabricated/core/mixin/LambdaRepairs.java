@@ -169,8 +169,13 @@ final class LambdaRepairs extends PreflightPart {
 				if (m.name.equals(creator.name) && m.desc.equals(creator.desc)) patched = m;
 			}
 			// The creating method the patch gave other parameters, and its lambda with them: the one method of its name in
-			// both classes (NeoForge 26.2's LevelRenderer.addMainPass, which also takes the model view matrix; LAMBDA-9).
+			// both classes (NeoForge 26.2's LevelRenderer.addMainPass, which also takes the model view matrix; LAMBDA-9),
+			// or the one the method with vanilla's descriptor only calls, creating no lambda itself (as NeoForge keeps one).
 			if (patched == null && onlyNamed(original, creator.name) == creator) patched = onlyNamed(target, creator.name);
+			if (patched != null && createdLambdas(target, patched).isEmpty()) {
+				MethodNode overload = OverloadRepairs.calledOverload(patched, target);
+				if (overload != null && !createdLambdas(target, overload).isEmpty()) patched = overload;
+			}
 		} else if (renamed && depth < 3) {
 			patched = lambdaPlace(original, target, creator, true, depth + 1);
 		}

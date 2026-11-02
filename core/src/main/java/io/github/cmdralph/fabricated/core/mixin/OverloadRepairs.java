@@ -783,7 +783,7 @@ final class OverloadRepairs extends PreflightPart {
 	}
 
 	/** The one other overload of the same name {@code method} calls, or null (none, or several). */
-	private static MethodNode calledOverload(MethodNode method, ClassNode target) {
+	static MethodNode calledOverload(MethodNode method, ClassNode target) {
 		MethodNode overload = null;
 		for (AbstractInsnNode insn : method.instructions) {
 			if (!(insn instanceof MethodInsnNode call) || !call.owner.equals(target.name) || !call.name.equals(method.name)
