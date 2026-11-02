@@ -222,25 +222,13 @@ public final class FabricBlockRendering {
 		}
 
 		/**
-		 * Marks what threw broken ({@link FrapiFailures#markBroken}): the model's class if it is a Fabric model; in a
-		 * composite, its Fabric parts the stack trace shows emitting, or all of them if it shows none.
+		 * Marks what threw broken: the model's class if it is a Fabric model, or its Fabric parts in a composite, as the
+		 * stack trace puts the throw down to them ({@link FrapiFailures#putDown}: not a wrapper, when a model it wraps threw).
 		 */
 		static void markBroken(BlockStateModel model, Throwable error, String where, BlockState state) {
 			List<BlockStateModel> fabricModels = new ArrayList<>();
 			fabricModels(model, fabricModels, 0);
-			boolean marked = false;
-			for (BlockStateModel fabricModel : fabricModels) {
-				FrapiFailures.ModelClass type = MODEL_CLASSES.get(fabricModel.getClass());
-				if (FrapiFailures.threwIn(error, type, EMIT)) {
-					FrapiFailures.markBroken(fabricModel.getClass(), type, error, where, state);
-					marked = true;
-				}
-			}
-			if (marked) return;
-			for (BlockStateModel fabricModel : fabricModels) {
-				FrapiFailures.markBroken(fabricModel.getClass(), MODEL_CLASSES.get(fabricModel.getClass()), error, where, state);
-			}
-			if (fabricModels.isEmpty()) FrapiFailures.unattributed(model.getClass(), error, where, state);
+			FrapiFailures.putDown(model, fabricModels, MODEL_CLASSES, EMIT, error, where, state);
 		}
 
 		/** The Fabric models a model is, or is made of (through nested composites, to a depth no vanilla model reaches). */

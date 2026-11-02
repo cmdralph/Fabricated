@@ -437,6 +437,8 @@ jobs:
           check "frapi broken model fallback OK" "a Fabric model that threw in a chunk section was drawn by NeoForge's renderer from its parts (FRAPI rule 8)"
           check "frapi broken part fallback OK" "a multipart model whose Fabric part threw was drawn by NeoForge's renderer (FRAPI rule 8)"
           check "frapi broken entity model fallback OK" "a Fabric model that threw when drawn as an entity's block was drawn by NeoForge from its parts (FRAPI rule 8)"
+          check "frapi wrapped model fallback OK" "a block whose Fabric model wraps one that threw was drawn by NeoForge's renderer that time, from its parts (FRAPI rule 8)"
+          check "frapi wrapper kept OK" "a Fabric model wrapping one that threw kept Fabric's renderer: the throw was the wrapped model's (FRAPI rule 8, Continuity)"
           for model in BrokenModel BrokenPartModel BrokenEntityModel; do
             count=$(grep -c "Fabric block models of class [^ ]*\$$model (.*) threw while drawn in" "$log" || true)
             if [ "$count" = 1 ]; then
@@ -446,6 +448,19 @@ jobs:
               failed=1
             fi
           done
+          # A throw inside a wrapper (Continuity's models wrap others) is the wrapped model's: logged once, naming the wrapper,
+          # whose class is not marked broken.
+          count=$(grep -c "A model wrapped by a Fabric block model of class [^ ]*\$WrapperCheckModel (.*) threw while drawn in" "$log" || true)
+          if [ "$count" = 1 ]; then
+            echo "PASS: the wrapped model's failure was logged once, naming its wrapper"
+          else
+            echo "::error::FAIL: the wrapped model's failure was logged $count times, not once"
+            failed=1
+          fi
+          if grep -h "Fabric block models of class [^ ]*\$WrapperCheckModel (" "$log"; then
+            echo "::error::FAIL: the wrapper's class was marked broken for a throw of the model it wraps"
+            failed=1
+          fi
           if grep -q "threw while drawn in" "$RUNNER_TEMP/client-fapi/run/logs/fabric-bridge-report.txt"; then
             echo "PASS: the report lists the failure"
           else
@@ -543,6 +558,8 @@ jobs:
           check "frapi item frame OK" "a Fabric item model was drawn in an item frame"
           check "frapi broken model fallback OK" "a Fabric model that threw in a chunk section was drawn by NeoForge's renderer from its quads (FRAPI rule 8)"
           check "frapi broken part fallback OK" "a multipart model whose Fabric part threw was drawn by NeoForge's renderer (FRAPI rule 8)"
+          check "frapi wrapped model fallback OK" "a block whose Fabric model wraps one that threw was drawn by NeoForge's renderer that time, from its quads (FRAPI rule 8)"
+          check "frapi wrapper kept OK" "a Fabric model wrapping one that threw kept Fabric's renderer: the throw was the wrapped model's (FRAPI rule 8, Continuity)"
           for model in BrokenModel BrokenPartModel; do
             count=$(grep -c "Fabric block models of class [^ ]*\$$model (.*) threw while drawn in" "$log" || true)
             if [ "$count" = 1 ]; then
@@ -552,6 +569,19 @@ jobs:
               failed=1
             fi
           done
+          # A throw inside a wrapper (Continuity's models wrap others) is the wrapped model's: logged once, naming the wrapper,
+          # whose class is not marked broken.
+          count=$(grep -c "A model wrapped by a Fabric block model of class [^ ]*\$WrapperCheckModel (.*) threw while drawn in" "$log" || true)
+          if [ "$count" = 1 ]; then
+            echo "PASS: the wrapped model's failure was logged once, naming its wrapper"
+          else
+            echo "::error::FAIL: the wrapped model's failure was logged $count times, not once"
+            failed=1
+          fi
+          if grep -h "Fabric block models of class [^ ]*\$WrapperCheckModel (" "$log"; then
+            echo "::error::FAIL: the wrapper's class was marked broken for a throw of the model it wraps"
+            failed=1
+          fi
           if grep -q "threw while drawn in" "$RUNNER_TEMP/client-fapi/run/logs/fabric-bridge-report.txt"; then
             echo "PASS: the report lists the failure"
           else
@@ -601,6 +631,9 @@ jobs:
           # transform it left pushed never reaches another block.
           check "frapi broken model fallback OK" "a Fabric model that threw in a chunk section was drawn by NeoForge's renderer from its parts (FRAPI rule 8)"
           check "frapi broken part fallback OK" "a multipart model whose Fabric part threw was drawn by NeoForge's renderer (FRAPI rule 8)"
+          # The wrapper isn't marked, so NeoForge's renderer gets the parts made from its quads for that block (the wrapped
+          # model, which throws once, no longer throws there): no fallback line of the wrapped model's own.
+          check "frapi wrapper kept OK" "a Fabric model wrapping one that threw kept Fabric's renderer: the throw was the wrapped model's (FRAPI rule 8, Continuity)"
           for model in BrokenModel BrokenPartModel; do
             count=$(grep -c "Fabric block models of class [^ ]*\$$model (.*) threw while drawn in" "$log" || true)
             if [ "$count" = 1 ]; then
@@ -610,6 +643,19 @@ jobs:
               failed=1
             fi
           done
+          # A throw inside a wrapper (Continuity's models wrap others) is the wrapped model's: logged once, naming the wrapper,
+          # whose class is not marked broken.
+          count=$(grep -c "A model wrapped by a Fabric block model of class [^ ]*\$WrapperCheckModel (.*) threw while drawn in" "$log" || true)
+          if [ "$count" = 1 ]; then
+            echo "PASS: the wrapped model's failure was logged once, naming its wrapper"
+          else
+            echo "::error::FAIL: the wrapped model's failure was logged $count times, not once"
+            failed=1
+          fi
+          if grep -h "Fabric block models of class [^ ]*\$WrapperCheckModel (" "$log"; then
+            echo "::error::FAIL: the wrapper's class was marked broken for a throw of the model it wraps"
+            failed=1
+          fi
           if grep -q "threw while drawn in" "$RUNNER_TEMP/client-fapi/run/logs/fabric-bridge-report.txt"; then
             echo "PASS: the report lists the failure"
           else

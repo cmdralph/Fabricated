@@ -62,7 +62,8 @@ import net.neoforged.neoforge.client.model.DelegateBlockStateModel;
  * <p>Two more Fabric models throw once a vanilla chunk section draws them, after emitting their quads and pushing a
  * transform they never pop (FRAPI rule 8): one the broken test block's model, the other a part of the broken nested
  * test block's multipart model. Each logs when NeoForge's renderer then asks it for its parts, and the transform logs a
- * failure if any later quad reaches it.
+ * failure if any later quad reaches it. A third throws inside a Fabric model wrapping it ({@link WrapperCheckModel}), as
+ * Continuity's models wrap others: the throw is the wrapped model's, so the wrapper's class keeps Fabric's renderer.
  *
  * <p>The test item's model is wrapped after it is baked ({@link ItemCheckModel}): it adds a layer of quads emitted
  * through Fabric's renderer API, and logs once when Fabric's renderer draws them in the hotbar (a screen), in hand, as a
@@ -94,6 +95,9 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 		CustomUnbakedBlockStateModel.register(Identifier.fromNamespaceAndPath("fabricated_testmod_frapi", "broken_part_check"), BrokenPartModel.CODEC);
 		ModelLoadingPlugin.register(plugin -> plugin.modifyItemModelAfterBake().register((model, context) ->
 				context.itemId().equals(FrapiTestMod.FABRIC_ITEM_ID) ? new ItemCheckModel(model) : model));
+		ModelLoadingPlugin.register(plugin -> plugin.modifyBlockModelAfterBake().register((model, context) ->
+				BuiltInRegistries.BLOCK.getKey(context.state().getBlock()).equals(FrapiTestMod.WRAPPED_BROKEN_BLOCK_ID)
+						? new WrapperCheckModel(new BrokenWrappedModel(model)) : model));
 		if (FabricLoader.getInstance().isModLoaded("continuity")) {
 			ModelLoadingPlugin.register(plugin -> plugin.modifyBlockModelAfterBake().register(ModelModifier.WRAP_LAST_PHASE, (model, context) ->
 					context.state().is(Blocks.GLASS) ? new ConnectedCheckModel(model) : model));
@@ -376,6 +380,11 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 			this.name = name;
 		}
 
+		/** Whether it threw (it throws once). */
+		boolean threw() {
+			return threw.get();
+		}
+
 		@Override
 		public void collectParts(RandomSource random, List<BlockModelPart> parts) {
 			if (threw.get() && !fellBack.getAndSet(true)) FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi {} fallback OK", name);
@@ -427,6 +436,48 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 
 		BrokenModel(BlockStateModel wrapped) {
 			super(wrapped, "broken model");
+		}
+	}
+
+	/** The model a {@link WrapperCheckModel} wraps on the wrapped broken test block: its throw is its own, not the wrapper's. */
+	private static final class BrokenWrappedModel extends ThrowingModel {
+		BrokenWrappedModel(BlockStateModel wrapped) {
+			super(wrapped, "wrapped model");
+		}
+	}
+
+	/**
+	 * A Fabric model wrapping another Fabric model, as Continuity's connected texture models wrap the models they are
+	 * given: its own {@code emitQuads} emits what the model it wraps emits, by calling that model's, and its parts are
+	 * that model's. On the wrapped broken test block it wraps one that throws (FRAPI rule 8): the throw is put down to the
+	 * wrapped model, so this class keeps Fabric's renderer. Logs once when Fabricated calls its emitter for a chunk
+	 * section after the model it wraps threw (to draw it, or to make its parts from its quads).
+	 */
+	private static final class WrapperCheckModel implements BlockStateModel, FabricBlockStateModel {
+		private static final AtomicBoolean KEPT = new AtomicBoolean();
+		private final ThrowingModel wrapped;
+
+		WrapperCheckModel(ThrowingModel wrapped) {
+			this.wrapped = wrapped;
+		}
+
+		@Override
+		public void collectParts(RandomSource random, List<BlockModelPart> parts) {
+			wrapped.collectParts(random, parts);
+		}
+
+		@Override
+		public TextureAtlasSprite particleIcon() {
+			return wrapped.particleIcon();
+		}
+
+		@Override
+		public void emitQuads(QuadEmitter emitter, BlockAndTintGetter level, BlockPos pos, BlockState state, RandomSource random, Predicate<@Nullable Direction> cullTest) {
+			boolean afterThrow = wrapped.threw();
+			wrapped.emitQuads(emitter, level, pos, state, random, cullTest);
+			if (afterThrow && level instanceof RenderSectionRegion && !KEPT.get() && seam().equals("Fabricated") && !KEPT.getAndSet(true)) {
+				FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi wrapper kept OK (Fabricated still calls its emitter, at {}, after the model it wraps threw)", pos);
+			}
 		}
 	}
 

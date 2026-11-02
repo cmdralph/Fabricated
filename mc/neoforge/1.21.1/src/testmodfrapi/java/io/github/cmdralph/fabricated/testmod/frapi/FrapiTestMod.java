@@ -36,7 +36,8 @@ import net.minecraft.world.level.block.state.properties.BlockStateProperties;
  * and above them the two blocks whose Fabric models throw ({@link FrapiClientTestMod}). Then, until the game stops, it
  * keeps a copy of the first block falling beside them (drawn as a falling block), a sticky piston pushing and pulling
  * another copy behind them (drawn as a block a piston moves) and the first block breaking (drawn with the breaking
- * overlay).
+ * overlay). Behind the first block goes a block whose Fabric model wraps one that throws, as Continuity's models wrap
+ * others; it is put back every other renewal, so its chunk section is meshed again after the wrapped model threw.
  *
  * <p>It also gives the joining player an item whose model is a Fabric model, held in their main hand (drawn in hand and
  * in the hotbar), and puts one in an item frame on the first block and one on the ground beside the frame, which no
@@ -56,6 +57,8 @@ public final class FrapiTestMod implements ModInitializer {
 	static Item tintedItem;
 	/** An item whose model {@link FrapiClientTestMod} makes a Fabric model. */
 	static Item fabricItem;
+	/** A block whose Fabric model wraps one that throws ({@link FrapiClientTestMod}). */
+	private static Block wrappedBlock;
 
 	// Server thread only.
 	private static @Nullable ServerLevel level;
@@ -63,6 +66,8 @@ public final class FrapiTestMod implements ModInitializer {
 	private static @Nullable BlockPos landing;
 	/** Where the redstone block that powers the piston goes: the piston is above it, the block it moves above that. */
 	private static @Nullable BlockPos pistonPower;
+	/** Where the block whose Fabric model wraps a broken one goes. */
+	private static @Nullable BlockPos wrapped;
 	private static int ticks;
 
 	@Override
@@ -74,6 +79,7 @@ public final class FrapiTestMod implements ModInitializer {
 		Block nestedBlock = register("nested_block");
 		Block brokenBlock = register("broken_block");
 		Block brokenNestedBlock = register("broken_nested_block");
+		wrappedBlock = register("wrapped_broken_block");
 		fabricItem = Registry.register(BuiltInRegistries.ITEM, ResourceLocation.fromNamespaceAndPath(NAMESPACE, "fabric_item"), new Item(new Item.Properties()));
 		ServerPlayConnectionEvents.JOIN.register((listener, sender, server) -> server.execute(() -> {
 			Direction facing = listener.player.getDirection();
@@ -84,6 +90,8 @@ public final class FrapiTestMod implements ModInitializer {
 			level.setBlockAndUpdate(nested, nestedBlock.defaultBlockState());
 			level.setBlockAndUpdate(front.above(), brokenBlock.defaultBlockState());
 			level.setBlockAndUpdate(nested.above(), brokenNestedBlock.defaultBlockState());
+			wrapped = front.relative(facing);
+			level.setBlockAndUpdate(wrapped, wrappedBlock.defaultBlockState());
 			breaking = front;
 			landing = front.relative(facing.getCounterClockWise());
 			level.setBlockAndUpdate(landing.below(), Blocks.STONE.defaultBlockState());
@@ -91,8 +99,8 @@ public final class FrapiTestMod implements ModInitializer {
 			level.setBlockAndUpdate(pistonPower.above(), Blocks.STICKY_PISTON.defaultBlockState().setValue(BlockStateProperties.FACING, Direction.UP));
 			level.setBlockAndUpdate(pistonPower.above(2), terrainBlock.defaultBlockState());
 			for (int i = 3; i <= 4; i++) level.setBlockAndUpdate(pistonPower.above(i), Blocks.AIR.defaultBlockState());
-			LOGGER.info("FABRICATED-TEST frapi block placed at {} (nested model block at {}, broken model blocks above them, piston at {})", front, nested,
-					pistonPower.above());
+			LOGGER.info("FABRICATED-TEST frapi block placed at {} (nested model block at {}, broken model blocks above them, wrapped broken model"
+					+ " block at {}, piston at {})", front, nested, wrapped, pistonPower.above());
 			placeItems(level, listener.player, front, facing);
 			if (FabricLoader.getInstance().isModLoaded("continuity")) placeGlass(level, front.above(2), facing.getClockWise());
 		}));
@@ -105,6 +113,8 @@ public final class FrapiTestMod implements ModInitializer {
 			// Powered every other time: the sticky piston pushes its block up, then pulls it back.
 			boolean powered = level.getBlockState(pistonPower).is(Blocks.REDSTONE_BLOCK);
 			level.setBlockAndUpdate(pistonPower, powered ? Blocks.AIR.defaultBlockState() : Blocks.REDSTONE_BLOCK.defaultBlockState());
+			// Taken away and put back in turn: its chunk section is meshed again, with it, after the wrapped model threw.
+			level.setBlockAndUpdate(wrapped, level.getBlockState(wrapped).is(wrappedBlock) ? Blocks.AIR.defaultBlockState() : wrappedBlock.defaultBlockState());
 		});
 	}
 

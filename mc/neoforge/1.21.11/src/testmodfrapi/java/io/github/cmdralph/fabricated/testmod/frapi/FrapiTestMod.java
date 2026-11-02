@@ -32,7 +32,9 @@ import net.minecraft.world.level.block.state.BlockBehaviour;
  * Fabric model as its part, in front of the joining player, so the client meshes them into a chunk section, and above
  * them the two blocks whose Fabric models throw ({@link FrapiClientTestMod}). Then, until the game stops, it keeps a
  * copy of the first block falling beside them (drawn as a moving block) and the first block breaking (drawn with the
- * breaking overlay) (1.21.11).
+ * breaking overlay) (1.21.11). Behind the first block goes a block whose Fabric model wraps one that throws, as
+ * Continuity's models wrap others; it is put back every other renewal, so its chunk section is meshed again after the
+ * wrapped model threw.
  *
  * <p>It also gives the joining player an item whose model is a Fabric model, held in their main hand (drawn in hand and
  * in the hotbar), and puts one in an item frame on the first block and one on the ground beside the frame, which no
@@ -46,6 +48,8 @@ public final class FrapiTestMod implements ModInitializer {
 	/** Blocks whose Fabric model, or a Fabric part of whose multipart model, throws when drawn (FRAPI rule 8). */
 	static final Identifier BROKEN_BLOCK_ID = Identifier.fromNamespaceAndPath("fabricated_testmod_frapi", "broken_block");
 	static final Identifier BROKEN_NESTED_BLOCK_ID = Identifier.fromNamespaceAndPath("fabricated_testmod_frapi", "broken_nested_block");
+	/** A block whose Fabric model wraps one that throws when drawn (FRAPI rule 8, as Continuity's models wrap others). */
+	static final Identifier WRAPPED_BROKEN_BLOCK_ID = Identifier.fromNamespaceAndPath("fabricated_testmod_frapi", "wrapped_broken_block");
 	/** An item whose model {@link FrapiClientTestMod} makes a Fabric model. */
 	static final Identifier FABRIC_ITEM_ID = Identifier.fromNamespaceAndPath("fabricated_testmod_frapi", "fabric_item");
 	/** Ticks between two falling blocks, and between two renewals of the breaking progress (which the client drops when stale). */
@@ -59,6 +63,8 @@ public final class FrapiTestMod implements ModInitializer {
 	private static @Nullable Level level;
 	private static @Nullable BlockPos breaking;
 	private static @Nullable BlockPos landing;
+	/** Where the block whose Fabric model wraps a broken one goes. */
+	private static @Nullable BlockPos wrapped;
 	private static int ticks;
 
 	@Override
@@ -67,6 +73,7 @@ public final class FrapiTestMod implements ModInitializer {
 		Block nestedBlock = register(NESTED_BLOCK_ID);
 		Block brokenBlock = register(BROKEN_BLOCK_ID);
 		Block brokenNestedBlock = register(BROKEN_NESTED_BLOCK_ID);
+		Block wrappedBlock = register(WRAPPED_BROKEN_BLOCK_ID);
 		ResourceKey<Item> itemKey = ResourceKey.create(Registries.ITEM, FABRIC_ITEM_ID);
 		Item item = Registry.register(BuiltInRegistries.ITEM, itemKey, new Item(new Item.Properties().setId(itemKey)));
 		ServerPlayConnectionEvents.JOIN.register((listener, sender, server) -> server.execute(() -> {
@@ -78,10 +85,13 @@ public final class FrapiTestMod implements ModInitializer {
 			level.setBlockAndUpdate(nested, nestedBlock.defaultBlockState());
 			level.setBlockAndUpdate(front.above(), brokenBlock.defaultBlockState());
 			level.setBlockAndUpdate(nested.above(), brokenNestedBlock.defaultBlockState());
+			wrapped = front.relative(facing);
+			level.setBlockAndUpdate(wrapped, wrappedBlock.defaultBlockState());
 			breaking = front;
 			landing = front.relative(facing.getCounterClockWise());
 			level.setBlockAndUpdate(landing.below(), Blocks.STONE.defaultBlockState());
-			LOGGER.info("FABRICATED-TEST frapi block placed at {} (nested model block at {}, broken model blocks above them)", front, nested);
+			LOGGER.info("FABRICATED-TEST frapi block placed at {} (nested model block at {}, broken model blocks above them, wrapped broken model"
+					+ " block at {})", front, nested, wrapped);
 			placeItems(level, listener.player, item, front, facing);
 			if (FabricLoader.getInstance().isModLoaded("continuity")) placeGlass(level, front.above(2), facing.getClockWise());
 		}));
@@ -91,6 +101,8 @@ public final class FrapiTestMod implements ModInitializer {
 			// Cleared each time (the last copy landed in it), so every copy falls the whole way.
 			for (int i = 0; i <= FALL_HEIGHT; i++) level.setBlockAndUpdate(landing.above(i), Blocks.AIR.defaultBlockState());
 			FallingBlockEntity.fall(level, landing.above(FALL_HEIGHT), terrainBlock.defaultBlockState());
+			// Taken away and put back in turn: its chunk section is meshed again, with it, after the wrapped model threw.
+			level.setBlockAndUpdate(wrapped, level.getBlockState(wrapped).is(wrappedBlock) ? Blocks.AIR.defaultBlockState() : wrappedBlock.defaultBlockState());
 		});
 	}
 
