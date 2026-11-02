@@ -237,6 +237,13 @@ jobs:
             echo "::error::FAIL: a JSON data loader read a file whose fabric:load_conditions fail (CORPUS-49)"
             exit 1
           fi
+          # Fabric's custom ingredients in the codec recipes use, which NeoForge 21.1 builds without upstream's hook
+          # (DEPRECATED-2). A gate.
+          if [ "${{ matrix.target.minecraft }}" = 1.21.1 ] && ! grep -q "FABRICATED-TEST recipe custom ingredient OK" "$RUNNER_TEMP/server-fapi/server.out"; then
+            grep -h "FABRICATED-TEST recipe custom ingredient" "$RUNNER_TEMP/server-fapi/server.out" || true
+            echo "::error::FAIL: a recipe's Fabric custom ingredient doesn't parse (DEPRECATED-2)"
+            exit 1
+          fi
       - name: Energy bridge with Team Reborn's library
         if: ${{ matrix.part == 'server' && !cancelled() && steps.build.outcome == 'success' }}
         run: |
