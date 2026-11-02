@@ -3,6 +3,58 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-02: Parity, the Forge branches' half (task 3 done)
+
+- **`forge` and `forge-legacy` synced with `main`** (#240, #241): the engine's PRE-18, CORPUS-33 and LAMBDA-8 fixes,
+  checked on Forge where a run reaches them: CORPUS-33 by a Fabric biome modification on Forge 61 to 66 (and
+  lithostitched and Terralith loading in the corpus), LAMBDA-8 by load conditions in a JSON data loader on Forge 61 and
+  66.
+- **Both Forge branches:**
+  - **HOLD-2:** content a failed Fabric entrypoint built no longer stops the registries' freeze, and the drop writes
+    the report, which Forge has no later write for.
+  - **The provider policy and the refusals:** a Fabric API module another Forge mod provides is that mod's, and
+    Fabricated's copy, its mixins and its bridges stand down (PROVIDER-1). Sinytra Connector and a second Fabricated
+    jar stop the launch with Fabricated's error (DUP-1), and so does a jar carrying its own copy of Fabric Loader, as
+    Forgified Fabric API does (PROVIDER-2), at once, as beside such a copy Forge can't build its error screen.
+  - **As on NeoForge:** Fabric mods' Mod Menu config screens behind Forge's mod list button, Fabricated's
+    `afterEntrypoints` (it never ran on Forge), entrypoint failures in the report and Forge's loading warnings.
+- **Forge 61 to 66:**
+  - **PACK-5** (new, P2): a world holding a Fabric mod's registry data asked to confirm experimental settings, as Forge
+    gives mods' packs no known-pack identity; a Fabric mod's pack now takes Fabric API's.
+  - **KEYMAP-3** (new, P1): Fabric API's key mapping module refused every key mapping, as Forge creates the game's
+    options before mods load, so a Fabric mod registering one lost its client side. The module is native, its key
+    mappings registered on Forge's event with the keys the player saved.
+  - **HUD-2** (new, P1): Fabric HUD elements attached around a vanilla element, or replacing it, were never drawn, as
+    Forge draws the HUD from layers of its own; the in-game mod wraps those layers.
+  - **SCREEN-1** (P1): Fabric's screen input and drawing events fire from Forge's screen hooks.
+  - **Load conditions on Forge 61:** Forge's conditional decoder also drops a registry entry whose Fabric conditions
+    fail.
+- **Forge 47:**
+  - **FUEL-1** (new, P1): Fabric's fuels didn't burn, as the hook adding them to vanilla's fuel table, which Forge
+    reads, was left out with the rest of upstream's furnace mixin; the in-game mod adds them.
+  - **BREW-1** (new, P1): every `FabricBrewingRecipeRegistry` call threw `NoSuchMethodError`, failing the calling mod's
+    initializer, as Forge 47 replaced vanilla's constructor of a brewing mix; the in-game mod builds each with Forge's.
+  - **HUD-2:** `HudRenderCallback` fires from Forge's `RenderGuiEvent.Post`, as Forge's GUI never calls vanilla's HUD
+    method.
+- **CI gates added** on every Forge version: both client runs (the client with Fabric API was informational), a
+  stand-ins server and a refusal server, load conditions, a biome modification, the failing test mod's dropped holder,
+  the test mod's key mapping, its registry data's lifecycle and, on 1.21.11 and 1.20.1, HUD checks; on 26.x a client
+  test mod for Fabric API's client modules (key mapping, HUD, screens with synthetic input, client commands,
+  lifecycle); on 1.20.1 a fuel and a brewing recipe.
+- **Docs:** `docs/FORGE.md` and `docs/FORGE-LEGACY.md` drop "experimental", take their module tables from the green
+  runs, say which run checks each bridge on which versions, and list what is unsupported on Forge, with the task that
+  takes each on: rendering hooks Forge's code can't take (task 4), item storages in items, the effect events' command
+  context, Fabric mods' own HUD mixins, which apply to vanilla's HUD method but never run, and Forgified Fabric API
+  (task 5), and what Forge's code rules out (interface mixins on Forge 47, some item, lifecycle and object builder
+  hooks). The plans' last UNVERIFIED notes are resolved from Forge's sources.
+- **Found, for task 5:** CORPUS-53 (the Forge 61 to 66 corpus clients stop as the game bootstraps, as in v0.5.1),
+  CORPUS-54 (a corpus mod's crop growth hook pre-flight passes, on Forge 61 and 47), CORPUS-55 (Forge 47's corpus
+  client), and HUD-3 (NeoForge's HUD wrapping misses vanilla's conditions around three elements). PRE-18's end-to-end
+  check on Forge waits behind CORPUS-53.
+- **Decided:** the owner chose to refuse Forgified Fabric API on Forge now and try coexisting in task 5 (2026-11-02).
+- **Verified:** the Forge pull requests' full matrices (runs 41382942938 and 41385466464, every gate on every
+  version) and extended runs (41385577023 and 41386136422, the corpus runs informational).
+
 ## 2026-11-02: Parity, `main`'s half (task 3)
 
 - **NeoForge 21.1:**

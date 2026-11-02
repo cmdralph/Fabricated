@@ -17,8 +17,8 @@ three are the base of this file:
 
 The module tables were first taken from CI run [38491176425](https://github.com/cmdralph/Fabricated/actions/runs/38491176425)
 (Fabricated 0.1.0 development build) and have been edited since; a newer run's `smoke-fabric-api-<version>` report
-is the measured state. The experimental Forge builds are on their own branches
-([*Fabric API modules on Forge*](#fabric-api-modules-on-forge-experimental)).
+is the measured state. The Forge builds are on their own branches
+([*Fabric API modules on Forge*](#fabric-api-modules-on-forge)).
 
 ## Minecraft versions
 
@@ -667,7 +667,9 @@ Upstream's module loads, without the mixins that target code NeoForge rewrote:
 
 - **HUD** (`HudElementRegistry`): NeoForge draws the HUD as layers, so upstream's HUD mixin can't apply.
   Fabricated wraps each of NeoForge's vanilla layers with the Fabric element list of the same vanilla element, so
-  elements attached before or after a vanilla element, replaced or removed, behave as on Fabric. Its wrappers
+  elements attached before or after a vanilla element, replaced or removed, behave as on Fabric, but for one gap: an
+  element attached to the experience level, the held item's name or the spectator tooltip is drawn even in game modes
+  where vanilla doesn't draw that element (HUD-3, task 5). Its wrappers
   run after NeoForge mods registered their layers, so the Fabric elements surround whatever those mods did to the
   vanilla layers. On 1.21.11 the deprecated `HudRenderCallback` fires from NeoForge's `RenderGuiEvent.Post`, at the
   end of the HUD as upstream does.
@@ -1102,12 +1104,12 @@ modules that cascade from it.
 12. ✅ The bridge between Fabric storages and NeoForge's item and fluid capabilities (done).
 13. ✅ `fabric-menu-api-v1` / `fabric-screen-handler-api-v1` on every version (done).
 
-## Fabric API modules on Forge (experimental)
+## Fabric API modules on Forge
 
-The experimental Forge builds are on their own branches, with their own tables: Minecraft Forge 61 to 66 on
-[`forge`](https://github.com/cmdralph/Fabricated/tree/forge) (`docs/FORGE.md`) and Forge 47 on
-[`forge-legacy`](https://github.com/cmdralph/Fabricated/tree/forge-legacy) (`docs/FORGE-LEGACY.md`). The engine is the
-same; what each platform's code changes is in its branch's table.
+The Forge builds are on their own branches, with their own tables and the list of what Forge doesn't support:
+Minecraft Forge 61 to 66 on [`forge`](https://github.com/cmdralph/Fabricated/tree/forge) (`docs/FORGE.md`) and Forge
+47 on [`forge-legacy`](https://github.com/cmdralph/Fabricated/tree/forge-legacy) (`docs/FORGE-LEGACY.md`). The engine
+is the same; what each platform's code changes is in its branch's table.
 
 ## Fabric mods tested
 
