@@ -36,6 +36,7 @@ import io.github.cmdralph.fabricated.core.metadata.FabricModMetadata;
 import io.github.cmdralph.fabricated.core.metadata.FabricModMetadata.EntrypointSpec;
 import io.github.cmdralph.fabricated.core.mixin.MixinConfigFile;
 import io.github.cmdralph.fabricated.core.mixin.MixinFailures;
+import io.github.cmdralph.fabricated.core.mixin.PlatformCoremods;
 import io.github.cmdralph.fabricated.core.mixin.PreflightFinding;
 import io.github.cmdralph.fabricated.core.mixin.PreflightFinding.Severity;
 import io.github.cmdralph.fabricated.core.mixin.RestoredFields;
@@ -459,8 +460,14 @@ public final class Pipeline {
 				mappingTable != null ? MappingResolvers.intermediary(mappingTable) : MappingResolvers.identity(), in::launchArguments);
 		if (eligible.isEmpty()) return assemble(runtime, new Rounds());
 
-		// The game as Fabricated's own mixins leave it: with the vanilla fields they restore, which Fabric mods use (PIP-1).
-		ClassBytesSource gameClasses = RestoredFields.over(in.gameClasses(), in.fabricatedFiles());
+		// The game as the platform's own transformers leave it as it loads, as Mixin sees it (CORPUS-61), and as Fabricated's
+		// own mixins leave it: with the vanilla fields they restore, which Fabric mods use (PIP-1).
+		PlatformCoremods coremods = in.descriptor().coremods(in.minecraftVersion());
+		if (!coremods.isEmpty()) {
+			report.environment(in.descriptor().loaderName() + "'s code transformers", "pre-flight reads the game as they leave it (the spawn calls of "
+					+ coremods.redirectedClasses() + " classes through " + in.descriptor().loaderName() + "'s event hook, fields read through its getters)");
+		}
+		ClassBytesSource gameClasses = RestoredFields.over(coremods.over(in.gameClasses()), in.fabricatedFiles());
 		ClassIndex game = new ClassIndex(gameClasses);
 		// Mixins into the Fabric mods' classes are checked too, against those classes as they will load: on 1.21.11
 		// remapped from intermediary names, as translating each mod remaps it.

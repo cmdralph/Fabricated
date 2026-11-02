@@ -307,7 +307,7 @@ final class CallRepairs extends PreflightPart {
 			int calls = found.calls();
 			// The call itself, when it is in none of the methods: in a hook of NeoForge's that took it over, a static method
 			// taking its receiver first, handled as a static call of that.
-			MethodInsnNode hook = named || overload != null || constructor ? null : hookCall(methods, owner, name, desc);
+			MethodInsnNode hook = named || overload != null || constructor ? null : hookCall(methods, owner, name, desc, pointOnly);
 			// The call of a method NeoForge deprecated, made to its replacement instead (DEPRECATED-1).
 			MethodInsnNode replacement = named || overload != null || constructor || hook != null ? null : replacementCall(methods, owner, name, desc);
 			// An @Inject sees none of the call's arguments: any call of NeoForge's that leads to it will do (HOOK-3).
@@ -353,8 +353,12 @@ final class CallRepairs extends PreflightPart {
 			}
 			String via = pointOnly || overload.equals(desc) ? "" : ", through a bridge handler";
 			if (hook != null) {
+				// A redirect replaces the hook's call, and with it the platform's events around the call: where its handler makes
+				// the call itself, it makes it through the hook, which fires them, as the platform's code does (CORPUS-61).
+				boolean routed = injector.desc.equals(MixinNames.REDIRECT) && overload.equals(desc) && routeThroughHook(handler, owner, name, original, hook) > 0;
 				moved.add(owner.replace('/', '.') + "." + name + original + ", which this game build makes inside " + loader + "'s hook "
-						+ callOwner.replace('/', '.') + "." + callName + overload + "; the injection point is pointed at the hook's call" + via);
+						+ callOwner.replace('/', '.') + "." + callName + overload + "; the injection point is pointed at the hook's call" + via
+						+ (routed ? ", and the handler's own call of it goes through the hook, so " + loader + "'s events around it still fire" : ""));
 				continue;
 			}
 			if (replacement != null) {
@@ -493,21 +497,62 @@ final class CallRepairs extends PreflightPart {
 	 * or through a static method of its class: a hook of NeoForge's patches that took the call over to fire events around
 	 * it, as {@code ClientHooks.drawScreen} for {@code Screen.renderWithTooltipAndSubtitles}. Null when there is none, or
 	 * more than one such hook (several calls of the same one are fine).
+	 *
+	 * <p>With {@code anyReceiver}, for a handler that sees none of the call's arguments, also a hook taking the receiver
+	 * as a supertype of the call's owner and making the call on that supertype, which reaches the owner's method: NeoForge's
+	 * code transformer points every mob's {@code finalizeSpawn} call in its listed classes at
+	 * {@code EventHooks.finalizeMobSpawn}, which takes a {@code Mob} (Friends &amp; Foes' hook at a
+	 * {@code PatrollingMonster}'s, CORPUS-61).
 	 */
-	private MethodInsnNode hookCall(List<MethodNode> methods, String owner, String name, String desc) {
-		String form = staticForm(owner, desc, isStaticCall(owner, name, desc));
+	private MethodInsnNode hookCall(List<MethodNode> methods, String owner, String name, String desc, boolean anyReceiver) {
+		boolean isStatic = isStaticCall(owner, name, desc);
+		String form = staticForm(owner, desc, isStatic);
 		MethodInsnNode found = null;
 		for (MethodNode method : methods) {
 			for (AbstractInsnNode insn : method.instructions) {
-				if (!(insn instanceof MethodInsnNode call) || call.getOpcode() != Opcodes.INVOKESTATIC || !call.owner.startsWith(MixinNames.NEOFORGE_PACKAGE)
-						|| !call.desc.equals(form) && insertedArgument(form, call.desc) < 0) continue;
+				if (!(insn instanceof MethodInsnNode call) || call.getOpcode() != Opcodes.INVOKESTATIC || !call.owner.startsWith(MixinNames.NEOFORGE_PACKAGE)) continue;
+				String receiver = owner;
+				if (!call.desc.equals(form) && insertedArgument(form, call.desc) < 0) {
+					receiver = anyReceiver && !isStatic ? supertypeReceiver(call.desc, owner, desc) : null;
+					if (receiver == null) continue;
+				}
 				if (found != null && found.owner.equals(call.owner) && found.name.equals(call.name) && found.desc.equals(call.desc)) continue;
-				if (!makesCall(call.owner, call.name, call.desc, owner, name, desc, 2)) continue;
+				if (!makesCall(call.owner, call.name, call.desc, receiver, name, desc, 2)) continue;
 				if (found != null) return null;
 				found = call;
 			}
 		}
 		return found;
+	}
+
+	/**
+	 * The type a static hook's descriptor takes first, when that is a supertype of the call's {@code owner} and the rest
+	 * is the call's descriptor; null otherwise.
+	 */
+	private String supertypeReceiver(String hookDesc, String owner, String desc) {
+		Type[] args = Type.getArgumentTypes(hookDesc);
+		if (args.length == 0 || args[0].getSort() != Type.OBJECT) return null;
+		String receiver = args[0].getInternalName();
+		if (receiver.equals(owner) || !hookDesc.equals(staticForm(receiver, desc, false)) || !isSubtype(owner, receiver)) return null;
+		return receiver;
+	}
+
+	/**
+	 * Points the handler's own instance calls of {@code owner.name(desc)} at the hook, which takes the receiver first and
+	 * the same arguments, so it leaves the stack as the call did. Returns how many it pointed.
+	 */
+	private static int routeThroughHook(MethodNode handler, String owner, String name, String desc, MethodInsnNode hook) {
+		if (handler.instructions == null) return 0;
+		int routed = 0;
+		for (AbstractInsnNode insn = handler.instructions.getFirst(); insn != null; insn = insn.getNext()) {
+			if (!(insn instanceof MethodInsnNode call) || call.getOpcode() != Opcodes.INVOKEVIRTUAL && call.getOpcode() != Opcodes.INVOKEINTERFACE
+					|| !call.owner.equals(owner) || !call.name.equals(name) || !call.desc.equals(desc)) continue;
+			MethodInsnNode through = new MethodInsnNode(Opcodes.INVOKESTATIC, hook.owner, hook.name, hook.desc, false);
+			handler.instructions.set(call, through);
+			insn = through;
+			routed++;
+		}
+		return routed;
 	}
 
 	/** The descriptor of a call as a static method taking the receiver first, unless the call is static already. */

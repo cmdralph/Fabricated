@@ -8,6 +8,7 @@ import java.util.stream.Collectors;
 
 import io.github.cmdralph.fabricated.core.accesswidener.AccessTransformerConverter;
 import io.github.cmdralph.fabricated.core.json.Json;
+import io.github.cmdralph.fabricated.core.mixin.PlatformCoremods;
 
 /**
  * How the platform's loader learns of a translated Fabric mod (docs/PORTING.md §6 item 5): where it reads a mod's
@@ -64,6 +65,12 @@ public interface PlatformDescriptor {
 		@Override
 		public Map<String, String> privateFields() {
 			return AccessTransformerConverter.FORGE_PRIVATE_FIELDS;
+		}
+
+		/** None described yet: Forge's coremods are the Forge sync's to describe (CORPUS-61). */
+		@Override
+		public PlatformCoremods coremods(String minecraftVersion) {
+			return PlatformCoremods.NONE;
 		}
 
 		/**
@@ -151,6 +158,14 @@ public interface PlatformDescriptor {
 	 */
 	default Map<String, String> privateFields() {
 		return AccessTransformerConverter.NEOFORGE_PRIVATE_FIELDS;
+	}
+
+	/**
+	 * The platform's own transformers of game classes, which change them as they load before Mixin applies any mod's
+	 * mixins: pre-flight reads the game's classes as they leave them (CORPUS-61). NeoForge's by default.
+	 */
+	default PlatformCoremods coremods(String minecraftVersion) {
+		return PlatformCoremods.neoForge(minecraftVersion);
 	}
 
 	/**

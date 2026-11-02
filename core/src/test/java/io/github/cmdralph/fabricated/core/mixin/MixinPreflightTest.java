@@ -2704,6 +2704,109 @@ class MixinPreflightTest {
 	}
 
 	@Test
+	void aHookAtASpawnCallNeoForgesTransformerPointsAtItsEventHookMovesToTheHook() throws Exception {
+		// CORPUS-61: NeoForge's code transformer points each finalizeSpawn call in NaturalSpawner, PatrolSpawner and the other
+		// listed classes at EventHooks.finalizeMobSpawn as they load, before Mixin applies a mod's mixins: Carpet's @Redirect of
+		// the call in NaturalSpawner, and Friends & Foes' @Inject at a PatrollingMonster's in PatrolSpawner, found nothing there.
+		String mob = PlatformCoremodsTest.MOB;
+		String hooks = PlatformCoremodsTest.HOOKS;
+		String finalize = PlatformCoremodsTest.FINALIZE;
+		String hookDesc = PlatformCoremodsTest.FINALIZE_HOOK;
+		byte[] carpet = spawnerMixin("carpet/mixins/NaturalSpawnerMixin", PlatformCoremodsTest.SPAWNER, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "spawnEntity", hookDesc, null, null);
+			AnnotationVisitor ann = mv.visitAnnotation(REDIRECT, false);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "spawnCategoryForPosition");
+			methods.visitEnd();
+			AnnotationVisitor at = ann.visitAnnotation("at", AT);
+			at.visit("value", "INVOKE");
+			at.visit("target", "L" + mob + ";finalizeSpawn" + finalize);
+			at.visitEnd();
+			ann.visitEnd();
+			mv.visitCode();
+			for (int i = 0; i < 5; i++) mv.visitVarInsn(Opcodes.ALOAD, i);
+			mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, mob, "finalizeSpawn", finalize, false);
+			mv.visitInsn(Opcodes.ARETURN);
+			mv.visitMaxs(5, 5);
+			mv.visitEnd();
+		});
+		byte[] friendsAndFoes = spawnerMixin("com/faboslav/friendsandfoes/mixin/PatrolSpawnerMixin", PlatformCoremodsTest.PATROLS, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "onSpawnEntity",
+					"(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;)V", null, null);
+			AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "spawnPatrolMember");
+			methods.visitEnd();
+			AnnotationVisitor ats = ann.visitArray("at");
+			AnnotationVisitor at = ats.visitAnnotation(null, AT);
+			at.visit("value", "INVOKE");
+			at.visit("target", "L" + PlatformCoremodsTest.PATROLLING + ";finalizeSpawn" + finalize);
+			at.visitEnd();
+			ats.visitEnd();
+			ann.visit("cancellable", true);
+			ann.visitEnd();
+			mv.visitCode();
+			mv.visitInsn(Opcodes.RETURN);
+			mv.visitMaxs(0, 1);
+			mv.visitEnd();
+		});
+		String carpetConfig = "{\"required\":true,\"package\":\"carpet.mixins\",\"mixins\":[\"NaturalSpawnerMixin\"]}";
+		String fnfConfig = "{\"required\":true,\"package\":\"com.faboslav.friendsandfoes.mixin\",\"mixins\":[\"PatrolSpawnerMixin\"]}";
+		Map<String, byte[]> jars = PlatformCoremodsTest.game();
+		Map<String, byte[]> mod = new HashMap<>(Map.of("carpet/mixins/NaturalSpawnerMixin", carpet,
+				"com/faboslav/friendsandfoes/mixin/PatrolSpawnerMixin", friendsAndFoes));
+
+		// The game as its jars have it makes both calls: pre-flight passed both, and Mixin then failed them.
+		ClassIndex asJars = new ClassIndex(jars::get);
+		assertTrue(preflight(asJars, mod::get, ClassBytesSource.EMPTY, false).check("carpet.mixins.json", MixinConfigFile.parse(carpetConfig), Refmap.EMPTY, Set.of()).isEmpty());
+		// As NeoForge's transformer leaves it, it makes neither, and moves both to its hook's call.
+		ClassIndex asLoaded = new ClassIndex(PlatformCoremods.neoForge("1.21.1").over(jars::get));
+		for (String[] each : List.of(new String[] {"carpet.mixins.json", carpetConfig, "carpet/mixins/NaturalSpawnerMixin"},
+				new String[] {"friendsandfoes.mixins.json", fnfConfig, "com/faboslav/friendsandfoes/mixin/PatrolSpawnerMixin"})) {
+			MixinConfigFile config = MixinConfigFile.parse(each[1]);
+			assertFalse(preflight(asLoaded, mod::get, ClassBytesSource.EMPTY, false).check(each[0], config, Refmap.EMPTY, Set.of()).isEmpty(), each[2]);
+			List<PreflightFinding> notes = new ArrayList<>();
+			Map<String, byte[]> repaired = preflight(asLoaded, mod::get, ClassBytesSource.EMPTY, false).repairs(each[0], config, Refmap.EMPTY, Set.of(), notes);
+			assertEquals(1, notes.size(), notes.toString());
+			assertTrue(notes.getFirst().message().contains("inside NeoForge's hook " + hooks.replace('/', '.') + ".finalizeMobSpawn" + hookDesc), notes.toString());
+			ClassNode node = new ClassNode();
+			new ClassReader(repaired.get(each[2] + ".class")).accept(node, 0);
+			MethodNode handler = node.methods.stream().filter(m -> Annotations.find(m, REDIRECT) != null || Annotations.find(m, INJECT) != null).findFirst().orElseThrow();
+			AnnotationNode injector = Annotations.find(handler, REDIRECT) != null ? Annotations.find(handler, REDIRECT) : Annotations.find(handler, INJECT);
+			Object at = Annotations.value(injector, "at");
+			AnnotationNode point = at instanceof AnnotationNode single ? single : Annotations.list(at).getFirst();
+			assertEquals("L" + hooks + ";finalizeMobSpawn" + hookDesc, Annotations.value(point, "target"), each[2]);
+			assertTrue(node.methods.stream().noneMatch(m -> m.name.contains("$fabricated")), "no bridge: " + each[2]);
+			mod.put(each[2], repaired.get(each[2] + ".class"));
+			List<PreflightFinding> after = preflight(asLoaded, mod::get, ClassBytesSource.EMPTY, false).check(each[0], config, Refmap.EMPTY, Set.of());
+			assertTrue(after.isEmpty(), after.toString());
+		}
+		// Carpet's handler makes the call itself when it doesn't mock the spawn: through the hook, which fires NeoForge's
+		// spawn event, as the call it replaced did.
+		assertTrue(callsIn(mod.get("carpet/mixins/NaturalSpawnerMixin")).contains(hooks + ".finalizeMobSpawn" + hookDesc));
+		assertFalse(callsIn(mod.get("carpet/mixins/NaturalSpawnerMixin")).contains(mob + ".finalizeSpawn"));
+	}
+
+	/** The calls a class's methods make, as owner.name+desc. */
+	private static List<String> callsIn(byte[] data) {
+		return PlatformCoremodsTest.calls(data).stream().map(c -> c.owner + "." + c.name + c.desc).toList();
+	}
+
+	/** A mixin into {@code target}; {@code body} adds members. */
+	private static byte[] spawnerMixin(String name, String target, Consumer<ClassWriter> body) {
+		ClassWriter cw = new ClassWriter(0);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, name, null, "java/lang/Object", null);
+		AnnotationVisitor m = cw.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false);
+		AnnotationVisitor values = m.visitArray("value");
+		values.visit(null, Type.getObjectType(target));
+		values.visitEnd();
+		m.visitEnd();
+		body.accept(cw);
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	@Test
 	void anInjectionTakingTheParametersVanillasMethodHasGetsABridgeTakingNeoForgesOneMore() throws Exception {
 		// Ledger's hooks into FireBlock.checkBurnOut take vanilla's parameters, then a @Local after the callback info, which
 		// SIG-1's bridge doesn't carry; NeoForge's build adds the side the fire burns from.
