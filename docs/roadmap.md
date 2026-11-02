@@ -88,7 +88,7 @@ resume from it.
 | 1 | Rethink the project and the spec: the conclusions, the beta criteria, the FRAPI and difficult-mods plans (below) | Done |
 | 2 | CI and workflows: the matrix from what a change touches, caching, fewer game boots per job, with times before and after | Done (#236, #237, #238) |
 | 3 | Parity on every platform and version, and the crashes v0.5 left open | Done (#239, #240, #241); PRE-18's check on Forge carried to task 5, behind CORPUS-53 |
-| 4 | Fabric's renderer API on NeoForge and Forge (*FRAPI plan*) | NeoForge's half done (#243: R1 to R4, R6, R7; FRAPI-5 to FRAPI-7 and PACK-6 fixed); Forge's (R5) next |
+| 4 | Fabric's renderer API on NeoForge and Forge (*FRAPI plan*) | Done (#243, #244, #245: R1 to R7; FRAPI-5 to FRAPI-9 and PACK-6 fixed); R8 stays a candidate |
 | 5 | General compatibility, the difficult mods' Fabric builds first (*Difficult mods*) | |
 | 6 | Optimization, cleanup and bug fixes, no features | |
 | 7 | Release v0.6.0-beta | |
@@ -198,7 +198,7 @@ gates. Work that serves none of the criteria below goes into a track for after t
 |---|---|---|---|
 | The test mods, with and without Fabric API, server and client | gates | gates (task 3) | gates (task 3) |
 | Fabric API's client modules (key mappings, HUD, screens, client commands) | gates on 26.x and 1.21.1; 1.21.11's stand-ins lack them | gates on 26.x (the client API test mod); on 1.21.11 the forge test mod's key binding and HUD checks | the forge test mod's HUD callback and screen input checks |
-| Fabric's renderer and model APIs (the renderer test mod: sections, nested models, moving blocks, the breaking overlay, items, blocks drawn as entities, broken models) | gates on every version (task 4) | none yet (task 4, R5) | none yet (task 4, R5) |
+| Fabric's renderer and model APIs (the renderer test mod: sections, nested models, moving blocks, the breaking overlay, items, blocks drawn as entities, broken models) | gates on every version (task 4) | gates on every version (task 4, R5), minecarts' blocks included; Forge 66's glow outline informational | gates (task 4, R5), a piston's block included; blocks drawn as entities keep vanilla's quads, as upstream on 1.20.1 |
 | Sodium and Iris for NeoForge | gates on 26.x; 1.21.11 informational | — (no Forge builds) | — |
 | The Fabric builds of Sodium and Iris, with a shader pack | informational on 26.x (they reach a world on 26.3) | after NeoForge, where they have builds (task 5) | as Forge 61 to 66 |
 | OneConfig and PolyPlus; malilib with MiniHUD and Tweakeroo | informational (both reach a world on 26.3) | not run | not run |
@@ -221,7 +221,7 @@ change costing more than 10% on either says why in its pull request.
    v0.5.1-alpha on each platform (FRAPI's status included) and what to do on upgrade.
 5. The owner chooses the version and approves the tag, as for every release.
 
-**What blocks it** (2026-11-02, NeoForge's half of task 4 done): on Forge, the renderer test mod's gates (R5) and PRE-18 until a corpus client checks it,
+**What blocks it** (2026-11-02, task 4 done): on Forge, PRE-18 until a corpus client checks it,
 which CORPUS-53 now stops first (CORPUS-33, LAMBDA-8 and HOLD-2 are fixed, and task 3 fixed PACK-5, KEYMAP-3, HUD-2,
 FUEL-1 and BREW-1 on the way); everywhere, SEC-5, the targets not yet gates and the launch baselines. The corpus
 findings task 5 takes (CORPUS-50 to 55 among them) block only where a run shows them on a mod the beta names, and the
@@ -261,7 +261,8 @@ Work items, by how many Fabric mods they reach:
 chunk workers allocate over a fixed number of section rebuilds, with and without Fabric models) is added if it holds
 between runs; otherwise rule 7 stands as it is.
 
-**Status (2026-11-02).** NeoForge's half is done (#243), every check a gate unless said:
+**Status (2026-11-02).** Done on every platform (#243 for NeoForge, #244 and #245 for Forge), every check a gate
+unless said:
 
 - **R1:** rule 8 on every NeoForge seam (`FrapiFailures`, `44d841b`): a model that throws in a section, as a moving
   block, with the overlay or as an entity's block is drawn by NeoForge from then on, logged once and in the report,
@@ -281,7 +282,14 @@ between runs; otherwise rule 7 stands as it is.
   26.1.2 and 26.2 (every block logs `seam=other`, extended run 41400541531); it has no 1.21.11 or 26.3 build. Its own
   modules' answers there are its own (the test mod's checks of them fail, informational).
 - **R8:** stays a candidate.
-- **Forge (R5):** next, on both Forge branches.
+- **R5:** the renderer test mod on both Forge branches, its checks gated on every Forge version (runs 41421652876
+  and 41423804163). Rule 8 at Indigo's entry points on Forge 61 to 66 (`4169249`), where upstream's hooks draw every
+  block; FRAPI-8 on Forge 61, whose moved code left Fabric models undrawn as moving blocks, with the overlay and as
+  entities' blocks; FRAPI-9 on Forge 47 (`b020730`), where Fabric models were invisible, as FRAPI-5 on 1.21.1, now
+  drawn through Indigo in chunk sections, falling, moved by a piston, with the overlay and through `renderBatched`. The guards load only with
+  Fabric's renderer API (`FrapiMixinPlugin`, `a46fbae`). Forge 47's blocks drawn as entities keep vanilla's quads,
+  as upstream on 1.20.1, and its overlay needs no flicker fix (Forge's own). Forge 66's glow outline stays
+  informational.
 
 ### Difficult mods (task 5)
 
@@ -376,8 +384,10 @@ logs become findings, and the corpora grow by the mods they name.
   - **Decided:** the owner deferred Forge's item storages in items and the effect events' hook to task 5, listed as
     unsupported until then (2026-11-01), and chose to refuse Forgified Fabric API on Forge now and try coexisting in
     task 5 (2026-11-02).
-- **Task 4 (FRAPI):** the plan above; NeoForge's half done (its *Status*), Forge's (R5) next. Carried to task 5:
-  CORPUS-56 and MODEL-4.
+- **Task 4 (FRAPI):** done (the plan's *Status*). Carried to task 5: CORPUS-56, MODEL-4, the guards in upstream's
+  overwritten methods against a mod overwriting them at a higher priority, and PACK-6 checked on Forge; to task 6,
+  the Forge configs' rows in `MIXINS.md` and what a Fabric model's throw in a chunk section costs on Forge 47 (about
+  1.4 s of a worker in R5's run).
 - **Task 5 (compatibility):** the difficult mods above; then the corpora by impact, the login queries candidate,
   `preLaunch` moved, ENTRY-1, LINK-3, PRE-19 and KEYMAP-1. On Forge: the corpus stops (CORPUS-53 to 55) and PRE-18's
   check, item storages in items, the effect events' hook, Fabric mods' own HUD mixins and coexisting with Forgified
@@ -404,14 +414,13 @@ each Fabric API module's status per platform in [`COMPATIBILITY.md`](COMPATIBILI
 | Native Fabric API modules | 17 (18 on 1.21.1: particles) | 3 (`fabric-api-base`, `fabric-loot-api-v3`, the key mapping module, KEYMAP-3) | 6 (`fabric-api-base`, biome, both loot modules, dimensions, particles) |
 | Bridges to the platform | fluid types, storages and energy with capabilities, plugins of other mods, custom values, renderer API | fluid types, storages with capabilities (on blocks, fluids in items), tags' `fabric:remove`, default attributes (Forge 64 to 66), advancement events (Forge 65 and 66), block break, sleep and after-damage events (BREAK-1, SLEEP-1, DAMAGE-1), load conditions in Forge 61's conditional decoder, a Fabric mod's pack identity (PACK-5), screen events (SCREEN-1), HUD elements on Forge's layers (HUD-2) | fluid types, storages with capabilities (on blocks, fluids in items), tags' `fabric:remove`, block break and sleep events (BREAK-1, SLEEP-1, SLEEP-2), Fabric fuels and brewing recipes (FUEL-1, BREW-1), `HudRenderCallback` (HUD-2) |
 | Networking | native, on NeoForge's payloads | upstream's module: a payload round trip with the integrated server (checked with Fabric API) | upstream's module: a channel round trip with the integrated server (checked with Fabric API) |
-| Rendering (renderer API, models, Sodium and Iris for NeoForge) | yes | upstream's modules: Indigo builds chunk sections on all four (SUPER-1, LOCAL-4), Fabric's colour providers are read from Forge's map (COLOR-1), and Fabric's block dust tint event is asked where Forge 61 decides the tint (PART-2) | upstream's renderer API, Indigo, `fabric-rendering-v1` and model loading load, with Fabric's colour providers read from Forge's maps (COLOR-1), model loading's constructor hook wrapped (CTOR-4) and its before-bake hook moved to the overload Forge's code went to (MODEL-3); particles Fabricated's own, on Forge's particle engine (PART-1) |
+| Rendering (renderer API, models, Sodium and Iris for NeoForge) | yes | upstream's modules: Indigo builds chunk sections on all four (SUPER-1, LOCAL-4), Fabric's colour providers are read from Forge's map (COLOR-1), and Fabric's block dust tint event is asked where Forge 61 decides the tint (PART-2); Fabric models drawn through Indigo with rule 8 at its entry points, and on Forge 61 from Fabricated's seams where upstream's hooks are left out (FRAPI-8; CI's renderer test mod) | upstream's renderer API, Indigo, `fabric-rendering-v1` and model loading load, with Fabric's colour providers read from Forge's maps (COLOR-1), model loading's constructor hook wrapped (CTOR-4) and its before-bake hook moved to the overload Forge's code went to (MODEL-3); particles Fabricated's own, on Forge's particle engine (PART-1); Fabric models drawn through Indigo from Fabricated's seams, as Forge's renderers call its own overloads, with rule 8 (FRAPI-9; CI's renderer test mod) |
 | CI | server and client runs gated, and checks in the Fabric API runs; corpus runs informational | both server runs and both client runs gated, with a stand-ins server and a refusal server; corpus runs informational | as Forge 61 to 66 |
 | Releases | supported; beta from 0.6.0 | experimental until 0.6.0-beta, then held to the same bar (decision 1) | experimental until 0.6.0-beta, then held to the same bar (decision 1) |
 
 - **`main`:** NeoForge for 1.21.1, 1.21.11, 26.1.2, 26.2 and 26.3, every line stable (NeoForge tagged `26.3.0-stable`; CI
   pins 26.3.0.95 and no version is experimental any more).
-- **Next** (the v0.6.0-beta pass, NeoForge's half of task 4 done): FRAPI's renderer test mod on both Forge branches (task 4, R5); then
-  (task 5) the corpus stops (CORPUS-53 to 55) and PRE-18's check, the effect events' hook into Brigadier, which Forge
+- **Next** (the v0.6.0-beta pass, task 4 done): task 5: the corpus stops (CORPUS-53 to 55) and PRE-18's check, the effect events' hook into Brigadier, which Forge
   loads without mixins, item storages in items (a backpack's) with Forge's item handlers on stacks, Fabric mods' own
   HUD mixins, and coexisting with Forgified Fabric API.
 - **Decided** (`RESEARCH.md` §8): Forge 47.4 for 1.20.1, the shared modules kept loadable on Java 17, ForgeGradle for
@@ -469,8 +478,7 @@ The Fabric renderer API on NeoForge:
 | Forgified Fabric API's renderer beside Fabricated's seams (R7) | they stand down (extended CI) | no build | they stand down | they stand down | no build |
 | Continuity's connected textures (R6, informational) | not seen: its model draws the glass through Fabricated's seam, with vanilla's sprite (CORPUS-56) | not seen: its sprite hook left out (CORPUS-56) | same | same | same |
 
-- **Done (task 4, NeoForge's half):** the *FRAPI plan*'s R1 to R4, R6 and R7, with FRAPI-5 to FRAPI-7 and PACK-6
-  fixed; its *Status* has each.
+- **Done (task 4):** the *FRAPI plan*'s R1 to R7, with FRAPI-5 to FRAPI-9 and PACK-6 fixed; its *Status* has each.
 - **Done:** M1 (Fabric block models in chunk sections, `8e80c6e`, `0dbdfda`, `08aff28`), M2 (moving blocks and the
   breaking overlay, `4db3deb`), M3 (Fabric models inside vanilla multipart and weighted models, `4db3deb`), M4
   (Fabric's model formats through NeoForge's parsers, `c02d85f`), NeoForge-aware `emitQuads` defaults (`75e5867`).
