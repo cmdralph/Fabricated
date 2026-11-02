@@ -190,28 +190,36 @@ by the server runs (the colours, screens, key mappings and config screens by the
   Fabric API, client run). Forge 47 moved the bake's code into an overload that also takes the sprite getter, where
   pre-flight moves upstream's hooks, its before-bake variable modifier too (MODEL-3).
 - **Fabric's renderer API (task 4, R5):** a Fabric block model (one with its own emitter) is drawn in chunk sections,
-  alone and inside a vanilla multipart model, as a falling block, with the breaking overlay and as a minecart's block,
-  and a Fabric item model's quads in the hotbar, the hand, an item frame and on the ground (Forge 61 to 66, with Fabric
-  API, client run; Forge 47 is next). Upstream's hooks send every block through Fabric's renderer, as on Fabric. Forge
-  61 moved the code three of them hook into, so pre-flight leaves out those for moving blocks, the breaking overlay and
-  blocks drawn as entities, and the in-game mod sends a block whose model is a Fabric model, or a multipart or weighted
-  model with one among its parts, to Fabric's renderer there instead; every other block keeps Forge's path. FRAPI rule
-  8: where Fabric's renderer (Indigo) calls a block model's emitter, a Fabric model that throws fails alone (Forge 61 to
-  66). The block is drawn from the model's parts, the failure is logged once and listed in the report, and the model's
-  class is drawn from its parts from then on, but not the class of a model wrapping it (as Continuity's wrap others). A
-  transform it left pushed on the emitter is popped, so it never reaches another block. The renderer test mod checks
-  each of these with a model that throws in a chunk section, as a multipart model's part, as a minecart's block, and
-  inside a model wrapping it. The outline Fabric's renderer draws around a glowing falling block is checked on Forge 65;
-  on Forge 66 it isn't seen yet. Fabricated's guards apply only with Fabric's renderer API installed (they name its
-  types), and the two that sit in methods upstream replaces (blocks drawn as entities, and the breaking overlay on Forge
-  64) apply after upstream's replacement.
+  alone and inside a vanilla multipart model, as a falling block and with the breaking overlay, on Forge 61 to 66 as a
+  minecart's block too and on Forge 47 as a block a piston moves, and a Fabric item model's quads in the hotbar, the
+  hand, an item frame and on the ground (all five, with Fabric API, client run). On Forge 61 to 66 upstream's hooks send
+  every block through Fabric's renderer, as on Fabric. Forge 61 moved the code three of them hook into, so pre-flight
+  leaves out those for moving blocks, the breaking overlay and blocks drawn as entities, and the in-game mod sends a
+  block whose model is a Fabric model, or a multipart or weighted model with one among its parts, to Fabric's renderer
+  there instead; every other block keeps Forge's path. On Forge 47 upstream's hooks miss Forge's chunk section compiler
+  and block renderers, which call Forge's overloads taking model data and a render type: pre-flight leaves out the
+  chunk section redirect and keeps the hook that prepares Indigo's terrain context, and the in-game mod has Indigo draw
+  such a block, once (at its first render type), in chunk sections, as a falling block, as a block a piston moves, with
+  the breaking overlay and wherever the block renderer draws one block. Items keep Indigo's own hook there, and blocks
+  drawn as entities their vanilla quads, as upstream draws them on 1.20.1. FRAPI rule 8: where Fabric's renderer
+  (Indigo) calls a block model's emitter, a Fabric model that throws fails alone. The block is drawn from the model's
+  parts (on Forge 47 by Forge's renderer, from the quads the model gives it), the failure is logged once and listed in
+  the report, and the model's class is drawn that way from then on, but not the class of a model wrapping it (as
+  Continuity's wrap others). A transform it left pushed is popped, so it never reaches another block. The renderer test
+  mod checks each of these with a model that throws in a chunk section, as a multipart model's part, inside a model
+  wrapping it, and on Forge 61 to 66 as a minecart's block. The outline Fabric's renderer draws around a glowing falling
+  block is checked on Forge 65; on Forge 66 it isn't seen yet. Fabricated's guards apply only with Fabric's renderer API
+  installed (they name its types), and the two that sit in methods upstream replaces (blocks drawn as entities, and the
+  breaking overlay on Forge 64) apply after upstream's replacement.
 
 What else differs on Forge, for Fabric mods in general:
 
 - **Covered by Forge itself:** upstream's fix for emerald trades with other mods' villager types, as Forge 61 to 66
-  skip the same check and give no trade for a type without one, and upstream's DataFixerUpper hooks for a dimension
-  whose chunk generator type no mod registers, as Forge's patch to the same schema keeps the generator's data (all
-  five). The report lists those hooks as left out or skipped.
+  skip the same check and give no trade for a type without one, upstream's DataFixerUpper hooks for a dimension whose
+  chunk generator type no mod registers, as Forge's patch to the same schema keeps the generator's data (all five), and
+  upstream's fix for the breaking overlay's flicker on renderer API models (`OverlayVertexConsumer`), as Forge 47 picks
+  the overlay's direction the same stable way (its `stabilizeDirectionGetNearest` option, on by default). The report
+  lists those hooks as left out or skipped.
 - **Loading errors:** when Forge refuses a mod file or a dependency is missing, it loads only Minecraft and Forge to
   show the error. Fabricated then leaves the game's classes alone, so Forge's own error is what the player sees
   (LOADERR-1). Forge itself refuses two Fabric jars in the corpus: JEI's on Forge 61 to 66 (its module-info) and YACL
@@ -246,8 +254,6 @@ instead. Unless a task is named, nothing is planned for them yet.
 
 **Taken on by a later task:**
 
-- **Rendering on Forge 47 (task 4, R5).** Indigo's hook into chunk rebuilding and the breaking overlay on renderer API
-  models (`OverlayVertexConsumer`).
 - **Rendering hooks outside the renderer test mod (task 5).** A Fabric model's particle sprite for the screen effect
   inside a block (`ScreenEffectRenderer`, on Forge 66 `LevelExtractor`; Forge 61 to 66) and for block markers
   (`BlockMarker`, Forge 64 to 66), one of rendering-v1's GUI renderer hooks (`GuiRenderer.executeDraw`) and its block
