@@ -41,8 +41,8 @@ One entry per working session, newest first: what changed, and how it was verifi
   creates before it loads mods, is skipped for that call with a warning (ENTRY-2, Bobby); a `@ModifyArgs` into a lambda
   NeoForge's build gives one more value gets a bridge, and one whose handler fits no target is left out before Mixin
   could stop the launch (CORPUS-58, Ledger's anvil hook); a lambda named as vanilla names it whose creating method the
-  patch gave a parameter is found in vanilla's place, as the one method of that name (LAMBDA-9, Litematica's schematic
-  rendering on 26.2); a variable modifier that picks its local by its ordinal, at a load of it, moves to the method the
+  patch gave a parameter is found in vanilla's place, as the one method of that name or the one the method kept with
+  vanilla's descriptor calls (LAMBDA-9, Litematica's schematic rendering on 26.2); a variable modifier that picks its local by its ordinal, at a load of it, moves to the method the
   platform reduced the method to a call of, where vanilla's code shows the ordinal names the same local there, at
   vanilla's load (PRE-19, Puzzles Lib's break speed hook in Forge 47's `getDigSpeed`; core's tests only, as Forge 47
   doesn't read vanilla's code yet: the Forge sync).
@@ -66,14 +66,15 @@ One entry per working session, newest first: what changed, and how it was verifi
   Moonlight's fuel data map naming Supplementaries' tags); the system property FML sets for an empty log marker, which
   no logging reads, removed before Fabric mods run (CORPUS-60, Ledger's configuration); a mixin failing in one of the
   game's worker threads recorded for the next launch to leave out, as APPLY-1 records the others (APPLY-2).
-- **Rendering, FRAPI rule 8** (1.21.1, CORPUS-56): a throw inside a model another wraps through Fabric's
-  `ForwardingBakedModel` is held where the wrapper called it until Fabricated's Indigo draw returns, with the
-  transforms the wrapped model left popped, so the wrapper finishes its call; the draw then takes the throw back and
-  NeoForge's renderer draws the block, as before. Continuity wraps every block's model and keeps a per-thread transform
-  active through that call: a wrapped model's throw left it active, and that worker thread drew no connected textures
-  for the rest of the session (R6 saw it 20 ms after the test mod's broken model threw on the same thread). R6's check
-  now wraps glass's model in a phase after every other wrapper, and logs Continuity's state where it sees no connected
-  texture.
+- **Rendering, FRAPI rule 8** (CORPUS-56): a throw inside a model another wraps through Fabric's wrapper class
+  (`ForwardingBakedModel` on 1.21.1, `WrapperBlockStateModel` on 1.21.11 and 26.x) is held where the wrapper called it
+  until Fabricated's draw of the Fabric model returns, with the transforms the wrapped model left popped, so the wrapper
+  finishes its call; the draw then takes the throw back and NeoForge's renderer draws the block, as before. Continuity
+  wraps every block's model and keeps a per-thread transform active through that call: a wrapped model's throw left it
+  active, and that worker thread drew no connected textures for the rest of the session (R6 saw it 20 ms after the test
+  mod's broken model threw on the same thread; on 1.21.11 and 26.2, Continuity's transform still active on that thread
+  right after). R6's check now wraps glass's model in a phase after every other wrapper, and logs Continuity's state
+  where it sees no connected texture. Verified on 1.21.1 in extended run 41496005222.
 - **Build:** `scripts/check-mixin-inventory.py` also runs the build's rule that each of the game mod's mixins is
   assigned a Fabric API module (`mixin-modules.json`), which only a platform build found: extended run 41492025138
   stopped on it, for `UtilMixin`.
@@ -81,7 +82,9 @@ One entry per working session, newest first: what changed, and how it was verifi
   launches) and Flashback clients on every NeoForge version; a mixin failure recorded and left out over three server
   launches; the HUD conditions on 26.x; the test mod's freeze handler first running after the main initializers;
   Fabric's custom ingredients in 1.21.1's recipe codec. The 1.21.1 test piston moves every four ticks (`688dea3`), as
-  Forge 47's does. The evidence step (`ci/javap-dump.py`, new) prints the bytecode open findings turn on.
+  Forge 47's does. The evidence step (`ci/javap-dump.py`, new) prints the bytecode open findings turn on, a long line
+  in pieces rather than cut; each client run keeps the smoke checks it failed (`checks-failed.txt`), which the job's
+  last step prints, as the log the job keeps loses its first steps' output.
 - **Decided** (each mine to make by the brief, logged here): `preLaunch` stays first of the entrypoints, right before
   `main`, instead of moving to the game's start: there NeoForge hasn't built the mods' containers, which set the class
   loaders their classes load with, and the mods it was for gain nothing (Sodium's driver checks would still follow
@@ -92,9 +95,9 @@ One entry per working session, newest first: what changed, and how it was verifi
   Fabric build, load it and list them) and how Essential loads; the README and the roadmap's tables say what loads
   where.
 - **Open, in the roadmap's findings:** fixed, to verify: CORPUS-50, CORPUS-59, CORPUS-60, APPLY-2, LAMBDA-9 (Litematica's
-  schematic rendering on 26.2), LIB-2 and CORPUS-56 on 1.21.1; CORPUS-61 (a redirect failing in the 1.21.1 advanced
-  corpus server's world generation), CORPUS-56 on 1.21.11 and 26.x (Continuity), KEYMAP-1, and the Fabric builds' gaps `COMPATIBILITY.md` lists. On Forge, the refusals
-  stay until the Forge sync and its runs.
+  schematic rendering on 26.2), LIB-2 and CORPUS-56 on 1.21.11 and 26.x (Continuity); CORPUS-61 (a redirect failing in
+  the 1.21.1 advanced corpus server's world generation), KEYMAP-1, and the Fabric builds' gaps `COMPATIBILITY.md` lists.
+  On Forge, the refusals stay until the Forge sync and its runs.
 - **Verified:** extended runs 41471044589 and 41477591558, every job green on all five NeoForge versions, the
   difficult-mod gates included; the fixes' findings name the run that verified each.
 

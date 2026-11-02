@@ -42,8 +42,8 @@ a version's own configs come in through `version_mixin_configs` in its `gradle.p
 | `mc/neoforge/1.21.1/src/main/resources/fabricated-object-builder.mixins.json` | `net.fabricmc.fabric.mixin.object.builder` | 1.21.1 | mixins 2, client 2 | 1 | true | none |
 | `mc/neoforge/1.21.1/src/main/resources/fabricated-particles.mixins.json` | `net.fabricmc.fabric.mixin.client.particle` | 1.21.1 | client 4 | 1 | true | none |
 | `mc/neoforge/1.21.1/src/main/resources/fabricated-renderer.mixins.json` | `io.github.cmdralph.fabricated.neoforge.rendering.mixin` | 1.21.1, only with `fabric_renderer_api_v1` (FML `requiredMods`) | client 8 | 1 | true | none |
-| `mc/neoforge/1.21.11/src/main/resources/fabricated-renderer.mixins.json` | same | 1.21.11, only with `fabric_renderer_api_v1` (FML `requiredMods`) | client 2 | 1 | true | none |
-| `mc/neoforge/common26/src/main/resources/fabricated-renderer.mixins.json` | same | 26.x, only with `fabric_renderer_api_v1` (FML `requiredMods`) | client 2 | 1 | true | none |
+| `mc/neoforge/1.21.11/src/main/resources/fabricated-renderer.mixins.json` | same | 1.21.11, only with `fabric_renderer_api_v1` (FML `requiredMods`) | client 5 | 1 | true | none |
+| `mc/neoforge/common26/src/main/resources/fabricated-renderer.mixins.json` | same | 26.x, only with `fabric_renderer_api_v1` (FML `requiredMods`) | client 4 | 1 | true | none |
 | `mc/neoforge/1.21.1/src/main/resources/fabricated-transfer.mixins.json` | `net.fabricmc.fabric.mixin.transfer` | 1.21.1 | mixins 14 | 1 | true | none |
 | `mc/neoforge/1.21.11/src/main/resources/fabricated-transfer.mixins.json` | same | 1.21.11 | mixins 16 | 1 | true | none |
 | `mc/neoforge/common26/src/main/resources/fabricated-transfer.mixins.json` | same | 26.x | mixins 17 | 1 | true | none |
@@ -108,7 +108,9 @@ Test-mod configs (not shipped):
   the model they are given (a local or an argument, no lookup), and `MultiPartBakedModelMixin` and
   `WeightedBakedModelMixin` keep their answer as on the other versions. Its `ForwardingBakedModelMixin` runs for every
   block a Fabric wrapper model draws (Continuity wraps every block's): one thread-local read outside a throw, and
-  `Operation.call`'s argument array, which the JIT can drop once the call is inlined; task 6 measures it.
+  `Operation.call`'s argument array, which the JIT can drop once the call is inlined; task 6 measures it. The renderer
+  configs' `WrapperBlockStateModelMixin` (1.21.11, 26.x) costs the same, and each draw of a Fabric model there two
+  thread-local reads.
 - **One name, different targets per version:** `client.MovingBlockRenderMixin` (26.1.2: `BlockFeatureRenderer`; 26.2,
   26.3: `MovingBlockFeatureRenderer`, which 26.3 adds forced translucency to) and `client.BlockBreakingRenderMixin`
   (26.1.2: `BlockFeatureRenderer`; 26.2, 26.3: `LevelRenderer`, from `mc/neoforge/common26late`).
@@ -445,6 +447,8 @@ Versions: 1.21.11 · package `io.github.cmdralph.fabricated.neoforge.rendering.m
 | client | BlockStateModelMixin | 1.21.11 (1.21.11) | n.m.client.renderer.block.model.BlockStateModel (interface) | no injectors; extends FabricBlockStateModel, BlockStateModelExtension; adds default emitQuads (FrapiDefaults: the parts NeoForge's level-aware collectParts gives) and default collectParts (NeoForge's level-aware one: a Fabric model's parts made from the quads it emits) | | | | |
 | client | LayerRenderStateMixin | 1.21.11 (1.21.11) | n.m.client.renderer.item.ItemStackRenderState$LayerRenderState | @Inject → fabricated$clearMesh | "clear()V" | RETURN | — | default |
 | client | LayerRenderStateMixin | 1.21.11 (1.21.11) | n.m.client.renderer.item.ItemStackRenderState$LayerRenderState | @Inject → fabricated$drawMesh | "submit" | HEAD | — | default |
+| client | MutableQuadViewAccessor | 1.21.11 (1.21.11) | Indigo's MutableQuadViewImpl (`@Pseudo`, `targets`: a mod's) | @Accessor transformStack → fabricated$transformStack | | | | default |
+| client | WrapperBlockStateModelMixin | 1.21.11 (1.21.11) | Fabric API's WrapperBlockStateModel (`@Pseudo`, `targets`: a mod's) | @WrapMethod → fabricated$holdWrappedThrow | "emitQuads(L…/QuadEmitter;L…/BlockAndTintGetter;L…/BlockPos;L…/BlockState;L…/RandomSource;L…/Predicate;)V" | holds a wrapped model's throw while one of Fabricated's draws of a Fabric model is under way (HeldThrows, CORPUS-56) | — | require=0 |
 
 ### `mc/neoforge/1.21.11/src/main/resources/fabricated-transfer.mixins.json`
 
@@ -963,6 +967,8 @@ Versions: 26.1.2, 26.2, 26.3 · package `io.github.cmdralph.fabricated.neoforge.
 |---|---|---|---|---|---|---|---|---|
 | client | BlockStateModelMixin | common26 (26.1.2,26.2,26.3) | n.m.client.renderer.block.dispatch.BlockStateModel (interface) | no injectors; extends FabricBlockStateModel; adds default emitQuads (FrapiDefaults: NeoForge's level-aware collectParts) | | | | |
 | client | BlockStateModelPartMixin | common26 (26.1.2,26.2,26.3) | n.m.client.renderer.block.dispatch.BlockStateModelPart (interface) | no injectors; extends FabricBlockStateModelPart; adds default emitQuads (FrapiDefaults: NeoForge's part and quad ambient occlusion) | | | | |
+| client | MutableQuadViewAccessor | common26 (26.1.2,26.2,26.3) | Indigo's MutableQuadViewImpl (`@Pseudo`, `targets`: a mod's) | @Accessor transformStack → fabricated$transformStack | | | | default |
+| client | WrapperBlockStateModelMixin | common26 (26.1.2,26.2,26.3) | Fabric API's WrapperBlockStateModel (`@Pseudo`, `targets`: a mod's) | @WrapMethod → fabricated$holdWrappedThrow | "emitQuads(L…/QuadEmitter;L…/BlockAndTintGetter;L…/BlockPos;L…/BlockState;L…/RandomSource;L…/Predicate;)V" | holds a wrapped model's throw while one of Fabricated's draws of a Fabric model is under way (HeldThrows, CORPUS-56) | — | require=0 |
 
 ### `mc/neoforge/common26early/src/main/resources/fabricated-biome.mixins.json`
 
