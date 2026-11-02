@@ -41,7 +41,7 @@ a version's own configs come in through `version_mixin_configs` in its `gradle.p
 | `mc/neoforge/common12111/src/main/resources/fabricated-loot.mixins.json` | same | 1.21.11, 26.1.2, 26.2, 26.3 | mixins 5 | 1 | true | none |
 | `mc/neoforge/1.21.1/src/main/resources/fabricated-object-builder.mixins.json` | `net.fabricmc.fabric.mixin.object.builder` | 1.21.1 | mixins 2, client 2 | 1 | true | none |
 | `mc/neoforge/1.21.1/src/main/resources/fabricated-particles.mixins.json` | `net.fabricmc.fabric.mixin.client.particle` | 1.21.1 | client 4 | 1 | true | none |
-| `mc/neoforge/1.21.1/src/main/resources/fabricated-renderer.mixins.json` | `io.github.cmdralph.fabricated.neoforge.rendering.mixin` | 1.21.1, only with `fabric_renderer_api_v1` (FML `requiredMods`) | none | 1 | true | none |
+| `mc/neoforge/1.21.1/src/main/resources/fabricated-renderer.mixins.json` | `io.github.cmdralph.fabricated.neoforge.rendering.mixin` | 1.21.1, only with `fabric_renderer_api_v1` (FML `requiredMods`) | client 6 | 1 | true | none |
 | `mc/neoforge/1.21.11/src/main/resources/fabricated-renderer.mixins.json` | same | 1.21.11, only with `fabric_renderer_api_v1` (FML `requiredMods`) | client 2 | 1 | true | none |
 | `mc/neoforge/common26/src/main/resources/fabricated-renderer.mixins.json` | same | 26.x, only with `fabric_renderer_api_v1` (FML `requiredMods`) | client 2 | 1 | true | none |
 | `mc/neoforge/1.21.1/src/main/resources/fabricated-transfer.mixins.json` | `net.fabricmc.fabric.mixin.transfer` | 1.21.1 | mixins 14 | 1 | true | none |
@@ -94,13 +94,16 @@ Test-mod configs (not shipped):
   (`lambda$load$2`).
 - **Wildcard selector:** `EnchantmentBuilderMixin` injects at `RETURN` of every method of `Enchantment$Builder`.
 - **Selectors with descriptors where NeoForge added an overload:** `client.SectionCompilerMixin` (26.x and 1.21.11)
-  names NeoForge's `compile(..., List)`; with the name alone Mixin picks the first `compile`, NeoForge's delegate (this
+  and 1.21.1's renderer `SectionCompilerMixin` name NeoForge's `compile(..., List)`; with the name alone Mixin picks the first `compile`, NeoForge's delegate (this
   crashed CI on 2026-10-19). `client.ModelManagerExtraModelsMixin` names NeoForge's four-argument `discoverModelDependencies`.
 - **Hot paths:** `client.SectionCompilerMixin` runs for every block of every chunk section, so it is a
   `@WrapWithCondition` (no allocation), not a `@WrapOperation`, whose `Operation.call(Object...)` boxes primitives.
   `client.MovingBlockRenderMixin` and `client.BlockBreakingRenderMixin` follow the same rule. `client.MultiPartModelMixin`
   and `client.WeightedVariantsMixin` answer from a field after the first question, asked again once after a Fabric model
-  class is marked broken (FRAPI rule 8).
+  class is marked broken (FRAPI rule 8). On 1.21.1 the renderer config's `SectionCompilerMixin` and
+  `BlockRenderDispatcherMixin.fabricated$batched` run for every block of every section, once per render type: both read
+  the model they are given (a local or an argument, no lookup), and `MultiPartBakedModelMixin` and
+  `WeightedBakedModelMixin` keep their answer as on the other versions.
 - **One name, different targets per version:** `client.MovingBlockRenderMixin` (26.1.2: `BlockFeatureRenderer`; 26.2,
   26.3: `MovingBlockFeatureRenderer`, which 26.3 adds forced translucency to) and `client.BlockBreakingRenderMixin`
   (26.1.2: `BlockFeatureRenderer`; 26.2, 26.3: `LevelRenderer`, from `mc/neoforge/common26late`).
@@ -248,7 +251,18 @@ Versions: 1.21.1 · package `net.fabricmc.fabric.mixin.client.particle` · requi
 
 ### `mc/neoforge/1.21.1/src/main/resources/fabricated-renderer.mixins.json`
 
-Versions: 1.21.1 · package `io.github.cmdralph.fabricated.neoforge.rendering.mixin` · required=true · defaultRequire=1 · plugin=none · overwrites.requireAnnotations=true · loaded only when `fabric_renderer_api_v1` is a loaded mod, as on the other versions · lists no mixins (its `client` section is empty).
+Versions: 1.21.1 · package `io.github.cmdralph.fabricated.neoforge.rendering.mixin` · required=true · defaultRequire=1 · plugin=none · overwrites.requireAnnotations=true · loaded only when `fabric_renderer_api_v1` is a loaded mod, as on the other versions. Fabric block models drawn by Indigo where NeoForge 21.1 draws blocks (FRAPI-5).
+
+| Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
+|---|---|---|---|---|---|---|---|---|
+| client | BlockRenderDispatcherMixin | 1.21.1 (1.21.1) | n.m.client.renderer.block.BlockRenderDispatcher | @WrapWithCondition → fabricated$breakingOverlay | "renderBreakingTexture(L…/BlockState;L…/BlockPos;L…/BlockAndTintGetter;L…/PoseStack;L…/VertexConsumer;L…/ModelData;)V" | INVOKE `L…/ModelBlockRenderer;tesselateBlock(…;L…/ModelData;L…/RenderType;)V` (NeoForge's overload) | — | default |
+| client | BlockRenderDispatcherMixin | 1.21.1 (1.21.1) | n.m.client.renderer.block.BlockRenderDispatcher | @WrapWithCondition → fabricated$batched | "renderBatched(L…/BlockState;L…/BlockPos;L…/BlockAndTintGetter;L…/PoseStack;L…/VertexConsumer;ZL…/RandomSource;L…/ModelData;L…/RenderType;)V" | INVOKE `L…/ModelBlockRenderer;tesselateBlock(…;L…/ModelData;L…/RenderType;)V` (NeoForge's overload) | — | default |
+| client | ClientHooksMixin | 1.21.1 (1.21.1) | neo.client.ClientHooks | @WrapWithCondition → fabricated$fabricModels (static) | "renderPistonMovedBlocks(L…/BlockPos;L…/BlockState;L…/PoseStack;L…/MultiBufferSource;L…/Level;ZIL…/BlockRenderDispatcher;)V" | INVOKE `L…/ModelBlockRenderer;tesselateBlock(…;L…/ModelData;L…/RenderType;)V` (NeoForge's overload) | — | default |
+| client | FallingBlockRendererMixin | 1.21.1 (1.21.1) | n.m.client.renderer.entity.FallingBlockRenderer | @WrapWithCondition → fabricated$fabricModels | "render(L…/FallingBlockEntity;FFL…/PoseStack;L…/MultiBufferSource;I)V" | INVOKE `L…/ModelBlockRenderer;tesselateBlock(…;L…/ModelData;L…/RenderType;)V` (NeoForge's overload) | — | default |
+| client | MultiPartBakedModelMixin | 1.21.1 (1.21.1) | n.m.client.resources.model.MultiPartBakedModel | no injectors; implements FabricBlockRendering.Composite; @Shadow selectors; @Unique fabricated$state (cached per broken-class generation) | | | | |
+| client | SectionCompilerMixin | 1.21.1 (1.21.1) | n.m.client.renderer.chunk.SectionCompiler | @WrapWithCondition → fabricated$fabricModels | "compile(L…/SectionPos;L…/RenderChunkRegion;L…/VertexSorting;L…/SectionBufferBuilderPack;L…/List;)L…/SectionCompiler$Results;" | INVOKE `L…/BlockRenderDispatcher;renderBatched(…;L…/ModelData;L…/RenderType;)V` sugar:@Local(argsOnly = true) ×2, @Local Map, @Local BakedModel; implements FabricBlockRendering.SectionLayers (@Shadow getOrBeginLayer) | — | default |
+| client | SectionCompilerMixin | 1.21.1 (1.21.1) | n.m.client.renderer.chunk.SectionCompiler | @Inject → fabricated$endSection | same | RETURN | — | default |
+| client | WeightedBakedModelMixin | 1.21.1 (1.21.1) | n.m.client.resources.model.WeightedBakedModel | no injectors; implements FabricBlockRendering.Composite; @Shadow list; @Unique fabricated$state (cached per broken-class generation) | | | | |
 
 ### `mc/neoforge/1.21.1/src/main/resources/fabricated-transfer.mixins.json`
 

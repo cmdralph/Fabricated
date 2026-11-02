@@ -10,4 +10,6 @@ dependencies {
     // missing annotation class is no error at runtime.
     compileOnly 'org.jspecify:jspecify:1.0.0'
     testmodCompileOnly 'org.jspecify:jspecify:1.0.0'
+    testmodfrapiCompileOnly 'org.jspecify:jspecify:1.0.0'
+    fabricapistubsCompileOnly 'org.jspecify:jspecify:1.0.0'
 }
