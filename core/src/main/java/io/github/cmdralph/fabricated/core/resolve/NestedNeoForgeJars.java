@@ -89,7 +89,12 @@ public final class NestedNeoForgeJars {
 
 	/** The mods and the libraries nested in {@code jar}, down to the limits' nesting depth. */
 	public static Contents readAll(Path jar, ArchiveLimits limits) throws IOException, JsonException {
-		NestedNeoForgeJars reader = read(jar, limits, MODS_TOML, true);
+		return readAll(jar, limits, MODS_TOML);
+	}
+
+	/** As {@link #readAll(Path, ArchiveLimits)}, for a platform reading a mod's descriptor at {@code descriptor} (Forge's). */
+	public static Contents readAll(Path jar, ArchiveLimits limits, String descriptor) throws IOException, JsonException {
+		NestedNeoForgeJars reader = read(jar, limits, descriptor, true);
 		return new Contents(List.copyOf(reader.found), Set.copyOf(reader.libraryPackages));
 	}
 

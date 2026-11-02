@@ -9,15 +9,12 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
-import java.util.TreeSet;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.regex.Matcher;
@@ -218,7 +215,7 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 				byte[] index = FabricatedInfo.readOptional(NativeModules.INDEX);
 				NativeModules nativeModules = index == null ? NativeModules.NONE : NativeModules.parse(new String(index, StandardCharsets.UTF_8),
 						archive.contains(NativeModules.MIXIN_MODULES) ? archive.readText(NativeModules.MIXIN_MODULES) : null);
-				neoMods = providingByPackages(neoForgeMods, nativeModules, providerNotes);
+				neoMods = nativeModules.providingByPackages(neoForgeMods.mods(), neoForgeMods.providers(), providerNotes);
 				Map<String, Pipeline.NeoForgeMod> provided = Pipeline.providedElsewhere(plan, neoMods);
 				Map<String, MixinConfigFile> configs = new LinkedHashMap<>();
 				for (String name : archive.entryNames()) {
@@ -361,38 +358,6 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 	private static String packageOf(String name) {
 		int slash = name.lastIndexOf('/');
 		return slash > 0 ? name.substring(0, slash) : "";
-	}
-
-	/**
-	 * The NeoForge mods, each also providing the native modules whose packages its jar has under another id (a mod
-	 * bundling a Fabric API module): only one copy of a package can load, so that mod provides the module.
-	 */
-	private static List<Pipeline.NeoForgeMod> providingByPackages(NeoForgeMods.Found found, NativeModules modules, List<String> notes) {
-		Map<Pipeline.NeoForgeMod, Set<String>> extra = new IdentityHashMap<>();
-		for (NeoForgeMods.Provider provider : found.providers()) {
-			for (String pkg : new TreeSet<>(provider.packages())) {
-				String module = modules.owner(pkg);
-				if (module == null || ModIds.toNeoForgeId(module).equals(provider.mod().id()) || provider.mod().provides().contains(module)) continue;
-				if (extra.computeIfAbsent(provider.mod(), k -> new LinkedHashSet<>()).add(module)) {
-					notes.add(provider.origin() + " has the package " + pkg + " of " + module + ": " + provider.mod().displayName() + " provides that module");
-				}
-			}
-		}
-		if (extra.isEmpty()) return found.mods();
-		List<Pipeline.NeoForgeMod> mods = new ArrayList<>();
-		for (Pipeline.NeoForgeMod mod : found.mods()) {
-			Set<String> more = extra.get(mod);
-			if (more == null) {
-				mods.add(mod);
-				continue;
-			}
-			Set<String> ids = new LinkedHashSet<>(mod.provides());
-			ids.addAll(more);
-			Map<String, Object> properties = new LinkedHashMap<>(mod.properties());
-			properties.put(Pipeline.NeoForgeMod.PROVIDES, List.copyOf(ids));
-			mods.add(new Pipeline.NeoForgeMod(mod.id(), mod.version(), mod.displayName(), properties, mod.files()));
-		}
-		return mods;
 	}
 
 	/**

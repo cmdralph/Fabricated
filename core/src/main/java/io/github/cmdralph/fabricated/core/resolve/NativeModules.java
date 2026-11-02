@@ -1,16 +1,29 @@
 package io.github.cmdralph.fabricated.core.resolve;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
+import java.util.TreeMap;
+import java.util.jar.Attributes;
+import java.util.jar.Manifest;
 
+import io.github.cmdralph.fabricated.core.Pipeline;
+import io.github.cmdralph.fabricated.core.archive.SafeArchive;
 import io.github.cmdralph.fabricated.core.json.Json;
 import io.github.cmdralph.fabricated.core.json.JsonException;
+import io.github.cmdralph.fabricated.core.metadata.ModIds;
 import io.github.cmdralph.fabricated.core.mixin.MixinConfigFile;
 
 /**
@@ -146,6 +159,99 @@ public final class NativeModules {
 			if (i < lines.length - 1) out.append('\n');
 		}
 		return out.toString();
+	}
+
+	/**
+	 * The packages (internal form) of a platform mod file or nested mod jar, and the first mod it declares.
+	 *
+	 * @param origin where the jar is, for the report
+	 */
+	public record Provider(Pipeline.NeoForgeMod mod, String origin, Set<String> packages) {
+	}
+
+	/**
+	 * The platform's mods, each also providing the native modules whose packages its jar has under another id (a mod
+	 * bundling a Fabric API module): only one copy of a package can load, so that mod provides the module.
+	 *
+	 * @param notes gets a line per module a mod provides so, for the report
+	 */
+	public List<Pipeline.NeoForgeMod> providingByPackages(List<Pipeline.NeoForgeMod> mods, List<Provider> providers, List<String> notes) {
+		Map<Pipeline.NeoForgeMod, Set<String>> extra = new IdentityHashMap<>();
+		for (Provider provider : providers) {
+			for (String pkg : new TreeSet<>(provider.packages())) {
+				String module = owner(pkg);
+				if (module == null || ModIds.toNeoForgeId(module).equals(provider.mod().id()) || provider.mod().provides().contains(module)) continue;
+				if (extra.computeIfAbsent(provider.mod(), k -> new LinkedHashSet<>()).add(module)) {
+					notes.add(provider.origin() + " has the package " + pkg + " of " + module + ": " + provider.mod().displayName() + " provides that module");
+				}
+			}
+		}
+		if (extra.isEmpty()) return mods;
+		List<Pipeline.NeoForgeMod> all = new ArrayList<>();
+		for (Pipeline.NeoForgeMod mod : mods) {
+			Set<String> more = extra.get(mod);
+			if (more == null) {
+				all.add(mod);
+				continue;
+			}
+			Set<String> ids = new LinkedHashSet<>(mod.provides());
+			ids.addAll(more);
+			Map<String, Object> properties = new LinkedHashMap<>(mod.properties());
+			properties.put(Pipeline.NeoForgeMod.PROVIDES, List.copyOf(ids));
+			all.add(new Pipeline.NeoForgeMod(mod.id(), mod.version(), mod.displayName(), properties, mod.files()));
+		}
+		return all;
+	}
+
+	/** The manifest attribute in which Forge reads a mod file's mixin configs, comma-separated. */
+	public static final String MIXIN_CONFIGS = "MixinConfigs";
+
+	/**
+	 * The in-game mod's manifest without {@code configs} among its {@link #MIXIN_CONFIGS} (Forge's, where NeoForge's are
+	 * {@code [[mixins]]} entries of its mods.toml: {@link #withoutMixinConfigs}); without the attribute when none is left.
+	 */
+	public static byte[] withoutManifestMixinConfigs(byte[] manifest, Set<String> configs) throws IOException {
+		Manifest parsed = new Manifest(new ByteArrayInputStream(manifest));
+		Attributes main = parsed.getMainAttributes();
+		String listed = main.getValue(MIXIN_CONFIGS);
+		if (configs.isEmpty() || listed == null) return manifest;
+		List<String> kept = new ArrayList<>();
+		for (String config : listed.split(",")) {
+			String name = config.trim();
+			if (!name.isEmpty() && !configs.contains(name)) kept.add(name);
+		}
+		if (kept.isEmpty()) main.remove(new Attributes.Name(MIXIN_CONFIGS));
+		else main.putValue(MIXIN_CONFIGS, String.join(",", kept));
+		ByteArrayOutputStream out = new ByteArrayOutputStream();
+		parsed.write(out);
+		return out.toByteArray();
+	}
+
+	/** Where a jar's manifest is. */
+	private static final String MANIFEST = "META-INF/MANIFEST.MF";
+
+	/**
+	 * The in-game mod's files once parts of it stand down, for a platform that reads a mod's mixin configs from its
+	 * manifest and loads a mod file from one path (Forge): without the packages and the mixin configs that stand down, its
+	 * manifest no longer naming those configs, and its other configs without the mixins that do.
+	 *
+	 * @param configs the in-game mod's mixin configs, by file name
+	 */
+	public static Map<String, byte[]> withoutStandingDown(SafeArchive gameMod, StandDown standDown, Map<String, MixinConfigFile> configs)
+			throws IOException {
+		Map<String, byte[]> files = new TreeMap<>();
+		for (String name : gameMod.entryNames()) {
+			if (name.endsWith("/") || gameMod.isDirectory(name) || standDown.mixinConfigs().contains(name)) continue;
+			int slash = name.lastIndexOf('/');
+			if (slash > 0 && standDown.packages().contains(name.substring(0, slash))) continue;
+			byte[] data = gameMod.read(name);
+			if (data == null) continue;
+			Set<String> mixins = standDown.mixins().get(name);
+			if (name.equals(MANIFEST)) data = withoutManifestMixinConfigs(data, standDown.mixinConfigs());
+			else if (mixins != null && configs.containsKey(name)) data = configs.get(name).withoutMixins(mixins).getBytes(StandardCharsets.UTF_8);
+			files.put(name, data);
+		}
+		return files;
 	}
 
 	private static List<String> strings(Object value) {
