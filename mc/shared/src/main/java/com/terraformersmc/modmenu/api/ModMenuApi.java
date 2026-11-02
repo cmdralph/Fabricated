@@ -5,7 +5,8 @@ import java.util.function.Consumer;
 
 /**
  * The entrypoint interface of Mod Menu's API (key {@code modmenu}), for the Fabric mods that offer a config screen
- * through it. Clean-room, with Mod Menu's names; Fabricated shows these screens through NeoForge's mod list.
+ * through it. Clean-room, with Mod Menu's names; Fabricated shows these screens through the platform's mod list, on
+ * NeoForge and Forge alike.
  */
 public interface ModMenuApi {
 	/** This mod's config screen, or null when it has none. */
@@ -18,7 +19,7 @@ public interface ModMenuApi {
 		return Map.of();
 	}
 
-	/** Mod Menu's modpack badges; not shown by NeoForge's mod list. */
+	/** Mod Menu's modpack badges; not shown by the platform's mod list. */
 	default void attachModpackBadges(Consumer<String> consumer) {
 	}
 }

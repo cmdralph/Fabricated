@@ -23,6 +23,7 @@ import io.github.cmdralph.fabricated.core.archive.ArchiveLimits;
 import io.github.cmdralph.fabricated.core.bytecode.InstalledClasses;
 import io.github.cmdralph.fabricated.core.json.JsonException;
 import io.github.cmdralph.fabricated.core.metadata.ModIds;
+import io.github.cmdralph.fabricated.core.resolve.NativeModules;
 import io.github.cmdralph.fabricated.core.resolve.NestedNeoForgeJars;
 import net.neoforged.neoforgespi.language.IModInfo;
 import net.neoforged.neoforgespi.locating.IModFile;
@@ -47,15 +48,7 @@ final class NeoForgeMods {
 	 * @param libraryPackages the packages of the libraries nested in the files (read with the nested mods), which no
 	 *                  Fabric jar may split or shadow: on 26.x Kotlin for Forge's Kotlin, in FML's plugin loader
 	 */
-	record Found(List<Pipeline.NeoForgeMod> mods, InstalledClasses classes, List<Provider> providers, Set<String> libraryPackages) {
-	}
-
-	/**
-	 * The packages (internal form) of a mod file or nested mod jar, and the first mod it declares.
-	 *
-	 * @param origin where the jar is, for the report
-	 */
-	record Provider(Pipeline.NeoForgeMod mod, String origin, Set<String> packages) {
+	record Found(List<Pipeline.NeoForgeMod> mods, InstalledClasses classes, List<NativeModules.Provider> providers, Set<String> libraryPackages) {
 	}
 
 	private NeoForgeMods() {
@@ -68,7 +61,7 @@ final class NeoForgeMods {
 	static Found of(List<IModFile> files, boolean nested, List<InstalledClasses.Jar> first) {
 		List<Pipeline.NeoForgeMod> mods = new ArrayList<>();
 		List<InstalledClasses.Jar> jars = new ArrayList<>(first);
-		List<Provider> providers = new ArrayList<>();
+		List<NativeModules.Provider> providers = new ArrayList<>();
 		TomlParser parser = new TomlParser();
 		for (IModFile file : files) {
 			List<IModInfo> infos = file.getModInfos();
@@ -83,7 +76,7 @@ final class NeoForgeMods {
 			if (!infos.isEmpty() && infos.stream().noneMatch(mod -> GAME.contains(mod.getModId()) || mod.getModId().equals(ModIds.FABRICATED))) {
 				jars.add(new InstalledClasses.Jar(infos.getFirst().getDisplayName(), name -> Fml.contains(file, name + ".class"),
 						name -> Fml.read(file, name + ".class")));
-				if (nested && !declared.isEmpty()) providers.add(new Provider(declared.getFirst(), file.getFileName(), internal(Fml.packages(file))));
+				if (nested && !declared.isEmpty()) providers.add(new NativeModules.Provider(declared.getFirst(), file.getFileName(), internal(Fml.packages(file))));
 			}
 		}
 		if (!nested) return new Found(mods, InstalledClasses.NONE, List.of(), Set.of());
@@ -99,7 +92,7 @@ final class NeoForgeMods {
 					mods.addAll(declared);
 					if (declared.isEmpty() || toml.classes().isEmpty()) continue;
 					Set<String> classes = toml.classes();
-					providers.add(new Provider(declared.getFirst(), toml.origin(), packagesOf(classes)));
+					providers.add(new NativeModules.Provider(declared.getFirst(), toml.origin(), packagesOf(classes)));
 					jars.add(new InstalledClasses.Jar(declared.getFirst().displayName(), classes::contains,
 							name -> NestedNeoForgeJars.readClass(path, toml.chain(), name, ArchiveLimits.DEFAULTS)));
 				}

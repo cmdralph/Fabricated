@@ -6,6 +6,7 @@ import io.github.cmdralph.fabricated.loader.FabricatedState;
 import io.github.cmdralph.fabricated.neoforge.entity.EntityEventsBridge;
 import io.github.cmdralph.fabricated.neoforge.interaction.InteractionBridge;
 import io.github.cmdralph.fabricated.neoforge.item.ItemApiBridge;
+import io.github.cmdralph.fabricated.neoforge.keybinding.KeyBindingBridge;
 import io.github.cmdralph.fabricated.neoforge.loot.LootBridge;
 import io.github.cmdralph.fabricated.neoforge.lifecycle.LifecycleBridge;
 import io.github.cmdralph.fabricated.neoforge.networking.NetworkingBridge;
@@ -44,6 +45,7 @@ public final class NativeFabricApi {
 			// NeoForge draws fluids through their types' client extensions on this version (Fabric mods' fluids, whoever
 			// provides the API).
 			FabricFluidClientExtensions.register(modBus);
+			if (ours.test("fabric-key-binding-api-v1")) KeyBindingBridge.register(modBus);
 		}
 		if (ours.test("fabric-object-builder-api-v1")) {
 			// The 1.21.1 API has no FabricDefaultAttributeRegistry.MODIFY.

@@ -10,6 +10,7 @@ import io.github.cmdralph.fabricated.core.accesswidener.AccessWidenerFile.Access
 import io.github.cmdralph.fabricated.core.accesswidener.AccessWidenerFile.Entry;
 import io.github.cmdralph.fabricated.core.accesswidener.AccessWidenerFile.InjectedInterface;
 import io.github.cmdralph.fabricated.core.bytecode.ClassIndex;
+import io.github.cmdralph.fabricated.core.bytecode.PlatformRetypes;
 
 /**
  * Converts access widener / class tweaker directives (already in runtime names) to access transformer lines, which
@@ -130,6 +131,9 @@ public final class AccessTransformerConverter {
 				}
 				case FIELD -> {
 					Integer access = owner != null ? owner.fieldAccess(e.name() + ":" + e.descriptor()) : null;
+					// A field the platform typed as a subtype of vanilla's (CORPUS-33): the mod's classes reach the platform's.
+					PlatformRetypes.Retype retyped = access == null ? PlatformRetypes.of(game, e.owner(), e.name(), e.descriptor()) : null;
+					if (retyped != null) access = owner.fieldAccess(e.name() + ":" + retyped.platformDesc());
 					if (game != null && access == null) {
 						warnings.add("line " + e.line() + ": field " + e.owner() + "." + e.name() + " does not exist; ignored");
 						continue;

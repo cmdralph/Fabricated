@@ -51,6 +51,10 @@
       "net/fabricmc/fabric/api/item/v1",
       "net/fabricmc/fabric/impl/item"
     ],
+    "fabric-key-binding-api-v1": [
+      "net/fabricmc/fabric/api/client/keybinding/v1",
+      "net/fabricmc/fabric/impl/client/keybinding"
+    ],
     "fabric-lifecycle-events-v1": [
       "net/fabricmc/fabric/api/client/event/lifecycle/v1",
       "net/fabricmc/fabric/api/event/lifecycle/v1"

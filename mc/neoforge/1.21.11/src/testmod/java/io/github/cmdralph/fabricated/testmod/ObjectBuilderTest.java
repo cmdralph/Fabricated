@@ -38,7 +38,8 @@ import net.minecraft.world.level.levelgen.Heightmap;
 
 /**
  * 1.21.11 part of the CI test mod: exercises Fabricated's native fabric-object-builder-api-v1 (entity type builder with
- * default attributes and a spawn placement, attribute modification, an entity data serializer, block entity types, villager trades).
+ * default attributes and a spawn placement, attribute modification, entity data serializers registered through Fabric's
+ * registry and vanilla's method, block entity types, villager trades).
  * Everything is checked once the server has started and logged as one marker line.
  */
 public final class ObjectBuilderTest implements ModInitializer {
@@ -58,6 +59,9 @@ public final class ObjectBuilderTest implements ModInitializer {
 
 		EntityDataSerializer<Integer> serializer = EntityDataSerializer.forValueType(ByteBufCodecs.VAR_INT);
 		FabricTrackedDataRegistry.register(id("test_serializer"), serializer);
+		// Vanilla's method, which Fabric still allows and NeoForge refuses for mods (SER-1).
+		EntityDataSerializer<Long> vanillaSerializer = EntityDataSerializer.forValueType(ByteBufCodecs.VAR_LONG);
+		EntityDataSerializers.registerSerializer(vanillaSerializer);
 
 		Block stone = BuiltInRegistries.BLOCK.getValue(Identifier.withDefaultNamespace("stone"));
 		Block dirt = BuiltInRegistries.BLOCK.getValue(Identifier.withDefaultNamespace("dirt"));
@@ -83,6 +87,8 @@ public final class ObjectBuilderTest implements ModInitializer {
 					|| SpawnPlacements.getHeightmapType(mob) != Heightmap.Types.MOTION_BLOCKING_NO_LEAVES) failed.add("spawn_placement");
 			if (mob.trackDeltas()) failed.add("velocity");
 			if (FabricTrackedDataRegistry.get(id("test_serializer")) != serializer || EntityDataSerializers.getSerializedId(serializer) < 0) failed.add("data_serializer");
+			int vanillaId = EntityDataSerializers.getSerializedId(vanillaSerializer);
+			if (vanillaId < 0 || EntityDataSerializers.getSerializer(vanillaId) != vanillaSerializer) failed.add("data_serializer_vanilla");
 			if (!blockEntity.onlyOpCanSetNbt() || !blockEntity.isValid(stone.defaultBlockState()) || !blockEntity.isValid(dirt.defaultBlockState())) failed.add("block_entity");
 			if (!Arrays.asList(VillagerTrades.TRADES.get(VillagerProfession.FARMER).get(1)).contains(listing)) failed.add("trades");
 			if (failed.isEmpty()) {

@@ -92,7 +92,9 @@
       "plan": "passthrough"
     },
     "fabric-key-binding-api-v1": {
-      "plan": "passthrough"
+      "plan": "native",
+      "version": "1.0.47",
+      "reason": "Shipped by Fabricated: upstream's API, its key bindings registered on NeoForge's key mapping event, where NeoForge mods register theirs. Upstream refuses a key binding once the game's options exist, and NeoForge 21.1 creates them before Fabric mods' client entrypoints run, so passed through, the module failed every client entrypoint that registers one (KEYMAP-2: JEI, Jade, Simple Voice Chat, Entity Culling and five more in the 1.21.1 corpus). NeoForge loads the options again once mods have loaded, which gives each key binding the key the player saved."
     },
     "fabric-keybindings-v0": {
       "plan": "passthrough"
@@ -172,10 +174,9 @@
     "fabric-resource-conditions-api-v1": {
       "plan": "passthrough",
       "skipMixins": [
-        "fabric-resource-conditions-api-v1.mixins.json:JsonDataLoaderMixin",
         "fabric-resource-conditions-api-v1.mixins.json:RegistryLoaderMixin"
       ],
-      "reason": "NeoForge decides whether data files and registry entries load with its own conditions: Fabricated evaluates fabric:load_conditions there, with upstream's conditions, instead of upstream's mixins on the code NeoForge rewrote."
+      "reason": "NeoForge decides whether registry entries load with its own conditions: Fabricated evaluates fabric:load_conditions there, with upstream's conditions, instead of upstream's mixin on the registry loading NeoForge rewrote. NeoForge 21.1 leaves vanilla's JSON data loaders as they are, so upstream's hook there stays and drops a file whose conditions fail from every one of them, as on Fabric (CORPUS-49)."
     },
     "fabric-resource-loader-v0": {
       "plan": "native",
