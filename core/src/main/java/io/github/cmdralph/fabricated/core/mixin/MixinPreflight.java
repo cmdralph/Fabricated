@@ -913,7 +913,7 @@ public final class MixinPreflight extends PreflightPart {
 		return nameAfterPrefix(method, "get", "is", "set");
 	}
 
-	static String inferInvokerName(String method) {
+	public static String inferInvokerName(String method) {
 		String name = nameAfterPrefix(method, "call", "invoke");
 		if (name != null) return name;
 		if (method.startsWith("new") || method.startsWith("create")) return "<init>";

@@ -492,6 +492,51 @@ class RemapTest {
 	}
 
 	/**
+	 * As Loom names the accessors of a jar without a refmap (Do a Barrel Roll's {@code KeyBindingAccessor.getField_1655}):
+	 * Mixin reads the target from the name, which no member has on the runtime's names, so the remapper writes it out and
+	 * remaps it (ACC-4). A target written out, or one read from a name of the mod's own, is left as it is.
+	 */
+	@Test
+	void anAccessorNamedForAnIntermediaryMemberGetsItsTargetWrittenOut() throws Exception {
+		String accessor = "Lorg/spongepowered/asm/mixin/gen/Accessor;";
+		String invoker = "Lorg/spongepowered/asm/mixin/gen/Invoker;";
+		ClassWriter cw = new ClassWriter(0);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT | Opcodes.ACC_INTERFACE, "com/example/LevelAccessor", null, "java/lang/Object", null);
+		String[][] methods = {
+				{"getField_11", "()I", accessor, null},
+				{"setField_10", "(Lnet/minecraft/class_2;)V", accessor, ""},
+				{"invokeMethod_22", "()V", invoker, null},
+				{"getOwner", "()Lnet/minecraft/class_2;", accessor, null},
+				{"isField_11", "()Z", accessor, "field_10"},
+				{"getField_11", "()J", "Lcom/example/NotAnAccessor;", null},
+		};
+		for (String[] m : methods) {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, m[0], m[1], null, null);
+			AnnotationVisitor av = mv.visitAnnotation(m[2], false);
+			if (m[3] != null) av.visit("value", m[3]);
+			av.visitEnd();
+			mv.visitEnd();
+		}
+		cw.visitEnd();
+
+		ClassNode node = new ClassNode();
+		new ClassReader(new JarRemapper(table()).remapClass(cw.toByteArray(), "test")).accept(node, 0);
+		Map<String, Object> targets = new java.util.LinkedHashMap<>();
+		for (MethodNode m : node.methods) {
+			List<Object> values = m.invisibleAnnotations.getFirst().values;
+			targets.put(m.name + m.desc, values == null ? null : values.get(1));
+		}
+		Map<String, Object> expected = new java.util.LinkedHashMap<>();
+		expected.put("getField_11()I", "count");
+		expected.put("setField_10(Lnet/minecraft/world/Entity;)V", "owner");
+		expected.put("invokeMethod_22()V", "tick");
+		expected.put("getOwner()Lnet/minecraft/world/Entity;", null);
+		expected.put("isField_11()Z", "owner");
+		expected.put("getField_11()J", null);
+		assertEquals(expected, targets, "the accessors keep their names; only the targets Mixin would read from them are written out");
+	}
+
+	/**
 	 * Elementa's {@code UtilitiesKt}, in short: a {@code width} for each loader's text component, Fabric's taking
 	 * {@code class_2} and Forge's {@code Entity}, with Kotlin's {@code width$default} for each, and a field for each.
 	 * Remapped, each pair is one member, and Essential's Fabric build stopped the game with "Duplicate method name"

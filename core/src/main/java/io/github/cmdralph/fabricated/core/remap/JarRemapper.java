@@ -19,6 +19,7 @@ import io.github.cmdralph.fabricated.core.archive.ArchiveException;
 import io.github.cmdralph.fabricated.core.archive.SafeArchive;
 import io.github.cmdralph.fabricated.core.json.Json;
 import io.github.cmdralph.fabricated.core.json.JsonException;
+import io.github.cmdralph.fabricated.core.mixin.MixinPreflight;
 import io.github.cmdralph.fabricated.core.mixin.Refmap;
 
 import org.objectweb.asm.AnnotationVisitor;
@@ -39,8 +40,9 @@ import org.objectweb.asm.commons.MethodRemapper;
  * <ul>
  *   <li>{@code .class} files are rewritten with {@link IntermediaryRemapper}; frames are copied, not
  *       recomputed, because renaming does not change stack shapes. A mixin injector's selector naming a method by its
- *       intermediary name alone gets the method's descriptor where its runtime name is shared ({@link SelectorPins}).
- *       A member a library writes for another loader, which remapping makes the same member as its Fabric one, is left
+ *       intermediary name alone gets the method's descriptor where its runtime name is shared ({@link SelectorPins}), and
+ *       an accessor or invoker whose name Mixin would read an intermediary name from gets that name written out
+ *       ({@link InferredTargets}). A member a library writes for another loader, which remapping makes the same member as its Fabric one, is left
  *       out ({@link #otherLoadersTwins}).</li>
  *   <li>Refmaps and service files have intermediary tokens rewritten.</li>
  *   <li>Signature files are removed (a remapped jar cannot keep valid signatures) and per-entry digest
@@ -51,6 +53,9 @@ import org.objectweb.asm.commons.MethodRemapper;
 public final class JarRemapper {
 	private static final Pattern INTERMEDIARY_METHOD = Pattern.compile("method_\\d+");
 	private static final List<String> INJECTOR_PACKAGES = List.of("Lorg/spongepowered/asm/mixin/injection/", "Lcom/llamalad7/mixinextras/injector/");
+	private static final String ACCESSOR = "Lorg/spongepowered/asm/mixin/gen/Accessor;";
+	private static final String INVOKER = "Lorg/spongepowered/asm/mixin/gen/Invoker;";
+	private static final Pattern INTERMEDIARY_MEMBER = Pattern.compile("(?:method|field|comp)_\\d+");
 
 	private final MappingTable table;
 	private final IntermediaryRemapper remapper;
@@ -111,7 +116,7 @@ public final class JarRemapper {
 		try {
 			ClassReader reader = new ClassReader(data);
 			ClassWriter writer = new ClassWriter(0);
-			ClassVisitor remapping = new LambdaAwareRemapper(writer, remapper);
+			ClassVisitor remapping = new InferredTargets(new LambdaAwareRemapper(writer, remapper));
 			Set<String> twins = otherLoadersTwins(reader, leftOut);
 			if (!twins.isEmpty()) remapping = new LeavingOut(remapping, twins);
 			reader.accept(table.hasOverloadedMethods() ? new SelectorPins(remapping, table) : remapping, 0);
@@ -229,6 +234,55 @@ public final class JarRemapper {
 				@Override
 				public void visitInvokeDynamicInsn(String name, String descriptor, Handle bootstrap, Object... arguments) {
 					super.visitInvokeDynamicInsn(names.mapLambdaMethodName(name, descriptor, bootstrap, arguments), descriptor, bootstrap, arguments);
+				}
+			};
+		}
+	}
+
+	/**
+	 * Writes out the target of an {@code @Accessor} or {@code @Invoker} without one where Mixin would read an intermediary
+	 * name from the method's ({@code getField_1655} for {@code field_1655}), before the class is remapped, which then
+	 * remaps it as it remaps a target written out: Fabric Loom names an accessor so when the mod's jar has no refmap, and
+	 * on the runtime's names no member has that name. Do a Barrel Roll's {@code KeyBindingAccessor.getField_1655}, for
+	 * {@code KeyMapping.key}, failed pre-flight on NeoForge 21.1, its mixins all left out (ACC-4). Any other is left as
+	 * it is.
+	 */
+	private static final class InferredTargets extends ClassVisitor {
+		InferredTargets(ClassVisitor next) {
+			super(Opcodes.ASM9, next);
+		}
+
+		@Override
+		public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
+			MethodVisitor method = super.visitMethod(access, name, descriptor, signature, exceptions);
+			if (method == null) return null;
+			return new MethodVisitor(api, method) {
+				@Override
+				public AnnotationVisitor visitAnnotation(String annotation, boolean visible) {
+					AnnotationVisitor values = super.visitAnnotation(annotation, visible);
+					boolean accessor = annotation.equals(ACCESSOR);
+					if (values == null || !accessor && !annotation.equals(INVOKER)) return values;
+					String inferred = accessor ? MixinPreflight.inferAccessorName(name) : MixinPreflight.inferInvokerName(name);
+					if (inferred == null || !INTERMEDIARY_MEMBER.matcher(inferred).matches()) return values;
+					return new AnnotationVisitor(api, values) {
+						private boolean written;
+
+						@Override
+						public void visit(String attribute, Object value) {
+							if ("value".equals(attribute) && value instanceof String target) {
+								// Mixin reads an empty target as none.
+								if (target.isEmpty()) return;
+								written = true;
+							}
+							super.visit(attribute, value);
+						}
+
+						@Override
+						public void visitEnd() {
+							if (!written) super.visit("value", inferred);
+							super.visitEnd();
+						}
+					};
 				}
 			};
 		}
