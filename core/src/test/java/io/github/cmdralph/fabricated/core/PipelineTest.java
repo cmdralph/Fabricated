@@ -1570,6 +1570,55 @@ class PipelineTest {
 	}
 
 	@Test
+	void aModsClassesLoseTheOtherSidesMembersAsTheyAreTranslatedWithTheirFrames(@TempDir Path game) throws Exception {
+		// ENV-1 (CORPUS-59): stripped at class load, Cobblemon's cooking pot screen had its frames computed anew by ModLauncher,
+		// which loads the classes they name: JEI's runtime, not installed, and the client's initializer failed. The pipeline
+		// translates for the dedicated server here.
+		Map<String, byte[]> classes = TestSources.compile(game.resolve("build"), Map.of(
+				"net/fabricmc/api/EnvType.java", "package net.fabricmc.api; public enum EnvType { CLIENT, SERVER }",
+				"net/fabricmc/api/Environment.java", "package net.fabricmc.api; public @interface Environment { EnvType value(); }",
+				"optional/Runtime.java", "package optional; public interface Runtime { static Runtime get() { return null; } }",
+				"mod/Screen.java", """
+						package mod;
+						public class Screen {
+							@net.fabricmc.api.Environment(net.fabricmc.api.EnvType.CLIENT) public static void render() { }
+							public static Object shown(boolean jei) { Object shown = jei ? optional.Runtime.get() : null; return shown == null ? "none" : shown; }
+						}""",
+				"mod/Plain.java", "package mod; public class Plain { public static String name() { return \"plain\"; } }"));
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		Path jar = TestJars.create().fabricModJson(TestJars.modJson("pots", "1.0", ""))
+				.bytes("mod/Screen.class", classes.get("mod/Screen"))
+				.bytes("mod/Plain.class", classes.get("mod/Plain"))
+				.write(mods.resolve("pots.jar"));
+		Pipeline.Result result = Pipeline.run(input(game, List.of(jar), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
+
+		assertEquals(List.of("pots"), result.mods().stream().map(m -> m.translated().candidate().id()).toList(), result.report().render());
+		assertTrue(result.mods().getFirst().translated().environmentClasses().isEmpty(), "nothing is left to strip at class load");
+		assertTrue(result.environmentClasses().isEmpty());
+		try (SafeArchive overlay = SafeArchive.open(result.mods().getFirst().translated().overlay(), ArchiveLimits.DEFAULTS)) {
+			byte[] screen = overlay.read("mod/Screen.class");
+			assertNotNull(screen, "the stripped class shadows the jar's");
+			ClassNode stripped = new ClassNode();
+			new ClassReader(screen).accept(stripped, 0);
+			assertEquals(List.of("<init>", "shown"), stripped.methods.stream().map(m -> m.name).toList(), "the client's method is gone");
+			assertEquals(frames(classes.get("mod/Screen"), "shown"), frames(screen, "shown"), "the compiler's frames, none computed anew");
+			assertNull(overlay.read("mod/Plain.class"), "a class without the annotations is the jar's");
+		}
+	}
+
+	/** The frames of a class's method, as text: what a frame computation would replace. */
+	private static List<String> frames(byte[] data, String method) {
+		ClassNode node = new ClassNode();
+		new ClassReader(data).accept(node, 0);
+		List<String> frames = new ArrayList<>();
+		for (var insn : node.methods.stream().filter(m -> m.name.equals(method)).findFirst().orElseThrow().instructions) {
+			if (insn instanceof org.objectweb.asm.tree.FrameNode frame) frames.add(frame.type + " " + frame.local + " " + frame.stack);
+		}
+		assertFalse(frames.isEmpty(), "the method has frames");
+		return frames;
+	}
+
+	@Test
 	void aModWhoseMixinGivesALibraryClassAnotherLibrarysInterfaceLoadsWithAnAdapter(@TempDir Path game) throws Exception {
 		// LIB-2: adventure-platform-fabric makes authlib's GameProfile an Adventure Identity, an interface of another jar
 		// with default methods, and casts a player's profile to it; pre-flight disabled it, and with it OneConfig's chat event.

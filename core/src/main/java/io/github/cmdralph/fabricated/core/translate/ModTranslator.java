@@ -319,11 +319,13 @@ public final class ModTranslator {
 					addBridges(DefaultBridge.of(ii.target(), List.of(ii.interfaceName()), classes), List.of(ii.interfaceName()), bridges, notes);
 				}
 
-				Set<String> environmentClasses = remapped != null ? environmentClasses(remapped.keySet(), files)
-						: environmentClasses(archive.classEntryNames(), archive::read);
 				int renamed = remapped != null ? applyRenames(remapped, remapped.keySet(), files)
 						: applyRenames(overlay, archive.classEntryNames(), archive::read);
 				if (renamed > 0) notes.add(renamed + " class(es) use NeoForge members as Forge Config API Port's copy of NeoForge declares them; the references are adapted to NeoForge's own");
+				// Last, on the classes as they will load: the members Fabric's @Environment reserves for the other side (ENV-1).
+				stripEnvironment(overlay, remapped, remapped != null ? remapped.keySet() : archive.classEntryNames(), files,
+						env.clientSide() ? EnvType.CLIENT : EnvType.SERVER);
+				Set<String> environmentClasses = Set.of();
 
 				FabricModMetadata md = candidate.metadata();
 				ModsTomlWriter.Spec spec = new ModsTomlWriter.Spec(neoId, md.getVersion().getFriendlyString(), md.getName(),
@@ -406,15 +408,44 @@ public final class ModTranslator {
 		return (int) Math.max(1, Math.min(MEMORY_MIB, bytes / (1 << 20)));
 	}
 
-	/** Classes whose bytes mention Fabric's {@code @Environment} annotations, to strip for the other side at class load. */
-	private static Set<String> environmentClasses(Collection<String> entries, FileView files) throws ArchiveException {
-		Set<String> classes = new TreeSet<>();
-		for (String name : entries) {
+	/**
+	 * Leaves out the members and interfaces of the mod's classes that Fabric's {@code @Environment} annotations reserve for
+	 * the other side, as Fabric Loader does as it loads them (ENV-1): from each class as it will load, the overlay's copy
+	 * where translation rewrote it, else the remapped jar's or, unremapped, the jar's (into the overlay). A translation is
+	 * for one side. Done at class load, the stripping cost Cobblemon's client its initializer on NeoForge 21.1 (CORPUS-59):
+	 * ModLauncher computes anew the frames of every class a transformer takes, which loads the classes the frames name, and
+	 * Cobblemon's cooking pot screen names JEI's runtime, which isn't installed. Only members and interfaces go, so the
+	 * class's own frames stay valid and are kept as they are.
+	 *
+	 * @param remapped the remapped jar's entries, or {@code null} when the jar is used as it is
+	 */
+	private static void stripEnvironment(Map<String, byte[]> overlay, Map<String, byte[]> remapped, Collection<String> entries,
+			FileView files, EnvType side) throws ArchiveException {
+		for (String name : List.copyOf(entries)) {
 			if (!name.endsWith(".class") || name.startsWith("META-INF/")) continue;
-			byte[] data = files.read(name);
-			if (data != null && EnvironmentStripper.mayNeedStripping(data)) classes.add(name.substring(0, name.length() - ".class".length()));
+			if (overlay.containsKey(name)) {
+				byte[] stripped = stripped(overlay.get(name), side);
+				if (stripped != null) overlay.put(name, stripped);
+			}
+			if (remapped != null) {
+				byte[] stripped = stripped(remapped.get(name), side);
+				if (stripped != null) remapped.put(name, stripped);
+			} else if (!overlay.containsKey(name)) {
+				byte[] stripped = stripped(files.read(name), side);
+				if (stripped != null) overlay.put(name, stripped);
+			}
 		}
-		return Set.copyOf(classes);
+	}
+
+	/** The class without the other side's members and interfaces, its frames as they were; {@code null} if it keeps them all. */
+	private static byte[] stripped(byte[] data, EnvType side) {
+		if (data == null || !EnvironmentStripper.mayNeedStripping(data)) return null;
+		ClassNode node = new ClassNode();
+		new ClassReader(data).accept(node, 0);
+		if (!EnvironmentStripper.strip(node, side)) return null;
+		ClassWriter writer = new ClassWriter(0);
+		node.accept(writer);
+		return writer.toByteArray();
 	}
 
 	/**
