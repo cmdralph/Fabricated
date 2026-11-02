@@ -20,6 +20,7 @@ import io.github.cmdralph.fabricated.neoforge.fluid.FabricFluidType;
 import io.github.cmdralph.fabricated.neoforge.item.CreativeTabOrder;
 import io.github.cmdralph.fabricated.neoforge.objectbuilder.ObjectBuilderBridge;
 import io.github.cmdralph.fabricated.neoforge.registry.FabricTableEntries;
+import io.github.cmdralph.fabricated.neoforge.registry.ProviderDataPackRegistries;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.api.DedicatedServerModInitializer;
 import net.fabricmc.api.ModInitializer;
@@ -219,6 +220,11 @@ public final class EntrypointBridge {
 		}
 		LOGGER.info("Fabricated ran Fabric entrypoints for {} mod(s) in {} ms ({} failure(s))",
 				state.mods().size(), nanos / 1_000_000, failures.size());
+		// The data-pack registries the initializers made through another mod's registry sync, which hands NeoForge only
+		// those it had before them (Forgified Fabric API's on 1.21.1, PROVIDER-11).
+		if (state.providedElsewhere("fabric-registry-sync-v0")) {
+			ProviderDataPackRegistries.addLate("fabric-registry-sync-v0", problem -> state.report().line("Registries", problem));
+		}
 		Set<String> failed = new HashSet<>();
 		for (EntrypointRunner.Failure failure : failures) failed.add(failure.modId());
 		state.api().markEntrypointsComplete(failed, (action, error) -> {
