@@ -3,6 +3,8 @@ package io.github.cmdralph.fabricated.core;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -47,6 +49,7 @@ import io.github.cmdralph.fabricated.core.resolve.Candidate;
 import io.github.cmdralph.fabricated.core.resolve.CandidateScanner;
 import io.github.cmdralph.fabricated.core.resolve.CompatPlan;
 import io.github.cmdralph.fabricated.core.resolve.DependencyResolver;
+import io.github.cmdralph.fabricated.core.resolve.DownloadedMods;
 import io.github.cmdralph.fabricated.core.resolve.FabricApiPlan;
 import io.github.cmdralph.fabricated.core.resolve.LoadOrderings;
 import io.github.cmdralph.fabricated.core.runtime.FabricLoaderRuntime;
@@ -401,10 +404,29 @@ public final class Pipeline {
 				.environment("Fabric Loader API", FABRIC_LOADER_COMPAT_VERSION);
 		config.warnings().forEach(w -> report.line("Configuration warnings", w));
 
-		CandidateScanner.Result scan = new CandidateScanner(in.cache(), config.limits(), in.descriptor().loaderName()).scan(in.fabricJars());
+		CandidateScanner scanner = new CandidateScanner(in.cache(), config.limits(), in.descriptor().loaderName());
+		CandidateScanner.Result scan = scanner.scan(in.fabricJars());
+		// The jars the loaders among them downloaded in an earlier launch join the scan, as jars of the mods folder do.
+		List<DownloadedMods.Download> downloads = DownloadedMods.of(scan.candidates().stream().map(Candidate::id).filter(this::mayLoad).toList(),
+				in.gameDir(), in.minecraftVersion());
+		if (!downloads.isEmpty()) {
+			List<Path> jars = new ArrayList<>(in.fabricJars());
+			Instant now = Instant.now();
+			for (DownloadedMods.Download d : downloads) {
+				jars.add(d.jar());
+				report.line(DownloadedMods.SECTION, d.name() + ": " + d.jar().getFileName() + ", which " + d.loader() + " downloaded, loads as a Fabric mod;"
+						+ " " + d.loader() + " leaves it to load so, without applying its automatic updates");
+				if (d.stale(now)) {
+					report.line(DownloadedMods.STALE_SECTION, d.name() + "'s jar " + d.jar() + " is " + Duration.between(d.modified(), now).toDays()
+							+ " days old, and " + d.loader() + " doesn't update it while Fabricated loads it. To update it, delete that file: the next"
+							+ " launch downloads the current one, and the launch after that loads it.");
+				}
+			}
+			scan = scanner.scan(jars);
+		}
 		scan.rejected().forEach(r -> report.mod(new ModRow(r.origin(), "", "", Status.REJECTED, r.reason(), "Make sure this is an unmodified Fabric mod jar for this Minecraft version.")));
 		scan.notes().forEach(n -> report.line("Discovery notes", n));
-		List<Candidate> eligible = filter(scan.candidates());
+		List<Candidate> eligible = withoutOrphanedDownloads(filter(scan.candidates()), downloads, scan.candidates());
 		loadMixinFailures(scan.candidates());
 		for (FabricApiPlan.Module m : plan.modules().values()) {
 			NeoForgeMod provider = providedElsewhere.get(m.id());
@@ -623,6 +645,42 @@ public final class Pipeline {
 			eligible.add(c);
 		}
 		return eligible;
+	}
+
+	/**
+	 * Whether a scanned Fabric mod may load, as far as the player's configuration and the compatibility plan say (its
+	 * dependencies are the resolver's): a downloaded jar is only looked for where its loader may load.
+	 */
+	private boolean mayLoad(String id) {
+		FabricatedConfig.ModOverride override = config.override(id);
+		return !override.disabled() && (COMPAT.entry(id).neoForgeBuildOnly() == null || override.loadUnsupported());
+	}
+
+	/**
+	 * {@code eligible} without the mods of a downloaded jar whose loader isn't among them after all: such a jar loads only
+	 * with its loader, which runs what it downloaded (Essential's runs Essential's initialization).
+	 */
+	private List<Candidate> withoutOrphanedDownloads(List<Candidate> eligible, List<DownloadedMods.Download> downloads, List<Candidate> scanned) {
+		if (downloads.isEmpty()) return eligible;
+		Set<String> loading = eligible.stream().map(Candidate::id).collect(Collectors.toSet());
+		List<String> orphanedOrigins = new ArrayList<>();
+		for (DownloadedMods.Download d : downloads) {
+			if (loading.contains(d.loader())) continue;
+			for (Candidate c : scanned) {
+				if (c.depth() == 0 && c.path().equals(d.jar())) orphanedOrigins.add(c.origin());
+			}
+		}
+		if (orphanedOrigins.isEmpty()) return eligible;
+		List<Candidate> kept = new ArrayList<>();
+		for (Candidate c : eligible) {
+			String origin = orphanedOrigins.stream().filter(o -> c.origin().equals(o) || c.origin().startsWith(o + "!/")).findFirst().orElse(null);
+			if (origin == null) {
+				kept.add(c);
+				continue;
+			}
+			report.mod(new ModRow(c.id(), c.version(), c.origin(), Status.SKIPPED, "downloaded by a Fabric mod's loader that isn't loading, and loads only with it", ""));
+		}
+		return kept;
 	}
 
 	/** The installed NeoForge mod next to which a Fabric build can't run, with why, or {@code null}. */

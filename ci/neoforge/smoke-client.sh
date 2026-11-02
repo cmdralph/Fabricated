@@ -60,6 +60,10 @@ if [ -n "$extra" ] && [ -d "$extra" ]; then
 	cp "$extra"/*.jar run/mods/ 2>/dev/null || true
 fi
 ls -1 run/mods
+# SMOKE_SEED: a directory copied into the game directory first, as an earlier launch left it (Essential's download).
+if [ -n "${SMOKE_SEED:-}" ] && [ -d "$SMOKE_SEED" ]; then
+	cp -r "$SMOKE_SEED"/. run/
+fi
 # FABRICATED_MODS: optional per-mod overrides, the "mods" object of config/fabricated.json.
 mods_json="${FABRICATED_MODS:-{\}}"
 if [ -n "$extra" ]; then

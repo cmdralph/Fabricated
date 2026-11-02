@@ -973,7 +973,8 @@ jobs:
           cp "$RUNNER_TEMP/extra/fabric-api.jar" "$RUNNER_TEMP/extra-malilib/"
           SMOKE_TIMEOUT=420 ci/neoforge/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-malilib" "$RUNNER_TEMP/extra-malilib" || true
       # Essential's Fabric build (its loader, which downloads Essential as the game starts; Fabricated itself never
-      # downloads anything), with its refusal lifted, on its own: what its loader reaches for (task 5). Informational.
+      # downloads anything), with its refusal lifted, on its own, launched twice: the first launch's loader downloads
+      # Essential, which Fabricated loads from the second (DOWNLOAD-1, task 5). Informational.
       - name: Client with Essential's Fabric build (informational)
         if: ${{ matrix.part == 'mods' && env.EXTENDED == 'true' && !cancelled() && steps.build.outcome == 'success' }}
         continue-on-error: true
@@ -988,7 +989,23 @@ jobs:
             exit 0
           fi
           cp "$RUNNER_TEMP/extra/fabric-api.jar" "$RUNNER_TEMP/extra-essential/"
-          SMOKE_TIMEOUT=420 ci/neoforge/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-essential" "$RUNNER_TEMP/extra-essential" || true
+          SMOKE_TIMEOUT=420 ci/neoforge/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-essential-first" "$RUNNER_TEMP/extra-essential" || true
+          first="$RUNNER_TEMP/client-essential-first/run"
+          echo "-- first launch: what Essential's loader did, and Fabricated's notice"
+          grep -n -m 30 -i -E "essential|/(ERROR|FATAL)\]" "$first/logs/latest.log" | grep -v -E "^\S+\s+at " | cut -c1-400 || true
+          grep -n -m 1 -A 24 "MixinExtras service has already" "$first/logs/latest.log" | cut -c1-300 || true
+          # What it downloaded, which the second launch starts with, as a player's second launch would.
+          mkdir -p "$RUNNER_TEMP/seed-essential"
+          [ -d "$first/essential" ] && cp -r "$first/essential" "$RUNNER_TEMP/seed-essential/"
+          for jar in "$RUNNER_TEMP/seed-essential/essential/"Essential*.jar; do
+            [ -f "$jar" ] || continue
+            echo "-- $(basename "$jar"): fabric.mod.json, nested jars, mixin configs"
+            unzip -p "$jar" fabric.mod.json | head -c 6000 || true
+            echo
+            unzip -l "$jar" | grep -E "META-INF/jars/|mixins[^/]*\.json$|\.accesswidener$" | head -40 || true
+          done
+          SMOKE_SEED="$RUNNER_TEMP/seed-essential" SMOKE_TIMEOUT=420 ci/neoforge/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-essential" "$RUNNER_TEMP/extra-essential" || true
+          echo "-- second launch"
           log="$RUNNER_TEMP/client-essential/run/logs/latest.log"
           awk '/^== /{show = /^== (Summary|Disabled|Unsupported|Linkage)/} show' "$RUNNER_TEMP/client-essential/run/logs/fabric-bridge-report.txt" | head -60 | cut -c1-400 || true
           grep -n -m 60 -i -E "essential|/(ERROR|FATAL)\]" "$log" | cut -c1-400 || true

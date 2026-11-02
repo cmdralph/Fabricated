@@ -12,6 +12,9 @@ import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -50,6 +53,7 @@ import io.github.cmdralph.fabricated.core.remap.MappingComposer;
 import io.github.cmdralph.fabricated.core.remap.MappingTable;
 import io.github.cmdralph.fabricated.core.report.Report;
 import io.github.cmdralph.fabricated.core.resolve.Candidate;
+import io.github.cmdralph.fabricated.core.resolve.DownloadedMods;
 import io.github.cmdralph.fabricated.core.resolve.FabricApiPlan;
 import io.github.cmdralph.fabricated.core.runtime.ModContainerImpl;
 import io.github.cmdralph.fabricated.core.testutil.TestEnumBodies;
@@ -830,6 +834,41 @@ class PipelineTest {
 		Set<String> loaded = forced.mods().stream().map(m -> m.translated().candidate().id()).collect(Collectors.toSet());
 		assertEquals(Set.of("sodium", "sodium-addon"), loaded, forced.report().render());
 		assertTrue(forced.report().render().contains("Unsupported mods loaded on request (loadUnsupported)"), forced.report().render());
+	}
+
+	/**
+	 * Essential's loader downloads Essential as the game starts, when NeoForge takes no mod any more: the jar it left in
+	 * an earlier launch (the newest of its numbered copies) loads with the mods folder's, next to its loader, and one past
+	 * 30 days is reported, as its loader doesn't update it then (DOWNLOAD-1). Where the loader doesn't load (refused by
+	 * the compatibility plan, as it is unless the player asks), the jar isn't read.
+	 */
+	@Test
+	void aJarALoaderDownloadedInAnEarlierLaunchLoadsWithIt(@TempDir Path game) throws Exception {
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		Path loader = TestJars.create().fabricModJson(TestJars.modJson("essential-loader", "1.3.2", "")).write(mods.resolve("essential-loader.jar"));
+		Path downloads = Files.createDirectories(game.resolve("essential"));
+		TestJars.create().fabricModJson(TestJars.modJson("essential", "1.5.0", "")).write(downloads.resolve("Essential (fabric_26.2).jar"));
+		Path newest = TestJars.create().fabricModJson(TestJars.modJson("essential", "1.5.1", "")).write(downloads.resolve("Essential (fabric_26.2).1.jar"));
+		TestJars.create().fabricModJson(TestJars.modJson("essential-other", "1.0.0", "")).write(downloads.resolve("Essential (fabric_26.1.2).jar"));
+
+		Pipeline.Result refused = Pipeline.run(input(game, List.of(loader), Namespace.OFFICIAL, Map.of(), null, List.of()));
+		assertTrue(refused.mods().isEmpty(), refused.report().render());
+		assertTrue(refused.report().mods().stream().noneMatch(r -> r.id().startsWith("essential-other") || r.id().equals("essential")), refused.report().render());
+		assertTrue(refused.report().lines(DownloadedMods.SECTION).isEmpty(), refused.report().render());
+
+		Files.createDirectories(game.resolve("config"));
+		Files.writeString(game.resolve("config").resolve(FabricatedConfig.FILE_NAME), "{\"schema\": 1, \"mods\": {\"essential-loader\": {\"loadUnsupported\": true}}}");
+		Pipeline.Result result = Pipeline.run(input(game, List.of(loader), Namespace.OFFICIAL, Map.of(), null, List.of()));
+		Map<String, String> loaded = result.mods().stream().collect(Collectors.toMap(m -> m.translated().candidate().id(), m -> m.translated().candidate().version()));
+		assertEquals(Map.of("essential-loader", "1.3.2", "essential", "1.5.1"), loaded, result.report().render());
+		assertEquals(1, result.report().lines(DownloadedMods.SECTION).size(), result.report().render());
+		assertTrue(result.report().lines(DownloadedMods.STALE_SECTION).isEmpty(), result.report().render());
+
+		Files.setLastModifiedTime(newest, FileTime.from(Instant.now().minus(Duration.ofDays(40))));
+		Pipeline.Result old = Pipeline.run(input(game, List.of(loader), Namespace.OFFICIAL, Map.of(), null, List.of()));
+		List<String> stale = old.report().lines(DownloadedMods.STALE_SECTION);
+		assertEquals(1, stale.size(), old.report().render());
+		assertTrue(stale.getFirst().startsWith("Essential's jar ") && stale.getFirst().contains(" is 40 days old"), stale.getFirst());
 	}
 
 	/**

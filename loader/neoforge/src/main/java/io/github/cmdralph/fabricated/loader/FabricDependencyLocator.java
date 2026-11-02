@@ -42,6 +42,7 @@ import io.github.cmdralph.fabricated.core.mixin.PreflightFinding;
 import io.github.cmdralph.fabricated.core.remap.MappingException;
 import io.github.cmdralph.fabricated.core.remap.OfficialClasses;
 import io.github.cmdralph.fabricated.core.report.Report;
+import io.github.cmdralph.fabricated.core.resolve.DownloadedMods;
 import io.github.cmdralph.fabricated.core.resolve.FabricApiPlan;
 import io.github.cmdralph.fabricated.core.resolve.NativeModules;
 import io.github.cmdralph.fabricated.core.resolve.NestedNeoForgeJars;
@@ -336,6 +337,8 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 				pipeline.addIssue(hardStop ? ModLoadingIssue.error(MESSAGE, text) : ModLoadingIssue.warning(MESSAGE, text));
 			}
 		}
+		// A downloaded mod its loader stopped updating, as it loads through Fabricated (DOWNLOAD-1).
+		for (String line : result.report().lines(DownloadedMods.STALE_SECTION)) pipeline.addIssue(ModLoadingIssue.warning(MESSAGE, line));
 		if (quietFabricApi > 0) {
 			LOGGER.info("{} Fabric API module(s) can't run on NeoForge yet and were skipped; see logs/fabric-bridge-report.txt", quietFabricApi);
 		}
