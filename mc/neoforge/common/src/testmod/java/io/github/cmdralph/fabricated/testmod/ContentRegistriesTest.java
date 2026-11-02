@@ -41,11 +41,7 @@ public final class ContentRegistriesTest implements ModInitializer {
 			if (HoneycombItem.getWaxed(Blocks.STONE.defaultBlockState()).map(state -> !state.is(Blocks.SMOOTH_STONE)).orElse(true)) failed.add("waxable");
 			if (VibrationSystem.getGameEventFrequency(event) != 7) failed.add("vibration_frequency");
 			ContentRegistriesTestCompat.check(server, failed);
-			if (failed.isEmpty()) {
-				TestMod.LOGGER.info("FABRICATED-TEST content registries OK");
-			} else {
-				TestMod.LOGGER.error("FABRICATED-TEST content registries FAILED: {}", failed);
-			}
+			TestMod.report("content registries", failed, "fabric-content-registries-v0", ContentRegistriesTestCompat.PROVIDERS_ANSWERS);
 		});
 	}
 }

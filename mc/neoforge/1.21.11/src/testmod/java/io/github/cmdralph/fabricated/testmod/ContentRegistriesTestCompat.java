@@ -1,6 +1,7 @@
 package io.github.cmdralph.fabricated.testmod;
 
 import java.util.List;
+import java.util.Map;
 
 import net.fabricmc.fabric.api.registry.CompostingChanceRegistry;
 import net.fabricmc.fabric.api.registry.FuelRegistryEvents;
@@ -18,6 +19,9 @@ import net.minecraft.world.level.gameevent.GameEvent;
 
 /** {@link ContentRegistriesTest}'s registrations under this version's API names, and the checks only it has. */
 final class ContentRegistriesTestCompat {
+	/** The checks another mod's fabric-content-registries-v0 answers differently, as its source reads (PROVIDER-8). */
+	static final Map<String, String> PROVIDERS_ANSWERS = Map.of();
+
 	private ContentRegistriesTestCompat() {
 	}
 

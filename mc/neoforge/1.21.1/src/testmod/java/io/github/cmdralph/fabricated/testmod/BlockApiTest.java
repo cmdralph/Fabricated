@@ -2,6 +2,7 @@ package io.github.cmdralph.fabricated.testmod;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.block.v1.FabricBlockState;
@@ -42,11 +43,8 @@ public final class BlockApiTest implements ModInitializer {
 			if (!climbable.makesOpenTrapdoorAboveClimbable(climbable.defaultBlockState(), level, BlockPos.ZERO, trapdoor)
 					|| stone.getBlock().makesOpenTrapdoorAboveClimbable(stone, level, BlockPos.ZERO, trapdoor)) failed.add("trapdoor_tag");
 			if (((FabricBlockState) stone).getAppearance(level, BlockPos.ZERO, Direction.UP, null, null) != stone) failed.add("appearance");
-			if (failed.isEmpty()) {
-				TestMod.LOGGER.info("FABRICATED-TEST block api OK");
-			} else {
-				TestMod.LOGGER.error("FABRICATED-TEST block api FAILED: {}", failed);
-			}
+			TestMod.report("block api", failed, "fabric-block-api-v1", Map.of("trapdoor_tag",
+					"Forgified Fabric API's tag hook is in vanilla's LivingEntity.trapdoorUsableAsLadder, which NeoForge 21.1's ladder check no longer calls"));
 		});
 	}
 }

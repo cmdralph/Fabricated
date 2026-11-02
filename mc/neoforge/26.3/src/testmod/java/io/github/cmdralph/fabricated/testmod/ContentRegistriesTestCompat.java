@@ -1,6 +1,7 @@
 package io.github.cmdralph.fabricated.testmod;
 
 import java.util.List;
+import java.util.Map;
 
 import net.fabricmc.fabric.api.item.v1.BlockTransformerEvents;
 import net.fabricmc.fabric.api.item.v1.BlockTransformerHelper;
@@ -25,6 +26,9 @@ final class ContentRegistriesTestCompat {
 			.builder(BlockPredicate.matchesBlocks(Blocks.DRIED_KELP_BLOCK), Blocks.DEAD_BRAIN_CORAL_BLOCK).build();
 	private static final BlockTransformer.BlockTransformData ADDED = BlockTransformer.BlockTransformData
 			.builder(BlockPredicate.matchesBlocks(Blocks.ANDESITE), Blocks.POLISHED_ANDESITE).build();
+
+	/** The checks another mod's fabric-content-registries-v0 answers differently, as its source reads (PROVIDER-8). */
+	static final Map<String, String> PROVIDERS_ANSWERS = Map.of();
 
 	private ContentRegistriesTestCompat() {
 	}

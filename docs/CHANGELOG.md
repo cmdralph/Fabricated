@@ -110,6 +110,11 @@ One entry per working session, newest first: what changed, and how it was verifi
   (rope knots, flower boxes, faucets and others), 23 more and its way signs' were missing on the 1.21.1 corpus client. A
   loader NeoForge knows is NeoForge's, and any other unknown loader still fails the model. The 1.21.1 renderer test mod
   checks both forms of the key and an unknown NeoForge loader, in a gate.
+- **Forgified Fabric API's modules** (PROVIDER-8, 1.21.1): the seven test mod checks that failed with its modules on the
+  coexisting client were read in its source, and each is its own: its trapdoor tag, attack block result, sculk
+  frequencies and default-enabled packs don't take effect on NeoForge 21.1, and it makes fewer bridges to NeoForge
+  (enchanting, creator mod, transfer). `COMPATIBILITY.md` lists them. The test mod skips those items, naming the
+  provider's answer, only where that module is another mod's; any other failure still fails.
 - **Build:** `scripts/check-mixin-inventory.py` also runs the build's rule that each of the game mod's mixins is
   assigned a Fabric API module (`mixin-modules.json`), which only a platform build found: extended run 41492025138
   stopped on it, for `UtilMixin`. CI's mod downloads (`ci/fetch-corpus.py`) try a timeout, a dropped connection or a
@@ -139,8 +144,8 @@ One entry per working session, newest first: what changed, and how it was verifi
   where.
 - **Open, in the roadmap's findings:** fixed, to verify: NET-10 (Cardinal Components API's sync), CORPUS-54 on
   NeoForge (Puzzles Lib's screen effect hook on 1.21.1) and CORPUS-62 (Supplementaries' models through Moonlight's
-  loaders on 1.21.1); open: PROVIDER-8 (the test mod's checks that fail with Forgified Fabric API's modules on 1.21.1),
-  KEYMAP-1 (documented), and the Fabric builds' gaps `COMPATIBILITY.md` lists.
+  loaders on 1.21.1); read, to verify: PROVIDER-8 (Forgified Fabric API's modules on 1.21.1, the test mod's skips);
+  open: KEYMAP-1 (documented), and the Fabric builds' gaps `COMPATIBILITY.md` lists.
   On Forge, the refusals stay until the Forge sync and its runs.
 - **Verified:** extended runs 41471044589 and 41477591558, every job green on all five NeoForge versions, the
   difficult-mod gates included, and 41512581949, every job green, which verified CORPUS-61, CORPUS-56 on 1.21.11 and

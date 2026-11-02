@@ -954,7 +954,18 @@ name, and what it does differently is its own. Forgified Fabric API's networking
 namespace, as NeoForge does, where Fabricated's own networking takes it (NET-4): with it installed, a Fabric mod
 registering one fails its initializer and the report marks it failed (the test mod's payload on 1.21.1; BetterEnd's
 ritual update UNVERIFIED, PROVIDER-5). On 26.x, its item API throws when NeoForge asks the equipment slot of an item
-with Fabric's equipment slot provider, which stops the game (PROVIDER-7). Mods read a Fabric mod's files through its
+with Fabric's equipment slot provider, which stops the game (PROVIDER-7). On 1.21.1, read in its source (PROVIDER-8):
+its block API's trapdoor climbing tag has no effect (its hook is in vanilla's `trapdoorUsableAsLadder`, which NeoForge's
+ladder check no longer calls); an attack block callback returning `FAIL` stops the block's attack but not its
+breaking, where upstream cancels the left click (a creative player still breaks the block); a Fabric mod's sculk
+sensor frequency has no effect (it writes vanilla's table, NeoForge reads its data map); and a built-in resource pack a
+Fabric mod enables by default is offered but not selected (selected as the options load, which NeoForge 21.1 does
+before mods register their packs). Of the bridges to NeoForge Fabricated's own modules make, it has fewer: NeoForge's
+`supportsEnchantment` doesn't ask Fabric's enchanting event (the enchanting table, anvil, `/enchant` and loot do, as
+upstream), NeoForge's `getCreatorModId` isn't answered from Fabric's `getCreatorNamespace`, and its transfer bridge
+connects Fabric's and NeoForge's storages on block entities only, not a Fabric item's fluid storage to NeoForge, and
+fills a NeoForge item's fluid handler without writing the filled item back to its slot. Its view of a NeoForge fluid
+handler moves the fluid when a nested transaction commits, even if the outer one is then aborted. Mods read a Fabric mod's files through its
 container as NeoForge reads them, with the NeoForge sections translation leaves out of its `pack.mcmeta` and data files
 (PROVIDER-3). A Fabric mod's initializer creates its registries with Forgified Fabric API's `FabricRegistryBuilder` as
 with Fabricated's: NeoForge's check that refuses a registry after its new-registry event, where Fabricated runs Fabric
@@ -1160,7 +1171,7 @@ tracked:
 | Essential's automatic updates (its Fabric build) | all | Essential loads from the launch after its loader's download, as a regular mod | DOWNLOAD-1 |
 | A Fabric mod's hook into the game's options that needs its initializer (Bobby's larger render distance limit) | 1.21.1 | NeoForge 21.1 creates the options before it loads mods, where Fabric creates them after the entrypoints; such a hook that throws then is skipped for that call, with a warning and a report line (ENTRY-2) | — |
 | A NeoForge model naming its loader in NeoForge's object form (`"loader": {"id": ...}`), with Moonlight's Fabric build installed | 1.21.1 | Moonlight's hook into vanilla's model deserializer, which NeoForge's runs first, reads `loader` as a string only and fails the model; not seen in the corpus | CORPUS-62 |
-| What Forgified Fabric API's modules do differently from upstream, where it provides them | 1.21.1 seen | a provider's module is used as it is; CI's coexisting client sees several of the test mod's checks fail with them (block, item and transfer APIs, the attack block event, a vibration frequency, a default-enabled built-in pack), being read one by one | PROVIDER-8, task 5 |
+| What Forgified Fabric API's modules do differently from upstream, where it provides them | 1.21.1 read | a provider's module is used as it is; on 1.21.1 its trapdoor tag, attack block result, sculk frequencies and default-enabled packs don't take effect, and it makes fewer bridges to NeoForge (enchanting, creator mod, transfer), as listed in *Mods that bring Fabric API or Fabric Loader* above; the test mod skips those checks with it | PROVIDER-8 |
 | Hooks pre-flight leaves out where NeoForge's code differs | per mod | each is in the report, with what NeoForge's code lacks and what is lost | LEAVE-1 (above) |
 
 ### Planned work, in order of impact

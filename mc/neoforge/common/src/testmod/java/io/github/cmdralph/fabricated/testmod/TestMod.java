@@ -12,8 +12,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.ResourceBundle;
 import java.util.jar.JarFile;
+import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -324,6 +326,22 @@ public final class TestMod implements ModInitializer, DedicatedServerModInitiali
 	 */
 	static boolean providedByAnotherMod(String module) {
 		return ModList.get().isLoaded(module.replace('-', '_'));
+	}
+
+	/**
+	 * Logs a check's result: OK when nothing failed, FAILED otherwise, except where {@code module} is another mod's and
+	 * every item that failed is one {@code providersAnswers} names: the provider answers it differently, as its source
+	 * reads (PROVIDER-8), and the check logs SKIPPED with the items and why, as a check of the provider's module.
+	 */
+	static void report(String check, List<String> failed, String module, Map<String, String> providersAnswers) {
+		if (failed.isEmpty()) {
+			LOGGER.info("FABRICATED-TEST {} OK", check);
+		} else if (providedByAnotherMod(module) && providersAnswers.keySet().containsAll(failed)) {
+			LOGGER.info("FABRICATED-TEST {} SKIPPED: {} is another mod's, which answers {} as its source reads: {} (PROVIDER-8)", check, module, failed,
+					failed.stream().map(providersAnswers::get).collect(Collectors.joining("; ")));
+		} else {
+			LOGGER.error("FABRICATED-TEST {} FAILED: {}", check, failed);
+		}
 	}
 
 	private static String openness(Class<?> type) {
