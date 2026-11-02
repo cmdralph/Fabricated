@@ -20,6 +20,15 @@ sourceSets.testmodstubs.java.srcDirs = [file('src/testmodstubs/java')]
 // It also uses Fabric API's biome, loot and dimensions modules, which Fabricated provides itself (in the in-game mod, in
 // Mojang's names), in Intermediary's names as a Fabric mod is compiled against Fabric API: those stand-ins come first.
 sourceSets.testmod.compileClasspath = sourceSets.testmodstubs.output + sourceSets.testmod.compileClasspath
+// The test mod that fails on purpose touches the game before it throws (HOLD-2). mc/shared's names the game in Mojang's
+// names, as the platforms that run the game in them read it; this version's own copy names it in Intermediary's, against
+// the same stand-ins, and replaces it.
+def sharedThrowingMod = rootProject.file('mc/shared/src/testmodbroken/java/io/github/cmdralph/fabricated/testmod/broken/ThrowingMod.java').canonicalFile
+sourceSets.testmodbroken.java {
+    srcDir file('src/testmodbroken/java')
+    exclude { FileTreeElement element -> element.file.canonicalFile == sharedThrowingMod }
+}
+sourceSets.testmodbroken.compileClasspath = sourceSets.testmodstubs.output + sourceSets.testmodbroken.compileClasspath
 
 // --- The in-game mod in Forge 47's names -----------------------------------------------------------------------------
 // Forge 1.20.1 runs the game with SRG's member names. The in-game mod compiles against Mojang's: the copy nested in the
@@ -43,7 +52,10 @@ def gameModMixins = [
         // Fabric API's block break events in Forge's block breaking (BREAK-1), and its sleep events in Forge's bed
         // handling (SLEEP-1): upstream's hooks look for vanilla's calls, which Forge replaced.
         'fabricated-forge-interaction.mixins.json',
-        'fabricated-forge-entity.mixins.json']
+        'fabricated-forge-entity.mixins.json',
+        // Fabric API's fuels in vanilla's fuel table, which Forge's burn times read (FUEL-1), and its brewing recipes
+        // built with Forge's constructor of a brewing mix (BREW-1).
+        'fabricated-forge-content.mixins.json']
 dependencies {
     annotationProcessor "org.spongepowered:mixin:${project.mixin_processor_version}:processor"
     // The in-game mod's own mixins use MixinExtras' injectors, which the nested mixinextras-forge (below) provides. Its

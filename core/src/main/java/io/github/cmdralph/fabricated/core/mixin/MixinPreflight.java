@@ -239,6 +239,21 @@ public final class MixinPreflight extends PreflightPart {
 	}
 
 	/**
+	 * The name the first MixinExtras {@code @Local(argsOnly = true)} of a handler asks for, where the running Mixin
+	 * doesn't know arguments by their names (PRE-18, as ARGS-1) and no repair gave it the slot instead; null otherwise.
+	 */
+	private String localArgumentNameRejected(MethodNode handler) {
+		if (argumentNames) return null;
+		int params = Type.getArgumentTypes(handler.desc).length;
+		for (int p = 0; p < params; p++) {
+			for (AnnotationNode local : Annotations.ofParameter(handler, p)) {
+				if (LocalRepairs.takesArgumentByName(local)) return String.valueOf(((List<?>) Annotations.value(local, "name")).get(0));
+			}
+		}
+		return null;
+	}
+
+	/**
 	 * The first point of an {@code @Inject} into a constructor that SpongePowered's Mixin rejects (CTOR-2: it throws as it
 	 * applies the mixin, whatever the config's {@code required}): any but a return that isn't marked {@code unsafe}, or,
 	 * on 0.8.5, any but a return. Null when it takes them all, or on Fabric's Mixin.
@@ -731,7 +746,7 @@ public final class MixinPreflight extends PreflightPart {
 	}
 
 	/** The field type an accessor reads or writes: a getter's return type or a setter's only parameter. */
-	static String accessorFieldDesc(MethodNode method) {
+	public static String accessorFieldDesc(MethodNode method) {
 		Type[] args = Type.getArgumentTypes(method.desc);
 		Type ret = Type.getReturnType(method.desc);
 		if (args.length == 0 && ret.getSort() != Type.VOID) return ret.getDescriptor();
@@ -871,7 +886,7 @@ public final class MixinPreflight extends PreflightPart {
 			return;
 		}
 
-		if (ann.desc.equals(MixinNames.MODIFY_VARIABLE) && !anyFuzzy && !acceptsModifierSignature(handler, matched)) {
+		if (MixinNames.VALUE_MODIFIERS.contains(ann.desc) && !anyFuzzy && !acceptsModifierSignature(handler, matched)) {
 			ctx.classLevel(injectorName + " handler " + handler.name + Type.getMethodDescriptor(Type.getReturnType(handler.desc), PreflightAsm.handlerArgs(handler).toArray(Type[]::new))
 							+ " does not match the parameters of " + matched.get(0).name + matched.get(0).desc + " in " + target.name.replace('/', '.'),
 					(ctx.owner() == null ? loader + "'s build of Minecraft declares this method with different parameters"
@@ -922,6 +937,14 @@ public final class MixinPreflight extends PreflightPart {
 					"The feature this hook serves doesn't work on this " + loader + ".");
 			return;
 		}
+		String localArgument = localArgumentNameRejected(handler);
+		if (localArgument != null) {
+			ctx.injector(handler, require, injectorName + " handler " + handler.name + " captures the argument " + localArgument + " of " + matched.get(0).name
+							+ " in " + target.name.replace('/', '.') + " by its name, which " + loader + "'s Mixin doesn't know (it names arguments arg and their"
+							+ " slot; Fabric's Mixin takes their names from 0.17.0)",
+					"The feature this hook serves doesn't work on this " + loader + ".");
+			return;
+		}
 		String constructorPoint = constructorPointRejected(ann, matched);
 		if (constructorPoint != null) {
 			ctx.injector(handler, 1, injectorName + " " + handler.name + " injects into the constructor of " + target.name.replace('/', '.') + " at @At(\""
@@ -960,7 +983,9 @@ public final class MixinPreflight extends PreflightPart {
 				Range range = slice == null ? Range.ALL : InjectionPoints.sliceRange(slice, m, ctx);
 				boolean expression = point.equals("MIXINEXTRAS:EXPRESSION");
 				String resolved = rawTarget == null ? null : ctx.resolve(rawTarget);
-				Verdict v = expression ? InjectionPoints.evaluateExpression(handler, m, ctx) : InjectionPoints.evaluate(point, resolved, ordinal, opcode, range, m);
+				Verdict v = expression ? InjectionPoints.evaluateExpression(handler, m, ctx)
+						: point.equals("CONSTANT") ? InjectionPoints.constantPointVerdict(Annotations.value(at, "args"), ordinal, range, m)
+						: InjectionPoints.evaluate(point, resolved, ordinal, opcode, range, m);
 				if (v != Verdict.MISSING && ann.desc.equals(MixinNames.MODIFY_VARIABLE) && (point.equals("LOAD") || point.equals("STORE")) && range != Range.UNEVALUATED) {
 					int slot = modifiedSlot(handler, ann, m);
 					Type variable = Type.getReturnType(handler.desc);
@@ -986,6 +1011,7 @@ public final class MixinPreflight extends PreflightPart {
 			if (verdict == Verdict.MISSING) {
 				ctx.injector(handler, require, injectorName + " in " + matched.get(0).name + " expects @At(\"" + point + "\""
 								+ (rawTarget != null ? ", target=\"" + ctx.resolve(rawTarget) + "\"" : "")
+								+ (point.equals("CONSTANT") && Annotations.value(at, "args") instanceof List<?> args ? ", args=" + args : "")
 								+ (ordinal >= 0 ? ", ordinal=" + ordinal : "") + "), which does not occur in that method",
 						ctx.changer(true) + " changed the method body; the mod needs an update or this mixin must be skipped.");
 				return;
@@ -1056,11 +1082,13 @@ public final class MixinPreflight extends PreflightPart {
 	}
 
 	/**
-	 * Mixin accepts a {@code @ModifyVariable} handler taking the variable and then the target's first parameters, as
-	 * many as it declares (Mixin's {@code Injector.validateParams}: Balm's takes two of three); anything else is an
-	 * {@code InvalidInjectionException} when the mixin applies, whatever its {@code require} (Farmer's Delight's hook
-	 * into {@code CropBlock.getGrowthSpeed}, whose first parameter NeoForge's build made a block state). Handlers that
-	 * use {@code @Coerce} are left to Mixin.
+	 * Mixin accepts a value modifier's handler ({@link MixinNames#VALUE_MODIFIERS}) taking the value and then the target's
+	 * first parameters, as many as it declares (Mixin's {@code Injector.validateParams}: Balm's {@code @ModifyVariable}
+	 * takes two of three); anything else is an {@code InvalidInjectionException} when the mixin applies, whatever its
+	 * {@code require}, and the whole class fails with it: Farmer's Delight's hook into {@code CropBlock.getGrowthSpeed},
+	 * whose first parameter NeoForge's build made a block state, and LambDynamicLights' {@code @ModifyReturnValue} on the
+	 * overload of {@code LevelRenderer.getLightColor} Mixin picks, which took {@code LevelRenderer} from every mod
+	 * (CORPUS-45). Handlers that use {@code @Coerce} are left to Mixin.
 	 */
 	private static boolean acceptsModifierSignature(MethodNode handler, List<MethodNode> targets) {
 		List<Type> args = PreflightAsm.handlerArgs(handler);

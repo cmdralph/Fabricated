@@ -106,6 +106,7 @@ How to read the table:
 | fabric-recipe-api-v1 | loads (see below) | loads | loads | loads | loads |
 | fabric-creative-tab-api-v1 / item-group-api-v1 | loads | loads | loads | loads | loads |
 | fabric-debug-api-v1 | — | — | loads | loads | loads |
+| fabric-key-binding-api-v1 | native (see below) | client | — | — | — |
 | fabric-key-mapping-api-v1 / key-binding-api-v1, screen-api-v1, rendering-v1, sound-api-v1, model-loading-api-v1 | client | client | client | client | client |
 | fabric-rendering-v1 on the client | loads (see below) | loads (see below) | loads (see below) | loads (see below) | loads (see below) |
 | fabric-screen-api-v1, sound-api-v1 on the client | loads (see below) | loads (see below) | loads (see below) | loads (see below) | loads (see below) |
@@ -117,9 +118,9 @@ How to read the table:
 ### Minecraft 1.21.1
 
 1.21.1 runs Fabric API 0.116.17 on NeoForge 21.1, whose FML still runs on ModLauncher (Fabricated's `modlauncher`
-loader variant). Fabric mods use Intermediary names, remapped at load as on 1.21.11. The 18 native modules are the
-ones that exist in 0.116 (`fabric-resource-loader-v0` stands for v1, which 0.116 doesn't have) and
-`fabric-particles-v1`, with these differences from later versions:
+loader variant). Fabric mods use Intermediary names, remapped at load as on 1.21.11. The 19 native modules are the
+ones that exist in 0.116 (`fabric-resource-loader-v0` stands for v1, which 0.116 doesn't have),
+`fabric-particles-v1` and `fabric-key-binding-api-v1`, with these differences from later versions:
 
 - **Storages and energy**: NeoForge 21.1 has the item, fluid and energy handler capabilities of before its transfer
   API, so the bridge is the Forge one, ported (`ItemHandler`, `FluidHandler` and `EnergyStorage` capabilities, both
@@ -137,6 +138,15 @@ ones that exist in 0.116 (`fabric-resource-loader-v0` stands for v1, which 0.116
 - **Colours and shaders**: NeoForge 21.1 keeps block and item colours in maps, so Fabric's colour lookups read them
   (COLOR-2), and it resolves the namespace of a core shader program, its stages and imports itself, so upstream's
   two shader hooks are left out (SHADER-2).
+- **Key bindings** (native): Fabric API's key binding module refuses a key binding once the game's options exist, which
+  on Fabric is after the client entrypoints; NeoForge 21.1 creates them before it loads mods. Fabricated ships the
+  module (KEYMAP-2): upstream's API, its key bindings kept until NeoForge's `RegisterKeyMappingsEvent` and registered
+  there, each with the key the player saved. As upstream, a key binding is refused twice and once the options exist,
+  and its category joins the controls screen's order after the game's. `fabric-keybindings-v0` passes through and
+  calls it.
+- **Fabric API's internal pack class**: mods that tell Fabric mods' packs apart by
+  `net.fabricmc.fabric.impl.resource.loader.ModNioResourcePack` (Moonlight) find a stand-in no pack is, as NeoForge
+  builds every mod's packs itself (CORPUS-44).
 - **Fabric's renderer API**: it loads, with Indigo, but Fabric models that aren't vanilla adapters aren't drawn in
   chunk sections yet (FRAPI-5).
 - **Entity data serializers**: 0.116 has no registry for them, so Fabric mods register through vanilla's
@@ -154,7 +164,9 @@ ones that exist in 0.116 (`fabric-resource-loader-v0` stands for v1, which 0.116
   `fabric-rendering-fluids-v1`'s same-fluid, overlay and block checks, `fabric-sound-api-v1`'s audio stream hook (as
   on every version) and `fabric-block-view-api-v2`'s render data in chunk sections.
 - The plan's other skips (tag files' `fabric:remove`, the dimensions module's DataFixerUpper mixins, resource
-  conditions' loaders) are 1.21.11's.
+  conditions' registry loader) are 1.21.11's. NeoForge 21.1 leaves vanilla's JSON data loaders as they are, so
+  upstream's load conditions hook applies there, and a data file whose `fabric:load_conditions` fail isn't loaded, as
+  on Fabric (CORPUS-49).
 
 ### Why modules are disabled
 
@@ -1048,6 +1060,22 @@ What this can't match of Fabric, seen in the owner's reference pack (2026-10-28)
 A Fabric mod works today if it needs only the Fabric Loader API and the **native** or **loads** modules
 above (the item, block, entity and loot modules are native on every version), and its own mixins pass
 pre-flight or can be left out (LEAVE-1 above).
+
+### What isn't supported on NeoForge
+
+For the beta, everything else in this document is supported. These are not, each with its reason and where it is
+tracked:
+
+| What | Versions | Why | Tracked |
+|---|---|---|---|
+| Fabric's game tests (`fabric-gametest-api-v1`, `client-gametest`) | all | deliberately not loaded: they are development-time tools, not used by mods at runtime | — |
+| Fabric models that aren't vanilla adapters, in chunk sections | 1.21.1 | Indigo's chunk section hook is left out (NeoForge 21.1's `renderBatched` takes model data and a render type), and Fabricated has no bridge there yet; NeoForge's own models are unaffected | FRAPI-5, task 4 |
+| Data generation's tag appenders (and on 26.3 its loot sub-providers) | all | pre-flight leaves those hooks out where NeoForge's data providers differ; the module's classes load for mods' runtime code (DATAGEN-1), and nothing is generated unless `fabric-api.datagen` is set | — |
+| Fabric storages in items (`ItemStorage.ITEM`) across to NeoForge's item handlers | 1.21.1 | NeoForge 21.1's item handler capability on stacks predates its transfer API, as Forge's | task 5 |
+| A Fabric mod's accessor to a field NeoForge retyped (`KeyMapping.MAP`) | all | NeoForge's field has another type, so the accessor is left out and its callers throw `NoSuchMethodError` | KEYMAP-1, task 5 |
+| A mixin adding interfaces to a library class NeoForge loads without mixin support | all | Mixin can't reach such a class; the mod is disabled, or loads without the mixin by `skipMixins` | LEAVE-1 (above) |
+| The Fabric builds in *Fabric builds that can't run on NeoForge* | as listed | as listed there | task 5 (Essential, Sodium and Iris first) |
+| Hooks pre-flight leaves out where NeoForge's code differs | per mod | each is in the report, with what NeoForge's code lacks and what is lost | LEAVE-1 (above) |
 
 ### Planned work, in order of impact
 

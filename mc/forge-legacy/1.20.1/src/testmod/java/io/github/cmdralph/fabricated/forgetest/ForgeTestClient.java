@@ -1,5 +1,6 @@
 package io.github.cmdralph.fabricated.forgetest;
 
+import io.github.cmdralph.fabricated.api.Fabricated;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
@@ -11,13 +12,19 @@ import net.minecraft.class_310;
  * after the main ones, the game instance set: each logs a line the client smoke looks for
  * (ci/forge-legacy/smoke-client.sh). It registers the factory of the test mod's particle type
  * ({@link ForgeParticleClient}), and with Fabric API's networking module it also starts a networking round trip with
- * the integrated server ({@link ForgeNetworkingClient}); with its model loading and screen modules, it checks the model
- * bake events ({@link ForgeModelClient}) and the screen mouse and key events ({@link ForgeScreenClient}).
+ * the integrated server ({@link ForgeNetworkingClient}); with its model loading, screen and rendering modules, it checks
+ * the model bake events ({@link ForgeModelClient}), the screen mouse and key events ({@link ForgeScreenClient}) and the
+ * HUD callback ({@link ForgeHudClient}).
  */
 @Environment(EnvType.CLIENT)
 public final class ForgeTestClient implements ClientModInitializer {
 	@Override
 	public void onInitializeClient() {
+		// Its Mod Menu entrypoint's screen behind Forge's mod list button, once the initializers ran (see ForgeModMenuEntry).
+		Fabricated.get().ifPresent(api -> api.afterEntrypoints(() -> {
+			if (ForgeModMenuEntry.registered()) ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST modmenu config screen OK");
+			else ForgeTestMod.LOGGER.error("FABRICATED-FORGE-TEST modmenu config screen FAILED: Forge's mod list has no config screen for the test mod");
+		}));
 		ForgeTestMod.LOGGER.info(ForgeTestMod.testItem != null
 				? "FABRICATED-FORGE-TEST client entrypoint OK"
 				: "FABRICATED-FORGE-TEST client entrypoint ran before the main entrypoint");
@@ -53,6 +60,13 @@ public final class ForgeTestClient implements ClientModInitializer {
 				ForgeScreenClient.register();
 			} catch (RuntimeException | LinkageError e) {
 				ForgeTestMod.LOGGER.error("FABRICATED-FORGE-TEST screen listeners not registered", e);
+			}
+		}
+		if (FabricLoader.getInstance().isModLoaded("fabric-rendering-v1")) {
+			try {
+				ForgeHudClient.register();
+			} catch (RuntimeException | LinkageError e) {
+				ForgeTestMod.LOGGER.error("FABRICATED-FORGE-TEST HUD callback not registered", e);
 			}
 		}
 	}

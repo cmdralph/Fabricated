@@ -47,6 +47,8 @@ final class MixinNames {
 
 	static final String MODIFY_EXPRESSION_VALUE = "Lcom/llamalad7/mixinextras/injector/ModifyExpressionValue;";
 
+	static final String MODIFY_RETURN_VALUE = "Lcom/llamalad7/mixinextras/injector/ModifyReturnValue;";
+
 	/**
 	 * Fabric Loader's own calls, which its launcher adds to the game where it runs mods' entrypoints, to the call NeoForge's
 	 * build makes at that step, in the same method: Fabricated runs those entrypoints in NeoForge's mod loading. Mods inject
@@ -69,6 +71,12 @@ final class MixinNames {
 			"Lorg/spongepowered/asm/mixin/injection/ModifyArgs;");
 
 	static final String MODIFY_CONSTANT = "Lorg/spongepowered/asm/mixin/injection/ModifyConstant;";
+
+	/**
+	 * The injectors whose handler takes the value it modifies and then the target's first parameters, as many as it
+	 * declares, else Mixin refuses it whatever its {@code require} ({@code Injector.validateParams}).
+	 */
+	static final Set<String> VALUE_MODIFIERS = Set.of(MODIFY_RETURN_VALUE, MODIFY_EXPRESSION_VALUE, MODIFY_VARIABLE, MODIFY_CONSTANT);
 
 	/**
 	 * The injectors Mixin refuses with a handler that isn't static on a static target ({@code Injector.checkTargetModifiers},

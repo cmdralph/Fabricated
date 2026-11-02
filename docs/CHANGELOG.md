@@ -3,6 +3,54 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-02: Parity, `main`'s half (task 3)
+
+- **NeoForge 21.1:**
+  - **KEYMAP-2** (new, P0): Fabric API's key binding module refused every key binding, as NeoForge 21.1 creates the
+    game's options before mods load, so JEI, Jade, Simple Voice Chat, Entity Culling and five more corpus mods lost
+    their client side. `fabric-key-binding-api-v1` is native on 1.21.1: upstream's API, the key bindings registered on
+    NeoForge's key mapping event with the key the player saved.
+  - **CORPUS-49** (new, P0): 1.21.1's JSON data loaders ignored Fabric's load conditions (the plan left out upstream's
+    hook there as on 1.21.11, where NeoForge's loaders evaluate them); Moonlight's trades stopped the corpus server.
+  - **CORPUS-44:** Moonlight's check for Fabric API's internal pack class has a stand-in to find.
+  - **CORPUS-45:** a mixin selector naming an overload by its intermediary name alone keeps picking that overload once
+    remapped (the mapping table's format 3); pre-flight judges every value modifier's handler.
+  - **CORPUS-46:** pre-flight judges constant injection points, so Pehkui's reach mixins are left out, not fatal.
+- **NeoForge 21.11, SER-1:** a Fabric mod's call to vanilla's entity data serializer registration works, as on 1.21.1.
+- **The engine, for the Forge branches** (their pull requests verify them): a MixinExtras local taking an argument by
+  its name (PRE-18); fields a platform retyped to a subtype, as Forge's `featuresPerStep` (CORPUS-33, `RetypedFields`);
+  two pre-flight lambda gaps in Forge's data loaders (LAMBDA-8, new); and the provider policy's platform-neutral parts
+  moved from NeoForge's locator into core, with a fix for a mixin in another module's sub-package (Forge 47's loot
+  config).
+- **CI gates added:** 1.21.1's JSON loader conditions, its key binding with the saved key, and the failing test mod's
+  unregistered holder (CORPUS-42's drop) on every NeoForge server; the client test mod compiles against the pass-through
+  modules a platform adds (`passThroughTestmodfrapiModules`).
+- **Found, for task 5:** CORPUS-50 (Supplementaries' missing tags), CORPUS-51 (FrozenLib's registry mixin) and CORPUS-52
+  (ImmediatelyFast's depth state) on the 1.21.1 corpora.
+- **Decided:** the owner deferred Forge's item storages in items and the effect events' hook to task 5, listed as
+  unsupported until then.
+- **Verified:** 350 core tests locally; diagnostics runs 41354788270 (KEYMAP-2, CORPUS-44 and 45 on the 1.21.1
+  corpora) and 41362521380 (CORPUS-46 and 49); this pull request's full matrix and an extended run.
+
+## 2026-11-01: The Forge branches' CI from what a change touches (task 2 done)
+
+- **`forge` and `forge-legacy` synced with `main`** (#237, #238, by `scripts/sync-platform-branch.sh`): the quick
+  check's stand-down, the picker's `--full` and `--all` modes, the docs and version 0.6.0.
+- **Their workflows get `main`'s plan job:** a pull request to `forge` runs the Forge versions it touches, a run by hand
+  all of them, a merge builds what it changed; each version's Forge, Java and Fabric API pins come from its folder
+  instead of reads repeated in each step, Java for the game is selected once, and the version jobs no longer wait for
+  the core job. **Decided:** their jobs stay one per version, not split into parts as on `main`, as each boots the game
+  four times (six with `extended`).
+- **The exit timeout on Forge:** a Forge or Forge 47 client stuck shutting down is stopped 2 minutes after it reached
+  its world, as on `main` (CORPUS-48). Where Forge 47's mc-runtime-test logs only "Running game tests...", it doesn't
+  arm, as before.
+- **Times:** a pull request to `forge` 5.9 minutes (7.5 before: run 41349136428 against 40797440573), to
+  `forge-legacy` 7.0 minutes (6 before: 41349147135 against 40797453188, its one version job alone 6.8 minutes, its
+  build and clients slower than the last run's).
+- **Verified:** the workflow rewrite's replacements each hit as counted, both workflows parse and their `steps`, `needs`
+  and `matrix.target` references resolve, the picker on each branch's tree gives its versions and pins, the exit
+  timeout on a simulated hang and a normal exit; both pull requests' full matrices green.
+
 ## 2026-11-01: CI runs what a change touches, in parallel parts (task 2, `main`)
 
 - **The full matrix from what changed** (`ci/changed-targets.py --full`): a pull request runs the versions it touches (a

@@ -7,8 +7,10 @@
 #
 # Usage: ci/forge-legacy/smoke-server.sh <minecraft-version> <forge-version, Minecraft's included> <work-dir> [extra-mods-dir]
 # Exit status: the server must start, and every check must pass; the lines read from debug.log, which Forge's debug
-# output words as it likes, are only reported. With extra-mods-dir (the official Fabric API jar), its jars join the mods
-# folder.
+# output words as it likes, are only reported. With extra-mods-dir, its jars join the mods folder: the official Fabric
+# API jar (fabric-api.jar), whose modules' checks then apply, or the stand-ins ci/forge-legacy/standins.py writes for mods
+# that share the game (standin-forgified-fabric-api.jar), whose checks then apply too.
+# SMOKE_TESTMODS=none leaves the test mods out; SMOKE_EXPECT_REFUSAL (below) expects the launch to stop instead.
 # Expects: build/libs/fabricated-forge-*+mc<minecraft-version>.jar and mc/forge-legacy/<minecraft-version>/build/testmods/fabricated-testmod.jar
 set -euo pipefail
 
@@ -34,28 +36,31 @@ cached_install "forge-legacy-server-$forge" . install_server
 echo "::endgroup::"
 
 mkdir -p mods
-# SMOKE_ON_ENTRYPOINT_FAILURE: Fabricated's onEntrypointFailure for the run ("disable" lets a corpus run go on past a
-# mod whose initializer throws); unset, the default ("error") stands, as in the gated runs.
-if [ -n "${SMOKE_ON_ENTRYPOINT_FAILURE:-}" ]; then
-	mkdir -p config
-	printf '{ "schema": 1, "onEntrypointFailure": "%s" }\n' "$SMOKE_ON_ENTRYPOINT_FAILURE" > config/fabricated.json
-fi
+# SMOKE_ON_ENTRYPOINT_FAILURE: Fabricated's onEntrypointFailure for the run, "disable" unless set: the run keeps loading
+# past a mod whose initializer throws, as the test mod that fails on purpose does (below), and as NeoForge's smoke does.
+mkdir -p config
+printf '{ "schema": 1, "onEntrypointFailure": "%s" }\n' "${SMOKE_ON_ENTRYPOINT_FAILURE:-disable}" > config/fabricated.json
 cp "$root"/build/libs/fabricated-forge-*+mc"$mc".jar mods/
-cp "$root"/mc/forge-legacy/"$mc"/build/testmods/fabricated-testmod.jar mods/
-# A Fabric mod whose dependency is missing: Fabricated doesn't load it, and Forge's loading warnings name it.
-mkdir unmet
-cat > unmet/fabric.mod.json <<'JSON'
-{"schemaVersion": 1, "id": "fabricated_forge_unmet", "version": "1.0.0", "depends": {"fabricated_forge_missing": "*"}}
-JSON
-jar --create --file mods/fabricated-forge-unmet.jar -C unmet fabric.mod.json
-# Two Fabric mods that depend on each other, as Fabric allows: the loader's sorter refuses a cycle of load orderings, so
-# Fabricated leaves one of theirs out (ORDER-1), and the server must still start.
-mkdir -p cycle
-for self in a b; do
-	other=$([ "$self" = a ] && echo b || echo a)
-	printf '{"schemaVersion": 1, "id": "fabricated_cycle_%s", "version": "1.0.0", "depends": {"fabricated_cycle_%s": "*"}}\n' "$self" "$other" > cycle/fabric.mod.json
-	jar --create --file "mods/fabricated-cycle-$self.jar" -C cycle fabric.mod.json
-done
+if [ "${SMOKE_TESTMODS:-all}" != none ]; then
+	cp "$root"/mc/forge-legacy/"$mc"/build/testmods/fabricated-testmod.jar mods/
+	# mc/shared's test mod that fails on purpose, after leaving an intrusive holder nothing registers: its failure must be
+	# isolated, and the registries' freeze after the entrypoints must drop the holder (CORPUS-42, HOLD-2).
+	cp "$root"/mc/forge-legacy/"$mc"/build/testmods/fabricated-testmod-throws.jar mods/
+	# A Fabric mod whose dependency is missing: Fabricated doesn't load it, and Forge's loading warnings name it.
+	mkdir unmet
+	cat > unmet/fabric.mod.json <<-'JSON'
+	{"schemaVersion": 1, "id": "fabricated_forge_unmet", "version": "1.0.0", "depends": {"fabricated_forge_missing": "*"}}
+	JSON
+	jar --create --file mods/fabricated-forge-unmet.jar -C unmet fabric.mod.json
+	# Two Fabric mods that depend on each other, as Fabric allows: the loader's sorter refuses a cycle of load orderings, so
+	# Fabricated leaves one of theirs out (ORDER-1), and the server must still start.
+	mkdir -p cycle
+	for self in a b; do
+		other=$([ "$self" = a ] && echo b || echo a)
+		printf '{"schemaVersion": 1, "id": "fabricated_cycle_%s", "version": "1.0.0", "depends": {"fabricated_cycle_%s": "*"}}\n' "$self" "$other" > cycle/fabric.mod.json
+		jar --create --file "mods/fabricated-cycle-$self.jar" -C cycle fabric.mod.json
+	done
+fi
 if [ -n "$extra" ] && [ -d "$extra" ]; then
 	cp "$extra"/*.jar mods/ 2>/dev/null || true
 fi
@@ -119,6 +124,36 @@ for report in crash-reports/*.txt; do
 	echo "::endgroup::"
 done
 
+# SMOKE_EXPECT_REFUSAL: the launch must stop, Fabricated refusing Sinytra Connector, a second Fabricated jar or a jar with
+# its own copy of Fabric Loader beside it with an error that holds this text, as on NeoForge; with SMOKE_REFUSAL_AT_ONCE,
+# the refusal's exception must be what ends the launch, where it otherwise shows in Forge's loading error.
+if [ -n "${SMOKE_EXPECT_REFUSAL:-}" ]; then
+	# The refusal must be what stops the launch: a module error before it is what the player would see (DUP-2).
+	if grep -qE "ResolutionException|LayerInstantiationException|Duplicate key" server.out; then
+		echo "FAIL: the launch stopped with a module error, not the refusal: $(grep -hE -m 1 "ResolutionException|LayerInstantiationException|Duplicate key" server.out | cut -c1-300)"
+		exit 1
+	fi
+	refusal=$(grep -h -m 1 -oP '\]: Fabricated: \K.*' server.out 2>/dev/null || true)
+	if [ "$status" = started ] || [ -z "$refusal" ] || [[ "$refusal" != *"$SMOKE_EXPECT_REFUSAL"* ]]; then
+		echo "FAIL: the launch should have stopped with '$SMOKE_EXPECT_REFUSAL' (status $status; Fabricated logged: ${refusal:-nothing})"
+		exit 1
+	fi
+	if [ -n "${SMOKE_REFUSAL_AT_ONCE:-}" ]; then
+		# A copy of Fabric Loader beside Fabricated's: the locator's exception stops the launch before Forge builds a
+		# layer, where its error screen would fail on the two copies (PROVIDER-2), so it is what ends the launch.
+		if ! grep -qF -- "LaunchRefused: Fabricated: $refusal" server.out; then
+			echo "FAIL: the launch didn't stop at once with the refusal: $refusal"
+			exit 1
+		fi
+	# Forge reads the error's text as a message pattern: its crash report must show it as written.
+	elif ! grep -qsF -- "$refusal" crash-reports/*.txt; then
+		echo "FAIL: Forge's loading error doesn't show the refusal as written: $refusal"
+		exit 1
+	fi
+	echo "PASS: the launch stopped with: $refusal"
+	exit 0
+fi
+
 # What Forge made of the Fabricated jar (docs/PORTING.md §4.1, questions 2, 4 and 5). Forge's discovery logs at debug
 # level, which only logs/debug.log keeps.
 echo "::group::Forge discovery and Fabricated (debug.log)"
@@ -131,6 +166,13 @@ echo "::endgroup::"
 # feeding it with SIGPIPE, and a line that is there reads as not seen.
 report() { if eval "$2"; then echo "PASS: $1"; else echo "NOT SEEN: $1"; fi; }
 failed=0
+# Which mods the extra folder holds: Fabric API's jar, or the stand-ins for mods that provide Fabric API modules.
+fapi=false
+standins=false
+if [ -n "$extra" ]; then
+	[ -f "$extra/fabric-api.jar" ] && fapi=true
+	[ -f "$extra/standin-forgified-fabric-api.jar" ] && standins=true
+fi
 check() { if eval "$2"; then echo "PASS: $1"; else echo "FAIL: $1"; failed=1; fi; }
 report "Forge ran Fabricated's mod locator" "grep -qi 'fabricated' logs/debug.log 2>/dev/null && grep -i 'locator' logs/debug.log | grep -i 'fabricated' > /dev/null"
 report "Forge took Fabricated's language provider" "grep -i -E 'language|lang' logs/debug.log 2>/dev/null | grep -i 'fabricated' > /dev/null"
@@ -153,7 +195,11 @@ check "Forge took Fabricated's transformation service" "grep -q 'Fabricated tran
 check "the test mod's injected interface is on MinecraftServer (inject-interface)" "grep -q 'FABRICATED-FORGE-TEST injected interface OK' logs/latest.log 2>/dev/null"
 check "a mod nested with a NeoForge jar-in-jar list too loads once, translated: Forge's jar-in-jar locator leaves it alone (JIJ-1)" "grep -q 'FABRICATED-FORGE-TEST nested jar loaded once OK' logs/latest.log 2>/dev/null"
 check "the test mod's client-only method was stripped (@Environment)" "grep -q 'FABRICATED-FORGE-TEST environment strip OK' logs/latest.log 2>/dev/null"
-check "the Fabric main entrypoints ran in Forge's registry events" "grep -q 'Fabricated ran the Fabric main entrypoints of [1-9][0-9]* mod(s) on Forge (0 failed)' logs/latest.log 2>/dev/null"
+check "the Fabric main entrypoints ran in Forge's registry events, only the test mod that fails on purpose failing" "grep -q 'Fabricated ran the Fabric main entrypoints of [1-9][0-9]* mod(s) on Forge (1 failed)' logs/latest.log 2>/dev/null"
+check "the failed initializer is in the report, as on NeoForge, and in Forge's loading warnings" "grep -q 'Fabric mod fabricated-testmod-throws: main entrypoint' logs/fabric-bridge-report.txt 2>/dev/null"
+check "Fabricated's API runs what waits for the Fabric initializers once they ran, the failed mod known (Fabricated.get().afterEntrypoints)" "grep -q 'FABRICATED-FORGE-TEST api after entrypoints OK' logs/latest.log 2>/dev/null"
+check "the failing test mod's entrypoint is isolated, its failure logged" "grep -q 'intentional failure for Fabricated CI' logs/latest.log 2>/dev/null"
+check "the holder the failing test mod left is dropped at the registries' freeze, with an error (CORPUS-42, HOLD-2)" "grep -q 'built but never registered, left by a Fabric mod whose entrypoint failed' logs/fabric-bridge-report.txt 2>/dev/null"
 check "the test mod registered an item (Intermediary names remapped to SRG's)" "grep -q 'FABRICATED-FORGE-TEST registry OK' logs/latest.log 2>/dev/null"
 check "content built during vanilla's bootstrap is registered by the main initializer, as BetterNether's entity types are (CORPUS-31)" "grep -q 'FABRICATED-FORGE-TEST content built at bootstrap registered OK' logs/latest.log 2>/dev/null"
 check "the built-in registries' freeze runs after the main initializers, where Wover makes the item definitions BetterEnd's subscribes to (CORPUS-32)" "grep -q 'FABRICATED-FORGE-TEST built-in registries frozen after the main initializers OK' logs/latest.log 2>/dev/null"
@@ -173,12 +219,26 @@ check "an access widener leaves a field private that Forge's coremod reads throu
 check "two Fabric mods that depend on each other load, one ordering of their cycle left out (ORDER-1)" "grep -q 'fabricated_cycle_b doesn.t load after fabricated_cycle_a' logs/fabric-bridge-report.txt 2>/dev/null"
 check "Fabricated's report names Forge as the loader" "grep -q '^  Forge: ' logs/fabric-bridge-report.txt 2>/dev/null && ! grep -q '^  NeoForge: ' logs/fabric-bridge-report.txt 2>/dev/null"
 check "the test mod's @Inject at a call in Commands' constructor ran, which Forge 47's Mixin takes only at a return (CTOR-4)" "grep -q 'FABRICATED-FORGE-TEST constructor hook OK' logs/latest.log 2>/dev/null"
-if [ -n "$extra" ]; then
+if $standins; then
+	# The provider policy (PROVIDER-1), as on NeoForge: another mod's copy of a module is the one loaded, and Fabricated's
+	# part of it (its packages, mixin configs, mixins and Forge hooks) stands down. The nested stand-in is Fabricated's own
+	# copy of fabric-dimensions-v1, so the teleport check above passes through it.
+	check "a Fabric API module another Forge mod provides is that mod's, and Fabricated's copy stands down (PROVIDER-1)" "grep -q '+standin  \[Stand-in Fabric API Base\]' logs/fabric-bridge-report.txt 2>/dev/null"
+	check "so is one a Forge mod nests with Forge's jar-in-jar, with its mixin config and refmap" "grep -q '+standin  \[Stand-in fabric-dimensions-v1\]' logs/fabric-bridge-report.txt 2>/dev/null"
+	check "Fabricated's in-game mod leaves out their packages and the module's mixin config, its manifest no longer naming it" "grep -q 'leaves out [0-9]* package(s) of the modules other mods provide, the mixin configs \[.*fabricated-dimension.mixins.json' logs/fabric-bridge-report.txt 2>/dev/null"
+	check "of two versions of a library Fabric mods nest, the newer loads" "grep -q 'Using standin_lib 1.1.0' logs/fabric-bridge-report.txt 2>/dev/null"
+	# Without Fabric API the test mod's checks that need its other modules leave linkage warnings; none may name a class
+	# of the stand-ins'.
+	check "the linkage check counts the classes of the modules other mods provide" "python3 -I '$root/ci/forge-legacy/standin-linkage.py' '$extra' logs/fabric-bridge-report.txt"
+fi
+if $fapi; then
 	check "fabric-command-api-v2 (with Fabric API): a command registered through CommandRegistrationCallback is in the server's dispatcher, its hook into Commands' constructor applied (CTOR-4)" "grep -q 'FABRICATED-FORGE-TEST Fabric command registered OK' logs/latest.log 2>/dev/null"
 	check "fabric-events-interaction-v0 (with Fabric API): a fake player's breaks through destroyBlock fire PlayerBlockBreakEvents BEFORE, CANCELED and AFTER, and a BEFORE refusal keeps the block (BREAK-1)" "grep -q 'FABRICATED-FORGE-TEST block break events OK' logs/latest.log 2>/dev/null"
 	check "fabric-events-interaction-v0 (with Fabric API): a fake player's uses of an item, a block and an entity, and its attacks on a block and an entity, through the game's own code ask UseItemCallback, UseBlockCallback, UseEntityCallback, AttackBlockCallback and AttackEntityCallback, and their answers hold" "grep -q 'FABRICATED-FORGE-TEST interaction events OK' logs/latest.log 2>/dev/null"
 	check "fabric-entity-events-v1 (with Fabric API): a hay block EntitySleepEvents.ALLOW_BED admits stays hay while an armor stand sleeps on it, the occupation and orientation events run (SLEEP-1, LAMBDA-6), and a player may sleep there in the daytime ALLOW_SLEEP_TIME allows (SLEEP-2)" "grep -q 'FABRICATED-FORGE-TEST sleep events OK' logs/latest.log 2>/dev/null"
 	check "fabric-transfer-api-v1 (with Fabric API): a Fabric mod's item and fluid storages are Forge's ITEM_HANDLER and FLUID_HANDLER capabilities of its block entity, and a Forge mod's ItemStackHandler and FluidTank Fabric's storages, moved only once a transaction commits; a Fabric mod's tank items are Forge's FLUID_HANDLER_ITEM and a Forge mod's Fabric's FluidStorage.ITEM" "grep -q 'FABRICATED-FORGE-TEST storages OK' logs/latest.log 2>/dev/null"
+	check "fabric-content-registries-v0 (with Fabric API): an item FuelRegistry made a fuel is in vanilla's fuel table and a fuel to Forge's furnace, which asks Forge's burn times (FUEL-1)" "grep -q 'FABRICATED-FORGE-TEST fuel registry OK' logs/latest.log 2>/dev/null"
+	check "fabric-content-registries-v0 (with Fabric API): an awkward potion brewed with an item a FabricBrewingRecipeRegistry recipe names gives the recipe's potion, the recipe built with Forge's constructor of a brewing mix (BREW-1)" "grep -q 'FABRICATED-FORGE-TEST brewing recipe OK' logs/latest.log 2>/dev/null"
 	check "fabric-resource-conditions-api-v1 (with Fabric API): a loot table whose fabric:load_conditions fail doesn't load, upstream's hook found in the loot data manager's parsing lambda (LAMBDA-6)" "grep -q 'FABRICATED-FORGE-TEST loot conditions OK' logs/latest.log 2>/dev/null"
 fi
 check "vanilla's check of the built-in registries, which Fabric API moves to the server's start, passes over Forge's empty registries (REG-6)" "! grep -qs 'was empty after loading' logs/latest.log server.out"

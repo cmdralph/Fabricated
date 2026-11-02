@@ -1,0 +1,20 @@
+{
+  "_comment": "The Fabric API module each of Fabricated's own mixins serves (NativeModules), on Forge 47: when another mod provides that module (Forgified Fabric API, a mod bundling its modules), the mixin stands down with Fabricated's part of it. A list names the module under each name it has had; an empty list is a mixin serving no module (loading Fabric mods: registries, fluids, vanilla behaviour Fabric mods rely on), which always applies. A mixin config in a Fabric API package belongs to the module owning the package (the biome, dimension, loot and particle configs; a mixin in a sub-package another module owns goes with that one); configs in Fabricated's packages are listed under configs, or each of their mixins under mixins. The build refuses a mixin missing here.",
+  "configs": {
+    "fabricated-forge-color.mixins.json": ["fabric-rendering-v1"],
+    "fabricated-forge-content.mixins.json": ["fabric-content-registries-v0"],
+    "fabricated-forge-entity.mixins.json": ["fabric-entity-events-v1"],
+    "fabricated-forge-interaction.mixins.json": ["fabric-events-interaction-v0"]
+  },
+  "mixins": {
+    "BuiltInRegistriesFreezeMixin": [],
+    "BuiltInRegistriesInvoker": [],
+    "BuiltInRegistriesValidateMixin": [],
+    "FluidTypeMixin": [],
+    "GameDataFreezeMixin": [],
+    "LivingEntityFluidTravelMixin": [],
+    "MappedRegistryPendingHoldersMixin": [],
+    "NamespacedWrapperPendingHoldersMixin": [],
+    "TagFileRemoveMixin": ["fabric-tag-api-v1"]
+  }
+}

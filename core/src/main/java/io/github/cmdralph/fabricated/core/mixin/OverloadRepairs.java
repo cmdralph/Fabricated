@@ -34,17 +34,17 @@ final class OverloadRepairs extends PreflightPart {
 	}
 
 	/**
-	 * Pins a descriptor-less {@code @Inject} or {@code @WrapMethod} selector to the one overload whose parameters the
-	 * handler takes, when Mixin would pick another (the first of that name); returns the pinned methods.
+	 * Pins a descriptor-less selector to the one overload whose parameters the handler takes, when Mixin would pick another
+	 * (the first of that name), which it would refuse the handler for: an {@code @Inject} or {@code @WrapMethod} taking
+	 * them all, or a modifier taking its value and then the first of them ({@link #fitsHandler}). Remapped, a selector
+	 * Intermediary named uniquely may name several methods: LambDynamicLights' {@code @ModifyReturnValue} on
+	 * {@code LevelRenderer.getLightColor} taking the block state, whose overload without it comes first (CORPUS-45).
+	 * Returns the pinned methods.
 	 */
 	static List<String> overloadByParameters(MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx) {
-		boolean inject = injector.desc.equals(MixinNames.INJECT);
-		if (!inject && !injector.desc.equals(MixinNames.WRAP_METHOD) || Annotations.value(injector, "locals") != null
-				|| !(Annotations.value(injector, "method") instanceof List<?> selectors)) return List.of();
-		List<Type> args = PreflightAsm.handlerArgs(handler);
-		if (args == null || args.size() < 2
-				|| !(inject ? PreflightAsm.isCallbackInfo(args.get(args.size() - 1)) : args.get(args.size() - 1).getDescriptor().equals(MixinNames.OPERATION))) return List.of();
-		List<Type> wanted = args.subList(0, args.size() - 1);
+		if (Annotations.value(injector, "locals") != null || !(Annotations.value(injector, "method") instanceof List<?> selectors)) return List.of();
+		Predicate<MethodNode> fits = fitsHandler(handler, injector);
+		if (fits == null) return List.of();
 		List<String> pinned = new ArrayList<>();
 		for (int i = 0; i < selectors.size(); i++) {
 			if (!(selectors.get(i) instanceof String raw)) continue;
@@ -52,22 +52,49 @@ final class OverloadRepairs extends PreflightPart {
 			if (ref.fuzzy() || ref.name() == null || ref.desc() != null) continue;
 			MethodNode first = null;
 			MethodNode fitting = null;
-			int fits = 0;
+			int fitted = 0;
 			for (MethodNode m : target.methods) {
 				if (!m.name.equals(ref.name())) continue;
 				if (first == null) first = m;
-				if (List.of(Type.getArgumentTypes(m.desc)).equals(wanted)) {
+				if (fits.test(m)) {
 					fitting = m;
-					fits++;
+					fitted++;
 				}
 			}
-			if (fits != 1 || fitting == first) continue;
+			if (fitted != 1 || fitting == first) continue;
 			@SuppressWarnings("unchecked")
 			List<Object> values = (List<Object>) selectors;
 			values.set(i, fitting.name + fitting.desc);
 			pinned.add(fitting.name + fitting.desc);
 		}
 		return pinned;
+	}
+
+	/**
+	 * Which methods Mixin would take {@code handler} for, by the target's parameters it takes, or null when it takes none
+	 * (any overload would do) or the injector isn't judged so: an {@code @Inject} or {@code @WrapMethod} all of them before
+	 * its callback info or operation; a {@code @ModifyReturnValue}, {@code @ModifyExpressionValue},
+	 * {@code @ModifyVariable} or {@code @ModifyConstant} its value and then the first of them, as many as it declares
+	 * (Mixin's {@code Injector.validateParams}), a return value modifier only on a method returning that value's type.
+	 */
+	static Predicate<MethodNode> fitsHandler(MethodNode handler, AnnotationNode injector) {
+		List<Type> args = PreflightAsm.handlerArgs(handler);
+		if (args == null || args.size() < 2) return null;
+		Type last = args.get(args.size() - 1);
+		if (injector.desc.equals(MixinNames.INJECT) && PreflightAsm.isCallbackInfo(last)
+				|| injector.desc.equals(MixinNames.WRAP_METHOD) && last.getDescriptor().equals(MixinNames.OPERATION)) {
+			List<Type> wanted = args.subList(0, args.size() - 1);
+			return m -> List.of(Type.getArgumentTypes(m.desc)).equals(wanted);
+		}
+		if (!MixinNames.VALUE_MODIFIERS.contains(injector.desc)) return null;
+		Type value = args.get(0);
+		List<Type> captured = args.subList(1, args.size());
+		boolean returned = injector.desc.equals(MixinNames.MODIFY_RETURN_VALUE);
+		return m -> {
+			List<Type> params = List.of(Type.getArgumentTypes(m.desc));
+			return captured.size() <= params.size() && params.subList(0, captured.size()).equals(captured)
+					&& (!returned || Type.getReturnType(m.desc).equals(value));
+		};
 	}
 
 	/**

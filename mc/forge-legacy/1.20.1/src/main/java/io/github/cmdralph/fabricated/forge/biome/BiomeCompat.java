@@ -25,12 +25,20 @@ import net.minecraftforge.server.ServerLifecycleHooks;
  * <p>Upstream's module, passed through, widened the biome's climate field with its access widener, so Forge's coremod,
  * which points reads of the climate and effects fields at the biome's modified info and requires both private, failed
  * as the biome class loaded: no biome modifier's climate or effects changed what the game read, Forge's own included.
+ *
+ * <p>When another mod provides the module, its copy applies Fabric's modifications: the modifier type stays, as worlds
+ * name it, and does nothing.
  */
 public final class BiomeCompat {
 	private BiomeCompat() {
 	}
 
-	public static void register(IEventBus modBus) {
+	/** Whether Fabricated's copy of the module is the one loaded (no other mod provides it). */
+	private static volatile boolean ours = true;
+
+	/** @param ours whether Fabricated's copy of the module is the one loaded */
+	public static void register(IEventBus modBus, boolean ours) {
+		BiomeCompat.ours = ours;
 		modBus.addListener(EventPriority.NORMAL, false, RegisterEvent.class, event -> event.register(ForgeRegistries.Keys.BIOME_MODIFIER_SERIALIZERS,
 				helper -> helper.register(new ResourceLocation("fabricated", "fabric_biome_api"), FabricBiomeModifier.CODEC)));
 	}
@@ -51,7 +59,7 @@ public final class BiomeCompat {
 			};
 			// Forge runs its biome modifiers for the server it has just made current (its handleServerAboutToStart);
 			// a modifier isn't handed the registries.
-			if (fabricPhase != null) {
+			if (fabricPhase != null && ours) {
 				BiomeModificationImpl.INSTANCE.modify(ServerLifecycleHooks.getCurrentServer().registryAccess(), biome, fabricPhase, builder);
 			}
 		}
