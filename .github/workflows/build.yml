@@ -1350,9 +1350,18 @@ jobs:
           dump client-malilib 'game:net.minecraft.world.item.ItemStack#getTooltipLines'
           # KEYMAP-1: OneConfig's accessor of KeyMapping's key map, which NeoForge retyped, and what its callers do with it.
           dump client-polyfrost 'mod:org.polyfrost.oneconfig.internal.mixin.keybind.KeyMappingRegistryAccessor#*' 'refs:KeyMappingRegistryAccessor'
-          # CORPUS-56: Continuity's sprite source hook captures locals in SpriteSourceList.list, which NeoForge 1.21.11 and
-          # 26.x made call an overload.
-          dump client-continuity 'game:net.minecraft.client.renderer.texture.atlas.SpriteSourceList#list' 'mod:*SpriteSourceListMixin#*'
+          # CORPUS-56: R6's result (far up the log by now), with Continuity's state where it saw no connected texture, and
+          # what pre-flight left out of Continuity; on 1.21.1, the wrapper method a wrapped model's throw is held in.
+          log="$RUNNER_TEMP/client-continuity/run/logs/latest.log"
+          if [ -f "$log" ]; then
+            echo "== client-continuity: R6"
+            grep -h -m 8 -E "FABRICATED-TEST (continuity|frapi broken part)" "$log" | cut -c1-2000 || true
+            grep -h -m 8 -E "\[[Cc]ontinuity/|Continuity/\]|[Cc]ontinuity.*(WARN|ERROR)" "$log" | cut -c1-600 || true
+            awk '/^== Mixin pre-flight failures ==/ { show = 1; next } /^$/ { show = 0 } show' "$RUNNER_TEMP/client-continuity/run/logs/fabric-bridge-report.txt" 2>/dev/null | grep -i -A2 continuity | head -20 | cut -c1-700 || true
+          fi
+          if [ "${{ matrix.target.minecraft }}" = "1.21.1" ]; then
+            dump client-continuity 'mod:net.fabricmc.fabric.api.renderer.v1.model.ForwardingBakedModel#emitBlockQuads'
+          fi
           # APPLY-2: the method the game's worker threads hand what they stop on to, as each version names it.
           dump server-corpus 'game:net.minecraft.Util#onThreadException' 'game:net.minecraft.util.Util#onThreadException'
           if [ "${{ matrix.target.minecraft }}" = "1.21.1" ]; then

@@ -78,6 +78,8 @@ import net.minecraft.world.level.block.state.BlockState;
  */
 public final class FrapiClientTestMod implements ClientModInitializer {
 	private static final ResourceLocation GLASS = ResourceLocation.withDefaultNamespace("glass");
+	/** The model modifiers' phase the Continuity check wraps glass's model in: after every other wrapper. */
+	private static final ResourceLocation CHECK_PHASE = ResourceLocation.fromNamespaceAndPath("fabricated_testmod_frapi", "after_wrap_last");
 
 	private static final int BLOCK_COLOR = 0x3366CC;
 	private static final int ITEM_COLOR = 0xCC6633;
@@ -110,7 +112,12 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 		});
 		ModelLoadingPlugin.register(context -> context.modifyModelAfterBake().register(FrapiClientTestMod::fabricModels));
 		if (FabricLoader.getInstance().isModLoaded("continuity")) {
-			ModelLoadingPlugin.register(context -> context.modifyModelAfterBake().register(ModelModifier.WRAP_LAST_PHASE, FrapiClientTestMod::connectedCheck));
+			// In a phase of its own after the last wrapping phase, so it wraps Continuity's model whichever mod's plugin
+			// registered first (both wrapping in that phase, the second would wrap the first).
+			ModelLoadingPlugin.register(context -> {
+				context.modifyModelAfterBake().addPhaseOrdering(ModelModifier.WRAP_LAST_PHASE, CHECK_PHASE);
+				context.modifyModelAfterBake().register(CHECK_PHASE, FrapiClientTestMod::connectedCheck);
+			});
 		}
 		ClientLifecycleEvents.CLIENT_STARTED.register(FrapiClientTestMod::checkColors);
 		ClientLifecycleEvents.CLIENT_STARTED.register(FrapiClientTestMod::checkKeyBinding);
@@ -340,7 +347,7 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 			TextureAtlasSprite sprite = wrapped.getParticleIcon();
 			int[] quads = new int[2];
 			context.pushTransform(quad -> {
-				quads[0]++;
+				if (quads[0]++ == 0) ContinuityProbe.quad(quad, sprite);
 				if (offSprite(quad, sprite)) quads[1]++;
 				return true;
 			});
@@ -352,6 +359,7 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 			if (!LOGGED.getAndSet(true)) {
 				FrapiTestMod.LOGGER.info("FABRICATED-TEST continuity connected textures {} ({} of {} quads off {} at {}, drawn by {})", quads[1] > 0 ? "OK" : "FAILED",
 						quads[1], quads[0], sprite.contents().name(), pos, wrapped.getClass().getName());
+				if (quads[1] == 0) FrapiTestMod.LOGGER.info("FABRICATED-TEST continuity {}", ContinuityProbe.describe(state, sprite));
 			}
 		}
 

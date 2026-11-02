@@ -98,8 +98,13 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 		ModelLoadingPlugin.register(plugin -> plugin.modifyItemModelAfterBake().register((model, context) ->
 				context.itemId().equals(FrapiTestMod.FABRIC_ITEM_ID) ? new ItemCheckModel(model) : model));
 		if (FabricLoader.getInstance().isModLoaded("continuity")) {
-			ModelLoadingPlugin.register(plugin -> plugin.modifyBlockModelAfterBake().register(ModelModifier.WRAP_LAST_PHASE, (model, context) ->
-					context.state().is(Blocks.GLASS) ? new ConnectedCheckModel(model) : model));
+			// In a phase of its own after the last wrapping phase, so it wraps Continuity's model whichever mod's plugin
+			// registered first (both wrapping in that phase, the second would wrap the first).
+			ModelLoadingPlugin.register(plugin -> {
+				plugin.modifyBlockModelAfterBake().addPhaseOrdering(ModelModifier.WRAP_LAST_PHASE, CHECK_PHASE);
+				plugin.modifyBlockModelAfterBake().register(CHECK_PHASE, (model, context) ->
+						context.state().is(Blocks.GLASS) ? new ConnectedCheckModel(model) : model);
+			});
 		}
 		CustomUnbakedBlockStateModel.register(Identifier.fromNamespaceAndPath("fabricated_testmod_frapi", "nested_check"), NestedCheckModel.Unbaked.CODEC);
 		CustomUnbakedBlockStateModel.register(Identifier.fromNamespaceAndPath("fabricated_testmod_frapi", "broken_check"), BrokenModel.CODEC);
@@ -258,6 +263,9 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 		}
 	}
 
+	/** The model modifiers' phase the Continuity check wraps glass's model in: after every other wrapper. */
+	private static final Identifier CHECK_PHASE = Identifier.fromNamespaceAndPath("fabricated_testmod_frapi", "after_wrap_last");
+
 	/**
 	 * Glass's model as Continuity left it (R6), wrapped after it: the first time a chunk section draws a glass block next
 	 * to another, it logs whether any quad the model emitted is off glass's own sprite, as a connected texture's is
@@ -281,7 +289,7 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 			TextureAtlasSprite sprite = wrapped.particleMaterial(level, pos, state).sprite();
 			int[] quads = new int[2];
 			emitter.pushTransform(quad -> {
-				quads[0]++;
+				if (quads[0]++ == 0) ContinuityProbe.quad(quad, sprite);
 				if (offSprite(quad, sprite)) quads[1]++;
 				return true;
 			});
@@ -293,6 +301,7 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 			if (!LOGGED.getAndSet(true)) {
 				FrapiTestMod.LOGGER.info("FABRICATED-TEST continuity connected textures {} ({} of {} quads off {} at {}, drawn by {})", quads[1] > 0 ? "OK" : "FAILED",
 						quads[1], quads[0], sprite.contents().name(), pos, wrapped.getClass().getName());
+				if (quads[1] == 0) FrapiTestMod.LOGGER.info("FABRICATED-TEST continuity {}", ContinuityProbe.describe(state, sprite));
 			}
 		}
 
