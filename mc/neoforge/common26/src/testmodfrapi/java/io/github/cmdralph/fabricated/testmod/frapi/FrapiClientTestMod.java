@@ -48,6 +48,11 @@ import net.neoforged.neoforge.client.model.block.CompositeBlockModel;
  * Fabric's renderer draws it. A chunk section is vanilla's, or Sodium's when Sodium meshes the world.
  * Each logs once when it is drawn, after every quad went to the game. Also checks Fabric's custom model formats
  * next to NeoForge's: a model file read by a Fabric model deserializer, and a blockstate of NeoForge's composite type.
+ *
+ * <p>Two more Fabric models throw once a vanilla chunk section draws them, after emitting their quads and pushing a
+ * transform they never pop (FRAPI rule 8): one the broken test block's model, the other a part of the broken nested
+ * test block's multipart model. Each logs when NeoForge's renderer then asks it for its parts, and the transform logs a
+ * failure if any later quad reaches it.
  */
 public final class FrapiClientTestMod implements ClientModInitializer {
 	@Override
@@ -66,6 +71,8 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 			return new TerrainCheckModel(new LevelAwareModel(model));
 		}));
 		CustomUnbakedBlockStateModel.register(Identifier.fromNamespaceAndPath("fabricated_testmod_frapi", "nested_check"), NestedCheckModel.Unbaked.CODEC);
+		CustomUnbakedBlockStateModel.register(Identifier.fromNamespaceAndPath("fabricated_testmod_frapi", "broken_check"), BrokenModel.CODEC);
+		CustomUnbakedBlockStateModel.register(Identifier.fromNamespaceAndPath("fabricated_testmod_frapi", "broken_part_check"), BrokenPartModel.CODEC);
 		// {"fabric:type": "fabricated_testmod_frapi:delegate", "model": <a model>}: reads the inner model.
 		AtomicBoolean deserialized = new AtomicBoolean();
 		UnbakedModelDeserializer.register(Identifier.fromNamespaceAndPath("fabricated_testmod_frapi", "delegate"), (json, context) -> {
@@ -205,6 +212,90 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 			public void resolveDependencies(Resolver resolver) {
 				model.resolveDependencies(resolver);
 			}
+		}
+	}
+
+	/**
+	 * A Fabric model that throws the first time a vanilla chunk section draws it, after emitting the wrapped model's quads
+	 * and pushing a transform it never pops; it logs once when NeoForge's renderer then asks it for its parts. Under
+	 * Sodium (its own chunk sections) it never throws: Sodium's renderer calls it, not Fabricated.
+	 */
+	private abstract static class ThrowingModel extends WrapperBlockStateModel {
+		private final String name;
+		private final AtomicBoolean threw = new AtomicBoolean();
+		private final AtomicBoolean fellBack = new AtomicBoolean();
+
+		ThrowingModel(BlockStateModel wrapped, String name) {
+			super(wrapped);
+			this.name = name;
+		}
+
+		@Override
+		public void emitQuads(QuadEmitter emitter, BlockAndTintGetter level, BlockPos pos, BlockState state, RandomSource random, Predicate<@Nullable Direction> cullTest) {
+			super.emitQuads(emitter, level, pos, state, random, cullTest);
+			if (!(level instanceof RenderSectionRegion) || threw.getAndSet(true)) return;
+			AtomicBoolean leaked = new AtomicBoolean();
+			emitter.pushTransform(quad -> {
+				if (!leaked.getAndSet(true)) FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi leaked transform FAILED (a quad after {} threw reached its transform)", name);
+				return true;
+			});
+			FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi {} threw ({} at {} on {})", name, state, pos, Thread.currentThread().getName());
+			throw new IllegalStateException("FABRICATED-TEST: " + name + " throws on purpose (FRAPI rule 8's check)");
+		}
+
+		@Override
+		public void collectParts(RandomSource random, List<BlockStateModelPart> parts) {
+			fellBack("vanilla");
+			super.collectParts(random, parts);
+		}
+
+		@Override
+		public void collectParts(BlockAndTintGetter level, BlockPos pos, BlockState state, RandomSource random, List<BlockStateModelPart> parts) {
+			fellBack(level.getClass().getSimpleName());
+			wrapped.collectParts(level, pos, state, random, parts);
+		}
+
+		/** Once it threw, Fabric's renderer never draws it again: its parts are asked for by NeoForge's. */
+		private void fellBack(String caller) {
+			if (threw.get() && !fellBack.getAndSet(true)) FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi {} fallback OK ({} collectParts)", name, caller);
+		}
+
+		/** {@code {"fabric:type": "fabricated_testmod_frapi:broken_check" or "...:broken_part_check", "model": <a variant>}}. */
+		record Unbaked(BlockStateModel.Unbaked model, boolean part) implements CustomUnbakedBlockStateModel {
+			@Override
+			public MapCodec<Unbaked> codec() {
+				return part ? BrokenPartModel.CODEC : BrokenModel.CODEC;
+			}
+
+			@Override
+			public BlockStateModel bake(ModelBaker baker) {
+				return part ? new BrokenPartModel(model.bake(baker)) : new BrokenModel(model.bake(baker));
+			}
+
+			@Override
+			public void resolveDependencies(Resolver resolver) {
+				model.resolveDependencies(resolver);
+			}
+		}
+	}
+
+	/** The broken test block's model: Fabricated marks its class itself. */
+	private static final class BrokenModel extends ThrowingModel {
+		static final MapCodec<ThrowingModel.Unbaked> CODEC = BlockStateModel.Unbaked.CODEC.fieldOf("model").xmap(model -> new ThrowingModel.Unbaked(model, false),
+				ThrowingModel.Unbaked::model);
+
+		BrokenModel(BlockStateModel wrapped) {
+			super(wrapped, "broken model");
+		}
+	}
+
+	/** A part of the broken nested test block's multipart model: Fabricated finds its class from the stack trace. */
+	private static final class BrokenPartModel extends ThrowingModel {
+		static final MapCodec<ThrowingModel.Unbaked> CODEC = BlockStateModel.Unbaked.CODEC.fieldOf("model").xmap(model -> new ThrowingModel.Unbaked(model, true),
+				ThrowingModel.Unbaked::model);
+
+		BrokenPartModel(BlockStateModel wrapped) {
+			super(wrapped, "broken part");
 		}
 	}
 }

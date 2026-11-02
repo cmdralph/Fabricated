@@ -55,8 +55,8 @@ abstract class MovingBlockRenderMixin extends RenderTypeFeatureRenderer<MovingBl
 			@Local(argsOnly = true) FeatureFrameContext context, @Local(name = "submit") MovingBlockFeatureRenderer.Submit submit) {
 		if (!FabricBlockRendering.draws(model)) return true;
 		// 26.2's submits never force translucency (26.3 adds that).
-		FabricBlockRendering.tesselateMoving(this, poseStack.last(), false, submit.outlineColor(), context.options().ambientOcclusion, context.blockColors(),
+		// A model that threw is drawn by NeoForge instead (FRAPI rule 8).
+		return !FabricBlockRendering.tesselateMoving(this, poseStack.last(), false, submit.outlineColor(), context.options().ambientOcclusion, context.blockColors(),
 				x, y, z, level, pos, state, model, seed);
-		return false;
 	}
 }

@@ -23,13 +23,17 @@ import net.minecraft.world.level.block.state.BlockBehaviour;
 /**
  * CI test mod for Fabric's renderer API (26.x, client smoke test with Fabric API). When the player joins, it places
  * in front of them a block whose model is a Fabric model ({@link FrapiClientTestMod}) and a block whose multipart
- * model has a Fabric model as its part. Then, until the game stops, it keeps a copy of the first block falling beside
- * it (drawn as a moving block) and the first block breaking (drawn with the breaking overlay).
+ * model has a Fabric model as its part, and above them the two blocks whose Fabric models throw. Then, until the game
+ * stops, it keeps a copy of the first block falling beside it (drawn as a moving block) and the first block breaking
+ * (drawn with the breaking overlay).
  */
 public final class FrapiTestMod implements ModInitializer {
 	static final Logger LOGGER = LoggerFactory.getLogger("fabricated-testmod-frapi");
 	static final Identifier TERRAIN_BLOCK_ID = Identifier.fromNamespaceAndPath("fabricated_testmod_frapi", "terrain_block");
 	static final Identifier NESTED_BLOCK_ID = Identifier.fromNamespaceAndPath("fabricated_testmod_frapi", "nested_block");
+	/** Blocks whose Fabric model, or a Fabric part of whose multipart model, throws when drawn (FRAPI rule 8). */
+	static final Identifier BROKEN_BLOCK_ID = Identifier.fromNamespaceAndPath("fabricated_testmod_frapi", "broken_block");
+	static final Identifier BROKEN_NESTED_BLOCK_ID = Identifier.fromNamespaceAndPath("fabricated_testmod_frapi", "broken_nested_block");
 	/** A block whose blockstate uses one of NeoForge's blockstate model types, which must still parse with Fabric's model loading. */
 	static final Identifier NEOFORGE_TYPE_BLOCK_ID = Identifier.fromNamespaceAndPath("fabricated_testmod_frapi", "neoforge_type_block");
 	/** Ticks between two falling blocks, and between two renewals of the breaking progress (which the client drops when stale). */
@@ -49,6 +53,8 @@ public final class FrapiTestMod implements ModInitializer {
 	public void onInitialize() {
 		Block terrainBlock = register(TERRAIN_BLOCK_ID);
 		Block nestedBlock = register(NESTED_BLOCK_ID);
+		Block brokenBlock = register(BROKEN_BLOCK_ID);
+		Block brokenNestedBlock = register(BROKEN_NESTED_BLOCK_ID);
 		register(NEOFORGE_TYPE_BLOCK_ID);
 		ServerPlayConnectionEvents.JOIN.register((listener, sender, server) -> server.execute(() -> {
 			Direction facing = listener.player.getDirection();
@@ -57,10 +63,12 @@ public final class FrapiTestMod implements ModInitializer {
 			level = listener.player.level();
 			level.setBlockAndUpdate(front, terrainBlock.defaultBlockState());
 			level.setBlockAndUpdate(nested, nestedBlock.defaultBlockState());
+			level.setBlockAndUpdate(front.above(), brokenBlock.defaultBlockState());
+			level.setBlockAndUpdate(nested.above(), brokenNestedBlock.defaultBlockState());
 			breaking = front;
 			landing = front.relative(facing.getCounterClockWise());
 			level.setBlockAndUpdate(landing.below(), Blocks.STONE.defaultBlockState());
-			LOGGER.info("FABRICATED-TEST frapi block placed at {} (nested model block at {})", front, nested);
+			LOGGER.info("FABRICATED-TEST frapi block placed at {} (nested model block at {}, broken model blocks above them)", front, nested);
 		}));
 		ServerTickEvents.END_SERVER_TICK.register(server -> {
 			if (level == null || ticks++ % RENEW_TICKS != 0) return;

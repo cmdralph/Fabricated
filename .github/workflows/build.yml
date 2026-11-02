@@ -424,6 +424,30 @@ jobs:
           check "frapi level-aware default OK" "a NeoForge model inside a Fabric model got the chunk section's level from Fabric's renderer"
           check "model deserializer OK" "a model file of a Fabric type was read by its Fabric deserializer"
           check "neoforge blockstate type OK" "a blockstate of NeoForge's composite type still loads with Fabric's model loading"
+          # FRAPI rule 8: a Fabric model that throws in a chunk section (alone, or as a multipart model's part) fails alone.
+          # NeoForge's renderer draws it from its parts, Fabricated logs it once and lists it in the report, and the
+          # transform it left pushed never reaches another block.
+          check "frapi broken model fallback OK" "a Fabric model that threw in a chunk section was drawn by NeoForge's renderer from its parts (FRAPI rule 8)"
+          check "frapi broken part fallback OK" "a multipart model whose Fabric part threw was drawn by NeoForge's renderer (FRAPI rule 8)"
+          for model in BrokenModel BrokenPartModel; do
+            count=$(grep -c "Fabric block models of class [^ ]*\$$model (.*) threw while drawn in" "$log" || true)
+            if [ "$count" = 1 ]; then
+              echo "PASS: the failure of $model was logged once"
+            else
+              echo "::error::FAIL: the failure of $model was logged $count times, not once"
+              failed=1
+            fi
+          done
+          if grep -q "threw while drawn in" "$RUNNER_TEMP/client-fapi/run/logs/fabric-bridge-report.txt"; then
+            echo "PASS: the report lists the failure"
+          else
+            echo "::error::FAIL: the report doesn't list the broken model's failure"
+            failed=1
+          fi
+          if grep -h "FABRICATED-TEST frapi leaked transform FAILED" "$log"; then
+            echo "::error::FAIL: a transform a broken model left pushed reached another block"
+            failed=1
+          fi
           if [ "$failed" = 1 ]; then
             grep -n -m 40 -E "frapi|FabricBlockRendering|RenderMixin|SectionCompiler|/(ERROR|FATAL)\]" "$log" || true
             exit 1
@@ -506,6 +530,30 @@ jobs:
           check "frapi NeoForge parts OK" "NeoForge's level-aware parts of a Fabric model are made from its quads, baked colour kept"
           check "frapi moving block OK" "a falling Fabric block model was drawn as a moving block (from those parts)"
           check "frapi breaking OK" "a Fabric block model got the breaking overlay"
+          # FRAPI rule 8: a Fabric model that throws in a chunk section (alone, or as a multipart model's part) fails alone.
+          # NeoForge's renderer draws it from its parts, Fabricated logs it once and lists it in the report, and the
+          # transform it left pushed never reaches another block.
+          check "frapi broken model fallback OK" "a Fabric model that threw in a chunk section was drawn by NeoForge's renderer from its parts (FRAPI rule 8)"
+          check "frapi broken part fallback OK" "a multipart model whose Fabric part threw was drawn by NeoForge's renderer (FRAPI rule 8)"
+          for model in BrokenModel BrokenPartModel; do
+            count=$(grep -c "Fabric block models of class [^ ]*\$$model (.*) threw while drawn in" "$log" || true)
+            if [ "$count" = 1 ]; then
+              echo "PASS: the failure of $model was logged once"
+            else
+              echo "::error::FAIL: the failure of $model was logged $count times, not once"
+              failed=1
+            fi
+          done
+          if grep -q "threw while drawn in" "$RUNNER_TEMP/client-fapi/run/logs/fabric-bridge-report.txt"; then
+            echo "PASS: the report lists the failure"
+          else
+            echo "::error::FAIL: the report doesn't list the broken model's failure"
+            failed=1
+          fi
+          if grep -h "FABRICATED-TEST frapi leaked transform FAILED" "$log"; then
+            echo "::error::FAIL: a transform a broken model left pushed reached another block"
+            failed=1
+          fi
           if [ "$failed" = 1 ]; then
             grep -n -m 30 -E "model.loading|ModelManager|frapi|FabricBlockRendering|SectionCompiler|/(ERROR|FATAL)\]" "$log" || true
             exit 1

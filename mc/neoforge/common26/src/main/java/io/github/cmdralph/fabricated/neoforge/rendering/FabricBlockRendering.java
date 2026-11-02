@@ -21,9 +21,6 @@ import net.fabricmc.fabric.api.client.renderer.v1.model.FabricBlockStateModel;
 import net.fabricmc.fabric.api.client.renderer.v1.render.AltModelBlockRenderer;
 import net.fabricmc.fabric.api.client.renderer.v1.render.ChunkSectionLayerHelper;
 import net.fabricmc.loader.api.FabricLoader;
-import net.minecraft.CrashReport;
-import net.minecraft.CrashReportCategory;
-import net.minecraft.ReportedException;
 import net.minecraft.client.color.block.BlockColors;
 import net.minecraft.client.renderer.SectionBufferBuilderPack;
 import net.minecraft.client.renderer.block.BlockAndTintGetter;
@@ -51,6 +48,10 @@ import net.minecraft.world.level.block.state.BlockState;
  * among its parts, goes through Fabric's renderer (Indigo, or whichever renderer is registered); every other block
  * keeps NeoForge's path.
  *
+ * <p>A Fabric model that throws there fails alone (FRAPI rule 8, {@link FrapiFailures}): the block is drawn by NeoForge
+ * instead, as is every model of its class from then on, and the thread's Fabric renderer and emitter are replaced (a
+ * model that threw may have left a transform pushed on the emitter).
+ *
  * <p>Sections compile on several worker threads at once: the state here is immutable, or confined to one thread.
  */
 public final class FabricBlockRendering {
@@ -75,49 +76,66 @@ public final class FabricBlockRendering {
 
 	/**
 	 * A vanilla model made of other models (multipart, weighted variants), which Fabricated's mixins let say whether one
-	 * of them is drawn by Fabric's renderer. The answer is kept in the model, which a resource reload replaces.
+	 * of them is drawn by Fabric's renderer, or broken. The answer is kept in the model, which a resource reload replaces,
+	 * for one {@link FrapiFailures#generation()}.
 	 */
 	public interface Composite {
-		boolean fabricated$hasFabricPart();
+		/** {@link FrapiFailures#NONE}, {@link FrapiFailures#FABRIC} or {@link FrapiFailures#BROKEN}, from {@link #state(List)}. */
+		int fabricated$state();
+
+		/** The models it is made of (any its state selects). Asked on the failure path only. */
+		List<BlockStateModel> fabricated$parts();
 	}
 
 	/** Whether this block model is drawn by Fabric's renderer instead of NeoForge's. */
 	public static boolean draws(BlockStateModel model) {
-		return ENABLED && Frapi.isFabricModel(model);
+		return state(model) == FrapiFailures.FABRIC;
 	}
 
-	/** Whether any of a composite model's parts is drawn by Fabric's renderer. */
-	public static boolean anyDrawn(List<BlockStateModel> models) {
-		for (BlockStateModel model : models) {
-			if (draws(model)) return true;
+	/** Whether Fabric's renderer draws this model, or would if drawing it hadn't thrown ({@link FrapiFailures}). */
+	public static int state(BlockStateModel model) {
+		return ENABLED ? Frapi.state(model) : FrapiFailures.NONE;
+	}
+
+	/** A composite model's state, from its parts' (a composite keeps it: see {@link Composite}). */
+	public static int state(List<BlockStateModel> parts) {
+		int state = FrapiFailures.NONE;
+		for (BlockStateModel part : parts) {
+			state = FrapiFailures.combine(state, state(part));
+			if (state == FrapiFailures.BROKEN) break;
 		}
-		return false;
+		return state;
 	}
 
-	/** Draws one block of a chunk section, as NeoForge's block renderer would have with the same arguments. */
-	public static void tesselate(SectionLayers layers, Map<ChunkSectionLayer, BufferBuilder> startedLayers, SectionBufferBuilderPack builders,
+	/**
+	 * Draws one block of a chunk section, as NeoForge's block renderer would have with the same arguments. False if the
+	 * model threw: NeoForge's renderer then draws the block (quads already sent stay in this build of the section).
+	 */
+	public static boolean tesselate(SectionLayers layers, Map<ChunkSectionLayer, BufferBuilder> startedLayers, SectionBufferBuilderPack builders,
 			boolean ambientOcclusion, BlockColors blockColors,
 			float x, float y, float z, BlockAndTintGetter level, BlockPos pos, BlockState state, BlockStateModel model, long seed) {
-		Frapi.tesselate(layers, startedLayers, builders, ambientOcclusion, blockColors, x, y, z, level, pos, state, model, seed);
+		return Frapi.tesselate(layers, startedLayers, builders, ambientOcclusion, blockColors, x, y, z, level, pos, state, model, seed);
 	}
 
 	/**
 	 * Draws one moving block, as NeoForge's block renderer would have with the same arguments, into the moving block
-	 * render type of each quad's layer ({@code forceTranslucent}: the translucent one for all).
+	 * render type of each quad's layer ({@code forceTranslucent}: the translucent one for all). False if the model threw:
+	 * NeoForge's renderer then draws the block.
 	 */
-	public static void tesselateMoving(MovingBlockBuffers buffers, PoseStack.Pose pose, boolean forceTranslucent, int outlineColor,
+	public static boolean tesselateMoving(MovingBlockBuffers buffers, PoseStack.Pose pose, boolean forceTranslucent, int outlineColor,
 			boolean ambientOcclusion, BlockColors blockColors,
 			float x, float y, float z, BlockAndTintGetter level, BlockPos pos, BlockState state, BlockStateModel model, long seed) {
-		Frapi.tesselateMoving(buffers, pose, forceTranslucent, outlineColor, ambientOcclusion, blockColors, x, y, z, level, pos, state, model, seed);
+		return Frapi.tesselateMoving(buffers, pose, forceTranslucent, outlineColor, ambientOcclusion, blockColors, x, y, z, level, pos, state, model, seed);
 	}
 
 	/**
 	 * Adds a Fabric model's geometry to the parts the block breaking overlay draws, as one part: the overlay only takes
-	 * parts, and only their shape counts there.
+	 * parts, and only their shape counts there. False, adding nothing, if the model threw: NeoForge then collects its
+	 * parts.
 	 */
-	public static void collectBreakingParts(BlockStateModel model, BlockAndTintGetter level, BlockPos pos, BlockState state, RandomSource random,
+	public static boolean collectBreakingParts(BlockStateModel model, BlockAndTintGetter level, BlockPos pos, BlockState state, RandomSource random,
 			List<BlockStateModelPart> parts) {
-		Frapi.collectBreakingParts(model, level, pos, state, random, parts);
+		return Frapi.collectBreakingParts(model, level, pos, state, random, parts);
 	}
 
 	/**
@@ -129,15 +147,6 @@ public final class FabricBlockRendering {
 	 */
 	public static void registerFallbackRenderer() {
 		if (ENABLED) RendererFallback.register();
-	}
-
-	private static ReportedException crash(Throwable t, String what, BlockState state, BlockPos pos, BlockStateModel model) {
-		CrashReport report = CrashReport.forThrowable(t, what);
-		CrashReportCategory category = report.addCategory("Block model being drawn");
-		category.setDetail("Block", state);
-		category.setDetail("Position", pos);
-		category.setDetail("Model class", model.getClass().getName());
-		return new ReportedException(report);
 	}
 
 	/** Names Fabric's renderer API, so loaded only when called; apart from {@link Frapi}, which keeps the renderer it first finds. */
@@ -169,29 +178,31 @@ public final class FabricBlockRendering {
 		private static final Logger LOGGER = LoggerFactory.getLogger("Fabricated");
 		/** The registered renderer. Null if Fabric's renderer API has none (Indigo disabled and no other renderer). */
 		private static final @Nullable Renderer RENDERER = findRenderer();
+		/** Fabric's block model method, the frame a model's throw shows. */
+		private static final String EMIT = "emitQuads";
 		/**
-		 * Whether a model class implements {@code emitQuads} itself. Vanilla's model classes get upstream's equivalent
-		 * of NeoForge's path (its own mixins), and models without an implementation use the interface's default, which
-		 * only draws the parts NeoForge's renderer also sees: neither needs Fabric's renderer.
+		 * Whether a model class implements {@code emitQuads} itself, and whether that threw. Vanilla's model classes get
+		 * upstream's equivalent of NeoForge's path (its own mixins), and models without an implementation use the
+		 * interface's default, which only draws the parts NeoForge's renderer also sees: neither needs Fabric's renderer.
 		 */
-		private static final ClassValue<Boolean> FABRIC_MODEL = new ClassValue<>() {
+		private static final ClassValue<FrapiFailures.ModelClass> MODEL_CLASSES = new ClassValue<>() {
 			@Override
-			protected Boolean computeValue(Class<?> type) {
+			protected FrapiFailures.ModelClass computeValue(Class<?> type) {
 				Class<?> owner;
 				try {
-					owner = type.getMethod("emitQuads", QuadEmitter.class, BlockAndTintGetter.class, BlockPos.class, BlockState.class,
+					owner = type.getMethod(EMIT, QuadEmitter.class, BlockAndTintGetter.class, BlockPos.class, BlockState.class,
 							RandomSource.class, Predicate.class).getDeclaringClass();
 				} catch (NoSuchMethodException e) {
-					return false; // not a FabricBlockStateModel: Fabric's renderer API didn't apply to this class
+					return FrapiFailures.ModelClass.NOT_FABRIC; // not a FabricBlockStateModel: Fabric's renderer API didn't apply to this class
 				} catch (LinkageError e) {
 					// getMethod resolves the types every public method names: one from a mod that isn't installed throws. Asked
 					// while a chunk section compiles, so it must not escape; the class keeps NeoForge's renderer.
 					LOGGER.warn("Block models of class {} are left to NeoForge's renderer: a type their methods name is missing ({})", type.getName(), e.toString());
-					return false;
+					return FrapiFailures.ModelClass.NOT_FABRIC;
 				}
-				boolean fabricModel = owner != FabricBlockStateModel.class && !owner.getName().startsWith("net.minecraft.");
-				if (fabricModel) LOGGER.debug("Block models of class {} are drawn with Fabric's renderer", type.getName());
-				return fabricModel;
+				if (owner == FabricBlockStateModel.class || owner.getName().startsWith("net.minecraft.")) return FrapiFailures.ModelClass.NOT_FABRIC;
+				LOGGER.debug("Block models of class {} are drawn with Fabric's renderer", type.getName());
+				return new FrapiFailures.ModelClass(true, owner.getName());
 			}
 		};
 		/** The breaking overlay draws the whole model: no face is culled. */
@@ -216,11 +227,51 @@ public final class FabricBlockRendering {
 			}
 		}
 
-		static boolean isFabricModel(BlockStateModel model) {
-			return RENDERER != null && (FABRIC_MODEL.get(model.getClass()) || model instanceof Composite composite && composite.fabricated$hasFabricPart());
+		static int state(BlockStateModel model) {
+			if (RENDERER == null) return FrapiFailures.NONE;
+			FrapiFailures.ModelClass type = MODEL_CLASSES.get(model.getClass());
+			if (type.fabric()) return type.broken() ? FrapiFailures.BROKEN : FrapiFailures.FABRIC;
+			return model instanceof Composite composite ? composite.fabricated$state() : FrapiFailures.NONE;
 		}
 
-		static void tesselate(SectionLayers layers, Map<ChunkSectionLayer, BufferBuilder> startedLayers, SectionBufferBuilderPack builders,
+		/**
+		 * Marks what threw broken ({@link FrapiFailures#markBroken}): the model's class if it is a Fabric model; in a
+		 * composite, its Fabric parts the stack trace shows emitting, or all of them if it shows none.
+		 */
+		static void markBroken(BlockStateModel model, Throwable error, String where, BlockState state) {
+			List<BlockStateModel> fabricModels = new ArrayList<>();
+			fabricModels(model, fabricModels, 0);
+			boolean marked = false;
+			for (BlockStateModel fabricModel : fabricModels) {
+				FrapiFailures.ModelClass type = MODEL_CLASSES.get(fabricModel.getClass());
+				if (FrapiFailures.threwIn(error, type, EMIT)) {
+					FrapiFailures.markBroken(fabricModel.getClass(), type, error, where, state);
+					marked = true;
+				}
+			}
+			if (marked) return;
+			for (BlockStateModel fabricModel : fabricModels) {
+				FrapiFailures.markBroken(fabricModel.getClass(), MODEL_CLASSES.get(fabricModel.getClass()), error, where, state);
+			}
+			if (fabricModels.isEmpty()) FrapiFailures.unattributed(model.getClass(), error, where, state);
+		}
+
+		/** The Fabric models a model is, or is made of (through nested composites, to a depth no vanilla model reaches). */
+		private static void fabricModels(BlockStateModel model, List<BlockStateModel> out, int depth) {
+			if (MODEL_CLASSES.get(model.getClass()).fabric()) {
+				out.add(model);
+			} else if (model instanceof Composite composite && depth < 8) {
+				List<BlockStateModel> parts;
+				try {
+					parts = composite.fabricated$parts();
+				} catch (RuntimeException | LinkageError e) {
+					return; // a part selector that throws: the parts found elsewhere are marked
+				}
+				for (BlockStateModel part : parts) fabricModels(part, out, depth + 1);
+			}
+		}
+
+		static boolean tesselate(SectionLayers layers, Map<ChunkSectionLayer, BufferBuilder> startedLayers, SectionBufferBuilderPack builders,
 				boolean ambientOcclusion, BlockColors blockColors,
 				float x, float y, float z, BlockAndTintGetter level, BlockPos pos, BlockState state, BlockStateModel model, long seed) {
 			SectionState section = SECTION.get();
@@ -234,10 +285,13 @@ public final class FabricBlockRendering {
 			section.builders = builders;
 			try {
 				section.renderer.tesselateBlock(section.emitter, x, y, z, level, pos, state, model, seed);
-			} catch (VirtualMachineError | ReportedException e) {
+				return true;
+			} catch (VirtualMachineError e) {
 				throw e;
 			} catch (Throwable t) {
-				throw crash(t, "Tesselating block model with Fabric's renderer", state, pos, model);
+				SECTION.remove();
+				markBroken(model, t, "a chunk section at " + pos, state);
+				return false;
 			} finally {
 				// The section's buffers are only reachable while it compiles.
 				section.layers = null;
@@ -246,7 +300,7 @@ public final class FabricBlockRendering {
 			}
 		}
 
-		static void tesselateMoving(MovingBlockBuffers buffers, PoseStack.Pose pose, boolean forceTranslucent, int outlineColor,
+		static boolean tesselateMoving(MovingBlockBuffers buffers, PoseStack.Pose pose, boolean forceTranslucent, int outlineColor,
 				boolean ambientOcclusion, BlockColors blockColors,
 				float x, float y, float z, BlockAndTintGetter level, BlockPos pos, BlockState state, BlockStateModel model, long seed) {
 			MovingState moving = MOVING.get();
@@ -260,17 +314,20 @@ public final class FabricBlockRendering {
 			moving.outlineColor = outlineColor;
 			try {
 				moving.renderer.tesselateBlock(moving.emitter, x, y, z, level, pos, state, model, seed);
-			} catch (VirtualMachineError | ReportedException e) {
+				return true;
+			} catch (VirtualMachineError e) {
 				throw e;
 			} catch (Throwable t) {
-				throw crash(t, "Tesselating moving block model with Fabric's renderer", state, pos, model);
+				MOVING.remove();
+				markBroken(model, t, "a moving block at " + pos, state);
+				return false;
 			} finally {
 				moving.buffers = null;
 				moving.pose = null;
 			}
 		}
 
-		static void collectBreakingParts(BlockStateModel model, BlockAndTintGetter level, BlockPos pos, BlockState state, RandomSource random,
+		static boolean collectBreakingParts(BlockStateModel model, BlockAndTintGetter level, BlockPos pos, BlockState state, RandomSource random,
 				List<BlockStateModelPart> parts) {
 			BreakingState breaking = BREAKING.get();
 			if (breaking == null) {
@@ -284,10 +341,13 @@ public final class FabricBlockRendering {
 				((FabricBlockStateModel) model).emitQuads(breaking.emitter, level, pos, state, random, NO_CULLING);
 				// The overlay is drawn after this returns (the parts are submitted), so the part keeps its own copy.
 				parts.add(new EmittedPart(List.copyOf(breaking.quads), particle));
-			} catch (VirtualMachineError | ReportedException e) {
+				return true;
+			} catch (VirtualMachineError e) {
 				throw e;
 			} catch (Throwable t) {
-				throw crash(t, "Emitting block model quads for the breaking overlay", state, pos, model);
+				BREAKING.remove();
+				markBroken(model, t, "the breaking overlay at " + pos, state);
+				return false;
 			} finally {
 				breaking.quads.clear();
 				breaking.sprite = null;

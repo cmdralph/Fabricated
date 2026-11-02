@@ -45,7 +45,10 @@ abstract class SectionCompilerMixin {
 		if (!FabricBlockRendering.ENABLED) return true; // runs for every block of every section: no lookup without the API
 		BlockStateModel model = dispatcher.getBlockModel(state);
 		if (!FabricBlockRendering.draws(model)) return true;
-		FabricBlockRendering.tesselate(dispatcher, level, model, state, pos, poseStack, buffers, cull);
-		return false;
+		if (FabricBlockRendering.tesselate(dispatcher, level, model, state, pos, poseStack, buffers, cull)) return false;
+		// The model threw (FRAPI rule 8): NeoForge draws the block from its parts, which the first hook skipped. Their
+		// random is seeded as the compiler seeds its own; the failure path only.
+		model.collectParts(level, pos, state, RandomSource.create(state.getSeed(pos)), parts);
+		return true;
 	}
 }
