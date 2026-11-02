@@ -8,6 +8,9 @@ Usage: ci/javap-dump.py <client or server work directory> <spec>...
   mod:<class>[#member]    the class in the mods' jars and Fabricated's translations; <class> may be *Name, any
                           class of that simple name
   file:<path>             a text file at that path in the mods' jars (a mixin config, say)
+  mixins:<class>          the mixins in the mods' jars (as they ship) that target the class (internal name)
+  refs:<text>             the methods of the mods' classes (as they ship) whose code names the text (a class's
+                          internal name, say), up to 8 classes
 A member is a name, a name's start followed by * (lambda$charTyped$*), "class" (the class's header and attributes:
 its inner classes, its @Mixin) or * (every member's declaration and descriptor, without code). A class or file that is
 the same as one already printed is named, not printed again (the same translation in several cache jars).
@@ -31,14 +34,14 @@ GAME_JARS = ("**/minecraft-client-patched-*.jar", "**/minecraft-server-patched-*
              "**/neoforge-*-server.jar", "**/client-*-srg.jar", "**/server-*-srg.jar")
 
 
-def javap(data):
-    """javap -v -p of one class file, without its constant pool."""
+def javap(data, verbose=True):
+    """javap -v -p (or -c -p) of one class file, without its constant pool."""
     with tempfile.TemporaryDirectory() as tmp:
         path = os.path.join(tmp, "Dumped.class")
         with open(path, "wb") as f:
             f.write(data)
         try:
-            out = subprocess.run(["javap", "-v", "-p", path], capture_output=True, text=True, timeout=60).stdout
+            out = subprocess.run(["javap", "-v" if verbose else "-c", "-p", path], capture_output=True, text=True, timeout=60).stdout
         except (OSError, subprocess.SubprocessError) as e:
             return f"(javap failed: {e})"
     lines, pool = [], False
@@ -94,6 +97,26 @@ def members(listing, pattern):
     if current:
         found.append(current)
     return ["\n".join(block) for block in found]
+
+
+def members_code(listing):
+    """The members of a javap -c listing, each with its code: a block per declaration at the listing's member indent."""
+    blocks, current, inside = [], None, False
+    for line in listing.splitlines():
+        if not inside:
+            inside = line.rstrip().endswith("{")
+            continue
+        if line.startswith("}"):
+            break
+        if line.startswith("  ") and not line.startswith("   ") and line.strip():
+            if current:
+                blocks.append("\n".join(current))
+            current = [line]
+        elif current is not None and line.strip():
+            current.append(line)
+    if current:
+        blocks.append("\n".join(current))
+    return blocks
 
 
 def class_part(listing):
@@ -159,6 +182,57 @@ def matches(entry, cls):
     return entry == cls.replace(".", "/") + ".class"
 
 
+def mod_classes(mods, needle):
+    """(where, entry name, bytes) of the classes in the mods' jars (and the jars nested in them) holding the bytes."""
+    for jar in mods:
+        data = read_jar(jar)
+        for where, entry, read in entries(os.path.basename(jar), data) if data else ():
+            if entry.endswith(".class"):
+                data_ = read()
+                if needle in data_:
+                    yield where, entry, data_
+
+
+def refs(mods, what, limit):
+    """Prints the methods of the mods' classes whose code names `what`, from up to `limit` classes; returns how many."""
+    found = 0
+    for where, entry, data_ in mod_classes(mods, what.encode()):
+        if found >= limit:
+            break
+        if entry == what + ".class":
+            continue
+        blocks = [b for b in members_code(javap(data_, verbose=False)) if what in b or what.replace("/", ".") in b]
+        if not blocks:
+            continue
+        found += 1
+        print(f"-- {entry[:-6]} in {where}: its code naming {what}")
+        for block in blocks[:6]:
+            lines = block.splitlines()
+            for line in lines[:60]:
+                print("  " + line.rstrip()[:300])
+            if len(lines) > 60:
+                print(f"  ... {len(lines) - 60} more line(s)")
+    if not found:
+        print(f"-- no class in the mods' jars names {what} in its code")
+    return found
+
+
+def without_code(listing):
+    """A javap -v listing without its members' code (their declarations, descriptors, flags and annotations)."""
+    out, code = [], False
+    for line in listing.splitlines():
+        indent = len(line) - len(line.lstrip(" "))
+        if code and (indent > 4 or not line.strip()):
+            if not line.strip():
+                code = False
+                out.append(line)
+            continue
+        code = line.strip() == "Code:" and indent == 4
+        if not code:
+            out.append(line)
+    return "\n".join(out)
+
+
 def printed_before(title, data, printed):
     """Whether the same bytes were printed for this spec already; names the earlier one if so."""
     digest = hashlib.sha256(data).hexdigest()
@@ -212,6 +286,29 @@ def main():
                             for line in data.decode("utf-8", "replace").splitlines()[:LINES]:
                                 print("  " + line.rstrip()[:300])
                         found += 1
+        elif kind == "mixins":
+            accessors = []
+            for where, entry, data_ in mod_classes(mods, what.encode()):
+                if found >= 8:
+                    break
+                if b"org/spongepowered/asm/mixin/Mixin" not in data_:
+                    continue
+                listing = javap(data_)
+                if what not in class_part(listing):
+                    continue
+                found += 1
+                print(f"-- {entry[:-6]} in {where}, a mixin of {what} (without code)")
+                text = without_code(listing)
+                for line in text.splitlines()[:LINES]:
+                    print("  " + line.rstrip()[:300])
+                if "ACC_INTERFACE" in class_part(listing):
+                    accessors.append(entry[:-6])
+            # An accessor interface's callers: what the mod does with what it reaches.
+            for accessor in accessors[:4]:
+                refs(mods, accessor, 4)
+        elif kind == "refs":
+            refs(mods, what, 8)
+            found = 1  # refs says so itself
         if not found:
             print(f"-- {spec}: not found in {len(game) if kind == 'game' else len(mods) + len(translated)} jar(s)")
 

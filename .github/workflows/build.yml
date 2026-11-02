@@ -1246,8 +1246,8 @@ jobs:
       # The bytecode task 5's open findings turn on, for reading (informational; last, so the job log's tail has it):
       # Polydium's mixin plugin and its font mixin (whose handler, typed with the mixin class, stops 1.21.1 and 1.21.11
       # as Mixin applies it); Architectury's keyboard hook into a lambda of KeyboardHandler.charTyped, which Mixin finds
-      # no target for on 1.21.1 (the corpus); malilib's tooltip hooks. Members only, and a class that is the same as one
-      # printed (a translation in several cache jars) once.
+      # no target for on 1.21.1 (the corpus); malilib's tooltip hooks; the key map accessors (KEYMAP-1). Members only,
+      # and a class that is the same as one printed (a translation in several cache jars) once.
       - name: Bytecode for task 5's findings (informational)
         if: ${{ (matrix.part == 'mods' || matrix.part == 'corpus') && env.EXTENDED == 'true' && !cancelled() && steps.build.outcome == 'success' }}
         continue-on-error: true
@@ -1267,3 +1267,7 @@ jobs:
           dump client-corpus 'mod:dev.architectury.mixin.fabric.client.MixinKeyboardHandler#wrapCharTyped*' \
             'game:net.minecraft.client.KeyboardHandler#*' 'game:net.minecraft.client.KeyboardHandler#lambda$charTyped$*'
           dump client-malilib 'game:net.minecraft.world.item.ItemStack#getTooltipLines'
+          # KEYMAP-1: the mods' accessors of KeyMapping's key map, which NeoForge retyped, and what their callers do with it.
+          dump client-polyfrost 'mixins:net/minecraft/class_304'
+          dump client-advanced 'mod:nl.enjarai.doabarrelroll.mixin.client.key.KeyBindingAccessor' \
+            'refs:nl/enjarai/doabarrelroll/mixin/client/key/KeyBindingAccessor'
