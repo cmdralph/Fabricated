@@ -41,7 +41,7 @@ a version's own configs come in through `version_mixin_configs` in its `gradle.p
 | `mc/neoforge/common12111/src/main/resources/fabricated-loot.mixins.json` | same | 1.21.11, 26.1.2, 26.2, 26.3 | mixins 5 | 1 | true | none |
 | `mc/neoforge/1.21.1/src/main/resources/fabricated-object-builder.mixins.json` | `net.fabricmc.fabric.mixin.object.builder` | 1.21.1 | mixins 2, client 2 | 1 | true | none |
 | `mc/neoforge/1.21.1/src/main/resources/fabricated-particles.mixins.json` | `net.fabricmc.fabric.mixin.client.particle` | 1.21.1 | client 4 | 1 | true | none |
-| `mc/neoforge/1.21.1/src/main/resources/fabricated-renderer.mixins.json` | `io.github.cmdralph.fabricated.neoforge.rendering.mixin` | 1.21.1, only with `fabric_renderer_api_v1` (FML `requiredMods`) | client 6 | 1 | true | none |
+| `mc/neoforge/1.21.1/src/main/resources/fabricated-renderer.mixins.json` | `io.github.cmdralph.fabricated.neoforge.rendering.mixin` | 1.21.1, only with `fabric_renderer_api_v1` (FML `requiredMods`) | client 8 | 1 | true | none |
 | `mc/neoforge/1.21.11/src/main/resources/fabricated-renderer.mixins.json` | same | 1.21.11, only with `fabric_renderer_api_v1` (FML `requiredMods`) | client 2 | 1 | true | none |
 | `mc/neoforge/common26/src/main/resources/fabricated-renderer.mixins.json` | same | 26.x, only with `fabric_renderer_api_v1` (FML `requiredMods`) | client 2 | 1 | true | none |
 | `mc/neoforge/1.21.1/src/main/resources/fabricated-transfer.mixins.json` | `net.fabricmc.fabric.mixin.transfer` | 1.21.1 | mixins 14 | 1 | true | none |
@@ -106,7 +106,9 @@ Test-mod configs (not shipped):
   class is marked broken (FRAPI rule 8). On 1.21.1 the renderer config's `SectionCompilerMixin` and
   `BlockRenderDispatcherMixin.fabricated$batched` run for every block of every section, once per render type: both read
   the model they are given (a local or an argument, no lookup), and `MultiPartBakedModelMixin` and
-  `WeightedBakedModelMixin` keep their answer as on the other versions.
+  `WeightedBakedModelMixin` keep their answer as on the other versions. Its `ForwardingBakedModelMixin` runs for every
+  block a Fabric wrapper model draws (Continuity wraps every block's): one thread-local read outside a throw, and
+  `Operation.call`'s argument array, which the JIT can drop once the call is inlined; task 6 measures it.
 - **One name, different targets per version:** `client.MovingBlockRenderMixin` (26.1.2: `BlockFeatureRenderer`; 26.2,
   26.3: `MovingBlockFeatureRenderer`, which 26.3 adds forced translucency to) and `client.BlockBreakingRenderMixin`
   (26.1.2: `BlockFeatureRenderer`; 26.2, 26.3: `LevelRenderer`, from `mc/neoforge/common26late`).
@@ -258,10 +260,12 @@ Versions: 1.21.1 · package `io.github.cmdralph.fabricated.neoforge.rendering.mi
 
 | Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
 |---|---|---|---|---|---|---|---|---|
+| client | AbstractRenderContextAccessor | 1.21.1 (1.21.1) | Indigo's AbstractRenderContext (`@Pseudo`, `targets`: package-private, a mod's) | @Accessor transformStack → fabricated$transformStack | | | | default |
 | client | BlockRenderDispatcherMixin | 1.21.1 (1.21.1) | n.m.client.renderer.block.BlockRenderDispatcher | @WrapWithCondition → fabricated$breakingOverlay | "renderBreakingTexture(L…/BlockState;L…/BlockPos;L…/BlockAndTintGetter;L…/PoseStack;L…/VertexConsumer;L…/ModelData;)V" | INVOKE `L…/ModelBlockRenderer;tesselateBlock(…;L…/ModelData;L…/RenderType;)V` (NeoForge's overload) | — | default |
 | client | BlockRenderDispatcherMixin | 1.21.1 (1.21.1) | n.m.client.renderer.block.BlockRenderDispatcher | @WrapWithCondition → fabricated$batched | "renderBatched(L…/BlockState;L…/BlockPos;L…/BlockAndTintGetter;L…/PoseStack;L…/VertexConsumer;ZL…/RandomSource;L…/ModelData;L…/RenderType;)V" | INVOKE `L…/ModelBlockRenderer;tesselateBlock(…;L…/ModelData;L…/RenderType;)V` (NeoForge's overload) | — | default |
 | client | ClientHooksMixin | 1.21.1 (1.21.1) | neo.client.ClientHooks | @WrapWithCondition → fabricated$fabricModels (static) | "renderPistonMovedBlocks(L…/BlockPos;L…/BlockState;L…/PoseStack;L…/MultiBufferSource;L…/Level;ZIL…/BlockRenderDispatcher;)V" | INVOKE `L…/ModelBlockRenderer;tesselateBlock(…;L…/ModelData;L…/RenderType;)V` (NeoForge's overload) | — | default |
 | client | FallingBlockRendererMixin | 1.21.1 (1.21.1) | n.m.client.renderer.entity.FallingBlockRenderer | @WrapWithCondition → fabricated$fabricModels | "render(L…/FallingBlockEntity;FFL…/PoseStack;L…/MultiBufferSource;I)V" | INVOKE `L…/ModelBlockRenderer;tesselateBlock(…;L…/ModelData;L…/RenderType;)V` (NeoForge's overload) | — | default |
+| client | ForwardingBakedModelMixin | 1.21.1 (1.21.1) | Fabric API's ForwardingBakedModel (`@Pseudo`, `targets`: a mod's) | @WrapMethod → fabricated$holdWrappedThrow | "emitBlockQuads(L…/BlockAndTintGetter;L…/BlockState;L…/BlockPos;L…/Supplier;L…/RenderContext;)V" | holds a wrapped model's throw while Fabricated's Indigo draw is under way (HeldThrows, CORPUS-56) | — | require=0 |
 | client | MultiPartBakedModelMixin | 1.21.1 (1.21.1) | n.m.client.resources.model.MultiPartBakedModel | no injectors; implements FabricBlockRendering.Composite; @Shadow selectors; @Unique fabricated$state (cached per broken-class generation) | | | | |
 | client | SectionCompilerMixin | 1.21.1 (1.21.1) | n.m.client.renderer.chunk.SectionCompiler | @WrapWithCondition → fabricated$fabricModels | "compile(L…/SectionPos;L…/RenderChunkRegion;L…/VertexSorting;L…/SectionBufferBuilderPack;L…/List;)L…/SectionCompiler$Results;" | INVOKE `L…/BlockRenderDispatcher;renderBatched(…;L…/ModelData;L…/RenderType;)V` sugar:@Local(argsOnly = true) ×2, @Local Map, @Local BakedModel; implements FabricBlockRendering.SectionLayers (@Shadow getOrBeginLayer) | — | default |
 | client | SectionCompilerMixin | 1.21.1 (1.21.1) | n.m.client.renderer.chunk.SectionCompiler | @Inject → fabricated$endSection | same | RETURN | — | default |

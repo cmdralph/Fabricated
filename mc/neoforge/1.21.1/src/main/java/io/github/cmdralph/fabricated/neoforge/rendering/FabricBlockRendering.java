@@ -14,6 +14,8 @@ import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 
+import io.github.cmdralph.fabricated.core.runtime.HeldThrows;
+import io.github.cmdralph.fabricated.neoforge.rendering.mixin.AbstractRenderContextAccessor;
 import net.fabricmc.fabric.api.renderer.v1.Renderer;
 import net.fabricmc.fabric.api.renderer.v1.RendererAccess;
 import net.fabricmc.fabric.api.renderer.v1.model.FabricBakedModel;
@@ -52,7 +54,10 @@ import net.neoforged.neoforge.client.model.data.ModelData;
  *
  * <p>A Fabric model that throws there fails alone (FRAPI rule 8, {@link FrapiFailures}): the block is drawn by NeoForge
  * instead, at each of its render types, from the quads the model gives NeoForge, as is every model of the class that
- * threw from then on (not of a class wrapping it: {@link FrapiFailures#putDown}).
+ * threw from then on (not of a class wrapping it: {@link FrapiFailures#putDown}). A throw inside a model another wraps
+ * through Fabric's {@code ForwardingBakedModel} is held there until Indigo's call returns ({@link HeldThrows}), so the
+ * wrapper finishes its call: Continuity's keeps a per-thread transform active through it, and a throw unwinding it left
+ * that thread without connected textures for the rest of the session (CORPUS-56).
  *
  * <p>Sections compile on several worker threads at once: the state here is immutable or per thread.
  */
@@ -114,6 +119,27 @@ public final class FabricBlockRendering {
 	/** A section's compile ended: this thread's terrain context lets go of it. */
 	public static void endSection() {
 		if (ENABLED && Frapi.INDIGO) Indigo.endSection();
+	}
+
+	/**
+	 * How many quad transforms a context holds: Indigo's, which a model wrapping another is given while one of the draws
+	 * here holds throws ({@link HeldThrows#holding}); -1 for any other. Asked where a wrapper calls its wrapped model.
+	 */
+	public static int transforms(RenderContext context) {
+		return context instanceof AbstractRenderContextAccessor indigo ? indigo.fabricated$transformStack().size() : -1;
+	}
+
+	/**
+	 * Pops the quad transforms a wrapped model that threw left in the context, down to the {@code count} it was given,
+	 * so its wrapper pops its own. Failure path; the context is replaced once the draw here returns.
+	 */
+	public static void dropTransforms(RenderContext context, int count) {
+		if (count < 0 || !(context instanceof AbstractRenderContextAccessor indigo)) return;
+		try {
+			while (indigo.fabricated$transformStack().size() > count) context.popTransform();
+		} catch (RuntimeException e) {
+			// The draw here replaces the context: what is left in it goes with it.
+		}
 	}
 
 	/**
@@ -253,20 +279,42 @@ public final class FabricBlockRendering {
 			}
 			section.block = block;
 			section.fellBack = false;
+			Throwable thrown = null;
+			Throwable outer = HeldThrows.begin();
 			try {
 				section.context.tessellateBlock(state, pos, model, poseStack);
-				return true;
 			} catch (VirtualMachineError e) {
+				HeldThrows.end(outer);
 				throw e;
 			} catch (Throwable t) {
-				// The context may hold a transform the model pushed: a new one, prepared for the rest of this compile.
-				section.context = new TerrainRenderContext();
-				section.context.prepare(region, layer -> compiler.fabricated$layer(layers, pack, layer));
-				section.fellBack = true;
-				untranslate(poseStack, state, region, pos);
-				Frapi.markBroken(model, t, "a chunk section at " + pos, state);
-				return false;
+				thrown = t;
 			}
+			thrown = failure(HeldThrows.end(outer), thrown);
+			if (thrown == null) return true;
+			// The context may hold a transform the model pushed: a new one, prepared for the rest of this compile.
+			section.context = new TerrainRenderContext();
+			section.context.prepare(region, layer -> compiler.fabricated$layer(layers, pack, layer));
+			section.fellBack = true;
+			untranslate(poseStack, state, region, pos);
+			Frapi.markBroken(model, thrown, "a chunk section at " + pos, state);
+			return false;
+		}
+
+		/**
+		 * What a draw threw: the throw held inside a model another wraps ({@link HeldThrows}), where the model whose code
+		 * threw is (what the wrapper threw after it, if anything, is suppressed in it), else what Indigo's call threw. Indigo
+		 * applied the block's offset either way, before calling the model.
+		 */
+		private static @Nullable Throwable failure(@Nullable Throwable held, @Nullable Throwable thrown) {
+			if (held == null) return thrown;
+			if (thrown != null && thrown != held) {
+				try {
+					held.addSuppressed(thrown);
+				} catch (RuntimeException e) {
+					// A throw suppressing itself: the held one is what counts.
+				}
+			}
+			return held;
 		}
 
 		/**
@@ -290,19 +338,24 @@ public final class FabricBlockRendering {
 				boolean cull, RandomSource random, long seed, int overlay, String where) {
 			Single single = BLOCK.get();
 			single.fellBack = null;
+			Throwable thrown = null;
+			Throwable outer = HeldThrows.begin();
 			try {
 				single.context.render(level, model, state, pos, poseStack, buffer, cull, random, seed, overlay);
-				return true;
 			} catch (VirtualMachineError e) {
+				HeldThrows.end(outer);
 				throw e;
 			} catch (Throwable t) {
-				single.context = new BlockRenderContext(); // it may hold a transform the model pushed
-				single.fellBack = state;
-				single.fellBackPos = pos.asLong();
-				untranslate(poseStack, state, level, pos);
-				Frapi.markBroken(model, t, where + " at " + pos, state);
-				return false;
+				thrown = t;
 			}
+			thrown = failure(HeldThrows.end(outer), thrown);
+			if (thrown == null) return true;
+			single.context = new BlockRenderContext(); // it may hold a transform the model pushed
+			single.fellBack = state;
+			single.fellBackPos = pos.asLong();
+			untranslate(poseStack, state, level, pos);
+			Frapi.markBroken(model, thrown, where + " at " + pos, state);
+			return false;
 		}
 
 		/**
