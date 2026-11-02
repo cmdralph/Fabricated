@@ -36,6 +36,11 @@
       "skipMixins": ["fabric-events-interaction-v0.mixins.json:ServerPlayerGameModeMixin#breakBlock", "fabric-events-interaction-v0.mixins.json:ServerPlayerGameModeMixin#onBlockBroken"],
       "reason": "Forge's destroyBlock no longer calls Block.playerWillDestroy and Block.destroy itself, where upstream's hooks fire PlayerBlockBreakEvents.BEFORE and AFTER: both moved into a private removeBlock Forge added, so pre-flight left the two hooks out and the events never ran when a player broke a block (a mod refusing a break, or acting on one, saw nothing). Fabricated's in-game mod fires them at the same points of Forge's method instead, BEFORE (with CANCELED when refused) once the game's checks pass and AFTER once removeBlock removed the block, before the drops (BREAK-1)."
     },
+    "fabric-key-mapping-api-v1": {
+      "plan": "native",
+      "version": "2.0.8",
+      "reason": "Shipped by Fabricated: upstream's API, its key mappings registered on Forge's key mapping event, where Forge mods register theirs. Upstream refuses a key mapping once the game's options exist, and Forge 66 creates them before it loads mods, the Fabric client entrypoints among them, so passed through, the module failed every client entrypoint that registers one (KEYMAP-3). Forge loads the keys from the options file again once mods have loaded, which gives each key mapping the key the player saved. As upstream, a key mapping registered twice is refused, and so is one registered once Forge's event has added them; its category is sorted into the controls screen's order by upstream's mixin; KeyMappingHelper.getBoundKeyOf reads Forge's getKey, where upstream's accessor mixin reads the field."
+    },
     "fabric-loot-api-v3": {
       "plan": "native",
       "version": "4.0.9",

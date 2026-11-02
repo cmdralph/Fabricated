@@ -12,6 +12,7 @@ import net.minecraft.client.Minecraft;
  * the game instance set: each logs a line the client smoke looks for (ci/forge/smoke-client.sh). With Fabric API's
  * networking module it also starts a networking round trip with the integrated server ({@link ForgeNetworkingClient}),
  * and with its particles module too, on Forge 61, a check of the block dust tint event ({@link ForgeParticleTintTest}).
+ * It registers a key mapping, checked once the game has started ({@link ForgeKeyMappingTest}).
  */
 @Environment(EnvType.CLIENT)
 public final class ForgeTestClient implements ClientModInitializer {
@@ -30,6 +31,12 @@ public final class ForgeTestClient implements ClientModInitializer {
 			ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST client game instance OK");
 		} else {
 			ForgeTestMod.LOGGER.error("FABRICATED-FORGE-TEST client game instance is {}, not the Minecraft instance", instance);
+		}
+		// Native key mappings (key bindings on Forge 61), with Fabric API's jar or without it (see ForgeKeyMappingTest).
+		try {
+			ForgeKeyMappingTest.register();
+		} catch (RuntimeException | LinkageError e) {
+			ForgeTestMod.LOGGER.error("FABRICATED-FORGE-TEST key mapping not registered", e);
 		}
 		if (FabricLoader.getInstance().isModLoaded("fabric-networking-api-v1")) {
 			try {

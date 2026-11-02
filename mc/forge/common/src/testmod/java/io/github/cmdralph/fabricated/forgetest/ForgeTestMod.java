@@ -375,6 +375,16 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 		}
 	}
 
+	/** On a client, whether the test mod's key mapping works as on Fabric ({@link ForgeKeyMappingTest}, KEYMAP-3). */
+	public static void checkKeyMapping() {
+		if (FabricLoader.getInstance().getEnvironmentType() != EnvType.CLIENT) return;
+		try {
+			ForgeKeyMappingTest.check();
+		} catch (RuntimeException | LinkageError e) {
+			LOGGER.warn("FABRICATED-FORGE-TEST key mapping check failed", e);
+		}
+	}
+
 	/** Reserved for the client: Fabric's environment stripping takes it out of the class on a dedicated server. */
 	@Environment(EnvType.CLIENT)
 	static void clientOnly() {

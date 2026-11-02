@@ -23,14 +23,14 @@ import net.minecraft.client.KeyMapping;
 import net.minecraft.resources.Identifier;
 
 /**
- * Fabric API's client modules Fabricated passes through on Forge 64 to 66 (the Fabric API jar provides them), as most
- * mods with a client use them, checked as NeoForge's client test mod checks them: a key mapping in the game's options
- * (key mapping API), HUD elements drawn (rendering API: one attached after a vanilla element, one added last), a
- * screen's initialization and drawing events (screen API, whose drawing events Fabricated fires from Forge's screen
- * render events) and its input events ({@link ScreenInputCheck}, which Fabricated fires from Forge's screen input
- * hooks), the client commands' registration on joining a world (command API), and the lifecycle API's client stopping
- * event. A HUD element is reported the first time it is drawn, as the world's loading screen may still hide the HUD for
- * a while after joining, and as not drawn when the game stops.
+ * Fabric API's client modules on Forge 64 to 66, as most mods with a client use them, checked as NeoForge's client test
+ * mod checks them: a key mapping in the game's options (key mapping API, which Fabricated ships, KEYMAP-3: the forge
+ * test mod checks it further), and the modules the Fabric API jar provides: HUD elements drawn (rendering API: one
+ * attached after a vanilla element, one added last), a screen's initialization and drawing events (screen API, whose
+ * drawing events Fabricated fires from Forge's screen render events) and its input events ({@link ScreenInputCheck},
+ * which Fabricated fires from Forge's screen input hooks), the client commands' registration on joining a world
+ * (command API), and the lifecycle API's client stopping event. A HUD element is reported the first time it is drawn,
+ * as the world's loading screen may still hide the HUD for a while after joining, and as not drawn when the game stops.
  */
 public final class ClientApiTestMod implements ClientModInitializer {
 	static final Logger LOGGER = LoggerFactory.getLogger("fabricated-testmod-frapi");

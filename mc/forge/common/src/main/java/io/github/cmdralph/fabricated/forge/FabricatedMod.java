@@ -9,6 +9,7 @@ import org.slf4j.LoggerFactory;
 
 import io.github.cmdralph.fabricated.core.runtime.EntrypointRunner;
 import io.github.cmdralph.fabricated.forge.fluid.FabricFluidType;
+import io.github.cmdralph.fabricated.forge.keymapping.KeyMappingBridge;
 import io.github.cmdralph.fabricated.forge.loot.LootCompat;
 import io.github.cmdralph.fabricated.forge.objectbuilder.DefaultAttributeModify;
 import io.github.cmdralph.fabricated.forge.screen.ScreenDrawEvents;
@@ -37,9 +38,9 @@ import net.minecraftforge.registries.RegistryManager;
  * constructed, the main ones as registries open, then the dedicated server or the client ones. Fabric Loader runs every
  * initializer from {@code Minecraft}'s constructor on a client, the game instance set, and so does Forge's mod loading
  * there ({@code ClientModLoader.begin}), so the client ones run right after the main ones, with the registries still
- * open. The rest of Fabric API on Forge's events follows (its loot API is native: {@code forge.loot}). It also adds the
- * Fabric mods discovery didn't load to Forge's loading warnings, which Forge reads once every mod has loaded: the server
- * logs them, the client shows them on its warnings screen.
+ * open. The rest of Fabric API on Forge's events follows (its loot and key mapping APIs are native: {@code forge.loot},
+ * {@code forge.keymapping}). It also adds the Fabric mods discovery didn't load to Forge's loading warnings, which Forge
+ * reads once every mod has loaded: the server logs them, the client shows them on its warnings screen.
  *
  * <p>Fabric mods register their content directly from their initializers. Forge opens vanilla's registries for its
  * registration events only ({@code UNFREEZE_DATA}, then {@code LOAD_REGISTRIES}), and each registry it manages only for
@@ -81,6 +82,8 @@ public final class FabricatedMod {
 			ClientSupport.init(state);
 			// Fabric API's screen drawing events, from Forge's (see ScreenDrawEvents; its input events: ScreenInputEvents).
 			if (ours(state, "fabric-screen-api-v1")) ScreenDrawEvents.register();
+			// Native key mappings (key bindings on Forge 61), registered on Forge's key mapping event (see KeyMappingBridge).
+			if (ours(state, KeyMappingBridge.MODULE)) KeyMappingBridge.register();
 		}
 		IModInfo self = context.getContainer().getModInfo();
 		EntrypointRunner runner = new EntrypointRunner(state.runtime(), new EntrypointRunner.ContextHook() {

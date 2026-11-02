@@ -81,6 +81,17 @@ cat > run/options.txt <<'OPTS'
 onboardAccessibility:false
 pauseOnLostFocus:false
 OPTS
+# A key saved for the test mod's key mapping, which it must have once the game has started (KEYMAP-3). The file then
+# names the game's data version (its client jar's): without one, the game takes it for a file from before 1.13, whose
+# data fixer reads each key as an LWJGL 2 key code, fails on a key's name, and drops the whole file (as on main).
+# Should the jar not say, the key isn't saved, and the key mapping check fails on it.
+if data_version=$(python3 -I -c 'import json, sys, zipfile; print(json.loads(zipfile.ZipFile(sys.argv[1]).read("version.json"))["world_version"])' \
+		"minecraft/versions/$mc/$mc.jar"); then
+	printf '%s\n' "version:$data_version" "key_key.fabricated_forge_testmod.check:key.keyboard.k" >> run/options.txt
+else
+	echo "::warning::The client jar's data version wasn't read; no key is saved for the test mod's key mapping"
+fi
+cat run/options.txt
 
 echo "::group::Run client"
 for attempt in 1 2; do
@@ -200,6 +211,8 @@ check "FABRICATED-FORGE-TEST api after entrypoints OK" "Fabricated's API runs wh
 check "FABRICATED-FORGE-TEST modmenu config screen OK" "a Fabric mod's Mod Menu config screen is behind Forge's mod list button, as on NeoForge"
 check "FABRICATED-FORGE-TEST registry OK" "the test mod registered an item on the client"
 check "FABRICATED-FORGE-TEST mod pack data is stable OK" "a Fabric mod's registry entries are stable, so creating the world asked nothing (PACK-5)"
+if [ "$mc" = 1.21.11 ]; then keys="key binding" keys_module=fabric-key-binding-api-v1; else keys="key mapping" keys_module=fabric-key-mapping-api-v1; fi
+check "FABRICATED-FORGE-TEST $keys OK" "native $keys_module: a $keys a Fabric mod registers from its client entrypoint is in the game's options, sorted after the game's, refused twice and once Forge's event added it, as upstream, and has the key the options file saved for it (KEYMAP-3)"
 check "FABRICATED-FORGE-TEST content built at bootstrap registered OK" "content built during vanilla's bootstrap is registered by the main initializer (CORPUS-31)"
 check "FABRICATED-FORGE-TEST built-in registries frozen after the main initializers OK" "the built-in registries' freeze runs after the main initializers (CORPUS-32)"
 if [ -n "$extra" ]; then
@@ -213,7 +226,7 @@ if [ -n "$extra" ]; then
 fi
 # The test mod for Fabric API's client modules (26.x: mc/forge/common26/src/testmodfrapi), where the run has it.
 if [ -n "$extra" ] && [ -f "$extra/fabricated-testmod-frapi.jar" ]; then
-	check "FABRICATED-TEST key mapping OK" "fabric-key-mapping-api-v1 (with Fabric API): a Fabric key mapping is in the game's options"
+	check "FABRICATED-TEST key mapping OK" "fabric-key-mapping-api-v1 (native, with Fabric API's jar too): the client API test mod's key mapping is in the game's options (KEYMAP-3)"
 	check "FABRICATED-TEST hud element OK" "fabric-rendering-v1 (with Fabric API): a Fabric HUD element added last was drawn"
 	check "FABRICATED-TEST hud element after chat OK" "fabric-rendering-v1 (with Fabric API): a Fabric HUD element attached after chat was drawn"
 	check "FABRICATED-TEST screen init event OK" "fabric-screen-api-v1 (with Fabric API): a screen's initialization fired Fabric's event"
