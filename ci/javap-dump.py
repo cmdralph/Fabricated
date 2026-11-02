@@ -29,9 +29,10 @@ MAX_ENTRY = 64 << 20
 MAX_DEPTH = 3
 LINES = 250
 # The jars a NeoForge install loads the game from, the patched ones first: 26.x's minecraft-client-patched jar holds
-# the whole game; 21.1's neoforge client jar holds the classes NeoForge patched over the remapped game jar.
+# the whole game; 21.1's neoforge client jar holds the classes NeoForge patched over the remapped game jar; NeoForge's
+# own classes (its hooks) come last, from its universal jar.
 GAME_JARS = ("**/minecraft-client-patched-*.jar", "**/minecraft-server-patched-*.jar", "**/neoforge-*-client.jar",
-             "**/neoforge-*-server.jar", "**/client-*-srg.jar", "**/server-*-srg.jar")
+             "**/neoforge-*-server.jar", "**/client-*-srg.jar", "**/server-*-srg.jar", "**/neoforge-*-universal.jar")
 
 
 def javap(data, verbose=True):

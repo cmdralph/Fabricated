@@ -1246,8 +1246,9 @@ jobs:
       # The bytecode task 5's open findings turn on, for reading (informational; last, so the job log's tail has it):
       # Polydium's mixin plugin and its font mixin (whose handler, typed with the mixin class, stops 1.21.1 and 1.21.11
       # as Mixin applies it); Architectury's keyboard hook into a lambda of KeyboardHandler.charTyped, which Mixin finds
-      # no target for on 1.21.1 (the corpus); malilib's tooltip hooks; the key map accessors (KEYMAP-1). Members only,
-      # and a class that is the same as one printed (a translation in several cache jars) once.
+      # no target for on 1.21.1 (the corpus); malilib's tooltip hooks; the key map accessors (KEYMAP-1); Sodium's and
+      # Iris's Fabric builds' quad and access findings. Members only, and a class that is the same as one printed (a
+      # translation in several cache jars) once.
       - name: Bytecode for task 5's findings (informational)
         if: ${{ (matrix.part == 'mods' || matrix.part == 'corpus') && env.EXTENDED == 'true' && !cancelled() && steps.build.outcome == 'success' }}
         continue-on-error: true
@@ -1274,3 +1275,19 @@ jobs:
           # CORPUS-56: Continuity's sprite source hook captures locals in SpriteSourceList.list, which NeoForge 1.21.11 and
           # 26.x made call an overload.
           dump client-continuity 'game:net.minecraft.client.renderer.texture.atlas.SpriteSourceList#list' 'mod:*SpriteSourceListMixin#*'
+          # Architectury's hook again, with the code: where NeoForge's charTyped calls Screen.charTyped, if it still does.
+          dump client-corpus 'game:net.minecraft.client.KeyboardHandler#charTyped' 'game:net.neoforged.neoforge.client.ClientHooks#onScreenCharTyped*'
+          # Sodium's Fabric build on 1.21.1: its quad mixins (EncodingFormat.normalFace is null as it re-encodes a quad) and
+          # the constructors NeoForge gave BakedQuad.
+          dump client-sodium-fabric 'mixins:net/minecraft/class_777' 'game:net.minecraft.client.renderer.block.model.BakedQuad#<init>'
+          # Iris's Fabric build on 1.21.11: GlStateManager$TextureState stays private to it. Its access widener, what
+          # Fabricated wrote for it, the report's warnings for it and the class as the game ships it.
+          dump client-sodium-fabric 'file:iris.accesswidener' 'game:com.mojang.blaze3d.opengl.GlStateManager$TextureState#class'
+          if [ -d "$RUNNER_TEMP/client-sodium-fabric/run/.fabricated/cache" ]; then
+            find "$RUNNER_TEMP/client-sodium-fabric/run/.fabricated/cache" -name '*.jar' | while read -r jar; do
+              unzip -p "$jar" META-INF/accesstransformer.cfg 2>/dev/null | grep -n GlStateManager | sed "s|^|$(basename "$jar"): |" | head -12
+              unzip -p "$jar" META-INF/neoforge.mods.toml 2>/dev/null | grep -n -i -A2 accessTransformers | sed "s|^|$(basename "$jar") toml: |" | head -6
+            done | grep -i -B1 -A1 "glstatemanager\|iris" | head -40 || true
+            grep -n -E "^  iris: " "$RUNNER_TEMP/client-sodium-fabric/run/logs/fabric-bridge-report.txt" | head -20 | cut -c1-300 || true
+            grep -n -i -m 20 -E "access ?transformer" "$RUNNER_TEMP/client-sodium-fabric/run/logs/latest.log" | cut -c1-300 || true
+          fi
