@@ -119,7 +119,8 @@ final class CallRepairs extends PreflightPart {
 	 * instructions, so this game build's ordinal-th may not be the one the mod was written for, or there may be fewer.
 	 * Vanilla's instructions aligned with this game build's ({@link PatchAlignment}) tell where vanilla's went: where it
 	 * is still there, the point's ordinal becomes its ordinal here; where NeoForge's patch put a call of an overload taking
-	 * one more argument in its place (its camera passes a roll along that way), the point is pointed at that call, with
+	 * one more argument in its place (its camera passes a roll along that way; where the patch repeats instructions on
+	 * both sides of it, found among those whose places the alignments don't agree on), the point is pointed at that call, with
 	 * its handler bridged as {@link #insertedArgumentRepairs} does. A point inside a slice, or a target method vanilla
 	 * doesn't declare, is left as it is. Returns a description of each change.
 	 */
@@ -161,7 +162,9 @@ final class CallRepairs extends PreflightPart {
 			if (!point.equals("INVOKE") || ref.owner() == null || ref.name() == null || ref.desc() == null || !pointOnly && ats.size() != 1
 					|| !pointOnly && !MixinNames.WRAP_WITH_CONDITION.contains(injector.desc) && !injector.desc.equals(MixinNames.REDIRECT) && !injector.desc.equals(MixinNames.WRAP_OPERATION)) continue;
 			ClassNode owner = gameTarget(ref.owner());
-			MethodInsnNode replacement = replacingOverload(patched, alignment.replacementOf(inVanilla.get(ordinal)), ref, owner);
+			int vanillaCall = inVanilla.get(ordinal);
+			MethodInsnNode replacement = replacingOverload(patched, alignment.replacementOf(vanillaCall), ref, owner);
+			if (replacement == null) replacement = uncertainReplacement(patched, alignment.uncertainRegion(vanillaCall), inVanilla, ref, owner);
 			if (replacement == null) continue;
 			int inserted = insertedArgument(owner, ref.name(), ref.desc(), replacement.desc);
 			if (!pointOnly && !bridgeTo(mixin, handler, injector, ref.owner(), ref.desc(), replacement.desc, inserted, replacement.getOpcode() == Opcodes.INVOKESTATIC,
@@ -176,6 +179,22 @@ final class CallRepairs extends PreflightPart {
 					+ " here); the injection point is pointed there" + (pointOnly ? "" : ", through a bridge handler"));
 		}
 		return moved;
+	}
+
+	/**
+	 * Where the two alignments place nothing alike beside vanilla's call (the patch repeats instructions on both sides of
+	 * what it put there), the one call of an overload taking one more argument among the patched instructions of the
+	 * {@code region} ({@link PatchAlignment#uncertainRegion}), when vanilla's call is the only one of the named method
+	 * among its own instructions there ({@code inVanilla}, the indices of its calls) and the patched ones make none of it.
+	 * Null otherwise.
+	 */
+	private static MethodInsnNode uncertainReplacement(MethodNode patched, int[] region, List<Integer> inVanilla, MemberRef ref, ClassNode owner) {
+		if (region == null || inVanilla.stream().filter(i -> i >= region[0] && i < region[1]).count() != 1) return null;
+		for (int i = region[2]; i < region[3]; i++) {
+			if (patched.instructions.get(i) instanceof MethodInsnNode call && call.owner.equals(ref.owner()) && call.name.equals(ref.name())
+					&& call.desc.equals(ref.desc())) return null;
+		}
+		return replacingOverload(patched, new int[] {region[2], region[3]}, ref, owner);
 	}
 
 	/**

@@ -2128,6 +2128,94 @@ class MixinPreflightTest {
 				"each hook applies where vanilla's call went");
 	}
 
+	/**
+	 * Game class: {@code tick()} as Camera.setup's mirrored rotation, {@code helper(-x)} in vanilla and, with {@code patched},
+	 * {@code helper(-x, -roll)} as NeoForge 21.1's patch made it, between statements the two differ in and before one
+	 * starting with a load of {@code this} ({@code done()}); {@code helper(F)} forwards to {@code helper(FF)} with a 0 roll.
+	 */
+	private static byte[] mirroredHelperCall(boolean patched) {
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		cw.visitField(Opcodes.ACC_PRIVATE, "x", "F", null, null).visitEnd();
+		cw.visitField(Opcodes.ACC_PRIVATE, "roll", "F", null, null).visitEnd();
+		MethodVisitor tick = cw.visitMethod(Opcodes.ACC_PUBLIC, "tick", "()V", null, null);
+		tick.visitCode();
+		tick.visitInsn(patched ? Opcodes.ICONST_3 : Opcodes.ICONST_1);
+		tick.visitInsn(Opcodes.POP);
+		tick.visitVarInsn(Opcodes.ALOAD, 0);
+		tick.visitVarInsn(Opcodes.ALOAD, 0);
+		tick.visitFieldInsn(Opcodes.GETFIELD, TARGET, "x", "F");
+		tick.visitInsn(Opcodes.FNEG);
+		if (patched) {
+			tick.visitVarInsn(Opcodes.ALOAD, 0);
+			tick.visitFieldInsn(Opcodes.GETFIELD, TARGET, "roll", "F");
+			tick.visitInsn(Opcodes.FNEG);
+		}
+		tick.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "helper", patched ? "(FF)V" : "(F)V", false);
+		tick.visitVarInsn(Opcodes.ALOAD, 0);
+		tick.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "done", "()V", false);
+		// A later call of helper(F) both keep, as the bed's setRotation(FF): the hook's ordinal 0 there would be this one.
+		tick.visitVarInsn(Opcodes.ALOAD, 0);
+		tick.visitInsn(Opcodes.FCONST_1);
+		tick.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "helper", "(F)V", false);
+		tick.visitInsn(patched ? Opcodes.ICONST_4 : Opcodes.ICONST_2);
+		tick.visitInsn(Opcodes.POP);
+		tick.visitInsn(Opcodes.RETURN);
+		tick.visitMaxs(0, 0);
+		tick.visitEnd();
+		MethodVisitor one = cw.visitMethod(Opcodes.ACC_PUBLIC, "helper", "(F)V", null, null);
+		one.visitCode();
+		if (patched) {
+			one.visitVarInsn(Opcodes.ALOAD, 0);
+			one.visitVarInsn(Opcodes.FLOAD, 1);
+			one.visitInsn(Opcodes.FCONST_0);
+			one.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "helper", "(FF)V", false);
+		}
+		one.visitInsn(Opcodes.RETURN);
+		one.visitMaxs(0, 0);
+		one.visitEnd();
+		for (String name : patched ? List.of("helper(FF)V", "done()V") : List.of("done()V")) {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC, name.substring(0, name.indexOf('(')), name.substring(name.indexOf('(')), null, null);
+			mv.visitCode();
+			mv.visitInsn(Opcodes.RETURN);
+			mv.visitMaxs(0, 0);
+			mv.visitEnd();
+		}
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	@Test
+	void aCallThePatchGaveAnArgumentBetweenInstructionsItRepeatsIsFoundAgainstVanillasCode() throws Exception {
+		// Do a Barrel Roll's hook at Camera.setup's mirrored setRotation(FF) on NeoForge 21.1, which became setRotation(FFF):
+		// the patch repeats the FNEG before the call and the ALOAD after it, so the two alignments place nothing alike
+		// between them, and the hook was left out (at ordinal 0, as Do a Barrel Roll's main roll hook, it took the bed's
+		// setRotation(FF) instead, which the patch keeps).
+		String thing = "L" + TARGET + ";";
+		Map<String, byte[]> vanilla = Map.of(TARGET, mirroredHelperCall(false));
+		ClassIndex neoForge = new ClassIndex(Map.of(TARGET, mirroredHelperCall(true))::get);
+		byte[] original = mixin("com/example/mixin/Mirrored", false, cw -> atHelperCall(cw, "Lcom/llamalad7/mixinextras/injector/v2/WrapWithCondition;",
+				"roll", "(" + thing + "F)Z", "(F)V", 0, null));
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Mirrored", original));
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Mirrored"));
+
+		List<PreflightFinding> notes = new ArrayList<>();
+		MixinPreflight withVanilla = new MixinPreflight(neoForge, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, vanilla::get);
+		Map<String, byte[]> repaired = withVanilla.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
+
+		assertEquals(1, notes.size(), notes.toString());
+		assertTrue(notes.getFirst().message().contains("replaced with a call of helper(FF)V"), notes.toString());
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired.get("com/example/mixin/Mirrored.class")).accept(node, 0);
+		AnnotationNode point = node.methods.stream().flatMap(m -> Annotations.all(m).stream())
+				.map(ann -> Annotations.list(Annotations.value(ann, "at"))).filter(ats -> !ats.isEmpty()).map(List::getFirst).findFirst().orElseThrow();
+		assertEquals("L" + TARGET + ";helper(FF)V", Annotations.value(point, "target"));
+		assertEquals(0, Annotations.value(point, "ordinal"));
+		Map<String, byte[]> after = new HashMap<>(mod);
+		repaired.forEach((path, data) -> after.put(path.substring(0, path.length() - ".class".length()), data));
+		assertEquals(List.of(), preflight(neoForge, after::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()));
+	}
+
 	@Test
 	void anInjectionAtACallNeoForgeAddedAnArgumentToIsPointedThere() throws Exception {
 		String thing = "L" + TARGET + ";";

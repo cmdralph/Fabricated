@@ -113,6 +113,38 @@ final class PatchAlignment {
 		return from <= to ? new int[] {from, to} : null;
 	}
 
+	/**
+	 * The vanilla instructions around {@code vanillaIndex} out to the nearest on each side that both alignments place
+	 * alike, and the patched instructions between those two places: {@code {vanillaFrom, vanillaTo, patchedFrom,
+	 * patchedTo}}, each a {@code [from, to)} range. Where the patch repeats instructions on both sides of what it put in
+	 * place of vanilla's one (NeoForge 21.1's camera: vanilla's {@code -xRot} beside the patch's {@code -roll}, and the
+	 * next statement's {@code aload} beside the one the patch added for the roll), each alignment pairs both neighbours
+	 * with copies the other doesn't, so {@link #replacementOf} finds nothing both place there; the replacement is still
+	 * among these. Null when the instruction has a place, or its own is uncertain.
+	 */
+	int[] uncertainRegion(int vanillaIndex) {
+		if (placeOf(vanillaIndex) != -1) return null;
+		int vanillaFrom = 0;
+		int patchedFrom = 0;
+		for (int i = vanillaIndex - 1; i >= 0; i--) {
+			if (placeOf(i) >= 0) {
+				vanillaFrom = i + 1;
+				patchedFrom = placeOf(i) + 1;
+				break;
+			}
+		}
+		int vanillaTo = fromFront.length;
+		int patchedTo = patchedSize;
+		for (int i = vanillaIndex + 1; i < fromFront.length; i++) {
+			if (placeOf(i) >= 0) {
+				vanillaTo = i;
+				patchedTo = placeOf(i);
+				break;
+			}
+		}
+		return patchedFrom <= patchedTo ? new int[] {vanillaFrom, vanillaTo, patchedFrom, patchedTo} : null;
+	}
+
 	private int[] between(int[] places, int vanillaIndex) {
 		int from = 0;
 		for (int i = vanillaIndex - 1; i >= 0; i--) {
