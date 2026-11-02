@@ -139,6 +139,15 @@ jobs:
           curl -fsSL --retry 4 -o "$RUNNER_TEMP/extra/fabric-api.jar" \
             "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api/${{ matrix.target.fabric_api }}/fabric-api-${{ matrix.target.fabric_api }}.jar"
           ci/forge/smoke-server.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/server-fapi" "$RUNNER_TEMP/extra"
+      # Mods that share the game with Fabricated, as stand-ins built from Fabricated's own jar (ci/forge/standins.py): a
+      # Fabric API module another Forge mod provides, straight and nested with its mixins, and two versions of a library
+      # Fabric mods nest. Fabricated's part of each module must stand down (PROVIDER-1, as on NeoForge); a gate.
+      - name: Server with stand-ins for coexisting mods (must pass)
+        if: ${{ env.GAME_RUNS == 'true' && !cancelled() }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/standins"
+          python3 -I ci/forge/standins.py build/libs/fabricated-forge-[0-9]*+mc${{ matrix.target.minecraft }}.jar "$RUNNER_TEMP/standins"
+          ci/forge/smoke-server.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/server-standins" "$RUNNER_TEMP/standins"
       # Sinytra Connector (a stand-in with its mod id) or a second Fabricated jar in the mods folder: the launch must
       # stop with Fabricated's error naming them, as on NeoForge: two loaders of Fabric mods can't share them (DUP-1).
       - name: Server refusing Sinytra Connector and a second Fabricated jar (must pass)

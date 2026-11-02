@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -37,11 +38,13 @@ import io.github.cmdralph.fabricated.core.cache.TranslationCache;
 import io.github.cmdralph.fabricated.core.config.FabricatedConfig;
 import io.github.cmdralph.fabricated.core.json.JsonException;
 import io.github.cmdralph.fabricated.core.metadata.ModIds;
+import io.github.cmdralph.fabricated.core.mixin.MixinConfigFile;
 import io.github.cmdralph.fabricated.core.mixin.PreflightFinding;
 import io.github.cmdralph.fabricated.core.remap.MappingException;
 import io.github.cmdralph.fabricated.core.remap.OfficialClasses;
 import io.github.cmdralph.fabricated.core.report.Report;
 import io.github.cmdralph.fabricated.core.resolve.FabricApiPlan;
+import io.github.cmdralph.fabricated.core.resolve.NativeModules;
 import io.github.cmdralph.fabricated.core.resolve.PlatformLibraries;
 import io.github.cmdralph.fabricated.core.translate.LinkageAnalysis;
 import io.github.cmdralph.fabricated.core.translate.PackageGuard;
@@ -165,6 +168,12 @@ public final class FabricDependencyLocator extends AbstractModProvider implement
 		List<InstalledClasses.Jar> fabricApi = List.of();
 		// Interfaces the in-game mod's mixins add to game classes (Fabric API's injected interfaces).
 		Supplier<Map<String, List<String>>> nativeApiInterfaces = Map::of;
+		// The packages of the native modules other mods provide, left out of the in-game mod (filled below, before the
+		// pipeline reads any class): pre-flight then sees the provider's classes, as the game will.
+		Set<String> standingDown = new HashSet<>();
+		NativeModules.StandDown standDown = null;
+		// The in-game mod's jar Forge is handed: without what stands down, when anything does.
+		Path handedGameMod = gameModJar;
 		FabricApiPlan plan;
 		Pipeline.Result result;
 		// Vanilla's game jar, which pre-flight reads to tell where Forge's patches moved an injection point (VANILLA-1).
@@ -176,10 +185,6 @@ public final class FabricDependencyLocator extends AbstractModProvider implement
 			String mixinExtras = newest(newest(mixinExtrasVersion(loadedMods), archive == null ? null : nestedMixinExtras(archive)),
 					offeredMixinExtras());
 			if (archive != null) {
-				for (String name : archive.classEntryNames()) {
-					int slash = name.lastIndexOf('/');
-					if (slash > 0) platformPackages.add(name.substring(0, slash));
-				}
 				// Only needed when some linkage result isn't cached.
 				nativeApiInterfaces = () -> {
 					Map<String, List<String>> interfaces = new HashMap<>();
@@ -194,8 +199,9 @@ public final class FabricDependencyLocator extends AbstractModProvider implement
 					}
 					return interfaces;
 				};
-				nativeApi = name -> archive.read(name + ".class");
-				fabricApi = List.of(new InstalledClasses.Jar("Fabric API", name -> archive.contains(name + ".class"), nativeApi));
+				nativeApi = name -> standingDown.contains(packageOf(name)) ? null : archive.read(name + ".class");
+				fabricApi = List.of(new InstalledClasses.Jar("Fabric API", name -> !standingDown.contains(packageOf(name)) && archive.contains(name + ".class"),
+						nativeApi));
 			} else if (devGameMod.isPresent()) {
 				SecureJar devJar = devGameMod.get().getSecureJar();
 				nativeApi = name -> ForgeMods.read(devJar, name + ".class");
@@ -208,6 +214,39 @@ public final class FabricDependencyLocator extends AbstractModProvider implement
 			byte[] planJson = FabricatedInfo.readOptional("fabric-api-plan.json");
 			if (planJson == null) throw new IllegalStateException("This Fabricated build is missing its fabric-api-plan.json");
 			plan = FabricApiPlan.parse(new String(planJson, StandardCharsets.UTF_8));
+
+			// The provider policy, as on NeoForge: a Fabric API module another mod brings is that mod's, and Fabricated's own
+			// part of it stands down, as only one copy of its packages can load (core's NativeModules).
+			List<String> providerNotes = new ArrayList<>();
+			List<Pipeline.NeoForgeMod> mods = forgeMods.mods();
+			if (archive != null) {
+				byte[] index = FabricatedInfo.readOptional(NativeModules.INDEX);
+				NativeModules nativeModules = index == null ? NativeModules.NONE : NativeModules.parse(new String(index, StandardCharsets.UTF_8),
+						archive.contains(NativeModules.MIXIN_MODULES) ? archive.readText(NativeModules.MIXIN_MODULES) : null);
+				mods = nativeModules.providingByPackages(forgeMods.mods(), forgeMods.providers(), providerNotes);
+				Map<String, Pipeline.NeoForgeMod> provided = Pipeline.providedElsewhere(plan, mods);
+				Map<String, MixinConfigFile> configs = new LinkedHashMap<>();
+				for (String name : archive.entryNames()) {
+					if (name.indexOf('/') < 0 && name.endsWith(".mixins.json")) configs.put(name, MixinConfigFile.parse(archive.readText(name)));
+				}
+				standDown = nativeModules.standDown(provided.keySet(), configs);
+				standingDown.addAll(standDown.packages());
+				standDown.unmapped().forEach(m -> providerNotes.add("Fabricated's mixin " + m + " says no module it serves; it stays"));
+				if (!standDown.isEmpty()) handedGameMod = NestedJars.withoutStandingDown(archive, standDown, configs, cache);
+				for (String name : archive.classEntryNames()) {
+					String pkg = packageOf(name);
+					if (!pkg.isEmpty() && !standingDown.contains(pkg)) platformPackages.add(pkg);
+				}
+			} else if (devGameMod.isPresent() && !Pipeline.providedElsewhere(plan, mods).isEmpty()) {
+				providerNotes.add("Other mods provide Fabric API modules, but the in-game mod of a development workspace can't leave its own copies out");
+			}
+			// What Forge's jar-in-jar locator adds after this one isn't among the files it is handed: the mods and the
+			// libraries the files nest.
+			if (!fabricJars.isEmpty()) {
+				forgeMods.providers().forEach(p -> platformPackages.addAll(p.packages()));
+				platformPackages.addAll(forgeMods.libraryPackages());
+			}
+
 			// Forge's installer leaves vanilla in Mojang's names among the libraries (ForgeLibraries); else NeoForge's layout.
 			Optional<Path> installedVanilla = fabricJars.isEmpty() ? Optional.empty()
 					: ForgeLibraries.vanillaInMojangNames(minecraft.getFilePath(), client, mcVersion, info.namespace() == Namespace.INTERMEDIARY);
@@ -229,11 +268,16 @@ public final class FabricDependencyLocator extends AbstractModProvider implement
 			Pipeline.Input input = new Pipeline.Input(gameDir, FMLPaths.CONFIGDIR.get(), config, cache, fabricJars, mcVersion, forgeVersion,
 					client, info.namespace(), runtimeMixinVersion(info), mixinExtras, info.mixinLowest(), info.fabricatedVersion(),
 					info.build(), !FMLLoader.isProduction(), gameClasses, List.of(minecraft.getFilePath()), vanilla, fabricatedFiles, untransformable,
-					platformPackages, plan, nativeApi, nativeApiInterfaces, forgeMods.mods(), forgeMods.classes(),
+					platformPackages, plan, nativeApi, nativeApiInterfaces, mods, forgeMods.classes(),
 					(mappingsCache, mojangPath) -> IntermediaryMappings.load(mappingsCache, mcVersion, client, mojangPath, minecraft.getFilePath()),
 					new String[0], PlatformDescriptor.FORGE);
 
 			result = Pipeline.run(input);
+			providerNotes.forEach(n -> result.report().line("Fabric API providers", n));
+			if (standDown != null && !standDown.isEmpty()) {
+				result.report().line("Fabric API providers", "Fabricated's in-game mod leaves out " + standDown.packages().size()
+						+ " package(s) of the modules other mods provide, the mixin configs " + standDown.mixinConfigs() + " and the mixins " + standDown.mixins());
+			}
 		} finally {
 			closeAll(vanillaJars);
 		}
@@ -265,7 +309,7 @@ public final class FabricDependencyLocator extends AbstractModProvider implement
 			FabricatedState.set(state);
 		}
 		if (addGameMod) {
-			var gameMod = createMod(gameModJar);
+			var gameMod = createMod(handedGameMod);
 			if (gameMod.file() != null) {
 				handed.add(gameMod.file());
 			} else {
@@ -344,6 +388,12 @@ public final class FabricDependencyLocator extends AbstractModProvider implement
 		IModFile file = ModFileFactory.FACTORY.build(jar, this, ModFileParser::modsTomlParser);
 		if (file.getModInfos().isEmpty()) throw new IllegalStateException("its generated mods.toml declares no mod");
 		return file;
+	}
+
+	/** The package (internal form) of a class's internal name or of a file's path; empty for the root. */
+	private static String packageOf(String name) {
+		int slash = name.lastIndexOf('/');
+		return slash > 0 ? name.substring(0, slash) : "";
 	}
 
 	/** How the union file system names a jar to its filter: its path, '/'-separated, without a leading '/'. */
