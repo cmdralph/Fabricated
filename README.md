@@ -22,15 +22,16 @@ It's built to be:
 > loads, but many Fabric mods still patch code that NeoForge changed and are disabled before they run. Read
 > [What works today](#what-works-today) before relying on it.
 
-**Platforms and branches.** NeoForge is the supported platform, and this README is about it. Builds for Minecraft
-Forge are experimental previews, for dedicated servers and for clients that run Fabric mods' client entrypoints, each
-with a README of its own on its branch:
+**Platforms and branches.** NeoForge is the main platform, and this README is about it. Builds for Minecraft Forge, for
+dedicated servers and clients, are on their own branches, each with a README of its own. They were experimental
+previews up to v0.5.1; from 0.6.0-beta they are held to NeoForge's bar, with less coverage, and each branch's
+`docs/FORGE.md` or `docs/FORGE-LEGACY.md` lists what Forge doesn't support:
 
 | Branch | Platform | Minecraft | Jars |
 |---|---|---|---|
 | [`main`](https://github.com/cmdralph/Fabricated/tree/main) | NeoForge | 1.21.1, 1.21.11, 26.1.2, 26.2, 26.3 | `fabricated-<version>+mc<minecraft>.jar` |
-| [`forge`](https://github.com/cmdralph/Fabricated/tree/forge) | Minecraft Forge 61 to 66 (experimental) | 1.21.11, 26.1.2, 26.2, 26.3 | `fabricated-forge-<version>+mc<minecraft>.jar` |
-| [`forge-legacy`](https://github.com/cmdralph/Fabricated/tree/forge-legacy) | Forge 47 (experimental) | 1.20.1 | `fabricated-forge-<version>+mc1.20.1.jar` |
+| [`forge`](https://github.com/cmdralph/Fabricated/tree/forge) | Minecraft Forge 61 to 66 | 1.21.11, 26.1.2, 26.2, 26.3 | `fabricated-forge-<version>+mc<minecraft>.jar` |
+| [`forge-legacy`](https://github.com/cmdralph/Fabricated/tree/forge-legacy) | Forge 47 | 1.20.1 | `fabricated-forge-<version>+mc1.20.1.jar` |
 
 Each platform is on its own branch: `main` holds the shared engine and NeoForge, `forge` and `forge-legacy` the shared
 engine and their own platform, which they get from `main` by merge.
