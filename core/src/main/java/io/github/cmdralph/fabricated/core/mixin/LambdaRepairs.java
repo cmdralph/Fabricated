@@ -168,6 +168,9 @@ final class LambdaRepairs extends PreflightPart {
 			for (MethodNode m : target.methods) {
 				if (m.name.equals(creator.name) && m.desc.equals(creator.desc)) patched = m;
 			}
+			// The creating method the patch gave other parameters, and its lambda with them: the one method of its name in
+			// both classes (NeoForge 26.2's LevelRenderer.addMainPass, which also takes the model view matrix; LAMBDA-9).
+			if (patched == null && onlyNamed(original, creator.name) == creator) patched = onlyNamed(target, creator.name);
 		} else if (renamed && depth < 3) {
 			patched = lambdaPlace(original, target, creator, true, depth + 1);
 		}
@@ -192,6 +195,17 @@ final class LambdaRepairs extends PreflightPart {
 		if (sameFaces) return games.get(index).body();
 		CreatedLambda only = onlyOfInterface(games, vanillas.get(index).face());
 		return onlyOfInterface(vanillas, vanillas.get(index).face()) != null && only != null ? only.body() : null;
+	}
+
+	/** The one method of {@code owner} named {@code name}, or null when it has none or several. */
+	private static MethodNode onlyNamed(ClassNode owner, String name) {
+		MethodNode only = null;
+		for (MethodNode m : owner.methods) {
+			if (!m.name.equals(name)) continue;
+			if (only != null) return null;
+			only = m;
+		}
+		return only;
 	}
 
 	/** The one lambda of {@code lambdas} with {@code face}, or null when there are none or several. */
