@@ -426,7 +426,7 @@ class PipelineTest {
 				PlatformDescriptor.FORGE));
 
 		Report.ModRow row = result.report().mods().stream().filter(r -> r.id().equals("sodium")).findFirst().orElseThrow();
-		assertTrue(row.detail().startsWith("its Fabric build can't run on Forge: "), row.detail());
+		assertTrue(row.detail().startsWith("its Fabric build isn't supported on Forge: "), row.detail());
 		assertEquals("Install Sodium for Forge instead (from the same download page).", row.suggestion());
 		Report.ModRow missing = result.report().mods().stream().filter(r -> r.id().equals("needy")).findFirst().orElseThrow();
 		assertEquals("Install absent-lib (a Fabric or Forge build) or remove needy.", missing.suggestion());
@@ -808,21 +808,30 @@ class PipelineTest {
 		}
 	}
 
-	/** The Fabric builds of Sodium and Iris can't run on NeoForge: the player is told to install their NeoForge builds. */
+	/**
+	 * The Fabric builds of Sodium and Iris load on NeoForge, where CI runs them as a gate (the compatibility plan's
+	 * {@code runsOn}); on Forge, where none does yet, they are refused and the player is told to install their Forge
+	 * builds, unless the player asks to load them anyway.
+	 */
 	@Test
-	void fabricBuildsOfRendererReplacementsAskForTheirNeoForgeBuild(@TempDir Path game) throws Exception {
+	void aRefusalLiftedOnOneLoaderStandsOnTheOthers(@TempDir Path game) throws Exception {
 		Path mods = Files.createDirectories(game.resolve("mods"));
 		Path sodium = TestJars.create().fabricModJson(TestJars.modJson("sodium", "0.9.2", "\"name\":\"Sodium\"")).write(mods.resolve("sodium.jar"));
 		Path addon = TestJars.create().fabricModJson(TestJars.modJson("sodium-addon", "1.0.0", "\"depends\":{\"sodium\":\"*\"}"))
 				.write(mods.resolve("addon.jar"));
 
-		Pipeline.Result result = Pipeline.run(input(game, List.of(sodium, addon), Namespace.OFFICIAL, Map.of(), null, List.of()));
+		Pipeline.Result neoForge = Pipeline.run(input(game, List.of(sodium, addon), Namespace.OFFICIAL, Map.of(), null, List.of()));
+		assertEquals(Set.of("sodium", "sodium-addon"), neoForge.mods().stream().map(m -> m.translated().candidate().id()).collect(Collectors.toSet()),
+				neoForge.report().render());
+		assertFalse(neoForge.report().render().contains("Unsupported mods loaded on request (loadUnsupported)"), neoForge.report().render());
 
+		Pipeline.Result result = Pipeline.run(withDescriptor(input(game, List.of(sodium, addon), Namespace.OFFICIAL, Map.of(), null, List.of()),
+				PlatformDescriptor.FORGE));
 		assertTrue(result.mods().isEmpty(), result.report().render());
 		Report.ModRow row = result.report().mods().stream().filter(r -> r.id().equals("sodium")).findFirst().orElseThrow();
 		assertEquals(Report.Status.DISABLED, row.status());
-		assertTrue(row.detail().startsWith("its Fabric build can't run on NeoForge: "), row.detail());
-		assertEquals("Install Sodium for NeoForge instead (from the same download page).", row.suggestion());
+		assertTrue(row.detail().startsWith("its Fabric build isn't supported on Forge: "), row.detail());
+		assertEquals("Install Sodium for Forge instead (from the same download page).", row.suggestion());
 		assertFalse(result.runtime().isModLoaded("sodium"));
 		assertTrue(result.report().mods().stream().anyMatch(r -> r.id().equals("sodium-addon") && r.status() == Report.Status.DISABLED),
 				result.report().render());
@@ -830,7 +839,8 @@ class PipelineTest {
 		// A player testing support for it can load it anyway.
 		Files.createDirectories(game.resolve("config"));
 		Files.writeString(game.resolve("config").resolve(FabricatedConfig.FILE_NAME), "{\"schema\": 1, \"mods\": {\"sodium\": {\"loadUnsupported\": true}}}");
-		Pipeline.Result forced = Pipeline.run(input(game, List.of(sodium, addon), Namespace.OFFICIAL, Map.of(), null, List.of()));
+		Pipeline.Result forced = Pipeline.run(withDescriptor(input(game, List.of(sodium, addon), Namespace.OFFICIAL, Map.of(), null, List.of()),
+				PlatformDescriptor.FORGE));
 		Set<String> loaded = forced.mods().stream().map(m -> m.translated().candidate().id()).collect(Collectors.toSet());
 		assertEquals(Set.of("sodium", "sodium-addon"), loaded, forced.report().render());
 		assertTrue(forced.report().render().contains("Unsupported mods loaded on request (loadUnsupported)"), forced.report().render());
@@ -840,7 +850,7 @@ class PipelineTest {
 	 * Essential's loader downloads Essential as the game starts, when NeoForge takes no mod any more: the jar it left in
 	 * an earlier launch (the newest of its numbered copies) loads with the mods folder's, next to its loader, and one past
 	 * 30 days is reported, as its loader doesn't update it then (DOWNLOAD-1). Where the loader doesn't load (refused by
-	 * the compatibility plan, as it is unless the player asks), the jar isn't read.
+	 * the compatibility plan, as on Forge unless the player asks), the jar isn't read.
 	 */
 	@Test
 	void aJarALoaderDownloadedInAnEarlierLaunchLoadsWithIt(@TempDir Path game) throws Exception {
@@ -851,13 +861,12 @@ class PipelineTest {
 		Path newest = TestJars.create().fabricModJson(TestJars.modJson("essential", "1.5.1", "")).write(downloads.resolve("Essential (fabric_26.2).1.jar"));
 		TestJars.create().fabricModJson(TestJars.modJson("essential-other", "1.0.0", "")).write(downloads.resolve("Essential (fabric_26.1.2).jar"));
 
-		Pipeline.Result refused = Pipeline.run(input(game, List.of(loader), Namespace.OFFICIAL, Map.of(), null, List.of()));
+		Pipeline.Result refused = Pipeline.run(withDescriptor(input(game, List.of(loader), Namespace.OFFICIAL, Map.of(), null, List.of()),
+				PlatformDescriptor.FORGE));
 		assertTrue(refused.mods().isEmpty(), refused.report().render());
 		assertTrue(refused.report().mods().stream().noneMatch(r -> r.id().startsWith("essential-other") || r.id().equals("essential")), refused.report().render());
 		assertTrue(refused.report().lines(DownloadedMods.SECTION).isEmpty(), refused.report().render());
 
-		Files.createDirectories(game.resolve("config"));
-		Files.writeString(game.resolve("config").resolve(FabricatedConfig.FILE_NAME), "{\"schema\": 1, \"mods\": {\"essential-loader\": {\"loadUnsupported\": true}}}");
 		Pipeline.Result result = Pipeline.run(input(game, List.of(loader), Namespace.OFFICIAL, Map.of(), null, List.of()));
 		Map<String, String> loaded = result.mods().stream().collect(Collectors.toMap(m -> m.translated().candidate().id(), m -> m.translated().candidate().version()));
 		assertEquals(Map.of("essential-loader", "1.3.2", "essential", "1.5.1"), loaded, result.report().render());
@@ -873,8 +882,7 @@ class PipelineTest {
 
 	/**
 	 * Iris's Fabric build hooks Sodium's Fabric build: next to Sodium for NeoForge it would load with its hooks missing,
-	 * so it is refused, even when the player asked to load it. Without that request, the player is told to install
-	 * Iris for NeoForge, as anywhere else.
+	 * so it is refused, even when the player asked to load it. Alone, it loads.
 	 */
 	@Test
 	void aFabricBuildIsRefusedNextToTheNeoForgeBuildOfItsPartner(@TempDir Path game) throws Exception {
@@ -882,7 +890,7 @@ class PipelineTest {
 		Path iris = TestJars.create().fabricModJson(TestJars.modJson("iris", "1.11.4", "\"name\":\"Iris\"")).write(mods.resolve("iris.jar"));
 		List<Pipeline.NeoForgeMod> sodium = List.of(new Pipeline.NeoForgeMod("sodium", "0.9.2+mc26.3", "Sodium", Map.of(), List.of()));
 		Pipeline.Result plain = Pipeline.run(input(game, List.of(iris), Namespace.OFFICIAL, Map.of(), null, sodium));
-		assertEquals("Install Iris for NeoForge instead (from the same download page).",
+		assertEquals("Use the NeoForge builds of both, or the Fabric builds of both.",
 				plain.report().mods().stream().filter(r -> r.id().equals("iris")).findFirst().orElseThrow().suggestion());
 
 		Files.createDirectories(game.resolve("config"));

@@ -608,9 +608,9 @@ public final class Pipeline {
 				continue;
 			}
 			CompatPlan.Entry known = COMPAT.entry(c.id());
-			String neoForgeBuildOnly = known.neoForgeBuildOnly();
-			if (neoForgeBuildOnly != null && !config.override(c.id()).loadUnsupported()) {
-				report.mod(new ModRow(c.id(), c.version(), c.origin(), Status.DISABLED, "its Fabric build can't run on " + loader + ": " + neoForgeBuildOnly,
+			String refusal = known.refusal(loader);
+			if (refusal != null && !config.override(c.id()).loadUnsupported()) {
+				report.mod(new ModRow(c.id(), c.version(), c.origin(), Status.DISABLED, "its Fabric build isn't supported on " + loader + ": " + refusal,
 						known.suggestion() != null ? known.suggestion() : "Install " + c.metadata().getName() + " for " + loader + " instead (from the same download page)."));
 				continue;
 			}
@@ -621,7 +621,7 @@ public final class Pipeline {
 						"Use the " + loader + " builds of both, or the Fabric builds of both."));
 				continue;
 			}
-			if (neoForgeBuildOnly != null) report.line("Unsupported mods loaded on request (loadUnsupported)", c.id() + ": " + neoForgeBuildOnly);
+			if (refusal != null) report.line("Unsupported mods loaded on request (loadUnsupported)", c.id() + ": " + refusal);
 			FabricatedConfig.ModOverride override = config.override(c.id());
 			if (override.ignoreHints() && !c.metadata().compatHints().isEmpty()) {
 				c = c.withMetadata(c.metadata().withCompatHints(CompatHints.NONE));
@@ -653,7 +653,7 @@ public final class Pipeline {
 	 */
 	private boolean mayLoad(String id) {
 		FabricatedConfig.ModOverride override = config.override(id);
-		return !override.disabled() && (COMPAT.entry(id).neoForgeBuildOnly() == null || override.loadUnsupported());
+		return !override.disabled() && (COMPAT.entry(id).refusal(in.descriptor().loaderName()) == null || override.loadUnsupported());
 	}
 
 	/**
