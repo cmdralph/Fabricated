@@ -27,5 +27,9 @@ public interface QuadEmitter extends MutableQuadView {
 
 	void popTransform();
 
+	default QuadEmitter square(Direction nominalFace, float left, float bottom, float right, float top, float depth) {
+		throw new AssertionError("stub");
+	}
+
 	QuadEmitter emit();
 }

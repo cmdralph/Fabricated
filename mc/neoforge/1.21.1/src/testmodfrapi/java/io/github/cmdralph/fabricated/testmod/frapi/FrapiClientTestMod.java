@@ -3,6 +3,7 @@ package io.github.cmdralph.fabricated.testmod.frapi;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Predicate;
@@ -37,6 +38,7 @@ import net.minecraft.client.resources.model.MultiPartBakedModel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.util.RandomSource;
+import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.BlockAndTintGetter;
 import net.minecraft.world.level.block.state.BlockState;
@@ -62,6 +64,10 @@ import net.minecraft.world.level.block.state.BlockState;
  * they never pop (FRAPI rule 8): one the broken test block's model, the other a part of the broken nested test block's
  * multipart model. Each logs when NeoForge's renderer then asks it for its quads, and the transform logs a failure if
  * any later quad reaches it.
+ *
+ * <p>The test item's model is a Fabric model too ({@link ItemCheckModel}): it emits the vanilla item model's quads, and
+ * logs once when it is drawn in the hotbar (a screen), in hand, as a dropped item and in an item frame
+ * ({@link FrapiTestMod} puts it in each).
  */
 public final class FrapiClientTestMod implements ClientModInitializer {
 	private static final int BLOCK_COLOR = 0x3366CC;
@@ -138,10 +144,15 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 		else FrapiTestMod.LOGGER.error("FABRICATED-TEST colors FAILED: {}", String.join("; ", failed));
 	}
 
-	/** Puts the Fabric models in place of the test blocks' baked models (their block states', a top-level model each). */
+	/**
+	 * Puts the Fabric models in place of the test blocks' baked models (their block states', a top-level model each) and
+	 * of the test item's (its inventory model, top-level too).
+	 */
 	private static @Nullable BakedModel fabricModels(@Nullable BakedModel model, ModelModifier.AfterBake.Context context) {
 		ModelResourceLocation id = context.topLevelId();
-		if (model == null || id == null || !id.id().getNamespace().equals(FrapiTestMod.NAMESPACE) || !id.variant().isEmpty()) return model;
+		if (model == null || id == null || !id.id().getNamespace().equals(FrapiTestMod.NAMESPACE)) return model;
+		if (id.variant().equals("inventory")) return id.id().getPath().equals("fabric_item") ? new ItemCheckModel(model) : model;
+		if (!id.variant().isEmpty()) return model;
 		return switch (id.id().getPath()) {
 			case "terrain_block" -> {
 				FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi model plugin OK ({} after it was baked)", id);
@@ -259,6 +270,37 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 				FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi piston OK ({} in {})", state, level.getClass().getName());
 			} else if ("falling".equals(drawing) && !FALLING.getAndSet(true)) {
 				FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi moving block OK ({} in {})", state, level.getClass().getName());
+			}
+		}
+	}
+
+	/**
+	 * The test item's model: its geometry is only the quads it emits (the vanilla item model's), none for vanilla's
+	 * renderer. Logs once for each place it is drawn in: a screen (the hotbar), a hand, the ground, an item frame.
+	 */
+	private static final class ItemCheckModel extends FabricModel {
+		private static final Map<ItemDisplayContext, String> WHERE = Map.of(ItemDisplayContext.GUI, "screen", ItemDisplayContext.FIRST_PERSON_RIGHT_HAND, "hand",
+				ItemDisplayContext.FIRST_PERSON_LEFT_HAND, "hand", ItemDisplayContext.GROUND, "dropped", ItemDisplayContext.FIXED, "frame");
+		private static final Map<String, AtomicBoolean> LOGGED = Map.of("screen", new AtomicBoolean(), "hand", new AtomicBoolean(), "dropped", new AtomicBoolean(),
+				"frame", new AtomicBoolean());
+
+		ItemCheckModel(BakedModel wrapped) {
+			super(wrapped);
+		}
+
+		@Override
+		public List<BakedQuad> getQuads(@Nullable BlockState state, @Nullable Direction direction, RandomSource random) {
+			return List.of();
+		}
+
+		@Override
+		public void emitItemQuads(ItemStack stack, Supplier<RandomSource> randomSupplier, RenderContext context) {
+			// The wrapped vanilla model's default emitter: Fabric's renderer API's.
+			((FabricBakedModel) wrapped).emitItemQuads(stack, randomSupplier, context);
+			ItemDisplayContext displayContext = context.itemTransformationMode();
+			String where = WHERE.get(displayContext);
+			if (where != null && !LOGGED.get(where).getAndSet(true)) {
+				FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi item {} OK ({} drawn {})", where, stack, displayContext);
 			}
 		}
 	}

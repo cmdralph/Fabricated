@@ -2,6 +2,7 @@ package io.github.cmdralph.fabricated.testmod.frapi;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Predicate;
 
@@ -16,12 +17,17 @@ import net.fabricmc.fabric.api.client.model.loading.v1.UnbakedModelDeserializer;
 import net.fabricmc.fabric.api.client.model.loading.v1.wrapper.WrapperBlockStateModel;
 import net.fabricmc.fabric.api.client.renderer.v1.mesh.QuadEmitter;
 import net.fabricmc.fabric.api.client.renderer.v1.mesh.QuadTransform;
+import net.fabricmc.fabric.api.client.renderer.v1.render.FabricLayerRenderState;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
+import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.renderer.block.BlockAndTintGetter;
 import net.minecraft.client.renderer.block.MovingBlockRenderState;
 import net.minecraft.client.renderer.block.dispatch.BlockStateModel;
 import net.minecraft.client.renderer.block.dispatch.BlockStateModelPart;
 import net.minecraft.client.renderer.chunk.RenderSectionRegion;
+import net.minecraft.client.renderer.item.ItemModel;
+import net.minecraft.client.renderer.item.ItemModelResolver;
+import net.minecraft.client.renderer.item.ItemStackRenderState;
 import net.minecraft.client.resources.model.ModelBaker;
 import net.minecraft.client.resources.model.UnbakedModel;
 import net.minecraft.client.resources.model.geometry.BakedQuad;
@@ -31,6 +37,9 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.GsonHelper;
 import net.minecraft.util.RandomSource;
+import net.minecraft.world.entity.ItemOwner;
+import net.minecraft.world.item.ItemDisplayContext;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.neoforge.client.model.DelegateBlockStateModel;
 import net.neoforged.neoforge.client.model.block.CompositeBlockModel;
@@ -53,6 +62,10 @@ import net.neoforged.neoforge.client.model.block.CompositeBlockModel;
  * transform they never pop (FRAPI rule 8): one the broken test block's model, the other a part of the broken nested
  * test block's multipart model. Each logs when NeoForge's renderer then asks it for its parts, and the transform logs a
  * failure if any later quad reaches it.
+ *
+ * <p>The test item's model is wrapped after it is baked ({@link ItemCheckModel}): it adds a layer of quads emitted
+ * through Fabric's renderer API, and logs once when it emits them for the hotbar (a screen), a hand, a dropped item and
+ * an item frame ({@link FrapiTestMod} puts it in each).
  */
 public final class FrapiClientTestMod implements ClientModInitializer {
 	@Override
@@ -70,6 +83,8 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 			if (!wrapped.getAndSet(true)) FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi model wrapped ({})", model.getClass().getName());
 			return new TerrainCheckModel(new LevelAwareModel(model));
 		}));
+		ModelLoadingPlugin.register(plugin -> plugin.modifyItemModelAfterBake().register((model, context) ->
+				context.itemId().equals(FrapiTestMod.FABRIC_ITEM_ID) ? new ItemCheckModel(model) : model));
 		CustomUnbakedBlockStateModel.register(Identifier.fromNamespaceAndPath("fabricated_testmod_frapi", "nested_check"), NestedCheckModel.Unbaked.CODEC);
 		CustomUnbakedBlockStateModel.register(Identifier.fromNamespaceAndPath("fabricated_testmod_frapi", "broken_check"), BrokenModel.CODEC);
 		CustomUnbakedBlockStateModel.register(Identifier.fromNamespaceAndPath("fabricated_testmod_frapi", "broken_part_check"), BrokenPartModel.CODEC);
@@ -161,6 +176,37 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 				}
 			}
 			FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi baked quad constructor hook FAILED (no quad found)");
+		}
+	}
+
+	/**
+	 * The test item's model, as Fabric mods write one: after the item model it wraps, it adds a layer whose quads (a
+	 * cube's faces) it emits through Fabric's renderer API, which only Fabric's renderer draws, and logs once for each
+	 * place the item is shown in (a screen, a hand, the ground, an item frame). Fabric's renderer API gives a mod no
+	 * call as its quads are drawn on 26.x (1.21.11's render type getter is gone), so this logs as they are emitted, when
+	 * the game updates the item's render state to draw it there.
+	 */
+	private static final class ItemCheckModel implements ItemModel {
+		private static final Map<ItemDisplayContext, String> WHERE = Map.of(ItemDisplayContext.GUI, "screen", ItemDisplayContext.FIRST_PERSON_RIGHT_HAND, "hand",
+				ItemDisplayContext.FIRST_PERSON_LEFT_HAND, "hand", ItemDisplayContext.GROUND, "dropped", ItemDisplayContext.FIXED, "frame");
+		private static final Map<String, AtomicBoolean> LOGGED = Map.of("screen", new AtomicBoolean(), "hand", new AtomicBoolean(), "dropped", new AtomicBoolean(),
+				"frame", new AtomicBoolean());
+		private final ItemModel wrapped;
+
+		ItemCheckModel(ItemModel wrapped) {
+			this.wrapped = wrapped;
+		}
+
+		@Override
+		public void update(ItemStackRenderState state, ItemStack stack, ItemModelResolver resolver, ItemDisplayContext displayContext, @Nullable ClientLevel level,
+				@Nullable ItemOwner owner, int seed) {
+			wrapped.update(state, stack, resolver, displayContext, level, owner, seed);
+			QuadEmitter emitter = ((FabricLayerRenderState) (Object) state.newLayer()).emitter();
+			for (Direction face : Direction.values()) emitter.square(face, 0.25F, 0.25F, 0.75F, 0.75F, 0.25F).emit();
+			String where = WHERE.get(displayContext);
+			if (where != null && !LOGGED.get(where).getAndSet(true)) {
+				FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi item {} OK (quads emitted for {})", where, displayContext);
+			}
 		}
 	}
 

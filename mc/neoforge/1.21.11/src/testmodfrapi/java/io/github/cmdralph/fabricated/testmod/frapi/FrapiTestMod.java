@@ -14,7 +14,13 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.entity.decoration.ItemFrame;
 import net.minecraft.world.entity.item.FallingBlockEntity;
+import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
@@ -26,6 +32,10 @@ import net.minecraft.world.level.block.state.BlockBehaviour;
  * them the two blocks whose Fabric models throw ({@link FrapiClientTestMod}). Then, until the game stops, it keeps a
  * copy of the first block falling beside them (drawn as a moving block) and the first block breaking (drawn with the
  * breaking overlay) (1.21.11).
+ *
+ * <p>It also gives the joining player an item whose model is a Fabric model, held in their main hand (drawn in hand and
+ * in the hotbar), and puts one in an item frame on the first block and one on the ground beside the frame, which no
+ * one can pick up and which never despawns (drawn as an item in a frame and as a dropped item).
  */
 public final class FrapiTestMod implements ModInitializer {
 	static final Logger LOGGER = LoggerFactory.getLogger("fabricated-testmod-frapi");
@@ -34,6 +44,8 @@ public final class FrapiTestMod implements ModInitializer {
 	/** Blocks whose Fabric model, or a Fabric part of whose multipart model, throws when drawn (FRAPI rule 8). */
 	static final Identifier BROKEN_BLOCK_ID = Identifier.fromNamespaceAndPath("fabricated_testmod_frapi", "broken_block");
 	static final Identifier BROKEN_NESTED_BLOCK_ID = Identifier.fromNamespaceAndPath("fabricated_testmod_frapi", "broken_nested_block");
+	/** An item whose model {@link FrapiClientTestMod} makes a Fabric model. */
+	static final Identifier FABRIC_ITEM_ID = Identifier.fromNamespaceAndPath("fabricated_testmod_frapi", "fabric_item");
 	/** Ticks between two falling blocks, and between two renewals of the breaking progress (which the client drops when stale). */
 	private static final int RENEW_TICKS = 20;
 	/** The id of the breaking entity: one no entity has, so every player is sent the progress. */
@@ -53,6 +65,8 @@ public final class FrapiTestMod implements ModInitializer {
 		Block nestedBlock = register(NESTED_BLOCK_ID);
 		Block brokenBlock = register(BROKEN_BLOCK_ID);
 		Block brokenNestedBlock = register(BROKEN_NESTED_BLOCK_ID);
+		ResourceKey<Item> itemKey = ResourceKey.create(Registries.ITEM, FABRIC_ITEM_ID);
+		Item item = Registry.register(BuiltInRegistries.ITEM, itemKey, new Item(new Item.Properties().setId(itemKey)));
 		ServerPlayConnectionEvents.JOIN.register((listener, sender, server) -> server.execute(() -> {
 			Direction facing = listener.player.getDirection();
 			BlockPos front = listener.player.blockPosition().relative(facing, 2).above();
@@ -66,6 +80,7 @@ public final class FrapiTestMod implements ModInitializer {
 			landing = front.relative(facing.getCounterClockWise());
 			level.setBlockAndUpdate(landing.below(), Blocks.STONE.defaultBlockState());
 			LOGGER.info("FABRICATED-TEST frapi block placed at {} (nested model block at {}, broken model blocks above them)", front, nested);
+			placeItems(level, listener.player, item, front, facing);
 		}));
 		ServerTickEvents.END_SERVER_TICK.register(server -> {
 			if (level == null || ticks++ % RENEW_TICKS != 0) return;
@@ -74,6 +89,28 @@ public final class FrapiTestMod implements ModInitializer {
 			for (int i = 0; i <= FALL_HEIGHT; i++) level.setBlockAndUpdate(landing.above(i), Blocks.AIR.defaultBlockState());
 			FallingBlockEntity.fall(level, landing.above(FALL_HEIGHT), terrainBlock.defaultBlockState());
 		});
+	}
+
+	/**
+	 * Gives the player the Fabric model item in their main hand, hangs one in an item frame on the face of {@code front}
+	 * the player sees, and leaves one floating on the ground beside the frame, which never despawns and which no one can
+	 * pick up.
+	 */
+	private static void placeItems(Level world, ServerPlayer player, Item item, BlockPos front, Direction facing) {
+		player.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(item));
+		BlockPos framePos = front.relative(facing.getOpposite());
+		BlockPos dropPos = framePos.relative(facing.getCounterClockWise());
+		world.setBlockAndUpdate(framePos, Blocks.AIR.defaultBlockState());
+		world.setBlockAndUpdate(dropPos, Blocks.AIR.defaultBlockState());
+		ItemFrame frame = new ItemFrame(world, framePos, facing.getOpposite());
+		frame.setItem(new ItemStack(item));
+		world.addFreshEntity(frame);
+		ItemEntity drop = new ItemEntity(world, dropPos.getX() + 0.5, dropPos.getY() + 0.25, dropPos.getZ() + 0.5, new ItemStack(item), 0, 0, 0);
+		drop.setNeverPickUp();
+		drop.setUnlimitedLifetime();
+		drop.setNoGravity(true);
+		world.addFreshEntity(drop);
+		LOGGER.info("FABRICATED-TEST frapi items placed (in hand, in a frame at {}, dropped at {})", framePos, dropPos);
 	}
 
 	private static Block register(Identifier id) {

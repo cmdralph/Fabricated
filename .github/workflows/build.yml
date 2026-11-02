@@ -422,6 +422,11 @@ jobs:
           check "frapi baked quad constructor hook OK" "a mixin at the end of BakedQuad's vanilla constructor ran for NeoForge's block quads (pre-flight repair)"
           check "frapi breaking OK" "a Fabric block model got the breaking overlay"
           check "frapi level-aware default OK" "a NeoForge model inside a Fabric model got the chunk section's level from Fabric's renderer"
+          # R3: a Fabric item model's quads (emitted into its layer; 26.x's API gives no call as they are drawn).
+          check "frapi item screen OK" "a Fabric item model emitted its quads for the hotbar"
+          check "frapi item hand OK" "a Fabric item model emitted its quads for the player's hand"
+          check "frapi item dropped OK" "a Fabric item model emitted its quads for a dropped item"
+          check "frapi item frame OK" "a Fabric item model emitted its quads for an item frame"
           check "model deserializer OK" "a model file of a Fabric type was read by its Fabric deserializer"
           check "neoforge blockstate type OK" "a blockstate of NeoForge's composite type still loads with Fabric's model loading"
           # FRAPI rule 8: a Fabric model that throws in a chunk section (alone, or as a multipart model's part) fails alone.
@@ -528,6 +533,11 @@ jobs:
           check "frapi moving block OK" "a falling Fabric block model was drawn"
           check "frapi piston OK" "a Fabric block model a piston moved was drawn"
           check "frapi breaking OK" "a Fabric block model got the breaking overlay"
+          # R3: a Fabric item model (no vanilla adapter) drawn by Indigo wherever the game draws items.
+          check "frapi item screen OK" "a Fabric item model was drawn in the hotbar"
+          check "frapi item hand OK" "a Fabric item model was drawn in the player's hand"
+          check "frapi item dropped OK" "a Fabric item model was drawn as a dropped item"
+          check "frapi item frame OK" "a Fabric item model was drawn in an item frame"
           check "frapi broken model fallback OK" "a Fabric model that threw in a chunk section was drawn by NeoForge's renderer from its quads (FRAPI rule 8)"
           check "frapi broken part fallback OK" "a multipart model whose Fabric part threw was drawn by NeoForge's renderer (FRAPI rule 8)"
           for model in BrokenModel BrokenPartModel; do
@@ -578,6 +588,11 @@ jobs:
           check "frapi NeoForge parts OK" "NeoForge's level-aware parts of a Fabric model are made from its quads, baked colour kept"
           check "frapi moving block OK" "a falling Fabric block model was drawn as a moving block (from those parts)"
           check "frapi breaking OK" "a Fabric block model got the breaking overlay"
+          # R3: the quads a Fabric item model emits into its layer, drawn by Fabric's renderer (its render type getter asked).
+          check "frapi item screen OK" "a Fabric item model's emitted quads were drawn in the hotbar"
+          check "frapi item hand OK" "a Fabric item model's emitted quads were drawn in the player's hand"
+          check "frapi item dropped OK" "a Fabric item model's emitted quads were drawn as a dropped item"
+          check "frapi item frame OK" "a Fabric item model's emitted quads were drawn in an item frame"
           # FRAPI rule 8: a Fabric model that throws in a chunk section (alone, or as a multipart model's part) fails alone.
           # NeoForge's renderer draws it from its parts, Fabricated logs it once and lists it in the report, and the
           # transform it left pushed never reaches another block.
