@@ -276,7 +276,7 @@ if [ -n "$extra" ] && [ -f "$extra/standin-forgified-fabric-api.jar" ]; then
 fi
 # The test mods log "FABRICATED-TEST ... FAILED" when one of their own checks fails.
 if grep -q "FABRICATED-TEST .*FAILED" server.out; then
-	echo "FAIL: a test mod check reported a failure:"; { grep -m 5 "FABRICATED-TEST .*FAILED" server.out || true; }; fail=1
+	echo "FAIL: a test mod check reported a failure:"; { grep -m 20 "FABRICATED-TEST .*FAILED" server.out || true; }; fail=1
 else
 	echo "PASS: no test mod check reported a failure"
 fi
