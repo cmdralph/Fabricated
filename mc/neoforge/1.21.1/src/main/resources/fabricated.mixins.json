@@ -9,6 +9,7 @@
     "PlayerListViewMixin",
     "ChunkGeneratorFeaturesMixin",
     "CrashReportMixin",
+    "UtilMixin",
     "ResourceMixin",
     "MappedRegistryMixin",
     "MappedRegistryEarlyWriteMixin",

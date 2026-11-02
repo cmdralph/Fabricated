@@ -15,6 +15,7 @@
     "PlayerListViewMixin",
     "ChunkGeneratorFeaturesMixin",
     "CrashReportMixin",
+    "UtilMixin",
     "ReloadableServerResourcesMixin",
     "ResourceMixin",
     "MappedRegistryMixin",

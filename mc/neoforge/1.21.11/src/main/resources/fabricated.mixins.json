@@ -11,6 +11,7 @@
     "ReloadableServerResourcesTagsLoadedMixin",
     "ChunkGeneratorFeaturesMixin",
     "CrashReportMixin",
+    "UtilMixin",
     "ReloadableServerResourcesMixin",
     "ResourceMixin",
     "MappedRegistryMixin",
