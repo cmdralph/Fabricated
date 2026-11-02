@@ -141,6 +141,11 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 			} catch (RuntimeException | LinkageError e) {
 				LOGGER.error("FABRICATED-FORGE-TEST fuel not registered", e);
 			}
+			try {
+				ForgeBrewingTest.register();
+			} catch (RuntimeException | LinkageError e) {
+				LOGGER.error("FABRICATED-FORGE-TEST brewing recipe not registered", e);
+			}
 		}
 	}
 

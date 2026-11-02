@@ -10,8 +10,9 @@ import net.minecraft.class_2609;
 /**
  * The forge-legacy test mod's part for fabric-content-registries-v0's fuel registry (FUEL-1; with Fabric API's jar
  * only): the test item, registered as a fuel through {@code FuelRegistry}, must be in vanilla's fuel table
- * ({@code getFuel}, which upstream's hook adds Fabric's fuels to) and a fuel to the furnace ({@code isFuel}), which Forge
- * 47 answers from its own burn times, read from that table as the data packs' tags load.
+ * ({@code getFuel}, which Fabricated's in-game mod adds Fabric's fuels to, as upstream's hook, left out on Forge 47, did)
+ * and a fuel to the furnace ({@code isFuel}), which Forge 47 answers from its own burn times, read from that table as
+ * the data packs' tags load.
  */
 public final class ForgeFuelTest {
 	/** Ticks: an odd value no vanilla fuel has. */
