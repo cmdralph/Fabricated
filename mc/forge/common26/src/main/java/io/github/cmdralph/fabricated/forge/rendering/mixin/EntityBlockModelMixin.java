@@ -22,8 +22,11 @@ import net.minecraft.world.level.block.state.BlockState;
  * replacement of this method fills the render state's mesh from the model's emitter, which goes through Fabricated's
  * guard (FRAPI rule 8). Without the renderer API the call isn't there (vanilla's method collects parts), so nothing
  * applies: require 0. The renderer test mod's broken entity model checks that it does with it.
+ *
+ * <p>The method is upstream's (an {@code @Overwrite} at Mixin's default priority, 1000), and Mixin lets a mixin inject
+ * into a method another one merged only at a higher priority, which also applies it after upstream's.
  */
-@Mixin(BlockStateModelWrapper.class)
+@Mixin(value = BlockStateModelWrapper.class, priority = 1100)
 abstract class EntityBlockModelMixin {
 	@Redirect(method = "update", require = 0, at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/block/dispatch/BlockStateModel;emitQuads("
 			+ "Lnet/fabricmc/fabric/api/client/renderer/v1/mesh/QuadEmitter;Lnet/minecraft/client/renderer/block/BlockAndTintGetter;Lnet/minecraft/core/BlockPos;"

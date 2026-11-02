@@ -202,7 +202,9 @@ by the server runs (the colours, screens, key mappings and config screens by the
   transform it left pushed on the emitter is popped, so it never reaches another block. The renderer test mod checks
   each of these with a model that throws in a chunk section, as a multipart model's part, as a minecart's block, and
   inside a model wrapping it. The outline Fabric's renderer draws around a glowing falling block is checked on Forge 65;
-  on Forge 66 it isn't seen yet.
+  on Forge 66 it isn't seen yet. Fabricated's guards apply only with Fabric's renderer API installed (they name its
+  types), and the two that sit in methods upstream replaces (blocks drawn as entities, and the breaking overlay on Forge
+  64) apply after upstream's replacement.
 
 What else differs on Forge, for Fabric mods in general:
 

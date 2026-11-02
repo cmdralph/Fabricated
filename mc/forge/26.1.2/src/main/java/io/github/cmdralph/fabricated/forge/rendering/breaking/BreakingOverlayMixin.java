@@ -21,8 +21,11 @@ import net.minecraft.world.level.block.state.BlockState;
  * The block breaking overlay on 26.1.2: the renderer API's replacement of this method draws each breaking block from
  * its model's emitter, which goes through Fabricated's guard (FRAPI rule 8). Without the renderer API the call isn't
  * there (vanilla's method draws parts), so nothing applies: require 0.
+ *
+ * <p>The method is upstream's (an {@code @Overwrite} at Mixin's default priority, 1000), and Mixin lets a mixin inject
+ * into a method another one merged only at a higher priority, which also applies it after upstream's.
  */
-@Mixin(BlockFeatureRenderer.class)
+@Mixin(value = BlockFeatureRenderer.class, priority = 1100)
 abstract class BreakingOverlayMixin {
 	@Redirect(method = "renderBreakingBlockModelSubmits", require = 0, at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/block/dispatch/BlockStateModel;emitQuads("
 			+ "Lnet/fabricmc/fabric/api/client/renderer/v1/mesh/QuadEmitter;Lnet/minecraft/client/renderer/block/BlockAndTintGetter;Lnet/minecraft/core/BlockPos;"

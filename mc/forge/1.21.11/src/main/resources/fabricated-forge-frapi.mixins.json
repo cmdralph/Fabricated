@@ -2,6 +2,7 @@
   "required": true,
   "minVersion": "0.8",
   "package": "io.github.cmdralph.fabricated.forge.rendering.mixin",
+  "plugin": "io.github.cmdralph.fabricated.forge.rendering.FrapiMixinPlugin",
   "compatibilityLevel": "JAVA_21",
   "client": ["IndigoTerrainMixin", "IndigoTerrainLikeMixin", "IndigoSimpleBlockMixin", "IndigoEmitterMixin", "MultiPartModelMixin", "MultiPartSharedStateMixin",
     "WeightedVariantsMixin", "MovingBlockMixin", "BlockRenderDispatcherMixin"],
