@@ -3017,6 +3017,125 @@ class MixinPreflightTest {
 	}
 
 	@Test
+	void aHandlerIntoTheOptionsIsSkippedWhereItThrowsBeforeTheEntrypoints() throws Exception {
+		// ENTRY-2: Bobby's @ModifyArg in Options' constructor reads its config, which its client initializer sets up. On
+		// Fabric the options are created after Fabric mods' entrypoints; NeoForge 21.1 creates them before it loads mods.
+		String options = "net/minecraft/client/Options";
+		ClassWriter target = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		target.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, options, null, "java/lang/Object", null);
+		MethodVisitor init = target.visitMethod(Opcodes.ACC_PUBLIC, "<init>", "()V", null, null);
+		init.visitCode();
+		init.visitVarInsn(Opcodes.ALOAD, 0);
+		init.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false);
+		init.visitVarInsn(Opcodes.ALOAD, 0);
+		init.visitInsn(Opcodes.ICONST_2);
+		init.visitIntInsn(Opcodes.BIPUSH, 32);
+		init.visitMethodInsn(Opcodes.INVOKEVIRTUAL, options, "range", "(II)V", false);
+		init.visitInsn(Opcodes.RETURN);
+		init.visitMaxs(0, 0);
+		init.visitEnd();
+		MethodVisitor range = target.visitMethod(Opcodes.ACC_PUBLIC, "range", "(II)V", null, null);
+		range.visitCode();
+		range.visitInsn(Opcodes.RETURN);
+		range.visitMaxs(0, 0);
+		range.visitEnd();
+		target.visitEnd();
+		ClassIndex game = new ClassIndex(Map.of(options, target.toByteArray())::get);
+
+		String rangeCall = "L" + options + ";range(II)V";
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, "com/example/mixin/Opts", null, "java/lang/Object", null);
+		AnnotationVisitor m = cw.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false);
+		AnnotationVisitor values = m.visitArray("value");
+		values.visit(null, Type.getObjectType(options));
+		values.visitEnd();
+		m.visitEnd();
+		// {handler, injector, descriptor, point, the call it reads its mod's state with}
+		String[][] handlers = {
+				{"maxDistance", "Lorg/spongepowered/asm/mixin/injection/ModifyArg;", "(I)I", "INVOKE"},
+				{"created", INJECT, "(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V", "TAIL"},
+				{"keepRange", "Lcom/llamalad7/mixinextras/injector/v2/WrapWithCondition;", "(L" + options + ";II)Z", "INVOKE"},
+				{"replaceRange", REDIRECT, "(L" + options + ";II)V", "INVOKE"}};
+		for (String[] handler : handlers) {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, handler[0], handler[2], null, null);
+			AnnotationVisitor ann = mv.visitAnnotation(handler[1], false);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "<init>");
+			methods.visitEnd();
+			boolean single = handler[1].equals(REDIRECT) || handler[1].endsWith("/ModifyArg;");
+			AnnotationVisitor ats = single ? null : ann.visitArray("at");
+			AnnotationVisitor at = single ? ann.visitAnnotation("at", AT) : ats.visitAnnotation(null, AT);
+			at.visit("value", handler[3]);
+			if (handler[3].equals("INVOKE")) at.visit("target", rangeCall);
+			at.visitEnd();
+			if (ats != null) ats.visitEnd();
+			if (handler[1].endsWith("/ModifyArg;")) ann.visit("index", 1);
+			ann.visitEnd();
+			mv.visitCode();
+			// As Bobby's: Bobby.getInstance().getConfig(), null before its client initializer has run.
+			mv.visitMethodInsn(Opcodes.INVOKESTATIC, "com/example/Mod", "config", "()Lcom/example/Config;", false);
+			mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "com/example/Config", "maxDistance", "()I", false);
+			switch (handler[2].charAt(handler[2].length() - 1)) {
+				case 'I' -> mv.visitInsn(Opcodes.IRETURN);
+				case 'Z' -> mv.visitInsn(Opcodes.IRETURN);
+				default -> {
+					mv.visitInsn(Opcodes.POP);
+					mv.visitInsn(Opcodes.RETURN);
+				}
+			}
+			mv.visitMaxs(0, 0);
+			mv.visitEnd();
+		}
+		cw.visitEnd();
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Opts", cw.toByteArray()));
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Opts"));
+
+		List<PreflightFinding> notes = new ArrayList<>();
+		byte[] repaired = preflight(game, mod::get, ClassBytesSource.EMPTY, true).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes)
+				.get("com/example/mixin/Opts.class");
+		assertNotNull(repaired, notes.toString());
+		assertEquals(3, notes.size(), notes.toString());
+		assertTrue(notes.stream().allMatch(n -> n.severity() == PreflightFinding.Severity.INFO && n.message().contains("hooks into the game's options")),
+				notes.toString());
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired).accept(node, 0);
+		Map<String, MethodNode> byName = new HashMap<>();
+		node.methods.forEach(mn -> byName.put(mn.name, mn));
+		// {handler, what it returns when skipped}
+		for (Object[] expected : new Object[][] {{"maxDistance", Opcodes.ILOAD}, {"created", Opcodes.RETURN}, {"keepRange", Opcodes.ICONST_1}}) {
+			MethodNode wrapped = byName.get((String) expected[0]);
+			assertEquals(1, wrapped.tryCatchBlocks.size(), wrapped.name);
+			assertEquals("java/lang/RuntimeException", wrapped.tryCatchBlocks.getFirst().type, wrapped.name);
+			AbstractInsnNode insn = wrapped.tryCatchBlocks.getFirst().handler;
+			while (insn.getOpcode() < 0) insn = insn.getNext();
+			assertEquals(Opcodes.LDC, insn.getOpcode(), wrapped.name);
+			assertEquals("com.example.mixin.Opts." + wrapped.name, ((LdcInsnNode) insn).cst, wrapped.name);
+			insn = insn.getNext();
+			assertTrue(insn instanceof MethodInsnNode call && call.owner.equals("io/github/cmdralph/fabricated/loader/EarlyHandlers") && call.name.equals("failed"),
+					wrapped.name);
+			insn = insn.getNext();
+			assertEquals((int) expected[1], insn.getOpcode(), wrapped.name);
+			if (insn instanceof VarInsnNode load) assertEquals(1, load.var, "the value the modifier was given");
+		}
+		assertTrue(byName.get("replaceRange").tryCatchBlocks.isEmpty(), "a redirect makes the call itself: left as it is");
+		// The frames still fit the code: the JVM verifies the class as it defines it.
+		ClassLoader loader = new ClassLoader(getClass().getClassLoader()) {
+			@Override
+			protected Class<?> findClass(String name) throws ClassNotFoundException {
+				if (!name.equals("com.example.mixin.Opts")) throw new ClassNotFoundException(name);
+				return defineClass(name, repaired, 0, repaired.length);
+			}
+		};
+		Class.forName("com.example.mixin.Opts", true, loader);
+		mod.put("com/example/mixin/Opts", repaired);
+		List<PreflightFinding> again = new ArrayList<>();
+		preflight(game, mod::get, ClassBytesSource.EMPTY, true).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), again);
+		assertEquals(List.of(), again, "a wrapped handler isn't wrapped again");
+		List<PreflightFinding> after = preflight(game, mod::get, ClassBytesSource.EMPTY, true).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(after.isEmpty(), after.toString());
+	}
+
+	@Test
 	void anInjectionIntoAMethodNeoForgeDeprecatedIsPointedAtItsReplacement() throws Exception {
 		// DEPRECATED-1: FrozenLib hooks BoneMealItem.growCrop, which NeoForge's build deprecates for applyBonemeal, taking
 		// the player too, and keeps only to call that on a server level (a jump, so no plain overload).

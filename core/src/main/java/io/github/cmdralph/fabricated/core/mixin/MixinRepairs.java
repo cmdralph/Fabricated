@@ -29,8 +29,11 @@ import org.objectweb.asm.tree.InsnList;
 import org.objectweb.asm.tree.InsnNode;
 import org.objectweb.asm.tree.JumpInsnNode;
 import org.objectweb.asm.tree.LabelNode;
+import org.objectweb.asm.tree.LdcInsnNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
+import org.objectweb.asm.tree.TryCatchBlockNode;
+import org.objectweb.asm.tree.VarInsnNode;
 
 /**
  * Mixins that Mixin would reject but that can be pointed at what the game really has, before pre-flight checks them
@@ -207,6 +210,10 @@ final class MixinRepairs extends PreflightPart {
 	 * only be seen once the earlier ones are done, with a stop after it if it can move the injector.
 	 */
 	private final List<RepairStep> injectorRepairs = List.of(
+			new RepairStep(RepairScope.ONE_TARGET, Severity.INFO, s -> earlyOptionsGuard(s.mixin(), s.handler(), s.injector(), s.target()),
+					(s, none) -> s.named() + " hooks into the game's options, which Fabric creates after Fabric mods' entrypoints and "
+							+ s.ctx().loader() + " may create before it loads mods (NeoForge 21.1 does); if it throws before the entrypoints have"
+							+ " run, it is skipped for that call instead of stopping the game"),
 			new RepairStep(RepairScope.ONE_TARGET, Severity.INFO, s -> earlyFreezeGuard(s.mixin(), s.handler(), s.injector(), s.target(), s.ctx()),
 					(s, none) -> "@Inject " + s.handler().name + " runs as a registry freezes, which " + s.ctx().loader() + " also does before"
 							+ " Fabric mods' main entrypoints (at bootstrap, among others); it returns at once in those freezes, which Fabric"
@@ -302,6 +309,80 @@ final class MixinRepairs extends PreflightPart {
 		if (!(first instanceof FrameNode)) check.add(new FrameNode(Opcodes.F_SAME, 0, null, 0, null));
 		handler.instructions.insert(check);
 		handler.maxStack = Math.max(handler.maxStack, 1);
+		return List.of("");
+	}
+
+	/** The client's options, which NeoForge 21.1 creates before it loads mods, and Fabric after Fabric mods' entrypoints (ENTRY-2). */
+	static final String OPTIONS = "net/minecraft/client/Options";
+	/** The in-game recovery of a handler that threw before Fabric mods' entrypoints (the loader's {@code EarlyHandlers}). */
+	static final String EARLY_HANDLERS = "io/github/cmdralph/fabricated/loader/EarlyHandlers";
+	private static final String MODIFY_ARG = "Lorg/spongepowered/asm/mixin/injection/ModifyArg;";
+	private static final String MODIFY_ARGS = "Lorg/spongepowered/asm/mixin/injection/ModifyArgs;";
+	private static final String RUNTIME_EXCEPTION = "java/lang/RuntimeException";
+
+	/**
+	 * Wraps a Fabric mod's handler into the client's {@code Options} so that a {@link RuntimeException} it throws while
+	 * Fabric mods' entrypoints are still to run skips it for that call, as if its hook weren't there (ENTRY-2): an
+	 * {@code @Inject} or {@code @ModifyArgs} returns, a value modifier returns the value it was given, a
+	 * {@code @WrapWithCondition} lets the call be made. On Fabric the game creates its options after Fabric mods'
+	 * entrypoints; NeoForge 21.1 creates them before it loads mods, so a handler there reading what its mod's initializer
+	 * sets up (Bobby's config, for its render distance slider) threw, and the game stopped. Once the entrypoints have run,
+	 * the exception goes on as it would ({@code EarlyHandlers}), so a platform creating the options after them (or a later
+	 * reload of them) behaves as before. {@code @Redirect} and {@code @WrapOperation} handlers, which make the call
+	 * themselves, are left as they are. Returns one item when it wrapped the handler, none otherwise.
+	 */
+	static List<String> earlyOptionsGuard(ClassNode mixin, MethodNode handler, AnnotationNode injector, ClassNode target) {
+		if (!OPTIONS.equals(target.name) || (mixin.access & Opcodes.ACC_INTERFACE) != 0 || handler.instructions.size() == 0) return List.of();
+		// Class files before Java 6 have no stack map frames, which the handler for the exception would need here.
+		if ((mixin.version & 0xFFFF) < Opcodes.V1_6) return List.of();
+		boolean isStatic = (handler.access & Opcodes.ACC_STATIC) != 0;
+		Type[] params = Type.getArgumentTypes(handler.desc);
+		Type returns = Type.getReturnType(handler.desc);
+		InsnList fallback = new InsnList();
+		if (MixinNames.INJECT.equals(injector.desc) || MODIFY_ARGS.equals(injector.desc)) {
+			if (returns != Type.VOID_TYPE) return List.of();
+			fallback.add(new InsnNode(Opcodes.RETURN));
+		} else if (MixinNames.WRAP_WITH_CONDITION.contains(injector.desc)) {
+			if (returns != Type.BOOLEAN_TYPE) return List.of();
+			fallback.add(new InsnNode(Opcodes.ICONST_1));
+			fallback.add(new InsnNode(Opcodes.IRETURN));
+		} else if (MixinNames.VALUE_MODIFIERS.contains(injector.desc) || MODIFY_ARG.equals(injector.desc)) {
+			if (params.length == 0 || !params[0].equals(returns)) return List.of();
+			fallback.add(new VarInsnNode(returns.getOpcode(Opcodes.ILOAD), isStatic ? 0 : 1));
+			fallback.add(new InsnNode(returns.getOpcode(Opcodes.IRETURN)));
+		} else {
+			return List.of();
+		}
+		for (AbstractInsnNode insn : handler.instructions) {
+			if (insn instanceof MethodInsnNode call && call.owner.equals(EARLY_HANDLERS)) return List.of();
+		}
+		// The frame at the exception's handler: the parameters, as the method starts, and the exception.
+		List<Object> locals = new ArrayList<>();
+		if (!isStatic) locals.add(mixin.name);
+		for (Type param : params) {
+			locals.add(switch (param.getSort()) {
+				case Type.BOOLEAN, Type.BYTE, Type.CHAR, Type.SHORT, Type.INT -> Opcodes.INTEGER;
+				case Type.FLOAT -> Opcodes.FLOAT;
+				case Type.LONG -> Opcodes.LONG;
+				case Type.DOUBLE -> Opcodes.DOUBLE;
+				case Type.ARRAY -> param.getDescriptor();
+				default -> param.getInternalName();
+			});
+		}
+		LabelNode start = new LabelNode();
+		LabelNode end = new LabelNode();
+		LabelNode caught = new LabelNode();
+		handler.instructions.insert(start);
+		handler.instructions.add(end);
+		handler.instructions.add(caught);
+		handler.instructions.add(new FrameNode(Opcodes.F_FULL, locals.size(), locals.toArray(), 1, new Object[] {RUNTIME_EXCEPTION}));
+		handler.instructions.add(new LdcInsnNode(mixin.name.replace('/', '.') + "." + handler.name));
+		handler.instructions.add(new MethodInsnNode(Opcodes.INVOKESTATIC, EARLY_HANDLERS, "failed", "(Ljava/lang/RuntimeException;Ljava/lang/String;)V", false));
+		handler.instructions.add(fallback);
+		if (handler.tryCatchBlocks == null) handler.tryCatchBlocks = new ArrayList<>();
+		// Last, so that the handler's own catches, inside it, come first.
+		handler.tryCatchBlocks.add(new TryCatchBlockNode(start, end, caught, RUNTIME_EXCEPTION));
+		handler.maxStack = Math.max(handler.maxStack, Math.max(2, returns.getSize()));
 		return List.of("");
 	}
 
