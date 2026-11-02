@@ -182,6 +182,7 @@ check "Forge constructed Fabricated's in-game mod" "grep -q 'Fabricated ran the 
 check "the in-game mod's resources load (its pack.mcmeta)" "! grep -q 'Missing metadata in pack mod:fabricated\$' logs/latest.log 2>/dev/null"
 check "the test mod's resources load (Forge reads no pack without metadata)" "grep -q 'FABRICATED-FORGE-TEST main entrypoint OK' logs/latest.log 2>/dev/null && ! grep -q 'Missing metadata in pack mod:fabricated_forge_testmod' logs/latest.log 2>/dev/null"
 check "the test mod's main entrypoint ran" "grep -q 'FABRICATED-FORGE-TEST main entrypoint OK' logs/latest.log 2>/dev/null"
+check "a Fabric mod's registry entries are stable, as on Fabric: its pack has Fabric API's known-pack identity, so a world holding them opens without asking to confirm experimental settings (PACK-5)" "grep -q 'FABRICATED-FORGE-TEST mod pack data is stable OK' logs/latest.log 2>/dev/null"
 check "the test mod's server entrypoint ran" "grep -q 'FABRICATED-FORGE-TEST server entrypoint OK' logs/latest.log 2>/dev/null"
 check "the test mod's mixin applied (Mixin read the overlay's MixinConfigs)" "grep -q 'FABRICATED-FORGE-TEST mixin OK' logs/latest.log 2>/dev/null"
 check "Forge took Fabricated's transformation service" "grep -q 'Fabricated transforms [1-9][0-9]* class(es) for Fabric mods before Mixin' logs/latest.log 2>/dev/null"

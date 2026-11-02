@@ -199,6 +199,7 @@ check "FABRICATED-FORGE-TEST client game instance OK" "Fabric Loader's game inst
 check "FABRICATED-FORGE-TEST api after entrypoints OK" "Fabricated's API runs what waits for the Fabric initializers once they ran (Fabricated.get().afterEntrypoints)"
 check "FABRICATED-FORGE-TEST modmenu config screen OK" "a Fabric mod's Mod Menu config screen is behind Forge's mod list button, as on NeoForge"
 check "FABRICATED-FORGE-TEST registry OK" "the test mod registered an item on the client"
+check "FABRICATED-FORGE-TEST mod pack data is stable OK" "a Fabric mod's registry entries are stable, so creating the world asked nothing (PACK-5)"
 check "FABRICATED-FORGE-TEST content built at bootstrap registered OK" "content built during vanilla's bootstrap is registered by the main initializer (CORPUS-31)"
 check "FABRICATED-FORGE-TEST built-in registries frozen after the main initializers OK" "the built-in registries' freeze runs after the main initializers (CORPUS-32)"
 if [ -n "$extra" ]; then

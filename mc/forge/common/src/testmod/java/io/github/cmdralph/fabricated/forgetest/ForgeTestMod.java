@@ -244,6 +244,15 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 		}
 	}
 
+	/** Whether a Fabric mod's registry entries are stable, as on Fabric ({@link ForgePackTest}, PACK-5). */
+	public static void checkPackData(MinecraftServer server) {
+		try {
+			ForgePackTest.check(server);
+		} catch (RuntimeException | LinkageError e) {
+			LOGGER.warn("FABRICATED-FORGE-TEST mod pack data check failed", e);
+		}
+	}
+
 	/**
 	 * Whether a feature Fabric's biome modifications add to the plains is among their features, as a noise generator reads
 	 * them ({@link ForgeBiomeTest}; with Fabric API only).
