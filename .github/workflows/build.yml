@@ -1243,11 +1243,13 @@ jobs:
               tail -n 6 "$log" | cut -c1-300
             fi
           done
-      # The bytecode task 5's open findings turn on, for reading (informational; last, so the job log's tail has it): Polydium's font mixin, which stops
-      # 1.21.1 and 1.21.11 as it applies; PolyPlus's and Continuity's handlers capturing locals in methods NeoForge
-      # changed; malilib's tooltip hook by ordinal; OneConfig's key map accessor; Iris's accessor into Sodium's class.
+      # The bytecode task 5's open findings turn on, for reading (informational; last, so the job log's tail has it):
+      # Polydium's mixin plugin and its font mixin (whose handler, typed with the mixin class, stops 1.21.1 and 1.21.11
+      # as Mixin applies it); Architectury's keyboard hook into a lambda of KeyboardHandler.charTyped, which Mixin finds
+      # no target for on 1.21.1 (the corpus); malilib's tooltip hooks. Members only, and a class that is the same as one
+      # printed (a translation in several cache jars) once.
       - name: Bytecode for task 5's findings (informational)
-        if: ${{ matrix.part == 'mods' && env.EXTENDED == 'true' && !cancelled() && steps.build.outcome == 'success' }}
+        if: ${{ (matrix.part == 'mods' || matrix.part == 'corpus') && env.EXTENDED == 'true' && !cancelled() && steps.build.outcome == 'success' }}
         continue-on-error: true
         run: |
           dump() {
@@ -1257,12 +1259,11 @@ jobs:
             echo "== $run"
             python3 -I ci/javap-dump.py "$RUNNER_TEMP/$run" "$@" | cut -c1-300 || true
           }
-          dump client-polyfrost 'mod:*MixinFontTextureNodeFreeSpace' 'file:mixins.polydium.json' \
-            'game:net.minecraft.client.gui.font.FontTexture$Node' 'mod:*MixinClientLanguage' \
-            'game:net.minecraft.client.resources.language.ClientLanguage#appendFrom' 'game:net.minecraft.client.KeyMapping#MAP'
-          dump client-malilib 'mod:fi.dy.masa.malilib.mixin.item.MixinItemStack' \
-            'game:net.minecraft.world.item.ItemStack#addDetailsToTooltip'
-          dump client-continuity 'mod:*SpriteSourceListMixin' 'mod:*AtlasLoaderMixin' \
-            'game:net.minecraft.client.renderer.texture.atlas.SpriteSourceList#list'
-          dump client-sodium-fabric 'file:mixins.iris.compat.sodium.json' 'mod:*EnumOptionBuilderImplAccessor' \
-            'mod:net.caffeinemc.mods.sodium.client.config.builder.EnumOptionBuilderImpl#getEnumClass'
+          dump client-polyfrost 'mod:org.polyfrost.polydium.mixin.PolydiumMixinPlugin#*' \
+            'mod:org.polyfrost.polydium.mixin.PolydiumMixinPlugin#shouldApplyMixin' \
+            'mod:org.polyfrost.polydium.mixin.PolydiumMixinPlugin#onLoad' \
+            'mod:org.polyfrost.polydium.mixin.PolydiumMixinPlugin#getMixins' \
+            'mod:*MixinFontTextureNodeFreeSpace#class'
+          dump client-corpus 'mod:dev.architectury.mixin.fabric.client.MixinKeyboardHandler#wrapCharTyped*' \
+            'game:net.minecraft.client.KeyboardHandler#*' 'game:net.minecraft.client.KeyboardHandler#lambda$charTyped$*'
+          dump client-malilib 'game:net.minecraft.world.item.ItemStack#getTooltipLines'
