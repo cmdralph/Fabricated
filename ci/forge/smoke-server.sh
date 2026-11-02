@@ -124,8 +124,9 @@ for report in crash-reports/*.txt; do
 	echo "::endgroup::"
 done
 
-# SMOKE_EXPECT_REFUSAL: the launch must stop, Fabricated refusing Sinytra Connector or a second Fabricated jar beside it
-# with an error that holds this text, as on NeoForge.
+# SMOKE_EXPECT_REFUSAL: the launch must stop, Fabricated refusing Sinytra Connector, a second Fabricated jar or a jar with
+# its own copy of Fabric Loader beside it with an error that holds this text, as on NeoForge; with SMOKE_REFUSAL_AT_ONCE,
+# the refusal's exception must be what ends the launch, where it otherwise shows in Forge's loading error.
 if [ -n "${SMOKE_EXPECT_REFUSAL:-}" ]; then
 	# The refusal must be what stops the launch: a module error before it is what the player would see (DUP-2).
 	if grep -qE "ResolutionException|LayerInstantiationException|Duplicate key" server.out; then
@@ -137,8 +138,15 @@ if [ -n "${SMOKE_EXPECT_REFUSAL:-}" ]; then
 		echo "FAIL: the launch should have stopped with '$SMOKE_EXPECT_REFUSAL' (status $status; Fabricated logged: ${refusal:-nothing})"
 		exit 1
 	fi
+	if [ -n "${SMOKE_REFUSAL_AT_ONCE:-}" ]; then
+		# A copy of Fabric Loader beside Fabricated's: the locator's exception stops the launch before Forge builds a
+		# layer, where its error screen would fail on the two copies (PROVIDER-2), so it is what ends the launch.
+		if ! grep -qF -- "LaunchRefused: Fabricated: $refusal" server.out; then
+			echo "FAIL: the launch didn't stop at once with the refusal: $refusal"
+			exit 1
+		fi
 	# Forge reads the error's text as a message pattern: its crash report must show it as written.
-	if ! grep -qsF -- "$refusal" crash-reports/*.txt; then
+	elif ! grep -qsF -- "$refusal" crash-reports/*.txt; then
 		echo "FAIL: Forge's loading error doesn't show the refusal as written: $refusal"
 		exit 1
 	fi

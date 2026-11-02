@@ -149,9 +149,10 @@ jobs:
           mkdir -p "$RUNNER_TEMP/standins"
           python3 -I ci/forge/standins.py build/libs/fabricated-forge-[0-9]*+mc${{ matrix.target.minecraft }}.jar "$RUNNER_TEMP/standins"
           ci/forge/smoke-server.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/server-standins" "$RUNNER_TEMP/standins"
-      # Sinytra Connector (a stand-in with its mod id) or a second Fabricated jar in the mods folder: the launch must
-      # stop with Fabricated's error naming them, as on NeoForge: two loaders of Fabric mods can't share them (DUP-1).
-      - name: Server refusing Sinytra Connector and a second Fabricated jar (must pass)
+      # Sinytra Connector (a stand-in with its mod id), a second Fabricated jar or a jar with its own copy of Fabric Loader
+      # in the mods folder: the launch must stop with Fabricated's error naming them, as on NeoForge: two loaders of Fabric
+      # mods can't share them (DUP-1), nor two copies of Fabric Loader's packages one game (PROVIDER-2).
+      - name: Server refusing Sinytra Connector, a second Fabricated jar and a copy of Fabric Loader (must pass)
         if: ${{ env.GAME_RUNS == 'true' && !cancelled() }}
         run: |
           mkdir -p "$RUNNER_TEMP/refuse-connector/src/META-INF" "$RUNNER_TEMP/refuse-twice"
@@ -163,6 +164,13 @@ jobs:
               ci/forge/smoke-server.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/server-refuse-connector" "$RUNNER_TEMP/refuse-connector"
           SMOKE_TESTMODS=none SMOKE_TIMEOUT=300 SMOKE_EXPECT_REFUSAL="2 Fabricated jars (fabricated-forge-0.0.1+mc${{ matrix.target.minecraft }}.jar" \
               ci/forge/smoke-server.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/server-refuse-twice" "$RUNNER_TEMP/refuse-twice"
+          # A jar with its own copy of Fabric Loader, as Forgified Fabric API for 1.20.1 nests one: refused at once, before
+          # Forge builds a layer, where both copies would stop the launch with a module error naming neither (PROVIDER-2).
+          mkdir -p "$RUNNER_TEMP/refuse-loader"
+          python3 -I ci/forge/standins.py build/libs/fabricated-forge-[0-9]*+mc${{ matrix.target.minecraft }}.jar "$RUNNER_TEMP/refuse-loader" own-loader
+          SMOKE_TESTMODS=none SMOKE_TIMEOUT=300 SMOKE_REFUSAL_AT_ONCE=1 \
+              SMOKE_EXPECT_REFUSAL="standin-own-loader.jar (its standin-fabric-loader.jar) has its own copy of Fabric Loader" \
+              ci/forge/smoke-server.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/server-refuse-loader" "$RUNNER_TEMP/refuse-loader"
       # The client (docs/PORTING.md §7, F4): a Forge client with the test mod reaches a singleplayer world through
       # mc-runtime-test, and the Fabric client entrypoints run after the main ones. A gate like the server runs.
       - name: Install Mesa EGL for the client

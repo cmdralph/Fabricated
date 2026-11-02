@@ -15,7 +15,11 @@ Forge branches' counterpart of ci/neoforge/standins.py.
 Each copy of a package is one the game would otherwise load twice; the run passes if the server starts, the report
 says who provides what, and the test mods' checks pass.
 
-Usage: ci/forge/standins.py <fabricated-jar> <out-dir>
+With own-loader, it writes only standin-own-loader.jar, for the server run that must refuse it (PROVIDER-2): a Forge
+mod nesting, with Forge's jar-in-jar, a language provider with its own copy of Fabric Loader's API (the classes of
+Fabricated's), as Forgified Fabric API for 1.20.1 nests Forgified Fabric Loader.
+
+Usage: ci/forge/standins.py <fabricated-jar> <out-dir> [own-loader]
 """
 import io
 import json
@@ -93,7 +97,32 @@ def fabric_mod(mod_id, version, nested=None):
     return jar(files)
 
 
-def main(fabricated, out):
+def own_loader(outer):
+    """standin-own-loader.jar (see the module's comment), from Fabricated's jar."""
+    api = {name: outer.read(name) for name in outer.namelist()
+           if name.startswith(("net/fabricmc/loader/", "net/fabricmc/api/")) and not name.endswith("/")}
+    if not api:
+        raise SystemExit("Fabricated's jar has no Fabric Loader API")
+    loader = jar({"META-INF/MANIFEST.MF": manifest(FMLModType="LANGPROVIDER", Automatic_Module_Name="standin.fabric.loader",
+                                                   Implementation_Version="1.0.0"), **api})
+    return jar({
+        "META-INF/MANIFEST.MF": manifest(Implementation_Version="1.0.0"),
+        "META-INF/mods.toml": mods_toml("standin_own_loader", "1.0.0", "Stand-in Forgified Fabric API with its Fabric Loader"),
+        "META-INF/jarjar/metadata.json": jar_in_jar({"META-INF/jarjar/standin-fabric-loader.jar": ("fabric-loader", "1.0.0")}),
+        "META-INF/jarjar/standin-fabric-loader.jar": loader,
+    })
+
+
+def main(fabricated, out, only=None):
+    if only == "own-loader":
+        with zipfile.ZipFile(fabricated) as outer:
+            data = own_loader(outer)
+        with open(f"{out}/standin-own-loader.jar", "wb") as f:
+            f.write(data)
+        print(f"standin-own-loader.jar: {len(data)} bytes")
+        return
+    if only is not None:
+        raise SystemExit(__doc__)
     with zipfile.ZipFile(fabricated) as outer:
         index = json.loads(outer.read("META-INF/fabricated/native-modules.json"))["modules"]
         plan = json.loads(outer.read("META-INF/fabricated/fabric-api-plan.json"))
@@ -127,6 +156,6 @@ def main(fabricated, out):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 3:
+    if len(sys.argv) not in (3, 4):
         raise SystemExit(__doc__)
-    main(sys.argv[1], sys.argv[2])
+    main(*sys.argv[1:])
