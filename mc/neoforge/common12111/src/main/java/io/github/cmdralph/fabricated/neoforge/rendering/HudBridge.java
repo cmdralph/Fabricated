@@ -11,6 +11,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.BooleanSupplier;
 
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
@@ -30,6 +31,12 @@ import net.neoforged.neoforge.client.gui.VanillaGuiLayers;
  * Runs {@code fabric-rendering-v1}'s HUD elements ({@code HudElementRegistry}) on NeoForge. Upstream wraps each
  * vanilla HUD call with a mixin; NeoForge draws the HUD as layers instead, so each vanilla layer is wrapped with
  * the Fabric element list of the same vanilla element: what mods attached before or after it, replaced or removed.
+ *
+ * <p>Upstream's hooks sit inside vanilla's conditions (the GUI shown, the player's game mode), which NeoForge checks
+ * inside its layers, so each wrapped layer draws its Fabric elements only where vanilla would draw its element, and
+ * else only NeoForge's layer, as it is (HUD-3): a Fabric element attached to a vanilla one was drawn with the GUI hidden
+ * (F1), and, for the health bars, the experience level, the held item's name and the spectator tooltip, in game modes
+ * where vanilla draws none.
  *
  * <p>The module is upstream's code loaded like any Fabric mod, so its classes are looked up by name, and nothing
  * happens when it is not installed. The GUI drawing type and the drawing methods' names differ between Minecraft
@@ -82,7 +89,12 @@ public final class HudBridge {
 		FabricHud hud = FabricHud.find();
 		if (hud == null) return;
 		for (Map.Entry<Identifier, Identifier> layer : LAYERS) {
-			event.wrapLayer(layer.getKey(), vanilla -> hud.wrap(layer.getValue(), vanilla));
+			BooleanSupplier shown = shown(layer.getKey());
+			event.wrapLayer(layer.getKey(), vanilla -> {
+				GuiLayer fabric = hud.wrap(layer.getValue(), vanilla);
+				if (fabric == vanilla) return vanilla;
+				return (graphics, deltaTracker) -> (shown.getAsBoolean() ? fabric : vanilla).render(graphics, deltaTracker);
+			});
 		}
 		// NeoForge's hotbar layer draws the spectator menu in spectator mode and the item hotbar otherwise; Fabric has
 		// an element for each.
@@ -91,11 +103,49 @@ public final class HudBridge {
 			GuiLayer hotbar = hud.wrap(HOTBAR, vanilla);
 			return (graphics, deltaTracker) -> {
 				Minecraft minecraft = Minecraft.getInstance();
+				if (minecraft.options.hideGui) {
+					vanilla.render(graphics, deltaTracker);
+					return;
+				}
 				boolean spectating = minecraft.gameMode != null && minecraft.gameMode.getPlayerMode() == GameType.SPECTATOR;
 				(spectating ? spectator : hotbar).render(graphics, deltaTracker);
 			};
 		});
 		LOGGER.debug("Fabric HUD elements run from NeoForge's vanilla GUI layers");
+	}
+
+	/**
+	 * Whether vanilla draws the element of NeoForge's {@code layer} this frame, where upstream's hook sits: its condition
+	 * in NeoForge's {@code Gui.registerVanillaLayers} (the GUI shown; for the health, armour, food and air bars, a game
+	 * mode the player can be hurt in), and for three layers the one NeoForge checks inside them, around vanilla's call.
+	 */
+	private static BooleanSupplier shown(Identifier layer) {
+		if (layer.equals(VanillaGuiLayers.SLEEP_OVERLAY)) return () -> true;
+		if (layer.equals(VanillaGuiLayers.PLAYER_HEALTH) || layer.equals(VanillaGuiLayers.ARMOR_LEVEL) || layer.equals(VanillaGuiLayers.FOOD_LEVEL)
+				|| layer.equals(VanillaGuiLayers.AIR_LEVEL)) {
+			return () -> guiShown() && Minecraft.getInstance().gameMode != null && Minecraft.getInstance().gameMode.canHurtPlayer();
+		}
+		if (layer.equals(VanillaGuiLayers.EXPERIENCE_LEVEL)) {
+			return () -> {
+				Minecraft minecraft = Minecraft.getInstance();
+				return guiShown() && minecraft.gameMode != null && minecraft.gameMode.hasExperience() && minecraft.player != null
+						&& minecraft.player.experienceLevel > 0;
+			};
+		}
+		if (layer.equals(VanillaGuiLayers.SELECTED_ITEM_NAME)) return () -> guiShown() && !spectating(false);
+		if (layer.equals(VanillaGuiLayers.SPECTATOR_TOOLTIP)) return () -> guiShown() && spectating(true);
+		return HudBridge::guiShown;
+	}
+
+	private static boolean guiShown() {
+		return !Minecraft.getInstance().options.hideGui;
+	}
+
+	/** Whether the player's game mode is spectator ({@code asPlayer}: and the player is one). */
+	private static boolean spectating(boolean asPlayer) {
+		Minecraft minecraft = Minecraft.getInstance();
+		return minecraft.gameMode != null && minecraft.gameMode.getPlayerMode() == GameType.SPECTATOR
+				&& (!asPlayer || minecraft.player != null && minecraft.player.isSpectator());
 	}
 
 	/** The only abstract method of a functional interface. */
