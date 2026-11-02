@@ -101,7 +101,7 @@ public final class FabricClassTransforms {
 		boolean changed = false;
 		for (DefaultBridge bridge : state.defaultBridges().getOrDefault(node.name, List.of())) {
 			if (node.methods.stream().anyMatch(m -> m.name.equals(bridge.name()) && m.desc.equals(bridge.descriptor()))) continue;
-			node.methods.add(bridgeMethod(bridge));
+			node.methods.add(bridgeMethod(bridge, !bridge.owner().equals(node.superName)));
 			audit.accept("fabricated:default_bridge", bridge.owner() + "." + bridge.name());
 			changed = true;
 		}
@@ -131,10 +131,11 @@ public final class FabricClassTransforms {
 	}
 
 	/**
-	 * {@code public R name(args) { return Owner.super.name(args); }}, with its maxs (it has no branches, so no frames), and
-	 * its {@link #BRIDGE_MARKER}.
+	 * {@code public R name(args) { return Owner.super.name(args); }}, or {@code super.name(args)} where the owner is the
+	 * class's superclass (not {@code ownerIsInterface}, DEFAULT-1), with its maxs (it has no branches, so no frames), and its
+	 * {@link #BRIDGE_MARKER}.
 	 */
-	private static MethodNode bridgeMethod(DefaultBridge bridge) {
+	private static MethodNode bridgeMethod(DefaultBridge bridge, boolean ownerIsInterface) {
 		MethodNode method = new MethodNode(Opcodes.ACC_PUBLIC, bridge.name(), bridge.descriptor(), null, null);
 		method.invisibleAnnotations = new ArrayList<>(List.of(new AnnotationNode(BRIDGE_MARKER)));
 		InsnList code = method.instructions;
@@ -144,7 +145,7 @@ public final class FabricClassTransforms {
 			code.add(new VarInsnNode(argument.getOpcode(Opcodes.ILOAD), slot));
 			slot += argument.getSize();
 		}
-		code.add(new MethodInsnNode(Opcodes.INVOKESPECIAL, bridge.owner(), bridge.name(), bridge.descriptor(), true));
+		code.add(new MethodInsnNode(Opcodes.INVOKESPECIAL, bridge.owner(), bridge.name(), bridge.descriptor(), ownerIsInterface));
 		Type result = Type.getReturnType(bridge.descriptor());
 		code.add(new InsnNode(result.getOpcode(Opcodes.IRETURN)));
 		method.maxLocals = slot;

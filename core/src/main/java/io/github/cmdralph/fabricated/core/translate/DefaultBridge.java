@@ -24,8 +24,12 @@ import org.objectweb.asm.tree.MethodNode;
  * {@code BlockStateModel} two such pairs ({@code FabricBlockStateModel}'s and NeoForge's extension's
  * {@code createGeometryKey} and {@code particleMaterial}).
  *
+ * <p>A class's defaults through its superclasses' interfaces count too (DEFAULT-1: {@code ILivingEntityExtension.self()}
+ * on every mob, which {@code LivingEntity} implements): the method then calls its superclass's ({@code super.name(...)}),
+ * which the JVM resolves to that default.
+ *
  * @param target     the class (internal name) that gets the method
- * @param owner      its direct superinterface whose default the method calls
+ * @param owner      its direct superinterface whose default the method calls, or its superclass, whose method it calls
  * @param name       the method's name
  * @param descriptor the method's descriptor
  */
@@ -68,6 +72,24 @@ public record DefaultBridge(String target, String owner, String name, String des
 				}
 				int paren = key.indexOf('(');
 				bridges.add(new DefaultBridge(target, direct, key.substring(0, paren), key.substring(paren)));
+			}
+		}
+		if ((node.access & Opcodes.ACC_INTERFACE) == 0 && node.superName != null) {
+			// The defaults the class has through its superclasses' interfaces, reached through its superclass (DEFAULT-1).
+			Map<String, String> inherited = new HashMap<>();
+			Set<String> hierarchy = new HashSet<>();
+			for (ClassNode sup = superclass(node, classes); sup != null; sup = superclass(sup, classes)) {
+				for (String itf : sup.interfaces) defaults(itf, classes, inherited, hierarchy);
+			}
+			for (Map.Entry<String, String> e : inherited.entrySet()) {
+				String key = e.getKey();
+				String other = addedDefaults.get(key);
+				if (other == null || declared.contains(key) || hierarchy.contains(other) || addedHierarchy.contains(e.getValue())
+						|| !bridged.add(key)) {
+					continue;
+				}
+				int paren = key.indexOf('(');
+				bridges.add(new DefaultBridge(target, node.superName, key.substring(0, paren), key.substring(paren)));
 			}
 		}
 		return bridges;
