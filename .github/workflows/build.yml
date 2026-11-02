@@ -1133,7 +1133,7 @@ jobs:
               continue
             fi
             echo "== $run"
-            grep -h -m 20 -E "FABRICATED-TEST frapi|Caused by|Exception in|crash report|Fabric API's own renderer" "$log" || true
+            grep -h -m 20 -E "FABRICATED-TEST frapi|Caused by|Exception in|crash report|Fabric API's own renderer|drawn by the renderer" "$log" || true
             # The test mod's own failed checks and its informational lines (far up the log by now).
             grep -h -m 12 -E "FABRICATED-TEST (.*FAILED|library modules|networking join event)" "$log" | cut -c1-400 || true
             # Whether Iris loaded the shader pack, and drew with it (Iris's own lines).
@@ -1161,6 +1161,11 @@ jobs:
               echo "-- loaded Fabric mods, without Fabric API's modules:"
               awk '/^== Loaded Fabric mods/ { show = 1; next } /^(==|$)/ { show = 0 } show && /^  [^ ]/ && $1 !~ /^fabric/ { print "  " $1 " " $2 }' "$report" | head -20
             fi
+            # Sodium's Fabric build says it contains a renderer, for which Indigo keeps its mixins off and registers no
+            # renderer (the renderer line above says whose draws): what the report says of Indigo there (OVERLOAD-2).
+            if [ "$run" = client-sodium-fabric ] && [ -f "$report" ]; then
+              grep -E "^  fabric-renderer-indigo" "$report" | head -12 | cut -c1-400 || true
+            fi
             # Fabric API's own modules: what pre-flight left out of them (their configs with a plugin).
             if [ "$run" = client-fapi ] && [ -f "$report" ]; then
               awk '/^== Mixin pre-flight warnings ==/ { show = 1; next } /^$/ { show = 0 } show' "$report" | grep -E "^  fabric" | head -30 | cut -c1-500
@@ -1170,6 +1175,9 @@ jobs:
               echo "-- $(basename "$report")"
               sed -n '/^Description:/,/^A detailed walkthrough/p' "$report" | grep -v "^A detailed" \
                 | awk 'BEGIN { limit = 8 } /^Caused by:/ { frames = 0; limit = 12 } /^[ \t]+at / { if (++frames > limit) next } { print }' | head -60
+              # What it was drawing: the block (or fluid) and section a chunk build crashed on, as the renderer adds them.
+              grep -E -A5 "^-- (Block being rendered|Block being tesselated|Fluid being tesselated|Chunk section|Section being built)" "$report" \
+                | grep -v "^--$" | head -24 | cut -c1-300 || true
               # A mod loading crash names its causes below the walkthrough (its issues' exceptions).
               if grep -q "^net.neoforged.fml.ModLoadingException" "$report"; then
                 sed -n '/^A detailed walkthrough/,$p' "$report" | grep -E -A4 "^Caused by:|^\s*Exception message:" | grep -v "^--$" | head -40 | cut -c1-300

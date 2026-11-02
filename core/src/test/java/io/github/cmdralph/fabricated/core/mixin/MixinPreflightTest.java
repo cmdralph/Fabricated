@@ -4587,6 +4587,70 @@ class MixinPreflightTest {
 	}
 
 	@Test
+	void anInjectIsPinnedToTheFirstOverloadItTakesTheParametersOfSoAnOverwriteDoesntMoveIt() throws Exception {
+		// Sodium's Fabric build's @Inject on ModelBlockRenderer.renderModel, which NeoForge 1.21.11 gave an overload taking
+		// more: the class declares vanilla's first, but Indigo's @Overwrite of it makes Mixin put it last, so Mixin picked
+		// the overload and refused the handler ("Invalid descriptor", OVERLOAD-2).
+		String vanilla = "(Ljava/lang/Object;Ljava/lang/String;)V";
+		String neoForge = "(Ljava/lang/Object;Ljava/lang/Integer;Ljava/lang/String;)V";
+		java.util.function.Function<List<String>, byte[]> declaring = descs -> {
+			ClassWriter target = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+			target.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+			for (String desc : descs) {
+				MethodVisitor render = target.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "renderModel", desc, null, null);
+				render.visitCode();
+				render.visitInsn(Opcodes.RETURN);
+				render.visitMaxs(0, 0);
+				render.visitEnd();
+			}
+			target.visitEnd();
+			return target.toByteArray();
+		};
+		java.util.function.Function<String, byte[]> injecting = handlerDesc -> mixin("com/example/mixin/Render", false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "h", handlerDesc, null, null);
+			AnnotationVisitor ann = mv.visitAnnotation("Lorg/spongepowered/asm/mixin/injection/Inject;", false);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "renderModel");
+			methods.visitEnd();
+			AnnotationVisitor ats = ann.visitArray("at");
+			AnnotationVisitor at = ats.visitAnnotation(null, "Lorg/spongepowered/asm/mixin/injection/At;");
+			at.visit("value", "HEAD");
+			at.visitEnd();
+			ats.visitEnd();
+			ann.visitEnd();
+			mv.visitEnd();
+		});
+		ClassIndex game = new ClassIndex(Map.of(TARGET, declaring.apply(List.of(vanilla, neoForge)))::get);
+		// As an overwrite of vanilla's method leaves the class.
+		ClassIndex overwritten = new ClassIndex(Map.of(TARGET, declaring.apply(List.of(neoForge, vanilla)))::get);
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Render"));
+		String handler = "(Ljava/lang/Object;Ljava/lang/String;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V";
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Render", injecting.apply(handler)));
+		assertTrue(preflight(game, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty());
+		assertFalse(preflight(overwritten, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty(),
+				"Mixin picks the overload once vanilla's method is last");
+		List<PreflightFinding> notes = new ArrayList<>();
+		mod.put("com/example/mixin/Render", preflight(game, mod::get, ClassBytesSource.EMPTY, false)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes).get("com/example/mixin/Render.class"));
+		assertTrue(notes.size() == 1 && notes.getFirst().severity() == Severity.INFO
+				&& notes.getFirst().message().contains("@Inject h targets renderModel" + vanilla + ", one of several methods of that name")
+				&& notes.getFirst().message().contains("pinned"), notes.toString());
+		for (ClassIndex order : List.of(game, overwritten)) {
+			List<PreflightFinding> after = preflight(order, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+			assertTrue(after.isEmpty(), after.toString());
+		}
+		// Taking the callback info alone, any overload suits it: nothing is pinned. Nor where the method has no overload.
+		Map<String, byte[]> callbackOnly = Map.of("com/example/mixin/Render", injecting.apply("(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V"));
+		List<PreflightFinding> unpinned = new ArrayList<>();
+		preflight(game, callbackOnly::get, ClassBytesSource.EMPTY, false).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), unpinned);
+		assertTrue(unpinned.isEmpty(), unpinned.toString());
+		ClassIndex single = new ClassIndex(Map.of(TARGET, declaring.apply(List.of(vanilla)))::get);
+		Map<String, byte[]> fitting = Map.of("com/example/mixin/Render", injecting.apply(handler));
+		preflight(single, fitting::get, ClassBytesSource.EMPTY, false).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), unpinned);
+		assertTrue(unpinned.isEmpty(), unpinned.toString());
+	}
+
+	@Test
 	void aConstantModifierTakingParametersNoTargetHasIsLeftOutWithItsClass() throws Exception {
 		ClassIndex game = new ClassIndex(Map.of(TARGET, overloadedTarget())::get);
 		Map<String, byte[]> mod = Map.of("com/example/mixin/Constants", mixin("com/example/mixin/Constants", false, cw -> {

@@ -232,8 +232,11 @@ final class MixinRepairs extends PreflightPart {
 			// A group's alternative for Fabric Loader's hook too: the other alternatives are for other loaders' hooks.
 			RepairStep.warn(RepairScope.ONE_TARGET, s -> CallRepairs.loaderHookRepairs(s.injector(), s.target(), s.ctx()),
 					(s, moved) -> s.named() + " expects a call to " + moved),
-			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> OverloadRepairs.overloadByParameters(s.handler(), s.injector(), s.target(), s.ctx()),
+			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> OverloadRepairs.overloadByParameters(s.handler(), s.injector(), s.target(), s.ctx(), false),
 					(s, pinned) -> s.named() + " targets " + pinned + ", which this game build declares after another overload; it is pinned to that one"),
+			new RepairStep(RepairScope.ONE_TARGET_UNGROUPED, Severity.INFO, s -> OverloadRepairs.overloadByParameters(s.handler(), s.injector(), s.target(), s.ctx(), true),
+					(s, pinned) -> s.named() + " targets " + pinned + ", one of several methods of that name in this game build; it is pinned to that one,"
+							+ " as a mixin replacing it (@Overwrite, which Mixin adds after the others) would leave the injector on another"),
 			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> calls.vanillaPointRepairs(s.mixin(), s.handler(), s.injector(), s.target(), s.ctx(), s.bridges()),
 					(s, moved) -> s.named() + " expects " + moved),
 			RepairStep.stopIfMoved(),

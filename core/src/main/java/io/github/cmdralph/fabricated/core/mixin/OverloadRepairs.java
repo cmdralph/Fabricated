@@ -37,14 +37,24 @@ final class OverloadRepairs extends PreflightPart {
 	}
 
 	/**
-	 * Pins a descriptor-less selector to the one overload whose parameters the handler takes, when Mixin would pick another
-	 * (the first of that name), which it would refuse the handler for: an {@code @Inject} or {@code @WrapMethod} taking
-	 * them all, or a modifier taking its value and then the first of them ({@link #fitsHandler}). Remapped, a selector
-	 * Intermediary named uniquely may name several methods: LambDynamicLights' {@code @ModifyReturnValue} on
+	 * Pins a descriptor-less selector to the one overload whose parameters the handler takes, of several of that name,
+	 * which Mixin would refuse the handler for any other of: an {@code @Inject} or {@code @WrapMethod} taking them all, or
+	 * a modifier taking its value and then the first of them ({@link #fitsHandler}). Mixin picks the first of that name.
+	 * <p>
+	 * With {@code declaredFirst} false, where the class declares another first. Remapped, a selector Intermediary named
+	 * uniquely may name several methods: LambDynamicLights' {@code @ModifyReturnValue} on
 	 * {@code LevelRenderer.getLightColor} taking the block state, whose overload without it comes first (CORPUS-45).
+	 * <p>
+	 * With {@code declaredFirst} true, where it is the first the class declares: a mixin replacing it ({@code @Overwrite})
+	 * still moves it after the others, as Mixin removes the method it replaces and adds its own last, so the injectors
+	 * applied after that one pick another. Indigo's {@code renderModel} on 1.21.11, which NeoForge gave an overload taking
+	 * a buffer source and the block, left Sodium's Fabric build's {@code @Inject} on that overload, and Mixin stopped the
+	 * game ("Invalid descriptor", OVERLOAD-2). The class as the game ships it can't show that, and a mod's translation
+	 * doesn't depend on the other mods, so the pin is made wherever the method has overloads.
+	 * <p>
 	 * Returns the pinned methods.
 	 */
-	static List<String> overloadByParameters(MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx) {
+	static List<String> overloadByParameters(MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx, boolean declaredFirst) {
 		if (Annotations.value(injector, "locals") != null || !(Annotations.value(injector, "method") instanceof List<?> selectors)) return List.of();
 		Predicate<MethodNode> fits = fitsHandler(handler, injector);
 		if (fits == null) return List.of();
@@ -55,16 +65,18 @@ final class OverloadRepairs extends PreflightPart {
 			if (ref.fuzzy() || ref.name() == null || ref.desc() != null) continue;
 			MethodNode first = null;
 			MethodNode fitting = null;
+			int named = 0;
 			int fitted = 0;
 			for (MethodNode m : target.methods) {
 				if (!m.name.equals(ref.name())) continue;
+				named++;
 				if (first == null) first = m;
 				if (fits.test(m)) {
 					fitting = m;
 					fitted++;
 				}
 			}
-			if (fitted != 1 || fitting == first) continue;
+			if (fitted != 1 || named < 2 || (fitting == first) != declaredFirst) continue;
 			@SuppressWarnings("unchecked")
 			List<Object> values = (List<Object>) selectors;
 			values.set(i, fitting.name + fitting.desc);
