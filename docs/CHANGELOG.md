@@ -3,6 +3,35 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-02: Parity, `main`'s half (task 3)
+
+- **NeoForge 21.1:**
+  - **KEYMAP-2** (new, P0): Fabric API's key binding module refused every key binding, as NeoForge 21.1 creates the
+    game's options before mods load, so JEI, Jade, Simple Voice Chat, Entity Culling and five more corpus mods lost
+    their client side. `fabric-key-binding-api-v1` is native on 1.21.1: upstream's API, the key bindings registered on
+    NeoForge's key mapping event with the key the player saved.
+  - **CORPUS-49** (new, P0): 1.21.1's JSON data loaders ignored Fabric's load conditions (the plan left out upstream's
+    hook there as on 1.21.11, where NeoForge's loaders evaluate them); Moonlight's trades stopped the corpus server.
+  - **CORPUS-44:** Moonlight's check for Fabric API's internal pack class has a stand-in to find.
+  - **CORPUS-45:** a mixin selector naming an overload by its intermediary name alone keeps picking that overload once
+    remapped (the mapping table's format 3); pre-flight judges every value modifier's handler.
+  - **CORPUS-46:** pre-flight judges constant injection points, so Pehkui's reach mixins are left out, not fatal.
+- **NeoForge 21.11, SER-1:** a Fabric mod's call to vanilla's entity data serializer registration works, as on 1.21.1.
+- **The engine, for the Forge branches** (their pull requests verify them): a MixinExtras local taking an argument by
+  its name (PRE-18); fields a platform retyped to a subtype, as Forge's `featuresPerStep` (CORPUS-33, `RetypedFields`);
+  two pre-flight lambda gaps in Forge's data loaders (LAMBDA-8, new); and the provider policy's platform-neutral parts
+  moved from NeoForge's locator into core, with a fix for a mixin in another module's sub-package (Forge 47's loot
+  config).
+- **CI gates added:** 1.21.1's JSON loader conditions, its key binding with the saved key, and the failing test mod's
+  unregistered holder (CORPUS-42's drop) on every NeoForge server; the client test mod compiles against the pass-through
+  modules a platform adds (`passThroughTestmodfrapiModules`).
+- **Found, for task 5:** CORPUS-50 (Supplementaries' missing tags), CORPUS-51 (FrozenLib's registry mixin) and CORPUS-52
+  (ImmediatelyFast's depth state) on the 1.21.1 corpora.
+- **Decided:** the owner deferred Forge's item storages in items and the effect events' hook to task 5, listed as
+  unsupported until then.
+- **Verified:** 350 core tests locally; diagnostics runs 41354788270 (KEYMAP-2, CORPUS-44 and 45 on the 1.21.1
+  corpora) and 41362521380 (CORPUS-46 and 49); this pull request's full matrix and an extended run.
+
 ## 2026-11-01: The Forge branches' CI from what a change touches (task 2 done)
 
 - **`forge` and `forge-legacy` synced with `main`** (#237, #238, by `scripts/sync-platform-branch.sh`): the quick
