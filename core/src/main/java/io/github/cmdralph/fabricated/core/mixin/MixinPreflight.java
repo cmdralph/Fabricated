@@ -1038,6 +1038,15 @@ public final class MixinPreflight extends PreflightPart {
 			return;
 		}
 
+		if (ann.desc.equals(MixinNames.MODIFY_ARGS) && !anyFuzzy && !acceptsArgsSignature(handler, matched)) {
+			// Mixin throws as it applies the mixin ("has an invalid signature"), which require doesn't cover.
+			ctx.classLevel(injectorName + " handler " + handler.name + Type.getMethodDescriptor(Type.getReturnType(handler.desc), PreflightAsm.handlerArgs(handler).toArray(Type[]::new))
+							+ " does not match the parameters of " + matched.get(0).name + matched.get(0).desc + " in " + target.name.replace('/', '.'),
+					(ctx.owner() == null ? loader + "'s build of Minecraft declares this method with different parameters (often a lambda that captures more values)"
+							: ctx.changer(true) + " declares this method with different parameters") + "; the mod needs an update or this mixin must be skipped.");
+			return;
+		}
+
 		if (MixinNames.VALUE_MODIFIERS.contains(ann.desc) && !anyFuzzy && !acceptsModifierSignature(handler, matched)) {
 			ctx.classLevel(injectorName + " handler " + handler.name + Type.getMethodDescriptor(Type.getReturnType(handler.desc), PreflightAsm.handlerArgs(handler).toArray(Type[]::new))
 							+ " does not match the parameters of " + matched.get(0).name + matched.get(0).desc + " in " + target.name.replace('/', '.'),
@@ -1318,6 +1327,18 @@ public final class MixinPreflight extends PreflightPart {
 	 * {@code InvalidInjectionException} when the mixin applies, whatever its {@code require}. Handlers that use
 	 * {@code @Coerce}, or whose shape is unusual, are left to Mixin.
 	 */
+	/**
+	 * Whether a {@code @ModifyArgs} handler takes Mixin's {@code Args} alone or followed by all of each target method's
+	 * parameters, as Mixin requires ({@code ModifyArgsInjector.verifyTarget}); it throws as it applies the mixin
+	 * otherwise (CORPUS-58: Ledger's anvil hook, where NeoForge's lambda captures one more value).
+	 */
+	private static boolean acceptsArgsSignature(MethodNode handler, List<MethodNode> targets) {
+		List<Type> args = PreflightAsm.handlerArgs(handler);
+		if (args == null || args.size() <= 1) return true;
+		List<Type> wanted = args.subList(1, args.size());
+		return targets.stream().allMatch(target -> List.of(Type.getArgumentTypes(target.desc)).equals(wanted));
+	}
+
 	private static boolean acceptsWrapperSignature(MethodNode handler, List<MethodNode> targets) {
 		List<Type> args = PreflightAsm.handlerArgs(handler);
 		if (args == null || args.isEmpty() || !args.get(args.size() - 1).getDescriptor().equals(MixinNames.OPERATION)) return true;

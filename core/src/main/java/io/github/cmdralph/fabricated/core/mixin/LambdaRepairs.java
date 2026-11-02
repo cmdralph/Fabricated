@@ -277,11 +277,15 @@ final class LambdaRepairs extends PreflightPart {
 	 * client in its screen lambdas; LAMBDA-7). Where it takes a static handler there, a lambda whose values the build also
 	 * reorders gets the same bridge, which then passes the handler the values only (Forge 66's
 	 * {@code SimpleJsonResourceReloadListener.prepare} lambda, which reads the listener's codec, for Fabric API's resource
-	 * conditions; LAMBDA-8). Returns a description of the bridged method.
+	 * conditions; LAMBDA-8). A {@code @ModifyArgs} handler, which takes Mixin's {@code Args} and then all of its target's
+	 * parameters or none, gets the same bridge, taking the {@code Args} first, where it is static exactly where the
+	 * method is: Ledger's anvil hook into {@code AnvilMenu.onTake}'s lambda, which NeoForge's build gives the break chance
+	 * too (CORPUS-58). Returns a description of the bridged method.
 	 */
 	List<String> capturedValueRepairs(ClassNode mixin, MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx,
 			List<MethodNode> bridges) {
-		if (!injector.desc.equals(MixinNames.INJECT) || Annotations.value(injector, "locals") != null || (mixin.access & Opcodes.ACC_INTERFACE) != 0
+		boolean modifyArgs = injector.desc.equals(MixinNames.MODIFY_ARGS);
+		if (!injector.desc.equals(MixinNames.INJECT) && !modifyArgs || Annotations.value(injector, "locals") != null || (mixin.access & Opcodes.ACC_INTERFACE) != 0
 				|| !(Annotations.value(injector, "method") instanceof List<?> selectors) || selectors.size() != 1
 				|| annotatedParameters(handler.visibleParameterAnnotations) || annotatedParameters(handler.invisibleParameterAnnotations)) return List.of();
 		List<MethodNode> methods = PreflightAsm.selectedMethods(injector, target, ctx);
@@ -290,22 +294,29 @@ final class LambdaRepairs extends PreflightPart {
 		boolean isLambda = MixinNames.LAMBDA.matcher(lambda.name).matches();
 		boolean handlerStatic = (handler.access & Opcodes.ACC_STATIC) != 0;
 		boolean lambdaStatic = (lambda.access & Opcodes.ACC_STATIC) != 0;
-		boolean takesThis = handlerStatic && !lambdaStatic && exactStaticInjects;
+		boolean takesThis = !modifyArgs && handlerStatic && !lambdaStatic && exactStaticInjects;
 		Type[] own = Type.getArgumentTypes(handler.desc);
+		// The values the handler takes: after the Args of a @ModifyArgs, before the callback info of an @Inject.
+		int first = modifyArgs ? 1 : 0;
+		int end = modifyArgs ? own.length : own.length - 1;
+		if (own.length < 2 || (modifyArgs ? !own[0].getDescriptor().equals(MixinNames.ARGS) || handlerStatic != lambdaStatic
+				: !PreflightAsm.isCallbackInfo(own[own.length - 1]))) return List.of();
 		// No handler that takes this takes a static method. A static one on a method that takes this is bridged where Mixin
 		// refuses it (takesThis) and where the values need placing (LAMBDA-8): the bridge takes this either way.
-		if (own.length < 2 || !PreflightAsm.isCallbackInfo(own[own.length - 1]) || !handlerStatic && lambdaStatic) return List.of();
-		List<Type> wanted = List.of(own).subList(0, own.length - 1);
+		if (!handlerStatic && lambdaStatic) return List.of();
+		List<Type> wanted = List.of(own).subList(first, end);
 		List<Type> captured = List.of(Type.getArgumentTypes(lambda.desc));
 		// A patch captures a value or two more; a lambda taking many more is more likely another one under that name.
 		if (wanted.equals(captured) && !takesThis || captured.size() > wanted.size() + 2) return List.of();
 		int[] from = inOrder(wanted, captured);
-		if (from == null && isLambda) from = byType(handler, wanted, captured);
+		if (from == null && isLambda) from = byType(handler, first, wanted, captured);
 		if (from == null && isLambda) from = byUse(vanillaLambdaTaking(target.name, wanted, lambda), lambda, wanted, captured);
 		if (from == null) return List.of();
 
+		// The bridge takes what the method takes, with the handler's Args before it or its callback info after it.
 		List<Type> params = new ArrayList<>(captured);
-		params.add(own[own.length - 1]);
+		if (modifyArgs) params.add(0, own[0]);
+		else params.add(own[own.length - 1]);
 		MethodNode bridge = HandlerBridges.bridgeMethod(lambdaStatic, HandlerBridges.freeName(mixin, bridges, handler.name + "$fabricated"), params,
 				Type.getReturnType(handler.desc));
 		int stack = 0;
@@ -313,12 +324,20 @@ final class LambdaRepairs extends PreflightPart {
 			bridge.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
 			stack++;
 		}
-		for (int index : from) {
-			bridge.instructions.add(new VarInsnNode(params.get(index).getOpcode(Opcodes.ILOAD), HandlerBridges.slotOf(lambdaStatic, params, index)));
-			stack += params.get(index).getSize();
+		if (modifyArgs) {
+			bridge.instructions.add(new VarInsnNode(Opcodes.ALOAD, HandlerBridges.slotOf(lambdaStatic, params, 0)));
+			stack++;
 		}
-		bridge.instructions.add(new VarInsnNode(Opcodes.ALOAD, HandlerBridges.slotOf(lambdaStatic, params, params.size() - 1)));
-		HandlerBridges.callHandler(bridge, mixin.name, handler, stack + 1);
+		for (int index : from) {
+			int at = index + first;
+			bridge.instructions.add(new VarInsnNode(params.get(at).getOpcode(Opcodes.ILOAD), HandlerBridges.slotOf(lambdaStatic, params, at)));
+			stack += params.get(at).getSize();
+		}
+		if (!modifyArgs) {
+			bridge.instructions.add(new VarInsnNode(Opcodes.ALOAD, HandlerBridges.slotOf(lambdaStatic, params, params.size() - 1)));
+			stack++;
+		}
+		HandlerBridges.callHandler(bridge, mixin.name, handler, stack);
 		@SuppressWarnings("unchecked")
 		List<Object> values = (List<Object>) selectors;
 		values.set(0, lambda.name + lambda.desc);
@@ -470,14 +489,17 @@ final class LambdaRepairs extends PreflightPart {
 	}
 
 	/**
-	 * Where each of {@code wanted} is in {@code captured} by its type: the k-th parameter of a type goes to the lambda's
-	 * k-th of that type, which is only certain where the lambda has one; a type it has more than once only for a
-	 * parameter the handler never uses. Null when a type is missing, or such a parameter is used.
+	 * Where each of {@code wanted}, the handler's parameters from {@code first} on, is in {@code captured} by its type:
+	 * the k-th parameter of a type goes to the lambda's k-th of that type, which is only certain where the lambda has one;
+	 * a type it has more than once only for a parameter the handler never uses. Null when a type is missing, or such a
+	 * parameter is used.
 	 */
-	private static int[] byType(MethodNode handler, List<Type> wanted, List<Type> captured) {
+	private static int[] byType(MethodNode handler, int first, List<Type> wanted, List<Type> captured) {
 		int[] from = new int[wanted.size()];
 		Map<Type, Integer> seen = new HashMap<>();
 		int slot = (handler.access & Opcodes.ACC_STATIC) != 0 ? 0 : 1;
+		Type[] own = Type.getArgumentTypes(handler.desc);
+		for (int i = 0; i < first; i++) slot += own[i].getSize();
 		for (int i = 0; i < wanted.size(); i++) {
 			Type type = wanted.get(i);
 			int k = seen.merge(type, 1, Integer::sum) - 1;

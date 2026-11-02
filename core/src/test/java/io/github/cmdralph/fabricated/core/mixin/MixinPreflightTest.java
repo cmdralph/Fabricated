@@ -1632,6 +1632,108 @@ class MixinPreflightTest {
 	}
 
 	@Test
+	void aModifyArgsIntoALambdaThatCapturesMoreValuesGetsABridgeTakingTheArgsFirst() throws Exception {
+		// CORPUS-58: Ledger's anvil hook takes AnvilMenu.onTake's lambda's values as vanilla's lambda captures them (the
+		// player, the level, the position); NeoForge's captures the break chance too, and Mixin refused the handler as it
+		// applied the mixin, which stopped the server.
+		Type list = Type.getType(List.class);
+		Type string = Type.getType(String.class);
+		String neoForge = Type.getMethodDescriptor(Type.VOID_TYPE, list, Type.FLOAT_TYPE, string);
+		ClassIndex game = new ClassIndex(Map.of(TARGET, lambdaCallingValueOf(neoForge))::get);
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "AnvilArgs"));
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/AnvilArgs", modifyArgsMixin(List.of(list, string))));
+		List<PreflightFinding> before = preflight(game, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertEquals(1, before.size(), before.toString());
+		assertTrue(before.getFirst().message().contains("does not match the parameters of lambda$load$1" + neoForge), before.toString());
+
+		List<PreflightFinding> notes = new ArrayList<>();
+		byte[] repaired = preflight(game, mod::get, ClassBytesSource.EMPTY, false).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes)
+				.get("com/example/mixin/AnvilArgs.class");
+		assertNotNull(repaired, notes.toString());
+		assertTrue(notes.getFirst().message().contains("h targets lambda$load$1" + neoForge + ", whose captured values"), notes.toString());
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired).accept(node, 0);
+		MethodNode bridge = node.methods.stream().filter(mn -> mn.name.equals("h$fabricated")).findFirst().orElseThrow();
+		assertEquals(Type.getMethodDescriptor(Type.VOID_TYPE, Type.getType(ARGS), list, Type.FLOAT_TYPE, string), bridge.desc);
+		assertNotNull(Annotations.find(bridge, "Lorg/spongepowered/asm/mixin/injection/ModifyArgs;"), "the injector is on the bridge");
+		List<Integer> loads = new ArrayList<>();
+		for (AbstractInsnNode insn : bridge.instructions) {
+			if (insn instanceof VarInsnNode v) loads.add(v.var);
+		}
+		assertEquals(List.of(0, 1, 3), loads, "the args, then the list and the string, without the break chance");
+		ClassLoader loader = new ClassLoader(getClass().getClassLoader()) {
+			@Override
+			protected Class<?> findClass(String name) throws ClassNotFoundException {
+				if (!name.equals("com.example.mixin.AnvilArgs")) throw new ClassNotFoundException(name);
+				return defineClass(name, repaired, 0, repaired.length);
+			}
+		};
+		Class.forName("com.example.mixin.AnvilArgs", true, loader);
+		mod.put("com/example/mixin/AnvilArgs", repaired);
+		List<PreflightFinding> after = preflight(game, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(after.isEmpty(), after.toString());
+
+		// A handler taking values the lambda doesn't have isn't bridged, and is left out before Mixin could stop the launch;
+		// one taking the args alone fits any method.
+		Map<String, byte[]> unrelated = Map.of("com/example/mixin/AnvilArgs", modifyArgsMixin(List.of(Type.getType(Integer.class))));
+		assertTrue(preflight(game, unrelated::get, ClassBytesSource.EMPTY, false)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty());
+		List<PreflightFinding> refused = preflight(game, unrelated::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertEquals(1, refused.size(), refused.toString());
+		assertTrue(refused.getFirst().message().contains("does not match the parameters"), refused.toString());
+		Map<String, byte[]> argsOnly = Map.of("com/example/mixin/AnvilArgs", modifyArgsMixin(List.of()));
+		List<PreflightFinding> fits = preflight(game, argsOnly::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(fits.isEmpty(), fits.toString());
+	}
+
+	private static final String ARGS = "Lorg/spongepowered/asm/mixin/injection/invoke/arg/Args;";
+
+	/** {@link #TARGET} with a private static lambda {@code lambda$load$1} of descriptor {@code desc} passing its first value to {@code String.valueOf}. */
+	private static byte[] lambdaCallingValueOf(String desc) {
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		MethodVisitor lambda = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, "lambda$load$1", desc, null, null);
+		lambda.visitCode();
+		lambda.visitVarInsn(Opcodes.ALOAD, 0);
+		lambda.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/String", "valueOf", "(Ljava/lang/Object;)Ljava/lang/String;", false);
+		lambda.visitInsn(Opcodes.POP);
+		lambda.visitInsn(Opcodes.RETURN);
+		lambda.visitMaxs(0, 0);
+		lambda.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	/**
+	 * A mixin {@code AnvilArgs} whose static {@code @ModifyArgs} handler {@code h}, at {@code lambda$load$1}'s call of
+	 * {@code String.valueOf}, takes Mixin's {@code Args} and then {@code params}, and reads each of them.
+	 */
+	private static byte[] modifyArgsMixin(List<Type> params) {
+		return mixin("com/example/mixin/AnvilArgs", false, cw -> {
+			Type[] args = java.util.stream.Stream.concat(java.util.stream.Stream.of(Type.getType(ARGS)), params.stream()).toArray(Type[]::new);
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "h", Type.getMethodDescriptor(Type.VOID_TYPE, args), null, null);
+			AnnotationVisitor ann = mv.visitAnnotation("Lorg/spongepowered/asm/mixin/injection/ModifyArgs;", false);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "lambda$load$1");
+			methods.visitEnd();
+			AnnotationVisitor at = ann.visitAnnotation("at", AT);
+			at.visit("value", "INVOKE");
+			at.visit("target", "Ljava/lang/String;valueOf(Ljava/lang/Object;)Ljava/lang/String;");
+			at.visitEnd();
+			ann.visitEnd();
+			mv.visitCode();
+			for (int slot = 1; slot < args.length; slot++) {
+				mv.visitVarInsn(Opcodes.ALOAD, slot);
+				mv.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/String", "valueOf", "(Ljava/lang/Object;)Ljava/lang/String;", false);
+				mv.visitInsn(Opcodes.POP);
+			}
+			mv.visitInsn(Opcodes.RETURN);
+			mv.visitMaxs(1, args.length);
+			mv.visitEnd();
+		});
+	}
+
+	@Test
 	void aStaticHandlerOnALambdaThatTakesThisGetsABridgeTakingThisWhereMixinRefusesIt() throws Exception {
 		// LAMBDA-7: Forge 47's MouseHandler reads the client in its screen lambdas, so they take this where vanilla's are
 		// static; SpongePowered's 0.8.5 refuses fabric-screen-api-v1's static handlers there, 0.8.6 on take them.
