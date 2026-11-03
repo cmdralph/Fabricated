@@ -3,6 +3,26 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-03: Mob buckets' entity type on Forge 47 (CORPUS-94), Forge 66's own loot table naming (CORPUS-90), and the Forge syncs of #270 (task 5)
+
+- **CORPUS-94** (`MixinRepairs.retypedFieldBridge`): pre-flight points an accessor of a field the platform replaced at
+  the bridge Fabricated's in-game mod adds for it, as it did for a field the platform gave another type (CORPUS-37).
+  Forge 47 replaced `MobBucketItem`'s entity type field with a supplier, so Supplementaries' accessor of it was left out
+  and its dispenser behaviours stopped the corpus server's first data reload. Forge 47's in-game mod gets the bridge
+  (the bucket's `getFishType`) with the next sync. A target with neither the field's own type nor the bridge is
+  reported as before.
+- **CORPUS-90 on Forge 66** (`forge`, #268): the earlier entry took Forge 61 to 65's hook as the only one left. Forge
+  66 names each loot table itself, in `ForgeHooks.onJsonDataParsed`, after Fabricated's hook has handed it to Fabric's
+  events (read in Forge 66's source), so a table Porting Lib Loot named as it was built would stop the load there too.
+  The in-game mod's Forge 66 loot config wraps that call to leave a table that already has its name.
+- **Syncs:** main is merged into `forge` (#268: the frames repair rewritten for Forge 61 to 66, the loot naming guard,
+  the test mod naming dirt's table) and `forge-legacy` (#271: the interface mixins' injectors, a test mod check that a
+  pair Fabric API's `OxidizableBlocksRegistry` registers is in vanilla's oxidation map). Their extended runs verify
+  CORPUS-79, CORPUS-90 on Forge 61 to 66 and CORPUS-91.
+- **Tests:** `MixinPreflightTest.anAccessorOfAFieldThePlatformReplacedInvokesFabricatedsBridge`: with the bridge, an
+  accessor of a field the target no longer has invokes it; without it, pre-flight reports the field missing.
+- **CI:** core tests locally (480); the PR run on this change.
+
 ## 2026-11-03: Forge's compressed frames (CORPUS-79), Porting Lib Loot's table names (CORPUS-90), interface mixins' injectors on Forge 47 (CORPUS-91), and Forge 47's corpus fixes verified (task 5)
 
 - **Verified on Forge 47** (extended run 41703581030, after #267): CORPUS-86 (the corpus server loaded Moonlight's

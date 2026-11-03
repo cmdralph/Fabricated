@@ -30,8 +30,9 @@ import io.github.cmdralph.fabricated.core.json.JsonException;
  * mixins then shadow or access as the game's. Fabricated restores vanilla's map of picture-in-picture renderers on
  * {@code GuiRenderer}, which NeoForge replaced with renderer pools and Fabric mods read and replace (malilib, PIP-1). A
  * field of one of Fabricated's mixins counts when it is neither shadowed nor unique (named for Fabricated alone). So do
- * the methods they add for a field the platform gave another type ({@link MixinNames#BRIDGE_GETTER}), which a Fabric
- * mod's accessor of the field invokes (CORPUS-37); pre-flight reads their declarations, not their code.
+ * the methods they add for a field the platform gave another type or replaced ({@link MixinNames#BRIDGE_GETTER}),
+ * which a Fabric mod's accessor of the field invokes (CORPUS-37, CORPUS-94); pre-flight reads their declarations, not
+ * their code.
  */
 public final class RestoredFields {
 	private static final String SHADOW = "Lorg/spongepowered/asm/mixin/Shadow;";
