@@ -102,9 +102,9 @@ final class MixinNames {
 	static final String CAPTURED_PREFIX = "val$";
 
 	/**
-	 * The prefixes of a method Fabricated's in-game mod adds to a game class for a field the platform gave another type,
-	 * followed by the field's name: it gets or sets the field's value as vanilla's type, and an {@code @Accessor} of the
-	 * field invokes it instead ({@code MixinRepairs.retypedFieldBridge}, CORPUS-37).
+	 * The prefixes of a method Fabricated's in-game mod adds to a game class for a field the platform gave another type
+	 * or replaced, followed by the field's name: it gets or sets what vanilla's field holds as vanilla's type, and an
+	 * {@code @Accessor} of the field invokes it instead ({@code MixinRepairs.retypedFieldBridge}, CORPUS-37, CORPUS-94).
 	 */
 	static final String BRIDGE_GETTER = "fabricated$get$";
 	static final String BRIDGE_SETTER = "fabricated$set$";
