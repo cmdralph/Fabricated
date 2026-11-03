@@ -78,6 +78,8 @@ public final class FabricatedMod {
 		for (String text : ForgeLoaderHooks.notLoaded()) {
 			LoadingWarnings.add(new ModLoadingWarning(context.getContainer().getModInfo(), ModLoadingStage.CONSTRUCT, AS_IS, text));
 		}
+		// What discovery tells the player from now on: a Fabric mod's jar proposed for the class path (DOWNLOAD-1).
+		ForgeLoaderHooks.warnings(text -> LoadingWarnings.add(new ModLoadingWarning(context.getContainer().getModInfo(), ModLoadingStage.CONSTRUCT, AS_IS, text)));
 		if (!FMLLoader.getDist().isDedicatedServer()) {
 			// Fabric mods' config screens in Forge's mod list, once their initializers ran.
 			ClientSupport.init(state);

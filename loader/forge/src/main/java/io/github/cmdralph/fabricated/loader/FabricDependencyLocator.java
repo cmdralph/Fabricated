@@ -46,6 +46,7 @@ import io.github.cmdralph.fabricated.core.report.Report;
 import io.github.cmdralph.fabricated.core.resolve.FabricApiPlan;
 import io.github.cmdralph.fabricated.core.resolve.NativeModules;
 import io.github.cmdralph.fabricated.core.resolve.PlatformLibraries;
+import io.github.cmdralph.fabricated.core.runtime.PlatformProperties;
 import io.github.cmdralph.fabricated.core.translate.LinkageAnalysis;
 import io.github.cmdralph.fabricated.core.translate.PackageGuard;
 import io.github.cmdralph.fabricated.core.translate.PlatformDescriptor;
@@ -288,6 +289,14 @@ public final class FabricDependencyLocator extends AbstractModProvider implement
 		FabricatedState state = new FabricatedState(result, logsDir, api);
 		FabricatedState.set(state);
 		ApiHolder.install(api);
+		// Fabric mods' handlers in a registry's freeze, and their hooks into the game's options, wait for their main
+		// entrypoints, as on Fabric (REG-8, ENTRY-2): Forge's client creates the options before it loads mods.
+		if (devGameMod.isPresent() || addGameMod) EarlyFreeze.holdUntilMainEntrypoints();
+		// Before any Fabric mod's code runs: the property FML sets for no log marker, which Fabric mods can't read (CORPUS-60).
+		if ((devGameMod.isPresent() || addGameMod) && PlatformProperties.dropEmptyLogMarker()) {
+			result.report().line("Launch", "Removed the system property " + PlatformProperties.EMPTY_LOG_MARKER + ", which FML sets for an empty"
+					+ " log marker and nothing reads; a Fabric mod reading every system property as a dotted path stops on it");
+		}
 
 		Set<String> refused = new HashSet<>();
 		for (Pipeline.LoadedMod mod : result.mods()) {
