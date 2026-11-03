@@ -49,6 +49,7 @@ import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
 import io.github.cmdralph.fabricated.core.bytecode.ClassIndex;
 import io.github.cmdralph.fabricated.core.bytecode.InstalledClasses;
 import io.github.cmdralph.fabricated.core.mixin.PreflightFinding.Severity;
+import io.github.cmdralph.fabricated.core.testutil.BytesClassLoader;
 import io.github.cmdralph.fabricated.core.testutil.TestSources;
 
 class MixinPreflightTest {
@@ -6395,26 +6396,6 @@ class MixinPreflightTest {
 		assertEquals(-1, CallRepairs.insertedArgument("(I)V", "(IJ)Z"), "another result");
 		assertEquals(-1, CallRepairs.insertedArgument("(I)V", "(IJJ)V"));
 		assertEquals(-1, CallRepairs.insertedArgument("(I)V", "(J)V"));
-	}
-
-	/** Defines the given classes (internal names) itself, before asking the test's class loader. */
-	private static final class BytesClassLoader extends ClassLoader {
-		private final Map<String, byte[]> classes;
-
-		BytesClassLoader(Map<String, byte[]> classes) {
-			super(MixinPreflightTest.class.getClassLoader());
-			this.classes = classes;
-		}
-
-		@Override
-		protected Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {
-			synchronized (getClassLoadingLock(name)) {
-				byte[] bytes = classes.get(name.replace('.', '/'));
-				if (bytes == null) return super.loadClass(name, resolve);
-				Class<?> loaded = findLoadedClass(name);
-				return loaded != null ? loaded : defineClass(name, bytes, 0, bytes.length);
-			}
-		}
 	}
 
 	@Test
