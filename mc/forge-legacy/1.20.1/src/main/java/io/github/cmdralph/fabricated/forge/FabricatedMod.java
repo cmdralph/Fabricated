@@ -82,6 +82,8 @@ public final class FabricatedMod {
 		for (String text : ForgeLoaderHooks.notLoaded()) {
 			ModLoader.get().addWarning(new ModLoadingWarning(context.getContainer().getModInfo(), ModLoadingStage.CONSTRUCT, AS_IS, text));
 		}
+		// What discovery tells the player from now on: a Fabric mod's jar proposed for the class path (DOWNLOAD-1).
+		ForgeLoaderHooks.warnings(text -> ModLoader.get().addWarning(new ModLoadingWarning(context.getContainer().getModInfo(), ModLoadingStage.CONSTRUCT, AS_IS, text)));
 		// Fabric storages and Forge's item and fluid handlers on blocks, each seen by the other side's code.
 		if (FabricLoader.getInstance().isModLoaded("fabric-transfer-api-v1") && ours(state, "fabric-transfer-api-v1")) TransferBridge.register();
 		// Fabric's sleep time event where Forge asks its own.

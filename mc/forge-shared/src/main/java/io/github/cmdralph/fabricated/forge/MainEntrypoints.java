@@ -5,6 +5,7 @@ import java.util.Collection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.github.cmdralph.fabricated.loader.EarlyFreeze;
 import io.github.cmdralph.fabricated.loader.FabricatedState;
 
 /**
@@ -24,8 +25,10 @@ public final class MainEntrypoints {
 		return !ran && FabricatedState.get() != null;
 	}
 
+	/** Also lets go of Fabric mods' handlers in a registry's freeze, which discovery held until then (REG-8). */
 	static void markRan() {
 		ran = true;
+		EarlyFreeze.mainEntrypointsRan();
 	}
 
 	/** A Fabric mod's entrypoint failed (any phase); called before the registries freeze after the entrypoints. */
