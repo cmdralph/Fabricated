@@ -75,6 +75,26 @@ class CandidateScannerTest {
 		assertTrue(result.notes().contains("holder's mixin config shared.mixins.json is in its nested jar shared, which applies it"), result.notes().toString());
 	}
 
+	/** As Polymer's bundle nests its packet library: bundled, core, networking, common, then the library (LIMIT-2). */
+	@Test
+	void aLibraryNestedFourJarsDeepLoads(@TempDir Path game) throws Exception {
+		byte[] jar = library("1.0");
+		for (String id : List.of("common", "networking", "core")) {
+			jar = TestJars.create().fabricModJson(TestJars.modJson(id, "1.0", "\"jars\":[{\"file\":\"META-INF/jars/inner.jar\"}]"))
+					.bytes("META-INF/jars/inner.jar", jar).toBytes();
+		}
+		Path bundled = TestJars.create().fabricModJson(TestJars.modJson("bundled", "1.0", "\"jars\":[{\"file\":\"META-INF/jars/inner.jar\"}]"))
+				.bytes("META-INF/jars/inner.jar", jar).write(game.resolve("bundled.jar"));
+		CandidateScanner.Result result = new CandidateScanner(new TranslationCache(game, true, true), ArchiveLimits.DEFAULTS).scan(List.of(bundled));
+		assertEquals(List.of("bundled", "common", "core", "lib", "networking"), result.candidates().stream().map(Candidate::id).sorted().toList());
+		assertTrue(result.notes().stream().noneMatch(n -> n.contains("deeper than the limit")), result.notes().toString());
+		// A lower limit, which a player may set, still holds.
+		ArchiveLimits shallow = new ArchiveLimits(256L << 20, 128L << 20, 512L << 20, 65_536, 100, 3);
+		CandidateScanner.Result limited = new CandidateScanner(new TranslationCache(game, true, true), shallow).scan(List.of(bundled));
+		assertEquals(List.of("bundled", "common", "core", "networking"), limited.candidates().stream().map(Candidate::id).sorted().toList());
+		assertTrue(limited.notes().contains("common nests jars deeper than the limit of 3; they were ignored"), limited.notes().toString());
+	}
+
 	@Test
 	void nestedJarsShareOneBudgetPerTopLevelJar(@TempDir Path game) throws Exception {
 		java.util.Random random = new java.util.Random(1);

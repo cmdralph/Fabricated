@@ -78,9 +78,14 @@ def main():
         crash = f.read()
     work = sys.argv[2]
     m = re.search(r"method ([A-Za-z0-9_$]+)\(.*? in ([A-Za-z0-9_.-]+\.json):([A-Za-z0-9_.$]+) from mod ([A-Za-z0-9_.-]+)", crash)
-    if not m:
-        return
-    handler, config, mixin, mod = m.groups()
+    if m:
+        handler, config, mixin, mod = m.groups()
+    else:
+        # A handler Mixin refused for the method it picked: "Invalid descriptor on <config>:<mixin> from mod <mod>->@Inject::<handler>(".
+        m = re.search(r" on ([A-Za-z0-9_.-]+\.json):([A-Za-z0-9_.$]+) from mod ([A-Za-z0-9_.-]+)->@[A-Za-z]+::([A-Za-z0-9_$]+)\(", crash)
+        if not m:
+            return
+        config, mixin, mod, handler = m.groups()
     overlays = glob.glob(f"{work}/run/.fabricated/cache/**/overlay.jar", recursive=True)
     for jar in glob.glob(f"{work}/run/mods/*.jar"):
         try:

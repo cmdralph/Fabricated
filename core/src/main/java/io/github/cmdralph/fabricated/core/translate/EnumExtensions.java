@@ -8,10 +8,14 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
+import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassWriter;
+import org.objectweb.asm.Handle;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
+import org.objectweb.asm.signature.SignatureReader;
+import org.objectweb.asm.signature.SignatureVisitor;
 import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.AnnotationNode;
 import org.objectweb.asm.tree.ClassNode;
@@ -36,16 +40,19 @@ import io.github.cmdralph.fabricated.core.json.Json;
 /**
  * Turns a Fabric enum mixin that only adds constants to one of NeoForge's extensible enums into entries of a NeoForge
  * enum extension file (ENUM-1). NeoForge's loader adds the constants of such an enum itself, from the files mods name,
- * and lets nothing else change it, so the mixin's constants would never exist. Only a mixin with nothing but constants
- * (no other members, no interfaces), each named after the mod (as NeoForge requires), is translated: into an enum
- * NeoForge doesn't give ids (not indexed), and into a named enum only with names already starting with the mod's id
- * and a colon, which NeoForge checks when the enum is made. Any other stays a pre-flight failure (CORPUS-10).
+ * and lets nothing else change it, so the mixin's constants would never exist. Only a mixin with no interfaces and no
+ * fields but its constants, each named after the mod (as NeoForge requires), is translated: into an enum NeoForge
+ * doesn't give ids (not indexed), and into a named enum only with names already starting with the mod's id and a colon,
+ * which NeoForge checks when the enum is made. Any other stays a pre-flight failure (CORPUS-10). Its other methods (an
+ * injector into the enum, as Farmer's Delight's into {@code RecipeBookCategories}) stay an ordinary mixin into it
+ * ({@link #rest}), which FML doesn't refuse, when they use nothing of the mixin that goes with its constants (CORPUS-65).
  * <p>A constant built by a constructor the enum allows from constant arguments is entered with them. One whose
  * arguments are computed when the class loads (a registered object, a static array), or whose constructor NeoForge
- * reserves for one taking suppliers where the mixin's takes values (as {@code Raid.RaiderType}'s), is entered with a
- * method that computes them as the mixin's class initializer does, which NeoForge's loader calls when it adds the
- * constant: in a class generated for the mod ({@link #argumentsClasses}), and only from code that runs straight through
- * and uses nothing of the mixin itself (ENUM-3).
+ * reserves for one taking suppliers where the mixin's takes values (as {@code Raid.RaiderType}'s; a supplier of a list
+ * where it takes an array, as {@code RecipeBookCategories}'), is entered with a method that computes them as the
+ * mixin's class initializer does, which NeoForge's loader calls when it adds the constant: in a class generated for the
+ * mod ({@link #argumentsClasses}), and only from code that runs straight through and uses nothing of the mixin itself
+ * (ENUM-3).
  */
 final class EnumExtensions {
 	/** The file in the overlay, which the generated mods.toml names. */
@@ -56,13 +63,18 @@ final class EnumExtensions {
 	private static final String NAMED_ENUM = "Lnet/neoforged/fml/common/asm/enumextension/NamedEnum;";
 	/** Every enum constructor starts with the constant's name and ordinal, which NeoForge's entries leave out. */
 	private static final String NAME_AND_ORDINAL = "(Ljava/lang/String;I";
-	/** What javac gives an enum besides its constants; an enum mixin with anything else is not translated. */
+	/** What javac gives an enum besides its constants, by name; {@link #enumMethod} checks their descriptors. */
 	private static final Set<String> ENUM_METHODS = Set.of("<clinit>", "<init>", "values", "valueOf", "$values");
 	private static final Object NOT_CONSTANT = new Object();
 
 	/** The descriptor of the method NeoForge's loader calls for each argument of a constant (its index, its type). */
 	static final String ARGUMENTS_METHOD = "(ILjava/lang/Class;)Ljava/lang/Object;";
 	private static final String SUPPLIER = "Ljava/util/function/Supplier;";
+	private static final String LIST = "Ljava/util/List;";
+	/** {@code Enum}'s methods, which the mixin's other methods may call on its constants (they become the enum's). */
+	private static final Set<String> ENUM_OWN = Set.of("name()Ljava/lang/String;", "ordinal()I", "toString()Ljava/lang/String;", "hashCode()I",
+			"equals(Ljava/lang/Object;)Z", "compareTo(Ljava/lang/Enum;)I", "getDeclaringClass()Ljava/lang/Class;");
+	private static final String SHADOW = "Lorg/spongepowered/asm/mixin/Shadow;";
 
 	/**
 	 * One constant: its enum (an internal name, as NeoForge's file takes it), its name, the constructor without the name
@@ -76,10 +88,20 @@ final class EnumExtensions {
 
 	/**
 	 * Arguments computed when NeoForge's loader adds the constant: by the code the mixin's class initializer runs for
-	 * them (loading the values {@code loaded} describes, a constructor descriptor), each wrapped in a supplier where
-	 * {@code supplied}; by the method {@code method} of the class {@code owner} once {@link #named} gives them.
+	 * them (loading the values {@code loaded} describes, a constructor descriptor), each passed as {@code wraps} says;
+	 * by the method {@code method} of the class {@code owner} once {@link #named} gives them.
 	 */
-	record Computed(List<AbstractInsnNode> code, String loaded, boolean[] supplied, String owner, String method) {
+	record Computed(List<AbstractInsnNode> code, String loaded, Wrap[] wraps, String owner, String method) {
+	}
+
+	/** How a value the mixin's code loads reaches the constructor the enum allows. */
+	enum Wrap {
+		/** As it is. */
+		NONE,
+		/** In a supplier of it, where the constructor takes a supplier of its type. */
+		SUPPLIER,
+		/** An array in a supplier of a list of its elements, where the constructor takes a supplier of such a list. */
+		LIST_SUPPLIER
 	}
 
 	private EnumExtensions() {
@@ -118,15 +140,17 @@ final class EnumExtensions {
 			else if ((field.access & Opcodes.ACC_SYNTHETIC) == 0 || !field.name.equals("$VALUES")) return null;
 		}
 		MethodNode clinit = null;
+		List<MethodNode> others = new ArrayList<>();
 		for (MethodNode method : mixin.methods) {
-			if (!ENUM_METHODS.contains(method.name)) return null;
 			if (method.name.equals("<clinit>")) clinit = method;
+			else if (!enumMethod(method, self)) others.add(method);
 		}
-		if (clinit == null || constants.isEmpty()) return null;
-		Set<String> allowed = new HashSet<>();
+		if (clinit == null || constants.isEmpty() || !staysMixin(others, mixin.name, target, constants)) return null;
+		// The constructors NeoForge allows, with their generic signatures.
+		Map<String, String> allowed = new LinkedHashMap<>();
 		for (MethodNode ctor : target.methods) {
 			if (ctor.name.equals("<init>") && Annotations.find(ctor.invisibleAnnotations, ctor.visibleAnnotations, RESERVED_CONSTRUCTOR) == null) {
-				allowed.add(ctor.desc);
+				allowed.put(ctor.desc, ctor.signature);
 			}
 		}
 
@@ -153,7 +177,7 @@ final class EnumExtensions {
 			String full = init.desc.replace(self, enumDescriptor);
 			if (!full.startsWith(NAME_AND_ORDINAL) || !name.toLowerCase(Locale.ROOT).startsWith(modId)) return null;
 			String constructor = "(" + full.substring(NAME_AND_ORDINAL.length());
-			Entry entry = allowed.contains(full) ? constantEntry(target.name, name, constructor, code, nameIndex, modId) : null;
+			Entry entry = allowed.containsKey(full) ? constantEntry(target.name, name, constructor, code, nameIndex, modId) : null;
 			if (entry == null && nameIndex < 0 && computable(code, mixin.name, target.name)) entry = computedEntry(target.name, name, constructor, code, allowed);
 			if (entry == null) return null;
 			entries.add(entry);
@@ -182,29 +206,150 @@ final class EnumExtensions {
 
 	/**
 	 * The entry of a constant whose arguments are computed, with the constructor the enum allows: the mixin's, or the only
-	 * one taking a supplier wherever the mixin's differs, and takes an object (NeoForge's own constructors for content
-	 * registered later); or null.
+	 * one taking, wherever the mixin's differs, a supplier of the type of the mixin's (or of a list of its array's
+	 * elements), as its generic signature says (NeoForge's own constructors for content registered later); or null.
 	 */
-	private static Entry computedEntry(String enumName, String name, String constructor, List<AbstractInsnNode> code, Set<String> allowed) {
+	private static Entry computedEntry(String enumName, String name, String constructor, List<AbstractInsnNode> code, Map<String, String> allowed) {
 		Type[] own = Type.getArgumentTypes(constructor);
 		String chosen = null;
-		boolean[] supplied = null;
-		for (String full : allowed) {
+		Wrap[] wraps = null;
+		for (Map.Entry<String, String> candidate : allowed.entrySet()) {
+			String full = candidate.getKey();
 			Type[] types = Type.getArgumentTypes("(" + full.substring(NAME_AND_ORDINAL.length()));
 			if (types.length != own.length) continue;
-			boolean[] wrap = new boolean[own.length];
+			List<GenericType> generic = parameters(candidate.getValue(), types.length);
+			Wrap[] wrap = new Wrap[own.length];
 			boolean fits = true;
 			for (int i = 0; i < own.length && fits; i++) {
-				if (types[i].equals(own[i])) continue;
-				wrap[i] = types[i].getDescriptor().equals(SUPPLIER) && (own[i].getSort() == Type.OBJECT || own[i].getSort() == Type.ARRAY);
-				fits = wrap[i];
+				wrap[i] = types[i].equals(own[i]) ? Wrap.NONE : wrap(own[i], types[i], generic == null ? null : generic.get(i));
+				fits = wrap[i] != null;
 			}
 			if (!fits) continue;
 			if (chosen != null) return null; // two fit: ambiguous
 			chosen = "(" + full.substring(NAME_AND_ORDINAL.length());
-			supplied = wrap;
+			wraps = wrap;
 		}
-		return chosen == null ? null : new Entry(enumName, name, chosen, null, new Computed(List.copyOf(code), constructor, supplied, null, null));
+		return chosen == null ? null : new Entry(enumName, name, chosen, null, new Computed(List.copyOf(code), constructor, wraps, null, null));
+	}
+
+	/**
+	 * How a value of type {@code own} reaches a parameter of type {@code taken} ({@code generic} its generic type, or
+	 * null when the constructor has no signature): in a supplier, when the parameter is a supplier of that type; in a
+	 * supplier of a list of its elements, when it is an array and the parameter a supplier of a list of them; or null.
+	 * Without a signature the supplier's type isn't known, and nothing is wrapped.
+	 */
+	private static Wrap wrap(Type own, Type taken, GenericType generic) {
+		if (!taken.getDescriptor().equals(SUPPLIER) || generic == null || generic.arguments.size() != 1) return null;
+		GenericType supplied = generic.arguments.get(0);
+		String erasure = supplied == null ? null : supplied.descriptor();
+		if (erasure == null || own.getSort() != Type.OBJECT && own.getSort() != Type.ARRAY) return null;
+		if (erasure.equals(own.getDescriptor())) return Wrap.SUPPLIER;
+		if (own.getSort() != Type.ARRAY || !erasure.equals(LIST) || supplied.arguments.size() != 1 || supplied.arguments.get(0) == null) return null;
+		String element = own.getDescriptor().substring(1);
+		return (element.startsWith("L") || element.startsWith("[")) && element.equals(supplied.arguments.get(0).descriptor()) ? Wrap.LIST_SUPPLIER : null;
+	}
+
+	/**
+	 * A method's parameter types from its generic signature, {@code count} of them: javac's signature of an enum's
+	 * constructor leaves out the name and ordinal, which are dropped where it has them. Null without a signature, or when
+	 * it doesn't give that many.
+	 */
+	private static List<GenericType> parameters(String signature, int count) {
+		if (signature == null) return null;
+		List<GenericType> parameters = new ArrayList<>();
+		try {
+			new SignatureReader(signature).accept(new SignatureVisitor(Opcodes.ASM9) {
+				@Override
+				public SignatureVisitor visitParameterType() {
+					GenericType type = new GenericType();
+					parameters.add(type);
+					return type;
+				}
+
+				@Override
+				public SignatureVisitor visitReturnType() {
+					return new GenericType();
+				}
+
+				@Override
+				public SignatureVisitor visitExceptionType() {
+					return new GenericType();
+				}
+
+				@Override
+				public SignatureVisitor visitClassBound() {
+					return new GenericType();
+				}
+
+				@Override
+				public SignatureVisitor visitInterfaceBound() {
+					return new GenericType();
+				}
+			});
+		} catch (RuntimeException e) {
+			return null; // a malformed signature: nothing is known of the types
+		}
+		if (parameters.size() == count + 2) return parameters.subList(2, parameters.size());
+		return parameters.size() == count ? parameters : null;
+	}
+
+	/**
+	 * A type of a generic signature, as far as wrapping an argument needs it: its erasure ({@link #descriptor()}, null
+	 * for a type variable) and its type arguments (null for a wildcard without a bound or with a lower one).
+	 */
+	private static final class GenericType extends SignatureVisitor {
+		private String erasure;
+		private GenericType component;
+		final List<GenericType> arguments = new ArrayList<>();
+
+		GenericType() {
+			super(Opcodes.ASM9);
+		}
+
+		String descriptor() {
+			if (component == null) return erasure;
+			String inner = component.descriptor();
+			return inner == null ? null : "[" + inner;
+		}
+
+		@Override
+		public void visitBaseType(char descriptor) {
+			erasure = String.valueOf(descriptor);
+		}
+
+		@Override
+		public void visitTypeVariable(String name) {
+			erasure = null;
+		}
+
+		@Override
+		public SignatureVisitor visitArrayType() {
+			component = new GenericType();
+			return component;
+		}
+
+		@Override
+		public void visitClassType(String name) {
+			erasure = "L" + name + ";";
+		}
+
+		@Override
+		public void visitInnerClassType(String name) {
+			erasure = erasure.substring(0, erasure.length() - 1) + "$" + name + ";";
+			arguments.clear();
+		}
+
+		@Override
+		public void visitTypeArgument() {
+			arguments.add(null);
+		}
+
+		@Override
+		public SignatureVisitor visitTypeArgument(char wildcard) {
+			GenericType argument = new GenericType();
+			arguments.add(wildcard == SignatureVisitor.SUPER ? null : argument);
+			return argument;
+		}
 	}
 
 	/**
@@ -233,6 +378,87 @@ final class EnumExtensions {
 		return insn instanceof LdcInsnNode ldc && ldc.cst instanceof Type type && type.getDescriptor().contains(self);
 	}
 
+	/** Whether the method is one javac gives the mixin as an enum: a constructor, its class initializer, {@code values()}, {@code valueOf(String)}. */
+	private static boolean enumMethod(MethodNode method, String self) {
+		return switch (method.name) {
+			case "<init>", "<clinit>" -> true;
+			case "values", "$values" -> method.desc.equals("()[" + self) && (method.access & Opcodes.ACC_STATIC) != 0;
+			case "valueOf" -> method.desc.equals("(Ljava/lang/String;)" + self) && (method.access & Opcodes.ACC_STATIC) != 0;
+			default -> false;
+		};
+	}
+
+	/**
+	 * Whether the mixin's other methods can stay a mixin once its constants go to NeoForge's file ({@link #rest}): none
+	 * is abstract without being a shadow, and they use nothing of the mixin that goes with its constants. Of the mixin
+	 * they may read its constants (the enum's fields NeoForge adds), call each other, and call what the enum declares or
+	 * {@code Enum} gives it; not read its other fields, construct it, nor call {@code Enum}'s methods as its super class.
+	 */
+	static boolean staysMixin(List<MethodNode> methods, String mixin, ClassNode target, Set<String> constants) {
+		String self = "L" + mixin + ";";
+		Set<String> own = new HashSet<>();
+		for (MethodNode m : methods) own.add(m.name + m.desc);
+		for (MethodNode m : methods) {
+			if ((m.access & Opcodes.ACC_NATIVE) != 0) return false;
+			if ((m.access & Opcodes.ACC_ABSTRACT) != 0 && Annotations.find(m.invisibleAnnotations, m.visibleAnnotations, SHADOW) == null) return false;
+			for (AbstractInsnNode insn : m.instructions) {
+				if (insn instanceof FieldInsnNode field && field.owner.equals(mixin)) {
+					if (field.getOpcode() != Opcodes.GETSTATIC || !constants.contains(field.name) || !field.desc.equals(self)) return false;
+				} else if (insn instanceof MethodInsnNode call) {
+					if (call.getOpcode() == Opcodes.INVOKESPECIAL && call.owner.equals("java/lang/Enum")) return false;
+					if (call.owner.equals(mixin) && !reachable(call.getOpcode(), call.name, call.desc, own, target, self)) return false;
+				} else if (insn instanceof TypeInsnNode type && type.getOpcode() == Opcodes.NEW && type.desc.equals(mixin)) {
+					return false;
+				} else if (insn instanceof InvokeDynamicInsnNode indy) {
+					for (Object arg : indy.bsmArgs) {
+						if (!(arg instanceof Handle h) || !h.getOwner().equals(mixin)) continue;
+						int opcode = switch (h.getTag()) {
+							case Opcodes.H_INVOKESTATIC -> Opcodes.INVOKESTATIC;
+							case Opcodes.H_INVOKEVIRTUAL -> Opcodes.INVOKEVIRTUAL;
+							case Opcodes.H_INVOKESPECIAL -> Opcodes.INVOKESPECIAL;
+							default -> -1; // a field or constructor of the mixin
+						};
+						if (opcode < 0 || !reachable(opcode, h.getName(), h.getDesc(), own, target, self)) return false;
+					}
+				}
+			}
+		}
+		return true;
+	}
+
+	/** Whether a call of the mixin's method stays valid once Mixin makes it the enum's: one of the methods kept, or the enum's own. */
+	private static boolean reachable(int opcode, String name, String desc, Set<String> own, ClassNode target, String self) {
+		if (own.contains(name + desc)) return true;
+		if (opcode == Opcodes.INVOKESPECIAL) return false;
+		String remapped = desc.replace(self, "L" + target.name + ";");
+		boolean wantStatic = opcode == Opcodes.INVOKESTATIC;
+		for (MethodNode m : target.methods) {
+			if (m.name.equals(name) && m.desc.equals(remapped) && ((m.access & Opcodes.ACC_STATIC) != 0) == wantStatic) return true;
+		}
+		return !wantStatic && ENUM_OWN.contains(name + remapped);
+	}
+
+	/**
+	 * The mixin without what NeoForge's enum extension file now carries (its constants, their array, its constructors,
+	 * javac's enum methods): an abstract mixin class, not an enum, with its other methods as compiled (frames included),
+	 * which Mixin applies as it would the enum mixin's, its references to the mixin becoming the enum's (CORPUS-65); null
+	 * when it has none. Called only for a mixin {@link #of} translated.
+	 */
+	static byte[] rest(byte[] mixinBytes) {
+		ClassNode node = new ClassNode();
+		new ClassReader(mixinBytes).accept(node, 0);
+		String self = "L" + node.name + ";";
+		node.methods.removeIf(m -> enumMethod(m, self));
+		if (node.methods.isEmpty()) return null;
+		node.access = node.access & ~(Opcodes.ACC_ENUM | Opcodes.ACC_FINAL) | Opcodes.ACC_ABSTRACT;
+		node.superName = "java/lang/Object";
+		node.signature = null;
+		node.fields.clear();
+		ClassWriter cw = new ClassWriter(0);
+		node.accept(cw);
+		return cw.toByteArray();
+	}
+
 	/** The entries, the computed ones with the methods {@code owner} gives them, numbered from {@code first}. */
 	static List<Entry> named(List<Entry> entries, String owner, int first) {
 		List<Entry> named = new ArrayList<>(entries.size());
@@ -240,7 +466,7 @@ final class EnumExtensions {
 		for (Entry e : entries) {
 			Computed c = e.computed();
 			named.add(c == null ? e : new Entry(e.enumName(), e.name(), e.constructor(), null,
-					new Computed(c.code(), c.loaded(), c.supplied(), owner, "arguments" + next++)));
+					new Computed(c.code(), c.loaded(), c.wraps(), owner, "arguments" + next++)));
 		}
 		return named;
 	}
@@ -248,7 +474,8 @@ final class EnumExtensions {
 	/**
 	 * The class {@code owner}, and the supplier class it uses if it does, by internal name: for each computed entry it holds, the
 	 * method NeoForge's loader calls for each of the constant's arguments. Each runs the mixin's code for them, then
-	 * returns the one asked for, boxed, in a supplier of it where the constructor takes one.
+	 * returns the one asked for, boxed, in a supplier of it (or of a list of an array's elements) where the constructor
+	 * takes one.
 	 */
 	static Map<String, byte[]> argumentsClasses(String owner, List<Entry> entries) {
 		String value = owner + "$Value";
@@ -272,7 +499,10 @@ final class EnumExtensions {
 				mv.visitLdcInsn(i);
 				mv.visitVarInsn(types[i].getOpcode(Opcodes.ILOAD), slots[i]);
 				box(mv, types[i]);
-				if (c.supplied()[i]) {
+				if (c.wraps()[i] == Wrap.LIST_SUPPLIER) {
+					mv.visitMethodInsn(Opcodes.INVOKESTATIC, "java/util/List", "of", "([Ljava/lang/Object;)Ljava/util/List;", true);
+				}
+				if (c.wraps()[i] != Wrap.NONE) {
 					mv.visitTypeInsn(Opcodes.NEW, value);
 					mv.visitInsn(Opcodes.DUP_X1);
 					mv.visitInsn(Opcodes.SWAP);
@@ -291,7 +521,7 @@ final class EnumExtensions {
 		classes.put(owner, cw.toByteArray());
 		boolean supplies = false;
 		for (Entry e : entries) {
-			if (e.computed() != null && owner.equals(e.computed().owner())) for (boolean b : e.computed().supplied()) supplies |= b;
+			if (e.computed() != null && owner.equals(e.computed().owner())) for (Wrap w : e.computed().wraps()) supplies |= w != Wrap.NONE;
 		}
 		if (supplies) classes.put(value, supplierClass(value));
 		return classes;

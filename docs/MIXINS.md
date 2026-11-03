@@ -20,9 +20,9 @@ a version's own configs come in through `version_mixin_configs` in its `gradle.p
 
 | Config file | Package | Versions | Sections | defaultRequire | overwrites.requireAnnotations | plugin |
 |---|---|---|---|---|---|---|
-| `mc/neoforge/1.21.1/src/main/resources/fabricated.mixins.json` | `io.github.cmdralph.fabricated.neoforge.mixin` | 1.21.1 | mixins 49, client 16 | 1 | true | `FabricatedMixinPlugin` (creates Fabric language adapters in `onLoad`; filters nothing) |
-| `mc/neoforge/1.21.11/src/main/resources/fabricated.mixins.json` | same | 1.21.11 | mixins 59, client 24 | 1 | true | same |
-| `mc/neoforge/common26/src/main/resources/fabricated.mixins.json` | same | 26.x | mixins 69, client 28 | 1 | true | same |
+| `mc/neoforge/1.21.1/src/main/resources/fabricated.mixins.json` | `io.github.cmdralph.fabricated.neoforge.mixin` | 1.21.1 | mixins 53, client 17 | 1 | true | `FabricatedMixinPlugin` (creates Fabric language adapters in `onLoad`; filters nothing) |
+| `mc/neoforge/1.21.11/src/main/resources/fabricated.mixins.json` | same | 1.21.11 | mixins 63, client 24 | 1 | true | same |
+| `mc/neoforge/common26/src/main/resources/fabricated.mixins.json` | same | 26.x | mixins 73, client 28 | 1 | true | same |
 | `mc/neoforge/1.21.1/src/main/resources/fabricated-biome.mixins.json` | `net.fabricmc.fabric.mixin.biome` | 1.21.1 | mixins 8 | 1 | true | none |
 | `mc/neoforge/1.21.11/src/main/resources/fabricated-biome.mixins.json` | same | 1.21.11 | mixins 10 | 1 | true | none |
 | `mc/neoforge/common26early/src/main/resources/fabricated-biome.mixins.json` | same | 26.1.2, 26.2 | mixins 10 | 1 | true | none |
@@ -41,9 +41,9 @@ a version's own configs come in through `version_mixin_configs` in its `gradle.p
 | `mc/neoforge/common12111/src/main/resources/fabricated-loot.mixins.json` | same | 1.21.11, 26.1.2, 26.2, 26.3 | mixins 5 | 1 | true | none |
 | `mc/neoforge/1.21.1/src/main/resources/fabricated-object-builder.mixins.json` | `net.fabricmc.fabric.mixin.object.builder` | 1.21.1 | mixins 2, client 2 | 1 | true | none |
 | `mc/neoforge/1.21.1/src/main/resources/fabricated-particles.mixins.json` | `net.fabricmc.fabric.mixin.client.particle` | 1.21.1 | client 4 | 1 | true | none |
-| `mc/neoforge/1.21.1/src/main/resources/fabricated-renderer.mixins.json` | `io.github.cmdralph.fabricated.neoforge.rendering.mixin` | 1.21.1, only with `fabric_renderer_api_v1` (FML `requiredMods`) | client 6 | 1 | true | none |
-| `mc/neoforge/1.21.11/src/main/resources/fabricated-renderer.mixins.json` | same | 1.21.11, only with `fabric_renderer_api_v1` (FML `requiredMods`) | client 2 | 1 | true | none |
-| `mc/neoforge/common26/src/main/resources/fabricated-renderer.mixins.json` | same | 26.x, only with `fabric_renderer_api_v1` (FML `requiredMods`) | client 2 | 1 | true | none |
+| `mc/neoforge/1.21.1/src/main/resources/fabricated-renderer.mixins.json` | `io.github.cmdralph.fabricated.neoforge.rendering.mixin` | 1.21.1, only with `fabric_renderer_api_v1` (FML `requiredMods`) | client 8 | 1 | true | none |
+| `mc/neoforge/1.21.11/src/main/resources/fabricated-renderer.mixins.json` | same | 1.21.11, only with `fabric_renderer_api_v1` (FML `requiredMods`) | client 5 | 1 | true | none |
+| `mc/neoforge/common26/src/main/resources/fabricated-renderer.mixins.json` | same | 26.x, only with `fabric_renderer_api_v1` (FML `requiredMods`) | client 4 | 1 | true | none |
 | `mc/neoforge/1.21.1/src/main/resources/fabricated-transfer.mixins.json` | `net.fabricmc.fabric.mixin.transfer` | 1.21.1 | mixins 14 | 1 | true | none |
 | `mc/neoforge/1.21.11/src/main/resources/fabricated-transfer.mixins.json` | same | 1.21.11 | mixins 16 | 1 | true | none |
 | `mc/neoforge/common26/src/main/resources/fabricated-transfer.mixins.json` | same | 26.x | mixins 17 | 1 | true | none |
@@ -62,9 +62,9 @@ Test-mod configs (not shipped):
 
 | Config | Package | defaultRequire | Mixins |
 |---|---|---|---|
-| `mc/neoforge/common/src/testmod/resources/fabricated-testmod.mixins.json` | `io.github.cmdralph.fabricated.testmod.mixin` | 1 | Plugin `TestMixinPlugin`. `BuiltInRegistriesMixin` (builds content from vanilla's registry bootstrap, CORPUS-31, and sees the built-in registries frozen, CORPUS-32), `LivingEntityMixin` (a private `self()` helper, as Fabric API's entity events module has, HIDE-1), `MinecraftServerMixin` (`@Inject tickServer TAIL`: mixins apply), `PackRepositoryMixin` (leaves a pack repository's sources immutable, as FrozenLib does, PACK-1), `PlayerListMixin` (replaces the server's player list, POLY-1), `RegistryDataLoaderMixin` (writes to built-in registries from that class's initializer, as Wover does, REG-3); client: `client.MinecraftStopMixin` (CI diagnostics: logs who asked the game to stop), `client.MinecraftEarlyReloadListenerMixin` (registers a reload listener from `Minecraft`'s constructor, before NeoForge's event). All in `mc/neoforge/common/src/testmod/java/.../mixin/` |
+| `mc/neoforge/common/src/testmod/resources/fabricated-testmod.mixins.json` | `io.github.cmdralph.fabricated.testmod.mixin` | 1 | Plugin `TestMixinPlugin`. `BuiltInRegistriesMixin` (builds content from vanilla's registry bootstrap, CORPUS-31, and sees the built-in registries frozen, CORPUS-32), `LivingEntityMixin` (a private `self()` helper, as Fabric API's entity events module has, HIDE-1), `LivingEntitySelfMixin` (adds an interface whose default `self()` is a second one beside NeoForge's, for the default bridge, CORPUS-63), `MappedRegistryMixin` (sees a registry frozen, as Flashback does, REG-8), `MinecraftServerMixin` (`@Inject tickServer TAIL`: mixins apply), `MobMultipartMixin` (adds an interface whose default `isMultipartEntity()` is a second one beside the one `Mob` has through `Entity`, for the default bridge, DEFAULT-1), `PackRepositoryMixin` (leaves a pack repository's sources immutable, as FrozenLib does, PACK-1), `PlayerListMixin` (replaces the server's player list, POLY-1), `RegistryDataLoaderMixin` (writes to built-in registries from that class's initializer, as Wover does, REG-3); client: `client.MinecraftStopMixin` (CI diagnostics: logs who asked the game to stop), `client.MinecraftEarlyReloadListenerMixin` (registers a reload listener from `Minecraft`'s constructor, before NeoForge's event). All in `mc/neoforge/common/src/testmod/java/.../mixin/` |
 | `mc/neoforge/common26/src/testmodfrapi/resources/fabricated-testmod-frapi.mixins.json` | `io.github.cmdralph.fabricated.testmod.frapi.mixin` | 1 | `BakedQuadMixin` (`@Inject <init> RETURN` with vanilla's parameters, `mc/neoforge/common26/src/testmodfrapi/java/.../mixin/BakedQuadMixin.java`). Exercises pre-flight's constructor repair and handler bridge (CI's renderer API gate) |
-| `mc/shared/src/testmodbroken/resources/badmixin/fabricated-testmod-badmixin.mixins.json` | `io.github.cmdralph.fabricated.testmod.broken.mixin` | unset | `ImpossibleMixin` (`@Inject method="fabricatedMethodThatDoesNotExist" HEAD require=1`, `.../ImpossibleMixin.java`). Meant to fail pre-flight, which leaves its injector out as the mixin is self-contained (`ci/neoforge/smoke-server.sh`) |
+| `mc/shared/src/testmodbroken/resources/badmixin/fabricated-testmod-badmixin.mixins.json` | `io.github.cmdralph.fabricated.testmod.broken.mixin` | unset | `ImpossibleMixin` (`@Inject method="fabricatedMethodThatDoesNotExist" HEAD require=1`, `.../ImpossibleMixin.java`) and `UnmatchedCallMixin` (`@Inject method="tickServer"` at a call it never makes, `require=1`). Meant to fail pre-flight, which leaves their injectors out as the mixins are self-contained (`ci/neoforge/smoke-server.sh`); with pre-flight ignored, Mixin fails on each as it applies it, and the next launch leaves it out (`ci/neoforge/smoke-apply-failure.sh`, APPLY-1) |
 
 ## Fragility review
 
@@ -106,7 +106,11 @@ Test-mod configs (not shipped):
   class is marked broken (FRAPI rule 8). On 1.21.1 the renderer config's `SectionCompilerMixin` and
   `BlockRenderDispatcherMixin.fabricated$batched` run for every block of every section, once per render type: both read
   the model they are given (a local or an argument, no lookup), and `MultiPartBakedModelMixin` and
-  `WeightedBakedModelMixin` keep their answer as on the other versions.
+  `WeightedBakedModelMixin` keep their answer as on the other versions. Its `ForwardingBakedModelMixin` runs for every
+  block a Fabric wrapper model draws (Continuity wraps every block's): one thread-local read outside a throw, and
+  `Operation.call`'s argument array, which the JIT can drop once the call is inlined; task 6 measures it. The renderer
+  configs' `WrapperBlockStateModelMixin` (1.21.11, 26.x) costs the same, and each draw of a Fabric model there two
+  thread-local reads.
 - **One name, different targets per version:** `client.MovingBlockRenderMixin` (26.1.2: `BlockFeatureRenderer`; 26.2,
   26.3: `MovingBlockFeatureRenderer`, which 26.3 adds forced translucency to) and `client.BlockBreakingRenderMixin`
   (26.1.2: `BlockFeatureRenderer`; 26.2, 26.3: `LevelRenderer`, from `mc/neoforge/common26late`).
@@ -117,7 +121,8 @@ Test-mod configs (not shipped):
 - **Placeholder:** `AdvancementReloadMixin` is empty on 26.1.2 and 26.2 (`mc/neoforge/common26early`): the shared 26.x config
   lists it and only 26.3 needs it.
 - **Priorities:** `WalkNodeEvaluatorMixin` (1.21.1: `LandPathNodeMakerMixin`) 999 and `LootTableMixin` 3000, both upstream's values;
-  `PacketDecoderContextMixin`, `PacketEncoderContextMixin` and `GenericPacketSplitterContextMixin` 500 (26.x); and
+  `PacketDecoderContextMixin`, `PacketEncoderContextMixin` and `GenericPacketSplitterContextMixin` 500 (26.x), so the
+  packet context is bound around `PacketEncoderMeasuredMixin` and `GenericPacketSplitterMeasureMixin` (900, NET-10); and
   `client.GuiRendererPictureInPictureMixin` 100, so it applies before other mods' mixins, which shadow its field.
 
 ## Per-config tables
@@ -258,10 +263,12 @@ Versions: 1.21.1 · package `io.github.cmdralph.fabricated.neoforge.rendering.mi
 
 | Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
 |---|---|---|---|---|---|---|---|---|
+| client | AbstractRenderContextAccessor | 1.21.1 (1.21.1) | Indigo's AbstractRenderContext (`@Pseudo`, `targets`: package-private, a mod's) | @Accessor transformStack → fabricated$transformStack | | | | default |
 | client | BlockRenderDispatcherMixin | 1.21.1 (1.21.1) | n.m.client.renderer.block.BlockRenderDispatcher | @WrapWithCondition → fabricated$breakingOverlay | "renderBreakingTexture(L…/BlockState;L…/BlockPos;L…/BlockAndTintGetter;L…/PoseStack;L…/VertexConsumer;L…/ModelData;)V" | INVOKE `L…/ModelBlockRenderer;tesselateBlock(…;L…/ModelData;L…/RenderType;)V` (NeoForge's overload) | — | default |
 | client | BlockRenderDispatcherMixin | 1.21.1 (1.21.1) | n.m.client.renderer.block.BlockRenderDispatcher | @WrapWithCondition → fabricated$batched | "renderBatched(L…/BlockState;L…/BlockPos;L…/BlockAndTintGetter;L…/PoseStack;L…/VertexConsumer;ZL…/RandomSource;L…/ModelData;L…/RenderType;)V" | INVOKE `L…/ModelBlockRenderer;tesselateBlock(…;L…/ModelData;L…/RenderType;)V` (NeoForge's overload) | — | default |
 | client | ClientHooksMixin | 1.21.1 (1.21.1) | neo.client.ClientHooks | @WrapWithCondition → fabricated$fabricModels (static) | "renderPistonMovedBlocks(L…/BlockPos;L…/BlockState;L…/PoseStack;L…/MultiBufferSource;L…/Level;ZIL…/BlockRenderDispatcher;)V" | INVOKE `L…/ModelBlockRenderer;tesselateBlock(…;L…/ModelData;L…/RenderType;)V` (NeoForge's overload) | — | default |
 | client | FallingBlockRendererMixin | 1.21.1 (1.21.1) | n.m.client.renderer.entity.FallingBlockRenderer | @WrapWithCondition → fabricated$fabricModels | "render(L…/FallingBlockEntity;FFL…/PoseStack;L…/MultiBufferSource;I)V" | INVOKE `L…/ModelBlockRenderer;tesselateBlock(…;L…/ModelData;L…/RenderType;)V` (NeoForge's overload) | — | default |
+| client | ForwardingBakedModelMixin | 1.21.1 (1.21.1) | Fabric API's ForwardingBakedModel (`@Pseudo`, `targets`: a mod's) | @WrapMethod → fabricated$holdWrappedThrow | "emitBlockQuads(L…/BlockAndTintGetter;L…/BlockState;L…/BlockPos;L…/Supplier;L…/RenderContext;)V" | holds a wrapped model's throw while Fabricated's Indigo draw is under way (HeldThrows, CORPUS-56) | — | require=0 |
 | client | MultiPartBakedModelMixin | 1.21.1 (1.21.1) | n.m.client.resources.model.MultiPartBakedModel | no injectors; implements FabricBlockRendering.Composite; @Shadow selectors; @Unique fabricated$state (cached per broken-class generation) | | | | |
 | client | SectionCompilerMixin | 1.21.1 (1.21.1) | n.m.client.renderer.chunk.SectionCompiler | @WrapWithCondition → fabricated$fabricModels | "compile(L…/SectionPos;L…/RenderChunkRegion;L…/VertexSorting;L…/SectionBufferBuilderPack;L…/List;)L…/SectionCompiler$Results;" | INVOKE `L…/BlockRenderDispatcher;renderBatched(…;L…/ModelData;L…/RenderType;)V` sugar:@Local(argsOnly = true) ×2, @Local Map, @Local BakedModel; implements FabricBlockRendering.SectionLayers (@Shadow getOrBeginLayer) | — | default |
 | client | SectionCompilerMixin | 1.21.1 (1.21.1) | n.m.client.renderer.chunk.SectionCompiler | @Inject → fabricated$endSection | same | RETURN | — | default |
@@ -299,6 +306,8 @@ Versions: 1.21.1 · package `io.github.cmdralph.fabricated.neoforge.mixin` · re
 | mixins | ServerCommonPacketListenerDisconnectMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.server.network.ServerCommonPacketListenerImpl | @Inject → fabricated$onDisconnect | "onDisconnect" | HEAD | — | default |
 | mixins | PlayerListViewMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.server.players.PlayerList | @ModifyReturnValue → fabricated$viewOfCurrentList (NeoForge's unmodifiable view follows the list in the field, POLY-1) | "getPlayers" | RETURN | — | default |
 | mixins | ChunkGeneratorFeaturesMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.world.level.chunk.ChunkGenerator | @Inject → fabricated$keepNeoForgesLazy | "refreshFeaturesPerStep" | HEAD | — | require=0 |
+| mixins | CrashReportMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.CrashReport | @Inject → fabricated$recordMixinFailure (records a Fabric mod's mixin the crash's throwable says failed as Mixin applied it, for the next launch to leave out, APPLY-1) | "<init>(L…/String;L…/Throwable;)V" | TAIL | — | default |
+| mixins | UtilMixin | 1.21.1 (1.21.1) | n.m.Util | @Inject → fabricated$recordMixinFailure (records a Fabric mod's mixin the throwable a game worker thread stops on says failed as Mixin applied it, for the next launch to leave out, APPLY-2) | "onThreadException(L…/Thread;L…/Throwable;)V" | HEAD | — | require=0 |
 | mixins | ResourceMixin | 1.21.1 (1.21.1) | n.m.server.packs.resources.Resource | no injectors; implements FabricResource; adds methods getFabricPackSource | | | | |
 | mixins | MappedRegistryMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.core.MappedRegistry | no injectors; implements FabricRegistry | | | | |
 | mixins | MappedRegistryEarlyWriteMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.core.MappedRegistry | @Inject → fabricated$openForEarlyWrite | "validateWrite(Lnet/minecraft/resources/ResourceKey;)V" | HEAD | — | default |
@@ -340,6 +349,9 @@ Versions: 1.21.1 · package `io.github.cmdralph.fabricated.neoforge.mixin` · re
 | mixins | NetworkRegistryUnregisteredPayloadMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | neo.network.registration.NetworkRegistry | @Inject → fabricated$sendUnregisteredToClient | "checkPacket(L…/Packet;L…/ServerCommonPacketListener;)V" | HEAD cancellable=true | — | default |
 | mixins | NetworkRegistryUnregisteredPayloadMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | neo.network.registration.NetworkRegistry | @Inject → fabricated$sendUnregisteredToServer | "checkPacket(L…/Packet;L…/ClientCommonPacketListener;)V" | HEAD cancellable=true | — | default |
 | mixins | VanillaNamespacePayloadMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.server.network.ServerCommonPacketListenerImpl | @Inject → fabricated$receiveVanillaNamespace | "handleCustomPayload(L…/ServerboundCustomPayloadPacket;)V" | HEAD cancellable=true | — | default |
+| mixins | GenericPacketSplitterMeasureMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | neo.network.filters.GenericPacketSplitter | @WrapOperation → fabricated$keepMeasuredBytes (@Local argsOnly ChannelHandlerContext) | "encode(L…/ChannelHandlerContext;L…/Packet;L…/List;)V" | INVOKE `L…/StreamCodec;encode(Ljava/lang/Object;Ljava/lang/Object;)V` | — | default |
+| mixins | GenericPacketSplitterMeasureMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | neo.network.filters.GenericPacketSplitter | @WrapMethod → fabricated$dropWhatIsNotHandedOn | "encode(L…/ChannelHandlerContext;L…/Packet;L…/List;)V" |  | — | default |
+| mixins | PacketEncoderMeasuredMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.network.PacketEncoder | @WrapOperation → fabricated$writeMeasuredBytes (@Local argsOnly ChannelHandlerContext) | "encode(L…/ChannelHandlerContext;L…/Packet;L…/ByteBuf;)V" | INVOKE `L…/StreamCodec;encode(Ljava/lang/Object;Ljava/lang/Object;)V` | — | default |
 | mixins | NetworkRegistryMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | neo.network.registration.NetworkRegistry | @Inject → fabricated$clientboundCodec (also Fabric codecs of `minecraft` payloads, NET-4) | "getCodec" | HEAD cancellable=true | — | default |
 | mixins | MenuProviderMixin | common121 (1.21.1,1.21.11) | n.m.world.MenuProvider | no injectors; implements FabricScreenHandlerFactory | | | | |
 | mixins | ServerPlayerMenuMixin | common121 (1.21.1,1.21.11) | n.m.server.level.ServerPlayer | @WrapMethod → fabricated$trackOpener | OPEN_MENU |  | — | default |
@@ -373,6 +385,7 @@ Versions: 1.21.1 · package `io.github.cmdralph.fabricated.neoforge.mixin` · re
 | client | client.SoundEngineStreamMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.client.sounds.SoundEngine | @WrapOperation → fabricated$fabricAudioStream | "play" | INVOKE `L…/SoundInstance;getStream(L…/SoundBufferLibrary;L…/Sound;Z)L…/CompletableFuture;` | — | default |
 | client | client.ClientChunkCacheMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.client.multiplayer.ClientChunkCache | @ModifyExpressionValue → fabricated$unloadOutOfRange | "updateViewRadius" | INVOKE `L…/ClientChunkCache$Storage;inRange(II)Z` sugar:@Local LevelChunk | — | default |
 | client | client.ClientChunkCacheMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.client.multiplayer.ClientChunkCache | @Inject → fabricated$unloadReplaced | "replaceWithPacketData" | NEW `L…/LevelChunk` sugar:@Local LevelChunk | — | default |
+| client | client.ExtendedBlockModelDeserializerMixin | 1.21.1 (1.21.1) | neo.client.model.ExtendedBlockModelDeserializer | @WrapOperation → fabricated$leaveFabricModsLoadersToThem (a `loader` NeoForge doesn't know, in a Fabric mod's namespace, is left to that mod's hook, CORPUS-62) | "deserialize(L…/JsonElement;L…/Type;L…/JsonDeserializationContext;)L…/BlockModel;" | INVOKE `L…/ExtendedBlockModelDeserializer;deserializeGeometry(L…/JsonDeserializationContext;L…/JsonObject;)L…/IUnbakedGeometry;` | — | default |
 | client | client.OptionsDefaultPacksMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.client.Options | @Inject → fabricated$defaultEnabledPacks | "loadSelectedResourcePacks(L…/PackRepository;)V" | HEAD | — | default |
 
 ### `mc/neoforge/1.21.11/src/main/resources/fabricated-biome.mixins.json`
@@ -437,6 +450,10 @@ Versions: 1.21.11 · package `io.github.cmdralph.fabricated.neoforge.rendering.m
 |---|---|---|---|---|---|---|---|---|
 | client | BlockModelPartMixin | 1.21.11 (1.21.11) | n.m.client.renderer.block.model.BlockModelPart (interface) | no injectors; extends FabricBlockModelPart; adds default emitQuads (FrapiDefaults: a part without its own keeps NeoForge's ambient occlusion) | | | | |
 | client | BlockStateModelMixin | 1.21.11 (1.21.11) | n.m.client.renderer.block.model.BlockStateModel (interface) | no injectors; extends FabricBlockStateModel, BlockStateModelExtension; adds default emitQuads (FrapiDefaults: the parts NeoForge's level-aware collectParts gives) and default collectParts (NeoForge's level-aware one: a Fabric model's parts made from the quads it emits) | | | | |
+| client | LayerRenderStateMixin | 1.21.11 (1.21.11) | n.m.client.renderer.item.ItemStackRenderState$LayerRenderState | @Inject → fabricated$clearMesh | "clear()V" | RETURN | — | default |
+| client | LayerRenderStateMixin | 1.21.11 (1.21.11) | n.m.client.renderer.item.ItemStackRenderState$LayerRenderState | @Inject → fabricated$drawMesh | "submit" | HEAD | — | default |
+| client | MutableQuadViewAccessor | 1.21.11 (1.21.11) | Indigo's MutableQuadViewImpl (`@Pseudo`, `targets`: a mod's) | @Accessor transformStack → fabricated$transformStack | | | | default |
+| client | WrapperBlockStateModelMixin | 1.21.11 (1.21.11) | Fabric API's WrapperBlockStateModel (`@Pseudo`, `targets`: a mod's) | @WrapMethod → fabricated$holdWrappedThrow | "emitQuads(L…/QuadEmitter;L…/BlockAndTintGetter;L…/BlockPos;L…/BlockState;L…/RandomSource;L…/Predicate;)V" | holds a wrapped model's throw while one of Fabricated's draws of a Fabric model is under way (HeldThrows, CORPUS-56) | — | require=0 |
 
 ### `mc/neoforge/1.21.11/src/main/resources/fabricated-transfer.mixins.json`
 
@@ -474,6 +491,8 @@ Versions: 1.21.11 · package `io.github.cmdralph.fabricated.neoforge.mixin` · r
 | mixins | ReloadableServerResourcesTagsLoadedMixin | 1.21.11 (1.21.11) | n.m.server.ReloadableServerResources | @Inject → fabricated$keepRegistries | "<init>" | TAIL | — | default |
 | mixins | ReloadableServerResourcesTagsLoadedMixin | 1.21.11 (1.21.11) | n.m.server.ReloadableServerResources | @Inject → fabricated$tagsLoaded (fires Fabric's `TAGS_LOADED` where upstream does) | "updateStaticRegistryTags" | TAIL | — | default |
 | mixins | ChunkGeneratorFeaturesMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.world.level.chunk.ChunkGenerator | @Inject → fabricated$keepNeoForgesLazy | "refreshFeaturesPerStep" | HEAD | — | require=0 |
+| mixins | CrashReportMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.CrashReport | @Inject → fabricated$recordMixinFailure (records a Fabric mod's mixin the crash's throwable says failed as Mixin applied it, for the next launch to leave out, APPLY-1) | "<init>(L…/String;L…/Throwable;)V" | TAIL | — | default |
+| mixins | UtilMixin | common12111 (1.21.11,26.1.2,26.2,26.3) | n.m.util.Util | @Inject → fabricated$recordMixinFailure (records a Fabric mod's mixin the throwable a game worker thread stops on says failed as Mixin applied it, for the next launch to leave out, APPLY-2) | "onThreadException(L…/Thread;L…/Throwable;)V" | HEAD | — | require=0 |
 | mixins | ReloadableServerResourcesMixin | common12111 (1.21.11,26.1.2,26.2,26.3) | n.m.server.ReloadableServerResources | no injectors; implements FabricDataResourceStoreHolder; adds methods fabric$getDataResourceStore; @Unique fields fabricated$dataResourceStore | | | | |
 | mixins | ResourceMixin | common12111 (1.21.11,26.1.2,26.2,26.3) | n.m.server.packs.resources.Resource | no injectors; implements FabricResource; adds methods getFabricPackSource | | | | |
 | mixins | MappedRegistryMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.core.MappedRegistry | no injectors; implements FabricRegistry | | | | |
@@ -526,6 +545,9 @@ Versions: 1.21.11 · package `io.github.cmdralph.fabricated.neoforge.mixin` · r
 | mixins | NetworkRegistryUnregisteredPayloadMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | neo.network.registration.NetworkRegistry | @Inject → fabricated$sendUnregisteredToClient | "checkPacket(L…/Packet;L…/ServerCommonPacketListener;)V" | HEAD cancellable=true | — | default |
 | mixins | NetworkRegistryUnregisteredPayloadMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | neo.network.registration.NetworkRegistry | @Inject → fabricated$sendUnregisteredToServer | "checkPacket(L…/Packet;L…/ClientCommonPacketListener;)V" | HEAD cancellable=true | — | default |
 | mixins | VanillaNamespacePayloadMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.server.network.ServerCommonPacketListenerImpl | @Inject → fabricated$receiveVanillaNamespace | "handleCustomPayload(L…/ServerboundCustomPayloadPacket;)V" | HEAD cancellable=true | — | default |
+| mixins | GenericPacketSplitterMeasureMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | neo.network.filters.GenericPacketSplitter | @WrapOperation → fabricated$keepMeasuredBytes (@Local argsOnly ChannelHandlerContext) | "encode(L…/ChannelHandlerContext;L…/Packet;L…/List;)V" | INVOKE `L…/StreamCodec;encode(Ljava/lang/Object;Ljava/lang/Object;)V` | — | default |
+| mixins | GenericPacketSplitterMeasureMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | neo.network.filters.GenericPacketSplitter | @WrapMethod → fabricated$dropWhatIsNotHandedOn | "encode(L…/ChannelHandlerContext;L…/Packet;L…/List;)V" |  | — | default |
+| mixins | PacketEncoderMeasuredMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.network.PacketEncoder | @WrapOperation → fabricated$writeMeasuredBytes (@Local argsOnly ChannelHandlerContext) | "encode(L…/ChannelHandlerContext;L…/Packet;L…/ByteBuf;)V" | INVOKE `L…/StreamCodec;encode(Ljava/lang/Object;Ljava/lang/Object;)V` | — | default |
 | mixins | MenuProviderMixin | common121 (1.21.1,1.21.11) | n.m.world.MenuProvider | no injectors; implements FabricScreenHandlerFactory | | | | |
 | mixins | ServerPlayerMenuMixin | common121 (1.21.1,1.21.11) | n.m.server.level.ServerPlayer | @WrapMethod → fabricated$trackOpener | OPEN_MENU |  | — | default |
 | mixins | ServerPlayerMenuMixin | common121 (1.21.1,1.21.11) | n.m.server.level.ServerPlayer | @WrapOperation → fabricated$shouldCloseCurrentScreen | OPEN_MENU | INVOKE `L…/MenuProvider;shouldTriggerClientSideContainerClosingOnOpen()Z` | — | default |
@@ -829,6 +851,8 @@ Versions: 26.1.2, 26.2, 26.3 · package `io.github.cmdralph.fabricated.neoforge.
 | mixins | MinecraftServerMixin | common12111 (1.21.11,26.1.2,26.2,26.3) | n.m.server.MinecraftServer | no injectors; implements DataResourceStore; adds methods getOrThrow | | | | |
 | mixins | PlayerListViewMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.server.players.PlayerList | @ModifyReturnValue → fabricated$viewOfCurrentList (NeoForge's unmodifiable view follows the list in the field, POLY-1) | "getPlayers" | RETURN | — | default |
 | mixins | ChunkGeneratorFeaturesMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.world.level.chunk.ChunkGenerator | @Inject → fabricated$keepNeoForgesLazy | "refreshFeaturesPerStep" | HEAD | — | require=0 |
+| mixins | CrashReportMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.CrashReport | @Inject → fabricated$recordMixinFailure (records a Fabric mod's mixin the crash's throwable says failed as Mixin applied it, for the next launch to leave out, APPLY-1) | "<init>(L…/String;L…/Throwable;)V" | TAIL | — | default |
+| mixins | UtilMixin | common12111 (1.21.11,26.1.2,26.2,26.3) | n.m.util.Util | @Inject → fabricated$recordMixinFailure (records a Fabric mod's mixin the throwable a game worker thread stops on says failed as Mixin applied it, for the next launch to leave out, APPLY-2) | "onThreadException(L…/Thread;L…/Throwable;)V" | HEAD | — | require=0 |
 | mixins | ReloadableServerResourcesMixin | common12111 (1.21.11,26.1.2,26.2,26.3) | n.m.server.ReloadableServerResources | no injectors; implements FabricDataResourceStoreHolder; adds methods fabric$getDataResourceStore; @Unique fields fabricated$dataResourceStore | | | | |
 | mixins | ResourceMixin | common12111 (1.21.11,26.1.2,26.2,26.3) | n.m.server.packs.resources.Resource | no injectors; implements FabricResource; adds methods getFabricPackSource | | | | |
 | mixins | MappedRegistryMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.core.MappedRegistry | no injectors; implements FabricRegistry | | | | |
@@ -884,6 +908,9 @@ Versions: 26.1.2, 26.2, 26.3 · package `io.github.cmdralph.fabricated.neoforge.
 | mixins | NetworkRegistryUnregisteredPayloadMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | neo.network.registration.NetworkRegistry | @Inject → fabricated$sendUnregisteredToClient | "checkPacket(L…/Packet;L…/ServerCommonPacketListener;)V" | HEAD cancellable=true | — | default |
 | mixins | NetworkRegistryUnregisteredPayloadMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | neo.network.registration.NetworkRegistry | @Inject → fabricated$sendUnregisteredToServer | "checkPacket(L…/Packet;L…/ClientCommonPacketListener;)V" | HEAD cancellable=true | — | default |
 | mixins | VanillaNamespacePayloadMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.server.network.ServerCommonPacketListenerImpl | @Inject → fabricated$receiveVanillaNamespace | "handleCustomPayload(L…/ServerboundCustomPayloadPacket;)V" | HEAD cancellable=true | — | default |
+| mixins | GenericPacketSplitterMeasureMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | neo.network.filters.GenericPacketSplitter | @WrapOperation → fabricated$keepMeasuredBytes (@Local argsOnly ChannelHandlerContext) | "encode(L…/ChannelHandlerContext;L…/Packet;L…/List;)V" | INVOKE `L…/StreamCodec;encode(Ljava/lang/Object;Ljava/lang/Object;)V` | — | default |
+| mixins | GenericPacketSplitterMeasureMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | neo.network.filters.GenericPacketSplitter | @WrapMethod → fabricated$dropWhatIsNotHandedOn | "encode(L…/ChannelHandlerContext;L…/Packet;L…/List;)V" |  | — | default |
+| mixins | PacketEncoderMeasuredMixin | common (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.network.PacketEncoder | @WrapOperation → fabricated$writeMeasuredBytes (@Local argsOnly ChannelHandlerContext) | "encode(L…/ChannelHandlerContext;L…/Packet;L…/ByteBuf;)V" | INVOKE `L…/StreamCodec;encode(Ljava/lang/Object;Ljava/lang/Object;)V` | — | default |
 | mixins | PacketDecoderContextMixin | common26 (26.1.2,26.2,26.3) | n.m.network.PacketDecoder | @WrapMethod → fabricated$withPacketContext | "decode" |  | — | default |
 | mixins | PacketEncoderContextMixin | common26 (26.1.2,26.2,26.3) | n.m.network.PacketEncoder | @WrapMethod → fabricated$withPacketContext | "encode(L…/ChannelHandlerContext;L…/Packet;L…/ByteBuf;)V" |  | — | default |
 | mixins | GenericPacketSplitterContextMixin | common26 (26.1.2,26.2,26.3) | neo.network.filters.GenericPacketSplitter | @WrapMethod → fabricated$encodeWithPacketContext | "encode(L…/ChannelHandlerContext;L…/Packet;L…/List;)V" |  | — | default |
@@ -951,6 +978,8 @@ Versions: 26.1.2, 26.2, 26.3 · package `io.github.cmdralph.fabricated.neoforge.
 |---|---|---|---|---|---|---|---|---|
 | client | BlockStateModelMixin | common26 (26.1.2,26.2,26.3) | n.m.client.renderer.block.dispatch.BlockStateModel (interface) | no injectors; extends FabricBlockStateModel; adds default emitQuads (FrapiDefaults: NeoForge's level-aware collectParts) | | | | |
 | client | BlockStateModelPartMixin | common26 (26.1.2,26.2,26.3) | n.m.client.renderer.block.dispatch.BlockStateModelPart (interface) | no injectors; extends FabricBlockStateModelPart; adds default emitQuads (FrapiDefaults: NeoForge's part and quad ambient occlusion) | | | | |
+| client | MutableQuadViewAccessor | common26 (26.1.2,26.2,26.3) | Indigo's MutableQuadViewImpl (`@Pseudo`, `targets`: a mod's) | @Accessor transformStack → fabricated$transformStack | | | | default |
+| client | WrapperBlockStateModelMixin | common26 (26.1.2,26.2,26.3) | Fabric API's WrapperBlockStateModel (`@Pseudo`, `targets`: a mod's) | @WrapMethod → fabricated$holdWrappedThrow | "emitQuads(L…/QuadEmitter;L…/BlockAndTintGetter;L…/BlockPos;L…/BlockState;L…/RandomSource;L…/Predicate;)V" | holds a wrapped model's throw while one of Fabricated's draws of a Fabric model is under way (HeldThrows, CORPUS-56) | — | require=0 |
 
 ### `mc/neoforge/common26early/src/main/resources/fabricated-biome.mixins.json`
 
@@ -987,7 +1016,10 @@ Versions: 1.21.1, 1.21.11, 26.1.2, 26.2, 26.3 · package `io.github.cmdralph.fab
 | mixins | BuiltInRegistriesMixin | common/testmod (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.core.registries.BuiltInRegistries | @Inject → fabricatedTest$buildContent (builds content as vanilla's bootstrap creates the registries' contents, CORPUS-31) | "createContents" | TAIL | — | default |
 | mixins | BuiltInRegistriesMixin | common/testmod (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.core.registries.BuiltInRegistries | @Inject → fabricatedTest$frozen (sees the built-in registries frozen, as Wover does, CORPUS-32) | "freeze" | HEAD | — | default |
 | mixins | LivingEntityMixin | common/testmod (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.world.entity.LivingEntity | @Inject → fabricatedTest$useSelf; adds a @Unique private self(), the helper Fabric API's entity events module has (HIDE-1) | "getMaxHealth" | HEAD | — | default |
+| mixins | LivingEntitySelfMixin | common/testmod (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.world.entity.LivingEntity | none; adds `DefaultBridgeTest.OwnSelf`, whose default `self()` is a second one beside NeoForge's `ILivingEntityExtension.self()`, for the default bridge (CORPUS-11, CORPUS-63) | — | — | — | — |
+| mixins | MappedRegistryMixin | common/testmod (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.core.MappedRegistry | @Inject → fabricatedTest$freezing (sees a registry frozen, as Flashback does; never before the main initializers, REG-8) | "freeze" | HEAD | — | default |
 | mixins | MinecraftServerMixin | common/testmod (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.server.MinecraftServer | @Inject → fabricatedTest$afterTick | "tickServer" | TAIL | — | default |
+| mixins | MobMultipartMixin | common/testmod (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.world.entity.Mob | none; adds `DefaultBridgeTest.OwnMultipart`, whose default `isMultipartEntity()` is a second one beside the one `Mob` has through `Entity`'s NeoForge extension (`IEntityExtension`), for the default bridge through a superclass (DEFAULT-1) | — | — | — | — |
 | mixins | PackRepositoryMixin | common/testmod (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.server.packs.repository.PackRepository | @Inject → fabricatedTest$immutableSources (leaves the sources in an immutable set, PACK-1) | "<init>" | RETURN | — | default |
 | mixins | PlayerListMixin | common/testmod (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.server.players.PlayerList | @Inject → fabricatedTest$replaceList (replaces the player list, POLY-1) | "<init>" | RETURN | — | default |
 | mixins | RegistryDataLoaderMixin | common/testmod (1.21.1,1.21.11,26.1.2,26.2,26.3) | n.m.resources.RegistryDataLoader | @Inject → fabricatedTest$writeEarly (writes to built-in registries, REG-3) | "<clinit>" | HEAD | — | default |
@@ -1009,5 +1041,6 @@ Versions: all · package `io.github.cmdralph.fabricated.testmod.broken.mixin` ·
 | Section | Mixin | Source (versions) | Target(s) | Injector → handler | method | @At value / target / extras | ordinal | require/expect/allow |
 |---|---|---|---|---|---|---|---|---|
 | mixins | ImpossibleMixin | common/testmodbroken (test only) | n.m.server.MinecraftServer | @Inject → fabricatedTest$never | "fabricatedMethodThatDoesNotExist" | HEAD | — | require=1 |
+| mixins | UnmatchedCallMixin | common/testmodbroken (test only) | n.m.server.MinecraftServer | @Inject → fabricatedTest$never | "tickServer" | INVOKE `L…/MinecraftServer;fabricatedCallThatIsNeverMade()V` | — | require=1 |
 
 ---

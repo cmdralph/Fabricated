@@ -66,6 +66,28 @@ class PatchAlignmentTest {
 		assertArrayEquals(new int[] {7, 9}, alignment.replacementOf(4), "the overload's call, and what follows it until the return");
 	}
 
+	@Test
+	void aReplacementBetweenInstructionsThePatchRepeatsOnBothSidesIsAmongThoseWhosePlacesAreUncertain() {
+		// As NeoForge 21.1's Camera.setup: vanilla's setRotation(-xRot) became setRotation(-xRot, -roll), and the next
+		// statement starts with an ALOAD, as the roll's load does. From the front vanilla's FNEG and that ALOAD pair with the
+		// patch's first ones, from the back with its second ones, so nothing is placed by both between them.
+		MethodNode vanilla = method(new InsnNode(Opcodes.ICONST_1), new InsnNode(Opcodes.POP), new VarInsnNode(Opcodes.ALOAD, 0),
+				new VarInsnNode(Opcodes.ALOAD, 0), xRot(), new InsnNode(Opcodes.FNEG), setRotation("(F)V"), new VarInsnNode(Opcodes.ALOAD, 0), move(),
+				new InsnNode(Opcodes.ICONST_2), new InsnNode(Opcodes.POP), new InsnNode(Opcodes.RETURN));
+		MethodNode patched = method(new InsnNode(Opcodes.ICONST_3), new InsnNode(Opcodes.POP), new VarInsnNode(Opcodes.ALOAD, 0),
+				new VarInsnNode(Opcodes.ALOAD, 0), xRot(), new InsnNode(Opcodes.FNEG), new VarInsnNode(Opcodes.ALOAD, 0),
+				new FieldInsnNode(Opcodes.GETFIELD, "game/Camera", "roll", "F"), new InsnNode(Opcodes.FNEG), setRotation("(FF)V"),
+				new VarInsnNode(Opcodes.ALOAD, 0), move(), new InsnNode(Opcodes.ICONST_4), new InsnNode(Opcodes.POP), new InsnNode(Opcodes.RETURN));
+		PatchAlignment alignment = PatchAlignment.of(vanilla, patched);
+
+		assertEquals(-1, alignment.placeOf(6), "vanilla's call was replaced");
+		assertEquals(PatchAlignment.UNCERTAIN, alignment.placeOf(5), "which FNEG is vanilla's");
+		assertEquals(PatchAlignment.UNCERTAIN, alignment.placeOf(7), "which ALOAD is the next statement's");
+		assertNull(alignment.replacementOf(6), "nothing both alignments place there");
+		assertArrayEquals(new int[] {5, 8, 5, 11}, alignment.uncertainRegion(6), "from after -xRot's field to the next statement's call");
+		assertNull(alignment.uncertainRegion(4), "a kept instruction");
+	}
+
 	private static MethodNode method(AbstractInsnNode... insns) {
 		MethodNode method = new MethodNode(Opcodes.ACC_PUBLIC, "alignWithEntity", "()V", null, null);
 		for (AbstractInsnNode insn : insns) method.instructions.add(insn);
@@ -74,6 +96,10 @@ class PatchAlignmentTest {
 
 	private static FieldInsnNode xRot() {
 		return new FieldInsnNode(Opcodes.GETFIELD, "game/Camera", "xRot", "F");
+	}
+
+	private static MethodInsnNode move() {
+		return new MethodInsnNode(Opcodes.INVOKEVIRTUAL, "game/Camera", "move", "()V");
 	}
 
 	private static MethodInsnNode setRotation(String desc) {

@@ -109,7 +109,7 @@ jobs:
             neoforge) ./gradlew "$project:fabricatedJar" "$project:testmods" --stacktrace \
                 -Porg.gradle.java.installations.fromEnv=JAVA_HOME_21_X64,JAVA_HOME_25_X64 ;;
             *) ./gradlew -Pfabricated.platforms=${{ matrix.platform }} --configure-on-demand \
-                "$project:fabricatedJar" "$project:testmodJar" --stacktrace ;;
+                "$project:fabricatedJar" "$project:testmodJar" "$project:testmodThrowsJar" --stacktrace ;;
           esac
       - name: Server with the test mods (must pass)
         run: |
