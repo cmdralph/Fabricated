@@ -49,7 +49,8 @@ import net.fabricmc.fabric.impl.loot.LootUtil;
  * has finished, in the map vanilla keeps them in; here the tables are replaced as vanilla receives them, in the parsed
  * tables {@code apply} is handed, which Forge's loot event has already seen: vanilla then checks the replaced tables and
  * keeps them, and nothing names the map vanilla keeps. A rebuilt table gets back what Forge gave the parsed one, its id
- * (which Forge's global loot modifiers look tables up by) and its freeze. The handlers are named apart from the game's
+ * (which Forge's global loot modifiers look tables up by; unless a Fabric mod gave it that id as it was built) and its
+ * freeze. The handlers are named apart from the game's
  * methods, as the in-game mod is reobfuscated.
  */
 @Mixin(LootDataManager.class)
@@ -101,9 +102,11 @@ abstract class LootDataManagerMixin {
 			LootTable.Builder builder = FabricLootTableBuilder.copyOf(table);
 			LootTableEvents.MODIFY.invoker().modifyLootTable(resourceManager, lootManager, id, builder, source);
 
-			// Turn the builder back into a loot table, which Forge names and freezes as it loads one.
+			// Turn the builder back into a loot table, which Forge names and freezes as it loads one. A Fabric mod may
+			// have named it as it was built (Porting Lib Loot names each table from its MODIFY listener), and Forge
+			// refuses to name a table twice, even by the same name (CORPUS-90).
 			LootTable rebuilt = builder.build();
-			rebuilt.setLootTableId(id);
+			if (!id.equals(rebuilt.getLootTableId())) rebuilt.setLootTableId(id);
 			rebuilt.freeze();
 			return rebuilt;
 		});

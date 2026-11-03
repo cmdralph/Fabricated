@@ -28,10 +28,17 @@ import net.minecraft.class_79;
  * read once all have loaded, through the v1 API, whose mixins read Forge's list too. With Fabric API's resource
  * conditions module, a table of the test mod's whose {@code fabric:load_conditions} name a mod that isn't there must not
  * load: upstream's hook into the loot data manager's parsing lambda, which Forge 47's class names otherwise, checks
- * them (LAMBDA-6). Fabric API's loot classes and the game's are named as a Fabric mod for 1.20.1 names them (the
- * stand-ins in src/testmodstubs).
+ * them (LAMBDA-6). Dirt's table is also named as MODIFY's builder builds it, as Porting Lib Loot names every table
+ * (its MODIFY listener and its builder mixin, here {@code LootTableBuilderNamingMixin}), and must load with that name,
+ * where Forge refuses a second name (CORPUS-90). Fabric API's loot classes and the game's are named as a Fabric mod for
+ * 1.20.1 names them (the stand-ins in src/testmodstubs).
  */
 public final class ForgeLootTest {
+	/** What {@code LootTableBuilderNamingMixin} adds to a loot table's builder: the name to give the table it builds. */
+	public interface NamedAsBuilt {
+		void fabricatedForgeTest$nameAsBuilt(class_2960 name);
+	}
+
 	private static final class_2960 DIRT = new class_2960("minecraft", "blocks/dirt");
 	/** The test mod's table (in its data), which REPLACE swaps for one without pools. */
 	private static final class_2960 REPLACED = new class_2960(ForgeTestMod.MOD_ID, "fabric_replace");
@@ -83,6 +90,7 @@ public final class ForgeLootTest {
 				if (DIRT.equals(id)) {
 					dirtModifySource = source;
 					tableBuilder.method_336(class_55.method_347().method_351(class_77.method_411(class_1802.field_20391)));
+					((NamedAsBuilt) tableBuilder).fabricatedForgeTest$nameAsBuilt(id);
 				} else if (REPLACED.equals(id)) {
 					ownModifySource = source;
 				} else if (CONDITIONED.equals(id)) {
@@ -111,7 +119,9 @@ public final class ForgeLootTest {
 		if (ownReplaceSource != LootTableSource.MOD || ownModifySource != LootTableSource.REPLACED) {
 			failed.add("the test mod's table's source " + ownReplaceSource + " in REPLACE, " + ownModifySource + " in MODIFY");
 		}
-		List<class_55> pools = ((FabricLootSupplier) lootManager.getLootTable(DIRT)).getPools();
+		class_52 dirt = lootManager.getLootTable(DIRT);
+		if (!DIRT.equals(dirt.getLootTableId())) failed.add("dirt's table named " + dirt.getLootTableId());
+		List<class_55> pools = ((FabricLootSupplier) dirt).getPools();
 		if (dirtPools < 0 || pools.size() != dirtPools + 2) {
 			failed.add("dirt's pools " + dirtPools + " before the v1 event and MODIFY, " + pools.size() + " after");
 		} else {
