@@ -2462,20 +2462,30 @@ class PipelineTest {
 		assertEquals(result.mods(), also.mods());
 	}
 
-	/** Fabric Loader gives every mod a root, and mods take the first without checking (OneConfig's list of mods, POLY-1). */
+	/**
+	 * Fabric Loader gives every mod a root, and mods take the first without checking (OneConfig's list of mods, POLY-1;
+	 * owo's data loader, CORPUS-77). Without NeoForge, MixinExtras is the in-game mod's, which nests it on Forge.
+	 */
 	@Test
+	@SuppressWarnings("deprecation") // owo calls getRootPath()
 	void builtInModsHaveTheRootOfWhatProvidesThem(@TempDir Path game) throws Exception {
 		TestJars.create().text("game.txt", "").write(game.resolve("minecraft.jar"));
 		TestJars.create().text("in-game.txt", "").write(game.resolve("fabricated.jar"));
 		Pipeline.Result result = Pipeline.run(input(game, List.of(), Namespace.OFFICIAL, Map.of(), null));
 		Map<String, String> files = Map.of("minecraft", "game.txt", "fabricloader", "in-game.txt", "fabricated", "in-game.txt",
-				"fabric-api-base", "in-game.txt");
+				"fabric-api-base", "in-game.txt", "mixinextras", "in-game.txt");
 		files.forEach((id, file) -> {
 			ModContainer mod = result.runtime().getModContainer(id).orElseThrow();
 			assertEquals(ModOrigin.Kind.PATH, mod.getOrigin().getKind(), id);
-			assertTrue(Files.exists(mod.getRootPaths().getFirst().resolve(file)), id);
+			assertTrue(Files.exists(mod.getRootPath().resolve(file)), id);
 		});
 		assertEquals(Path.of(System.getProperty("java.home")), result.runtime().getModContainer("java").orElseThrow().getRootPaths().getFirst());
+
+		// With NeoForge, which ships MixinExtras, it is NeoForge's.
+		Path neoForgeJar = TestJars.create().text("neoforge.txt", "").write(game.resolve("neoforge.jar"));
+		Pipeline.Result neo = Pipeline.run(input(game, List.of(), Namespace.OFFICIAL, Map.of(), null,
+				List.of(new Pipeline.NeoForgeMod("neoforge", "21.1.1", "NeoForge", Map.of(), List.of(neoForgeJar)))));
+		assertTrue(Files.exists(neo.runtime().getModContainer("mixinextras").orElseThrow().getRootPath().resolve("neoforge.txt")));
 	}
 
 	/** A mixin config a mod declares in its nested jar is that jar's, which NeoForge's mod file then declares (ADV-1). */

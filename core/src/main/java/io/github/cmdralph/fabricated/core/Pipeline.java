@@ -1215,14 +1215,16 @@ public final class Pipeline {
 	}
 
 	/**
-	 * A built-in mod's files: Fabric Loader gives every mod a root, and mods take the first without checking (OneConfig).
-	 * Minecraft's are the game's, Java's its home, the others those of the mod that provides them on NeoForge.
+	 * A built-in mod's files: Fabric Loader gives every mod a root, and mods take the first without checking (OneConfig,
+	 * and owo's data loader, which resolves every mod's {@code data} folder in its root: CORPUS-77). Minecraft's are the
+	 * game's, Java's its home, the others those of the mod that provides them: MixinExtras is NeoForge's, which ships it,
+	 * and on Forge the in-game mod's, which nests it.
 	 */
 	private List<Path> builtinFiles(String id) {
 		return switch (id) {
 			case "minecraft" -> in.gameFiles();
 			case "java" -> List.of(Path.of(System.getProperty("java.home")));
-			case "mixinextras" -> neoMods.containsKey("neoforge") ? neoMods.get("neoforge").files() : List.of();
+			case "mixinextras" -> neoMods.containsKey("neoforge") ? neoMods.get("neoforge").files() : in.fabricatedFiles();
 			default -> in.fabricatedFiles();
 		};
 	}
