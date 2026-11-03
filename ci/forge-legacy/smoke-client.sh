@@ -23,6 +23,9 @@ timeout_seconds="${SMOKE_TIMEOUT:-900}"
 # A game that reached its world (mc-runtime-test's "Successfully finished.") is stopped by mc-runtime-test; one that
 # hasn't exited this many seconds later is stuck shutting down, and is stopped then, not at the run's time limit.
 exit_timeout="${SMOKE_EXIT_TIMEOUT:-120}"
+# SMOKE_JVM_ARGS: more of the game's JVM options (system properties, separated by spaces, none holding one), for a
+# corpus run's evidence (Mixin's export of a class as it leaves it, CORPUS-76).
+jvm_args="-Djava.awt.headless=true -DMcRuntimeGameTest=false${SMOKE_JVM_ARGS:+ $SMOKE_JVM_ARGS}"
 hmc_version="2.10.0"
 mcrt_version="4.5.2"
 
@@ -100,7 +103,7 @@ for attempt in 1 2; do
 	rm -rf run/logs run/crash-reports client.out stop-reason.txt thread-dump.txt
 	export SDL_VIDEO_FORCE_EGL=1 SDL_VIDEO_X11_FORCE_EGL=1
 	timeout "$timeout_seconds" xvfb-run -a -s "-screen 0 1280x720x24 +extension GLX +render -noreset" java -Dhmc.check.xvfb=true -jar hmc.jar \
-		--command launch "${mc}-forge" -regex --jvm "-Djava.awt.headless=true -DMcRuntimeGameTest=false" \
+		--command launch "${mc}-forge" -regex --jvm "$jvm_args" \
 		> client.out 2>&1 &
 	client_pid=$!
 	descendants() {
