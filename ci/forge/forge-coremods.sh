@@ -14,7 +14,9 @@ trap 'rm -rf "$out"' EXIT
 pattern='coremod|FieldToMethod|finalize_spawn|Redirector|FieldRedirect|MethodRedirect|ReplaceField|transformers?/'
 
 echo "== Forge's own transformers in $dir/libraries"
-find "$dir/libraries" -name '*.jar' -path '*minecraftforge*' 2>/dev/null | sort | while read -r jar; do
+# The engines (Forge's access transformers and coremod API) name no game members, and their classes took the step's
+# whole output (extended run 41569829683): left out, so the transformers that change game classes are printed.
+find "$dir/libraries" -name '*.jar' -path '*minecraftforge*' 2>/dev/null | grep -v -E '/(accesstransformers|coremods-api)-[^/]*\.jar$' | sort | while read -r jar; do
 	entries="$(unzip -Z1 "$jar" 2>/dev/null | grep -i -E "$pattern" | grep -v '/$' | head -60)"
 	[ -n "$entries" ] || continue
 	echo "-- $(basename "$jar")"
