@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.BiConsumer;
+import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -7517,6 +7518,66 @@ class MixinPreflightTest {
 		mod.put("com/example/mixin/Private", repaired.get("com/example/mixin/Private.class"));
 		List<PreflightFinding> findings = preflight.check("test.mixins.json", config, Refmap.EMPTY, Set.of());
 		assertTrue(findings.isEmpty(), findings.toString());
+	}
+
+	/**
+	 * CORPUS-69: an {@code @Intrinsic} of a class mixin that only calls the superclass's method (Lithium's
+	 * {@code setCachedState} of the chest, there so its {@code @Inject} has a method to inject into) is dropped where the
+	 * target already declares the method, as Forge 47's patched chest does: Mixin rejects such an {@code @Intrinsic}
+	 * (taking it for a renamed interface method, and finding no rename), and keeping the target's method is what
+	 * {@code @Intrinsic} means. The injector then injects into the target's own. One with code of its own, or displacing
+	 * the target's, isn't repaired, and pre-flight reports that Mixin rejects the mixin.
+	 */
+	@Test
+	void anIntrinsicOnlyCallingSuperIsDroppedWhereTheTargetDeclaresIt() throws Exception {
+		BiFunction<Boolean, Consumer<MethodVisitor>, byte[]> intrinsic = (displace, body) -> mixin("com/example/mixin/Intr", false, cw -> {
+			inject(cw, "afterTick", "tick", "RETURN", null, 1, null);
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC, "tick", "()V", null, null);
+			AnnotationVisitor ann = mv.visitAnnotation("Lorg/spongepowered/asm/mixin/Intrinsic;", false);
+			if (displace) ann.visit("displace", true);
+			ann.visitEnd();
+			mv.visitCode();
+			Label start = new Label();
+			mv.visitLabel(start);
+			mv.visitLineNumber(12, start);
+			body.accept(mv);
+			mv.visitMaxs(1, 1);
+			mv.visitEnd();
+		});
+		Consumer<MethodVisitor> superOnly = mv -> {
+			mv.visitVarInsn(Opcodes.ALOAD, 0);
+			mv.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/Object", "tick", "()V", false);
+			mv.visitInsn(Opcodes.RETURN);
+		};
+		ClassIndex game = new ClassIndex(Map.of(TARGET, targetClass())::get);
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Intr"));
+
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Intr", intrinsic.apply(false, superOnly)));
+		MixinPreflight preflight = preflight(game, mod::get, ClassBytesSource.EMPTY, false);
+		List<PreflightFinding> repairs = new ArrayList<>();
+		Map<String, byte[]> repaired = preflight.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), repairs);
+		assertEquals(Set.of("com/example/mixin/Intr.class"), repaired.keySet());
+		assertEquals(1, repairs.size(), repairs.toString());
+		assertEquals(Severity.INFO, repairs.getFirst().severity());
+		assertTrue(repairs.getFirst().message().contains("@Intrinsic tick()V only calls the superclass's method"), repairs.toString());
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired.get("com/example/mixin/Intr.class")).accept(node, 0);
+		assertEquals(List.of("afterTick"), node.methods.stream().map(m -> m.name).toList(), "the injector stays; the intrinsic goes");
+		mod.put("com/example/mixin/Intr", repaired.get("com/example/mixin/Intr.class"));
+		List<PreflightFinding> findings = preflight.check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(findings.isEmpty(), findings.toString());
+
+		// Code of its own, or displacing the target's method: Mixin rejects the mixin, which pre-flight reports.
+		Consumer<MethodVisitor> own = mv -> mv.visitInsn(Opcodes.RETURN);
+		for (byte[] other : List.of(intrinsic.apply(false, own), intrinsic.apply(true, superOnly))) {
+			mod.put("com/example/mixin/Intr", other);
+			preflight = preflight(game, mod::get, ClassBytesSource.EMPTY, false);
+			repairs = new ArrayList<>();
+			assertTrue(preflight.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), repairs).isEmpty(), repairs.toString());
+			findings = preflight.check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+			assertTrue(findings.stream().anyMatch(f -> (f.severity() == Severity.FAIL || f.severity() == Severity.LEFT_OUT)
+					&& f.message().startsWith("@Intrinsic tick()V already exists in net.minecraft.world.Thing")), findings.toString());
+		}
 	}
 
 	/**

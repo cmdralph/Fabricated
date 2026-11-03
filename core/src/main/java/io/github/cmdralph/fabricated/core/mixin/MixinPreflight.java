@@ -897,14 +897,20 @@ public final class MixinPreflight extends PreflightPart {
 	 * A plain mixin method is merged into the target. If the target already declares it, Mixin replaces the
 	 * target method only when overwrites are allowed without {@code @Overwrite}; with
 	 * {@code overwrites.requireAnnotations} it throws instead. Typical cause: NeoForge added the method
-	 * (for example {@code hashCode}) to a class that has none in vanilla.
+	 * (for example {@code hashCode}) to a class that has none in vanilla. An {@code @Intrinsic} the target declares is
+	 * rejected whatever the config (Mixin takes it for a renamed interface method, and finds no rename): CORPUS-69, where
+	 * one that only calls the superclass's is repaired ({@link MixinRepairs#superOnlyIntrinsic}).
 	 */
 	private static void checkMerged(MethodNode method, ClassNode target, Context ctx) {
 		if ((method.access & (Opcodes.ACC_SYNTHETIC | Opcodes.ACC_ABSTRACT)) != 0 || method.name.startsWith("<")) return;
-		if (Annotations.find(method, MixinNames.UNIQUE) != null
-				|| Annotations.find(method, MixinNames.INTRINSIC) != null) return;
+		if (Annotations.find(method, MixinNames.UNIQUE) != null) return;
 		if (!PreflightAsm.declares(target, method.name, method.desc)) return;
 		String where = method.name + method.desc + " already exists in " + target.name.replace('/', '.');
+		if (Annotations.find(method, MixinNames.INTRINSIC) != null) {
+			ctx.classLevel("@Intrinsic " + where + ", which Mixin rejects for a method that isn't a renamed interface method, so it "
+					+ "rejects this mixin", ctx.changer(true) + " added this method; the mod needs an update.");
+			return;
+		}
 		if (ctx.config().overwritesRequireAnnotations()) {
 			ctx.classLevel(where + " and the config requires @Overwrite to replace it, so Mixin rejects this mixin",
 					ctx.changer(true) + " added this method; the mod needs an update.");

@@ -98,9 +98,19 @@ final class MixinRepairs extends PreflightPart {
 				continue;
 			}
 			List<MethodNode> bridges = new ArrayList<>();
+			List<MethodNode> kept = new ArrayList<>();
 			for (MethodNode method : node.methods) {
 				for (AnnotationNode ann : Annotations.all(method)) {
 					if (PreflightAsm.isInjector(ann.desc) && repairInjector(new RepairSite(node, method, ann, targets, ctx, bridges), out)) changed = true;
+				}
+				if (superOnlyIntrinsic(node, method, targets)) {
+					kept.add(method);
+					changed = true;
+					out.add(new PreflightFinding(Severity.INFO, configName, ctx.mixinDotted(), "@Intrinsic " + method.name + method.desc
+							+ " only calls the superclass's method, and " + targets.get(0).name.replace('/', '.') + " already declares it (added by "
+							+ loader + " or this Minecraft version), which Mixin rejects in a class mixin; the target's own method is kept, "
+							+ "as @Intrinsic keeps a method its target has (CORPUS-69)", ""));
+					continue;
 				}
 				if ((node.access & Opcodes.ACC_INTERFACE) == 0 || (method.access & Opcodes.ACC_STATIC) != 0) continue;
 				AnnotationNode accessor = Annotations.find(method, MixinNames.ACCESSOR);
@@ -139,10 +149,57 @@ final class MixinRepairs extends PreflightPart {
 				out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@Shadow field " + captured + " is a captured variable field of "
 						+ targets.get(0).name.replace('/', '.') + ", which this game build names " + field.name + "; the mixin uses that", ""));
 			}
+			node.methods.removeAll(kept);
 			node.methods.addAll(bridges);
 			if (changed) repaired.put(internal + ".class", write(node));
 		}
 		return repaired;
+	}
+
+	/**
+	 * Whether a method of a class mixin is an {@code @Intrinsic} (not displacing) that only calls its superclass's method of
+	 * the same name and descriptor with its own arguments, and every target declares that method, not static nor
+	 * abstract (Lithium's {@code setCachedState} of the chest, which Forge 47 patches the chest to override: CORPUS-69).
+	 * Mixin then throws ({@code MixinApplicatorStandard.mergeIntrinsic}: an {@code @Intrinsic} not synthetic is taken for
+	 * a renamed interface method), where {@code @Intrinsic} means to keep the target's method; and where the target has
+	 * none, the method only stands in for the superclass's, so dropping it loses nothing either way.
+	 */
+	static boolean superOnlyIntrinsic(ClassNode mixin, MethodNode method, List<ClassNode> targets) {
+		if ((mixin.access & Opcodes.ACC_INTERFACE) != 0 || mixin.superName == null || method.name.startsWith("<")
+				|| (method.access & (Opcodes.ACC_STATIC | Opcodes.ACC_ABSTRACT | Opcodes.ACC_SYNTHETIC | Opcodes.ACC_NATIVE)) != 0
+				|| !method.tryCatchBlocks.isEmpty()) {
+			return false;
+		}
+		AnnotationNode intrinsic = Annotations.find(method, MixinNames.INTRINSIC);
+		if (intrinsic == null || Boolean.TRUE.equals(Annotations.value(intrinsic, "displace"))) return false;
+		for (AnnotationNode ann : Annotations.all(method)) {
+			// No other of Mixin's or MixinExtras' (an injector, a shadow); others (nullability's) change nothing here.
+			if (!ann.desc.equals(MixinNames.INTRINSIC) && (ann.desc.startsWith("Lorg/spongepowered/") || ann.desc.startsWith("Lcom/llamalad7/"))) {
+				return false;
+			}
+		}
+		for (ClassNode target : targets) {
+			MethodNode own = PreflightAsm.declared(target, method.name, method.desc);
+			if (own == null || (own.access & (Opcodes.ACC_STATIC | Opcodes.ACC_ABSTRACT)) != 0) return false;
+		}
+		// The code, past labels, line numbers and frames: this, each argument in order, the superclass's method, return.
+		List<AbstractInsnNode> code = new ArrayList<>();
+		for (AbstractInsnNode insn : method.instructions) {
+			if (insn.getOpcode() >= 0) code.add(insn);
+		}
+		Type[] arguments = Type.getArgumentTypes(method.desc);
+		if (code.size() != arguments.length + 3) return false;
+		if (!(code.get(0) instanceof VarInsnNode self) || self.getOpcode() != Opcodes.ALOAD || self.var != 0) return false;
+		int slot = 1;
+		for (int i = 0; i < arguments.length; i++) {
+			if (!(code.get(1 + i) instanceof VarInsnNode load) || load.getOpcode() != arguments[i].getOpcode(Opcodes.ILOAD) || load.var != slot) return false;
+			slot += arguments[i].getSize();
+		}
+		if (!(code.get(arguments.length + 1) instanceof MethodInsnNode call) || call.getOpcode() != Opcodes.INVOKESPECIAL
+				|| !call.owner.equals(mixin.superName) || !call.name.equals(method.name) || !call.desc.equals(method.desc)) {
+			return false;
+		}
+		return code.get(arguments.length + 2).getOpcode() == Type.getReturnType(method.desc).getOpcode(Opcodes.IRETURN);
 	}
 
 	/**
