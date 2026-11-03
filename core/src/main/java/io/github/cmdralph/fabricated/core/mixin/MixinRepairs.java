@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.function.BiFunction;
 
 import io.github.cmdralph.fabricated.core.bytecode.Annotations;
@@ -83,6 +84,14 @@ final class MixinRepairs extends PreflightPart {
 			}
 			independent.put(node, MixinPreflight.independentHandlers(node));
 			changed |= singleInjectionPoints(node);
+			Set<String> unfound = withoutUnfoundLocals(node);
+			if (!unfound.isEmpty()) {
+				changed = true;
+				out.add(new PreflightFinding(Severity.INFO, configName, ctx.mixinDotted(), "The debug tables of the mixin's methods name local "
+						+ "variables of " + String.join(", ", unfound.stream().map(t -> t.replace('/', '.')).toList()) + ", not found on this side, "
+						+ "which " + loader + "'s Mixin stops on as it applies the mixin; those locals are left out of the tables, which only "
+						+ "debuggers read (LVT-1)", ""));
+			}
 			List<ClassNode> targets = new ArrayList<>();
 			for (String target : MixinPreflight.targetsOf(node, ctx)) {
 				ClassNode targetNode = gameTarget(target);
@@ -463,6 +472,30 @@ final class MixinRepairs extends PreflightPart {
 			}
 		}
 		return changed;
+	}
+
+	/**
+	 * Leaves out of the debug tables of a mixin's methods the local variables whose class isn't found on this side (a
+	 * client class on a dedicated server: owo's slot mixin keeps a client-only rectangle, LVT-1), where the running
+	 * Mixin looks up each one's class as it applies the mixin and stops on one it can't find; Fabric's Mixin looks up none
+	 * from 0.17.0. A local of another Fabric mod's class goes too: the table is only read by debuggers. Returns the
+	 * classes, sorted.
+	 */
+	private Set<String> withoutUnfoundLocals(ClassNode node) {
+		Set<String> unfound = new TreeSet<>();
+		if (!readsLocalTypes) return unfound;
+		for (MethodNode method : node.methods) {
+			if (method.localVariables == null) continue;
+			method.localVariables.removeIf(local -> {
+				if (local == null || local.desc == null) return false;
+				Type type = Type.getType(local.desc);
+				if (type.getSort() == Type.ARRAY) type = type.getElementType();
+				if (type.getSort() != Type.OBJECT || type.getInternalName().equals(node.name) || classes.found(type.getInternalName())) return false;
+				unfound.add(type.getInternalName());
+				return true;
+			});
+		}
+		return unfound;
 	}
 
 	private static byte[] write(ClassNode node) {

@@ -569,7 +569,7 @@ public final class ModTranslator {
 				env.clientSide(), MixinCompat.missingTargetsFatal(behavior), env.vanilla(), env.descriptor().loaderName(),
 				MixinCompat.interfaceInjectors(env.runtimeMixinVersion()), MixinCompat.constructorInjects(env.runtimeMixinVersion()),
 				MixinCompat.argumentNames(env.runtimeMixinVersion()), MixinCompat.exactStaticInjects(env.runtimeMixinVersion()),
-				MixinCompat.supportsEnumExtensions(env.runtimeMixinVersion()));
+				MixinCompat.supportsEnumExtensions(env.runtimeMixinVersion()), MixinCompat.readsLocalTypes(env.runtimeMixinVersion()));
 		Map<String, MixinConfigFile> configs = new HashMap<>();
 		Set<String> matchedSkips = new HashSet<>();
 		Map<String, Refmap> refmaps = new HashMap<>();

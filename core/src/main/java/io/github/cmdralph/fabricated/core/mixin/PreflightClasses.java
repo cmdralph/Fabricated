@@ -61,6 +61,9 @@ final class PreflightClasses {
 	/** Whether the running Mixin applies enum mixins, as Fabric's does from 0.17.1 (ENUM-7: Forge's doesn't). */
 	final boolean enumMixins;
 
+	/** Whether the running Mixin stops on a local variable whose class it can't find (LVT-1: Forge's does). */
+	final boolean readsLocalTypes;
+
 	/** The platform's loader, as messages name it ({@code NeoForge}, {@code Forge}). */
 	final String loader;
 
@@ -70,6 +73,9 @@ final class PreflightClasses {
 	final Map<String, Optional<ClassNode>> vanillaCache = new HashMap<>();
 
 	final Map<String, Optional<ClassNode>> targetCache = new HashMap<>();
+
+	/** {@link #found} of each class asked. */
+	final Map<String, Boolean> foundCache = new HashMap<>();
 
 	/**
 	 * {@link MixinPreflight#independentHandlers} of each mixin as it was read: a repair moving an injector to a bridge (added to the
@@ -89,8 +95,9 @@ final class PreflightClasses {
 
 	PreflightClasses(ClassIndex game, InstalledClasses installed, ClassBytesSource modClasses, ClassBytesSource untransformable,
 			boolean clientSide, boolean missingTargetsFatal, ClassBytesSource vanilla, String loader, boolean interfaceInjectors,
-			ConstructorInjects constructorInjects, boolean argumentNames, boolean exactStaticInjects, boolean enumMixins) {
+			ConstructorInjects constructorInjects, boolean argumentNames, boolean exactStaticInjects, boolean enumMixins, boolean readsLocalTypes) {
 		this.enumMixins = enumMixins;
+		this.readsLocalTypes = readsLocalTypes;
 		this.interfaceInjectors = interfaceInjectors;
 		this.constructorInjects = constructorInjects;
 		this.argumentNames = argumentNames;
@@ -253,6 +260,21 @@ final class PreflightClasses {
 	 */
 	Set<String> independentOf(ClassNode mixin) {
 		return independent.computeIfAbsent(mixin, MixinPreflight::independentHandlers);
+	}
+
+	/**
+	 * Whether a class is found on this side, as the running Mixin would look it up: the game's or the installed jars', the
+	 * mod's own, or the JDK's and the libraries'. A class of another Fabric mod isn't found here.
+	 */
+	boolean found(String internalName) {
+		return foundCache.computeIfAbsent(internalName, n -> {
+			if (game.contains(n) || isUntransformable(n)) return true;
+			try {
+				return modClasses.read(n) != null;
+			} catch (IOException e) {
+				return true;
+			}
+		});
 	}
 
 	boolean isUntransformable(String target) {

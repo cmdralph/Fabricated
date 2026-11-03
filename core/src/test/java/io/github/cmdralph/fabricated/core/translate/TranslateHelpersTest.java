@@ -238,6 +238,15 @@ class TranslateHelpersTest {
 		assertEquals(0, MixinCompat.lastCompatibilityLevel("0.8.8"), "a later release isn't known");
 		assertEquals(0, MixinCompat.lastCompatibilityLevel(null));
 
+		// LVT-1: every local's class looked up as a mixin applies, in SpongePowered's 0.8.5 to 0.8.7 and Fabric's before 0.17.0.
+		assertTrue(MixinCompat.readsLocalTypes("0.8.5+Jenkins-b310.git-155314e6e91465dad727e621a569906a410cd6f4"), "Forge 47");
+		assertTrue(MixinCompat.readsLocalTypes("0.8.7"), "Forge 61 to 66");
+		assertTrue(MixinCompat.readsLocalTypes("0.16.5+mixin.0.8.7"), "Fabric's before 0.17.0");
+		assertFalse(MixinCompat.readsLocalTypes("0.17.0+mixin.0.8.7"));
+		assertFalse(MixinCompat.readsLocalTypes("0.17.4+mixin.0.8.7"));
+		assertFalse(MixinCompat.readsLocalTypes("not a version"));
+		assertFalse(MixinCompat.readsLocalTypes(null));
+
 		// INTERFACE-1: injectors in interface mixins came with 0.8.6.
 		assertFalse(MixinCompat.interfaceInjectors("0.8.5"), "Forge 47");
 		assertFalse(MixinCompat.interfaceInjectors("0.8.5+Jenkins-b310.git-155314e6e91465dad727e621a569906a410cd6f4"), "as Forge 47 reports it");
