@@ -15,6 +15,7 @@ import io.github.cmdralph.fabricated.core.bytecode.Annotations;
 import io.github.cmdralph.fabricated.core.mixin.PreflightFinding.Severity;
 import io.github.cmdralph.fabricated.core.mixin.MixinPreflight.Context;
 
+import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
@@ -74,7 +75,7 @@ final class MixinRepairs extends PreflightPart {
 			}
 			// Before anything that reads the handlers' descriptors.
 			List<String> named = MixinPreflight.targetsOf(node, ctx);
-			int retargeted = named.size() == 1 ? SelfTypeRepairs.retarget(node, named.get(0)) : 0;
+			int retargeted = named.size() == 1 && !copiesInnerClasses(node, config) ? SelfTypeRepairs.retarget(node, named.get(0)) : 0;
 			if (retargeted > 0) {
 				changed = true;
 				out.add(new PreflightFinding(Severity.INFO, configName, ctx.mixinDotted(), retargeted + " descriptor(s) of the mixin name its own class "
@@ -250,6 +251,8 @@ final class MixinRepairs extends PreflightPart {
 			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> locals.vanillaLocalRepairs(s.handler(), s.injector(), s.target(), s.ctx()),
 					(s, local) -> s.named() + " captures " + local),
 			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> LocalRepairs.namedLocalRepairs(s.handler(), s.injector(), s.target(), s.ctx()),
+					(s, local) -> s.named() + " captures " + local),
+			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> locals.indexedLocalRepairs(s.handler(), s.injector(), s.target(), s.ctx()),
 					(s, local) -> s.named() + " captures " + local),
 			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> overloads.overloadRepairs(s.mixin(), s.handler(), s.injector(), s.target(), s.ctx(), s.bridges()),
 					(s, moved) -> s.named() + " targets " + moved),
@@ -513,6 +516,36 @@ final class MixinRepairs extends PreflightPart {
 	private static boolean declaresInstance(ClassNode target, String name, String desc) {
 		MethodNode m = PreflightAsm.declared(target, name, desc);
 		return m != null && (m.access & Opcodes.ACC_STATIC) == 0;
+	}
+
+	/**
+	 * Whether Mixin copies an inner class of this mixin into its target, as it does each one that is neither static and
+	 * synthetic (javac's switch tables, which it loads as they are) nor a mixin itself: an anonymous class, typically. Mixin
+	 * then names the target in the mixin's descriptors itself, and its copy of the inner class finds the mixin's members by
+	 * the descriptors the inner class names them with, which name the mixin, matched against the mixin's as Mixin read
+	 * them. {@link SelfTypeRepairs} leaves such a mixin as it is: had it named the target there first, a member Mixin
+	 * renames as it merges it (a synthetic accessor javac adds for the inner class, or a {@code @Unique} one) would keep its
+	 * old name in the copy, which then fails to link (Fabric API's moving block renderer mixin on Forge 66, whose anonymous
+	 * quad consumer calls its outer class's {@code access$100}; SELF-3). A mixin class whose inner class is missing is left
+	 * as it is too.
+	 */
+	private boolean copiesInnerClasses(ClassNode mixin, MixinConfigFile config) {
+		Set<String> mixins = new HashSet<>();
+		for (String name : config.allMixins()) mixins.add(config.internalName(name));
+		for (InnerClassNode inner : mixin.innerClasses) {
+			// The inner classes Mixin reads: its own, or one named as nested in it.
+			if (inner.name.equals(mixin.name) || !mixin.name.equals(inner.outerName) && !inner.name.startsWith(mixin.name + "$")) continue;
+			if (mixins.contains(inner.name)) continue;
+			ClassNode node = modClasses.readNode(inner.name, ClassReader.SKIP_CODE);
+			if (node == null) return true;
+			int access = node.access;
+			for (InnerClassNode own : node.innerClasses) {
+				if (own.name.equals(node.name)) access = own.access;
+			}
+			boolean probablyStatic = node.fields.stream().noneMatch(f -> (f.access & Opcodes.ACC_SYNTHETIC) != 0 && f.name.startsWith("this$"));
+			if (!probablyStatic || (access & Opcodes.ACC_SYNTHETIC) == 0) return true;
+		}
+		return false;
 	}
 
 	/**
