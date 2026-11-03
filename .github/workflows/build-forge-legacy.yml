@@ -192,6 +192,16 @@ jobs:
           cp "$RUNNER_TEMP/extra/fabric-api.jar" "$RUNNER_TEMP/extra-client/"
           cp mc/forge-legacy/${{ matrix.target.minecraft }}/build/testmods/fabricated-testmod-frapi.jar "$RUNNER_TEMP/extra-client/"
           ci/forge-legacy/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-fapi" "$RUNNER_TEMP/extra-client"
+      # Coexisting with Forgified Fabric API (task 5, PROVIDER-2): what its newest 1.20.1 build nests, and which of
+      # Fabric Loader's classes outside its API its modules use, read off the jar. Informational, with "extended".
+      - name: What Forgified Fabric API for 1.20.1 nests and uses of Fabric Loader
+        if: ${{ env.EXTENDED == 'true' && !cancelled() }}
+        continue-on-error: true
+        run: |
+          python3 ci/fetch-corpus.py "${{ matrix.target.minecraft }}" "$RUNNER_TEMP/ffapi" forge forgified-fabric-api || true
+          for jar in "$RUNNER_TEMP"/ffapi/*.jar; do
+            [ -f "$jar" ] && { python3 -I ci/forge-legacy/ffapi-anatomy.py "$jar" | head -n 220 || true; }
+          done
       # Popular Fabric mods from Modrinth (ci/mod-corpus.txt, downloaded here in CI and checked against Modrinth's
       # SHA-512) with Fabric API, as build.yml runs them on NeoForge: which load on Forge, which are disabled and why.
       # Informational, with "extended" or on a release tag; a mod whose initializer throws is disabled, not fatal.
