@@ -43,7 +43,7 @@ class EnumValuesMixinsTest {
 	 */
 	@Test
 	void aConstantWithABodyBecomesAConstantWithADelegateAddedByAMixin() throws Exception {
-		EnumValuesMixins.Result result = EnumValuesMixins.of(node(mixin()), node(target()), Map.of(BODY, node(body(false)))::get, BODIES);
+		EnumValuesMixins.Result result = EnumValuesMixins.of(node(mixin()), node(target()), Map.of(BODY, node(body(false)))::get, null, BODIES);
 		assertNotNull(result);
 		assertEquals(List.of("TUNDRA"), result.constants());
 
@@ -98,7 +98,7 @@ class EnumValuesMixinsTest {
 	 */
 	@Test
 	void theInjectorAddsTheConstantWhenMergedIntoTheEnum() throws Exception {
-		EnumValuesMixins.Result result = EnumValuesMixins.of(node(mixin()), node(target()), Map.of(BODY, node(body(false)))::get, BODIES);
+		EnumValuesMixins.Result result = EnumValuesMixins.of(node(mixin()), node(target()), Map.of(BODY, node(body(false)))::get, null, BODIES);
 		assertNotNull(result);
 		assertAddsTheConstantWhenMerged(result, false);
 	}
@@ -116,7 +116,7 @@ class EnumValuesMixinsTest {
 	@Test
 	void anEnumForgeMakesExtensibleGetsItsConstantsFromItsOwnFactories() throws Exception {
 		String create = "(Ljava/lang/String;Ljava/lang/String;L" + COLOR + ";)L" + TARGET + ";";
-		EnumValuesMixins.Result result = EnumValuesMixins.of(node(mixin()), forgeExtensible(create), Map.of(BODY, node(body(false)))::get, BODIES);
+		EnumValuesMixins.Result result = EnumValuesMixins.of(node(mixin()), forgeExtensible(create), Map.of(BODY, node(body(false)))::get, null, BODIES);
 		assertNotNull(result);
 		ClassNode mixin = node(result.mixin());
 		assertTrue(mixin.fields.isEmpty(), "no shadow of the values array: " + mixin.fields.stream().map(f -> f.name).toList());
@@ -135,7 +135,7 @@ class EnumValuesMixinsTest {
 		assertAddsTheConstantWhenMerged(result, true);
 
 		assertNull(EnumValuesMixins.of(node(mixin()), forgeExtensible("(Ljava/lang/String;Ljava/lang/String;)L" + TARGET + ";"),
-				Map.of(BODY, node(body(false)))::get, BODIES), "no factory for the delegate's constructor");
+				Map.of(BODY, node(body(false)))::get, null, BODIES), "no factory for the delegate's constructor");
 	}
 
 	/** {@link #target()} as Forge makes an enum extensible: its marker, and a {@code create} factory of that descriptor. */
@@ -328,7 +328,7 @@ class EnumValuesMixinsTest {
 	void theEnumsValuesArrayIsFoundByItsTypeWhereTheGameRenamedIt() throws Exception {
 		ClassNode target = node(target());
 		target.fields.stream().filter(f -> f.name.equals("$VALUES")).findFirst().orElseThrow().name = "f_48371_";
-		EnumValuesMixins.Result result = EnumValuesMixins.of(node(mixin()), target, Map.of(BODY, node(body(false)))::get, BODIES);
+		EnumValuesMixins.Result result = EnumValuesMixins.of(node(mixin()), target, Map.of(BODY, node(body(false)))::get, null, BODIES);
 		assertNotNull(result);
 		ClassNode mixin = node(result.mixin());
 		assertEquals("f_48371_", mixin.fields.getFirst().name);
@@ -343,22 +343,354 @@ class EnumValuesMixinsTest {
 		org.objectweb.asm.tree.FieldNode other = new org.objectweb.asm.tree.FieldNode(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC,
 				"f_48372_", "[L" + TARGET + ";", null, null);
 		target.fields.add(other);
-		assertNull(EnumValuesMixins.of(node(mixin()), target, Map.of(BODY, node(body(false)))::get, BODIES));
+		assertNull(EnumValuesMixins.of(node(mixin()), target, Map.of(BODY, node(body(false)))::get, null, BODIES));
 	}
 
 	@Test
-	void aBodyUsingItsInstanceOrAModReadingTheConstantAsAFieldStaysAnEnumMixin() throws Exception {
-		assertNull(EnumValuesMixins.of(node(mixin()), node(target()), Map.of(BODY, node(body(true)))::get, BODIES));
-		ClassWriter reader = new ClassWriter(0);
-		reader.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, "com/example/Reader", null, "java/lang/Object", null);
-		MethodVisitor mv = reader.visitMethod(Opcodes.ACC_STATIC, "read", "()Ljava/lang/Object;", null, null);
-		mv.visitCode();
-		mv.visitFieldInsn(Opcodes.GETSTATIC, TARGET, "TUNDRA", "L" + TARGET + ";");
-		mv.visitInsn(Opcodes.ARETURN);
-		mv.visitMaxs(1, 0);
-		mv.visitEnd();
-		reader.visitEnd();
-		assertTrue(EnumValuesMixins.readAsFields(List.of(node(reader.toByteArray())), TARGET, List.of("TUNDRA")));
+	void aBodyUsingItsInstanceStaysAnEnumMixin() throws Exception {
+		assertNull(EnumValuesMixins.of(node(mixin()), node(target()), Map.of(BODY, node(body(true)))::get, null, BODIES));
+	}
+
+	private static final String BOOK_TYPE = "net/minecraft/world/inventory/BookType";
+	private static final String BOOK_SETTINGS = "net/minecraft/stats/BookSettings";
+	private static final String BOOK_MIXIN = "com/example/mixin/BookTypeMixin";
+	private static final String CALLBACK_INFO = "org/spongepowered/asm/mixin/injection/callback/CallbackInfo";
+	private static final String CONSTANTS = "com/example/FabricatedEnumConstants";
+	private static final String READER = "com/example/Reader";
+
+	/**
+	 * CORPUS-80: Farmer's Delight's recipe book type on Forge 61 to 66, whose {@code RecipeBookType} Forge makes extensible
+	 * with an {@code init} that calls {@code RecipeBookSettings.register}, which throws "This is not implemented yet". Each
+	 * constant Forge's {@code create} factory makes goes through {@code init}, so the mixin cancels it for the mod's
+	 * constants, which Fabric gives no such hook, and only for those: another constant's {@code create} still fails as it
+	 * would without Fabricated. Where {@code init} returns (Forge 47's registers the recipe book's tags), it runs.
+	 */
+	@Test
+	void aForgeEnumWhoseInitNeverReturnsGetsItsConstantsWithoutIt() throws Exception {
+		Map<String, ClassNode> game = Map.of(BOOK_SETTINGS, node(bookSettings(true)));
+		ClassNode target = node(bookType(false));
+		assertTrue(!EnumValuesMixins.initReturns(target, game::get), "register throws");
+		EnumValuesMixins.Result result = EnumValuesMixins.of(node(bookMixin()), target, null, game::get, "com/example/FabricatedEnumBodies");
+		assertNotNull(result);
+		ClassNode mixin = node(result.mixin());
+		AnnotationNode inject = annotation(method(mixin, "fabricated$skipInit"), "Lorg/spongepowered/asm/mixin/injection/Inject;");
+		assertEquals(List.of("init()V"), Annotations.value(inject, "method"));
+		assertEquals(Boolean.TRUE, Annotations.value(inject, "cancellable"));
+		AnnotationNode at = (AnnotationNode) ((List<?>) Annotations.value(inject, "at")).getFirst();
+		assertEquals("HEAD", Annotations.value(at, "value"));
+
+		ClassLoader loader = loader(Map.of(BOOK_TYPE, mergedBookType(result.mixin()), BOOK_SETTINGS, bookSettings(true), CALLBACK_INFO, callbackInfo()));
+		Class<?> type = Class.forName(BOOK_TYPE.replace('/', '.'), true, loader);
+		Object[] values = (Object[]) type.getMethod("values").invoke(null);
+		assertEquals(List.of("CRAFTING", "COOKING"), java.util.Arrays.stream(values).map(v -> ((Enum<?>) v).name()).toList());
+		assertEquals(1, ((Enum<?>) values[1]).ordinal());
+		java.lang.reflect.InvocationTargetException other = org.junit.jupiter.api.Assertions.assertThrows(java.lang.reflect.InvocationTargetException.class,
+				() -> type.getMethod("create", String.class).invoke(null, "OTHER"));
+		assertEquals("This is not implemented yet", other.getCause().getMessage(), "another constant's init still runs");
+
+		// Forge 47's init returns: the constants get it as Forge mods' own do.
+		Map<String, ClassNode> registering = Map.of(BOOK_SETTINGS, node(bookSettings(false)));
+		assertTrue(EnumValuesMixins.initReturns(target, registering::get));
+		EnumValuesMixins.Result kept = EnumValuesMixins.of(node(bookMixin()), target, null, registering::get, "com/example/FabricatedEnumBodies");
+		assertTrue(node(kept.mixin()).methods.stream().noneMatch(m -> m.name.equals("fabricated$skipInit")));
+		// What can't be told keeps it: init branching, or calling what isn't here.
+		assertTrue(EnumValuesMixins.initReturns(target, name -> null));
+		assertTrue(EnumValuesMixins.initReturns(node(bookType(true)), game::get), "a branch");
+	}
+
+	/**
+	 * CORPUS-80: the generated mixin adds no fields, so the mod's reads of its constants as fields of the enum (Farmer's
+	 * Delight's {@code FDRecipeBookTypes.COOKING = RecipeBookType.FARMERSDELIGHT_COOKING}) read them from a holder, which
+	 * finds them among the enum's values by name. The enum's own constants are read as they were, and a constant the enum
+	 * lacks fails the holder naming it and the mixin.
+	 */
+	@Test
+	void theModsReadsOfTheConstantsAsFieldsOfTheEnumReadThemFromAHolder() throws Exception {
+		Map<String, ClassNode> game = Map.of(BOOK_SETTINGS, node(bookSettings(true)));
+		EnumValuesMixins.Result result = EnumValuesMixins.of(node(bookMixin()), node(bookType(false)), null, game::get, "com/example/FabricatedEnumBodies");
+		assertEquals(List.of("COOKING"), result.constants());
+		byte[] reader = EnumValuesMixins.withHeldConstants(reader(), BOOK_TYPE, result.constants(), CONSTANTS);
+		assertNotNull(reader);
+		ClassNode rewritten = node(reader);
+		List<String> owners = new java.util.ArrayList<>();
+		for (MethodNode m : rewritten.methods) {
+			for (AbstractInsnNode insn : m.instructions) {
+				if (insn instanceof FieldInsnNode f) owners.add(f.owner + "." + f.name);
+				if (insn instanceof org.objectweb.asm.tree.LdcInsnNode ldc && ldc.cst instanceof org.objectweb.asm.Handle h) owners.add(h.getOwner() + "." + h.getName());
+			}
+		}
+		assertEquals(List.of(CONSTANTS + ".COOKING", BOOK_TYPE + ".CRAFTING", CONSTANTS + ".COOKING"), owners);
+		assertNull(EnumValuesMixins.withHeldConstants(bookSettings(true), BOOK_TYPE, result.constants(), CONSTANTS), "reads none");
+
+		Map<String, byte[]> classes = new java.util.HashMap<>(Map.of(BOOK_TYPE, mergedBookType(result.mixin()), BOOK_SETTINGS, bookSettings(true),
+				CALLBACK_INFO, callbackInfo(), READER, reader, CONSTANTS, EnumValuesMixins.holderClass(CONSTANTS, BOOK_TYPE, result.constants(), "com.example.mixin.BookTypeMixin")));
+		ClassLoader loader = loader(classes);
+		Class<?> type = Class.forName(BOOK_TYPE.replace('/', '.'), false, loader);
+		Object cooking = Class.forName(READER.replace('/', '.'), true, loader).getMethod("cooking").invoke(null);
+		assertEquals("COOKING", ((Enum<?>) cooking).name());
+		assertTrue(cooking == ((Object[]) type.getMethod("values").invoke(null))[1], "the enum's own constant");
+
+		classes.put(CONSTANTS, EnumValuesMixins.holderClass(CONSTANTS, BOOK_TYPE, List.of("MISSING"), "com.example.mixin.BookTypeMixin"));
+		Class<?> holder = Class.forName(CONSTANTS.replace('/', '.'), false, loader(classes));
+		Throwable failed = org.junit.jupiter.api.Assertions.assertThrows(ExceptionInInitializerError.class,
+				() -> java.lang.invoke.MethodHandles.lookup().ensureInitialized(holder)).getCause();
+		assertEquals("Fabricated: net.minecraft.world.inventory.BookType has no constant MISSING once initialized: com.example.mixin.BookTypeMixin,"
+				+ " which adds it, did not apply", failed.getMessage());
+	}
+
+	private static ClassLoader loader(Map<String, byte[]> classes) {
+		return new ClassLoader(EnumValuesMixinsTest.class.getClassLoader()) {
+			@Override
+			protected Class<?> findClass(String name) throws ClassNotFoundException {
+				byte[] bytes = classes.get(name.replace('.', '/'));
+				if (bytes == null) throw new ClassNotFoundException(name);
+				return defineClass(name, bytes, 0, bytes.length);
+			}
+		};
+	}
+
+	/** Farmer's Delight's enum mixin, shaped: one plain constant, COOKING. */
+	private static byte[] bookMixin() {
+		return io.github.cmdralph.fabricated.core.testutil.TestEnums.mixin(BOOK_MIXIN, BOOK_TYPE,
+				List.of(io.github.cmdralph.fabricated.core.testutil.TestEnums.Constant.plain("COOKING")), cw -> {
+				});
+	}
+
+	/** Forge 61 to 66's {@code RecipeBookSettings}, shaped: {@code register} throws, or (Forge 47's) returns. */
+	private static byte[] bookSettings(boolean throwing) {
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_SUPER, BOOK_SETTINGS, null, "java/lang/Object", null);
+		MethodVisitor register = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "register", "(L" + BOOK_TYPE + ";)V", null, null);
+		register.visitCode();
+		if (throwing) {
+			register.visitTypeInsn(Opcodes.NEW, "java/lang/IllegalStateException");
+			register.visitInsn(Opcodes.DUP);
+			register.visitLdcInsn("This is not implemented yet");
+			register.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/IllegalStateException", "<init>", "(Ljava/lang/String;)V", false);
+			register.visitInsn(Opcodes.ATHROW);
+		} else {
+			register.visitInsn(Opcodes.RETURN);
+		}
+		register.visitMaxs(0, 0);
+		register.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	/**
+	 * Forge's {@code RecipeBookType}, shaped, as pre-flight reads it: Forge's marker, CRAFTING, its {@code create(String)}
+	 * factory (Forge's enum extender writes the code), and its {@code init} calling {@code register}; with {@code branching},
+	 * only when a static says so.
+	 */
+	private static byte[] bookType(boolean branching) {
+		String self = "L" + BOOK_TYPE + ";";
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_FINAL | Opcodes.ACC_SUPER | Opcodes.ACC_ENUM, BOOK_TYPE, null, "java/lang/Enum",
+				new String[] {EnumValuesMixins.FORGE_EXTENSIBLE_ENUM});
+		cw.visitField(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC | Opcodes.ACC_FINAL | Opcodes.ACC_ENUM, "CRAFTING", self, null, null).visitEnd();
+		cw.visitField(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_FINAL | Opcodes.ACC_SYNTHETIC, "$VALUES", "[" + self, null, null).visitEnd();
+		cw.visitField(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "REGISTER", "Z", null, null).visitEnd();
+		MethodVisitor ctor = cw.visitMethod(Opcodes.ACC_PRIVATE, "<init>", "(Ljava/lang/String;I)V", null, null);
+		ctor.visitCode();
+		ctor.visitInsn(Opcodes.RETURN);
+		ctor.visitMaxs(0, 0);
+		ctor.visitEnd();
+		MethodVisitor create = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "create", "(Ljava/lang/String;)" + self, null, null);
+		create.visitCode();
+		create.visitInsn(Opcodes.ACONST_NULL);
+		create.visitInsn(Opcodes.ARETURN);
+		create.visitMaxs(0, 0);
+		create.visitEnd();
+		MethodVisitor init = cw.visitMethod(Opcodes.ACC_PUBLIC, "init", "()V", null, null);
+		init.visitCode();
+		org.objectweb.asm.Label skip = new org.objectweb.asm.Label();
+		if (branching) {
+			init.visitFieldInsn(Opcodes.GETSTATIC, BOOK_TYPE, "REGISTER", "Z");
+			init.visitJumpInsn(Opcodes.IFEQ, skip);
+		}
+		init.visitVarInsn(Opcodes.ALOAD, 0);
+		init.visitMethodInsn(Opcodes.INVOKESTATIC, BOOK_SETTINGS, "register", "(" + self + ")V", false);
+		init.visitLabel(skip);
+		init.visitInsn(Opcodes.RETURN);
+		init.visitMaxs(0, 0);
+		init.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	/**
+	 * Forge 61 to 66's {@code RecipeBookType} as it runs: CRAFTING; {@code create} as Forge's enum extender writes it (the
+	 * constant appended to the values array, which the extender leaves non-final, then {@code init}); {@code init} calling
+	 * {@code register}, with the mixin's {@code fabricated$skipInit} called at its head as Mixin would; and the mixin's
+	 * {@code fabricated$addConstants} at the class initializer's end.
+	 */
+	private static byte[] mergedBookType(byte[] mixinBytes) {
+		String self = "L" + BOOK_TYPE + ";";
+		String array = "[" + self;
+		ClassNode mixin = new ClassNode();
+		new ClassReader(mixinBytes).accept(new org.objectweb.asm.commons.ClassRemapper(mixin, new org.objectweb.asm.commons.SimpleRemapper(BOOK_MIXIN, BOOK_TYPE)), 0);
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_FINAL | Opcodes.ACC_SUPER | Opcodes.ACC_ENUM, BOOK_TYPE, null, "java/lang/Enum", null);
+		cw.visitField(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC | Opcodes.ACC_FINAL | Opcodes.ACC_ENUM, "CRAFTING", self, null, null).visitEnd();
+		cw.visitField(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, "$VALUES", array, null, null).visitEnd();
+		MethodVisitor ctor = cw.visitMethod(Opcodes.ACC_PRIVATE, "<init>", "(Ljava/lang/String;I)V", null, null);
+		ctor.visitCode();
+		ctor.visitVarInsn(Opcodes.ALOAD, 0);
+		ctor.visitVarInsn(Opcodes.ALOAD, 1);
+		ctor.visitVarInsn(Opcodes.ILOAD, 2);
+		ctor.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/Enum", "<init>", "(Ljava/lang/String;I)V", false);
+		ctor.visitInsn(Opcodes.RETURN);
+		ctor.visitMaxs(0, 0);
+		ctor.visitEnd();
+		MethodVisitor values = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "values", "()" + array, null, null);
+		values.visitCode();
+		values.visitFieldInsn(Opcodes.GETSTATIC, BOOK_TYPE, "$VALUES", array);
+		values.visitMethodInsn(Opcodes.INVOKEVIRTUAL, array, "clone", "()Ljava/lang/Object;", false);
+		values.visitTypeInsn(Opcodes.CHECKCAST, array);
+		values.visitInsn(Opcodes.ARETURN);
+		values.visitMaxs(0, 0);
+		values.visitEnd();
+		MethodVisitor create = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC | Opcodes.ACC_SYNCHRONIZED, "create", "(Ljava/lang/String;)" + self, null, null);
+		create.visitCode();
+		create.visitTypeInsn(Opcodes.NEW, BOOK_TYPE);
+		create.visitInsn(Opcodes.DUP);
+		create.visitVarInsn(Opcodes.ALOAD, 0);
+		create.visitFieldInsn(Opcodes.GETSTATIC, BOOK_TYPE, "$VALUES", array);
+		create.visitInsn(Opcodes.ARRAYLENGTH);
+		create.visitMethodInsn(Opcodes.INVOKESPECIAL, BOOK_TYPE, "<init>", "(Ljava/lang/String;I)V", false);
+		create.visitVarInsn(Opcodes.ASTORE, 1);
+		create.visitFieldInsn(Opcodes.GETSTATIC, BOOK_TYPE, "$VALUES", array);
+		create.visitFieldInsn(Opcodes.GETSTATIC, BOOK_TYPE, "$VALUES", array);
+		create.visitInsn(Opcodes.ARRAYLENGTH);
+		create.visitInsn(Opcodes.ICONST_1);
+		create.visitInsn(Opcodes.IADD);
+		create.visitMethodInsn(Opcodes.INVOKESTATIC, "java/util/Arrays", "copyOf", "([Ljava/lang/Object;I)[Ljava/lang/Object;", false);
+		create.visitTypeInsn(Opcodes.CHECKCAST, array);
+		create.visitVarInsn(Opcodes.ASTORE, 2);
+		create.visitVarInsn(Opcodes.ALOAD, 2);
+		create.visitVarInsn(Opcodes.ALOAD, 2);
+		create.visitInsn(Opcodes.ARRAYLENGTH);
+		create.visitInsn(Opcodes.ICONST_1);
+		create.visitInsn(Opcodes.ISUB);
+		create.visitVarInsn(Opcodes.ALOAD, 1);
+		create.visitInsn(Opcodes.AASTORE);
+		create.visitVarInsn(Opcodes.ALOAD, 2);
+		create.visitFieldInsn(Opcodes.PUTSTATIC, BOOK_TYPE, "$VALUES", array);
+		create.visitVarInsn(Opcodes.ALOAD, 1);
+		create.visitMethodInsn(Opcodes.INVOKEVIRTUAL, BOOK_TYPE, "init", "()V", false);
+		create.visitVarInsn(Opcodes.ALOAD, 1);
+		create.visitInsn(Opcodes.ARETURN);
+		create.visitMaxs(0, 0);
+		create.visitEnd();
+		MethodVisitor init = cw.visitMethod(Opcodes.ACC_PUBLIC, "init", "()V", null, null);
+		init.visitCode();
+		org.objectweb.asm.Label original = new org.objectweb.asm.Label();
+		init.visitTypeInsn(Opcodes.NEW, CALLBACK_INFO);
+		init.visitInsn(Opcodes.DUP);
+		init.visitMethodInsn(Opcodes.INVOKESPECIAL, CALLBACK_INFO, "<init>", "()V", false);
+		init.visitVarInsn(Opcodes.ASTORE, 1);
+		init.visitVarInsn(Opcodes.ALOAD, 0);
+		init.visitVarInsn(Opcodes.ALOAD, 1);
+		init.visitMethodInsn(Opcodes.INVOKESPECIAL, BOOK_TYPE, "fabricated$skipInit", "(L" + CALLBACK_INFO + ";)V", false);
+		init.visitVarInsn(Opcodes.ALOAD, 1);
+		init.visitMethodInsn(Opcodes.INVOKEVIRTUAL, CALLBACK_INFO, "isCancelled", "()Z", false);
+		init.visitJumpInsn(Opcodes.IFEQ, original);
+		init.visitInsn(Opcodes.RETURN);
+		init.visitLabel(original);
+		init.visitVarInsn(Opcodes.ALOAD, 0);
+		init.visitMethodInsn(Opcodes.INVOKESTATIC, BOOK_SETTINGS, "register", "(" + self + ")V", false);
+		init.visitInsn(Opcodes.RETURN);
+		init.visitMaxs(0, 0);
+		init.visitEnd();
+		for (String handler : List.of("fabricated$addConstants", "fabricated$skipInit")) {
+			MethodNode m = method(mixin, handler);
+			m.visibleAnnotations = null;
+			m.invisibleAnnotations = null;
+			m.accept(cw);
+		}
+		MethodVisitor clinit = cw.visitMethod(Opcodes.ACC_STATIC, "<clinit>", "()V", null, null);
+		clinit.visitCode();
+		clinit.visitTypeInsn(Opcodes.NEW, BOOK_TYPE);
+		clinit.visitInsn(Opcodes.DUP);
+		clinit.visitLdcInsn("CRAFTING");
+		clinit.visitInsn(Opcodes.ICONST_0);
+		clinit.visitMethodInsn(Opcodes.INVOKESPECIAL, BOOK_TYPE, "<init>", "(Ljava/lang/String;I)V", false);
+		clinit.visitFieldInsn(Opcodes.PUTSTATIC, BOOK_TYPE, "CRAFTING", self);
+		clinit.visitInsn(Opcodes.ICONST_1);
+		clinit.visitTypeInsn(Opcodes.ANEWARRAY, BOOK_TYPE);
+		clinit.visitInsn(Opcodes.DUP);
+		clinit.visitInsn(Opcodes.ICONST_0);
+		clinit.visitFieldInsn(Opcodes.GETSTATIC, BOOK_TYPE, "CRAFTING", self);
+		clinit.visitInsn(Opcodes.AASTORE);
+		clinit.visitFieldInsn(Opcodes.PUTSTATIC, BOOK_TYPE, "$VALUES", array);
+		clinit.visitInsn(Opcodes.ACONST_NULL);
+		clinit.visitMethodInsn(Opcodes.INVOKESTATIC, BOOK_TYPE, "fabricated$addConstants", "(L" + CALLBACK_INFO + ";)V", false);
+		clinit.visitInsn(Opcodes.RETURN);
+		clinit.visitMaxs(0, 0);
+		clinit.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	/** Mixin's {@code CallbackInfo}, as far as a cancellable injector uses it. */
+	private static byte[] callbackInfo() {
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_SUPER, CALLBACK_INFO, null, "java/lang/Object", null);
+		cw.visitField(Opcodes.ACC_PRIVATE, "cancelled", "Z", null, null).visitEnd();
+		MethodVisitor ctor = cw.visitMethod(Opcodes.ACC_PUBLIC, "<init>", "()V", null, null);
+		ctor.visitCode();
+		ctor.visitVarInsn(Opcodes.ALOAD, 0);
+		ctor.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false);
+		ctor.visitInsn(Opcodes.RETURN);
+		ctor.visitMaxs(0, 0);
+		ctor.visitEnd();
+		MethodVisitor cancel = cw.visitMethod(Opcodes.ACC_PUBLIC, "cancel", "()V", null, null);
+		cancel.visitCode();
+		cancel.visitVarInsn(Opcodes.ALOAD, 0);
+		cancel.visitInsn(Opcodes.ICONST_1);
+		cancel.visitFieldInsn(Opcodes.PUTFIELD, CALLBACK_INFO, "cancelled", "Z");
+		cancel.visitInsn(Opcodes.RETURN);
+		cancel.visitMaxs(0, 0);
+		cancel.visitEnd();
+		MethodVisitor cancelled = cw.visitMethod(Opcodes.ACC_PUBLIC, "isCancelled", "()Z", null, null);
+		cancelled.visitCode();
+		cancelled.visitVarInsn(Opcodes.ALOAD, 0);
+		cancelled.visitFieldInsn(Opcodes.GETFIELD, CALLBACK_INFO, "cancelled", "Z");
+		cancelled.visitInsn(Opcodes.IRETURN);
+		cancelled.visitMaxs(0, 0);
+		cancelled.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	/**
+	 * The mod's class reading the constant as a field of the enum ({@code cooking()}), a handle to it, and the enum's own
+	 * CRAFTING.
+	 */
+	private static byte[] reader() {
+		String self = "L" + BOOK_TYPE + ";";
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_SUPER, READER, null, "java/lang/Object", null);
+		MethodVisitor cooking = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "cooking", "()Ljava/lang/Object;", null, null);
+		cooking.visitCode();
+		cooking.visitFieldInsn(Opcodes.GETSTATIC, BOOK_TYPE, "COOKING", self);
+		cooking.visitInsn(Opcodes.ARETURN);
+		cooking.visitMaxs(0, 0);
+		cooking.visitEnd();
+		MethodVisitor crafting = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "crafting", "()Ljava/lang/Object;", null, null);
+		crafting.visitCode();
+		crafting.visitFieldInsn(Opcodes.GETSTATIC, BOOK_TYPE, "CRAFTING", self);
+		crafting.visitInsn(Opcodes.ARETURN);
+		crafting.visitMaxs(0, 0);
+		crafting.visitEnd();
+		MethodVisitor handle = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "handle", "()Ljava/lang/Object;", null, null);
+		handle.visitCode();
+		handle.visitLdcInsn(new org.objectweb.asm.Handle(Opcodes.H_GETSTATIC, BOOK_TYPE, "COOKING", self, false));
+		handle.visitInsn(Opcodes.ARETURN);
+		handle.visitMaxs(0, 0);
+		handle.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
 	}
 
 	private static ClassNode node(byte[] bytes) {
