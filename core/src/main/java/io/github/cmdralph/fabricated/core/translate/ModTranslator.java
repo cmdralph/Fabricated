@@ -1028,6 +1028,8 @@ public final class ModTranslator {
 		String with = target.interfaces.contains(EnumValuesMixins.FORGE_EXTENSIBLE_ENUM) ? " with the enum's create factories" : "";
 		if (!with.isEmpty() && !EnumValuesMixins.initReturns(target, env.installedIndex()::readNode)) {
 			with += ", skipping Forge's init for them, which never returns here";
+		} else if (!with.isEmpty() && !EnumValuesMixins.initKeepsToEnum(target)) {
+			with += ", skipping Forge's init for them, which reaches beyond the enum while it is still initializing (Fabric runs none)";
 		}
 		String read = readers.isEmpty() ? "" : "; the mod's " + readers.size() + " class(es) reading them as fields of the enum, which a mixin can't add,"
 				+ " read them from " + holder.replace('/', '.');
