@@ -1105,6 +1105,25 @@ MixinExtras has NeoForge's jar, and a NeoForge mod nested in another jar has tha
   in is set. Where the enum's `init`, which each factory runs on the constant it makes, can't return (Forge 61 to 66's
   `RecipeBookType`, whose `init` throws "This is not implemented yet"), the mixin skips `init` for the mod's
   constants, which Fabric gives no such hook.
+- Fabric ASM (Manningham Mills, mod id `mm`) adds enum constants that mods declare in their `mm:early_risers`, with
+  `ClassTinkerers.enumBuilder(...).addEnum(...).build()`. Its Mixin plugin runs those early risers and serves the
+  mixins it makes from Fabric's class loader. NeoForge's and Forge's class loaders take no added classes, so Mixin
+  dropped the plugin's config, the constants were never made, and the mod failed where it looked them up
+  (`ClassTinkerers.getEnum`). This happened to Farmer's Delight's recipe book types on Forge 47 (CORPUS-80).
+  - **What Fabricated does instead:** it leaves Fabric ASM's config out and reads those calls from the early
+    risers' code, without running it. It then adds the constants with enum mixins of its own, in a config it
+    generates. Those mixins go the way the platform takes enum mixins above: NeoForge's enum extension file, or an
+    ordinary mixin.
+  - **What it reads:** strings, class literals, the primitive classes, boxed constants and arrays of them,
+    `mapClassName` from intermediary names, string joins, and the side, whose branches it follows for this side.
+  - **Arguments:** given as constants, or by a supplier. The supplier is one a static method of the mod returns, or
+    a lambda capturing nothing. It runs as the enum is initialized, once per constant, as Fabric ASM's does, and an
+    array of the wrong length fails with Fabric ASM's `IllegalArgumentException`.
+  - **Not supported:** an early riser doing anything else adds nothing, and its mod gets a warning naming what
+    wasn't read. That includes subclassed constants (`addEnumSubclass`), `ASM` `Type` parameters, and Fabric ASM's
+    other tools: class definitions, transformations, replacements and added URLs. Its access transformer
+    (`silky.at`) isn't applied either; a mod shipping one gets a warning.
+  - UNVERIFIED in the game.
 - An `@Intrinsic` method of a class mixin that only calls the superclass's method (Lithium's `setCachedState` of the
   chest, there for its `@Inject` to have a method to inject into) is dropped where the target already declares that
   method, as Forge 47's chest does: Mixin would reject the mixin, and the target's own method is what `@Intrinsic`

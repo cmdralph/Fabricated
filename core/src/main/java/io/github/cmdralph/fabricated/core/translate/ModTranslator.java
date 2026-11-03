@@ -19,6 +19,7 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.Semaphore;
 import java.util.function.Function;
+import java.util.function.UnaryOperator;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.jar.Attributes;
@@ -71,6 +72,7 @@ import io.github.cmdralph.fabricated.core.json.Json;
 import io.github.cmdralph.fabricated.core.json.JsonException;
 import io.github.cmdralph.fabricated.core.metadata.ModIds;
 import io.github.cmdralph.fabricated.core.metadata.FabricModMetadata;
+import io.github.cmdralph.fabricated.core.metadata.FabricModMetadata.EntrypointSpec;
 import io.github.cmdralph.fabricated.core.metadata.FabricModMetadata.MixinEntry;
 import io.github.cmdralph.fabricated.core.mixin.MixinConfigFile;
 import io.github.cmdralph.fabricated.core.mixin.MixinPreflight;
@@ -228,9 +230,11 @@ public final class ModTranslator {
 				if (!privateReads.isEmpty()) {
 					notes.addAll(privateReads.apply(remapped != null ? remapped : overlay, remapped != null ? remapped.keySet() : archive.classEntryNames(), files));
 				}
-				List<ModsTomlWriter.MixinConfigSpec> mixinSpecs = processMixins(candidate, override, plannedSkips, files,
-						remapped != null ? remapped.keySet() : archive.classEntryNames(), overlay, findings, installedClasses, enumEntries,
-						enumTargets, classes, bridges, notes, widened);
+				Collection<String> classEntries = remapped != null ? remapped.keySet() : archive.classEntryNames();
+				// Fabric ASM's enum additions, as enum mixins of a config of their own (CORPUS-80).
+				List<MixinEntry> generatedConfigs = earlyRisers(candidate, files, classEntries, overlay, classes, findings);
+				List<ModsTomlWriter.MixinConfigSpec> mixinSpecs = processMixins(candidate, override, plannedSkips, files, classEntries, overlay, findings,
+						installedClasses, enumEntries, enumTargets, classes, bridges, notes, widened, generatedConfigs);
 				if (!enumEntries.isEmpty()) overlay.put(EnumExtensions.PATH, EnumExtensions.json(enumEntries).getBytes(StandardCharsets.UTF_8));
 
 				// The mod's own files translation rewrites (not the ones it adds).
@@ -554,7 +558,7 @@ public final class ModTranslator {
 	private List<ModsTomlWriter.MixinConfigSpec> processMixins(Candidate candidate, ModOverride override, Set<String> plannedSkips, FileView files,
 			Collection<String> entries, Map<String, byte[]> overlay, List<PreflightFinding> findings, Map<String, String> installedClasses,
 			List<EnumExtensions.Entry> enumEntries, Set<String> enumTargets, Function<String, ClassNode> classes, Set<DefaultBridge> bridges,
-			List<String> notes, Set<String> widened)
+			List<String> notes, Set<String> widened, List<MixinEntry> generatedConfigs)
 			throws ArchiveException, TranslationException {
 		FabricModMetadata md = candidate.metadata();
 		String behavior = MixinCompat.clampForNeoForge(MixinCompat.fabricBehaviorVersion(md.getDependencies()), env.runtimeMixinVersion(),
@@ -582,9 +586,11 @@ public final class ModTranslator {
 		// The accessor mixins into library classes that generated classes serve, kept in their configs (LIB-1b).
 		Set<String> servedAccessors = new HashSet<>();
 
-		for (MixinEntry entry : md.compatHints().mixinsOr(md.mixins())) {
+		List<MixinEntry> allConfigs = new ArrayList<>(md.compatHints().mixinsOr(md.mixins()));
+		allConfigs.addAll(generatedConfigs);
+		for (MixinEntry entry : allConfigs) {
 			if (!entry.environment().matches(side)) continue;
-			byte[] data = files.read(entry.config());
+			byte[] data = generatedConfigs.contains(entry) ? overlay.get(entry.config()) : files.read(entry.config());
 			if (data == null) {
 				throw new TranslationException("Mixin config " + entry.config() + " declared in fabric.mod.json is missing from the jar",
 						"The jar is incomplete; re-download it.");
@@ -607,6 +613,15 @@ public final class ModTranslator {
 				}
 			} catch (JsonException e) {
 				throw new TranslationException("Mixin config " + entry.config() + " is invalid: " + e.getMessage(), "Report this to the mod author.");
+			}
+			if (EarlyRisers.PLUGIN.equals(config.plugin())) {
+				// Fabric ASM's own: its plugin serves the mixins it makes from Fabric's class loader, which this platform's
+				// doesn't take, so Mixin would drop the config with an error; Fabricated adds the enum constants the early
+				// risers declare instead (CORPUS-80), and nothing would add them twice.
+				findings.add(new PreflightFinding(Severity.INFO, entry.config(), null, "Fabric ASM's Mixin plugin can't run on "
+						+ env.descriptor().loaderName() + " (it adds classes to Fabric's class loader), so its config is left out; Fabricated adds the"
+						+ " enum constants mods' early risers declare (" + EarlyRisers.ENTRYPOINT + "), and Fabric ASM's other tools don't run", ""));
+				continue;
 			}
 			configs.put(entry.config(), config);
 			refmaps.put(entry.config(), refmap);
@@ -835,6 +850,126 @@ public final class ModTranslator {
 			}
 			leaveOutHandlers(e.getKey(), handlers, false, files, overlay, findings);
 		}
+	}
+
+	/**
+	 * The enum constants the mod's Fabric ASM early risers declare ({@link EarlyRisers}), as enum mixins Fabricated
+	 * generates, one per enum, in a config of their own (put in {@code overlay}, with the classes giving supplied
+	 * arguments and the mod's supplier methods those call made reachable): the platform's way with enum mixins then adds
+	 * them, as it would the mod's own (CORPUS-80: Farmer's Delight's recipe book types on Forge 47, whose Fabric ASM plugin
+	 * can't run there). An early riser it can't read is reported, and adds nothing, as is Fabric ASM's access transformer
+	 * ({@code silky.at}), which nothing applies. Returns the config's entry, if any.
+	 */
+	private List<MixinEntry> earlyRisers(Candidate candidate, FileView files, Collection<String> entries, Map<String, byte[]> overlay,
+			Function<String, ClassNode> classes, List<PreflightFinding> findings) throws ArchiveException {
+		if (files.read(EarlyRisers.ACCESS_TRANSFORMER) != null) {
+			findings.add(new PreflightFinding(Severity.WARN, EarlyRisers.ACCESS_TRANSFORMER, null, "Fabric ASM's access transformer isn't applied:"
+					+ " Fabric ASM's plugin, which applies it on Fabric, can't run on " + env.descriptor().loaderName() + ", so the classes and methods"
+					+ " it opens stay as they are, and the mod may fail where it uses them", "Report this to Fabricated, naming the mod."));
+		}
+		List<EntrypointSpec> specs = candidate.metadata().entrypoints().getOrDefault(EarlyRisers.ENTRYPOINT, List.of());
+		if (specs.isEmpty()) return List.of();
+		UnaryOperator<String> mapClass = env.namespace() == Namespace.INTERMEDIARY ? env.mappings()::mapClass : UnaryOperator.identity();
+		String loader = env.descriptor().loaderName();
+		List<EarlyRisers.Addition> additions = new ArrayList<>();
+		List<String> risers = new ArrayList<>();
+		String home = null;
+		for (EntrypointSpec spec : specs) {
+			EarlyRisers.Read read = spec.adapter().equals("default") ? EarlyRisers.read(spec.value(), classes, env.clientSide(), mapClass)
+					: new EarlyRisers.Read(spec.value(), List.of(), "it is given through the " + spec.adapter() + " language adapter");
+			if (read.unread() != null) {
+				findings.add(unreadRiser(read.riser(), read.unread()));
+				continue;
+			}
+			if (read.additions().isEmpty()) continue;
+			String owner = read.riser().split("::")[0].replace('.', '/');
+			int slash = owner.lastIndexOf('/');
+			if (slash <= 0) {
+				findings.add(unreadRiser(read.riser(), "it is in the default package, where Fabricated can't put the mixins adding its constants"));
+				continue;
+			}
+			if (home == null) home = owner.substring(0, slash);
+			risers.add(read.riser());
+			additions.addAll(read.additions());
+		}
+		if (additions.isEmpty()) return List.of();
+
+		// The mixins' package, which Mixin then keeps to itself: one no class of the mod is in.
+		String mixinPackage = null;
+		for (int n = 0; n < 100 && mixinPackage == null; n++) {
+			String candidatePackage = home + "/fabricatedearlyrisers" + (n == 0 ? "" : n);
+			if (entries.stream().noneMatch(e -> e.startsWith(candidatePackage + "/"))) mixinPackage = candidatePackage;
+		}
+		String configName = "fabricated-" + ModIds.toNeoForgeId(candidate.id()) + "-early-risers.mixins.json";
+		if (mixinPackage == null || files.read(configName) != null) {
+			for (String riser : risers) findings.add(unreadRiser(riser, "the names Fabricated would give its mixins are taken"));
+			return List.of();
+		}
+		// The supplied arguments come from a class next to each supplier's own (so that it may call one the mod made
+		// private), outside any of the mod's mixin packages, where Mixin would refuse to load it.
+		List<String> mixinPackages = new ArrayList<>();
+		for (MixinEntry entry : candidate.metadata().mixins()) {
+			byte[] data = files.read(entry.config());
+			try {
+				String pkg = data == null ? null : MixinConfigFile.parse(new String(data, StandardCharsets.UTF_8)).mixinPackage();
+				if (pkg != null) mixinPackages.add(pkg.replace('.', '/') + "/");
+			} catch (JsonException e) {
+				// processMixins reports an invalid config
+			}
+		}
+		Map<EarlyRisers.Addition, String> helpers = new LinkedHashMap<>();
+		Map<String, List<EarlyRisers.Addition>> supplied = new LinkedHashMap<>();
+		Map<String, Set<String>> suppliers = new LinkedHashMap<>();
+		for (EarlyRisers.Addition a : additions) {
+			if (!(a.arguments() instanceof EarlyRisers.Supplied s)) continue;
+			String helper = supplied.keySet().stream().filter(h -> h.startsWith(s.owner() + "$FabricatedArguments")).findFirst().orElse(null);
+			if (helper == null) helper = freeClassName(s.owner() + "$FabricatedArguments", files, overlay);
+			if (helper == null || mixinPackages.stream().anyMatch(helper::startsWith)) {
+				for (String riser : risers) findings.add(unreadRiser(riser, "the supplier of " + a.name() + "'s arguments is in a mixin package"));
+				return List.of();
+			}
+			helpers.put(a, helper);
+			supplied.computeIfAbsent(helper, k -> new ArrayList<>()).add(a);
+			suppliers.computeIfAbsent(s.owner(), k -> new TreeSet<>()).add(s.name() + s.desc());
+		}
+
+		Map<String, List<EarlyRisers.Addition>> byTarget = EarlyRisers.byTarget(additions);
+		List<String> mixins = new ArrayList<>();
+		for (Map.Entry<String, List<EarlyRisers.Addition>> e : byTarget.entrySet()) {
+			String simple = e.getKey().substring(e.getKey().lastIndexOf('/') + 1).replace('$', '_') + "Additions";
+			String mixin = simple;
+			for (int n = 1; mixins.contains(mixin); n++) mixin = simple + n;
+			mixins.add(mixin);
+			overlay.put(mixinPackage + "/" + mixin + ".class", EarlyRisers.mixinClass(mixinPackage + "/" + mixin, e.getKey(), e.getValue(), helpers));
+		}
+		for (Map.Entry<String, List<EarlyRisers.Addition>> e : supplied.entrySet()) {
+			overlay.put(e.getKey() + ".class", EarlyRisers.helperClass(e.getKey(), e.getValue()));
+		}
+		for (Map.Entry<String, Set<String>> e : suppliers.entrySet()) {
+			String path = e.getKey() + ".class";
+			byte[] data = overlay.containsKey(path) ? overlay.get(path) : files.read(path);
+			byte[] reachable = data == null ? null : EarlyRisers.withReachableSuppliers(data, e.getValue());
+			if (reachable != null) overlay.put(path, reachable);
+		}
+		Map<String, Object> config = new LinkedHashMap<>();
+		config.put("required", true);
+		config.put("minVersion", "0.8");
+		config.put("package", mixinPackage.replace('/', '.'));
+		config.put("compatibilityLevel", "JAVA_17");
+		config.put("mixins", mixins);
+		overlay.put(configName, Json.write(config, true).getBytes(StandardCharsets.UTF_8));
+		String constants = byTarget.entrySet().stream().map(e -> e.getKey().replace('/', '.') + " ("
+				+ e.getValue().stream().map(EarlyRisers.Addition::name).collect(Collectors.joining(", ")) + ")").collect(Collectors.joining("; "));
+		findings.add(new PreflightFinding(Severity.INFO, configName, null, "Fabric ASM's early riser(s) " + String.join(", ", risers)
+				+ " add constants to " + constants + "; Fabric ASM's own plugin can't run on " + loader + ", so Fabricated read them from the early"
+				+ " risers' code and adds them with enum mixins of its own", ""));
+		return List.of(new MixinEntry(configName, net.fabricmc.loader.api.metadata.ModEnvironment.UNIVERSAL));
+	}
+
+	private PreflightFinding unreadRiser(String riser, String why) {
+		return new PreflightFinding(Severity.WARN, EarlyRisers.ENTRYPOINT, riser, "Fabric ASM's early riser can't be read: " + why
+				+ ". Fabric ASM's own plugin can't run on " + env.descriptor().loaderName() + " either, so the enum constants it adds are missing,"
+				+ " and the mod may fail where it uses them", "Report this to Fabricated, naming the mod.");
 	}
 
 	/**

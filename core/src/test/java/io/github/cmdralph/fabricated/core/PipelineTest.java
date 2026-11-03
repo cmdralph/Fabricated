@@ -60,6 +60,7 @@ import io.github.cmdralph.fabricated.core.resolve.Candidate;
 import io.github.cmdralph.fabricated.core.resolve.DownloadedMods;
 import io.github.cmdralph.fabricated.core.resolve.FabricApiPlan;
 import io.github.cmdralph.fabricated.core.runtime.ModContainerImpl;
+import io.github.cmdralph.fabricated.core.testutil.TestEarlyRisers;
 import io.github.cmdralph.fabricated.core.testutil.TestEnumBodies;
 import io.github.cmdralph.fabricated.core.testutil.TestEnums;
 import io.github.cmdralph.fabricated.core.testutil.TestJars;
@@ -1606,6 +1607,99 @@ class PipelineTest {
 				assertEquals(List.of("COOKING:L" + read[1] + ";"), holder.fields.stream().map(f -> f.name + ":" + f.desc).toList());
 			}
 		}
+	}
+
+	@Test
+	void fabricAsmsEarlyRisersEnumConstantsComeFromEnumMixinsOfFabricatedsOwn(@TempDir Path game) throws Exception {
+		// CORPUS-80 on Forge 47: Farmer's Delight adds its recipe book type and search category with Fabric ASM, whose
+		// Mixin plugin runs the mod's early riser and serves the enum mixins it makes from Fabric's class loader. Forge's
+		// takes no added URLs, so Mixin dropped the plugin's config, no constant was made, and the mod's entrypoint failed
+		// on ClassTinkerers.getEnum. Fabricated reads the early riser instead and adds the constants with enum mixins of its
+		// own, which Forge's Mixin 0.8.5 can't apply either: they become ordinary mixins calling the enums' create factories
+		// (ENUM-7). The search category's argument comes from the mod's supplier, through a helper next to it.
+		String bookType = "net/minecraft/world/inventory/RecipeBookType";
+		String categories = "net/minecraft/client/RecipeBookCategories";
+		String stack = "net/minecraft/world/item/ItemStack";
+		String stacks = "com/cooking/Stacks";
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		Path cooking = TestJars.create().fabricModJson(TestJars.modJson("cooking", "1.0", "\"entrypoints\":{\"mm:early_risers\":[\"com.cooking.CookingASM\"]}"))
+				.bytes("com/cooking/CookingASM.class", TestEarlyRisers.cooking("com/cooking/CookingASM", bookType.replace('/', '.'), categories.replace('/', '.'),
+						stack.replace('/', '.'), stacks))
+				.bytes(stacks + ".class", TestEarlyRisers.stacks(stacks, stack))
+				.write(mods.resolve("cooking.jar"));
+		Path fabricAsm = TestJars.create().fabricModJson(TestJars.modJson("mm", "2.3", "\"mixins\":[\"mm.mixins.json\"]"))
+				.text("mm.mixins.json", "{\"required\":true,\"package\":\"com.chocohead.mm.mixin\",\"plugin\":\"com.chocohead.mm.Plugin\",\"mixins\":[]}")
+				.write(mods.resolve("mm.jar"));
+		Path broken = TestJars.create().fabricModJson(TestJars.modJson("broken", "1.0", "\"entrypoints\":{\"mm:early_risers\":[\"com.broken.BrokenASM\"]}"))
+				.bytes("com/broken/BrokenASM.class", TestEarlyRisers.riser("com/broken/BrokenASM", run -> {
+					run.visitLdcInsn("net.minecraft.world.Thing");
+					run.visitInsn(Opcodes.ACONST_NULL);
+					run.visitMethodInsn(Opcodes.INVOKESTATIC, "com/chocohead/mm/api/ClassTinkerers", "addTransformation",
+							"(Ljava/lang/String;Ljava/util/function/Consumer;)V", false);
+				}))
+				.text("silky.at", "net/minecraft/class_1\n")
+				.write(mods.resolve("broken.jar"));
+
+		Map<String, byte[]> gameClasses = Map.of(TARGET, targetClass(), stack, TestJars.emptyClass(stack, "java/lang/Object"),
+				bookType, withInterface(TestEnums.target(bookType, false, List.of("()V"), List.of(), Map.of(), cw -> {
+					valuesArray(cw, bookType);
+					unextended(cw, "(Ljava/lang/String;)L" + bookType + ";");
+				}), "net/minecraftforge/common/IExtensibleEnum"),
+				categories, withInterface(TestEnums.target(categories, false, List.of("([L" + stack + ";)V"), List.of(), Map.of(), cw -> {
+					valuesArray(cw, categories);
+					unextended(cw, "(Ljava/lang/String;[L" + stack + ";)L" + categories + ";");
+				}), "net/minecraftforge/common/IExtensibleEnum"));
+		Pipeline.Input in = withDescriptor(input(game, List.of(broken, cooking, fabricAsm), Namespace.OFFICIAL, gameClasses, null, List.of(),
+				InstalledClasses.NONE, ClassBytesSource.EMPTY, "0.8.5+Jenkins-b310.git-155314e6e91465dad727e621a569906a410cd6f4", "0.8.5"),
+				PlatformDescriptor.FORGE);
+		Pipeline.Result forge = Pipeline.run(withClientSide(in));
+
+		String report = forge.report().render();
+		assertEquals(List.of("broken", "cooking", "mm"), forge.mods().stream().map(m -> m.translated().candidate().id()).sorted().toList(), report);
+		assertTrue(report.contains("Fabric ASM's early riser(s) com.cooking.CookingASM add constants to net.minecraft.world.inventory.RecipeBookType"
+				+ " (COOKING); net.minecraft.client.RecipeBookCategories (COOKING_SEARCH)"), report);
+		assertTrue(report.contains("Its constants (COOKING_SEARCH) go to net.minecraft.client.RecipeBookCategories"), report);
+		assertTrue(report.contains("a mixin into its class initializer adds them with the enum's create factories"), report);
+		assertTrue(report.contains("Fabric ASM's Mixin plugin can't run on Forge"), report);
+		assertTrue(report.contains("Fabric ASM's early riser can't be read: it uses Fabric ASM's ClassTinkerers.addTransformation, which Fabricated"
+				+ " doesn't run"), report);
+		assertTrue(report.contains("broken: WARN [silky.at] Fabric ASM's access transformer isn't applied"), report);
+		Pipeline.LoadedMod mod = forge.mods().stream().filter(m -> m.translated().candidate().id().equals("cooking")).findFirst().orElseThrow();
+		try (SafeArchive overlay = SafeArchive.open(mod.translated().overlay(), ArchiveLimits.DEFAULTS)) {
+			String configName = "fabricated-cooking-early-risers.mixins.json";
+			Map<String, Object> config = io.github.cmdralph.fabricated.core.json.Json.parseObject(overlay.readText(configName));
+			assertEquals("com.cooking.fabricatedearlyrisers", config.get("package"));
+			assertEquals(List.of("RecipeBookTypeAdditions", "RecipeBookCategoriesAdditions"), config.get("mixins"));
+			assertTrue(overlay.readText("META-INF/MANIFEST.MF").contains(configName), overlay.readText("META-INF/MANIFEST.MF"));
+			for (String mixin : List.of("RecipeBookTypeAdditions", "RecipeBookCategoriesAdditions")) {
+				ClassNode node = new ClassNode();
+				new ClassReader(overlay.read("com/cooking/fabricatedearlyrisers/" + mixin + ".class")).accept(node, ClassReader.SKIP_CODE);
+				assertEquals(0, node.access & Opcodes.ACC_ENUM, mixin + " is an ordinary mixin now");
+			}
+			assertNotNull(overlay.read(stacks + "$FabricatedArguments.class"), "the supplied arguments' helper");
+			ClassNode supplier = new ClassNode();
+			new ClassReader(overlay.read(stacks + ".class")).accept(supplier, ClassReader.SKIP_CODE);
+			assertTrue(supplier.methods.stream().filter(m -> m.name.equals("stacks")).allMatch(m -> (m.access & Opcodes.ACC_PRIVATE) == 0),
+					"the helper may call the mod's supplier");
+		}
+		Pipeline.LoadedMod mm = forge.mods().stream().filter(m -> m.translated().candidate().id().equals("mm")).findFirst().orElseThrow();
+		try (SafeArchive overlay = SafeArchive.open(mm.translated().overlay(), ArchiveLimits.DEFAULTS)) {
+			String manifest = overlay.readText("META-INF/MANIFEST.MF");
+			assertTrue(manifest == null || !manifest.contains("mm.mixins.json"), "Fabric ASM's own config is left out: " + manifest);
+		}
+	}
+
+	/** Forge's {@code create} factory of an extensible enum, which its enum extender writes as the game loads. */
+	private static void unextended(ClassWriter cw, String desc) {
+		MethodVisitor create = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "create", desc, null, null);
+		create.visitCode();
+		create.visitTypeInsn(Opcodes.NEW, "java/lang/IllegalStateException");
+		create.visitInsn(Opcodes.DUP);
+		create.visitLdcInsn("Enum not extended!");
+		create.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/IllegalStateException", "<init>", "(Ljava/lang/String;)V", false);
+		create.visitInsn(Opcodes.ATHROW);
+		create.visitMaxs(0, 0);
+		create.visitEnd();
 	}
 
 	/** The class implementing {@code itf} too (Forge's marker of an extensible enum). */
