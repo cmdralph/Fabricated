@@ -1,6 +1,8 @@
 package io.github.cmdralph.fabricated.core.mixin;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -47,6 +49,7 @@ class RecordedFramesTest {
 		});
 		MethodNode walked = expanded(forge);
 		List<RecordedFrames.Frame> recorded = recordedByMixin(forge);
+		assertTrue(RecordedFrames.mayDropLiveLocals(walked));
 		assertEquals(List.of(1), RecordedFrames.droppingChops(walked, recorded));
 
 		// The repair records the chop as Mixin records a full frame of the locals it states: six, and then none drops.
@@ -116,7 +119,25 @@ class RecordedFramesTest {
 			mv.visitVarInsn(Opcodes.ALOAD, 4);
 			mv.visitInsn(Opcodes.POP);
 		});
+		assertTrue(RecordedFrames.mayDropLiveLocals(expanded(vanilla)), "it chops");
 		assertEquals(List.of(), RecordedFrames.droppingChops(expanded(vanilla), recordedByMixin(vanilla)));
+	}
+
+	@Test
+	void aMethodWhoseFramesNeverStateFewerLocalsIsNotLookedAt() {
+		byte[] appends = method(mv -> {
+			Label appended = new Label();
+			storeLocals(mv, 3);
+			mv.visitVarInsn(Opcodes.ILOAD, 1);
+			mv.visitJumpInsn(Opcodes.IFEQ, appended);
+			mv.visitInsn(Opcodes.NOP);
+			mv.visitLabel(appended);
+			mv.visitFrame(Opcodes.F_APPEND, 3, new Object[] {"java/lang/StringBuilder", "java/lang/Object", "java/lang/Object"}, 0, null);
+			mv.visitVarInsn(Opcodes.ALOAD, 4);
+			mv.visitInsn(Opcodes.POP);
+		});
+		assertFalse(RecordedFrames.mayDropLiveLocals(expanded(appends)));
+		assertEquals(List.of(), RecordedFrames.droppingChops(expanded(appends), recordedByMixin(appends)));
 	}
 
 	@Test

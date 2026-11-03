@@ -58,7 +58,7 @@ One entry per working session, newest first: what changed, and how it was verifi
   - `PipelineTest.aFieldThePlatformRetypedIsReachedThroughFabricatedsBridge` and
     `MixinPreflightTest.anAccessorOfAFieldThePlatformRetypedInvokesFabricatedsBridge`: with and without a bridge.
   - `PipelineTest.builtInModsHaveTheRootOfWhatProvidesThem`: MixinExtras' root, with and without NeoForge.
-- **CI:** core build and tests pass locally (475 tests). The syncs into `forge-legacy` and `forge` carry these, with
+- **CI:** core build and tests pass locally (476 tests). The syncs into `forge-legacy` and `forge` carry these, with
   the Forge halves of CORPUS-37 and CORPUS-79, and their extended runs verify them.
 
 ## 2026-11-03: Magna's hammers on Forge 47 (CORPUS-72), and Forge's recipe book `init` for Farmer's Delight (CORPUS-80, task 5)

@@ -47,6 +47,24 @@ public final class RecordedFrames {
 	}
 
 	/**
+	 * Whether some frame of the method states fewer locals than the frame before it (the method's arguments, for the
+	 * first): only then can its class's bytes have a chopping frame, which {@link #droppingChops} judges. A cheap look,
+	 * before Mixin's recorded frames are found.
+	 *
+	 * @param method a method read with its frames expanded
+	 */
+	public static boolean mayDropLiveLocals(MethodNode method) {
+		int before = firstNonArgumentSlot(method);
+		for (AbstractInsnNode insn : method.instructions) {
+			if (!(insn instanceof FrameNode frame) || frame.type != Opcodes.F_NEW) continue;
+			int stated = slots(frame.local);
+			if (stated < before) return true;
+			before = stated;
+		}
+		return false;
+	}
+
+	/**
 	 * The chopping frames, by their position in {@code recorded}, after which Mixin's local computation counts fewer locals
 	 * than the frame states, and so drops live ones. Each is judged as Mixin counts once the earlier ones are repaired,
 	 * recorded as full frames of the locals they state. Only a method whose frames are all expanded and line up with the
