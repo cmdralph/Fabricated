@@ -6,7 +6,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.stream.Stream;
 
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassWriter;
@@ -22,9 +21,10 @@ import io.github.cmdralph.fabricated.core.accesswidener.AccessTransformerConvert
 import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
 
 /**
- * The game's classes as the platform's own code transformers leave them as they load, before Mixin applies any mod's
- * mixins: pre-flight reads them so, as Mixin will see them (CORPUS-61). NeoForge's coremods ({@code NeoForgeCoreMod},
- * every version from 21.1 to 26.3) make two kinds of change:
+ * The game's classes as the platform's own code transformers leave them before Mixin applies any mod's mixins:
+ * pre-flight reads them so, as Mixin will see them (CORPUS-61). Only NeoForge 21.1's change them first: its coremods
+ * ({@code NeoForgeCoreMod}, ModLauncher {@code ITransformer}s, which run before Mixin's launch plugin applies mods'
+ * mixins) make two kinds of change:
  * <ul>
  * <li>{@code MethodRedirector}: in the classes NeoForge's {@code finalize_spawn_targets.json} lists, every
  * {@code INVOKEVIRTUAL} of {@code finalizeSpawn} with {@code Mob}'s descriptor, whatever its owner, becomes a call of
@@ -36,11 +36,16 @@ import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
  * <li>{@code ReplaceFieldWithGetterAccess}: in {@code Biome}, {@code Structure} and {@code FlowerPotBlock}, every
  * {@code GETFIELD} of the fields {@link AccessTransformerConverter#NEOFORGE_PRIVATE_FIELDS} names becomes a call of the
  * getter NeoForge's patches add, except in the getter and in methods with its descriptor; only where the class has
- * the getter, as that list's rule is (26.3 alone replaces {@code Biome.attributes}).</li>
+ * the getter, as that list's rule is.</li>
  * </ul>
- * The lists were read in NeoForge's {@code coremods} sources, branches 1.21.1, 1.21.11, 26.1.x, 26.2.x and 26.3.x;
- * a version with none here leaves the classes as its jars have them, as before. Forge's coremods are the Forge
- * branches' to describe.
+ * From NeoForge 21.11 on (FML 10 and later, which load classes without ModLauncher) the same coremods are
+ * {@code SimpleClassProcessor}s, which FML runs after its {@code SimpleProcessorsGroup}, itself after Mixin's processor:
+ * Mixin applies mods' mixins to the classes as the patched jar has them, and the coremods change the result, the
+ * handlers Mixin merged in included, so a handler's own {@code finalizeSpawn} call goes through NeoForge's hook there
+ * too. Describing them there moved hooks to calls Mixin never sees (CORPUS-67: Debugify's cat spawner hook and Friends
+ * &amp; Foes' patrol hook crashed the server thread on 21.11 to 26.3). The 21.1 list was read in NeoForge's
+ * {@code coremods} sources, branch 1.21.1; the order in FancyModLoader's branches 10.x, 11.x and main, and NeoForge's
+ * coremods on 1.21.x, 26.1.x, 26.2.x and 26.3.x. Forge's coremods are the Forge branches' to describe.
  */
 public final class PlatformCoremods {
 	/** A call the platform's code points at a static hook taking the call's receiver first, in the classes listed. */
@@ -78,42 +83,9 @@ public final class PlatformCoremods {
 			"net/minecraft/world/level/levelgen/structure/structures/WoodlandMansionPieces$WoodlandMansionPiece",
 			"net/minecraft/world/level/levelgen/structure/templatesystem/StructureTemplate");
 
-	/**
-	 * Those of NeoForge 21.11 to 26.3 but the game test class: {@code GameTestHelper} on 21.11 and 26.1,
-	 * {@code GameTestEntityBuilder} on 26.2 and 26.3.
-	 */
-	private static final List<String> SPAWN_TARGETS_21_11 = List.of(
-			"net/minecraft/server/commands/RaidCommand",
-			"net/minecraft/server/commands/SummonCommand",
-			"net/minecraft/world/entity/EntityType",
-			"net/minecraft/world/entity/ai/village/VillageSiege",
-			"net/minecraft/world/entity/animal/equine/SkeletonTrapGoal",
-			"net/minecraft/world/entity/animal/equine/ZombieHorse",
-			"net/minecraft/world/entity/animal/frog/Tadpole",
-			"net/minecraft/world/entity/monster/Strider",
-			"net/minecraft/world/entity/monster/illager/Evoker$EvokerSummonSpellGoal",
-			"net/minecraft/world/entity/monster/spider/Spider",
-			"net/minecraft/world/entity/monster/zombie/Drowned",
-			"net/minecraft/world/entity/monster/zombie/Husk",
-			"net/minecraft/world/entity/monster/zombie/Zombie",
-			"net/minecraft/world/entity/monster/zombie/ZombieVillager",
-			"net/minecraft/world/entity/npc/CatSpawner",
-			"net/minecraft/world/entity/npc/villager/Villager",
-			"net/minecraft/world/entity/raid/Raid",
-			"net/minecraft/world/level/NaturalSpawner",
-			"net/minecraft/world/level/levelgen/PatrolSpawner",
-			"net/minecraft/world/level/levelgen/PhantomSpawner",
-			"net/minecraft/world/level/levelgen/structure/structures/OceanMonumentPieces$OceanMonumentPiece",
-			"net/minecraft/world/level/levelgen/structure/structures/OceanRuinPieces$OceanRuinPiece",
-			"net/minecraft/world/level/levelgen/structure/structures/SwampHutPiece",
-			"net/minecraft/world/level/levelgen/structure/structures/WoodlandMansionPieces$WoodlandMansionPiece",
-			"net/minecraft/world/level/levelgen/structure/templatesystem/StructureTemplate");
-
-	/** {@code Mob.finalizeSpawn}'s descriptor: with the spawn's {@code MobSpawnType} on 21.1, its {@code EntitySpawnReason} after. */
-	private static final String FINALIZE_SPAWN_21_1 = "(Lnet/minecraft/world/level/ServerLevelAccessor;Lnet/minecraft/world/DifficultyInstance;"
-			+ "Lnet/minecraft/world/entity/MobSpawnType;Lnet/minecraft/world/entity/SpawnGroupData;)Lnet/minecraft/world/entity/SpawnGroupData;";
+	/** {@code Mob.finalizeSpawn}'s descriptor on 21.1, with the spawn's {@code MobSpawnType}. */
 	private static final String FINALIZE_SPAWN = "(Lnet/minecraft/world/level/ServerLevelAccessor;Lnet/minecraft/world/DifficultyInstance;"
-			+ "Lnet/minecraft/world/entity/EntitySpawnReason;Lnet/minecraft/world/entity/SpawnGroupData;)Lnet/minecraft/world/entity/SpawnGroupData;";
+			+ "Lnet/minecraft/world/entity/MobSpawnType;Lnet/minecraft/world/entity/SpawnGroupData;)Lnet/minecraft/world/entity/SpawnGroupData;";
 
 	/** The redirects in each class they apply in. */
 	private final Map<String, List<Redirect>> redirects;
@@ -136,34 +108,17 @@ public final class PlatformCoremods {
 		return new PlatformCoremods(Map.copyOf(redirects), Map.copyOf(getters));
 	}
 
-	/** NeoForge's, for a Minecraft version; {@link #NONE} for one they aren't known for. */
+	/**
+	 * NeoForge's, for a Minecraft version: 21.1's, the one whose coremods run before Mixin; {@link #NONE} for the others,
+	 * whose coremods run after it (CORPUS-67), and for a version they aren't known for.
+	 */
 	public static PlatformCoremods neoForge(String minecraftVersion) {
-		List<String> targets;
-		String desc;
-		if (release(minecraftVersion, "1.21.1")) {
-			targets = SPAWN_TARGETS_21_1;
-			desc = FINALIZE_SPAWN_21_1;
-		} else if (release(minecraftVersion, "1.21.11") || release(minecraftVersion, "26.1")) {
-			targets = with(SPAWN_TARGETS_21_11, "net/minecraft/gametest/framework/GameTestHelper");
-			desc = FINALIZE_SPAWN;
-		} else if (release(minecraftVersion, "26.2") || release(minecraftVersion, "26.3")) {
-			targets = with(SPAWN_TARGETS_21_11, "net/minecraft/gametest/framework/GameTestEntityBuilder");
-			desc = FINALIZE_SPAWN;
-		} else {
-			return NONE;
-		}
-		Redirect finalizeSpawn = new Redirect(Opcodes.INVOKEVIRTUAL, "finalizeSpawn", desc, EVENT_HOOKS, "finalizeMobSpawn", "(L" + MOB + ";" + desc.substring(1));
+		if (minecraftVersion == null || !(minecraftVersion.equals("1.21.1") || minecraftVersion.startsWith("1.21.1."))) return NONE;
+		Redirect finalizeSpawn = new Redirect(Opcodes.INVOKEVIRTUAL, "finalizeSpawn", FINALIZE_SPAWN, EVENT_HOOKS, "finalizeMobSpawn",
+				"(L" + MOB + ";" + FINALIZE_SPAWN.substring(1));
 		Map<String, List<Redirect>> redirects = new HashMap<>();
-		for (String target : targets) redirects.put(target, List.of(finalizeSpawn));
+		for (String target : SPAWN_TARGETS_21_1) redirects.put(target, List.of(finalizeSpawn));
 		return of(redirects, AccessTransformerConverter.NEOFORGE_PRIVATE_FIELDS);
-	}
-
-	private static boolean release(String version, String release) {
-		return version != null && (version.equals(release) || version.startsWith(release + "."));
-	}
-
-	private static List<String> with(List<String> list, String extra) {
-		return Stream.concat(list.stream(), Stream.of(extra)).toList();
 	}
 
 	/** Whether this changes no class. */

@@ -1390,6 +1390,71 @@ class PipelineTest {
 	}
 
 	@Test
+	void anEnumMixinBecomesAMixinAddingItsConstantsWhereMixinAppliesNoEnumMixins(@TempDir Path game) throws Exception {
+		// ENUM-7: Friends and Foes' mob categories on Forge 61 to 66, whose Mixin 0.8.7 applies no enum mixins (the
+		// constructor its enum mixin shadows stopped the corpus clients' bootstrap). An ordinary mixin adding the constants
+		// takes its place; where none can, as the mod's code reads a constant as a field of the enum, pre-flight disables
+		// the mod, which Mixin would stop the game on.
+		String category = "net/minecraft/world/Category";
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		Path friends = TestJars.create().fabricModJson(TestJars.modJson("friends", "1.0", "\"mixins\":[\"friends.mixins.json\"]"))
+				.text("friends.mixins.json", "{\"required\":true,\"package\":\"com.friends.mixin\",\"mixins\":[\"CategoryMixin\"]}")
+				.bytes("com/friends/mixin/CategoryMixin.class", TestEnums.mixin("com/friends/mixin/CategoryMixin", category,
+						List.of(TestEnums.Constant.plain("FRIENDS_GLARES")), cw -> {
+						}))
+				.write(mods.resolve("friends.jar"));
+		ClassWriter reader = new ClassWriter(0);
+		reader.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, "com/foes/Reader", null, "java/lang/Object", null);
+		MethodVisitor read = reader.visitMethod(Opcodes.ACC_STATIC, "read", "()Ljava/lang/Object;", null, null);
+		read.visitCode();
+		read.visitFieldInsn(Opcodes.GETSTATIC, category, "FOES_RASCALS", "L" + category + ";");
+		read.visitInsn(Opcodes.ARETURN);
+		read.visitMaxs(1, 0);
+		read.visitEnd();
+		reader.visitEnd();
+		Path foes = TestJars.create().fabricModJson(TestJars.modJson("foes", "1.0", "\"mixins\":[\"foes.mixins.json\"]"))
+				.text("foes.mixins.json", "{\"required\":false,\"package\":\"com.foes.mixin\",\"plugin\":\"com.foes.Plugin\",\"mixins\":[\"CategoryMixin\"]}")
+				.bytes("com/foes/mixin/CategoryMixin.class", TestEnums.mixin("com/foes/mixin/CategoryMixin", category,
+						List.of(TestEnums.Constant.plain("FOES_RASCALS")), cw -> {
+						}))
+				.bytes("com/foes/Reader.class", reader.toByteArray())
+				.write(mods.resolve("foes.jar"));
+		Map<String, byte[]> gameClasses = Map.of(TARGET, targetClass(), category, TestEnums.target(category, false, List.of("()V"), List.of(),
+				Map.of(), cw -> {
+					cw.visitField(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_FINAL | Opcodes.ACC_SYNTHETIC, "$VALUES", "[L" + category + ";", null,
+							null).visitEnd();
+					MethodVisitor clinit = cw.visitMethod(Opcodes.ACC_STATIC, "<clinit>", "()V", null, null);
+					clinit.visitCode();
+					clinit.visitInsn(Opcodes.ICONST_0);
+					clinit.visitTypeInsn(Opcodes.ANEWARRAY, category);
+					clinit.visitFieldInsn(Opcodes.PUTSTATIC, category, "$VALUES", "[L" + category + ";");
+					clinit.visitInsn(Opcodes.RETURN);
+					clinit.visitMaxs(1, 0);
+					clinit.visitEnd();
+				}));
+		Pipeline.Result forge = Pipeline.run(withDescriptor(input(game, List.of(friends, foes), Namespace.OFFICIAL, gameClasses, null, List.of(),
+				InstalledClasses.NONE, ClassBytesSource.EMPTY, "0.8.7+Jenkins-b321.git-4", "0.8.7"), PlatformDescriptor.FORGE));
+
+		assertEquals(List.of("friends"), forge.mods().stream().map(m -> m.translated().candidate().id()).toList(), forge.report().render());
+		try (SafeArchive overlay = SafeArchive.open(forge.mods().getFirst().translated().overlay(), ArchiveLimits.DEFAULTS)) {
+			ClassNode mixin = new ClassNode();
+			new ClassReader(overlay.read("com/friends/mixin/CategoryMixin.class")).accept(mixin, ClassReader.SKIP_CODE);
+			assertEquals(0, mixin.access & Opcodes.ACC_ENUM, "the enum mixin is replaced by an ordinary one");
+		}
+		assertTrue(forge.report().render().contains("can't apply an enum mixin"), forge.report().render());
+		// Fatal though its config is optional and has a plugin: Mixin's error there stops the game whatever the config.
+		Report.ModRow row = forge.report().mods().stream().filter(r -> r.id().equals("foes")).findFirst().orElseThrow();
+		assertTrue(row.detail().contains("applies no enum mixins"), row.detail());
+
+		// Where Mixin applies enum mixins (Fabric's from 0.17.1), the enum mixin stays one.
+		Pipeline.Result neoForge = Pipeline.run(input(game, List.of(friends), Namespace.OFFICIAL, gameClasses, null, List.of()));
+		assertEquals(List.of("friends"), neoForge.mods().stream().map(m -> m.translated().candidate().id()).toList(), neoForge.report().render());
+		try (SafeArchive overlay = SafeArchive.open(neoForge.mods().getFirst().translated().overlay(), ArchiveLimits.DEFAULTS)) {
+			assertNull(overlay.read("com/friends/mixin/CategoryMixin.class"), "the mod's own enum mixin");
+		}
+	}
+
+	@Test
 	void aFabricJarsDataLosesItsNeoForgeBuildsConditionsAndModifiers(@TempDir Path game) throws Exception {
 		// DATA-1: Tectonic's Fabric jar carries its NeoForge build's conditions, whose type only that build registers.
 		String modifier = "data/tectonic/lithostitched/worldgen_modifier/lanterns.json";

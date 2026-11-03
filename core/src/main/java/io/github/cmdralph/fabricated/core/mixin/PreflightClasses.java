@@ -58,6 +58,9 @@ final class PreflightClasses {
 	/** Whether the running Mixin refuses an {@code @Inject} whose handler is static where its target isn't (LAMBDA-6: Forge 47's does). */
 	final boolean exactStaticInjects;
 
+	/** Whether the running Mixin applies enum mixins, as Fabric's does from 0.17.1 (ENUM-7: Forge's doesn't). */
+	final boolean enumMixins;
+
 	/** The platform's loader, as messages name it ({@code NeoForge}, {@code Forge}). */
 	final String loader;
 
@@ -86,7 +89,8 @@ final class PreflightClasses {
 
 	PreflightClasses(ClassIndex game, InstalledClasses installed, ClassBytesSource modClasses, ClassBytesSource untransformable,
 			boolean clientSide, boolean missingTargetsFatal, ClassBytesSource vanilla, String loader, boolean interfaceInjectors,
-			ConstructorInjects constructorInjects, boolean argumentNames, boolean exactStaticInjects) {
+			ConstructorInjects constructorInjects, boolean argumentNames, boolean exactStaticInjects, boolean enumMixins) {
+		this.enumMixins = enumMixins;
 		this.interfaceInjectors = interfaceInjectors;
 		this.constructorInjects = constructorInjects;
 		this.argumentNames = argumentNames;
