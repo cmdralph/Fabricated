@@ -32,12 +32,16 @@ import net.minecraft.resources.Identifier;
  * (command API), and the lifecycle API's client stopping event. A HUD element is reported the first time it is drawn, as
  * the world's loading screen may still hide the HUD for a while after joining, and as not drawn when the game stops.
  * <p>HUD-3: elements attached to vanilla ones are drawn only where vanilla draws those: none with the GUI hidden (the
- * test hides it for two seconds once the element after chat was drawn, the one after the sleep overlay, which vanilla
- * draws with the GUI hidden too, counting the frames), none after the health bar in a game mode the player can't be
- * hurt in, and none after the experience level without experience to show.
+ * test hides it once the element after chat was drawn, until the one after the sleep overlay, which vanilla draws with
+ * the GUI hidden too, was drawn in a few frames or two seconds passed), none after the health bar in a game mode the
+ * player can't be hurt in, and none after the experience level without experience to show. A few frames rather than a
+ * fixed time: the client smoke's game stops a few seconds after it reached its world, and under a software renderer it
+ * draws its first frames of the world late in those.
  */
 public final class ClientApiTestMod implements ClientModInitializer {
 	private static final List<String> HUD_CHECKS = List.of("hud element", "hud element after chat");
+	/** Frames drawn with the GUI hidden that end the hiding before its two seconds. */
+	private static final int HIDDEN_FRAMES = 3;
 	private static final Field HIDE_GUI = hideGuiField();
 	private final Set<String> drawn = new HashSet<>();
 	private boolean screenInitialized;
@@ -82,6 +86,7 @@ public final class ClientApiTestMod implements ClientModInitializer {
 			for (String check : HUD_CHECKS) {
 				if (!drawn.contains(check)) report(false, check, "not drawn while the game ran");
 			}
+			if (!hidingDone) report(false, "hud conditions", "the game stopped with the GUI hidden for " + hiddenFrames + " frame(s), before the check ended");
 		});
 		ScreenEvents.AFTER_INIT.register((client, screen, width, height) -> {
 			screenInitialized = true;
@@ -101,7 +106,10 @@ public final class ClientApiTestMod implements ClientModInitializer {
 		});
 	}
 
-	/** Hides the GUI for 40 ticks once the element after chat was drawn, then reports what was drawn where vanilla's isn't. */
+	/**
+	 * Hides the GUI once the element after chat was drawn, until a few frames were drawn hidden or 40 ticks passed, then
+	 * reports what was drawn where vanilla's isn't.
+	 */
 	private void hideTheGuiAWhile(Minecraft client) {
 		int tick = client.player.tickCount;
 		if (hiddenFrom < 0) {
@@ -110,7 +118,7 @@ public final class ClientApiTestMod implements ClientModInitializer {
 			hideGui(client, true);
 			return;
 		}
-		if (tick < hiddenFrom + 40) return;
+		if (hiddenFrames < HIDDEN_FRAMES && tick < hiddenFrom + 40) return;
 		hideGui(client, false);
 		hidingDone = true;
 		if (hiddenFrames == 0) report(false, "hud conditions", "no frame drawn while the GUI was hidden");

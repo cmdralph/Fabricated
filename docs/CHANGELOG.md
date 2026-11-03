@@ -24,7 +24,9 @@ One entry per working session, newest first: what changed, and how it was verifi
   and CORPUS-76's evidence points at AppleSkin's interface mixin of `ClientTooltipComponent`.
 - **Tests:** `PlatformCoremodsTest` checks each version's list (27 classes on 1.21.11, 23 on the others, none for
   26.1, 26.1.1 or 26.2.1) and that Forge 64's leaves `StructureTemplate` alone; a new `MixinPreflightTest` case
-  checks that a wrap of that call moves to Forge's hook on Forge 61 only.
+  checks that a wrap of that call moves to Forge's hook on Forge 61 only. The HUD-3 client check hides the GUI until a
+  few frames were drawn hidden, not for two seconds: on this PR's NeoForge 26.3 client the world's first frames came
+  late, and the game stopped before the check ended (run 41640138317).
 - **CI:** core build and tests pass locally. The Forge branches take the fix by the sync.
 
 ## 2026-11-03: two Forge pre-flight fixes (CORPUS-74, CORPUS-78), and the Forge corpus stops (task 5)
