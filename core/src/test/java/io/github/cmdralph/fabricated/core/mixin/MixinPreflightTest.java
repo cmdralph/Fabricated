@@ -274,6 +274,103 @@ class MixinPreflightTest {
 	}
 
 	/**
+	 * CORPUS-84: MoreCulling's mixin into {@code MultiPartBakedModel} shadows {@code getQuads(BlockState, Direction,
+	 * RandomSource)}, which Forge 47 moves into the default method of {@code IDynamicBakedModel}, the interface it makes the
+	 * model implement. Mixin finds a shadowed method only among the target's own, and stopped the corpus client; pre-flight
+	 * looked it up through the supertypes and let it by. The shadow is dropped (a prefixed one's calls take the method's
+	 * name), and the mixin's calls of it, which Mixin points at the target, reach the default method. Where a use isn't
+	 * virtual (an {@code invokespecial}) nothing changes, and pre-flight fails the mixin as Mixin would. A shadow of a
+	 * method the target declares (vanilla's model, as on Fabric) is left as it is.
+	 */
+	@Test
+	void aShadowOfAMethodTheTargetOnlyInheritsIsDroppedForTheInheritedOne() throws Exception {
+		String target = "net/minecraft/client/resources/model/MultiPartBakedModel";
+		String dynamic = "net/minecraftforge/client/model/IDynamicBakedModel";
+		String quads = "(Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/core/Direction;Lnet/minecraft/util/RandomSource;)Ljava/util/List;";
+		ClassWriter iw = new ClassWriter(0);
+		iw.visit(Opcodes.V17, Opcodes.ACC_PUBLIC | Opcodes.ACC_INTERFACE | Opcodes.ACC_ABSTRACT, dynamic, null, "java/lang/Object", null);
+		MethodVisitor fallback = iw.visitMethod(Opcodes.ACC_PUBLIC, "m_213637_", quads, null, null);
+		fallback.visitCode();
+		fallback.visitInsn(Opcodes.ACONST_NULL);
+		fallback.visitInsn(Opcodes.ARETURN);
+		fallback.visitMaxs(1, 4);
+		fallback.visitEnd();
+		iw.visitEnd();
+		Function<Boolean, byte[]> model = declares -> {
+			ClassWriter tw = new ClassWriter(0);
+			tw.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, target, null, "java/lang/Object", declares ? null : new String[] {dynamic});
+			if (declares) tw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, "m_213637_", quads, null, null).visitEnd();
+			tw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, "getSelectors", "()Ljava/util/BitSet;", null, null).visitEnd();
+			tw.visitEnd();
+			return tw.toByteArray();
+		};
+		String culling = "com/example/mixin/Culling";
+		// @Shadow public abstract List getQuads(...) (prefixed or not), and a method calling it with the given opcode.
+		BiFunction<String, Integer, byte[]> mixin = (shadowName, call) -> {
+			ClassWriter cw = new ClassWriter(0);
+			cw.visit(Opcodes.V17, Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, culling, null, "java/lang/Object", null);
+			AnnotationVisitor m = cw.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false);
+			AnnotationVisitor values = m.visitArray("value");
+			values.visit(null, Type.getObjectType(target));
+			values.visitEnd();
+			m.visitEnd();
+			MethodVisitor shadow = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, shadowName, quads, null, null);
+			shadow.visitAnnotation(SHADOW, true).visitEnd();
+			shadow.visitEnd();
+			MethodVisitor reset = cw.visitMethod(Opcodes.ACC_PUBLIC, "resetTranslucencyCache", "()Z", null, null);
+			reset.visitCode();
+			reset.visitVarInsn(Opcodes.ALOAD, 0);
+			reset.visitInsn(Opcodes.ACONST_NULL);
+			reset.visitInsn(Opcodes.ACONST_NULL);
+			reset.visitInsn(Opcodes.ACONST_NULL);
+			reset.visitMethodInsn(call, culling, shadowName, quads, false);
+			reset.visitMethodInsn(Opcodes.INVOKEINTERFACE, "java/util/List", "isEmpty", "()Z", true);
+			reset.visitInsn(Opcodes.IRETURN);
+			reset.visitMaxs(4, 1);
+			reset.visitEnd();
+			cw.visitEnd();
+			return cw.toByteArray();
+		};
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Culling"));
+		BiFunction<Boolean, byte[], MixinPreflight> preflight = (declares, culled) -> new MixinPreflight(
+				new ClassIndex(Map.of(target, model.apply(declares), dynamic, iw.toByteArray())::get), InstalledClasses.NONE,
+				Map.of(culling, culled)::get, ClassBytesSource.EMPTY, true, true, ClassBytesSource.EMPTY, "Forge");
+
+		// Forge 47: the shadow is dropped, its call left as it was (Mixin points it at the target); nothing left to judge.
+		for (String shadowName : List.of("m_213637_", "shadow$m_213637_")) {
+			byte[] culled = mixin.apply(shadowName, Opcodes.INVOKEVIRTUAL);
+			List<PreflightFinding> notes = new ArrayList<>();
+			Map<String, byte[]> repaired = preflight.apply(false, culled).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
+			assertEquals(Set.of(culling + ".class"), repaired.keySet(), notes.toString());
+			assertEquals(1, notes.size(), notes.toString());
+			assertEquals(Severity.INFO, notes.getFirst().severity());
+			assertTrue(notes.getFirst().message().contains("@Shadow method m_213637_" + quads + " is one " + target.replace('/', '.')
+					+ " inherits from " + dynamic.replace('/', '.')), notes.getFirst().message());
+			ClassNode node = new ClassNode();
+			new ClassReader(repaired.get(culling + ".class")).accept(node, 0);
+			assertEquals(List.of("resetTranslucencyCache"), node.methods.stream().map(method -> method.name).toList());
+			MethodInsnNode use = (MethodInsnNode) java.util.Arrays.stream(node.methods.getFirst().instructions.toArray())
+					.filter(i -> i.getOpcode() == Opcodes.INVOKEVIRTUAL).findFirst().orElseThrow();
+			assertEquals(culling + ".m_213637_" + quads, use.owner + "." + use.name + use.desc, shadowName);
+			assertTrue(preflight.apply(false, repaired.get(culling + ".class")).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty());
+		}
+
+		// Forge 47, a use that isn't virtual: nothing changes, and the mixin fails as Mixin would make it.
+		byte[] special = mixin.apply("m_213637_", Opcodes.INVOKESPECIAL);
+		assertTrue(preflight.apply(false, special).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty());
+		List<PreflightFinding> failed = preflight.apply(false, special).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertEquals(1, failed.size(), failed.toString());
+		assertEquals(Severity.LEFT_OUT, failed.getFirst().severity(), "a mixin nothing else uses is left out");
+		assertTrue(failed.getFirst().message().contains("is not declared in " + target.replace('/', '.') + ", which inherits it, and Mixin "
+				+ "finds a @Shadow method only among the target's own methods"), failed.getFirst().message());
+
+		// The model declaring the method (vanilla's, as on Fabric): left as it is, and nothing to judge.
+		byte[] vanilla = mixin.apply("m_213637_", Opcodes.INVOKEVIRTUAL);
+		assertTrue(preflight.apply(true, vanilla).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty());
+		assertTrue(preflight.apply(true, vanilla).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty());
+	}
+
+	/**
 	 * An accessor named like a method its target already has replaces that method as Mixin merges it, as on Fabric
 	 * Loader, where a Fabric mod's own class is the same (Iris's accessor of Sodium's {@code enumClass}, named like
 	 * Sodium's {@code getEnumClass}). Not where the config requires {@code @Overwrite} on a method that replaces one
