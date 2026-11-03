@@ -7581,6 +7581,53 @@ class MixinPreflightTest {
 	}
 
 	/**
+	 * Where the running Mixin looks up the class of each local in a mixin method's debug table and stops on one it can't
+	 * find (SpongePowered's, Fabric's before 0.17.0), a local of a class this side lacks (owo's client-only rectangle on a
+	 * dedicated server) leaves the table (LVT-1); the others stay, and a Mixin that looks none up keeps them all.
+	 */
+	@Test
+	void aLocalOfAClassThisSideLacksLeavesTheDebugTableWhereMixinLooksItUp() throws Exception {
+		String rect = "net/minecraft/client/gui/Rect";
+		byte[] keeps = mixin("com/example/mixin/Loc", false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC, "setArea", "(L" + rect + ";L" + TARGET + ";I[L" + rect + ";)V", null, null);
+			mv.visitCode();
+			Label start = new Label();
+			Label end = new Label();
+			mv.visitLabel(start);
+			mv.visitInsn(Opcodes.RETURN);
+			mv.visitLabel(end);
+			mv.visitLocalVariable("this", "Lcom/example/mixin/Loc;", null, start, end, 0);
+			mv.visitLocalVariable("area", "L" + rect + ";", null, start, end, 1);
+			mv.visitLocalVariable("thing", "L" + TARGET + ";", null, start, end, 2);
+			mv.visitLocalVariable("count", "I", null, start, end, 3);
+			mv.visitLocalVariable("areas", "[L" + rect + ";", null, start, end, 4);
+			mv.visitMaxs(0, 5);
+			mv.visitEnd();
+		});
+		ClassIndex game = new ClassIndex(Map.of(TARGET, targetClass())::get);
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Loc"));
+		Map<String, byte[]> mod = Map.of("com/example/mixin/Loc", keeps);
+
+		MixinPreflight looksUp = new MixinPreflight(game, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, ClassBytesSource.EMPTY,
+				"Forge", true, MixinPreflight.ConstructorInjects.UNSAFE_POINTS, false, false, false, true);
+		List<PreflightFinding> repairs = new ArrayList<>();
+		Map<String, byte[]> repaired = looksUp.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), repairs);
+		assertEquals(Set.of("com/example/mixin/Loc.class"), repaired.keySet());
+		assertEquals(1, repairs.size(), repairs.toString());
+		assertEquals(Severity.INFO, repairs.getFirst().severity());
+		assertTrue(repairs.getFirst().message().contains("local variables of net.minecraft.client.gui.Rect, not found on this side"), repairs.toString());
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired.get("com/example/mixin/Loc.class")).accept(node, 0);
+		MethodNode method = node.methods.stream().filter(m -> m.name.equals("setArea")).findFirst().orElseThrow();
+		assertEquals(List.of("this", "thing", "count"), method.localVariables.stream().map(l -> l.name).toList());
+
+		MixinPreflight looksUpNone = new MixinPreflight(game, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, ClassBytesSource.EMPTY,
+				"NeoForge", true, MixinPreflight.ConstructorInjects.AFTER_DELEGATE, true, false, true, false);
+		repairs = new ArrayList<>();
+		assertTrue(looksUpNone.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), repairs).isEmpty(), repairs.toString());
+	}
+
+	/**
 	 * A {@code @Redirect} built against Fabric's Mixin, whose {@code at} is an array, gets the single injection point
 	 * NeoForge 1.21.11's MixinExtras reads (MIX-1); the mixin is rewritten even when its target is no game class.
 	 */

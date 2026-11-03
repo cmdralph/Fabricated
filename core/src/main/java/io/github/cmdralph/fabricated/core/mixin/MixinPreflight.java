@@ -155,8 +155,21 @@ public final class MixinPreflight extends PreflightPart {
 	public MixinPreflight(ClassIndex game, InstalledClasses installed, ClassBytesSource modClasses, ClassBytesSource untransformable,
 			boolean clientSide, boolean missingTargetsFatal, ClassBytesSource vanilla, String loader, boolean interfaceInjectors,
 			ConstructorInjects constructorInjects, boolean argumentNames, boolean exactStaticInjects, boolean enumMixins) {
+		this(game, installed, modClasses, untransformable, clientSide, missingTargetsFatal, vanilla, loader, interfaceInjectors,
+				constructorInjects, argumentNames, exactStaticInjects, enumMixins, false);
+	}
+
+	/**
+	 * @param readsLocalTypes whether the running Mixin stops on a local variable of a mixin's method whose class it can't
+	 *                        find, as SpongePowered's and Fabric's before 0.17.0 do (LVT-1): repairs then leave such
+	 *                        locals out of the methods' debug tables
+	 */
+	public MixinPreflight(ClassIndex game, InstalledClasses installed, ClassBytesSource modClasses, ClassBytesSource untransformable,
+			boolean clientSide, boolean missingTargetsFatal, ClassBytesSource vanilla, String loader, boolean interfaceInjectors,
+			ConstructorInjects constructorInjects, boolean argumentNames, boolean exactStaticInjects, boolean enumMixins,
+			boolean readsLocalTypes) {
 		super(new PreflightClasses(game, installed, modClasses, untransformable, clientSide, missingTargetsFatal, vanilla, loader,
-				interfaceInjectors, constructorInjects, argumentNames, exactStaticInjects, enumMixins));
+				interfaceInjectors, constructorInjects, argumentNames, exactStaticInjects, enumMixins, readsLocalTypes));
 		this.repairer = new MixinRepairs(classes, this);
 	}
 

@@ -930,7 +930,9 @@ some of its modules (Sodium for NeoForge). Fabricated now shares the game with t
   module's (`fabric_screen_handler_api_v1`), when its `mods.toml` lists the module under `provides`, or when its jar
   has one of the module's packages. For a native module, Fabricated's own copy stands down: its packages leave the
   in-game mod, and so do the mixins and mixin configs serving it (`META-INF/fabricated/mixin-modules.json`) and its
-  NeoForge bridges, so no event fires twice. For a module loaded from Fabric API's jar, the jar's copy is left out
+  NeoForge bridges, so no event fires twice. So do Fabricated's hooks for a module it passes through from Fabric API's
+  jar (on Forge 47, the fuel and brewing hooks of fabric-content-registries-v0), and a module's mixins in a config it
+  shares with a module the provider lacks stand down alone (PROVIDER-13). For a module loaded from Fabric API's jar, the jar's copy is left out
   (the platform's copy of a package is the one used, as for any Fabric jar). Fabric mods then use the provider's
   module, whose ids and versions satisfy their dependencies; the report lists it under *Fabric API modules provided by
   other mods*, the API as `PROVIDED_BY_MOD` (API 1.1.0), and the parts left out under *Fabric API providers*.
@@ -1103,6 +1105,10 @@ MixinExtras has NeoForge's jar, and a NeoForge mod nested in another jar has tha
   chest, there for its `@Inject` to have a method to inject into) is dropped where the target already declares that
   method, as Forge 47's chest does: Mixin would reject the mixin, and the target's own method is what `@Intrinsic`
   keeps (CORPUS-69). Another `@Intrinsic` the target declares disables its mod, or leaves the mixin out where it can.
+- Where the platform's Mixin looks up the class of every local variable in a mixin method's debug table and stops on
+  one it can't find (SpongePowered's, which Forge runs, and Fabric's before 0.17.0, which NeoForge 21.1 and 21.11 run),
+  a local of a class this side doesn't have leaves the table: owo's slot mixin keeps a client-only rectangle, which
+  stopped the Forge 26.2 dedicated server. The table is debug information only (LVT-1).
 - Config screens a Fabric mod offers to Mod Menu (its `modmenu` entrypoint) open from the Config button of NeoForge's
   mod list. Mod Menu's API interfaces are provided, so such mods load without Mod Menu, which itself can't run on
   NeoForge (it would duplicate NeoForge's mod list): an installed Mod Menu jar is skipped and provided at its version.

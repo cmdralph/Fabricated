@@ -42,6 +42,7 @@ public final class MixinCompat {
 	private static final String FABRIC_FALLBACK = "0.9.2";
 	private static final Version ENUM_EXTENSIONS = parse("0.17.1");
 	private static final Version MISSING_TARGETS_FATAL = parse("0.17.4");
+	private static final Version LOCAL_TYPES_UNREAD = parse("0.17.0");
 	/** The MixinExtras release NeoForge 21.11 ships, and the last of those after it that only fixed bugs (MIXEXT-2). */
 	private static final Version BEFORE_FIX_RELEASES = parse("0.5.3");
 	private static final Version LAST_FIX_RELEASE = parse("0.5.5");
@@ -118,6 +119,23 @@ public final class MixinCompat {
 	public static boolean supportsEnumExtensions(String runtimeMixinVersion) {
 		int plus = runtimeMixinVersion.indexOf('+');
 		return parse(plus >= 0 ? runtimeMixinVersion.substring(0, plus) : runtimeMixinVersion).compareTo(ENUM_EXTENSIONS) >= 0;
+	}
+
+	/**
+	 * Whether the running Mixin looks up the class of every local variable in the debug tables of a mixin's methods as it
+	 * applies the mixin, and stops on one it can't find (LVT-1: {@code MixinTargetContext.transformLVT} through
+	 * {@code ClassInfo.forName}, read in the sources of SpongePowered's 0.8.5 to 0.8.7, which Forge runs, and of Fabric's
+	 * before 0.17.0; from 0.17.0 Fabric's asks first whether the class is a mixin, and looks up nothing else). False for a
+	 * version not known here.
+	 */
+	public static boolean readsLocalTypes(String runtimeMixinVersion) {
+		if (runtimeMixinVersion == null) return false;
+		int plus = runtimeMixinVersion.indexOf('+');
+		try {
+			return parse((plus >= 0 ? runtimeMixinVersion.substring(0, plus) : runtimeMixinVersion).trim()).compareTo(LOCAL_TYPES_UNREAD) < 0;
+		} catch (IllegalArgumentException e) {
+			return false;
+		}
 	}
 
 	/**
