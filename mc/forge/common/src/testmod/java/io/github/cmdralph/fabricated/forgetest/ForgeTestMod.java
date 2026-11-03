@@ -60,6 +60,7 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 	public void onInitialize() {
 		String version = FabricLoader.getInstance().getModContainer(MOD_ID).map(c -> c.getMetadata().getVersion().getFriendlyString()).orElse("none");
 		LOGGER.info("FABRICATED-FORGE-TEST main entrypoint OK (version {}, Fabric Loader sees {} mods)", version, FabricLoader.getInstance().getAllMods().size());
+		ForgeRecordedFramesTest.check();
 		// Fabricated's API on Forge: what waits for the Fabric initializers runs once they have, the mod that fails on
 		// purpose (in the server smoke) known as failed.
 		Fabricated.get().ifPresent(api -> api.afterEntrypoints(() -> {

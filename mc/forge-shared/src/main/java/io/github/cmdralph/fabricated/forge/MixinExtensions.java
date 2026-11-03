@@ -1,5 +1,7 @@
 package io.github.cmdralph.fabricated.forge;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.TreeSet;
 
 import org.objectweb.asm.tree.ClassNode;
@@ -15,11 +17,12 @@ import io.github.cmdralph.fabricated.loader.FabricClassTransforms;
 import io.github.cmdralph.fabricated.loader.FabricatedState;
 
 /**
- * Fabricated's Mixin extension on Forge 61 to 66 and Forge 47, which declares default bridges after a class's mixins
- * apply (CORPUS-63, as on NeoForge 21.1). Forge runs on ModLauncher, where Mixin is a launch plugin and no transformer from
- * the mods folder runs after it; a Mixin extension runs as Mixin applies mixins to a class, before and after they apply,
- * and nowhere else: the loader's transformer declares the bridges before Mixin for the classes no mixin targets.
- * Shared by Forge 47 and Forge 61 to 66.
+ * Fabricated's Mixin extensions on Forge 61 to 66 and Forge 47: one declares default bridges after a class's mixins apply
+ * (CORPUS-63, as on NeoForge 21.1), the other repairs the frames Mixin recorded for a class a Fabric mod's mixin targets
+ * before they apply ({@link RecordedFrameRepair}, CORPUS-79). Forge runs on ModLauncher, where Mixin is a launch plugin and
+ * no transformer from the mods folder runs after it; a Mixin extension runs as Mixin applies mixins to a class, before and
+ * after they apply, and nowhere else: the loader's transformer declares the bridges before Mixin for the classes no mixin
+ * targets. Shared by Forge 47 and Forge 61 to 66.
  */
 final class MixinExtensions {
 	private static final Logger LOGGER = LoggerFactory.getLogger("Fabricated");
@@ -28,22 +31,35 @@ final class MixinExtensions {
 	}
 
 	/**
-	 * Registers the extension with Mixin's transformer. Called from Fabricated's mixin plugin as Mixin selects the configs
+	 * Registers the extensions with Mixin's transformer, those with work to do: the bridges where a Fabric mod brings
+	 * any, the frame repair where any Fabric mod loads. Called from Fabricated's mixin plugin as Mixin selects the configs
 	 * (the plugin's {@code onLoad}), before Mixin activates its extensions for the configs it selected, and so before it
 	 * applies a mixin of theirs.
 	 */
 	static void install() {
 		FabricatedState state = FabricatedState.get();
-		if (state == null || state.defaultBridges().isEmpty()) return;
+		if (state == null) return;
+		boolean bridges = !state.defaultBridges().isEmpty();
+		boolean frames = !state.mods().isEmpty();
+		if (!bridges && !frames) return;
 		Object transformer = MixinEnvironment.getCurrentEnvironment().getActiveTransformer();
 		if (transformer instanceof IMixinTransformer mixin && mixin.getExtensions() instanceof Extensions extensions) {
-			extensions.add(new DefaultBridges(state));
-		} else {
+			List<IExtension> added = new ArrayList<>(2);
+			if (bridges) added.add(new DefaultBridges(state));
+			if (frames) added.add(new RecordedFrameRepair(state));
+			added.forEach(extensions::add);
+			return;
+		}
+		if (bridges) {
 			// The bridges declared before Mixin stay as Mixin applies mixins: only a mixin declaring one of those methods
 			// itself, in a config requiring @Overwrite to replace a method, then fails.
 			LOGGER.error("Fabricated could not register its Mixin extension with Mixin's transformer ({}): the default method bridges it declares"
 					+ " before Mixin stay as mixins apply, so a mixin declaring one of those methods may fail. Classes with bridges: {}", transformer,
 					String.join(", ", new TreeSet<>(state.defaultBridges().keySet())));
+		}
+		if (frames) {
+			LOGGER.error("Fabricated could not register its Mixin extension with Mixin's transformer ({}): the frames Forge's Mixin records stay"
+					+ " as they are, so a Fabric mod's injector taking a local after a frame that chops locals may find none (CORPUS-79)", transformer);
 		}
 	}
 
