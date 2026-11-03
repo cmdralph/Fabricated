@@ -109,6 +109,7 @@ public abstract class MinecraftServerMixin {
 			ForgeSleepTest.check(method_30002());
 			ForgeTransferTest.check(method_30002());
 			ForgeBrewingMixTest.check();
+			ForgeMobBucketTest.check();
 			if (ForgeTestMod.testItem != null && FabricLoader.getInstance().isModLoaded("fabric-content-registries-v0")) {
 				ForgeFuelTest.check();
 				ForgeBrewingTest.check();
