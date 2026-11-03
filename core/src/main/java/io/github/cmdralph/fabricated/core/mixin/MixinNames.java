@@ -101,6 +101,14 @@ final class MixinNames {
 	/** The name prefix javac gives the fields holding the local variables an anonymous or local class captures. */
 	static final String CAPTURED_PREFIX = "val$";
 
+	/**
+	 * The prefixes of a method Fabricated's in-game mod adds to a game class for a field the platform gave another type,
+	 * followed by the field's name: it gets or sets the field's value as vanilla's type, and an {@code @Accessor} of the
+	 * field invokes it instead ({@code MixinRepairs.retypedFieldBridge}, CORPUS-37).
+	 */
+	static final String BRIDGE_GETTER = "fabricated$get$";
+	static final String BRIDGE_SETTER = "fabricated$set$";
+
 	/** javac's name for a lambda body: the enclosing method's name and the lambda's index in the class. */
 	static final Pattern LAMBDA = Pattern.compile("lambda\\$(.+)\\$\\d+");
 

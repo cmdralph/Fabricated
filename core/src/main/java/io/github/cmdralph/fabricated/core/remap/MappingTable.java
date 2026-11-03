@@ -42,6 +42,8 @@ public final class MappingTable {
 	 * it is the same for every owner.
 	 */
 	private volatile Map<String, String> plainByNameAndDesc;
+	/** {@link #plainMembers}' names and descriptors, whatever their owner. */
+	private volatile Set<String> plainNamesAndDescs;
 	private volatile Map<String, String> inverseClasses;
 	/** Qualified members by {@code name+desc}, to their runtime name when it is the same for every owner. */
 	private volatile Map<String, String> byNameAndDesc;
@@ -132,6 +134,33 @@ public final class MappingTable {
 		if (own != null || !desc.contains("Lnet/minecraft/")) return own;
 		String shared = plainByNameAndDesc().get(name + desc);
 		return shared == null || shared.isEmpty() ? null : shared;
+	}
+
+	/**
+	 * The runtime name the owner itself gives a method Intermediary leaves under its official name and SRG renames
+	 * (PLAIN-1), or null: the owner's declaration alone, whatever other owners give that name and descriptor.
+	 *
+	 * @param owner intermediary internal name of the owner
+	 * @param desc  intermediary descriptor
+	 */
+	public String ownPlainMethod(String owner, String name, String desc) {
+		return plainMembers.isEmpty() || owner == null || desc == null ? null : plainMembers.get(owner + "." + name + desc);
+	}
+
+	/**
+	 * Whether some owner gives a method of that name and descriptor (intermediary) a runtime name of its own (PLAIN-1): only
+	 * then can an override of it need one.
+	 */
+	public boolean isPlainMethod(String name, String desc) {
+		if (plainMembers.isEmpty() || desc == null) return false;
+		Set<String> index = plainNamesAndDescs;
+		if (index == null) {
+			Set<String> built = new HashSet<>();
+			for (String key : plainMembers.keySet()) built.add(key.substring(key.lastIndexOf('.') + 1));
+			index = built;
+			plainNamesAndDescs = index;
+		}
+		return index.contains(name + desc);
 	}
 
 	private Map<String, String> plainByNameAndDesc() {

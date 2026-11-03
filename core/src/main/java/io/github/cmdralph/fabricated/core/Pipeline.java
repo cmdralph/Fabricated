@@ -45,6 +45,7 @@ import io.github.cmdralph.fabricated.core.mixin.RestoredFields;
 import io.github.cmdralph.fabricated.core.remap.JarRemapper;
 import io.github.cmdralph.fabricated.core.remap.MappingException;
 import io.github.cmdralph.fabricated.core.remap.MappingTable;
+import io.github.cmdralph.fabricated.core.remap.Supertypes;
 import io.github.cmdralph.fabricated.core.report.Report;
 import io.github.cmdralph.fabricated.core.report.Report.ModRow;
 import io.github.cmdralph.fabricated.core.report.Report.Status;
@@ -499,7 +500,8 @@ public final class Pipeline {
 		// Mixins into the Fabric mods' classes are checked too, against those classes as they will load: on 1.21.11
 		// remapped from intermediary names, as translating each mod remaps it.
 		List<SafeArchive> opened = new ArrayList<>();
-		InstalledClasses installed = in.installedClasses().with(fabricJars(eligible, opened, mappingTable == null ? null : new JarRemapper(mappingTable)));
+		InstalledClasses installed = in.installedClasses().with(fabricJars(eligible, opened,
+				mappingTable == null ? null : new JarRemapper(mappingTable, Supertypes.ofRuntime(game::supertypes, mappingTable))));
 		TranslationEnvironment env = new TranslationEnvironment(in.minecraftVersion(), in.neoForgeVersion(), in.clientSide(), in.namespace(),
 				in.runtimeMixinVersion(), in.mixinExtrasVersion(), in.lowestMixinBehavior(), in.fabricatedVersion() + " " + in.fabricatedBuild(), mappingTable, mappingsHash, game, in.untransformableClasses(),
 				// In the game's names: on 1.21.11 the loader reads the obfuscated jar through Mojang's mappings.
@@ -551,6 +553,15 @@ public final class Pipeline {
 					return open;
 				}
 			};
+			// The jar's own classes too, which its classes may inherit from (CORPUS-86).
+			JarRemapper own = remapper == null ? null : remapper.with(Supertypes.ofClassFiles(name -> {
+				SafeArchive a = archive.get();
+				try {
+					return a == null ? null : a.read(name + ".class");
+				} catch (ArchiveException e) {
+					return null;
+				}
+			}));
 			jars.add(new InstalledClasses.Jar(c.metadata().getName(), name -> {
 				int slash = name.lastIndexOf('/');
 				if (!c.packages().contains(slash < 0 ? "" : name.substring(0, slash))) return false;
@@ -559,9 +570,9 @@ public final class Pipeline {
 			}, name -> {
 				SafeArchive a = archive.get();
 				byte[] data = a == null ? null : a.read(name + ".class");
-				if (data == null || remapper == null) return data;
+				if (data == null || own == null) return data;
 				try {
-					return remapper.remapClass(data, name);
+					return own.remapClass(data, name);
 				} catch (MappingException | RuntimeException | StackOverflowError e) {
 					// Not verified then; translating the mod reports it. Another mod's pre-flight reads this jar's classes.
 					return null;
@@ -1204,14 +1215,16 @@ public final class Pipeline {
 	}
 
 	/**
-	 * A built-in mod's files: Fabric Loader gives every mod a root, and mods take the first without checking (OneConfig).
-	 * Minecraft's are the game's, Java's its home, the others those of the mod that provides them on NeoForge.
+	 * A built-in mod's files: Fabric Loader gives every mod a root, and mods take the first without checking (OneConfig,
+	 * and owo's data loader, which resolves every mod's {@code data} folder in its root: CORPUS-77). Minecraft's are the
+	 * game's, Java's its home, the others those of the mod that provides them: MixinExtras is NeoForge's, which ships it,
+	 * and on Forge the in-game mod's, which nests it.
 	 */
 	private List<Path> builtinFiles(String id) {
 		return switch (id) {
 			case "minecraft" -> in.gameFiles();
 			case "java" -> List.of(Path.of(System.getProperty("java.home")));
-			case "mixinextras" -> neoMods.containsKey("neoforge") ? neoMods.get("neoforge").files() : List.of();
+			case "mixinextras" -> neoMods.containsKey("neoforge") ? neoMods.get("neoforge").files() : in.fabricatedFiles();
 			default -> in.fabricatedFiles();
 		};
 	}
