@@ -3,6 +3,42 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-03: MoreCulling's shadow of an inherited method on Forge 47 (CORPUS-84), and eleven findings verified (task 5)
+
+- **CORPUS-84** (`MixinRepairs.inheritedShadowRepair`, new; `MixinPreflight.checkMembersOf`): the Forge 47 corpus
+  client stopped baking models, as Mixin applied MoreCulling's `MultipartBakedModel_cacheMixin`.
+  - **The cause:** Forge 47 patches `MultiPartBakedModel` to implement its `IDynamicBakedModel` and drops vanilla's
+    three-argument `getQuads`, which the interface now gives as a default method. MoreCulling shadows that method, and
+    Mixin looks for a `@Shadow` method only among its target's own methods, so it stopped the game ("was not located
+    in the target class"). Pre-flight had passed the shadow, as it looks a method up through its supertypes.
+  - **The fix:** where the target only inherits the method (an instance method that isn't private), and every use of
+    the shadow in the mixin is a virtual call, the shadow is dropped. The mixin's calls then reach the inherited
+    method, as on Fabric, and an INFO line in the report says so. Otherwise pre-flight now says that Mixin can't find
+    the shadow, which disables the mod, or leaves the mixin out where it can.
+- **Merged:** #258 (Forge 61 to 66) and #259 (Forge 47), each green on its final commit.
+- **Verified** (extended runs 41658054089 on Forge 61 to 66 and 41658060068 on Forge 47, after the syncs; moved to
+  `FINDINGS.md`):
+  - ENUM-7 and CORPUS-53: Friends and Foes loads on every Forge 61 to 66 corpus server and client. The four servers
+    start and stop normally, the Forge 65 and 66 clients reach their world, and the Forge 61 and 64 clients get past
+    their bootstrap.
+  - SHARE-1 and CORPUS-54: on Forge 61 both of Balm's crop hooks are left out together, and the corpus client gets
+    past `Blocks`.
+  - CORPUS-82 and PRE-18: the Forge 66 corpus client passes ImmediatelyFast's hooks, reaches its world and exits
+    normally (PRE-18 was verified on Forge 65 before). Mod Menu's cause stays unverified, as its screens don't load
+    on Forge (REPL-1).
+  - CORPUS-76: the Forge 47 corpus client's model loading, and REI's, ShulkerBoxTooltip's and Traveler's Backpack's
+    entrypoints, no longer throw `ClassCircularityError`.
+  - CORPUS-55, CORPUS-68 and CORPUS-69: the Forge 47 corpus server and client get past `Fluids` and Lithium's chest,
+    and the client makes its `Gui` without Porting Lib's injection failure.
+  - LVT-1: the Forge 26.2 corpus server gets past owo's slot mixin, and starts and stops normally.
+- **Read** (rows in *Findings*): CORPUS-79's discriminator lists no candidates at all on Forge 61 and 64. Walked by
+  hand, Mixin's `getLocalsAt` keeps the `PoseStack` in the jar's method, so what differs is still unknown.
+- **Tests:** `MixinPreflightTest.aShadowOfAMethodTheTargetOnlyInheritsIsDroppedForTheInheritedOne` builds Forge 47's
+  `MultiPartBakedModel` and MoreCulling's mixin, with and without the prefix. The shadow is dropped and the mixin's
+  call is kept. With a non-virtual call, pre-flight reports the shadow instead, and where the target declares the
+  method nothing changes. The test fails without the fix.
+- **CI:** core build and tests pass locally (461 tests). The Forge branches take the fix by the next sync.
+
 ## 2026-11-03: Farmer's Delight's enum constants on Forge 61 to 66 (CORPUS-80, task 5)
 
 - **CORPUS-80** (`EnumValuesMixins.holderClass`, `withHeldConstants`, `initReturns`, `ModTranslator.valuesMixin`):

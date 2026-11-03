@@ -1120,6 +1120,12 @@ MixinExtras has NeoForge's jar, and a NeoForge mod nested in another jar has tha
   field, and Mixin merges the two into one field, which both mods' code uses, as on Fabric (CORPUS-74). One that can't
   be declared so (a static shadow of an instance field, or a writable shadow of a final one) disables its mod, or leaves
   the mixin out where it can.
+- Mixin finds a `@Shadow` method only among its target class's own methods, on every platform, and rejects the mixin
+  otherwise. Where the platform moves a method vanilla declares into a supertype, a mixin's shadow of it is dropped and
+  the mixin's calls of it reach the inherited method: Forge 47 moves `MultiPartBakedModel`'s `getQuads` into the default
+  method of its `IDynamicBakedModel`, which MoreCulling shadows, and the Forge 47 client stopped baking its models
+  (CORPUS-84). Only where every use of the shadow is a virtual call and the inherited method is an instance method that
+  isn't private; otherwise the mod is disabled, or the mixin left out where it can.
 - Config screens a Fabric mod offers to Mod Menu (its `modmenu` entrypoint) open from the Config button of NeoForge's
   mod list. Mod Menu's API interfaces are provided, so such mods load without Mod Menu, which itself can't run on
   NeoForge (it would duplicate NeoForge's mod list): an installed Mod Menu jar is skipped and provided at its version.
