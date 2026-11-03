@@ -1456,6 +1456,76 @@ class PipelineTest {
 	}
 
 	@Test
+	void anInterfaceMixinLeftWithoutItsInjectorsNoLongerMakesItsTargetItsOwnSupertype(@TempDir Path game) throws Exception {
+		// CORPUS-76: AppleSkin's TooltipComponentMixin extends its target ClientTooltipComponent for two static injectors,
+		// which Forge 47's Mixin 0.8.5 applies none of in an interface mixin (INTERFACE-1). Without them Mixin took it for an
+		// accessor mixin and made ClientTooltipComponent implement it, so extend itself, and the client stopped with a
+		// ClassCircularityError. Left with nothing for its target it is left out whole; left with another interface it
+		// keeps that one alone.
+		String tooltip = "net/minecraft/client/Tooltip";
+		Map<String, String> injectors = Map.of(
+				"org/spongepowered/asm/mixin/injection/Inject.java",
+				"package org.spongepowered.asm.mixin.injection; public @interface Inject { String[] method(); At[] at(); }",
+				"org/spongepowered/asm/mixin/injection/At.java", "package org.spongepowered.asm.mixin.injection; public @interface At { String value(); }",
+				"org/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable.java",
+				"package org.spongepowered.asm.mixin.injection.callback; public class CallbackInfoReturnable<R> { }");
+		String hook = """
+				@Inject(method = "create", at = @At("HEAD"))
+				private static void onCreate(Object data, CallbackInfoReturnable<net.minecraft.client.Tooltip> info) { }""";
+		Map<String, byte[]> classes = TestSources.compile(game.resolve("build"), TestSources.MIXIN_ANNOTATIONS, injectors, Map.of(
+				"net/minecraft/client/Tooltip.java", "package net.minecraft.client; public interface Tooltip { static Tooltip create(Object data) { return null; } }",
+				"com/apple/Bridge.java", "package com.apple; public interface Bridge<T> { }",
+				"com/apple/mixin/TooltipMixin.java", """
+						package com.apple.mixin;
+						import org.spongepowered.asm.mixin.Mixin;
+						import org.spongepowered.asm.mixin.injection.*;
+						import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+						@Mixin(net.minecraft.client.Tooltip.class)
+						public interface TooltipMixin extends net.minecraft.client.Tooltip {
+						""" + hook + "\n}",
+				"com/apple/mixin/TooltipBridge.java", """
+						package com.apple.mixin;
+						import org.spongepowered.asm.mixin.Mixin;
+						import org.spongepowered.asm.mixin.injection.*;
+						import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+						@Mixin(net.minecraft.client.Tooltip.class)
+						public interface TooltipBridge extends net.minecraft.client.Tooltip, com.apple.Bridge<String> {
+						""" + hook + "\n}"));
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		Path apple = TestJars.create().fabricModJson(TestJars.modJson("apple", "1.0", "\"mixins\":[\"apple.mixins.json\"]"))
+				.text("apple.mixins.json", "{\"required\":true,\"package\":\"com.apple.mixin\",\"mixins\":[\"TooltipMixin\",\"TooltipBridge\"]}")
+				.bytes("com/apple/Bridge.class", classes.get("com/apple/Bridge"))
+				.bytes("com/apple/mixin/TooltipMixin.class", classes.get("com/apple/mixin/TooltipMixin"))
+				.bytes("com/apple/mixin/TooltipBridge.class", classes.get("com/apple/mixin/TooltipBridge"))
+				.write(mods.resolve("apple.jar"));
+		Map<String, byte[]> gameClasses = Map.of(TARGET, targetClass(), tooltip, classes.get(tooltip));
+		Pipeline.Result forge = Pipeline.run(withDescriptor(input(game, List.of(apple), Namespace.OFFICIAL, gameClasses, null, List.of(),
+				InstalledClasses.NONE, ClassBytesSource.EMPTY, "0.8.5+Jenkins-b310.git-155314e6e91465dad727e621a569906a410cd6f4", "0.8.5"),
+				PlatformDescriptor.FORGE));
+
+		String report = forge.report().render();
+		assertEquals(List.of("apple"), forge.mods().stream().map(m -> m.translated().candidate().id()).toList(), report);
+		assertTrue(report.contains("Left out whole: with the methods above left out it adds nothing to net.minecraft.client.Tooltip"), report);
+		try (SafeArchive overlay = SafeArchive.open(forge.mods().getFirst().translated().overlay(), ArchiveLimits.DEFAULTS)) {
+			String config = new String(overlay.read("apple.mixins.json"), StandardCharsets.UTF_8);
+			assertFalse(config.contains("\"TooltipMixin\""), config);
+			assertTrue(config.contains("\"TooltipBridge\""), config);
+			ClassNode bridge = new ClassNode();
+			new ClassReader(overlay.read("com/apple/mixin/TooltipBridge.class")).accept(bridge, 0);
+			assertEquals(List.of("com/apple/Bridge"), bridge.interfaces, "it no longer extends its target");
+			assertEquals("Ljava/lang/Object;Lcom/apple/Bridge<Ljava/lang/String;>;", bridge.signature);
+			assertTrue(bridge.methods.isEmpty(), "its injector is left out");
+		}
+
+		// Where Mixin applies injectors in interface mixins (from 0.8.6), both stay as the mod has them.
+		Pipeline.Result neoForge = Pipeline.run(input(game, List.of(apple), Namespace.OFFICIAL, gameClasses, null, List.of()));
+		try (SafeArchive overlay = SafeArchive.open(neoForge.mods().getFirst().translated().overlay(), ArchiveLimits.DEFAULTS)) {
+			assertNull(overlay.read("com/apple/mixin/TooltipMixin.class"), neoForge.report().render());
+			assertNull(overlay.read("com/apple/mixin/TooltipBridge.class"), neoForge.report().render());
+		}
+	}
+
+	@Test
 	void aFabricJarsDataLosesItsNeoForgeBuildsConditionsAndModifiers(@TempDir Path game) throws Exception {
 		// DATA-1: Tectonic's Fabric jar carries its NeoForge build's conditions, whose type only that build registers.
 		String modifier = "data/tectonic/lithostitched/worldgen_modifier/lanterns.json";
