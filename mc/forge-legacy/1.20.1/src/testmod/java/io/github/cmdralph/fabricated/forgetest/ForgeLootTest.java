@@ -3,6 +3,8 @@ package io.github.cmdralph.fabricated.forgetest;
 import java.util.ArrayList;
 import java.util.List;
 
+import io.github.cmdralph.fabricated.api.FabricApiModule;
+import io.github.cmdralph.fabricated.api.Fabricated;
 import net.fabricmc.fabric.api.loot.v1.FabricLootPool;
 import net.fabricmc.fabric.api.loot.v1.FabricLootPoolBuilder;
 import net.fabricmc.fabric.api.loot.v1.FabricLootSupplier;
@@ -30,7 +32,8 @@ import net.minecraft.class_79;
  * load: upstream's hook into the loot data manager's parsing lambda, which Forge 47's class names otherwise, checks
  * them (LAMBDA-6). Dirt's table is also named as MODIFY's builder builds it, as Porting Lib Loot names every table
  * (its MODIFY listener and its builder mixin, here {@code LootTableBuilderNamingMixin}), and must load with that name,
- * where Forge refuses a second name (CORPUS-90). Fabric API's loot classes and the game's are named as a Fabric mod for
+ * where Forge refuses a second name (CORPUS-90); where Porting Lib Loot is installed (the corpus), it names the table
+ * itself. Fabric API's loot classes and the game's are named as a Fabric mod for
  * 1.20.1 names them (the stand-ins in src/testmodstubs).
  */
 public final class ForgeLootTest {
@@ -44,6 +47,15 @@ public final class ForgeLootTest {
 	private static final class_2960 REPLACED = new class_2960(ForgeTestMod.MOD_ID, "fabric_replace");
 	/** The test mod's table whose load conditions fail, which must not load with Fabric API's resource conditions module. */
 	private static final class_2960 CONDITIONED = new class_2960(ForgeTestMod.MOD_ID, "fabric_conditioned");
+
+	/** Porting Lib Loot names every table as it is built (the corpus). */
+	private static final boolean PORTING_LIB_LOOT = FabricLoader.getInstance().isModLoaded("porting_lib_loot");
+	/**
+	 * Whether the test mod names dirt's table as Porting Lib Loot would: not where Porting Lib Loot does, nor where another
+	 * mod's loot module fires the events (Forgified Fabric API's, whose hook names the tables it rebuilds itself).
+	 */
+	private static final boolean NAMES_DIRT = !PORTING_LIB_LOOT && Fabricated.get().flatMap(api -> api.fabricApiModule("fabric-loot-api-v2"))
+			.map(loot -> loot.status() != FabricApiModule.Status.PROVIDED_BY_MOD).orElse(true);
 
 	private static int dirtPools = -1;
 	private static LootTableSource dirtReplaceSource;
@@ -90,7 +102,7 @@ public final class ForgeLootTest {
 				if (DIRT.equals(id)) {
 					dirtModifySource = source;
 					tableBuilder.method_336(class_55.method_347().method_351(class_77.method_411(class_1802.field_20391)));
-					((NamedAsBuilt) tableBuilder).fabricatedForgeTest$nameAsBuilt(id);
+					if (NAMES_DIRT) ((NamedAsBuilt) tableBuilder).fabricatedForgeTest$nameAsBuilt(id);
 				} else if (REPLACED.equals(id)) {
 					ownModifySource = source;
 				} else if (CONDITIONED.equals(id)) {
@@ -120,7 +132,7 @@ public final class ForgeLootTest {
 			failed.add("the test mod's table's source " + ownReplaceSource + " in REPLACE, " + ownModifySource + " in MODIFY");
 		}
 		class_52 dirt = lootManager.getLootTable(DIRT);
-		if (!DIRT.equals(dirt.getLootTableId())) failed.add("dirt's table named " + dirt.getLootTableId());
+		if ((NAMES_DIRT || PORTING_LIB_LOOT) && !DIRT.equals(dirt.getLootTableId())) failed.add("dirt's table named " + dirt.getLootTableId());
 		List<class_55> pools = ((FabricLootSupplier) dirt).getPools();
 		if (dirtPools < 0 || pools.size() != dirtPools + 2) {
 			failed.add("dirt's pools " + dirtPools + " before the v1 event and MODIFY, " + pools.size() + " after");
