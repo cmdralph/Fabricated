@@ -216,7 +216,7 @@ if $standins; then
 	# of the stand-ins'.
 	check "the linkage check counts the classes of the modules other mods provide" "python3 -I '$root/ci/forge/standin-linkage.py' '$extra' logs/fabric-bridge-report.txt"
 else
-	check "native fabric-loot-api-v3: Fabric's loot table events change dirt's loot table and drops on Forge's loot loading" "grep -q 'FABRICATED-FORGE-TEST loot OK' logs/latest.log 2>/dev/null"
+	check "native fabric-loot-api-v3: Fabric's loot table events change dirt's loot table and drops on Forge's loot loading, and a table a mod names as MODIFY's builder builds it keeps that name, as Porting Lib Loot names them (CORPUS-90; Forge 66 through the in-game mod's hook on Forge's naming)" "grep -q 'FABRICATED-FORGE-TEST loot OK' logs/latest.log 2>/dev/null"
 fi
 if $fapi && [[ "$mc" == 26.* ]]; then
 	check "fabric-object-builder-api-v1 (with Fabric API, 26.x): a cow's default armor set through FabricDefaultAttributeRegistry.MODIFY is what the game reads (Forge's attribute modification event)" "grep -q 'FABRICATED-FORGE-TEST default attributes OK' logs/latest.log 2>/dev/null"

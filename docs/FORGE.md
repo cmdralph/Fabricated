@@ -284,15 +284,16 @@ What else differs on Forge, for Fabric mods in general:
   declared as the other mixin declares the field, and Mixin merges the two into one field, as on Fabric (CORPUS-74:
   the test mod's tick counter, all five, server run); one that can't be (a static shadow of an instance field, a
   writable one of a final field) disables its mod, or leaves its mixin out where it can.
-- **Locals after a chopping frame:** Forge 61 to 66's Mixin 0.8.7 works out the locals at an injection point from the
-  frames it recorded from the class's bytes, which it no longer reads expanded (Forge 47's 0.8.5 does), and counts each
-  frame appending or chopping locals as at least the method's argument slots: after a chop it can count fewer locals
-  than are live, and a local capture, `@ModifyVariable` or MixinExtras' `@Local` taking one beyond finds none. Resourceful
-  Lib's `@Local PoseStack` in `ScreenEffectRenderer.renderScreenEffect` stopped the Forge 61 and 64 corpus clients
-  (CORPUS-79). There, before mixins apply to a class a Fabric mod's mixin targets, a Mixin extension of the in-game mod
-  records each such chop again as a full frame of the locals it states, which Mixin reads as it reads any full frame,
-  and logs the method. Every other frame, and every class no Fabric mod's mixin targets, stays as Mixin recorded it.
-  The test mod takes a local so (all five, server run; Forge 47's Mixin counts it right without the repair).
+- **Locals where Mixin miscounts them:** Forge 61 to 66's Mixin 0.8.7 works out the locals at an injection point from
+  the frames it recorded from the class's bytes, which Forge's ModLauncher hands it with their frames compressed
+  (Forge 47's Mixin 0.8.5 reads a class's frames expanded): each frame then states only its change, and Mixin can count
+  fewer locals than are live, so a local capture, `@ModifyVariable` or MixinExtras' `@Local` taking one beyond finds
+  none. Resourceful Lib's `@Local PoseStack` in `ScreenEffectRenderer.renderScreenEffect` stopped the Forge 61 and 64
+  corpus clients (CORPUS-79). There, before mixins apply to a class a Fabric mod's mixin targets, a Mixin extension of
+  the in-game mod finds each method whose locals Mixin would count wrong at some frame and records its frames again
+  from the method with its frames expanded, which Mixin counts as with its `CLASSREADER_EXPAND_FRAMES` option, and logs
+  the method. Every other method, and every class no Fabric mod's mixin targets, stays as Mixin recorded it. The test
+  mod takes a local so (all five, server run; Forge 47's Mixin counts it right without the repair).
 - **Fields Forge 47 retyped:** a Fabric mod's accessor of a field Forge 47 gave another type (a brewing mix's `from` and
   `to`, holders there; the particle engine's providers, kept by id there) invokes a getter the in-game mod adds, which
   gives vanilla's type: the holder's value, and a view by raw id of Forge's map (CORPUS-37: Porting Lib's accessors,
