@@ -1,5 +1,6 @@
 package io.github.cmdralph.fabricated.core.mixin;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -106,6 +107,21 @@ final class MixinNames {
 	static final Set<String> GAME_PREFIXES = Set.of("net/minecraft/", "com/mojang/blaze3d/");
 
 	static final String NEOFORGE_PACKAGE = "net/neoforged/";
+
+	/**
+	 * The packages of the platforms' own code (NeoForge's, Forge's): where their patches put the hooks a game call moves
+	 * into, which pre-flight follows to the call (HOOK-2, HOOK-3). Each platform has only its own, so both are named.
+	 */
+	static final List<String> PLATFORM_PACKAGES = List.of(NEOFORGE_PACKAGE, "net/minecraftforge/");
+
+	/** Whether a class (internal name) is the platform's own code: NeoForge's or Forge's ({@link #PLATFORM_PACKAGES}). */
+	static boolean isPlatformCode(String internalName) {
+		if (internalName == null) return false;
+		for (String prefix : PLATFORM_PACKAGES) {
+			if (internalName.startsWith(prefix)) return true;
+		}
+		return false;
+	}
 
 	static final String CALLBACK_INFO_RETURNABLE = "Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;";
 }

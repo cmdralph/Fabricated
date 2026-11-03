@@ -2950,6 +2950,61 @@ class MixinPreflightTest {
 		assertFalse(callsIn(mod.get("carpet/mixins/NaturalSpawnerMixin")).contains(mob + ".finalizeSpawn"));
 	}
 
+	@Test
+	void aHookAtASpawnCallForge61To66sTransformerPointsAtItsEventHookMovesToTheHook() throws Exception {
+		// CORPUS-78: Forge 64's and 65's MethodRedirector points PatrolSpawner.spawnPatrolMember's finalizeSpawn call at
+		// ForgeEventFactory.onFinalizeSpawn before Mixin applies a mod's mixins: Friends & Foes' @Inject at the
+		// PatrollingMonster's call found nothing there, and its required config stopped the server.
+		String hookDesc = PlatformCoremodsTest.FINALIZE_REASON_HOOK;
+		String hook = PlatformCoremodsTest.FORGE_HOOKS;
+		String name = "com/faboslav/friendsandfoes/fabric/mixin/PatrolSpawnerMixin";
+		byte[] friendsAndFoes = spawnerMixin(name, PlatformCoremodsTest.PATROLS, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC, "friendsandfoes$onSpawnEntity", "(Lnet/minecraft/server/level/ServerLevel;"
+					+ "Lnet/minecraft/core/BlockPos;Lnet/minecraft/util/RandomSource;ZLorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;)V", null, null);
+			AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "spawnPatrolMember");
+			methods.visitEnd();
+			AnnotationVisitor ats = ann.visitArray("at");
+			AnnotationVisitor at = ats.visitAnnotation(null, AT);
+			at.visit("value", "INVOKE");
+			at.visit("target", "L" + PlatformCoremodsTest.PATROLLING + ";finalizeSpawn" + PlatformCoremodsTest.FINALIZE_REASON);
+			at.visitEnd();
+			ats.visitEnd();
+			ann.visit("cancellable", true);
+			ann.visitEnd();
+			mv.visitCode();
+			mv.visitInsn(Opcodes.RETURN);
+			mv.visitMaxs(0, 6);
+			mv.visitEnd();
+		});
+		String config = "{\"required\":true,\"package\":\"com.faboslav.friendsandfoes.fabric.mixin\",\"mixins\":[\"PatrolSpawnerMixin\"]}";
+		MixinConfigFile parsed = MixinConfigFile.parse(config);
+		Map<String, byte[]> jars = PlatformCoremodsTest.forgeGame();
+		Map<String, byte[]> mod = new HashMap<>(Map.of(name, friendsAndFoes));
+		Function<ClassIndex, MixinPreflight> onForge = game -> new MixinPreflight(game, InstalledClasses.NONE, mod::get,
+				ClassBytesSource.EMPTY, false, true, ClassBytesSource.EMPTY, "Forge");
+
+		// The game as its jars have it makes the call: pre-flight passed the mixin, and Mixin then failed it.
+		List<PreflightFinding> asJars = onForge.apply(new ClassIndex(jars::get)).check("friendsandfoes.mixins.json", parsed, Refmap.EMPTY, Set.of());
+		assertTrue(asJars.isEmpty(), asJars.toString());
+		// As Forge's transformer leaves it, it doesn't, and the injection moves to its hook's call.
+		ClassIndex asLoaded = new ClassIndex(io.github.cmdralph.fabricated.core.translate.PlatformDescriptor.FORGE.coremods("26.1.2").over(jars::get));
+		assertFalse(onForge.apply(asLoaded).check("friendsandfoes.mixins.json", parsed, Refmap.EMPTY, Set.of()).isEmpty());
+		List<PreflightFinding> notes = new ArrayList<>();
+		Map<String, byte[]> repaired = onForge.apply(asLoaded).repairs("friendsandfoes.mixins.json", parsed, Refmap.EMPTY, Set.of(), notes);
+		assertEquals(1, notes.size(), notes.toString());
+		assertTrue(notes.getFirst().message().contains("inside Forge's hook " + hook.replace('/', '.') + ".onFinalizeSpawn" + hookDesc), notes.toString());
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired.get(name + ".class")).accept(node, 0);
+		MethodNode handler = node.methods.stream().filter(m -> Annotations.find(m, INJECT) != null).findFirst().orElseThrow();
+		AnnotationNode point = Annotations.list(Annotations.value(Annotations.find(handler, INJECT), "at")).getFirst();
+		assertEquals("L" + hook + ";onFinalizeSpawn" + hookDesc, Annotations.value(point, "target"));
+		mod.put(name, repaired.get(name + ".class"));
+		List<PreflightFinding> after = onForge.apply(asLoaded).check("friendsandfoes.mixins.json", parsed, Refmap.EMPTY, Set.of());
+		assertTrue(after.isEmpty(), after.toString());
+	}
+
 	/** The calls a class's methods make, as owner.name+desc. */
 	private static List<String> callsIn(byte[] data) {
 		return PlatformCoremodsTest.calls(data).stream().map(c -> c.owner + "." + c.name + c.desc).toList();

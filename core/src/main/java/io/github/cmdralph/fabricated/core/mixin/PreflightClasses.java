@@ -140,8 +140,9 @@ final class PreflightClasses {
 	}
 
 	/**
-	 * The one call, in {@code methods}, of a method NeoForge declares (in its own classes, or as a default method of its
-	 * extension interfaces) that makes the named call, itself or through other methods NeoForge declares: as
+	 * The one call, in {@code methods}, of a method the platform declares (in its own classes, or as a default method of
+	 * its extension interfaces; NeoForge's or Forge's) that makes the named call, itself or through other methods the
+	 * platform declares: as
 	 * {@code BlockBehaviour.onExplosionHit} removing the block through {@code IBlockStateExtension.onBlockExploded} and
 	 * {@code IBlockExtension.onBlockExploded} (Ledger's explosion logging). Null when none or several do.
 	 */
@@ -152,7 +153,7 @@ final class PreflightClasses {
 				if (!(insn instanceof MethodInsnNode call)) continue;
 				if (found != null && found.owner.equals(call.owner) && found.name.equals(call.name) && found.desc.equals(call.desc)) continue;
 				Code code = declaration(call.owner, call.name, call.desc);
-				if (code == null || !code.owner().startsWith(MixinNames.NEOFORGE_PACKAGE) || !leadsTo(code, owner, name, desc, 2)) continue;
+				if (code == null || !MixinNames.isPlatformCode(code.owner()) || !leadsTo(code, owner, name, desc, 2)) continue;
 				if (found != null) return null;
 				found = call;
 			}
@@ -160,14 +161,14 @@ final class PreflightClasses {
 		return found;
 	}
 
-	/** Whether the code makes the call, itself or, to {@code depth}, through methods NeoForge declares that it calls. */
+	/** Whether the code makes the call, itself or, to {@code depth}, through methods the platform declares that it calls. */
 	boolean leadsTo(Code code, String owner, String name, String desc, int depth) {
 		for (AbstractInsnNode insn : code.method().instructions) {
 			if (!(insn instanceof MethodInsnNode call)) continue;
 			if (call.owner.equals(owner) && call.name.equals(name) && call.desc.equals(desc)) return true;
 			if (depth <= 1) continue;
 			Code next = declaration(call.owner, call.name, call.desc);
-			if (next != null && next.owner().startsWith(MixinNames.NEOFORGE_PACKAGE) && leadsTo(next, owner, name, desc, depth - 1)) return true;
+			if (next != null && MixinNames.isPlatformCode(next.owner()) && leadsTo(next, owner, name, desc, depth - 1)) return true;
 		}
 		return false;
 	}

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prints classes' bytecode for findings that turn on it (CI only): a game class as NeoForge's patched jars have it,
+"""Prints classes' bytecode for findings that turn on it (CI only): a game class as the platform's patched jars have it,
 a mod's class as its jar (or a jar nested in it) has it and as Fabricated's translation left it, or a text file from a
 mod's jar. Reads jars in memory with size caps and hands javap one class file at a time; never runs mod code.
 
@@ -13,6 +13,9 @@ Usage: ci/javap-dump.py <client or server work directory> <spec>...
   mixins:<class>          the mixins in the mods' jars (as they ship) that target the class (internal name)
   refs:<text>             the methods of the mods' classes (as they ship) whose code names the text (a class's
                           internal name, say), up to 8 classes
+  subtypes:<class>        the classes in the mods' jars and Fabricated's translations that extend or implement the
+                          class (internal name), up to 16: each one's name, super and interfaces, and an interface's
+                          header (a class its own supertype through them fails to load: ClassCircularityError)
 A member is a name (a constructor's is its class's simple name, the static initializer's <clinit>), a name's start
 followed by * (lambda$charTyped$*), "class" (the class's header and attributes: its inner classes, its @Mixin) or *
 (every member's declaration and descriptor, without code). A class or file that is
@@ -35,11 +38,14 @@ LINES = 250
 # A line longer than this is printed in pieces of it (a descriptor naming many types), up to PIECES of them.
 WIDTH = 300
 PIECES = 4
-# The jars a NeoForge install loads the game from, the patched ones first: 26.x's minecraft-client-patched jar holds
-# the whole game; 21.1's neoforge client jar holds the classes NeoForge patched over the remapped game jar; NeoForge's
-# own classes (its hooks) come last, from its universal jar.
+# The jars a NeoForge or Forge install loads the game from, the patched ones first: NeoForge 26.x's
+# minecraft-client-patched jar holds the whole game; NeoForge 21.1's neoforge client jar, and Forge's forge client jar,
+# hold the classes the platform patched over the remapped game jar; then any game jar under net/minecraft (Forge 61 to
+# 66's); the platform's own classes (its hooks) come last, from its universal jar.
 GAME_JARS = ("**/minecraft-client-patched-*.jar", "**/minecraft-server-patched-*.jar", "**/neoforge-*-client.jar",
-             "**/neoforge-*-server.jar", "**/client-*-srg.jar", "**/server-*-srg.jar", "**/neoforge-*-universal.jar")
+             "**/neoforge-*-server.jar", "**/forge-*-client.jar", "**/forge-*-server.jar", "**/client-*-srg.jar",
+             "**/server-*-srg.jar", "**/net/minecraft/client/**/client-*.jar", "**/net/minecraft/server/**/server-*.jar",
+             "**/neoforge-*-universal.jar", "**/forge-*-universal.jar")
 
 
 def javap(data, verbose=True):
@@ -253,6 +259,73 @@ def without_code(listing):
     return "\n".join(out)
 
 
+def header(data):
+    """(name, super name, interface names) of a class file, read from its constant pool; None where it isn't one."""
+    try:
+        if data[:4] != b"\xca\xfe\xba\xbe":
+            return None
+        count = int.from_bytes(data[8:10], "big")
+        classes, utf8, index, pos = {}, {}, 1, 10
+        while index < count:
+            tag = data[pos]
+            if tag == 1:
+                length = int.from_bytes(data[pos + 1:pos + 3], "big")
+                utf8[index] = data[pos + 3:pos + 3 + length].decode("utf-8", "replace")
+                pos += 3 + length
+            elif tag == 7:
+                classes[index] = int.from_bytes(data[pos + 1:pos + 3], "big")
+                pos += 3
+            elif tag in (8, 16, 19, 20):
+                pos += 3
+            elif tag == 15:
+                pos += 4
+            elif tag in (3, 4, 9, 10, 11, 12, 17, 18):
+                pos += 5
+            elif tag in (5, 6):
+                pos += 9
+                index += 1  # a long or a double takes two entries
+            else:
+                return None
+            index += 1
+
+        def name(at):
+            return utf8.get(classes.get(int.from_bytes(data[at:at + 2], "big")))
+
+        interfaces = int.from_bytes(data[pos + 6:pos + 8], "big")
+        return name(pos + 2), name(pos + 4), [name(pos + 8 + 2 * k) for k in range(interfaces)]
+    except (IndexError, ValueError):
+        return None
+
+
+def subtypes(sources, what, limit):
+    """Prints the classes of the jars (with their labels) that extend or implement `what`; returns how many."""
+    found, printed = 0, {}
+    for jar, label in sources:
+        data = read_jar(jar)
+        for where, entry, read in entries(os.path.basename(jar), data) if data else ():
+            if not entry.endswith(".class"):
+                continue
+            data_ = read()
+            if what.encode() not in data_:
+                continue
+            parsed = header(data_)
+            if not parsed or (parsed[1] != what and what not in parsed[2]):
+                continue
+            if found >= limit:
+                print(f"-- ... and more after {limit}")
+                return found
+            title = f"{parsed[0]} in {where}{label}"
+            if printed_before(title, data_, printed):
+                continue
+            found += 1
+            listing = class_part(javap(data_))
+            print(f"-- {title}: extends {parsed[1]}, implements {', '.join(i or '?' for i in parsed[2]) or 'nothing'}")
+            if "ACC_INTERFACE" in listing:
+                for line in listing.splitlines()[:40]:
+                    emit(line)
+    return found
+
+
 def printed_before(title, data, printed):
     """Whether the same bytes were printed for this spec already; names the earlier one if so."""
     digest = hashlib.sha256(data).hexdigest()
@@ -331,6 +404,8 @@ def main():
         elif kind == "refs":
             refs(mods, what, 8)
             found = 1  # refs says so itself
+        elif kind == "subtypes":
+            found = subtypes([(j, "") for j in mods] + [(j, " (Fabricated's translation)") for j in translated], what, 16)
         if not found:
             count = len(game) if kind == "game" else len(vanilla) if kind == "vanilla" else len(mods) + len(translated)
             print(f"-- {spec}: not found in {count} jar(s)")

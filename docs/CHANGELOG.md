@@ -3,7 +3,7 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
-## 2026-11-03: a shadow of another mod's mixin field on Forge, and the Forge corpus stops (task 5)
+## 2026-11-03: two Forge pre-flight fixes (CORPUS-74, CORPUS-78), and the Forge corpus stops (task 5)
 
 - **CORPUS-74** (`MixinRepairs.sharedFieldRepair`, `MixinCompat.shadowsMixinFields`): the Forge 26.2 corpus client
   crashed on MoreCulling's shadow of the mesh Fabric API's renderer mixin adds to `BlockModelRenderState` (extended run
@@ -11,16 +11,30 @@ One entry per working session, newest first: what changed, and how it was verifi
   a `@Shadow` field among the fields of the mixins it prepared before; SpongePowered's, which Forge runs, doesn't.
   There such a shadow is now declared as the other mixin declares the field, which Mixin merges with it into one
   field, as on Fabric; one that can't be fails pre-flight. Nothing changes on NeoForge, whose Mixin is Fabric's.
+- **CORPUS-78** (`PlatformCoremods.forge`, `MixinNames.isPlatformCode`): with CORPUS-70 and 73 fixed, the Forge 64 and
+  65 corpus servers crashed in the server tick on Friends and Foes' hook at a patrol member's `finalizeSpawn` call
+  (extended run 41594474962). Forge 61 to 66's `MethodRedirector`, a ModLauncher transformer and so ahead of Mixin,
+  points that call at `ForgeEventFactory.onFinalizeSpawn`. Decided: pre-flight reads Forge 61 to 66's game as their
+  transformers leave it, as it reads NeoForge 21.1's (CORPUS-61). Their target lists (one per version, copied from
+  Forge's 1.21.11, 26.1, 26.2 and 26.3 sources) ship in core, applied as Forge applies them (the methods named and the
+  listed classes' synthetic ones), with their field-to-getter reads (in every method but the getter, which differs
+  from NeoForge's rule; not `Biome`'s on 26.3); a hook at such a call moves to Forge's hook as it does to NeoForge's.
+  Nothing changes on NeoForge or Forge 47.
 - **Forge corpus stops read, fixed on the Forge branches** (#254, #249; the rows in *Findings* and `FINDINGS.md`):
   Fabric mods' registries made in their main entrypoints (CORPUS-70, verified), GeckoLib's early registry writes on
   Forge 61 to 66 (CORPUS-71), objects made before what they hold is registered (CORPUS-73, verified: TechReborn and
-  Lootr load), and Fabric API's registry aliases in Forge's registries (CORPUS-75: Waystones' renamed waystones).
-  Found and open: Modern Industrialization without Magna on Forge 47 (CORPUS-72), and two Forge 47 client entrypoint
-  failures (CORPUS-76, CORPUS-77).
+  Lootr load), and Fabric API's registry aliases in Forge's registries (CORPUS-75, verified: Waystones' data pack loads
+  on the Forge 64 and 65 corpus servers, extended run 41594474962). Found and open: Modern Industrialization without
+  Magna on Forge 47 (CORPUS-72), the Forge 47 client's crash on `ClientTooltipComponent` made its own supertype
+  (CORPUS-76, now P0), owo's MixinExtras root on Forge 47 (CORPUS-77), and ResourcefulLib's screen effect hook on the
+  Forge 64 client (CORPUS-79).
+- **CI evidence** (`ci/javap-dump.py`): a `subtypes:` spec lists the classes in the mods' jars and Fabricated's
+  translations extending or implementing a class (for CORPUS-76), and `game:` finds Forge's game jars too.
 - **Tests:** the renderer test mod closes its minecarts in barriers on NeoForge too, as on Forge (a mob pushing the
   lower one away kept it from being drawn once on Forge 26.1.2).
-- **CI:** core tests pass locally (the pre-flight and helper suites; one test new, one extended). The Forge branches
-  take the core fix by the sync, with a test mod check on all five Forge versions.
+- **CI:** core build and tests pass locally (the pre-flight, helper and platform transformer suites; five tests new,
+  one extended, one rewritten). The Forge branches take the core fixes by the sync, with a test mod check on all five
+  Forge versions.
 
 ## 2026-11-03: Forgified Fabric API's modules on Forge 47, and owo's slot mixin (task 5)
 
