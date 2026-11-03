@@ -19,10 +19,10 @@ import io.github.cmdralph.fabricated.loader.FabricatedState;
 /**
  * Fabricated's Mixin extensions on Forge 61 to 66 and Forge 47: one declares default bridges after a class's mixins apply
  * (CORPUS-63, as on NeoForge 21.1), the other repairs the frames Mixin recorded for a class a Fabric mod's mixin targets
- * before they apply ({@link RecordedFrameRepair}, CORPUS-79). Forge runs on ModLauncher, where Mixin is a launch plugin and
- * no transformer from the mods folder runs after it; a Mixin extension runs as Mixin applies mixins to a class, before and
- * after they apply, and nowhere else: the loader's transformer declares the bridges before Mixin for the classes no mixin
- * targets. Shared by Forge 47 and Forge 61 to 66.
+ * before they apply ({@link RecordedFrameRepair}, CORPUS-79, where Mixin needs it: Forge 61 to 66). Forge runs on
+ * ModLauncher, where Mixin is a launch plugin and no transformer from the mods folder runs after it; a Mixin extension
+ * runs as Mixin applies mixins to a class, before and after they apply, and nowhere else: the loader's transformer
+ * declares the bridges before Mixin for the classes no mixin targets. Shared by Forge 47 and Forge 61 to 66.
  */
 final class MixinExtensions {
 	private static final Logger LOGGER = LoggerFactory.getLogger("Fabricated");
@@ -32,7 +32,8 @@ final class MixinExtensions {
 
 	/**
 	 * Registers the extensions with Mixin's transformer, those with work to do: the bridges where a Fabric mod brings
-	 * any, the frame repair where any Fabric mod loads. Called from Fabricated's mixin plugin as Mixin selects the configs
+	 * any, the frame repair where any Fabric mod loads and Mixin records frames unexpanded
+	 * ({@link RecordedFrameRepair#needed}: Forge 61 to 66). Called from Fabricated's mixin plugin as Mixin selects the configs
 	 * (the plugin's {@code onLoad}), before Mixin activates its extensions for the configs it selected, and so before it
 	 * applies a mixin of theirs.
 	 */
@@ -40,7 +41,7 @@ final class MixinExtensions {
 		FabricatedState state = FabricatedState.get();
 		if (state == null) return;
 		boolean bridges = !state.defaultBridges().isEmpty();
-		boolean frames = !state.mods().isEmpty();
+		boolean frames = !state.mods().isEmpty() && RecordedFrameRepair.needed();
 		if (!bridges && !frames) return;
 		Object transformer = MixinEnvironment.getCurrentEnvironment().getActiveTransformer();
 		if (transformer instanceof IMixinTransformer mixin && mixin.getExtensions() instanceof Extensions extensions) {
