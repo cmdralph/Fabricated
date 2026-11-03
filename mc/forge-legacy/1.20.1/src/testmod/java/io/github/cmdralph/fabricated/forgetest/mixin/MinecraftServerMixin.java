@@ -9,6 +9,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import io.github.cmdralph.fabricated.forgetest.ForgeBiomeTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeBlockBreakTest;
+import io.github.cmdralph.fabricated.forgetest.ForgeBrewingMixTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeBrewingTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeCommandTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeConfigPortTest;
@@ -107,6 +108,7 @@ public abstract class MinecraftServerMixin {
 			ForgeTestMod.checkInteractions(method_30002());
 			ForgeSleepTest.check(method_30002());
 			ForgeTransferTest.check(method_30002());
+			ForgeBrewingMixTest.check();
 			if (ForgeTestMod.testItem != null && FabricLoader.getInstance().isModLoaded("fabric-content-registries-v0")) {
 				ForgeFuelTest.check();
 				ForgeBrewingTest.check();
