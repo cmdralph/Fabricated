@@ -302,12 +302,19 @@ jobs:
             'refs:com/chocohead/mm/api/ClassTinkerers' 'mod:net.minecraftforge.fml.config.ModConfig#ModConfig' \
             'refs:net/minecraftforge/fml/config/ModConfig' \
             | cut -c1-320 | head -n 1400 || true
-          # ClientTooltipComponent's header as Fabricated's transformer and Mixin left it (Mixin's export), and what the
-          # debug log says was applied to it (CORPUS-76).
-          for exported in $(find "$RUNNER_TEMP/client-corpus/run/.mixin.out" -name 'ClientTooltipComponent.class' 2>/dev/null | head -n 2); do
+          # ClientTooltipComponent's header as Fabricated's transformer and Mixin left it (Mixin's export, wherever the
+          # game's working directory put it), what Fabricated's translations add to it (their injected interfaces and
+          # default bridges, in the translation cache's metadata), and what the debug log says was applied to it
+          # (CORPUS-76: it was defined with a supertype that extends it).
+          find "$RUNNER_TEMP/client-corpus" -type d -name '.mixin.out' 2>/dev/null | head -n 3 | sed 's/^/-- mixin export directory: /' || true
+          for exported in $(find "$RUNNER_TEMP/client-corpus" -path '*.mixin.out*' -name 'ClientTooltipComponent*.class' 2>/dev/null | head -n 2); do
             echo "-- exported: $exported"
             javap -v -p "$exported" | grep -E '^(public |  (minor|major) version|  flags|  this_class|  super_class|  interfaces)|interface |Signature:' | head -n 20 || true
             javap -p "$exported" | head -n 5 || true
+          done
+          for meta in $(grep -rlE 'ClientTooltipComponent|class_5684' "$RUNNER_TEMP/client-corpus/run/.fabricated/cache" --include='*.json' 2>/dev/null | head -n 10); do
+            echo "-- translation metadata naming it: $meta"
+            python3 -I -c 'import json,sys; m=json.load(open(sys.argv[1])); [print("  ", k, json.dumps(e)[:300]) for k in ("injectedInterfaces","defaultBridges") for e in m.get(k, []) if "ClientTooltipComponent" in json.dumps(e) or "class_5684" in json.dumps(e)]' "$meta" 2>/dev/null || true
           done
           grep -n -E 'ClientTooltipComponent|class_5684' "$RUNNER_TEMP/client-corpus/run/logs/debug.log" 2>/dev/null \
             | grep -v -E '^[0-9]+:[[:space:]]+at ' | awk '!seen[substr($0, index($0, ":") + 1)]++' | head -n 40 | cut -c1-400 || true
