@@ -27,7 +27,9 @@ import org.objectweb.asm.tree.TypeInsnNode;
  * superclass another mixin targets. Elsewhere the mixin's type stays: such a handler fails its injection's check, and a
  * field of that type fails verification once the target's code stores the target into it, as the mixin class may not
  * be loaded. Fabricated names the target there as it translates the mod, as Fabric's Mixin does; where the running
- * Mixin would have done it, it finds the target's name already, and the result is the same.
+ * Mixin would have done it for a mixin superclass or a target's, it finds the target's name already, and the result is
+ * the same. A mixin whose inner classes Mixin copies into its target is left to Mixin ({@code MixinRepairs}'
+ * {@code copiesInnerClasses}): the copies find the mixin's members by descriptors naming the mixin (SELF-3).
  * <p>
  * Only for a class mixin with one target (Mixin merges a mixin with several into each, under each one's name), and only
  * the mixin's own type: another mixin's stands for whichever class of the target's hierarchy that one targets, which

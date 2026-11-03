@@ -339,6 +339,57 @@ class MixinPreflightTest {
 		assertEquals("()" + real, out.methods.stream().filter(mn -> mn.name.startsWith("lambda$")).findFirst().orElseThrow().desc);
 	}
 
+	/**
+	 * Fabric API's moving block renderer mixin has an anonymous class calling a protected method of its outer class's
+	 * superclass, through the static accessor javac adds to the mixin, whose descriptor names the mixin. Mixin copies the
+	 * anonymous class into the target and renames the accessor as it merges it; the copy finds the new name by the
+	 * descriptor it calls the accessor with, matched against the mixin's as Mixin read it. Named with the target first,
+	 * the accessor kept its old name in the copy, which failed to link on Forge 66 (SELF-3). Such a mixin is left to Mixin,
+	 * which names the target there itself; a mixin whose only inner class is a static synthetic one (javac's switch table,
+	 * which Mixin loads as it is) is still renamed.
+	 */
+	@Test
+	void aMixinWhoseInnerClassesMixinCopiesKeepsItsOwnType() throws Exception {
+		String outer = "com/example/mixin/Moving";
+		String anonymous = outer + "$1";
+		byte[] moving = mixin(outer, false, cw -> {
+			cw.visitInnerClass(anonymous, null, null, 0);
+			MethodVisitor accessor = cw.visitMethod(Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, "access$100", "(L" + outer + ";I)V", null, null);
+			accessor.visitCode();
+			accessor.visitInsn(Opcodes.RETURN);
+			accessor.visitMaxs(0, 2);
+			accessor.visitEnd();
+		});
+		ClassWriter consumer = new ClassWriter(0);
+		consumer.visit(Opcodes.V21, Opcodes.ACC_SUPER, anonymous, null, "java/lang/Object", null);
+		consumer.visitOuterClass(outer, "build", "()V");
+		consumer.visitInnerClass(anonymous, null, null, 0);
+		consumer.visitField(Opcodes.ACC_FINAL | Opcodes.ACC_SYNTHETIC, "this$0", "L" + outer + ";", null, null).visitEnd();
+		consumer.visitEnd();
+		String switching = "com/example/mixin/Switching";
+		String table = switching + "$1";
+		byte[] switchingMixin = mixin(switching, false, cw -> {
+			cw.visitInnerClass(table, null, null, Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC);
+			cw.visitField(Opcodes.ACC_PRIVATE, "next", "L" + switching + ";", null, null).visitEnd();
+		});
+		ClassWriter switchTable = new ClassWriter(0);
+		switchTable.visit(Opcodes.V21, Opcodes.ACC_SUPER | Opcodes.ACC_SYNTHETIC, table, null, "java/lang/Object", null);
+		switchTable.visitInnerClass(table, null, null, Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC);
+		switchTable.visitField(Opcodes.ACC_STATIC | Opcodes.ACC_FINAL | Opcodes.ACC_SYNTHETIC, "$SwitchMap$x", "[I", null, null).visitEnd();
+		switchTable.visitEnd();
+		Map<String, byte[]> mod = Map.of(outer, moving, anonymous, consumer.toByteArray(), switching, switchingMixin, table, switchTable.toByteArray());
+		ClassIndex game = new ClassIndex(Map.of(TARGET, targetClass())::get);
+		List<PreflightFinding> notes = new ArrayList<>();
+		Map<String, byte[]> repaired = preflight(game, mod::get, ClassBytesSource.EMPTY, false)
+				.repairs("test.mixins.json", MixinConfigFile.parse(config(true, "Moving", "Switching")), Refmap.EMPTY, Set.of(), notes);
+
+		assertEquals(Set.of(switching + ".class"), repaired.keySet(), notes.toString());
+		assertTrue(notes.stream().noneMatch(f -> f.mixin().endsWith("Moving") && f.message().contains("descriptor(s) of the mixin")), notes.toString());
+		ClassNode out = new ClassNode();
+		new ClassReader(repaired.get(switching + ".class")).accept(out, 0);
+		assertEquals("L" + TARGET + ";", out.fields.getFirst().desc);
+	}
+
 	@Test
 	void aSelectorWithoutDescriptorTargetsTheFirstOverloadOnly() throws Exception {
 		ClassIndex game = new ClassIndex(Map.of(TARGET, overloadedTarget())::get);
