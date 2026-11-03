@@ -3,6 +3,61 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-03: Moonlight's codec on Forge 47 (CORPUS-86), owo's and Porting Lib's fixes, and Forge's miscounted frames (CORPUS-79, task 5)
+
+- **Verified:** CORPUS-85 (#261 on `forge`; extended run 41682699918): the Forge 65 and 66 corpus clients joined their
+  worlds. CORPUS-72 (extended run 41681558702, after #265's sync): Magna and Modern Industrialization loaded on the
+  Forge 47 corpus server and client. CORPUS-80 on Forge 61 to 66 (extended run 41682699918): Farmer's Delight loaded
+  and ran its entrypoints on the Forge 61, 64, 65 and 66 corpus servers and clients, and every server started.
+  CORPUS-85's and CORPUS-72's rows are in `FINDINGS.md`; CORPUS-80 stays open for Forge 47.
+- **CORPUS-86** (`IntermediaryRemapper.plainMethod`, `Supertypes`, new; `MappingTable.ownPlainMethod` and
+  `isPlainMethod`, `ClassIndex.supertypes`, new; `JarRemapper`): the Forge 47 corpus server stopped loading data packs
+  with an `AbstractMethodError` for Moonlight's `CaveFilter.Type`.
+  - **The cause:** Intermediary leaves `PlacementModifierType.codec()` under its official name, and SRG names it
+    `m_191869_`. PLAIN-1 renamed such a method by its owner, or by name and descriptor where the descriptor names a
+    Minecraft class. Moonlight's override returns DataFixerUpper's `Codec`, so it kept `codec`, and the interface's
+    method had no implementation.
+  - **The fix:** a plain method a mod's class declares, or a call names, takes the name of the same method in its
+    nearest supertype declaring it, through the jar's own classes, then the game's. Only Forge 47's SRG table has
+    plain methods, so nothing changes on NeoForge or Forge 61 to 66.
+  - **Limit:** a class extending another Fabric mod's class isn't followed into that mod.
+- **CORPUS-77** (`Pipeline.builtinFiles`): owo's client entrypoint threw "Mod mixinextras has no root path" on Forge
+  47. owo's data loader asks every mod for its root, and Fabricated's MixinExtras container took its files from
+  NeoForge's mod, which Forge doesn't have. On Forge they are now the in-game mod's, which nests MixinExtras.
+- **CORPUS-37, core half** (`MixinRepairs.retypedFieldBridge`, new; `RestoredFields`, `MixinNames`): an `@Accessor`
+  of a field the platform gave another type becomes an `@Invoker` of a getter Fabricated's in-game mod adds for the
+  field, `fabricated$get$` and the field's runtime name, where the in-game mod has one. It keeps its own name and
+  descriptor, so callers are served as before. Pre-flight reads the bridges' declarations from the in-game mod's
+  mixins. Without a bridge the accessor still fails pre-flight. The bridges for Forge 47's brewing mix and particle
+  providers, which Porting Lib's accessors read, go in with the next `forge-legacy` sync.
+- **CORPUS-79, core half** (`RecordedFrames`, new): the cause of ResourcefulLib's crash on the Forge 61 and 64 clients
+  is found in Mixin 0.8's source.
+  - **The cause:** Mixin computes the locals at an injection point with frame sizes it recorded from the class read
+    without expanded frames. It records an appending or chopping frame as at least the method's argument slots.
+    Forge's `renderScreenEffect` appends three locals and later chops one: Mixin counts four live locals where six
+    are, and drops the `PoseStack` the hook takes.
+  - **The check:** `RecordedFrames.dropsLiveLocals` walks a method as Mixin does and tells whether a chop leaves fewer
+    locals than its expanded frame states.
+  - **Next:** Fabricated's Mixin extension on Forge clears such a method's recorded frames before a mixin applies, so
+    Mixin takes each frame's locals from the expanded frame. That goes into both Forge branches with the next syncs.
+- **New findings:**
+  - CORPUS-87: ImmediatelyFast's Forge AppleSkin compat mixin fails against AppleSkin's Fabric build on the Forge 47
+    client, and AppleSkin's client entrypoint throws (P2).
+  - CORPUS-88: REI can't encode Farmer's Delight's `DecompositionDisplay` on the Forge 65 and 66 clients (P3, not yet
+    compared with Fabric).
+  - CORPUS-89: a mod whose nested mod is disabled loads and fails at its entrypoint, instead of being disabled with
+    the nested mod's reason (P2, split from CORPUS-72).
+- **Tests:**
+  - `RemapTest.anOverrideOfAMethodOnlySrgRenamesTakesItsNameFromTheTypeItInherits`: an interface, a mod's superclass,
+    a game superclass, another plain method, and a mod's own method, which keeps its name.
+  - `RecordedFramesTest`: Forge's frame shape drops the local; appends of one local each drop none; frames that don't
+    line up with the recorded ones are left alone.
+  - `PipelineTest.aFieldThePlatformRetypedIsReachedThroughFabricatedsBridge` and
+    `MixinPreflightTest.anAccessorOfAFieldThePlatformRetypedInvokesFabricatedsBridge`: with and without a bridge.
+  - `PipelineTest.builtInModsHaveTheRootOfWhatProvidesThem`: MixinExtras' root, with and without NeoForge.
+- **CI:** core build and tests pass locally (474 tests). The syncs into `forge-legacy` and `forge` carry these, with
+  the Forge halves of CORPUS-37 and CORPUS-79, and their extended runs verify them.
+
 ## 2026-11-03: Magna's hammers on Forge 47 (CORPUS-72), and Forge's recipe book `init` for Farmer's Delight (CORPUS-80, task 5)
 
 - **CORPUS-72** (`CallRepairs.movedCallRepairs`, `vanillasPlace` and `movedInto`, new; `PatchAlignment.token` now

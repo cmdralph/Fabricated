@@ -430,7 +430,7 @@ versions is decided at compile time by which source folders it compiles, plus tw
   (`MixinPreflight.repairs`: overloads NeoForge reordered or moved code into, constructors NeoForge kept for
   vanilla's signature, calls and constructor calls made through a subtype or given one more argument (through bridge
   handlers that pass a handler's MixinExtras sugar on), renumbered lambdas, calls moved into a lambda of the method, calls the patch moved into methods of its own (at vanilla's place of the call), hard local captures, locals taken by a slot the build keeps them in elsewhere, accessors of members
-  NeoForge added), not by per-version tables. The injector repairs run in one order (`MixinRepairs`), each from its
+  NeoForge added, accessors of fields the platform retyped through the in-game mod's bridges), not by per-version tables. The injector repairs run in one order (`MixinRepairs`), each from its
   family's class (`LambdaRepairs`, `OverloadRepairs`, `CallRepairs`, `ConstructorRepairs`, `LocalRepairs`). Enum mixins into
   NeoForge's extensible enums become its enum extension entries (`EnumExtensions`), named enums included when their
   names already carry the mod's id; their other methods stay an ordinary mixin without the constants. Mixins only giving a library class the mod's interfaces become generated classes
