@@ -4,6 +4,7 @@
   "package": "io.github.cmdralph.fabricated.forgetest.mixin",
   "compatibilityLevel": "JAVA_21",
   "mixins": ["BuiltInRegistriesMixin", "LivingEntitySelfMixin", "MinecraftServerMixin", "MobMultipartMixin"],
+  "client": ["McRuntimeTestMixin"],
   "injectors": {
     "defaultRequire": 1
   }

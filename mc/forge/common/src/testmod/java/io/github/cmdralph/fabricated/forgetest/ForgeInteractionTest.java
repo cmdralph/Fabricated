@@ -32,7 +32,8 @@ import net.minecraft.world.phys.Vec3;
  * are, and each callback must be asked and its answer honoured. Using a stick fails, using the stone block succeeds,
  * attacking it fails, and attacking and using an armor stand both fail. The game finds an entity a player uses by its id
  * among the entities of chunks that tick them, which none does at the first tick of a server without players, so the
- * armor stand's part waits for the test site's chunk, forced, to tick its entities.
+ * armor stand's part waits for the test site's chunk, forced, to tick its entities. On a client, mc-runtime-test waits
+ * for that part before it quits ({@link ClientHold}).
  */
 public final class ForgeInteractionTest {
 	private static final Set<String> SEEN = ConcurrentHashMap.newKeySet();
@@ -85,6 +86,7 @@ public final class ForgeInteractionTest {
 		player.gameMode.handleBlockBreakAction(pos, ServerboundPlayerActionPacket.Action.START_DESTROY_BLOCK, Direction.UP, level.getMaxY(), 0);
 		player.setItemInHand(hand, ItemStack.EMPTY);
 		level.setChunkForced(SectionPos.blockToSectionCoord(pos.getX()), SectionPos.blockToSectionCoord(pos.getZ()), true);
+		ClientHold.start();
 		waited = 0;
 	}
 
@@ -94,6 +96,15 @@ public final class ForgeInteractionTest {
 		BlockPos pos = site;
 		if (!level.isPositionEntityTicking(pos) && ++waited < MAX_WAIT) return;
 		waited = -1;
+		try {
+			finish(level, pos);
+		} finally {
+			ClientHold.done();
+		}
+	}
+
+	/** The armor stand's part, when the site's chunk ticks entities, and the result. */
+	private static void finish(ServerLevel level, BlockPos pos) {
 		if (level.isPositionEntityTicking(pos)) {
 			FakePlayer player = player(level, pos);
 			ArmorStand stand = new ArmorStand(level, pos.getX() + 0.5, pos.getY() + 1, pos.getZ() + 0.5);
