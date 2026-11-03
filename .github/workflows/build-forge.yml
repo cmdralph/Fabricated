@@ -131,6 +131,12 @@ jobs:
         if: ${{ env.GAME_RUNS == 'true' }}
         run: |
           ci/forge/smoke-server.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/server"
+      # Forge's own transformers of game classes, from the installed server's libraries, for pre-flight to read the game's
+      # classes as they leave them (CORPUS-61's Forge half). Informational, with "extended".
+      - name: Forge's own transformers (informational)
+        if: ${{ env.EXTENDED == 'true' && !cancelled() }}
+        continue-on-error: true
+        run: ci/forge/forge-coremods.sh "$RUNNER_TEMP/server"
       # The official Fabric API jar (downloaded here in CI, never by Fabricated) with every module passed through: what
       # loads on Forge and what pre-flight disables, for F4's choice of native modules. A gate like the first run.
       - name: Server with Fabricated and Fabric API (must pass)
@@ -232,8 +238,8 @@ jobs:
         if: ${{ !cancelled() && steps.corpus.outcome == 'success' }}
         continue-on-error: true
         run: |
-          ci/forge/corpus-causes.sh "$RUNNER_TEMP/server-corpus" "$RUNNER_TEMP/server-corpus.out" "server with the corpus"
-          ci/forge/corpus-causes.sh "$RUNNER_TEMP/client-corpus/run" "$RUNNER_TEMP/client-corpus.out" "client with the corpus"
+          ci/forge/corpus-causes.sh "$RUNNER_TEMP/server-corpus" "$RUNNER_TEMP/server-corpus/server.out" "server with the corpus"
+          ci/forge/corpus-causes.sh "$RUNNER_TEMP/client-corpus/run" "$RUNNER_TEMP/client-corpus/client.out" "client with the corpus"
       - name: Upload mod corpus logs and reports
         if: ${{ !cancelled() && steps.corpus.outcome == 'success' }}
         uses: actions/upload-artifact@v4
@@ -242,9 +248,11 @@ jobs:
           path: |
             ${{ runner.temp }}/corpus.txt
             ${{ runner.temp }}/server-corpus.out
+            ${{ runner.temp }}/server-corpus/server.out
             ${{ runner.temp }}/server-corpus/logs
             ${{ runner.temp }}/server-corpus/crash-reports
             ${{ runner.temp }}/client-corpus.out
+            ${{ runner.temp }}/client-corpus/client.out
             ${{ runner.temp }}/client-corpus/run/logs
             ${{ runner.temp }}/client-corpus/run/crash-reports
           if-no-files-found: ignore

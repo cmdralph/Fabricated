@@ -5,6 +5,7 @@
 # crash report (CORPUS-53, CORPUS-55). Informational: it never fails.
 #
 # Usage: ci/forge/corpus-causes.sh <game-dir> <console-output> [label]
+# <console-output> is the game's own console (server.out, client.out), in the smoke script's work directory.
 set -uo pipefail
 
 dir="$1"
@@ -47,6 +48,11 @@ for fatal in "$dir"/hs_err_pid*.log "$(dirname "$dir")"/hs_err_pid*.log; do
 	echo "-- JVM fatal error log $(basename "$fatal")"
 	head -n 30 "$fatal" | cut -c1-300
 done
+# Why the smoke script stopped the game, where it says (a client: mc-runtime-test's stop, or the line it stopped on).
+reason="$(dirname "$console")/stop-reason.txt"
+if [ -f "$reason" ]; then
+	echo "-- stopped by CI: $(head -c 400 "$reason")"
+fi
 if [ -f "$console" ]; then
 	echo "-- the console's last lines"
 	tail -n 40 "$console" | cut -c1-400
