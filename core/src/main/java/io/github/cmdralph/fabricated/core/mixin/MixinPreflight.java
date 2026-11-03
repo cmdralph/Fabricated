@@ -35,6 +35,7 @@ import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.FieldInsnNode;
 import org.objectweb.asm.tree.FieldNode;
 import org.objectweb.asm.tree.FrameNode;
+import org.objectweb.asm.tree.IincInsnNode;
 import org.objectweb.asm.tree.InnerClassNode;
 import org.objectweb.asm.tree.InsnList;
 import org.objectweb.asm.tree.InvokeDynamicInsnNode;
@@ -1154,6 +1155,13 @@ public final class MixinPreflight extends PreflightPart {
 					ctx.changer(true) + " changed the method body; the mod needs an update or this mixin must be skipped.");
 			return;
 		}
+		String otherSlot = indexedLocalOfOtherType(handler, matched, target.name, game);
+		if (otherSlot != null) {
+			ctx.injector(handler, require, injectorName + " handler " + handler.name + " captures the local variable of type " + otherSlot + ", which "
+							+ matched.get(0).name + " in " + target.name.replace('/', '.') + " never holds there",
+					ctx.changer(true) + " changed the method body; the mod needs an update or this mixin must be skipped.");
+			return;
+		}
 		String outOfScope = slices.isEmpty() ? LocalRepairs.namedLocalOutOfScope(handler, ann, matched, ctx) : null;
 		if (outOfScope != null) {
 			ctx.injector(handler, require, injectorName + " handler " + handler.name + " captures the local variable " + outOfScope + ", which "
@@ -1521,12 +1529,7 @@ public final class MixinPreflight extends PreflightPart {
 		for (Map.Entry<Integer, Integer> slot : lastEnd.entrySet()) {
 			if (!overwritten(method, slot.getKey(), slot.getValue(), point)) return false;
 		}
-		Map<AbstractInsnNode, String> handlers = new HashMap<>();
-		for (TryCatchBlockNode block : method.tryCatchBlocks) {
-			String caught = block.type == null ? "java/lang/Throwable" : block.type;
-			String previous = handlers.putIfAbsent(block.handler, caught);
-			if (previous != null && !previous.equals(caught)) handlers.put(block.handler, null);
-		}
+		Map<AbstractInsnNode, String> handlers = catchTypes(method);
 		int argSlots = isStatic ? 0 : 1;
 		for (Type arg : Type.getArgumentTypes(method.desc)) argSlots += arg.getSize();
 		Map<Integer, Type> slotTypes = new HashMap<>();
@@ -1540,6 +1543,113 @@ public final class MixinPreflight extends PreflightPart {
 			if (before != null && !before.equals(stored)) return false;
 		}
 		return true;
+	}
+
+	/** The type each exception handler of the method catches, by its label; null where its try blocks catch different types. */
+	private static Map<AbstractInsnNode, String> catchTypes(MethodNode method) {
+		Map<AbstractInsnNode, String> handlers = new HashMap<>();
+		for (TryCatchBlockNode block : method.tryCatchBlocks) {
+			String caught = block.type == null ? "java/lang/Throwable" : block.type;
+			String previous = handlers.putIfAbsent(block.handler, caught);
+			if (previous != null && !previous.equals(caught)) handlers.put(block.handler, null);
+		}
+		return handlers;
+	}
+
+	/**
+	 * Whether slot {@code slot} of a method never holds a value of {@code type} (not {@code Object}) as Mixin builds the
+	 * method's locals ({@code Locals.getLocalsAt}), which an {@code @Local(index = N)} capture needs it to (MixinExtras
+	 * finds it with Mixin's discriminator, which takes the slot only where its local's type is the handler's, exactly).
+	 * Mixin types the slot at each store, load and stack map frame by the entry of the local variable table that covers
+	 * the instruction there, else by the table it generates from the method's code (its verifier's types), else by any
+	 * entry for the slot. So: the method has a table (Mojang's builds have none, and Mixin's generated types aren't read
+	 * here), the slot is not an argument's, and no entry for it has the type; for a primitive type, no instruction stores
+	 * one of its kind there (an {@code int}'s store or increment for {@code int}, {@code boolean}, {@code byte},
+	 * {@code char} and {@code short}, which the verifier doesn't tell apart); for a class or array type, each value stored
+	 * there has a type read off plainly ({@link #storedType}) that is neither the type nor a subclass of it (as the
+	 * verifier, merging two values, may type the slot by a superclass of theirs), as far as {@code hierarchy} tells.
+	 */
+	static boolean slotNeverHolds(Type type, MethodNode method, int slot, String owner, ClassIndex hierarchy) {
+		if (type.getSort() == Type.VOID || type.getSort() == Type.METHOD || type.getDescriptor().equals("Ljava/lang/Object;")
+				|| method.instructions == null || method.instructions.size() == 0 || method.localVariables == null || method.localVariables.isEmpty()) {
+			return false;
+		}
+		boolean isStatic = (method.access & Opcodes.ACC_STATIC) != 0;
+		int argSlots = isStatic ? 0 : 1;
+		for (Type arg : Type.getArgumentTypes(method.desc)) argSlots += arg.getSize();
+		if (slot < argSlots) return false;
+		for (LocalVariableNode local : method.localVariables) {
+			if (local.index == slot && local.desc.equals(type.getDescriptor())) return false;
+		}
+		if (type.getSort() != Type.OBJECT && type.getSort() != Type.ARRAY) {
+			int store = type.getOpcode(Opcodes.ISTORE);
+			for (int i = 0; i < method.instructions.size(); i++) {
+				AbstractInsnNode insn = method.instructions.get(i);
+				if (insn instanceof VarInsnNode v && v.var == slot && v.getOpcode() == store
+						|| insn instanceof IincInsnNode inc && inc.var == slot && store == Opcodes.ISTORE) return false;
+			}
+			return true;
+		}
+		Map<AbstractInsnNode, String> handlers = catchTypes(method);
+		for (int i = 0; i < method.instructions.size(); i++) {
+			if (!(method.instructions.get(i) instanceof VarInsnNode store) || store.var != slot || store.getOpcode() != Opcodes.ASTORE) continue;
+			Type stored = storedType(method, i, owner, isStatic, argSlots, handlers);
+			if (stored == null || stored.getSort() != Type.VOID && mayBeTyped(stored, type, hierarchy)) return false;
+		}
+		return true;
+	}
+
+	/**
+	 * Whether the verifier may type a value of {@code stored} as {@code type} where it merges it with others: the types
+	 * are the same, or {@code type} is a superclass of {@code stored}'s (an interface type only ever comes from a value of
+	 * it). True where that can't be told (an array, a class the hierarchy doesn't have).
+	 */
+	private static boolean mayBeTyped(Type stored, Type type, ClassIndex hierarchy) {
+		if (stored.equals(type)) return true;
+		if (stored.getSort() == Type.ARRAY || type.getSort() == Type.ARRAY) return stored.getSort() == Type.ARRAY && type.getSort() == Type.ARRAY;
+		if (stored.getSort() != Type.OBJECT) return false;
+		String wanted = type.getInternalName();
+		for (String c = stored.getInternalName(); !c.equals("java/lang/Object"); ) {
+			if (c.equals(wanted)) return true;
+			ClassIndex.ClassInfo info = hierarchy.get(c);
+			if (info == null || info.superName() == null) return true;
+			c = info.superName();
+		}
+		return false;
+	}
+
+	/**
+	 * The first {@code @Local(index = N)} a handler's parameters capture whose slot holds no value of its type in any
+	 * target method ({@link #slotNeverHolds}), as "type at slot N"; null where none does or that can't be shown. MixinExtras
+	 * then finds no local ("Unable to find matching local!"), and the injector none of its targets (CORPUS-55: Porting Lib
+	 * Entity's {@code GuiMixin} takes {@code @Local(index = 8) MobEffectInstance} in {@code Gui.renderEffects}, where Forge
+	 * 47's build, recompiled from decompiled source, keeps the effect in another slot, and its draw position and alpha
+	 * too). The index counts only without an ordinal or names, outside {@code argsOnly}; a {@code LocalRef}'s type is in its
+	 * signature, which isn't read here (a primitive's ref holds that primitive).
+	 */
+	static String indexedLocalOfOtherType(MethodNode handler, List<MethodNode> targets, String owner, ClassIndex hierarchy) {
+		if (targets.isEmpty()) return null;
+		Type[] params = Type.getArgumentTypes(handler.desc);
+		for (int i = 0; i < params.length; i++) {
+			for (AnnotationNode a : Annotations.ofParameter(handler, i)) {
+				Integer index = indexOnly(a);
+				Type type = LocalRepairs.heldType(params[i]);
+				if (index == null || type == null) continue;
+				if (targets.stream().allMatch(m -> slotNeverHolds(type, m, index, owner, hierarchy))) return type.getClassName() + " at slot " + index;
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * The slot an {@code @Local} takes its local by: its {@code index}, where it has no ordinal or names and isn't
+	 * {@code argsOnly}, as Mixin's discriminator reads them (an ordinal first, then the index); null otherwise.
+	 */
+	static Integer indexOnly(AnnotationNode local) {
+		if (!local.desc.equals(MixinNames.LOCAL) || !(Annotations.value(local, "index") instanceof Integer index) || index < 0
+				|| Annotations.value(local, "ordinal") instanceof Integer o && o >= 0 || Annotations.value(local, "name") instanceof List<?> n && !n.isEmpty()
+				|| Boolean.TRUE.equals(Annotations.value(local, "argsOnly"))) return null;
+		return index;
 	}
 
 	/**

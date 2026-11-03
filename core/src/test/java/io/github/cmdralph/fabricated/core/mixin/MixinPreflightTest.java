@@ -4639,6 +4639,217 @@ class MixinPreflightTest {
 		assertTrue(check.apply(GrowthBuild.FORGE_WITHOUT_REUSE, null).isEmpty());
 	}
 
+	/**
+	 * CORPUS-55's effect drawing methods: vanilla's, with the effect in slot 3 and the draw position in slot 6; Forge's,
+	 * recompiled, with the iterator in slot 3, the effect in slot 4, and two locals of its patch before the counter and
+	 * the position (slots 7 and 8); Forge's with slot 3 holding a string before the iterator; and one where slot 3 holds
+	 * an effect of a subclass.
+	 */
+	private enum EffectsBuild {
+		VANILLA, FORGE, FORGE_REUSED, SUBCLASS
+	}
+
+	private static final String EFFECT = "net/minecraft/world/Effect";
+	private static final String SPECIAL_EFFECT = "net/minecraft/world/SpecialEffect";
+
+	/**
+	 * Gui.renderEffects, shortened: it takes the effects into a list, then the first of them from the list's iterator,
+	 * counts it and works out where to draw it, and adds it to the list of what it draws, the call Porting Lib's hook
+	 * wraps. Forge's patched classes keep a local variable table, as javac compiled them; vanilla's here does too, though
+	 * Mojang's has none, so that both builds can be told apart by it.
+	 */
+	private static Map<String, byte[]> effects(EffectsBuild build) {
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		MethodVisitor m = cw.visitMethod(Opcodes.ACC_PROTECTED, "renderEffects", "(Ljava/lang/Object;)V", null, null);
+		m.visitCode();
+		Label start = new Label();
+		Label listStart = new Label();
+		Label textStart = new Label();
+		Label textEnd = new Label();
+		Label iteratorStart = new Label();
+		Label effectStart = new Label();
+		Label patchStart = new Label();
+		Label countStart = new Label();
+		Label xStart = new Label();
+		Label end = new Label();
+		boolean vanilla = build == EffectsBuild.VANILLA;
+		int iterator = vanilla ? 4 : 3;
+		int effect = vanilla ? 3 : 4;
+		int count = vanilla ? 5 : 7;
+		int x = vanilla ? 6 : 8;
+		m.visitLabel(start);
+		m.visitVarInsn(Opcodes.ALOAD, 0);
+		m.visitMethodInsn(Opcodes.INVOKEVIRTUAL, TARGET, "effects", "()Ljava/util/List;", false);
+		m.visitVarInsn(Opcodes.ASTORE, 2);
+		m.visitLabel(listStart);
+		if (build == EffectsBuild.FORGE_REUSED) {
+			m.visitLdcInsn("effects");
+			m.visitVarInsn(Opcodes.ASTORE, 3);
+			m.visitLabel(textStart);
+			m.visitVarInsn(Opcodes.ALOAD, 3);
+			m.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/lang/String", "trim", "()Ljava/lang/String;", false);
+			m.visitInsn(Opcodes.POP);
+			m.visitLabel(textEnd);
+		}
+		if (build == EffectsBuild.SUBCLASS) {
+			m.visitMethodInsn(Opcodes.INVOKESTATIC, TARGET, "special", "()L" + SPECIAL_EFFECT + ";", false);
+			m.visitVarInsn(Opcodes.ASTORE, 3);
+			m.visitLabel(textStart);
+			m.visitVarInsn(Opcodes.ALOAD, 3);
+			m.visitInsn(Opcodes.POP);
+			m.visitLabel(textEnd);
+		}
+		m.visitVarInsn(Opcodes.ALOAD, 2);
+		m.visitMethodInsn(Opcodes.INVOKEINTERFACE, "java/util/List", "iterator", "()Ljava/util/Iterator;", true);
+		m.visitVarInsn(Opcodes.ASTORE, iterator);
+		m.visitLabel(iteratorStart);
+		m.visitVarInsn(Opcodes.ALOAD, iterator);
+		m.visitMethodInsn(Opcodes.INVOKEINTERFACE, "java/util/Iterator", "next", "()Ljava/lang/Object;", true);
+		m.visitTypeInsn(Opcodes.CHECKCAST, EFFECT);
+		m.visitVarInsn(Opcodes.ASTORE, effect);
+		m.visitLabel(effectStart);
+		if (!vanilla) {
+			// The patch's: the effect's renderer and what it draws with.
+			m.visitVarInsn(Opcodes.ALOAD, effect);
+			m.visitMethodInsn(Opcodes.INVOKESTATIC, TARGET, "renderer", "(L" + EFFECT + ";)Ljava/lang/String;", false);
+			m.visitVarInsn(Opcodes.ASTORE, 5);
+			m.visitLdcInsn("gui");
+			m.visitVarInsn(Opcodes.ASTORE, 6);
+			m.visitLabel(patchStart);
+		}
+		m.visitInsn(Opcodes.ICONST_0);
+		m.visitVarInsn(Opcodes.ISTORE, count);
+		m.visitLabel(countStart);
+		m.visitIntInsn(Opcodes.BIPUSH, 25);
+		m.visitVarInsn(Opcodes.ISTORE, x);
+		m.visitLabel(xStart);
+		m.visitVarInsn(Opcodes.ALOAD, 2);
+		m.visitVarInsn(Opcodes.ALOAD, effect);
+		m.visitMethodInsn(Opcodes.INVOKEINTERFACE, "java/util/List", "add", "(Ljava/lang/Object;)Z", true);
+		m.visitInsn(Opcodes.POP);
+		m.visitInsn(Opcodes.RETURN);
+		m.visitLabel(end);
+		m.visitLocalVariable("this", "L" + TARGET + ";", null, start, end, 0);
+		m.visitLocalVariable("p_282812_", "Ljava/lang/Object;", null, start, end, 1);
+		m.visitLocalVariable("list", "Ljava/util/List;", null, listStart, end, 2);
+		if (build == EffectsBuild.FORGE_REUSED) m.visitLocalVariable("text", "Ljava/lang/String;", null, textStart, textEnd, 3);
+		if (build == EffectsBuild.SUBCLASS) m.visitLocalVariable("special", "L" + SPECIAL_EFFECT + ";", null, textStart, textEnd, 3);
+		m.visitLocalVariable("iterator", "Ljava/util/Iterator;", null, iteratorStart, end, iterator);
+		m.visitLocalVariable("mobeffectinstance", "L" + EFFECT + ";", null, effectStart, end, effect);
+		if (!vanilla) {
+			m.visitLocalVariable("renderer", "Ljava/lang/String;", null, patchStart, end, 5);
+			m.visitLocalVariable("layer", "Ljava/lang/String;", null, patchStart, end, 6);
+		}
+		m.visitLocalVariable("i", "I", null, countStart, end, count);
+		m.visitLocalVariable("k", "I", null, xStart, end, x);
+		m.visitMaxs(0, 0);
+		m.visitEnd();
+		cw.visitEnd();
+		Map<String, byte[]> classes = new HashMap<>(Map.of(TARGET, cw.toByteArray()));
+		for (String[] type : new String[][] {{EFFECT, "java/lang/Object"}, {SPECIAL_EFFECT, EFFECT}}) {
+			ClassWriter c = new ClassWriter(0);
+			c.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, type[0], null, type[1], null);
+			c.visitEnd();
+			classes.put(type[0], c.toByteArray());
+		}
+		return classes;
+	}
+
+	@Test
+	void aLocalTakenByItsIndexMovesToTheSlotThisBuildKeepsItInWhereItsSlotNeverHoldsOne() throws Exception {
+		// CORPUS-55: Porting Lib Entity's GuiMixin takes @Local(index = 8) MobEffectInstance, @Local(index = 10) int and
+		// more in Gui.renderEffects, vanilla's slots of the effect it draws and where. Forge 47's build, recompiled from
+		// decompiled source, keeps other locals there: MixinExtras found no matching local ("Unable to find matching
+		// local!") and the Forge 47 corpus client stopped.
+		byte[] mixin = mixin("com/example/mixin/Effects", false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "drawn", "(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;L" + EFFECT + ";I)V",
+					null, null);
+			AnnotationVisitor local = mv.visitParameterAnnotation(1, LOCAL, false);
+			local.visit("index", 3);
+			local.visitEnd();
+			AnnotationVisitor position = mv.visitParameterAnnotation(2, LOCAL, false);
+			position.visit("index", 6);
+			position.visitEnd();
+			AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "renderEffects");
+			methods.visitEnd();
+			AnnotationVisitor ats = ann.visitArray("at");
+			AnnotationVisitor at = ats.visitAnnotation(null, AT);
+			at.visit("value", "INVOKE");
+			at.visit("target", "Ljava/util/List;add(Ljava/lang/Object;)Z");
+			at.visitEnd();
+			ats.visitEnd();
+			ann.visitEnd();
+			mv.visitCode();
+			mv.visitInsn(Opcodes.RETURN);
+			mv.visitMaxs(0, 4);
+			mv.visitEnd();
+		});
+		Map<String, byte[]> mod = Map.of("com/example/mixin/Effects", mixin);
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Effects"));
+		Function<EffectsBuild, List<PreflightFinding>> check = build -> {
+			try {
+				return preflight(new ClassIndex(effects(build)::get), mod::get, ClassBytesSource.EMPTY, false)
+						.check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+			} catch (Exception e) {
+				throw new AssertionError(e);
+			}
+		};
+		List<PreflightFinding> found = check.apply(EffectsBuild.FORGE);
+		assertTrue(found.stream().anyMatch(f -> f.message().contains("captures the local variable of type net.minecraft.world.Effect at slot 3, which"
+				+ " renderEffects in net.minecraft.world.Thing never holds there")), found.toString());
+		List<PreflightFinding> reused = check.apply(EffectsBuild.FORGE_REUSED);
+		assertTrue(reused.stream().anyMatch(f -> f.message().contains("Effect at slot 3, which renderEffects")), "a string, then an iterator: " + reused);
+		assertTrue(check.apply(EffectsBuild.VANILLA).isEmpty(), "vanilla's slots hold the effect and the position");
+		// A subclass's value: the verifier, merging values, may type the slot by its superclass, so pre-flight doesn't judge.
+		List<PreflightFinding> subclass = check.apply(EffectsBuild.SUBCLASS);
+		assertTrue(subclass.stream().noneMatch(f -> f.message().contains("Effect at slot 3")), subclass.toString());
+		assertTrue(subclass.stream().anyMatch(f -> f.message().contains("of type int at slot 6, which renderEffects")), "a string's slot: " + subclass);
+
+		Map<String, byte[]> vanillaClasses = effects(EffectsBuild.VANILLA);
+		for (EffectsBuild build : List.of(EffectsBuild.FORGE, EffectsBuild.FORGE_REUSED)) {
+			ClassIndex forge = new ClassIndex(effects(build)::get);
+			// Without vanilla's code, the effect, the only one where the hook applies, is taken; of the two ints there,
+			// which is vanilla's can't be told, and the hook is judged as it stands.
+			List<PreflightFinding> notes = new ArrayList<>();
+			byte[] effectOnly = new MixinPreflight(forge, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, ClassBytesSource.EMPTY)
+					.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes).get("com/example/mixin/Effects.class");
+			assertNotNull(effectOnly, build + ": " + notes);
+			assertTrue(notes.getFirst().message().contains("captures the local of type net.minecraft.world.Effect at slot 3, which renderEffects in"
+					+ " net.minecraft.world.Thing never holds there; the only one of the type where the injector applies is at slot 4"), notes.toString());
+			assertEquals(List.of(4, 6), indexes(effectOnly));
+			List<PreflightFinding> left = preflight(forge, Map.of("com/example/mixin/Effects", effectOnly)::get, ClassBytesSource.EMPTY, false)
+					.check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+			assertTrue(left.stream().anyMatch(f -> f.message().contains("of type int at slot 6, which renderEffects")), left.toString());
+			// With vanilla's code, the position takes the slot this build stores vanilla's local to. (Where the effect's
+			// store is can't be told: from the back, vanilla's matches the patch's last store; it is the only effect.)
+			notes.clear();
+			byte[] repaired = new MixinPreflight(forge, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, vanillaClasses::get)
+					.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes).get("com/example/mixin/Effects.class");
+			assertNotNull(repaired, build + ": " + notes);
+			assertTrue(notes.stream().anyMatch(n -> n.message().contains("of type int at slot 6, which renderEffects in net.minecraft.world.Thing never"
+					+ " holds there; this build keeps vanilla's local there in slot 8")), notes.toString());
+			assertEquals(List.of(4, 8), indexes(repaired));
+			List<PreflightFinding> after = preflight(forge, Map.of("com/example/mixin/Effects", repaired)::get, ClassBytesSource.EMPTY, false)
+					.check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+			assertTrue(after.isEmpty(), after.toString());
+		}
+		ClassIndex vanilla = new ClassIndex(vanillaClasses::get);
+		assertTrue(new MixinPreflight(vanilla, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, vanillaClasses::get)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty());
+	}
+
+	/** The index each of the {@code drawn} handler's {@code @Local}s takes, by parameter. */
+	private static List<Object> indexes(byte[] mixin) {
+		ClassNode node = new ClassNode();
+		new ClassReader(mixin).accept(node, 0);
+		MethodNode handler = node.methods.stream().filter(h -> h.name.equals("drawn")).findFirst().orElseThrow();
+		return List.of(Annotations.value(Annotations.ofParameter(handler, 1).getFirst(), "index"),
+				Annotations.value(Annotations.ofParameter(handler, 2).getFirst(), "index"));
+	}
+
 	/** PRE-19's game classes: vanilla's, Forge 47's, and Forge 47's with a float local of the patch's before vanilla's. */
 	private enum BreakSpeedBuild {
 		VANILLA, FORGE, FORGE_WITH_A_FLOAT_FIRST
