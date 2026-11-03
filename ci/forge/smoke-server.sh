@@ -202,6 +202,7 @@ check "the built-in registries' freeze runs after the main initializers, where W
 check "the test mod's item is in the frozen registry at the first tick" "grep -q 'FABRICATED-FORGE-TEST registry entry kept OK' logs/latest.log 2>/dev/null"
 check "tag files' fabric:remove and Forge's remove both take entries out of a tag (the in-game mod's mixin)" "grep -q 'FABRICATED-FORGE-TEST tag removal OK' logs/latest.log 2>/dev/null"
 check "vanilla reads a player's stats with Gson's internal parser, a package Gson's module doesn't export (GSON-2)" "grep -q 'FABRICATED-FORGE-TEST vanilla stats read OK' logs/latest.log 2>/dev/null"
+check "an empty optional ingredient, a shaped recipe's empty slot as Fabric API's recipe sync writes it, goes over the network as vanilla's empty item list and comes back empty, where Forge's codec threw (the in-game mod's mixin, CORPUS-83)" "grep -q 'FABRICATED-FORGE-TEST optional ingredients on the network OK' logs/latest.log 2>/dev/null"
 if $standins; then
 	# The provider policy (PROVIDER-1), as on NeoForge: another mod's copy of a module is the one loaded, and Fabricated's
 	# part of it (its packages, mixin configs, mixins and Forge hooks) stands down.

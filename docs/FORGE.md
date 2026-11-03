@@ -184,6 +184,11 @@ by the server runs (the colours, screens, key mappings and config screens by the
   run; CORPUS-75). Fabric API kept the alias in vanilla's registry class, whose lookups Forge's wrapper replaces:
   Waystones' world generation names its renamed waystones by their old names, and its data pack, and with it the
   server, didn't load on Forge 64 and 65.
+- **Recipe slots on the network (Forge 61 to 66):** an empty optional ingredient, a shaped recipe's empty slot, is sent
+  as vanilla sends it, an empty item list, and read back as empty; every other ingredient is Forge's to send (server
+  run; CORPUS-83). Forge's patch of vanilla's codec threw writing it, so with Fabric API, whose recipe sync sends the
+  recipes Fabric mods' clients need, a shaped recipe with an empty slot dropped the player's connection to the world
+  they joined (seen on the Forge 65 corpus client).
 - **Storages:** a Fabric mod's item and fluid storages are the `ITEM_HANDLER` and `FLUID_HANDLER` capabilities of its
   block entity, and a Forge mod's `ItemStackHandler` and `FluidTank` are Fabric's storages (all five, with Fabric API,
   server and client). A Forge handler only simulates until Fabric's outermost transaction commits, so an aborted one

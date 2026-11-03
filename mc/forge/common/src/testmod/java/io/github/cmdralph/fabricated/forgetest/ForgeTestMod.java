@@ -225,6 +225,15 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 		}
 	}
 
+	/** Whether an empty optional ingredient, a shaped recipe's empty slot, goes over the network as vanilla's ({@link ForgeIngredientCodecTest}, CORPUS-83). */
+	public static void checkOptionalIngredients(MinecraftServer server) {
+		try {
+			ForgeIngredientCodecTest.check(server);
+		} catch (RuntimeException | LinkageError e) {
+			LOGGER.warn("FABRICATED-FORGE-TEST optional ingredient check failed", e);
+		}
+	}
+
 	/** Whether the test mod's fluids have Forge fluid types and leave entities alone ({@link ForgeFluidTest}). */
 	public static void checkFluids(MinecraftServer server) {
 		try {

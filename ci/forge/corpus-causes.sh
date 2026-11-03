@@ -2,8 +2,8 @@
 # What stopped a corpus run on Forge, past what ci/corpus-summary.sh prints of it (a crash's description only): the
 # Fabric mods whose entrypoints failed, the Fabric API modules skipped and their mixins left out, as Fabricated's report
 # lists them; Fabricated's errors and warnings in the game's logs; each crash report's exception chain, with the frames
-# of its innermost cause; the exception chains and Mixin errors in the game's logs; a JVM fatal error log if there is
-# one; and the console's last lines, for a game that ends with no exception or crash report (CORPUS-53, CORPUS-55).
+# of its innermost cause; the exception chains and Mixin errors in the game's logs, Mixin's failures whole; a JVM fatal
+# error log if there is one; and the console's last lines, for a game that ends with no exception or crash report (CORPUS-53, CORPUS-55).
 # Informational: it never fails.
 #
 # Usage: ci/forge/corpus-causes.sh <game-dir> <console-output> [label]
@@ -23,6 +23,13 @@ chain() {
 		last && /^[ \t]+at / && n < limit { frames[n++] = substr($0, 1, 300) }
 		END { if (n) { print "  innermost cause, from line " last ":"; for (i = 0; i < n; i++) print "  " frames[i] } }
 	' "$1"
+}
+
+# Mixin's failures whole, folded, where the lines above cut them: the hook, its target and what Mixin found there, the
+# part a stop names last (ResourcefulLib's and ImmediatelyFast's, CORPUS-79 and CORPUS-82).
+whole() {
+	grep -o -E '(Critical injection failure|[A-Za-z0-9_.$]*(InvalidInjectionException|InjectionError|SugarApplicationException|InvalidMixinException|MixinApplyError|InvalidAccessorException))[^ ]*.*' "$1" \
+		| awk '!seen[$0]++' | head -n 6 | cut -c1-3000 | fold -w 300
 }
 
 echo "== $label: what stopped it"
@@ -50,12 +57,16 @@ for crash in "$dir"/crash-reports/*.txt; do
 	# The report's own exception: the lines from its description up to the system details, where the chain ends.
 	sed -n '/^Description:/,/^-- System Details --/p' "$crash" > "$own"
 	chain "$own" 25 | head -60
+	echo "-- $(basename "$crash"): Mixin's failures, whole"
+	whole "$own"
 done
 [ -n "$found" ] || echo "-- no crash report"
 for log in "$dir/logs/latest.log" "$dir/logs/debug.log"; do
 	[ -f "$log" ] || continue
 	echo "-- $(basename "$log"): Mixin's errors"
 	grep -n -E 'Mixin apply|MixinTransformerError|MixinApplyError|MixinPreProcessorException|InvalidMixinException|InvalidInjectionException|Critical injection failure|Mixin prepare for|Mixin config .* could not' "$log" | awk '!seen[substr($0, index($0, ":") + 1)]++' | head -30 | cut -c1-500
+	echo "-- $(basename "$log"): Mixin's failures, whole"
+	whole "$log"
 	if [ "$(basename "$log")" = latest.log ]; then
 		echo "-- $(basename "$log"): Fabricated's errors and warnings"
 		grep -n -E '/(ERROR|WARN)\] \[Fabricated/\]' "$log" | awk '!seen[substr($0, index($0, ": ") + 2)]++' | head -40 | cut -c1-500

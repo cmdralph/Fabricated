@@ -245,6 +245,13 @@ jobs:
           python3 -I ci/javap-dump.py "$RUNNER_TEMP/client-corpus" 'mixins:net/minecraft/client/renderer/ScreenEffectRenderer' \
             'game:net.minecraft.client.renderer.ScreenEffectRenderer#*' 'game:net.minecraft.client.renderer.ScreenEffectRenderer#renderScreenEffect' \
             | cut -c1-320 | head -n 900 || true
+          # ImmediatelyFast's buffer upload redirect on Forge 66 (CORPUS-82): the mixin, and the method it names as Forge has it.
+          if [ "${{ matrix.target.minecraft }}" = 26.3 ]; then
+            python3 -I ci/javap-dump.py "$RUNNER_TEMP/client-corpus" 'mixins:com/mojang/renderpearl/backend/opengl/GlCommandEncoder' \
+              'game:com.mojang.renderpearl.backend.opengl.GlCommandEncoder#*' 'game:com.mojang.renderpearl.backend.opengl.GlCommandEncoder#writeToBuffer' \
+              'game:com.mojang.renderpearl.backend.opengl.DirectStateAccess#*' \
+              | cut -c1-320 | head -n 900 || true
+          fi
       - name: Upload mod corpus logs and reports
         if: ${{ !cancelled() && steps.corpus.outcome == 'success' }}
         uses: actions/upload-artifact@v4
