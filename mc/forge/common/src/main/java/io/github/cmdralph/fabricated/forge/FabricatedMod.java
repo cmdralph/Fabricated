@@ -93,15 +93,8 @@ public final class FabricatedMod {
 			if (ours(state, KeyMappingBridge.MODULE)) KeyMappingBridge.register();
 		}
 		IModInfo self = context.getContainer().getModInfo();
-		EntrypointRunner runner = new EntrypointRunner(state.runtime(), new EntrypointRunner.ContextHook() {
-			@Override
-			public void enter(String modId) {
-			}
-
-			@Override
-			public void exit() {
-			}
-		});
+		// Each entrypoint runs with a context class loader that finds Fabric mods' directories, as on Fabric (SCAN-1).
+		EntrypointRunner runner = new EntrypointRunner(state.runtime(), ModDirectoryClassLoader.contextHook(state.runtime()));
 		List<EntrypointRunner.Failure> preLaunch = runner.run("preLaunch", PreLaunchEntrypoint.class, PreLaunchEntrypoint::onPreLaunch);
 		report(state, preLaunch, "pre-launch");
 		RegisterEvent.getBus(context.getModBusGroup()).addListener(event -> {
