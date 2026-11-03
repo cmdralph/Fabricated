@@ -3,6 +3,24 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-03: the Forge corpus stops after the sync (task 5)
+
+- **ENUM-7 on Forge** (`EnumValuesMixins`): after the sync, the Forge 66 corpus client and server got past Mixin and
+  stopped in Forge's own enum extender as `MobCategory` loaded (extended run 41569829683): Forge makes that enum
+  extensible, and its extender, which runs after Mixin, finds the values array only while it is final, which the
+  generated mixin's `@Mutable` shadow had undone. Into an enum Forge makes extensible, the generated mixin now makes
+  the constants with the enum's own `create` factories and shadows no values array; with no factory for a constant's
+  constructor, the enum mixin stays one and pre-flight judges it.
+- **SHARE-1** (`MixinPreflight.leaveOutSharers`): an injector left out takes with it the injectors of its mixin sharing a
+  local with it through MixinExtras' `@Share`, which would otherwise read it unset. Balm's 1.21.11 crop hooks share the
+  block state so; the second, left alone after CORPUS-54's fix left the first out, stopped the Forge 61 corpus client.
+- **CORPUS-54 verified on Forge 47** (extended run 41569833541): Balm's hook is left out and the server goes past it,
+  to CORPUS-68, which the Forge branches fix: Forge 47's Mixin 0.8.5 puts the classes it generates for `@ModifyArgs`
+  in no module, so a game class naming one fails to load; Fabricated's transformation service adds that module where
+  the running Mixin doesn't, as Mixin 0.8.7 does on Forge 61 to 66.
+- **CI:** core tests pass locally (445, two of them new). The Forge branches take this by the sync (#248, #249), with
+  extended runs to verify ENUM-7, SHARE-1 and CORPUS-68.
+
 ## 2026-11-02: compatibility, the difficult mods' Fabric builds first (task 5, `main`'s half)
 
 - **The difficult mods' Fabric builds load on NeoForge** (the owner's decision 3, 2026-11-01): Sodium, Iris, Essential
