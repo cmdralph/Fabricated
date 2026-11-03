@@ -3,6 +3,42 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-03: Fabric ASM's enum additions, for Farmer's Delight on Forge 47 (CORPUS-80, task 5)
+
+- **CORPUS-80 on Forge 47** (`EarlyRisers`, `ModTranslator.earlyRisers`, new; `ModTranslator.processMixins`):
+  Farmer's Delight adds its recipe book types and search categories with Fabric ASM, whose Mixin plugin can't run on
+  Forge. That plugin runs the mod's early riser and serves the enum mixins it makes from Fabric's class loader. Forge's
+  class loader takes no added classes, so Mixin dropped the config, and the mod's entrypoint failed on
+  `ClassTinkerers.getEnum`.
+  - **The fix:** Fabric ASM's config is left out, with an INFO line. Translation reads each early riser's
+    `enumBuilder(...).addEnum(...).build()` calls from its code, without running it, and writes the constants as
+    enum mixins of its own, in a config it generates. The platform's way with enum mixins takes them from there:
+    ENUM-7's ordinary mixin calling Forge's `create` factories on Forge, NeoForge's enum extension file on NeoForge.
+  - **Arguments:** given ones are written as constants. Supplied ones come from a helper class next to the
+    supplier's class, which runs the supplier as the enum is initialized, once per constant, and fails as Fabric ASM
+    does on an array of the wrong length. The supplier's method stops being private so the helper can call it.
+  - **Not read:** an early riser doing anything else (another of Fabric ASM's tools, a call of other code, a loop)
+    adds nothing, and the report says why. A mod shipping Fabric ASM's access transformer (`silky.at`), which nothing
+    applies, gets a warning.
+  - Written from Fabric ASM's README, not its MPL-2.0 code (`NOTICE`).
+- **Tests:**
+  - `EarlyRisersTest` reads an early riser shaped like Farmer's Delight's on a server and a client, with the mapping
+    resolver's names. It also reads given arguments of each kind and a lambda supplier, and names the reason for
+    five risers it can't read.
+  - It loads the generated mixin, helper and supplier class and runs them. The constants are made, the supplier's
+    array is passed and then forgotten, and a wrong length fails with Fabric ASM's message.
+  - `PipelineTest.fabricAsmsEarlyRisersEnumConstantsComeFromEnumMixinsOfFabricatedsOwn` runs the pipeline with
+    Forge's descriptor and Mixin 0.8.5 on a client. It checks that the generated mixins become ordinary ones with the
+    enums' `create` factories, that Fabric ASM's config is left out, and that an unreadable early riser and a
+    `silky.at` each warn while the mods still load.
+- **CORPUS-79 evidence** (on `forge`, #261): the extended corpus client runs with `-Dmixin.dumpTargetOnFailure=true`.
+  The bytecode step prints Mixin's dump of `ScreenEffectRenderer` as it had it when ResourcefulLib's hook failed: the
+  mixins merged into it before, and the method's code and locals.
+- **Docs:** CORPUS-80's and CORPUS-79's rows, `COMPATIBILITY.md` (what is and isn't supported of Fabric ASM),
+  `ARCHITECTURE.md` §5, `NOTICE`.
+- **CI:** core build and tests pass locally (467 tests). `forge-legacy` takes the fix by the next sync, and its
+  extended run verifies it on the Forge 47 corpus.
+
 ## 2026-11-03: MoreCulling's shadow of an inherited method on Forge 47 (CORPUS-84), and eleven findings verified (task 5)
 
 - **CORPUS-84** (`MixinRepairs.inheritedShadowRepair`, new; `MixinPreflight.checkMembersOf`): the Forge 47 corpus

@@ -254,6 +254,17 @@ Each mod's entrypoints run inside a guard that records mod id, entrypoint key, c
    fail. Two changes only turn a crash into a missing effect, never the reverse: an `@Inject` whose local capture
    fails hard skips itself instead when NeoForge's locals differ, and in a config with a plugin (which may disable
    mixins at runtime) a mixin pre-flight proves would crash is left out instead of disabling the mod.
+8. **Fabric ASM's enum additions** (`EarlyRisers`, CORPUS-80). Fabric ASM's Mixin plugin runs the mods'
+   `mm:early_risers` and serves the enum mixins their `ClassTinkerers.enumBuilder` calls declare from Fabric's class
+   loader, which the platform's doesn't take, so its config is left out. Instead, translation reads each early riser's
+   code without running it, interpreting only what declares constants: constants, class literals, `mapClassName` from
+   intermediary names, string joins, and the side's branch. It then writes the constants as enum mixins of its own,
+   in a config it generates. The steps above take those mixins on as they would the mod's own: NeoForge's enum
+   extension file, or an ordinary mixin (ENUM-5, ENUM-7). Arguments a supplier gives come from a helper class next
+   to the supplier's class. The helper runs the supplier as the enum is initialized, once per constant, and checks
+   the array's length as Fabric ASM does. The supplier's method stops being private so the helper can call it. An
+   early riser doing anything else is reported and adds nothing. Fabricated's code follows Fabric ASM's
+   documentation (its README), not its MPL-2.0 sources.
 
 ---
 
