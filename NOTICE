@@ -37,7 +37,10 @@ This product includes third-party material:
 
 For interoperability, com.terraformersmc.modmenu.api.ModMenuApi and ConfigScreenFactory are clean-room interfaces
 with the names and method signatures of Mod Menu's API (https://github.com/TerraformersMC/ModMenu, MIT); no Mod Menu
-code is included.
+code is included. Likewise, the fuzs.forgeconfigapiport types (mc/neoforge/common on main, mc/forge-legacy/1.20.1
+on the forge-legacy branch) are clean-room types with the names and method signatures of Forge Config API Port's Fabric
+API (https://github.com/Fuzss/forgeconfigapiport, MPL-2.0), implemented on the platform's own config system; no Forge
+Config API Port code is included.
 
 Fabricated does not include or redistribute Minecraft, NeoForge, Mojang's official mappings,
 Fabric API release jars, Sinytra Connector, Forgified Fabric API, Launchpad or Adapter.
