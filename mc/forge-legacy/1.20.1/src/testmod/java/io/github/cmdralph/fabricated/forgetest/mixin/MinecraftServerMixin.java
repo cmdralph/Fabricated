@@ -17,6 +17,7 @@ import io.github.cmdralph.fabricated.forgetest.ForgeDefaultBridgeTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeDimensionTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeFluidTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeFuelTest;
+import io.github.cmdralph.fabricated.forgetest.ForgeMobBucketTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeRegistryAliasTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeSleepTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeTransferTest;
