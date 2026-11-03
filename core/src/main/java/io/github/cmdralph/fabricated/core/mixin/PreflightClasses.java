@@ -64,6 +64,9 @@ final class PreflightClasses {
 	/** Whether the running Mixin stops on a local variable whose class it can't find (LVT-1: Forge's does). */
 	final boolean readsLocalTypes;
 
+	/** Whether the running Mixin finds a {@code @Shadow} field another mixin adds to the target (CORPUS-74: Forge's doesn't). */
+	final boolean shadowsMixinFields;
+
 	/** The platform's loader, as messages name it ({@code NeoForge}, {@code Forge}). */
 	final String loader;
 
@@ -95,9 +98,11 @@ final class PreflightClasses {
 
 	PreflightClasses(ClassIndex game, InstalledClasses installed, ClassBytesSource modClasses, ClassBytesSource untransformable,
 			boolean clientSide, boolean missingTargetsFatal, ClassBytesSource vanilla, String loader, boolean interfaceInjectors,
-			ConstructorInjects constructorInjects, boolean argumentNames, boolean exactStaticInjects, boolean enumMixins, boolean readsLocalTypes) {
+			ConstructorInjects constructorInjects, boolean argumentNames, boolean exactStaticInjects, boolean enumMixins, boolean readsLocalTypes,
+			boolean shadowsMixinFields) {
 		this.enumMixins = enumMixins;
 		this.readsLocalTypes = readsLocalTypes;
+		this.shadowsMixinFields = shadowsMixinFields;
 		this.interfaceInjectors = interfaceInjectors;
 		this.constructorInjects = constructorInjects;
 		this.argumentNames = argumentNames;

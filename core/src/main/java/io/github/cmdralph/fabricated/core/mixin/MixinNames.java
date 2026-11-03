@@ -16,6 +16,10 @@ final class MixinNames {
 
 	static final String SHADOW = "Lorg/spongepowered/asm/mixin/Shadow;";
 
+	static final String FINAL = "Lorg/spongepowered/asm/mixin/Final;";
+
+	static final String MUTABLE = "Lorg/spongepowered/asm/mixin/Mutable;";
+
 	static final String OVERWRITE = "Lorg/spongepowered/asm/mixin/Overwrite;";
 
 	static final String ACCESSOR = "Lorg/spongepowered/asm/mixin/gen/Accessor;";
