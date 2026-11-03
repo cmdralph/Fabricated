@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
-# What stopped a corpus run on Forge, past what ci/corpus-summary.sh prints of it (a crash's description only): each crash
-# report's exception chain, with the frames of its innermost cause; the exception chains and Mixin errors in the game's
-# logs; a JVM fatal error log if there is one; and the console's last lines, for a game that ends with no exception or
-# crash report (CORPUS-53, CORPUS-55). Informational: it never fails.
+# What stopped a corpus run on Forge, past what ci/corpus-summary.sh prints of it (a crash's description only): the
+# Fabric mods whose entrypoints failed, the Fabric API modules skipped and their mixins left out, as Fabricated's report
+# lists them; Fabricated's errors and warnings in the game's logs; each crash report's exception chain, with the frames
+# of its innermost cause; the exception chains and Mixin errors in the game's logs; a JVM fatal error log if there is
+# one; and the console's last lines, for a game that ends with no exception or crash report (CORPUS-53, CORPUS-55).
+# Informational: it never fails.
 #
 # Usage: ci/forge/corpus-causes.sh <game-dir> <console-output> [label]
 # <console-output> is the game's own console (server.out, client.out), in the smoke script's work directory.
@@ -24,6 +26,20 @@ chain() {
 }
 
 echo "== $label: what stopped it"
+# The Fabric mods whose entrypoints failed, from Fabricated's report: with SMOKE_ON_ENTRYPOINT_FAILURE=disable the game
+# goes on without them, and what stops it later (their data packs naming entries never registered) is only their effect.
+report="$dir/logs/fabric-bridge-report.txt"
+if [ -f "$report" ]; then
+	echo "-- Fabricated's report: entrypoint failures"
+	section() { awk -v head="== $1" 'index($0, head) == 1 { show = 1; next } /^$/ { show = 0 } show' "$report"; }
+	section 'Entrypoint failures' | head -n 60 | cut -c1-400
+	# Which Fabric API modules this game left out or took from another mod, and their mixins pre-flight left out: what a
+	# mod's mixin that shadows or calls into one of them meets (MoreCulling's into Fabric's renderer state, CORPUS-74).
+	echo "-- Fabricated's report: Fabric API modules skipped"
+	section 'Skipped' | head -n 40 | cut -c1-300
+	echo "-- Fabricated's report: Fabric API mixins left out"
+	section 'Mixins left out' | grep '^  fabric' | head -n 30 | cut -c1-300
+fi
 own="$(mktemp)"
 trap 'rm -f "$own"' EXIT
 found=
@@ -40,6 +56,10 @@ for log in "$dir/logs/latest.log" "$dir/logs/debug.log"; do
 	[ -f "$log" ] || continue
 	echo "-- $(basename "$log"): Mixin's errors"
 	grep -n -E 'Mixin apply|MixinTransformerError|MixinApplyError|MixinPreProcessorException|InvalidMixinException|InvalidInjectionException|Critical injection failure|Mixin prepare for|Mixin config .* could not' "$log" | awk '!seen[substr($0, index($0, ":") + 1)]++' | head -30 | cut -c1-500
+	if [ "$(basename "$log")" = latest.log ]; then
+		echo "-- $(basename "$log"): Fabricated's errors and warnings"
+		grep -n -E '/(ERROR|WARN)\] \[Fabricated/\]' "$log" | awk '!seen[substr($0, index($0, ": ") + 2)]++' | head -40 | cut -c1-500
+	fi
 	echo "-- $(basename "$log"): exception chains (the last one's innermost frames)"
 	chain "$log" 20 | tail -n 80
 done
