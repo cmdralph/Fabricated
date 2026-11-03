@@ -930,7 +930,9 @@ some of its modules (Sodium for NeoForge). Fabricated now shares the game with t
   module's (`fabric_screen_handler_api_v1`), when its `mods.toml` lists the module under `provides`, or when its jar
   has one of the module's packages. For a native module, Fabricated's own copy stands down: its packages leave the
   in-game mod, and so do the mixins and mixin configs serving it (`META-INF/fabricated/mixin-modules.json`) and its
-  NeoForge bridges, so no event fires twice. For a module loaded from Fabric API's jar, the jar's copy is left out
+  NeoForge bridges, so no event fires twice. So do Fabricated's hooks for a module it passes through from Fabric API's
+  jar (on Forge 47, the fuel and brewing hooks of fabric-content-registries-v0), and a module's mixins in a config it
+  shares with a module the provider lacks stand down alone (PROVIDER-13). For a module loaded from Fabric API's jar, the jar's copy is left out
   (the platform's copy of a package is the one used, as for any Fabric jar). Fabric mods then use the provider's
   module, whose ids and versions satisfy their dependencies; the report lists it under *Fabric API modules provided by
   other mods*, the API as `PROVIDED_BY_MOD` (API 1.1.0), and the parts left out under *Fabric API providers*.

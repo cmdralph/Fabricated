@@ -3,6 +3,22 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-03: Forgified Fabric API's modules beside Fabricated's on Forge 47 (task 5)
+
+- **PROVIDER-13** (`NativeModules.modules`, `NativeModules.standDown`, `Pipeline.providedElsewhere`,
+  `Pipeline.Result.alsoProvidedElsewhere`): with coexisting tried on forge-legacy (3b8bdf4), the Forge 47 server with
+  Forgified Fabric API stopped loading data packs (extended run 41578329787): Fabricated's fuel hook called
+  `FuelRegistryImpl.apply`, which Forgified Fabric API's registry lacks, and a loot table couldn't be cast to
+  `FabricLootSupplier`. Only the plan's modules could count as provided, so Fabricated's hooks for modules it passes
+  through stayed beside the provider's; and the loot config, in fabric-loot-api-v2's package, stood down whole with
+  fabric-loot-tables-v1's table mixins, which Fabricated's own copy of that module (Forgified Fabric API 1.20.1 has
+  none) needs. Every module the data files name now counts, for the stand-down and for the in-game mod's bridges, and a
+  config keeps the mixins of a sub-package whose module isn't provided (whole only when none is left, or its plugin
+  leaves). The NeoForge locator passes the modules; the Forge ones take it by the sync, with fabric-loot-tables-v1's
+  initializer running on the provider's fabric-loot-api-v2 events.
+- **CI:** core tests pass locally (449, three of them new). #248 (Forge 61 to 66) merged as 2625f01; its extended run
+  is still to read for ENUM-7.
+
 ## 2026-11-03: Forge's enum factories and Lithium's chest (task 5)
 
 - **ENUM-7 on Forge, again** (`EnumValuesMixins`): after the last sync (extended run 41574438102) every Forge 61 to 66

@@ -329,9 +329,12 @@ Loader*):
   written by `scripts/native-module-index.py` from the plan's official Fabric API release; a package Fabric API keeps
   in two modules is given to one, as Forgified Fabric API does) and the in-game mod's `mixin-modules.json` (the
   module each of Fabricated's mixins serves; the build's `checkNativeModules` refuses a mixin or package missing from
-  them). The in-game mod is then handed to FML without those packages, with an overlay holding its `mods.toml` and
+  them). The modules those files name beyond the plan's (`NativeModules.modules`: one Fabricated passes through, whose
+  hooks in the in-game mod serve it) count as provided too (PROVIDER-13). A mixin serves its config's module, or that of
+  a sub-package another module owns, and stands down with it; a config goes whole once none of its mixins stay. The
+  in-game mod is then handed to FML without those packages, with an overlay holding its `mods.toml` and
   mixin configs without the mixins that stand down, and `NativeFabricApi` registers no bridge of a module another mod
-  provides (`FabricatedState.providedElsewhere`). Code that serves no module (entrypoints, registries, fluid types,
+  provides (`FabricatedState.providedElsewhere`, which `Pipeline.Result.alsoProvidedElsewhere` tells of those modules). Code that serves no module (entrypoints, registries, fluid types,
   vanilla behaviour Fabric mods rely on) always runs.
 * *Fabric Loader's API is Fabricated's (PROVIDER-2).* `FabricLoaderApiReader`, an FML mod file reader ahead of FML's
   own, reads any jar but a Fabricated build that has `net/fabricmc/loader/` or `net/fabricmc/api/` without them and

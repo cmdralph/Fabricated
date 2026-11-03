@@ -200,4 +200,50 @@ class NativeModulesTest {
 		assertEquals(Set.of("fabricated-loot.mixins.json"), both.mixinConfigs());
 		assertEquals(Map.of(), both.mixins());
 	}
+
+	/**
+	 * Forgified Fabric API on Forge 47 provides fabric-loot-api-v2 but has no fabric-loot-tables-v1: the config in the first's
+	 * package stays for the second's mixins in its sub-package, which Fabricated's own copy of it needs (a loot table cast to
+	 * its FabricLootSupplier stopped data packs loading), and the first's mixins and package leave.
+	 */
+	@Test
+	void aConfigOfAProvidedModuleKeepsTheMixinsOfAModuleNotProvided() throws Exception {
+		NativeModules modules = NativeModules.parse("""
+				{"modules": {"fabric-loot-api-v2": ["net/fabricmc/fabric/mixin/loot"], "fabric-loot-tables-v1": ["net/fabricmc/fabric/mixin/loot/table"]}}""", null);
+		Map<String, MixinConfigFile> configs = Map.of("fabricated-loot.mixins.json", MixinConfigFile.parse("""
+				{"package": "net.fabricmc.fabric.mixin.loot", "mixins": ["LootPoolAccessor", "table.LootPoolMixin", "table.LootTableMixin"],
+				 "client": ["client.LootClientMixin"]}"""));
+
+		NativeModules.StandDown apiOnly = modules.standDown(Set.of("fabric-loot-api-v2"), configs);
+		assertEquals(Set.of(), apiOnly.mixinConfigs());
+		assertEquals(Map.of("fabricated-loot.mixins.json", Set.of("LootPoolAccessor", "client.LootClientMixin")), apiOnly.mixins(),
+				"a sub-package no module owns goes with the config's module");
+		assertEquals(Set.of("net/fabricmc/fabric/mixin/loot"), apiOnly.packages());
+	}
+
+	/** A config whose plugin's package leaves can't stay for its other mixins: Mixin would stop on the missing plugin. */
+	@Test
+	void aConfigWhosePluginLeavesStandsDownWhole() throws Exception {
+		NativeModules modules = NativeModules.parse("""
+				{"modules": {"fabric-loot-api-v2": ["net/fabricmc/fabric/mixin/loot", "net/fabricmc/fabric/impl/loot"],
+				             "fabric-loot-tables-v1": ["net/fabricmc/fabric/mixin/loot/table"]}}""", null);
+		Map<String, MixinConfigFile> configs = Map.of("fabricated-loot.mixins.json", MixinConfigFile.parse("""
+				{"package": "net.fabricmc.fabric.mixin.loot", "plugin": "net.fabricmc.fabric.impl.loot.LootMixinPlugin",
+				 "mixins": ["LootPoolAccessor", "table.LootTableMixin"]}"""));
+
+		NativeModules.StandDown apiOnly = modules.standDown(Set.of("fabric-loot-api-v2"), configs);
+		assertEquals(Set.of("fabricated-loot.mixins.json"), apiOnly.mixinConfigs());
+		assertEquals(Map.of(), apiOnly.mixins());
+		NativeModules.StandDown tablesOnly = modules.standDown(Set.of("fabric-loot-tables-v1"), configs);
+		assertEquals(Set.of(), tablesOnly.mixinConfigs(), "its plugin stays with its own module");
+		assertEquals(Map.of("fabricated-loot.mixins.json", Set.of("table.LootTableMixin")), tablesOnly.mixins());
+	}
+
+	/** The modules the data files name: the index's, and those of the mixin map beyond it (a module passed through, old names). */
+	@Test
+	void theModulesAreTheIndexsAndThoseTheMixinsServe() throws Exception {
+		assertEquals(Set.of("fabric-api-base", "fabric-screen-handler-api-v1", "fabric-transfer-api-v1", "fabric-renderer-api-v1", "fabric-menu-api-v1"),
+				NativeModules.parse(INDEX, MIXIN_MODULES).modules());
+		assertEquals(Set.of(), NativeModules.NONE.modules());
+	}
 }
