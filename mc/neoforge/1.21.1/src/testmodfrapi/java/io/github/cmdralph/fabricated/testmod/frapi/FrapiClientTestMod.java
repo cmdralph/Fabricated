@@ -12,6 +12,7 @@ import java.util.function.Supplier;
 import org.apache.commons.lang3.tuple.Pair;
 import org.jspecify.annotations.Nullable;
 
+import com.google.gson.JsonParseException;
 import com.mojang.blaze3d.platform.InputConstants;
 
 import net.fabricmc.api.ClientModInitializer;
@@ -30,6 +31,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.color.block.BlockColor;
 import net.minecraft.client.color.item.ItemColor;
 import net.minecraft.client.renderer.block.model.BakedQuad;
+import net.minecraft.client.renderer.block.model.BlockModel;
 import net.minecraft.client.renderer.block.model.ItemOverrides;
 import net.minecraft.client.renderer.block.model.ItemTransforms;
 import net.minecraft.client.renderer.chunk.RenderChunkRegion;
@@ -75,9 +77,15 @@ import net.minecraft.world.level.block.state.BlockState;
  *
  * <p>With Continuity installed, glass's model is wrapped after every other wrapper, Continuity's included
  * ({@link ConnectedCheckModel}), to check that its connected textures reach the chunk section.
+ *
+ * <p>A model whose {@code loader} key names a loader in this mod's namespace must deserialize, the key left to the mod
+ * as on Fabric, where the game ignores it (CORPUS-62: Moonlight reads it for Supplementaries' models), and one naming a
+ * loader NeoForge doesn't know in its own namespace must still fail, as on NeoForge.
  */
 public final class FrapiClientTestMod implements ClientModInitializer {
 	private static final ResourceLocation GLASS = ResourceLocation.withDefaultNamespace("glass");
+	/** The model modifiers' phase the Continuity check wraps glass's model in: after every other wrapper. */
+	private static final ResourceLocation CHECK_PHASE = ResourceLocation.fromNamespaceAndPath("fabricated_testmod_frapi", "after_wrap_last");
 
 	private static final int BLOCK_COLOR = 0x3366CC;
 	private static final int ITEM_COLOR = 0xCC6633;
@@ -87,6 +95,8 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 			"key.categories.fabricated_testmod_frapi");
 	// Render thread only.
 	private static boolean hudDrawn;
+	private static final ResourceLocation STONE = ResourceLocation.withDefaultNamespace("block/stone");
+	private static final AtomicBoolean partSeen = new AtomicBoolean();
 	private static String keyFailure;
 
 	@Override
@@ -108,10 +118,16 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 		});
 		ModelLoadingPlugin.register(context -> context.modifyModelAfterBake().register(FrapiClientTestMod::fabricModels));
 		if (FabricLoader.getInstance().isModLoaded("continuity")) {
-			ModelLoadingPlugin.register(context -> context.modifyModelAfterBake().register(ModelModifier.WRAP_LAST_PHASE, FrapiClientTestMod::connectedCheck));
+			// In a phase of its own after the last wrapping phase, so it wraps Continuity's model whichever mod's plugin
+			// registered first (both wrapping in that phase, the second would wrap the first).
+			ModelLoadingPlugin.register(context -> {
+				context.modifyModelAfterBake().addPhaseOrdering(ModelModifier.WRAP_LAST_PHASE, CHECK_PHASE);
+				context.modifyModelAfterBake().register(CHECK_PHASE, FrapiClientTestMod::connectedCheck);
+			});
 		}
 		ClientLifecycleEvents.CLIENT_STARTED.register(FrapiClientTestMod::checkColors);
 		ClientLifecycleEvents.CLIENT_STARTED.register(FrapiClientTestMod::checkKeyBinding);
+		ClientLifecycleEvents.CLIENT_STARTED.register(FrapiClientTestMod::checkModelLoaderKey);
 		ClientLifecycleEvents.CLIENT_STOPPING.register(client -> {
 			InputConstants.Key saved = InputConstants.getKey("key.keyboard.k");
 			InputConstants.Key bound = KeyBindingHelper.getBoundKeyOf(KEY);
@@ -144,6 +160,26 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 		else FrapiTestMod.LOGGER.error("FABRICATED-TEST key binding FAILED: {}", String.join("; ", failed));
 	}
 
+	private static void checkModelLoaderKey(Minecraft client) {
+		List<String> failed = new ArrayList<>();
+		// The test mod's id is fabricated-testmod-frapi, so its NeoForge id and its namespace are fabricated_testmod_frapi.
+		for (String loader : List.of("\"fabricated_testmod_frapi:own_loader\"", "{\"id\": \"fabricated_testmod_frapi:own_loader\"}")) {
+			try {
+				BlockModel.fromString("{\"parent\": \"minecraft:block/stone\", \"loader\": " + loader + "}");
+			} catch (RuntimeException e) {
+				failed.add("a model naming its own loader " + loader + " failed: " + e);
+			}
+		}
+		try {
+			BlockModel.fromString("{\"parent\": \"minecraft:block/stone\", \"loader\": \"neoforge:fabricated_no_such_loader\"}");
+			failed.add("a model naming a loader NeoForge doesn't know in its namespace didn't fail");
+		} catch (JsonParseException expected) {
+			// As on NeoForge.
+		}
+		if (failed.isEmpty()) FrapiTestMod.LOGGER.info("FABRICATED-TEST model loader key of a Fabric mod's own OK");
+		else FrapiTestMod.LOGGER.error("FABRICATED-TEST model loader key of a Fabric mod's own FAILED: {}", String.join("; ", failed));
+	}
+
 	private static void checkColors(Minecraft client) {
 		List<String> failed = new ArrayList<>();
 		if (ColorProviderRegistry.BLOCK.get(FrapiTestMod.tintedBlock) != BLOCK_PROVIDER) failed.add("Fabric's block lookup didn't return the provider");
@@ -161,6 +197,10 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 	 * of the test item's (its inventory model, top-level too).
 	 */
 	private static @Nullable BakedModel fabricModels(@Nullable BakedModel model, ModelModifier.AfterBake.Context context) {
+		// MODEL-4: a model baked by its id, as a block state's variant (the test blocks' stone), passes the modifiers too.
+		if (STONE.equals(context.resourceId()) && model != null && partSeen.compareAndSet(false, true)) {
+			FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi model plugin part OK ({} after it was baked as a block state's part)", STONE);
+		}
 		ModelResourceLocation id = context.topLevelId();
 		if (model == null || id == null || !id.id().getNamespace().equals(FrapiTestMod.NAMESPACE)) return model;
 		if (id.variant().equals("inventory")) return id.id().getPath().equals("fabric_item") ? new ItemCheckModel(model) : model;
@@ -334,7 +374,7 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 			TextureAtlasSprite sprite = wrapped.getParticleIcon();
 			int[] quads = new int[2];
 			context.pushTransform(quad -> {
-				quads[0]++;
+				if (quads[0]++ == 0) ContinuityProbe.quad(quad, sprite);
 				if (offSprite(quad, sprite)) quads[1]++;
 				return true;
 			});
@@ -346,6 +386,7 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 			if (!LOGGED.getAndSet(true)) {
 				FrapiTestMod.LOGGER.info("FABRICATED-TEST continuity connected textures {} ({} of {} quads off {} at {}, drawn by {})", quads[1] > 0 ? "OK" : "FAILED",
 						quads[1], quads[0], sprite.contents().name(), pos, wrapped.getClass().getName());
+				if (quads[1] == 0) FrapiTestMod.LOGGER.info("FABRICATED-TEST continuity {}", ContinuityProbe.describe(state, sprite));
 			}
 		}
 

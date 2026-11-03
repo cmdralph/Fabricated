@@ -89,11 +89,12 @@ starts.
 ## What it does not support
 
 - **Fabric API modules that NeoForge conflicts with**, until Fabricated implements them natively (see above).
-- **The Fabric builds of renderer mods** (Sodium, Iris, ...), by default. Use their NeoForge builds:
-     26.x Sodium for NeoForge draws Fabric block models through its own Fabric renderer, and Iris runs on top (see
-     [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md)). Running their Fabric builds is a work in progress
-     ([docs/roadmap.md](docs/roadmap.md), rendering-pipeline track); `loadUnsupported` loads them for testing.
-  
+- **A few Fabric builds Fabricated refuses**: WTHIT's (it refuses NeoForge itself) and the mixed renderer pairs
+     (Iris's Fabric build with Sodium for NeoForge, and the reverse). The Fabric builds of Sodium, Iris, Essential,
+     malilib and Flashback load on NeoForge, each checked in CI on every version (Iris's but on 1.21.1), with the gaps
+     [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) lists (Sodium's Fabric build meshes NeoForge's fluids and models
+     the Fabric way; prefer Sodium for NeoForge where it exists). `loadUnsupported` loads a refused build for testing.
+
 - **Mods that use Fabric Loader internals** (`net.fabricmc.loader.impl.*`). Only the public Fabric Loader
   API is provided.
 - **Fabric mods built for another Minecraft version.** A Fabric mod for 1.21.11 won't run on 26.x and vice
@@ -152,7 +153,7 @@ warning in the report, so a bad config never crashes the game.
   "strictLinkage": false,
   "cache": { "enabled": true, "verifyIntegrity": true, "maxUnusedLaunches": 5 },
   "limits": { "maxJarBytes": 268435456, "maxEntryBytes": 134217728, "maxTotalUncompressedBytes": 536870912,
-              "maxEntries": 65536, "maxCompressionRatio": 100, "maxNestingDepth": 3 },
+              "maxEntries": 65536, "maxCompressionRatio": 100, "maxNestingDepth": 8 },
   "mods": {
     "examplemod": {
       "disabled": false,
@@ -181,7 +182,7 @@ warning in the report, so a bad config never crashes the game.
 | `mods.<id>.aliases` | Extra ids this mod satisfies as a dependency. |
 | `mods.<id>.ignorePreflight` | Load the mod even if mixin pre-flight fails. It may crash. Use for testing only. |
 | `mods.<id>.ignoreHints` | Ignore the mod's own `custom.fabricated` hints (see [docs/API.md](docs/API.md)). |
-| `mods.<id>.loadUnsupported` | Load a mod whose Fabric build Fabricated refuses (the Fabric builds of Sodium and Iris) anyway. Expect it to misbehave; this exists for testing support for it. |
+| `mods.<id>.loadUnsupported` | Load a mod whose Fabric build Fabricated refuses (WTHIT's, a mixed renderer pair, and on Forge the Fabric builds of Sodium, Iris, Essential, malilib and Flashback) anyway. Expect it to misbehave; this exists for testing support for it. |
 | `mojangMappingsPath` | 1.21.1 and 1.21.11 only: path to Mojang's mapping file if NeoForge's installer didn't leave one. |
 
 ## Known limitations
@@ -195,8 +196,8 @@ warning in the report, so a bad config never crashes the game.
 - **No isolation after mod code runs.** Once a mod's code has run, Java can't unload it. Fabricated then
   explains failures instead of hiding them.
 - **Fields NeoForge requires to stay private** (for example, `Biome.climateSettings`) are never widened,
-  even if a Fabric access widener asks. Code that reads them directly fails when it runs, and the report
-  lists every such case.
+  even if a Fabric access widener asks. A Fabric mod's reads of them call the getter NeoForge reads them through,
+  as the game's own code does; code that writes them fails when it runs. The report lists every such case.
 - **JPMS packages.** NeoForge requires every Java package to belong to exactly one mod. Fabric allows
   sharing, so clashing Fabric mods are de-duplicated (identical files) or one is disabled, and a package a NeoForge
   mod also has is that mod's.

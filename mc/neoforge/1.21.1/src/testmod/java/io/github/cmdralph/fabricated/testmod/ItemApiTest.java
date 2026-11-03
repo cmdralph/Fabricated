@@ -2,6 +2,7 @@ package io.github.cmdralph.fabricated.testmod;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
@@ -86,11 +87,9 @@ public final class ItemApiTest implements ModInitializer {
 			player.setItemSlot(EquipmentSlot.MAINHAND, stack);
 			stack.hurtAndBreak(5, player, EquipmentSlot.MAINHAND);
 			if (!DAMAGED_IN.equals(List.of(EquipmentSlot.MAINHAND)) || stack.getDamageValue() != 0) failed.add("custom_damage");
-			if (failed.isEmpty()) {
-				TestMod.LOGGER.info("FABRICATED-TEST item api OK");
-			} else {
-				TestMod.LOGGER.error("FABRICATED-TEST item api FAILED: {}", failed);
-			}
+			TestMod.report("item api", failed, "fabric-item-api-v1", Map.of(
+					"allow_enchanting", "Forgified Fabric API asks the enchanting event where upstream's hooks do (the enchanting table, the anvil, /enchant, loot), not in NeoForge's supportsEnchantment",
+					"creator_namespace", "Forgified Fabric API doesn't answer NeoForge's getCreatorModId with Fabric's getCreatorNamespace"));
 		});
 	}
 }

@@ -1,5 +1,7 @@
 package io.github.cmdralph.fabricated.core.archive;
 
+import java.util.List;
+
 /**
  * Hard limits applied to every untrusted archive.
  *
@@ -25,7 +27,17 @@ public record ArchiveLimits(
 			512L << 20,
 			65_536,
 			100,
-			3);
+			// Polymer's bundle nests its packet library four jars deep (LIMIT-2); a top-level jar's nested jars are bounded
+			// in number and bytes whatever their depth.
+			8);
+
+	/**
+	 * The defaults of earlier versions, which wrote them to every new {@code config/fabricated.json}: a file holding one
+	 * of these sets as it was written reads as {@link #DEFAULTS}, so a raised default reaches it (LIMIT-2).
+	 */
+	public static final List<ArchiveLimits> EARLIER_DEFAULTS = List.of(
+			new ArchiveLimits(256L << 20, 64L << 20, 512L << 20, 65_536, 100, 3),
+			new ArchiveLimits(256L << 20, 128L << 20, 512L << 20, 65_536, 100, 3));
 
 	/** Entries smaller than this are exempt from the ratio check (tiny files compress extremely well). */
 	public static final long RATIO_CHECK_THRESHOLD = 1L << 20;

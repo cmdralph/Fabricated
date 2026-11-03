@@ -237,6 +237,13 @@ jobs:
             echo "::error::FAIL: a JSON data loader read a file whose fabric:load_conditions fail (CORPUS-49)"
             exit 1
           fi
+          # Fabric's custom ingredients in the codec recipes use, which NeoForge 21.1 builds without upstream's hook
+          # (DEPRECATED-2). A gate.
+          if [ "${{ matrix.target.minecraft }}" = 1.21.1 ] && ! grep -q "FABRICATED-TEST recipe custom ingredient OK" "$RUNNER_TEMP/server-fapi/server.out"; then
+            grep -h "FABRICATED-TEST recipe custom ingredient" "$RUNNER_TEMP/server-fapi/server.out" || true
+            echo "::error::FAIL: a recipe's Fabric custom ingredient doesn't parse (DEPRECATED-2)"
+            exit 1
+          fi
       - name: Energy bridge with Team Reborn's library
         if: ${{ matrix.part == 'server' && !cancelled() && steps.build.outcome == 'success' }}
         run: |
@@ -286,6 +293,13 @@ jobs:
               ci/neoforge/smoke-server.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/server-refuse-connector" "$RUNNER_TEMP/refuse-connector"
           SMOKE_TESTMODS=none SMOKE_TIMEOUT=300 SMOKE_EXPECT_REFUSAL="2 Fabricated jars (fabricated-0.0.1+mc${{ matrix.target.minecraft }}.jar" \
               ci/neoforge/smoke-server.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/server-refuse-twice" "$RUNNER_TEMP/refuse-twice"
+      # The safety net for a Fabric mod's mixin that fails as Mixin applies it, which pre-flight passed (APPLY-1): with
+      # pre-flight's findings ignored for the impossible-mixin test mod, each of its two mixins stops a launch and is
+      # recorded (one through Mixin's error handlers, one an injector's critical failure past them), the next launch
+      # leaves it out and says so, and the third starts.
+      - name: Server leaving out a mixin that failed as Mixin applied it in the last launch
+        if: ${{ matrix.part == 'server' && !cancelled() && steps.build.outcome == 'success' }}
+        run: ci/neoforge/smoke-apply-failure.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/server-apply-failure"
       # The real ones, newest builds from Modrinth (downloaded here in CI): Forgified Fabric API (its module jars nested,
       # with Forgified Fabric Loader) where it has a build for the version, Kotlin for Forge with Fabric Language
       # Kotlin, which bundle different Kotlin versions. The server must start, as no package two mods share may stop
@@ -327,6 +341,9 @@ jobs:
             ${{ runner.temp }}/server-standins/server-warm.out
             ${{ runner.temp }}/server-coexist/logs
             ${{ runner.temp }}/server-coexist/server.out
+            ${{ runner.temp }}/server-apply-failure/logs
+            ${{ runner.temp }}/server-apply-failure/server-*.out
+            ${{ runner.temp }}/server-apply-failure/.fabricated/mixin-failures.json
           if-no-files-found: ignore
       # Client: a real NeoForge client started headlessly (Xvfb), which joins a singleplayer world.
       # 26.3+ open their window with SDL3 over EGL, which needs Mesa's EGL library (not on the runner image).
@@ -495,6 +512,7 @@ jobs:
           check "key mapping OK" "a Fabric key mapping is in the game's options"
           check "hud element OK" "a Fabric HUD element added last was drawn (upstream's subtitle overlay mixin)"
           check "hud element after chat OK" "a Fabric HUD element attached after chat was drawn (from NeoForge's chat layer)"
+          check "hud conditions OK" "Fabric HUD elements attached to vanilla ones were drawn only where vanilla draws those: not with the GUI hidden, nor after the health bar or the experience level where vanilla hides them (HUD-3)"
           check "screen init event OK" "a screen's initialization fired Fabric's event"
           check "screen draw event OK" "a screen's drawing fired Fabric's event"
           check "client commands OK" "Fabric's client commands were registered on joining the world"
@@ -524,8 +542,9 @@ jobs:
           check "hud callback OK" "Fabric's HUD callback was called as the HUD was drawn"
           check "key binding OK" "a Fabric key binding from the client entrypoint is in the game's options, sorted, and refused twice and late (KEYMAP-2)"
           check "key binding saved key OK" "the Fabric key binding has the key the options file saved for it"
+          check "model loader key of a Fabric mod's own OK" "a model whose loader key is in a Fabric mod's namespace deserializes, the key left to the mod as on Fabric, and an unknown NeoForge one still fails (Moonlight's loaders, CORPUS-62)"
           if [ "$failed" = 1 ]; then
-            grep -n -m 40 -E "testmod-frapi|fabric-rendering-v1|keybinding|/(ERROR|FATAL)\]" "$log" || true
+            grep -n -m 40 -E "testmod-frapi|fabric-rendering-v1|keybinding|Model loader|/(ERROR|FATAL)\]" "$log" || true
             exit 1
           fi
       # Fabric's renderer API on 1.21.1 (FRAPI-5): Fabric block models (no vanilla adapter), alone and as a vanilla
@@ -546,6 +565,7 @@ jobs:
             fi
           }
           check "frapi model plugin OK" "a Fabric model loading plugin replaced a block state's model after it was baked"
+          check "frapi model plugin part OK" "a Fabric model loading plugin saw a model baked as a block state's part after it was baked (MODEL-4)"
           check "frapi terrain OK .*seam=Fabricated" "a Fabric block model was meshed into a chunk section, sent to Fabric's renderer by Fabricated's seam"
           check "frapi nested terrain OK .*seam=Fabricated" "a Fabric model inside a vanilla multipart model was meshed, through Fabricated's seam"
           check "frapi moving block OK" "a falling Fabric block model was drawn"
@@ -847,21 +867,52 @@ jobs:
           fi
           SMOKE_SHADERS=1 SMOKE_TIMEOUT=480 ci/neoforge/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-shaders" "$RUNNER_TEMP/extra-sodium" || true
           grep -n -m 80 -E "FABRICATED-TEST frapi|[Ss]haderpack|shader pack|Iris|/(ERROR|FATAL)\]" "$RUNNER_TEMP/client-shaders/run/logs/latest.log" || true
-      # The Fabric builds of Sodium and Iris, loaded on request (loadUnsupported) with Fabric API and the renderer API
-      # test mod: informational, it records what breaks for the rendering-pipeline track (docs/roadmap.md).
-      - name: Client with the Fabric builds of Sodium and Iris (informational, 26.x)
-        if: ${{ matrix.part == 'mods' && env.EXTENDED == 'true' && !cancelled() && steps.build.outcome == 'success' && startsWith(matrix.target.minecraft, '26.') }}
-        continue-on-error: true
+      # The Fabric builds of Sodium and Iris, which the compatibility plan loads on NeoForge (task 5, decision 3), with
+      # Fabric API and the renderer API test mod, on every version Modrinth has them for. A gate: every smoke check
+      # passes, both load (Iris's Fabric build but on 1.21.1, where pre-flight refuses its particle hook, which NeoForge's
+      # code doesn't make: docs/COMPATIBILITY.md) and Sodium's renderer draws Fabric's block models.
+      - name: Client with the Fabric builds of Sodium and Iris
+        if: ${{ matrix.part == 'mods' && env.EXTENDED == 'true' && !cancelled() && steps.build.outcome == 'success' }}
         env:
           GH_TOKEN: ${{ github.token }}
-          FABRICATED_MODS: '{"sodium": {"loadUnsupported": true}, "iris": {"loadUnsupported": true}}'
         run: |
           mkdir -p "$RUNNER_TEMP/extra-sodium-fabric"
-          python3 ci/fetch-corpus.py "${{ matrix.target.minecraft }}" "$RUNNER_TEMP/extra-sodium-fabric" fabric sodium iris
+          python3 ci/fetch-corpus.py "${{ matrix.target.minecraft }}" "$RUNNER_TEMP/extra-sodium-fabric" fabric sodium iris || true
+          if ! ls "$RUNNER_TEMP"/extra-sodium-fabric/sodium*.jar >/dev/null 2>&1; then
+            echo "Modrinth has no Fabric build of Sodium for ${{ matrix.target.minecraft }}: nothing to run"
+            exit 0
+          fi
           cp "$RUNNER_TEMP/extra/fabric-api.jar" mc/neoforge/${{ matrix.target.minecraft }}/build/testmods/fabricated-testmod-frapi.jar "$RUNNER_TEMP/extra-sodium-fabric/"
-          SMOKE_TIMEOUT=480 ci/neoforge/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-sodium-fabric" "$RUNNER_TEMP/extra-sodium-fabric" || true
+          status=0
+          SMOKE_TIMEOUT=480 ci/neoforge/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-sodium-fabric" "$RUNNER_TEMP/extra-sodium-fabric" || status=$?
           grep -A300 "== " "$RUNNER_TEMP/client-sodium-fabric/run/logs/fabric-bridge-report.txt" || true
           grep -n -m 80 -E "FABRICATED-TEST frapi|Sodium|Iris|/(ERROR|FATAL)\]" "$RUNNER_TEMP/client-sodium-fabric/run/logs/latest.log" || true
+          mods="sodium iris"
+          [ "${{ matrix.target.minecraft }}" = "1.21.1" ] && mods="sodium"
+          failed=0
+          ci/neoforge/gate-mods.sh "$RUNNER_TEMP/client-sodium-fabric" "$status" "the Fabric builds of Sodium and Iris" $mods || failed=1
+          if grep -q "Fabric block models are drawn by the renderer net.caffeinemc.mods.sodium" "$RUNNER_TEMP/client-sodium-fabric/run/logs/latest.log"; then
+            echo "PASS: Sodium's renderer draws Fabric's block models"
+          else
+            echo "::error::FAIL: Sodium's renderer doesn't draw Fabric's block models"
+            failed=1
+          fi
+          exit "$failed"
+      # The same Fabric builds with CI's shader pack (ci/neoforge/smoke-client.sh writes a minimal one): Iris's pipeline,
+      # with its extended vertex format, over Sodium's Fabric renderer and the Fabric models it meshes. Not on 1.21.1,
+      # where Iris's Fabric build doesn't load. Informational until it holds on two extended runs in a row (CI-1).
+      - name: Client with the Fabric builds of Sodium and Iris and a shader pack (informational)
+        if: ${{ matrix.part == 'mods' && env.EXTENDED == 'true' && !cancelled() && steps.build.outcome == 'success' && matrix.target.minecraft != '1.21.1' }}
+        continue-on-error: true
+        run: |
+          if ! ls "$RUNNER_TEMP"/extra-sodium-fabric/iris*.jar >/dev/null 2>&1; then
+            echo "Modrinth has no Fabric build of Iris for ${{ matrix.target.minecraft }}: nothing to run"
+            exit 0
+          fi
+          status=0
+          SMOKE_SHADERS=1 SMOKE_TIMEOUT=480 ci/neoforge/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-shaders-fabric" "$RUNNER_TEMP/extra-sodium-fabric" || status=$?
+          echo "smoke-client.sh exit status: $status"
+          grep -n -m 80 -E "FABRICATED-TEST frapi|[Ss]haderpack|shader pack|Iris|/(ERROR|FATAL)\]" "$RUNNER_TEMP/client-shaders-fabric/run/logs/latest.log" || true
       # Fabric addons of Sodium (Sodium Extra, Reese's Sodium Options) next to Sodium for NeoForge, with Fabric API: their
       # mixins into Sodium are checked against Sodium for NeoForge's classes (R3), and they use Sodium's API from its
       # NeoForge build. The Fabric build of Sodium they depend on is skipped for the NeoForge one. Informational.
@@ -944,19 +995,91 @@ jobs:
           SMOKE_TIMEOUT=600 ci/neoforge/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-corpus" "$RUNNER_TEMP/corpus" || true
           grep -A400 "== " "$RUNNER_TEMP/client-corpus/run/logs/fabric-bridge-report.txt" || true
       # malilib (MiniHUD's and Tweakeroo's library) adds its picture-in-picture renderers through the GUI renderer's map
-      # NeoForge replaced, which Fabricated restores (PIP-1). On its own, with the compatibility plan's refusal lifted,
-      # until it is verified (with the mods part's runs).
-      - name: Client with malilib, MiniHUD and Tweakeroo (informational, PIP-1)
+      # NeoForge replaced, which Fabricated restores (PIP-1); the compatibility plan loads it on NeoForge (task 5). A
+      # gate: every smoke check passes and the four load.
+      - name: Client with malilib, MiniHUD, Tweakeroo and Litematica
         if: ${{ matrix.part == 'mods' && env.EXTENDED == 'true' && !cancelled() && steps.build.outcome == 'success' }}
-        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
-          FABRICATED_MODS: '{"malilib": {"loadUnsupported": true}}'
         run: |
           mkdir -p "$RUNNER_TEMP/extra-malilib"
-          python3 ci/fetch-corpus.py "${{ matrix.target.minecraft }}" "$RUNNER_TEMP/extra-malilib" fabric malilib fabric minihud fabric tweakeroo
+          python3 ci/fetch-corpus.py "${{ matrix.target.minecraft }}" "$RUNNER_TEMP/extra-malilib" fabric malilib fabric minihud fabric tweakeroo fabric litematica | tee "$RUNNER_TEMP/summary-malilib.txt"
+          if ! grep -qE "^malilib: [^n]" "$RUNNER_TEMP/summary-malilib.txt"; then
+            echo "Modrinth has no Fabric build of malilib for ${{ matrix.target.minecraft }}: nothing to run"
+            exit 0
+          fi
           cp "$RUNNER_TEMP/extra/fabric-api.jar" "$RUNNER_TEMP/extra-malilib/"
-          SMOKE_TIMEOUT=420 ci/neoforge/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-malilib" "$RUNNER_TEMP/extra-malilib" || true
+          status=0
+          SMOKE_TIMEOUT=420 ci/neoforge/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-malilib" "$RUNNER_TEMP/extra-malilib" || status=$?
+          ci/neoforge/gate-mods.sh "$RUNNER_TEMP/client-malilib" "$status" "malilib and the mods needing it" malilib minihud tweakeroo litematica
+      # Essential's Fabric build (its loader, which downloads Essential as the game starts; Fabricated itself never
+      # downloads anything), which the compatibility plan loads on NeoForge (task 5), on its own, launched twice: the
+      # first launch's loader downloads Essential, which Fabricated loads from the second (DOWNLOAD-1). A gate: both
+      # launches pass every smoke check, and Essential loads in the second. Where its loader downloaded nothing (its
+      # server, not Fabricated), the second launch is skipped with a warning.
+      - name: Client with Essential's Fabric build
+        if: ${{ matrix.part == 'mods' && env.EXTENDED == 'true' && !cancelled() && steps.build.outcome == 'success' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/extra-essential"
+          python3 ci/fetch-corpus.py "${{ matrix.target.minecraft }}" "$RUNNER_TEMP/extra-essential" fabric essential | tee "$RUNNER_TEMP/summary-essential.txt" || true
+          if ! grep -qE "^essential: [^n]" "$RUNNER_TEMP/summary-essential.txt"; then
+            echo "Modrinth has no Fabric build of Essential for ${{ matrix.target.minecraft }}: nothing to run"
+            exit 0
+          fi
+          cp "$RUNNER_TEMP/extra/fabric-api.jar" "$RUNNER_TEMP/extra-essential/"
+          first_status=0
+          SMOKE_TIMEOUT=420 ci/neoforge/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-essential-first" "$RUNNER_TEMP/extra-essential" || first_status=$?
+          first="$RUNNER_TEMP/client-essential-first/run"
+          echo "-- first launch: what Essential's loader did, and Fabricated's notice"
+          grep -n -m 30 -i -E "essential|/(ERROR|FATAL)\]" "$first/logs/latest.log" | grep -v -E "^\S+\s+at " | cut -c1-400 || true
+          grep -n -m 1 -A 24 "MixinExtras service has already" "$first/logs/latest.log" | cut -c1-300 || true
+          # What it downloaded, which the second launch starts with, as a player's second launch would.
+          mkdir -p "$RUNNER_TEMP/seed-essential"
+          [ -d "$first/essential" ] && cp -r "$first/essential" "$RUNNER_TEMP/seed-essential/"
+          for jar in "$RUNNER_TEMP/seed-essential/essential/"Essential*.jar; do
+            [ -f "$jar" ] || continue
+            echo "-- $(basename "$jar"): fabric.mod.json, nested jars, mixin configs"
+            unzip -p "$jar" fabric.mod.json | head -c 6000 || true
+            echo
+            unzip -l "$jar" | grep -E "META-INF/jars/|mixins[^/]*\.json$|\.accesswidener$" | head -40 || true
+          done
+          failed=0
+          ci/neoforge/gate-mods.sh "$RUNNER_TEMP/client-essential-first" "$first_status" "Essential's first launch" essential-container essential-loader || failed=1
+          if ! ls "$RUNNER_TEMP/seed-essential/essential/"Essential*.jar >/dev/null 2>&1; then
+            echo "::warning::Essential's loader downloaded nothing in the first launch (its server): no second launch to gate"
+            exit "$failed"
+          fi
+          status=0
+          SMOKE_SEED="$RUNNER_TEMP/seed-essential" SMOKE_TIMEOUT=420 ci/neoforge/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-essential" "$RUNNER_TEMP/extra-essential" || status=$?
+          echo "-- second launch"
+          log="$RUNNER_TEMP/client-essential/run/logs/latest.log"
+          awk '/^== /{show = /^== (Summary|Disabled|Unsupported|Linkage)/} show' "$RUNNER_TEMP/client-essential/run/logs/fabric-bridge-report.txt" | head -60 | cut -c1-400 || true
+          grep -n -m 60 -i -E "essential|/(ERROR|FATAL)\]" "$log" | cut -c1-400 || true
+          # What its loader downloaded, and where (its own folder in the game directory).
+          find "$RUNNER_TEMP/client-essential/run" -maxdepth 4 -ipath "*essential*" -type f | head -30 || true
+          ci/neoforge/gate-mods.sh "$RUNNER_TEMP/client-essential" "$status" "Essential's second launch" essential-container essential-loader essential || failed=1
+          exit "$failed"
+      # Flashback, which the compatibility plan loads on NeoForge (task 5: its refusal rested on a registry freeze REG-8
+      # holds), on its own. A gate: every smoke check passes and Flashback loads.
+      - name: Client with Flashback
+        if: ${{ matrix.part == 'mods' && env.EXTENDED == 'true' && !cancelled() && steps.build.outcome == 'success' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/extra-flashback"
+          python3 ci/fetch-corpus.py "${{ matrix.target.minecraft }}" "$RUNNER_TEMP/extra-flashback" fabric flashback | tee "$RUNNER_TEMP/summary-flashback.txt" || true
+          if ! grep -qE "^flashback: [^n]" "$RUNNER_TEMP/summary-flashback.txt"; then
+            echo "Modrinth has no Fabric build of Flashback for ${{ matrix.target.minecraft }}: nothing to run"
+            exit 0
+          fi
+          cp "$RUNNER_TEMP/extra/fabric-api.jar" "$RUNNER_TEMP/extra-flashback/"
+          status=0
+          SMOKE_TIMEOUT=420 ci/neoforge/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-flashback" "$RUNNER_TEMP/extra-flashback" || status=$?
+          awk '/^== /{show = /^== (Summary|Disabled|Unsupported|Mixins left out)/} show' "$RUNNER_TEMP/client-flashback/run/logs/fabric-bridge-report.txt" | head -40 | cut -c1-400 || true
+          grep -n -m 40 -i -E "flashback|/(ERROR|FATAL)\]" "$RUNNER_TEMP/client-flashback/run/logs/latest.log" | cut -c1-400 || true
+          ci/neoforge/gate-mods.sh "$RUNNER_TEMP/client-flashback" "$status" "Flashback" flashback
       - name: Upload other mods' client logs and reports
         if: ${{ matrix.part == 'mods' && !cancelled() }}
         uses: actions/upload-artifact@v4
@@ -976,6 +1099,9 @@ jobs:
             ${{ runner.temp }}/client-sodium-fabric/run/logs
             ${{ runner.temp }}/client-sodium-fabric/run/crash-reports
             ${{ runner.temp }}/client-sodium-fabric/client.out
+            ${{ runner.temp }}/client-shaders-fabric/run/logs
+            ${{ runner.temp }}/client-shaders-fabric/run/crash-reports
+            ${{ runner.temp }}/client-shaders-fabric/client.out
             ${{ runner.temp }}/client-sodium-addons/run/logs
             ${{ runner.temp }}/client-sodium-addons/run/crash-reports
             ${{ runner.temp }}/client-sodium-addons/client.out
@@ -988,6 +1114,12 @@ jobs:
             ${{ runner.temp }}/client-malilib/run/logs
             ${{ runner.temp }}/client-malilib/run/crash-reports
             ${{ runner.temp }}/client-malilib/client.out
+            ${{ runner.temp }}/client-essential/run/logs
+            ${{ runner.temp }}/client-essential/run/crash-reports
+            ${{ runner.temp }}/client-essential/client.out
+            ${{ runner.temp }}/client-flashback/run/logs
+            ${{ runner.temp }}/client-flashback/run/crash-reports
+            ${{ runner.temp }}/client-flashback/client.out
           if-no-files-found: ignore
       # Fabric mods with deep hooks (ci/mod-corpus-advanced.txt), on their own: one that stops the game can't hide how
       # the main corpus did.
@@ -1046,7 +1178,7 @@ jobs:
           [ -f viewers.txt ] && { echo "== viewers fetched"; cat viewers.txt; }
           [ -f "$RUNNER_TEMP/summary-advanced.txt" ] && { echo "== advanced corpus fetched"; cut -c1-200 "$RUNNER_TEMP/summary-advanced.txt"; }
           [ -f "$RUNNER_TEMP/summary-neoforge-data.txt" ] && { echo "== NeoForge biome and structure modifiers in the advanced corpus's Fabric jars"; head -40 "$RUNNER_TEMP/summary-neoforge-data.txt"; }
-          for run in client client-fapi client-coexist client-sodium client-shaders client-sodium-fabric client-sodium-addons client-viewers client-polyfrost client-corpus client-malilib client-advanced; do
+          for run in client client-fapi client-coexist client-sodium client-shaders client-sodium-fabric client-shaders-fabric client-sodium-addons client-viewers client-polyfrost client-corpus client-malilib client-essential client-flashback client-advanced; do
             log="$RUNNER_TEMP/$run/run/logs/latest.log"
             if [ ! -f "$log" ]; then
               # The game never started (the launcher stopped first): what the launcher said last.
@@ -1054,11 +1186,13 @@ jobs:
               continue
             fi
             echo "== $run"
-            grep -h -m 20 -E "FABRICATED-TEST frapi|Caused by|Exception in|crash report|Fabric API's own renderer" "$log" || true
+            # The smoke checks that failed (the step's own lines may be gone from the job's log by now).
+            [ -f "$RUNNER_TEMP/$run/checks-failed.txt" ] && cut -c1-400 "$RUNNER_TEMP/$run/checks-failed.txt" | head -20
+            grep -h -m 20 -E "FABRICATED-TEST frapi|Caused by|Exception in|crash report|Fabric API's own renderer|drawn by the renderer" "$log" || true
             # The test mod's own failed checks and its informational lines (far up the log by now).
             grep -h -m 12 -E "FABRICATED-TEST (.*FAILED|library modules|networking join event)" "$log" | cut -c1-400 || true
             # Whether Iris loaded the shader pack, and drew with it (Iris's own lines).
-            if [ "$run" = client-shaders ]; then
+            if [ "$run" = client-shaders ] || [ "$run" = client-shaders-fabric ]; then
               grep -h -m 8 -i -E "shaderpack|shaders are disabled|shader rendering pipeline" "$log" | cut -c1-300 || true
             fi
             # NeoForge's loading warnings (the runs with extra mods don't show them on a screen).
@@ -1082,6 +1216,11 @@ jobs:
               echo "-- loaded Fabric mods, without Fabric API's modules:"
               awk '/^== Loaded Fabric mods/ { show = 1; next } /^(==|$)/ { show = 0 } show && /^  [^ ]/ && $1 !~ /^fabric/ { print "  " $1 " " $2 }' "$report" | head -20
             fi
+            # Sodium's Fabric build says it contains a renderer, for which Indigo keeps its mixins off and registers no
+            # renderer (the renderer line above says whose draws): what the report says of Indigo there (OVERLOAD-2).
+            if [ "$run" = client-sodium-fabric ] && [ -f "$report" ]; then
+              grep -E "^  fabric-renderer-indigo" "$report" | head -12 | cut -c1-400 || true
+            fi
             # Fabric API's own modules: what pre-flight left out of them (their configs with a plugin).
             if [ "$run" = client-fapi ] && [ -f "$report" ]; then
               awk '/^== Mixin pre-flight warnings ==/ { show = 1; next } /^$/ { show = 0 } show' "$report" | grep -E "^  fabric" | head -30 | cut -c1-500
@@ -1091,6 +1230,9 @@ jobs:
               echo "-- $(basename "$report")"
               sed -n '/^Description:/,/^A detailed walkthrough/p' "$report" | grep -v "^A detailed" \
                 | awk 'BEGIN { limit = 8 } /^Caused by:/ { frames = 0; limit = 12 } /^[ \t]+at / { if (++frames > limit) next } { print }' | head -60
+              # What it was drawing: the block (or fluid) and section a chunk build crashed on, as the renderer adds them.
+              grep -E -A5 "^-- (Block being rendered|Block being tesselated|Fluid being tesselated|Chunk section|Section being built)" "$report" \
+                | grep -v "^--$" | head -24 | cut -c1-300 || true
               # A mod loading crash names its causes below the walkthrough (its issues' exceptions).
               if grep -q "^net.neoforged.fml.ModLoadingException" "$report"; then
                 sed -n '/^A detailed walkthrough/,$p' "$report" | grep -E -A4 "^Caused by:|^\s*Exception message:" | grep -v "^--$" | head -40 | cut -c1-300
@@ -1098,7 +1240,7 @@ jobs:
             done
             # A mixin that failed as Mixin applied it, though pre-flight passed it: what Fabricated's report says of it
             # (its notes and repairs), and of the classes those name (other mods' repairs there).
-            failed=$(cat "$RUNNER_TEMP/$run/run/crash-reports"/*.txt 2>/dev/null | grep -o -m 1 -E "in [A-Za-z0-9_./-]+\.json:[A-Za-z0-9_.\$]+ from mod" | head -1 | sed -E 's/^in [^:]+:(.+) from mod$/\1/' || true)
+            failed=$(cat "$RUNNER_TEMP/$run/run/crash-reports"/*.txt 2>/dev/null | grep -o -m 1 -E "(in |from |\[)[A-Za-z0-9_./-]+\.json:[A-Za-z0-9_.\$]+ from mod" | head -1 | sed -E 's/^(in |from |\[)[^:]+:(.+) from mod$/\2/' || true)
             bridge="$RUNNER_TEMP/$run/run/logs/fabric-bridge-report.txt"
             if [ -n "$failed" ] && [ -f "$bridge" ]; then
               echo "-- the report on $failed:"
@@ -1124,6 +1266,16 @@ jobs:
                 { state = 0 }
                 /\/(ERROR|FATAL)\]/ && !/[Nn]arrator|flite|401|TargetDataLine/ { if (n == 6) exit; n++; print substr($0, 1, 300); state = 1 }
               ' "$log"
+              # The innermost cause of the first exception that stopped the game, with its frames (a chunk build's, say,
+              # whose crash report holds none when vanilla's trimming of it fails).
+              awk '
+                /Reported exception thrown|Chunk build failed|Unreported exception thrown|Exception in thread/ { armed = 1 }
+                armed && /^Caused by:/ && !/401|flite|TargetDataLine/ { cause = $0; frames = ""; n = 0; inside = 1; next }
+                inside && /^[ \t]+at / { if (n++ < 20) frames = frames "\n" substr($0, 1, 220); next }
+                inside && /^[ \t]+\.\.\. [0-9]+ more/ { next }
+                inside { inside = 0; if (cause != "" && !/^Caused by:/) { found = 1; exit } }
+                END { if (cause != "") print "-- innermost cause:\n" substr(cause, 1, 300) frames }
+              ' "$log" | head -24 || true
               # An exception that left the game's main thread goes to the console only.
               grep -h -m 2 -A 8 "^Exception in thread" "$RUNNER_TEMP/$run/client.out" 2>/dev/null | cut -c1-250 || true
               # Which thread ended the game, and from where (the test mod's shutdown hook), without the JDK's own frames.
@@ -1181,3 +1333,88 @@ jobs:
               tail -n 6 "$log" | cut -c1-300
             fi
           done
+      # The bytecode task 5's open findings turn on, for reading (informational; last, so the job log's tail has it):
+      # Polydium's mixin plugin and its font mixin (whose handler, typed with the mixin class, stops 1.21.1 and 1.21.11
+      # as Mixin applies it); Architectury's keyboard hook into a lambda of KeyboardHandler.charTyped, which Mixin finds
+      # no target for on 1.21.1 (the corpus); malilib's tooltip hooks; how the Sodium and Iris gate's clients leave their
+      # world; Sodium's and Iris's Fabric builds' quad and access findings; Xaero's World Map's world unload (CORPUS-48).
+      # Members only, and a class that is the same as one printed (a translation in several cache jars) once.
+      - name: Bytecode for task 5's findings (informational)
+        if: ${{ (matrix.part == 'mods' || matrix.part == 'corpus') && env.EXTENDED == 'true' && !cancelled() && steps.build.outcome == 'success' }}
+        continue-on-error: true
+        run: |
+          dump() {
+            local run=$1
+            shift
+            [ -d "$RUNNER_TEMP/$run" ] || return 0
+            echo "== $run"
+            python3 -I ci/javap-dump.py "$RUNNER_TEMP/$run" "$@" | cut -c1-320 || true
+          }
+          dump client-malilib 'game:net.minecraft.world.item.ItemStack#getTooltipLines'
+          # The Sodium and Iris gate's client block entity check, which run 673's Sodium client on 26.2 reported neither way:
+          # how each of its clients left its world and stopped.
+          for run in client-sodium-fabric client-shaders-fabric; do
+            log="$RUNNER_TEMP/$run/run/logs/latest.log"
+            if [ -f "$log" ]; then
+              echo "== $run: leaving its world"
+              grep -h -E "client block entity events|Successfully finished|Stopping!|[Dd]isconnect|Saving and pausing|left the game" "$log" | tail -8 | cut -c1-300 || true
+            fi
+          done
+          # CORPUS-56: R6's result (far up the log by now), with Continuity's state where it saw no connected texture, and
+          # what pre-flight left out of Continuity; on 1.21.1, the wrapper method a wrapped model's throw is held in.
+          log="$RUNNER_TEMP/client-continuity/run/logs/latest.log"
+          if [ -f "$log" ]; then
+            echo "== client-continuity: R6"
+            grep -h -m 10 -E "FABRICATED-TEST (continuity|frapi broken part)" "$log" | cut -c1-2000 || true
+            grep -h -m 8 -E "\[[Cc]ontinuity/|Continuity/\]|[Cc]ontinuity.*(WARN|ERROR)" "$log" | cut -c1-600 || true
+            awk '/^== Mixin pre-flight failures ==/ { show = 1; next } /^$/ { show = 0 } show' "$RUNNER_TEMP/client-continuity/run/logs/fabric-bridge-report.txt" 2>/dev/null | grep -i -A2 continuity | head -20 | cut -c1-700 || true
+            # Run 673 on 26.2: Continuity's transform was reset again, but the glass gave R6 no quads at all. A throw inside
+            # Continuity's processing, held until its call returned, would do that: the block models that threw while drawn
+            # (the test mod's broken ones among them), each with the stack of what threw, and the report's lines for them.
+            echo "== client-continuity: block models that threw while drawn"
+            grep -h -m 6 -A 14 -E "threw while drawn" "$log" | cut -c1-400 | head -100 || true
+            sed -n '/^== Rendering ==/,/^$/p' "$RUNNER_TEMP/client-continuity/run/logs/fabric-bridge-report.txt" 2>/dev/null | cut -c1-700 | head -12 || true
+          fi
+          if [ "${{ matrix.target.minecraft }}" = "1.21.1" ]; then
+            dump client-continuity 'mod:net.fabricmc.fabric.api.renderer.v1.model.ForwardingBakedModel#emitBlockQuads'
+            # The client with Forgified Fabric API and Sodium: which Fabric API modules Forgified Fabric API provides there,
+            # and what Fabricated's own left out for them, so the test mod's failed checks can be told apart (its modules or
+            # Fabricated's); the step's own print is far up the log by now.
+            report="$RUNNER_TEMP/client-coexist/run/logs/fabric-bridge-report.txt"
+            if [ -f "$report" ]; then
+              echo "== client-coexist: Fabric API providers"
+              sed -n '/== Fabric API modules provided by other mods ==/,/^$/p;/== Fabric API providers ==/,/^$/p' "$report" | cut -c1-900 | head -80 || true
+            fi
+          fi
+          # APPLY-2: the method the game's worker threads hand what they stop on to, as each version names it.
+          dump server-corpus 'game:net.minecraft.Util#onThreadException' 'game:net.minecraft.util.Util#onThreadException'
+          if [ "${{ matrix.target.minecraft }}" = "1.21.1" ]; then
+            # CORPUS-61: Carpet's spawn redirect (the advanced corpus) and Friends & Foes' patrol hook (the corpus), at calls
+            # NeoForge's coremod points at its spawn event's hook: what pre-flight moved, and any failure as Mixin applied them.
+            for side in server-corpus server-advanced; do
+              echo "== $side: CORPUS-61"
+              report="$RUNNER_TEMP/$side/logs/fabric-bridge-report.txt"
+              if [ -f "$report" ]; then grep -h -E "finalizeMobSpawn|code transformers" "$report" | cut -c1-700 | head -6 || true; fi
+              log="$RUNNER_TEMP/$side/logs/latest.log"
+              if [ -f "$log" ]; then
+                grep -h -m 3 -o "Critical injection failure.*" "$log" | cut -c1-1500 || true
+                grep -h -m 3 "failed as Mixin applied it" "$log" | cut -c1-700 || true
+              fi
+            done
+          fi
+          # CORPUS-48: what Xaero's World Map's server world unload runs at its line 106, where the corpus clients' server
+          # thread stays (not parked: a loop) while mc-runtime-test's stop joins it from the render thread.
+          dump client-corpus 'mod:xaero.map.file.worldsave.WorldDataHandler#onServerWorldUnload' 'mod:xaero.map.file.worldsave.WorldDataHandler#*'
+          # LAMBDA-9: Litematica's schematic hooks into LevelRenderer.addMainPass's lambda, which NeoForge 26.2 gives one more
+          # value: what pre-flight now reports of them, and addMainPass as NeoForge's and vanilla's code declare it.
+          if [ "${{ matrix.target.minecraft }}" = "26.2" ]; then
+            report="$RUNNER_TEMP/client-malilib/run/logs/fabric-bridge-report.txt"
+            if [ -f "$report" ]; then grep -h "MixinLevelRenderer" "$report" | cut -c1-1500 | head -10 || true; fi
+            if [ -d "$RUNNER_TEMP/client-malilib" ]; then
+              # NeoForge's build has two: their descriptors and flags, and whether one calls the other.
+              python3 -I ci/javap-dump.py "$RUNNER_TEMP/client-malilib" 'game:net.minecraft.client.renderer.LevelRenderer#addMainPass' \
+                | grep -E "^-- | addMainPass\(|descriptor:|flags:|invoke[a-z]+ .*addMainPass|invokedynamic|stack=" | head -40 || true
+              python3 -I ci/javap-dump.py "$RUNNER_TEMP/client-malilib" 'vanilla:net.minecraft.client.renderer.LevelRenderer#addMainPass' \
+                | grep -E -A3 "^-- | addMainPass\(" | grep -v "^--$" || true
+            fi
+          fi

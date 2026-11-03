@@ -18,6 +18,7 @@ import net.fabricmc.fabric.api.networking.v1.ServerConfigurationNetworking;
 import net.fabricmc.fabric.api.networking.v1.ServerLoginNetworking;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.fabricmc.fabric.impl.networking.GlobalReceiverRegistry;
+import net.fabricmc.fabric.impl.networking.UntrackedNetworkHandler;
 
 /** Fabricated implementation of Fabric's server-side networking state, driven by NeoForge's payload system. */
 public final class ServerNetworkingImpl {
@@ -29,6 +30,11 @@ public final class ServerNetworkingImpl {
 	static final Set<Connection> RECONFIGURING = Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
 
 	private ServerNetworkingImpl() {
+	}
+
+	/** Whether the networking API announces the listener's connection: not one marked {@link UntrackedNetworkHandler}, as upstream (NET-9). */
+	public static boolean isTracked(ServerGamePacketListenerImpl listener) {
+		return !(listener instanceof UntrackedNetworkHandler);
 	}
 
 	public static ServerPlayNetworkAddon getAddon(ServerGamePacketListenerImpl listener) {

@@ -16,9 +16,12 @@ import cpw.mods.modlauncher.api.TargetType;
 import cpw.mods.modlauncher.api.TransformerVoteResult;
 
 /**
- * ModLauncher's transformer for the classes {@link FabricTransformationService} names: {@link FabricClassTransforms#beforeMixin}.
- * NeoForge's ModLauncher 11 asks a transformer for its node type ({@link #getTargetType}), where Forge's reads it from
- * the class's type argument.
+ * ModLauncher's transformer for the classes {@link FabricTransformationService} names: {@link FabricClassTransforms#beforeMixin},
+ * then the class's default bridges ({@link FabricClassTransforms#declareDefaultBridges}). ModLauncher's transformers run
+ * before Mixin, so the bridges are declared here for the classes no mixin targets; Fabricated's Mixin extension takes
+ * them out as Mixin starts on a class it applies mixins to and declares them again once it is done (the game mod's
+ * {@code DefaultBridgeExtension}, CORPUS-63). NeoForge's ModLauncher 11 asks a transformer for its node type
+ * ({@link #getTargetType}), where Forge's reads it from the class's type argument.
  */
 final class FabricClassTransformer implements ITransformer<ClassNode> {
 	private static final Logger LOGGER = LoggerFactory.getLogger("Fabricated");
@@ -46,6 +49,7 @@ final class FabricClassTransformer implements ITransformer<ClassNode> {
 		// A target that doesn't exist reaches a transformer as an empty node.
 		if (state != null && input.name != null) {
 			FabricClassTransforms.beforeMixin(state, input, (activity, detail) -> LOGGER.debug("{} in {}: {}", activity, input.name, detail));
+			FabricClassTransforms.declareDefaultBridges(state, input, (activity, detail) -> LOGGER.debug("{} in {}: {}", activity, input.name, detail));
 		}
 		return input;
 	}

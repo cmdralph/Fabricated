@@ -8,6 +8,8 @@
     "ServerCommonPacketListenerDisconnectMixin",
     "PlayerListViewMixin",
     "ChunkGeneratorFeaturesMixin",
+    "CrashReportMixin",
+    "UtilMixin",
     "ResourceMixin",
     "MappedRegistryMixin",
     "MappedRegistryEarlyWriteMixin",
@@ -43,6 +45,8 @@
     "NetworkRegistryAccessor",
     "NetworkRegistryUnregisteredPayloadMixin",
     "VanillaNamespacePayloadMixin",
+    "GenericPacketSplitterMeasureMixin",
+    "PacketEncoderMeasuredMixin",
     "NetworkRegistryMixin",
     "MenuProviderMixin",
     "ServerPlayerMenuMixin",
@@ -76,6 +80,7 @@
     "client.ClientVanillaNamespacePayloadMixin",
     "client.SoundEngineStreamMixin",
     "client.ClientChunkCacheMixin",
+    "client.ExtendedBlockModelDeserializerMixin",
     "client.OptionsDefaultPacksMixin"
   ]
 }

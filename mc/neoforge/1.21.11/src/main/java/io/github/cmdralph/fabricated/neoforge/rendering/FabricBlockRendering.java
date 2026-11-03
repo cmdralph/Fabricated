@@ -14,6 +14,8 @@ import org.slf4j.LoggerFactory;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 
+import io.github.cmdralph.fabricated.core.runtime.HeldThrows;
+import io.github.cmdralph.fabricated.neoforge.rendering.mixin.MutableQuadViewAccessor;
 import net.fabricmc.fabric.api.renderer.v1.Renderer;
 import net.fabricmc.fabric.api.renderer.v1.mesh.MutableMesh;
 import net.fabricmc.fabric.api.renderer.v1.mesh.QuadEmitter;
@@ -59,7 +61,10 @@ import net.neoforged.neoforge.client.model.quad.BakedNormals;
  *
  * <p>A Fabric model that throws there fails alone (FRAPI rule 8, {@link FrapiFailures}): the block is drawn by NeoForge
  * instead, from the parts the model's vanilla method gives, as is every model of the class that threw from then on (not
- * of a class wrapping it: {@link FrapiFailures#putDown}).
+ * of a class wrapping it: {@link FrapiFailures#putDown}). A throw inside a model another wraps through Fabric's
+ * {@code WrapperBlockStateModel} is held there until the draw here returns ({@link HeldThrows}), so the wrapper finishes
+ * its call: Continuity's keeps a per-thread transform active through it, and a throw unwinding it left that thread
+ * without connected textures for the rest of the session (CORPUS-56).
  *
  * <p>Sections compile on several worker threads at once: the state here is immutable or per thread, and the renderer
  * keeps its own per-thread state.
@@ -114,6 +119,27 @@ public final class FabricBlockRendering {
 	}
 
 	/**
+	 * How many quad transforms an emitter holds: Indigo's, which a model wrapping another is given while one of the draws
+	 * here holds throws ({@link HeldThrows#holding}); -1 for any other. Asked where a wrapper calls its wrapped model.
+	 */
+	public static int transforms(QuadEmitter emitter) {
+		return emitter instanceof MutableQuadViewAccessor indigo ? indigo.fabricated$transformStack().size() : -1;
+	}
+
+	/**
+	 * Pops the quad transforms a wrapped model that threw left on the emitter, down to the {@code count} it was given, so
+	 * its wrapper pops its own. Failure path; the draw here drops the emitter's thread state once it returns.
+	 */
+	public static void dropTransforms(QuadEmitter emitter, int count) {
+		if (count < 0 || !(emitter instanceof MutableQuadViewAccessor indigo)) return;
+		try {
+			while (indigo.fabricated$transformStack().size() > count) emitter.popTransform();
+		} catch (RuntimeException e) {
+			// The draw here drops the emitter: what is left on it goes with it.
+		}
+	}
+
+	/**
 	 * NeoForge's level-aware {@code collectParts}, for a model that doesn't implement it ({@code BlockStateModelMixin}).
 	 * A Fabric model's parts are made from the quads it emits, one part per render layer, so a renderer drawing them
 	 * NeoForge's way draws what Fabric's renderer would. Any other model gives the parts its vanilla method gives, as
@@ -131,10 +157,21 @@ public final class FabricBlockRendering {
 	 * they ran), so Fabric mods' meshes and emitters, and Fabric block models, work. Indigo stands down for any mod saying
 	 * it contains a Fabric renderer ({@code fabric-renderer-api-v1:contains_renderer}), and a NeoForge mod can say so of
 	 * a build without one (Sodium for NeoForge on 1.21.11, read in its source), which left Fabric's renderer API with
-	 * none. Indigo's own hooks stay off; Fabricated's don't need them. Does nothing without the renderer API.
+	 * none. Indigo's own hooks stay off; Fabricated's don't need them, and what of Indigo needs them works without them
+	 * ({@link IndigoWithoutHooks}). Does nothing without the renderer API.
 	 */
 	public static void registerFallbackRenderer() {
 		if (ENABLED) RendererFallback.register();
+	}
+
+	/** A mesh of the registered renderer, for an item layer's emitter under {@link IndigoWithoutHooks}. */
+	public static MutableMesh fallbackMesh() {
+		return Renderer.get().mutableMesh();
+	}
+
+	/** The mesh's quads as NeoForge's quads, added to an item layer's (see {@link FallbackLayerMesh}). */
+	public static void addItemQuads(MutableMesh mesh, List<BakedQuad> quads) {
+		Frapi.addItemQuads(mesh, quads);
 	}
 
 	/** Names Fabric's renderer API, so loaded only when called; apart from {@link Frapi}, which keeps the renderer it first finds. */
@@ -156,8 +193,9 @@ public final class FabricBlockRendering {
 				logger.warn("Fabric's renderer API has no renderer, and Fabric API's own renderer isn't installed: Fabric block models stay invisible ({})", e.toString());
 				return;
 			}
-			Renderer.register(indigo);
-			logger.warn("No Fabric renderer registered although a mod says it contains one: Fabric API's own renderer (Indigo) is used, without its own hooks");
+			Renderer.register(new IndigoWithoutHooks(indigo));
+			logger.warn("No Fabric renderer registered although a mod says it contains one: Fabric API's own renderer (Indigo) is used, without its own hooks"
+					+ " (Fabric item models' emitted quads are drawn in their layer's render type)");
 		}
 	}
 
@@ -249,17 +287,38 @@ public final class FabricBlockRendering {
 
 		static boolean tesselate(BlockRenderDispatcher dispatcher, BlockAndTintGetter level, BlockStateModel model, BlockState state, BlockPos pos,
 				PoseStack poseStack, Function<ChunkSectionLayer, VertexConsumer> buffers, boolean cull) {
+			Throwable thrown = null;
+			Throwable outer = HeldThrows.begin();
 			try {
 				RENDERER.render(dispatcher.getModelRenderer(), level, model, state, pos, poseStack, buffers::apply, cull, state.getSeed(pos),
 						OverlayTexture.NO_OVERLAY);
-				return true;
 			} catch (VirtualMachineError e) {
+				HeldThrows.end(outer);
 				throw e;
 			} catch (Throwable t) {
-				resetIndigoThread();
-				markBroken(model, t, "a chunk section at " + pos, state);
-				return false;
+				thrown = t;
 			}
+			thrown = failure(HeldThrows.end(outer), thrown);
+			if (thrown == null) return true;
+			resetIndigoThread();
+			markBroken(model, thrown, "a chunk section at " + pos, state);
+			return false;
+		}
+
+		/**
+		 * What a draw threw: the throw held inside a model another wraps ({@link HeldThrows}), where the model whose code
+		 * threw is (what the wrapper threw after it, if anything, is suppressed in it), else what the draw's call threw.
+		 */
+		private static @Nullable Throwable failure(@Nullable Throwable held, @Nullable Throwable thrown) {
+			if (held == null) return thrown;
+			if (thrown != null && thrown != held) {
+				try {
+					held.addSuppressed(thrown);
+				} catch (RuntimeException e) {
+					// A throw suppressing itself: the held one is what counts.
+				}
+			}
+			return held;
 		}
 
 		/**
@@ -295,9 +354,14 @@ public final class FabricBlockRendering {
 			int partsBefore = parts.size();
 			boolean failed = false;
 			try {
-				// Fabric's renderer API adds FabricBlockStateModel to every block model when the game loads.
-				((FabricBlockStateModel) model).emitQuads(mesh.emitter(), level, pos, state, random, NO_CULLING);
-				addParts(mesh, model, parts);
+				Throwable thrown = emitHolding(model, mesh.emitter(), level, pos, state, random);
+				if (thrown == null) {
+					addParts(mesh, model, parts);
+				} else {
+					failed = true;
+					parts.subList(partsBefore, parts.size()).clear();
+					markBroken(model, thrown, "the parts made from its quads at " + pos, state);
+				}
 			} catch (VirtualMachineError e) {
 				throw e;
 			} catch (Throwable t) {
@@ -312,6 +376,33 @@ public final class FabricBlockRendering {
 			}
 			// A model that threw keeps the parts of its vanilla method (the caller adds them).
 			return !failed;
+		}
+
+		/**
+		 * Emits a Fabric model's quads, holding a throw inside a model another wraps until the call returns
+		 * ({@link HeldThrows}); what the call threw ({@link #failure}), or null.
+		 */
+		private static @Nullable Throwable emitHolding(BlockStateModel model, QuadEmitter emitter, BlockAndTintGetter level, BlockPos pos, BlockState state,
+				RandomSource random) {
+			Throwable thrown = null;
+			Throwable outer = HeldThrows.begin();
+			try {
+				// Fabric's renderer API adds FabricBlockStateModel to every block model when the game loads.
+				((FabricBlockStateModel) model).emitQuads(emitter, level, pos, state, random, NO_CULLING);
+			} catch (VirtualMachineError e) {
+				HeldThrows.end(outer);
+				throw e;
+			} catch (Throwable t) {
+				thrown = t;
+			}
+			return failure(HeldThrows.end(outer), thrown);
+		}
+
+		/** The mesh's quads as NeoForge's quads, after the item layer's (whose render type they are drawn in). */
+		static void addItemQuads(MutableMesh mesh, List<BakedQuad> quads) {
+			// As the block models' quads: an item model's sprites come from the block atlas, as upstream's ModelHelper has them.
+			SpriteFinder sprites = ((FabricSpriteAtlasTexture) Minecraft.getInstance().getAtlasManager().getAtlasOrThrow(AtlasIds.BLOCKS)).spriteFinder();
+			mesh.forEach(quad -> quads.add(withNeoForgeData(quad, quad.toBakedQuad(sprites.find(quad)))));
 		}
 
 		/** The mesh's quads as NeoForge's quads, a part for each render layer they name (null: the block's own). */

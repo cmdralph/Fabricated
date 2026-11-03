@@ -37,14 +37,17 @@ import io.github.cmdralph.fabricated.core.config.FabricatedConfig;
 import io.github.cmdralph.fabricated.core.json.JsonException;
 import io.github.cmdralph.fabricated.core.metadata.ModIds;
 import io.github.cmdralph.fabricated.core.mixin.MixinConfigFile;
+import io.github.cmdralph.fabricated.core.mixin.MixinFailures;
 import io.github.cmdralph.fabricated.core.mixin.PreflightFinding;
 import io.github.cmdralph.fabricated.core.remap.MappingException;
 import io.github.cmdralph.fabricated.core.remap.OfficialClasses;
 import io.github.cmdralph.fabricated.core.report.Report;
+import io.github.cmdralph.fabricated.core.resolve.DownloadedMods;
 import io.github.cmdralph.fabricated.core.resolve.FabricApiPlan;
 import io.github.cmdralph.fabricated.core.resolve.NativeModules;
 import io.github.cmdralph.fabricated.core.resolve.NestedNeoForgeJars;
 import io.github.cmdralph.fabricated.core.resolve.PlatformLibraries;
+import io.github.cmdralph.fabricated.core.runtime.PlatformProperties;
 import io.github.cmdralph.fabricated.core.translate.LinkageAnalysis;
 import io.github.cmdralph.fabricated.core.translate.PackageGuard;
 import io.github.cmdralph.fabricated.core.translate.PlatformDescriptor;
@@ -171,6 +174,7 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 		Overlay gameModOverlay = null;
 		FabricApiPlan plan;
 		Pipeline.Result result;
+		MixinFailures.Log mixinFailures;
 		// Vanilla's game jar, which pre-flight reads to tell where NeoForge's patches moved an injection point (VANILLA-1),
 		// only where its names are the game's.
 		List<SafeArchive> vanillaJars = new ArrayList<>();
@@ -260,6 +264,7 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 					Fml.programArgs(), PlatformDescriptor.NEOFORGE);
 
 			result = Pipeline.run(input);
+			mixinFailures = Pipeline.mixinFailures(input);
 			FabricLoaderApiCopies.notes().forEach(n -> result.report().line("Fabric Loader API", n));
 			providerNotes.forEach(n -> result.report().line("Fabric API providers", n));
 			if (standDown != null && !standDown.isEmpty()) {
@@ -273,9 +278,16 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 		// Fabric entrypoints run when Fabricated's in-game mod loads: always in development, else when there is anything Fabric.
 		boolean addGameMod = gameModJar != null && (!result.mods().isEmpty() || !fabricJars.isEmpty());
 		FabricatedApiImpl api = new FabricatedApiImpl(info.fabricatedVersion(), plan, result.report(), result.runtime(), devGameMod.isPresent() || addGameMod);
-		FabricatedState state = new FabricatedState(result, logsDir, api);
+		FabricatedState state = new FabricatedState(result, logsDir, api, mixinFailures);
 		FabricatedState.set(state);
 		ApiHolder.install(api);
+		// Fabric mods' handlers in a registry's freeze wait for their main entrypoints, as on Fabric (REG-8).
+		if (devGameMod.isPresent() || addGameMod) EarlyFreeze.holdUntilMainEntrypoints();
+		// Before any Fabric mod's code runs: the property FML sets for no log marker, which Fabric mods can't read (CORPUS-60).
+		if ((devGameMod.isPresent() || addGameMod) && PlatformProperties.dropEmptyLogMarker()) {
+			result.report().line("Launch", "Removed the system property " + PlatformProperties.EMPTY_LOG_MARKER + ", which FML sets for an empty"
+					+ " log marker and nothing reads; a Fabric mod reading every system property as a dotted path stops on it");
+		}
 
 		ModFileDiscoveryAttributes attributes = ModFileDiscoveryAttributes.DEFAULT.withDependencyLocator(this);
 		Set<String> refused = new HashSet<>();
@@ -298,7 +310,7 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 		}
 		if (!refused.isEmpty()) {
 			// Nor may its interfaces be injected into game classes: they would fail to load, with the class missing.
-			state = new FabricatedState(result.without(refused), logsDir, api);
+			state = new FabricatedState(result.without(refused), logsDir, api, mixinFailures);
 			FabricatedState.set(state);
 		}
 		if (addGameMod && gameModOverlay == null) {
@@ -331,6 +343,8 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 				pipeline.addIssue(hardStop ? ModLoadingIssue.error(MESSAGE, text) : ModLoadingIssue.warning(MESSAGE, text));
 			}
 		}
+		// A downloaded mod its loader stopped updating, as it loads through Fabricated (DOWNLOAD-1).
+		for (String line : result.report().lines(DownloadedMods.STALE_SECTION)) pipeline.addIssue(ModLoadingIssue.warning(MESSAGE, line));
 		if (quietFabricApi > 0) {
 			LOGGER.info("{} Fabric API module(s) can't run on NeoForge yet and were skipped; see logs/fabric-bridge-report.txt", quietFabricApi);
 		}

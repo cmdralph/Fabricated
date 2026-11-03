@@ -99,8 +99,13 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 				BuiltInRegistries.BLOCK.getKey(context.state().getBlock()).equals(FrapiTestMod.WRAPPED_BROKEN_BLOCK_ID)
 						? new WrapperCheckModel(new BrokenWrappedModel(model)) : model));
 		if (FabricLoader.getInstance().isModLoaded("continuity")) {
-			ModelLoadingPlugin.register(plugin -> plugin.modifyBlockModelAfterBake().register(ModelModifier.WRAP_LAST_PHASE, (model, context) ->
-					context.state().is(Blocks.GLASS) ? new ConnectedCheckModel(model) : model));
+			// In a phase of its own after the last wrapping phase, so it wraps Continuity's model whichever mod's plugin
+			// registered first (both wrapping in that phase, the second would wrap the first).
+			ModelLoadingPlugin.register(plugin -> {
+				plugin.modifyBlockModelAfterBake().addPhaseOrdering(ModelModifier.WRAP_LAST_PHASE, CHECK_PHASE);
+				plugin.modifyBlockModelAfterBake().register(CHECK_PHASE, (model, context) ->
+						context.state().is(Blocks.GLASS) ? new ConnectedCheckModel(model) : model);
+			});
 		}
 		ClientTickEvents.END_CLIENT_TICK.register(client -> {
 			if (client.level != null && !partsChecked) {
@@ -237,6 +242,9 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 		}
 	}
 
+	/** The model modifiers' phase the Continuity check wraps glass's model in: after every other wrapper. */
+	private static final Identifier CHECK_PHASE = Identifier.fromNamespaceAndPath("fabricated_testmod_frapi", "after_wrap_last");
+
 	/**
 	 * Glass's model as Continuity left it (R6), wrapped after it: the first time a chunk section draws a glass block next
 	 * to another, it logs whether any quad the model emitted is off glass's own sprite, as a connected texture's is
@@ -273,7 +281,7 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 			TextureAtlasSprite sprite = wrapped.particleIcon();
 			int[] quads = new int[2];
 			emitter.pushTransform(quad -> {
-				quads[0]++;
+				if (quads[0]++ == 0) ContinuityProbe.quad(quad, sprite);
 				if (offSprite(quad, sprite)) quads[1]++;
 				return true;
 			});
@@ -285,7 +293,34 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 			if (!LOGGED.getAndSet(true)) {
 				FrapiTestMod.LOGGER.info("FABRICATED-TEST continuity connected textures {} ({} of {} quads off {} at {}, drawn by {})", quads[1] > 0 ? "OK" : "FAILED",
 						quads[1], quads[0], sprite.contents().name(), pos, wrapped.getClass().getName());
+				if (quads[1] == 0) FrapiTestMod.LOGGER.info("FABRICATED-TEST continuity {}", ContinuityProbe.describe(state, sprite));
+				if (quads[0] == 0) FrapiTestMod.LOGGER.info("FABRICATED-TEST continuity no quad reached the check: {}", innerQuads(wrapped, emitter, level, pos, state, random, cullTest));
 			}
+		}
+
+		/**
+		 * How many quads the model inside Continuity's emits here, under the same cull test, none of them drawn: where the
+		 * check saw no quad at all, whether Continuity's transform had any to process (CORPUS-56).
+		 */
+		private static String innerQuads(BlockStateModel model, QuadEmitter emitter, BlockAndTintGetter level, BlockPos pos, BlockState state, RandomSource random,
+				Predicate<@Nullable Direction> cullTest) {
+			Object inner = ContinuityProbe.wrapped(model);
+			if (!(inner instanceof FabricBlockStateModel fabricModel)) {
+				return "the model it wraps is " + (inner == null ? "unreadable" : inner.getClass().getName() + ", not a Fabric block model");
+			}
+			int[] count = new int[1];
+			emitter.pushTransform(quad -> {
+				count[0]++;
+				return false;
+			});
+			try {
+				fabricModel.emitQuads(emitter, level, pos, state, random, cullTest);
+			} catch (RuntimeException | LinkageError e) {
+				return "the model it wraps (" + inner.getClass().getName() + ") threw: " + e;
+			} finally {
+				emitter.popTransform();
+			}
+			return "the model it wraps (" + inner.getClass().getName() + ") emits " + count[0] + " quad(s) here under the same cull test";
 		}
 
 		private static boolean nextToSame(BlockAndTintGetter level, BlockPos pos, BlockState state) {

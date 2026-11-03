@@ -147,6 +147,8 @@ check() {
 	elif [ "${1% OK}" != "$1" ] && grep -q -- "${1% OK} SKIPPED" "$2"; then echo "SKIP: $3 ($(grep -m 1 -o -- "${1% OK} SKIPPED.*" "$2"))"
 	else echo "FAIL: $3 (missing '$1' in $2)"; fail=1; fi
 }
+# Whether another mod (Forgified Fabric API) provides a Fabric API module: the test mod's checks of it say so as they skip.
+provided() { grep -q -- "FABRICATED-TEST .* SKIPPED: $1 is another mod's" server.out; }
 [ "$status" = "started" ] && echo "PASS: server started" || { echo "FAIL: server did not start ($status)"; fail=1; required_fail=1; }
 if [ "$testmods" = none ]; then
 	echo "NOTE: no test mods in this run; only the server start is checked."
@@ -164,6 +166,7 @@ check "fabricated-testmod-shade bundles package com.google.gson.internal, which 
 check "FABRICATED-TEST registry OK" server.out "direct registry registration works"
 check "FABRICATED-TEST content built at bootstrap registered OK" server.out "content built during vanilla's bootstrap is registered by the main initializer, as BetterNether's entity types are (CORPUS-31)"
 check "FABRICATED-TEST built-in registries frozen after the main initializers OK" server.out "a Fabric mod's mixin into the built-in registries' freeze runs after the main initializers, where Wover makes the item definitions BetterEnd's subscribes to (CORPUS-32)"
+check "FABRICATED-TEST registry freeze handler after the main initializers OK" server.out "a Fabric mod's mixin into a registry's freeze first runs after the main initializers, as on Fabric, not in the freezes NeoForge makes before them (Flashback, REG-8)"
 check "FABRICATED-TEST late registry OK" server.out "a registry vanilla's code adds while mods start joins the root registry (REG-3)"
 check "FABRICATED-TEST early registry writes OK" server.out "vanilla's code writes to built-in registries before NeoForge's registration events, as Wover does (REG-3)"
 check "FABRICATED-TEST immutable pack sources OK" server.out "NeoForge adds its pack finders to sources a mod left immutable, as FrozenLib does (PACK-1)"
@@ -184,7 +187,11 @@ check "FABRICATED-TEST lifecycle tags loaded OK" server.out "native lifecycle: T
 check "FABRICATED-TEST block entity events OK" server.out "native lifecycle: a block entity loads when placed and unloads when broken"
 check "FABRICATED-TEST networking registration OK" server.out "native networking: receiver registered"
 check "FABRICATED-TEST configuration disconnect OK" server.out "native networking: DISCONNECT for a connection closed during configuration"
-check "Registered [0-9]* Fabric payload type" server.out "native networking: payloads handed to NeoForge"
+if provided fabric-networking-api-v1; then
+	echo "SKIP: native networking: payloads handed to NeoForge (fabric-networking-api-v1 is another mod's: Fabricated's networking bridge, which logs this, stands down for it, PROVIDER-9)"
+else
+	check "Registered [0-9]* Fabric payload type" server.out "native networking: payloads handed to NeoForge"
+fi
 check "FABRICATED-TEST late payload type registration OK" server.out "native networking: a payload type registered as the server starts (Ledger, NET-3)"
 check "FABRICATED-TEST resource reload listener OK (2 data file" server.out "native resource loader: listener, shared state and built-in pack data"
 check "resource loader state: order=true, store=2, builtinPackEnabled=true" server.out "native resource loader: ordering, data store and built-in pack"
@@ -195,7 +202,14 @@ else
 fi
 check "FABRICATED-TEST registry sync: custom registry OK" server.out "native registry sync: custom registry, entry callback, attributes, NeoForge sync flag"
 check "FABRICATED-TEST registry sync: tracked registry OK" server.out "a registry NeoForge tracks, made in a Fabric initializer after NeoForge's NewRegistryEvent, as Forgified Fabric API's builder makes one (PROVIDER-6)"
-check "registry sync state: alias=true, dynamic=1, setupCallback=1" server.out "native registry sync: alias, synced dynamic registry, setup callback"
+# Another mod's registry sync gets no alias from the test mod, whose check of aliases skips (PROVIDER-9).
+if provided fabric-registry-sync-v0; then
+	sync_alias=false; sync_label="native registry sync: synced dynamic registry, setup callback (aliases skipped: fabric-registry-sync-v0 is another mod's, PROVIDER-9)"
+else
+	sync_alias=true; sync_label="native registry sync: alias, synced dynamic registry, setup callback"
+fi
+check "registry sync state: alias=$sync_alias, dynamic=1, setupCallback=1" server.out "$sync_label"
+grep -q "registry sync state: alias=$sync_alias, dynamic=1, setupCallback=1" server.out || grep -m 1 -o "FABRICATED-TEST registry sync state: .*" server.out || true
 if [ "$mc" = "1.21.1" ]; then
 	# Fabric API 0.116 (1.21.1) has no mob effect events; its mob conversion event is tested instead.
 	check "FABRICATED-TEST entity events: mob conversion OK" server.out "native entity events: mob conversion"
@@ -215,12 +229,15 @@ check "FABRICATED-TEST biome modifications OK" server.out "native biome api: an 
 check "FABRICATED-TEST transfer OK" server.out "native transfer: item and fluid storages over vanilla blocks and in items, transaction abort and commit"
 check "FABRICATED-TEST fluid types OK" server.out "Fabric fluids: a registered NeoForge fluid type per family, named and lit from Fabric's attributes, water-like by tag; placed in the world; entities move through an untagged one as through air"
 check "FABRICATED-TEST hidden default OK" server.out "a mixin's private self() doesn't hide the default self() LivingEntity inherits from NeoForge from its subclasses (HIDE-1)"
+check "FABRICATED-TEST default bridge OK" server.out "an interface a mixin adds to LivingEntity with a second default self() beside NeoForge's: LivingEntity gets the method, and both calls answer on a pig (CORPUS-11, CORPUS-63)"
+check "FABRICATED-TEST inherited default bridge OK" server.out "an interface a mixin adds to Mob with a second default isMultipartEntity() beside the one Mob has through Entity's NeoForge extension: Mob gets the method, calling its superclass's, and both calls answer false on a pig (DEFAULT-1)"
 check "FABRICATED-TEST commands OK" server.out "/fabricated why, disable and enable from the console"
 check "FABRICATED-TEST api OK" server.out "public API: Fabricated detected, mod and module status, after-entrypoints callback"
 check "FABRICATED-TEST environment stripping OK" server.out "@EnvironmentInterface: a client-only interface is stripped on the dedicated server"
 check "fabricated-testmod-missing" logs/fabric-bridge-report.txt "missing dependency reported"
 check "fabricated-library-that-does-not-exist" logs/fabric-bridge-report.txt "missing dependency named"
 check "LEFT_OUT .*ImpossibleMixin.*fabricatedMethodThatDoesNotExist" logs/fabric-bridge-report.txt "impossible mixin caught by pre-flight and left out"
+check "LEFT_OUT .*UnmatchedCallMixin.*fabricatedCallThatIsNeverMade" logs/fabric-bridge-report.txt "mixin at a call its method never makes caught by pre-flight and left out"
 check "intentional failure for Fabricated CI" logs/fabric-bridge-report.txt "throwing entrypoint isolated"
 check "built but never registered, left by a Fabric mod whose entrypoint failed" logs/fabric-bridge-report.txt "the holder the throwing mod left is dropped at the registries' freeze, with an error (CORPUS-42)"
 # The mods ci/neoforge/standins.py writes, which share the game with Fabricated: every check gates their run.
@@ -259,7 +276,7 @@ if [ -n "$extra" ] && [ -f "$extra/standin-forgified-fabric-api.jar" ]; then
 fi
 # The test mods log "FABRICATED-TEST ... FAILED" when one of their own checks fails.
 if grep -q "FABRICATED-TEST .*FAILED" server.out; then
-	echo "FAIL: a test mod check reported a failure:"; { grep -m 5 "FABRICATED-TEST .*FAILED" server.out || true; }; fail=1
+	echo "FAIL: a test mod check reported a failure:"; { grep -m 20 "FABRICATED-TEST .*FAILED" server.out || true; }; fail=1
 else
 	echo "PASS: no test mod check reported a failure"
 fi

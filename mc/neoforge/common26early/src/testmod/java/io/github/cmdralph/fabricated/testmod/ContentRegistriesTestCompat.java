@@ -1,6 +1,7 @@
 package io.github.cmdralph.fabricated.testmod;
 
 import java.util.List;
+import java.util.Map;
 
 import net.fabricmc.fabric.api.registry.CompostableRegistry;
 import net.fabricmc.fabric.api.registry.FuelValueEvents;
@@ -18,6 +19,13 @@ import net.minecraft.world.level.gameevent.GameEvent;
 
 /** {@link ContentRegistriesTest}'s registrations under this version's API names, and the checks only it has. */
 final class ContentRegistriesTestCompat {
+	/**
+	 * The checks another mod's fabric-content-registries-v0 answers differently, as its source reads (PROVIDER-8; on 26.1.2
+	 * and 26.2, PROVIDER-10).
+	 */
+	static final Map<String, String> PROVIDERS_ANSWERS = Map.of("vibration_frequency",
+			"Forgified Fabric API's vibration frequency registry writes vanilla's frequency table, which NeoForge doesn't read: it reads its data map");
+
 	private ContentRegistriesTestCompat() {
 	}
 

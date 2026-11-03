@@ -1,9 +1,11 @@
 package io.github.cmdralph.fabricated.testmod.frapi;
 
+import java.lang.reflect.Field;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.TreeSet;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
@@ -17,6 +19,8 @@ import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
 import net.minecraft.client.KeyMapping;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.Options;
 import net.minecraft.resources.Identifier;
 
 /**
@@ -27,14 +31,24 @@ import net.minecraft.resources.Identifier;
  * Fabricated fires from NeoForge's screen render events) and the client commands' registration on joining a world
  * (command API), and the lifecycle API's client stopping event. A HUD element is reported the first time it is drawn, as
  * the world's loading screen may still hide the HUD for a while after joining, and as not drawn when the game stops.
+ * <p>HUD-3: elements attached to vanilla ones are drawn only where vanilla draws those: none with the GUI hidden (the
+ * test hides it for two seconds once the element after chat was drawn, the one after the sleep overlay, which vanilla
+ * draws with the GUI hidden too, counting the frames), none after the health bar in a game mode the player can't be
+ * hurt in, and none after the experience level without experience to show.
  */
 public final class ClientApiTestMod implements ClientModInitializer {
 	private static final List<String> HUD_CHECKS = List.of("hud element", "hud element after chat");
+	private static final Field HIDE_GUI = hideGuiField();
 	private final Set<String> drawn = new HashSet<>();
 	private boolean screenInitialized;
 	private boolean screenDrawn;
 	private boolean commandsRegistered;
 	private boolean reported;
+	/** What a HUD element was drawn after, where vanilla doesn't draw that element. */
+	private final Set<String> drawnWhereVanillaIsnt = new TreeSet<>();
+	private int hiddenFrames;
+	private int hiddenFrom = -1;
+	private boolean hidingDone;
 
 	@Override
 	public void onInitializeClient() {
@@ -45,8 +59,24 @@ public final class ClientApiTestMod implements ClientModInitializer {
 			else FrapiTestMod.LOGGER.error("FABRICATED-TEST key mapping FAILED: the game's options don't list it");
 		});
 		HudElementRegistry.addLast(Identifier.fromNamespaceAndPath("fabricated_testmod_frapi", "check"), (graphics, deltaTracker) -> drawn("hud element"));
-		HudElementRegistry.attachElementAfter(VanillaHudElements.CHAT, Identifier.fromNamespaceAndPath("fabricated_testmod_frapi", "after_chat"),
-				(graphics, deltaTracker) -> drawn("hud element after chat"));
+		HudElementRegistry.attachElementAfter(VanillaHudElements.CHAT, Identifier.fromNamespaceAndPath("fabricated_testmod_frapi", "after_chat"), (graphics, deltaTracker) -> {
+			if (guiHidden(Minecraft.getInstance())) drawnWhereVanillaIsnt.add("chat, with the GUI hidden");
+			else drawn("hud element after chat");
+		});
+		HudElementRegistry.attachElementAfter(VanillaHudElements.SLEEP, Identifier.fromNamespaceAndPath("fabricated_testmod_frapi", "after_sleep"), (graphics, deltaTracker) -> {
+			if (guiHidden(Minecraft.getInstance())) hiddenFrames++;
+		});
+		HudElementRegistry.attachElementAfter(VanillaHudElements.HEALTH_BAR, Identifier.fromNamespaceAndPath("fabricated_testmod_frapi", "after_health"), (graphics, deltaTracker) -> {
+			Minecraft client = Minecraft.getInstance();
+			if (client.gameMode == null || !client.gameMode.canHurtPlayer()) drawnWhereVanillaIsnt.add("the health bar, in a game mode the player can't be hurt in");
+		});
+		HudElementRegistry.attachElementAfter(VanillaHudElements.EXPERIENCE_LEVEL, Identifier.fromNamespaceAndPath("fabricated_testmod_frapi", "after_experience"),
+				(graphics, deltaTracker) -> {
+					Minecraft client = Minecraft.getInstance();
+					if (client.gameMode == null || !client.gameMode.hasExperience() || client.player == null || client.player.experienceLevel <= 0) {
+						drawnWhereVanillaIsnt.add("the experience level, without experience to show");
+					}
+				});
 		ClientLifecycleEvents.CLIENT_STOPPING.register(client -> {
 			FrapiTestMod.LOGGER.info("FABRICATED-TEST client stopping OK");
 			for (String check : HUD_CHECKS) {
@@ -62,12 +92,70 @@ public final class ClientApiTestMod implements ClientModInitializer {
 			commandsRegistered = true;
 		});
 		ClientTickEvents.END_CLIENT_TICK.register(client -> {
+			if (client.player != null && !hidingDone) hideTheGuiAWhile(client);
 			if (reported || client.player == null || client.player.tickCount <= 40) return;
 			reported = true;
 			report(screenInitialized, "screen init event", "no screen's initialization fired the event");
 			report(screenDrawn, "screen draw event", "no screen's drawing fired the event");
 			report(commandsRegistered, "client commands", "not registered on joining the world");
 		});
+	}
+
+	/** Hides the GUI for 40 ticks once the element after chat was drawn, then reports what was drawn where vanilla's isn't. */
+	private void hideTheGuiAWhile(Minecraft client) {
+		int tick = client.player.tickCount;
+		if (hiddenFrom < 0) {
+			if (!drawn.contains("hud element after chat") || guiHidden(client)) return;
+			hiddenFrom = tick;
+			hideGui(client, true);
+			return;
+		}
+		if (tick < hiddenFrom + 40) return;
+		hideGui(client, false);
+		hidingDone = true;
+		if (hiddenFrames == 0) report(false, "hud conditions", "no frame drawn while the GUI was hidden");
+		else if (!drawnWhereVanillaIsnt.isEmpty()) report(false, "hud conditions", "drawn after " + String.join("; after ", drawnWhereVanillaIsnt));
+		else report(true, "hud conditions", null);
+	}
+
+	/**
+	 * Whether the player hid the GUI (F1): the options' {@code hideGui} up to 26.1, the game's {@code Hud}'s from 26.2,
+	 * read reflectively as this mod is built once for every 26.x version.
+	 */
+	private static boolean guiHidden(Minecraft client) {
+		try {
+			if (HIDE_GUI != null) return HIDE_GUI.getBoolean(client.options);
+			Object hud = hud(client);
+			return (boolean) hud.getClass().getMethod("isHidden").invoke(hud);
+		} catch (ReflectiveOperationException e) {
+			throw new IllegalStateException("Can't read whether the GUI is hidden", e);
+		}
+	}
+
+	private static void hideGui(Minecraft client, boolean hidden) {
+		try {
+			if (HIDE_GUI != null) {
+				HIDE_GUI.setBoolean(client.options, hidden);
+			} else if (guiHidden(client) != hidden) {
+				Object hud = hud(client);
+				hud.getClass().getMethod("toggle").invoke(hud);
+			}
+		} catch (ReflectiveOperationException e) {
+			throw new IllegalStateException("Can't hide the GUI", e);
+		}
+	}
+
+	private static Object hud(Minecraft client) throws ReflectiveOperationException {
+		Object gui = client.gui;
+		return gui.getClass().getField("hud").get(gui);
+	}
+
+	private static Field hideGuiField() {
+		try {
+			return Options.class.getField("hideGui");
+		} catch (NoSuchFieldException e) {
+			return null;
+		}
 	}
 
 	private void drawn(String check) {

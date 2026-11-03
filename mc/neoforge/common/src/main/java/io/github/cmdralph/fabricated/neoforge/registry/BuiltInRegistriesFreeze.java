@@ -17,7 +17,8 @@ import net.minecraft.core.registries.BuiltInRegistries;
  * <p>While the main entrypoints are still to run, the bootstrap freezes the registries as {@code freeze} does, without
  * running it, so NeoForge finds them frozen as it expects. {@code freeze} runs in NeoForge's first freeze after the
  * entrypoints ({@code GameData.freezeData}), over the registries NeoForge opened for them; NeoForge's own freeze then
- * doesn't bind the tags of a registry it froze again, which it already bound.
+ * doesn't bind the tags of a registry it froze again, which it already bound. Fabric mods' handlers in
+ * {@code MappedRegistry.freeze} don't run in any freeze before the main entrypoints ({@code EarlyFreeze}, REG-8).
  */
 public final class BuiltInRegistriesFreeze {
 	/** Set while the bootstrap's {@code freeze} waits for the main entrypoints. */

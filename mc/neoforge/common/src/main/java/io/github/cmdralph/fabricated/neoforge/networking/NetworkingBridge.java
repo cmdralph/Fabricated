@@ -81,7 +81,8 @@ public final class NetworkingBridge {
 			ServerGamePacketListenerImpl listener = player.connection;
 			MinecraftServer server = player.level().getServer();
 			ServerPlayNetworkAddon addon = ServerNetworkingImpl.getAddon(listener);
-			ServerPlayConnectionEvents.INIT.invoker().onPlayInit(listener, server);
+			// Upstream announces a listener as it's made, but not one marked untracked (a mod's fake listener): JOIN still comes.
+			if (ServerNetworkingImpl.isTracked(listener)) ServerPlayConnectionEvents.INIT.invoker().onPlayInit(listener, server);
 			ServerPlayConnectionEvents.JOIN.invoker().onPlayReady(listener, addon, server);
 			// The client learns which of them the server receives as Fabric announces channels, which NeoForge records.
 			Set<Identifier> vanilla = vanillaNamespaceIds(FabricPayloads.SERVERBOUND_PLAY);

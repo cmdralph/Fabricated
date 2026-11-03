@@ -11,11 +11,13 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.network.CommonListenerCookie;
 import net.minecraft.server.network.ServerGamePacketListenerImpl;
 
+import net.fabricmc.fabric.impl.networking.UntrackedNetworkHandler;
+
 /**
  * The packet listener of Fabric's {@code FakePlayer} on 1.21.11 (Fabricated's version of upstream's class): drops
  * every packet. As NeoForge's own fake player connection, it ignores handshake listeners.
  */
-public final class FakePlayerNetworkHandler extends ServerGamePacketListenerImpl {
+public final class FakePlayerNetworkHandler extends ServerGamePacketListenerImpl implements UntrackedNetworkHandler {
 	private static final Connection FAKE_CONNECTION = new FakeConnection();
 
 	public FakePlayerNetworkHandler(ServerPlayer player) {

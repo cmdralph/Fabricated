@@ -4,7 +4,10 @@
   "compatibilityLevel": "JAVA_21",
   "client": [
     "BlockModelPartMixin",
-    "BlockStateModelMixin"
+    "BlockStateModelMixin",
+    "LayerRenderStateMixin",
+    "MutableQuadViewAccessor",
+    "WrapperBlockStateModelMixin"
   ],
   "injectors": {
     "defaultRequire": 1

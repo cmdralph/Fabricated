@@ -17,6 +17,13 @@ import net.neoforged.neoforge.fluids.FluidType;
 
 /** Game calls the shared test mod parts make, as Minecraft 1.21.1 names them. */
 final class TestCompat {
+	/**
+	 * Why another mod's fabric-resource-loader-v0 leaves a built-in resource pack its mod enables by default unselected, as
+	 * its source reads (PROVIDER-8); null where it doesn't.
+	 */
+	static final @Nullable String PROVIDERS_DEFAULT_PACK = "Forgified Fabric API selects such a pack as the game's options load, as upstream does, which NeoForge 21.1 does before"
+			+ " mods' initializers register their packs";
+
 	private TestCompat() {
 	}
 

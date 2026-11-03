@@ -60,6 +60,10 @@ if [ -n "$extra" ] && [ -d "$extra" ]; then
 	cp "$extra"/*.jar run/mods/ 2>/dev/null || true
 fi
 ls -1 run/mods
+# SMOKE_SEED: a directory copied into the game directory first, as an earlier launch left it (Essential's download).
+if [ -n "${SMOKE_SEED:-}" ] && [ -d "$SMOKE_SEED" ]; then
+	cp -r "$SMOKE_SEED"/. run/
+fi
 # FABRICATED_MODS: optional per-mod overrides, the "mods" object of config/fabricated.json.
 mods_json="${FABRICATED_MODS:-{\}}"
 if [ -n "$extra" ]; then
@@ -241,19 +245,27 @@ cat run/logs/fabric-bridge-report.txt || echo "(report missing)"
 echo "::endgroup::"
 
 fail=0
+# The failed checks are kept in the work directory too: a job's log keeps only its last lines, and CI's last step prints
+# them from there.
+rm -f checks-failed.txt
+failed() {
+	echo "FAIL: $1" | tee -a checks-failed.txt
+	fail=1
+}
 # A test mod check another mod's module answers for logs "<check> SKIPPED: <why>" in place of "<check> OK".
 check() {
 	if grep -q -- "$1" "$log" client.out 2>/dev/null; then echo "PASS: $2"
 	elif [ "${1% OK}" != "$1" ] && grep -q -- "${1% OK} SKIPPED" "$log" client.out 2>/dev/null; then echo "SKIP: $2 ($(grep -h -m 1 -o -- "${1% OK} SKIPPED.*" "$log" client.out 2>/dev/null | head -1))"
-	else echo "FAIL: $2 (missing '$1')"; fail=1; fi
+	else failed "$2 (missing '$1')"; fi
 }
-[ "$status" -eq 0 ] && echo "PASS: client exited normally" || { echo "FAIL: client exit status $status"; fail=1; }
+[ "$status" -eq 0 ] && echo "PASS: client exited normally" || failed "client exit status $status"
 check "Successfully finished." "client joined a singleplayer world (mc-runtime-test)"
 check "player list was replaced after NeoForge made its view" "getPlayers() follows a player list a mod replaced (the test mod replaces it, as the Polyfrost stack does)"
 check "FABRICATED-TEST main entrypoint OK" "main entrypoint ran on the client"
 check "FABRICATED-TEST main entrypoint game instance OK" "main entrypoints run once the game instance exists, as on Fabric (CORPUS-16)"
 check "FABRICATED-TEST content built at bootstrap registered OK" "content built during vanilla's bootstrap is registered by the main initializer, as BetterNether's entity types are (CORPUS-31)"
 check "FABRICATED-TEST built-in registries frozen after the main initializers OK" "a Fabric mod's mixin into the built-in registries' freeze runs after the main and client initializers, where Wover makes the item definitions BetterEnd's subscribes to (CORPUS-32)"
+check "FABRICATED-TEST registry freeze handler after the main initializers OK" "a Fabric mod's mixin into a registry's freeze first runs after the main initializers, as on Fabric, not in the freezes NeoForge makes before them (Flashback, REG-8)"
 check "FABRICATED-TEST creative tab order OK" "a creative tab registered by a main initializer is ordered after the vanilla tabs"
 check "FABRICATED-TEST resource bundle with a control OK" "translations loaded with a ResourceBundle.Control from a named module (LuckPerms, LOADER-3)"
 check "FABRICATED-TEST client entrypoint OK" "client entrypoint ran"
@@ -270,6 +282,7 @@ check "FABRICATED-TEST client join event OK" "native client networking: join eve
 check "FABRICATED-TEST client networking round trip OK" "native networking: client to integrated server and back"
 check "FABRICATED-TEST late payload type round trip OK" "native networking: a payload type the server registered as it started (NET-3)"
 check "FABRICATED-TEST minecraft namespace payload round trip OK" "native networking: a payload type in the minecraft namespace, which NeoForge refuses to register (BetterEnd, NET-4)"
+check "FABRICATED-TEST payload encoded once OK" "a payload whose codec empties what it writes arrives whole: encoded once, as on Fabric, where NeoForge's splitter measures it first (Cardinal Components API, NET-10)"
 case "$mc" in 26.*)
 	check "FABRICATED-TEST packet context while encoding OK" "Fabric's packet context, filled as Fabric API fills it, while NeoForge's splitter measures a packet (Polymer, NET-7)"
 	check "FABRICATED-TEST packet context while decoding a large payload OK" "Fabric's packet context while NeoForge's splitter reassembles a payload (NET-7)"
@@ -298,7 +311,7 @@ check "FABRICATED-TEST environment stripping OK" "@EnvironmentInterface kept on 
 grep -h -m 1 -o "FABRICATED-TEST library modules: .*" "$log" 2>/dev/null || true
 # The test mods log "FABRICATED-TEST ... FAILED" when one of their own checks fails.
 if grep -q "FABRICATED-TEST .*FAILED" "$log" client.out 2>/dev/null; then
-	echo "FAIL: a test mod check reported a failure:"; { grep -h -m 5 "FABRICATED-TEST .*FAILED" "$log" client.out 2>/dev/null || true; }; fail=1
+	failed "a test mod check reported a failure:"; { grep -h -m 20 "FABRICATED-TEST .*FAILED" "$log" client.out 2>/dev/null || true; } | tee -a checks-failed.txt
 else
 	echo "PASS: no test mod check reported a failure"
 fi

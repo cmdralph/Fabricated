@@ -57,6 +57,23 @@ class DefaultBridgeTest {
 	}
 
 	@Test
+	void aDefaultASuperclassHasGetsDeclaredCallingTheSuperclasss() {
+		// As NeoForge's IEntityExtension on Entity, and a mod's interface added to a mob (DEFAULT-1).
+		add("neo/EntityExtension", true, "java/lang/Object", List.of(), "box" + BOX);
+		add("game/Entity", false, "java/lang/Object", List.of("neo/EntityExtension"));
+		add("game/Mob", false, "game/Entity", List.of());
+		add("game/Pig", false, "game/Mob", List.of());
+		add("mod/Query", true, "java/lang/Object", List.of(), "box" + BOX);
+		assertEquals(List.of(new DefaultBridge("game/Pig", "game/Mob", "box", BOX)), bridges("game/Pig", "mod/Query"));
+
+		// None where a superclass declares the method, or where the mod's interface extends the one the superclass has.
+		add("mod/SubQuery", true, "java/lang/Object", List.of("neo/EntityExtension"), "box" + BOX);
+		assertEquals(List.of(), bridges("game/Pig", "mod/SubQuery"));
+		add("game/Mob", false, "game/Entity", List.of(), "box" + BOX);
+		assertEquals(List.of(), bridges("game/Pig", "mod/Query"));
+	}
+
+	@Test
 	void noBridgeWhereTheJvmCanChoose() {
 		add("neo/Extension", true, "java/lang/Object", List.of(), "box" + BOX);
 		add("game/Renderer", true, "java/lang/Object", List.of("neo/Extension"));

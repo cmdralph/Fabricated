@@ -14,11 +14,13 @@ import org.slf4j.LoggerFactory;
 import io.github.cmdralph.fabricated.core.config.FabricatedConfig;
 import io.github.cmdralph.fabricated.core.runtime.EntrypointRunner;
 import io.github.cmdralph.fabricated.core.metadata.ModIds;
+import io.github.cmdralph.fabricated.loader.EarlyFreeze;
 import io.github.cmdralph.fabricated.loader.FabricatedState;
 import io.github.cmdralph.fabricated.neoforge.fluid.FabricFluidType;
 import io.github.cmdralph.fabricated.neoforge.item.CreativeTabOrder;
 import io.github.cmdralph.fabricated.neoforge.objectbuilder.ObjectBuilderBridge;
 import io.github.cmdralph.fabricated.neoforge.registry.FabricTableEntries;
+import io.github.cmdralph.fabricated.neoforge.registry.ProviderDataPackRegistries;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.api.DedicatedServerModInitializer;
 import net.fabricmc.api.ModInitializer;
@@ -123,6 +125,7 @@ public final class EntrypointBridge {
 	private void runMain() {
 		record(runner.run("main", ModInitializer.class, ModInitializer::onInitialize));
 		mainEntrypointsRan = true;
+		EarlyFreeze.mainEntrypointsRan();
 	}
 
 	private void record(List<EntrypointRunner.Failure> more) {
@@ -206,6 +209,8 @@ public final class EntrypointBridge {
 							: "The mod was marked as failed and the game continues; parts of it may not work.");
 			LOGGER.error("{}", text, failure.error());
 			state.report().line("Entrypoint failures", text);
+			// A mixin that failed as Mixin applied it to a class the entrypoint loaded: left out from the next launch on (APPLY-1).
+			MixinFailureRecorder.record(failure.error());
 			ModLoadingIssue issue = (policy == FabricatedConfig.EntrypointFailure.ERROR
 					? ModLoadingIssue.error(MESSAGE, text)
 					: ModLoadingIssue.warning(MESSAGE, text)).withCause(failure.error());
@@ -215,6 +220,11 @@ public final class EntrypointBridge {
 		}
 		LOGGER.info("Fabricated ran Fabric entrypoints for {} mod(s) in {} ms ({} failure(s))",
 				state.mods().size(), nanos / 1_000_000, failures.size());
+		// The data-pack registries the initializers made through another mod's registry sync, which hands NeoForge only
+		// those it had before them (Forgified Fabric API's on 1.21.1, PROVIDER-11).
+		if (state.providedElsewhere("fabric-registry-sync-v0")) {
+			ProviderDataPackRegistries.addLate("fabric-registry-sync-v0", problem -> state.report().line("Registries", problem));
+		}
 		Set<String> failed = new HashSet<>();
 		for (EntrypointRunner.Failure failure : failures) failed.add(failure.modId());
 		state.api().markEntrypointsComplete(failed, (action, error) -> {

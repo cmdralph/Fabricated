@@ -2,6 +2,7 @@ package io.github.cmdralph.fabricated.testmod;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -118,11 +119,9 @@ public final class InteractionTest implements ModInitializer {
 			for (BlockPos pos : List.of(BASE, BASE.east(), BASE.west(), BASE.above(), BASE.above(2))) {
 				level.setBlockAndUpdate(pos, Blocks.AIR.defaultBlockState());
 			}
-			if (failed.isEmpty()) {
-				TestMod.LOGGER.info("FABRICATED-TEST interaction events OK");
-			} else {
-				TestMod.LOGGER.error("FABRICATED-TEST interaction events FAILED: {}", failed);
-			}
+			// The provider's answer read in Forgified Fabric API's 26.1.2 and 26.2 sources (PROVIDER-10).
+			TestMod.report("interaction events", failed, "fabric-events-interaction-v0", Map.of("attack_block_result",
+					"Forgified Fabric API turns an attack block callback's FAIL into NeoForge's use block and use item denied, not a cancelled left click, so breaking still starts, where upstream cancels it"));
 		});
 	}
 

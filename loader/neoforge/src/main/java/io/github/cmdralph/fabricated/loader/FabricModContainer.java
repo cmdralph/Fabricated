@@ -6,6 +6,7 @@ import org.slf4j.LoggerFactory;
 import net.neoforged.bus.api.BusBuilder;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
+import net.neoforged.fml.ModLoader;
 import net.neoforged.fml.ModLoadingException;
 import net.neoforged.fml.ModLoadingIssue;
 import net.neoforged.fml.event.IModBusEvent;
@@ -33,7 +34,8 @@ public final class FabricModContainer extends ModContainer {
 				.orElseThrow(() -> new ModLoadingException(ModLoadingIssue.error("§e[Fabricated]§r {0}",
 						"Module " + moduleName + " for Fabric mod " + info.getModId() + " is not in the game layer").withAffectedMod(info)));
 		state.fabricContainer(info.getModId()).ifPresent(container -> state.runtime().setClassLoader(container, loader));
-		ProposedJars.install(loader, Fml.gameFallback(loader));
+		ProposedJars.install(loader, Fml.gameFallback(loader), Fml.gameDir(),
+				text -> ModLoader.addLoadingIssue(ModLoadingIssue.warning("§e[Fabricated]§r {0}", text)));
 	}
 
 	@Override
