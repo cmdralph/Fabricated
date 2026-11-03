@@ -399,6 +399,32 @@ class RemapTest {
 	}
 
 	@Test
+	void tokenRemapperMapsTheNestedClassesOfAClassIntermediaryKeepsByName() throws Exception {
+		// TOKEN-1: Mojang's blaze3d classes keep their names in the game's jar, their nested classes don't; Iris's access
+		// widener opens GlStateManager$class_1017, and ImmediatelyFast's a field of such a type.
+		String tiny = TINY + String.join("\n",
+				"CLASS\tcom/mojang/blaze3d/opengl/GlStateManager\tcom/mojang/blaze3d/opengl/GlStateManager",
+				"CLASS\tcom/mojang/blaze3d/opengl/GlStateManager$a\tcom/mojang/blaze3d/opengl/GlStateManager$class_1017",
+				"FIELD\tcom/mojang/blaze3d/opengl/GlStateManager\tLcom/mojang/blaze3d/opengl/GlStateManager$a;\tc\tfield_4900",
+				"");
+		String proguard = PROGUARD + String.join("\n",
+				"com.mojang.blaze3d.opengl.GlStateManager -> com.mojang.blaze3d.opengl.GlStateManager:",
+				"    com.mojang.blaze3d.opengl.GlStateManager$TextureState TEXTURE -> c",
+				"com.mojang.blaze3d.opengl.GlStateManager$TextureState -> com.mojang.blaze3d.opengl.GlStateManager$a:",
+				"");
+		TokenRemapper r = new TokenRemapper(MappingComposer.compose(new StringReader(tiny), new StringReader(proguard)));
+		assertEquals("accessible\tclass\tcom/mojang/blaze3d/opengl/GlStateManager$TextureState",
+				r.remap("accessible\tclass\tcom/mojang/blaze3d/opengl/GlStateManager$class_1017"));
+		assertEquals("accessible\tfield\tcom/mojang/blaze3d/opengl/GlStateManager\tTEXTURE\tLcom/mojang/blaze3d/opengl/GlStateManager$TextureState;",
+				r.remap("accessible\tfield\tcom/mojang/blaze3d/opengl/GlStateManager\tfield_4900\tLcom/mojang/blaze3d/opengl/GlStateManager$class_1017;"),
+				"in a descriptor too");
+		assertEquals("com.mojang.blaze3d.opengl.GlStateManager$TextureState", r.remap("com.mojang.blaze3d.opengl.GlStateManager$class_1017"));
+		assertEquals("(Lnet/minecraft/world/Entity;Lcom/mojang/blaze3d/opengl/GlStateManager$TextureState;)V",
+				r.remap("(Lnet/minecraft/class_2;Lcom/mojang/blaze3d/opengl/GlStateManager$class_1017;)V"));
+		assertEquals("com/example/Thing$class_9", r.remap("com/example/Thing$class_9"), "a class the table doesn't know stays");
+	}
+
+	@Test
 	void remapsBytecodeAnnotationsAndStrings() throws Exception {
 		byte[] input = sampleModClass();
 		byte[] out = new JarRemapper(table()).remapClass(input, "test");
@@ -465,6 +491,117 @@ class RemapTest {
 		assertEquals(List.of("shadow$tick", "shadow$count"), uses);
 	}
 
+	/**
+	 * As Loom names the accessors of a jar without a refmap (Do a Barrel Roll's {@code KeyBindingAccessor.getField_1655}):
+	 * Mixin reads the target from the name, which no member has on the runtime's names, so the remapper writes it out and
+	 * remaps it (ACC-4). A target written out, or one read from a name of the mod's own, is left as it is.
+	 */
+	@Test
+	void anAccessorNamedForAnIntermediaryMemberGetsItsTargetWrittenOut() throws Exception {
+		String accessor = "Lorg/spongepowered/asm/mixin/gen/Accessor;";
+		String invoker = "Lorg/spongepowered/asm/mixin/gen/Invoker;";
+		ClassWriter cw = new ClassWriter(0);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT | Opcodes.ACC_INTERFACE, "com/example/LevelAccessor", null, "java/lang/Object", null);
+		String[][] methods = {
+				{"getField_11", "()I", accessor, null},
+				{"setField_10", "(Lnet/minecraft/class_2;)V", accessor, ""},
+				{"invokeMethod_22", "()V", invoker, null},
+				{"getOwner", "()Lnet/minecraft/class_2;", accessor, null},
+				{"isField_11", "()Z", accessor, "field_10"},
+				{"getField_11", "()J", "Lcom/example/NotAnAccessor;", null},
+		};
+		for (String[] m : methods) {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, m[0], m[1], null, null);
+			AnnotationVisitor av = mv.visitAnnotation(m[2], false);
+			if (m[3] != null) av.visit("value", m[3]);
+			av.visitEnd();
+			mv.visitEnd();
+		}
+		cw.visitEnd();
+
+		ClassNode node = new ClassNode();
+		new ClassReader(new JarRemapper(table()).remapClass(cw.toByteArray(), "test")).accept(node, 0);
+		Map<String, Object> targets = new java.util.LinkedHashMap<>();
+		for (MethodNode m : node.methods) {
+			List<Object> values = m.invisibleAnnotations.getFirst().values;
+			targets.put(m.name + m.desc, values == null ? null : values.get(1));
+		}
+		Map<String, Object> expected = new java.util.LinkedHashMap<>();
+		expected.put("getField_11()I", "count");
+		expected.put("setField_10(Lnet/minecraft/world/Entity;)V", "owner");
+		expected.put("invokeMethod_22()V", "tick");
+		expected.put("getOwner()Lnet/minecraft/world/Entity;", null);
+		expected.put("isField_11()Z", "owner");
+		expected.put("getField_11()J", null);
+		assertEquals(expected, targets, "the accessors keep their names; only the targets Mixin would read from them are written out");
+	}
+
+	/**
+	 * Elementa's {@code UtilitiesKt}, in short: a {@code width} for each loader's text component, Fabric's taking
+	 * {@code class_2} and Forge's {@code Entity}, with Kotlin's {@code width$default} for each, and a field for each.
+	 * Remapped, each pair is one member, and Essential's Fabric build stopped the game with "Duplicate method name"
+	 * (REMAP-4): the other loader's twins are left out and the Fabric members, which the jar's code reaches, are kept.
+	 */
+	@Test
+	void anotherLoadersTwinOfAFabricMemberIsLeftOutAndTheFabricOneKept() throws Exception {
+		String owner = "com/example/UtilitiesKt";
+		ClassWriter cw = new ClassWriter(0);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_FINAL, owner, null, "java/lang/Object", null);
+		cw.visitField(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "LEVEL", "Lnet/minecraft/class_1;", null, null).visitEnd();
+		cw.visitField(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "LEVEL", "Lnet/minecraft/world/Level;", null, null).visitEnd();
+		returning(cw, "width", "(Lnet/minecraft/class_2;F)F", Opcodes.FCONST_1);
+		returning(cw, "width$default", "(Lnet/minecraft/class_2;FILjava/lang/Object;)F", Opcodes.FCONST_1);
+		returning(cw, "width", "(Lnet/minecraft/world/Entity;F)F", Opcodes.FCONST_2);
+		returning(cw, "width$default", "(Lnet/minecraft/world/Entity;FILjava/lang/Object;)F", Opcodes.FCONST_2);
+		// Forge 1.8's text component, which no mapping names, stays: it meets no other member.
+		returning(cw, "width", "(Lnet/minecraft/util/IChatComponent;F)F", Opcodes.FCONST_0);
+		cw.visitEnd();
+
+		List<String> notes = new ArrayList<>();
+		ClassNode node = new ClassNode();
+		new ClassReader(new JarRemapper(table()).remapClass(cw.toByteArray(), "test", notes)).accept(node, 0);
+		assertEquals(List.of("width(Lnet/minecraft/world/Entity;F)F", "width$default(Lnet/minecraft/world/Entity;FILjava/lang/Object;)F",
+				"width(Lnet/minecraft/util/IChatComponent;F)F"), node.methods.stream().map(m -> m.name + m.desc).toList());
+		assertTrue(node.methods.stream().filter(m -> m.desc.contains("Entity")).allMatch(m -> m.instructions.getFirst().getOpcode() == Opcodes.FCONST_1),
+				"the Fabric members' code is kept");
+		assertEquals(List.of("LEVEL:Lnet/minecraft/world/Level;"), node.fields.stream().map(f -> f.name + ":" + f.desc).toList());
+		assertEquals(3, notes.size(), notes.toString());
+		assertTrue(notes.contains("Left out com/example/UtilitiesKt.width(Lnet/minecraft/world/Entity;F)F, written for another loader: remapped, it is the same member "
+				+ "as the Fabric width(Lnet/minecraft/class_2;F)F, which is kept (REMAP-4)"), notes.toString());
+
+		// An override and the mod's own method of the game's name meet too, but neither is another loader's: both stay, with a note.
+		ClassWriter clash = new ClassWriter(0);
+		clash.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, "com/example/Ticking", null, "net/minecraft/class_2", null);
+		returning(clash, "method_22", "()V", Opcodes.RETURN);
+		returning(clash, "tick", "()V", Opcodes.RETURN);
+		clash.visitEnd();
+		List<String> clashNotes = new ArrayList<>();
+		ClassNode ticking = new ClassNode();
+		new ClassReader(new JarRemapper(table()).remapClass(clash.toByteArray(), "test", clashNotes)).accept(ticking, 0);
+		assertEquals(2, ticking.methods.size());
+		assertEquals(List.of("Remapped, [method_22()V, tick()V] of com/example/Ticking are all tick()V, which a class can't hold twice; the class will fail to load (REMAP-4)"),
+				clashNotes);
+
+		// A class without twins gets no note.
+		List<String> none = new ArrayList<>();
+		new JarRemapper(table()).remapClass(sampleModClass(), "test", none);
+		assertEquals(List.of(), none);
+	}
+
+	/** A static method whose code is the one instruction {@code value}, then a return of its type. */
+	private static void returning(ClassWriter cw, String name, String desc, int value) {
+		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, name, desc, null, null);
+		mv.visitCode();
+		if (value != Opcodes.RETURN) {
+			mv.visitInsn(value);
+			mv.visitInsn(Opcodes.FRETURN);
+		} else {
+			mv.visitInsn(Opcodes.RETURN);
+		}
+		mv.visitMaxs(1, Type.getArgumentsAndReturnSizes(desc) >> 2);
+		mv.visitEnd();
+	}
+
 	@Test
 	void remapIsDeterministic() throws Exception {
 		JarRemapper remapper = new JarRemapper(table());
@@ -484,6 +621,7 @@ class RemapTest {
 		try (SafeArchive archive = SafeArchive.open(jar, ArchiveLimits.DEFAULTS)) {
 			JarRemapper.Result result = new JarRemapper(table()).remap(archive, Set.of("example.refmap.json"));
 			assertEquals(List.of("META-INF/SIGNER.SF", "META-INF/SIGNER.RSA"), result.strippedSignatureFiles());
+			assertEquals(List.of(), result.leftOutMembers());
 			String manifest = new String(result.files().get("META-INF/MANIFEST.MF"), StandardCharsets.UTF_8);
 			assertTrue(manifest.contains("Main-Class: x.Y"));
 			assertFalse(manifest.contains("Digest"));

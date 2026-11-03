@@ -35,11 +35,18 @@ public final class InstalledClasses implements ClassBytesSource {
 	 * @param owner    the name of the mod it belongs to, for messages
 	 * @param contains whether it has a class, by internal name (without reading it)
 	 * @param mixins   the mixin classes its configs list for this side, by internal name
+	 * @param fabric   whether it is a Fabric mod's own jar, whose classes are the ones Fabric Loader would load (not a
+	 *                 NeoForge mod's, nor Fabricated's Fabric API)
 	 */
-	public record Jar(String owner, Predicate<String> contains, ClassBytesSource classes, Supplier<List<String>> mixins) {
-		/** A jar without mixins. */
+	public record Jar(String owner, Predicate<String> contains, ClassBytesSource classes, Supplier<List<String>> mixins, boolean fabric) {
+		/** Not a Fabric mod's jar. */
+		public Jar(String owner, Predicate<String> contains, ClassBytesSource classes, Supplier<List<String>> mixins) {
+			this(owner, contains, classes, mixins, false);
+		}
+
+		/** A jar without mixins, not a Fabric mod's. */
 		public Jar(String owner, Predicate<String> contains, ClassBytesSource classes) {
-			this(owner, contains, classes, List::of);
+			this(owner, contains, classes, List::of, false);
 		}
 	}
 
@@ -79,6 +86,15 @@ public final class InstalledClasses implements ClassBytesSource {
 	public String owner(String internalName) {
 		Jar jar = jar(internalName);
 		return jar == null ? null : jar.owner();
+	}
+
+	/**
+	 * Whether the jar that has the class is a Fabric mod's own: the class is the one Fabric Loader would load, so what
+	 * Mixin does to it is what it does there.
+	 */
+	public boolean isFabricMods(String internalName) {
+		Jar jar = jar(internalName);
+		return jar != null && jar.fabric();
 	}
 
 	@Override

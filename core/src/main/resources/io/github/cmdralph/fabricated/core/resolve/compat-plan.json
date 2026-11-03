@@ -2,35 +2,53 @@
   "schema": 1,
   "mods": {
     "sodium": {
-      "neoForgeBuildOnly": "Sodium's Fabric build would mesh NeoForge's models, fluids and lighting the way Fabric has them, and drop the geometry NeoForge mods add to chunks; Sodium for NeoForge draws them, and Fabric block models through its own Fabric renderer",
+      "neoForgeBuildOnly": "Fabricated's CI runs Sodium's Fabric build on NeoForge only, with the gaps docs/COMPATIBILITY.md lists; it isn't verified on this loader",
       "notWithNeoForge": {
         "iris": "Iris for NeoForge hooks classes of Sodium for NeoForge (its fluid renderer) that Sodium's Fabric build doesn't have"
-      }
+      },
+      "runsOn": [
+        "NeoForge"
+      ]
     },
     "iris": {
-      "neoForgeBuildOnly": "Iris's Fabric build needs Sodium's Fabric build and leaves out NeoForge's render pipelines",
+      "neoForgeBuildOnly": "Fabricated's CI runs Iris's Fabric build, with Sodium's, on NeoForge only, with the gaps docs/COMPATIBILITY.md lists; it isn't verified on this loader",
       "notWithNeoForge": {
         "sodium": "Iris's Fabric build hooks classes of Sodium's Fabric build (its fluid renderer) that Sodium for NeoForge doesn't have"
-      }
+      },
+      "runsOn": [
+        "NeoForge"
+      ]
     },
     "essential-container": {
-      "neoForgeBuildOnly": "Essential's Fabric build is a loader that downloads Essential when the game starts and adds it to Fabric Loader's internal mod list, class loader and Mixin's processor, none of which exist on NeoForge (read in Essential Loader's source)",
-      "suggestion": "Use Essential's NeoForge build if Essential offers one for this Minecraft version (essential.gg); its Fabric build can't run here."
+      "neoForgeBuildOnly": "Essential's Fabric build is a loader that downloads Essential as the game starts; Fabricated loads what it downloaded from the next launch, and its CI runs that on NeoForge only, so it isn't verified on this loader",
+      "suggestion": "Use Essential's build for this loader if Essential offers one for this Minecraft version (essential.gg).",
+      "runsOn": [
+        "NeoForge"
+      ]
     },
     "essential-loader": {
-      "neoForgeBuildOnly": "Essential's Fabric build is a loader that downloads Essential when the game starts and adds it to Fabric Loader's internal mod list, class loader and Mixin's processor, none of which exist on NeoForge (read in Essential Loader's source)",
-      "suggestion": "Use Essential's NeoForge build if Essential offers one for this Minecraft version (essential.gg); its Fabric build can't run here."
+      "neoForgeBuildOnly": "Essential's Fabric build is a loader that downloads Essential as the game starts; Fabricated loads what it downloaded from the next launch, and its CI runs that on NeoForge only, so it isn't verified on this loader",
+      "suggestion": "Use Essential's build for this loader if Essential offers one for this Minecraft version (essential.gg).",
+      "runsOn": [
+        "NeoForge"
+      ]
     },
     "malilib": {
-      "neoForgeBuildOnly": "malilib adds its picture-in-picture renderers through the GUI renderer's map of renderers, which NeoForge replaced with renderer pools on every version, so the game stopped as it started (CI, run 357). Fabricated restores that map (PIP-1), but malilib and the mods that need it are not verified on it yet",
-      "suggestion": "Remove malilib and the mods that need it (Tweakeroo, MiniHUD, Litematica), or use NeoForge builds of them where their authors offer some."
+      "neoForgeBuildOnly": "malilib adds its picture-in-picture renderers through the GUI renderer's map of renderers, which NeoForge replaced and Fabricated restores (PIP-1); Fabricated's CI runs malilib with MiniHUD, Tweakeroo and Litematica on NeoForge only, so it isn't verified on this loader",
+      "suggestion": "Remove malilib and the mods that need it (Tweakeroo, MiniHUD, Litematica), or use NeoForge builds of them where their authors offer some.",
+      "runsOn": [
+        "NeoForge"
+      ]
     },
     "wthit": {
       "neoForgeBuildOnly": "WTHIT's Fabric build refuses to run on NeoForge: its own entrypoint throws when it finds Fancy Mod Loader (CI, run 357)"
     },
     "flashback": {
-      "neoForgeBuildOnly": "Flashback's mixin into MappedRegistry.freeze starts Flashback on the first registry freeze, and its start-up registers a key binding through the game's client. NeoForge freezes the registries at bootstrap and again before the client exists, while Fabric API delays that freeze until after the client initializers, so the game stops at bootstrap (CI, 1.21.11 advanced corpus, run on 1cee7cd)",
-      "suggestion": "Remove Flashback: its Fabric build can't start on NeoForge."
+      "neoForgeBuildOnly": "Flashback starts on the first registry freeze after the main initializers, where Fabricated holds NeoForge's freezes until then (REG-8); Fabricated's CI runs it on NeoForge only, so it isn't verified on this loader",
+      "suggestion": "Remove Flashback: its Fabric build isn't verified on this loader.",
+      "runsOn": [
+        "NeoForge"
+      ]
     }
   }
 }

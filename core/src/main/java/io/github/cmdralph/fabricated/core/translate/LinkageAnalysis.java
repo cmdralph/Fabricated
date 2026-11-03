@@ -279,8 +279,9 @@ public final class LinkageAnalysis {
 	 * CORPUS-47). And any
 	 * mixin adding such an interface to its targets (LINK-2): Mixin only warns that it can't load the interface, and the
 	 * game then can't define the target class, whether the config is required or not (Porting Lib's base module's
-	 * texture mixin on Forge 47 clients, whose interface is its extensions module's). Its config's plugin could skip it,
-	 * but where it doesn't the game can't start, while the mod disabled says why and loads once the other one does.
+	 * texture mixin on Forge 47 clients, whose interface is its extensions module's): the mod is disabled, saying why,
+	 * and loads once the other one does. In a config with a plugin, which may skip it at runtime as a compatibility mixin
+	 * for that mod, it is left out instead (LINK-3).
 	 */
 	private void unloadedUses(TranslatedMod mod, SafeArchive archive, SafeArchive overlay, Map<String, String> unloaded, Predicate<String> exists,
 			List<String> out) throws ArchiveException {
@@ -310,8 +311,11 @@ public final class LinkageAnalysis {
 				}
 				String added = unloadedInterface(node, unloaded, exists);
 				if (added != null) {
-					out.add(name.replace('/', '.') + " adds an interface to its targets -> needs class " + added.replace('/', '.') + " of "
-							+ unloaded.get(packageOf(added)) + UNLOADED);
+					String issue = name.replace('/', '.') + " adds an interface to its targets -> needs class " + added.replace('/', '.') + " of "
+							+ unloaded.get(packageOf(added));
+					// In a config with a plugin, one that would skip it at runtime (a compatibility mixin for that mod) does what
+					// the plugin would: left out, its mod loading without it (LINK-3).
+					out.add(config.plugin() == null ? issue + UNLOADED : "[" + entry.config() + ":" + mixin + "] " + issue + LEFT_OUT);
 				}
 			}
 		}

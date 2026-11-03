@@ -428,7 +428,7 @@ final class LocalRepairs extends PreflightPart {
 	 * of vanilla's instructions ({@code vanillaPlaces}, their places in this build's method), not one NeoForge's patch put
 	 * there.
 	 */
-	private static boolean isVanillasLocal(MethodNode method, LocalVariableNode local, Set<Integer> vanillaPlaces) {
+	static boolean isVanillasLocal(MethodNode method, LocalVariableNode local, Set<Integer> vanillaPlaces) {
 		AbstractInsnNode store = local.start.getPrevious();
 		while (store != null && store.getOpcode() < 0) store = store.getPrevious();
 		if (store == null) {
@@ -440,10 +440,19 @@ final class LocalRepairs extends PreflightPart {
 				&& vanillaPlaces.contains(method.instructions.indexOf(store));
 	}
 
-	/** Makes an {@code @Inject} whose local capture fails hard skip itself instead; returns whether it changed. */
-	static boolean softenLocalCapture(AnnotationNode injector) {
-		if (!injector.desc.equals(MixinNames.INJECT) || !(Annotations.value(injector, "locals") instanceof String[] capture)
-				|| !capture[1].equals("CAPTURE_FAILHARD") && !capture[1].equals("CAPTURE_FAILEXCEPTION")) return false;
+	/**
+	 * Makes an {@code @Inject} that captures local variables skip itself where they differ instead of stopping the game:
+	 * one whose capture fails hard is made to fail soft, and one that fails soft but is required (Debugify's on 1.21.1)
+	 * is no longer required, as Mixin stops the game when it skips itself then. Returns whether it changed.
+	 *
+	 * @param require the injector's {@code require} when it gives none: its config's {@code defaultRequire}, or 0 in a
+	 *                group, which counts its injections instead
+	 */
+	static boolean softenLocalCapture(AnnotationNode injector, int require) {
+		if (!injector.desc.equals(MixinNames.INJECT) || !(Annotations.value(injector, "locals") instanceof String[] capture)) return false;
+		boolean hard = capture[1].equals("CAPTURE_FAILHARD") || capture[1].equals("CAPTURE_FAILEXCEPTION");
+		int required = Annotations.value(injector, "require") instanceof Integer r && r >= 0 ? r : require;
+		if (!hard && !(capture[1].equals("CAPTURE_FAILSOFT") && required > 0)) return false;
 		for (int i = 0; i + 1 < injector.values.size(); i += 2) {
 			if ("locals".equals(injector.values.get(i))) injector.values.set(i + 1, new String[] {capture[0], "CAPTURE_FAILSOFT"});
 			if ("require".equals(injector.values.get(i))) injector.values.set(i + 1, 0);

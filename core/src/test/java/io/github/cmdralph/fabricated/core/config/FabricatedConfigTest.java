@@ -11,6 +11,8 @@ import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import io.github.cmdralph.fabricated.core.archive.ArchiveLimits;
+
 class FabricatedConfigTest {
 	@Test
 	void createsDefaultFileAndReadsItBack(@TempDir Path dir) throws Exception {
@@ -49,6 +51,24 @@ class FabricatedConfigTest {
 		org.junit.jupiter.api.Assertions.assertThrows(io.github.cmdralph.fabricated.core.json.JsonException.class,
 				() -> FabricatedConfig.setModDisabled(dir, "sodium", true));
 		assertEquals("{ \"mods\": [] }", Files.readString(file));
+	}
+
+	@Test
+	void earlierDefaultLimitsReadAsTodays() {
+		// As 0.5.1 wrote them to a new file: nobody chose them, so a raised default reaches the file (LIMIT-2).
+		FabricatedConfig written = FabricatedConfig.parse("""
+				{"limits": {"maxJarBytes": 268435456, "maxEntryBytes": 134217728, "maxTotalUncompressedBytes": 536870912,
+				  "maxEntries": 65536, "maxCompressionRatio": 100, "maxNestingDepth": 3}}
+				""");
+		assertEquals(ArchiveLimits.DEFAULTS, written.limits());
+		assertEquals(8, written.limits().maxNestingDepth());
+		// One limit changed: the player chose these, and they are kept.
+		FabricatedConfig chosen = FabricatedConfig.parse("""
+				{"limits": {"maxJarBytes": 268435456, "maxEntryBytes": 134217728, "maxTotalUncompressedBytes": 536870912,
+				  "maxEntries": 65536, "maxCompressionRatio": 100, "maxNestingDepth": 2}}
+				""");
+		assertEquals(2, chosen.limits().maxNestingDepth());
+		assertEquals(ArchiveLimits.DEFAULTS, FabricatedConfig.parse(FabricatedConfig.defaults().toJson()).limits());
 	}
 
 	@Test

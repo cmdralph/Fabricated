@@ -2,5 +2,5 @@
   "required": true,
   "package": "io.github.cmdralph.fabricated.testmod.broken.mixin",
   "compatibilityLevel": "JAVA_21",
-  "mixins": ["ImpossibleMixin"]
+  "mixins": ["ImpossibleMixin", "UnmatchedCallMixin"]
 }

@@ -17,13 +17,23 @@ import io.github.cmdralph.fabricated.core.mixin.MixinPreflight.Context;
 
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.Opcodes;
+import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.AnnotationNode;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.FieldInsnNode;
 import org.objectweb.asm.tree.FieldNode;
+import org.objectweb.asm.tree.FrameNode;
 import org.objectweb.asm.tree.InnerClassNode;
+import org.objectweb.asm.tree.InsnList;
+import org.objectweb.asm.tree.InsnNode;
+import org.objectweb.asm.tree.JumpInsnNode;
+import org.objectweb.asm.tree.LabelNode;
+import org.objectweb.asm.tree.LdcInsnNode;
+import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
+import org.objectweb.asm.tree.TryCatchBlockNode;
+import org.objectweb.asm.tree.VarInsnNode;
 
 /**
  * Mixins that Mixin would reject but that can be pointed at what the game really has, before pre-flight checks them
@@ -31,13 +41,13 @@ import org.objectweb.asm.tree.MethodNode;
  * family's class: lambdas ({@link LambdaRepairs}), overloads ({@link OverloadRepairs}), calls ({@link CallRepairs}),
  * constructors ({@link ConstructorRepairs}), locals and arguments ({@link LocalRepairs}); the class-level and member
  * repairs (injection points made single, anonymous classes, accessors and shadows of captured variables, accessors of
- * methods the game declares) are here.
+ * methods the game declares) are here, and the guard of a registry freeze handler ({@link #earlyFreezeGuard}).
  */
 final class MixinRepairs extends PreflightPart {
 	private final MixinPreflight checker;
 	private final LambdaRepairs lambdas = new LambdaRepairs(classes);
-	private final OverloadRepairs overloads = new OverloadRepairs(classes);
 	private final CallRepairs calls = new CallRepairs(classes);
+	private final OverloadRepairs overloads = new OverloadRepairs(classes, calls);
 	private final ConstructorRepairs constructors = new ConstructorRepairs(classes);
 	private final LocalRepairs locals = new LocalRepairs(classes);
 
@@ -56,13 +66,22 @@ final class MixinRepairs extends PreflightPart {
 			String internal = config.internalName(mixin);
 			ClassNode node = modClasses.readNode(internal, 0);
 			if (node == null) continue;
-			Context ctx = new Context(configName, internal.replace('/', '.'), config, refmap, false, false, false, Set.of(), out, null, loader);
-			independent.put(node, MixinPreflight.independentHandlers(node));
-			boolean changed = singleInjectionPoints(node);
+			Context ctx = new Context(configName, internal.replace('/', '.'), config, refmap, false, false, false, Map.of(), Set.of(), out, null, loader);
+			boolean changed = false;
 			for (String moved : anonymousTargetRepairs(node, ctx)) {
 				changed = true;
 				out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "Target class " + moved, ""));
 			}
+			// Before anything that reads the handlers' descriptors.
+			List<String> named = MixinPreflight.targetsOf(node, ctx);
+			int retargeted = named.size() == 1 ? SelfTypeRepairs.retarget(node, named.get(0)) : 0;
+			if (retargeted > 0) {
+				changed = true;
+				out.add(new PreflightFinding(Severity.INFO, configName, ctx.mixinDotted(), retargeted + " descriptor(s) of the mixin name its own class "
+						+ "where Mixin needs its target's; they name " + named.get(0).replace('/', '.') + ", as Fabric's Mixin does as it merges a mixin", ""));
+			}
+			independent.put(node, MixinPreflight.independentHandlers(node));
+			changed |= singleInjectionPoints(node);
 			List<ClassNode> targets = new ArrayList<>();
 			for (String target : MixinPreflight.targetsOf(node, ctx)) {
 				ClassNode targetNode = gameTarget(target);
@@ -191,6 +210,14 @@ final class MixinRepairs extends PreflightPart {
 	 * only be seen once the earlier ones are done, with a stop after it if it can move the injector.
 	 */
 	private final List<RepairStep> injectorRepairs = List.of(
+			new RepairStep(RepairScope.ONE_TARGET, Severity.INFO, s -> earlyOptionsGuard(s.mixin(), s.handler(), s.injector(), s.target()),
+					(s, none) -> s.named() + " hooks into the game's options, which Fabric creates after Fabric mods' entrypoints and "
+							+ s.ctx().loader() + " may create before it loads mods (NeoForge 21.1 does); if it throws before the entrypoints have"
+							+ " run, it is skipped for that call instead of stopping the game"),
+			new RepairStep(RepairScope.ONE_TARGET, Severity.INFO, s -> earlyFreezeGuard(s.mixin(), s.handler(), s.injector(), s.target(), s.ctx()),
+					(s, none) -> "@Inject " + s.handler().name + " runs as a registry freezes, which " + s.ctx().loader() + " also does before"
+							+ " Fabric mods' main entrypoints (at bootstrap, among others); it returns at once in those freezes, which Fabric"
+							+ " doesn't have (Fabric API freezes the registries after the entrypoints)"),
 			RepairStep.warn(RepairScope.UNGROUPED, s -> lambdas.vanillaLambdaRepairs(s.injector(), s.targets(), s.ctx()),
 					(s, lambda) -> s.named() + " targets " + lambda + ", which this game build numbers differently"),
 			RepairStep.warn(RepairScope.ANY, s -> LambdaRepairs.lambdaRepairs(s.handler(), s.injector(), s.targets(), s.ctx()),
@@ -205,14 +232,18 @@ final class MixinRepairs extends PreflightPart {
 					(s, wrapped) -> "@Inject " + s.handler().name + " injects into " + wrapped),
 			// Wrapped, the handler is a plain method of the mixin.
 			RepairStep.stopIfMoved(),
-			new RepairStep(RepairScope.ANY, Severity.INFO, s -> LocalRepairs.softenLocalCapture(s.injector()) ? List.of("") : List.of(),
+			new RepairStep(RepairScope.ANY, Severity.INFO, s -> LocalRepairs.softenLocalCapture(s.injector(),
+					PreflightAsm.grouped(s.handler()) ? 0 : s.ctx().config().defaultRequire()) ? List.of("") : List.of(),
 					(s, none) -> "@Inject " + s.handler().name + " captures local variables; if " + s.ctx().loader()
 							+ "'s code has other locals there, it is skipped instead of crashing"),
 			// A group's alternative for Fabric Loader's hook too: the other alternatives are for other loaders' hooks.
 			RepairStep.warn(RepairScope.ONE_TARGET, s -> CallRepairs.loaderHookRepairs(s.injector(), s.target(), s.ctx()),
 					(s, moved) -> s.named() + " expects a call to " + moved),
-			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> OverloadRepairs.overloadByParameters(s.handler(), s.injector(), s.target(), s.ctx()),
+			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> OverloadRepairs.overloadByParameters(s.handler(), s.injector(), s.target(), s.ctx(), false),
 					(s, pinned) -> s.named() + " targets " + pinned + ", which this game build declares after another overload; it is pinned to that one"),
+			new RepairStep(RepairScope.ONE_TARGET_UNGROUPED, Severity.INFO, s -> OverloadRepairs.overloadByParameters(s.handler(), s.injector(), s.target(), s.ctx(), true),
+					(s, pinned) -> s.named() + " targets " + pinned + ", one of several methods of that name in this game build; it is pinned to that one,"
+							+ " as a mixin replacing it (@Overwrite, which Mixin adds after the others) would leave the injector on another"),
 			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> calls.vanillaPointRepairs(s.mixin(), s.handler(), s.injector(), s.target(), s.ctx(), s.bridges()),
 					(s, moved) -> s.named() + " expects " + moved),
 			RepairStep.stopIfMoved(),
@@ -222,6 +253,12 @@ final class MixinRepairs extends PreflightPart {
 					(s, local) -> s.named() + " captures " + local),
 			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> overloads.overloadRepairs(s.mixin(), s.handler(), s.injector(), s.target(), s.ctx(), s.bridges()),
 					(s, moved) -> s.named() + " targets " + moved),
+			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> overloads.variableByOrdinalRepairs(s.handler(), s.injector(), s.target(), s.ctx()),
+					(s, moved) -> s.named() + " targets " + moved),
+			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> overloads.capturedLocalsRepairs(s.mixin(), s.handler(), s.injector(), s.target(), s.ctx(), s.bridges()),
+					(s, moved) -> s.named() + " captures locals in " + moved),
+			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> overloads.abandonedMethodWrappers(s.mixin(), s.handler(), s.injector(), s.target(), s.ctx(), s.bridges()),
+					(s, wrapped) -> s.named() + " targets " + wrapped),
 			// A repair that bridged the handler moved the injector onto the bridge.
 			RepairStep.stopIfMoved(),
 			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> overloads.constantSplitRepairs(s.mixin(), s.handler(), s.injector(), s.target(), s.ctx()),
@@ -238,6 +275,118 @@ final class MixinRepairs extends PreflightPart {
 				List<String> captured = lambdas.capturedValueRepairs(s.mixin(), s.handler(), s.injector(), s.target(), s.ctx(), s.bridges());
 				return captured.isEmpty() ? LambdaRepairs.addedParameterRepairs(s.mixin(), s.handler(), s.injector(), s.target(), s.ctx(), s.bridges()) : captured;
 			}, (s, lambda) -> s.named() + " targets " + lambda));
+
+	/** The registry class the platform freezes before Fabric mods' main entrypoints (REG-8). */
+	static final String MAPPED_REGISTRY = "net/minecraft/core/MappedRegistry";
+	static final String FREEZE = "freeze()Lnet/minecraft/core/Registry;";
+	/** The in-game check of a freeze before the main entrypoints (the loader's {@code EarlyFreeze}, on every platform). */
+	static final String EARLY_FREEZE = "io/github/cmdralph/fabricated/loader/EarlyFreeze";
+
+	/**
+	 * Gives an {@code @Inject} handler into {@code MappedRegistry.freeze} a check that returns at once while Fabric mods'
+	 * main entrypoints are still to run (REG-8). On Fabric no freeze comes before them: Fabric API moves vanilla's
+	 * bootstrap freeze after them (on a client, after the client entrypoints too), so no Fabric mod's handler ever runs
+	 * before its mod started. NeoForge and Forge freeze at bootstrap, before any mod is constructed (the in-game mod
+	 * freezes there as vanilla does), and NeoForge again before the main entrypoints: the root, as it adds its registries,
+	 * and on a client every registry before the game's client exists. A handler that reaches its mod there (Flashback's,
+	 * which starts Flashback, whose start-up registers key bindings through the client) failed the game's bootstrap.
+	 * Returns one item when it added the check, none otherwise.
+	 */
+	static List<String> earlyFreezeGuard(ClassNode mixin, MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx) {
+		if (!MixinNames.INJECT.equals(injector.desc) || !MAPPED_REGISTRY.equals(target.name)) return List.of();
+		// Class files before Java 6 have no stack map frames, which the check's jump would need here.
+		if ((mixin.version & 0xFFFF) < Opcodes.V1_6) return List.of();
+		if (handler.instructions.size() == 0 || Type.getReturnType(handler.desc) != Type.VOID_TYPE) return List.of();
+		if (PreflightAsm.selectedMethods(injector, target, ctx).stream().noneMatch(m -> FREEZE.equals(m.name + m.desc))) return List.of();
+		// A frame where the handler's code starts already (a loop at its start) stays the one there, after the check.
+		AbstractInsnNode first = handler.instructions.getFirst();
+		while (first != null && first.getOpcode() < 0 && !(first instanceof FrameNode)) first = first.getNext();
+		LabelNode run = new LabelNode();
+		InsnList check = new InsnList();
+		check.add(new MethodInsnNode(Opcodes.INVOKESTATIC, EARLY_FREEZE, "beforeMainEntrypoints", "()Z", false));
+		check.add(new JumpInsnNode(Opcodes.IFEQ, run));
+		check.add(new InsnNode(Opcodes.RETURN));
+		check.add(run);
+		// The frame the method starts with (its parameters, an empty stack), which the frames after it are relative to.
+		if (!(first instanceof FrameNode)) check.add(new FrameNode(Opcodes.F_SAME, 0, null, 0, null));
+		handler.instructions.insert(check);
+		handler.maxStack = Math.max(handler.maxStack, 1);
+		return List.of("");
+	}
+
+	/** The client's options, which NeoForge 21.1 creates before it loads mods, and Fabric after Fabric mods' entrypoints (ENTRY-2). */
+	static final String OPTIONS = "net/minecraft/client/Options";
+	/** The in-game recovery of a handler that threw before Fabric mods' entrypoints (the loader's {@code EarlyHandlers}). */
+	static final String EARLY_HANDLERS = "io/github/cmdralph/fabricated/loader/EarlyHandlers";
+	private static final String MODIFY_ARG = "Lorg/spongepowered/asm/mixin/injection/ModifyArg;";
+	private static final String MODIFY_ARGS = "Lorg/spongepowered/asm/mixin/injection/ModifyArgs;";
+	private static final String RUNTIME_EXCEPTION = "java/lang/RuntimeException";
+
+	/**
+	 * Wraps a Fabric mod's handler into the client's {@code Options} so that a {@link RuntimeException} it throws while
+	 * Fabric mods' entrypoints are still to run skips it for that call, as if its hook weren't there (ENTRY-2): an
+	 * {@code @Inject} or {@code @ModifyArgs} returns, a value modifier returns the value it was given, a
+	 * {@code @WrapWithCondition} lets the call be made. On Fabric the game creates its options after Fabric mods'
+	 * entrypoints; NeoForge 21.1 creates them before it loads mods, so a handler there reading what its mod's initializer
+	 * sets up (Bobby's config, for its render distance slider) threw, and the game stopped. Once the entrypoints have run,
+	 * the exception goes on as it would ({@code EarlyHandlers}), so a platform creating the options after them (or a later
+	 * reload of them) behaves as before. {@code @Redirect} and {@code @WrapOperation} handlers, which make the call
+	 * themselves, are left as they are. Returns one item when it wrapped the handler, none otherwise.
+	 */
+	static List<String> earlyOptionsGuard(ClassNode mixin, MethodNode handler, AnnotationNode injector, ClassNode target) {
+		if (!OPTIONS.equals(target.name) || (mixin.access & Opcodes.ACC_INTERFACE) != 0 || handler.instructions.size() == 0) return List.of();
+		// Class files before Java 6 have no stack map frames, which the handler for the exception would need here.
+		if ((mixin.version & 0xFFFF) < Opcodes.V1_6) return List.of();
+		boolean isStatic = (handler.access & Opcodes.ACC_STATIC) != 0;
+		Type[] params = Type.getArgumentTypes(handler.desc);
+		Type returns = Type.getReturnType(handler.desc);
+		InsnList fallback = new InsnList();
+		if (MixinNames.INJECT.equals(injector.desc) || MODIFY_ARGS.equals(injector.desc)) {
+			if (returns != Type.VOID_TYPE) return List.of();
+			fallback.add(new InsnNode(Opcodes.RETURN));
+		} else if (MixinNames.WRAP_WITH_CONDITION.contains(injector.desc)) {
+			if (returns != Type.BOOLEAN_TYPE) return List.of();
+			fallback.add(new InsnNode(Opcodes.ICONST_1));
+			fallback.add(new InsnNode(Opcodes.IRETURN));
+		} else if (MixinNames.VALUE_MODIFIERS.contains(injector.desc) || MODIFY_ARG.equals(injector.desc)) {
+			if (params.length == 0 || !params[0].equals(returns)) return List.of();
+			fallback.add(new VarInsnNode(returns.getOpcode(Opcodes.ILOAD), isStatic ? 0 : 1));
+			fallback.add(new InsnNode(returns.getOpcode(Opcodes.IRETURN)));
+		} else {
+			return List.of();
+		}
+		for (AbstractInsnNode insn : handler.instructions) {
+			if (insn instanceof MethodInsnNode call && call.owner.equals(EARLY_HANDLERS)) return List.of();
+		}
+		// The frame at the exception's handler: the parameters, as the method starts, and the exception.
+		List<Object> locals = new ArrayList<>();
+		if (!isStatic) locals.add(mixin.name);
+		for (Type param : params) {
+			locals.add(switch (param.getSort()) {
+				case Type.BOOLEAN, Type.BYTE, Type.CHAR, Type.SHORT, Type.INT -> Opcodes.INTEGER;
+				case Type.FLOAT -> Opcodes.FLOAT;
+				case Type.LONG -> Opcodes.LONG;
+				case Type.DOUBLE -> Opcodes.DOUBLE;
+				case Type.ARRAY -> param.getDescriptor();
+				default -> param.getInternalName();
+			});
+		}
+		LabelNode start = new LabelNode();
+		LabelNode end = new LabelNode();
+		LabelNode caught = new LabelNode();
+		handler.instructions.insert(start);
+		handler.instructions.add(end);
+		handler.instructions.add(caught);
+		handler.instructions.add(new FrameNode(Opcodes.F_FULL, locals.size(), locals.toArray(), 1, new Object[] {RUNTIME_EXCEPTION}));
+		handler.instructions.add(new LdcInsnNode(mixin.name.replace('/', '.') + "." + handler.name));
+		handler.instructions.add(new MethodInsnNode(Opcodes.INVOKESTATIC, EARLY_HANDLERS, "failed", "(Ljava/lang/RuntimeException;Ljava/lang/String;)V", false));
+		handler.instructions.add(fallback);
+		if (handler.tryCatchBlocks == null) handler.tryCatchBlocks = new ArrayList<>();
+		// Last, so that the handler's own catches, inside it, come first.
+		handler.tryCatchBlocks.add(new TryCatchBlockNode(start, end, caught, RUNTIME_EXCEPTION));
+		handler.maxStack = Math.max(handler.maxStack, Math.max(2, returns.getSize()));
+		return List.of("");
+	}
 
 	/** Runs {@link #injectorRepairs} on one injector, reporting each move; returns whether any changed the mixin. */
 	private boolean repairInjector(RepairSite site, List<PreflightFinding> out) {
@@ -419,11 +568,40 @@ final class MixinRepairs extends PreflightPart {
 			@SuppressWarnings("unchecked")
 			List<Object> values = (List<Object>) names;
 			values.set(i, raw.indexOf('/') >= 0 ? match.name : match.name.replace('/', '.'));
+			int repointed = repointSelectors(mixin, target, match.name, ctx);
 			moved.add(target.replace('/', '.') + " doesn't fit the mixin in this game build, whose anonymous classes are numbered differently; "
 					+ match.name.replace('/', '.') + " does" + (matchRenames.isEmpty() ? "" : ", naming the values it captures otherwise " + matchRenames)
-					+ ", and the mixin is pointed there");
+					+ ", and the mixin is pointed there" + (repointed == 0 ? "" : ", with the " + repointed + " selector(s) of its injectors naming "
+					+ target.replace('/', '.') + " as their owner"));
 		}
 		return moved;
+	}
+
+	/**
+	 * Points the selectors of {@code mixin}'s injectors that name {@code from} as their owner at {@code to}, the class
+	 * the mixin was pointed at instead of {@code from} ({@link #anonymousTargetRepairs}), and returns how many it pointed.
+	 * Mixin refuses a selector whose owner isn't one of the mixin's targets ("specifies a target class ..., which is not
+	 * supported"), and a Fabric mod's refmap names the owner of each method it maps: Polymer's hook into a stream codec
+	 * of {@code ByteBufCodecs}, moved from {@code $15} to {@code $24} on 1.21.1, stopped the game at bootstrap (ANON-2).
+	 * A selector read through the refmap is written out in full, as the refmap has it, with the new owner.
+	 */
+	private static int repointSelectors(ClassNode mixin, String from, String to, Context ctx) {
+		int pointed = 0;
+		for (MethodNode method : mixin.methods) {
+			for (AnnotationNode ann : Annotations.all(method)) {
+				if (!PreflightAsm.isInjector(ann.desc) || !(Annotations.value(ann, "method") instanceof List<?> selectors)) continue;
+				@SuppressWarnings("unchecked")
+				List<Object> values = (List<Object>) selectors;
+				for (int i = 0; i < values.size(); i++) {
+					if (!(values.get(i) instanceof String raw)) continue;
+					MemberRef ref = MemberRef.parse(ctx.resolve(raw));
+					if (ref.fuzzy() || ref.name() == null || !from.equals(ref.owner())) continue;
+					values.set(i, "L" + to + ";" + ref.name() + (ref.desc() == null ? "" : ref.desc()));
+					pointed++;
+				}
+			}
+		}
+		return pointed;
 	}
 
 	/**
@@ -540,7 +718,7 @@ final class MixinRepairs extends PreflightPart {
 	/** Whether pre-flight finds nothing but notes in {@code mixin} against {@code target}. */
 	private boolean fits(ClassNode mixin, ClassNode target, Context ctx) {
 		List<PreflightFinding> found = new ArrayList<>();
-		checker.checkMembers(mixin, target, new Context(ctx.configName(), ctx.mixinDotted(), ctx.config(), ctx.refmap(), false, false, false, Set.of(), found, null, loader));
+		checker.checkMembers(mixin, target, new Context(ctx.configName(), ctx.mixinDotted(), ctx.config(), ctx.refmap(), false, false, false, Map.of(), Set.of(), found, null, loader));
 		return found.stream().allMatch(f -> f.severity() == Severity.INFO);
 	}
 }
