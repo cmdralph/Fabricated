@@ -80,6 +80,16 @@ public final class ClassIndex {
 		return info == MISSING ? null : info;
 	}
 
+	/** The superclass (if any), then the interfaces, of a class; {@code null} if the class is not in the source. */
+	public List<String> supertypes(String internalName) {
+		ClassInfo info = get(internalName);
+		if (info == null) return null;
+		List<String> types = new ArrayList<>(info.interfaces().size() + 1);
+		if (info.superName() != null) types.add(info.superName());
+		types.addAll(info.interfaces());
+		return types;
+	}
+
 	public boolean contains(String internalName) {
 		return get(internalName) != null;
 	}
