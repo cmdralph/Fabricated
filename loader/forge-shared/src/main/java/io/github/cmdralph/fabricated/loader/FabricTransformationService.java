@@ -23,8 +23,10 @@ import net.minecraftforge.fml.loading.LoadingModList;
  * in the mods folder (its service file) into the service layer, next to the locators, and asks it for transformers once
  * FML's mod scan, and so Fabricated's discovery, is done: it gives one that applies
  * {@link FabricClassTransforms#beforeMixin} to the classes discovery named (Fabric mods' classes with {@code @Environment}
- * members, and the targets of {@code inject-interface} directives). ModLauncher's transformers run before Mixin, a launch
- * plugin. Default bridges, which must come after Mixin, are not added: no transformer from the mods folder runs after it.
+ * members, and the targets of {@code inject-interface} directives), and declares their default bridges. ModLauncher's
+ * transformers run before Mixin, a launch plugin, and no transformer from the mods folder runs after it: where Mixin
+ * applies mixins to a class, Fabricated's Mixin extension, which the game mod registers, takes the bridges out first and
+ * declares them after (CORPUS-63, as on NeoForge 21.1, {@link FabricClassTransformer}).
  */
 public final class FabricTransformationService implements ITransformationService {
 	private static final Logger LOGGER = LoggerFactory.getLogger("Fabricated");
@@ -80,11 +82,8 @@ public final class FabricTransformationService implements ITransformationService
 					+ " classes alone; see Forge's errors above", errors);
 			return List.of();
 		}
-		if (!state.defaultBridges().isEmpty()) {
-			LOGGER.warn("{} class(es) need default method bridges for the interfaces Fabric mods add, which Fabricated can't add on Forge yet: {}",
-					state.defaultBridges().size(), String.join(", ", new TreeSet<>(state.defaultBridges().keySet())));
-		}
-		Set<String> classes = FabricClassTransforms.classesBeforeMixin(state);
+		Set<String> classes = new TreeSet<>(FabricClassTransforms.classesBeforeMixin(state));
+		classes.addAll(state.defaultBridges().keySet());
 		if (classes.isEmpty()) return List.of();
 		LOGGER.info("Fabricated transforms {} class(es) for Fabric mods before Mixin", classes.size());
 		return List.of(new FabricClassTransformer(classes, this::gameLayer));

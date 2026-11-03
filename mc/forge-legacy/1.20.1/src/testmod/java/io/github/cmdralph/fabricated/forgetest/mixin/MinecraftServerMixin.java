@@ -11,6 +11,7 @@ import io.github.cmdralph.fabricated.forgetest.ForgeBiomeTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeBlockBreakTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeBrewingTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeCommandTest;
+import io.github.cmdralph.fabricated.forgetest.ForgeDefaultBridgeTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeDimensionTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeFluidTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeFuelTest;
@@ -46,7 +47,8 @@ import net.minecraft.server.MinecraftServer;
  * dispatcher ({@code method_3734} is {@code getCommands()}), whether Fabric's block break events fire as a player breaks
  * blocks, whether Fabric's use and attack callbacks are asked as a player uses and attacks things (finishing at a later
  * tick), whether a block Fabric's sleep events admit as a bed survives being slept on, whether the furnace takes the
- * test item Fabric's fuel registry made a fuel, and whether a brewing recipe Fabric's brewing registry added brews.
+ * test item Fabric's fuel registry made a fuel, whether a brewing recipe Fabric's brewing registry added brews, and whether
+ * the defaults of the interfaces the test mod's mixins add to entities beside Forge's run (default bridges).
  */
 @Mixin(MinecraftServer.class)
 public abstract class MinecraftServerMixin {
@@ -90,6 +92,7 @@ public abstract class MinecraftServerMixin {
 			ForgeBiomeTest.check(registries);
 			ForgeDimensionTest.check(method_30002(), method_3847(class_1937.field_25181));
 			ForgeFluidTest.check(method_30002());
+			ForgeDefaultBridgeTest.check(method_30002());
 			ForgeTestMod.checkVanillaStats((MinecraftServer) (Object) this);
 			ForgeTestMod.checkColors();
 			ForgeTestMod.checkParticles();
