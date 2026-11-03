@@ -855,8 +855,10 @@ public final class ModTranslator {
 				? "go to one of NeoForge's extensible enums, " + target.name.replace('/', '.') + ", whose enum extension file can't carry them"
 				: "go to " + target.name.replace('/', '.') + ", and this " + env.descriptor().loaderName() + "'s Mixin " + env.runtimeMixinVersion()
 						+ " can't apply an enum mixin (enum extensions came with Mixin 0.17.1)";
+		// Forge's extensible enums make them with their own factories, which Forge's enum extender writes (ENUM-7).
+		String with = target.interfaces.contains(EnumValuesMixins.FORGE_EXTENSIBLE_ENUM) ? " with the enum's create factories" : "";
 		findings.add(new PreflightFinding(Severity.INFO, configName, node.name.replace('/', '.'), "Its constants (" + String.join(", ", result.constants())
-				+ ") " + why + ": a mixin into its class initializer adds them, as mods' own " + env.descriptor().loaderName() + " builds do", ""));
+				+ ") " + why + ": a mixin into its class initializer adds them" + with + ", as mods' own " + env.descriptor().loaderName() + " builds do", ""));
 		return true;
 	}
 

@@ -29,6 +29,7 @@ final class MixinNames {
 	static final String COERCE = "Lorg/spongepowered/asm/mixin/injection/Coerce;";
 
 	static final String LOCAL = "Lcom/llamalad7/mixinextras/sugar/Local;";
+	static final String SHARE = "Lcom/llamalad7/mixinextras/sugar/Share;";
 
 	static final String UNIQUE = "Lorg/spongepowered/asm/mixin/Unique;";
 
