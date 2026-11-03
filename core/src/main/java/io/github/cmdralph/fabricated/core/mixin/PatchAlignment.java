@@ -229,7 +229,7 @@ final class PatchAlignment {
 	}
 
 	/** An instruction as it is compared: its opcode and what it names or pushes, without local variable slots or jump targets. */
-	private static String token(AbstractInsnNode insn) {
+	static String token(AbstractInsnNode insn) {
 		String op = Integer.toString(insn.getOpcode());
 		if (insn instanceof MethodInsnNode m) return op + " " + m.owner + "." + m.name + m.desc;
 		if (insn instanceof FieldInsnNode f) return op + " " + f.owner + "." + f.name + ":" + f.desc;
