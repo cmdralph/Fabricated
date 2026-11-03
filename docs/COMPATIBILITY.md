@@ -1109,6 +1109,13 @@ MixinExtras has NeoForge's jar, and a NeoForge mod nested in another jar has tha
   one it can't find (SpongePowered's, which Forge runs, and Fabric's before 0.17.0, which NeoForge 21.1 and 21.11 run),
   a local of a class this side doesn't have leaves the table: owo's slot mixin keeps a client-only rectangle, which
   stopped the Forge 26.2 dedicated server. The table is debug information only (LVT-1).
+- A mixin's `@Shadow` of a field another mod's mixin adds to the same class binds to that field on Fabric, whose Mixin
+  finds the fields of the mixins it prepared before; SpongePowered's, which Forge runs, looks in the class's own fields
+  only and stopped the game (MoreCulling's shadow of the mesh Fabric API's renderer mixin adds to
+  `BlockModelRenderState`, on the Forge 26.x clients). There the shadow is declared as the other mixin declares the
+  field, and Mixin merges the two into one field, which both mods' code uses, as on Fabric (CORPUS-74). One that can't
+  be declared so (a static shadow of an instance field, or a writable shadow of a final one) disables its mod, or leaves
+  the mixin out where it can.
 - Config screens a Fabric mod offers to Mod Menu (its `modmenu` entrypoint) open from the Config button of NeoForge's
   mod list. Mod Menu's API interfaces are provided, so such mods load without Mod Menu, which itself can't run on
   NeoForge (it would duplicate NeoForge's mod list): an installed Mod Menu jar is skipped and provided at its version.

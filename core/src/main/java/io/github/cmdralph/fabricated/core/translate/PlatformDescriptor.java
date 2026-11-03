@@ -67,10 +67,13 @@ public interface PlatformDescriptor {
 			return AccessTransformerConverter.FORGE_PRIVATE_FIELDS;
 		}
 
-		/** None described yet: Forge's coremods are the Forge sync's to describe (CORPUS-61). */
+		/**
+		 * Forge 61 to 66's transformers of game classes ({@link PlatformCoremods#forge}, CORPUS-78); none for Forge 47's
+		 * 1.20.1, whose branch describes its own.
+		 */
 		@Override
 		public PlatformCoremods coremods(String minecraftVersion) {
-			return PlatformCoremods.NONE;
+			return PlatformCoremods.forge(minecraftVersion);
 		}
 
 		/**

@@ -245,7 +245,7 @@ final class ConstructorRepairs extends PreflightPart {
 		Type[] all = Type.getArgumentTypes(delegate.desc);
 		int own = Type.getArgumentTypes(constructor.desc).length;
 		boolean neoForgeAdded = false;
-		for (int i = own; i < all.length; i++) neoForgeAdded |= all[i].getSort() == Type.OBJECT && all[i].getInternalName().startsWith("net/neoforged/");
+		for (int i = own; i < all.length; i++) neoForgeAdded |= all[i].getSort() == Type.OBJECT && MixinNames.isPlatformCode(all[i].getInternalName());
 		// Vanilla's class has this constructor and not the one it calls: the platform added that one.
 		neoForgeAdded |= vanilla != null && PreflightAsm.declared(vanilla, "<init>", constructor.desc) != null
 				&& PreflightAsm.declared(vanilla, "<init>", delegate.desc) == null;

@@ -57,16 +57,18 @@ public final class MixinCompat {
 	 * {@code CallbackInjector.sanityCheck} has the modifiers match exactly on 0.8.5; from 0.8.6, as in Fabric's Mixin, it
 	 * refuses only a handler that isn't static on a static target). All three rebind a detached mixin's calls to an
 	 * interface's super method (SUPER-1: {@code MixinTargetContext.updateStaticBinding}, which Fabric's Mixin stopped doing
-	 * for interfaces in 0.15.0).
+	 * for interfaces in 0.15.0), and none finds a {@code @Shadow} field among the fields another mixin adds to the same
+	 * target (CORPUS-74: {@code TargetClassContext.findAliasedField} looks in the target's own fields; Fabric's Mixin also
+	 * looks in the fields of the mixins prepared before, its {@code mixinFields}, from 0.12.0).
 	 */
 	private record Upstream(int lastLevel, boolean interfaceInjectors, ConstructorInjects constructorInjects, boolean argumentNames,
-			boolean exactStaticInjects, boolean rebindsInterfaceSuperCalls) {
+			boolean exactStaticInjects, boolean rebindsInterfaceSuperCalls, boolean shadowsMixinFields) {
 	}
 
 	private static final Map<String, Upstream> UPSTREAM = Map.of(
-			"0.8.5", new Upstream(18, false, ConstructorInjects.RETURNS_ONLY, false, true, true),
-			"0.8.6", new Upstream(21, true, ConstructorInjects.UNSAFE_POINTS, false, false, true),
-			"0.8.7", new Upstream(21, true, ConstructorInjects.UNSAFE_POINTS, false, false, true));
+			"0.8.5", new Upstream(18, false, ConstructorInjects.RETURNS_ONLY, false, true, true, false),
+			"0.8.6", new Upstream(21, true, ConstructorInjects.UNSAFE_POINTS, false, false, true, false),
+			"0.8.7", new Upstream(21, true, ConstructorInjects.UNSAFE_POINTS, false, false, true, false));
 	private static final Pattern LEVEL = Pattern.compile("JAVA_(\\d{1,3})");
 
 	private MixinCompat() {
@@ -190,6 +192,16 @@ public final class MixinCompat {
 	public static boolean rebindsInterfaceSuperCalls(String runtimeMixinVersion) {
 		Upstream upstream = upstream(runtimeMixinVersion);
 		return upstream != null && upstream.rebindsInterfaceSuperCalls();
+	}
+
+	/**
+	 * Whether the running Mixin finds a {@code @Shadow} field another mixin adds to the same target, as Fabric's does from
+	 * 0.12.0 (CORPUS-74: SpongePowered's releases, which Forge runs, find only the target's own fields, and stop the game
+	 * on such a shadow). True for a version not known here.
+	 */
+	public static boolean shadowsMixinFields(String runtimeMixinVersion) {
+		Upstream upstream = upstream(runtimeMixinVersion);
+		return upstream == null || upstream.shadowsMixinFields();
 	}
 
 	/**
