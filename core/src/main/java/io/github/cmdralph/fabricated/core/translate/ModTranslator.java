@@ -81,6 +81,7 @@ import io.github.cmdralph.fabricated.core.mixin.PreflightFinding.Severity;
 import io.github.cmdralph.fabricated.core.mixin.Refmap;
 import io.github.cmdralph.fabricated.core.remap.JarRemapper;
 import io.github.cmdralph.fabricated.core.remap.MappingException;
+import io.github.cmdralph.fabricated.core.remap.Supertypes;
 import io.github.cmdralph.fabricated.core.remap.TokenRemapper;
 import io.github.cmdralph.fabricated.core.resolve.Candidate;
 import io.github.cmdralph.fabricated.core.translate.TranslationEnvironment.Namespace;
@@ -195,7 +196,9 @@ public final class ModTranslator {
 				if (env.namespace() == Namespace.INTERMEDIARY) {
 					tokens = new TokenRemapper(env.mappings());
 					Set<String> refmaps = collectRefmapPaths(candidate.metadata(), archive);
-					JarRemapper.Result result = new JarRemapper(env.mappings()).remap(archive, refmaps);
+					// The game's classes, which the mod's may inherit from (CORPUS-86).
+					Supertypes game = env.game() == null ? Supertypes.NONE : Supertypes.ofRuntime(env.game()::supertypes, env.mappings());
+					JarRemapper.Result result = new JarRemapper(env.mappings(), game).remap(archive, refmaps);
 					remapped = result.files();
 					if (!result.strippedSignatureFiles().isEmpty()) {
 						notes.add("Removed jar signature files (signatures cannot survive remapping): " + result.strippedSignatureFiles());
