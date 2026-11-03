@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -2042,6 +2043,18 @@ class PipelineTest {
 		List<Pipeline.NeoForgeMod> twice = List.of(new Pipeline.NeoForgeMod("fabric_api_base", "0.4.30", "Older Base", Map.of(), List.of()),
 				neoForge.getFirst());
 		assertEquals("Forgified Fabric API Base", Pipeline.providedElsewhere(FabricApiPlan.parse(PLAN), twice).get("fabric-api-base").displayName());
+		// A module beyond the plan that parts of the in-game mod serve (one Fabricated passes through) counts when named.
+		List<Pipeline.NeoForgeMod> content = List.of(neoForge.getFirst(), new Pipeline.NeoForgeMod("fabric_content_registries_v0", "4.0.11",
+				"Forgified Fabric Content Registries (v0)", Map.of(), List.of()));
+		assertEquals(List.of("fabric-api-base"), List.copyOf(Pipeline.providedElsewhere(FabricApiPlan.parse(PLAN), content).keySet()));
+		Map<String, Pipeline.NeoForgeMod> more = Pipeline.providedElsewhere(FabricApiPlan.parse(PLAN),
+				List.of("fabric-content-registries-v0", "fabric-renderer-api-v1"), content);
+		assertEquals(List.of("fabric-api-base", "fabric-content-registries-v0"), List.copyOf(more.keySet()));
+		// The in-game mod's bridges ask the result, which then knows it too.
+		Pipeline.Result also = result.alsoProvidedElsewhere(more.keySet());
+		assertEquals(Set.of("fabric-api-base", "fabric-content-registries-v0"), also.providedElsewhere());
+		assertSame(result, result.alsoProvidedElsewhere(Set.of("fabric-api-base")));
+		assertEquals(result.mods(), also.mods());
 	}
 
 	/** Fabric Loader gives every mod a root, and mods take the first without checking (OneConfig's list of mods, POLY-1). */

@@ -82,6 +82,18 @@ public final class NativeModules {
 		return moduleByPackage.get(internalPackage);
 	}
 
+	/**
+	 * Every module the data files name: the index's native modules, and the modules the in-game mod's mixins and configs
+	 * serve, which include modules Fabricated passes through from the official Fabric API jar rather than plans (Forge
+	 * 47's fuel hook serves fabric-content-registries-v0): a mod providing any of them has the parts serving it stand down.
+	 */
+	public Set<String> modules() {
+		Set<String> modules = new TreeSet<>(packagesByModule.keySet());
+		configModules.values().forEach(modules::addAll);
+		mixinModules.values().forEach(modules::addAll);
+		return Collections.unmodifiableSet(modules);
+	}
+
 	/** The packages (internal form) of the given modules. */
 	public Set<String> packages(Collection<String> modules) {
 		Set<String> packages = new LinkedHashSet<>();
@@ -101,23 +113,30 @@ public final class NativeModules {
 		Set<String> unmapped = new LinkedHashSet<>();
 		for (Map.Entry<String, MixinConfigFile> config : configs.entrySet()) {
 			String name = config.getKey();
-			String mixinPackage = config.getValue().mixinPackage() == null ? "" : config.getValue().mixinPackage().replace('.', '/');
+			MixinConfigFile file = config.getValue();
+			String mixinPackage = file.mixinPackage() == null ? "" : file.mixinPackage().replace('.', '/');
 			List<String> modules = configModules.containsKey(name) ? configModules.get(name)
 					: owner(mixinPackage) != null ? List.of(owner(mixinPackage)) : null;
 			if (modules != null) {
-				if (modules.stream().anyMatch(provided::contains)) {
-					droppedConfigs.add(name);
-					continue;
-				}
-				// A mixin in a sub-package another module owns stands down with that module: Forge 47's loot config, in
-				// fabric-loot-api-v2's package, has fabric-loot-tables-v1's mixins in its table package.
+				// Each mixin serves the module of its sub-package when another module owns one (Forge 47's loot config, in
+				// fabric-loot-api-v2's package, has fabric-loot-tables-v1's mixins in its table package, and Forgified
+				// Fabric API provides the first alone), else the config's: each stands down with the module it serves.
+				boolean configProvided = modules.stream().anyMatch(provided::contains);
+				Set<String> all = new LinkedHashSet<>(file.allMixins());
 				Set<String> dropped = new LinkedHashSet<>();
-				for (String mixin : config.getValue().allMixins()) {
-					String internal = config.getValue().internalName(mixin);
-					String owner = internal.lastIndexOf('/') > 0 ? owner(internal.substring(0, internal.lastIndexOf('/'))) : null;
-					if (owner != null && provided.contains(owner)) dropped.add(mixin);
+				for (String mixin : all) {
+					String owner = subPackageOwner(file.internalName(mixin), mixinPackage);
+					if (owner != null ? provided.contains(owner) : configProvided) dropped.add(mixin);
 				}
-				if (!dropped.isEmpty()) droppedMixins.put(name, dropped);
+				// The whole config goes once none of its mixins stay, or when its plugin's package leaves the in-game mod (a
+				// config left without its plugin's class stops the launch).
+				String plugin = file.plugin() == null ? "" : file.plugin().replace('.', '/');
+				boolean pluginLeaves = plugin.lastIndexOf('/') > 0 && packages.contains(plugin.substring(0, plugin.lastIndexOf('/')));
+				if (pluginLeaves || (all.isEmpty() ? configProvided : dropped.size() == all.size())) {
+					droppedConfigs.add(name);
+				} else if (!dropped.isEmpty()) {
+					droppedMixins.put(name, dropped);
+				}
 				continue;
 			}
 			// A config of Fabricated's own package: each of its mixins says what it serves.
@@ -130,6 +149,21 @@ public final class NativeModules {
 			if (!dropped.isEmpty()) droppedMixins.put(name, dropped);
 		}
 		return new StandDown(packages, droppedConfigs, droppedMixins, unmapped);
+	}
+
+	/**
+	 * The module owning a mixin's package, or the nearest package above it, below its config's package (whose module the
+	 * caller knows): null for a mixin no sub-package's module claims.
+	 */
+	private String subPackageOwner(String internalName, String configPackage) {
+		if (configPackage.isEmpty()) return null;
+		String pkg = internalName.lastIndexOf('/') > 0 ? internalName.substring(0, internalName.lastIndexOf('/')) : "";
+		while (pkg.startsWith(configPackage + "/")) {
+			String owner = owner(pkg);
+			if (owner != null) return owner;
+			pkg = pkg.substring(0, pkg.lastIndexOf('/'));
+		}
+		return null;
 	}
 
 	/**

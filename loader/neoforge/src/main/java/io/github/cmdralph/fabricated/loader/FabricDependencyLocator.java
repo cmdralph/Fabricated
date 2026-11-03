@@ -171,6 +171,8 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 		// pipeline reads any class): pre-flight then sees the provider's classes, as the game will.
 		Set<String> standingDown = new HashSet<>();
 		NativeModules.StandDown standDown = null;
+		// The modules other mods provide, the plan's and those beyond it that parts of the in-game mod serve.
+		Set<String> providedModules = Set.of();
 		Overlay gameModOverlay = null;
 		FabricApiPlan plan;
 		Pipeline.Result result;
@@ -220,7 +222,8 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 				NativeModules nativeModules = index == null ? NativeModules.NONE : NativeModules.parse(new String(index, StandardCharsets.UTF_8),
 						archive.contains(NativeModules.MIXIN_MODULES) ? archive.readText(NativeModules.MIXIN_MODULES) : null);
 				neoMods = nativeModules.providingByPackages(neoForgeMods.mods(), neoForgeMods.providers(), providerNotes);
-				Map<String, Pipeline.NeoForgeMod> provided = Pipeline.providedElsewhere(plan, neoMods);
+				Map<String, Pipeline.NeoForgeMod> provided = Pipeline.providedElsewhere(plan, nativeModules.modules(), neoMods);
+				providedModules = provided.keySet();
 				Map<String, MixinConfigFile> configs = new LinkedHashMap<>();
 				for (String name : archive.entryNames()) {
 					if (name.indexOf('/') < 0 && name.endsWith(".mixins.json")) configs.put(name, MixinConfigFile.parse(archive.readText(name)));
@@ -263,7 +266,7 @@ public final class FabricDependencyLocator implements IDependencyLocator {
 					(mappingsCache, mojangPath) -> IntermediaryMappings.load(mappingsCache, mcVersion, client, mojangPath),
 					Fml.programArgs(), PlatformDescriptor.NEOFORGE);
 
-			result = Pipeline.run(input);
+			result = Pipeline.run(input).alsoProvidedElsewhere(providedModules);
 			mixinFailures = Pipeline.mixinFailures(input);
 			FabricLoaderApiCopies.notes().forEach(n -> result.report().line("Fabric Loader API", n));
 			providerNotes.forEach(n -> result.report().line("Fabric API providers", n));
