@@ -3,6 +3,25 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-03: a shadow of another mod's mixin field on Forge, and the Forge corpus stops (task 5)
+
+- **CORPUS-74** (`MixinRepairs.sharedFieldRepair`, `MixinCompat.shadowsMixinFields`): the Forge 26.2 corpus client
+  crashed on MoreCulling's shadow of the mesh Fabric API's renderer mixin adds to `BlockModelRenderState` (extended run
+  41590136017), and Forge 47's on owo's shadow of Fabric API's creative screen page (41590139262). Fabric's Mixin finds
+  a `@Shadow` field among the fields of the mixins it prepared before; SpongePowered's, which Forge runs, doesn't.
+  There such a shadow is now declared as the other mixin declares the field, which Mixin merges with it into one
+  field, as on Fabric; one that can't be fails pre-flight. Nothing changes on NeoForge, whose Mixin is Fabric's.
+- **Forge corpus stops read, fixed on the Forge branches** (#254, #249; the rows in *Findings* and `FINDINGS.md`):
+  Fabric mods' registries made in their main entrypoints (CORPUS-70, verified), GeckoLib's early registry writes on
+  Forge 61 to 66 (CORPUS-71), objects made before what they hold is registered (CORPUS-73, verified: TechReborn and
+  Lootr load), and Fabric API's registry aliases in Forge's registries (CORPUS-75: Waystones' renamed waystones).
+  Found and open: Modern Industrialization without Magna on Forge 47 (CORPUS-72), and two Forge 47 client entrypoint
+  failures (CORPUS-76, CORPUS-77).
+- **Tests:** the renderer test mod closes its minecarts in barriers on NeoForge too, as on Forge (a mob pushing the
+  lower one away kept it from being drawn once on Forge 26.1.2).
+- **CI:** core tests pass locally (the pre-flight and helper suites; one test new, one extended). The Forge branches
+  take the core fix by the sync, with a test mod check on all five Forge versions.
+
 ## 2026-11-03: Forgified Fabric API's modules on Forge 47, and owo's slot mixin (task 5)
 
 - **PROVIDER-13** (`NativeModules.modules`, `NativeModules.standDown`, `Pipeline.providedElsewhere`,
