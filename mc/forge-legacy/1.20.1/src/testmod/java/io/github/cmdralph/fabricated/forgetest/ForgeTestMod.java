@@ -62,6 +62,7 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 		if (FabricLoader.getInstance().getModContainer("minecraft").flatMap(c -> c.findPath("/assets/minecraft/lang/en_us.json")).isPresent()) {
 			LOGGER.info("FABRICATED-FORGE-TEST game resources OK");
 		}
+		ForgeRecordedFramesTest.check();
 		try {
 			class_2960 id = new class_2960(MOD_ID, ITEM_PATH);
 			class_2378<class_1792> items = class_7923.field_41178;
