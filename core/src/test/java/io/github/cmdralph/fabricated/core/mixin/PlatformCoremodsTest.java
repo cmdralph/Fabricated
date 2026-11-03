@@ -51,6 +51,10 @@ class PlatformCoremodsTest {
 	/** A class Forge's list names with no method: only its synthetic methods are changed. */
 	static final String TADPOLE = "net/minecraft/world/entity/animal/frog/Tadpole";
 	static final String SPAWN_DATA = "()Lnet/minecraft/world/entity/SpawnGroupData;";
+	static final String STRUCTURE_TEMPLATE = "net/minecraft/world/level/levelgen/structure/templatesystem/StructureTemplate";
+	/** The lambda body of {@code StructureTemplate.placeEntities} that finalizes a structure mob's spawn, as the game compiles it. */
+	static final String PLACE_ENTITY = "(Lnet/minecraft/world/level/block/Rotation;Lnet/minecraft/world/level/block/Mirror;Lnet/minecraft/world/phys/Vec3;Z"
+			+ "Lnet/minecraft/world/level/ServerLevelAccessor;Lnet/minecraft/world/entity/Entity;)V";
 
 	/** The game's classes of a 1.21.1 build, as its jars have them: spawners calling a mob's {@code finalizeSpawn}. */
 	static Map<String, byte[]> game() {
@@ -157,9 +161,11 @@ class PlatformCoremodsTest {
 	}
 
 	/**
-	 * The game's classes of a Forge 61 to 66 build (26.1.2's), as its jars have them: {@code PatrolSpawner} finalizing a
-	 * patrol member's spawn in the method Forge's list names, in a lambda body and in a method the list doesn't name;
-	 * {@code Tadpole}, which the list names with no method, in a lambda body and in another method.
+	 * The game's classes of a Forge 61 to 66 build, as its jars have them: {@code PatrolSpawner} finalizing a patrol
+	 * member's spawn in the method Forge's lists name, in a lambda body and in a method the lists don't name;
+	 * {@code Tadpole}, which Forge 61's list names with no method, in a lambda body and in another method; and
+	 * {@code StructureTemplate}, which Forge 61's list names with no method too, finalizing a structure mob's spawn in the
+	 * lambda body of {@code placeEntities}, the mob an argument.
 	 */
 	static Map<String, byte[]> forgeGame() {
 		Map<String, byte[]> classes = new HashMap<>();
@@ -188,9 +194,24 @@ class PlatformCoremodsTest {
 		spawnIn(tadpole, Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "ageUp", SPAWN_DATA, MOB, FINALIZE_REASON);
 		tadpole.visitEnd();
 		classes.put(TADPOLE, tadpole.toByteArray());
+		ClassWriter template = new ClassWriter(ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
+		template.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, STRUCTURE_TEMPLATE, null, "java/lang/Object", null);
+		MethodVisitor place = template.visitMethod(lambda, "lambda$placeEntities$0", PLACE_ENTITY, null, null);
+		place.visitCode();
+		place.visitVarInsn(Opcodes.ALOAD, 5);
+		place.visitTypeInsn(Opcodes.CHECKCAST, MOB);
+		for (int i = 0; i < 4; i++) place.visitInsn(Opcodes.ACONST_NULL);
+		place.visitMethodInsn(Opcodes.INVOKEVIRTUAL, MOB, "finalizeSpawn", FINALIZE_REASON, false);
+		place.visitInsn(Opcodes.POP);
+		place.visitInsn(Opcodes.RETURN);
+		place.visitMaxs(0, 0);
+		place.visitEnd();
+		template.visitEnd();
+		classes.put(STRUCTURE_TEMPLATE, template.toByteArray());
 		for (String type : List.of("net/minecraft/world/level/ServerLevelAccessor", "net/minecraft/world/DifficultyInstance",
 				"net/minecraft/world/entity/EntitySpawnReason", "net/minecraft/world/entity/SpawnGroupData", "net/minecraft/server/level/ServerLevel",
-				"net/minecraft/core/BlockPos", "net/minecraft/util/RandomSource")) {
+				"net/minecraft/core/BlockPos", "net/minecraft/util/RandomSource", "net/minecraft/world/level/block/Rotation",
+				"net/minecraft/world/level/block/Mirror", "net/minecraft/world/phys/Vec3", "net/minecraft/world/entity/Entity")) {
 			ClassWriter cw = new ClassWriter(0);
 			cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_INTERFACE | Opcodes.ACC_ABSTRACT, type, null, "java/lang/Object", null);
 			cw.visitEnd();
@@ -335,7 +356,7 @@ class PlatformCoremodsTest {
 		// CORPUS-78: Forge's MethodRedirector, a ModLauncher transformer, so before Mixin, points PatrolSpawner's call at
 		// ForgeEventFactory.onFinalizeSpawn: Friends & Foes' @Inject at a PatrollingMonster's call there found nothing.
 		Map<String, byte[]> game = forgeGame();
-		ClassBytesSource seen = PlatformCoremods.forge("26.1.2").over(game::get);
+		ClassBytesSource seen = PlatformCoremods.forge("1.21.11").over(game::get);
 		String hook = FORGE_HOOKS + ".onFinalizeSpawn" + FINALIZE_REASON_HOOK;
 		Map<String, String> patrols = callByMethod(seen.read(PATROLS));
 		assertEquals(hook, patrols.get("spawnPatrolMember"), "the method the list names");
@@ -344,7 +365,14 @@ class PlatformCoremodsTest {
 		Map<String, String> tadpole = callByMethod(seen.read(TADPOLE));
 		assertEquals(hook, tadpole.get("lambda$ageUp$0"), "listed with no method: its synthetic methods only");
 		assertEquals(MOB + ".finalizeSpawn" + FINALIZE_REASON, tadpole.get("ageUp"));
+		assertEquals(hook, callByMethod(seen.read(STRUCTURE_TEMPLATE)).get("lambda$placeEntities$0"), "listed with no method: a structure mob's");
 		assertArrayEquals(game.get(FORGE_HOOKS), seen.read(FORGE_HOOKS), "the hook's own call stays");
+		// Forge 64's own list (26.1.2's branch) names neither Tadpole nor StructureTemplate: their calls stay, Friends &
+		// Foes' hook at the structure's among them, which 26.1's list moved to a hook call Forge 64 never makes.
+		ClassBytesSource forge64 = PlatformCoremods.forge("26.1.2").over(game::get);
+		assertEquals(hook, callByMethod(forge64.read(PATROLS)).get("spawnPatrolMember"));
+		assertArrayEquals(game.get(TADPOLE), forge64.read(TADPOLE));
+		assertArrayEquals(game.get(STRUCTURE_TEMPLATE), forge64.read(STRUCTURE_TEMPLATE));
 
 		// The classes as the transformer leaves them load and run, the hook's event fired once for each redirected spawn.
 		Map<String, byte[]> loaded = new HashMap<>(game);
@@ -371,9 +399,9 @@ class PlatformCoremodsTest {
 
 	@Test
 	void forge61To66sTransformersAreDescribedForTheirVersionsAndNotForge47sOrAnother() {
-		// Each Forge branch's finalize_spawn_targets.json, as this build ships it: 1.21.11's and 26.1's list 27 classes,
-		// 26.2's and 26.3's 23.
-		Map<String, Integer> classes = Map.of("1.21.11", 27, "26.1", 27, "26.1.2", 27, "26.2", 23, "26.2.1", 23, "26.3", 23);
+		// Each Forge branch's finalize_spawn_targets.json, as this build ships it: 1.21.11's lists 27 classes, 26.1.2's,
+		// 26.2's and 26.3's 23 (CORPUS-78: 26.1.2's, Forge 64's, is not 26.1's, which lists 27).
+		Map<String, Integer> classes = Map.of("1.21.11", 27, "26.1.2", 23, "26.2", 23, "26.3", 23);
 		classes.forEach((version, count) -> {
 			assertEquals(count, PlatformCoremods.forge(version).redirectedClasses(), version);
 			assertEquals(count, PlatformDescriptor.FORGE.coremods(version).redirectedClasses(), version);
@@ -382,15 +410,19 @@ class PlatformCoremodsTest {
 			assertTrue(patrols.synthetic(), version);
 			assertEquals(FORGE_HOOKS, patrols.hookOwner(), version);
 		});
-		for (String line : List.of("1.21.11", "26.1", "26.2", "26.3")) {
+		assertFalse(PlatformCoremods.forge("1.21.11").redirectsIn(STRUCTURE_TEMPLATE).isEmpty());
+		for (String version : List.of("26.1.2", "26.2", "26.3")) {
+			for (String unlisted : List.of(STRUCTURE_TEMPLATE, TADPOLE)) assertTrue(PlatformCoremods.forge(version).redirectsIn(unlisted).isEmpty(), version + " " + unlisted);
+		}
+		for (String line : List.of("1.21.11", "26.1.2", "26.2", "26.3")) {
 			PlatformCoremods.forgeSpawnTargets(line).forEach((target, methods) -> {
 				assertTrue(target.startsWith("net/minecraft/"), target);
 				methods.forEach(method -> assertTrue(method.indexOf('(') > 0 && method.contains(")"), target + " " + method));
 			});
 		}
-		// Forge 47's 1.20.1 is described on its branch; another version's transformers aren't known, so the game is as its
-		// jars have it.
-		for (String version : List.of("1.20.1", "1.21.1", "1.21.10", "1.21.110", "26.10", "26.4", "27.1")) {
+		// Forge 47's 1.20.1 is described on its branch; another version's transformers aren't known (each version has its
+		// own branch and list, 26.1.2's not 26.1's), so the game is as its jars have it.
+		for (String version : List.of("1.20.1", "1.21.1", "1.21.10", "1.21.110", "26.1", "26.1.1", "26.2.1", "26.10", "26.4", "27.1")) {
 			assertSame(PlatformCoremods.NONE, PlatformCoremods.forge(version), version);
 			assertSame(PlatformCoremods.NONE, PlatformDescriptor.FORGE.coremods(version), version);
 		}
