@@ -28,7 +28,7 @@ find "$dir/libraries" -name '*.jar' -path '*minecraftforge*' 2>/dev/null | sort 
 				echo "--- $entry: constants, calls and fields"
 				javap -c -p -constants "$target/$entry" 2>/dev/null \
 					| grep -E 'ldc|invoke|getfield|putfield|getstatic|// (String|Method|Field|class) |^  [a-z].*\(' \
-					| sed -E 's/^ +//' | awk '!seen[$0]++' | head -80 | cut -c1-260
+					| sed -E 's/^ +//' | awk '!seen[$0]++' | head -40 | cut -c1-260
 				;;
 			*.json|*.js|*.txt|*.cfg)
 				echo "--- $entry"
