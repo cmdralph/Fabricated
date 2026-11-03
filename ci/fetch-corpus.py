@@ -2,17 +2,18 @@
 """Downloads mods for one Minecraft version from Modrinth into a directory (CI only): ci/mod-corpus.txt's Fabric
 mods, or the given projects' builds for the given loader.
 
-Each project's newest build for the version is fetched, or the build named as <project>@<version-id>, then its
-required dependencies, recursively (the version a dependency names when it is a build for the version, else the
-newest). Files come only from Modrinth's CDN and must match the SHA-512 Modrinth lists. Fabric API is left out (CI
-adds the official jar). Prints one line per mod, with the version id for pinning; a mod without a build for the
-version is reported and skipped.
+Each project's newest build for the version is fetched (passing over a later version's build that lists this one
+too), or the build named as <project>@<version-id>, then its required dependencies, recursively (the version a
+dependency names when it is a build for the version, else the newest). Files come only from Modrinth's CDN and must
+match the SHA-512 Modrinth lists. Fabric API is left out (CI adds the official jar). Prints one line per mod, with
+the version id for pinning; a mod without a build for the version is reported and skipped.
 
 Usage: ci/fetch-corpus.py <minecraft-version> <out-dir> [<loader> <project>[@<version-id>]...]
 """
 import hashlib
 import json
 import os
+import re
 import socket
 import sys
 import time
@@ -46,10 +47,38 @@ def get(url):
         time.sleep(2 << attempt)
 
 
+RELEASE = re.compile(r"(?<![\d.])\d+(?:\.\d+)+(?![\d.])")
+
+
+def release(name):
+    """A release's version as numbers (26.1.2 as (26, 1, 2)), or None for a snapshot's name."""
+    return tuple(int(part) for part in name.split(".")) if re.fullmatch(r"\d+(?:\.\d+)+", name) else None
+
+
+def made_for_later(version, mc):
+    """Whether the build names, in its version number or file name, only Minecraft versions it lists that are later
+    than mc: a later version's build its project also lists for mc. Sodium's and Iris's 26.3 builds list 26.1.2 and
+    26.2, and Sodium's refuses those versions' LWJGL 3.4.1 at launch (PR run 41665998918)."""
+    file = next((f for f in version["files"] if f.get("primary")), version["files"][0] if version["files"] else {})
+    text = version.get("version_number", "") + " " + file.get("filename", "").removesuffix(".jar")
+    listed = set(version.get("game_versions", []))
+    named = {release(token) for token in RELEASE.findall(text) if token in listed} - {None}
+    return bool(named) and min(named) > release(mc)
+
+
 def newest(project, mc, loader):
+    """The project's newest build for mc, passing over the builds made for a later version that list mc too."""
     query = urllib.parse.urlencode({"loaders": json.dumps([loader]), "game_versions": json.dumps([mc])})
     versions = json.loads(get(f"{API}/project/{urllib.parse.quote(project)}/version?{query}"))
-    return versions[0] if versions else None
+    if not versions:
+        return None
+    if release(mc) is None:
+        return versions[0]
+    version = next((v for v in versions if not made_for_later(v, mc)), versions[0])
+    if version is not versions[0]:
+        print(f"note: {project}'s {versions[0]['version_number']} is a later Minecraft version's build that lists {mc}; "
+              f"fetching {version['version_number']}", file=sys.stderr)
+    return version
 
 
 def pinned(project, mc, loader):

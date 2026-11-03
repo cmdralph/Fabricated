@@ -33,8 +33,11 @@ import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
+import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.ClassNode;
+import org.objectweb.asm.tree.FieldInsnNode;
 import org.objectweb.asm.tree.MethodInsnNode;
+import org.objectweb.asm.tree.MethodNode;
 
 import io.github.cmdralph.fabricated.api.FabricApiModule;
 import io.github.cmdralph.fabricated.api.FabricMod;
@@ -1370,11 +1373,15 @@ class PipelineTest {
 		// ENUM-5: Wilder Wild's grass colour, a constant with a body of its own in one of NeoForge's extensible enums. FML
 		// refuses the enum mixin; an ordinary mixin adding the constant, with a delegate class running the body, passes
 		// pre-flight and loads the mod.
+		// A second such mixin in the config gets delegates of its own, not the first one's names.
+		Map<String, String> other = Map.of(TestEnumBodies.MIXIN, "com/example/mixin/OtherMixin", TestEnumBodies.BODY, "com/example/mixin/OtherMixin$1");
 		Path mods = Files.createDirectories(game.resolve("mods"));
 		Path tundra = TestJars.create().fabricModJson(TestJars.modJson("example", "1.0", "\"mixins\":[\"example.mixins.json\"]"))
-				.text("example.mixins.json", "{\"required\":true,\"package\":\"com.example.mixin\",\"mixins\":[\"ModifierMixin\"]}")
+				.text("example.mixins.json", "{\"required\":true,\"package\":\"com.example.mixin\",\"mixins\":[\"ModifierMixin\",\"OtherMixin\"]}")
 				.bytes(TestEnumBodies.MIXIN + ".class", TestEnumBodies.mixin())
 				.bytes(TestEnumBodies.BODY + ".class", TestEnumBodies.body(false))
+				.bytes("com/example/mixin/OtherMixin.class", renamed(TestEnumBodies.mixin(), other))
+				.bytes("com/example/mixin/OtherMixin$1.class", renamed(TestEnumBodies.body(false), other))
 				.bytes(TestEnumBodies.HOLDER + ".class", TestEnumBodies.holder())
 				.write(mods.resolve("tundra.jar"));
 		Map<String, byte[]> gameClasses = Map.of(TARGET, targetClass(), TestEnumBodies.TARGET, TestEnumBodies.target(), TestEnumBodies.COLOR,
@@ -1387,15 +1394,36 @@ class PipelineTest {
 			new ClassReader(overlay.read(TestEnumBodies.MIXIN + ".class")).accept(mixin, ClassReader.SKIP_CODE);
 			assertEquals(0, mixin.access & Opcodes.ACC_ENUM, "the enum mixin is replaced by an ordinary one");
 			assertNotNull(overlay.read(TestEnumBodies.BODIES + "$0.class"), "the body's delegate is in the overlay");
+			List<String> delegates = new java.util.ArrayList<>();
+			for (String name : List.of(TestEnumBodies.MIXIN, "com/example/mixin/OtherMixin")) {
+				ClassNode replaced = new ClassNode();
+				new ClassReader(overlay.read(name + ".class")).accept(replaced, 0);
+				for (MethodNode m : replaced.methods) {
+					for (AbstractInsnNode insn : m.instructions) {
+						if (insn instanceof org.objectweb.asm.tree.TypeInsnNode t && t.getOpcode() == Opcodes.NEW && t.desc.startsWith(TestEnumBodies.BODIES)) {
+							delegates.add(t.desc);
+						}
+					}
+				}
+			}
+			assertEquals(List.of(TestEnumBodies.BODIES + "$0", TestEnumBodies.BODIES + "1$0"), delegates);
+			assertNotNull(overlay.read(TestEnumBodies.BODIES + "1$0.class"), "the second mixin's delegate is in the overlay");
 		}
+	}
+
+	/** The class with the classes {@code names} names renamed. */
+	private static byte[] renamed(byte[] data, Map<String, String> names) {
+		ClassWriter cw = new ClassWriter(0);
+		new ClassReader(data).accept(new org.objectweb.asm.commons.ClassRemapper(cw, new org.objectweb.asm.commons.SimpleRemapper(names)), 0);
+		return cw.toByteArray();
 	}
 
 	@Test
 	void anEnumMixinBecomesAMixinAddingItsConstantsWhereMixinAppliesNoEnumMixins(@TempDir Path game) throws Exception {
 		// ENUM-7: Friends and Foes' mob categories on Forge 61 to 66, whose Mixin 0.8.7 applies no enum mixins (the
 		// constructor its enum mixin shadows stopped the corpus clients' bootstrap). An ordinary mixin adding the constants
-		// takes its place; where none can, as the mod's code reads a constant as a field of the enum, pre-flight disables
-		// the mod, which Mixin would stop the game on.
+		// takes its place; where none can, as the enum mixin has a method of its own, pre-flight disables the mod, which
+		// Mixin would stop the game on.
 		String category = "net/minecraft/world/Category";
 		Path mods = Files.createDirectories(game.resolve("mods"));
 		Path friends = TestJars.create().fabricModJson(TestJars.modJson("friends", "1.0", "\"mixins\":[\"friends.mixins.json\"]"))
@@ -1404,21 +1432,16 @@ class PipelineTest {
 						List.of(TestEnums.Constant.plain("FRIENDS_GLARES")), cw -> {
 						}))
 				.write(mods.resolve("friends.jar"));
-		ClassWriter reader = new ClassWriter(0);
-		reader.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, "com/foes/Reader", null, "java/lang/Object", null);
-		MethodVisitor read = reader.visitMethod(Opcodes.ACC_STATIC, "read", "()Ljava/lang/Object;", null, null);
-		read.visitCode();
-		read.visitFieldInsn(Opcodes.GETSTATIC, category, "FOES_RASCALS", "L" + category + ";");
-		read.visitInsn(Opcodes.ARETURN);
-		read.visitMaxs(1, 0);
-		read.visitEnd();
-		reader.visitEnd();
 		Path foes = TestJars.create().fabricModJson(TestJars.modJson("foes", "1.0", "\"mixins\":[\"foes.mixins.json\"]"))
 				.text("foes.mixins.json", "{\"required\":false,\"package\":\"com.foes.mixin\",\"plugin\":\"com.foes.Plugin\",\"mixins\":[\"CategoryMixin\"]}")
 				.bytes("com/foes/mixin/CategoryMixin.class", TestEnums.mixin("com/foes/mixin/CategoryMixin", category,
 						List.of(TestEnums.Constant.plain("FOES_RASCALS")), cw -> {
+							MethodVisitor rascal = cw.visitMethod(Opcodes.ACC_PUBLIC, "rascal", "()V", null, null);
+							rascal.visitCode();
+							rascal.visitInsn(Opcodes.RETURN);
+							rascal.visitMaxs(0, 1);
+							rascal.visitEnd();
 						}))
-				.bytes("com/foes/Reader.class", reader.toByteArray())
 				.write(mods.resolve("foes.jar"));
 		Map<String, byte[]> gameClasses = Map.of(TARGET, targetClass(), category, TestEnums.target(category, false, List.of("()V"), List.of(),
 				Map.of(), cw -> {
@@ -1453,6 +1476,171 @@ class PipelineTest {
 		try (SafeArchive overlay = SafeArchive.open(neoForge.mods().getFirst().translated().overlay(), ArchiveLimits.DEFAULTS)) {
 			assertNull(overlay.read("com/friends/mixin/CategoryMixin.class"), "the mod's own enum mixin");
 		}
+	}
+
+	@Test
+	void anEnumMixinsConstantsTheModReadsAsFieldsOfTheEnumComeFromAHolderWhereMixinAppliesNoEnumMixins(@TempDir Path game) throws Exception {
+		// CORPUS-80: Farmer's Delight on Forge 61 to 66, whose Mixin 0.8.7 applies no enum mixins. Its recipe book type and
+		// search category become ordinary mixins adding the constants (ENUM-7), but its own classes read them as fields of
+		// the enums (FDRecipeBookTypes.COOKING = RecipeBookType.FARMERSDELIGHT_COOKING), which no mixin can add, so pre-flight
+		// disabled it. The reads go to holder classes instead. Forge makes RecipeBookType extensible with an init that throws
+		// there ("This is not implemented yet"), which its create factory runs on each constant: the mixin skips it for the
+		// mod's. The search category's constant takes the mod's categories, from its suppliers, as Fabric's would.
+		String bookType = "net/minecraft/world/inventory/BookType";
+		String settings = "net/minecraft/stats/BookSettings";
+		String search = "net/minecraft/client/gui/screens/recipebook/SearchCategory";
+		String category = "net/minecraft/world/item/crafting/BookCategory";
+		String supplier = "Ljava/util/function/Supplier;";
+		ClassWriter types = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		types.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_SUPER, "com/cooking/Types", null, "java/lang/Object", null);
+		types.visitField(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "COOKING", "L" + bookType + ";", null, null).visitEnd();
+		MethodVisitor typesInit = types.visitMethod(Opcodes.ACC_STATIC, "<clinit>", "()V", null, null);
+		typesInit.visitCode();
+		typesInit.visitFieldInsn(Opcodes.GETSTATIC, bookType, "COOKING", "L" + bookType + ";");
+		typesInit.visitFieldInsn(Opcodes.PUTSTATIC, "com/cooking/Types", "COOKING", "L" + bookType + ";");
+		typesInit.visitInsn(Opcodes.RETURN);
+		typesInit.visitMaxs(0, 0);
+		typesInit.visitEnd();
+		types.visitEnd();
+		ClassWriter screen = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		screen.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_SUPER, "com/cooking/client/Screen", null, "java/lang/Object", null);
+		MethodVisitor searched = screen.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "category", "()Ljava/lang/Object;", null, null);
+		searched.visitCode();
+		searched.visitFieldInsn(Opcodes.GETSTATIC, search, "COOKING", "L" + search + ";");
+		searched.visitInsn(Opcodes.ARETURN);
+		searched.visitMaxs(0, 0);
+		searched.visitEnd();
+		screen.visitEnd();
+		ClassWriter categories = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		categories.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_SUPER, "com/cooking/Categories", null, "java/lang/Object", null);
+		categories.visitField(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC | Opcodes.ACC_FINAL, "MEALS", supplier, null, null).visitEnd();
+		categories.visitEnd();
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		Path cooking = TestJars.create().fabricModJson(TestJars.modJson("cooking", "1.0", "\"mixins\":[\"cooking.mixins.json\"]"))
+				.text("cooking.mixins.json", "{\"required\":true,\"package\":\"com.cooking.mixin\",\"mixins\":[\"BookTypeMixin\"],"
+						+ "\"client\":[\"SearchCategoryMixin\"],\"injectors\":{\"defaultRequire\":1}}")
+				.bytes("com/cooking/mixin/BookTypeMixin.class", TestEnums.mixin("com/cooking/mixin/BookTypeMixin", bookType,
+						List.of(TestEnums.Constant.plain("COOKING")), cw -> {
+						}))
+				.bytes("com/cooking/mixin/SearchCategoryMixin.class", TestEnums.mixin("com/cooking/mixin/SearchCategoryMixin", search,
+						List.of(new TestEnums.Constant("COOKING", "([L" + category + ";)V", mv -> {
+							mv.visitInsn(Opcodes.ICONST_1);
+							mv.visitTypeInsn(Opcodes.ANEWARRAY, category);
+							mv.visitInsn(Opcodes.DUP);
+							mv.visitInsn(Opcodes.ICONST_0);
+							mv.visitFieldInsn(Opcodes.GETSTATIC, "com/cooking/Categories", "MEALS", supplier);
+							mv.visitMethodInsn(Opcodes.INVOKEINTERFACE, "java/util/function/Supplier", "get", "()Ljava/lang/Object;", true);
+							mv.visitTypeInsn(Opcodes.CHECKCAST, category);
+							mv.visitInsn(Opcodes.AASTORE);
+						})), cw -> {
+						}))
+				.bytes("com/cooking/Types.class", types.toByteArray())
+				.bytes("com/cooking/client/Screen.class", screen.toByteArray())
+				.bytes("com/cooking/Categories.class", categories.toByteArray())
+				.write(mods.resolve("cooking.jar"));
+
+		ClassWriter book = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		book.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_SUPER, settings, null, "java/lang/Object", null);
+		MethodVisitor register = book.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "register", "(L" + bookType + ";)V", null, null);
+		register.visitCode();
+		register.visitTypeInsn(Opcodes.NEW, "java/lang/IllegalStateException");
+		register.visitInsn(Opcodes.DUP);
+		register.visitLdcInsn("This is not implemented yet, poke Forge if you actually use this");
+		register.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/IllegalStateException", "<init>", "(Ljava/lang/String;)V", false);
+		register.visitInsn(Opcodes.ATHROW);
+		register.visitMaxs(0, 0);
+		register.visitEnd();
+		book.visitEnd();
+		ClassWriter bookCategory = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		bookCategory.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_SUPER, category, null, "java/lang/Object", null);
+		bookCategory.visitEnd();
+		Map<String, byte[]> gameClasses = Map.of(TARGET, targetClass(), settings, book.toByteArray(), category, bookCategory.toByteArray(),
+				bookType, withInterface(TestEnums.target(bookType, false, List.of("()V"), List.of(), Map.of(), cw -> {
+					valuesArray(cw, bookType);
+					MethodVisitor init = cw.visitMethod(Opcodes.ACC_PUBLIC, "init", "()V", null, null);
+					init.visitCode();
+					init.visitVarInsn(Opcodes.ALOAD, 0);
+					init.visitMethodInsn(Opcodes.INVOKESTATIC, settings, "register", "(L" + bookType + ";)V", false);
+					init.visitInsn(Opcodes.RETURN);
+					init.visitMaxs(0, 0);
+					init.visitEnd();
+					MethodVisitor create = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "create", "(Ljava/lang/String;)L" + bookType + ";", null, null);
+					create.visitCode();
+					create.visitTypeInsn(Opcodes.NEW, "java/lang/IllegalStateException");
+					create.visitInsn(Opcodes.DUP);
+					create.visitLdcInsn("Enum not extended!");
+					create.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/IllegalStateException", "<init>", "(Ljava/lang/String;)V", false);
+					create.visitInsn(Opcodes.ATHROW);
+					create.visitMaxs(0, 0);
+					create.visitEnd();
+				}), "net/minecraftforge/common/IExtensibleEnum"),
+				search, TestEnums.target(search, false, List.of("([L" + category + ";)V"), List.of(), Map.of(), cw -> valuesArray(cw, search)));
+		Pipeline.Input in = withDescriptor(input(game, List.of(cooking), Namespace.OFFICIAL, gameClasses, null, List.of(), InstalledClasses.NONE,
+				ClassBytesSource.EMPTY, "0.8.7+Jenkins-b321.git-4", "0.8.7"), PlatformDescriptor.FORGE);
+		Pipeline.Result forge = Pipeline.run(withClientSide(in));
+
+		assertEquals(List.of("cooking"), forge.mods().stream().map(m -> m.translated().candidate().id()).toList(), forge.report().render());
+		String report = forge.report().render();
+		assertTrue(report.contains("skipping Forge's init for them, which never returns here"), report);
+		assertTrue(report.contains("reading them as fields of the enum, which a mixin can't add, read them from com.cooking.FabricatedEnumConstants"), report);
+		try (SafeArchive overlay = SafeArchive.open(forge.mods().getFirst().translated().overlay(), ArchiveLimits.DEFAULTS)) {
+			ClassNode mixin = new ClassNode();
+			new ClassReader(overlay.read("com/cooking/mixin/BookTypeMixin.class")).accept(mixin, ClassReader.SKIP_CODE);
+			assertEquals(0, mixin.access & Opcodes.ACC_ENUM, "the enum mixin is replaced by an ordinary one");
+			assertTrue(mixin.methods.stream().anyMatch(m -> m.name.equals("fabricated$skipInit")), "Forge's init is skipped for the constant");
+			ClassNode searchMixin = new ClassNode();
+			new ClassReader(overlay.read("com/cooking/mixin/SearchCategoryMixin.class")).accept(searchMixin, ClassReader.SKIP_CODE);
+			assertEquals(0, searchMixin.access & Opcodes.ACC_ENUM);
+			for (String[] read : List.of(new String[] {"com/cooking/Types", bookType}, new String[] {"com/cooking/client/Screen", search})) {
+				ClassNode reader = new ClassNode();
+				new ClassReader(overlay.read(read[0] + ".class")).accept(reader, 0);
+				String owner = null;
+				for (MethodNode m : reader.methods) {
+					for (AbstractInsnNode insn : m.instructions) {
+						if (insn instanceof FieldInsnNode f && f.getOpcode() == Opcodes.GETSTATIC && f.name.equals("COOKING")) owner = f.owner;
+					}
+				}
+				assertTrue(owner != null && owner.startsWith("com/cooking/FabricatedEnumConstants"), read[0] + " reads " + owner);
+				ClassNode holder = new ClassNode();
+				new ClassReader(overlay.read(owner + ".class")).accept(holder, ClassReader.SKIP_CODE);
+				assertEquals(List.of("COOKING:L" + read[1] + ";"), holder.fields.stream().map(f -> f.name + ":" + f.desc).toList());
+			}
+		}
+	}
+
+	/** The class implementing {@code itf} too (Forge's marker of an extensible enum). */
+	private static byte[] withInterface(byte[] data, String itf) {
+		ClassNode node = new ClassNode();
+		new ClassReader(data).accept(node, 0);
+		node.interfaces.add(itf);
+		ClassWriter cw = new ClassWriter(0);
+		node.accept(cw);
+		return cw.toByteArray();
+	}
+
+	/** The enum's values array, set in its class initializer as javac does. */
+	private static void valuesArray(ClassWriter cw, String name) {
+		cw.visitField(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_FINAL | Opcodes.ACC_SYNTHETIC, "$VALUES", "[L" + name + ";", null, null).visitEnd();
+		MethodVisitor clinit = cw.visitMethod(Opcodes.ACC_STATIC, "<clinit>", "()V", null, null);
+		clinit.visitCode();
+		clinit.visitInsn(Opcodes.ICONST_0);
+		clinit.visitTypeInsn(Opcodes.ANEWARRAY, name);
+		clinit.visitFieldInsn(Opcodes.PUTSTATIC, name, "$VALUES", "[L" + name + ";");
+		clinit.visitInsn(Opcodes.RETURN);
+		clinit.visitMaxs(1, 0);
+		clinit.visitEnd();
+	}
+
+	/** {@code in} on a client. */
+	private static Pipeline.Input withClientSide(Pipeline.Input in) throws Exception {
+		java.lang.reflect.RecordComponent[] parts = Pipeline.Input.class.getRecordComponents();
+		Class<?>[] types = new Class<?>[parts.length];
+		Object[] values = new Object[parts.length];
+		for (int i = 0; i < parts.length; i++) {
+			types[i] = parts[i].getType();
+			values[i] = parts[i].getName().equals("clientSide") ? Boolean.TRUE : parts[i].getAccessor().invoke(in);
+		}
+		return Pipeline.Input.class.getDeclaredConstructor(types).newInstance(values);
 	}
 
 	@Test
