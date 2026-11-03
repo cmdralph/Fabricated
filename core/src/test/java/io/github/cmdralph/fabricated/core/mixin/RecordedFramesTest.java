@@ -1,8 +1,7 @@
 package io.github.cmdralph.fabricated.core.mixin;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -18,17 +17,19 @@ import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.FrameNode;
+import org.objectweb.asm.tree.LabelNode;
 import org.objectweb.asm.tree.MethodNode;
 
 class RecordedFramesTest {
-	private static final String DESC = "(ZFLjava/lang/Object;)V";
+	private static final String OWNER = "test/Renderer";
+	private static final String RENDER = "(ZFLjava/lang/Object;)V";
 
 	@Test
-	void aChopAfterAnAppendOfFewerLocalsThanTheArgumentsDropsLiveOnes() {
+	void mixinCountsTooFewLocalsAfterAChopFromTheFramesItRecorded() {
 		// CORPUS-79: Forge 61's ScreenEffectRenderer.renderScreenEffect has four argument slots, appends three locals
 		// (its PoseStack among them), then chops one. Mixin records each as four, so after the chop it counts four locals
 		// where six are live, and Resourceful Lib's @Local PoseStack found none.
-		byte[] forge = method(mv -> {
+		byte[] forge = method(Opcodes.ACC_PUBLIC, "render", RENDER, mv -> {
 			Label appended = new Label();
 			Label chopped = new Label();
 			storeLocals(mv, 3);
@@ -47,53 +48,21 @@ class RecordedFramesTest {
 			mv.visitVarInsn(Opcodes.ALOAD, 4);
 			mv.visitInsn(Opcodes.POP);
 		});
-		MethodNode walked = expanded(forge);
-		List<RecordedFrames.Frame> recorded = recordedByMixin(forge);
-		assertTrue(RecordedFrames.mayDropLiveLocals(walked));
-		assertEquals(List.of(1), RecordedFrames.droppingChops(walked, recorded));
+		// As Forge's ModLauncher hands it to Mixin, and as Mixin 0.8.7 records it: both compressed.
+		MethodNode walked = read(forge, 0);
+		assertArrayEquals(new int[] {8, 4}, RecordedFrames.counted(walked, recorded(walked)));
+		assertArrayEquals(new int[] {8, 4}, RecordedFrames.counted(walked, recorded(walked).subList(0, 1)), "the chop counted from itself");
 
-		// The repair records the chop as Mixin records a full frame of the locals it states: six, and then none drops.
-		List<RecordedFrames.Frame> full = recorded(RecordedFrames.asFullFrames(walked));
-		assertEquals(new RecordedFrames.Frame(recorded.get(1).index(), Opcodes.F_FULL, 6), full.get(1));
-		List<RecordedFrames.Frame> repaired = new ArrayList<>(recorded);
-		repaired.set(1, full.get(1));
-		assertEquals(List.of(), RecordedFrames.droppingChops(walked, repaired));
+		// Recorded from its expanded frames, as the repair records them, Mixin counts the locals there are.
+		assertArrayEquals(new int[] {7, 6}, RecordedFrames.counted(walked, recorded(RecordedFrames.withExpandedFrames(OWNER, walked))));
+		MethodNode walkedExpanded = read(forge, ClassReader.EXPAND_FRAMES);
+		assertArrayEquals(new int[] {7, 6}, RecordedFrames.counted(walkedExpanded, recorded(RecordedFrames.withExpandedFrames(OWNER, walkedExpanded))));
 	}
 
 	@Test
-	void aChopAfterARepairedOneIsJudgedFromTheLocalsTheRepairedOneStates() {
-		// Two chops of one local each after the append of three: Mixin, given the first as six locals, still takes four
-		// for the second, leaving four of the five live.
-		byte[] forge = method(mv -> {
-			Label appended = new Label();
-			Label chopped = new Label();
-			Label again = new Label();
-			storeLocals(mv, 3);
-			mv.visitVarInsn(Opcodes.ILOAD, 1);
-			mv.visitJumpInsn(Opcodes.IFEQ, appended);
-			mv.visitInsn(Opcodes.NOP);
-			mv.visitLabel(appended);
-			mv.visitFrame(Opcodes.F_APPEND, 3, new Object[] {"java/lang/StringBuilder", "java/lang/Object", "java/lang/Object"}, 0, null);
-			mv.visitVarInsn(Opcodes.ILOAD, 1);
-			mv.visitJumpInsn(Opcodes.IFEQ, chopped);
-			mv.visitInsn(Opcodes.NOP);
-			mv.visitLabel(chopped);
-			mv.visitFrame(Opcodes.F_CHOP, 1, null, 0, null);
-			mv.visitVarInsn(Opcodes.ILOAD, 1);
-			mv.visitJumpInsn(Opcodes.IFEQ, again);
-			mv.visitInsn(Opcodes.NOP);
-			mv.visitLabel(again);
-			mv.visitFrame(Opcodes.F_CHOP, 1, null, 0, null);
-			mv.visitVarInsn(Opcodes.ALOAD, 4);
-			mv.visitInsn(Opcodes.POP);
-		});
-		assertEquals(List.of(1, 2), RecordedFrames.droppingChops(expanded(forge), recordedByMixin(forge)));
-	}
-
-	@Test
-	void appendsOfOneLocalEachAreOverCountedAndDropNone() {
-		// As vanilla's method is shaped: Mixin counts more locals than are live, and drops none of them.
-		byte[] vanilla = method(mv -> {
+	void mixinCountsTooManyLocalsAfterAppendsOfFewerThanTheArguments() {
+		// As vanilla's method is shaped: two appends of one local each, then a chop of one.
+		byte[] vanilla = method(Opcodes.ACC_PUBLIC, "render", RENDER, mv -> {
 			Label first = new Label();
 			Label second = new Label();
 			Label chopped = new Label();
@@ -119,50 +88,130 @@ class RecordedFramesTest {
 			mv.visitVarInsn(Opcodes.ALOAD, 4);
 			mv.visitInsn(Opcodes.POP);
 		});
-		assertTrue(RecordedFrames.mayDropLiveLocals(expanded(vanilla)), "it chops");
-		assertEquals(List.of(), RecordedFrames.droppingChops(expanded(vanilla), recordedByMixin(vanilla)));
+		MethodNode walked = read(vanilla, 0);
+		assertArrayEquals(new int[] {8, 12, 8}, RecordedFrames.counted(walked, recorded(walked)));
+		assertArrayEquals(new int[] {5, 6, 5}, RecordedFrames.counted(walked, recorded(RecordedFrames.withExpandedFrames(OWNER, walked))));
 	}
 
 	@Test
-	void aMethodWhoseFramesNeverStateFewerLocalsIsNotLookedAt() {
-		byte[] appends = method(mv -> {
-			Label appended = new Label();
-			storeLocals(mv, 3);
-			mv.visitVarInsn(Opcodes.ILOAD, 1);
-			mv.visitJumpInsn(Opcodes.IFEQ, appended);
-			mv.visitInsn(Opcodes.NOP);
-			mv.visitLabel(appended);
-			mv.visitFrame(Opcodes.F_APPEND, 3, new Object[] {"java/lang/StringBuilder", "java/lang/Object", "java/lang/Object"}, 0, null);
-			mv.visitVarInsn(Opcodes.ALOAD, 4);
-			mv.visitInsn(Opcodes.POP);
-		});
-		assertFalse(RecordedFrames.mayDropLiveLocals(expanded(appends)));
-		assertEquals(List.of(), RecordedFrames.droppingChops(expanded(appends), recordedByMixin(appends)));
-	}
-
-	@Test
-	void framesThatDontLineUpWithTheRecordedOnesAreLeftAlone() {
-		byte[] forge = method(mv -> {
+	void mixinCountsAChopOfALongAsOneSlot() {
+		// Where the arguments take one slot, appends and chops are recorded as they are, but a chop of a long takes two.
+		byte[] longs = method(Opcodes.ACC_PUBLIC, "tick", "()V", mv -> {
 			Label appended = new Label();
 			Label chopped = new Label();
-			storeLocals(mv, 3);
-			mv.visitVarInsn(Opcodes.ILOAD, 1);
+			mv.visitInsn(Opcodes.LCONST_0);
+			mv.visitVarInsn(Opcodes.LSTORE, 1);
+			mv.visitInsn(Opcodes.ICONST_0);
 			mv.visitJumpInsn(Opcodes.IFEQ, appended);
 			mv.visitInsn(Opcodes.NOP);
 			mv.visitLabel(appended);
-			mv.visitFrame(Opcodes.F_APPEND, 3, new Object[] {"java/lang/StringBuilder", "java/lang/Object", "java/lang/Object"}, 0, null);
-			mv.visitVarInsn(Opcodes.ILOAD, 1);
+			mv.visitFrame(Opcodes.F_APPEND, 1, new Object[] {Opcodes.LONG}, 0, null);
+			mv.visitInsn(Opcodes.ICONST_0);
 			mv.visitJumpInsn(Opcodes.IFEQ, chopped);
 			mv.visitInsn(Opcodes.NOP);
 			mv.visitLabel(chopped);
 			mv.visitFrame(Opcodes.F_CHOP, 1, null, 0, null);
 		});
-		List<RecordedFrames.Frame> recorded = recordedByMixin(forge);
-		assertEquals(List.of(), RecordedFrames.droppingChops(expanded(forge), recorded.subList(0, 1)), "one frame fewer than the method has");
-		List<RecordedFrames.Frame> shifted = new ArrayList<>();
-		for (RecordedFrames.Frame frame : recorded) shifted.add(new RecordedFrames.Frame(frame.index() + 1, frame.type(), frame.size()));
-		assertEquals(List.of(), RecordedFrames.droppingChops(expanded(forge), shifted), "frames at other instructions");
-		assertEquals(List.of(), RecordedFrames.droppingChops(read(forge, 0), recorded), "a method read without its frames expanded");
+		MethodNode walked = read(longs, 0);
+		assertArrayEquals(new int[] {3, 2}, RecordedFrames.counted(walked, recorded(walked)));
+		assertArrayEquals(new int[] {3, 1}, RecordedFrames.counted(walked, recorded(RecordedFrames.withExpandedFrames(OWNER, walked))));
+	}
+
+	@Test
+	void aMethodMixinCountsRightCountsTheSameFromItsExpandedFrames() {
+		byte[] counted = method(Opcodes.ACC_PUBLIC, "tick", "()V", mv -> {
+			Label[] at = {new Label(), new Label(), new Label(), new Label(), new Label()};
+			mv.visitInsn(Opcodes.ICONST_0);
+			mv.visitJumpInsn(Opcodes.IFEQ, at[4]);
+			mv.visitInsn(Opcodes.NOP);
+			mv.visitLabel(at[0]);
+			mv.visitFrame(Opcodes.F_APPEND, 1, new Object[] {Opcodes.INTEGER}, 0, null);
+			mv.visitInsn(Opcodes.NOP);
+			mv.visitLabel(at[1]);
+			mv.visitFrame(Opcodes.F_APPEND, 2, new Object[] {"java/lang/Object", Opcodes.FLOAT}, 0, null);
+			mv.visitInsn(Opcodes.NOP);
+			mv.visitLabel(at[2]);
+			mv.visitFrame(Opcodes.F_CHOP, 1, null, 0, null);
+			mv.visitInsn(Opcodes.NOP);
+			mv.visitLabel(at[3]);
+			mv.visitFrame(Opcodes.F_SAME, 0, null, 0, null);
+			mv.visitInsn(Opcodes.NOP);
+			mv.visitLabel(at[4]);
+			mv.visitFrame(Opcodes.F_FULL, 2, new Object[] {OWNER, Opcodes.INTEGER}, 0, new Object[0]);
+		});
+		MethodNode walked = read(counted, 0);
+		int[] expected = {2, 4, 3, 3, 2};
+		assertArrayEquals(expected, RecordedFrames.counted(walked, recorded(walked)));
+		assertArrayEquals(expected, RecordedFrames.counted(walked, recorded(RecordedFrames.withExpandedFrames(OWNER, walked))));
+	}
+
+	@Test
+	void framesAreExpandedAsAsmExpandsThem() {
+		assertExpandedAsAsm(method(Opcodes.ACC_PUBLIC, "render", RENDER, mv -> {
+			storeLocals(mv, 3);
+			frame(mv, Opcodes.F_APPEND, new Object[] {"java/lang/StringBuilder", "java/lang/Object", "java/lang/Object"}, null);
+			frame(mv, Opcodes.F_SAME1, null, new Object[] {Opcodes.INTEGER});
+			frame(mv, Opcodes.F_CHOP, new Object[2], null);
+			frame(mv, Opcodes.F_SAME, null, null);
+		}));
+		// A constructor: `this` uninitialized until its super call, and a new object uninitialized on the stack.
+		assertExpandedAsAsm(method(Opcodes.ACC_PUBLIC, "<init>", "(J[ILjava/lang/String;)V", mv -> {
+			Label created = new Label();
+			frame(mv, Opcodes.F_SAME1, null, new Object[] {Opcodes.INTEGER});
+			mv.visitLabel(created);
+			mv.visitTypeInsn(Opcodes.NEW, "java/lang/StringBuilder");
+			mv.visitInsn(Opcodes.DUP);
+			frame(mv, Opcodes.F_FULL, new Object[] {Opcodes.UNINITIALIZED_THIS, Opcodes.LONG, "[I", "java/lang/String"}, new Object[] {created, created});
+			frame(mv, Opcodes.F_FULL, new Object[] {OWNER, Opcodes.LONG, "[I", "java/lang/String"}, null);
+			frame(mv, Opcodes.F_APPEND, new Object[] {Opcodes.DOUBLE, Opcodes.TOP, "java/lang/Object"}, null);
+			frame(mv, Opcodes.F_SAME, null, null);
+			frame(mv, Opcodes.F_CHOP, new Object[2], null);
+			frame(mv, Opcodes.F_SAME1, null, new Object[] {Opcodes.NULL});
+		}));
+		// A static method: no `this`, and arguments of every kind of type.
+		assertExpandedAsAsm(method(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "mix", "(D[[Ljava/lang/Object;JBCSZF)V", mv -> {
+			frame(mv, Opcodes.F_APPEND, new Object[] {Opcodes.INTEGER}, null);
+			frame(mv, Opcodes.F_APPEND, new Object[] {Opcodes.LONG, "java/lang/String"}, null);
+			frame(mv, Opcodes.F_CHOP, new Object[3], null);
+			frame(mv, Opcodes.F_FULL, new Object[0], new Object[] {Opcodes.FLOAT});
+			frame(mv, Opcodes.F_APPEND, new Object[] {Opcodes.DOUBLE}, null);
+		}));
+	}
+
+	/** The method's frames expanded from its compressed ones as ASM expands them, at the same instructions. */
+	private static void assertExpandedAsAsm(byte[] data) {
+		MethodNode compressed = read(data, 0);
+		MethodNode asm = read(data, ClassReader.EXPAND_FRAMES);
+		MethodNode expanded = RecordedFrames.withExpandedFrames(OWNER, compressed);
+		assertEquals(compressed.instructions.size(), expanded.instructions.size(), "instructions");
+		List<String> expected = new ArrayList<>();
+		for (AbstractInsnNode insn : asm.instructions) {
+			if (insn instanceof FrameNode frame) expected.add(describe(asm.instructions.indexOf(frame), frame, asm));
+		}
+		List<String> actual = new ArrayList<>();
+		for (AbstractInsnNode insn : expanded.instructions) {
+			// A label in the expanded frames is the compressed method's own, so it is found there.
+			if (insn instanceof FrameNode frame) actual.add(describe(expanded.instructions.indexOf(frame), frame, compressed));
+		}
+		assertEquals(expected, actual, compressed.name + compressed.desc);
+	}
+
+	/** A frame's instruction index, type, locals and stack, a label as its instruction index in the method it is in. */
+	private static String describe(int index, FrameNode frame, MethodNode labelsIn) {
+		return index + " " + frame.type + " " + entries(labelsIn, frame.local) + " " + entries(labelsIn, frame.stack);
+	}
+
+	private static List<String> entries(MethodNode method, List<Object> entries) {
+		List<String> described = new ArrayList<>();
+		if (entries == null) return described;
+		for (Object entry : entries) described.add(entry instanceof LabelNode label ? "label " + method.instructions.indexOf(label) : String.valueOf(entry));
+		return described;
+	}
+
+	/** A compressed frame, after a {@code NOP} so that no two frames share an instruction. */
+	private static void frame(MethodVisitor mv, int type, Object[] local, Object[] stack) {
+		mv.visitInsn(Opcodes.NOP);
+		mv.visitFrame(type, local == null ? 0 : local.length, local, stack == null ? 0 : stack.length, stack);
 	}
 
 	/** Stores a {@code StringBuilder} in slot 4, then {@code this} in the next {@code more - 1} slots. */
@@ -177,42 +226,32 @@ class RecordedFramesTest {
 		}
 	}
 
-	/** A class with an instance method {@code render(ZFLjava/lang/Object;)V} of this code, its frames as given. */
-	private static byte[] method(Consumer<MethodVisitor> code) {
+	/** A class {@code test/Renderer} with one method of this code, its frames written as given. */
+	private static byte[] method(int access, String name, String desc, Consumer<MethodVisitor> code) {
 		ClassWriter cw = new ClassWriter(0);
-		cw.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, "test/Renderer", null, "java/lang/Object", null);
-		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC, "render", DESC, null, null);
+		cw.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, OWNER, null, "java/lang/Object", null);
+		MethodVisitor mv = cw.visitMethod(access, name, desc, null, null);
 		mv.visitCode();
 		code.accept(mv);
 		mv.visitInsn(Opcodes.RETURN);
-		mv.visitMaxs(2, 8);
+		mv.visitMaxs(4, 16);
 		mv.visitEnd();
 		cw.visitEnd();
 		return cw.toByteArray();
 	}
 
-	/** The method as ModLauncher hands it to Mixin: its frames expanded. */
-	private static MethodNode expanded(byte[] data) {
-		return read(data, ClassReader.EXPAND_FRAMES);
-	}
-
 	private static MethodNode read(byte[] data, int flags) {
 		ClassNode node = new ClassNode();
 		new ClassReader(data).accept(node, flags);
-		return node.methods.stream().filter(m -> m.name.equals("render")).findFirst().orElseThrow();
-	}
-
-	/** The frames as Mixin 0.8's class metadata records them: from the class read without expanding its frames. */
-	private static List<RecordedFrames.Frame> recordedByMixin(byte[] data) {
-		return recorded(read(data, 0));
+		return node.methods.get(0);
 	}
 
 	/**
-	 * The frames as Mixin 0.8 records a method's ({@code ClassInfo.FrameData}): each one's size
+	 * The frames as Mixin 0.8.7 records a method's ({@code ClassInfo.FrameData}): each one's type, and its size
 	 * {@code Locals.computeFrameSize(frame, initialFrameSize)}, at least the method's argument slots.
 	 */
 	private static List<RecordedFrames.Frame> recorded(MethodNode method) {
-		int initial = 1;
+		int initial = (method.access & Opcodes.ACC_STATIC) == 0 ? 1 : 0;
 		for (Type argument : Type.getArgumentTypes(method.desc)) initial += argument.getSize();
 		List<RecordedFrames.Frame> frames = new ArrayList<>();
 		for (AbstractInsnNode insn : method.instructions) {
@@ -223,7 +262,7 @@ class RecordedFramesTest {
 			} else {
 				for (Object local : frame.local) size += local == Opcodes.LONG || local == Opcodes.DOUBLE ? 2 : 1;
 			}
-			frames.add(new RecordedFrames.Frame(method.instructions.indexOf(insn), frame.type, Math.max(initial, size)));
+			frames.add(new RecordedFrames.Frame(frame.type, Math.max(initial, size)));
 		}
 		return frames;
 	}
