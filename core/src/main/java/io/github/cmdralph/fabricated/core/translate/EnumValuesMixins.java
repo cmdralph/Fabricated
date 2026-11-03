@@ -43,8 +43,10 @@ import io.github.cmdralph.fabricated.core.bytecode.Annotations;
  * no enum mixins, as before 0.17.1 (ENUM-7: Forge's, whose Mixin 0.8.7 stopped the Forge 61 to 66 corpus clients on
  * Friends and Foes' mob categories); the enum's values array is found by its type there, as Forge 47's names may not be
  * javac's. An enum Forge makes extensible ({@code IExtensibleEnum}, as {@code MobCategory}) gets its constants from its own
- * {@code create} factories instead: Forge's enum extender writes them once Mixin has applied, and finds the values array
- * only while it is still final, which the shadow's {@code @Mutable} would undo.
+ * {@code create} factories instead, at the end of its class initializer: Forge's enum extender writes them once Mixin has
+ * applied, and finds the values array only while it is still final, which the shadow's {@code @Mutable} would undo; and
+ * each registers its constant ({@code IExtensibleEnum.init}) in statics set after the values array, such as
+ * {@code MobCategory}'s map by name, which its codec reads.
  * <p>A constant with a body overriding the one method the enum forwards to a delegate its other constructor takes
  * (NeoForge's way of making such an enum extensible, as {@code GrassColorModifier}'s {@code ColorModifier}) is made with
  * that constructor and a delegate class generated next to the mod's mixins, running the body. Only code that runs
@@ -337,7 +339,8 @@ final class EnumValuesMixins {
 	/**
 	 * The mixin replacing the enum mixin, under its name and {@code @Mixin}: a shadow of the enum's values array, a
 	 * constructor invoker per constructor used, and the injector adding the constants after the array is set. Where the
-	 * enum's own factories make the constants (Forge's), the injector calls them, and the mixin has neither.
+	 * enum's own factories make the constants (Forge's), the injector calls them at the class initializer's end, and the
+	 * mixin has neither.
 	 */
 	private static byte[] mixinClass(ClassNode mixin, ClassNode target, String values, List<Constant> constants, List<AbstractInsnNode> rest) {
 		String enumDesc = "L" + target.name + ";";
@@ -381,10 +384,16 @@ final class EnumValuesMixins {
 		methods.visitEnd();
 		AnnotationVisitor ats = inject.visitArray("at");
 		AnnotationVisitor at = ats.visitAnnotation(null, AT);
-		at.visit("value", "FIELD");
-		at.visit("opcode", Opcodes.PUTSTATIC);
-		at.visit("target", enumDesc + values + ":" + arrayDesc);
-		at.visitEnum("shift", SHIFT, "AFTER");
+		if (factories) {
+			// At the end, as a Forge mod's own call would come: a factory registers its constant in statics the class
+			// initializer sets after the values array (MobCategory's BY_NAME, read by its codec), still null right after it.
+			at.visit("value", "TAIL");
+		} else {
+			at.visit("value", "FIELD");
+			at.visit("opcode", Opcodes.PUTSTATIC);
+			at.visit("target", enumDesc + values + ":" + arrayDesc);
+			at.visitEnum("shift", SHIFT, "AFTER");
+		}
 		at.visitEnd();
 		ats.visitEnd();
 		inject.visitEnd();
