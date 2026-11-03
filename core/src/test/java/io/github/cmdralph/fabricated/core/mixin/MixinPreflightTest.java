@@ -3005,6 +3005,72 @@ class MixinPreflightTest {
 		assertTrue(after.isEmpty(), after.toString());
 	}
 
+	@Test
+	void aWrapAtASpawnCallMovesToForgesHookOnlyWhereThatForgesOwnListHasTheTransformerPointItThere() throws Exception {
+		// CORPUS-78: Friends & Foes' static @WrapOperation of a structure mob's finalizeSpawn call, in the lambda body of
+		// StructureTemplate.placeEntities, which takes that lambda's parameters after the Operation. Forge 61's list names
+		// StructureTemplate, so its transformer points the call at ForgeEventFactory.onFinalizeSpawn, and the wrap moves
+		// there; Forge 64's own list (its 26.1.2 branch) doesn't, and the wrap stays where it is. 26.1's list, which names
+		// it, moved the wrap on Forge 64 too, and Mixin found nothing there: the corpus server's world generation stopped.
+		String template = PlatformCoremodsTest.STRUCTURE_TEMPLATE;
+		String lambdaDesc = PlatformCoremodsTest.PLACE_ENTITY;
+		String hookDesc = PlatformCoremodsTest.FINALIZE_REASON_HOOK;
+		String hook = PlatformCoremodsTest.FORGE_HOOKS;
+		String call = "L" + PlatformCoremodsTest.MOB + ";finalizeSpawn" + PlatformCoremodsTest.FINALIZE_REASON;
+		String name = "com/faboslav/friendsandfoes/fabric/mixin/StructureTemplateEntitySpawnMixin";
+		String handlerDesc = hookDesc.substring(0, hookDesc.indexOf(')')) + OPERATION + lambdaDesc.substring(1, lambdaDesc.indexOf(')')) + ")"
+				+ Type.getReturnType(hookDesc).getDescriptor();
+		byte[] friendsAndFoes = spawnerMixin(name, template, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "friendsandfoes$onFinalizeSpawn", handlerDesc, null, null);
+			AnnotationVisitor ann = mv.visitAnnotation(WRAP_OPERATION, false);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "lambda$placeEntities$0");
+			methods.visitEnd();
+			AnnotationVisitor ats = ann.visitArray("at");
+			AnnotationVisitor at = ats.visitAnnotation(null, AT);
+			at.visit("value", "INVOKE");
+			at.visit("target", call);
+			at.visitEnd();
+			ats.visitEnd();
+			ann.visitEnd();
+			mv.visitCode();
+			mv.visitInsn(Opcodes.ACONST_NULL);
+			mv.visitInsn(Opcodes.ARETURN);
+			mv.visitMaxs(1, 12);
+			mv.visitEnd();
+		});
+		String config = "{\"required\":true,\"package\":\"com.faboslav.friendsandfoes.fabric.mixin\",\"injectors\":{\"defaultRequire\":1},"
+				+ "\"mixins\":[\"StructureTemplateEntitySpawnMixin\"]}";
+		MixinConfigFile parsed = MixinConfigFile.parse(config);
+		Map<String, byte[]> jars = PlatformCoremodsTest.forgeGame();
+		Map<String, byte[]> mod = new HashMap<>(Map.of(name, friendsAndFoes));
+		Function<ClassIndex, MixinPreflight> onForge = game -> new MixinPreflight(game, InstalledClasses.NONE, mod::get,
+				ClassBytesSource.EMPTY, false, true, ClassBytesSource.EMPTY, "Forge");
+		ClassIndex forge61 = new ClassIndex(io.github.cmdralph.fabricated.core.translate.PlatformDescriptor.FORGE.coremods("1.21.11").over(jars::get));
+		ClassIndex forge64 = new ClassIndex(io.github.cmdralph.fabricated.core.translate.PlatformDescriptor.FORGE.coremods("26.1.2").over(jars::get));
+
+		// Forge 64 makes the call where the mod wraps it: nothing to report, nothing to repair.
+		assertTrue(onForge.apply(forge64).check("friendsandfoes-fabric.mixins.json", parsed, Refmap.EMPTY, Set.of()).isEmpty());
+		List<PreflightFinding> none = new ArrayList<>();
+		assertTrue(onForge.apply(forge64).repairs("friendsandfoes-fabric.mixins.json", parsed, Refmap.EMPTY, Set.of(), none).isEmpty(), none.toString());
+		assertTrue(none.isEmpty(), none.toString());
+
+		// Forge 61 makes it inside its hook: the wrap moves to the hook's call, which takes the mob first, so the handler
+		// takes it as it is.
+		List<PreflightFinding> notes = new ArrayList<>();
+		Map<String, byte[]> repaired = onForge.apply(forge61).repairs("friendsandfoes-fabric.mixins.json", parsed, Refmap.EMPTY, Set.of(), notes);
+		assertEquals(1, notes.size(), notes.toString());
+		assertTrue(notes.getFirst().message().contains("inside Forge's hook " + hook.replace('/', '.') + ".onFinalizeSpawn" + hookDesc), notes.toString());
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired.get(name + ".class")).accept(node, 0);
+		assertEquals(List.of("friendsandfoes$onFinalizeSpawn"), node.methods.stream().map(m -> m.name).toList(), "no bridge");
+		AnnotationNode point = Annotations.list(Annotations.value(Annotations.find(node.methods.getFirst(), WRAP_OPERATION), "at")).getFirst();
+		assertEquals("L" + hook + ";onFinalizeSpawn" + hookDesc, Annotations.value(point, "target"));
+		mod.put(name, repaired.get(name + ".class"));
+		List<PreflightFinding> after = onForge.apply(forge61).check("friendsandfoes-fabric.mixins.json", parsed, Refmap.EMPTY, Set.of());
+		assertTrue(after.isEmpty(), after.toString());
+	}
+
 	/** The calls a class's methods make, as owner.name+desc. */
 	private static List<String> callsIn(byte[] data) {
 		return PlatformCoremodsTest.calls(data).stream().map(c -> c.owner + "." + c.name + c.desc).toList();

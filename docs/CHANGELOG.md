@@ -3,6 +3,32 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-03: Forge 64's own spawn list (CORPUS-78), and the corpus after the sync (task 5)
+
+- **CORPUS-78, fixed again** (`PlatformCoremods.forge`): after the first fix the Forge 61 and 65 corpus servers start
+  with Friends and Foes (extended run 41632339327), but the Forge 64 one stopped in world generation on its static
+  `@WrapOperation` of a structure mob's `finalizeSpawn` call in `StructureTemplate`. Forge keeps a branch and a target
+  list per Minecraft version, and core had described 26.1.2 with 26.1's (Forge 62's), which names `StructureTemplate`;
+  Forge 64's own leaves it out, with `Tadpole`, `Villager` and `ZombieVillager`. Each of 1.21.11, 26.1.2, 26.2 and
+  26.3 now takes its own branch's list (the same as the tags 61.2, 64.1, 65.1 and 66.1), and no other version takes
+  one. `NOTICE` names the 26.1.2 branch.
+- **Verified in the corpus** (extended runs 41632339327 and 41632355968, moved to `FINDINGS.md`): CORPUS-74
+  (MoreCulling loads on the Forge 65 client, which reaches the world; Forge 47's client passes owo's shadow; the test
+  mod check passes on all five Forge versions) and CORPUS-71 (GeckoLib loads on the Forge 65 client). PRE-18 is fixed
+  on Forge 65; Mod Menu on Forge 66 is still to verify.
+- **Found** (rows in *Findings*): Forge 61 to 66's optional ingredient codec, which throws on the empty ingredient
+  Fabric API's recipe sync writes, so the Forge 65 client lost its connection to its own world (CORPUS-83, P0, fix on
+  `forge`); ImmediatelyFast's buffer upload hook on Forge 66 (CORPUS-82, P0); Forge Config API Port's `ModConfig`
+  constructors on Forge 47, which Ponder calls (CORPUS-81, P1); Farmer's Delight's enum additions, Fabric ASM on Forge
+  47 and enum mixins on Forge 61 to 66 (CORPUS-80, P1). CORPUS-79 (ResourcefulLib) now stops the Forge 61 client too,
+  and CORPUS-76's evidence points at AppleSkin's interface mixin of `ClientTooltipComponent`.
+- **Tests:** `PlatformCoremodsTest` checks each version's list (27 classes on 1.21.11, 23 on the others, none for
+  26.1, 26.1.1 or 26.2.1) and that Forge 64's leaves `StructureTemplate` alone; a new `MixinPreflightTest` case
+  checks that a wrap of that call moves to Forge's hook on Forge 61 only. The HUD-3 client check hides the GUI until a
+  few frames were drawn hidden, not for two seconds: on this PR's NeoForge 26.3 client the world's first frames came
+  late, and the game stopped before the check ended (run 41640138317).
+- **CI:** core build and tests pass locally. The Forge branches take the fix by the sync.
+
 ## 2026-11-03: two Forge pre-flight fixes (CORPUS-74, CORPUS-78), and the Forge corpus stops (task 5)
 
 - **CORPUS-74** (`MixinRepairs.sharedFieldRepair`, `MixinCompat.shadowsMixinFields`): the Forge 26.2 corpus client
