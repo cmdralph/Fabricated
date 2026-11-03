@@ -3,6 +3,23 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-03: Forge's enum factories and Lithium's chest (task 5)
+
+- **ENUM-7 on Forge, again** (`EnumValuesMixins`): after the last sync (extended run 41574438102) every Forge 61 to 66
+  corpus server and client stopped as `MobCategory` loaded, in `MobCategory.init`: Forge's `create` factory registers
+  each constant in the enum's map by name, which the class initializer sets after the values array, and the generated
+  injector called the factories right after the array. It now calls them at the class initializer's end, as a Forge
+  mod's own call would come. The same run got the Forge 61 corpus past Balm's crop hooks (SHARE-1).
+- **CORPUS-69** (`MixinRepairs.superOnlyIntrinsic`, `MixinPreflight.checkMerged`): with CORPUS-68 fixed, the Forge 47
+  corpus server and client stopped on Lithium's chest mixin (extended run 41574441274), whose `@Intrinsic`
+  `setCachedState` only calls the superclass's, there for its `@Inject` to have a method to inject into. Forge 47 patches
+  the chest to override that method, and Mixin throws on an `@Intrinsic` its target declares unless Mixin renamed it as
+  an interface method. Such a method is now dropped where every target declares it, keeping the target's method, as
+  `@Intrinsic` means (nothing is lost: it only stood in for the superclass's); any other `@Intrinsic` the target declares
+  is reported as Mixin rejecting the mixin.
+- **CI:** core tests pass locally (446, one of them new). The Forge branches take this by the sync (#248, #249), with
+  extended runs to verify ENUM-7 on Forge 61 to 66 and CORPUS-69 on Forge 47.
+
 ## 2026-11-03: the Forge corpus stops after the sync (task 5)
 
 - **ENUM-7 on Forge** (`EnumValuesMixins`): after the sync, the Forge 66 corpus client and server got past Mixin and

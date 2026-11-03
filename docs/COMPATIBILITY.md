@@ -1097,7 +1097,12 @@ MixinExtras has NeoForge's jar, and a NeoForge mod nested in another jar has tha
   enum mixin into any other enum becomes such an ordinary mixin too (ENUM-7: Friends and Foes' mob categories, read
   with `valueOf`); one that can't disables its mod, with the reason, where Mixin would stop the game on it. Into an
   enum Forge makes extensible (`MobCategory`), it makes the constants with the enum's own `create` factories, as
-  Forge mods do.
+  Forge mods do, at the end of the enum's class initializer, once the map by name each factory registers its constant
+  in is set.
+- An `@Intrinsic` method of a class mixin that only calls the superclass's method (Lithium's `setCachedState` of the
+  chest, there for its `@Inject` to have a method to inject into) is dropped where the target already declares that
+  method, as Forge 47's chest does: Mixin would reject the mixin, and the target's own method is what `@Intrinsic`
+  keeps (CORPUS-69). Another `@Intrinsic` the target declares disables its mod, or leaves the mixin out where it can.
 - Config screens a Fabric mod offers to Mod Menu (its `modmenu` entrypoint) open from the Config button of NeoForge's
   mod list. Mod Menu's API interfaces are provided, so such mods load without Mod Menu, which itself can't run on
   NeoForge (it would duplicate NeoForge's mod list): an installed Mod Menu jar is skipped and provided at its version.
