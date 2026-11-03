@@ -5,7 +5,9 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -58,13 +60,29 @@ public final class JarRemapper {
 	private static final Pattern INTERMEDIARY_MEMBER = Pattern.compile("(?:method|field|comp)_\\d+");
 
 	private final MappingTable table;
+	private final Supertypes supertypes;
 	private final IntermediaryRemapper remapper;
 	private final TokenRemapper tokens;
 
 	public JarRemapper(MappingTable table) {
+		this(table, Supertypes.NONE);
+	}
+
+	/**
+	 * @param supertypes the classes outside a jar its classes may inherit from (the game's), and for
+	 *                   {@link #remapClass(byte[], String)} the jar's own: a method Intermediary leaves under its official
+	 *                   name, and the runtime renames, is renamed in a class that inherits it (CORPUS-86)
+	 */
+	public JarRemapper(MappingTable table, Supertypes supertypes) {
 		this.table = table;
-		this.remapper = new IntermediaryRemapper(table);
+		this.supertypes = supertypes;
+		this.remapper = new IntermediaryRemapper(table, supertypes);
 		this.tokens = remapper.tokens();
+	}
+
+	/** This remapper, knowing {@code first}'s classes before its own. */
+	public JarRemapper with(Supertypes first) {
+		return new JarRemapper(table, first.or(supertypes));
 	}
 
 	/**
@@ -82,6 +100,11 @@ public final class JarRemapper {
 		Map<String, byte[]> out = new LinkedHashMap<>();
 		List<String> stripped = new ArrayList<>();
 		List<String> leftOut = new ArrayList<>();
+		// Every entry is read once, as reading one again counts against the archive's limits again. Where the runtime renames
+		// methods Intermediary leaves under their official names (SRG), the classes' supertypes are known before any class is
+		// remapped, so an override of one in a class inheriting it from another of the jar's is renamed too (CORPUS-86).
+		Map<String, byte[]> entries = new LinkedHashMap<>();
+		Map<String, List<String>> classes = new HashMap<>();
 		for (String name : archive.entryNames()) {
 			if (archive.isDirectory(name)) continue;
 			if (isSignatureFile(name)) {
@@ -90,8 +113,24 @@ public final class JarRemapper {
 			}
 			byte[] data = archive.read(name);
 			if (data == null) continue;
+			entries.put(name, data);
+			if (table.hasPlainMembers() && name.endsWith(".class")) {
+				try {
+					ClassReader reader = new ClassReader(data);
+					classes.putIfAbsent(reader.getClassName(), Supertypes.of(reader));
+				} catch (RuntimeException e) {
+					// remapping it reports the problem
+				}
+			}
+		}
+		IntermediaryRemapper names = classes.isEmpty() ? remapper : new IntermediaryRemapper(table, ((Supertypes) classes::get).or(supertypes));
+		for (Iterator<Map.Entry<String, byte[]>> it = entries.entrySet().iterator(); it.hasNext();) {
+			Map.Entry<String, byte[]> entry = it.next();
+			it.remove(); // held once: the remapped copy replaces it
+			String name = entry.getKey();
+			byte[] data = entry.getValue();
 			if (name.endsWith(".class")) {
-				byte[] remapped = remapClass(data, name, leftOut);
+				byte[] remapped = remapClass(data, name, leftOut, names);
 				String newName = remapClassPath(name);
 				out.put(newName, remapped);
 			} else if (name.equals("META-INF/MANIFEST.MF")) {
@@ -109,14 +148,18 @@ public final class JarRemapper {
 	}
 
 	public byte[] remapClass(byte[] data, String nameForErrors) throws MappingException {
-		return remapClass(data, nameForErrors, new ArrayList<>());
+		return remapClass(data, nameForErrors, new ArrayList<>(), remapper);
 	}
 
 	byte[] remapClass(byte[] data, String nameForErrors, List<String> leftOut) throws MappingException {
+		return remapClass(data, nameForErrors, leftOut, remapper);
+	}
+
+	private byte[] remapClass(byte[] data, String nameForErrors, List<String> leftOut, IntermediaryRemapper names) throws MappingException {
 		try {
 			ClassReader reader = new ClassReader(data);
 			ClassWriter writer = new ClassWriter(0);
-			ClassVisitor remapping = new InferredTargets(new LambdaAwareRemapper(writer, remapper));
+			ClassVisitor remapping = new InferredTargets(new LambdaAwareRemapper(writer, names));
 			Set<String> twins = otherLoadersTwins(reader, leftOut);
 			if (!twins.isEmpty()) remapping = new LeavingOut(remapping, twins);
 			reader.accept(table.hasOverloadedMethods() ? new SelectorPins(remapping, table) : remapping, 0);

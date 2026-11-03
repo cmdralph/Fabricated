@@ -8032,6 +8032,86 @@ class MixinPreflightTest {
 	}
 
 	/**
+	 * CORPUS-37: Forge 47 keeps holders of vanilla's values in a brewing mix's {@code from}, where Porting Lib's accessor
+	 * reads vanilla's. Where Fabricated's in-game mod adds a bridge getting (or setting) the field's value as vanilla's
+	 * type, the accessor invokes it, under its own name and descriptor, which a mod calling it (Create) still finds; where
+	 * it adds none, pre-flight reports the field's type as before.
+	 */
+	@Test
+	void anAccessorOfAFieldThePlatformRetypedInvokesFabricatedsBridge() throws Exception {
+		String mix = "net/minecraft/world/Mix";
+		java.util.function.Function<Boolean, byte[]> target = bridged -> {
+			ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+			cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, mix, null, "java/lang/Object", null);
+			cw.visitField(Opcodes.ACC_PUBLIC | Opcodes.ACC_FINAL, "from", "Lnet/minecraft/core/Holder;", null, null).visitEnd();
+			if (bridged) {
+				MethodVisitor get = cw.visitMethod(Opcodes.ACC_PUBLIC, "fabricated$get$from", "()Ljava/lang/Object;", null, null);
+				get.visitCode();
+				get.visitInsn(Opcodes.ACONST_NULL);
+				get.visitInsn(Opcodes.ARETURN);
+				get.visitMaxs(0, 0);
+				get.visitEnd();
+				MethodVisitor set = cw.visitMethod(Opcodes.ACC_PUBLIC, "fabricated$set$from", "(Ljava/lang/Object;)V", null, null);
+				set.visitCode();
+				set.visitInsn(Opcodes.RETURN);
+				set.visitMaxs(0, 0);
+				set.visitEnd();
+			}
+			cw.visitEnd();
+			return cw.toByteArray();
+		};
+		ClassWriter mw = new ClassWriter(0);
+		mw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT | Opcodes.ACC_INTERFACE, "com/example/mixin/MixAccessor", null,
+				"java/lang/Object", null);
+		AnnotationVisitor m = mw.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false);
+		AnnotationVisitor targets = m.visitArray("value");
+		targets.visit(null, Type.getObjectType(mix));
+		targets.visitEnd();
+		m.visitEnd();
+		MethodVisitor getter = mw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, "port$from", "()Ljava/lang/Object;", null, null);
+		AnnotationVisitor getAccessor = getter.visitAnnotation("Lorg/spongepowered/asm/mixin/gen/Accessor;", true);
+		getAccessor.visit("value", "from");
+		getAccessor.visitEnd();
+		getter.visitEnd();
+		MethodVisitor setter = mw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, "port$setFrom", "(Ljava/lang/Object;)V", null, null);
+		AnnotationVisitor setAccessor = setter.visitAnnotation("Lorg/spongepowered/asm/mixin/gen/Accessor;", true);
+		setAccessor.visit("value", "from");
+		setAccessor.visitEnd();
+		setter.visitEnd();
+		mw.visitEnd();
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/MixAccessor", mw.toByteArray()));
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "MixAccessor"));
+
+		MixinPreflight bridged = preflight(new ClassIndex(Map.of(mix, target.apply(true))::get), mod::get, ClassBytesSource.EMPTY, false);
+		List<PreflightFinding> repairs = new java.util.ArrayList<>();
+		Map<String, byte[]> repaired = bridged.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), repairs);
+		assertEquals(Set.of("com/example/mixin/MixAccessor.class"), repaired.keySet());
+		assertEquals(2, repairs.size(), repairs.toString());
+		assertTrue(repairs.stream().allMatch(f -> f.severity() == Severity.INFO && f.message().contains("CORPUS-37")), repairs.toString());
+		org.objectweb.asm.tree.ClassNode node = new org.objectweb.asm.tree.ClassNode();
+		new org.objectweb.asm.ClassReader(repaired.get("com/example/mixin/MixAccessor.class")).accept(node, 0);
+		Map<String, List<Object>> invokers = new HashMap<>();
+		for (org.objectweb.asm.tree.MethodNode method : node.methods) {
+			assertEquals(1, method.visibleAnnotations.size(), method.name);
+			org.objectweb.asm.tree.AnnotationNode ann = method.visibleAnnotations.getFirst();
+			assertEquals("Lorg/spongepowered/asm/mixin/gen/Invoker;", ann.desc, method.name);
+			invokers.put(method.name + method.desc, ann.values);
+		}
+		assertEquals(Map.of("port$from()Ljava/lang/Object;", List.of("value", "fabricated$get$from", "remap", false),
+				"port$setFrom(Ljava/lang/Object;)V", List.of("value", "fabricated$set$from", "remap", false)), invokers);
+		mod.put("com/example/mixin/MixAccessor", repaired.get("com/example/mixin/MixAccessor.class"));
+		List<PreflightFinding> findings = bridged.check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(findings.isEmpty(), findings.toString());
+
+		mod.put("com/example/mixin/MixAccessor", mw.toByteArray());
+		MixinPreflight plain = preflight(new ClassIndex(Map.of(mix, target.apply(false))::get), mod::get, ClassBytesSource.EMPTY, false);
+		List<PreflightFinding> none = new java.util.ArrayList<>();
+		assertTrue(plain.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), none).isEmpty(), none.toString());
+		List<PreflightFinding> refused = plain.check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(refused.stream().anyMatch(f -> f.severity() == Severity.FAIL && f.message().contains("has a different type than")), refused.toString());
+	}
+
+	/**
 	 * CORPUS-69: an {@code @Intrinsic} of a class mixin that only calls the superclass's method (Lithium's
 	 * {@code setCachedState} of the chest, there so its {@code @Inject} has a method to inject into) is dropped where the
 	 * target already declares the method, as Forge 47's patched chest does: Mixin rejects such an {@code @Intrinsic}
