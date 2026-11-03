@@ -205,6 +205,7 @@ Each mod's entrypoints run inside a guard that records mod id, entrypoint key, c
    * merged methods, `@Accessor`s, `@Invoker`s and `@Intrinsic`s don't collide with a method the target already declares (NeoForge adds some, such as `hashCode` or public getters; Forge 47's chest overrides `setBlockState`): an accessor of such a method becomes a shadow of it, and an `@Intrinsic` only calling the superclass's is dropped, keeping the target's (CORPUS-69);
    * where the running Mixin looks up each local variable's class in a mixin method's debug table (`MixinCompat.readsLocalTypes`: SpongePowered's, Fabric's before 0.17.0), a local of a class not found on this side leaves the table, as Mixin would stop on it (LVT-1);
    * where the running Mixin finds a `@Shadow` field only among its target's own (`MixinCompat.shadowsMixinFields`: SpongePowered's; Fabric's also finds those the mixins prepared before it add), a shadow of a field another mod's mixin adds is declared as that mixin declares the field, without Mixin's annotations, so that Mixin merges the two into one field (`MixinRepairs.sharedFieldRepair`, CORPUS-74); one that can't be fails;
+   * Mixin finds a `@Shadow` method only among its target's own methods, so pre-flight looks there, not through the supertypes; a shadow of an instance method the target only inherits (one the platform moved into a supertype: Forge 47's `MultiPartBakedModel.getQuads`, now `IDynamicBakedModel`'s default) is dropped where every use of it is virtual, and the mixin's calls of it reach the inherited method (`MixinRepairs.inheritedShadowRepair`, CORPUS-84); one that can't be fails;
    * a `NEW` point with a constructor descriptor matches that constructor only, and targets in library classes NeoForge loads without mixin support (DataFixerUpper, Brigadier, the JDK) fail. A mixin into such a class that only gives it interfaces of the mod, implemented with the class's fields and the mixin's own methods (Carpet's command removal), never reaches that check: translation replaces it with a generated class serving the interfaces (`LibraryBridges`, LIB-1), whose static methods read and write the fields through reflection, and points the mod's casts to the interfaces, checks against them and calls of their methods at it. One giving it another library's interfaces (Adventure's, which other classes implement and which have default methods), with no state and only the class's public methods as shadows, is replaced by a generated adapter (`LibraryAdapters`, LIB-2): it implements the interfaces for one object of the class, with the mixin's methods and the class's other public methods forwarded to the object, and the mod's casts to the interfaces wrap an object of the class in it, its checks against them count the class, and its casts to the class unwrap it.
 
    Mixins into the classes of the jars installed next to the Fabric mods get the same checks (`InstalledClasses`:
@@ -253,6 +254,17 @@ Each mod's entrypoints run inside a guard that records mod id, entrypoint key, c
    fail. Two changes only turn a crash into a missing effect, never the reverse: an `@Inject` whose local capture
    fails hard skips itself instead when NeoForge's locals differ, and in a config with a plugin (which may disable
    mixins at runtime) a mixin pre-flight proves would crash is left out instead of disabling the mod.
+8. **Fabric ASM's enum additions** (`EarlyRisers`, CORPUS-80). Fabric ASM's Mixin plugin runs the mods'
+   `mm:early_risers` and serves the enum mixins their `ClassTinkerers.enumBuilder` calls declare from Fabric's class
+   loader, which the platform's doesn't take, so its config is left out. Instead, translation reads each early riser's
+   code without running it, interpreting only what declares constants: constants, class literals, `mapClassName` from
+   intermediary names, string joins, and the side's branch. It then writes the constants as enum mixins of its own,
+   in a config it generates. The steps above take those mixins on as they would the mod's own: NeoForge's enum
+   extension file, or an ordinary mixin (ENUM-5, ENUM-7). Arguments a supplier gives come from a helper class next
+   to the supplier's class. The helper runs the supplier as the enum is initialized, once per constant, and checks
+   the array's length as Fabric ASM does. The supplier's method stops being private so the helper can call it. An
+   early riser doing anything else is reported and adds nothing. Fabricated's code follows Fabric ASM's
+   documentation (its README), not its MPL-2.0 sources.
 
 ---
 

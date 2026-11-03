@@ -3,6 +3,123 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-03: Fabric ASM's enum additions, for Farmer's Delight on Forge 47 (CORPUS-80, task 5)
+
+- **CORPUS-80 on Forge 47** (`EarlyRisers`, `ModTranslator.earlyRisers`, new; `ModTranslator.processMixins`):
+  Farmer's Delight adds its recipe book types and search categories with Fabric ASM, whose Mixin plugin can't run on
+  Forge. That plugin runs the mod's early riser and serves the enum mixins it makes from Fabric's class loader. Forge's
+  class loader takes no added classes, so Mixin dropped the config, and the mod's entrypoint failed on
+  `ClassTinkerers.getEnum`.
+  - **The fix:** Fabric ASM's config is left out, with an INFO line. Translation reads each early riser's
+    `enumBuilder(...).addEnum(...).build()` calls from its code, without running it, and writes the constants as
+    enum mixins of its own, in a config it generates. The platform's way with enum mixins takes them from there:
+    ENUM-7's ordinary mixin calling Forge's `create` factories on Forge, NeoForge's enum extension file on NeoForge.
+  - **Arguments:** given ones are written as constants. Supplied ones come from a helper class next to the
+    supplier's class, which runs the supplier as the enum is initialized, once per constant, and fails as Fabric ASM
+    does on an array of the wrong length. The supplier's method stops being private so the helper can call it.
+  - **Not read:** an early riser doing anything else (another of Fabric ASM's tools, a call of other code, a loop)
+    adds nothing, and the report says why. A mod shipping Fabric ASM's access transformer (`silky.at`), which nothing
+    applies, gets a warning.
+  - Written from Fabric ASM's README, not its MPL-2.0 code (`NOTICE`).
+- **Tests:**
+  - `EarlyRisersTest` reads an early riser shaped like Farmer's Delight's on a server and a client, with the mapping
+    resolver's names. It also reads given arguments of each kind and a lambda supplier, and names the reason for
+    five risers it can't read.
+  - It loads the generated mixin, helper and supplier class and runs them. The constants are made, the supplier's
+    array is passed and then forgotten, and a wrong length fails with Fabric ASM's message.
+  - `PipelineTest.fabricAsmsEarlyRisersEnumConstantsComeFromEnumMixinsOfFabricatedsOwn` runs the pipeline with
+    Forge's descriptor and Mixin 0.8.5 on a client. It checks that the generated mixins become ordinary ones with the
+    enums' `create` factories, that Fabric ASM's config is left out, and that an unreadable early riser and a
+    `silky.at` each warn while the mods still load.
+- **CORPUS-79 evidence** (on `forge`, #261): the extended corpus client runs with `-Dmixin.dumpTargetOnFailure=true`.
+  The bytecode step prints Mixin's dump of `ScreenEffectRenderer` as it had it when ResourcefulLib's hook failed: the
+  mixins merged into it before, and the method's code and locals.
+- **Docs:** CORPUS-80's and CORPUS-79's rows, `COMPATIBILITY.md` (what is and isn't supported of Fabric ASM),
+  `ARCHITECTURE.md` §5, `NOTICE`.
+- **CI:** core build and tests pass locally (467 tests). `forge-legacy` takes the fix by the next sync, and its
+  extended run verifies it on the Forge 47 corpus.
+
+## 2026-11-03: MoreCulling's shadow of an inherited method on Forge 47 (CORPUS-84), and eleven findings verified (task 5)
+
+- **CORPUS-84** (`MixinRepairs.inheritedShadowRepair`, new; `MixinPreflight.checkMembersOf`): the Forge 47 corpus
+  client stopped baking models, as Mixin applied MoreCulling's `MultipartBakedModel_cacheMixin`.
+  - **The cause:** Forge 47 patches `MultiPartBakedModel` to implement its `IDynamicBakedModel` and drops vanilla's
+    three-argument `getQuads`, which the interface now gives as a default method. MoreCulling shadows that method, and
+    Mixin looks for a `@Shadow` method only among its target's own methods, so it stopped the game ("was not located
+    in the target class"). Pre-flight had passed the shadow, as it looks a method up through its supertypes.
+  - **The fix:** where the target only inherits the method (an instance method that isn't private), and every use of
+    the shadow in the mixin is a virtual call, the shadow is dropped. The mixin's calls then reach the inherited
+    method, as on Fabric, and an INFO line in the report says so. Otherwise pre-flight now says that Mixin can't find
+    the shadow, which disables the mod, or leaves the mixin out where it can.
+- **Merged:** #258 (Forge 61 to 66) and #259 (Forge 47), each green on its final commit.
+- **Verified** (extended runs 41658054089 on Forge 61 to 66 and 41658060068 on Forge 47, after the syncs; moved to
+  `FINDINGS.md`):
+  - ENUM-7 and CORPUS-53: Friends and Foes loads on every Forge 61 to 66 corpus server and client. The four servers
+    start and stop normally, the Forge 65 and 66 clients reach their world, and the Forge 61 and 64 clients get past
+    their bootstrap.
+  - SHARE-1 and CORPUS-54: on Forge 61 both of Balm's crop hooks are left out together, and the corpus client gets
+    past `Blocks`.
+  - CORPUS-82 and PRE-18: the Forge 66 corpus client passes ImmediatelyFast's hooks, reaches its world and exits
+    normally (PRE-18 was verified on Forge 65 before). Mod Menu's cause stays unverified, as its screens don't load
+    on Forge (REPL-1).
+  - CORPUS-76: the Forge 47 corpus client's model loading, and REI's, ShulkerBoxTooltip's and Traveler's Backpack's
+    entrypoints, no longer throw `ClassCircularityError`.
+  - CORPUS-55, CORPUS-68 and CORPUS-69: the Forge 47 corpus server and client get past `Fluids` and Lithium's chest,
+    and the client makes its `Gui` without Porting Lib's injection failure.
+  - LVT-1: the Forge 26.2 corpus server gets past owo's slot mixin, and starts and stops normally.
+- **Read** (rows in *Findings*): CORPUS-79's discriminator lists no candidates at all on Forge 61 and 64. Walked by
+  hand, Mixin's `getLocalsAt` keeps the `PoseStack` in the jar's method, so what differs is still unknown.
+- **Tests:** `MixinPreflightTest.aShadowOfAMethodTheTargetOnlyInheritsIsDroppedForTheInheritedOne` builds Forge 47's
+  `MultiPartBakedModel` and MoreCulling's mixin, with and without the prefix. The shadow is dropped and the mixin's
+  call is kept. With a non-virtual call, pre-flight reports the shadow instead, and where the target declares the
+  method nothing changes. The test fails without the fix.
+- **CI fix** (`ci/fetch-corpus.py`): Sodium's and Iris's 26.3 builds for NeoForge also list 26.1.2 and 26.2 on
+  Modrinth, so the 26.1.2 and 26.2 mods jobs fetched them. Sodium refused those versions' LWJGL 3.4.1 at launch, and
+  the Fabric-models-under-Sodium gate failed (PR run 41665998918). The script now passes over a build whose version
+  number or file name names only later Minecraft versions it lists, and fetches the newest build made for the version.
+  A build that names no version, or this one or an earlier one, is fetched as before.
+- **CI:** core build and tests pass locally (461 tests); the fetch script's choice was checked against Modrinth-shaped
+  version lists. The Forge branches take the fixes by the next sync.
+
+## 2026-11-03: Farmer's Delight's enum constants on Forge 61 to 66 (CORPUS-80, task 5)
+
+- **CORPUS-80** (`EnumValuesMixins.holderClass`, `withHeldConstants`, `initReturns`, `ModTranslator.valuesMixin`):
+  pre-flight disabled Farmer's Delight on Forge 61 to 66.
+  - **The cause:** its recipe book type and search category are enum mixins, which Forge's Mixin 0.8.7 doesn't apply.
+    ENUM-7 turns such mixins into ordinary ones adding the constants, but not here, because the mod's own classes
+    read the constants as fields of the enums (`FDRecipeBookTypes.COOKING = RecipeBookType.FARMERSDELIGHT_COOKING`).
+    A mixin can't add those fields.
+  - **The fix:** those reads now go to a holder class generated next to the mixins. The holder takes the constants
+    from the enum's values by name. If a constant is missing (its mixin didn't apply), the holder fails with the enum,
+    the constant and the mixin named.
+  - **A second problem, found in Forge's sources:** Forge makes `RecipeBookType` extensible. Its `create` factory
+    runs `init` on each constant, and on Forge 61 to 66 `init` calls `RecipeBookSettings.register`, which always
+    throws "This is not implemented yet". Once converted, the mixin would have stopped the game as the enum loaded.
+    Where `init` can't return, the mixin now cancels it for the mod's own constants only. Fabric gives them no such
+    hook, and other mods' constants still go through it.
+  - **Limit:** another mod reading these constants as fields still finds none.
+  - Forge 47's half of the row (Fabric ASM) is still open.
+- **Delegate names:** two converted enum mixins in one config, each with a constant that has a body, gave their
+  delegates the same name. The second overwrote the first. Each now gets a free name
+  (`ModTranslator.generatedBase`).
+- **Merged:** #257 (main), green on its final commit.
+- **Opened:**
+  - #258 (Forge 61 to 66) and #259 (Forge 47) sync main into the Forge branches.
+  - On the Forge branches, the corpus causes now print the locals a discriminator saw (CORPUS-79).
+  - Extended runs are dispatched on both branches.
+- **Tests:**
+  - `PipelineTest.anEnumMixinsConstantsTheModReadsAsFieldsOfTheEnumComeFromAHolderWhereMixinAppliesNoEnumMixins` uses
+    Farmer's Delight's shape on Forge's descriptor and Mixin 0.8.7. The mod loads, its readers read from the holders,
+    and the recipe book type's mixin skips `init`. It fails without the fix.
+  - Two `EnumValuesMixinsTest` tests run the generated code merged into the enum as Mixin would. They check that the
+    mod's constant follows the enum's own, that `create` still fails for another constant, that the holder returns the
+    enum's own constant, and that a missing constant fails with its message.
+  - ENUM-7's pipeline test now disables its second mod with a method of its own in its enum mixin, since a field read
+    no longer does.
+  - ENUM-5's pipeline test has a second such mixin in its config and checks that each gets its own delegate. It fails
+    without the fix.
+- **CI:** core build and tests pass locally (460 tests).
+
 ## 2026-11-03: interface mixins Mixin would take for accessor mixins (CORPUS-76), the game's other packages (CORPUS-82), and four findings verified (task 5)
 
 - **CORPUS-76** (`AccessorShapedMixins`, `ModTranslator.leaveOutHandlers`): the Forge 47 corpus client stopped with
