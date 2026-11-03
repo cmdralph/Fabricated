@@ -1102,9 +1102,11 @@ MixinExtras has NeoForge's jar, and a NeoForge mod nested in another jar has tha
   with `valueOf`); one that can't disables its mod, with the reason, where Mixin would stop the game on it. Into an
   enum Forge makes extensible (`MobCategory`), it makes the constants with the enum's own `create` factories, as
   Forge mods do, at the end of the enum's class initializer, once the map by name each factory registers its constant
-  in is set. Where the enum's `init`, which each factory runs on the constant it makes, can't return (Forge 61 to 66's
-  `RecipeBookType`, whose `init` throws "This is not implemented yet"), the mixin skips `init` for the mod's
-  constants, which Fabric gives no such hook.
+  in is set. The enum's `init`, which each factory runs on the constant it makes, runs for the mod's constants only
+  where it keeps to the enum, as `MobCategory`'s, which fills the map its codec reads. Fabric gives them no such hook,
+  so the mixin skips it where it can't return (Forge 61 to 66's `RecipeBookType`, whose `init` throws "This is not
+  implemented yet") or reaches another class (Forge 47's `RecipeBookType`, whose `init` runs `RecipeBookSettings`'
+  class initializer early, before Farmer's Delight's mixin there can read its type; the mod adds its tags itself).
 - Fabric ASM (Manningham Mills, mod id `mm`) adds enum constants that mods declare in their `mm:early_risers`, with
   `ClassTinkerers.enumBuilder(...).addEnum(...).build()`. Its Mixin plugin runs those early risers and serves the
   mixins it makes from Fabric's class loader. NeoForge's and Forge's class loaders take no added classes, so Mixin

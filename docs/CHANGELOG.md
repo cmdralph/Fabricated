@@ -3,6 +3,46 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-03: Magna's hammers on Forge 47 (CORPUS-72), and Forge's recipe book `init` for Farmer's Delight (CORPUS-80, task 5)
+
+- **CORPUS-72** (`CallRepairs.movedCallRepairs`, `vanillasPlace` and `movedInto`, new; `PatchAlignment.token` now
+  package-wide): pre-flight disabled Magna on Forge 47, and Modern Industrialization, whose items extend Magna's tools
+  and which doesn't name its nested Magna as a dependency, failed at its entrypoint.
+  - **The cause:** Magna's hammers break their area from an `@Inject` at `ServerPlayerGameMode.destroyBlock`'s
+    `playerWillDestroy` call, which cancels the break. Forge 47's patch moved that call, with vanilla's `removeBlock`
+    and `destroy`, into a `removeBlock` of its own that the creative and the survival branch each call, and which
+    reaches `playerWillDestroy` through its extensions' `onDestroyedByPlayer`.
+  - **The fix:** an `@Inject` at a call the patch moved out of the method, into methods the patch added to the
+    game's classes or the platform's code, moves to the place vanilla made the call. That place is found between
+    calls both versions make exactly once (the last before the call and the first after it), as an alignment of all
+    instructions can't tell it where the patch adds statements looking like vanilla's (Forge's `onBlockStartBreak`
+    check). The point moves only when the patched code between those two calls does what vanilla's did, apart from
+    loading values: the same jumps to the same places, no jump in from elsewhere, no try block. And the method must
+    still make the call. Only an `@Inject` capturing no locals and taking nothing after its `CallbackInfo` moves.
+  - **Why not the patch's calls:** at `removeBlock`'s calls, Magna's hook would run after the survival branch damaged
+    the tool, and once more for each block of the area Magna checks through `destroyBlock`.
+  - **Still open:** a mod whose nested mod is disabled fails at its entrypoint rather than being disabled with it.
+- **CORPUS-80 on Forge 47, continued** (`EnumValuesMixins.initKeepsToEnum`, new; `ModTranslator.valuesMixin`'s
+  report line). The extended run after #263's sync (41675005964) made Fabric ASM's constants.
+  - **The cause:** Farmer's Delight's entrypoint then failed with a `NullPointerException`. Forge's `create` runs `init`
+    on each constant it makes, and Forge 47's `RecipeBookType.init` registers the type's tags with
+    `RecipeBookSettings`. That ran `RecipeBookSettings`' class initializer while `RecipeBookType` was still initializing
+    from `FarmersDelight`'s. The mod's own mixin there adds its type's tags from `FarmersDelight.RECIPE_TYPE_COOKING`,
+    which was still null. The client then stopped in Forge's `RecipeBookManager.init`, as the meals category's
+    supplier made an item stack of an item the failed entrypoint never registered.
+  - **The fix:** Forge's `init` is skipped for the mod's constants also where it reaches another class than the enum.
+    Fabric gives them no such hook, and the mod adds its tags itself. An `init` keeping to the enum, as Forge 47's
+    `MobCategory.init` filling the map its codec reads, still runs. This reverses the earlier entry's call that Forge
+    47's `RecipeBookType.init` should run because it returns.
+- **Tests:**
+  - `MixinPreflightTest.anInjectionAtACallThePatchMovedIntoAMethodOfItsOwnStaysAtVanillasPlace` compiles a vanilla
+    and a Forge-shaped `destroyBlock` with javac and checks that the hook moves before the creative branch. It also
+    checks three cases where the hook stays: without vanilla's code, with the patch damaging the tool before the
+    branch, and with the patch taking the call out.
+  - `EnumValuesMixinsTest`: Forge 47's `RecipeBookType.init` is skipped, and an `init` keeping to the enum isn't.
+- **CI:** core build and tests pass locally (468 tests); the mixin inventory check passes. #263 (forge-legacy) and #261
+  (forge) carry the earlier fixes; the next syncs carry these, and Forge 47's extended run verifies them.
+
 ## 2026-11-03: Fabric ASM's enum additions, for Farmer's Delight on Forge 47 (CORPUS-80, task 5)
 
 - **CORPUS-80 on Forge 47** (`EarlyRisers`, `ModTranslator.earlyRisers`, new; `ModTranslator.processMixins`):
