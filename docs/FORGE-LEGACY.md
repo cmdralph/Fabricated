@@ -255,17 +255,24 @@ What else differs on Forge, for Fabric mods in general:
   it loads mods), and the system property FML sets for an empty log marker is removed before any Fabric mod runs
   (CORPUS-60). A Fabric mod's jar a mod proposes for the class path as the game runs isn't added, with a loading
   warning (DOWNLOAD-1); Essential, whose loader does that, is still refused on Forge.
-- **Forge's coremods:** on Forge 47, pre-flight reads the game's classes as Forge's coremods leave them, each mob's
-  `finalizeSpawn` call in the classes Forge lists pointed at `ForgeEventFactory.onFinalizeSpawn` and the fields Forge
-  reads through getters, so a Fabric mod's hook at such a call moves to Forge's hook or is left out with its reason, as
-  on NeoForge (CORPUS-61). Forge 61 to 66's are still to be described (task 5): a hook there at a call they change may
-  find nothing as Mixin applies it.
+- **Forge's coremods:** pre-flight reads the game's classes as Forge's own transformers leave them before Mixin
+  applies any mod's mixins: Forge 47's coremods and Forge 61 to 66's `forge-transformers`. Each mob's `finalizeSpawn`
+  call Forge changes is pointed at `ForgeEventFactory.onFinalizeSpawn` (on Forge 47 anywhere in the classes it lists;
+  on Forge 61 to 66 in the methods it names and those classes' lambdas), and the fields Forge reads through getters are
+  read so, so a Fabric mod's hook at such a call moves to Forge's hook or is left out with its reason, as on NeoForge
+  (CORPUS-61; on Forge 61 to 66 CORPUS-78: Friends and Foes' patrol spawner hook stopped the Forge 64 and 65 servers).
 - **MixinExtras** is 0.5.5 on every Forge version: the in-game mod nests it, and Forge's jar-in-jar locator picks it
   over the 0.5.4 Forge 61 to 66 offer (MIXEXT-3).
 - **`@ModifyArgs`:** Forge 47's Mixin 0.8.5 puts the classes it generates for a `@ModifyArgs` handler's arguments in no
   module of the game layer, so a game class naming one failed to load (the corpus server and client stopped as `Fluids`
   loaded, CORPUS-68). Fabricated's transformation service adds a module holding those packages, and no files, as
   Mixin 0.8.7 does on Forge 61 to 66; not when no Fabric mod is loaded, or a mod file already holds one of them.
+- **A shadow of another mixin's field:** Forge's Mixin (SpongePowered's 0.8.5 and 0.8.7) finds a `@Shadow` field only
+  among its class's own, where Fabric's also finds those the mixins it prepared before add: MoreCulling's shadow of
+  the mesh Fabric API's renderer mixin adds to `BlockModelRenderState` stopped the Forge 26.x clients. Such a shadow is
+  declared as the other mixin declares the field, and Mixin merges the two into one field, as on Fabric (CORPUS-74:
+  the test mod's tick counter, all five, server run); one that can't be (a static shadow of an instance field, a
+  writable one of a final field) disables its mod, or leaves its mixin out where it can.
 - **Forge Config API Port**'s Fabric build loads, with its own copies of NeoForge's config classes, which Forge lacks
   (REPL-1, PLAT-5; on Forge 47 from task 5, whose descriptor had NeoForge's list and left the jar out: PLAT-6). **Mod Menu**'s Fabric build isn't loaded on Forge, which lists mods itself; Fabric mods' Mod Menu
   entrypoints give it their config screens (above).

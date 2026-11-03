@@ -283,3 +283,16 @@ jobs:
           name: fabricated-forge-${{ matrix.target.minecraft }}
           path: build/libs/fabricated-forge-*+mc${{ matrix.target.minecraft }}.jar
           if-no-files-found: error
+      # The bytecode task 5's open findings turn on, for reading (informational, with "extended"; last, and capped, as the
+      # job's log can only be read from its end): ClientTooltipComponent, which the corpus client's class loader found
+      # among its own supertypes (CORPUS-76): the mods' mixins of it, the classes extending it as the mods ship them
+      # (intermediary names) and as Fabricated translated them, and the game's interface.
+      - name: Bytecode for task 5's findings (informational)
+        if: ${{ env.EXTENDED == 'true' && !cancelled() && steps.corpus.outcome == 'success' }}
+        continue-on-error: true
+        run: |
+          [ -d "$RUNNER_TEMP/client-corpus" ] || exit 0
+          python3 -I ci/javap-dump.py "$RUNNER_TEMP/client-corpus" 'mixins:net/minecraft/class_5684' 'subtypes:net/minecraft/class_5684' \
+            'subtypes:net/minecraft/client/gui/screens/inventory/tooltip/ClientTooltipComponent' \
+            'game:net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent#class' \
+            | cut -c1-320 | head -n 900 || true
