@@ -15,14 +15,18 @@
     "fabricated-forge-screen-chars.mixins.json": ["fabric-screen-api-v1"]
   },
   "mixins": {
+    "BucketItemEarlyFluidMixin": [],
     "BuiltInRegistriesFreezeMixin": [],
     "BuiltInRegistriesInvoker": [],
     "DefaultAttributeCopyMixin": ["fabric-object-builder-api-v1"],
     "FluidTypeMixin": [],
     "ForgePayloadEncodeMixin": ["fabric-networking-api-v1"],
     "GameDataFreezeMixin": [],
+    "IngredientOptionalCodecMixin": [],
     "LivingEntityFluidTravelMixin": [],
     "MappedRegistryPendingHoldersMixin": [],
+    "NamespacedWrapperAliasMixin": ["fabric-registry-sync-v0"],
+    "NamespacedWrapperEarlyWriteMixin": [],
     "NamespacedWrapperPendingHoldersMixin": [],
     "ResourcePackLoaderKnownPackMixin": [],
     "TagFileRemoveMixin": ["fabric-tag-api-v1"]

@@ -54,7 +54,7 @@ How to read it: as the NeoForge table, and
 | fabric-game-rule-api-v1 | loads | loads | loads | loads | loads |
 | fabric-item-api-v1 | loads, part | loads, part | loads, part | loads, part | loads, part |
 | fabric-item-group-api-v1 | loads | — | — | — | loads |
-| fabric-key-binding-api-v1 | native | — | — | — | loads |
+| fabric-key-binding-api-v1 | native | — | — | — | native |
 | fabric-key-mapping-api-v1 | — | native | native | native | — |
 | fabric-keybindings-v0 | — | — | — | — | loads |
 | fabric-lifecycle-events-v1 | loads, part | loads, part | loads, part | loads, part | loads, part |
@@ -159,19 +159,36 @@ by the server runs (the colours, screens, key mappings and config screens by the
   1.20.1's HUD API, and fires from Forge's `RenderGuiEvent.Post`, where Forge's GUI ends its HUD drawing (with Fabric
   API, client run). Removing Fabric's `info_bar` element also keeps the bar from switching between the experience and
   the locator bar on Forge 61 to 66, whose layer does both.
-- **Key mappings:** on Forge 61 to 66 the key mapping module (the key binding module on 1.21.11) is native, with Fabric
-  API's jar and without it (client runs). Upstream refuses a key mapping once the game's options exist, which Forge
-  creates before it loads mods, so passed through, it failed every client entrypoint that registers one (KEYMAP-3).
-  Fabricated keeps them until Forge's `RegisterKeyMappingsEvent`, where Forge mods register theirs; Forge then reads
-  the saved keys again. A test key mapping is in the options, sorted after the game's, and bound to the key CI's
-  options file saves for it; a second registration of it, and one after Forge's event, are refused, as upstream refuses
-  them. On Forge 47, Fabric API's module loads as it is.
+- **Key mappings:** on all five Forge versions the key mapping module (the key binding module on 1.21.11 and 1.20.1) is
+  native, with Fabric API's jar and without it (client runs). Upstream refuses a key mapping once the game's options
+  exist, which Forge creates before it loads mods, so passed through, it failed every client entrypoint that registers
+  one (KEYMAP-3; on Forge 47 found with Xaero's World Map). Fabricated keeps them until Forge's
+  `RegisterKeyMappingsEvent`, where Forge mods register theirs; Forge then reads the saved keys again. A test key
+  mapping is in the options, sorted after the game's, and bound to the key CI's options file saves for it; a second
+  registration of it, and one after Forge's event, are refused, as upstream refuses them.
 - **Config screens:** a Fabric mod's Mod Menu config screen is behind Forge's mod list button, as on NeoForge (all five,
   client run).
 - **Failed initializers:** a Fabric mod whose entrypoint throws is named in the report and in Forge's loading warnings,
   and what it built but never registered is dropped at the registries' freeze with an error, where it stopped the
   freeze (all five, server run; HOLD-2). Fabricated's API runs what waits for the initializers once they ran
   (`Fabricated.get().afterEntrypoints`).
+- **Registration order:** a Fabric mod may make its objects first and register them after, in any order, as Fabric
+  lets it: a bucket made before its fluid is registered holds that fluid (all five), and on Forge 47 so do a liquid
+  block made before its fluid and a music disc made before its sound, and a block item registered before its block is
+  that block's item (server run; CORPUS-73). Forge's patches of those constructors, and Forge 47's of a block item's
+  block, looked the object up in its registry and threw: TechReborn's fluids didn't load (seen on Forge 47, 64 and 65)
+  nor Lootr's block items on Forge 47, and what they left registered stopped Forge's snapshot of the registries.
+- **Registry aliases:** an old name a Fabric mod keeps for a renamed entry with Fabric API's `FabricRegistry.addAlias`
+  names that entry in the registries Forge manages, in their lookups by name and by key (which a data pack's references
+  go through) and in Forge's own registry, its snapshots and its sync to clients (all five, with Fabric API; server
+  run; CORPUS-75). Fabric API kept the alias in vanilla's registry class, whose lookups Forge's wrapper replaces:
+  Waystones' world generation names its renamed waystones by their old names, and its data pack, and with it the
+  server, didn't load on Forge 64 and 65.
+- **Recipe slots on the network (Forge 61 to 66):** an empty optional ingredient, a shaped recipe's empty slot, is sent
+  as vanilla sends it, an empty item list, and read back as empty; every other ingredient is Forge's to send (server
+  run; CORPUS-83). Forge's patch of vanilla's codec threw writing it, so with Fabric API, whose recipe sync sends the
+  recipes Fabric mods' clients need, a shaped recipe with an empty slot dropped the player's connection to the world
+  they joined (seen on the Forge 65 corpus client).
 - **Storages:** a Fabric mod's item and fluid storages are the `ITEM_HANDLER` and `FLUID_HANDLER` capabilities of its
   block entity, and a Forge mod's `ItemStackHandler` and `FluidTank` are Fabric's storages (all five, with Fabric API,
   server and client). A Forge handler only simulates until Fabric's outermost transaction commits, so an aborted one
@@ -243,19 +260,33 @@ What else differs on Forge, for Fabric mods in general:
   it loads mods), and the system property FML sets for an empty log marker is removed before any Fabric mod runs
   (CORPUS-60). A Fabric mod's jar a mod proposes for the class path as the game runs isn't added, with a loading
   warning (DOWNLOAD-1); Essential, whose loader does that, is still refused on Forge.
-- **Forge's coremods:** on Forge 47, pre-flight reads the game's classes as Forge's coremods leave them, each mob's
-  `finalizeSpawn` call in the classes Forge lists pointed at `ForgeEventFactory.onFinalizeSpawn` and the fields Forge
-  reads through getters, so a Fabric mod's hook at such a call moves to Forge's hook or is left out with its reason, as
-  on NeoForge (CORPUS-61). Forge 61 to 66's are still to be described (task 5): a hook there at a call they change may
-  find nothing as Mixin applies it.
+- **Forge's coremods:** pre-flight reads the game's classes as Forge's own transformers leave them before Mixin
+  applies any mod's mixins: Forge 47's coremods and Forge 61 to 66's `forge-transformers`. Each mob's `finalizeSpawn`
+  call Forge changes is pointed at `ForgeEventFactory.onFinalizeSpawn` (on Forge 47 anywhere in the classes it lists;
+  on Forge 61 to 66 in the methods it names and those classes' lambdas), and the fields Forge reads through getters are
+  read so, so a Fabric mod's hook at such a call moves to Forge's hook or is left out with its reason, as on NeoForge
+  (CORPUS-61; on Forge 61 to 66 CORPUS-78: Friends and Foes' patrol spawner hook stopped the Forge 64 and 65 servers).
 - **MixinExtras** is 0.5.5 on every Forge version: the in-game mod nests it, and Forge's jar-in-jar locator picks it
   over the 0.5.4 Forge 61 to 66 offer (MIXEXT-3).
 - **`@ModifyArgs`:** Forge 47's Mixin 0.8.5 puts the classes it generates for a `@ModifyArgs` handler's arguments in no
   module of the game layer, so a game class naming one failed to load (the corpus server and client stopped as `Fluids`
   loaded, CORPUS-68). Fabricated's transformation service adds a module holding those packages, and no files, as
   Mixin 0.8.7 does on Forge 61 to 66; not when no Fabric mod is loaded, or a mod file already holds one of them.
-- **Forge Config API Port**'s Fabric build loads, with its own copies of NeoForge's config classes, which Forge lacks
-  (REPL-1, PLAT-5; on Forge 47 from task 5, whose descriptor had NeoForge's list and left the jar out: PLAT-6). **Mod Menu**'s Fabric build isn't loaded on Forge, which lists mods itself; Fabric mods' Mod Menu
+- **A shadow of another mixin's field:** Forge's Mixin (SpongePowered's 0.8.5 and 0.8.7) finds a `@Shadow` field only
+  among its class's own, where Fabric's also finds those the mixins it prepared before add: MoreCulling's shadow of
+  the mesh Fabric API's renderer mixin adds to `BlockModelRenderState` stopped the Forge 26.x clients. Such a shadow is
+  declared as the other mixin declares the field, and Mixin merges the two into one field, as on Fabric (CORPUS-74:
+  the test mod's tick counter, all five, server run); one that can't be (a static shadow of an instance field, a
+  writable one of a final field) disables its mod, or leaves its mixin out where it can.
+- **Forge Config API Port** on Forge 61 to 66: its Fabric build loads, with its own copies of NeoForge's config
+  classes, which Forge lacks (REPL-1, PLAT-5). On Forge 47 its version for 1.20.1 copies Forge's own config system,
+  packages included, so its copies were left out for Forge's and its registry failed to link (Ponder's main
+  entrypoint, CORPUS-81). There the jar is left out, as on NeoForge, and the in-game mod provides the port's Fabric API
+  (`ForgeConfigRegistry`, `ForgeConfigPaths`, `ModConfigEvents`) on Forge's config system: each config is made with
+  the Fabric mod's Forge container under the port's file name, its values readable right after registering, as with
+  the port, and Forge loads, watches, syncs and unloads it as its mods' own, the port's events firing from Forge's.
+  The test mod registers a config so and checks it each server run (PLAT-6: the descriptor had NeoForge's list until
+  task 5). **Mod Menu**'s Fabric build isn't loaded on Forge, which lists mods itself; Fabric mods' Mod Menu
   entrypoints give it their config screens (above).
 - **Enum extensions:** a Fabric mod adding enum constants with Mixin's enum extensions (Farmer's Delight Refabricated)
   is disabled on Forge 61 to 66, whose Mixin 0.8.7 predates them (CORPUS-36).

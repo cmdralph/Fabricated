@@ -51,10 +51,12 @@ public abstract class MinecraftServerMixin {
 			ForgeTestMod.checkPackData((MinecraftServer) (Object) this);
 			ForgeTestMod.checkBiomes((MinecraftServer) (Object) this);
 			ForgeTestMod.checkFluids((MinecraftServer) (Object) this);
+			ForgeTestMod.checkOptionalIngredients((MinecraftServer) (Object) this);
 			ForgeDefaultBridgeTest.check((MinecraftServer) (Object) this);
 			ForgeTestMod.checkColors();
 			ForgeTestMod.checkKeyMapping();
 			ForgeTestMod.checkCommands((MinecraftServer) (Object) this);
+			ForgeTestMod.checkAliases();
 			ForgeTestMod.checkBlockBreaks((MinecraftServer) (Object) this);
 			ForgeTestMod.checkInteractions((MinecraftServer) (Object) this);
 			ForgeTestMod.checkSleeping((MinecraftServer) (Object) this);

@@ -203,6 +203,8 @@ Each mod's entrypoints run inside a guard that records mod id, entrypoint key, c
    * `@Inject` handlers take either only the callback info or the target's parameters followed by it (MixinExtras sugar parameters such as `@Local` aside). NeoForge recompiles Minecraft, so a synthetic lambda can take its captured values in another order. Handlers that capture locals or use `@Coerce` are not judged;
    * `@Local(name = …)` captures name a local variable the target declares (when the game class carries local names), an `@Local(index = N)` capture's slot can hold a value of its type there (MixinExtras takes the slot only where its local's type is the handler's; CORPUS-55), and `@ModifyConstant` constants occur in the target;
    * merged methods, `@Accessor`s, `@Invoker`s and `@Intrinsic`s don't collide with a method the target already declares (NeoForge adds some, such as `hashCode` or public getters; Forge 47's chest overrides `setBlockState`): an accessor of such a method becomes a shadow of it, and an `@Intrinsic` only calling the superclass's is dropped, keeping the target's (CORPUS-69);
+   * where the running Mixin looks up each local variable's class in a mixin method's debug table (`MixinCompat.readsLocalTypes`: SpongePowered's, Fabric's before 0.17.0), a local of a class not found on this side leaves the table, as Mixin would stop on it (LVT-1);
+   * where the running Mixin finds a `@Shadow` field only among its target's own (`MixinCompat.shadowsMixinFields`: SpongePowered's; Fabric's also finds those the mixins prepared before it add), a shadow of a field another mod's mixin adds is declared as that mixin declares the field, without Mixin's annotations, so that Mixin merges the two into one field (`MixinRepairs.sharedFieldRepair`, CORPUS-74); one that can't be fails;
    * a `NEW` point with a constructor descriptor matches that constructor only, and targets in library classes NeoForge loads without mixin support (DataFixerUpper, Brigadier, the JDK) fail. A mixin into such a class that only gives it interfaces of the mod, implemented with the class's fields and the mixin's own methods (Carpet's command removal), never reaches that check: translation replaces it with a generated class serving the interfaces (`LibraryBridges`, LIB-1), whose static methods read and write the fields through reflection, and points the mod's casts to the interfaces, checks against them and calls of their methods at it. One giving it another library's interfaces (Adventure's, which other classes implement and which have default methods), with no state and only the class's public methods as shadows, is replaced by a generated adapter (`LibraryAdapters`, LIB-2): it implements the interfaces for one object of the class, with the mixin's methods and the class's other public methods forwarded to the object, and the mod's casts to the interfaces wrap an object of the class in it, its checks against them count the class, and its casts to the class unwrap it.
 
    Mixins into the classes of the jars installed next to the Fabric mods get the same checks (`InstalledClasses`:
@@ -222,8 +224,12 @@ Each mod's entrypoints run inside a guard that records mod id, entrypoint key, c
    (`PlatformCoremods`, CORPUS-61): on NeoForge 21.1, each `finalizeSpawn` call in the classes its
    `finalize_spawn_targets.json` lists is a call of `EventHooks.finalizeMobSpawn`, and the fields its
    field-to-getter coremod covers are read through their getters. From 21.11 on, FML runs the same coremods after
-   Mixin, so Mixin sees those classes as the patched jar has them, and none are described (CORPUS-67). Forge's
-   coremods are described on the Forge branches.
+   Mixin, so Mixin sees those classes as the patched jar has them, and none are described (CORPUS-67). Forge 61 to
+   66 run theirs as ModLauncher transformers, so before Mixin (`PlatformCoremods.forge`, CORPUS-78): the call is
+   pointed at `ForgeEventFactory.onFinalizeSpawn` only in the methods each Minecraft version's own
+   `finalize_spawn_targets.json` names (shipped in core, copied from Forge's sources) and in the listed classes'
+   synthetic methods, and the fields are read through their getters in every method but the getter. Forge 47's JavaScript coremods are described on
+   its branch. A hook following such a call moves to the platform's hook (`net/neoforged/` or `net/minecraftforge/`).
 
    Outcome per mixin:
    * A missing target class fails only where Mixin rejects it: in a required config at compatibility level 0.17.4 or later (before that, Mixin skips the target).
@@ -329,9 +335,12 @@ Loader*):
   written by `scripts/native-module-index.py` from the plan's official Fabric API release; a package Fabric API keeps
   in two modules is given to one, as Forgified Fabric API does) and the in-game mod's `mixin-modules.json` (the
   module each of Fabricated's mixins serves; the build's `checkNativeModules` refuses a mixin or package missing from
-  them). The in-game mod is then handed to FML without those packages, with an overlay holding its `mods.toml` and
+  them). The modules those files name beyond the plan's (`NativeModules.modules`: one Fabricated passes through, whose
+  hooks in the in-game mod serve it) count as provided too (PROVIDER-13). A mixin serves its config's module, or that of
+  a sub-package another module owns, and stands down with it; a config goes whole once none of its mixins stay. The
+  in-game mod is then handed to FML without those packages, with an overlay holding its `mods.toml` and
   mixin configs without the mixins that stand down, and `NativeFabricApi` registers no bridge of a module another mod
-  provides (`FabricatedState.providedElsewhere`). Code that serves no module (entrypoints, registries, fluid types,
+  provides (`FabricatedState.providedElsewhere`, which `Pipeline.Result.alsoProvidedElsewhere` tells of those modules). Code that serves no module (entrypoints, registries, fluid types,
   vanilla behaviour Fabric mods rely on) always runs.
 * *Fabric Loader's API is Fabricated's (PROVIDER-2).* `FabricLoaderApiReader`, an FML mod file reader ahead of FML's
   own, reads any jar but a Fabricated build that has `net/fabricmc/loader/` or `net/fabricmc/api/` without them and

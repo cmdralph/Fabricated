@@ -3,6 +3,85 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-03: Forge 64's own spawn list (CORPUS-78), and the corpus after the sync (task 5)
+
+- **CORPUS-78, fixed again** (`PlatformCoremods.forge`): after the first fix the Forge 61 and 65 corpus servers start
+  with Friends and Foes (extended run 41632339327), but the Forge 64 one stopped in world generation on its static
+  `@WrapOperation` of a structure mob's `finalizeSpawn` call in `StructureTemplate`. Forge keeps a branch and a target
+  list per Minecraft version, and core had described 26.1.2 with 26.1's (Forge 62's), which names `StructureTemplate`;
+  Forge 64's own leaves it out, with `Tadpole`, `Villager` and `ZombieVillager`. Each of 1.21.11, 26.1.2, 26.2 and
+  26.3 now takes its own branch's list (the same as the tags 61.2, 64.1, 65.1 and 66.1), and no other version takes
+  one. `NOTICE` names the 26.1.2 branch.
+- **Verified in the corpus** (extended runs 41632339327 and 41632355968, moved to `FINDINGS.md`): CORPUS-74
+  (MoreCulling loads on the Forge 65 client, which reaches the world; Forge 47's client passes owo's shadow; the test
+  mod check passes on all five Forge versions) and CORPUS-71 (GeckoLib loads on the Forge 65 client). PRE-18 is fixed
+  on Forge 65; Mod Menu on Forge 66 is still to verify.
+- **Found** (rows in *Findings*): Forge 61 to 66's optional ingredient codec, which throws on the empty ingredient
+  Fabric API's recipe sync writes, so the Forge 65 client lost its connection to its own world (CORPUS-83, P0, fix on
+  `forge`); ImmediatelyFast's buffer upload hook on Forge 66 (CORPUS-82, P0); Forge Config API Port's `ModConfig`
+  constructors on Forge 47, which Ponder calls (CORPUS-81, P1); Farmer's Delight's enum additions, Fabric ASM on Forge
+  47 and enum mixins on Forge 61 to 66 (CORPUS-80, P1). CORPUS-79 (ResourcefulLib) now stops the Forge 61 client too,
+  and CORPUS-76's evidence points at AppleSkin's interface mixin of `ClientTooltipComponent`.
+- **Tests:** `PlatformCoremodsTest` checks each version's list (27 classes on 1.21.11, 23 on the others, none for
+  26.1, 26.1.1 or 26.2.1) and that Forge 64's leaves `StructureTemplate` alone; a new `MixinPreflightTest` case
+  checks that a wrap of that call moves to Forge's hook on Forge 61 only. The HUD-3 client check hides the GUI until a
+  few frames were drawn hidden, not for two seconds: on this PR's NeoForge 26.3 client the world's first frames came
+  late, and the game stopped before the check ended (run 41640138317).
+- **CI:** core build and tests pass locally. The Forge branches take the fix by the sync.
+
+## 2026-11-03: two Forge pre-flight fixes (CORPUS-74, CORPUS-78), and the Forge corpus stops (task 5)
+
+- **CORPUS-74** (`MixinRepairs.sharedFieldRepair`, `MixinCompat.shadowsMixinFields`): the Forge 26.2 corpus client
+  crashed on MoreCulling's shadow of the mesh Fabric API's renderer mixin adds to `BlockModelRenderState` (extended run
+  41590136017), and Forge 47's on owo's shadow of Fabric API's creative screen page (41590139262). Fabric's Mixin finds
+  a `@Shadow` field among the fields of the mixins it prepared before; SpongePowered's, which Forge runs, doesn't.
+  There such a shadow is now declared as the other mixin declares the field, which Mixin merges with it into one
+  field, as on Fabric; one that can't be fails pre-flight. Nothing changes on NeoForge, whose Mixin is Fabric's.
+- **CORPUS-78** (`PlatformCoremods.forge`, `MixinNames.isPlatformCode`): with CORPUS-70 and 73 fixed, the Forge 64 and
+  65 corpus servers crashed in the server tick on Friends and Foes' hook at a patrol member's `finalizeSpawn` call
+  (extended run 41594474962). Forge 61 to 66's `MethodRedirector`, a ModLauncher transformer and so ahead of Mixin,
+  points that call at `ForgeEventFactory.onFinalizeSpawn`. Decided: pre-flight reads Forge 61 to 66's game as their
+  transformers leave it, as it reads NeoForge 21.1's (CORPUS-61). Their target lists (one per version, copied from
+  Forge's 1.21.11, 26.1, 26.2 and 26.3 sources) ship in core, applied as Forge applies them (the methods named and the
+  listed classes' synthetic ones), with their field-to-getter reads (in every method but the getter, which differs
+  from NeoForge's rule; not `Biome`'s on 26.3); a hook at such a call moves to Forge's hook as it does to NeoForge's.
+  Nothing changes on NeoForge or Forge 47. The lists are Forge's files unchanged (LGPL-2.1), credited in `NOTICE`.
+- **Forge corpus stops read, fixed on the Forge branches** (#254, #249; the rows in *Findings* and `FINDINGS.md`):
+  Fabric mods' registries made in their main entrypoints (CORPUS-70, verified), GeckoLib's early registry writes on
+  Forge 61 to 66 (CORPUS-71), objects made before what they hold is registered (CORPUS-73, verified: TechReborn and
+  Lootr load), and Fabric API's registry aliases in Forge's registries (CORPUS-75, verified: Waystones' data pack loads
+  on the Forge 64 and 65 corpus servers, extended run 41594474962). Found and open: Modern Industrialization without
+  Magna on Forge 47 (CORPUS-72), the Forge 47 client's crash on `ClientTooltipComponent` made its own supertype
+  (CORPUS-76, now P0), owo's MixinExtras root on Forge 47 (CORPUS-77), and ResourcefulLib's screen effect hook on the
+  Forge 64 client (CORPUS-79).
+- **CI evidence** (`ci/javap-dump.py`): a `subtypes:` spec lists the classes in the mods' jars and Fabricated's
+  translations extending or implementing a class (for CORPUS-76), and `game:` finds Forge's game jars too.
+- **Tests:** the renderer test mod closes its minecarts in barriers on NeoForge too, as on Forge (a mob pushing the
+  lower one away kept it from being drawn once on Forge 26.1.2).
+- **CI:** core build and tests pass locally (the pre-flight, helper and platform transformer suites; five tests new,
+  one extended, one rewritten). The Forge branches take the core fixes by the sync, with a test mod check on all five
+  Forge versions.
+
+## 2026-11-03: Forgified Fabric API's modules on Forge 47, and owo's slot mixin (task 5)
+
+- **PROVIDER-13** (`NativeModules.modules`, `NativeModules.standDown`, `Pipeline.providedElsewhere`,
+  `Pipeline.Result.alsoProvidedElsewhere`): with coexisting tried on forge-legacy (3b8bdf4), the Forge 47 server with
+  Forgified Fabric API stopped loading data packs (extended run 41578329787): Fabricated's fuel hook called
+  `FuelRegistryImpl.apply`, which Forgified Fabric API's registry lacks, and a loot table couldn't be cast to
+  `FabricLootSupplier`. Only the plan's modules could count as provided, so Fabricated's hooks for modules it passes
+  through stayed beside the provider's; and the loot config, in fabric-loot-api-v2's package, stood down whole with
+  fabric-loot-tables-v1's table mixins, which Fabricated's own copy of that module (Forgified Fabric API 1.20.1 has
+  none) needs. Every module the data files name now counts, for the stand-down and for the in-game mod's bridges, and a
+  config keeps the mixins of a sub-package whose module isn't provided (whole only when none is left, or its plugin
+  leaves). The NeoForge locator passes the modules; the Forge ones take it by the sync, with fabric-loot-tables-v1's
+  initializer running on the provider's fabric-loot-api-v2 events.
+- **LVT-1** (`MixinRepairs.withoutUnfoundLocals`, `MixinCompat.readsLocalTypes`): #248's extended run 41578332996
+  verified ENUM-7: every Forge 61 to 66 corpus server and client got past `MobCategory`. The Forge 26.2 server then
+  stopped as Mixin applied owo's slot mixin: SpongePowered's Mixin (and Fabric's before 0.17.0) looks up the class of
+  every local in a mixin method's debug table, and owo's common mixin keeps a client-only rectangle. Where the running
+  Mixin does, such a local now leaves the table, which only debuggers read.
+- **CI:** core tests pass locally (450, four of them new). #248 (Forge 61 to 66) merged as 2625f01.
+
 ## 2026-11-03: Forge's enum factories and Lithium's chest (task 5)
 
 - **ENUM-7 on Forge, again** (`EnumValuesMixins`): after the last sync (extended run 41574438102) every Forge 61 to 66

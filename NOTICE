@@ -28,6 +28,13 @@ This product includes third-party material:
    916868752f6935dda70c4490404641a701335d81, 1.21.1 at commit 2f69d5496ad149fcbd63cab81bd0e3b33297734c; each
    version's intermediary_commit property).
 
+4. The target lists of Forge's spawn event transformer, for pre-flight to read the game as Forge 61 to 66 leave it:
+   core/src/main/resources/io/github/cmdralph/fabricated/core/mixin/forge-finalize-spawn-targets-*.json, each
+   Forge's forge-transformers/src/main/resources/coremods/finalize_spawn_targets.json unchanged.
+   Copyright Forge Development LLC and contributors. Licensed under the GNU Lesser General Public License, version 2.1
+   (LGPL-2.1-only), whose section 3 lets them be used under the GNU General Public License, as they are here.
+   Source: https://github.com/MinecraftForge/MinecraftForge, branches 1.21.11, 26.1.2, 26.2 and 26.3 (read 2026-11-03).
+
 For interoperability, com.terraformersmc.modmenu.api.ModMenuApi and ConfigScreenFactory are clean-room interfaces
 with the names and method signatures of Mod Menu's API (https://github.com/TerraformersMC/ModMenu, MIT); no Mod Menu
 code is included.

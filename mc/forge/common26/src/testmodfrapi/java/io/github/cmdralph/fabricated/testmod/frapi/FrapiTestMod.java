@@ -155,14 +155,34 @@ public final class FrapiTestMod implements ModInitializer {
 	/**
 	 * Summons a minecart carrying the terrain block at {@code pos} and one carrying the broken entity block above it, both
 	 * without gravity, so they stay where they are drawn whatever the terrain. Through the summon command, as upstream's
-	 * test of block models in minecarts does.
+	 * test of block models in minecarts does. Barriers close in the two blocks they are in ({@link #enclose}).
 	 */
 	private static void summonMinecarts(MinecraftServer server, ServerLevel world, BlockPos pos) {
 		world.setBlockAndUpdate(pos, Blocks.AIR.defaultBlockState());
 		world.setBlockAndUpdate(pos.above(), Blocks.AIR.defaultBlockState());
+		enclose(world, pos);
 		CommandSourceStack console = server.createCommandSourceStack().withLevel(world).withSuppressedOutput();
 		if (summonMinecart(server, console, pos, TERRAIN_BLOCK_ID) && summonMinecart(server, console, pos.above(), BROKEN_ENTITY_BLOCK_ID)) {
 			LOGGER.info("FABRICATED-TEST frapi minecarts summoned at {} (the terrain block) and above it (the broken entity block)", pos);
+		}
+	}
+
+	/**
+	 * Barriers below, above and beside the two blocks above {@code pos} where nothing solid is, so no mob reaches the
+	 * minecarts in them: a mob walking into a minecart pushes it, a moving minecart takes the mob in, and one without
+	 * gravity drifts on. Once on a Forge 26.1.2 client the lower minecart, at a mob's head height, was never drawn while
+	 * the one above it was, and a passenger packet came for an entity the client hadn't been sent. Barriers are drawn as
+	 * nothing and hide nothing behind them.
+	 */
+	private static void enclose(Level world, BlockPos pos) {
+		world.setBlockAndUpdate(pos.below(), Blocks.BARRIER.defaultBlockState());
+		world.setBlockAndUpdate(pos.above(2), Blocks.BARRIER.defaultBlockState());
+		for (int up = 0; up < 2; up++) {
+			for (Direction side : Direction.values()) {
+				if (side.getAxis() == Direction.Axis.Y) continue;
+				BlockPos next = pos.above(up).relative(side);
+				if (!world.getBlockState(next).isCollisionShapeFullBlock(world, next)) world.setBlockAndUpdate(next, Blocks.BARRIER.defaultBlockState());
+			}
 		}
 	}
 

@@ -40,8 +40,9 @@ import net.minecraft.world.item.Items;
  * round trip ({@link ForgeNetworkingTest}), the interaction module's block break events ({@link ForgeBlockBreakTest})
  * and use and attack callbacks ({@link ForgeInteractionTest}), the entity events module's sleep ({@link ForgeSleepTest})
  * and damage ({@link ForgeDamageTest}) events, storages reaching Forge's capabilities ({@link ForgeTransferTest}), and the
- * resource conditions module's load conditions in data files and registry entries ({@link ForgeConditionsTest}), and
- * the biome module's feature modifications ({@link ForgeBiomeTest}).
+ * resource conditions module's load conditions in data files and registry entries ({@link ForgeConditionsTest}), the
+ * biome module's feature modifications ({@link ForgeBiomeTest}), and the registry sync module's aliases
+ * ({@link ForgeRegistryAliasTest}).
  * Its fluids are written as Fabric mods write theirs ({@link ForgeFluidTest}).
  */
 public final class ForgeTestMod implements ModInitializer, DedicatedServerModInitializer {
@@ -119,6 +120,13 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 				ForgeCommandTest.register();
 			} catch (RuntimeException | LinkageError e) {
 				LOGGER.warn("FABRICATED-FORGE-TEST command listener not registered", e);
+			}
+		}
+		if (FabricLoader.getInstance().isModLoaded("fabric-registry-sync-v0")) {
+			try {
+				ForgeRegistryAliasTest.register();
+			} catch (RuntimeException | LinkageError e) {
+				LOGGER.warn("FABRICATED-FORGE-TEST registry aliases not added", e);
 			}
 		}
 		if (FabricLoader.getInstance().isModLoaded("fabric-networking-api-v1")) {
@@ -217,6 +225,15 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 		}
 	}
 
+	/** Whether an empty optional ingredient, a shaped recipe's empty slot, goes over the network as vanilla's ({@link ForgeIngredientCodecTest}, CORPUS-83). */
+	public static void checkOptionalIngredients(MinecraftServer server) {
+		try {
+			ForgeIngredientCodecTest.check(server);
+		} catch (RuntimeException | LinkageError e) {
+			LOGGER.warn("FABRICATED-FORGE-TEST optional ingredient check failed", e);
+		}
+	}
+
 	/** Whether the test mod's fluids have Forge fluid types and leave entities alone ({@link ForgeFluidTest}). */
 	public static void checkFluids(MinecraftServer server) {
 		try {
@@ -275,6 +292,16 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 			ForgeConditionsTest.check(server);
 		} catch (RuntimeException | LinkageError e) {
 			LOGGER.warn("FABRICATED-FORGE-TEST load conditions check failed", e);
+		}
+	}
+
+	/** Whether the registry answers to the aliases Fabric's registry sync module added ({@link ForgeRegistryAliasTest}; with Fabric API only). */
+	public static void checkAliases() {
+		if (!FabricLoader.getInstance().isModLoaded("fabric-registry-sync-v0")) return;
+		try {
+			ForgeRegistryAliasTest.check();
+		} catch (RuntimeException | LinkageError e) {
+			LOGGER.warn("FABRICATED-FORGE-TEST registry alias check failed", e);
 		}
 	}
 

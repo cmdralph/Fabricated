@@ -6,10 +6,12 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -232,6 +234,19 @@ public final class Pipeline {
 		}
 
 		/**
+		 * This result with {@code modules} among those another mod provides too: the modules beyond the plan's that the
+		 * platform glue found provided ({@link #providedElsewhere(FabricApiPlan, Collection, List)}), whose bridges in the
+		 * in-game mod stand down as well.
+		 */
+		public Result alsoProvidedElsewhere(Collection<String> modules) {
+			if (providedElsewhere.containsAll(modules)) return this;
+			Set<String> all = new LinkedHashSet<>(providedElsewhere);
+			all.addAll(modules);
+			return new Result(config, mods, injectedInterfaces, defaultBridges, environmentClasses, overridableMethods, runtime, containers,
+					report, dependencyFailures, Set.copyOf(all));
+		}
+
+		/**
 		 * This result without the given mods (by Fabric id), which NeoForge refused to load: their classes will never
 		 * exist, so their interface injections and environment classes must not apply to anything.
 		 */
@@ -336,11 +351,23 @@ public final class Pipeline {
 	 * platform glue leaves its classes, mixins and bridges out.
 	 */
 	public static Map<String, NeoForgeMod> providedElsewhere(FabricApiPlan plan, List<NeoForgeMod> neoForgeMods) {
+		return providedElsewhere(plan, List.of(), neoForgeMods);
+	}
+
+	/**
+	 * {@link #providedElsewhere(FabricApiPlan, List)} for the plan's modules and the other modules {@code more} names:
+	 * those parts of Fabricated's in-game mod serve beyond the plan's ({@code NativeModules.modules()}: Forge 47's fuel
+	 * hook serves fabric-content-registries-v0, which Fabricated passes through), which stand down for a provider too.
+	 */
+	public static Map<String, NeoForgeMod> providedElsewhere(FabricApiPlan plan, Collection<String> more, List<NeoForgeMod> neoForgeMods) {
 		Map<String, NeoForgeMod> byNeoId = withProvides(newestById(neoForgeMods));
+		Set<String> modules = new LinkedHashSet<>();
+		for (FabricApiPlan.Module module : plan.modules().values()) modules.add(module.id());
+		modules.addAll(more);
 		Map<String, NeoForgeMod> provided = new LinkedHashMap<>();
-		for (FabricApiPlan.Module module : plan.modules().values()) {
-			NeoForgeMod provider = byNeoId.get(ModIds.toNeoForgeId(module.id()));
-			if (provider != null) provided.put(module.id(), provider);
+		for (String module : modules) {
+			NeoForgeMod provider = byNeoId.get(ModIds.toNeoForgeId(module));
+			if (provider != null) provided.put(module, provider);
 		}
 		return provided;
 	}

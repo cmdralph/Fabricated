@@ -163,6 +163,117 @@ class MixinPreflightTest {
 	}
 
 	/**
+	 * CORPUS-74: MoreCulling's mixin into {@code BlockModelRenderState} shadows {@code mesh}, the field Fabric API's
+	 * renderer mixin adds there. Fabric's Mixin finds the shadow among the fields of the mixins it prepared before; Forge's
+	 * (SpongePowered's) looks in the target's own only and stopped the client. Where the running Mixin doesn't find them,
+	 * the shadow is declared as the field the other mixin adds (its access and signature, without Mixin's annotations),
+	 * which Mixin merges with it into one field, and the mixin's code keeps using it; a shadow that can't be declared so
+	 * (here: a static one of an instance field) fails as Mixin would make it. Where the running Mixin finds them
+	 * (NeoForge's), nothing changes and the shadow isn't judged.
+	 */
+	@Test
+	void aShadowOfAFieldAnotherModsMixinAddsIsThatFieldWhereMixinFindsOnlyTheTargetsOwn() throws Exception {
+		String target = "net/minecraft/client/renderer/block/BlockModelRenderState";
+		String mesh = "Lnet/fabricmc/fabric/api/client/renderer/v1/mesh/MutableMesh;";
+		ClassWriter tw = new ClassWriter(0);
+		tw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, target, null, "java/lang/Object", null);
+		tw.visitField(Opcodes.ACC_PRIVATE, "modelParts", "Ljava/util/List;", null, null).visitEnd();
+		tw.visitEnd();
+		ClassIndex game = new ClassIndex(Map.of(target, tw.toByteArray())::get);
+		// Fabric API's mixin: @Unique @Nullable private MutableMesh mesh, and a static one for the refused case.
+		String adder = "net/fabricmc/fabric/mixin/renderer/client/BlockModelRenderStateMixin";
+		ClassWriter aw = new ClassWriter(0);
+		aw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, adder, null, "java/lang/Object", null);
+		AnnotationVisitor am = aw.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false);
+		AnnotationVisitor av = am.visitArray("value");
+		av.visit(null, Type.getObjectType(target));
+		av.visitEnd();
+		am.visitEnd();
+		FieldVisitor added = aw.visitField(Opcodes.ACC_PRIVATE, "mesh", mesh, null, null);
+		added.visitAnnotation("Lorg/spongepowered/asm/mixin/Unique;", false).visitEnd();
+		added.visitEnd();
+		FieldVisitor shared = aw.visitField(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "fabric$shared", "I", null, null);
+		shared.visitAnnotation("Lorg/spongepowered/asm/mixin/Unique;", false).visitEnd();
+		shared.visitEnd();
+		aw.visitEnd();
+		byte[] adderClass = aw.toByteArray();
+		InstalledClasses installed = new InstalledClasses(List.of(new InstalledClasses.Jar("Fabric API", adder::equals,
+				name -> name.equals(adder) ? adderClass : null, () -> List.of(adder), true)));
+		// MoreCulling's mixin: @Shadow private MutableMesh mesh, read by its method; and a shadow of the static field.
+		Function<String, byte[]> culling = field -> {
+			ClassWriter cw = new ClassWriter(0);
+			String name = "com/example/mixin/Culling";
+			cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, name, null, "java/lang/Object", new String[] {"com/example/Extended"});
+			AnnotationVisitor m = cw.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false);
+			AnnotationVisitor values = m.visitArray("value");
+			values.visit(null, Type.getObjectType(target));
+			values.visitEnd();
+			m.visit("priority", 1200);
+			m.visitEnd();
+			boolean isMesh = field.equals("mesh");
+			FieldVisitor shadow = cw.visitField(Opcodes.ACC_PRIVATE, field, isMesh ? mesh : "I", null, null);
+			shadow.visitAnnotation("Lorg/spongepowered/asm/mixin/Shadow;", true).visitEnd();
+			shadow.visitAnnotation("Lorg/jspecify/annotations/Nullable;", true).visitEnd();
+			shadow.visitEnd();
+			MethodVisitor read = cw.visitMethod(Opcodes.ACC_PUBLIC, "moreculling$hasMesh", "()Z", null, null);
+			read.visitCode();
+			read.visitVarInsn(Opcodes.ALOAD, 0);
+			read.visitFieldInsn(Opcodes.GETFIELD, name, field, isMesh ? mesh : "I");
+			if (!isMesh) read.visitInsn(Opcodes.POP);
+			read.visitInsn(Opcodes.ICONST_1);
+			read.visitInsn(Opcodes.IRETURN);
+			read.visitMaxs(1, 1);
+			read.visitEnd();
+			cw.visitEnd();
+			return cw.toByteArray();
+		};
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Culling"));
+		BiFunction<Map<String, byte[]>, Boolean, MixinPreflight> preflight = (mod, shadowsMixinFields) -> new MixinPreflight(game, installed,
+				mod::get, ClassBytesSource.EMPTY, true, true, ClassBytesSource.EMPTY, "Forge", true, MixinPreflight.ConstructorInjects.UNSAFE_POINTS,
+				false, false, false, true, shadowsMixinFields);
+
+		// Forge: declared as Fabric API's field, its use left as it was; nothing left to judge.
+		Map<String, byte[]> forge = new HashMap<>(Map.of("com/example/mixin/Culling", culling.apply("mesh")));
+		List<PreflightFinding> notes = new ArrayList<>();
+		Map<String, byte[]> repaired = preflight.apply(forge, false).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
+		assertEquals(Set.of("com/example/mixin/Culling.class"), repaired.keySet(), notes.toString());
+		assertEquals(1, notes.size(), notes.toString());
+		assertEquals(Severity.INFO, notes.getFirst().severity());
+		assertTrue(notes.getFirst().message().contains("Fabric API's mixin " + adder.replace('/', '.') + " adds to " + target.replace('/', '.')),
+				notes.getFirst().message());
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired.get("com/example/mixin/Culling.class")).accept(node, 0);
+		org.objectweb.asm.tree.FieldNode field = node.fields.getFirst();
+		assertEquals("mesh", field.name);
+		assertEquals(mesh, field.desc);
+		assertEquals(Opcodes.ACC_PRIVATE, field.access);
+		assertNull(Annotations.find(field, "Lorg/spongepowered/asm/mixin/Shadow;"));
+		assertNotNull(Annotations.find(field, "Lorg/jspecify/annotations/Nullable;"), "the mod's other annotations stay");
+		FieldInsnNode use = (FieldInsnNode) java.util.Arrays.stream(node.methods.getFirst().instructions.toArray())
+				.filter(i -> i instanceof FieldInsnNode).findFirst().orElseThrow();
+		assertEquals("com/example/mixin/Culling", use.owner);
+		assertEquals("mesh", use.name);
+		forge.put("com/example/mixin/Culling", repaired.get("com/example/mixin/Culling.class"));
+		assertTrue(preflight.apply(forge, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty());
+
+		// Forge, a shadow that can't be declared as the other mixin's field (an instance shadow of a static field): it fails.
+		Map<String, byte[]> refused = new HashMap<>(Map.of("com/example/mixin/Culling", culling.apply("fabric$shared")));
+		assertTrue(preflight.apply(refused, false).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty());
+		List<PreflightFinding> failed = preflight.apply(refused, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertEquals(1, failed.size(), failed.toString());
+		assertNotEquals(Severity.INFO, failed.getFirst().severity());
+		assertTrue(failed.getFirst().message().contains("Forge's Mixin finds a @Shadow field only among the target's own"), failed.getFirst().message());
+
+		// NeoForge (Fabric's Mixin): left as it is, and not judged.
+		Map<String, byte[]> neoForge = new HashMap<>(Map.of("com/example/mixin/Culling", culling.apply("mesh")));
+		assertTrue(preflight.apply(neoForge, true).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty());
+		List<PreflightFinding> fabric = preflight.apply(neoForge, true).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertEquals(1, fabric.size(), fabric.toString());
+		assertEquals(Severity.INFO, fabric.getFirst().severity());
+		assertTrue(fabric.getFirst().message().contains("adds it, so it was not verified"), fabric.getFirst().message());
+	}
+
+	/**
 	 * An accessor named like a method its target already has replaces that method as Mixin merges it, as on Fabric
 	 * Loader, where a Fabric mod's own class is the same (Iris's accessor of Sodium's {@code enumClass}, named like
 	 * Sodium's {@code getEnumClass}). Not where the config requires {@code @Overwrite} on a method that replaces one
@@ -2837,6 +2948,127 @@ class MixinPreflightTest {
 		// spawn event, as the call it replaced did.
 		assertTrue(callsIn(mod.get("carpet/mixins/NaturalSpawnerMixin")).contains(hooks + ".finalizeMobSpawn" + hookDesc));
 		assertFalse(callsIn(mod.get("carpet/mixins/NaturalSpawnerMixin")).contains(mob + ".finalizeSpawn"));
+	}
+
+	@Test
+	void aHookAtASpawnCallForge61To66sTransformerPointsAtItsEventHookMovesToTheHook() throws Exception {
+		// CORPUS-78: Forge 64's and 65's MethodRedirector points PatrolSpawner.spawnPatrolMember's finalizeSpawn call at
+		// ForgeEventFactory.onFinalizeSpawn before Mixin applies a mod's mixins: Friends & Foes' @Inject at the
+		// PatrollingMonster's call found nothing there, and its required config stopped the server.
+		String hookDesc = PlatformCoremodsTest.FINALIZE_REASON_HOOK;
+		String hook = PlatformCoremodsTest.FORGE_HOOKS;
+		String name = "com/faboslav/friendsandfoes/fabric/mixin/PatrolSpawnerMixin";
+		byte[] friendsAndFoes = spawnerMixin(name, PlatformCoremodsTest.PATROLS, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC, "friendsandfoes$onSpawnEntity", "(Lnet/minecraft/server/level/ServerLevel;"
+					+ "Lnet/minecraft/core/BlockPos;Lnet/minecraft/util/RandomSource;ZLorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;)V", null, null);
+			AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "spawnPatrolMember");
+			methods.visitEnd();
+			AnnotationVisitor ats = ann.visitArray("at");
+			AnnotationVisitor at = ats.visitAnnotation(null, AT);
+			at.visit("value", "INVOKE");
+			at.visit("target", "L" + PlatformCoremodsTest.PATROLLING + ";finalizeSpawn" + PlatformCoremodsTest.FINALIZE_REASON);
+			at.visitEnd();
+			ats.visitEnd();
+			ann.visit("cancellable", true);
+			ann.visitEnd();
+			mv.visitCode();
+			mv.visitInsn(Opcodes.RETURN);
+			mv.visitMaxs(0, 6);
+			mv.visitEnd();
+		});
+		String config = "{\"required\":true,\"package\":\"com.faboslav.friendsandfoes.fabric.mixin\",\"mixins\":[\"PatrolSpawnerMixin\"]}";
+		MixinConfigFile parsed = MixinConfigFile.parse(config);
+		Map<String, byte[]> jars = PlatformCoremodsTest.forgeGame();
+		Map<String, byte[]> mod = new HashMap<>(Map.of(name, friendsAndFoes));
+		Function<ClassIndex, MixinPreflight> onForge = game -> new MixinPreflight(game, InstalledClasses.NONE, mod::get,
+				ClassBytesSource.EMPTY, false, true, ClassBytesSource.EMPTY, "Forge");
+
+		// The game as its jars have it makes the call: pre-flight passed the mixin, and Mixin then failed it.
+		List<PreflightFinding> asJars = onForge.apply(new ClassIndex(jars::get)).check("friendsandfoes.mixins.json", parsed, Refmap.EMPTY, Set.of());
+		assertTrue(asJars.isEmpty(), asJars.toString());
+		// As Forge's transformer leaves it, it doesn't, and the injection moves to its hook's call.
+		ClassIndex asLoaded = new ClassIndex(io.github.cmdralph.fabricated.core.translate.PlatformDescriptor.FORGE.coremods("26.1.2").over(jars::get));
+		assertFalse(onForge.apply(asLoaded).check("friendsandfoes.mixins.json", parsed, Refmap.EMPTY, Set.of()).isEmpty());
+		List<PreflightFinding> notes = new ArrayList<>();
+		Map<String, byte[]> repaired = onForge.apply(asLoaded).repairs("friendsandfoes.mixins.json", parsed, Refmap.EMPTY, Set.of(), notes);
+		assertEquals(1, notes.size(), notes.toString());
+		assertTrue(notes.getFirst().message().contains("inside Forge's hook " + hook.replace('/', '.') + ".onFinalizeSpawn" + hookDesc), notes.toString());
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired.get(name + ".class")).accept(node, 0);
+		MethodNode handler = node.methods.stream().filter(m -> Annotations.find(m, INJECT) != null).findFirst().orElseThrow();
+		AnnotationNode point = Annotations.list(Annotations.value(Annotations.find(handler, INJECT), "at")).getFirst();
+		assertEquals("L" + hook + ";onFinalizeSpawn" + hookDesc, Annotations.value(point, "target"));
+		mod.put(name, repaired.get(name + ".class"));
+		List<PreflightFinding> after = onForge.apply(asLoaded).check("friendsandfoes.mixins.json", parsed, Refmap.EMPTY, Set.of());
+		assertTrue(after.isEmpty(), after.toString());
+	}
+
+	@Test
+	void aWrapAtASpawnCallMovesToForgesHookOnlyWhereThatForgesOwnListHasTheTransformerPointItThere() throws Exception {
+		// CORPUS-78: Friends & Foes' static @WrapOperation of a structure mob's finalizeSpawn call, in the lambda body of
+		// StructureTemplate.placeEntities, which takes that lambda's parameters after the Operation. Forge 61's list names
+		// StructureTemplate, so its transformer points the call at ForgeEventFactory.onFinalizeSpawn, and the wrap moves
+		// there; Forge 64's own list (its 26.1.2 branch) doesn't, and the wrap stays where it is. 26.1's list, which names
+		// it, moved the wrap on Forge 64 too, and Mixin found nothing there: the corpus server's world generation stopped.
+		String template = PlatformCoremodsTest.STRUCTURE_TEMPLATE;
+		String lambdaDesc = PlatformCoremodsTest.PLACE_ENTITY;
+		String hookDesc = PlatformCoremodsTest.FINALIZE_REASON_HOOK;
+		String hook = PlatformCoremodsTest.FORGE_HOOKS;
+		String call = "L" + PlatformCoremodsTest.MOB + ";finalizeSpawn" + PlatformCoremodsTest.FINALIZE_REASON;
+		String name = "com/faboslav/friendsandfoes/fabric/mixin/StructureTemplateEntitySpawnMixin";
+		String handlerDesc = hookDesc.substring(0, hookDesc.indexOf(')')) + OPERATION + lambdaDesc.substring(1, lambdaDesc.indexOf(')')) + ")"
+				+ Type.getReturnType(hookDesc).getDescriptor();
+		byte[] friendsAndFoes = spawnerMixin(name, template, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "friendsandfoes$onFinalizeSpawn", handlerDesc, null, null);
+			AnnotationVisitor ann = mv.visitAnnotation(WRAP_OPERATION, false);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "lambda$placeEntities$0");
+			methods.visitEnd();
+			AnnotationVisitor ats = ann.visitArray("at");
+			AnnotationVisitor at = ats.visitAnnotation(null, AT);
+			at.visit("value", "INVOKE");
+			at.visit("target", call);
+			at.visitEnd();
+			ats.visitEnd();
+			ann.visitEnd();
+			mv.visitCode();
+			mv.visitInsn(Opcodes.ACONST_NULL);
+			mv.visitInsn(Opcodes.ARETURN);
+			mv.visitMaxs(1, 12);
+			mv.visitEnd();
+		});
+		String config = "{\"required\":true,\"package\":\"com.faboslav.friendsandfoes.fabric.mixin\",\"injectors\":{\"defaultRequire\":1},"
+				+ "\"mixins\":[\"StructureTemplateEntitySpawnMixin\"]}";
+		MixinConfigFile parsed = MixinConfigFile.parse(config);
+		Map<String, byte[]> jars = PlatformCoremodsTest.forgeGame();
+		Map<String, byte[]> mod = new HashMap<>(Map.of(name, friendsAndFoes));
+		Function<ClassIndex, MixinPreflight> onForge = game -> new MixinPreflight(game, InstalledClasses.NONE, mod::get,
+				ClassBytesSource.EMPTY, false, true, ClassBytesSource.EMPTY, "Forge");
+		ClassIndex forge61 = new ClassIndex(io.github.cmdralph.fabricated.core.translate.PlatformDescriptor.FORGE.coremods("1.21.11").over(jars::get));
+		ClassIndex forge64 = new ClassIndex(io.github.cmdralph.fabricated.core.translate.PlatformDescriptor.FORGE.coremods("26.1.2").over(jars::get));
+
+		// Forge 64 makes the call where the mod wraps it: nothing to report, nothing to repair.
+		assertTrue(onForge.apply(forge64).check("friendsandfoes-fabric.mixins.json", parsed, Refmap.EMPTY, Set.of()).isEmpty());
+		List<PreflightFinding> none = new ArrayList<>();
+		assertTrue(onForge.apply(forge64).repairs("friendsandfoes-fabric.mixins.json", parsed, Refmap.EMPTY, Set.of(), none).isEmpty(), none.toString());
+		assertTrue(none.isEmpty(), none.toString());
+
+		// Forge 61 makes it inside its hook: the wrap moves to the hook's call, which takes the mob first, so the handler
+		// takes it as it is.
+		List<PreflightFinding> notes = new ArrayList<>();
+		Map<String, byte[]> repaired = onForge.apply(forge61).repairs("friendsandfoes-fabric.mixins.json", parsed, Refmap.EMPTY, Set.of(), notes);
+		assertEquals(1, notes.size(), notes.toString());
+		assertTrue(notes.getFirst().message().contains("inside Forge's hook " + hook.replace('/', '.') + ".onFinalizeSpawn" + hookDesc), notes.toString());
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired.get(name + ".class")).accept(node, 0);
+		assertEquals(List.of("friendsandfoes$onFinalizeSpawn"), node.methods.stream().map(m -> m.name).toList(), "no bridge");
+		AnnotationNode point = Annotations.list(Annotations.value(Annotations.find(node.methods.getFirst(), WRAP_OPERATION), "at")).getFirst();
+		assertEquals("L" + hook + ";onFinalizeSpawn" + hookDesc, Annotations.value(point, "target"));
+		mod.put(name, repaired.get(name + ".class"));
+		List<PreflightFinding> after = onForge.apply(forge61).check("friendsandfoes-fabric.mixins.json", parsed, Refmap.EMPTY, Set.of());
+		assertTrue(after.isEmpty(), after.toString());
 	}
 
 	/** The calls a class's methods make, as owner.name+desc. */
@@ -7578,6 +7810,53 @@ class MixinPreflightTest {
 			assertTrue(findings.stream().anyMatch(f -> (f.severity() == Severity.FAIL || f.severity() == Severity.LEFT_OUT)
 					&& f.message().startsWith("@Intrinsic tick()V already exists in net.minecraft.world.Thing")), findings.toString());
 		}
+	}
+
+	/**
+	 * Where the running Mixin looks up the class of each local in a mixin method's debug table and stops on one it can't
+	 * find (SpongePowered's, Fabric's before 0.17.0), a local of a class this side lacks (owo's client-only rectangle on a
+	 * dedicated server) leaves the table (LVT-1); the others stay, and a Mixin that looks none up keeps them all.
+	 */
+	@Test
+	void aLocalOfAClassThisSideLacksLeavesTheDebugTableWhereMixinLooksItUp() throws Exception {
+		String rect = "net/minecraft/client/gui/Rect";
+		byte[] keeps = mixin("com/example/mixin/Loc", false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC, "setArea", "(L" + rect + ";L" + TARGET + ";I[L" + rect + ";)V", null, null);
+			mv.visitCode();
+			Label start = new Label();
+			Label end = new Label();
+			mv.visitLabel(start);
+			mv.visitInsn(Opcodes.RETURN);
+			mv.visitLabel(end);
+			mv.visitLocalVariable("this", "Lcom/example/mixin/Loc;", null, start, end, 0);
+			mv.visitLocalVariable("area", "L" + rect + ";", null, start, end, 1);
+			mv.visitLocalVariable("thing", "L" + TARGET + ";", null, start, end, 2);
+			mv.visitLocalVariable("count", "I", null, start, end, 3);
+			mv.visitLocalVariable("areas", "[L" + rect + ";", null, start, end, 4);
+			mv.visitMaxs(0, 5);
+			mv.visitEnd();
+		});
+		ClassIndex game = new ClassIndex(Map.of(TARGET, targetClass())::get);
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Loc"));
+		Map<String, byte[]> mod = Map.of("com/example/mixin/Loc", keeps);
+
+		MixinPreflight looksUp = new MixinPreflight(game, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, ClassBytesSource.EMPTY,
+				"Forge", true, MixinPreflight.ConstructorInjects.UNSAFE_POINTS, false, false, false, true);
+		List<PreflightFinding> repairs = new ArrayList<>();
+		Map<String, byte[]> repaired = looksUp.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), repairs);
+		assertEquals(Set.of("com/example/mixin/Loc.class"), repaired.keySet());
+		assertEquals(1, repairs.size(), repairs.toString());
+		assertEquals(Severity.INFO, repairs.getFirst().severity());
+		assertTrue(repairs.getFirst().message().contains("local variables of net.minecraft.client.gui.Rect, not found on this side"), repairs.toString());
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired.get("com/example/mixin/Loc.class")).accept(node, 0);
+		MethodNode method = node.methods.stream().filter(m -> m.name.equals("setArea")).findFirst().orElseThrow();
+		assertEquals(List.of("this", "thing", "count"), method.localVariables.stream().map(l -> l.name).toList());
+
+		MixinPreflight looksUpNone = new MixinPreflight(game, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, ClassBytesSource.EMPTY,
+				"NeoForge", true, MixinPreflight.ConstructorInjects.AFTER_DELEGATE, true, false, true, false);
+		repairs = new ArrayList<>();
+		assertTrue(looksUpNone.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), repairs).isEmpty(), repairs.toString());
 	}
 
 	/**

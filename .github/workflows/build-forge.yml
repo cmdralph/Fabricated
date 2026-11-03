@@ -234,13 +234,24 @@ jobs:
         run: |
           ci/forge/corpus-causes.sh "$RUNNER_TEMP/server-corpus" "$RUNNER_TEMP/server-corpus/server.out" "server with the corpus"
           ci/forge/corpus-causes.sh "$RUNNER_TEMP/client-corpus/run" "$RUNNER_TEMP/client-corpus/client.out" "client with the corpus"
-      # Forge's own transformers of game classes, from the installed server's libraries, for pre-flight to read the game's
-      # classes as they leave them (CORPUS-61's Forge half). Informational, with "extended". Last, and capped, as the job's
-      # log can only be read from its end.
-      - name: Forge's own transformers (informational)
-        if: ${{ env.EXTENDED == 'true' && !cancelled() }}
+      # The bytecode task 5's open findings turn on, for reading (informational, with "extended"; last, and capped, as the
+      # job's log can only be read from its end): ResourcefulLib's screen effect hook, which found nothing in Forge 64's
+      # ScreenEffectRenderer (CORPUS-79), and the game's method as Forge's build has it.
+      - name: Bytecode for task 5's findings (informational)
+        if: ${{ env.EXTENDED == 'true' && !cancelled() && steps.corpus.outcome == 'success' }}
         continue-on-error: true
-        run: ci/forge/forge-coremods.sh "$RUNNER_TEMP/server" | head -n 900
+        run: |
+          [ -d "$RUNNER_TEMP/client-corpus" ] || exit 0
+          python3 -I ci/javap-dump.py "$RUNNER_TEMP/client-corpus" 'mixins:net/minecraft/client/renderer/ScreenEffectRenderer' \
+            'game:net.minecraft.client.renderer.ScreenEffectRenderer#*' 'game:net.minecraft.client.renderer.ScreenEffectRenderer#renderScreenEffect' \
+            | cut -c1-320 | head -n 900 || true
+          # ImmediatelyFast's buffer upload redirect on Forge 66 (CORPUS-82): the mixin, and the method it names as Forge has it.
+          if [ "${{ matrix.target.minecraft }}" = 26.3 ]; then
+            python3 -I ci/javap-dump.py "$RUNNER_TEMP/client-corpus" 'mixins:com/mojang/renderpearl/backend/opengl/GlCommandEncoder' \
+              'game:com.mojang.renderpearl.backend.opengl.GlCommandEncoder#*' 'game:com.mojang.renderpearl.backend.opengl.GlCommandEncoder#writeToBuffer' \
+              'game:com.mojang.renderpearl.backend.opengl.DirectStateAccess#*' \
+              | cut -c1-320 | head -n 900 || true
+          fi
       - name: Upload mod corpus logs and reports
         if: ${{ !cancelled() && steps.corpus.outcome == 'success' }}
         uses: actions/upload-artifact@v4

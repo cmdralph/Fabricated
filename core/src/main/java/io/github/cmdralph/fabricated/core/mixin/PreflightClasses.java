@@ -61,6 +61,12 @@ final class PreflightClasses {
 	/** Whether the running Mixin applies enum mixins, as Fabric's does from 0.17.1 (ENUM-7: Forge's doesn't). */
 	final boolean enumMixins;
 
+	/** Whether the running Mixin stops on a local variable whose class it can't find (LVT-1: Forge's does). */
+	final boolean readsLocalTypes;
+
+	/** Whether the running Mixin finds a {@code @Shadow} field another mixin adds to the target (CORPUS-74: Forge's doesn't). */
+	final boolean shadowsMixinFields;
+
 	/** The platform's loader, as messages name it ({@code NeoForge}, {@code Forge}). */
 	final String loader;
 
@@ -70,6 +76,9 @@ final class PreflightClasses {
 	final Map<String, Optional<ClassNode>> vanillaCache = new HashMap<>();
 
 	final Map<String, Optional<ClassNode>> targetCache = new HashMap<>();
+
+	/** {@link #found} of each class asked. */
+	final Map<String, Boolean> foundCache = new HashMap<>();
 
 	/**
 	 * {@link MixinPreflight#independentHandlers} of each mixin as it was read: a repair moving an injector to a bridge (added to the
@@ -89,8 +98,11 @@ final class PreflightClasses {
 
 	PreflightClasses(ClassIndex game, InstalledClasses installed, ClassBytesSource modClasses, ClassBytesSource untransformable,
 			boolean clientSide, boolean missingTargetsFatal, ClassBytesSource vanilla, String loader, boolean interfaceInjectors,
-			ConstructorInjects constructorInjects, boolean argumentNames, boolean exactStaticInjects, boolean enumMixins) {
+			ConstructorInjects constructorInjects, boolean argumentNames, boolean exactStaticInjects, boolean enumMixins, boolean readsLocalTypes,
+			boolean shadowsMixinFields) {
 		this.enumMixins = enumMixins;
+		this.readsLocalTypes = readsLocalTypes;
+		this.shadowsMixinFields = shadowsMixinFields;
 		this.interfaceInjectors = interfaceInjectors;
 		this.constructorInjects = constructorInjects;
 		this.argumentNames = argumentNames;
@@ -128,8 +140,9 @@ final class PreflightClasses {
 	}
 
 	/**
-	 * The one call, in {@code methods}, of a method NeoForge declares (in its own classes, or as a default method of its
-	 * extension interfaces) that makes the named call, itself or through other methods NeoForge declares: as
+	 * The one call, in {@code methods}, of a method the platform declares (in its own classes, or as a default method of
+	 * its extension interfaces; NeoForge's or Forge's) that makes the named call, itself or through other methods the
+	 * platform declares: as
 	 * {@code BlockBehaviour.onExplosionHit} removing the block through {@code IBlockStateExtension.onBlockExploded} and
 	 * {@code IBlockExtension.onBlockExploded} (Ledger's explosion logging). Null when none or several do.
 	 */
@@ -140,7 +153,7 @@ final class PreflightClasses {
 				if (!(insn instanceof MethodInsnNode call)) continue;
 				if (found != null && found.owner.equals(call.owner) && found.name.equals(call.name) && found.desc.equals(call.desc)) continue;
 				Code code = declaration(call.owner, call.name, call.desc);
-				if (code == null || !code.owner().startsWith(MixinNames.NEOFORGE_PACKAGE) || !leadsTo(code, owner, name, desc, 2)) continue;
+				if (code == null || !MixinNames.isPlatformCode(code.owner()) || !leadsTo(code, owner, name, desc, 2)) continue;
 				if (found != null) return null;
 				found = call;
 			}
@@ -148,14 +161,14 @@ final class PreflightClasses {
 		return found;
 	}
 
-	/** Whether the code makes the call, itself or, to {@code depth}, through methods NeoForge declares that it calls. */
+	/** Whether the code makes the call, itself or, to {@code depth}, through methods the platform declares that it calls. */
 	boolean leadsTo(Code code, String owner, String name, String desc, int depth) {
 		for (AbstractInsnNode insn : code.method().instructions) {
 			if (!(insn instanceof MethodInsnNode call)) continue;
 			if (call.owner.equals(owner) && call.name.equals(name) && call.desc.equals(desc)) return true;
 			if (depth <= 1) continue;
 			Code next = declaration(call.owner, call.name, call.desc);
-			if (next != null && next.owner().startsWith(MixinNames.NEOFORGE_PACKAGE) && leadsTo(next, owner, name, desc, depth - 1)) return true;
+			if (next != null && MixinNames.isPlatformCode(next.owner()) && leadsTo(next, owner, name, desc, depth - 1)) return true;
 		}
 		return false;
 	}
@@ -253,6 +266,21 @@ final class PreflightClasses {
 	 */
 	Set<String> independentOf(ClassNode mixin) {
 		return independent.computeIfAbsent(mixin, MixinPreflight::independentHandlers);
+	}
+
+	/**
+	 * Whether a class is found on this side, as the running Mixin would look it up: the game's or the installed jars', the
+	 * mod's own, or the JDK's and the libraries'. A class of another Fabric mod isn't found here.
+	 */
+	boolean found(String internalName) {
+		return foundCache.computeIfAbsent(internalName, n -> {
+			if (game.contains(n) || isUntransformable(n)) return true;
+			try {
+				return modClasses.read(n) != null;
+			} catch (IOException e) {
+				return true;
+			}
+		});
 	}
 
 	boolean isUntransformable(String target) {

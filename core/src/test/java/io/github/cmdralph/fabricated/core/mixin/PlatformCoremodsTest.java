@@ -2,13 +2,16 @@ package io.github.cmdralph.fabricated.core.mixin;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.junit.jupiter.api.Test;
 import org.objectweb.asm.ClassReader;
@@ -23,8 +26,9 @@ import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
 
 import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
+import io.github.cmdralph.fabricated.core.translate.PlatformDescriptor;
 
-/** Pre-flight's view of the game as NeoForge's code transformers leave it (CORPUS-61). */
+/** Pre-flight's view of the game as NeoForge's and Forge's code transformers leave it (CORPUS-61, CORPUS-78). */
 class PlatformCoremodsTest {
 	static final String MOB = "net/minecraft/world/entity/Mob";
 	static final String PATROLLING = "net/minecraft/world/entity/monster/PatrollingMonster";
@@ -37,6 +41,20 @@ class PlatformCoremodsTest {
 	static final String FINALIZE_HOOK = "(L" + MOB + ";" + FINALIZE.substring(1);
 	static final String BIOME = "net/minecraft/world/level/biome/Biome";
 	static final String CLIMATE = "Lnet/minecraft/world/level/biome/Biome$ClimateSettings;";
+	static final String FORGE_HOOKS = "net/minecraftforge/event/ForgeEventFactory";
+	/** {@code Mob.finalizeSpawn} from 1.21.3 on, as Forge 61 to 66's games have it. */
+	static final String FINALIZE_REASON = "(Lnet/minecraft/world/level/ServerLevelAccessor;Lnet/minecraft/world/DifficultyInstance;"
+			+ "Lnet/minecraft/world/entity/EntitySpawnReason;Lnet/minecraft/world/entity/SpawnGroupData;)Lnet/minecraft/world/entity/SpawnGroupData;";
+	static final String FINALIZE_REASON_HOOK = "(L" + MOB + ";" + FINALIZE_REASON.substring(1);
+	/** The one method of {@code PatrolSpawner} Forge's list names. */
+	static final String SPAWN_PATROL_MEMBER = "(Lnet/minecraft/server/level/ServerLevel;Lnet/minecraft/core/BlockPos;Lnet/minecraft/util/RandomSource;Z)Z";
+	/** A class Forge's list names with no method: only its synthetic methods are changed. */
+	static final String TADPOLE = "net/minecraft/world/entity/animal/frog/Tadpole";
+	static final String SPAWN_DATA = "()Lnet/minecraft/world/entity/SpawnGroupData;";
+	static final String STRUCTURE_TEMPLATE = "net/minecraft/world/level/levelgen/structure/templatesystem/StructureTemplate";
+	/** The lambda body of {@code StructureTemplate.placeEntities} that finalizes a structure mob's spawn, as the game compiles it. */
+	static final String PLACE_ENTITY = "(Lnet/minecraft/world/level/block/Rotation;Lnet/minecraft/world/level/block/Mirror;Lnet/minecraft/world/phys/Vec3;Z"
+			+ "Lnet/minecraft/world/level/ServerLevelAccessor;Lnet/minecraft/world/entity/Entity;)V";
 
 	/** The game's classes of a 1.21.1 build, as its jars have them: spawners calling a mob's {@code finalizeSpawn}. */
 	static Map<String, byte[]> game() {
@@ -60,6 +78,10 @@ class PlatformCoremodsTest {
 
 	/** A mob class whose {@code finalizeSpawn} returns its spawn data. */
 	private static byte[] mob(String name, String superName) {
+		return mob(name, superName, FINALIZE);
+	}
+
+	private static byte[] mob(String name, String superName, String finalizeDesc) {
 		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
 		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, name, null, superName, null);
 		MethodVisitor init = cw.visitMethod(Opcodes.ACC_PUBLIC, "<init>", "()V", null, null);
@@ -70,7 +92,7 @@ class PlatformCoremodsTest {
 		init.visitMaxs(0, 0);
 		init.visitEnd();
 		if (name.equals(MOB)) {
-			MethodVisitor finalize = cw.visitMethod(Opcodes.ACC_PUBLIC, "finalizeSpawn", FINALIZE, null, null);
+			MethodVisitor finalize = cw.visitMethod(Opcodes.ACC_PUBLIC, "finalizeSpawn", finalizeDesc, null, null);
 			finalize.visitCode();
 			finalize.visitVarInsn(Opcodes.ALOAD, 4);
 			finalize.visitInsn(Opcodes.ARETURN);
@@ -83,17 +105,22 @@ class PlatformCoremodsTest {
 
 	/** NeoForge's hooks: {@code finalizeMobSpawn} counts its calls and makes the mob's. */
 	private static byte[] hooks() {
+		return hooks(HOOKS, "finalizeMobSpawn", FINALIZE);
+	}
+
+	/** The platform's hooks: {@code hookName} counts its calls and makes the mob's {@code finalizeSpawn}. */
+	private static byte[] hooks(String owner, String hookName, String finalizeDesc) {
 		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
-		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, HOOKS, null, "java/lang/Object", null);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, owner, null, "java/lang/Object", null);
 		cw.visitField(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "events", "I", null, null).visitEnd();
-		MethodVisitor hook = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "finalizeMobSpawn", FINALIZE_HOOK, null, null);
+		MethodVisitor hook = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, hookName, "(L" + MOB + ";" + finalizeDesc.substring(1), null, null);
 		hook.visitCode();
-		hook.visitFieldInsn(Opcodes.GETSTATIC, HOOKS, "events", "I");
+		hook.visitFieldInsn(Opcodes.GETSTATIC, owner, "events", "I");
 		hook.visitInsn(Opcodes.ICONST_1);
 		hook.visitInsn(Opcodes.IADD);
-		hook.visitFieldInsn(Opcodes.PUTSTATIC, HOOKS, "events", "I");
+		hook.visitFieldInsn(Opcodes.PUTSTATIC, owner, "events", "I");
 		for (int i = 0; i < 5; i++) hook.visitVarInsn(Opcodes.ALOAD, i);
-		hook.visitMethodInsn(Opcodes.INVOKEVIRTUAL, MOB, "finalizeSpawn", FINALIZE, false);
+		hook.visitMethodInsn(Opcodes.INVOKEVIRTUAL, MOB, "finalizeSpawn", finalizeDesc, false);
 		hook.visitInsn(Opcodes.ARETURN);
 		hook.visitMaxs(0, 0);
 		hook.visitEnd();
@@ -105,18 +132,119 @@ class PlatformCoremodsTest {
 	private static byte[] spawner(String name, String mob, String method) {
 		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
 		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, name, null, "java/lang/Object", null);
-		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, method, "()Lnet/minecraft/world/entity/SpawnGroupData;", null, null);
+		spawnIn(cw, Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, method, SPAWN_DATA, mob, FINALIZE);
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	/**
+	 * A method, its parameters unused, that makes a new mob of {@code mob} and finalizes its spawn, returning the
+	 * data, or true for a method returning a boolean.
+	 */
+	private static void spawnIn(ClassWriter cw, int access, String method, String desc, String mob, String finalizeDesc) {
+		MethodVisitor mv = cw.visitMethod(access, method, desc, null, null);
 		mv.visitCode();
 		mv.visitTypeInsn(Opcodes.NEW, mob);
 		mv.visitInsn(Opcodes.DUP);
 		mv.visitMethodInsn(Opcodes.INVOKESPECIAL, mob, "<init>", "()V", false);
 		for (int i = 0; i < 4; i++) mv.visitInsn(Opcodes.ACONST_NULL);
-		mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, mob, "finalizeSpawn", FINALIZE, false);
-		mv.visitInsn(Opcodes.ARETURN);
+		mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, mob, "finalizeSpawn", finalizeDesc, false);
+		if (Type.getReturnType(desc).getSort() == Type.BOOLEAN) {
+			mv.visitInsn(Opcodes.POP);
+			mv.visitInsn(Opcodes.ICONST_1);
+			mv.visitInsn(Opcodes.IRETURN);
+		} else {
+			mv.visitInsn(Opcodes.ARETURN);
+		}
 		mv.visitMaxs(0, 0);
 		mv.visitEnd();
-		cw.visitEnd();
-		return cw.toByteArray();
+	}
+
+	/**
+	 * The game's classes of a Forge 61 to 66 build, as its jars have them: {@code PatrolSpawner} finalizing a patrol
+	 * member's spawn in the method Forge's lists name, in a lambda body and in a method the lists don't name;
+	 * {@code Tadpole}, which Forge 61's list names with no method, in a lambda body and in another method; and
+	 * {@code StructureTemplate}, which Forge 61's list names with no method too, finalizing a structure mob's spawn in the
+	 * lambda body of {@code placeEntities}, the mob an argument.
+	 */
+	static Map<String, byte[]> forgeGame() {
+		Map<String, byte[]> classes = new HashMap<>();
+		classes.put(MOB, mob(MOB, "java/lang/Object", FINALIZE_REASON));
+		classes.put(PATROLLING, mob(PATROLLING, MOB, FINALIZE_REASON));
+		classes.put(FORGE_HOOKS, hooks(FORGE_HOOKS, "onFinalizeSpawn", FINALIZE_REASON));
+		int lambda = Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC;
+		ClassWriter patrols = new ClassWriter(ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
+		patrols.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, PATROLS, null, "java/lang/Object", null);
+		MethodVisitor init = patrols.visitMethod(Opcodes.ACC_PUBLIC, "<init>", "()V", null, null);
+		init.visitCode();
+		init.visitVarInsn(Opcodes.ALOAD, 0);
+		init.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false);
+		init.visitInsn(Opcodes.RETURN);
+		init.visitMaxs(0, 0);
+		init.visitEnd();
+		// As the game has it: private, and not static.
+		spawnIn(patrols, Opcodes.ACC_PRIVATE, "spawnPatrolMember", SPAWN_PATROL_MEMBER, PATROLLING, FINALIZE_REASON);
+		spawnIn(patrols, lambda, "lambda$tick$0", SPAWN_DATA, PATROLLING, FINALIZE_REASON);
+		spawnIn(patrols, Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "spawnLeader", SPAWN_DATA, PATROLLING, FINALIZE_REASON);
+		patrols.visitEnd();
+		classes.put(PATROLS, patrols.toByteArray());
+		ClassWriter tadpole = new ClassWriter(ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
+		tadpole.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TADPOLE, null, "java/lang/Object", null);
+		spawnIn(tadpole, lambda, "lambda$ageUp$0", SPAWN_DATA, MOB, FINALIZE_REASON);
+		spawnIn(tadpole, Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "ageUp", SPAWN_DATA, MOB, FINALIZE_REASON);
+		tadpole.visitEnd();
+		classes.put(TADPOLE, tadpole.toByteArray());
+		ClassWriter template = new ClassWriter(ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
+		template.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, STRUCTURE_TEMPLATE, null, "java/lang/Object", null);
+		MethodVisitor place = template.visitMethod(lambda, "lambda$placeEntities$0", PLACE_ENTITY, null, null);
+		place.visitCode();
+		place.visitVarInsn(Opcodes.ALOAD, 5);
+		place.visitTypeInsn(Opcodes.CHECKCAST, MOB);
+		for (int i = 0; i < 4; i++) place.visitInsn(Opcodes.ACONST_NULL);
+		place.visitMethodInsn(Opcodes.INVOKEVIRTUAL, MOB, "finalizeSpawn", FINALIZE_REASON, false);
+		place.visitInsn(Opcodes.POP);
+		place.visitInsn(Opcodes.RETURN);
+		place.visitMaxs(0, 0);
+		place.visitEnd();
+		template.visitEnd();
+		classes.put(STRUCTURE_TEMPLATE, template.toByteArray());
+		for (String type : List.of("net/minecraft/world/level/ServerLevelAccessor", "net/minecraft/world/DifficultyInstance",
+				"net/minecraft/world/entity/EntitySpawnReason", "net/minecraft/world/entity/SpawnGroupData", "net/minecraft/server/level/ServerLevel",
+				"net/minecraft/core/BlockPos", "net/minecraft/util/RandomSource", "net/minecraft/world/level/block/Rotation",
+				"net/minecraft/world/level/block/Mirror", "net/minecraft/world/phys/Vec3", "net/minecraft/world/entity/Entity")) {
+			ClassWriter cw = new ClassWriter(0);
+			cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_INTERFACE | Opcodes.ACC_ABSTRACT, type, null, "java/lang/Object", null);
+			cw.visitEnd();
+			classes.put(type, cw.toByteArray());
+		}
+		return classes;
+	}
+
+	/** Each method's first call but a constructor's, as owner.name+desc, by the method's name. */
+	static Map<String, String> callByMethod(byte[] data) {
+		ClassNode node = new ClassNode();
+		new ClassReader(data).accept(node, 0);
+		Map<String, String> calls = new LinkedHashMap<>();
+		for (MethodNode m : node.methods) {
+			for (AbstractInsnNode insn : m.instructions) {
+				if (insn instanceof MethodInsnNode call && !call.name.equals("<init>")) {
+					calls.putIfAbsent(m.name, call.owner + "." + call.name + call.desc);
+				}
+			}
+		}
+		return calls;
+	}
+
+	/** A class loader defining the classes given, and nothing else. */
+	private static ClassLoader loading(Map<String, byte[]> classes) {
+		return new ClassLoader(null) {
+			@Override
+			protected Class<?> findClass(String name) throws ClassNotFoundException {
+				byte[] data = classes.get(name.replace('.', '/'));
+				if (data == null) throw new ClassNotFoundException(name);
+				return defineClass(name, data, 0, data.length);
+			}
+		};
 	}
 
 	static List<MethodInsnNode> calls(byte[] data) {
@@ -148,14 +276,7 @@ class PlatformCoremodsTest {
 		Map<String, byte[]> loaded = new HashMap<>(game);
 		loaded.put(SPAWNER, seen.read(SPAWNER));
 		loaded.put(PATROLS, seen.read(PATROLS));
-		ClassLoader loader = new ClassLoader(null) {
-			@Override
-			protected Class<?> findClass(String name) throws ClassNotFoundException {
-				byte[] data = loaded.get(name.replace('.', '/'));
-				if (data == null) throw new ClassNotFoundException(name);
-				return defineClass(name, data, 0, data.length);
-			}
-		};
+		ClassLoader loader = loading(loaded);
 		loader.loadClass(SPAWNER.replace('/', '.')).getMethod("spawnCategoryForPosition").invoke(null);
 		loader.loadClass(PATROLS.replace('/', '.')).getMethod("spawnPatrolMember").invoke(null);
 		assertEquals(2, loader.loadClass(HOOKS.replace('/', '.')).getField("events").getInt(null));
@@ -171,7 +292,7 @@ class PlatformCoremodsTest {
 		// 1.21.10 isn't 1.21.1; an unknown version leaves the game as its jars have it too.
 		for (String version : List.of("1.21.11", "26.1.2", "26.2", "26.3", "1.21.10", "27.1")) {
 			assertSame(PlatformCoremods.NONE, PlatformCoremods.neoForge(version), version);
-			assertSame(PlatformCoremods.NONE, io.github.cmdralph.fabricated.core.translate.PlatformDescriptor.NEOFORGE.coremods(version), version);
+			assertSame(PlatformCoremods.NONE, PlatformDescriptor.NEOFORGE.coremods(version), version);
 		}
 		assertArrayEquals(game.get(SPAWNER), PlatformCoremods.neoForge("26.3").over(game::get).read(SPAWNER));
 	}
@@ -201,11 +322,16 @@ class PlatformCoremodsTest {
 	}
 
 	private static byte[] biome(boolean getter) {
+		return biome(getter, false);
+	}
+
+	/** A biome with its climate field, maybe its getter, and maybe another method of the getter's descriptor reading the field. */
+	private static byte[] biome(boolean getter, boolean getterShaped) {
 		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
 		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, BIOME, null, "java/lang/Object", null);
 		cw.visitField(Opcodes.ACC_PRIVATE | Opcodes.ACC_FINAL, "climateSettings", CLIMATE, null, null).visitEnd();
-		if (getter) {
-			MethodVisitor get = cw.visitMethod(Opcodes.ACC_PUBLIC, "getModifiedClimateSettings", "()" + CLIMATE, null, null);
+		for (String reader : getterShaped ? List.of("getModifiedClimateSettings", "climate") : getter ? List.of("getModifiedClimateSettings") : List.<String>of()) {
+			MethodVisitor get = cw.visitMethod(Opcodes.ACC_PUBLIC, reader, "()" + CLIMATE, null, null);
 			get.visitCode();
 			get.visitVarInsn(Opcodes.ALOAD, 0);
 			get.visitFieldInsn(Opcodes.GETFIELD, BIOME, "climateSettings", CLIMATE);
@@ -226,8 +352,109 @@ class PlatformCoremodsTest {
 	}
 
 	@Test
-	void forgeDescribesNoneYet() {
-		assertSame(PlatformCoremods.NONE, io.github.cmdralph.fabricated.core.translate.PlatformDescriptor.FORGE.coremods("1.20.1"));
-		assertEquals(22, io.github.cmdralph.fabricated.core.translate.PlatformDescriptor.NEOFORGE.coremods("1.21.1").redirectedClasses());
+	void forge61To66PointTheCallAtTheirEventHookInTheMethodsTheirListNamesAndTheListedClassesLambdasAndRunSo() throws Exception {
+		// CORPUS-78: Forge's MethodRedirector, a ModLauncher transformer, so before Mixin, points PatrolSpawner's call at
+		// ForgeEventFactory.onFinalizeSpawn: Friends & Foes' @Inject at a PatrollingMonster's call there found nothing.
+		Map<String, byte[]> game = forgeGame();
+		ClassBytesSource seen = PlatformCoremods.forge("1.21.11").over(game::get);
+		String hook = FORGE_HOOKS + ".onFinalizeSpawn" + FINALIZE_REASON_HOOK;
+		Map<String, String> patrols = callByMethod(seen.read(PATROLS));
+		assertEquals(hook, patrols.get("spawnPatrolMember"), "the method the list names");
+		assertEquals(hook, patrols.get("lambda$tick$0"), "a synthetic method of a listed class");
+		assertEquals(PATROLLING + ".finalizeSpawn" + FINALIZE_REASON, patrols.get("spawnLeader"), "a method the list doesn't name keeps its call");
+		Map<String, String> tadpole = callByMethod(seen.read(TADPOLE));
+		assertEquals(hook, tadpole.get("lambda$ageUp$0"), "listed with no method: its synthetic methods only");
+		assertEquals(MOB + ".finalizeSpawn" + FINALIZE_REASON, tadpole.get("ageUp"));
+		assertEquals(hook, callByMethod(seen.read(STRUCTURE_TEMPLATE)).get("lambda$placeEntities$0"), "listed with no method: a structure mob's");
+		assertArrayEquals(game.get(FORGE_HOOKS), seen.read(FORGE_HOOKS), "the hook's own call stays");
+		// Forge 64's own list (26.1.2's branch) names neither Tadpole nor StructureTemplate: their calls stay, Friends &
+		// Foes' hook at the structure's among them, which 26.1's list moved to a hook call Forge 64 never makes.
+		ClassBytesSource forge64 = PlatformCoremods.forge("26.1.2").over(game::get);
+		assertEquals(hook, callByMethod(forge64.read(PATROLS)).get("spawnPatrolMember"));
+		assertArrayEquals(game.get(TADPOLE), forge64.read(TADPOLE));
+		assertArrayEquals(game.get(STRUCTURE_TEMPLATE), forge64.read(STRUCTURE_TEMPLATE));
+
+		// The classes as the transformer leaves them load and run, the hook's event fired once for each redirected spawn.
+		Map<String, byte[]> loaded = new HashMap<>(game);
+		loaded.put(PATROLS, seen.read(PATROLS));
+		loaded.put(TADPOLE, seen.read(TADPOLE));
+		ClassLoader loader = loading(loaded);
+		Class<?> patrolSpawner = loader.loadClass(PATROLS.replace('/', '.'));
+		Class<?>[] memberParameters = {loader.loadClass("net.minecraft.server.level.ServerLevel"), loader.loadClass("net.minecraft.core.BlockPos"),
+				loader.loadClass("net.minecraft.util.RandomSource"), boolean.class};
+		java.lang.reflect.Method spawnPatrolMember = patrolSpawner.getDeclaredMethod("spawnPatrolMember", memberParameters);
+		spawnPatrolMember.setAccessible(true);
+		assertEquals(true, spawnPatrolMember.invoke(patrolSpawner.getConstructor().newInstance(), null, null, null, false));
+		patrolSpawner.getMethod("spawnLeader").invoke(null);
+		java.lang.reflect.Method patrolLambda = patrolSpawner.getDeclaredMethod("lambda$tick$0");
+		patrolLambda.setAccessible(true);
+		patrolLambda.invoke(null);
+		Class<?> tadpoles = loader.loadClass(TADPOLE.replace('/', '.'));
+		tadpoles.getMethod("ageUp").invoke(null);
+		java.lang.reflect.Method tadpoleLambda = tadpoles.getDeclaredMethod("lambda$ageUp$0");
+		tadpoleLambda.setAccessible(true);
+		tadpoleLambda.invoke(null);
+		assertEquals(3, loader.loadClass(FORGE_HOOKS.replace('/', '.')).getField("events").getInt(null));
+	}
+
+	@Test
+	void forge61To66sTransformersAreDescribedForTheirVersionsAndNotForge47sOrAnother() {
+		// Each Forge branch's finalize_spawn_targets.json, as this build ships it: 1.21.11's lists 27 classes, 26.1.2's,
+		// 26.2's and 26.3's 23 (CORPUS-78: 26.1.2's, Forge 64's, is not 26.1's, which lists 27).
+		Map<String, Integer> classes = Map.of("1.21.11", 27, "26.1.2", 23, "26.2", 23, "26.3", 23);
+		classes.forEach((version, count) -> {
+			assertEquals(count, PlatformCoremods.forge(version).redirectedClasses(), version);
+			assertEquals(count, PlatformDescriptor.FORGE.coremods(version).redirectedClasses(), version);
+			PlatformCoremods.Redirect patrols = PlatformCoremods.forge(version).redirectsIn(PATROLS).getFirst();
+			assertEquals(Set.of("spawnPatrolMember" + SPAWN_PATROL_MEMBER), patrols.methods(), version);
+			assertTrue(patrols.synthetic(), version);
+			assertEquals(FORGE_HOOKS, patrols.hookOwner(), version);
+		});
+		assertFalse(PlatformCoremods.forge("1.21.11").redirectsIn(STRUCTURE_TEMPLATE).isEmpty());
+		for (String version : List.of("26.1.2", "26.2", "26.3")) {
+			for (String unlisted : List.of(STRUCTURE_TEMPLATE, TADPOLE)) assertTrue(PlatformCoremods.forge(version).redirectsIn(unlisted).isEmpty(), version + " " + unlisted);
+		}
+		for (String line : List.of("1.21.11", "26.1.2", "26.2", "26.3")) {
+			PlatformCoremods.forgeSpawnTargets(line).forEach((target, methods) -> {
+				assertTrue(target.startsWith("net/minecraft/"), target);
+				methods.forEach(method -> assertTrue(method.indexOf('(') > 0 && method.contains(")"), target + " " + method));
+			});
+		}
+		// Forge 47's 1.20.1 is described on its branch; another version's transformers aren't known (each version has its
+		// own branch and list, 26.1.2's not 26.1's), so the game is as its jars have it.
+		for (String version : List.of("1.20.1", "1.21.1", "1.21.10", "1.21.110", "26.1", "26.1.1", "26.2.1", "26.10", "26.4", "27.1")) {
+			assertSame(PlatformCoremods.NONE, PlatformCoremods.forge(version), version);
+			assertSame(PlatformCoremods.NONE, PlatformDescriptor.FORGE.coremods(version), version);
+		}
+		assertSame(PlatformCoremods.NONE, PlatformCoremods.forge(null));
+		assertEquals(22, PlatformDescriptor.NEOFORGE.coremods("1.21.1").redirectedClasses());
+	}
+
+	@Test
+	void forge61To66ReadAFieldThroughItsGetterInTheGettersShapeTooAndNotBiomesOn26_3() throws Exception {
+		byte[] biome = biome(true, true);
+		// NeoForge's transformer leaves a method of the getter's descriptor reading the field; Forge's check meant to do so
+		// compares a string with a method, so it reads the getter there too.
+		assertTrue(readsField(PlatformCoremods.neoForge("1.21.1").over(Map.of(BIOME, biome)::get).read(BIOME), "climate"));
+		byte[] onForge = PlatformCoremods.forge("26.1.2").over(Map.of(BIOME, biome)::get).read(BIOME);
+		assertFalse(readsField(onForge, "climate"));
+		assertEquals(BIOME + ".getModifiedClimateSettings()" + CLIMATE, callByMethod(onForge).get("climate"));
+		assertEquals(BIOME + ".getModifiedClimateSettings()" + CLIMATE, callByMethod(onForge).get("hasPrecipitation"));
+		assertTrue(readsField(onForge, "getModifiedClimateSettings"), "the getter reads the field");
+		// Forge 66 no longer redirects Biome's fields.
+		assertArrayEquals(biome, PlatformCoremods.forge("26.3").over(Map.of(BIOME, biome)::get).read(BIOME));
+	}
+
+	/** Whether the class's method of that name reads the climate field itself. */
+	private static boolean readsField(byte[] data, String method) {
+		ClassNode node = new ClassNode();
+		new ClassReader(data).accept(node, 0);
+		for (MethodNode m : node.methods) {
+			if (!m.name.equals(method)) continue;
+			for (AbstractInsnNode insn : m.instructions) {
+				if (insn instanceof FieldInsnNode f && f.getOpcode() == Opcodes.GETFIELD && f.name.equals("climateSettings")) return true;
+			}
+		}
+		return false;
 	}
 }

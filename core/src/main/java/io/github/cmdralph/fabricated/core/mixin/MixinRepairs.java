@@ -7,11 +7,14 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.function.BiFunction;
 
 import io.github.cmdralph.fabricated.core.bytecode.Annotations;
+import io.github.cmdralph.fabricated.core.bytecode.InstalledClasses;
 import io.github.cmdralph.fabricated.core.mixin.PreflightFinding.Severity;
 import io.github.cmdralph.fabricated.core.mixin.MixinPreflight.Context;
 
@@ -83,6 +86,14 @@ final class MixinRepairs extends PreflightPart {
 			}
 			independent.put(node, MixinPreflight.independentHandlers(node));
 			changed |= singleInjectionPoints(node);
+			Set<String> unfound = withoutUnfoundLocals(node);
+			if (!unfound.isEmpty()) {
+				changed = true;
+				out.add(new PreflightFinding(Severity.INFO, configName, ctx.mixinDotted(), "The debug tables of the mixin's methods name local "
+						+ "variables of " + String.join(", ", unfound.stream().map(t -> t.replace('/', '.')).toList()) + ", not found on this side, "
+						+ "which " + loader + "'s Mixin stops on as it applies the mixin; those locals are left out of the tables, which only "
+						+ "debuggers read (LVT-1)", ""));
+			}
 			List<ClassNode> targets = new ArrayList<>();
 			for (String target : MixinPreflight.targetsOf(node, ctx)) {
 				ClassNode targetNode = gameTarget(target);
@@ -144,10 +155,19 @@ final class MixinRepairs extends PreflightPart {
 			}
 			for (FieldNode field : node.fields) {
 				String captured = capturedShadowRepair(node, field, targets, ctx);
-				if (captured == null) continue;
+				if (captured != null) {
+					changed = true;
+					out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@Shadow field " + captured + " is a captured variable field of "
+							+ targets.get(0).name.replace('/', '.') + ", which this game build names " + field.name + "; the mixin uses that", ""));
+					continue;
+				}
+				InstalledClasses.AddedMember shared = sharedFieldRepair(field, targets, ctx);
+				if (shared == null) continue;
 				changed = true;
-				out.add(new PreflightFinding(Severity.WARN, configName, ctx.mixinDotted(), "@Shadow field " + captured + " is a captured variable field of "
-						+ targets.get(0).name.replace('/', '.') + ", which this game build names " + field.name + "; the mixin uses that", ""));
+				out.add(new PreflightFinding(Severity.INFO, configName, ctx.mixinDotted(), "@Shadow field " + field.name + " is one "
+						+ MixinPreflight.addedBy(shared) + " adds to " + targets.get(0).name.replace('/', '.') + ", and " + loader + "'s Mixin finds "
+						+ "a @Shadow field only among the target's own; the mixin declares the field as that mixin does, which Mixin merges with "
+						+ "it into one field, as Fabric's Mixin binds the shadow to it (CORPUS-74)", ""));
 			}
 			node.methods.removeAll(kept);
 			node.methods.addAll(bridges);
@@ -465,6 +485,30 @@ final class MixinRepairs extends PreflightPart {
 		return changed;
 	}
 
+	/**
+	 * Leaves out of the debug tables of a mixin's methods the local variables whose class isn't found on this side (a
+	 * client class on a dedicated server: owo's slot mixin keeps a client-only rectangle, LVT-1), where the running
+	 * Mixin looks up each one's class as it applies the mixin and stops on one it can't find; Fabric's Mixin looks up none
+	 * from 0.17.0. A local of another Fabric mod's class goes too: the table is only read by debuggers. Returns the
+	 * classes, sorted.
+	 */
+	private Set<String> withoutUnfoundLocals(ClassNode node) {
+		Set<String> unfound = new TreeSet<>();
+		if (!readsLocalTypes) return unfound;
+		for (MethodNode method : node.methods) {
+			if (method.localVariables == null) continue;
+			method.localVariables.removeIf(local -> {
+				if (local == null || local.desc == null) return false;
+				Type type = Type.getType(local.desc);
+				if (type.getSort() == Type.ARRAY) type = type.getElementType();
+				if (type.getSort() != Type.OBJECT || type.getInternalName().equals(node.name) || classes.found(type.getInternalName())) return false;
+				unfound.add(type.getInternalName());
+				return true;
+			});
+		}
+		return unfound;
+	}
+
 	private static byte[] write(ClassNode node) {
 		ClassWriter writer = new ClassWriter(0);
 		node.accept(writer);
@@ -559,6 +603,55 @@ final class MixinRepairs extends PreflightPart {
 		}
 		field.name = renamed;
 		return name;
+	}
+
+	/**
+	 * Declares a {@code @Shadow} field as the field another mod's mixin adds to the target, where the running Mixin finds
+	 * a shadow only among the target's own fields (CORPUS-74: SpongePowered's, which Forge runs, stop the game on such a
+	 * shadow; Fabric's also finds the fields of the mixins it prepared before, its {@code mixinFields}). MoreCulling's
+	 * mixin into {@code BlockModelRenderState} shadows the mesh Fabric API's renderer mixin adds there, and stopped the
+	 * Forge 26.x clients. Declared with that mixin's access and signature, without Mixin's annotations, the two mixins'
+	 * fields are one: Mixin adds a mixin's new field only where its target has none of that name and descriptor yet
+	 * ({@code MixinApplicatorStandard.mergeNewFields}), so whichever of the two applies first adds it and the other's code
+	 * uses it, as on Fabric (where the shadow binds to the field the other mixin adds). Only where every target lacks the
+	 * field, an installed mixin adds one of the same name, descriptor and staticness to each, with the same access, and
+	 * the shadow neither names another field (aliases, a remapped name) nor makes a final one writable ({@code @Mutable},
+	 * which a field the other mixin adds first wouldn't take). Returns the mixin adding it, or {@code null} and changes
+	 * nothing.
+	 */
+	InstalledClasses.AddedMember sharedFieldRepair(FieldNode field, List<ClassNode> targets, Context ctx) {
+		if (shadowsMixinFields) return null;
+		AnnotationNode shadow = Annotations.find(field, MixinNames.SHADOW);
+		if (shadow == null || targets.isEmpty()) return null;
+		if (Annotations.value(shadow, "aliases") instanceof List<?> aliases && !aliases.isEmpty()) return null;
+		MemberRef ref = MemberRef.parse(ctx.resolve(field.name));
+		if (!ref.nameOr(field.name).equals(field.name) || !ref.fieldDescOr(field.desc).equals(field.desc)) return null;
+		boolean mutable = Annotations.find(field, MixinNames.MUTABLE) != null;
+		InstalledClasses.AddedMember first = null;
+		FieldNode declared = null;
+		for (ClassNode target : targets) {
+			if (target.fields.stream().anyMatch(f -> f.name.equals(field.name) && f.desc.equals(field.desc))) return null;
+			InstalledClasses.AddedMember added = checker.addedByInstalledMixin(target.name, field.name, field.desc, true);
+			if (added == null) return null;
+			ClassNode adder = installed.readNode(added.mixin(), ClassReader.SKIP_CODE | ClassReader.SKIP_FRAMES);
+			FieldNode theirs = adder == null ? null : adder.fields.stream()
+					.filter(f -> f.name.equals(field.name) && f.desc.equals(field.desc)).findFirst().orElse(null);
+			if (theirs == null || ((theirs.access ^ field.access) & Opcodes.ACC_STATIC) != 0) return null;
+			if (mutable && (theirs.access & Opcodes.ACC_FINAL) != 0) return null;
+			if (declared != null && (declared.access != theirs.access || !Objects.equals(declared.signature, theirs.signature))) return null;
+			if (first == null) first = added;
+			declared = theirs;
+		}
+		if (field.visibleAnnotations != null) field.visibleAnnotations.removeIf(MixinRepairs::isMixinFieldAnnotation);
+		if (field.invisibleAnnotations != null) field.invisibleAnnotations.removeIf(MixinRepairs::isMixinFieldAnnotation);
+		field.access = declared.access;
+		field.signature = declared.signature;
+		return first;
+	}
+
+	/** {@code @Shadow}, {@code @Final} and {@code @Mutable}: what Mixin reads on a shadow field. */
+	private static boolean isMixinFieldAnnotation(AnnotationNode annotation) {
+		return annotation.desc.equals(MixinNames.SHADOW) || annotation.desc.equals(MixinNames.FINAL) || annotation.desc.equals(MixinNames.MUTABLE);
 	}
 
 	private static boolean isAccessorAnnotation(AnnotationNode annotation) {

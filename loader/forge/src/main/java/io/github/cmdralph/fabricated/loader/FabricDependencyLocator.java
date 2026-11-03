@@ -173,6 +173,8 @@ public final class FabricDependencyLocator extends AbstractModProvider implement
 		// pipeline reads any class): pre-flight then sees the provider's classes, as the game will.
 		Set<String> standingDown = new HashSet<>();
 		NativeModules.StandDown standDown = null;
+		// The modules other mods provide, the plan's and those beyond it that parts of the in-game mod serve.
+		Set<String> providedModules = Set.of();
 		// The in-game mod's jar Forge is handed: without what stands down, when anything does.
 		Path handedGameMod = gameModJar;
 		FabricApiPlan plan;
@@ -225,7 +227,8 @@ public final class FabricDependencyLocator extends AbstractModProvider implement
 				NativeModules nativeModules = index == null ? NativeModules.NONE : NativeModules.parse(new String(index, StandardCharsets.UTF_8),
 						archive.contains(NativeModules.MIXIN_MODULES) ? archive.readText(NativeModules.MIXIN_MODULES) : null);
 				mods = nativeModules.providingByPackages(forgeMods.mods(), forgeMods.providers(), providerNotes);
-				Map<String, Pipeline.NeoForgeMod> provided = Pipeline.providedElsewhere(plan, mods);
+				Map<String, Pipeline.NeoForgeMod> provided = Pipeline.providedElsewhere(plan, nativeModules.modules(), mods);
+				providedModules = provided.keySet();
 				Map<String, MixinConfigFile> configs = new LinkedHashMap<>();
 				for (String name : archive.entryNames()) {
 					if (name.indexOf('/') < 0 && name.endsWith(".mixins.json")) configs.put(name, MixinConfigFile.parse(archive.readText(name)));
@@ -273,7 +276,7 @@ public final class FabricDependencyLocator extends AbstractModProvider implement
 					(mappingsCache, mojangPath) -> IntermediaryMappings.load(mappingsCache, mcVersion, client, mojangPath, minecraft.getFilePath()),
 					new String[0], PlatformDescriptor.FORGE);
 
-			result = Pipeline.run(input);
+			result = Pipeline.run(input).alsoProvidedElsewhere(providedModules);
 			providerNotes.forEach(n -> result.report().line("Fabric API providers", n));
 			if (standDown != null && !standDown.isEmpty()) {
 				result.report().line("Fabric API providers", "Fabricated's in-game mod leaves out " + standDown.packages().size()

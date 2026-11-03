@@ -42,6 +42,7 @@ public final class MixinCompat {
 	private static final String FABRIC_FALLBACK = "0.9.2";
 	private static final Version ENUM_EXTENSIONS = parse("0.17.1");
 	private static final Version MISSING_TARGETS_FATAL = parse("0.17.4");
+	private static final Version LOCAL_TYPES_UNREAD = parse("0.17.0");
 	/** The MixinExtras release NeoForge 21.11 ships, and the last of those after it that only fixed bugs (MIXEXT-2). */
 	private static final Version BEFORE_FIX_RELEASES = parse("0.5.3");
 	private static final Version LAST_FIX_RELEASE = parse("0.5.5");
@@ -56,16 +57,18 @@ public final class MixinCompat {
 	 * {@code CallbackInjector.sanityCheck} has the modifiers match exactly on 0.8.5; from 0.8.6, as in Fabric's Mixin, it
 	 * refuses only a handler that isn't static on a static target). All three rebind a detached mixin's calls to an
 	 * interface's super method (SUPER-1: {@code MixinTargetContext.updateStaticBinding}, which Fabric's Mixin stopped doing
-	 * for interfaces in 0.15.0).
+	 * for interfaces in 0.15.0), and none finds a {@code @Shadow} field among the fields another mixin adds to the same
+	 * target (CORPUS-74: {@code TargetClassContext.findAliasedField} looks in the target's own fields; Fabric's Mixin also
+	 * looks in the fields of the mixins prepared before, its {@code mixinFields}, from 0.12.0).
 	 */
 	private record Upstream(int lastLevel, boolean interfaceInjectors, ConstructorInjects constructorInjects, boolean argumentNames,
-			boolean exactStaticInjects, boolean rebindsInterfaceSuperCalls) {
+			boolean exactStaticInjects, boolean rebindsInterfaceSuperCalls, boolean shadowsMixinFields) {
 	}
 
 	private static final Map<String, Upstream> UPSTREAM = Map.of(
-			"0.8.5", new Upstream(18, false, ConstructorInjects.RETURNS_ONLY, false, true, true),
-			"0.8.6", new Upstream(21, true, ConstructorInjects.UNSAFE_POINTS, false, false, true),
-			"0.8.7", new Upstream(21, true, ConstructorInjects.UNSAFE_POINTS, false, false, true));
+			"0.8.5", new Upstream(18, false, ConstructorInjects.RETURNS_ONLY, false, true, true, false),
+			"0.8.6", new Upstream(21, true, ConstructorInjects.UNSAFE_POINTS, false, false, true, false),
+			"0.8.7", new Upstream(21, true, ConstructorInjects.UNSAFE_POINTS, false, false, true, false));
 	private static final Pattern LEVEL = Pattern.compile("JAVA_(\\d{1,3})");
 
 	private MixinCompat() {
@@ -121,6 +124,23 @@ public final class MixinCompat {
 	}
 
 	/**
+	 * Whether the running Mixin looks up the class of every local variable in the debug tables of a mixin's methods as it
+	 * applies the mixin, and stops on one it can't find (LVT-1: {@code MixinTargetContext.transformLVT} through
+	 * {@code ClassInfo.forName}, read in the sources of SpongePowered's 0.8.5 to 0.8.7, which Forge runs, and of Fabric's
+	 * before 0.17.0; from 0.17.0 Fabric's asks first whether the class is a mixin, and looks up nothing else). False for a
+	 * version not known here.
+	 */
+	public static boolean readsLocalTypes(String runtimeMixinVersion) {
+		if (runtimeMixinVersion == null) return false;
+		int plus = runtimeMixinVersion.indexOf('+');
+		try {
+			return parse((plus >= 0 ? runtimeMixinVersion.substring(0, plus) : runtimeMixinVersion).trim()).compareTo(LOCAL_TYPES_UNREAD) < 0;
+		} catch (IllegalArgumentException e) {
+			return false;
+		}
+	}
+
+	/**
 	 * The last compatibility level ({@code JAVA_n}) the running Mixin knows, or 0 when it isn't known here. Mixin stops the
 	 * game reading a config that declares a level it doesn't know (LEVEL-1). SpongePowered's own releases, which Forge runs
 	 * (a plain version, e.g. {@code 0.8.7}), are known up to 0.8.7; Fabric's Mixin, which NeoForge runs (e.g.
@@ -172,6 +192,16 @@ public final class MixinCompat {
 	public static boolean rebindsInterfaceSuperCalls(String runtimeMixinVersion) {
 		Upstream upstream = upstream(runtimeMixinVersion);
 		return upstream != null && upstream.rebindsInterfaceSuperCalls();
+	}
+
+	/**
+	 * Whether the running Mixin finds a {@code @Shadow} field another mixin adds to the same target, as Fabric's does from
+	 * 0.12.0 (CORPUS-74: SpongePowered's releases, which Forge runs, find only the target's own fields, and stop the game
+	 * on such a shadow). True for a version not known here.
+	 */
+	public static boolean shadowsMixinFields(String runtimeMixinVersion) {
+		Upstream upstream = upstream(runtimeMixinVersion);
+		return upstream == null || upstream.shadowsMixinFields();
 	}
 
 	/**
