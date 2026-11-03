@@ -1814,7 +1814,10 @@ class PipelineTest {
 		// INTERFACE-1, CORPUS-91: Forge 47's Mixin 0.8.5 applies no injector in an interface mixin and drops one with a
 		// non-public method. An @Inject Fabricated applies itself (at HEAD, RETURN or TAIL) becomes a public synthetic method
 		// Mixin merges into the target, named for its mixin and marked with where it injects; Fabricated's Mixin extension calls
-		// it from there (InterfaceInjectsTest). The mixin, AppleSkin's shape, keeps extending its target, as on Fabric.
+		// it from there (InterfaceInjectsTest). CORPUS-96: Mixin takes an interface mixin whose methods are all synthetic for an
+		// accessor mixin and makes its target implement it, so the mixin, AppleSkin's shape, no longer extends its target, which
+		// would make that its own supertype (CORPUS-76's ClassCircularityError). A mixin with another injector Fabricated
+		// doesn't apply, left out, keeps the one it does: it isn't left out whole as adding nothing.
 		Map<String, String> injectors = Map.of(
 				"org/spongepowered/asm/mixin/injection/Inject.java",
 				"package org.spongepowered.asm.mixin.injection; public @interface Inject { String[] method(); At[] at(); boolean cancellable() default false; }",
@@ -1832,11 +1835,24 @@ class PipelineTest {
 						public interface TooltipMixin extends net.minecraft.client.Tooltip {
 							@Inject(method = "create", at = @At("HEAD"), cancellable = true)
 							private static void onCreate(Object data, CallbackInfoReturnable<net.minecraft.client.Tooltip> info) { }
+						}""",
+				"com/apple/mixin/TooltipBoth.java", """
+						package com.apple.mixin;
+						import org.spongepowered.asm.mixin.Mixin;
+						import org.spongepowered.asm.mixin.injection.*;
+						import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+						@Mixin(net.minecraft.client.Tooltip.class)
+						public interface TooltipBoth {
+							@Inject(method = "create", at = @At("HEAD"))
+							private static void atHead(Object data, CallbackInfoReturnable<net.minecraft.client.Tooltip> info) { }
+							@Inject(method = "create", at = @At("INVOKE"))
+							private static void atCall(Object data, CallbackInfoReturnable<net.minecraft.client.Tooltip> info) { }
 						}"""));
 		Path mods = Files.createDirectories(game.resolve("mods"));
 		Path apple = TestJars.create().fabricModJson(TestJars.modJson("apple", "1.0", "\"mixins\":[\"apple.mixins.json\"]"))
-				.text("apple.mixins.json", "{\"required\":true,\"package\":\"com.apple.mixin\",\"mixins\":[\"TooltipMixin\"]}")
+				.text("apple.mixins.json", "{\"required\":true,\"package\":\"com.apple.mixin\",\"mixins\":[\"TooltipMixin\",\"TooltipBoth\"]}")
 				.bytes("com/apple/mixin/TooltipMixin.class", classes.get("com/apple/mixin/TooltipMixin"))
+				.bytes("com/apple/mixin/TooltipBoth.class", classes.get("com/apple/mixin/TooltipBoth"))
 				.write(mods.resolve("apple.jar"));
 		Map<String, byte[]> gameClasses = Map.of(TARGET, targetClass(), "net/minecraft/client/Tooltip", classes.get("net/minecraft/client/Tooltip"));
 		Pipeline.Result forge = Pipeline.run(withDescriptor(input(game, List.of(apple), Namespace.OFFICIAL, gameClasses, null, List.of(),
@@ -1847,13 +1863,21 @@ class PipelineTest {
 		assertTrue(report.contains("@Inject handler onCreate(Ljava/lang/Object;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;)V is an"
 				+ " injector in an interface mixin, which Forge's Mixin doesn't apply (Mixin does from 0.8.6); Fabricated applies it as the mixin applies,"
 				+ " as Mixin would (INTERFACE-1)"), report);
-		assertFalse(report.contains("Left out"), report);
+		assertTrue(report.contains("With its injectors made handlers Fabricated applies (INTERFACE-1), Mixin takes it for an accessor mixin and makes"
+				+ " net.minecraft.client.Tooltip implement it; it no longer extends net.minecraft.client.Tooltip, which would make that its own supertype"
+				+ " (CORPUS-76, CORPUS-96)"), report);
+		assertFalse(report.contains("Left out whole"), report);
 		try (SafeArchive overlay = SafeArchive.open(forge.mods().getFirst().translated().overlay(), ArchiveLimits.DEFAULTS)) {
 			byte[] config = overlay.read("apple.mixins.json");
-			assertTrue(config == null || new String(config, StandardCharsets.UTF_8).contains("\"TooltipMixin\""), "the mixin stays listed");
+			String listed = config == null ? "\"TooltipMixin\",\"TooltipBoth\"" : new String(config, StandardCharsets.UTF_8);
+			assertTrue(listed.contains("\"TooltipMixin\"") && listed.contains("\"TooltipBoth\""), "the mixins stay listed: " + listed);
+			ClassNode both = new ClassNode();
+			new ClassReader(overlay.read("com/apple/mixin/TooltipBoth.class")).accept(both, 0);
+			assertEquals(List.of("fabricated$TooltipBoth$atHead"), both.methods.stream().map(m -> m.name).toList(), "the injector at a call is left out");
 			ClassNode mixin = new ClassNode();
 			new ClassReader(overlay.read("com/apple/mixin/TooltipMixin.class")).accept(mixin, 0);
-			assertEquals(List.of("net/minecraft/client/Tooltip"), mixin.interfaces);
+			assertEquals(List.of(), mixin.interfaces, "it no longer extends its target");
+			assertNull(mixin.signature);
 			MethodNode handler = mixin.methods.stream().filter(m -> m.name.equals("fabricated$TooltipMixin$onCreate")).findFirst().orElseThrow();
 			assertEquals(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, handler.access);
 			assertNull(handler.visibleAnnotations == null ? null : Annotations.find(handler.visibleAnnotations, "Lorg/spongepowered/asm/mixin/injection/Inject;"));
@@ -1864,10 +1888,11 @@ class PipelineTest {
 			assertEquals(Boolean.TRUE, Annotations.value(marker, "cancellable"));
 		}
 
-		// Where Mixin applies injectors in interface mixins (from 0.8.6), it stays as the mod has it.
+		// Where Mixin applies injectors in interface mixins (from 0.8.6), they stay as the mod has them.
 		Pipeline.Result neoForge = Pipeline.run(input(game, List.of(apple), Namespace.OFFICIAL, gameClasses, null, List.of()));
 		try (SafeArchive overlay = SafeArchive.open(neoForge.mods().getFirst().translated().overlay(), ArchiveLimits.DEFAULTS)) {
 			assertNull(overlay.read("com/apple/mixin/TooltipMixin.class"), neoForge.report().render());
+			assertNull(overlay.read("com/apple/mixin/TooltipBoth.class"), neoForge.report().render());
 		}
 	}
 
