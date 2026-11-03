@@ -568,7 +568,8 @@ public final class ModTranslator {
 		MixinPreflight preflight = new MixinPreflight(env.installedIndex(), env.installed(), relocated.view(classSource(translated)), env.untransformable(),
 				env.clientSide(), MixinCompat.missingTargetsFatal(behavior), env.vanilla(), env.descriptor().loaderName(),
 				MixinCompat.interfaceInjectors(env.runtimeMixinVersion()), MixinCompat.constructorInjects(env.runtimeMixinVersion()),
-				MixinCompat.argumentNames(env.runtimeMixinVersion()), MixinCompat.exactStaticInjects(env.runtimeMixinVersion()));
+				MixinCompat.argumentNames(env.runtimeMixinVersion()), MixinCompat.exactStaticInjects(env.runtimeMixinVersion()),
+				MixinCompat.supportsEnumExtensions(env.runtimeMixinVersion()));
 		Map<String, MixinConfigFile> configs = new HashMap<>();
 		Set<String> matchedSkips = new HashSet<>();
 		Map<String, Refmap> refmaps = new HashMap<>();
@@ -830,27 +831,33 @@ public final class ModTranslator {
 	}
 
 	/**
-	 * Replaces an enum mixin NeoForge's enum extension file can't carry with an ordinary mixin adding its constants
-	 * (ENUM-5), when it can be and no class of the mod reads them as fields of the enum; pre-flight disables the mod
-	 * otherwise, as FML would refuse the enum mixin.
+	 * Replaces an enum mixin with an ordinary mixin adding its constants, when it can be and no class of the mod reads
+	 * them as fields of the enum: one into one of NeoForge's extensible enums that NeoForge's enum extension file can't
+	 * carry (ENUM-5), as FML would refuse the enum mixin, or one into any enum where the running Mixin is older than
+	 * 0.17.1, whose enum extensions apply enum mixins (ENUM-7: Forge's, and NeoForge's before 26.1). Pre-flight disables
+	 * the mod otherwise. Returns whether it replaced it.
 	 */
-	private static void valuesMixin(String configName, MixinConfigFile config, String mixin, ClassNode node, ClassNode target, FileView files,
+	private boolean valuesMixin(String configName, MixinConfigFile config, String mixin, ClassNode node, ClassNode target, FileView files,
 			Collection<String> modEntries, Map<String, byte[]> overlay, List<PreflightFinding> findings) throws ArchiveException {
 		String bodies = generatedClass(config, files, "FabricatedEnumBodies");
-		if (bodies == null) return;
+		if (bodies == null) return false;
 		EnumValuesMixins.Result result = EnumValuesMixins.of(node, target, name -> readNode(files, name + ".class"), bodies);
-		if (result == null) return;
+		if (result == null) return false;
 		List<ClassNode> modClasses = new ArrayList<>();
 		for (String entry : modEntries) {
 			ClassNode c = entry.endsWith(".class") ? readNode(files, entry) : null;
 			if (c != null) modClasses.add(c);
 		}
-		if (EnumValuesMixins.readAsFields(modClasses, target.name, result.constants())) return;
+		if (EnumValuesMixins.readAsFields(modClasses, target.name, result.constants())) return false;
 		overlay.put(config.internalName(mixin) + ".class", result.mixin());
 		result.classes().forEach((name, bytes) -> overlay.put(name + ".class", bytes));
+		String why = env.descriptor().enumExtensions() && target.interfaces.contains(EnumExtensions.EXTENSIBLE_ENUM)
+				? "go to one of NeoForge's extensible enums, " + target.name.replace('/', '.') + ", whose enum extension file can't carry them"
+				: "go to " + target.name.replace('/', '.') + ", and this " + env.descriptor().loaderName() + "'s Mixin " + env.runtimeMixinVersion()
+						+ " can't apply an enum mixin (enum extensions came with Mixin 0.17.1)";
 		findings.add(new PreflightFinding(Severity.INFO, configName, node.name.replace('/', '.'), "Its constants (" + String.join(", ", result.constants())
-				+ ") go to one of NeoForge's extensible enums, " + target.name.replace('/', '.') + ", whose enum extension file can't carry them:"
-				+ " a mixin into its class initializer adds them, as mods' own NeoForge builds do", ""));
+				+ ") " + why + ": a mixin into its class initializer adds them, as mods' own " + env.descriptor().loaderName() + " builds do", ""));
+		return true;
 	}
 
 	/** A file's class with its code, or null when it isn't there or can't be read. */
@@ -887,10 +894,11 @@ public final class ModTranslator {
 	/**
 	 * {@code skip} plus the enum mixins whose constants NeoForge's loader adds instead, from the mod's enum extension
 	 * file ({@link EnumExtensions}), but those with other methods, which stay a mixin without the constants (put in
-	 * {@code overlay}); their entries go to {@code enumEntries}, and the enums of every enum mixin to
-	 * {@code enumTargets} (only those, on a platform without enum extension files). An enum mixin into one of NeoForge's
-	 * extensible enums that the file can't carry becomes, where it can, an ordinary mixin adding its constants
-	 * ({@link EnumValuesMixins}), put in {@code overlay} with the delegate classes its constants' bodies become.
+	 * {@code overlay}); their entries go to {@code enumEntries}, and the enums of every enum mixin that stays one or
+	 * that the file carries to {@code enumTargets}. An enum mixin into one of NeoForge's extensible enums that the file
+	 * can't carry, or into any enum where the running Mixin can't apply enum mixins (ENUM-7), becomes, where it can, an
+	 * ordinary mixin adding its constants ({@link EnumValuesMixins}), put in {@code overlay} with the delegate classes its
+	 * constants' bodies become.
 	 */
 	private Set<String> withEnumExtensions(String configName, MixinConfigFile config, Set<String> skip, String modId, FileView files,
 			Collection<String> modEntries, Map<String, byte[]> overlay, List<PreflightFinding> findings, List<EnumExtensions.Entry> enumEntries,
@@ -903,16 +911,19 @@ public final class ModTranslator {
 			ClassNode node = new ClassNode();
 			new ClassReader(data).accept(node, ClassReader.SKIP_FRAMES);
 			String target = EnumExtensions.target(node);
-			if (target != null) enumTargets.add(target);
-			if (!env.descriptor().enumExtensions()) continue;
 			ClassNode targetNode = target == null ? null : env.installedIndex().readNode(target);
-			List<EnumExtensions.Entry> entries = target == null ? null : EnumExtensions.of(node, targetNode, modId);
+			boolean fileExtends = env.descriptor().enumExtensions();
+			List<EnumExtensions.Entry> entries = target == null || !fileExtends ? null : EnumExtensions.of(node, targetNode, modId);
 			if (entries == null) {
-				if (targetNode != null && targetNode.interfaces.contains(EnumExtensions.EXTENSIBLE_ENUM)) {
-					valuesMixin(configName, config, mixin, node, targetNode, files, modEntries, overlay, findings);
-				}
+				// Neither NeoForge's enum extension file nor, where it is older than 0.17.1, Mixin adds the constants
+				// (ENUM-5, ENUM-7: Friends and Foes' mob categories on Forge 61 to 66 stopped the corpus clients' bootstrap).
+				boolean converted = targetNode != null
+						&& (fileExtends && targetNode.interfaces.contains(EnumExtensions.EXTENSIBLE_ENUM) || !MixinCompat.supportsEnumExtensions(env.runtimeMixinVersion()))
+						&& valuesMixin(configName, config, mixin, node, targetNode, files, modEntries, overlay, findings);
+				if (target != null && !converted) enumTargets.add(target);
 				continue;
 			}
+			enumTargets.add(target);
 			if (entries.stream().anyMatch(e -> e.computed() != null)) {
 				// Computed arguments come from a class generated next to the mixins (ENUM-3).
 				String owner = argumentsClass(config, files);

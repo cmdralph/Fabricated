@@ -39,7 +39,10 @@ import io.github.cmdralph.fabricated.core.bytecode.Annotations;
  * ({@code FMLMixinFeatureValidator}, ENUM-4), not other mixins: the generated one injects into the enum's class
  * initializer right after it sets its values array, makes each constant with one of the enum's constructors (through a
  * constructor invoker) at the next ordinals, appends them to the array, then runs the rest of the mixin's class
- * initializer with the constants in hand.
+ * initializer with the constants in hand. The same serves an enum mixin into any enum where the running Mixin applies
+ * no enum mixins, as before 0.17.1 (ENUM-7: Forge's, whose Mixin 0.8.7 stopped the Forge 61 to 66 corpus clients on
+ * Friends and Foes' mob categories); the enum's values array is found by its type there, as Forge 47's names may not be
+ * javac's.
  * <p>A constant with a body overriding the one method the enum forwards to a delegate its other constructor takes
  * (NeoForge's way of making such an enum extensible, as {@code GrassColorModifier}'s {@code ColorModifier}) is made with
  * that constructor and a delegate class generated next to the mod's mixins, running the body. Only code that runs
@@ -97,6 +100,8 @@ final class EnumValuesMixins {
 			}
 		}
 		if (clinit == null || constants.isEmpty() || !clinit.tryCatchBlocks.isEmpty()) return null;
+		String valuesArray = valuesField(target);
+		if (valuesArray == null) return null;
 
 		// javac creates each constant in <clinit>: NEW (the mixin or its body's class), DUP, its name, its ordinal, its
 		// arguments, the constructor, PUTSTATIC.
@@ -142,7 +147,24 @@ final class EnumValuesMixins {
 			rest.add(insn);
 		}
 		if (insn == null || EnumExtensions.real(insn.getNext()) != null || made.size() != constants.size() || !movable(rest, mixin.name, constants)) return null;
-		return new Result(mixinClass(mixin, target, made, rest), delegates, List.copyOf(constants));
+		return new Result(mixinClass(mixin, target, valuesArray, made, rest), delegates, List.copyOf(constants));
+	}
+
+	/**
+	 * The name of the enum's array of its constants: javac's {@code $VALUES}, or else its one static synthetic field of
+	 * that array's type (a platform's names for the game's, which ProGuard obfuscated); null when there is none or several.
+	 */
+	static String valuesField(ClassNode target) {
+		String desc = "[L" + target.name + ";";
+		int flags = Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC;
+		String found = null;
+		for (FieldNode field : target.fields) {
+			if ((field.access & flags) != flags || !field.desc.equals(desc)) continue;
+			if (field.name.equals(VALUES)) return VALUES;
+			if (found != null) return null;
+			found = field.name;
+		}
+		return found;
 	}
 
 	/** Whether any of the mod's classes reads one of the constants as a field of the enum, which the generated mixin doesn't add. */
@@ -284,19 +306,19 @@ final class EnumValuesMixins {
 	 * The mixin replacing the enum mixin, under its name and {@code @Mixin}: a shadow of the enum's values array, a
 	 * constructor invoker per constructor used, and the injector adding the constants after the array is set.
 	 */
-	private static byte[] mixinClass(ClassNode mixin, ClassNode target, List<Constant> constants, List<AbstractInsnNode> rest) {
+	private static byte[] mixinClass(ClassNode mixin, ClassNode target, String values, List<Constant> constants, List<AbstractInsnNode> rest) {
 		String enumDesc = "L" + target.name + ";";
 		String arrayDesc = "[" + enumDesc;
 		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
 		cw.visit(Opcodes.V17, Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT | Opcodes.ACC_SUPER, mixin.name, null, "java/lang/Object", null);
 		copyMixinAnnotation(mixin.invisibleAnnotations, cw, false);
 		copyMixinAnnotation(mixin.visibleAnnotations, cw, true);
-		FieldVisitor values = cw.visitField(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, VALUES, arrayDesc, null, null);
+		FieldVisitor shadow = cw.visitField(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, values, arrayDesc, null, null);
 		// Mixin's member annotations are kept at runtime, and it reads them from there (@Mutable makes the field non-final).
-		values.visitAnnotation(SHADOW, true).visitEnd();
-		values.visitAnnotation(FINAL, true).visitEnd();
-		values.visitAnnotation(MUTABLE, true).visitEnd();
-		values.visitEnd();
+		shadow.visitAnnotation(SHADOW, true).visitEnd();
+		shadow.visitAnnotation(FINAL, true).visitEnd();
+		shadow.visitAnnotation(MUTABLE, true).visitEnd();
+		shadow.visitEnd();
 
 		Map<String, String> invokers = new LinkedHashMap<>();
 		for (Constant c : constants) invokers.computeIfAbsent(c.constructor(), k -> "fabricated$new" + invokers.size());
@@ -323,14 +345,14 @@ final class EnumValuesMixins {
 		AnnotationVisitor at = ats.visitAnnotation(null, AT);
 		at.visit("value", "FIELD");
 		at.visit("opcode", Opcodes.PUTSTATIC);
-		at.visit("target", enumDesc + VALUES + ":" + arrayDesc);
+		at.visit("target", enumDesc + values + ":" + arrayDesc);
 		at.visitEnum("shift", SHIFT, "AFTER");
 		at.visitEnd();
 		ats.visitEnd();
 		inject.visitEnd();
 		mv.visitCode();
 		// Locals: 0 the callback, 1 the enum's values, 2 their count, 3 the values with the constants, 4... the constants.
-		mv.visitFieldInsn(Opcodes.GETSTATIC, mixin.name, VALUES, arrayDesc);
+		mv.visitFieldInsn(Opcodes.GETSTATIC, mixin.name, values, arrayDesc);
 		mv.visitVarInsn(Opcodes.ASTORE, 1);
 		mv.visitVarInsn(Opcodes.ALOAD, 1);
 		mv.visitInsn(Opcodes.ARRAYLENGTH);
@@ -366,7 +388,7 @@ final class EnumValuesMixins {
 			slots.put(c.name(), 4 + i);
 		}
 		mv.visitVarInsn(Opcodes.ALOAD, 3);
-		mv.visitFieldInsn(Opcodes.PUTSTATIC, mixin.name, VALUES, arrayDesc);
+		mv.visitFieldInsn(Opcodes.PUTSTATIC, mixin.name, values, arrayDesc);
 		// The rest of the mixin's class initializer, its constants read from the locals.
 		for (AbstractInsnNode insn : rest) {
 			if (insn instanceof FieldInsnNode field && field.owner.equals(mixin.name)) mv.visitVarInsn(Opcodes.ALOAD, slots.get(field.name));

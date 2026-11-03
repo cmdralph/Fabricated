@@ -204,6 +204,32 @@ class EnumValuesMixinsTest {
 		return cw.toByteArray();
 	}
 
+	/**
+	 * ENUM-7: where the game's names aren't javac's (Forge 47 runs SRG names, and ProGuard renamed the enum's values
+	 * array), the generated mixin shadows and injects at the enum's one static synthetic array of its own type.
+	 */
+	@Test
+	void theEnumsValuesArrayIsFoundByItsTypeWhereTheGameRenamedIt() throws Exception {
+		ClassNode target = node(target());
+		target.fields.stream().filter(f -> f.name.equals("$VALUES")).findFirst().orElseThrow().name = "f_48371_";
+		EnumValuesMixins.Result result = EnumValuesMixins.of(node(mixin()), target, Map.of(BODY, node(body(false)))::get, BODIES);
+		assertNotNull(result);
+		ClassNode mixin = node(result.mixin());
+		assertEquals("f_48371_", mixin.fields.getFirst().name);
+		AnnotationNode inject = annotation(method(mixin, "fabricated$addConstants"), "Lorg/spongepowered/asm/mixin/injection/Inject;");
+		AnnotationNode at = (AnnotationNode) ((List<?>) Annotations.value(inject, "at")).getFirst();
+		assertEquals("L" + TARGET + ";f_48371_:[L" + TARGET + ";", Annotations.value(at, "target"));
+		for (AbstractInsnNode insn : method(mixin, "fabricated$addConstants").instructions) {
+			assertTrue(!(insn instanceof FieldInsnNode field) || !field.name.equals("$VALUES"), "only the enum's own name");
+		}
+
+		// Two such arrays: which is the values isn't known, so the enum mixin stays one (and pre-flight judges it).
+		org.objectweb.asm.tree.FieldNode other = new org.objectweb.asm.tree.FieldNode(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC,
+				"f_48372_", "[L" + TARGET + ";", null, null);
+		target.fields.add(other);
+		assertNull(EnumValuesMixins.of(node(mixin()), target, Map.of(BODY, node(body(false)))::get, BODIES));
+	}
+
 	@Test
 	void aBodyUsingItsInstanceOrAModReadingTheConstantAsAFieldStaysAnEnumMixin() throws Exception {
 		assertNull(EnumValuesMixins.of(node(mixin()), node(target()), Map.of(BODY, node(body(true)))::get, BODIES));

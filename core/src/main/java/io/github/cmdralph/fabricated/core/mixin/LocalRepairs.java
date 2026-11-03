@@ -1,9 +1,11 @@
 package io.github.cmdralph.fabricated.core.mixin;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.function.Predicate;
@@ -92,7 +94,7 @@ final class LocalRepairs extends PreflightPart {
 	 * The type of the local a handler parameter captures: the parameter's own type, or the one a MixinExtras ref of a
 	 * primitive holds; null for a {@code LocalRef}, which holds any reference type.
 	 */
-	private static Type heldType(Type param) {
+	static Type heldType(Type param) {
 		String desc = param.getDescriptor();
 		if (!desc.startsWith(SUGAR_REFS)) return param;
 		return switch (desc.substring(SUGAR_REFS.length())) {
@@ -318,6 +320,88 @@ final class LocalRepairs extends PreflightPart {
 			}
 		}
 		return added;
+	}
+
+	/**
+	 * Gives each {@code @Local(index = N)} whose slot never holds a value of its type in this game build
+	 * ({@link MixinPreflight#slotNeverHolds}) the slot this build keeps vanilla's local in (CORPUS-55: Porting Lib
+	 * Entity's {@code GuiMixin} takes the effect, draw position and alpha of {@code Gui.renderEffects}'s loop by vanilla's
+	 * slots, {@code @Local(index = 8) MobEffectInstance}, {@code @Local(index = 10) int} and so on, which Forge 47's build,
+	 * recompiled from decompiled source, keeps in others). That slot is the one the instructions storing vanilla's slot
+	 * store to here, vanilla's version of the method aligned with this build's (VANILLA-1, {@link PatchAlignment}), where
+	 * exactly one such slot has a local of the type in scope wherever the injector applies; without vanilla's code, or
+	 * where that tells nothing, the only local of the type in scope there, the one MixinExtras would take by the type
+	 * alone, as {@link #namedLocalRepairs} takes it for a name. Either must be the same slot at every instruction the
+	 * point picks in every method; only for an injector with one {@code @At} naming a call, field access or construction,
+	 * outside a slice, in methods with local variable names. Returns a description of each.
+	 */
+	List<String> indexedLocalRepairs(MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx) {
+		if (Annotations.value(injector, "slice") != null) return List.of();
+		List<MethodNode> methods = PreflightAsm.selectedMethods(injector, target, ctx);
+		if (methods.isEmpty()) return List.of();
+		Map<MethodNode, List<Integer>> points = new HashMap<>();
+		for (MethodNode m : methods) {
+			List<Integer> positions = pointPositions(injector, m, ctx);
+			if (positions == null || positions.isEmpty()) return List.of();
+			points.put(m, positions);
+		}
+		ClassNode original = methods.size() == 1 ? vanillaClass(target.name) : null;
+		MethodNode before = original == null ? null : PreflightAsm.declared(original, methods.get(0).name, methods.get(0).desc);
+		PatchAlignment alignment = before == null ? null : PatchAlignment.of(before, methods.get(0));
+		List<String> moved = new ArrayList<>();
+		Type[] params = Type.getArgumentTypes(handler.desc);
+		for (int p = 0; p < params.length; p++) {
+			Type type = heldType(params[p]);
+			if (type == null) continue;
+			for (AnnotationNode local : Annotations.ofParameter(handler, p)) {
+				Integer index = MixinPreflight.indexOnly(local);
+				if (index == null || !methods.stream().allMatch(m -> MixinPreflight.slotNeverHolds(type, m, index, target.name, game))) continue;
+				Integer found = alignment == null ? null : vanillasSlot(before, methods.get(0), alignment, index, type, points.get(methods.get(0)));
+				boolean vanillas = found != null;
+				if (found == null) found = onlySlotInScope(points, type);
+				if (found == null) continue;
+				Annotations.put(local, "index", found);
+				moved.add("the local of type " + type.getClassName() + " at slot " + index + ", which " + methods.get(0).name + " in "
+						+ target.name.replace('/', '.') + " never holds there; " + (vanillas ? "this build keeps vanilla's local there in slot " + found
+								: "the only one of the type where the injector applies is at slot " + found) + ", and the @Local takes that one");
+			}
+		}
+		return moved;
+	}
+
+	/**
+	 * The slot of this build's method the instructions storing vanilla's slot {@code slot} (a store of the type's kind)
+	 * store to, where exactly one of those has a local of the type in scope at every one of {@code positions}; null
+	 * otherwise. A store the patch changed, or whose place can't be told, tells nothing.
+	 */
+	private static Integer vanillasSlot(MethodNode before, MethodNode patched, PatchAlignment alignment, int slot, Type type, List<Integer> positions) {
+		int store = type.getOpcode(Opcodes.ISTORE);
+		Set<Integer> slots = new TreeSet<>();
+		for (int i = 0; i < before.instructions.size(); i++) {
+			if (!(before.instructions.get(i) instanceof VarInsnNode v) || v.var != slot || v.getOpcode() != store) continue;
+			int place = alignment.placeOf(i);
+			if (place >= 0 && patched.instructions.get(place) instanceof VarInsnNode there && there.getOpcode() == store) slots.add(there.var);
+		}
+		Integer found = null;
+		for (int candidate : slots) {
+			if (!positions.stream().allMatch(i -> inScope(patched, i, type.getDescriptor()).stream().anyMatch(lv -> lv.index == candidate))) continue;
+			if (found != null) return null;
+			found = candidate;
+		}
+		return found;
+	}
+
+	/** The slot of the only local of the type in scope at every point, the same in every method; null otherwise. */
+	private static Integer onlySlotInScope(Map<MethodNode, List<Integer>> points, Type type) {
+		Integer found = null;
+		for (Map.Entry<MethodNode, List<Integer>> entry : points.entrySet()) {
+			for (int i : entry.getValue()) {
+				List<LocalVariableNode> inScope = inScope(entry.getKey(), i, type.getDescriptor());
+				if (inScope.size() != 1 || found != null && found != inScope.get(0).index) return null;
+				found = inScope.get(0).index;
+			}
+		}
+		return found;
 	}
 
 	/**

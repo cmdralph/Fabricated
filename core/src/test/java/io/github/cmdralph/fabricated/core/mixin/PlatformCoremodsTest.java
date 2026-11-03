@@ -162,22 +162,18 @@ class PlatformCoremodsTest {
 	}
 
 	@Test
-	void eachVersionHasItsListAndDescriptor() throws Exception {
+	void onlyNeoForge21_1sCoremodsAreDescribedTheOthersRunAfterMixin() throws Exception {
 		Map<String, byte[]> game = game();
-		// 21.11 on: finalizeSpawn takes an EntitySpawnReason; a 21.1 call isn't the one redirected there.
-		ClassBytesSource later = PlatformCoremods.neoForge("1.21.11").over(game::get);
-		assertEquals(Opcodes.INVOKEVIRTUAL, calls(later.read(SPAWNER)).getFirst().getOpcode());
-		assertTrue(PlatformCoremods.neoForge("1.21.11").redirectsIn(SPAWNER).getFirst().desc().contains("EntitySpawnReason"));
-		assertTrue(PlatformCoremods.neoForge("1.21.1").redirectsIn("net/minecraft/gametest/framework/GameTestHelper").isEmpty());
-		assertEquals(1, PlatformCoremods.neoForge("26.1.2").redirectsIn("net/minecraft/gametest/framework/GameTestHelper").size());
-		assertTrue(PlatformCoremods.neoForge("26.2").redirectsIn("net/minecraft/gametest/framework/GameTestHelper").isEmpty());
-		assertEquals(1, PlatformCoremods.neoForge("26.3").redirectsIn("net/minecraft/gametest/framework/GameTestEntityBuilder").size());
 		assertEquals(22, PlatformCoremods.neoForge("1.21.1").redirectedClasses());
-		assertEquals(26, PlatformCoremods.neoForge("26.2").redirectedClasses());
-		// 1.21.10 isn't 1.21.1; an unknown version leaves the game as its jars have it.
-		assertTrue(PlatformCoremods.neoForge("1.21.10").isEmpty());
-		ClassBytesSource none = PlatformCoremods.neoForge("27.1").over(game::get);
-		assertArrayEquals(game.get(SPAWNER), none.read(SPAWNER));
+		assertTrue(PlatformCoremods.neoForge("1.21.1").redirectsIn("net/minecraft/gametest/framework/GameTestHelper").isEmpty());
+		// CORPUS-67: from 21.11 on, FML runs NeoForge's coremods after Mixin, which sees the classes as the jars have them
+		// (Debugify's hook at a cat's finalizeSpawn call in CatSpawner, moved to NeoForge's hook, found nothing on 26.3).
+		// 1.21.10 isn't 1.21.1; an unknown version leaves the game as its jars have it too.
+		for (String version : List.of("1.21.11", "26.1.2", "26.2", "26.3", "1.21.10", "27.1")) {
+			assertSame(PlatformCoremods.NONE, PlatformCoremods.neoForge(version), version);
+			assertSame(PlatformCoremods.NONE, io.github.cmdralph.fabricated.core.translate.PlatformDescriptor.NEOFORGE.coremods(version), version);
+		}
+		assertArrayEquals(game.get(SPAWNER), PlatformCoremods.neoForge("26.3").over(game::get).read(SPAWNER));
 	}
 
 	@Test
