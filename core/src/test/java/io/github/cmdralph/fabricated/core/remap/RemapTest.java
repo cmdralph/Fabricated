@@ -217,6 +217,101 @@ class RemapTest {
 	}
 
 	@Test
+	void anOverrideOfAMethodOnlySrgRenamesTakesItsNameFromTheTypeItInherits(@TempDir Path tmp) throws Exception {
+		// CORPUS-86: Moonlight's CaveFilter.Type implements PlacementModifierType and overrides codec(), which Intermediary
+		// leaves under its official name and SRG names m_191869_. Its descriptor names no Minecraft class, and other owners
+		// give codec() other names (class_10's m_200_ here), so only the class's supertypes tell. It kept codec, and Forge
+		// 47's server stopped loading its data packs (AbstractMethodError).
+		String tiny = TINY + "CLASS\th\tnet/minecraft/class_9\nCLASS\ti\tnet/minecraft/class_10\nCLASS\tj\tnet/minecraft/class_11\n";
+		String tsrg2 = TSRG2 + "h net/minecraft/src/C_9_ 9\n\tcodec ()Lcom/mojang/serialization/Codec; m_191869_ 191869\n"
+				+ "i net/minecraft/src/C_10_ 10\n\tcodec ()Lcom/mojang/serialization/Codec; m_200_ 200\n"
+				+ "j net/minecraft/src/C_11_ 11\n";
+		MappingTable t = MappingComposer.composeSrg(new StringReader(tiny), new StringReader(tsrg2), null);
+		String codec = "()Lcom/mojang/serialization/Codec;";
+		assertNull(t.mapPlainMethod("mod/CaveType", "codec", codec), "the descriptor alone doesn't tell");
+		// The game, by its runtime names: class_11 (a placement filter) implements class_9 without declaring codec().
+		Map<String, List<String>> game = Map.of("net/minecraft/src/C_11_", List.of("java/lang/Object", "net/minecraft/src/C_9_"),
+				"net/minecraft/src/C_9_", List.of("java/lang/Object"));
+		Supertypes gameTypes = Supertypes.ofRuntime(game::get, t);
+
+		Path jar = TestJars.create()
+				.bytes("mod/CaveType.class", codecClass("mod/CaveType", "java/lang/Object", true, "net/minecraft/class_9"))
+				.bytes("mod/Base.class", codecClass("mod/Base", "java/lang/Object", false, "net/minecraft/class_9"))
+				.bytes("mod/Sub.class", codecClass("mod/Sub", "mod/Base", true))
+				.bytes("mod/Filter.class", codecClass("mod/Filter", "net/minecraft/class_11", true))
+				.bytes("mod/Sized.class", codecClass("mod/Sized", "java/lang/Object", true, "net/minecraft/class_10"))
+				.bytes("mod/Own.class", codecClass("mod/Own", "java/lang/Object", true, "java/util/function/Supplier"))
+				.bytes("mod/User.class", userOfCodecs())
+				.write(tmp.resolve("mod.jar"));
+		Map<String, byte[]> files;
+		try (SafeArchive archive = SafeArchive.open(jar, ArchiveLimits.DEFAULTS)) {
+			files = new JarRemapper(t, gameTypes).remap(archive, Set.of()).files();
+		}
+		assertEquals(List.of("m_191869_"), declaredCodecs(files.get("mod/CaveType.class")), "an override of the interface's");
+		assertEquals(List.of("m_191869_"), declaredCodecs(files.get("mod/Sub.class")), "one inherited through another of the jar's classes");
+		assertEquals(List.of("m_191869_"), declaredCodecs(files.get("mod/Filter.class")), "one inherited through the game's classes");
+		assertEquals(List.of("m_200_"), declaredCodecs(files.get("mod/Sized.class")), "another interface's, by its own name");
+		assertEquals(List.of("codec"), declaredCodecs(files.get("mod/Own.class")), "a class inheriting no such method keeps its name");
+		ClassNode user = new ClassNode();
+		new ClassReader(files.get("mod/User.class")).accept(user, 0);
+		List<String> calls = new ArrayList<>();
+		for (AbstractInsnNode insn : user.methods.stream().filter(m -> m.name.equals("use")).findFirst().orElseThrow().instructions) {
+			if (insn instanceof MethodInsnNode call) calls.add(call.owner + "." + call.name);
+		}
+		assertEquals(List.of("mod/CaveType.m_191869_", "mod/Sub.m_191869_", "net/minecraft/src/C_11_.m_191869_", "mod/Own.codec"), calls,
+				"calls naming a class that inherits the method too");
+
+		// One class at a time, as pre-flight reads another mod's, with the jar's classes read as needed.
+		byte[] sub = codecClass("mod/Sub", "mod/Base", true);
+		Map<String, byte[]> classes = Map.of("mod/Base", codecClass("mod/Base", "java/lang/Object", false, "net/minecraft/class_9"), "mod/Sub", sub);
+		assertEquals(List.of("m_191869_"), declaredCodecs(new JarRemapper(t, gameTypes).with(Supertypes.ofClassFiles(classes::get)).remapClass(sub, "Sub")));
+		assertEquals(List.of("codec"), declaredCodecs(new JarRemapper(t).remapClass(sub, "Sub")), "unknown supertypes tell nothing");
+		assertEquals(List.of("codec"), declaredCodecs(new JarRemapper(table(), gameTypes).remapClass(codecClass("mod/CaveType", "java/lang/Object", true,
+				"net/minecraft/class_1"), "CaveType")), "Mojang's names keep official ones: NeoForge's table has none");
+	}
+
+	/** A class declaring {@code codec()} or not, with the given supertypes. */
+	private static byte[] codecClass(String name, String superName, boolean declares, String... interfaces) {
+		ClassWriter cw = new ClassWriter(0);
+		cw.visit(Opcodes.V17, Opcodes.ACC_PUBLIC | (declares ? 0 : Opcodes.ACC_ABSTRACT), name, null, superName, interfaces);
+		if (declares) {
+			MethodVisitor m = cw.visitMethod(Opcodes.ACC_PUBLIC, "codec", "()Lcom/mojang/serialization/Codec;", null, null);
+			m.visitInsn(Opcodes.ACONST_NULL);
+			m.visitInsn(Opcodes.ARETURN);
+			m.visitMaxs(1, 1);
+			m.visitEnd();
+		}
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	/** A class calling {@code codec()} on the test's classes. */
+	private static byte[] userOfCodecs() {
+		ClassWriter cw = new ClassWriter(0);
+		cw.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, "mod/User", null, "java/lang/Object", null);
+		MethodVisitor use = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "use", "(Lmod/CaveType;Lmod/Sub;Lnet/minecraft/class_11;Lmod/Own;)V", null, null);
+		String codec = "()Lcom/mojang/serialization/Codec;";
+		String[] owners = {"mod/CaveType", "mod/Sub", "net/minecraft/class_11", "mod/Own"};
+		for (int i = 0; i < owners.length; i++) {
+			use.visitVarInsn(Opcodes.ALOAD, i);
+			use.visitMethodInsn(Opcodes.INVOKEVIRTUAL, owners[i], "codec", codec, false);
+			use.visitInsn(Opcodes.POP);
+		}
+		use.visitInsn(Opcodes.RETURN);
+		use.visitMaxs(1, 4);
+		use.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	/** The names of a class's methods of {@code codec()}'s descriptor. */
+	private static List<String> declaredCodecs(byte[] data) {
+		ClassNode node = new ClassNode();
+		new ClassReader(data).accept(node, 0);
+		return node.methods.stream().filter(m -> m.desc.equals("()Lcom/mojang/serialization/Codec;")).map(m -> m.name).toList();
+	}
+
+	@Test
 	void aRefmapNamesAMethodIntermediaryLeavesUnderItsOfficialNameBySrgs() throws Exception {
 		// PLAIN-1: Fabric API's transfer refmap gives DropperBlockMixin's @At target as
 		// Lnet/minecraft/class_2357;dispense(...), a name Intermediary leaves and SRG renames (m_6115_). Under that name no

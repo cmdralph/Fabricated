@@ -267,7 +267,8 @@ What else differs on Forge, for Fabric mods in general:
   read so, so a Fabric mod's hook at such a call moves to Forge's hook or is left out with its reason, as on NeoForge
   (CORPUS-61; on Forge 61 to 66 CORPUS-78: Friends and Foes' patrol spawner hook stopped the Forge 64 and 65 servers).
 - **MixinExtras** is 0.5.5 on every Forge version: the in-game mod nests it, and Forge's jar-in-jar locator picks it
-  over the 0.5.4 Forge 61 to 66 offer (MIXEXT-3).
+  over the 0.5.4 Forge 61 to 66 offer (MIXEXT-3). Its mod's root is the in-game mod's files, which owo reads, as
+  it reads every mod's (CORPUS-77: owo's client stopped on Forge 47).
 - **`@ModifyArgs`:** Forge 47's Mixin 0.8.5 puts the classes it generates for a `@ModifyArgs` handler's arguments in no
   module of the game layer, so a game class naming one failed to load (the corpus server and client stopped as `Fluids`
   loaded, CORPUS-68). Fabricated's transformation service adds a module holding those packages, and no files, as
@@ -278,6 +279,21 @@ What else differs on Forge, for Fabric mods in general:
   declared as the other mixin declares the field, and Mixin merges the two into one field, as on Fabric (CORPUS-74:
   the test mod's tick counter, all five, server run); one that can't be (a static shadow of an instance field, a
   writable one of a final field) disables its mod, or leaves its mixin out where it can.
+- **Locals after a chopping frame:** Forge 61 to 66's Mixin 0.8.7 works out the locals at an injection point from the
+  frames it recorded from the class's bytes, which it no longer reads expanded (Forge 47's 0.8.5 does), and counts each
+  frame appending or chopping locals as at least the method's argument slots: after a chop it can count fewer locals
+  than are live, and a local capture, `@ModifyVariable` or MixinExtras' `@Local` taking one beyond finds none. Resourceful
+  Lib's `@Local PoseStack` in `ScreenEffectRenderer.renderScreenEffect` stopped the Forge 61 and 64 corpus clients
+  (CORPUS-79). There, before mixins apply to a class a Fabric mod's mixin targets, a Mixin extension of the in-game mod
+  records each such chop again as a full frame of the locals it states, which Mixin reads as it reads any full frame,
+  and logs the method. Every other frame, and every class no Fabric mod's mixin targets, stays as Mixin recorded it.
+  The test mod takes a local so (all five, server run; Forge 47's Mixin counts it right without the repair).
+- **Fields Forge 47 retyped:** a Fabric mod's accessor of a field Forge 47 gave another type (a brewing mix's `from` and
+  `to`, holders there; the particle engine's providers, kept by id there) invokes a getter the in-game mod adds, which
+  gives vanilla's type: the holder's value, and a view by raw id of Forge's map (CORPUS-37: Porting Lib's accessors,
+  and with them its extensions and Farmer's Delight's entrypoint, failed pre-flight). The test mod reads a mix's
+  potions so on the server and the providers on the client. An accessor of another retyped field still fails
+  pre-flight.
 - **Forge Config API Port** on Forge 61 to 66: its Fabric build loads, with its own copies of NeoForge's config
   classes, which Forge lacks (REPL-1, PLAT-5). On Forge 47 its version for 1.20.1 copies Forge's own config system,
   packages included, so its copies were left out for Forge's and its registry failed to link (Ponder's main

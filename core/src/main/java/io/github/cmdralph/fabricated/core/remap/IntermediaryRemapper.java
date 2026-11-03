@@ -1,5 +1,13 @@
 package io.github.cmdralph.fabricated.core.remap;
 
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Deque;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 
 import org.objectweb.asm.Handle;
@@ -21,10 +29,22 @@ public final class IntermediaryRemapper extends Remapper {
 
 	private final MappingTable table;
 	private final TokenRemapper tokens;
+	private final Supertypes supertypes;
+	/** By owner, its supertypes, transitively, nearest first, for the methods it inherits (CORPUS-86). */
+	private final Map<String, List<String>> ancestors = new ConcurrentHashMap<>();
 
 	public IntermediaryRemapper(MappingTable table) {
+		this(table, Supertypes.NONE);
+	}
+
+	/**
+	 * @param supertypes the classes this remapper's owners may inherit from: a method Intermediary leaves under its official
+	 *                   name, and the runtime renames, is renamed in an owner that inherits it from one of them (CORPUS-86)
+	 */
+	public IntermediaryRemapper(MappingTable table, Supertypes supertypes) {
 		this.table = table;
 		this.tokens = new TokenRemapper(table);
+		this.supertypes = supertypes;
 	}
 
 	/** Rewrites intermediary names inside text (refmaps, service files, string constants) with the same table. */
@@ -41,10 +61,50 @@ public final class IntermediaryRemapper extends Remapper {
 	public String mapMethodName(String owner, String name, String descriptor) {
 		if (!isIntermediaryMember(name)) {
 			// A method Intermediary leaves under its official name, which the runtime renames (SRG, PLAIN-1).
-			String plain = table.mapPlainMethod(owner, name, descriptor);
+			String plain = plainMethod(owner, name, descriptor);
 			if (plain != null) return plain;
 		}
 		return mapMember(owner, name, descriptor);
+	}
+
+	/**
+	 * The runtime name of a method Intermediary leaves under its official name and SRG renames, or null: the owner's own,
+	 * else the one the nearest of its supertypes that declares it gives it (an override in a mod's class, a call naming a
+	 * class that inherits the method), else as {@link MappingTable#mapPlainMethod}. Without the supertypes, an override
+	 * whose descriptor names no Minecraft class kept the official name, which the runtime's callers don't call: Moonlight's
+	 * {@code CaveFilter.Type.codec()}, overriding {@code PlacementModifierType.codec()} (SRG's {@code m_191869_}), stopped
+	 * Forge 47's server as it loaded its data packs (CORPUS-86, AbstractMethodError).
+	 */
+	private String plainMethod(String owner, String name, String descriptor) {
+		if (owner != null && table.isPlainMethod(name, descriptor) && table.ownPlainMethod(owner, name, descriptor) == null) {
+			for (String ancestor : ancestors(owner)) {
+				String inherited = table.ownPlainMethod(ancestor, name, descriptor);
+				if (inherited != null) return inherited;
+			}
+		}
+		return table.mapPlainMethod(owner, name, descriptor);
+	}
+
+	/** The owner's supertypes, transitively, breadth first: its superclass, then its interfaces, then theirs. */
+	private List<String> ancestors(String owner) {
+		List<String> known = ancestors.get(owner);
+		if (known != null) return known;
+		List<String> found = new ArrayList<>();
+		Set<String> seen = new HashSet<>(Set.of(owner));
+		Deque<String> queue = new ArrayDeque<>(List.of(owner));
+		while (!queue.isEmpty()) {
+			List<String> direct = supertypes.of(queue.poll());
+			if (direct == null) continue;
+			for (String type : direct) {
+				if (seen.add(type)) {
+					found.add(type);
+					queue.add(type);
+				}
+			}
+		}
+		List<String> all = List.copyOf(found);
+		ancestors.putIfAbsent(owner, all);
+		return all;
 	}
 
 	@Override
@@ -84,7 +144,7 @@ public final class IntermediaryRemapper extends Remapper {
 				&& arguments[0] instanceof Type sam && sam.getSort() == Type.METHOD) {
 			Type returned = Type.getReturnType(descriptor);
 			if (returned.getSort() == Type.OBJECT) {
-				String plain = table.mapPlainMethod(returned.getInternalName(), name, sam.getDescriptor());
+				String plain = plainMethod(returned.getInternalName(), name, sam.getDescriptor());
 				if (plain != null) return plain;
 			}
 		}

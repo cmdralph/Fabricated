@@ -11,4 +11,10 @@ public final class class_1845 {
 	public static class_1799 method_8078(class_1799 reagent, class_1799 potion) {
 		throw new AssertionError("stand-in");
 	}
+
+	/** {@code PotionBrewing.Mix}: {@code field_8962} is {@code from}, {@code field_8961} {@code to}. */
+	public static class class_1846<T> {
+		private class_1846() {
+		}
+	}
 }

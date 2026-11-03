@@ -3,7 +3,8 @@
 # Fabric mods whose entrypoints failed, the Fabric API modules skipped and their mixins left out, as Fabricated's report
 # lists them; Fabricated's errors and warnings in the game's logs; each crash report's exception chain, with the frames
 # of its innermost cause; the exception chains and Mixin errors in the game's logs, Mixin's failures whole; a JVM fatal
-# error log if there is one; and the console's last lines, for a game that ends with no exception or crash report (CORPUS-54, CORPUS-55).
+# error log if there is one; and from the console, the registries' loading errors and its exception chains, which the logs
+# may not have had written, and its last lines, for a game that ends with no exception or crash report (CORPUS-54, CORPUS-55).
 # Informational: it never fails.
 #
 # Usage: ci/forge-legacy/corpus-causes.sh <game-dir> <console-output> [label]
@@ -89,6 +90,13 @@ if [ -f "$reason" ]; then
 	echo "-- stopped by CI: $(head -c 400 "$reason")"
 fi
 if [ -f "$console" ]; then
+	# What the game printed as it stopped and its logs may lack, as a game the smoke script stops can leave them
+	# unwritten: the registries' loading errors, each registry and element with its exception (the Forge 47 corpus
+	# server's data packs), and the console's exception chains.
+	echo "-- the console: registries' loading errors"
+	grep -n -E '^(Registry loading errors|>{1,2} Errors in (registry|element) )|Registry loading errors:' "$console" | head -n 40 | cut -c1-400
+	echo "-- the console: exception chains (the last one's innermost frames)"
+	chain "$console" 20 | tail -n 60
 	echo "-- the console's last lines"
 	tail -n 40 "$console" | cut -c1-400
 fi

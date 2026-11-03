@@ -20,6 +20,8 @@
     "MappedRegistryPendingHoldersMixin": [],
     "NamespacedWrapperAliasMixin": ["fabric-registry-sync-v0"],
     "NamespacedWrapperPendingHoldersMixin": [],
+    "ParticleEngineProvidersBridgeMixin": [],
+    "PotionBrewingMixBridgeMixin": [],
     "RecordItemEarlySoundMixin": [],
     "TagFileRemoveMixin": ["fabric-tag-api-v1"]
   }

@@ -6,10 +6,14 @@ import java.util.List;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.fabricmc.fabric.api.client.particle.v1.FabricSpriteProvider;
+import io.github.cmdralph.fabricated.forgetest.mixin.ParticleEngineProvidersAccessor;
+import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import net.fabricmc.fabric.api.client.particle.v1.ParticleFactoryRegistry;
 import net.minecraft.class_1059;
+import net.minecraft.class_2400;
 import net.minecraft.class_2960;
 import net.minecraft.class_310;
+import net.minecraft.class_707;
 import net.minecraft.class_727;
 
 /**
@@ -19,12 +23,15 @@ import net.minecraft.class_727;
  * particle engine must find the factory when a particle of the type is made ({@code ParticleEngine.createParticle},
  * {@code class_702.method_3056}), and the sprite provider must hold the one sprite the test mod's
  * {@code particles/sparkle.json} lists, in the particle atlas. Loading {@code TerrainParticle} ({@code class_727})
- * applies the module's block dust tint hook, which keeps it from loading if the hook doesn't apply.
+ * applies the module's block dust tint hook, which keeps it from loading if the hook doesn't apply. The engine's providers
+ * by their type's raw id, as Porting Lib's accessor reads them where Forge 47 keeps them by the type's id, must hold the
+ * factory's (CORPUS-37: the accessor invokes the in-game mod's bridge, a view of Forge's map).
  */
 @Environment(EnvType.CLIENT)
 public final class ForgeParticleClient {
 	private static final class_2960 PARTICLE_ATLAS = new class_2960("minecraft", "textures/atlas/particles.png");
 	private static volatile FabricSpriteProvider sprites;
+	private static volatile class_707<class_2400> made;
 	private static volatile boolean asked;
 	/** Whether {@link #register} ran before the particle engine existed ({@code field_1713} is {@code particleEngine}). */
 	private static boolean beforeEngine;
@@ -37,10 +44,12 @@ public final class ForgeParticleClient {
 		beforeEngine = class_310.method_1551().field_1713 == null;
 		ParticleFactoryRegistry.getInstance().register(ForgeParticleTest.sparkle, provider -> {
 			sprites = provider;
-			return (options, level, x, y, z, xSpeed, ySpeed, zSpeed) -> {
+			class_707<class_2400> factory = (options, level, x, y, z, xSpeed, ySpeed, zSpeed) -> {
 				asked = true;
 				return null;
 			};
+			made = factory;
+			return factory;
 		});
 	}
 
@@ -59,6 +68,14 @@ public final class ForgeParticleClient {
 			if (atlas == null || !PARTICLE_ATLAS.equals(atlas.method_24106())) {
 				failed.add("the sprite provider's atlas is " + (atlas == null ? null : atlas.method_24106()));
 			}
+		}
+		Int2ObjectMap<Object> byRawId = ((ParticleEngineProvidersAccessor) class_310.method_1551().field_1713).fabricatedtest$providers();
+		int rawId = -1;
+		for (Int2ObjectMap.Entry<Object> entry : byRawId.int2ObjectEntrySet()) {
+			if (made != null && entry.getValue() == made) rawId = entry.getIntKey();
+		}
+		if (rawId < 0 || byRawId.get(rawId) != made || !byRawId.containsKey(rawId)) {
+			failed.add("the providers by raw id (Porting Lib's accessor) " + (rawId < 0 ? "don't hold the factory's" : "don't give it for its raw id " + rawId));
 		}
 		// A tint hook that doesn't apply fails this load, which the caller logs.
 		ForgeTestMod.LOGGER.debug("TerrainParticle is {} here", class_727.class.getName());

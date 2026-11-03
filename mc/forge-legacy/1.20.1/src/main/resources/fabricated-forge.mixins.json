@@ -19,7 +19,11 @@
     "BucketItemEarlyFluidMixin",
     "BlockItemEarlyBlockMixin",
     "LiquidBlockEarlyFluidMixin",
-    "RecordItemEarlySoundMixin"
+    "RecordItemEarlySoundMixin",
+    "PotionBrewingMixBridgeMixin"
+  ],
+  "client": [
+    "ParticleEngineProvidersBridgeMixin"
   ],
   "injectors": {
     "defaultRequire": 1

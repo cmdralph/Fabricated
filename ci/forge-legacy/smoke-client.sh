@@ -215,7 +215,7 @@ else
 	echo "PASS: vanilla's check of the built-in registries, which Fabric API moves to the client's start, passes over Forge's empty registries (REG-6)"
 fi
 check "FABRICATED-FORGE-TEST constructor hook OK" "the test mod's @Inject at a call in Commands' constructor ran, which Forge 47's Mixin takes only at a return (CTOR-4)"
-check "FABRICATED-FORGE-TEST particles OK" "native fabric-particles-v1: the particle engine finds the test mod's factory, kept by the type's id as Forge keeps them, and its sprite provider holds its sprite in the particle atlas (PART-1)"
+check "FABRICATED-FORGE-TEST particles OK" "native fabric-particles-v1: the particle engine finds the test mod's factory, kept by the type's id as Forge keeps them, and its sprite provider holds its sprite in the particle atlas (PART-1), and the providers by the type's raw id, as Porting Lib's accessor reads them through the in-game mod's bridge, hold its factory (CORPUS-37)"
 check "FABRICATED-FORGE-TEST key binding OK" "native fabric-key-binding-api-v1: a key binding a Fabric mod registers from its client entrypoint is in the game's options, sorted after the game's, refused twice and once Forge's event added it, as upstream, and has the key the options file saved for it (KEYMAP-3)"
 if [ -n "$extra" ]; then
 	check "FABRICATED-FORGE-TEST networking round trip OK" "fabric-networking-api-v1 (with Fabric API): a ping the client sends on a channel as it joins comes back from the integrated server with the server's answer"
