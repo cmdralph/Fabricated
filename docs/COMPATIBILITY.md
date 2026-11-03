@@ -1093,14 +1093,18 @@ MixinExtras has NeoForge's jar, and a NeoForge mod nested in another jar has tha
   initializer that makes the constants with the enum's constructor and appends them to its values, as mods' own NeoForge
   builds do (ENUM-5). A body overriding the method the enum forwards to a delegate (`GrassColorModifier`'s
   `ColorModifier`, which Wilder Wild's tundra grass colour overrides) becomes a delegate class running it. Code that
-  branches or uses the mixin isn't moved, nor constants the mod's classes read as fields of the enum; such a mixin still
-  disables its mod. UNVERIFIED in the game.
+  branches or uses the mixin isn't moved; such a mixin still disables its mod. A mixin can't add the constants as
+  fields of the enum, so the mod's classes that read them so read them from a holder class generated next to its
+  mixins, which takes them from the enum's values by name (CORPUS-80: Farmer's Delight's recipe book type). Another
+  mod reading them as fields still finds none. UNVERIFIED in the game.
 - Where the running Mixin is older than 0.17.1, which applies enum mixins (NeoForge 21.1 and 21.11, and Forge), an
   enum mixin into any other enum becomes such an ordinary mixin too (ENUM-7: Friends and Foes' mob categories, read
   with `valueOf`); one that can't disables its mod, with the reason, where Mixin would stop the game on it. Into an
   enum Forge makes extensible (`MobCategory`), it makes the constants with the enum's own `create` factories, as
   Forge mods do, at the end of the enum's class initializer, once the map by name each factory registers its constant
-  in is set.
+  in is set. Where the enum's `init`, which each factory runs on the constant it makes, can't return (Forge 61 to 66's
+  `RecipeBookType`, whose `init` throws "This is not implemented yet"), the mixin skips `init` for the mod's
+  constants, which Fabric gives no such hook.
 - An `@Intrinsic` method of a class mixin that only calls the superclass's method (Lithium's `setCachedState` of the
   chest, there for its `@Inject` to have a method to inject into) is dropped where the target already declares that
   method, as Forge 47's chest does: Mixin would reject the mixin, and the target's own method is what `@Intrinsic`

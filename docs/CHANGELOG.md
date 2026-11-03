@@ -3,6 +3,45 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-03: Farmer's Delight's enum constants on Forge 61 to 66 (CORPUS-80, task 5)
+
+- **CORPUS-80** (`EnumValuesMixins.holderClass`, `withHeldConstants`, `initReturns`, `ModTranslator.valuesMixin`):
+  pre-flight disabled Farmer's Delight on Forge 61 to 66.
+  - **The cause:** its recipe book type and search category are enum mixins, which Forge's Mixin 0.8.7 doesn't apply.
+    ENUM-7 turns such mixins into ordinary ones adding the constants, but not here, because the mod's own classes
+    read the constants as fields of the enums (`FDRecipeBookTypes.COOKING = RecipeBookType.FARMERSDELIGHT_COOKING`).
+    A mixin can't add those fields.
+  - **The fix:** those reads now go to a holder class generated next to the mixins. The holder takes the constants
+    from the enum's values by name. If a constant is missing (its mixin didn't apply), the holder fails with the enum,
+    the constant and the mixin named.
+  - **A second problem, found in Forge's sources:** Forge makes `RecipeBookType` extensible. Its `create` factory
+    runs `init` on each constant, and on Forge 61 to 66 `init` calls `RecipeBookSettings.register`, which always
+    throws "This is not implemented yet". Once converted, the mixin would have stopped the game as the enum loaded.
+    Where `init` can't return, the mixin now cancels it for the mod's own constants only. Fabric gives them no such
+    hook, and other mods' constants still go through it.
+  - **Limit:** another mod reading these constants as fields still finds none.
+  - Forge 47's half of the row (Fabric ASM) is still open.
+- **Delegate names:** two converted enum mixins in one config, each with a constant that has a body, gave their
+  delegates the same name. The second overwrote the first. Each now gets a free name
+  (`ModTranslator.generatedBase`).
+- **Merged:** #257 (main), green on its final commit.
+- **Opened:**
+  - #258 (Forge 61 to 66) and #259 (Forge 47) sync main into the Forge branches.
+  - On the Forge branches, the corpus causes now print the locals a discriminator saw (CORPUS-79).
+  - Extended runs are dispatched on both branches.
+- **Tests:**
+  - `PipelineTest.anEnumMixinsConstantsTheModReadsAsFieldsOfTheEnumComeFromAHolderWhereMixinAppliesNoEnumMixins` uses
+    Farmer's Delight's shape on Forge's descriptor and Mixin 0.8.7. The mod loads, its readers read from the holders,
+    and the recipe book type's mixin skips `init`. It fails without the fix.
+  - Two `EnumValuesMixinsTest` tests run the generated code merged into the enum as Mixin would. They check that the
+    mod's constant follows the enum's own, that `create` still fails for another constant, that the holder returns the
+    enum's own constant, and that a missing constant fails with its message.
+  - ENUM-7's pipeline test now disables its second mod with a method of its own in its enum mixin, since a field read
+    no longer does.
+  - ENUM-5's pipeline test has a second such mixin in its config and checks that each gets its own delegate. It fails
+    without the fix.
+- **CI:** core build and tests pass locally (460 tests).
+
 ## 2026-11-03: interface mixins Mixin would take for accessor mixins (CORPUS-76), the game's other packages (CORPUS-82), and four findings verified (task 5)
 
 - **CORPUS-76** (`AccessorShapedMixins`, `ModTranslator.leaveOutHandlers`): the Forge 47 corpus client stopped with

@@ -847,34 +847,58 @@ public final class ModTranslator {
 	}
 
 	/**
-	 * Replaces an enum mixin with an ordinary mixin adding its constants, when it can be and no class of the mod reads
-	 * them as fields of the enum: one into one of NeoForge's extensible enums that NeoForge's enum extension file can't
-	 * carry (ENUM-5), as FML would refuse the enum mixin, or one into any enum where the running Mixin is older than
-	 * 0.17.1, whose enum extensions apply enum mixins (ENUM-7: Forge's, and NeoForge's before 26.1). Pre-flight disables
-	 * the mod otherwise. Returns whether it replaced it.
+	 * Replaces an enum mixin with an ordinary mixin adding its constants, when it can be: one into one of NeoForge's
+	 * extensible enums that NeoForge's enum extension file can't carry (ENUM-5), as FML would refuse the enum mixin, or one
+	 * into any enum where the running Mixin is older than 0.17.1, whose enum extensions apply enum mixins (ENUM-7: Forge's,
+	 * and NeoForge's before 26.1). The mod's reads of the constants as fields of the enum, which a mixin can't add, read
+	 * them from a holder class generated next to the mixins (CORPUS-80: Farmer's Delight's {@code FDRecipeBookTypes} and
+	 * recipe book screen). Pre-flight disables the mod otherwise. Returns whether it replaced it.
 	 */
 	private boolean valuesMixin(String configName, MixinConfigFile config, String mixin, ClassNode node, ClassNode target, FileView files,
 			Collection<String> modEntries, Map<String, byte[]> overlay, List<PreflightFinding> findings) throws ArchiveException {
-		String bodies = generatedClass(config, files, "FabricatedEnumBodies");
+		String bodies = generatedBase(config, files, "FabricatedEnumBodies");
 		if (bodies == null) return false;
-		EnumValuesMixins.Result result = EnumValuesMixins.of(node, target, name -> readNode(files, name + ".class"), bodies);
+		EnumValuesMixins.Result result = EnumValuesMixins.of(node, target, name -> readNode(files, name + ".class"), env.installedIndex()::readNode, bodies);
 		if (result == null) return false;
-		List<ClassNode> modClasses = new ArrayList<>();
+		String holder = generatedClass(config, files, "FabricatedEnumConstants");
+		if (holder == null) return false;
+		String mixinPath = config.internalName(mixin) + ".class";
+		Map<String, byte[]> readers = new LinkedHashMap<>();
 		for (String entry : modEntries) {
-			ClassNode c = entry.endsWith(".class") ? readNode(files, entry) : null;
-			if (c != null) modClasses.add(c);
+			if (!entry.endsWith(".class") || entry.startsWith("META-INF/") || entry.equals(mixinPath)) continue;
+			byte[] data = files.read(entry);
+			byte[] rewritten = data == null ? null : EnumValuesMixins.withHeldConstants(data, target.name, result.constants(), holder);
+			if (rewritten != null) readers.put(entry, rewritten);
 		}
-		if (EnumValuesMixins.readAsFields(modClasses, target.name, result.constants())) return false;
-		overlay.put(config.internalName(mixin) + ".class", result.mixin());
-		result.classes().forEach((name, bytes) -> overlay.put(name + ".class", bytes));
+		// What moves into the enum (the rest of the mixin's class initializer, the bodies) may read them so too.
+		Map<String, byte[]> generated = new LinkedHashMap<>();
+		generated.put(mixinPath, result.mixin());
+		result.classes().forEach((name, bytes) -> generated.put(name + ".class", bytes));
+		boolean heldInGenerated = false;
+		for (Map.Entry<String, byte[]> e : generated.entrySet()) {
+			byte[] rewritten = EnumValuesMixins.withHeldConstants(e.getValue(), target.name, result.constants(), holder);
+			if (rewritten == null) continue;
+			e.setValue(rewritten);
+			heldInGenerated = true;
+		}
+		String dotted = node.name.replace('/', '.');
+		overlay.putAll(readers);
+		overlay.putAll(generated);
+		if (!readers.isEmpty() || heldInGenerated) overlay.put(holder + ".class", EnumValuesMixins.holderClass(holder, target.name, result.constants(), dotted));
 		String why = env.descriptor().enumExtensions() && target.interfaces.contains(EnumExtensions.EXTENSIBLE_ENUM)
 				? "go to one of NeoForge's extensible enums, " + target.name.replace('/', '.') + ", whose enum extension file can't carry them"
 				: "go to " + target.name.replace('/', '.') + ", and this " + env.descriptor().loaderName() + "'s Mixin " + env.runtimeMixinVersion()
 						+ " can't apply an enum mixin (enum extensions came with Mixin 0.17.1)";
 		// Forge's extensible enums make them with their own factories, which Forge's enum extender writes (ENUM-7).
 		String with = target.interfaces.contains(EnumValuesMixins.FORGE_EXTENSIBLE_ENUM) ? " with the enum's create factories" : "";
-		findings.add(new PreflightFinding(Severity.INFO, configName, node.name.replace('/', '.'), "Its constants (" + String.join(", ", result.constants())
-				+ ") " + why + ": a mixin into its class initializer adds them" + with + ", as mods' own " + env.descriptor().loaderName() + " builds do", ""));
+		if (!with.isEmpty() && !EnumValuesMixins.initReturns(target, env.installedIndex()::readNode)) {
+			with += ", skipping Forge's init for them, which never returns here";
+		}
+		String read = readers.isEmpty() ? "" : "; the mod's " + readers.size() + " class(es) reading them as fields of the enum, which a mixin can't add,"
+				+ " read them from " + holder.replace('/', '.');
+		findings.add(new PreflightFinding(Severity.INFO, configName, dotted, "Its constants (" + String.join(", ", result.constants())
+				+ ") " + why + ": a mixin into its class initializer adds them" + with + ", as mods' own " + env.descriptor().loaderName() + " builds do"
+				+ read, ""));
 		return true;
 	}
 
@@ -894,6 +918,20 @@ public final class ModTranslator {
 	/** A free name for a class generated next to the config's mixins (in the package above theirs). */
 	private static String generatedClass(MixinConfigFile config, FileView files, String simpleName) throws ArchiveException {
 		return freeClassName(aroundMixinPackage(config, simpleName), files, Map.of());
+	}
+
+	/**
+	 * A free name to number classes generated next to the config's mixins from ({@code name$0} and on): neither it nor its
+	 * first such class is taken, so two enum mixins of a config give their bodies' delegates different names.
+	 */
+	private static String generatedBase(MixinConfigFile config, FileView files, String simpleName) throws ArchiveException {
+		String base = aroundMixinPackage(config, simpleName);
+		if (base == null) return null;
+		for (int n = 0; n < 100; n++) {
+			String name = n == 0 ? base : base + n;
+			if (files.read(name + ".class") == null && files.read(name + "$0.class") == null) return name;
+		}
+		return null;
 	}
 
 	/** The class {@code simpleName} in the package around the config's mixin package; null when it has none around it. */
