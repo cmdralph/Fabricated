@@ -222,7 +222,7 @@ check "FABRICATED-TEST object builder OK" server.out "native object builder: att
 check "FABRICATED-TEST block api OK" server.out "native block api: properties id, trapdoor tag, appearance (26.2+: enchanting power, fluid flow event)"
 check "FABRICATED-TEST item api OK" server.out "native item api: equipment slot, crafting remainder, allow enchanting, custom damage, default components, creator mod"
 check "FABRICATED-TEST interaction events OK" server.out "native interaction events: use/attack block, item and entity callbacks, block and item events, block break events, pick item, fake player"
-check "FABRICATED-TEST loot OK" server.out "native loot: replace/modify with source, all loaded, modified drops"
+check "FABRICATED-TEST loot OK" server.out "native loot: replace/modify with source, all loaded, modified drops, and a table a mod names as MODIFY's builder builds it keeps that name, as Porting Lib Loot names them (CORPUS-90)"
 check "FABRICATED-TEST tag removal OK" server.out "tag files' fabric:remove and NeoForge's remove both take entries out of a tag"
 check "FABRICATED-TEST content registries OK" server.out "native content registries: flammable, waxable, vibration frequency (up to 26.2: compostable, strippable, fuel)"
 check "FABRICATED-TEST biome modifications OK" server.out "native biome api: an added mob spawn and a climate change reach the biome NeoForge reads (before 26.3: an environment attribute too, and the biome is sent to clients) (BIOME-1)"
