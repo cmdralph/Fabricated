@@ -11,6 +11,9 @@ them. The forge-legacy branch's counterpart of ci/neoforge/standins.py.
   Fabricated's own, so the test mod's teleport check must still pass, through the stand-in's classes.
 - standin-lib-a.jar and standin-lib-b.jar: Fabric mods nesting two versions of the same library (standin_lib 1.0.0
   and 1.1.0): only the newer one loads.
+- standin-forgeconfigapiport.jar and standin-modmenu.jar: Fabric mods without code under Forge Config API Port's and
+  Mod Menu's ids: on Forge only Mod Menu's is left out, Forge's mod list standing in for it, where NeoForge leaves out
+  both (REPL-1, PLAT-6).
 
 Each copy of a package is one the game would otherwise load twice; the run passes if the server starts, the report
 says who provides what, and the test mods' checks pass.
@@ -150,6 +153,9 @@ def main(fabricated, out, only=None):
     for mod, version in (("a", "1.0.0"), ("b", "1.1.0")):
         library = fabric_mod("standin_lib", version)
         written[f"standin-lib-{mod}.jar"] = fabric_mod(f"standin_lib_user_{mod}", "1.0.0", {f"META-INF/jars/standin-lib-{version}.jar": library})
+
+    written["standin-forgeconfigapiport.jar"] = fabric_mod("forgeconfigapiport", "8.0.0")
+    written["standin-modmenu.jar"] = fabric_mod("modmenu", "7.2.2")
 
     for name, data in written.items():
         with open(f"{out}/{name}", "wb") as f:

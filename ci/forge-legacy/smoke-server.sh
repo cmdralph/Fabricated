@@ -229,6 +229,9 @@ if $standins; then
 	check "so is one a Forge mod nests with Forge's jar-in-jar, with its mixin config and refmap" "grep -q '+standin  \[Stand-in fabric-dimensions-v1\]' logs/fabric-bridge-report.txt 2>/dev/null"
 	check "Fabricated's in-game mod leaves out their packages and the module's mixin config, its manifest no longer naming it" "grep -q 'leaves out [0-9]* package(s) of the modules other mods provide, the mixin configs \[.*fabricated-dimension.mixins.json' logs/fabric-bridge-report.txt 2>/dev/null"
 	check "of two versions of a library Fabric mods nest, the newer loads" "grep -q 'Using standin_lib 1.1.0' logs/fabric-bridge-report.txt 2>/dev/null"
+	# Forge's replaced mods, not NeoForge's (PLAT-6): Mod Menu's jar stays out, Forge Config API Port's loads.
+	check "Mod Menu's Fabric jar is left out for Forge's mod list, as Forge's descriptor says (REPL-1)" "grep -q \"in Forge's mod list\" logs/fabric-bridge-report.txt 2>/dev/null"
+	check "Forge Config API Port's Fabric jar isn't left out for a NeoForge config system Forge doesn't have (PLAT-6)" "! grep -q \"on NeoForge's own config system\" logs/fabric-bridge-report.txt 2>/dev/null && grep -q 'forgeconfigapiport' logs/fabric-bridge-report.txt 2>/dev/null"
 	# Without Fabric API the test mod's checks that need its other modules leave linkage warnings; none may name a class
 	# of the stand-ins'.
 	check "the linkage check counts the classes of the modules other mods provide" "python3 -I '$root/ci/forge-legacy/standin-linkage.py' '$extra' logs/fabric-bridge-report.txt"
