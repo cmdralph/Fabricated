@@ -250,6 +250,10 @@ What else differs on Forge, for Fabric mods in general:
   find nothing as Mixin applies it.
 - **MixinExtras** is 0.5.5 on every Forge version: the in-game mod nests it, and Forge's jar-in-jar locator picks it
   over the 0.5.4 Forge 61 to 66 offer (MIXEXT-3).
+- **`@ModifyArgs`:** Forge 47's Mixin 0.8.5 puts the classes it generates for a `@ModifyArgs` handler's arguments in no
+  module of the game layer, so a game class naming one failed to load (the corpus server and client stopped as `Fluids`
+  loaded, CORPUS-68). Fabricated's transformation service adds a module holding those packages, and no files, as
+  Mixin 0.8.7 does on Forge 61 to 66; not when no Fabric mod is loaded, or a mod file already holds one of them.
 - **Forge Config API Port**'s Fabric build loads, with its own copies of NeoForge's config classes, which Forge lacks
   (REPL-1, PLAT-5; on Forge 47 from task 5, whose descriptor had NeoForge's list and left the jar out: PLAT-6). **Mod Menu**'s Fabric build isn't loaded on Forge, which lists mods itself; Fabric mods' Mod Menu
   entrypoints give it their config screens (above).

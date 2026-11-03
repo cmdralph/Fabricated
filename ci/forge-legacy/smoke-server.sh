@@ -207,6 +207,7 @@ check "the test mod read a private field its access widener opens (Intermediary 
 check "the minecraft mod container holds vanilla's resources (its en_us.json)" "grep -q 'FABRICATED-FORGE-TEST game resources OK' logs/latest.log 2>/dev/null"
 check "the test mod's item is in the frozen registry at the first tick" "grep -q 'FABRICATED-FORGE-TEST registry entry kept OK' logs/latest.log 2>/dev/null"
 check "MixinExtras ran the test mod's @WrapMethod (nested in the in-game mod)" "grep -q 'FABRICATED-FORGE-TEST MixinExtras OK' logs/latest.log 2>/dev/null"
+check "Mixin ran the test mod's @ModifyArgs, its generated class in a module (CORPUS-68)" "grep -q 'FABRICATED-FORGE-TEST @ModifyArgs OK' logs/latest.log 2>/dev/null"
 check "the in-game mod's mixin reads tag files' fabric:remove (the in-game mod reobfuscated to SRG's names)" "grep -q 'FABRICATED-FORGE-TEST fabric:remove OK' logs/latest.log 2>/dev/null"
 check "native fabric-biome-api-v1: a spawn and a temperature added to plains reach the biome Forge reads (Forge's biome modifiers)" "grep -q 'FABRICATED-FORGE-TEST biome modifications OK' logs/latest.log 2>/dev/null"
 check "vanilla reads a player's stats with Gson's internal parser, a package Gson's module doesn't export (GSON-2)" "grep -q 'FABRICATED-FORGE-TEST vanilla stats read OK' logs/latest.log 2>/dev/null"
