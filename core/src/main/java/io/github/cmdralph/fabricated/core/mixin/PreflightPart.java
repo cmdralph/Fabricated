@@ -30,6 +30,7 @@ abstract class PreflightPart {
 	final boolean argumentNames;
 	final boolean exactStaticInjects;
 	final boolean enumMixins;
+	final boolean readsLocalTypes;
 	final String loader;
 	final ClassBytesSource vanilla;
 	final Map<ClassNode, Set<String>> independent;
@@ -49,6 +50,7 @@ abstract class PreflightPart {
 		this.argumentNames = classes.argumentNames;
 		this.exactStaticInjects = classes.exactStaticInjects;
 		this.enumMixins = classes.enumMixins;
+		this.readsLocalTypes = classes.readsLocalTypes;
 		this.loader = classes.loader;
 		this.vanilla = classes.vanilla;
 		this.independent = classes.independent;
