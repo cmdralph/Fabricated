@@ -52,8 +52,10 @@ import io.github.cmdralph.fabricated.core.bytecode.Annotations;
  * each registers its constant ({@code IExtensibleEnum.init}) in statics set after the values array, such as
  * {@code MobCategory}'s map by name, which its codec reads.
  * Where Forge's {@code init} of such an enum can't return (Forge 61 to 66's {@code RecipeBookType}, whose {@code init}
- * throws "This is not implemented yet"), the mixin also skips it for the mod's constants, which Fabric gives no such
- * hook (CORPUS-80: Farmer's Delight's recipe book type).
+ * throws "This is not implemented yet"), or reaches another class than the enum (Forge 47's {@code RecipeBookType},
+ * whose {@code init} initializes {@code RecipeBookSettings} before the mod's own mixin there can read its type), the
+ * mixin also skips it for the mod's constants, which Fabric gives no such hook (CORPUS-80: Farmer's Delight's recipe
+ * book type; {@link #initKeepsToEnum}).
  * <p>A constant with a body overriding the one method the enum forwards to a delegate its other constructor takes
  * (NeoForge's way of making such an enum extensible, as {@code GrassColorModifier}'s {@code ColorModifier}) is made with
  * that constructor and a delegate class generated next to the mod's mixins, running the body. Only code that runs
@@ -178,7 +180,7 @@ final class EnumValuesMixins {
 			rest.add(insn);
 		}
 		if (insn == null || EnumExtensions.real(insn.getNext()) != null || made.size() != constants.size() || !movable(rest, mixin.name, constants)) return null;
-		boolean skipInit = target.interfaces.contains(FORGE_EXTENSIBLE_ENUM) && !initReturns(target, game);
+		boolean skipInit = target.interfaces.contains(FORGE_EXTENSIBLE_ENUM) && (!initReturns(target, game) || !initKeepsToEnum(target));
 		return new Result(mixinClass(mixin, target, valuesArray, made, rest, skipInit), delegates, List.copyOf(constants));
 	}
 
@@ -221,6 +223,33 @@ final class EnumValuesMixins {
 			if (called != null && called.instructions.size() > 0 && (called.access & (Opcodes.ACC_ABSTRACT | Opcodes.ACC_NATIVE)) == 0 && !returns(called)) {
 				return false;
 			}
+		}
+		return true;
+	}
+
+	/**
+	 * Whether the enum's Forge {@code init} keeps to the enum: it uses no class but the enum and the JDK's. Fabric gives
+	 * the mod's constants no such hook, so it runs for them only then, where it keeps the enum's own lookups whole: Forge
+	 * 47's {@code MobCategory.init} puts the constant in the enum's {@code BY_NAME}, which Forge's codec reads where
+	 * vanilla's reads the values. One reaching another class initializes that class while the enum is still initializing,
+	 * before the mod's own code made the constant's other parts: Forge 47's {@code RecipeBookType.init} registers the
+	 * type's recipe book tags with {@code RecipeBookSettings}, whose class initializer Farmer's Delight's mixin extends
+	 * with its own tags for its type, read from a field of the mod's that is only set once the enum is (CORPUS-80). True
+	 * for an enum without {@code init}.
+	 */
+	static boolean initKeepsToEnum(ClassNode target) {
+		MethodNode init = declared(target, INIT, "()V");
+		if (init == null) return true;
+		for (AbstractInsnNode insn : init.instructions) {
+			String owner = insn instanceof MethodInsnNode call ? call.owner
+					: insn instanceof FieldInsnNode field ? field.owner
+					: insn instanceof TypeInsnNode type ? type.desc
+					: insn instanceof InvokeDynamicInsnNode indy ? indy.bsm.getOwner()
+					: insn instanceof MultiANewArrayInsnNode array ? array.desc : null;
+			if (owner == null) continue;
+			while (owner.startsWith("[")) owner = owner.substring(1);
+			if (owner.startsWith("L") && owner.endsWith(";")) owner = owner.substring(1, owner.length() - 1);
+			if (!owner.equals(target.name) && !owner.startsWith("java/") && owner.length() > 1) return false;
 		}
 		return true;
 	}
@@ -628,8 +657,8 @@ final class EnumValuesMixins {
 
 	/**
 	 * The injector skipping Forge's {@code init} for the constants, cancelling it at its head: Fabric gives them no such
-	 * hook, and here it never returns ({@link #initReturns}). Forge's factory has appended the constant by then. The
-	 * enum's other constants keep theirs.
+	 * hook, and here it never returns ({@link #initReturns}) or reaches beyond the enum ({@link #initKeepsToEnum}).
+	 * Forge's factory has appended the constant by then. The enum's other constants keep theirs.
 	 */
 	private static void skipInit(ClassWriter cw, String mixin, List<Constant> constants) {
 		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "fabricated$skipInit", "(" + CALLBACK_INFO + ")V", null, null);

@@ -2,9 +2,11 @@ package io.github.cmdralph.fabricated.core.mixin;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 import io.github.cmdralph.fabricated.core.bytecode.Annotations;
 import io.github.cmdralph.fabricated.core.mixin.MixinPreflight.Context;
@@ -16,8 +18,13 @@ import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.AnnotationNode;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.InvokeDynamicInsnNode;
+import org.objectweb.asm.tree.JumpInsnNode;
+import org.objectweb.asm.tree.LabelNode;
+import org.objectweb.asm.tree.LookupSwitchInsnNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
+import org.objectweb.asm.tree.TableSwitchInsnNode;
+import org.objectweb.asm.tree.TryCatchBlockNode;
 import org.objectweb.asm.tree.VarInsnNode;
 
 /**
@@ -212,6 +219,190 @@ final class CallRepairs extends PreflightPart {
 			found = call;
 		}
 		return found;
+	}
+
+	/**
+	 * Points an {@code @Inject}'s {@code INVOKE} point at a call the platform's patch moved out of the target method into
+	 * code the method calls, at the place vanilla's code made the call (VANILLA-1, CORPUS-72). Forge 47's patch of
+	 * {@code ServerPlayerGameMode.destroyBlock} takes out vanilla's {@code playerWillDestroy}, {@code removeBlock} and
+	 * {@code destroy} calls and calls a {@code removeBlock} of its own in the creative and the survival branch instead,
+	 * which reaches {@code playerWillDestroy} through its extensions' {@code onDestroyedByPlayer}. Magna's hook at that call
+	 * cancels the break before the survival branch damages the tool; at the calls of the patch's method it would run after
+	 * that, and at vanilla's place it runs where it did.
+	 *
+	 * <p>Vanilla's place is found between calls the two versions each make exactly once, the last before vanilla's call
+	 * and the first after it: an alignment of all instructions can't tell it there, as the patch adds statements looking
+	 * like vanilla's ({@link #vanillasPlace}). The point moves to that next call when the patched code between the two
+	 * does what vanilla's did before its call, and the method still makes the call through methods the patch added or the
+	 * platform's code ({@link #movedInto}). Only an {@code @Inject} capturing no locals and taking nothing after its
+	 * {@code CallbackInfo} moves: it sees nothing of the call, and the locals there may not be vanilla's. A point with a
+	 * {@code shift} stays: after the call, at its old place, is before the call here. Returns a description of each move.
+	 */
+	List<String> movedCallRepairs(ClassNode mixin, MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx) {
+		if (!injector.desc.equals(MixinNames.INJECT) || Annotations.value(injector, "slice") != null || Annotations.value(injector, "locals") != null
+				|| (mixin.access & Opcodes.ACC_INTERFACE) != 0 || !takesOnlyItsCallback(handler)) return List.of();
+		ClassNode original = vanillaClass(target.name);
+		List<MethodNode> methods = original == null ? List.of() : PreflightAsm.selectedMethods(injector, target, ctx);
+		if (methods.size() != 1) return List.of();
+		MethodNode patched = methods.get(0);
+		MethodNode before = PreflightAsm.declared(original, patched.name, patched.desc);
+		if (before == null || before.instructions == null || patched.instructions == null) return List.of();
+		List<String> moved = new ArrayList<>();
+		for (AnnotationNode at : Annotations.list(Annotations.value(injector, "at"))) {
+			String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
+			if (!point.equals("INVOKE") || !(Annotations.value(at, "target") instanceof String raw) || Annotations.value(at, "shift") != null
+					|| Annotations.value(at, "by") != null) continue;
+			MemberRef ref = MemberRef.parse(ctx.resolve(raw));
+			if (ref.fuzzy() || ref.owner() == null || ref.name() == null || ref.desc() == null || !PreflightAsm.matching(patched, point, ref, -1).isEmpty()) continue;
+			List<Integer> inVanilla = PreflightAsm.matching(before, point, ref, -1);
+			int ordinal = Annotations.value(at, "ordinal") instanceof Integer n ? n : -1;
+			if (ordinal < 0 ? inVanilla.size() != 1 : ordinal >= inVanilla.size()) continue;
+			MethodInsnNode next = vanillasPlace(before, patched, inVanilla.get(Math.max(ordinal, 0)));
+			Code into = next == null ? null : movedInto(patched, ref, 3);
+			// A handler sharing the mixin's state with other injectors moves only with them, as for HOOK-3.
+			if (into == null || !independentOf(mixin).contains(handler.name + handler.desc)) continue;
+			Annotations.put(at, "target", "L" + next.owner + ";" + next.name + next.desc);
+			if (ordinal >= 0) Annotations.put(at, "ordinal", 0);
+			moved.add("the call " + raw + " in vanilla's code, which " + loader + "'s patch moved out of this method into "
+					+ into.owner().replace('/', '.') + "." + into.method().name + into.method().desc + ", which it calls instead;"
+					+ " the injection point is pointed at the place vanilla made it, before the call of "
+					+ next.owner.replace('/', '.') + "." + next.name + next.desc + " after it");
+		}
+		return moved;
+	}
+
+	/** Whether an injector handler's last parameter is its {@code CallbackInfo}: it takes no locals or sugar after it. */
+	private static boolean takesOnlyItsCallback(MethodNode handler) {
+		Type[] params = Type.getArgumentTypes(handler.desc);
+		return params.length > 0 && PreflightAsm.isCallbackInfo(params[params.length - 1]);
+	}
+
+	/**
+	 * The call, in the patched method, that vanilla's call at {@code vanillaCall} came right before: the first call after
+	 * it that both versions make exactly once (the same owner, name and descriptor, as Mixin matches calls), when the last
+	 * such call before it (or the method's start) is before that one in the patched method too, and the patched
+	 * instructions between those two do what vanilla's did between the last and its call, apart from loading values
+	 * ({@link #steps}). Null otherwise.
+	 */
+	private static MethodInsnNode vanillasPlace(MethodNode vanilla, MethodNode patched, int vanillaCall) {
+		Map<String, Integer> inVanilla = madeOnce(vanilla);
+		Map<String, Integer> inPatched = madeOnce(patched);
+		int vanillaFrom = 0;
+		int patchedFrom = 0;
+		for (int i = vanillaCall - 1; i >= 0; i--) {
+			Integer there = anchor(vanilla.instructions.get(i), i, inVanilla, inPatched);
+			if (there != null) {
+				vanillaFrom = i + 1;
+				patchedFrom = there + 1;
+				break;
+			}
+		}
+		for (int i = vanillaCall + 1; i < vanilla.instructions.size(); i++) {
+			Integer there = anchor(vanilla.instructions.get(i), i, inVanilla, inPatched);
+			if (there == null) continue;
+			if (there < patchedFrom) return null;
+			List<String> was = steps(vanilla, vanillaFrom, vanillaCall);
+			return was != null && was.equals(steps(patched, patchedFrom, there)) ? (MethodInsnNode) patched.instructions.get(there) : null;
+		}
+		return null;
+	}
+
+	/** The index in the patched method of a call vanilla's makes once at {@code index}, when the patched one makes it once too. */
+	private static Integer anchor(AbstractInsnNode insn, int index, Map<String, Integer> inVanilla, Map<String, Integer> inPatched) {
+		if (!(insn instanceof MethodInsnNode call)) return null;
+		String key = call.owner + "." + call.name + call.desc;
+		Integer own = inVanilla.get(key);
+		return own != null && own == index ? inPatched.get(key) : null;
+	}
+
+	/** The calls a method makes exactly once (owner, name and descriptor), with their indices. */
+	private static Map<String, Integer> madeOnce(MethodNode method) {
+		Map<String, Integer> once = new HashMap<>();
+		Set<String> more = new HashSet<>();
+		for (int i = 0; i < method.instructions.size(); i++) {
+			if (!(method.instructions.get(i) instanceof MethodInsnNode call)) continue;
+			String key = call.owner + "." + call.name + call.desc;
+			if (more.contains(key) || once.put(key, i) != null) {
+				once.remove(key);
+				more.add(key);
+			}
+		}
+		return once;
+	}
+
+	/**
+	 * What a method's instructions {@code [from, to)} do apart from loading values (constants, locals and fields): their
+	 * other instructions in order, as {@link PatchAlignment#token}s, a jump's with the number of those before its label.
+	 * Null when a jump leaves the part or one from elsewhere enters it, or the part holds a switch or a try block's start,
+	 * end or handler: control flow two versions would have to be compared on further.
+	 */
+	private static List<String> steps(MethodNode method, int from, int to) {
+		Map<LabelNode, Integer> labels = new HashMap<>();
+		List<AbstractInsnNode> steps = new ArrayList<>();
+		for (int i = from; i < to; i++) {
+			AbstractInsnNode insn = method.instructions.get(i);
+			if (insn instanceof LabelNode label) labels.put(label, steps.size());
+			else if (insn instanceof TableSwitchInsnNode || insn instanceof LookupSwitchInsnNode) return null;
+			else if (insn.getOpcode() >= 0 && !loadsValue(insn)) steps.add(insn);
+		}
+		if (method.tryCatchBlocks != null) {
+			for (TryCatchBlockNode block : method.tryCatchBlocks) {
+				if (labels.containsKey(block.start) || labels.containsKey(block.end) || labels.containsKey(block.handler)) return null;
+			}
+		}
+		for (int i = 0; i < method.instructions.size(); i++) {
+			AbstractInsnNode insn = method.instructions.get(i);
+			boolean inside = i >= from && i < to;
+			if (insn instanceof JumpInsnNode jump && labels.containsKey(jump.label) != inside) return null;
+			if (insn instanceof TableSwitchInsnNode table && (labels.containsKey(table.dflt) || table.labels.stream().anyMatch(labels::containsKey))) return null;
+			if (insn instanceof LookupSwitchInsnNode lookup && (labels.containsKey(lookup.dflt) || lookup.labels.stream().anyMatch(labels::containsKey))) return null;
+		}
+		List<String> tokens = new ArrayList<>();
+		for (AbstractInsnNode step : steps) {
+			tokens.add(PatchAlignment.token(step) + (step instanceof JumpInsnNode jump ? " to " + labels.get(jump.label) : ""));
+		}
+		return tokens;
+	}
+
+	/** Whether an instruction only pushes a value: a constant, a local variable or a field. */
+	private static boolean loadsValue(AbstractInsnNode insn) {
+		int op = insn.getOpcode();
+		return op >= Opcodes.ACONST_NULL && op <= Opcodes.ALOAD || op == Opcodes.GETFIELD || op == Opcodes.GETSTATIC;
+	}
+
+	/**
+	 * The first method {@code method} calls through which it still makes the named call: one the platform's patch added
+	 * to a class of the game (vanilla's version of the class doesn't declare it) or the platform's own code (its classes,
+	 * or a default method of its extensions), which makes the call itself or, to {@code depth} methods in all, through
+	 * more such methods. Null when none does: the patch took the call out, rather than moving it.
+	 */
+	private Code movedInto(MethodNode method, MemberRef ref, int depth) {
+		for (AbstractInsnNode insn : method.instructions) {
+			if (!(insn instanceof MethodInsnNode call)) continue;
+			Code code = declaration(call.owner, call.name, call.desc);
+			if (code != null && isPatchCode(code) && reaches(code, ref, depth - 1, new HashSet<>())) return code;
+		}
+		return null;
+	}
+
+	/** Whether the code makes the named call, itself or through {@code depth} more methods of the patch's ({@link #movedInto}). */
+	private boolean reaches(Code code, MemberRef ref, int depth, Set<String> seen) {
+		if (!seen.add(code.owner() + "." + code.method().name + code.method().desc)) return false;
+		for (AbstractInsnNode insn : code.method().instructions) {
+			if (!(insn instanceof MethodInsnNode call)) continue;
+			if (call.owner.equals(ref.owner()) && call.name.equals(ref.name()) && call.desc.equals(ref.desc())) return true;
+			if (depth <= 0) continue;
+			Code next = declaration(call.owner, call.name, call.desc);
+			if (next != null && isPatchCode(next) && reaches(next, ref, depth - 1, seen)) return true;
+		}
+		return false;
+	}
+
+	/** Whether code is the platform's: in its own classes, or a method its patch added to a class of the game. */
+	private boolean isPatchCode(Code code) {
+		if (MixinNames.isPlatformCode(code.owner())) return true;
+		ClassNode original = vanillaClass(code.owner());
+		return original != null && PreflightAsm.declared(original, code.method().name, code.method().desc) == null;
 	}
 
 	/**
