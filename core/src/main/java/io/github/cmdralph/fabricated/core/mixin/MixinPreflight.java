@@ -36,6 +36,7 @@ import org.objectweb.asm.tree.FieldInsnNode;
 import org.objectweb.asm.tree.FieldNode;
 import org.objectweb.asm.tree.FrameNode;
 import org.objectweb.asm.tree.InnerClassNode;
+import org.objectweb.asm.tree.InsnList;
 import org.objectweb.asm.tree.InvokeDynamicInsnNode;
 import org.objectweb.asm.tree.LabelNode;
 import org.objectweb.asm.tree.LdcInsnNode;
@@ -67,7 +68,8 @@ import org.objectweb.asm.tree.VarInsnNode;
  * target and has no accessor or invoker) (LEAVE-1): only the failing injector is left out when the mixin keeps no state
  * of its own (it adds no fields), the whole mixin otherwise, so that injectors sharing its fields apply all or none. An
  * enum mixin adding constants to one of NeoForge's extensible enums always fails: the
- * mod's own classes read those constants.
+ * mod's own classes read those constants. So does any enum mixin where the running Mixin applies none, as before 0.17.1
+ * (ENUM-7): translation turns those it can into ordinary mixins first.
  */
 public final class MixinPreflight extends PreflightPart {
 	private final MixinRepairs repairer;
@@ -141,8 +143,19 @@ public final class MixinPreflight extends PreflightPart {
 	public MixinPreflight(ClassIndex game, InstalledClasses installed, ClassBytesSource modClasses, ClassBytesSource untransformable,
 			boolean clientSide, boolean missingTargetsFatal, ClassBytesSource vanilla, String loader, boolean interfaceInjectors,
 			ConstructorInjects constructorInjects, boolean argumentNames, boolean exactStaticInjects) {
+		this(game, installed, modClasses, untransformable, clientSide, missingTargetsFatal, vanilla, loader, interfaceInjectors,
+				constructorInjects, argumentNames, exactStaticInjects, true);
+	}
+
+	/**
+	 * @param enumMixins whether the running Mixin applies enum mixins, as Fabric's does from 0.17.1 (ENUM-7); where it
+	 *                   doesn't, an enum mixin that translation couldn't turn into an ordinary one fails
+	 */
+	public MixinPreflight(ClassIndex game, InstalledClasses installed, ClassBytesSource modClasses, ClassBytesSource untransformable,
+			boolean clientSide, boolean missingTargetsFatal, ClassBytesSource vanilla, String loader, boolean interfaceInjectors,
+			ConstructorInjects constructorInjects, boolean argumentNames, boolean exactStaticInjects, boolean enumMixins) {
 		super(new PreflightClasses(game, installed, modClasses, untransformable, clientSide, missingTargetsFatal, vanilla, loader,
-				interfaceInjectors, constructorInjects, argumentNames, exactStaticInjects));
+				interfaceInjectors, constructorInjects, argumentNames, exactStaticInjects, enumMixins));
 		this.repairer = new MixinRepairs(classes, this);
 	}
 
@@ -624,6 +637,12 @@ public final class MixinPreflight extends PreflightPart {
 				} else if (isUntransformable(target)) {
 					ctx.classLevel("Target class " + target.replace('/', '.') + " is a library class that " + loader + " loads without mixin support, so this mixin would silently never apply",
 							"Ask the mod author for a " + loader + " version, or skip this mixin in config/fabricated.json if the feature is optional.");
+				} else if ((mixin.access & Opcodes.ACC_ENUM) != 0 && !enumMixins) {
+					// Another Fabric mod's enum, which Mixin would fail to apply it to as it does a game enum (ENUM-7), or none:
+					// left out, as only the mod's code for that mod can read its constants.
+					ctx.out().add(new PreflightFinding(Severity.LEFT_OUT, ctx.configName(), ctx.mixinDotted(), "Enum mixin into "
+							+ target.replace('/', '.') + ", a class of another mod or none: " + noEnumMixins(), "Install the " + loader
+							+ " build of the mod, if it has one."));
 				} else {
 					ctx.info("Target " + target.replace('/', '.') + " is not a class of Minecraft or of an installed mod, so it was not verified");
 				}
@@ -637,8 +656,21 @@ public final class MixinPreflight extends PreflightPart {
 						+ " NeoForge lets only its own enum extensions change", "Install the NeoForge build of the mod, if it has one.");
 				continue;
 			}
+			// One translation couldn't turn into an ordinary mixin (EnumValuesMixins): Mixin before 0.17.1 stops the game
+			// applying it (ENUM-7: Friends and Foes' shadowed constructor, a NullPointerException in Forge's Mixin 0.8.7).
+			if ((mixin.access & Opcodes.ACC_ENUM) != 0 && !enumMixins) {
+				// Fatal whatever the config: Mixin's error there is no invalid-mixin error, which an optional config logs.
+				targetCtx.essential("Enum mixin into " + target.replace('/', '.') + ": " + noEnumMixins(), "Install the " + loader + " build of the mod, if it has one.");
+				continue;
+			}
 			checkMembers(mixin, targetNode, targetCtx);
 		}
+	}
+
+	private String noEnumMixins() {
+		return "this " + loader + "'s Mixin applies no enum mixins (Mixin's enum extensions came with 0.17.1), and an ordinary mixin"
+				+ " can't add its constants instead (a constant with a body of its own, code that uses the mixin, or the mod's classes"
+				+ " reading a constant as a field of the enum)";
 	}
 
 	/** The classes a mixin's {@code @Mixin} names, as internal names (none when it has no {@code @Mixin}). */
@@ -1077,6 +1109,18 @@ public final class MixinPreflight extends PreflightPart {
 		}
 
 		String absentType = anyFuzzy ? null : absentLocalType(handler, ann, matched, target.name);
+		String absentAtPoints = anyFuzzy || absentType != null ? null : absentLocalTypeAtPoints(handler, ann, matched, target.name, ctx);
+		if (absentAtPoints != null) {
+			// The method has such a local, but not where the point is: as above, Mixin's discriminator throws as the
+			// injector applies (without an ordinal) or finds nothing at any point (with one).
+			boolean implicit = !(Annotations.value(ann, "ordinal") instanceof Integer o && o >= 0);
+			ctx.injector(handler, implicit ? (ctx.config().required() ? 1 : 0) : require, injectorName + " " + handler.name
+							+ " modifies a local of type " + absentAtPoints + " in " + matched.get(0).name + matched.get(0).desc + " in "
+							+ target.name.replace('/', '.') + ", which " + (matched.size() == 1 ? "that method doesn't have" : "none of those methods has")
+							+ " where its @At points" + (implicit ? "" : " all") + " are (out of scope there)",
+					(ctx.owner() == null ? loader + "'s build of Minecraft" : ctx.changer(true)) + " changed the method body; the mod needs an update or this mixin must be skipped.");
+			return;
+		}
 		if (absentType != null) {
 			// At a LOAD or STORE the point matches nothing, which require judges; elsewhere Mixin's discriminator throws as
 			// the injector applies (without an ordinal) or finds nothing (with one), as for unmatchedArgument.
@@ -1402,6 +1446,125 @@ public final class MixinPreflight extends PreflightPart {
 			if (before != null && !before.equals(stored)) return false;
 		}
 		return true;
+	}
+
+	/**
+	 * As {@link #absentLocalType}, where the method has a local of that type but none can be among Mixin's locals at the
+	 * instructions the injector's {@code @At} picks ({@link #absentAt}): without an ordinal at any of them, as Mixin's
+	 * discriminator then throws applying the injector, with one at all of them. Only call and field points ({@code INVOKE},
+	 * {@code FIELD}) without a shift are judged, in methods with a local variable table. Balm's crop growth hook modifies
+	 * the block state vanilla's {@code CropBlock.getGrowthSpeed} reads its farmland from, at the method's first call of
+	 * {@code BlockState.is(Block)}: Forge's build asks the state {@code canSustainPlant} instead, so the first such call is
+	 * one after the loop, where the state's local is gone, and the Forge 47 and 61 corpus servers stopped as Mixin applied
+	 * it (CORPUS-54).
+	 */
+	static String absentLocalTypeAtPoints(MethodNode handler, AnnotationNode injector, List<MethodNode> targets, String owner, Context ctx) {
+		if (!injector.desc.equals(MixinNames.MODIFY_VARIABLE) || targets.isEmpty() || Boolean.TRUE.equals(Annotations.value(injector, "argsOnly"))
+				|| Annotations.value(injector, "name") != null || Annotations.value(injector, "index") instanceof Integer index && index >= 0
+				|| Boolean.TRUE.equals(Annotations.value(injector, "print"))) return null;
+		Type type = Type.getReturnType(handler.desc);
+		if (type.getSort() != Type.OBJECT && type.getSort() != Type.ARRAY) return null;
+		boolean implicit = !(Annotations.value(injector, "ordinal") instanceof Integer o && o >= 0);
+		List<AnnotationNode> slices = Annotations.list(Annotations.value(injector, "slice"));
+		boolean anyAbsent = false;
+		boolean allAbsent = true;
+		boolean anyPoint = false;
+		for (AnnotationNode at : Annotations.list(Annotations.value(injector, "at"))) {
+			String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
+			String rawTarget = Annotations.value(at, "target") instanceof String t ? t : null;
+			boolean shifted = Annotations.value(at, "shift") instanceof String[] shift && shift.length == 2 && !shift[1].equals("NONE")
+					|| Annotations.value(at, "by") instanceof Integer by && by != 0;
+			for (MethodNode m : targets) {
+				List<Integer> picked = !point.equals("INVOKE") && !point.equals("FIELD") || rawTarget == null || shifted || m.instructions == null
+						|| m.localVariables == null || m.localVariables.isEmpty() ? null
+						: InjectionPoints.indexes(point, ctx.resolve(rawTarget), Annotations.value(at, "ordinal") instanceof Integer n ? n : -1,
+								Annotations.value(at, "opcode") instanceof Integer n ? n : -1,
+								InjectionPoints.sliceFor(at, slices) == null ? Range.ALL : InjectionPoints.sliceRange(InjectionPoints.sliceFor(at, slices), m, ctx), m);
+				if (picked == null) {
+					// Points not judged here may have the local.
+					allAbsent = false;
+					continue;
+				}
+				for (int index : picked) {
+					anyPoint = true;
+					if (absentAt(type, m, index, owner)) anyAbsent = true;
+					else allAbsent = false;
+				}
+			}
+		}
+		return (implicit ? anyAbsent : anyPoint && allAbsent) ? type.getClassName() : null;
+	}
+
+	/**
+	 * Whether no local of the reference type {@code type} can be among the locals Mixin builds at the instruction at
+	 * {@code point} ({@code Locals.getLocalsAt}, whatever its version). Mixin walks the method's instructions in order up
+	 * to the point, setting a slot at each store, load and stack map frame to the entry of the local variable table that
+	 * covers that instruction there, or, where none does, to any other entry for the slot (or one its generated table
+	 * has). So: no argument and no entry covering the point has that type; each slot with an entry of that type is
+	 * stored to after the last of those entries ends before the point, every instruction from there to the point covered
+	 * by an entry of the slot (none of that type, then); and the other slots never hold a value of that type, their
+	 * stores typed as {@link #noLocalOfType} reads them.
+	 */
+	static boolean absentAt(Type type, MethodNode method, int point, String owner) {
+		InsnList insns = method.instructions;
+		boolean isStatic = (method.access & Opcodes.ACC_STATIC) != 0;
+		if (!isStatic && Type.getObjectType(owner).equals(type) || List.of(Type.getArgumentTypes(method.desc)).contains(type)) return false;
+		String desc = type.getDescriptor();
+		Map<Integer, Integer> lastEnd = new HashMap<>();
+		for (LocalVariableNode local : method.localVariables) {
+			if (!local.desc.equals(desc)) continue;
+			int start = insns.indexOf(local.start);
+			int end = insns.indexOf(local.end);
+			if (start <= point && end > point) return false;
+			lastEnd.merge(local.index, end <= point ? end : 0, Math::max);
+		}
+		for (Map.Entry<Integer, Integer> slot : lastEnd.entrySet()) {
+			if (!overwritten(method, slot.getKey(), slot.getValue(), point)) return false;
+		}
+		Map<AbstractInsnNode, String> handlers = new HashMap<>();
+		for (TryCatchBlockNode block : method.tryCatchBlocks) {
+			String caught = block.type == null ? "java/lang/Throwable" : block.type;
+			String previous = handlers.putIfAbsent(block.handler, caught);
+			if (previous != null && !previous.equals(caught)) handlers.put(block.handler, null);
+		}
+		int argSlots = isStatic ? 0 : 1;
+		for (Type arg : Type.getArgumentTypes(method.desc)) argSlots += arg.getSize();
+		Map<Integer, Type> slotTypes = new HashMap<>();
+		for (int i = 0; i < insns.size(); i++) {
+			AbstractInsnNode insn = insns.get(i);
+			if (insn.getOpcode() != Opcodes.ASTORE || lastEnd.containsKey(((VarInsnNode) insn).var)) continue;
+			Type stored = storedType(method, i, owner, isStatic, argSlots, handlers);
+			if (stored == null || stored.equals(type)) return false;
+			if (stored.getSort() == Type.VOID) continue;
+			Type before = slotTypes.putIfAbsent(((VarInsnNode) insn).var, stored);
+			if (before != null && !before.equals(stored)) return false;
+		}
+		return true;
+	}
+
+	/**
+	 * Whether a store to {@code slot} at or after {@code from - 1} and before {@code point} is followed, up to the point,
+	 * only by instructions an entry of the local variable table for that slot covers.
+	 */
+	private static boolean overwritten(MethodNode method, int slot, int from, int point) {
+		InsnList insns = method.instructions;
+		for (int i = point - 1; i >= Math.max(from - 1, 0); i--) {
+			if (!(insns.get(i) instanceof VarInsnNode store) || store.var != slot || store.getOpcode() < Opcodes.ISTORE || store.getOpcode() > Opcodes.ASTORE) {
+				continue;
+			}
+			for (int at = i + 1; at <= point; at++) {
+				if (!covered(method, slot, at)) return false;
+			}
+			return true;
+		}
+		return false;
+	}
+
+	private static boolean covered(MethodNode method, int slot, int at) {
+		for (LocalVariableNode local : method.localVariables) {
+			if (local.index == slot && method.instructions.indexOf(local.start) <= at && method.instructions.indexOf(local.end) > at) return true;
+		}
+		return false;
 	}
 
 	/**

@@ -4530,6 +4530,115 @@ class MixinPreflightTest {
 		assertTrue(check.apply(ScreenEffectBuild.NEOFORGE_WITH_AN_UNTYPED_LOCAL).isEmpty());
 	}
 
+	/** CORPUS-54's crop growth methods: vanilla's, Forge's, and Forge's with the state's slot not taken again. */
+	private enum GrowthBuild {
+		VANILLA, FORGE, FORGE_WITHOUT_REUSE
+	}
+
+	private static final String STATE = "net/minecraft/world/State";
+	private static final String GROWTH = "(Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/String;)F";
+
+	/**
+	 * CropBlock.getGrowthSpeed, shortened (its block, level and position; a String for the position): it reads the
+	 * state below into a local and asks it whether it is farmland with {@code is}; Forge's asks {@code canSustainPlant}
+	 * instead. Then, the state's local gone, it stores the position north into a local (in the state's slot, as javac
+	 * gives a freed slot again, or in a new one) and asks the state there {@code is}, which is the method's first call of
+	 * it in Forge's build. Forge's patched classes keep a local variable table, as javac compiled them.
+	 */
+	private static byte[] growth(GrowthBuild build) {
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		MethodVisitor m = cw.visitMethod(Opcodes.ACC_PROTECTED | Opcodes.ACC_STATIC, "getGrowthSpeed", GROWTH, null, null);
+		m.visitCode();
+		Label start = new Label();
+		Label stateStart = new Label();
+		Label stateEnd = new Label();
+		Label northStart = new Label();
+		Label end = new Label();
+		m.visitLabel(start);
+		m.visitVarInsn(Opcodes.ALOAD, 1);
+		m.visitVarInsn(Opcodes.ALOAD, 2);
+		m.visitMethodInsn(Opcodes.INVOKESTATIC, TARGET, "getBlockState", "(Ljava/lang/Object;Ljava/lang/String;)L" + STATE + ";", false);
+		m.visitVarInsn(Opcodes.ASTORE, 3);
+		m.visitLabel(stateStart);
+		m.visitVarInsn(Opcodes.ALOAD, 3);
+		m.visitInsn(Opcodes.ACONST_NULL);
+		m.visitMethodInsn(Opcodes.INVOKEVIRTUAL, STATE, build == GrowthBuild.VANILLA ? "is" : "canSustainPlant", "(Ljava/lang/Object;)Z", false);
+		m.visitInsn(Opcodes.POP);
+		m.visitLabel(stateEnd);
+		int north = build == GrowthBuild.FORGE_WITHOUT_REUSE ? 4 : 3;
+		m.visitVarInsn(Opcodes.ALOAD, 2);
+		m.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/lang/String", "trim", "()Ljava/lang/String;", false);
+		m.visitVarInsn(Opcodes.ASTORE, north);
+		m.visitLabel(northStart);
+		m.visitVarInsn(Opcodes.ALOAD, 1);
+		m.visitVarInsn(Opcodes.ALOAD, north);
+		m.visitMethodInsn(Opcodes.INVOKESTATIC, TARGET, "getBlockState", "(Ljava/lang/Object;Ljava/lang/String;)L" + STATE + ";", false);
+		m.visitVarInsn(Opcodes.ALOAD, 0);
+		m.visitMethodInsn(Opcodes.INVOKEVIRTUAL, STATE, "is", "(Ljava/lang/Object;)Z", false);
+		m.visitInsn(Opcodes.POP);
+		m.visitInsn(Opcodes.FCONST_1);
+		m.visitInsn(Opcodes.FRETURN);
+		m.visitLabel(end);
+		m.visitLocalVariable("p_52273_", "Ljava/lang/Object;", null, start, end, 0);
+		m.visitLocalVariable("p_52274_", "Ljava/lang/Object;", null, start, end, 1);
+		m.visitLocalVariable("p_52275_", "Ljava/lang/String;", null, start, end, 2);
+		m.visitLocalVariable("blockstate", "L" + STATE + ";", null, stateStart, stateEnd, 3);
+		m.visitLocalVariable("blockpos1", "Ljava/lang/String;", null, northStart, end, north);
+		m.visitMaxs(0, 0);
+		m.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	@Test
+	void aVariableModifierByTypeFailsWhereTheLocalIsOutOfScopeAtItsPoint() throws Exception {
+		// CORPUS-54: Balm's crop growth hook modifies, as the only local of its type, the block state at the first call of
+		// BlockState.is(Block) in CropBlock.getGrowthSpeed, vanilla's farmland check in its loop. Forge's build asks
+		// canSustainPlant there, so the first call is the one after the loop, where the state's local is gone: Mixin found
+		// no candidate, and the Forge 47 and 61 corpus servers stopped as it applied the hook.
+		Function<Integer, byte[]> mixin = ordinal -> mixin("com/example/mixin/Growth", false, cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "captureLocals", "(L" + STATE + ";)L" + STATE + ";", null, null);
+			AnnotationVisitor ann = mv.visitAnnotation(MODIFY_VARIABLE, true);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "getGrowthSpeed");
+			methods.visitEnd();
+			if (ordinal != null) ann.visit("ordinal", ordinal);
+			AnnotationVisitor at = ann.visitAnnotation("at", AT);
+			at.visit("value", "INVOKE");
+			at.visit("target", "L" + STATE + ";is(Ljava/lang/Object;)Z");
+			at.visit("ordinal", 0);
+			at.visitEnd();
+			ann.visitEnd();
+			mv.visitCode();
+			mv.visitVarInsn(Opcodes.ALOAD, 0);
+			mv.visitInsn(Opcodes.ARETURN);
+			mv.visitMaxs(1, 1);
+			mv.visitEnd();
+		});
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Growth"));
+		java.util.function.BiFunction<GrowthBuild, Integer, List<PreflightFinding>> check = (build, ordinal) -> {
+			try {
+				return preflight(new ClassIndex(Map.of(TARGET, growth(build))::get), Map.of("com/example/mixin/Growth", mixin.apply(ordinal))::get,
+						ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+			} catch (Exception e) {
+				throw new AssertionError(e);
+			}
+		};
+		List<PreflightFinding> found = check.apply(GrowthBuild.FORGE, null);
+		// Left out (a self-contained mixin, LEAVE-1), as it would stop the game otherwise.
+		assertTrue(found.stream().anyMatch(f -> f.severity() == Severity.LEFT_OUT && f.message().contains("captureLocals modifies a local of type "
+				+ STATE.replace('/', '.') + " in getGrowthSpeed" + GROWTH + " in net.minecraft.world.Thing, which that method doesn't have where its @At points are")),
+				found.toString());
+		// By an ordinal among the state locals there, the point is only skipped, which require judges.
+		List<PreflightFinding> ordinal = check.apply(GrowthBuild.FORGE, 0);
+		assertTrue(ordinal.stream().anyMatch(f -> f.message().contains("where its @At points all are")), ordinal.toString());
+		assertTrue(check.apply(GrowthBuild.VANILLA, null).isEmpty(), "vanilla's first call is the state's own, in its scope");
+		// Where nothing takes the state's slot after its scope, the slot may still hold it as Mixin builds its locals
+		// (from the last stack map frame), so pre-flight doesn't judge.
+		assertTrue(check.apply(GrowthBuild.FORGE_WITHOUT_REUSE, null).isEmpty());
+	}
+
 	/** PRE-19's game classes: vanilla's, Forge 47's, and Forge 47's with a float local of the patch's before vanilla's. */
 	private enum BreakSpeedBuild {
 		VANILLA, FORGE, FORGE_WITH_A_FLOAT_FIRST
