@@ -23,6 +23,7 @@
     "GameDataFreezeMixin": [],
     "LivingEntityFluidTravelMixin": [],
     "MappedRegistryPendingHoldersMixin": [],
+    "NamespacedWrapperEarlyWriteMixin": [],
     "NamespacedWrapperPendingHoldersMixin": [],
     "ResourcePackLoaderKnownPackMixin": [],
     "TagFileRemoveMixin": ["fabric-tag-api-v1"]

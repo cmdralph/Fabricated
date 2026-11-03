@@ -22,6 +22,8 @@ import net.fabricmc.api.DedicatedServerModInitializer;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.loader.api.entrypoint.PreLaunchEntrypoint;
+import net.minecraft.core.MappedRegistry;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraftforge.fml.ModLoadingStage;
 import net.minecraftforge.fml.ModLoadingWarning;
 import net.minecraftforge.fml.common.Mod;
@@ -129,6 +131,13 @@ public final class FabricatedMod {
 				opened.add(registry);
 			}
 		}
+		// The root registry too, which Forge keeps frozen through its registration events (its own registries are made in
+		// NewRegistryEvent): on Fabric a mod makes its registries in its main entrypoint, through Fabric API's
+		// FabricRegistryBuilder, before vanilla's freeze, which Fabric API moves after the entrypoints (CORPUS-70: Friends
+		// and Foes' entity data serializers, through Fabric API's own registry of them). The freeze after the entrypoints
+		// (BuiltInRegistriesFreeze, then Forge's) freezes those registries with the rest.
+		MappedRegistry<?> root = (MappedRegistry<?>) BuiltInRegistries.REGISTRY;
+		root.unfreeze();
 		List<EntrypointRunner.Failure> failures = new ArrayList<>();
 		boolean server = FMLLoader.getDist().isDedicatedServer();
 		if (!server) state.runtime().setGameInstance(ClientSupport.gameInstance());
@@ -143,6 +152,7 @@ public final class FabricatedMod {
 			// Each Fabric fluid family's Forge fluid type, which Forge asks every fluid for (see FabricFluidType).
 			FabricFluidType.registerAll();
 		} finally {
+			root.freeze();
 			opened.forEach(ForgeRegistry::freeze);
 		}
 		report(state, failures, "main");
