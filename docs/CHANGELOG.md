@@ -31,8 +31,11 @@ One entry per working session, newest first: what changed, and how it was verifi
     Forge's descriptor and Mixin 0.8.5 on a client. It checks that the generated mixins become ordinary ones with the
     enums' `create` factories, that Fabric ASM's config is left out, and that an unreadable early riser and a
     `silky.at` each warn while the mods still load.
-- **Docs:** CORPUS-80's row, `COMPATIBILITY.md` (what is and isn't supported of Fabric ASM), `ARCHITECTURE.md` §5,
-  `NOTICE`.
+- **CORPUS-79 evidence** (on `forge`, #261): the extended corpus client runs with `-Dmixin.dumpTargetOnFailure=true`.
+  The bytecode step prints Mixin's dump of `ScreenEffectRenderer` as it had it when ResourcefulLib's hook failed: the
+  mixins merged into it before, and the method's code and locals.
+- **Docs:** CORPUS-80's and CORPUS-79's rows, `COMPATIBILITY.md` (what is and isn't supported of Fabric ASM),
+  `ARCHITECTURE.md` §5, `NOTICE`.
 - **CI:** core build and tests pass locally (467 tests). `forge-legacy` takes the fix by the next sync, and its
   extended run verifies it on the Forge 47 corpus.
 
