@@ -2188,6 +2188,59 @@ class PipelineTest {
 		assertTrue(findings.contains("fabricated$own") && !findings.contains("renderers"), findings);
 	}
 
+	@Test
+	void aFieldThePlatformRetypedIsReachedThroughFabricatedsBridge(@TempDir Path game, @TempDir Path without) throws Exception {
+		// CORPUS-37: where Fabricated's in-game mod adds a bridge giving a retyped field's value as vanilla's type, a Fabric
+		// mod's accessor of the field invokes it; without the bridge, pre-flight refuses the accessor as before.
+		String own = "io/github/cmdralph/fabricated/forge/mixin/BridgingMixin";
+		ClassWriter bridging = new ClassWriter(0);
+		bridging.visit(Opcodes.V21, Opcodes.ACC_ABSTRACT, own, null, "java/lang/Object", null);
+		AnnotationVisitor target = bridging.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false).visitArray("value");
+		target.visit(null, Type.getObjectType(TARGET));
+		target.visitEnd();
+		bridging.visitField(Opcodes.ACC_PRIVATE, "count", "I", null, null).visitAnnotation("Lorg/spongepowered/asm/mixin/Shadow;", false).visitEnd();
+		MethodVisitor bridge = bridging.visitMethod(Opcodes.ACC_PUBLIC, "fabricated$get$count", "()J", null, null);
+		bridge.visitCode();
+		bridge.visitVarInsn(Opcodes.ALOAD, 0);
+		bridge.visitFieldInsn(Opcodes.GETFIELD, own, "count", "I");
+		bridge.visitInsn(Opcodes.I2L);
+		bridge.visitInsn(Opcodes.LRETURN);
+		bridge.visitMaxs(2, 1);
+		bridge.visitEnd();
+		bridging.visitEnd();
+		TestJars.create().text("fabricated.mixins.json", "{\"package\":\"io.github.cmdralph.fabricated.forge.mixin\",\"mixins\":[\"BridgingMixin\"]}")
+				.bytes(own + ".class", bridging.toByteArray()).write(game.resolve("fabricated.jar"));
+
+		ClassWriter accessor = new ClassWriter(0);
+		accessor.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT | Opcodes.ACC_INTERFACE, "com/count/mixin/CountAccessor", null,
+				"java/lang/Object", null);
+		AnnotationVisitor targets = accessor.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false).visitArray("value");
+		targets.visit(null, Type.getObjectType(TARGET));
+		targets.visitEnd();
+		MethodVisitor getter = accessor.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, "count$get", "()J", null, null);
+		AnnotationVisitor field = getter.visitAnnotation("Lorg/spongepowered/asm/mixin/gen/Accessor;", true);
+		field.visit("value", "count");
+		field.visitEnd();
+		getter.visitEnd();
+		accessor.visitEnd();
+		byte[] counter = TestJars.create().fabricModJson(TestJars.modJson("counter", "1.0", "\"mixins\":[\"counter.mixins.json\"]"))
+				.text("counter.mixins.json", "{\"required\":true,\"package\":\"com.count.mixin\",\"mixins\":[\"CountAccessor\"]}")
+				.bytes("com/count/mixin/CountAccessor.class", accessor.toByteArray())
+				.toBytes();
+
+		Path mod = Files.write(Files.createDirectories(game.resolve("mods")).resolve("counter.jar"), counter);
+		Pipeline.Result result = Pipeline.run(input(game, List.of(mod), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
+		Pipeline.LoadedMod loaded = result.mods().stream().filter(m -> m.translated().candidate().id().equals("counter")).findFirst()
+				.orElseThrow(() -> new AssertionError(result.report().render()));
+		String findings = loaded.translated().findings().toString();
+		assertTrue(findings.contains("fabricated$get$count") && findings.contains("CORPUS-37"), findings);
+
+		TestJars.create().text("in-game.txt", "").write(without.resolve("fabricated.jar"));
+		Path plain = Files.write(Files.createDirectories(without.resolve("mods")).resolve("counter.jar"), counter);
+		Pipeline.Result refused = Pipeline.run(input(without, List.of(plain), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
+		assertTrue(refused.mods().stream().noneMatch(m -> m.translated().candidate().id().equals("counter")), refused.report().render());
+	}
+
 	/** A mixin into {@link #TARGET} shadowing one field. */
 	private static byte[] shadowing(String name, String field, String desc) {
 		ClassWriter cw = new ClassWriter(0);
