@@ -20,7 +20,8 @@
     "BlockItemEarlyBlockMixin",
     "LiquidBlockEarlyFluidMixin",
     "RecordItemEarlySoundMixin",
-    "PotionBrewingMixBridgeMixin"
+    "PotionBrewingMixBridgeMixin",
+    "MobBucketItemBridgeMixin"
   ],
   "client": [
     "ParticleEngineProvidersBridgeMixin"

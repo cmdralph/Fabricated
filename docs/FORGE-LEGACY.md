@@ -289,12 +289,13 @@ What else differs on Forge, for Fabric mods in general:
   from the method with its frames expanded, which Mixin counts as with its `CLASSREADER_EXPAND_FRAMES` option, and logs
   the method. Every other method, and every class no Fabric mod's mixin targets, stays as Mixin recorded it. The test
   mod takes a local so (all five, server run; Forge 47's Mixin counts it right without the repair).
-- **Fields Forge 47 retyped:** a Fabric mod's accessor of a field Forge 47 gave another type (a brewing mix's `from` and
-  `to`, holders there; the particle engine's providers, kept by id there) invokes a getter the in-game mod adds, which
-  gives vanilla's type: the holder's value, and a view by raw id of Forge's map (CORPUS-37: Porting Lib's accessors,
-  and with them its extensions and Farmer's Delight's entrypoint, failed pre-flight). The test mod reads a mix's
-  potions so on the server and the providers on the client. An accessor of another retyped field still fails
-  pre-flight.
+- **Fields Forge 47 retyped or replaced:** a Fabric mod's accessor of a field Forge 47 gave another type (a brewing
+  mix's `from` and `to`, holders there; the particle engine's providers, kept by id there) or replaced (a mob bucket's
+  entity type, a supplier there) invokes a getter the in-game mod adds, which gives vanilla's type: the holder's value,
+  a view by raw id of Forge's map, and the bucket's `getFishType` (CORPUS-37: Porting Lib's accessors, and with them its
+  extensions and Farmer's Delight's entrypoint, failed pre-flight; CORPUS-94: Supplementaries' bucket accessor stopped
+  the corpus server's data reload). The test mod reads a mix's potions and the pufferfish bucket's type so on the
+  server and the providers on the client. An accessor of another such field still fails pre-flight.
 - **Forge Config API Port** on Forge 61 to 66: its Fabric build loads, with its own copies of NeoForge's config
   classes, which Forge lacks (REPL-1, PLAT-5). On Forge 47 its version for 1.20.1 copies Forge's own config system,
   packages included, so its copies were left out for Forge's and its registry failed to link (Ponder's main
