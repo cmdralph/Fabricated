@@ -1,10 +1,13 @@
 package io.github.cmdralph.fabricated.core.mixin;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -14,12 +17,14 @@ import java.util.TreeSet;
 import java.util.function.BiFunction;
 
 import io.github.cmdralph.fabricated.core.bytecode.Annotations;
+import io.github.cmdralph.fabricated.core.bytecode.ClassIndex;
 import io.github.cmdralph.fabricated.core.bytecode.InstalledClasses;
 import io.github.cmdralph.fabricated.core.mixin.PreflightFinding.Severity;
 import io.github.cmdralph.fabricated.core.mixin.MixinPreflight.Context;
 
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassWriter;
+import org.objectweb.asm.Handle;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.AbstractInsnNode;
@@ -31,6 +36,7 @@ import org.objectweb.asm.tree.FrameNode;
 import org.objectweb.asm.tree.InnerClassNode;
 import org.objectweb.asm.tree.InsnList;
 import org.objectweb.asm.tree.InsnNode;
+import org.objectweb.asm.tree.InvokeDynamicInsnNode;
 import org.objectweb.asm.tree.JumpInsnNode;
 import org.objectweb.asm.tree.LabelNode;
 import org.objectweb.asm.tree.LdcInsnNode;
@@ -107,6 +113,15 @@ final class MixinRepairs extends PreflightPart {
 				// Not a game class's: only the injection points are made single.
 				if (changed) repaired.put(internal + ".class", write(node));
 				continue;
+			}
+			for (MethodNode method : List.copyOf(node.methods)) {
+				MemberRef inherited = inheritedShadowRepair(node, method, targets, ctx);
+				if (inherited == null) continue;
+				changed = true;
+				out.add(new PreflightFinding(Severity.INFO, configName, ctx.mixinDotted(), "@Shadow method " + inherited.name() + inherited.desc()
+						+ " is one " + targets.get(0).name.replace('/', '.') + " inherits from " + inherited.owner().replace('/', '.') + ", and "
+						+ loader + "'s Mixin finds a @Shadow method only among the target's own; the shadow is dropped, so the mixin's calls of "
+						+ "it reach the inherited method (CORPUS-84)", ""));
 			}
 			List<MethodNode> bridges = new ArrayList<>();
 			List<MethodNode> kept = new ArrayList<>();
@@ -323,6 +338,8 @@ final class MixinRepairs extends PreflightPart {
 					(s, pinned) -> s.named() + " targets " + pinned + ", one of several methods of that name in this game build; it is pinned to that one,"
 							+ " as a mixin replacing it (@Overwrite, which Mixin adds after the others) would leave the injector on another"),
 			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> calls.vanillaPointRepairs(s.mixin(), s.handler(), s.injector(), s.target(), s.ctx(), s.bridges()),
+					(s, moved) -> s.named() + " expects " + moved),
+			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> calls.movedCallRepairs(s.mixin(), s.handler(), s.injector(), s.target(), s.ctx()),
 					(s, moved) -> s.named() + " expects " + moved),
 			RepairStep.stopIfMoved(),
 			RepairStep.warn(RepairScope.ONE_TARGET_UNGROUPED, s -> locals.vanillaLocalRepairs(s.handler(), s.injector(), s.target(), s.ctx()),
@@ -647,6 +664,113 @@ final class MixinRepairs extends PreflightPart {
 		field.access = declared.access;
 		field.signature = declared.signature;
 		return first;
+	}
+
+	/**
+	 * Drops a class mixin's {@code @Shadow} of an instance method a target inherits but doesn't declare (CORPUS-84). Mixin
+	 * finds a shadowed method only among the target's own ({@code TargetClassContext.findMethod}) and rejects the mixin
+	 * otherwise, where Fabric's game declares the method in the class: Forge 47 moves
+	 * {@code MultiPartBakedModel.getQuads(BlockState, Direction, RandomSource)} into the default method of the
+	 * {@code IDynamicBakedModel} it makes the model implement, which calls the model's own {@code getQuads} with no model
+	 * data and every render type, as vanilla's does. MoreCulling's {@code MultipartBakedModel_cacheMixin} shadows it, and
+	 * the Forge 47 corpus client stopped baking its models. Without the shadow, the mixin's calls of it name the target
+	 * once Mixin merges them, and the JVM's method resolution finds the inherited method, as it finds the target's own on
+	 * Fabric. Only where the shadow names no other method (aliases, a remapped name), each target declares the method or
+	 * inherits it as an instance method that isn't private (public or protected in a superclass), every use of the shadow
+	 * in the mixin is virtual (an {@code invokespecial} of a private shadow would skip the overrides of the method it
+	 * reaches now), and a prefixed shadow has no nested class whose uses would keep the prefix. Returns the method
+	 * inherited, by its owner, name and descriptor (the first target's), or {@code null} and changes nothing.
+	 */
+	MemberRef inheritedShadowRepair(ClassNode mixin, MethodNode method, List<ClassNode> targets, Context ctx) {
+		if ((mixin.access & Opcodes.ACC_INTERFACE) != 0 || (method.access & Opcodes.ACC_STATIC) != 0 || method.name.startsWith("<")) return null;
+		AnnotationNode shadow = Annotations.find(method, MixinNames.SHADOW);
+		if (shadow == null || targets.isEmpty()) return null;
+		if (Annotations.value(shadow, "aliases") instanceof List<?> aliases && !aliases.isEmpty()) return null;
+		String prefix = Annotations.value(shadow, "prefix") instanceof String p ? p : "shadow$";
+		String name = method.name.startsWith(prefix) ? method.name.substring(prefix.length()) : method.name;
+		MemberRef ref = MemberRef.parse(ctx.resolve(name));
+		if (!ref.nameOr(name).equals(name) || !ref.methodDescOr(method.desc).equals(method.desc)) return null;
+		String from = null;
+		for (ClassNode target : targets) {
+			MethodNode own = PreflightAsm.declared(target, name, method.desc);
+			if (own != null) {
+				if ((own.access & Opcodes.ACC_STATIC) != 0) return null;
+				continue;
+			}
+			String owner = inheritedFrom(target, name + method.desc);
+			if (owner == null) return null;
+			if (from == null) from = owner;
+		}
+		if (from == null) return null;
+		boolean prefixed = !name.equals(method.name);
+		if (prefixed && mixin.innerClasses.stream().anyMatch(c -> c.name.startsWith(mixin.name + "$"))) return null;
+		List<Runnable> renames = new ArrayList<>();
+		for (MethodNode m : mixin.methods) {
+			if (m == method || m.instructions == null) continue;
+			for (AbstractInsnNode insn : m.instructions) {
+				if (insn instanceof MethodInsnNode call && call.owner.equals(mixin.name) && call.name.equals(method.name) && call.desc.equals(method.desc)) {
+					if (call.getOpcode() != Opcodes.INVOKEVIRTUAL) return null;
+					renames.add(() -> call.name = name);
+				} else if (insn instanceof InvokeDynamicInsnNode indy) {
+					for (int i = 0; i < indy.bsmArgs.length; i++) {
+						if (!(indy.bsmArgs[i] instanceof Handle handle) || !names(handle, mixin, method)) continue;
+						if (handle.getTag() != Opcodes.H_INVOKEVIRTUAL) return null;
+						Object[] args = indy.bsmArgs;
+						int at = i;
+						renames.add(() -> args[at] = new Handle(handle.getTag(), handle.getOwner(), name, handle.getDesc(), handle.isInterface()));
+					}
+				} else if (insn instanceof LdcInsnNode ldc && ldc.cst instanceof Handle handle && names(handle, mixin, method)) {
+					if (handle.getTag() != Opcodes.H_INVOKEVIRTUAL) return null;
+					renames.add(() -> ldc.cst = new Handle(handle.getTag(), handle.getOwner(), name, handle.getDesc(), handle.isInterface()));
+				}
+			}
+		}
+		if (prefixed) renames.forEach(Runnable::run);
+		mixin.methods.remove(method);
+		return new MemberRef(from, name, method.desc, false);
+	}
+
+	/** Whether a method handle names this method of the mixin. */
+	private static boolean names(Handle handle, ClassNode mixin, MethodNode method) {
+		return handle.getOwner().equals(mixin.name) && handle.getName().equals(method.name) && handle.getDesc().equals(method.desc);
+	}
+
+	/**
+	 * The supertype of {@code target} whose method {@code nameAndDesc} a call naming the target resolves to, as the JVM
+	 * resolves it (the superclasses, the nearest first; then the superinterfaces, a default method before an abstract
+	 * one), where that is an instance method that isn't private, and public or protected in a class; null where there is
+	 * none, or where a supertype on the way is one pre-flight has no bytes of.
+	 */
+	private String inheritedFrom(ClassNode target, String nameAndDesc) {
+		Set<String> interfaces = new LinkedHashSet<>(target.interfaces);
+		for (String name = target.superName; name != null; ) {
+			ClassIndex.ClassInfo info = game.get(name);
+			if (info == null) return null;
+			Integer access = info.methodAccess(nameAndDesc);
+			if (access != null) {
+				// The nearest superclass declaring it is the one resolved, whatever its access.
+				boolean usable = (access & (Opcodes.ACC_STATIC | Opcodes.ACC_PRIVATE)) == 0 && (access & (Opcodes.ACC_PUBLIC | Opcodes.ACC_PROTECTED)) != 0;
+				return usable ? name : null;
+			}
+			interfaces.addAll(info.interfaces());
+			name = info.superName();
+		}
+		Deque<String> queue = new ArrayDeque<>(interfaces);
+		Set<String> seen = new HashSet<>();
+		String declaring = null;
+		while (!queue.isEmpty()) {
+			String name = queue.poll();
+			if (!seen.add(name)) continue;
+			ClassIndex.ClassInfo info = game.get(name);
+			if (info == null) return null;
+			Integer access = info.methodAccess(nameAndDesc);
+			if (access != null && (access & (Opcodes.ACC_STATIC | Opcodes.ACC_PRIVATE)) == 0) {
+				if ((access & Opcodes.ACC_ABSTRACT) == 0) return name;
+				if (declaring == null) declaring = name;
+			}
+			queue.addAll(info.interfaces());
+		}
+		return declaring;
 	}
 
 	/** {@code @Shadow}, {@code @Final} and {@code @Mutable}: what Mixin reads on a shadow field. */

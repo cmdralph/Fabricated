@@ -65,7 +65,7 @@ final class EnumExtensions {
 	private static final String NAME_AND_ORDINAL = "(Ljava/lang/String;I";
 	/** What javac gives an enum besides its constants, by name; {@link #enumMethod} checks their descriptors. */
 	private static final Set<String> ENUM_METHODS = Set.of("<clinit>", "<init>", "values", "valueOf", "$values");
-	private static final Object NOT_CONSTANT = new Object();
+	static final Object NOT_CONSTANT = new Object();
 
 	/** The descriptor of the method NeoForge's loader calls for each argument of a constant (its index, its type). */
 	static final String ARGUMENTS_METHOD = "(ILjava/lang/Class;)Ljava/lang/Object;";

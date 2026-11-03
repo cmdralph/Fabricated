@@ -4,7 +4,7 @@
   "package": "io.github.cmdralph.fabricated.forge.mixin",
   "plugin": "io.github.cmdralph.fabricated.forge.FabricatedMixinPlugin",
   "compatibilityLevel": "JAVA_21",
-  "mixins": ["DefaultAttributeCopyMixin", "FluidTypeMixin", "LivingEntityFluidTravelMixin", "MappedRegistryPendingHoldersMixin", "NamespacedWrapperPendingHoldersMixin", "NamespacedWrapperEarlyWriteMixin", "NamespacedWrapperAliasMixin", "BuiltInRegistriesFreezeMixin", "BuiltInRegistriesInvoker", "GameDataFreezeMixin", "TagFileRemoveMixin", "IngredientOptionalCodecMixin", "ForgePayloadEncodeMixin", "ResourcePackLoaderKnownPackMixin", "BucketItemEarlyFluidMixin"],
+  "mixins": ["DefaultAttributeCopyMixin", "FluidTypeMixin", "LivingEntityFluidTravelMixin", "MappedRegistryPendingHoldersMixin", "NamespacedWrapperPendingHoldersMixin", "NamespacedWrapperEarlyWriteMixin", "NamespacedWrapperAliasMixin", "BuiltInRegistriesFreezeMixin", "BuiltInRegistriesInvoker", "GameDataFreezeMixin", "TagFileRemoveMixin", "IngredientNetworkCodecMixin", "ForgePayloadEncodeMixin", "ResourcePackLoaderKnownPackMixin", "BucketItemEarlyFluidMixin"],
   "injectors": {
     "defaultRequire": 1
   }

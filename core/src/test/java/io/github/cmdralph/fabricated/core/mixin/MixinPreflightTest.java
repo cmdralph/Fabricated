@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
@@ -20,6 +21,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.objectweb.asm.AnnotationVisitor;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassWriter;
@@ -47,6 +49,7 @@ import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
 import io.github.cmdralph.fabricated.core.bytecode.ClassIndex;
 import io.github.cmdralph.fabricated.core.bytecode.InstalledClasses;
 import io.github.cmdralph.fabricated.core.mixin.PreflightFinding.Severity;
+import io.github.cmdralph.fabricated.core.testutil.TestSources;
 
 class MixinPreflightTest {
 	private static final String TARGET = "net/minecraft/world/Thing";
@@ -271,6 +274,103 @@ class MixinPreflightTest {
 		assertEquals(1, fabric.size(), fabric.toString());
 		assertEquals(Severity.INFO, fabric.getFirst().severity());
 		assertTrue(fabric.getFirst().message().contains("adds it, so it was not verified"), fabric.getFirst().message());
+	}
+
+	/**
+	 * CORPUS-84: MoreCulling's mixin into {@code MultiPartBakedModel} shadows {@code getQuads(BlockState, Direction,
+	 * RandomSource)}, which Forge 47 moves into the default method of {@code IDynamicBakedModel}, the interface it makes the
+	 * model implement. Mixin finds a shadowed method only among the target's own, and stopped the corpus client; pre-flight
+	 * looked it up through the supertypes and let it by. The shadow is dropped (a prefixed one's calls take the method's
+	 * name), and the mixin's calls of it, which Mixin points at the target, reach the default method. Where a use isn't
+	 * virtual (an {@code invokespecial}) nothing changes, and pre-flight fails the mixin as Mixin would. A shadow of a
+	 * method the target declares (vanilla's model, as on Fabric) is left as it is.
+	 */
+	@Test
+	void aShadowOfAMethodTheTargetOnlyInheritsIsDroppedForTheInheritedOne() throws Exception {
+		String target = "net/minecraft/client/resources/model/MultiPartBakedModel";
+		String dynamic = "net/minecraftforge/client/model/IDynamicBakedModel";
+		String quads = "(Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/core/Direction;Lnet/minecraft/util/RandomSource;)Ljava/util/List;";
+		ClassWriter iw = new ClassWriter(0);
+		iw.visit(Opcodes.V17, Opcodes.ACC_PUBLIC | Opcodes.ACC_INTERFACE | Opcodes.ACC_ABSTRACT, dynamic, null, "java/lang/Object", null);
+		MethodVisitor fallback = iw.visitMethod(Opcodes.ACC_PUBLIC, "m_213637_", quads, null, null);
+		fallback.visitCode();
+		fallback.visitInsn(Opcodes.ACONST_NULL);
+		fallback.visitInsn(Opcodes.ARETURN);
+		fallback.visitMaxs(1, 4);
+		fallback.visitEnd();
+		iw.visitEnd();
+		Function<Boolean, byte[]> model = declares -> {
+			ClassWriter tw = new ClassWriter(0);
+			tw.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, target, null, "java/lang/Object", declares ? null : new String[] {dynamic});
+			if (declares) tw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, "m_213637_", quads, null, null).visitEnd();
+			tw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, "getSelectors", "()Ljava/util/BitSet;", null, null).visitEnd();
+			tw.visitEnd();
+			return tw.toByteArray();
+		};
+		String culling = "com/example/mixin/Culling";
+		// @Shadow public abstract List getQuads(...) (prefixed or not), and a method calling it with the given opcode.
+		BiFunction<String, Integer, byte[]> mixin = (shadowName, call) -> {
+			ClassWriter cw = new ClassWriter(0);
+			cw.visit(Opcodes.V17, Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, culling, null, "java/lang/Object", null);
+			AnnotationVisitor m = cw.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false);
+			AnnotationVisitor values = m.visitArray("value");
+			values.visit(null, Type.getObjectType(target));
+			values.visitEnd();
+			m.visitEnd();
+			MethodVisitor shadow = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, shadowName, quads, null, null);
+			shadow.visitAnnotation(SHADOW, true).visitEnd();
+			shadow.visitEnd();
+			MethodVisitor reset = cw.visitMethod(Opcodes.ACC_PUBLIC, "resetTranslucencyCache", "()Z", null, null);
+			reset.visitCode();
+			reset.visitVarInsn(Opcodes.ALOAD, 0);
+			reset.visitInsn(Opcodes.ACONST_NULL);
+			reset.visitInsn(Opcodes.ACONST_NULL);
+			reset.visitInsn(Opcodes.ACONST_NULL);
+			reset.visitMethodInsn(call, culling, shadowName, quads, false);
+			reset.visitMethodInsn(Opcodes.INVOKEINTERFACE, "java/util/List", "isEmpty", "()Z", true);
+			reset.visitInsn(Opcodes.IRETURN);
+			reset.visitMaxs(4, 1);
+			reset.visitEnd();
+			cw.visitEnd();
+			return cw.toByteArray();
+		};
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Culling"));
+		BiFunction<Boolean, byte[], MixinPreflight> preflight = (declares, culled) -> new MixinPreflight(
+				new ClassIndex(Map.of(target, model.apply(declares), dynamic, iw.toByteArray())::get), InstalledClasses.NONE,
+				Map.of(culling, culled)::get, ClassBytesSource.EMPTY, true, true, ClassBytesSource.EMPTY, "Forge");
+
+		// Forge 47: the shadow is dropped, its call left as it was (Mixin points it at the target); nothing left to judge.
+		for (String shadowName : List.of("m_213637_", "shadow$m_213637_")) {
+			byte[] culled = mixin.apply(shadowName, Opcodes.INVOKEVIRTUAL);
+			List<PreflightFinding> notes = new ArrayList<>();
+			Map<String, byte[]> repaired = preflight.apply(false, culled).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
+			assertEquals(Set.of(culling + ".class"), repaired.keySet(), notes.toString());
+			assertEquals(1, notes.size(), notes.toString());
+			assertEquals(Severity.INFO, notes.getFirst().severity());
+			assertTrue(notes.getFirst().message().contains("@Shadow method m_213637_" + quads + " is one " + target.replace('/', '.')
+					+ " inherits from " + dynamic.replace('/', '.')), notes.getFirst().message());
+			ClassNode node = new ClassNode();
+			new ClassReader(repaired.get(culling + ".class")).accept(node, 0);
+			assertEquals(List.of("resetTranslucencyCache"), node.methods.stream().map(method -> method.name).toList());
+			MethodInsnNode use = (MethodInsnNode) java.util.Arrays.stream(node.methods.getFirst().instructions.toArray())
+					.filter(i -> i.getOpcode() == Opcodes.INVOKEVIRTUAL).findFirst().orElseThrow();
+			assertEquals(culling + ".m_213637_" + quads, use.owner + "." + use.name + use.desc, shadowName);
+			assertTrue(preflight.apply(false, repaired.get(culling + ".class")).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty());
+		}
+
+		// Forge 47, a use that isn't virtual: nothing changes, and the mixin fails as Mixin would make it.
+		byte[] special = mixin.apply("m_213637_", Opcodes.INVOKESPECIAL);
+		assertTrue(preflight.apply(false, special).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty());
+		List<PreflightFinding> failed = preflight.apply(false, special).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertEquals(1, failed.size(), failed.toString());
+		assertEquals(Severity.LEFT_OUT, failed.getFirst().severity(), "a mixin nothing else uses is left out");
+		assertTrue(failed.getFirst().message().contains("is not declared in " + target.replace('/', '.') + ", which inherits it, and Mixin "
+				+ "finds a @Shadow method only among the target's own methods"), failed.getFirst().message());
+
+		// The model declaring the method (vanilla's, as on Fabric): left as it is, and nothing to judge.
+		byte[] vanilla = mixin.apply("m_213637_", Opcodes.INVOKEVIRTUAL);
+		assertTrue(preflight.apply(true, vanilla).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty());
+		assertTrue(preflight.apply(true, vanilla).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty());
 	}
 
 	/**
@@ -5815,6 +5915,98 @@ class MixinPreflightTest {
 		// A default method of the game's own isn't taken for NeoForge's.
 		ClassIndex vanilla = new ClassIndex(game.apply("net/minecraft/world/ThingExtension")::get);
 		assertTrue(preflight(vanilla, Map.of("com/example/mixin/Explosions", original)::get, ClassBytesSource.EMPTY, false)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty());
+	}
+
+	/**
+	 * The game class's {@code tick} as Forge 47's {@code ServerPlayerGameMode.destroyBlock}, {@code helper} as vanilla's
+	 * {@code playerWillDestroy}: vanilla calls it, then {@code remove} and {@code destroyed}, after the restriction check
+	 * and before the creative branch; Forge's patch adds a check looking like it ({@code startBreak}) and moves the three
+	 * calls into a {@code removeBlock} of its own, called in each branch, which reaches {@code helper} through its
+	 * extension's {@code onDestroyed}. With {@code damageFirst} the patch damages the tool before the creative branch;
+	 * without {@code reaches}, the extension doesn't call {@code helper}.
+	 */
+	private static Map<String, byte[]> destroyingThing(Path dir, boolean patched, boolean damageFirst, boolean reaches) throws Exception {
+		String members = "Thing level; Thing player;"
+				+ " public boolean restricted(Thing level, Thing player) { return false; }"
+				+ " public boolean startBreak(Thing level, Thing player) { return false; }"
+				+ " public boolean creative() { return false; }"
+				+ " public void helper(Thing level, Thing player) { }"
+				+ " public boolean remove(boolean drop) { return true; }"
+				+ " public void destroyed() { }"
+				+ " public void damage() { }";
+		String vanilla = "package net.minecraft.world; public class Thing { " + members
+				+ " public boolean tick() {"
+				+ "   if (this.restricted(this.level, this.player)) { return false; } else {"
+				+ "     this.helper(this.level, this.player);"
+				+ "     boolean removed = this.remove(false);"
+				+ "     if (removed) { this.destroyed(); }"
+				+ "     if (this.creative()) { return true; } else { this.damage(); return true; } } } }";
+		String forge = "package net.minecraft.world; public class Thing implements net.minecraftforge.common.IThingExtension { " + members
+				+ " public boolean tick() {"
+				+ "   if (this.startBreak(this.level, this.player)) { return false; }"
+				+ "   else if (this.restricted(this.level, this.player)) { return false; } else {"
+				+ (damageFirst ? " this.damage();" : "")
+				+ "     if (this.creative()) { this.removeBlock(false); return true; }"
+				+ "     else { " + (damageFirst ? "" : "this.damage(); ") + "boolean removed = this.removeBlock(true); return removed || true; } } }"
+				+ " private boolean removeBlock(boolean drop) {"
+				+ "   boolean removed = this.onDestroyed(this.level, this.player, drop);"
+				+ "   if (removed) { this.destroyed(); }"
+				+ "   return removed; } }";
+		String extension = "package net.minecraftforge.common; import net.minecraft.world.Thing; public interface IThingExtension {"
+				+ " private Thing self() { return (Thing) this; }"
+				+ " default boolean onDestroyed(Thing level, Thing player, boolean drop) {"
+				+ (reaches ? " self().helper(level, player);" : "")
+				+ "   return self().remove(drop); } }";
+		return patched
+				? TestSources.compile(dir, Map.of("net/minecraft/world/Thing.java", forge, "net/minecraftforge/common/IThingExtension.java", extension))
+				: TestSources.compile(dir, Map.of("net/minecraft/world/Thing.java", vanilla));
+	}
+
+	@Test
+	void anInjectionAtACallThePatchMovedIntoAMethodOfItsOwnStaysAtVanillasPlace(@TempDir Path dir) throws Exception {
+		// CORPUS-72: Magna's hammers break their area from an @Inject at ServerPlayerGameMode.destroyBlock's
+		// playerWillDestroy, cancelling the break; Forge 47's patch moved that call into a removeBlock of its own, called in
+		// the creative and the survival branch (after the tool's damage there). The hook stays before the creative branch.
+		String thing = "L" + TARGET + ";";
+		Map<String, byte[]> vanilla = destroyingThing(dir.resolve("vanilla"), false, false, true);
+		Function<Map<String, byte[]>, ClassIndex> index = classes -> new ClassIndex(classes::get);
+		byte[] original = mixin("com/example/mixin/Breaks", false, cw -> atHelperCall(cw, INJECT, "inject",
+				"(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;)V", "(" + thing + thing + ")V", mv -> {
+					mv.visitInsn(Opcodes.RETURN);
+					mv.visitMaxs(0, 2);
+					mv.visitEnd();
+				}));
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Breaks"));
+		ClassIndex forge = index.apply(destroyingThing(dir.resolve("forge"), true, false, true));
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Breaks", original));
+		assertEquals(1, preflight(forge, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).size(),
+				"the call isn't in the patched method");
+
+		List<PreflightFinding> notes = new ArrayList<>();
+		Map<String, byte[]> repaired = new MixinPreflight(forge, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, vanilla::get)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
+		assertEquals(1, notes.size(), notes.toString());
+		assertTrue(notes.getFirst().message().contains("'s patch moved out of this method into " + TARGET.replace('/', '.') + ".removeBlock(Z)Z")
+				&& notes.getFirst().message().contains("before the call of " + TARGET.replace('/', '.') + ".creative()Z after it"), notes.toString());
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired.get("com/example/mixin/Breaks.class")).accept(node, 0);
+		MethodNode handler = node.methods.stream().filter(m -> m.name.equals("inject")).findFirst().orElseThrow();
+		AnnotationNode at = Annotations.list(Annotations.value(Annotations.find(handler, INJECT), "at")).getFirst();
+		assertEquals(thing + "creative()Z", Annotations.value(at, "target"));
+		mod.put("com/example/mixin/Breaks", repaired.get("com/example/mixin/Breaks.class"));
+		assertTrue(preflight(forge, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty());
+
+		Map<String, byte[]> unrepaired = Map.of("com/example/mixin/Breaks", original);
+		// Without vanilla's code, its place can't be told.
+		assertTrue(preflight(forge, unrepaired::get, ClassBytesSource.EMPTY, false).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty());
+		// The patch damaging the tool before the creative branch: before that call isn't vanilla's place.
+		ClassIndex damaging = index.apply(destroyingThing(dir.resolve("damaging"), true, true, true));
+		assertTrue(new MixinPreflight(damaging, InstalledClasses.NONE, unrepaired::get, ClassBytesSource.EMPTY, false, true, vanilla::get)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty());
+		// The patch taking the call out rather than moving it: the hook would run for a call never made.
+		ClassIndex removing = index.apply(destroyingThing(dir.resolve("removing"), true, false, false));
+		assertTrue(new MixinPreflight(removing, InstalledClasses.NONE, unrepaired::get, ClassBytesSource.EMPTY, false, true, vanilla::get)
 				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty());
 	}
 

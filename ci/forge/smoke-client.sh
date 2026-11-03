@@ -100,7 +100,7 @@ for attempt in 1 2; do
 	rm -rf run/logs run/crash-reports client.out stop-reason.txt thread-dump.txt
 	export SDL_VIDEO_FORCE_EGL=1 SDL_VIDEO_X11_FORCE_EGL=1
 	timeout "$timeout_seconds" xvfb-run -a -s "-screen 0 1280x720x24 +extension GLX +render -noreset" java -Dhmc.check.xvfb=true -jar hmc.jar \
-		--command launch "${mc}-forge" -regex --jvm "-Djava.awt.headless=true -DMcRuntimeGameTest=false" \
+		--command launch "${mc}-forge" -regex --jvm "-Djava.awt.headless=true -DMcRuntimeGameTest=false${SMOKE_JVM_ARGS:+ $SMOKE_JVM_ARGS}" \
 		> client.out 2>&1 &
 	client_pid=$!
 	descendants() {

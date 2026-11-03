@@ -1093,14 +1093,39 @@ MixinExtras has NeoForge's jar, and a NeoForge mod nested in another jar has tha
   initializer that makes the constants with the enum's constructor and appends them to its values, as mods' own NeoForge
   builds do (ENUM-5). A body overriding the method the enum forwards to a delegate (`GrassColorModifier`'s
   `ColorModifier`, which Wilder Wild's tundra grass colour overrides) becomes a delegate class running it. Code that
-  branches or uses the mixin isn't moved, nor constants the mod's classes read as fields of the enum; such a mixin still
-  disables its mod. UNVERIFIED in the game.
+  branches or uses the mixin isn't moved; such a mixin still disables its mod. A mixin can't add the constants as
+  fields of the enum, so the mod's classes that read them so read them from a holder class generated next to its
+  mixins, which takes them from the enum's values by name (CORPUS-80: Farmer's Delight's recipe book type). Another
+  mod reading them as fields still finds none. UNVERIFIED in the game.
 - Where the running Mixin is older than 0.17.1, which applies enum mixins (NeoForge 21.1 and 21.11, and Forge), an
   enum mixin into any other enum becomes such an ordinary mixin too (ENUM-7: Friends and Foes' mob categories, read
   with `valueOf`); one that can't disables its mod, with the reason, where Mixin would stop the game on it. Into an
   enum Forge makes extensible (`MobCategory`), it makes the constants with the enum's own `create` factories, as
   Forge mods do, at the end of the enum's class initializer, once the map by name each factory registers its constant
-  in is set.
+  in is set. The enum's `init`, which each factory runs on the constant it makes, runs for the mod's constants only
+  where it keeps to the enum, as `MobCategory`'s, which fills the map its codec reads. Fabric gives them no such hook,
+  so the mixin skips it where it can't return (Forge 61 to 66's `RecipeBookType`, whose `init` throws "This is not
+  implemented yet") or reaches another class (Forge 47's `RecipeBookType`, whose `init` runs `RecipeBookSettings`'
+  class initializer early, before Farmer's Delight's mixin there can read its type; the mod adds its tags itself).
+- Fabric ASM (Manningham Mills, mod id `mm`) adds enum constants that mods declare in their `mm:early_risers`, with
+  `ClassTinkerers.enumBuilder(...).addEnum(...).build()`. Its Mixin plugin runs those early risers and serves the
+  mixins it makes from Fabric's class loader. NeoForge's and Forge's class loaders take no added classes, so Mixin
+  dropped the plugin's config, the constants were never made, and the mod failed where it looked them up
+  (`ClassTinkerers.getEnum`). This happened to Farmer's Delight's recipe book types on Forge 47 (CORPUS-80).
+  - **What Fabricated does instead:** it leaves Fabric ASM's config out and reads those calls from the early
+    risers' code, without running it. It then adds the constants with enum mixins of its own, in a config it
+    generates. Those mixins go the way the platform takes enum mixins above: NeoForge's enum extension file, or an
+    ordinary mixin.
+  - **What it reads:** strings, class literals, the primitive classes, boxed constants and arrays of them,
+    `mapClassName` from intermediary names, string joins, and the side, whose branches it follows for this side.
+  - **Arguments:** given as constants, or by a supplier. The supplier is one a static method of the mod returns, or
+    a lambda capturing nothing. It runs as the enum is initialized, once per constant, as Fabric ASM's does, and an
+    array of the wrong length fails with Fabric ASM's `IllegalArgumentException`.
+  - **Not supported:** an early riser doing anything else adds nothing, and its mod gets a warning naming what
+    wasn't read. That includes subclassed constants (`addEnumSubclass`), `ASM` `Type` parameters, and Fabric ASM's
+    other tools: class definitions, transformations, replacements and added URLs. Its access transformer
+    (`silky.at`) isn't applied either; a mod shipping one gets a warning.
+  - UNVERIFIED in the game.
 - An `@Intrinsic` method of a class mixin that only calls the superclass's method (Lithium's `setCachedState` of the
   chest, there for its `@Inject` to have a method to inject into) is dropped where the target already declares that
   method, as Forge 47's chest does: Mixin would reject the mixin, and the target's own method is what `@Intrinsic`
@@ -1116,6 +1141,12 @@ MixinExtras has NeoForge's jar, and a NeoForge mod nested in another jar has tha
   field, and Mixin merges the two into one field, which both mods' code uses, as on Fabric (CORPUS-74). One that can't
   be declared so (a static shadow of an instance field, or a writable shadow of a final one) disables its mod, or leaves
   the mixin out where it can.
+- Mixin finds a `@Shadow` method only among its target class's own methods, on every platform, and rejects the mixin
+  otherwise. Where the platform moves a method vanilla declares into a supertype, a mixin's shadow of it is dropped and
+  the mixin's calls of it reach the inherited method: Forge 47 moves `MultiPartBakedModel`'s `getQuads` into the default
+  method of its `IDynamicBakedModel`, which MoreCulling shadows, and the Forge 47 client stopped baking its models
+  (CORPUS-84). Only where every use of the shadow is a virtual call and the inherited method is an instance method that
+  isn't private; otherwise the mod is disabled, or the mixin left out where it can.
 - Config screens a Fabric mod offers to Mod Menu (its `modmenu` entrypoint) open from the Config button of NeoForge's
   mod list. Mod Menu's API interfaces are provided, so such mods load without Mod Menu, which itself can't run on
   NeoForge (it would duplicate NeoForge's mod list): an installed Mod Menu jar is skipped and provided at its version.

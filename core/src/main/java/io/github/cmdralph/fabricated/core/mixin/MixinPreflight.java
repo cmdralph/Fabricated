@@ -849,16 +849,23 @@ public final class MixinPreflight extends PreflightPart {
 				MemberRef ref = MemberRef.parse(ctx.resolve(name));
 				String methodName = ref.nameOr(name);
 				String desc = ref.methodDescOr(method.desc);
-				if (game.resolveMethod(target.name, methodName + desc) == ClassIndex.Resolution.MISSING
-						&& !aliasExists(shadow, target, desc, false)) {
+				// Mixin looks for a shadowed method in the target class itself, not its supertypes (CORPUS-84); repairs drop the
+				// shadow of one the target inherits where they can (MixinRepairs.inheritedShadowRepair).
+				if (!PreflightAsm.declares(target, methodName, desc) && !aliasDeclared(shadow, target, desc)) {
 					InstalledClasses.AddedMember added = addedByInstalledMixin(target.name, methodName, desc, false);
+					ClassIndex.Resolution inherited = game.resolveMethod(target.name, methodName + desc);
 					if (added != null) {
 						ctx.info("@Shadow method " + methodName + " is not in " + targetDotted + "; " + addedBy(added) + " adds it, so it was not verified");
 					} else if (addedByAMixin(methodName)) {
 						ctx.info("@Shadow method " + methodName + " is not in " + targetDotted + "; another mod's mixin may add it, so it was not verified");
-					} else {
+					} else if (inherited == ClassIndex.Resolution.MISSING) {
 						ctx.classLevel("@Shadow method " + methodName + desc + " does not exist in " + targetDotted,
 								ctx.changer(true) + " changed " + targetDotted + "; the mod needs an update.");
+					} else {
+						ctx.classLevel("@Shadow method " + methodName + desc + " is not declared in " + targetDotted + (inherited == ClassIndex.Resolution.FOUND
+										? ", which inherits it," : " (a supertype pre-flight can't read may have it),")
+										+ " and Mixin finds a @Shadow method only among the target's own methods",
+								ctx.changer(true) + " moved it out of " + targetDotted + "; the mod needs an update.");
 					}
 				}
 				continue;
@@ -984,6 +991,12 @@ public final class MixinPreflight extends PreflightPart {
 
 	static String addedBy(InstalledClasses.AddedMember added) {
 		return added.owner() + "'s mixin " + added.mixin().replace('/', '.');
+	}
+
+	/** Whether the target declares a method one of a {@code @Shadow}'s aliases names: Mixin looks among its own only. */
+	private static boolean aliasDeclared(AnnotationNode shadow, ClassNode target, String desc) {
+		if (!(Annotations.value(shadow, "aliases") instanceof List<?> aliases)) return false;
+		return aliases.stream().anyMatch(a -> a instanceof String alias && PreflightAsm.declares(target, alias, desc));
 	}
 
 	private boolean aliasExists(AnnotationNode shadow, ClassNode target, String desc, boolean field) {

@@ -22,7 +22,7 @@
     "FluidTypeMixin": [],
     "ForgePayloadEncodeMixin": ["fabric-networking-api-v1"],
     "GameDataFreezeMixin": [],
-    "IngredientOptionalCodecMixin": [],
+    "IngredientNetworkCodecMixin": [],
     "LivingEntityFluidTravelMixin": [],
     "MappedRegistryPendingHoldersMixin": [],
     "NamespacedWrapperAliasMixin": ["fabric-registry-sync-v0"],

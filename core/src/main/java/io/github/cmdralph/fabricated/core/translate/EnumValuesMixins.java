@@ -1,6 +1,8 @@
 package io.github.cmdralph.fabricated.core.translate;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -9,9 +11,11 @@ import java.util.Set;
 import java.util.function.Function;
 
 import org.objectweb.asm.AnnotationVisitor;
+import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.FieldVisitor;
 import org.objectweb.asm.Handle;
+import org.objectweb.asm.Label;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.tree.AbstractInsnNode;
@@ -47,11 +51,18 @@ import io.github.cmdralph.fabricated.core.bytecode.Annotations;
  * applied, and finds the values array only while it is still final, which the shadow's {@code @Mutable} would undo; and
  * each registers its constant ({@code IExtensibleEnum.init}) in statics set after the values array, such as
  * {@code MobCategory}'s map by name, which its codec reads.
+ * Where Forge's {@code init} of such an enum can't return (Forge 61 to 66's {@code RecipeBookType}, whose {@code init}
+ * throws "This is not implemented yet"), or reaches another class than the enum (Forge 47's {@code RecipeBookType},
+ * whose {@code init} initializes {@code RecipeBookSettings} before the mod's own mixin there can read its type), the
+ * mixin also skips it for the mod's constants, which Fabric gives no such hook (CORPUS-80: Farmer's Delight's recipe
+ * book type; {@link #initKeepsToEnum}).
  * <p>A constant with a body overriding the one method the enum forwards to a delegate its other constructor takes
  * (NeoForge's way of making such an enum extensible, as {@code GrassColorModifier}'s {@code ColorModifier}) is made with
  * that constructor and a delegate class generated next to the mod's mixins, running the body. Only code that runs
- * straight through and uses nothing of the mixin moves (the arguments, the bodies, the rest of the class initializer),
- * and none when the mod's classes read a constant as a field of the enum, which the mixin can't add.
+ * straight through and uses nothing of the mixin moves (the arguments, the bodies, the rest of the class initializer).
+ * <p>A mixin adds no public static fields, so the mod's reads of a constant as a field of the enum (Farmer's Delight's
+ * {@code RecipeBookType.FARMERSDELIGHT_COOKING}) read it from a holder class generated next to the mixins instead
+ * ({@link #holderClass}, {@link #withHeldConstants}).
  */
 final class EnumValuesMixins {
 	private static final String SHADOW = "Lorg/spongepowered/asm/mixin/Shadow;";
@@ -61,12 +72,18 @@ final class EnumValuesMixins {
 	private static final String INJECT = "Lorg/spongepowered/asm/mixin/injection/Inject;";
 	private static final String AT = "Lorg/spongepowered/asm/mixin/injection/At;";
 	private static final String SHIFT = "Lorg/spongepowered/asm/mixin/injection/At$Shift;";
-	private static final String CALLBACK_INFO = "Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;";
+	private static final String CALLBACK_INFO_CLASS = "org/spongepowered/asm/mixin/injection/callback/CallbackInfo";
+	private static final String CALLBACK_INFO = "L" + CALLBACK_INFO_CLASS + ";";
 	/** javac's name for an enum's array of its constants. */
 	private static final String VALUES = "$VALUES";
 	/** Forge's marker of an enum it makes extensible, whose {@code create} factories its enum extender writes. */
 	static final String FORGE_EXTENSIBLE_ENUM = "net/minecraftforge/common/IExtensibleEnum";
 	private static final String FACTORY = "create";
+	/** Forge's hook its factories call on each constant they make ({@code IExtensibleEnum.init}). */
+	private static final String INIT = "init";
+	/** The holder's lookup of a constant by name. */
+	private static final String FIND = "fabricated$constant";
+	private static final String FIND_DESC = "([Ljava/lang/Enum;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/Enum;";
 	private static final Set<String> ENUM_METHODS = Set.of("values", "valueOf", "$values", "<init>");
 
 	/** The mixin's replacement, and the delegate classes its constants' bodies became, by internal name. */
@@ -91,10 +108,11 @@ final class EnumValuesMixins {
 	 * @param mixin   the enum mixin, with code
 	 * @param target  the enum it names, one of NeoForge's extensible enums
 	 * @param classes the mod's classes by internal name, or null (a constant's body is a class of its own)
+	 * @param game    the game's classes by internal name, with code, or null (what Forge's {@code init} calls)
 	 * @param bodies  the internal name to number the delegate classes from
 	 * @return null when the mixin can't be turned into one
 	 */
-	static Result of(ClassNode mixin, ClassNode target, Function<String, ClassNode> classes, String bodies) {
+	static Result of(ClassNode mixin, ClassNode target, Function<String, ClassNode> classes, Function<String, ClassNode> game, String bodies) {
 		if ((mixin.access & Opcodes.ACC_ENUM) == 0 || !mixin.interfaces.isEmpty()) return null;
 		String self = "L" + mixin.name + ";";
 		Set<String> constants = new LinkedHashSet<>();
@@ -162,7 +180,8 @@ final class EnumValuesMixins {
 			rest.add(insn);
 		}
 		if (insn == null || EnumExtensions.real(insn.getNext()) != null || made.size() != constants.size() || !movable(rest, mixin.name, constants)) return null;
-		return new Result(mixinClass(mixin, target, valuesArray, made, rest), delegates, List.copyOf(constants));
+		boolean skipInit = target.interfaces.contains(FORGE_EXTENSIBLE_ENUM) && (!initReturns(target, game) || !initKeepsToEnum(target));
+		return new Result(mixinClass(mixin, target, valuesArray, made, rest, skipInit), delegates, List.copyOf(constants));
 	}
 
 	/**
@@ -182,16 +201,190 @@ final class EnumValuesMixins {
 		return found;
 	}
 
-	/** Whether any of the mod's classes reads one of the constants as a field of the enum, which the generated mixin doesn't add. */
-	static boolean readAsFields(Iterable<ClassNode> classes, String target, List<String> constants) {
-		for (ClassNode node : classes) {
-			for (MethodNode method : node.methods) {
-				for (AbstractInsnNode insn : method.instructions) {
-					if (insn instanceof FieldInsnNode field && field.owner.equals(target) && constants.contains(field.name)) return true;
+	/**
+	 * Whether the enum's Forge {@code init}, which its factories call on each constant they make, can return. Not when it
+	 * has no return, nor when it runs straight through a call to a method of the enum or the game that has none (Forge 61
+	 * to 66's {@code RecipeBookType.init} calls {@code RecipeBookSettings.register}, which throws "This is not implemented
+	 * yet", so no constant its factory makes survives it). True where that can't be told: a branch, a handler, a method
+	 * without code here, or a call that may go elsewhere (a virtual one).
+	 */
+	static boolean initReturns(ClassNode target, Function<String, ClassNode> game) {
+		MethodNode init = declared(target, INIT, "()V");
+		if (init == null || init.instructions.size() == 0 || (init.access & (Opcodes.ACC_ABSTRACT | Opcodes.ACC_NATIVE | Opcodes.ACC_STATIC)) != 0) return true;
+		if (!returns(init)) return false;
+		if (!init.tryCatchBlocks.isEmpty()) return true;
+		for (AbstractInsnNode insn : init.instructions) {
+			if (insn instanceof JumpInsnNode || insn instanceof TableSwitchInsnNode || insn instanceof LookupSwitchInsnNode) return true;
+		}
+		for (AbstractInsnNode insn : init.instructions) {
+			if (!(insn instanceof MethodInsnNode call) || call.getOpcode() != Opcodes.INVOKESTATIC && call.getOpcode() != Opcodes.INVOKESPECIAL) continue;
+			ClassNode owner = call.owner.equals(target.name) ? target : game == null ? null : game.apply(call.owner);
+			MethodNode called = owner == null ? null : declared(owner, call.name, call.desc);
+			if (called != null && called.instructions.size() > 0 && (called.access & (Opcodes.ACC_ABSTRACT | Opcodes.ACC_NATIVE)) == 0 && !returns(called)) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	/**
+	 * Whether the enum's Forge {@code init} keeps to the enum: it uses no class but the enum and the JDK's. Fabric gives
+	 * the mod's constants no such hook, so it runs for them only then, where it keeps the enum's own lookups whole: Forge
+	 * 47's {@code MobCategory.init} puts the constant in the enum's {@code BY_NAME}, which Forge's codec reads where
+	 * vanilla's reads the values. One reaching another class initializes that class while the enum is still initializing,
+	 * before the mod's own code made the constant's other parts: Forge 47's {@code RecipeBookType.init} registers the
+	 * type's recipe book tags with {@code RecipeBookSettings}, whose class initializer Farmer's Delight's mixin extends
+	 * with its own tags for its type, read from a field of the mod's that is only set once the enum is (CORPUS-80). True
+	 * for an enum without {@code init}.
+	 */
+	static boolean initKeepsToEnum(ClassNode target) {
+		MethodNode init = declared(target, INIT, "()V");
+		if (init == null) return true;
+		for (AbstractInsnNode insn : init.instructions) {
+			String owner = insn instanceof MethodInsnNode call ? call.owner
+					: insn instanceof FieldInsnNode field ? field.owner
+					: insn instanceof TypeInsnNode type ? type.desc
+					: insn instanceof InvokeDynamicInsnNode indy ? indy.bsm.getOwner()
+					: insn instanceof MultiANewArrayInsnNode array ? array.desc : null;
+			if (owner == null) continue;
+			while (owner.startsWith("[")) owner = owner.substring(1);
+			if (owner.startsWith("L") && owner.endsWith(";")) owner = owner.substring(1, owner.length() - 1);
+			if (!owner.equals(target.name) && !owner.startsWith("java/") && owner.length() > 1) return false;
+		}
+		return true;
+	}
+
+	private static MethodNode declared(ClassNode owner, String name, String desc) {
+		for (MethodNode m : owner.methods) {
+			if (m.name.equals(name) && m.desc.equals(desc)) return m;
+		}
+		return null;
+	}
+
+	/** Whether a method with code has a return: one with none can only throw (or never end). */
+	private static boolean returns(MethodNode method) {
+		for (AbstractInsnNode insn : method.instructions) {
+			if (insn.getOpcode() >= Opcodes.IRETURN && insn.getOpcode() <= Opcodes.RETURN) return true;
+		}
+		return false;
+	}
+
+	/**
+	 * The class holding an enum's constants for the mod's reads of them as fields of the enum, which the generated mixin
+	 * can't add: a public static final field per constant, set in its class initializer from the enum's values by name,
+	 * which initializes the enum, and so runs the mixin, first. A constant the enum lacks then (its mixin didn't apply)
+	 * fails the initializer naming it and {@code mixin} (dotted) rather than leaving the field null.
+	 */
+	static byte[] holderClass(String name, String target, List<String> constants, String mixin) {
+		String enumDesc = "L" + target + ";";
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V17, Opcodes.ACC_PUBLIC | Opcodes.ACC_FINAL | Opcodes.ACC_SUPER | Opcodes.ACC_SYNTHETIC, name, null, "java/lang/Object", null);
+		for (String constant : constants) {
+			cw.visitField(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC | Opcodes.ACC_FINAL, constant, enumDesc, null, null).visitEnd();
+		}
+		MethodVisitor clinit = cw.visitMethod(Opcodes.ACC_STATIC, "<clinit>", "()V", null, null);
+		clinit.visitCode();
+		clinit.visitMethodInsn(Opcodes.INVOKESTATIC, target, "values", "()[" + enumDesc, false);
+		clinit.visitVarInsn(Opcodes.ASTORE, 0);
+		for (String constant : constants) {
+			clinit.visitVarInsn(Opcodes.ALOAD, 0);
+			clinit.visitLdcInsn(constant);
+			clinit.visitLdcInsn("Fabricated: " + target.replace('/', '.') + " has no constant " + constant + " once initialized: " + mixin
+					+ ", which adds it, did not apply");
+			clinit.visitMethodInsn(Opcodes.INVOKESTATIC, name, FIND, FIND_DESC, false);
+			clinit.visitTypeInsn(Opcodes.CHECKCAST, target);
+			clinit.visitFieldInsn(Opcodes.PUTSTATIC, name, constant, enumDesc);
+		}
+		clinit.visitInsn(Opcodes.RETURN);
+		clinit.visitMaxs(0, 0);
+		clinit.visitEnd();
+
+		// for (int i = 0; i < values.length; i++) if (values[i].name().equals(name)) return values[i]; throw new IllegalStateException(message);
+		MethodVisitor find = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, FIND, FIND_DESC, null, null);
+		find.visitCode();
+		Label loop = new Label();
+		Label next = new Label();
+		Label missing = new Label();
+		find.visitInsn(Opcodes.ICONST_0);
+		find.visitVarInsn(Opcodes.ISTORE, 3);
+		find.visitLabel(loop);
+		find.visitFrame(Opcodes.F_APPEND, 1, new Object[] {Opcodes.INTEGER}, 0, null);
+		find.visitVarInsn(Opcodes.ILOAD, 3);
+		find.visitVarInsn(Opcodes.ALOAD, 0);
+		find.visitInsn(Opcodes.ARRAYLENGTH);
+		find.visitJumpInsn(Opcodes.IF_ICMPGE, missing);
+		find.visitVarInsn(Opcodes.ALOAD, 0);
+		find.visitVarInsn(Opcodes.ILOAD, 3);
+		find.visitInsn(Opcodes.AALOAD);
+		find.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/lang/Enum", "name", "()Ljava/lang/String;", false);
+		find.visitVarInsn(Opcodes.ALOAD, 1);
+		find.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/lang/String", "equals", "(Ljava/lang/Object;)Z", false);
+		find.visitJumpInsn(Opcodes.IFEQ, next);
+		find.visitVarInsn(Opcodes.ALOAD, 0);
+		find.visitVarInsn(Opcodes.ILOAD, 3);
+		find.visitInsn(Opcodes.AALOAD);
+		find.visitInsn(Opcodes.ARETURN);
+		find.visitLabel(next);
+		find.visitFrame(Opcodes.F_SAME, 0, null, 0, null);
+		find.visitIincInsn(3, 1);
+		find.visitJumpInsn(Opcodes.GOTO, loop);
+		find.visitLabel(missing);
+		find.visitFrame(Opcodes.F_SAME, 0, null, 0, null);
+		find.visitTypeInsn(Opcodes.NEW, "java/lang/IllegalStateException");
+		find.visitInsn(Opcodes.DUP);
+		find.visitVarInsn(Opcodes.ALOAD, 2);
+		find.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/IllegalStateException", "<init>", "(Ljava/lang/String;)V", false);
+		find.visitInsn(Opcodes.ATHROW);
+		find.visitMaxs(0, 0);
+		find.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	/**
+	 * The class with its reads of the constants as fields of the enum (and method handles to them) reading the
+	 * {@code holder}'s fields instead; null when it has none.
+	 */
+	static byte[] withHeldConstants(byte[] data, String target, Collection<String> constants, String holder) {
+		if (!new String(data, StandardCharsets.ISO_8859_1).contains(target)) return null;
+		String enumDesc = "L" + target + ";";
+		ClassNode node = new ClassNode();
+		new ClassReader(data).accept(node, 0);
+		boolean changed = false;
+		for (MethodNode m : node.methods) {
+			for (AbstractInsnNode insn : m.instructions) {
+				if (insn instanceof FieldInsnNode field && field.getOpcode() == Opcodes.GETSTATIC && field.owner.equals(target) && field.desc.equals(enumDesc)
+						&& constants.contains(field.name)) {
+					field.owner = holder;
+					changed = true;
+				} else if (insn instanceof InvokeDynamicInsnNode indy) {
+					for (int i = 0; i < indy.bsmArgs.length; i++) {
+						Handle held = held(indy.bsmArgs[i], target, enumDesc, constants, holder);
+						if (held != null) {
+							indy.bsmArgs[i] = held;
+							changed = true;
+						}
+					}
+				} else if (insn instanceof LdcInsnNode ldc) {
+					Handle held = held(ldc.cst, target, enumDesc, constants, holder);
+					if (held != null) {
+						ldc.cst = held;
+						changed = true;
+					}
 				}
 			}
 		}
-		return false;
+		if (!changed) return null;
+		ClassWriter writer = new ClassWriter(0);
+		node.accept(writer);
+		return writer.toByteArray();
+	}
+
+	/** A handle reading one of the constants as a field of the enum, reading the holder's instead; null for any other value. */
+	private static Handle held(Object value, String target, String enumDesc, Collection<String> constants, String holder) {
+		if (!(value instanceof Handle h) || h.getTag() != Opcodes.H_GETSTATIC || !h.getOwner().equals(target) || !h.getDesc().equals(enumDesc)
+				|| !constants.contains(h.getName())) return null;
+		return new Handle(Opcodes.H_GETSTATIC, holder, h.getName(), h.getDesc(), false);
 	}
 
 	/**
@@ -340,9 +533,10 @@ final class EnumValuesMixins {
 	 * The mixin replacing the enum mixin, under its name and {@code @Mixin}: a shadow of the enum's values array, a
 	 * constructor invoker per constructor used, and the injector adding the constants after the array is set. Where the
 	 * enum's own factories make the constants (Forge's), the injector calls them at the class initializer's end, and the
-	 * mixin has neither.
+	 * mixin has neither; with {@code skipInit}, a second injector skips Forge's {@code init} for the constants.
 	 */
-	private static byte[] mixinClass(ClassNode mixin, ClassNode target, String values, List<Constant> constants, List<AbstractInsnNode> rest) {
+	private static byte[] mixinClass(ClassNode mixin, ClassNode target, String values, List<Constant> constants, List<AbstractInsnNode> rest,
+			boolean skipInit) {
 		String enumDesc = "L" + target.name + ";";
 		String arrayDesc = "[" + enumDesc;
 		boolean factories = constants.stream().allMatch(c -> c.factory() != null);
@@ -415,6 +609,7 @@ final class EnumValuesMixins {
 				slots.put(c.name(), 1 + i);
 			}
 			restOf(mv, mixin, rest, slots);
+			if (skipInit) skipInit(cw, mixin.name, constants);
 			cw.visitEnd();
 			return cw.toByteArray();
 		}
@@ -458,6 +653,47 @@ final class EnumValuesMixins {
 		restOf(mv, mixin, rest, slots);
 		cw.visitEnd();
 		return cw.toByteArray();
+	}
+
+	/**
+	 * The injector skipping Forge's {@code init} for the constants, cancelling it at its head: Fabric gives them no such
+	 * hook, and here it never returns ({@link #initReturns}) or reaches beyond the enum ({@link #initKeepsToEnum}).
+	 * Forge's factory has appended the constant by then. The enum's other constants keep theirs.
+	 */
+	private static void skipInit(ClassWriter cw, String mixin, List<Constant> constants) {
+		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "fabricated$skipInit", "(" + CALLBACK_INFO + ")V", null, null);
+		AnnotationVisitor inject = mv.visitAnnotation(INJECT, true);
+		AnnotationVisitor methods = inject.visitArray("method");
+		methods.visit(null, INIT + "()V");
+		methods.visitEnd();
+		AnnotationVisitor ats = inject.visitArray("at");
+		AnnotationVisitor at = ats.visitAnnotation(null, AT);
+		at.visit("value", "HEAD");
+		at.visitEnd();
+		ats.visitEnd();
+		inject.visit("cancellable", Boolean.TRUE);
+		inject.visitEnd();
+		mv.visitCode();
+		// Locals: 0 the constant, 1 the callback, 2 its name.
+		Label cancel = new Label();
+		mv.visitVarInsn(Opcodes.ALOAD, 0);
+		mv.visitTypeInsn(Opcodes.CHECKCAST, "java/lang/Enum");
+		mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/lang/Enum", "name", "()Ljava/lang/String;", false);
+		mv.visitVarInsn(Opcodes.ASTORE, 2);
+		for (Constant c : constants) {
+			mv.visitLdcInsn(c.name());
+			mv.visitVarInsn(Opcodes.ALOAD, 2);
+			mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/lang/String", "equals", "(Ljava/lang/Object;)Z", false);
+			mv.visitJumpInsn(Opcodes.IFNE, cancel);
+		}
+		mv.visitInsn(Opcodes.RETURN);
+		mv.visitLabel(cancel);
+		mv.visitFrame(Opcodes.F_FULL, 3, new Object[] {mixin, CALLBACK_INFO_CLASS, "java/lang/String"}, 0, new Object[0]);
+		mv.visitVarInsn(Opcodes.ALOAD, 1);
+		mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, CALLBACK_INFO_CLASS, "cancel", "()V", false);
+		mv.visitInsn(Opcodes.RETURN);
+		mv.visitMaxs(0, 0);
+		mv.visitEnd();
 	}
 
 	/** The rest of the mixin's class initializer, its constants read from the locals, and the injector's end. */
