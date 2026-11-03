@@ -1293,12 +1293,22 @@ jobs:
             fi
             dump="$RUNNER_TEMP/$run/thread-dump.txt"
             if [ -f "$dump" ]; then
-              # The game's main threads, or the start of the dump when it has neither (jstack's own error, say).
+              # The game's main threads, with their state and the monitors they hold or wait for, or the start of the dump
+              # when it has neither (jstack's own error, say).
               for thread in "Render thread" "Server thread"; do
                 echo "-- $thread shortly before the timeout:"
-                awk -v name="\"$thread\"" 'BEGIN { RS = "" } index($0, name) == 1' "$dump" | grep -E "^[[:space:]]+at " | head -15
+                awk -v name="\"$thread\"" 'BEGIN { RS = "" } index($0, name) == 1' "$dump" \
+                  | grep -E "^[[:space:]]+(at |- )|java\.lang\.Thread\.State" | head -20
               done
               grep -q -E '^"(Render|Server) thread"' "$dump" || head -n 5 "$dump"
+              # The thread holding a monitor one of them waits for (CORPUS-48: Xaero's World Map's server world unload waits
+              # inside its synchronized block, line 106), with its state and top frames.
+              for lock in $(awk 'BEGIN { RS = "" } /^"(Render|Server) thread"/' "$dump" | grep -o -E 'waiting to lock <0x[0-9a-f]+>' \
+                  | grep -o -E '0x[0-9a-f]+' | sort -u | head -3); do
+                echo "-- the thread holding <$lock>:"
+                awk -v lock="- locked <$lock>" 'BEGIN { RS = "" } index($0, lock) { print; exit }' "$dump" \
+                  | grep -E '^"|^[[:space:]]+(at |- )|java\.lang\.Thread\.State' | head -24 | cut -c1-250
+              done
             fi
           done
           # The corpora on a dedicated server: their errors as the game ran (the clients' above include their integrated
