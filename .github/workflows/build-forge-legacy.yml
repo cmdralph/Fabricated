@@ -222,6 +222,14 @@ jobs:
         run: |
           SMOKE_TIMEOUT=600 ci/forge-legacy/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-corpus" "$RUNNER_TEMP/corpus" > "$RUNNER_TEMP/client-corpus.out" 2>&1 || true
           ci/corpus-summary.sh "$RUNNER_TEMP/client-corpus/run" "client with the corpus"
+      # What stopped the corpus runs, past the summary's crash descriptions (CORPUS-54, CORPUS-55): the crash reports'
+      # exception chains to their innermost cause, the logs' Mixin errors, and the console's last lines.
+      - name: What stopped the mod corpus runs (informational)
+        if: ${{ !cancelled() && steps.corpus.outcome == 'success' }}
+        continue-on-error: true
+        run: |
+          ci/forge-legacy/corpus-causes.sh "$RUNNER_TEMP/server-corpus" "$RUNNER_TEMP/server-corpus.out" "server with the corpus"
+          ci/forge-legacy/corpus-causes.sh "$RUNNER_TEMP/client-corpus/run" "$RUNNER_TEMP/client-corpus.out" "client with the corpus"
       - name: Upload mod corpus logs and reports
         if: ${{ !cancelled() && steps.corpus.outcome == 'success' }}
         uses: actions/upload-artifact@v4
