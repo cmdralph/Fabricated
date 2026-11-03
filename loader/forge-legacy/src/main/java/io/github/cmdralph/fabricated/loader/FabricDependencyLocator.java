@@ -179,6 +179,8 @@ public final class FabricDependencyLocator extends AbstractJarFileModProvider im
 		// pipeline reads any class): pre-flight then sees the provider's classes, as the game will.
 		Set<String> standingDown = new HashSet<>();
 		NativeModules.StandDown standDown = null;
+		// The modules other mods provide, the plan's and those beyond it that parts of the in-game mod serve.
+		Set<String> providedModules = Set.of();
 		// The in-game mod's jar Forge is handed: without what stands down, when anything does.
 		Path handedGameMod = gameModJar;
 		FabricApiPlan plan;
@@ -231,7 +233,8 @@ public final class FabricDependencyLocator extends AbstractJarFileModProvider im
 				NativeModules nativeModules = index == null ? NativeModules.NONE : NativeModules.parse(new String(index, StandardCharsets.UTF_8),
 						archive.contains(NativeModules.MIXIN_MODULES) ? archive.readText(NativeModules.MIXIN_MODULES) : null);
 				mods = nativeModules.providingByPackages(forgeMods.mods(), forgeMods.providers(), providerNotes);
-				Map<String, Pipeline.NeoForgeMod> provided = Pipeline.providedElsewhere(plan, mods);
+				Map<String, Pipeline.NeoForgeMod> provided = Pipeline.providedElsewhere(plan, nativeModules.modules(), mods);
+				providedModules = provided.keySet();
 				Map<String, MixinConfigFile> configs = new LinkedHashMap<>();
 				for (String name : archive.entryNames()) {
 					if (name.indexOf('/') < 0 && name.endsWith(".mixins.json")) configs.put(name, MixinConfigFile.parse(archive.readText(name)));
@@ -271,7 +274,7 @@ public final class FabricDependencyLocator extends AbstractJarFileModProvider im
 					(mappingsCache, mojangPath) -> IntermediaryMappings.load(mappingsCache, mcVersion, client, mojangPath, minecraft.getFilePath()),
 					new String[0], ForgeDescriptor.INSTANCE);
 
-			result = Pipeline.run(input);
+			result = Pipeline.run(input).alsoProvidedElsewhere(providedModules);
 			loaderCopiesLeftOut.forEach(n -> result.report().line("Fabric API providers", n));
 			providerNotes.forEach(n -> result.report().line("Fabric API providers", n));
 			if (standDown != null && !standDown.isEmpty()) {

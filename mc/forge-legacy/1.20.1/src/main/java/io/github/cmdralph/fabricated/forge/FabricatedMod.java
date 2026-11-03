@@ -89,9 +89,10 @@ public final class FabricatedMod {
 		// Fabric's sleep time event where Forge asks its own.
 		if (ours(state, "fabric-entity-events-v1")) SleepEvents.register();
 		// Native fabric-loot-tables-v1's own initializer (a native module has no entrypoints): its loot table events
-		// listen to fabric-loot-api-v2's before the Fabric mods register theirs. Its class leaves the in-game mod with the
-		// module when another mod provides it.
-		if (ours(state, "fabric-loot-tables-v1") && ours(state, "fabric-loot-api-v2")) new LootTablesV1Init().onInitialize();
+		// listen to fabric-loot-api-v2's before the Fabric mods register theirs, Fabricated's or those of the mod providing
+		// it (Forgified Fabric API 1.20.1 has fabric-loot-api-v2 and no fabric-loot-tables-v1, PROVIDER-13). Its class
+		// leaves the in-game mod with the module when another mod provides it.
+		if (ours(state, "fabric-loot-tables-v1")) new LootTablesV1Init().onInitialize();
 		// Fabric mods' config screens in Forge's mod list, once their initializers ran.
 		if (!FMLLoader.getDist().isDedicatedServer()) ClientSupport.init(state);
 		// Fabric API's HUD callback, from Forge's HUD drawing (see HudRenderCallbackBridge).
