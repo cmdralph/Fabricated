@@ -492,17 +492,18 @@ final class CallRepairs extends PreflightPart {
 	}
 
 	/**
-	 * The one call, in {@code methods}, of a static method of NeoForge's that takes the named call's receiver (unless
-	 * the call is static) and arguments, with at most one more, returns what the call returns, and makes the call itself,
-	 * or through a static method of its class: a hook of NeoForge's patches that took the call over to fire events around
-	 * it, as {@code ClientHooks.drawScreen} for {@code Screen.renderWithTooltipAndSubtitles}. Null when there is none, or
-	 * more than one such hook (several calls of the same one are fine).
+	 * The one call, in {@code methods}, of a static method of the platform's (NeoForge's or Forge's,
+	 * {@link MixinNames#isPlatformCode}) that takes the named call's receiver (unless the call is static) and arguments,
+	 * with at most one more, returns what the call returns, and makes the call itself, or through a static method of its
+	 * class: a hook of the platform's patches that took the call over to fire events around it, as
+	 * {@code ClientHooks.drawScreen} for {@code Screen.renderWithTooltipAndSubtitles}. Null when there is none, or more
+	 * than one such hook (several calls of the same one are fine).
 	 *
 	 * <p>With {@code anyReceiver}, for a handler that sees none of the call's arguments, also a hook taking the receiver
-	 * as a supertype of the call's owner and making the call on that supertype, which reaches the owner's method: NeoForge's
-	 * code transformer points every mob's {@code finalizeSpawn} call in its listed classes at
-	 * {@code EventHooks.finalizeMobSpawn}, which takes a {@code Mob} (Friends &amp; Foes' hook at a
-	 * {@code PatrollingMonster}'s, CORPUS-61).
+	 * as a supertype of the call's owner and making the call on that supertype, which reaches the owner's method: the
+	 * platforms' code transformers point every mob's {@code finalizeSpawn} call in their listed classes at
+	 * {@code EventHooks.finalizeMobSpawn} (NeoForge) or {@code ForgeEventFactory.onFinalizeSpawn} (Forge), which take a
+	 * {@code Mob} (Friends &amp; Foes' hook at a {@code PatrollingMonster}'s, CORPUS-61, CORPUS-78).
 	 */
 	private MethodInsnNode hookCall(List<MethodNode> methods, String owner, String name, String desc, boolean anyReceiver) {
 		boolean isStatic = isStaticCall(owner, name, desc);
@@ -510,7 +511,7 @@ final class CallRepairs extends PreflightPart {
 		MethodInsnNode found = null;
 		for (MethodNode method : methods) {
 			for (AbstractInsnNode insn : method.instructions) {
-				if (!(insn instanceof MethodInsnNode call) || call.getOpcode() != Opcodes.INVOKESTATIC || !call.owner.startsWith(MixinNames.NEOFORGE_PACKAGE)) continue;
+				if (!(insn instanceof MethodInsnNode call) || call.getOpcode() != Opcodes.INVOKESTATIC || !MixinNames.isPlatformCode(call.owner)) continue;
 				String receiver = owner;
 				if (!call.desc.equals(form) && insertedArgument(form, call.desc) < 0) {
 					receiver = anyReceiver && !isStatic ? supertypeReceiver(call.desc, owner, desc) : null;

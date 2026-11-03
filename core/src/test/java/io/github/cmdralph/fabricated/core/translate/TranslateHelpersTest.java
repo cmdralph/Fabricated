@@ -247,6 +247,13 @@ class TranslateHelpersTest {
 		assertFalse(MixinCompat.readsLocalTypes("not a version"));
 		assertFalse(MixinCompat.readsLocalTypes(null));
 
+		// CORPUS-74: a @Shadow found among the fields other mixins add in Fabric's Mixin (its mixinFields, from 0.12.0) only.
+		assertFalse(MixinCompat.shadowsMixinFields("0.8.5+Jenkins-b310.git-155314e6e91465dad727e621a569906a410cd6f4"), "Forge 47");
+		assertFalse(MixinCompat.shadowsMixinFields("0.8.7"), "Forge 61 to 66");
+		assertTrue(MixinCompat.shadowsMixinFields("0.15.2+mixin.0.8.7"), "Fabric's Mixin");
+		assertTrue(MixinCompat.shadowsMixinFields("0.17.4+mixin.0.8.7"), "Fabric's Mixin");
+		assertTrue(MixinCompat.shadowsMixinFields(null));
+
 		// INTERFACE-1: injectors in interface mixins came with 0.8.6.
 		assertFalse(MixinCompat.interfaceInjectors("0.8.5"), "Forge 47");
 		assertFalse(MixinCompat.interfaceInjectors("0.8.5+Jenkins-b310.git-155314e6e91465dad727e621a569906a410cd6f4"), "as Forge 47 reports it");
