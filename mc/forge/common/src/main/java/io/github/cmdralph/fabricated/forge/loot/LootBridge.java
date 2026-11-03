@@ -94,8 +94,9 @@ public final class LootBridge {
 		Identifier name = event.getName();
 		LootTable result = modify(ResourceKey.create(Registries.LOOT_TABLE, name), table, source(name), loadingRegistriesOrEmpty());
 		// Forge names each table (its global loot modifiers look tables up by name) before firing the event; a built
-		// table has none yet.
-		result.setLootTableId(name);
+		// table has none yet, unless a Fabric mod named it as it was built (Porting Lib Loot names each table from its
+		// MODIFY listener), and Forge refuses to name a table twice, even by the same name (CORPUS-90).
+		if (!name.equals(result.getLootTableId())) result.setLootTableId(name);
 		event.setTable(result);
 	}
 
