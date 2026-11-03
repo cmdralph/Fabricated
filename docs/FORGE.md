@@ -278,8 +278,15 @@ What else differs on Forge, for Fabric mods in general:
   declared as the other mixin declares the field, and Mixin merges the two into one field, as on Fabric (CORPUS-74:
   the test mod's tick counter, all five, server run); one that can't be (a static shadow of an instance field, a
   writable one of a final field) disables its mod, or leaves its mixin out where it can.
-- **Forge Config API Port**'s Fabric build loads, with its own copies of NeoForge's config classes, which Forge lacks
-  (REPL-1, PLAT-5; on Forge 47 from task 5, whose descriptor had NeoForge's list and left the jar out: PLAT-6). **Mod Menu**'s Fabric build isn't loaded on Forge, which lists mods itself; Fabric mods' Mod Menu
+- **Forge Config API Port** on Forge 61 to 66: its Fabric build loads, with its own copies of NeoForge's config
+  classes, which Forge lacks (REPL-1, PLAT-5). On Forge 47 its version for 1.20.1 copies Forge's own config system,
+  packages included, so its copies were left out for Forge's and its registry failed to link (Ponder's main
+  entrypoint, CORPUS-81). There the jar is left out, as on NeoForge, and the in-game mod provides the port's Fabric API
+  (`ForgeConfigRegistry`, `ForgeConfigPaths`, `ModConfigEvents`) on Forge's config system: each config is made with
+  the Fabric mod's Forge container under the port's file name, its values readable right after registering, as with
+  the port, and Forge loads, watches, syncs and unloads it as its mods' own, the port's events firing from Forge's.
+  The test mod registers a config so and checks it each server run (PLAT-6: the descriptor had NeoForge's list until
+  task 5). **Mod Menu**'s Fabric build isn't loaded on Forge, which lists mods itself; Fabric mods' Mod Menu
   entrypoints give it their config screens (above).
 - **Enum extensions:** a Fabric mod adding enum constants with Mixin's enum extensions (Farmer's Delight Refabricated)
   is disabled on Forge 61 to 66, whose Mixin 0.8.7 predates them (CORPUS-36).
