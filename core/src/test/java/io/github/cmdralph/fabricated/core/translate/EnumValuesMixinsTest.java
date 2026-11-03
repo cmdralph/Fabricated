@@ -100,13 +100,61 @@ class EnumValuesMixinsTest {
 	void theInjectorAddsTheConstantWhenMergedIntoTheEnum() throws Exception {
 		EnumValuesMixins.Result result = EnumValuesMixins.of(node(mixin()), node(target()), Map.of(BODY, node(body(false)))::get, BODIES);
 		assertNotNull(result);
+		assertAddsTheConstantWhenMerged(result, false);
+	}
+
+	/**
+	 * ENUM-7 on Forge: an enum Forge makes extensible ({@code IExtensibleEnum}, as {@code MobCategory}) gets its constants
+	 * from its own {@code create} factories, which Forge's enum extender writes once Mixin has applied. The extender finds
+	 * the values array only while it is final, so the mixin shadows none (a {@code @Mutable} shadow made it non-final and
+	 * stopped the Forge 66 corpus clients as {@code MobCategory} loaded, extended run 41569829683) and invokes no
+	 * constructor; without a factory for the constructor a constant uses, it stays an enum mixin (pre-flight disables its mod).
+	 */
+	@Test
+	void anEnumForgeMakesExtensibleGetsItsConstantsFromItsOwnFactories() throws Exception {
+		String create = "(Ljava/lang/String;Ljava/lang/String;L" + COLOR + ";)L" + TARGET + ";";
+		EnumValuesMixins.Result result = EnumValuesMixins.of(node(mixin()), forgeExtensible(create), Map.of(BODY, node(body(false)))::get, BODIES);
+		assertNotNull(result);
+		ClassNode mixin = node(result.mixin());
+		assertTrue(mixin.fields.isEmpty(), "no shadow of the values array: " + mixin.fields.stream().map(f -> f.name).toList());
+		assertTrue(mixin.methods.stream().noneMatch(m -> m.visibleAnnotations != null
+				&& m.visibleAnnotations.stream().anyMatch(a -> a.desc.equals("Lorg/spongepowered/asm/mixin/gen/Invoker;"))), "no constructor invoker");
+		MethodNode adds = method(mixin, "fabricated$addConstants");
+		AnnotationNode at = (AnnotationNode) ((List<?>) Annotations.value(annotation(adds, "Lorg/spongepowered/asm/mixin/injection/Inject;"), "at")).getFirst();
+		assertEquals("L" + TARGET + ";$VALUES:[L" + TARGET + ";", Annotations.value(at, "target"), "still after the enum's own constants");
+		boolean created = false;
+		for (AbstractInsnNode insn : adds.instructions) {
+			if (insn instanceof MethodInsnNode call && call.owner.equals(TARGET) && call.name.equals("create") && call.desc.equals(create)) created = true;
+			assertTrue(!(insn instanceof FieldInsnNode field) || !field.name.equals("$VALUES"), "the factory appends to the values array");
+		}
+		assertTrue(created, "makes the constant with the enum's factory");
+		assertAddsTheConstantWhenMerged(result, true);
+
+		assertNull(EnumValuesMixins.of(node(mixin()), forgeExtensible("(Ljava/lang/String;Ljava/lang/String;)L" + TARGET + ";"),
+				Map.of(BODY, node(body(false)))::get, BODIES), "no factory for the delegate's constructor");
+	}
+
+	/** {@link #target()} as Forge makes an enum extensible: its marker, and a {@code create} factory of that descriptor. */
+	private static ClassNode forgeExtensible(String create) {
+		ClassNode target = node(target());
+		target.interfaces = new java.util.ArrayList<>(List.of(EnumValuesMixins.FORGE_EXTENSIBLE_ENUM));
+		target.methods.add(new MethodNode(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "create", create, null, null));
+		return target;
+	}
+
+	/**
+	 * Runs the generated injector as Mixin merges it into a runnable {@link #target()} with NONE, and, with
+	 * {@code factory}, a {@code create} factory written as Forge's enum extender writes it: the constant follows the enum's
+	 * own, at the next ordinal, with the body behind its delegate, and the class initializer's rest has run.
+	 */
+	private static void assertAddsTheConstantWhenMerged(EnumValuesMixins.Result result, boolean factory) throws Exception {
 		ClassNode handler = new ClassNode();
 		new ClassReader(result.mixin()).accept(new org.objectweb.asm.commons.ClassRemapper(handler,
 				new org.objectweb.asm.commons.SimpleRemapper(MIXIN, TARGET)), 0);
-		Map<String, byte[]> classes = new java.util.HashMap<>(Map.of(TARGET, merged(method(handler, "fabricated$addConstants")), COLOR, color(),
+		Map<String, byte[]> classes = new java.util.HashMap<>(Map.of(TARGET, merged(method(handler, "fabricated$addConstants"), factory), COLOR, color(),
 				HOLDER, holder()));
 		result.classes().forEach(classes::put);
-		ClassLoader loader = new ClassLoader(getClass().getClassLoader()) {
+		ClassLoader loader = new ClassLoader(EnumValuesMixinsTest.class.getClassLoader()) {
 			@Override
 			protected Class<?> findClass(String name) throws ClassNotFoundException {
 				byte[] bytes = classes.get(name.replace('.', '/'));
@@ -124,8 +172,11 @@ class EnumValuesMixinsTest {
 		assertTrue(Class.forName(HOLDER.replace('/', '.'), true, loader).getField("TUNDRA").get(null) == tundra);
 	}
 
-	/** A runnable {@link #target()} with NONE, and the handler and an invoker merged in as Mixin would. */
-	private static byte[] merged(MethodNode handler) {
+	/**
+	 * A runnable {@link #target()} with NONE, and the handler and an invoker merged in as Mixin would; with
+	 * {@code factory}, the delegate constructor's {@code create} factory as Forge's enum extender writes it.
+	 */
+	private static byte[] merged(MethodNode handler, boolean factory) {
 		String self = "L" + TARGET + ";";
 		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
 		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_SUPER | Opcodes.ACC_ENUM, TARGET, null, "java/lang/Enum", null);
@@ -177,6 +228,42 @@ class EnumValuesMixinsTest {
 		invoker.visitInsn(Opcodes.ARETURN);
 		invoker.visitMaxs(0, 0);
 		invoker.visitEnd();
+		if (factory) {
+			// new Modifier(name, $VALUES.length, id, color), appended to $VALUES (which the extender leaves non-final).
+			MethodVisitor create = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC | Opcodes.ACC_SYNCHRONIZED, "create",
+					"(Ljava/lang/String;Ljava/lang/String;L" + COLOR + ";)" + self, null, null);
+			create.visitCode();
+			create.visitTypeInsn(Opcodes.NEW, TARGET);
+			create.visitInsn(Opcodes.DUP);
+			create.visitVarInsn(Opcodes.ALOAD, 0);
+			create.visitFieldInsn(Opcodes.GETSTATIC, TARGET, "$VALUES", "[" + self);
+			create.visitInsn(Opcodes.ARRAYLENGTH);
+			create.visitVarInsn(Opcodes.ALOAD, 1);
+			create.visitVarInsn(Opcodes.ALOAD, 2);
+			create.visitMethodInsn(Opcodes.INVOKESPECIAL, TARGET, "<init>", DELEGATED, false);
+			create.visitVarInsn(Opcodes.ASTORE, 3);
+			create.visitFieldInsn(Opcodes.GETSTATIC, TARGET, "$VALUES", "[" + self);
+			create.visitFieldInsn(Opcodes.GETSTATIC, TARGET, "$VALUES", "[" + self);
+			create.visitInsn(Opcodes.ARRAYLENGTH);
+			create.visitInsn(Opcodes.ICONST_1);
+			create.visitInsn(Opcodes.IADD);
+			create.visitMethodInsn(Opcodes.INVOKESTATIC, "java/util/Arrays", "copyOf", "([Ljava/lang/Object;I)[Ljava/lang/Object;", false);
+			create.visitTypeInsn(Opcodes.CHECKCAST, "[" + self);
+			create.visitVarInsn(Opcodes.ASTORE, 4);
+			create.visitVarInsn(Opcodes.ALOAD, 4);
+			create.visitVarInsn(Opcodes.ALOAD, 4);
+			create.visitInsn(Opcodes.ARRAYLENGTH);
+			create.visitInsn(Opcodes.ICONST_1);
+			create.visitInsn(Opcodes.ISUB);
+			create.visitVarInsn(Opcodes.ALOAD, 3);
+			create.visitInsn(Opcodes.AASTORE);
+			create.visitVarInsn(Opcodes.ALOAD, 4);
+			create.visitFieldInsn(Opcodes.PUTSTATIC, TARGET, "$VALUES", "[" + self);
+			create.visitVarInsn(Opcodes.ALOAD, 3);
+			create.visitInsn(Opcodes.ARETURN);
+			create.visitMaxs(0, 0);
+			create.visitEnd();
+		}
 		handler.invisibleAnnotations = null;
 		handler.accept(cw);
 		MethodVisitor clinit = cw.visitMethod(Opcodes.ACC_STATIC, "<clinit>", "()V", null, null);
