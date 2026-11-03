@@ -1337,8 +1337,8 @@ jobs:
       # Polydium's mixin plugin and its font mixin (whose handler, typed with the mixin class, stops 1.21.1 and 1.21.11
       # as Mixin applies it); Architectury's keyboard hook into a lambda of KeyboardHandler.charTyped, which Mixin finds
       # no target for on 1.21.1 (the corpus); malilib's tooltip hooks; how the Sodium and Iris gate's clients leave their
-      # world; Sodium's and Iris's Fabric builds' quad and access findings. Members only, and a class that is the same as
-      # one printed (a translation in several cache jars) once.
+      # world; Sodium's and Iris's Fabric builds' quad and access findings; Xaero's World Map's world unload (CORPUS-48).
+      # Members only, and a class that is the same as one printed (a translation in several cache jars) once.
       - name: Bytecode for task 5's findings (informational)
         if: ${{ (matrix.part == 'mods' || matrix.part == 'corpus') && env.EXTENDED == 'true' && !cancelled() && steps.build.outcome == 'success' }}
         continue-on-error: true
@@ -1401,11 +1401,10 @@ jobs:
                 grep -h -m 3 "failed as Mixin applied it" "$log" | cut -c1-700 || true
               fi
             done
-            # CORPUS-65: Farmer's Delight's enum mixin into RecipeBookCategories, which the corpus client neither makes an
-            # enum extension nor a values mixin: its constants as its class initializer makes them, and the enum's constructors.
-            dump client-corpus 'mod:vectorwing.farmersdelight.common.mixin.refabricated.RecipeBookCategoriesMixin#<clinit>' \
-              'mod:vectorwing.farmersdelight.common.mixin.refabricated.RecipeBookCategoriesMixin#*' 'game:net.minecraft.client.RecipeBookCategories#RecipeBookCategories'
           fi
+          # CORPUS-48: what Xaero's World Map's server world unload runs at its line 106, where the corpus clients' server
+          # thread stays (not parked: a loop) while mc-runtime-test's stop joins it from the render thread.
+          dump client-corpus 'mod:xaero.map.file.worldsave.WorldDataHandler#onServerWorldUnload' 'mod:xaero.map.file.worldsave.WorldDataHandler#*'
           # LAMBDA-9: Litematica's schematic hooks into LevelRenderer.addMainPass's lambda, which NeoForge 26.2 gives one more
           # value: what pre-flight now reports of them, and addMainPass as NeoForge's and vanilla's code declare it.
           if [ "${{ matrix.target.minecraft }}" = "26.2" ]; then

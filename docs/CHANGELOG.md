@@ -192,18 +192,19 @@ One entry per working session, newest first: what changed, and how it was verifi
   source); `COMPATIBILITY.md` says so. `COMPATIBILITY.md` lists the Fabric builds' gaps (the owner's decision, 2026-11-02: no patch for Sodium's
   Fabric build, load it and list them) and how Essential loads; the README and the roadmap's tables say what loads
   where.
-- **Open, in the roadmap's findings:** fixed, to verify: CORPUS-65 (Farmer's Delight's recipe book categories on the
-  1.21.1 client) and PROVIDER-11 (Forgified Fabric API's data-pack registries on 1.21.1); read, to verify: PROVIDER-10
-  (Forgified Fabric API's 26.x modules' differences); UNVERIFIED: PROVIDER-12 (its 1.21.1 modules' events on a client);
-  CI's: CORPUS-66 (the 1.21.1 advanced client waits on Origins' origin screen); partly read: CORPUS-48 (Xaero's World
-  Map's world unload, also seen on 1.21.1), KEYMAP-1 (documented), and the Fabric builds' gaps `COMPATIBILITY.md` lists.
+- **Open, in the roadmap's findings:** UNVERIFIED: PROVIDER-12 (Forgified Fabric API's 1.21.1 modules' events on a
+  client); CI's: CORPUS-66 (the 1.21.1 advanced client waits on Origins' origin screen); partly read: CORPUS-48 (Xaero's
+  World Map's world unload, also seen on 1.21.1, where its server thread loops as mc-runtime-test's stop joins it; the
+  evidence step now prints that method), KEYMAP-1 (documented), and the Fabric builds' gaps `COMPATIBILITY.md` lists.
   On Forge, the refusals stay until the Forge sync and its runs.
 - **Verified:** extended runs 41471044589 and 41477591558, every job green on all five NeoForge versions, the
   difficult-mod gates included, 41512581949, every job green, which verified CORPUS-61, CORPUS-56 on 1.21.11 and 26.x,
   LAMBDA-9 and LIB-2, 41527263549, every job green, which verified NET-10, and 41536167292, every job green, which
   verified CORPUS-62, CORPUS-63, LIMIT-2, PROVIDER-8 and CORPUS-54 on NeoForge, and 41539993361, whose one failure was
   the test mod's client block entity check (above), which verified DEFAULT-1 on all five versions, CORPUS-64 and
-  PROVIDER-9; the fixes' findings name the run that verified each.
+  PROVIDER-9, and 41548210823, every job green, which verified CORPUS-65, PROVIDER-11, PROVIDER-10 and the block entity
+  check (it passes on the 26.1.2 Sodium and Iris clients); the fixes' findings name the run that verified
+  each.
 
 ## 2026-11-02: Fabric's renderer API, the Forge branches' half (task 4 done)
 

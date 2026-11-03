@@ -977,7 +977,7 @@ with Fabricated's: NeoForge's check that refuses a registry after its new-regist
 initializers, lets it through while a Fabric entrypoint runs (PROVIDER-6). A data-pack registry a Fabric mod's
 initializer makes with its `DynamicRegistries` on 1.21.1, which it hands NeoForge only in an event that fired before
 Fabric initializers run, is handed to NeoForge once they have run, with the registries it named in that event
-(PROVIDER-11, to verify). Forgified Fabric API keeps no registry attributes in `RegistryAttributeHolder`, and on 1.21.1
+(PROVIDER-11). Forgified Fabric API keeps no registry attributes in `RegistryAttributeHolder`, and on 1.21.1
 has no registry aliases. In a development workspace the in-game mod's own copies can't be left out; the report says so.
 
 **Sinytra Connector beside Fabricated is refused**, as is a second Fabricated jar: the launch stops with an error naming
