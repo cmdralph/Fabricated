@@ -13,6 +13,8 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.item.BucketItem;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.LiquidBlock;
@@ -65,6 +67,8 @@ public final class ForgeFluidTest {
 		if (type.getLightLevel() != 15) failed.add("light " + type.getLightLevel());
 		if (!type.getDescriptionId().equals(dry.block.getDescriptionId())) failed.add("description id " + type.getDescriptionId());
 		if (!type.getDescription().getString().equals(dry.block.getName().getString())) failed.add("name " + type.getDescription().getString());
+		// Made before the fluid was registered: the fluid itself.
+		if (dry.bucket.getFluid() != dry.source) failed.add("the bucket holds " + dry.bucket.getFluid());
 		boolean dryWater = type.canSwim(null);
 		boolean wetWater = wet.source.getFluidType().canSwim(null);
 		if (dryWater || !wetWater) failed.add("water to entities: untagged " + dryWater + ", tagged " + wetWater);
@@ -88,20 +92,31 @@ public final class ForgeFluidTest {
 		if (fell < 2.0) failed.add("a pig fell " + fell + " blocks through the fluid in 10 ticks");
 	}
 
-	/** A source, its flowing fluid and its liquid block, registered under {@code fabricated-forge-testmod:<name>}. */
+	/**
+	 * A source, its flowing fluid, its liquid block and its bucket, registered under {@code fabricated-forge-testmod:<name>}
+	 * ({@code <name>_bucket} for the bucket). All are made first and registered after, as Fabric lets a mod and as
+	 * TechReborn does: Forge looked the fluid up as the bucket was made, and threw (CORPUS-73).
+	 */
 	static final class Family {
 		final Identifier id;
 		final ForgeTestFluid source;
 		final ForgeTestFluid flowing;
 		final LiquidBlock block;
+		final BucketItem bucket;
 
 		Family(String name, Block properties) {
 			id = Identifier.fromNamespaceAndPath(ForgeTestMod.MOD_ID, name);
-			source = Registry.register(BuiltInRegistries.FLUID, id, new ForgeTestFluid.Source(this));
-			flowing = Registry.register(BuiltInRegistries.FLUID, Identifier.fromNamespaceAndPath(ForgeTestMod.MOD_ID, name + "_flowing"), new ForgeTestFluid.Flowing(this));
+			source = new ForgeTestFluid.Source(this);
+			flowing = new ForgeTestFluid.Flowing(this);
 			ResourceKey<Block> key = ResourceKey.create(Registries.BLOCK, id);
-			block = Registry.register(BuiltInRegistries.BLOCK, key, new LiquidBlock(source, BlockBehaviour.Properties.ofFullCopy(properties).setId(key)) {
-			});
+			block = new LiquidBlock(source, BlockBehaviour.Properties.ofFullCopy(properties).setId(key)) {
+			};
+			ResourceKey<Item> bucketKey = ResourceKey.create(Registries.ITEM, Identifier.fromNamespaceAndPath(ForgeTestMod.MOD_ID, name + "_bucket"));
+			bucket = new BucketItem(source, new Item.Properties().setId(bucketKey));
+			Registry.register(BuiltInRegistries.FLUID, id, source);
+			Registry.register(BuiltInRegistries.FLUID, Identifier.fromNamespaceAndPath(ForgeTestMod.MOD_ID, name + "_flowing"), flowing);
+			Registry.register(BuiltInRegistries.BLOCK, key, block);
+			Registry.register(BuiltInRegistries.ITEM, bucketKey, bucket);
 		}
 	}
 }

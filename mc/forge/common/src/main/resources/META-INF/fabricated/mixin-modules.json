@@ -15,6 +15,7 @@
     "fabricated-forge-screen-chars.mixins.json": ["fabric-screen-api-v1"]
   },
   "mixins": {
+    "BucketItemEarlyFluidMixin": [],
     "BuiltInRegistriesFreezeMixin": [],
     "BuiltInRegistriesInvoker": [],
     "DefaultAttributeCopyMixin": ["fabric-object-builder-api-v1"],
