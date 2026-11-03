@@ -94,7 +94,7 @@ Fabricated/
 │                            version-predicate parsing
 ├── loader/                  Platform-facing glue: common/ (every platform), neoforge/ (FabricCandidateLocator,
 │                            FabricDependencyLocator, FabricLanguageLoader, FabricModContainer, FabricClassProcessor:
-│                            interface injection, @Environment stripping), in two variants: src/fml for FML 10 to 12
+│                            interface injection; @Environment is stripped in translation), in two variants: src/fml for FML 10 to 12
 │                            (1.21.11, 26.x), src/modlauncher for NeoForge 21.1's FML 4 on ModLauncher (1.21.1),
 │                            each behind its own Fml facade (the Forge platforms' are on their branches, forge and
 │                            forge-legacy, with the same structure)
@@ -152,7 +152,7 @@ The generated overlay `neoforge.mods.toml` uses `modLoader="fabricated"`, so FML
 
 ### 3.3 Nested jars (Fabric jar-in-jar)
 * Extracted **from the validated archive only**, to `<gameDir>/.fabricated/cache/v1/nested/<sha256>.jar` (content-addressed, so it's written once).
-* Max nesting depth is 3. Every level gets the same archive checks.
+* Max nesting depth is 8 (Polymer's bundle nests a library four jars deep, LIMIT-2); a top-level jar's nested jars are bounded in number (1024) and bytes whatever their depth. Every level gets the same archive checks. A `config/fabricated.json` holding an earlier version's default limits, as it wrote them, reads as today's.
 * Nested jars with `fabric.mod.json` become Fabric candidates. For duplicates by id, **highest version wins**, as in Fabric Loader. Fabric API modules nested inside mods are routed to the module plan (§6).
 * A nested jar without `fabric.mod.json` is rejected and reported (Loom gives every nested library one).
 
@@ -176,7 +176,7 @@ NeoForge's sequence is: mod construction, then `unfreezeData()`, then a `Registe
 
 | Fabric entrypoint | When Fabricated runs it | Ordering |
 |---|---|---|
-| `preLaunch` | **Not run as Fabric does** (Fabric runs it before game classes load). Fabricated runs it right before `main`, on the first `RegisterEvent` (`EntrypointBridge`). Mods doing classloader tricks there are unsupported; running it earlier is on the roadmap. | Dependency order |
+| `preLaunch` | **Not run as Fabric does** (Fabric runs it before game classes load). Fabricated runs it right before `main`, on the first `RegisterEvent` (`EntrypointBridge`). Mods doing classloader tricks there are unsupported; it stays there for the beta (the roadmap's *Experimental items*). | Dependency order |
 | `main` (`ModInitializer`) | On a dedicated server (and in a data run), once, on the **first `RegisterEvent` after the attribute registry's** (which NeoForge posts first): registries are unfrozen, NeoForge's own attributes (part of every living entity's attribute builder) are registered, and NeoForge mods constructed before it are visible. On a client, where Fabric runs it: in `Minecraft`'s constructor, right before the `client` entrypoints, with the registries opened again (CORPUS-16); what NeoForge fills once its registration events end (attributes, spawn placements, fluid types, creative tab order) then takes what it registered | Fabric dependency order (topological, ties broken by id, so it's deterministic) |
 | `client` (`ClientModInitializer`) | After *all* `main` entrypoints, on the client dist, where Fabric runs it: in `Minecraft`'s constructor just before it records the game thread, once the instance, game directory and user are set (NeoForge registers mods before it creates `Minecraft`, and initializers commonly use the instance), with the registries open until it ends, as Fabric API leaves them | Same |
 | `server` (`DedicatedServerModInitializer`) | Immediately after all `main`, on a dedicated server | Same |
@@ -201,9 +201,9 @@ Each mod's entrypoints run inside a guard that records mod id, entrypoint key, c
    * the injector target methods exist (`method = "name(desc)"`, selector and wildcard forms, MixinExtras `@WrapOperation`/`@ModifyExpressionValue`/`@WrapWithCondition`/`@ModifyReturnValue` …);
    * the `@At` points can be found for `HEAD`, `RETURN`, `TAIL`, `INVOKE`, `INVOKE_ASSIGN`, `FIELD` and `NEW`, honouring `ordinal` and `opcode`. Other points (`JUMP`, `CONSTANT`, `LOAD`/`STORE`, slices) are checked conservatively: "unknown" never fails a mod, only "definitely absent" does.
    * `@Inject` handlers take either only the callback info or the target's parameters followed by it (MixinExtras sugar parameters such as `@Local` aside). NeoForge recompiles Minecraft, so a synthetic lambda can take its captured values in another order. Handlers that capture locals or use `@Coerce` are not judged;
-   * `@Local(name = …)` captures name a local variable the target declares (when the game class carries local names), and `@ModifyConstant` constants occur in the target;
-   * merged methods, `@Accessor`s and `@Invoker`s don't collide with a method the target already declares (NeoForge adds some, such as `hashCode` or public getters);
-   * a `NEW` point with a constructor descriptor matches that constructor only, and targets in library classes NeoForge loads without mixin support (DataFixerUpper, Brigadier, the JDK) fail. A mixin into such a class that only gives it interfaces of the mod, implemented with the class's fields and the mixin's own methods (Carpet's command removal), never reaches that check: translation replaces it with a generated class serving the interfaces (`LibraryBridges`, LIB-1), whose static methods read and write the fields through reflection, and points the mod's casts to the interfaces, checks against them and calls of their methods at it.
+   * `@Local(name = …)` captures name a local variable the target declares (when the game class carries local names), an `@Local(index = N)` capture's slot can hold a value of its type there (MixinExtras takes the slot only where its local's type is the handler's; CORPUS-55), and `@ModifyConstant` constants occur in the target;
+   * merged methods, `@Accessor`s, `@Invoker`s and `@Intrinsic`s don't collide with a method the target already declares (NeoForge adds some, such as `hashCode` or public getters; Forge 47's chest overrides `setBlockState`): an accessor of such a method becomes a shadow of it, and an `@Intrinsic` only calling the superclass's is dropped, keeping the target's (CORPUS-69);
+   * a `NEW` point with a constructor descriptor matches that constructor only, and targets in library classes NeoForge loads without mixin support (DataFixerUpper, Brigadier, the JDK) fail. A mixin into such a class that only gives it interfaces of the mod, implemented with the class's fields and the mixin's own methods (Carpet's command removal), never reaches that check: translation replaces it with a generated class serving the interfaces (`LibraryBridges`, LIB-1), whose static methods read and write the fields through reflection, and points the mod's casts to the interfaces, checks against them and calls of their methods at it. One giving it another library's interfaces (Adventure's, which other classes implement and which have default methods), with no state and only the class's public methods as shadows, is replaced by a generated adapter (`LibraryAdapters`, LIB-2): it implements the interfaces for one object of the class, with the mixin's methods and the class's other public methods forwarded to the object, and the mod's casts to the interfaces wrap an object of the class in it, its checks against them count the class, and its casts to the class unwrap it.
 
    Mixins into the classes of the jars installed next to the Fabric mods get the same checks (`InstalledClasses`:
    Fabricated's Fabric API, then each NeoForge mod's jar, nested ones too, then the Fabric mods' jars, whose classes
@@ -217,6 +217,13 @@ Each mod's entrypoints run inside a guard that records mod id, entrypoint key, c
    target lacks but an installed Fabric jar's mixin adds to it (Fabric API's `updateSelection` on the creative screen)
    is not judged: Mixin merges every mixin's members into a class before any injector looks for its target. The
    adding mixin's class is recorded with its SHA-256 like the installed classes above.
+
+   The game is also seen as the platform's coremods leave it where they run before Mixin applies any mod's mixins
+   (`PlatformCoremods`, CORPUS-61): on NeoForge 21.1, each `finalizeSpawn` call in the classes its
+   `finalize_spawn_targets.json` lists is a call of `EventHooks.finalizeMobSpawn`, and the fields its
+   field-to-getter coremod covers are read through their getters. From 21.11 on, FML runs the same coremods after
+   Mixin, so Mixin sees those classes as the patched jar has them, and none are described (CORPUS-67). Forge's
+   coremods are described on the Forge branches.
 
    Outcome per mixin:
    * A missing target class fails only where Mixin rejects it: in a required config at compatibility level 0.17.4 or later (before that, Mixin skips the target).
@@ -369,7 +376,7 @@ A unit test remaps the same input twice and compares SHA-256.
 | `mutable field C f d` | `<current access>-f C f`, with the current access read from game bytecode (AT has no "keep access" modifier) |
 | `transitive-*` | same as the non-transitive form (ATs are global) |
 | `inject-interface C I` (class tweaker) | **not expressible in AT.** Applied by Fabricated's `ClassProcessor` (FML SPI), which adds `I` to `C` at load time. Generic signatures are kept. |
-| `extend-enum C K` (class tweaker v2) | nothing: the line only declares a constant the mod's enum mixin adds, which Mixin (0.17.1 or later) does itself. The mod is disabled if the running Mixin is older, or if `C` is one of NeoForge's `IExtensibleEnum`s (FML refuses enum mixins into those, ENUM-4) and the mixin can become neither an enum extension (ENUM-3) nor an ordinary mixin adding the constants (ENUM-5). |
+| `extend-enum C K` (class tweaker v2) | nothing: the line only declares a constant the mod's enum mixin adds, which Mixin (0.17.1 or later) does itself. Where the running Mixin is older, or `C` is one of NeoForge's `IExtensibleEnum`s (FML refuses enum mixins into those, ENUM-4), the mixin becomes an enum extension (ENUM-3, NeoForge only) or an ordinary mixin adding the constants (ENUM-5, ENUM-7); the mod is disabled if it can become neither. |
 
 * Fabric also makes a private instance method made `accessible` final unless a mod extends it, from all mods' wideners
   merged. NeoForge reads each mod's file on its own and stops the game when one's `+f` meets another's `-f` on the
@@ -395,16 +402,17 @@ versions is decided at compile time by which source folders it compiles, plus tw
 * **Data.** `META-INF/fabricated/fabric-api-plan.json` (per version: which Fabric API modules are native,
   pass-through or unsupported, and which upstream mixins to skip) and the generated `version.properties` (Minecraft
   version, mapping namespace, Mixin versions, Fabricated's version and build digest). Core reads the plan and `loader`'s `FabricatedInfo` the properties, each validated when parsed. Facts about other
-  people's mods are core's `compat-plan.json` (`CompatPlan`): Fabric builds that can't run on NeoForge, and Fabric
-  builds that can't run next to a NeoForge mod; a unit test parses the shipped file.
+  people's mods are core's `compat-plan.json` (`CompatPlan`): Fabric builds refused on a loader (`neoForgeBuildOnly`,
+  lifted on the loaders an entry's `runsOn` names), and Fabric builds that can't run next to a NeoForge mod; a unit
+  test parses the shipped file.
 * **Mixin differences in Fabric mods** are repaired by core's pre-flight against the running game's bytecode
   (`MixinPreflight.repairs`: overloads NeoForge reordered or moved code into, constructors NeoForge kept for
   vanilla's signature, calls and constructor calls made through a subtype or given one more argument (through bridge
-  handlers that pass a handler's MixinExtras sugar on), renumbered lambdas, calls moved into a lambda of the method, hard local captures, accessors of members
+  handlers that pass a handler's MixinExtras sugar on), renumbered lambdas, calls moved into a lambda of the method, hard local captures, locals taken by a slot the build keeps them in elsewhere, accessors of members
   NeoForge added), not by per-version tables. The injector repairs run in one order (`MixinRepairs`), each from its
   family's class (`LambdaRepairs`, `OverloadRepairs`, `CallRepairs`, `ConstructorRepairs`, `LocalRepairs`). Enum mixins into
   NeoForge's extensible enums become its enum extension entries (`EnumExtensions`), named enums included when their
-  names already carry the mod's id. Mixins only giving a library class the mod's interfaces become generated classes
+  names already carry the mod's id; their other methods stay an ordinary mixin without the constants. Mixins only giving a library class the mod's interfaces become generated classes
   the mod calls instead (`LibraryBridges`).
 * Everything Minecraft-agnostic stays in `core`/`loader`. The full seam table is in [`claude.md`](claude.md).
 * **Adding a version** (summarised from `CONTRIBUTING.md`): copy the nearest `mc/neoforge/<version>` directory, set
@@ -459,7 +467,7 @@ Read during discovery, before NeoForge's config system exists, so it's plain JSO
   "strictDependencies": false,
   "cache": { "enabled": true, "verifyIntegrity": true, "maxUnusedLaunches": 5 },
   "limits": { "maxJarBytes": 268435456, "maxEntryBytes": 134217728, "maxTotalUncompressedBytes": 536870912,
-              "maxEntries": 65536, "maxCompressionRatio": 100, "maxNestingDepth": 3 },
+              "maxEntries": 65536, "maxCompressionRatio": 100, "maxNestingDepth": 8 },
   "mods": {
     "examplemod": { "disabled": false, "skipMixins": ["examplemod.mixins.json:client.FooMixin"],
                     "skipEntrypoints": ["client"], "aliases": ["example"] }

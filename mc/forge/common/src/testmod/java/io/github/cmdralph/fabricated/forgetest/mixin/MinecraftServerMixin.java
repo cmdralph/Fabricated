@@ -6,6 +6,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
+import io.github.cmdralph.fabricated.forgetest.ForgeDefaultBridgeTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeTestMarker;
 import io.github.cmdralph.fabricated.forgetest.ForgeTestMod;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -24,7 +25,8 @@ import net.minecraft.server.MinecraftServer;
  * command event is in the server's dispatcher, whether Fabric's block break events fire as a player breaks blocks,
  * whether its use and attack callbacks are asked as a player uses and attacks things (an entity at a later tick),
  * whether a block Fabric's sleep events admit as a bed survives being slept on, whether Fabric's damage events are
- * asked as an entity is hurt, and whether Fabric's storages and Forge's handlers see each other.
+ * asked as an entity is hurt, whether Fabric's storages and Forge's handlers see each other, and whether the defaults of
+ * the interfaces the test mod's mixins add to entities beside Forge's run (default bridges).
  */
 @Mixin(MinecraftServer.class)
 public abstract class MinecraftServerMixin {
@@ -49,6 +51,7 @@ public abstract class MinecraftServerMixin {
 			ForgeTestMod.checkPackData((MinecraftServer) (Object) this);
 			ForgeTestMod.checkBiomes((MinecraftServer) (Object) this);
 			ForgeTestMod.checkFluids((MinecraftServer) (Object) this);
+			ForgeDefaultBridgeTest.check((MinecraftServer) (Object) this);
 			ForgeTestMod.checkColors();
 			ForgeTestMod.checkKeyMapping();
 			ForgeTestMod.checkCommands((MinecraftServer) (Object) this);

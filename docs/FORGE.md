@@ -230,11 +230,32 @@ What else differs on Forge, for Fabric mods in general:
   is that mod's, and Fabricated's copy, its mixins and its Forge hooks stand down, as on NeoForge (all five, server run
   with stand-ins; PROVIDER-1). Sinytra Connector and a second Fabricated jar are refused, the launch stopping with
   Fabricated's reason (DUP-1), and so, at once, is a Forge jar with its own copy of Fabric Loader, beside which Forge
-  can't even build its error screen (all five; PROVIDER-2).
+  can't even build its error screen (all five; PROVIDER-2). Not Forgified Fabric API's on Forge 47 (below).
+- **Default method bridges:** where an interface a Fabric mod's mixin adds to a game class brings a second default
+  method beside one Forge's own interfaces give it (`IForgeLivingEntity.self()` on `LivingEntity`, `IForgeEntity`'s
+  `isMultipartEntity()` on every entity class), the class declares the method, calling Forge's, as on NeoForge
+  (CORPUS-11, CORPUS-63, DEFAULT-1); without it either call threw `AbstractMethodError`. Forge runs on ModLauncher, so
+  the loader's transformer declares them before Mixin, and a Mixin extension of the in-game mod takes them out as Mixin
+  starts on a class it applies mixins to and declares them again after. The test mod calls both kinds on a pig (all
+  five, server run).
+- **Before the entrypoints:** Fabric mods' handlers in a registry's freeze, and a hook of theirs into the game's options
+  that throws, wait for their main entrypoints as on Fabric (REG-8, ENTRY-2; Forge's client creates the options before
+  it loads mods), and the system property FML sets for an empty log marker is removed before any Fabric mod runs
+  (CORPUS-60). A Fabric mod's jar a mod proposes for the class path as the game runs isn't added, with a loading
+  warning (DOWNLOAD-1); Essential, whose loader does that, is still refused on Forge.
+- **Forge's coremods:** on Forge 47, pre-flight reads the game's classes as Forge's coremods leave them, each mob's
+  `finalizeSpawn` call in the classes Forge lists pointed at `ForgeEventFactory.onFinalizeSpawn` and the fields Forge
+  reads through getters, so a Fabric mod's hook at such a call moves to Forge's hook or is left out with its reason, as
+  on NeoForge (CORPUS-61). Forge 61 to 66's are still to be described (task 5): a hook there at a call they change may
+  find nothing as Mixin applies it.
 - **MixinExtras** is 0.5.5 on every Forge version: the in-game mod nests it, and Forge's jar-in-jar locator picks it
   over the 0.5.4 Forge 61 to 66 offer (MIXEXT-3).
+- **`@ModifyArgs`:** Forge 47's Mixin 0.8.5 puts the classes it generates for a `@ModifyArgs` handler's arguments in no
+  module of the game layer, so a game class naming one failed to load (the corpus server and client stopped as `Fluids`
+  loaded, CORPUS-68). Fabricated's transformation service adds a module holding those packages, and no files, as
+  Mixin 0.8.7 does on Forge 61 to 66; not when no Fabric mod is loaded, or a mod file already holds one of them.
 - **Forge Config API Port**'s Fabric build loads, with its own copies of NeoForge's config classes, which Forge lacks
-  (REPL-1, PLAT-5). **Mod Menu**'s Fabric build isn't loaded on Forge, which lists mods itself; Fabric mods' Mod Menu
+  (REPL-1, PLAT-5; on Forge 47 from task 5, whose descriptor had NeoForge's list and left the jar out: PLAT-6). **Mod Menu**'s Fabric build isn't loaded on Forge, which lists mods itself; Fabric mods' Mod Menu
   entrypoints give it their config screens (above).
 - **Enum extensions:** a Fabric mod adding enum constants with Mixin's enum extensions (Farmer's Delight Refabricated)
   is disabled on Forge 61 to 66, whose Mixin 0.8.7 predates them (CORPUS-36).
@@ -266,8 +287,16 @@ instead. Unless a task is named, nothing is planned for them yet.
   (`Gui.render`), or at its end, applies but never runs: Forge 61 to 66 hand the drawing to their layers at its start,
   and Forge 47's GUI never calls it. Mixins at its start, and into the methods that draw each part, which Forge's
   layers call, still run. Fabric API's own HUD hooks are bridged (above); task 5 looks at mods' own.
-- **Forgified Fabric API (task 5).** It is refused with any jar carrying its own Fabric Loader (PROVIDER-2, above).
-  Task 5 tries hiding its nested loader so both run, as on NeoForge.
+- **Forgified Fabric API (task 5).** Its 1.20.1 build nests Forgified Fabric Loader, whose packages are Fabric Loader's
+  API, as Fabricated's own copy's are. Fabricated's in-game mod nests an empty jar under that loader's jar-in-jar
+  identifier (`dev.su5ed.sinytra:fabric-loader`) at version 999.999.999, as Sinytra Connector does: Forge's jar-in-jar
+  adds the newest version every range admits, so it adds the empty jar and leaves the copy out, and the mod locator lets
+  the jar load (PROVIDER-2). Its modules are Forge mods whose `@Mod` classes start them and which use Fabric Loader's
+  public API only (read off its jar), so Fabricated's copy serves them; Fabricated's own Fabric API modules stand down
+  for theirs (PROVIDER-1). The in-game mod is then loaded even without Fabric mods, as only it nests the empty jar.
+  A copy under another identifier, in a jar's own entries, or with a range the empty jar's version doesn't satisfy is
+  still refused. A stand-in nesting a copy as Forgified Fabric API does is a gate; the server with Forgified Fabric API
+  itself is informational until it has passed (extended runs).
 
 **Not supported on Forge** (Forge's code differs where upstream hooks in):
 

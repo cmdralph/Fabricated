@@ -36,8 +36,11 @@ import net.minecraft.world.phys.Vec3;
  */
 public final class ForgeInteractionTest {
 	private static final Set<String> SEEN = ConcurrentHashMap.newKeySet();
-	/** How long the armor stand's part waits for the site's chunk to tick entities. */
-	private static final int MAX_WAIT = 100;
+	/**
+	 * How long the armor stand's part waits for the site's chunk to tick entities, at most: 20 seconds. A client's
+	 * integrated server on a CI runner, rendering in software, took more than 100 ticks once (#248's run 41563911536).
+	 */
+	private static final int MAX_WAIT = 400;
 	private static final List<String> FAILED = new ArrayList<>();
 	/** The stone block the callbacks answer for. Set by {@link #check}. */
 	private static volatile BlockPos site;

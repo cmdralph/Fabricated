@@ -83,6 +83,12 @@ public final class Report {
 		return sb == null ? text : sb.toString();
 	}
 
+	/** The lines of a named section, in order; none when it has none. */
+	public synchronized List<String> lines(String section) {
+		List<String> lines = sections.get(section);
+		return lines == null ? List.of() : List.copyOf(lines);
+	}
+
 	public synchronized List<ModRow> mods() {
 		return List.copyOf(mods);
 	}

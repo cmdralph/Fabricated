@@ -39,7 +39,14 @@ import io.github.cmdralph.fabricated.core.bytecode.Annotations;
  * ({@code FMLMixinFeatureValidator}, ENUM-4), not other mixins: the generated one injects into the enum's class
  * initializer right after it sets its values array, makes each constant with one of the enum's constructors (through a
  * constructor invoker) at the next ordinals, appends them to the array, then runs the rest of the mixin's class
- * initializer with the constants in hand.
+ * initializer with the constants in hand. The same serves an enum mixin into any enum where the running Mixin applies
+ * no enum mixins, as before 0.17.1 (ENUM-7: Forge's, whose Mixin 0.8.7 stopped the Forge 61 to 66 corpus clients on
+ * Friends and Foes' mob categories); the enum's values array is found by its type there, as Forge 47's names may not be
+ * javac's. An enum Forge makes extensible ({@code IExtensibleEnum}, as {@code MobCategory}) gets its constants from its own
+ * {@code create} factories instead, at the end of its class initializer: Forge's enum extender writes them once Mixin has
+ * applied, and finds the values array only while it is still final, which the shadow's {@code @Mutable} would undo; and
+ * each registers its constant ({@code IExtensibleEnum.init}) in statics set after the values array, such as
+ * {@code MobCategory}'s map by name, which its codec reads.
  * <p>A constant with a body overriding the one method the enum forwards to a delegate its other constructor takes
  * (NeoForge's way of making such an enum extensible, as {@code GrassColorModifier}'s {@code ColorModifier}) is made with
  * that constructor and a delegate class generated next to the mod's mixins, running the body. Only code that runs
@@ -57,14 +64,20 @@ final class EnumValuesMixins {
 	private static final String CALLBACK_INFO = "Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;";
 	/** javac's name for an enum's array of its constants. */
 	private static final String VALUES = "$VALUES";
+	/** Forge's marker of an enum it makes extensible, whose {@code create} factories its enum extender writes. */
+	static final String FORGE_EXTENSIBLE_ENUM = "net/minecraftforge/common/IExtensibleEnum";
+	private static final String FACTORY = "create";
 	private static final Set<String> ENUM_METHODS = Set.of("values", "valueOf", "$values", "<init>");
 
 	/** The mixin's replacement, and the delegate classes its constants' bodies became, by internal name. */
 	record Result(byte[] mixin, Map<String, byte[]> classes, List<String> constants) {
 	}
 
-	/** A constant: its name, the enum's constructor making it (with name and ordinal), its arguments' code, its delegate or null. */
-	private record Constant(String name, String constructor, List<AbstractInsnNode> arguments, String delegate) {
+	/**
+	 * A constant: its name, the enum's constructor making it (with name and ordinal), its arguments' code, its delegate or
+	 * null, and the descriptor of the enum's factory making it (Forge's) or null.
+	 */
+	private record Constant(String name, String constructor, List<AbstractInsnNode> arguments, String delegate, String factory) {
 	}
 
 	/** A body's delegate: the interface the enum forwards to, the method it implements, and the body's code. */
@@ -97,6 +110,8 @@ final class EnumValuesMixins {
 			}
 		}
 		if (clinit == null || constants.isEmpty() || !clinit.tryCatchBlocks.isEmpty()) return null;
+		String valuesArray = valuesField(target);
+		if (valuesArray == null) return null;
 
 		// javac creates each constant in <clinit>: NEW (the mixin or its body's class), DUP, its name, its ordinal, its
 		// arguments, the constructor, PUTSTATIC.
@@ -130,7 +145,12 @@ final class EnumValuesMixins {
 				delegates.put(delegateClass, delegateClass(delegateClass, delegate));
 			}
 			if (!constructs(target, constructor)) return null;
-			made.add(new Constant(name, constructor, code, delegateClass));
+			String factory = null;
+			if (target.interfaces.contains(FORGE_EXTENSIBLE_ENUM)) {
+				factory = factory(target, constructor);
+				if (factory == null) return null;
+			}
+			made.add(new Constant(name, constructor, code, delegateClass, factory));
 			insn = EnumExtensions.real(insn.getNext());
 		}
 		// Then javac's values array, and the rest of the class initializer up to its return.
@@ -142,7 +162,24 @@ final class EnumValuesMixins {
 			rest.add(insn);
 		}
 		if (insn == null || EnumExtensions.real(insn.getNext()) != null || made.size() != constants.size() || !movable(rest, mixin.name, constants)) return null;
-		return new Result(mixinClass(mixin, target, made, rest), delegates, List.copyOf(constants));
+		return new Result(mixinClass(mixin, target, valuesArray, made, rest), delegates, List.copyOf(constants));
+	}
+
+	/**
+	 * The name of the enum's array of its constants: javac's {@code $VALUES}, or else its one static synthetic field of
+	 * that array's type (a platform's names for the game's, which ProGuard obfuscated); null when there is none or several.
+	 */
+	static String valuesField(ClassNode target) {
+		String desc = "[L" + target.name + ";";
+		int flags = Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC;
+		String found = null;
+		for (FieldNode field : target.fields) {
+			if ((field.access & flags) != flags || !field.desc.equals(desc)) continue;
+			if (field.name.equals(VALUES)) return VALUES;
+			if (found != null) return null;
+			found = field.name;
+		}
+		return found;
 	}
 
 	/** Whether any of the mod's classes reads one of the constants as a field of the enum, which the generated mixin doesn't add. */
@@ -206,6 +243,25 @@ final class EnumValuesMixins {
 			if ((field.access & Opcodes.ACC_STATIC) == 0 && field.desc.equals("L" + itf + ";")) return true;
 		}
 		return false;
+	}
+
+	/**
+	 * The descriptor of the enum's static {@code create} factory making a constant with that constructor, as Forge's enum
+	 * extender pairs them (the constructor's parameters but the ordinal, returning the enum); null when it has none.
+	 */
+	static String factory(ClassNode target, String constructor) {
+		org.objectweb.asm.Type[] parameters = org.objectweb.asm.Type.getArgumentTypes(constructor);
+		if (parameters.length < 2 || !parameters[0].getDescriptor().equals("Ljava/lang/String;") || parameters[1] != org.objectweb.asm.Type.INT_TYPE) {
+			return null;
+		}
+		org.objectweb.asm.Type[] arguments = new org.objectweb.asm.Type[parameters.length - 1];
+		arguments[0] = parameters[0];
+		System.arraycopy(parameters, 2, arguments, 1, parameters.length - 2);
+		String desc = org.objectweb.asm.Type.getMethodDescriptor(org.objectweb.asm.Type.getObjectType(target.name), arguments);
+		for (MethodNode m : target.methods) {
+			if ((m.access & Opcodes.ACC_STATIC) != 0 && m.name.equals(FACTORY) && m.desc.equals(desc)) return desc;
+		}
+		return null;
 	}
 
 	private static boolean constructs(ClassNode target, String constructor) {
@@ -282,24 +338,31 @@ final class EnumValuesMixins {
 
 	/**
 	 * The mixin replacing the enum mixin, under its name and {@code @Mixin}: a shadow of the enum's values array, a
-	 * constructor invoker per constructor used, and the injector adding the constants after the array is set.
+	 * constructor invoker per constructor used, and the injector adding the constants after the array is set. Where the
+	 * enum's own factories make the constants (Forge's), the injector calls them at the class initializer's end, and the
+	 * mixin has neither.
 	 */
-	private static byte[] mixinClass(ClassNode mixin, ClassNode target, List<Constant> constants, List<AbstractInsnNode> rest) {
+	private static byte[] mixinClass(ClassNode mixin, ClassNode target, String values, List<Constant> constants, List<AbstractInsnNode> rest) {
 		String enumDesc = "L" + target.name + ";";
 		String arrayDesc = "[" + enumDesc;
+		boolean factories = constants.stream().allMatch(c -> c.factory() != null);
 		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
 		cw.visit(Opcodes.V17, Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT | Opcodes.ACC_SUPER, mixin.name, null, "java/lang/Object", null);
 		copyMixinAnnotation(mixin.invisibleAnnotations, cw, false);
 		copyMixinAnnotation(mixin.visibleAnnotations, cw, true);
-		FieldVisitor values = cw.visitField(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, VALUES, arrayDesc, null, null);
-		// Mixin's member annotations are kept at runtime, and it reads them from there (@Mutable makes the field non-final).
-		values.visitAnnotation(SHADOW, true).visitEnd();
-		values.visitAnnotation(FINAL, true).visitEnd();
-		values.visitAnnotation(MUTABLE, true).visitEnd();
-		values.visitEnd();
+		if (!factories) {
+			FieldVisitor shadow = cw.visitField(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, values, arrayDesc, null, null);
+			// Mixin's member annotations are kept at runtime, and it reads them from there (@Mutable makes the field non-final).
+			shadow.visitAnnotation(SHADOW, true).visitEnd();
+			shadow.visitAnnotation(FINAL, true).visitEnd();
+			shadow.visitAnnotation(MUTABLE, true).visitEnd();
+			shadow.visitEnd();
+		}
 
 		Map<String, String> invokers = new LinkedHashMap<>();
-		for (Constant c : constants) invokers.computeIfAbsent(c.constructor(), k -> "fabricated$new" + invokers.size());
+		for (Constant c : constants) {
+			if (c.factory() == null) invokers.computeIfAbsent(c.constructor(), k -> "fabricated$new" + invokers.size());
+		}
 		invokers.forEach((constructor, name) -> {
 			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, name, constructor.replace(")V", ")" + enumDesc), null, null);
 			AnnotationVisitor invoker = mv.visitAnnotation(INVOKER, true);
@@ -321,16 +384,42 @@ final class EnumValuesMixins {
 		methods.visitEnd();
 		AnnotationVisitor ats = inject.visitArray("at");
 		AnnotationVisitor at = ats.visitAnnotation(null, AT);
-		at.visit("value", "FIELD");
-		at.visit("opcode", Opcodes.PUTSTATIC);
-		at.visit("target", enumDesc + VALUES + ":" + arrayDesc);
-		at.visitEnum("shift", SHIFT, "AFTER");
+		if (factories) {
+			// At the end, as a Forge mod's own call would come: a factory registers its constant in statics the class
+			// initializer sets after the values array (MobCategory's BY_NAME, read by its codec), still null right after it.
+			at.visit("value", "TAIL");
+		} else {
+			at.visit("value", "FIELD");
+			at.visit("opcode", Opcodes.PUTSTATIC);
+			at.visit("target", enumDesc + values + ":" + arrayDesc);
+			at.visitEnum("shift", SHIFT, "AFTER");
+		}
 		at.visitEnd();
 		ats.visitEnd();
 		inject.visitEnd();
 		mv.visitCode();
+		Map<String, Integer> slots = new LinkedHashMap<>();
+		if (factories) {
+			// Locals: 0 the callback, 1... the constants. Each factory appends its constant to the values array.
+			for (int i = 0; i < constants.size(); i++) {
+				Constant c = constants.get(i);
+				mv.visitLdcInsn(c.name());
+				for (AbstractInsnNode insn : c.arguments()) insn.accept(mv);
+				if (c.delegate() != null) {
+					mv.visitTypeInsn(Opcodes.NEW, c.delegate());
+					mv.visitInsn(Opcodes.DUP);
+					mv.visitMethodInsn(Opcodes.INVOKESPECIAL, c.delegate(), "<init>", "()V", false);
+				}
+				mv.visitMethodInsn(Opcodes.INVOKESTATIC, target.name, FACTORY, c.factory(), false);
+				mv.visitVarInsn(Opcodes.ASTORE, 1 + i);
+				slots.put(c.name(), 1 + i);
+			}
+			restOf(mv, mixin, rest, slots);
+			cw.visitEnd();
+			return cw.toByteArray();
+		}
 		// Locals: 0 the callback, 1 the enum's values, 2 their count, 3 the values with the constants, 4... the constants.
-		mv.visitFieldInsn(Opcodes.GETSTATIC, mixin.name, VALUES, arrayDesc);
+		mv.visitFieldInsn(Opcodes.GETSTATIC, mixin.name, values, arrayDesc);
 		mv.visitVarInsn(Opcodes.ASTORE, 1);
 		mv.visitVarInsn(Opcodes.ALOAD, 1);
 		mv.visitInsn(Opcodes.ARRAYLENGTH);
@@ -342,7 +431,6 @@ final class EnumValuesMixins {
 		mv.visitMethodInsn(Opcodes.INVOKESTATIC, "java/util/Arrays", "copyOf", "([Ljava/lang/Object;I)[Ljava/lang/Object;", false);
 		mv.visitTypeInsn(Opcodes.CHECKCAST, arrayDesc);
 		mv.visitVarInsn(Opcodes.ASTORE, 3);
-		Map<String, Integer> slots = new LinkedHashMap<>();
 		for (int i = 0; i < constants.size(); i++) {
 			Constant c = constants.get(i);
 			mv.visitLdcInsn(c.name());
@@ -366,8 +454,14 @@ final class EnumValuesMixins {
 			slots.put(c.name(), 4 + i);
 		}
 		mv.visitVarInsn(Opcodes.ALOAD, 3);
-		mv.visitFieldInsn(Opcodes.PUTSTATIC, mixin.name, VALUES, arrayDesc);
-		// The rest of the mixin's class initializer, its constants read from the locals.
+		mv.visitFieldInsn(Opcodes.PUTSTATIC, mixin.name, values, arrayDesc);
+		restOf(mv, mixin, rest, slots);
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	/** The rest of the mixin's class initializer, its constants read from the locals, and the injector's end. */
+	private static void restOf(MethodVisitor mv, ClassNode mixin, List<AbstractInsnNode> rest, Map<String, Integer> slots) {
 		for (AbstractInsnNode insn : rest) {
 			if (insn instanceof FieldInsnNode field && field.owner.equals(mixin.name)) mv.visitVarInsn(Opcodes.ALOAD, slots.get(field.name));
 			else insn.accept(mv);
@@ -375,8 +469,6 @@ final class EnumValuesMixins {
 		mv.visitInsn(Opcodes.RETURN);
 		mv.visitMaxs(0, 0);
 		mv.visitEnd();
-		cw.visitEnd();
-		return cw.toByteArray();
 	}
 
 	private static void copyMixinAnnotation(List<AnnotationNode> annotations, ClassWriter cw, boolean visible) {

@@ -143,6 +143,7 @@ public final class ModTranslator {
 	private final io.github.cmdralph.fabricated.core.archive.ArchiveLimits limits;
 	private final PlatformRenames renames;
 	private final RetypedFields retyped;
+	private final PrivateFieldReads privateReads;
 
 	public ModTranslator(TranslationEnvironment env, TranslationCache cache, io.github.cmdralph.fabricated.core.archive.ArchiveLimits limits) {
 		this.env = env;
@@ -150,6 +151,7 @@ public final class ModTranslator {
 		this.limits = limits;
 		this.renames = PlatformRenames.of(env.untransformable(), env.game(), env.descriptor().replacedMods().containsKey("forgeconfigapiport"));
 		this.retyped = RetypedFields.of(env.game());
+		this.privateReads = PrivateFieldReads.of(env.game(), env.descriptor().privateFields());
 	}
 
 	/**
@@ -196,6 +198,7 @@ public final class ModTranslator {
 					if (!result.strippedSignatureFiles().isEmpty()) {
 						notes.add("Removed jar signature files (signatures cannot survive remapping): " + result.strippedSignatureFiles());
 					}
+					notes.addAll(result.leftOutMembers());
 				}
 				Map<String, byte[]> view = remapped;
 				// Mixin classes and configs are read several times; reading an entry again would count against the
@@ -220,6 +223,10 @@ public final class ModTranslator {
 				if (!retyped.isEmpty()) {
 					notes.addAll(retyped.apply(remapped != null ? remapped : overlay, remapped != null ? remapped.keySet() : archive.classEntryNames(),
 							collectRefmapPaths(candidate.metadata(), archive), files));
+				}
+				// Reads of the fields the platform keeps private, through its getters (CORPUS-64).
+				if (!privateReads.isEmpty()) {
+					notes.addAll(privateReads.apply(remapped != null ? remapped : overlay, remapped != null ? remapped.keySet() : archive.classEntryNames(), files));
 				}
 				List<ModsTomlWriter.MixinConfigSpec> mixinSpecs = processMixins(candidate, override, plannedSkips, files,
 						remapped != null ? remapped.keySet() : archive.classEntryNames(), overlay, findings, installedClasses, enumEntries,
@@ -318,11 +325,13 @@ public final class ModTranslator {
 					addBridges(DefaultBridge.of(ii.target(), List.of(ii.interfaceName()), classes), List.of(ii.interfaceName()), bridges, notes);
 				}
 
-				Set<String> environmentClasses = remapped != null ? environmentClasses(remapped.keySet(), files)
-						: environmentClasses(archive.classEntryNames(), archive::read);
 				int renamed = remapped != null ? applyRenames(remapped, remapped.keySet(), files)
 						: applyRenames(overlay, archive.classEntryNames(), archive::read);
 				if (renamed > 0) notes.add(renamed + " class(es) use NeoForge members as Forge Config API Port's copy of NeoForge declares them; the references are adapted to NeoForge's own");
+				// Last, on the classes as they will load: the members Fabric's @Environment reserves for the other side (ENV-1).
+				stripEnvironment(overlay, remapped, remapped != null ? remapped.keySet() : archive.classEntryNames(), files,
+						env.clientSide() ? EnvType.CLIENT : EnvType.SERVER);
+				Set<String> environmentClasses = Set.of();
 
 				FabricModMetadata md = candidate.metadata();
 				ModsTomlWriter.Spec spec = new ModsTomlWriter.Spec(neoId, md.getVersion().getFriendlyString(), md.getName(),
@@ -405,15 +414,44 @@ public final class ModTranslator {
 		return (int) Math.max(1, Math.min(MEMORY_MIB, bytes / (1 << 20)));
 	}
 
-	/** Classes whose bytes mention Fabric's {@code @Environment} annotations, to strip for the other side at class load. */
-	private static Set<String> environmentClasses(Collection<String> entries, FileView files) throws ArchiveException {
-		Set<String> classes = new TreeSet<>();
-		for (String name : entries) {
+	/**
+	 * Leaves out the members and interfaces of the mod's classes that Fabric's {@code @Environment} annotations reserve for
+	 * the other side, as Fabric Loader does as it loads them (ENV-1): from each class as it will load, the overlay's copy
+	 * where translation rewrote it, else the remapped jar's or, unremapped, the jar's (into the overlay). A translation is
+	 * for one side. Done at class load, the stripping cost Cobblemon's client its initializer on NeoForge 21.1 (CORPUS-59):
+	 * ModLauncher computes anew the frames of every class a transformer takes, which loads the classes the frames name, and
+	 * Cobblemon's cooking pot screen names JEI's runtime, which isn't installed. Only members and interfaces go, so the
+	 * class's own frames stay valid and are kept as they are.
+	 *
+	 * @param remapped the remapped jar's entries, or {@code null} when the jar is used as it is
+	 */
+	private static void stripEnvironment(Map<String, byte[]> overlay, Map<String, byte[]> remapped, Collection<String> entries,
+			FileView files, EnvType side) throws ArchiveException {
+		for (String name : List.copyOf(entries)) {
 			if (!name.endsWith(".class") || name.startsWith("META-INF/")) continue;
-			byte[] data = files.read(name);
-			if (data != null && EnvironmentStripper.mayNeedStripping(data)) classes.add(name.substring(0, name.length() - ".class".length()));
+			if (overlay.containsKey(name)) {
+				byte[] stripped = stripped(overlay.get(name), side);
+				if (stripped != null) overlay.put(name, stripped);
+			}
+			if (remapped != null) {
+				byte[] stripped = stripped(remapped.get(name), side);
+				if (stripped != null) remapped.put(name, stripped);
+			} else if (!overlay.containsKey(name)) {
+				byte[] stripped = stripped(files.read(name), side);
+				if (stripped != null) overlay.put(name, stripped);
+			}
 		}
-		return Set.copyOf(classes);
+	}
+
+	/** The class without the other side's members and interfaces, its frames as they were; {@code null} if it keeps them all. */
+	private static byte[] stripped(byte[] data, EnvType side) {
+		if (data == null || !EnvironmentStripper.mayNeedStripping(data)) return null;
+		ClassNode node = new ClassNode();
+		new ClassReader(data).accept(node, 0);
+		if (!EnvironmentStripper.strip(node, side)) return null;
+		ClassWriter writer = new ClassWriter(0);
+		node.accept(writer);
+		return writer.toByteArray();
 	}
 
 	/**
@@ -525,15 +563,20 @@ public final class ModTranslator {
 		List<ModsTomlWriter.MixinConfigSpec> specs = new ArrayList<>();
 		// Pre-flight sees the mod as it will load: with the handler methods left out below.
 		FileView translated = name -> overlay.containsKey(name) ? overlay.get(name) : files.read(name);
-		MixinPreflight preflight = new MixinPreflight(env.installedIndex(), env.installed(), classSource(translated), env.untransformable(),
+		// Pre-flight reads mixins using a MixinExtras their mod relocated with MixinExtras' own names (MIXEXT-4).
+		RelocatedMixinExtras relocated = new RelocatedMixinExtras();
+		MixinPreflight preflight = new MixinPreflight(env.installedIndex(), env.installed(), relocated.view(classSource(translated)), env.untransformable(),
 				env.clientSide(), MixinCompat.missingTargetsFatal(behavior), env.vanilla(), env.descriptor().loaderName(),
 				MixinCompat.interfaceInjectors(env.runtimeMixinVersion()), MixinCompat.constructorInjects(env.runtimeMixinVersion()),
-				MixinCompat.argumentNames(env.runtimeMixinVersion()), MixinCompat.exactStaticInjects(env.runtimeMixinVersion()));
+				MixinCompat.argumentNames(env.runtimeMixinVersion()), MixinCompat.exactStaticInjects(env.runtimeMixinVersion()),
+				MixinCompat.supportsEnumExtensions(env.runtimeMixinVersion()));
 		Map<String, MixinConfigFile> configs = new HashMap<>();
 		Set<String> matchedSkips = new HashSet<>();
 		Map<String, Refmap> refmaps = new HashMap<>();
 		// The mod's interfaces its mixins into library classes gave them, now served by generated classes (LIB-1).
 		Map<String, LibraryBridges.Duck> ducks = new HashMap<>();
+		// Another library's interfaces they gave them, served by adapters the mod's casts wrap the objects in (LIB-2).
+		Map<String, LibraryAdapters.Adapted> adapted = new HashMap<>();
 		Map<String, Integer> implementors = new HashMap<>();
 		// The accessor mixins into library classes that generated classes serve, kept in their configs (LIB-1b).
 		Set<String> servedAccessors = new HashSet<>();
@@ -589,13 +632,13 @@ public final class ModTranslator {
 							"has no method or field " + method + " to leave out", ""));
 				}
 			}
-			Set<String> skip = withDependents(entry.config(), config, wholeSkips, translated, findings, ducks.keySet());
+			Set<String> skip = withDependents(entry.config(), config, wholeSkips, translated, findings, served(ducks, adapted));
 			skip = withEnumExtensions(entry.config(), config, skip, ModIds.toNeoForgeId(candidate.id()), translated, entries, overlay, findings, enumEntries,
 					enumTargets);
-			skip = withLibraryBridges(entry.config(), config, skip, translated, entries, overlay, findings, ducks, implementors, servedAccessors);
-			overlay.putAll(preflight.repairs(entry.config(), config, refmap, skip, findings));
+			skip = withLibraryBridges(entry.config(), config, skip, translated, entries, overlay, findings, ducks, adapted, implementors, servedAccessors);
+			overlay.putAll(repairs(preflight, relocated, entry.config(), config, refmap, skip, findings));
 			if (!override.ignorePreflight()) {
-				List<PreflightFinding> checked = new ArrayList<>(preflight.check(entry.config(), config, refmap, skip));
+				List<PreflightFinding> checked = new ArrayList<>(relocated.relocated(preflight.check(entry.config(), config, refmap, skip)));
 				// Their targets are library classes, which Mixin never applies them to: the generated classes stand in.
 				checked.removeIf(f -> servedAccessors.contains(f.mixin()));
 				checked.addAll(unsupportedModuleUses(entry.config(), config, skip, translated));
@@ -610,7 +653,7 @@ public final class ModTranslator {
 					else handlers.computeIfAbsent(f.mixin().replace('.', '/') + ".class", k -> new TreeSet<>()).add(f.handler());
 				}
 				leaveOutHandlers(handlers, translated, overlay);
-				if (leftOut.size() > skip.size()) skip = withDependents(entry.config(), config, leftOut, translated, findings, ducks.keySet());
+				if (leftOut.size() > skip.size()) skip = withDependents(entry.config(), config, leftOut, translated, findings, served(ducks, adapted));
 			}
 			if (!skip.isEmpty() || rewritten) {
 				overlay.put(entry.config(), config.withoutMixins(skip).getBytes(StandardCharsets.UTF_8));
@@ -627,7 +670,7 @@ public final class ModTranslator {
 			}
 			specs.add(new ModsTomlWriter.MixinConfigSpec(entry.config(), behavior));
 		}
-		pluginMixins(entries, configs, refmaps, preflight, !override.ignorePreflight(), translated, overlay, findings);
+		pluginMixins(entries, configs, refmaps, preflight, relocated, !override.ignorePreflight(), translated, overlay, findings);
 		if (!ducks.isEmpty()) {
 			// The mod's uses of the interfaces, and the bridges' own (one may use another's), call the bridges.
 			Set<String> classesToRewrite = new LinkedHashSet<>(entries);
@@ -637,6 +680,24 @@ public final class ModTranslator {
 				byte[] data = translated.read(name);
 				byte[] rewritten = data == null ? null : LibraryBridges.rewrite(data, ducks);
 				if (rewritten != null) overlay.put(name, rewritten);
+			}
+		}
+		if (!adapted.isEmpty()) {
+			// The mod's casts to the adapted interfaces and checks against them (the adapters' own code stays as it is).
+			Set<String> adapters = new HashSet<>();
+			adapted.values().forEach(a -> adapters.add(a.adapter() + ".class"));
+			for (String name : entries) {
+				if (!name.endsWith(".class") || name.startsWith("META-INF/") || adapters.contains(name)) continue;
+				byte[] data = translated.read(name);
+				byte[] rewritten = data == null ? null : LibraryAdapters.rewrite(data, adapted);
+				if (rewritten != null) overlay.put(name, rewritten);
+			}
+			for (Map.Entry<String, byte[]> e : List.copyOf(overlay.entrySet())) {
+				// The LIB-1 bridges, which aren't among the mod's entries.
+				if (e.getKey().endsWith("$FabricatedBridge.class") && !entries.contains(e.getKey())) {
+					byte[] rewritten = LibraryAdapters.rewrite(e.getValue(), adapted);
+					if (rewritten != null) overlay.put(e.getKey(), rewritten);
+				}
 			}
 		}
 		installedClasses.putAll(preflight.installedClasses());
@@ -705,6 +766,15 @@ public final class ModTranslator {
 				+ " default as its super (SUPER-1)");
 	}
 
+	/** Pre-flight's repairs of a config's mixins, and its notes on them, with the mod's relocated MixinExtras names (MIXEXT-4). */
+	private static Map<String, byte[]> repairs(MixinPreflight preflight, RelocatedMixinExtras relocated, String configName, MixinConfigFile config,
+			Refmap refmap, Set<String> skip, List<PreflightFinding> findings) {
+		int from = findings.size();
+		Map<String, byte[]> repaired = preflight.repairs(configName, config, refmap, skip, findings);
+		relocated.relocateFindings(findings, from);
+		return relocated.relocated(repaired);
+	}
+
 	private static void leaveOutHandlers(Map<String, Set<String>> handlers, FileView files, Map<String, byte[]> overlay) throws ArchiveException {
 		for (Map.Entry<String, Set<String>> h : handlers.entrySet()) {
 			byte[] mixin = files.read(h.getKey());
@@ -721,8 +791,8 @@ public final class ModTranslator {
 	 * side, say) are not reported: the plugin may well never add it.
 	 */
 	private static void pluginMixins(Collection<String> entries, Map<String, MixinConfigFile> configs, Map<String, Refmap> refmaps,
-			MixinPreflight preflight, boolean check, FileView files, Map<String, byte[]> overlay, List<PreflightFinding> findings)
-			throws ArchiveException {
+			MixinPreflight preflight, RelocatedMixinExtras relocated, boolean check, FileView files, Map<String, byte[]> overlay,
+			List<PreflightFinding> findings) throws ArchiveException {
 		Set<String> listed = new HashSet<>();
 		for (MixinConfigFile config : configs.values()) {
 			for (String mixin : config.allMixins()) listed.add(config.internalName(mixin) + ".class");
@@ -739,10 +809,10 @@ public final class ModTranslator {
 			}
 			if (unlisted.isEmpty()) continue;
 			MixinConfigFile added = config.listing(unlisted);
-			overlay.putAll(preflight.repairs(e.getKey(), added, refmaps.get(e.getKey()), Set.of(), findings));
+			overlay.putAll(repairs(preflight, relocated, e.getKey(), added, refmaps.get(e.getKey()), Set.of(), findings));
 			if (!check) continue;
 			Map<String, Set<String>> handlers = new TreeMap<>();
-			for (PreflightFinding f : preflight.check(e.getKey(), added, refmaps.get(e.getKey()), Set.of())) {
+			for (PreflightFinding f : relocated.relocated(preflight.check(e.getKey(), added, refmaps.get(e.getKey()), Set.of()))) {
 				if (f.severity() != Severity.LEFT_OUT || f.handler() == null) continue;
 				findings.add(f);
 				handlers.computeIfAbsent(f.mixin().replace('.', '/') + ".class", k -> new TreeSet<>()).add(f.handler());
@@ -761,27 +831,35 @@ public final class ModTranslator {
 	}
 
 	/**
-	 * Replaces an enum mixin NeoForge's enum extension file can't carry with an ordinary mixin adding its constants
-	 * (ENUM-5), when it can be and no class of the mod reads them as fields of the enum; pre-flight disables the mod
-	 * otherwise, as FML would refuse the enum mixin.
+	 * Replaces an enum mixin with an ordinary mixin adding its constants, when it can be and no class of the mod reads
+	 * them as fields of the enum: one into one of NeoForge's extensible enums that NeoForge's enum extension file can't
+	 * carry (ENUM-5), as FML would refuse the enum mixin, or one into any enum where the running Mixin is older than
+	 * 0.17.1, whose enum extensions apply enum mixins (ENUM-7: Forge's, and NeoForge's before 26.1). Pre-flight disables
+	 * the mod otherwise. Returns whether it replaced it.
 	 */
-	private static void valuesMixin(String configName, MixinConfigFile config, String mixin, ClassNode node, ClassNode target, FileView files,
+	private boolean valuesMixin(String configName, MixinConfigFile config, String mixin, ClassNode node, ClassNode target, FileView files,
 			Collection<String> modEntries, Map<String, byte[]> overlay, List<PreflightFinding> findings) throws ArchiveException {
 		String bodies = generatedClass(config, files, "FabricatedEnumBodies");
-		if (bodies == null) return;
+		if (bodies == null) return false;
 		EnumValuesMixins.Result result = EnumValuesMixins.of(node, target, name -> readNode(files, name + ".class"), bodies);
-		if (result == null) return;
+		if (result == null) return false;
 		List<ClassNode> modClasses = new ArrayList<>();
 		for (String entry : modEntries) {
 			ClassNode c = entry.endsWith(".class") ? readNode(files, entry) : null;
 			if (c != null) modClasses.add(c);
 		}
-		if (EnumValuesMixins.readAsFields(modClasses, target.name, result.constants())) return;
+		if (EnumValuesMixins.readAsFields(modClasses, target.name, result.constants())) return false;
 		overlay.put(config.internalName(mixin) + ".class", result.mixin());
 		result.classes().forEach((name, bytes) -> overlay.put(name + ".class", bytes));
+		String why = env.descriptor().enumExtensions() && target.interfaces.contains(EnumExtensions.EXTENSIBLE_ENUM)
+				? "go to one of NeoForge's extensible enums, " + target.name.replace('/', '.') + ", whose enum extension file can't carry them"
+				: "go to " + target.name.replace('/', '.') + ", and this " + env.descriptor().loaderName() + "'s Mixin " + env.runtimeMixinVersion()
+						+ " can't apply an enum mixin (enum extensions came with Mixin 0.17.1)";
+		// Forge's extensible enums make them with their own factories, which Forge's enum extender writes (ENUM-7).
+		String with = target.interfaces.contains(EnumValuesMixins.FORGE_EXTENSIBLE_ENUM) ? " with the enum's create factories" : "";
 		findings.add(new PreflightFinding(Severity.INFO, configName, node.name.replace('/', '.'), "Its constants (" + String.join(", ", result.constants())
-				+ ") go to one of NeoForge's extensible enums, " + target.name.replace('/', '.') + ", whose enum extension file can't carry them:"
-				+ " a mixin into its class initializer adds them, as mods' own NeoForge builds do", ""));
+				+ ") " + why + ": a mixin into its class initializer adds them" + with + ", as mods' own " + env.descriptor().loaderName() + " builds do", ""));
+		return true;
 	}
 
 	/** A file's class with its code, or null when it isn't there or can't be read. */
@@ -817,10 +895,12 @@ public final class ModTranslator {
 
 	/**
 	 * {@code skip} plus the enum mixins whose constants NeoForge's loader adds instead, from the mod's enum extension
-	 * file ({@link EnumExtensions}); their entries go to {@code enumEntries}, and the enums of every enum mixin to
-	 * {@code enumTargets} (only those, on a platform without enum extension files). An enum mixin into one of NeoForge's
-	 * extensible enums that the file can't carry becomes, where it can, an ordinary mixin adding its constants
-	 * ({@link EnumValuesMixins}), put in {@code overlay} with the delegate classes its constants' bodies become.
+	 * file ({@link EnumExtensions}), but those with other methods, which stay a mixin without the constants (put in
+	 * {@code overlay}); their entries go to {@code enumEntries}, and the enums of every enum mixin that stays one or
+	 * that the file carries to {@code enumTargets}. An enum mixin into one of NeoForge's extensible enums that the file
+	 * can't carry, or into any enum where the running Mixin can't apply enum mixins (ENUM-7), becomes, where it can, an
+	 * ordinary mixin adding its constants ({@link EnumValuesMixins}), put in {@code overlay} with the delegate classes its
+	 * constants' bodies become.
 	 */
 	private Set<String> withEnumExtensions(String configName, MixinConfigFile config, Set<String> skip, String modId, FileView files,
 			Collection<String> modEntries, Map<String, byte[]> overlay, List<PreflightFinding> findings, List<EnumExtensions.Entry> enumEntries,
@@ -833,16 +913,19 @@ public final class ModTranslator {
 			ClassNode node = new ClassNode();
 			new ClassReader(data).accept(node, ClassReader.SKIP_FRAMES);
 			String target = EnumExtensions.target(node);
-			if (target != null) enumTargets.add(target);
-			if (!env.descriptor().enumExtensions()) continue;
 			ClassNode targetNode = target == null ? null : env.installedIndex().readNode(target);
-			List<EnumExtensions.Entry> entries = target == null ? null : EnumExtensions.of(node, targetNode, modId);
+			boolean fileExtends = env.descriptor().enumExtensions();
+			List<EnumExtensions.Entry> entries = target == null || !fileExtends ? null : EnumExtensions.of(node, targetNode, modId);
 			if (entries == null) {
-				if (targetNode != null && targetNode.interfaces.contains(EnumExtensions.EXTENSIBLE_ENUM)) {
-					valuesMixin(configName, config, mixin, node, targetNode, files, modEntries, overlay, findings);
-				}
+				// Neither NeoForge's enum extension file nor, where it is older than 0.17.1, Mixin adds the constants
+				// (ENUM-5, ENUM-7: Friends and Foes' mob categories on Forge 61 to 66 stopped the corpus clients' bootstrap).
+				boolean converted = targetNode != null
+						&& (fileExtends && targetNode.interfaces.contains(EnumExtensions.EXTENSIBLE_ENUM) || !MixinCompat.supportsEnumExtensions(env.runtimeMixinVersion()))
+						&& valuesMixin(configName, config, mixin, node, targetNode, files, modEntries, overlay, findings);
+				if (target != null && !converted) enumTargets.add(target);
 				continue;
 			}
+			enumTargets.add(target);
 			if (entries.stream().anyMatch(e -> e.computed() != null)) {
 				// Computed arguments come from a class generated next to the mixins (ENUM-3).
 				String owner = argumentsClass(config, files);
@@ -850,12 +933,19 @@ public final class ModTranslator {
 				int first = (int) enumEntries.stream().filter(e -> e.computed() != null && e.computed().owner().equals(owner)).count();
 				entries = EnumExtensions.named(entries, owner, first);
 			}
-			if (all == skip) all = new TreeSet<>(skip);
-			all.add(mixin);
+			// Its other methods (an injector into the enum) stay a mixin, without the constants (CORPUS-65).
+			byte[] rest = EnumExtensions.rest(data);
+			if (rest != null) {
+				overlay.put(config.internalName(mixin) + ".class", rest);
+			} else {
+				if (all == skip) all = new TreeSet<>(skip);
+				all.add(mixin);
+			}
 			enumEntries.addAll(entries);
 			findings.add(new PreflightFinding(Severity.INFO, configName, node.name.replace('/', '.'), "Its constants ("
 					+ entries.stream().map(EnumExtensions.Entry::name).collect(Collectors.joining(", ")) + ") go to one of NeoForge's"
-					+ " extensible enums, " + target.replace('/', '.') + ": NeoForge's loader adds them, from the mod's enum extension file", ""));
+					+ " extensible enums, " + target.replace('/', '.') + ": NeoForge's loader adds them, from the mod's enum extension file"
+					+ (rest != null ? "; its other methods stay a mixin into it" : ""), ""));
 		}
 		return all;
 	}
@@ -870,8 +960,8 @@ public final class ModTranslator {
 	 * @param implementors how many of the mod's classes implement or extend each interface, filled the first time it is needed
 	 */
 	private Set<String> withLibraryBridges(String configName, MixinConfigFile config, Set<String> skip, FileView files, Collection<String> modEntries,
-			Map<String, byte[]> overlay, List<PreflightFinding> findings, Map<String, LibraryBridges.Duck> ducks, Map<String, Integer> implementors,
-			Set<String> servedAccessors) throws ArchiveException {
+			Map<String, byte[]> overlay, List<PreflightFinding> findings, Map<String, LibraryBridges.Duck> ducks, Map<String, LibraryAdapters.Adapted> adapted,
+			Map<String, Integer> implementors, Set<String> servedAccessors) throws ArchiveException {
 		Set<String> all = skip;
 		ClassIndex libraries = null;
 		for (String mixin : config.mixinsFor(env.clientSide())) {
@@ -891,7 +981,25 @@ public final class ModTranslator {
 					: header.interfaces.isEmpty() ? null : header.interfaces.get(0) + "$FabricatedBridge", files, overlay);
 			LibraryBridges.Bridge bridge = name == null ? null : LibraryBridges.of(data, targets.get(0), library::readNode,
 					itf -> readNode(files, itf + ".class"), itf -> implementors.getOrDefault(itf, 0), name);
-			if (bridge == null) continue;
+			if (bridge == null) {
+				// Interfaces of another library's (Adventure's, given to authlib's GameProfile): an adapter wraps the object (LIB-2).
+				String adapterName = accessor ? null : freeClassName(aroundMixinPackage(config,
+						header.name.substring(header.name.lastIndexOf('/') + 1) + "$FabricatedAdapter"), files, overlay);
+				Set<String> taken = new HashSet<>(ducks.keySet());
+				taken.addAll(adapted.keySet());
+				LibraryAdapters.Adapter adapter = adapterName == null ? null : LibraryAdapters.of(data, targets.get(0), library::readNode, taken, adapterName);
+				if (adapter == null) continue;
+				overlay.put(adapterName + ".class", adapter.bytes());
+				adapter.served().forEach(a -> adapted.put(a.itf(), a));
+				if (all == skip) all = new TreeSet<>(skip);
+				all.add(mixin);
+				findings.add(new PreflightFinding(Severity.INFO, configName, header.name.replace('/', '.'), "Its target, " + targets.get(0).replace('/', '.')
+						+ ", is a library class " + env.descriptor().loaderName() + " loads without mixin support: the interfaces the mixin gives it ("
+						+ adapter.served().stream().map(a -> a.itf().replace('/', '.')).collect(Collectors.joining(", "))
+						+ ") are served by a generated adapter, which the mod's casts of the class's objects to them wrap them in. The objects themselves"
+						+ " don't implement them, so another mod checking one against them sees it doesn't", ""));
+				continue;
+			}
 			overlay.put(name + ".class", bridge.bytes());
 			bridge.ducks().forEach(d -> ducks.put(d.itf(), d));
 			if (accessor) {
@@ -906,6 +1014,13 @@ public final class ModTranslator {
 					+ ") are served by a generated class, which uses the class's fields through reflection, and the mod's uses of them call that class", ""));
 		}
 		return all;
+	}
+
+	/** The interfaces LIB-1's bridges and LIB-2's adapters serve. */
+	private static Set<String> served(Map<String, LibraryBridges.Duck> ducks, Map<String, LibraryAdapters.Adapted> adapted) {
+		Set<String> served = new HashSet<>(ducks.keySet());
+		served.addAll(adapted.keySet());
+		return served;
 	}
 
 	/** Whether NeoForge loads the class outside its transforming class loader (a library's, not the game's). */
@@ -1469,7 +1584,7 @@ public final class ModTranslator {
 		return null;
 	}
 
-	private static List<String> mixinTargets(ClassNode mixin) {
+	static List<String> mixinTargets(ClassNode mixin) {
 		AnnotationNode ann = Annotations.find(mixin.invisibleAnnotations, mixin.visibleAnnotations, Annotations.MIXIN);
 		List<String> targets = new ArrayList<>();
 		if (ann == null) return targets;

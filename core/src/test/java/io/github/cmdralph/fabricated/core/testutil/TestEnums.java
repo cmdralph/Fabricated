@@ -2,6 +2,7 @@ package io.github.cmdralph.fabricated.core.testutil;
 
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
 
@@ -38,10 +39,21 @@ public final class TestEnums {
 	 * reserved ones; one of NeoForge's extensible enums when {@code extensible}.
 	 */
 	public static byte[] target(String name, boolean extensible, List<String> constructors, List<String> reserved) {
+		return target(name, extensible, constructors, reserved, Map.of(), cw -> {
+		});
+	}
+
+	/**
+	 * As {@link #target(String, boolean, List, List)}, with the generic {@code signatures} of some constructors (without
+	 * the name and ordinal, as javac writes them), and {@code extra} adding anything else.
+	 */
+	public static byte[] target(String name, boolean extensible, List<String> constructors, List<String> reserved, Map<String, String> signatures,
+			Consumer<ClassWriter> extra) {
 		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
 		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_FINAL | Opcodes.ACC_SUPER | Opcodes.ACC_ENUM, name, null, "java/lang/Enum",
 				extensible ? new String[] {EXTENSIBLE_ENUM} : null);
-		for (String constructor : constructors) constructor(cw, constructor, reserved.contains(constructor));
+		for (String constructor : constructors) constructor(cw, constructor, reserved.contains(constructor), signatures.get(constructor));
+		extra.accept(cw);
 		cw.visitEnd();
 		return cw.toByteArray();
 	}
@@ -62,7 +74,7 @@ public final class TestEnums {
 		cw.visitField(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_FINAL | Opcodes.ACC_SYNTHETIC, "$VALUES", "[" + self, null, null).visitEnd();
 		Set<String> constructors = new LinkedHashSet<>();
 		for (Constant constant : constants) constructors.add(constant.constructor());
-		for (String constructor : constructors) constructor(cw, constructor, false);
+		for (String constructor : constructors) constructor(cw, constructor, false, null);
 
 		MethodVisitor values = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, "$values", "()[" + self, null, null);
 		values.visitCode();
@@ -102,8 +114,8 @@ public final class TestEnums {
 	}
 
 	/** A private enum constructor calling {@code Enum}'s, marked as one NeoForge reserves when {@code reserved}. */
-	private static void constructor(ClassWriter cw, String constructor, boolean reserved) {
-		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "<init>", NAME_AND_ORDINAL + constructor.substring(1), null, null);
+	private static void constructor(ClassWriter cw, String constructor, boolean reserved, String signature) {
+		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "<init>", NAME_AND_ORDINAL + constructor.substring(1), signature, null);
 		if (reserved) mv.visitAnnotation(RESERVED_CONSTRUCTOR, false).visitEnd();
 		mv.visitCode();
 		mv.visitVarInsn(Opcodes.ALOAD, 0);

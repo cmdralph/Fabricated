@@ -29,6 +29,7 @@ final class MixinNames {
 	static final String COERCE = "Lorg/spongepowered/asm/mixin/injection/Coerce;";
 
 	static final String LOCAL = "Lcom/llamalad7/mixinextras/sugar/Local;";
+	static final String SHARE = "Lcom/llamalad7/mixinextras/sugar/Share;";
 
 	static final String UNIQUE = "Lorg/spongepowered/asm/mixin/Unique;";
 
@@ -65,6 +66,11 @@ final class MixinNames {
 	static final String EXTENSIBLE_ENUM = "net/neoforged/fml/common/asm/enumextension/IExtensibleEnum";
 
 	static final String MODIFY_VARIABLE = "Lorg/spongepowered/asm/mixin/injection/ModifyVariable;";
+
+	static final String MODIFY_ARGS = "Lorg/spongepowered/asm/mixin/injection/ModifyArgs;";
+
+	/** Mixin's argument bundle, the first parameter of a {@code @ModifyArgs} handler. */
+	static final String ARGS = "Lorg/spongepowered/asm/mixin/injection/invoke/arg/Args;";
 
 	/** The injectors whose {@code at} is one injection point in NeoForge 1.21.11's Mixin and an array in Fabric's. */
 	static final Set<String> SINGLE_POINT_INJECTORS = Set.of(REDIRECT, MODIFY_VARIABLE, "Lorg/spongepowered/asm/mixin/injection/ModifyArg;",

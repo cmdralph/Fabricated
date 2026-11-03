@@ -5,6 +5,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -18,15 +19,18 @@ import io.github.cmdralph.fabricated.core.archive.ArchiveException;
 import io.github.cmdralph.fabricated.core.archive.SafeArchive;
 import io.github.cmdralph.fabricated.core.json.Json;
 import io.github.cmdralph.fabricated.core.json.JsonException;
+import io.github.cmdralph.fabricated.core.mixin.MixinPreflight;
 import io.github.cmdralph.fabricated.core.mixin.Refmap;
 
 import org.objectweb.asm.AnnotationVisitor;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.ClassWriter;
+import org.objectweb.asm.FieldVisitor;
 import org.objectweb.asm.Handle;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
+import org.objectweb.asm.Type;
 import org.objectweb.asm.commons.ClassRemapper;
 import org.objectweb.asm.commons.MethodRemapper;
 
@@ -36,7 +40,10 @@ import org.objectweb.asm.commons.MethodRemapper;
  * <ul>
  *   <li>{@code .class} files are rewritten with {@link IntermediaryRemapper}; frames are copied, not
  *       recomputed, because renaming does not change stack shapes. A mixin injector's selector naming a method by its
- *       intermediary name alone gets the method's descriptor where its runtime name is shared ({@link SelectorPins}).</li>
+ *       intermediary name alone gets the method's descriptor where its runtime name is shared ({@link SelectorPins}), and
+ *       an accessor or invoker whose name Mixin would read an intermediary name from gets that name written out
+ *       ({@link InferredTargets}). A member a library writes for another loader, which remapping makes the same member as its Fabric one, is left
+ *       out ({@link #otherLoadersTwins}).</li>
  *   <li>Refmaps and service files have intermediary tokens rewritten.</li>
  *   <li>Signature files are removed (a remapped jar cannot keep valid signatures) and per-entry digest
  *       sections are dropped from the manifest.</li>
@@ -46,6 +53,9 @@ import org.objectweb.asm.commons.MethodRemapper;
 public final class JarRemapper {
 	private static final Pattern INTERMEDIARY_METHOD = Pattern.compile("method_\\d+");
 	private static final List<String> INJECTOR_PACKAGES = List.of("Lorg/spongepowered/asm/mixin/injection/", "Lcom/llamalad7/mixinextras/injector/");
+	private static final String ACCESSOR = "Lorg/spongepowered/asm/mixin/gen/Accessor;";
+	private static final String INVOKER = "Lorg/spongepowered/asm/mixin/gen/Invoker;";
+	private static final Pattern INTERMEDIARY_MEMBER = Pattern.compile("(?:method|field|comp)_\\d+");
 
 	private final MappingTable table;
 	private final IntermediaryRemapper remapper;
@@ -57,8 +67,12 @@ public final class JarRemapper {
 		this.tokens = remapper.tokens();
 	}
 
-	/** Result of remapping one jar. */
-	public record Result(Map<String, byte[]> files, List<String> strippedSignatureFiles) {
+	/**
+	 * Result of remapping one jar.
+	 *
+	 * @param leftOutMembers a note for each member left out as another loader's twin of a Fabric one ({@link #otherLoadersTwins})
+	 */
+	public record Result(Map<String, byte[]> files, List<String> strippedSignatureFiles, List<String> leftOutMembers) {
 	}
 
 	/**
@@ -67,6 +81,7 @@ public final class JarRemapper {
 	public Result remap(SafeArchive archive, Set<String> refmaps) throws ArchiveException, MappingException {
 		Map<String, byte[]> out = new LinkedHashMap<>();
 		List<String> stripped = new ArrayList<>();
+		List<String> leftOut = new ArrayList<>();
 		for (String name : archive.entryNames()) {
 			if (archive.isDirectory(name)) continue;
 			if (isSignatureFile(name)) {
@@ -76,7 +91,7 @@ public final class JarRemapper {
 			byte[] data = archive.read(name);
 			if (data == null) continue;
 			if (name.endsWith(".class")) {
-				byte[] remapped = remapClass(data, name);
+				byte[] remapped = remapClass(data, name, leftOut);
 				String newName = remapClassPath(name);
 				out.put(newName, remapped);
 			} else if (name.equals("META-INF/MANIFEST.MF")) {
@@ -90,18 +105,114 @@ public final class JarRemapper {
 				out.put(name, data);
 			}
 		}
-		return new Result(out, stripped);
+		return new Result(out, stripped, List.copyOf(leftOut));
 	}
 
 	public byte[] remapClass(byte[] data, String nameForErrors) throws MappingException {
+		return remapClass(data, nameForErrors, new ArrayList<>());
+	}
+
+	byte[] remapClass(byte[] data, String nameForErrors, List<String> leftOut) throws MappingException {
 		try {
 			ClassReader reader = new ClassReader(data);
 			ClassWriter writer = new ClassWriter(0);
-			ClassVisitor remapping = new LambdaAwareRemapper(writer, remapper);
+			ClassVisitor remapping = new InferredTargets(new LambdaAwareRemapper(writer, remapper));
+			Set<String> twins = otherLoadersTwins(reader, leftOut);
+			if (!twins.isEmpty()) remapping = new LeavingOut(remapping, twins);
 			reader.accept(table.hasOverloadedMethods() ? new SelectorPins(remapping, table) : remapping, 0);
 			return writer.toByteArray();
 		} catch (RuntimeException e) {
 			throw new MappingException("Failed to remap " + nameForErrors + ": " + e, e);
+		}
+	}
+
+	/**
+	 * The members of a class (a method's name and descriptor, a field's name, {@code ':'} and descriptor, as the jar
+	 * names them) that remapping makes the same member as another of the class, where that other names the classes as a
+	 * Fabric jar does and these name a class by its runtime name, which no class has on Fabric (REMAP-4). Elementa,
+	 * which Essential's Fabric build carries, gives each loader its own {@code width} for a text component, Fabric's
+	 * taking {@code class_2561} and Forge's {@code Component}: remapped, the two are one method, and the class could not
+	 * be defined with both ("Duplicate method name"), stopping the game as Essential started. Only another loader's
+	 * code calls the twin, so it is left out and the Fabric member, which the jar's code reaches, is kept; members that
+	 * meet otherwise are left as they are, with a note, as which to keep is not known.
+	 */
+	private Set<String> otherLoadersTwins(ClassReader reader, List<String> notes) {
+		String owner = reader.getClassName();
+		Map<String, List<String>> members = new LinkedHashMap<>();
+		reader.accept(new ClassVisitor(Opcodes.ASM9) {
+			@Override
+			public FieldVisitor visitField(int access, String name, String descriptor, String signature, Object value) {
+				members.computeIfAbsent(remapper.mapFieldName(owner, name, descriptor) + ':' + remapper.mapDesc(descriptor), k -> new ArrayList<>(1))
+						.add(name + ':' + descriptor);
+				return null;
+			}
+
+			@Override
+			public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
+				members.computeIfAbsent(remapper.mapMethodName(owner, name, descriptor) + remapper.mapMethodDesc(descriptor), k -> new ArrayList<>(1))
+						.add(name + descriptor);
+				return null;
+			}
+		}, ClassReader.SKIP_CODE | ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
+		Set<String> twins = new HashSet<>();
+		for (Map.Entry<String, List<String>> member : members.entrySet()) {
+			List<String> same = member.getValue();
+			if (same.size() < 2) continue;
+			List<String> fabric = same.stream().filter(m -> !namesARuntimeOnlyClass(m)).toList();
+			if (fabric.size() == 1) {
+				for (String twin : same) {
+					if (twin.equals(fabric.get(0))) continue;
+					twins.add(twin);
+					notes.add("Left out " + owner + "." + twin + ", written for another loader: remapped, it is the same member as the Fabric "
+							+ fabric.get(0) + ", which is kept (REMAP-4)");
+				}
+			} else {
+				notes.add("Remapped, " + same + " of " + owner + " are all " + member.getKey() + ", which a class can't hold twice; "
+						+ "the class will fail to load (REMAP-4)");
+			}
+		}
+		return twins;
+	}
+
+	/** Whether a member's descriptor names a class by a name only the runtime gives it, which on Fabric no class has. */
+	private boolean namesARuntimeOnlyClass(String member) {
+		int split = member.indexOf('(');
+		if (split < 0) split = member.indexOf(':') + 1;
+		String descriptor = member.substring(split);
+		Type type = Type.getType(descriptor);
+		List<Type> types = new ArrayList<>();
+		if (type.getSort() == Type.METHOD) {
+			types.addAll(List.of(type.getArgumentTypes()));
+			types.add(type.getReturnType());
+		} else {
+			types.add(type);
+		}
+		for (Type t : types) {
+			if (t.getSort() == Type.ARRAY) t = t.getElementType();
+			if (t.getSort() != Type.OBJECT) continue;
+			String name = t.getInternalName();
+			if (table.mapClass(name).equals(name) && !table.unmapClass(name).equals(name)) return true;
+		}
+		return false;
+	}
+
+	/** Drops the members {@link #otherLoadersTwins} names, before they are remapped. */
+	private static final class LeavingOut extends ClassVisitor {
+		private final Set<String> members;
+
+		LeavingOut(ClassVisitor next, Set<String> members) {
+			super(Opcodes.ASM9, next);
+			this.members = members;
+		}
+
+		@Override
+		public FieldVisitor visitField(int access, String name, String descriptor, String signature, Object value) {
+			return members.contains(name + ':' + descriptor) ? null : super.visitField(access, name, descriptor, signature, value);
+		}
+
+		@Override
+		public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
+			return members.contains(name + descriptor) ? null : super.visitMethod(access, name, descriptor, signature, exceptions);
 		}
 	}
 
@@ -123,6 +234,55 @@ public final class JarRemapper {
 				@Override
 				public void visitInvokeDynamicInsn(String name, String descriptor, Handle bootstrap, Object... arguments) {
 					super.visitInvokeDynamicInsn(names.mapLambdaMethodName(name, descriptor, bootstrap, arguments), descriptor, bootstrap, arguments);
+				}
+			};
+		}
+	}
+
+	/**
+	 * Writes out the target of an {@code @Accessor} or {@code @Invoker} without one where Mixin would read an intermediary
+	 * name from the method's ({@code getField_1655} for {@code field_1655}), before the class is remapped, which then
+	 * remaps it as it remaps a target written out: Fabric Loom names an accessor so when the mod's jar has no refmap, and
+	 * on the runtime's names no member has that name. Do a Barrel Roll's {@code KeyBindingAccessor.getField_1655}, for
+	 * {@code KeyMapping.key}, failed pre-flight on NeoForge 21.1, its mixins all left out (ACC-4). Any other is left as
+	 * it is.
+	 */
+	private static final class InferredTargets extends ClassVisitor {
+		InferredTargets(ClassVisitor next) {
+			super(Opcodes.ASM9, next);
+		}
+
+		@Override
+		public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
+			MethodVisitor method = super.visitMethod(access, name, descriptor, signature, exceptions);
+			if (method == null) return null;
+			return new MethodVisitor(api, method) {
+				@Override
+				public AnnotationVisitor visitAnnotation(String annotation, boolean visible) {
+					AnnotationVisitor values = super.visitAnnotation(annotation, visible);
+					boolean accessor = annotation.equals(ACCESSOR);
+					if (values == null || !accessor && !annotation.equals(INVOKER)) return values;
+					String inferred = accessor ? MixinPreflight.inferAccessorName(name) : MixinPreflight.inferInvokerName(name);
+					if (inferred == null || !INTERMEDIARY_MEMBER.matcher(inferred).matches()) return values;
+					return new AnnotationVisitor(api, values) {
+						private boolean written;
+
+						@Override
+						public void visit(String attribute, Object value) {
+							if ("value".equals(attribute) && value instanceof String target) {
+								// Mixin reads an empty target as none.
+								if (target.isEmpty()) return;
+								written = true;
+							}
+							super.visit(attribute, value);
+						}
+
+						@Override
+						public void visitEnd() {
+							if (!written) super.visit("value", inferred);
+							super.visitEnd();
+						}
+					};
 				}
 			};
 		}

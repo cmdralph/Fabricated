@@ -12,6 +12,9 @@ import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -37,6 +40,7 @@ import io.github.cmdralph.fabricated.api.FabricMod;
 import io.github.cmdralph.fabricated.core.accesswidener.AccessWidenerFile.InjectedInterface;
 import io.github.cmdralph.fabricated.core.api.FabricatedApiImpl;
 import io.github.cmdralph.fabricated.core.archive.ArchiveLimits;
+import io.github.cmdralph.fabricated.core.archive.Hashing;
 import io.github.cmdralph.fabricated.core.archive.SafeArchive;
 import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
 import io.github.cmdralph.fabricated.core.bytecode.InstalledClasses;
@@ -44,10 +48,12 @@ import io.github.cmdralph.fabricated.core.cache.TranslationCache;
 import io.github.cmdralph.fabricated.core.config.FabricatedConfig;
 import io.github.cmdralph.fabricated.core.json.Json;
 import io.github.cmdralph.fabricated.core.metadata.FabricModJsonParser;
+import io.github.cmdralph.fabricated.core.mixin.MixinFailures;
 import io.github.cmdralph.fabricated.core.remap.MappingComposer;
 import io.github.cmdralph.fabricated.core.remap.MappingTable;
 import io.github.cmdralph.fabricated.core.report.Report;
 import io.github.cmdralph.fabricated.core.resolve.Candidate;
+import io.github.cmdralph.fabricated.core.resolve.DownloadedMods;
 import io.github.cmdralph.fabricated.core.resolve.FabricApiPlan;
 import io.github.cmdralph.fabricated.core.runtime.ModContainerImpl;
 import io.github.cmdralph.fabricated.core.testutil.TestEnumBodies;
@@ -420,7 +426,7 @@ class PipelineTest {
 				PlatformDescriptor.FORGE));
 
 		Report.ModRow row = result.report().mods().stream().filter(r -> r.id().equals("sodium")).findFirst().orElseThrow();
-		assertTrue(row.detail().startsWith("its Fabric build can't run on Forge: "), row.detail());
+		assertTrue(row.detail().startsWith("its Fabric build isn't supported on Forge: "), row.detail());
 		assertEquals("Install Sodium for Forge instead (from the same download page).", row.suggestion());
 		Report.ModRow missing = result.report().mods().stream().filter(r -> r.id().equals("needy")).findFirst().orElseThrow();
 		assertEquals("Install absent-lib (a Fabric or Forge build) or remove needy.", missing.suggestion());
@@ -802,21 +808,30 @@ class PipelineTest {
 		}
 	}
 
-	/** The Fabric builds of Sodium and Iris can't run on NeoForge: the player is told to install their NeoForge builds. */
+	/**
+	 * The Fabric builds of Sodium and Iris load on NeoForge, where CI runs them as a gate (the compatibility plan's
+	 * {@code runsOn}); on Forge, where none does yet, they are refused and the player is told to install their Forge
+	 * builds, unless the player asks to load them anyway.
+	 */
 	@Test
-	void fabricBuildsOfRendererReplacementsAskForTheirNeoForgeBuild(@TempDir Path game) throws Exception {
+	void aRefusalLiftedOnOneLoaderStandsOnTheOthers(@TempDir Path game) throws Exception {
 		Path mods = Files.createDirectories(game.resolve("mods"));
 		Path sodium = TestJars.create().fabricModJson(TestJars.modJson("sodium", "0.9.2", "\"name\":\"Sodium\"")).write(mods.resolve("sodium.jar"));
 		Path addon = TestJars.create().fabricModJson(TestJars.modJson("sodium-addon", "1.0.0", "\"depends\":{\"sodium\":\"*\"}"))
 				.write(mods.resolve("addon.jar"));
 
-		Pipeline.Result result = Pipeline.run(input(game, List.of(sodium, addon), Namespace.OFFICIAL, Map.of(), null, List.of()));
+		Pipeline.Result neoForge = Pipeline.run(input(game, List.of(sodium, addon), Namespace.OFFICIAL, Map.of(), null, List.of()));
+		assertEquals(Set.of("sodium", "sodium-addon"), neoForge.mods().stream().map(m -> m.translated().candidate().id()).collect(Collectors.toSet()),
+				neoForge.report().render());
+		assertFalse(neoForge.report().render().contains("Unsupported mods loaded on request (loadUnsupported)"), neoForge.report().render());
 
+		Pipeline.Result result = Pipeline.run(withDescriptor(input(game, List.of(sodium, addon), Namespace.OFFICIAL, Map.of(), null, List.of()),
+				PlatformDescriptor.FORGE));
 		assertTrue(result.mods().isEmpty(), result.report().render());
 		Report.ModRow row = result.report().mods().stream().filter(r -> r.id().equals("sodium")).findFirst().orElseThrow();
 		assertEquals(Report.Status.DISABLED, row.status());
-		assertTrue(row.detail().startsWith("its Fabric build can't run on NeoForge: "), row.detail());
-		assertEquals("Install Sodium for NeoForge instead (from the same download page).", row.suggestion());
+		assertTrue(row.detail().startsWith("its Fabric build isn't supported on Forge: "), row.detail());
+		assertEquals("Install Sodium for Forge instead (from the same download page).", row.suggestion());
 		assertFalse(result.runtime().isModLoaded("sodium"));
 		assertTrue(result.report().mods().stream().anyMatch(r -> r.id().equals("sodium-addon") && r.status() == Report.Status.DISABLED),
 				result.report().render());
@@ -824,16 +839,50 @@ class PipelineTest {
 		// A player testing support for it can load it anyway.
 		Files.createDirectories(game.resolve("config"));
 		Files.writeString(game.resolve("config").resolve(FabricatedConfig.FILE_NAME), "{\"schema\": 1, \"mods\": {\"sodium\": {\"loadUnsupported\": true}}}");
-		Pipeline.Result forced = Pipeline.run(input(game, List.of(sodium, addon), Namespace.OFFICIAL, Map.of(), null, List.of()));
+		Pipeline.Result forced = Pipeline.run(withDescriptor(input(game, List.of(sodium, addon), Namespace.OFFICIAL, Map.of(), null, List.of()),
+				PlatformDescriptor.FORGE));
 		Set<String> loaded = forced.mods().stream().map(m -> m.translated().candidate().id()).collect(Collectors.toSet());
 		assertEquals(Set.of("sodium", "sodium-addon"), loaded, forced.report().render());
 		assertTrue(forced.report().render().contains("Unsupported mods loaded on request (loadUnsupported)"), forced.report().render());
 	}
 
 	/**
+	 * Essential's loader downloads Essential as the game starts, when NeoForge takes no mod any more: the jar it left in
+	 * an earlier launch (the newest of its numbered copies) loads with the mods folder's, next to its loader, and one past
+	 * 30 days is reported, as its loader doesn't update it then (DOWNLOAD-1). Where the loader doesn't load (refused by
+	 * the compatibility plan, as on Forge unless the player asks), the jar isn't read.
+	 */
+	@Test
+	void aJarALoaderDownloadedInAnEarlierLaunchLoadsWithIt(@TempDir Path game) throws Exception {
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		Path loader = TestJars.create().fabricModJson(TestJars.modJson("essential-loader", "1.3.2", "")).write(mods.resolve("essential-loader.jar"));
+		Path downloads = Files.createDirectories(game.resolve("essential"));
+		TestJars.create().fabricModJson(TestJars.modJson("essential", "1.5.0", "")).write(downloads.resolve("Essential (fabric_26.2).jar"));
+		Path newest = TestJars.create().fabricModJson(TestJars.modJson("essential", "1.5.1", "")).write(downloads.resolve("Essential (fabric_26.2).1.jar"));
+		TestJars.create().fabricModJson(TestJars.modJson("essential-other", "1.0.0", "")).write(downloads.resolve("Essential (fabric_26.1.2).jar"));
+
+		Pipeline.Result refused = Pipeline.run(withDescriptor(input(game, List.of(loader), Namespace.OFFICIAL, Map.of(), null, List.of()),
+				PlatformDescriptor.FORGE));
+		assertTrue(refused.mods().isEmpty(), refused.report().render());
+		assertTrue(refused.report().mods().stream().noneMatch(r -> r.id().startsWith("essential-other") || r.id().equals("essential")), refused.report().render());
+		assertTrue(refused.report().lines(DownloadedMods.SECTION).isEmpty(), refused.report().render());
+
+		Pipeline.Result result = Pipeline.run(input(game, List.of(loader), Namespace.OFFICIAL, Map.of(), null, List.of()));
+		Map<String, String> loaded = result.mods().stream().collect(Collectors.toMap(m -> m.translated().candidate().id(), m -> m.translated().candidate().version()));
+		assertEquals(Map.of("essential-loader", "1.3.2", "essential", "1.5.1"), loaded, result.report().render());
+		assertEquals(1, result.report().lines(DownloadedMods.SECTION).size(), result.report().render());
+		assertTrue(result.report().lines(DownloadedMods.STALE_SECTION).isEmpty(), result.report().render());
+
+		Files.setLastModifiedTime(newest, FileTime.from(Instant.now().minus(Duration.ofDays(40))));
+		Pipeline.Result old = Pipeline.run(input(game, List.of(loader), Namespace.OFFICIAL, Map.of(), null, List.of()));
+		List<String> stale = old.report().lines(DownloadedMods.STALE_SECTION);
+		assertEquals(1, stale.size(), old.report().render());
+		assertTrue(stale.getFirst().startsWith("Essential's jar ") && stale.getFirst().contains(" is 40 days old"), stale.getFirst());
+	}
+
+	/**
 	 * Iris's Fabric build hooks Sodium's Fabric build: next to Sodium for NeoForge it would load with its hooks missing,
-	 * so it is refused, even when the player asked to load it. Without that request, the player is told to install
-	 * Iris for NeoForge, as anywhere else.
+	 * so it is refused, even when the player asked to load it. Alone, it loads.
 	 */
 	@Test
 	void aFabricBuildIsRefusedNextToTheNeoForgeBuildOfItsPartner(@TempDir Path game) throws Exception {
@@ -841,7 +890,7 @@ class PipelineTest {
 		Path iris = TestJars.create().fabricModJson(TestJars.modJson("iris", "1.11.4", "\"name\":\"Iris\"")).write(mods.resolve("iris.jar"));
 		List<Pipeline.NeoForgeMod> sodium = List.of(new Pipeline.NeoForgeMod("sodium", "0.9.2+mc26.3", "Sodium", Map.of(), List.of()));
 		Pipeline.Result plain = Pipeline.run(input(game, List.of(iris), Namespace.OFFICIAL, Map.of(), null, sodium));
-		assertEquals("Install Iris for NeoForge instead (from the same download page).",
+		assertEquals("Use the NeoForge builds of both, or the Fabric builds of both.",
 				plain.report().mods().stream().filter(r -> r.id().equals("iris")).findFirst().orElseThrow().suggestion());
 
 		Files.createDirectories(game.resolve("config"));
@@ -1120,7 +1169,7 @@ class PipelineTest {
 	/**
 	 * LINK-2: a mixin adding an interface only a Fabric mod that isn't loading has (Porting Lib's base module's texture
 	 * mixin on Forge 47 clients, whose interface is its extensions module's) leaves the game unable to define its target,
-	 * required or not and whatever its config's plugin: the mod is disabled with the reason.
+	 * required or not: the mod is disabled with the reason, unless its config's plugin may skip the mixin (LINK-3).
 	 */
 	@Test
 	void aMixinAddingAnInterfaceOfAModThatIsNotLoadingDisablesItsMod(@TempDir Path game) throws Exception {
@@ -1149,12 +1198,20 @@ class PipelineTest {
 		Pipeline.Result result = Pipeline.run(input(game, List.of(lib, withPlugin, optional, own), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
 
 		Set<String> loaded = result.mods().stream().map(m -> m.translated().candidate().id()).collect(Collectors.toSet());
-		assertEquals(Set.of("own-mod"), loaded, "an interface of the mod's own loads: " + result.report().render());
-		for (String id : List.of("base-mod", "optional-mod")) {
-			Report.ModRow row = result.report().mods().stream().filter(r -> r.id().equals(id)).findFirst().orElseThrow();
-			assertEquals(Report.Status.DISABLED, row.status());
-			assertTrue(row.detail().contains("adds an interface to its targets -> needs class com.lib.Extensions of lib-mod, which isn't loading"), row.detail());
+		assertEquals(Set.of("base-mod", "own-mod"), loaded, "an interface of the mod's own loads: " + result.report().render());
+		Report.ModRow row = result.report().mods().stream().filter(r -> r.id().equals("optional-mod")).findFirst().orElseThrow();
+		assertEquals(Report.Status.DISABLED, row.status());
+		assertTrue(row.detail().contains("adds an interface to its targets -> needs class com.lib.Extensions of lib-mod, which isn't loading"), row.detail());
+		// LINK-3: a config's plugin would skip such a mixin at runtime (a compatibility mixin for that mod): it is left out,
+		// as the plugin would leave it, and its mod loads.
+		Pipeline.LoadedMod base = result.mods().stream().filter(m -> m.translated().candidate().id().equals("base-mod")).findFirst().orElseThrow();
+		try (SafeArchive overlay = SafeArchive.open(base.translated().overlay(), ArchiveLimits.DEFAULTS)) {
+			String mixins = String.valueOf(Json.parseObject(overlay.readText("base.mixins.json")).get("mixins"));
+			assertFalse(mixins.contains("TextureMixin"), mixins);
 		}
+		String rendered = result.report().render();
+		assertTrue(rendered.contains("base-mod: com.base.mixin.TextureMixin adds an interface to its targets -> needs class com.lib.Extensions of lib-mod,"
+				+ " which isn't loading; Mixin would stop the game applying it, so it is left out"), rendered);
 	}
 
 	@Test
@@ -1224,6 +1281,57 @@ class PipelineTest {
 	}
 
 	@Test
+	void anEnumMixinsInjectorStaysAMixinWithoutItsConstants(@TempDir Path game) throws Exception {
+		// CORPUS-65: Farmer's Delight's enum mixin into RecipeBookCategories adds an injector besides its constants. The
+		// constants go to the mod's enum extension file; the injector stays in the config, in a mixin that is no longer
+		// an enum (which FML would refuse), and passes pre-flight.
+		String kind = "net/minecraft/world/Kind";
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		Path cooking = TestJars.create().fabricModJson(TestJars.modJson("cooking", "1.0", "\"mixins\":[\"cooking.mixins.json\"]"))
+				.text("cooking.mixins.json", "{\"required\":true,\"package\":\"com.cooking.mixin\",\"mixins\":[\"KindMixin\"]}")
+				.bytes("com/cooking/mixin/KindMixin.class", TestEnums.mixin("com/cooking/mixin/KindMixin", kind, List.of(TestEnums.Constant.plain("COOKING_POT")), cw -> {
+					MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "handler", "()V", null, null);
+					AnnotationVisitor inject = mv.visitAnnotation("Lorg/spongepowered/asm/mixin/injection/Inject;", false);
+					AnnotationVisitor methods = inject.visitArray("method");
+					methods.visit(null, "tick");
+					methods.visitEnd();
+					AnnotationVisitor ats = inject.visitArray("at");
+					AnnotationVisitor at = ats.visitAnnotation(null, "Lorg/spongepowered/asm/mixin/injection/At;");
+					at.visit("value", "HEAD");
+					at.visitEnd();
+					ats.visitEnd();
+					inject.visit("require", 1);
+					inject.visitEnd();
+					mv.visitCode();
+					mv.visitInsn(Opcodes.RETURN);
+					mv.visitMaxs(0, 1);
+					mv.visitEnd();
+				}))
+				.write(mods.resolve("cooking.jar"));
+		Map<String, byte[]> gameClasses = Map.of(TARGET, targetClass(), kind, TestEnums.target(kind, true, List.of("()V"), List.of(), Map.of(), cw -> {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC, "tick", "()V", null, null);
+			mv.visitCode();
+			mv.visitInsn(Opcodes.RETURN);
+			mv.visitMaxs(0, 1);
+			mv.visitEnd();
+		}));
+		Pipeline.Result result = Pipeline.run(input(game, List.of(cooking), Namespace.OFFICIAL, gameClasses, null));
+
+		Map<String, Pipeline.LoadedMod> loaded = result.mods().stream().collect(Collectors.toMap(m -> m.translated().candidate().id(), m -> m));
+		assertEquals(Set.of("cooking"), loaded.keySet(), result.report().render());
+		try (SafeArchive overlay = SafeArchive.open(loaded.get("cooking").translated().overlay(), ArchiveLimits.DEFAULTS)) {
+			Map<?, ?> entry = (Map<?, ?>) Json.asList(Json.parseObject(overlay.readText("META-INF/fabricated/enum_extensions.json")).get("entries")).getFirst();
+			assertEquals("COOKING_POT", entry.get("name"));
+			String config = overlay.readText("cooking.mixins.json");
+			assertTrue(config == null || config.contains("KindMixin"), "the mixin stays in its config: " + config);
+			ClassNode kept = new ClassNode();
+			new ClassReader(overlay.read("com/cooking/mixin/KindMixin.class")).accept(kept, ClassReader.SKIP_CODE);
+			assertTrue((kept.access & Opcodes.ACC_ENUM) == 0 && kept.fields.isEmpty(), "no longer an enum, nor its constants");
+			assertEquals(List.of("handler"), kept.methods.stream().map(m -> m.name).toList());
+		}
+	}
+
+	@Test
 	void aClassTweakersEnumConstantsNeoForgeAddsNeedNoNewerMixin(@TempDir Path game) throws Exception {
 		// Farmer's Delight Refabricated on 1.21.11, whose NeoForge runs Mixin 0.16.5: its class tweaker declares the
 		// constants its enum mixins add, which Mixin adds from 0.17.1 only. NeoForge's loader adds those of its extensible
@@ -1278,6 +1386,71 @@ class PipelineTest {
 			new ClassReader(overlay.read(TestEnumBodies.MIXIN + ".class")).accept(mixin, ClassReader.SKIP_CODE);
 			assertEquals(0, mixin.access & Opcodes.ACC_ENUM, "the enum mixin is replaced by an ordinary one");
 			assertNotNull(overlay.read(TestEnumBodies.BODIES + "$0.class"), "the body's delegate is in the overlay");
+		}
+	}
+
+	@Test
+	void anEnumMixinBecomesAMixinAddingItsConstantsWhereMixinAppliesNoEnumMixins(@TempDir Path game) throws Exception {
+		// ENUM-7: Friends and Foes' mob categories on Forge 61 to 66, whose Mixin 0.8.7 applies no enum mixins (the
+		// constructor its enum mixin shadows stopped the corpus clients' bootstrap). An ordinary mixin adding the constants
+		// takes its place; where none can, as the mod's code reads a constant as a field of the enum, pre-flight disables
+		// the mod, which Mixin would stop the game on.
+		String category = "net/minecraft/world/Category";
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		Path friends = TestJars.create().fabricModJson(TestJars.modJson("friends", "1.0", "\"mixins\":[\"friends.mixins.json\"]"))
+				.text("friends.mixins.json", "{\"required\":true,\"package\":\"com.friends.mixin\",\"mixins\":[\"CategoryMixin\"]}")
+				.bytes("com/friends/mixin/CategoryMixin.class", TestEnums.mixin("com/friends/mixin/CategoryMixin", category,
+						List.of(TestEnums.Constant.plain("FRIENDS_GLARES")), cw -> {
+						}))
+				.write(mods.resolve("friends.jar"));
+		ClassWriter reader = new ClassWriter(0);
+		reader.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, "com/foes/Reader", null, "java/lang/Object", null);
+		MethodVisitor read = reader.visitMethod(Opcodes.ACC_STATIC, "read", "()Ljava/lang/Object;", null, null);
+		read.visitCode();
+		read.visitFieldInsn(Opcodes.GETSTATIC, category, "FOES_RASCALS", "L" + category + ";");
+		read.visitInsn(Opcodes.ARETURN);
+		read.visitMaxs(1, 0);
+		read.visitEnd();
+		reader.visitEnd();
+		Path foes = TestJars.create().fabricModJson(TestJars.modJson("foes", "1.0", "\"mixins\":[\"foes.mixins.json\"]"))
+				.text("foes.mixins.json", "{\"required\":false,\"package\":\"com.foes.mixin\",\"plugin\":\"com.foes.Plugin\",\"mixins\":[\"CategoryMixin\"]}")
+				.bytes("com/foes/mixin/CategoryMixin.class", TestEnums.mixin("com/foes/mixin/CategoryMixin", category,
+						List.of(TestEnums.Constant.plain("FOES_RASCALS")), cw -> {
+						}))
+				.bytes("com/foes/Reader.class", reader.toByteArray())
+				.write(mods.resolve("foes.jar"));
+		Map<String, byte[]> gameClasses = Map.of(TARGET, targetClass(), category, TestEnums.target(category, false, List.of("()V"), List.of(),
+				Map.of(), cw -> {
+					cw.visitField(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_FINAL | Opcodes.ACC_SYNTHETIC, "$VALUES", "[L" + category + ";", null,
+							null).visitEnd();
+					MethodVisitor clinit = cw.visitMethod(Opcodes.ACC_STATIC, "<clinit>", "()V", null, null);
+					clinit.visitCode();
+					clinit.visitInsn(Opcodes.ICONST_0);
+					clinit.visitTypeInsn(Opcodes.ANEWARRAY, category);
+					clinit.visitFieldInsn(Opcodes.PUTSTATIC, category, "$VALUES", "[L" + category + ";");
+					clinit.visitInsn(Opcodes.RETURN);
+					clinit.visitMaxs(1, 0);
+					clinit.visitEnd();
+				}));
+		Pipeline.Result forge = Pipeline.run(withDescriptor(input(game, List.of(friends, foes), Namespace.OFFICIAL, gameClasses, null, List.of(),
+				InstalledClasses.NONE, ClassBytesSource.EMPTY, "0.8.7+Jenkins-b321.git-4", "0.8.7"), PlatformDescriptor.FORGE));
+
+		assertEquals(List.of("friends"), forge.mods().stream().map(m -> m.translated().candidate().id()).toList(), forge.report().render());
+		try (SafeArchive overlay = SafeArchive.open(forge.mods().getFirst().translated().overlay(), ArchiveLimits.DEFAULTS)) {
+			ClassNode mixin = new ClassNode();
+			new ClassReader(overlay.read("com/friends/mixin/CategoryMixin.class")).accept(mixin, ClassReader.SKIP_CODE);
+			assertEquals(0, mixin.access & Opcodes.ACC_ENUM, "the enum mixin is replaced by an ordinary one");
+		}
+		assertTrue(forge.report().render().contains("can't apply an enum mixin"), forge.report().render());
+		// Fatal though its config is optional and has a plugin: Mixin's error there stops the game whatever the config.
+		Report.ModRow row = forge.report().mods().stream().filter(r -> r.id().equals("foes")).findFirst().orElseThrow();
+		assertTrue(row.detail().contains("applies no enum mixins"), row.detail());
+
+		// Where Mixin applies enum mixins (Fabric's from 0.17.1), the enum mixin stays one.
+		Pipeline.Result neoForge = Pipeline.run(input(game, List.of(friends), Namespace.OFFICIAL, gameClasses, null, List.of()));
+		assertEquals(List.of("friends"), neoForge.mods().stream().map(m -> m.translated().candidate().id()).toList(), neoForge.report().render());
+		try (SafeArchive overlay = SafeArchive.open(neoForge.mods().getFirst().translated().overlay(), ArchiveLimits.DEFAULTS)) {
+			assertNull(overlay.read("com/friends/mixin/CategoryMixin.class"), "the mod's own enum mixin");
 		}
 	}
 
@@ -1517,6 +1690,103 @@ class PipelineTest {
 			assertNotNull(overlay.read("mod/StackAccessor$FabricatedBridge.class"), "outside the mixin package");
 			String graphics = new String(overlay.read("mod/Graphics.class"), StandardCharsets.ISO_8859_1);
 			assertTrue(graphics.contains("mod/StackAccessor$FabricatedBridge"), "the mod's call goes to the bridge");
+		}
+	}
+
+	@Test
+	void aModsClassesLoseTheOtherSidesMembersAsTheyAreTranslatedWithTheirFrames(@TempDir Path game) throws Exception {
+		// ENV-1 (CORPUS-59): stripped at class load, Cobblemon's cooking pot screen had its frames computed anew by ModLauncher,
+		// which loads the classes they name: JEI's runtime, not installed, and the client's initializer failed. The pipeline
+		// translates for the dedicated server here.
+		Map<String, byte[]> classes = TestSources.compile(game.resolve("build"), Map.of(
+				"net/fabricmc/api/EnvType.java", "package net.fabricmc.api; public enum EnvType { CLIENT, SERVER }",
+				"net/fabricmc/api/Environment.java", "package net.fabricmc.api; public @interface Environment { EnvType value(); }",
+				"optional/Runtime.java", "package optional; public interface Runtime { static Runtime get() { return null; } }",
+				"mod/Screen.java", """
+						package mod;
+						public class Screen {
+							@net.fabricmc.api.Environment(net.fabricmc.api.EnvType.CLIENT) public static void render() { }
+							public static Object shown(boolean jei) { Object shown = jei ? optional.Runtime.get() : null; return shown == null ? "none" : shown; }
+						}""",
+				"mod/Plain.java", "package mod; public class Plain { public static String name() { return \"plain\"; } }"));
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		Path jar = TestJars.create().fabricModJson(TestJars.modJson("pots", "1.0", ""))
+				.bytes("mod/Screen.class", classes.get("mod/Screen"))
+				.bytes("mod/Plain.class", classes.get("mod/Plain"))
+				.write(mods.resolve("pots.jar"));
+		Pipeline.Result result = Pipeline.run(input(game, List.of(jar), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
+
+		assertEquals(List.of("pots"), result.mods().stream().map(m -> m.translated().candidate().id()).toList(), result.report().render());
+		assertTrue(result.mods().getFirst().translated().environmentClasses().isEmpty(), "nothing is left to strip at class load");
+		assertTrue(result.environmentClasses().isEmpty());
+		try (SafeArchive overlay = SafeArchive.open(result.mods().getFirst().translated().overlay(), ArchiveLimits.DEFAULTS)) {
+			byte[] screen = overlay.read("mod/Screen.class");
+			assertNotNull(screen, "the stripped class shadows the jar's");
+			ClassNode stripped = new ClassNode();
+			new ClassReader(screen).accept(stripped, 0);
+			assertEquals(List.of("<init>", "shown"), stripped.methods.stream().map(m -> m.name).toList(), "the client's method is gone");
+			assertEquals(frames(classes.get("mod/Screen"), "shown"), frames(screen, "shown"), "the compiler's frames, none computed anew");
+			assertNull(overlay.read("mod/Plain.class"), "a class without the annotations is the jar's");
+		}
+	}
+
+	/** The frames of a class's method, as text: what a frame computation would replace. */
+	private static List<String> frames(byte[] data, String method) {
+		ClassNode node = new ClassNode();
+		new ClassReader(data).accept(node, 0);
+		List<String> frames = new ArrayList<>();
+		for (var insn : node.methods.stream().filter(m -> m.name.equals(method)).findFirst().orElseThrow().instructions) {
+			if (insn instanceof org.objectweb.asm.tree.FrameNode frame) frames.add(frame.type + " " + frame.local + " " + frame.stack);
+		}
+		assertFalse(frames.isEmpty(), "the method has frames");
+		return frames;
+	}
+
+	@Test
+	void aModWhoseMixinGivesALibraryClassAnotherLibrarysInterfaceLoadsWithAnAdapter(@TempDir Path game) throws Exception {
+		// LIB-2: adventure-platform-fabric makes authlib's GameProfile an Adventure Identity, an interface of another jar
+		// with default methods, and casts a player's profile to it; pre-flight disabled it, and with it OneConfig's chat event.
+		Map<String, byte[]> classes = TestSources.compile(game.resolve("build"), TestSources.MIXIN_ANNOTATIONS, Map.of(
+				"lib/Profile.java", "package lib; public class Profile { private final java.util.UUID id = java.util.UUID.randomUUID(); public java.util.UUID getId() { return id; } }",
+				"api/Identity.java", "package api; public interface Identity { java.util.UUID uuid(); default Identity identity() { return this; } }",
+				"mod/mixin/ProfileMixin.java", """
+						package mod.mixin;
+						import org.spongepowered.asm.mixin.*;
+						@Mixin(value = lib.Profile.class, remap = false)
+						public abstract class ProfileMixin implements api.Identity {
+							@Shadow public abstract java.util.UUID getId();
+							@Override public java.util.UUID uuid() { return getId(); }
+						}""",
+				"mod/Player.java", "package mod; public class Player { public static api.Identity of(lib.Profile p) { return (api.Identity) (Object) p; } }"));
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		Path api = TestJars.create().fabricModJson(TestJars.modJson("adventure-api", "1.0", ""))
+				.bytes("api/Identity.class", classes.get("api/Identity"))
+				.write(mods.resolve("adventure-api.jar"));
+		Path platform = TestJars.create().fabricModJson(TestJars.modJson("adventure-platform", "1.0", "\"mixins\":[\"adventure.mixins.json\"]"))
+				.text("adventure.mixins.json", "{\"required\":true,\"package\":\"mod.mixin\",\"mixins\":[\"ProfileMixin\"]}")
+				.bytes("mod/mixin/ProfileMixin.class", classes.get("mod/mixin/ProfileMixin"))
+				.bytes("mod/Player.class", classes.get("mod/Player"))
+				.write(mods.resolve("adventure-platform.jar"));
+		// The libraries NeoForge loads without mixin support, and the JDK, as its platform class loader serves them.
+		ClassBytesSource libraries = name -> {
+			if (name.startsWith("lib/")) return classes.get(name);
+			if (!name.startsWith("java/")) return null;
+			try (var in = ClassLoader.getSystemResourceAsStream(name + ".class")) {
+				return in == null ? null : in.readAllBytes();
+			}
+		};
+		Pipeline.Result result = Pipeline.run(input(game, List.of(api, platform), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null, List.of(),
+				InstalledClasses.NONE, libraries));
+
+		assertEquals(Set.of("adventure-api", "adventure-platform"), result.mods().stream().map(m -> m.translated().candidate().id()).collect(Collectors.toSet()),
+				result.report().render());
+		assertTrue(result.report().render().contains("are served by a generated adapter"), result.report().render());
+		Pipeline.LoadedMod loaded = result.mods().stream().filter(m -> m.translated().candidate().id().equals("adventure-platform")).findFirst().orElseThrow();
+		try (SafeArchive overlay = SafeArchive.open(loaded.translated().overlay(), ArchiveLimits.DEFAULTS)) {
+			assertFalse(new String(overlay.read("adventure.mixins.json"), StandardCharsets.UTF_8).contains("ProfileMixin"), "Mixin doesn't apply it");
+			assertNotNull(overlay.read("mod/ProfileMixin$FabricatedAdapter.class"), "outside the mixin package");
+			String player = new String(overlay.read("mod/Player.class"), StandardCharsets.ISO_8859_1);
+			assertTrue(player.contains("mod/ProfileMixin$FabricatedAdapter"), "the mod's cast wraps the profile");
 		}
 	}
 
@@ -1991,6 +2261,49 @@ class PipelineTest {
 			new ClassReader(overlay.read("com/partial/mixin/Stateless.class")).accept(stateless, 0);
 			assertTrue(stateless.methods.stream().noneMatch(m -> m.name.equals("handler")), "its failing injector is left out");
 		}
+	}
+
+	/**
+	 * A mixin that failed as Mixin applied it in the last launch, which pre-flight passed, is left out of its config
+	 * the next (APPLY-1); the report says so, in the mod's row too. Once the mod's jar changes it is tried again.
+	 */
+	@Test
+	void aMixinThatFailedAsMixinAppliedItIsLeftOutTheNextLaunch(@TempDir Path game) throws Exception {
+		Path jar = TestJars.create().fabricModJson(TestJars.modJson("failing-mod", "1.0", "\"mixins\":[\"failing.mixins.json\"]"))
+				.text("failing.mixins.json", "{\"required\":true,\"package\":\"com.failing.mixin\",\"mixins\":[\"Works\",\"Failed\"]}")
+				.bytes("com/failing/mixin/Works.class", mixinClass("com/failing/mixin/Works", "tick"))
+				.bytes("com/failing/mixin/Failed.class", mixinClass("com/failing/mixin/Failed", "tick"))
+				.write(game.resolve("mods/failing.jar"));
+		Pipeline.Input in = input(game, List.of(jar), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null);
+		List<String> notes = new ArrayList<>();
+		assertTrue(Pipeline.mixinFailures(in).record(new MixinFailures.Failure("failing-mod", Hashing.sha256(jar), "failing.mixins.json:Failed",
+				"InvalidInjectionException: it failed"), notes), notes.toString());
+
+		Pipeline.Result result = Pipeline.run(in);
+		String report = result.report().render();
+		assertTrue(result.runtime().isModLoaded("failing-mod"), report);
+		assertTrue(report.contains(Pipeline.FAILED_LAST_LAUNCH), report);
+		assertTrue(report.contains("failing-mod: failing.mixins.json:Failed failed as Mixin applied it in the last launch (InvalidInjectionException: it failed)"),
+				report);
+		Report.ModRow row = result.report().mods().stream().filter(r -> r.id().equals("failing-mod")).findFirst().orElseThrow();
+		assertTrue(row.detail().contains("1 mixin(s) left out that failed as Mixin applied them in the last launch"), row.detail());
+		assertFalse(report.contains("names no mixin of this mod"), report);
+		try (SafeArchive overlay = SafeArchive.open(result.mods().getFirst().translated().overlay(), ArchiveLimits.DEFAULTS)) {
+			String config = new String(overlay.read("failing.mixins.json"), StandardCharsets.UTF_8);
+			assertTrue(config.contains("Works") && !config.contains("Failed"), config);
+		}
+
+		// Another jar of the mod: the mixin is tried again, and the record goes.
+		TestJars.create().fabricModJson(TestJars.modJson("failing-mod", "1.1", "\"mixins\":[\"failing.mixins.json\"]"))
+				.text("failing.mixins.json", "{\"required\":true,\"package\":\"com.failing.mixin\",\"mixins\":[\"Works\",\"Failed\"]}")
+				.bytes("com/failing/mixin/Works.class", mixinClass("com/failing/mixin/Works", "tick"))
+				.bytes("com/failing/mixin/Failed.class", mixinClass("com/failing/mixin/Failed", "tick"))
+				.write(jar);
+		result = Pipeline.run(input(game, List.of(jar), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
+		assertFalse(result.report().render().contains(Pipeline.FAILED_LAST_LAUNCH), result.report().render());
+		assertFalse(Files.exists(MixinFailures.file(game)));
+		Report.ModRow again = result.report().mods().stream().filter(r -> r.id().equals("failing-mod")).findFirst().orElseThrow();
+		assertFalse(again.detail().contains("failed as Mixin applied them"), again.detail());
 	}
 
 	@Test

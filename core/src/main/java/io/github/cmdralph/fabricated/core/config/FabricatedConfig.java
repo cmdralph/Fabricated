@@ -131,7 +131,9 @@ public record FabricatedConfig(
 				lim.longValue("maxTotalUncompressedBytes", d.maxTotalUncompressedBytes(), 1 << 20, 16L << 30),
 				lim.integer("maxEntries", d.maxEntries(), 16, 1_000_000),
 				lim.integer("maxCompressionRatio", d.maxCompressionRatio(), 2, 10_000),
-				lim.integer("maxNestingDepth", d.maxNestingDepth(), 0, 8));
+				lim.integer("maxNestingDepth", d.maxNestingDepth(), 0, 16));
+		// An earlier version's defaults, as it wrote them: nobody chose them, so today's apply (LIMIT-2).
+		if (ArchiveLimits.EARLIER_DEFAULTS.contains(limits)) limits = d;
 
 		Map<String, ModOverride> mods = new TreeMap<>();
 		Reader modsReader = r.object("mods");
