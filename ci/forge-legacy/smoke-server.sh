@@ -212,6 +212,7 @@ check "Mixin ran the test mod's @ModifyArgs, its generated class in a module (CO
 check "the in-game mod's mixin reads tag files' fabric:remove (the in-game mod reobfuscated to SRG's names)" "grep -q 'FABRICATED-FORGE-TEST fabric:remove OK' logs/latest.log 2>/dev/null"
 check "native fabric-biome-api-v1: a spawn and a temperature added to plains reach the biome Forge reads (Forge's biome modifiers)" "grep -q 'FABRICATED-FORGE-TEST biome modifications OK' logs/latest.log 2>/dev/null"
 check "vanilla reads a player's stats with Gson's internal parser, a package Gson's module doesn't export (GSON-2)" "grep -q 'FABRICATED-FORGE-TEST vanilla stats read OK' logs/latest.log 2>/dev/null"
+check "Forge Config API Port's registry makes a config Forge loads: read right after registering, then loaded once with the port's loading event, its file's values kept (CORPUS-81)" "grep -q 'FABRICATED-FORGE-TEST config port OK' logs/latest.log 2>/dev/null"
 check "native fabric-loot-api-v2 and fabric-loot-tables-v1: a pool added in MODIFY and a replaced table are in the tables the game keeps, each event seeing its table's source (Forge's pools list)" "grep -q 'FABRICATED-FORGE-TEST loot OK' logs/latest.log 2>/dev/null"
 check "native fabric-dimensions-v1: an armor stand teleported to the End lands at its target with no obsidian platform built (Forge's teleporter)" "grep -q 'FABRICATED-FORGE-TEST dimensions OK' logs/latest.log 2>/dev/null"
 check "a Fabric mod's fluids have Forge fluid types (the in-game mod's, registered under their ids), and a pig falls through one that isn't water as through air; their liquid blocks and buckets, made before the fluids were registered, hold them (CORPUS-73)" "grep -q 'FABRICATED-FORGE-TEST fluid types OK' logs/latest.log 2>/dev/null"
@@ -235,9 +236,10 @@ if $standins; then
 	# The Forgified Fabric API stand-in nests a copy of Fabric Loader's API under Forgified Fabric Loader's identifier: the
 	# server started, so Forge's jar-in-jar left it out for the in-game mod's empty jar (PROVIDER-2).
 	check "a copy of Fabric Loader a Forge mod nests as Forgified Fabric API does is left out for the in-game mod's empty jar, and the game starts (PROVIDER-2)" "grep -q 'standin-forgified-fabric-api.jar (its standin-forgified-loader.jar) nests a copy of Fabric Loader, which Forge.s jar-in-jar leaves out' logs/fabric-bridge-report.txt 2>/dev/null"
-	# Forge's replaced mods, not NeoForge's (PLAT-6): Mod Menu's jar stays out, Forge Config API Port's loads.
+	# Forge 47's replaced mods, not NeoForge's (PLAT-6): Mod Menu's jar stays out for Forge's mod list, and Forge Config
+	# API Port's for its API on Forge's own config system (CORPUS-81).
 	check "Mod Menu's Fabric jar is left out for Forge's mod list, as Forge's descriptor says (REPL-1)" "grep -q \"in Forge's mod list\" logs/fabric-bridge-report.txt 2>/dev/null"
-	check "Forge Config API Port's Fabric jar isn't left out for a NeoForge config system Forge doesn't have (PLAT-6)" "! grep -q \"on NeoForge's own config system\" logs/fabric-bridge-report.txt 2>/dev/null && grep -q 'forgeconfigapiport' logs/fabric-bridge-report.txt 2>/dev/null"
+	check "Forge Config API Port's Fabric jar is left out for its API on Forge's own config system, not NeoForge's (CORPUS-81, PLAT-6)" "grep -q \"on Forge's own config system\" logs/fabric-bridge-report.txt 2>/dev/null && ! grep -q \"on NeoForge's own config system\" logs/fabric-bridge-report.txt 2>/dev/null"
 	# Without Fabric API the test mod's checks that need its other modules leave linkage warnings; none may name a class
 	# of the stand-ins'.
 	check "the linkage check counts the classes of the modules other mods provide" "python3 -I '$root/ci/forge-legacy/standin-linkage.py' '$extra' logs/fabric-bridge-report.txt"

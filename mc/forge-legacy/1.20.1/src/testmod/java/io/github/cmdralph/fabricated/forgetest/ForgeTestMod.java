@@ -98,6 +98,7 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 		}
 		ForgeRegistrationOrderTest.register();
 		ForgeRegistryAliasTest.register();
+		ForgeConfigPortTest.register();
 		try {
 			ForgeCommandTest.register();
 		} catch (RuntimeException | LinkageError e) {

@@ -11,6 +11,7 @@ import io.github.cmdralph.fabricated.forgetest.ForgeBiomeTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeBlockBreakTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeBrewingTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeCommandTest;
+import io.github.cmdralph.fabricated.forgetest.ForgeConfigPortTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeDefaultBridgeTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeDimensionTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeFluidTest;
@@ -45,7 +46,8 @@ import net.minecraft.server.MinecraftServer;
  * ({@code method_30002} is {@code overworld()}, {@code method_3847} {@code getLevel(ResourceKey)}), checks the fluid
  * types of the fluids it registered, whether vanilla reads a player's stats file (GSON-2), on a client whether Fabric's colour provider registry finds the game's block
  * colours and the particle engine its particle factory, and with Fabric API whether its command is in the server's
- * dispatcher ({@code method_3734} is {@code getCommands()}), whether Fabric's block break events fire as a player breaks
+ * dispatcher ({@code method_3734} is {@code getCommands()}), whether Forge loaded the config made through Forge Config
+ * API Port's registry, whether Fabric's block break events fire as a player breaks
  * blocks, whether Fabric's use and attack callbacks are asked as a player uses and attacks things (finishing at a later
  * tick), whether a block Fabric's sleep events admit as a bed survives being slept on, whether the furnace takes the
  * test item Fabric's fuel registry made a fuel, whether a brewing recipe Fabric's brewing registry added brews, and whether
@@ -100,6 +102,7 @@ public abstract class MinecraftServerMixin {
 			ForgeTestMod.checkKeyBinding();
 			ForgeCommandTest.check(method_3734());
 			ForgeRegistryAliasTest.check();
+			ForgeConfigPortTest.check();
 			ForgeBlockBreakTest.check(method_30002());
 			ForgeTestMod.checkInteractions(method_30002());
 			ForgeSleepTest.check(method_30002());

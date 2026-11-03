@@ -14,14 +14,16 @@ import io.github.cmdralph.fabricated.core.translate.ModsTomlWriter;
 import io.github.cmdralph.fabricated.core.translate.PlatformDescriptor;
 
 /**
- * Forge 47's descriptor: Forge's dialect ({@link PlatformDescriptor#FORGE}, whose replaced mods and packages it keeps:
- * PLAT-6), with Forge 47's coremods and a {@code pack.mcmeta} in Minecraft 1.20.1's format. Forge 47 builds each mod's pack with vanilla's {@code Pack.readMetaAndCreate} (its
+ * Forge 47's descriptor: Forge's dialect ({@link PlatformDescriptor#FORGE}, whose packages it keeps, and its replaced
+ * mods with Forge Config API Port's: PLAT-6, CORPUS-81), with Forge 47's coremods and a {@code pack.mcmeta} in Minecraft
+ * 1.20.1's format. Forge 47 builds each mod's pack with vanilla's {@code Pack.readMetaAndCreate} (its
  * {@code ServerLifecycleHooks}), which gives no pack for metadata without a {@code pack_format}, the field 1.20.1 requires
  * where Forge 61 to 66's versions read {@code min_format} and {@code max_format}.
  */
 final class ForgeDescriptor implements PlatformDescriptor {
 	/** Minecraft 1.20.1's resource and data pack format. */
 	static final int PACK_FORMAT = 15;
+	private static final Map<String, String> REPLACED_MODS = withConfigPort(FORGE.replacedMods());
 	static final PlatformDescriptor INSTANCE = new ForgeDescriptor();
 	private static final Map<String, String> PRIVATE_FIELDS = Map.of(
 			"net/minecraft/world/level/biome/Biome f_47437_", "getModifiedClimateSettings",
@@ -114,13 +116,25 @@ final class ForgeDescriptor implements PlatformDescriptor {
 		return FORGE.enumExtensions();
 	}
 
-	/** Forge's: Mod Menu's jar only, which Forge's mod list stands in for (REPL-1); Forge Config API Port's loads (PLAT-6). */
+	/**
+	 * Forge's (Mod Menu's jar, which Forge's mod list stands in for: REPL-1) and Forge Config API Port's: its version for
+	 * 1.20.1 copies Forge 47's own config system, classes and packages included, so its copies were left out for Forge's
+	 * and its registry, which makes configs with constructors only its copy has, failed to link (CORPUS-81). The in-game
+	 * mod provides its Fabric API on Forge's config system, as NeoForge's does on NeoForge's. (The port's versions for
+	 * Forge 61 to 66's Minecraft copy NeoForge's config system, which Forge lacks, and load there: PLAT-6.)
+	 */
 	@Override
 	public Map<String, String> replacedMods() {
-		return FORGE.replacedMods();
+		return REPLACED_MODS;
 	}
 
-	/** Forge's: none of NeoForge's, which Forge Config API Port's Fabric jar copies and needs (PLAT-5, PLAT-6). */
+	private static Map<String, String> withConfigPort(Map<String, String> forge) {
+		Map<String, String> replaced = new LinkedHashMap<>(forge);
+		replaced.put("forgeconfigapiport", "Fabricated provides Forge Config API Port's Fabric API on Forge's own config system, which the port copies");
+		return Map.copyOf(replaced);
+	}
+
+	/** Forge's: none, as Forge has none of NeoForge's packages, which a Fabric mod's copy then provides (PLAT-5, PLAT-6). */
 	@Override
 	public List<String> providedPackages() {
 		return FORGE.providedPackages();
