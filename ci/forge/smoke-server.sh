@@ -216,7 +216,7 @@ if $standins; then
 	# of the stand-ins'.
 	check "the linkage check counts the classes of the modules other mods provide" "python3 -I '$root/ci/forge/standin-linkage.py' '$extra' logs/fabric-bridge-report.txt"
 else
-	check "native fabric-loot-api-v3: Fabric's loot table events change dirt's loot table and drops on Forge's loot loading" "grep -q 'FABRICATED-FORGE-TEST loot OK' logs/latest.log 2>/dev/null"
+	check "native fabric-loot-api-v3: Fabric's loot table events change dirt's loot table and drops on Forge's loot loading, and a table a mod names as MODIFY's builder builds it keeps that name, as Porting Lib Loot names them (CORPUS-90; Forge 66 through the in-game mod's hook on Forge's naming)" "grep -q 'FABRICATED-FORGE-TEST loot OK' logs/latest.log 2>/dev/null"
 fi
 if $fapi && [[ "$mc" == 26.* ]]; then
 	check "fabric-object-builder-api-v1 (with Fabric API, 26.x): a cow's default armor set through FabricDefaultAttributeRegistry.MODIFY is what the game reads (Forge's attribute modification event)" "grep -q 'FABRICATED-FORGE-TEST default attributes OK' logs/latest.log 2>/dev/null"
@@ -237,6 +237,7 @@ if $fapi; then
 	check "fabric-entity-events-v1 (with Fabric API): an entity hurt through the game's own hurtServer asks ServerLivingEntityEvents.ALLOW_DAMAGE, whose refusal holds, and fires AFTER_DAMAGE with the damage dealt and taken (DAMAGE-1)" "grep -q 'FABRICATED-FORGE-TEST damage events OK' logs/latest.log 2>/dev/null"
 	check "fabric-transfer-api-v1 (with Fabric API): a Fabric mod's item and fluid storages are Forge's ITEM_HANDLER and FLUID_HANDLER capabilities of its block entity, and a Forge mod's ItemStackHandler and FluidTank Fabric's storages, moved only once a transaction commits; a Fabric mod's tank items are Forge's FLUID_HANDLER_ITEM and a Forge mod's Fabric's FluidStorage.ITEM" "grep -q 'FABRICATED-FORGE-TEST storages OK' logs/latest.log 2>/dev/null"
 fi
+check "a Fabric mod's @ModifyVariable takes a local by its type after a frame that chops one, in a method whose frames append three locals at once where it has four argument slots: Forge's Mixin, counting each of those frames as four, found none until Fabricated repaired the frames it recorded (CORPUS-79, through Fabricated's Mixin extension; Resourceful Lib's @Local in Forge 61's and 64's ScreenEffectRenderer)" "grep -q 'FABRICATED-FORGE-TEST recorded frames OK' logs/latest.log 2>/dev/null"
 check "an interface a mixin adds to LivingEntity, whose default self() has the name and type of the one Forge's IForgeLivingEntity gives it, gets a bridge, so both answer the pig (CORPUS-63, through Fabricated's Mixin extension)" "grep -q 'FABRICATED-FORGE-TEST default bridge OK' logs/latest.log 2>/dev/null"
 check "one a mixin adds to Mob, whose default isMultipartEntity() Mob has through Entity's IForgeEntity, gets a bridge calling the superclass's (DEFAULT-1)" "grep -q 'FABRICATED-FORGE-TEST inherited default bridge OK' logs/latest.log 2>/dev/null"
 check "a Fabric mod's fluids have Forge fluid types (the in-game mod's, registered under their ids), and a pig falls through one that isn't water as through air; their buckets, made before the fluids were registered, hold them (CORPUS-73)" "grep -q 'FABRICATED-FORGE-TEST fluid types OK' logs/latest.log 2>/dev/null"

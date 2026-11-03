@@ -19,6 +19,7 @@ import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.AnnotationNode;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.FieldNode;
+import org.objectweb.asm.tree.MethodNode;
 
 import io.github.cmdralph.fabricated.core.bytecode.Annotations;
 import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
@@ -28,7 +29,9 @@ import io.github.cmdralph.fabricated.core.json.JsonException;
  * The game's classes as pre-flight should see them: with the fields Fabricated's own mixins add, which Fabric mods'
  * mixins then shadow or access as the game's. Fabricated restores vanilla's map of picture-in-picture renderers on
  * {@code GuiRenderer}, which NeoForge replaced with renderer pools and Fabric mods read and replace (malilib, PIP-1). A
- * field of one of Fabricated's mixins counts when it is neither shadowed nor unique (named for Fabricated alone).
+ * field of one of Fabricated's mixins counts when it is neither shadowed nor unique (named for Fabricated alone). So do
+ * the methods they add for a field the platform gave another type ({@link MixinNames#BRIDGE_GETTER}), which a Fabric
+ * mod's accessor of the field invokes (CORPUS-37); pre-flight reads their declarations, not their code.
  */
 public final class RestoredFields {
 	private static final String SHADOW = "Lorg/spongepowered/asm/mixin/Shadow;";
@@ -42,7 +45,7 @@ public final class RestoredFields {
 	 *                        its mixins
 	 */
 	public static ClassBytesSource over(ClassBytesSource game, List<Path> fabricatedFiles) {
-		Map<String, List<FieldNode>> added = new HashMap<>();
+		Map<String, Added> added = new HashMap<>();
 		for (Path file : fabricatedFiles) {
 			try {
 				collect(file, added);
@@ -53,14 +56,17 @@ public final class RestoredFields {
 		if (added.isEmpty()) return game;
 		return name -> {
 			byte[] data = game.read(name);
-			List<FieldNode> fields = added.get(name);
-			if (data == null || fields == null) return data;
+			Added more = added.get(name);
+			if (data == null || more == null) return data;
 			ClassNode node = new ClassNode();
 			new ClassReader(data).accept(node, 0);
-			for (FieldNode field : fields) {
+			for (FieldNode field : more.fields()) {
 				if (node.fields.stream().noneMatch(f -> f.name.equals(field.name))) {
 					node.fields.add(new FieldNode(field.access, field.name, field.desc, field.signature, null));
 				}
+			}
+			for (MethodNode method : more.methods()) {
+				if (node.methods.stream().noneMatch(m -> m.name.equals(method.name) && m.desc.equals(method.desc))) node.methods.add(declaration(method));
 			}
 			ClassWriter writer = new ClassWriter(0);
 			node.accept(writer);
@@ -68,7 +74,42 @@ public final class RestoredFields {
 		};
 	}
 
-	private static void collect(Path file, Map<String, List<FieldNode>> added) throws IOException, JsonException {
+	/** What Fabricated's mixins add to one game class. */
+	private record Added(List<FieldNode> fields, List<MethodNode> methods) {
+	}
+
+	/** A bridge as pre-flight reads it: its declaration, with a body returning its type's default value. */
+	private static MethodNode declaration(MethodNode method) {
+		MethodNode copy = new MethodNode(method.access & ~Opcodes.ACC_ABSTRACT, method.name, method.desc, method.signature, null);
+		Type returned = Type.getReturnType(method.desc);
+		switch (returned.getSort()) {
+			case Type.VOID -> copy.visitInsn(Opcodes.RETURN);
+			case Type.OBJECT, Type.ARRAY -> {
+				copy.visitInsn(Opcodes.ACONST_NULL);
+				copy.visitInsn(Opcodes.ARETURN);
+			}
+			case Type.LONG -> {
+				copy.visitInsn(Opcodes.LCONST_0);
+				copy.visitInsn(Opcodes.LRETURN);
+			}
+			case Type.FLOAT -> {
+				copy.visitInsn(Opcodes.FCONST_0);
+				copy.visitInsn(Opcodes.FRETURN);
+			}
+			case Type.DOUBLE -> {
+				copy.visitInsn(Opcodes.DCONST_0);
+				copy.visitInsn(Opcodes.DRETURN);
+			}
+			default -> {
+				copy.visitInsn(Opcodes.ICONST_0);
+				copy.visitInsn(Opcodes.IRETURN);
+			}
+		}
+		copy.visitMaxs(2, 1 + (Type.getArgumentsAndReturnSizes(method.desc) >> 2));
+		return copy;
+	}
+
+	private static void collect(Path file, Map<String, Added> added) throws IOException, JsonException {
 		if (Files.isDirectory(file)) {
 			List<Path> configs;
 			try (Stream<Path> listed = Files.list(file)) {
@@ -100,7 +141,7 @@ public final class RestoredFields {
 		byte[] read(String name) throws IOException;
 	}
 
-	private static void collect(String json, EntryReader files, Map<String, List<FieldNode>> added) throws IOException, JsonException {
+	private static void collect(String json, EntryReader files, Map<String, Added> added) throws IOException, JsonException {
 		MixinConfigFile config = MixinConfigFile.parse(json);
 		for (String mixin : config.allMixins()) {
 			byte[] data = files.read(config.internalName(mixin) + ".class");
@@ -113,11 +154,22 @@ public final class RestoredFields {
 					fields.add(field);
 				}
 			}
-			if (fields.isEmpty()) continue;
+			List<MethodNode> methods = new ArrayList<>();
+			for (MethodNode method : node.methods) {
+				boolean bridge = method.name.startsWith(MixinNames.BRIDGE_GETTER) || method.name.startsWith(MixinNames.BRIDGE_SETTER);
+				if (bridge && (method.access & (Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC)) == 0 && (method.access & Opcodes.ACC_PUBLIC) != 0
+						&& Annotations.find(method, SHADOW) == null) {
+					methods.add(method);
+				}
+			}
+			if (fields.isEmpty() && methods.isEmpty()) continue;
 			AnnotationNode ann = Annotations.find(node.invisibleAnnotations, node.visibleAnnotations, Annotations.MIXIN);
 			if (ann == null || !(Annotations.value(ann, "value") instanceof List<?> targets)) continue;
 			for (Object target : targets) {
-				if (target instanceof Type type) added.computeIfAbsent(type.getInternalName(), k -> new ArrayList<>()).addAll(fields);
+				if (!(target instanceof Type type)) continue;
+				Added into = added.computeIfAbsent(type.getInternalName(), k -> new Added(new ArrayList<>(), new ArrayList<>()));
+				into.fields().addAll(fields);
+				into.methods().addAll(methods);
 			}
 		}
 	}

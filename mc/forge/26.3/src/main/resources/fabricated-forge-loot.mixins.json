@@ -3,7 +3,7 @@
   "minVersion": "0.8",
   "package": "io.github.cmdralph.fabricated.forge.loot.mixin",
   "compatibilityLevel": "JAVA_21",
-  "mixins": ["LoadingRegistriesMixin", "ReloadableServerRegistriesMixin", "ResourceManagerRegistryLoadTaskMixin"],
+  "mixins": ["ForgeHooksLootTableNameMixin", "LoadingRegistriesMixin", "ReloadableServerRegistriesMixin", "ResourceManagerRegistryLoadTaskMixin"],
   "injectors": {
     "defaultRequire": 1
   }

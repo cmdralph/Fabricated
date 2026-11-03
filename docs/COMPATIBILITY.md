@@ -1147,6 +1147,12 @@ MixinExtras has NeoForge's jar, and a NeoForge mod nested in another jar has tha
   method of its `IDynamicBakedModel`, which MoreCulling shadows, and the Forge 47 client stopped baking its models
   (CORPUS-84). Only where every use of the shadow is a virtual call and the inherited method is an instance method that
   isn't private; otherwise the mod is disabled, or the mixin left out where it can.
+- An `@Accessor` of a field the platform gave another type reads vanilla's value where Fabricated's in-game mod
+  bridges the field: the accessor invokes a getter the in-game mod adds to the field's class, keeping its own name and
+  descriptor, so the mod's callers are served as before. Forge 47 keeps holders in a brewing mix's `from` and `to`, and
+  the particle engine's providers by their type's id, where Porting Lib's accessors read vanilla's potions and items
+  and its map by raw id; the bridges give the holders' values, and a view by raw id of Forge's map (CORPUS-37). A
+  retyped field Fabricated doesn't bridge still disables the accessor's mod, or leaves the mixin out where it can.
 - Config screens a Fabric mod offers to Mod Menu (its `modmenu` entrypoint) open from the Config button of NeoForge's
   mod list. Mod Menu's API interfaces are provided, so such mods load without Mod Menu, which itself can't run on
   NeoForge (it would duplicate NeoForge's mod list): an installed Mod Menu jar is skipped and provided at its version.

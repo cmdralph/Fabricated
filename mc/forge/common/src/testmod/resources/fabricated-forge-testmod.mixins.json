@@ -3,7 +3,7 @@
   "minVersion": "0.8",
   "package": "io.github.cmdralph.fabricated.forgetest.mixin",
   "compatibilityLevel": "JAVA_21",
-  "mixins": ["BuiltInRegistriesMixin", "LivingEntitySelfMixin", "MinecraftServerCounterMixin", "MinecraftServerCounterShadowMixin", "MinecraftServerMixin", "MobMultipartMixin"],
+  "mixins": ["BuiltInRegistriesMixin", "ForgeRecordedFramesMixin", "LivingEntitySelfMixin", "LootTableBuilderNamingMixin", "MinecraftServerCounterMixin", "MinecraftServerCounterShadowMixin", "MinecraftServerMixin", "MobMultipartMixin"],
   "client": ["McRuntimeTestMixin"],
   "injectors": {
     "defaultRequire": 1
