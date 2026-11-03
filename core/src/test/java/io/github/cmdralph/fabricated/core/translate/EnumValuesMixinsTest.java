@@ -109,6 +109,9 @@ class EnumValuesMixinsTest {
 	 * the values array only while it is final, so the mixin shadows none (a {@code @Mutable} shadow made it non-final and
 	 * stopped the Forge 66 corpus clients as {@code MobCategory} loaded, extended run 41569829683) and invokes no
 	 * constructor; without a factory for the constructor a constant uses, it stays an enum mixin (pre-flight disables its mod).
+	 * The factories run at the class initializer's end: each registers its constant in a map the initializer sets after the
+	 * values array ({@code MobCategory.BY_NAME}), which was still null right after it and stopped the Forge 61 to 66 corpus
+	 * servers and clients as {@code MobCategory} loaded (extended run 41574438102).
 	 */
 	@Test
 	void anEnumForgeMakesExtensibleGetsItsConstantsFromItsOwnFactories() throws Exception {
@@ -121,7 +124,8 @@ class EnumValuesMixinsTest {
 				&& m.visibleAnnotations.stream().anyMatch(a -> a.desc.equals("Lorg/spongepowered/asm/mixin/gen/Invoker;"))), "no constructor invoker");
 		MethodNode adds = method(mixin, "fabricated$addConstants");
 		AnnotationNode at = (AnnotationNode) ((List<?>) Annotations.value(annotation(adds, "Lorg/spongepowered/asm/mixin/injection/Inject;"), "at")).getFirst();
-		assertEquals("L" + TARGET + ";$VALUES:[L" + TARGET + ";", Annotations.value(at, "target"), "still after the enum's own constants");
+		assertEquals("TAIL", Annotations.value(at, "value"), "after the statics the factory registers its constant in");
+		assertNull(Annotations.value(at, "target"));
 		boolean created = false;
 		for (AbstractInsnNode insn : adds.instructions) {
 			if (insn instanceof MethodInsnNode call && call.owner.equals(TARGET) && call.name.equals("create") && call.desc.equals(create)) created = true;
@@ -145,7 +149,8 @@ class EnumValuesMixinsTest {
 	/**
 	 * Runs the generated injector as Mixin merges it into a runnable {@link #target()} with NONE, and, with
 	 * {@code factory}, a {@code create} factory written as Forge's enum extender writes it: the constant follows the enum's
-	 * own, at the next ordinal, with the body behind its delegate, and the class initializer's rest has run.
+	 * own, at the next ordinal, with the body behind its delegate, and the class initializer's rest has run. The factory
+	 * registers the constant in the enum's map by name, as Forge's {@code IExtensibleEnum.init} does.
 	 */
 	private static void assertAddsTheConstantWhenMerged(EnumValuesMixins.Result result, boolean factory) throws Exception {
 		ClassNode handler = new ClassNode();
@@ -170,11 +175,17 @@ class EnumValuesMixinsTest {
 		assertEquals(1, tundra.ordinal());
 		assertEquals(42, modifier.getMethod("modify", int.class).invoke(tundra, 21));
 		assertTrue(Class.forName(HOLDER.replace('/', '.'), true, loader).getField("TUNDRA").get(null) == tundra);
+		if (factory) {
+			java.lang.reflect.Field byName = modifier.getDeclaredField("BY_NAME");
+			byName.setAccessible(true);
+			assertEquals(Map.of("NONE", values[0], "TUNDRA", tundra), byName.get(null));
+		}
 	}
 
 	/**
 	 * A runnable {@link #target()} with NONE, and the handler and an invoker merged in as Mixin would; with
-	 * {@code factory}, the delegate constructor's {@code create} factory as Forge's enum extender writes it.
+	 * {@code factory}, the delegate constructor's {@code create} factory as Forge's enum extender writes it, and a map by
+	 * name set after the values array, as Forge's {@code MobCategory} has, with the handler called at the end (TAIL).
 	 */
 	private static byte[] merged(MethodNode handler, boolean factory) {
 		String self = "L" + TARGET + ";";
@@ -184,6 +195,7 @@ class EnumValuesMixinsTest {
 		// Not final: Mixin removes final from a field its mixin shadows as @Mutable.
 		cw.visitField(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC, "$VALUES", "[" + self, null, null).visitEnd();
 		cw.visitField(Opcodes.ACC_PRIVATE | Opcodes.ACC_FINAL, "delegate", "L" + COLOR + ";", null, null).visitEnd();
+		if (factory) cw.visitField(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_FINAL, "BY_NAME", "Ljava/util/Map;", null, null).visitEnd();
 		for (String constructor : List.of(NAMED, DELEGATED)) {
 			MethodVisitor init = cw.visitMethod(Opcodes.ACC_PRIVATE, "<init>", constructor, null, null);
 			init.visitCode();
@@ -259,6 +271,12 @@ class EnumValuesMixinsTest {
 			create.visitInsn(Opcodes.AASTORE);
 			create.visitVarInsn(Opcodes.ALOAD, 4);
 			create.visitFieldInsn(Opcodes.PUTSTATIC, TARGET, "$VALUES", "[" + self);
+			// IExtensibleEnum.init, as MobCategory's: BY_NAME.put(name, constant), which throws while BY_NAME is unset.
+			create.visitFieldInsn(Opcodes.GETSTATIC, TARGET, "BY_NAME", "Ljava/util/Map;");
+			create.visitVarInsn(Opcodes.ALOAD, 0);
+			create.visitVarInsn(Opcodes.ALOAD, 3);
+			create.visitMethodInsn(Opcodes.INVOKEINTERFACE, "java/util/Map", "put", "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;", true);
+			create.visitInsn(Opcodes.POP);
 			create.visitVarInsn(Opcodes.ALOAD, 3);
 			create.visitInsn(Opcodes.ARETURN);
 			create.visitMaxs(0, 0);
@@ -282,6 +300,17 @@ class EnumValuesMixinsTest {
 		clinit.visitFieldInsn(Opcodes.GETSTATIC, TARGET, "NONE", self);
 		clinit.visitInsn(Opcodes.AASTORE);
 		clinit.visitFieldInsn(Opcodes.PUTSTATIC, TARGET, "$VALUES", "[" + self);
+		if (factory) {
+			clinit.visitTypeInsn(Opcodes.NEW, "java/util/HashMap");
+			clinit.visitInsn(Opcodes.DUP);
+			clinit.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/util/HashMap", "<init>", "()V", false);
+			clinit.visitInsn(Opcodes.DUP);
+			clinit.visitLdcInsn("NONE");
+			clinit.visitFieldInsn(Opcodes.GETSTATIC, TARGET, "NONE", self);
+			clinit.visitMethodInsn(Opcodes.INVOKEINTERFACE, "java/util/Map", "put", "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;", true);
+			clinit.visitInsn(Opcodes.POP);
+			clinit.visitFieldInsn(Opcodes.PUTSTATIC, TARGET, "BY_NAME", "Ljava/util/Map;");
+		}
 		clinit.visitInsn(Opcodes.ACONST_NULL);
 		clinit.visitMethodInsn(Opcodes.INVOKESTATIC, TARGET, handler.name, handler.desc, false);
 		clinit.visitInsn(Opcodes.RETURN);
