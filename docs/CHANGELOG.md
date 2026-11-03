@@ -19,7 +19,7 @@ One entry per working session, newest first: what changed, and how it was verifi
   Forge's 1.21.11, 26.1, 26.2 and 26.3 sources) ship in core, applied as Forge applies them (the methods named and the
   listed classes' synthetic ones), with their field-to-getter reads (in every method but the getter, which differs
   from NeoForge's rule; not `Biome`'s on 26.3); a hook at such a call moves to Forge's hook as it does to NeoForge's.
-  Nothing changes on NeoForge or Forge 47.
+  Nothing changes on NeoForge or Forge 47. The lists are Forge's files unchanged (LGPL-2.1), credited in `NOTICE`.
 - **Forge corpus stops read, fixed on the Forge branches** (#254, #249; the rows in *Findings* and `FINDINGS.md`):
   Fabric mods' registries made in their main entrypoints (CORPUS-70, verified), GeckoLib's early registry writes on
   Forge 61 to 66 (CORPUS-71), objects made before what they hold is registered (CORPUS-73, verified: TechReborn and
