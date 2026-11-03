@@ -140,7 +140,9 @@ jobs:
           ci/forge-legacy/smoke-server.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/server-fapi" "$RUNNER_TEMP/extra"
       # Mods that share the game with Fabricated, as stand-ins built from Fabricated's own jar (ci/forge-legacy/standins.py):
       # a Fabric API module another Forge mod provides, straight and nested with its mixins, and two versions of a library
-      # Fabric mods nest. Fabricated's part of each module must stand down (PROVIDER-1, as on NeoForge); a gate.
+      # Fabric mods nest. Fabricated's part of each module must stand down (PROVIDER-1, as on NeoForge), and the copy of
+      # Fabric Loader the Forgified Fabric API stand-in nests must be left out for the in-game mod's empty jar (PROVIDER-2);
+      # a gate.
       - name: Server with stand-ins for coexisting mods (must pass)
         if: ${{ env.GAME_RUNS == 'true' && !cancelled() }}
         run: |
@@ -162,8 +164,9 @@ jobs:
               ci/forge-legacy/smoke-server.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/server-refuse-connector" "$RUNNER_TEMP/refuse-connector"
           SMOKE_TESTMODS=none SMOKE_TIMEOUT=300 SMOKE_EXPECT_REFUSAL="2 Fabricated jars (fabricated-forge-0.0.1+mc${{ matrix.target.minecraft }}.jar" \
               ci/forge-legacy/smoke-server.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/server-refuse-twice" "$RUNNER_TEMP/refuse-twice"
-          # A jar with its own copy of Fabric Loader, as Forgified Fabric API for 1.20.1 nests one: refused at once, before
-          # Forge builds a layer, where both copies would stop the launch with a module error naming neither (PROVIDER-2).
+          # A jar with its own copy of Fabric Loader under another identifier than Forgified Fabric Loader's, which the
+          # in-game mod's empty jar replaces (the stand-ins' run above): refused at once, before Forge builds a layer, where
+          # both copies would stop the launch with a module error naming neither (PROVIDER-2).
           mkdir -p "$RUNNER_TEMP/refuse-loader"
           python3 -I ci/forge-legacy/standins.py build/libs/fabricated-forge-[0-9]*+mc${{ matrix.target.minecraft }}.jar "$RUNNER_TEMP/refuse-loader" own-loader
           SMOKE_TESTMODS=none SMOKE_TIMEOUT=300 SMOKE_REFUSAL_AT_ONCE=1 \
@@ -202,6 +205,21 @@ jobs:
           for jar in "$RUNNER_TEMP"/ffapi/*.jar; do
             [ -f "$jar" ] && { python3 -I ci/forge-legacy/ffapi-anatomy.py "$jar" | head -n 220 || true; }
           done
+      # Forgified Fabric API for 1.20.1 beside Fabricated and the test mods (task 5, PROVIDER-2): Forge's jar-in-jar must
+      # leave its Fabric Loader out for the in-game mod's empty jar, its modules provide Fabric API's (Fabricated's copies
+      # standing down), and the server must start. Informational, with "extended", until it has passed.
+      - name: Server with Forgified Fabric API
+        if: ${{ env.EXTENDED == 'true' && !cancelled() }}
+        continue-on-error: true
+        run: |
+          mkdir -p "$RUNNER_TEMP/with-ffapi"
+          cp "$RUNNER_TEMP"/ffapi/*.jar "$RUNNER_TEMP/with-ffapi/" 2>/dev/null || { echo "Forgified Fabric API wasn't downloaded"; exit 0; }
+          ci/forge-legacy/smoke-server.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/server-ffapi" "$RUNNER_TEMP/with-ffapi" \
+              > "$RUNNER_TEMP/server-ffapi.out" 2>&1 && echo "== the server with Forgified Fabric API passed" || echo "== the server with Forgified Fabric API failed"
+          grep -E '^(PASS|FAIL|NOT SEEN):' "$RUNNER_TEMP/server-ffapi.out" | grep -v '^PASS' | head -n 60 || true
+          echo "== Fabric API providers"
+          sed -n '/^== Fabric API providers/,/^== /p' "$RUNNER_TEMP/server-ffapi/logs/fabric-bridge-report.txt" 2>/dev/null | head -n 40 || true
+          ci/forge-legacy/corpus-causes.sh "$RUNNER_TEMP/server-ffapi" "$RUNNER_TEMP/server-ffapi/server.out" "server with Forgified Fabric API" || true
       # Popular Fabric mods from Modrinth (ci/mod-corpus.txt, downloaded here in CI and checked against Modrinth's
       # SHA-512) with Fabric API, as build.yml runs them on NeoForge: which load on Forge, which are disabled and why.
       # Informational, with "extended" or on a release tag; a mod whose initializer throws is disabled, not fatal.

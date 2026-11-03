@@ -122,6 +122,11 @@ public final class FabricDependencyLocator extends AbstractJarFileModProvider im
 		Path logsDir = gameDir.resolve("logs");
 		boolean client = FMLLoader.getDist().isClient();
 		List<Path> fabricJars = FabricJars.in(FMLPaths.MODSDIR.get());
+		// A Forge jar's copy of Fabric Loader that Forge's jar-in-jar leaves out for the empty jar the in-game mod nests in
+		// its place (Forgified Fabric API's, PROVIDER-2): the in-game mod is handed to Forge even without Fabric mods, as
+		// only it nests that jar, and its own Fabric API modules stand down for the other jar's, as with Fabric mods.
+		List<String> loaderCopiesLeftOut = ConflictingMods.loaderCopiesLeftOut();
+		boolean inGameMod = !fabricJars.isEmpty() || !loaderCopiesLeftOut.isEmpty();
 
 		IModFile minecraft = find(loadedMods, "minecraft")
 				.orElseThrow(() -> new IllegalStateException("Forge did not provide the minecraft mod file"));
@@ -139,7 +144,7 @@ public final class FabricDependencyLocator extends AbstractJarFileModProvider im
 		// Fabricated's own in-game mod: loaded from the development workspace, or extracted from this jar when there is
 		// anything Fabric to load.
 		Optional<IModFile> devGameMod = find(loadedMods, ModIds.FABRICATED);
-		Path gameModJar = devGameMod.isPresent() || fabricJars.isEmpty() ? null : NestedJars.extract(NestedJars.GAME_MOD, cache);
+		Path gameModJar = devGameMod.isPresent() || !inGameMod ? null : NestedJars.extract(NestedJars.GAME_MOD, cache);
 		List<Path> fabricatedFiles = gameModJar != null ? List.of(gameModJar) : devGameMod.map(file -> List.of(file.getFilePath())).orElse(List.of());
 
 		// Classes visible to Forge's non-transforming layers (the JDK, and libraries such as DataFixerUpper or Brigadier).
@@ -211,7 +216,7 @@ public final class FabricDependencyLocator extends AbstractJarFileModProvider im
 			}
 
 			// Fabric mixins may target the classes of Fabricated's Fabric API and of the Forge mods (an addon's mod).
-			ForgeMods.Found forgeMods = ForgeMods.of(loadedMods, !fabricJars.isEmpty(), fabricApi);
+			ForgeMods.Found forgeMods = ForgeMods.of(loadedMods, inGameMod, fabricApi);
 
 			byte[] planJson = FabricatedInfo.readOptional("fabric-api-plan.json");
 			if (planJson == null) throw new IllegalStateException("This Fabricated build is missing its fabric-api-plan.json");
@@ -267,6 +272,7 @@ public final class FabricDependencyLocator extends AbstractJarFileModProvider im
 					new String[0], ForgeDescriptor.INSTANCE);
 
 			result = Pipeline.run(input);
+			loaderCopiesLeftOut.forEach(n -> result.report().line("Fabric API providers", n));
 			providerNotes.forEach(n -> result.report().line("Fabric API providers", n));
 			if (standDown != null && !standDown.isEmpty()) {
 				result.report().line("Fabric API providers", "Fabricated's in-game mod leaves out " + standDown.packages().size()
@@ -276,8 +282,9 @@ public final class FabricDependencyLocator extends AbstractJarFileModProvider im
 			closeAll(vanillaJars);
 		}
 		result.runtime().install();
-		// Fabric entrypoints run when Fabricated's in-game mod loads: always in development, else when there is anything Fabric.
-		boolean addGameMod = gameModJar != null && (!result.mods().isEmpty() || !fabricJars.isEmpty());
+		// Fabric entrypoints run when Fabricated's in-game mod loads: always in development, else when there is anything Fabric,
+		// or another jar's copy of Fabric Loader is left out for the empty jar it nests.
+		boolean addGameMod = gameModJar != null && (!result.mods().isEmpty() || inGameMod);
 		FabricatedApiImpl api = new FabricatedApiImpl(info.fabricatedVersion(), plan, result.report(), result.runtime(), devGameMod.isPresent() || addGameMod);
 		FabricatedState state = new FabricatedState(result, logsDir, api);
 		FabricatedState.set(state);
