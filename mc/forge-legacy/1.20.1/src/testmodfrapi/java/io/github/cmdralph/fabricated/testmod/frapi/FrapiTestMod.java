@@ -75,6 +75,8 @@ public final class FrapiTestMod implements ModInitializer {
 
 	// Server thread only.
 	private static @Nullable ServerLevel level;
+	/** Whether the test blocks are placed (read on the client, by {@link FrapiClientTestMod#holding}). */
+	private static volatile boolean placed;
 	private static @Nullable BlockPos breaking;
 	private static @Nullable BlockPos landing;
 	/** Where the redstone block that powers the piston goes: the piston is above it, the block it moves above that. */
@@ -137,6 +139,11 @@ public final class FrapiTestMod implements ModInitializer {
 				+ " block at {}, piston at {})", front, nested, wrapped, pistonPower.above());
 		placeItems(world, player, front, facing);
 		level = world;
+		placed = true;
+	}
+
+	static boolean placed() {
+		return placed;
 	}
 
 	/**

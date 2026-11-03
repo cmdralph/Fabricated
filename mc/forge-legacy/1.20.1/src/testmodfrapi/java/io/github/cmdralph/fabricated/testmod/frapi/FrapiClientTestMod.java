@@ -53,10 +53,25 @@ import net.minecraft.world.level.block.state.BlockState;
 public final class FrapiClientTestMod implements ClientModInitializer {
 	/** The class through which Fabricated sends a block to Fabric's renderer on Forge 47. */
 	private static final String FABRICATED_SEAM = "io.github.cmdralph.fabricated.forge.rendering.FabricBlockRendering";
+	/** Half a minute of client ticks, which a slow integrated server's first seconds in the world fit in. */
+	private static final int MAX_HOLD = 600;
+	/** Client ticks held so far (render thread). */
+	private static int held;
 
 	@Override
 	public void onInitializeClient() {
 		ModelLoadingPlugin.register(context -> context.modifyModelAfterBake().register(FrapiClientTestMod::fabricModels));
+	}
+
+	/**
+	 * On the client, each tick: whether mc-runtime-test, which CI's client runs start the game with and which quits a few
+	 * seconds after the player's chunk has loaded, is to wait that tick ({@code mixin/McRuntimeTestHoldMixin}). It waits
+	 * once the test blocks are placed until the first test block has been drawn as a falling block, as a block a piston
+	 * moves and with the breaking overlay, for half a minute at most: a server running seconds behind had moved the
+	 * piston too few times when the game quit, and no moved block was drawn (extended run 41642906615).
+	 */
+	public static boolean holding() {
+		return FrapiTestMod.placed() && !CheckModel.movingDrawn() && held++ < MAX_HOLD;
 	}
 
 	/**
@@ -170,6 +185,11 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 		CheckModel(BakedModel wrapped, String check) {
 			super(wrapped);
 			this.check = check;
+		}
+
+		/** Whether it has been drawn as a falling block, as a block a piston moves and with the breaking overlay. */
+		static boolean movingDrawn() {
+			return FALLING.get() && PISTON.get() && BREAKING.get();
 		}
 
 		@Override
