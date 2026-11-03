@@ -217,6 +217,9 @@ jobs:
           ci/forge-legacy/smoke-server.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/server-ffapi" "$RUNNER_TEMP/with-ffapi" \
               > "$RUNNER_TEMP/server-ffapi.out" 2>&1 && echo "== the server with Forgified Fabric API passed" || echo "== the server with Forgified Fabric API failed"
           grep -E '^(PASS|FAIL|NOT SEEN):' "$RUNNER_TEMP/server-ffapi.out" | grep -v '^PASS' | head -n 60 || true
+          # What the test mod's checks met where they didn't pass: the provider's modules answer some differently.
+          echo "== The test mod's other lines"
+          grep -h 'FABRICATED-FORGE-TEST' "$RUNNER_TEMP/server-ffapi/logs/latest.log" 2>/dev/null | grep -v ' OK$\| OK (' | head -n 30 | cut -c1-600 || true
           echo "== Fabric API providers"
           sed -n '/^== Fabric API providers/,/^== /p' "$RUNNER_TEMP/server-ffapi/logs/fabric-bridge-report.txt" 2>/dev/null | head -n 40 || true
           ci/forge-legacy/corpus-causes.sh "$RUNNER_TEMP/server-ffapi" "$RUNNER_TEMP/server-ffapi/server.out" "server with Forgified Fabric API" || true
