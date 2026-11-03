@@ -24,6 +24,7 @@
     "GameDataFreezeMixin": [],
     "LivingEntityFluidTravelMixin": [],
     "MappedRegistryPendingHoldersMixin": [],
+    "NamespacedWrapperAliasMixin": ["fabric-registry-sync-v0"],
     "NamespacedWrapperEarlyWriteMixin": [],
     "NamespacedWrapperPendingHoldersMixin": [],
     "ResourcePackLoaderKnownPackMixin": [],
