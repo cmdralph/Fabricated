@@ -10,6 +10,7 @@
     "LivingEntityFluidTravelMixin",
     "MappedRegistryPendingHoldersMixin",
     "NamespacedWrapperPendingHoldersMixin",
+    "NamespacedWrapperAliasMixin",
     "BuiltInRegistriesFreezeMixin",
     "BuiltInRegistriesInvoker",
     "BuiltInRegistriesValidateMixin",

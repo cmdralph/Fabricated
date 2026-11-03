@@ -18,6 +18,7 @@
     "LiquidBlockEarlyFluidMixin": [],
     "LivingEntityFluidTravelMixin": [],
     "MappedRegistryPendingHoldersMixin": [],
+    "NamespacedWrapperAliasMixin": ["fabric-registry-sync-v0"],
     "NamespacedWrapperPendingHoldersMixin": [],
     "RecordItemEarlySoundMixin": [],
     "TagFileRemoveMixin": ["fabric-tag-api-v1"]

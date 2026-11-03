@@ -176,8 +176,14 @@ by the server runs (the colours, screens, key mappings and config screens by the
   lets it: a bucket made before its fluid is registered holds that fluid (all five), and on Forge 47 so do a liquid
   block made before its fluid and a music disc made before its sound, and a block item registered before its block is
   that block's item (server run; CORPUS-73). Forge's patches of those constructors, and Forge 47's of a block item's
-  block, looked the object up in its registry and threw: TechReborn's fluids and Lootr's block items didn't load on
-  Forge 47, and what they left registered stopped Forge's snapshot of the registries.
+  block, looked the object up in its registry and threw: TechReborn's fluids didn't load (seen on Forge 47, 64 and 65)
+  nor Lootr's block items on Forge 47, and what they left registered stopped Forge's snapshot of the registries.
+- **Registry aliases:** an old name a Fabric mod keeps for a renamed entry with Fabric API's `FabricRegistry.addAlias`
+  names that entry in the registries Forge manages, in their lookups by name and by key (which a data pack's references
+  go through) and in Forge's own registry, its snapshots and its sync to clients (all five, with Fabric API; server
+  run; CORPUS-75). Fabric API kept the alias in vanilla's registry class, whose lookups Forge's wrapper replaces:
+  Waystones' world generation names its renamed waystones by their old names, and its data pack, and with it the
+  server, didn't load on Forge 64 and 65.
 - **Storages:** a Fabric mod's item and fluid storages are the `ITEM_HANDLER` and `FLUID_HANDLER` capabilities of its
   block entity, and a Forge mod's `ItemStackHandler` and `FluidTank` are Fabric's storages (all five, with Fabric API,
   server and client). A Forge handler only simulates until Fabric's outermost transaction commits, so an aborted one
