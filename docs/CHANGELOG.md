@@ -3,6 +3,44 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-03: interface mixins Mixin would take for accessor mixins (CORPUS-76), the game's other packages (CORPUS-82), and four findings verified (task 5)
+
+- **CORPUS-76** (`AccessorShapedMixins`, `ModTranslator.leaveOutHandlers`): the Forge 47 corpus client stopped with
+  `ClassCircularityError: ClientTooltipComponent`. AppleSkin's `TooltipComponentMixin` extends its target
+  `ClientTooltipComponent` for two static injectors, which Forge 47's Mixin 0.8.5 doesn't apply in an interface mixin,
+  so pre-flight leaves them out (INTERFACE-1). Left with no method, Mixin takes such an interface for an accessor mixin
+  and makes its targets implement it, so the interface was made to extend itself. An interface mixin that leaving out
+  methods turns into an accessor mixin is now left out whole where its config lists it and nothing is left for its
+  targets; otherwise it no longer names its targets among its interfaces. Fabric API's tooltip hook was affected the same
+  way, harmlessly. Both stay left out on Forge 47.
+- **CORPUS-82** (`GamePackages`, new): ImmediatelyFast's buffer upload hook stopped the Forge 66 client. It takes
+  `@Local(name = "slice", argsOnly = true)` in 26.3's `GlCommandEncoder.writeToBuffer`, a name Forge's Mixin doesn't
+  know, which PRE-18's repair turns into the argument's slot. The repair never ran, because pre-flight took only
+  `net.minecraft` and `com.mojang.blaze3d` for the game's code. 26.3's GPU backend is in `com.mojang.renderpearl`, so
+  the class looked like another mod's and nothing of the mixin was judged. On every version, the game's
+  `com.mojang.math` and `com.mojang.realmsclient` classes were missed the same way, by pre-flight and by the linkage
+  check. The game's packages are now named once, with the client-only ones for a server's linkage check.
+- **Merged:** #254 (Forge 61 to 66) and #249 (Forge 47), each green on its final commit.
+- **Verified** (moved to `FINDINGS.md`):
+  - CORPUS-78: the Forge 64 corpus server runs with Friends and Foes (extended run 41648273936).
+  - CORPUS-83: the Forge 65 corpus client joins its world and exits normally, and the test mod's ingredient round trip
+    passes on Forge 61 to 66.
+  - CORPUS-81: Ponder's entrypoint no longer fails on the Forge 47 corpus (extended run 41648278525).
+  - PLAT-6.
+- **Read** (rows in *Findings*):
+  - CORPUS-79: MixinExtras rejects ResourcefulLib's implicit `PoseStack` local where Forge 61's and 64's method has
+    one.
+  - PRE-18 on Forge 66 still waits on CORPUS-82.
+- **`NOTICE`** says the Forge Config API Port types are clean-room, as Mod Menu's are.
+- **Tests:** `PipelineTest.anInterfaceMixinLeftWithoutItsInjectorsNoLongerMakesItsTargetItsOwnSupertype` uses Forge's
+  descriptor and Mixin 0.8.5. Two interface mixins lose their static injectors: one is left out whole, and the other
+  keeps only its own interface and that interface's signature. Where Mixin applies the injectors, both stay as the mod
+  has them. The test fails without the fix.
+- **Tests:** `MixinPreflightTest.aRedirectsLocalArgumentTakenByNameIsTakenByItsSlotWhereMixinDoesntKnowArgumentNames`
+  builds a `@Redirect` into 26.3's `GlCommandEncoder`, naming its target once by class and once by string, and checks
+  the local now takes slot 1. It fails without the fix.
+- **CI:** core build and tests pass locally. The Forge branches take both fixes by the sync.
+
 ## 2026-11-03: Forge 64's own spawn list (CORPUS-78), and the corpus after the sync (task 5)
 
 - **CORPUS-78, fixed again** (`PlatformCoremods.forge`): after the first fix the Forge 61 and 65 corpus servers start

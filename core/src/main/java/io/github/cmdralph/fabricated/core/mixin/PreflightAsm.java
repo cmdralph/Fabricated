@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import io.github.cmdralph.fabricated.core.bytecode.Annotations;
+import io.github.cmdralph.fabricated.core.bytecode.GamePackages;
 import io.github.cmdralph.fabricated.core.mixin.MixinPreflight.Context;
 
 import org.objectweb.asm.Type;
@@ -43,7 +44,7 @@ final class PreflightAsm {
 	}
 
 	static boolean isGameClass(String internalName) {
-		return MixinNames.GAME_PREFIXES.stream().anyMatch(internalName::startsWith);
+		return GamePackages.isGame(internalName);
 	}
 
 	/** Whether {@code handler} is in a named injector group ({@code @Group}), whose members Mixin checks together. */
