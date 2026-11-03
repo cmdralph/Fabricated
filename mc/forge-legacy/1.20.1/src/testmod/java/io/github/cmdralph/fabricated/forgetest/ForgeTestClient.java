@@ -11,7 +11,7 @@ import net.minecraft.class_310;
  * The test mod's client entrypoint, which Fabric Loader runs from {@code Minecraft}'s constructor ({@code class_310})
  * after the main ones, the game instance set: each logs a line the client smoke looks for
  * (ci/forge-legacy/smoke-client.sh). It registers the factory of the test mod's particle type
- * ({@link ForgeParticleClient}), and with Fabric API's networking module it also starts a networking round trip with
+ * ({@link ForgeParticleClient}) and a key binding ({@link ForgeKeyBindingClient}), and with Fabric API's networking module it also starts a networking round trip with
  * the integrated server ({@link ForgeNetworkingClient}); with its model loading, screen and rendering modules, it checks
  * the model bake events ({@link ForgeModelClient}), the screen mouse and key events ({@link ForgeScreenClient}) and the
  * HUD callback ({@link ForgeHudClient}).
@@ -40,6 +40,11 @@ public final class ForgeTestClient implements ClientModInitializer {
 			} catch (RuntimeException | LinkageError e) {
 				ForgeTestMod.LOGGER.error("FABRICATED-FORGE-TEST particle factory not registered", e);
 			}
+		}
+		try {
+			ForgeKeyBindingClient.register();
+		} catch (RuntimeException | LinkageError e) {
+			ForgeTestMod.LOGGER.error("FABRICATED-FORGE-TEST key binding FAILED: not registered", e);
 		}
 		if (FabricLoader.getInstance().isModLoaded("fabric-networking-api-v1")) {
 			try {

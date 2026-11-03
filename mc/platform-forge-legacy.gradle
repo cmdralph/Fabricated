@@ -46,6 +46,9 @@ def gameModMixins = [
         // Native fabric-particles-v1's (client): upstream's hook that registers Fabric's particle factories once the
         // engine's own are in, the accessors its sprite provider reads, and its block dust tint event on Forge's check.
         'fabricated-particles.mixins.json',
+        // Native fabric-key-binding-api-v1's (client): upstream's accessor of the categories' order and of a key binding's
+        // key; its key bindings go to Forge's key mapping event (KEYMAP-3).
+        'fabricated-keybinding.mixins.json',
         // The block and item colour lookups Fabric API's colour provider registry calls, on Forge's maps (upstream's read
         // vanilla's, which Forge replaced).
         'fabricated-forge-color.mixins.json',

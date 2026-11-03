@@ -81,6 +81,17 @@ cat > run/options.txt <<'OPTS'
 onboardAccessibility:false
 pauseOnLostFocus:false
 OPTS
+# A key saved for the test mod's key binding, which it must have once the game has started (KEYMAP-3). The file then
+# names the game's data version (its client jar's): without one, the game takes it for a file from before 1.13, whose
+# data fixer reads each key as an LWJGL 2 key code, fails on a key's name, and drops the whole file (as on forge).
+# Should the jar not say, the key isn't saved, and the key binding check fails on it.
+if data_version=$(python3 -I -c 'import json, sys, zipfile; print(json.loads(zipfile.ZipFile(sys.argv[1]).read("version.json"))["world_version"])' \
+		"minecraft/versions/$mc/$mc.jar"); then
+	printf '%s\n' "version:$data_version" "key_key.fabricated-forge-testmod.check:key.keyboard.k" >> run/options.txt
+else
+	echo "::warning::The client jar's data version wasn't read; no key is saved for the test mod's key binding"
+fi
+cat run/options.txt
 
 echo "::group::Run client"
 for attempt in 1 2; do
@@ -202,6 +213,7 @@ else
 fi
 check "FABRICATED-FORGE-TEST constructor hook OK" "the test mod's @Inject at a call in Commands' constructor ran, which Forge 47's Mixin takes only at a return (CTOR-4)"
 check "FABRICATED-FORGE-TEST particles OK" "native fabric-particles-v1: the particle engine finds the test mod's factory, kept by the type's id as Forge keeps them, and its sprite provider holds its sprite in the particle atlas (PART-1)"
+check "FABRICATED-FORGE-TEST key binding OK" "native fabric-key-binding-api-v1: a key binding a Fabric mod registers from its client entrypoint is in the game's options, sorted after the game's, refused twice and once Forge's event added it, as upstream, and has the key the options file saved for it (KEYMAP-3)"
 if [ -n "$extra" ]; then
 	check "FABRICATED-FORGE-TEST networking round trip OK" "fabric-networking-api-v1 (with Fabric API): a ping the client sends on a channel as it joins comes back from the integrated server with the server's answer"
 	check "FABRICATED-FORGE-TEST Fabric command registered OK" "fabric-command-api-v2 (with Fabric API): a command registered through CommandRegistrationCallback is in the integrated server's dispatcher (CTOR-4)"

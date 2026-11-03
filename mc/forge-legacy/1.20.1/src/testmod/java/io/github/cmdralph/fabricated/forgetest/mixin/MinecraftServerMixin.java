@@ -96,6 +96,7 @@ public abstract class MinecraftServerMixin {
 			ForgeTestMod.checkVanillaStats((MinecraftServer) (Object) this);
 			ForgeTestMod.checkColors();
 			ForgeTestMod.checkParticles();
+			ForgeTestMod.checkKeyBinding();
 			ForgeCommandTest.check(method_3734());
 			ForgeBlockBreakTest.check(method_30002());
 			ForgeTestMod.checkInteractions(method_30002());
