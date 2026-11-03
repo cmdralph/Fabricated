@@ -3,11 +3,12 @@ package io.github.cmdralph.fabricated.forgetest;
 /**
  * CORPUS-79: a Fabric mod's injector takes a local after a frame that chops locals, in a method shaped as Forge 61's and
  * 64's {@code ScreenEffectRenderer.renderScreenEffect}: four argument slots, three locals appended in one frame, then one
- * chopped, with the first still live. Forge's Mixin records each of those frames as four locals and, without Fabricated's
- * repair of its recorded frames, finds no {@code StringBuilder} at the {@code String.valueOf} call, so the test mod's
- * {@code @ModifyVariable} there ({@code ForgeRecordedFramesMixin}) fails to apply and {@link Probe} fails to load. javac
- * writes the frames: an append of {@code kept}, {@code x} and {@code y} after the first {@code if}, a chop of {@code y}
- * after the block.
+ * chopped, with the first still live. Forge 61 to 66's Mixin 0.8.7 records each of those frames as four locals and,
+ * without Fabricated's repair of its recorded frames, finds no {@code StringBuilder} at the {@code String.valueOf} call,
+ * so the test mod's {@code @ModifyVariable} there ({@code ForgeRecordedFramesMixin}) fails to apply and {@link Probe}
+ * fails to load (the forge branch's first run of this probe). Forge 47's Mixin 0.8.5 records them expanded and counts
+ * them right, with no repair. javac writes the frames: an append of {@code kept}, {@code x} and {@code y} after the first
+ * {@code if}, a chop of {@code y} after the block.
  */
 public final class ForgeRecordedFramesTest {
 	private ForgeRecordedFramesTest() {
