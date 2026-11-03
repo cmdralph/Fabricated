@@ -223,6 +223,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           SMOKE_ON_ENTRYPOINT_FAILURE: disable
+          # With "extended", Mixin writes a class it fails to apply mixins to as it had it then (.mixin.out/class/*.target.class),
+          # for the bytecode step below (CORPUS-79).
+          SMOKE_JVM_ARGS: ${{ env.EXTENDED == 'true' && '-Dmixin.dumpTargetOnFailure=true' || '' }}
         run: |
           SMOKE_TIMEOUT=600 ci/forge/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-corpus" "$RUNNER_TEMP/corpus" > "$RUNNER_TEMP/client-corpus.out" 2>&1 || true
           ci/corpus-summary.sh "$RUNNER_TEMP/client-corpus/run" "client with the corpus"
@@ -245,6 +248,15 @@ jobs:
           python3 -I ci/javap-dump.py "$RUNNER_TEMP/client-corpus" 'mixins:net/minecraft/client/renderer/ScreenEffectRenderer' \
             'game:net.minecraft.client.renderer.ScreenEffectRenderer#*' 'game:net.minecraft.client.renderer.ScreenEffectRenderer#renderScreenEffect' \
             | cut -c1-320 | head -n 900 || true
+          # The class as Mixin had it when ResourcefulLib's hook failed (CORPUS-79): the mixins merged into it before, and
+          # the method's code and locals as Mixin walked them (its frames recomputed as Mixin writes the dump).
+          for dump in $(find "$RUNNER_TEMP/client-corpus" -path '*/.mixin.out/class/*' -name 'ScreenEffectRenderer.target.class' 2>/dev/null | head -1); do
+            echo "== Mixin's dump of the class it failed on: $dump"
+            javap -p -v "$dump" | grep -o -E 'mixin="[^"]+"' | sort | uniq -c | head -40 || true
+            javap -p -c -l -v "$dump" | awk '/ renderScreenEffect\(/ { show = 1 } show && /^  [a-z].*\(.*\);$/ && !/ renderScreenEffect\(/ { show = 0 } show' \
+              | cut -c1-200 | head -n 400 || true
+          done
+          find "$RUNNER_TEMP/client-corpus" -path '*/.mixin.out/class/*' -name '*.target.class' 2>/dev/null | sed "s|$RUNNER_TEMP/||" | head -20
           # ImmediatelyFast's buffer upload redirect on Forge 66 (CORPUS-82): the mixin, and the method it names as Forge has it.
           if [ "${{ matrix.target.minecraft }}" = 26.3 ]; then
             python3 -I ci/javap-dump.py "$RUNNER_TEMP/client-corpus" 'mixins:com/mojang/renderpearl/backend/opengl/GlCommandEncoder' \
