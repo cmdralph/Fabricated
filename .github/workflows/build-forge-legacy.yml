@@ -228,8 +228,8 @@ jobs:
         if: ${{ !cancelled() && steps.corpus.outcome == 'success' }}
         continue-on-error: true
         run: |
-          ci/forge-legacy/corpus-causes.sh "$RUNNER_TEMP/server-corpus" "$RUNNER_TEMP/server-corpus.out" "server with the corpus"
-          ci/forge-legacy/corpus-causes.sh "$RUNNER_TEMP/client-corpus/run" "$RUNNER_TEMP/client-corpus.out" "client with the corpus"
+          ci/forge-legacy/corpus-causes.sh "$RUNNER_TEMP/server-corpus" "$RUNNER_TEMP/server-corpus/server.out" "server with the corpus"
+          ci/forge-legacy/corpus-causes.sh "$RUNNER_TEMP/client-corpus/run" "$RUNNER_TEMP/client-corpus/client.out" "client with the corpus"
       - name: Upload mod corpus logs and reports
         if: ${{ !cancelled() && steps.corpus.outcome == 'success' }}
         uses: actions/upload-artifact@v4
@@ -238,9 +238,11 @@ jobs:
           path: |
             ${{ runner.temp }}/corpus.txt
             ${{ runner.temp }}/server-corpus.out
+            ${{ runner.temp }}/server-corpus/server.out
             ${{ runner.temp }}/server-corpus/logs
             ${{ runner.temp }}/server-corpus/crash-reports
             ${{ runner.temp }}/client-corpus.out
+            ${{ runner.temp }}/client-corpus/client.out
             ${{ runner.temp }}/client-corpus/run/logs
             ${{ runner.temp }}/client-corpus/run/crash-reports
           if-no-files-found: ignore
