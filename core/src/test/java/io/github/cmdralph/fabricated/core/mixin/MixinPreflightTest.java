@@ -4639,6 +4639,70 @@ class MixinPreflightTest {
 		assertTrue(check.apply(GrowthBuild.FORGE_WITHOUT_REUSE, null).isEmpty());
 	}
 
+	@Test
+	void anInjectorSharingALocalWithOneLeftOutGoesWithIt() throws Exception {
+		// SHARE-1: Balm's crop growth hooks for 1.21.11 share the block state below through MixinExtras' @Share: the first
+		// captures it (left out on Forge, CORPUS-54), the second reads it. Left alone, the second read no state, and here
+		// failed its own injection check besides, stopping the Forge 61 corpus client.
+		String localRef = "Lcom/llamalad7/mixinextras/sugar/ref/LocalRef;";
+		String share = "Lcom/llamalad7/mixinextras/sugar/Share;";
+		byte[] mixin = mixin("com/example/mixin/Growth", false, cw -> {
+			MethodVisitor capture = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "captureLocals", "(L" + STATE + ";" + localRef + ")L" + STATE + ";",
+					null, null);
+			AnnotationVisitor ann = capture.visitAnnotation(MODIFY_VARIABLE, true);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "getGrowthSpeed");
+			methods.visitEnd();
+			AnnotationVisitor at = ann.visitAnnotation("at", AT);
+			at.visit("value", "INVOKE");
+			at.visit("target", "L" + STATE + ";is(Ljava/lang/Object;)Z");
+			at.visit("ordinal", 0);
+			at.visitEnd();
+			ann.visitEnd();
+			capture.visitParameterAnnotation(1, share, false).visit("value", "farmBlock");
+			capture.visitCode();
+			capture.visitVarInsn(Opcodes.ALOAD, 0);
+			capture.visitInsn(Opcodes.ARETURN);
+			capture.visitMaxs(1, 2);
+			capture.visitEnd();
+			for (String name : List.of("readFarmBlock", "unrelated")) {
+				MethodVisitor read = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, name,
+						"(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;" + localRef + ")V", null, null);
+				AnnotationVisitor inject = read.visitAnnotation(INJECT, true);
+				AnnotationVisitor targets = inject.visitArray("method");
+				targets.visit(null, "getGrowthSpeed");
+				targets.visitEnd();
+				AnnotationVisitor ats = inject.visitArray("at");
+				AnnotationVisitor head = ats.visitAnnotation(null, AT);
+				head.visit("value", "HEAD");
+				head.visitEnd();
+				ats.visitEnd();
+				inject.visitEnd();
+				read.visitParameterAnnotation(1, share, false).visit("value", name.equals("unrelated") ? "other" : "farmBlock");
+				read.visitCode();
+				read.visitInsn(Opcodes.RETURN);
+				read.visitMaxs(0, 2);
+				read.visitEnd();
+			}
+		});
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Growth"));
+		java.util.function.Function<GrowthBuild, List<PreflightFinding>> check = build -> {
+			try {
+				return preflight(new ClassIndex(Map.of(TARGET, growth(build))::get), Map.of("com/example/mixin/Growth", mixin)::get,
+						ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+			} catch (Exception e) {
+				throw new AssertionError(e);
+			}
+		};
+		List<PreflightFinding> found = check.apply(GrowthBuild.FORGE);
+		String reader = "readFarmBlock(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;" + localRef + ")V";
+		assertTrue(found.stream().anyMatch(f -> f.severity() == Severity.LEFT_OUT && reader.equals(f.handler()) && f.message().equals("The injector of "
+				+ reader + " goes with that of captureLocals(L" + STATE + ";" + localRef + ")L" + STATE + ";, which can't apply: they share the local"
+				+ " farmBlock (@Share), which it would read without the other's value")), found.toString());
+		assertTrue(found.stream().noneMatch(f -> f.handler() != null && f.handler().startsWith("unrelated")), "a local shared under another name stays");
+		assertTrue(check.apply(GrowthBuild.VANILLA).isEmpty(), "all apply where the first does");
+	}
+
 	/**
 	 * CORPUS-55's effect drawing methods: vanilla's, with the effect in slot 3 and the draw position in slot 6; Forge's,
 	 * recompiled, with the iterator in slot 3, the effect in slot 4, and two locals of its patch before the counter and

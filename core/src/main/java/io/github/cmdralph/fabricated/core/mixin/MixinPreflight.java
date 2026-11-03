@@ -185,6 +185,7 @@ public final class MixinPreflight extends PreflightPart {
 			int from = out.size();
 			checkMixin(node, ctx);
 			ctx.leaveOutStateGroups(from);
+			leaveOutSharers(out, from, configName, ctx.mixinDotted(), shares(node));
 		}
 		if (hasPlugin && out.stream().anyMatch(f -> f.severity() == Severity.LEFT_OUT)) {
 			out.add(new PreflightFinding(Severity.INFO, configName, null, "This config uses a mixin plugin (" + config.plugin()
@@ -384,6 +385,60 @@ public final class MixinPreflight extends PreflightPart {
 			}
 		});
 		return independent;
+	}
+
+	/**
+	 * The locals each injector handler of a mixin shares with others through MixinExtras' {@code @Share} (SHARE-1), by
+	 * handler (name and descriptor), each as its namespace and name; handlers sharing none are absent.
+	 */
+	static Map<String, Set<String>> shares(ClassNode mixin) {
+		Map<String, Set<String>> shares = new TreeMap<>();
+		if (mixin == null) return shares;
+		for (MethodNode method : mixin.methods) {
+			Set<String> keys = new TreeSet<>();
+			for (int i = 0; i < Type.getArgumentTypes(method.desc).length; i++) {
+				for (AnnotationNode ann : Annotations.ofParameter(method, i)) {
+					if (ann.desc.equals(MixinNames.SHARE) && Annotations.value(ann, "value") instanceof String name) {
+						keys.add((Annotations.value(ann, "namespace") instanceof String namespace ? namespace : "") + ":" + name);
+					}
+				}
+			}
+			if (!keys.isEmpty()) shares.put(method.name + method.desc, keys);
+		}
+		return shares;
+	}
+
+	/**
+	 * The injectors sharing a local ({@code @Share}) with those of this mixin left out by the findings from {@code from}
+	 * on, left out with them (SHARE-1), unless the whole mixin is: one left alone would read the shared value without the
+	 * other's writing it, which Mixin's own skipping of an injector never does to a required one. Balm's crop growth hooks
+	 * on Forge 61: the first captures the block state below into a shared local, which pre-flight left out where Forge's
+	 * build has no such state (CORPUS-54), and the second, reading it, then failed its own injection check (Forge's build
+	 * has no second float where it applies) and stopped the corpus client (extended run 41569829683).
+	 */
+	static void leaveOutSharers(List<PreflightFinding> out, int from, String configName, String mixinDotted, Map<String, Set<String>> shares) {
+		if (shares.size() < 2) return;
+		Set<String> leftOut = new LinkedHashSet<>();
+		for (PreflightFinding f : out.subList(from, out.size())) {
+			if (f.severity() != Severity.LEFT_OUT || !mixinDotted.equals(f.mixin())) continue;
+			if (f.handler() == null) return;
+			leftOut.add(f.handler());
+		}
+		ArrayDeque<String> next = new ArrayDeque<>(leftOut);
+		while (!next.isEmpty()) {
+			String with = next.pop();
+			Set<String> keys = shares.get(with);
+			if (keys == null) continue;
+			shares.forEach((other, theirs) -> {
+				if (leftOut.contains(other) || Collections.disjoint(keys, theirs)) return;
+				leftOut.add(other);
+				next.add(other);
+				List<String> names = theirs.stream().filter(keys::contains).map(k -> k.substring(k.indexOf(':') + 1)).toList();
+				out.add(new PreflightFinding(Severity.LEFT_OUT, configName, mixinDotted, "The injector of " + other + " goes with that of " + with
+						+ ", which can't apply: they share the " + (names.size() == 1 ? "local " : "locals ") + String.join(", ", names)
+						+ " (@Share), which it would read without the other's value", "", other));
+			});
+		}
 	}
 
 	/**

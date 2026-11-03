@@ -1095,7 +1095,9 @@ MixinExtras has NeoForge's jar, and a NeoForge mod nested in another jar has tha
   disables its mod. UNVERIFIED in the game.
 - Where the running Mixin is older than 0.17.1, which applies enum mixins (NeoForge 21.1 and 21.11, and Forge), an
   enum mixin into any other enum becomes such an ordinary mixin too (ENUM-7: Friends and Foes' mob categories, read
-  with `valueOf`); one that can't disables its mod, with the reason, where Mixin would stop the game on it.
+  with `valueOf`); one that can't disables its mod, with the reason, where Mixin would stop the game on it. Into an
+  enum Forge makes extensible (`MobCategory`), it makes the constants with the enum's own `create` factories, as
+  Forge mods do.
 - Config screens a Fabric mod offers to Mod Menu (its `modmenu` entrypoint) open from the Config button of NeoForge's
   mod list. Mod Menu's API interfaces are provided, so such mods load without Mod Menu, which itself can't run on
   NeoForge (it would duplicate NeoForge's mod list): an installed Mod Menu jar is skipped and provided at its version.
