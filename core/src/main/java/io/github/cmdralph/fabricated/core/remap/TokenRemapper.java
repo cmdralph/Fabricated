@@ -8,13 +8,21 @@ import java.util.regex.Pattern;
  * access widener files, service files and string constants used for reflection.
  *
  * <p>Only exact intermediary tokens are touched ({@code net/minecraft/class_N[$class_M...]} in slash or
- * dot form, and {@code method_N}/{@code field_N}/{@code comp_N} bounded by non-identifier characters),
- * so ordinary text is left alone. So is a method reference with its owner and descriptor whose name Intermediary leaves
- * under its official name and the runtime renames (PLAIN-1: Fabric API's transfer refmap names
+ * dot form, a class Intermediary leaves under its own name followed by nested classes it names, and
+ * {@code method_N}/{@code field_N}/{@code comp_N} bounded by non-identifier characters), so ordinary text is left
+ * alone. So is a method reference with its owner and descriptor whose name Intermediary leaves under its official name
+ * and the runtime renames (PLAIN-1: Fabric API's transfer refmap names
  * {@code Lnet/minecraft/class_2357;dispense(...)}, SRG's {@code m_6115_}).
  */
 public final class TokenRemapper {
 	private static final Pattern CLASS_TOKEN = Pattern.compile("net([/.])minecraft\\1class_\\d+(?:\\$class_\\d+)*");
+	/**
+	 * A class Intermediary leaves under its own name, outside {@code net/minecraft/}, with nested classes it names:
+	 * Mojang's {@code com.mojang.blaze3d} classes keep their names in the game's jar, their nested classes don't
+	 * ({@code com/mojang/blaze3d/opengl/GlStateManager$class_1017}). Iris's access widener opens such classes on 1.21.11,
+	 * and ImmediatelyFast's a field of such a type on 1.21.1; unmapped, both lines were dropped (TOKEN-1).
+	 */
+	private static final Pattern NESTED_CLASS_TOKEN = Pattern.compile("[A-Za-z_][A-Za-z0-9_]*(?:([/.])[A-Za-z_][A-Za-z0-9_]*)(?:\\1[A-Za-z_][A-Za-z0-9_]*)*(?:\\$class_\\d+)+");
 	private static final Pattern MEMBER_TOKEN = Pattern.compile("(?<![A-Za-z0-9_$])(?:method|field|comp)_\\d+(?![A-Za-z0-9_])");
 	/** {@code Lowner;name(desc)} with a Minecraft owner, as refmaps and {@code @At} targets name a method. */
 	private static final Pattern METHOD_REFERENCE = Pattern.compile("L(net/minecraft/class_\\d+(?:\\$class_\\d+)*);"
@@ -44,6 +52,7 @@ public final class TokenRemapper {
 			m.appendTail(sb);
 			result = sb.toString();
 		}
+		if (result.contains("$class_")) result = remapNestedClasses(result);
 		if (result.contains("method_") || result.contains("field_") || result.contains("comp_")) {
 			Matcher m = MEMBER_TOKEN.matcher(result);
 			StringBuilder sb = new StringBuilder(result.length());
@@ -55,6 +64,33 @@ public final class TokenRemapper {
 			result = sb.toString();
 		}
 		return result;
+	}
+
+	/**
+	 * Maps each {@link #NESTED_CLASS_TOKEN} the table knows; in a descriptor the token starts with its {@code L}, which
+	 * is tried without it. Others are left as they are.
+	 */
+	private String remapNestedClasses(String s) {
+		Matcher m = NESTED_CLASS_TOKEN.matcher(s);
+		StringBuilder sb = new StringBuilder(s.length());
+		while (m.find()) {
+			String token = m.group();
+			String sep = m.group(1);
+			String internal = token.replace('.', '/');
+			String mapped = table.mapClass(internal);
+			String prefix = "";
+			if (mapped.equals(internal) && internal.startsWith("L") && internal.indexOf('/') > 1) {
+				String bare = table.mapClass(internal.substring(1));
+				if (!bare.equals(internal.substring(1))) {
+					prefix = "L";
+					mapped = bare;
+				}
+			}
+			if (sep.equals(".")) mapped = mapped.replace('/', '.');
+			m.appendReplacement(sb, Matcher.quoteReplacement(mapped.equals(internal) ? token : prefix + mapped));
+		}
+		m.appendTail(sb);
+		return sb.toString();
 	}
 
 	private String remapPlainMethods(String s) {

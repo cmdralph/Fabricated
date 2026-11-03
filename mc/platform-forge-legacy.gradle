@@ -46,6 +46,9 @@ def gameModMixins = [
         // Native fabric-particles-v1's (client): upstream's hook that registers Fabric's particle factories once the
         // engine's own are in, the accessors its sprite provider reads, and its block dust tint event on Forge's check.
         'fabricated-particles.mixins.json',
+        // Native fabric-key-binding-api-v1's (client): upstream's accessor of the categories' order and of a key binding's
+        // key; its key bindings go to Forge's key mapping event (KEYMAP-3).
+        'fabricated-keybinding.mixins.json',
         // The block and item colour lookups Fabric API's colour provider registry calls, on Forge's maps (upstream's read
         // vanilla's, which Forge replaced).
         'fabricated-forge-color.mixins.json',
@@ -69,6 +72,34 @@ dependencies {
 }
 def gameModRefmap = mixin.add(sourceSets.main, 'fabricated-forge.refmap.json')
 gameModMixins.each { mixin.config(it) }
+
+// --- Forgified Fabric Loader's place (PROVIDER-2) -------------------------------------------------------------------
+// Forgified Fabric API for 1.20.1 nests Forgified Fabric Loader through Forge's jar-in-jar, and its packages are Fabric
+// Loader's, as Fabricated's own copy's are: one game can't load both. Forge's jar-in-jar adds one jar per identifier, the
+// newest every range admits, so the in-game mod nests an empty library under that identifier at a version above any
+// other, and the other copies are left out, as Sinytra Connector does; Forgified Fabric API's modules use Fabric
+// Loader's public API only, which Fabricated's copy implements. META-INF/fabricated/loader-placeholder.json tells the
+// mod locator which nested copies Forge leaves out (FabricLoaderCopies), and checkForgeJar checks the two agree.
+def loaderPlaceholder = [group: 'dev.su5ed.sinytra', artifact: 'fabric-loader', version: '999.999.999']
+def loaderPlaceholderJar = tasks.register('loaderPlaceholderJar', Jar) {
+    archiveFileName = "fabric-loader-placeholder-${loaderPlaceholder.version}.jar"
+    destinationDirectory = layout.buildDirectory.dir('loaderplaceholder')
+    manifest.attributes(
+            'FMLModType': 'LIBRARY',
+            'Automatic-Module-Name': 'io.github.cmdralph.fabricated.loaderplaceholder',
+            'Implementation-Version': loaderPlaceholder.version)
+}
+def loaderPlaceholderInfo = tasks.register('loaderPlaceholderInfo') {
+    def out = layout.buildDirectory.dir('loaderplaceholderinfo')
+    inputs.property('placeholder', loaderPlaceholder.toString())
+    outputs.dir(out)
+    doLast {
+        def file = out.get().file('META-INF/fabricated/loader-placeholder.json').asFile
+        file.parentFile.mkdirs()
+        file.text = groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(loaderPlaceholder)) + '\n'
+    }
+}
+ext.forgeJarJarExtras = [loaderPlaceholder + [jar: loaderPlaceholderJar]]
 
 // --- MixinExtras for Fabric mods --------------------------------------------------------------------------------------
 // Nested in the in-game mod as on Forge 61 to 66 (mc/forge-mixinextras.gradle); the test mod's @WrapMethod compiles
@@ -162,6 +193,7 @@ afterEvaluate {
         // path in its source (a single file's name), not where it goes.
         exclude { FileTreeElement e -> e.name == 'game-mod.jar' && e.file.parentFile.name == 'devlibs' }
         from(reobfGameModJar) { into 'META-INF/fabricated' }
+        from(loaderPlaceholderInfo)
     }
 
     // What Forge needs of the jar's layout, checked on the built jar: the nested language provider's manifest and
@@ -236,6 +268,26 @@ afterEvaluate {
             refmaps.each { refmap ->
                 def mappings = new groovy.json.JsonSlurper().parseText(new String(gameMod[refmap], "UTF-8")).mappings ?: [:]
                 logger.lifecycle("Refmap $refmap: ${mappings.collect { owner, members -> "${owner.substring(owner.lastIndexOf('/') + 1)} (${members.size()})" }.sort().join(', ')}")
+            }
+
+            // Forgified Fabric Loader's place (above): the in-game mod nests the empty library under the identifier and
+            // version the outer jar's loader-placeholder.json names, and Forge's jar-in-jar lists it.
+            def placeholderInfo = outer['META-INF/fabricated/loader-placeholder.json']
+            if (placeholderInfo == null) throw new GradleException('The Fabricated jar has no META-INF/fabricated/loader-placeholder.json')
+            def placeholder = new groovy.json.JsonSlurper().parseText(new String(placeholderInfo, 'UTF-8'))
+            def gameModJarJar = gameMod['META-INF/jarjar/metadata.json']
+            if (gameModJarJar == null) throw new GradleException('game-mod.jar has no META-INF/jarjar/metadata.json')
+            def nested = new groovy.json.JsonSlurper().parseText(new String(gameModJarJar, 'UTF-8')).jars.find {
+                it.identifier.group == placeholder.group && it.identifier.artifact == placeholder.artifact
+            }
+            if (nested == null || nested.version.artifactVersion != placeholder.version || nested.version.range != "[${placeholder.version},)") {
+                throw new GradleException("game-mod.jar's jar-in-jar doesn't list ${placeholder.group}:${placeholder.artifact} ${placeholder.version}: $nested")
+            }
+            def placeholderBytes = gameMod[nested.path]
+            if (placeholderBytes == null) throw new GradleException("game-mod.jar has no ${nested.path}")
+            def placeholderEntries = readZip(new ByteArrayInputStream(placeholderBytes))
+            if (placeholderEntries.keySet().any { !it.startsWith('META-INF/') }) {
+                throw new GradleException("${nested.path} is not empty: ${placeholderEntries.keySet().sort()}")
             }
 
             def names = parts.keySet() as List

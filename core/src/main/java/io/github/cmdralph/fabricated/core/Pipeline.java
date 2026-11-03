@@ -3,11 +3,15 @@ package io.github.cmdralph.fabricated.core;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -33,6 +37,8 @@ import io.github.cmdralph.fabricated.core.metadata.CustomValueImpl;
 import io.github.cmdralph.fabricated.core.metadata.FabricModMetadata;
 import io.github.cmdralph.fabricated.core.metadata.FabricModMetadata.EntrypointSpec;
 import io.github.cmdralph.fabricated.core.mixin.MixinConfigFile;
+import io.github.cmdralph.fabricated.core.mixin.MixinFailures;
+import io.github.cmdralph.fabricated.core.mixin.PlatformCoremods;
 import io.github.cmdralph.fabricated.core.mixin.PreflightFinding;
 import io.github.cmdralph.fabricated.core.mixin.PreflightFinding.Severity;
 import io.github.cmdralph.fabricated.core.mixin.RestoredFields;
@@ -46,6 +52,7 @@ import io.github.cmdralph.fabricated.core.resolve.Candidate;
 import io.github.cmdralph.fabricated.core.resolve.CandidateScanner;
 import io.github.cmdralph.fabricated.core.resolve.CompatPlan;
 import io.github.cmdralph.fabricated.core.resolve.DependencyResolver;
+import io.github.cmdralph.fabricated.core.resolve.DownloadedMods;
 import io.github.cmdralph.fabricated.core.resolve.FabricApiPlan;
 import io.github.cmdralph.fabricated.core.resolve.LoadOrderings;
 import io.github.cmdralph.fabricated.core.runtime.FabricLoaderRuntime;
@@ -227,6 +234,19 @@ public final class Pipeline {
 		}
 
 		/**
+		 * This result with {@code modules} among those another mod provides too: the modules beyond the plan's that the
+		 * platform glue found provided ({@link #providedElsewhere(FabricApiPlan, Collection, List)}), whose bridges in the
+		 * in-game mod stand down as well.
+		 */
+		public Result alsoProvidedElsewhere(Collection<String> modules) {
+			if (providedElsewhere.containsAll(modules)) return this;
+			Set<String> all = new LinkedHashSet<>(providedElsewhere);
+			all.addAll(modules);
+			return new Result(config, mods, injectedInterfaces, defaultBridges, environmentClasses, overridableMethods, runtime, containers,
+					report, dependencyFailures, Set.copyOf(all));
+		}
+
+		/**
 		 * This result without the given mods (by Fabric id), which NeoForge refused to load: their classes will never
 		 * exist, so their interface injections and environment classes must not apply to anything.
 		 */
@@ -281,6 +301,8 @@ public final class Pipeline {
 	private static final CompatPlan COMPAT = CompatPlan.builtin();
 	/** The report's section of the mixins the linkage analysis left out. */
 	private static final String NEEDING_UNLOADED = "Mixins left out (they need a Fabric mod that isn't loading)";
+	/** The report's section of the mixins left out as they failed in the last launch, as Mixin applied them (APPLY-1). */
+	static final String FAILED_LAST_LAUNCH = "Mixins left out (they failed as Mixin applied them in the last launch)";
 
 	/** A mod the platform provides (Minecraft, Java, Fabric Loader, Fabricated, native Fabric API modules). */
 	private record Builtin(String id, String version, String name, List<String> aliases) {
@@ -306,6 +328,8 @@ public final class Pipeline {
 	private final List<Candidate> otherSide = new ArrayList<>();
 	/** Compat patches already reported as ignored ("mod target"): patches are worked out again every round. */
 	private final Set<String> ignoredPatches = new HashSet<>();
+	/** The mixins that failed as Mixin applied them in an earlier launch, by Fabric mod id: each one's {@code skipMixins} entry and why. */
+	private final Map<String, Map<String, String>> failedLastLaunch = new HashMap<>();
 
 	private Pipeline(Input in) {
 		this.in = in;
@@ -327,11 +351,23 @@ public final class Pipeline {
 	 * platform glue leaves its classes, mixins and bridges out.
 	 */
 	public static Map<String, NeoForgeMod> providedElsewhere(FabricApiPlan plan, List<NeoForgeMod> neoForgeMods) {
+		return providedElsewhere(plan, List.of(), neoForgeMods);
+	}
+
+	/**
+	 * {@link #providedElsewhere(FabricApiPlan, List)} for the plan's modules and the other modules {@code more} names:
+	 * those parts of Fabricated's in-game mod serve beyond the plan's ({@code NativeModules.modules()}: Forge 47's fuel
+	 * hook serves fabric-content-registries-v0, which Fabricated passes through), which stand down for a provider too.
+	 */
+	public static Map<String, NeoForgeMod> providedElsewhere(FabricApiPlan plan, Collection<String> more, List<NeoForgeMod> neoForgeMods) {
 		Map<String, NeoForgeMod> byNeoId = withProvides(newestById(neoForgeMods));
+		Set<String> modules = new LinkedHashSet<>();
+		for (FabricApiPlan.Module module : plan.modules().values()) modules.add(module.id());
+		modules.addAll(more);
 		Map<String, NeoForgeMod> provided = new LinkedHashMap<>();
-		for (FabricApiPlan.Module module : plan.modules().values()) {
-			NeoForgeMod provider = byNeoId.get(ModIds.toNeoForgeId(module.id()));
-			if (provider != null) provided.put(module.id(), provider);
+		for (String module : modules) {
+			NeoForgeMod provider = byNeoId.get(ModIds.toNeoForgeId(module));
+			if (provider != null) provided.put(module, provider);
 		}
 		return provided;
 	}
@@ -354,6 +390,15 @@ public final class Pipeline {
 
 	public static Result run(Input in) {
 		return new Pipeline(in).run();
+	}
+
+	/**
+	 * Where this launch records a Fabric mod's mixin that fails as Mixin applies it, for the next to leave out
+	 * (APPLY-1): the platform's glue records it as the launch stops; {@link #run} reads it.
+	 */
+	public static MixinFailures.Log mixinFailures(Input in) {
+		return new MixinFailures.Log(MixinFailures.file(in.gameDir()),
+				new MixinFailures.Launch(in.fabricatedVersion(), in.fabricatedBuild(), in.minecraftVersion(), in.neoForgeVersion()));
 	}
 
 	private static List<Builtin> builtins(Input in, Set<String> providedElsewhere) {
@@ -387,10 +432,30 @@ public final class Pipeline {
 				.environment("Fabric Loader API", FABRIC_LOADER_COMPAT_VERSION);
 		config.warnings().forEach(w -> report.line("Configuration warnings", w));
 
-		CandidateScanner.Result scan = new CandidateScanner(in.cache(), config.limits(), in.descriptor().loaderName()).scan(in.fabricJars());
+		CandidateScanner scanner = new CandidateScanner(in.cache(), config.limits(), in.descriptor().loaderName());
+		CandidateScanner.Result scan = scanner.scan(in.fabricJars());
+		// The jars the loaders among them downloaded in an earlier launch join the scan, as jars of the mods folder do.
+		List<DownloadedMods.Download> downloads = DownloadedMods.of(scan.candidates().stream().map(Candidate::id).filter(this::mayLoad).toList(),
+				in.gameDir(), in.minecraftVersion());
+		if (!downloads.isEmpty()) {
+			List<Path> jars = new ArrayList<>(in.fabricJars());
+			Instant now = Instant.now();
+			for (DownloadedMods.Download d : downloads) {
+				jars.add(d.jar());
+				report.line(DownloadedMods.SECTION, d.name() + ": " + d.jar().getFileName() + ", which " + d.loader() + " downloaded, loads as a Fabric mod;"
+						+ " " + d.loader() + " leaves it to load so, without applying its automatic updates");
+				if (d.stale(now)) {
+					report.line(DownloadedMods.STALE_SECTION, d.name() + "'s jar " + d.jar() + " is " + Duration.between(d.modified(), now).toDays()
+							+ " days old, and " + d.loader() + " doesn't update it while Fabricated loads it. To update it, delete that file: the next"
+							+ " launch downloads the current one, and the launch after that loads it.");
+				}
+			}
+			scan = scanner.scan(jars);
+		}
 		scan.rejected().forEach(r -> report.mod(new ModRow(r.origin(), "", "", Status.REJECTED, r.reason(), "Make sure this is an unmodified Fabric mod jar for this Minecraft version.")));
 		scan.notes().forEach(n -> report.line("Discovery notes", n));
-		List<Candidate> eligible = filter(scan.candidates());
+		List<Candidate> eligible = withoutOrphanedDownloads(filter(scan.candidates()), downloads, scan.candidates());
+		loadMixinFailures(scan.candidates());
 		for (FabricApiPlan.Module m : plan.modules().values()) {
 			NeoForgeMod provider = providedElsewhere.get(m.id());
 			if (provider != null) {
@@ -422,8 +487,14 @@ public final class Pipeline {
 				mappingTable != null ? MappingResolvers.intermediary(mappingTable) : MappingResolvers.identity(), in::launchArguments);
 		if (eligible.isEmpty()) return assemble(runtime, new Rounds());
 
-		// The game as Fabricated's own mixins leave it: with the vanilla fields they restore, which Fabric mods use (PIP-1).
-		ClassBytesSource gameClasses = RestoredFields.over(in.gameClasses(), in.fabricatedFiles());
+		// The game as the platform's own transformers leave it as it loads, as Mixin sees it (CORPUS-61), and as Fabricated's
+		// own mixins leave it: with the vanilla fields they restore, which Fabric mods use (PIP-1).
+		PlatformCoremods coremods = in.descriptor().coremods(in.minecraftVersion());
+		if (!coremods.isEmpty()) {
+			report.environment(in.descriptor().loaderName() + "'s code transformers", "pre-flight reads the game as they leave it (the spawn calls of "
+					+ coremods.redirectedClasses() + " classes through " + in.descriptor().loaderName() + "'s event hook, fields read through its getters)");
+		}
+		ClassBytesSource gameClasses = RestoredFields.over(coremods.over(in.gameClasses()), in.fabricatedFiles());
 		ClassIndex game = new ClassIndex(gameClasses);
 		// Mixins into the Fabric mods' classes are checked too, against those classes as they will load: on 1.21.11
 		// remapped from intermediary names, as translating each mod remaps it.
@@ -495,7 +566,7 @@ public final class Pipeline {
 					// Not verified then; translating the mod reports it. Another mod's pre-flight reads this jar's classes.
 					return null;
 				}
-			}, () -> mixinClasses(c, archive.get())));
+			}, () -> mixinClasses(c, archive.get()), true));
 		}
 		return jars;
 	}
@@ -571,9 +642,9 @@ public final class Pipeline {
 				continue;
 			}
 			CompatPlan.Entry known = COMPAT.entry(c.id());
-			String neoForgeBuildOnly = known.neoForgeBuildOnly();
-			if (neoForgeBuildOnly != null && !config.override(c.id()).loadUnsupported()) {
-				report.mod(new ModRow(c.id(), c.version(), c.origin(), Status.DISABLED, "its Fabric build can't run on " + loader + ": " + neoForgeBuildOnly,
+			String refusal = known.refusal(loader);
+			if (refusal != null && !config.override(c.id()).loadUnsupported()) {
+				report.mod(new ModRow(c.id(), c.version(), c.origin(), Status.DISABLED, "its Fabric build isn't supported on " + loader + ": " + refusal,
 						known.suggestion() != null ? known.suggestion() : "Install " + c.metadata().getName() + " for " + loader + " instead (from the same download page)."));
 				continue;
 			}
@@ -584,7 +655,7 @@ public final class Pipeline {
 						"Use the " + loader + " builds of both, or the Fabric builds of both."));
 				continue;
 			}
-			if (neoForgeBuildOnly != null) report.line("Unsupported mods loaded on request (loadUnsupported)", c.id() + ": " + neoForgeBuildOnly);
+			if (refusal != null) report.line("Unsupported mods loaded on request (loadUnsupported)", c.id() + ": " + refusal);
 			FabricatedConfig.ModOverride override = config.override(c.id());
 			if (override.ignoreHints() && !c.metadata().compatHints().isEmpty()) {
 				c = c.withMetadata(c.metadata().withCompatHints(CompatHints.NONE));
@@ -608,6 +679,42 @@ public final class Pipeline {
 			eligible.add(c);
 		}
 		return eligible;
+	}
+
+	/**
+	 * Whether a scanned Fabric mod may load, as far as the player's configuration and the compatibility plan say (its
+	 * dependencies are the resolver's): a downloaded jar is only looked for where its loader may load.
+	 */
+	private boolean mayLoad(String id) {
+		FabricatedConfig.ModOverride override = config.override(id);
+		return !override.disabled() && (COMPAT.entry(id).refusal(in.descriptor().loaderName()) == null || override.loadUnsupported());
+	}
+
+	/**
+	 * {@code eligible} without the mods of a downloaded jar whose loader isn't among them after all: such a jar loads only
+	 * with its loader, which runs what it downloaded (Essential's runs Essential's initialization).
+	 */
+	private List<Candidate> withoutOrphanedDownloads(List<Candidate> eligible, List<DownloadedMods.Download> downloads, List<Candidate> scanned) {
+		if (downloads.isEmpty()) return eligible;
+		Set<String> loading = eligible.stream().map(Candidate::id).collect(Collectors.toSet());
+		List<String> orphanedOrigins = new ArrayList<>();
+		for (DownloadedMods.Download d : downloads) {
+			if (loading.contains(d.loader())) continue;
+			for (Candidate c : scanned) {
+				if (c.depth() == 0 && c.path().equals(d.jar())) orphanedOrigins.add(c.origin());
+			}
+		}
+		if (orphanedOrigins.isEmpty()) return eligible;
+		List<Candidate> kept = new ArrayList<>();
+		for (Candidate c : eligible) {
+			String origin = orphanedOrigins.stream().filter(o -> c.origin().equals(o) || c.origin().startsWith(o + "!/")).findFirst().orElse(null);
+			if (origin == null) {
+				kept.add(c);
+				continue;
+			}
+			report.mod(new ModRow(c.id(), c.version(), c.origin(), Status.SKIPPED, "downloaded by a Fabric mod's loader that isn't loading, and loads only with it", ""));
+		}
+		return kept;
 	}
 
 	/** The installed NeoForge mod next to which a Fabric build can't run, with why, or {@code null}. */
@@ -642,6 +749,20 @@ public final class Pipeline {
 		neoMods.forEach((id, m) -> resolver.neoForgeMod(id, parseVersion(m.version()), m.displayName()));
 		for (Candidate c : otherSide) resolver.otherSide(c.id(), c.metadata().getVersion());
 		return resolver;
+	}
+
+	/**
+	 * The mixins that failed as Mixin applied them in an earlier launch, with this launch's builds and the mods' jars
+	 * (APPLY-1): each translation leaves them out.
+	 */
+	private void loadMixinFailures(List<Candidate> scanned) {
+		Map<String, String> jars = new HashMap<>();
+		for (Candidate c : scanned) jars.put(c.id(), c.sha256());
+		List<String> notes = new ArrayList<>();
+		for (MixinFailures.Failure f : mixinFailures(in).load(jars, notes)) {
+			failedLastLaunch.computeIfAbsent(f.mod(), k -> new TreeMap<>()).put(f.mixin(), f.reason());
+		}
+		notes.forEach(n -> report.line(FAILED_LAST_LAUNCH, n));
 	}
 
 	/** What to tell the player when a dependency on {@code id} is missing. */
@@ -727,7 +848,8 @@ public final class Pipeline {
 			mods.parallelStream().forEach(c -> {
 				try {
 					FabricApiPlan.Module module = plan.module(c.id());
-					Set<String> leftOut = leftOutMixins.getOrDefault(c.id(), Map.of()).keySet();
+					Set<String> leftOut = new TreeSet<>(leftOutMixins.getOrDefault(c.id(), Map.of()).keySet());
+					leftOut.addAll(failedLastLaunch.getOrDefault(c.id(), Map.of()).keySet());
 					// Fabricated's skips, unlike the player's, are never reported as matching no mixin.
 					Set<String> planned = new TreeSet<>(leftOut);
 					if (module != null) planned.addAll(module.skipMixins());
@@ -1029,6 +1151,7 @@ public final class Pipeline {
 	private void reportLoaded(TranslatedMod t, Long millis, PackageGuard.Decision decision, List<String> linkageIssues, Map<String, String> leftOutMixins) {
 		Candidate c = t.candidate();
 		String loader = in.descriptor().loaderName();
+		Map<String, String> failed = failedLastLaunch.getOrDefault(c.id(), Map.of());
 		long leftOut = t.findings().stream().filter(f -> f.severity() == Severity.LEFT_OUT).map(f -> f.config() + " " + f.mixin()).distinct().count();
 		String detail = (millis == null ? "cached" : "translated in " + millis + " ms")
 				+ (t.accessTransformers() > 0 ? ", " + t.accessTransformers() + " access transformer(s)" : "")
@@ -1036,13 +1159,18 @@ public final class Pipeline {
 				+ (leftOut == 0 ? "" : ", " + leftOut + " mixin(s) left out in whole or in part, so the features they hook in for don't work (see "
 						+ leftOutSection(loader) + ")")
 				+ (leftOutMixins.isEmpty() ? "" : ", " + leftOutMixins.size() + " mixin(s) left out that need a Fabric mod that isn't loading (see "
-						+ NEEDING_UNLOADED + ")");
+						+ NEEDING_UNLOADED + ")")
+				+ (failed.isEmpty() ? "" : ", " + failed.size() + " mixin(s) left out that failed as Mixin applied them in the last launch (see "
+						+ FAILED_LAST_LAUNCH + ")");
 		report.mod(new ModRow(c.id(), c.version(), c.origin(), Status.LOADED, detail, ""));
 		for (PreflightFinding f : t.findings()) {
 			String line = c.id() + ": " + f + (f.suggestion().isEmpty() ? "" : " - " + f.suggestion());
 			report.line(f.severity() == Severity.LEFT_OUT ? leftOutSection(loader) : "Mixin pre-flight warnings", line);
 		}
 		leftOutMixins.values().forEach(issue -> report.line(NEEDING_UNLOADED, c.id() + ": " + issue.substring(issue.indexOf("] ") + 2)));
+		failed.forEach((mixin, why) -> report.line(FAILED_LAST_LAUNCH, c.id() + ": " + mixin + " failed as Mixin applied it in the last launch ("
+				+ why + "). It is left out until this mod's jar, Fabricated, Minecraft or " + loader + " changes; delete .fabricated/"
+				+ MixinFailures.FILE_NAME + " to try it again, and report it to Fabricated with this report."));
 		for (String n : t.notes()) report.line("Translation notes", c.id() + ": " + n);
 		FabricApiPlan.Module planned = plan.module(c.id());
 		if (planned != null && !planned.skipMixins().isEmpty()) {

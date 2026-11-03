@@ -2,8 +2,10 @@ package io.github.cmdralph.fabricated.core.mixin;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.TreeSet;
 import java.util.function.Predicate;
 
@@ -16,12 +18,16 @@ import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.AnnotationNode;
 import org.objectweb.asm.tree.ClassNode;
+import org.objectweb.asm.tree.InsnList;
+import org.objectweb.asm.tree.InsnNode;
 import org.objectweb.asm.tree.JumpInsnNode;
+import org.objectweb.asm.tree.LdcInsnNode;
 import org.objectweb.asm.tree.LocalVariableNode;
 import org.objectweb.asm.tree.LookupSwitchInsnNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
 import org.objectweb.asm.tree.TableSwitchInsnNode;
+import org.objectweb.asm.tree.TypeInsnNode;
 import org.objectweb.asm.tree.VarInsnNode;
 
 /**
@@ -29,19 +35,32 @@ import org.objectweb.asm.tree.VarInsnNode;
  * overload NeoForge turned the method into, and a constant NeoForge split into another method.
  */
 final class OverloadRepairs extends PreflightPart {
-	OverloadRepairs(PreflightClasses classes) {
+	private final CallRepairs calls;
+
+	OverloadRepairs(PreflightClasses classes, CallRepairs calls) {
 		super(classes);
+		this.calls = calls;
 	}
 
 	/**
-	 * Pins a descriptor-less selector to the one overload whose parameters the handler takes, when Mixin would pick another
-	 * (the first of that name), which it would refuse the handler for: an {@code @Inject} or {@code @WrapMethod} taking
-	 * them all, or a modifier taking its value and then the first of them ({@link #fitsHandler}). Remapped, a selector
-	 * Intermediary named uniquely may name several methods: LambDynamicLights' {@code @ModifyReturnValue} on
+	 * Pins a descriptor-less selector to the one overload whose parameters the handler takes, of several of that name,
+	 * which Mixin would refuse the handler for any other of: an {@code @Inject} or {@code @WrapMethod} taking them all, or
+	 * a modifier taking its value and then the first of them ({@link #fitsHandler}). Mixin picks the first of that name.
+	 * <p>
+	 * With {@code declaredFirst} false, where the class declares another first. Remapped, a selector Intermediary named
+	 * uniquely may name several methods: LambDynamicLights' {@code @ModifyReturnValue} on
 	 * {@code LevelRenderer.getLightColor} taking the block state, whose overload without it comes first (CORPUS-45).
+	 * <p>
+	 * With {@code declaredFirst} true, where it is the first the class declares: a mixin replacing it ({@code @Overwrite})
+	 * still moves it after the others, as Mixin removes the method it replaces and adds its own last, so the injectors
+	 * applied after that one pick another. Indigo's {@code renderModel} on 1.21.11, which NeoForge gave an overload taking
+	 * a buffer source and the block, left Sodium's Fabric build's {@code @Inject} on that overload, and Mixin stopped the
+	 * game ("Invalid descriptor", OVERLOAD-2). The class as the game ships it can't show that, and a mod's translation
+	 * doesn't depend on the other mods, so the pin is made wherever the method has overloads.
+	 * <p>
 	 * Returns the pinned methods.
 	 */
-	static List<String> overloadByParameters(MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx) {
+	static List<String> overloadByParameters(MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx, boolean declaredFirst) {
 		if (Annotations.value(injector, "locals") != null || !(Annotations.value(injector, "method") instanceof List<?> selectors)) return List.of();
 		Predicate<MethodNode> fits = fitsHandler(handler, injector);
 		if (fits == null) return List.of();
@@ -52,16 +71,18 @@ final class OverloadRepairs extends PreflightPart {
 			if (ref.fuzzy() || ref.name() == null || ref.desc() != null) continue;
 			MethodNode first = null;
 			MethodNode fitting = null;
+			int named = 0;
 			int fitted = 0;
 			for (MethodNode m : target.methods) {
 				if (!m.name.equals(ref.name())) continue;
+				named++;
 				if (first == null) first = m;
 				if (fits.test(m)) {
 					fitting = m;
 					fitted++;
 				}
 			}
-			if (fitted != 1 || fitting == first) continue;
+			if (fitted != 1 || named < 2 || (fitting == first) != declaredFirst) continue;
 			@SuppressWarnings("unchecked")
 			List<Object> values = (List<Object>) selectors;
 			values.set(i, fitting.name + fitting.desc);
@@ -104,7 +125,10 @@ final class OverloadRepairs extends PreflightPart {
 	 * captured locals aren't (the method only calls the overload now) moves the same way. A handler that takes the
 	 * method's parameters gets them from a bridge taking the overload's, when the method only passes its own parameters
 	 * on with one value it works out ({@link #insertedParameter}, as {@code MappedRegistry.register} with an id). Its
-	 * {@code @Local}s must find their locals in the overload ({@link #localsInOverload}).
+	 * {@code @Local}s must find their locals in the overload ({@link #localsInOverload}). Where the overload makes a call
+	 * the injector names through an overload of that call taking one more argument, the points count as found there as
+	 * {@link CallRepairs#pointsThroughOverloads} would point them, and the call repairs, which run later, point them so
+	 * (OVERLOAD-1).
 	 */
 	List<String> overloadRepairs(ClassNode mixin, MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx,
 			List<MethodNode> bridges) {
@@ -114,7 +138,8 @@ final class OverloadRepairs extends PreflightPart {
 		// A variable modifier moves only where it picks its local by type alone, among the locals, which the other method's
 		// code decides as the method's did: Fabric API's before-bake model hook, whose ModelBakerImpl.bake Forge 47 split
 		// off into an overload taking the sprite getter (MODEL-3). By its slot, its place, its name or among the
-		// parameters, it could pick another value there.
+		// parameters, it could pick another value there; by its place at a load of it, vanilla's code decides
+		// ({@link #variableByOrdinalRepairs}, PRE-19).
 		if (injector.desc.equals(MixinNames.MODIFY_VARIABLE) && (Annotations.value(injector, "index") != null || Annotations.value(injector, "ordinal") != null
 				|| Annotations.value(injector, "name") != null || Boolean.TRUE.equals(Annotations.value(injector, "argsOnly")))) return List.of();
 		// An @Inject handler takes the callback info only, or (bridged below) the target's parameters before it.
@@ -141,6 +166,7 @@ final class OverloadRepairs extends PreflightPart {
 			if (chosen == null) continue;
 			MethodNode overload;
 			String how;
+			List<AnnotationNode> found;
 			Verdict inChosen = InjectionPoints.pointsIn(ats, slices, chosen, ctx);
 			boolean localsGone = inject && inChosen == Verdict.FOUND && MixinPreflight.missingLocal(handler, List.of(chosen)) != null;
 			if (inChosen == Verdict.MISSING || localsGone) {
@@ -150,8 +176,16 @@ final class OverloadRepairs extends PreflightPart {
 				boolean split = overload == null && inChosen == Verdict.MISSING;
 				if (split) overload = splitOff(chosen, target, ats, slices, ctx);
 				if (overload == null || (overload.access & Opcodes.ACC_STATIC) != (chosen.access & Opcodes.ACC_STATIC)
-						|| !split && !Type.getReturnType(overload.desc).equals(Type.getReturnType(chosen.desc))
-						|| InjectionPoints.pointsIn(ats, slices, overload, ctx) != Verdict.FOUND) continue;
+						|| !split && !Type.getReturnType(overload.desc).equals(Type.getReturnType(chosen.desc))) continue;
+				// The points as they are there, or as the call repairs will point them there: NeoForge's overload may make a
+				// call the injector names through an overload of that call taking one more argument too, as
+				// ClientLanguage.appendFrom's, which passes Language.loadFromJson a components consumer (PolyPlus's hooks).
+				// Those repairs then move the points, and bridge the handler; this one can't, as they would bridge it again.
+				found = ats;
+				if (InjectionPoints.pointsIn(ats, slices, overload, ctx) != Verdict.FOUND) {
+					found = split || localsGone || !slices.isEmpty() ? null : calls.pointsThroughOverloads(mixin, handler, injector, overload, ctx);
+					if (found == null || InjectionPoints.pointsIn(found, slices, overload, ctx) != Verdict.FOUND) continue;
+				}
 				// Its callback info must suit the method it moves to: a returnable one only one returning the same. A handler
 				// sharing the mixin's state with others that may stay moves only with them, which this doesn't do (HOOK-2's).
 				if (split && (inject && !Type.getReturnType(overload.desc).equals(Type.getReturnType(chosen.desc))
@@ -161,8 +195,13 @@ final class OverloadRepairs extends PreflightPart {
 				boolean sameParameters = Arrays.equals(Type.getArgumentTypes(chosen.desc), Type.getArgumentTypes(overload.desc));
 				int captured = sameParameters ? -1 : inject ? (takesParameters ? 0 : -1) : capturedFrom(handler, chosen);
 				int inserted = replacement != null ? CallRepairs.insertedArgument(chosen.desc, overload.desc) : insertedParameter(chosen, overload);
-				List<Runnable> locals = LocalRepairs.localsFit(handler, overload) ? List.of() : localsInOverload(handler, overload, inserted, ats, ctx);
-				if (locals == null || captured >= 0 && (inserted < 0 || selectors.size() != 1 || (mixin.access & Opcodes.ACC_INTERFACE) != 0)) continue;
+				// A handler taking the first of the method's parameters after its own (Mixin passes it as many as it takes) gets
+				// the overload's first: they must be the method's, before the one the overload adds (Fabric API's before-bake
+				// model hook takes the model's id so, which NeoForge 21.1's overload takes first too, MODEL-4).
+				int prefix = inject || captured >= 0 || sameParameters ? 0 : capturedPrefix(handler, chosen);
+				if (prefix > 0 && inserted < prefix) continue;
+				List<Runnable> locals = LocalRepairs.localsFit(handler, overload) ? List.of() : localsInOverload(handler, overload, inserted, found, ctx);
+				if (locals == null || captured >= 0 && (found != ats || inserted < 0 || selectors.size() != 1 || (mixin.access & Opcodes.ACC_INTERFACE) != 0)) continue;
 				locals.forEach(Runnable::run);
 				if (captured >= 0) {
 					bridges.add(HandlerBridges.insertedParameterBridge(mixin.name, handler, injector, captured, Type.getArgumentTypes(chosen.desc).length,
@@ -172,7 +211,7 @@ final class OverloadRepairs extends PreflightPart {
 						: split ? ", the code of which there " + loader + " split off into " : ", whose code " + loader + " moved into ";
 			} else {
 				// The injection points exist, but in a constructor nothing calls any more: its end is the end of the one it calls.
-				overload = ConstructorRepairs.keptConstructorDelegate(chosen, target);
+				overload = ConstructorRepairs.keptConstructorDelegate(chosen, target, vanillaClass(target.name));
 				if (overload == null || !slices.isEmpty() || !ConstructorRepairs.atEndOnly(ats) || !LocalRepairs.localsFit(handler, overload)) continue;
 				if (takesParameters) {
 					// The handler gets the constructor's own parameters from a bridge taking all of the other one's.
@@ -188,6 +227,447 @@ final class OverloadRepairs extends PreflightPart {
 			moved.add(chosen.name + chosen.desc + how + overload.name + overload.desc + "; the injector is pointed there");
 		}
 		return moved;
+	}
+
+	/**
+	 * Points an {@code @Inject} that captures locals ({@code locals}) in a method NeoForge reduced to a call of an
+	 * overload taking one more parameter ({@link #insertedParameter}) at that overload, through a bridge taking the
+	 * overload's parameters, the callback info and its locals there as Mixin passes them
+	 * ({@link HandlerBridges#capturedLocalsBridge}). The method has no locals left past its parameters, so Mixin can't
+	 * capture any there and throws ("Invalid descriptor") whatever the capture mode. Each local the handler captures must
+	 * be the overload's one local of its type in scope at each instruction the point picks, among locals whose slots
+	 * follow one another from the first past the parameters (what Mixin sees in a slot no local is named for is unknown).
+	 * FrozenLib's entry added event in {@code MappedRegistry.register} (CORPUS-51), whose NeoForge 21.1 overload takes the
+	 * id and keeps it in a local before the reference, where vanilla's has the reference first; Continuity's emissive
+	 * sprites in {@code SpriteSourceList.list} (NeoForge 1.21.11 and 26.x). The capture mode stays as it is (the soften
+	 * step made it skip itself where the locals differ). Returns a description of the move, or nothing.
+	 */
+	List<String> capturedLocalsRepairs(ClassNode mixin, MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx,
+			List<MethodNode> bridges) {
+		if (!injector.desc.equals(MixinNames.INJECT) || Annotations.value(injector, "locals") == null || (mixin.access & Opcodes.ACC_INTERFACE) != 0
+				|| Annotations.value(injector, "slice") != null || !(Annotations.value(injector, "method") instanceof List<?> selectors)
+				|| selectors.size() != 1 || !(selectors.get(0) instanceof String raw) || hasParameterAnnotations(handler)) return List.of();
+		MemberRef ref = MemberRef.parse(ctx.resolve(raw));
+		if (ref.fuzzy() || ref.name() == null) return List.of();
+		MethodNode chosen = null;
+		for (MethodNode m : target.methods) {
+			if (ref.matchesMethod(m.name, m.desc)) {
+				chosen = m;
+				break;
+			}
+		}
+		if (chosen == null || chosen.maxLocals > firstLocalSlot(chosen)) return List.of();
+		// The handler takes the method's parameters, the callback info and the locals it captures.
+		Type[] own = Type.getArgumentTypes(chosen.desc);
+		Type[] args = Type.getArgumentTypes(handler.desc);
+		if (args.length <= own.length + 1 || !Arrays.equals(Arrays.copyOf(args, own.length), own) || !PreflightAsm.isCallbackInfo(args[own.length])
+				|| Type.getReturnType(handler.desc) != Type.VOID_TYPE) return List.of();
+		MethodNode overload = calledOverload(chosen, target);
+		if (overload == null) return List.of();
+		int inserted = insertedParameter(chosen, overload);
+		List<AnnotationNode> ats = Annotations.list(Annotations.value(injector, "at"));
+		if (inserted < 0 || InjectionPoints.pointsIn(ats, List.of(), overload, ctx) != Verdict.FOUND) return List.of();
+		List<Integer> positions = pointPositions(ats, overload, ctx);
+		if (positions == null) return List.of();
+		List<Type> locals = null;
+		for (int position : positions) {
+			List<Type> there = localsAt(overload, position);
+			if (there == null || locals != null && !locals.equals(there)) return List.of();
+			locals = there;
+		}
+		List<Type> captured = List.of(args).subList(own.length + 1, args.length);
+		int[] picked = new int[captured.size()];
+		int last = -1;
+		for (int i = 0; i < captured.size(); i++) {
+			Type type = captured.get(i);
+			if (locals.stream().filter(type::equals).count() != 1 || captured.stream().filter(type::equals).count() != 1) return List.of();
+			picked[i] = locals.indexOf(type);
+			last = Math.max(last, picked[i]);
+		}
+		bridges.add(HandlerBridges.capturedLocalsBridge(mixin.name, handler, injector, overload, inserted, locals.subList(0, last + 1), picked,
+				HandlerBridges.freeName(mixin, bridges, handler.name + "$fabricated")));
+		@SuppressWarnings("unchecked")
+		List<Object> values = (List<Object>) selectors;
+		values.set(0, overload.name + overload.desc);
+		return List.of(chosen.name + chosen.desc + ", which " + loader + " reduced to a call to " + overload.name + overload.desc
+				+ "; the injector is pointed there, taking its locals as they are there");
+	}
+
+	/**
+	 * Points a {@code @ModifyVariable} that picks its local by its place among the locals of its type ({@code ordinal})
+	 * at a load of it ({@code @At("LOAD")}), in a method the platform reduced to a call of a method taking one more
+	 * parameter, at that method, where vanilla's version of the method (VANILLA-1) shows the move keeps what the mod
+	 * hooks: Puzzles Lib's break speed hook modifies the speed, the first float, at its second load after the
+	 * {@code onGround()} call in {@code Player.getDestroySpeed}, which Forge 47 deprecated for {@code getDigSpeed(state,
+	 * pos)} and keeps only to call it (PRE-19). The other method's code could have locals of that type first, or more
+	 * loads of the local (LOCAL-4), so vanilla's code aligned with it ({@link PatchAlignment}) must show:
+	 * <ul>
+	 * <li>the parameter it adds isn't of that type, and at the load the hook applies at, the local the ordinal picks among
+	 * those its local variable table has in scope there (Mixin's way, parameters first, by slot) is the one it picks among
+	 * vanilla's ({@link LocalRepairs#isVanillasLocal}): the patch added none of the type before it;</li>
+	 * <li>each of vanilla's loads of that local the point could pick is still there, a load of the local the ordinal picks,
+	 * and the slice's ends are vanilla's;</li>
+	 * <li>with the point's ordinal, the load it picks in vanilla's code; the ordinal changes where the patch loads the
+	 * local before it (Forge 47 passes the speed to its break speed event before returning it). Without one, the patch
+	 * may add no load of it, which the hook would modify too.</li>
+	 * </ul>
+	 * The handler takes the parameters before the added one alone, if any, and no MixinExtras sugar. Without vanilla's
+	 * code or a local variable table there, nothing moves. Returns a description of the move, or nothing.
+	 */
+	List<String> variableByOrdinalRepairs(MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx) {
+		if (!injector.desc.equals(MixinNames.MODIFY_VARIABLE) || !(Annotations.value(injector, "ordinal") instanceof Integer ordinal) || ordinal < 0
+				|| Annotations.value(injector, "index") != null || Annotations.value(injector, "name") != null
+				|| Boolean.TRUE.equals(Annotations.value(injector, "argsOnly")) || !(Annotations.value(injector, "method") instanceof List<?> selectors)
+				|| selectors.size() != 1 || !(selectors.get(0) instanceof String raw) || hasParameterAnnotations(handler)) return List.of();
+		List<AnnotationNode> ats = Annotations.list(Annotations.value(injector, "at"));
+		if (ats.size() != 1) return List.of();
+		AnnotationNode at = ats.get(0);
+		String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
+		if (!point.equals("LOAD") || Annotations.value(at, "opcode") != null || Annotations.value(at, "shift") != null || Annotations.value(at, "by") != null) {
+			return List.of();
+		}
+		Type value = Type.getReturnType(handler.desc);
+		Type[] args = Type.getArgumentTypes(handler.desc);
+		if (value.getSort() == Type.VOID || args.length == 0 || !args[0].equals(value)) return List.of();
+		MemberRef ref = MemberRef.parse(ctx.resolve(raw));
+		if (ref.fuzzy() || ref.name() == null) return List.of();
+		MethodNode chosen = null;
+		for (MethodNode m : target.methods) {
+			if (ref.matchesMethod(m.name, m.desc)) {
+				chosen = m;
+				break;
+			}
+		}
+		if (chosen == null) return List.of();
+		AnnotationNode slice = InjectionPoints.sliceFor(at, Annotations.list(Annotations.value(injector, "slice")));
+		int pointOrdinal = Annotations.value(at, "ordinal") instanceof Integer n ? n : -1;
+		InjectionPoints.Range inChosen = slice == null ? InjectionPoints.Range.ALL : InjectionPoints.sliceRange(slice, chosen, ctx);
+		// The method must have lost the point: no load of the type there (PRE-17).
+		if (inChosen == InjectionPoints.Range.UNEVALUATED || InjectionPoints.accessesAnyLocal(true, value, -1, pointOrdinal, inChosen, chosen)) return List.of();
+		MethodNode overload = calledOverload(chosen, target);
+		int inserted = overload == null ? -1 : insertedParameter(chosen, overload);
+		boolean replaced = false;
+		if (overload == null) {
+			overload = replacementOf(chosen, target);
+			inserted = overload == null ? -1 : CallRepairs.insertedArgument(chosen.desc, overload.desc);
+			replaced = true;
+		}
+		if (overload == null || inserted < 0 || (overload.access & Opcodes.ACC_STATIC) != (chosen.access & Opcodes.ACC_STATIC)
+				|| Type.getArgumentTypes(overload.desc)[inserted].equals(value) || overload.localVariables == null || overload.localVariables.isEmpty()
+				|| capturedPrefix(handler, chosen) > inserted) return List.of();
+		ClassNode original = vanillaClass(target.name);
+		MethodNode before = original == null ? null : PreflightAsm.declared(original, chosen.name, chosen.desc);
+		PatchAlignment alignment = before == null ? null : PatchAlignment.of(before, overload);
+		if (alignment == null) return List.of();
+		InjectionPoints.Range inVanilla = slice == null ? InjectionPoints.Range.ALL : InjectionPoints.sliceRange(slice, before, ctx);
+		InjectionPoints.Range inOverload = slice == null ? InjectionPoints.Range.ALL : InjectionPoints.sliceRange(slice, overload, ctx);
+		if (inVanilla == InjectionPoints.Range.UNEVALUATED || inOverload == InjectionPoints.Range.UNEVALUATED) return List.of();
+		if (slice != null && (Annotations.value(slice, "from") != null && alignment.placeOf(inVanilla.start()) != inOverload.start()
+				|| Annotations.value(slice, "to") != null && alignment.placeOf(inVanilla.end()) != inOverload.end())) return List.of();
+
+		// Where Mixin applies the hook in the other method: the loads of the local the ordinal picks at each.
+		int opcode = value.getOpcode(Opcodes.ILOAD);
+		List<Integer> matched = new ArrayList<>();
+		for (int i = Math.max(inOverload.start(), 0); i <= Math.min(inOverload.end(), overload.instructions.size() - 1); i++) {
+			if (!(overload.instructions.get(i) instanceof VarInsnNode load) || load.getOpcode() != opcode) continue;
+			int slot = nthLocalOfType(overload, value, ordinal, i, null);
+			if (slot == AMBIGUOUS) return List.of();
+			if (slot == load.var) matched.add(i);
+		}
+		// Vanilla's local: the slot of vanilla's loads aligned with those.
+		int[] vanillaAt = new int[overload.instructions.size()];
+		Arrays.fill(vanillaAt, -1);
+		Set<Integer> vanillaPlaces = new HashSet<>();
+		for (int i = 0; i < before.instructions.size(); i++) {
+			int place = alignment.placeOf(i);
+			if (place < 0) continue;
+			vanillaAt[place] = i;
+			vanillaPlaces.add(place);
+		}
+		int vanillaSlot = -1;
+		for (int i : matched) {
+			if (vanillaAt[i] < 0) continue;
+			int slot = ((VarInsnNode) before.instructions.get(vanillaAt[i])).var;
+			if (vanillaSlot >= 0 && vanillaSlot != slot) return List.of();
+			vanillaSlot = slot;
+		}
+		if (vanillaSlot < 0) return List.of();
+		// Each of vanilla's loads of it the point could pick is still one Mixin picks.
+		List<Integer> vanillas = new ArrayList<>();
+		for (int i = Math.max(inVanilla.start(), 0); i <= Math.min(inVanilla.end(), before.instructions.size() - 1); i++) {
+			if (!(before.instructions.get(i) instanceof VarInsnNode load) || load.getOpcode() != opcode || load.var != vanillaSlot) continue;
+			int place = alignment.placeOf(i);
+			if (place < 0 || !matched.contains(place)) return List.of();
+			vanillas.add(place);
+		}
+		List<Integer> applied;
+		int newOrdinal = pointOrdinal;
+		if (pointOrdinal >= 0) {
+			if (pointOrdinal >= vanillas.size()) return List.of();
+			applied = List.of(vanillas.get(pointOrdinal));
+			newOrdinal = matched.indexOf(applied.get(0));
+		} else {
+			if (matched.size() != vanillas.size()) return List.of();
+			applied = matched;
+		}
+		for (int i : applied) {
+			int slot = nthLocalOfType(overload, value, ordinal, i, null);
+			if (slot < 0 || slot != nthLocalOfType(overload, value, ordinal, i, vanillaPlaces)) return List.of();
+		}
+		@SuppressWarnings("unchecked")
+		List<Object> values = (List<Object>) selectors;
+		values.set(0, overload.name + overload.desc);
+		String repointed = "";
+		if (newOrdinal != pointOrdinal) {
+			Annotations.put(at, "ordinal", newOrdinal);
+			repointed = ", at its load with ordinal " + newOrdinal + " there, vanilla's with ordinal " + pointOrdinal + " (" + loader
+					+ "'s code loads it before)";
+		}
+		return List.of(chosen.name + chosen.desc + ", which " + loader + (replaced ? " deprecated for " : " reduced to a call to ") + overload.name
+				+ overload.desc + "; the injector is pointed there" + repointed + ", the local of type " + value.getClassName() + " with ordinal " + ordinal
+				+ " being vanilla's there");
+	}
+
+	/** {@link #nthLocalOfType}'s answer where two locals share a slot at the instruction. */
+	private static final int AMBIGUOUS = -2;
+
+	/**
+	 * The slot of the local with ordinal {@code ordinal} among the locals of {@code type} that {@code method}'s local
+	 * variable table has in scope at the instruction at {@code position}, counted as Mixin counts them for a variable
+	 * modifier (all of them by slot, {@code this} and the parameters first, a match only past {@code this}); with
+	 * {@code vanillaPlaces}, among vanilla's locals alone ({@link LocalRepairs#isVanillasLocal}). -1 for none,
+	 * {@link #AMBIGUOUS} where two locals share a slot there.
+	 */
+	private static int nthLocalOfType(MethodNode method, Type type, int ordinal, int position, Set<Integer> vanillaPlaces) {
+		java.util.TreeMap<Integer, LocalVariableNode> bySlot = new java.util.TreeMap<>();
+		for (LocalVariableNode lv : method.localVariables) {
+			if (method.instructions.indexOf(lv.start) > position || position >= method.instructions.indexOf(lv.end)) continue;
+			if (bySlot.put(lv.index, lv) != null) return AMBIGUOUS;
+		}
+		int base = (method.access & Opcodes.ACC_STATIC) != 0 ? 0 : 1;
+		int seen = 0;
+		for (LocalVariableNode lv : bySlot.values()) {
+			if (!lv.desc.equals(type.getDescriptor()) || vanillaPlaces != null && !LocalRepairs.isVanillasLocal(method, lv, vanillaPlaces)) continue;
+			if (seen++ == ordinal) return lv.index >= base ? lv.index : -1;
+		}
+		return -1;
+	}
+
+	/**
+	 * Turns an {@code @Inject} at the returns of a private static method that NeoForge deprecated and no longer calls into
+	 * a wrapper ({@code @WrapOperation}) of the call NeoForge makes in its place, where vanilla's class calls it: the
+	 * handler gets the call's result in a returnable callback info, as at the method's return, and the call returns what
+	 * it leaves there. NeoForge 21.1 builds {@code Ingredient}'s codecs with {@code CraftingHelper.makeIngredientCodec}
+	 * where vanilla's static initializer calls {@code Ingredient.codec(boolean)}, which it keeps, deprecated, and never
+	 * calls ("We take over the codec creation entirely"), so Fabric API's recipe API, whose hook at that method's return
+	 * adds Fabric's custom ingredients ({@code fabric:type}) to the codec, never ran, and no recipe using one loaded
+	 * (Farmer's Delight's and Tech Reborn's on the 1.21.1 corpus server; DEPRECATED-2).
+	 * <p>
+	 * Only where nothing else can call the method (private, and neither its class nor that class's nest members call it
+	 * any more), the method returns a reference, and each of vanilla's callers makes, in NeoForge's build, as many calls
+	 * of one other static method with the method's descriptor as it made of the method, and no other new call of that
+	 * descriptor. The callers are static, as the handler is. Returns a description of the change, or nothing.
+	 */
+	List<String> abandonedMethodWrappers(ClassNode mixin, MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx,
+			List<MethodNode> bridges) {
+		if (!injector.desc.equals(MixinNames.INJECT) || (mixin.access & Opcodes.ACC_INTERFACE) != 0 || (handler.access & Opcodes.ACC_STATIC) == 0
+				|| Annotations.value(injector, "locals") != null || Annotations.value(injector, "slice") != null || Annotations.value(injector, "target") != null
+				|| Annotations.value(injector, "constraints") != null || !(Annotations.value(injector, "method") instanceof List<?> selectors)
+				|| selectors.size() != 1 || !(selectors.get(0) instanceof String raw) || hasParameterAnnotations(handler)
+				|| Type.getReturnType(handler.desc) != Type.VOID_TYPE) return List.of();
+		List<AnnotationNode> ats = Annotations.list(Annotations.value(injector, "at"));
+		if (ats.isEmpty()) return List.of();
+		for (AnnotationNode at : ats) {
+			String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
+			if (!point.equals("RETURN") || at.values == null || at.values.size() != 2) return List.of(); // every return, nothing else
+		}
+		MemberRef ref = MemberRef.parse(ctx.resolve(raw));
+		if (ref.fuzzy() || ref.name() == null) return List.of();
+		MethodNode method = null;
+		for (MethodNode m : target.methods) {
+			if (ref.matchesMethod(m.name, m.desc)) {
+				method = m;
+				break;
+			}
+		}
+		if (method == null || (method.access & (Opcodes.ACC_STATIC | Opcodes.ACC_PRIVATE)) != (Opcodes.ACC_STATIC | Opcodes.ACC_PRIVATE)) return List.of();
+		Type result = Type.getReturnType(method.desc);
+		if (result.getSort() != Type.OBJECT && result.getSort() != Type.ARRAY) return List.of();
+		// The handler takes the callback info, or the method's parameters and it.
+		Type[] args = Type.getArgumentTypes(handler.desc);
+		Type[] params = Type.getArgumentTypes(method.desc);
+		if (args.length == 0 || !args[args.length - 1].getDescriptor().equals(MixinNames.CALLBACK_INFO_RETURNABLE)
+				|| args.length != 1 && !Arrays.equals(Arrays.copyOf(args, args.length - 1), params)) return List.of();
+		boolean deprecated = (method.access & Opcodes.ACC_DEPRECATED) != 0 || Annotations.find(method, "Ljava/lang/Deprecated;") != null;
+		ClassNode vanilla = vanillaClass(target.name);
+		MethodNode vanillaMethod = vanilla == null ? null : PreflightAsm.declared(vanilla, method.name, method.desc);
+		if (!deprecated || vanillaMethod == null || (vanillaMethod.access & Opcodes.ACC_DEPRECATED) != 0
+				|| Annotations.find(vanillaMethod, "Ljava/lang/Deprecated;") != null || target.nestHostClass != null) return List.of();
+		List<ClassNode> nest = new ArrayList<>(List.of(target));
+		if (target.nestMembers != null) {
+			for (String member : target.nestMembers) {
+				ClassNode node = gameTarget(member);
+				if (node == null) return List.of(); // a nest member's code unknown: it may call the method
+				nest.add(node);
+			}
+		}
+		for (ClassNode node : nest) {
+			if (calls(node, target.name, method.name, method.desc) > 0) return List.of();
+		}
+		// Each of vanilla's callers, and what NeoForge's build calls there instead.
+		List<String> callers = new ArrayList<>();
+		String replacement = null;
+		for (MethodNode caller : vanilla.methods) {
+			int made = calls(caller, vanilla.name, method.name, method.desc);
+			if (made == 0) continue;
+			MethodNode patched = PreflightAsm.declared(target, caller.name, caller.desc);
+			if (patched == null || (patched.access & Opcodes.ACC_STATIC) == 0) return List.of();
+			java.util.Map<String, Integer> before = callsOfDescriptor(caller, method.desc);
+			java.util.Map<String, Integer> after = callsOfDescriptor(patched, method.desc);
+			before.merge(vanilla.name + "." + method.name, -made, Integer::sum);
+			String added = null;
+			for (var e : after.entrySet()) {
+				int extra = e.getValue() - before.getOrDefault(e.getKey(), 0);
+				if (extra < 0) return List.of(); // a call of that descriptor vanilla makes there is gone too
+				if (extra == 0) continue;
+				if (added != null || extra != made) return List.of();
+				added = e.getKey();
+			}
+			for (var e : before.entrySet()) {
+				if (e.getValue() > after.getOrDefault(e.getKey(), 0)) return List.of();
+			}
+			if (added == null || replacement != null && !replacement.equals(added)) return List.of();
+			replacement = added;
+			callers.add(patched.name + patched.desc);
+		}
+		if (replacement == null) return List.of();
+		int dot = replacement.lastIndexOf('.');
+		String owner = replacement.substring(0, dot);
+		String name = replacement.substring(dot + 1);
+		if (owner.equals(target.name) && name.equals(method.name)) return List.of();
+		// The wrapper: (the call's arguments, the operation) -> its result, as the handler leaves it.
+		List<Type> wrapperParams = new ArrayList<>(List.of(params));
+		wrapperParams.add(Type.getType(MixinNames.OPERATION));
+		MethodNode bridge = HandlerBridges.bridgeMethod(true, HandlerBridges.freeName(mixin, bridges, handler.name + "$fabricated"), wrapperParams, result);
+		InsnList code = bridge.instructions;
+		int operation = HandlerBridges.slotOf(true, wrapperParams, params.length);
+		int resultSlot = HandlerBridges.slotOf(true, wrapperParams, wrapperParams.size());
+		code.add(new VarInsnNode(Opcodes.ALOAD, operation));
+		code.add(new LdcInsnNode(params.length));
+		code.add(new TypeInsnNode(Opcodes.ANEWARRAY, "java/lang/Object"));
+		for (int i = 0; i < params.length; i++) {
+			code.add(new InsnNode(Opcodes.DUP));
+			code.add(new LdcInsnNode(i));
+			code.add(new VarInsnNode(params[i].getOpcode(Opcodes.ILOAD), HandlerBridges.slotOf(true, wrapperParams, i)));
+			HandlerBridges.box(code, params[i]);
+			code.add(new InsnNode(Opcodes.AASTORE));
+		}
+		code.add(new MethodInsnNode(Opcodes.INVOKEINTERFACE, Type.getType(MixinNames.OPERATION).getInternalName(), "call", "([Ljava/lang/Object;)Ljava/lang/Object;", true));
+		// new CallbackInfoReturnable(name, cancellable, result), kept in a local
+		String cir = Type.getType(MixinNames.CALLBACK_INFO_RETURNABLE).getInternalName();
+		code.add(new VarInsnNode(Opcodes.ASTORE, resultSlot));
+		code.add(new TypeInsnNode(Opcodes.NEW, cir));
+		code.add(new InsnNode(Opcodes.DUP));
+		code.add(new LdcInsnNode(method.name));
+		code.add(new InsnNode(Boolean.TRUE.equals(Annotations.value(injector, "cancellable")) ? Opcodes.ICONST_1 : Opcodes.ICONST_0));
+		code.add(new VarInsnNode(Opcodes.ALOAD, resultSlot));
+		code.add(new MethodInsnNode(Opcodes.INVOKESPECIAL, cir, "<init>", "(Ljava/lang/String;ZLjava/lang/Object;)V", false));
+		code.add(new VarInsnNode(Opcodes.ASTORE, resultSlot + 1));
+		int stack = 0;
+		if (args.length > 1) {
+			for (int i = 0; i < params.length; i++) {
+				code.add(new VarInsnNode(params[i].getOpcode(Opcodes.ILOAD), HandlerBridges.slotOf(true, wrapperParams, i)));
+				stack += params[i].getSize();
+			}
+		}
+		code.add(new VarInsnNode(Opcodes.ALOAD, resultSlot + 1));
+		code.add(new MethodInsnNode(Opcodes.INVOKESTATIC, mixin.name, handler.name, handler.desc, false));
+		code.add(new VarInsnNode(Opcodes.ALOAD, resultSlot + 1));
+		code.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL, cir, "getReturnValue", "()Ljava/lang/Object;", false));
+		code.add(new TypeInsnNode(Opcodes.CHECKCAST, result.getSort() == Type.ARRAY ? result.getDescriptor() : result.getInternalName()));
+		code.add(new InsnNode(Opcodes.ARETURN));
+		// Filling the arguments' array (the operation, the array twice, an index and a value of up to two slots), making
+		// the callback info (two references, a name, a flag, the result) or passing the handler its arguments.
+		bridge.maxStack = Math.max(6, Math.max(5, stack + 1));
+		bridge.maxLocals = resultSlot + 2;
+		AnnotationNode wrapper = new AnnotationNode(MixinNames.WRAP_OPERATION);
+		Annotations.put(wrapper, "method", new ArrayList<>(callers));
+		AnnotationNode wrappedAt = new AnnotationNode(MixinNames.AT);
+		Annotations.put(wrappedAt, "value", "INVOKE");
+		Annotations.put(wrappedAt, "target", "L" + owner + ";" + name + method.desc);
+		Annotations.put(wrapper, "at", new ArrayList<>(List.of(wrappedAt)));
+		if (Annotations.value(injector, "remap") != null) Annotations.put(wrapper, "remap", Annotations.value(injector, "remap"));
+		HandlerBridges.replaceInjector(handler, injector, wrapper, bridge);
+		bridges.add(bridge);
+		return List.of(method.name + method.desc + ", which " + loader + " deprecated and no longer calls: where vanilla's class calls it ("
+				+ String.join(", ", callers) + "), " + loader + "'s calls " + owner.replace('/', '.') + "." + name + method.desc
+				+ "; the injector wraps that call, handing the handler its result as at the method's return");
+	}
+
+	/** How many calls of {@code owner.name desc} {@code node}'s methods make. */
+	private static int calls(ClassNode node, String owner, String name, String desc) {
+		int count = 0;
+		for (MethodNode m : node.methods) count += calls(m, owner, name, desc);
+		return count;
+	}
+
+	/** How many calls of {@code owner.name desc} {@code method} makes. */
+	private static int calls(MethodNode method, String owner, String name, String desc) {
+		int count = 0;
+		for (AbstractInsnNode insn : method.instructions) {
+			if (insn instanceof MethodInsnNode call && call.owner.equals(owner) && call.name.equals(name) && call.desc.equals(desc)) count++;
+		}
+		return count;
+	}
+
+	/** The static calls of methods with descriptor {@code desc} {@code method} makes, counted by {@code owner.name}. */
+	private static java.util.Map<String, Integer> callsOfDescriptor(MethodNode method, String desc) {
+		java.util.Map<String, Integer> found = new java.util.TreeMap<>();
+		for (AbstractInsnNode insn : method.instructions) {
+			if (insn instanceof MethodInsnNode call && call.getOpcode() == Opcodes.INVOKESTATIC && call.desc.equals(desc)) {
+				found.merge(call.owner + "." + call.name, 1, Integer::sum);
+			}
+		}
+		return found;
+	}
+
+	/** Whether any parameter of {@code handler} carries an annotation (MixinExtras sugar, {@code @Coerce}). */
+	private static boolean hasParameterAnnotations(MethodNode handler) {
+		for (int i = 0; i < Type.getArgumentTypes(handler.desc).length; i++) {
+			if (!Annotations.ofParameter(handler, i).isEmpty()) return true;
+		}
+		return false;
+	}
+
+	/** The first local variable slot past {@code method}'s parameters (and {@code this}). */
+	static int firstLocalSlot(MethodNode method) {
+		int slot = (method.access & Opcodes.ACC_STATIC) != 0 ? 0 : 1;
+		for (Type t : Type.getArgumentTypes(method.desc)) slot += t.getSize();
+		return slot;
+	}
+
+	/**
+	 * The types of {@code method}'s locals past its parameters in scope at the instruction at {@code position}, by slot,
+	 * as a capturing handler takes them; null without a local variable table, or where two locals share a slot there or
+	 * a slot before the last is no named local's.
+	 */
+	private static List<Type> localsAt(MethodNode method, int position) {
+		if (method.localVariables == null || method.localVariables.isEmpty()) return null;
+		int first = firstLocalSlot(method);
+		java.util.TreeMap<Integer, LocalVariableNode> bySlot = new java.util.TreeMap<>();
+		for (LocalVariableNode lv : method.localVariables) {
+			if (lv.index < first || method.instructions.indexOf(lv.start) > position || position >= method.instructions.indexOf(lv.end)) continue;
+			if (bySlot.put(lv.index, lv) != null) return null;
+		}
+		List<Type> types = new ArrayList<>();
+		int next = first;
+		for (var e : bySlot.entrySet()) {
+			if (e.getKey() != next) return null;
+			Type type = Type.getType(e.getValue().desc);
+			types.add(type);
+			next += type.getSize();
+		}
+		return types;
 	}
 
 	/**
@@ -303,7 +783,7 @@ final class OverloadRepairs extends PreflightPart {
 	}
 
 	/** The one other overload of the same name {@code method} calls, or null (none, or several). */
-	private static MethodNode calledOverload(MethodNode method, ClassNode target) {
+	static MethodNode calledOverload(MethodNode method, ClassNode target) {
 		MethodNode overload = null;
 		for (AbstractInsnNode insn : method.instructions) {
 			if (!(insn instanceof MethodInsnNode call) || !call.owner.equals(target.name) || !call.name.equals(method.name)
@@ -382,6 +862,24 @@ final class OverloadRepairs extends PreflightPart {
 		List<Type> params = List.of(Type.getArgumentTypes(method.desc));
 		if (args == null || params.isEmpty() || args.size() <= params.size()) return -1;
 		return args.subList(args.size() - params.size(), args.size()).equals(params) ? args.size() - params.size() : -1;
+	}
+
+	/**
+	 * How many of {@code method}'s first parameters a handler that isn't an {@code @Inject}'s may take after its own,
+	 * before any MixinExtras sugar, as Mixin passes them: the most its own end with, which may count some of its own too
+	 * (never too few). 0 when they end with none.
+	 */
+	private static int capturedPrefix(MethodNode handler, MethodNode method) {
+		Type[] own = Type.getArgumentTypes(handler.desc);
+		List<Type> args = new ArrayList<>();
+		for (int i = 0; i < own.length; i++) {
+			if (Annotations.ofParameter(handler, i).stream().noneMatch(a -> a.desc.startsWith("Lcom/llamalad7/mixinextras/sugar/"))) args.add(own[i]);
+		}
+		List<Type> params = List.of(Type.getArgumentTypes(method.desc));
+		for (int k = Math.min(params.size(), args.size()); k > 0; k--) {
+			if (args.subList(args.size() - k, args.size()).equals(params.subList(0, k))) return k;
+		}
+		return 0;
 	}
 
 	/**

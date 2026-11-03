@@ -140,7 +140,7 @@ class AccessWidenerTest {
 		assertTrue(!onForge.accessTransformer().contains("content"), onForge.accessTransformer());
 		assertEquals(List.of(
 				"line 2: field net/minecraft/world/item/BucketItem.content must stay private on Forge (a Forge coremod replaces it with a getter); "
-						+ "not widened. Code reading it directly fails when it runs.",
+						+ "not widened. The mod's reads of it call that getter instead; code writing it fails when it runs.",
 				"line 3: class net/minecraft/Missing does not exist on this Minecraft/Forge version; ignored"), onForge.warnings());
 		AccessTransformerConverter.Result onNeoForge = AccessTransformerConverter.convert(file, game, NEOFORGE, "NeoForge");
 		assertTrue(onNeoForge.accessTransformer().contains("public net.minecraft.world.item.BucketItem content"), onNeoForge.accessTransformer());

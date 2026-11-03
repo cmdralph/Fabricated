@@ -26,6 +26,11 @@
       "skipMixins": ["fabric-events-interaction-v0.mixins.json:ServerPlayerInteractionManagerMixin#breakBlock", "fabric-events-interaction-v0.mixins.json:ServerPlayerInteractionManagerMixin#onBlockBroken"],
       "reason": "Forge's destroyBlock no longer calls Block.playerWillDestroy and Block.destroy itself, where upstream's hooks fire PlayerBlockBreakEvents.BEFORE and AFTER: both moved into a private removeBlock Forge added, so the two hooks found nothing to apply to (pre-flight only warned, as they capture locals) and the events never ran when a player broke a block. Fabricated's in-game mod fires them at the same points of Forge's method instead, BEFORE (with CANCELED when refused) once the game's checks pass and AFTER once removeBlock removed the block, before the drops (BREAK-1, as on Forge 61 to 66)."
     },
+    "fabric-key-binding-api-v1": {
+      "plan": "native",
+      "version": "1.0.38",
+      "reason": "Shipped by Fabricated: upstream's API, its key bindings registered on Forge's key mapping event, where Forge mods register theirs. Upstream refuses a key binding once the game's options exist, and Forge 47 creates them before it loads mods, the Fabric client entrypoints among them, so passed through, the module failed every client entrypoint that registers one (KEYMAP-3, the Forge 47 corpus client: Xaero's World Map). Forge loads the keys from the options file again once mods have loaded, which gives each key binding the key the player saved. As upstream, a key binding registered twice is refused, and so is one registered once Forge's event has added them; a category new to the game is sorted after the game's, by upstream's accessor of the categories' order; KeyBindingHelper.getBoundKeyOf reads the key binding's key through upstream's accessor."
+    },
     "fabric-loot-api-v2": {
       "plan": "native",
       "version": "1.2.3",

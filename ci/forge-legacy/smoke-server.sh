@@ -193,6 +193,7 @@ check "the test mod's server entrypoint ran" "grep -q 'FABRICATED-FORGE-TEST ser
 check "the test mod's mixin applied (its Intermediary method name remapped to SRG's)" "grep -q 'FABRICATED-FORGE-TEST mixin OK' logs/latest.log 2>/dev/null"
 check "Forge took Fabricated's transformation service" "grep -q 'Fabricated transforms [1-9][0-9]* class(es) for Fabric mods before Mixin' logs/latest.log 2>/dev/null"
 check "the test mod's injected interface is on MinecraftServer (inject-interface)" "grep -q 'FABRICATED-FORGE-TEST injected interface OK' logs/latest.log 2>/dev/null"
+check "a mixin's @Shadow of a field another mixin adds is that field, as on Fabric, where Forge's Mixin finds only the class's own (CORPUS-74)" "grep -q 'FABRICATED-FORGE-TEST shared mixin field OK' logs/latest.log 2>/dev/null"
 check "a mod nested with a NeoForge jar-in-jar list too loads once, translated: Forge's jar-in-jar locator leaves it alone (JIJ-1)" "grep -q 'FABRICATED-FORGE-TEST nested jar loaded once OK' logs/latest.log 2>/dev/null"
 check "the test mod's client-only method was stripped (@Environment)" "grep -q 'FABRICATED-FORGE-TEST environment strip OK' logs/latest.log 2>/dev/null"
 check "the Fabric main entrypoints ran in Forge's registry events, only the test mod that fails on purpose failing" "grep -q 'Fabricated ran the Fabric main entrypoints of [1-9][0-9]* mod(s) on Forge (1 failed)' logs/latest.log 2>/dev/null"
@@ -207,12 +208,17 @@ check "the test mod read a private field its access widener opens (Intermediary 
 check "the minecraft mod container holds vanilla's resources (its en_us.json)" "grep -q 'FABRICATED-FORGE-TEST game resources OK' logs/latest.log 2>/dev/null"
 check "the test mod's item is in the frozen registry at the first tick" "grep -q 'FABRICATED-FORGE-TEST registry entry kept OK' logs/latest.log 2>/dev/null"
 check "MixinExtras ran the test mod's @WrapMethod (nested in the in-game mod)" "grep -q 'FABRICATED-FORGE-TEST MixinExtras OK' logs/latest.log 2>/dev/null"
+check "Mixin ran the test mod's @ModifyArgs, its generated class in a module (CORPUS-68)" "grep -q 'FABRICATED-FORGE-TEST @ModifyArgs OK' logs/latest.log 2>/dev/null"
 check "the in-game mod's mixin reads tag files' fabric:remove (the in-game mod reobfuscated to SRG's names)" "grep -q 'FABRICATED-FORGE-TEST fabric:remove OK' logs/latest.log 2>/dev/null"
 check "native fabric-biome-api-v1: a spawn and a temperature added to plains reach the biome Forge reads (Forge's biome modifiers)" "grep -q 'FABRICATED-FORGE-TEST biome modifications OK' logs/latest.log 2>/dev/null"
 check "vanilla reads a player's stats with Gson's internal parser, a package Gson's module doesn't export (GSON-2)" "grep -q 'FABRICATED-FORGE-TEST vanilla stats read OK' logs/latest.log 2>/dev/null"
+check "Forge Config API Port's registry makes a config Forge loads: read right after registering, then loaded once with the port's loading event, its file's values kept (CORPUS-81)" "grep -q 'FABRICATED-FORGE-TEST config port OK' logs/latest.log 2>/dev/null"
 check "native fabric-loot-api-v2 and fabric-loot-tables-v1: a pool added in MODIFY and a replaced table are in the tables the game keeps, each event seeing its table's source (Forge's pools list)" "grep -q 'FABRICATED-FORGE-TEST loot OK' logs/latest.log 2>/dev/null"
 check "native fabric-dimensions-v1: an armor stand teleported to the End lands at its target with no obsidian platform built (Forge's teleporter)" "grep -q 'FABRICATED-FORGE-TEST dimensions OK' logs/latest.log 2>/dev/null"
-check "a Fabric mod's fluids have Forge fluid types (the in-game mod's, registered under their ids), and a pig falls through one that isn't water as through air" "grep -q 'FABRICATED-FORGE-TEST fluid types OK' logs/latest.log 2>/dev/null"
+check "a Fabric mod's fluids have Forge fluid types (the in-game mod's, registered under their ids), and a pig falls through one that isn't water as through air; their liquid blocks and buckets, made before the fluids were registered, hold them (CORPUS-73)" "grep -q 'FABRICATED-FORGE-TEST fluid types OK' logs/latest.log 2>/dev/null"
+check "a Fabric mod's block item registered before its block is that block's item, and its music disc made before its sound was registered plays that sound (CORPUS-73)" "grep -q 'FABRICATED-FORGE-TEST registration order OK' logs/latest.log 2>/dev/null"
+check "an interface a mixin adds to LivingEntity, whose default self() has the name and type of the one Forge's IForgeLivingEntity gives it, gets a bridge, so both answer the pig (CORPUS-63, through Fabricated's Mixin extension)" "grep -q 'FABRICATED-FORGE-TEST default bridge OK' logs/latest.log 2>/dev/null"
+check "one a mixin adds to Mob, whose default isMultipartEntity() Mob has through Entity's IForgeEntity, gets a bridge calling the superclass's (DEFAULT-1)" "grep -q 'FABRICATED-FORGE-TEST inherited default bridge OK' logs/latest.log 2>/dev/null"
 check "Forge's biome coremod applied (the biome's climate field stayed private)" "! grep -qs 'field_to_method.js function biome' logs/latest.log server.out"
 check "Forge's loading warnings name the Fabric mod that wasn't loaded" "grep -qsE 'ServerModLoader.*: Fabric mod fabricated_forge_unmet 1\\.0\\.0 was not loaded: ' logs/latest.log logs/debug.log"
 check "an access widener leaves a field private that Forge's coremod reads through a getter: the test mod's BucketItem fluid (PLAT-4)" "grep -q 'BucketItem.f_40687_ must stay private on Forge' logs/fabric-bridge-report.txt 2>/dev/null && ! grep -qs 'field_to_method.js function bucketitem' logs/latest.log server.out"
@@ -227,12 +233,20 @@ if $standins; then
 	check "so is one a Forge mod nests with Forge's jar-in-jar, with its mixin config and refmap" "grep -q '+standin  \[Stand-in fabric-dimensions-v1\]' logs/fabric-bridge-report.txt 2>/dev/null"
 	check "Fabricated's in-game mod leaves out their packages and the module's mixin config, its manifest no longer naming it" "grep -q 'leaves out [0-9]* package(s) of the modules other mods provide, the mixin configs \[.*fabricated-dimension.mixins.json' logs/fabric-bridge-report.txt 2>/dev/null"
 	check "of two versions of a library Fabric mods nest, the newer loads" "grep -q 'Using standin_lib 1.1.0' logs/fabric-bridge-report.txt 2>/dev/null"
+	# The Forgified Fabric API stand-in nests a copy of Fabric Loader's API under Forgified Fabric Loader's identifier: the
+	# server started, so Forge's jar-in-jar left it out for the in-game mod's empty jar (PROVIDER-2).
+	check "a copy of Fabric Loader a Forge mod nests as Forgified Fabric API does is left out for the in-game mod's empty jar, and the game starts (PROVIDER-2)" "grep -q 'standin-forgified-fabric-api.jar (its standin-forgified-loader.jar) nests a copy of Fabric Loader, which Forge.s jar-in-jar leaves out' logs/fabric-bridge-report.txt 2>/dev/null"
+	# Forge 47's replaced mods, not NeoForge's (PLAT-6): Mod Menu's jar stays out for Forge's mod list, and Forge Config
+	# API Port's for its API on Forge's own config system (CORPUS-81).
+	check "Mod Menu's Fabric jar is left out for Forge's mod list, as Forge's descriptor says (REPL-1)" "grep -q \"in Forge's mod list\" logs/fabric-bridge-report.txt 2>/dev/null"
+	check "Forge Config API Port's Fabric jar is left out for its API on Forge's own config system, not NeoForge's (CORPUS-81, PLAT-6)" "grep -q \"on Forge's own config system\" logs/fabric-bridge-report.txt 2>/dev/null && ! grep -q \"on NeoForge's own config system\" logs/fabric-bridge-report.txt 2>/dev/null"
 	# Without Fabric API the test mod's checks that need its other modules leave linkage warnings; none may name a class
 	# of the stand-ins'.
 	check "the linkage check counts the classes of the modules other mods provide" "python3 -I '$root/ci/forge-legacy/standin-linkage.py' '$extra' logs/fabric-bridge-report.txt"
 fi
 if $fapi; then
 	check "fabric-command-api-v2 (with Fabric API): a command registered through CommandRegistrationCallback is in the server's dispatcher, its hook into Commands' constructor applied (CTOR-4)" "grep -q 'FABRICATED-FORGE-TEST Fabric command registered OK' logs/latest.log 2>/dev/null"
+	check "fabric-registry-sync-v0 (with Fabric API): an alias added through FabricRegistry.addAlias names its entry in the registry's lookups by name and by key and in a data pack's tag, as Waystones' renamed blocks need (CORPUS-75)" "grep -q 'FABRICATED-FORGE-TEST registry aliases OK' logs/latest.log 2>/dev/null"
 	check "fabric-events-interaction-v0 (with Fabric API): a fake player's breaks through destroyBlock fire PlayerBlockBreakEvents BEFORE, CANCELED and AFTER, and a BEFORE refusal keeps the block (BREAK-1)" "grep -q 'FABRICATED-FORGE-TEST block break events OK' logs/latest.log 2>/dev/null"
 	check "fabric-events-interaction-v0 (with Fabric API): a fake player's uses of an item, a block and an entity, and its attacks on a block and an entity, through the game's own code ask UseItemCallback, UseBlockCallback, UseEntityCallback, AttackBlockCallback and AttackEntityCallback, and their answers hold" "grep -q 'FABRICATED-FORGE-TEST interaction events OK' logs/latest.log 2>/dev/null"
 	check "fabric-entity-events-v1 (with Fabric API): a hay block EntitySleepEvents.ALLOW_BED admits stays hay while an armor stand sleeps on it, the occupation and orientation events run (SLEEP-1, LAMBDA-6), and a player may sleep there in the daytime ALLOW_SLEEP_TIME allows (SLEEP-2)" "grep -q 'FABRICATED-FORGE-TEST sleep events OK' logs/latest.log 2>/dev/null"

@@ -8,6 +8,8 @@ import java.util.function.Supplier;
 
 import net.minecraft.class_1297;
 import net.minecraft.class_1299;
+import net.minecraft.class_1755;
+import net.minecraft.class_1792;
 import net.minecraft.class_2248;
 import net.minecraft.class_2338;
 import net.minecraft.class_2378;
@@ -68,6 +70,11 @@ public final class ForgeFluidTest {
 		// The block's name: Block.getDescriptionId is block.<namespace>.<path> for a registered block.
 		Object descriptionId = call(type, "getDescriptionId");
 		if (!("block." + ForgeTestMod.MOD_ID + ".dry_fluid").equals(descriptionId)) failed.add("description id " + descriptionId);
+		// Made before the fluid was registered: the fluid itself (Forge's getFluid, which a Fabric mod can't name).
+		Object bucketFluid = call(dry.bucket, "getFluid");
+		if (bucketFluid != dry.source) failed.add("the bucket holds " + bucketFluid);
+		Object blockFluid = call(dry.block, "getFluid");
+		if (blockFluid != dry.source) failed.add("the liquid block holds " + blockFluid);
 		Object dryWater = call(type, "canSwim", (Object) null);
 		Object wetWater = call(call(wet.source, "getFluidType"), "canSwim", (Object) null);
 		if (!Boolean.FALSE.equals(dryWater) || !Boolean.TRUE.equals(wetWater)) failed.add("water to entities: untagged " + dryWater + ", tagged " + wetWater);
@@ -114,19 +121,29 @@ public final class ForgeFluidTest {
 		throw new NoSuchMethodException(target.getClass().getName() + "." + name);
 	}
 
-	/** A source, its flowing fluid and its liquid block, registered under {@code fabricated-forge-testmod:<name>}. */
+	/**
+	 * A source, its flowing fluid, its liquid block and its bucket, registered under {@code fabricated-forge-testmod:<name>}
+	 * ({@code <name>_bucket} for the bucket). All are made first and registered after, as Fabric lets a mod and as
+	 * TechReborn does: Forge 47 looked the fluid up as its block and bucket were made, and threw (CORPUS-73).
+	 */
 	static final class Family {
 		final class_2960 id;
 		final ForgeTestFluid source;
 		final ForgeTestFluid flowing;
 		final class_2404 block;
+		final class_1755 bucket;
 
 		Family(String name, class_2248 properties) {
 			id = new class_2960(ForgeTestMod.MOD_ID, name);
-			source = class_2378.method_10230(class_7923.field_41173, id, new ForgeTestFluid.Source(this));
-			flowing = class_2378.method_10230(class_7923.field_41173, new class_2960(ForgeTestMod.MOD_ID, name + "_flowing"), new ForgeTestFluid.Flowing(this));
-			block = class_2378.method_10230(class_7923.field_41175, id, new class_2404(source, class_4970.class_2251.method_9630(properties)) {
-			});
+			source = new ForgeTestFluid.Source(this);
+			flowing = new ForgeTestFluid.Flowing(this);
+			block = new class_2404(source, class_4970.class_2251.method_9630(properties)) {
+			};
+			bucket = new class_1755(source, new class_1792.class_1793());
+			class_2378.method_10230(class_7923.field_41173, id, source);
+			class_2378.method_10230(class_7923.field_41173, new class_2960(ForgeTestMod.MOD_ID, name + "_flowing"), flowing);
+			class_2378.method_10230(class_7923.field_41175, id, block);
+			class_2378.method_10230(class_7923.field_41178, new class_2960(ForgeTestMod.MOD_ID, name + "_bucket"), bucket);
 		}
 	}
 }

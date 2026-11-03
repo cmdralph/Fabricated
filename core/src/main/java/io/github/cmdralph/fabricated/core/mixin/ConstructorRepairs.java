@@ -228,13 +228,15 @@ final class ConstructorRepairs extends PreflightPart {
 	/**
 	 * The constructor {@code constructor} hands everything to, when it is vanilla's signature as NeoForge keeps it: its
 	 * body is {@code this(...)} (vanilla's arguments plus NeoForge's defaults) and nothing after it, and it is marked
-	 * deprecated or passes its own parameters followed by constants for parameters of NeoForge's types (as
-	 * {@code BakedQuad}'s, a record NeoForge added components to). The game's own code calls the other constructor, so
-	 * an injection at the end of this one would never run, while the end of the other one is the same moment for both.
-	 * Null for any other constructor: vanilla's own delegating constructors (an injection there is meant for that one
-	 * only) are never deprecated and pass no NeoForge types.
+	 * deprecated, or passes its own parameters followed by constants for parameters of NeoForge's types (as
+	 * {@code BakedQuad}'s on 26.x, a record NeoForge added components to), or for parameters of a constructor vanilla's
+	 * class doesn't have ({@code vanilla}, when known: 1.21.1's {@code BakedQuad}, whose vanilla constructor NeoForge
+	 * keeps as {@code this(..., true)} for its ambient occlusion flag, CTOR-5). The game's own code calls the other
+	 * constructor, so an injection at the end of this one would never run, while the end of the other one is the same
+	 * moment for both. Null for any other constructor: vanilla's own delegating constructors (an injection there is
+	 * meant for that one only) are never deprecated, pass no NeoForge types and call a constructor vanilla has.
 	 */
-	static MethodNode keptConstructorDelegate(MethodNode constructor, ClassNode target) {
+	static MethodNode keptConstructorDelegate(MethodNode constructor, ClassNode target, ClassNode vanilla) {
 		if (!constructor.name.equals("<init>")) return null;
 		MethodNode delegate = thisCall(constructor, target);
 		if (delegate == null) return null;
@@ -243,7 +245,10 @@ final class ConstructorRepairs extends PreflightPart {
 		Type[] all = Type.getArgumentTypes(delegate.desc);
 		int own = Type.getArgumentTypes(constructor.desc).length;
 		boolean neoForgeAdded = false;
-		for (int i = own; i < all.length; i++) neoForgeAdded |= all[i].getSort() == Type.OBJECT && all[i].getInternalName().startsWith("net/neoforged/");
+		for (int i = own; i < all.length; i++) neoForgeAdded |= all[i].getSort() == Type.OBJECT && MixinNames.isPlatformCode(all[i].getInternalName());
+		// Vanilla's class has this constructor and not the one it calls: the platform added that one.
+		neoForgeAdded |= vanilla != null && PreflightAsm.declared(vanilla, "<init>", constructor.desc) != null
+				&& PreflightAsm.declared(vanilla, "<init>", delegate.desc) == null;
 		return neoForgeAdded && forwardsItsParameters(constructor, delegate) ? delegate : null;
 	}
 
@@ -266,8 +271,10 @@ final class ConstructorRepairs extends PreflightPart {
 	}
 
 	/**
-	 * Whether {@code constructor} is {@code this(its parameters in order, then constants)}: the other constructor gets
-	 * exactly what it got, plus defaults.
+	 * Whether {@code constructor} is {@code this(its parameters in order, then defaults)}: the other constructor gets
+	 * exactly what it got, plus defaults. A default is a constant, a static field or what a static method returns
+	 * without arguments: NeoForge keeps {@code ClientLanguage}'s vanilla constructor as {@code this(storage, rtl,
+	 * Map.of())} (every version), so owo-lib's hook at its end never ran and left owo's text map unset (CTOR-6).
 	 */
 	static boolean forwardsItsParameters(MethodNode constructor, MethodNode delegate) {
 		Type[] own = Type.getArgumentTypes(constructor.desc);
@@ -290,7 +297,8 @@ final class ConstructorRepairs extends PreflightPart {
 		for (int i = 1 + own.length; i < code.size() - 2; i++) {
 			int op = code.get(i).getOpcode();
 			boolean constant = op >= Opcodes.ACONST_NULL && op <= Opcodes.DCONST_1 || op == Opcodes.BIPUSH || op == Opcodes.SIPUSH
-					|| op == Opcodes.LDC || op == Opcodes.GETSTATIC;
+					|| op == Opcodes.LDC || op == Opcodes.GETSTATIC
+					|| op == Opcodes.INVOKESTATIC && Type.getArgumentTypes(((MethodInsnNode) code.get(i)).desc).length == 0;
 			if (!constant) return false;
 		}
 		return code.get(code.size() - 2) instanceof MethodInsnNode call && call.getOpcode() == Opcodes.INVOKESPECIAL && call.desc.equals(delegate.desc)

@@ -4,6 +4,7 @@ import io.github.cmdralph.fabricated.loader.ForgeLoaderHooks;
 import net.minecraftforge.fml.ModContainer;
 import net.minecraftforge.fml.ModLoadingException;
 import net.minecraftforge.fml.ModLoadingStage;
+import net.minecraftforge.fml.config.IConfigEvent;
 import net.minecraftforge.forgespi.language.IModInfo;
 import net.minecraftforge.forgespi.language.ModFileScanData;
 
@@ -35,5 +36,14 @@ public final class FabricModContainer extends ModContainer {
 	@Override
 	public Object getMod() {
 		return null;
+	}
+
+	/**
+	 * The events of the configs made with this container (Forge Config API Port's API on Forge 47), which Forge's own
+	 * containers post on the mod's event bus, go to {@link FabricConfigEvents}.
+	 */
+	@Override
+	public void dispatchConfigEvent(IConfigEvent event) {
+		FabricConfigEvents.dispatch(getModId(), event);
 	}
 }

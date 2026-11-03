@@ -36,7 +36,9 @@ if [ -n "$(git status --porcelain)" ]; then
 	exit 1
 fi
 
-git merge --no-ff --no-commit "$base" || true
+# Without git's directory rename detection: the platform folders main has and the branch left out at the split look
+# renamed to it, and files main adds in them would be merged into the branch's own folders instead of being left out.
+git -c merge.directoryRenames=false merge --no-ff --no-commit "$base" || true
 # The branch's own files stay as they are, whatever main did with them (main left them out at the split).
 for path in "${own[@]}"; do
 	if git cat-file -e "HEAD:$path" 2>/dev/null; then

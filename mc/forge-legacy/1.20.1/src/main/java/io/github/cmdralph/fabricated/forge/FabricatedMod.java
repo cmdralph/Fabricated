@@ -12,6 +12,7 @@ import io.github.cmdralph.fabricated.core.runtime.EntrypointRunner;
 import io.github.cmdralph.fabricated.forge.biome.BiomeCompat;
 import io.github.cmdralph.fabricated.forge.entity.SleepEvents;
 import io.github.cmdralph.fabricated.forge.fluid.FabricFluidType;
+import io.github.cmdralph.fabricated.forge.keymapping.KeyMappingBridge;
 import io.github.cmdralph.fabricated.forge.rendering.HudRenderCallbackBridge;
 import io.github.cmdralph.fabricated.forge.transfer.TransferBridge;
 import io.github.cmdralph.fabricated.loader.FabricatedState;
@@ -22,6 +23,8 @@ import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.impl.loot.table.LootTablesV1Init;
 import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.loader.api.entrypoint.PreLaunchEntrypoint;
+import net.minecraft.core.MappedRegistry;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraftforge.eventbus.api.EventPriority;
 import net.minecraftforge.fml.ModLoader;
@@ -82,28 +85,26 @@ public final class FabricatedMod {
 		for (String text : ForgeLoaderHooks.notLoaded()) {
 			ModLoader.get().addWarning(new ModLoadingWarning(context.getContainer().getModInfo(), ModLoadingStage.CONSTRUCT, AS_IS, text));
 		}
+		// What discovery tells the player from now on: a Fabric mod's jar proposed for the class path (DOWNLOAD-1).
+		ForgeLoaderHooks.warnings(text -> ModLoader.get().addWarning(new ModLoadingWarning(context.getContainer().getModInfo(), ModLoadingStage.CONSTRUCT, AS_IS, text)));
 		// Fabric storages and Forge's item and fluid handlers on blocks, each seen by the other side's code.
 		if (FabricLoader.getInstance().isModLoaded("fabric-transfer-api-v1") && ours(state, "fabric-transfer-api-v1")) TransferBridge.register();
 		// Fabric's sleep time event where Forge asks its own.
 		if (ours(state, "fabric-entity-events-v1")) SleepEvents.register();
 		// Native fabric-loot-tables-v1's own initializer (a native module has no entrypoints): its loot table events
-		// listen to fabric-loot-api-v2's before the Fabric mods register theirs. Its class leaves the in-game mod with the
-		// module when another mod provides it.
-		if (ours(state, "fabric-loot-tables-v1") && ours(state, "fabric-loot-api-v2")) new LootTablesV1Init().onInitialize();
+		// listen to fabric-loot-api-v2's before the Fabric mods register theirs, Fabricated's or those of the mod providing
+		// it (Forgified Fabric API 1.20.1 has fabric-loot-api-v2 and no fabric-loot-tables-v1, PROVIDER-13). Its class
+		// leaves the in-game mod with the module when another mod provides it.
+		if (ours(state, "fabric-loot-tables-v1")) new LootTablesV1Init().onInitialize();
 		// Fabric mods' config screens in Forge's mod list, once their initializers ran.
 		if (!FMLLoader.getDist().isDedicatedServer()) ClientSupport.init(state);
 		// Fabric API's HUD callback, from Forge's HUD drawing (see HudRenderCallbackBridge).
 		if (!FMLLoader.getDist().isDedicatedServer() && ours(state, "fabric-rendering-v1")) HudRenderCallbackBridge.register();
+		// Fabric mods' key bindings, registered with Forge's key mapping event after the client entrypoints (KEYMAP-3).
+		if (!FMLLoader.getDist().isDedicatedServer() && ours(state, "fabric-key-binding-api-v1")) KeyMappingBridge.register(context.getModEventBus());
 		IModInfo self = context.getContainer().getModInfo();
-		EntrypointRunner runner = new EntrypointRunner(state.runtime(), new EntrypointRunner.ContextHook() {
-			@Override
-			public void enter(String modId) {
-			}
-
-			@Override
-			public void exit() {
-			}
-		});
+		// Each entrypoint runs with a context class loader that finds Fabric mods' directories, as on Fabric (SCAN-1).
+		EntrypointRunner runner = new EntrypointRunner(state.runtime(), ModDirectoryClassLoader.contextHook(state.runtime()));
 		List<EntrypointRunner.Failure> preLaunch = runner.run("preLaunch", PreLaunchEntrypoint.class, PreLaunchEntrypoint::onPreLaunch);
 		report(state, preLaunch, "pre-launch");
 		context.getModEventBus().addListener(EventPriority.HIGHEST, false, RegisterEvent.class, event -> {
@@ -133,6 +134,13 @@ public final class FabricatedMod {
 				opened.add(registry);
 			}
 		}
+		// The root registry too, which Forge keeps frozen through its registration events (its own registries are made in
+		// NewRegistryEvent): on Fabric a mod makes its registries in its main entrypoint, through Fabric API's
+		// FabricRegistryBuilder, before vanilla's freeze, which Fabric API moves after the entrypoints (CORPUS-70: Porting
+		// Lib's fluid types and loot modifier serializers). The freeze after the entrypoints (BuiltInRegistriesFreeze, then
+		// Forge's) freezes those registries with the rest.
+		MappedRegistry<?> root = (MappedRegistry<?>) BuiltInRegistries.REGISTRY;
+		root.unfreeze();
 		List<EntrypointRunner.Failure> failures = new ArrayList<>();
 		boolean server = FMLLoader.getDist().isDedicatedServer();
 		if (!server) state.runtime().setGameInstance(ClientSupport.gameInstance());
@@ -147,6 +155,7 @@ public final class FabricatedMod {
 			// Each Fabric fluid family's Forge fluid type, which Forge asks every fluid for (see FabricFluidType).
 			FabricFluidType.registerAll();
 		} finally {
+			root.freeze();
 			opened.forEach(ForgeRegistry::freeze);
 		}
 		report(state, failures, "main");

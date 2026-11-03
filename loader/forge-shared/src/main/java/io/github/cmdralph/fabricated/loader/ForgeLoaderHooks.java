@@ -2,9 +2,11 @@ package io.github.cmdralph.fabricated.loader;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Consumer;
 
 import cpw.mods.modlauncher.Launcher;
 import cpw.mods.modlauncher.api.IModuleLayerManager;
+import net.minecraftforge.fml.loading.FMLPaths;
 
 /**
  * What the in-game mod's code needs of discovery on Forge (docs/PORTING.md §4.1). The in-game mod is a module of the
@@ -13,6 +15,9 @@ import cpw.mods.modlauncher.api.IModuleLayerManager;
  */
 public final class ForgeLoaderHooks {
 	private static volatile List<String> notLoaded = List.of();
+	/** Where a warning for the player goes: Forge's loading warnings once the in-game mod set it, the log only until then. */
+	private static volatile Consumer<String> warnings = text -> {
+	};
 
 	private ForgeLoaderHooks() {
 	}
@@ -30,6 +35,14 @@ public final class ForgeLoaderHooks {
 	}
 
 	/**
+	 * Set by the in-game mod as it is constructed: shows a text in Forge's loading warnings, which discovery's service layer
+	 * can't reach. A warning before then (none is known) is only in the log, which {@link ProposedJars} writes either way.
+	 */
+	public static void warnings(Consumer<String> sink) {
+		warnings = sink;
+	}
+
+	/**
 	 * Connects a translated Fabric mod's container to its classes: Fabric Loader's runtime gets the class loader of the
 	 * mod's module, and Fabric mods can add jars to the class path from then on. Empty when discovery didn't run or the
 	 * mod isn't one it translated, otherwise the class loader.
@@ -40,7 +53,8 @@ public final class ForgeLoaderHooks {
 		Optional<ClassLoader> loader = gameLayer.findModule(moduleName).map(Module::getClassLoader);
 		loader.ifPresent(found -> {
 			state.fabricContainer(modId).ifPresent(container -> state.runtime().setClassLoader(container, found));
-			ProposedJars.install(found, gameFallback(found));
+			// A Fabric mod's jar proposed for the class path (Essential's download) loads from the next launch, the player told so.
+			ProposedJars.install(found, gameFallback(found), FMLPaths.GAMEDIR.get(), text -> warnings.accept(text));
 		});
 		return loader;
 	}

@@ -1,11 +1,18 @@
 package net.minecraft;
 
-/** {@code Item}, with {@code Item.Properties}: {@code method_7895} is {@code durability(int)}. */
+/**
+ * {@code Item}, with {@code Item.Properties}: {@code method_7895} is {@code durability(int)}, {@code method_7867}
+ * {@code byBlock(Block)}.
+ */
 public class class_1792 implements class_1935 {
 	/** {@code maxStackSize}, private in the game: the test mod's access widener makes it accessible. */
 	public int field_8013;
 
 	public class_1792(class_1793 properties) {
+		throw new AssertionError("stand-in");
+	}
+
+	public static class_1792 method_7867(class_2248 block) {
 		throw new AssertionError("stand-in");
 	}
 

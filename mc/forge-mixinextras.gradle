@@ -3,7 +3,10 @@
 // jar-in-jar locator once a mod file declares mixin configs. Its Forge build, a game library that starts MixinExtras
 // from its own mixin config's plugin, is nested in the in-game mod with the metadata of Forge's jar-in-jar locator,
 // which reads the files Fabricated's dependency locator hands Forge and adds the newest copy any of them nests or Forge
-// offers. Discovery reads the same metadata to tell pre-flight which version runs.
+// offers. Discovery reads the same metadata to tell pre-flight which version runs. A platform's build may nest other jars
+// beside it, in the same metadata (Forge reads one list per jar): ext.forgeJarJarExtras, set before this is applied, lists
+// them as [group:, artifact:, version:, jar: <a Jar task>] (mc/platform-forge-legacy.gradle).
+def jarJarExtras = project.findProperty('forgeJarJarExtras') ?: []
 configurations {
     nestedMixinExtras { transitive = false }
 }
@@ -13,21 +16,28 @@ dependencies {
 def mixinExtrasJarJar = tasks.register('mixinExtrasJarJar') {
     def version = project.mixinextras_version
     def out = layout.buildDirectory.dir('jarjar')
+    def extras = jarJarExtras.collect { [group: it.group, artifact: it.artifact, version: it.version,
+            path: "META-INF/jarjar/${it.jar.get().archiveFileName.get()}"] }
     inputs.property('version', version)
+    inputs.property('extras', extras.toString())
     outputs.dir(out)
     doLast {
         def file = out.get().file('META-INF/jarjar/metadata.json').asFile
         file.parentFile.mkdirs()
-        file.text = groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson([jars: [[
+        def jars = [[
                 identifier: [group: 'io.github.llamalad7', artifact: 'mixinextras-forge'],
                 version: [range: "[${version},)", artifactVersion: version],
                 path: "META-INF/jarjar/mixinextras-forge-${version}.jar",
-                isObfuscated: false]]])) + '\n'
+                isObfuscated: false]]
+        extras.each { jars << [identifier: [group: it.group, artifact: it.artifact],
+                version: [range: "[${it.version},)", artifactVersion: it.version], path: it.path, isObfuscated: false] }
+        file.text = groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson([jars: jars])) + '\n'
     }
 }
 afterEvaluate {
     tasks.named('gameModJar', Jar) {
         from(configurations.nestedMixinExtras) { into 'META-INF/jarjar' }
+        jarJarExtras.each { extra -> from(extra.jar) { into 'META-INF/jarjar' } }
         from(mixinExtrasJarJar)
     }
 }

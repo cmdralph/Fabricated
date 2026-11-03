@@ -21,7 +21,8 @@ import io.github.cmdralph.fabricated.core.resolve.Candidate;
  * @param injectedInterfaces interface injections to apply at class load
  * @param defaultBridges     methods to declare on game classes at class load, where an interface the mod adds brings a
  *                           default method the class already has from another interface
- * @param environmentClasses classes (internal names) with Fabric's {@code @Environment} annotations, stripped at class load
+ * @param environmentClasses classes (internal names) whose {@code @Environment} members are stripped at class load: none
+ *                           from a translation, which strips them itself (ENV-1)
  * @param overridableMethods game methods the mod's classes override that the platform declares final and vanilla doesn't
  *                           (the class's internal name, a space, the method's name and descriptor), made overridable at
  *                           class load (FINAL-2)

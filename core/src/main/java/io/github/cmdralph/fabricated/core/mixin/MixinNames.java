@@ -1,5 +1,6 @@
 package io.github.cmdralph.fabricated.core.mixin;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -16,6 +17,10 @@ final class MixinNames {
 
 	static final String SHADOW = "Lorg/spongepowered/asm/mixin/Shadow;";
 
+	static final String FINAL = "Lorg/spongepowered/asm/mixin/Final;";
+
+	static final String MUTABLE = "Lorg/spongepowered/asm/mixin/Mutable;";
+
 	static final String OVERWRITE = "Lorg/spongepowered/asm/mixin/Overwrite;";
 
 	static final String ACCESSOR = "Lorg/spongepowered/asm/mixin/gen/Accessor;";
@@ -29,6 +34,7 @@ final class MixinNames {
 	static final String COERCE = "Lorg/spongepowered/asm/mixin/injection/Coerce;";
 
 	static final String LOCAL = "Lcom/llamalad7/mixinextras/sugar/Local;";
+	static final String SHARE = "Lcom/llamalad7/mixinextras/sugar/Share;";
 
 	static final String UNIQUE = "Lorg/spongepowered/asm/mixin/Unique;";
 
@@ -66,6 +72,11 @@ final class MixinNames {
 
 	static final String MODIFY_VARIABLE = "Lorg/spongepowered/asm/mixin/injection/ModifyVariable;";
 
+	static final String MODIFY_ARGS = "Lorg/spongepowered/asm/mixin/injection/ModifyArgs;";
+
+	/** Mixin's argument bundle, the first parameter of a {@code @ModifyArgs} handler. */
+	static final String ARGS = "Lorg/spongepowered/asm/mixin/injection/invoke/arg/Args;";
+
 	/** The injectors whose {@code at} is one injection point in NeoForge 1.21.11's Mixin and an array in Fabric's. */
 	static final Set<String> SINGLE_POINT_INJECTORS = Set.of(REDIRECT, MODIFY_VARIABLE, "Lorg/spongepowered/asm/mixin/injection/ModifyArg;",
 			"Lorg/spongepowered/asm/mixin/injection/ModifyArgs;");
@@ -96,6 +107,21 @@ final class MixinNames {
 	static final Set<String> GAME_PREFIXES = Set.of("net/minecraft/", "com/mojang/blaze3d/");
 
 	static final String NEOFORGE_PACKAGE = "net/neoforged/";
+
+	/**
+	 * The packages of the platforms' own code (NeoForge's, Forge's): where their patches put the hooks a game call moves
+	 * into, which pre-flight follows to the call (HOOK-2, HOOK-3). Each platform has only its own, so both are named.
+	 */
+	static final List<String> PLATFORM_PACKAGES = List.of(NEOFORGE_PACKAGE, "net/minecraftforge/");
+
+	/** Whether a class (internal name) is the platform's own code: NeoForge's or Forge's ({@link #PLATFORM_PACKAGES}). */
+	static boolean isPlatformCode(String internalName) {
+		if (internalName == null) return false;
+		for (String prefix : PLATFORM_PACKAGES) {
+			if (internalName.startsWith(prefix)) return true;
+		}
+		return false;
+	}
 
 	static final String CALLBACK_INFO_RETURNABLE = "Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;";
 }

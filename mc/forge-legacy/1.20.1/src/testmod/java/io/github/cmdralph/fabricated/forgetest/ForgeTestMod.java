@@ -96,6 +96,9 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 		} catch (RuntimeException | LinkageError e) {
 			LOGGER.error("FABRICATED-FORGE-TEST fluid registration failed", e);
 		}
+		ForgeRegistrationOrderTest.register();
+		ForgeRegistryAliasTest.register();
+		ForgeConfigPortTest.register();
 		try {
 			ForgeCommandTest.register();
 		} catch (RuntimeException | LinkageError e) {
@@ -230,6 +233,16 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 			ForgeParticleClient.check();
 		} catch (RuntimeException | LinkageError e) {
 			LOGGER.warn("FABRICATED-FORGE-TEST particle check failed", e);
+		}
+	}
+
+	/** On a client, whether the test mod's key binding works as on Fabric ({@link ForgeKeyBindingClient}, KEYMAP-3). */
+	public static void checkKeyBinding() {
+		if (FabricLoader.getInstance().getEnvironmentType() != EnvType.CLIENT) return;
+		try {
+			ForgeKeyBindingClient.check();
+		} catch (RuntimeException | LinkageError e) {
+			LOGGER.warn("FABRICATED-FORGE-TEST key binding check failed", e);
 		}
 	}
 

@@ -35,14 +35,18 @@ import net.minecraft.class_4076;
  * ({@code method_14263}) fails, and attacking ({@code method_7324}) and using (the server's handling of an interaction
  * packet, {@code method_12062} of its {@code connection}) an armor stand both fail. The game finds an entity a player
  * uses by its id among the entities of chunks that track them, so the armor stand's part waits for the test site's
- * chunk, forced ({@code method_17988}), to tick its entities ({@code method_37118}), as the forge test mod's does. It
- * passes a fake player where the game takes a server player, so verifying it loads Fabric API's class: the test mod
- * only touches it with the interaction module installed.
+ * chunk, forced ({@code method_17988}), to tick its entities ({@code method_37118}), as the forge test mod's does; on a
+ * client, mc-runtime-test waits for that part before it quits ({@link ClientHold}). It passes a fake player where the
+ * game takes a server player, so verifying it loads Fabric API's class: the test mod only touches it with the
+ * interaction module installed.
  */
 public final class ForgeInteractionTest {
 	private static final Set<String> SEEN = ConcurrentHashMap.newKeySet();
-	/** How long the armor stand's part waits for the site's chunk to tick entities. */
-	private static final int MAX_WAIT = 100;
+	/**
+	 * How long the armor stand's part waits for the site's chunk to tick entities, at most: 20 seconds. A client's
+	 * integrated server on a CI runner, rendering in software, took more than 100 ticks once (#248's run 41563911536).
+	 */
+	private static final int MAX_WAIT = 400;
 	private static final List<String> FAILED = new ArrayList<>();
 	/** The stone block the callbacks answer for. Set by {@link #check}. */
 	private static volatile class_2338 site;
@@ -91,6 +95,7 @@ public final class ForgeInteractionTest {
 		player.field_13974.method_14263(pos, class_2846.class_2847.field_12968, class_2350.field_11036, level.method_31600(), 0);
 		player.method_6122(hand, class_1799.field_8037);
 		level.method_17988(class_4076.method_18675(pos.method_10263()), class_4076.method_18675(pos.method_10260()), true);
+		ClientHold.start();
 		waited = 0;
 	}
 
@@ -100,6 +105,15 @@ public final class ForgeInteractionTest {
 		class_2338 pos = site;
 		if (!level.method_37118(pos) && ++waited < MAX_WAIT) return;
 		waited = -1;
+		try {
+			finish(level, pos);
+		} finally {
+			ClientHold.done();
+		}
+	}
+
+	/** The armor stand's part, when the site's chunk ticks entities, and the result. */
+	private static void finish(class_3218 level, class_2338 pos) {
 		if (level.method_37118(pos)) {
 			FakePlayer player = player(level, pos);
 			class_1531 stand = new class_1531(level, pos.method_10263() + 0.5, pos.method_10264() + 1, pos.method_10260() + 0.5);
