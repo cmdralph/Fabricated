@@ -54,6 +54,14 @@ public final class InstalledClasses implements ClassBytesSource {
 	public record AddedMember(String owner, String mixin) {
 	}
 
+	/**
+	 * A mixin class a jar's configs list, with the name of the mod the jar belongs to.
+	 *
+	 * @param classes the jar's classes, to read the mixin from
+	 */
+	public record ListedMixin(String owner, String mixin, ClassBytesSource classes) {
+	}
+
 	private static final String MIXIN = "Lorg/spongepowered/asm/mixin/Mixin;";
 	private static final String SHADOW = "Lorg/spongepowered/asm/mixin/Shadow;";
 	private static final String IMPLEMENTS = "Lorg/spongepowered/asm/mixin/Implements;";
@@ -114,6 +122,16 @@ public final class InstalledClasses implements ClassBytesSource {
 		return data == null ? "" : Hashing.sha256(data);
 	}
 
+	/** The mixins the jars that aren't Fabric mods' own ({@link Jar#fabric}) list for this side, jar by jar. */
+	public List<ListedMixin> nativeMixins() {
+		List<ListedMixin> mixins = new ArrayList<>();
+		for (Jar jar : jars) {
+			if (jar.fabric()) continue;
+			for (String mixin : jar.mixins().get()) mixins.add(new ListedMixin(jar.owner(), mixin, jar.classes()));
+		}
+		return mixins;
+	}
+
 	/**
 	 * The mixin of an installed jar that adds a field, or a method, of this name and descriptor to a class, or null; a
 	 * method's descriptor may be null for any. Mixin merges the members of every mixin into a class before an injector
@@ -148,7 +166,7 @@ public final class InstalledClasses implements ClassBytesSource {
 					members.add(mergedName(m.name, prefixes) + m.desc);
 				}
 				AddedMember adder = new AddedMember(jar.owner(), mixin);
-				for (String target : targets(node)) {
+				for (String target : mixinTargets(node)) {
 					Map<String, AddedMember> byKey = index.computeIfAbsent(target, t -> new HashMap<>());
 					for (String member : members) byKey.putIfAbsent(member, adder);
 				}
@@ -210,7 +228,7 @@ public final class InstalledClasses implements ClassBytesSource {
 	}
 
 	/** The classes a mixin names in its {@code @Mixin} annotation, by internal name. */
-	private static List<String> targets(ClassNode mixin) {
+	public static List<String> mixinTargets(ClassNode mixin) {
 		List<String> targets = new ArrayList<>();
 		if (mixin.invisibleAnnotations == null) return targets;
 		for (AnnotationNode a : mixin.invisibleAnnotations) {

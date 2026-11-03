@@ -18,6 +18,7 @@ import org.objectweb.asm.tree.VarInsnNode;
 
 import io.github.cmdralph.fabricated.core.accesswidener.AccessWidenerFile.InjectedInterface;
 import io.github.cmdralph.fabricated.core.bytecode.EnvironmentStripper;
+import io.github.cmdralph.fabricated.core.mixin.NativeModMixins;
 import io.github.cmdralph.fabricated.core.translate.DefaultBridge;
 
 /**
@@ -28,6 +29,9 @@ import io.github.cmdralph.fabricated.core.translate.DefaultBridge;
  *   <li>class-tweaker {@code inject-interface} directives are applied: the interface is added to the target class, and
  *       to its generic signature so reflection sees the parameterised type. Mods implement the interface's methods
  *       through their own mixins, as on Fabric.</li>
+ *   <li>the static handlers of other mods' mixins into Fabric mods' classes that the running Mixin would refuse for
+ *       their instance targets are made instance handlers, as Mixin reads the mixin through the platform's transformers
+ *       ({@link NativeModMixins}, CORPUS-87).</li>
  * </ul>
  * After Mixin, {@link DefaultBridge}s are declared ({@link #declareDefaultBridges}). A platform where nothing of
  * Fabricated's runs after Mixin on every class (NeoForge 21.1's ModLauncher) declares them before Mixin too, for the
@@ -42,7 +46,7 @@ public final class FabricClassTransforms {
 	/** Whether {@link #beforeMixin} may change the class (internal name). */
 	public static boolean transformsBeforeMixin(FabricatedState state, String internalName) {
 		return state.environmentClasses().contains(internalName) || state.injectedInterfaces().containsKey(internalName)
-				|| state.overridableMethods().containsKey(internalName);
+				|| state.overridableMethods().containsKey(internalName) || state.instanceHandlers().containsKey(internalName);
 	}
 
 	/** Every class {@link #beforeMixin} may change, for a platform that names its targets up front. */
@@ -50,6 +54,7 @@ public final class FabricClassTransforms {
 		Set<String> classes = new TreeSet<>(state.environmentClasses());
 		classes.addAll(state.injectedInterfaces().keySet());
 		classes.addAll(state.overridableMethods().keySet());
+		classes.addAll(state.instanceHandlers().keySet());
 		return classes;
 	}
 
@@ -59,9 +64,9 @@ public final class FabricClassTransforms {
 	}
 
 	/**
-	 * Strips the other side's members, adds injected interfaces and removes {@code final} from the methods Fabric mods
+	 * Strips the other side's members, adds injected interfaces, removes {@code final} from the methods Fabric mods
 	 * override where only the platform's build declares it (FINAL-2; the platform's own access transformers have run by
-	 * then); whether the class changed.
+	 * then) and makes instance handlers of another mod's mixin's static handlers (CORPUS-87); whether the class changed.
 	 */
 	public static boolean beforeMixin(FabricatedState state, ClassNode node, BiConsumer<String, String> audit) {
 		boolean changed = false;
@@ -87,6 +92,11 @@ public final class FabricClassTransforms {
 			if ((method.access & Opcodes.ACC_FINAL) == 0 || !overridable.contains(method.name + method.desc)) continue;
 			method.access &= ~Opcodes.ACC_FINAL;
 			audit.accept("fabricated:overridable", method.name);
+			changed = true;
+		}
+		Set<String> handlers = state.instanceHandlers().getOrDefault(node.name, Set.of());
+		if (!handlers.isEmpty() && NativeModMixins.applyInstanceHandlers(node, handlers)) {
+			audit.accept("fabricated:instance_handler", String.join(", ", handlers));
 			changed = true;
 		}
 		return changed;

@@ -38,6 +38,7 @@ import io.github.cmdralph.fabricated.core.metadata.FabricModMetadata;
 import io.github.cmdralph.fabricated.core.metadata.FabricModMetadata.EntrypointSpec;
 import io.github.cmdralph.fabricated.core.mixin.MixinConfigFile;
 import io.github.cmdralph.fabricated.core.mixin.MixinFailures;
+import io.github.cmdralph.fabricated.core.mixin.NativeModMixins;
 import io.github.cmdralph.fabricated.core.mixin.PlatformCoremods;
 import io.github.cmdralph.fabricated.core.mixin.PreflightFinding;
 import io.github.cmdralph.fabricated.core.mixin.PreflightFinding.Severity;
@@ -62,6 +63,7 @@ import io.github.cmdralph.fabricated.core.runtime.ModContainerImpl;
 import io.github.cmdralph.fabricated.core.translate.DefaultBridge;
 import io.github.cmdralph.fabricated.core.translate.JarClassSource;
 import io.github.cmdralph.fabricated.core.translate.LinkageAnalysis;
+import io.github.cmdralph.fabricated.core.translate.MixinCompat;
 import io.github.cmdralph.fabricated.core.metadata.ModIds;
 import io.github.cmdralph.fabricated.core.translate.ModTranslator;
 import io.github.cmdralph.fabricated.core.translate.PackageGuard;
@@ -214,6 +216,8 @@ public final class Pipeline {
 	 * @param overridableMethods the game methods {@code mods} override that the platform made final, by class (immutable)
 	 * @param providedElsewhere  the Fabric API modules another mod provides ({@link #providedElsewhere}): Fabricated's own
 	 *                           copies of these stand down
+	 * @param instanceHandlers   the static handlers of other mods' mixins into {@code mods}' classes to apply as instance
+	 *                           handlers, by mixin class ({@link NativeModMixins}, immutable)
 	 */
 	public record Result(
 			FabricatedConfig config,
@@ -226,12 +230,13 @@ public final class Pipeline {
 			Map<String, ModContainerImpl> containers,
 			Report report,
 			Set<String> dependencyFailures,
-			Set<String> providedElsewhere) {
+			Set<String> providedElsewhere,
+			Map<String, Set<String>> instanceHandlers) {
 
 		Result(FabricatedConfig config, List<LoadedMod> mods, FabricLoaderRuntime runtime, Map<String, ModContainerImpl> containers,
-				Report report, Set<String> dependencyFailures, Set<String> providedElsewhere) {
+				Report report, Set<String> dependencyFailures, Set<String> providedElsewhere, Map<String, Set<String>> instanceHandlers) {
 			this(config, List.copyOf(mods), injectedInterfacesOf(mods), defaultBridgesOf(mods), environmentClassesOf(mods),
-					overridableMethodsOf(mods), runtime, containers, report, dependencyFailures, Set.copyOf(providedElsewhere));
+					overridableMethodsOf(mods), runtime, containers, report, dependencyFailures, Set.copyOf(providedElsewhere), Map.copyOf(instanceHandlers));
 		}
 
 		/**
@@ -244,7 +249,7 @@ public final class Pipeline {
 			Set<String> all = new LinkedHashSet<>(providedElsewhere);
 			all.addAll(modules);
 			return new Result(config, mods, injectedInterfaces, defaultBridges, environmentClasses, overridableMethods, runtime, containers,
-					report, dependencyFailures, Set.copyOf(all));
+					report, dependencyFailures, Set.copyOf(all), instanceHandlers);
 		}
 
 		/**
@@ -253,7 +258,7 @@ public final class Pipeline {
 		 */
 		public Result without(Set<String> fabricIds) {
 			List<LoadedMod> kept = mods.stream().filter(m -> !fabricIds.contains(m.translated().candidate().id())).toList();
-			return new Result(config, kept, runtime, containers, report, dependencyFailures, providedElsewhere);
+			return new Result(config, kept, runtime, containers, report, dependencyFailures, providedElsewhere, instanceHandlers);
 		}
 
 		private static Map<String, List<InjectedInterface>> injectedInterfacesOf(List<LoadedMod> mods) {
@@ -510,6 +515,10 @@ public final class Pipeline {
 		Rounds rounds = new Rounds();
 		try {
 			rounds.run(scan.candidates(), eligible, resolver(), new ModTranslator(env, in.cache(), config.limits()));
+			// Only where the running Mixin refuses a static @Inject handler for an instance method (Forge 47's, CORPUS-87).
+			if (MixinCompat.exactStaticInjects(in.runtimeMixinVersion())) {
+				rounds.instanceHandlers = NativeModMixins.instanceHandlers(installed, line -> report.line("Other mods' mixins into Fabric mods", line));
+			}
 		} finally {
 			synchronized (opened) {
 				for (SafeArchive archive : opened) {
@@ -811,6 +820,8 @@ public final class Pipeline {
 		/** The last round's load orderings left out to break a cycle (ORDER-1). */
 		List<LoadOrderings.LeftOut> orderingsLeftOut = List.of();
 		DependencyResolver.Result resolution;
+		/** The handlers of other mods' mixins into the Fabric mods' classes to apply as instance handlers ({@link NativeModMixins}). */
+		Map<String, Set<String>> instanceHandlers = Map.of();
 
 		/** Every Fabric jar found, loading or not: what a mod that isn't loading would have provided. */
 		private List<Candidate> scanned = List.of();
@@ -1129,7 +1140,8 @@ public final class Pipeline {
 		}
 
 		in.cache().notes().forEach(n -> report.line("Cache", n));
-		return new Result(config, loaded, runtime, containers, report, Set.copyOf(rounds.dependencyFailures), providedElsewhere.keySet());
+		return new Result(config, loaded, runtime, containers, report, Set.copyOf(rounds.dependencyFailures), providedElsewhere.keySet(),
+				rounds.instanceHandlers);
 	}
 
 	/**

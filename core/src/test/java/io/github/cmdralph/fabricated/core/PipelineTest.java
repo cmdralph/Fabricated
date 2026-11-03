@@ -923,7 +923,7 @@ class PipelineTest {
 	void resultWithoutRefusedModsInjectsNothingOfTheirs(@TempDir Path dir) throws Exception {
 		Pipeline.LoadedMod a = loadedMod(dir, "mod-a", "com/a/Iface", "com/a/ClientThing");
 		Pipeline.LoadedMod b = loadedMod(dir, "mod-b", "com/b/Iface", "com/b/ClientThing");
-		Pipeline.Result result = new Pipeline.Result(null, List.of(a, b), null, Map.of(), null, Set.of(), Set.of());
+		Pipeline.Result result = new Pipeline.Result(null, List.of(a, b), null, Map.of(), null, Set.of(), Set.of(), Map.of());
 		assertEquals(List.of("com/a/Iface", "com/b/Iface"), interfacesOf(result, "net/minecraft/world/Thing"));
 		assertEquals(Set.of("com/a/ClientThing", "com/b/ClientThing"), result.environmentClasses());
 

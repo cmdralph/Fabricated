@@ -3,6 +3,30 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-03: Platform mods' static handlers for Fabric mods' methods on Forge 47 (CORPUS-87), Forge 61 to 66's frames and loot names verified (CORPUS-79, CORPUS-90), and the Forge 64 client's loading screen (CORPUS-95) (task 5)
+
+- **CORPUS-87** (`NativeModMixins`, new; `FabricClassTransforms.beforeMixin`): ImmediatelyFast's Forge side, which
+  Forge 47 loads natively, has a mixin into AppleSkin's `HUDOverlayHandler` with a static `@Inject` handler, written
+  for AppleSkin's Forge build. The corpus has AppleSkin's Fabric build, whose method is an instance one, and Mixin
+  0.8.5 refuses a static handler there, so the Forge 47 corpus client crashed in its first tick. Where the running
+  Mixin refuses it (Forge 47 only: Mixin 0.8.6 and later take it), such a handler is applied as an instance handler,
+  as the mod's Fabric side declares it, and the report says so. A handler the mixin calls itself, one Mixin finds
+  through a refmap, and one without code or synchronized are left as they are and reported. Forge 47's half, which
+  lists each Forge mod's manifest `MixinConfigs` for pre-flight, comes with the next sync; with it, pre-flight on
+  Forge 47 also sees the members Forge mods' mixins add to Fabric mods' classes.
+- **Verified on Forge 61 to 66** (#268): CORPUS-79 (the test mod's frames probe on every version in PR run
+  41718380187; in extended run 41718376778 the Forge 61 corpus client reached its world and the Forge 64 one got past
+  ResourcefulLib's hook) and CORPUS-90 (the test mod's loot check on every version). Both move to FINDINGS.
+- **CORPUS-95** (new, open): the Forge 64 corpus client then crashed creating its world, with "Screen cannot be
+  null" from Fabric Screen API's after-tick hook of the loading screen. Forge 64's `Minecraft` patch leaves
+  `doWorldLoad` as vanilla has it, so the next Forge run's evidence step prints that method and the mixins merged into
+  `Minecraft`.
+- **Tests:** `NativeModMixinsTest`: a static handler for a Fabric mod's instance methods is applied as an instance
+  one, and one for a static method is not; a handler found through a refmap, one the mixin calls, and a mixin
+  selecting by pattern or targeting its own mod's class are left as they are; the rewritten handler does what the
+  static one did, from compressed and expanded frames; a jar manifest's configs list their mixins for the side.
+- **CI:** core tests locally (484); the PR run on this change.
+
 ## 2026-11-03: Mob buckets' entity type on Forge 47 (CORPUS-94), Forge 66's own loot table naming (CORPUS-90), and the Forge syncs of #270 (task 5)
 
 - **CORPUS-94** (`MixinRepairs.retypedFieldBridge`): pre-flight points an accessor of a field the platform replaced at
