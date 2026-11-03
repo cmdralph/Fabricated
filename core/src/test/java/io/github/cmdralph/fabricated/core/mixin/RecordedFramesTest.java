@@ -1,7 +1,6 @@
 package io.github.cmdralph.fabricated.core.mixin;
 
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -46,7 +45,46 @@ class RecordedFramesTest {
 			mv.visitVarInsn(Opcodes.ALOAD, 4);
 			mv.visitInsn(Opcodes.POP);
 		});
-		assertTrue(RecordedFrames.dropsLiveLocals(expanded(forge), recordedByMixin(forge)));
+		MethodNode walked = expanded(forge);
+		List<RecordedFrames.Frame> recorded = recordedByMixin(forge);
+		assertEquals(List.of(1), RecordedFrames.droppingChops(walked, recorded));
+
+		// The repair records the chop as Mixin records a full frame of the locals it states: six, and then none drops.
+		List<RecordedFrames.Frame> full = recorded(RecordedFrames.asFullFrames(walked));
+		assertEquals(new RecordedFrames.Frame(recorded.get(1).index(), Opcodes.F_FULL, 6), full.get(1));
+		List<RecordedFrames.Frame> repaired = new ArrayList<>(recorded);
+		repaired.set(1, full.get(1));
+		assertEquals(List.of(), RecordedFrames.droppingChops(walked, repaired));
+	}
+
+	@Test
+	void aChopAfterARepairedOneIsJudgedFromTheLocalsTheRepairedOneStates() {
+		// Two chops of one local each after the append of three: Mixin, given the first as six locals, still takes four
+		// for the second, leaving four of the five live.
+		byte[] forge = method(mv -> {
+			Label appended = new Label();
+			Label chopped = new Label();
+			Label again = new Label();
+			storeLocals(mv, 3);
+			mv.visitVarInsn(Opcodes.ILOAD, 1);
+			mv.visitJumpInsn(Opcodes.IFEQ, appended);
+			mv.visitInsn(Opcodes.NOP);
+			mv.visitLabel(appended);
+			mv.visitFrame(Opcodes.F_APPEND, 3, new Object[] {"java/lang/StringBuilder", "java/lang/Object", "java/lang/Object"}, 0, null);
+			mv.visitVarInsn(Opcodes.ILOAD, 1);
+			mv.visitJumpInsn(Opcodes.IFEQ, chopped);
+			mv.visitInsn(Opcodes.NOP);
+			mv.visitLabel(chopped);
+			mv.visitFrame(Opcodes.F_CHOP, 1, null, 0, null);
+			mv.visitVarInsn(Opcodes.ILOAD, 1);
+			mv.visitJumpInsn(Opcodes.IFEQ, again);
+			mv.visitInsn(Opcodes.NOP);
+			mv.visitLabel(again);
+			mv.visitFrame(Opcodes.F_CHOP, 1, null, 0, null);
+			mv.visitVarInsn(Opcodes.ALOAD, 4);
+			mv.visitInsn(Opcodes.POP);
+		});
+		assertEquals(List.of(1, 2), RecordedFrames.droppingChops(expanded(forge), recordedByMixin(forge)));
 	}
 
 	@Test
@@ -78,7 +116,7 @@ class RecordedFramesTest {
 			mv.visitVarInsn(Opcodes.ALOAD, 4);
 			mv.visitInsn(Opcodes.POP);
 		});
-		assertFalse(RecordedFrames.dropsLiveLocals(expanded(vanilla), recordedByMixin(vanilla)));
+		assertEquals(List.of(), RecordedFrames.droppingChops(expanded(vanilla), recordedByMixin(vanilla)));
 	}
 
 	@Test
@@ -99,11 +137,11 @@ class RecordedFramesTest {
 			mv.visitFrame(Opcodes.F_CHOP, 1, null, 0, null);
 		});
 		List<RecordedFrames.Frame> recorded = recordedByMixin(forge);
-		assertFalse(RecordedFrames.dropsLiveLocals(expanded(forge), recorded.subList(0, 1)), "one frame fewer than the method has");
+		assertEquals(List.of(), RecordedFrames.droppingChops(expanded(forge), recorded.subList(0, 1)), "one frame fewer than the method has");
 		List<RecordedFrames.Frame> shifted = new ArrayList<>();
 		for (RecordedFrames.Frame frame : recorded) shifted.add(new RecordedFrames.Frame(frame.index() + 1, frame.type(), frame.size()));
-		assertFalse(RecordedFrames.dropsLiveLocals(expanded(forge), shifted), "frames at other instructions");
-		assertFalse(RecordedFrames.dropsLiveLocals(read(forge, 0), recorded), "a method read without its frames expanded");
+		assertEquals(List.of(), RecordedFrames.droppingChops(expanded(forge), shifted), "frames at other instructions");
+		assertEquals(List.of(), RecordedFrames.droppingChops(read(forge, 0), recorded), "a method read without its frames expanded");
 	}
 
 	/** Stores a {@code StringBuilder} in slot 4, then {@code this} in the next {@code more - 1} slots. */
@@ -143,13 +181,16 @@ class RecordedFramesTest {
 		return node.methods.stream().filter(m -> m.name.equals("render")).findFirst().orElseThrow();
 	}
 
-	/**
-	 * The frames as Mixin 0.8's class metadata records them ({@code ClassInfo.FrameData}): from the class read without
-	 * expanding its frames, each one's size {@code Locals.computeFrameSize(frame, initialFrameSize)}, at least the method's
-	 * argument slots.
-	 */
+	/** The frames as Mixin 0.8's class metadata records them: from the class read without expanding its frames. */
 	private static List<RecordedFrames.Frame> recordedByMixin(byte[] data) {
-		MethodNode method = read(data, 0);
+		return recorded(read(data, 0));
+	}
+
+	/**
+	 * The frames as Mixin 0.8 records a method's ({@code ClassInfo.FrameData}): each one's size
+	 * {@code Locals.computeFrameSize(frame, initialFrameSize)}, at least the method's argument slots.
+	 */
+	private static List<RecordedFrames.Frame> recorded(MethodNode method) {
 		int initial = 1;
 		for (Type argument : Type.getArgumentTypes(method.desc)) initial += argument.getSize();
 		List<RecordedFrames.Frame> frames = new ArrayList<>();

@@ -7,6 +7,7 @@ import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.FrameNode;
+import org.objectweb.asm.tree.InsnNode;
 import org.objectweb.asm.tree.MethodNode;
 
 /**
@@ -26,6 +27,10 @@ import org.objectweb.asm.tree.MethodNode;
  * ({@code PoseStack}, {@code Player}, a pair), then chops one: Mixin counted 4 + 4 - 4 and dropped the {@code PoseStack}
  * Resourceful Lib's {@code @Local} takes, so the client crashed ("Found 0 candidate variables"). Fabric's Mixin computes the
  * locals the same way, but vanilla's method has other frames, and the mod works there.
+ *
+ * <p>The repair (Fabricated's Mixin extension on Forge) records such a chop as a full frame of the locals it states, which
+ * Mixin reads as it reads any full frame: the locals the frame states, and none beyond. Every other frame stays as Mixin
+ * recorded it, so the locals Mixin finds elsewhere in the method don't change.
  */
 public final class RecordedFrames {
 	private RecordedFrames() {
@@ -42,36 +47,68 @@ public final class RecordedFrames {
 	}
 
 	/**
-	 * Whether Mixin's local computation, walking the method with these recorded frames, takes a chopping frame to leave
-	 * fewer locals than the frame states, and so drops live ones. Only a method whose frames are all expanded and line up
-	 * with the recorded ones, one for one and at the same instructions, is judged; any other is left as it is (false).
+	 * The chopping frames, by their position in {@code recorded}, after which Mixin's local computation counts fewer locals
+	 * than the frame states, and so drops live ones. Each is judged as Mixin counts once the earlier ones are repaired,
+	 * recorded as full frames of the locals they state. Only a method whose frames are all expanded and line up with the
+	 * recorded ones, one for one and at the same instructions, is judged; any other gives none.
 	 *
 	 * @param method   the method as Mixin walks it: read with its frames expanded, before any mixin applies
 	 * @param recorded the frames Mixin recorded for it, in order
+	 * @return the positions, ascending; empty where no chop drops a live local
 	 */
-	public static boolean dropsLiveLocals(MethodNode method, List<Frame> recorded) {
-		List<FrameNode> frames = new ArrayList<>();
-		for (AbstractInsnNode insn : method.instructions) {
-			if (insn instanceof FrameNode frame) frames.add(frame);
-		}
-		if (frames.isEmpty() || frames.size() != recorded.size()) return false;
+	public static List<Integer> droppingChops(MethodNode method, List<Frame> recorded) {
+		List<FrameNode> frames = frames(method);
+		if (frames.isEmpty() || frames.size() != recorded.size()) return List.of();
 		int initial = firstNonArgumentSlot(method);
+		List<Integer> chops = new ArrayList<>();
 		int size = initial;
 		for (int i = 0; i < frames.size(); i++) {
 			FrameNode frame = frames.get(i);
 			Frame data = recorded.get(i);
-			if (frame.type != Opcodes.F_NEW || data.index() != method.instructions.indexOf(frame)) return false;
-			int stated = slots(frame.local);
+			if (frame.type != Opcodes.F_NEW || data.index() != method.instructions.indexOf(frame)) return List.of();
+			int stated = Math.max(initial, slots(frame.local));
 			size = switch (data.type()) {
-				case Opcodes.F_FULL -> Math.max(initial, Math.min(Math.max(initial, stated), data.size()));
+				case Opcodes.F_FULL -> Math.max(initial, Math.min(stated, data.size()));
 				case Opcodes.F_NEW -> Math.max(initial, data.size());
 				case Opcodes.F_APPEND -> size + data.size();
 				case Opcodes.F_CHOP -> Math.max(initial, size - data.size());
 				default -> size;
 			};
-			if (data.type() == Opcodes.F_CHOP && size < stated) return true;
+			if (data.type() == Opcodes.F_CHOP && size < stated) {
+				chops.add(i);
+				size = stated; // as Mixin reads the full frame the repair records
+			}
 		}
-		return false;
+		return chops;
+	}
+
+	/**
+	 * The method's frames as full frames of the locals and stack each states, at the same instructions, every other
+	 * instruction a {@code NOP}: what Mixin records the frames from ({@code ClassInfo.Method}'s constructor) to give each
+	 * the size of the locals it states. Only its access, name, descriptor and instructions are set.
+	 *
+	 * @param method a method read with its frames expanded
+	 */
+	public static MethodNode asFullFrames(MethodNode method) {
+		MethodNode full = new MethodNode(method.access, method.name, method.desc, null, null);
+		for (AbstractInsnNode insn : method.instructions) {
+			if (insn instanceof FrameNode frame && frame.type == Opcodes.F_NEW) {
+				Object[] local = frame.local == null ? new Object[0] : frame.local.toArray();
+				Object[] stack = frame.stack == null ? new Object[0] : frame.stack.toArray();
+				full.instructions.add(new FrameNode(Opcodes.F_FULL, local.length, local, stack.length, stack));
+			} else {
+				full.instructions.add(new InsnNode(Opcodes.NOP));
+			}
+		}
+		return full;
+	}
+
+	private static List<FrameNode> frames(MethodNode method) {
+		List<FrameNode> frames = new ArrayList<>();
+		for (AbstractInsnNode insn : method.instructions) {
+			if (insn instanceof FrameNode frame) frames.add(frame);
+		}
+		return frames;
 	}
 
 	/** The slots an expanded frame's locals take: a long or a double two, anything else one. */

@@ -36,10 +36,12 @@ One entry per working session, newest first: what changed, and how it was verifi
     without expanded frames. It records an appending or chopping frame as at least the method's argument slots.
     Forge's `renderScreenEffect` appends three locals and later chops one: Mixin counts four live locals where six
     are, and drops the `PoseStack` the hook takes.
-  - **The check:** `RecordedFrames.dropsLiveLocals` walks a method as Mixin does and tells whether a chop leaves fewer
-    locals than its expanded frame states.
-  - **Next:** Fabricated's Mixin extension on Forge clears such a method's recorded frames before a mixin applies, so
-    Mixin takes each frame's locals from the expanded frame. That goes into both Forge branches with the next syncs.
+  - **The check:** `RecordedFrames.droppingChops` walks a method as Mixin does and finds the chops leaving fewer
+    locals than their expanded frames state, each judged after the earlier ones are repaired.
+  - **Next:** before mixins apply to a class a Fabric mod's mixin targets, Fabricated's Mixin extension on Forge records
+    each such chop as a full frame of the locals it states (`RecordedFrames.asFullFrames`). Mixin reads that as the
+    frame's locals and none beyond, and every other frame stays as Mixin recorded it, so the locals Mixin finds
+    elsewhere don't change. That goes into both Forge branches with the next syncs.
 - **New findings:**
   - CORPUS-87: ImmediatelyFast's Forge AppleSkin compat mixin fails against AppleSkin's Fabric build on the Forge 47
     client, and AppleSkin's client entrypoint throws (P2).
@@ -50,12 +52,13 @@ One entry per working session, newest first: what changed, and how it was verifi
 - **Tests:**
   - `RemapTest.anOverrideOfAMethodOnlySrgRenamesTakesItsNameFromTheTypeItInherits`: an interface, a mod's superclass,
     a game superclass, another plain method, and a mod's own method, which keeps its name.
-  - `RecordedFramesTest`: Forge's frame shape drops the local; appends of one local each drop none; frames that don't
-    line up with the recorded ones are left alone.
+  - `RecordedFramesTest`: Forge's frame shape drops the local, and none once repaired; a second chop is judged after
+    the first's repair; appends of one local each drop none; frames that don't line up with the recorded ones are left
+    alone.
   - `PipelineTest.aFieldThePlatformRetypedIsReachedThroughFabricatedsBridge` and
     `MixinPreflightTest.anAccessorOfAFieldThePlatformRetypedInvokesFabricatedsBridge`: with and without a bridge.
   - `PipelineTest.builtInModsHaveTheRootOfWhatProvidesThem`: MixinExtras' root, with and without NeoForge.
-- **CI:** core build and tests pass locally (474 tests). The syncs into `forge-legacy` and `forge` carry these, with
+- **CI:** core build and tests pass locally (475 tests). The syncs into `forge-legacy` and `forge` carry these, with
   the Forge halves of CORPUS-37 and CORPUS-79, and their extended runs verify them.
 
 ## 2026-11-03: Magna's hammers on Forge 47 (CORPUS-72), and Forge's recipe book `init` for Farmer's Delight (CORPUS-80, task 5)
