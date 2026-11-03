@@ -172,6 +172,12 @@ by the server runs (the colours, screens, key mappings and config screens by the
   and what it built but never registered is dropped at the registries' freeze with an error, where it stopped the
   freeze (all five, server run; HOLD-2). Fabricated's API runs what waits for the initializers once they ran
   (`Fabricated.get().afterEntrypoints`).
+- **Registration order:** a Fabric mod may make its objects first and register them after, in any order, as Fabric
+  lets it: a bucket made before its fluid is registered holds that fluid (all five), and on Forge 47 so do a liquid
+  block made before its fluid and a music disc made before its sound, and a block item registered before its block is
+  that block's item (server run; CORPUS-73). Forge's patches of those constructors, and Forge 47's of a block item's
+  block, looked the object up in its registry and threw: TechReborn's fluids and Lootr's block items didn't load on
+  Forge 47, and what they left registered stopped Forge's snapshot of the registries.
 - **Storages:** a Fabric mod's item and fluid storages are the `ITEM_HANDLER` and `FLUID_HANDLER` capabilities of its
   block entity, and a Forge mod's `ItemStackHandler` and `FluidTank` are Fabric's storages (all five, with Fabric API,
   server and client). A Forge handler only simulates until Fabric's outermost transaction commits, so an aborted one

@@ -8,14 +8,18 @@
     "fabricated-forge-interaction.mixins.json": ["fabric-events-interaction-v0"]
   },
   "mixins": {
+    "BlockItemEarlyBlockMixin": [],
+    "BucketItemEarlyFluidMixin": [],
     "BuiltInRegistriesFreezeMixin": [],
     "BuiltInRegistriesInvoker": [],
     "BuiltInRegistriesValidateMixin": [],
     "FluidTypeMixin": [],
     "GameDataFreezeMixin": [],
+    "LiquidBlockEarlyFluidMixin": [],
     "LivingEntityFluidTravelMixin": [],
     "MappedRegistryPendingHoldersMixin": [],
     "NamespacedWrapperPendingHoldersMixin": [],
+    "RecordItemEarlySoundMixin": [],
     "TagFileRemoveMixin": ["fabric-tag-api-v1"]
   }
 }

@@ -14,7 +14,11 @@
     "BuiltInRegistriesInvoker",
     "BuiltInRegistriesValidateMixin",
     "GameDataFreezeMixin",
-    "TagFileRemoveMixin"
+    "TagFileRemoveMixin",
+    "BucketItemEarlyFluidMixin",
+    "BlockItemEarlyBlockMixin",
+    "LiquidBlockEarlyFluidMixin",
+    "RecordItemEarlySoundMixin"
   ],
   "injectors": {
     "defaultRequire": 1

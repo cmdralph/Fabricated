@@ -96,6 +96,7 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 		} catch (RuntimeException | LinkageError e) {
 			LOGGER.error("FABRICATED-FORGE-TEST fluid registration failed", e);
 		}
+		ForgeRegistrationOrderTest.register();
 		try {
 			ForgeCommandTest.register();
 		} catch (RuntimeException | LinkageError e) {
