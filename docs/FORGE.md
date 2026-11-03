@@ -230,7 +230,7 @@ What else differs on Forge, for Fabric mods in general:
   is that mod's, and Fabricated's copy, its mixins and its Forge hooks stand down, as on NeoForge (all five, server run
   with stand-ins; PROVIDER-1). Sinytra Connector and a second Fabricated jar are refused, the launch stopping with
   Fabricated's reason (DUP-1), and so, at once, is a Forge jar with its own copy of Fabric Loader, beside which Forge
-  can't even build its error screen (all five; PROVIDER-2).
+  can't even build its error screen (all five; PROVIDER-2). Not Forgified Fabric API's on Forge 47 (below).
 - **Default method bridges:** where an interface a Fabric mod's mixin adds to a game class brings a second default
   method beside one Forge's own interfaces give it (`IForgeLivingEntity.self()` on `LivingEntity`, `IForgeEntity`'s
   `isMultipartEntity()` on every entity class), the class declares the method, calling Forge's, as on NeoForge
@@ -287,8 +287,16 @@ instead. Unless a task is named, nothing is planned for them yet.
   (`Gui.render`), or at its end, applies but never runs: Forge 61 to 66 hand the drawing to their layers at its start,
   and Forge 47's GUI never calls it. Mixins at its start, and into the methods that draw each part, which Forge's
   layers call, still run. Fabric API's own HUD hooks are bridged (above); task 5 looks at mods' own.
-- **Forgified Fabric API (task 5).** It is refused with any jar carrying its own Fabric Loader (PROVIDER-2, above).
-  Task 5 tries hiding its nested loader so both run, as on NeoForge.
+- **Forgified Fabric API (task 5).** Its 1.20.1 build nests Forgified Fabric Loader, whose packages are Fabric Loader's
+  API, as Fabricated's own copy's are. Fabricated's in-game mod nests an empty jar under that loader's jar-in-jar
+  identifier (`dev.su5ed.sinytra:fabric-loader`) at version 999.999.999, as Sinytra Connector does: Forge's jar-in-jar
+  adds the newest version every range admits, so it adds the empty jar and leaves the copy out, and the mod locator lets
+  the jar load (PROVIDER-2). Its modules are Forge mods whose `@Mod` classes start them and which use Fabric Loader's
+  public API only (read off its jar), so Fabricated's copy serves them; Fabricated's own Fabric API modules stand down
+  for theirs (PROVIDER-1). The in-game mod is then loaded even without Fabric mods, as only it nests the empty jar.
+  A copy under another identifier, in a jar's own entries, or with a range the empty jar's version doesn't satisfy is
+  still refused. A stand-in nesting a copy as Forgified Fabric API does is a gate; the server with Forgified Fabric API
+  itself is informational until it has passed (extended runs).
 
 **Not supported on Forge** (Forge's code differs where upstream hooks in):
 
