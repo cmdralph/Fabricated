@@ -653,7 +653,7 @@ public final class ModTranslator {
 					if (f.handler() == null) leftOut.add(relativeMixin(config, f.mixin()));
 					else handlers.computeIfAbsent(f.mixin().replace('.', '/') + ".class", k -> new TreeSet<>()).add(f.handler());
 				}
-				leaveOutHandlers(handlers, translated, overlay);
+				for (String whole : leaveOutHandlers(entry.config(), handlers, true, translated, overlay, findings)) leftOut.add(relativeMixin(config, whole));
 				if (leftOut.size() > skip.size()) skip = withDependents(entry.config(), config, leftOut, translated, findings, served(ducks, adapted));
 			}
 			if (!skip.isEmpty() || rewritten) {
@@ -776,11 +776,26 @@ public final class ModTranslator {
 		return relocated.relocated(repaired);
 	}
 
-	private static void leaveOutHandlers(Map<String, Set<String>> handlers, FileView files, Map<String, byte[]> overlay) throws ArchiveException {
+	/**
+	 * Puts each mixin without its left-out handlers in {@code overlay}. An interface mixin that this leaves with accessors
+	 * alone becomes an accessor mixin to Mixin ({@link AccessorShapedMixins}, CORPUS-76): one a config lists that then adds
+	 * nothing to its targets is returned (dotted), for its config to leave it out whole, and one that extends its target
+	 * no longer does. {@code listed}: whether a config lists the mixins (a plugin's aren't).
+	 */
+	private static Set<String> leaveOutHandlers(String configName, Map<String, Set<String>> handlers, boolean listed, FileView files,
+			Map<String, byte[]> overlay, List<PreflightFinding> findings) throws ArchiveException {
+		Set<String> whole = new TreeSet<>();
 		for (Map.Entry<String, Set<String>> h : handlers.entrySet()) {
 			byte[] mixin = files.read(h.getKey());
-			if (mixin != null) overlay.put(h.getKey(), withoutMembers(mixin, h.getValue(), new HashSet<>()));
+			if (mixin == null) continue;
+			byte[] without = withoutMembers(mixin, h.getValue(), new HashSet<>());
+			AccessorShapedMixins.Result shaped = AccessorShapedMixins.of(mixin, without, listed);
+			overlay.put(h.getKey(), shaped.bytes());
+			String dotted = h.getKey().substring(0, h.getKey().length() - ".class".length()).replace('/', '.');
+			if (shaped.outcome() == AccessorShapedMixins.Outcome.LEAVE_OUT) whole.add(dotted);
+			if (shaped.note() != null) findings.add(new PreflightFinding(Severity.INFO, configName, dotted, shaped.note(), ""));
 		}
+		return whole;
 	}
 
 	/**
@@ -818,7 +833,7 @@ public final class ModTranslator {
 				findings.add(f);
 				handlers.computeIfAbsent(f.mixin().replace('.', '/') + ".class", k -> new TreeSet<>()).add(f.handler());
 			}
-			leaveOutHandlers(handlers, files, overlay);
+			leaveOutHandlers(e.getKey(), handlers, false, files, overlay, findings);
 		}
 	}
 

@@ -21,6 +21,7 @@ import io.github.cmdralph.fabricated.core.archive.SafeArchive;
 import io.github.cmdralph.fabricated.core.bytecode.Annotations;
 import io.github.cmdralph.fabricated.core.bytecode.ClassBytesSource;
 import io.github.cmdralph.fabricated.core.bytecode.ClassIndex;
+import io.github.cmdralph.fabricated.core.bytecode.GamePackages;
 import io.github.cmdralph.fabricated.core.bytecode.LinkageChecker;
 import io.github.cmdralph.fabricated.core.cache.TranslationCache;
 import io.github.cmdralph.fabricated.core.json.Json;
@@ -49,11 +50,11 @@ import org.objectweb.asm.tree.MethodNode;
  */
 public final class LinkageAnalysis {
 	/**
-	 * Owners verified: Minecraft, Blaze3D, the Fabric API namespace and Fabric Loader's, whose classes Fabricated
+	 * Owners verified: the game's ({@link GamePackages}), the Fabric API namespace and Fabric Loader's, whose classes Fabricated
 	 * provides itself (its public API and the internals mods commonly use), so a mod reaching for any other loader
 	 * internal is reported before it fails.
 	 */
-	public static final Predicate<String> CHECKED = name -> name.startsWith("net/minecraft/") || name.startsWith("com/mojang/blaze3d/")
+	public static final Predicate<String> CHECKED = name -> GamePackages.isGame(name)
 			|| name.startsWith("net/fabricmc/fabric/") || isLoaderClass(name) && LoaderClasses.READABLE;
 
 	/** Fabricated's own Fabric Loader classes, which load next to core (from its jar). */

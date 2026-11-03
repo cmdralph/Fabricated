@@ -30,6 +30,10 @@ chain() {
 whole() {
 	grep -o -E '(Critical injection failure|[A-Za-z0-9_.$]*(InvalidInjectionException|InjectionError|SugarApplicationException|InvalidMixinException|MixinApplyError|InvalidAccessorException))[^ ]*.*' "$1" \
 		| awk '!seen[$0]++' | head -n 6 | cut -c1-3000 | fold -w 300
+	# A local discriminator's message goes on over the next lines: the locals MixinExtras and Mixin saw at the point
+	# (ResourcefulLib's implicit PoseStack, CORPUS-79).
+	grep -n -A 30 -m 1 -E 'Invalid implicit variable discriminator|Unable to find matching local|InvalidImplicitDiscriminatorException' "$1" \
+		| cut -c1-300 | head -n 32
 }
 
 echo "== $label: what stopped it"

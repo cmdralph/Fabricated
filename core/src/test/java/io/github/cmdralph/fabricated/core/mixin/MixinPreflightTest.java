@@ -5577,6 +5577,93 @@ class MixinPreflightTest {
 	}
 
 	@Test
+	void aRedirectsLocalArgumentTakenByNameIsTakenByItsSlotWhereMixinDoesntKnowArgumentNames() throws Exception {
+		// CORPUS-82: ImmediatelyFast's buffer upload hook, a @Redirect of DirectStateAccess.bufferSubData in 26.3's
+		// GlCommandEncoder.writeToBuffer(GpuBufferSlice, ByteBuffer), takes @Local(name = "slice", argsOnly = true)
+		// GpuBufferSlice. Pre-flight didn't take com.mojang.renderpearl for the game's, judged nothing of the mixin, and Forge
+		// 66's client stopped: "Unable to find matching local!". Its mixin names its target by a string.
+		String encoder = "com/mojang/renderpearl/backend/opengl/GlCommandEncoder";
+		String access = "com/mojang/renderpearl/backend/opengl/DirectStateAccess";
+		String slice = "com/mojang/renderpearl/api/buffers/GpuBufferSlice";
+		String upload = "(IJLjava/nio/ByteBuffer;I)V";
+		ClassWriter target = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		target.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, encoder, null, "java/lang/Object", null);
+		target.visitField(Opcodes.ACC_PRIVATE, "access", "L" + access + ";", null, null).visitEnd();
+		MethodVisitor write = target.visitMethod(Opcodes.ACC_PUBLIC, "writeToBuffer", "(L" + slice + ";Ljava/nio/ByteBuffer;)V", null, null);
+		org.objectweb.asm.Label start = new org.objectweb.asm.Label();
+		org.objectweb.asm.Label end = new org.objectweb.asm.Label();
+		write.visitCode();
+		write.visitLabel(start);
+		write.visitVarInsn(Opcodes.ALOAD, 0);
+		write.visitFieldInsn(Opcodes.GETFIELD, encoder, "access", "L" + access + ";");
+		write.visitInsn(Opcodes.ICONST_0);
+		write.visitInsn(Opcodes.LCONST_0);
+		write.visitVarInsn(Opcodes.ALOAD, 2);
+		write.visitInsn(Opcodes.ICONST_0);
+		write.visitMethodInsn(Opcodes.INVOKEVIRTUAL, access, "bufferSubData", upload, false);
+		write.visitInsn(Opcodes.RETURN);
+		write.visitLabel(end);
+		write.visitLocalVariable("this", "L" + encoder + ";", null, start, end, 0);
+		write.visitLocalVariable("slice", "L" + slice + ";", null, start, end, 1);
+		write.visitLocalVariable("data", "Ljava/nio/ByteBuffer;", null, start, end, 2);
+		write.visitMaxs(0, 0);
+		write.visitEnd();
+		target.visitEnd();
+		ClassWriter accessClass = new ClassWriter(0);
+		accessClass.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, access, null, "java/lang/Object", null);
+		accessClass.visitMethod(Opcodes.ACC_PUBLIC, "bufferSubData", upload, null, null).visitEnd();
+		accessClass.visitEnd();
+		ClassWriter sliceClass = new ClassWriter(0);
+		sliceClass.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, slice, null, "java/lang/Object", null);
+		sliceClass.visitEnd();
+		ClassIndex game = new ClassIndex(Map.of(encoder, target.toByteArray(), access, accessClass.toByteArray(), slice, sliceClass.toByteArray())::get);
+
+		for (boolean byString : new boolean[] {false, true}) {
+			ClassWriter cw = new ClassWriter(0);
+			cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, "com/example/mixin/Upload", null, "java/lang/Object", null);
+			AnnotationVisitor m = cw.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false);
+			AnnotationVisitor values = m.visitArray(byString ? "targets" : "value");
+			values.visit(null, byString ? encoder.replace('/', '.') : Type.getObjectType(encoder));
+			values.visitEnd();
+			m.visitEnd();
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "fix", "(L" + access + ";IJLjava/nio/ByteBuffer;IL" + slice + ";)V", null, null);
+			AnnotationVisitor sugar = mv.visitParameterAnnotation(5, LOCAL, false);
+			AnnotationVisitor names = sugar.visitArray("name");
+			names.visit(null, "slice");
+			names.visitEnd();
+			sugar.visit("argsOnly", true);
+			sugar.visitEnd();
+			AnnotationVisitor ann = mv.visitAnnotation(REDIRECT, false);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "writeToBuffer");
+			methods.visitEnd();
+			AnnotationVisitor at = ann.visitAnnotation("at", AT);
+			at.visit("value", "INVOKE");
+			at.visit("target", "L" + access + ";bufferSubData" + upload);
+			at.visitEnd();
+			ann.visitEnd();
+			mv.visitCode();
+			mv.visitInsn(Opcodes.RETURN);
+			mv.visitMaxs(0, 8);
+			mv.visitEnd();
+			cw.visitEnd();
+			Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Upload", cw.toByteArray()));
+			MixinConfigFile config = MixinConfigFile.parse(config(true, "Upload"));
+			MixinPreflight forge = new MixinPreflight(game, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true, ClassBytesSource.EMPTY,
+					"Forge", true, MixinPreflight.ConstructorInjects.UNSAFE_POINTS, false);
+			List<PreflightFinding> notes = new ArrayList<>();
+			byte[] repaired = forge.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes).get("com/example/mixin/Upload.class");
+			assertNotNull(repaired, "by string " + byString + ": " + notes + " " + forge.check("test.mixins.json", config, Refmap.EMPTY, Set.of()));
+			ClassNode node = new ClassNode();
+			new ClassReader(repaired).accept(node, 0);
+			MethodNode fix = node.methods.stream().filter(mn -> mn.name.equals("fix")).findFirst().orElseThrow();
+			AnnotationNode local = Annotations.ofParameter(fix, 5).stream().filter(a -> a.desc.equals(LOCAL)).findFirst().orElseThrow();
+			assertEquals(1, Annotations.value(local, "index"), "by string " + byString);
+			assertNull(Annotations.value(local, "name"));
+		}
+	}
+
+	@Test
 	void aLocalTakenByNameFindsItUnderTheNameARecompiledBuildGivesIt() throws Exception {
 		// LOCAL-3: Fabric API's lifecycle hook takes @Local(name = "level") ServerLevel at ServerLevel.close() in
 		// MinecraftServer.stopServer; Forge 64's build, recompiled from decompiled source, names that loop's variable levelx,
