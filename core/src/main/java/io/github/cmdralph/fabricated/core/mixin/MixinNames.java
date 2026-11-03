@@ -104,8 +104,6 @@ final class MixinNames {
 	/** javac's name for a lambda body: the enclosing method's name and the lambda's index in the class. */
 	static final Pattern LAMBDA = Pattern.compile("lambda\\$(.+)\\$\\d+");
 
-	static final Set<String> GAME_PREFIXES = Set.of("net/minecraft/", "com/mojang/blaze3d/");
-
 	static final String NEOFORGE_PACKAGE = "net/neoforged/";
 
 	/**

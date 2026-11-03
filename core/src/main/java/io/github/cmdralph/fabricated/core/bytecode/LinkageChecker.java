@@ -138,7 +138,7 @@ public final class LinkageChecker {
 			}
 		}
 		for (MethodNode m : node.methods) {
-			if (m.desc.contains("Lnet/minecraft/client/") || m.desc.contains("Lcom/mojang/blaze3d/") || m.desc.contains("Lnet/minecraft/class_")) return true;
+			if (GamePackages.mentionsClient(m.desc) || m.desc.contains("Lnet/minecraft/class_")) return true;
 			if (m.instructions == null) continue;
 			for (AbstractInsnNode insn : m.instructions) {
 				if (insn instanceof MethodInsnNode mi && isClientName(mi.owner)) return true;
@@ -150,7 +150,6 @@ public final class LinkageChecker {
 	}
 
 	private static boolean isClientName(String name) {
-		return name != null && (name.startsWith("net/minecraft/client/") || name.startsWith("com/mojang/blaze3d/")
-				|| name.startsWith("net/minecraft/class_"));
+		return GamePackages.isClient(name) || name != null && name.startsWith("net/minecraft/class_");
 	}
 }
