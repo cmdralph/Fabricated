@@ -14,6 +14,7 @@ import static io.github.cmdralph.fabricated.core.testutil.TestEnumBodies.holder;
 import static io.github.cmdralph.fabricated.core.testutil.TestEnumBodies.mixin;
 import static io.github.cmdralph.fabricated.core.testutil.TestEnumBodies.target;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -363,7 +364,8 @@ class EnumValuesMixinsTest {
 	 * with an {@code init} that calls {@code RecipeBookSettings.register}, which throws "This is not implemented yet". Each
 	 * constant Forge's {@code create} factory makes goes through {@code init}, so the mixin cancels it for the mod's
 	 * constants, which Fabric gives no such hook, and only for those: another constant's {@code create} still fails as it
-	 * would without Fabricated. Where {@code init} returns (Forge 47's registers the recipe book's tags), it runs.
+	 * would without Fabricated. Forge 47's returns but registers the recipe book's tags with another class, and is
+	 * skipped too; one keeping to the enum runs.
 	 */
 	@Test
 	void aForgeEnumWhoseInitNeverReturnsGetsItsConstantsWithoutIt() throws Exception {
@@ -388,14 +390,23 @@ class EnumValuesMixinsTest {
 				() -> type.getMethod("create", String.class).invoke(null, "OTHER"));
 		assertEquals("This is not implemented yet", other.getCause().getMessage(), "another constant's init still runs");
 
-		// Forge 47's init returns: the constants get it as Forge mods' own do.
+		// Forge 47's init returns, but it registers the recipe book's tags with RecipeBookSettings, initializing that class
+		// while the enum still is: before Farmer's Delight set the field its own mixin there reads (CORPUS-80). It is
+		// skipped too.
 		Map<String, ClassNode> registering = Map.of(BOOK_SETTINGS, node(bookSettings(false)));
 		assertTrue(EnumValuesMixins.initReturns(target, registering::get));
-		EnumValuesMixins.Result kept = EnumValuesMixins.of(node(bookMixin()), target, null, registering::get, "com/example/FabricatedEnumBodies");
-		assertTrue(node(kept.mixin()).methods.stream().noneMatch(m -> m.name.equals("fabricated$skipInit")));
-		// What can't be told keeps it: init branching, or calling what isn't here.
+		assertFalse(EnumValuesMixins.initKeepsToEnum(target));
+		EnumValuesMixins.Result skipped = EnumValuesMixins.of(node(bookMixin()), target, null, registering::get, "com/example/FabricatedEnumBodies");
+		assertTrue(node(skipped.mixin()).methods.stream().anyMatch(m -> m.name.equals("fabricated$skipInit")));
+		// What can't be told is taken as returning: init branching, or calling what isn't here.
 		assertTrue(EnumValuesMixins.initReturns(target, name -> null));
 		assertTrue(EnumValuesMixins.initReturns(node(bookType(true)), game::get), "a branch");
+		// An init keeping to the enum, as Forge 47's MobCategory.init putting the constant in the enum's map by name, which
+		// Forge's codec reads, runs for the constants as for Forge mods' own.
+		ClassNode own = node(bookType(false, true));
+		assertTrue(EnumValuesMixins.initReturns(own, registering::get) && EnumValuesMixins.initKeepsToEnum(own));
+		EnumValuesMixins.Result kept = EnumValuesMixins.of(node(bookMixin()), own, null, registering::get, "com/example/FabricatedEnumBodies");
+		assertTrue(node(kept.mixin()).methods.stream().noneMatch(m -> m.name.equals("fabricated$skipInit")));
 	}
 
 	/**
@@ -483,6 +494,14 @@ class EnumValuesMixinsTest {
 	 * only when a static says so.
 	 */
 	private static byte[] bookType(boolean branching) {
+		return bookType(branching, false);
+	}
+
+	/**
+	 * The same; with {@code ownInit}, {@code init} keeps to the enum, as Forge 47's {@code MobCategory.init}: it puts the
+	 * constant in a map of the enum's by its name.
+	 */
+	private static byte[] bookType(boolean branching, boolean ownInit) {
 		String self = "L" + BOOK_TYPE + ";";
 		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
 		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_FINAL | Opcodes.ACC_SUPER | Opcodes.ACC_ENUM, BOOK_TYPE, null, "java/lang/Enum",
@@ -508,8 +527,17 @@ class EnumValuesMixinsTest {
 			init.visitFieldInsn(Opcodes.GETSTATIC, BOOK_TYPE, "REGISTER", "Z");
 			init.visitJumpInsn(Opcodes.IFEQ, skip);
 		}
-		init.visitVarInsn(Opcodes.ALOAD, 0);
-		init.visitMethodInsn(Opcodes.INVOKESTATIC, BOOK_SETTINGS, "register", "(" + self + ")V", false);
+		if (ownInit) {
+			init.visitFieldInsn(Opcodes.GETSTATIC, BOOK_TYPE, "BY_NAME", "Ljava/util/Map;");
+			init.visitVarInsn(Opcodes.ALOAD, 0);
+			init.visitMethodInsn(Opcodes.INVOKEVIRTUAL, BOOK_TYPE, "name", "()Ljava/lang/String;", false);
+			init.visitVarInsn(Opcodes.ALOAD, 0);
+			init.visitMethodInsn(Opcodes.INVOKEINTERFACE, "java/util/Map", "put", "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;", true);
+			init.visitInsn(Opcodes.POP);
+		} else {
+			init.visitVarInsn(Opcodes.ALOAD, 0);
+			init.visitMethodInsn(Opcodes.INVOKESTATIC, BOOK_SETTINGS, "register", "(" + self + ")V", false);
+		}
 		init.visitLabel(skip);
 		init.visitInsn(Opcodes.RETURN);
 		init.visitMaxs(0, 0);
