@@ -24,10 +24,13 @@ import net.minecraft.world.level.storage.loot.entries.LootItem;
 
 /**
  * CI test mod part for Fabricated's native fabric-loot-api-v3: dirt's loot table gets a diamond pool through MODIFY
- * (and must come from vanilla), a drop listener adds an emerald, and dirt's drops must contain both.
+ * (and must come from vanilla), a drop listener adds an emerald, and dirt's drops must contain both. MODIFY also names
+ * dirt's table as its builder builds it, as Porting Lib Loot names every table ({@link LootNamedAsBuilt}), and the table
+ * must load with that name, where NeoForge refuses a second name before 26.3 (CORPUS-90).
  */
 public final class LootTest implements ModInitializer {
-	private static final ResourceKey<LootTable> DIRT = ResourceKey.create(Registries.LOOT_TABLE, Identifier.withDefaultNamespace("blocks/dirt"));
+	private static final Identifier DIRT_ID = Identifier.withDefaultNamespace("blocks/dirt");
+	private static final ResourceKey<LootTable> DIRT = ResourceKey.create(Registries.LOOT_TABLE, DIRT_ID);
 	private static final Set<String> SEEN = ConcurrentHashMap.newKeySet();
 
 	@Override
@@ -40,9 +43,13 @@ public final class LootTest implements ModInitializer {
 			if (!key.equals(DIRT)) return;
 			SEEN.add(source == LootTableSource.VANILLA ? "modify_vanilla" : "modify_" + source);
 			builder.withPool(LootPool.lootPool().add(LootItem.lootTableItem(Items.DIAMOND)));
+			((LootNamedAsBuilt) builder).fabricatedTest$nameAsBuilt(DIRT_ID);
 		});
 		LootTableEvents.ALL_LOADED.register((manager, registry) -> {
 			if (registry.containsKey(DIRT)) SEEN.add("all_loaded");
+			for (LootTable table : registry) {
+				if (DIRT_ID.equals(registry.getKey(table)) && DIRT_ID.equals(table.getLootTableId())) SEEN.add("named");
+			}
 		});
 		LootTableEvents.MODIFY_DROPS.register((holder, context, drops) -> {
 			if (holder.is(DIRT)) drops.add(new ItemStack(Items.EMERALD));
@@ -51,7 +58,7 @@ public final class LootTest implements ModInitializer {
 		ServerLifecycleEvents.SERVER_STARTED.register(server -> {
 			ServerLevel level = server.overworld();
 			List<String> failed = new ArrayList<>();
-			for (String what : List.of("replace", "modify_vanilla", "all_loaded")) {
+			for (String what : List.of("replace", "modify_vanilla", "all_loaded", "named")) {
 				if (!SEEN.contains(what)) failed.add(what);
 			}
 			List<ItemStack> drops = Block.getDrops(Blocks.DIRT.defaultBlockState(), level, BlockPos.ZERO, null);

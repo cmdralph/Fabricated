@@ -76,8 +76,10 @@ public final class LootBridge {
 			LootTableEvents.MODIFY.invoker().modifyLootTable(key, builder, source, registries);
 			result = builder.build();
 		}
-		// NeoForge names each table (its loot modifiers look tables up by name); a built table has none yet.
-		result.setLootTableId(event.getName());
+		// NeoForge names each table (its loot modifiers look tables up by name). A Fabric mod may have named it as it was
+		// built (Porting Lib Loot names each table from its MODIFY listener), and NeoForge refuses to name a table twice,
+		// even by the same name, before 26.3 (CORPUS-90).
+		if (!event.getName().equals(result.getLootTableId())) result.setLootTableId(event.getName());
 		event.setTable(result);
 	}
 
