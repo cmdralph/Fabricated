@@ -3,6 +3,82 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-03: Forge's compressed frames (CORPUS-79), Porting Lib Loot's table names (CORPUS-90), interface mixins' injectors on Forge 47 (CORPUS-91), and Forge 47's corpus fixes verified (task 5)
+
+- **Verified on Forge 47** (extended run 41703581030, after #267): CORPUS-86 (the corpus server loaded Moonlight's
+  data packs), CORPUS-37 (Porting Lib's accessors and the modules needing them loaded on the server and client),
+  CORPUS-77 (owo's client entrypoint ran), CORPUS-80 (Farmer's Delight's entrypoints ran, Supplementaries and Moonlight
+  loaded, and the client got past `RecipeBookManager.init`) and CORPUS-84 (the client baked its models). Their rows,
+  and CORPUS-36's, which CORPUS-80 fixed, are in `FINDINGS.md`.
+- **CORPUS-79, corrected** (`RecordedFrames.counted` and `withExpandedFrames`, new; `droppingChops`, `asFullFrames`
+  and `mayDropLiveLocals` removed): the repair the earlier entry describes never ran on Forge 61 to 66, and the Forge
+  test mod's probe failed on all four versions (#268's PR run 41703553076 and extended run 41703586244).
+  - **Why:** it took the frames Mixin walks to be expanded, as McModLauncher's ModLauncher reads a class. Forge's own
+    fork of ModLauncher (10.2, read in its source) reads it with its frames compressed, so the frames Mixin walks state
+    only each frame's change, and nothing in the walk corrects the count.
+  - **The fix:** before mixins apply to a class a Fabric mod's mixin targets, the Forge branches' Mixin extension finds
+    the methods whose locals Mixin would count wrong at some frame (`counted`, from the frames Mixin recorded against
+    the same frames expanded) and records their frames again from the method with its frames expanded
+    (`withExpandedFrames`, as ASM expands them). Mixin then counts each frame's own locals, as with its
+    `CLASSREADER_EXPAND_FRAMES` option, and as Mixin 0.8.5 on Forge 47 and Fabric's Mixin do. It goes into the Forge
+    branches with the next syncs.
+  - **Decision:** only those methods are recorded again, and only in classes a Fabric mod's mixin targets, so Forge
+    mods' injectors elsewhere see Mixin's frames as on Forge without Fabricated. Setting Mixin's option for the whole
+    game would change every Forge mod's locals.
+- **CORPUS-90** (NeoForge's `LootBridge`; `forge-legacy`'s `LootDataManagerMixin` in #269): with CORPUS-86 fixed, the
+  Forge 47 corpus server stopped loading its loot tables: "Attempted to rename loot table ... this is not supported".
+  Porting Lib Loot names every table as its builder builds it, and Fabricated's hooks named the rebuilt table again,
+  which Forge refuses, even by the same name, as do NeoForge 21.1 to 26.2 and Forge 61 to 65. The hooks now name a
+  rebuilt table unless it already has that name. Forge 61 to 65's hook gets the same fix with the next sync.
+  Verified on Forge 47 after #269 (extended run 41712171106): the corpus server loaded its loot tables, Porting Lib
+  Loot naming every one.
+- **CORPUS-91 and INTERFACE-1** (`InterfaceInjects`, new): Forge 47's Mixin 0.8.5 applies no injector in an interface
+  mixin and drops one with a non-public method, so pre-flight left such injectors out. Fabric API's `OxidizableMixin`,
+  which makes vanilla's oxidation map mutable for its registry, was one, so Create's main entrypoint threw putting its
+  copper in the map.
+  - **The fix:** where Mixin applies no injector in an interface mixin, translation makes an `@Inject` at `HEAD`,
+    `RETURN` or `TAIL` (cancellable or not, its handler taking the callback info alone or after the target's
+    parameters) a public synthetic method, which 0.8.5 merges into its target, named for its mixin and marked with
+    where it injects. Once the target's mixins have applied, the Forge branches' Mixin extension makes it private
+    again and calls it at those points as Mixin's `CallbackInjector` does, failing the class where it injects fewer
+    times than its injector requires, as Mixin does. The report says which handlers Fabricated applies and why it
+    can't apply the others, which are left out as before. The extension's half goes into `forge-legacy` with the
+    next sync.
+  - **Decision:** the general fix rather than a patch of the copper map alone. AppleSkin's tooltip hook, Cardinal
+    Components' bucket hooks and Fabric API's data generation hooks are the same kind of injector, and Mixin's own
+    merge rewrites the handler's code for its target, so Fabricated only adds the calls. Other injectors in
+    interface mixins (Fabric API's and owo's recipe remainders, Porting Lib's `@WrapOperation`) stay left out.
+- **New findings:**
+  - CORPUS-91: Create's main entrypoint throws on Forge 47, as vanilla's oxidation map stays immutable without Fabric
+    API's interface mixin, which Forge 47's Mixin doesn't apply (P0).
+  - CORPUS-92: Supplementaries' custom block models fail on the Forge 47 client: neither Forge's nor Porting Lib's
+    loader registry has its loaders (P2, cause UNVERIFIED).
+  - CORPUS-93: Porting Lib's GUI utilities are disabled on the Forge 47 client, as a call its `@ModifyArgs` hooks isn't
+    in Forge's method (P2).
+  - CORPUS-87, raised to P0: ImmediatelyFast's Forge AppleSkin hook, which Forge loads natively, now crashes the Forge
+    47 client at its first tick.
+  - CORPUS-94: with CORPUS-90 fixed, the Forge 47 corpus server stops in its first data reload, as Supplementaries
+    reads `MobBucketItem`'s entity type through an accessor of a field Forge 47 replaced with a supplier (P0).
+- **Tests:**
+  - `RecordedFramesTest`, rewritten: Forge's shape counts 8 then 4 locals where there are 7 then 6, and right once
+    recorded expanded, with compressed or expanded frames walked; vanilla's shape is over-counted; a chopped long is
+    counted as one slot; a method Mixin counts right counts the same; the expanded frames are ASM's `EXPAND_FRAMES`
+    ones for an instance method, a constructor with uninitialized values, and a static method with every kind of
+    argument.
+  - NeoForge's test mod names dirt's table from MODIFY and a builder mixin, and its loot check requires the table to
+    load with that name.
+  - `InterfaceInjectsTest`, new: handlers marked in translation and merged into an interface are called at `HEAD`
+    (cancelled with a value), at each `RETURN` (cancelled at one, with another value), at the `RETURN` an ordinal
+    counts, at a `TAIL` returning a long and in a default method, with the callback info's id as Mixin's; the code
+    is verified as the class loads; handlers it can't apply are refused with why; a handler finding too few points
+    fails the class.
+  - `PipelineTest`: AppleSkin's shape, an interface mixin extending its target, keeps its `HEAD` inject for Fabricated
+    on Forge and stays as it is where Mixin applies it; the CORPUS-76 test now injects at a call, which Fabricated
+    leaves out.
+  - The tests' class loader for compiled classes is `testutil.BytesClassLoader`, shared, where three tests each had
+    a copy.
+- **CI:** core tests locally (479); the PR and extended runs on this change.
+
 ## 2026-11-03: Moonlight's codec on Forge 47 (CORPUS-86), owo's and Porting Lib's fixes, and Forge's miscounted frames (CORPUS-79, task 5)
 
 - **Verified:** CORPUS-85 (#261 on `forge`; extended run 41682699918): the Forge 65 and 66 corpus clients joined their

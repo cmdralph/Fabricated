@@ -19,6 +19,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.tree.ClassNode;
 
+import io.github.cmdralph.fabricated.core.testutil.BytesClassLoader;
 import io.github.cmdralph.fabricated.core.testutil.TestSources;
 
 class LibraryBridgesTest {
@@ -213,27 +214,5 @@ class LibraryBridgesTest {
 		ClassNode node = new ClassNode();
 		new ClassReader(data).accept(node, ClassReader.SKIP_FRAMES);
 		return node;
-	}
-
-	/** Defines the given classes itself, verifying them as any class loader's. */
-	private static final class BytesClassLoader extends ClassLoader {
-		private final Map<String, byte[]> classes;
-
-		BytesClassLoader(Map<String, byte[]> classes) {
-			super(LibraryBridgesTest.class.getClassLoader());
-			this.classes = classes;
-		}
-
-		@Override
-		protected Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {
-			synchronized (getClassLoadingLock(name)) {
-				byte[] data = classes.get(name.replace('.', '/'));
-				if (data == null) return super.loadClass(name, resolve);
-				Class<?> c = findLoadedClass(name);
-				if (c == null) c = defineClass(name, data, 0, data.length);
-				if (resolve) resolveClass(c);
-				return c;
-			}
-		}
 	}
 }
