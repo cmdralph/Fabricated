@@ -54,7 +54,7 @@ How to read it: as the NeoForge table, and
 | fabric-game-rule-api-v1 | loads | loads | loads | loads | loads |
 | fabric-item-api-v1 | loads, part | loads, part | loads, part | loads, part | loads, part |
 | fabric-item-group-api-v1 | loads | — | — | — | loads |
-| fabric-key-binding-api-v1 | native | — | — | — | loads |
+| fabric-key-binding-api-v1 | native | — | — | — | native |
 | fabric-key-mapping-api-v1 | — | native | native | native | — |
 | fabric-keybindings-v0 | — | — | — | — | loads |
 | fabric-lifecycle-events-v1 | loads, part | loads, part | loads, part | loads, part | loads, part |
@@ -159,13 +159,13 @@ by the server runs (the colours, screens, key mappings and config screens by the
   1.20.1's HUD API, and fires from Forge's `RenderGuiEvent.Post`, where Forge's GUI ends its HUD drawing (with Fabric
   API, client run). Removing Fabric's `info_bar` element also keeps the bar from switching between the experience and
   the locator bar on Forge 61 to 66, whose layer does both.
-- **Key mappings:** on Forge 61 to 66 the key mapping module (the key binding module on 1.21.11) is native, with Fabric
-  API's jar and without it (client runs). Upstream refuses a key mapping once the game's options exist, which Forge
-  creates before it loads mods, so passed through, it failed every client entrypoint that registers one (KEYMAP-3).
-  Fabricated keeps them until Forge's `RegisterKeyMappingsEvent`, where Forge mods register theirs; Forge then reads
-  the saved keys again. A test key mapping is in the options, sorted after the game's, and bound to the key CI's
-  options file saves for it; a second registration of it, and one after Forge's event, are refused, as upstream refuses
-  them. On Forge 47, Fabric API's module loads as it is.
+- **Key mappings:** on all five Forge versions the key mapping module (the key binding module on 1.21.11 and 1.20.1) is
+  native, with Fabric API's jar and without it (client runs). Upstream refuses a key mapping once the game's options
+  exist, which Forge creates before it loads mods, so passed through, it failed every client entrypoint that registers
+  one (KEYMAP-3; on Forge 47 found with Xaero's World Map). Fabricated keeps them until Forge's
+  `RegisterKeyMappingsEvent`, where Forge mods register theirs; Forge then reads the saved keys again. A test key
+  mapping is in the options, sorted after the game's, and bound to the key CI's options file saves for it; a second
+  registration of it, and one after Forge's event, are refused, as upstream refuses them.
 - **Config screens:** a Fabric mod's Mod Menu config screen is behind Forge's mod list button, as on NeoForge (all five,
   client run).
 - **Failed initializers:** a Fabric mod whose entrypoint throws is named in the report and in Forge's loading warnings,
