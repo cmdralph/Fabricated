@@ -5,10 +5,13 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
+import io.github.cmdralph.fabricated.api.FabricApiModule;
+import io.github.cmdralph.fabricated.api.Fabricated;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.loot.v3.LootTableEvents;
 import net.fabricmc.fabric.api.loot.v3.LootTableSource;
+import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.Identifier;
@@ -32,6 +35,14 @@ public final class LootTest implements ModInitializer {
 	private static final Identifier DIRT_ID = Identifier.withDefaultNamespace("blocks/dirt");
 	private static final ResourceKey<LootTable> DIRT = ResourceKey.create(Registries.LOOT_TABLE, DIRT_ID);
 	private static final Set<String> SEEN = ConcurrentHashMap.newKeySet();
+	/** Porting Lib Loot names every table as it is built (the corpus). */
+	private static final boolean PORTING_LIB_LOOT = FabricLoader.getInstance().isModLoaded("porting_lib_loot");
+	/**
+	 * Whether the test mod names dirt's table as Porting Lib Loot would: not where Porting Lib Loot does, nor where another
+	 * mod's loot module fires the events (Forgified Fabric API's, whose hook names the tables it rebuilds itself).
+	 */
+	private static final boolean NAMES_DIRT = !PORTING_LIB_LOOT && Fabricated.get().flatMap(api -> api.fabricApiModule("fabric-loot-api-v3"))
+			.map(loot -> loot.status() != FabricApiModule.Status.PROVIDED_BY_MOD).orElse(true);
 
 	@Override
 	public void onInitialize() {
@@ -43,7 +54,7 @@ public final class LootTest implements ModInitializer {
 			if (!key.equals(DIRT)) return;
 			SEEN.add(source == LootTableSource.VANILLA ? "modify_vanilla" : "modify_" + source);
 			builder.withPool(LootPool.lootPool().add(LootItem.lootTableItem(Items.DIAMOND)));
-			((LootNamedAsBuilt) builder).fabricatedTest$nameAsBuilt(DIRT_ID);
+			if (NAMES_DIRT) ((LootNamedAsBuilt) builder).fabricatedTest$nameAsBuilt(DIRT_ID);
 		});
 		LootTableEvents.ALL_LOADED.register((manager, registry) -> {
 			if (registry.containsKey(DIRT)) SEEN.add("all_loaded");
@@ -58,7 +69,9 @@ public final class LootTest implements ModInitializer {
 		ServerLifecycleEvents.SERVER_STARTED.register(server -> {
 			ServerLevel level = server.overworld();
 			List<String> failed = new ArrayList<>();
-			for (String what : List.of("replace", "modify_vanilla", "all_loaded", "named")) {
+			List<String> expected = new ArrayList<>(List.of("replace", "modify_vanilla", "all_loaded"));
+			if (NAMES_DIRT || PORTING_LIB_LOOT) expected.add("named");
+			for (String what : expected) {
 				if (!SEEN.contains(what)) failed.add(what);
 			}
 			List<ItemStack> drops = Block.getDrops(Blocks.DIRT.defaultBlockState(), level, BlockPos.ZERO, null);
