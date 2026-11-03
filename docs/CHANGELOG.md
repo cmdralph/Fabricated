@@ -37,7 +37,13 @@ One entry per working session, newest first: what changed, and how it was verifi
   `MultiPartBakedModel` and MoreCulling's mixin, with and without the prefix. The shadow is dropped and the mixin's
   call is kept. With a non-virtual call, pre-flight reports the shadow instead, and where the target declares the
   method nothing changes. The test fails without the fix.
-- **CI:** core build and tests pass locally (461 tests). The Forge branches take the fix by the next sync.
+- **CI fix** (`ci/fetch-corpus.py`): Sodium's and Iris's 26.3 builds for NeoForge also list 26.1.2 and 26.2 on
+  Modrinth, so the 26.1.2 and 26.2 mods jobs fetched them. Sodium refused those versions' LWJGL 3.4.1 at launch, and
+  the Fabric-models-under-Sodium gate failed (PR run 41665998918). The script now passes over a build whose version
+  number or file name names only later Minecraft versions it lists, and fetches the newest build made for the version.
+  A build that names no version, or this one or an earlier one, is fetched as before.
+- **CI:** core build and tests pass locally (461 tests); the fetch script's choice was checked against Modrinth-shaped
+  version lists. The Forge branches take the fixes by the next sync.
 
 ## 2026-11-03: Farmer's Delight's enum constants on Forge 61 to 66 (CORPUS-80, task 5)
 
