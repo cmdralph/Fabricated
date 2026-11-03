@@ -177,14 +177,18 @@ public final class PlatformCoremods {
 	private static final String FORGE_EVENT_FACTORY = "net/minecraftforge/event/ForgeEventFactory";
 
 	/**
-	 * Forge 61 to 66's, for a Minecraft version (1.21.11, 26.1.x, 26.2.x, 26.3.x); {@link #NONE} for another, Forge 47's
-	 * 1.20.1 among them (its branch describes its JavaScript coremods). Read in MinecraftForge's {@code forge-transformers}
-	 * sources, branches 1.21.11, 26.1, 26.2 and 26.3: {@code MethodRedirector}'s one replacement, the {@code INVOKEVIRTUAL}
-	 * of {@code finalizeSpawn} with {@link #FINALIZE_SPAWN_REASON}, whatever its owner, by
+	 * Forge 61 to 66's, for the Minecraft versions Fabricated's Forge builds run on (1.21.11, 26.1.2, 26.2 and 26.3);
+	 * {@link #NONE} for another, Forge 47's 1.20.1 among them (its branch describes its JavaScript coremods). Read in
+	 * MinecraftForge's {@code forge-transformers} sources, the branch of each Minecraft version (1.21.11, 26.1.2, 26.2,
+	 * 26.3; tags 61.2, 64.1, 65.1 and 66.1 have the same lists): {@code MethodRedirector}'s one replacement, the
+	 * {@code INVOKEVIRTUAL} of {@code finalizeSpawn} with {@link #FINALIZE_SPAWN_REASON}, whatever its owner, by
 	 * {@code ForgeEventFactory.onFinalizeSpawn} taking the mob first, in the methods its {@code finalize_spawn_targets.json}
 	 * lists (this package's {@code forge-finalize-spawn-targets-<version>.json}, copied from each branch) and every
 	 * synthetic method of those classes; and {@code FieldToMethodTransformer}'s fields, those of
 	 * {@link AccessTransformerConverter#FORGE_PRIVATE_FIELDS} but {@code Biome}'s on 26.3, which it no longer redirects.
+	 * Each Minecraft version has its own branch and list: Forge 64's (26.1.2) leaves out four classes of Forge 62's (26.1),
+	 * among them {@code StructureTemplate}, so 26.1's list moved Friends &amp; Foes' structure spawn hook off a call Forge 64
+	 * still makes (CORPUS-78).
 	 */
 	public static PlatformCoremods forge(String minecraftVersion) {
 		String line = forgeLine(minecraftVersion);
@@ -197,14 +201,16 @@ public final class PlatformCoremods {
 		return of(redirects, getters, false);
 	}
 
-	/** The version whose Forge transformers' description applies: {@code 1.21.11}, {@code 26.1}, {@code 26.2} or {@code 26.3}; else null. */
+	/**
+	 * The Minecraft versions whose Forge transformers are described: those Fabricated's Forge builds run on. Each has its
+	 * own Forge branch, whose list can differ from the version before it (26.1.2's from 26.1's), so no other version is
+	 * taken for one of them.
+	 */
+	static final Set<String> FORGE_VERSIONS = Set.of("1.21.11", "26.1.2", "26.2", "26.3");
+
+	/** The version whose Forge transformers' description applies, one of {@link #FORGE_VERSIONS}; else null. */
 	static String forgeLine(String minecraftVersion) {
-		if (minecraftVersion == null) return null;
-		if (minecraftVersion.equals("1.21.11")) return minecraftVersion;
-		for (String line : List.of("26.1", "26.2", "26.3")) {
-			if (minecraftVersion.equals(line) || minecraftVersion.startsWith(line + ".")) return line;
-		}
-		return null;
+		return minecraftVersion != null && FORGE_VERSIONS.contains(minecraftVersion) ? minecraftVersion : null;
 	}
 
 	/**

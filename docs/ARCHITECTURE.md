@@ -226,9 +226,9 @@ Each mod's entrypoints run inside a guard that records mod id, entrypoint key, c
    field-to-getter coremod covers are read through their getters. From 21.11 on, FML runs the same coremods after
    Mixin, so Mixin sees those classes as the patched jar has them, and none are described (CORPUS-67). Forge 61 to
    66 run theirs as ModLauncher transformers, so before Mixin (`PlatformCoremods.forge`, CORPUS-78): the call is
-   pointed at `ForgeEventFactory.onFinalizeSpawn` only in the methods each version's `finalize_spawn_targets.json`
-   names (shipped in core, copied from Forge's sources) and in the listed classes' synthetic methods, and the fields
-   are read through their getters in every method but the getter. Forge 47's JavaScript coremods are described on
+   pointed at `ForgeEventFactory.onFinalizeSpawn` only in the methods each Minecraft version's own
+   `finalize_spawn_targets.json` names (shipped in core, copied from Forge's sources) and in the listed classes'
+   synthetic methods, and the fields are read through their getters in every method but the getter. Forge 47's JavaScript coremods are described on
    its branch. A hook following such a call moves to the platform's hook (`net/neoforged/` or `net/minecraftforge/`).
 
    Outcome per mixin:
