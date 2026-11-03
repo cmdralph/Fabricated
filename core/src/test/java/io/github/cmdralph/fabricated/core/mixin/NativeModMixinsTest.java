@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.io.IOException;
 import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
@@ -205,6 +206,9 @@ class NativeModMixinsTest {
 		NativeModMixins.Files read = path -> files.containsKey(path) ? files.get(path).getBytes(StandardCharsets.UTF_8) : null;
 		assertEquals(List.of("a/mixin/Common", "a/mixin/hud/Client"), NativeModMixins.listed(read, configs, true), "a config that doesn't parse lists none");
 		assertEquals(List.of("a/mixin/Common", "a/mixin/Server"), NativeModMixins.listed(read, configs, false));
+		NativeModMixins.Files jar = path -> path.equals("META-INF/MANIFEST.MF") ? manifest : read.read(path);
+		assertEquals(List.of("a/mixin/Common", "a/mixin/hud/Client"), NativeModMixins.manifestMixins(jar, true));
+		assertEquals(List.of(), NativeModMixins.manifestMixins(path -> { throw new IOException("unreadable"); }, true));
 	}
 
 	/** AppleSkin's Fabric build, and a jar of the other mod's classes, listing {@code mixins}. */

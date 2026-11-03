@@ -11,9 +11,10 @@ One entry per working session, newest first: what changed, and how it was verifi
   0.8.5 refuses a static handler there, so the Forge 47 corpus client crashed in its first tick. Where the running
   Mixin refuses it (Forge 47 only: Mixin 0.8.6 and later take it), such a handler is applied as an instance handler,
   as the mod's Fabric side declares it, and the report says so. A handler the mixin calls itself, one Mixin finds
-  through a refmap, and one without code or synchronized are left as they are and reported. Forge 47's half, which
-  lists each Forge mod's manifest `MixinConfigs` for pre-flight, comes with the next sync; with it, pre-flight on
-  Forge 47 also sees the members Forge mods' mixins add to Fabric mods' classes.
+  through a refmap, and one without code or synchronized are left as they are and reported. Forge 47's half lists the
+  mixins each Forge mod's manifest `MixinConfigs` names (`NativeModMixins.manifestMixins`; nested Forge mods' through
+  `NestedNeoForgeJars.readFile`) and comes with the next sync; with it, pre-flight on Forge also sees the members Forge
+  mods' mixins add to Fabric mods' classes.
 - **CORPUS-96** (`AccessorShapedMixins.ofRepaired`, `ModTranslator.repairs`): CORPUS-91's fix makes an interface
   mixin's `@Inject`s handlers Fabricated applies, public and synthetic, instead of leaving them out. Mixin takes an
   interface mixin whose methods are all synthetic for an accessor mixin, so AppleSkin's `TooltipComponentMixin`, which
@@ -39,6 +40,7 @@ One entry per working session, newest first: what changed, and how it was verifi
   one, and one for a static method is not; a handler found through a refmap, one the mixin calls, and a mixin
   selecting by pattern or targeting its own mod's class are left as they are; the rewritten handler does what the
   static one did, from compressed and expanded frames; a jar manifest's configs list their mixins for the side.
+  `NestedNeoForgeJarsTest` reads a nested jar's manifest.
   `PipelineTest.anInterfaceMixinsInjectAtHeadIsKeptForFabricatedToApplyWhereMixinDoesnt` now expects the AppleSkin-shaped
   mixin without its target among its interfaces, and a mixin with one injector applied and one left out to stay listed.
 - **CI:** core tests locally (484); the PR run on this change.

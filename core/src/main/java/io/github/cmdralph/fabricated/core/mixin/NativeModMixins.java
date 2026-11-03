@@ -55,6 +55,7 @@ import io.github.cmdralph.fabricated.core.json.JsonException;
 public final class NativeModMixins {
 	/** The manifest attribute Forge's Mixin reads a mod's mixin configs from. */
 	static final String MIXIN_CONFIGS = "MixinConfigs";
+	private static final String MANIFEST = "META-INF/MANIFEST.MF";
 
 	private NativeModMixins() {
 	}
@@ -65,8 +66,21 @@ public final class NativeModMixins {
 		byte[] read(String path) throws IOException;
 	}
 
+	/**
+	 * The mixin classes a platform mod's jar lists for this side, by internal name, in order: on Forge, whose Mixin reads a
+	 * mod's mixin configs from its manifest's {@code MixinConfigs}, not from its mods.toml. None where the jar's files
+	 * can't be read (its mod's loader reports that).
+	 */
+	public static List<String> manifestMixins(Files files, boolean clientSide) {
+		try {
+			return listed(files, manifestConfigs(files.read(MANIFEST)), clientSide);
+		} catch (IOException e) {
+			return List.of();
+		}
+	}
+
 	/** The mixin configs a jar's manifest names ({@code MixinConfigs}, which Forge's Mixin reads), in order. */
-	public static List<String> manifestConfigs(byte[] manifest) {
+	static List<String> manifestConfigs(byte[] manifest) {
 		if (manifest == null) return List.of();
 		try {
 			String value = new Manifest(new ByteArrayInputStream(manifest)).getMainAttributes().getValue(MIXIN_CONFIGS);
@@ -86,7 +100,7 @@ public final class NativeModMixins {
 	 * The mixin classes the configs list for this side, by internal name, in order: those of a config the jar doesn't
 	 * have, or that doesn't parse, are left out (its mod's loader reports it).
 	 */
-	public static List<String> listed(Files files, Collection<String> configs, boolean clientSide) {
+	static List<String> listed(Files files, Collection<String> configs, boolean clientSide) {
 		Set<String> mixins = new LinkedHashSet<>();
 		for (String path : configs) {
 			try {
