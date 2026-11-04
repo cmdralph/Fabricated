@@ -1,5 +1,6 @@
 package io.github.cmdralph.fabricated.testmod.frapi;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -35,10 +36,13 @@ final class ParticleSpriteCheck {
 	private static final Map<String, AtomicBoolean> LOGGED = Map.of(SCREEN, new AtomicBoolean(), "block marker", new AtomicBoolean(), "block particle",
 			new AtomicBoolean());
 	private static final AtomicBoolean SCREEN_WITHOUT_LEVEL = new AtomicBoolean();
+	private static final AtomicBoolean ASKED_ELSEWHERE = new AtomicBoolean();
 	// Client thread only.
 	private static boolean particlesMade;
 	private static int screenTicks;
 	private static int puts;
+	/** The tick tried the block was first put at the eye on, or -1. */
+	private static int firstPut = -1;
 	private static @Nullable BlockPos placed;
 	private static @Nullable BlockState replaced;
 
@@ -50,8 +54,8 @@ final class ParticleSpriteCheck {
 		ClientTickEvents.END_CLIENT_TICK.register(ParticleSpriteCheck::put);
 		ClientLifecycleEvents.CLIENT_STOPPING.register(client -> {
 			if (!LOGGED.get(SCREEN).get()) {
-				FrapiTestMod.LOGGER.warn("FABRICATED-TEST frapi screen effect not asked: the block put at the player's eye {} time(s), its sprite asked without the level {}",
-						puts, SCREEN_WITHOUT_LEVEL.get());
+				FrapiTestMod.LOGGER.warn("FABRICATED-TEST frapi screen effect not asked: the block put at the player's eye {} time(s) in {} tick(s) tried,"
+						+ " first at tick {}, its sprite asked without the level {}", puts, screenTicks, firstPut, SCREEN_WITHOUT_LEVEL.get());
 			}
 		});
 	}
@@ -59,7 +63,18 @@ final class ParticleSpriteCheck {
 	/** Called by the terrain block's model as it gives its level-aware particle material. */
 	static void asked(BlockState state, BlockPos pos) {
 		String asker = asker();
-		if (asker != null && !LOGGED.get(asker).getAndSet(true)) FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi {} sprite OK ({} at {})", asker, state, pos);
+		if (asker != null) {
+			if (!LOGGED.get(asker).getAndSet(true)) FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi {} sprite OK ({} at {})", asker, state, pos);
+		} else if (puts > 0 && !LOGGED.get(SCREEN).get() && !ASKED_ELSEWHERE.getAndSet(true)) {
+			// Once the block was put at the eye: where else the game asked, for a screen effect the check doesn't recognize.
+			FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi screen effect: the level-aware sprite asked at {} from {}", pos, callers());
+		}
+	}
+
+	/** The innermost frames past this class's: test code only. */
+	private static List<String> callers() {
+		return StackWalker.getInstance().walk(frames -> frames.filter(frame -> !frame.getClassName().equals(ParticleSpriteCheck.class.getName())).limit(8)
+				.map(frame -> frame.getClassName() + "." + frame.getMethodName()).toList());
 	}
 
 	/** Called by the terrain block's model as it gives its particle material without the level. */
@@ -98,7 +113,7 @@ final class ParticleSpriteCheck {
 		BlockState there = level.getBlockState(eye);
 		// Not where the player's chunk hasn't arrived yet.
 		if (!there.isAir() || !level.setBlockAndUpdate(eye, terrain)) return;
-		puts++;
+		if (puts++ == 0) firstPut = screenTicks;
 		placed = eye;
 		replaced = there;
 	}
