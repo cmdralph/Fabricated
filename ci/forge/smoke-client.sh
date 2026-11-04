@@ -264,7 +264,23 @@ fi
 seen() {
 	if grep -q -- "$1" "$log" 2>/dev/null; then echo "SEEN: $2"; else echo "NOT SEEN: $2 (no '$1')"; fi
 }
-if [ -n "$extra" ] && [ -f "$extra/fabricated-testmod-frapi.jar" ]; then
+# Under another renderer of Fabric's API (Sodium's Fabric build, run with the test mod in the difficult mods' job),
+# Fabric API's Indigo stands down and that renderer draws Fabric's block models itself: in its own chunk sections, which
+# it meshes, and wherever it is asked to draw a block. Fabricated's guard (FRAPI rule 8) is its seam into Indigo, and
+# the test mod's broken models throw only through it, so its checks are Indigo's; under the other renderer the test
+# mod's Fabric block model must reach that renderer's chunk sections, and the rest is printed.
+other_renderer=
+if [ -n "$extra" ] && ls "$extra"/sodium*.jar >/dev/null 2>&1; then other_renderer=Sodium; fi
+if [ -n "$extra" ] && [ -f "$extra/fabricated-testmod-frapi.jar" ] && [ -n "$other_renderer" ]; then
+	frapi_fail=$fail
+	fail=0
+	check "Different rendering plugin detected; not applying Indigo" "fabric-renderer-api-v1 (with Fabric API): Fabric API's renderer stood down for $other_renderer's"
+	check "FABRICATED-TEST frapi terrain OK .*\(LevelSlice\|WorldSlice\)" "fabric-renderer-api-v1 (with Fabric API): $other_renderer meshed a Fabric block model into its chunk sections, through its renderer"
+	echo "::group::Fabric's renderer API under $other_renderer (informational)"
+	grep -n -m 80 -E "FABRICATED-TEST (frapi|model)|threw while drawn in|Fabric block models|fabric-renderer|indigo|Indigo|Indium" "$log" || true
+	echo "::endgroup::"
+	if [ "$frapi_fail" = 1 ]; then fail=1; fi
+elif [ -n "$extra" ] && [ -f "$extra/fabricated-testmod-frapi.jar" ]; then
 	frapi_fail=$fail
 	fail=0
 	check "FABRICATED-TEST frapi terrain OK .*seam=Fabricated" "fabric-renderer-api-v1 (with Fabric API): a Fabric block model was meshed into a chunk section, through Fabricated's guard"

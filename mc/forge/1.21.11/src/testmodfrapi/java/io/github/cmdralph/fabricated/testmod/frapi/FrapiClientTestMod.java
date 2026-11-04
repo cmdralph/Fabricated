@@ -55,10 +55,11 @@ import net.minecraft.world.level.block.state.BlockState;
  * <p>Two more Fabric models throw once a vanilla chunk section draws them, after emitting their quads and pushing a
  * transform they never pop (FRAPI rule 8): one the broken test block's model, the other a part of the broken nested
  * test block's multipart model. Each logs when it is then asked for its parts, and the transform logs a failure if any
- * later quad reaches it. They throw only where Fabricated guards the call (its {@code FabricBlockRendering} on the
- * stack), not into another renderer's hooks. A third throws inside a Fabric model wrapping it ({@link WrapperCheckModel}), as
- * Continuity's models wrap others: the throw is the wrapped model's, so the wrapper's class keeps Fabric's renderer. A
- * fourth does the same the first time it is drawn as an entity (the block a minecart carries).
+ * later quad reaches it. They throw only where Fabricated guards the call ({@link #guarded}), not into another
+ * renderer's hooks or a call another renderer makes itself. A third throws inside a Fabric model wrapping it
+ * ({@link WrapperCheckModel}), as Continuity's models wrap others: the throw is the wrapped model's, so the wrapper's
+ * class keeps Fabric's renderer. A fourth does the same the first time it is drawn as an entity (the block a minecart
+ * carries).
  *
  * <p>The test item's model is wrapped after it is baked ({@link ItemCheckModel}): it adds a layer of quads emitted
  * through Fabric's renderer API, and logs once when Fabric's renderer draws them in the hotbar (a screen), in hand, as a
@@ -94,6 +95,16 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 	static String seam() {
 		return StackWalker.getInstance().walk(frames -> frames.anyMatch(frame -> frame.getClassName().startsWith("io.github.cmdralph.fabricated.")
 				&& frame.getClassName().endsWith(".rendering.FabricBlockRendering"))) ? "Fabricated" : "other";
+	}
+
+	/**
+	 * Whether Fabricated's guard ({@code FabricBlockRendering.emit}, FRAPI rule 8) is calling the model: the broken models
+	 * throw only then. Under another renderer (Sodium's), which calls the model itself where Fabricated sends a block to
+	 * Fabric's renderer, it isn't. Walks the stack: once per broken model.
+	 */
+	static boolean guarded() {
+		return StackWalker.getInstance().walk(frames -> frames.anyMatch(frame -> frame.getClassName().startsWith("io.github.cmdralph.fabricated.")
+				&& frame.getClassName().endsWith(".rendering.FabricBlockRendering") && frame.getMethodName().equals("emit")));
 	}
 
 	/** Whether a level is a chunk section's: vanilla's, or Sodium's when Sodium meshes the world. */
@@ -408,7 +419,7 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 
 		@Override
 		boolean throwsIn(BlockAndTintGetter level) {
-			return level instanceof RenderSectionRegion && seam().equals("Fabricated");
+			return level instanceof RenderSectionRegion && guarded();
 		}
 	}
 
@@ -420,7 +431,7 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 
 		@Override
 		boolean throwsIn(BlockAndTintGetter level) {
-			return level instanceof RenderSectionRegion && seam().equals("Fabricated");
+			return level instanceof RenderSectionRegion && guarded();
 		}
 	}
 
@@ -469,7 +480,7 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 
 		@Override
 		boolean throwsIn(BlockAndTintGetter level) {
-			return level instanceof RenderSectionRegion && seam().equals("Fabricated");
+			return level instanceof RenderSectionRegion && guarded();
 		}
 	}
 
@@ -483,7 +494,7 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 
 		@Override
 		boolean throwsIn(BlockAndTintGetter level) {
-			return drawnAsEntity(level) && seam().equals("Fabricated");
+			return drawnAsEntity(level) && guarded();
 		}
 	}
 }
