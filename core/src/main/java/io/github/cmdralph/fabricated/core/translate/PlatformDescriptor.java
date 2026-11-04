@@ -88,6 +88,15 @@ public interface PlatformDescriptor {
 		}
 
 		/**
+		 * Yes: Fabricated's Mixin extension on Forge 47 to 66 applies them as a class's mixins apply (IRIS-1: Forge 47
+		 * keeps {@code ShaderInstance}'s constructor taking a shader's name only to call the one taking its location).
+		 */
+		@Override
+		public boolean handsOffConstructorArguments() {
+			return true;
+		}
+
+		/**
 		 * Forge 61 to 66's transformers of game classes ({@link PlatformCoremods#forge}, CORPUS-78); none for Forge 47's
 		 * 1.20.1, whose branch describes its own.
 		 */
@@ -198,6 +207,16 @@ public interface PlatformDescriptor {
 	 */
 	default PlatformCoremods coremods(String minecraftVersion) {
 		return PlatformCoremods.neoForge(minecraftVersion);
+	}
+
+	/**
+	 * Whether the platform has a constructor whose arguments a translated mixin's field names hand them to the one it
+	 * calls, once Mixin has applied the class's mixins ({@code ConstructorHandoffs}): pre-flight then points an injector
+	 * into a constructor the platform keeps only to call another one at that one, its handler given the arguments of the
+	 * first (IRIS-1). Not by default: NeoForge's in-game mod applies none.
+	 */
+	default boolean handsOffConstructorArguments() {
+		return false;
 	}
 
 	/**

@@ -32,6 +32,7 @@ abstract class PreflightPart {
 	final boolean enumMixins;
 	final boolean readsLocalTypes;
 	final boolean seesMixinFields;
+	final boolean handsOffConstructorArguments;
 	final String loader;
 	final ClassBytesSource vanilla;
 	final Map<ClassNode, Set<String>> independent;
@@ -53,6 +54,7 @@ abstract class PreflightPart {
 		this.enumMixins = classes.enumMixins;
 		this.readsLocalTypes = classes.readsLocalTypes;
 		this.seesMixinFields = classes.seesMixinFields;
+		this.handsOffConstructorArguments = classes.handsOffConstructorArguments;
 		this.loader = classes.loader;
 		this.vanilla = classes.vanilla;
 		this.independent = classes.independent;
