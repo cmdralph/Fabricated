@@ -10,9 +10,14 @@ import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.AnnotationNode;
 import org.objectweb.asm.tree.ClassNode;
+import org.objectweb.asm.tree.FieldInsnNode;
+import org.objectweb.asm.tree.FieldNode;
+import org.objectweb.asm.tree.FrameNode;
 import org.objectweb.asm.tree.InsnList;
 import org.objectweb.asm.tree.InsnNode;
 import org.objectweb.asm.tree.InvokeDynamicInsnNode;
+import org.objectweb.asm.tree.JumpInsnNode;
+import org.objectweb.asm.tree.LabelNode;
 import org.objectweb.asm.tree.LdcInsnNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
@@ -295,7 +300,26 @@ final class HandlerBridges {
 	}
 
 	static void box(InsnList code, Type type) {
-		String boxed = switch (type.getSort()) {
+		String boxed = boxOf(type);
+		if (boxed != null) code.add(new MethodInsnNode(Opcodes.INVOKESTATIC, boxed, "valueOf", "(" + type.getDescriptor() + ")L" + boxed + ";", false));
+	}
+
+	/** Casts the object on the stack to {@code type}, unboxing a primitive. */
+	static void unbox(InsnList code, Type type) {
+		String boxed = boxOf(type);
+		if (boxed == null) {
+			if (!type.getDescriptor().equals("Ljava/lang/Object;")) {
+				code.add(new TypeInsnNode(Opcodes.CHECKCAST, type.getSort() == Type.ARRAY ? type.getDescriptor() : type.getInternalName()));
+			}
+			return;
+		}
+		code.add(new TypeInsnNode(Opcodes.CHECKCAST, boxed));
+		code.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL, boxed, type.getClassName() + "Value", "()" + type.getDescriptor(), false));
+	}
+
+	/** The class boxing a primitive type; null for any other. */
+	private static String boxOf(Type type) {
+		return switch (type.getSort()) {
 			case Type.BOOLEAN -> "java/lang/Boolean";
 			case Type.CHAR -> "java/lang/Character";
 			case Type.BYTE -> "java/lang/Byte";
@@ -306,7 +330,6 @@ final class HandlerBridges {
 			case Type.DOUBLE -> "java/lang/Double";
 			default -> null;
 		};
-		if (boxed != null) code.add(new MethodInsnNode(Opcodes.INVOKESTATIC, boxed, "valueOf", "(" + type.getDescriptor() + ")L" + boxed + ";", false));
 	}
 
 	/** An empty bridge with {@code handler}'s access (static or not) and the given signature. */
@@ -471,6 +494,46 @@ final class HandlerBridges {
 		bridge.instructions.add(new InsnNode(Opcodes.RETURN));
 		bridge.maxStack = stack + 1;
 		bridge.maxLocals = slot;
+		moveInjector(handler, injector, bridge);
+		return bridge;
+	}
+
+	/**
+	 * A handler for {@code injector} at {@code delegate} instead of {@code constructor}, which only calls it: it takes
+	 * {@code delegate}'s parameters and the callback info, and calls {@code handler}, written for {@code constructor},
+	 * with the arguments {@code constructor} was called with, which {@code arguments} holds during that call
+	 * ({@link ConstructorHandoffs}), and the callback info; where it holds none, it returns. The injector annotation moves
+	 * to it; {@code handler} stays a plain method of the mixin.
+	 */
+	static MethodNode handedOffBridge(String mixin, MethodNode handler, AnnotationNode injector, MethodNode constructor, MethodNode delegate,
+			FieldNode arguments, String name) {
+		Type[] own = Type.getArgumentTypes(constructor.desc);
+		List<Type> params = new ArrayList<>(List.of(Type.getArgumentTypes(delegate.desc)));
+		params.add(Type.getArgumentTypes(handler.desc)[own.length]);
+		MethodNode bridge = bridgeMethod(handler, name, params, Type.VOID_TYPE);
+		InsnList code = bridge.instructions;
+		LabelNode handedOff = new LabelNode();
+		code.add(new VarInsnNode(Opcodes.ALOAD, 0));
+		code.add(new FieldInsnNode(Opcodes.GETFIELD, mixin, arguments.name, arguments.desc));
+		code.add(new JumpInsnNode(Opcodes.IFNONNULL, handedOff));
+		code.add(new InsnNode(Opcodes.RETURN));
+		code.add(handedOff);
+		code.add(new FrameNode(Opcodes.F_SAME, 0, null, 0, null));
+		code.add(new VarInsnNode(Opcodes.ALOAD, 0));
+		int stack = 1;
+		int peak = 1;
+		for (int i = 0; i < own.length; i++) {
+			code.add(new VarInsnNode(Opcodes.ALOAD, 0));
+			code.add(new FieldInsnNode(Opcodes.GETFIELD, mixin, arguments.name, arguments.desc));
+			code.add(new LdcInsnNode(i));
+			code.add(new InsnNode(Opcodes.AALOAD));
+			unbox(code, own[i]);
+			peak = Math.max(peak, stack + 2);
+			stack += own[i].getSize();
+		}
+		code.add(new VarInsnNode(Opcodes.ALOAD, slotOf(handler, params, params.size() - 1)));
+		callHandler(bridge, mixin, handler, stack + 1);
+		bridge.maxStack = Math.max(bridge.maxStack, peak);
 		moveInjector(handler, injector, bridge);
 		return bridge;
 	}

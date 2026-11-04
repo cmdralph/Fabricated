@@ -184,8 +184,24 @@ public final class MixinPreflight extends PreflightPart {
 			boolean clientSide, boolean missingTargetsFatal, ClassBytesSource vanilla, String loader, boolean interfaceInjectors,
 			ConstructorInjects constructorInjects, boolean argumentNames, boolean exactStaticInjects, boolean enumMixins,
 			boolean readsLocalTypes, boolean seesMixinFields) {
+		this(game, installed, modClasses, untransformable, clientSide, missingTargetsFatal, vanilla, loader, interfaceInjectors,
+				constructorInjects, argumentNames, exactStaticInjects, enumMixins, readsLocalTypes, seesMixinFields, false);
+	}
+
+	/**
+	 * @param handsOffConstructorArguments whether the platform has the constructors a translated mixin's field names
+	 *                                     hand their arguments to the one they call, once Mixin has applied the
+	 *                                     class's mixins ({@link ConstructorHandoffs}, IRIS-1); repairs then point an
+	 *                                     injector into a constructor the platform keeps only to call another one at
+	 *                                     that one ({@link ConstructorRepairs#handoffRepairs})
+	 */
+	public MixinPreflight(ClassIndex game, InstalledClasses installed, ClassBytesSource modClasses, ClassBytesSource untransformable,
+			boolean clientSide, boolean missingTargetsFatal, ClassBytesSource vanilla, String loader, boolean interfaceInjectors,
+			ConstructorInjects constructorInjects, boolean argumentNames, boolean exactStaticInjects, boolean enumMixins,
+			boolean readsLocalTypes, boolean seesMixinFields, boolean handsOffConstructorArguments) {
 		super(new PreflightClasses(game, installed, modClasses, untransformable, clientSide, missingTargetsFatal, vanilla, loader,
-				interfaceInjectors, constructorInjects, argumentNames, exactStaticInjects, enumMixins, readsLocalTypes, seesMixinFields));
+				interfaceInjectors, constructorInjects, argumentNames, exactStaticInjects, enumMixins, readsLocalTypes, seesMixinFields,
+				handsOffConstructorArguments));
 		this.repairer = new MixinRepairs(classes, this);
 	}
 
