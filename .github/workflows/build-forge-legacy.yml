@@ -308,4 +308,7 @@ jobs:
             python3 -I ci/javap-dump.py "$RUNNER_TEMP/client-corpus" 'refs:net/minecraft/class_1845$class_1846' subtypes:net/minecraft/class_1826 \
               | cut -c1-320 | head -n 300 || true
             grep -h 'FABRICATED-FORGE-TEST recipe condition' "$RUNNER_TEMP/client-corpus/run/logs/latest.log" 2>/dev/null | cut -c1-400 | head -n 10 || true
+            # Where a mod's code met a null collection of search stacks (CORPUS-111).
+            echo "-- searchStacks (CORPUS-111):"
+            grep -h -B2 -A24 'because "searchStacks" is null' "$RUNNER_TEMP/client-corpus/run/logs/latest.log" 2>/dev/null | cut -c1-300 | head -n 60 || true
           fi
