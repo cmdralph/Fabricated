@@ -184,8 +184,24 @@ public final class MixinPreflight extends PreflightPart {
 			boolean clientSide, boolean missingTargetsFatal, ClassBytesSource vanilla, String loader, boolean interfaceInjectors,
 			ConstructorInjects constructorInjects, boolean argumentNames, boolean exactStaticInjects, boolean enumMixins,
 			boolean readsLocalTypes, boolean seesMixinFields) {
+		this(game, installed, modClasses, untransformable, clientSide, missingTargetsFatal, vanilla, loader, interfaceInjectors,
+				constructorInjects, argumentNames, exactStaticInjects, enumMixins, readsLocalTypes, seesMixinFields, false);
+	}
+
+	/**
+	 * @param handsOffConstructorArguments whether the platform has the constructors a translated mixin's field names
+	 *                                     hand their arguments to the one they call, once Mixin has applied the
+	 *                                     class's mixins ({@link ConstructorHandoffs}, IRIS-1); repairs then point an
+	 *                                     injector into a constructor the platform keeps only to call another one at
+	 *                                     that one ({@link ConstructorRepairs#handoffRepairs})
+	 */
+	public MixinPreflight(ClassIndex game, InstalledClasses installed, ClassBytesSource modClasses, ClassBytesSource untransformable,
+			boolean clientSide, boolean missingTargetsFatal, ClassBytesSource vanilla, String loader, boolean interfaceInjectors,
+			ConstructorInjects constructorInjects, boolean argumentNames, boolean exactStaticInjects, boolean enumMixins,
+			boolean readsLocalTypes, boolean seesMixinFields, boolean handsOffConstructorArguments) {
 		super(new PreflightClasses(game, installed, modClasses, untransformable, clientSide, missingTargetsFatal, vanilla, loader,
-				interfaceInjectors, constructorInjects, argumentNames, exactStaticInjects, enumMixins, readsLocalTypes, seesMixinFields));
+				interfaceInjectors, constructorInjects, argumentNames, exactStaticInjects, enumMixins, readsLocalTypes, seesMixinFields,
+				handsOffConstructorArguments));
 		this.repairer = new MixinRepairs(classes, this);
 	}
 
@@ -785,20 +801,22 @@ public final class MixinPreflight extends PreflightPart {
 	}
 
 	/**
-	 * Mixin checks the injectors of a named group ({@code @Group}) together: fewer than its minimum applying stops the
-	 * game, though each requires nothing alone (owo-lib's hooks after Fabric's and Quilt's loader calls stopped three
-	 * corpus servers before HOOK-1; GROUP-1). Each member pre-flight found can't apply has a warning from {@code from}
-	 * on; when too few are left, every member fails as a required injector would, so a self-contained mixin loses the
-	 * whole group, which Mixin then doesn't check.
+	 * Mixin checks the injectors of a group ({@code @Group}) together: fewer than its minimum applying stops the game,
+	 * though each requires nothing alone (owo-lib's hooks after Fabric's and Quilt's loader calls stopped three corpus
+	 * servers before HOOK-1; GROUP-1). The minimum is at least one, whatever the group declares: Essential's one-member
+	 * groups, declaring none, stopped the Forge 61 to 66 clients where Forge's code had moved their call (GROUP-2). Each
+	 * member pre-flight found can't apply has a warning from {@code from} on; when too few are left, every member fails
+	 * as a required injector would, so a self-contained mixin loses the whole group, which Mixin then doesn't check.
 	 */
 	private static void checkGroups(ClassNode mixin, Context ctx, int from) {
 		Map<String, Integer> minimums = new TreeMap<>();
 		Map<String, List<MethodNode>> members = new HashMap<>();
 		for (MethodNode method : mixin.methods) {
-			AnnotationNode group = Annotations.find(method, MixinNames.GROUP);
-			if (group == null || !(Annotations.value(group, "name") instanceof String name)) continue;
+			String name = PreflightAsm.group(method);
+			if (name == null) continue;
 			members.computeIfAbsent(name, k -> new ArrayList<>()).add(method);
-			if (Annotations.value(group, "min") instanceof Integer min) minimums.merge(name, min, Math::max);
+			int min = Annotations.value(Annotations.find(method, MixinNames.GROUP), "min") instanceof Integer declared ? declared : -1;
+			minimums.merge(name, Math.max(min, 1), Math::max);
 		}
 		if (minimums.isEmpty()) return;
 		Set<String> missing = new HashSet<>();
