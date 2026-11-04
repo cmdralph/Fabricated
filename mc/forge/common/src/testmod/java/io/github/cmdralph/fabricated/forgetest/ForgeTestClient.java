@@ -14,6 +14,7 @@ import net.minecraft.client.Minecraft;
  * and with its particles module too, on Forge 61, a check of the block dust tint event ({@link ForgeParticleTintTest}).
  * It registers a key mapping, checked once the game has started ({@link ForgeKeyMappingTest}), and with Fabric API's
  * rendering module, on Forge 61, HUD elements and the HUD callback, checked as they are drawn ({@link ForgeHudTest}).
+ * With Fabric API's resource loader it registers a built-in pack enabled by default ({@link ForgeDefaultPackTest}).
  */
 @Environment(EnvType.CLIENT)
 public final class ForgeTestClient implements ClientModInitializer {
@@ -38,6 +39,13 @@ public final class ForgeTestClient implements ClientModInitializer {
 			ForgeKeyMappingTest.register();
 		} catch (RuntimeException | LinkageError e) {
 			ForgeTestMod.LOGGER.error("FABRICATED-FORGE-TEST key mapping not registered", e);
+		}
+		if (FabricLoader.getInstance().isModLoaded("fabric-resource-loader-v1")) {
+			try {
+				ForgeDefaultPackTest.register();
+			} catch (RuntimeException | LinkageError e) {
+				ForgeTestMod.LOGGER.error("FABRICATED-FORGE-TEST builtin resource pack not registered", e);
+			}
 		}
 		if (FabricLoader.getInstance().isModLoaded("fabric-networking-api-v1")) {
 			try {
