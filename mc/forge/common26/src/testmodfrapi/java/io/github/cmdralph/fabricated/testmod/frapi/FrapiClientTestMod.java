@@ -33,6 +33,7 @@ import net.minecraft.client.renderer.item.ItemStackRenderState;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.client.resources.model.ModelBaker;
 import net.minecraft.client.resources.model.UnbakedModel;
+import net.minecraft.client.resources.model.sprite.Material;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -51,7 +52,8 @@ import net.minecraft.world.level.block.state.BlockState;
  * <ul>
  * <li>the test block's model, wrapped after baking: drawn in a chunk section, as a falling block (and again for the
  * glowing falling block's outline, from 26.2 on), with the breaking overlay and in a minecart (a block drawn as an
- * entity), each reached from Fabric's renderer with a different level, or from a different caller;</li>
+ * entity), each reached from Fabric's renderer with a different level, or from a different caller, and asked for its
+ * level-aware particle material where Forge asks a model with its model data ({@link ParticleSpriteCheck});</li>
  * <li>a custom model type ({@code fabric:type}) used as the part of the nested test block's multipart model: drawn in
  * a chunk section, inside a vanilla model.</li>
  * </ul>
@@ -77,6 +79,7 @@ import net.minecraft.world.level.block.state.BlockState;
 public final class FrapiClientTestMod implements ClientModInitializer {
 	@Override
 	public void onInitializeClient() {
+		ParticleSpriteCheck.register();
 		LevelRenderEvents.START_MAIN.register(context -> {
 			// Logged once: whether the event fires at all tells an outline not drawn from frames not counted.
 			if (TerrainCheckModel.frames++ == 0) FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi level render events fire (START_MAIN)");
@@ -177,6 +180,18 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 					FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi breaking OK ({}, seam={})", state, seam());
 				}
 			}
+		}
+
+		@Override
+		public Material.Baked particleMaterial(BlockAndTintGetter level, BlockPos pos, BlockState state) {
+			ParticleSpriteCheck.asked(state, pos);
+			return super.particleMaterial(level, pos, state);
+		}
+
+		@Override
+		public Material.Baked particleMaterial() {
+			ParticleSpriteCheck.askedWithoutLevel();
+			return super.particleMaterial();
 		}
 
 		/**

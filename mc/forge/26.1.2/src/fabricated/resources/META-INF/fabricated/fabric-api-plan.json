@@ -46,6 +46,11 @@
       "skipMixins": ["fabric-object-builder-v1.mixins.json:AttributeSupplierBuilderAccessor", "fabric-object-builder-v1.mixins.json:BuiltInRegistriesMixin"],
       "reason": "Forge keeps an attribute builder's entries in a map of its own, where upstream's accessor reads vanilla's ImmutableMap builder, so pre-flight disabled the module (and fabric-data-attachment-api-v1, which needs it). The accessor's one use, copying an entity type's default attributes for FabricDefaultAttributeRegistry.MODIFY, takes Forge's copy constructor from the in-game mod instead. Upstream runs MODIFY as the built-in registries freeze, which Forge does at bootstrap, before any Fabric mod has registered a listener: its hook is left out and the in-game mod runs MODIFY in Forge's EntityAttributeModificationEvent, after every registration and before Forge builds the attributes the game reads."
     },
+    "fabric-renderer-api-v1": {
+      "plan": "passthrough",
+      "skipMixins": ["fabric-renderer-api-v1.mixins.json:block.particle.ScreenEffectRendererMixin", "fabric-renderer-api-v1.mixins.json:block.particle.BlockMarkerMixin"],
+      "reason": "Forge 64's screen effect finds the block the player's view is inside in a method of its own (getOverlayBlock), which returns its position too, and no longer calls vanilla's lookup, where upstream's hook reads the position: pre-flight left the mixin out, and the effect showed a Fabric model's particle material without the level. Fabricated's in-game mod gives the level-aware one for the block Forge's lookup found (PART-4). Forge 64's block marker asks its block's model for the particle material with Forge's model data, not the call upstream's hook redirects: pre-flight left that mixin out too, and the in-game mod redirects Forge's call instead. Forge 64 also sets a block's breaking particle's sprite again after upstream's hook gave it (TerrainParticle.updateSprite), from the model with its model data: the in-game mod asks Fabric's level-aware material there. A model whose class gives its own material for Forge's model data, and that neither is a Fabric model nor holds one, keeps Forge's."
+    },
     "fabric-resource-loader-v1": {
       "plan": "passthrough",
       "skipMixins": ["fabric-resource-loader-v1.client.mixins.json:OptionsMixin#onLoad"],

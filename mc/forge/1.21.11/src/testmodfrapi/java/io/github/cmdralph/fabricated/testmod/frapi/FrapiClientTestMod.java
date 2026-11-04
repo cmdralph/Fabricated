@@ -16,6 +16,7 @@ import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.model.loading.v1.CustomUnbakedBlockStateModel;
 import net.fabricmc.fabric.api.client.model.loading.v1.ModelLoadingPlugin;
 import net.fabricmc.fabric.api.client.model.loading.v1.ModelModifier;
+import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderEvents;
 import net.fabricmc.fabric.api.renderer.v1.mesh.QuadEmitter;
 import net.fabricmc.fabric.api.renderer.v1.mesh.QuadView;
 import net.fabricmc.fabric.api.renderer.v1.model.FabricBlockStateModel;
@@ -50,7 +51,10 @@ import net.minecraft.world.level.block.state.BlockState;
  * blockstate model types ({@code fabric:type}), one the test block's model, the other the part of the nested test block's
  * vanilla multipart model. Each emits the quads of the vanilla model it wraps, and logs once when a chunk section draws
  * it (vanilla's, or Sodium's), once when it is drawn as a moving block, once with the breaking overlay and once as a
- * minecart's block (a block drawn as an entity), naming the seam that sent it to Fabric's renderer.
+ * minecart's block (a block drawn as an entity), naming the seam that sent it to Fabric's renderer. The test block's
+ * model is also asked for its level-aware particle sprite where Forge asks a model with its model data
+ * ({@link ParticleSpriteCheck}). And Fabric's level render events at the extraction of the block outline and at the
+ * extraction's end are seen to fire: upstream's hooks for them sit in a method Forge 61 gave a parameter (SIG-3).
  *
  * <p>Two more Fabric models throw once a vanilla chunk section draws them, after emitting their quads and pushing a
  * transform they never pop (FRAPI rule 8): one the broken test block's model, the other a part of the broken nested
@@ -71,6 +75,15 @@ import net.minecraft.world.level.block.state.BlockState;
 public final class FrapiClientTestMod implements ClientModInitializer {
 	@Override
 	public void onInitializeClient() {
+		ParticleSpriteCheck.register();
+		AtomicBoolean outline = new AtomicBoolean();
+		WorldRenderEvents.AFTER_BLOCK_OUTLINE_EXTRACTION.register((context, hit) -> {
+			if (!outline.getAndSet(true)) FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi outline extraction event OK");
+		});
+		AtomicBoolean extracted = new AtomicBoolean();
+		WorldRenderEvents.END_EXTRACTION.register(context -> {
+			if (!extracted.getAndSet(true)) FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi end extraction event OK");
+		});
 		CustomUnbakedBlockStateModel.register(Identifier.fromNamespaceAndPath("fabricated_testmod_frapi", "terrain_check"), CheckModel.Unbaked.TERRAIN);
 		CustomUnbakedBlockStateModel.register(Identifier.fromNamespaceAndPath("fabricated_testmod_frapi", "nested_check"), CheckModel.Unbaked.NESTED);
 		CustomUnbakedBlockStateModel.register(Identifier.fromNamespaceAndPath("fabricated_testmod_frapi", "broken_check"), BrokenModel.CODEC);
@@ -162,6 +175,12 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 		}
 
 		@Override
+		public TextureAtlasSprite particleSprite(BlockAndTintGetter level, BlockPos pos, BlockState state) {
+			if (check.equals(Unbaked.TERRAIN_CHECK)) ParticleSpriteCheck.asked(state, pos);
+			return ((FabricBlockStateModel) wrapped).particleSprite(level, pos, state);
+		}
+
+		@Override
 		public void emitQuads(QuadEmitter emitter, BlockAndTintGetter level, BlockPos pos, BlockState state, RandomSource random, Predicate<@Nullable Direction> cullTest) {
 			// The wrapped vanilla model has no emitQuads of its own: this is upstream's default for it.
 			((FabricBlockStateModel) wrapped).emitQuads(emitter, level, pos, state, random, cullTest);
@@ -183,7 +202,9 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 
 		/** {@code {"fabric:type": "fabricated_testmod_frapi:terrain_check" or "...:nested_check", "model": <a variant>}}. */
 		record Unbaked(BlockStateModel.Unbaked model, String check) implements CustomUnbakedBlockStateModel {
-			static final MapCodec<Unbaked> TERRAIN = codec("frapi terrain OK");
+			/** The terrain block's check, whose model {@link ParticleSpriteCheck} asks. */
+			static final String TERRAIN_CHECK = "frapi terrain OK";
+			static final MapCodec<Unbaked> TERRAIN = codec(TERRAIN_CHECK);
 			static final MapCodec<Unbaked> NESTED = codec("frapi nested terrain OK");
 
 			private static MapCodec<Unbaked> codec(String check) {
@@ -192,7 +213,7 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 
 			@Override
 			public MapCodec<Unbaked> codec() {
-				return check.equals("frapi terrain OK") ? TERRAIN : NESTED;
+				return check.equals(TERRAIN_CHECK) ? TERRAIN : NESTED;
 			}
 
 			@Override

@@ -2,7 +2,7 @@
   "required": true,
   "package": "io.github.cmdralph.fabricated.testmod.frapi.mixin",
   "compatibilityLevel": "JAVA_21",
-  "client": ["KeyboardHandlerInvoker", "MouseHandlerInvoker"],
+  "client": ["KeyboardHandlerInvoker", "MouseHandlerInvoker", "OverlayProbeMixin"],
   "injectors": { "defaultRequire": 1 },
   "overwrites": { "requireAnnotations": true }
 }

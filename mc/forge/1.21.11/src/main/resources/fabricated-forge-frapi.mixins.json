@@ -5,7 +5,7 @@
   "plugin": "io.github.cmdralph.fabricated.forge.rendering.FrapiMixinPlugin",
   "compatibilityLevel": "JAVA_21",
   "client": ["IndigoTerrainMixin", "IndigoTerrainLikeMixin", "IndigoSimpleBlockMixin", "IndigoEmitterMixin", "MultiPartModelMixin", "MultiPartSharedStateMixin",
-    "WeightedVariantsMixin", "MovingBlockMixin", "BlockRenderDispatcherMixin"],
+    "WeightedVariantsMixin", "MovingBlockMixin", "BlockRenderDispatcherMixin", "ScreenEffectParticleMixin", "TerrainParticleSpriteMixin"],
   "injectors": {
     "defaultRequire": 1
   }
