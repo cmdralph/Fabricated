@@ -218,7 +218,9 @@ Each mod's entrypoints run inside a guard that records mod id, entrypoint key, c
    differs at the next launch (the NeoForge mod was updated), the mod is translated again.
 
    The game is seen as Fabricated's own mixins make it: the fields they add (vanilla's picture-in-picture renderer
-   map, which NeoForge replaced) are part of the game classes pre-flight reads (`RestoredFields`). A field or method a
+   map, which NeoForge replaced) are part of the game classes pre-flight reads (`RestoredFields`), and so are the
+   getters they add for a field the platform retyped (Forge 47's brewing mix), returning it as vanilla's type, which a
+   Fabric mod's accessors of the field invoke (CORPUS-37) and its own reads of the field call (CORPUS-107). A field or method a
    target lacks but an installed Fabric jar's mixin adds to it (Fabric API's `updateSelection` on the creative screen)
    is not judged: Mixin merges every mixin's members into a class before any injector looks for its target. The
    adding mixin's class is recorded with its SHA-256 like the installed classes above.

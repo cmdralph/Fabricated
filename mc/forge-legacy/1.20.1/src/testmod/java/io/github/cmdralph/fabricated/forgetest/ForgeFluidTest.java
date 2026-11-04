@@ -59,8 +59,8 @@ public final class ForgeFluidTest {
 	}
 
 	private static void check(class_3218 level, List<String> failed) throws ReflectiveOperationException {
-		Object type = call(dry.source, "getFluidType");
-		if (call(dry.flowing, "getFluidType") != type) failed.add("the flowing fluid has another type");
+		Object type = fluidType(dry.source);
+		if (fluidType(dry.flowing) != type) failed.add("the flowing fluid has another type");
 		Class<?> forgeRegistries = Class.forName("net.minecraftforge.registries.ForgeRegistries", true, ForgeFluidTest.class.getClassLoader());
 		Object fluidTypes = ((Supplier<?>) forgeRegistries.getField("FLUID_TYPES").get(null)).get();
 		Object key = call(fluidTypes, "getKey", type);
@@ -76,7 +76,7 @@ public final class ForgeFluidTest {
 		Object blockFluid = call(dry.block, "getFluid");
 		if (blockFluid != dry.source) failed.add("the liquid block holds " + blockFluid);
 		Object dryWater = call(type, "canSwim", (Object) null);
-		Object wetWater = call(call(wet.source, "getFluidType"), "canSwim", (Object) null);
+		Object wetWater = call(fluidType(wet.source), "canSwim", (Object) null);
 		if (!Boolean.FALSE.equals(dryWater) || !Boolean.TRUE.equals(wetWater)) failed.add("water to entities: untagged " + dryWater + ", tagged " + wetWater);
 
 		// Placing liquid blocks updates their neighbours, which asks Forge's fluid interactions about them (their type).
@@ -105,6 +105,18 @@ public final class ForgeFluidTest {
 
 	private static class_2248 block(String path) {
 		return class_7923.field_41175.method_10223(new class_2960("minecraft", path));
+	}
+
+	/**
+	 * Forge's {@code getFluidType}. Porting Lib's fluids module adds a method of that name to {@code Fluid} that returns its
+	 * own fluid type, null for a mod's fluid it has none of, so the name alone can find either (CORPUS-110).
+	 */
+	private static Object fluidType(Object fluid) throws ReflectiveOperationException {
+		for (Method method : fluid.getClass().getMethods()) {
+			if (method.getName().equals("getFluidType") && method.getParameterCount() == 0
+					&& method.getReturnType().getName().equals("net.minecraftforge.fluids.FluidType")) return method.invoke(fluid);
+		}
+		throw new NoSuchMethodException(fluid.getClass().getName() + ".getFluidType");
 	}
 
 	/** Calls {@code target}'s public method of that name taking {@code arguments} (Forge's, which a Fabric mod can't name). */

@@ -14,6 +14,8 @@ public final class class_1845 {
 
 	/** {@code PotionBrewing.Mix}: {@code field_8962} is {@code from}, {@code field_8961} {@code to}. */
 	public static class class_1846<T> {
+		public final T field_8962 = null;
+
 		private class_1846() {
 		}
 	}

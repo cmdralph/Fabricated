@@ -5,7 +5,8 @@ package net.minecraft;
  * {@code getBlockState(BlockPos)} (of {@code BlockGetter}), {@code method_8652} {@code setBlock(BlockPos, BlockState,
  * int)} and {@code method_8649} {@code addFreshEntity(Entity)} (of {@code LevelWriter}); {@code method_43126} is
  * {@code getSharedSpawnPos()}, {@code method_8321} {@code getBlockEntity(BlockPos)} (of {@code BlockGetter}),
- * {@code method_31600} {@code getMaxBuildHeight()} (of {@code LevelHeightAccessor}).
+ * {@code method_31600} {@code getMaxBuildHeight()} (of {@code LevelHeightAccessor}), {@code method_48963}
+ * {@code damageSources()}.
  */
 public abstract class class_1937 {
 	public static class_5321<class_1937> field_25179;
@@ -35,6 +36,10 @@ public abstract class class_1937 {
 	}
 
 	public int method_31600() {
+		throw new AssertionError("stand-in");
+	}
+
+	public class_8109 method_48963() {
 		throw new AssertionError("stand-in");
 	}
 }

@@ -284,9 +284,12 @@ jobs:
           path: build/libs/fabricated-forge-*+mc${{ matrix.target.minecraft }}.jar
           if-no-files-found: error
       # The data task 5's open findings turn on, for reading (informational, with "extended"; last, and capped, as the
-      # job's log can only be read from its end): the recipes still failing to parse, each with its exception, and the
-      # classes naming Farmer's Delight's tool action ingredient, which Forge doesn't know (CORPUS-99); and on the
-      # client, the hooks into constructors pre-flight gave Fabricated's injection point (CORPUS-103).
+      # job's log can only be read from its end): the recipes still failing to parse, each with its exception, one of
+      # them as Supplementaries ships it, how Farmer's Delight reads and registers its tool action ingredient, and the
+      # mods' mixins of Ingredient, one of which may read the recipe's "type" on Fabric (CORPUS-99); and on the client,
+      # the mods' code naming a brewing mix, which REI's default plugin reads where Forge 47 keeps holders, the mods'
+      # spawn eggs, one of which had no entity type as EMI and REI listed Artifacts' creative tab, and the test mod's
+      # lines on its conditional recipes, neither of which its check found there.
       - name: Bytecode for task 5's findings (informational)
         if: ${{ env.EXTENDED == 'true' && !cancelled() && steps.corpus.outcome == 'success' }}
         continue-on-error: true
@@ -297,9 +300,15 @@ jobs:
             echo "-- recipes failing to parse (CORPUS-99):"
             awk '/Parsing error loading recipe/ { id = $0; sub(/.*loading recipe /, "", id); sub(/[^a-z0-9_.:\/-].*/, "", id)
               if ((getline next_line) > 0) print id ": " substr(next_line, 1, 200) }' "$log" 2>/dev/null | sort -u | head -n 30 || true
-            python3 -I ci/javap-dump.py "$RUNNER_TEMP/server-corpus" refs:tool_action 'mod:*ToolActionIngredient#*' | cut -c1-320 | head -n 300 || true
+            python3 -I ci/javap-dump.py "$RUNNER_TEMP/server-corpus" 'file:data/supplementaries/recipes/integration/lapis_bricks_fd.json' \
+              'mod:*ToolActionIngredient$Serializer#read' 'mod:*ToolActionIngredient#register' mixins:net/minecraft/class_1856 \
+              | cut -c1-320 | head -n 300 || true
           fi
           if [ -d "$RUNNER_TEMP/client-corpus" ]; then
-            grep -n "Fabricated's injection point stands for it" "$RUNNER_TEMP/client-corpus/run/logs/fabric-bridge-report.txt" 2>/dev/null \
-              | cut -c1-400 | head -n 20 || true
+            python3 -I ci/javap-dump.py "$RUNNER_TEMP/client-corpus" 'refs:net/minecraft/class_1845$class_1846' subtypes:net/minecraft/class_1826 \
+              | cut -c1-320 | head -n 300 || true
+            grep -h 'FABRICATED-FORGE-TEST recipe condition' "$RUNNER_TEMP/client-corpus/run/logs/latest.log" 2>/dev/null | cut -c1-400 | head -n 10 || true
+            # Where a mod's code met a null collection of search stacks (CORPUS-111).
+            echo "-- searchStacks (CORPUS-111):"
+            grep -h -B2 -A24 'because "searchStacks" is null' "$RUNNER_TEMP/client-corpus/run/logs/latest.log" 2>/dev/null | cut -c1-300 | head -n 60 || true
           fi

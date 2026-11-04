@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
@@ -31,21 +32,25 @@ import io.github.cmdralph.fabricated.core.json.JsonException;
  * {@code GuiRenderer}, which NeoForge replaced with renderer pools and Fabric mods read and replace (malilib, PIP-1). A
  * field of one of Fabricated's mixins counts when it is neither shadowed nor unique (named for Fabricated alone). So do
  * the methods they add for a field the platform gave another type or replaced ({@link MixinNames#BRIDGE_GETTER}),
- * which a Fabric mod's accessor of the field invokes (CORPUS-37, CORPUS-94); pre-flight reads their declarations, not
- * their code.
+ * which a Fabric mod's accessor of the field invokes (CORPUS-37, CORPUS-94), and its own reads of the field call
+ * (CORPUS-107); pre-flight reads their declarations, not their code.
  */
 public final class RestoredFields {
 	private static final String SHADOW = "Lorg/spongepowered/asm/mixin/Shadow;";
 	private static final String UNIQUE = "Lorg/spongepowered/asm/mixin/Unique;";
 
-	private RestoredFields() {
+	/** By the game class's internal name. */
+	private final Map<String, Added> added;
+
+	private RestoredFields(Map<String, Added> added) {
+		this.added = added;
 	}
 
 	/**
 	 * @param fabricatedFiles Fabricated's in-game mod (jars or directories), whose root {@code *.mixins.json} configs list
 	 *                        its mixins
 	 */
-	public static ClassBytesSource over(ClassBytesSource game, List<Path> fabricatedFiles) {
+	public static RestoredFields of(List<Path> fabricatedFiles) {
 		Map<String, Added> added = new HashMap<>();
 		for (Path file : fabricatedFiles) {
 			try {
@@ -54,6 +59,27 @@ public final class RestoredFields {
 				// Unreadable: pre-flight sees the game's classes as they are, as before.
 			}
 		}
+		return new RestoredFields(Map.copyOf(added));
+	}
+
+	/**
+	 * The fields a bridge getter serves ({@link MixinNames#BRIDGE_GETTER}), as {@code owner field} in the game's runtime
+	 * names to the getter's name: a Fabric mod's own reads of them call it (CORPUS-107), as its accessors do.
+	 */
+	public Map<String, String> bridgedFields() {
+		Map<String, String> fields = new TreeMap<>();
+		added.forEach((owner, more) -> {
+			for (MethodNode method : more.methods()) {
+				if (method.name.startsWith(MixinNames.BRIDGE_GETTER) && method.desc.startsWith("()")) {
+					fields.put(owner + " " + method.name.substring(MixinNames.BRIDGE_GETTER.length()), method.name);
+				}
+			}
+		});
+		return fields;
+	}
+
+	/** The game's classes with what Fabricated's mixins add to them. */
+	public ClassBytesSource over(ClassBytesSource game) {
 		if (added.isEmpty()) return game;
 		return name -> {
 			byte[] data = game.read(name);

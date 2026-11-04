@@ -2,7 +2,7 @@ package net.minecraft;
 
 /**
  * {@code ServerLevel}: {@code method_17988} is {@code setChunkForced(int, int, boolean)}, {@code method_37118}
- * {@code isPositionEntityTicking(BlockPos)}.
+ * {@code isPositionEntityTicking(BlockPos)}, {@code method_14190} {@code getEntity(UUID)}.
  */
 public abstract class class_3218 extends class_1937 {
 	private class_3218() {
@@ -14,6 +14,10 @@ public abstract class class_3218 extends class_1937 {
 	}
 
 	public boolean method_37118(class_2338 pos) {
+		throw new AssertionError("stand-in");
+	}
+
+	public class_1297 method_14190(java.util.UUID uuid) {
 		throw new AssertionError("stand-in");
 	}
 }

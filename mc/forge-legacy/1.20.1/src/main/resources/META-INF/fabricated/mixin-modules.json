@@ -19,6 +19,7 @@
     "GameDataFreezeMixin": [],
     "IngredientForgeNetworkMixin": ["fabric-recipe-api-v1"],
     "LiquidBlockEarlyFluidMixin": [],
+    "LivingEntityDropCaptureMixin": [],
     "LivingEntityFluidTravelMixin": [],
     "MappedRegistryPendingHoldersMixin": [],
     "NamespacedWrapperAliasMixin": ["fabric-registry-sync-v0"],
