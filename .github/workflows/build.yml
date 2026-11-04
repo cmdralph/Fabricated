@@ -1175,7 +1175,7 @@ jobs:
           [ -f viewers.txt ] && { echo "== viewers fetched"; cat viewers.txt; }
           [ -f "$RUNNER_TEMP/summary-advanced.txt" ] && { echo "== advanced corpus fetched"; cut -c1-200 "$RUNNER_TEMP/summary-advanced.txt"; }
           [ -f "$RUNNER_TEMP/summary-neoforge-data.txt" ] && { echo "== NeoForge biome and structure modifiers in the advanced corpus's Fabric jars"; head -40 "$RUNNER_TEMP/summary-neoforge-data.txt"; }
-          for run in client client-fapi client-coexist client-sodium client-shaders client-sodium-fabric client-shaders-fabric client-sodium-addons client-viewers client-polyfrost client-corpus client-malilib client-essential client-flashback client-advanced; do
+          for run in client client-fapi client-coexist client-ffapi client-sodium client-shaders client-sodium-fabric client-shaders-fabric client-sodium-addons client-viewers client-polyfrost client-corpus client-malilib client-essential client-flashback client-advanced; do
             log="$RUNNER_TEMP/$run/run/logs/latest.log"
             if [ ! -f "$log" ]; then
               # The game never started (the launcher stopped first): what the launcher said last.
@@ -1186,8 +1186,9 @@ jobs:
             # The smoke checks that failed (the step's own lines may be gone from the job's log by now).
             [ -f "$RUNNER_TEMP/$run/checks-failed.txt" ] && cut -c1-400 "$RUNNER_TEMP/$run/checks-failed.txt" | head -20
             grep -h -m 20 -E "FABRICATED-TEST frapi|Caused by|Exception in|crash report|Fabric API's own renderer|drawn by the renderer" "$log" || true
-            # The test mod's own failed checks and its informational lines (far up the log by now).
-            grep -h -m 12 -E "FABRICATED-TEST (.*FAILED|library modules|networking join event)" "$log" | cut -c1-400 || true
+            # The test mod's own failed checks and its informational lines (far up the log by now), and the argument types
+            # Fabricated registered for another mod's command API (PROVIDER-12).
+            grep -h -m 12 -E "FABRICATED-TEST (.*FAILED|library modules|networking join event)|Registered the command argument types" "$log" | cut -c1-400 || true
             # Whether Iris loaded the shader pack, and drew with it (Iris's own lines).
             if [ "$run" = client-shaders ] || [ "$run" = client-shaders-fabric ]; then
               grep -h -m 8 -i -E "shaderpack|shaders are disabled|shader rendering pipeline" "$log" | cut -c1-300 || true
@@ -1299,8 +1300,8 @@ jobs:
                   | grep -E "^[[:space:]]+(at |- )|java\.lang\.Thread\.State" | head -20
               done
               grep -q -E '^"(Render|Server) thread"' "$dump" || head -n 5 "$dump"
-              # The thread holding a monitor one of them waits for (CORPUS-48: Xaero's World Map's server world unload waits
-              # inside its synchronized block, line 106), with its state and top frames.
+              # The thread holding a monitor one of them waits for, with its state and top frames (how CORPUS-48's lock
+              # cycle was read).
               for lock in $(awk 'BEGIN { RS = "" } /^"(Render|Server) thread"/' "$dump" | grep -o -E 'waiting to lock <0x[0-9a-f]+>' \
                   | grep -o -E '0x[0-9a-f]+' | sort -u | head -3); do
                 echo "-- the thread holding <$lock>:"
@@ -1345,7 +1346,7 @@ jobs:
       # Polydium's mixin plugin and its font mixin (whose handler, typed with the mixin class, stops 1.21.1 and 1.21.11
       # as Mixin applies it); Architectury's keyboard hook into a lambda of KeyboardHandler.charTyped, which Mixin finds
       # no target for on 1.21.1 (the corpus); malilib's tooltip hooks; how the Sodium and Iris gate's clients leave their
-      # world; Sodium's and Iris's Fabric builds' quad and access findings; Xaero's World Map's world unload (CORPUS-48).
+      # world; Sodium's and Iris's Fabric builds' quad and access findings.
       # Members only, and a class that is the same as one printed (a translation in several cache jars) once.
       - name: Bytecode for task 5's findings (informational)
         if: ${{ (matrix.part == 'mods' || matrix.part == 'corpus') && env.EXTENDED == 'true' && !cancelled() && steps.build.outcome == 'success' }}
@@ -1410,9 +1411,6 @@ jobs:
               fi
             done
           fi
-          # CORPUS-48: what Xaero's World Map's server world unload runs at its line 106, where the corpus clients' server
-          # thread stays (not parked: a loop) while mc-runtime-test's stop joins it from the render thread.
-          dump client-corpus 'mod:xaero.map.file.worldsave.WorldDataHandler#onServerWorldUnload' 'mod:xaero.map.file.worldsave.WorldDataHandler#*'
           # LAMBDA-9: Litematica's schematic hooks into LevelRenderer.addMainPass's lambda, which NeoForge 26.2 gives one more
           # value: what pre-flight now reports of them, and addMainPass as NeoForge's and vanilla's code declare it.
           if [ "${{ matrix.target.minecraft }}" = "26.2" ]; then
