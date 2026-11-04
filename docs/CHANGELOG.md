@@ -3,7 +3,7 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
-## 2026-11-04: Iris's particle hook on Forge 47 (IRIS-1), MixinConstraints' Forge abstraction on Forge 64 to 66 (PLUGIN-1), malilib's set on Forge, and mods extending a nested mod that isn't loading (CORPUS-89) (task 5)
+## 2026-11-04: Iris's particle hook on Forge 47 (IRIS-1), MixinConstraints' Forge abstraction on Forge 64 to 66 (PLUGIN-1), malilib's set, Sodium and Essential on Forge, and mods extending a nested mod that isn't loading (CORPUS-89) (task 5)
 
 - **IRIS-1, the particle hook** (P1 for Iris's Fabric build on Forge 47; `main` #303): Iris redirects the read of
   `ParticleEngine.RENDER_ORDER` in `render`, the list vanilla's loop goes over, so that each of its passes renders the
@@ -35,6 +35,13 @@ One entry per working session, newest first: what changed, and how it was verifi
   and 41796106172, 41790205318 and 41796109577), which makes their run a gate there (CI-1). Decision: the
   compatibility plan's refusal of malilib is lifted on Forge, so the plan no longer lists it, and the Forge branches'
   syncs of this change turn their run into a gate that loads them by default.
+- **Sodium and Essential on Forge** (`main` #304): Sodium's Fabric build (with Indium on Forge 47, with Iris's on 61 to
+  66) and both of Essential's launches reached their worlds with every smoke check passing on Forge 47 and 61 to 66, in
+  two extended runs in a row on each Forge branch (`forge` 41802636538 and 41807861551, `forge-legacy` 41802640600 and
+  41807866185), which makes their runs gates there (CI-1). Decision: their refusals are lifted on Forge (decision 3).
+  The plan keeps only Sodium's refused pair with Iris for NeoForge, and the Forge branches' syncs turn the runs into
+  gates that load them by default. Iris stays refused on Forge until Forge 47's run gates it with IRIS-1's fix, and
+  Flashback until its Forge 64 to 66 runs pass.
 - **ENTRY-4 and GROUP-2 verified** in the Forge branches' extended runs on #302's sync (`forge` 41802636538,
   `forge-legacy` 41802640600), and moved to the fixed findings: Sodium and Iris reach their world on Forge 66, Sodium's
   hook into the window's creation skipped with its warning, and Essential's second launch loads Essential on Forge 47
