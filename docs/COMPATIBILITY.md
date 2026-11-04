@@ -125,8 +125,11 @@ ones that exist in 0.116 (`fabric-resource-loader-v0` stands for v1, which 0.116
 
 - **Storages and energy**: NeoForge 21.1 has the item, fluid and energy handler capabilities of before its transfer
   API, so the bridge is the Forge one, ported (`ItemHandler`, `FluidHandler` and `EnergyStorage` capabilities, both
-  ways on blocks, fluid and energy storages in items both ways). Fluid data components cross. Items in items
-  (`ItemStorage.ITEM`) aren't bridged on this version, as on Forge.
+  ways on blocks and in items: a NeoForge mod's code puts items in a Fabric mod's bag through `ItemHandler.ITEM`, and
+  a Fabric mod's code in a NeoForge mod's through `ItemStorage.ITEM`). Fluid data components cross. NeoForge's item
+  handler of a stack can't hand back another stack, as a fluid handler's container can, so a move a Fabric storage in
+  an item would make by leaving another item, or a different count of it, in the item's place doesn't happen through
+  it: NeoForge's caller, holding the item, would lose what moved.
 - **Fuel**: `FuelRegistry.INSTANCE` (0.116 has no fuel events) answers through NeoForge's furnace fuel data map and
   its burn time event; tags first, then items, and vanilla's non-flammable wood exclusion applies.
 - **Biomes**: NeoForge 21.1's biome info holds the special effects, so its own check sends a biome a Fabric
@@ -637,7 +640,10 @@ CI checks, on every version: a chest found through `ItemStorage.SIDED` keeps its
 aborted and changes when one commits; a full water cauldron empties when a bucket of water is extracted; a Fabric
 storage used through NeoForge's capability and a NeoForge handler used through `ItemStorage.SIDED` follow aborts,
 nested commits and commits; fluids move in whole millibuckets only; NeoForge code fills a Fabric mod's fluid cell
-in a slot, and Fabric code a NeoForge mod's, each item swapped only when the transaction commits. With Team Reborn's library
+in a slot, and Fabric code a NeoForge mod's, each item swapped only when the transaction commits. On 1.21.1, NeoForge
+code fills and empties a Fabric mod's bag, the bag's own stack showing each change, and Fabric code a NeoForge mod's
+pouch in a slot, an aborted transaction leaving it unchanged; a Fabric mod's sack that takes an item by becoming
+another is refused it by NeoForge code. With Team Reborn's library
 (fetched for the server run with Fabric API where Modrinth has a build, of its own or nested in Tech Reborn's or
 Modern Industrialization's jar): NeoForge code charges a Fabric mod's energy block and Fabric code a NeoForge mod's,
 an aborted transaction leaving each unchanged; the Fabric block's energy comes from a lookup fallback, as Tech
@@ -1254,7 +1260,6 @@ tracked:
 |---|---|---|---|
 | Fabric's game tests (`fabric-gametest-api-v1`, `client-gametest`) | all | deliberately not loaded: they are development-time tools, not used by mods at runtime | — |
 | Data generation's tag appenders (and on 26.3 its loot sub-providers) | all | pre-flight leaves those hooks out where NeoForge's data providers differ; the module's classes load for mods' runtime code (DATAGEN-1), and nothing is generated unless `fabric-api.datagen` is set | — |
-| Fabric storages in items (`ItemStorage.ITEM`) across to NeoForge's item handlers | 1.21.1 | NeoForge 21.1's item handler capability on stacks predates its transfer API, as Forge's | task 5 |
 | A Fabric mod's accessor to a field NeoForge retyped (`KeyMapping.MAP`) | all | NeoForge's field has another type, so the accessor is left out and its callers throw `NoSuchMethodError` | KEYMAP-1, task 5 |
 | A mixin adding interfaces to a library class NeoForge loads without mixin support, beyond LIB-1's and LIB-2's | all | Mixin can't reach such a class; one with state of its own, or injectors, disables its mod, or loads without the mixin by `skipMixins`. Where an adapter serves one (LIB-2), only the mod's own casts wrap the object: another mod's check against the interface doesn't see it | LEAVE-1, LIB-2 (above) |
 | A failed mod's other entrypoints, with `"onEntrypointFailure": "disable"` | all | skipped, as the setting says: a server configuration task the failed mod registered can then leave a player waiting to join, its client side never registered | ENTRY-1 (decided) |

@@ -1,5 +1,7 @@
 package io.github.cmdralph.fabricated.neoforge.transfer;
 
+import java.util.function.BooleanSupplier;
+
 import org.jspecify.annotations.Nullable;
 
 import net.fabricmc.fabric.api.transfer.v1.transaction.Transaction;
@@ -8,6 +10,9 @@ import net.fabricmc.fabric.api.transfer.v1.transaction.Transaction;
 final class FabricTransactions {
 	private FabricTransactions() {
 	}
+
+	/** What always stands. */
+	static final BooleanSupplier ALWAYS = () -> true;
 
 	@FunctionalInterface
 	interface Action {
@@ -21,10 +26,19 @@ final class FabricTransactions {
 	 * (a NeoForge handler called as a {@link NeoItemStorage}'s moves are applied).
 	 */
 	static long run(boolean simulate, Action action) {
+		return run(simulate, action, ALWAYS);
+	}
+
+	/**
+	 * As {@link #run(boolean, Action)}, with what moved standing only if {@code stands} holds once {@code action} has
+	 * run: otherwise the transaction is aborted, simulating or not, and nothing moved.
+	 */
+	static long run(boolean simulate, Action action, BooleanSupplier stands) {
 		Transaction transaction = open();
 		if (transaction == null) return 0;
 		try (transaction) {
 			long moved = action.run(transaction);
+			if (moved != 0 && !stands.getAsBoolean()) return 0;
 			if (!simulate) transaction.commit();
 			return moved;
 		}

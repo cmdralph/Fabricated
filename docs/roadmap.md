@@ -404,6 +404,10 @@ logs become findings, and the corpora grow by the mods they name.
     left out from the next launch (APPLY-1). HUD-3 and MODEL-4 are fixed, and the corpora's stops on 1.21.1 that
     CORPUS-51 and CORPUS-52 (TOKEN-1) were. LINK-3 is fixed; KEYMAP-1 is P3 and documented. The fixes on the way are
     in `CHANGELOG.md`.
+  - **Done on `forge` (#298) and `main`'s branch (its pull request):** item storages in items cross both ways on
+    Forge 61 to 66 and NeoForge 1.21.1, through the platform's item handler of a stack and `ItemStorage.ITEM`; a move
+    that would leave another item in the container's place doesn't happen through the platform's handler, which can't
+    hand back another stack. Forge 47 has nothing to cross: Fabric API for 1.20.1 has no lookup for them.
 - **Task 6 (optimization and cleanup):** PERF-1, PERF-2 and the launch baselines; the cache findings (FC-5, FC-6,
   FC-7); SEC-5, CI-3, PLAT-2 and P3-2; the cleanup candidates in *Quality* (below); and whatever tasks 3 to 5 leave.
 - **Task 7 (release):** the ship criteria above.
@@ -424,7 +428,7 @@ each Fabric API module's status per platform in [`COMPATIBILITY.md`](COMPATIBILI
 | Mixins (pre-flight, its repairs, hooks left out), access wideners, injected interfaces, `@Environment` stripping | yes | yes, with MixinExtras 0.5.5 nested in the in-game mod over Forge's 0.5.4 (MIXEXT-3) | yes, with MixinExtras nested in the in-game mod, which also carries Fabric mods' hooks at a call in a constructor (CTOR-4); hooks into lambdas of the classes Forge patched found by vanilla's SRG names (LAMBDA-6), and bridged where Forge's patch made them take `this` or reordered their values (LAMBDA-7) |
 | Official Fabric API jar | every module loads, server and client | every module loads, server and client | every module loads, server and client |
 | Native Fabric API modules | 17 (18 on 1.21.1: particles) | 3 (`fabric-api-base`, `fabric-loot-api-v3`, the key mapping module, KEYMAP-3) | 6 (`fabric-api-base`, biome, both loot modules, dimensions, particles) |
-| Bridges to the platform | fluid types, storages and energy with capabilities, plugins of other mods, custom values, renderer API | fluid types, storages with capabilities (on blocks, fluids in items), tags' `fabric:remove`, default attributes (Forge 64 to 66), advancement events (Forge 65 and 66), block break, sleep and after-damage events (BREAK-1, SLEEP-1, DAMAGE-1), load conditions in Forge 61's conditional decoder, a Fabric mod's pack identity (PACK-5), screen events (SCREEN-1), HUD elements on Forge's layers (HUD-2) | fluid types, storages with capabilities (on blocks, fluids in items), tags' `fabric:remove`, block break and sleep events (BREAK-1, SLEEP-1, SLEEP-2), Fabric fuels and brewing recipes (FUEL-1, BREW-1), `HudRenderCallback` (HUD-2) |
+| Bridges to the platform | fluid types, storages and energy with capabilities, plugins of other mods, custom values, renderer API | fluid types, storages with capabilities (on blocks, fluids and items in items), tags' `fabric:remove`, default attributes (Forge 64 to 66), advancement events (Forge 65 and 66), block break, sleep and after-damage events (BREAK-1, SLEEP-1, DAMAGE-1), load conditions in Forge 61's conditional decoder, a Fabric mod's pack identity (PACK-5), screen events (SCREEN-1), HUD elements on Forge's layers (HUD-2) | fluid types, storages with capabilities (on blocks, fluids in items), tags' `fabric:remove`, block break and sleep events (BREAK-1, SLEEP-1, SLEEP-2), Fabric fuels and brewing recipes (FUEL-1, BREW-1), `HudRenderCallback` (HUD-2) |
 | Networking | native, on NeoForge's payloads | upstream's module: a payload round trip with the integrated server (checked with Fabric API) | upstream's module: a channel round trip with the integrated server (checked with Fabric API) |
 | Rendering (renderer API, models, Sodium and Iris for NeoForge) | yes | upstream's modules: Indigo builds chunk sections on all four (SUPER-1, LOCAL-4), Fabric's colour providers are read from Forge's map (COLOR-1), and Fabric's block dust tint event is asked where Forge 61 decides the tint (PART-2); Fabric models drawn through Indigo with rule 8 at its entry points, and on Forge 61 from Fabricated's seams where upstream's hooks are left out (FRAPI-8; CI's renderer test mod) | upstream's renderer API, Indigo, `fabric-rendering-v1` and model loading load, with Fabric's colour providers read from Forge's maps (COLOR-1), model loading's constructor hook wrapped (CTOR-4) and its before-bake hook moved to the overload Forge's code went to (MODEL-3); particles Fabricated's own, on Forge's particle engine (PART-1); Fabric models drawn through Indigo from Fabricated's seams, as Forge's renderers call its own overloads, with rule 8 (FRAPI-9; CI's renderer test mod) |
 | CI | server and client runs gated, and checks in the Fabric API runs; corpus runs informational | both server runs and both client runs gated, with a stand-ins server and a refusal server; corpus runs informational | as Forge 61 to 66 |
@@ -432,9 +436,10 @@ each Fabric API module's status per platform in [`COMPATIBILITY.md`](COMPATIBILI
 
 - **`main`:** NeoForge for 1.21.1, 1.21.11, 26.1.2, 26.2 and 26.3, every line stable (NeoForge tagged `26.3.0-stable`; CI
   pins 26.3.0.95 and no version is experimental any more).
-- **Next** (the v0.6.0-beta pass, task 4 done): task 5: the corpus stops (CORPUS-53 to 55) and PRE-18's check, item
-  storages in items (a backpack's) with Forge's item handlers on stacks, Fabric mods' own HUD mixins, coexisting with
-  Forgified Fabric API, and the difficult mods' Fabric builds. The effect events' hook is done (EFFECT-1).
+- **Next** (the v0.6.0-beta pass, task 4 done): task 5: the corpus stops (CORPUS-53 to 55) and PRE-18's check, Fabric
+  mods' own HUD mixins, coexisting with Forgified Fabric API, and the difficult mods' Fabric builds. The effect events'
+  hook is done (EFFECT-1), and item storages in items with Forge's item handlers on stacks on Forge 61 to 66 (`forge`
+  #298; Fabric API for 1.20.1 has no lookup for them).
 - **Decided** (`RESEARCH.md` §8): Forge 47.4 for 1.20.1, the shared modules kept loadable on Java 17, ForgeGradle for
   modern Forge, CI for pull requests only. L1, the behaviour-neutral seams on `main`: Java 17 for the shared modules
   (their main code compiles at release 17), the loader split (`loader/common`, `loader/neoforge`), the build split
@@ -618,7 +623,7 @@ size, re-checked every Sodium release, and its licence); Iris fixes beyond its p
   each host must construct and call the test mod's plugin. On `b679b92` JEI, REI, Jade, WTHIT and Simple Voice Chat
   did on 1.21.11, 26.1.2 and 26.2, and all but WTHIT (no 26.3 build) on 26.3.
 - **Done:** storages in items bridged both ways (`ItemStorage.ITEM`/`FluidStorage.ITEM` with NeoForge's
-  item capabilities), and energy with Team Reborn's library when a Fabric mod brings it (blocks and items, both
+  item capabilities, on 1.21.1 its item and fluid handlers on stacks), and energy with Team Reborn's library when a Fabric mod brings it (blocks and items, both
   ways), the first bridge to a Fabric library rather than Fabric API. CI: the transfer check fills each side's fluid
   cell from the other; an energy check runs where Modrinth has the library, of its own or nested in Tech Reborn or
   Modern Industrialization (on `9621e53` it had neither for any version).

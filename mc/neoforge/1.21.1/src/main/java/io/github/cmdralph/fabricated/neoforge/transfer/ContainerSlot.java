@@ -11,7 +11,7 @@ import net.minecraft.world.item.ItemStack;
 
 /**
  * A Fabric slot holding the stack a NeoForge item capability belongs to, for a Fabric storage of that item to act on
- * ({@link FabricItemFluidHandler}, {@link EnergyBridge}). Fabric's slot takes a snapshot by putting a copy of the stack
+ * ({@link FabricItemFluidHandler}, {@link FabricItemItemHandler}, {@link EnergyBridge}). Fabric's slot takes a snapshot by putting a copy of the stack
  * in its place, so a transaction never changes the stack it began with; once the outermost one commits, an item that
  * stayed the same is written into that stack, which stays the container.
  */
@@ -28,6 +28,11 @@ final class ContainerSlot extends SingleStackStorage {
 	/** The container now: the stack it began with, or the different item that replaced it. */
 	ItemStack stack() {
 		return stack;
+	}
+
+	/** Whether the slot holds as many of the same item as the container began with, whatever their components. */
+	boolean holdsContainer() {
+		return stack.getCount() == committed.getCount() && ItemStack.isSameItem(committed, stack);
 	}
 
 	@Override

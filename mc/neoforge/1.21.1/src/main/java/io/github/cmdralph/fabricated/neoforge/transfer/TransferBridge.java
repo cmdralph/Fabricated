@@ -27,13 +27,14 @@ import net.neoforged.neoforge.fluids.capability.IFluidHandler;
 import net.neoforged.neoforge.items.IItemHandler;
 
 /**
- * Lets NeoForge 21.1 and Fabric code reach each other's item and fluid storages on blocks, and fluid storages in items,
- * as later versions' bridge does over NeoForge's newer transfer API: a NeoForge hopper or pipe sees a Fabric mod's
- * storage through the {@code ItemHandler} and {@code FluidHandler} block capabilities, and a Fabric mod sees a NeoForge
- * mod's handler through {@code ItemStorage.SIDED} and {@code FluidStorage.SIDED}; a NeoForge machine fills a Fabric mod's
- * tank item through {@code FluidHandler.ITEM}, and a Fabric machine a NeoForge mod's through {@code FluidStorage.ITEM}.
- * Fluid amounts convert at 81 droplets per millibucket, whole millibuckets only. Items in items (Fabric's
- * {@code ItemStorage.ITEM}) aren't bridged on this version, as on Forge.
+ * Lets NeoForge 21.1 and Fabric code reach each other's item and fluid storages on blocks and in items, as later
+ * versions' bridge does over NeoForge's newer transfer API: a NeoForge hopper or pipe sees a Fabric mod's storage
+ * through the {@code ItemHandler} and {@code FluidHandler} block capabilities, and a Fabric mod sees a NeoForge mod's
+ * handler through {@code ItemStorage.SIDED} and {@code FluidStorage.SIDED}; a NeoForge machine fills a Fabric mod's tank
+ * item through {@code FluidHandler.ITEM}, and a Fabric machine a NeoForge mod's through {@code FluidStorage.ITEM}; and a
+ * NeoForge mod's code puts items in a Fabric mod's bag through {@code ItemHandler.ITEM}, and a Fabric mod's code in a
+ * NeoForge mod's through {@code ItemStorage.ITEM}. Fluid amounts convert at 81 droplets per millibucket, whole
+ * millibuckets only.
  *
  * <p>Each side answers for what its own mods add, told apart by namespace: NeoForge's capabilities for Fabric mods'
  * blocks and items come from Fabric's whole lookup, fallbacks included, and Fabric's lookups fall back to NeoForge's
@@ -44,9 +45,9 @@ import net.neoforged.neoforge.items.IItemHandler;
  * transactions that may be undone. A NeoForge handler seen as a Fabric storage ({@link NeoItemStorage},
  * {@link NeoFluidStorage}) only simulates while the transaction is open and moves the result once the outermost one
  * commits; a Fabric storage seen as a NeoForge handler ({@link FabricItemHandler}, {@link FabricFluidHandler}) opens a
- * transaction for each call, committed unless the call simulates. An item's handler and storage
- * ({@link FabricItemFluidHandler}, {@link NeoItemFluidStorage}) change the item by replacing it, as both sides' own item
- * storages do.
+ * transaction for each call, committed unless the call simulates. An item's handlers and storages
+ * ({@link FabricItemFluidHandler}, {@link FabricItemItemHandler}, {@link NeoItemFluidStorage}, {@link NeoItemItemStorage})
+ * change the item by replacing it, as both sides' own item storages do.
  */
 public final class TransferBridge {
 	private TransferBridge() {
@@ -60,6 +61,8 @@ public final class TransferBridge {
 		// After upstream's fallback, which gives every bucket item Fabric's own bucket storage.
 		FluidStorage.ITEM.registerFallback((stack, context) -> isNeoForge(stack.getItem())
 				&& stack.getCapability(Capabilities.FluidHandler.ITEM) != null ? new NeoItemFluidStorage(context) : null);
+		ItemStorage.ITEM.registerFallback((stack, context) -> isNeoForge(stack.getItem())
+				&& stack.getCapability(Capabilities.ItemHandler.ITEM) != null ? new NeoItemItemStorage(context) : null);
 		if (energy()) EnergyBridge.register();
 	}
 
@@ -94,7 +97,10 @@ public final class TransferBridge {
 			event.registerBlock(Capabilities.FluidHandler.BLOCK, (level, pos, state, blockEntity, side) ->
 					fluidHandler(FluidStorage.SIDED.find(level, pos, state, blockEntity, side)), blocks);
 		}
-		if (items.length > 0) event.registerItem(Capabilities.FluidHandler.ITEM, (stack, context) -> FabricItemFluidHandler.of(stack), items);
+		if (items.length > 0) {
+			event.registerItem(Capabilities.FluidHandler.ITEM, (stack, context) -> FabricItemFluidHandler.of(stack), items);
+			event.registerItem(Capabilities.ItemHandler.ITEM, (stack, context) -> FabricItemItemHandler.of(stack), items);
+		}
 		if (energy()) EnergyBridge.registerCapabilities(event, blocks, items);
 	}
 
