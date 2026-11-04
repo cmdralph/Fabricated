@@ -390,3 +390,30 @@ jobs:
           status=0
           SMOKE_TIMEOUT=420 ci/forge-legacy/smoke-client.sh "$MC" "$FORGE" "$RUNNER_TEMP/client-flashback" "$dir" > "$RUNNER_TEMP/client-flashback.out" 2>&1 || status=$?
           ci/forge-legacy/difficult-summary.sh "$RUNNER_TEMP/client-flashback" "$status" "Flashback" "flashback|Flashback" flashback
+      # Evidence for IRIS-1, read once and then removed: Forge 47's ShaderInstance constructors, where Iris hooks the
+      # JSON parse, and its ParticleEngine.render, where Iris redirects a field read, beside Iris's two mixins as
+      # Fabricated translated them.
+      - name: Evidence for IRIS-1
+        if: ${{ !cancelled() }}
+        run: |
+          t=$(mktemp -d)
+          w="$RUNNER_TEMP/client-sodium"
+          fj=$(find "$w" -name 'forge-*-client.jar' 2>/dev/null | head -n 1)
+          if [ -n "$fj" ]; then
+            (cd "$t" && unzip -q -o "$fj" net/minecraft/client/renderer/ShaderInstance.class net/minecraft/client/particle/ParticleEngine.class)
+            echo "::group::Forge 47's ShaderInstance constructors ($fj)"
+            javap -p -c "$t/net/minecraft/client/renderer/ShaderInstance.class" | awk '/^  (public|protected|private)? ?net\.minecraft\.client\.renderer\.ShaderInstance\(/ {p=1} p {print} p && /^$/ {p=0}' | head -n 400
+            echo "::endgroup::"
+            echo "::group::Forge 47's ParticleEngine.render (m_107336_)"
+            javap -p -c "$t/net/minecraft/client/particle/ParticleEngine.class" | awk '/ m_107336_\(/ {p=1} p {print} p && /^$/ {p=0}' | head -n 300
+            javap -p "$t/net/minecraft/client/particle/ParticleEngine.class" | grep -E 'f_107288_|m_107336_'
+            echo "::endgroup::"
+          fi
+          for j in $(find "$w/run/.fabricated" -name '*.jar' 2>/dev/null); do
+            for c in $(unzip -Z1 "$j" 2>/dev/null | grep -E '/mixin/(fantastic/MixinParticleEngine|MixinShaderInstance)\.class$'); do
+              echo "::group::Iris's $(basename "$c" .class) as Fabricated translated it ($j)"
+              rm -rf "$t/i" && mkdir -p "$t/i" && (cd "$t/i" && unzip -q -o "$j" "$c")
+              javap -p -c -v "$t/i/$c" | sed -n '/^{/,$p' | grep -v -E '^\s+(line [0-9]+: [0-9]+|frame_type|offset_delta|locals = |stack = )' | head -n 200
+              echo "::endgroup::"
+            done
+          done
