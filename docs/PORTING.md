@@ -356,7 +356,8 @@ the abstractions below are added when the branch work starts (owner decision D2 
    and whether the platform reads enum extension files; the loader passes it in `Pipeline.Input`, NeoForge's being
    `PlatformDescriptor.NEOFORGE` (today's `ModsTomlWriter`), Forge's `PlatformDescriptor.FORGE` (for both Forge
    branches: `META-INF/mods.toml` with `mandatory` dependencies, mixin configs in the manifest's `MixinConfigs`, no
-   enum extensions). `NestedNeoForgeJars` takes the nested jars' descriptor path the same way. The rest follows as
+   enum extensions). A Forge version's own descriptor (Forge 47's) extends `PlatformDescriptor.Forge`, so it answers
+   Forge's for whatever it doesn't change (PLAT-6). `NestedNeoForgeJars` takes the nested jars' descriptor path the same way. The rest follows as
    each branch needs it.
 6. **Tests that name NeoForge** (`NestedNeoForgeJarsTest`, `MultiLoaderJarsTest`, `PlatformRenamesTest`, …) run
    against the NeoForge profile, so a branch can run them against its own.
@@ -429,8 +430,11 @@ that takes `this`, which the later releases take: Fabric API's hooks into the tw
 `this` go through a bridge that does, and those into the key lambda whose captured values it reordered get them in
 vanilla's order, placed by their use in vanilla's lambda (LAMBDA-7), so Fabric's screen mouse and key events run.
 Model loading loads since CTOR-4: Forge's Mixin 0.8.5 takes a hook into a constructor only at a return, so pre-flight
-turns one at a call into a MixinExtras wrapper of that call, which also applies Fabric API's hook into `Commands`'
-constructor, so Fabric mods' commands register (checked with Fabric API, on the server and the client). Forge 47 moved
+names Fabricated's own injection point in place of one placed after the constructor's `super()` call (CORPUS-103, which
+replaced CTOR-4's wrapper of a call). The in-game loader registers the point with Mixin; it finds what the hook's point
+finds, moved as that was, and Mixin takes it anywhere there. That also applies Fabric API's hook into `Commands`'
+constructor, so Fabric mods' commands register (checked with Fabric API, on the server and the client), and Dripstone
+Fluid Lib's into `Minecraft`'s, shifted past the particle engine's construction. Forge 47 moved
 the code of the model baker's `bake` into an overload that also takes the sprite getter; pre-flight moves Fabric API's
 before-bake hook, a variable modifier picking its local by type, there as it moves the others (MODEL-3). Fabric's
 networking needs no `SimpleChannel` port: with Fabric API, a ping the client sends on a channel as it joins comes back
