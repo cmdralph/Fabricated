@@ -413,12 +413,13 @@ events from NeoForge's entity events. All of them are server-side, as upstream.
 | `MOB_CONVERSION` | `LivingConversionEvent.Post` | NeoForge doesn't pass the conversion parameters; vanilla's usual ones are given |
 | `ServerPlayerEvents.COPY_FROM`, `AFTER_RESPAWN`, `JOIN`, `LEAVE` | `PlayerEvent.Clone`, `PlayerRespawnEvent`, `PlayerLoggedIn/OutEvent` | |
 | Level change (player and other entities) | `PlayerChangedDimensionEvent`; `EntityTravelToDimensionEvent` then the copy joining the destination | |
-| `ServerMobEffectEvents` and `FabricMobEffect` hooks | `MobEffectEvent.Applicable`, `Added`, `Remove`, `Expired` | `AFTER_REMOVE` runs as the server's next task, once the effect is gone; `isFromCommand()` is always false |
+| `ServerMobEffectEvents` and `FabricMobEffect` hooks | `MobEffectEvent.Applicable`, `Added`, `Remove`, `Expired` | `AFTER_REMOVE` runs as the server's next task, once the effect is gone. The context names the command an effect comes from, set where vanilla's command execution runs a command (upstream's hook is into Brigadier, which NeoForge loads without mixins; EFFECT-1); a command a mod runs through Brigadier's own `CommandDispatcher.execute` gives none |
 | `EntitySleepEvents.ALLOW_SLEEPING`, `STOP_SLEEPING` (players), `ALLOW_SETTING_SPAWN` | `CanPlayerSleepEvent`, `PlayerWakeUpEvent`, `PlayerSetSpawnEvent` | |
 | **Not fired**: `EntityElytraEvents`, the other sleep events | none | NeoForge has no matching hook |
 
 CI checks, on every version: damage and death events for a mob, in order; mob effect add and remove on 1.21.11 and
-26.x, and on 1.21.1, whose Fabric API (0.116) has no mob effect events, mob conversion instead.
+26.x, with an effect the effect command gives coming from that command and one from code from none (EFFECT-1), and on
+1.21.1, whose Fabric API (0.116) has no mob effect events, mob conversion instead.
 
 ### Native `fabric-object-builder-api-v1`
 
@@ -835,7 +836,8 @@ own hooks stay off then), and Sodium draws a Fabric block model from the parts F
 CI's informational 1.21.11 run with Sodium for NeoForge saw the test model and the multipart part with it meshed in
 Sodium's own section level (run 374; run 372, without the fallback, had no parts).
 
-**Their Fabric builds** (NeoForge, every version; refused on Forge until a Forge run gates them, `docs/FORGE.md`).
+**Their Fabric builds** (NeoForge, every version; on Forge Sodium's, every version, and Iris's refused until a Forge
+run gates it, `docs/FORGE.md`).
 Sodium's Fabric build loads by default, and Iris's with it on 1.21.11 and 26.x. CI runs them with Fabric API and the
 renderer test mod on every version Modrinth has them for, as a gate: the client reaches a world, every renderer check
 passes under them, and Sodium's renderer draws the Fabric block models. The same client with CI's minimal shader pack
@@ -894,13 +896,14 @@ Some mods' Fabric builds are refused on a loader where they can't run, or aren't
 (core's `compat-plan.json`). Such a build is disabled with the reason and what to do instead, and the mods that need it
 with it; `loadUnsupported` loads it anyway, for testing. A refusal is lifted on a loader once CI's run of that mod is a
 gate there (the owner's decision 3 of the beta pass): on NeoForge it is lifted for Sodium, Iris, Essential, malilib and
-Flashback; on Forge they stay refused, with "isn't supported on Forge" in the report.
+Flashback, and on Forge for Sodium, Essential and malilib; on Forge Iris and Flashback stay refused, with "isn't
+supported on Forge" in the report.
 
 A build for another Minecraft version that Fabricated can tell can't run is disabled too, with the build to install:
 on 26.x, one whose mixins name intermediary classes (`net.minecraft.class_1234`), the names obfuscated versions (1.21.11
 and older) run Fabric mods with, which 26.x doesn't have (OBF-1: Modrinth lists some 1.21.11 builds for 26.x too).
 
-- **Sodium and Iris**: loaded on NeoForge, with the gaps in *Renderer mods* above.
+- **Sodium and Iris**: loaded on NeoForge, and Sodium on Forge too, with the gaps in *Renderer mods* above.
 - **Essential** (`essential-container`, and `essential-loader`, which partner mods nest): its Fabric build is a loader.
   As the game starts it downloads Essential into the game directory's `essential` folder and adds it to Fabric
   Loader's internal mod list, class loader and Mixin's processor (read in Essential Loader's source), none of which
@@ -909,10 +912,11 @@ and older) run Fabric mods with, which 26.x doesn't have (OBF-1: Modrinth lists 
   runs without Essential, the second with it. Essential's loader then finds Essential among the mods and lets it load
   as a regular mod, so Essential's automatic updates don't run; a jar older than 30 days is reported with a loading
   warning (update it by deleting it, or with Essential's own build where one exists). Pre-flight reads Essential's
-  relocated MixinExtras as MixinExtras' own (MIXEXT-4). CI gates both launches on every version.
+  relocated MixinExtras as MixinExtras' own (MIXEXT-4). Loaded on NeoForge and Forge the same way, CI gating both
+  launches on every version of both.
 - **malilib** (and with it Tweakeroo, MiniHUD and Litematica): it adds its picture-in-picture renderers through a map
-  NeoForge replaced with renderer pools on every version, which Fabricated restores (PIP-1). Loaded on NeoForge, the
-  four gated on every version.
+  NeoForge replaced with renderer pools on every version, which Fabricated restores (PIP-1). Loaded on NeoForge and
+  Forge, the four gated on every version of both.
 - **WTHIT**: its Fabric build refuses NeoForge itself; its NeoForge build is the one to use. Refused everywhere.
 - **Flashback**: its mixin into `MappedRegistry.freeze` starts Flashback on the first registry freeze, and its start-up
   registers a key binding through the client. NeoForge freezes the registries at bootstrap and again before the client
@@ -1063,6 +1067,11 @@ MixinExtras has NeoForge's jar, and a NeoForge mod nested in another jar has tha
   another config (not required, or with a plugin) is left out instead, and the mod loads without it: Mixin would stop
   the game the same way unless the plugin skipped it (OneConfig's chat mixin, which needs adventure-platform-fabric,
   CORPUS-47). The report lists it under *Mixins left out (they need a Fabric mod that isn't loading)*.
+- A mod one of whose classes extends or implements a class of a mod it nests that isn't loading is disabled, with the
+  reason: the game can't define that class, and on Fabric the nested mod is always there (CORPUS-89: Modern
+  Industrialization's items extend Magna's tools). It loads once the nested mod does. A mod nesting one that isn't
+  loading without extending its classes loads, and so does one extending a class of a mod it doesn't nest (an optional
+  integration, which only uses it when that mod is there).
 - Mods detect Fabricated with `FabricLoader.getInstance().isModLoaded("fabricated")`; see [API.md](API.md).
 - `mixinextras` is provided at the version NeoForge runs, as Fabric Loader provides its own, so mods requiring it
   load (copies nested in mod jars are dropped for NeoForge's).

@@ -9,6 +9,7 @@ import java.util.Set;
 
 import io.github.cmdralph.fabricated.core.bytecode.Annotations;
 import io.github.cmdralph.fabricated.core.mixin.InjectionPoints.Range;
+import io.github.cmdralph.fabricated.core.mixin.InjectionPoints.Verdict;
 import io.github.cmdralph.fabricated.core.mixin.MixinPreflight.Context;
 import io.github.cmdralph.fabricated.core.mixin.MixinPreflight.ConstructorInjects;
 
@@ -23,8 +24,9 @@ import org.objectweb.asm.tree.TypeInsnNode;
 import org.objectweb.asm.tree.VarInsnNode;
 
 /**
- * Injector repairs for constructors: injection points the running Mixin takes in a constructor, and injectors at the
- * end of a constructor NeoForge kept for vanilla's signature.
+ * Injector repairs for constructors: injection points the running Mixin takes in a constructor, injectors at the end
+ * of a constructor NeoForge kept for vanilla's signature, and injectors into a constructor the platform keeps only to
+ * call the one it moved the code into.
  */
 final class ConstructorRepairs extends PreflightPart {
 	ConstructorRepairs(PreflightClasses classes) {
@@ -139,6 +141,44 @@ final class ConstructorRepairs extends PreflightPart {
 		return changed;
 	}
 
+	/**
+	 * Points an {@code @Inject} into a constructor that the platform keeps only to call another one of its class
+	 * ({@code this(...)} and nothing after it), at points that are now only in that one, at that one, where the platform
+	 * hands constructors' arguments on ({@link ConstructorHandoffs}): its handler, taking the first constructor's
+	 * parameters, gets the arguments that one was called with through a bridge taking the other's
+	 * ({@link HandlerBridges#handedOffBridge}). Forge 47 keeps {@code ShaderInstance}'s constructor taking a shader's name
+	 * as {@code this(provider, new ResourceLocation(name), format)}, where Iris hooks the shader's JSON parse with a handler
+	 * taking the name (IRIS-1); the other constructor's arguments can't give it back. Where the running Mixin takes such a
+	 * point in a constructor only so, the point is then marked as {@link #constructorPointRepairs} marks it. The handler
+	 * takes the parameters and the callback info alone, and isn't static nor cancellable; the mixin is a class. Returns a
+	 * description of the move, or nothing.
+	 */
+	List<String> handoffRepairs(ClassNode mixin, MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx, List<MethodNode> bridges) {
+		if (!handsOffConstructorArguments || !injector.desc.equals(MixinNames.INJECT) || (handler.access & Opcodes.ACC_STATIC) != 0
+				|| (mixin.access & Opcodes.ACC_INTERFACE) != 0 || Annotations.value(injector, "locals") != null
+				|| Boolean.TRUE.equals(Annotations.value(injector, "cancellable")) || !Annotations.list(Annotations.value(injector, "slice")).isEmpty()
+				|| !(Annotations.value(injector, "method") instanceof List<?> selectors) || selectors.size() != 1
+				|| !(selectors.get(0) instanceof String raw)) return List.of();
+		MemberRef ref = MemberRef.parse(ctx.resolve(raw));
+		if (ref.fuzzy() || !"<init>".equals(ref.name())) return List.of();
+		MethodNode constructor = target.methods.stream().filter(m -> ref.matchesMethod(m.name, m.desc)).findFirst().orElse(null);
+		MethodNode delegate = constructor == null ? null : thisCall(constructor, target);
+		List<AnnotationNode> ats = Annotations.list(Annotations.value(injector, "at"));
+		if (delegate == null || ats.isEmpty() || !takesExactly(handler, constructor)
+				|| InjectionPoints.pointsIn(ats, List.of(), constructor, ctx) != Verdict.MISSING
+				|| InjectionPoints.pointsIn(ats, List.of(), delegate, ctx) != Verdict.FOUND) return List.of();
+		bridges.add(HandlerBridges.handedOffBridge(mixin.name, handler, injector, constructor, delegate, ConstructorHandoffs.field(mixin, constructor.desc),
+				HandlerBridges.freeName(mixin, bridges, handler.name + "$fabricated")));
+		@SuppressWarnings("unchecked")
+		List<Object> values = (List<Object>) selectors;
+		values.set(0, delegate.name + delegate.desc);
+		String moved = constructor.name + constructor.desc + ", which " + loader + " keeps only to call " + delegate.name + delegate.desc
+				+ "; the injector is pointed there, and its handler is given the arguments the first was called with (a construction through"
+				+ " the other alone, which Fabric doesn't have, doesn't call it)";
+		for (String marked : constructorPointRepairs(injector, List.of(target), ctx)) moved += "; it injects into " + marked;
+		return List.of(moved);
+	}
+
 	/** How many instructions Mixin moves a point by ({@code shift}, with {@code by}); null for a shift it doesn't name. */
 	private static Integer shift(AnnotationNode at) {
 		Object shift = Annotations.value(at, "shift");
@@ -184,7 +224,7 @@ final class ConstructorRepairs extends PreflightPart {
 	 * {@code INVOKESPECIAL <init>} of its class or superclass that doesn't initialise an instance the constructor makes
 	 * itself ({@code new}); -1 when there is none.
 	 */
-	private static int delegateCall(MethodNode constructor, ClassNode owner) {
+	static int delegateCall(MethodNode constructor, ClassNode owner) {
 		Map<String, Integer> made = new HashMap<>();
 		for (int i = 0; i < constructor.instructions.size(); i++) {
 			AbstractInsnNode insn = constructor.instructions.get(i);

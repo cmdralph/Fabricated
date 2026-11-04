@@ -26,13 +26,14 @@ import net.minecraftforge.fluids.capability.IFluidHandler;
 import net.minecraftforge.items.IItemHandler;
 
 /**
- * Lets Forge and Fabric code reach each other's item and fluid storages on blocks, and fluid storages in items, as
- * {@code main}'s bridge does on NeoForge (forge-legacy's, ported): a Forge hopper or pipe sees a Fabric mod's storage
- * through Forge's {@code ITEM_HANDLER} and {@code FLUID_HANDLER} capabilities, and a Fabric mod sees a Forge mod's
- * handler through {@code ItemStorage.SIDED} and {@code FluidStorage.SIDED}; a Forge machine fills a Fabric mod's tank
- * item through {@code FLUID_HANDLER_ITEM}, and a Fabric machine a Forge mod's through {@code FluidStorage.ITEM}. Fluid
- * amounts convert at 81 droplets per millibucket, whole millibuckets only; a fluid carrying data (Fabric's components, a
- * Forge stack's tag) doesn't cross, as neither side reads the other's.
+ * Lets Forge and Fabric code reach each other's item and fluid storages on blocks and in items, as {@code main}'s bridge
+ * does on NeoForge (forge-legacy's, ported): a Forge hopper or pipe sees a Fabric mod's storage through Forge's
+ * {@code ITEM_HANDLER} and {@code FLUID_HANDLER} capabilities, and a Fabric mod sees a Forge mod's handler through
+ * {@code ItemStorage.SIDED} and {@code FluidStorage.SIDED}; a Forge machine fills a Fabric mod's tank item through
+ * {@code FLUID_HANDLER_ITEM}, and a Fabric machine a Forge mod's through {@code FluidStorage.ITEM}; and a Forge mod's
+ * code puts items in a Fabric mod's bag through the stack's {@code ITEM_HANDLER}, and a Fabric mod's code in a Forge
+ * mod's through {@code ItemStorage.ITEM}. Fluid amounts convert at 81 droplets per millibucket, whole millibuckets only;
+ * a fluid carrying data (Fabric's components, a Forge stack's tag) doesn't cross, as neither side reads the other's.
  *
  * <p>Each side answers for what its own mods add, told apart by the block's or item's namespace: the capabilities of a
  * Fabric mod's block entity or item stack come from Fabric's whole lookup, fallbacks included, and Fabric's lookups fall
@@ -44,12 +45,19 @@ import net.minecraftforge.items.IItemHandler;
  * may be undone. A Forge handler seen as a Fabric storage ({@link ForgeItemStorage}, {@link ForgeFluidStorage}) only
  * simulates while the transaction is open and moves the result once the outermost one commits; a Fabric storage seen as
  * a Forge handler ({@link FabricItemHandler}, {@link FabricFluidHandler}) opens a transaction for each call, committed
- * unless the call simulates. An item's handler and storage ({@link FabricItemFluidHandler}, {@link ForgeItemFluidStorage})
- * change the item by replacing it, as both sides' own item storages do.
+ * unless the call simulates. An item's handlers and storages ({@link FabricItemFluidHandler},
+ * {@link FabricItemItemHandler}, {@link ForgeItemFluidStorage}, {@link ForgeItemItemStorage}) change the item by
+ * replacing it, as both sides' own item storages do.
  */
 public final class TransferBridge {
-	/** The capability provider Fabricated attaches to Fabric mods' block entities and item stacks. */
+	/** The capability provider Fabricated attaches to Fabric mods' block entities, and their item stacks' for fluids. */
 	private static final Identifier PROVIDER = Identifier.fromNamespaceAndPath("fabricated", "fabric_storages");
+	/** The one it attaches to Fabric mods' item stacks for items. */
+	private static final Identifier ITEM_PROVIDER = Identifier.fromNamespaceAndPath("fabricated", "fabric_item_storages");
+	private static final FabricItemProvider.Kind<FabricItemFluidHandler> FLUIDS_IN_ITEMS =
+			new FabricItemProvider.Kind<>(ForgeCapabilities.FLUID_HANDLER_ITEM, FabricItemFluidHandler::new, handler -> handler.storage() != null);
+	private static final FabricItemProvider.Kind<FabricItemItemHandler> ITEMS_IN_ITEMS =
+			new FabricItemProvider.Kind<>(ForgeCapabilities.ITEM_HANDLER, FabricItemItemHandler::new, handler -> handler.storage() != null);
 
 	private TransferBridge() {
 	}
@@ -64,6 +72,8 @@ public final class TransferBridge {
 		// After upstream's fallback, which gives a bucket item Fabric's own bucket storage.
 		FluidStorage.ITEM.registerFallback((stack, context) -> isForge(stack.getItem())
 				&& stack.getCapability(ForgeCapabilities.FLUID_HANDLER_ITEM).isPresent() ? new ForgeItemFluidStorage(context) : null);
+		ItemStorage.ITEM.registerFallback((stack, context) -> isForge(stack.getItem())
+				&& stack.getCapability(ForgeCapabilities.ITEM_HANDLER).isPresent() ? new ForgeItemItemStorage(context) : null);
 	}
 
 	private static void attach(AttachCapabilitiesEvent.BlockEntities event) {
@@ -75,12 +85,14 @@ public final class TransferBridge {
 	}
 
 	/**
-	 * Every item stack is offered the capability as it is made, so this is quick: a stack of a Fabric mod's item gets a
-	 * provider that looks for a storage only when asked.
+	 * Every item stack is offered the capabilities as it is made, so this is quick: a stack of a Fabric mod's item gets
+	 * providers that look for a storage only when asked.
 	 */
 	private static void attachToStack(AttachCapabilitiesEvent.ItemStacks event) {
 		ItemStack stack = event.getObject();
-		if (isFabric(BuiltInRegistries.ITEM.getKey(stack.getItem()).getNamespace())) event.addCapability(PROVIDER, new FabricItemFluidProvider(stack));
+		if (!isFabric(BuiltInRegistries.ITEM.getKey(stack.getItem()).getNamespace())) return;
+		event.addCapability(PROVIDER, new FabricItemProvider<>(FLUIDS_IN_ITEMS, stack));
+		event.addCapability(ITEM_PROVIDER, new FabricItemProvider<>(ITEMS_IN_ITEMS, stack));
 	}
 
 	/** Whether a Forge mod added the block: neither vanilla nor a Fabric mod (by namespace). */

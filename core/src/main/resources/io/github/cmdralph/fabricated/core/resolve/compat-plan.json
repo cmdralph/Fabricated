@@ -2,40 +2,15 @@
   "schema": 1,
   "mods": {
     "sodium": {
-      "neoForgeBuildOnly": "Fabricated's CI runs Sodium's Fabric build on NeoForge only, with the gaps docs/COMPATIBILITY.md lists; it isn't verified on this loader",
       "notWithNeoForge": {
         "iris": "Iris for NeoForge hooks classes of Sodium for NeoForge (its fluid renderer) that Sodium's Fabric build doesn't have"
-      },
-      "runsOn": [
-        "NeoForge"
-      ]
+      }
     },
     "iris": {
       "neoForgeBuildOnly": "Fabricated's CI runs Iris's Fabric build, with Sodium's, on NeoForge only, with the gaps docs/COMPATIBILITY.md lists; it isn't verified on this loader",
       "notWithNeoForge": {
         "sodium": "Iris's Fabric build hooks classes of Sodium's Fabric build (its fluid renderer) that Sodium for NeoForge doesn't have"
       },
-      "runsOn": [
-        "NeoForge"
-      ]
-    },
-    "essential-container": {
-      "neoForgeBuildOnly": "Essential's Fabric build is a loader that downloads Essential as the game starts; Fabricated loads what it downloaded from the next launch, and its CI runs that on NeoForge only, so it isn't verified on this loader",
-      "suggestion": "Use Essential's build for this loader if Essential offers one for this Minecraft version (essential.gg).",
-      "runsOn": [
-        "NeoForge"
-      ]
-    },
-    "essential-loader": {
-      "neoForgeBuildOnly": "Essential's Fabric build is a loader that downloads Essential as the game starts; Fabricated loads what it downloaded from the next launch, and its CI runs that on NeoForge only, so it isn't verified on this loader",
-      "suggestion": "Use Essential's build for this loader if Essential offers one for this Minecraft version (essential.gg).",
-      "runsOn": [
-        "NeoForge"
-      ]
-    },
-    "malilib": {
-      "neoForgeBuildOnly": "malilib adds its picture-in-picture renderers through the GUI renderer's map of renderers, which NeoForge replaced and Fabricated restores (PIP-1); Fabricated's CI runs malilib with MiniHUD, Tweakeroo and Litematica on NeoForge only, so it isn't verified on this loader",
-      "suggestion": "Remove malilib and the mods that need it (Tweakeroo, MiniHUD, Litematica), or use NeoForge builds of them where their authors offer some.",
       "runsOn": [
         "NeoForge"
       ]

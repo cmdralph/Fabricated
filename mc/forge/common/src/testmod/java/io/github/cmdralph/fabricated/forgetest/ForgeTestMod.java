@@ -39,7 +39,7 @@ import net.minecraft.world.item.Items;
  * ({@link ForgeAdvancementTest}), the command module's registration event ({@link ForgeCommandTest}), a networking
  * round trip ({@link ForgeNetworkingTest}), the interaction module's block break events ({@link ForgeBlockBreakTest})
  * and use and attack callbacks ({@link ForgeInteractionTest}), the entity events module's sleep ({@link ForgeSleepTest})
- * and damage ({@link ForgeDamageTest}) events, storages reaching Forge's capabilities ({@link ForgeTransferTest}), and the
+ * and damage ({@link ForgeDamageTest}) events and its effect events' command context ({@link ForgeEffectTest}), storages reaching Forge's capabilities ({@link ForgeTransferTest}), and the
  * resource conditions module's load conditions in data files and registry entries ({@link ForgeConditionsTest}), the
  * biome module's feature modifications ({@link ForgeBiomeTest}), and the registry sync module's aliases
  * ({@link ForgeRegistryAliasTest}) and entry added events ({@link ForgeRegistryEntryAddedTest}).
@@ -154,6 +154,7 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 			try {
 				ForgeSleepTest.register();
 				ForgeDamageTest.register();
+				ForgeEffectTest.register();
 			} catch (RuntimeException | LinkageError e) {
 				LOGGER.warn("FABRICATED-FORGE-TEST entity event listeners not registered", e);
 			}
@@ -367,6 +368,19 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 			ForgeDamageTest.check(server.overworld());
 		} catch (RuntimeException | LinkageError e) {
 			LOGGER.warn("FABRICATED-FORGE-TEST damage check failed", e);
+		}
+	}
+
+	/**
+	 * Whether Fabric's effect events learn the command an effect comes from, and that one from code comes from none
+	 * ({@link ForgeEffectTest}; with Fabric API only).
+	 */
+	public static void checkEffects(MinecraftServer server) {
+		if (!FabricLoader.getInstance().isModLoaded("fabric-entity-events-v1")) return;
+		try {
+			ForgeEffectTest.check(server);
+		} catch (RuntimeException | LinkageError e) {
+			LOGGER.warn("FABRICATED-FORGE-TEST effect command context check failed", e);
 		}
 	}
 

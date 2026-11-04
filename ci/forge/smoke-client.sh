@@ -72,9 +72,16 @@ if [ -n "$extra" ] && [ -d "$extra" ]; then
 	# still logged.
 	printf '[client]\nshowLoadWarnings = false\n' > run/config/forge-client.toml
 fi
-# SMOKE_ON_ENTRYPOINT_FAILURE: as in the server smoke, Fabricated's onEntrypointFailure for a corpus run.
-if [ -n "${SMOKE_ON_ENTRYPOINT_FAILURE:-}" ]; then
-	printf '{ "schema": 1, "onEntrypointFailure": "%s" }\n' "$SMOKE_ON_ENTRYPOINT_FAILURE" > run/config/fabricated.json
+# SMOKE_SEED: a directory copied into the game directory first, as an earlier launch left it (Essential's download).
+if [ -n "${SMOKE_SEED:-}" ] && [ -d "$SMOKE_SEED" ]; then
+	cp -r "$SMOKE_SEED"/. run/
+fi
+# Fabricated's config for the run: SMOKE_ON_ENTRYPOINT_FAILURE, as in the server smoke, its onEntrypointFailure for a
+# corpus run, and FABRICATED_MODS its per-mod overrides (the "mods" object), as on main.
+if [ -n "${SMOKE_ON_ENTRYPOINT_FAILURE:-}" ] || [ -n "${FABRICATED_MODS:-}" ]; then
+	printf '{ "schema": 1, "onEntrypointFailure": "%s", "mods": %s }\n' "${SMOKE_ON_ENTRYPOINT_FAILURE:-error}" "${FABRICATED_MODS:-{\}}" \
+		> run/config/fabricated.json
+	cat run/config/fabricated.json
 fi
 ls -1 run/mods
 cat > run/options.txt <<'OPTS'
@@ -222,7 +229,8 @@ if [ -n "$extra" ]; then
 	check "FABRICATED-FORGE-TEST interaction events OK" "fabric-events-interaction-v0 (with Fabric API): on the integrated server, a fake player's uses and attacks ask the use and attack callbacks, and their answers hold"
 	check "FABRICATED-FORGE-TEST sleep events OK" "fabric-entity-events-v1 (with Fabric API): on the integrated server, a hay block EntitySleepEvents.ALLOW_BED admits stays hay while an armor stand sleeps on it (SLEEP-1)"
 	check "FABRICATED-FORGE-TEST damage events OK" "fabric-entity-events-v1 (with Fabric API): on the integrated server, an entity hurt asks ALLOW_DAMAGE, whose refusal holds, and fires AFTER_DAMAGE (DAMAGE-1)"
-	check "FABRICATED-FORGE-TEST storages OK" "fabric-transfer-api-v1 (with Fabric API): on the integrated server, a Fabric mod's storages, on blocks and in tank items, are Forge's capabilities and a Forge mod's handlers Fabric's storages"
+	check "FABRICATED-FORGE-TEST effect command context OK" "fabric-entity-events-v1 (with Fabric API): on the integrated server, an effect the effect command gives reaches ALLOW_ADD from that command, and one given by code from none (EFFECT-1)"
+	check "FABRICATED-FORGE-TEST storages OK" "fabric-transfer-api-v1 (with Fabric API): on the integrated server, a Fabric mod's storages, on blocks, in tank items and in bags, are Forge's capabilities and a Forge mod's handlers Fabric's storages"
 	check "FABRICATED-FORGE-TEST builtin resource pack enabled by default OK" "fabric-resource-loader-v1 (with Fabric API): a built-in pack a Fabric mod's client entrypoint registers as enabled by default is switched on, as upstream does once the options load, which on Forge is before the entrypoints (CORPUS-104)"
 fi
 # The test mod for Fabric API's client modules (26.x: mc/forge/common26/src/testmodfrapi), where the run has it.
@@ -256,7 +264,23 @@ fi
 seen() {
 	if grep -q -- "$1" "$log" 2>/dev/null; then echo "SEEN: $2"; else echo "NOT SEEN: $2 (no '$1')"; fi
 }
-if [ -n "$extra" ] && [ -f "$extra/fabricated-testmod-frapi.jar" ]; then
+# Under another renderer of Fabric's API (Sodium's Fabric build, run with the test mod in the difficult mods' job),
+# Fabric API's Indigo stands down and that renderer draws Fabric's block models itself: in its own chunk sections, which
+# it meshes, and wherever it is asked to draw a block. Fabricated's guard (FRAPI rule 8) is its seam into Indigo, and
+# the test mod's broken models throw only through it, so its checks are Indigo's; under the other renderer the test
+# mod's Fabric block model must reach that renderer's chunk sections, and the rest is printed.
+other_renderer=
+if [ -n "$extra" ] && ls "$extra"/sodium*.jar >/dev/null 2>&1; then other_renderer=Sodium; fi
+if [ -n "$extra" ] && [ -f "$extra/fabricated-testmod-frapi.jar" ] && [ -n "$other_renderer" ]; then
+	frapi_fail=$fail
+	fail=0
+	check "Different rendering plugin detected; not applying Indigo" "fabric-renderer-api-v1 (with Fabric API): Fabric API's renderer stood down for $other_renderer's"
+	check "FABRICATED-TEST frapi terrain OK .*\(LevelSlice\|WorldSlice\)" "fabric-renderer-api-v1 (with Fabric API): $other_renderer meshed a Fabric block model into its chunk sections, through its renderer"
+	echo "::group::Fabric's renderer API under $other_renderer (informational)"
+	grep -n -m 80 -E "FABRICATED-TEST (frapi|model)|threw while drawn in|Fabric block models|fabric-renderer|indigo|Indigo|Indium" "$log" || true
+	echo "::endgroup::"
+	if [ "$frapi_fail" = 1 ]; then fail=1; fi
+elif [ -n "$extra" ] && [ -f "$extra/fabricated-testmod-frapi.jar" ]; then
 	frapi_fail=$fail
 	fail=0
 	check "FABRICATED-TEST frapi terrain OK .*seam=Fabricated" "fabric-renderer-api-v1 (with Fabric API): a Fabric block model was meshed into a chunk section, through Fabricated's guard"

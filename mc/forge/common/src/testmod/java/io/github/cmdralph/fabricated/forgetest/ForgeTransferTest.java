@@ -1,6 +1,8 @@
 package io.github.cmdralph.fabricated.forgetest;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 
@@ -15,9 +17,12 @@ import net.fabricmc.fabric.api.transfer.v1.item.ItemStorage;
 import net.fabricmc.fabric.api.transfer.v1.item.ItemVariant;
 import net.fabricmc.fabric.api.transfer.v1.item.base.SingleStackStorage;
 import net.fabricmc.fabric.api.transfer.v1.storage.Storage;
+import net.fabricmc.fabric.api.transfer.v1.storage.StorageView;
+import net.fabricmc.fabric.api.transfer.v1.storage.TransferVariant;
 import net.fabricmc.fabric.api.transfer.v1.storage.base.SingleVariantItemStorage;
 import net.fabricmc.fabric.api.transfer.v1.storage.base.SingleVariantStorage;
 import net.fabricmc.fabric.api.transfer.v1.transaction.Transaction;
+import net.fabricmc.fabric.api.transfer.v1.transaction.TransactionContext;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -61,7 +66,10 @@ import net.minecraftforge.items.ItemStackHandler;
  * one fills them. Items the same way: Forge's code fills and drains this mod's cell, which becomes another item when
  * full, and its gauge, which keeps its fluid as damage, through {@code FLUID_HANDLER_ITEM}, the gauge's own stack showing
  * the change, and Fabric's code fills and drains a Forge mod's cell through {@code FluidStorage.ITEM}, an aborted
- * transaction leaving it as it was.
+ * transaction leaving it as it was. And items in items: Forge's code fills and empties this mod's bag, which keeps its
+ * stone as damage, through the stack's {@code ITEM_HANDLER}, the bag's own stack showing the change, but can't put a stone
+ * in this mod's sack, which would take it by becoming another item; Fabric's code fills and empties a Forge mod's pouch
+ * through {@code ItemStorage.ITEM}, an aborted transaction leaving it as it was.
  */
 public final class ForgeTransferTest {
 	/** A namespace no Fabric mod has: the bridge tells Forge mods' blocks from Fabric mods' by namespace. */
@@ -102,6 +110,9 @@ public final class ForgeTransferTest {
 		private static Item fabricGauge;
 		static Item forgeCell;
 		static Item forgeWaterCell;
+		private static Item fabricBag;
+		private static Item fabricSack;
+		static Item forgePouch;
 
 		private WithTransferApi() {
 		}
@@ -122,14 +133,21 @@ public final class ForgeTransferTest {
 			fabricGauge = item(Identifier.fromNamespaceAndPath(ForgeTestMod.MOD_ID, "gauge"), new Item.Properties().durability(1000));
 			forgeCell = item(Identifier.fromNamespaceAndPath(FORGE_NAMESPACE, "handler_cell"), new Item.Properties());
 			forgeWaterCell = item(Identifier.fromNamespaceAndPath(FORGE_NAMESPACE, "handler_water_cell"), new Item.Properties());
+			fabricBag = item(Identifier.fromNamespaceAndPath(ForgeTestMod.MOD_ID, "bag"), new Item.Properties().durability(100));
+			fabricSack = item(Identifier.fromNamespaceAndPath(ForgeTestMod.MOD_ID, "sack"), new Item.Properties());
+			forgePouch = item(Identifier.fromNamespaceAndPath(FORGE_NAMESPACE, "handler_pouch"), new Item.Properties().durability(100));
 			// As a Forge mod gives its items' stacks a capability.
 			AttachCapabilitiesEvent.ItemStacks.BUS.addListener(event -> {
 				ItemStack stack = event.getObject();
 				if (stack.is(forgeCell) || stack.is(forgeWaterCell)) event.addCapability(Identifier.fromNamespaceAndPath(FORGE_NAMESPACE, "cell"), new CellHandler(stack));
+				if (stack.is(forgePouch)) event.addCapability(Identifier.fromNamespaceAndPath(FORGE_NAMESPACE, "pouch"), new PouchHandler(stack));
 			});
 			FluidStorage.ITEM.registerForItems((stack, context) -> new EmptyItemFluidStorage(context, fabricWaterCell, Fluids.WATER, 81000), fabricCell);
 			FluidStorage.ITEM.registerForItems((stack, context) -> new FullItemFluidStorage(context, fabricCell, FluidVariant.of(Fluids.WATER), 81000), fabricWaterCell);
-			FluidStorage.ITEM.registerForItems((stack, context) -> new GaugeStorage(context), fabricGauge);
+			FluidStorage.ITEM.registerForItems((stack, context) ->
+					new DamageStorage<>(context, FluidVariant.blank(), FluidVariant.of(Fluids.WATER), 81, 81000), fabricGauge);
+			ItemStorage.ITEM.registerForItems((stack, context) -> new DamageStorage<>(context, ItemVariant.blank(), ItemVariant.of(Items.STONE), 1, 64), fabricBag);
+			ItemStorage.ITEM.registerForItems((stack, context) -> new SackStorage(context, fabricCell), fabricSack);
 		}
 
 		private static Item item(Identifier id, Item.Properties properties) {
@@ -162,6 +180,8 @@ public final class ForgeTransferTest {
 			level.setBlockAndUpdate(forgePos, Blocks.AIR.defaultBlockState());
 			forgeSeesFabricItems(failed);
 			fabricSeesForgeItems(failed);
+			forgeSeesFabricBags(failed);
+			fabricSeesForgeBags(failed);
 			if (failed.isEmpty()) {
 				ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST storages OK");
 			} else {
@@ -318,6 +338,81 @@ public final class ForgeTransferTest {
 			}
 			if (context.getItemVariant().getItem() != forgeCell) failed.add("a committed drain left the cell " + context.getItemVariant().getItem());
 		}
+
+		/** Forge's code, as a Forge mod's machine filling and emptying a bag in its slot, on the Fabric mod's items. */
+		private static void forgeSeesFabricBags(List<String> failed) {
+			ItemStack bagStack = new ItemStack(fabricBag);
+			IItemHandler bag = bagStack.getCapability(ForgeCapabilities.ITEM_HANDLER).resolve().orElse(null);
+			if (bag == null) {
+				failed.add("no item handler capability for the Fabric mod's bag");
+			} else {
+				ItemStack left = bag.insertItem(0, new ItemStack(Items.STONE, 10), true);
+				if (!left.isEmpty() || bagStack.getDamageValue() != 0) failed.add("a simulated insertion into the bag left " + left.getCount() + ", the bag showing " + bagStack.getDamageValue());
+				left = bag.insertItem(0, new ItemStack(Items.STONE, 60), false);
+				if (!left.isEmpty() || bagStack.getDamageValue() != 60) failed.add("an insertion of 60 into the bag left " + left.getCount() + ", the bag showing " + bagStack.getDamageValue());
+				left = bag.insertItem(0, new ItemStack(Items.STONE, 10), false);
+				if (left.getCount() != 6 || bagStack.getDamageValue() != 64) {
+					failed.add("an insertion of 10 into the bag holding 60 of 64 left " + left.getCount() + ", the bag showing " + bagStack.getDamageValue());
+				}
+				if (bag.insertItem(0, new ItemStack(Items.DIRT), false).getCount() != 1) failed.add("dirt went into the bag holding stone");
+				ItemStack held = bag.getStackInSlot(0);
+				if (!held.is(Items.STONE) || held.getCount() != 64) failed.add("the bag's slot shows " + held.getCount() + " " + held.getItem());
+				ItemStack taken = bag.extractItem(0, 20, false);
+				if (!taken.is(Items.STONE) || taken.getCount() != 20 || bagStack.getDamageValue() != 44) {
+					failed.add("an extraction of 20 from the bag gave " + taken.getCount() + ", the bag showing " + bagStack.getDamageValue());
+				}
+			}
+			ItemStack sackStack = new ItemStack(fabricSack);
+			IItemHandler sack = sackStack.getCapability(ForgeCapabilities.ITEM_HANDLER).resolve().orElse(null);
+			if (sack == null) {
+				failed.add("no item handler capability for the Fabric mod's sack");
+			} else if (sack.insertItem(0, new ItemStack(Items.STONE), false).getCount() != 1 || !sackStack.is(fabricSack)) {
+				// The caller holds the sack, and Forge's handler of an item has no way to hand it another.
+				failed.add("the sack took a stone by becoming another item");
+			}
+			if (new ItemStack(ForgeTestMod.testItem).getCapability(ForgeCapabilities.ITEM_HANDLER).isPresent()) {
+				failed.add("the Fabric mod's item without an item storage has an item handler");
+			}
+		}
+
+		/** Fabric's code, as a Fabric mod's machine with a slot, on the Forge mod's pouch. */
+		private static void fabricSeesForgeBags(List<String> failed) {
+			ContainerItemContext context = ContainerItemContext.ofSingleSlot(new MachineSlot(new ItemStack(forgePouch)));
+			Storage<ItemVariant> pouch = context.find(ItemStorage.ITEM);
+			if (pouch == null) {
+				failed.add("Fabric's item lookup found nothing for the Forge mod's pouch");
+				return;
+			}
+			ItemVariant stone = ItemVariant.of(Items.STONE);
+			try (Transaction transaction = Transaction.openOuter()) {
+				long inserted = pouch.insert(stone, 10, transaction);
+				if (inserted != 10 || held(context) != 10) failed.add("an insertion of 10 into the Forge mod's pouch took " + inserted + ", the pouch showing " + held(context));
+			}
+			if (held(context) != 0) failed.add("an aborted insertion left the pouch showing " + held(context));
+			try (Transaction transaction = Transaction.openOuter()) {
+				long inserted = pouch.insert(stone, 100, transaction);
+				if (inserted != 64) failed.add("an insertion of 100 into the pouch, which holds 64, took " + inserted);
+				if (pouch.insert(ItemVariant.of(Items.DIRT), 1, transaction) != 0) failed.add("dirt went into the pouch holding stone");
+				transaction.commit();
+			}
+			if (held(context) != 64 || context.getItemVariant().getItem() != forgePouch) failed.add("a committed insertion left the pouch showing " + held(context));
+			long viewed = 0;
+			for (StorageView<ItemVariant> view : pouch) {
+				if (view.getResource().equals(stone)) viewed += view.getAmount();
+			}
+			if (viewed != 64) failed.add("the pouch's views show " + viewed + " stone");
+			try (Transaction transaction = Transaction.openOuter()) {
+				long extracted = pouch.extract(stone, 20, transaction);
+				if (extracted != 20) failed.add("an extraction of 20 from the pouch gave " + extracted);
+				transaction.commit();
+			}
+			if (held(context) != 44) failed.add("a committed extraction left the pouch showing " + held(context));
+		}
+
+		/** The stone a pouch in the context holds, as its damage. */
+		private static int held(ContainerItemContext context) {
+			return context.getItemVariant().toStack().getDamageValue();
+		}
 	}
 
 	/** The Forge mod's cell handler, a bucket of water or none, as Forge mods' own fluid items: filling or draining swaps the item. */
@@ -383,6 +478,59 @@ public final class ForgeTransferTest {
 		}
 	}
 
+	/** The Forge mod's pouch handler: up to 64 stone in one slot, one for each point of the item's damage. */
+	static final class PouchHandler implements IItemHandler, ICapabilityProvider {
+		private final LazyOptional<IItemHandler> capability = LazyOptional.of(() -> this);
+		private final ItemStack container;
+
+		PouchHandler(ItemStack container) {
+			this.container = container;
+		}
+
+		@Override
+		public int getSlots() {
+			return 1;
+		}
+
+		@Override
+		public ItemStack getStackInSlot(int slot) {
+			int held = container.getDamageValue();
+			return slot == 0 && held > 0 ? new ItemStack(Items.STONE, held) : ItemStack.EMPTY;
+		}
+
+		@Override
+		public ItemStack insertItem(int slot, ItemStack stack, boolean simulate) {
+			if (slot != 0 || !stack.is(Items.STONE)) return stack;
+			int moved = Math.min(stack.getCount(), 64 - container.getDamageValue());
+			if (moved <= 0) return stack;
+			if (!simulate) container.setDamageValue(container.getDamageValue() + moved);
+			return moved == stack.getCount() ? ItemStack.EMPTY : stack.copyWithCount(stack.getCount() - moved);
+		}
+
+		@Override
+		public ItemStack extractItem(int slot, int amount, boolean simulate) {
+			int moved = slot == 0 ? Math.min(amount, container.getDamageValue()) : 0;
+			if (moved <= 0) return ItemStack.EMPTY;
+			if (!simulate) container.setDamageValue(container.getDamageValue() - moved);
+			return new ItemStack(Items.STONE, moved);
+		}
+
+		@Override
+		public int getSlotLimit(int slot) {
+			return 64;
+		}
+
+		@Override
+		public boolean isItemValid(int slot, ItemStack stack) {
+			return slot == 0 && stack.is(Items.STONE);
+		}
+
+		@Override
+		public <T> LazyOptional<T> getCapability(Capability<T> capability, @Nullable Direction side) {
+			return capability == ForgeCapabilities.ITEM_HANDLER ? this.capability.cast() : LazyOptional.empty();
+		}
+	}
+
 	/** A Fabric mod's machine slot, holding a stack. */
 	static final class MachineSlot extends SingleStackStorage {
 		private ItemStack stack;
@@ -402,42 +550,81 @@ public final class ForgeTransferTest {
 		}
 	}
 
-	/** This mod's gauge storage: up to a bucket of water, a millibucket for each point of the item's damage. */
-	static final class GaugeStorage extends SingleVariantItemStorage<FluidVariant> {
-		GaugeStorage(ContainerItemContext context) {
+	/**
+	 * The storage of this mod's gauge and bag: up to {@code capacity} of one resource, {@code unit} of it for each point of
+	 * the item's damage (the gauge's water by the millibucket, the bag's stone one by one).
+	 */
+	static final class DamageStorage<T extends TransferVariant<?>> extends SingleVariantItemStorage<T> {
+		private final T blank;
+		private final T resource;
+		private final long unit;
+		private final long capacity;
+
+		DamageStorage(ContainerItemContext context, T blank, T resource, long unit, long capacity) {
 			super(context);
+			this.blank = blank;
+			this.resource = resource;
+			this.unit = unit;
+			this.capacity = capacity;
 		}
 
 		@Override
-		protected FluidVariant getBlankResource() {
-			return FluidVariant.blank();
+		protected T getBlankResource() {
+			return blank;
 		}
 
 		@Override
-		protected FluidVariant getResource(ItemVariant item) {
-			return item.toStack().getDamageValue() > 0 ? FluidVariant.of(Fluids.WATER) : FluidVariant.blank();
+		protected T getResource(ItemVariant item) {
+			return item.toStack().getDamageValue() > 0 ? resource : blank;
 		}
 
 		@Override
 		protected long getAmount(ItemVariant item) {
-			return item.toStack().getDamageValue() * 81L;
+			return item.toStack().getDamageValue() * unit;
 		}
 
 		@Override
-		protected long getCapacity(FluidVariant variant) {
-			return 81000;
+		protected long getCapacity(T variant) {
+			return capacity;
 		}
 
 		@Override
-		protected ItemVariant getUpdatedVariant(ItemVariant item, FluidVariant resource, long amount) {
+		protected ItemVariant getUpdatedVariant(ItemVariant item, T newResource, long amount) {
 			ItemStack stack = item.toStack();
-			stack.setDamageValue((int) (amount / 81));
+			stack.setDamageValue((int) (amount / unit));
 			return ItemVariant.of(stack);
 		}
 
 		@Override
-		protected boolean canInsert(FluidVariant resource) {
-			return resource.equals(FluidVariant.of(Fluids.WATER));
+		protected boolean canInsert(T variant) {
+			return variant.equals(resource);
+		}
+	}
+
+	/** This mod's sack storage, which takes a stone by becoming another item: one no Forge handler of an item can be. */
+	static final class SackStorage implements Storage<ItemVariant> {
+		private final ContainerItemContext context;
+		private final Item filled;
+
+		SackStorage(ContainerItemContext context, Item filled) {
+			this.context = context;
+			this.filled = filled;
+		}
+
+		@Override
+		public long insert(ItemVariant resource, long maxAmount, TransactionContext transaction) {
+			if (maxAmount < 1 || !resource.equals(ItemVariant.of(Items.STONE))) return 0;
+			return context.exchange(ItemVariant.of(filled), 1, transaction);
+		}
+
+		@Override
+		public long extract(ItemVariant resource, long maxAmount, TransactionContext transaction) {
+			return 0;
+		}
+
+		@Override
+		public Iterator<StorageView<ItemVariant>> iterator() {
+			return Collections.emptyIterator();
 		}
 	}
 

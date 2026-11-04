@@ -62,6 +62,7 @@ public abstract class MinecraftServerMixin {
 			ForgeTestMod.checkInteractions((MinecraftServer) (Object) this);
 			ForgeTestMod.checkSleeping((MinecraftServer) (Object) this);
 			ForgeTestMod.checkDamage((MinecraftServer) (Object) this);
+			ForgeTestMod.checkEffects((MinecraftServer) (Object) this);
 			ForgeTestMod.checkStorages((MinecraftServer) (Object) this);
 		} else {
 			ForgeTestMod.tickInteractions((MinecraftServer) (Object) this);

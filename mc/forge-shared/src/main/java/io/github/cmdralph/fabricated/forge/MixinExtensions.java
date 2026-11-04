@@ -13,6 +13,7 @@ import org.spongepowered.asm.mixin.transformer.ext.Extensions;
 import org.spongepowered.asm.mixin.transformer.ext.IExtension;
 import org.spongepowered.asm.mixin.transformer.ext.ITargetClassContext;
 
+import io.github.cmdralph.fabricated.core.mixin.ConstructorHandoffs;
 import io.github.cmdralph.fabricated.core.mixin.InterfaceInjects;
 import io.github.cmdralph.fabricated.loader.FabricClassTransforms;
 import io.github.cmdralph.fabricated.loader.FabricatedState;
@@ -21,8 +22,9 @@ import io.github.cmdralph.fabricated.loader.FabricatedState;
  * Fabricated's Mixin extensions on Forge 61 to 66 and Forge 47: one declares default bridges after a class's mixins apply
  * (CORPUS-63, as on NeoForge 21.1), one records again, expanded, the frames of the methods whose locals Mixin would count
  * wrong in a class a Fabric mod's mixin targets, before they apply ({@link RecordedFrameRepair}, CORPUS-79, where Mixin
- * needs it: Forge 61 to 66), and one calls the interface mixins' {@code @Inject} handlers Mixin merged as methods, after
- * they apply ({@link InterfaceInjects}, INTERFACE-1, where translation made them so: Forge 47). Forge runs on
+ * needs it: Forge 61 to 66), and one, after they apply, calls the interface mixins' {@code @Inject} handlers Mixin merged
+ * as methods ({@link InterfaceInjects}, INTERFACE-1, where translation made them so: Forge 47) and hands a constructor's
+ * arguments to the one it calls, for the handlers pre-flight moved there ({@link ConstructorHandoffs}, IRIS-1). Forge runs on
  * ModLauncher, where Mixin is a launch plugin and no transformer from the mods folder runs after it; a Mixin extension
  * runs as Mixin applies mixins to a class, before and after they apply, and nowhere else: the loader's transformer
  * declares the bridges before Mixin for the classes no mixin targets. Shared by Forge 47 and Forge 61 to 66.
@@ -36,8 +38,9 @@ final class MixinExtensions {
 	/**
 	 * Registers the extensions with Mixin's transformer, those with work to do: the bridges where a Fabric mod brings
 	 * any, the frame repair where any Fabric mod loads and Mixin records frames unexpanded
-	 * ({@link RecordedFrameRepair#needed}: Forge 61 to 66), the interface mixins' handlers where any Fabric mod loads
-	 * (translation makes them where Mixin applies no injector in an interface mixin: Forge 47). Called from Fabricated's mixin plugin as Mixin selects the configs
+	 * ({@link RecordedFrameRepair#needed}: Forge 61 to 66), the handlers' calls where any Fabric mod loads (translation
+	 * makes interface mixins' handlers where Mixin applies no injector in an interface mixin, Forge 47, and pre-flight
+	 * constructors' hand-offs where Forge moved a constructor's code). Called from Fabricated's mixin plugin as Mixin selects the configs
 	 * (the plugin's {@code onLoad}), before Mixin activates its extensions for the configs it selected, and so before it
 	 * applies a mixin of theirs.
 	 */
@@ -53,7 +56,7 @@ final class MixinExtensions {
 			List<IExtension> added = new ArrayList<>(3);
 			if (bridges) added.add(new DefaultBridges(state));
 			if (frames) added.add(new RecordedFrameRepair(state));
-			if (handlers) added.add(new InterfaceHandlers());
+			if (handlers) added.add(new HandlerCalls());
 			added.forEach(extensions::add);
 			return;
 		}
@@ -66,7 +69,8 @@ final class MixinExtensions {
 		}
 		if (handlers) {
 			LOGGER.error("Fabricated could not register its Mixin extension with Mixin's transformer ({}): the @Inject handlers of Fabric mods'"
-					+ " interface mixins, which Forge 47's Mixin doesn't apply, are never called (INTERFACE-1)", transformer);
+					+ " interface mixins, which Forge 47's Mixin doesn't apply, are never called (INTERFACE-1), nor are those of their hooks into"
+					+ " a constructor that Forge moved into another (IRIS-1)", transformer);
 		}
 		if (frames) {
 			LOGGER.error("Fabricated could not register its Mixin extension with Mixin's transformer ({}): the frames Forge's Mixin records stay"
@@ -75,12 +79,14 @@ final class MixinExtensions {
 	}
 
 	/**
-	 * Calls the {@code @Inject} handlers of interface mixins that Mixin merged into a class as methods, once its mixins have
-	 * applied, where their injectors would have Mixin call them ({@link InterfaceInjects#apply}). Translation makes such
-	 * handlers only where Mixin applies no injector in an interface mixin (Forge 47); elsewhere a class has none, and this
-	 * only looks.
+	 * Once a class's mixins have applied, calls the {@code @Inject} handlers of interface mixins that Mixin merged into it
+	 * as methods, where their injectors would have Mixin call them ({@link InterfaceInjects#apply}), and has each
+	 * constructor whose arguments a merged field holds store them for the handlers pre-flight moved into the constructor
+	 * it calls ({@link ConstructorHandoffs#apply}). Translation makes such handlers only where Mixin applies no injector in
+	 * an interface mixin (Forge 47), and pre-flight such fields only where Forge moved a constructor's code into another
+	 * (Forge 47's {@code ShaderInstance}); elsewhere a class has neither, and this only looks.
 	 */
-	private static final class InterfaceHandlers implements IExtension {
+	private static final class HandlerCalls implements IExtension {
 		@Override
 		public boolean checkActive(MixinEnvironment environment) {
 			return true;
@@ -96,6 +102,9 @@ final class MixinExtensions {
 			int applied = InterfaceInjects.apply(node);
 			if (applied > 0) LOGGER.debug("Fabricated applied {} @Inject handler(s) of interface mixins in {}, which Forge's Mixin doesn't apply (INTERFACE-1)",
 					applied, node.name);
+			int handedOff = ConstructorHandoffs.apply(node);
+			if (handedOff > 0) LOGGER.debug("Fabricated had {} constructor(s) of {} hand their arguments to the one they call, for Fabric mods' hooks"
+					+ " into them that Forge moved there (IRIS-1)", handedOff, node.name);
 		}
 
 		@Override

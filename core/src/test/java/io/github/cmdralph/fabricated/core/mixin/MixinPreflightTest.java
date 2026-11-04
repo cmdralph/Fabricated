@@ -35,6 +35,7 @@ import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.AnnotationNode;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.FieldInsnNode;
+import org.objectweb.asm.tree.FieldNode;
 import org.objectweb.asm.tree.InsnList;
 import org.objectweb.asm.tree.InsnNode;
 import org.objectweb.asm.tree.InvokeDynamicInsnNode;
@@ -4048,6 +4049,209 @@ class MixinPreflightTest {
 	}
 
 	@Test
+	void aHandlerIntoTheClientsConstructorIsSkippedWhereItThrowsBeforeTheEntrypoints() throws Exception {
+		// ENTRY-3: Sodium's @Inject into Minecraft's constructor, at the debug screen entries' construction, reads its config,
+		// which its client initializer loads. Fabric runs the entrypoints near the constructor's start; Forge loads mods part
+		// way through it, after that point. A handler into another of the client's methods runs after the entrypoints.
+		String minecraft = "net/minecraft/client/Minecraft";
+		ClassWriter target = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		target.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, minecraft, null, "java/lang/Object", null);
+		MethodVisitor init = target.visitMethod(Opcodes.ACC_PUBLIC, "<init>", "()V", null, null);
+		init.visitCode();
+		init.visitVarInsn(Opcodes.ALOAD, 0);
+		init.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false);
+		init.visitVarInsn(Opcodes.ALOAD, 0);
+		init.visitMethodInsn(Opcodes.INVOKEVIRTUAL, minecraft, "debugEntries", "()V", false);
+		init.visitInsn(Opcodes.RETURN);
+		init.visitMaxs(0, 0);
+		init.visitEnd();
+		for (String name : new String[] {"debugEntries", "tick"}) {
+			MethodVisitor mv = target.visitMethod(Opcodes.ACC_PUBLIC, name, "()V", null, null);
+			mv.visitCode();
+			mv.visitInsn(Opcodes.RETURN);
+			mv.visitMaxs(0, 0);
+			mv.visitEnd();
+		}
+		target.visitEnd();
+		ClassIndex game = new ClassIndex(Map.of(minecraft, target.toByteArray())::get);
+
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, "com/example/mixin/Client", null, "java/lang/Object", null);
+		AnnotationVisitor m = cw.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false);
+		AnnotationVisitor values = m.visitArray("value");
+		values.visit(null, Type.getObjectType(minecraft));
+		values.visitEnd();
+		m.visitEnd();
+		// {handler, method, point}
+		for (String[] handler : new String[][] {{"setFullscreen", "<init>", "INVOKE"}, {"onTick", "tick", "HEAD"}}) {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, handler[0], "(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V", null, null);
+			AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, handler[1]);
+			methods.visitEnd();
+			AnnotationVisitor ats = ann.visitArray("at");
+			AnnotationVisitor at = ats.visitAnnotation(null, AT);
+			at.visit("value", handler[2]);
+			if (handler[2].equals("INVOKE")) at.visit("target", "L" + minecraft + ";debugEntries()V");
+			at.visitEnd();
+			ats.visitEnd();
+			ann.visitEnd();
+			mv.visitCode();
+			// As Sodium's: SodiumClientMod.options(), which throws before its client initializer has run.
+			mv.visitMethodInsn(Opcodes.INVOKESTATIC, "com/example/Mod", "options", "()Lcom/example/Options;", false);
+			mv.visitInsn(Opcodes.POP);
+			mv.visitInsn(Opcodes.RETURN);
+			mv.visitMaxs(0, 0);
+			mv.visitEnd();
+		}
+		cw.visitEnd();
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Client", cw.toByteArray()));
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Client"));
+
+		List<PreflightFinding> notes = new ArrayList<>();
+		byte[] repaired = preflight(game, mod::get, ClassBytesSource.EMPTY, true).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes)
+				.get("com/example/mixin/Client.class");
+		assertNotNull(repaired, notes.toString());
+		assertEquals(1, notes.size(), notes.toString());
+		assertTrue(notes.getFirst().severity() == PreflightFinding.Severity.INFO && notes.getFirst().message().contains("hooks into the client's constructor"),
+				notes.toString());
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired).accept(node, 0);
+		Map<String, MethodNode> byName = new HashMap<>();
+		node.methods.forEach(mn -> byName.put(mn.name, mn));
+		MethodNode wrapped = byName.get("setFullscreen");
+		assertEquals(1, wrapped.tryCatchBlocks.size());
+		AbstractInsnNode insn = wrapped.tryCatchBlocks.getFirst().handler;
+		while (insn.getOpcode() < 0) insn = insn.getNext();
+		assertEquals("com.example.mixin.Client.setFullscreen", ((LdcInsnNode) insn).cst);
+		insn = insn.getNext();
+		assertTrue(insn instanceof MethodInsnNode call && call.owner.equals("io/github/cmdralph/fabricated/loader/EarlyHandlers") && call.name.equals("failed"));
+		assertEquals(Opcodes.RETURN, insn.getNext().getOpcode());
+		assertTrue(byName.get("onTick").tryCatchBlocks.isEmpty(), "a handler into another of the client's methods runs after the entrypoints");
+		ClassLoader loader = new ClassLoader(getClass().getClassLoader()) {
+			@Override
+			protected Class<?> findClass(String name) throws ClassNotFoundException {
+				if (!name.equals("com.example.mixin.Client")) throw new ClassNotFoundException(name);
+				return defineClass(name, repaired, 0, repaired.length);
+			}
+		};
+		Class.forName("com.example.mixin.Client", true, loader);
+		mod.put("com/example/mixin/Client", repaired);
+		List<PreflightFinding> after = preflight(game, mod::get, ClassBytesSource.EMPTY, true).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(after.isEmpty(), after.toString());
+	}
+
+	@Test
+	void aHandlerIntoTheWindowsCreationIsSkippedWhereItThrowsBeforeTheEntrypoints() throws Exception {
+		// ENTRY-4: Sodium's @Inject into 26.3's GlBackend.createWindow, at SDL's window creation, reads its config to set the
+		// context's hints. Fabric creates the window after the entrypoints; Forge 66 creates it before it loads mods. Up to
+		// 26.2 the window's constructor creates it with GLFW. A handler into code not creating the window is left alone.
+		String backend = "com/mojang/renderpearl/backend/opengl/GlBackend";
+		String sdl = "org/lwjgl/sdl/SDLVideo";
+		ClassWriter target = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		target.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, backend, null, "java/lang/Object", null);
+		// {method, the window's creation it calls: owner, name, descriptor}
+		String[][] methods = {
+				{"createWindow", sdl, "SDL_CreateWindow", "(Ljava/lang/CharSequence;IIJ)J"},
+				{"createGlfwWindow", "org/lwjgl/glfw/GLFW", "glfwCreateWindow", "(IILjava/lang/CharSequence;JJ)J"},
+				{"present", null, null, null}};
+		for (String[] method : methods) {
+			MethodVisitor mv = target.visitMethod(Opcodes.ACC_PUBLIC, method[0], "()J", null, null);
+			mv.visitCode();
+			if (method[1] == null) {
+				mv.visitInsn(Opcodes.LCONST_0);
+			} else if (method[1].equals(sdl)) {
+				mv.visitLdcInsn("Minecraft");
+				mv.visitInsn(Opcodes.ICONST_0);
+				mv.visitInsn(Opcodes.ICONST_0);
+				mv.visitInsn(Opcodes.LCONST_0);
+				mv.visitMethodInsn(Opcodes.INVOKESTATIC, method[1], method[2], method[3], false);
+			} else {
+				mv.visitInsn(Opcodes.ICONST_0);
+				mv.visitInsn(Opcodes.ICONST_0);
+				mv.visitLdcInsn("Minecraft");
+				mv.visitInsn(Opcodes.LCONST_0);
+				mv.visitInsn(Opcodes.LCONST_0);
+				mv.visitMethodInsn(Opcodes.INVOKESTATIC, method[1], method[2], method[3], false);
+			}
+			mv.visitInsn(Opcodes.LRETURN);
+			mv.visitMaxs(0, 0);
+			mv.visitEnd();
+		}
+		target.visitEnd();
+		ClassIndex game = new ClassIndex(Map.of(backend, target.toByteArray())::get);
+
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, "com/example/mixin/Window", null, "java/lang/Object", null);
+		AnnotationVisitor m = cw.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false);
+		AnnotationVisitor values = m.visitArray("value");
+		values.visit(null, Type.getObjectType(backend));
+		values.visitEnd();
+		m.visitEnd();
+		// {handler, method, point}
+		String[][] handlers = {{"setAdditionalWindowHints", "createWindow", "INVOKE"}, {"setHints", "createGlfwWindow", "HEAD"}, {"onPresent", "present", "HEAD"}};
+		for (String[] handler : handlers) {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, handler[0], "(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;)V", null, null);
+			AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
+			AnnotationVisitor selectors = ann.visitArray("method");
+			selectors.visit(null, handler[1]);
+			selectors.visitEnd();
+			AnnotationVisitor ats = ann.visitArray("at");
+			AnnotationVisitor at = ats.visitAnnotation(null, AT);
+			at.visit("value", handler[2]);
+			if (handler[2].equals("INVOKE")) at.visit("target", "L" + sdl + ";SDL_CreateWindow(Ljava/lang/CharSequence;IIJ)J");
+			at.visitEnd();
+			ats.visitEnd();
+			ann.visitEnd();
+			mv.visitCode();
+			// As Sodium's: SodiumClientMod.options(), which throws before its client initializer has run.
+			mv.visitMethodInsn(Opcodes.INVOKESTATIC, "com/example/Mod", "options", "()Lcom/example/Options;", false);
+			mv.visitInsn(Opcodes.POP);
+			mv.visitInsn(Opcodes.RETURN);
+			mv.visitMaxs(0, 0);
+			mv.visitEnd();
+		}
+		cw.visitEnd();
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Window", cw.toByteArray()));
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Window"));
+
+		List<PreflightFinding> notes = new ArrayList<>();
+		byte[] repaired = preflight(game, mod::get, ClassBytesSource.EMPTY, true).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes)
+				.get("com/example/mixin/Window.class");
+		assertNotNull(repaired, notes.toString());
+		assertEquals(2, notes.size(), notes.toString());
+		assertTrue(notes.stream().allMatch(n -> n.severity() == PreflightFinding.Severity.INFO && n.message().contains("hooks into the creation of the client's window")),
+				notes.toString());
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired).accept(node, 0);
+		Map<String, MethodNode> byName = new HashMap<>();
+		node.methods.forEach(mn -> byName.put(mn.name, mn));
+		for (String name : new String[] {"setAdditionalWindowHints", "setHints"}) {
+			MethodNode wrapped = byName.get(name);
+			assertEquals(1, wrapped.tryCatchBlocks.size(), name);
+			AbstractInsnNode insn = wrapped.tryCatchBlocks.getFirst().handler;
+			while (insn.getOpcode() < 0) insn = insn.getNext();
+			assertEquals("com.example.mixin.Window." + name, ((LdcInsnNode) insn).cst);
+			insn = insn.getNext();
+			assertTrue(insn instanceof MethodInsnNode call && call.owner.equals("io/github/cmdralph/fabricated/loader/EarlyHandlers") && call.name.equals("failed"),
+					name);
+			assertEquals(Opcodes.RETURN, insn.getNext().getOpcode(), name);
+		}
+		assertTrue(byName.get("onPresent").tryCatchBlocks.isEmpty(), "a handler into code not creating the window runs after the entrypoints");
+		ClassLoader loader = new ClassLoader(getClass().getClassLoader()) {
+			@Override
+			protected Class<?> findClass(String name) throws ClassNotFoundException {
+				if (!name.equals("com.example.mixin.Window")) throw new ClassNotFoundException(name);
+				return defineClass(name, repaired, 0, repaired.length);
+			}
+		};
+		Class.forName("com.example.mixin.Window", true, loader);
+		mod.put("com/example/mixin/Window", repaired);
+		List<PreflightFinding> after = preflight(game, mod::get, ClassBytesSource.EMPTY, true).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(after.isEmpty(), after.toString());
+	}
+
+	@Test
 	void anInjectionIntoAMethodNeoForgeDeprecatedIsPointedAtItsReplacement() throws Exception {
 		// DEPRECATED-1: FrozenLib hooks BoneMealItem.growCrop, which NeoForge's build deprecates for applyBonemeal, taking
 		// the player too, and keeps only to call that on a server level (a jump, so no plain overload).
@@ -6516,29 +6720,16 @@ class MixinPreflightTest {
 	}
 
 	/**
-	 * An injector in a named group is one of the mod's alternatives (Iris's {@code @Group(min = 1, max = 1)} pairs):
+	 * An injector in a group with others is one of the mod's alternatives (Iris's {@code @Group(min = 1, max = 1)} pairs):
 	 * pre-flight neither points it elsewhere, which could make two of a group apply, nor requires it, as Mixin doesn't.
 	 */
 	@Test
 	void anInjectorInAGroupIsLeftToItsGroup() throws Exception {
 		Map<String, byte[]> mod = Map.of("com/example/mixin/Grouped", mixin("com/example/mixin/Grouped", false, cw -> {
-			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "inject", "(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V", null, null);
-			AnnotationVisitor group = mv.visitAnnotation("Lorg/spongepowered/asm/mixin/injection/Group;", false);
-			group.visit("name", "alternatives");
-			group.visit("max", 1);
-			group.visitEnd();
-			AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
-			AnnotationVisitor methods = ann.visitArray("method");
-			methods.visit(null, "tick");
-			methods.visitEnd();
-			AnnotationVisitor ats = ann.visitArray("at");
-			AnnotationVisitor at = ats.visitAnnotation(null, AT);
-			at.visit("value", "INVOKE");
-			at.visit("target", "L" + TARGET + ";helper(I)V");
-			at.visitEnd();
-			ats.visitEnd();
-			ann.visitEnd();
-			mv.visitEnd();
+			// {handler, the call it injects at}: the first's isn't in this build (its overload taking a string is), the second's is.
+			for (String[] member : new String[][] {{"inject", "(I)V"}, {"alternative", "(ILjava/lang/String;)V"}}) {
+				grouped(cw, member[0], "alternatives", -1, 1, "L" + TARGET + ";helper" + member[1]);
+			}
 		}));
 		MixinConfigFile config = MixinConfigFile.parse(config(true, "Grouped"));
 		ClassIndex neoForge = new ClassIndex(Map.of(TARGET, callingHelper("(ILjava/lang/String;)V"))::get);
@@ -6546,7 +6737,70 @@ class MixinPreflightTest {
 		assertTrue(preflight(neoForge, mod::get, ClassBytesSource.EMPTY, false)
 				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty());
 		List<PreflightFinding> findings = preflight(neoForge, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
-		assertTrue(findings.stream().noneMatch(f -> f.severity() == Severity.FAIL), findings.toString());
+		assertTrue(findings.stream().noneMatch(f -> f.severity() == Severity.FAIL || f.severity() == Severity.LEFT_OUT), findings.toString());
+	}
+
+	/**
+	 * GROUP-2: Mixin needs at least one injection of every group, whatever its minimum, so a group's only member is required
+	 * as an injector alone is, and repaired as one. Essential's key and character hooks, each alone in a group declaring
+	 * no minimum, are at calls Forge's keyboard handler makes inside its own hooks; they stopped the Forge 61 to 66 clients.
+	 */
+	@Test
+	void aGroupsOnlyInjectorIsRepairedAndRequiredAsAnInjectorAlone() throws Exception {
+		String thing = "L" + TARGET + ";";
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Keys", mixin("com/example/mixin/Keys", false,
+				cw -> grouped(cw, "onKeyTyped", "onKeyTyped", -1, -1, "L" + TARGET + ";helper(I)V"))));
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Keys"));
+
+		// Forge's hook takes the call's receiver and arguments, and makes the call: the injector is pointed at the hook's call.
+		String plain = "(" + thing + "I)V";
+		ClassIndex forge = new ClassIndex(Map.of(TARGET, callingHook(plain), HOOKS, hooks(plain, true))::get);
+		List<PreflightFinding> moved = new ArrayList<>();
+		byte[] repaired = preflight(forge, mod::get, ClassBytesSource.EMPTY, false)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), moved).get("com/example/mixin/Keys.class");
+		assertNotNull(repaired, moved.toString());
+		assertEquals(1, moved.size(), moved.toString());
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired).accept(node, 0);
+		MethodNode handler = node.methods.stream().filter(m -> m.name.equals("onKeyTyped")).findFirst().orElseThrow();
+		assertEquals("L" + HOOKS + ";draw" + plain, Annotations.value(Annotations.list(Annotations.value(Annotations.find(handler, INJECT), "at")).getFirst(), "target"));
+		assertEquals("onKeyTyped", PreflightAsm.group(handler), "it stays in its group");
+		mod.put("com/example/mixin/Keys", repaired);
+		List<PreflightFinding> after = preflight(forge, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(after.isEmpty(), after.toString());
+
+		// Where nothing makes the call, the group fails as an injector alone would, and the self-contained mixin loses it.
+		mod.put("com/example/mixin/Keys", mixin("com/example/mixin/Keys", false, cw -> grouped(cw, "onKeyTyped", "", -1, -1, "L" + TARGET + ";helper(I)V")));
+		ClassIndex neither = new ClassIndex(Map.of(TARGET, callingHelper("(J)V"))::get);
+		List<PreflightFinding> findings = preflight(neither, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		List<PreflightFinding> group = findings.stream().filter(f -> f.message().startsWith("@Group default needs 1 of its 1 injectors to apply, and none can")).toList();
+		assertEquals(1, group.size(), findings.toString());
+		assertEquals(Severity.LEFT_OUT, group.getFirst().severity(), group.toString());
+	}
+
+	/** {@code handler}, an {@code @Inject} on {@code tick} at {@code call}, in {@code @Group(name, min, max)} ({@code -1}: not declared). */
+	private static void grouped(ClassWriter cw, String handler, String name, int min, int max, String call) {
+		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, handler, "(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V", null, null);
+		AnnotationVisitor group = mv.visitAnnotation("Lorg/spongepowered/asm/mixin/injection/Group;", false);
+		if (!name.isEmpty()) group.visit("name", name);
+		if (min >= 0) group.visit("min", min);
+		if (max >= 0) group.visit("max", max);
+		group.visitEnd();
+		AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
+		AnnotationVisitor methods = ann.visitArray("method");
+		methods.visit(null, "tick");
+		methods.visitEnd();
+		AnnotationVisitor ats = ann.visitArray("at");
+		AnnotationVisitor at = ats.visitAnnotation(null, AT);
+		at.visit("value", "INVOKE");
+		at.visit("target", call);
+		at.visitEnd();
+		ats.visitEnd();
+		ann.visitEnd();
+		mv.visitCode();
+		mv.visitInsn(Opcodes.RETURN);
+		mv.visitMaxs(0, 2);
+		mv.visitEnd();
 	}
 
 	/** GROUP-1: Mixin stops the game when fewer of a group's injectors apply than its minimum, as owo-lib's did. */
@@ -7457,6 +7711,314 @@ class MixinPreflightTest {
 			assertTrue(notes.stream().anyMatch(n -> n.message().contains("afterEngine injects into the constructor of net.minecraft.world.Built")
 					&& n.message().contains("after its super() call")), rule + ": " + notes);
 		}
+	}
+
+	@Test
+	void anInjectIntoAConstructorThePlatformKeepsOnlyToCallAnotherIsPointedThereWithTheFirstsArguments() throws Exception {
+		// IRIS-1: Forge 47 keeps ShaderInstance's constructor taking a shader's name as this(provider, new
+		// ResourceLocation(name), format) and moves its code into the one taking the location, where Iris's hook at the
+		// JSON parse now is; its handler takes the name, which the location can't give back. Where the platform hands
+		// constructors' arguments on, the injector moves to the other constructor through a bridge reading them (and on
+		// Forge 47's Mixin, Fabricated's point stands for the call there); where it doesn't, pre-flight fails it as before.
+		String owner = "net/minecraft/client/renderer/Shader";
+		String location = "net/minecraft/resources/Location";
+		String named = "(Ljava/lang/String;I)V";
+		String located = "(L" + location + ";I)V";
+		ClassWriter target = new ClassWriter(0);
+		target.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, owner, null, "java/lang/Object", null);
+		MethodVisitor first = target.visitMethod(Opcodes.ACC_PUBLIC, "<init>", named, null, null);
+		first.visitVarInsn(Opcodes.ALOAD, 0);
+		first.visitTypeInsn(Opcodes.NEW, location);
+		first.visitInsn(Opcodes.DUP);
+		first.visitVarInsn(Opcodes.ALOAD, 1);
+		first.visitMethodInsn(Opcodes.INVOKESPECIAL, location, "<init>", "(Ljava/lang/String;)V", false);
+		first.visitVarInsn(Opcodes.ILOAD, 2);
+		first.visitMethodInsn(Opcodes.INVOKESPECIAL, owner, "<init>", located, false);
+		first.visitInsn(Opcodes.RETURN);
+		first.visitMaxs(5, 3);
+		first.visitEnd();
+		MethodVisitor other = target.visitMethod(Opcodes.ACC_PUBLIC, "<init>", located, null, null);
+		other.visitVarInsn(Opcodes.ALOAD, 0);
+		other.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false);
+		other.visitMethodInsn(Opcodes.INVOKESTATIC, owner, "parse", "()V", false);
+		other.visitInsn(Opcodes.RETURN);
+		other.visitMaxs(1, 3);
+		other.visitEnd();
+		MethodVisitor parse = target.visitMethod(Opcodes.ACC_STATIC, "parse", "()V", null, null);
+		parse.visitInsn(Opcodes.RETURN);
+		parse.visitMaxs(0, 0);
+		parse.visitEnd();
+		target.visitEnd();
+		ClassWriter locationClass = new ClassWriter(0);
+		locationClass.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, location, null, "java/lang/Object", null);
+		locationClass.visitEnd();
+		ClassIndex game = new ClassIndex(Map.of(TARGET, targetClass(), owner, target.toByteArray(), location, locationClass.toByteArray())::get);
+
+		String hook = "com/example/mixin/Geometry";
+		ClassWriter cw = new ClassWriter(0);
+		cw.visit(Opcodes.V17, Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, hook, null, "java/lang/Object", null);
+		AnnotationVisitor m = cw.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false);
+		AnnotationVisitor values = m.visitArray("value");
+		values.visit(null, Type.getObjectType(owner));
+		values.visitEnd();
+		m.visitEnd();
+		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC, "setup", "(Ljava/lang/String;ILorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V",
+				null, null);
+		AnnotationVisitor ann = mv.visitAnnotation(INJECT, true);
+		AnnotationVisitor methods = ann.visitArray("method");
+		methods.visit(null, "<init>" + named);
+		methods.visitEnd();
+		AnnotationVisitor ats = ann.visitArray("at");
+		AnnotationVisitor at = ats.visitAnnotation(null, AT);
+		at.visit("value", "INVOKE");
+		at.visit("target", "L" + owner + ";parse()V");
+		at.visitEnd();
+		ats.visitEnd();
+		ann.visitEnd();
+		mv.visitInsn(Opcodes.RETURN);
+		mv.visitMaxs(0, 4);
+		mv.visitEnd();
+		cw.visitEnd();
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Geometry"));
+
+		for (boolean handsOff : List.of(false, true)) {
+			for (MixinPreflight.ConstructorInjects rule : List.of(MixinPreflight.ConstructorInjects.AFTER_DELEGATE, MixinPreflight.ConstructorInjects.RETURNS_ONLY)) {
+				String run = (handsOff ? "handing arguments on" : "not handing them on") + ", " + rule;
+				Map<String, byte[]> mod = new HashMap<>(Map.of(hook, cw.toByteArray()));
+				MixinPreflight preflight = new MixinPreflight(game, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, true, true,
+						ClassBytesSource.EMPTY, "Forge", true, rule, true, false, true, false, true, handsOff);
+				List<PreflightFinding> notes = new ArrayList<>();
+				Map<String, byte[]> repaired = preflight.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
+				repaired.forEach((path, bytes) -> mod.put(path.substring(0, path.length() - ".class".length()), bytes));
+				List<PreflightFinding> findings = preflight.check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+				if (!handsOff) {
+					assertTrue(repaired.isEmpty(), run + ": " + notes);
+					assertEquals(1, findings.size(), run + ": " + findings);
+					continue;
+				}
+				assertTrue(findings.isEmpty(), run + ": " + findings);
+				assertTrue(notes.stream().anyMatch(n -> n.message().contains("setup targets <init>" + named + ", which Forge keeps only to call <init>" + located)
+						&& n.message().contains("its handler is given the arguments the first was called with")), run + ": " + notes);
+				ClassNode node = new ClassNode();
+				new ClassReader(mod.get(hook)).accept(node, 0);
+				MethodNode setup = node.methods.stream().filter(mn -> mn.name.equals("setup")).findFirst().orElseThrow();
+				assertNull(Annotations.find(setup, INJECT), run + ": the handler is a plain method now");
+				MethodNode bridge = node.methods.stream().filter(mn -> Annotations.find(mn, INJECT) != null).findFirst().orElseThrow();
+				assertEquals("(L" + location + ";ILorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V", bridge.desc,
+						run + ": the bridge takes the other constructor's parameters");
+				AnnotationNode inject = Annotations.find(bridge, INJECT);
+				assertEquals(List.of("<init>" + located), Annotations.value(inject, "method"), run);
+				FieldNode arguments = node.fields.stream().filter(f -> f.invisibleAnnotations != null
+						&& Annotations.find(f.invisibleAnnotations, ConstructorHandoffs.MARKER) != null).findFirst().orElseThrow();
+				assertEquals(named, Annotations.value(Annotations.find(arguments.invisibleAnnotations, ConstructorHandoffs.MARKER), "value"),
+						run + ": the field names the constructor whose arguments it holds");
+				boolean reads = false;
+				for (AbstractInsnNode insn : bridge.instructions) reads |= insn instanceof FieldInsnNode get && get.name.equals(arguments.name);
+				assertTrue(reads, run + ": the bridge reads them");
+				AnnotationNode point = Annotations.list(Annotations.value(inject, "at")).getFirst();
+				assertEquals(rule == MixinPreflight.ConstructorInjects.RETURNS_ONLY ? ConstructorPoint.AT : "INVOKE", Annotations.value(point, "value"),
+						run + ": Fabricated's point stands for the call where Mixin takes a constructor's returns only");
+			}
+		}
+	}
+
+	@Test
+	void aRedirectOfAListThePlatformLoopsOverAsAMapsKeysPicksAmongTheMapsKeys() throws Exception {
+		// IRIS-1: Iris redirects the read of ParticleEngine.RENDER_ORDER in render, the list vanilla's loop goes over, to
+		// pick the particle types each of its passes renders: a copy without the opaque ones, or a list of its own. Forge 47
+		// keeps vanilla's render only to call an overload taking a frustum, whose loop goes over the keys of the particles'
+		// map instead, a map it orders by RENDER_ORDER with Forge mods' own types after. The redirect moves to that loop,
+		// and the handler's reads of the list see the map's other keys after its elements: a copy of the list keeps them.
+		// NeoForge 21.1 names its overload as vanilla's method. Forge 47 runs vanilla's code under its SRG names and its
+		// own under theirs, so there the overload, "render", is the method it deprecated vanilla's m_107336_ for.
+		keyedLoopRepair("render");
+		keyedLoopRepair("m_107336_");
+	}
+
+	/** The IRIS-1 particle engine, its vanilla method named {@code vanilla} (deprecated where not the overload's name). */
+	private void keyedLoopRepair(String vanilla) throws Exception {
+		boolean renamed = !vanilla.equals("render");
+		String engine = "net/minecraft/client/particle/Engine";
+		String list = "Ljava/util/List;";
+		String map = "Ljava/util/Map;";
+		String overload = "(ILjava/lang/Object;)V";
+		ClassWriter target = new ClassWriter(ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
+		target.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, engine, null, "java/lang/Object", null);
+		target.visitField(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_FINAL, "ORDER", list, null, null).visitEnd();
+		target.visitField(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC | Opcodes.ACC_FINAL, "rendered", list, null, null).visitEnd();
+		target.visitField(Opcodes.ACC_PUBLIC | Opcodes.ACC_FINAL, "particles", map, null, null).visitEnd();
+		MethodVisitor mv = target.visitMethod(Opcodes.ACC_STATIC, "<clinit>", "()V", null, null);
+		mv.visitCode();
+		for (String type : new String[] {"terrain", "opaque", "translucent", "custom"}) mv.visitLdcInsn(type);
+		mv.visitMethodInsn(Opcodes.INVOKESTATIC, "java/util/List", "of", "(Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;)" + list, true);
+		mv.visitFieldInsn(Opcodes.PUTSTATIC, engine, "ORDER", list);
+		mv.visitTypeInsn(Opcodes.NEW, "java/util/ArrayList");
+		mv.visitInsn(Opcodes.DUP);
+		mv.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/util/ArrayList", "<init>", "()V", false);
+		mv.visitFieldInsn(Opcodes.PUTSTATIC, engine, "rendered", list);
+		mv.visitInsn(Opcodes.RETURN);
+		mv.visitMaxs(0, 0);
+		mv.visitEnd();
+		// this.particles = ordered(ORDER), as Forge's Maps.newTreeMap(makeParticleRenderTypeComparator(RENDER_ORDER)).
+		mv = target.visitMethod(Opcodes.ACC_PUBLIC, "<init>", "()V", null, null);
+		mv.visitCode();
+		mv.visitVarInsn(Opcodes.ALOAD, 0);
+		mv.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false);
+		mv.visitVarInsn(Opcodes.ALOAD, 0);
+		mv.visitFieldInsn(Opcodes.GETSTATIC, engine, "ORDER", list);
+		mv.visitMethodInsn(Opcodes.INVOKESTATIC, engine, "ordered", "(" + list + ")" + map, false);
+		mv.visitFieldInsn(Opcodes.PUTFIELD, engine, "particles", map);
+		mv.visitInsn(Opcodes.RETURN);
+		mv.visitMaxs(0, 0);
+		mv.visitEnd();
+		// The map's keys in the order they are put in, which the test puts in the list's order, Forge's own last.
+		mv = target.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "ordered", "(" + list + ")" + map, null, null);
+		mv.visitCode();
+		mv.visitTypeInsn(Opcodes.NEW, "java/util/LinkedHashMap");
+		mv.visitInsn(Opcodes.DUP);
+		mv.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/util/LinkedHashMap", "<init>", "()V", false);
+		mv.visitInsn(Opcodes.ARETURN);
+		mv.visitMaxs(0, 0);
+		mv.visitEnd();
+		mv = target.visitMethod(Opcodes.ACC_PUBLIC | (renamed ? Opcodes.ACC_DEPRECATED : 0), vanilla, "(I)V", null, null);
+		if (renamed) mv.visitAnnotation("Ljava/lang/Deprecated;", true).visitEnd();
+		mv.visitCode();
+		mv.visitVarInsn(Opcodes.ALOAD, 0);
+		mv.visitVarInsn(Opcodes.ILOAD, 1);
+		mv.visitInsn(Opcodes.ACONST_NULL);
+		mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, engine, "render", overload, false);
+		mv.visitInsn(Opcodes.RETURN);
+		mv.visitMaxs(0, 0);
+		mv.visitEnd();
+		// for (Object type : this.particles.keySet()) if (this.particles.get(type) != null) rendered.add(type);
+		mv = target.visitMethod(Opcodes.ACC_PUBLIC, "render", overload, null, null);
+		mv.visitCode();
+		mv.visitVarInsn(Opcodes.ALOAD, 0);
+		mv.visitFieldInsn(Opcodes.GETFIELD, engine, "particles", map);
+		mv.visitMethodInsn(Opcodes.INVOKEINTERFACE, "java/util/Map", "keySet", "()Ljava/util/Set;", true);
+		mv.visitMethodInsn(Opcodes.INVOKEINTERFACE, "java/util/Set", "iterator", "()Ljava/util/Iterator;", true);
+		mv.visitVarInsn(Opcodes.ASTORE, 3);
+		Label loop = new Label();
+		Label done = new Label();
+		mv.visitLabel(loop);
+		mv.visitVarInsn(Opcodes.ALOAD, 3);
+		mv.visitMethodInsn(Opcodes.INVOKEINTERFACE, "java/util/Iterator", "hasNext", "()Z", true);
+		mv.visitJumpInsn(Opcodes.IFEQ, done);
+		mv.visitVarInsn(Opcodes.ALOAD, 3);
+		mv.visitMethodInsn(Opcodes.INVOKEINTERFACE, "java/util/Iterator", "next", "()Ljava/lang/Object;", true);
+		mv.visitVarInsn(Opcodes.ASTORE, 4);
+		mv.visitVarInsn(Opcodes.ALOAD, 0);
+		mv.visitFieldInsn(Opcodes.GETFIELD, engine, "particles", map);
+		mv.visitVarInsn(Opcodes.ALOAD, 4);
+		mv.visitMethodInsn(Opcodes.INVOKEINTERFACE, "java/util/Map", "get", "(Ljava/lang/Object;)Ljava/lang/Object;", true);
+		mv.visitJumpInsn(Opcodes.IFNULL, loop);
+		mv.visitFieldInsn(Opcodes.GETSTATIC, engine, "rendered", list);
+		mv.visitVarInsn(Opcodes.ALOAD, 4);
+		mv.visitMethodInsn(Opcodes.INVOKEINTERFACE, "java/util/List", "add", "(Ljava/lang/Object;)Z", true);
+		mv.visitInsn(Opcodes.POP);
+		mv.visitJumpInsn(Opcodes.GOTO, loop);
+		mv.visitLabel(done);
+		mv.visitInsn(Opcodes.RETURN);
+		mv.visitMaxs(0, 0);
+		mv.visitEnd();
+		target.visitEnd();
+		ClassIndex game = new ClassIndex(Map.of(engine, target.toByteArray())::get);
+
+		// Iris's translucent pass: a copy of the list without the opaque types.
+		String phases = "com/example/mixin/Phases";
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V17, Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, phases, null, "java/lang/Object", null);
+		AnnotationVisitor m = cw.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false);
+		AnnotationVisitor values = m.visitArray("value");
+		values.visit(null, Type.getObjectType(engine));
+		values.visitEnd();
+		m.visitEnd();
+		FieldVisitor shadow = cw.visitField(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "ORDER", list, null, null);
+		shadow.visitAnnotation(SHADOW, true).visitEnd();
+		shadow.visitEnd();
+		mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "selectParticles", "()" + list, null, null);
+		AnnotationVisitor ann = mv.visitAnnotation(REDIRECT, true);
+		AnnotationVisitor selectors = ann.visitArray("method");
+		selectors.visit(null, vanilla + "(I)V");
+		selectors.visitEnd();
+		AnnotationVisitor at = ann.visitAnnotation("at", AT);
+		at.visit("value", "FIELD");
+		at.visit("target", "L" + engine + ";ORDER:" + list);
+		at.visitEnd();
+		ann.visitEnd();
+		mv.visitCode();
+		mv.visitTypeInsn(Opcodes.NEW, "java/util/ArrayList");
+		mv.visitInsn(Opcodes.DUP);
+		mv.visitFieldInsn(Opcodes.GETSTATIC, phases, "ORDER", list);
+		mv.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/util/ArrayList", "<init>", "(Ljava/util/Collection;)V", false);
+		mv.visitInsn(Opcodes.DUP);
+		mv.visitLdcInsn("opaque");
+		mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/util/ArrayList", "remove", "(Ljava/lang/Object;)Z", false);
+		mv.visitInsn(Opcodes.POP);
+		mv.visitInsn(Opcodes.ARETURN);
+		mv.visitMaxs(0, 0);
+		mv.visitEnd();
+		cw.visitEnd();
+		Map<String, byte[]> mod = new HashMap<>(Map.of(phases, cw.toByteArray()));
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Phases"));
+
+		List<PreflightFinding> notes = new ArrayList<>();
+		byte[] repaired = preflight(game, mod::get, ClassBytesSource.EMPTY, true).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes)
+				.get(phases + ".class");
+		assertNotNull(repaired, notes.toString());
+		assertTrue(notes.stream().anyMatch(n -> n.severity() == Severity.WARN && n.message().contains("@Redirect selectParticles reads net.minecraft.client.particle"
+				+ ".Engine.ORDER in " + vanilla + "(I)V, where NeoForge goes over the keys of its map particles in render" + overload + " instead")), notes.toString());
+		mod.put(phases, repaired);
+		assertTrue(preflight(game, mod::get, ClassBytesSource.EMPTY, true).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty());
+		ClassNode mixin = new ClassNode();
+		new ClassReader(repaired).accept(mixin, 0);
+		MethodNode bridge = mixin.methods.stream().filter(mn -> Annotations.find(mn, REDIRECT) != null).findFirst().orElseThrow();
+		assertEquals("(" + map + ")Ljava/util/Set;", bridge.desc, "the bridge redirects the map's keySet()");
+		AnnotationNode redirect = Annotations.find(bridge, REDIRECT);
+		assertEquals(List.of("render" + overload), Annotations.value(redirect, "method"));
+		AnnotationNode point = Annotations.list(Annotations.value(redirect, "at")).getFirst();
+		assertEquals("INVOKE", Annotations.value(point, "value"));
+		assertEquals("Ljava/util/Map;keySet()Ljava/util/Set;", Annotations.value(point, "target"));
+
+		// As Mixin applies it: the mixin's methods and its own field merged into the target (its references to itself
+		// pointed there), and the keySet() call redirected to the bridge, which then takes the receiver after this.
+		ClassNode merged = new ClassNode();
+		new ClassReader(target.toByteArray()).accept(merged, 0);
+		for (FieldNode field : mixin.fields) {
+			if (Annotations.find(field, SHADOW) == null) merged.fields.add(field);
+		}
+		for (MethodNode method : mixin.methods) {
+			if (method.name.equals("<init>")) continue;
+			for (AbstractInsnNode insn : method.instructions) {
+				if (insn instanceof FieldInsnNode f && f.owner.equals(phases)) f.owner = engine;
+				if (insn instanceof MethodInsnNode c && c.owner.equals(phases)) c.owner = engine;
+			}
+			merged.methods.add(method);
+		}
+		MethodNode loopOver = merged.methods.stream().filter(mn -> mn.name.equals("render") && mn.desc.equals(overload)).findFirst().orElseThrow();
+		MethodInsnNode keySet = null;
+		for (AbstractInsnNode insn : loopOver.instructions) {
+			if (insn instanceof MethodInsnNode call && call.name.equals("keySet")) keySet = call;
+		}
+		loopOver.instructions.insertBefore(keySet.getPrevious().getPrevious(), new VarInsnNode(Opcodes.ALOAD, 0));
+		loopOver.instructions.set(keySet, new MethodInsnNode(Opcodes.INVOKESPECIAL, engine, bridge.name, bridge.desc, false));
+		loopOver.maxStack++;
+		ClassWriter writer = new ClassWriter(0);
+		merged.accept(writer);
+		Class<?> type = new BytesClassLoader(Map.of(engine, writer.toByteArray())).loadClass(engine.replace('/', '.'));
+		Object instance = type.getConstructor().newInstance();
+		@SuppressWarnings("unchecked")
+		Map<Object, Object> particles = (Map<Object, Object>) type.getField("particles").get(instance);
+		for (String held : new String[] {"terrain", "opaque", "translucent", "forge"}) particles.put(held, List.of(held + " particle"));
+		type.getMethod(vanilla, int.class).invoke(instance, 0);
+		assertEquals(List.of("terrain", "translucent", "forge"), type.getField("rendered").get(null),
+				"the pass goes over the types the handler kept, Forge's own among them, in order; custom holds no particles");
+		java.lang.reflect.Field keys = type.getDeclaredField(mixin.fields.stream().filter(f -> Annotations.find(f, SHADOW) == null).findFirst().orElseThrow().name);
+		keys.setAccessible(true);
+		assertNull(keys.get(instance), "nothing outlives the call");
+		java.lang.reflect.Method handler = type.getDeclaredMethod("selectParticles");
+		handler.setAccessible(true);
+		assertEquals(List.of("terrain", "translucent", "custom"), handler.invoke(instance), "called otherwise, it reads the list as it is");
 	}
 
 	/** A MixinExtras expression handler on tick() whose @Definition names {@code type} or {@code method}. */
