@@ -3,6 +3,20 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-04: HUD-4 verified, and a refmap's full descriptor into a method Forge gave a parameter (SIG-3, task 5)
+
+- **HUD-4 verified** on Forge 47 (`forge-legacy` #308) and Forge 61 to 66 (`forge` #307): the test mods' hooks in the
+  HUD method run on every Forge version, at its start and end on Forge 47 (a cancel at the start stops the drawing) and
+  at its end and the crosshair call on Forge 61 to 66. It moves to `FINDINGS.md`.
+- **SIG-3** (P2 on Forge 61 clients with Fabric API): Forge 61's `LevelRenderer.extractBlockOutline` also takes whether
+  to draw the outline, and Fabric API's refmap names vanilla's full descriptor, so pre-flight found no method for
+  rendering-v1's outline hook and left it out, with the three hooks sharing its extraction context (the frame's start,
+  its frustum and the world border's extraction): `WorldRenderEvents.AFTER_BLOCK_OUTLINE_EXTRACTION` and `END_EXTRACTION`
+  never fired. A selector naming a descriptor no method has now means the one method of its name and return type
+  taking its parameters with one or two more, in order one way only, and SIG-1's and SIG-2's bridges take it.
+  `MixinPreflightTest.anInjectionWhoseSelectorNamesVanillasDescriptorIsBridgedIntoTheMethodTheBuildGaveMoreParameters`.
+  SIG-1's test named the method alone, as Ledger's selector does. To verify on Forge 61 in the Forge sync.
+
 ## 2026-11-04: Fabric mods' own HUD hooks on Forge (HUD-4, task 5)
 
 - **HUD-4** (P1 on Forge clients for mods drawing on the HUD from their own mixins: malilib, and so MiniHUD, Tweakeroo
