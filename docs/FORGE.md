@@ -314,6 +314,10 @@ What else differs on Forge, for Fabric mods in general:
   it loads mods), and the system property FML sets for an empty log marker is removed before any Fabric mod runs
   (CORPUS-60). A Fabric mod's jar a mod proposes for the class path as the game runs isn't added, with a loading
   warning (DOWNLOAD-1); Essential, whose loader does that, is still refused on Forge.
+- **The difficult mods' Fabric builds** (task 5): malilib loads, and with MiniHUD, Tweakeroo and Litematica the client
+  reaches a world with every smoke check passing (all five, a gate in extended runs). Sodium, Iris, Essential and
+  Flashback are still refused on Forge until their runs gate them; the same runs load them on request
+  (`loadUnsupported`) to show what stops them.
 - **Forge's coremods:** pre-flight reads the game's classes as Forge's own transformers leave them before Mixin
   applies any mod's mixins: Forge 47's coremods and Forge 61 to 66's `forge-transformers`. Each mob's `finalizeSpawn`
   call Forge changes is pointed at `ForgeEventFactory.onFinalizeSpawn` (on Forge 47 anywhere in the classes it lists;

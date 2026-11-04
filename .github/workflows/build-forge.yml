@@ -23,7 +23,7 @@ on:
   workflow_dispatch:
     inputs:
       extended:
-        description: Also the mod corpus on a server and a client, and the difficult mods' Fabric builds on a client (informational)
+        description: Also the mod corpus on a server and a client (informational), and the difficult mods' Fabric builds on a client (malilib's a gate)
         type: boolean
         default: false
 
@@ -257,16 +257,16 @@ jobs:
           path: build/libs/fabricated-forge-*+mc${{ matrix.target.minecraft }}.jar
           if-no-files-found: error
 
-  # The difficult mods' Fabric builds (task 5, decision 3), which the compatibility plan loads on NeoForge and refuses on
-  # Forge until a run here gates them: each on a client with Fabric API, loaded on request (loadUnsupported), to read
-  # what stops them. Informational, with "extended", beside the version's own job.
+  # The difficult mods' Fabric builds (task 5, decision 3), each on a client with Fabric API, with "extended", beside the
+  # version's own job. The compatibility plan loads them on NeoForge and refuses them on Forge until their run here gates
+  # them (CI-1). malilib's run is a gate; the others load on request (loadUnsupported), informational, to read what stops
+  # them.
   difficult:
-    name: Forge ${{ matrix.target.minecraft }}, the difficult mods' Fabric builds (informational)
+    name: Forge ${{ matrix.target.minecraft }}, the difficult mods' Fabric builds
     runs-on: ubuntu-latest
     timeout-minutes: 45
     needs: plan
     if: ${{ needs.plan.outputs.targets != '[]' && (github.ref_type == 'tag' || inputs.extended == true) }}
-    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
@@ -303,6 +303,7 @@ jobs:
       # the game, to its innermost cause.
       - name: Sodium and Iris, with the renderer test mod
         if: ${{ !cancelled() }}
+        continue-on-error: true
         env:
           FABRICATED_MODS: '{ "sodium": { "loadUnsupported": true }, "iris": { "loadUnsupported": true } }'
         run: |
@@ -314,10 +315,12 @@ jobs:
           status=0
           SMOKE_TIMEOUT=480 ci/forge/smoke-client.sh "$MC" "$FORGE" "$RUNNER_TEMP/client-sodium" "$dir" > "$RUNNER_TEMP/client-sodium.out" 2>&1 || status=$?
           ci/forge/difficult-summary.sh "$RUNNER_TEMP/client-sodium" "$status" "Sodium and Iris" "FABRICATED-TEST frapi|Sodium|Iris|sodium|iris" sodium iris
-      - name: malilib, MiniHUD, Tweakeroo and Litematica
+      # A gate, as on NeoForge: every smoke check passes, with a mod whose initializer throws stopping the game, and the
+      # four load.
+      - name: malilib, MiniHUD, Tweakeroo and Litematica (must pass)
         if: ${{ !cancelled() }}
         env:
-          FABRICATED_MODS: '{ "malilib": { "loadUnsupported": true } }'
+          SMOKE_ON_ENTRYPOINT_FAILURE: ''
         run: |
           dir="$RUNNER_TEMP/extra-malilib"
           mkdir -p "$dir"
@@ -327,10 +330,12 @@ jobs:
           status=0
           SMOKE_TIMEOUT=420 ci/forge/smoke-client.sh "$MC" "$FORGE" "$RUNNER_TEMP/client-malilib" "$dir" > "$RUNNER_TEMP/client-malilib.out" 2>&1 || status=$?
           ci/forge/difficult-summary.sh "$RUNNER_TEMP/client-malilib" "$status" "malilib and the mods needing it" "malilib|minihud|tweakeroo|litematica|MiniHUD|Tweakeroo|Litematica" malilib minihud tweakeroo litematica
+          ci/gate-mods.sh "$RUNNER_TEMP/client-malilib" "$status" "malilib and the mods needing it" malilib minihud tweakeroo litematica
       # Launched twice, as on main: the first launch's loader downloads Essential, which Fabricated loads from the
       # second (DOWNLOAD-1).
       - name: Essential
         if: ${{ !cancelled() }}
+        continue-on-error: true
         env:
           FABRICATED_MODS: '{ "essential-container": { "loadUnsupported": true }, "essential-loader": { "loadUnsupported": true } }'
         run: |
@@ -351,6 +356,7 @@ jobs:
           ci/forge/difficult-summary.sh "$RUNNER_TEMP/client-essential" "$status" "Essential's second launch" "essential|Essential" essential-container essential-loader essential
       - name: Flashback
         if: ${{ !cancelled() }}
+        continue-on-error: true
         env:
           FABRICATED_MODS: '{ "flashback": { "loadUnsupported": true } }'
         run: |
