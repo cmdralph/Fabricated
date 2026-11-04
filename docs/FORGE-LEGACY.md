@@ -240,7 +240,11 @@ by the server runs (the colours, screens, key mappings and config screens by the
   never reaches it, and two insertions in one transaction take no more than its slots hold; fluids move in whole
   millibuckets. On Forge 61 to 66 a fluid carrying data (Fabric's components, Forge's tag) doesn't cross. A Fabric mod's
   tank item is filled and drained through Forge's `FLUID_HANDLER_ITEM`, its stack changed in place when it stays the
-  same item, and a Forge mod's through `FluidStorage.ITEM`, in Fabric's transaction.
+  same item, and a Forge mod's through `FluidStorage.ITEM`, in Fabric's transaction. Items in items cross the same way
+  on Forge 61 to 66: a Fabric mod's item storage in an item (a bag's) is its stack's `ITEM_HANDLER`, the stack changed
+  in place, and a Forge mod's item handler on a stack is Fabric's `ItemStorage.ITEM`; a move that would leave another
+  item in the bag's place, which Forge's handler of a stack can't hand back, doesn't happen. Fabric API for 1.20.1 has
+  no lookup for item storages in items, so Forge 47 has none to cross.
 - **Fuels and brewing (Forge 47):** an item `FuelRegistry` makes a fuel is one to Forge's furnace, and an awkward potion
   brewed with an item a `FabricBrewingRecipeRegistry` recipe names gives the recipe's potion (with Fabric API, server
   and client). Forge's furnace reads its burn times from vanilla's fuel table as tags load, where upstream's hook adding
@@ -396,8 +400,6 @@ instead. Unless a task is named, nothing is planned for them yet.
   inside a block (`ScreenEffectRenderer`, on Forge 66 `LevelExtractor`; Forge 61 to 66) and for block markers
   (`BlockMarker`, Forge 64 to 66), one of rendering-v1's GUI renderer hooks (`GuiRenderer.executeDraw`) and its block
   outline hook (`LevelRenderer`) on Forge 61.
-- **Item storages in items (task 5).** A Fabric mod's item storage in an item (a backpack's) and Forge's item handler on
-  a stack don't see each other; fluids in items do (all five).
 - **Fabric mods' own HUD mixins (task 5).** A Fabric mod's mixin at one of vanilla's calls inside the HUD method
   (`Gui.render`), or at its end, applies but never runs: Forge 61 to 66 hand the drawing to their layers at its start,
   and Forge 47's GUI never calls it. Mixins at its start, and into the methods that draw each part, which Forge's
