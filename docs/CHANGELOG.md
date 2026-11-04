@@ -3,6 +3,28 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-04: Fabric mods' own HUD hooks on Forge (HUD-4, task 5)
+
+- **HUD-4** (P1 on Forge clients for mods drawing on the HUD from their own mixins: malilib, and so MiniHUD, Tweakeroo
+  and Litematica): Forge 61 to 66's patch of vanilla's HUD method (`Gui.render`; on 26.1.2 `Gui.extractRenderState`,
+  on 26.2 and 26.3 `Hud.extractRenderState`) hands the drawing to Forge's layers behind `if (Boolean.valueOf(true))`
+  and returns before vanilla's calls, so a hook at the method's end or at one of those calls applied and never ran.
+  malilib's overlay hook is at the end on 1.21.11 and 26.1.2 (read in its sources). Forge 47's GUI overrides the method
+  and never calls it, so no hook in it ran there, malilib's included. Pre-flight's new repairs (`SkippedCode`): an
+  `@Inject` at the end of a method the platform's patch returns before moves to its returns, the patch's included,
+  where every other return still reached is one; an `@Inject` at a call of the target's own method in the code the
+  patch skips moves to that method's start (its returns, after the call), where the platform's code it hands the work
+  to makes the call and nothing else in the target does, for a handler that isn't cancellable and takes no locals and
+  either none of the method's parameters or all of them, passed on in order; and an `@Inject` at the start or end of a
+  method the platform never calls moves to the seam Fabricated's own mixins add for it (`fabricated$start$` and
+  `fabricated$end$` with the method's name), which they call where the platform's override starts and ends,
+  cancelling it where a hook at the start cancelled. Decision: other injectors into that code stay as they are and
+  never run; the Forge docs list them. The Forge syncs add Forge 47's seams and the test mods' checks.
+  `MixinPreflightTest.anInjectionAtTheEndOfAMethodThePatchReturnsBeforeIsPointedAtItsReturns`,
+  `...AtACallInCodeThePatchSkipsIsPointedAtTheCalledMethodWhereThePlatformMakesTheCall` and
+  `...AtTheStartOrEndOfAMethodThePlatformNeverCallsIsPointedAtFabricatedsSeam`; `RestoredFieldsTest` for the seams.
+  No test had a mixin into code a patch skips, and no Forge test mod hooked the HUD method itself.
+
 ## 2026-11-04: Item storages in items on Forge 61 to 66 and NeoForge 1.21.1, Iris's and Flashback's Fabric builds on Forge, and PLUGIN-1, IRIS-1 and CORPUS-89 verified (task 5)
 
 - **Item storages in items** (`forge` #298, and NeoForge 1.21.1 here): a Fabric mod's bag or backpack
