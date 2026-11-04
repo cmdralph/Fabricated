@@ -17,6 +17,7 @@ import io.github.cmdralph.fabricated.forgetest.ForgeDefaultBridgeTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeDimensionTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeFluidTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeFuelTest;
+import io.github.cmdralph.fabricated.forgetest.ForgeIngredientTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeMobBucketTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeRecipeConditionTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeRegistryAliasTest;
@@ -119,6 +120,7 @@ public abstract class MinecraftServerMixin {
 			ForgeBrewingMixTest.check();
 			ForgeMobBucketTest.check();
 			ForgeRecipeConditionTest.check(method_3772());
+			ForgeIngredientTest.check();
 			if (ForgeTestMod.testItem != null && FabricLoader.getInstance().isModLoaded("fabric-content-registries-v0")) {
 				ForgeFuelTest.check();
 				ForgeBrewingTest.check();
