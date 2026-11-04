@@ -245,9 +245,10 @@ public final class ModTranslator {
 				int conditioned = 0;
 				int modifiers = 0;
 				int lootModifiers = 0;
-				// Porting Lib reads global loot modifiers on Fabric, from the same folder: its mods keep theirs.
-				boolean portingLib = candidate.metadata().getDependencies().stream()
-						.anyMatch(d -> d.getKind().isPositive() && d.getModId().startsWith("porting_lib"));
+				// Porting Lib reads global loot modifiers on Fabric, from the same folder: its mods keep theirs. Only where the
+				// platform reads them as NeoForge does (CORPUS-98).
+				boolean lootModifiersOff = env.descriptor().readsNeoForgeLootModifiers() && candidate.metadata().getDependencies().stream()
+						.noneMatch(d -> d.getKind().isPositive() && d.getModId().startsWith("porting_lib"));
 				for (String name : view != null ? view.keySet() : archive.entryNames()) {
 					// The mod's own pack.mcmeta, and its built-in packs' (resourcepacks/<name>/pack.mcmeta, Tectonic's, PACK-4).
 					if (name.equals(PACK_METADATA) || name.endsWith("/" + PACK_METADATA)) {
@@ -271,7 +272,7 @@ public final class ModTranslator {
 					}
 					// CORPUS-23: so are its NeoForge build's global loot modifiers, which NeoForge reads from any jar. Fabric reads
 					// none (Artifacts' types, which only its NeoForge build registers, failed to decode on every NeoForge version).
-					if (!portingLib && LOOT_MODIFIER.matcher(name).matches()) {
+					if (lootModifiersOff && LOOT_MODIFIER.matcher(name).matches()) {
 						overlay.put(name, name.endsWith(LOOT_MODIFIER_LIST) ? NO_LOOT_MODIFIER_LIST : NO_LOOT_MODIFIER);
 						rewritten.add(name);
 						lootModifiers++;
