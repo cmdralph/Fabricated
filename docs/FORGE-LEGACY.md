@@ -318,12 +318,11 @@ What else differs on Forge, for Fabric mods in general:
   it loads mods), and the system property FML sets for an empty log marker is removed before any Fabric mod runs
   (CORPUS-60). A Fabric mod's jar a mod proposes for the class path as the game runs isn't added, with a loading
   warning (DOWNLOAD-1); Essential, whose loader does that, loads from its download in the next launch, as on NeoForge.
-- **The difficult mods' Fabric builds** (task 5): malilib loads, and with MiniHUD, Tweakeroo and Litematica the client
-  reaches a world with every smoke check passing (all five, a gate in extended runs). Sodium's Fabric build loads too,
-  the renderer test mod's checks passing under it (with Indium on Forge 47), and Essential's, both of its launches
-  passing every smoke check: gates in extended runs. Iris and Flashback are still refused on Forge until their runs
-  gate them (Iris's passes on Forge 61 to 66 and is to hold on Forge 47, Flashback's passes on Forge 61); the same runs
-  load them on request (`loadUnsupported`) to show what stops them.
+- **The difficult mods' Fabric builds** (task 5): each loads by default and the client reaches a world with every
+  smoke check passing, a gate in extended runs: malilib with MiniHUD, Tweakeroo and Litematica; Sodium's, the renderer
+  test mod's checks passing under it (with Indium on Forge 47), and Iris's with it (IRIS-1's repairs on Forge 47); both
+  of Essential's launches; and Flashback's on Forge 61 to 66 (PLUGIN-1's repair on 64 to 66; Modrinth has no build for
+  1.20.1). The compatibility plan refuses none of them on Forge.
 - **Forge's coremods:** pre-flight reads the game's classes as Forge's own transformers leave them before Mixin
   applies any mod's mixins: Forge 47's coremods and Forge 61 to 66's `forge-transformers`. Each mob's `finalizeSpawn`
   call Forge changes is pointed at `ForgeEventFactory.onFinalizeSpawn` (on Forge 47 anywhere in the classes it lists;
