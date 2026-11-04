@@ -284,6 +284,12 @@ What else differs on Forge, for Fabric mods in general:
   declared as the other mixin declares the field, and Mixin merges the two into one field, as on Fabric (CORPUS-74:
   the test mod's tick counter, all five, server run); one that can't be (a static shadow of an instance field, a
   writable one of a final field) disables its mod, or leaves its mixin out where it can.
+- **Two mixins' unique fields of one name:** for the same reason, Forge's Mixin renames a private `@Unique` field only
+  when its class declares one of that name, not when another mixin adds it, and two mixins' fields became one, where
+  Fabric's Mixin keeps a field each: Fabric API's screen mixin and SpruceUI's both keep `tickingScreen` in `Minecraft`,
+  and the Forge 64 corpus client stopped as it created its world (CORPUS-95). Pre-flight renames a Fabric mod's such
+  field, below public, when another mixin adds one of its name and type (the test mod's two counters, all five, server
+  run).
 - **Locals where Mixin miscounts them:** Forge 61 to 66's Mixin 0.8.7 works out the locals at an injection point from
   the frames it recorded from the class's bytes, which Forge's ModLauncher hands it with their frames compressed
   (Forge 47's Mixin 0.8.5 reads a class's frames expanded): each frame then states only its change, and Mixin can count

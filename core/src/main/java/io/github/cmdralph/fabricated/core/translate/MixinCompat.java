@@ -57,12 +57,13 @@ public final class MixinCompat {
 	 * {@code CallbackInjector.sanityCheck} has the modifiers match exactly on 0.8.5; from 0.8.6, as in Fabric's Mixin, it
 	 * refuses only a handler that isn't static on a static target). All three rebind a detached mixin's calls to an
 	 * interface's super method (SUPER-1: {@code MixinTargetContext.updateStaticBinding}, which Fabric's Mixin stopped doing
-	 * for interfaces in 0.15.0), and none finds a {@code @Shadow} field among the fields another mixin adds to the same
-	 * target (CORPUS-74: {@code TargetClassContext.findAliasedField} looks in the target's own fields; Fabric's Mixin also
-	 * looks in the fields of the mixins prepared before, its {@code mixinFields}, from 0.12.0).
+	 * for interfaces in 0.15.0), and none sees the fields other mixins add to the same target as it prepares a mixin
+	 * ({@code TargetClassContext.findAliasedField} looks in the target's own fields; Fabric's Mixin also looks in the
+	 * fields of the mixins prepared before, its {@code mixinFields}, from 0.12.0): a {@code @Shadow} of one isn't found
+	 * (CORPUS-74), and a {@code @Unique} field of the same name isn't renamed (CORPUS-95).
 	 */
 	private record Upstream(int lastLevel, boolean interfaceInjectors, ConstructorInjects constructorInjects, boolean argumentNames,
-			boolean exactStaticInjects, boolean rebindsInterfaceSuperCalls, boolean shadowsMixinFields) {
+			boolean exactStaticInjects, boolean rebindsInterfaceSuperCalls, boolean seesMixinFields) {
 	}
 
 	private static final Map<String, Upstream> UPSTREAM = Map.of(
@@ -195,13 +196,14 @@ public final class MixinCompat {
 	}
 
 	/**
-	 * Whether the running Mixin finds a {@code @Shadow} field another mixin adds to the same target, as Fabric's does from
-	 * 0.12.0 (CORPUS-74: SpongePowered's releases, which Forge runs, find only the target's own fields, and stop the game
-	 * on such a shadow). True for a version not known here.
+	 * Whether the running Mixin sees the fields other mixins add to the same target as it prepares a mixin, as Fabric's
+	 * does from 0.12.0. SpongePowered's releases, which Forge runs, see only the target's own fields: they stop the game on
+	 * a {@code @Shadow} of a field another mixin adds (CORPUS-74), and merge two mixins' {@code @Unique} fields of the same
+	 * name into one (CORPUS-95). True for a version not known here.
 	 */
-	public static boolean shadowsMixinFields(String runtimeMixinVersion) {
+	public static boolean seesMixinFields(String runtimeMixinVersion) {
 		Upstream upstream = upstream(runtimeMixinVersion);
-		return upstream == null || upstream.shadowsMixinFields();
+		return upstream == null || upstream.seesMixinFields();
 	}
 
 	/**

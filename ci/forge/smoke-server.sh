@@ -188,6 +188,7 @@ check "the test mod's mixin applied (Mixin read the overlay's MixinConfigs)" "gr
 check "Forge took Fabricated's transformation service" "grep -q 'Fabricated transforms [1-9][0-9]* class(es) for Fabric mods before Mixin' logs/latest.log 2>/dev/null"
 check "the test mod's injected interface is on MinecraftServer (inject-interface)" "grep -q 'FABRICATED-FORGE-TEST injected interface OK' logs/latest.log 2>/dev/null"
 check "a mixin's @Shadow of a field another mixin adds is that field, as on Fabric, where Forge's Mixin finds only the class's own (CORPUS-74)" "grep -q 'FABRICATED-FORGE-TEST shared mixin field OK' logs/latest.log 2>/dev/null"
+check "two mixins' @Unique fields of one name stay a field each, as on Fabric, where Forge's Mixin would merge them (CORPUS-95)" "grep -q 'FABRICATED-FORGE-TEST unique mixin fields OK' logs/latest.log 2>/dev/null"
 check "a mod nested with a NeoForge jar-in-jar list too loads once, translated: Forge's jar-in-jar locator leaves it alone (JIJ-1)" "grep -q 'FABRICATED-FORGE-TEST nested jar loaded once OK' logs/latest.log 2>/dev/null"
 check "the test mod's client-only method was stripped (@Environment)" "grep -q 'FABRICATED-FORGE-TEST environment strip OK' logs/latest.log 2>/dev/null"
 report "Forge added MixinExtras for the test mod" "grep -i 'mixinextras' logs/debug.log 2>/dev/null | grep -i -E 'select|load|add' > /dev/null"
