@@ -315,7 +315,8 @@ public final class MixinPreflight extends PreflightPart {
 	/**
 	 * The first point of an {@code @Inject} into a constructor that SpongePowered's Mixin rejects (CTOR-2: it throws as it
 	 * applies the mixin, whatever the config's {@code required}): any but a return that isn't marked {@code unsafe}, or,
-	 * on 0.8.5, any but a return. Null when it takes them all, or on Fabric's Mixin.
+	 * on 0.8.5, any but a return that isn't Fabricated's {@link ConstructorPoint}. Null when it takes them all, or on
+	 * Fabric's Mixin.
 	 */
 	private String constructorPointRejected(AnnotationNode injector, List<MethodNode> matched) {
 		if (constructorInjects == ConstructorInjects.AFTER_DELEGATE || !injector.desc.equals(MixinNames.INJECT)
@@ -324,6 +325,7 @@ public final class MixinPreflight extends PreflightPart {
 			String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
 			if (ConstructorRepairs.RETURN_POINTS.contains(point)) continue;
 			if (constructorInjects == ConstructorInjects.UNSAFE_POINTS && Boolean.TRUE.equals(Annotations.value(at, "unsafe"))) continue;
+			if (constructorInjects == ConstructorInjects.RETURNS_ONLY && point.equals(ConstructorPoint.AT)) continue;
 			return point;
 		}
 		return null;
