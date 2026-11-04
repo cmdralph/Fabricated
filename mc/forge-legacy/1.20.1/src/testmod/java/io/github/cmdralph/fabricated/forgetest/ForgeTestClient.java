@@ -14,7 +14,8 @@ import net.minecraft.class_310;
  * ({@link ForgeParticleClient}) and a key binding ({@link ForgeKeyBindingClient}), and with Fabric API's networking module it also starts a networking round trip with
  * the integrated server ({@link ForgeNetworkingClient}); with its model loading, screen and rendering modules, it checks
  * the model bake events ({@link ForgeModelClient}), the screen mouse and key events ({@link ForgeScreenClient}) and the
- * HUD callback ({@link ForgeHudClient}).
+ * HUD callback ({@link ForgeHudClient}). With Fabric API's resource loader it registers a built-in pack enabled by
+ * default ({@link ForgeDefaultPackTest}).
  */
 @Environment(EnvType.CLIENT)
 public final class ForgeTestClient implements ClientModInitializer {
@@ -45,6 +46,13 @@ public final class ForgeTestClient implements ClientModInitializer {
 			ForgeKeyBindingClient.register();
 		} catch (RuntimeException | LinkageError e) {
 			ForgeTestMod.LOGGER.error("FABRICATED-FORGE-TEST key binding FAILED: not registered", e);
+		}
+		if (FabricLoader.getInstance().isModLoaded("fabric-resource-loader-v0")) {
+			try {
+				ForgeDefaultPackTest.register();
+			} catch (RuntimeException | LinkageError e) {
+				ForgeTestMod.LOGGER.error("FABRICATED-FORGE-TEST builtin resource pack not registered", e);
+			}
 		}
 		if (FabricLoader.getInstance().isModLoaded("fabric-networking-api-v1")) {
 			try {

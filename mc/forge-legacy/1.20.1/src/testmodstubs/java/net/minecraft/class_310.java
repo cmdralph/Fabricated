@@ -3,7 +3,8 @@ package net.minecraft;
 /**
  * {@code Minecraft}: {@code method_1551} is {@code getInstance}, {@code field_1690} {@code options}, {@code field_1713}
  * {@code particleEngine}, {@code field_1755} {@code screen}, {@code field_1729} {@code mouseHandler}, {@code field_1774}
- * {@code keyboardHandler}, {@code method_18506} {@code getOverlay} and {@code method_22683} {@code getWindow}.
+ * {@code keyboardHandler}, {@code method_18506} {@code getOverlay}, {@code method_22683} {@code getWindow} and
+ * {@code method_1520} {@code getResourcePackRepository}.
  */
 public class class_310 {
 	public class_315 field_1690;
@@ -17,6 +18,10 @@ public class class_310 {
 	}
 
 	public class_1041 method_22683() {
+		throw new AssertionError("stand-in");
+	}
+
+	public class_3283 method_1520() {
 		throw new AssertionError("stand-in");
 	}
 

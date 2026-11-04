@@ -113,6 +113,7 @@ public abstract class MinecraftServerMixin {
 			ForgeTestMod.checkColors();
 			ForgeTestMod.checkParticles();
 			ForgeTestMod.checkKeyBinding();
+			ForgeTestMod.checkDefaultPack();
 			ForgeCommandTest.check(method_3734());
 			ForgeRegistryAliasTest.check();
 			ForgeConfigPortTest.check();

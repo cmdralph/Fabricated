@@ -241,6 +241,7 @@ if [ -n "$extra" ]; then
 	check "FABRICATED-FORGE-TEST model bake events OK" "fabric-model-loading-api-v1 (with Fabric API): a model loading plugin's before-bake and after-bake modifiers see the models baked, whose code Forge moved into an overload taking the sprite getter (MODEL-3)"
 	check "FABRICATED-FORGE-TEST screen mouse and key events OK" "fabric-screen-api-v1 (with Fabric API): a click and a key press on a screen, and their releases, ask ScreenMouseEvents and ScreenKeyboardEvents, whose hooks Forge's mouse and key lambdas take through bridges (LAMBDA-7)"
 	check "FABRICATED-FORGE-TEST hud render callback OK" "fabric-rendering-v1 (with Fabric API): HudRenderCallback fired from Forge's HUD drawing, which takes the place of vanilla's method upstream fires it from (HUD-2)"
+	check "FABRICATED-FORGE-TEST builtin resource pack enabled by default OK" "fabric-resource-loader-v0 (with Fabric API): a built-in pack a Fabric mod's client entrypoint registers as enabled by default is switched on, as upstream does once the options load, which on Forge is before the entrypoints (CORPUS-104)"
 fi
 # Fabric's renderer API (task 4, R5): the renderer test mod's blocks and item. Upstream's hooks miss Forge 47's chunk
 # section compiler and block renderers, so Fabricated's send each block through Fabric's renderer (Indigo), with FRAPI
