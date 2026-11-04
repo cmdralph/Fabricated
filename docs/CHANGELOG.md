@@ -29,12 +29,16 @@ One entry per working session, newest first: what changed, and how it was verifi
   server (NeoForge 21.1's `waitForServer`), so it doesn't meet the cycle. Decision: nothing to change in Fabricated; the
   client runs already stop such a hang 2 minutes after the world is reached, and the evidence step's bytecode for it
   is gone. It moves to `FINDINGS.md`.
-- **PROVIDER-17** opened (P1, UNVERIFIED whether Fabricated's): the 26.1.2 and 26.2 clients with Forgified Fabric API
-  fail three checks, first seen in extended run 41858750959's summary: the packet context a codec reads is empty while
-  NeoForge's splitter measures a payload, and missing as the client decodes one; a Fabric mod's default attribute
-  modification from its main initializer doesn't apply (the dedicated server with it passes, so most likely the
-  provider's event fires before a client's initializers run, as PROVIDER-12's); and HUD elements attached to vanilla's
-  are drawn where vanilla's aren't. Task 5's next item, with PRE-19.
+- **PROVIDER-17 and PROVIDER-18** opened: the 26.1.2 and 26.2 clients with Forgified Fabric API fail three checks,
+  first seen in extended run 41858750959's summary. Two are the provider's (PROVIDER-17), read in its 26.1.2 and 26.2.x
+  sources: its packet context's keys are null once its context class is initialized first (the class initialization
+  cycle NET-7 found in upstream's code, reproduced with the same two classes in a plain JVM), and it binds no context
+  as NeoForge's splitter decodes a payload; and its HUD registry draws an element attached to a vanilla one as a layer
+  of its own, whatever vanilla's layer checks. The test mods skip those checks with these answers where another mod
+  provides the module, as for PROVIDER-10. The third, a Fabric mod's default attribute modification from its main
+  initializer, doesn't apply on the client while the dedicated server with it passes (PROVIDER-18, P2, UNVERIFIED):
+  most likely the provider runs the event before a client's initializers, as PROVIDER-12's listener; the bytecode step
+  prints where it runs it.
 - **PRE-19**: its row said `forge-legacy` doesn't read vanilla's code; it does, from the SRG-named game jar Forge's
   installer leaves. The Forge corpus summary now lists the injectors pre-flight moved to the method the platform calls
   in place of theirs (`ci/corpus-summary.sh`), for Puzzles Lib's in the Forge 47 extended run after the next

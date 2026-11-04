@@ -22,6 +22,8 @@ public final class NetworkingTest implements ModInitializer {
 	static final String ANOTHER_MODS = "fabric-networking-api-v1 is another mod's";
 	private static boolean lateRegistered;
 	private static volatile boolean contextEncodeReported;
+	/** Why the client's decoder had no packet context where another mod's networking runs (PROVIDER-17), or null. */
+	static volatile String contextDecodeAnswer;
 
 	/** A tiny payload sent in both directions. */
 	public record Ping(int value) implements CustomPacketPayload {
@@ -67,12 +69,18 @@ public final class NetworkingTest implements ModInitializer {
 			if (!contextEncodeReported) {
 				// The first encoding is the splitter's, which measures the packet before vanilla's encoder.
 				contextEncodeReported = true;
+				String answer = hasContext(true) ? null : providersAnswer(PacketContext.get());
 				if (hasContext(true)) TestMod.LOGGER.info("FABRICATED-TEST packet context while encoding OK");
+				else if (answer != null) TestMod.LOGGER.info("FABRICATED-TEST packet context while encoding SKIPPED: {}", answer);
 				else TestMod.LOGGER.error("FABRICATED-TEST packet context while encoding FAILED: {}", describe(PacketContext.get()));
 			}
 			buf.writeByteArray(ping.data());
 		}, buf -> {
-			if (!hasContext(false)) TestMod.LOGGER.error("FABRICATED-TEST packet context while decoding FAILED: {}", describe(PacketContext.get()));
+			if (!hasContext(false)) {
+				String answer = providersAnswer(PacketContext.get());
+				if (answer != null) contextDecodeAnswer = answer;
+				else TestMod.LOGGER.error("FABRICATED-TEST packet context while decoding FAILED: {}", describe(PacketContext.get()));
+			}
 			return new ContextPing(buf.readByteArray(), hasContext(false));
 		});
 
@@ -86,6 +94,23 @@ public final class NetworkingTest implements ModInitializer {
 			if (context == null) return "no context";
 			return "registries " + (context.get(PacketContext.REGISTRY_ACCESS) != null) + ", profile " + (context.get(PacketContext.GAME_PROFILE) != null)
 					+ ", server " + (context.get(PacketContext.SERVER_INSTANCE) != null) + ", connection " + context.get(PacketContext.CONNECTION);
+		}
+
+		/**
+		 * Forgified Fabric API's answer where its networking runs and the context holds nothing the check reads, as its
+		 * 26.1.2 and 26.2 sources read (PROVIDER-17), or null where it doesn't explain the failure. Its
+		 * {@code PacketContext}'s keys are null once its {@code PacketContextImpl} is initialized first, by a connection's
+		 * first context: the class initialization cycle NET-7 found in upstream's code, which Fabricated's copy breaks
+		 * ({@code PacketContextKeys}). And it binds no context as NeoForge's splitter decodes a payload it reassembled: it
+		 * has no mixin of the splitter, where Fabricated has {@code GenericPacketSplitterContextMixin}.
+		 */
+		static String providersAnswer(PacketContext context) {
+			if (OWN) return null;
+			if (PacketContext.CONNECTION == null) {
+				return ANOTHER_MODS + ", whose packet context's keys are null: its PacketContextImpl was initialized before PacketContext (PROVIDER-17)";
+			}
+			if (context == null) return ANOTHER_MODS + ", which binds no packet context as NeoForge's splitter decodes a payload it reassembled (PROVIDER-17)";
+			return null;
 		}
 
 		/** Whether the context holds what Fabric API puts in it: the registries, the profile and, on the server, the server. */
