@@ -223,10 +223,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           SMOKE_ON_ENTRYPOINT_FAILURE: disable
-          # With "extended", Mixin writes a class it fails to apply mixins to as it had it then (.mixin.out/class/*.target.class),
-          # for the bytecode step below (CORPUS-79).
-          # Minecraft as Mixin leaves it, for the evidence step (CORPUS-95).
-          SMOKE_JVM_ARGS: ${{ env.EXTENDED == 'true' && '-Dmixin.dumpTargetOnFailure=true -Dmixin.debug.export=true -Dmixin.debug.export.filter=net.minecraft.client.Minecraft' || '' }}
         run: |
           SMOKE_TIMEOUT=600 ci/forge/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-corpus" "$RUNNER_TEMP/corpus" > "$RUNNER_TEMP/client-corpus.out" 2>&1 || true
           ci/corpus-summary.sh "$RUNNER_TEMP/client-corpus/run" "client with the corpus"
@@ -238,24 +234,6 @@ jobs:
         run: |
           ci/forge/corpus-causes.sh "$RUNNER_TEMP/server-corpus" "$RUNNER_TEMP/server-corpus/server.out" "server with the corpus"
           ci/forge/corpus-causes.sh "$RUNNER_TEMP/client-corpus/run" "$RUNNER_TEMP/client-corpus/client.out" "client with the corpus"
-      # The bytecode task 5's open findings turn on, for reading (informational, with "extended"; last, and capped, as the
-      # job's log can only be read from its end): Minecraft.doWorldLoad on Forge 64, where Fabric Screen API's after-tick
-      # hook of the loading screen found no screen kept (CORPUS-95): the method as Forge's build has it and as Mixin left
-      # it, the mixins merged into the class, and the mods' code naming the loading screen.
-      - name: Bytecode for task 5's findings (informational)
-        if: ${{ env.EXTENDED == 'true' && !cancelled() && steps.corpus.outcome == 'success' && matrix.target.minecraft == '26.1.2' }}
-        continue-on-error: true
-        run: |
-          [ -d "$RUNNER_TEMP/client-corpus" ] || exit 0
-          python3 -I ci/javap-dump.py "$RUNNER_TEMP/client-corpus" 'game:net.minecraft.client.Minecraft#doWorldLoad' \
-            'refs:net/minecraft/client/gui/screens/LevelLoadingScreen' \
-            | cut -c1-320 | head -n 700 || true
-          for exported in $(find "$RUNNER_TEMP/client-corpus" -path '*.mixin.out*' -name 'Minecraft.class' 2>/dev/null | head -n 1); do
-            echo "== Mixin's export of the class: $exported"
-            javap -p -v "$exported" | grep -o -E 'mixin="[^"]+"' | sort | uniq -c | head -60 || true
-            javap -p -c "$exported" | awk '/ doWorldLoad\(/ { show = 1 } show && /^  [a-z].*\(.*\);$/ && !/ doWorldLoad\(/ { show = 0 } show' \
-              | cut -c1-200 | head -n 400 || true
-          done
       - name: Upload mod corpus logs and reports
         if: ${{ !cancelled() && steps.corpus.outcome == 'success' }}
         uses: actions/upload-artifact@v4
