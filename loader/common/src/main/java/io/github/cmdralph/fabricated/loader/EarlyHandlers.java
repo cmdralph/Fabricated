@@ -11,8 +11,9 @@ import org.slf4j.LoggerFactory;
  * them. NeoForge 21.1's and Forge's clients create the game's options before they load mods, and so before the
  * entrypoints, which on Fabric run before the options exist: a handler there reading what its mod's initializer sets up
  * (Bobby's config) threw, and the game stopped (ENTRY-2). Forge loads mods part way through the client's constructor,
- * whose start runs the entrypoints on Fabric: Sodium's hook there reads its config (ENTRY-3). Pre-flight wraps each Fabric
- * mod's handler into the options, and into the client's constructor ({@code MixinRepairs}), to call {@link #failed} with
+ * whose start runs the entrypoints on Fabric: Sodium's hook there reads its config (ENTRY-3), as does its hook into the
+ * window's creation, which Forge's 26.3 client does there too (ENTRY-4). Pre-flight wraps each Fabric mod's handler into
+ * the options, the client's constructor and the window's creation ({@code MixinRepairs}), to call {@link #failed} with
  * what it threw, and to go on as if its hook weren't there when that returns.
  */
 public final class EarlyHandlers {
@@ -30,9 +31,9 @@ public final class EarlyHandlers {
 	public static void failed(RuntimeException thrown, String handler) {
 		if (!EarlyFreeze.beforeMainEntrypoints()) throw thrown;
 		if (!REPORTED.add(handler)) return;
-		String text = handler + " hooks into code this platform runs before Fabric mods' entrypoints (the game's options, or the"
-				+ " client's constructor before it loads mods), where Fabric runs it after them, and threw " + thrown + " before they ran;"
-				+ " it was skipped for that call, so what it changes there stays as the game has it";
+		String text = handler + " hooks into code this platform runs before Fabric mods' entrypoints (the game's options, the"
+				+ " client's window, or the client's constructor before it loads mods), where Fabric runs it after them, and threw "
+				+ thrown + " before they ran; it was skipped for that call, so what it changes there stays as the game has it";
 		LOGGER.warn("{}", text, thrown);
 		FabricatedState state = FabricatedState.get();
 		if (state != null) state.report().line("Hooks skipped before Fabric mods' entrypoints", text);

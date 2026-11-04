@@ -349,12 +349,8 @@ final class MixinRepairs extends PreflightPart {
 	 * only be seen once the earlier ones are done, with a stop after it if it can move the injector.
 	 */
 	private final List<RepairStep> injectorRepairs = List.of(
-			new RepairStep(RepairScope.ONE_TARGET, Severity.INFO, s -> earlyHandlerGuard(s.mixin(), s.handler(), s.injector(), s.target()),
-					(s, none) -> s.named() + (OPTIONS.equals(s.target().name)
-							? " hooks into the game's options, which Fabric creates after Fabric mods' entrypoints and " + s.ctx().loader()
-									+ " may create before it loads mods (NeoForge 21.1 and Forge do)"
-							: " hooks into the client's constructor, where Fabric runs Fabric mods' entrypoints first and " + s.ctx().loader()
-									+ " may load mods part way through (Forge does)")
+			new RepairStep(RepairScope.ONE_TARGET, Severity.INFO, s -> earlyHandlerGuard(s.mixin(), s.handler(), s.injector(), s.target(), s.ctx()),
+					(s, where) -> s.named() + " hooks into " + where
 							+ "; if it throws before the entrypoints have run, it is skipped for that call instead of stopping the game"),
 			new RepairStep(RepairScope.ONE_TARGET, Severity.INFO, s -> earlyFreezeGuard(s.mixin(), s.handler(), s.injector(), s.target(), s.ctx()),
 					(s, none) -> "@Inject " + s.handler().name + " runs as a registry freezes, which " + s.ctx().loader() + " also does before"
@@ -465,6 +461,12 @@ final class MixinRepairs extends PreflightPart {
 	 * (and Fabricated runs the entrypoints) part way through it (ENTRY-3).
 	 */
 	static final String MINECRAFT = "net/minecraft/client/Minecraft";
+	/**
+	 * LWJGL's functions creating a window, by owner: GLFW's, which the client's window calls up to 26.2, and SDL's, which
+	 * 26.3's graphics backend calls. Fabric creates the window in the client's constructor after Fabric mods' entrypoints;
+	 * Forge creates it before it loads mods (ENTRY-4).
+	 */
+	private static final Map<String, String> WINDOW_CREATION = Map.of("org/lwjgl/glfw/GLFW", "glfwCreateWindow", "org/lwjgl/sdl/SDLVideo", "SDL_CreateWindow");
 	/** The in-game recovery of a handler that threw before Fabric mods' entrypoints (the loader's {@code EarlyHandlers}). */
 	static final String EARLY_HANDLERS = "io/github/cmdralph/fabricated/loader/EarlyHandlers";
 	private static final String MODIFY_ARG = "Lorg/spongepowered/asm/mixin/injection/ModifyArg;";
@@ -472,22 +474,23 @@ final class MixinRepairs extends PreflightPart {
 	private static final String RUNTIME_EXCEPTION = "java/lang/RuntimeException";
 
 	/**
-	 * Wraps a Fabric mod's handler into the client's {@code Options}, or into the client's constructor, so that a
-	 * {@link RuntimeException} it throws while Fabric mods' entrypoints are still to run skips it for that call, as if its
-	 * hook weren't there: an {@code @Inject} or {@code @ModifyArgs} returns, a value modifier returns the value it was
-	 * given, a {@code @WrapWithCondition} lets the call be made. On Fabric the game creates its options after Fabric mods'
-	 * entrypoints, which run near the start of the client's constructor. NeoForge 21.1 and Forge create the options before
-	 * they load mods, so a handler there reading what its mod's initializer sets up (Bobby's config, for its render
-	 * distance slider) threw, and the game stopped (ENTRY-2); Forge loads mods part way through the client's constructor,
-	 * so Sodium's hook there, which reads its config to set its first start's fullscreen default, threw (ENTRY-3). Once
-	 * the entrypoints have run, the exception goes on as it would ({@code EarlyHandlers}), so a platform running the code
-	 * after them (or a later reload of the options) behaves as before. {@code @Redirect} and {@code @WrapOperation}
-	 * handlers, which make the call themselves, are left as they are. Returns one item when it wrapped the handler, none
-	 * otherwise.
+	 * Wraps a Fabric mod's handler into the client's {@code Options}, into the client's constructor, or into the code
+	 * creating the client's window, so that a {@link RuntimeException} it throws while Fabric mods' entrypoints are still
+	 * to run skips it for that call, as if its hook weren't there: an {@code @Inject} or {@code @ModifyArgs} returns, a
+	 * value modifier returns the value it was given, a {@code @WrapWithCondition} lets the call be made. On Fabric the game
+	 * creates its options and its window after Fabric mods' entrypoints, which run near the start of the client's
+	 * constructor. NeoForge 21.1 and Forge create the options before they load mods, so a handler there reading what its
+	 * mod's initializer sets up (Bobby's config, for its render distance slider) threw, and the game stopped (ENTRY-2);
+	 * Forge loads mods part way through the client's constructor, so Sodium's hook there, which reads its config to set
+	 * its first start's fullscreen default, threw (ENTRY-3), and on 26.3, where it creates the window there too, so did
+	 * Sodium's hook setting the window's context hints from its config (ENTRY-4). Once the entrypoints have run, the
+	 * exception goes on as it would ({@code EarlyHandlers}), so a platform running the code after them (or a later reload
+	 * of the options) behaves as before. {@code @Redirect} and {@code @WrapOperation} handlers, which make the call
+	 * themselves, are left as they are. Returns what the handler hooks into when it wrapped it, nothing otherwise.
 	 */
-	static List<String> earlyHandlerGuard(ClassNode mixin, MethodNode handler, AnnotationNode injector, ClassNode target) {
-		if (!(OPTIONS.equals(target.name) || MINECRAFT.equals(target.name) && intoConstructorOnly(injector))
-				|| (mixin.access & Opcodes.ACC_INTERFACE) != 0 || handler.instructions.size() == 0) return List.of();
+	static List<String> earlyHandlerGuard(ClassNode mixin, MethodNode handler, AnnotationNode injector, ClassNode target, Context ctx) {
+		String where = earlyCode(injector, target, ctx);
+		if (where == null || (mixin.access & Opcodes.ACC_INTERFACE) != 0 || handler.instructions.size() == 0) return List.of();
 		// Class files before Java 6 have no stack map frames, which the handler for the exception would need here.
 		if ((mixin.version & 0xFFFF) < Opcodes.V1_6) return List.of();
 		boolean isStatic = (handler.access & Opcodes.ACC_STATIC) != 0;
@@ -538,7 +541,36 @@ final class MixinRepairs extends PreflightPart {
 		// Last, so that the handler's own catches, inside it, come first.
 		handler.tryCatchBlocks.add(new TryCatchBlockNode(start, end, caught, RUNTIME_EXCEPTION));
 		handler.maxStack = Math.max(handler.maxStack, Math.max(2, returns.getSize()));
-		return List.of("");
+		return List.of(where);
+	}
+
+	/**
+	 * What an injector hooks into that a platform may run before Fabric mods' entrypoints, where Fabric runs it after
+	 * them ({@link #earlyHandlerGuard}), or null: the game's options, the client's constructor, or code creating the
+	 * client's window (every method it picks calls one of LWJGL's functions creating a window).
+	 */
+	private static String earlyCode(AnnotationNode injector, ClassNode target, Context ctx) {
+		if (OPTIONS.equals(target.name)) {
+			return "the game's options, which Fabric creates after Fabric mods' entrypoints and " + ctx.loader()
+					+ " may create before it loads mods (NeoForge 21.1 and Forge do)";
+		}
+		if (MINECRAFT.equals(target.name) && intoConstructorOnly(injector)) {
+			return "the client's constructor, where Fabric runs Fabric mods' entrypoints first and " + ctx.loader()
+					+ " may load mods part way through (Forge does)";
+		}
+		List<MethodNode> methods = PreflightAsm.selectedMethods(injector, target, ctx);
+		if (!methods.isEmpty() && methods.stream().allMatch(MixinRepairs::createsWindow)) {
+			return "the creation of the client's window, which Fabric creates after Fabric mods' entrypoints and " + ctx.loader()
+					+ " may create before it loads mods (Forge does)";
+		}
+		return null;
+	}
+
+	private static boolean createsWindow(MethodNode method) {
+		for (AbstractInsnNode insn : method.instructions) {
+			if (insn instanceof MethodInsnNode call && call.name.equals(WINDOW_CREATION.get(call.owner))) return true;
+		}
+		return false;
 	}
 
 	/** Whether every method an injector names is a constructor (a name a refmap maps keeps {@code <init>}). */

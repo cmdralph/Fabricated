@@ -4142,6 +4142,116 @@ class MixinPreflightTest {
 	}
 
 	@Test
+	void aHandlerIntoTheWindowsCreationIsSkippedWhereItThrowsBeforeTheEntrypoints() throws Exception {
+		// ENTRY-4: Sodium's @Inject into 26.3's GlBackend.createWindow, at SDL's window creation, reads its config to set the
+		// context's hints. Fabric creates the window after the entrypoints; Forge 66 creates it before it loads mods. Up to
+		// 26.2 the window's constructor creates it with GLFW. A handler into code not creating the window is left alone.
+		String backend = "com/mojang/renderpearl/backend/opengl/GlBackend";
+		String sdl = "org/lwjgl/sdl/SDLVideo";
+		ClassWriter target = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		target.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, backend, null, "java/lang/Object", null);
+		// {method, the window's creation it calls: owner, name, descriptor}
+		String[][] methods = {
+				{"createWindow", sdl, "SDL_CreateWindow", "(Ljava/lang/CharSequence;IIJ)J"},
+				{"createGlfwWindow", "org/lwjgl/glfw/GLFW", "glfwCreateWindow", "(IILjava/lang/CharSequence;JJ)J"},
+				{"present", null, null, null}};
+		for (String[] method : methods) {
+			MethodVisitor mv = target.visitMethod(Opcodes.ACC_PUBLIC, method[0], "()J", null, null);
+			mv.visitCode();
+			if (method[1] == null) {
+				mv.visitInsn(Opcodes.LCONST_0);
+			} else if (method[1].equals(sdl)) {
+				mv.visitLdcInsn("Minecraft");
+				mv.visitInsn(Opcodes.ICONST_0);
+				mv.visitInsn(Opcodes.ICONST_0);
+				mv.visitInsn(Opcodes.LCONST_0);
+				mv.visitMethodInsn(Opcodes.INVOKESTATIC, method[1], method[2], method[3], false);
+			} else {
+				mv.visitInsn(Opcodes.ICONST_0);
+				mv.visitInsn(Opcodes.ICONST_0);
+				mv.visitLdcInsn("Minecraft");
+				mv.visitInsn(Opcodes.LCONST_0);
+				mv.visitInsn(Opcodes.LCONST_0);
+				mv.visitMethodInsn(Opcodes.INVOKESTATIC, method[1], method[2], method[3], false);
+			}
+			mv.visitInsn(Opcodes.LRETURN);
+			mv.visitMaxs(0, 0);
+			mv.visitEnd();
+		}
+		target.visitEnd();
+		ClassIndex game = new ClassIndex(Map.of(backend, target.toByteArray())::get);
+
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, "com/example/mixin/Window", null, "java/lang/Object", null);
+		AnnotationVisitor m = cw.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false);
+		AnnotationVisitor values = m.visitArray("value");
+		values.visit(null, Type.getObjectType(backend));
+		values.visitEnd();
+		m.visitEnd();
+		// {handler, method, point}
+		String[][] handlers = {{"setAdditionalWindowHints", "createWindow", "INVOKE"}, {"setHints", "createGlfwWindow", "HEAD"}, {"onPresent", "present", "HEAD"}};
+		for (String[] handler : handlers) {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, handler[0], "(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;)V", null, null);
+			AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
+			AnnotationVisitor selectors = ann.visitArray("method");
+			selectors.visit(null, handler[1]);
+			selectors.visitEnd();
+			AnnotationVisitor ats = ann.visitArray("at");
+			AnnotationVisitor at = ats.visitAnnotation(null, AT);
+			at.visit("value", handler[2]);
+			if (handler[2].equals("INVOKE")) at.visit("target", "L" + sdl + ";SDL_CreateWindow(Ljava/lang/CharSequence;IIJ)J");
+			at.visitEnd();
+			ats.visitEnd();
+			ann.visitEnd();
+			mv.visitCode();
+			// As Sodium's: SodiumClientMod.options(), which throws before its client initializer has run.
+			mv.visitMethodInsn(Opcodes.INVOKESTATIC, "com/example/Mod", "options", "()Lcom/example/Options;", false);
+			mv.visitInsn(Opcodes.POP);
+			mv.visitInsn(Opcodes.RETURN);
+			mv.visitMaxs(0, 0);
+			mv.visitEnd();
+		}
+		cw.visitEnd();
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Window", cw.toByteArray()));
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Window"));
+
+		List<PreflightFinding> notes = new ArrayList<>();
+		byte[] repaired = preflight(game, mod::get, ClassBytesSource.EMPTY, true).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes)
+				.get("com/example/mixin/Window.class");
+		assertNotNull(repaired, notes.toString());
+		assertEquals(2, notes.size(), notes.toString());
+		assertTrue(notes.stream().allMatch(n -> n.severity() == PreflightFinding.Severity.INFO && n.message().contains("hooks into the creation of the client's window")),
+				notes.toString());
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired).accept(node, 0);
+		Map<String, MethodNode> byName = new HashMap<>();
+		node.methods.forEach(mn -> byName.put(mn.name, mn));
+		for (String name : new String[] {"setAdditionalWindowHints", "setHints"}) {
+			MethodNode wrapped = byName.get(name);
+			assertEquals(1, wrapped.tryCatchBlocks.size(), name);
+			AbstractInsnNode insn = wrapped.tryCatchBlocks.getFirst().handler;
+			while (insn.getOpcode() < 0) insn = insn.getNext();
+			assertEquals("com.example.mixin.Window." + name, ((LdcInsnNode) insn).cst);
+			insn = insn.getNext();
+			assertTrue(insn instanceof MethodInsnNode call && call.owner.equals("io/github/cmdralph/fabricated/loader/EarlyHandlers") && call.name.equals("failed"),
+					name);
+			assertEquals(Opcodes.RETURN, insn.getNext().getOpcode(), name);
+		}
+		assertTrue(byName.get("onPresent").tryCatchBlocks.isEmpty(), "a handler into code not creating the window runs after the entrypoints");
+		ClassLoader loader = new ClassLoader(getClass().getClassLoader()) {
+			@Override
+			protected Class<?> findClass(String name) throws ClassNotFoundException {
+				if (!name.equals("com.example.mixin.Window")) throw new ClassNotFoundException(name);
+				return defineClass(name, repaired, 0, repaired.length);
+			}
+		};
+		Class.forName("com.example.mixin.Window", true, loader);
+		mod.put("com/example/mixin/Window", repaired);
+		List<PreflightFinding> after = preflight(game, mod::get, ClassBytesSource.EMPTY, true).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(after.isEmpty(), after.toString());
+	}
+
+	@Test
 	void anInjectionIntoAMethodNeoForgeDeprecatedIsPointedAtItsReplacement() throws Exception {
 		// DEPRECATED-1: FrozenLib hooks BoneMealItem.growCrop, which NeoForge's build deprecates for applyBonemeal, taking
 		// the player too, and keeps only to call that on a server level (a jump, so no plain overload).
