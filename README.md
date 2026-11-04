@@ -108,8 +108,8 @@ task that takes each on. The main ones:
 - **Other hooks inside the HUD method:** a mixin there that wraps or redirects one of vanilla's calls, or hooks in
   anywhere but the method's start, its end or a call Forge's layers make, applies but never runs, as Forge draws the
   HUD from its layers (HUD-4).
-- **Forgified Fabric API** is refused, as is any jar carrying its own copy of Fabric Loader; task 5 tries letting both
-  run.
+- **A jar carrying its own copy of Fabric Loader** is refused (PROVIDER-2). Forgified Fabric API's builds for these
+  versions are for NeoForge; its Forge build, for 1.20.1, runs beside Fabricated on Forge 47 (the `forge-legacy` branch).
 
 ## Installing (for testing)
 
