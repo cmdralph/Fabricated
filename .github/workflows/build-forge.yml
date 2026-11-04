@@ -259,8 +259,8 @@ jobs:
 
   # The difficult mods' Fabric builds (task 5, decision 3), each on a client with Fabric API, with "extended", beside the
   # version's own job. The compatibility plan loads them on NeoForge and refuses them on Forge until their run here gates
-  # them (CI-1). malilib's run is a gate; the others load on request (loadUnsupported), informational, to read what stops
-  # them.
+  # them (CI-1). The runs of malilib, Sodium and Essential are gates; Iris and Flashback load on request
+  # (loadUnsupported), to read what stops them, informational where no gate runs them.
   difficult:
     name: Forge ${{ matrix.target.minecraft }}, the difficult mods' Fabric builds
     runs-on: ubuntu-latest
@@ -301,11 +301,13 @@ jobs:
             "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api/${{ matrix.target.fabric_api }}/fabric-api-${{ matrix.target.fabric_api }}.jar"
       # What a run of these mods shows: the report's summary and what it left out, the mods' errors, and what stopped
       # the game, to its innermost cause.
-      - name: Sodium and Iris, with the renderer test mod
+      # A gate, as on NeoForge: every smoke check passes, with a mod whose initializer throws stopping the game, and the
+      # two load. Iris, which Forge 47 doesn't run yet, is loaded on request; its run here held twice in a row (CI-1).
+      - name: Sodium and Iris, with the renderer test mod (must pass)
         if: ${{ !cancelled() }}
-        continue-on-error: true
         env:
-          FABRICATED_MODS: '{ "sodium": { "loadUnsupported": true }, "iris": { "loadUnsupported": true } }'
+          SMOKE_ON_ENTRYPOINT_FAILURE: ''
+          FABRICATED_MODS: '{ "iris": { "loadUnsupported": true } }'
         run: |
           dir="$RUNNER_TEMP/extra-sodium"
           mkdir -p "$dir"
@@ -315,6 +317,7 @@ jobs:
           status=0
           SMOKE_TIMEOUT=480 ci/forge/smoke-client.sh "$MC" "$FORGE" "$RUNNER_TEMP/client-sodium" "$dir" > "$RUNNER_TEMP/client-sodium.out" 2>&1 || status=$?
           ci/forge/difficult-summary.sh "$RUNNER_TEMP/client-sodium" "$status" "Sodium and Iris" "FABRICATED-TEST frapi|Sodium|Iris|sodium|iris" sodium iris
+          ci/gate-mods.sh "$RUNNER_TEMP/client-sodium" "$status" "Sodium and Iris" sodium iris
       # A gate, as on NeoForge: every smoke check passes, with a mod whose initializer throws stopping the game, and the
       # four load.
       - name: malilib, MiniHUD, Tweakeroo and Litematica (must pass)
@@ -332,12 +335,13 @@ jobs:
           ci/forge/difficult-summary.sh "$RUNNER_TEMP/client-malilib" "$status" "malilib and the mods needing it" "malilib|minihud|tweakeroo|litematica|MiniHUD|Tweakeroo|Litematica" malilib minihud tweakeroo litematica
           ci/gate-mods.sh "$RUNNER_TEMP/client-malilib" "$status" "malilib and the mods needing it" malilib minihud tweakeroo litematica
       # Launched twice, as on main: the first launch's loader downloads Essential, which Fabricated loads from the
-      # second (DOWNLOAD-1).
-      - name: Essential
+      # second (DOWNLOAD-1). A gate, as on NeoForge: both launches pass every smoke check, with a mod whose initializer
+      # throws stopping the game, and Essential loads in the second. Where its loader downloaded nothing (its server,
+      # not Fabricated), the second launch is skipped with a warning.
+      - name: Essential (must pass)
         if: ${{ !cancelled() }}
-        continue-on-error: true
         env:
-          FABRICATED_MODS: '{ "essential-container": { "loadUnsupported": true }, "essential-loader": { "loadUnsupported": true } }'
+          SMOKE_ON_ENTRYPOINT_FAILURE: ''
         run: |
           dir="$RUNNER_TEMP/extra-essential"
           mkdir -p "$dir"
@@ -347,13 +351,20 @@ jobs:
           status=0
           SMOKE_TIMEOUT=420 ci/forge/smoke-client.sh "$MC" "$FORGE" "$RUNNER_TEMP/client-essential-first" "$dir" > "$RUNNER_TEMP/client-essential-first.out" 2>&1 || status=$?
           ci/forge/difficult-summary.sh "$RUNNER_TEMP/client-essential-first" "$status" "Essential's first launch" "essential|Essential" essential-container essential-loader
+          failed=0
+          ci/gate-mods.sh "$RUNNER_TEMP/client-essential-first" "$status" "Essential's first launch" essential-container essential-loader || failed=1
           mkdir -p "$RUNNER_TEMP/seed-essential"
           [ -d "$RUNNER_TEMP/client-essential-first/run/essential" ] && cp -r "$RUNNER_TEMP/client-essential-first/run/essential" "$RUNNER_TEMP/seed-essential/"
-          ls "$RUNNER_TEMP/seed-essential/essential/"Essential*.jar >/dev/null 2>&1 || { echo "Essential's loader downloaded nothing in the first launch: no second launch"; exit 0; }
+          if ! ls "$RUNNER_TEMP/seed-essential/essential/"Essential*.jar >/dev/null 2>&1; then
+            echo "::warning::Essential's loader downloaded nothing in the first launch (its server): no second launch to gate"
+            exit "$failed"
+          fi
           status=0
           SMOKE_SEED="$RUNNER_TEMP/seed-essential" SMOKE_TIMEOUT=420 ci/forge/smoke-client.sh "$MC" "$FORGE" "$RUNNER_TEMP/client-essential" "$dir" \
               > "$RUNNER_TEMP/client-essential.out" 2>&1 || status=$?
           ci/forge/difficult-summary.sh "$RUNNER_TEMP/client-essential" "$status" "Essential's second launch" "essential|Essential" essential-container essential-loader essential
+          ci/gate-mods.sh "$RUNNER_TEMP/client-essential" "$status" "Essential's second launch" essential-container essential-loader essential || failed=1
+          exit "$failed"
       - name: Flashback
         if: ${{ !cancelled() }}
         continue-on-error: true
