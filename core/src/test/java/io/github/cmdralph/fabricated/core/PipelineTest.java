@@ -1223,6 +1223,49 @@ class PipelineTest {
 				+ " which isn't loading; Mixin would stop the game applying it, so it is left out"), rendered);
 	}
 
+	/**
+	 * CORPUS-89: a mod whose class extends one of a mod it nests that isn't loading (Modern Industrialization's items,
+	 * Magna's tools, which pre-flight disabled on Forge 47) would throw as it first uses that class, where on Fabric the
+	 * nested mod is always there: it is disabled with the reason. A mod nesting it without extending its classes (Porting
+	 * Lib's base jar and its GUI utilities, CORPUS-93), and one extending them without nesting it (an optional
+	 * integration, which guards such uses), load.
+	 */
+	@Test
+	void aModExtendingAClassOfAModItNestsThatIsNotLoadingIsDisabledWithIt(@TempDir Path game) throws Exception {
+		Path mods = Files.createDirectories(game.resolve("mods"));
+		String tool = "com/magna/Tool";
+		// The nested mod fails pre-flight (its mixin injects into a method the game doesn't have), so it isn't loading.
+		byte[] magna = TestJars.create().fabricModJson(TestJars.modJson("magna", "1.0", "\"mixins\":[\"magna.mixins.json\"]"))
+				.text("magna.mixins.json", "{\"required\":true,\"package\":\"com.magna.mixin\",\"mixins\":[\"BrokenMixin\"]}")
+				.bytes("com/magna/mixin/BrokenMixin.class", duckMixinClass("com/magna/mixin/BrokenMixin", "methodTheGameDoesNotHave"))
+				.bytes(tool + ".class", TestJars.emptyClass(tool, "java/lang/Object"))
+				.toBytes();
+		Path industrial = TestJars.create().fabricModJson(TestJars.modJson("industrial", "1.0", "\"jars\":[{\"file\":\"META-INF/jars/magna.jar\"}]"))
+				.bytes("META-INF/jars/magna.jar", magna)
+				.bytes("com/industrial/Drill.class", TestJars.emptyClass("com/industrial/Drill", tool))
+				.write(mods.resolve("industrial.jar"));
+		byte[] gui = TestJars.create().fabricModJson(TestJars.modJson("gui-utils", "1.0", "\"mixins\":[\"gui.mixins.json\"]"))
+				.text("gui.mixins.json", "{\"required\":true,\"package\":\"com.gui.mixin\",\"mixins\":[\"BrokenMixin\"]}")
+				.bytes("com/gui/mixin/BrokenMixin.class", duckMixinClass("com/gui/mixin/BrokenMixin", "methodTheGameDoesNotHave"))
+				.bytes("com/gui/Tooltip.class", TestJars.emptyClass("com/gui/Tooltip", "java/lang/Object"))
+				.toBytes();
+		Path base = TestJars.create().fabricModJson(TestJars.modJson("base", "1.0", "\"jars\":[{\"file\":\"META-INF/jars/gui.jar\"}]"))
+				.bytes("META-INF/jars/gui.jar", gui)
+				.bytes("com/base/Api.class", TestJars.emptyClass("com/base/Api", "java/lang/Object"))
+				.write(mods.resolve("base.jar"));
+		Path compat = TestJars.create().fabricModJson(TestJars.modJson("compat", "1.0", ""))
+				.bytes("com/compat/MagnaDrill.class", TestJars.emptyClass("com/compat/MagnaDrill", tool))
+				.write(mods.resolve("compat.jar"));
+		Pipeline.Result result = Pipeline.run(input(game, List.of(industrial, base, compat), Namespace.OFFICIAL, Map.of(TARGET, targetClass()), null));
+
+		Set<String> loaded = result.mods().stream().map(m -> m.translated().candidate().id()).collect(Collectors.toSet());
+		assertEquals(Set.of("base", "compat"), loaded, result.report().render());
+		Report.ModRow row = result.report().mods().stream().filter(r -> r.id().equals("industrial")).findFirst().orElseThrow();
+		assertEquals(Report.Status.DISABLED, row.status());
+		assertTrue(row.detail().contains("a class of it needs a mod it nests, which isn't loading: com.industrial.Drill -> needs class com.magna.Tool"
+				+ " of magna (a supertype, from a mod it nests), which isn't loading"), row.detail());
+	}
+
 	@Test
 	void aRequiredMixinUsingAModOnlyForTheOtherSideKeepsItsMod(@TempDir Path game) throws Exception {
 		// CORPUS-15: on Fabric a client-only library isn't on a server either, and a mod's mixin using it is in a class

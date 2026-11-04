@@ -1064,6 +1064,11 @@ MixinExtras has NeoForge's jar, and a NeoForge mod nested in another jar has tha
   another config (not required, or with a plugin) is left out instead, and the mod loads without it: Mixin would stop
   the game the same way unless the plugin skipped it (OneConfig's chat mixin, which needs adventure-platform-fabric,
   CORPUS-47). The report lists it under *Mixins left out (they need a Fabric mod that isn't loading)*.
+- A mod one of whose classes extends or implements a class of a mod it nests that isn't loading is disabled, with the
+  reason: the game can't define that class, and on Fabric the nested mod is always there (CORPUS-89: Modern
+  Industrialization's items extend Magna's tools). It loads once the nested mod does. A mod nesting one that isn't
+  loading without extending its classes loads, and so does one extending a class of a mod it doesn't nest (an optional
+  integration, which only uses it when that mod is there).
 - Mods detect Fabricated with `FabricLoader.getInstance().isModLoaded("fabricated")`; see [API.md](API.md).
 - `mixinextras` is provided at the version NeoForge runs, as Fabric Loader provides its own, so mods requiring it
   load (copies nested in mod jars are dropped for NeoForge's).
