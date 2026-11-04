@@ -1360,6 +1360,12 @@ jobs:
             python3 -I ci/javap-dump.py "$RUNNER_TEMP/$run" "$@" | cut -c1-320 || true
           }
           dump client-malilib 'game:net.minecraft.world.item.ItemStack#getTooltipLines'
+          # PROVIDER-18: where Forgified Fabric API's object builder runs Fabric's default attribute modification event
+          # (upstream's hook into the built-in registries' freeze isn't among its mixins), which a client's Fabric
+          # initializers, run in Minecraft's constructor, register their listeners for too late.
+          if [ "${{ matrix.target.minecraft }}" = "26.2" ]; then
+            dump client-ffapi 'refs:invokeModify'
+          fi
           # The Sodium and Iris gate's client block entity check, which run 673's Sodium client on 26.2 reported neither way:
           # how each of its clients left its world and stopped.
           for run in client-sodium-fabric client-shaders-fabric; do
