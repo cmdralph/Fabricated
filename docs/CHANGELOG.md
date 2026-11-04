@@ -3,7 +3,7 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
-## 2026-11-04: Fabric mods' built-in packs enabled by default on Forge 47 (CORPUS-104), CORPUS-104 and PROVIDER-13 verified, CORPUS-88 closed and CORPUS-112 found (task 5)
+## 2026-11-04: Fabric mods' built-in packs enabled by default on Forge 47 (CORPUS-104), CORPUS-104 and PROVIDER-13 verified, and CORPUS-88 and CORPUS-112 closed (task 5)
 
 - **Verified:** CORPUS-104 on Forge 61 to 66, in extended run 41782561336 (#291). The test mod's built-in pack
   enabled by default is selected, and the corpus clients log no unreadable pack (Artifacts', Terralith's) and reach
@@ -18,11 +18,12 @@ One entry per working session, newest first: what changed, and how it was verifi
 - **CORPUS-88** (closed, not Fabricated's): read in Farmer's Delight's jar and REI's sources. Farmer's Delight's
   decomposition display has a unit stream codec holding one instance, its plugin adds another, and neither class
   defines `equals`. So REI's sync refuses it on every platform, Fabric included.
-- **CORPUS-112** (new, P3, open): the Forge 61 corpus client's debug log has 17 banner patterns that REI's display
-  sync couldn't encode, as the registry it encodes with has no id for them. forge #294's evidence step prints the
-  first one with its stack for the next extended run.
-- **CI:** #294's evidence step: its shell was run locally under `bash -e`, with a log with the failure, one without,
-  and none.
+- **CORPUS-112** (closed, not Fabricated's): the Forge 61 corpus client's debug log has 17 of REI's banner displays
+  that its display sync couldn't encode (extended runs 41782561336 and 41786931339). Read in the evidence step's
+  stack and REI's 1.21.11 sources: REI builds them from the client's registries, which it answers with on a client
+  even on the integrated server's thread, and the server encodes them with its own, which have no id for them.
+- **CI:** forge #294's evidence steps (their shell run locally under `bash -e`, with a log with the failure, one
+  without, and none) served CORPUS-88 and CORPUS-112 and were then removed, so forge's workflow is as it was.
 
 ## 2026-11-04: Fabric mods' block model loaders and language files on Forge 47 (CORPUS-92, CORPUS-100, CORPUS-102), Fabric mods' built-in packs enabled by default on Forge 61 to 66 (CORPUS-104), and CORPUS-109 verified (task 5)
 
