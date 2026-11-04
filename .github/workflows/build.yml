@@ -1410,9 +1410,10 @@ jobs:
               fi
             done
           fi
-          # CORPUS-48: what Xaero's World Map's server world unload runs at its line 106, where the corpus clients' server
-          # thread stays (not parked: a loop) while mc-runtime-test's stop joins it from the render thread.
-          dump client-corpus 'mod:xaero.map.file.worldsave.WorldDataHandler#onServerWorldUnload' 'mod:xaero.map.file.worldsave.WorldDataHandler#*'
+          # CORPUS-48: where the future Xaero's World Map's map thread joins, holding the world's capabilities that the
+          # server thread's world unload waits to lock, comes from, while mc-runtime-test's stop joins the server thread
+          # from the render thread.
+          dump client-corpus 'mod:xaero.map.cache.BlockStateShortShapeCache#scheduleAndGet' 'mod:xaero.map.cache.BlockStateShortShapeCache#lambda$*'
           # LAMBDA-9: Litematica's schematic hooks into LevelRenderer.addMainPass's lambda, which NeoForge 26.2 gives one more
           # value: what pre-flight now reports of them, and addMainPass as NeoForge's and vanilla's code declare it.
           if [ "${{ matrix.target.minecraft }}" = "26.2" ]; then
