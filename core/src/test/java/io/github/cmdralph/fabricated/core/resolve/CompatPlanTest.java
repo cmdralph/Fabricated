@@ -37,15 +37,17 @@ class CompatPlanTest {
 		CompatPlan plan = CompatPlan.builtin();
 		assertEquals(List.of("sodium"), List.copyOf(plan.entry("iris").notWithNeoForge().keySet()));
 		// Lifted on NeoForge, as its CI runs them as gates (decision 3 of the v0.6.0-beta pass); refused on Forge.
-		for (String id : List.of("sodium", "iris", "essential-container", "essential-loader", "flashback")) {
+		for (String id : List.of("iris", "flashback")) {
 			assertNull(plan.entry(id).refusal("NeoForge"), id);
 			assertNotNull(plan.entry(id).refusal("Forge"), id);
 		}
 		// Gated on both: refused nowhere.
-		assertNull(plan.entry("malilib").refusal("NeoForge"));
-		assertNull(plan.entry("malilib").refusal("Forge"));
+		for (String id : List.of("sodium", "essential-container", "essential-loader", "malilib")) {
+			assertNull(plan.entry(id).refusal("NeoForge"), id);
+			assertNull(plan.entry(id).refusal("Forge"), id);
+		}
 		assertNotNull(plan.entry("wthit").refusal("NeoForge"), "WTHIT's own entrypoint refuses NeoForge");
-		assertNotNull(plan.entry("essential-container").suggestion(), "Essential has no build for every loader and version");
+		assertNotNull(plan.entry("flashback").suggestion(), "Flashback has no build of its own for Forge");
 	}
 
 	@Test
