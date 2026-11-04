@@ -895,7 +895,7 @@ Some mods' Fabric builds are refused on a loader where they can't run, or aren't
 (core's `compat-plan.json`). Such a build is disabled with the reason and what to do instead, and the mods that need it
 with it; `loadUnsupported` loads it anyway, for testing. A refusal is lifted on a loader once CI's run of that mod is a
 gate there (the owner's decision 3 of the beta pass): on NeoForge it is lifted for Sodium, Iris, Essential, malilib and
-Flashback; on Forge they stay refused, with "isn't supported on Forge" in the report.
+Flashback, and on Forge for malilib; on Forge the others stay refused, with "isn't supported on Forge" in the report.
 
 A build for another Minecraft version that Fabricated can tell can't run is disabled too, with the build to install:
 on 26.x, one whose mixins name intermediary classes (`net.minecraft.class_1234`), the names obfuscated versions (1.21.11
@@ -912,8 +912,8 @@ and older) run Fabric mods with, which 26.x doesn't have (OBF-1: Modrinth lists 
   warning (update it by deleting it, or with Essential's own build where one exists). Pre-flight reads Essential's
   relocated MixinExtras as MixinExtras' own (MIXEXT-4). CI gates both launches on every version.
 - **malilib** (and with it Tweakeroo, MiniHUD and Litematica): it adds its picture-in-picture renderers through a map
-  NeoForge replaced with renderer pools on every version, which Fabricated restores (PIP-1). Loaded on NeoForge, the
-  four gated on every version.
+  NeoForge replaced with renderer pools on every version, which Fabricated restores (PIP-1). Loaded on NeoForge and
+  Forge, the four gated on every version of both.
 - **WTHIT**: its Fabric build refuses NeoForge itself; its NeoForge build is the one to use. Refused everywhere.
 - **Flashback**: its mixin into `MappedRegistry.freeze` starts Flashback on the first registry freeze, and its start-up
   registers a key binding through the client. NeoForge freezes the registries at bootstrap and again before the client

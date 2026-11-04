@@ -7822,6 +7822,195 @@ class MixinPreflightTest {
 		}
 	}
 
+	@Test
+	void aRedirectOfAListThePlatformLoopsOverAsAMapsKeysPicksAmongTheMapsKeys() throws Exception {
+		// IRIS-1: Iris redirects the read of ParticleEngine.RENDER_ORDER in render, the list vanilla's loop goes over, to
+		// pick the particle types each of its passes renders: a copy without the opaque ones, or a list of its own. Forge 47
+		// keeps vanilla's render only to call an overload taking a frustum, whose loop goes over the keys of the particles'
+		// map instead, a map it orders by RENDER_ORDER with Forge mods' own types after. The redirect moves to that loop,
+		// and the handler's reads of the list see the map's other keys after its elements: a copy of the list keeps them.
+		String engine = "net/minecraft/client/particle/Engine";
+		String list = "Ljava/util/List;";
+		String map = "Ljava/util/Map;";
+		String overload = "(ILjava/lang/Object;)V";
+		ClassWriter target = new ClassWriter(ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
+		target.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, engine, null, "java/lang/Object", null);
+		target.visitField(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_FINAL, "ORDER", list, null, null).visitEnd();
+		target.visitField(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC | Opcodes.ACC_FINAL, "rendered", list, null, null).visitEnd();
+		target.visitField(Opcodes.ACC_PUBLIC | Opcodes.ACC_FINAL, "particles", map, null, null).visitEnd();
+		MethodVisitor mv = target.visitMethod(Opcodes.ACC_STATIC, "<clinit>", "()V", null, null);
+		mv.visitCode();
+		for (String type : new String[] {"terrain", "opaque", "translucent", "custom"}) mv.visitLdcInsn(type);
+		mv.visitMethodInsn(Opcodes.INVOKESTATIC, "java/util/List", "of", "(Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;)" + list, true);
+		mv.visitFieldInsn(Opcodes.PUTSTATIC, engine, "ORDER", list);
+		mv.visitTypeInsn(Opcodes.NEW, "java/util/ArrayList");
+		mv.visitInsn(Opcodes.DUP);
+		mv.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/util/ArrayList", "<init>", "()V", false);
+		mv.visitFieldInsn(Opcodes.PUTSTATIC, engine, "rendered", list);
+		mv.visitInsn(Opcodes.RETURN);
+		mv.visitMaxs(0, 0);
+		mv.visitEnd();
+		// this.particles = ordered(ORDER), as Forge's Maps.newTreeMap(makeParticleRenderTypeComparator(RENDER_ORDER)).
+		mv = target.visitMethod(Opcodes.ACC_PUBLIC, "<init>", "()V", null, null);
+		mv.visitCode();
+		mv.visitVarInsn(Opcodes.ALOAD, 0);
+		mv.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false);
+		mv.visitVarInsn(Opcodes.ALOAD, 0);
+		mv.visitFieldInsn(Opcodes.GETSTATIC, engine, "ORDER", list);
+		mv.visitMethodInsn(Opcodes.INVOKESTATIC, engine, "ordered", "(" + list + ")" + map, false);
+		mv.visitFieldInsn(Opcodes.PUTFIELD, engine, "particles", map);
+		mv.visitInsn(Opcodes.RETURN);
+		mv.visitMaxs(0, 0);
+		mv.visitEnd();
+		// The map's keys in the order they are put in, which the test puts in the list's order, Forge's own last.
+		mv = target.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "ordered", "(" + list + ")" + map, null, null);
+		mv.visitCode();
+		mv.visitTypeInsn(Opcodes.NEW, "java/util/LinkedHashMap");
+		mv.visitInsn(Opcodes.DUP);
+		mv.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/util/LinkedHashMap", "<init>", "()V", false);
+		mv.visitInsn(Opcodes.ARETURN);
+		mv.visitMaxs(0, 0);
+		mv.visitEnd();
+		mv = target.visitMethod(Opcodes.ACC_PUBLIC, "render", "(I)V", null, null);
+		mv.visitCode();
+		mv.visitVarInsn(Opcodes.ALOAD, 0);
+		mv.visitVarInsn(Opcodes.ILOAD, 1);
+		mv.visitInsn(Opcodes.ACONST_NULL);
+		mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, engine, "render", overload, false);
+		mv.visitInsn(Opcodes.RETURN);
+		mv.visitMaxs(0, 0);
+		mv.visitEnd();
+		// for (Object type : this.particles.keySet()) if (this.particles.get(type) != null) rendered.add(type);
+		mv = target.visitMethod(Opcodes.ACC_PUBLIC, "render", overload, null, null);
+		mv.visitCode();
+		mv.visitVarInsn(Opcodes.ALOAD, 0);
+		mv.visitFieldInsn(Opcodes.GETFIELD, engine, "particles", map);
+		mv.visitMethodInsn(Opcodes.INVOKEINTERFACE, "java/util/Map", "keySet", "()Ljava/util/Set;", true);
+		mv.visitMethodInsn(Opcodes.INVOKEINTERFACE, "java/util/Set", "iterator", "()Ljava/util/Iterator;", true);
+		mv.visitVarInsn(Opcodes.ASTORE, 3);
+		Label loop = new Label();
+		Label done = new Label();
+		mv.visitLabel(loop);
+		mv.visitVarInsn(Opcodes.ALOAD, 3);
+		mv.visitMethodInsn(Opcodes.INVOKEINTERFACE, "java/util/Iterator", "hasNext", "()Z", true);
+		mv.visitJumpInsn(Opcodes.IFEQ, done);
+		mv.visitVarInsn(Opcodes.ALOAD, 3);
+		mv.visitMethodInsn(Opcodes.INVOKEINTERFACE, "java/util/Iterator", "next", "()Ljava/lang/Object;", true);
+		mv.visitVarInsn(Opcodes.ASTORE, 4);
+		mv.visitVarInsn(Opcodes.ALOAD, 0);
+		mv.visitFieldInsn(Opcodes.GETFIELD, engine, "particles", map);
+		mv.visitVarInsn(Opcodes.ALOAD, 4);
+		mv.visitMethodInsn(Opcodes.INVOKEINTERFACE, "java/util/Map", "get", "(Ljava/lang/Object;)Ljava/lang/Object;", true);
+		mv.visitJumpInsn(Opcodes.IFNULL, loop);
+		mv.visitFieldInsn(Opcodes.GETSTATIC, engine, "rendered", list);
+		mv.visitVarInsn(Opcodes.ALOAD, 4);
+		mv.visitMethodInsn(Opcodes.INVOKEINTERFACE, "java/util/List", "add", "(Ljava/lang/Object;)Z", true);
+		mv.visitInsn(Opcodes.POP);
+		mv.visitJumpInsn(Opcodes.GOTO, loop);
+		mv.visitLabel(done);
+		mv.visitInsn(Opcodes.RETURN);
+		mv.visitMaxs(0, 0);
+		mv.visitEnd();
+		target.visitEnd();
+		ClassIndex game = new ClassIndex(Map.of(engine, target.toByteArray())::get);
+
+		// Iris's translucent pass: a copy of the list without the opaque types.
+		String phases = "com/example/mixin/Phases";
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V17, Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, phases, null, "java/lang/Object", null);
+		AnnotationVisitor m = cw.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false);
+		AnnotationVisitor values = m.visitArray("value");
+		values.visit(null, Type.getObjectType(engine));
+		values.visitEnd();
+		m.visitEnd();
+		FieldVisitor shadow = cw.visitField(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "ORDER", list, null, null);
+		shadow.visitAnnotation(SHADOW, true).visitEnd();
+		shadow.visitEnd();
+		mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "selectParticles", "()" + list, null, null);
+		AnnotationVisitor ann = mv.visitAnnotation(REDIRECT, true);
+		AnnotationVisitor selectors = ann.visitArray("method");
+		selectors.visit(null, "render(I)V");
+		selectors.visitEnd();
+		AnnotationVisitor at = ann.visitAnnotation("at", AT);
+		at.visit("value", "FIELD");
+		at.visit("target", "L" + engine + ";ORDER:" + list);
+		at.visitEnd();
+		ann.visitEnd();
+		mv.visitCode();
+		mv.visitTypeInsn(Opcodes.NEW, "java/util/ArrayList");
+		mv.visitInsn(Opcodes.DUP);
+		mv.visitFieldInsn(Opcodes.GETSTATIC, phases, "ORDER", list);
+		mv.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/util/ArrayList", "<init>", "(Ljava/util/Collection;)V", false);
+		mv.visitInsn(Opcodes.DUP);
+		mv.visitLdcInsn("opaque");
+		mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/util/ArrayList", "remove", "(Ljava/lang/Object;)Z", false);
+		mv.visitInsn(Opcodes.POP);
+		mv.visitInsn(Opcodes.ARETURN);
+		mv.visitMaxs(0, 0);
+		mv.visitEnd();
+		cw.visitEnd();
+		Map<String, byte[]> mod = new HashMap<>(Map.of(phases, cw.toByteArray()));
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Phases"));
+
+		List<PreflightFinding> notes = new ArrayList<>();
+		byte[] repaired = preflight(game, mod::get, ClassBytesSource.EMPTY, true).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes)
+				.get(phases + ".class");
+		assertNotNull(repaired, notes.toString());
+		assertTrue(notes.stream().anyMatch(n -> n.severity() == Severity.WARN && n.message().contains("@Redirect selectParticles reads net.minecraft.client.particle"
+				+ ".Engine.ORDER in render(I)V, where NeoForge goes over the keys of its map particles in render" + overload + " instead")), notes.toString());
+		mod.put(phases, repaired);
+		assertTrue(preflight(game, mod::get, ClassBytesSource.EMPTY, true).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty());
+		ClassNode mixin = new ClassNode();
+		new ClassReader(repaired).accept(mixin, 0);
+		MethodNode bridge = mixin.methods.stream().filter(mn -> Annotations.find(mn, REDIRECT) != null).findFirst().orElseThrow();
+		assertEquals("(" + map + ")Ljava/util/Set;", bridge.desc, "the bridge redirects the map's keySet()");
+		AnnotationNode redirect = Annotations.find(bridge, REDIRECT);
+		assertEquals(List.of("render" + overload), Annotations.value(redirect, "method"));
+		AnnotationNode point = Annotations.list(Annotations.value(redirect, "at")).getFirst();
+		assertEquals("INVOKE", Annotations.value(point, "value"));
+		assertEquals("Ljava/util/Map;keySet()Ljava/util/Set;", Annotations.value(point, "target"));
+
+		// As Mixin applies it: the mixin's methods and its own field merged into the target (its references to itself
+		// pointed there), and the keySet() call redirected to the bridge, which then takes the receiver after this.
+		ClassNode merged = new ClassNode();
+		new ClassReader(target.toByteArray()).accept(merged, 0);
+		for (FieldNode field : mixin.fields) {
+			if (Annotations.find(field, SHADOW) == null) merged.fields.add(field);
+		}
+		for (MethodNode method : mixin.methods) {
+			if (method.name.equals("<init>")) continue;
+			for (AbstractInsnNode insn : method.instructions) {
+				if (insn instanceof FieldInsnNode f && f.owner.equals(phases)) f.owner = engine;
+				if (insn instanceof MethodInsnNode c && c.owner.equals(phases)) c.owner = engine;
+			}
+			merged.methods.add(method);
+		}
+		MethodNode loopOver = merged.methods.stream().filter(mn -> mn.name.equals("render") && mn.desc.equals(overload)).findFirst().orElseThrow();
+		MethodInsnNode keySet = null;
+		for (AbstractInsnNode insn : loopOver.instructions) {
+			if (insn instanceof MethodInsnNode call && call.name.equals("keySet")) keySet = call;
+		}
+		loopOver.instructions.insertBefore(keySet.getPrevious().getPrevious(), new VarInsnNode(Opcodes.ALOAD, 0));
+		loopOver.instructions.set(keySet, new MethodInsnNode(Opcodes.INVOKESPECIAL, engine, bridge.name, bridge.desc, false));
+		loopOver.maxStack++;
+		ClassWriter writer = new ClassWriter(0);
+		merged.accept(writer);
+		Class<?> type = new BytesClassLoader(Map.of(engine, writer.toByteArray())).loadClass(engine.replace('/', '.'));
+		Object instance = type.getConstructor().newInstance();
+		@SuppressWarnings("unchecked")
+		Map<Object, Object> particles = (Map<Object, Object>) type.getField("particles").get(instance);
+		for (String held : new String[] {"terrain", "opaque", "translucent", "forge"}) particles.put(held, List.of(held + " particle"));
+		type.getMethod("render", int.class).invoke(instance, 0);
+		assertEquals(List.of("terrain", "translucent", "forge"), type.getField("rendered").get(null),
+				"the pass goes over the types the handler kept, Forge's own among them, in order; custom holds no particles");
+		java.lang.reflect.Field keys = type.getDeclaredField(mixin.fields.stream().filter(f -> Annotations.find(f, SHADOW) == null).findFirst().orElseThrow().name);
+		keys.setAccessible(true);
+		assertNull(keys.get(instance), "nothing outlives the call");
+		java.lang.reflect.Method handler = type.getDeclaredMethod("selectParticles");
+		handler.setAccessible(true);
+		assertEquals(List.of("terrain", "translucent", "custom"), handler.invoke(instance), "called otherwise, it reads the list as it is");
+	}
+
 	/** A MixinExtras expression handler on tick() whose @Definition names {@code type} or {@code method}. */
 	private static void expression(ClassWriter cw, String handler, Type type, String method) {
 		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, handler, "(Z)Z", null, null);

@@ -33,13 +33,6 @@
         "NeoForge"
       ]
     },
-    "malilib": {
-      "neoForgeBuildOnly": "malilib adds its picture-in-picture renderers through the GUI renderer's map of renderers, which NeoForge replaced and Fabricated restores (PIP-1); Fabricated's CI runs malilib with MiniHUD, Tweakeroo and Litematica on NeoForge only, so it isn't verified on this loader",
-      "suggestion": "Remove malilib and the mods that need it (Tweakeroo, MiniHUD, Litematica), or use NeoForge builds of them where their authors offer some.",
-      "runsOn": [
-        "NeoForge"
-      ]
-    },
     "wthit": {
       "neoForgeBuildOnly": "WTHIT's Fabric build refuses to run on NeoForge: its own entrypoint throws when it finds Fancy Mod Loader (CI, run 357)"
     },
