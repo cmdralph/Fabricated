@@ -1345,8 +1345,8 @@ jobs:
       # The bytecode task 5's open findings turn on, for reading (informational; last, so the job log's tail has it):
       # Polydium's mixin plugin and its font mixin (whose handler, typed with the mixin class, stops 1.21.1 and 1.21.11
       # as Mixin applies it); Architectury's keyboard hook into a lambda of KeyboardHandler.charTyped, which Mixin finds
-      # no target for on 1.21.1 (the corpus); malilib's tooltip hooks; how the Sodium and Iris gate's clients leave their
-      # world; Sodium's and Iris's Fabric builds' quad and access findings.
+      # no target for on 1.21.1 (the corpus); malilib's tooltip hooks; how the Sodium and Iris gate's clients and the
+      # client with Forgified Fabric API leave their world; Sodium's and Iris's Fabric builds' quad and access findings.
       # Members only, and a class that is the same as one printed (a translation in several cache jars) once.
       - name: Bytecode for task 5's findings (informational)
         if: ${{ (matrix.part == 'mods' || matrix.part == 'corpus') && env.EXTENDED == 'true' && !cancelled() && steps.build.outcome == 'success' }}
@@ -1360,15 +1360,10 @@ jobs:
             python3 -I ci/javap-dump.py "$RUNNER_TEMP/$run" "$@" | cut -c1-320 || true
           }
           dump client-malilib 'game:net.minecraft.world.item.ItemStack#getTooltipLines'
-          # PROVIDER-18: where Forgified Fabric API's object builder runs Fabric's default attribute modification event
-          # (upstream's hook into the built-in registries' freeze isn't among its mixins), which a client's Fabric
-          # initializers, run in Minecraft's constructor, register their listeners for too late.
-          if [ "${{ matrix.target.minecraft }}" = "26.2" ]; then
-            dump client-ffapi 'refs:invokeModify'
-          fi
-          # The Sodium and Iris gate's client block entity check, which run 673's Sodium client on 26.2 reported neither way:
-          # how each of its clients left its world and stopped.
-          for run in client-sodium-fabric client-shaders-fabric; do
+          # The Sodium and Iris gate's client block entity check, which run 673's Sodium client on 26.2 reported neither way,
+          # and the client with Forgified Fabric API's, whose lifecycle module is upstream's (PROVIDER-19): how each of
+          # these clients left its world and stopped.
+          for run in client-sodium-fabric client-shaders-fabric client-ffapi; do
             log="$RUNNER_TEMP/$run/run/logs/latest.log"
             if [ -f "$log" ]; then
               echo "== $run: leaving its world"
