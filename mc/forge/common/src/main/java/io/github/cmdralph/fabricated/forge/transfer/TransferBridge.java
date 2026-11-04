@@ -50,6 +50,8 @@ import net.minecraftforge.items.IItemHandler;
  * replacing it, as both sides' own item storages do.
  */
 public final class TransferBridge {
+	/** The Fabric API module bridged, which Fabricated passes through from Fabric API's jar. */
+	public static final String MODULE = "fabric-transfer-api-v1";
 	/** The capability provider Fabricated attaches to Fabric mods' block entities, and their item stacks' for fluids. */
 	private static final Identifier PROVIDER = Identifier.fromNamespaceAndPath("fabricated", "fabric_storages");
 	/** The one it attaches to Fabric mods' item stacks for items. */
@@ -62,7 +64,7 @@ public final class TransferBridge {
 	private TransferBridge() {
 	}
 
-	/** Called once, with Fabric API's transfer module loaded. */
+	/** Called once, with the transfer module of Fabric API's jar loaded: not where another mod provides the module, which bridges it itself. */
 	public static void register() {
 		// Last, so a Forge mod's own capability for a Fabric mod's block entity comes first.
 		AttachCapabilitiesEvent.BlockEntities.BUS.addListener(Priority.LOWEST, TransferBridge::attach);

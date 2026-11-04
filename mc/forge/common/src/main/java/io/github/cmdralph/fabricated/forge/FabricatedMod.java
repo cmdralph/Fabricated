@@ -7,6 +7,7 @@ import java.util.function.Consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.github.cmdralph.fabricated.core.metadata.ModIds;
 import io.github.cmdralph.fabricated.core.runtime.EntrypointRunner;
 import io.github.cmdralph.fabricated.forge.fluid.FabricFluidType;
 import io.github.cmdralph.fabricated.forge.keymapping.KeyMappingBridge;
@@ -21,7 +22,6 @@ import io.github.cmdralph.fabricated.loader.ForgeLoaderHooks;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.api.DedicatedServerModInitializer;
 import net.fabricmc.api.ModInitializer;
-import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.loader.api.entrypoint.PreLaunchEntrypoint;
 import net.minecraft.core.MappedRegistry;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -76,8 +76,10 @@ public final class FabricatedMod {
 		}
 		// Fabric API's default attribute event, passed through, in Forge's attribute modification (see DefaultAttributeModify).
 		if (ours(state, "fabric-object-builder-api-v1")) DefaultAttributeModify.register();
-		// Fabric storages and Forge's item and fluid handlers on blocks, each seen by the other side's code.
-		if (FabricLoader.getInstance().isModLoaded("fabric-transfer-api-v1") && ours(state, "fabric-transfer-api-v1")) TransferBridge.register();
+		// Fabric storages and Forge's item and fluid handlers on blocks, each seen by the other side's code, for the transfer
+		// module of Fabric API's jar. The module is outside the plans, which the provider check reads: a mod providing it
+		// has it as a Forge mod, not a Fabric mod Fabricated runs, and bridges it itself (PROVIDER-16).
+		if (state.isFabricMod(ModIds.toNeoForgeId(TransferBridge.MODULE))) TransferBridge.register();
 		for (String text : ForgeLoaderHooks.notLoaded()) {
 			LoadingWarnings.add(new ModLoadingWarning(context.getContainer().getModInfo(), ModLoadingStage.CONSTRUCT, AS_IS, text));
 		}
