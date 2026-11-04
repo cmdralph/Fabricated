@@ -97,7 +97,14 @@ if [ -f "$console" ]; then
 	grep -n -E '^(Registry loading errors|>{1,2} Errors in (registry|element) )|Registry loading errors:' "$console" | head -n 40 | cut -c1-400
 	echo "-- the console: exception chains (the last one's innermost frames)"
 	chain "$console" 20 | tail -n 60
+	# A game CI stopped at its timeout printed every thread last (smoke-client.sh's SIGQUIT): the lines before that,
+	# then what the game's own threads were doing, which the job log keeps only this way.
 	echo "-- the console's last lines"
-	tail -n 40 "$console" | cut -c1-400
+	awk '/^Full thread dump/ { exit } { print }' "$console" | tail -n 40 | cut -c1-400
+	dump="$(dirname "$console")/thread-dump.txt"
+	if [ -f "$dump" ]; then
+		echo "-- the game's threads shortly before CI stopped it"
+		awk 'BEGIN { RS = ""; ORS = "\n\n" } /^"(Render thread|Server thread|Worker-Main|IO-Worker|modloading-worker)/' "$dump" | head -n 200 | cut -c1-300
+	fi
 fi
 exit 0
