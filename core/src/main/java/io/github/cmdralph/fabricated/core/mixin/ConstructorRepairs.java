@@ -78,19 +78,27 @@ final class ConstructorRepairs extends PreflightPart {
 	private static final Set<String> PLACED_POINTS = Set.of("INVOKE", "INVOKE_ASSIGN", "INVOKE_STRING", "FIELD", "NEW");
 
 	/**
-	 * Marks {@code unsafe} the points of an {@code @Inject} into a constructor that SpongePowered's Mixin takes only so
-	 * marked (CTOR-2): any but a return, where Fabric's Mixin takes any point after the call to the delegate constructor
-	 * ({@code super(...)} or {@code this(...)}). A point is marked when every instruction it picks in every constructor
-	 * selected follows that call, which gives Fabric's behaviour: fabric-command-api-v2's hook into {@code Commands}'
-	 * constructor, which stopped Forge 61's server. Returns a description of each point marked.
+	 * Has the running Mixin take an {@code @Inject} into a constructor at a point other than a return, as Fabric's Mixin
+	 * takes it (its points are {@code unsafe} by default), where every instruction the point picks in every constructor
+	 * selected, shifted as the point is, follows the call to the delegate constructor ({@code super(...)} or
+	 * {@code this(...)}). SpongePowered's 0.8.6 and 0.8.7 take it marked {@code unsafe} (CTOR-2: fabric-command-api-v2's
+	 * hook into {@code Commands}' constructor, which stopped Forge 61's server). 0.8.5, which Forge 47 runs, has no
+	 * {@code unsafe}: the point becomes Fabricated's {@link ConstructorPoint}, which finds what it stands for and which
+	 * Mixin takes anywhere in a constructor (CORPUS-103: Dripstone Fluid Lib registers its particles' providers in
+	 * {@code Minecraft}'s constructor, just after it makes the particle engine). A cancellable one stays as it is there:
+	 * 0.8.5 would let it return before the constructor's end, which the later releases and Fabric's Mixin refuse. Returns
+	 * a description of each point changed.
 	 */
 	List<String> constructorPointRepairs(AnnotationNode injector, List<ClassNode> targets, Context ctx) {
-		if (constructorInjects != ConstructorInjects.UNSAFE_POINTS || !injector.desc.equals(MixinNames.INJECT)) return List.of();
+		if (constructorInjects == ConstructorInjects.AFTER_DELEGATE || !injector.desc.equals(MixinNames.INJECT)) return List.of();
+		boolean returnsOnly = constructorInjects == ConstructorInjects.RETURNS_ONLY;
+		if (returnsOnly && Boolean.TRUE.equals(Annotations.value(injector, "cancellable"))) return List.of();
 		List<AnnotationNode> slices = Annotations.list(Annotations.value(injector, "slice"));
-		List<String> marked = new ArrayList<>();
+		List<String> changed = new ArrayList<>();
 		for (AnnotationNode at : Annotations.list(Annotations.value(injector, "at"))) {
 			String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
-			if (!PLACED_POINTS.contains(point) || Boolean.TRUE.equals(Annotations.value(at, "unsafe"))) continue;
+			Integer shift = shift(at);
+			if (!PLACED_POINTS.contains(point) || shift == null || Boolean.TRUE.equals(Annotations.value(at, "unsafe"))) continue;
 			String target = Annotations.value(at, "target") instanceof String t ? ctx.resolve(t) : null;
 			int ordinal = Annotations.value(at, "ordinal") instanceof Integer i ? i : -1;
 			int opcode = Annotations.value(at, "opcode") instanceof Integer i ? i : -1;
@@ -103,104 +111,73 @@ final class ConstructorRepairs extends PreflightPart {
 					if (!m.name.equals("<init>")) continue;
 					int delegate = delegateCall(m, t);
 					Range range = slice == null ? Range.ALL : InjectionPoints.sliceRange(slice, m, ctx);
-					List<Integer> at2 = InjectionPoints.indexes(point, target, ordinal, opcode, range, m);
-					if (delegate < 0 || at2 == null) {
+					List<Integer> found = InjectionPoints.indexes(point, target, ordinal, opcode, range, m);
+					if (delegate < 0 || found == null) {
 						afterDelegate = false;
 						continue;
 					}
-					for (int i : at2) {
+					for (int i : found) {
 						picked = true;
-						afterDelegate &= i > delegate;
+						// Where Mixin injects: the instruction the shift moves the point to, inside the method.
+						afterDelegate &= i + shift > delegate && i + shift < m.instructions.size();
 					}
 					where = t.name.replace('/', '.');
 				}
 			}
 			if (!picked || !afterDelegate) continue;
-			Annotations.put(at, "unsafe", true);
-			marked.add("the constructor of " + where + " at @At(\"" + point + "\"" + (target != null ? ", target=\"" + target + "\"" : "")
-					+ ") after its super() call, which " + loader + "'s Mixin takes only at a point marked unsafe; it is so marked, as Fabric's Mixin takes it");
+			String described = "the constructor of " + where + " at @At(\"" + point + "\"" + (target != null ? ", target=\"" + target + "\"" : "")
+					+ ") after its super() call, which " + loader + "'s Mixin takes only at ";
+			if (returnsOnly) {
+				toConstructorPoint(at, point, shift);
+				changed.add(described + "a return; Fabricated's injection point stands for it there, which " + loader
+						+ "'s Mixin takes anywhere after that call, as Fabric's Mixin takes it");
+			} else {
+				Annotations.put(at, "unsafe", true);
+				changed.add(described + "a point marked unsafe; it is so marked, as Fabric's Mixin takes it");
+			}
 		}
-		return marked;
+		return changed;
+	}
+
+	/** How many instructions Mixin moves a point by ({@code shift}, with {@code by}); null for a shift it doesn't name. */
+	private static Integer shift(AnnotationNode at) {
+		Object shift = Annotations.value(at, "shift");
+		String name = shift instanceof String[] e && e.length == 2 ? e[1] : shift == null ? "NONE" : null;
+		if (name == null) return null;
+		return switch (name) {
+			case "NONE" -> 0;
+			case "BEFORE" -> -1;
+			case "AFTER" -> 1;
+			case "BY" -> Annotations.value(at, "by") instanceof Integer by ? by : 0;
+			default -> null;
+		};
 	}
 
 	/**
-	 * Turns an {@code @Inject} at a call in a constructor into a MixinExtras {@code @WrapOperation} of that call, where
-	 * the running Mixin takes an {@code @Inject} into a constructor only at a return (CTOR-4: SpongePowered's 0.8.5, which
-	 * Forge 47 runs; Fabricated's in-game mod carries MixinExtras there). The wrapper calls the handler with the
-	 * constructor's parameters and a callback info of its own just before the call, or just after it ({@code shift =
-	 * AFTER}), as Fabric's Mixin runs the handler: fabric-command-api-v2's hook into {@code Commands}' constructor, which
-	 * registers Fabric mods' commands, and model loading's into {@code ModelBakery}'s. Only where every call the point picks
-	 * in every constructor selected follows the call to the delegate constructor and is the same plain call (not a
-	 * {@code super} call or a construction), and the handler takes the constructor's parameters (or none) and the callback
-	 * info, and nothing else: not cancellable, no locals, no sugar, no shift but {@code AFTER}. Returns a description of
-	 * the injector wrapped.
+	 * Makes {@code at}, a {@code point} that Mixin moves by {@code shift}, Fabricated's {@link ConstructorPoint} for it:
+	 * the point and its shift become its arguments ({@link ConstructorPoint#POINT}, {@link ConstructorPoint#SHIFT}),
+	 * which finds the same instructions, as its target, ordinal, opcode, slice and own arguments stay.
 	 */
-	List<String> constructorCallWrappers(ClassNode mixin, MethodNode handler, AnnotationNode injector, List<ClassNode> targets, Context ctx,
-			List<MethodNode> bridges) {
-		if (constructorInjects != ConstructorInjects.RETURNS_ONLY || !injector.desc.equals(MixinNames.INJECT)
-				|| Boolean.TRUE.equals(Annotations.value(injector, "cancellable")) || Annotations.value(injector, "locals") != null
-				|| Annotations.value(injector, "target") != null || Annotations.value(injector, "constraints") != null
-				|| !Type.getReturnType(handler.desc).equals(Type.VOID_TYPE)) return List.of();
-		List<AnnotationNode> ats = Annotations.list(Annotations.value(injector, "at"));
-		if (ats.size() != 1) return List.of();
-		AnnotationNode at = ats.get(0);
-		String point = Annotations.value(at, "value") instanceof String v ? v.toUpperCase(Locale.ROOT) : "";
-		Object shift = Annotations.value(at, "shift");
-		String shiftName = shift instanceof String[] e && e.length == 2 ? e[1] : shift == null ? "NONE" : null;
-		// BEFORE puts the point an instruction earlier, among the call's arguments: a wrapper can't run the handler there.
-		if (!point.equals("INVOKE") || Annotations.value(at, "by") != null || !"NONE".equals(shiftName) && !"AFTER".equals(shiftName)) return List.of();
-		Type[] own = Type.getArgumentTypes(handler.desc);
-		if (own.length == 0 || !own[own.length - 1].getDescriptor().equals(CALLBACK_INFO)) return List.of();
-		for (int i = 0; i < own.length; i++) {
-			if (!Annotations.ofParameter(handler, i).isEmpty()) return List.of();
-		}
-		List<Type> constructorParams = List.of(own).subList(0, own.length - 1);
-		String target = Annotations.value(at, "target") instanceof String t ? ctx.resolve(t) : null;
-		int ordinal = Annotations.value(at, "ordinal") instanceof Integer i ? i : -1;
-		int opcode = Annotations.value(at, "opcode") instanceof Integer i ? i : -1;
-		AnnotationNode slice = InjectionPoints.sliceFor(at, Annotations.list(Annotations.value(injector, "slice")));
-		MethodInsnNode call = null;
-		String where = null;
-		for (ClassNode t : targets) {
-			for (MethodNode m : PreflightAsm.selectedMethods(injector, t, ctx)) {
-				if (!m.name.equals("<init>")) return List.of();
-				if (!constructorParams.isEmpty() && !constructorParams.equals(List.of(Type.getArgumentTypes(m.desc)))) return List.of();
-				int delegate = delegateCall(m, t);
-				List<Integer> picked = delegate < 0 ? null
-						: InjectionPoints.indexes(point, target, ordinal, opcode, slice == null ? Range.ALL : InjectionPoints.sliceRange(slice, m, ctx), m);
-				if (picked == null) return List.of();
-				for (int index : picked) {
-					if (index <= delegate || !(m.instructions.get(index) instanceof MethodInsnNode insn) || insn.getOpcode() == Opcodes.INVOKESPECIAL) return List.of();
-					if (call != null && (call.getOpcode() == Opcodes.INVOKESTATIC) != (insn.getOpcode() == Opcodes.INVOKESTATIC)
-							|| call != null && !(call.owner.equals(insn.owner) && call.desc.equals(insn.desc))) return List.of();
-					call = insn;
-				}
-				where = t.name.replace('/', '.');
-			}
-		}
-		if (call == null) return List.of();
-		boolean staticCall = call.getOpcode() == Opcodes.INVOKESTATIC;
-		MethodNode bridge = HandlerBridges.constructorCallWrapper(mixin, handler, Type.getObjectType(call.owner), call.desc, staticCall,
-				constructorParams, "AFTER".equals(shiftName), bridges);
-		AnnotationNode wrapper = new AnnotationNode(MixinNames.WRAP_OPERATION);
-		for (String key : List.of("method", "slice", "remap", "require", "expect", "allow")) {
-			Object value = Annotations.value(injector, key);
-			if (value != null) Annotations.put(wrapper, key, value);
-		}
-		AnnotationNode wrappedAt = new AnnotationNode(at.desc);
+	private static void toConstructorPoint(AnnotationNode at, String point, int shift) {
+		List<Object> values = new ArrayList<>();
+		List<String> args = new ArrayList<>();
 		for (int i = 0; at.values != null && i < at.values.size(); i += 2) {
-			if (at.values.get(i).equals("shift")) continue;
-			Annotations.put(wrappedAt, (String) at.values.get(i), at.values.get(i + 1));
+			String key = (String) at.values.get(i);
+			Object value = at.values.get(i + 1);
+			if (key.equals("shift") || key.equals("by")) continue;
+			if (key.equals("args")) {
+				for (Object arg : (List<?>) value) args.add((String) arg);
+				continue;
+			}
+			values.add(key);
+			values.add(key.equals("value") ? ConstructorPoint.AT : value);
 		}
-		Annotations.put(wrapper, "at", new ArrayList<>(List.of(wrappedAt)));
-		HandlerBridges.replaceInjector(handler, injector, wrapper, bridge);
-		bridges.add(bridge);
-		return List.of("the constructor of " + where + " at @At(\"INVOKE\", target=\"" + target + "\"), which " + loader
-				+ "'s Mixin takes only at a return; it wraps that call (MixinExtras' @WrapOperation) and runs the handler "
-				+ ("AFTER".equals(shiftName) ? "after" : "before") + " it, as Fabric's Mixin does");
+		args.add(ConstructorPoint.POINT + "=" + point);
+		args.add(ConstructorPoint.SHIFT + "=" + shift);
+		values.add("args");
+		values.add(args);
+		at.values = values;
 	}
-
-	private static final String CALLBACK_INFO = "Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;";
 
 	/**
 	 * The index of a constructor's call to its delegate constructor ({@code super(...)} or {@code this(...)}): the first

@@ -7286,7 +7286,7 @@ class MixinPreflightTest {
 	void anInjectIntoAConstructorAfterItsSuperCallIsMarkedUnsafeWhereMixinWantsThat() throws Exception {
 		// CTOR-2: fabric-command-api-v2 hooks a call in Commands' constructor, after super(); Fabric's Mixin takes that,
 		// SpongePowered's 0.8.7 (Forge 61 to 66) only at a return or a point marked unsafe, and stopped the server. 0.8.5
-		// (Forge 47) has no unsafe points: the injector becomes a wrapper of the call there (CTOR-4).
+		// (Forge 47) has no unsafe points: Fabricated's point stands for it there (CORPUS-103).
 		String owner = "net/minecraft/world/Built";
 		ClassWriter target = new ClassWriter(0);
 		target.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, owner, null, "java/lang/Object", null);
@@ -7352,148 +7352,111 @@ class MixinPreflightTest {
 					assertTrue(findings.isEmpty(), rule + ": " + findings);
 					ClassNode node = new ClassNode();
 					new ClassReader(repaired.get("com/example/mixin/Hook.class")).accept(node, 0);
-					MethodNode handler = node.methods.stream().filter(mn -> mn.name.equals("afterSetup")).findFirst().orElseThrow();
-					assertNull(Annotations.find(handler, INJECT), "the handler is a plain method");
-					MethodNode wrapper = node.methods.stream().filter(mn -> Annotations.find(mn, WRAP_OPERATION) != null).findFirst().orElseThrow();
-					assertEquals("(L" + owner + ";" + OPERATION + ")V", wrapper.desc, "the call's receiver and the operation");
-					assertTrue(notes.stream().anyMatch(n -> n.message().contains("it wraps that call")), notes.toString());
+					AnnotationNode point = Annotations.list(Annotations.value(Annotations.find(node.methods.getFirst(), INJECT), "at")).getFirst();
+					assertEquals(ConstructorPoint.AT, Annotations.value(point, "value"), "Fabricated's point stands for it");
+					assertEquals(List.of(ConstructorPoint.POINT + "=INVOKE", ConstructorPoint.SHIFT + "=0"), Annotations.value(point, "args"));
+					assertTrue(notes.stream().anyMatch(n -> n.message().contains("Fabricated's injection point stands for it")), notes.toString());
 				}
 			}
 		}
 	}
 
 	@Test
-	void anInjectAtACallInAConstructorBecomesAWrapperOfTheCallWhereMixinTakesOnlyReturns() throws Exception {
-		// CTOR-4: SpongePowered's 0.8.5 (Forge 47) takes an @Inject into a constructor only at a return, which left out
-		// fabric-command-api-v2's hook into Commands' constructor (Fabric mods' commands) and disabled model loading. The
-		// injector becomes a MixinExtras @WrapOperation of the call, taking the constructor's parameters, and the handler
-		// runs after the call here (shift = AFTER), as Fabric's Mixin runs it.
+	void anInjectJustAfterAConstructionInAConstructorIsTakenWhereMixinTakesOnlyReturns() throws Exception {
+		// CORPUS-103: Dripstone Fluid Lib registers its particles' providers in Minecraft's constructor, at the call that
+		// constructs the particle engine moved by two (shift = BY), just after the engine is stored. SpongePowered's 0.8.5
+		// (Forge 47) takes an @Inject into a constructor only at a return, so pre-flight left the hook out, and the mod's
+		// reload hook then found no sprite set for its particles. There the point becomes Fabricated's, standing for it and
+		// its shift; on 0.8.7 it is marked unsafe. A point at the delegate constructor call stays left out on both: Mixin
+		// takes an instance handler only after it.
 		String owner = "net/minecraft/world/Built";
+		String engine = "net/minecraft/world/Engine";
 		ClassWriter target = new ClassWriter(0);
 		target.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, owner, null, "java/lang/Object", null);
-		MethodVisitor init = target.visitMethod(Opcodes.ACC_PUBLIC, "<init>", "(Ljava/lang/String;I)V", null, null);
+		target.visitField(Opcodes.ACC_PRIVATE | Opcodes.ACC_FINAL, "engine", "L" + engine + ";", null, null).visitEnd();
+		MethodVisitor init = target.visitMethod(Opcodes.ACC_PUBLIC, "<init>", "(Ljava/lang/String;)V", null, null);
 		init.visitVarInsn(Opcodes.ALOAD, 0);
 		init.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false);
-		init.visitVarInsn(Opcodes.ILOAD, 2);
-		init.visitMethodInsn(Opcodes.INVOKESTATIC, owner, "check", "(I)Z", false);
-		init.visitInsn(Opcodes.POP);
+		init.visitVarInsn(Opcodes.ALOAD, 0);
+		init.visitTypeInsn(Opcodes.NEW, engine);
+		init.visitInsn(Opcodes.DUP);
+		init.visitMethodInsn(Opcodes.INVOKESPECIAL, engine, "<init>", "()V", false);
+		init.visitFieldInsn(Opcodes.PUTFIELD, owner, "engine", "L" + engine + ";");
+		Label next = new Label();
+		init.visitLabel(next);
+		init.visitLineNumber(12, next);
 		init.visitInsn(Opcodes.RETURN);
-		init.visitMaxs(1, 3);
+		init.visitMaxs(3, 2);
 		init.visitEnd();
-		MethodVisitor check = target.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "check", "(I)Z", null, null);
-		check.visitInsn(Opcodes.ICONST_1);
-		check.visitInsn(Opcodes.IRETURN);
-		check.visitMaxs(1, 1);
-		check.visitEnd();
 		target.visitEnd();
 		ClassIndex game = new ClassIndex(Map.of(TARGET, targetClass(), owner, target.toByteArray())::get);
 
 		String hook = "com/example/mixin/Hook";
-		String callbackInfo = "org/spongepowered/asm/mixin/injection/callback/CallbackInfo";
+		String handlerDesc = "(Ljava/lang/String;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V";
 		ClassWriter cw = new ClassWriter(0);
-		cw.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, hook, null, "java/lang/Object", null);
+		cw.visit(Opcodes.V17, Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, hook, null, "java/lang/Object", null);
 		AnnotationVisitor m = cw.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false);
 		AnnotationVisitor values = m.visitArray("value");
 		values.visit(null, Type.getObjectType(owner));
 		values.visitEnd();
 		m.visitEnd();
-		cw.visitField(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "log", "Ljava/lang/StringBuilder;", null, null).visitEnd();
-		MethodVisitor ctor = cw.visitMethod(Opcodes.ACC_PUBLIC, "<init>", "()V", null, null);
-		ctor.visitVarInsn(Opcodes.ALOAD, 0);
-		ctor.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false);
-		ctor.visitInsn(Opcodes.RETURN);
-		ctor.visitMaxs(1, 1);
-		ctor.visitEnd();
-		// Logs the constructor's first parameter and the callback info's name.
-		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "afterCheck", "(Ljava/lang/String;IL" + callbackInfo + ";)V", null, null);
-		AnnotationVisitor ann = mv.visitAnnotation(INJECT, true);
-		AnnotationVisitor methods = ann.visitArray("method");
-		methods.visit(null, "<init>");
-		methods.visitEnd();
-		AnnotationVisitor ats = ann.visitArray("at");
-		AnnotationVisitor at = ats.visitAnnotation(null, AT);
-		at.visit("value", "INVOKE");
-		at.visit("target", "L" + owner + ";check(I)Z");
-		at.visitEnum("shift", "Lorg/spongepowered/asm/mixin/injection/At$Shift;", "AFTER");
-		at.visitEnd();
-		ats.visitEnd();
-		ann.visitEnd();
-		mv.visitFieldInsn(Opcodes.GETSTATIC, hook, "log", "Ljava/lang/StringBuilder;");
-		mv.visitVarInsn(Opcodes.ALOAD, 1);
-		mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/lang/StringBuilder", "append", "(Ljava/lang/String;)Ljava/lang/StringBuilder;", false);
-		mv.visitVarInsn(Opcodes.ALOAD, 3);
-		mv.visitFieldInsn(Opcodes.GETFIELD, callbackInfo, "name", "Ljava/lang/String;");
-		mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/lang/StringBuilder", "append", "(Ljava/lang/String;)Ljava/lang/StringBuilder;", false);
-		mv.visitInsn(Opcodes.POP);
-		mv.visitInsn(Opcodes.RETURN);
-		mv.visitMaxs(2, 4);
-		mv.visitEnd();
+		for (String handler : List.of("afterEngine", "atSuper")) {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, handler, handlerDesc, null, null);
+			AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, "<init>");
+			methods.visitEnd();
+			AnnotationVisitor ats = ann.visitArray("at");
+			AnnotationVisitor at = ats.visitAnnotation(null, AT);
+			at.visit("value", "INVOKE");
+			if (handler.equals("afterEngine")) {
+				at.visit("target", "L" + engine + ";<init>()V");
+				at.visitEnum("shift", "Lorg/spongepowered/asm/mixin/injection/At$Shift;", "BY");
+				at.visit("by", 2);
+			} else {
+				at.visit("target", "Ljava/lang/Object;<init>()V");
+			}
+			at.visitEnd();
+			ats.visitEnd();
+			ann.visitEnd();
+			mv.visitInsn(Opcodes.RETURN);
+			mv.visitMaxs(0, 3);
+			mv.visitEnd();
+		}
 		cw.visitEnd();
 		MixinConfigFile config = MixinConfigFile.parse(config(true, "Hook"));
 
-		Map<String, byte[]> mod = new HashMap<>(Map.of(hook, cw.toByteArray()));
-		MixinPreflight preflight = new MixinPreflight(game, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true,
-				ClassBytesSource.EMPTY, "Forge", true, MixinPreflight.ConstructorInjects.RETURNS_ONLY);
-		List<PreflightFinding> notes = new ArrayList<>();
-		Map<String, byte[]> repaired = preflight.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
-		repaired.forEach((path, bytes) -> mod.put(path.substring(0, path.length() - ".class".length()), bytes));
-		assertTrue(preflight.check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty(), notes.toString());
+		for (MixinPreflight.ConstructorInjects rule : List.of(MixinPreflight.ConstructorInjects.UNSAFE_POINTS, MixinPreflight.ConstructorInjects.RETURNS_ONLY)) {
+			Map<String, byte[]> mod = new HashMap<>(Map.of(hook, cw.toByteArray()));
+			MixinPreflight preflight = new MixinPreflight(game, InstalledClasses.NONE, mod::get, ClassBytesSource.EMPTY, false, true,
+					ClassBytesSource.EMPTY, "Forge", true, rule);
+			List<PreflightFinding> notes = new ArrayList<>();
+			Map<String, byte[]> repaired = preflight.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
+			repaired.forEach((path, bytes) -> mod.put(path.substring(0, path.length() - ".class".length()), bytes));
+			List<PreflightFinding> findings = preflight.check("test.mixins.json", config, Refmap.EMPTY, Set.of());
 
-		ClassNode node = new ClassNode();
-		new ClassReader(mod.get(hook)).accept(node, 0);
-		MethodNode wrapper = node.methods.stream().filter(mn -> Annotations.find(mn, WRAP_OPERATION) != null).findFirst().orElseThrow();
-		assertEquals("(I" + OPERATION + "Ljava/lang/String;I)Z", wrapper.desc, "the call's argument, the operation, the constructor's parameters");
-		AnnotationNode wrap = Annotations.find(wrapper, WRAP_OPERATION);
-		assertEquals(List.of("<init>"), Annotations.value(wrap, "method"));
-		AnnotationNode point = Annotations.list(Annotations.value(wrap, "at")).getFirst();
-		assertEquals("L" + owner + ";check(I)Z", Annotations.value(point, "target"));
-		assertNull(Annotations.value(point, "shift"), "a wrapper has no shift");
-
-		// Run it: the stand-ins for Mixin's callback info and MixinExtras' Operation are all the class needs.
-		ClassWriter info = new ClassWriter(0);
-		info.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, callbackInfo, null, "java/lang/Object", null);
-		info.visitField(Opcodes.ACC_PUBLIC, "name", "Ljava/lang/String;", null, null).visitEnd();
-		MethodVisitor infoInit = info.visitMethod(Opcodes.ACC_PUBLIC, "<init>", "(Ljava/lang/String;Z)V", null, null);
-		infoInit.visitVarInsn(Opcodes.ALOAD, 0);
-		infoInit.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false);
-		infoInit.visitVarInsn(Opcodes.ALOAD, 0);
-		infoInit.visitVarInsn(Opcodes.ALOAD, 1);
-		infoInit.visitFieldInsn(Opcodes.PUTFIELD, callbackInfo, "name", "Ljava/lang/String;");
-		infoInit.visitInsn(Opcodes.RETURN);
-		infoInit.visitMaxs(2, 3);
-		infoInit.visitEnd();
-		info.visitEnd();
-		ClassWriter operation = new ClassWriter(0);
-		String operationName = Type.getType(OPERATION).getInternalName();
-		operation.visit(Opcodes.V17, Opcodes.ACC_PUBLIC | Opcodes.ACC_INTERFACE | Opcodes.ACC_ABSTRACT, operationName, null, "java/lang/Object", null);
-		operation.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT | Opcodes.ACC_VARARGS, "call", "([Ljava/lang/Object;)Ljava/lang/Object;", null, null).visitEnd();
-		operation.visitEnd();
-		Map<String, byte[]> classes = Map.of(callbackInfo, info.toByteArray(), operationName, operation.toByteArray(), hook, mod.get(hook));
-		ClassLoader loader = new ClassLoader(getClass().getClassLoader()) {
-			@Override
-			protected Class<?> findClass(String name) throws ClassNotFoundException {
-				byte[] bytes = classes.get(name.replace('.', '/'));
-				if (bytes == null) throw new ClassNotFoundException(name);
-				return defineClass(name, bytes, 0, bytes.length);
+			assertEquals(1, findings.size(), rule + ": " + findings);
+			assertTrue(findings.getFirst().handler().startsWith("atSuper"), rule + ": the point at super() is left out: " + findings);
+			assertTrue(findings.getFirst().message().contains("injects into the constructor of net.minecraft.world.Built at @At(\"INVOKE\")"),
+					findings.getFirst().message());
+			ClassNode node = new ClassNode();
+			new ClassReader(mod.get(hook)).accept(node, 0);
+			MethodNode afterEngine = node.methods.stream().filter(mn -> mn.name.equals("afterEngine")).findFirst().orElseThrow();
+			AnnotationNode point = Annotations.list(Annotations.value(Annotations.find(afterEngine, INJECT), "at")).getFirst();
+			assertEquals("L" + engine + ";<init>()V", Annotations.value(point, "target"), rule + ": the target stays");
+			if (rule == MixinPreflight.ConstructorInjects.UNSAFE_POINTS) {
+				assertEquals("INVOKE", Annotations.value(point, "value"));
+				assertEquals(2, Annotations.value(point, "by"), "the shift stays");
+				assertEquals(true, Annotations.value(point, "unsafe"), "marked unsafe");
+			} else {
+				assertEquals(ConstructorPoint.AT, Annotations.value(point, "value"), "Fabricated's point");
+				assertNull(Annotations.value(point, "shift"), "the point moves what it finds itself: Mixin's shift would take it only in methods");
+				assertNull(Annotations.value(point, "by"));
+				assertEquals(List.of(ConstructorPoint.POINT + "=INVOKE", ConstructorPoint.SHIFT + "=2"), Annotations.value(point, "args"));
 			}
-		};
-		Class<?> mixinClass = loader.loadClass(hook.replace('/', '.'));
-		StringBuilder log = new StringBuilder();
-		mixinClass.getField("log").set(null, log);
-		Class<?> operationClass = loader.loadClass(operationName.replace('/', '.'));
-		List<Object> called = new ArrayList<>();
-		Object original = java.lang.reflect.Proxy.newProxyInstance(loader, new Class<?>[] {operationClass}, (proxy, method, args) -> {
-			if (!method.getName().equals("call")) return method.invoke(called, args);
-			called.addAll(List.of((Object[]) args[0]));
-			log.append("call;");
-			return Boolean.FALSE;
-		});
-		java.lang.reflect.Method bridge = mixinClass.getDeclaredMethod(wrapper.name, int.class, operationClass, String.class, int.class);
-		bridge.setAccessible(true);
-		Object result = bridge.invoke(mixinClass.getConstructor().newInstance(), 7, original, "stone", 7);
-		assertEquals(Boolean.FALSE, result, "the call's result");
-		assertEquals(List.of(7), called, "the call's argument, boxed");
-		assertEquals("call;stone<init>", log.toString(), "the call, then the handler with the constructor's parameter");
+			assertTrue(notes.stream().anyMatch(n -> n.message().contains("afterEngine injects into the constructor of net.minecraft.world.Built")
+					&& n.message().contains("after its super() call")), rule + ": " + notes);
+		}
 	}
 
 	/** A MixinExtras expression handler on tick() whose @Definition names {@code type} or {@code method}. */

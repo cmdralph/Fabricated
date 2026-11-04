@@ -367,10 +367,6 @@ final class MixinRepairs extends PreflightPart {
 					(s, named) -> s.named() + " captures " + named),
 			RepairStep.warn(RepairScope.ANY, s -> constructors.constructorPointRepairs(s.injector(), s.targets(), s.ctx()),
 					(s, marked) -> "@Inject " + s.handler().name + " injects into " + marked),
-			RepairStep.warn(RepairScope.ANY, s -> constructors.constructorCallWrappers(s.mixin(), s.handler(), s.injector(), s.targets(), s.ctx(), s.bridges()),
-					(s, wrapped) -> "@Inject " + s.handler().name + " injects into " + wrapped),
-			// Wrapped, the handler is a plain method of the mixin.
-			RepairStep.stopIfMoved(),
 			new RepairStep(RepairScope.ANY, Severity.INFO, s -> LocalRepairs.softenLocalCapture(s.injector(),
 					PreflightAsm.grouped(s.handler()) ? 0 : s.ctx().config().defaultRequire()) ? List.of("") : List.of(),
 					(s, none) -> "@Inject " + s.handler().name + " captures local variables; if " + s.ctx().loader()
