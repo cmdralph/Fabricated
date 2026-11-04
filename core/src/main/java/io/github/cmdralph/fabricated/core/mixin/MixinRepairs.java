@@ -349,10 +349,13 @@ final class MixinRepairs extends PreflightPart {
 	 * only be seen once the earlier ones are done, with a stop after it if it can move the injector.
 	 */
 	private final List<RepairStep> injectorRepairs = List.of(
-			new RepairStep(RepairScope.ONE_TARGET, Severity.INFO, s -> earlyOptionsGuard(s.mixin(), s.handler(), s.injector(), s.target()),
-					(s, none) -> s.named() + " hooks into the game's options, which Fabric creates after Fabric mods' entrypoints and "
-							+ s.ctx().loader() + " may create before it loads mods (NeoForge 21.1 does); if it throws before the entrypoints have"
-							+ " run, it is skipped for that call instead of stopping the game"),
+			new RepairStep(RepairScope.ONE_TARGET, Severity.INFO, s -> earlyHandlerGuard(s.mixin(), s.handler(), s.injector(), s.target()),
+					(s, none) -> s.named() + (OPTIONS.equals(s.target().name)
+							? " hooks into the game's options, which Fabric creates after Fabric mods' entrypoints and " + s.ctx().loader()
+									+ " may create before it loads mods (NeoForge 21.1 and Forge do)"
+							: " hooks into the client's constructor, where Fabric runs Fabric mods' entrypoints first and " + s.ctx().loader()
+									+ " may load mods part way through (Forge does)")
+							+ "; if it throws before the entrypoints have run, it is skipped for that call instead of stopping the game"),
 			new RepairStep(RepairScope.ONE_TARGET, Severity.INFO, s -> earlyFreezeGuard(s.mixin(), s.handler(), s.injector(), s.target(), s.ctx()),
 					(s, none) -> "@Inject " + s.handler().name + " runs as a registry freezes, which " + s.ctx().loader() + " also does before"
 							+ " Fabric mods' main entrypoints (at bootstrap, among others); it returns at once in those freezes, which Fabric"
@@ -453,8 +456,13 @@ final class MixinRepairs extends PreflightPart {
 		return List.of("");
 	}
 
-	/** The client's options, which NeoForge 21.1 creates before it loads mods, and Fabric after Fabric mods' entrypoints (ENTRY-2). */
+	/** The client's options, which NeoForge 21.1 and Forge create before they load mods, and Fabric after Fabric mods' entrypoints (ENTRY-2). */
 	static final String OPTIONS = "net/minecraft/client/Options";
+	/**
+	 * The client, whose constructor runs Fabric mods' client entrypoints near its start on Fabric, where Forge loads mods
+	 * (and Fabricated runs the entrypoints) part way through it (ENTRY-3).
+	 */
+	static final String MINECRAFT = "net/minecraft/client/Minecraft";
 	/** The in-game recovery of a handler that threw before Fabric mods' entrypoints (the loader's {@code EarlyHandlers}). */
 	static final String EARLY_HANDLERS = "io/github/cmdralph/fabricated/loader/EarlyHandlers";
 	private static final String MODIFY_ARG = "Lorg/spongepowered/asm/mixin/injection/ModifyArg;";
@@ -462,18 +470,22 @@ final class MixinRepairs extends PreflightPart {
 	private static final String RUNTIME_EXCEPTION = "java/lang/RuntimeException";
 
 	/**
-	 * Wraps a Fabric mod's handler into the client's {@code Options} so that a {@link RuntimeException} it throws while
-	 * Fabric mods' entrypoints are still to run skips it for that call, as if its hook weren't there (ENTRY-2): an
-	 * {@code @Inject} or {@code @ModifyArgs} returns, a value modifier returns the value it was given, a
-	 * {@code @WrapWithCondition} lets the call be made. On Fabric the game creates its options after Fabric mods'
-	 * entrypoints; NeoForge 21.1 creates them before it loads mods, so a handler there reading what its mod's initializer
-	 * sets up (Bobby's config, for its render distance slider) threw, and the game stopped. Once the entrypoints have run,
-	 * the exception goes on as it would ({@code EarlyHandlers}), so a platform creating the options after them (or a later
-	 * reload of them) behaves as before. {@code @Redirect} and {@code @WrapOperation} handlers, which make the call
-	 * themselves, are left as they are. Returns one item when it wrapped the handler, none otherwise.
+	 * Wraps a Fabric mod's handler into the client's {@code Options}, or into the client's constructor, so that a
+	 * {@link RuntimeException} it throws while Fabric mods' entrypoints are still to run skips it for that call, as if its
+	 * hook weren't there: an {@code @Inject} or {@code @ModifyArgs} returns, a value modifier returns the value it was
+	 * given, a {@code @WrapWithCondition} lets the call be made. On Fabric the game creates its options after Fabric mods'
+	 * entrypoints, which run near the start of the client's constructor. NeoForge 21.1 and Forge create the options before
+	 * they load mods, so a handler there reading what its mod's initializer sets up (Bobby's config, for its render
+	 * distance slider) threw, and the game stopped (ENTRY-2); Forge loads mods part way through the client's constructor,
+	 * so Sodium's hook there, which reads its config to set its first start's fullscreen default, threw (ENTRY-3). Once
+	 * the entrypoints have run, the exception goes on as it would ({@code EarlyHandlers}), so a platform running the code
+	 * after them (or a later reload of the options) behaves as before. {@code @Redirect} and {@code @WrapOperation}
+	 * handlers, which make the call themselves, are left as they are. Returns one item when it wrapped the handler, none
+	 * otherwise.
 	 */
-	static List<String> earlyOptionsGuard(ClassNode mixin, MethodNode handler, AnnotationNode injector, ClassNode target) {
-		if (!OPTIONS.equals(target.name) || (mixin.access & Opcodes.ACC_INTERFACE) != 0 || handler.instructions.size() == 0) return List.of();
+	static List<String> earlyHandlerGuard(ClassNode mixin, MethodNode handler, AnnotationNode injector, ClassNode target) {
+		if (!(OPTIONS.equals(target.name) || MINECRAFT.equals(target.name) && intoConstructorOnly(injector))
+				|| (mixin.access & Opcodes.ACC_INTERFACE) != 0 || handler.instructions.size() == 0) return List.of();
 		// Class files before Java 6 have no stack map frames, which the handler for the exception would need here.
 		if ((mixin.version & 0xFFFF) < Opcodes.V1_6) return List.of();
 		boolean isStatic = (handler.access & Opcodes.ACC_STATIC) != 0;
@@ -525,6 +537,15 @@ final class MixinRepairs extends PreflightPart {
 		handler.tryCatchBlocks.add(new TryCatchBlockNode(start, end, caught, RUNTIME_EXCEPTION));
 		handler.maxStack = Math.max(handler.maxStack, Math.max(2, returns.getSize()));
 		return List.of("");
+	}
+
+	/** Whether every method an injector names is a constructor (a name a refmap maps keeps {@code <init>}). */
+	private static boolean intoConstructorOnly(AnnotationNode injector) {
+		if (!(Annotations.value(injector, "method") instanceof List<?> selectors) || selectors.isEmpty()) return false;
+		for (Object selector : selectors) {
+			if (!(selector instanceof String name) || !name.startsWith("<init>")) return false;
+		}
+		return true;
 	}
 
 	/** Runs {@link #injectorRepairs} on one injector, reporting each move; returns whether any changed the mixin. */
