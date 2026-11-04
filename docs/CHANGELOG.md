@@ -3,14 +3,17 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
-## 2026-11-04: Fabric API's registry entry added event on Forge's registries (CORPUS-108), a translated mod's platform id in Fabric Loader's API (CORPUS-109), and CORPUS-105, CORPUS-107 and CORPUS-110 verified (task 5)
+## 2026-11-04: Fabric API's registry entry added event on Forge's registries (CORPUS-108 and CORPUS-111), a translated mod's platform id in Fabric Loader's API (CORPUS-109), CORPUS-105, CORPUS-107 and CORPUS-110 verified, and CORPUS-106 closed (task 5)
 
 - **Verified:** CORPUS-105, CORPUS-107 and CORPUS-110, in `forge-legacy`'s extended runs 41766943119 and 41770251158
   (#283, main synced in). Both Forge 47 corpora reach a world now. The client joins its world and quits as
   mc-runtime-test does (exit code 0), and its integrated server runs until then. The client logs no `NoSuchFieldError`,
   and REI's only error is the creative tab of CORPUS-108. The test mod's fluid type check passes on the corpus server.
   Their rows move to FINDINGS.
-- **CORPUS-108** (now P1, cause found; with CORPUS-111, the same cause): Fabric API fires `RegistryEntryAddedCallback`
+- **Verified:** CORPUS-108 and CORPUS-111, in the CI of #286 and #287, where the test mod's check passes on every Forge
+  version, and in `forge-legacy`'s extended run 41772824375 (#286). The Forge 47 corpus client logs no spawn egg or
+  search stack error, and EMI, JEI and REI list Artifacts' tab. Their rows move to FINDINGS too.
+- **CORPUS-108** (P1; with CORPUS-111, the same cause): Fabric API fires `RegistryEntryAddedCallback`
   from vanilla's registry method. Forge's `NamespacedWrapper` replaces that method on every Forge version, and a Forge
   mod's entries go to Forge's registry alone, so the event never fired for the registries Forge manages (read in the
   sources).
@@ -26,10 +29,11 @@ One entry per working session, newest first: what changed, and how it was verifi
   - Decision: a translated mod also answers in Fabric Loader's API to the id the platform's list of mods has, as it
     answers to its provides. Fabric mods' ids don't clash on the platform (translation refuses that), so this id names
     no other mod.
-- **CORPUS-106** (evidence): Supplementaries' two cutting recipes name Farmer's Delight's ingredient under `type`.
-  Forge 47's ingredient reader reads that key. Farmer's Delight registers the ingredient with Fabric API, which reads
-  `fabric:type`. How the recipes load on Fabric is still open. #286's evidence step prints the mods' mixins of
-  `Ingredient`.
+- **CORPUS-106** (closed, not Fabricated's): Supplementaries' two cutting recipes name Farmer's Delight's ingredient
+  under `type`, the key Farmer's Delight's Forge build reads. Its Fabric build registers the ingredient with Fabric API,
+  which reads `fabric:type` only, and no corpus mod reads `type` there (run 41772824375's evidence step). By the code,
+  the two recipes fail on Fabric too, with vanilla's error. Decision: left as it is, as other mods' own data errors are
+  (CORPUS-29).
 - **CI:** `ci/corpus-summary.sh` counts a client as in its world on mc-runtime-test's "Running game tests..." too. That
   is the line it logs on Forge 47, and `smoke-client.sh` already reads it there. Until now, the summary said the
   Forge 47 corpus client reached no world.
