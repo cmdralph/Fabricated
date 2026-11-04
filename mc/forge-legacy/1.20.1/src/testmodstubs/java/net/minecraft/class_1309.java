@@ -3,7 +3,8 @@ package net.minecraft;
 /**
  * {@code LivingEntity}: {@code method_6122} is {@code setItemInHand(InteractionHand, ItemStack)}, {@code method_18403}
  * {@code startSleeping(BlockPos)}, {@code method_18400} {@code stopSleeping()}, {@code method_18401}
- * {@code getBedOrientation()}, {@code method_5998} {@code getItemInHand(InteractionHand)}.
+ * {@code getBedOrientation()}, {@code method_5998} {@code getItemInHand(InteractionHand)}, {@code method_6078}
+ * {@code die(DamageSource)}; {@code method_16080} is {@code dropAllDeathLoot(DamageSource)}, which die calls.
  */
 public abstract class class_1309 extends class_1297 {
 	class_1309() {
@@ -26,6 +27,10 @@ public abstract class class_1309 extends class_1297 {
 	}
 
 	public class_1799 method_5998(class_1268 hand) {
+		throw new AssertionError("stand-in");
+	}
+
+	public void method_6078(class_1282 source) {
 		throw new AssertionError("stand-in");
 	}
 }

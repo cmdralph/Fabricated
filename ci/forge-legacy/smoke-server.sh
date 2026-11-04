@@ -230,6 +230,7 @@ check "two Fabric mods that depend on each other load, one ordering of their cyc
 check "Fabricated's report names Forge as the loader" "grep -q '^  Forge: ' logs/fabric-bridge-report.txt 2>/dev/null && ! grep -q '^  NeoForge: ' logs/fabric-bridge-report.txt 2>/dev/null"
 check "the test mod's @Inject at a call in Commands' constructor ran, which Forge 47's Mixin takes only at a return (CTOR-4)" "grep -q 'FABRICATED-FORGE-TEST constructor hook OK' logs/latest.log 2>/dev/null"
 check "the test mod's @Inject just after Commands' constructor stores its dispatcher ran and saw it, shifted by 2 as Dripstone Fluid Lib's hook into Minecraft's constructor is (CORPUS-103)" "grep -q 'FABRICATED-FORGE-TEST constructor construction hook OK' logs/latest.log 2>/dev/null"
+check "a dying pig's drops are still in Forge's capture after Forge's drops event, for the test mod's hook at the return of dropAllDeathLoot, which takes and adds them as Porting Lib's does, and they reach the level (CORPUS-105)" "grep -q 'FABRICATED-FORGE-TEST drop capture OK' logs/latest.log 2>/dev/null"
 if $standins; then
 	# The provider policy (PROVIDER-1), as on NeoForge: another mod's copy of a module is the one loaded, and Fabricated's
 	# part of it (its packages, mixin configs, mixins and Forge hooks) stands down. The nested stand-in is Fabricated's own

@@ -15,6 +15,7 @@ import io.github.cmdralph.fabricated.forgetest.ForgeCommandTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeConfigPortTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeDefaultBridgeTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeDimensionTest;
+import io.github.cmdralph.fabricated.forgetest.ForgeDropCaptureTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeFluidTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeFuelTest;
 import io.github.cmdralph.fabricated.forgetest.ForgeIngredientTest;
@@ -106,6 +107,7 @@ public abstract class MinecraftServerMixin {
 			ForgeDimensionTest.check(method_30002(), method_3847(class_1937.field_25181));
 			ForgeFluidTest.check(method_30002());
 			ForgeDefaultBridgeTest.check(method_30002());
+			ForgeDropCaptureTest.check(method_30002());
 			ForgeTestMod.checkVanillaStats((MinecraftServer) (Object) this);
 			ForgeTestMod.checkColors();
 			ForgeTestMod.checkParticles();

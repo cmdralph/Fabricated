@@ -203,6 +203,13 @@ by the server runs (the colours, screens, key mappings and config screens by the
   Lib's `ShapedRecipeUtil.setCraftingSize` is given to Forge's too, so Create's 5 by 5 mechanical crafting recipes
   load. The test mod reads a `fabric:any` alone and in an array as a recipe reads an ingredient, and both come back from
   the network as they went (with Fabric API, server run).
+- **Drop capture (Forge 47):** a dying entity's drops stay in Forge's capture after Forge's `LivingDropsEvent` (none
+  stay where a listener cancelled it) until every mod's hook at the return of `dropAllDeathLoot` has run, and
+  Fabricated adds what is still captured to the level after them, as Forge's method did. Porting Lib ports that
+  capture to Fabric under Forge's names, so on Forge its hook there takes them, fires its own drops event and adds them;
+  Forge's method used to take them first, and Porting Lib's hook threw as any mob died (CORPUS-105). The test mod's own
+  hook there stands in for Porting Lib's: a pig it kills at the first tick leaves it its drops, which reach the level
+  (server run).
 - **Storages:** a Fabric mod's item and fluid storages are the `ITEM_HANDLER` and `FLUID_HANDLER` capabilities of its
   block entity, and a Forge mod's `ItemStackHandler` and `FluidTank` are Fabric's storages (all five, with Fabric API,
   server and client). A Forge handler only simulates until Fabric's outermost transaction commits, so an aborted one
