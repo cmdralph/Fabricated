@@ -32,6 +32,8 @@ class PrivateFieldReadsTest {
 	private static final String CLIMATE = "Lnet/minecraft/world/level/biome/Biome$ClimateSettings;";
 	private static final String STRUCTURE = "net/minecraft/world/level/levelgen/structure/Structure";
 	private static final String SETTINGS = "Lnet/minecraft/world/level/levelgen/structure/Structure$StructureSettings;";
+	private static final String MIX = "net/minecraft/world/item/alchemy/PotionBrewing$Mix";
+	private static final String HOLDER = "Lnet/minecraft/core/Holder$Reference;";
 
 	private final Map<String, byte[]> game = new HashMap<>();
 
@@ -90,7 +92,50 @@ class PrivateFieldReadsTest {
 	private PrivateFieldReads reads() {
 		Map<String, String> privateFields = Map.of(BIOME + " climateSettings", "getModifiedClimateSettings", STRUCTURE + " settings",
 				"getModifiedStructureSettings", "net/minecraft/world/level/block/FlowerPotBlock potted", "getPotted");
-		return PrivateFieldReads.of(new ClassIndex(name -> game.get(name)), privateFields);
+		return PrivateFieldReads.of(new ClassIndex(name -> game.get(name)), privateFields, Map.of(MIX + " f_43532_", "fabricated$get$f_43532_"));
+	}
+
+	/** Forge 47's brewing mix: a holder in {@code from}, and the in-game mod's bridge to vanilla's type when {@code bridged}. */
+	private void brewingMix(boolean bridged) {
+		ClassNode node = new ClassNode();
+		node.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, MIX, null, "java/lang/Object", null);
+		node.fields.add(new FieldNode(Opcodes.ACC_PUBLIC | Opcodes.ACC_FINAL, "f_43532_", HOLDER, null, null));
+		if (bridged) {
+			MethodNode m = new MethodNode(Opcodes.ACC_PUBLIC, "fabricated$get$f_43532_", "()Ljava/lang/Object;", null, null);
+			m.instructions.add(new InsnNode(Opcodes.ACONST_NULL));
+			m.instructions.add(new InsnNode(Opcodes.ARETURN));
+			node.methods.add(m);
+		}
+		game.put(MIX, write(node));
+	}
+
+	@Test
+	void aModsReadOfAFieldThePlatformRetypedCallsFabricatedsBridge() throws Exception {
+		brewingMix(true);
+		Map<String, byte[]> mod = new TreeMap<>();
+		mod.put("mod/Plugin.class", write(modClass("mod/Plugin", "java/lang/Object", MIX, "f_43532_", "Ljava/lang/Object;")));
+		// A read by the platform's type is the platform's field, as it is.
+		mod.put("mod/Holders.class", write(modClass("mod/Holders", "java/lang/Object", MIX, "f_43532_", HOLDER)));
+		byte[] holders = mod.get("mod/Holders.class");
+
+		List<String> notes = reads().apply(mod, mod.keySet(), name -> null);
+
+		// As REI's default plugin reads the mix's from (CORPUS-107); the write is left as it was.
+		assertEquals(List.of("read: call " + MIX + ".fabricated$get$f_43532_()Ljava/lang/Object;", "write: put " + MIX + ".f_43532_"),
+				calls(mod.get("mod/Plugin.class")));
+		assertTrue(holders == mod.get("mod/Holders.class"), "a read by the platform's type is left as it is");
+		assertEquals(List.of("1 class(es) read net.minecraft.world.item.alchemy.PotionBrewing$Mix.f_43532_, which the platform gave another"
+				+ " type; they read it as vanilla's type through Fabricated's fabricated$get$f_43532_(): mod.Plugin"), notes);
+	}
+
+	@Test
+	void aBridgedFieldIsReadAsItIsWithoutTheBridge() throws Exception {
+		// As where the in-game mod has no bridge for the field (its mixins unreadable): the read stays the field's.
+		brewingMix(false);
+		Map<String, byte[]> mod = new TreeMap<>();
+		mod.put("mod/Plugin.class", write(modClass("mod/Plugin", "java/lang/Object", MIX, "f_43532_", "Ljava/lang/Object;")));
+		assertTrue(reads().isEmpty());
+		assertEquals(List.of(), reads().apply(mod, mod.keySet(), name -> null));
 	}
 
 	@Test
