@@ -290,7 +290,8 @@ final class LambdaRepairs extends PreflightPart {
 	 * lambda's of its type: in order, when the handler's types occur in the lambda's that way only once; otherwise by
 	 * type, where a type the lambda has more than once is only passed to a parameter the handler never uses; otherwise by
 	 * how vanilla's lambda and this build's use them ({@link #byUse}). A method NeoForge gave more parameters gets the
-	 * same bridge, in order only (Ledger's hooks into {@code FireBlock.checkBurnOut}, which takes a face too; SIG-1). Where
+	 * same bridge, in order only (Ledger's hooks into {@code FireBlock.checkBurnOut}, which takes a face too; SIG-1), as
+	 * does one a selector names by vanilla's full descriptor ({@link #widenedMethods}, SIG-3). Where
 	 * the running Mixin refuses a static handler on a method that takes {@code this}, and this build's lambda takes it
 	 * where vanilla's doesn't, the bridge takes {@code this} (Forge 47's {@code MouseHandler}, whose patch reads the
 	 * client in its screen lambdas; LAMBDA-7). Where it takes a static handler there, a lambda whose values the build also
@@ -308,6 +309,7 @@ final class LambdaRepairs extends PreflightPart {
 				|| !(Annotations.value(injector, "method") instanceof List<?> selectors) || selectors.size() != 1
 				|| annotatedParameters(handler.visibleParameterAnnotations) || annotatedParameters(handler.invisibleParameterAnnotations)) return List.of();
 		List<MethodNode> methods = PreflightAsm.selectedMethods(injector, target, ctx);
+		if (methods.isEmpty()) methods = widenedMethods(injector, target, ctx);
 		if (methods.size() != 1 || methods.get(0).name.startsWith("<")) return List.of();
 		MethodNode lambda = methods.get(0);
 		boolean isLambda = MixinNames.LAMBDA.matcher(lambda.name).matches();
@@ -488,6 +490,35 @@ final class LambdaRepairs extends PreflightPart {
 	}
 
 	/** Where each of {@code wanted} is in {@code captured}, taken in order, when they occur in it that way only once; else null. */
+	/**
+	 * The method an injector's one selector means when it names vanilla's full descriptor, which a mod's refmap gives, and
+	 * this game build declares the method with one or two more parameters (SIG-3): the one method of that name and return
+	 * type whose parameters hold the selector's, in order one way only. Forge 61's {@code LevelRenderer.extractBlockOutline}
+	 * also takes whether to draw the outline, and Fabric API's refmap names vanilla's, so its outline hook found no method
+	 * where a selector naming the method alone would have been bridged. Empty when the selector names no descriptor, when
+	 * a method has it, or when no method or more than one fits.
+	 */
+	private static List<MethodNode> widenedMethods(AnnotationNode injector, ClassNode target, Context ctx) {
+		if (!(Annotations.value(injector, "method") instanceof List<?> selectors) || selectors.size() != 1 || !(selectors.get(0) instanceof String raw)) {
+			return List.of();
+		}
+		MemberRef ref = MemberRef.parse(ctx.resolve(raw));
+		if (ref.fuzzy() || ref.name() == null || ref.desc() == null || !ref.desc().startsWith("(") || ref.desc().endsWith(")")) return List.of();
+		List<Type> named = List.of(Type.getArgumentTypes(ref.desc()));
+		Type returned = Type.getReturnType(ref.desc());
+		MethodNode found = null;
+		for (MethodNode method : target.methods) {
+			if (!method.name.equals(ref.name())) continue;
+			if (method.desc.equals(ref.desc())) return List.of();
+			List<Type> params = List.of(Type.getArgumentTypes(method.desc));
+			if (!Type.getReturnType(method.desc).equals(returned) || params.size() <= named.size() || params.size() > named.size() + 2
+					|| inOrder(named, params) == null) continue;
+			if (found != null) return List.of();
+			found = method;
+		}
+		return found == null ? List.of() : List.of(found);
+	}
+
 	private static int[] inOrder(List<Type> wanted, List<Type> captured) {
 		int n = wanted.size();
 		int m = captured.size();
@@ -626,6 +657,8 @@ final class LambdaRepairs extends PreflightPart {
 		MemberRef ref = MemberRef.parse(ctx.resolve(raw));
 		if (ref.fuzzy() || ref.name() == null) return List.of();
 		MethodNode chosen = target.methods.stream().filter(m -> ref.matchesMethod(m.name, m.desc)).findFirst().orElse(null);
+		List<MethodNode> widened = chosen == null ? widenedMethods(injector, target, ctx) : List.of();
+		if (chosen == null && widened.size() == 1) chosen = widened.get(0);
 		if (chosen == null) return List.of();
 		List<Type> own = args.subList(0, args.size() - 1);
 		// The sugar follows the callback info, where the bridge takes it over.
@@ -636,6 +669,11 @@ final class LambdaRepairs extends PreflightPart {
 				Annotations.list(Annotations.value(injector, "slice")), chosen, ctx) != Verdict.FOUND) return List.of();
 		bridges.add(HandlerBridges.insertedParameterBridge(mixin.name, handler, injector, 0, own.size(), chosen, inserted,
 				HandlerBridges.freeName(mixin, bridges, handler.name + "$fabricated")));
+		if (!widened.isEmpty()) {
+			@SuppressWarnings("unchecked")
+			List<Object> values = (List<Object>) selectors;
+			values.set(0, chosen.name + chosen.desc);
+		}
 		return List.of(chosen.name + vanilla + ", which this game build declares with one more parameter, " + chosen.name + chosen.desc
 				+ "; the handler is called through a bridge taking it");
 	}

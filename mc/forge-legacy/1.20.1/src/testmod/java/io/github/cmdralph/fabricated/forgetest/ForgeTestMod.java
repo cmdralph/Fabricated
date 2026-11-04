@@ -7,7 +7,12 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.stream.Collectors;
 
+import io.github.cmdralph.fabricated.api.FabricApiModule;
 import io.github.cmdralph.fabricated.api.FabricMod;
 import io.github.cmdralph.fabricated.api.Fabricated;
 import net.fabricmc.api.DedicatedServerModInitializer;
@@ -183,6 +188,35 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 	static class_2338 testSite(class_3218 level, int dx, int y, int dz) {
 		class_2338 spawn = level.method_43126();
 		return new class_2338(spawn.method_10263() + dx, y, spawn.method_10260() + dz);
+	}
+
+	/**
+	 * Whether another mod provides the Fabric API module (Forgified Fabric API), in place of Fabric API's jar or Fabricated:
+	 * the module's answers are then that mod's. A module of Fabricated's plan says so in Fabricated's API; one Fabricated
+	 * passes through from Fabric API's jar outside the plan is another mod's where it is loaded and isn't a Fabric mod
+	 * Fabricated runs.
+	 */
+	static boolean providedByAnotherMod(String module) {
+		Optional<FabricApiModule> planned = Fabricated.get().flatMap(api -> api.fabricApiModule(module));
+		if (planned.isPresent()) return planned.get().status() == FabricApiModule.Status.PROVIDED_BY_MOD;
+		return FabricLoader.getInstance().isModLoaded(module) && Fabricated.get().flatMap(api -> api.fabricMod(module)).isEmpty();
+	}
+
+	/**
+	 * Logs a check's result: OK when nothing failed, FAILED otherwise, except where {@code module} is another mod's and
+	 * every item that failed is one {@code providersAnswers} names: that mod answers it differently, as its source reads,
+	 * and the check logs SKIPPED with the items and why, as a check of that mod's module (PROVIDER-15, as PROVIDER-8 on
+	 * NeoForge).
+	 */
+	static void report(String check, List<String> failed, String module, Map<String, String> providersAnswers) {
+		if (failed.isEmpty()) {
+			LOGGER.info("FABRICATED-FORGE-TEST {} OK", check);
+		} else if (providedByAnotherMod(module) && providersAnswers.keySet().containsAll(failed)) {
+			LOGGER.info("FABRICATED-FORGE-TEST {} SKIPPED: {} is another mod's, which answers {} as its source reads: {} (PROVIDER-15)", check, module, failed,
+					failed.stream().map(providersAnswers::get).distinct().collect(Collectors.joining("; ")));
+		} else {
+			LOGGER.error("FABRICATED-FORGE-TEST {} FAILED: {}", check, String.join("; ", failed));
+		}
 	}
 
 	/**

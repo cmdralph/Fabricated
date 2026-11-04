@@ -214,7 +214,14 @@ check "the in-game mod's mixin reads tag files' fabric:remove (the in-game mod r
 check "native fabric-biome-api-v1: a spawn and a temperature added to plains reach the biome Forge reads (Forge's biome modifiers)" "grep -q 'FABRICATED-FORGE-TEST biome modifications OK' logs/latest.log 2>/dev/null"
 check "vanilla reads a player's stats with Gson's internal parser, a package Gson's module doesn't export (GSON-2)" "grep -q 'FABRICATED-FORGE-TEST vanilla stats read OK' logs/latest.log 2>/dev/null"
 check "Forge Config API Port's registry makes a config Forge loads: read right after registering, then loaded once with the port's loading event, its file's values kept (CORPUS-81)" "grep -q 'FABRICATED-FORGE-TEST config port OK' logs/latest.log 2>/dev/null"
-check "native fabric-loot-api-v2 and fabric-loot-tables-v1: a pool added in MODIFY and a replaced table are in the tables the game keeps, each event seeing its table's source (Forge's pools list), and a table a mod names as MODIFY's builder builds it keeps that name, as Porting Lib Loot names them (CORPUS-90)" "grep -q 'FABRICATED-FORGE-TEST loot OK' logs/latest.log 2>/dev/null"
+# Where another mod provides fabric-loot-api-v2 (Forgified Fabric API), the sources its events give are that mod's
+# answer: the test mod logs them as skipped, which it does only once the pools and the replaced table held (PROVIDER-14).
+if grep -q "FABRICATED-FORGE-TEST loot sources SKIPPED: fabric-loot-api-v2 is another mod's" logs/latest.log 2>/dev/null; then
+	echo "SKIP: native fabric-loot-api-v2: each event seeing its table's source, a table named as MODIFY's builder builds it (another mod's module, which $(grep -m 1 -o 'answers .* as its source reads' logs/latest.log); PROVIDER-14)"
+	echo "PASS: fabric-loot-tables-v1 on another mod's fabric-loot-api-v2: a pool added in MODIFY, one through the v1 event and a replaced table are in the tables the game keeps (Forge's pools list)"
+else
+	check "native fabric-loot-api-v2 and fabric-loot-tables-v1: a pool added in MODIFY and a replaced table are in the tables the game keeps, each event seeing its table's source (Forge's pools list), and a table a mod names as MODIFY's builder builds it keeps that name, as Porting Lib Loot names them (CORPUS-90)" "grep -q 'FABRICATED-FORGE-TEST loot OK' logs/latest.log 2>/dev/null"
+fi
 check "native fabric-dimensions-v1: an armor stand teleported to the End lands at its target with no obsidian platform built (Forge's teleporter)" "grep -q 'FABRICATED-FORGE-TEST dimensions OK' logs/latest.log 2>/dev/null"
 check "a Fabric mod's fluids have Forge fluid types (the in-game mod's, registered under their ids), and a pig falls through one that isn't water as through air; their liquid blocks and buckets, made before the fluids were registered, hold them (CORPUS-73)" "grep -q 'FABRICATED-FORGE-TEST fluid types OK' logs/latest.log 2>/dev/null"
 check "a Fabric mod's block item registered before its block is that block's item, and its music disc made before its sound was registered plays that sound (CORPUS-73)" "grep -q 'FABRICATED-FORGE-TEST registration order OK' logs/latest.log 2>/dev/null"

@@ -8,6 +8,7 @@ import java.util.function.Consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.github.cmdralph.fabricated.core.metadata.ModIds;
 import io.github.cmdralph.fabricated.core.runtime.EntrypointRunner;
 import io.github.cmdralph.fabricated.forge.biome.BiomeCompat;
 import io.github.cmdralph.fabricated.forge.entity.SleepEvents;
@@ -21,7 +22,6 @@ import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.api.DedicatedServerModInitializer;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.impl.loot.table.LootTablesV1Init;
-import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.loader.api.entrypoint.PreLaunchEntrypoint;
 import net.minecraft.core.MappedRegistry;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -87,8 +87,10 @@ public final class FabricatedMod {
 		}
 		// What discovery tells the player from now on: a Fabric mod's jar proposed for the class path (DOWNLOAD-1).
 		ForgeLoaderHooks.warnings(text -> ModLoader.get().addWarning(new ModLoadingWarning(context.getContainer().getModInfo(), ModLoadingStage.CONSTRUCT, AS_IS, text)));
-		// Fabric storages and Forge's item and fluid handlers on blocks, each seen by the other side's code.
-		if (FabricLoader.getInstance().isModLoaded("fabric-transfer-api-v1") && ours(state, "fabric-transfer-api-v1")) TransferBridge.register();
+		// Fabric storages and Forge's item and fluid handlers on blocks, each seen by the other side's code, for the transfer
+		// module of Fabric API's jar. The module is outside the plan, which the provider check reads: a mod providing it
+		// (Forgified Fabric API) has it as a Forge mod, not a Fabric mod Fabricated runs, and bridges it itself (PROVIDER-16).
+		if (state.isFabricMod(ModIds.toNeoForgeId(TransferBridge.MODULE))) TransferBridge.register();
 		// Fabric's sleep time event where Forge asks its own.
 		if (ours(state, "fabric-entity-events-v1")) SleepEvents.register();
 		// Native fabric-loot-tables-v1's own initializer (a native module has no entrypoints): its loot table events

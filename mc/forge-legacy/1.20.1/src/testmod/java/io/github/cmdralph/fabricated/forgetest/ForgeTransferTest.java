@@ -2,6 +2,7 @@ package io.github.cmdralph.fabricated.forgetest;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import net.fabricmc.fabric.api.transfer.v1.context.ContainerItemContext;
 import net.fabricmc.fabric.api.transfer.v1.fluid.FluidStorage;
@@ -57,13 +58,32 @@ import net.minecraftforge.items.ItemStackHandler;
  * which keeps its fluid as damage, through {@code FLUID_HANDLER_ITEM}, the gauge's own stack showing the change, and
  * Fabric's code fills and drains a Forge mod's cell through {@code FluidStorage.ITEM}, an aborted transaction leaving
  * it as it was. A Forge mod's part names Forge's classes as Forge 47 has them, with the game's in Intermediary's names
- * (the stand-ins in src/testmodstubs).
+ * (the stand-ins in src/testmodstubs). Where another mod provides the module (Forgified Fabric API), its answers are
+ * that mod's ({@link ForgeTestMod#report}).
  */
 public final class ForgeTransferTest {
 	/** A namespace no Fabric mod has: the bridge tells Forge mods' blocks from Fabric mods' by namespace. */
 	private static final String FORGE_NAMESPACE = "fabricated_forge_test";
 	/** Holds a bucket and 40 droplets, so a millibucket-sized fill can't fill it exactly. */
 	private static final long ODD_CAPACITY = 81000 + 40;
+
+	/**
+	 * What Forgified Fabric API's transfer module (0.92.6 for 1.20.1) answers differently, as its source reads: the items
+	 * that then fail, each with why.
+	 */
+	private static final Map<String, String> PROVIDERS_ANSWERS = Map.of(
+			"filling the last part of a millibucket filled 0 mB, 81040 droplets",
+			"its Forge handler of a Fabric storage fills the droplets of a millibucket the storage has room for and reports 0 mB (FluidStorageFluidHandler.fill)",
+			"draining 500 mB gave 500 mB, leaving 40540 droplets", "the 40 droplets that fill left stay",
+			"two insertions of 100 took 100 and 100 of the 128 two slots hold",
+			"its Fabric storage of a Forge item handler (ForgeItemStorage) simulates each insertion on the handler as it stands and inserts once the"
+					+ " transaction commits, so a second insertion in the same transaction doesn't see the first",
+			"no fluid handler capability for the Fabric mod's cell", "it gives Fabric mods' items no Forge fluid handler (onAttachItemStackCapabilities is empty)",
+			"no fluid handler capability for the Fabric mod's gauge", "it gives Fabric mods' items no Forge fluid handler (onAttachItemStackCapabilities is empty)",
+			"filling the Forge mod's cell took 81000 droplets and made it handler_cell",
+			"its Fabric storage of a Forge item's handler (ForgeFluidStorage) fills the handler's own stack, never handing the context the item it becomes",
+			"a committed fill left the cell handler_cell", "the context keeps the empty cell that fill left",
+			"draining the full cell gave 0 droplets", "the context keeps the empty cell that fill left");
 
 	/** Whether {@link #register} ran with Fabric API's transfer module, whose classes are only touched then. */
 	private static boolean registered;
@@ -152,11 +172,7 @@ public final class ForgeTransferTest {
 			level.method_8652(forgePos, class_2246.field_10124.method_9564(), 3);
 			forgeSeesFabricItems(failed);
 			fabricSeesForgeItems(failed);
-			if (failed.isEmpty()) {
-				ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST storages OK");
-			} else {
-				ForgeTestMod.LOGGER.warn("FABRICATED-FORGE-TEST storages: {}", String.join("; ", failed));
-			}
+			ForgeTestMod.report("storages", failed, "fabric-transfer-api-v1", PROVIDERS_ANSWERS);
 		}
 
 		/** Forge's code, as a hopper or pipe of a Forge mod's, on the Fabric mod's storages. */

@@ -2,6 +2,7 @@ package io.github.cmdralph.fabricated.forgetest;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -36,8 +37,9 @@ import net.minecraft.class_4076;
  * packet, {@code method_12062} of its {@code connection}) an armor stand both fail. The game finds an entity a player
  * uses by its id among the entities of chunks that track them, so the armor stand's part waits for the test site's
  * chunk, forced ({@code method_17988}), to tick its entities ({@code method_37118}), as the forge test mod's does; on a
- * client, mc-runtime-test waits for that part before it quits ({@link ClientHold}). It passes a fake player where the
- * game takes a server player, so verifying it loads Fabric API's class: the test mod only touches it with the
+ * client, mc-runtime-test waits for that part before it quits ({@link ClientHold}). Where another mod provides the
+ * module (Forgified Fabric API), its answers are that mod's ({@link ForgeTestMod#report}). It passes a fake player where
+ * the game takes a server player, so verifying it loads Fabric API's class: the test mod only touches it with the
  * interaction module installed.
  */
 public final class ForgeInteractionTest {
@@ -130,11 +132,9 @@ public final class ForgeInteractionTest {
 		for (String what : List.of("use item", "use block", "attack block", "attack entity", "use entity")) {
 			if (!SEEN.contains(what)) FAILED.add("no " + what + " callback");
 		}
-		if (FAILED.isEmpty()) {
-			ForgeTestMod.LOGGER.info("FABRICATED-FORGE-TEST interaction events OK");
-		} else {
-			ForgeTestMod.LOGGER.warn("FABRICATED-FORGE-TEST interaction events: {}", String.join("; ", FAILED));
-		}
+		ForgeTestMod.report("interaction events", FAILED, "fabric-events-interaction-v0", Map.of("no use entity callback",
+				"its FakePlayer is Forge's, whose connection drops every packet it is handed (FakePlayerNetHandler.handleInteract), so the armor stand"
+						+ " is never used"));
 	}
 
 	/** The fake player next to the site, within reach of the block and the armor stand. */
