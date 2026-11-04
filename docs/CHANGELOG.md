@@ -3,7 +3,26 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
-## 2026-11-04: A mixin's own field that the platform declares final (CORPUS-101), two mixins' unique fields of one name on Forge (CORPUS-95), AppleSkin's tooltip mixin verified on Forge 47 (CORPUS-96), and the Forge 47 corpus's evidence read (CORPUS-87, CORPUS-93, CORPUS-97 to 99, CORPUS-102) (task 5)
+## 2026-11-04: A mixin's own field that the platform declares final (CORPUS-101), two mixins' unique fields of one name on Forge (CORPUS-95), Fabric API's recipe conditions on Forge 47 (CORPUS-97), Fabric jars' loot modifier lists left as they are on Forge (CORPUS-98), AppleSkin's tooltip mixin verified on Forge 47 (CORPUS-96), and the Forge 47 corpus's evidence read (CORPUS-87, CORPUS-93, CORPUS-97 to 99, CORPUS-102) (task 5)
+
+- **CORPUS-98** (`PlatformDescriptor.readsNeoForgeLootModifiers`, new): the CORPUS-23 overlay turns off a Fabric jar's
+  global loot modifiers with NeoForge's never-condition, which only NeoForge reads. On Forge it replaced Farmer's
+  Delight's, Supplementaries' and Porting Lib Base's `forge` lists with a stub without `replace`, so Forge 47's manager
+  and Porting Lib's both failed on them. Forge 47 to 66 read only the lists in `forge`'s namespace and the modifiers
+  they name (read in MinecraftForge's sources), so on Forge the overlay now leaves loot modifiers as the jar ships
+  them, and Porting Lib reads them as on Fabric. Forge 47's descriptor must answer the same, and it wrapped Forge's
+  method by method, which is how PLAT-6 happened: `PlatformDescriptor.FORGE` is now an instance of
+  `PlatformDescriptor.Forge`, which Forge 47's descriptor extends from the next sync. It reaches Forge 47 then.
+- **CORPUS-97** (forge-legacy, #277): Forge 47's `CraftingHelper.getCondition` now asks Fabric API's resource
+  conditions for a type Forge has no serializer of, and tests that condition on the condition's JSON, as Moonlight's
+  bridge does on Fabric. Supplementaries names its own flag condition there. The test mod registers a Fabric condition
+  and ships two recipes naming it, which the server smoke checks.
+- **Syncs (#277 `forge-legacy`, #278 `forge`):** main synced in with CORPUS-95's fix. Both test mods add two mixins
+  with a unique counter of one name, which the server smoke checks keep apart. On `forge`, the CORPUS-95 evidence
+  step and the corpus client's Mixin export are gone. On `forge-legacy`, the evidence step prints the condition types
+  Forge still doesn't know, the CORPUS-99 recipes (matched on the exception line, no longer catching CORPUS-97's
+  `sign_post` recipes) and the report's section on other mods' mixins into Fabric mods (CORPUS-87). Extended runs on
+  both verify CORPUS-95, 97, 101 and 87.
 
 - **CORPUS-95** (`MixinRepairs.uniqueFieldRepair` and `InstalledClasses.fieldAdders`, new): the Forge 64 corpus client
   stopped creating its world. #274's evidence step showed why. Fabric API's screen mixin and SpruceUI's (in
@@ -14,8 +33,9 @@ One entry per working session, newest first: what changed, and how it was verifi
   pre-flight now renames such a field (one that isn't public, and that another installed mixin also adds), with its
   uses in the mixin and its nested classes. `MixinCompat.shadowsMixinFields` is now `seesMixinFields`, as it covers
   both this and CORPUS-74.
-- **Merged:** #274 (`forge`, the CORPUS-95 evidence and the FRAPI test mod's twinned block) and #275 (`main`,
-  CORPUS-101 and the evidence below), each with its CI green.
+- **Merged:** #274 (`forge`, the CORPUS-95 evidence and the FRAPI test mod's twinned block), #275 (`main`,
+  CORPUS-101 and the evidence below) and #276 (`main`, CORPUS-95's fix; one 26.2 client job timed out opening its
+  window and passed on its one re-run), each with its CI green.
 
 - **CORPUS-101** (`MixinRepairs.platformFinalFieldRepair`, new): with CORPUS-96 fixed, the Forge 47 corpus client got
   past its entrypoints. It then stopped in its first resource reload with an `IllegalAccessError`. Porting Lib's
@@ -47,7 +67,9 @@ One entry per working session, newest first: what changed, and how it was verifi
   and vanilla's class without the field.
   `MixinPreflightTest.aUniqueFieldAnotherModsMixinAddsTooIsRenamedWhereMixinSeesOnlyTheTargetsOwnFields` covers the
   rename in the mixin and its anonymous class, and five cases it leaves alone: Fabric's Mixin, only the mod's own mixin
-  adding the field, a target that declares it, a public field, and a `@Unique` Mixin doesn't read. 486 core tests pass.
+  adding the field, a target that declares it, a public field, and a `@Unique` Mixin doesn't read.
+  `PipelineTest.onForgeAFabricJarsLootModifiersAreItsOwn` checks that on Forge's descriptor a jar's `forge` and
+  `neoforge` lists and its modifier stay the jar's own. 487 core tests pass.
 
 ## 2026-11-03: Platform mods' static handlers for Fabric mods' methods on Forge 47 (CORPUS-87), AppleSkin's tooltip mixin circular again (CORPUS-96), the Forge corpus fixes of #268 and #271 verified (CORPUS-79, CORPUS-90, CORPUS-91, CORPUS-94), and the Forge corpus's next stops (CORPUS-95, CORPUS-97 to 100) (task 5)
 

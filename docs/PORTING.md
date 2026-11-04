@@ -356,7 +356,8 @@ the abstractions below are added when the branch work starts (owner decision D2 
    and whether the platform reads enum extension files; the loader passes it in `Pipeline.Input`, NeoForge's being
    `PlatformDescriptor.NEOFORGE` (today's `ModsTomlWriter`), Forge's `PlatformDescriptor.FORGE` (for both Forge
    branches: `META-INF/mods.toml` with `mandatory` dependencies, mixin configs in the manifest's `MixinConfigs`, no
-   enum extensions). `NestedNeoForgeJars` takes the nested jars' descriptor path the same way. The rest follows as
+   enum extensions). A Forge version's own descriptor (Forge 47's) extends `PlatformDescriptor.Forge`, so it answers
+   Forge's for whatever it doesn't change (PLAT-6). `NestedNeoForgeJars` takes the nested jars' descriptor path the same way. The rest follows as
    each branch needs it.
 6. **Tests that name NeoForge** (`NestedNeoForgeJarsTest`, `MultiLoaderJarsTest`, `PlatformRenamesTest`, …) run
    against the NeoForge profile, so a branch can run them against its own.
