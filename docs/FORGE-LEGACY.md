@@ -152,6 +152,11 @@ by the server runs (the colours, screens, key mappings and config screens by the
   refusal holds, and fires `AFTER_DAMAGE` with the damage it was dealt and the damage it took (Forge 61 to 66, with
   Fabric API, server and client; Fabric API 0.92.12 has no `AFTER_DAMAGE`). Forge 61's and 64's `hurtServer` drop the
   copy of the dealt damage upstream's hook reads, so the in-game mod fires the event there (DAMAGE-1).
+- **Effects:** an effect's events learn the command that gave it, and an effect given by code comes from none (Forge
+  61 to 66, with Fabric API, server and client; Fabric API 0.92.12 has no effect events). Upstream's hook is in
+  Brigadier, a library Forge loads without mixins, so the in-game mod sets the same context where vanilla's command
+  execution runs each command, a player's, the console's, a function's or a command block's (EFFECT-1). A command a mod
+  runs through Brigadier's own dispatcher gives none.
 - **Use and attack:** a player's uses of an item, a block and an entity, and its attacks on a block and an entity, ask
   `UseItemCallback`, `UseBlockCallback`, `UseEntityCallback`, `AttackBlockCallback` and `AttackEntityCallback` through
   Forge's own code, and a refusal holds (all five, with Fabric API, server and client). Upstream's hooks apply as they
@@ -235,7 +240,11 @@ by the server runs (the colours, screens, key mappings and config screens by the
   never reaches it, and two insertions in one transaction take no more than its slots hold; fluids move in whole
   millibuckets. On Forge 61 to 66 a fluid carrying data (Fabric's components, Forge's tag) doesn't cross. A Fabric mod's
   tank item is filled and drained through Forge's `FLUID_HANDLER_ITEM`, its stack changed in place when it stays the
-  same item, and a Forge mod's through `FluidStorage.ITEM`, in Fabric's transaction.
+  same item, and a Forge mod's through `FluidStorage.ITEM`, in Fabric's transaction. Items in items cross the same way
+  on Forge 61 to 66: a Fabric mod's item storage in an item (a bag's) is its stack's `ITEM_HANDLER`, the stack changed
+  in place, and a Forge mod's item handler on a stack is Fabric's `ItemStorage.ITEM`; a move that would leave another
+  item in the bag's place, which Forge's handler of a stack can't hand back, doesn't happen. Fabric API for 1.20.1 has
+  no lookup for item storages in items, so Forge 47 has none to cross.
 - **Fuels and brewing (Forge 47):** an item `FuelRegistry` makes a fuel is one to Forge's furnace, and an awkward potion
   brewed with an item a `FabricBrewingRecipeRegistry` recipe names gives the recipe's potion (with Fabric API, server
   and client). Forge's furnace reads its burn times from vanilla's fuel table as tags load, where upstream's hook adding
@@ -308,7 +317,13 @@ What else differs on Forge, for Fabric mods in general:
   that throws, wait for their main entrypoints as on Fabric (REG-8, ENTRY-2; Forge's client creates the options before
   it loads mods), and the system property FML sets for an empty log marker is removed before any Fabric mod runs
   (CORPUS-60). A Fabric mod's jar a mod proposes for the class path as the game runs isn't added, with a loading
-  warning (DOWNLOAD-1); Essential, whose loader does that, is still refused on Forge.
+  warning (DOWNLOAD-1); Essential, whose loader does that, loads from its download in the next launch, as on NeoForge.
+- **The difficult mods' Fabric builds** (task 5): malilib loads, and with MiniHUD, Tweakeroo and Litematica the client
+  reaches a world with every smoke check passing (all five, a gate in extended runs). Sodium's Fabric build loads too,
+  the renderer test mod's checks passing under it (with Indium on Forge 47), and Essential's, both of its launches
+  passing every smoke check: gates in extended runs. Iris and Flashback are still refused on Forge until their runs
+  gate them (Iris's passes on Forge 61 to 66 and is to hold on Forge 47, Flashback's passes on Forge 61); the same runs
+  load them on request (`loadUnsupported`) to show what stops them.
 - **Forge's coremods:** pre-flight reads the game's classes as Forge's own transformers leave them before Mixin
   applies any mod's mixins: Forge 47's coremods and Forge 61 to 66's `forge-transformers`. Each mob's `finalizeSpawn`
   call Forge changes is pointed at `ForgeEventFactory.onFinalizeSpawn` (on Forge 47 anywhere in the classes it lists;
@@ -385,10 +400,6 @@ instead. Unless a task is named, nothing is planned for them yet.
   inside a block (`ScreenEffectRenderer`, on Forge 66 `LevelExtractor`; Forge 61 to 66) and for block markers
   (`BlockMarker`, Forge 64 to 66), one of rendering-v1's GUI renderer hooks (`GuiRenderer.executeDraw`) and its block
   outline hook (`LevelRenderer`) on Forge 61.
-- **Item storages in items (task 5).** A Fabric mod's item storage in an item (a backpack's) and Forge's item handler on
-  a stack don't see each other; fluids in items do (all five).
-- **Effect events' command context (task 5).** The entity events module's effect events don't learn which command
-  applied an effect: upstream's hook is in Brigadier, a library Forge loads without mixins (Forge 61 to 66).
 - **Fabric mods' own HUD mixins (task 5).** A Fabric mod's mixin at one of vanilla's calls inside the HUD method
   (`Gui.render`), or at its end, applies but never runs: Forge 61 to 66 hand the drawing to their layers at its start,
   and Forge 47's GUI never calls it. Mixins at its start, and into the methods that draw each part, which Forge's

@@ -32,7 +32,8 @@ import net.minecraftforge.items.IItemHandler;
  * {@code ITEM_HANDLER} and {@code FLUID_HANDLER} capabilities, and a Fabric mod sees a Forge mod's handler through
  * {@code ItemStorage.SIDED} and {@code FluidStorage.SIDED}; a Forge machine fills a Fabric mod's tank item through
  * {@code FLUID_HANDLER_ITEM}, and a Fabric machine a Forge mod's through {@code FluidStorage.ITEM}. Fluid amounts convert
- * at 81 droplets per millibucket, whole millibuckets only.
+ * at 81 droplets per millibucket, whole millibuckets only. Item storages in items, a bag's, have nothing to cross to:
+ * Fabric API for 1.20.1 has no lookup for them ({@code ItemStorage.ITEM}).
  *
  * <p>Each side answers for what its own mods add, told apart by the block's or item's namespace: the capabilities of a
  * Fabric mod's block entity or item stack come from Fabric's whole lookup, fallbacks included, and Fabric's lookups fall
@@ -50,6 +51,8 @@ import net.minecraftforge.items.IItemHandler;
 public final class TransferBridge {
 	/** The capability provider Fabricated attaches to Fabric mods' block entities and item stacks. */
 	private static final ResourceLocation PROVIDER = new ResourceLocation("fabricated", "fabric_storages");
+	private static final FabricItemProvider.Kind<FabricItemFluidHandler> FLUIDS_IN_ITEMS =
+			new FabricItemProvider.Kind<>(ForgeCapabilities.FLUID_HANDLER_ITEM, FabricItemFluidHandler::new, handler -> handler.storage() != null);
 
 	private TransferBridge() {
 	}
@@ -80,7 +83,7 @@ public final class TransferBridge {
 	 */
 	private static void attachToStack(AttachCapabilitiesEvent<ItemStack> event) {
 		ItemStack stack = event.getObject();
-		if (isFabric(BuiltInRegistries.ITEM.getKey(stack.getItem()).getNamespace())) event.addCapability(PROVIDER, new FabricItemFluidProvider(stack));
+		if (isFabric(BuiltInRegistries.ITEM.getKey(stack.getItem()).getNamespace())) event.addCapability(PROVIDER, new FabricItemProvider<>(FLUIDS_IN_ITEMS, stack));
 	}
 
 	/** Whether a Forge mod added the block: neither vanilla nor a Fabric mod (by namespace). */

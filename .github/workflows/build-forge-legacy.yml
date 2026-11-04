@@ -23,7 +23,7 @@ on:
   workflow_dispatch:
     inputs:
       extended:
-        description: Also the mod corpus on a server and a client (informational)
+        description: Also the mod corpus on a server and a client (informational), and the difficult mods' Fabric builds on a client (malilib's a gate)
         type: boolean
         default: false
 
@@ -283,22 +283,140 @@ jobs:
           name: fabricated-forge-${{ matrix.target.minecraft }}
           path: build/libs/fabricated-forge-*+mc${{ matrix.target.minecraft }}.jar
           if-no-files-found: error
-      # The data task 5's open findings turn on, for reading (informational, with "extended"; last, and capped, as the
-      # job's log can only be read from its end): the recipes still failing to parse, each with its exception, and the
-      # test mod's lines on its conditional recipes, which its check found neither of on the corpus runs (CORPUS-109).
-      - name: Evidence for task 5's findings (informational)
-        if: ${{ env.EXTENDED == 'true' && !cancelled() && steps.corpus.outcome == 'success' }}
-        continue-on-error: true
+
+  # The difficult mods' Fabric builds (task 5, decision 3), each on a client with Fabric API, with "extended", beside the
+  # version's own job. The compatibility plan loads them on NeoForge and refuses them on Forge until their run here gates
+  # them (CI-1). The runs of malilib, Sodium and Essential are gates; Iris and Flashback load on request
+  # (loadUnsupported), to read what stops them, informational where no gate runs them.
+  difficult:
+    name: Forge ${{ matrix.target.minecraft }}, the difficult mods' Fabric builds
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    needs: plan
+    if: ${{ needs.plan.outputs.targets != '[]' && (github.ref_type == 'tag' || inputs.extended == true) }}
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJSON(needs.plan.outputs.targets) }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SMOKE_ON_ENTRYPOINT_FAILURE: disable
+      MC: ${{ matrix.target.minecraft }}
+      FORGE: ${{ matrix.target.loader }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: |
+            17
+            21
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build Fabricated and the test mods
+        run: >-
+          ./gradlew -Pfabricated.platforms=forge-legacy --configure-on-demand :mc:forge-legacy-${{ matrix.target.minecraft }}:fabricatedJar
+          :mc:forge-legacy-${{ matrix.target.minecraft }}:testmodJar :mc:forge-legacy-${{ matrix.target.minecraft }}:testmods --stacktrace
+      - name: Select Java ${{ matrix.target.java }} for the game
+        run: echo "JAVA_HOME=$JAVA_HOME_${{ matrix.target.java }}_X64" >> "$GITHUB_ENV" && echo "$JAVA_HOME_${{ matrix.target.java }}_X64/bin" >> "$GITHUB_PATH"
+      - name: Install Mesa EGL for the client
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends libegl1 libegl-mesa0 libgl1-mesa-dri
+      - name: Fabric API
         run: |
-          if [ -d "$RUNNER_TEMP/server-corpus" ]; then
-            log="$RUNNER_TEMP/server-corpus/logs/latest.log"
-            # Each recipe whose parsing failed, with the exception on the line after it.
-            echo "-- recipes failing to parse:"
-            awk '/Parsing error loading recipe/ { id = $0; sub(/.*loading recipe /, "", id); sub(/[^a-z0-9_.:\/-].*/, "", id)
-              if ((getline next_line) > 0) print id ": " substr(next_line, 1, 200) }' "$log" 2>/dev/null | sort -u | head -n 30 || true
+          mkdir -p "$RUNNER_TEMP/fabric-api"
+          curl -fsSL --retry 4 -o "$RUNNER_TEMP/fabric-api/fabric-api.jar" \
+            "https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api/${{ matrix.target.fabric_api }}/fabric-api-${{ matrix.target.fabric_api }}.jar"
+      # What a run of these mods shows: the report's summary and what it left out, the mods' errors, and what stopped
+      # the game, to its innermost cause.
+      # With Indium, Sodium 0.5's renderer of Fabric's API, which Fabric mods' block models need under Sodium on 1.20.1
+      # (on Fabric too; Sodium has its own from 0.6). A gate, as on NeoForge: every smoke check passes, with a mod whose
+      # initializer throws stopping the game, and the two load. Without Iris, whose run on Forge 47 is still to hold.
+      - name: Sodium and Indium, with the renderer test mod (must pass)
+        if: ${{ !cancelled() }}
+        env:
+          SMOKE_ON_ENTRYPOINT_FAILURE: ''
+        run: |
+          dir="$RUNNER_TEMP/extra-sodium-gate"
+          mkdir -p "$dir"
+          python3 ci/fetch-corpus.py "$MC" "$dir" fabric sodium indium || true
+          ls "$dir"/sodium*.jar >/dev/null 2>&1 || { echo "Modrinth has no Fabric build of Sodium for $MC: nothing to run"; exit 0; }
+          cp "$RUNNER_TEMP/fabric-api/fabric-api.jar" mc/forge-legacy/$MC/build/testmods/fabricated-testmod-frapi.jar "$dir/"
+          status=0
+          SMOKE_TIMEOUT=480 ci/forge-legacy/smoke-client.sh "$MC" "$FORGE" "$RUNNER_TEMP/client-sodium-gate" "$dir" > "$RUNNER_TEMP/client-sodium-gate.out" 2>&1 || status=$?
+          ci/forge-legacy/difficult-summary.sh "$RUNNER_TEMP/client-sodium-gate" "$status" "Sodium and Indium" "FABRICATED-TEST frapi|Sodium|Indium|sodium|indium" sodium indium
+          ci/gate-mods.sh "$RUNNER_TEMP/client-sodium-gate" "$status" "Sodium and Indium" sodium indium
+      # Iris with them, loaded on request, to read whether its particle hook's repair holds on Forge 47 (IRIS-1).
+      - name: Sodium, Indium and Iris, with the renderer test mod
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        env:
+          FABRICATED_MODS: '{ "iris": { "loadUnsupported": true } }'
+        run: |
+          dir="$RUNNER_TEMP/extra-sodium"
+          mkdir -p "$dir"
+          python3 ci/fetch-corpus.py "$MC" "$dir" fabric sodium iris indium || true
+          ls "$dir"/sodium*.jar >/dev/null 2>&1 || { echo "Modrinth has no Fabric build of Sodium for $MC: nothing to run"; exit 0; }
+          cp "$RUNNER_TEMP/fabric-api/fabric-api.jar" mc/forge-legacy/$MC/build/testmods/fabricated-testmod-frapi.jar "$dir/"
+          status=0
+          SMOKE_TIMEOUT=480 ci/forge-legacy/smoke-client.sh "$MC" "$FORGE" "$RUNNER_TEMP/client-sodium" "$dir" > "$RUNNER_TEMP/client-sodium.out" 2>&1 || status=$?
+          ci/forge-legacy/difficult-summary.sh "$RUNNER_TEMP/client-sodium" "$status" "Sodium and Iris" "FABRICATED-TEST frapi|Sodium|Iris|Indium|sodium|iris|indium" sodium iris indium
+      # A gate, as on NeoForge: every smoke check passes, with a mod whose initializer throws stopping the game, and the
+      # four load.
+      - name: malilib, MiniHUD, Tweakeroo and Litematica (must pass)
+        if: ${{ !cancelled() }}
+        env:
+          SMOKE_ON_ENTRYPOINT_FAILURE: ''
+        run: |
+          dir="$RUNNER_TEMP/extra-malilib"
+          mkdir -p "$dir"
+          python3 ci/fetch-corpus.py "$MC" "$dir" fabric malilib minihud tweakeroo litematica || true
+          ls "$dir"/malilib*.jar >/dev/null 2>&1 || { echo "Modrinth has no Fabric build of malilib for $MC: nothing to run"; exit 0; }
+          cp "$RUNNER_TEMP/fabric-api/fabric-api.jar" "$dir/"
+          status=0
+          SMOKE_TIMEOUT=420 ci/forge-legacy/smoke-client.sh "$MC" "$FORGE" "$RUNNER_TEMP/client-malilib" "$dir" > "$RUNNER_TEMP/client-malilib.out" 2>&1 || status=$?
+          ci/forge-legacy/difficult-summary.sh "$RUNNER_TEMP/client-malilib" "$status" "malilib and the mods needing it" "malilib|minihud|tweakeroo|litematica|MiniHUD|Tweakeroo|Litematica" malilib minihud tweakeroo litematica
+          ci/gate-mods.sh "$RUNNER_TEMP/client-malilib" "$status" "malilib and the mods needing it" malilib minihud tweakeroo litematica
+      # Launched twice, as on main: the first launch's loader downloads Essential, which Fabricated loads from the
+      # second (DOWNLOAD-1). A gate, as on NeoForge: both launches pass every smoke check, with a mod whose initializer
+      # throws stopping the game, and Essential loads in the second. Where its loader downloaded nothing (its server,
+      # not Fabricated), the second launch is skipped with a warning.
+      - name: Essential (must pass)
+        if: ${{ !cancelled() }}
+        env:
+          SMOKE_ON_ENTRYPOINT_FAILURE: ''
+        run: |
+          dir="$RUNNER_TEMP/extra-essential"
+          mkdir -p "$dir"
+          python3 ci/fetch-corpus.py "$MC" "$dir" fabric essential | tee "$RUNNER_TEMP/summary-essential.txt" || true
+          grep -qE "^essential: [^n]" "$RUNNER_TEMP/summary-essential.txt" || { echo "Modrinth has no Fabric build of Essential for $MC: nothing to run"; exit 0; }
+          cp "$RUNNER_TEMP/fabric-api/fabric-api.jar" "$dir/"
+          status=0
+          SMOKE_TIMEOUT=420 ci/forge-legacy/smoke-client.sh "$MC" "$FORGE" "$RUNNER_TEMP/client-essential-first" "$dir" > "$RUNNER_TEMP/client-essential-first.out" 2>&1 || status=$?
+          ci/forge-legacy/difficult-summary.sh "$RUNNER_TEMP/client-essential-first" "$status" "Essential's first launch" "essential|Essential" essential-container essential-loader
+          failed=0
+          ci/gate-mods.sh "$RUNNER_TEMP/client-essential-first" "$status" "Essential's first launch" essential-container essential-loader || failed=1
+          mkdir -p "$RUNNER_TEMP/seed-essential"
+          [ -d "$RUNNER_TEMP/client-essential-first/run/essential" ] && cp -r "$RUNNER_TEMP/client-essential-first/run/essential" "$RUNNER_TEMP/seed-essential/"
+          if ! ls "$RUNNER_TEMP/seed-essential/essential/"Essential*.jar >/dev/null 2>&1; then
+            echo "::warning::Essential's loader downloaded nothing in the first launch (its server): no second launch to gate"
+            exit "$failed"
           fi
-          # The test mod's recipe conditions, each answer they gave and the check (CORPUS-109).
-          for run in server-corpus client-corpus/run; do
-            echo "-- recipe conditions in $run (CORPUS-109):"
-            grep -h 'FABRICATED-FORGE-TEST recipe condition' "$RUNNER_TEMP/$run/logs/latest.log" 2>/dev/null | cut -c1-400 | head -n 10 || true
-          done
+          status=0
+          SMOKE_SEED="$RUNNER_TEMP/seed-essential" SMOKE_TIMEOUT=420 ci/forge-legacy/smoke-client.sh "$MC" "$FORGE" "$RUNNER_TEMP/client-essential" "$dir" \
+              > "$RUNNER_TEMP/client-essential.out" 2>&1 || status=$?
+          ci/forge-legacy/difficult-summary.sh "$RUNNER_TEMP/client-essential" "$status" "Essential's second launch" "essential|Essential" essential-container essential-loader essential
+          ci/gate-mods.sh "$RUNNER_TEMP/client-essential" "$status" "Essential's second launch" essential-container essential-loader essential || failed=1
+          exit "$failed"
+      - name: Flashback
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        env:
+          FABRICATED_MODS: '{ "flashback": { "loadUnsupported": true } }'
+        run: |
+          dir="$RUNNER_TEMP/extra-flashback"
+          mkdir -p "$dir"
+          python3 ci/fetch-corpus.py "$MC" "$dir" fabric flashback | tee "$RUNNER_TEMP/summary-flashback.txt" || true
+          grep -qE "^flashback: [^n]" "$RUNNER_TEMP/summary-flashback.txt" || { echo "Modrinth has no Fabric build of Flashback for $MC: nothing to run"; exit 0; }
+          cp "$RUNNER_TEMP/fabric-api/fabric-api.jar" "$dir/"
+          status=0
+          SMOKE_TIMEOUT=420 ci/forge-legacy/smoke-client.sh "$MC" "$FORGE" "$RUNNER_TEMP/client-flashback" "$dir" > "$RUNNER_TEMP/client-flashback.out" 2>&1 || status=$?
+          ci/forge-legacy/difficult-summary.sh "$RUNNER_TEMP/client-flashback" "$status" "Flashback" "flashback|Flashback" flashback

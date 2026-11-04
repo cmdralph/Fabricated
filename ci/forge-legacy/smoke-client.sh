@@ -75,9 +75,16 @@ if [ -n "$extra" ] && [ -d "$extra" ]; then
 	# still logged.
 	printf '[client]\nshowLoadWarnings = false\n' > run/config/forge-client.toml
 fi
-# SMOKE_ON_ENTRYPOINT_FAILURE: as in the server smoke, Fabricated's onEntrypointFailure for a corpus run.
-if [ -n "${SMOKE_ON_ENTRYPOINT_FAILURE:-}" ]; then
-	printf '{ "schema": 1, "onEntrypointFailure": "%s" }\n' "$SMOKE_ON_ENTRYPOINT_FAILURE" > run/config/fabricated.json
+# SMOKE_SEED: a directory copied into the game directory first, as an earlier launch left it (Essential's download).
+if [ -n "${SMOKE_SEED:-}" ] && [ -d "$SMOKE_SEED" ]; then
+	cp -r "$SMOKE_SEED"/. run/
+fi
+# Fabricated's config for the run: SMOKE_ON_ENTRYPOINT_FAILURE, as in the server smoke, its onEntrypointFailure for a
+# corpus run, and FABRICATED_MODS its per-mod overrides (the "mods" object), as on main.
+if [ -n "${SMOKE_ON_ENTRYPOINT_FAILURE:-}" ] || [ -n "${FABRICATED_MODS:-}" ]; then
+	printf '{ "schema": 1, "onEntrypointFailure": "%s", "mods": %s }\n' "${SMOKE_ON_ENTRYPOINT_FAILURE:-error}" "${FABRICATED_MODS:-{\}}" \
+		> run/config/fabricated.json
+	cat run/config/fabricated.json
 fi
 ls -1 run/mods
 cat > run/options.txt <<'OPTS'
@@ -250,7 +257,23 @@ fi
 # model's part, or inside a model wrapping it) fails alone: Forge's renderer draws it from its quads, its failure is
 # logged once and listed in the report, a wrapper whose wrapped model threw isn't blamed, and the transform it left
 # pushed never reaches another block. Gates.
-if [ -n "$extra" ] && [ -f "$extra/fabricated-testmod-frapi.jar" ]; then
+# Under another renderer of Fabric's API (Sodium's Fabric build, run with the test mod in the difficult mods' job),
+# Fabric API's Indigo stands down and that renderer draws Fabric's block models itself: in its own chunk sections, which
+# it meshes, and wherever it is asked to draw a block. Fabricated's guard (FRAPI rule 8) is its seam into Indigo, and
+# the test mod's broken models throw only through it, so its checks are Indigo's; under the other renderer the test
+# mod's Fabric block model must reach that renderer's chunk sections, and the rest is printed.
+other_renderer=
+if [ -n "$extra" ] && ls "$extra"/sodium*.jar >/dev/null 2>&1; then other_renderer=Sodium; fi
+if [ -n "$extra" ] && [ -f "$extra/fabricated-testmod-frapi.jar" ] && [ -n "$other_renderer" ]; then
+	frapi_fail=$fail
+	fail=0
+	check "Different rendering plugin detected; not applying Indigo" "fabric-renderer-api-v1 (with Fabric API): Fabric API's renderer stood down for $other_renderer's"
+	check "FABRICATED-TEST frapi terrain OK .*\(LevelSlice\|WorldSlice\)" "fabric-renderer-api-v1 (with Fabric API): $other_renderer meshed a Fabric block model into its chunk sections, through its renderer"
+	echo "::group::Fabric's renderer API under $other_renderer (informational)"
+	grep -n -m 80 -E "FABRICATED-TEST (frapi|model)|threw while drawn in|Fabric block models|fabric-renderer|indigo|Indigo|Indium" "$log" || true
+	echo "::endgroup::"
+	if [ "$frapi_fail" = 1 ]; then fail=1; fi
+elif [ -n "$extra" ] && [ -f "$extra/fabricated-testmod-frapi.jar" ]; then
 	frapi_fail=$fail
 	fail=0
 	check "FABRICATED-TEST frapi model plugin OK" "fabric-model-loading-api-v1 (with Fabric API): the renderer test mod's model plugin put a Fabric model in place of a baked block model"

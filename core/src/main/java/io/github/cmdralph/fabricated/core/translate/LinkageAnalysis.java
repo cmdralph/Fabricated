@@ -80,6 +80,8 @@ public final class LinkageAnalysis {
 
 	/** Ends an issue of a mixin that needs a Fabric mod that isn't loading (see {@link #isUnloadedUse}). */
 	private static final String UNLOADED = ", which isn't loading";
+	/** Names the mod an issue's class needs as one its mod nests (see {@link #isNestedUse}). */
+	private static final String NESTED = " (a supertype, from a mod it nests)" + UNLOADED;
 	/** Ends an issue of a mixin to leave out (see {@link #leftOutMixin}). */
 	private static final String LEFT_OUT = ", which isn't loading; Mixin would stop the game applying it, so it is left out";
 	/** A mixin to leave out: its {@code skipMixins} entry ({@code <config>:<mixin>}), then the issue. */
@@ -92,6 +94,15 @@ public final class LinkageAnalysis {
 	 */
 	public static boolean isUnloadedUse(String issue) {
 		return issue.endsWith(UNLOADED) && issue.contains(" -> needs class ");
+	}
+
+	/**
+	 * Whether a linkage issue ({@link #isUnloadedUse}) is a class of a mod extending or implementing one only a mod it
+	 * nests has, which isn't loading (CORPUS-89): the game can't define that class, and on Fabric the nested mod is always
+	 * there, so its mod doesn't guard such uses as it may an optional one's.
+	 */
+	public static boolean isNestedUse(String issue) {
+		return issue.endsWith(NESTED);
 	}
 
 	/**
@@ -150,7 +161,7 @@ public final class LinkageAnalysis {
 		LinkageChecker checker = null;
 		ClassIndex index = null;
 		for (TranslatedMod mod : mods) {
-			String blob = "linkage-" + Hashing.sha256("v8|" + mod.candidate().sha256() + "|" + setFingerprint + "|" + (clientSide ? "c" : "s")).substring(0, 40) + ".json";
+			String blob = "linkage-" + Hashing.sha256("v9|" + mod.candidate().sha256() + "|" + setFingerprint + "|" + (clientSide ? "c" : "s")).substring(0, 40) + ".json";
 			List<String> issues = readCached(blob);
 			if (issues == null) {
 				// Built only when some result is not cached: it reads every mod's classes once.
@@ -255,12 +266,21 @@ public final class LinkageAnalysis {
 	private List<String> check(TranslatedMod mod, LinkageChecker checker, Map<String, String> unloaded, Predicate<String> exists) throws IOException {
 		List<LinkageChecker.Issue> issues = new ArrayList<>();
 		List<String> unloadedUses = new ArrayList<>();
+		List<String> nested = mod.candidate().nestedChildren();
+		Predicate<String> nestedOnly = name -> nested.contains(unloaded.get(packageOf(name))) && !exists.test(name);
+		boolean nestsUnloaded = unloaded.values().stream().anyMatch(nested::contains);
 		// The overlay's copy of a class (rewritten during translation) is the one that loads.
 		try (SafeArchive archive = SafeArchive.open(mod.jar(), limits.forTranslatedJars());
 				SafeArchive overlay = SafeArchive.open(mod.overlay(), limits.forTranslatedJars())) {
 			for (String name : archive.classEntryNames()) {
 				byte[] data = overlay.contains(name) ? overlay.read(name) : archive.read(name);
-				if (data != null) checker.check(data, issues);
+				if (data == null) continue;
+				checker.check(data, issues);
+				String supertype = nestsUnloaded && unloadedUses.isEmpty() ? checker.missingSupertype(data, nestedOnly) : null;
+				if (supertype != null) {
+					unloadedUses.add(name.substring(0, name.length() - ".class".length()).replace('/', '.') + " -> needs class "
+							+ supertype.replace('/', '.') + " of " + unloaded.get(packageOf(supertype)) + NESTED);
+				}
 			}
 			if (!unloaded.isEmpty()) unloadedUses(mod, archive, overlay, unloaded, exists, unloadedUses);
 		} catch (ArchiveException e) {
