@@ -6,6 +6,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.jspecify.annotations.Nullable;
 
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
@@ -23,7 +24,9 @@ import net.minecraft.world.level.block.state.BlockState;
  * this client makes the block's breaking particles (whose sprite Forge sets again in {@code TerrainParticle.updateSprite})
  * and a block marker of it, and shows the screen effect inside it: the block is put at the player's eye on this client
  * only, at the end of each client tick until the effect asked, and taken away at the start of the next, before the
- * player moves (a block there would push them out), so only the frames drawn between have it.
+ * player moves (a block there would push them out), so only the frames drawn between have it. Where the effect never
+ * asked, what the check met is logged as the game stops: how often the block was put there, and whether the effect asked
+ * the model's sprite without the level (the game's own call, past Fabricated's).
  */
 final class ParticleSpriteCheck {
 	/** Client ticks the screen effect is tried for: 20 seconds. */
@@ -31,9 +34,11 @@ final class ParticleSpriteCheck {
 	private static final String SCREEN = "screen effect";
 	private static final Map<String, AtomicBoolean> LOGGED = Map.of(SCREEN, new AtomicBoolean(), "block marker", new AtomicBoolean(), "block particle",
 			new AtomicBoolean());
+	private static final AtomicBoolean SCREEN_WITHOUT_LEVEL = new AtomicBoolean();
 	// Client thread only.
 	private static boolean particlesMade;
 	private static int screenTicks;
+	private static int puts;
 	private static @Nullable BlockPos placed;
 	private static @Nullable BlockState replaced;
 
@@ -43,12 +48,23 @@ final class ParticleSpriteCheck {
 	static void register() {
 		ClientTickEvents.START_CLIENT_TICK.register(client -> takeAway(client.level));
 		ClientTickEvents.END_CLIENT_TICK.register(ParticleSpriteCheck::put);
+		ClientLifecycleEvents.CLIENT_STOPPING.register(client -> {
+			if (!LOGGED.get(SCREEN).get()) {
+				FrapiTestMod.LOGGER.warn("FABRICATED-TEST frapi screen effect not asked: the block put at the player's eye {} time(s), its sprite asked without the level {}",
+						puts, SCREEN_WITHOUT_LEVEL.get());
+			}
+		});
 	}
 
 	/** Called by the terrain block's model as it gives its level-aware particle material. */
 	static void asked(BlockState state, BlockPos pos) {
 		String asker = asker();
 		if (asker != null && !LOGGED.get(asker).getAndSet(true)) FrapiTestMod.LOGGER.info("FABRICATED-TEST frapi {} sprite OK ({} at {})", asker, state, pos);
+	}
+
+	/** Called by the terrain block's model as it gives its particle material without the level. */
+	static void askedWithoutLevel() {
+		if (!LOGGED.get(SCREEN).get() && !SCREEN_WITHOUT_LEVEL.get() && SCREEN.equals(asker())) SCREEN_WITHOUT_LEVEL.set(true);
 	}
 
 	/**
@@ -80,8 +96,9 @@ final class ParticleSpriteCheck {
 		if (LOGGED.get(SCREEN).get() || screenTicks++ >= SCREEN_TICKS) return;
 		BlockPos eye = BlockPos.containing(player.getEyePosition());
 		BlockState there = level.getBlockState(eye);
-		if (!there.isAir()) return;
-		level.setBlockAndUpdate(eye, terrain);
+		// Not where the player's chunk hasn't arrived yet.
+		if (!there.isAir() || !level.setBlockAndUpdate(eye, terrain)) return;
+		puts++;
 		placed = eye;
 		replaced = there;
 	}

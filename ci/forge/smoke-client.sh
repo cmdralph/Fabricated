@@ -295,7 +295,11 @@ elif [ -n "$extra" ] && [ -f "$extra/fabricated-testmod-frapi.jar" ]; then
 	check "FABRICATED-TEST frapi item hand OK" "fabric-renderer-api-v1 (with Fabric API): a Fabric item model's quads were drawn in the player's hand"
 	check "FABRICATED-TEST frapi item dropped OK" "fabric-renderer-api-v1 (with Fabric API): a Fabric item model's quads were drawn as a dropped item"
 	check "FABRICATED-TEST frapi item frame OK" "fabric-renderer-api-v1 (with Fabric API): a Fabric item model's quads were drawn in an item frame"
-	check "FABRICATED-TEST frapi screen effect sprite OK" "fabric-renderer-api-v1 (with Fabric API): the screen effect inside a Fabric block model showed its level-aware particle sprite (PART-4)"
+	# Forge 65 draws no block's screen effect: its patch submits it only where a listener cancelled Forge's event for it
+	# (RenderBlockScreenEffectEvent), where Forge 64's draws it unless one did, so no block shows one there.
+	if [ "$mc" != 26.2 ]; then
+		check "FABRICATED-TEST frapi screen effect sprite OK" "fabric-renderer-api-v1 (with Fabric API): the screen effect inside a Fabric block model showed its level-aware particle sprite (PART-4)"
+	fi
 	check "FABRICATED-TEST frapi block marker sprite OK" "fabric-renderer-api-v1 (with Fabric API): a block marker of a Fabric block model took its level-aware particle sprite (PART-4)"
 	check "FABRICATED-TEST frapi block particle sprite OK" "fabric-renderer-api-v1 (with Fabric API): a Fabric block model's breaking particles kept its level-aware particle sprite, which Forge sets again (PART-4)"
 	if [ "$mc" = 1.21.11 ]; then

@@ -188,6 +188,12 @@ public final class FrapiClientTestMod implements ClientModInitializer {
 			return super.particleMaterial(level, pos, state);
 		}
 
+		@Override
+		public Material.Baked particleMaterial() {
+			ParticleSpriteCheck.askedWithoutLevel();
+			return super.particleMaterial();
+		}
+
 		/**
 		 * Logs once that a moving block reached Fabric's renderer twice in one frame: the glowing falling block is drawn,
 		 * then drawn again for its outline, by Fabric's renderer, not from the model's parts (M2b).
