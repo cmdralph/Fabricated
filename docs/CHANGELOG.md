@@ -3,6 +3,37 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-04: A mixin's own field that the platform declares final (CORPUS-101), AppleSkin's tooltip mixin verified on Forge 47 (CORPUS-96), and the Forge 47 corpus's evidence read (CORPUS-87, CORPUS-93, CORPUS-97 to 99, CORPUS-102) (task 5)
+
+- **CORPUS-101** (`MixinRepairs.platformFinalFieldRepair`, new): with CORPUS-96 fixed, the Forge 47 corpus client got
+  past its entrypoints. It then stopped in its first resource reload with an `IllegalAccessError`. Porting Lib's
+  `ItemTransformMixin` declares `rightRotation`, the field it ports from Forge, and its setter writes it. Forge 47 declares
+  that field final. Mixin adds a mixin's field only where the target has none of that name and type, so the setter wrote
+  Forge's final field. Pre-flight now declares such a field (one the mixin writes outside its constructors) a mutable
+  shadow, so Mixin makes the platform's field writable. It applies on every platform, and reaches Forge 47 with the next
+  sync.
+- **Verified on Forge 47** (#271 merged, PR run 41747090265 and extended run 41747101353): CORPUS-96. Fabricated's report
+  on the corpus client lists no entrypoint failures, and its logs have no `ClassCircularityError` or `StackOverflowError`.
+  Its row moves to FINDINGS. CORPUS-87 is partly verified: AppleSkin's client entrypoint ran with no Mixin error. Its
+  first-tick check waits for CORPUS-101.
+- **Evidence read** from the same run's evidence step:
+  - CORPUS-97: Moonlight's Fabric bridge tests Forge-style recipe conditions through Fabric API's registered ones.
+    Forge 47's own check of `conditions` runs first.
+  - CORPUS-98, now P1: the loot modifier lists Forge 47 and Porting Lib fail on are Fabricated's own CORPUS-23 stub, with
+    NeoForge's never-condition and no `replace`. It replaced Farmer's Delight's, Supplementaries' and Porting Lib Base's
+    lists, so none of their loot modifiers applies.
+  - CORPUS-99: the oversized patterns are Create's 5 by 5 mechanical crafting recipes, and Create's mud mixing recipe
+    has a custom ingredient in its list.
+  - CORPUS-93: Forge 47's `renderComponentTooltip` gathers item-aware tooltip components itself.
+  - CORPUS-102 (new, P2): Forge 47 doesn't know Supplementaries' and Porting Lib's model loaders, so 29 of
+    Supplementaries' block models are missing.
+- **Forge (#274, open):** main synced into `forge`, with forge-shared's manifest mixin lists as on `forge-legacy`, an
+  evidence step for CORPUS-95 on Forge 64, and the FRAPI test mod's wrapped broken block twinned in its chunk section.
+  The "wrapper kept" check no longer waits for a server renewal, which a lagging integrated server missed on 26.2.
+- **Tests:** `MixinPreflightTest.aMixinsOwnFieldTheTargetDeclaresFinalIsMadeAMutableShadowWhereTheMixinWritesIt`
+  covers the repaired shape, and three it leaves alone: a target field that isn't final, a write only in a constructor,
+  and vanilla's class without the field. 485 core tests pass.
+
 ## 2026-11-03: Platform mods' static handlers for Fabric mods' methods on Forge 47 (CORPUS-87), AppleSkin's tooltip mixin circular again (CORPUS-96), the Forge corpus fixes of #268 and #271 verified (CORPUS-79, CORPUS-90, CORPUS-91, CORPUS-94), and the Forge corpus's next stops (CORPUS-95, CORPUS-97 to 100) (task 5)
 
 - **CORPUS-87** (`NativeModMixins`, new; `FabricClassTransforms.beforeMixin`): ImmediatelyFast's Forge side, which
