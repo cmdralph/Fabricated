@@ -71,8 +71,8 @@ public final class InstalledClasses implements ClassBytesSource {
 	private final List<Jar> jars;
 	private final Map<String, Optional<Jar>> owners = new ConcurrentHashMap<>();
 	private final Map<String, byte[]> read = new ConcurrentHashMap<>();
-	/** By target class, the members the jars' mixins add, keyed {@code name:desc} for fields and {@code name(desc)} for methods. */
-	private Map<String, Map<String, AddedMember>> added;
+	/** By target class, the members the jars' mixins add, keyed {@code name:desc} for fields and {@code name(desc)} for methods, with the mixins adding each. */
+	private Map<String, Map<String, List<AddedMember>>> added;
 
 	public InstalledClasses(List<Jar> jars) {
 		this.jars = List.copyOf(jars);
@@ -140,18 +140,31 @@ public final class InstalledClasses implements ClassBytesSource {
 	 * the screen. Built on the first call, from every mixin the jars list.
 	 */
 	public AddedMember addedMember(String target, String name, String desc, boolean field) {
-		Map<String, AddedMember> members = added().get(target);
+		Map<String, List<AddedMember>> members = added().get(target);
 		if (members == null) return null;
-		if (field || desc != null) return members.get(field ? name + ":" + desc : name + desc);
-		for (Map.Entry<String, AddedMember> e : members.entrySet()) {
-			if (e.getKey().startsWith(name + "(")) return e.getValue();
+		if (field || desc != null) {
+			List<AddedMember> adders = members.get(field ? name + ":" + desc : name + desc);
+			return adders == null ? null : adders.get(0);
+		}
+		for (Map.Entry<String, List<AddedMember>> e : members.entrySet()) {
+			if (e.getKey().startsWith(name + "(")) return e.getValue().get(0);
 		}
 		return null;
 	}
 
-	private synchronized Map<String, Map<String, AddedMember>> added() {
+	/**
+	 * Every mixin of the installed jars that adds a field of this name and descriptor to a class, in the jars' order
+	 * (a mixin's {@code @Unique} field among them: Mixin adds it under its name where nothing else has that name yet).
+	 */
+	public List<AddedMember> fieldAdders(String target, String name, String desc) {
+		Map<String, List<AddedMember>> members = added().get(target);
+		List<AddedMember> adders = members == null ? null : members.get(name + ":" + desc);
+		return adders == null ? List.of() : List.copyOf(adders);
+	}
+
+	private synchronized Map<String, Map<String, List<AddedMember>>> added() {
 		if (added != null) return added;
-		Map<String, Map<String, AddedMember>> index = new HashMap<>();
+		Map<String, Map<String, List<AddedMember>>> index = new HashMap<>();
 		for (Jar jar : jars) {
 			for (String mixin : jar.mixins().get()) {
 				ClassNode node = readMixin(jar, mixin);
@@ -167,8 +180,11 @@ public final class InstalledClasses implements ClassBytesSource {
 				}
 				AddedMember adder = new AddedMember(jar.owner(), mixin);
 				for (String target : mixinTargets(node)) {
-					Map<String, AddedMember> byKey = index.computeIfAbsent(target, t -> new HashMap<>());
-					for (String member : members) byKey.putIfAbsent(member, adder);
+					Map<String, List<AddedMember>> byKey = index.computeIfAbsent(target, t -> new HashMap<>());
+					for (String member : members) {
+						List<AddedMember> adders = byKey.computeIfAbsent(member, m -> new ArrayList<>());
+						if (!adders.contains(adder)) adders.add(adder);
+					}
 				}
 			}
 		}
