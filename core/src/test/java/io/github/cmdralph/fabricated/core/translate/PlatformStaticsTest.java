@@ -32,7 +32,10 @@ class PlatformStaticsTest {
 	private static final String BY_ID = "(Ljava/lang/String;)Ljava/lang/String;";
 	private static final String USER = "com/example/ForgeAbstraction";
 
-	/** Forge 64's shape: {@code interface LoadingModList { static String getModFileById(String id); private static LoadingModList get(); }}. */
+	/**
+	 * Forge 64's shape: {@code interface LoadingModList { static String getModFileById(String id); private static
+	 * LoadingModListImpl get(); }}, the accessor returning the implementation.
+	 */
 	private static byte[] interfaceList() {
 		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
 		cw.visit(Opcodes.V17, Opcodes.ACC_PUBLIC | Opcodes.ACC_INTERFACE | Opcodes.ACC_ABSTRACT, LIST, null, "java/lang/Object", null);
@@ -44,7 +47,7 @@ class PlatformStaticsTest {
 		mv.visitInsn(Opcodes.ARETURN);
 		mv.visitMaxs(0, 0);
 		mv.visitEnd();
-		mv = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "get", "()L" + LIST + ";", null, null);
+		mv = cw.visitMethod(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC, "get", "()L" + LIST + "Impl;", null, null);
 		mv.visitCode();
 		mv.visitInsn(Opcodes.ACONST_NULL);
 		mv.visitInsn(Opcodes.ARETURN);

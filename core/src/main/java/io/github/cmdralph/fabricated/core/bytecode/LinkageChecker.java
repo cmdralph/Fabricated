@@ -105,6 +105,32 @@ public final class LinkageChecker {
 		}
 	}
 
+	/**
+	 * The first supertype {@code missing} holds for of a class that loads on this side (not a mixin, nor client code on a
+	 * server), or null: the JVM can't define a class without its supertypes. Only its header is read unless one does.
+	 */
+	public String missingSupertype(byte[] classFile, Predicate<String> missing) {
+		String found;
+		try {
+			ClassReader header = new ClassReader(classFile);
+			found = header.getSuperName() != null && missing.test(header.getSuperName()) ? header.getSuperName() : null;
+			for (String itf : header.getInterfaces()) {
+				if (found == null && missing.test(itf)) found = itf;
+			}
+		} catch (RuntimeException e) {
+			return null; // check reports it
+		}
+		if (found == null) return null;
+		ClassNode node = new ClassNode();
+		try {
+			new ClassReader(classFile).accept(node, ClassReader.SKIP_FRAMES | ClassReader.SKIP_DEBUG);
+		} catch (RuntimeException | StackOverflowError e) {
+			return null;
+		}
+		if (isMixin(node) || !clientSide && (isClientOnly(node) || referencesClientCode(node))) return null;
+		return found;
+	}
+
 	/** @return whether the owner exists (or is not checked) */
 	private boolean checkClass(String from, String owner, Set<String> seen, List<Issue> out) {
 		if (owner == null || !isChecked.test(owner)) return true;

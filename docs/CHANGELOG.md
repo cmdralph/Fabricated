@@ -3,7 +3,7 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
-## 2026-11-04: Iris's particle hook on Forge 47 (IRIS-1), MixinConstraints' Forge abstraction on Forge 64 to 66 (PLUGIN-1), and malilib's set on Forge (task 5)
+## 2026-11-04: Iris's particle hook on Forge 47 (IRIS-1), MixinConstraints' Forge abstraction on Forge 64 to 66 (PLUGIN-1), malilib's set, Sodium and Essential on Forge, and mods extending a nested mod that isn't loading (CORPUS-89) (task 5)
 
 - **IRIS-1, the particle hook** (P1 for Iris's Fabric build on Forge 47; `main` #303): Iris redirects the read of
   `ParticleEngine.RENDER_ORDER` in `render`, the list vanilla's loop goes over, so that each of its passes renders the
@@ -15,19 +15,45 @@ One entry per working session, newest first: what changed, and how it was verifi
   `RENDER_ORDER` see the map's other keys after the list's elements, and the loop then goes over the types Iris picks.
   A pass that copies the list so keeps Forge mods' types, and a list of Iris's own leaves them out, as Iris treats a
   type added to the list on Fabric. The repair matches the shape (a static list a constructor orders a map field by,
-  that map's `keySet()` gone over in the method or the overload it calls), not Forge's names.
+  that map's `keySet()` gone over in the method or the overload it calls), not Forge's names. Forge 47's first run
+  after the sync (41807866185) still refused the hook: Forge 47 runs vanilla's code under its SRG names and its own
+  under theirs, so the overload (`render`) isn't named as vanilla's method (`m_107336_`). The repair now also takes
+  the method the platform deprecated vanilla's for (`main` #304).
 - **PLUGIN-1** (P0 for Flashback's Fabric build on Forge 64 to 66; `main` #303): MixinConstraints 1.0.8, which Flashback
   nests, calls `LoadingModList.get().getModFileById(id)` in its Forge abstraction, built for Forge 47. Forge 64 made
   `LoadingModList` an interface whose methods are static and whose `get()` is private, so the call can't link
   (`IncompatibleClassChangeError`), and MixinConstraints' mixin plugin stopped the game as Mixin selected Flashback's
   config. Decision: translation makes a Fabric mod's call of such a method through the accessor a call of the static
   method (`PlatformStatics`), in FML's packages only, and only where the code can't link as built. A receiver kept in
-  a local is left as it is.
+  a local is left as it is. The `forge` run on #303's sync (41807861551) still stopped Flashback on Forge 64 to 66:
+  Forge's private `get()` returns its implementation (`LoadingModListImpl`), not the interface the mod's call names,
+  and the repair required the two to match. It now takes the interface's private static `()` method of that name,
+  whatever it returns (`main` #304). Tests missed it because the test's interface returned itself from `get()`, as the
+  mod's call has it; it now returns an implementation class, as Forge's does.
 - **malilib, MiniHUD, Tweakeroo and Litematica on Forge** (`main` #303): their Fabric builds reached their worlds with
   every smoke check passing on Forge 47 and 61 to 66, in two extended runs in a row on each Forge branch (41790201492
   and 41796106172, 41790205318 and 41796109577), which makes their run a gate there (CI-1). Decision: the
   compatibility plan's refusal of malilib is lifted on Forge, so the plan no longer lists it, and the Forge branches'
   syncs of this change turn their run into a gate that loads them by default.
+- **Sodium and Essential on Forge** (`main` #304): Sodium's Fabric build (with Indium on Forge 47, with Iris's on 61 to
+  66) and both of Essential's launches reached their worlds with every smoke check passing on Forge 47 and 61 to 66, in
+  two extended runs in a row on each Forge branch (`forge` 41802636538 and 41807861551, `forge-legacy` 41802640600 and
+  41807866185), which makes their runs gates there (CI-1). Decision: their refusals are lifted on Forge (decision 3).
+  The plan keeps only Sodium's refused pair with Iris for NeoForge, and the Forge branches' syncs turn the runs into
+  gates that load them by default. Iris stays refused on Forge until Forge 47's run gates it with IRIS-1's fix, and
+  Flashback until its Forge 64 to 66 runs pass.
+- **ENTRY-4 and GROUP-2 verified** in the Forge branches' extended runs on #302's sync (`forge` 41802636538,
+  `forge-legacy` 41802640600), and moved to the fixed findings: Sodium and Iris reach their world on Forge 66, Sodium's
+  hook into the window's creation skipped with its warning, and Essential's second launch loads Essential on Forge 47
+  and 61 to 66, every smoke check passing. Iris's shader hook on Forge 47 applies there too; Iris stays refused by its
+  particle hook until the sync of #303 (IRIS-1).
+- **CORPUS-89** (P2 on every platform for a mod whose nested mod isn't loading): pre-flight disabled Magna on Forge
+  47, which Modern Industrialization nests without naming it a dependency, and Modern Industrialization loaded without
+  it, its entrypoint then throwing `ClassNotFoundException` for Magna's tool class its items extend. Disabling every
+  mod whose nested mod doesn't load would have taken Farmer's Delight and Create with Porting Lib's GUI utilities
+  (CORPUS-93). Decision: a mod is disabled with a nested mod that isn't loading only where one of its classes extends
+  or implements one of that mod's, which the game can't define without it; the report says which class needs which.
+  A mod extending a class of a mod it doesn't nest loads as before, as an optional integration guards such uses.
 - **Forge branches:** `forge` #298 and `forge-legacy` #299 sync `main` #302, and Forge's Mixin extension now hands a
   constructor's arguments to the one Forge moved its code into (IRIS-1's shader hook). The evidence steps were read
   and are removed.
