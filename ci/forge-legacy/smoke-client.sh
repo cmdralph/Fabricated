@@ -235,6 +235,9 @@ check "FABRICATED-FORGE-TEST constructor hook OK" "the test mod's @Inject at a c
 check "FABRICATED-FORGE-TEST constructor construction hook OK" "the test mod's @Inject just after Commands' constructor stores its dispatcher ran and saw it, shifted by 2 as Dripstone Fluid Lib's hook into Minecraft's constructor is (CORPUS-103)"
 check "FABRICATED-FORGE-TEST particles OK" "native fabric-particles-v1: the particle engine finds the test mod's factory, kept by the type's id as Forge keeps them, and its sprite provider holds its sprite in the particle atlas (PART-1), and the providers by the type's raw id, as Porting Lib's accessor reads them through the in-game mod's bridge, hold its factory (CORPUS-37)"
 check "FABRICATED-FORGE-TEST key binding OK" "native fabric-key-binding-api-v1: a key binding a Fabric mod registers from its client entrypoint is in the game's options, sorted after the game's, refused twice and once Forge's event added it, as upstream, and has the key the options file saved for it (KEYMAP-3)"
+check "FABRICATED-FORGE-TEST hud method start hook OK" "a Fabric mod's hook at the start of vanilla's HUD method, which Forge's GUI overrides, ran from Fabricated's seam where Forge's GUI starts its HUD drawing (HUD-4)"
+check "FABRICATED-FORGE-TEST hud method start hook cancels OK" "a Fabric mod's hook cancelling at the HUD method's start skipped Forge's HUD drawing, the end hook with it (HUD-4)"
+check "FABRICATED-FORGE-TEST hud method end hook OK" "a Fabric mod's hook at the end of vanilla's HUD method ran from Fabricated's seam where Forge's GUI ends its HUD drawing (HUD-4)"
 if [ -n "$extra" ]; then
 	check "FABRICATED-FORGE-TEST networking round trip OK" "fabric-networking-api-v1 (with Fabric API): a ping the client sends on a channel as it joins comes back from the integrated server with the server's answer"
 	check "FABRICATED-FORGE-TEST Fabric command registered OK" "fabric-command-api-v2 (with Fabric API): a command registered through CommandRegistrationCallback is in the integrated server's dispatcher (CTOR-4)"
@@ -247,7 +250,7 @@ if [ -n "$extra" ]; then
 	check "FABRICATED-FORGE-TEST colour providers OK" "fabric-rendering-v1 (with Fabric API): its colour provider registry finds grass's provider in Forge's block colours, and none for stone (COLOR-1)"
 	check "FABRICATED-FORGE-TEST model bake events OK" "fabric-model-loading-api-v1 (with Fabric API): a model loading plugin's before-bake and after-bake modifiers see the models baked, whose code Forge moved into an overload taking the sprite getter (MODEL-3)"
 	check "FABRICATED-FORGE-TEST screen mouse and key events OK" "fabric-screen-api-v1 (with Fabric API): a click and a key press on a screen, and their releases, ask ScreenMouseEvents and ScreenKeyboardEvents, whose hooks Forge's mouse and key lambdas take through bridges (LAMBDA-7)"
-	check "FABRICATED-FORGE-TEST hud render callback OK" "fabric-rendering-v1 (with Fabric API): HudRenderCallback fired from Forge's HUD drawing, which takes the place of vanilla's method upstream fires it from (HUD-2)"
+	check "FABRICATED-FORGE-TEST hud render callback OK" "fabric-rendering-v1 (with Fabric API): HudRenderCallback fired from upstream's hook at the end of vanilla's HUD method, pointed at Fabricated's seam where Forge's GUI ends its HUD drawing (HUD-2, HUD-4)"
 	check "FABRICATED-FORGE-TEST builtin resource pack enabled by default OK" "fabric-resource-loader-v0 (with Fabric API): a built-in pack a Fabric mod's client entrypoint registers as enabled by default is switched on, as upstream does once the options load, which on Forge is before the entrypoints (CORPUS-104)"
 fi
 # Fabric's renderer API (task 4, R5): the renderer test mod's blocks and item. Upstream's hooks miss Forge 47's chunk

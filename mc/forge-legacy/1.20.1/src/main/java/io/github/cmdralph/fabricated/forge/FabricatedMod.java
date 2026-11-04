@@ -14,7 +14,6 @@ import io.github.cmdralph.fabricated.forge.entity.SleepEvents;
 import io.github.cmdralph.fabricated.forge.fluid.FabricFluidType;
 import io.github.cmdralph.fabricated.forge.keymapping.KeyMappingBridge;
 import io.github.cmdralph.fabricated.forge.resource.FabricDefaultPacks;
-import io.github.cmdralph.fabricated.forge.rendering.HudRenderCallbackBridge;
 import io.github.cmdralph.fabricated.forge.transfer.TransferBridge;
 import io.github.cmdralph.fabricated.loader.FabricatedState;
 import io.github.cmdralph.fabricated.loader.ForgeLoaderHooks;
@@ -99,8 +98,6 @@ public final class FabricatedMod {
 		if (ours(state, "fabric-loot-tables-v1")) new LootTablesV1Init().onInitialize();
 		// Fabric mods' config screens in Forge's mod list, once their initializers ran.
 		if (!FMLLoader.getDist().isDedicatedServer()) ClientSupport.init(state);
-		// Fabric API's HUD callback, from Forge's HUD drawing (see HudRenderCallbackBridge).
-		if (!FMLLoader.getDist().isDedicatedServer() && ours(state, "fabric-rendering-v1")) HudRenderCallbackBridge.register();
 		// Fabric mods' key bindings, registered with Forge's key mapping event after the client entrypoints (KEYMAP-3).
 		if (!FMLLoader.getDist().isDedicatedServer() && ours(state, "fabric-key-binding-api-v1")) KeyMappingBridge.register(context.getModEventBus());
 		// Fabric mods' built-in packs enabled by default, once their initializers registered them (see FabricDefaultPacks).
