@@ -3,7 +3,7 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
-## 2026-11-04: Iris's particle hook on Forge 47 (IRIS-1) and MixinConstraints' Forge abstraction on Forge 64 to 66 (PLUGIN-1) (task 5)
+## 2026-11-04: Iris's particle hook on Forge 47 (IRIS-1), MixinConstraints' Forge abstraction on Forge 64 to 66 (PLUGIN-1), and malilib's set on Forge (task 5)
 
 - **IRIS-1, the particle hook** (P1 for Iris's Fabric build on Forge 47; `main` #303): Iris redirects the read of
   `ParticleEngine.RENDER_ORDER` in `render`, the list vanilla's loop goes over, so that each of its passes renders the
@@ -23,6 +23,11 @@ One entry per working session, newest first: what changed, and how it was verifi
   config. Decision: translation makes a Fabric mod's call of such a method through the accessor a call of the static
   method (`PlatformStatics`), in FML's packages only, and only where the code can't link as built. A receiver kept in
   a local is left as it is.
+- **malilib, MiniHUD, Tweakeroo and Litematica on Forge** (`main` #303): their Fabric builds reached their worlds with
+  every smoke check passing on Forge 47 and 61 to 66, in two extended runs in a row on each Forge branch (41790201492
+  and 41796106172, 41790205318 and 41796109577), which makes their run a gate there (CI-1). Decision: the
+  compatibility plan's refusal of malilib is lifted on Forge, so the plan no longer lists it, and the Forge branches'
+  syncs of this change turn their run into a gate that loads them by default.
 - **Forge branches:** `forge` #298 and `forge-legacy` #299 sync `main` #302, and Forge's Mixin extension now hands a
   constructor's arguments to the one Forge moved its code into (IRIS-1's shader hook). The evidence steps were read
   and are removed.
