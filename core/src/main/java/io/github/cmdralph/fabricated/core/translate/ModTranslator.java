@@ -655,7 +655,7 @@ public final class ModTranslator {
 			skip = withEnumExtensions(entry.config(), config, skip, ModIds.toNeoForgeId(candidate.id()), translated, entries, overlay, findings, enumEntries,
 					enumTargets);
 			skip = withLibraryBridges(entry.config(), config, skip, translated, entries, overlay, findings, ducks, adapted, implementors, servedAccessors);
-			overlay.putAll(repairs(preflight, relocated, entry.config(), config, refmap, skip, findings));
+			overlay.putAll(repairs(preflight, relocated, entry.config(), config, refmap, skip, translated, findings));
 			if (!override.ignorePreflight()) {
 				List<PreflightFinding> checked = new ArrayList<>(relocated.relocated(preflight.check(entry.config(), config, refmap, skip)));
 				// Their targets are library classes, which Mixin never applies them to: the generated classes stand in.
@@ -785,13 +785,27 @@ public final class ModTranslator {
 				+ " default as its super (SUPER-1)");
 	}
 
-	/** Pre-flight's repairs of a config's mixins, and its notes on them, with the mod's relocated MixinExtras names (MIXEXT-4). */
+	/**
+	 * Pre-flight's repairs of a config's mixins, and its notes on them, with the mod's relocated MixinExtras names (MIXEXT-4).
+	 * An interface mixin the repairs make an accessor mixin to Mixin no longer extends its targets ({@link AccessorShapedMixins},
+	 * CORPUS-96). {@code files}: the mixins before the repairs.
+	 */
 	private static Map<String, byte[]> repairs(MixinPreflight preflight, RelocatedMixinExtras relocated, String configName, MixinConfigFile config,
-			Refmap refmap, Set<String> skip, List<PreflightFinding> findings) {
+			Refmap refmap, Set<String> skip, FileView files, List<PreflightFinding> findings) throws ArchiveException {
 		int from = findings.size();
 		Map<String, byte[]> repaired = preflight.repairs(configName, config, refmap, skip, findings);
 		relocated.relocateFindings(findings, from);
-		return relocated.relocated(repaired);
+		Map<String, byte[]> out = new LinkedHashMap<>();
+		for (Map.Entry<String, byte[]> e : relocated.relocated(repaired).entrySet()) {
+			byte[] before = files.read(e.getKey());
+			AccessorShapedMixins.Result shaped = before == null ? null : AccessorShapedMixins.ofRepaired(before, e.getValue());
+			out.put(e.getKey(), shaped == null ? e.getValue() : shaped.bytes());
+			if (shaped != null && shaped.note() != null) {
+				String dotted = e.getKey().substring(0, e.getKey().length() - ".class".length()).replace('/', '.');
+				findings.add(new PreflightFinding(Severity.INFO, configName, dotted, shaped.note(), ""));
+			}
+		}
+		return out;
 	}
 
 	/**
@@ -843,7 +857,7 @@ public final class ModTranslator {
 			}
 			if (unlisted.isEmpty()) continue;
 			MixinConfigFile added = config.listing(unlisted);
-			overlay.putAll(repairs(preflight, relocated, e.getKey(), added, refmaps.get(e.getKey()), Set.of(), findings));
+			overlay.putAll(repairs(preflight, relocated, e.getKey(), added, refmaps.get(e.getKey()), Set.of(), files, findings));
 			if (!check) continue;
 			Map<String, Set<String>> handlers = new TreeMap<>();
 			for (PreflightFinding f : relocated.relocated(preflight.check(e.getKey(), added, refmaps.get(e.getKey()), Set.of()))) {
