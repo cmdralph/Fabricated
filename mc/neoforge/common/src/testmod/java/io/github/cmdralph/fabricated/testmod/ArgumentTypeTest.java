@@ -9,6 +9,7 @@ import com.mojang.brigadier.arguments.ArgumentType;
 
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
+import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.synchronization.ArgumentTypeInfo;
 import net.minecraft.commands.synchronization.ArgumentTypeInfos;
@@ -27,13 +28,19 @@ import net.neoforged.neoforge.event.RegisterCommandsEvent;
  * game doesn't know.
  *
  * <p>The module is passed through from Fabric API's jar, or another mod's, and the test mod compiles only against
- * Fabricated's own modules, so its registry is called by reflection, by the name Fabric mods call.
+ * Fabricated's own modules, so its registry is called by reflection, by the name Fabric mods call. Without it (Fabricated
+ * alone), the check is skipped.
  */
 public final class ArgumentTypeTest implements ModInitializer {
 	static final Identifier ID = Identifier.fromNamespaceAndPath("fabricated_testmod", "word");
+	private static final String MODULE = "fabric-command-api-v2";
 
 	@Override
 	public void onInitialize() {
+		if (!FabricLoader.getInstance().isModLoaded(MODULE)) {
+			TestMod.LOGGER.info("FABRICATED-TEST argument type SKIPPED: {} isn't loaded (Fabricated passes it through from Fabric API's jar)", MODULE);
+			return;
+		}
 		List<String> failed = new ArrayList<>();
 		try {
 			Class.forName("net.fabricmc.fabric.api.command.v2.ArgumentTypeRegistry")
@@ -52,7 +59,7 @@ public final class ArgumentTypeTest implements ModInitializer {
 			} catch (IllegalArgumentException e) {
 				missing.add("its class isn't known (" + e.getMessage() + ")");
 			}
-			TestMod.report("argument type", missing, "fabric-command-api-v2", Map.of());
+			TestMod.report("argument type", missing, MODULE, Map.of());
 		});
 	}
 
