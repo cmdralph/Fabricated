@@ -3,6 +3,30 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-04: The command an effect comes from in Fabric API's effect events (EFFECT-1), a Fabric hook into the client's constructor on Forge (ENTRY-3), and the difficult mods' first Forge runs (task 5)
+
+- **EFFECT-1** (P2; `main` #300, `forge` #298): Fabric API's effect events now tell their listeners which command gave
+  an effect, on NeoForge 21.11 and 26.x and on Forge 61 to 66. Upstream sets that in a hook into Brigadier, which both
+  platforms load without mixins. Decision: Fabricated sets it where vanilla's command execution runs each command,
+  which covers a player's, the console's, a function's and a command block's; a mod running a command through
+  Brigadier's own dispatcher still gets none, as `COMPATIBILITY.md` says. Verified in #300's run 41791646450 and #298's
+  run 41791151681; its row is in FINDINGS. Forge 47's Fabric API (0.92) has no effect events.
+- **The difficult mods on Forge** (`forge` #298, `forge-legacy` #299): extended runs now load the Fabric builds of
+  Sodium and Iris, malilib with MiniHUD, Tweakeroo and Litematica, Essential and Flashback on a Forge client, on
+  request. The first runs (41790201492, 41790205318): malilib's set reaches its world on all five Forge versions;
+  Essential's two launches on Forge 47; Flashback on Forge 61; Sodium on Forge 47 and 61. What stopped the others is
+  being fixed: Sodium as the Forge 64 to 66 clients start (ENTRY-3), Essential's second launch on Forge 61 to 66 (a
+  hook group pre-flight let in, GROUP-2), Flashback on Forge 64 to 66 (its mixin library, PLUGIN-1), and Iris on
+  Forge 47 (refused by pre-flight, IRIS-1). The compatibility plan still refuses them on Forge until a run gates them.
+- **ENTRY-3** (P0 for Sodium's Fabric build on Forge 64 to 66; `main` #301): Forge loads mods part way through the
+  client's constructor, where Fabric runs Fabric mods' entrypoints near its start, and Sodium's hook there read its
+  config before its initializer had loaded it. ENTRY-2's guard now also covers a Fabric mod's hook into the client's
+  constructor: one that throws before the entrypoints is skipped for that call, with a warning and a report line.
+  Sodium's first start's fullscreen default then stays as the game has it.
+- **CI:** under Sodium's renderer the Forge smoke runs check that renderer instead of Indigo's guard, and the test
+  mods' broken models throw only through that guard (Sodium's renderer has none, as on Fabric). Forge 47's run adds
+  Indium, which Fabric mods' block models need under Sodium 0.5 on Fabric too.
+
 ## 2026-11-04: Fabric mods' built-in packs enabled by default on Forge 47 (CORPUS-104), CORPUS-104 and PROVIDER-13 verified, and CORPUS-88 and CORPUS-112 closed (task 5)
 
 - **Verified:** CORPUS-104 on Forge 61 to 66, in extended run 41782561336 (#291). The test mod's built-in pack
