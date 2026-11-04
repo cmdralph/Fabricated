@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Random;
@@ -64,6 +65,10 @@ class NestedNeoForgeJarsTest {
 		assertArrayEquals(TestJars.emptyClass("net/caffeinemc/Renderer", "java/lang/Object"),
 				NestedNeoForgeJars.readClass(service, found.get(0).chain(), "net/caffeinemc/Renderer", ArchiveLimits.DEFAULTS));
 		assertNull(NestedNeoForgeJars.readClass(service, found.get(1).chain(), "net/caffeinemc/Renderer", ArchiveLimits.DEFAULTS));
+		// And its other files: Forge's Mixin reads a mod's mixin configs from its manifest (CORPUS-87).
+		assertTrue(new String(NestedNeoForgeJars.readFile(service, found.get(0).chain(), "META-INF/MANIFEST.MF", ArchiveLimits.DEFAULTS),
+				StandardCharsets.UTF_8).contains("Implementation-Version: 0.9.2+mc26.3"));
+		assertNull(NestedNeoForgeJars.readFile(service, found.get(1).chain(), "META-INF/MANIFEST.MF", ArchiveLimits.DEFAULTS));
 	}
 
 	/** Kotlin for Forge: its language provider nests Kotlin's libraries, which NeoForge loads above the game's mods. */

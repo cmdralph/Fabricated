@@ -265,6 +265,18 @@ Each mod's entrypoints run inside a guard that records mod id, entrypoint key, c
    the array's length as Fabric ASM does. The supplier's method stops being private so the helper can call it. An
    early riser doing anything else is reported and adds nothing. Fabricated's code follows Fabric ASM's
    documentation (its README), not its MPL-2.0 sources.
+9. **Platform mods' mixins into Fabric mods' classes** (`NativeModMixins`, CORPUS-87). A mod whose jar serves both
+   loaders can carry a mixin into another mod's class written for that mod's platform build: ImmediatelyFast's Forge
+   mixin of AppleSkin's `HUDOverlayHandler` has a static `@Inject` handler, as AppleSkin's Forge build declares
+   `drawExhaustionOverlay` static, where its Fabric build, which Fabricated translates, declares an instance method.
+   Mixin 0.8.5 (Forge 47) refuses a static handler for an instance target; later Mixins take it. Where the running
+   Mixin refuses it (`MixinCompat.exactStaticInjects`), the pipeline reads the mixins the platform's mods list (on
+   Forge, each jar's manifest `MixinConfigs`) and picks the static `@Inject` handlers of the mixins whose every target
+   is a Fabric mod's class, where every method the handler names exactly is an instance method. As Mixin reads such a
+   mixin through the platform's transformers, the handler is made an instance one: its locals move one slot, with
+   `this` first in its full frames. That is the handler the mod's Fabric side declares, and a static method never
+   reads `this`. A handler the mixin calls itself, one Mixin finds through the mod's refmap, one without code or a
+   synchronized one is left as it is, and each is reported. The platform mod's jar is never changed.
 
 ---
 
