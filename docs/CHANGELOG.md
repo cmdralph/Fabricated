@@ -3,6 +3,45 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-04: Porting Lib's drop capture on Forge 47 (CORPUS-105), Fabric mods' own reads of fields Forge 47 retyped (CORPUS-107), and CORPUS-87, CORPUS-98, CORPUS-99, CORPUS-103, NET-11 and SELF-3 verified (task 5)
+
+- **Verified:** CORPUS-87, CORPUS-98, CORPUS-99 and CORPUS-103, in `forge-legacy`'s extended run 41762493256 (#281,
+  main synced in). The Forge 47 corpus client got past its first resource reload and its first tick, with no Mixin
+  error for ImmediatelyFast's AppleSkin mixin, and created its world. The corpus server read Farmer's Delight's and
+  Supplementaries' loot modifier lists, and parsed its recipes but two of Supplementaries' that hold Farmer's Delight's
+  `tool_action` ingredient (now CORPUS-106). NET-11, in that run and #281's PR run 41763286950: the test mod's
+  ingredients come back from the network as they went. SELF-3, in #282's PR run 41763450011: the Forge 26.3 client
+  with Fabric API drew a falling Fabric block model as a moving block. Their rows move to FINDINGS.
+- **CORPUS-105** (new, P0; `forge-legacy`'s `LivingEntityDropCaptureMixin`, in #283): the corpus client's integrated
+  server then crashed at the first mob death. Porting Lib ports Forge's drop capture to Fabric under Forge's names, so
+  on Forge its hooks use Forge's capture, and Forge 47 takes the drops for its own drops event before Porting Lib's hook
+  at the method's return, which found none and threw. Forge's event still fires first. Then the drops stay captured for
+  the hooks at the return, and Fabricated's own hook there, applied after the class's other mixins, adds what is still
+  captured to the level, as Forge's code did. Where a listener cancels Forge's event, the capture is left empty, so a
+  mod's hook still finds a collection and adds nothing, and the cancellation keeps its meaning. Undoing Forge's own
+  event instead would change what every Forge mod listening to it sees. The test mod adds a hook of Porting Lib's shape
+  and kills a pig (a server smoke check). UNVERIFIED on NeoForge 21.1, where Porting Lib for 1.21.1 has the same hooks.
+- **CORPUS-107** (new, P1; `PrivateFieldReads`, `RestoredFields.bridgedFields`, new): on the Forge 47 corpus client,
+  REI's default client plugin failed with `NoSuchFieldError` as it read a brewing mix's `from`, which Forge 47 keeps as
+  a holder, so none of its later displays registered. CORPUS-37's bridge, which returns the field's value as vanilla's
+  type, served only a mod's accessors of the field. A Fabric mod's own read of a field by a type the game's class
+  doesn't give it now calls the bridge, where Fabricated's in-game mod declares one for that field and type, as a read
+  of a private field calls the platform's getter (CORPUS-64). The bridges are read from the in-game mod's mixins, as
+  pre-flight already read them. Only Forge 47's in-game mod has bridges, so nothing changes elsewhere; the forge-legacy
+  sync brings it there.
+- **New findings:** CORPUS-106 (P2, UNVERIFIED: Farmer's Delight's `tool_action` ingredient, split from CORPUS-99),
+  CORPUS-108 (P2, UNVERIFIED: one of Artifacts' spawn eggs has no entity type as EMI, JEI and REI list its tab),
+  CORPUS-109 (P2, UNVERIFIED: the test mod's recipe conditions on the corpus client), CORPUS-110 (P3: the test mod's
+  fluid type check took Porting Lib's method of Forge's name; fix in #283) and CORPUS-111 (P3, UNVERIFIED: a null
+  collection of search stacks on the corpus client). #283's evidence step prints what each open one turns on.
+- **Merged:** #280 (`main`, CORPUS-103), #281 (`forge-legacy`: CORPUS-99, NET-11, Forge 47's constructor point and main
+  synced in) and #282 (`forge`, main synced in), each with its CI green. Open: #283 (`forge-legacy`, CORPUS-105 and
+  CORPUS-110).
+- **Tests:** `PrivateFieldReadsTest.aModsReadOfAFieldThePlatformRetypedCallsFabricatedsBridge` and
+  `aBridgedFieldIsReadAsItIsWithoutTheBridge`, and `RestoredFieldsTest` (new), which reads a bridge mixin of Forge 47's
+  shape from an in-game mod directory. The `forge-legacy` test mod's drop capture check (`ForgeDropCaptureTest`) and its
+  fluid type check's fix are in #283.
+
 ## 2026-11-04: Fabric mods' hooks into constructors on Forge 47 through Fabricated's own injection point (CORPUS-103), Fabric API's custom ingredients and Porting Lib's crafting size on Forge 47 (CORPUS-99, NET-11), and CORPUS-95, CORPUS-97 and CORPUS-101 verified (task 5)
 
 - **CORPUS-103** (`ConstructorPoint`, new; `ConstructorRepairs.constructorPointRepairs`; forge-legacy's

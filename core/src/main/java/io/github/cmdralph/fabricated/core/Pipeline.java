@@ -500,7 +500,8 @@ public final class Pipeline {
 			report.environment(in.descriptor().loaderName() + "'s code transformers", "pre-flight reads the game as they leave it (the spawn calls of "
 					+ coremods.redirectedClasses() + " classes through " + in.descriptor().loaderName() + "'s event hook, fields read through its getters)");
 		}
-		ClassBytesSource gameClasses = RestoredFields.over(coremods.over(in.gameClasses()), in.fabricatedFiles());
+		RestoredFields restored = RestoredFields.of(in.fabricatedFiles());
+		ClassBytesSource gameClasses = restored.over(coremods.over(in.gameClasses()));
 		ClassIndex game = new ClassIndex(gameClasses);
 		// Mixins into the Fabric mods' classes are checked too, against those classes as they will load: on 1.21.11
 		// remapped from intermediary names, as translating each mod remaps it.
@@ -511,7 +512,7 @@ public final class Pipeline {
 				in.runtimeMixinVersion(), in.mixinExtrasVersion(), in.lowestMixinBehavior(), in.fabricatedVersion() + " " + in.fabricatedBuild(), mappingTable, mappingsHash, game, in.untransformableClasses(),
 				// In the game's names: on 1.21.11 the loader reads the obfuscated jar through Mojang's mappings.
 				in.vanillaGame().classes(), installed, installed.isEmpty() ? game : new ClassIndex(gameClasses.or(installed)), unsupportedPackages(scan.candidates()),
-				in.descriptor());
+				in.descriptor(), restored.bridgedFields());
 		Rounds rounds = new Rounds();
 		try {
 			rounds.run(scan.candidates(), eligible, resolver(), new ModTranslator(env, in.cache(), config.limits()));
