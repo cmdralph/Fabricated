@@ -300,7 +300,7 @@ elif [ -n "$extra" ] && [ -f "$extra/fabricated-testmod-frapi.jar" ]; then
 	if [ "$mc" != 26.2 ]; then
 		check "FABRICATED-TEST frapi screen effect sprite OK" "fabric-renderer-api-v1 (with Fabric API): the screen effect inside a Fabric block model showed its level-aware particle sprite (PART-4)"
 		# Where it didn't: what the test met, which the renderer test mod logs as the game stops.
-		grep -m 3 -E "FABRICATED-TEST frapi screen effect (not asked|: )" "$log" | cut -c1-600 || true
+		grep -m 3 -E "FABRICATED-TEST frapi screen effect (not asked|: )" "$log" | cut -c1-1200 || true
 	fi
 	check "FABRICATED-TEST frapi block marker sprite OK" "fabric-renderer-api-v1 (with Fabric API): a block marker of a Fabric block model took its level-aware particle sprite (PART-4)"
 	check "FABRICATED-TEST frapi block particle sprite OK" "fabric-renderer-api-v1 (with Fabric API): a Fabric block model's breaking particles kept its level-aware particle sprite, which Forge sets again (PART-4)"

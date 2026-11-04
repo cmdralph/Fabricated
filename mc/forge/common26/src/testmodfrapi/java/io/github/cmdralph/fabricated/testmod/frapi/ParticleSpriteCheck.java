@@ -12,11 +12,14 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.client.renderer.culling.Frustum;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.BlockParticleOption;
 import net.minecraft.core.particles.ParticleTypes;
+import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.AABB;
 
 /**
  * The terrain block's Fabric model gives a level-aware particle material ({@code FabricBlockStateModel.particleMaterial}
@@ -49,8 +52,11 @@ public final class ParticleSpriteCheck {
 	/** Forge 66's extractions of the player's state, those with the block at the eye, and what its lookup found ({@code mixin/OverlayProbeMixin}). */
 	private static int extractions;
 	private static int extractionsWithBlock;
+	private static int lookups;
 	private static int overlaysFound;
 	private static @Nullable String firstOverlay;
+	/** What the first of Forge 66's lookups with the block at the eye tested there. */
+	private static @Nullable String lookupMet;
 
 	private ParticleSpriteCheck() {
 	}
@@ -62,8 +68,8 @@ public final class ParticleSpriteCheck {
 			if (!LOGGED.get(SCREEN).get()) {
 				FrapiTestMod.LOGGER.warn("FABRICATED-TEST frapi screen effect not asked: the block put at the player's eye {} time(s) in {} tick(s) tried,"
 						+ " first at tick {}, its sprite asked without the level {}; the player's state extracted {} time(s), {} with the block there,"
-						+ " Forge's lookup finding a block {} time(s) (first {})", puts, screenTicks, firstPut, SCREEN_WITHOUT_LEVEL.get(), extractions,
-						extractionsWithBlock, overlaysFound, firstOverlay);
+						+ " Forge's lookup run {} time(s), finding a block {} time(s) (first {}); the first with the block there: {}", puts, screenTicks,
+						firstPut, SCREEN_WITHOUT_LEVEL.get(), extractions, extractionsWithBlock, lookups, overlaysFound, firstOverlay, lookupMet);
 			}
 		});
 	}
@@ -91,6 +97,30 @@ public final class ParticleSpriteCheck {
 		ClientLevel level = Minecraft.getInstance().level;
 		BlockPos pos = placed;
 		if (level != null && pos != null && FrapiTestMod.terrainBlock != null && level.getBlockState(pos).is(FrapiTestMod.terrainBlock)) extractionsWithBlock++;
+	}
+
+	/**
+	 * Forge 66's lookup of the block the camera is in begins (render thread): the first time the block is at the eye,
+	 * what the lookup tests there, its bounds and whether the block blocks the view within them. Its methods taking those
+	 * bounds are 26.3's, reached reflectively as this class builds on Forge 64 and 65 too: test code only.
+	 */
+	public static void lookingUp(LocalPlayer player, Frustum frustum) {
+		lookups++;
+		BlockPos pos = placed;
+		if (lookupMet != null || pos == null) return;
+		BlockState state = player.level().getBlockState(pos);
+		String bounds;
+		String blocking;
+		try {
+			AABB near = ((AABB) Frustum.class.getMethod("getNearPlaneBounds").invoke(frustum)).move(player.getEyePosition());
+			bounds = near.toString();
+			blocking = String.valueOf(BlockState.class.getMethod("isViewBlocking", BlockGetter.class, BlockPos.class, AABB.class).invoke(state, player.level(), pos, near));
+		} catch (ReflectiveOperationException | ClassCastException e) {
+			bounds = e.toString();
+			blocking = "unknown";
+		}
+		lookupMet = "player without physics " + player.noPhysics + ", eye " + player.getEyePosition() + ", near plane " + bounds + "; at " + pos + " " + state
+				+ ", render shape " + state.getRenderShape() + ", view blocking there " + blocking;
 	}
 
 	/** What Forge 66's lookup of the block the camera is in returned: null, or the block and its position (render thread). */
