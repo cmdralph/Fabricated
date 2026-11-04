@@ -3485,6 +3485,85 @@ class MixinPreflightTest {
 	}
 
 	@Test
+	void anInjectionWhoseSelectorNamesVanillasDescriptorIsBridgedIntoTheMethodTheBuildGaveMoreParameters() throws Exception {
+		// SIG-3: Forge 61's LevelRenderer.extractBlockOutline also takes whether to draw the outline, and Fabric API's refmap
+		// names vanilla's descriptor, so its outline hook found no method where a selector naming the method alone is bridged.
+		String vanilla = "(Ljava/util/List;Ljava/lang/String;)V";
+		String forge = "(Ljava/util/List;Ljava/lang/String;Z)V";
+		ClassIndex game = new ClassIndex(Map.of(TARGET, withMethods("extractBlockOutline", forge))::get);
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Outline"));
+		for (boolean sugar : new boolean[] {false, true}) {
+			Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Outline", outlineMixin("extractBlockOutline" + vanilla, sugar)));
+			List<PreflightFinding> before = preflight(game, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+			assertTrue(before.getFirst().message().contains("targets method extractBlockOutline" + vanilla + ", which does not exist"), before.toString());
+			List<PreflightFinding> notes = new ArrayList<>();
+			byte[] repaired = preflight(game, mod::get, ClassBytesSource.EMPTY, false).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes)
+					.get("com/example/mixin/Outline.class");
+			assertNotNull(repaired, "sugar=" + sugar + ": " + notes);
+			assertTrue(notes.getFirst().message().contains(sugar ? "one more parameter, extractBlockOutline" + forge : "which this game build declares with more parameters"),
+					notes.toString());
+			ClassNode node = new ClassNode();
+			new ClassReader(repaired).accept(node, 0);
+			MethodNode bridge = node.methods.stream().filter(m -> m.name.equals("h$fabricated")).findFirst().orElseThrow();
+			assertEquals(List.of("extractBlockOutline" + forge), Annotations.value(Annotations.find(bridge, INJECT), "method"),
+					"the bridge's selector names the method this build declares");
+			mod.put("com/example/mixin/Outline", repaired);
+			List<PreflightFinding> after = preflight(game, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+			assertTrue(after.isEmpty(), "sugar=" + sugar + ": " + after);
+		}
+
+		// Two methods of the name could be the one meant: neither is guessed.
+		ClassIndex two = new ClassIndex(Map.of(TARGET, withMethods("extractBlockOutline", forge, "(Ljava/util/List;Ljava/lang/String;I)V"))::get);
+		Map<String, byte[]> mod = Map.of("com/example/mixin/Outline", outlineMixin("extractBlockOutline" + vanilla, false));
+		assertTrue(preflight(two, mod::get, ClassBytesSource.EMPTY, false).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty());
+	}
+
+	/** {@link #TARGET} with an empty private instance method {@code name} of each descriptor. */
+	private static byte[] withMethods(String name, String... descs) {
+		ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC, TARGET, null, "java/lang/Object", null);
+		for (String desc : descs) {
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, name, desc, null, null);
+			mv.visitCode();
+			mv.visitInsn(Opcodes.RETURN);
+			mv.visitMaxs(0, 0);
+			mv.visitEnd();
+		}
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	/**
+	 * A mixin {@code Outline} whose {@code @Inject} handler {@code h} at the return of {@code selector} takes a list, a
+	 * string and the callback info, and with {@code sugar} a {@code @Local} after it, as upstream's outline hook (and with
+	 * sugar, Ledger's fire hooks) does.
+	 */
+	private static byte[] outlineMixin(String selector, boolean sugar) {
+		return mixin("com/example/mixin/Outline", false, cw -> {
+			String desc = "(Ljava/util/List;Ljava/lang/String;" + CALLBACK_INFO + (sugar ? "Ljava/lang/Object;" : "") + ")V";
+			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "h", desc, null, null);
+			if (sugar) mv.visitParameterAnnotation(3, "Lcom/llamalad7/mixinextras/sugar/Local;", false).visitEnd();
+			AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
+			AnnotationVisitor methods = ann.visitArray("method");
+			methods.visit(null, selector);
+			methods.visitEnd();
+			AnnotationVisitor ats = ann.visitArray("at");
+			AnnotationVisitor at = ats.visitAnnotation(null, AT);
+			at.visit("value", "RETURN");
+			at.visitEnd();
+			ats.visitEnd();
+			ann.visitEnd();
+			mv.visitCode();
+			mv.visitVarInsn(Opcodes.ALOAD, 1);
+			mv.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/String", "valueOf", "(Ljava/lang/Object;)Ljava/lang/String;", false);
+			mv.visitInsn(Opcodes.POP);
+			mv.visitInsn(Opcodes.RETURN);
+			mv.visitMaxs(1, sugar ? 5 : 4);
+			mv.visitEnd();
+		});
+	}
+
+	@Test
 	void anInjectionIntoCodeNeoForgeSplitOffIsPointedAtTheMethodItIsIn() throws Exception {
 		// SPLIT-1: Carpet hooks Level.setBlock's neighbour updates, which NeoForge's build moved into markAndNotifyBlock.
 		String thing = "L" + TARGET + ";";
