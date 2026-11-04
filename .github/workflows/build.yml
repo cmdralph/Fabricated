@@ -869,8 +869,7 @@ jobs:
           grep -n -m 80 -E "FABRICATED-TEST frapi|[Ss]haderpack|shader pack|Iris|/(ERROR|FATAL)\]" "$RUNNER_TEMP/client-shaders/run/logs/latest.log" || true
       # The Fabric builds of Sodium and Iris, which the compatibility plan loads on NeoForge (task 5, decision 3), with
       # Fabric API and the renderer API test mod, on every version Modrinth has them for. A gate: every smoke check
-      # passes, both load (Iris's Fabric build but on 1.21.1, where pre-flight refuses its particle hook, which NeoForge's
-      # code doesn't make: docs/COMPATIBILITY.md) and Sodium's renderer draws Fabric's block models.
+      # passes, both load and Sodium's renderer draws Fabric's block models.
       - name: Client with the Fabric builds of Sodium and Iris
         if: ${{ matrix.part == 'mods' && env.EXTENDED == 'true' && !cancelled() && steps.build.outcome == 'success' }}
         env:
@@ -887,10 +886,8 @@ jobs:
           SMOKE_TIMEOUT=480 ci/neoforge/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-sodium-fabric" "$RUNNER_TEMP/extra-sodium-fabric" || status=$?
           grep -A300 "== " "$RUNNER_TEMP/client-sodium-fabric/run/logs/fabric-bridge-report.txt" || true
           grep -n -m 80 -E "FABRICATED-TEST frapi|Sodium|Iris|/(ERROR|FATAL)\]" "$RUNNER_TEMP/client-sodium-fabric/run/logs/latest.log" || true
-          mods="sodium iris"
-          [ "${{ matrix.target.minecraft }}" = "1.21.1" ] && mods="sodium"
           failed=0
-          ci/gate-mods.sh "$RUNNER_TEMP/client-sodium-fabric" "$status" "the Fabric builds of Sodium and Iris" $mods || failed=1
+          ci/gate-mods.sh "$RUNNER_TEMP/client-sodium-fabric" "$status" "the Fabric builds of Sodium and Iris" sodium iris || failed=1
           if grep -q "Fabric block models are drawn by the renderer net.caffeinemc.mods.sodium" "$RUNNER_TEMP/client-sodium-fabric/run/logs/latest.log"; then
             echo "PASS: Sodium's renderer draws Fabric's block models"
           else
@@ -899,10 +896,10 @@ jobs:
           fi
           exit "$failed"
       # The same Fabric builds with CI's shader pack (ci/neoforge/smoke-client.sh writes a minimal one): Iris's pipeline,
-      # with its extended vertex format, over Sodium's Fabric renderer and the Fabric models it meshes. Not on 1.21.1,
-      # where Iris's Fabric build doesn't load. Informational until it holds on two extended runs in a row (CI-1).
+      # with its extended vertex format, over Sodium's Fabric renderer and the Fabric models it meshes. Informational
+      # until it holds on two extended runs in a row (CI-1).
       - name: Client with the Fabric builds of Sodium and Iris and a shader pack (informational)
-        if: ${{ matrix.part == 'mods' && env.EXTENDED == 'true' && !cancelled() && steps.build.outcome == 'success' && matrix.target.minecraft != '1.21.1' }}
+        if: ${{ matrix.part == 'mods' && env.EXTENDED == 'true' && !cancelled() && steps.build.outcome == 'success' }}
         continue-on-error: true
         run: |
           if ! ls "$RUNNER_TEMP"/extra-sodium-fabric/iris*.jar >/dev/null 2>&1; then
@@ -1212,7 +1209,7 @@ jobs:
               digest "$log"
             fi
             # The addons run and the Fabric builds of Sodium and Iris: which Fabric mods loaded (the step's own listing
-            # of the jars is far up the log; on 1.21.1, whether Iris loads now that its particle hook is repaired, IRIS-1).
+            # of the jars is far up the log).
             if { [ "$run" = client-sodium-addons ] || [ "$run" = client-sodium-fabric ]; } && [ -f "$report" ]; then
               echo "-- loaded Fabric mods, without Fabric API's modules:"
               awk '/^== Loaded Fabric mods/ { show = 1; next } /^(==|$)/ { show = 0 } show && /^  [^ ]/ && $1 !~ /^fabric/ { print "  " $1 " " $2 }' "$report" | head -20

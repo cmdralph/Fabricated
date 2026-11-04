@@ -842,14 +842,13 @@ own hooks stay off then), and Sodium draws a Fabric block model from the parts F
 CI's informational 1.21.11 run with Sodium for NeoForge saw the test model and the multipart part with it meshed in
 Sodium's own section level (run 374; run 372, without the fallback, had no parts).
 
-**Their Fabric builds** (NeoForge, every version; on Forge Sodium's, every version, and Iris's refused until a Forge
-run gates it, `docs/FORGE.md`).
-Sodium's Fabric build loads by default, and Iris's with it on 1.21.11 and 26.x. CI runs them with Fabric API and the
-renderer test mod on every version Modrinth has them for, as a gate: the client reaches a world, every renderer check
-passes under them, and Sodium's renderer draws the Fabric block models. The same client with CI's minimal shader pack
-is informational. On 1.21.1 Iris's Fabric build is disabled before it runs, with the reason: pre-flight finds that
-its particle hook, a `@Redirect` of a read of `ParticleEngine.RENDER_ORDER`, has nothing to redirect in NeoForge
-21.1's `render`.
+**Their Fabric builds** (NeoForge and Forge, every version; on Forge, `docs/FORGE.md`).
+Sodium's Fabric build loads by default, and Iris's with it. CI runs them with Fabric API and the renderer test mod on
+every version Modrinth has them for, as a gate: the client reaches a world, every renderer check passes under them,
+and Sodium's renderer draws the Fabric block models. The same client with CI's minimal shader pack is informational.
+On 1.21.1 Iris's particle hook, a `@Redirect` of a read of `ParticleEngine.RENDER_ORDER` in `render`, would have
+nothing to redirect: NeoForge 21.1's `render` goes over the keys of its particles' map instead, as Forge 47's does, so
+pre-flight points the hook at that loop (IRIS-1).
 What Fabricated changed for them: pre-flight moves Sodium's quad hook to the constructor NeoForge 21.1's baking calls
 (CTOR-5), keeps Fabric API's fluid sprite hook where a sibling hook fails (STATE-1, which Sodium's water needs), pins
 Sodium's hook to the overload it takes beside Indigo's overwrite (OVERLOAD-2), maps Iris's access widener entries for
@@ -901,15 +900,14 @@ uses, and find each value where those mods look.
 Some mods' Fabric builds are refused on a loader where they can't run, or aren't verified yet; these facts are data
 (core's `compat-plan.json`). Such a build is disabled with the reason and what to do instead, and the mods that need it
 with it; `loadUnsupported` loads it anyway, for testing. A refusal is lifted on a loader once CI's run of that mod is a
-gate there (the owner's decision 3 of the beta pass): on NeoForge it is lifted for Sodium, Iris, Essential, malilib and
-Flashback, and on Forge for Sodium, Essential and malilib; on Forge Iris and Flashback stay refused, with "isn't
-supported on Forge" in the report.
+gate there (the owner's decision 3 of the beta pass): it is lifted for Sodium, Iris, Essential, malilib and Flashback,
+on NeoForge and Forge.
 
 A build for another Minecraft version that Fabricated can tell can't run is disabled too, with the build to install:
 on 26.x, one whose mixins name intermediary classes (`net.minecraft.class_1234`), the names obfuscated versions (1.21.11
 and older) run Fabric mods with, which 26.x doesn't have (OBF-1: Modrinth lists some 1.21.11 builds for 26.x too).
 
-- **Sodium and Iris**: loaded on NeoForge, and Sodium on Forge too, with the gaps in *Renderer mods* above.
+- **Sodium and Iris**: loaded on NeoForge and Forge, with the gaps in *Renderer mods* above.
 - **Essential** (`essential-container`, and `essential-loader`, which partner mods nest): its Fabric build is a loader.
   As the game starts it downloads Essential into the game directory's `essential` folder and adds it to Fabric
   Loader's internal mod list, class loader and Mixin's processor (read in Essential Loader's source), none of which
@@ -927,7 +925,8 @@ and older) run Fabric mods with, which 26.x doesn't have (OBF-1: Modrinth lists 
 - **Flashback**: its mixin into `MappedRegistry.freeze` starts Flashback on the first registry freeze, and its start-up
   registers a key binding through the client. NeoForge freezes the registries at bootstrap and again before the client
   exists, where Fabric API delays the freeze until after the initializers; Fabricated holds a Fabric mod's freeze
-  handlers in every freeze before the main entrypoints (REG-8). Loaded on NeoForge, gated on every version.
+  handlers in every freeze before the main entrypoints (REG-8). Loaded on NeoForge and Forge (Forge 61 to 66: Modrinth
+  has no Fabric build for 1.20.1), gated on every version.
 
 ### Mods that bring Fabric API or Fabric Loader
 
@@ -1265,7 +1264,6 @@ tracked:
 | A failed mod's other entrypoints, with `"onEntrypointFailure": "disable"` | all | skipped, as the setting says: a server configuration task the failed mod registered can then leave a player waiting to join, its client side never registered | ENTRY-1 (decided) |
 | Login queries (`ServerLoginNetworking`, `ClientLoginNetworking`) | all | NeoForge has no hook in the login phase; their receivers are never called (*Networking*) | decided, task 5 |
 | WTHIT's Fabric build, and the mixed renderer pairs | all | as listed in *Fabric builds Fabricated refuses* | — |
-| Iris's Fabric build | 1.21.1 | its particle hook needs a field read NeoForge 21.1's particle engine doesn't make | — |
 | What Sodium's Fabric build meshes the Fabric way: NeoForge's fluid renderers, section geometry from NeoForge mods, model data, position-aware light and culling | all | *Renderer mods* above; the owner chose to list the gaps rather than patch one mod | rendering-pipeline track |
 | Essential's automatic updates (its Fabric build) | all | Essential loads from the launch after its loader's download, as a regular mod | DOWNLOAD-1 |
 | A Fabric mod's hook into the game's options that needs its initializer (Bobby's larger render distance limit) | 1.21.1 | NeoForge 21.1 creates the options before it loads mods, where Fabric creates them after the entrypoints; such a hook that throws then is skipped for that call, with a warning and a report line (ENTRY-2) | — |
