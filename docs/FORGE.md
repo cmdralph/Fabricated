@@ -152,6 +152,11 @@ by the server runs (the colours, screens, key mappings and config screens by the
   refusal holds, and fires `AFTER_DAMAGE` with the damage it was dealt and the damage it took (Forge 61 to 66, with
   Fabric API, server and client; Fabric API 0.92.12 has no `AFTER_DAMAGE`). Forge 61's and 64's `hurtServer` drop the
   copy of the dealt damage upstream's hook reads, so the in-game mod fires the event there (DAMAGE-1).
+- **Effects:** an effect's events learn the command that gave it, and an effect given by code comes from none (Forge
+  61 to 66, with Fabric API, server and client; Fabric API 0.92.12 has no effect events). Upstream's hook is in
+  Brigadier, a library Forge loads without mixins, so the in-game mod sets the same context where vanilla's command
+  execution runs each command, a player's, the console's, a function's or a command block's (EFFECT-1). A command a mod
+  runs through Brigadier's own dispatcher gives none.
 - **Use and attack:** a player's uses of an item, a block and an entity, and its attacks on a block and an entity, ask
   `UseItemCallback`, `UseBlockCallback`, `UseEntityCallback`, `AttackBlockCallback` and `AttackEntityCallback` through
   Forge's own code, and a refusal holds (all five, with Fabric API, server and client). Upstream's hooks apply as they
@@ -387,8 +392,6 @@ instead. Unless a task is named, nothing is planned for them yet.
   outline hook (`LevelRenderer`) on Forge 61.
 - **Item storages in items (task 5).** A Fabric mod's item storage in an item (a backpack's) and Forge's item handler on
   a stack don't see each other; fluids in items do (all five).
-- **Effect events' command context (task 5).** The entity events module's effect events don't learn which command
-  applied an effect: upstream's hook is in Brigadier, a library Forge loads without mixins (Forge 61 to 66).
 - **Fabric mods' own HUD mixins (task 5).** A Fabric mod's mixin at one of vanilla's calls inside the HUD method
   (`Gui.render`), or at its end, applies but never runs: Forge 61 to 66 hand the drawing to their layers at its start,
   and Forge 47's GUI never calls it. Mixins at its start, and into the methods that draw each part, which Forge's
