@@ -9710,6 +9710,214 @@ class MixinPreflightTest {
 		assertTrue(missing.getFirst().message().contains("does not exist"), missing.getFirst().message());
 	}
 
+	private static final String GUI = "net/minecraft/client/gui/Gui";
+	private static final String CALLBACK = "Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;";
+	/** A handler taking the HUD method's parameters (in these tests two objects), then its callback info. */
+	private static final String HUD_HOOK = "(Ljava/lang/Object;Ljava/lang/Object;" + CALLBACK + ")V";
+	private static final String TWO = "(Ljava/lang/Object;Ljava/lang/Object;)V";
+
+	/**
+	 * A GUI as Forge 61 to 66 patch vanilla's ({@code bypass}): its HUD method hands the drawing to Forge's layers behind
+	 * {@code if (Boolean.valueOf(true))} and returns, before vanilla's calls, which the layers make themselves, but one.
+	 * {@code earlyReturn} returns before the patch's condition too; {@code tickCalls} calls the crosshair from another method.
+	 */
+	private static Map<String, byte[]> layeredGui(Path dir, boolean bypass, boolean earlyReturn, boolean tickCalls) throws Exception {
+		String gui = "package net.minecraft.client.gui; public class Gui { boolean loading; boolean hidden;"
+				+ " public void render(Object g, Object dt) {"
+				+ (earlyReturn ? " if (this.hidden) return;" : "")
+				+ "  if (!this.loading) {"
+				+ (bypass ? "   if (Boolean.valueOf(true)) { net.minecraftforge.client.Layers.beginRender(g, dt); return; }" : "")
+				+ "   if (!this.hidden) { this.renderCrosshair(g, dt); this.renderChat(g, dt); this.renderTitle(dt, g); this.renderUnlayered(g, dt); }"
+				+ "   this.renderStatus(g);"
+				+ "  } }"
+				+ " public void tick(Object g, Object dt) {" + (tickCalls ? " this.renderCrosshair(g, dt);" : "") + " }"
+				+ " public void renderCrosshair(Object g, Object dt) { }"
+				+ " public void renderChat(Object g, Object dt) { }"
+				+ " public void renderTitle(Object dt, Object g) { }"
+				+ " public void renderUnlayered(Object g, Object dt) { }"
+				+ " public void renderStatus(Object g) { } }";
+		String layers = "package net.minecraftforge.client; import java.util.List; import java.util.function.BiConsumer;"
+				+ " public final class Layers { static net.minecraft.client.gui.Gui gui;"
+				+ " public static void beginRender(Object g, Object dt) {"
+				+ "  List<BiConsumer<Object, Object>> layers = List.of(gui::renderCrosshair, (a, b) -> gui.renderChat(a, b), (a, b) -> gui.renderTitle(b, a),"
+				+ "   (a, b) -> gui.renderStatus(a));"
+				+ "  for (BiConsumer<Object, Object> layer : layers) layer.accept(g, dt); } }";
+		return TestSources.compile(dir, Map.of("net/minecraft/client/gui/Gui.java", gui, "net/minecraftforge/client/Layers.java", layers));
+	}
+
+	/** A mixin of {@link #GUI} whose one {@code @Inject} handler {@code hook} goes into {@code method}, at the point {@code at} writes, with what {@code more} adds. */
+	private static byte[] guiMixin(String name, String handlerDesc, String method, Consumer<AnnotationVisitor> at, Consumer<AnnotationVisitor> more) {
+		ClassWriter cw = new ClassWriter(0);
+		cw.visit(Opcodes.V21, Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT, name, null, "java/lang/Object", null);
+		AnnotationVisitor m = cw.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false);
+		AnnotationVisitor values = m.visitArray("value");
+		values.visit(null, Type.getObjectType(GUI));
+		values.visitEnd();
+		m.visitEnd();
+		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "hook", handlerDesc, null, null);
+		AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
+		AnnotationVisitor methods = ann.visitArray("method");
+		methods.visit(null, method);
+		methods.visitEnd();
+		AnnotationVisitor ats = ann.visitArray("at");
+		AnnotationVisitor point = ats.visitAnnotation(null, AT);
+		at.accept(point);
+		point.visitEnd();
+		ats.visitEnd();
+		if (more != null) more.accept(ann);
+		ann.visitEnd();
+		mv.visitCode();
+		mv.visitInsn(Opcodes.RETURN);
+		mv.visitMaxs(0, Type.getArgumentsAndReturnSizes(handlerDesc) >> 2);
+		mv.visitEnd();
+		cw.visitEnd();
+		return cw.toByteArray();
+	}
+
+	/** The {@code @Inject} of a mixin's {@code hook} handler. */
+	private static AnnotationNode hookInjector(byte[] mixin) {
+		ClassNode node = new ClassNode();
+		new ClassReader(mixin).accept(node, 0);
+		MethodNode handler = node.methods.stream().filter(mm -> mm.name.equals("hook")).findFirst().orElseThrow();
+		return Annotations.find(handler, INJECT);
+	}
+
+	/** The repairs of {@code mixin} (named Hook) on {@code game}, their notes in {@code notes}. */
+	private static Map<String, byte[]> hookRepairs(Map<String, byte[]> game, byte[] mixin, List<PreflightFinding> notes) throws Exception {
+		Map<String, byte[]> mod = Map.of("com/example/mixin/Hook", mixin);
+		return preflight(new ClassIndex(game::get), mod::get, ClassBytesSource.EMPTY, true)
+				.repairs("test.mixins.json", MixinConfigFile.parse(config(true, "Hook")), Refmap.EMPTY, Set.of(), notes);
+	}
+
+	private static Consumer<AnnotationVisitor> at(String point) {
+		return at -> at.visit("value", point);
+	}
+
+	private static Consumer<AnnotationVisitor> atCall(String method, String desc, String shift) {
+		return at -> {
+			at.visit("value", "INVOKE");
+			at.visit("target", "L" + GUI + ";" + method + desc);
+			if (shift != null) at.visitEnum("shift", "Lorg/spongepowered/asm/mixin/injection/At$Shift;", shift);
+		};
+	}
+
+	@Test
+	void anInjectionAtTheEndOfAMethodThePatchReturnsBeforeIsPointedAtItsReturns(@TempDir Path dir) throws Exception {
+		// HUD-4: malilib's HUD hook (MiniHUD, Tweakeroo and Litematica draw from it) is at the end of Gui.render, which Forge
+		// 61 to 66's patch returns before, handing the drawing to its layers: the hook moves to the method's returns.
+		Map<String, byte[]> forge = layeredGui(dir.resolve("forge"), true, false, false);
+		byte[] tail = guiMixin("com/example/mixin/Hook", HUD_HOOK, "render", at("TAIL"), ann -> {
+			AnnotationVisitor slices = ann.visitArray("slice");
+			AnnotationVisitor slice = slices.visitAnnotation(null, "Lorg/spongepowered/asm/mixin/injection/Slice;");
+			AnnotationVisitor from = slice.visitAnnotation("from", AT);
+			from.visit("value", "INVOKE");
+			from.visit("target", "L" + GUI + ";renderChat" + TWO);
+			from.visitEnd();
+			slice.visitEnd();
+			slices.visitEnd();
+		});
+		List<PreflightFinding> notes = new ArrayList<>();
+		Map<String, byte[]> repaired = hookRepairs(forge, tail, notes);
+		assertEquals(1, notes.size(), notes.toString());
+		assertTrue(notes.get(0).message().contains("returns before (it hands the method's work to net.minecraftforge.client.Layers.beginRender"), notes.toString());
+		AnnotationNode injector = hookInjector(repaired.get("com/example/mixin/Hook.class"));
+		assertEquals("RETURN", Annotations.value(Annotations.list(Annotations.value(injector, "at")).get(0), "value"));
+		assertNull(Annotations.value(injector, "slice"), "at the end, the slice only told Mixin where to look");
+		Map<String, byte[]> mod = Map.of("com/example/mixin/Hook", repaired.get("com/example/mixin/Hook.class"));
+		assertTrue(preflight(new ClassIndex(forge::get), mod::get, ClassBytesSource.EMPTY, true)
+				.check("test.mixins.json", MixinConfigFile.parse(config(true, "Hook")), Refmap.EMPTY, Set.of()).isEmpty());
+
+		// Vanilla's method ends where it returns.
+		assertTrue(hookRepairs(layeredGui(dir.resolve("vanilla"), false, false, false), tail, new ArrayList<>()).isEmpty());
+		// Another return still reached: at the returns, the hook would run where vanilla's end doesn't.
+		assertTrue(hookRepairs(layeredGui(dir.resolve("early"), true, true, false), tail, new ArrayList<>()).isEmpty());
+		// Locals differ at the patch's return (the capture is only softened).
+		byte[] capturing = guiMixin("com/example/mixin/Hook", HUD_HOOK, "render", at("TAIL"),
+				ann -> ann.visitEnum("locals", "Lorg/spongepowered/asm/mixin/injection/callback/LocalCapture;", "CAPTURE_FAILHARD"));
+		AnnotationNode softened = hookInjector(hookRepairs(forge, capturing, new ArrayList<>()).get("com/example/mixin/Hook.class"));
+		assertEquals("TAIL", Annotations.value(Annotations.list(Annotations.value(softened, "at")).get(0), "value"));
+	}
+
+	@Test
+	void anInjectionAtACallInCodeThePatchSkipsIsPointedAtTheCalledMethodWhereThePlatformMakesTheCall(@TempDir Path dir) throws Exception {
+		// HUD-4: a hook at one of vanilla's calls in Gui.render never ran on Forge 61 to 66, whose layers make the call.
+		Map<String, byte[]> forge = layeredGui(dir.resolve("forge"), true, false, false);
+		List<PreflightFinding> notes = new ArrayList<>();
+		Map<String, byte[]> repaired = hookRepairs(forge, guiMixin("com/example/mixin/Hook", HUD_HOOK, "render", atCall("renderCrosshair", TWO, null), null), notes);
+		assertEquals(1, notes.size(), notes.toString());
+		assertTrue(notes.get(0).message().contains("which net.minecraftforge.client.Layers makes itself; the injection point is pointed at the start of renderCrosshair"),
+				notes.toString());
+		AnnotationNode injector = hookInjector(repaired.get("com/example/mixin/Hook.class"));
+		assertEquals(List.of("renderCrosshair" + TWO), Annotations.value(injector, "method"));
+		AnnotationNode at = Annotations.list(Annotations.value(injector, "at")).get(0);
+		assertEquals("HEAD", Annotations.value(at, "value"));
+		assertNull(Annotations.value(at, "target"));
+		Map<String, byte[]> mod = Map.of("com/example/mixin/Hook", repaired.get("com/example/mixin/Hook.class"));
+		assertTrue(preflight(new ClassIndex(forge::get), mod::get, ClassBytesSource.EMPTY, true)
+				.check("test.mixins.json", MixinConfigFile.parse(config(true, "Hook")), Refmap.EMPTY, Set.of()).isEmpty());
+
+		// After the call (a layer's lambda makes it): the called method's returns.
+		AnnotationNode after = hookInjector(hookRepairs(forge, guiMixin("com/example/mixin/Hook", HUD_HOOK, "render", atCall("renderChat", TWO, "AFTER"), null),
+				new ArrayList<>()).get("com/example/mixin/Hook.class"));
+		assertEquals(List.of("renderChat" + TWO), Annotations.value(after, "method"));
+		AnnotationNode afterAt = Annotations.list(Annotations.value(after, "at")).get(0);
+		assertEquals("RETURN", Annotations.value(afterAt, "value"));
+		assertNull(Annotations.value(afterAt, "shift"));
+		// A handler that takes nothing but its callback info moves to a method taking other parameters.
+		AnnotationNode status = hookInjector(hookRepairs(forge, guiMixin("com/example/mixin/Hook", "(" + CALLBACK + ")V", "render",
+				atCall("renderStatus", "(Ljava/lang/Object;)V", null), null), new ArrayList<>()).get("com/example/mixin/Hook.class"));
+		assertEquals(List.of("renderStatus(Ljava/lang/Object;)V"), Annotations.value(status, "method"));
+
+		// Left as they are: the parameters there differ, or are passed in another order; no layer makes the call; cancelling
+		// skipped the rest of the HUD; the call is made elsewhere too; vanilla's code runs.
+		assertTrue(hookRepairs(forge, guiMixin("com/example/mixin/Hook", HUD_HOOK, "render", atCall("renderStatus", "(Ljava/lang/Object;)V", null), null),
+				new ArrayList<>()).isEmpty());
+		assertTrue(hookRepairs(forge, guiMixin("com/example/mixin/Hook", HUD_HOOK, "render", atCall("renderTitle", TWO, null), null), new ArrayList<>()).isEmpty());
+		assertTrue(hookRepairs(forge, guiMixin("com/example/mixin/Hook", HUD_HOOK, "render", atCall("renderUnlayered", TWO, null), null), new ArrayList<>()).isEmpty());
+		assertTrue(hookRepairs(forge, guiMixin("com/example/mixin/Hook", HUD_HOOK, "render", atCall("renderCrosshair", TWO, null), ann -> ann.visit("cancellable", true)),
+				new ArrayList<>()).isEmpty());
+		byte[] crosshair = guiMixin("com/example/mixin/Hook", HUD_HOOK, "render", atCall("renderCrosshair", TWO, null), null);
+		assertTrue(hookRepairs(layeredGui(dir.resolve("ticking"), true, false, true), crosshair, new ArrayList<>()).isEmpty());
+		assertTrue(hookRepairs(layeredGui(dir.resolve("vanilla"), false, false, false), crosshair, new ArrayList<>()).isEmpty());
+	}
+
+	@Test
+	void anInjectionAtTheStartOrEndOfAMethodThePlatformNeverCallsIsPointedAtFabricatedsSeam(@TempDir Path dir) throws Exception {
+		// HUD-4: Forge 47's GUI overrides Gui.render and never calls it; Fabricated's mixins add seams for its start and
+		// end, called where the override starts and ends.
+		String desc = "(Ljava/lang/Object;F)V";
+		String hook = "(Ljava/lang/Object;F" + CALLBACK + ")V";
+		String seams = " public void fabricated$start$render(Object g, float pt) { } public void fabricated$end$render(Object g, float pt) { }";
+		Function<Boolean, String> gui = withSeams -> "package net.minecraft.client.gui; public class Gui {"
+				+ " public void render(Object g, float pt) { this.renderHotbar(g); } public void renderHotbar(Object g) { }" + (withSeams ? seams : "") + " }";
+		Map<String, byte[]> forge = TestSources.compile(dir.resolve("forge"), Map.of("net/minecraft/client/gui/Gui.java", gui.apply(true)));
+
+		List<PreflightFinding> notes = new ArrayList<>();
+		byte[] head = guiMixin("com/example/mixin/Hook", hook, "render", at("HEAD"), ann -> ann.visit("cancellable", true));
+		AnnotationNode start = hookInjector(hookRepairs(forge, head, notes).get("com/example/mixin/Hook.class"));
+		assertEquals(1, notes.size(), notes.toString());
+		assertTrue(notes.get(0).message().contains("pointed at Fabricated's seam fabricated$start$render, which runs where that override starts"), notes.toString());
+		assertEquals(List.of("fabricated$start$render" + desc), Annotations.value(start, "method"));
+		assertEquals("HEAD", Annotations.value(Annotations.list(Annotations.value(start, "at")).get(0), "value"));
+		for (String end : List.of("TAIL", "RETURN")) {
+			Map<String, byte[]> repaired = hookRepairs(forge, guiMixin("com/example/mixin/Hook", hook, "render", at(end), null), new ArrayList<>());
+			AnnotationNode injector = hookInjector(repaired.get("com/example/mixin/Hook.class"));
+			assertEquals(List.of("fabricated$end$render" + desc), Annotations.value(injector, "method"), end);
+			assertEquals("RETURN", Annotations.value(Annotations.list(Annotations.value(injector, "at")).get(0), "value"), end);
+			Map<String, byte[]> mod = Map.of("com/example/mixin/Hook", repaired.get("com/example/mixin/Hook.class"));
+			assertTrue(preflight(new ClassIndex(forge::get), mod::get, ClassBytesSource.EMPTY, true)
+					.check("test.mixins.json", MixinConfigFile.parse(config(true, "Hook")), Refmap.EMPTY, Set.of()).isEmpty(), end);
+		}
+		// A call inside the method has no seam; nor has a method without them.
+		byte[] call = guiMixin("com/example/mixin/Hook", hook, "render", at -> {
+			at.visit("value", "INVOKE");
+			at.visit("target", "L" + GUI + ";renderHotbar(Ljava/lang/Object;)V");
+		}, null);
+		assertTrue(hookRepairs(forge, call, new ArrayList<>()).isEmpty());
+		Map<String, byte[]> vanilla = TestSources.compile(dir.resolve("vanilla"), Map.of("net/minecraft/client/gui/Gui.java", gui.apply(false)));
+		assertTrue(hookRepairs(vanilla, head, new ArrayList<>()).isEmpty());
+	}
+
 	/** Pre-flight with no installed jars, and missing targets fatal unless said otherwise. */
 	private static MixinPreflight preflight(ClassIndex game, ClassBytesSource mod, ClassBytesSource untransformable, boolean clientSide) {
 		return preflight(game, mod, untransformable, clientSide, true);

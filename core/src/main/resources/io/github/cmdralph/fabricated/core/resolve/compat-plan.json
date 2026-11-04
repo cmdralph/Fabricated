@@ -7,23 +7,12 @@
       }
     },
     "iris": {
-      "neoForgeBuildOnly": "Fabricated's CI runs Iris's Fabric build, with Sodium's, on NeoForge only, with the gaps docs/COMPATIBILITY.md lists; it isn't verified on this loader",
       "notWithNeoForge": {
         "sodium": "Iris's Fabric build hooks classes of Sodium's Fabric build (its fluid renderer) that Sodium for NeoForge doesn't have"
-      },
-      "runsOn": [
-        "NeoForge"
-      ]
+      }
     },
     "wthit": {
       "neoForgeBuildOnly": "WTHIT's Fabric build refuses to run on NeoForge: its own entrypoint throws when it finds Fancy Mod Loader (CI, run 357)"
-    },
-    "flashback": {
-      "neoForgeBuildOnly": "Flashback starts on the first registry freeze after the main initializers, where Fabricated holds NeoForge's freezes until then (REG-8); Fabricated's CI runs it on NeoForge only, so it isn't verified on this loader",
-      "suggestion": "Remove Flashback: its Fabric build isn't verified on this loader.",
-      "runsOn": [
-        "NeoForge"
-      ]
     }
   }
 }

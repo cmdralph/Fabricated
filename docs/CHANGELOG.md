@@ -3,6 +3,59 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-04: Fabric mods' own HUD hooks on Forge (HUD-4, task 5)
+
+- **HUD-4** (P1 on Forge clients for mods drawing on the HUD from their own mixins: malilib, and so MiniHUD, Tweakeroo
+  and Litematica): Forge 61 to 66's patch of vanilla's HUD method (`Gui.render`; on 26.1.2 `Gui.extractRenderState`,
+  on 26.2 and 26.3 `Hud.extractRenderState`) hands the drawing to Forge's layers behind `if (Boolean.valueOf(true))`
+  and returns before vanilla's calls, so a hook at the method's end or at one of those calls applied and never ran.
+  malilib's overlay hook is at the end on 1.21.11 and 26.1.2 (read in its sources). Forge 47's GUI overrides the method
+  and never calls it, so no hook in it ran there, malilib's included. Pre-flight's new repairs (`SkippedCode`): an
+  `@Inject` at the end of a method the platform's patch returns before moves to its returns, the patch's included,
+  where every other return still reached is one; an `@Inject` at a call of the target's own method in the code the
+  patch skips moves to that method's start (its returns, after the call), where the platform's code it hands the work
+  to makes the call and nothing else in the target does, for a handler that isn't cancellable and takes no locals and
+  either none of the method's parameters or all of them, passed on in order; and an `@Inject` at the start or end of a
+  method the platform never calls moves to the seam Fabricated's own mixins add for it (`fabricated$start$` and
+  `fabricated$end$` with the method's name), which they call where the platform's override starts and ends,
+  cancelling it where a hook at the start cancelled. Decision: other injectors into that code stay as they are and
+  never run; the Forge docs list them. The Forge syncs add Forge 47's seams and the test mods' checks.
+  `MixinPreflightTest.anInjectionAtTheEndOfAMethodThePatchReturnsBeforeIsPointedAtItsReturns`,
+  `...AtACallInCodeThePatchSkipsIsPointedAtTheCalledMethodWhereThePlatformMakesTheCall` and
+  `...AtTheStartOrEndOfAMethodThePlatformNeverCallsIsPointedAtFabricatedsSeam`; `RestoredFieldsTest` for the seams.
+  No test had a mixin into code a patch skips, and no Forge test mod hooked the HUD method itself.
+
+## 2026-11-04: Item storages in items on Forge 61 to 66 and NeoForge 1.21.1, Iris's and Flashback's Fabric builds on Forge, and PLUGIN-1, IRIS-1 and CORPUS-89 verified (task 5)
+
+- **Item storages in items** (`forge` #298, and NeoForge 1.21.1 here): a Fabric mod's bag or backpack
+  (`ItemStorage.ITEM`) and a Forge or NeoForge mod's item handler of a stack now see each other on Forge 61 to 66 and
+  NeoForge 1.21.1, as fluid storages in items already did; NeoForge 1.21.1 listed them as unsupported. Each side
+  answers for its own mods' items: the platform's handler for a Fabric mod's item comes from Fabric's lookup, a slot
+  holding the stack as the context, and Fabric's lookup falls back to the platform's handler for a platform mod's
+  item, which acts on a copy that replaces the item in the context, in the transaction. Decision: the platform's item
+  handler of a stack can't hand back another stack, as a fluid handler's container can, so a move a Fabric storage
+  would make by leaving another item, or a different count of it, in the container's place is aborted, simulated or
+  not: the items moved would be lost to a caller holding the container. Forge 47 has nothing to cross, as Fabric API
+  for 1.20.1 has no `ItemStorage.ITEM`. The test mods check both ways: the platform's code fills and empties a Fabric
+  mod's bag, its own stack showing each change, and Fabric code a platform mod's pouch in a slot, an aborted
+  transaction leaving it unchanged; a Fabric mod's sack that would take a stone by becoming another item is refused
+  it. With Forgified Fabric API on NeoForge 1.21.1, which bridges neither, those checks are skipped with its reason.
+- **Iris's and Flashback's Fabric builds on Forge:** Iris's reached its world beside Sodium and Indium on Forge 47,
+  every smoke check passing, in two extended runs in a row (`forge-legacy` 41812049541 and 41814777463), as it does on
+  Forge 61 to 66 in their gate; Flashback's did on Forge 61 to 66, on 64 to 66 in two runs in a row since PLUGIN-1's
+  fix (`forge` 41812044187 and 41814772147). Decision: their refusals are lifted on Forge (decision 3), so the
+  compatibility plan refuses only WTHIT's Fabric build and the mixed renderer pairs; the Forge branches' syncs of this
+  change turn their runs into gates that load them by default. The plan's `runsOn` stays, with no entry using it now,
+  for a build a gate runs on one loader before the other. Modrinth has no Fabric build of Flashback for 1.20.1.
+- **Iris's Fabric build on NeoForge 1.21.1:** it loads with Sodium's since IRIS-1's particle repair, as NeoForge 21.1's
+  `ParticleEngine.render` goes over its particles' map's keys as Forge 47's does, and the client passed every check in
+  two extended runs in a row (`main` 41808295452 and 41814836613). Its load is now part of the gate there, and the run
+  with CI's shader pack, informational, runs on 1.21.1 too.
+- **Verified:** PLUGIN-1, IRIS-1 and CORPUS-89 (in the corpus runs on #304 and its syncs, `main` 41808295452, `forge`
+  41812044187 and `forge-legacy` 41812049541, it disabled no mod wrongly), moved to FINDINGS. Essential's second
+  launch on Forge 66, which timed out once in 41812044187, passed in 41814772147; the Forge corpus summaries now print a
+  timed-out game's main threads from the dump CI takes before it stops the game, should it recur.
+
 ## 2026-11-04: Iris's particle hook on Forge 47 (IRIS-1), MixinConstraints' Forge abstraction on Forge 64 to 66 (PLUGIN-1), malilib's set, Sodium and Essential on Forge, and mods extending a nested mod that isn't loading (CORPUS-89) (task 5)
 
 - **IRIS-1, the particle hook** (P1 for Iris's Fabric build on Forge 47; `main` #303): Iris redirects the read of

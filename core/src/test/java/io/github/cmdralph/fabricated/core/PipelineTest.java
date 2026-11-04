@@ -425,16 +425,16 @@ class PipelineTest {
 	@Test
 	void reasonsAndSuggestionsNameThePlatformsLoader(@TempDir Path game) throws Exception {
 		Path mods = Files.createDirectories(game.resolve("mods"));
-		Path iris = TestJars.create().fabricModJson(TestJars.modJson("iris", "1.11.4", "\"name\":\"Iris\"")).write(mods.resolve("iris.jar"));
+		Path wthit = TestJars.create().fabricModJson(TestJars.modJson("wthit", "12.0.0", "\"name\":\"WTHIT\"")).write(mods.resolve("wthit.jar"));
 		Path needy = TestJars.create().fabricModJson(TestJars.modJson("needy", "1.0.0", "\"depends\":{\"absent-lib\":\"*\"}"))
 				.write(mods.resolve("needy.jar"));
 
-		Pipeline.Result result = Pipeline.run(withDescriptor(input(game, List.of(iris, needy), Namespace.OFFICIAL, Map.of(), null, List.of()),
+		Pipeline.Result result = Pipeline.run(withDescriptor(input(game, List.of(wthit, needy), Namespace.OFFICIAL, Map.of(), null, List.of()),
 				PlatformDescriptor.FORGE));
 
-		Report.ModRow row = result.report().mods().stream().filter(r -> r.id().equals("iris")).findFirst().orElseThrow();
+		Report.ModRow row = result.report().mods().stream().filter(r -> r.id().equals("wthit")).findFirst().orElseThrow();
 		assertTrue(row.detail().startsWith("its Fabric build isn't supported on Forge: "), row.detail());
-		assertEquals("Install Iris for Forge instead (from the same download page).", row.suggestion());
+		assertEquals("Install WTHIT for Forge instead (from the same download page).", row.suggestion());
 		Report.ModRow missing = result.report().mods().stream().filter(r -> r.id().equals("needy")).findFirst().orElseThrow();
 		assertEquals("Install absent-lib (a Fabric or Forge build) or remove needy.", missing.suggestion());
 		// The compatibility plan's own reasons are NeoForge's data; nothing else names NeoForge.
@@ -818,40 +818,34 @@ class PipelineTest {
 	}
 
 	/**
-	 * Iris's Fabric build loads on NeoForge, where CI runs it as a gate (the compatibility plan's {@code runsOn}); on
-	 * Forge, where none does yet, it is refused and the player is told to install its Forge build, unless the player
-	 * asks to load it anyway.
+	 * WTHIT's Fabric build, which refuses the loader itself, is refused with a mod needing it, and the player is told to
+	 * install its build for the loader, unless the player asks to load it anyway.
 	 */
 	@Test
-	void aRefusalLiftedOnOneLoaderStandsOnTheOthers(@TempDir Path game) throws Exception {
+	void aRefusedFabricBuildLoadsOnRequest(@TempDir Path game) throws Exception {
 		Path mods = Files.createDirectories(game.resolve("mods"));
-		Path iris = TestJars.create().fabricModJson(TestJars.modJson("iris", "1.11.4", "\"name\":\"Iris\"")).write(mods.resolve("iris.jar"));
-		Path addon = TestJars.create().fabricModJson(TestJars.modJson("iris-addon", "1.0.0", "\"depends\":{\"iris\":\"*\"}"))
+		Path wthit = TestJars.create().fabricModJson(TestJars.modJson("wthit", "12.0.0", "\"name\":\"WTHIT\"")).write(mods.resolve("wthit.jar"));
+		Path addon = TestJars.create().fabricModJson(TestJars.modJson("wthit-addon", "1.0.0", "\"depends\":{\"wthit\":\"*\"}"))
 				.write(mods.resolve("addon.jar"));
 
-		Pipeline.Result neoForge = Pipeline.run(input(game, List.of(iris, addon), Namespace.OFFICIAL, Map.of(), null, List.of()));
-		assertEquals(Set.of("iris", "iris-addon"), neoForge.mods().stream().map(m -> m.translated().candidate().id()).collect(Collectors.toSet()),
-				neoForge.report().render());
-		assertFalse(neoForge.report().render().contains("Unsupported mods loaded on request (loadUnsupported)"), neoForge.report().render());
-
-		Pipeline.Result result = Pipeline.run(withDescriptor(input(game, List.of(iris, addon), Namespace.OFFICIAL, Map.of(), null, List.of()),
+		Pipeline.Result result = Pipeline.run(withDescriptor(input(game, List.of(wthit, addon), Namespace.OFFICIAL, Map.of(), null, List.of()),
 				PlatformDescriptor.FORGE));
 		assertTrue(result.mods().isEmpty(), result.report().render());
-		Report.ModRow row = result.report().mods().stream().filter(r -> r.id().equals("iris")).findFirst().orElseThrow();
+		Report.ModRow row = result.report().mods().stream().filter(r -> r.id().equals("wthit")).findFirst().orElseThrow();
 		assertEquals(Report.Status.DISABLED, row.status());
 		assertTrue(row.detail().startsWith("its Fabric build isn't supported on Forge: "), row.detail());
-		assertEquals("Install Iris for Forge instead (from the same download page).", row.suggestion());
-		assertFalse(result.runtime().isModLoaded("iris"));
-		assertTrue(result.report().mods().stream().anyMatch(r -> r.id().equals("iris-addon") && r.status() == Report.Status.DISABLED),
+		assertEquals("Install WTHIT for Forge instead (from the same download page).", row.suggestion());
+		assertFalse(result.runtime().isModLoaded("wthit"));
+		assertTrue(result.report().mods().stream().anyMatch(r -> r.id().equals("wthit-addon") && r.status() == Report.Status.DISABLED),
 				result.report().render());
 
 		// A player testing support for it can load it anyway.
 		Files.createDirectories(game.resolve("config"));
-		Files.writeString(game.resolve("config").resolve(FabricatedConfig.FILE_NAME), "{\"schema\": 1, \"mods\": {\"iris\": {\"loadUnsupported\": true}}}");
-		Pipeline.Result forced = Pipeline.run(withDescriptor(input(game, List.of(iris, addon), Namespace.OFFICIAL, Map.of(), null, List.of()),
+		Files.writeString(game.resolve("config").resolve(FabricatedConfig.FILE_NAME), "{\"schema\": 1, \"mods\": {\"wthit\": {\"loadUnsupported\": true}}}");
+		Pipeline.Result forced = Pipeline.run(withDescriptor(input(game, List.of(wthit, addon), Namespace.OFFICIAL, Map.of(), null, List.of()),
 				PlatformDescriptor.FORGE));
 		Set<String> loaded = forced.mods().stream().map(m -> m.translated().candidate().id()).collect(Collectors.toSet());
-		assertEquals(Set.of("iris", "iris-addon"), loaded, forced.report().render());
+		assertEquals(Set.of("wthit", "wthit-addon"), loaded, forced.report().render());
 		assertTrue(forced.report().render().contains("Unsupported mods loaded on request (loadUnsupported)"), forced.report().render());
 	}
 
