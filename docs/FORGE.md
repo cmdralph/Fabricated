@@ -172,11 +172,17 @@ by the server runs (the colours, screens, key mappings and config screens by the
 - **HUD:** a Fabric HUD element attached after chat and one attached before the hotbar are drawn (Forge 61 to 66, with
   Fabric API, client run). Forge 61 to 66 draw the HUD as layers of their own, where upstream's hooks into vanilla's
   HUD method no longer run, so the in-game mod wraps each of Forge's layers with the Fabric elements attached to,
-  replacing or removing the same vanilla element, vanilla's conditions around it checked first (HUD-2). On Forge 61,
-  the deprecated `HudRenderCallback` fires after Forge's last layer, outside the loading screen. On Forge 47 it is
-  1.20.1's HUD API, and fires from Forge's `RenderGuiEvent.Post`, where Forge's GUI ends its HUD drawing (with Fabric
-  API, client run). Removing Fabric's `info_bar` element also keeps the bar from switching between the experience and
-  the locator bar on Forge 61 to 66, whose layer does both.
+  replacing or removing the same vanilla element, vanilla's conditions around it checked first (HUD-2). Removing
+  Fabric's `info_bar` element also keeps the bar from switching between the experience and the locator bar on Forge 61
+  to 66, whose layer does both. A Fabric mod's own hooks into the HUD method run where Forge's HUD does its work
+  (HUD-4; the test mod's, all five, client run). Forge 61 to 66's patch draws Forge's layers at the method's start and
+  returns before vanilla's code, so pre-flight points a hook at its end (malilib's, which MiniHUD, Tweakeroo and
+  Litematica draw from, on Forge 61 and 64) at its returns, and one at a call drawing a part of the HUD, which Forge's
+  layer makes itself, at the start of the called method. Forge 47's GUI overrides the method and never calls it, so
+  pre-flight points hooks at its start and end at Fabricated's seams, which run where Forge's GUI starts and ends its
+  HUD drawing, a hook cancelling at the start skipping it. Fabric API's own hook fires the deprecated
+  `HudRenderCallback` (1.20.1's HUD API on Forge 47) so, after Forge's last layer, outside the loading screen (Forge 61
+  and 47, with Fabric API, client run).
 - **Key mappings:** on all five Forge versions the key mapping module (the key binding module on 1.21.11 and 1.20.1) is
   native, with Fabric API's jar and without it (client runs). Upstream refuses a key mapping once the game's options
   exist, which Forge creates before it loads mods, so passed through, it failed every client entrypoint that registers
@@ -318,12 +324,11 @@ What else differs on Forge, for Fabric mods in general:
   it loads mods), and the system property FML sets for an empty log marker is removed before any Fabric mod runs
   (CORPUS-60). A Fabric mod's jar a mod proposes for the class path as the game runs isn't added, with a loading
   warning (DOWNLOAD-1); Essential, whose loader does that, loads from its download in the next launch, as on NeoForge.
-- **The difficult mods' Fabric builds** (task 5): malilib loads, and with MiniHUD, Tweakeroo and Litematica the client
-  reaches a world with every smoke check passing (all five, a gate in extended runs). Sodium's Fabric build loads too,
-  the renderer test mod's checks passing under it (with Indium on Forge 47), and Essential's, both of its launches
-  passing every smoke check: gates in extended runs. Iris and Flashback are still refused on Forge until their runs
-  gate them (Iris's passes on Forge 61 to 66 and is to hold on Forge 47, Flashback's passes on Forge 61); the same runs
-  load them on request (`loadUnsupported`) to show what stops them.
+- **The difficult mods' Fabric builds** (task 5): each loads by default and the client reaches a world with every
+  smoke check passing, a gate in extended runs: malilib with MiniHUD, Tweakeroo and Litematica; Sodium's, the renderer
+  test mod's checks passing under it (with Indium on Forge 47), and Iris's with it (IRIS-1's repairs on Forge 47); both
+  of Essential's launches; and Flashback's on Forge 61 to 66 (PLUGIN-1's repair on 64 to 66; Modrinth has no build for
+  1.20.1). The compatibility plan refuses none of them on Forge.
 - **Forge's coremods:** pre-flight reads the game's classes as Forge's own transformers leave them before Mixin
   applies any mod's mixins: Forge 47's coremods and Forge 61 to 66's `forge-transformers`. Each mob's `finalizeSpawn`
   call Forge changes is pointed at `ForgeEventFactory.onFinalizeSpawn` (on Forge 47 anywhere in the classes it lists;
@@ -400,10 +405,6 @@ instead. Unless a task is named, nothing is planned for them yet.
   inside a block (`ScreenEffectRenderer`, on Forge 66 `LevelExtractor`; Forge 61 to 66) and for block markers
   (`BlockMarker`, Forge 64 to 66), one of rendering-v1's GUI renderer hooks (`GuiRenderer.executeDraw`) and its block
   outline hook (`LevelRenderer`) on Forge 61.
-- **Fabric mods' own HUD mixins (task 5).** A Fabric mod's mixin at one of vanilla's calls inside the HUD method
-  (`Gui.render`), or at its end, applies but never runs: Forge 61 to 66 hand the drawing to their layers at its start,
-  and Forge 47's GUI never calls it. Mixins at its start, and into the methods that draw each part, which Forge's
-  layers call, still run. Fabric API's own HUD hooks are bridged (above); task 5 looks at mods' own.
 - **Forgified Fabric API (task 5).** Its 1.20.1 build nests Forgified Fabric Loader, whose packages are Fabric Loader's
   API, as Fabricated's own copy's are. Fabricated's in-game mod nests an empty jar under that loader's jar-in-jar
   identifier (`dev.su5ed.sinytra:fabric-loader`) at version 999.999.999, as Sinytra Connector does: Forge's jar-in-jar
@@ -441,6 +442,11 @@ instead. Unless a task is named, nothing is planned for them yet.
   pair is in vanilla's oxidation map, server run) and `TooltipComponentCallback`'s (rendering-v1, its shape in core's
   tests). Other injectors in an interface mixin, such as the recipe remainder's above, are lost there.
 - **Sound (Forge 47).** A Fabric sound instance's own audio stream (`FabricSoundInstance.getAudioStream`).
+- **Other hooks inside the HUD method.** A Fabric mod's mixin inside vanilla's HUD method (`Gui.render`; on Forge 64
+  `Gui.extractRenderState`, on 65 and 66 `Hud.extractRenderState`) that wraps or redirects one of vanilla's calls,
+  hooks in at a field, a constant or a jump, or at a call cancels, captures locals or takes arguments the called
+  method doesn't, applies but never runs: Forge 61 to 66 skip that code, and on Forge 47 only hooks at the method's
+  start and end run (HUD-4, above). Mixins into the methods that draw each part, which Forge's layers call, run.
 - **Data generation only.** Removing entries through a Fabric tag appender, Fabric's key sort orders in generated files,
   and, by version, the advancement builder's Fabric interface and vanilla's block loot provider limited to vanilla's
   blocks; a Fabric model provider also writes item definitions for other mods' block items.

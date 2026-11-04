@@ -4,7 +4,7 @@
   "package": "io.github.cmdralph.fabricated.forgetest.mixin",
   "compatibilityLevel": "JAVA_21",
   "mixins": ["BuiltInRegistriesMixin", "ForgeRecordedFramesMixin", "LivingEntitySelfMixin", "LootTableBuilderNamingMixin", "MinecraftServerCounterMixin", "MinecraftServerCounterShadowMixin", "MinecraftServerMixin", "MinecraftServerUniqueMixin", "MinecraftServerUniqueTwinMixin", "MobMultipartMixin"],
-  "client": ["McRuntimeTestMixin"],
+  "client": ["HudHooksMixin", "McRuntimeTestMixin"],
   "injectors": {
     "defaultRequire": 1
   }

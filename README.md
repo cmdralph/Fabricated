@@ -81,8 +81,9 @@ refusing a player's use or attack of an item, a block or an entity is heard, as 
 - **Screens:** Fabric's screen drawing events fire from Forge's screen rendering, and its key and mouse events from
   Forge's screen input hooks, where a Fabric mod's refusal holds.
 - **HUD:** Fabric HUD elements attached around a vanilla element, or replacing or removing it, are drawn from Forge's
-  own HUD layers, which take the place of vanilla's HUD method; on 1.21.11 `HudRenderCallback` fires after them
-  (HUD-2).
+  own HUD layers, which take the place of vanilla's HUD method (HUD-2). A Fabric mod's own hooks at that method's end,
+  or at a call there that one of Forge's layers makes, run where Forge's HUD does that work, as Fabric API's
+  `HudRenderCallback` does on 1.21.11 (HUD-4).
 - **Block breaking:** Fabric's block break events fire where Forge breaks a player's block, and a Fabric mod that
   refuses a break keeps the block.
 - **Beds:** Fabric's bed occupation and sleeping direction events run where Forge handles beds, and a block a Fabric
@@ -91,7 +92,7 @@ refusing a player's use or attack of an item, a block or an entity is heard, as 
   whose code drops what Fabric API's hook reads.
 - **Storages:** a Fabric mod's item and fluid storages are the item and fluid handlers of its block entity, which Forge
   mods' hoppers and pipes reach, and a Forge mod's handlers are storages to Fabric mods. A Forge handler moves items
-  only once Fabric's transaction commits. Tank items cross both ways too. A fluid carrying data doesn't cross.
+  only once Fabric's transaction commits. Tank items and bags cross both ways too. A fluid carrying data doesn't cross.
 - **Fabric's renderer API:** Fabric block models are drawn in the world, as moving blocks, with the breaking overlay
   and as an entity's block, and Fabric item models wherever items are drawn; on 1.21.11 Fabricated sends the three
   that Forge's code moved to Fabric's renderer itself. A Fabric model that throws while drawn fails alone: it is drawn
@@ -105,12 +106,9 @@ task that takes each on. The main ones:
 - **Rendering hooks Forge's code can't take** (task 5): a Fabric model's particle sprite for the screen effect inside
   a block and for block markers, and on 1.21.11 a GUI renderer hook and the block outline hook of
   `fabric-rendering-v1`.
-- **Item storages in items** (task 5): a Fabric mod's item storage in an item (a backpack's) and Forge's item handler on
-  a stack don't see each other; fluids in items do.
-- **Fabric mods' own HUD mixins** (task 5): a mixin at one of vanilla's calls inside the HUD method applies but never
-  runs, as Forge draws the HUD from its layers; Fabric API's HUD hooks are bridged (above).
-- **The effect events' command context** (task 5): the entity events module doesn't learn which command applied an
-  effect.
+- **Other hooks inside the HUD method:** a mixin there that wraps or redirects one of vanilla's calls, or hooks in
+  anywhere but the method's start, its end or a call Forge's layers make, applies but never runs, as Forge draws the
+  HUD from its layers (HUD-4).
 - **Forgified Fabric API** is refused, as is any jar carrying its own copy of Fabric Loader; task 5 tries letting both
   run.
 
