@@ -5,7 +5,7 @@ package net.minecraft;
  * {@code getKey(T)}, {@code method_10223} {@code get(ResourceLocation)}, {@code method_30517} {@code key()},
  * {@code method_40266} {@code getTag(TagKey)}, {@code method_31140} {@code getOrThrow(ResourceKey)}, {@code method_40269}
  * {@code createIntrusiveHolder(T)}, {@code method_10250} {@code containsKey(ResourceLocation)}, {@code method_40264}
- * {@code getHolder(ResourceKey)}.
+ * {@code getHolder(ResourceKey)}, {@code method_10206} {@code getId(T)} (its raw id; {@code IdMap}'s).
  */
 public interface class_2378<T> {
 	static <V, E extends V> E method_10230(class_2378<V> registry, class_2960 id, E entry) {
@@ -27,4 +27,6 @@ public interface class_2378<T> {
 	boolean method_10250(class_2960 id);
 
 	java.util.Optional<class_6880.class_6883<T>> method_40264(class_5321<T> key);
+
+	int method_10206(T entry);
 }

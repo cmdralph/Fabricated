@@ -191,6 +191,13 @@ by the server runs (the colours, screens, key mappings and config screens by the
   run; CORPUS-75). Fabric API kept the alias in vanilla's registry class, whose lookups Forge's wrapper replaces:
   Waystones' world generation names its renamed waystones by their old names, and its data pack, and with it the
   server, didn't load on Forge 64 and 65.
+- **Registry entry added events:** Fabric API's `RegistryEntryAddedCallback` fires for the registries Forge manages,
+  once an entry new to one is in it, with its raw id, whether a Fabric mod registered it through vanilla's API or a Forge
+  mod through Forge's (all five, with Fabric API; server run; CORPUS-108). Upstream fires it from vanilla's registry
+  method, which Forge's wrapper of those registries replaces, so it never fired for blocks, items, entity types and the
+  rest. Architectury gives a spawn egg its entity type from a listener on that event: Artifacts' egg kept none, and EMI's,
+  JEI's and REI's listings of its creative tab failed (EMI's own plugin with them). Where Forgified Fabric API provides
+  the module, its own copy fires the event.
 - **Recipe slots on the network (Forge 61 to 66):** an empty optional ingredient, a shaped recipe's empty slot, is sent
   as vanilla sends it, an empty item list, and read back as empty; every other ingredient is Forge's to send (server
   run; CORPUS-83). Forge's patch of vanilla's codec threw writing it, so with Fabric API, whose recipe sync sends the
