@@ -128,7 +128,10 @@ by the server runs (the colours, screens, key mappings and config screens by the
   Fabric API, client run).
 - **Commands:** a command registered through `CommandRegistrationCallback` is in the server's dispatcher (all five, with
   Fabric API, server and client). Fabric API's hook into `Commands`' constructor applies on Forge 61 to 66 at a point
-  pre-flight marks unsafe (CTOR-2), and on Forge 47, whose Mixin takes none, as a wrapper of the call (CTOR-4).
+  pre-flight marks unsafe (CTOR-2), and on Forge 47, whose Mixin takes none, at Fabricated's own injection point, which
+  finds what the hook's point finds and which Forge 47's Mixin takes anywhere after the constructor's `super()` call
+  (CORPUS-103, which replaced CTOR-4's wrapper of the call). So does a hook shifted past a construction there, as Dripstone
+  Fluid Lib's into `Minecraft`'s constructor is (the test mod's in `Commands`' sees the dispatcher just stored).
 - **Block breaking:** `PlayerBlockBreakEvents` fire as a player breaks a block, and a `BEFORE` refusal keeps the block
   (all five, with Fabric API, server and client). Forge's `destroyBlock` makes the calls upstream's hooks look for in a
   `removeBlock` of its own, so the in-game mod fires the events there (BREAK-1).

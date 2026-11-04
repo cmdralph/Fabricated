@@ -292,6 +292,8 @@ public final class FabricDependencyLocator extends AbstractJarFileModProvider im
 		FabricatedState state = new FabricatedState(result, logsDir, api);
 		FabricatedState.set(state);
 		ApiHolder.install(api);
+		// Pre-flight names it where a Fabric mod hooks into a constructor, which Mixin reads once the game's classes load.
+		if (!result.mods().isEmpty()) ConstructorInjectionPoint.register();
 		// Fabric mods' handlers in a registry's freeze, and their hooks into the game's options, wait for their main
 		// entrypoints, as on Fabric (REG-8, ENTRY-2): Forge's client creates the options before it loads mods.
 		if (devGameMod.isPresent() || addGameMod) EarlyFreeze.holdUntilMainEntrypoints();
