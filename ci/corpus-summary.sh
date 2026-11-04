@@ -36,7 +36,9 @@ for crash in "$dir"/crash-reports/*.txt; do
 done
 if [ -f "$log" ]; then
 	python3 -I "$root/ci/log-digest.py" "$log" || true
-	if grep -q -E 'Done \([0-9.]+s\)!|Successfully finished\.' "$log"; then
+	# A server's "Done", or mc-runtime-test's line as a client joins its world: "Successfully finished." where it runs no
+	# game tests, "Running game tests..." first where it does (Forge 47's clients), as smoke-client.sh reads it.
+	if grep -q -E 'Done \([0-9.]+s\)!|Successfully finished\.|Running game tests\.\.\.' "$log"; then
 		echo "-- the game started"
 	else
 		echo "-- the game didn't start, or the client reached no world; the log's last lines:"

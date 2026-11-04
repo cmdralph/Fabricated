@@ -21,6 +21,7 @@
     "CraftingHelperFabricConditionsMixin",
     "CraftingHelperFabricIngredientsMixin",
     "IngredientForgeNetworkMixin",
+    "LanguageHookVanillaReaderMixin",
     "ShapedRecipeUtilCraftingSizeMixin",
     "TagFileRemoveMixin",
     "BucketItemEarlyFluidMixin",
@@ -31,7 +32,8 @@
     "MobBucketItemBridgeMixin"
   ],
   "client": [
-    "ParticleEngineProvidersBridgeMixin"
+    "ParticleEngineProvidersBridgeMixin",
+    "ExtendedBlockModelDeserializerMixin"
   ],
   "injectors": {
     "defaultRequire": 1

@@ -214,6 +214,16 @@ if grep -qs "was empty after loading" "$log" client.out; then
 else
 	echo "PASS: vanilla's check of the built-in registries, which Fabric API moves to the client's start, passes over Forge's empty registries (REG-6)"
 fi
+# The test mod's two block models name loaders Forge lacks. One is in a Fabric mod's namespace: Forge leaves it to the
+# Fabric mods' own hooks into vanilla's model reader, as on Fabric, and the model loads. The other is in Forge's
+# namespace: Forge fails that model as without Fabricated (CORPUS-92).
+check "Model loader fabricated-forge-testmod:own_loader is neither Forge's nor a Forge mod's" "a block model naming a loader Forge lacks, in a Fabric mod's namespace, is left to the Fabric mods' model hooks, as on Fabric (CORPUS-92)"
+if grep -qs "Failed to load model fabricated-forge-testmod:models/block/fabric_loader.json" "$log" client.out; then
+	echo "FAIL: Forge failed the test mod's block model whose loader is in a Fabric mod's namespace (CORPUS-92)"; fail=1
+else
+	echo "PASS: the test mod's block model whose loader is in a Fabric mod's namespace loaded (CORPUS-92)"
+fi
+check "Model loader 'forge:fabricated_testmod_absent' not found" "a block model naming a loader Forge lacks, in Forge's namespace, fails as without Fabricated (CORPUS-92)"
 check "FABRICATED-FORGE-TEST constructor hook OK" "the test mod's @Inject at a call in Commands' constructor ran, which Forge 47's Mixin takes only at a return (CTOR-4)"
 check "FABRICATED-FORGE-TEST constructor construction hook OK" "the test mod's @Inject just after Commands' constructor stores its dispatcher ran and saw it, shifted by 2 as Dripstone Fluid Lib's hook into Minecraft's constructor is (CORPUS-103)"
 check "FABRICATED-FORGE-TEST particles OK" "native fabric-particles-v1: the particle engine finds the test mod's factory, kept by the type's id as Forge keeps them, and its sprite provider holds its sprite in the particle atlas (PART-1), and the providers by the type's raw id, as Porting Lib's accessor reads them through the in-game mod's bridge, hold its factory (CORPUS-37)"
