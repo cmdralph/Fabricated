@@ -23,7 +23,7 @@ on:
   workflow_dispatch:
     inputs:
       extended:
-        description: Also the mod corpus on a server and a client (informational), and the difficult mods' Fabric builds on a client (malilib's a gate)
+        description: Also the mod corpus on a server and a client (informational), and the difficult mods' Fabric builds on a client (gates)
         type: boolean
         default: false
 
@@ -285,9 +285,8 @@ jobs:
           if-no-files-found: error
 
   # The difficult mods' Fabric builds (task 5, decision 3), each on a client with Fabric API, with "extended", beside the
-  # version's own job. The compatibility plan loads them on NeoForge and refuses them on Forge until their run here gates
-  # them (CI-1). The runs of malilib, Sodium and Essential are gates; Iris and Flashback load on request
-  # (loadUnsupported), to read what stops them, informational where no gate runs them.
+  # version's own job. The compatibility plan loads them on NeoForge and Forge, as each run here held on two extended runs
+  # in a row (CI-1): every run is a gate.
   difficult:
     name: Forge ${{ matrix.target.minecraft }}, the difficult mods' Fabric builds
     runs-on: ubuntu-latest
@@ -329,7 +328,7 @@ jobs:
       # the game, to its innermost cause.
       # With Indium, Sodium 0.5's renderer of Fabric's API, which Fabric mods' block models need under Sodium on 1.20.1
       # (on Fabric too; Sodium has its own from 0.6). A gate, as on NeoForge: every smoke check passes, with a mod whose
-      # initializer throws stopping the game, and the two load. Without Iris, whose run on Forge 47 is still to hold.
+      # initializer throws stopping the game, and the two load. On their own, as Iris changes what Sodium hooks.
       - name: Sodium and Indium, with the renderer test mod (must pass)
         if: ${{ !cancelled() }}
         env:
@@ -344,12 +343,11 @@ jobs:
           SMOKE_TIMEOUT=480 ci/forge-legacy/smoke-client.sh "$MC" "$FORGE" "$RUNNER_TEMP/client-sodium-gate" "$dir" > "$RUNNER_TEMP/client-sodium-gate.out" 2>&1 || status=$?
           ci/forge-legacy/difficult-summary.sh "$RUNNER_TEMP/client-sodium-gate" "$status" "Sodium and Indium" "FABRICATED-TEST frapi|Sodium|Indium|sodium|indium" sodium indium
           ci/gate-mods.sh "$RUNNER_TEMP/client-sodium-gate" "$status" "Sodium and Indium" sodium indium
-      # Iris with them, loaded on request, to read whether its particle hook's repair holds on Forge 47 (IRIS-1).
-      - name: Sodium, Indium and Iris, with the renderer test mod
+      # Iris with them, its particle and shader hooks repaired for Forge 47 (IRIS-1). A gate the same way: the three load.
+      - name: Sodium, Indium and Iris, with the renderer test mod (must pass)
         if: ${{ !cancelled() }}
-        continue-on-error: true
         env:
-          FABRICATED_MODS: '{ "iris": { "loadUnsupported": true } }'
+          SMOKE_ON_ENTRYPOINT_FAILURE: ''
         run: |
           dir="$RUNNER_TEMP/extra-sodium"
           mkdir -p "$dir"
@@ -359,6 +357,7 @@ jobs:
           status=0
           SMOKE_TIMEOUT=480 ci/forge-legacy/smoke-client.sh "$MC" "$FORGE" "$RUNNER_TEMP/client-sodium" "$dir" > "$RUNNER_TEMP/client-sodium.out" 2>&1 || status=$?
           ci/forge-legacy/difficult-summary.sh "$RUNNER_TEMP/client-sodium" "$status" "Sodium and Iris" "FABRICATED-TEST frapi|Sodium|Iris|Indium|sodium|iris|indium" sodium iris indium
+          ci/gate-mods.sh "$RUNNER_TEMP/client-sodium" "$status" "Sodium, Indium and Iris" sodium iris indium
       # A gate, as on NeoForge: every smoke check passes, with a mod whose initializer throws stopping the game, and the
       # four load.
       - name: malilib, MiniHUD, Tweakeroo and Litematica (must pass)
@@ -406,11 +405,12 @@ jobs:
           ci/forge-legacy/difficult-summary.sh "$RUNNER_TEMP/client-essential" "$status" "Essential's second launch" "essential|Essential" essential-container essential-loader essential
           ci/gate-mods.sh "$RUNNER_TEMP/client-essential" "$status" "Essential's second launch" essential-container essential-loader essential || failed=1
           exit "$failed"
-      - name: Flashback
+      # A gate, as on NeoForge: every smoke check passes, with a mod whose initializer throws stopping the game, and
+      # Flashback loads.
+      - name: Flashback (must pass)
         if: ${{ !cancelled() }}
-        continue-on-error: true
         env:
-          FABRICATED_MODS: '{ "flashback": { "loadUnsupported": true } }'
+          SMOKE_ON_ENTRYPOINT_FAILURE: ''
         run: |
           dir="$RUNNER_TEMP/extra-flashback"
           mkdir -p "$dir"
@@ -420,3 +420,4 @@ jobs:
           status=0
           SMOKE_TIMEOUT=420 ci/forge-legacy/smoke-client.sh "$MC" "$FORGE" "$RUNNER_TEMP/client-flashback" "$dir" > "$RUNNER_TEMP/client-flashback.out" 2>&1 || status=$?
           ci/forge-legacy/difficult-summary.sh "$RUNNER_TEMP/client-flashback" "$status" "Flashback" "flashback|Flashback" flashback
+          ci/gate-mods.sh "$RUNNER_TEMP/client-flashback" "$status" "Flashback" flashback

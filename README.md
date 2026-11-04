@@ -85,8 +85,10 @@ checks.
   (BREW-1).
 - **Screens:** a click and a key press on a screen, and their releases, ask Fabric's screen input events, through
   Forge's patched input code.
-- **HUD:** `HudRenderCallback`, 1.20.1's HUD API, fires where Forge's GUI ends its HUD drawing, which takes the place
-  of vanilla's HUD method (HUD-2).
+- **HUD:** Forge's GUI draws the HUD in place of vanilla's HUD method, so a Fabric mod's own hooks at that method's
+  start and end run from Fabricated's seams where Forge's GUI starts and ends its HUD drawing, and a hook cancelling
+  at the start hides the HUD. Fabric API's `HudRenderCallback`, 1.20.1's HUD API, fires from upstream's hook so
+  (HUD-2, HUD-4).
 - **Model baking:** a model loading plugin's before-bake and after-bake modifiers see the models baked, in the bake
   method Forge 47 added.
 - **Fabric's renderer API:** Fabric block models are drawn in the world, as falling blocks, as blocks a piston moves
@@ -100,10 +102,8 @@ checks.
 [`docs/FORGE-LEGACY.md`](/docs/FORGE-LEGACY.md) lists what Fabric mods can't rely on here, under *Unsupported on
 Forge*, with the task that takes each on. The main ones:
 
-- **Item storages in items** (task 5): a Fabric mod's item storage in an item (a backpack's) and Forge's item handler on
-  a stack don't see each other; fluids in items do.
-- **Fabric mods' own HUD mixins** (task 5): a mixin into vanilla's HUD method applies but never runs, as Forge's GUI
-  draws the HUD without it; Fabric API's `HudRenderCallback` is bridged (above).
+- **Other hooks inside the HUD method:** a mixin into vanilla's HUD method anywhere but its start and its end applies
+  but never runs, as Forge's GUI draws the HUD without it (HUD-4).
 - **Injectors in interface mixins:** Forge 47's Mixin (0.8.5) applies none. Fabricated applies an `@Inject` at `HEAD`,
   `RETURN` or `TAIL` there itself (INTERFACE-1), so `TooltipComponentCallback` and the oxidizable blocks registry work;
   a Fabric item's stack-aware recipe remainder, whose injectors are others, is lost.

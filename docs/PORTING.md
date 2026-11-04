@@ -441,7 +441,8 @@ networking needs no `SimpleChannel` port: with Fabric API, a ping the client sen
 from the integrated server (run 40459233646). Fabric's storages reach Forge 47's old capabilities on blocks and fluid
 storages in items, both ways: a Forge handler, which moves at once or simulates, seen as a Fabric storage only simulates
 until the outermost transaction commits, and an item's handler and storage change the item by replacing it, as both
-sides' own do. Next: item storages in items. NeoForge needs no legacy branch.
+sides' own do. Item storages in items have nothing to cross to: Fabric API for 1.20.1 has no lookup for them
+(`ItemStorage.ITEM`). NeoForge needs no legacy branch.
 
 ### forge
 
@@ -487,7 +488,10 @@ and runs upstream's code on the advancement inside (upstream's hook, which casts
 a vanilla advancement's reward set through `MODIFY` is what the server loads on Forge 65 and 66 (with Fabric API).
 Fabric's storages reach Forge's capabilities on blocks and fluid storages in items on all four, both ways, as on Forge
 47; a fluid carrying data doesn't cross, as Fabric's variants carry components where Forge's stacks carry a tag, and a
-tank item's stack is changed in place through a patch of its components.
+tank item's stack is changed in place through a patch of its components. Item storages in items cross too (`forge`
+#298): Forge code puts items in a Fabric mod's bag through Forge's item handler of its stack, and Fabric code in a
+Forge mod's through `ItemStorage.ITEM`. Forge's handler of a stack can't hand back another stack, so a move that would
+leave another item, or a different count of it, in the bag's place doesn't happen through it.
 Fabric mods' fluids have Forge fluid types since #147 (a port of `main`'s): Forge throws "Mod fluids must override
 getFluidType" for any fluid without one, which every Fabric fluid is, so the in-game mod gives each family one,
 registered under its source's id and read from Fabric's attributes and the fluid's tags, and an entity moves through a

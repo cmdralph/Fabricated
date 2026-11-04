@@ -6,9 +6,9 @@ import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
 
 /**
  * The forge-legacy test mod's part for fabric-rendering-v1's {@code HudRenderCallback} (HUD-2; with Fabric API's jar
- * only): Forge 47 draws the HUD in place of vanilla's method, at whose end upstream fires the callback, and Fabricated
- * fires it from Forge's HUD drawing instead. Reported the first time it fires (once the world shows); the client smoke
- * reports it missing otherwise.
+ * only): Forge 47 draws the HUD in place of vanilla's method, at whose end upstream's hook fires the callback, and
+ * pre-flight points that hook at Fabricated's seam where Forge's HUD drawing ends (HUD-4). Reported the first time it
+ * fires (once the world shows); the client smoke reports it missing otherwise.
  */
 @Environment(EnvType.CLIENT)
 public final class ForgeHudClient {
