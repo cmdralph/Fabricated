@@ -2,6 +2,7 @@ package io.github.cmdralph.fabricated.core.mixin;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Deque;
@@ -186,12 +187,20 @@ final class MixinRepairs extends PreflightPart {
 					continue;
 				}
 				InstalledClasses.AddedMember shared = sharedFieldRepair(field, targets, ctx);
-				if (shared == null) continue;
+				if (shared != null) {
+					changed = true;
+					out.add(new PreflightFinding(Severity.INFO, configName, ctx.mixinDotted(), "@Shadow field " + field.name + " is one "
+							+ MixinPreflight.addedBy(shared) + " adds to " + targets.get(0).name.replace('/', '.') + ", and " + loader + "'s Mixin finds "
+							+ "a @Shadow field only among the target's own; the mixin declares the field as that mixin does, which Mixin merges with "
+							+ "it into one field, as Fabric's Mixin binds the shadow to it (CORPUS-74)", ""));
+					continue;
+				}
+				if (!platformFinalFieldRepair(node, field, targets)) continue;
 				changed = true;
-				out.add(new PreflightFinding(Severity.INFO, configName, ctx.mixinDotted(), "@Shadow field " + field.name + " is one "
-						+ MixinPreflight.addedBy(shared) + " adds to " + targets.get(0).name.replace('/', '.') + ", and " + loader + "'s Mixin finds "
-						+ "a @Shadow field only among the target's own; the mixin declares the field as that mixin does, which Mixin merges with "
-						+ "it into one field, as Fabric's Mixin binds the shadow to it (CORPUS-74)", ""));
+				out.add(new PreflightFinding(Severity.INFO, configName, ctx.mixinDotted(), "Field " + field.name + " is the mixin's own, and "
+						+ targets.get(0).name.replace('/', '.') + " already declares it final (added by " + loader + " or this Minecraft version): "
+						+ "Mixin merges the two, and the mixin's writes of the final field outside a constructor would fail; it is declared "
+						+ "@Shadow @Final @Mutable, so Mixin makes the field writable, as the mixin's own is on Fabric (CORPUS-101)", ""));
 			}
 			node.methods.removeAll(kept);
 			node.methods.addAll(bridges);
@@ -726,6 +735,52 @@ final class MixinRepairs extends PreflightPart {
 		field.access = declared.access;
 		field.signature = declared.signature;
 		return first;
+	}
+
+	/**
+	 * Declares a class mixin's own field {@code @Shadow @Final @Mutable} where its targets already declare it final
+	 * (CORPUS-101). Mixin adds a mixin's field only where its target has none of that name and descriptor
+	 * ({@code MixinApplicatorStandard.mergeNewFields}); where the target has one, the mixin's code uses the target's, and a
+	 * final one refuses the mixin's writes outside a constructor ({@code IllegalAccessError}). Porting Lib's
+	 * {@code ItemTransformMixin} adds {@code rightRotation}, the field it ports from Forge, to {@code ItemTransform}, and
+	 * writes it in {@code setRightRotation}; Forge 47 declares that field final, and the Forge 47 corpus client stopped
+	 * loading its models. As a shadow Mixin makes writable, the field stays the target's, as Mixin merges it anyway, and
+	 * the mixin's writes work, as they do on Fabric, where the field is the mixin's own. Only an instance field of a class
+	 * mixin without Mixin's annotations and not final itself, which each target declares as an instance field of the same
+	 * descriptor, final in one at least, and which the mixin writes outside its constructors (a write there is allowed).
+	 * Returns whether it changed the field.
+	 */
+	static boolean platformFinalFieldRepair(ClassNode mixin, FieldNode field, List<ClassNode> targets) {
+		if ((mixin.access & Opcodes.ACC_INTERFACE) != 0 || (field.access & (Opcodes.ACC_STATIC | Opcodes.ACC_FINAL)) != 0 || targets.isEmpty()) return false;
+		for (List<AnnotationNode> annotations : Arrays.asList(field.visibleAnnotations, field.invisibleAnnotations)) {
+			if (annotations != null && annotations.stream().anyMatch(a -> a.desc.startsWith("Lorg/spongepowered/asm/mixin/"))) return false;
+		}
+		boolean finalInTarget = false;
+		for (ClassNode target : targets) {
+			FieldNode theirs = target.fields.stream().filter(f -> f.name.equals(field.name) && f.desc.equals(field.desc)).findFirst().orElse(null);
+			if (theirs == null || (theirs.access & Opcodes.ACC_STATIC) != 0) return false;
+			finalInTarget |= (theirs.access & Opcodes.ACC_FINAL) != 0;
+		}
+		if (!finalInTarget || !writesOutsideConstructors(mixin, field)) return false;
+		if (field.visibleAnnotations == null) field.visibleAnnotations = new ArrayList<>();
+		field.visibleAnnotations.add(new AnnotationNode(MixinNames.SHADOW));
+		field.visibleAnnotations.add(new AnnotationNode(MixinNames.FINAL));
+		field.visibleAnnotations.add(new AnnotationNode(MixinNames.MUTABLE));
+		return true;
+	}
+
+	/** Whether a method of the mixin other than its constructors writes the mixin's instance field. */
+	private static boolean writesOutsideConstructors(ClassNode mixin, FieldNode field) {
+		for (MethodNode method : mixin.methods) {
+			if (method.name.equals("<init>") || method.instructions == null) continue;
+			for (AbstractInsnNode insn : method.instructions) {
+				if (insn instanceof FieldInsnNode put && put.getOpcode() == Opcodes.PUTFIELD && put.owner.equals(mixin.name)
+						&& put.name.equals(field.name) && put.desc.equals(field.desc)) {
+					return true;
+				}
+			}
+		}
+		return false;
 	}
 
 	/**

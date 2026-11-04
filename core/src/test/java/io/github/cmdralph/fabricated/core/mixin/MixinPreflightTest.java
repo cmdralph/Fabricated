@@ -375,6 +375,98 @@ class MixinPreflightTest {
 	}
 
 	/**
+	 * CORPUS-101: Porting Lib's {@code ItemTransformMixin} adds {@code public Vector3f rightRotation}, the field it ports
+	 * from Forge, to {@code ItemTransform}, and writes it in {@code setRightRotation}. Forge 47 declares that field final;
+	 * Mixin keeps the target's field for the mixin's, and the JVM refused the setter's write (an {@code IllegalAccessError}
+	 * as the Forge 47 corpus client loaded its models). The mixin's field is declared {@code @Shadow @Final @Mutable}, so
+	 * Mixin makes the target's writable. Nothing changes where the target's field isn't final, where the mixin writes it
+	 * only in its constructor (allowed), or where the target has no such field (vanilla's, as on Fabric).
+	 */
+	@Test
+	void aMixinsOwnFieldTheTargetDeclaresFinalIsMadeAMutableShadowWhereTheMixinWritesIt() throws Exception {
+		String target = "net/minecraft/client/renderer/block/model/ItemTransform";
+		String vector = "Lorg/joml/Vector3f;";
+		Function<Integer, byte[]> transform = access -> {
+			ClassWriter tw = new ClassWriter(0);
+			tw.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, target, null, "java/lang/Object", null);
+			tw.visitField(Opcodes.ACC_PUBLIC | Opcodes.ACC_FINAL, "f_111755_", vector, null, null).visitEnd();
+			if (access != null) tw.visitField(access, "rightRotation", vector, null, null).visitEnd();
+			tw.visitEnd();
+			return tw.toByteArray();
+		};
+		String ported = "com/example/mixin/ItemTransformMixin";
+		// public Vector3f rightRotation, with getRightRotation(), and setRightRotation(Vector3f) or a constructor writing it.
+		Function<String, byte[]> mixin = writer -> {
+			ClassWriter cw = new ClassWriter(0);
+			cw.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, ported, null, "java/lang/Object", null);
+			AnnotationVisitor m = cw.visitAnnotation("Lorg/spongepowered/asm/mixin/Mixin;", false);
+			AnnotationVisitor values = m.visitArray("value");
+			values.visit(null, Type.getObjectType(target));
+			values.visitEnd();
+			m.visitEnd();
+			cw.visitField(Opcodes.ACC_PUBLIC, "rightRotation", vector, null, null).visitEnd();
+			MethodVisitor get = cw.visitMethod(Opcodes.ACC_PUBLIC, "getRightRotation", "()" + vector, null, null);
+			get.visitCode();
+			get.visitVarInsn(Opcodes.ALOAD, 0);
+			get.visitFieldInsn(Opcodes.GETFIELD, ported, "rightRotation", vector);
+			get.visitInsn(Opcodes.ARETURN);
+			get.visitMaxs(1, 1);
+			get.visitEnd();
+			boolean constructor = writer.equals("<init>");
+			MethodVisitor set = cw.visitMethod(Opcodes.ACC_PUBLIC, writer, "(" + vector + ")V", null, null);
+			set.visitCode();
+			if (constructor) {
+				set.visitVarInsn(Opcodes.ALOAD, 0);
+				set.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false);
+			}
+			set.visitVarInsn(Opcodes.ALOAD, 0);
+			set.visitVarInsn(Opcodes.ALOAD, 1);
+			set.visitFieldInsn(Opcodes.PUTFIELD, ported, "rightRotation", vector);
+			set.visitInsn(Opcodes.RETURN);
+			set.visitMaxs(2, 2);
+			set.visitEnd();
+			cw.visitEnd();
+			return cw.toByteArray();
+		};
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "ItemTransformMixin"));
+		BiFunction<Integer, byte[], MixinPreflight> preflight = (access, mod) -> new MixinPreflight(
+				new ClassIndex(Map.of(target, transform.apply(access))::get), InstalledClasses.NONE,
+				Map.of(ported, mod)::get, ClassBytesSource.EMPTY, true, true, ClassBytesSource.EMPTY, "Forge");
+
+		// Forge 47: the target's field is final, the setter writes it; a mutable shadow, and nothing left to judge.
+		byte[] setter = mixin.apply("setRightRotation");
+		int forge = Opcodes.ACC_PUBLIC | Opcodes.ACC_FINAL;
+		List<PreflightFinding> notes = new ArrayList<>();
+		Map<String, byte[]> repaired = preflight.apply(forge, setter).repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), notes);
+		assertEquals(Set.of(ported + ".class"), repaired.keySet(), notes.toString());
+		assertEquals(1, notes.size(), notes.toString());
+		assertEquals(Severity.INFO, notes.getFirst().severity());
+		assertTrue(notes.getFirst().message().contains("Field rightRotation is the mixin's own, and " + target.replace('/', '.')
+				+ " already declares it final"), notes.getFirst().message());
+		assertTrue(notes.getFirst().message().contains("(CORPUS-101)"), notes.getFirst().message());
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired.get(ported + ".class")).accept(node, 0);
+		org.objectweb.asm.tree.FieldNode field = node.fields.getFirst();
+		assertEquals("rightRotation", field.name);
+		assertEquals(Opcodes.ACC_PUBLIC, field.access, "the mixin's own access, which Mixin checks against nothing on a shadow");
+		for (String annotation : List.of(SHADOW, "Lorg/spongepowered/asm/mixin/Final;", "Lorg/spongepowered/asm/mixin/Mutable;")) {
+			assertNotNull(Annotations.find(field, annotation), annotation);
+		}
+		assertTrue(preflight.apply(forge, repaired.get(ported + ".class")).check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty());
+
+		// The target's field not final, the mixin writing it only in its constructor, or no such field (vanilla, as on
+		// Fabric): left as it is, and nothing to judge.
+		for (Map.Entry<Integer, byte[]> unchanged : List.of(Map.entry(Opcodes.ACC_PUBLIC, setter), Map.entry(forge, mixin.apply("<init>")))) {
+			MixinPreflight check = preflight.apply(unchanged.getKey(), unchanged.getValue());
+			assertTrue(check.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty());
+			assertTrue(check.check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty());
+		}
+		MixinPreflight vanilla = preflight.apply(null, setter);
+		assertTrue(vanilla.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty());
+		assertTrue(vanilla.check("test.mixins.json", config, Refmap.EMPTY, Set.of()).isEmpty());
+	}
+
+	/**
 	 * An accessor named like a method its target already has replaces that method as Mixin merges it, as on Fabric
 	 * Loader, where a Fabric mod's own class is the same (Iris's accessor of Sodium's {@code enumClass}, named like
 	 * Sodium's {@code getEnumClass}). Not where the config requires {@code @Overwrite} on a method that replaces one
