@@ -3,6 +3,44 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-04: Fabric mods' hooks into constructors on Forge 47 through Fabricated's own injection point (CORPUS-103), Fabric API's custom ingredients and Porting Lib's crafting size on Forge 47 (CORPUS-99, NET-11), and CORPUS-95, CORPUS-97 and CORPUS-101 verified (task 5)
+
+- **CORPUS-103** (`ConstructorPoint`, new; `ConstructorRepairs.constructorPointRepairs`; forge-legacy's
+  `ConstructorInjectionPoint`, new): with CORPUS-101 fixed, the Forge 47 corpus client stopped later in its first
+  resource reload, with a `NullPointerException` in the particle engine's reload. Dripstone Fluid Lib registers its
+  particles' providers from a hook into `Minecraft`'s constructor, shifted 2 past the particle engine's construction,
+  and pre-flight had left that hook out: Forge 47's Mixin 0.8.5 takes an `@Inject` into a constructor only at a return,
+  and CTOR-4's wrapper took only a hook at a call. Its redirect of the particle reload then read sprite sets that were
+  never made. On 0.8.5, pre-flight now names Fabricated's injection point in place of such a point placed after the
+  constructor's `super()` call (a handler that isn't cancellable). Forge 47's loader registers that point with Mixin; it
+  finds what the original point finds, moved by its shift, and Mixin takes it anywhere in a constructor, as `unsafe`
+  does from 0.8.6. It replaces CTOR-4's MixinExtras wrapper, whose code (`constructorCallWrappers`,
+  `HandlerBridges.constructorCallWrapper`) is gone. On 0.8.7 such a point is marked `unsafe` as before, its shift now
+  counted. The forge-legacy test mod adds a hook of Dripstone's shape into `Commands`' constructor, which the server and
+  client smoke checks need, and CTOR-4's hook goes through the point too.
+- **CORPUS-99 and NET-11** (forge-legacy, with the next sync): read in Forge 47's, Fabric API's and Porting Lib's
+  sources. Forge's patch of `Ingredient.fromJson` reads every ingredient itself before Fabric API's hook can, and
+  Fabric API's hook of vanilla's object read then refused each custom ingredient, so every recipe naming one failed.
+  The in-game mod now reads an object with `fabric:type` as that custom ingredient where Forge reads an ingredient.
+  Porting Lib's crafting size never reached Forge's reader, which checks its own: a size given to Porting Lib is now
+  given to Forge, so Create's large mechanical crafting recipes can load. Forge and Fabric API both write -1 before an
+  ingredient of their own on the network, and Fabric API's reader took Forge's for its own (NET-11, new): Forge's types
+  are now read by Forge. The test mod reads a `fabric:any` alone and in an array, and sends both through a buffer and
+  back. Farmer's Delight's `tool_action` ingredient type stays open; the evidence step prints its classes.
+- **Verified:** CORPUS-95, in `forge`'s extended run 41755238645 (#278 merged): the Forge 64 corpus client created and
+  saved its world. CORPUS-97 and CORPUS-101, in `forge-legacy`'s extended run 41755235266 (#277 merged): no unknown
+  condition type on the corpus server, and the client's first resource reload read its item models. Their rows move to
+  FINDINGS. CORPUS-87's report section names the handler applied; its first tick waits for CORPUS-103.
+- **CORPUS-104** (new, P2, UNVERIFIED): the Forge 61 and 64 corpus clients can't read Artifacts' and Terralith's
+  conditional pack overlays ("Unknown resource condition key", Fabric API's own `fabric:not` among them), likely read
+  before Fabric API registers its condition types.
+- **Merged:** #277 (`forge-legacy`, CORPUS-97 and main synced in), #278 (`forge`, main synced in) and #279 (`main`,
+  CORPUS-98), each with its CI green.
+- **Tests:** `MixinPreflightTest.anInjectJustAfterAConstructionInAConstructorIsTakenWhereMixinTakesOnlyReturns` replaces
+  CTOR-4's wrapper test. It covers a hook shifted 2 past a construction, taken through the point on 0.8.5 and marked
+  unsafe on 0.8.7, and one at the `super()` call, left out on both. CTOR-2's test checks the point on 0.8.5. 487 core
+  tests pass.
+
 ## 2026-11-04: A mixin's own field that the platform declares final (CORPUS-101), two mixins' unique fields of one name on Forge (CORPUS-95), Fabric API's recipe conditions on Forge 47 (CORPUS-97), Fabric jars' loot modifier lists left as they are on Forge (CORPUS-98), AppleSkin's tooltip mixin verified on Forge 47 (CORPUS-96), and the Forge 47 corpus's evidence read (CORPUS-87, CORPUS-93, CORPUS-97 to 99, CORPUS-102) (task 5)
 
 - **CORPUS-98** (`PlatformDescriptor.readsNeoForgeLootModifiers`, new): the CORPUS-23 overlay turns off a Fabric jar's
