@@ -104,8 +104,9 @@ Forge*, with the task that takes each on. The main ones:
   a stack don't see each other; fluids in items do.
 - **Fabric mods' own HUD mixins** (task 5): a mixin into vanilla's HUD method applies but never runs, as Forge's GUI
   draws the HUD without it; Fabric API's `HudRenderCallback` is bridged (above).
-- **Injectors in interface mixins:** Forge 47's Mixin (0.8.5) applies none, so `TooltipComponentCallback`, the
-  oxidizable blocks registry and a Fabric item's stack-aware recipe remainder are lost.
+- **Injectors in interface mixins:** Forge 47's Mixin (0.8.5) applies none. Fabricated applies an `@Inject` at `HEAD`,
+  `RETURN` or `TAIL` there itself (INTERFACE-1), so `TooltipComponentCallback` and the oxidizable blocks registry work;
+  a Fabric item's stack-aware recipe remainder, whose injectors are others, is lost.
 - **Forgified Fabric API** is refused, as is any jar carrying its own copy of Fabric Loader; task 5 tries letting both
   run.
 

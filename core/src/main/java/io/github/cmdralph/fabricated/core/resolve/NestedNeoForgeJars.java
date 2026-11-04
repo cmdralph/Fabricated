@@ -113,18 +113,27 @@ public final class NestedNeoForgeJars {
 	 * @param chain the jar's {@link ModsToml#chain()}
 	 */
 	public static byte[] readClass(Path jar, List<String> chain, String internalName, ArchiveLimits limits) throws IOException {
+		return readFile(jar, chain, internalName + ".class", limits);
+	}
+
+	/**
+	 * A file of a nested jar {@link #read} found (its manifest, a mixin config), or {@code null} when it has none.
+	 *
+	 * @param chain the jar's {@link ModsToml#chain()}
+	 */
+	public static byte[] readFile(Path jar, List<String> chain, String entry, ArchiveLimits limits) throws IOException {
 		try (FileSystem outer = open(jar)) {
-			return readClass(outer, chain, 0, internalName + ".class", limits);
+			return readEntry(outer, chain, 0, entry, limits);
 		}
 	}
 
-	private static byte[] readClass(FileSystem jar, List<String> chain, int index, String entry, ArchiveLimits limits) throws IOException {
+	private static byte[] readEntry(FileSystem jar, List<String> chain, int index, String entry, ArchiveLimits limits) throws IOException {
 		if (index < chain.size()) {
 			Path nested = jar.getPath(chain.get(index));
 			if (!Files.isRegularFile(nested)) return null;
 			if (Files.size(nested) > limits.maxEntryBytes()) throw new IOException(chain.get(index) + " is larger than " + limits.maxEntryBytes() + " bytes");
 			try (FileSystem inner = open(nested)) {
-				return readClass(inner, chain, index + 1, entry, limits);
+				return readEntry(inner, chain, index + 1, entry, limits);
 			}
 		}
 		Path path = jar.getPath(entry);

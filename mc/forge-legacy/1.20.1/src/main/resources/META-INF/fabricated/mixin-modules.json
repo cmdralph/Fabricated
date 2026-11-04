@@ -19,6 +19,7 @@
     "LivingEntityFluidTravelMixin": [],
     "MappedRegistryPendingHoldersMixin": [],
     "NamespacedWrapperAliasMixin": ["fabric-registry-sync-v0"],
+    "MobBucketItemBridgeMixin": [],
     "NamespacedWrapperPendingHoldersMixin": [],
     "ParticleEngineProvidersBridgeMixin": [],
     "PotionBrewingMixBridgeMixin": [],

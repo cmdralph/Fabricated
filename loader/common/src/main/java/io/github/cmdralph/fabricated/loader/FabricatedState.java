@@ -139,6 +139,14 @@ public final class FabricatedState {
 	}
 
 	/**
+	 * The static handlers of other mods' mixins into Fabric mods' classes to apply as instance handlers (name and
+	 * descriptor), by mixin class (CORPUS-87, {@link io.github.cmdralph.fabricated.core.mixin.NativeModMixins}).
+	 */
+	public Map<String, Set<String>> instanceHandlers() {
+		return result.instanceHandlers();
+	}
+
+	/**
 	 * Records the mixin of a loaded Fabric mod that failed as Mixin applied it, which the next launch leaves out
 	 * (APPLY-1); a mixin of any other mod is not recorded. Returns what it recorded ({@code <mixin> of <mod>}), or null
 	 * where nothing new was. It runs as the game stops, so it never throws: what fails is logged.

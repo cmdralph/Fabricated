@@ -279,21 +279,23 @@ What else differs on Forge, for Fabric mods in general:
   declared as the other mixin declares the field, and Mixin merges the two into one field, as on Fabric (CORPUS-74:
   the test mod's tick counter, all five, server run); one that can't be (a static shadow of an instance field, a
   writable one of a final field) disables its mod, or leaves its mixin out where it can.
-- **Locals after a chopping frame:** Forge 61 to 66's Mixin 0.8.7 works out the locals at an injection point from the
-  frames it recorded from the class's bytes, which it no longer reads expanded (Forge 47's 0.8.5 does), and counts each
-  frame appending or chopping locals as at least the method's argument slots: after a chop it can count fewer locals
-  than are live, and a local capture, `@ModifyVariable` or MixinExtras' `@Local` taking one beyond finds none. Resourceful
-  Lib's `@Local PoseStack` in `ScreenEffectRenderer.renderScreenEffect` stopped the Forge 61 and 64 corpus clients
-  (CORPUS-79). There, before mixins apply to a class a Fabric mod's mixin targets, a Mixin extension of the in-game mod
-  records each such chop again as a full frame of the locals it states, which Mixin reads as it reads any full frame,
-  and logs the method. Every other frame, and every class no Fabric mod's mixin targets, stays as Mixin recorded it.
-  The test mod takes a local so (all five, server run; Forge 47's Mixin counts it right without the repair).
-- **Fields Forge 47 retyped:** a Fabric mod's accessor of a field Forge 47 gave another type (a brewing mix's `from` and
-  `to`, holders there; the particle engine's providers, kept by id there) invokes a getter the in-game mod adds, which
-  gives vanilla's type: the holder's value, and a view by raw id of Forge's map (CORPUS-37: Porting Lib's accessors,
-  and with them its extensions and Farmer's Delight's entrypoint, failed pre-flight). The test mod reads a mix's
-  potions so on the server and the providers on the client. An accessor of another retyped field still fails
-  pre-flight.
+- **Locals where Mixin miscounts them:** Forge 61 to 66's Mixin 0.8.7 works out the locals at an injection point from
+  the frames it recorded from the class's bytes, which Forge's ModLauncher hands it with their frames compressed
+  (Forge 47's Mixin 0.8.5 reads a class's frames expanded): each frame then states only its change, and Mixin can count
+  fewer locals than are live, so a local capture, `@ModifyVariable` or MixinExtras' `@Local` taking one beyond finds
+  none. Resourceful Lib's `@Local PoseStack` in `ScreenEffectRenderer.renderScreenEffect` stopped the Forge 61 and 64
+  corpus clients (CORPUS-79). There, before mixins apply to a class a Fabric mod's mixin targets, a Mixin extension of
+  the in-game mod finds each method whose locals Mixin would count wrong at some frame and records its frames again
+  from the method with its frames expanded, which Mixin counts as with its `CLASSREADER_EXPAND_FRAMES` option, and logs
+  the method. Every other method, and every class no Fabric mod's mixin targets, stays as Mixin recorded it. The test
+  mod takes a local so (all five, server run; Forge 47's Mixin counts it right without the repair).
+- **Fields Forge 47 retyped or replaced:** a Fabric mod's accessor of a field Forge 47 gave another type (a brewing
+  mix's `from` and `to`, holders there; the particle engine's providers, kept by id there) or replaced (a mob bucket's
+  entity type, a supplier there) invokes a getter the in-game mod adds, which gives vanilla's type: the holder's value,
+  a view by raw id of Forge's map, and the bucket's `getFishType` (CORPUS-37: Porting Lib's accessors, and with them its
+  extensions and Farmer's Delight's entrypoint, failed pre-flight; CORPUS-94: Supplementaries' bucket accessor stopped
+  the corpus server's data reload). The test mod reads a mix's potions and the pufferfish bucket's type so on the
+  server and the providers on the client. An accessor of another such field still fails pre-flight.
 - **Forge Config API Port** on Forge 61 to 66: its Fabric build loads, with its own copies of NeoForge's config
   classes, which Forge lacks (REPL-1, PLAT-5). On Forge 47 its version for 1.20.1 copies Forge's own config system,
   packages included, so its copies were left out for Forge's and its registry failed to link (Ponder's main
@@ -355,8 +357,7 @@ instead. Unless a task is named, nothing is planned for them yet.
   per-stack attribute modifiers and `isSuitableFor`, where Forge's own per-stack hooks apply.
 - **Content registries.** On Forge 64 to 66, an `EntityFluidInteractionRegistry` behaviour: entities swim, travel,
   sprint and float a boat in a fluid as its Forge fluid type lets them, which for a Fabric fluid is Fabricated's,
-  treating it as water when it is tagged `minecraft:water` and as air otherwise. On Forge 47, the oxidizable blocks
-  registry, an interface mixin Forge 47's Mixin doesn't apply.
+  treating it as water when it is tagged `minecraft:water` and as air otherwise.
 - **Lifecycle events.** `BLOCK_ENTITY_UNLOAD` doesn't fire for a block entity a chunk drops as it reads it again (Forge
   61 to 66, server; Forge 47, client); the other block entity and chunk events fire.
 - **Object builder.** A Fabric wood type's sign and hanging sign materials (Forge 61 and 64) and its hanging sign edit
@@ -367,8 +368,10 @@ instead. Unless a task is named, nothing is planned for them yet.
   by id, which Forge does its own way; on Forge 47, upgrading a world from before 1.18 with other mods' structures.
 - **Fluid rendering.** A Fabric fluid render handler's overlay sprite on the sides of a fluid beside glass or leaves;
   Forge's own overlay drawing stays (all five).
-- **Forge 47's interface mixins.** Its Mixin (0.8.5) applies no injector in an interface mixin, so beside the recipe
-  remainder and oxidizable blocks above, `TooltipComponentCallback` (rendering-v1) is lost there.
+- **Forge 47's interface mixins.** Its Mixin (0.8.5) applies no injector in an interface mixin. Fabricated applies an
+  `@Inject` at `HEAD`, `RETURN` or `TAIL` there itself (INTERFACE-1): the oxidizable blocks registry's (the test mod's
+  pair is in vanilla's oxidation map, server run) and `TooltipComponentCallback`'s (rendering-v1, its shape in core's
+  tests). Other injectors in an interface mixin, such as the recipe remainder's above, are lost there.
 - **Sound (Forge 47).** A Fabric sound instance's own audio stream (`FabricSoundInstance.getAudioStream`).
 - **Data generation only.** Removing entries through a Fabric tag appender, Fabric's key sort orders in generated files,
   and, by version, the advancement builder's Fabric interface and vanilla's block loot provider limited to vanilla's

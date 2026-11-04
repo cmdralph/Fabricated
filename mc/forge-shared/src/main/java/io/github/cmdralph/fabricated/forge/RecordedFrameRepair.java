@@ -5,12 +5,14 @@ import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.jar.JarFile;
 import java.util.jar.Manifest;
 
+import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.MethodNode;
 import org.slf4j.Logger;
@@ -26,19 +28,20 @@ import io.github.cmdralph.fabricated.core.mixin.RecordedFrames;
 import io.github.cmdralph.fabricated.loader.FabricatedState;
 
 /**
- * Repairs the frames Forge's Mixin recorded for a method where its local computation would drop live locals (CORPUS-79,
- * {@link RecordedFrames}): before mixins apply to a class a Fabric mod's mixin targets, each chop leaving fewer locals than
- * its frame states is recorded again as a full frame of those locals, through Mixin's own {@code ClassInfo.Method}. Mixin
- * reads that as the frame's locals and none beyond; every other frame stays as Mixin recorded it. Resourceful Lib's
- * {@code @Local PoseStack} in Forge 61's and 64's {@code ScreenEffectRenderer.renderScreenEffect} found none without it,
- * and the client crashed.
+ * Records the frames of a method again, expanded, where Forge's Mixin would count its locals wrong (CORPUS-79,
+ * {@link RecordedFrames}): before mixins apply to a class a Fabric mod's mixin targets, each method whose locals Mixin's
+ * local computation would count wrong at some frame, from the frames it recorded and walks as Forge's ModLauncher hands
+ * them, compressed, gets its recorded frames from the method with its frames expanded, through Mixin's own
+ * {@code ClassInfo.Method}. Mixin records an expanded frame's size as the locals it states and counts them right, as with
+ * its {@code CLASSREADER_EXPAND_FRAMES} option. Resourceful Lib's {@code @Local PoseStack} in Forge 61's and 64's
+ * {@code ScreenEffectRenderer.renderScreenEffect} found none without it, and the client crashed.
  *
- * <p>A class no Fabric mod's mixin targets is left alone, so Forge mods' mixins see Mixin's frames as on Forge without
- * Fabricated; a Forge mod's injector in a class a Fabric mod's mixin targets sees the live locals it would otherwise miss.
- * Which mixins target the class is the class metadata's own record ({@code ClassInfo.getMixins()}, package-private in
- * Mixin, where each mixin adds itself as Mixin prepares it): Mixin takes each config it selects out of
- * {@code Mixins.getConfigs()}, so that set no longer has them as mixins apply. Where the record can't be read, nothing is
- * repaired.
+ * <p>A class no Fabric mod's mixin targets is left alone, and so is a method Mixin counts right, so Forge mods' mixins see
+ * Mixin's frames as on Forge without Fabricated; a Forge mod's injector in a method this records again sees the locals
+ * there are, as Fabric's Mixin would. Which mixins target the class is the class metadata's own record
+ * ({@code ClassInfo.getMixins()}, package-private in Mixin, where each mixin adds itself as Mixin prepares it): Mixin takes
+ * each config it selects out of {@code Mixins.getConfigs()}, so that set no longer has them as mixins apply. Where the
+ * record can't be read, nothing is recorded again.
  *
  * <p>Registered only where Mixin records frames unexpanded ({@link #needed}): Forge 61 to 66's Mixin 0.8.7, which stopped
  * expanding them by default. Forge 47's Mixin 0.8.5 reads a class's metadata with its frames expanded, so it records each
@@ -49,7 +52,7 @@ final class RecordedFrameRepair implements IExtension {
 	private static final String MIXIN_CONFIGS = "MixinConfigs";
 
 	private final FabricatedState state;
-	/** {@code ClassInfo.getMixins()}, the mixins targeting a class; null where it can't be read, and nothing is repaired. */
+	/** {@code ClassInfo.getMixins()}, the mixins targeting a class; null where it can't be read, and nothing is recorded again. */
 	private Method targetingMixins = targetingMixins();
 	/** The Fabric mods' mixin configs by name, read once a class needs them; Mixin calls the extension in its lock. */
 	private Set<String> fabricConfigs;
@@ -83,23 +86,46 @@ final class RecordedFrameRepair implements IExtension {
 		ClassNode node = context.getClassNode();
 		ClassInfo info = context.getClassInfo();
 		Boolean fabricTarget = null;
+		int recorded = 0;
 		for (MethodNode method : node.methods) {
-			if (!RecordedFrames.mayDropLiveLocals(method)) continue;
 			// Found as Mixin's local computation finds it (Locals.getLocalsAt).
-			ClassInfo.Method recorded = info.findMethod(method, method.access | ClassInfo.INCLUDE_INITIALISERS);
-			List<ClassInfo.FrameData> frames = recorded == null ? null : recorded.getFrames();
-			if (frames == null || frames.isEmpty()) continue;
-			List<RecordedFrames.Frame> read = new ArrayList<>(frames.size());
-			for (ClassInfo.FrameData frame : frames) read.add(new RecordedFrames.Frame(frame.index, frame.type, frame.size));
-			List<Integer> chops = RecordedFrames.droppingChops(method, read);
-			if (chops.isEmpty()) continue;
+			ClassInfo.Method found = info.findMethod(method, method.access | ClassInfo.INCLUDE_INITIALISERS);
+			List<ClassInfo.FrameData> frames = found == null ? null : found.getFrames();
+			if (frames == null || !changesSize(frames)) continue;
 			if (fabricTarget == null) fabricTarget = targetedByFabricMod(info);
 			if (!fabricTarget) return;
-			List<ClassInfo.FrameData> full = info.new Method(RecordedFrames.asFullFrames(method), false).getFrames();
-			for (int chop : chops) frames.set(chop, full.get(chop));
-			LOGGER.info("Fabricated repaired the frames Mixin recorded for {}.{}{} at its chopping frames {}, where Forge's Mixin would drop live locals"
-					+ " a Fabric mod's injector may take (CORPUS-79)", node.name, method.name, method.desc, chops);
+			try {
+				List<ClassInfo.FrameData> expanded = info.new Method(RecordedFrames.withExpandedFrames(node.name, method), false).getFrames();
+				if (Arrays.equals(RecordedFrames.counted(method, read(frames)), RecordedFrames.counted(method, read(expanded)))) continue;
+				frames.clear();
+				frames.addAll(expanded);
+				recorded++;
+			} catch (RuntimeException e) {
+				LOGGER.warn("Fabricated could not record the frames of {}.{}{} again ({}): Forge's Mixin keeps the frames it recorded, and may count the"
+						+ " method's locals wrong for a Fabric mod's injector (CORPUS-79)", node.name, method.name, method.desc, e.toString());
+			}
 		}
+		if (recorded > 0) {
+			LOGGER.debug("Fabricated recorded the frames of {} method(s) of {} again, expanded, where Forge's Mixin would count their locals wrong (CORPUS-79)",
+					recorded, node.name);
+		}
+	}
+
+	/**
+	 * Whether Mixin recorded a frame of the method as a change in size (an append or a chop), which its local computation
+	 * can count wrong; a full frame states its own size.
+	 */
+	private static boolean changesSize(List<ClassInfo.FrameData> frames) {
+		for (ClassInfo.FrameData frame : frames) {
+			if (frame.type == Opcodes.F_APPEND || frame.type == Opcodes.F_CHOP) return true;
+		}
+		return false;
+	}
+
+	private static List<RecordedFrames.Frame> read(List<ClassInfo.FrameData> frames) {
+		List<RecordedFrames.Frame> read = new ArrayList<>(frames.size());
+		for (ClassInfo.FrameData frame : frames) read.add(new RecordedFrames.Frame(frame.type, frame.size));
+		return read;
 	}
 
 	@Override
@@ -137,7 +163,7 @@ final class RecordedFrameRepair implements IExtension {
 			return method;
 		} catch (ReflectiveOperationException | RuntimeException e) {
 			LOGGER.warn("Fabricated can't see which mixins target a class in this Mixin ({}): the frames Forge's Mixin records stay as they are, so a"
-					+ " Fabric mod's injector taking a local after a frame that chops locals may find none (CORPUS-79)", e.toString());
+					+ " Fabric mod's injector taking a local where Forge's Mixin miscounts them may find the wrong ones (CORPUS-79)", e.toString());
 			return null;
 		}
 	}
@@ -157,7 +183,7 @@ final class RecordedFrameRepair implements IExtension {
 					if (!config.isBlank()) names.add(config.trim());
 				}
 			} catch (IOException e) {
-				// Not a Fabric mod's config then, for this repair: its classes keep Mixin's frames.
+				// Not a Fabric mod's config then, here: its classes keep Mixin's frames.
 				LOGGER.warn("Fabricated could not read the mixin configs of {}'s translation ({}): {}", mod.translated().candidate().id(), overlay, e.toString());
 			}
 		}

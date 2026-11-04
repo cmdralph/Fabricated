@@ -151,6 +151,13 @@ public final class ForgeTestMod implements ModInitializer, DedicatedServerModIni
 				LOGGER.error("FABRICATED-FORGE-TEST brewing recipe not registered", e);
 			}
 		}
+		if (FabricLoader.getInstance().isModLoaded("fabric-content-registries-v0")) {
+			try {
+				ForgeOxidizableTest.check();
+			} catch (RuntimeException | LinkageError e) {
+				LOGGER.error("FABRICATED-FORGE-TEST oxidizable blocks not checked", e);
+			}
+		}
 	}
 
 	@Override

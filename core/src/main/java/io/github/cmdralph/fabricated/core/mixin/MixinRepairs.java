@@ -172,9 +172,9 @@ final class MixinRepairs extends PreflightPart {
 					if (bridge == null) continue;
 					changed = true;
 					out.add(new PreflightFinding(Severity.INFO, configName, ctx.mixinDotted(), "@Accessor " + method.name + method.desc
-							+ " targets a field " + loader + " gave another type in " + targets.get(0).name.replace('/', '.') + "; it invokes "
+							+ " targets a field " + loader + " gave another type or replaced in " + targets.get(0).name.replace('/', '.') + "; it invokes "
 							+ bridge + ", which Fabricated adds there to " + (bridge.startsWith(MixinNames.BRIDGE_SETTER) ? "set" : "get")
-							+ " the field's value as vanilla's type (CORPUS-37)", ""));
+							+ " what vanilla's field holds, as vanilla's type (CORPUS-37, CORPUS-94)", ""));
 				}
 			}
 			for (FieldNode field : node.fields) {
@@ -195,6 +195,20 @@ final class MixinRepairs extends PreflightPart {
 			}
 			node.methods.removeAll(kept);
 			node.methods.addAll(bridges);
+			if ((node.access & Opcodes.ACC_INTERFACE) != 0 && !interfaceInjectors) {
+				// After the injector repairs, which may point the selectors elsewhere (INTERFACE-1).
+				for (MethodNode method : List.copyOf(node.methods)) {
+					AnnotationNode inject = Annotations.find(method, MixinNames.INJECT);
+					if (inject == null) continue;
+					String handler = "@Inject handler " + method.name + method.desc + " is an injector in an interface mixin, which " + loader
+							+ "'s Mixin doesn't apply (Mixin does from 0.8.6)";
+					String refused = InterfaceInjects.mark(node, method, inject, targets, ctx::resolve, config.defaultRequire());
+					if (refused == null) changed = true;
+					out.add(new PreflightFinding(Severity.INFO, configName, ctx.mixinDotted(), refused == null
+							? handler + "; Fabricated applies it as the mixin applies, as Mixin would (INTERFACE-1)"
+							: handler + "; Fabricated applies one at HEAD, RETURN or TAIL itself, but not this one: " + refused + " (INTERFACE-1)", ""));
+				}
+			}
 			if (changed) repaired.put(internal + ".class", write(node));
 		}
 		return repaired;
@@ -597,13 +611,15 @@ final class MixinRepairs extends PreflightPart {
 	}
 
 	/**
-	 * Points an {@code @Accessor} of a field the platform gave another type at the method Fabricated's in-game mod adds to
-	 * the field's class for it, which gets or sets the field's value as vanilla's type ({@link MixinNames#BRIDGE_GETTER}):
-	 * Forge 47 keeps holders of vanilla's values in a brewing mix's {@code from} and {@code to}, and the particle engine's
-	 * providers by their type's id, where Porting Lib's and EMI's accessors read vanilla's (CORPUS-37). The accessor
-	 * becomes an {@code @Invoker} of that method, with the accessor's own name and descriptor, so a mod calling it (Create
-	 * calls Porting Lib's) is served as before. Returns the bridge's name; or {@code null} and changes nothing when a target
-	 * has the field with the accessor's type, hasn't the field, or hasn't the bridge with the accessor's descriptor.
+	 * Points an {@code @Accessor} of a field the platform gave another type, or replaced, at the method Fabricated's
+	 * in-game mod adds to the field's class for it, which gets or sets what vanilla's field holds as vanilla's type
+	 * ({@link MixinNames#BRIDGE_GETTER}): Forge 47 keeps holders of vanilla's values in a brewing mix's {@code from} and
+	 * {@code to}, and the particle engine's providers by their type's id, where Porting Lib's and EMI's accessors read
+	 * vanilla's (CORPUS-37); it replaces a mob bucket's entity type with a supplier of it, where Supplementaries' and
+	 * Inventory Profiles Next's accessors read the type (CORPUS-94). The accessor becomes an {@code @Invoker} of that
+	 * method, with the accessor's own name and descriptor, so a mod calling it (Create calls Porting Lib's) is served as
+	 * before. Returns the bridge's name; or {@code null} and changes nothing when a target has the field with the
+	 * accessor's type or hasn't the bridge with the accessor's descriptor.
 	 */
 	private static String retypedFieldBridge(MethodNode method, AnnotationNode accessor, List<ClassNode> targets, Context ctx) {
 		String explicit = Annotations.value(accessor, "value") instanceof String s && !s.isEmpty() ? s : null;
@@ -616,13 +632,10 @@ final class MixinRepairs extends PreflightPart {
 		boolean setter = Type.getReturnType(method.desc).getSort() == Type.VOID;
 		String bridge = (setter ? MixinNames.BRIDGE_SETTER : MixinNames.BRIDGE_GETTER) + fieldName;
 		for (ClassNode target : targets) {
-			boolean retyped = false;
 			for (FieldNode f : target.fields) {
-				if (!f.name.equals(fieldName)) continue;
-				if (f.desc.equals(desc)) return null; // the accessor's own field: nothing to repair
-				retyped = true;
+				if (f.name.equals(fieldName) && f.desc.equals(desc)) return null; // the accessor's own field: nothing to repair
 			}
-			if (!retyped || !declaresPublicInstance(target, bridge, method.desc)) return null;
+			if (!declaresPublicInstance(target, bridge, method.desc)) return null;
 		}
 		AnnotationNode invoker = new AnnotationNode(MixinNames.INVOKER);
 		// Not in the mod's refmap: the bridge's name is the same in every namespace.

@@ -250,8 +250,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           SMOKE_ON_ENTRYPOINT_FAILURE: disable
-          # ClientTooltipComponent as Fabricated's transformer and Mixin leave it, for the evidence step (CORPUS-76).
-          SMOKE_JVM_ARGS: -Dmixin.debug.export=true -Dmixin.debug.export.filter=net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent
         run: |
           SMOKE_TIMEOUT=600 ci/forge-legacy/smoke-client.sh "${{ matrix.target.minecraft }}" "${{ matrix.target.loader }}" "$RUNNER_TEMP/client-corpus" "$RUNNER_TEMP/corpus" > "$RUNNER_TEMP/client-corpus.out" 2>&1 || true
           ci/corpus-summary.sh "$RUNNER_TEMP/client-corpus/run" "client with the corpus"
@@ -285,40 +283,30 @@ jobs:
           name: fabricated-forge-${{ matrix.target.minecraft }}
           path: build/libs/fabricated-forge-*+mc${{ matrix.target.minecraft }}.jar
           if-no-files-found: error
-      # The bytecode task 5's open findings turn on, for reading (informational, with "extended"; last, and capped, as the
-      # job's log can only be read from its end): ClientTooltipComponent, which the corpus client's class loader found
-      # among its own supertypes (CORPUS-76): the mods' mixins of it, the classes extending it as the mods ship them
-      # (intermediary names) and as Fabricated translated them, and the game's interface; the mods' calls of Fabric ASM's
-      # ClassTinkerers (Farmer's Delight's recipe book type, which its early riser adds); and Ponder's ModConfig
-      # constructor, which Forge's own ModConfig lacks (NoSuchMethodError), with Forge Config API Port's copy of it.
+      # The bytecode and data task 5's open findings turn on, for reading (informational, with "extended"; last, and capped,
+      # as the job's log can only be read from its end): Moonlight's and Supplementaries' recipe conditions, which Forge's
+      # condition check doesn't know (CORPUS-97); Farmer's Delight's global loot modifier list, which Forge's and Porting
+      # Lib's managers can't read (CORPUS-98); the recipes failing on custom ingredients in arrays or oversized patterns
+      # (CORPUS-99); and Forge's GuiGraphics.renderTooltip, where Porting Lib's GUI utilities expect a call (CORPUS-93).
       - name: Bytecode for task 5's findings (informational)
         if: ${{ env.EXTENDED == 'true' && !cancelled() && steps.corpus.outcome == 'success' }}
         continue-on-error: true
         run: |
-          [ -d "$RUNNER_TEMP/client-corpus" ] || exit 0
-          python3 -I ci/javap-dump.py "$RUNNER_TEMP/client-corpus" 'mixins:net/minecraft/class_5684' 'subtypes:net/minecraft/class_5684' \
-            'subtypes:net/minecraft/client/gui/screens/inventory/tooltip/ClientTooltipComponent' \
-            'game:net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent#class' \
-            'refs:com/chocohead/mm/api/ClassTinkerers' 'mod:net.minecraftforge.fml.config.ModConfig#ModConfig' \
-            'refs:net/minecraftforge/fml/config/ModConfig' \
-            | cut -c1-320 | head -n 1400 || true
-          # ClientTooltipComponent's header as Fabricated's transformer and Mixin left it (Mixin's export, wherever the
-          # game's working directory put it), what Fabricated's translations add to it (their injected interfaces and
-          # default bridges, in the translation cache's metadata), and what the debug log says was applied to it
-          # (CORPUS-76: it was defined with a supertype that extends it).
-          find "$RUNNER_TEMP/client-corpus" -type d -name '.mixin.out' 2>/dev/null | head -n 3 | sed 's/^/-- mixin export directory: /' || true
-          for exported in $(find "$RUNNER_TEMP/client-corpus" -path '*.mixin.out*' -name 'ClientTooltipComponent*.class' 2>/dev/null | head -n 2); do
-            echo "-- exported: $exported"
-            javap -v -p "$exported" | grep -E '^(public |  (minor|major) version|  flags|  this_class|  super_class|  interfaces)|interface |Signature:' | head -n 20 || true
-            javap -p "$exported" | head -n 5 || true
-          done
-          for meta in $(grep -rlE 'ClientTooltipComponent|class_5684' "$RUNNER_TEMP/client-corpus/run/.fabricated/cache" --include='*.json' 2>/dev/null | head -n 10); do
-            echo "-- translation metadata naming it: $meta"
-            python3 -I -c 'import json,sys; m=json.load(open(sys.argv[1])); [print("  ", k, json.dumps(e)[:300]) for k in ("injectedInterfaces","defaultBridges") for e in m.get(k, []) if "ClientTooltipComponent" in json.dumps(e) or "class_5684" in json.dumps(e)]' "$meta" 2>/dev/null || true
-          done
-          grep -n -E 'ClientTooltipComponent|class_5684' "$RUNNER_TEMP/client-corpus/run/logs/debug.log" 2>/dev/null \
-            | grep -v -E '^[0-9]+:[[:space:]]+at ' | awk '!seen[substr($0, index($0, ":") + 1)]++' | head -n 40 | cut -c1-400 || true
-          # What the linkage check says Forge Config API Port's and Ponder's code calls that Forge's config classes lack
-          # (CORPUS-81: the port's ModConfig constructors take a mod id, Forge's a container).
-          awk '/^== Linkage warnings/ { show = 1; next } /^$/ { show = 0 } show' "$RUNNER_TEMP/client-corpus/run/logs/fabric-bridge-report.txt" 2>/dev/null \
-            | grep -E 'forgeconfigapiport|ponder|fml/config' | head -n 40 | cut -c1-400 || true
+          if [ -d "$RUNNER_TEMP/server-corpus" ]; then
+            python3 -I ci/javap-dump.py "$RUNNER_TEMP/server-corpus" 'mod:*ResourceConditionsBridge' 'mod:*FlagCondition' \
+              'refs:net/fabricmc/fabric/api/resource/conditions/v1/ResourceConditions' \
+              'file:data/forge/loot_modifiers/global_loot_modifiers.json' \
+              | cut -c1-320 | head -n 900 || true
+            # The recipes failing on a custom ingredient in an array or an oversized pattern, and their files (CORPUS-99).
+            failing=$(grep -h -A1 'Parsing error loading recipe' "$RUNNER_TEMP/server-corpus/logs/latest.log" 2>/dev/null \
+              | grep -B1 -E 'array ingredient|too many (rows|columns)' | grep -oE 'loading recipe [a-z0-9_.-]+:[a-z0-9_./-]+' \
+              | sed 's/^loading recipe //' | sort -u | head -n 20 || true)
+            echo "-- recipes failing on a custom ingredient in an array or an oversized pattern (CORPUS-99): ${failing:-none}"
+            specs=()
+            for id in $failing; do specs+=("file:data/${id%%:*}/recipes/${id#*:}.json"); done
+            [ ${#specs[@]} -eq 0 ] || python3 -I ci/javap-dump.py "$RUNNER_TEMP/server-corpus" "${specs[@]}" | cut -c1-320 | head -n 500 || true
+          fi
+          if [ -d "$RUNNER_TEMP/client-corpus" ]; then
+            python3 -I ci/javap-dump.py "$RUNNER_TEMP/client-corpus" 'game:net.minecraft.client.gui.GuiGraphics#m_280666_' \
+              | cut -c1-320 | head -n 300 || true
+          fi
