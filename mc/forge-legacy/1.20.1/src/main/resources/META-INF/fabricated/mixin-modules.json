@@ -15,6 +15,7 @@
     "BuiltInRegistriesValidateMixin": [],
     "CraftingHelperFabricConditionsMixin": [],
     "CraftingHelperFabricIngredientsMixin": ["fabric-recipe-api-v1"],
+    "ExtendedBlockModelDeserializerMixin": [],
     "FluidTypeMixin": [],
     "ForgeRegistryEntryAddedMixin": ["fabric-registry-sync-v0"],
     "GameDataFreezeMixin": [],

@@ -1,0 +1,7 @@
+{
+  "parent": "minecraft:block/cube_all",
+  "loader": "forge:fabricated_testmod_absent",
+  "textures": {
+    "all": "minecraft:block/stone"
+  }
+}
