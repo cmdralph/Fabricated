@@ -233,6 +233,7 @@ check "FABRICATED-TEST hidden default OK" server.out "a mixin's private self() d
 check "FABRICATED-TEST default bridge OK" server.out "an interface a mixin adds to LivingEntity with a second default self() beside NeoForge's: LivingEntity gets the method, and both calls answer on a pig (CORPUS-11, CORPUS-63)"
 check "FABRICATED-TEST inherited default bridge OK" server.out "an interface a mixin adds to Mob with a second default isMultipartEntity() beside the one Mob has through Entity's NeoForge extension: Mob gets the method, calling its superclass's, and both calls answer false on a pig (DEFAULT-1)"
 check "FABRICATED-TEST commands OK" server.out "/fabricated why, disable and enable from the console"
+check "FABRICATED-TEST argument type OK" server.out "a command argument type a Fabric initializer registers is in the registry and known by its class (PROVIDER-12)"
 check "FABRICATED-TEST api OK" server.out "public API: Fabricated detected, mod and module status, after-entrypoints callback"
 check "FABRICATED-TEST environment stripping OK" server.out "@EnvironmentInterface: a client-only interface is stripped on the dedicated server"
 check "fabricated-testmod-missing" logs/fabric-bridge-report.txt "missing dependency reported"

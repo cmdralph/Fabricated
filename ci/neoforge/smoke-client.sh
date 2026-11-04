@@ -298,6 +298,7 @@ check "FABRICATED-TEST item api OK" "native item api in the integrated server"
 check "FABRICATED-TEST interaction events OK" "native interaction events in the integrated server"
 check "FABRICATED-TEST loot OK" "native loot in the integrated server"
 check "FABRICATED-TEST content registries OK" "native content registries in the integrated server"
+check "FABRICATED-TEST argument type OK" "a command argument type a Fabric initializer registers in Minecraft's constructor is in the registry and known by its class, and the player gets a command taking it (PROVIDER-12)"
 check "FABRICATED-TEST transfer OK" "native transfer in the integrated server"
 # Fabricated ships fabric-particles-v1 on 1.21.1 only (later versions pass it through from the Fabric API jar).
 case "$mc" in 1.21.1)
