@@ -36,10 +36,20 @@ import io.github.cmdralph.fabricated.core.bytecode.ClassIndex;
  * are: a write of the field (the getter has no setter; it fails where it runs, as before), and the code of the mod's
  * mixins into the field's class, which reads the field from inside that class once applied (and where a mixin may be
  * the getter itself).
+ *
+ * <p>CORPUS-107: a read of a field the platform gave another type, by vanilla's type, likewise calls the getter
+ * Fabricated's in-game mod adds for it, which returns what vanilla's field holds as vanilla's type
+ * ({@link TranslationEnvironment#bridgedFields}), as the mod's accessors of the field do (CORPUS-37). Forge 47 keeps
+ * holders in a brewing mix's {@code from} and {@code to}, and REI's default client plugin, reading {@code from} itself,
+ * failed with {@code NoSuchFieldError}, so none of its later displays registered. Only where the game's class has no
+ * field of that name and the mod's type, and has the getter returning that type.
  */
 final class PrivateFieldReads {
-	/** A field read through its getter: the field's owner, name and type, and the getter's name. */
-	record Read(String owner, String name, String desc, String getter) {
+	/**
+	 * A field read through its getter: the field's owner, name and type as the mod reads it, the getter's name, and
+	 * whether the getter is Fabricated's bridge of a field the platform retyped.
+	 */
+	record Read(String owner, String name, String desc, String getter, boolean bridge) {
 		String key() {
 			return key(owner, name, desc);
 		}
@@ -58,11 +68,12 @@ final class PrivateFieldReads {
 	}
 
 	/**
-	 * The private fields the game's classes have with their getters.
+	 * The private fields the game's classes have with their getters, and the retyped fields with their bridges.
 	 *
 	 * @param privateFields {@code owner field} in runtime names to the getter's name ({@link PlatformDescriptor#privateFields})
+	 * @param bridgedFields {@code owner field} in runtime names to the bridge's name ({@link TranslationEnvironment#bridgedFields})
 	 */
-	static PrivateFieldReads of(ClassIndex game, Map<String, String> privateFields) {
+	static PrivateFieldReads of(ClassIndex game, Map<String, String> privateFields, Map<String, String> bridgedFields) {
 		Map<String, Read> reads = new HashMap<>();
 		if (game != null) {
 			privateFields.forEach((field, getter) -> {
@@ -75,10 +86,26 @@ final class PrivateFieldReads {
 					if (!member.startsWith(name + ":")) continue;
 					String desc = member.substring(name.length() + 1);
 					if (info.methodAccess(getter + "()" + desc) != null) {
-						Read read = new Read(owner, name, desc, getter);
+						Read read = new Read(owner, name, desc, getter, false);
 						reads.put(read.key(), read);
 					}
 				}
+			});
+			bridgedFields.forEach((field, bridge) -> {
+				int space = field.indexOf(' ');
+				String owner = field.substring(0, space);
+				String name = field.substring(space + 1);
+				ClassIndex.ClassInfo info = game.get(owner);
+				if (info == null) return;
+				String prefix = bridge + "()";
+				info.methods().forEach((method, access) -> {
+					if (!method.startsWith(prefix) || (access & Opcodes.ACC_STATIC) != 0 || (access & Opcodes.ACC_PUBLIC) == 0) return;
+					String desc = method.substring(prefix.length());
+					// The platform's field keeps the mod's type here: nothing to bridge.
+					if (info.fieldAccess(name + ":" + desc) != null) return;
+					Read read = new Read(owner, name, desc, bridge, true);
+					reads.put(read.key(), read);
+				});
 			});
 		}
 		return new PrivateFieldReads(game, Map.copyOf(reads));
@@ -122,8 +149,10 @@ final class PrivateFieldReads {
 		List<String> notes = new ArrayList<>();
 		readers.forEach((field, classes) -> {
 			Read r = reads.get(field);
-			notes.add(classes.size() + " class(es) read " + r.owner().replace('/', '.') + "." + r.name() + ", which the platform keeps private;"
-					+ " they read it through its " + r.getter() + "(), as the game's own code does: " + String.join(", ", classes));
+			notes.add(classes.size() + " class(es) read " + r.owner().replace('/', '.') + "." + r.name() + (r.bridge()
+					? ", which the platform gave another type; they read it as vanilla's type through Fabricated's " + r.getter() + "(): "
+					: ", which the platform keeps private; they read it through its " + r.getter() + "(), as the game's own code does: ")
+					+ String.join(", ", classes));
 		});
 		return notes;
 	}

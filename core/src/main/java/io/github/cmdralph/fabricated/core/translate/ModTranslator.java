@@ -154,7 +154,7 @@ public final class ModTranslator {
 		this.limits = limits;
 		this.renames = PlatformRenames.of(env.untransformable(), env.game(), env.descriptor().replacedMods().containsKey("forgeconfigapiport"));
 		this.retyped = RetypedFields.of(env.game());
-		this.privateReads = PrivateFieldReads.of(env.game(), env.descriptor().privateFields());
+		this.privateReads = PrivateFieldReads.of(env.game(), env.descriptor().privateFields(), env.bridgedFields());
 	}
 
 	/**
@@ -229,7 +229,8 @@ public final class ModTranslator {
 					notes.addAll(retyped.apply(remapped != null ? remapped : overlay, remapped != null ? remapped.keySet() : archive.classEntryNames(),
 							collectRefmapPaths(candidate.metadata(), archive), files));
 				}
-				// Reads of the fields the platform keeps private, through its getters (CORPUS-64).
+				// Reads of the fields the platform keeps private, through its getters (CORPUS-64), and of those it retyped,
+				// through Fabricated's bridges (CORPUS-107).
 				if (!privateReads.isEmpty()) {
 					notes.addAll(privateReads.apply(remapped != null ? remapped : overlay, remapped != null ? remapped.keySet() : archive.classEntryNames(), files));
 				}
