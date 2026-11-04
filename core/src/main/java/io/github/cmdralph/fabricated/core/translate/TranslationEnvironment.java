@@ -35,6 +35,9 @@ import io.github.cmdralph.fabricated.core.remap.MappingTable;
  *                            a mixin using a class there can't apply
  * @param descriptor          how the platform's loader learns of a translated mod ({@link PlatformDescriptor#NEOFORGE}
  *                            on {@code main})
+ * @param bridgedFields       the game fields Fabricated's in-game mod serves as vanilla's type through a getter it adds,
+ *                            as {@code owner field} in runtime names to the getter's name, which a Fabric mod's reads of
+ *                            the field call (CORPUS-107); empty where the platform keeps vanilla's types
  */
 public record TranslationEnvironment(
 		String minecraftVersion,
@@ -53,7 +56,8 @@ public record TranslationEnvironment(
 		InstalledClasses installed,
 		ClassIndex installedIndex,
 		Map<String, String> unsupportedPackages,
-		PlatformDescriptor descriptor) {
+		PlatformDescriptor descriptor,
+		Map<String, String> bridgedFields) {
 
 	/**
 	 * The format of cached translations. Builds of Fabricated differ in {@link #fabricatedBuild}, so a change to what
@@ -74,6 +78,7 @@ public record TranslationEnvironment(
 			throw new IllegalArgumentException("Intermediary translation requires mappings");
 		}
 		unsupportedPackages = Collections.unmodifiableMap(new TreeMap<>(unsupportedPackages));
+		bridgedFields = Collections.unmodifiableMap(new TreeMap<>(bridgedFields));
 	}
 
 	public String side() {
