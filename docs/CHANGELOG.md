@@ -3,7 +3,7 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
-## 2026-11-04: Fabric mods' command argument types on a client with Forgified Fabric API (PROVIDER-12), CORPUS-48 closed (task 5)
+## 2026-11-04: Fabric mods' command argument types and attribute modifications on a client with Forgified Fabric API (PROVIDER-12, PROVIDER-18), CORPUS-48 closed, PRE-19 verified (task 5)
 
 - **PROVIDER-12** (P0 for packs with Forgified Fabric API on NeoForge 21.1, 26.1.2 and 26.2 clients with a Fabric mod
   registering its own command argument type; was P2): read in its sources, its command API keeps the argument types
@@ -29,16 +29,29 @@ One entry per working session, newest first: what changed, and how it was verifi
   server (NeoForge 21.1's `waitForServer`), so it doesn't meet the cycle. Decision: nothing to change in Fabricated; the
   client runs already stop such a hang 2 minutes after the world is reached, and the evidence step's bytecode for it
   is gone. It moves to `FINDINGS.md`.
-- **PROVIDER-17** opened (P1, UNVERIFIED whether Fabricated's): the 26.1.2 and 26.2 clients with Forgified Fabric API
-  fail three checks, first seen in extended run 41858750959's summary: the packet context a codec reads is empty while
-  NeoForge's splitter measures a payload, and missing as the client decodes one; a Fabric mod's default attribute
-  modification from its main initializer doesn't apply (the dedicated server with it passes, so most likely the
-  provider's event fires before a client's initializers run, as PROVIDER-12's); and HUD elements attached to vanilla's
-  are drawn where vanilla's aren't. Task 5's next item, with PRE-19.
-- **PRE-19**: its row said `forge-legacy` doesn't read vanilla's code; it does, from the SRG-named game jar Forge's
-  installer leaves. The Forge corpus summary now lists the injectors pre-flight moved to the method the platform calls
-  in place of theirs (`ci/corpus-summary.sh`), for Puzzles Lib's in the Forge 47 extended run after the next
-  `forge-legacy` sync.
+- **PROVIDER-17 and PROVIDER-18**, opened and verified: the 26.1.2 and 26.2 clients with Forgified Fabric API failed
+  three checks, first seen in extended run 41858750959's summary. Two are the provider's (PROVIDER-17), read in its
+  26.1.2 and 26.2.x sources: its packet context's keys are null once its context class is initialized first (the class
+  initialization cycle NET-7 found in upstream's code, reproduced with the same two classes in a plain JVM), and it
+  binds no context as NeoForge's splitter decodes a payload; and its HUD registry draws an element attached to a vanilla
+  one as a layer of its own, whatever vanilla's layer checks. The test mods skip those checks with these answers where
+  another mod provides the module, as for PROVIDER-10, and `COMPATIBILITY.md` lists them. The third was Fabricated's
+  timing (PROVIDER-18, P2): a Fabric mod's default attribute modification from its main initializer didn't apply on the
+  client, while the dedicated server with it passes. The bytecode step showed that the provider runs the event once, in
+  NeoForge's `EntityAttributeModificationEvent`, which on a client fires before Fabric initializers run in `Minecraft`'s
+  constructor. A listener of Fabricated's, registered as it loads, notes the listeners the provider's run has; once a
+  client's initializers have run, those registered since run with the provider's own context
+  (`ProviderAttributeModifications`), and none where the provider hasn't run the event yet. Verified in extended run
+  41871298631: none of the three fails on 26.1.2 or 26.2. Both move to `FINDINGS.md`, and the bytecode step's dump for
+  PROVIDER-18 is gone.
+- **PROVIDER-19 opened** (CI only, UNVERIFIED): in that run the 26.1.2 client with Forgified Fabric API reported its
+  client block entity check neither way, which it passed in the run before; the provider's lifecycle module is
+  upstream's. The bytecode step's lines on how a client left its world now cover that client, for the next extended run.
+- **PRE-19 verified** on Forge 47 (`forge-legacy` #314, the sync bringing the corpus summary's new lines): its row
+  said `forge-legacy` doesn't read vanilla's code, which it does, from the SRG-named game jar Forge's installer leaves.
+  The Forge corpus summary now lists the injectors pre-flight moved to the method the platform calls in place of
+  theirs (`ci/corpus-summary.sh`), and in extended run 41870373636 the Forge 47 corpus server and client moved Puzzles
+  Lib's break speed hook to `getDigSpeed`, which Mixin applied with no failure. It moves to `FINDINGS.md`.
 
 ## 2026-11-04: SIG-3 verified, Fabric models' level-aware particle sprites on Forge (PART-4), and Forgified Fabric API on Forge 47 (PROVIDER-14 to 16, task 5)
 

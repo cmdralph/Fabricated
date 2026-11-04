@@ -1,5 +1,6 @@
 package io.github.cmdralph.fabricated.neoforge;
 
+import java.util.function.Consumer;
 import java.util.function.Predicate;
 
 import io.github.cmdralph.fabricated.loader.FabricatedState;
@@ -12,6 +13,7 @@ import io.github.cmdralph.fabricated.neoforge.loot.LootBridge;
 import io.github.cmdralph.fabricated.neoforge.lifecycle.LifecycleBridge;
 import io.github.cmdralph.fabricated.neoforge.networking.NetworkingBridge;
 import io.github.cmdralph.fabricated.neoforge.objectbuilder.ObjectBuilderBridge;
+import io.github.cmdralph.fabricated.neoforge.objectbuilder.ProviderAttributeModifications;
 import io.github.cmdralph.fabricated.neoforge.rendering.FabricBlockRendering;
 import io.github.cmdralph.fabricated.neoforge.rendering.HudBridge;
 import io.github.cmdralph.fabricated.neoforge.rendering.PictureInPictureBridge;
@@ -64,6 +66,11 @@ public final class NativeFabricApi {
 					modifier.modify(types, consumer::accept);
 				}
 			}));
+		} else {
+			// Another mod's runs Fabric's attribute modification event before a client's initializers (PROVIDER-18).
+			Consumer<String> problems = problem -> state.report().line("Registries", problem);
+			ProviderAttributeModifications.watch("fabric-object-builder-api-v1", problems);
+			state.api().afterEntrypoints(() -> ProviderAttributeModifications.runLate("fabric-object-builder-api-v1", problems));
 		}
 		if (ours.test("fabric-networking-api-v1")) {
 			NetworkingBridge.register(modBus, dist, problem -> {

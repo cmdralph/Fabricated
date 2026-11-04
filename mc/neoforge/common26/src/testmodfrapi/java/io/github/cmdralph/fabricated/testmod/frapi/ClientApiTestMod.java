@@ -22,6 +22,7 @@ import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Options;
 import net.minecraft.resources.Identifier;
+import net.neoforged.fml.ModList;
 
 /**
  * Fabric API's client modules Fabricated passes through (the Fabric API jar provides them), as most mods with a client
@@ -121,9 +122,19 @@ public final class ClientApiTestMod implements ClientModInitializer {
 		if (hiddenFrames < HIDDEN_FRAMES && tick < hiddenFrom + 40) return;
 		hideGui(client, false);
 		hidingDone = true;
-		if (hiddenFrames == 0) report(false, "hud conditions", "no frame drawn while the GUI was hidden");
-		else if (!drawnWhereVanillaIsnt.isEmpty()) report(false, "hud conditions", "drawn after " + String.join("; after ", drawnWhereVanillaIsnt));
-		else report(true, "hud conditions", null);
+		String where = String.join("; after ", drawnWhereVanillaIsnt);
+		if (hiddenFrames == 0) {
+			report(false, "hud conditions", "no frame drawn while the GUI was hidden");
+		} else if (drawnWhereVanillaIsnt.isEmpty()) {
+			report(true, "hud conditions", null);
+		} else if (ModList.get().isLoaded("fabric_rendering_v1")) {
+			// Forgified Fabric API's HUD registry attaches an element as a NeoForge layer of its own beside vanilla's
+			// (registerAbove), drawn whatever vanilla's layer checks inside, as its 26.2.x source reads (PROVIDER-17).
+			FrapiTestMod.LOGGER.info("FABRICATED-TEST hud conditions SKIPPED: fabric-rendering-v1 is another mod's, which draws an element attached to a "
+					+ "vanilla one as a layer of its own, whatever vanilla's layer checks (PROVIDER-17): drawn after {}", where);
+		} else {
+			report(false, "hud conditions", "drawn after " + where);
+		}
 	}
 
 	/**

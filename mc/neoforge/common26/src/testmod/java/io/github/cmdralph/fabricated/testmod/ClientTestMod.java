@@ -59,6 +59,8 @@ public final class ClientTestMod implements ClientModInitializer {
 		ClientPlayNetworking.registerGlobalReceiver(NetworkingTest.ContextPing.TYPE, (payload, context) -> {
 			if (payload.data().length == NetworkingTest.ContextPing.SIZE && payload.decodedWithContext()) {
 				TestMod.LOGGER.info("FABRICATED-TEST packet context while decoding a large payload OK");
+			} else if (payload.data().length == NetworkingTest.ContextPing.SIZE && NetworkingTest.contextDecodeAnswer != null) {
+				TestMod.LOGGER.info("FABRICATED-TEST packet context while decoding a large payload SKIPPED: {}", NetworkingTest.contextDecodeAnswer);
 			} else {
 				TestMod.LOGGER.error("FABRICATED-TEST packet context while decoding a large payload FAILED: {} bytes, context {}", payload.data().length,
 						payload.decodedWithContext());
