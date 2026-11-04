@@ -6720,29 +6720,16 @@ class MixinPreflightTest {
 	}
 
 	/**
-	 * An injector in a named group is one of the mod's alternatives (Iris's {@code @Group(min = 1, max = 1)} pairs):
+	 * An injector in a group with others is one of the mod's alternatives (Iris's {@code @Group(min = 1, max = 1)} pairs):
 	 * pre-flight neither points it elsewhere, which could make two of a group apply, nor requires it, as Mixin doesn't.
 	 */
 	@Test
 	void anInjectorInAGroupIsLeftToItsGroup() throws Exception {
 		Map<String, byte[]> mod = Map.of("com/example/mixin/Grouped", mixin("com/example/mixin/Grouped", false, cw -> {
-			MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, "inject", "(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V", null, null);
-			AnnotationVisitor group = mv.visitAnnotation("Lorg/spongepowered/asm/mixin/injection/Group;", false);
-			group.visit("name", "alternatives");
-			group.visit("max", 1);
-			group.visitEnd();
-			AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
-			AnnotationVisitor methods = ann.visitArray("method");
-			methods.visit(null, "tick");
-			methods.visitEnd();
-			AnnotationVisitor ats = ann.visitArray("at");
-			AnnotationVisitor at = ats.visitAnnotation(null, AT);
-			at.visit("value", "INVOKE");
-			at.visit("target", "L" + TARGET + ";helper(I)V");
-			at.visitEnd();
-			ats.visitEnd();
-			ann.visitEnd();
-			mv.visitEnd();
+			// {handler, the call it injects at}: the first's isn't in this build (its overload taking a string is), the second's is.
+			for (String[] member : new String[][] {{"inject", "(I)V"}, {"alternative", "(ILjava/lang/String;)V"}}) {
+				grouped(cw, member[0], "alternatives", -1, 1, "L" + TARGET + ";helper" + member[1]);
+			}
 		}));
 		MixinConfigFile config = MixinConfigFile.parse(config(true, "Grouped"));
 		ClassIndex neoForge = new ClassIndex(Map.of(TARGET, callingHelper("(ILjava/lang/String;)V"))::get);
@@ -6750,7 +6737,70 @@ class MixinPreflightTest {
 		assertTrue(preflight(neoForge, mod::get, ClassBytesSource.EMPTY, false)
 				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), new ArrayList<>()).isEmpty());
 		List<PreflightFinding> findings = preflight(neoForge, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
-		assertTrue(findings.stream().noneMatch(f -> f.severity() == Severity.FAIL), findings.toString());
+		assertTrue(findings.stream().noneMatch(f -> f.severity() == Severity.FAIL || f.severity() == Severity.LEFT_OUT), findings.toString());
+	}
+
+	/**
+	 * GROUP-2: Mixin needs at least one injection of every group, whatever its minimum, so a group's only member is required
+	 * as an injector alone is, and repaired as one. Essential's key and character hooks, each alone in a group declaring
+	 * no minimum, are at calls Forge's keyboard handler makes inside its own hooks; they stopped the Forge 61 to 66 clients.
+	 */
+	@Test
+	void aGroupsOnlyInjectorIsRepairedAndRequiredAsAnInjectorAlone() throws Exception {
+		String thing = "L" + TARGET + ";";
+		Map<String, byte[]> mod = new HashMap<>(Map.of("com/example/mixin/Keys", mixin("com/example/mixin/Keys", false,
+				cw -> grouped(cw, "onKeyTyped", "onKeyTyped", -1, -1, "L" + TARGET + ";helper(I)V"))));
+		MixinConfigFile config = MixinConfigFile.parse(config(true, "Keys"));
+
+		// Forge's hook takes the call's receiver and arguments, and makes the call: the injector is pointed at the hook's call.
+		String plain = "(" + thing + "I)V";
+		ClassIndex forge = new ClassIndex(Map.of(TARGET, callingHook(plain), HOOKS, hooks(plain, true))::get);
+		List<PreflightFinding> moved = new ArrayList<>();
+		byte[] repaired = preflight(forge, mod::get, ClassBytesSource.EMPTY, false)
+				.repairs("test.mixins.json", config, Refmap.EMPTY, Set.of(), moved).get("com/example/mixin/Keys.class");
+		assertNotNull(repaired, moved.toString());
+		assertEquals(1, moved.size(), moved.toString());
+		ClassNode node = new ClassNode();
+		new ClassReader(repaired).accept(node, 0);
+		MethodNode handler = node.methods.stream().filter(m -> m.name.equals("onKeyTyped")).findFirst().orElseThrow();
+		assertEquals("L" + HOOKS + ";draw" + plain, Annotations.value(Annotations.list(Annotations.value(Annotations.find(handler, INJECT), "at")).getFirst(), "target"));
+		assertEquals("onKeyTyped", PreflightAsm.group(handler), "it stays in its group");
+		mod.put("com/example/mixin/Keys", repaired);
+		List<PreflightFinding> after = preflight(forge, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		assertTrue(after.isEmpty(), after.toString());
+
+		// Where nothing makes the call, the group fails as an injector alone would, and the self-contained mixin loses it.
+		mod.put("com/example/mixin/Keys", mixin("com/example/mixin/Keys", false, cw -> grouped(cw, "onKeyTyped", "", -1, -1, "L" + TARGET + ";helper(I)V")));
+		ClassIndex neither = new ClassIndex(Map.of(TARGET, callingHelper("(J)V"))::get);
+		List<PreflightFinding> findings = preflight(neither, mod::get, ClassBytesSource.EMPTY, false).check("test.mixins.json", config, Refmap.EMPTY, Set.of());
+		List<PreflightFinding> group = findings.stream().filter(f -> f.message().startsWith("@Group default needs 1 of its 1 injectors to apply, and none can")).toList();
+		assertEquals(1, group.size(), findings.toString());
+		assertEquals(Severity.LEFT_OUT, group.getFirst().severity(), group.toString());
+	}
+
+	/** {@code handler}, an {@code @Inject} on {@code tick} at {@code call}, in {@code @Group(name, min, max)} ({@code -1}: not declared). */
+	private static void grouped(ClassWriter cw, String handler, String name, int min, int max, String call) {
+		MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PRIVATE, handler, "(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V", null, null);
+		AnnotationVisitor group = mv.visitAnnotation("Lorg/spongepowered/asm/mixin/injection/Group;", false);
+		if (!name.isEmpty()) group.visit("name", name);
+		if (min >= 0) group.visit("min", min);
+		if (max >= 0) group.visit("max", max);
+		group.visitEnd();
+		AnnotationVisitor ann = mv.visitAnnotation(INJECT, false);
+		AnnotationVisitor methods = ann.visitArray("method");
+		methods.visit(null, "tick");
+		methods.visitEnd();
+		AnnotationVisitor ats = ann.visitArray("at");
+		AnnotationVisitor at = ats.visitAnnotation(null, AT);
+		at.visit("value", "INVOKE");
+		at.visit("target", call);
+		at.visitEnd();
+		ats.visitEnd();
+		ann.visitEnd();
+		mv.visitCode();
+		mv.visitInsn(Opcodes.RETURN);
+		mv.visitMaxs(0, 2);
+		mv.visitEnd();
 	}
 
 	/** GROUP-1: Mixin stops the game when fewer of a group's injectors apply than its minimum, as owo-lib's did. */

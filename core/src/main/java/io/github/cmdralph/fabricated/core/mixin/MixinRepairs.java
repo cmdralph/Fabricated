@@ -316,7 +316,8 @@ final class MixinRepairs extends PreflightPart {
 		ANY,
 		/**
 		 * Not one of a group's alternatives: each is the mod's alternative for code that differs, and pointing one
-		 * elsewhere could make more of the group apply than it allows, or another may already name this build's code.
+		 * elsewhere could make more of the group apply than it allows, or another may already name this build's code. A
+		 * group's only member has none, and is required as an injector alone is (GROUP-2).
 		 */
 		UNGROUPED,
 		/** A mixin with one target. */
@@ -324,7 +325,7 @@ final class MixinRepairs extends PreflightPart {
 		ONE_TARGET_UNGROUPED;
 
 		boolean covers(RepairSite site) {
-			boolean ungrouped = this == ANY || this == ONE_TARGET || !PreflightAsm.grouped(site.handler());
+			boolean ungrouped = this == ANY || this == ONE_TARGET || !PreflightAsm.hasAlternatives(site.mixin(), site.handler());
 			return ungrouped && (this == ANY || this == UNGROUPED || site.targets().size() == 1);
 		}
 	}
