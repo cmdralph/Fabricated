@@ -287,8 +287,9 @@ jobs:
       # job's log can only be read from its end): the recipes still failing to parse, each with its exception, one of
       # them as Supplementaries ships it, how Farmer's Delight reads and registers its tool action ingredient, and the
       # mods' mixins of Ingredient, one of which may read the recipe's "type" on Fabric (CORPUS-99); and on the client,
-      # the mods' code naming a brewing mix, which REI's default plugin reads where Forge 47 keeps holders, and the mods'
-      # spawn eggs, one of which had no entity type as EMI and REI listed Artifacts' creative tab.
+      # the mods' code naming a brewing mix, which REI's default plugin reads where Forge 47 keeps holders, the mods'
+      # spawn eggs, one of which had no entity type as EMI and REI listed Artifacts' creative tab, and the test mod's
+      # lines on its conditional recipes, neither of which its check found there.
       - name: Bytecode for task 5's findings (informational)
         if: ${{ env.EXTENDED == 'true' && !cancelled() && steps.corpus.outcome == 'success' }}
         continue-on-error: true
@@ -306,4 +307,5 @@ jobs:
           if [ -d "$RUNNER_TEMP/client-corpus" ]; then
             python3 -I ci/javap-dump.py "$RUNNER_TEMP/client-corpus" 'refs:net/minecraft/class_1845$class_1846' subtypes:net/minecraft/class_1826 \
               | cut -c1-320 | head -n 300 || true
+            grep -h 'FABRICATED-FORGE-TEST recipe condition' "$RUNNER_TEMP/client-corpus/run/logs/latest.log" 2>/dev/null | cut -c1-400 | head -n 10 || true
           fi
