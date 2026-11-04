@@ -14,13 +14,15 @@ import io.github.cmdralph.fabricated.core.translate.ModsTomlWriter;
 import io.github.cmdralph.fabricated.core.translate.PlatformDescriptor;
 
 /**
- * Forge 47's descriptor: Forge's dialect ({@link PlatformDescriptor#FORGE}, whose packages it keeps, and its replaced
- * mods with Forge Config API Port's: PLAT-6, CORPUS-81), with Forge 47's coremods and a {@code pack.mcmeta} in Minecraft
- * 1.20.1's format. Forge 47 builds each mod's pack with vanilla's {@code Pack.readMetaAndCreate} (its
- * {@code ServerLifecycleHooks}), which gives no pack for metadata without a {@code pack_format}, the field 1.20.1 requires
- * where Forge 61 to 66's versions read {@code min_format} and {@code max_format}.
+ * Forge 47's descriptor: Forge's ({@link PlatformDescriptor.Forge}, its dialect, packages and loot modifiers among the
+ * rest), with Forge Config API Port among its replaced mods (CORPUS-81), Forge 47's coremods and private fields, and a
+ * {@code pack.mcmeta} in Minecraft 1.20.1's format. It extends Forge's, so it answers as Forge's does for everything it
+ * doesn't change, the methods added to the descriptor later among them (PLAT-6, CORPUS-98). Forge 47 builds each mod's
+ * pack with vanilla's {@code Pack.readMetaAndCreate} (its {@code ServerLifecycleHooks}), which gives no pack for metadata
+ * without a {@code pack_format}, the field 1.20.1 requires where Forge 61 to 66's versions read {@code min_format} and
+ * {@code max_format}.
  */
-final class ForgeDescriptor implements PlatformDescriptor {
+final class ForgeDescriptor extends PlatformDescriptor.Forge {
 	/** Minecraft 1.20.1's resource and data pack format. */
 	static final int PACK_FORMAT = 15;
 	private static final Map<String, String> REPLACED_MODS = withConfigPort(FORGE.replacedMods());
@@ -91,31 +93,6 @@ final class ForgeDescriptor implements PlatformDescriptor {
 		return PlatformCoremods.of(redirects, PRIVATE_FIELDS);
 	}
 
-	@Override
-	public String loaderName() {
-		return FORGE.loaderName();
-	}
-
-	@Override
-	public String path() {
-		return FORGE.path();
-	}
-
-	@Override
-	public String write(ModsTomlWriter.Spec spec) {
-		return FORGE.write(spec);
-	}
-
-	@Override
-	public Map<String, String> manifestAttributes(ModsTomlWriter.Spec spec) {
-		return FORGE.manifestAttributes(spec);
-	}
-
-	@Override
-	public boolean enumExtensions() {
-		return FORGE.enumExtensions();
-	}
-
 	/**
 	 * Forge's (Mod Menu's jar, which Forge's mod list stands in for: REPL-1) and Forge Config API Port's: its version for
 	 * 1.20.1 copies Forge 47's own config system, classes and packages included, so its copies were left out for Forge's
@@ -132,12 +109,6 @@ final class ForgeDescriptor implements PlatformDescriptor {
 		Map<String, String> replaced = new LinkedHashMap<>(forge);
 		replaced.put("forgeconfigapiport", "Fabricated provides Forge Config API Port's Fabric API on Forge's own config system, which the port copies");
 		return Map.copyOf(replaced);
-	}
-
-	/** Forge's: none, as Forge has none of NeoForge's packages, which a Fabric mod's copy then provides (PLAT-5, PLAT-6). */
-	@Override
-	public List<String> providedPackages() {
-		return FORGE.providedPackages();
 	}
 
 	/** Forge 47's ({@link #coremods()}); none for a version this descriptor isn't for. */

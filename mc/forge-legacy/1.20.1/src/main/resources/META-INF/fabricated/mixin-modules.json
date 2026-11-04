@@ -14,8 +14,10 @@
     "BuiltInRegistriesInvoker": [],
     "BuiltInRegistriesValidateMixin": [],
     "CraftingHelperFabricConditionsMixin": [],
+    "CraftingHelperFabricIngredientsMixin": ["fabric-recipe-api-v1"],
     "FluidTypeMixin": [],
     "GameDataFreezeMixin": [],
+    "IngredientForgeNetworkMixin": ["fabric-recipe-api-v1"],
     "LiquidBlockEarlyFluidMixin": [],
     "LivingEntityFluidTravelMixin": [],
     "MappedRegistryPendingHoldersMixin": [],
@@ -25,6 +27,7 @@
     "ParticleEngineProvidersBridgeMixin": [],
     "PotionBrewingMixBridgeMixin": [],
     "RecordItemEarlySoundMixin": [],
+    "ShapedRecipeUtilCraftingSizeMixin": [],
     "TagFileRemoveMixin": ["fabric-tag-api-v1"]
   }
 }
