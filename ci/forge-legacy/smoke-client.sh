@@ -75,9 +75,16 @@ if [ -n "$extra" ] && [ -d "$extra" ]; then
 	# still logged.
 	printf '[client]\nshowLoadWarnings = false\n' > run/config/forge-client.toml
 fi
-# SMOKE_ON_ENTRYPOINT_FAILURE: as in the server smoke, Fabricated's onEntrypointFailure for a corpus run.
-if [ -n "${SMOKE_ON_ENTRYPOINT_FAILURE:-}" ]; then
-	printf '{ "schema": 1, "onEntrypointFailure": "%s" }\n' "$SMOKE_ON_ENTRYPOINT_FAILURE" > run/config/fabricated.json
+# SMOKE_SEED: a directory copied into the game directory first, as an earlier launch left it (Essential's download).
+if [ -n "${SMOKE_SEED:-}" ] && [ -d "$SMOKE_SEED" ]; then
+	cp -r "$SMOKE_SEED"/. run/
+fi
+# Fabricated's config for the run: SMOKE_ON_ENTRYPOINT_FAILURE, as in the server smoke, its onEntrypointFailure for a
+# corpus run, and FABRICATED_MODS its per-mod overrides (the "mods" object), as on main.
+if [ -n "${SMOKE_ON_ENTRYPOINT_FAILURE:-}" ] || [ -n "${FABRICATED_MODS:-}" ]; then
+	printf '{ "schema": 1, "onEntrypointFailure": "%s", "mods": %s }\n' "${SMOKE_ON_ENTRYPOINT_FAILURE:-error}" "${FABRICATED_MODS:-{\}}" \
+		> run/config/fabricated.json
+	cat run/config/fabricated.json
 fi
 ls -1 run/mods
 cat > run/options.txt <<'OPTS'
