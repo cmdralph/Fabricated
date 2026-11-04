@@ -20,6 +20,7 @@ import io.github.cmdralph.fabricated.neoforge.fluid.FabricFluidType;
 import io.github.cmdralph.fabricated.neoforge.item.CreativeTabOrder;
 import io.github.cmdralph.fabricated.neoforge.objectbuilder.ObjectBuilderBridge;
 import io.github.cmdralph.fabricated.neoforge.registry.FabricTableEntries;
+import io.github.cmdralph.fabricated.neoforge.registry.ProviderArgumentTypes;
 import io.github.cmdralph.fabricated.neoforge.registry.ProviderDataPackRegistries;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.api.DedicatedServerModInitializer;
@@ -182,6 +183,11 @@ public final class EntrypointBridge {
 			if (mainWithClient) runMain();
 			record(runner.run("client", ClientModInitializer.class, ClientModInitializer::onInitializeClient));
 			registerLate();
+			// The argument types the initializers registered through another mod's command API, which registers them only
+			// in a registration event that has passed by now (Forgified Fabric API's, PROVIDER-12).
+			if (state.providedElsewhere("fabric-command-api-v2")) {
+				ProviderArgumentTypes.registerLate("fabric-command-api-v2", problem -> state.report().line("Registries", problem));
+			}
 		} finally {
 			GameData.freezeData();
 		}

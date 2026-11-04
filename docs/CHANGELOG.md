@@ -3,6 +3,20 @@
 One entry per working session, newest first: what changed, and how it was verified. Where each track stands now is in
 [`roadmap.md`](roadmap.md); this file is its history.
 
+## 2026-11-04: Fabric mods' command argument types on a client with Forgified Fabric API (PROVIDER-12, task 5)
+
+- **PROVIDER-12** (P2 for packs with Forgified Fabric API on NeoForge 21.1, 26.1.2 and 26.2 clients, UNVERIFIED): read
+  in its sources, its command API keeps the argument types Fabric mods register and registers them only in NeoForge's
+  registration event for argument types, from a listener its mod adds as NeoForge builds it. Fabricated runs Fabric
+  initializers on a client in `Minecraft`'s constructor, after that event, so a Fabric mod's argument type was never
+  registered there, and a command taking it couldn't reach the player. Once a client's initializers have run, with the
+  registries open, the argument types its module holds are registered as its listener registers them
+  (`ProviderArgumentTypes`). The reading also corrects the finding: its recipe API's ingredient type and its fluid
+  rendering's setup listener come from its own mod constructors (each of its modules runs its own entrypoints there),
+  so they don't depend on Fabricated's timing. `ArgumentTypeTest`: the test mod registers an argument type and a
+  command taking it, and every server and client run checks it as the server starts. To verify in an extended run (the
+  coexisting clients).
+
 ## 2026-11-04: SIG-3 verified, Fabric models' level-aware particle sprites on Forge (PART-4), and Forgified Fabric API on Forge 47 (PROVIDER-14 to 16, task 5)
 
 - **SIG-3 verified** on Forge 61 (`forge` #310's sync): the 1.21.11 client with Fabric API logged "frapi outline
