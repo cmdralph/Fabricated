@@ -757,8 +757,8 @@ left out: a model translucent at some positions counts as translucent everywhere
 bridge, as for any added interface). On 26.1.2, where upstream's check of a mesh
 model's sprites takes the parameters of vanilla's `SimpleModelWrapper.bake` (NeoForge moved the code into its own
 overload), a mesh model using sprites from outside the block atlas is not rejected; on 26.2 and 26.3 the check
-follows the code into NeoForge's overload. On 26.1.2 and 26.2 the block overlay seen from inside a block uses the
-block's plain particle sprite.
+follows the code into NeoForge's overload. On 26.1.2, 26.2 and 26.3 the block overlay seen from inside a Fabric block
+uses the block's plain particle sprite, not its level-aware one (PART-5).
 
 A Fabric block model that throws while it is drawn (in a chunk section, as a moving block, with the breaking overlay,
 as a block an entity carries, or while its parts are made from its quads) fails alone, on every version: that block is
